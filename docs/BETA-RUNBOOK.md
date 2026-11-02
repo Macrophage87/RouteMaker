@@ -15,7 +15,7 @@ a message naming `RM_BETA_HOST` when it is missing; on a server set up before v0
 
 | Where | What | Undo |
 | --- | --- | --- |
-| Docker | One compose project, `routemaker-beta`: containers postgis, api, worker, photon and four routers, plus the two trail routers (valhalla-offroad, valhalla-mtb) once their tiles are on the host; one network | `scripts/beta/beta-compose.sh down` |
+| Docker | One compose project, `routemaker-beta`: containers postgis, api, worker, photon and four routers, plus the three trail routers (valhalla-offroad, valhalla-mtb, valhalla-paved) once their tiles are on the host; one network | `scripts/beta/beta-compose.sh down` |
 | `/data/routemaker-src` | The checkout of the exact release sha | `rm -rf` it |
 | `/data/routemaker` | `DATA_ROOT`: tiles, database files, Photon index, base map, front end, backups | `rm -rf` it, only after the owner agrees |
 | `/data/routemaker-incoming` | The bundle as shipped from home (about 4 GB) | `rm -rf` it |
@@ -34,8 +34,8 @@ already exists (`/data` included: it holds other people's data).
 It does not touch the other sites, `nginx.conf`, the firewall, the system packages' configuration,
 or Docker's daemon settings. If a step seems to need any of those, **stop and ask the owner**.
 
-The memory budget is hard: every container has a cap (`compose.beta.yaml`, 7510 MiB = 7.33 GiB
-resident in all with the two trail routers and the 24M memcached, 7766 MiB = 7.58 GiB at the startup peak, against the host's 8.6 GiB available), so a spike restarts a
+The memory budget is hard: every container has a cap (`compose.beta.yaml`, 7830 MiB = 7.65 GiB
+resident in all with the three trail routers and the 24M memcached, 8086 MiB = 7.90 GiB at the startup peak, against the host's 8.6 GiB available), so a spike restarts a
 RouteMaker container rather than starving another site. Every RouteMaker container also has
 `cpu_shares: 512` and `oom_score_adj: 500`: under CPU contention the other sites win, and a
 host-wide out-of-memory kill picks a RouteMaker process first.
@@ -103,15 +103,15 @@ What to expect on this server (the owner's check, 2026-10-04); a check below tha
 - `/data` is a separate filesystem mounted `nofail`, with far more than the 25 GB this needs;
 - Docker's root may be on the root disk rather than on `/data` (that is why binds never create
   their source: "Reboot and a late `/data`"), so its free space is checked on its own;
-- available memory is at least the 8790 MiB threshold below (the 7766 MiB startup peak plus the
-  checker's 1 GiB margin);
+- available memory is at least the 8803 MiB threshold below (the 8086 MiB startup peak plus the
+  checker's 0.7 GiB margin);
 - an x86_64 machine (the api image is built at home, on x86_64);
 - `beta.example.org` resolves to this server's own public address (checked live below; the
   address is not written down here).
 
 ```sh
 . "$HOME/routemaker-beta-state/vars.sh"
-free -m                                  # "available" must be at least 8790 MiB: the 7766 MiB startup peak plus the checker's 1 GiB margin (the caps total 7510 MiB = 7.33 GiB resident)
+free -m                                  # "available" must be at least 8803 MiB: the 8086 MiB startup peak plus the checker's 0.7 GiB margin (the caps total 7830 MiB = 7.65 GiB resident)
 uname -m; docker info -f '{{.Architecture}}'   # both x86_64: the api image is built at home on x86_64; anything else is a stop
 df -h /data /                            # /data: at least 25 GB free (bundle 4 GB, installed copy 4 GB, backups)
 findmnt -no SOURCE,FSTYPE,OPTIONS /data  # a filesystem of its own; nofail in the options is expected (see "Reboot and a late /data")
@@ -308,7 +308,7 @@ from `.env` (the rendered config holds every secret), only the table and any pro
 prints a problem, stop and report it. It checks: no caddy or rebuild; a memory cap, CPU cap and
 `memswap_limit` on every container; `cpu_shares` below 1024 and `oom_score_adj` at least 500 on
 every container; only the api publishing a port and only on `127.0.0.1`; the resident total under
-7.35 GiB (the two trail routers always counted) and the startup peak (plus the largest one-shot) leaving 1 GiB of the host's 8.6; at most
+7.66 GiB (the three trail routers always counted) and the startup peak (plus the largest one-shot) leaving 0.7 GiB of the host's 8.6; at most
 six gunicorn workers with one left free beside the routing, geocoding and tile pools; Photon's heap
 plus capped direct buffers inside its cap; the weekly rebuild paused; every long-running service
 restarting `unless-stopped` and Django debug off; and in `.env`, no `COMPOSE_PROFILES` or
@@ -1017,7 +1017,7 @@ continuous deployment first, as above, and resume it after.
    `for r in valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend; do scripts/beta/beta-compose.sh restart "$r"; sleep 20; done`
    (`restart-routers.sh`, where its timer is installed, does the same by itself once the links have been still
    for five minutes), then the trail routers on their new tiles, from v0.10.1 on
-   (receive-data.sh prints the line): `scripts/beta/beta-compose.sh up -d --force-recreate valhalla-offroad valhalla-mtb`,
+   (receive-data.sh prints the line): `scripts/beta/beta-compose.sh up -d --force-recreate valhalla-offroad valhalla-mtb valhalla-paved`,
    then the settings rows from the new links: `scripts/beta/beta-compose.sh exec -T api ./manage.py sync_upstreams`.
 5. `scripts/beta/smoke-test.sh --local --trails`, then `--public`.
 
@@ -1383,8 +1383,8 @@ and `$RM_DATA/tiles/mtb/current` exist):
 . "$HOME/routemaker-beta-state/vars.sh"
 cd "$RM_SRC"
 scripts/beta/auto-release.sh install                                  # the agent that knows the trail routers
-"${RM_PY:-python3}" scripts/check_beta_compose.py --env-file .env      # "beta compose: ok", 7.33 GiB resident
-scripts/beta/beta-compose.sh up -d valhalla-offroad valhalla-mtb
+"${RM_PY:-python3}" scripts/check_beta_compose.py --env-file .env      # "beta compose: ok", 7.65 GiB resident
+scripts/beta/beta-compose.sh up -d valhalla-offroad valhalla-mtb valhalla-paved
 ```
 
 From then on the agent starts any that is not running on every deploy (a deliberate `stop` of one is undone by

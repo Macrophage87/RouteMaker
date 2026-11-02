@@ -965,7 +965,7 @@ export interface RouteResponse {
    */
   neighbour?: { kind: NeighbourKind; stress: number; line: string } | null;
   preset: PresetId;
-  variant: "standard" | "no-trail" | "ebike" | "weekend" | "offroad" | "mtb";
+  variant: "standard" | "no-trail" | "ebike" | "weekend" | "offroad" | "mtb" | "paved";
   /** A ride type that skips dirt trails rides one here (a point on one opened it, core/trail_touch.py). A ride then opens them all to its re-plans. */
   dirt_trails?: boolean;
   /** A ride marked a dirt trail closed (bad conditions): no dirt trail is ridden, and the ride's re-plans say so after. */

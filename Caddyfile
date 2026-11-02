@@ -103,6 +103,8 @@
 	redir @preset-gravel /#preset=gravel 302
 	@preset-fast path /fast /fast/
 	redir @preset-fast /#preset=fast 302
+	@preset-road-bike path /road-bike /road-bike/
+	redir @preset-road-bike /#preset=road-bike 302
 	@preset-cargo path /cargo /cargo/
 	redir @preset-cargo /#preset=cargo 302
 	@preset-ebike path /ebike /ebike/

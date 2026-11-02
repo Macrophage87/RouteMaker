@@ -31,12 +31,6 @@ export interface Dials {
   /** Cargo Bike only: electric assist (e-bike rules, a faster pace, the same hills start). */
   assist: boolean;
   /**
-   * "Avoid gravel" (OWNER-DECISIONS 91, 92, 111): steer off unpaved surfaces.
-   * Any ride type, off by default on all of them; absent is off. It is about
-   * the ride, not the bike, so it stays when the ride type changes.
-   */
-  avoidGravel?: boolean;
-  /**
    * "Keep to roads, not trails" (OWNER-DECISIONS 463, 463b; 2026-09-26, "Every type,
    * roadways ok"): plan on roadways only, on any ride type, e-bike rides included (463a). Absent is off (trails allowed), except on
    * Mass Ride, which is always trails off (`trailsOffLocked`). It is about the ride,
@@ -215,6 +209,8 @@ export const STARTS: Record<PresetId, Start> = {
   gravel: { stress: 40, hills: 0, seek: true },
   // A strong rider: an LT1 grade of about 11% (`core.presets.FAST_HILLS`; Stephen, 2026-10-23: "More for fast").
   fast: { stress: 10, hills: 40, seek: true },
+  // Road Bike (Stephen, 2026-11-02): "Balanced" traffic, as Group Ride and Gravel (core.presets ROAD_BIKE_STRESS).
+  "road-bike": { stress: 40, hills: 0, seek: true },
   cargo: { stress: 70, hills: -60, seek: true, carrying: { cargo: 70, people: 80 }, assist: true },
   // Toward "fine with hills" (242): `core.presets.EBIKE_HILLS`.
   ebike: { stress: 70, hills: 50, seek: true },
@@ -402,7 +398,6 @@ export function fitDials(preset: PresetId, dials: Partial<Dials>): Dials {
     ...(start.bike ? { bike: start.bike } : {}),
     // Only an e-bike can end outside a dock, and never on Rebalance Ride (it ends where a bike is needed).
     ...(start.bike === "ebike" && dials.ending === "outside_dock" && preset !== "rebalance" ? { ending: "outside_dock" as const } : {}),
-    ...(dials.avoidGravel === true ? { avoidGravel: true } : {}),
     ...(dials.trailsOff === true ? { trailsOff: true } : {}),
     ...(fitTarget(dials.targetDistanceM) !== undefined ? { targetDistanceM: fitTarget(dials.targetDistanceM) } : {}),
     ...(dials.loop === true ? { loop: true } : {}),
@@ -428,7 +423,6 @@ export function dialFields(dials: Dials): Record<string, string | number | boole
   if (dials.when) fields.when = dials.when;
   if (dials.carrying) fields.carrying = dials.carrying;
   if (dials.assist) fields.assist = true;
-  if (dials.avoidGravel) fields.avoid_gravel = true;
   if (dials.trailsOff) fields.trails_off = true;
   const target = fitTarget(dials.targetDistanceM);
   if (target !== undefined) fields.target_distance_m = target;

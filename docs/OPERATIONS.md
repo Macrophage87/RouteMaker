@@ -4467,7 +4467,7 @@ the first host to run it is the first test of it.
 
    ```sh
    docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend
-   docker compose --profile offroad restart valhalla-offroad valhalla-mtb   # only where the off-road routers run
+   docker compose --profile offroad restart valhalla-offroad valhalla-mtb valhalla-paved   # only where the off-road routers run
    ```
 
 After that the weekly schedule carries it: Tuesdays 08:00 UTC, with the alert
@@ -4982,7 +4982,7 @@ are restarted:
 
 ```sh
 docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend
-docker compose --profile offroad restart valhalla-offroad valhalla-mtb   # only where the off-road routers run
+docker compose --profile offroad restart valhalla-offroad valhalla-mtb valhalla-paved   # only where the off-road routers run
 ```
 
 Nothing in the rebuild does this. On the beta a host-side hook does it
@@ -6137,7 +6137,7 @@ changes nothing — and `--confirm` is what performs it.
 docker compose exec -T rebuild ./manage.py rollback_rebuild            # what would happen
 docker compose exec -T rebuild ./manage.py rollback_rebuild --confirm  # do it
 docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend
-docker compose --profile offroad restart valhalla-offroad valhalla-mtb   # only where the off-road routers run
+docker compose --profile offroad restart valhalla-offroad valhalla-mtb valhalla-paved   # only where the off-road routers run
 docker compose up -d --no-deps --no-build --force-recreate api worker
 docker compose exec -T api python manage.py predraw_stress_tiles
 ```
@@ -6333,7 +6333,7 @@ tiles):
    disagree means that variant is not back yet.
 5. **Restart the routers** if any of them restarted while the links were
    wrong — it will have loaded the build that failed to swap:
-   `docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend`, and, where the off-road router runs, `docker compose --profile offroad restart valhalla-offroad valhalla-mtb`
+   `docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend`, and, where the off-road router runs, `docker compose --profile offroad restart valhalla-offroad valhalla-mtb valhalla-paved`
    (see "After a rebuild: restart the routers"). Harmless if none did.
 6. **Leave `staging` alone.** It is the failed build's output and the next
    rebuild's first stage drops it.
@@ -6812,8 +6812,8 @@ foot_designated, trail_visibility, hiking_route, natural_surface, park_path, mtb
 dismount), `routemaker.zoo` and the existing `singletrack` and `cbd_sidewalk`.
 The rebuild log line "facility classes: ..." carries the count per reason.
 
-**Six graphs.** The mountain-bike class (`mtb`) is closed on the standard,
-weekend, e-bike and no-trail graphs and open on a fifth, `valhalla-offroad`
+**Seven graphs.** The mountain-bike class (`mtb`) is closed on the standard,
+weekend, e-bike, no-trail and Road Bike graphs and open on another, `valhalla-offroad`
 (`Variant.OFFROAD`), which Gravel and Mountain Goat ride (OWNER-DECISIONS
 291(2)), and on the Mountain Bike graph (below). The off-road graph has no weekend twin and falls back to the standard graph, as the
 weekend one does, when it is not promoted or not answering. Start it after the
@@ -6836,7 +6836,7 @@ command above after the swap, and `restart` it after later rebuilds as the other
 A `restart` that names `valhalla-offroad` where it has no container fails ("no such
 service", with or without `--profile offroad`) and restarts none of the other
 routers on the same line, so the four-router restart never names it. Restart it on
-its own line, `docker compose --profile offroad restart valhalla-offroad valhalla-mtb`, and only
+its own line, `docker compose --profile offroad restart valhalla-offroad valhalla-mtb valhalla-paved`, and only
 where it runs.
 
 **The Mountain Bike graph** (docs/MTB-TOPO-PLAN.md, slice 6). A sixth graph, `tiles/mtb`
@@ -6847,8 +6847,8 @@ the off-road graph with rated singletrack opened where nothing but its rating cl
 promotes it with the other five; nothing else is to run. Its router, `valhalla-mtb`, is behind
 the same compose profile as `valhalla-offroad` and is started and restarted with it:
 
-    docker compose --profile offroad up -d --no-deps --no-build valhalla-offroad valhalla-mtb
-    docker compose --profile offroad restart valhalla-offroad valhalla-mtb   # after a later swap
+    docker compose --profile offroad up -d --no-deps --no-build valhalla-offroad valhalla-mtb valhalla-paved
+    docker compose --profile offroad restart valhalla-offroad valhalla-mtb valhalla-paved   # after a later swap
 
 Start both or neither: the printed restart names both, and a `restart` naming a service with no
 container restarts none of the others on the line. One worker in 768M each (the 1536M
@@ -6883,6 +6883,21 @@ plans on the standard graph and says so. Start the pair only on a host with abou
 spare beyond the four routers. Each router's resident set has been 74-500 MB when read (the
 standard router about 450 MB over its 1.1 GB of tiles), so one worker fits in 768M; the compose
 check's 700 MB a worker leaves it little headroom past that.
+
+**The Road Bike graph** (the owner, 2026-11-02). A seventh graph, `tiles/paved`
+(`Variant.PAVED`, `valhalla/valhalla-paved.json`), which only the Road Bike ride type rides: the
+standard graph with gravel, fine gravel and compacted written as Valhalla's `gravel` class
+(`rm:rough_unpaved`, `routemaker_remap.ROUGH_UNPAVED`) and winding trails given the LTS 3 stress
+penalty (`rm:winding`, `routemaker.winding`). Every rebuild builds and promotes it with the
+other six. Its router, `valhalla-paved`, is behind the `offroad` profile with the two above and
+is started and restarted with them (the lines above name all three). One worker in 768M; the
+32G compose check holds at 32.0G because it no longer counts the `unbuilt` services, which
+never run. While the router is not running, or before the first rebuild that builds
+`tiles/paved`, Road Bike plans on the standard graph, where gravel is packed gravel. It adds
+what the Mountain Bike graph added: one more tile build (about 20-25 minutes), one more extract
+the size of the source, and about 1.1 GB per kept build directory. The cloud box's result
+carries `tiles-paved.tar`, and a result from before this graph is refused by `import-result.sh`
+(it asks for every graph's tar).
 
 **The Zoo.** `fixtures/zoo/` holds the polygon and the spur: the Harvard Street
 NW entrance to the bike racks (OSM node 9827008403), seven whole ways, written

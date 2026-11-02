@@ -49,7 +49,7 @@
 #                                                          (0.4-0.5 GB) plus 2 workers; mapped file
 #                                                          pages are reclaimed, not OOM-killed. 768M
 #                                                          until the trail routers came (2026-10-20)
-#   valhalla x2 trails  320M    1.0   (new)                valhalla-offroad and valhalla-mtb, 1 worker
+#   valhalla x3 trails  320M    1.0   (new)                valhalla-offroad, valhalla-mtb and valhalla-paved, 1 worker
 #                                                          each; the tiles.tar is paged in as asked
 #   worker              512M    0.5   0.07 GB              nightly pg_dump (streamed), sweeps, and the
 #                                                          map update's stress-tile pre-draw (`exec worker
@@ -62,13 +62,15 @@
 #                                                          measured 20 MiB resident (2026-10-27)
 #   migrate (one-shot)  256M    0.5   exits before api starts, not counted as resident
 #
-#   resident total: 1024 + 1450 + 1300 + 4*640 + 2*320 + 512 + 24 = 7510 MiB = 7.33 GiB,
-#   against about 8.6 GiB available, so a spike in every container at once still leaves 1.27 GiB.
-#   The startup peak adds the largest one-shot (migrate, 256M): 7766 MiB = 7.58 GiB.
+#   resident total: 1024 + 1450 + 1300 + 4*640 + 3*320 + 512 + 24 = 7830 MiB = 7.65 GiB,
+#   against about 8.6 GiB available, so a spike in every container at once still leaves 0.95 GiB.
+#   The startup peak adds the largest one-shot (migrate, 256M): 8086 MiB = 7.90 GiB.
 #   The memcached's 24M comes out of the 40 MiB the ceiling left (the owner, 2026-10-27,
 #   approving the shared answer cache at about 16 MB).
-#   The ceiling is 7.35 GiB since the owner's choice of 2026-10-25 ("Raise ceiling to 7.35 GB"),
-#   for the worker's pre-draw; it was 7.1 GiB from
+#   The ceiling is 7.66 GiB, and the startup peak's margin 0.7 GiB, for the Road Bike router
+#   (2026-11-02, the card "Make room on beta for the Road Bike router?", "Raise ceiling to
+#   7.66 GB"). It was 7.35 GiB from the owner's choice of 2026-10-25 ("Raise ceiling to
+#   7.35 GB"), for the worker's pre-draw, and 7.1 GiB from
 #   the owner's choice of 2026-10-20 ("Both, raise limit to 7.1 GB"), which made room for the
 #   two trail routers (it was 7.0 GiB, at 6.94 without them).
 #   One-shot management commands go through `exec api ...` (inside the api's own cap) or
@@ -445,7 +447,7 @@ services:
   # standard graph. One worker in 320M (the owner's choice of 2026-10-20, "Both, raise limit to
   # 7.1 GB"): a worker is under 100 MiB, the rest is the archive's file pages, reclaimed.
   # By hand, once its tiles are there:
-  #   scripts/beta/beta-compose.sh up -d valhalla-offroad valhalla-mtb
+  #   scripts/beta/beta-compose.sh up -d valhalla-offroad valhalla-mtb valhalla-paved
   valhalla-offroad:
     <<: *beta-yield
     profiles: ["offroad"]
@@ -492,6 +494,42 @@ services:
       - type: bind
         source: ${DATA_ROOT}/tiles/mtb
         target: /data/tiles/mtb
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${DATA_ROOT}/elevation
+        target: /data/elevation
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ./valhalla
+        target: /conf
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ./lua
+        target: /conf/lua
+        read_only: true
+        bind: { create_host_path: false }
+    memswap_limit: 320M
+    deploy:
+      resources:
+        limits: { memory: 320M, cpus: "1" }
+
+  # The Road Bike router (the owner, 2026-11-02: Road Bike replaces the Avoid gravel box):
+  # gravel, dirt and winding trails priced for a road bike. Started as valhalla-offroad is, once
+  # $RM_DATA/tiles/paved/current exists; until then the api answers Road Bike on the standard
+  # graph and says so. One worker in 320M, as valhalla-offroad.
+  valhalla-paved:
+    <<: *beta-yield
+    profiles: ["offroad"]
+    restart: ${RESTART_POLICY:-unless-stopped}
+    image: ghcr.io/valhalla/valhalla:3.9.1@sha256:4fd114eb1d26b8fc2f43bcb3df234c1b63a0bf13c277405e5943d5361dc575de
+    command: ["valhalla_service", "/conf/valhalla-paved.json", "1"]
+    volumes:
+      - type: bind
+        source: ${DATA_ROOT}/tiles/paved
+        target: /data/tiles/paved
         read_only: true
         bind: { create_host_path: false }
       - type: bind

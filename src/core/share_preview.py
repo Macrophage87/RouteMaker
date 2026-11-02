@@ -142,6 +142,7 @@ RIDE_NAMES = {
     "mountain-bike": "Mountain Bike",
     "gravel": "Gravel",
     "fast": "Fast",
+    "road-bike": "Road Bike",
     "cargo": "Cargo Bike",
     "ebike": "E-bike",
     "bikeshare": "Bikeshare",

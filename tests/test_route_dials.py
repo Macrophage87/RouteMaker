@@ -368,7 +368,7 @@ class TestSeekingClimbs:
         from pathlib import Path
 
         configs = sorted((Path(settings.BASE_DIR) / "valhalla").glob("valhalla-*.json"))
-        assert len(configs) == 6
+        assert len(configs) == 7
         for path in configs:
             limits = json.loads(path.read_text())["service_limits"]
             assert routing.SEEK_ALTERNATES == limits["max_alternates"], path.name
@@ -2019,8 +2019,23 @@ class TestNoBusierThanMiddleFallbacks:
 
 
 @db
-class TestAvoidGravel:
-    """OWNER-DECISIONS 91, 92, 111: the "Avoid gravel" box."""
+class TestRoadBike:
+    """Stephen, 2026-11-02: the Avoid gravel box became the Road Bike ride type, on its own
+    graph (`Variant.PAVED`), and an old request with the box ticked plans as Road Bike on a
+    rider's own bike."""
+
+    def test_road_bike_plans_on_the_road_bike_graph_as_a_road_bicycle(
+        self, client, facility_segments, router
+    ):
+        fake = router(standard_router())
+        body = post(client, good_body("road-bike")).json()
+        assert body["preset"] == "road-bike"
+        assert body["variant"] == "paved"
+        assert body["dials"]["avoid_gravel"] is True
+        assert fake.calls[0][0].startswith(settings.VALHALLA_UPSTREAMS["paved"])
+        options = fake.calls[0][1]["costing_options"]["bicycle"]
+        assert options["bicycle_type"] == "Road"
+        assert options["avoid_bad_surfaces"] == presets.ROAD_BIKE_SURFACES
 
     def test_off_by_default_and_echoed(self, client, facility_segments, router):
         fake = router(standard_router())
@@ -2029,14 +2044,25 @@ class TestAvoidGravel:
         sent = fake.calls[0][1]["costing_options"]["bicycle"]["avoid_bad_surfaces"]
         assert sent == presets.costing("cargo")["bicycle"]["avoid_bad_surfaces"]
 
-    @pytest.mark.parametrize("name", ["default", "gravel", "cargo", "mass-ride"])
-    def test_checked_it_steers_off_unpaved_surfaces(self, name, client, facility_segments, router):
+    @pytest.mark.parametrize("name", sorted(presets.AVOID_GRAVEL_BECOMES))
+    def test_the_old_box_on_a_riders_own_bike_plans_as_road_bike(
+        self, name, client, facility_segments, router
+    ):
         fake = router(standard_router())
         body = post(client, {**good_body(name), "avoid_gravel": True}).json()
-        assert body["dials"]["avoid_gravel"] is True
-        for _url, payload in fake.calls:
-            options = payload["costing_options"]["bicycle"]
-            assert options["avoid_bad_surfaces"] >= presets.AVOID_GRAVEL_SURFACES
+        assert body["preset"] == "road-bike"
+        assert body["variant"] == "paved"
+        assert fake.calls[0][0].startswith(settings.VALHALLA_UPSTREAMS["paved"])
+
+    @pytest.mark.parametrize("name", ["cargo", "mass-ride", "group-ride", "ebike"])
+    def test_elsewhere_the_old_box_is_dropped(self, name, client, facility_segments, router):
+        fake = router(standard_router())
+        body = post(client, {**good_body(name), "avoid_gravel": True}).json()
+        assert body["preset"] == name
+        assert body["dials"]["avoid_gravel"] is False
+        assert body["variant"] != "paved"
+        sent = fake.calls[0][1]["costing_options"]["bicycle"]
+        assert sent["bicycle_type"] == presets.costing(name)["bicycle"]["bicycle_type"]
 
     def test_only_a_boolean(self, client, facility_segments, router):
         fake = router(standard_router())

@@ -60,6 +60,7 @@ export const ICON_PATHS = {
   "bolt": "<path d=\"M13 2 4 14h7l-1 8 9-12h-7z\"/>",
   "gravel": "<circle cx=\"6\" cy=\"17\" r=\"2\"/><circle cx=\"12\" cy=\"15\" r=\"1.5\"/><circle cx=\"17\" cy=\"18\" r=\"2.2\"/><circle cx=\"9\" cy=\"20\" r=\"1\"/><path d=\"M2 21h20\"/>",
   "fast": "<path d=\"M3 8h8M2 12h6M3 16h8\"/><path d=\"M14 6l6 6-6 6\"/>",
+  "roadbike": "<circle cx=\"5.5\" cy=\"17\" r=\"3.5\"/><circle cx=\"18.5\" cy=\"17\" r=\"3.5\"/><path d=\"M5.5 17l4-7h7l2 7M9.5 10l3.5 7M8 7h3M16.5 10l-.5-3h2.5c1 0 1.5 1.5.5 2.5\"/>",
   "stop": "<circle cx=\"12\" cy=\"10\" r=\"3\"/><path d=\"M12 21s7-6 7-11a7 7 0 0 0-14 0c0 5 7 11 7 11z\"/>",
   "detour": "<path d=\"M7 21v-5c0-2.5 10-2.5 10-5V5\"/><path d=\"M14 8l3-3 3 3\"/><path d=\"M7 3v8\" stroke-dasharray=\"2 2.5\"/>",
   "pin": "<circle cx=\"12\" cy=\"10\" r=\"3\"/><path d=\"M12 21s7-6 7-11a7 7 0 0 0-14 0c0 5 7 11 7 11z\"/>",

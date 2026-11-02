@@ -1842,6 +1842,8 @@ class TestTrailSeek:
         self.run(monkeypatch, {}, [NO_ROUTE], ctx)
         ((schema, guide, width, has_facility, when, avoid_unpaved),) = self.asked
         assert (schema, has_facility, when, avoid_unpaved) == ("live", True, "weekend", True)
+        # Road Bike (the only ride avoiding gravel) leaves winding trails out of the seek too.
+        assert self.table_kw["avoid_winding"] is True
         straight, route = guide
         assert straight == [tuple(ctx.points[0]), tuple(ctx.points[1])]
         assert route[0] == (BASE[0], BASE[1]) and route[-1] == (BASE[0] + 0.1, BASE[1])

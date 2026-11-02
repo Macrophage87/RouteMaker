@@ -561,6 +561,8 @@ BRAKE_GRADES = MappingProxyType(
         "mountain-goat": None,
         "mountain-bike": None,
         "fast": None,
+        # A road bike descends fast and brakes late, as Fast's rider does.
+        "road-bike": None,
     }
 )
 
@@ -677,6 +679,35 @@ def resolve_preset(name: str) -> str:
 # - About 6 mph (10 km/h) on singletrack for the time shown (`mtbmode.duration_s`).
 MOUNTAIN_BIKE = "mountain-bike"
 MTB_HILLS = 50
+
+# Road Bike (the owner, 2026-11-02, replacing the "Avoid gravel" box: the box "is intended for
+# road bikes that can't handle gravel or dirt"; "Add a road-bike map graph"; "Make it a
+# separate mode that assumes a faster speed and also is less tolerant of turns"; "Road bikes
+# would probably stay away from trails with lots of direction changes ... For instance Sligo
+# Creek Trail"). The implementation's defaults, stated here so they can be argued with:
+#
+# - Its own graph (`Variant.PAVED`): gravel, fine gravel and compacted priced as gravel, which a
+#   road bicycle at `ROAD_BIKE_SURFACES` prices at about seventeen times a paved path, and a
+#   winding trail priced as an LTS 3 street (`routemaker.winding`).
+# - `avoid_bad_surfaces` 0.9, as the Avoid gravel box had it (OWNER-DECISIONS 91, 92, 111): steep
+#   without making a surface impassable, so a ride that starts or ends on gravel is still planned.
+#   With "Keep to roads" on, Road Bike rides the no-trail graph, where gravel is packed gravel
+#   (about three times a paved road): there is no road-bike twin of that graph.
+# - Valhalla's Road bicycle at its own pace, 15.5 mph (25 km/h), where Default's hybrid rides
+#   11.2 mph; the rider's own speed (`rider_speed`) still wins.
+# - Fewer turns: Group Ride's and Fast's maneuver penalty (`HIGH_MANEUVER_PENALTY_S`), and
+#   Group Ride's gate cost (a road bike slows hard for a gate or bollard).
+# - Traffic and hills: stress 40, "Balanced" (Group Ride's and Gravel's start), and Default's
+#   hills; living streets as Fast (0.2): a shared street is slow for a road bike.
+ROAD_BIKE = "road-bike"
+ROAD_BIKE_STRESS = 40
+ROAD_BIKE_SURFACES = 0.9
+# The ride types a ticked "Avoid gravel" box (retired with Road Bike's arrival) plans as Road
+# Bike: a rider's own bike, carrying nothing (`core.api.RouteIn`). Cargo, E-bike, a group, a
+# share bike, a transit trip and Mountain Bike keep their own ride and lose the box.
+AVOID_GRAVEL_BECOMES = frozenset(
+    {"default", "fast", "trailmaxxing", "novice", "gravel", "mountain-goat"}
+)
 
 BIKESHARE_BIKES = MappingProxyType(
     {
@@ -970,6 +1001,19 @@ PRESETS: MappingProxyType = MappingProxyType(
                 gate_penalty=VALHALLA_GATE_PENALTY_S,
             ),
             _preset(
+                ROAD_BIKE,
+                Variant.PAVED,
+                # See "Road Bike" above.
+                stress=ROAD_BIKE_STRESS,
+                hills=0,
+                bicycle_type="Road",
+                avoid_bad_surfaces=ROAD_BIKE_SURFACES,
+                use_living_streets=0.2,
+                maneuver_penalty=HIGH_MANEUVER_PENALTY_S,
+                gate_cost=HIGH_GATE_COST_S,
+                gate_penalty=VALHALLA_GATE_PENALTY_S,
+            ),
+            _preset(
                 NOVICE,
                 Variant.STANDARD,
                 # See "Novice and Nervous" above.
@@ -1050,16 +1094,9 @@ def variant_for_ride(name: str, when: str, assist: bool = False, trails_off: boo
     return preset.variant
 
 
-# "Avoid gravel" (OWNER-DECISIONS 91, 92, 111: "We can have an 'avoid gravel'
-# check"; off by default on every ride type, Cargo Bike included - "Cargo tends
-# to have pretty wide tires"). Valhalla's `avoid_bad_surfaces` at this value
-# prices every surface worse than the bicycle type's own minimum steeply without
-# making it impassable, so a ride that starts or ends on gravel is still
-# planned, and a preset already avoiding more keeps its own value.
-AVOID_GRAVEL_SURFACES = 0.9
 # Valhalla's default cycling speed by bicycle type (km/h; Road 15.5 mph,
 # Cross 12.4, Hybrid 11.2, Mountain 9.9), which a ride takes when its preset
-# names none; kept when the box switches the type to Road.
+# names none.
 VALHALLA_DEFAULT_SPEED_KMH = {"Road": 25.0, "Cross": 20.0, "Hybrid": 18.0, "Mountain": 16.0}
 
 
@@ -1086,7 +1123,6 @@ def costing(
     stress: int | None = None,
     hills: int | None = None,
     assist: bool = False,
-    avoid_gravel: bool = False,
 ) -> dict:
     """The `costing_options` block for one preset, as a fresh copy.
 
@@ -1103,18 +1139,6 @@ def costing(
     speed = PRESETS[name].assist_speed_kmh
     if assist and speed is not None:
         options["cycling_speed"] = speed
-    if avoid_gravel:
-        options["avoid_bad_surfaces"] = max(options["avoid_bad_surfaces"], AVOID_GRAVEL_SURFACES)
-        # The dial prices only surfaces worse than the bicycle type's own
-        # minimum, and Cross admits gravel, Hybrid dirt (PLAN, "Every preset
-        # states its bicycle_type"), so on those types the box steered off
-        # nothing it was asked to (review r1, S1). Road admits compacted and
-        # better, so the box rides as Road; the preset's own speed is kept, so
-        # the time estimate does not jump to Road's default.
-        kind = options.get("bicycle_type", "Hybrid")
-        if kind != "Road":
-            options.setdefault("cycling_speed", VALHALLA_DEFAULT_SPEED_KMH[kind])
-            options["bicycle_type"] = "Road"
     return {"bicycle": options}
 
 

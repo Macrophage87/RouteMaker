@@ -276,7 +276,6 @@ export function panelView(preset: PresetId, dials: Dials, draft: Dials = dials):
   const hiddenLoop = preset === "mass-ride" && dials.loop === true;
   const start = {
     ...plain,
-    ...(dials.avoidGravel ? { avoidGravel: true } : {}),
     ...(dials.trailsOff ? { trailsOff: true } : {}),
     ...(hiddenLoop ? { loop: true } : {}),
   };

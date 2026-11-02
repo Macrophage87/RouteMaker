@@ -339,7 +339,7 @@ if [ "$command_name" = files ]; then
 	note "files done. Restart the routers if they were already running: scripts/beta/beta-compose.sh restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend (restart-routers.sh, once installed, does it within about 7 minutes)"
 	# The trail routers (the owner, 2026-10-20): started, or recreated onto the new build, once their tiles are here.
 	trail=""
-	for variant in offroad mtb; do
+	for variant in offroad mtb paved; do
 		[ -L "$data_root/tiles/$variant/current" ] && trail="$trail valhalla-$variant"
 	done
 	[ -z "$trail" ] || note "and start the trail routers on the new tiles: scripts/beta/beta-compose.sh up -d --force-recreate$trail"

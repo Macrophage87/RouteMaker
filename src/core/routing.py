@@ -1930,7 +1930,15 @@ _offroad_failed_at: float | None = None
 # same profile, falls back the same way: the ride is then planned on the standard graph and
 # its answer says so (`mtb.limited` = no_mtb_graph).
 _mtb_failed_at: float | None = None
-TWIN_VARIANTS = (Variant.WEEKEND.value, Variant.OFFROAD.value, Variant.MTB.value)
+# The Road Bike router (`Variant.PAVED`), a seventh behind the same profile, falls back the
+# same way: the ride is then planned on the standard graph, where gravel is packed gravel.
+_paved_failed_at: float | None = None
+TWIN_VARIANTS = (
+    Variant.WEEKEND.value,
+    Variant.OFFROAD.value,
+    Variant.MTB.value,
+    Variant.PAVED.value,
+)
 
 
 def _weekend_down() -> bool:
@@ -1945,7 +1953,13 @@ def _mtb_down() -> bool:
     return _mtb_failed_at is not None and clock() - _mtb_failed_at < WEEKEND_FAILURE_TTL_S
 
 
+def _paved_down() -> bool:
+    return _paved_failed_at is not None and clock() - _paved_failed_at < WEEKEND_FAILURE_TTL_S
+
+
 def _twin_down(variant: str) -> bool:
+    if variant == Variant.PAVED.value:
+        return _paved_down()
     if variant == Variant.MTB.value:
         return _mtb_down()
     return _offroad_down() if variant == Variant.OFFROAD.value else _weekend_down()
@@ -1972,7 +1986,13 @@ def _mtb_is_promoted() -> bool:
     return _promoted_row(Variant.MTB.value)
 
 
+def _paved_is_promoted() -> bool:
+    return _promoted_row(Variant.PAVED.value)
+
+
 def _is_promoted(variant: str) -> bool:
+    if variant == Variant.PAVED.value:
+        return _paved_is_promoted()
     if variant == Variant.MTB.value:
         return _mtb_is_promoted()
     if variant == Variant.OFFROAD.value:
@@ -1986,8 +2006,10 @@ def _mark_weekend(ok: bool) -> None:
 
 
 def _mark_twin(variant: str, ok: bool) -> None:
-    global _offroad_failed_at, _mtb_failed_at
-    if variant == Variant.MTB.value:
+    global _offroad_failed_at, _mtb_failed_at, _paved_failed_at
+    if variant == Variant.PAVED.value:
+        _paved_failed_at = None if ok else clock()
+    elif variant == Variant.MTB.value:
         _mtb_failed_at = None if ok else clock()
     elif variant == Variant.OFFROAD.value:
         _offroad_failed_at = None if ok else clock()
@@ -3577,9 +3599,7 @@ def _direct_request(
     """The detour check's ask for the most direct legal route (`_detour`): its costing, the
     request, and the key it is remembered by in a plan's traces (OWNER-DECISIONS 265)."""
     _stress_dial, assist, avoid_gravel = dials
-    direct_costing = _same_pace(
-        presets.costing(preset_name, 0, 0, assist=assist, avoid_gravel=avoid_gravel), request
-    )
+    direct_costing = _same_pace(presets.costing(preset_name, 0, 0, assist=assist), request)
     direct_request = {
         key: value
         for key, value in request.items()
@@ -3791,9 +3811,7 @@ def _fit_target(
         """The route at a traffic position: (length m, the tuple), or None where there
         is none, and False where there is no time or the router refused."""
         options = _same_pace(
-            presets.costing(
-                preset_name, position, hills_dial, assist=assist, avoid_gravel=avoid_gravel
-            ),
+            presets.costing(preset_name, position, hills_dial, assist=assist),
             request,
         )
         asked = {k: v for k, v in request.items() if k != "alternates"} | {
@@ -4468,9 +4486,7 @@ def _plan(
     # Ride, whose own graph is no-trail), not on every trails-off ride.
     lanes_as_roadway = preset.variant == Variant.NO_TRAIL.value
     avoid_gravel = bool(dials.avoid_gravel)
-    costing = presets.costing(
-        preset_name, stress_dial, hills_dial, assist=assist, avoid_gravel=avoid_gravel
-    )
+    costing = presets.costing(preset_name, stress_dial, hills_dial, assist=assist)
     if dials.cycling_speed_kmh is not None:
         costing["bicycle"]["cycling_speed"] = float(dials.cycling_speed_kmh)
     if following and dials.follow_exact:
@@ -4806,7 +4822,7 @@ def _plan(
     # a wider road chosen for the group (OWNER-DECISIONS 125, 325).
     if avoiding and not quick and not fixed and capacity_choice is None:
         middle_costing = _same_pace(
-            presets.costing(preset_name, stress_dial, 0, assist=assist, avoid_gravel=avoid_gravel),
+            presets.costing(preset_name, stress_dial, 0, assist=assist),
             request,
         )
         trip, kept_middle = no_busier_than_middle(

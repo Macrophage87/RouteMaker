@@ -26,6 +26,7 @@ export type PresetId =
   | "mountain-bike"
   | "gravel"
   | "fast"
+  | "road-bike"
   | "cargo"
   | "ebike"
   | "bikeshare"
@@ -103,6 +104,17 @@ export const PRESETS: readonly PresetOption[] = [
     label: "Fast",
     description: "Direct roads, few turns and smooth pavement, whatever the traffic.",
     summary: "The most direct route, whatever the traffic.",
+  },
+  {
+    // Road Bike (Stephen, 2026-11-02), replacing the Avoid gravel box: its own map, where gravel, dirt and
+    // winding trails cost a road bike dear (core.presets ROAD_BIKE). Old links with the box ticked open it
+    // (`AVOID_GRAVEL_BECOMES`).
+    id: "road-bike",
+    label: "Road Bike",
+    keywords: "road bike pavement paved avoid gravel dirt",
+    description:
+      "For a road bike: keeps off gravel, dirt and winding trails where there is a paved way round, makes fewer turns, and times the ride at a road bike's pace.",
+    summary: "Pavement and few turns, at road-bike pace.",
   },
   {
     id: "cargo",
@@ -255,3 +267,10 @@ export function layersTurnedOn(from: string, to: string): RideTypeLayers {
   const now = rideTypeLayers(to);
   return { mtb: now.mtb && !was.mtb, topo: now.topo && !was.topo, climbs: now.climbs && !was.climbs };
 }
+
+/**
+ * The ride types a link or saved plan with the retired "Avoid gravel" box ticked opens as Road Bike
+ * (Stephen, 2026-11-02: "Replace the box"): a rider's own bike, carrying nothing. Elsewhere the box
+ * is dropped. The same list as core.presets.AVOID_GRAVEL_BECOMES.
+ */
+export const AVOID_GRAVEL_BECOMES: readonly PresetId[] = ["default", "fast", "trailmaxxing", "novice", "gravel", "mountain-goat"];

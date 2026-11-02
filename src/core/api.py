@@ -291,7 +291,10 @@ class RouteIn(Schema):
     )
     avoid_gravel: StrictBool = Field(
         default=False,
-        description="Steer off unpaved surfaces where there is a paved way round. Any ride type.",
+        description=(
+            "Retired: the box became the Road Bike ride type. Ticked on a rider's own-bike"
+            " ride type it plans as `road-bike`; elsewhere it is ignored."
+        ),
     )
     trails_off: StrictBool = Field(
         default=False,
@@ -636,6 +639,13 @@ class RouteIn(Schema):
 
     @model_validator(mode="after")
     def dials_fit_the_preset(self):
+        # The "Avoid gravel" box became the Road Bike ride type (the owner, 2026-11-02:
+        # "Replace the box"): an old link or saved plan with it ticked plans as Road Bike where
+        # the ride was a rider's own bike (`presets.AVOID_GRAVEL_BECOMES`), and loses the box
+        # elsewhere. Road Bike always carries it, which keeps unpaved climbs out of its search.
+        if self.avoid_gravel and self.preset in presets.AVOID_GRAVEL_BECOMES:
+            self.preset = presets.ROAD_BIKE
+        self.avoid_gravel = self.preset == presets.ROAD_BIKE
         preset = presets.PRESETS[self.preset]
         if self.via_points:
             last = len(self.points) - 1
@@ -2373,7 +2383,7 @@ class WorkZonesOut(Schema):
 
 class RouteBody(Schema):
     preset: PresetName
-    variant: Literal["standard", "no-trail", "ebike", "weekend", "offroad", "mtb"]
+    variant: Literal["standard", "no-trail", "ebike", "weekend", "offroad", "mtb", "paved"]
     # A ride type that does not plan on dirt trails rides one here, as a point on one, or a
     # ride's re-plan, opened it (`core.trail_touch`). A ride sends `dirt_ridden` after one.
     dirt_trails: bool = False

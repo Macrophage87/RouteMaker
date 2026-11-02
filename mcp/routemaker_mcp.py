@@ -94,6 +94,7 @@ PRESETS = (
     "mountain-bike",
     "gravel",
     "fast",
+    "road-bike",
     "cargo",
     "ebike",
     "bikeshare",
@@ -615,8 +616,6 @@ def plan_fragment(points, vias, preset: str, dials: dict, sent: dict) -> str:
         parts.append(f"carrying={dials['carrying']}")
     if dials.get("assist"):
         parts.append("assist=1")
-    if dials.get("avoid_gravel"):
-        parts.append("avoidgravel=1")
     if dials.get("trails_off"):
         parts.append("trailsoff=1")
     if sent.get("novice_legs"):
@@ -646,7 +645,6 @@ def page_dials(dials: dict, sent: dict) -> dict:
         "when": sent.get("when"),
         "carrying": dials.get("carrying"),
         "assist": bool(dials.get("assist")),
-        "avoidGravel": bool(dials.get("avoid_gravel")),
         "trailsOff": bool(dials.get("trails_off")),
         "loop": bool(dials.get("loop")),
     }
@@ -664,6 +662,8 @@ def page_dials(dials: dict, sent: dict) -> dict:
 
 
 PRESET_ALIASES = {"kids": "novice"}  # planHash.ts PRESET_ALIASES
+# presets.ts AVOID_GRAVEL_BECOMES: the ride types an old Avoid gravel link turns into Road Bike.
+AVOID_GRAVEL_BECOMES = ("default", "fast", "trailmaxxing", "novice", "gravel", "mountain-goat")
 STRESS_DEFAULT_AT = 70  # dials.ts: the stress slider's Default
 
 
@@ -759,6 +759,10 @@ def parse_fragment(fragment: str) -> tuple[list, list[int], str, dict]:
     preset = PRESET_ALIASES.get(one("preset") or "", one("preset") or "default")
     if preset not in PRESETS:
         preset = "default"
+    # The retired Avoid gravel box: a link with it ticked on a rider's own bike opens as Road
+    # Bike, its sliders as linked, as the page does (planHash.ts, AVOID_GRAVEL_BECOMES).
+    if one("avoidgravel") == "1" and preset in AVOID_GRAVEL_BECOMES:
+        preset = "road-bike"
 
     def number(key):
         try:
@@ -777,7 +781,6 @@ def parse_fragment(fragment: str) -> tuple[list, list[int], str, dict]:
         else None,
         "carrying": one("carrying") if one("carrying") in ("cargo", "people") else None,
         "assist": one("assist") == "1",
-        "avoid_gravel": one("avoidgravel") == "1",
         "trails_off": one("trailsoff") == "1",
         "novice_legs": one("novice") == "1",
         "loop": one("loop") == "1",
@@ -2251,7 +2254,9 @@ RIDE_OPTIONS = {
             " target_miles). novice: Novice and Nervous, every road read one stress level up."
             " group-ride: a club ride. mass-ride: a large group on the direct roadway (no loops,"
             " stress and hills held low). mountain-goat: seeks climbs. mountain-bike: trails by"
-            " IMBA level. gravel: unpaved welcome. fast: direct, traffic tolerant. cargo: cargo"
+            " IMBA level. gravel: unpaved welcome. fast: direct, traffic tolerant. road-bike: a"
+            " road bike, off gravel, dirt and winding trails where there is a paved way round,"
+            " fewer turns. cargo: cargo"
             " bike (carrying, assist). ebike: e-bike rules and pace. bikeshare and rebalance:"
             " Capital Bikeshare dock to dock (two points). bike-transit and bikeshare-transit:"
             " bike plus Metro and bus (two points; depart_at, transit_option)."
@@ -2338,7 +2343,6 @@ RIDE_OPTIONS = {
         "type": "boolean",
         "description": "Transit ride types only: plan the bike legs as Novice and Nervous.",
     },
-    "avoid_gravel": {"type": "boolean", "default": False},
     "trails_off": {
         "type": "boolean",
         "default": False,
@@ -2396,7 +2400,6 @@ PASSED_OPTIONS = (
     "when",
     "carrying",
     "assist",
-    "avoid_gravel",
     "trails_off",
     "mtb_level",
     "mtb_preferred",
@@ -3250,7 +3253,6 @@ class Server:
             **{
                 k: answered.get(k)
                 for k in (
-                    "avoid_gravel",
                     "trails_off",
                     "target_distance_m",
                     "loop",
