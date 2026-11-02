@@ -340,6 +340,9 @@ class Context:
     seek: bool = False
     schema: str = ""
     avoid_gravel: bool = False
+    # What a second of junction waiting costs against a second of riding when routes are
+    # ranked (`presets.wait_weight_for`): 1, and 3 on Road Bike. The time shown is unchanged.
+    wait_weight: float = 1.0
     # The ways the exclusion search kept excluding for its best route, which the
     # seek keeps excluding (set by the search).
     kept_excludes: list = field(default_factory=list)
@@ -586,7 +589,7 @@ class Analysis:
             self.cost_s
             + ctx.quiet_cost * extra
             + avoid_model.penalty_s(self.avoid_passages)
-            + QUIET_COST_FACTOR * self.junction_delay_s
+            + QUIET_COST_FACTOR * ctx.wait_weight * self.junction_delay_s
             + QUIET_COST_FACTOR * RED_DETOUR_S * ctx.weight * red_count(self)
         )
 
@@ -656,10 +659,11 @@ def level3(read: Analysis, ctx: Context) -> float:
 def delay_m(read: Analysis, ctx: Context) -> float:
     """The route's junction delay (`Analysis.junction_delay_s`) as metres of quiet riding,
     the rate `score` prices it at, so the top of the slider weighs it too: between equally
-    calm routes, the one with fewer stops ranks first."""
+    calm routes, the one with fewer stops ranks first. Road Bike weighs it three times
+    (`Context.wait_weight`)."""
     if ctx.quiet_cost <= 0:
         return 0.0
-    return QUIET_COST_FACTOR * read.junction_delay_s / ctx.quiet_cost
+    return QUIET_COST_FACTOR * ctx.wait_weight * read.junction_delay_s / ctx.quiet_cost
 
 
 def charged_m(read: Analysis, ctx: Context) -> float:

@@ -2159,7 +2159,10 @@ unless named; PLAN.md quotes the owner's words):
   stress penalty; a Road bicycle at `avoid_bad_surfaces` 0.9 prices gravel at about seventeen
   times a paved path. Every other graph prices gravel as packed gravel (`compacted`, #877). A
   link or plan with the old box ticked plans as Road Bike on a rider's own bike
-  (`presets.AVOID_GRAVEL_BECOMES`); elsewhere the box is dropped.
+  (`presets.AVOID_GRAVEL_BECOMES`); elsewhere the box is dropped. When routes are ranked, its junction waits (signals,
+  stop signs, gaps in traffic: `routemaker.junction_delay`) weigh three times their seconds (the
+  owner, 2026-11-02: "make non-cycling time, such as waiting at lights carry an additional
+  penalty (3x)"; `presets.WAIT_WEIGHTS`); the time shown is still the real wait.
 
 Measured over the region's source extract (2026-09-30, the current head's
 rules; 98,411 road miles, proposed, construction, platform and corridor ways

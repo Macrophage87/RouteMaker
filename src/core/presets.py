@@ -718,6 +718,18 @@ ROAD_BIKE_SURFACES = 0.9
 AVOID_GRAVEL_BECOMES = frozenset(
     {"default", "fast", "trailmaxxing", "novice", "gravel", "mountain-goat"}
 )
+# What a second spent stopped at a junction (a signal, a stop sign, a wait for a gap:
+# `routemaker.junction_delay`) costs when routes are ranked, against a second of riding.
+# Road Bike's is 3 (the owner, 2026-11-02: "For the road cycling version, make non-cycling
+# time, such as waiting at lights carry an additional penalty (3x)"): a road rider loses
+# their pace at every stop. The time shown stays the real wait; every other ride type, 1.
+WAIT_WEIGHTS = MappingProxyType({ROAD_BIKE: 3.0})
+
+
+def wait_weight_for(name: str) -> float:
+    """How much a ride type's junction waits weigh in the ranking (`WAIT_WEIGHTS`)."""
+    return WAIT_WEIGHTS.get(name, 1.0)
+
 
 BIKESHARE_BIKES = MappingProxyType(
     {

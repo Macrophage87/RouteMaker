@@ -4969,6 +4969,7 @@ def _plan(
         seek=trailseek.seek_for(presets.calm_rate_for(stress_dial)),
         schema=validate_schema_name(settings.SEGMENT_SCHEMA_LIVE),
         avoid_gravel=avoid_gravel,
+        wait_weight=presets.wait_weight_for(preset_name),
         exposure=exposure,
         maxcalm=maxcalm,
         ceiling_m=ceiling,
@@ -4980,7 +4981,11 @@ def _plan(
         # from (none again where that ask timed out), else asked for by the search.
         # Refitted only where the target fitting asked again (`past`): a route already
         # within the target is the plan's own request, its alternatives already in `trips`.
-        rank_alternates=presets.calm_rate_for(stress_dial) > 0,
+        # And on a ride type that weighs its waits more than riding (Road Bike, 3x), at every
+        # stress: a router alternative with fewer lights is the choice the weight is for.
+        rank_alternates=(
+            presets.calm_rate_for(stress_dial) > 0 or presets.wait_weight_for(preset_name) > 1
+        ),
         router_trips=plan_alternates(request, trips, timed_out, bool(past)),
         early_alternates=early_alternates,
         options=[] if offering and not long_calm else None,
