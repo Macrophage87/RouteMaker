@@ -71,6 +71,7 @@ import time
 import urllib.error
 import urllib.request
 from array import array
+from struct import pack
 from collections.abc import Callable, Iterator
 from concurrent.futures import FIRST_EXCEPTION, Future
 from concurrent.futures import wait as wait_futures
@@ -1173,6 +1174,17 @@ _stress_memo: contextvars.ContextVar[dict | None] = contextvars.ContextVar(
 # The most readings remembered, the least recently used dropped first.
 STRESS_MEMO_TRIPS = 8
 
+# The same plan's reading of each piece alone, keyed by the live table's name and the ride time,
+# then the piece's way and point: the candidate routes of a search share most of their
+# stretches, and each piece's nearest-segment search is its own (the lateral join), so a piece
+# read once is not read again, whichever trip it comes in. The most pieces kept bounds it on
+# the 512M worker (about 250 bytes each); past it a reading is not added. Set and cleared by
+# `plan` as `_stress_memo` is; None outside a plan (a reading keeps its pieces for itself).
+_piece_memo: contextvars.ContextVar[dict | None] = contextvars.ContextVar(
+    "piece_memo", default=None
+)
+PIECE_MEMO_PIECES = 80_000
+
 
 def _stress_key(schema: str, when: str, pieces: list[Piece]) -> tuple:
     digest = hashlib.blake2b(digest_size=16)
@@ -1311,52 +1323,79 @@ def _read_stress(pieces: list[Piece], when: str, schema: str) -> tuple[list[tupl
             else ""
         ),
     )
-    arrays = [[p.way_id for p in pieces], [p.lon for p in pieces], [p.lat for p in pieces]]
     whens = ([when, when] + ([when] if with_half else [])) if with_facility else []
+    # Each piece once: those read already in this plan (`_piece_memo`) and those repeated in
+    # `pieces` are not asked for again.
+    memo = _piece_memo.get()
+    known = memo.setdefault((schema, when), {}) if memo is not None else {}
+    keys = [pack("qdd", p.way_id, p.lon, p.lat) for p in pieces]
+    asked: dict[bytes, Piece] = {}
+    for key, piece in zip(keys, pieces, strict=True):
+        if key not in known and key not in asked:
+            asked[key] = piece
+    # The rows repeat as `classify` keeps them, so the plan's share one set (under None and 0).
+    seen: dict[tuple, tuple] = memo.setdefault(None, {}) if memo is not None else {}
+    kept: dict = memo.setdefault(0, {}) if memo is not None else {}
+    fresh: dict[bytes, tuple] = {}
+    if asked:
+        sent = list(asked.values())
+        arrays = [[p.way_id for p in sent], [p.lon for p in sent], [p.lat for p in sent]]
+        with plan_cursor() as cursor:
+            cursor.execute(query, whens + arrays)
+            for key, row in zip(asked, cursor.fetchall(), strict=True):
+                tier, kind = row[0], row[1]
+                unpaved = row[2] if len(row) > 2 and isinstance(row[2], bool) else None
+                lanes = row[3] if len(row) > 3 and isinstance(row[3], int) else None
+                oneway = row[4] if len(row) > 4 and isinstance(row[4], bool) else None
+                # After the five fixed columns: the capacity, the half step, the surface's
+                # roughness and the hazards, each where the table has it, in that order.
+                extra = list(row[5:])
+                width = extra.pop(0) if with_capacity else None
+                half = extra.pop(0) is True if with_half else False
+                rough = extra.pop(0) if with_rough else None
+                rough = rough if isinstance(rough, bool) else None
+                hazard = extra.pop(0) if with_hazard else None
+                # Then the scenic designations and the adjustment, each kept once (they repeat).
+                words = None
+                if with_scenic:
+                    words = route_scenic.designation_of(extra.pop(0))
+                    if words is not None:
+                        words = kept.setdefault(words, words)
+                adjustment = None
+                if with_adjustments:
+                    adjustment = tuple(extra[:6])
+                    del extra[:6]
+                    # No segment, or no adjustment on it: the adjustments' own query leaves it out.
+                    if adjustment[0] is None:
+                        adjustment = None
+                    else:
+                        adjustment = kept.setdefault(adjustment, adjustment)
+                read = (
+                    str(tier) if tier in (1, 2, 3, 4, 5) else "unknown",
+                    kind if kind in FACILITY_KEYS else "unknown",
+                    unpaved,
+                    lanes,
+                    oneway,
+                    None if width is None else float(width),
+                    half,
+                    rough,
+                )
+                fresh[key] = (seen.setdefault(read, read), hazard, words, adjustment)
+        if memo is None or len(known) + len(fresh) <= PIECE_MEMO_PIECES:
+            known.update(fresh)
     rows: list[tuple] = []
-    seen: dict[tuple, tuple] = {}
     hazard_values = []
     scenic: dict[int, str] | None = {} if with_scenic else None
     adjustments: dict[int, tuple] | None = {} if with_adjustments else None
-    kept: dict = {}
-    with plan_cursor() as cursor:
-        cursor.execute(query, whens + arrays)
-        for index, row in enumerate(cursor.fetchall()):
-            tier, kind = row[0], row[1]
-            unpaved = row[2] if len(row) > 2 and isinstance(row[2], bool) else None
-            lanes = row[3] if len(row) > 3 and isinstance(row[3], int) else None
-            oneway = row[4] if len(row) > 4 and isinstance(row[4], bool) else None
-            # After the five fixed columns: the capacity, the half step, the surface's
-            # roughness and the hazards, each where the table has it, in that order.
-            extra = list(row[5:])
-            width = extra.pop(0) if with_capacity else None
-            half = extra.pop(0) is True if with_half else False
-            rough = extra.pop(0) if with_rough else None
-            rough = rough if isinstance(rough, bool) else None
-            if with_hazard:
-                hazard_values.append(extra.pop(0))
-            # Then the scenic designations and the adjustment, each kept once (they repeat).
-            if scenic is not None:
-                words = route_scenic.designation_of(extra.pop(0))
-                if words is not None:
-                    scenic[index] = kept.setdefault(words, words)
-            if adjustments is not None:
-                adjustment = tuple(extra[:6])
-                del extra[:6]
-                # No segment, or no adjustment on it: the adjustments' own query leaves it out.
-                if adjustment[0] is not None:
-                    adjustments[index] = kept.setdefault(adjustment, adjustment)
-            read = (
-                str(tier) if tier in (1, 2, 3, 4, 5) else "unknown",
-                kind if kind in FACILITY_KEYS else "unknown",
-                unpaved,
-                lanes,
-                oneway,
-                None if width is None else float(width),
-                half,
-                rough,
-            )
-            rows.append(seen.setdefault(read, read))
+    for index, key in enumerate(keys):
+        read, hazard, words, adjustment = fresh.get(key) or known[key]
+        rows.append(read)
+        if with_hazard:
+            hazard_values.append(hazard)
+        if words is not None:
+            scenic[index] = words
+        if adjustment is not None:
+            adjustments[index] = adjustment
     hazards = route_hazards.decoded(hazard_values) if with_hazard else None
     return rows, hazards, (scenic, adjustments)
 
@@ -4250,6 +4289,8 @@ def plan(
     # task still running after it holds a copy of the context, never the readings.
     memo: dict = {}
     _stress_memo.set(memo)
+    pieces_read: dict = {}
+    _piece_memo.set(pieces_read)
     # And its readings of each trace (audit S19), the same way.
     readings: dict = {}
     _reading_memo.set(readings)
@@ -4257,6 +4298,7 @@ def plan(
         return _plan_rounds(points, preset_name, long_ride, started, dials, quick, candidates)
     finally:
         memo.clear()
+        pieces_read.clear()
         readings.clear()
 
 
