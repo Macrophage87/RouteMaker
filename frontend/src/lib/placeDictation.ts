@@ -87,8 +87,10 @@ const AROUND = new Set(["letter", "option", "row", "pick", "choose", "select", "
 /** Lower case, accents and punctuation gone, one space between words. */
 function plain(text: string): string {
   return text
-    .normalize("NFKD")
-    .replace(/\p{M}/gu, "")
+    .normalize("NFD")
+    // Accents off Latin letters only: Hindi's and Thai's vowel signs are letters of the word ("काम" is not "कम").
+    .replace(/(\p{Script=Latin})\p{M}+/gu, "$1")
+    .normalize("NFC")
     .toLowerCase()
     .replace(/[^\p{L}\p{N}]+/gu, " ")
     .trim();
