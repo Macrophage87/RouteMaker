@@ -73,6 +73,7 @@ Contents:
 - [Deploying v0.9.0](#deploying-v090)
 - [Deploying v0.16.0](#deploying-v0160)
 - [Deploying v0.17.0](#deploying-v0170)
+- [Deploying v0.18.0](#deploying-v0180)
 - [Deploying a planner and front-end release: rollback points and verification](#deploying-a-planner-and-front-end-release-rollback-points-and-verification)
 - [Paths bicycles may not ride (NO-BIKE-PATHS)](#paths-bicycles-may-not-ride-no-bike-paths)
 - [Mountain-bike difficulty levels (456; claude/v0-4-0-mtb-levels)](#mountain-bike-difficulty-levels-456-claudev0-4-0-mtb-levels)
@@ -6646,6 +6647,94 @@ change: #864, #868, #877, #878). At home, in order, with `</dev/null` on every d
   markers; a Maryland closure is routed round. Spot checks: a DC alley's road panel reads LTS 1.5;
   a reviewed road's Why line is its public note; Share live posts once a pace and a watcher reads
   every 15 s.
+
+## Deploying v0.18.0
+
+Road Bike (a ride type on its own graph, replacing the Avoid gravel box; junction waits weigh 3x),
+Walk and Walk + transit, Avoid stairs, walk pricing, walks turn by turn and transit stop by stop,
+transit trips re-checked while ridden, the connector's new tools (and its My routes read), the
+routing speed-up and the beta's staging swap. Two migrations (0054 adds `connector_grant.reads_routes`; 0055 gives it a database default, so the v0.17.0 api still creates grants after `migrate` and after an image rollback).
+A seventh graph, `tiles/paved`, and its router `valhalla-paved` (profile `offroad`; 768M at home,
+320M on the beta). **`lua/` changed, a Valhalla config was added, compose and the nginx template
+changed, so the beta agent stops on the tag and the deploy is by hand**, with the map built at the
+tagged commit. The Caddyfile changed (`/road-bike`). No Dockerfile or requirements change, no new
+environment variable to set (`VALHALLA_PAVED_URL` has its default), no new outbound host (the trip
+checks read WMATA through the existing shared cache) and no new scheduled job. No `mobile/` change,
+so no Play build. At home, in order, with `</dev/null` on every docker command:
+
+- [ ] **The build's commit.** The cloud box builds home's checkout HEAD, and `import-result.sh` and
+  the beta's `receive-data.sh verify` refuse a build from another commit unless given
+  `--allow-sha-mismatch`. A map built from the release branch before its last planner or front-end
+  PRs (no change under `lua/`, `valhalla/`, `src/pipeline/` or `scripts/cloud/` since the build)
+  is the same map: install it with `--allow-sha-mismatch` and say so in the run's notes.
+  Once `test` and `a11y` are green on `main`, the owner tags v0.18.0 (annotated) on that commit. The
+  agent stops and alerts: expected.
+- [ ] **Images, migrate, the api.** Before the weekly rebuild (Tuesday 08:00 UTC) or with it paused,
+  and out of 07:00-07:30 UTC: tag the running api and pipeline images for a rollback, fast-forward
+  the checkout (`lua/` is mounted from it; the new tags are written only on the paved graph, so a
+  rebuild between here and the next step changes nothing else), `docker compose build api rebuild`,
+  then `docker compose run --rm --no-deps migrate` (0054 adds `reads_routes`, default off: a grant
+  given before cannot read My routes until the rider connects again; 0055 keeps that default in
+  the database). Then, once no rebuild job is
+  queued or running, `docker compose up -d --no-deps --no-build --force-recreate api worker rebuild`.
+- [ ] **Caddy.** The Caddyfile adds `/road-bike`: validate it in a throwaway container and recreate
+  caddy alone ("Applying a Caddyfile change"). This also brings `/about/android-beta.html`, in
+  `@frontend` since v0.16.3, to this host, whose caddy was not recreated after v0.16.2/v0.16.3. Check:
+  `curl -sI https://<site>/road-bike` is a 302 to `/#preset=road-bike`, and
+  `curl -sI https://<site>/about/android-beta.html` is a 200 once the front end is published.
+- [ ] **The data directory.** `sudo scripts/prepare_data_root.sh` (it adds `tiles/paved` and
+  `tiles/paved/current`, owned 10001). Never name `valhalla-paved` in an `up` before its first
+  build: Docker would make `tiles/paved` as root, which the rebuild cannot write.
+- [ ] **The map**, at the tagged commit: on the cloud box (`send-inputs.sh` from this checkout, or
+  `launch.sh`, with `--beta-bundle` for the beta), or `run_rebuild_now` here. Seven graphs: about
+  20-25 minutes and one extract more than v0.17.0, about 1.1 GB more per kept build (2.2 GB with
+  `previous`), and the cloud result's `tiles-paved.tar` (a result without it is refused). The
+  rebuild's memory peak is unchanged (one graph at a time). Before the swap, the stress-change
+  report and Review's lists show no tier moved by this release (the new tags are on the paved graph
+  only). Then swap.
+- [ ] **The routers.** Restart the four. Where the `offroad` profile runs, start the new one once:
+  `docker compose --profile offroad up -d --no-deps --no-build valhalla-paved`; until it has a
+  container, a `restart` that names it restarts none of the three. Then
+  `docker compose --profile offroad restart valhalla-offroad valhalla-mtb valhalla-paved` and
+  `sync_upstreams`. On the PC the profile is off: Road Bike is then planned on the standard graph,
+  where gravel is packed gravel, and the answer does not say so. Starting `valhalla-paved` alone
+  there needs about 0.75 GB spare: the owner's call.
+- [ ] **The front end**, last.
+- [ ] **Beta**, "A new release sha" with the data bundle (docs/BETA-RUNBOOK.md):
+  - Before anything, `free -m`: "available" at least 8803 MiB (the 8086 MiB startup peak with
+    `valhalla-paved` plus 0.7 GiB). Under it, ship as below but leave `valhalla-paved` stopped.
+    `df -h /data`: room for the bundle, a second copy of each graph, and about three times the live
+    tables for the staging.
+  - Pause the agent (`pause --wait`, then `status`); stop api and worker, snapshot the database
+    (`--label release`), copy `index.html`.
+  - Check out the tag, set `TAG=`, `check_beta_compose.py --env-file .env` ("beta compose: ok",
+    7.65 GiB resident); build the api image; migrate in the migrate container (0054, 0055).
+  - Data: `receive-data.sh verify`, then `db --update-data --stage-only` (the staging swap's first
+    run: `live_next`, row counts checked), `sudo ... files` (installs `tiles/paved`), then
+    `sudo ... db --update-data` (the rename; `live_old` keeps v0.17.0's map tables). Not during the
+    07:00 UTC backup. Check: `\dn` shows `live` and `live_old` and no `live_next`, and there is no
+    `routemaker_stage` database.
+  - Start api and worker; the stress-tile pre-draw.
+  - Restart the four routers one at a time; then
+    `scripts/beta/beta-compose.sh up -d --force-recreate valhalla-offroad valhalla-mtb valhalla-paved`
+    (leave out `valhalla-paved` if memory was short); `sync_upstreams`.
+  - Re-render and install the nginx site (step 9: the `road-bike` preset link), `nginx -t`, reload.
+  - The front end comes with the bundle (`files`), `index.html` last.
+  - `smoke-test.sh --local --trails` (now checks `road-bike` on the `paved` graph), then `--public`.
+  - The agent and router hook changed: `scripts/beta/auto-release.sh install` and, where installed,
+    `scripts/beta/restart-routers.sh install`, from the new checkout. Then `mark-deployed v0.18.0`
+    and `resume`.
+- [ ] **Spot checks.** A Road Bike route answers `"variant": "paved"`. A Mall gravel walk is ridden
+  on Default and avoided on Road Bike. A link with `avoidgravel=1` opens as Road Bike. `/road-bike`
+  opens Road Bike on both hosts. Walk and Walk + transit plan, and Start walk follows the turns. A
+  Bike + transit ride re-plans once every 2 minutes until boarding. The connector's consent page
+  lists "read your saved routes".
+- [ ] **Rollback.** At home: the `pre-rel` images; the database stays migrated (0055's default lets the
+  old api create grants). After the first v0.18.0 rebuild, `rollback_rebuild` withdraws
+  `paved` (its first build) and stops `valhalla-paved`. On the beta: the map tables by rename
+  (rollback B "by rename", from `live_old`) with rollback A. Before rolling the code back to v0.17.0
+  (rollback C), `scripts/beta/beta-compose.sh stop valhalla-paved`: v0.17.0's compose has no such
+  service and its 7.35 GiB budget does not count it.
 
 ## Deploying a planner and front-end release: rollback points and verification
 
