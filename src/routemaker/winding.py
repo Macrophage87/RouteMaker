@@ -15,8 +15,9 @@ Western Ridge Trail 0 to 113. `WINDING_DEG_PER_100M` sits between the two kinds.
 measured over at least `MIN_SPAN_M`, so one gentle bend (under 80 degrees) where a connector
 meets a road does not make it winding. One right-angle bend on a way under 225 m does, on
 purpose: Sligo Creek Trail's short bending pieces are just that (85 to 214 m at 43 to 52
-degrees per 100 m), and leaving out each way's sharpest bend would let them through. Sinuosity (`routemaker.shape`) cannot tell them apart: Sligo Creek Trail's ways
-come to 1.01 to 1.21, its bends swinging back and forth across a nearly straight line.
+degrees per 100 m), and leaving out each way's sharpest bend would let them through. Sinuosity
+(`routemaker.shape`) cannot tell them apart: Sligo Creek Trail's ways come to 1.01 to 1.21, its
+bends swinging back and forth across a nearly straight line.
 """
 
 from __future__ import annotations
