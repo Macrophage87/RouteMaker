@@ -39,11 +39,13 @@
 #   Without --swap: downloads RUN_URL/beta/ to --incoming and runs receive-data.sh verify.
 #   With --swap: refuses unless what is in --incoming was downloaded from this run, and,
 #   where continuous deployment is installed, unless it is paused with no pass running and
-#   no deploy left half done. Then receive-data.sh verify and `files` (sudo; each graph's
-#   old build stays as `previous`), stops the api and worker, `db --update-data` (sudo;
-#   after its own safety dump, in one transaction; resets override and junction_override to
-#   home's and empties the beta's stress_edit history, as every data update does), starts
-#   them again (also when the update fails), restarts the four routers (and starts the trail
+#   no deploy left half done. Then receive-data.sh verify, `db --update-data --stage-only`
+#   (the bundle's live tables restored beside the served ones while the beta serves),
+#   `files` (sudo; each graph's old build stays as `previous`), `db --update-data` (sudo;
+#   after its own safety dump, one short transaction renames the staged tables in; resets
+#   override and junction_override to home's and empties the beta's stress_edit history, as
+#   every data update does; the api and worker are never stopped), restarts the four routers
+#   one at a time (and starts the trail
 #   routers whose tiles are there, then writes the settings rows: sync_upstreams), starts the
 #   stress-tile pre-draw in the background, and runs the local smoke test, retried while the
 #   app and routers start. Then run smoke-test.sh --public yourself. Rollback is the
@@ -65,7 +67,7 @@
 #   -h, --help
 # Environment (for tests): CLOUD_AWS [aws], CLOUD_DOCKER [docker], CLOUD_SUDO [sudo],
 # CLOUD_GIT [git], CLOUD_RECEIVE, CLOUD_BETA_COMPOSE, CLOUD_SMOKE [the scripts/beta/ ones],
-# CLOUD_SMOKE_TRIES [20], CLOUD_SMOKE_WAIT_S [15].
+# CLOUD_SMOKE_TRIES [20], CLOUD_SMOKE_WAIT_S [15], CLOUD_ROUTER_GAP_S [20, between router restarts].
 set -Eeuo pipefail
 
 die() { echo "import-result: $*" >&2; exit 2; }
@@ -162,17 +164,25 @@ if [ "$beta" = 1 ]; then
 	[ -s "$incoming/MANIFEST.txt" ] && [ "$(cat "$incoming/.cloud-run" 2>/dev/null)" = "$url" ] ||
 		die "$incoming does not hold this run's bundle: run this without --swap first"
 	receive_ verify
+	# The staging swap (the owner, 2026-11-02): the slow restore runs beside the served tables
+	# first, while the beta serves; the tile links and the rename then follow within seconds.
+	# The api and worker are never stopped.
+	note "staging the new database tables beside the served ones (the beta keeps serving)"
+	receive_ db --update-data --stage-only ||
+		die "staging the database failed; nothing served has changed. Look at the error above, then run --swap again"
 	note "installing the graphs (each one's old build stays as \`previous\`)"
 	sudo_receive files
-	note "stopping the api and worker for the database update"
-	"$bcompose" stop api worker
 	if ! sudo_receive db --update-data; then
-		"$bcompose" up -d api worker
-		die "db --update-data failed; it runs in one transaction, so the database is as it was. The api and worker are started again; the new graphs are installed (rollback A puts the old ones back)"
+		die "db --update-data failed; its swap runs in one transaction, so the database is as it was and the beta still serves it. The new graphs are installed (rollback A puts the old ones back), or run --swap again"
 	fi
-	"$bcompose" up -d api worker
-	note "restarting the routers so they serve the new graphs"
-	"$bcompose" restart "${routers[@]}"
+	# One at a time, so only one ride type is briefly unanswered at once; the api plans a ride
+	# whose router does not answer on the standard graph meanwhile (while the standard router
+	# itself restarts, Default rides fail for those few seconds).
+	note "restarting the routers one at a time so they serve the new graphs"
+	for router in "${routers[@]}"; do
+		"$bcompose" restart "$router"
+		sleep "${CLOUD_ROUTER_GAP_S:-20}"
+	done
 	# The trail routers (Mountain Bike's, Gravel and Mountain Goat's): started, or recreated onto the
 	# new build, whenever their tiles are here. A restart alone never starts one that is not running,
 	# and without them the api plans those rides on the standard graph (`mtb.limited` no_mtb_graph).

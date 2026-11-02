@@ -2777,7 +2777,7 @@ def test_the_runbook_snapshots_before_a_release_can_migrate_and_starts_the_app_o
     start = sect.index("`scripts/beta/beta-compose.sh up -d api worker`")
     assert stop < snap < migrate < start
     assert sect.index("git checkout --detach <new sha>") > snap
-    assert "**without** their" in sect
+    assert "the app is started once, in the next step" in sect
     rollback_c = RUNBOOK[RUNBOOK.index("**C. Go back to the previous release:**") :]
     assert "restore-dump" in rollback_c.split("**D.")[0]
 
