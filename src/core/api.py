@@ -2874,6 +2874,13 @@ class TransitOut(Schema):
 
     mode: Literal["bike-transit", "bikeshare-transit", "walk", "walk-transit"]
     key: str = Field(description="The chosen option's key.")
+    asked_gone: bool = Field(
+        default=False,
+        description=(
+            "The trip asked for (`transit_option`) is no longer one of the options (no longer"
+            " scheduled, or its departure missed): the best is chosen in its place."
+        ),
+    )
     direct: bool = Field(description="The chosen option is riding the whole way.")
     total_s: int
     minutes: int

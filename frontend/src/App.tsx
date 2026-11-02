@@ -3726,7 +3726,7 @@ export function App() {
     const ledLink = opened?.own && opened.lead && rideLinkSent.current?.route === route ? rideLinkSent.current.link : null;
     // A transit trip is kept checked till its first boarding (lib/tripCheck.ts, Stephen 2026-11-02).
     const ends = rest?.points ?? routedPoints;
-    const checked = route.transit && tripChecked(route.transit.mode) && ends.length > 1 ? checkedTripOf(route.transit, Date.now()) : null;
+    const checked = route.transit && tripChecked(route.transit.mode) && ends.length > 1 ? checkedTripOf(route.transit) : null;
     tripCheck.current = checked && route.transit ? { route, preset: route.transit.mode, to: ends[ends.length - 1], trip: checked } : null;
     const note = rideNote.current;
     rideNote.current = "";
@@ -4217,26 +4217,36 @@ export function App() {
     go();
     return null;
   };
-  // A check of the transit trip ridden (lib/tripCheck.ts): planned again from `here`, leaving now. A quicker trip
-  // replaces the ride at once, said as it starts; a delay is said on the ride screen (the words returned).
-  const checkTrip = async (riderAt: LonLat): Promise<string | null> => {
+  // A check of the transit trip ridden (lib/tripCheck.ts): planned again from `riderAt`, leaving now, with the trip's
+  // own key so the API keeps it or says it is gone. A quicker trip (planned by its key) replaces the ride at once, said
+  // as it starts, where it still has its transit after its line; a delay is said on the ride screen (the words
+  // returned). `open`: the ride screen still checks (not paused, not at the train), asked again after each answer.
+  const checkTrip = async (riderAt: LonLat, open: () => boolean): Promise<string | null> => {
     const checking = tripCheck.current;
-    const current = () => ridingNow.current && rideNow.current.start?.route === checking?.route && tripCheck.current === checking;
+    const current = () => open() && ridingNow.current && rideNow.current.start?.route === checking?.route && tripCheck.current === checking;
     if (!checking || !current()) return null;
-    const result = await requestRoute([riderAt, checking.to], checking.preset, { dials: { ...planDials, loop: false, closuresNow: true } });
+    const ask = (key: string) => requestRoute([riderAt, checking.to], checking.preset, { dials: { ...planDials, loop: false, closuresNow: true, transitOption: key } });
+    const result = await ask(checking.trip.key);
     if (!current() || !result.ok || !result.route.transit) return null;
-    const now = Date.now();
-    const verdict = tripVerdict(checking.trip, result.route.transit, now);
-    if (verdict.kind === "switch") {
-      if (!rideableRoute(result.route)) return null;
-      rideNote.current = switchSaid(verdict);
-      beginRide(ridePrefs, true, { route: result.route, points: [riderAt, checking.to] });
-      return null;
+    const verdict = tripVerdict(checking.trip, result.route.transit, Date.now());
+    if (!verdict) return null;
+    if (verdict.kind !== "switch") {
+      const told = checking.trip.arrivesAt;
+      checking.trip = { key: verdict.key, arrivesAt: told === null || verdict.kind === "late" ? verdict.arrivesAt : told };
+      return verdict.kind === "late" ? lateSaid(verdict.arrivesAt) : null;
     }
-    if (verdict.kind === "late") {
-      checking.trip = { ...checking.trip, arrivesAt: verdict.arrivesAt };
-      return lateSaid(verdict.arrivesAt);
+    let route = result.route;
+    if (route.transit?.key !== verdict.key) {
+      const again = await ask(verdict.key);
+      if (!current() || !again.ok || !again.route.transit) return null;
+      route = again.route;
     }
+    const points = [riderAt, checking.to];
+    // Planned at the stop itself, the new trip's line can be the ride after its train: not a trip to change to.
+    const trip = rideTripOf(route, points);
+    if (!trip?.onward?.some((part) => part.kind === "transit") || !rideableRoute(route)) return null;
+    rideNote.current = switchSaid(verdict);
+    beginRide(ridePrefs, true, { route, points });
     return null;
   };
   const restPanelBusy = useRef(false);

@@ -259,9 +259,10 @@ method" have the same groups. Typing "transit",
   roads where no sidewalk is mapped, more so the busier the road. A quiet street is crossed anywhere. The turn by
   turn says each crosswalk and busy crossing: "Cross Pratt Street at the signal."
 - While you ride a transit trip, until you board its first train or bus, the app plans it again from
-  where you are every 2 minutes. If another trip is now at least 3 minutes quicker, or yours is no
-  longer running, the ride changes to it and says so. A delay on your trip is said with the new
-  arrival time.
+  where you are every 2 minutes, and at the stop until about a minute before its departure. If another
+  trip is now at least 3 minutes quicker, or yours can no longer be caught, the ride changes to it and
+  says so; a trip you picked is changed too. The ride screen starts again with the new trip, so its
+  time and distance count from the change. A delay on your trip is said with the new arrival time.
 - The steps show each ride, walk and train or bus in order, with the total door to door. They say
   how riding the whole way compares.
 - On the map, a dashed line is the ride on transit, marked with its system's name. A dotted line

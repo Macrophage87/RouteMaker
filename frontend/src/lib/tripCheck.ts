@@ -5,11 +5,16 @@
  * now, every `TRIP_CHECK_MS`: the API's plan for now lays WMATA's predicted departures and its rail incidents over the
  * timetable (core/transit_live.py), so a late or missing train shows in it.
  *
- * - Another trip is quicker by `SWITCH_MIN_S` or more than this one is now, or this one is no longer offered (its
- *   train gone, its line suspended): the ride changes to it at once and says so ("Changed to a quicker trip: ...").
- *   No button: the change is the adjustment asked for, and the old trip is not offered back.
- * - This one is still the best but now arrives `LATE_TOLD_S` or more later than last said: the delay is said, with
- *   the new arrival.
+ * - Another trip is quicker by `SWITCH_MIN_S` or more than this one is now, or the API says this one is gone (its
+ *   departure missed or no longer scheduled, `asked_gone`): the ride changes to it at once and says so ("Changed to
+ *   a quicker trip: ..."), where the new trip still has its transit after its line (planned at the stop itself, its
+ *   line would be the ride after the train). No button: the change is the adjustment asked for. A trip the rider
+ *   picked is changed too: the ask is the best trip.
+ * - This one is still the best but now arrives `LATE_TOLD_S` or more later than the first check found: the delay is
+ *   said, with the new arrival.
+ *
+ * At the boarding stop, checks stop once the planned departure is near (`BOARDING_MS`): the rider may be boarding,
+ * and a plan from the stop would see their train as gone.
  *
  * A Bikeshare + 🚶🚆🚌 trip is checked only on the walk to its first dock: once a share bike is taken, a new plan from
  * where the rider is would walk them to another. Walk has no transit to check.
@@ -25,6 +30,9 @@ export const SWITCH_MIN_S = 180;
 /** A delay this much past the arrival last said is said. */
 export const LATE_TOLD_S = 180;
 
+/** At the boarding stop, the last check is this long before the planned departure. */
+export const BOARDING_MS = 60_000;
+
 /** The ride types whose trips are checked. */
 export const CHECKED_PRESETS: readonly PresetId[] = ["bike-transit", "bikeshare-transit", "walk-transit"];
 
@@ -34,39 +42,45 @@ export function tripChecked(preset: PresetId | null | undefined): boolean {
 
 /** The trip being ridden, as a check compares it. */
 export interface CheckedTrip {
-  /** The chosen option's label ("Ride, Metro to Federal Triangle (Orange Line), ride"): the same trip in a new plan. */
-  label: string;
-  /** When it arrives, as last said (ms since the epoch). */
-  arrivesAt: number;
+  /**
+   * Its option's key, sent back as `transit_option`: the API then chooses the same trip (the same stops and lines,
+   * core/transit.py same_trip) or says it is gone (`asked_gone`).
+   */
+  key: string;
+  /** When it arrives, as last said (ms since the epoch); null before the first check, which only reads it. */
+  arrivesAt: number | null;
 }
 
 export type TripVerdict =
-  | { kind: "same" }
-  | { kind: "late"; arrivesAt: number }
-  | { kind: "switch"; label: string; savedS: number | null };
+  | { kind: "same"; arrivesAt: number; key: string }
+  | { kind: "late"; arrivesAt: number; key: string }
+  | { kind: "switch"; key: string; label: string; savedS: number | null };
 
 /** The trip a plan chose, or null for one with no options. */
 export function chosenOf(plan: Pick<TransitPlan, "options">): TransitOption | null {
   return plan.options.find((o) => o.chosen) ?? null;
 }
 
-/** The trip ridden as a check starts it: its plan's chosen option, arriving its total time after `now`. */
-export function checkedTripOf(plan: Pick<TransitPlan, "options" | "total_s">, now: number): CheckedTrip | null {
-  const chosen = chosenOf(plan);
-  return chosen ? { label: chosen.label, arrivesAt: now + plan.total_s * 1000 } : null;
+/** The trip ridden as a check starts it: its plan's chosen trip, its arrival read at the first check. */
+export function checkedTripOf(plan: Pick<TransitPlan, "key">): CheckedTrip {
+  return { key: plan.key, arrivesAt: null };
 }
 
-/** What a fresh plan from where the rider is (`fresh`, asked at `now`) says of the trip ridden. */
-export function tripVerdict(trip: CheckedTrip, fresh: Pick<TransitPlan, "options">, now: number): TripVerdict {
-  const best = chosenOf(fresh);
-  if (!best) return { kind: "same" };
-  const mine = fresh.options.find((o) => o.label === trip.label) ?? null;
-  if (best.label !== trip.label) {
-    if (!mine) return { kind: "switch", label: best.label, savedS: null };
-    if (best.total_s + SWITCH_MIN_S <= mine.total_s) return { kind: "switch", label: best.label, savedS: mine.total_s - best.total_s };
+/**
+ * What a fresh plan from where the rider is (`fresh`, asked at `now` with the trip's key as `transit_option`) says of
+ * the trip ridden. Its options are best first (the API's ranking: time, with busy riding and junction waits counted).
+ */
+export function tripVerdict(trip: CheckedTrip, fresh: Pick<TransitPlan, "options" | "asked_gone">, now: number): TripVerdict | null {
+  const best = fresh.options[0];
+  const mine = chosenOf(fresh);
+  if (!best || !mine) return null;
+  if (fresh.asked_gone) return { kind: "switch", key: best.key, label: best.label, savedS: null };
+  if (best.key !== mine.key && best.total_s + SWITCH_MIN_S <= mine.total_s) {
+    return { kind: "switch", key: best.key, label: best.label, savedS: mine.total_s - best.total_s };
   }
-  const arrivesAt = now + (mine ?? best).total_s * 1000;
-  return arrivesAt - trip.arrivesAt >= LATE_TOLD_S * 1000 ? { kind: "late", arrivesAt } : { kind: "same" };
+  const arrivesAt = now + mine.total_s * 1000;
+  const late = trip.arrivesAt !== null && arrivesAt - trip.arrivesAt >= LATE_TOLD_S * 1000;
+  return { kind: late ? "late" : "same", arrivesAt, key: mine.key };
 }
 
 /** Said as the ride changes to the quicker trip. */
