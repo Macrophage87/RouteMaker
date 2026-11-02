@@ -21,6 +21,7 @@
 import DC_DATA from "../massride-data/dc-boundary.json" with { type: "json" };
 import type { LonLat } from "./geo.ts";
 import type { RouteResponse } from "./api.ts";
+import { withDarkPaint } from "./darkPaint.ts";
 
 type Ring = number[][];
 interface DcFeature {
@@ -194,7 +195,8 @@ export function addDcMask(map: DcMaskMap, visible: boolean, overlayIds: Readonly
   if (map.getSource(DC_MASK_SOURCE_ID)) return false;
   map.addSource(DC_MASK_SOURCE_ID, { type: "geojson", data: dcMask() });
   const before = map.getStyle().layers.find((layer) => layer.type === "symbol" || overlayIds.has(layer.id))?.id;
-  for (const layer of DC_MASK_LAYERS) map.addLayer({ ...layer, layout: { visibility: visible ? "visible" : "none" } }, before);
+  // Its dark-map paint while the dark map shows (lib/darkPaint.ts; the owner, 2026-11-01: battery audit).
+  for (const layer of DC_MASK_LAYERS) map.addLayer(withDarkPaint({ ...layer, layout: { visibility: visible ? "visible" : "none" } }), before);
   return true;
 }
 

@@ -190,10 +190,19 @@ export const WINDOW_BEHIND_M = 60;
 /** ...and this far ahead, plus FAST_MS a second since the last good fix (a tunnel gap). */
 export const WINDOW_AHEAD_M = 250;
 export const FAST_MS = 15;
-/** Off route: farther than max(100 ft, 1.5 x accuracy), capped at 330 ft... */
+/**
+ * Off route: farther than max(100 ft, 1.5 x accuracy), capped at 330 ft. With OFF_SURE_M below, a fix that counts
+ * toward off route always gets the 100 ft floor; the scaling still sets how near a rougher fix must be to stay on the line.
+ */
 export const OFF_MIN_M = 30;
 export const OFF_MAX_M = 100;
 export const OFF_ACCURACY_FACTOR = 1.5;
+/**
+ * ...and only from fixes at least this sure (about 65 ft): a rougher one still places the rider and gives the cues,
+ * and one near the line still clears the count, but one far from it neither counts toward off route nor clears it, so a GPS settling at the start or bouncing between
+ * tall buildings never re-routes the rider (the owner, 2026-11-01: "If the GPS fix is bad an auto reroute shouldn't happen").
+ */
+export const OFF_SURE_M = 20;
 /**
  * Rejoining the line beyond WINDOW_AHEAD_M of where the rider left it takes this many near fixes in a
  * row, each farther along: a detour that only crosses the route does not skip the stops between.
@@ -1478,7 +1487,9 @@ export function step(
   // Off route: far from the line for OFF_FIXES good fixes over OFF_MS; back within half the threshold clears it.
   const threshold = offThreshold(accuracy);
   if (!state.off) {
-    if (found.offM > threshold) {
+    if (found.offM > threshold && accuracy > OFF_SURE_M) {
+      // Too rough to tell: the count stands as it was.
+    } else if (found.offM > threshold) {
       next.offCount = state.offCount + 1;
       next.offSince = state.offSince ?? fix.at;
       if (next.offCount >= OFF_FIXES && fix.at - next.offSince >= OFF_MS) {

@@ -138,6 +138,8 @@ export interface GoRouteControls {
   place?: string | null;
   /** Go's "Add a stop" (Go.tsx GoAddStop), or null: under the route card, one tap away (Stephen 2026-10-18). */
   addStop?: ReactNode;
+  /** Go's "End at the bike rack" (lib/bikeParking.ts; Stephen, 2026-11-01), or null with no rack near the end. */
+  endRack?: ReactNode;
   /** A tap on Go's stress bar: Layers, with the Traffic stress section's colour key open (the owner's P1). */
   onStressKey?: (opener: HTMLButtonElement) => void;
 }
@@ -1105,6 +1107,7 @@ export function RouteSummary({
         {!go.peek && <CapacityShort route={route} corkers={corkerShort(route, profile, rideSize)} />}
         {!go.peek && go.routeCard}
         {!go.peek && go.addStop}
+        {!go.peek && go.endRack}
         {!go.peek && go.rides && (
           <div className="go-route-rides">
             {/* Shown, as the route card says what it edits; the chips' group is named "Ride type" for a screen reader. */}
