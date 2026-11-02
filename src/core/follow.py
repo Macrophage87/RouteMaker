@@ -70,8 +70,8 @@ DIVIDED_M = 40.0
 MAX_BRIDGES = 20
 # What a `/trace_route` asks that a `/route` between two points does not.
 TRACE_ONLY = frozenset({"shape", "shape_match", "trace_options"})
-# Corners the matcher must not cut (`clear_corners`; Stephen 2026-11-01, "several phantom LTS4
-# unnamed roads", riding an opened file through 14th St SE / K St SE / 13th St SE). The
+# Corners the matcher must not cut (`clear_corners`; an owner report, "several phantom LTS4
+# unnamed roads", on an opened file through 14th St SE / K St SE / 13th St SE). The
 # matcher (Valhalla's meili, valhalla/*.json `meili.default.interpolation_distance`, 10 m)
 # does not match a point of the line within that distance of the last one it matched: it
 # only places it on the path between matched points, and that path is the SHORTEST by

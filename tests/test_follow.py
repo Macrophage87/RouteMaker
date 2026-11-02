@@ -118,7 +118,7 @@ ROUND_THE_CORNER = SOUTH_ALONG + WEST_ALONG
 
 
 class TestCorners:
-    """Stephen 2026-11-01, riding an opened file: "There are also several phantom LTS4 unnamed
+    """An owner report on an opened file: "There are also several phantom LTS4 unnamed
     roads", red pieces and a "Right, then left, then right" at two plain corners. The matcher
     left each corner's vertex unmatched (within 10 m of the crosswalk's node before it) and
     joined the two crosswalk nodes by the shortest path, the crosswalks round the corner."""

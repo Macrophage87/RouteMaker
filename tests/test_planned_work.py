@@ -51,6 +51,13 @@ class TestProtrack:
         alley = protrack(PrimaryWorkType="Alley Restoration")
         assert pw.parse_protrack({"features": [sidewalk, alley]}, NOW) == []
 
+    def test_streetscape_work_is_kept_though_it_contains_tree(self) -> None:
+        """"Streetscape" rebuilds the road; only tree work leaves it as it was."""
+        streetscape = protrack(PrimaryWorkType="Streetscape")
+        trees = protrack(PrimaryWorkType="Tree Planting")
+        (zone,) = pw.parse_protrack({"features": [streetscape, trees]}, NOW)
+        assert zone.title.endswith("streetscape")
+
 
 class TestDcWater:
     def test_a_work_zone_is_placed_by_its_middle(self) -> None:

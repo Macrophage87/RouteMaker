@@ -4607,25 +4607,26 @@ def test_a_district_one_way_record_is_every_graph_s_direction(states, monkeypatc
     _assert_graph_and_traits_agree(context, graph)
 
 
-def test_a_district_two_way_record_is_every_graph_s_direction(states, monkeypatch) -> None:
+def test_a_district_two_way_record_alone_keeps_osm_s_one_way_in_every_graph(
+    states, monkeypatch
+) -> None:
     """Row C4: OSM's one-way, the District's two-way, and no carriageway beside
-    it. The standard, weekend and e-bike graphs are two-way (`oneway=no`,
-    rewritten, not removed: the source's `oneway=yes` would come back), and the
-    segment row two-way with two lanes a direction (correctness review: the
-    graphs kept `oneway=yes`). The no-trail graph keeps OSM's one-way, with its
-    contraflow closed (OWNER-DECISIONS 246: "Mass Ride keeps one-way")."""
+    it. Since the owner's 2026-11-01 rule (M St NE), the record alone never
+    opens a one-way's other direction: without the owner's `BD` block rows every
+    graph, the classifier and the segment row keep OSM's one-way, with its
+    contraflow closed. (Row C4 on the owner's rows: tests/test_agency_roads.py.)"""
     block = street_block(
         "dc-1", {"way": "both", "lanes": {"ib": 2, "ob": 2}, "speed_mph": {"ob": 25}}
     )
     context, graph = _district_road(
         states, monkeypatch, block, oneway="yes", lanes="2", maxspeed="35 mph"
     )
-    for variant in (Variant.STANDARD, Variant.WEEKEND, Variant.EBIKE):
-        assert graph[variant][100]["oneway"] == "no", variant.value
-    mass = graph[Variant.NO_TRAIL][100]
-    assert (mass["oneway"], mass["oneway:bicycle"]) == ("yes", "yes")
-    assert context.stress_by_way[100].oneway is False
-    assert _segment_traits(context.staging_schema)[100][:3] == (25, 2, False)
+    for variant in Variant:
+        tags = graph[variant][100]
+        assert tags["oneway"] == "yes", variant.value
+        assert tags.get("oneway:bicycle", "yes") == "yes", variant.value
+    assert context.stress_by_way[100].oneway is True
+    assert _segment_traits(context.staging_schema)[100][2] is True
     _assert_graph_and_traits_agree(context, graph)
 
 
