@@ -299,6 +299,8 @@ const GO_RIDE_ALSO = [
   // Stop by stop and turn by turn on foot (2026-11-02): the on-board card and its words.
   "OnBoardCard.tsx",
   "lib/onBoard.ts",
+  // Settings' Avoid stairs (2026-11-02), for Go and Plan alike.
+  "lib/avoidStairs.ts",
   "AvoidNotice.tsx",
   "lib/accessMode.ts",
   "lib/skipLink.ts",

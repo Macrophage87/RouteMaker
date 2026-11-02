@@ -1830,4 +1830,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "next": "berikutnya",
   "next, get off": "berikutnya, turun",
   "{line} toward {place}": "{line} arah {place}",
+  "Avoid stairs on walks": "Hindari tangga saat berjalan",
+  "Walks in Bikeshare and transit trips keep off flights of steps wherever a step-free way, such as a ramp or an elevator, is near. Walks beside your own bike always do. Kept on this device.": "Bagian jalan kaki dalam perjalanan Bikeshare dan angkutan umum menghindari tangga di mana pun ada jalan tanpa anak tangga di dekatnya, seperti ramp atau lift. Berjalan di samping sepeda Anda sendiri selalu menghindarinya. Disimpan di perangkat ini.",
+  "avoid stairs": "hindari tangga",
 };

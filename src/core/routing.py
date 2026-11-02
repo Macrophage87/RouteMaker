@@ -4040,7 +4040,9 @@ def walk_leg(
     `prefer_walkways`: keep to sidewalks and paths where there are (`WALKWAY_PREFERENCE`)."""
     if deadline.at - clock() < WALK_IN_MIN_LEFT_S:
         return None
-    pedestrian: dict = {"walking_speed": WALK_IN_SPEED_KMH}
+    # Walking beside a bike: never up a flight of steps where a step-free way is near
+    # (2026-11-02, with Avoid stairs; a bike is carried up stairs).
+    pedestrian: dict = walk_turns.step_free({"walking_speed": WALK_IN_SPEED_KMH})
     if prefer_walkways:
         pedestrian["sidewalk_factor"] = WALKWAY_PREFERENCE
         pedestrian["walkway_factor"] = WALKWAY_PREFERENCE

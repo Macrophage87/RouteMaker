@@ -1830,4 +1830,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "next": "下一站",
   "next, get off": "下一站，落車",
   "{line} toward {place}": "{line} 往 {place} 方向",
+  "Avoid stairs on walks": "行路時避開樓梯",
+  "Walks in Bikeshare and transit trips keep off flights of steps wherever a step-free way, such as a ramp or an elevator, is near. Walks beside your own bike always do. Kept on this device.": "共享單車同公共交通行程入面嘅步行路段，附近有斜道或者升降機呢類冇級嘅路就會避開樓梯。推住自己架單車行嘅路段一定會避開。儲存喺呢部裝置。",
+  "avoid stairs": "避開樓梯",
 };

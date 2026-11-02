@@ -2292,4 +2292,7 @@ export const ES: Readonly<Record<string, string>> = {
   "next": "próxima",
   "next, get off": "próxima, bájese",
   "{line} toward {place}": "{line} en dirección a {place}",
+  "Avoid stairs on walks": "Evitar escaleras al caminar",
+  "Walks in Bikeshare and transit trips keep off flights of steps wherever a step-free way, such as a ramp or an elevator, is near. Walks beside your own bike always do. Kept on this device.": "Los tramos a pie de los viajes en Bikeshare y transporte público evitan las escaleras siempre que haya cerca un camino sin escalones, como una rampa o un ascensor. Los tramos a pie junto a su propia bicicleta siempre las evitan. Se guarda en este dispositivo.",
+  "avoid stairs": "evitar escaleras",
 };

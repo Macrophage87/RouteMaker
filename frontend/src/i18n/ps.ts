@@ -1830,4 +1830,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "next": "بل",
   "next, get off": "بل، کوز شئ",
   "{line} toward {place}": "{line} د {place} په لور",
+  "Avoid stairs on walks": "د تګ پر مهال له زینو ډډه وکړئ",
+  "Walks in Bikeshare and transit trips keep off flights of steps wherever a step-free way, such as a ramp or an elevator, is near. Walks beside your own bike always do. Kept on this device.": "د شریکو بایسکلونو او عامه ترانسپورت په سفرونو کې پلي برخې له زینو ډډه کوي هرچېرې چې نږدې پرته له زینو لاره وي، لکه رمپ یا لفټ. ستاسو د خپل بایسکل تر څنګ تګ تل ترې ډډه کوي. په دې وسیله ساتل کېږي.",
+  "avoid stairs": "له زینو ډډه",
 };
