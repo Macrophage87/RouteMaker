@@ -57,6 +57,7 @@ from routemaker import (
     speed_corrections,
     surfaces,
     trail_facts,
+    winding,
     zoo,
 )
 from routemaker.geo import Point
@@ -3754,6 +3755,20 @@ def build_handlers(
                 ):
                     derived["hazard"] = True
                     hazard_ways += 1
+                # The road-bike graph prices gravel, fine gravel and compacted as gravel
+                # (`variants.Variant.PAVED`, `routemaker_remap.ROUGH_UNPAVED`); every other
+                # graph prices gravel as packed gravel.
+                if variant is variants.Variant.PAVED and way.tags.get("surface"):
+                    derived["rough_unpaved"] = True
+                # And a winding trail like a busy street (`routemaker.winding`; the owner,
+                # 2026-11-02: road bikes "stay away from trails with lots of direction
+                # changes ... For instance Sligo Creek Trail").
+                if (
+                    variant is variants.Variant.PAVED
+                    and variants.is_trail_class(way.tags)
+                    and winding.is_winding(way.coordinates)
+                ):
+                    derived["winding"] = True
 
                 per_way_tags[way.osm_id] = {**changes, **extract.derived_tags(derived)}
 

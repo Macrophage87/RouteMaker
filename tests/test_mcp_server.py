@@ -297,10 +297,11 @@ def test_the_link_is_the_page_s_own_fragment() -> None:
     [
         (
             "default",
-            {"stress": 85, "hills": -40, "loop": True, "avoid_gravel": True},
+            {"stress": 85, "hills": -40, "loop": True},
             {"when": "weekend"},
-            {"stress": 85, "hills": -40, "loop": True, "avoidGravel": True, "when": "weekend"},
+            {"stress": 85, "hills": -40, "loop": True, "when": "weekend"},
         ),
+        ("road-bike", {"stress": 40, "hills": 0}, {}, {"stress": 40, "hills": 0}),
         (
             "trailmaxxing",
             {"stress": 100, "hills": 0, "target_distance_m": 160934},
@@ -845,6 +846,28 @@ def test_old_and_renamed_links_open_as_the_page_opens_them(fragment, stress, hil
     points, _, preset, options = mcp.parse_fragment(fragment)
     assert options["stress"] == stress and options["hills"] == hills
     assert len(points) == 2
+
+
+@pytest.mark.parametrize(
+    "linked, opens",
+    [("default", "road-bike"), ("gravel", "road-bike"), ("cargo", "cargo"), ("ebike", "ebike")],
+)
+def test_a_link_with_the_retired_avoid_gravel_box_opens_as_the_page_opens_it(linked, opens) -> None:
+    """The owner, 2026-11-02, "Replace the box": on a rider's own bike the box opens as Road
+    Bike with the link's sliders; elsewhere it is dropped (planHash.ts)."""
+    fragment = f"p=-77.03,38.9;-77.02,38.91&preset={linked}&v=2&stress=55&hills=-20&avoidgravel=1"
+    _, _, preset, options = mcp.parse_fragment(fragment)
+    assert preset == opens
+    assert options["stress"] == 55 and options["hills"] == -20
+    assert "avoid_gravel" not in options
+    assert set(mcp.AVOID_GRAVEL_BECOMES) == {
+        "default",
+        "fast",
+        "trailmaxxing",
+        "novice",
+        "gravel",
+        "mountain-goat",
+    }
 
 
 def test_a_call_with_a_deadline_stops_planning_while_another_plan_would_not_fit(

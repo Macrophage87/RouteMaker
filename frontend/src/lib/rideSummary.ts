@@ -71,7 +71,6 @@ export function rideSummaryParts(preset: PresetId, dials: Dials, name: (id: Pres
     ...(target ? [target] : []),
     ...(dials.loop === true && preset !== "mass-ride" ? [t("loop")] : []),
     ...(dials.trailsOff === true && !trailsOffLocked(preset) ? [t("roads only")] : []),
-    ...(dials.avoidGravel === true ? [t("avoids gravel")] : []),
   ];
 }
 

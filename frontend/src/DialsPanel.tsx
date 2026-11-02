@@ -522,14 +522,6 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, ridingSpeed 
           <Bullets text={view.trailsOff.how} />
         </DialInfo>
       </div>
-      <label className="toggle">
-        <input
-          type="checkbox"
-          checked={dials.avoidGravel === true}
-          onChange={(event) => onCommit({ ...dials, avoidGravel: event.target.checked })}
-        />
-        {t("Avoid gravel")}
-      </label>
       {view.reset && (
         <button type="button" className="link" onClick={() => view.reset && onCommit(view.reset)}>
           {t("Back to this ride type's settings")}

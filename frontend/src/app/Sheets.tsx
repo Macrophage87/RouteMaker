@@ -925,6 +925,7 @@ const RIDE_ICON: Partial<Record<PresetId, IconName>> = {
   "mountain-bike": "mtb",
   gravel: "gravel",
   fast: "fast",
+  "road-bike": "roadbike",
   ebike: "bolt",
   "mountain-goat": "mountain",
   "group-ride": "user",
