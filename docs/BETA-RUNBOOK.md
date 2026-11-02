@@ -830,11 +830,13 @@ step 4:
 ```sh
 . "$HOME/routemaker-beta-state/vars.sh"
 cd "$RM_SRC"
-scripts/beta/beta-compose.sh exec -T postgis psql -U routemaker -d routemaker -1 -v ON_ERROR_STOP=1 -c "SET LOCAL lock_timeout = '10s'" -c "LOCK TABLE live.segment IN ACCESS EXCLUSIVE MODE" -c "DROP SCHEMA IF EXISTS live_next CASCADE" -c "ALTER SCHEMA live RENAME TO live_next" -c "ALTER SCHEMA live_old RENAME TO live" -c "TRUNCATE public.stress_tile_cache"
+scripts/beta/beta-compose.sh exec -T postgis psql -U routemaker -d routemaker -1 -v ON_ERROR_STOP=1 -c "SET LOCAL lock_timeout = '10s'" -c "DO \$\$ DECLARE t text; BEGIN FOR t IN SELECT format('%I.%I', schemaname, tablename) FROM pg_tables WHERE schemaname = 'live' ORDER BY tablename <> 'segment', tablename LOOP EXECUTE 'LOCK TABLE ' || t || ' IN ACCESS EXCLUSIVE MODE'; END LOOP; END \$\$" -c "DROP SCHEMA IF EXISTS live_bad CASCADE" -c "ALTER SCHEMA live RENAME TO live_bad" -c "ALTER SCHEMA live_old RENAME TO live" -c "TRUNCATE public.stress_tile_cache"
 ```
 
-Then the stress-tile pre-draw as in "New data only" step 3. The next update stages afresh (the
-`live_next` this leaves carries no bundle mark).
+It locks every live table first (segment first, as the update does), so no request reads old and new
+together; it leaves any staged `live_next` alone. Then the stress-tile pre-draw as in "New data only"
+step 3. The rejected tables stay as `live_bad`; once the beta works, drop them:
+`scripts/beta/beta-compose.sh exec -T postgis psql -U routemaker -d routemaker -c "DROP SCHEMA live_bad CASCADE"`.
 
 **B. Go back to the previous database:** restore the safety dump the last data update wrote
 (`pre-update-<time>.dump` from `db --update-data`, or `pre-restore-<time>.dump` from `--replace-db`).

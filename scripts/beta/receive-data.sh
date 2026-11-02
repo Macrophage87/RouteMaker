@@ -542,7 +542,7 @@ if [ "$update_data" = 1 ]; then
 	# files copied into the postgis container, and undo each other's work.
 	lockf=/tmp/routemaker-receive-data.lock
 	[ -e "$lockf" ] || (umask 0 && : >>"$lockf")
-	exec 7<"$lockf"
+	exec 7<"$lockf" || die "cannot open $lockf (made by another user?); remove it and run this again"
 	flock -n 7 || die "another receive-data.sh db --update-data is running; wait for it"
 	lock_timeout_ms=${RECEIVE_DATA_LOCK_TIMEOUT_MS:-3000}
 	swap_tries=${RECEIVE_DATA_SWAP_TRIES:-5}
