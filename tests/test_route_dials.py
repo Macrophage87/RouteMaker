@@ -1510,7 +1510,7 @@ def test_the_calm_search_swaps_the_routers_climbing_charge_for_the_riders():
         hill_m=2000.0,
     )
     ctx = type("Ctx", (), {})()
-    ctx.rate, ctx.weight, ctx.quiet_cost = 0.0, 1.0, 0.44
+    ctx.rate, ctx.weight, ctx.quiet_cost, ctx.wait_weight = 0.0, 1.0, 0.44, 1.0
     assert read.score(ctx) == pytest.approx(600.0 + 0.44 * (2000.0 - 1300.0))
 
 
@@ -2036,6 +2036,24 @@ class TestRoadBike:
         options = fake.calls[0][1]["costing_options"]["bicycle"]
         assert options["bicycle_type"] == "Road"
         assert options["avoid_bad_surfaces"] == presets.ROAD_BIKE_SURFACES
+
+    @pytest.mark.parametrize(("name", "weight"), [("road-bike", 3.0), ("default", 1.0)])
+    def test_the_search_weighs_road_bikes_waits_three_times(
+        self, name, weight, client, facility_segments, router, monkeypatch
+    ):
+        """The owner, 2026-11-02: "For the road cycling version, make non-cycling time, such
+        as waiting at lights carry an additional penalty (3x)"."""
+        seen = []
+
+        class Seen(refine.Context):
+            def __init__(self, *a, **k):
+                super().__init__(*a, **k)
+                seen.append(self)
+
+        monkeypatch.setattr(refine, "Context", Seen)
+        router(standard_router())
+        assert post(client, good_body(name)).status_code == 200
+        assert seen and {ctx.wait_weight for ctx in seen} == {weight}
 
     def test_off_by_default_and_echoed(self, client, facility_segments, router):
         fake = router(standard_router())

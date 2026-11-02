@@ -4969,6 +4969,7 @@ def _plan(
         seek=trailseek.seek_for(presets.calm_rate_for(stress_dial)),
         schema=validate_schema_name(settings.SEGMENT_SCHEMA_LIVE),
         avoid_gravel=avoid_gravel,
+        wait_weight=presets.wait_weight_for(preset_name),
         exposure=exposure,
         maxcalm=maxcalm,
         ceiling_m=ceiling,

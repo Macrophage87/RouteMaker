@@ -90,6 +90,7 @@ def context(
     maxcalm=False,
     ceiling_m=None,
     target_m=None,
+    wait_weight=1.0,
 ) -> refine.Context:
     return refine.Context(
         variant="standard",
@@ -113,6 +114,7 @@ def context(
         maxcalm=maxcalm,
         ceiling_m=ceiling_m,
         target_m=target_m,
+        wait_weight=wait_weight,
     )
 
 
@@ -190,6 +192,21 @@ class TestJunctionDelay:
         assert smooth.key(ctx) < stops.key(ctx)
         extra_m = stops.key(ctx)[2] - smooth.key(ctx)[2]
         assert extra_m == pytest.approx(refine.QUIET_COST_FACTOR * 120.0 / QUIET_COST)
+
+    def test_road_bike_weighs_waiting_three_times_in_the_ranking(self) -> None:
+        # The owner, 2026-11-02: "For the road cycling version, make non-cycling time, such as
+        # waiting at lights carry an additional penalty (3x)".
+        assert presets.wait_weight_for(presets.ROAD_BIKE) == 3.0
+        assert presets.wait_weight_for("default") == presets.wait_weight_for("fast") == 1.0
+        slow = analysis("a")
+        slow.junction_delay_s = 60.0
+        road = context(wait_weight=presets.wait_weight_for(presets.ROAD_BIKE))
+        assert slow.score(road) == pytest.approx(4000.0 + refine.QUIET_COST_FACTOR * 3 * 60.0)
+        top = context(maxcalm=True, wait_weight=3.0)
+        smooth, stops = analysis("a"), analysis("b")
+        stops.junction_delay_s = 120.0
+        extra_m = stops.key(top)[2] - smooth.key(top)[2]
+        assert extra_m == pytest.approx(refine.QUIET_COST_FACTOR * 3 * 120.0 / QUIET_COST)
 
     def test_a_routes_legs_add_their_delays(self) -> None:
         one, two = analysis("a"), analysis("b")
