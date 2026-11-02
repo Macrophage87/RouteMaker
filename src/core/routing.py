@@ -143,6 +143,7 @@ from . import (
     segment_info,
     timing,
     trail_touch,
+    walk_turns,
 )
 from . import workzones as work_zones
 
@@ -4047,7 +4048,7 @@ def walk_leg(
         "locations": [{"lon": p[0], "lat": p[1], "type": "break"} for p in (a, b)],
         "costing": "pedestrian",
         "costing_options": {"pedestrian": pedestrian},
-        "directions_type": "none",
+        "directions_type": "maneuvers",
         "units": "kilometers",
     }
     try:
@@ -4077,6 +4078,8 @@ def walk_leg(
         },
         "distance_m": round(metres, 1),
         "duration_s": round(float((legs[0].get("summary") or {}).get("time", 0.0)), 1),
+        # Its turns, for turn-by-turn on foot (2026-11-02).
+        "turns": walk_turns.turns_of(legs[0], shape),
     }
 
 

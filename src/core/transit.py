@@ -116,7 +116,7 @@ from routemaker.geo import Point, haversine
 from routemaker.lang import spanish, t
 from routemaker.ridetime import ZONE, is_federal_holiday
 
-from . import bikeshare, gbfs, presets
+from . import bikeshare, gbfs, presets, walk_turns
 
 logger = logging.getLogger(__name__)
 
@@ -1079,6 +1079,13 @@ class Leg:
     live: bool = False  # `depart` and `later` are WMATA's predictions (core.transit_live)
     elevator: bool = True  # a station's way in or out with the bike is a known elevator
     elevator_out: bool = False  # and every one is out (the option's row shows it)
+    # A transit leg's stops in order, boarding and alighting included: (name, point, seconds
+    # after leaving the first), for the stop-by-stop list (Stephen, 2026-11-02: "stop by stop
+    # directions for transit"); and the way it runs, its last stop's name ("toward Shady Grove").
+    stops: tuple[tuple[str, tuple[float, float], float], ...] = ()
+    toward: str | None = None
+    # A walk's turns as the router gives them (`walk_turns.turns_of`), for turn-by-turn on foot.
+    turns: tuple[dict, ...] = ()
     # A ride's time on busy roads and waiting at junctions, added again for ranking only
     # (`Option.score_s`), and its metres on busy roads, said with the option (`busy_m`).
     penalty_s: float = 0.0
@@ -1154,6 +1161,10 @@ class Leg:
                 return t("About {m} min out of the station by the elevator.", m=m)
             return t("About {m} min out of the station.", m=m)
         vehicle = self._vehicle_said()
+        # The way it runs (its last stop), where that is not the stop the rider gets off at:
+        # "the Red Line toward Shady Grove" (stop-by-stop transit, 2026-11-02).
+        if self.toward and self.toward != (self.to or "").removeprefix("the stop at "):
+            vehicle = t("{vehicle} toward {place}", vehicle=vehicle, place=self.toward)
         if self.mode == BUS and self.bike:
             board = t("Put your bike on the front rack of {vehicle}", vehicle=vehicle)
         elif self.change:
@@ -1418,11 +1429,55 @@ def _hop(minute: float, entries, typical: bool = False) -> Hop:
     )
 
 
+def _position(stops: tuple[int, ...], path: tuple[int, ...]) -> int | None:
+    """Where `path` starts in a pattern's `stops` (it is a run of them), else None."""
+    size = len(path)
+    for pos in range(len(stops) - size + 1):
+        if stops[pos : pos + size] == path:
+            return pos
+    return None
+
+
+def _stops_of(
+    schedule: Schedule, hop: Hop
+) -> tuple[tuple[tuple[str, tuple[float, float], float], ...], str | None]:
+    """A hop's stops, each with its seconds after the first (the pattern's run times scaled to
+    the hop's own ride time, which may be another pattern's on a frequent line), and the way
+    the pattern runs: its last stop's name. Times are spread evenly where the pattern's are
+    unknown."""
+    pattern = schedule.patterns[hop.pattern]
+    path = hop.path
+    pos = _position(pattern.stops, path)
+    offsets: list[float] = []
+    if pos is not None:
+        try:
+            runs = pattern.runs_at(hop.depart if hop.depart is not None else 12 * 60)
+        except Unavailable:
+            runs = ()
+        if len(runs) >= pos + len(path):
+            base = runs[pos]
+            span = runs[pos + len(path) - 1] - base
+            if span > 0:
+                offsets = [(runs[pos + i] - base) * hop.ride_s / span for i in range(len(path))]
+    if not offsets:
+        last = max(1, len(path) - 1)
+        offsets = [hop.ride_s * i / last for i in range(len(path))]
+    stops = tuple(
+        (schedule.stops[s].name, tuple(schedule.stops[s].point), round(o, 1))
+        for s, o in zip(path, offsets, strict=True)
+    )
+    # A loop (a bus that ends where it began) has no way to name by its last stop.
+    loop = not pattern.stops or pattern.stops[0] == pattern.stops[-1]
+    end = None if loop else schedule.stops[pattern.stops[-1]].name
+    return stops, end or None
+
+
 def _transit_leg(
     schedule: Schedule, hop: Hop, change: bool, bike: bool, service_day: date | None = None
 ) -> Leg:
     system = schedule.systems[hop.system]
     to = schedule.stops[hop.path[-1]]
+    stops, toward = _stops_of(schedule, hop)
     return Leg(
         system.mode,
         hop.ride_s + (TRANSFER_S if change else 0.0),
@@ -1441,6 +1496,8 @@ def _transit_leg(
         service_day=service_day,
         every=hop.every,
         first=hop.first,
+        stops=stops,
+        toward=toward,
     )
 
 
@@ -1456,6 +1513,8 @@ class Ride:
     # are in `seconds` then, as the answer's line has them (routing.plan).
     busy_m: float | None = None
     waits_s: float = 0.0
+    # A walk's turns (`walk_turns.turns_of`), where the router gave its maneuvers.
+    turns: tuple[dict, ...] = ()
 
 
 class Services(Protocol):
@@ -1531,6 +1590,9 @@ class RoutingServices:
             "directions_type": "none",
             "units": "kilometers",
         }
+        if costing == "pedestrian":
+            # A walk's turns come with it, for turn-by-turn on foot (2026-11-02).
+            payload = walk_turns.directions(payload)
         try:
             answer = routing._call("standard", "route", payload, deadline)
         except (routing.RouterRefused, routing.RouterUnavailable, routing.DeadlineExceeded):
@@ -1545,6 +1607,8 @@ class RoutingServices:
         length = summary.get("length")
         seconds = float(summary.get("time", 0.0))
         metres = None if length is None else float(length) * 1000.0
+        if costing == "pedestrian":
+            return Ride(seconds, shape, metres, turns=tuple(walk_turns.turns_of(legs[0], shape)))
         if costing != "bicycle" or self._when is None:
             return Ride(seconds, shape, metres)
         # Its busy roads and junction waits, from its trace, inside the same call's cap.
@@ -2743,7 +2807,8 @@ def drawn(plan: Plan, services: Services, skip: Iterable[int] = ()) -> Plan:
             points.insert(0, tuple(a))
         if points[-1] != tuple(b):
             points.append(tuple(b))
-        legs[index] = replace(leg, coordinates=tuple(points))
+        turns = routed.turns if leg.mode in _ON_FOOT else ()
+        legs[index] = replace(leg, coordinates=tuple(points), turns=turns)
         changed = True
     if not changed:
         return plan
@@ -3000,6 +3065,17 @@ def block(plan: Plan, schedule: Schedule | None = None) -> dict:
                 # The route's own line is this step's: the map draws the rest from here.
                 "route_line": index == option.ride,
                 "coordinates": [_pt(p) for p in leg.coordinates] if index != option.ride else [],
+                # Stop by stop and turn by turn (2026-11-02): a transit step's stops, boarding
+                # and alighting included, with the seconds after leaving the first, and the way
+                # it runs; a walk's turns where it was routed.
+                "stops": [
+                    {"name": name, "point": _pt(point), "after_s": round(after)}
+                    for name, point, after in leg.stops
+                ]
+                if leg.transit and leg.stops
+                else None,
+                "toward": leg.toward if leg.transit else None,
+                "turns": list(leg.turns) if leg.turns else None,
             }
         )
     total_min = minutes(total)

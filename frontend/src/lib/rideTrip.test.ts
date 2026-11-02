@@ -472,3 +472,30 @@ test("Spanish: the walk, dock and hand-off lines are Spanish, the names as they 
     setLanguageForTest("en");
   }
 });
+
+test("the walk to the first dock is said turn by turn, and the walk from the last dock follows the line (2026-11-02)", () => {
+  setLanguageForTest("en");
+  // North 200 m, then right (east) 200 m to the dock at the line's start.
+  const walkStart = {
+    geometry: { type: "LineString", coordinates: [at(-200, -200), at(-200, 0), at(0, 0)] },
+    distance_m: 400,
+    duration_s: 300,
+    to: "4th & E St NW",
+    turns: [{ movement: "right", street: "E St NW", point: at(-200, 0) }],
+  };
+  const route = line({ bikeshare: { ...SHARE, walk_start: walkStart } as unknown as BikesharePlan });
+  const trip = rideTripOf(route, [at(-200, -200), DESTINATION]);
+  assert.ok(trip?.approach?.walk);
+  assert.deepEqual(trip.approach.walk.cues.map((c) => c.text), ["Right onto E St NW.", ""]);
+  assert.deepEqual(trip.onward?.map((p) => p.kind), ["walk"]);
+  const model = rideModel(route);
+  let s = tripRideStart(trip);
+  const said: string[] = [];
+  for (const n of [-200, -150, -100, -60, -30, -10]) {
+    const out = tripStep(model, trip, s, fix(at(-200, n)), "full");
+    s = out.state;
+    said.push(...out.events.map((e) => e.spoken));
+    assert.equal(out.state.walking, true);
+  }
+  assert.ok(said.some((w) => /right onto E St NW|Right now onto E St NW/i.test(w)), said.join(" | "));
+});

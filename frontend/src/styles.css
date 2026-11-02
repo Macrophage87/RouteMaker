@@ -10461,3 +10461,27 @@ summary.closure-notices-heading {
   padding: 4px 16px;
   font-weight: 700;
 }
+
+/* Stop by stop on transit after the line (OnBoardCard, 2026-11-02): the stops ahead, the next marked, the last bold. */
+.onboard-stops {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0 0 0 10px;
+  border-inline-start: 4px solid currentColor;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+.onboard-stops li {
+  padding: 3px 0;
+}
+.onboard-stops .onboard-next,
+.onboard-stops .onboard-off {
+  font-weight: 700;
+}
+.transit-step-more summary {
+  cursor: pointer;
+}
+.transit-step-more ol {
+  margin: 4px 0 0;
+  padding-inline-start: 20px;
+}

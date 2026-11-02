@@ -496,10 +496,33 @@ def test_own_bike_lists_the_direct_ride_and_the_quickest_transit_trips(schedule)
     words = [leg.words(last=i == 4) for i, leg in enumerate(metro.legs)]
     assert words[1] == "About 4 min into the station by the elevator."
     assert words[2] == (
-        "Board the Orange Line (every 10 min, scheduled; about 5 min wait); ride 10 min to"
-        " Federal Triangle."
+        "Board the Orange Line toward Metro Center (every 10 min, scheduled; about 5 min wait);"
+        " ride 10 min to Federal Triangle."
     )
     assert words[4].endswith("min to your destination.")
+    # Stop by stop (2026-11-02): every stop of the ride in order, boarding and alighting
+    # included, timed from the first and ending at the ride's own time, and the way it runs.
+    ride = metro.legs[2]
+    names = [name for name, _point, _s in ride.stops]
+    assert names[0] == "Eastern Market" and names[-1] == "Federal Triangle"
+    assert len(names) >= 3
+    times = [s for _name, _point, s in ride.stops]
+    assert times[0] == 0 and times == sorted(times)
+    assert abs(times[-1] - ride.seconds) < 1
+    assert ride.toward == "Metro Center"
+    assert [list(p) for _n, p, _s in ride.stops] == [list(p) for p in ride.coordinates]
+
+
+def test_a_ride_to_the_last_stop_says_no_toward() -> None:
+    leg = transit.Leg(
+        transit.METRO,
+        600.0,
+        to="Metro Center",
+        vehicle="the Orange Line",
+        system="Metro",
+        toward="Metro Center",
+    )
+    assert leg.words().startswith("Board the Orange Line (")
 
 
 def _valhalla(seconds: float, a, b) -> dict:
@@ -585,7 +608,9 @@ def test_a_change_at_the_same_station(schedule) -> None:
         "Smithsonian",
         True,
     )
-    assert second.words().startswith("Change to the Orange Line (every 10 min, scheduled;")
+    assert second.words().startswith(
+        "Change to the Orange Line toward Eastern Market (every 10 min, scheduled;"
+    )
 
 
 def test_dc_to_baltimore_takes_marc_with_the_bike(schedule) -> None:
@@ -2126,3 +2151,37 @@ def test_a_much_slower_hop_is_listed_but_not_planned(schedule, monkeypatch) -> N
     monkeypatch.setattr(transit, "HOP_SLACK_S", hop.total_s - quickest - 1.0)
     assert transit.choose(plan, None, hop=True).chosen == 0
     assert any(o.hop for o in plan.options)
+
+
+class _Turning(Straight):
+    """Walks routed with one turn half way along (as Valhalla's maneuvers give it)."""
+
+    def walk(self, a, b):
+        routed = super().walk(a, b)
+        middle = ((a[0] + b[0]) / 2, (a[1] + b[1]) / 2)
+        turn = {"movement": "left", "street": "F St NE", "point": list(middle)}
+        return transit.Ride(
+            routed.seconds, (tuple(a), middle, tuple(b)), routed.metres, turns=(turn,)
+        )
+
+
+def test_the_answer_carries_each_walks_turns_and_each_rides_stops(schedule) -> None:
+    """Turn by turn on foot and stop by stop on transit (Stephen, 2026-11-02): the steps carry
+    a walk's turns where it was drawn, and a transit step's stops and the way it runs."""
+    plan = transit.plan_bikeshare(
+        schedule, CAPITOL_HILL, DOWNTOWN, at(2026, 9, 30, 8, 0), Straight(), SHARE
+    )
+    metro = next(o for o in plan.options if not o.direct)
+    plan = transit.drawn(transit.choose(plan, metro.key), _Turning())
+    steps = transit.block(plan, schedule)["steps"]
+    walk = next(s for s in steps if s["mode"] == "walk" and not s["route_line"])
+    assert walk["turns"] == [
+        {"movement": "left", "street": "F St NE", "point": walk["turns"][0]["point"]}
+    ]
+    ride = next(s for s in steps if s["mode"] == "metro")
+    assert ride["stops"][0]["name"] == "Eastern Market" and ride["stops"][0]["after_s"] == 0
+    assert ride["stops"][-1]["after_s"] == ride["seconds"]
+    assert ride["toward"]
+    assert "toward" in ride["text"]
+    # Off transit, no stops; a walk not drawn, no turns.
+    assert all(s["stops"] is None for s in steps if s["mode"] not in transit.TRANSIT_MODES)

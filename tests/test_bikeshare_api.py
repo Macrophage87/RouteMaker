@@ -170,7 +170,8 @@ class TestBikeshareAnswer:
                 payload["costing_options"]["pedestrian"]["walking_speed"]
                 == bikeshare.WALK_SPEED_KMH
             )
-            assert payload["directions_type"] == "none"
+            # The turns come with the walk, for turn-by-turn on foot (2026-11-02); no narrative.
+            assert payload["directions_type"] == "maneuvers"
 
     # Rebalance Ride's ride leg is Bikeshare's (the review of PR #110): each guard runs for both.
     @pytest.mark.parametrize("preset", sorted(presets.BIKESHARE_PRESETS))
