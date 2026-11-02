@@ -62,3 +62,39 @@ def test_doubled_nodes_carry_no_heading():
 def test_too_short_to_measure():
     assert winding.deg_per_100m([(-77.0, LAT)]) == 0.0
     assert not winding.is_winding([])
+
+
+def _corner(degrees: float) -> list[tuple[float, float]]:
+    """150 m with one bend of `degrees`: spread over MIN_SPAN_M, `degrees / 2` per 100 m."""
+    a = math.radians(degrees)
+    return _line([(75.0, 0.0), (75.0 * math.cos(a), 75.0 * math.sin(a))])
+
+
+def test_the_threshold_is_40_degrees_per_100_m():
+    # Review of v0.18.0 (S9): between the straight trails (under 31) and Sligo Creek Trail's
+    # bending stretches (43 and up), as the module measured them on 2026-11-02.
+    assert winding.WINDING_DEG_PER_100M == 40.0
+    assert abs(winding.deg_per_100m(_corner(82.0)) - 41.0) < 0.1
+    assert winding.is_winding(_corner(82.0))
+    assert abs(winding.deg_per_100m(_corner(78.0)) - 39.0) < 0.1
+    assert not winding.is_winding(_corner(78.0))
+
+
+def test_sligo_creeks_least_bending_short_piece_is_winding():
+    # Sligo Creek Trail's short bending pieces measure 43 to 52 degrees per 100 m.
+    assert abs(winding.deg_per_100m(_corner(86.0)) - 43.0) < 0.1
+    assert winding.is_winding(_corner(86.0))
+
+
+def test_a_straight_ish_trail_at_30_is_not_winding():
+    # Sligo Creek Trail's straight pieces are under 31.
+    assert abs(winding.deg_per_100m(_corner(60.0)) - 30.0) < 0.1
+    assert not winding.is_winding(_corner(60.0))
+
+
+def test_a_zigzag_of_one_metre_steps_keeps_its_headings():
+    # Steps of 1 m are a real (if finely drawn) path, not doubled nodes: only steps under
+    # MIN_STEP_M (0.5 m) carry no heading.
+    a = math.radians(30)
+    zig = _line([(math.cos(a), math.sin(a) * (1 if i % 2 else -1)) for i in range(200)])
+    assert winding.is_winding(zig)
