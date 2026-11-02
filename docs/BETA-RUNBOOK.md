@@ -821,6 +821,21 @@ If that update also carried a db part (`db --update-data`), do **B** as well, wi
 against the new `live` mix segment attributes from one build with edges from another. A Photon index
 that the update's `files` replaced has no `previous`: rollback A does not bring it back.
 
+**B by rename. Go back to the previous map tables while serving** (after a `db --update-data` from v0.18.0 on,
+which keeps the replaced tables as `live_old`): one short transaction puts them back, with the api and worker
+running. It changes only the map tables: `override` and the junction ratings stay home's new ones (the full
+B below puts those back too). Do it with rollback A, then restart the routers one at a time as in "New data only"
+step 4:
+
+```sh
+. "$HOME/routemaker-beta-state/vars.sh"
+cd "$RM_SRC"
+scripts/beta/beta-compose.sh exec -T postgis psql -U routemaker -d routemaker -1 -v ON_ERROR_STOP=1 -c "SET LOCAL lock_timeout = '10s'" -c "LOCK TABLE live.segment IN ACCESS EXCLUSIVE MODE" -c "DROP SCHEMA IF EXISTS live_next CASCADE" -c "ALTER SCHEMA live RENAME TO live_next" -c "ALTER SCHEMA live_old RENAME TO live" -c "TRUNCATE public.stress_tile_cache"
+```
+
+Then the stress-tile pre-draw as in "New data only" step 3. The next update stages afresh (the
+`live_next` this leaves carries no bundle mark).
+
 **B. Go back to the previous database:** restore the safety dump the last data update wrote
 (`pre-update-<time>.dump` from `db --update-data`, or `pre-restore-<time>.dump` from `--replace-db`).
 `restore-dump` takes a `pre-rollback` snapshot of what is there first, restores the dump into a
@@ -829,7 +844,8 @@ untouched), and swaps it in by rename. These dumps leave out the tables the nigh
 out, so after a restore everyone is signed out and riders connect Garmin or Wahoo again. The database as it was stays beside it as
 `routemaker_before_<time>`; once the beta works, drop it
 (`scripts/beta/beta-compose.sh exec -T postgis dropdb -U routemaker routemaker_before_<time>`). It needs
-free space on `/data` for a second copy of the database (about 1.5 GB):
+free space on `/data` for a second copy of the database (about 1.5 GB before v0.18.0; from v0.18.0 on the
+database also holds `live_old`, about as much again as the live tables):
 
 ```sh
 . "$HOME/routemaker-beta-state/vars.sh"
@@ -969,8 +985,10 @@ continuous deployment first, as above, and resume it after.
    `pre-update` safety dump, then in **one short transaction** renames `live` to `live_old` and `live_next` to
    `live` (the rename the home rebuild's swap makes) and replaces the `override` data (and empties the beta's
    stress-tile cache, which the new `live` table makes stale). Requests queue for the second or two the rename
-   holds its lock; a reader that holds it longer costs the rename an attempt (five, a few seconds apart), and if
-   all five fail nothing has changed and `live_next` is kept for another try. It leaves
+   holds its locks; a reader that holds them longer costs the rename an attempt (five of 3 s, a few seconds apart,
+   so about 35 s of queued requests at worst), and if all five fail nothing has changed and `live_next` is kept for
+   another try. Do not run it while the nightly backup runs (07:00 UTC, 2 AM ET in winter, 3 AM in summer, for a few
+   minutes): its `pg_dump` holds the tables for minutes and every attempt fails. It leaves
    the beta's own accounts, sessions and audit log alone (`--replace-db` would delete them; it refuses while any
    exist). **It resets `override` to home's**: an override added or edited on the beta is lost (it is in the
    `pre-update` safety dump). Make override changes at home, or ask the owner before updating if any were made on
@@ -978,7 +996,8 @@ continuous deployment first, as above, and resume it after.
    junctions (`avoid_junction`) are reset to home's the same way, and the beta's own half-step edit history
    (`stress_edit`, which points at the overrides it replaces) is emptied. The beta's own rider suggestions, road
    and junction, are kept; an approved one loses only its link to the edit, rating or Avoid junction it made.
-   The replaced tables stay as `live_old` until the next update.
+   The replaced tables stay as `live_old` until the next update (so the nightly backups carry them too), which is
+   what rollback B "by rename" puts back.
 
    ```sh
    . "$HOME/routemaker-beta-state/vars.sh"
@@ -991,7 +1010,8 @@ continuous deployment first, as above, and resume it after.
    The pre-draw is not optional: until it finishes, every map view draws its tiles live (step 8,
    "Draw the stress tiles"). Run it before telling the testers the update is in.
 4. Restart the routers **one at a time** (a router keeps the old archive mapped until restarted; one at a time, only
-   one ride type is briefly unanswered, and the api plans it on the standard graph meanwhile):
+   one ride type is briefly unanswered, and the api plans it on the standard graph meanwhile, except while the
+   standard router itself restarts, when Default rides fail for those few seconds):
    `for r in valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend; do scripts/beta/beta-compose.sh restart "$r"; sleep 20; done`
    (`restart-routers.sh`, where its timer is installed, does the same by itself once the links have been still
    for five minutes), then the trail routers on their new tiles, from v0.10.1 on

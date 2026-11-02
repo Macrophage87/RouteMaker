@@ -26,8 +26,9 @@
 #                <db>_stage, dropped afterwards), its row counts are checked, and then one short
 #                transaction renames `live` to `live_old` and `live_next` to `live`, the same
 #                rename the home rebuild's swap makes (pipeline.swap.swap_schemas). The api and
-#                worker keep running throughout: requests queue for the second or two the rename
-#                holds its lock. The same transaction replaces the data of `override`,
+#                worker keep running throughout: requests queue while the rename holds its locks
+#                (a second or two; 5 tries of 3 s at worst, RECEIVE_DATA_SWAP_TRIES and
+#                RECEIVE_DATA_LOCK_TIMEOUT_MS, and then nothing changes). The same transaction replaces the data of `override`,
 #                `junction_override` (the approved junction ratings) and `avoid_junction` (home's
 #                Avoid junctions), all shipped with their person columns blanked; the beta's own
 #                half-step edit history goes with the overrides it pointed at, its own stress
@@ -537,6 +538,16 @@ if [ "$update_data" = 1 ]; then
 	# --- the new-data update: staged beside the served tables, then one short rename ---
 	[ "$existing" = t ] || die "--update-data needs a database restored once already; run db without it first"
 	# The api and worker keep running: the served tables are not touched until the rename.
+	# One update at a time: two would share the scratch database, the staged schema and the
+	# files copied into the postgis container, and undo each other's work.
+	lockf=/tmp/routemaker-receive-data.lock
+	[ -e "$lockf" ] || (umask 0 && : >>"$lockf")
+	exec 7<"$lockf"
+	flock -n 7 || die "another receive-data.sh db --update-data is running; wait for it"
+	lock_timeout_ms=${RECEIVE_DATA_LOCK_TIMEOUT_MS:-3000}
+	swap_tries=${RECEIVE_DATA_SWAP_TRIES:-5}
+	[[ $lock_timeout_ms =~ ^[1-9][0-9]*$ ]] && [[ $swap_tries =~ ^[1-9][0-9]*$ ]] ||
+		die "RECEIVE_DATA_LOCK_TIMEOUT_MS and RECEIVE_DATA_SWAP_TRIES are whole numbers of 1 or more"
 	staged="${live_schema}_next"
 	retired="${live_schema}_old"
 	scratch="${pgdatabase}_stage"
@@ -565,18 +576,28 @@ if [ "$update_data" = 1 ]; then
 		rm -f "$use"
 		note "reusing $staged, staged earlier from this bundle"
 	else
-		# Room for the scratch copy and the staged one, beside the served and the retired tables.
+		# Whatever an earlier staging left (another bundle's, or one cut short) goes first, so
+		# the room below is measured without it. WITH (FORCE): a restore left running in the
+		# container by an interrupted run would otherwise hold the scratch database open.
+		psql_q "drop schema if exists \"$staged\" cascade" >/dev/null
+		psql_db postgres -c "drop database if exists \"$scratch\" with (force)" >/dev/null
+		# Room for the scratch copy, the staged one and the safety dump, beside the served and the
+		# retired tables, with some over for the restores' WAL.
 		live_bytes=$(psql_q "select coalesce(sum(pg_total_relation_size(c.oid)), 0) from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = '$live_schema' and c.relkind in ('r', 'm')")
 		avail=$(df -B1 --output=avail "$data_root" | tail -n 1 | tr -d ' ')
-		if [ "$avail" -lt $((live_bytes * 5 / 2)) ]; then
+		if [ "$avail" -lt $((live_bytes * 3)) ]; then
 			rm -f "$use"
-			die "not enough room on $data_root to stage beside the served tables: need about $((live_bytes * 5 / 2 / 1048576)) MiB, have $((avail / 1048576)) MiB"
+			die "not enough room on $data_root to stage beside the served tables: need about $((live_bytes * 3 / 1048576)) MiB, have $((avail / 1048576)) MiB"
 		fi
 		note "staging the bundle's $live_schema as $staged while the beta serves (a few minutes per GB; nothing served changes)"
-		psql_q "drop schema if exists \"$staged\" cascade" >/dev/null
 		# A scratch database of its own: the dump names its tables $live_schema.*, a name the
 		# served database already uses. There it is renamed, then copied over under its new name.
-		psql_db postgres -c "drop database if exists \"$scratch\"" >/dev/null
+		# From here on, any way out (a failure, a die, Ctrl-C) drops it again.
+		unstage() {
+			bc exec -T postgis rm -f /tmp/beta.use </dev/null || true
+			psql_db postgres -c "drop database if exists \"$scratch\" with (force)" >/dev/null || note "WARNING: could not drop the scratch database $scratch; drop it by hand"
+		}
+		trap unstage EXIT
 		template=template0
 		[ "$(psql_db postgres -c "select count(*) from pg_database where datname = 'template_postgis'")" = 1 ] && template=template_postgis
 		psql_db postgres -c "create database \"$scratch\" template $template" >/dev/null
@@ -586,21 +607,19 @@ if [ "$update_data" = 1 ]; then
 		done
 		bc exec -T postgis sh -c 'cat > /tmp/beta.use' <"$use"
 		rm -f "$use"
-		unstage() { bc exec -T postgis rm -f /tmp/beta.use </dev/null; psql_db postgres -c "drop database if exists \"$scratch\"" >/dev/null; }
 		if ! bc exec -T postgis pg_restore -U "$pguser" -d "$scratch" --no-owner --no-privileges --single-transaction --exit-on-error -L /tmp/beta.use <"$dump"; then
-			unstage
 			die "staging failed (above) and was discarded; nothing served has changed"
 		fi
 		psql_db "$scratch" -c "alter schema \"$live_schema\" rename to \"$staged\"" >/dev/null
 		# Into the served database in one transaction; pg_dump's own exit status is checked too,
 		# so a dump cut short is never taken for a whole one.
 		# shellcheck disable=SC2016 # the inner shell's
-		if ! bc exec -T postgis sh -c 'rc=$(mktemp); { pg_dump -U "$1" -d "$2" --format=custom --no-owner -n "$4"; echo $? >"$rc"; } | pg_restore -U "$1" -d "$3" --no-owner --no-privileges --single-transaction --exit-on-error; r=$?; d=$(cat "$rc"); rm -f "$rc"; [ "$r" = 0 ] && [ "$d" = 0 ]' sh "$pguser" "$scratch" "$pgdatabase" "$staged" </dev/null; then
-			unstage
+		if ! bc exec -T postgis sh -c 'rc=$(mktemp); trap '\''rm -f "$rc"'\'' EXIT; { pg_dump -U "$1" -d "$2" --format=custom --no-owner -n "$4"; echo $? >"$rc"; } | pg_restore -U "$1" -d "$3" --no-owner --no-privileges --single-transaction --exit-on-error; r=$?; d=$(cat "$rc"); [ "$r" = 0 ] && [ "$d" = 0 ]' sh "$pguser" "$scratch" "$pgdatabase" "$staged" </dev/null; then
 			psql_q "drop schema if exists \"$staged\" cascade" >/dev/null
 			die "copying the staged tables in failed (above) and was discarded; nothing served has changed"
 		fi
 		unstage
+		trap - EXIT
 		# Counted before anything is renamed: a short table is refused here, not after the swap.
 		while IFS=$'\t' read -r qualified expected; do
 			[[ $qualified == "$live_schema".* ]] || continue
@@ -619,6 +638,7 @@ if [ "$update_data" = 1 ]; then
 		exit 0
 	fi
 
+	snapshot update >/dev/null
 	# override, the approved junction ratings and the Avoid junctions come from home
 	# blanked (ship-data.sh). override is emptied below; the junction ratings and
 	# Avoid junctions are replaced as override's are, the beta's own junction suggestions letting
@@ -642,15 +662,16 @@ if [ "$update_data" = 1 ]; then
 	mv "$extra.part" "$extra"
 	bc exec -T postgis sh -c 'cat > /tmp/beta-blanked.sql' <"$extra"
 	rm -f "$extra"
-	snapshot update >/dev/null
 	before_oid=$(psql_q "select coalesce(to_regclass('public.app_user')::oid::text, 'none')")
 	note "swapping $staged in for $live_schema and updating override, the junction ratings and the Avoid junctions in one transaction, and emptying the stale stress tile cache ($accounts beta account(s) are left alone; the beta keeps serving)"
 	# psql runs it as ONE transaction that stops at the first error, so a failure renames nothing.
 	# lock_timeout bounds each lock it waits for, so a slow reader costs this an attempt (tried
-	# again, as pipeline.swap does) rather than queueing every request behind it. The served table
-	# is locked just before the rename, as pipeline.swap.swap_schemas locks it: requests already
-	# reading it finish first, later ones wait the moment the rename takes and then read the new
-	# table. The beta's own stress_tile_cache is emptied in the same transaction: its rows are
+	# again, as pipeline.swap does) rather than queueing every request behind it. The served
+	# tables are locked FIRST, as pipeline.swap.swap_schemas locks them, and in the order a road
+	# panel edit takes them (segment, then the tile cache), so the two cannot deadlock and
+	# nothing else is held while this waits: requests already reading them finish first, later
+	# ones wait the moment the rename takes and then read the new tables. At worst (every attempt
+	# waiting its full timeout) that is about 35 s of queued requests, and then nothing changes. The beta's own stress_tile_cache is emptied in the same transaction: its rows are
 	# keyed on the oid of the live table this replaces, so none could be served again (the
 	# runbook predraws afterwards). stress_edit is emptied with override (it points at the
 	# overrides it replaced); the beta's own stress suggestions are kept and let go of the edit
@@ -660,23 +681,28 @@ if [ "$update_data" = 1 ]; then
 	# then only marks it undone (what it changed is the bundle's now). Both are emptied
 	# with DELETE, not TRUNCATE: a TRUNCATE refuses a table another table's foreign key points at,
 	# even with no row pointing (stress_suggestion.edit_id, migration 0016), and a DELETE does not.
+	# Every table of the served schema, segment first: a request that reads two of them (a
+	# join) must see both old or both new, and the rename itself locks no table.
+	lock_list=$(psql_q "select string_agg(format('%I.%I', schemaname, tablename), ', ' order by tablename <> 'segment', tablename) from pg_tables where schemaname = '$live_schema'")
+	[[ $lock_list =~ ^[a-z0-9_.,\ ]+$ ]] || die "odd table names in $live_schema: $lock_list"
 	swap_err=$(mktemp)
 	swapped=0
-	for attempt in 1 2 3 4 5; do
+	for attempt in $(seq 1 "$swap_tries"); do
 		# shellcheck disable=SC2016
-		if bc exec -T postgis sh -c '{ echo "SET LOCAL lock_timeout = '\''3s'\'';"; echo "UPDATE public.stress_suggestion SET edit_id = NULL WHERE edit_id IS NOT NULL;"; echo "UPDATE public.review_ruling SET edit_id = NULL WHERE edit_id IS NOT NULL;"; echo "UPDATE public.review_ruling SET access_override_id = NULL WHERE access_override_id IS NOT NULL;"; echo "DELETE FROM public.stress_edit;"; echo "DELETE FROM public.override;"; echo "TRUNCATE public.stress_tile_cache;"; echo "LOCK TABLE \"$3\".segment IN ACCESS EXCLUSIVE MODE;"; echo "DROP SCHEMA IF EXISTS \"$5\" CASCADE;"; echo "ALTER SCHEMA \"$3\" RENAME TO \"$5\";"; echo "ALTER SCHEMA \"$4\" RENAME TO \"$3\";"; echo "COMMENT ON SCHEMA \"$3\" IS NULL;"; cat /tmp/beta-blanked.sql || echo "SELECT blanked_sql_missing_so_this_rolls_back();"; } | psql -U "$1" -d "$2" -q -1 -v ON_ERROR_STOP=1 >/dev/null' sh "$pguser" "$pgdatabase" "$live_schema" "$staged" "$retired" </dev/null 2>"$swap_err"; then
+		if bc exec -T postgis sh -c '{ echo "SET LOCAL lock_timeout = '\''$7ms'\'';"; echo "LOCK TABLE $6 IN ACCESS EXCLUSIVE MODE;"; echo "UPDATE public.stress_suggestion SET edit_id = NULL WHERE edit_id IS NOT NULL;"; echo "UPDATE public.review_ruling SET edit_id = NULL WHERE edit_id IS NOT NULL;"; echo "UPDATE public.review_ruling SET access_override_id = NULL WHERE access_override_id IS NOT NULL;"; echo "DELETE FROM public.stress_edit;"; echo "DELETE FROM public.override;"; echo "TRUNCATE public.stress_tile_cache;"; echo "DROP SCHEMA IF EXISTS \"$5\" CASCADE;"; echo "ALTER SCHEMA \"$3\" RENAME TO \"$5\";"; echo "ALTER SCHEMA \"$4\" RENAME TO \"$3\";"; echo "COMMENT ON SCHEMA \"$3\" IS NULL;"; cat /tmp/beta-blanked.sql || echo "SELECT blanked_sql_missing_so_this_rolls_back();"; } | psql -U "$1" -d "$2" -q -1 -v ON_ERROR_STOP=1 >/dev/null' sh "$pguser" "$pgdatabase" "$live_schema" "$staged" "$retired" "$lock_list" "$lock_timeout_ms" </dev/null 2>"$swap_err"; then
 			swapped=1
 			break
 		fi
 		cat "$swap_err" >&2
 		# Only lock contention is worth another try; anything else would fail the same way.
 		grep -Eq 'lock timeout|deadlock detected' "$swap_err" || break
-		[ "$attempt" = 5 ] || { note "the rename waited too long for a reader (attempt $attempt of 5); trying again"; sleep $((2 * attempt)); }
+		[ "$attempt" = "$swap_tries" ] || { note "the rename waited too long for a reader (attempt $attempt of $swap_tries); trying again"; sleep $((2 * attempt)); }
 	done
 	rm -f "$swap_err"
 	bc exec -T postgis rm -f /tmp/beta-blanked.sql </dev/null
 	[ "$swapped" = 1 ] || die "the swap failed and was rolled back (above); the beta still serves the old $live_schema, and $staged is kept for the next try"
-	psql_q "analyze" >/dev/null
+	# The staged tables were analyzed before the rename; only the reloaded ones are new here.
+	psql_q "analyze public.override, public.junction_override, public.avoid_junction" >/dev/null
 	after_oid=$(psql_q "select coalesce(to_regclass('public.app_user')::oid::text, 'none')")
 	[ "$before_oid" = "$after_oid" ] || die "public.app_user was recreated by the update; this should not happen, report it"
 	after_accounts=$(psql_q "select count(*) from public.app_user")
@@ -731,7 +757,10 @@ while IFS=$'\t' read -r qualified expected; do
 		*) note "note: $qualified had $expected rows when counted at home and has $actual here (the home site was in use; informational)" ;;
 	esac
 done <"$bundle/db/row-counts.tsv"
-[ "$fail" = 0 ] || die "the $live_schema schema does not match the bundle; do not start the api. Restore again (--update-data, or --replace-db for a first install)"
+if [ "$fail" != 0 ]; then
+	[ "$update_data" = 1 ] && die "the $live_schema schema does not match the bundle, and it is being served. Put the replaced tables back (docs/BETA-RUNBOOK.md, rollback B, \"by rename\"), then look"
+	die "the $live_schema schema does not match the bundle; do not start the api. Restore again (--replace-db for a first install)"
+fi
 if [ "$update_data" = 1 ]; then
 	note "db update done; the old tables stay as $retired until the next update. If the api and worker were stopped, start them: scripts/beta/beta-compose.sh up -d api worker"
 	note "then restart the routers one at a time onto the new tiles, and write their settings rows: $SYNC_UPSTREAMS"

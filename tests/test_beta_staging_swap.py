@@ -95,6 +95,9 @@ def live_schema_sql(names: list[str]) -> str:
         "create table live.segment (id serial primary key, name text);"
         "create index segment_name on live.segment (name);"
         f"insert into live.segment (name) values {rows};"
+        # a second table, read beside segment (the swap must hold both)
+        "create table live.node (id int);"
+        f"insert into live.node values ({len(names)});"
     )
 
 
@@ -132,12 +135,12 @@ def beta(tmp_path: Path):
     user = os.environ.get("PGUSER") or psql("postgres", "select current_user")
     env.write_text(f"DATA_ROOT={data}\nPGDATABASE={BETA_DB}\nPGUSER={user}\n")
 
-    def run(*args: str) -> subprocess.CompletedProcess:
+    def run(*args: str, **more: str) -> subprocess.CompletedProcess:
         return subprocess.run(
             ["bash", str(SCRIPT), "--bundle", str(bundle), "--env-file", str(env),
              "--allow-sha-mismatch", "db", "--update-data", *args],
             capture_output=True, text=True, check=False, timeout=300,
-            env={**os.environ, "RECEIVE_DATA_REPO": str(checkout)},
+            env={**os.environ, "RECEIVE_DATA_REPO": str(checkout), **more},
         )  # fmt: skip
 
     yield run
@@ -191,14 +194,12 @@ def test_stage_only_renames_nothing_and_the_update_reuses_it(beta) -> None:
     assert psql(BETA_DB, "select coalesce(obj_description('live'::regnamespace), '')") == ""
 
 
-def test_a_reader_holding_the_served_table_delays_the_rename_but_does_not_fail_it(beta) -> None:
-    assert beta("--stage-only").returncode == 0
-    # A long reader: an open transaction that has read live.segment holds a lock the rename's
-    # ACCESS EXCLUSIVE waits for; lock_timeout makes that an attempt, tried again.
+def hold(table: str, seconds: int) -> threading.Thread:
+    """An open transaction that has read `table` and keeps its lock for `seconds`."""
     held = threading.Event()
 
     def reader() -> None:
-        sql = "begin; select count(*) from live.segment; select pg_sleep(5); commit;"
+        sql = f"begin; select count(*) from {table}; select pg_sleep({seconds}); commit;"
         proc = subprocess.Popen(["psql", "-d", BETA_DB, "-Atq", "-c", sql])
         time.sleep(1)
         held.set()
@@ -207,12 +208,66 @@ def test_a_reader_holding_the_served_table_delays_the_rename_but_does_not_fail_i
     t = threading.Thread(target=reader)
     t.start()
     held.wait()
+    return t
+
+
+@pytest.mark.parametrize("table", ["live.segment", "live.node"])
+def test_a_reader_holding_a_served_table_delays_the_rename_but_does_not_fail_it(
+    beta, table: str
+) -> None:
+    assert beta("--stage-only").returncode == 0
+    # A long reader holds a lock the rename's ACCESS EXCLUSIVE waits for; lock_timeout makes
+    # that an attempt, tried again. Every live table is locked, not segment alone: a join that
+    # opened node first would otherwise read the old node beside the new segment.
+    t = hold(table, 5)
     done = beta()
     t.join()
 
     assert done.returncode == 0, done.stderr
     assert "trying again" in done.stderr
     assert segments("live") == ["new road", "newer road", "newest road"]
+    assert psql(BETA_DB, "select id from live.node") == "3"
+
+
+def test_when_every_attempt_waits_too_long_nothing_changes(beta) -> None:
+    assert beta("--stage-only").returncode == 0
+    t = hold("live.segment", 8)
+    done = beta(RECEIVE_DATA_SWAP_TRIES="2", RECEIVE_DATA_LOCK_TIMEOUT_MS="500")
+    t.join()
+
+    assert done.returncode == 2 and "still serves the old live" in done.stderr
+    assert segments("live") == ["old road"]
+    assert segments("live_next") == ["new road", "newer road", "newest road"]
+    assert psql(BETA_DB, "select count(*) from override") == "1"
+    # and the next try reuses what was staged
+    done = beta()
+    assert done.returncode == 0 and "reusing live_next" in done.stderr, done.stderr
+
+
+def test_a_second_update_retires_the_first(beta) -> None:
+    assert beta().returncode == 0
+    # the next bundle (the same rows here; a different dump, so it stages afresh)
+    psql(BETA_DB, "comment on schema live_old is 'a mark that must not matter'")
+    psql(BETA_DB, "create schema live_next; comment on schema live_next is 'bundle 0000'")
+
+    done = beta()
+
+    assert done.returncode == 0, done.stderr
+    assert "reusing" not in done.stderr
+    assert segments("live") == ["new road", "newer road", "newest road"]
+    assert segments("live_old") == ["new road", "newer road", "newest road"]  # the first update's
+    assert schemas() == {"live", "live_old"}
+
+
+def test_two_updates_at_once_are_refused(beta) -> None:
+    # another run holding the lock (flock(1) takes the same kind of lock the script does)
+    held = subprocess.Popen(["flock", "/tmp/routemaker-receive-data.lock", "sleep", "3"])
+    time.sleep(0.5)
+    done = beta("--stage-only")
+    held.wait()
+
+    assert done.returncode == 2 and "another receive-data.sh" in done.stderr
+    assert schemas() == {"live"}
 
 
 def test_a_short_staged_table_is_refused_before_anything_is_renamed(beta, tmp_path: Path) -> None:

@@ -176,7 +176,8 @@ if [ "$beta" = 1 ]; then
 		die "db --update-data failed; its swap runs in one transaction, so the database is as it was and the beta still serves it. The new graphs are installed (rollback A puts the old ones back), or run --swap again"
 	fi
 	# One at a time, so only one ride type is briefly unanswered at once; the api plans a ride
-	# whose router does not answer on the standard graph meanwhile.
+	# whose router does not answer on the standard graph meanwhile (while the standard router
+	# itself restarts, Default rides fail for those few seconds).
 	note "restarting the routers one at a time so they serve the new graphs"
 	for router in "${routers[@]}"; do
 		"$bcompose" restart "$router"
