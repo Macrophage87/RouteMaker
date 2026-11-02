@@ -624,7 +624,13 @@ def test_row_c4_never_makes_a_carriageway_of_the_review_two_way() -> None:
         for w in data["ways"]
     ]
     two_way = WayFacts(
-        agency=DC_AGENCY, blocks=("b",), one_way=False, two_way_throughout=True, names_agree=True
+        agency=DC_AGENCY,
+        blocks=("b",),
+        one_way=False,
+        two_way_throughout=True,
+        names_agree=True,
+        # The owner's two-way row, as row C4 needs since 2026-11-01.
+        owner_direction=True,
     )
     facts = {way_id: replace(two_way, blocks=(f"b{way_id}",)) for way_id in data["review"]}
     overlays = overlay_road_facts(ways, facts)
