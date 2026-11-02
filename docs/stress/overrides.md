@@ -50,7 +50,9 @@ shown to riders (`overrides.py:447-452`).
 1. The classifier (`stress.classify`), then an agency's rating where one rates
    the way, county over state (`routemaker.agency_lts`; the owner, 2026-10-13),
    then the owner's rural floor (`stress.rural_floor`: a rural way open to cars
-   is LTS 2 at least).
+   is LTS 2 at least), then the owner's service-road step (`stress.service_road_step`:
+   an alley, driveway, parking aisle or other service road open to cars at LTS 1 is
+   LTS 1.5; the owner, 2026-11-01).
 2. The curated bike lane's owner tier, then named corridors (`run.py:2069-2109`).
 3. Approved stress rows: a row that sets the tier wins; a floor only raises
    (`run.py:2309`).

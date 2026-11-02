@@ -283,8 +283,9 @@ def region_section(
             else [
                 "DC's record takes priority over OSM's (OWNER-DECISIONS 190): a DC one-way is applied "
                 "where OSM tags the way two-way in so many words, except on a reversible-lane block, a "
-                "junction stub under 30 m [100 ft] or where the direction is not known; a DC two-way is "
-                "applied over an OSM one-way except on a carriageway of a divided road or of a pair "
+                "junction stub under 30 m [100 ft] or where the direction is not known; a two-way is "
+                "applied over an OSM one-way only on the owner's BD block rows (owner 2026-11-01), and "
+                "even then not on a carriageway of a divided road or of a pair "
                 "sharing the block, a slip road, a freeway or trunk road, a roundabout, a stub or an "
                 "unnamed way. What is kept is counted as a disagreement (before-after.md has the table).",
                 "",

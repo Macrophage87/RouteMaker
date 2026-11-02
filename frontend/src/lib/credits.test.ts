@@ -40,6 +40,8 @@ test("the credits are short source names, exactly these, OpenStreetMap first (OW
       "AlertDC (HSEMA)",
       // v0.13.0: the Purple Line's construction updates, read by hand (routemaker.purple_line).
       "Purple Line construction update",
+      // v0.17.0: Maryland's counties' and towns' closures, routed round (routemaker.md_closures).
+      "Maryland Road Closure Reporter (MDOT SHA)",
     ],
   );
   for (const credit of DATA) {
