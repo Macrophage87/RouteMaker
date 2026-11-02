@@ -1964,6 +1964,14 @@ def mass_capacity(answer: dict) -> dict | None:
 CLOSURE_SAID = ("on_route", "may_still_apply", "routed_round", "bypassed")
 # A stop or via point reached this close to a closed stretch is on it (metres along the route).
 ON_CLOSURE_M = 30.0
+# Potential closures along the route (a permit, planned utility work: effect "possible"), the
+# first this many by mile. The owner, 2026-11-02: return "the link or citation to where the
+# closures would or could be".
+MAX_POTENTIAL = 20
+# The site lists the potential closures on its map view round the route (up to 400 m off it),
+# without saying where the route meets them: one is along the route where its line comes this
+# close (miles, about 30 m).
+POTENTIAL_NEAR_MI = 0.02
 CLOSURES_NEAR_MAX_MI = 10.0  # the site's map view is at most 0.4 by 0.3 degrees
 
 
@@ -1990,6 +1998,47 @@ def _points_along(plan: Plan) -> list[tuple[int, float]]:
         cum.append(cum[-1] + haversine_mi((p[0], p[1]), (q[0], q[1])) * METRES_PER_MILE)
     scale = (plan.answer.get("distance_m") or cum[-1]) / (cum[-1] or 1.0)
     return [(i + 1, cum[min(end, len(cum) - 1)] * scale) for i, end in enumerate(ends[:-1])]
+
+
+def _route_cells(flat_route: list) -> dict[tuple[int, int], list[int]]:
+    """The route's steps by the POTENTIAL_NEAR_MI square each comes near, so a point checks
+    only the few steps round it."""
+    cells: dict[tuple[int, int], list[int]] = {}
+    for i in range(len(flat_route) - 1):
+        (ax, ay), (bx, by) = flat_route[i], flat_route[i + 1]
+        x0 = math.floor((min(ax, bx) - POTENTIAL_NEAR_MI) / POTENTIAL_NEAR_MI)
+        x1 = math.floor((max(ax, bx) + POTENTIAL_NEAR_MI) / POTENTIAL_NEAR_MI)
+        y0 = math.floor((min(ay, by) - POTENTIAL_NEAR_MI) / POTENTIAL_NEAR_MI)
+        y1 = math.floor((max(ay, by) + POTENTIAL_NEAR_MI) / POTENTIAL_NEAR_MI)
+        if (x1 - x0 + 1) * (y1 - y0 + 1) > 10_000:  # a long straight step: checked everywhere
+            cells.setdefault(("all", 0), []).append(i)  # type: ignore[arg-type]
+            continue
+        for cx in range(x0, x1 + 1):
+            for cy in range(y0, y1 + 1):
+                cells.setdefault((cx, cy), []).append(i)
+    return cells
+
+
+def _route_span(flat_route: list, cum: list, cells: dict, flat, pts: list):
+    """The miles along the route (flat points `flat_route`, miles `cum` at each, steps by
+    `_route_cells`) where it comes within POTENTIAL_NEAR_MI of any of `pts`, first and last;
+    None when it never does."""
+    near = []
+    for p in pts:
+        x, y = flat((p[0], p[1]))
+        cell = (math.floor(x / POTENTIAL_NEAR_MI), math.floor(y / POTENTIAL_NEAR_MI))
+        best = None
+        for i in cells.get(cell, []) + cells.get(("all", 0), []):  # type: ignore[call-overload]
+            (ax, ay), (bx, by) = flat_route[i], flat_route[i + 1]
+            dx, dy = bx - ax, by - ay
+            seg = dx * dx + dy * dy
+            f = 0.0 if seg == 0 else max(0.0, min(1.0, ((x - ax) * dx + (y - ay) * dy) / seg))
+            d = math.hypot(ax + f * dx - x, ay + f * dy - y)
+            if d <= POTENTIAL_NEAR_MI and (best is None or d < best[0]):
+                best = (d, cum[i] + f * (cum[i + 1] - cum[i]))
+        if best is not None:
+            near.append(best[1])
+    return (min(near), max(near)) if near else None
 
 
 def _closure_id(row: dict) -> str:
@@ -2041,7 +2090,32 @@ def route_closures(plan: Plan) -> dict:
         return {}
     rows: dict[tuple, dict] = {}
     spans: list[tuple[float, float, tuple]] = []  # where the route rides through one, metres
+    potential: dict[str, dict] = {}
+    route = plan.line
+    flat = _flat((route[0][0], route[0][1])) if len(route) >= 2 else None
+    flat_route = [flat((p[0], p[1])) for p in route] if flat else []
+    cum = _cum_miles(route) if flat else []
+    cells = _route_cells(flat_route)
+    total_mi = (plan.answer.get("distance_m") or 0.0) / METRES_PER_MILE
+    scale = total_mi / cum[-1] if total_mi and cum and cum[-1] else 1.0
     for row in zones.get("closures") or []:
+        if row.get("effect") == "possible":
+            # A permit or planned work on the map round the route: it may close the road (or
+            # the bike lane) some time in its window. Never routed round: said, with its
+            # source, when the route rides along it.
+            pts = row.get("line") or ([row["point"]] if row.get("point") else [])
+            span = _route_span(flat_route, cum, cells, flat, pts) if flat and pts else None
+            if span is None:
+                continue
+            said = potential.setdefault(_closure_id(row), _closure_row(row))
+            said.pop("effect", None)
+            said["closes"] = "bike lane" if row.get("kind") == "lane" else "road"
+            a, b = span[0] * scale, span[1] * scale
+            said["from_mi"] = round(min(said.get("from_mi", a), a), 1)
+            said["to_mi"] = round(max(said.get("to_mi", b), b), 1)
+            if row.get("point") and "lon_lat" not in said:
+                said["lon_lat"] = row["point"]
+            continue
         if row.get("effect") not in CLOSURE_SAID:
             continue
         key = (_closure_id(row), row.get("effect"))
@@ -2055,10 +2129,21 @@ def route_closures(plan: Plan) -> dict:
             if row["effect"] == "on_route" and row.get("kind") != "lane":
                 spans.append((row["from_m"], row["to_m"], key))
     notices = [_notice_row(n) for n in zones.get("notices") or [] if isinstance(n, dict)]
-    if not rows and not notices:
+    if not rows and not notices and not potential:
         return {}
     said = sorted(rows.values(), key=lambda r: (r["effect"] != "on_route", r.get("from_mi", 0)))
     out: dict = {"closures": said}
+    if potential:
+        listed = sorted(potential.values(), key=lambda r: r["from_mi"])
+        out["potential_closures"] = listed[:MAX_POTENTIAL]
+        if len(listed) > MAX_POTENTIAL:
+            out["potential_closures_more"] = len(listed) - MAX_POTENTIAL
+        out["potential_closures_note"] = (
+            "permits and planned work that allow closing the road or bike lane some time in"
+            " their window: they may be open, and the route is not planned round them. Give"
+            " the rider each one's source and link; avoid one with revise_route's avoid"
+            " (from_mi, to_mi) if the rider wants."
+        )
     if notices:
         out["check_before_you_go"] = notices
     if zones.get("ride_at"):
@@ -3180,7 +3265,11 @@ TOOLS = [
             " one is asked back. `closures` lists the closures it goes through or round, and"
             " `closure_warning` says when one is on the route (often a via point only a closed"
             " path reaches: move it); `check_before_you_go` lists park notices for the ride's"
-            " time, such as a deer-management closure at night (warnings, not routed round)."
+            " time, such as a deer-management closure at night (warnings, not routed round);"
+            " `potential_closures` lists the permits and planned work along the route that may"
+            " close the road or bike lane in their window (DDOT permits, DDOT ProTrack+, DC"
+            " Water, WSSC Water), with their miles, source and link: not routed round."
+            " Every closure row names its source and links to it: give the rider both."
             " Read these before sending the link, and say the busy parts, any closure and any"
             " notice."
             " With max_miles_from_metro it checks the distance from Metro and, with"
