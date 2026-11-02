@@ -7,7 +7,7 @@
  * screen reader hears the same plan the map draws, in the order it is ridden.
  */
 import { useId } from "react";
-import type { StressSpan, TransitPlan } from "./lib/api.ts";
+import type { StressSpan, TransitPlan, TransitStep } from "./lib/api.ts";
 import { WALK_CASING, WALK_COLOUR, WALK_DASH, WALK_LINE_WIDTH } from "./lib/bikeshare.ts";
 import type { PresetId } from "./lib/presets.ts";
 import { PresetName } from "./lib/presetName.ts";
@@ -31,6 +31,7 @@ import { Icon } from "./Icon.tsx";
 import { DepartureTimer } from "./DepartureTimer.tsx";
 import { RIDE_REST, RIDE_REST_HINT } from "./lib/rideTrip.ts";
 import { t } from "./lib/i18n.ts";
+import { walkTurnTexts } from "./lib/walkCues.ts";
 
 function Swatch({ colour, dash, width }: { colour: string; dash: [number, number]; width: number }) {
   return (
@@ -39,6 +40,40 @@ function Swatch({ colour, dash, width }: { colour: string; dash: [number, number
       <line x1="2" y1="6" x2="42" y2="6" stroke={colour} strokeWidth={width} strokeLinecap="round" strokeDasharray={dash.map((d) => d * width).join(" ")} />
     </svg>
   );
+}
+
+/**
+ * A step's detail, closed until asked for (Stephen, 2026-11-02; the inverted pyramid): a transit step's stops after the
+ * one boarded, the last one the stop to get off; a walk's turns, in the words Ride says them.
+ */
+function StepMore({ step }: { step: TransitStep }) {
+  const stops = (step.stops ?? []).slice(1);
+  const turns = walkTurnTexts(step.turns);
+  if (stops.length > 0) {
+    return (
+      <details className="transit-step-more">
+        <summary>{stops.length === 1 ? t("1 transit stop") : t("{count} transit stops", { count: stops.length })}</summary>
+        <ol>
+          {stops.map((stop, i) => (
+            <li key={`${i}-${stop.name}`}>{i === stops.length - 1 ? <strong>{stop.name}</strong> : stop.name}</li>
+          ))}
+        </ol>
+      </details>
+    );
+  }
+  if (turns.length > 0) {
+    return (
+      <details className="transit-step-more">
+        <summary>{turns.length === 1 ? t("1 turn") : t("{count} turns", { count: turns.length })}</summary>
+        <ol>
+          {turns.map((turn, i) => (
+            <li key={`${i}-${turn}`}>{turn}</li>
+          ))}
+        </ol>
+      </details>
+    );
+  }
+  return null;
 }
 
 export function TransitSummary({
@@ -122,6 +157,7 @@ export function TransitSummary({
               <span className="transit-step-text">{step.text}</span>
               {stress && <span className="transit-step-stress"> {stress}</span>}
               {step.live && <span className="transit-step-live"> {step.live.text}</span>}
+              <StepMore step={step} />
             </li>
           );
         })}

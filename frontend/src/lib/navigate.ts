@@ -1324,7 +1324,7 @@ function leadsWithTemplate(cue: Pick<Cue, "kind"> & Pick<Partial<Cue>, "source">
 }
 
 /** A cue's words placed after "In 500 feet, ": the first letter lowered only where it is the app's template. */
-function inSentence(cue: Pick<Cue, "kind"> & Pick<Partial<Cue>, "source">, text: string): string {
+export function inSentence(cue: Pick<Cue, "kind"> & Pick<Partial<Cue>, "source">, text: string): string {
   return leadsWithTemplate(cue) ? lowerFirst(text) : text;
 }
 
@@ -2117,7 +2117,7 @@ export const UTURN_SAID = "Make a U-turn.";
 /** A re-route that keeps the rider's way after they rode on past UTURNS_BEFORE_AHEAD U-turns. */
 export const REPLAN_AHEAD = t("New route found. Keep going ahead.");
 /** The end said on arrival (cueSpoken, whereAmI). */
-const ARRIVED_SAID = "You have arrived at the end of the route.";
+export const ARRIVED_SAID = "You have arrived at the end of the route.";
 /**
  * The end as the card shows it (the UI review, 2026-10-28): "Arrived: Union Station", the destination's name where the
  * map has one, with Done under it; still said as ARRIVED_SAID.

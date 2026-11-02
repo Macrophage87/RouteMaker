@@ -474,11 +474,28 @@ export interface BikeshareStop {
 }
 
 /** A walk leg (core.api.BikeshareWalkOut). */
+/** A walk's turn (2026-11-02, core.walk_turns): said in the rider's language with a ride's turn words (lib/walkCues.ts). */
+export interface WalkTurn {
+  movement: "left" | "right" | "bear_left" | "bear_right" | "uturn";
+  /** The street turned onto; null: a path or sidewalk with no name. */
+  street: string | null;
+  point: LonLat;
+}
+
 export interface BikeshareWalk {
   geometry: { type: "LineString"; coordinates: LonLat[] };
   distance_m: number;
   duration_s: number;
   to: string;
+  /** Its turns in order, for turn-by-turn on foot; absent from an older API. */
+  turns?: WalkTurn[];
+}
+
+/** A transit step's stop (2026-11-02): its name, where it is, and the scheduled seconds after leaving the step's first stop. */
+export interface TransitStop {
+  name: string;
+  point: LonLat;
+  after_s: number;
 }
 
 /** The operator's own price information (core.api.BikeshareFeeOut): information, not a quote. */
@@ -540,6 +557,12 @@ export interface TransitStep {
    * routed in time (an older API too): the step is then drawn as a plain line.
    */
   stress_spans?: StressSpan[] | null;
+  /** A transit step's stops in order, the one boarded and the one left included (stop by stop, 2026-11-02). */
+  stops?: TransitStop[] | null;
+  /** A transit step's way, by its last stop: "Shady Grove". */
+  toward?: string | null;
+  /** A walk's turns in order, where it was routed in time (turn by turn on foot, 2026-11-02). */
+  turns?: WalkTurn[] | null;
   /** A ride after the route line, routed: its length, climb and descent (metres) and elevation profile, so the
    * trip's totals and chart cover every ride (Stephen, 2026-10-21). Absent where it was not routed in time. */
   distance_m?: number | null;

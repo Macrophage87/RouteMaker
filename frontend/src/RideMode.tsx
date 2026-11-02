@@ -258,6 +258,9 @@ import {
   tripStep,
   type RideTrip,
 } from "./lib/rideTrip.ts";
+import { onwardActive, onwardStart, onwardStep, type OnwardState } from "./lib/onward.ts";
+import { walkTurnLine } from "./lib/walkCues.ts";
+import { OnBoardCard } from "./OnBoardCard.tsx";
 import { t } from "./lib/i18n.ts";
 import { railWord } from "./lib/railWords.ts";
 import { countText } from "./lib/rideGroup.ts";
@@ -890,6 +893,10 @@ export function RideMode({
   const [walking, setWalking] = useState(approach !== null);
   // The walk, whether it has been said, and the last good fix (lib/rideTrip.ts tripStep); its `ride` is rideRef's.
   const tripRef = useRef(tripRideStart(trip));
+  // What follows the line once it ends (lib/onward.ts): walks turn by turn, transit stop by stop (2026-11-02).
+  const onwardParts = useMemo(() => trip?.onward ?? [], [trip]);
+  const onwardRef = useRef<OnwardState | null>(null);
+  const [onward, setOnward] = useState<OnwardState | null>(null);
   const rideRef = useRef(ride);
   const prefsRef = useRef(prefs);
   prefsRef.current = prefs;
@@ -1521,6 +1528,21 @@ export function RideMode({
   restartOpen.current = restart !== null;
   // Where it was asked: ridden RESTART_AUTO_M from there unanswered, it goes on with the stops as marked.
   const restartAt = useRef<LonLat | null>(null);
+  // One fix (or, on transit, the clock alone) into what follows the line: started at the first one after arriving.
+  const followOnward = useCallback(
+    (fix: RideFix | null) => {
+      const now = Date.now();
+      const state = onwardRef.current ?? onwardStart(onwardParts, now);
+      if (!onwardActive(onwardParts, state)) return;
+      const out = onwardStep(onwardParts, state, now, fix, prefsRef.current.verbosity);
+      onwardRef.current = out.state;
+      setOnward(out.state);
+      say(out.events);
+      // The next stop and the stop to get off are said as notes are, whatever the voice level: they are the trip's.
+      for (const line of out.said) notify(line);
+    },
+    [onwardParts, say, notify],
+  );
   const onFix = useCallback(
     // `beat`: the app's heartbeat (lib/ridePause.ts heartbeatFix), the last fix again with the time now while a stopped
     // rider's GPS sends none. It runs only the stillness clocks (the dock, the stay at the destination); never the
@@ -1573,6 +1595,8 @@ export function RideMode({
       const out = { state: stepped.state.ride, events: stepped.events };
       rideRef.current = out.state;
       setRide(out.state);
+      // Arrived at the line's end: the walk or the transit after it, followed from here (lib/onward.ts).
+      if (out.state.arrived && onwardParts.length > 0) followOnward(fix);
       statsRef.current = stepped.state.walking
         ? statsPause(statsRef.current)
         : statsStep(statsRef.current, fix, out.state, modelRef.current, routeRef.current.profile);
@@ -1586,7 +1610,11 @@ export function RideMode({
         plan: (fromM, toM) => secondsBetween(line, fromM, toM),
         riding: !stepped.state.walking && !pausedRef.current && !out.state.off && !out.state.arrived && fix.accuracyM <= POOR_FIX_M,
       });
-      if (stepped.state.walking) return;
+      // Walking to the line's start: its turns said (lib/walkCues.ts), nothing else.
+      if (stepped.state.walking) {
+        say(out.events);
+        return;
+      }
       // Restarted part way (Stephen 2026-10-24): the first place on the line past a stop asks, once, which are done.
       if (!restartAsked.current && out.state.progressM !== null) {
         restartAsked.current = true;
@@ -1633,7 +1661,7 @@ export function RideMode({
         announcer.current?.answer(whereAmI(modelRef.current, out.state, false, milesRef.current, arrivingAt));
       }
     },
-    [gate, replan, say, notify, checkCueSheet, approach, trip, takeOther, stopName, arrivingAt],
+    [gate, replan, say, notify, checkCueSheet, approach, trip, takeOther, stopName, arrivingAt, followOnward],
   );
   const onFixRef = useRef(onFix);
   onFixRef.current = onFix;
@@ -1747,7 +1775,11 @@ export function RideMode({
       const beat = heartbeatFix(last, last?.at ?? 0, now);
       if (beat) onFixRef.current(beat, true);
     }
+    // On transit after the line, the clock places the train when no fix comes (lib/onBoard.ts).
+    if (rideRef.current.arrived && onwardActive(onwardParts, onwardRef.current) && onwardParts[onwardRef.current?.index ?? 0]?.kind === "transit") followOnward(null);
     if (!rideRef.current.arrived || !stayedLong(stay.current, now)) return;
+    // Never paused while a walk or a train after the line is still being followed: waiting on a platform is not the end.
+    if (onwardActive(onwardParts, onwardRef.current ?? (onwardParts.length > 0 ? onwardStart(onwardParts, now) : null))) return;
     pauseSpot.current = stay.current?.point ?? null;
     stay.current = null;
     // In the app the watch runs on, its fixes held (PausedFixes): a new one at Resume would restart the location
@@ -2391,6 +2423,14 @@ export function RideMode({
     onShowPlace?.(rackPoint(arrivalRacks[next].rack));
   };
   // The destination's name for "Arrived: ..." (a loop's end is its start: none).
+  // The walk to the line's next turn, and after the line, the part followed now (lib/onward.ts).
+  const approachTurn = walking && approach?.walk ? walkTurnLine(approach.walk, tripRef.current.walk ?? null) : null;
+  const onwardIndex = onward?.index ?? 0;
+  const onwardPart = ride.arrived ? (onwardParts[onwardIndex] ?? null) : null;
+  const onwardWalkLine = onwardPart?.kind === "walk" ? walkTurnLine(onwardPart.model, onward?.walk ?? null) : null;
+  // Still to board the first transit after the line (its departure and where its next train is are shown till then).
+  const firstTransit = onwardParts.findIndex((p) => p.kind === "transit");
+  const toBoard = firstTransit < 0 || onwardIndex < firstTransit || (onwardIndex === firstTransit && (onward?.board?.boardedAt ?? null) === null);
   const destinationName = ride.arrived && !plan.current.loop ? (stopName?.(plan.current.points[plan.current.points.length - 1]) ?? null) : null;
   // The distance's metric in brackets a size smaller, so the line stays one line with large text.
   // A re-route's U-turn is now: no distance (it is at the line's start, behind the rider). One further along has its distance.
@@ -2798,11 +2838,20 @@ export function RideMode({
         {ride.arrived ? (
           <>
             {/* "Arrived: Union Station" (the UI review, 2026-10-28); Done, in the top row, opens the summary. */}
-            <p className="cue-text">{trip?.finish?.shown ?? arrivedShown(destinationName)}</p>
-            {/* The boarding's departure, its countdown and milestones as in the trip's panel (said through the ride's outputs). */}
-            {trip?.departure && <DepartureTimer departure={trip.departure} announce={notify} />}
-            {/* Where the next Metro train or Metrobus is while waiting there (v0.9.0), its mark on the map. */}
-            <NextVehicleLine ask={trip?.boarding ?? null} waiting={ride.arrived} announce={notify} onMark={setVehicle} />
+            {/* After the line (2026-11-02): a walk's next turn, or the train's stops once on board, in place of the boarding words. */}
+            {onwardPart?.kind === "transit" && onward?.board?.boardedAt != null ? (
+              <OnBoardCard leg={onwardPart.leg} state={onward.board} />
+            ) : (
+              <>
+                {onwardPart?.kind === "walk" && onwardIndex > 0 ? null : <p className="cue-text">{trip?.finish?.shown ?? arrivedShown(destinationName)}</p>}
+                {onwardWalkLine && <p className={onwardIndex > 0 ? "cue-text" : "cue-then"}>{onwardWalkLine}</p>}
+                {onwardPart?.kind === "transit" && <OnBoardCard leg={onwardPart.leg} state={onward?.board ?? null} />}
+                {/* The boarding's departure, its countdown and milestones as in the trip's panel (said through the ride's outputs). */}
+                {trip?.departure && toBoard && <DepartureTimer departure={trip.departure} announce={notify} />}
+                {/* Where the next Metro train or Metrobus is while waiting there (v0.9.0), its mark on the map. */}
+                <NextVehicleLine ask={trip?.boarding ?? null} waiting={ride.arrived && toBoard} announce={notify} onMark={setVehicle} />
+              </>
+            )}
             {/* A full rack: the next one, how far and which way, and one button to see it (lib/bikeParking.ts). */}
             {rackNow && rackFrom && (
               <div className="ride-next-rack">
@@ -2816,7 +2865,15 @@ export function RideMode({
             )}
           </>
         ) : walking && approach ? (
-          <p className="cue-text">{approachWords(approach, ride.fix?.point ?? null).shown}</p>
+          approachTurn ? (
+            <>
+              {/* The walk turn by turn (2026-11-02): its next turn first, where it goes under it. */}
+              <p className="cue-text">{approachTurn}</p>
+              <p className="cue-then">{approachWords(approach, ride.fix?.point ?? null).shown}</p>
+            </>
+          ) : (
+            <p className="cue-text">{approachWords(approach, ride.fix?.point ?? null).shown}</p>
+          )
         ) : ride.off ? (
           <div className="cue-off">
             <CueShape shape="warn" />
