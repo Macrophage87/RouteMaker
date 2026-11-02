@@ -430,7 +430,10 @@ owner's direction wins, except on a junction stub
 OSM one-way). That last case is not one of item 190's rows, so it is not counted
 in the overlay's `precedence`, and the discrepancy report reads the owner's
 direction as DC's (it compares one-way against two-way, not direction). So a street reversed before either source caught up is right on our
-map before the OSM edit, and still right after it. Two entries giving one block
+map before the OSM edit, and still right after it. Row C4 itself now needs the owner's `BD` on every block of the way:
+DC's two-way record alone leaves an OSM one-way one-way (owner 2026-11-01, M St NE
+17th-19th), so a street made two-way on the ground needs a `BD` entry until OSM
+catches up. Two entries giving one block
 two directions refuse the rebuild's matching. Remove the entry only once DC's
 layer records the change **and** OSM agrees: DC's own one-way never overrides an
 opposite OSM one-way, so removing it while OSM is still wrong sends the route
@@ -596,3 +599,66 @@ in the database still names it: delete that row in the admin when loading the fi
   reviewed blocks cover less than half of, and P4 and P8 ways OSM tags with a speed limit,
   one-way, or with other than two lanes. Stress rows, hidden, with fingerprints. Load like
   the others; takes effect on the next rebuild.
+
+- `2026-11-01-owner-dc-rating-review.json`: the whole-DC rating review, 19,802 ways, one row
+  for every DC way whose reviewed level differs from the build's (v0.16.0 map). Every DC road
+  was grouped with others like it (same kind, speed, lanes, count band, facility, ratings),
+  each group rated from all the data held for it, then checked by skeptics: one arguing for a
+  higher level and one for a lower where the rating differed from an agency or the formula in
+  both directions, one where it differed in one (each row's reason says which). The owner,
+  2026-11-01: "use it's best judgement where there are disagreements. Don't treat DC ratings
+  or the formula as authoritative. However, if there's disagreement that's a flag for
+  scrutiny." Examples: Crittenden St NW (DDOT 4, formula 1, no count, 20 mph, one lane each
+  way) goes to 2; Franklin St NE, Girard St to Lincoln Rd (DDOT 4, formula 2, no count) goes
+  to 3. DC alleys and service roads (driveways and parking aisles included) go from 1 to 1.5
+  for delivery trucks and blind exits; no other way at 1 is lifted, and quiet residential and
+  unclassified streets at 1 stay at 1 (the owner's pick, 2026-11-01). Each row's
+  `public_note` is the road panel's Why line: it quotes DDOT's published 2020 level for that
+  way (with how our DC rules read it, where that differs) and the way's own count; 312 rows
+  with nothing to quote are hidden. Ways with the same group and note share an adjustment id
+  (1,344 ids), so a route lists one adjustment per kind of street, not per way.
+  Left out, so the owner's earlier decisions stand: every way in another file here, its
+  `agency_blocks` and its `retire` lists (179, among them the 2026-09-30 side lanes and the
+  Benning Rd ways of OWNER-DECISIONS 445/445d); the corridors in `fixtures/corridors`
+  (North Capitol St, South Capitol St, Connecticut Ave) and roads the owner rated by name
+  (Canal Rd NW and the Whitehurst Fwy, 197; 16th St NW where it is at 4, 179; Arlington
+  Memorial Bridge), 125 ways. Also left out: groups a skeptic was unsure about (447) or the
+  two skeptics split on (134), quiet streets the review lifted from 1 (1,518) and other lifts
+  from 1 outside the alley pick (281, trails and tracks among them), 122 ways whose level
+  rested on other streets' counts (no count of their own, or one more than 15% off), and 9
+  whose note quoted other blocks' counts. One row per line. A first version (4,708 ways, only
+  those under a DDOT block reading) was merged unloaded and is replaced by this one.
+  Loading: the dry run lists every row; any approved row or road-panel edit on one of these
+  ways with another tier refuses the whole file, so read the dry run first. Fingerprints are
+  from extract-20261031 (`rematch.fingerprint_of`). Takes effect on the next rebuild.
+- `2026-11-01-owner-md-rating-review.json` (34,781 ways), `2026-11-01-owner-va-rating-review.json`
+  (8,998) and `2026-11-01-owner-wv-rating-review.json` (434): the region rating review, the
+  same method as the DC file above, for Maryland, Virginia and West Virginia. Every road was
+  grouped with others like it (same county, kind, speed, lanes, count band, facility, ratings),
+  each group rated from all the data held for it on the half-step scale, then checked by
+  skeptics, one arguing for a higher level and one for a lower, wherever the rating differed
+  from an agency, the formula or the map. The owner, 2026-11-01: "we should review the agency
+  ratings but not keep them as authoritive in this instance ... If what we have differs from
+  the agency ratings, that's a flag to scrutinize our ratings further, not nessicarily a flag
+  to keep what the agency has." Most changes are half steps: rural two-lane roads the formula
+  or MDOT SHA put at 4 on speed alone, with low counts, come down to 3 or 3.5; uncounted rural
+  collectors at the floor of 2 go to 2.5 (a missing count is not evidence of calm). Every row
+  is public, and its `public_note` is the road panel's Why line. Where MDOT SHA or Montgomery
+  County rates the way, the note quotes that agency's published level for this way (or says it
+  varies along it), saying "also" only where it equals ours, then why ours differs. Elsewhere,
+  or where the review's wording named another road of its group, the note gives the way's own
+  facts. A count in a note is always the way's own (within 15%); service roads and tracks
+  quote none, as their matched counts are usually a nearby road's. Left out, so earlier
+  decisions stand: every way in another file here, its `retire` lists and `agency_blocks`
+  (118); owner-set levels; ways DDOT rates that the build places outside DC (51, left to the
+  DC review); rural roads the review would put under 2, which the owner's rural floor holds at
+  2 (251); groups a skeptic was unsure about (2,417 ways) or the two skeptics split on (1,083);
+  quiet streets and paths the review lifted from 1 (74,558, the owner's pick: quiet streets
+  at 1 stay 1); service roads at 1 (282,945), which the build's service-road step now sets to
+  1.5 (`routemaker.stress.service_road_step`, the owner's pick of 2026-11-01, "Yes, all
+  service roads 1.5"), and service roads the review lifted past 1.5 (24,042); and ways whose
+  level rested on other roads' counts (1,457) or whose note quoted them (1,148). Ways sharing a
+  group and a note share an adjustment id. Generator: make_region_fixture.py (project files,
+  plans/region-overrides). Fingerprints are from extract-20261031 (`rematch.fingerprint_of`).
+  The Maryland dry run lists about 35,000 rows. Not loaded: the owner confirms each file, then
+  a rebuild.
