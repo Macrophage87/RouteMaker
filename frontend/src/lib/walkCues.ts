@@ -13,7 +13,25 @@ import type { WalkTurn } from "./api.ts";
 import type { LonLat } from "./geo.ts";
 import { formatDistance } from "./format.ts";
 import { t } from "./i18n.ts";
-import { inSentence, lineAlong, snap, startState, step, turnWords, type Cue, type RideEvent, type RideFix, type RideModel, type RideState, type Verbosity } from "./navigate.ts";
+import {
+  CROSS_UNNAMED,
+  crossingWords,
+  crossWords,
+  inSentence,
+  isUnnamed,
+  lineAlong,
+  snap,
+  startState,
+  step,
+  turnWords,
+  wayWords,
+  type Cue,
+  type RideEvent,
+  type RideFix,
+  type RideModel,
+  type RideState,
+  type Verbosity,
+} from "./navigate.ts";
 
 /** A walk as the plan gives it: its line, its turns (none from an older API) and where it goes, by name. */
 export interface WalkPath {
@@ -38,12 +56,14 @@ export function walkModel(path: WalkPath, endText = ""): RideModel | null {
   for (const turn of path.turns) {
     const found = snap({ coordinates, along }, turn.point);
     if (!found || found.offM > ON_LINE_M || found.alongM <= 0 || found.alongM >= lengthM) continue;
+    const crossing = turn.movement === "cross";
     cues.push({
       index: cues.length,
       kind: "turn",
       atM: found.alongM,
-      text: turnWords(turn.movement, turn.street),
-      movement: turn.movement,
+      text: walkTurnWords(turn),
+      // A crossing is drawn as straight on (no turn's arrow) and said in its own words.
+      movement: crossing ? null : (turn.movement as Exclude<WalkTurn["movement"], "cross">),
       street: turn.street,
       severity: null,
       tier: null,
@@ -58,7 +78,31 @@ export function walkModel(path: WalkPath, endText = ""): RideModel | null {
 
 /** The turns a walk's step lists (the trip's steps, "3 turns"): each in the rider's language. */
 export function walkTurnTexts(turns: readonly WalkTurn[] | null | undefined): string[] {
-  return (turns ?? []).map((turn) => turnWords(turn.movement, turn.street));
+  return (turns ?? []).map(walkTurnWords);
+}
+
+/** A walk's turn, or crossing (`walkCrossingWords`), in the rider's language. */
+export function walkTurnWords(turn: WalkTurn): string {
+  return turn.movement === "cross" ? walkCrossingWords(turn) : turnWords(turn.movement, turn.street);
+}
+
+/**
+ * A crossing on foot (Stephen, 2026-11-02: "Make sure to note crosswalks and perfer signalled crossings";
+ * core/walk_pricing.py): "Cross Pratt Street at the signal.", "Cross at the crosswalk.", a busy road crossed with no
+ * signal as a ride's busy crossing is said ("Busy crossing at Pratt Street, no signal."), and a slip lane's warning
+ * after it.
+ */
+export function walkCrossingWords(turn: Pick<WalkTurn, "street" | "control" | "busy" | "slip">): string {
+  const named = turn.street && !isUnnamed(turn.street) ? turn.street : null;
+  const road = named ? wayWords(named) : null;
+  let words: string;
+  if (turn.control === "signal") words = road ? t("Cross {road} at the signal.", { road }) : t("Cross at the signal.");
+  else if (turn.control === "crosswalk") {
+    words = road ? t("Cross {road} at the crosswalk.", { road }) : t("Cross at the crosswalk.");
+    if (turn.busy) words = `${words} ${t("Busy road, no signal.")}`;
+  } else if (turn.busy) words = crossingWords(named, "none");
+  else words = crossWords(named ?? CROSS_UNNAMED);
+  return turn.slip ? `${words} ${t("Slip lane: watch for turning cars.")}` : words;
 }
 
 export function walkStart(): RideState {

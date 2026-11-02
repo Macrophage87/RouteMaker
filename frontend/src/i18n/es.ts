@@ -44,6 +44,12 @@ export const ES: Readonly<Record<string, string>> = {
   "Continue.": "Siga.",
   "not set": "sin fijar",
   "Cross {road}.": "Cruce {road}.",
+  "Cross {road} at the signal.": "Cruce {road} en el semáforo.",
+  "Cross at the signal.": "Cruce en el semáforo.",
+  "Cross {road} at the crosswalk.": "Cruce {road} por el paso de peatones.",
+  "Cross at the crosswalk.": "Cruce por el paso de peatones.",
+  "Busy road, no signal.": "Calle con mucho tráfico, sin semáforo.",
+  "Slip lane: watch for turning cars.": "Carril de giro: atención a los autos que giran.",
   "Cross {road}, then {turn}": "Cruce {road}, luego {turn}",
   // An unnamed path said with the named one it leads to (navigate.ts pathWords, describe._toward).
   "{way} to {trail}": "{way} que lleva a {trail}",

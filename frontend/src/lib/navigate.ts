@@ -1373,6 +1373,8 @@ export function cueSpoken(cue: Cue, phase: Phase, distanceM: number, first = pha
     // Its side, where the router gives it (round-2 audit D17), in the end cue's words.
     return cue.side ? `${reached} ${arrivalSideWords(cue.side)}` : reached;
   }
+  // A walk's crossing (lib/walkCues.ts walkCrossingWords, a turn cue with no movement): its own words at "now".
+  if (phase === "now" && cue.kind === "turn" && !cue.movement) return cueWords(cue, true);
   if (phase === "now" && cue.movement) {
     // A jog's turns are said one at a time at "now" (the owner, 2026-10-26: "go step by step at the intersection").
     if (cue.cross) return t("Cross {road} now.", { road: wayWords(cue.cross) });

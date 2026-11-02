@@ -25,6 +25,9 @@ def router(monkeypatch):
     def install(length_km: float = 0.34):
         def fake_call(variant, action, payload, _deadline):
             calls.append({"variant": variant, "action": action, "payload": payload})
+            if action != "route":
+                # A walk's pricing (`walk_pricing`): refused, so the router's way is walked.
+                raise routing.RouterRefused(400, None, "not in this test")
             shape = [(p["lon"], p["lat"]) for p in payload["locations"]]
             return {
                 "trip": {

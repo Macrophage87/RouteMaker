@@ -4046,43 +4046,64 @@ def walk_leg(
     if prefer_walkways:
         pedestrian["sidewalk_factor"] = WALKWAY_PREFERENCE
         pedestrian["walkway_factor"] = WALKWAY_PREFERENCE
-    payload = {
-        "locations": [{"lon": p[0], "lat": p[1], "type": "break"} for p in (a, b)],
-        "costing": "pedestrian",
-        "costing_options": {"pedestrian": pedestrian},
-        "directions_type": "maneuvers",
-        "units": "kilometers",
-    }
+    # Its maneuvers and the router's other ways, priced for their crossings and the roads
+    # walked with no sidewalk (`walk_turns.walked`, 2026-11-02).
+    payload = walk_turns.directions(
+        {
+            "locations": [{"lon": p[0], "lat": p[1], "type": "break"} for p in (a, b)],
+            "costing": "pedestrian",
+            "costing_options": {"pedestrian": pedestrian},
+            "units": "kilometers",
+        }
+    )
+    capped = Deadline(deadline.at, min(deadline.per_call_s, WALK_IN_CALL_S))
     try:
-        answer = _call(
-            Variant.STANDARD.value,
-            "route",
-            payload,
-            Deadline(deadline.at, min(deadline.per_call_s, WALK_IN_CALL_S)),
-        )
+        answer = _call(Variant.STANDARD.value, "route", payload, capped)
     except RouterRefused as refusal:
         if refusal.code not in NO_PATH_CODES | NO_EDGE_CODES:
             logger.warning("a walk-in was refused: %s", refusal)
         return None
     except (DeadlineExceeded, RouterUnavailable):
         return None
-    legs = (answer.get("trip") or {}).get("legs") or []
-    if not legs:
+    found = walk_turns.walked(answer, walk_asker(capped), payload)
+    if found is None:
         return None
-    metres = float((legs[0].get("summary") or {}).get("length", 0.0)) * 1000.0
+    leg, crossings = found
+    metres = float((leg.get("summary") or {}).get("length", 0.0)) * 1000.0
     if metres > WALK_IN_MAX_M:
         return None
-    shape = decode_polyline6(legs[0].get("shape", ""))
+    shape = decode_polyline6(leg.get("shape", ""))
     return {
         "geometry": {
             "type": "LineString",
             "coordinates": [[round(lon, 6), round(lat, 6)] for lon, lat in shape],
         },
         "distance_m": round(metres, 1),
-        "duration_s": round(float((legs[0].get("summary") or {}).get("time", 0.0)), 1),
-        # Its turns, for turn-by-turn on foot (2026-11-02).
-        "turns": walk_turns.turns_of(legs[0], shape),
+        "duration_s": round(float((leg.get("summary") or {}).get("time", 0.0)), 1),
+        # Its turns and the crossings it says, for turn-by-turn on foot (2026-11-02).
+        "turns": walk_turns.turns_of(leg, shape, crossings),
     }
+
+
+# The least time left for one more router call in pricing a walk (`walk_asker`): a trace or a
+# `/locate` of a short walk. With less, the walk is taken as the router gave it.
+WALK_PRICE_MIN_LEFT_S = 0.5
+
+
+def walk_asker(deadline: Deadline, variant: str = Variant.STANDARD.value):
+    """The router, as `walk_pricing` asks it (`walk_pricing.Ask`): its answer, or None where it
+    refused, could not be reached or no time is left, so a walk is never lost to its pricing."""
+
+    def ask(action: str, payload: dict):
+        if deadline.at - clock() < WALK_PRICE_MIN_LEFT_S:
+            return None
+        try:
+            return _call(variant, action, payload, deadline)
+        except (RouterRefused, RouterUnavailable, DeadlineExceeded) as error:
+            logger.info("a walk's %s was not answered: %s", action, error)
+            return None
+
+    return ask
 
 
 # What a walk beside a busy road may be on (`walk_roadside_m`): Valhalla's uses that are

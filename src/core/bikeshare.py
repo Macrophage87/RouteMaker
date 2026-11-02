@@ -1254,16 +1254,19 @@ class RoutingServices:
             if refusal.code not in routing.NO_PATH_CODES | routing.NO_EDGE_CODES:
                 routing.logger.warning("a pedestrian route was refused: %s", refusal)
             return None
-        legs = (answer.get("trip") or {}).get("legs") or []
-        if not legs:
+        # The way taken of the router's, priced for its crossings and the roads it walks with
+        # no sidewalk (`walk_turns.walked`, 2026-11-02).
+        found = walk_turns.walked(answer, routing.walk_asker(self._deadline), payload)
+        if found is None:
             return None
-        summary = legs[0].get("summary") or {}
-        shape = routing.decode_polyline6(legs[0].get("shape", ""))
+        leg, crossings = found
+        summary = leg.get("summary") or {}
+        shape = routing.decode_polyline6(leg.get("shape", ""))
         return WalkLeg(
             [list(p) for p in shape],
             float(summary.get("length", 0.0)) * 1000.0,
             float(summary.get("time", 0.0)),
-            tuple(walk_turns.turns_of(legs[0], shape)),
+            tuple(walk_turns.turns_of(leg, shape, crossings)),
         )
 
     def ride(self, a: LonLat, b: LonLat) -> dict:

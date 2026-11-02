@@ -3,7 +3,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { LonLat } from "./geo.ts";
 import type { RideFix } from "./navigate.ts";
-import { nextWalkTurn, walkModel, walkStart, walkStep, walkTurnLine, walkTurnTexts } from "./walkCues.ts";
+import { cueSpoken } from "./navigate.ts";
+import { nextWalkTurn, walkCrossingWords, walkModel, walkStart, walkStep, walkTurnLine, walkTurnTexts } from "./walkCues.ts";
 
 const M_PER_DEG = 111_195;
 const LAT = 38.9;
@@ -79,4 +80,31 @@ test("no turns, no line on the screen; and none before the first fix", () => {
   const model = walkModel({ ...PATH, turns: [] })!;
   assert.equal(walkTurnLine(model, walkStart()), null);
   assert.equal(walkTurnLine(walkModel(PATH), walkStart()), null);
+});
+
+// Crossings on foot (Stephen, 2026-11-02: "Make sure to note crosswalks and perfer signalled crossings").
+test("a walk's crossings are said with their control, a busy one with no signal as a ride's busy crossing", () => {
+  assert.equal(walkCrossingWords({ street: "Pratt Street", control: "signal", busy: true, slip: false }), "Cross Pratt Street at the signal.");
+  assert.equal(walkCrossingWords({ street: null, control: "signal", busy: true, slip: false }), "Cross at the signal.");
+  assert.equal(walkCrossingWords({ street: "F St NE", control: "crosswalk", busy: false, slip: false }), "Cross F St NE at the crosswalk.");
+  assert.equal(
+    walkCrossingWords({ street: "Pratt Street", control: "crosswalk", busy: true, slip: false }),
+    "Cross Pratt Street at the crosswalk. Busy road, no signal.",
+  );
+  assert.equal(walkCrossingWords({ street: "Pratt Street", control: "none", busy: true, slip: false }), "Busy crossing at Pratt Street, no signal.");
+  assert.equal(walkCrossingWords({ street: null, control: "none", busy: false, slip: true }), "Cross the road. Slip lane: watch for turning cars.");
+});
+
+test("a crossing is a cue on the walk's line, drawn straight on and said in its own words at the spot", () => {
+  const model = walkModel({
+    ...PATH,
+    turns: [...PATH.turns, { movement: "cross" as const, street: "G St NE", point: at(0, 100), control: "signal" as const, busy: true, slip: false }],
+  })!;
+  const crossing = model.cues.find((c) => Math.round(c.atM) === 100)!;
+  assert.equal(crossing.kind, "turn");
+  assert.equal(crossing.movement, null);
+  assert.equal(crossing.text, "Cross G St NE at the signal.");
+  assert.equal(cueSpoken(crossing, "now", 5), "Cross G St NE at the signal.");
+  assert.match(cueSpoken(crossing, "advance", 150), /^In .+, cross G St NE at the signal\.$/);
+  assert.deepEqual(walkTurnTexts([{ movement: "cross", street: null, point: at(0, 0), control: "crosswalk", busy: false, slip: false }]), ["Cross at the crosswalk."]);
 });
