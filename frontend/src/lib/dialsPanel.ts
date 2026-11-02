@@ -200,8 +200,8 @@ export function runTargetView(dials: Dials): TargetView {
   };
 }
 
-export const RUN_TARGET_HINT = t("Optional: with Make it a loop on, place only the start for a loop about this long.");
-export const RUN_TARGET_HOW = t("The run tries a loop in each of six directions from your start, each sized to your target, and keeps the one nearest it that runs a way twice least and has the most trail and fewest traffic lights. With a stop or two placed as well, the loop goes through them instead and the target is not used.");
+export const RUN_TARGET_HINT = t("Optional: the most trail at or under this. With Make it a loop on and only the start placed, a loop about this long.");
+export const RUN_TARGET_HOW = t("With stops placed, each part of the run gets its share of the target, and the way with the most trail and fewest traffic lights at or under it is taken, as on Trailmaxxing. With only the start placed and Make it a loop on, the run tries a loop in each of six directions from your start, each sized to your target, and keeps the one nearest it that runs a way twice least.");
 
 /**
  * Run's hills (2026-11-02): the slider's left half, from not minding climbs (the middle) to avoiding them, as

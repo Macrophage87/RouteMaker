@@ -1856,7 +1856,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Start walk": "ابدأ المشي",
   "Run": "الجري",
   "A run on trails and paths, turn by turn.": "جري على المسارات والممرات، منعطفًا بمنعطف.",
-  "On foot at your running pace, preferring trails and park paths (packed gravel and dirt are fine) and fewer traffic lights; lit ways after dark. Make it a loop, or set a target distance and place only the start for a loop that long. Turn-by-turn directions as you run.": "سيرًا على الأقدام بسرعة جريك، مع تفضيل المسارات وممرات الحدائق (الحصى المضغوط والتراب مناسبان) وإشارات مرور أقل؛ وطرق مضاءة بعد حلول الظلام. اجعلها حلقة، أو حدّد مسافة مستهدفة وضع نقطة البداية فقط لحلقة بهذا الطول. إرشادات منعطفًا بمنعطف أثناء الجري.",
+  "On foot at your running pace, preferring trails, park paths and quiet streets in long unbroken stretches (packed gravel and dirt are fine) and fewer traffic lights; lit ways after dark. Make it a loop, or set a target distance and place only the start for a loop that long. Turn-by-turn directions as you run.": "سيرًا على الأقدام بسرعة جريك، مع تفضيل المسارات وممرات الحدائق والشوارع الهادئة في امتدادات طويلة دون انقطاع (الحصى المضغوط والتراب مناسبان) وإشارات مرور أقل؛ وطرق مضاءة بعد حلول الظلام. اجعلها حلقة، أو حدّد مسافة مستهدفة وضع نقطة البداية فقط لحلقة بهذا الطول. إرشادات منعطفًا بمنعطف أثناء الجري.",
   "Start run": "ابدأ الجري",
   "Run started.": "بدأ الجري.",
   "End run": "إنهاء الجري",

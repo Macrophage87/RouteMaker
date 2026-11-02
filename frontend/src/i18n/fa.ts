@@ -1856,7 +1856,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Start walk": "شروع پیاده‌روی",
   "Run": "دویدن",
   "A run on trails and paths, turn by turn.": "دویدن در مسیرها و راه‌های پیاده، پیچ به پیچ.",
-  "On foot at your running pace, preferring trails and park paths (packed gravel and dirt are fine) and fewer traffic lights; lit ways after dark. Make it a loop, or set a target distance and place only the start for a loop that long. Turn-by-turn directions as you run.": "پیاده با سرعت دویدن شما، با ترجیح مسیرها و راه‌های پارک (شن فشرده و خاک مشکلی ندارند) و چراغ‌های راهنمایی کمتر؛ پس از تاریکی راه‌های روشن. یک حلقه بسازید، یا یک مسافت هدف تعیین کنید و فقط نقطه شروع را بگذارید تا حلقه‌ای به همان طول ساخته شود. راهنمایی پیچ به پیچ هنگام دویدن.",
+  "On foot at your running pace, preferring trails, park paths and quiet streets in long unbroken stretches (packed gravel and dirt are fine) and fewer traffic lights; lit ways after dark. Make it a loop, or set a target distance and place only the start for a loop that long. Turn-by-turn directions as you run.": "پیاده با سرعت دویدن شما، با ترجیح مسیرها، راه‌های پارک و خیابان‌های آرام در کشش‌های طولانی و بی‌وقفه (شن فشرده و خاک مشکلی ندارند) و چراغ‌های راهنمایی کمتر؛ پس از تاریکی راه‌های روشن. یک حلقه بسازید، یا یک مسافت هدف تعیین کنید و فقط نقطه شروع را بگذارید تا حلقه‌ای به همان طول ساخته شود. راهنمایی پیچ به پیچ هنگام دویدن.",
   "Start run": "شروع دویدن",
   "Run started.": "دویدن شروع شد.",
   "End run": "پایان دویدن",

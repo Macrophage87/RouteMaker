@@ -1856,7 +1856,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Start walk": "Kòmanse mache",
   "Run": "Kouri",
   "A run on trails and paths, turn by turn.": "Yon kous sou ti chemen ak wout pye, vire pa vire.",
-  "On foot at your running pace, preferring trails and park paths (packed gravel and dirt are fine) and fewer traffic lights; lit ways after dark. Make it a loop, or set a target distance and place only the start for a loop that long. Turn-by-turn directions as you run.": "A pye nan vitès kous ou, ak preferans pou ti chemen ak wout nan pak (gravye konpakte ak tè bon) e mwens limyè trafik; wout ki gen limyè apre lannwit tonbe. Fè yon bouk, oswa mete yon distans ou vize epi mete sèlman pwen depa a pou yon bouk ki gen longè sa a. Direksyon vire pa vire pandan w ap kouri.",
+  "On foot at your running pace, preferring trails, park paths and quiet streets in long unbroken stretches (packed gravel and dirt are fine) and fewer traffic lights; lit ways after dark. Make it a loop, or set a target distance and place only the start for a loop that long. Turn-by-turn directions as you run.": "A pye nan vitès kous ou, ak preferans pou ti chemen, wout nan pak ak lari trankil sou long bout san entèripsyon (gravye konpakte ak tè bon) e mwens limyè trafik; wout ki gen limyè apre lannwit tonbe. Fè yon bouk, oswa mete yon distans ou vize epi mete sèlman pwen depa a pou yon bouk ki gen longè sa a. Direksyon vire pa vire pandan w ap kouri.",
   "Start run": "Kòmanse kouri",
   "Run started.": "Kous la kòmanse.",
   "End run": "Fini kous la",

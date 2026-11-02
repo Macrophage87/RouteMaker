@@ -53,8 +53,12 @@ RUN_PACE_KMH = round(6 * KMH_PER_MPH, 1)
 RUN_PACE_MIN_KMH = round(4 * KMH_PER_MPH, 1)
 RUN_PACE_MAX_KMH = round(10 * KMH_PER_MPH, 1)
 
-# A second on a trail counts this much of a second on a street.
+# A second on a trail counts this much of a second on a busier street, and a second on a quiet
+# street (Stephen, 2026-11-02: "Runners like long safe paths and roads too") this much; a second
+# in a long unbroken stretch of either is credited LONG_CREDIT more.
 TRAIL_WEIGHT = 0.7
+QUIET_WEIGHT = 0.85
+LONG_CREDIT = 0.1
 # What one signalled crossing is taken to cost a runner standing at it, before the weight
 # (`routemaker.junction_delay.SIGNAL_DELAY_S`, a ride's own).
 SIGNAL_WAIT_S = 15.0
@@ -90,6 +94,11 @@ SAMPLE_M = 20.0
 # The most one router call of a run may take, and all of a run's calls together.
 CALL_S = 6.0
 BUDGET_S = 30.0
+# With a target and stops placed: the time a way at or under its share of the target counts
+# for (`capped`, as Trailmaxxing's miles up to its target cost less), and what a way past the
+# target's ceiling is charged, in seconds.
+TARGET_TIME_SHARE = 0.5
+PAST_CEILING_S = 100_000.0
 # More legs than this, and each leg is the router's own way, without alternates.
 MANY_LEGS = 4
 
@@ -183,11 +192,52 @@ def costing_options(ask: RunAsk) -> dict:
 
 def weigh(seconds: float, reading: walk_pricing.Reading) -> float:
     """A way's score for a run (`walk_pricing.Weigh`): its time with its trail seconds counted
-    at `TRAIL_WEIGHT`, Walk's charges, and its waits at signals weighted as Road Bike's."""
+    at `TRAIL_WEIGHT` and its quiet-street seconds at `QUIET_WEIGHT`, less `LONG_CREDIT` of
+    the seconds in long unbroken stretches of either (`walk_pricing.LONG_STRETCH_M`), plus
+    Walk's charges and its waits at signals weighted as Road Bike's."""
     per_m = seconds / reading.metres if reading.metres > 0 else 0.0
     trail_s = min(reading.trail_m, reading.metres) * per_m
+    quiet_s = min(reading.quiet_m, max(reading.metres - reading.trail_m, 0.0)) * per_m
+    long_s = min(reading.long_m, reading.metres) * per_m
     waits = SIGNAL_WAIT_S * presets.wait_weight_for(presets.RUN) * reading.signals
-    return seconds - (1.0 - TRAIL_WEIGHT) * trail_s + reading.penalty_s + waits
+    return (
+        seconds
+        - (1.0 - TRAIL_WEIGHT) * trail_s
+        - (1.0 - QUIET_WEIGHT) * quiet_s
+        - LONG_CREDIT * long_s
+        + reading.penalty_s
+        + waits
+    )
+
+
+def capped(cap_m: float | None) -> walk_pricing.Weigh:
+    """`weigh` with a leg's share of the rider's target distance (Stephen, 2026-11-02: a target
+    with stops placed works as Trailmaxxing's does): a way at or under it has its time at half
+    price (`TARGET_TIME_SHARE`), so its trail and fewer lights count for more; a way past
+    `presets.TARGET_CEILING_RATIO` times it is taken only where nothing else is found."""
+    if cap_m is None:
+        return weigh
+
+    def score(seconds: float, reading: walk_pricing.Reading) -> float:
+        base = weigh(seconds, reading)
+        if reading.metres <= cap_m:
+            return base - (1.0 - TARGET_TIME_SHARE) * seconds
+        if reading.metres > cap_m * presets.TARGET_CEILING_RATIO:
+            return base + PAST_CEILING_S
+        return base
+
+    return score
+
+
+def leg_caps(points: Sequence[Sequence[float]], target_m: float | None) -> list[float | None]:
+    """Each leg's share of `target_m`, by its length in a straight line."""
+    spans = [
+        haversine(Point(*a[:2]), Point(*b[:2])) for a, b in zip(points, points[1:], strict=False)
+    ]
+    total = sum(spans)
+    if target_m is None or total <= 0:
+        return [None] * len(spans)
+    return [target_m * span / total for span in spans]
 
 
 # --- The router -------------------------------------------------------------------------------
@@ -270,9 +320,12 @@ def run_leg(
     exclude: Sequence[tuple[float, float]] = (),
     alternates: int = ALTERNATES,
     say_crossings: bool = True,
+    cap_m: float | None = None,
 ) -> Walked | None:
     """One leg of a run through `points` (its ends and any `through` points between), the best
-    of the router's ways for a run (`weigh`), or None where the router has none."""
+    of the router's ways for a run (`weigh`, or `capped` by the leg's share of a target), or
+    None where the router has none."""
+    score_of = capped(cap_m)
     if len(points) < 2:
         return None
     payload = _payload(points, ask, alternates if len(points) == 2 else 0)
@@ -281,7 +334,7 @@ def run_leg(
     answer = router.ask("route", payload)
     if not isinstance(answer, dict):
         return None
-    chosen = walk_pricing.choose(answer, router.ask, payload.get("costing_options"), weigh)
+    chosen = walk_pricing.choose(answer, router.ask, payload.get("costing_options"), score_of)
     if chosen is None:
         return None
     leg = chosen.leg
@@ -292,7 +345,7 @@ def run_leg(
     seconds = float(summary.get("time") or 0.0)
     metres = float(summary.get("length") or 0.0) * 1000.0
     reading = chosen.reading
-    score = weigh(seconds, reading) if reading is not None else seconds
+    score = score_of(seconds, reading) if reading is not None else seconds
     walked = Walked(shape, seconds, metres, [], reading, score, leg, list(chosen.crossings))
     return said(router, walked) if say_crossings else _turned(walked, [])
 
@@ -410,7 +463,12 @@ def exclusions(shape: Sequence[tuple[float, float]]) -> list[tuple[float, float]
 
 
 def way_back(
-    router: Router, way_out: Sequence[tuple[float, float]], end, start, ask: RunAsk
+    router: Router,
+    way_out: Sequence[tuple[float, float]],
+    end,
+    start,
+    ask: RunAsk,
+    cap_m: float | None = None,
 ) -> tuple[Walked | None, dict]:
     """A loop's way back from `end` to `start` by another way than `way_out`, as a ride's loop
     is made (`refine.make_loop`): the exclusions thinned (`refine.LOOP_THINNING`) until the
@@ -437,7 +495,7 @@ def way_back(
             info["fallback"] = info["fallback"] or "time"
             break
         info["tried"] += 1
-        walked = run_leg(router, [end, start], ask, exclude=chosen, alternates=0)
+        walked = run_leg(router, [end, start], ask, exclude=chosen, alternates=0, cap_m=cap_m)
         if walked is None:
             continue
         share = overlap_share(way_out, walked.shape)
@@ -452,7 +510,7 @@ def way_back(
             break
     if best is None or best[3] >= refine.LOOP_OUT_AND_BACK:
         info["fallback"] = "out_and_back" if info["tried"] else info["fallback"] or "points"
-        plain = run_leg(router, [end, start], ask)
+        plain = run_leg(router, [end, start], ask, cap_m=cap_m)
         if plain is not None:
             info.update(_shares(overlap_share(way_out, plain.shape), plain.metres))
         return plain, info
@@ -608,16 +666,18 @@ def _plan(points: Sequence[Sequence[float]], ask: RunAsk, router: Router) -> Run
     # its calls fit the budget.
     legs = len(out_points) - 1 + (1 if loop else 0)
     alternates = ALTERNATES if legs <= MANY_LEGS else 0
+    # A target with stops placed: each leg its share of it, the most trail at or under it.
+    caps = leg_caps(points, ask.target_m)
     parts: list[Walked] = []
-    for a, b in zip(out_points, out_points[1:], strict=False):
-        walked = run_leg(router, [a, b], ask, alternates=alternates)
+    for (a, b), cap_m in zip(zip(out_points, out_points[1:], strict=False), caps, strict=False):
+        walked = run_leg(router, [a, b], ask, alternates=alternates, cap_m=cap_m)
         if walked is None:
             raise NoRun("No way on foot could be found between two of the points.")
         parts.append(walked)
     info = None
     if loop:
         way_out = _joined(parts).shape
-        back, info = way_back(router, way_out, out_points[-1], points[-1], ask)
+        back, info = way_back(router, way_out, out_points[-1], points[-1], ask, caps[-1])
         if back is None:
             raise NoRun("No way back on foot could be found to the start.")
         parts.append(back)

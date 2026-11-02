@@ -1856,7 +1856,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Start walk": "开始步行",
   "Run": "跑步",
   "A run on trails and paths, turn by turn.": "沿步道和小路跑步，逐个转弯提示。",
-  "On foot at your running pace, preferring trails and park paths (packed gravel and dirt are fine) and fewer traffic lights; lit ways after dark. Make it a loop, or set a target distance and place only the start for a loop that long. Turn-by-turn directions as you run.": "以您的跑步配速步行，优先选择步道和公园小路（压实的砾石和土路都可以）以及较少红绿灯的路线；天黑后选择有照明的路。可设为环线，或设定目标距离并只放置起点，生成该长度的环线。跑步时逐个转弯提示。",
+  "On foot at your running pace, preferring trails, park paths and quiet streets in long unbroken stretches (packed gravel and dirt are fine) and fewer traffic lights; lit ways after dark. Make it a loop, or set a target distance and place only the start for a loop that long. Turn-by-turn directions as you run.": "以您的跑步配速步行，优先选择步道、公园小路和安静街道组成的长段不间断路线（压实的砾石和土路都可以）以及较少红绿灯的路线；天黑后选择有照明的路。可设为环线，或设定目标距离并只放置起点，生成该长度的环线。跑步时逐个转弯提示。",
   "Start run": "开始跑步",
   "Run started.": "跑步已开始。",
   "End run": "结束跑步",

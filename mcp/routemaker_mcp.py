@@ -2923,8 +2923,8 @@ RIDE_OPTIONS = {
             " Capital Bikeshare dock to dock (two points). bike-transit and bikeshare-transit:"
             " bike plus Metro and bus (two points; depart_at, transit_option). walk: on foot,"
             " turn by turn (two points). walk-transit: on foot plus Metro and bus (two points;"
-            " depart_at, transit_option). run: a run on foot, trails and paths first, fewer"
-            " traffic lights, lit ways after dark; loops."
+            " depart_at, transit_option). run: a run on foot, trails, paths and quiet streets"
+            " in long stretches first, fewer traffic lights, lit ways after dark; loops."
         ),
     },
     "stress": {

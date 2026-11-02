@@ -1856,7 +1856,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Start walk": "ብእግሪ ጀምር",
   "Run": "ጉያ",
   "A run on trails and paths, turn by turn.": "ኣብ መገድታትን መንገዲ እግርን ጉያ፡ ጥውይ ብጥውይ።",
-  "On foot at your running pace, preferring trails and park paths (packed gravel and dirt are fine) and fewer traffic lights; lit ways after dark. Make it a loop, or set a target distance and place only the start for a loop that long. Turn-by-turn directions as you run.": "ብእግሪ ብናይ ጉያ ፍጥነትኩም፡ መገድታትን መንገዲ መናፈሻን (ዝተጸቐጠ ጠጠርን ሓመድን ጽቡቕ እዩ) ከምኡውን ውሑድ መብራህቲ ትራፊክ ብምምራጽ፤ ድሕሪ ጸልማት ዝበርሁ መገድታት። ዙርያ ግበርዎ፡ ወይ ዝተደልየ ርሕቀት ኣቐምጡን ንኣብ ከምኡ ዝንውሓቱ ዙርያ መበገሲ ጥራይ ኣቐምጡ። ክትጎዩ ከለኹም ጥውይ ብጥውይ መምርሒ።",
+  "On foot at your running pace, preferring trails, park paths and quiet streets in long unbroken stretches (packed gravel and dirt are fine) and fewer traffic lights; lit ways after dark. Make it a loop, or set a target distance and place only the start for a loop that long. Turn-by-turn directions as you run.": "ብእግሪ ብናይ ጉያ ፍጥነትኩም፡ መገድታት፡ መንገዲ መናፈሻን ህዱኣት ጎደናታትን ብነዊሕ ዘይተቛረጸ ክፋላት (ዝተጸቐጠ ጠጠርን ሓመድን ጽቡቕ እዩ) ከምኡውን ውሑድ መብራህቲ ትራፊክ ብምምራጽ፤ ድሕሪ ጸልማት ዝበርሁ መገድታት። ዙርያ ግበርዎ፡ ወይ ዝተደልየ ርሕቀት ኣቐምጡን ንኣብ ከምኡ ዝንውሓቱ ዙርያ መበገሲ ጥራይ ኣቐምጡ። ክትጎዩ ከለኹም ጥውይ ብጥውይ መምርሒ።",
   "Start run": "ጉያ ጀምር",
   "Run started.": "ጉያ ተጀሚሩ።",
   "End run": "ጉያ ደምድም",

@@ -1856,7 +1856,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Start walk": "Yürüyüşü başlat",
   "Run": "Koşu",
   "A run on trails and paths, turn by turn.": "Patikalarda ve yollarda, dönüş dönüş bir koşu.",
-  "On foot at your running pace, preferring trails and park paths (packed gravel and dirt are fine) and fewer traffic lights; lit ways after dark. Make it a loop, or set a target distance and place only the start for a loop that long. Turn-by-turn directions as you run.": "Koşu temponuzla yaya olarak; patikaları ve park yollarını (sıkıştırılmış çakıl ve toprak sorun değil) ve daha az trafik ışığını tercih eder; karanlıktan sonra aydınlatılmış yollar. Döngü yapın ya da bir hedef mesafe belirleyip o uzunlukta bir döngü için yalnızca başlangıcı koyun. Koşarken dönüş dönüş yol tarifi.",
+  "On foot at your running pace, preferring trails, park paths and quiet streets in long unbroken stretches (packed gravel and dirt are fine) and fewer traffic lights; lit ways after dark. Make it a loop, or set a target distance and place only the start for a loop that long. Turn-by-turn directions as you run.": "Koşu temponuzla yaya olarak; patikaları, park yollarını ve sakin sokakları uzun kesintisiz bölümlerde (sıkıştırılmış çakıl ve toprak sorun değil) ve daha az trafik ışığını tercih eder; karanlıktan sonra aydınlatılmış yollar. Döngü yapın ya da bir hedef mesafe belirleyip o uzunlukta bir döngü için yalnızca başlangıcı koyun. Koşarken dönüş dönüş yol tarifi.",
   "Start run": "Koşuya başla",
   "Run started.": "Koşu başladı.",
   "End run": "Koşuyu bitir",

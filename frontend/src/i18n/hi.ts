@@ -1856,7 +1856,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Start walk": "पैदल चलना शुरू करें",
   "Run": "दौड़",
   "A run on trails and paths, turn by turn.": "पगडंडियों और रास्तों पर दौड़, हर मोड़ पर निर्देश।",
-  "On foot at your running pace, preferring trails and park paths (packed gravel and dirt are fine) and fewer traffic lights; lit ways after dark. Make it a loop, or set a target distance and place only the start for a loop that long. Turn-by-turn directions as you run.": "आपकी दौड़ की गति से पैदल, पगडंडियों और पार्क के रास्तों (दबी हुई बजरी और मिट्टी ठीक है) और कम ट्रैफ़िक लाइटों को प्राथमिकता देते हुए; अंधेरा होने के बाद रोशनी वाले रास्ते। इसे लूप बनाएँ, या एक लक्ष्य दूरी तय करें और उतने लंबे लूप के लिए केवल शुरुआत रखें। दौड़ते समय हर मोड़ पर निर्देश।",
+  "On foot at your running pace, preferring trails, park paths and quiet streets in long unbroken stretches (packed gravel and dirt are fine) and fewer traffic lights; lit ways after dark. Make it a loop, or set a target distance and place only the start for a loop that long. Turn-by-turn directions as you run.": "आपकी दौड़ की गति से पैदल, पगडंडियों, पार्क के रास्तों और शांत सड़कों के लंबे बिना रुकावट वाले हिस्सों (दबी हुई बजरी और मिट्टी ठीक है) और कम ट्रैफ़िक लाइटों को प्राथमिकता देते हुए; अंधेरा होने के बाद रोशनी वाले रास्ते। इसे लूप बनाएँ, या एक लक्ष्य दूरी तय करें और उतने लंबे लूप के लिए केवल शुरुआत रखें। दौड़ते समय हर मोड़ पर निर्देश।",
   "Start run": "दौड़ शुरू करें",
   "Run started.": "दौड़ शुरू हुई।",
   "End run": "दौड़ समाप्त करें",

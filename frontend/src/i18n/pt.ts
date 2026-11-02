@@ -1856,7 +1856,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Start walk": "Iniciar caminhada",
   "Run": "Corrida",
   "A run on trails and paths, turn by turn.": "Uma corrida por trilhas e caminhos, curva a curva.",
-  "On foot at your running pace, preferring trails and park paths (packed gravel and dirt are fine) and fewer traffic lights; lit ways after dark. Make it a loop, or set a target distance and place only the start for a loop that long. Turn-by-turn directions as you run.": "A pé no seu ritmo de corrida, preferindo trilhas e caminhos de parques (cascalho compactado e terra servem) e menos semáforos; caminhos iluminados depois de escurecer. Faça um circuito, ou defina uma distância-alvo e coloque só o início para um circuito desse tamanho. Instruções curva a curva enquanto corre.",
+  "On foot at your running pace, preferring trails, park paths and quiet streets in long unbroken stretches (packed gravel and dirt are fine) and fewer traffic lights; lit ways after dark. Make it a loop, or set a target distance and place only the start for a loop that long. Turn-by-turn directions as you run.": "A pé no seu ritmo de corrida, preferindo trilhas, caminhos de parques e ruas tranquilas em trechos longos sem interrupção (cascalho compactado e terra servem) e menos semáforos; caminhos iluminados depois de escurecer. Faça um circuito, ou defina uma distância-alvo e coloque só o início para um circuito desse tamanho. Instruções curva a curva enquanto corre.",
   "Start run": "Iniciar corrida",
   "Run started.": "Corrida iniciada.",
   "End run": "Terminar corrida",

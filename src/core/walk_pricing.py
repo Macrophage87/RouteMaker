@@ -190,6 +190,10 @@ class Reading:
     crossings: tuple[Crossing, ...] = field(default_factory=tuple)
     trail_m: float = 0.0
     metres: float = 0.0
+    # Quiet streets (a road at QUIET to walk along), and the metres in unbroken stretches of
+    # trail or quiet street at least LONG_STRETCH_M long, no crossing or busier road between.
+    quiet_m: float = 0.0
+    long_m: float = 0.0
     climb_m: float | None = None
     descent_m: float | None = None
 
@@ -343,15 +347,45 @@ def read(trace: dict, seconds_per_m: float) -> Reading:
         for edge in edges
         if str(edge.get("use") or "") in TRAIL_USES
     )
+    quiet, long = _calm(edges)
     climb, descent = _climb(edges)
     return Reading(
         round(roadside, 1),
         tuple(_merged(crossings)),
         trail_m=round(trail, 1),
         metres=round(along, 1),
+        quiet_m=round(quiet, 1),
+        long_m=round(long, 1),
         climb_m=climb,
         descent_m=descent,
     )
+
+
+# A stretch of trail or quiet street this long (metres), unbroken, is a runner's long stretch
+# (Stephen, 2026-11-02: "Runners like long safe paths and roads too").
+LONG_STRETCH_M = 800.0
+
+
+def _calm(edges: Sequence[dict]) -> tuple[float, float]:
+    """(metres on quiet streets, metres in long unbroken calm stretches): a calm edge is a
+    trail (`TRAIL_USES`) or a road QUIET to walk along; a crossing or any other edge breaks
+    the stretch."""
+    quiet = long = run = 0.0
+    for edge in edges:
+        use = str(edge.get("use") or "")
+        metres = float(edge.get("length") or 0.0) * 1000.0
+        on_road = use == "road" and roadside_level(edge) == QUIET
+        if on_road:
+            quiet += metres
+        if use in TRAIL_USES or on_road:
+            run += metres
+            continue
+        if run >= LONG_STRETCH_M:
+            long += run
+        run = 0.0
+    if run >= LONG_STRETCH_M:
+        long += run
+    return quiet, long
 
 
 def _climb(edges: Sequence[dict]) -> tuple[float | None, float | None]:

@@ -1856,7 +1856,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Start walk": "도보 시작",
   "Run": "달리기",
   "A run on trails and paths, turn by turn.": "트레일과 길을 따라 달리기, 회전마다 안내.",
-  "On foot at your running pace, preferring trails and park paths (packed gravel and dirt are fine) and fewer traffic lights; lit ways after dark. Make it a loop, or set a target distance and place only the start for a loop that long. Turn-by-turn directions as you run.": "달리기 속도로 걸어서, 트레일과 공원 길(다진 자갈과 흙도 괜찮음)과 신호등이 적은 길을 우선하고, 어두워진 뒤에는 조명이 있는 길을 택합니다. 순환 코스로 만들거나, 목표 거리를 정하고 출발점만 놓으면 그 길이의 순환 코스가 됩니다. 달리는 동안 회전마다 안내합니다.",
+  "On foot at your running pace, preferring trails, park paths and quiet streets in long unbroken stretches (packed gravel and dirt are fine) and fewer traffic lights; lit ways after dark. Make it a loop, or set a target distance and place only the start for a loop that long. Turn-by-turn directions as you run.": "달리기 속도로 걸어서, 트레일과 공원 길과 조용한 거리를 끊김 없는 긴 구간으로(다진 자갈과 흙도 괜찮음), 신호등이 적은 길을 우선하고, 어두워진 뒤에는 조명이 있는 길을 택합니다. 순환 코스로 만들거나, 목표 거리를 정하고 출발점만 놓으면 그 길이의 순환 코스가 됩니다. 달리는 동안 회전마다 안내합니다.",
   "Start run": "달리기 시작",
   "Run started.": "달리기를 시작했습니다.",
   "End run": "달리기 종료",

@@ -679,7 +679,8 @@ class RouteIn(Schema):
                 " a Run loop with loop and target_distance_m"
             )
         if run:
-            # The target sizes only a loop from a start alone; with stops placed it is not used.
+            # A loop from a start alone is sized up to RUN_TARGET_MAX_M; with stops placed the
+            # target is a ceiling, as on a ride.
             if (
                 len(self.points) == 1
                 and self.target_distance_m is not None
@@ -2636,7 +2637,14 @@ class RunOut(Schema):
     trail_m: float = Field(description="Metres on trails, park paths and tracks.")
     signals: int = Field(description="Signalled crossings on the way, each a wait for the light.")
     target_distance_m: float | None = Field(
-        default=None, description="The target distance of a loop from a start alone, metres."
+        default=None,
+        description=(
+            "The rider's target, metres: from a start alone, a loop about that long; with stops"
+            " placed, as Trailmaxxing's, the most trail at or under it."
+        ),
+    )
+    fits: bool | None = Field(
+        default=None, description="Whether the run is at or under its target (null: no target)."
     )
 
 
@@ -4110,11 +4118,7 @@ def _run_body(body: RouteIn, started: float | None) -> dict:
         hills=0 if body.hills is None else body.hills,
         dark=run_plan.is_dark(at, body.when),
         loop=body.loop,
-        target_m=(
-            float(body.target_distance_m)
-            if body.target_distance_m and len(body.points) == 1
-            else None
-        ),
+        target_m=float(body.target_distance_m) if body.target_distance_m else None,
     )
     run = run_plan.plan(body.points, ask, run_plan.Router(run_plan.deadline_from(started)))
     dials = routing.Dials(stress=body.stress, hills=body.hills, when=body.when)
@@ -4131,7 +4135,8 @@ def _run_body(body: RouteIn, started: float | None) -> dict:
         "dark": ask.dark,
         "trail_m": run.trail_m,
         "signals": run.signals,
-        "target_distance_m": ask.target_m if len(body.points) == 1 else None,
+        "target_distance_m": ask.target_m,
+        "fits": None if ask.target_m is None else run.metres <= ask.target_m,
     }
     logger.info("run plan: %d router calls, %.1f s", run.calls, routing.clock() - started)
     return answer

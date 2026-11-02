@@ -1856,7 +1856,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Start walk": "Начать путь пешком",
   "Run": "Бег",
   "A run on trails and paths, turn by turn.": "Пробежка по тропам и дорожкам, с подсказками на каждом повороте.",
-  "On foot at your running pace, preferring trails and park paths (packed gravel and dirt are fine) and fewer traffic lights; lit ways after dark. Make it a loop, or set a target distance and place only the start for a loop that long. Turn-by-turn directions as you run.": "Пешком в вашем беговом темпе: предпочтение тропам и парковым дорожкам (утрамбованный гравий и грунт подходят) и меньшему числу светофоров; после темноты — освещённые пути. Сделайте круг или задайте целевую дистанцию и поставьте только старт, чтобы получить круг такой длины. Подсказки на каждом повороте во время бега.",
+  "On foot at your running pace, preferring trails, park paths and quiet streets in long unbroken stretches (packed gravel and dirt are fine) and fewer traffic lights; lit ways after dark. Make it a loop, or set a target distance and place only the start for a loop that long. Turn-by-turn directions as you run.": "Пешком в вашем беговом темпе: предпочтение тропам, парковым дорожкам и тихим улицам длинными отрезками без перерывов (утрамбованный гравий и грунт подходят) и меньшему числу светофоров; после темноты — освещённые пути. Сделайте круг или задайте целевую дистанцию и поставьте только старт, чтобы получить круг такой длины. Подсказки на каждом повороте во время бега.",
   "Start run": "Начать пробежку",
   "Run started.": "Пробежка началась.",
   "End run": "Завершить пробежку",

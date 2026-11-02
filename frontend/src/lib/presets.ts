@@ -210,7 +210,7 @@ export const PRESETS: readonly PresetOption[] = [
     label: "Run",
     keywords: "running jog jogging foot trail loop",
     description:
-      "On foot at your running pace, preferring trails and park paths (packed gravel and dirt are fine) and fewer traffic lights; lit ways after dark. Make it a loop, or set a target distance and place only the start for a loop that long. Turn-by-turn directions as you run.",
+      "On foot at your running pace, preferring trails, park paths and quiet streets in long unbroken stretches (packed gravel and dirt are fine) and fewer traffic lights; lit ways after dark. Make it a loop, or set a target distance and place only the start for a loop that long. Turn-by-turn directions as you run.",
     summary: "A run on trails and paths, turn by turn.",
   },
   {

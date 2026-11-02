@@ -1856,7 +1856,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Start walk": "የእግር ጉዞ ጀምር",
   "Run": "ሩጫ",
   "A run on trails and paths, turn by turn.": "በመንገዶችና በእግረኛ መንገዶች ላይ ሩጫ፣ መታጠፊያ በመታጠፊያ።",
-  "On foot at your running pace, preferring trails and park paths (packed gravel and dirt are fine) and fewer traffic lights; lit ways after dark. Make it a loop, or set a target distance and place only the start for a loop that long. Turn-by-turn directions as you run.": "በሩጫ ፍጥነትዎ በእግር፣ መንገዶችንና የፓርክ መንገዶችን (የተጠቀጠቀ ጠጠርና አፈር ችግር የለም) እና ጥቂት የትራፊክ መብራቶችን በመምረጥ፤ ከጨለማ በኋላ ብርሃን ያላቸው መንገዶች። ዙር ያድርጉት፣ ወይም የታለመ ርቀት ያስቀምጡና ለዚያ ርዝመት ዙር መነሻውን ብቻ ያስቀምጡ። በሚሮጡበት ጊዜ መታጠፊያ በመታጠፊያ አቅጣጫዎች።",
+  "On foot at your running pace, preferring trails, park paths and quiet streets in long unbroken stretches (packed gravel and dirt are fine) and fewer traffic lights; lit ways after dark. Make it a loop, or set a target distance and place only the start for a loop that long. Turn-by-turn directions as you run.": "በሩጫ ፍጥነትዎ በእግር፣ መንገዶችን፣ የፓርክ መንገዶችንና ጸጥ ያሉ ጎዳናዎችን ባልተቋረጡ ረጅም ክፍሎች (የተጠቀጠቀ ጠጠርና አፈር ችግር የለም) እና ጥቂት የትራፊክ መብራቶችን በመምረጥ፤ ከጨለማ በኋላ ብርሃን ያላቸው መንገዶች። ዙር ያድርጉት፣ ወይም የታለመ ርቀት ያስቀምጡና ለዚያ ርዝመት ዙር መነሻውን ብቻ ያስቀምጡ። በሚሮጡበት ጊዜ መታጠፊያ በመታጠፊያ አቅጣጫዎች።",
   "Start run": "ሩጫ ጀምር",
   "Run started.": "ሩጫ ተጀምሯል።",
   "End run": "ሩጫ ጨርስ",

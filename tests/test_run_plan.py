@@ -139,6 +139,27 @@ class TestWeigh:
         # A trail second counts TRAIL_WEIGHT of a street's.
         assert run_plan.weigh(400.0, trail) == pytest.approx(400.0 * run_plan.TRAIL_WEIGHT)
 
+    def test_a_quiet_street_beats_a_busier_one_and_a_long_stretch_counts_more(self) -> None:
+        """Stephen, 2026-11-02: "Runners like long safe paths and roads too"."""
+        busy = walk_pricing.Reading(metres=1000.0)
+        quiet = walk_pricing.Reading(metres=1000.0, quiet_m=1000.0)
+        unbroken = walk_pricing.Reading(metres=1000.0, quiet_m=1000.0, long_m=1000.0)
+        assert run_plan.weigh(400.0, unbroken) < run_plan.weigh(400.0, quiet)
+        assert run_plan.weigh(400.0, quiet) < run_plan.weigh(400.0, busy)
+        trail = walk_pricing.Reading(metres=1000.0, trail_m=1000.0)
+        assert run_plan.weigh(400.0, trail) < run_plan.weigh(400.0, quiet)
+
+    def test_a_crossing_breaks_a_long_stretch(self) -> None:
+        def edge(use, metres, road_class="residential"):
+            return {"use": use, "length": metres / 1000.0, "road_class": road_class}
+
+        unbroken = [edge("road", 500), edge("footway", 500)]
+        broken = [edge("road", 500), edge("pedestrian_crossing", 10), edge("footway", 500)]
+        busy = [edge("road", 900, "primary")]
+        assert walk_pricing._calm(unbroken) == (500.0, 1000.0)
+        assert walk_pricing._calm(broken) == (500.0, 0.0)
+        assert walk_pricing._calm(busy) == (0.0, 0.0)
+
     def test_each_light_costs_its_wait_three_times(self) -> None:
         light = walk_pricing.Crossing(
             m=10.0, point=(0.0, 0.0), level=walk_pricing.BUSY, signal=True, marked=True, slip=False
@@ -170,6 +191,31 @@ class TestALeg:
         assert route["costing"] == "pedestrian"
         assert route["alternates"] == run_plan.ALTERNATES
         assert route["costing_options"]["pedestrian"]["walking_speed"] == pytest.approx(9.7)
+
+    @pytest.mark.parametrize(
+        ("cap_m", "metres"),
+        [(None, 1700.0), (3000.0, 2600.0), (2000.0, 1700.0)],
+        ids=["no target: the quicker street", "the trail fits the target", "past its ceiling"],
+    )
+    def test_with_stops_a_target_takes_the_most_trail_at_or_under_it(self, cap_m, metres) -> None:
+        """Stephen, 2026-11-02: with stops placed a run's target works as Trailmaxxing's."""
+        streets = line(START, END)
+        trail = line(START, (-77.04, 38.93)) + line((-77.04, 38.93), END)[1:]
+        found = answer(leg(streets, 600.0, 1.7), leg(trail, 920.0, 2.6))
+        fake = FakeCall(
+            lambda payload: found,
+            {
+                encode_polyline6(streets): edges(streets, "road", 1.7),
+                encode_polyline6(trail): edges(trail, "cycleway", 2.6),
+            },
+        )
+        walked = run_plan.run_leg(router(fake), [START, END], run_plan.RunAsk(), cap_m=cap_m)
+        assert walked is not None and walked.metres == pytest.approx(metres)
+
+    def test_each_leg_gets_its_share_of_the_target(self) -> None:
+        caps = run_plan.leg_caps([START, END, (-77.03, 38.94)], 6000.0)
+        assert sum(caps) == pytest.approx(6000.0)
+        assert run_plan.leg_caps([START, END], None) == [None]
 
     def test_climb_is_read_from_the_edges_elevations(self) -> None:
         shape = line(START, END, 4)
@@ -409,11 +455,11 @@ class TestTheApi:
         assert response.status_code == 503
         assert response["Retry-After"]
 
-    def test_a_long_target_kept_from_a_ride_is_not_used_with_stops(
-        self, client, fake_router
-    ) -> None:
+    def test_a_long_target_with_stops_is_a_ceiling_not_a_refusal(self, client, fake_router) -> None:
         body = {"points": [list(START), list(END)], "preset": "run", "target_distance_m": 80_000}
-        assert post(client, body).status_code == 200
+        response = post(client, body)
+        assert response.status_code == 200
+        assert response.json()["run"]["fits"] is True
         alone = {
             "points": [list(START)],
             "preset": "run",

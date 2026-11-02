@@ -1856,7 +1856,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Start walk": "پلی تګ پیل کړئ",
   "Run": "منډه",
   "A run on trails and paths, turn by turn.": "په لارو او پلي لارو منډه، موړ په موړ.",
-  "On foot at your running pace, preferring trails and park paths (packed gravel and dirt are fine) and fewer traffic lights; lit ways after dark. Make it a loop, or set a target distance and place only the start for a loop that long. Turn-by-turn directions as you run.": "پلی ستاسو د منډې په سرعت، د لارو او پارک لارو غوره کول (کلک شوی جغل او خاوره سمه ده) او لږ ترافیکي څراغونه؛ له تیارې وروسته روښانه لارې. یوه کړۍ جوړه کړئ، یا د هدف واټن وټاکئ او یوازې پیل کېږدئ چې په همدې اوږدوالي کړۍ جوړه شي. د منډې پر مهال موړ په موړ لارښوونې.",
+  "On foot at your running pace, preferring trails, park paths and quiet streets in long unbroken stretches (packed gravel and dirt are fine) and fewer traffic lights; lit ways after dark. Make it a loop, or set a target distance and place only the start for a loop that long. Turn-by-turn directions as you run.": "پلی ستاسو د منډې په سرعت، د لارو، پارک لارو او ارامو کوڅو غوره کول په اوږدو نه پرې کېدونکو برخو کې (کلک شوی جغل او خاوره سمه ده) او لږ ترافیکي څراغونه؛ له تیارې وروسته روښانه لارې. یوه کړۍ جوړه کړئ، یا د هدف واټن وټاکئ او یوازې پیل کېږدئ چې په همدې اوږدوالي کړۍ جوړه شي. د منډې پر مهال موړ په موړ لارښوونې.",
   "Start run": "منډه پیل کړئ",
   "Run started.": "منډه پیل شوه.",
   "End run": "منډه پای ته ورسوئ",

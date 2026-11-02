@@ -1856,7 +1856,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Start walk": "Bắt đầu đi bộ",
   "Run": "Chạy bộ",
   "A run on trails and paths, turn by turn.": "Một buổi chạy trên đường mòn và lối đi, chỉ đường từng ngã rẽ.",
-  "On foot at your running pace, preferring trails and park paths (packed gravel and dirt are fine) and fewer traffic lights; lit ways after dark. Make it a loop, or set a target distance and place only the start for a loop that long. Turn-by-turn directions as you run.": "Đi bộ theo tốc độ chạy của bạn, ưu tiên đường mòn và lối đi trong công viên (sỏi nén và đất đều được) và ít đèn giao thông hơn; đường có đèn sau khi trời tối. Tạo một vòng, hoặc đặt khoảng cách mục tiêu và chỉ đặt điểm xuất phát để có một vòng dài như vậy. Chỉ đường từng ngã rẽ khi bạn chạy.",
+  "On foot at your running pace, preferring trails, park paths and quiet streets in long unbroken stretches (packed gravel and dirt are fine) and fewer traffic lights; lit ways after dark. Make it a loop, or set a target distance and place only the start for a loop that long. Turn-by-turn directions as you run.": "Đi bộ theo tốc độ chạy của bạn, ưu tiên đường mòn, lối đi trong công viên và phố yên tĩnh thành những đoạn dài liền mạch (sỏi nén và đất đều được) và ít đèn giao thông hơn; đường có đèn sau khi trời tối. Tạo một vòng, hoặc đặt khoảng cách mục tiêu và chỉ đặt điểm xuất phát để có một vòng dài như vậy. Chỉ đường từng ngã rẽ khi bạn chạy.",
   "Start run": "Bắt đầu chạy",
   "Run started.": "Đã bắt đầu chạy.",
   "End run": "Kết thúc chạy",

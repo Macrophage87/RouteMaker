@@ -930,6 +930,8 @@ export interface RunInfo {
   trail_m: number;
   signals: number;
   target_distance_m: number | null;
+  /** Whether the run is at or under its target; null with no target. */
+  fits?: boolean | null;
 }
 
 export interface RouteResponse {
