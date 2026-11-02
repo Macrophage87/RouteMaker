@@ -3403,6 +3403,129 @@ class TestStressReadOncePerPlan:
 
 
 @db
+class TestPieceReadOncePerPlan:
+    """The speed-up (#892, `routing._piece_memo`): a plan reads each piece of the segment
+    table once, whichever of its trips the piece is in. Review of v0.18.0 (S1): a trip whose
+    pieces another trip already read is classified exactly as it is read alone, its hazards,
+    scenic designations and stress adjustments too, and a piece read at one ride time is
+    read again at another."""
+
+    # Trip A, and trip B sharing its pieces: the same points on ways 202 and 101 (the metres
+    # need not match: a piece is its way and point), and one piece of its own.
+    A = [
+        routing.Piece(101, -77.045, LAT, 100.0),
+        routing.Piece(202, -77.0375, LAT, 40.0),
+        routing.Piece(202, -77.025, LAT, 25.0),
+    ]
+    B = [
+        routing.Piece(202, -77.0375, LAT, 40.0),
+        routing.Piece(202, -77.025, LAT, 25.0),
+        routing.Piece(999, -77.03, LAT, 60.0),
+        routing.Piece(101, -77.045, LAT, 10.5),
+    ]
+
+    @staticmethod
+    def marked(segments) -> None:
+        """A scenic way and two adjustments (`TestScenicAndAdjustmentsInTheStressQuery`), and
+        rails on way 202's second segment; way 101 is closed to cars at weekends."""
+        TestScenicAndAdjustmentsInTheStressQuery.marked(segments)
+        TestHazardsInTheStressQuery.rails_on_the_last(segments)
+
+    @staticmethod
+    def asked(monkeypatch) -> list[int]:
+        """How many pieces each of the segment table's reads asks for."""
+        import contextlib
+
+        counts: list[int] = []
+        real = routing.plan_cursor
+
+        class Counted:
+            def __init__(self, cursor) -> None:
+                self.cursor = cursor
+
+            def execute(self, query, params=None):
+                counts.append(len(params[-1]))
+                return self.cursor.execute(query, params)
+
+            def __getattr__(self, name):
+                return getattr(self.cursor, name)
+
+        @contextlib.contextmanager
+        def counted(*args, **kwargs):
+            with real(*args, **kwargs) as cursor:
+                yield Counted(cursor)
+
+        monkeypatch.setattr(routing, "plan_cursor", counted)
+        return counts
+
+    @staticmethod
+    def with_memo(fn):
+        """`fn()` with a plan's piece memo, as `routing.plan` sets it."""
+        import contextvars
+
+        def run():
+            routing._piece_memo.set({})
+            return fn()
+
+        return contextvars.copy_context().run(run)
+
+    @staticmethod
+    def read(classes, pieces) -> tuple:
+        return (
+            list(classes),
+            [(c.unpaved, c.lanes, c.oneway) for c in classes],
+            classes.hazards,
+            routing.scenic_read(classes, pieces),
+            routing.adjustments_read(classes, pieces),
+        )
+
+    def test_a_trip_sharing_pieces_read_already_is_classified_as_it_is_alone(
+        self, segments, monkeypatch
+    ) -> None:
+        self.marked(segments)
+        alone = [
+            self.read(routing.classify(pieces, "weekday_offpeak"), pieces)
+            for pieces in (self.A, self.B)
+        ]
+        # What is being compared: B has the rails, the scenic way and both adjustments on the
+        # pieces A read first.
+        hazards, scenic, adjustments = alone[1][2], alone[1][3], alone[1][4]
+        assert hazards == [(), ("rails",), (), ()]
+        assert scenic == [None, None, None, "Rustic Road (Montgomery County)"]
+        assert [a["adjustment_id"] for a in adjustments] == ["quiet-one", "a-stretch"]
+        asked = self.asked(monkeypatch)
+
+        def both():
+            return [
+                self.read(routing.classify(pieces, "weekday_offpeak"), pieces)
+                for pieces in (self.A, self.B)
+            ]
+
+        assert self.with_memo(both) == alone
+        # The shared pieces are asked for once: B's read asks for its own piece only.
+        assert asked == [3, 1]
+
+    def test_a_piece_read_at_one_ride_time_is_read_again_at_another(
+        self, segments, monkeypatch
+    ) -> None:
+        self.marked(segments)
+        whens = ("weekday_offpeak", "weekend")
+        alone = [[c[0] for c in routing.classify(self.A, when)] for when in whens]
+        # Way 101 is closed to cars at weekends: a path there, rated 1.
+        assert alone == [["3", "1", "4"], ["1", "1", "4"]]
+        asked = self.asked(monkeypatch)
+
+        def each():
+            return [
+                [c[0] for c in routing.classify(self.A, when)]
+                for when in ("weekday_offpeak", "weekend", "weekday_offpeak")
+            ]
+
+        assert self.with_memo(each) == [*alone, alone[0]]
+        assert asked == [3, 3]
+
+
+@db
 class TestMassRideCapacitySections:
     """The Mass Ride's route line is coloured by carrying capacity, riders a minute
     (OWNER-DECISIONS 325-327, 387): the API's sections carry `rpm` from the segment
