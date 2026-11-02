@@ -67,7 +67,11 @@ class Routers:
         ]
 
     def walks(self) -> list[tuple[str, dict]]:
-        return [(u, p) for u, p in self.calls if p.get("costing") == "pedestrian"]
+        return [
+            (u, p)
+            for u, p in self.calls
+            if p.get("costing") == "pedestrian" and u.endswith("/route")
+        ]
 
 
 @pytest.fixture

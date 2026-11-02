@@ -476,10 +476,17 @@ export interface BikeshareStop {
 
 /** A walk's turn (2026-11-02, core.walk_turns): said in the rider's language with a ride's turn words (lib/walkCues.ts). */
 export interface WalkTurn {
-  movement: "left" | "right" | "bear_left" | "bear_right" | "uturn";
-  /** The street turned onto; null: a path or sidewalk with no name. */
+  /** "cross": a crossing the walk says (core/walk_pricing.py, 2026-11-02), with its control. */
+  movement: "left" | "right" | "bear_left" | "bear_right" | "uturn" | "cross";
+  /** The street turned onto, or crossed; null: a path or sidewalk with no name, or a road not named. */
   street: string | null;
   point: LonLat;
+  /** A crossing's: at a signal, at a crosswalk with no signal, or neither. */
+  control?: "signal" | "crosswalk" | "none" | null;
+  /** A crossing's: a busy road is crossed. */
+  busy?: boolean | null;
+  /** A crossing's: a slip lane is crossed. */
+  slip?: boolean | null;
 }
 
 /** A walk leg (core.api.BikeshareWalkOut). */

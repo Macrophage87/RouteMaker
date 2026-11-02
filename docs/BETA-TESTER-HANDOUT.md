@@ -255,6 +255,9 @@ method" have the same groups. Typing "transit",
   walks of Bikeshare, transit and Walk trips off flights of steps where a step-free way is near. It
   is off unless you turn it on. A walk beside your own bike always avoids steps. A station is still
   reached by its nearest entrance, which may have stairs.
+- Walks prefer a signal where they cross a busy road, keep clear of slip lanes, and stay off main
+  roads where no sidewalk is mapped, more so the busier the road. A quiet street is crossed anywhere. The turn by
+  turn says each crosswalk and busy crossing: "Cross Pratt Street at the signal."
 - The steps show each ride, walk and train or bus in order, with the total door to door. They say
   how riding the whole way compares.
 - On the map, a dashed line is the ride on transit, marked with its system's name. A dotted line

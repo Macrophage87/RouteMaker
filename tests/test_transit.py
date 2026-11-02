@@ -2040,14 +2040,16 @@ class TestApi:
         assert body["transit"]["mode"] == "walk" and "route" not in fake.endpoints()
         steps = body["transit"]["steps"]
         assert [s["mode"] for s in steps] == ["walk"] and steps[0]["route_line"]
-        assert steps[0]["turns"] == [turn] and len(body["geometry"]["coordinates"]) == 3
+        # A turn carries no crossing's fields (`walk_pricing`): null.
+        plain = {**turn, "control": None, "busy": None, "slip": None}
+        assert steps[0]["turns"] == [plain] and len(body["geometry"]["coordinates"]) == 3
         # Walk + 🚆🚌's line is its first walk, walked with its turns; no bike anywhere.
         both = post_transit(client, [CAPITOL_HILL, DOWNTOWN], presets.WALK_TRANSIT)
         assert both.status_code == 200, both.content
         trip = both.json()["transit"]
         assert trip["mode"] == "walk-transit"
         assert [s["mode"] for s in trip["steps"]] == ["walk", "enter", "metro", "exit", "walk"]
-        assert trip["steps"][0]["route_line"] and trip["steps"][0]["turns"] == [turn]
+        assert trip["steps"][0]["route_line"] and trip["steps"][0]["turns"] == [plain]
         assert "route" not in fake.endpoints()
         # Novice and Nervous's legs are for the ride types with a bike.
         assert (

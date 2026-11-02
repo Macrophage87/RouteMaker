@@ -1891,9 +1891,18 @@ class WalkTurnOut(Schema):
     """A walk's turn (2026-11-02, turn-by-turn on foot; `core.walk_turns`): the app says it
     in the rider's language as it says a ride's turns."""
 
-    movement: Literal["left", "right", "bear_left", "bear_right", "uturn"]
-    street: str | None = Field(description="The street turned onto; null: a path or sidewalk.")
+    movement: Literal["left", "right", "bear_left", "bear_right", "uturn", "cross"]
+    street: str | None = Field(
+        description="The street turned onto, or crossed; null: a path or sidewalk, or no name."
+    )
     point: list[float] = Field(description="[lon, lat] of the turn.")
+    # A crossing's (`movement` "cross"; `core.walk_pricing`, 2026-11-02).
+    control: Literal["signal", "crosswalk", "none"] | None = Field(
+        default=None,
+        description="A crossing's: at a signal, at a crosswalk with no signal, or neither.",
+    )
+    busy: bool | None = Field(default=None, description="A crossing's: a busy road is crossed.")
+    slip: bool | None = Field(default=None, description="A crossing's: a slip lane is crossed.")
 
 
 class BikeshareWalkOut(Schema):

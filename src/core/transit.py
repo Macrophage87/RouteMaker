@@ -1602,13 +1602,28 @@ class RoutingServices:
         legs = (answer.get("trip") or {}).get("legs") or []
         if not legs:
             return None
+        crossings: list[dict] = []
+        if costing == "pedestrian":
+            # The way taken of the router's, priced for its crossings and the roads it walks
+            # with no sidewalk, inside the same call's cap (`walk_turns.walked`, 2026-11-02).
+            priced_at = routing.clock()
+            try:
+                found = walk_turns.walked(answer, routing.walk_asker(deadline), payload)
+            finally:
+                self.spent_s += routing.clock() - priced_at
+            if found is None:
+                return None
+            legs = [found[0]]
+            crossings = found[1]
         shape = tuple(tuple(p) for p in routing.decode_polyline6(legs[0].get("shape", "")))
         summary = legs[0].get("summary") or {}
         length = summary.get("length")
         seconds = float(summary.get("time", 0.0))
         metres = None if length is None else float(length) * 1000.0
         if costing == "pedestrian":
-            return Ride(seconds, shape, metres, turns=tuple(walk_turns.turns_of(legs[0], shape)))
+            return Ride(
+                seconds, shape, metres, turns=tuple(walk_turns.turns_of(legs[0], shape, crossings))
+            )
         if costing != "bicycle" or self._when is None:
             return Ride(seconds, shape, metres)
         # Its busy roads and junction waits, from its trace, inside the same call's cap.

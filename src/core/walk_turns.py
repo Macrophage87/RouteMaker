@@ -12,8 +12,10 @@ then goes on that way at least that far."""
 from __future__ import annotations
 
 import contextvars
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
+
+from . import walk_pricing
 
 # Valhalla's maneuver types that turn (valhalla/odin/maneuver.h): the movement each is said as.
 MOVEMENTS = {
@@ -62,9 +64,10 @@ def step_free(pedestrian: dict) -> dict:
 
 
 def directions(payload: dict) -> dict:
-    """The pedestrian request `payload` asking for the maneuvers too (no narrative), kept
-    off stairs where the rider asked (`stairs_avoided`)."""
-    out = {**payload, "directions_type": "maneuvers"}
+    """The pedestrian request `payload` asking for the maneuvers too (no narrative) and the
+    router's other ways (`walk_pricing.ALTERNATES`, for `walked`), kept off stairs where the
+    rider asked (`stairs_avoided`)."""
+    out = {**payload, "directions_type": "maneuvers", "alternates": walk_pricing.ALTERNATES}
     if avoiding_stairs():
         options = dict(out.get("costing_options") or {})
         options["pedestrian"] = step_free(options.get("pedestrian") or {})
@@ -72,9 +75,23 @@ def directions(payload: dict) -> dict:
     return out
 
 
-def turns_of(leg: dict, shape) -> list[dict]:
+def walked(answer: dict, ask: walk_pricing.Ask, payload: dict) -> tuple[dict, list[dict]] | None:
+    """The walk taken of the router's `answer` to a `directions` request (`walk_pricing.choose`:
+    its crossings and the roads it walks without a sidewalk priced) and the crossings it says
+    (`walk_pricing.crossing_turns`, for `turns_of`); None where the answer has no leg. `ask`
+    asks the router (`walk_pricing.Ask`); `payload` is the request answered, whose costing
+    options its traces walk by."""
+    chosen = walk_pricing.choose(answer, ask, payload.get("costing_options"))
+    if chosen is None:
+        return None
+    return chosen.leg, walk_pricing.crossing_turns(chosen.crossings, ask)
+
+
+def turns_of(leg: dict, shape, crossings: Sequence[dict] = ()) -> list[dict]:
     """A routed walk's turns: [{"movement", "street", "point": [lon, lat]}], in order. `leg`
-    is the router's leg (its `maneuvers`, lengths in kilometres) and `shape` its decoded line."""
+    is the router's leg (its `maneuvers`, lengths in kilometres) and `shape` its decoded line.
+    `crossings` are the crossings it says (`walk_pricing.crossing_turns`, movement "cross"),
+    placed among the turns where they fall along the line."""
     out: list[dict] = []
     points = list(shape)
     for maneuver in leg.get("maneuvers") or []:
@@ -98,4 +115,24 @@ def turns_of(leg: dict, shape) -> list[dict]:
         )
         if len(out) >= MAX_TURNS:
             break
-    return out
+    if not crossings:
+        return out
+    return _in_order(out + list(crossings), points)
+
+
+def _in_order(turns: list[dict], points: list) -> list[dict]:
+    """`turns` by where each falls along the line `points` (its nearest vertex); a stable sort,
+    so two at one place keep their order."""
+    if len(points) < 2:
+        return turns
+
+    def nearest(point) -> int:
+        lon, lat = float(point[0]), float(point[1])
+        return min(
+            range(len(points)),
+            key=lambda i: (float(points[i][0]) - lon) ** 2 + (float(points[i][1]) - lat) ** 2,
+        )
+
+    return [
+        turn for _i, turn in sorted(enumerate(turns), key=lambda p: (nearest(p[1]["point"]), p[0]))
+    ]
