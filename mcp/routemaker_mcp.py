@@ -2102,6 +2102,9 @@ AVOID_TRIM_MI = 0.02
 # Alternatives (`candidates`): the routes at other stress levels the site found, each kept as a
 # draft of its own.
 MAX_ALTERNATIVES = 3
+# An alternative's draft follows its own line when planned again (the site's `follow`, which
+# takes up to 5,000 points in 64 KB): thinned to this many points.
+ALTERNATIVE_FOLLOW_POINTS = 3000
 # route_segments: rows a page, by default and at most.
 SEGMENT_ROWS = 60
 MAX_SEGMENT_ROWS = 200
@@ -2143,6 +2146,7 @@ def line_between(plan: Plan, a_mi: float, b_mi: float) -> list[list[float]]:
         k = max(1, min(len(cum) - 1, bisect.bisect_left(cum, d)))
         p, q = line[k - 1], line[k]
         f = (d - cum[k - 1]) / (cum[k] - cum[k - 1]) if cum[k] > cum[k - 1] else 0.0
+        f = min(1.0, max(0.0, f))  # never past the line's ends
         return [round(p[0] + (q[0] - p[0]) * f, 6), round(p[1] + (q[1] - p[1]) * f, 6)]
 
     inside = [
@@ -2199,9 +2203,12 @@ def avoid_lines(plan: Plan | None, asked) -> tuple[list[list[list[float]]], list
                 raise ToolError(f"the draft does not ride {item['road']!r}: check its roads")
         elif item.get("from_mi") is not None and item.get("to_mi") is not None:
             a, b = finite(item["from_mi"]), finite(item["to_mi"])
-            if not 0 <= a < b:
-                raise ToolError("avoid's from_mi is 0 or more and below to_mi")
-            runs = [(a, b)]
+            total = (plan.answer.get("distance_m") or 0.0) / METRES_PER_MILE
+            if not 0 <= a < b or a >= total:
+                raise ToolError(
+                    f"avoid's from_mi is 0 or more, below to_mi and on the draft ({total:.1f} mi)"
+                )
+            runs = [(a, min(b, total))]
         else:
             raise ToolError("each avoid gives road, from_mi and to_mi, or line")
         for a, b in runs:
@@ -2354,8 +2361,8 @@ def _grade_in(answer: dict, a: float, b: float) -> tuple[float | None, float | N
 
 
 def grades_and_hazards(answer: dict) -> dict:
-    """The steep grades (8% and up, up or down) and the cobbles and rails the route meets, with
-    their miles."""
+    """The steep and very steep grades the site marks (up or down) and the cobbles and rails the
+    route meets, with their miles."""
     scale = _traced_scale(answer) / METRES_PER_MILE
     out: dict = {}
     steep = [
@@ -2523,7 +2530,8 @@ def parse_depart(text: str | None, now=None):
     except ValueError:
         raise ToolError("depart_at is an ISO 8601 date and time, e.g. 2026-11-03T05:30") from None
     if moment.tzinfo is None:
-        guess = moment.replace(tzinfo=UTC) - timedelta(hours=5)
+        # Local time plus five hours is about the UTC moment: read the offset there.
+        guess = moment.replace(tzinfo=UTC) + timedelta(hours=5)
         moment = moment.replace(tzinfo=UTC) - _eastern_offset(guess)
     return moment.astimezone(UTC)
 
@@ -2990,10 +2998,12 @@ ALTERNATIVES = {
     "type": "boolean",
     "default": False,
     "description": (
-        "Also answer the other routes the site finds for these points at other stress"
-        f" levels (up to {MAX_ALTERNATIVES}): each with its own draft_id, its figures (miles,"
-        " minutes, climb, LTS 3+ miles, unpaved miles, junctions), extra miles and minutes"
-        " and main roads, to compare, revise, read with route_segments or save."
+        "Also answer the other routes the site's search finds for these points at the same"
+        f" settings (up to {MAX_ALTERNATIVES}, ranked after the chosen one): each with its own"
+        " draft_id, its figures (miles, minutes, climb, LTS 3+ miles, unpaved miles,"
+        " junctions), extra miles and minutes against the chosen route, and main roads, to"
+        " compare, revise, read with route_segments or save. An alternative's draft keeps"
+        " its own line when revised (a new pace, a road to avoid) until its points change."
     ),
 }
 
@@ -3608,6 +3618,21 @@ POST_FIELDS = (
 )
 
 
+def encode_polyline(line: list, precision: int = 6) -> str:
+    """[[lon, lat], ...] as an encoded polyline, the way Valhalla writes one."""
+    factor, out, last = 10**precision, [], (0, 0)
+    for point in line:
+        here = (round(point[1] * factor), round(point[0] * factor))
+        for delta in (here[0] - last[0], here[1] - last[1]):
+            value = ~(delta << 1) if delta < 0 else delta << 1
+            while value >= 0x20:
+                out.append(chr((0x20 | (value & 0x1F)) + 63))
+                value >>= 5
+            out.append(chr(value + 63))
+        last = here
+    return "".join(out)
+
+
 def decode_polyline(encoded: str, precision: int = 6) -> list[list[float]]:
     """An encoded polyline (Valhalla's, precision 6) as [[lon, lat], ...]."""
     factor = 10**precision
@@ -3969,18 +3994,20 @@ class Server:
         return options
 
     def _alternatives(self, first: Plan, options: dict, limit) -> list[dict]:
-        """The other routes the site found for the first plan (`candidates`, one for each
-        stress level that rides differently), each kept as a draft of its own to compare,
-        revise, read by route_segments or save."""
+        """The other routes the site's search found for the first plan (`candidates`, ranked
+        after it, at the same settings), each kept as a draft of its own to compare, revise,
+        read by route_segments or save. Its draft follows its own line when planned again (a
+        new pace, an avoid), until its points are changed."""
         out = []
+        main_mi = (first.answer.get("distance_m") or 0.0) / METRES_PER_MILE
+        main_min = (first.answer.get("duration_s") or 0.0) / 60
         for found in (first.answer.get("candidates") or [])[:MAX_ALTERNATIVES]:
             line = (found.get("geometry") or {}).get("coordinates")
             if not line:
                 continue
-            stress = (found.get("dials") or {}).get("stress")
             alt_options = dict(options)
-            if stress is not None:
-                alt_options["stress"] = stress
+            alt_options["follow"] = encode_polyline(_thinned(line, ALTERNATIVE_FOLLOW_POINTS))
+            alt_options.pop("follow_exact", None)
             sent = request_body(first.points, first.vias, first.preset, alt_options)
             check = metro_check(line, limit, self.stations) if limit else None
             plan = Plan(
@@ -4002,12 +4029,13 @@ class Server:
             )
             roads = (road_list(found) or {}).get("roads") or []
             longest = sorted(roads, key=lambda r: r["miles"], reverse=True)[:5]
+            fig = figures(found)
             row = {
                 "draft_id": draft_id,
-                "stress": stress,
-                "extra_miles": round((found.get("extra_distance_m") or 0.0) / METRES_PER_MILE, 2),
-                "extra_minutes": round((found.get("extra_duration_s") or 0.0) / 60, 1),
-                "figures": figures(found),
+                "rank": found.get("rank"),
+                "extra_miles": round(fig["miles"] - main_mi, 2),
+                "extra_minutes": round(fig["minutes"] - main_min, 1),
+                "figures": fig,
                 "main_roads": [r["road"] for r in longest],
             }
             if check is not None:
@@ -4557,7 +4585,10 @@ class Server:
         if preset != plan.preset:
             # A new ride type starts from its own settings, as in the app; keep the shape of the
             # ride (a loop, the ride time) and what this call sets.
-            options = {k: v for k, v in options.items() if k in ("loop", "when")}
+            # The followed line, the roads to avoid and the rider's pace are the rider's, not
+            # the ride type's: they stay too.
+            kept = ("loop", "when", "follow", "follow_exact", "blocked_lines", "cycling_speed_kmh")
+            options = {k: v for k, v in options.items() if k in kept}
         options.update({k: v for k, v in self._options(args).items() if k in args})
         if "target_miles" in args:
             options["target_distance_m"] = self._options(args).get("target_distance_m")

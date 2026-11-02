@@ -815,8 +815,9 @@ def authorize(request):
             code_digest=_digest(code),
             code_challenge=params["code_challenge"],
             code_expires_at=timezone.now() + CODE_LIFETIME,
-            # The page this answers says it may read My routes.
-            reads_routes=True,
+            # Only a page that said it may read My routes sends this: one served before v0.18.0
+            # and answered after it said "It can't read your saved routes".
+            reads_routes=request.POST.get("reads_routes") == "1",
         )
         return _redirect_with(
             redirect_uri, code=code, state=params.get("state"), iss=_origin(request)
@@ -848,6 +849,7 @@ else.</p>
 <p>After you answer you'll go back to <strong>{host}</strong>.</p>
 <form method="post" action="/oauth/authorize">
 <input type="hidden" name="csrfmiddlewaretoken" value="{csrf}">
+<input type="hidden" name="reads_routes" value="1">
 {hidden}
 <div class="actions">
 <button type="submit" name="answer" value="allow" class="allow">Allow</button>

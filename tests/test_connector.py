@@ -72,9 +72,11 @@ def allow(user=None, answer="allow"):
     params = authorize_params(client_id, challenge)
     page = browser.get("/oauth/authorize", params, **addr())
     assert page.status_code == 200, page.content
+    # What the page's form sends besides the rider's answer.
+    sent = {"reads_routes": "1"} if 'name="reads_routes" value="1"' in page.content.decode() else {}
     answered = browser.post(
         "/oauth/authorize",
-        {**params, "answer": answer, "csrfmiddlewaretoken": csrf},
+        {**params, **sent, "answer": answer, "csrfmiddlewaretoken": csrf},
         HTTP_X_CSRFTOKEN=csrf,
         **addr(),
     )
@@ -344,6 +346,22 @@ class TestConnector:
         assert not out["isError"], out
         assert out["structuredContent"]["weather"]["checked"] is True
         assert asked and all(len(p) == 3 for p in asked[0])
+
+    def test_a_consent_page_from_before_my_routes_grants_no_read(self) -> None:
+        """A page served before v0.18.0 said "It can't read your saved routes" and sends no
+        reads_routes: answered after the deploy, its grant still cannot read them."""
+        client_id = register().json()["client_id"]
+        _verifier, challenge = pkce()
+        browser, user, csrf = signed_in()
+        params = authorize_params(client_id, challenge)
+        answered = browser.post(
+            "/oauth/authorize",
+            {**params, "answer": "allow", "csrfmiddlewaretoken": csrf},
+            HTTP_X_CSRFTOKEN=csrf,
+            **addr(),
+        )
+        assert answered.status_code == 302
+        assert ConnectorGrant.objects.get(user=user).reads_routes is False
 
     def test_a_grant_given_before_my_routes_cannot_read_them(self, planner) -> None:
         """Its consent page said "It can't read your saved routes": it stays so until the rider

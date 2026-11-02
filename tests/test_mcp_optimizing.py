@@ -244,6 +244,15 @@ def test_a_mile_range_or_a_line_is_avoided_and_a_road_not_ridden_is_refused(tool
         {"draft_id": first["draft_id"], "avoid": [{"from_mi": 1.0, "to_mi": 2.0}]},
     )
     assert len(api.routes[-1]["blocked_lines"]) == 1
+    # Never past the draft's end: a range beyond it is refused, one running off it is cut.
+    with pytest.raises(mcp.ToolError, match="on the draft"):
+        tools.call(
+            "revise_route", {"draft_id": first["draft_id"], "avoid": [{"from_mi": 5, "to_mi": 50}]}
+        )
+    tools.call(
+        "revise_route", {"draft_id": first["draft_id"], "avoid": [{"from_mi": 3.5, "to_mi": 50}]}
+    )
+    assert api.routes[-1]["blocked_lines"][0][-1][0] <= east(4)[0] + 1e-6
     with pytest.raises(mcp.ToolError, match="does not ride 'Elm Street'"):
         tools.call(
             "revise_route", {"draft_id": first["draft_id"], "avoid": [{"road": "Elm Street"}]}
@@ -294,6 +303,9 @@ def test_a_line_the_rider_has_is_followed_until_points_reshape_it(tools, api) ->
     assert sent["points"] == [line[0], line[-1]]
     with pytest.raises(mcp.ToolError, match="leave points"):
         tools.call("plan_route", {"follow": {"polyline": polyline}, "points": [east(0), east(1)]})
+    # Another ride type rides the same line: the line is the rider's, not the ride type's.
+    tools.call("revise_route", {"draft_id": out["draft_id"], "preset": "road-bike"})
+    assert api.routes[-1]["follow"] == polyline
     moved = tools.call(
         "revise_route",
         {"draft_id": out["draft_id"], "add_points": [{"point": east(2), "after": 0}]},
@@ -306,17 +318,28 @@ def test_a_line_the_rider_has_is_followed_until_points_reshape_it(tools, api) ->
 
 
 def test_alternatives_come_back_as_drafts_of_their_own(tools, api) -> None:
-    calm = answer_for({"points": [east(0), east(4)], "stress": 95})
-    api.candidates = [{**calm, "rank": 2, "extra_distance_m": 0.4 * MI, "extra_duration_s": 180}]
+    # The site's candidates: other routes from the same search, at the same settings, with no
+    # figures against the chosen one (core.routing: `_answer(found, None, True)` and a rank).
+    other = answer_for({"points": [east(0), east(4)]}, distance_m=4.4 * MI, duration_s=27 * 60)
+    other["geometry"]["coordinates"][20] = [east(2)[0], START[1] + 0.003]
+    api.candidates = [{**other, "rank": 2}]
     out = plan(tools, alternatives=True)
     assert api.routes[0]["candidates"] is True
     alt = out["alternatives"]["routes"][0]
-    assert alt["stress"] == 95 and alt["extra_miles"] == 0.4 and alt["extra_minutes"] == 3.0
-    assert alt["figures"]["miles"] == 4.0 and alt["main_roads"][0] == "Rock Creek Trail"
-    # Its own draft, read and revised as any other, at its own stress.
+    assert alt["rank"] == 2 and alt["extra_miles"] == 0.4 and alt["extra_minutes"] == 3.0
+    assert alt["figures"]["miles"] == 4.4 and alt["main_roads"][0] == "Rock Creek Trail"
     assert tools.call("route_segments", {"draft_id": alt["draft_id"]})["segments"]
-    tools.call("revise_route", {"draft_id": alt["draft_id"], "hills": -50})
-    assert api.routes[-1]["stress"] == 95 and api.routes[-1]["candidates"] is False
+    # Revised (a new pace), it follows its own line rather than becoming the chosen route.
+    tools.call("revise_route", {"draft_id": alt["draft_id"], "pace_mph": 14})
+    sent = api.routes[-1]
+    assert sent["candidates"] is False and sent["cycling_speed_kmh"] == pytest.approx(22.5)
+    assert mcp.decode_polyline(sent["follow"])[20] == other["geometry"]["coordinates"][20]
+    # Its points changed, it is planned through them.
+    tools.call(
+        "revise_route",
+        {"draft_id": alt["draft_id"], "move_points": [{"index": 1, "to": east(3.9)}]},
+    )
+    assert "follow" not in api.routes[-1]
 
 
 def test_the_summary_and_road_list_say_unpaved_miles_and_junction_waits(tools) -> None:
@@ -409,6 +432,9 @@ def test_a_time_with_no_zone_is_new_york_s() -> None:
     assert mcp.parse_depart("2026-11-03T05:30") == datetime(2026, 11, 3, 10, 30, tzinfo=UTC)
     assert mcp.parse_depart("2026-07-03T05:30") == datetime(2026, 7, 3, 9, 30, tzinfo=UTC)
     assert mcp.parse_depart("2026-11-03T05:30Z") == datetime(2026, 11, 3, 5, 30, tzinfo=UTC)
+    # The mornings the clocks change: EST from 2 AM on 2026-11-01, EDT from 2 AM on 2026-03-08.
+    assert mcp.parse_depart("2026-11-01T10:00") == datetime(2026, 11, 1, 15, 0, tzinfo=UTC)
+    assert mcp.parse_depart("2026-03-08T09:00") == datetime(2026, 3, 8, 13, 0, tzinfo=UTC)
     with pytest.raises(mcp.ToolError, match="ISO 8601"):
         mcp.parse_depart("tomorrow")
 
