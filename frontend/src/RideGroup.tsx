@@ -95,7 +95,10 @@ import {
   roleLabel,
   roleOf,
   sendAlert,
-  sendPosition,
+  sendPositionRead,
+  backoffMs,
+  groupReads,
+  readCovered,
   shareStop,
   postSoonAfter,
   sharedFix,
@@ -165,6 +168,8 @@ export interface RideGroupProps {
 }
 
 const TICK_MS = 5000;
+/** No leader's route: one array, so the dots' drawing sees no change between renders. */
+const NO_ROUTE: LonLat[] = [];
 
 function visible(): boolean {
   return typeof document === "undefined" || document.visibilityState !== "hidden";
@@ -252,6 +257,8 @@ export function RideGroup({ type, line, getMap, here, livePoint = null, broadcas
   const [urgent, setUrgent] = useState({ text: "", count: 0 });
   const [dotInfo, setDotInfo] = useState("");
   const share = useRef({ lastNearAt: null as number | null, startedAt: Date.now(), lastPost: 0 });
+  // Posts in a row that failed: the next waits longer, up to 15 s (lib/rideGroup.ts backoffMs).
+  const postFailures = useRef(0);
   // Where this rider has stayed, and whether their dot is held back for it (lib/rideGroup.ts dotHeldBack).
   const dwell = useRef<Dwell | null>(null);
   const heldBack = useRef(false);
@@ -348,12 +355,15 @@ export function RideGroup({ type, line, getMap, here, livePoint = null, broadcas
   const [watchToken] = useState(newToken);
   const token = consent?.token ?? (broadcast ? watchToken : null);
 
-  // Seeing the others while the page is in front: at the pace the server sets (2 s on a ride of 20 or fewer, 5 s, slower on a very big ride).
-  const poll = useCallback(async () => {
-    if (!ride || !token || !visible()) return;
-    lastReadAt.current = Date.now();
-    const got = await readRide(origin, ride, token, fetch, followKey, seal);
-    if (!got) return;
+  // Read on this page's own timer only while riding or following a broadcast link (lib/rideGroup.ts groupReads): not
+  // on the Go screen before or after a ride (the owner, 2026-11-01: battery audit).
+  const reads = groupReads({ ride, token, riding, following: isBroadcast && !leading });
+  // Reads in a row that failed (the wait doubles, lib/rideGroup.ts backoffMs), and when a post last came answered with
+  // the ride's read (a separate read is then skipped, readCovered).
+  const readFailures = useRef(0);
+  const lastPostReadAt = useRef(0);
+  // The ride's read, from a read or a post's answer: the dots, the pace and any new alert said at once.
+  const applyRead = useCallback((got: RideRead) => {
     setRead(got);
     setPace(got.paceMs);
     setPolledAt(Date.now());
@@ -368,9 +378,18 @@ export function RideGroup({ type, line, getMap, here, livePoint = null, broadcas
         // No vibration here.
       }
     }
-  }, [ride, token, origin, line, followKey, seal]);
+  }, [line]);
+  // Seeing the others while the page is in front: at the pace the server sets (2 s on a ride of 20 or fewer, 5 s, slower on a very big ride).
+  const poll = useCallback(async () => {
+    if (!ride || !token || !visible()) return;
+    lastReadAt.current = Date.now();
+    const got = await readRide(origin, ride, token, fetch, followKey, seal);
+    // Not read (no signal, refused): the next waits longer, up to 15 s; the first that goes sets it back to the pace.
+    readFailures.current = got ? 0 : readFailures.current + 1;
+    if (got) applyRead(got);
+  }, [ride, token, origin, followKey, seal, applyRead]);
   useEffect(() => {
-    if (!ride || !token) return;
+    if (!reads) return;
     void poll();
     const onShow = () => {
       // Not again within a second of the last read (the server would refuse it).
@@ -378,18 +397,38 @@ export function RideGroup({ type, line, getMap, here, livePoint = null, broadcas
     };
     document.addEventListener("visibilitychange", onShow);
     return () => document.removeEventListener("visibilitychange", onShow);
-  }, [ride, token, poll]);
-  // Apart from the first read: a new pace sets the next reads, without reading again at once. While sharing, the tick
-  // that sends a still rider's dot runs at least twice a pace; only watching, every 5 s.
+  }, [reads, poll]);
+  // Apart from the first read: a new pace sets the next reads, without reading again at once; each waits its pace, or
+  // longer after failures. Skipped while this rider's posts come answered with the read (one request a pace, not two).
   useEffect(() => {
-    if (!ride || !token) return;
-    const id = window.setInterval(() => void poll(), pace);
-    const tick = window.setInterval(() => setNow(Date.now()), shareOn ? Math.min(TICK_MS, pace / 2) : TICK_MS);
-    return () => {
-      window.clearInterval(id);
-      window.clearInterval(tick);
+    if (!reads) return;
+    let timer = 0;
+    let live = true;
+    const next = () => {
+      timer = window.setTimeout(async () => {
+        if (!readCovered(Date.now(), lastPostReadAt.current, pace)) await poll();
+        if (live) next();
+      }, backoffMs(pace, readFailures.current));
     };
-  }, [ride, token, poll, pace, shareOn]);
+    next();
+    return () => {
+      live = false;
+      window.clearTimeout(timer);
+    };
+  }, [reads, poll, pace]);
+  // Neither reading nor sharing (the Go screen before or after a ride): the last dots go rather than stand still.
+  useEffect(() => {
+    if (reads || shareOn) return;
+    previousAlerts.current = [];
+    setRead((r) => (r.dots.length || r.alerts.length || r.leaderPath ? { dots: [], alerts: [], paceMs: POLL_EVERY_MS } : r));
+  }, [reads, shareOn]);
+  // While sharing, the tick that sends a still rider's dot runs at least twice a pace; only watching, every 5 s; with
+  // neither, none (nothing to send or age).
+  useEffect(() => {
+    if (!ride || !token || !(reads || shareOn)) return;
+    const tick = window.setInterval(() => setNow(Date.now()), shareOn ? Math.min(TICK_MS, pace / 2) : TICK_MS);
+    return () => window.clearInterval(tick);
+  }, [ride, token, reads, pace, shareOn]);
 
   // Sharing your own dot: only while sharing and in front.
   const [front, setFront] = useState(visible());
@@ -447,17 +486,25 @@ export function RideGroup({ type, line, getMap, here, livePoint = null, broadcas
       }
       else share.current.lastPost = 0;
     }
-    if (near && !held && postDue(t, share.current.lastPost, pace)) {
+    // At the pace, or longer after posts that failed (lib/rideGroup.ts backoffMs; the owner, 2026-11-01: battery audit).
+    if (near && !held && postDue(t, share.current.lastPost, backoffMs(pace, postFailures.current))) {
       share.current.lastPost = t;
       const gen = sentGen.current;
-      void sendPosition(origin, ride, token, fix, consent.role, fetch, seal).then((ok) => {
+      // Answered with the ride's read: one request a pace, and the separate read is skipped while these come (readCovered).
+      void sendPositionRead(origin, ride, token, fix, consent.role, fetch, seal, followKey).then(({ ok, read: got }) => {
+        postFailures.current = ok ? 0 : postFailures.current + 1;
         if (ok && gen === sentGen.current) sentDot.current = { ride, at: Date.now() };
+        if (got && gen === sentGen.current) {
+          lastPostReadAt.current = Date.now();
+          readFailures.current = 0;
+          applyRead(got);
+        }
       });
     }
     // Nor the leader's ridden path while the dot is held back: its last point would say where they are.
     // Only while riding: where the leader was before the ride is never part of the path sent with it.
     if (leading && riding && near && !held) setOwnTrail((t) => extendTrail(t, fix));
-  }, [ownFix, front, now, shareOn, ride, token, consent, line, origin, isBroadcast, riding, leading, seal, home, pace]);
+  }, [ownFix, front, now, shareOn, ride, token, consent, line, origin, isBroadcast, riding, leading, seal, home, pace, followKey, applyRead]);
 
   // The ride ended: the dot goes, and the next ride on this page asks again (2026-10-29: a Yes is
   // for the ride it was given for, never the page left open after it).
@@ -521,7 +568,8 @@ export function RideGroup({ type, line, getMap, here, livePoint = null, broadcas
   );
   previousDots.current = dots;
   // An alert lasts 2 minutes (core.ride_presence.ALERT_TTL_S: nothing stays on the server longer).
-  const alerts = read.alerts.filter((a) => a.age_s + sinceS <= 120);
+  // Kept while its inputs are, so the map's dots are not drawn again at every render.
+  const alerts = useMemo(() => read.alerts.filter((a) => a.age_s + sinceS <= 120), [read.alerts, sinceS]);
   // The key: the ride leader under "Ride leader" only, the others by role (lib/rideGroup.ts roleKey).
   const roleRows = roleKey(dots);
   // Everyone on the ride, the leader and this rider (where the others see them) included.
@@ -552,7 +600,7 @@ export function RideGroup({ type, line, getMap, here, livePoint = null, broadcas
   // The leader's phone's own route and path (sent every 2 minutes), else the path this page saw.
   const sentPath = followKey ? (read.leaderPath ?? null) : null;
   const shownTrail = sentPath && sentPath.trail.length >= trail.length ? sentPath.trail : trail;
-  const shownRoute = sentPath?.route ?? [];
+  const shownRoute = sentPath?.route ?? NO_ROUTE;
   useEffect(() => {
     if (!leaderAt) return;
     setTrail((t) => extendTrail(t, leaderAt));
@@ -580,11 +628,12 @@ export function RideGroup({ type, line, getMap, here, livePoint = null, broadcas
     // Tried again once the leader shows, where the map was not there at first.
   }, [getMap, followKey, leaderSpot !== ""]);
 
-  // The map: dots and pins, drawn again as they age; a tap on a dot says its age.
+  // The map: dots and pins, drawn again as they age (sinceS) or change; a tap on a dot says its age. Not at every
+  // render: this page renders at each GPS fix, and each draw is four GeoJSON updates (the owner, 2026-11-01: battery audit).
+  const dotsMap = getMap();
   useEffect(() => {
-    const map = getMap();
-    if (map) showRideDots(map, dots, alerts, sinceS, Math.min(3, Math.max(1, Math.ceil(window.devicePixelRatio || 1))), shownTrail, shownRoute);
-  });
+    if (dotsMap) showRideDots(dotsMap, dots, alerts, sinceS, Math.min(3, Math.max(1, Math.ceil(window.devicePixelRatio || 1))), shownTrail, shownRoute);
+  }, [dotsMap, dots, alerts, sinceS, shownTrail, shownRoute]);
   useEffect(() => {
     const map = getMap();
     if (!map) return;

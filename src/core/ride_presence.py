@@ -72,8 +72,9 @@ PACE_S = ((20, 2), (300, 5), (1000, 10))
 SLOWEST_PACE_S = 15
 # One who only watches (no dot of its own: on a big ride, most riders while its marshals share,
 # Stephen 2026-10-31) reads no faster than this: each read is a request to the api (about 1 ms of
-# its CPU measured, before nginx), so 1,000 watching at 5 s is some 200 a second.
-WATCH_PACE_S = 5
+# its CPU measured, before nginx), and wakes the phone's radio for some 5 to 10 s, so 15 s lets it
+# sleep between reads (the owner, 2026-11-01: battery audit). A sharer's pace stays PACE_S.
+WATCH_PACE_S = 15
 # A position sooner than this after the last is refused (429), at any pace: well under the 2 s
 # pace, so a post held up on a phone's network is not refused when the next arrives quickly (the
 # ride's own write count and the address limit bound a phone that posts this often).
@@ -568,8 +569,19 @@ def _sealed(text, most: int) -> str:
     return text
 
 
-def post_position(ride_id: str, token: str, sealed, now: Callable[[], float] = time.time) -> None:
-    """Keep this rider's dot, as its phone sealed it, for 2 minutes."""
+def post_position(
+    ride_id: str,
+    token: str,
+    sealed,
+    now: Callable[[], float] = time.time,
+    answer_read: bool = False,
+    leader: str = "",
+) -> dict | None:
+    """Keep this rider's dot, as its phone sealed it, for 2 minutes. With `answer_read`, answers
+    what `read` would (the others' dots, the alerts, the pace) from the same locked turn: a
+    sharing phone then makes one request a pace, not a post and a read apart, each of which keeps
+    its radio awake for seconds (the owner, 2026-11-01: battery audit). Without it (an older page,
+    which reads apart), nothing."""
     _check(ride_id, token)
     kept = _sealed(sealed, SEALED_MAX)
     t = now()
@@ -583,6 +595,9 @@ def post_position(ride_id: str, token: str, sealed, now: Callable[[], float] = t
         if t - last < MIN_POST_INTERVAL_S:
             raise Refused(429, "Too soon; the next position goes in a few seconds.", 1)
         rider.update(sealed=kept, at=t, posted=t)
+        # No poll stamp: the post itself keeps the token for KEEP_S, and a read apart soon after
+        # (the page shown again) is not refused for this one.
+        return _answer(state, token, t, leader) if answer_read else None
 
 
 def post_path(ride_id: str, token: str, sealed, now: Callable[[], float] = time.time) -> None:
@@ -632,8 +647,6 @@ def read(ride_id: str, token: str, now: Callable[[], float] = time.time, leader:
     alerts. With a broadcast link's `leader` key, the sharer's dot carries "leader": true and the
     sharer's sealed path comes too."""
     _check(ride_id, token)
-    if not LEADER_KEY.match(leader or ""):
-        leader = ""
     t = now()
     stamp = False
     # Read only, under a shared lock: the ride's readers never wait on one another and the file
@@ -656,38 +669,48 @@ def read(ride_id: str, token: str, now: Callable[[], float] = time.time, leader:
             stamp = t - rider.get("polled", 0) >= POLL_STAMP_S
         if stale:
             stamp = stamp or rider is not None
-        dots = []
-        for other, r in state["riders"].items():
-            if other == token or "at" not in r or "sealed" not in r:
-                continue
-            dot = {"sealed": r["sealed"], "age_s": max(0, int(t - r["at"]))}
-            if leader and leader_key(other) == leader:
-                dot["leader"] = True
-            dots.append(dot)
-        alerts = [_alert_out(a, token, t) for a in state["alerts"] if "sealed" in a]
-        # The pace counts the dots shared, not every token kept (an alert's sender, one whose
-        # dot has gone): 20 marshals sharing stay at 2 s when a watcher sends an alert.
-        every = pace_s(sum(1 for r in state["riders"].values() if "sealed" in r))
-        if rider is None or "sealed" not in rider:
-            every = max(every, WATCH_PACE_S)
-        path = None
-        if leader:
-            for other, r in state["riders"].items():
-                p = r.get("path")
-                if other != token and p and "sealed" in p and leader_key(other) == leader:
-                    path = {"sealed": p["sealed"], "age_s": max(0, int(t - p["at"]))}
-    # A fresh order each time: a dot's place in the list never ties it to the same rider
-    # from one read to the next (2026-10-29).
-    _SHUFFLE.shuffle(dots)
-    answer = {"dots": dots, "alerts": alerts, "every_s": every}
-    if path is not None:
-        answer["leader_path"] = path
+        answer = _answer(state, token, t, leader)
     if stamp or stale:
         with store().ride(ride_id, create=False) as state:
             _prune(state, t)
             kept = state["riders"].get(token)
             if kept is not None and stamp:
                 kept["polled"] = t
+    return answer
+
+
+def _answer(state: dict, token: str, t: float, leader: str = "") -> dict:
+    """What a read answers from a pruned ride's state: the others' sealed dots in a fresh order,
+    the alerts, the pace, and with a broadcast's `leader` key the sharer's mark and path."""
+    if not LEADER_KEY.match(leader or ""):
+        leader = ""
+    rider = state["riders"].get(token)
+    dots = []
+    for other, r in state["riders"].items():
+        if other == token or "at" not in r or "sealed" not in r:
+            continue
+        dot = {"sealed": r["sealed"], "age_s": max(0, int(t - r["at"]))}
+        if leader and leader_key(other) == leader:
+            dot["leader"] = True
+        dots.append(dot)
+    alerts = [_alert_out(a, token, t) for a in state["alerts"] if "sealed" in a]
+    # The pace counts the dots shared, not every token kept (an alert's sender, one whose
+    # dot has gone): 20 marshals sharing stay at 2 s when a watcher sends an alert.
+    every = pace_s(sum(1 for r in state["riders"].values() if "sealed" in r))
+    if rider is None or "sealed" not in rider:
+        every = max(every, WATCH_PACE_S)
+    path = None
+    if leader:
+        for other, r in state["riders"].items():
+            p = r.get("path")
+            if other != token and p and "sealed" in p and leader_key(other) == leader:
+                path = {"sealed": p["sealed"], "age_s": max(0, int(t - p["at"]))}
+    # A fresh order each time: a dot's place in the list never ties it to the same rider
+    # from one read to the next (2026-10-29).
+    _SHUFFLE.shuffle(dots)
+    answer = {"dots": dots, "alerts": alerts, "every_s": every}
+    if path is not None:
+        answer["leader_path"] = path
     return answer
 
 
