@@ -1854,4 +1854,13 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Walk plus train or bus": "হাঁটা এবং ট্রেন বা বাস",
   "Walks keep to sidewalks, paths and crosswalks: the traffic and hills settings are for riding.": "হাঁটা ফুটপাত, পথ ও ক্রসওয়াক ধরে চলে: ট্রাফিক ও পাহাড়ের সেটিংস সাইকেল চালানোর জন্য।",
   "Start walk": "হাঁটা শুরু",
+  "Run": "দৌড়",
+  "A run on trails and paths, turn by turn.": "ট্রেইল ও পথে দৌড়, মোড়ে মোড়ে নির্দেশনা।",
+  "On foot at your running pace, preferring trails and park paths (packed gravel and dirt are fine) and fewer traffic lights; lit ways after dark. Make it a loop, or set a target distance and place only the start for a loop that long. Turn-by-turn directions as you run.": "আপনার দৌড়ের গতিতে পায়ে হেঁটে, ট্রেইল ও পার্কের পথ (চাপা নুড়ি ও মাটি ঠিক আছে) এবং কম ট্রাফিক সিগন্যাল পছন্দ করে; অন্ধকারের পরে আলোকিত পথ। একটি লুপ করুন, অথবা একটি লক্ষ্য দূরত্ব ঠিক করে শুধু শুরুর বিন্দু রাখুন, ততটা লম্বা লুপের জন্য। দৌড়ানোর সময় মোড়ে মোড়ে নির্দেশনা।",
+  "Start run": "দৌড় শুরু করুন",
+  "Run started.": "দৌড় শুরু হয়েছে।",
+  "End run": "দৌড় শেষ করুন",
+  "Running pace": "দৌড়ের গতি",
+  "Your easy pace on the flat, for the run's time. Climbs still slow it. Kept on this device.": "সমতলে আপনার স্বাচ্ছন্দ্যের গতি, দৌড়ের সময়ের জন্য। চড়াই এখনও এটিকে ধীর করে। এই ডিভাইসে রাখা হয়।",
+  "{mile} per mile ({km} per km)": "প্রতি মাইলে {mile} (প্রতি কিমিতে {km})",
 };

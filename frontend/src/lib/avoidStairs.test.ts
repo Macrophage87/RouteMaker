@@ -48,7 +48,8 @@ test("Settings shows it as a switch on the Riding tab, for Go and Plan alike", (
   // Either switch plans the route shown again: App keys the plan on it.
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
   assert.match(app, /addEventListener\(AVOID_STAIRS_EVENT/);
-  assert.match(app, /stairs: twoPointsOnly\(preset\) && avoidStairs/);
+  // Run (2026-11-02) walks on its own too, so it sends the switch and plans again on it.
+  assert.match(app, /stairs: \(twoPointsOnly\(preset\) \|\| run\) && avoidStairs/);
 });
 
 // The release review's S5: one short sentence that holds on Walk too (it is the switch's description, heard on each focus).

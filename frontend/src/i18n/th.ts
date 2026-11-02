@@ -1854,4 +1854,13 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Walk plus train or bus": "เดินบวกรถไฟหรือรถบัส",
   "Walks keep to sidewalks, paths and crosswalks: the traffic and hills settings are for riding.": "การเดินใช้ทางเท้า ทางเดิน และทางม้าลาย การตั้งค่าการจราจรและทางชันมีไว้สำหรับปั่นจักรยาน",
   "Start walk": "เริ่มเดิน",
+  "Run": "วิ่ง",
+  "A run on trails and paths, turn by turn.": "วิ่งบนเส้นทางและทางเดิน บอกทางทุกทางเลี้ยว",
+  "On foot at your running pace, preferring trails and park paths (packed gravel and dirt are fine) and fewer traffic lights; lit ways after dark. Make it a loop, or set a target distance and place only the start for a loop that long. Turn-by-turn directions as you run.": "เดินเท้าด้วยความเร็ววิ่งของคุณ เลือกเส้นทางและทางเดินในสวน (กรวดอัดแน่นและดินใช้ได้) และไฟจราจรน้อยกว่า ทางที่มีไฟส่องสว่างหลังมืด ทำเป็นวง หรือกำหนดระยะเป้าหมายแล้ววางเฉพาะจุดเริ่มต้นเพื่อให้ได้วงที่ยาวเท่านั้น บอกทางทุกทางเลี้ยวขณะวิ่ง",
+  "Start run": "เริ่มวิ่ง",
+  "Run started.": "เริ่มวิ่งแล้ว",
+  "End run": "จบการวิ่ง",
+  "Running pace": "ความเร็ววิ่ง",
+  "Your easy pace on the flat, for the run's time. Climbs still slow it. Kept on this device.": "ความเร็วสบายๆ ของคุณบนทางราบ สำหรับเวลาวิ่ง ทางขึ้นเนินยังทำให้ช้าลง เก็บไว้ในอุปกรณ์นี้",
+  "{mile} per mile ({km} per km)": "{mile} ต่อไมล์ ({km} ต่อกม.)",
 };

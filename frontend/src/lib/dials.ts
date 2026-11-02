@@ -224,6 +224,8 @@ export const STARTS: Record<PresetId, Start> = {
   // Walk and Walk + 🚆🚌 (2026-11-02) ride nothing: Bikeshare + 🚶🚆🚌's start, never used (core.presets ON_FOOT_PRESETS).
   walk: { stress: 80, hills: -60, seek: true },
   "walk-transit": { stress: 80, hills: -60, seek: true },
+  // Run (2026-11-02): on foot; its traffic is never used, its hills start where they do not mind climbs (core.presets).
+  run: { stress: 80, hills: 0, seek: true },
   // REBALANCE-RIDE: Bikeshare's own start (core.presets REBALANCE), with its bike choice.
   rebalance: { stress: 80, hills: -60, seek: true, assist: true },
 };

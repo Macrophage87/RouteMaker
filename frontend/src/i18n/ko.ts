@@ -1854,4 +1854,13 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Walk plus train or bus": "도보와 기차 또는 버스",
   "Walks keep to sidewalks, paths and crosswalks: the traffic and hills settings are for riding.": "도보는 보도·길·횡단보도를 따릅니다. 교통량과 언덕 설정은 자전거용입니다.",
   "Start walk": "도보 시작",
+  "Run": "달리기",
+  "A run on trails and paths, turn by turn.": "트레일과 길을 따라 달리기, 회전마다 안내.",
+  "On foot at your running pace, preferring trails and park paths (packed gravel and dirt are fine) and fewer traffic lights; lit ways after dark. Make it a loop, or set a target distance and place only the start for a loop that long. Turn-by-turn directions as you run.": "달리기 속도로 걸어서, 트레일과 공원 길(다진 자갈과 흙도 괜찮음)과 신호등이 적은 길을 우선하고, 어두워진 뒤에는 조명이 있는 길을 택합니다. 순환 코스로 만들거나, 목표 거리를 정하고 출발점만 놓으면 그 길이의 순환 코스가 됩니다. 달리는 동안 회전마다 안내합니다.",
+  "Start run": "달리기 시작",
+  "Run started.": "달리기를 시작했습니다.",
+  "End run": "달리기 종료",
+  "Running pace": "달리기 페이스",
+  "Your easy pace on the flat, for the run's time. Climbs still slow it. Kept on this device.": "평지에서의 편한 페이스로, 달리기 시간을 계산합니다. 오르막에서는 여전히 느려집니다. 이 기기에 저장됩니다.",
+  "{mile} per mile ({km} per km)": "마일당 {mile} (km당 {km})",
 };

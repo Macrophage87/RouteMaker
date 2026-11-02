@@ -57,6 +57,7 @@ TRACE_ATTRIBUTES = (
     "edge.lane_count",
     "edge.traffic_signal",
     "edge.names",
+    "edge.mean_elevation",
     "edge.begin_heading",
     "edge.end_heading",
     "edge.begin_shape_index",
@@ -85,6 +86,14 @@ WALKWAY_USES = frozenset(
         "track",
     }
 )
+
+# The ways a run counts as off the street (`Reading.trail_m`, core.run_plan): a trail, a park path
+# or a track, packed gravel and dirt alike; never a sidewalk or a crossing.
+TRAIL_USES = frozenset(
+    {"footway", "path", "pedestrian", "cycleway", "mountain_bike", "bridleway", "track"}
+)
+# Valhalla's `mean_elevation` where the graph has no elevation there.
+NO_ELEVATION_BELOW_M = -1000.0
 
 QUIET, MEDIUM, BUSY, SEVERE = 0, 1, 2, 3
 SEVERE_CLASSES = frozenset({"motorway", "trunk"})
@@ -173,14 +182,25 @@ class Crossing:
 
 @dataclass(frozen=True)
 class Reading:
-    """A traced way's charges."""
+    """A traced way's charges, and what a run weighs besides (core.run_plan): its metres on
+    trails (`TRAIL_USES`), its length, and its climb and descent from the edges' mean
+    elevations (None where the graph has none)."""
 
     roadside_s: float = 0.0
     crossings: tuple[Crossing, ...] = field(default_factory=tuple)
+    trail_m: float = 0.0
+    metres: float = 0.0
+    climb_m: float | None = None
+    descent_m: float | None = None
 
     @property
     def penalty_s(self) -> float:
         return self.roadside_s + sum(c.penalty_s for c in self.crossings)
+
+    @property
+    def signals(self) -> int:
+        """The signalled crossings: each a wait for the light."""
+        return sum(1 for c in self.crossings if c.signal)
 
 
 def _decode(encoded: str) -> list[tuple[float, float]]:
@@ -318,7 +338,36 @@ def read(trace: dict, seconds_per_m: float) -> Reading:
             )
         )
     crossings.sort(key=lambda c: c.m)
-    return Reading(round(roadside, 1), tuple(_merged(crossings)))
+    trail = sum(
+        float(edge.get("length") or 0.0) * 1000.0
+        for edge in edges
+        if str(edge.get("use") or "") in TRAIL_USES
+    )
+    climb, descent = _climb(edges)
+    return Reading(
+        round(roadside, 1),
+        tuple(_merged(crossings)),
+        trail_m=round(trail, 1),
+        metres=round(along, 1),
+        climb_m=climb,
+        descent_m=descent,
+    )
+
+
+def _climb(edges: Sequence[dict]) -> tuple[float | None, float | None]:
+    """(climb, descent) in metres from one edge's mean elevation to the next's; (None, None)
+    where fewer than two edges have one. Rough (an edge's own rise is averaged away) but it
+    never counts a climb that is not there."""
+    heights = []
+    for edge in edges:
+        value = edge.get("mean_elevation")
+        if isinstance(value, (int, float)) and value > NO_ELEVATION_BELOW_M:
+            heights.append(float(value))
+    if len(heights) < 2:
+        return None, None
+    up = sum(max(b - a, 0.0) for a, b in zip(heights, heights[1:], strict=False))
+    down = sum(max(a - b, 0.0) for a, b in zip(heights, heights[1:], strict=False))
+    return round(up, 1), round(down, 1)
 
 
 # Two crossings this close along the walk are one road's two halves (a divided road, a
@@ -393,6 +442,8 @@ class Chosen:
     crossings: tuple[Crossing, ...] = ()
     # The charges that chose it, for the log and the tests: (way's index, seconds) a way.
     scores: tuple[tuple[int, float], ...] = ()
+    # Its reading (None where it was not traced), for a run's climb and trail metres.
+    reading: Reading | None = None
 
 
 def trace_payload(leg: dict, costing_options: dict | None) -> dict:
@@ -417,10 +468,22 @@ def _legs(answer: dict) -> list[dict]:
     return out
 
 
-def choose(answer: dict, ask: Ask, costing_options: dict | None = None) -> Chosen | None:
+# How a way is scored from its walking time and its reading: a walk's is the time and the charges;
+# a run weighs trails and waits besides (core.run_plan.weigh).
+Weigh = Callable[[float, Reading], float]
+
+
+def walk_score(seconds: float, reading: Reading) -> float:
+    return seconds + reading.penalty_s
+
+
+def choose(
+    answer: dict, ask: Ask, costing_options: dict | None = None, weigh: Weigh = walk_score
+) -> Chosen | None:
     """The router's way (of `answer`'s, with its `alternates`) whose walking time and charges
-    are least, with its crossings. `ask(action, payload)` asks the router and gives its
-    answer, or None where it cannot (refused, out of time). None where `answer` has no leg."""
+    are least (`weigh`), with its crossings. `ask(action, payload)` asks the router and gives
+    its answer, or None where it cannot (refused, out of time). None where `answer` has no
+    leg."""
     legs = _legs(answer)
     if not legs:
         return None
@@ -442,13 +505,13 @@ def choose(answer: dict, ask: Ask, costing_options: dict | None = None) -> Chose
             if index == 0:
                 return Chosen(legs[0])
             continue
-        score = seconds + reading.penalty_s
+        score = weigh(seconds, reading)
         scores.append((index, round(score, 1)))
         if best is None or score < best[0]:
             best = (score, index, reading)
     assert best is not None
     _score, index, reading = best
-    return Chosen(legs[index], reading.crossings, tuple(scores))
+    return Chosen(legs[index], reading.crossings, tuple(scores), reading)
 
 
 def crossing_turns(crossings: Sequence[Crossing], ask: Ask) -> list[dict]:

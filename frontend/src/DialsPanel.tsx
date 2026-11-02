@@ -17,8 +17,9 @@
 import { InfoButton, SettingRow, SettingSelect } from "./SettingRow.tsx";
 import { SPEED_HINT, SPEED_LABEL, speedOptions, takesRiderSpeed, type RidingSpeedControl } from "./lib/ridingSpeed.ts";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
-import { onFoot, type PresetId } from "./lib/presets.ts";
+import { onFoot, runs, type PresetId } from "./lib/presets.ts";
 import { AvoidStairsSwitch } from "./AvoidStairsSwitch.tsx";
+import { RunPaceSelect } from "./RunPaceSelect.tsx";
 import { BIKESHARE_HILLS, RIDE_SIZE_DEFAULT, WHENS, fitRideSize, offersBike, rideSizeOf, type Bike, type Dials, type When } from "./lib/dials.ts";
 import { BIKES } from "./lib/bikeshare.ts";
 import {
@@ -32,7 +33,7 @@ import {
   withMtbLevel,
   withMtbPreferred,
 } from "./lib/mtbMode.ts";
-import { RIDE_SIZE_LABEL, panelView, parseTarget, type SliderView } from "./lib/dialsPanel.ts";
+import { RIDE_SIZE_LABEL, panelView, parseTarget, runHillsView, type SliderView } from "./lib/dialsPanel.ts";
 import { Debounce, KEY_SETTLE_MS } from "./lib/settle.ts";
 import { t } from "./lib/i18n.ts";
 import { sentences } from "./lib/sentences.ts";
@@ -406,7 +407,8 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, ridingSpeed 
           {t("Follows e-bike rules and plans at a little more speed. Hills still count; with a strong motor, move the hills slider toward Fastest yourself.")}
         </p>
       )}
-      {/* Walk and Walk + 🚆🚌 (2026-11-02) ride nothing: no traffic or hills to set, said once in their place. */}
+      {/* Walk and Walk + 🚆🚌 (2026-11-02) ride nothing: no traffic or hills to set, said once in their place. Run
+          (2026-11-02) has no traffic either: its hills, its pace and Avoid stairs. */}
       {onFoot(preset) ? (
         <>
           {/* Stairs are walked unless the rider says (Stephen, 2026-11-02: "make that a clear option"): the same switch as
@@ -414,7 +416,7 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, ridingSpeed 
           <AvoidStairsSwitch idBase="dials-avoid-stairs" />
           <p className="hint on-foot-dials">{ON_FOOT_DIALS_NOTE}</p>
         </>
-      ) : (
+      ) : !runs(preset) ? (
         <>
         <Slider
           label={t("Traffic")}
@@ -438,6 +440,21 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, ridingSpeed 
           onDraft={(hills) => setDraft({ ...draft, hills })}
           onRelease={release}
         />
+        </>
+      ) : (
+        <>
+          {/* Run (2026-11-02): no traffic slider; its hills in words, its pace, and Avoid stairs. */}
+          <Slider
+            label={t("Hills")}
+            dial="hills"
+            about="hills"
+            view={runHillsView(draft.hills)}
+            value={Math.min(draft.hills, 0)}
+            onDraft={(hills) => setDraft({ ...draft, hills })}
+            onRelease={release}
+          />
+          <RunPaceSelect idBase="dials-run-pace" />
+          <AvoidStairsSwitch idBase="dials-avoid-stairs" />
         </>
       )}
       {/* The rider's own speed, under Hills (the owner, 2026-10-27: "Some people who ride much faster than the
@@ -493,7 +510,7 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, ridingSpeed 
         {/* One line, the rest behind its (i) (Plan streamline, Stephen 2026-10-17; P10, one (i) per row). */}
         <div className="dial-head">
           {/* About riding: not said on foot (Walk keeps When for Walk + transit's timetable). */}
-          {!onFoot(preset) && <p className="hint">{t("Weekend car-free roads, such as Beach Drive and Sligo Creek Parkway, count as paths.")}</p>}
+          {!onFoot(preset) && !runs(preset) && <p className="hint">{t("Weekend car-free roads, such as Beach Drive and Sligo Creek Parkway, count as paths.")}</p>}
           <InfoButton open={whenInfo} onToggle={() => setWhenInfo(!whenInfo)} controls={whenInfoId} about="when" />
         </div>
         <DialInfo id={whenInfoId} open={whenInfo}>
@@ -514,7 +531,7 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, ridingSpeed 
       )}
       {/* The rider and bike weight is in Settings (the owner, 2026-10-18: "somewhere hidden, and probably belongs in settings"). */}
       {/* Roads, not trails: a riding choice, which a walk does not take. */}
-      {!onFoot(preset) && (
+      {!onFoot(preset) && !runs(preset) && (
         <div className="dial trails-off">
           <div className="dial-head">
             <label className="toggle">

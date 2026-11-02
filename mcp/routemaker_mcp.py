@@ -104,6 +104,8 @@ PRESETS = (
     # Walk and Walk + 🚆🚌 (2026-11-02): on foot, a start and an end.
     "walk",
     "walk-transit",
+    # Run (2026-11-02): on foot, trails first, loops (core/run_plan.py).
+    "run",
 )
 TWO_POINT_PRESETS = (
     "bikeshare",
@@ -2921,7 +2923,8 @@ RIDE_OPTIONS = {
             " Capital Bikeshare dock to dock (two points). bike-transit and bikeshare-transit:"
             " bike plus Metro and bus (two points; depart_at, transit_option). walk: on foot,"
             " turn by turn (two points). walk-transit: on foot plus Metro and bus (two points;"
-            " depart_at, transit_option)."
+            " depart_at, transit_option). run: a run on foot, trails and paths first, fewer"
+            " traffic lights, lit ways after dark; loops."
         ),
     },
     "stress": {

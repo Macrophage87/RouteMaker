@@ -30,7 +30,8 @@ export const RIDE_GROUPS: readonly RideGroup[] = [
   {
     id: "adventure",
     label: t("Adventure"),
-    ids: ["fast", "road-bike", "trailmaxxing", "mountain-goat", "mountain-bike", "gravel"],
+    // Run (2026-11-02): exercise on foot, beside the riding ones.
+    ids: ["fast", "road-bike", "trailmaxxing", "mountain-goat", "mountain-bike", "gravel", "run"],
   },
   {
     id: "group",

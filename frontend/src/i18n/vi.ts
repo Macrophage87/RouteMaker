@@ -1854,4 +1854,13 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Walk plus train or bus": "Đi bộ cộng tàu hoặc xe buýt",
   "Walks keep to sidewalks, paths and crosswalks: the traffic and hills settings are for riding.": "Đi bộ theo vỉa hè, lối đi và vạch qua đường: cài đặt giao thông và dốc dành cho đạp xe.",
   "Start walk": "Bắt đầu đi bộ",
+  "Run": "Chạy bộ",
+  "A run on trails and paths, turn by turn.": "Một buổi chạy trên đường mòn và lối đi, chỉ đường từng ngã rẽ.",
+  "On foot at your running pace, preferring trails and park paths (packed gravel and dirt are fine) and fewer traffic lights; lit ways after dark. Make it a loop, or set a target distance and place only the start for a loop that long. Turn-by-turn directions as you run.": "Đi bộ theo tốc độ chạy của bạn, ưu tiên đường mòn và lối đi trong công viên (sỏi nén và đất đều được) và ít đèn giao thông hơn; đường có đèn sau khi trời tối. Tạo một vòng, hoặc đặt khoảng cách mục tiêu và chỉ đặt điểm xuất phát để có một vòng dài như vậy. Chỉ đường từng ngã rẽ khi bạn chạy.",
+  "Start run": "Bắt đầu chạy",
+  "Run started.": "Đã bắt đầu chạy.",
+  "End run": "Kết thúc chạy",
+  "Running pace": "Tốc độ chạy",
+  "Your easy pace on the flat, for the run's time. Climbs still slow it. Kept on this device.": "Tốc độ thoải mái của bạn trên đường bằng, để tính thời gian chạy. Dốc vẫn làm chậm lại. Lưu trên thiết bị này.",
+  "{mile} per mile ({km} per km)": "{mile} mỗi dặm ({km} mỗi km)",
 };

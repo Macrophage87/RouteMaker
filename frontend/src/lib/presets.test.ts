@@ -24,6 +24,8 @@ test("the picker offers every ride type in PLAN's table", () => {
       // Walk and Walk + 🚆🚌 (Stephen, 2026-11-02: "add a walk mode and a walk+transit mode").
       "walk",
       "walk-transit",
+      // Run (Stephen, 2026-11-02): on foot, trails first, loops and a pace.
+      "run",
       "rebalance",
     ],
   );

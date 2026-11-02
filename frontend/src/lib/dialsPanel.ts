@@ -15,7 +15,7 @@ import {
   formatPerMile,
   formatRoughDistance,
 } from "./format.ts";
-import type { PresetId } from "./presets.ts";
+import { runs, type PresetId } from "./presets.ts";
 import { t } from "./i18n.ts";
 import {
   HILLS_MIN,
@@ -184,6 +184,32 @@ export function targetView(dials: Dials): TargetView {
   };
 }
 
+/** Run's target distance (2026-11-02): with Make it a loop and the start alone, a loop about that long. */
+export function runTargetView(dials: Dials): TargetView {
+  return { ...targetView(dials), hint: RUN_TARGET_HINT, how: RUN_TARGET_HOW };
+}
+
+export const RUN_TARGET_HINT = t("Optional: with Make it a loop on, place only the start for a loop about this long.");
+export const RUN_TARGET_HOW = t("The run tries a loop in each of six directions from your start, each sized to your target, and keeps the one nearest it that runs a way twice least and has the most trail and fewest traffic lights. With a stop or two placed as well, the loop goes through them instead and the target is not used.");
+
+/**
+ * Run's hills (2026-11-02): the slider's left half, from not minding climbs (the middle) to avoiding them, as
+ * Valhalla's walking `use_hills` reads it (core/presets.py use_hills_for). A runner's climbs are not a bike's gears, so
+ * the slider shows words, not grades.
+ */
+export function runHillsView(hills: number): SliderView {
+  return {
+    min: HILLS_MIN,
+    max: 0,
+    words: hills <= -67 ? t("Avoids climbs") : hills < -20 ? t("Fewer climbs") : t("Doesn't mind hills"),
+    ends: [t("Avoid hills"), "", t("Doesn't mind hills")],
+    disabled: false,
+    note: RUN_HILLS_NOTE,
+  };
+}
+
+export const RUN_HILLS_NOTE = t("Left keeps the run off climbs where a flatter way is near.");
+
 /** The target's "How this works" (OWNER-DECISIONS 258-262, 267, 271, 287(2), 287(3), 435). */
 export const TARGET_HOW =
   t("The route is as calm as it can be: the fewest heavy-traffic roads and very high stress junctions first, then busy roads and higher stress junctions, then distance. Up to your target, each extra mile must still avoid a tenth of a mile of busy road. It goes past your target only where the extra miles avoid enough busy road, and never past {ratio} times it. If the calmest route is longer than your target, it is still the one chosen, and the route summary says how far over your target it is.", { ratio: TARGET_CEILING_RATIO });
@@ -329,7 +355,7 @@ export function panelView(preset: PresetId, dials: Dials, draft: Dials = dials):
           how: HILLS_HOW,
         },
     rideSize: offersRideSize(preset) ? rideSizeView(rideSizeOf(draft)) : null,
-    target: offersTargetDistance(preset, dials.stress) ? targetView(dials) : null,
+    target: runs(preset) ? runTargetView(dials) : offersTargetDistance(preset, dials.stress) ? targetView(dials) : null,
     trailsOff: {
       label: TRAILS_OFF_LABEL,
       checked: trailsAreOff(preset, dials),

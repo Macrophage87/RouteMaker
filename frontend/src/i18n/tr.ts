@@ -1854,4 +1854,13 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Walk plus train or bus": "Yürüyüş artı tren veya otobüs",
   "Walks keep to sidewalks, paths and crosswalks: the traffic and hills settings are for riding.": "Yürüyüşler kaldırım, patika ve yaya geçitlerinden gider: trafik ve yokuş ayarları bisiklet içindir.",
   "Start walk": "Yürüyüşü başlat",
+  "Run": "Koşu",
+  "A run on trails and paths, turn by turn.": "Patikalarda ve yollarda, dönüş dönüş bir koşu.",
+  "On foot at your running pace, preferring trails and park paths (packed gravel and dirt are fine) and fewer traffic lights; lit ways after dark. Make it a loop, or set a target distance and place only the start for a loop that long. Turn-by-turn directions as you run.": "Koşu temponuzla yaya olarak; patikaları ve park yollarını (sıkıştırılmış çakıl ve toprak sorun değil) ve daha az trafik ışığını tercih eder; karanlıktan sonra aydınlatılmış yollar. Döngü yapın ya da bir hedef mesafe belirleyip o uzunlukta bir döngü için yalnızca başlangıcı koyun. Koşarken dönüş dönüş yol tarifi.",
+  "Start run": "Koşuya başla",
+  "Run started.": "Koşu başladı.",
+  "End run": "Koşuyu bitir",
+  "Running pace": "Koşu temposu",
+  "Your easy pace on the flat, for the run's time. Climbs still slow it. Kept on this device.": "Düz zemindeki rahat temponuz, koşunun süresi için. Yokuşlar yine de yavaşlatır. Bu cihazda saklanır.",
+  "{mile} per mile ({km} per km)": "Mil başına {mile} (km başına {km})",
 };

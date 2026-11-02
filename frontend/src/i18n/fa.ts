@@ -1854,4 +1854,13 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Walk plus train or bus": "پیاده‌روی به‌علاوهٔ قطار یا اتوبوس",
   "Walks keep to sidewalks, paths and crosswalks: the traffic and hills settings are for riding.": "پیاده‌روی روی پیاده‌روها، مسیرها و خط‌کشی‌ها می‌ماند: تنظیمات ترافیک و سربالایی برای دوچرخه‌سواری است.",
   "Start walk": "شروع پیاده‌روی",
+  "Run": "دویدن",
+  "A run on trails and paths, turn by turn.": "دویدن در مسیرها و راه‌های پیاده، پیچ به پیچ.",
+  "On foot at your running pace, preferring trails and park paths (packed gravel and dirt are fine) and fewer traffic lights; lit ways after dark. Make it a loop, or set a target distance and place only the start for a loop that long. Turn-by-turn directions as you run.": "پیاده با سرعت دویدن شما، با ترجیح مسیرها و راه‌های پارک (شن فشرده و خاک مشکلی ندارند) و چراغ‌های راهنمایی کمتر؛ پس از تاریکی راه‌های روشن. یک حلقه بسازید، یا یک مسافت هدف تعیین کنید و فقط نقطه شروع را بگذارید تا حلقه‌ای به همان طول ساخته شود. راهنمایی پیچ به پیچ هنگام دویدن.",
+  "Start run": "شروع دویدن",
+  "Run started.": "دویدن شروع شد.",
+  "End run": "پایان دویدن",
+  "Running pace": "سرعت دویدن",
+  "Your easy pace on the flat, for the run's time. Climbs still slow it. Kept on this device.": "سرعت راحت شما در زمین هموار، برای زمان دویدن. سربالایی‌ها همچنان آن را کند می‌کنند. در این دستگاه نگه داشته می‌شود.",
+  "{mile} per mile ({km} per km)": "{mile} برای هر مایل ({km} برای هر کیلومتر)",
 };

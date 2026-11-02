@@ -938,6 +938,7 @@ const RIDE_ICON: Partial<Record<PresetId, IconName>> = {
   "bikeshare-transit": "train",
   walk: "walk",
   "walk-transit": "walk",
+  run: "run",
   rebalance: "bikeshare",
 };
 

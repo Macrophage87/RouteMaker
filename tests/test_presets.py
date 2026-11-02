@@ -47,6 +47,8 @@ CONTRACT_PRESETS = {
     "rebalance",
     # Road Bike (Stephen, 2026-11-02), in the Avoid gravel box's place.
     "road-bike",
+    # Run (Stephen, 2026-11-02): on foot, on Walk's map (core.run_plan).
+    "run",
 }
 
 # The factor dials Valhalla reads on a 0..1 scale; outside it the service
@@ -419,6 +421,8 @@ def test_every_ride_types_brake_grade_is_the_owners_approved_table() -> None:
         # Walk and Walk + 🚆🚌 ride nothing: Bikeshare + 🚶🚆🚌's, never used.
         "walk": 0.04,
         "walk-transit": 0.04,
+        # Run is planned on foot (core.run_plan): no descent charged.
+        "run": None,
         # Rebalance Ride rides a share bike, as Bikeshare (core.presets, "Rebalance Ride").
         "rebalance": 0.04,
         "mountain-goat": None,

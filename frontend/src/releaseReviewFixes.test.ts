@@ -12,16 +12,20 @@ const summary = source("./TransitSummary.tsx");
 const css = source("./styles.css");
 
 test("a walk's settings leave out the riding ones: Roads, not trails and the car-free roads hint (S1)", () => {
-  assert.match(dials, /\{!onFoot\(preset\) && <p className="hint">\{t\("Weekend car-free roads/);
-  assert.match(dials, /\{!onFoot\(preset\) && \(\s*<div className="dial trails-off">/);
+  // Nor on a run (2026-11-02).
+  assert.match(dials, /\{!onFoot\(preset\) && !runs\(preset\) && <p className="hint">\{t\("Weekend car-free roads/);
+  assert.match(dials, /\{!onFoot\(preset\) && !runs\(preset\) && \(\s*<div className="dial trails-off">/);
 });
 
 test("a walk starts and ends in walk words: Walk started., End walk (N5)", () => {
   assert.match(ride, /export const WALK_STARTED = t\("Walk started\."\);/);
   assert.match(ride, /export const END_WALK_NAME = t\("End walk"\);/);
-  assert.match(ride, /rideVoice\.unlock\(walk \? WALK_STARTED : RIDE_STARTED\)/);
-  assert.match(app, /if \(!unlocked\) startRideGesture\(prefs, walksLine\(route\)\);/);
-  assert.match(ride, /<SlideToEnd onEnd=\{end\} onTap=\{slideHint\} name=\{trip\?\.onFoot \? END_WALK_NAME : END_RIDE_NAME\} \/>/);
+  assert.match(ride, /rideVoice\.unlock\(run \? RUN_STARTED : walk \? WALK_STARTED : RIDE_STARTED\)/);
+  assert.match(app, /if \(!unlocked\) startRideGesture\(prefs, walksLine\(route\), route\.preset === "run"\);/);
+  assert.match(ride, /<SlideToEnd onEnd=\{end\} onTap=\{slideHint\} name=\{endName\} \/>/);
+  // A run (2026-11-02) in run words: Run started., End run.
+  assert.match(ride, /export const RUN_STARTED = t\("Run started\."\);/);
+  assert.match(ride, /export const END_RUN_NAME = t\("End run"\);/);
 });
 
 test("the stop to get off at is marked in words in the trip's steps, not by bold alone (N2)", () => {

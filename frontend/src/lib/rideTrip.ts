@@ -129,10 +129,10 @@ export function rideMaxM(hidden: boolean = ridesHidden()): number {
   return hidden ? Infinity : RIDE_MAX_M;
 }
 
-/** Walk and Walk + 🚆🚌 (2026-11-02): the line is a walk, the trip's first, followed on foot. */
+/** Walk, Walk + 🚆🚌 and Run (2026-11-02): the line is a walk (a run), the trip's first, followed on foot. */
 export function walksLine(route: Pick<RouteResponse, "transit">): boolean {
   const plan = transitOf(route);
-  if (!plan || (plan.mode !== "walk" && plan.mode !== "walk-transit")) return false;
+  if (!plan || (plan.mode !== "walk" && plan.mode !== "walk-transit" && plan.mode !== "run")) return false;
   const index = lineIndex(plan);
   return index >= 0 && plan.steps[index].mode === "walk";
 }
@@ -182,7 +182,7 @@ export function optionRides(option: Pick<TransitOption, "direct" | "walk" | "leg
 export function noBikeLine(route: Pick<RouteResponse, "transit">): string | null {
   const plan = transitOf(route);
   // Walk and Walk + 🚆🚌 take no bike, by choice: nothing to say.
-  if (!plan || ridesLine(route) || plan.mode === "walk" || plan.mode === "walk-transit") return null;
+  if (!plan || ridesLine(route) || plan.mode === "walk" || plan.mode === "walk-transit" || plan.mode === "run") return null;
   const index = plan.options.findIndex(optionRides);
   return index < 0 ? t("No bike on this option.") : t("No bike on this option. Pick {letter} to ride.", { letter: String.fromCharCode(65 + index) });
 }
@@ -384,7 +384,8 @@ export function rideLegOf(
   const line = route.geometry.coordinates as LonLat[];
   if (!trip || trip.asPlanned || line.length < 2) return { points, loop, preset: route.preset, trip };
   // On foot: a re-plan the rider asks for (Detour, Road closed, Re-plan from here) walks, to the walk's own end.
-  if (trip.onFoot) return { points: [line[0], line[line.length - 1]], loop: false, preset: "walk", trip };
+  // A run's re-plan runs, at the runner's pace (Run, 2026-11-02).
+  if (trip.onFoot) return { points: [line[0], line[line.length - 1]], loop: false, preset: route.preset === "run" ? "run" : "walk", trip };
   // Bikeshare + transit's share bike is a classic one ("take a classic bike").
   const ebike = bikeshareOf(route)?.bike === "ebike";
   return { points: [line[0], line[line.length - 1]], loop: false, preset: ebike ? "ebike" : "default", trip };

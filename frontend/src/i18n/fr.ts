@@ -1854,4 +1854,13 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Walk plus train or bus": "Marche plus train ou bus",
   "Walks keep to sidewalks, paths and crosswalks: the traffic and hills settings are for riding.": "Les trajets à pied suivent les trottoirs, chemins et passages piétons : les réglages de circulation et de côtes sont pour le vélo.",
   "Start walk": "Démarrer la marche",
+  "Run": "Course à pied",
+  "A run on trails and paths, turn by turn.": "Une course sur sentiers et chemins, virage par virage.",
+  "On foot at your running pace, preferring trails and park paths (packed gravel and dirt are fine) and fewer traffic lights; lit ways after dark. Make it a loop, or set a target distance and place only the start for a loop that long. Turn-by-turn directions as you run.": "À pied à votre allure de course, en préférant les sentiers et les allées de parc (le gravier compacté et la terre conviennent) et moins de feux ; des voies éclairées après la tombée de la nuit. Faites une boucle, ou fixez une distance cible et placez seulement le départ pour une boucle de cette longueur. Indications virage par virage pendant que vous courez.",
+  "Start run": "Démarrer la course",
+  "Run started.": "Course commencée.",
+  "End run": "Terminer la course",
+  "Running pace": "Allure de course",
+  "Your easy pace on the flat, for the run's time. Climbs still slow it. Kept on this device.": "Votre allure facile sur le plat, pour la durée de la course. Les montées la ralentissent toujours. Gardée sur cet appareil.",
+  "{mile} per mile ({km} per km)": "{mile} par mile ({km} par km)",
 };

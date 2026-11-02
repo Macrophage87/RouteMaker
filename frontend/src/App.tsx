@@ -37,7 +37,8 @@ import { COVERAGE_BBOX, MAX_POINTS, addPoint, haversineM, insideCoverage, type L
 import { formatDistance, formatSeconds } from "./lib/format.ts";
 import { RETURN_PARAM as GARMIN_RETURN_PARAM, garminReturnFrom, readGarmin, withoutReturn } from "./lib/garminLink.ts";
 import { RETURN_PARAM as WAHOO_RETURN_PARAM, readWahoo, wahooReturnFrom } from "./lib/wahooLink.ts";
-import { endsOnFoot, layersTurnedOn, presetNamesRide, presetSaid, twoPointsOnly, usesBikeshare, type PresetId } from "./lib/presets.ts";
+import { endsOnFoot, layersTurnedOn, presetNamesRide, presetSaid, runs, twoPointsOnly, usesBikeshare, type PresetId } from "./lib/presets.ts";
+import { RUN_PACE_EVENT, paceOf, readRunPace } from "./lib/runPace.ts";
 import { atFromHash, decodePlan, encodePlan } from "./lib/planHash.ts";
 import { RouteScheduler, type SchedulerState } from "./lib/routeScheduler.ts";
 import { confirmedUpTo, sendsConfirmation, spanKm } from "./lib/longRide.ts";
@@ -86,7 +87,7 @@ import { BetaChip, betaReportUrl, isBetaBuild } from "./lib/betaBanner.ts";
 import { MtbMapKey } from "./lib/stressLegend.ts";
 import { useHideBusyClimbs, useTrailClimbs } from "./lib/climbsLegend.ts";
 import { announceHow, candidateRoute, candidateRows } from "./lib/candidates.ts";
-import { canReverse, LOOP_ENDED_BY_SEARCH, loopStops, loopView, planStartDials, reversedPoints, withLoop } from "./lib/loop.ts";
+import { canReverse, LOOP_ENDED_BY_SEARCH, loopStops, loopView, planStartDials, reversedPoints, runLoopFromStart, withLoop } from "./lib/loop.ts";
 import { FINDING_ORDER_SAID, STILL_FINDING_ORDER_SAID, applyAnswer, requestStopOrder, stopsThatMove } from "./lib/stopOrder.ts";
 import {
   VIA_MARKS,
@@ -563,10 +564,18 @@ export function App() {
     window.addEventListener(AVOID_STAIRS_EVENT, changed);
     return () => window.removeEventListener(AVOID_STAIRS_EVENT, changed);
   }, []);
+  // Run's pace (lib/runPace.ts), kept on this device and sent with Run alone: changing it plans the run again.
+  const [runPace, setRunPace] = useState(() => readRunPace());
+  useEffect(() => {
+    const changed = (event: Event) => setRunPace(paceOf((event as CustomEvent<number>).detail) ?? readRunPace());
+    window.addEventListener(RUN_PACE_EVENT, changed);
+    return () => window.removeEventListener(RUN_PACE_EVENT, changed);
+  }, []);
   const planKey = useMemo(() => {
     const { closuresNow: _now, ...keyed } = planDials;
-    return JSON.stringify({ ...keyed, stairs: twoPointsOnly(preset) && avoidStairs });
-  }, [planDials, preset, avoidStairs]);
+    const run = runs(preset);
+    return JSON.stringify({ ...keyed, stairs: (twoPointsOnly(preset) || run) && avoidStairs, ...(run ? { pace: runPace } : {}) });
+  }, [planDials, preset, avoidStairs, runPace]);
   // The dials as they are, for Go's early start (v0.7.0, "Faster routing" step 4), which asks before the tap.
   const planDialsNow = useRef(planDials);
   planDialsNow.current = planDials;
@@ -1560,7 +1569,8 @@ export function App() {
   useEffect(() => {
     const now = sendNow.current;
     sendNow.current = false;
-    if (points.length < 2) {
+    // A Run loop from its start alone, at its target distance (lib/presets.ts runs, core/run_plan.py target_loop).
+    if (points.length < 2 && !runLoopFromStart(preset, points, planDials)) {
       scheduler.current?.clear();
       setRoute(null);
       setStatus({ kind: "idle" });
@@ -3704,7 +3714,7 @@ export function App() {
   const beginRide = (prefs: RidePrefs, unlocked = false, rest?: { route: RouteResponse; points: LonLat[]; roam?: boolean }) => {
     const route = rest?.route ?? shown;
     if (!route) return;
-    if (!unlocked) startRideGesture(prefs, walksLine(route));
+    if (!unlocked) startRideGesture(prefs, walksLine(route), route.preset === "run");
     const leg = rideLegOf(route, rest?.points ?? routedPoints, rest ? false : routedLoop);
     // A More direct or Calmer chosen rides at its own traffic setting, so a re-route keeps to it; the plan's dials and
     // the saved default stay the rider's (lib/neighbours.ts rideDials).
@@ -5833,7 +5843,8 @@ export function App() {
     setChangeDetails([]);
     clearAll();
   };
-  const routeNow = routeButton({ points: points.length, drawn: drawn !== null, changed: planEdited, routeShown: shown !== null, loop: loopVias });
+  const fromStart = runLoopFromStart(preset, points, planDials);
+  const routeNow = routeButton({ points: points.length, drawn: drawn !== null, changed: planEdited, routeShown: shown !== null, loop: loopVias, fromStart });
   // Plan's bar at the top of the map (the owner, 2026-10-17: "In plan, make "Update route" a big button at the top of
   // the map ... Update route or start route. don't show if there's nothing to change. Also put the undo and clear there
   // as well, smaller"): the Route button big while there is something to route (or it is routing), Undo, Redo and
@@ -5881,7 +5892,7 @@ export function App() {
       ? null
       : goReady
         ? null
-        : points.length >= 2 && routeNow.unavailable === null
+        : (points.length >= 2 || fromStart) && routeNow.unavailable === null
           ? { label: routeNow.label, start: false, busy: false, onPress: pressRoute }
           : // No destination yet: Roam, a ride with no destination (the owner, 2026-10-22; one control for the feature).
             points.length === 0 && !isMassRide(preset)
