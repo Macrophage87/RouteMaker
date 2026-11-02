@@ -33,7 +33,8 @@ SWAP_DUPLICATE_SERVICES = (
 # Services with no image to run (compose profile `unbuilt`: the renderer and the bot, whose
 # sources are not in this repository). They are still checked for limits and ports, but
 # their memory is in neither peak: they cannot start. Counting them is what held the
-# swap-time peak at 32.0G before the Road Bike router (valhalla-paved) came in.
+# swap-time peak at 32.0G before the Road Bike router (valhalla-paved) came in (the owner,
+# 2026-11-02: "Skip the two unbuilt services"). Count them again before either is built.
 UNBUILT_PROFILE = "unbuilt"
 
 # PLAN.md, Operations/"Rebuild and swap": "raising the [worker] count
