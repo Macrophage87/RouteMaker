@@ -141,6 +141,63 @@ export function watchCompass(env: CompassEnv | null, onHeading: (deg: number) =>
   };
 }
 
+/** With no GPS heading this long after it starts, the compass stops (the owner, 2026-11-01: battery audit). */
+export const COMPASS_GIVE_UP_MS = 120_000;
+
+/** The timer and the page's visibility, behind an interface so tests stub them. */
+export interface CompassLifetime {
+  setTimeout(run: () => void, ms: number): unknown;
+  clearTimeout(id: unknown): void;
+  /** Whether the page is hidden now. */
+  hidden(): boolean;
+  /** Calls `run` when the page goes hidden; answers the function that stops listening. */
+  onHidden(run: () => void): () => void;
+}
+
+export function browserCompassLifetime(): CompassLifetime | null {
+  if (typeof window === "undefined" || typeof document === "undefined") return null;
+  return {
+    setTimeout: (run, ms) => window.setTimeout(run, ms),
+    clearTimeout: (id) => window.clearTimeout(id as number),
+    hidden: () => document.visibilityState === "hidden",
+    onHidden: (run) => {
+      const listener = () => {
+        if (document.visibilityState === "hidden") run();
+      };
+      document.addEventListener("visibilitychange", listener);
+      return () => document.removeEventListener("visibilitychange", listener);
+    },
+  };
+}
+
+/**
+ * watchCompass for a while only (the owner, 2026-11-01: battery audit): the orientation sensor runs at its full rate,
+ * so it stops `giveUpMs` after it starts and as soon as the page is hidden, and is not started again (the rider
+ * moving gives GPS headings by then). The first GPS heading stops it too, through the answered stop function.
+ */
+export function watchCompassAwhile(
+  env: CompassEnv | null,
+  onHeading: (deg: number) => void,
+  lifetime: CompassLifetime | null,
+  giveUpMs: number = COMPASS_GIVE_UP_MS,
+  now: () => number = () => Date.now(),
+): () => void {
+  if (!lifetime) return watchCompass(env, onHeading, now);
+  if (lifetime.hidden()) return () => undefined;
+  const stopWatch = watchCompass(env, onHeading, now);
+  let live = true;
+  const stop = () => {
+    if (!live) return;
+    live = false;
+    lifetime.clearTimeout(timer);
+    stopHidden();
+    stopWatch();
+  };
+  const timer = lifetime.setTimeout(stop, giveUpMs);
+  const stopHidden = lifetime.onHidden(stop);
+  return stop;
+}
+
 function pick(event: CompassEvent): CompassEvent {
   return { alpha: event.alpha, beta: event.beta, gamma: event.gamma };
 }

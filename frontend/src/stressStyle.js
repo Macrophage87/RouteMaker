@@ -323,8 +323,8 @@ function halfColours(palette, tier, strong) {
   return { ...own, casing: strong ? strongerCasing(own.casing, tier >= 2) : own.casing, ring: own.ring ?? null };
 }
 
-export function tiersFor(palette, strong = false) {
-  return TIER_SHAPES.map((shape) => {
+export function tiersFor(palette, strong = false, dark = false) {
+  const tiers = TIER_SHAPES.map((shape) => {
     const colours = PALETTES[palette][shape.tier];
     const unpaved = UNPAVED_PALETTES[palette][shape.tier];
     // A busy tier's casing is kept by the switch (292), and so is LTS 2's blue edge (356: "a blue instead of black").
@@ -356,6 +356,30 @@ export function tiersFor(palette, strong = false) {
         : { casingExtra: CASING_EXTRA_PX, strong: false }),
     };
   });
+  return dark ? tiers.map(onDarkMap) : tiers;
+}
+
+/**
+ * THE DARK MAP. The owner, 2026-11-01: battery audit: the base map is the Protomaps dark flavour in the dark theme,
+ * and in a ride or Roam between civil dusk and dawn (lib/mapFlavour.ts), to save screen power on OLED phones. The
+ * light-map colours stay exactly as they are; where one is under 3:1 on the dark map's surfaces it has a dark-map
+ * variant here, used only while the dark map shows (darkMapTest.test.ts holds every one):
+ *
+ * - `topSurface`: the dark flavour's lightest surface a line can lie over (its motorway grey), the worst case;
+ * - `casing`: a tier whose line and casing are both under 3:1 on it (the default palette's LTS 4 red on its dark
+ *   red casing; the colour-blind-friendly palette's LTS 3 orange on navy) is cased in white instead, as Avoid is;
+ * - `edge`: a faint line's edge is light instead of near black, at the same opacity (FAINT);
+ * - `ticks`: the mountain-bike trails' not-for-routes ticks are light, so the ticked edge still shows.
+ */
+export const DARK_MAP = { topSurface: "#474747", casing: "#ffffff", edge: "#e7e5e4", ticks: "#a8a29e" };
+
+/** A tier as the dark map draws it: a white casing where neither its line nor its casing stands 3:1 off the dark map, and a light faint edge. */
+function onDarkMap(tier) {
+  const unseen = (colour) => contrastRatio(colour, DARK_MAP.topSurface) < 3;
+  // Only the casing changes; the gaps keep what they showed (tier.gap was read before), as they sit inside the line.
+  // A half step the same way, by its ring where it has one (the default's 4.5: dark red on red in a near-black ring).
+  const half = tier.half && unseen(tier.half.color) && unseen(tier.half.casing) ? { ...tier.half, ...(tier.half.ring ? { ring: DARK_MAP.casing } : { casing: DARK_MAP.casing }) } : tier.half;
+  return { ...tier, darkMap: true, half, ...(unseen(tier.color) && unseen(tier.casing) ? { casing: DARK_MAP.casing } : {}) };
 }
 
 /**
@@ -568,6 +592,8 @@ let chosen = storedAccessibility();
 let contrastMore = false;
 let accessibility = resolveAccessibility(chosen, contrastMore);
 let active = resolvePalette(locationSearch, accessibility);
+/** Whether the base map is the dark flavour now (lib/mapFlavour.ts sets it): the overlay's dark-map variants (DARK_MAP). */
+let darkMap = false;
 /** @type {Map<string, ReturnType<typeof tiersFor>>} */
 const tiersByStyle = new Map();
 /** @type {Set<(name: string) => void>} */
@@ -600,7 +626,19 @@ export function paletteSetByAddress() {
 
 /** A key that changes whenever what the tiers look like does: the palette, or the switch. */
 export function styleKey() {
-  return `${active}|${accessibility ? "strong" : "plain"}`;
+  return `${active}|${accessibility ? "strong" : "plain"}${darkMap ? "|dark" : ""}`;
+}
+
+/** Whether the base map is the dark flavour (DARK_MAP). */
+export function darkMapOn() {
+  return darkMap;
+}
+
+/** The base map went dark or light (lib/mapFlavour.ts): the overlay is drawn again in place, as for the switch. */
+export function setDarkMap(on) {
+  if (on === darkMap) return;
+  darkMap = on;
+  tell();
 }
 
 /** The tiers, in the palette and strength in use. The same array until one of them changes. */
@@ -608,7 +646,7 @@ export function currentTiers() {
   const key = styleKey();
   let tiers = tiersByStyle.get(key);
   if (!tiers) {
-    tiers = tiersFor(active, accessibility);
+    tiers = tiersFor(active, accessibility, darkMap);
     tiersByStyle.set(key, tiers);
   }
   return tiers;
@@ -744,6 +782,11 @@ export const BASEMAP = {
  * 17:1, with the accessibility switch) on a 3.5 px white halo (3.75 px with the switch, the most MapLibre draws at
  * 15 px), so each name sits on its own white band over any line. The names are on the canvas, out of a screen
  * reader's reach as before; the road panel says a road's name in words.
+ *
+ * On the dark map (lib/mapFlavour.ts; the owner, 2026-11-01: battery audit) the halo is the Protomaps dark flavour's
+ * own label halo (its earth, #1f1f1f) and the text light grey, so a name is not a white band on an unlit screen.
+ * Protomaps' own dark label greys (#525252, #666666) are under 3:1 on that halo, so the text keeps this app's bars
+ * instead: 7:1 plain, 15:1 with the switch (roadLabels.test.ts, darkMap.test.ts).
  */
 export const ROAD_LABEL_LAYER_IDS = ["roads_labels_major", "roads_labels_minor"];
 export const ROAD_LABEL = {
@@ -759,6 +802,10 @@ export const ROAD_LABEL = {
   haloWidth: 3.5,
   strongHaloWidth: 3.75,
   haloBlur: 0,
+  /** On the dark map: Protomaps dark's roads_label halo, and light text on it. */
+  darkHalo: "#1f1f1f",
+  darkColor: "#c8c8c8",
+  darkStrongColor: "#ffffff",
 };
 
 // A ride's street names shortened as on the cue card (lib/cueShown.ts, shortStreets): "R Street Northwest" as "R St NW"
@@ -814,13 +861,14 @@ export function rideRoadLabelField(base = null, name = ["coalesce", ["get", "nam
   return base === null ? short : ["case", ["all", ["!", ["has", "name:en"]], ["has", "script"]], base, short];
 }
 
-/** The street names' paint, plain or with the accessibility switch on. A path's name (the base map's `path` kind,
- *  named from zoom 15) is in the trail names' purple (TRAIL_LABEL), so a trail reads as one at every zoom. */
-export function roadLabelPaint(strong = accessibilityOn()) {
-  const street = strong ? ROAD_LABEL.strongColor : ROAD_LABEL.color;
+/** The street names' paint, plain or with the accessibility switch on, on the light map or the dark. A path's name
+ *  (the base map's `path` kind, named from zoom 15) is in the trail names' purple (TRAIL_LABEL), so a trail reads as
+ *  one at every zoom. */
+export function roadLabelPaint(strong = accessibilityOn(), dark = darkMapOn()) {
+  const street = dark ? (strong ? ROAD_LABEL.darkStrongColor : ROAD_LABEL.darkColor) : strong ? ROAD_LABEL.strongColor : ROAD_LABEL.color;
   return {
-    "text-color": ["case", ["==", ["get", "kind"], "path"], strong ? TRAIL_LABEL.strongColor : TRAIL_LABEL.color, street],
-    "text-halo-color": ROAD_LABEL.halo,
+    "text-color": ["case", ["==", ["get", "kind"], "path"], trailLabelColor(strong, dark), street],
+    "text-halo-color": dark ? ROAD_LABEL.darkHalo : ROAD_LABEL.halo,
     "text-halo-width": strong ? ROAD_LABEL.strongHaloWidth : ROAD_LABEL.haloWidth,
     "text-halo-blur": ROAD_LABEL.haloBlur,
   };
@@ -865,6 +913,11 @@ export const PLACE_LABEL = {
   halo: "#ffffff",
   haloWidth: 2.5,
   strongHaloWidth: 2.75,
+  /**
+   * On the dark map (the owner, 2026-11-01: battery audit): the street names' dark halo, the text light, a town lighter
+   * than a neighbourhood as it is darker on the light map; white with the switch.
+   */
+  dark: { neighbourhood: "#bdbdbd", town: "#e5e5e5", strong: "#ffffff" },
 };
 
 /**
@@ -885,12 +938,14 @@ export function townLabelSize(town, largeTownRank) {
   return ["interpolate", ["linear"], ["zoom"], ...zooms.flatMap((zoom) => [zoom, ["case", isLarge, at(large, zoom), at(small, zoom)]])];
 }
 
-/** A place name layer's paint (PLACE_LABEL), plain or with the accessibility switch on. */
-export function placeLabelPaint(id, strong = accessibilityOn()) {
-  const kind = id === "places_locality" ? PLACE_LABEL.town : PLACE_LABEL.neighbourhood;
+/** A place name layer's paint (PLACE_LABEL), plain or with the accessibility switch on, on the light map or the dark. */
+export function placeLabelPaint(id, strong = accessibilityOn(), dark = darkMapOn()) {
+  const town = id === "places_locality";
+  const kind = town ? PLACE_LABEL.town : PLACE_LABEL.neighbourhood;
+  const darkColor = strong ? PLACE_LABEL.dark.strong : town ? PLACE_LABEL.dark.town : PLACE_LABEL.dark.neighbourhood;
   return {
-    "text-color": strong ? kind.strongColor : kind.color,
-    "text-halo-color": PLACE_LABEL.halo,
+    "text-color": dark ? darkColor : strong ? kind.strongColor : kind.color,
+    "text-halo-color": dark ? ROAD_LABEL.darkHalo : PLACE_LABEL.halo,
     "text-halo-width": strong ? PLACE_LABEL.strongHaloWidth : PLACE_LABEL.haloWidth,
     "text-halo-blur": 0,
   };
@@ -927,6 +982,17 @@ export const OTHER_LABEL = {
   island: ROAD_LABEL.color,
   address: "#57534e",
   shield: { size: 12, iconSize: 1.2, color: "#2e2a2b" },
+  /**
+   * On the dark map (the owner, 2026-11-01: battery audit): the street names' dark halo, and a light tint of each
+   * colour, 7:1 or more on it, so a park still reads green and a creek blue. The shields keep their own paint.
+   */
+  dark: {
+    poiColors: ["#86efac", "#93c5fd", "#c4b5fd", "#7dd3fc", "#fdba74", "#f9a8d4"],
+    poiOther: ROAD_LABEL.darkColor,
+    water: "#93c5fd",
+    island: ROAD_LABEL.darkColor,
+    address: "#d6d3d1",
+  },
 };
 /**
  * THE MOTORWAYS' NAMES. The owner, 2026-10-21: "Seeing the map zoomed out, having those huge highway names are silly,
@@ -948,21 +1014,26 @@ function laterMotorways(filter) {
 
 export const OTHER_LABEL_LAYER_IDS = ["pois", "water_waterway_label", "water_label_ocean", "water_label_lakes", "earth_label_islands", "address_label", "roads_shields"];
 
-/** One of the base map's other label layers (OTHER_LABEL) as this app draws it. */
-function clearOtherLabel(layer) {
+/** One of the base map's other label layers (OTHER_LABEL) as this app draws it, on the light map or the dark. */
+function clearOtherLabel(layer, dark = false) {
   const L = OTHER_LABEL;
+  const D = L.dark;
   const named = (color, size = L.size, halo = L.haloWidth) => ({
     ...layer,
     layout: { ...layer.layout, "text-font": [L.font], "text-size": size, "text-letter-spacing": 0 },
-    paint: { ...layer.paint, "text-color": color, "text-halo-color": L.halo, "text-halo-width": halo, "text-halo-blur": 0 },
+    paint: { ...layer.paint, "text-color": color, "text-halo-color": dark ? ROAD_LABEL.darkHalo : L.halo, "text-halo-width": halo, "text-halo-blur": 0 },
   });
   switch (layer.id) {
     case "pois":
-      return named(["case", ...L.poiColors.flatMap(([kinds, color]) => [["in", ["get", "kind"], ["literal", kinds]], color]), L.poiOther]);
+      return named([
+        "case",
+        ...L.poiColors.flatMap(([kinds, color], i) => [["in", ["get", "kind"], ["literal", kinds]], dark ? D.poiColors[i] : color]),
+        dark ? D.poiOther : L.poiOther,
+      ]);
     case "earth_label_islands":
-      return named(L.island);
+      return named(dark ? D.island : L.island);
     case "address_label":
-      return named(L.address, L.addressSize, L.addressHaloWidth);
+      return named(dark ? D.address : L.address, L.addressSize, L.addressHaloWidth);
     case "roads_shields":
       return {
         ...layer,
@@ -971,7 +1042,7 @@ function clearOtherLabel(layer) {
         paint: { ...layer.paint, "text-color": L.shield.color },
       };
     default:
-      return named(L.water);
+      return named(dark ? D.water : L.water);
   }
 }
 
@@ -1019,8 +1090,12 @@ export function boundaryLayers(layer) {
   return [{ ...layer, filter: others }, level(county), level(state)];
 }
 
-/** The base map's layers with the street names (ROAD_LABEL), place names (PLACE_LABEL), other labels (OTHER_LABEL) and state and county lines (BOUNDARY_LINE) restyled; every other layer as given. */
-export function withClearRoadLabels(layers, strong = accessibilityOn()) {
+/**
+ * The base map's layers with the street names (ROAD_LABEL), place names (PLACE_LABEL), other labels (OTHER_LABEL) and
+ * state and county lines (BOUNDARY_LINE) restyled; every other layer as given. `dark`: the layers are the dark
+ * flavour's, so the street, place and other names take their dark halo and light text (lib/mapFlavour.ts).
+ */
+export function withClearRoadLabels(layers, strong = accessibilityOn(), dark = false) {
   return layers.flatMap((layer) => {
     if (layer.id === BOUNDARY_LAYER_ID) return boundaryLayers(layer);
     if (ROAD_LABEL_LAYER_IDS.includes(layer.id)) {
@@ -1028,7 +1103,7 @@ export function withClearRoadLabels(layers, strong = accessibilityOn()) {
         ...layer,
         ...(layer.id === "roads_labels_major" ? { filter: laterMotorways(layer.filter) } : {}),
         layout: { ...layer.layout, "text-font": [ROAD_LABEL.font], "text-size": ROAD_LABEL.size },
-        paint: { ...layer.paint, ...roadLabelPaint(strong) },
+        paint: { ...layer.paint, ...roadLabelPaint(strong, dark) },
       };
     }
     if (PLACE_LABEL_LAYER_IDS.includes(layer.id)) {
@@ -1038,10 +1113,10 @@ export function withClearRoadLabels(layers, strong = accessibilityOn()) {
       return {
         ...layer,
         layout: { ...layer.layout, "text-font": [PLACE_LABEL.font], "text-size": size, "text-transform": kind.transform, "text-letter-spacing": kind.letterSpacing },
-        paint: { ...layer.paint, ...placeLabelPaint(layer.id, strong) },
+        paint: { ...layer.paint, ...placeLabelPaint(layer.id, strong, dark) },
       };
     }
-    if (OTHER_LABEL_LAYER_IDS.includes(layer.id)) return clearOtherLabel(layer);
+    if (OTHER_LABEL_LAYER_IDS.includes(layer.id)) return clearOtherLabel(layer, dark);
     return layer;
   });
 }
@@ -1067,17 +1142,26 @@ export const TRAIL_LABEL_MIN_ZOOM = 10;
 export const TRAIL_LABEL = {
   color: "#4c1d95",
   strongColor: "#2e1065",
+  /** On the dark map, on the street names' dark halo: a light violet (the owner, 2026-11-01: battery audit). */
+  darkColor: "#c4b5fd",
+  darkStrongColor: "#f5f3ff",
   // MapLibre's own spacing, so a name finds a place between the street and station names; a gentle bend at most, so it reads.
   spacing: 250,
   maxAngle: 30,
   padding: 6,
 };
 
-/** The trail names' paint, plain or with the accessibility switch on. */
-export function trailLabelPaint(strong = accessibilityOn()) {
+/** A trail name's colour, plain or with the switch, on the light map or the dark. */
+function trailLabelColor(strong, dark) {
+  if (dark) return strong ? TRAIL_LABEL.darkStrongColor : TRAIL_LABEL.darkColor;
+  return strong ? TRAIL_LABEL.strongColor : TRAIL_LABEL.color;
+}
+
+/** The trail names' paint, plain or with the accessibility switch on, on the street names' halo for the map. */
+export function trailLabelPaint(strong = accessibilityOn(), dark = darkMapOn()) {
   return {
-    "text-color": strong ? TRAIL_LABEL.strongColor : TRAIL_LABEL.color,
-    "text-halo-color": ROAD_LABEL.halo,
+    "text-color": trailLabelColor(strong, dark),
+    "text-halo-color": dark ? ROAD_LABEL.darkHalo : ROAD_LABEL.halo,
     "text-halo-width": strong ? ROAD_LABEL.strongHaloWidth : ROAD_LABEL.haloWidth,
     "text-halo-blur": ROAD_LABEL.haloBlur,
   };
@@ -1221,8 +1305,9 @@ function zoomedOutStops(at) {
  */
 export const FAINT = { opacity: 0.4, widthScale: 0.6, edge: "#1c1917", edgeOpacity: 0.65, edgePx: 1 };
 
-/** The colour of a tier's faint edge: its casing when that is a near-black, else FAINT.edge (Avoid's red casing is not dark enough to be an edge). */
+/** The colour of a tier's faint edge: its casing when that is a near-black, else FAINT.edge (Avoid's red casing is not dark enough to be an edge); on the dark map, DARK_MAP.edge. */
 export function faintEdgeColour(tier) {
+  if (tier.darkMap) return DARK_MAP.edge;
   return relativeLuminance(tier.casing) < DARK_CASING_LUMINANCE ? tier.casing : FAINT.edge;
 }
 
@@ -1507,9 +1592,9 @@ export const MTB_TICKS = { color: "#1c1917", px: 2, strongPx: 2.5, dash: [0.2, 1
 export const MTB_TICKS_LAYER_ID = "mtb-trail-ticks";
 
 /** The ticks' paint, plain or with the accessibility switch: as wide as the white edge and `px` more a side. */
-export function mtbTicksPaint(strong = accessibilityOn()) {
+export function mtbTicksPaint(strong = accessibilityOn(), dark = darkMapOn()) {
   const width = strong ? MTB_LEVEL.strongWidth : MTB_LEVEL.width;
-  return { "line-color": MTB_TICKS.color, "line-width": mtbHaloWidth(width, strong) + 2 * (strong ? MTB_TICKS.strongPx : MTB_TICKS.px), "line-dasharray": MTB_TICKS.dash };
+  return { "line-color": dark ? DARK_MAP.ticks : MTB_TICKS.color, "line-width": mtbHaloWidth(width, strong) + 2 * (strong ? MTB_TICKS.strongPx : MTB_TICKS.px), "line-dasharray": MTB_TICKS.dash };
 }
 
 /** The zoom the not-for-routes line draws from: where the tiles carry the trails (STRESS_ZOOMS.quiet, held equal by a test; the plan: "MTB trails from zoom 12-13"). */

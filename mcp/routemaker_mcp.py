@@ -1932,9 +1932,11 @@ def _points_along(plan: Plan) -> list[tuple[int, float]]:
 def _closure_id(row: dict) -> str:
     """The closure a row is part of: a reviewer's closure comes as a row for each of its ways,
     `reviewer-{closure}-{way}`, and a DDOT project advisory's for each of its lines,
-    `ddot_advisory-{closure}-{line}`, as is a Purple Line update's (`purple_line-...`)."""
+    `ddot_advisory-{closure}-{line}`, as is a Purple Line update's (`purple_line-...`) and
+    planned work's (v0.17.0: `protrack-{project}-{line}`, `wssc-{main}-{line}`), and a Maryland
+    Road Closure Reporter closure's (`sha-{closure}-{n}`)."""
     zone_id = str(row.get("id") or "")
-    if row.get("source") in ("reviewer", "ddot_advisory", "purple_line"):
+    if row.get("source") in ("reviewer", "ddot_advisory", "purple_line", "protrack", "wssc", "sha"):
         return re.sub(r"-\d+$", "", zone_id)
     return zone_id or str((row.get("title"), row.get("when_text")))
 
@@ -2509,8 +2511,9 @@ TOOLS = [
             " Frank's Lakeside Trail, say), blocked bike lanes and rideable work zones, each"
             " with what is closed, until when, the source and its link. Use it before"
             " suggesting a park, trail or place to ride, and say the closures. plan_route"
-            " already routes round closures and lists those on or round its route; DDOT's"
-            " permits (which may never close anything) only with include_permits."
+            " already routes round closures and lists those on or round its route. Potential"
+            " closures (DDOT's permits and planned work by DDOT, DC Water and WSSC Water,"
+            " which may never close anything) only with include_permits."
         ),
         "inputSchema": {
             "type": "object",
