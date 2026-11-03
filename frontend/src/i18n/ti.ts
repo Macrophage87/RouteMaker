@@ -114,6 +114,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Distances, speeds and heights, on screen and spoken. The other units stay in brackets. Changing it reloads the page.": "ርሕቀታት፣ ፍጥነታትን ብራኸታትን፣ ኣብ መርኣዪን ብድምጽን። እቶም ካልኦት መለክዒታት ኣብ ቅንፍ ይተርፉ። ምቕያሩ ነቲ ገጽ ደጊሙ ይጽዕኖ።",
   "Miles and feet": "ማይልን ፊትን",
   "Kilometers and meters": "ኪሎሜትሮን ሜትሮን",
+  "Units were not saved to your account; try again shortly.": "መለክዒታት ኣብ ሕሳብካ ኣይተዓቀቡን፤ ድሕሪ ቁሩብ ፈትን።",
   "Target distance (km)": "ዕላማ ርሕቀት (ኪ.ሜ.)",
   "calm km": "ህዱእ ኪሜ",
   "per km": "ኣብ ኪሜ",

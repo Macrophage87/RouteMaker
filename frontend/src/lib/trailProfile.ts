@@ -10,7 +10,7 @@
  */
 import { createElement as h, useEffect, useState, type ReactElement } from "react";
 import { ElevationProfileChart, gradeText, profileEnds } from "./climbCard.ts";
-import { formatClimb, formatDistance } from "./format.ts";
+import { formatClimb, formatDistance, unitsFirstDeep } from "./format.ts";
 import { setPanelTrail } from "./trailHighlight.ts";
 
 /** GET /api/trails/{way}/profile (core.api.TrailProfileOut). */
@@ -67,7 +67,7 @@ export async function fetchTrailProfile(
     const response = await fetcher(trailProfileUrl(way), { headers: { Accept: "application/json" }, signal });
     if (response.status === 404) return { kind: "none" };
     if (!response.ok) return { kind: "error" };
-    const body = await response.json();
+    const body = unitsFirstDeep(await response.json());
     return looksLikeProfile(body) ? { kind: "ready", profile: body } : { kind: "error" };
   } catch (error) {
     if ((error as { name?: string })?.name === "AbortError") throw error;

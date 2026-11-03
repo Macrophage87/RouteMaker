@@ -114,6 +114,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Distances, speeds and heights, on screen and spoken. The other units stay in brackets. Changing it reloads the page.": "거리, 속도, 높이(화면과 음성). 다른 단위는 괄호 안에 표시됩니다. 바꾸면 페이지를 다시 불러옵니다.",
   "Miles and feet": "마일과 피트",
   "Kilometers and meters": "킬로미터와 미터",
+  "Units were not saved to your account; try again shortly.": "단위를 계정에 저장하지 못했습니다. 잠시 후 다시 시도하세요.",
   "Target distance (km)": "목표 거리(km)",
   "calm km": "조용한 km",
   "per km": "km당",

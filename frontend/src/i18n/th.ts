@@ -114,6 +114,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Distances, speeds and heights, on screen and spoken. The other units stay in brackets. Changing it reloads the page.": "ระยะทาง ความเร็ว และความสูง บนหน้าจอและเสียงพูด หน่วยอื่นอยู่ในวงเล็บ การเปลี่ยนจะโหลดหน้าใหม่",
   "Miles and feet": "ไมล์และฟุต",
   "Kilometers and meters": "กิโลเมตรและเมตร",
+  "Units were not saved to your account; try again shortly.": "บันทึกหน่วยไว้กับบัญชีไม่ได้ ลองอีกครั้งในไม่ช้า",
   "Target distance (km)": "ระยะเป้าหมาย (กม.)",
   "calm km": "กม. สงบ",
   "per km": "ต่อกม.",

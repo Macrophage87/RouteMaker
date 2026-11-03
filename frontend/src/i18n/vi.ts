@@ -114,6 +114,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Distances, speeds and heights, on screen and spoken. The other units stay in brackets. Changing it reloads the page.": "Khoảng cách, tốc độ và độ cao, trên màn hình và khi đọc. Đơn vị kia vẫn nằm trong ngoặc. Thay đổi sẽ tải lại trang.",
   "Miles and feet": "Dặm và bộ",
   "Kilometers and meters": "Ki-lô-mét và mét",
+  "Units were not saved to your account; try again shortly.": "Chưa lưu được đơn vị vào tài khoản; thử lại sau ít phút.",
   "Target distance (km)": "Quãng đường mục tiêu (km)",
   "calm km": "km yên tĩnh",
   "per km": "mỗi km",

@@ -114,6 +114,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Distances, speeds and heights, on screen and spoken. The other units stay in brackets. Changing it reloads the page.": "Jarak, kecepatan, dan ketinggian, di layar dan diucapkan. Satuan lainnya tetap dalam kurung. Mengubahnya memuat ulang halaman.",
   "Miles and feet": "Mil dan kaki",
   "Kilometers and meters": "Kilometer dan meter",
+  "Units were not saved to your account; try again shortly.": "Satuan tidak tersimpan ke akun Anda; coba lagi sebentar lagi.",
   "Target distance (km)": "Jarak target (km)",
   "calm km": "km tenang",
   "per km": "per km",

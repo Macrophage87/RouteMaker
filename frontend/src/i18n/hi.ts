@@ -114,6 +114,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Distances, speeds and heights, on screen and spoken. The other units stay in brackets. Changing it reloads the page.": "दूरी, गति और ऊँचाई, स्क्रीन पर और बोलकर। दूसरी इकाइयाँ कोष्ठक में रहती हैं। बदलने पर पेज फिर से लोड होता है।",
   "Miles and feet": "मील और फ़ुट",
   "Kilometers and meters": "किलोमीटर और मीटर",
+  "Units were not saved to your account; try again shortly.": "इकाइयाँ आपके खाते में सहेजी नहीं गईं; थोड़ी देर में कोशिश करें।",
   "Target distance (km)": "लक्ष्य दूरी (किमी)",
   "calm km": "शांत किमी",
   "per km": "प्रति किमी",

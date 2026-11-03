@@ -114,6 +114,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Distances, speeds and heights, on screen and spoken. The other units stay in brackets. Changing it reloads the page.": "Distâncias, velocidades e alturas, na tela e faladas. As outras unidades ficam entre parênteses. Mudar isto recarrega a página.",
   "Miles and feet": "Milhas e pés",
   "Kilometers and meters": "Quilômetros e metros",
+  "Units were not saved to your account; try again shortly.": "As unidades não foram salvas na sua conta; tente de novo em breve.",
   "Target distance (km)": "Distância desejada (km)",
   "calm km": "km tranquilos",
   "per km": "por km",

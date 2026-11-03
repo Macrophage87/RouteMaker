@@ -386,7 +386,9 @@ function StressChart({ route, profile, onScrub, compact = false }: ChartProps) {
               {calm ? (
                 <>
                   <li className="pc-legend-strip">
-                    {t("Under the elevation: rolling stress{estimate}, calm miles per mile (calm km per km) over the mile around each point, on a log scale (1 to 2 is as tall as 5 to 10); about 1 is all quiet streets", { estimate: calm.estimate ? t(" (an estimate)") : "" })}
+                    {metricFirst()
+                      ? t("Under the elevation: rolling stress{estimate}, calm km per km (calm miles per mile) over the mile around each point, on a log scale (1 to 2 is as tall as 5 to 10); about 1 is all quiet streets", { estimate: calm.estimate ? t(" (an estimate)") : "" })
+                      : t("Under the elevation: rolling stress{estimate}, calm miles per mile (calm km per km) over the mile around each point, on a log scale (1 to 2 is as tall as 5 to 10); about 1 is all quiet streets", { estimate: calm.estimate ? t(" (an estimate)") : "" })}
                   </li>
                   {CALM_BANDS.map((band) => {
                     const cls = spanClass({ tier: band.tier, facility: "none" });

@@ -114,6 +114,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Distances, speeds and heights, on screen and spoken. The other units stay in brackets. Changing it reloads the page.": "المسافات والسرعات والارتفاعات، على الشاشة وبالصوت. تبقى الوحدات الأخرى بين قوسين. تغييرها يعيد تحميل الصفحة.",
   "Miles and feet": "الأميال والأقدام",
   "Kilometers and meters": "الكيلومترات والأمتار",
+  "Units were not saved to your account; try again shortly.": "لم تُحفظ الوحدات في حسابك؛ حاول بعد قليل.",
   "Target distance (km)": "المسافة المستهدفة (كم)",
   "calm km": "كم هادئ",
   "per km": "لكل كم",

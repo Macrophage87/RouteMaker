@@ -58,14 +58,24 @@ export function setUnitsForTest(next: Units): void {
 
 /**
  * Keeps the choice and reloads, so every label, chart and spoken cue follows it. `beforeReload` (signed in: the
- * account's save) is waited for, at most two seconds, so the account does not put the old units back on the reload.
- * Where this browser will not keep it, nothing reloads (a reload would only read the old choice back).
+ * account's save) is waited for, at most four seconds, so the account does not put the old units back on the reload;
+ * where it answers false (not saved), or does not answer in time, the old choice is put back and nothing reloads.
+ * Where this browser will not keep it, nothing reloads either (a reload would only read the old choice back).
+ * True when the page reloads.
  */
-export async function chooseUnits(next: Units, beforeReload?: () => Promise<unknown>, store: KeyValueStore | null = browserStore()): Promise<void> {
-  if (next === current) return;
+export async function chooseUnits(next: Units, beforeReload?: () => Promise<boolean>, store: KeyValueStore | null = browserStore()): Promise<boolean> {
+  if (next === current) return false;
+  const before = current;
   writeUnits(next, store);
-  if (readUnits(store) !== next) return;
-  if (beforeReload) await Promise.race([beforeReload().catch(() => undefined), new Promise((done) => setTimeout(done, 2000))]);
+  if (readUnits(store) !== next) return false;
+  if (beforeReload) {
+    const saved = await Promise.race([beforeReload().catch(() => false), new Promise<boolean>((done) => setTimeout(() => done(false), 4000))]);
+    if (!saved) {
+      writeUnits(before, store);
+      return false;
+    }
+  }
   current = next;
   if (typeof location !== "undefined") location.reload();
+  return true;
 }

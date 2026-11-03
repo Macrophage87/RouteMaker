@@ -3,7 +3,8 @@
  * first, metric in brackets. The owner, 2026-09-27: "This is a US-based map, so
  * people are more used to miles over km. Have both, but metric should be
  * secondary." - and 2026-09-29, "The US customary unit change wasn't made
- * yet." (OWNER-DECISIONS 85). The one formatter: nothing else writes a unit.
+ * yet." (OWNER-DECISIONS 85). The one formatter: nothing else writes a unit (the server's words are turned round
+ * here too, `unitsFirst`).
  * Stored values and API fields stay metric.
  *
  * Metric mode (the owner, 2026-11-03: "have a metric mode in settings", "Decimals and not fractions";
@@ -56,27 +57,35 @@ export function both(us: string, metric: string): string {
  * turned round in metric mode: "1.1 to 1.8 mi (1.7 to 2.9 km)" to "1.7 to 2.9 km (1.1 to 1.8 mi)", "12 mph
  * (19 km/h)" to "19 km/h (12 mph)", "300 ft (91 m)" to "91 m (300 ft)". As written in US mode.
  */
-const PAIR_RE = /([+-]?\d[\d.,]*(?: \S{1,3} [+-]?\d[\d.,]*)?) (mi|ft|mph|miles?|feet|calm mi) \(([+-]?\d[\d.,]*(?: \S{1,3} [+-]?\d[\d.,]*)?) (km|m|km\/h|calm km)\)/g;
+const PAIR_RE = /((?<![\w.,])[+-]?\d[\d.,]*(?: (?:to|a|–|-) [+-]?\d[\d.,]*)?) (mi|ft|mph|miles?|millas?|feet|pies|calm mi) \(([+-]?\d[\d.,]*(?: (?:to|a|–|-) [+-]?\d[\d.,]*)?) (km|m|km\/h|metros?|calm km)\)/g;
 export function unitsFirst(text: string): string {
   if (!text) return text;
   // Back the other way in US mode, for words kept while metric was chosen (a route saved then).
   if (!metricFirst()) return text.replace(METRIC_PAIR_RE, (_all, metric: string, metricUnit: string, us: string, usUnit: string) => `${us} ${usUnit} (${metric} ${metricUnit})`);
   return text.replace(PAIR_RE, (_all, us: string, usUnit: string, metric: string, metricUnit: string) => `${metric} ${metricUnit} (${us} ${usUnit})`);
 }
-const METRIC_PAIR_RE = /([+-]?\d[\d.,]*(?: \S{1,3} [+-]?\d[\d.,]*)?) (km|m|km\/h|calm km) \(([+-]?\d[\d.,]*(?: \S{1,3} [+-]?\d[\d.,]*)?) (mi|ft|mph|miles?|feet|calm mi)\)/g;
+const METRIC_PAIR_RE = /((?<![\w.,])[+-]?\d[\d.,]*(?: (?:to|a|–|-) [+-]?\d[\d.,]*)?) (km|m|km\/h|metros?|calm km) \(([+-]?\d[\d.,]*(?: (?:to|a|–|-) [+-]?\d[\d.,]*)?) (mi|ft|mph|miles?|millas?|feet|pies|calm mi)\)/g;
 
 /**
  * An API answer with every sentence in it turned round as `unitsFirst` does (a planned route, a road's facts), so
  * the panel, Go and Ride show the server's words in the rider's order. Numbers, flags and names untouched.
  */
 export function unitsFirstDeep<T>(value: T): T {
+  // The same answer turned round twice is the same object, so an answer kept by identity elsewhere (a shared ride's,
+  // App's sharedOpen) still matches the one shown.
+  const memo = metricFirst() ? TURNED_METRIC : TURNED_US;
+  if (value && typeof value === "object") {
+    const known = memo.get(value as object);
+    if (known) return known as T;
+  }
   const test = metricFirst() ? PAIR_TEST : METRIC_PAIR_TEST;
   // What holds nothing to turn is returned as it is, the same object, so a part kept by identity (a departure's
   // arrival clock, lib/departure.ts) stays the same part.
   const walk = (v: unknown): unknown => {
     if (typeof v === "string") return test.test(v) ? unitsFirst(v) : v;
     if (Array.isArray(v)) {
-      if (!v.length || typeof v[0] === "number") return v;
+      // A line's coordinates hold no words: not walked.
+      if (!v.length || typeof v[0] === "number" || (Array.isArray(v[0]) && typeof v[0][0] === "number")) return v;
       const out = v.map(walk);
       return out.some((x, i) => x !== v[i]) ? out : v;
     }
@@ -90,10 +99,14 @@ export function unitsFirstDeep<T>(value: T): T {
     }
     return v;
   };
-  return walk(value) as T;
+  const out = walk(value) as T;
+  if (value && typeof value === "object") memo.set(value as object, out as object);
+  return out;
 }
-const PAIR_TEST = /\d (?:mi|ft|mph|miles?|feet|calm mi) \(/;
-const METRIC_PAIR_TEST = /\d (?:km|m|km\/h|calm km) \(\S/;
+const TURNED_METRIC = new WeakMap<object, object>();
+const TURNED_US = new WeakMap<object, object>();
+const PAIR_TEST = /\d (?:mi|ft|mph|miles?|millas?|feet|pies|calm mi) \(/;
+const METRIC_PAIR_TEST = /\d (?:km|m|km\/h|metros?|calm km) \(\S/;
 
 function usable(value: number): boolean {
   return Number.isFinite(value) && value >= 0;

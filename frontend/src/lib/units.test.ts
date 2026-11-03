@@ -157,9 +157,34 @@ test("the choice is kept in this browser and with the account; a browser that wi
   // Storage refused: the choice cannot be read back after a reload, so nothing is saved or reloaded.
   let saved = false;
   const refusing = { getItem: () => null, setItem: () => { throw new Error("full"); }, removeItem: () => {} };
-  await chooseUnits("metric", async () => { saved = true; }, refusing);
+  await chooseUnits("metric", async () => { saved = true; return true; }, refusing);
   assert.equal(saved, false);
   assert.equal(units(), "us");
+  // The account's save refused: the old choice is put back and nothing reloads, so sign-in cannot undo it unseen.
+  const kept = new Memory();
+  assert.equal(await chooseUnits("metric", async () => false, kept), false);
+  assert.equal(readUnits(kept), "us");
+  assert.equal(units(), "us");
+});
+
+test("only a US figure and its metric twin are turned round: route numbers and other figures before them stay put", () => {
+  inUnits("metric", () => {
+    assert.equal(unitsFirst("LTS 3 for 1.2 mi (1.9 km)"), "LTS 3 for 1.9 km (1.2 mi)");
+    const hazard = "Rails in the road on MD 410, at 0.4 mi (0.6 km): cross them square on.";
+    assert.equal(unitsFirst(hazard), "Rails in the road on MD 410, at 0.6 km (0.4 mi): cross them square on.");
+    assert.equal(roadHazardWords(unitsFirst(hazard)), "Rails in the road on MD 410. Cross them square on.");
+    assert.equal(unitsFirst("Ruta 1, en 0.4 mi (0.6 km)"), "Ruta 1, en 0.6 km (0.4 mi)");
+    // The Spanish server's spelled units (routemaker/lang_es.py).
+    assert.equal(unitsFirst("Subida de 2.1 millas (3.4 km)"), "Subida de 3.4 km (2.1 millas)");
+  });
+});
+
+test("an answer turned round twice is the same object (a shared ride's answer still matches the one shown)", () => {
+  const answer = { description: [{ text: "0.0 to 1.2 mi (0.0 to 1.9 km)" }], geometry: { coordinates: [[1, 2], [3, 4]] } };
+  inUnits("metric", () => {
+    assert.equal(unitsFirstDeep(answer), unitsFirstDeep(answer));
+    assert.equal(unitsFirstDeep(answer).geometry, answer.geometry);
+  });
 });
 
 test("the next-2-miles graph: its distance axis counts kilometres and its height axis metres in metric mode, decimals", async () => {

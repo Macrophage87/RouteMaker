@@ -4442,7 +4442,7 @@ export function App() {
         // A broadcast's follower is not asked about closures (Stephen 2026-10-26: "The closure part should be leader
         // only. In general many of these closures aren't always real").
         openSaved(shared, SHARED_OPENED(shared.name), !(SHARED_RIDE && SHARED_LEAD && shared.answer));
-        if (shared.answer) setSharedOpen({ answer: shared.answer, ride: SHARED_RIDE, id: SHARED_ID, lead: SHARED_LEAD, secret: SHARED_SECRET, name: shared.name });
+        if (shared.answer) setSharedOpen({ answer: unitsFirstDeep(shared.answer), ride: SHARED_RIDE, id: SHARED_ID, lead: SHARED_LEAD, secret: SHARED_SECRET, name: shared.name });
       } else {
         setSharedNote(SHARED_GONE);
         announce(SHARED_GONE);
@@ -6970,13 +6970,17 @@ export function App() {
                 wahooReturned: WAHOO_RETURNED,
                 // Units (lib/units.ts) reload the page: signed in, the account gets the new choice first, so the
                 // sign-in on the reload does not put the old one back.
-                saveSettingsNow: me.signed_in && settingsSynced
-                  ? async () => {
-                      const doc = deviceSettings({ preset, dials }, undefined, weightStore.current?.setting());
-                      lastSettings.current = doc;
-                      await saveSettings(window.location.origin, doc);
-                    }
-                  : undefined,
+                // Before the account's settings are read, nothing is saved (it would replace them): not saved, try again.
+                saveSettingsNow: !me.signed_in
+                  ? undefined
+                  : !settingsSynced
+                    ? async () => false
+                    : async () => {
+                        const doc = deviceSettings({ preset, dials }, undefined, weightStore.current?.setting());
+                        const saved = await saveSettings(window.location.origin, doc);
+                        if (saved) lastSettings.current = doc;
+                        return saved;
+                      },
                 rideText: { size: rideText, onChange: setRideText },
                 // The rider and bike weight (OWNER-DECISIONS 313-318), in Settings (the owner, 2026-10-18).
                 weight: {

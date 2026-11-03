@@ -114,6 +114,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Distances, speeds and heights, on screen and spoken. The other units stay in brackets. Changing it reloads the page.": "距離・速度・高さ（画面と音声）。もう一方の単位はかっこ内に表示します。変更するとページを再読み込みします。",
   "Miles and feet": "マイルとフィート",
   "Kilometers and meters": "キロメートルとメートル",
+  "Units were not saved to your account; try again shortly.": "単位をアカウントに保存できませんでした。しばらくしてからお試しください。",
   "Target distance (km)": "目標距離（km）",
   "calm km": "静かなkm",
   "per km": "kmあたり",

@@ -18,6 +18,7 @@ import { haversineM, type LonLat } from "./geo.ts";
 import type { ClosureNotice } from "./closureMap.ts";
 import type { When } from "./dials.ts";
 import { t } from "./i18n.ts";
+import { unitsFirstDeep } from "./format.ts";
 
 /** One closure the line runs along, as the API answers it. */
 export interface Closure {
@@ -111,7 +112,8 @@ export async function checkClosures(
       }),
     });
     if (!response.ok) return null;
-    const body = (await response.json()) as Partial<ClosureAnswer>;
+    // The server's words in the rider's units order (lib/units.ts).
+    const body = unitsFirstDeep((await response.json()) as Partial<ClosureAnswer>);
     return {
       closures: Array.isArray(body.closures) ? body.closures : [],
       unchecked: body.unchecked ?? null,

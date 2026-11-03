@@ -114,6 +114,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Distances, speeds and heights, on screen and spoken. The other units stay in brackets. Changing it reloads the page.": "距離、速度同高度，畫面顯示同語音讀出。另一種單位放喺括號入面。更改之後會重新載入頁面。",
   "Miles and feet": "英里同英尺",
   "Kilometers and meters": "公里同米",
+  "Units were not saved to your account; try again shortly.": "單位儲存唔到帳戶；請遲啲再試。",
   "Target distance (km)": "目標距離（公里）",
   "calm km": "安靜公里",
   "per km": "每公里",

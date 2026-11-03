@@ -114,6 +114,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Distances, speeds and heights, on screen and spoken. The other units stay in brackets. Changing it reloads the page.": "Mesafeler, hızlar ve yükseklikler, ekranda ve sesli. Diğer birimler parantez içinde kalır. Değiştirmek sayfayı yeniden yükler.",
   "Miles and feet": "Mil ve fit",
   "Kilometers and meters": "Kilometre ve metre",
+  "Units were not saved to your account; try again shortly.": "Birimler hesabınıza kaydedilemedi; birazdan tekrar deneyin.",
   "Target distance (km)": "Hedef mesafe (km)",
   "calm km": "sakin km",
   "per km": "km başına",

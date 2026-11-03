@@ -114,6 +114,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Distances, speeds and heights, on screen and spoken. The other units stay in brackets. Changing it reloads the page.": "Distans, vitès ak wotè, sou ekran an ak nan vwa a. Lòt inite yo rete nan parantèz. Lè ou chanje l, paj la ap rechaje.",
   "Miles and feet": "Mil ak pye",
   "Kilometers and meters": "Kilomèt ak mèt",
+  "Units were not saved to your account; try again shortly.": "Inite yo pa t anrejistre nan kont ou; eseye ankò talè.",
   "Target distance (km)": "Distans ou vize (km)",
   "calm km": "km kalm",
   "per km": "pa km",

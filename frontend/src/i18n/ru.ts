@@ -114,6 +114,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Distances, speeds and heights, on screen and spoken. The other units stay in brackets. Changing it reloads the page.": "Расстояния, скорости и высоты, на экране и голосом. Другие единицы остаются в скобках. Изменение перезагружает страницу.",
   "Miles and feet": "Мили и футы",
   "Kilometers and meters": "Километры и метры",
+  "Units were not saved to your account; try again shortly.": "Единицы не сохранились в учётной записи; попробуйте чуть позже.",
   "Target distance (km)": "Целевое расстояние (км)",
   "calm km": "спокойных км",
   "per km": "на км",

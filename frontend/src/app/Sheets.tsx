@@ -114,9 +114,11 @@ function LanguageSetting() {
  * Settings > Display > Units (the owner, 2026-11-03: "have a metric mode in settings"): US (miles first, metric in
  * brackets) or Metric (kilometres first, US in brackets; Ride says metres and kilometres). Reloads, as Language does.
  */
-function UnitsSetting({ saveNow }: { saveNow?: () => Promise<unknown> }) {
+function UnitsSetting({ saveNow }: { saveNow?: () => Promise<boolean> }) {
   const [choice, setChoice] = useState<Units>(() => units());
+  const [unsaved, setUnsaved] = useState(false);
   return (
+    <>
     <SettingRow infoId="settings-units-info" about={t("Units")} info={t("Distances, speeds and heights, on screen and spoken. The other units stay in brackets. Changing it reloads the page.")}>
       <SettingSelect<Units>
         label={t("Units")}
@@ -124,11 +126,20 @@ function UnitsSetting({ saveNow }: { saveNow?: () => Promise<unknown> }) {
         options={[["us", t("Miles and feet")] as const, ["metric", t("Kilometers and meters")] as const]}
         onChange={(next) => {
           setChoice(next);
-          void chooseUnits(next, saveNow);
+          setUnsaved(false);
+          // Signed in, the account is saved first; not saved, the choice goes back and says so.
+          void chooseUnits(next, saveNow).then((reloaded) => {
+            if (!reloaded && units() !== next) {
+              setChoice(units());
+              setUnsaved(true);
+            }
+          });
         }}
         describedBy="settings-units-info"
       />
     </SettingRow>
+    {unsaved && <p className="notice" role="status">{t("Units were not saved to your account; try again shortly.")}</p>}
+    </>
   );
 }
 
@@ -549,7 +560,7 @@ export interface SettingsSheetProps {
   signInAvailable: boolean;
   menu: { onSuggest: (opener: HTMLElement) => void; onGpx: (opener: HTMLElement) => void; onReview: ((opener: HTMLElement) => void) | null };
   /** Signed in: save this device's settings to the account now (the Units choice reloads the page right after). */
-  saveSettingsNow?: () => Promise<unknown>;
+  saveSettingsNow?: () => Promise<boolean>;
 }
 
 /** High contrast, as the Map layers sheet has it, with its explanation behind an (i). */

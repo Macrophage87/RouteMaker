@@ -114,6 +114,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Distances, speeds and heights, on screen and spoken. The other units stay in brackets. Changing it reloads the page.": "واټنونه، سرعتونه او لوړوالی، په پرده او په غږ. نور واحدونه په قوسونو کې پاتې کېږي. بدلول یې پاڼه بیا پورته کوي.",
   "Miles and feet": "مایل او فټ",
   "Kilometers and meters": "کیلومتر او متر",
+  "Units were not saved to your account; try again shortly.": "واحدونه ستاسو په حساب کې خوندي نه شول؛ لږ وروسته هڅه وکړئ.",
   "Target distance (km)": "موخه واټن (کیلومتر)",
   "calm km": "ارام کیلومتر",
   "per km": "په کیلومتر کې",
