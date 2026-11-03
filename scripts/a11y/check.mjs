@@ -5855,7 +5855,7 @@ const failed = results.filter((r) => !r.ok);
 // Ordering favorites (2026-10-30) adds four: Edit's arrows at 320 px, names whole with fixed columns, a move saved and
 // said, and one to the bottom.
 // The ride's graphs (the v0.19.0 release review, findings 1, 4, 11 and 16, and its reviews of #928) add nine.
-const EXPECTED = 708;
+const EXPECTED = 712;
 if (SHARDS > 1) {
   // A shard runs only part of the count; CI's a11y job adds the shards' up and compares them with EXPECTED.
   writeFileSync(`${SHOTS}/a11y-count.txt`, `${results.length}\n`);
