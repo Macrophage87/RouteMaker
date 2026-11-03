@@ -3549,7 +3549,9 @@ export function RideMode({
                   key={view}
                   type="button"
                   className={`ride-round ride-ahead-bubble ride-ahead-${view}-bubble`}
-                  onClick={() => fromMore(() => toggleAhead(view))}
+                  // More stays open after a graph is turned on or off, so several can be set in one go (Stephen
+                  // 2026-11-03, the v0.19.0 release review's item 11: "Stay open"); the focus stays on the bubble.
+                  onClick={() => toggleAhead(view)}
                   aria-label={AHEAD_NAME[view]}
                   aria-pressed={aheadShownViews.includes(view)}
                   title={AHEAD_NAME[view]}

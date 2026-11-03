@@ -5683,12 +5683,14 @@ if (mine()) {
     return p;
   };
   const turnOn = async (p, views) => {
+    // More stays open while graphs are turned on (Stephen 2026-11-03: "Stay open"); closed again after.
+    await p.eval("document.querySelector('.ride-settings-button').click(); true");
+    await sleep(250);
     for (const view of views) {
-      await p.eval("document.querySelector('.ride-settings-button').click(); true");
-      await sleep(250);
       await p.eval(`document.querySelector('.ride-ahead-${view}-bubble').click(); true`);
       await sleep(250);
     }
+    await p.eval("document.querySelector('.ride-settings-button').click(); true");
     await sleep(800);
   };
 
@@ -5699,7 +5701,15 @@ if (mine()) {
   await p.eval("document.querySelector('.ride-settings-button').click(); true");
   check("ride graphs: More has a Traffic stress graph and an Elevation graph bubble, each named, not pressed (off by default), 44 px or more",
     JSON.stringify(bubbles.map((x) => [x.name, x.pressed])) === JSON.stringify([["Traffic stress graph", "false"], ["Elevation graph", "false"]]) && bubbles.every((x) => x.w >= 44 && x.h >= 44), JSON.stringify(bubbles));
-  await turnOn(p, ["stress"]);
+  await p.eval("document.querySelector('.ride-settings-button').click(); true");
+  await sleep(250);
+  await p.eval("document.querySelector('.ride-ahead-stress-bubble').focus(); document.querySelector('.ride-ahead-stress-bubble').click(); true");
+  await sleep(300);
+  const stays = await p.eval("({ open: document.querySelector('.ride-settings-button').getAttribute('aria-expanded'), focus: document.activeElement?.classList.contains('ride-ahead-stress-bubble'), pressed: document.querySelector('.ride-ahead-stress-bubble').getAttribute('aria-pressed') })");
+  await p.eval("document.querySelector('.ride-settings-button').click(); true");
+  await sleep(500);
+  check("ride graphs: a graph bubble turns its graph on and More stays open, the focus still on the bubble (Stephen 2026-11-03: 'Stay open')",
+    stays.open === "true" && stays.focus === true && stays.pressed === "true", JSON.stringify(stays));
   const figure = await p.eval(`(() => { const f = document.querySelector('.ride-ahead'); const said = f?.querySelector('.visually-hidden')?.textContent ?? '';
     return { role: f?.getAttribute('role'), name: f?.getAttribute('aria-label'), hidden: f?.querySelector('svg')?.getAttribute('aria-hidden'), said,
       pressed: document.querySelector('.ride-ahead-stress-bubble')?.getAttribute('aria-pressed') }; })()`);
@@ -5748,8 +5758,8 @@ const failed = results.filter((r) => !r.ok);
 // Joining a ride on one screen (2026-10-30) adds three: Escape, Close, and 320 px.
 // Ordering favorites (2026-10-30) adds four: Edit's arrows at 320 px, names whole with fixed columns, a move saved and
 // said, and one to the bottom.
-// The ride's graphs (the v0.19.0 release review, findings 1, 4 and 16) add four.
-const EXPECTED = 702;
+// The ride's graphs (the v0.19.0 release review, findings 1, 4, 11 and 16) add five.
+const EXPECTED = 703;
 if (SHARDS > 1) {
   // A shard runs only part of the count; CI's a11y job adds the shards' up and compares them with EXPECTED.
   writeFileSync(`${SHOTS}/a11y-count.txt`, `${results.length}\n`);

@@ -186,6 +186,7 @@ test("Ride wires it: one bubble a graph in More, pressed state, off by default, 
   const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
   assert.match(ride, /const \[ahead, setAhead\] = useState<AheadView\[\]>\(\(\) => readAhead\(\)\);/);
   assert.match(ride, /aria-pressed=\{aheadShownViews\.includes\(view\)\}/);
+  assert.match(ride, /onClick=\{\(\) => toggleAhead\(view\)\}/, "More stays open after a graph bubble (Stephen 2026-11-03: Stay open)");
   assert.match(ride, /const next = on \? ahead\.filter\(\(v\) => v !== view\) : \[\.\.\.ahead, view\];/, "each bubble on or off on its own");
   assert.match(ride, /<AheadGraph views=\{aheadShownViews\} route=\{route\} cues=\{model\.cues\}/, "the graphs on stack, with the turns");
   assert.match(ride, /const sheetShown = notesShown \|\| restShown \|\| aheadShown;/);
