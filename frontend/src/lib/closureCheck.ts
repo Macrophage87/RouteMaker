@@ -151,7 +151,9 @@ export function anywayLabel(why: CheckFor): string {
 }
 
 /** One sentence under the heading, by what the check was for. */
-export function closureLead(why: CheckFor): string {
+export function closureLead(why: CheckFor, onFoot = false): string {
+  // No Reroute on a run or walk (Run release review S4): the lead does not offer one.
+  if (onFoot) return t("Closures on this route now.");
   if (why === "download") return t("Closures in force now that the file's line runs along. Reroute first, or download it as it is.");
   if (why === "save") return t("Closures in force now that this route runs along. Reroute first, or save it as it is.");
   // At Start ride the route may have been planned a moment ago: it says what is so, not when it was planned (P11).

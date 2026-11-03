@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { PRESETS } from "./presets.ts";
+import { AVOID_GRAVEL_BECOMES, PRESETS } from "./presets.ts";
 import {
   CALM_FAR_FROM,
   CALM_RATE_MAX,
@@ -27,7 +27,7 @@ import {
   carries,
   isWhen,
 } from "./dials.ts";
-import { decodePlan, encodePlan } from "./planHash.ts";
+import { PLAN_VERSION, decodePlan, encodePlan } from "./planHash.ts";
 
 test("every ride type has a start for both sliders, inside their ranges", () => {
   for (const preset of PRESETS) {
@@ -209,19 +209,19 @@ test("an empty stress or hills in a link is the ride type's start, not 0", () =>
   }
 });
 
-test("avoid gravel is off by default, travels in the link and the request, and survives a ride-type change", () => {
-  // OWNER-DECISIONS 91, 92, 111.
-  for (const preset of PRESETS) {
-    assert.equal(startDials(preset.id).avoidGravel, undefined, preset.id);
-    assert.equal(dialFields(startDials(preset.id)).avoid_gravel, undefined, preset.id);
+test("the retired Avoid gravel box: an old link opens as Road Bike on a rider's own bike, and is dropped elsewhere", () => {
+  // Stephen, 2026-11-02: "Replace the box" (Road Bike, its own map).
+  for (const preset of PRESETS) assert.equal("avoid_gravel" in dialFields(startDials(preset.id)), false, preset.id);
+  for (const preset of AVOID_GRAVEL_BECOMES) {
+    assert.equal(decodePlan(`#preset=${preset}&avoidgravel=1`).preset, "road-bike", preset);
   }
-  const dials = { ...startDials("default"), avoidGravel: true };
-  assert.equal(dialFields(dials).avoid_gravel, true);
-  const back = decodePlan(encodePlan([], "default", dials)).dials;
-  assert.equal(back.avoidGravel, true);
-  assert.equal(decodePlan(encodePlan([], "default", startDials("default"))).dials.avoidGravel, undefined);
-  assert.equal(decodePlan("#preset=cargo&avoidgravel=0").dials.avoidGravel, undefined);
-  assert.equal(fitDials("gravel", { avoidGravel: true }).avoidGravel, true);
+  // Its sliders stay as the link had them.
+  assert.equal(decodePlan(`#preset=default&v=${PLAN_VERSION}&stress=70&hills=0&avoidgravel=1`).dials.stress, 70);
+  for (const preset of ["cargo", "ebike", "group-ride", "mass-ride", "bikeshare", "mountain-bike"] as const) {
+    assert.equal(decodePlan(`#preset=${preset}&avoidgravel=1`).preset, preset, preset);
+  }
+  assert.equal(decodePlan("#preset=default&avoidgravel=0").preset, "default");
+  assert.equal(encodePlan([], "road-bike", startDials("road-bike")).includes("avoidgravel"), false);
 });
 
 test("the calm rate is nothing up to the old top, then rises exponentially to its maximum", () => {
@@ -243,7 +243,7 @@ test("every ride type starts where it planned before the rescale, Trailmaxxing a
   // Cargo-carrying-people stays at 80".
   assert.deepEqual(
     Object.fromEntries(PRESETS.map((p) => [p.id, STARTS[p.id].stress])),
-    { default: 70, trailmaxxing: 100, "group-ride": 40, "mass-ride": 0, "mountain-goat": 40, "mountain-bike": 80, gravel: 40, fast: 10, cargo: 70, ebike: 70, bikeshare: 80, novice: 100, "bike-transit": 70, "bikeshare-transit": 80, rebalance: 80 },
+    { default: 70, trailmaxxing: 100, "group-ride": 40, "mass-ride": 0, "mountain-goat": 40, "mountain-bike": 80, gravel: 40, fast: 10, "road-bike": 40, cargo: 70, ebike: 70, bikeshare: 80, novice: 100, "bike-transit": 70, "bikeshare-transit": 80, walk: 80, "walk-transit": 80, run: 80, rebalance: 80 },
   );
 });
 

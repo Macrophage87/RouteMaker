@@ -376,7 +376,7 @@ function M.bridge_may_be_granted(tags)
   -- the one class of way this file is allowed to widen.
   --
   -- The protection is real and it belongs in the injection, not here. One Lua
-  -- script serves all six extracts - `mjolnir.graph_lua_name` is a single
+  -- script serves all seven extracts - `mjolnir.graph_lua_name` is a single
   -- path in every build config - so a guard in this file cannot tell which
   -- variant is being parsed and has to decline the legality row on the standard
   -- and no-trail extracts too, where the row applies and nothing has written
@@ -647,6 +647,13 @@ function M.remap_way(tags, derived)
     if penalised ~= nil then out.surface = penalised end
   end
 
+  -- The road-bike graph (`rm:rough_unpaved`, `pipeline.variants.Variant.PAVED`): gravel, fine
+  -- gravel and compacted reach it as gravel, the class Valhalla's road bicycle prices steeply,
+  -- whatever the lines above wrote (`M.ROUGH_UNPAVED`).
+  if derived.rough_unpaved and M.ROUGH_UNPAVED[tags.surface or ""] then
+    out.surface = "gravel"
+  end
+
   -- A `vehicle` grant opens no more to a bicycle than it did under 3.5.1.
   -- From 3.6.2 upstream reads `vehicle` for bicycles when nothing bicycle-
   -- specific speaks (valhalla/valhalla#5802), and its table counts
@@ -784,6 +791,16 @@ function M.remap_way(tags, derived)
     if M.may_penalise(tags, out.bicycle or tags.bicycle) then
       out.bicycle = M.STRESS_PENALTY_BICYCLE
     end
+  end
+
+  -- A winding trail on the road-bike graph (`rm:winding`, `routemaker.winding`): the same
+  -- penalty, so a road bike rides round Sligo Creek Trail's bends as it would round an LTS 3
+  -- street (the owner, 2026-11-02: road bikes "stay away from trails with lots of direction
+  -- changes"). Only where the trail is open to a bicycle, as above.
+  if derived.winding and derived.is_trail_class
+    and M.may_penalise(tags, out.bicycle or tags.bicycle)
+  then
+    out.bicycle = M.STRESS_PENALTY_BICYCLE
   end
 
   -- Graded (the owner, 2026-09-28: "Yes, grade them (Recommended)" - "LTS 4
@@ -1093,6 +1110,18 @@ M.PACKED_GRAVEL = { gravel = true, fine_gravel = true }
 function M.is_packed_gravel(tags)
   return M.PACKED_GRAVEL[tags.surface or ""] == true
 end
+
+-- What the road-bike graph prices as gravel (`rm:rough_unpaved`). Every other graph prices
+-- gravel and fine gravel as packed gravel (`M.PACKED_GRAVEL`), and Valhalla's road bicycle,
+-- at the most it can be told to avoid a surface, prices packed gravel at about three times a
+-- paved path: too little to keep a road bike off it. On this graph they, and `compacted`
+-- itself, are Valhalla's `gravel` class, about seventeen times a paved path for a road
+-- bicycle at `avoid_bad_surfaces` 0.9 (bicyclecost.cc at 3.9.1: speed factor 0.3, surface
+-- factor 4.5 over the road bicycle's minimum). The owner, 2026-11-02: the setting "is
+-- intended for road bikes that can't handle gravel or dirt". Dirt, ground and the rest keep
+-- their own class, which a road bicycle already prices steeply. A PCI-poor street and a
+-- reviewer's penalty, which also write `compacted`, are left alone: this reads the way's own tag.
+M.ROUGH_UNPAVED = { gravel = true, fine_gravel = true, compacted = true }
 
 -- The surface a DC street's PCI band reaches the graph as (DC-PCI; see its use
 -- in `remap_way`). `good` writes no surface: the street keeps its own.

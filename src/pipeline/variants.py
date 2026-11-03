@@ -82,11 +82,24 @@ class Variant(Enum):
     # time, not in the graph (`core.mtb`), so one graph serves every level. Only the Mountain
     # Bike ride type rides it; no weekend twin.
     MTB = "mtb"
+    # The Road Bike ride type's graph: the standard graph with every unpaved surface priced as
+    # what it is. The standard graph prices gravel and fine gravel as packed gravel
+    # (`compacted`; the owner, 2026-11-01, "All gravel everywhere", so Default rides the
+    # National Mall's gravel walks), and Valhalla's road bicycle prices `compacted` at about
+    # three times a paved path, which cannot keep a road bike off gravel. Here gravel, fine
+    # gravel and compacted reach the graph as Valhalla's `gravel` class
+    # (`run.inject_tags` writes `rm:rough_unpaved`; lua/routemaker_remap.lua). The owner,
+    # 2026-11-02: Avoid gravel "is intended for road bikes that can't handle gravel or dirt";
+    # "Add a road-bike map graph"; "Make it a separate mode that assumes a faster speed and
+    # also is less tolerant of turns". Only Road Bike rides it; no weekend twin.
+    PAVED = "paved"
 
 
 # The off-road family: the graphs behind the compose profile `offroad`, off on the small host
-# and the beta, so never in a plain restart.
-OFFROAD_FAMILY = frozenset({Variant.OFFROAD, Variant.MTB})
+# and the beta, so never in a plain restart. The road-bike graph (`Variant.PAVED`) is one of
+# them for the same reason: one ride type rides it, and its router starts once its tiles are
+# on the host.
+OFFROAD_FAMILY = frozenset({Variant.OFFROAD, Variant.MTB, Variant.PAVED})
 # The routers a plain `docker compose up -d` runs, and the restart that makes
 # them load a promoted (or rolled-back) build: `valhalla_service` reads its tiles
 # once at start. The off-road router is behind the compose profile `offroad` and
@@ -96,7 +109,8 @@ OFFROAD_FAMILY = frozenset({Variant.OFFROAD, Variant.MTB})
 # own, for where it runs. Every printed restart is built from these.
 OFFROAD_ROUTER = f"valhalla-{Variant.OFFROAD.value}"
 MTB_ROUTER = f"valhalla-{Variant.MTB.value}"
-OFFROAD_ROUTERS = (OFFROAD_ROUTER, MTB_ROUTER)
+PAVED_ROUTER = f"valhalla-{Variant.PAVED.value}"
+OFFROAD_ROUTERS = (OFFROAD_ROUTER, MTB_ROUTER, PAVED_ROUTER)
 DEFAULT_ROUTERS = tuple(f"valhalla-{v.value}" for v in Variant if v not in OFFROAD_FAMILY)
 RESTART_ROUTERS = "docker compose restart " + " ".join(DEFAULT_ROUTERS)
 RESTART_OFFROAD_ROUTER = "docker compose --profile offroad restart " + " ".join(OFFROAD_ROUTERS)
@@ -106,7 +120,8 @@ def restart_offroad_where_it_runs(routers: tuple[str, ...] = OFFROAD_ROUTERS) ->
     """The "where it runs" line for these profile-gated routers (a rollback names only the
     ones it keeps: a withdrawn one is stopped, and a restart naming it would fail)."""
     return (
-        "where the off-road and mountain-bike routers run (compose profile `offroad`), also "
+        "where the off-road, mountain-bike and road-bike routers run (compose profile "
+        "`offroad`), also "
         "docker compose --profile offroad restart " + " ".join(routers)
     )
 
@@ -976,12 +991,13 @@ def inject(
     # Every variant reads a posted speed as the classifier does (review RL-5).
     tags = with_speed_units(tags)
 
-    if variant in (Variant.STANDARD, Variant.WEEKEND, Variant.OFFROAD, Variant.MTB):
+    if variant in (Variant.STANDARD, Variant.WEEKEND, Variant.OFFROAD, Variant.MTB, Variant.PAVED):
         # The weekend graph's tags are the standard graph's: what differs is
         # the facility class and tier handed to the transform
         # (`run.inject_tags`), not the OSM tags. The off-road graph's one
         # difference is the same kind: `run.inject_tags` leaves off the
-        # mountain-bike class's closure.
+        # mountain-bike class's closure. The road-bike graph's is a derived fact too
+        # (`rm:rough_unpaved`).
         out = dict(tags)
         if is_mass_ride_only:
             bar_mass_ride_only_roadway(out)
