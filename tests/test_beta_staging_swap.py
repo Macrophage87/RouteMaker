@@ -260,15 +260,38 @@ def test_a_second_update_retires_the_first(beta) -> None:
     assert schemas() == {"live", "live_old"}
 
 
-def test_two_updates_at_once_are_refused(beta) -> None:
-    # another run holding the lock (flock(1) takes the same kind of lock the script does)
-    held = subprocess.Popen(["flock", "/tmp/routemaker-receive-data.lock", "sleep", "3"])
+def test_two_updates_at_once_are_refused(beta, tmp_path: Path) -> None:
+    # another run holding the lock, DATA_ROOT itself (flock(1) takes the kind of lock the
+    # script does); nothing in /tmp another user could make or hold
+    held = subprocess.Popen(["flock", "--shared", str(tmp_path / "data"), "sleep", "3"])
     time.sleep(0.5)
     done = beta("--stage-only")
     held.wait()
 
     assert done.returncode == 2 and "another receive-data.sh" in done.stderr
     assert schemas() == {"live"}
+
+
+def test_a_road_panel_edit_during_the_swap_is_not_deadlocked(beta) -> None:
+    """A road panel edit writes live.segment, then the stress tile cache (core.stress_edits
+    and core.tile_cache). The swap takes its locks in that order, so the two queue rather
+    than deadlock: both finish, the edit first."""
+    assert beta("--stage-only").returncode == 0
+    sql = (
+        "begin; update live.segment set name = name; select pg_sleep(2);"
+        " insert into stress_tile_cache (tile) values ('edit'); commit;"
+    )
+    edit = subprocess.Popen(
+        ["psql", "-d", BETA_DB, "-Atq", "-v", "ON_ERROR_STOP=1", "-c", sql],
+        stderr=subprocess.PIPE, text=True,
+    )  # fmt: skip
+    time.sleep(0.5)
+    done = beta()
+    _, edit_err = edit.communicate(timeout=60)
+
+    assert edit.returncode == 0 and "deadlock" not in edit_err, edit_err
+    assert done.returncode == 0 and "deadlock" not in done.stderr, done.stderr
+    assert segments("live") == ["new road", "newer road", "newest road"]
 
 
 def test_a_short_staged_table_is_refused_before_anything_is_renamed(beta, tmp_path: Path) -> None:

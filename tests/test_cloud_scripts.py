@@ -1342,7 +1342,7 @@ def beta(fake):
                 CLOUD_SMOKE=str(tools["smoke"]),
                 CLOUD_SMOKE_TRIES="3",
                 CLOUD_SMOKE_WAIT_S="0",
-                CLOUD_ROUTER_GAP_S="0",
+                CLOUD_ROUTER_WAIT_S="0",
             )
 
     Beta.live, Beta.data = live, data

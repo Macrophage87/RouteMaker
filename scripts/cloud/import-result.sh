@@ -67,7 +67,7 @@
 #   -h, --help
 # Environment (for tests): CLOUD_AWS [aws], CLOUD_DOCKER [docker], CLOUD_SUDO [sudo],
 # CLOUD_GIT [git], CLOUD_RECEIVE, CLOUD_BETA_COMPOSE, CLOUD_SMOKE [the scripts/beta/ ones],
-# CLOUD_SMOKE_TRIES [20], CLOUD_SMOKE_WAIT_S [15], CLOUD_ROUTER_GAP_S [20, between router restarts].
+# CLOUD_SMOKE_TRIES [20], CLOUD_SMOKE_WAIT_S [15], CLOUD_ROUTER_WAIT_S [180, the longest wait for a restarted router to answer].
 set -Eeuo pipefail
 
 die() { echo "import-result: $*" >&2; exit 2; }
@@ -178,10 +178,21 @@ if [ "$beta" = 1 ]; then
 	# One at a time, so only one ride type is briefly unanswered at once; the api plans a ride
 	# whose router does not answer on the standard graph meanwhile (while the standard router
 	# itself restarts, Default rides fail for those few seconds).
+	# The next one restarts only once this one answers its /status (asked from the api's
+	# container, on the compose network), or after CLOUD_ROUTER_WAIT_S at most.
 	note "restarting the routers one at a time so they serve the new graphs"
 	for router in "${routers[@]}"; do
 		"$bcompose" restart "$router"
-		sleep "${CLOUD_ROUTER_GAP_S:-20}"
+		waited=0
+		# shellcheck disable=SC2016 # python's, not the shell's
+		until "$bcompose" exec -T api python3 -c 'import sys, urllib.request; urllib.request.urlopen(sys.argv[1], timeout=5)' "http://$router:8002/status" </dev/null >/dev/null 2>&1; do
+			if [ "$waited" -ge "${CLOUD_ROUTER_WAIT_S:-180}" ]; then
+				note "WARNING: $router does not answer ${waited}s after its restart; going on with the next. Look at: $bcompose logs --tail 50 $router"
+				break
+			fi
+			sleep 3
+			waited=$((waited + 3))
+		done
 	done
 	# The trail routers (Mountain Bike's, Gravel and Mountain Goat's): started, or recreated onto the
 	# new build, whenever their tiles are here. A restart alone never starts one that is not running,

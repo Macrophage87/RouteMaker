@@ -2550,7 +2550,10 @@ the data of every table in `BACKUP_EXCLUDED_TABLES` (`config/procrastinate.py`):
 `cached_membership`, `app_session`, `django_session`, `rate_limit_window`,
 `stress_tile_cache`, `bikeshare_feed_cache`, `signed_out_send`, `garmin_link` and
 `wahoo_link` (riders' encrypted Garmin and Wahoo tokens: a restore asks them to connect
-again). Verified by reading the
+again), and leaving out the spare copies of the segment tables entirely (`--exclude-schema`):
+`live_old`, which a swap keeps for its rollback, and the beta's staged update `live_next`.
+Each is a whole copy of the live tables, and a restore brings back `live`, not them; after a
+restore `rollback_rebuild` refuses for want of a retired schema. Verified by reading the
 archive's own table of contents back with `pg_restore --list` from the same stream
 as it is written — an archive with
 no table data at all is a dump of nothing, which is what a wrong database name

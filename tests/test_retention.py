@@ -656,3 +656,37 @@ def test_a_directory_shaped_like_a_part_file_is_not_unlinked(tmp_path) -> None:
 
     assert impostor.is_dir(), "the directory was removed rather than left alone"
     assert (impostor / "inside").exists()
+
+
+def test_the_nightly_dump_leaves_out_the_spare_copies_of_the_segment_tables(
+    monkeypatch, tmp_path
+) -> None:
+    """The retired segment schema a swap keeps (`live_old`) and the beta's staged update
+    (`live_next`) are whole copies of the live tables: in every nightly dump they would double
+    or triple its size and its restore time, and a restore never goes back to them."""
+    from django.conf import settings
+
+    from config import procrastinate
+
+    seen: list[list[str]] = []
+
+    class Stop(Exception):
+        pass
+
+    def capture(command, *args, **kwargs):
+        seen.append(list(command))
+        raise Stop
+
+    monkeypatch.setattr(procrastinate, "backup_recipients_problem", lambda: None)
+    monkeypatch.setattr(settings, "BACKUP_DIR", tmp_path)
+    monkeypatch.setattr(procrastinate, "_dump_encrypted", capture)
+
+    with pytest.raises(Stop):
+        procrastinate.perform_backup()
+
+    (command,) = seen
+    assert f"--exclude-schema={settings.SEGMENT_SCHEMA_RETIRED}" in command
+    assert f"--exclude-schema={settings.SEGMENT_SCHEMA_LIVE}_next" in command
+    # the live tables themselves stay in
+    assert not any(arg == f"--exclude-schema={settings.SEGMENT_SCHEMA_LIVE}" for arg in command)
+    assert not list(tmp_path.iterdir())  # the part file is removed on the way out
