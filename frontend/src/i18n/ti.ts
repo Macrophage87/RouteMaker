@@ -1890,4 +1890,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Other riders shown: {count}, the last {distance} behind you.": "ካልኦት {count} ብሽክሌተኛታት ተራእዮም፣ እቲ ናይ መወዳእታ {distance} ኣብ ድሕሬኹም።",
   "Mostly {level}, {top} here.": "መብዛሕትኡ {level}፣ ኣብዚ {top}።",
   "Narrowest {riders} riders a minute, here.": "እቲ ዝጸበበ፦ ኣብ ደቒቕ {riders} ብሽክሌተኛታት፣ ኣብዚ።",
+  "{graph}: off.": "{graph}፦ ጠፊኡ።",
+  "Road ahead": "ኣብ ቅድሚ ዘሎ መገዲ",
+  "Turns ahead: {turns}. Busy junctions: {busy}.": "ኣብ ቅድሚ ዘለዉ ምጥዋያት፦ {turns}። ዝተጨናነቑ መራኸቢታት፦ {busy}።",
 };

@@ -1890,4 +1890,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Other riders shown: {count}, the last {distance} behind you.": "다른 라이더 {count}명 표시, 마지막 라이더는 {distance} 뒤에 있습니다.",
   "Mostly {level}, {top} here.": "대부분 {level}, 여기서 {top}.",
   "Narrowest {riders} riders a minute, here.": "가장 좁은 곳: 분당 {riders}명, 여기.",
+  "{graph}: off.": "{graph}: 꺼짐.",
+  "Road ahead": "앞길",
+  "Turns ahead: {turns}. Busy junctions: {busy}.": "앞의 회전: {turns}. 혼잡한 교차로: {busy}.",
 };

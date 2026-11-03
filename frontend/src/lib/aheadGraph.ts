@@ -30,19 +30,22 @@ export const RIDER_OFF_ROUTE_M = 60;
 export const AHEAD_KEY = "routemaker.ride.ahead";
 const VIEWS: readonly AheadView[] = ["stress", "elevation", "flow", "corkers"];
 
-/** The graph last shown on this device, or null (off, the default). */
-export function readAhead(store: KeyValueStore | null = browserStore()): AheadView | null {
+/**
+ * The graphs on (Stephen 2026-11-03: "Have each graph share the same x axis, so it only needs to be labeled once": they
+ * stack, one axis under them all), kept on this device in More's order; none, the default, is off.
+ */
+export function readAhead(store: KeyValueStore | null = browserStore()): AheadView[] {
   try {
-    const kept = store?.getItem(AHEAD_KEY);
-    return (VIEWS as readonly string[]).includes(kept ?? "") ? (kept as AheadView) : null;
+    const kept = (store?.getItem(AHEAD_KEY) ?? "").split(",");
+    return VIEWS.filter((view) => kept.includes(view));
   } catch {
-    return null;
+    return [];
   }
 }
 
-export function writeAhead(view: AheadView | null, store: KeyValueStore | null = browserStore()): void {
+export function writeAhead(views: readonly AheadView[], store: KeyValueStore | null = browserStore()): void {
   try {
-    store?.setItem(AHEAD_KEY, view ?? "");
+    store?.setItem(AHEAD_KEY, VIEWS.filter((view) => views.includes(view)).join(","));
   } catch {
     // Blocked site data: the choice holds for this ride only.
   }
@@ -71,7 +74,9 @@ export const AHEAD_HEADING: Record<AheadView, string> = {
 };
 /** Said when a graph comes on: "Traffic stress graph: on." */
 export const aheadOn = (view: AheadView): string => t("{graph}: on.", { graph: AHEAD_NAME[view] });
-export const AHEAD_OFF = t("Graph off.");
+export const aheadOff = (view: AheadView): string => t("{graph}: off.", { graph: AHEAD_NAME[view] });
+/** The stacked graphs' name, for a screen reader. */
+export const AHEAD_GROUP = t("Road ahead");
 const NO_FIGURES = t("No figures for this stretch.");
 export const AHEAD_YOU = t("You");
 
@@ -381,6 +386,42 @@ export function elevationTicks(lowM: number, highM: number): { m: number; label:
 /** The flow graph's guides as its y labels: 60 and 120 riders a minute, and 200 where the graph reaches it. */
 export function flowTicks(top: number): number[] {
   return [60, 120, 200].filter((r) => r < top);
+}
+
+// ---- Turns and junction markers (Stephen 2026-11-03: "an upcoming turns layer on the graph ... on the same scale. Black
+// arrows for normal turns, with orange and red for more stressful. Include the other stress markers too.") ----------
+
+export type TurnMovementKey = "left" | "right" | "bear_left" | "bear_right" | "uturn";
+export interface TurnMark {
+  m: number;
+  /** A turn's arrow; null for a junction marker that is not a turn. */
+  movement: TurnMovementKey | null;
+  /** Orange (a triangle) and red (a diamond) as the planner's junction markers; "avoid" an Avoid stretch's start. */
+  severity: "orange" | "red" | "avoid" | null;
+}
+
+interface CueLike {
+  kind: string;
+  atM: number;
+  movement: TurnMovementKey | null;
+  severity: "orange" | "red" | "avoid" | null;
+}
+
+/** The turns and the stress markers in the window: every turn, and every other cue the planner flagged. */
+export function turnMarks(cues: readonly CueLike[], w: Pick<AheadWindow, "fromM" | "toM">): TurnMark[] {
+  return cues
+    .filter((c) => c.atM >= w.fromM && c.atM <= w.toM)
+    .filter((c) => (c.kind === "turn" && c.movement !== null) || c.severity !== null)
+    .map((c) => ({ m: c.atM, movement: c.kind === "turn" ? c.movement : null, severity: c.severity }));
+}
+
+/** "Turns ahead: 3. Busy junctions: 1." */
+export function turnsSentence(marks: readonly TurnMark[], youM: number): string {
+  const ahead = marks.filter((mark) => mark.m >= youM);
+  return t("Turns ahead: {turns}. Busy junctions: {busy}.", {
+    turns: ahead.filter((mark) => mark.movement !== null).length,
+    busy: ahead.filter((mark) => mark.severity !== null).length,
+  });
 }
 
 export interface AxisTick {

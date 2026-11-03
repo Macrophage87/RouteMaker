@@ -1890,4 +1890,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Other riders shown: {count}, the last {distance} behind you.": "显示了另外{count}名骑行者，最后一名在你后面{distance}。",
   "Mostly {level}, {top} here.": "大多为{level}，这里是{top}。",
   "Narrowest {riders} riders a minute, here.": "最窄处：每分钟{riders}名骑行者，就在这里。",
+  "{graph}: off.": "{graph}：已关闭。",
+  "Road ahead": "前方道路",
+  "Turns ahead: {turns}. Busy junctions: {busy}.": "前方转弯：{turns}。繁忙路口：{busy}。",
 };

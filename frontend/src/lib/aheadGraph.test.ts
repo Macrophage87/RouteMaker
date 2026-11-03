@@ -18,6 +18,9 @@ import {
   flowSteps,
   inkOn,
   readAhead,
+  turnMarks,
+  turnsSentence,
+  type TurnMark,
   ridersSentence,
   shortStreet,
   spanLevel,
@@ -46,17 +49,25 @@ function store() {
   return { getItem: (k: string) => kept.get(k) ?? null, setItem: (k: string, v: string) => void kept.set(k, v), kept };
 }
 
-test("off by default; the graph chosen is kept on this device, and turning it off is kept too", () => {
+test("off by default; the graphs chosen are kept on this device in More's order, and turning them off is kept too", () => {
   const s = store();
-  assert.equal(readAhead(s), null);
-  writeAhead("elevation", s);
-  assert.equal(s.kept.get(AHEAD_KEY), "elevation");
-  assert.equal(readAhead(s), "elevation");
-  writeAhead(null, s);
-  assert.equal(readAhead(s), null);
-  s.setItem(AHEAD_KEY, "nonsense");
-  assert.equal(readAhead(s), null);
-  assert.equal(readAhead({ getItem: () => { throw new Error("blocked"); }, setItem: () => {} }), null);
+  assert.deepEqual(readAhead(s), []);
+  writeAhead(["elevation", "stress"], s);
+  assert.equal(s.kept.get(AHEAD_KEY), "stress,elevation");
+  assert.deepEqual(readAhead(s), ["stress", "elevation"]);
+  writeAhead([], s);
+  assert.deepEqual(readAhead(s), []);
+  s.setItem(AHEAD_KEY, "nonsense,flow");
+  assert.deepEqual(readAhead(s), ["flow"]);
+  assert.deepEqual(readAhead({ getItem: () => { throw new Error("blocked"); }, setItem: () => {} }), []);
+});
+
+test("the turns strip: every turn with its arrow, and each flagged junction marker; said as counts ahead", () => {
+  const cue = (kind: string, atM: number, movement: TurnMark["movement"], severity: TurnMark["severity"]) => ({ kind, atM, movement, severity });
+  const cues = [cue("turn", 100, "left", null), cue("turn", 900, "right", "orange"), cue("crossing", 1500, null, "red"), cue("busy", 1800, null, null), cue("turn", 9000, "left", null)];
+  const marks = turnMarks(cues, { fromM: 0, toM: AHEAD_M });
+  assert.deepEqual(marks, [{ m: 100, movement: "left", severity: null }, { m: 900, movement: "right", severity: "orange" }, { m: 1500, movement: null, severity: "red" }]);
+  assert.equal(turnsSentence(marks, 500), "Turns ahead: 1. Busy junctions: 2.");
 });
 
 test("the bubbles: stress and elevation on any ride with them; flow and corkers first on a Mass Ride only", () => {
@@ -144,9 +155,10 @@ test("riders and the axis: the last rider behind said; ticks counted from you, t
 
 test("Ride wires it: one bubble a graph in More, pressed state, off by default, the graph at the top of the bottom panel", () => {
   const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
-  assert.match(ride, /const \[ahead, setAhead\] = useState<AheadView \| null>\(\(\) => readAhead\(\)\);/);
-  assert.match(ride, /aria-pressed=\{aheadView === view\}/);
-  assert.match(ride, /const next = aheadView === view \? null : view;/, "the lit bubble turns it off");
+  assert.match(ride, /const \[ahead, setAhead\] = useState<AheadView\[\]>\(\(\) => readAhead\(\)\);/);
+  assert.match(ride, /aria-pressed=\{aheadShownViews\.includes\(view\)\}/);
+  assert.match(ride, /const next = on \? ahead\.filter\(\(v\) => v !== view\) : \[\.\.\.ahead, view\];/, "each bubble on or off on its own");
+  assert.match(ride, /<AheadGraph views=\{aheadShownViews\} route=\{route\} cues=\{model\.cues\}/, "the graphs on stack, with the turns");
   assert.match(ride, /const sheetShown = notesShown \|\| restShown \|\| aheadShown;/);
   assert.ok(ride.indexOf("<AheadGraph") > ride.indexOf('className="ride-controls"'));
   assert.ok(ride.indexOf("ride-ahead-bubble") < ride.indexOf('className="ride-round ride-topo"'), "before Topo and Settings");
@@ -184,5 +196,5 @@ test("the y axis is labelled: stress levels 1 to 4 and A, round heights in feet,
   assert.deepEqual(flowTicks(150), [60, 120]);
   assert.deepEqual(flowTicks(260), [60, 120, 200]);
   const graph = readFileSync(new URL("../AheadGraph.tsx", import.meta.url), "utf8");
-  assert.match(graph, /<YAxis ticks=\{drawn\.yTicks\} \/>/);
+  assert.match(graph, /<YAxis ticks=\{drawn\.yTicks\} panel=\{panel\} \/>/);
 });

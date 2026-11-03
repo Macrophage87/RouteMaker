@@ -271,7 +271,7 @@ import { countText } from "./lib/rideGroup.ts";
 import type { SeeEveryone } from "./app/useSeeEveryone.ts";
 import { SeeEveryoneButton } from "./SeeEveryoneButton.tsx";
 import { AheadGraph } from "./AheadGraph.tsx";
-import { AHEAD_NAME, AHEAD_OFF, AHEAD_WORD, aheadOn, aheadViews, readAhead, writeAhead, RIDER_OFF_ROUTE_M, RIDERS_REACH_M, type AheadView } from "./lib/aheadGraph.ts";
+import { AHEAD_NAME, AHEAD_WORD, aheadOff, aheadOn, aheadViews, readAhead, writeAhead, RIDER_OFF_ROUTE_M, RIDERS_REACH_M, type AheadView } from "./lib/aheadGraph.ts";
 
 /**
  * One voice for the page: the Start ride press unlocks it (iOS speaks only after a gesture has). Web
@@ -2157,16 +2157,17 @@ export function RideMode({
     settingsButton.current?.focus();
     press();
   };
-  // The graph of the road ahead (lib/aheadGraph.ts; Stephen 2026-11-03): off by default, one bubble a graph, one graph
-  // at a time; the lit bubble turns it off. The last choice is kept on this device.
-  const [ahead, setAhead] = useState<AheadView | null>(() => readAhead());
+  // The graphs of the road ahead (lib/aheadGraph.ts; Stephen 2026-11-03): off by default, one bubble a graph, each on or
+  // off on its own; the ones on stack on one distance axis. The choice is kept on this device.
+  const [ahead, setAhead] = useState<AheadView[]>(() => readAhead());
   const aheadOffered = useMemo(() => aheadViews(route), [route]);
-  const aheadView = ahead !== null && aheadOffered.includes(ahead) ? ahead : null;
+  const aheadShownViews = useMemo(() => aheadOffered.filter((view) => ahead.includes(view)), [aheadOffered, ahead]);
   const toggleAhead = (view: AheadView) => {
-    const next = aheadView === view ? null : view;
+    const on = ahead.includes(view);
+    const next = on ? ahead.filter((v) => v !== view) : [...ahead, view];
     setAhead(next);
     writeAhead(next);
-    answer(next ? aheadOn(next) : AHEAD_OFF);
+    answer(on ? aheadOff(view) : aheadOn(view));
   };
   // Topo lines (Stephen 2026-10-26): the same switch as Map layers' Topo lines, kept per browser. Turned on only once
   // the server is found to have the contours (lib/topoLines.ts topoArchive, asked once a ride); otherwise said why.
@@ -2785,7 +2786,7 @@ export function RideMode({
   }, [replanNote, offNow, showToast]);
   const notesShown = !!((gps && ride.fix) || paused || wakeNote || (ride.off && replanNote) || corridorText || weatherShown);
   // The graph of the road ahead, at the top of the bottom panel while on the route and riding it.
-  const aheadAt = aheadView !== null && !ride.off && !ride.arrived ? ride.progressM : null;
+  const aheadAt = aheadShownViews.length > 0 && !ride.off && !ride.arrived ? ride.progressM : null;
   const ridersAlong = useMemo(
     () =>
       aheadAt === null
@@ -2798,7 +2799,7 @@ export function RideMode({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [riderDots, model, aheadAt === null ? null : Math.round(aheadAt / 200)],
   );
-  const aheadShown = aheadView !== null && aheadAt !== null;
+  const aheadShown = aheadAt !== null;
   const sheetShown = notesShown || restShown || aheadShown;
   // The map's scales and credits sit at the bottom of the screen in a ride (the owner, 2026-10-17: "on the bottom
   // of the page in a ride"), just above the bottom panel while it shows (styles.css --ride-sheet-h).
@@ -3504,7 +3505,7 @@ export function RideMode({
                   className={`ride-round ride-ahead-bubble ride-ahead-${view}-bubble`}
                   onClick={() => fromMore(() => toggleAhead(view))}
                   aria-label={AHEAD_NAME[view]}
-                  aria-pressed={aheadView === view}
+                  aria-pressed={aheadShownViews.includes(view)}
                   title={AHEAD_NAME[view]}
                 >
                   <Icon name={AHEAD_ICON[view]} size={24} />
@@ -3544,7 +3545,7 @@ export function RideMode({
           routing by default"): the notes, off route, Ride the rest, and the full 311 report once asked for. */}
       {sheetShown && (
         <div ref={sheetRef} className="ride-controls">
-          {aheadView !== null && aheadAt !== null && <AheadGraph view={aheadView} route={route} youM={aheadAt} lengthM={model.lengthM} ridersAlong={ridersAlong} />}
+          {aheadAt !== null && <AheadGraph views={aheadShownViews} route={route} cues={model.cues} youM={aheadAt} lengthM={model.lengthM} ridersAlong={ridersAlong} />}
           {notesShown && (
             <div className="ride-notes">
               {gps && ride.fix && <p className="hint">{gps}</p>}

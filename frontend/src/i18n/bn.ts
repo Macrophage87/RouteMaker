@@ -1890,4 +1890,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Other riders shown: {count}, the last {distance} behind you.": "আরও {count} জন আরোহী দেখানো হচ্ছে, শেষজন আপনার {distance} পিছনে।",
   "Mostly {level}, {top} here.": "বেশিরভাগ {level}, এখানে {top}।",
   "Narrowest {riders} riders a minute, here.": "সবচেয়ে সরু: প্রতি মিনিটে {riders} জন আরোহী, এখানে।",
+  "{graph}: off.": "{graph}: বন্ধ।",
+  "Road ahead": "সামনের পথ",
+  "Turns ahead: {turns}. Busy junctions: {busy}.": "সামনের বাঁক: {turns}। ব্যস্ত মোড়: {busy}।",
 };
