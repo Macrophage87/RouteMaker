@@ -324,7 +324,10 @@ class System:
             if route and route.lower() != name and route not in named:
                 named.append(route)
         if not named:
-            return " ".join(self.words.replace("{route}", "").split()) or self.name
+            bare = " ".join(self.words.replace("{route}", "").split())
+            # "the MARC"; a bus whose route is its system's name keeps the name ("the Metrobus",
+            # never "bus").
+            return bare if self.name.lower() in bare.lower() else f"the {self.name}"
         return self.words.format(route=" or ".join(named))
 
     def route_name(self, route: str) -> str:
@@ -1097,6 +1100,10 @@ class Leg:
     # directions for transit"); and the way it runs, its last stop's name ("toward Shady Grove").
     stops: tuple[tuple[str, tuple[float, float], float], ...] = ()
     toward: str | None = None
+    # Every line that makes the ride and where its trains are signed to, each once: ("Orange Line",
+    # "New Carrollton"), ("Silver Line", "Downtown Largo") (Stephen, 2026-11-03: "Put the acceptable
+    # destination options. you still need to know which train to get on").
+    towards: tuple[tuple[str, str], ...] = ()
     # A walk's turns as the router gives them (`walk_turns.turns_of`), for turn-by-turn on foot.
     turns: tuple[dict, ...] = ()
     # A ride's time on busy roads and waiting at junctions, added again for ranking only
@@ -1485,6 +1492,31 @@ def _stops_of(
     return stops, end or None
 
 
+def _towards_of(schedule: Schedule, hop: Hop) -> tuple[tuple[str, str], ...]:
+    """Each route of the hop with the last stop of every pattern of it that calls at the hop's
+    first stop and then its last (the trains a rider can board there for this ride), each once,
+    in the hop's route order. A loop has no last stop to sign it by."""
+    if len(hop.path) < 2:
+        return ()
+    board, alight = hop.path[0], hop.path[-1]
+    routes = set(hop.routes)
+    found: list[tuple[str, str]] = []
+    for pattern in schedule.patterns:
+        if pattern.system != hop.system or pattern.route not in routes:
+            continue
+        stops = pattern.stops
+        if not stops or stops[0] == stops[-1] or board not in stops:
+            continue
+        at = stops.index(board)
+        if alight not in stops[at + 1 :]:
+            continue
+        pair = (pattern.route, schedule.stops[stops[-1]].name)
+        if pair not in found:
+            found.append(pair)
+    order = {route: i for i, route in enumerate(hop.routes)}
+    return tuple(sorted(found, key=lambda p: (order.get(p[0], len(order)), p[1])))
+
+
 def _transit_leg(
     schedule: Schedule, hop: Hop, change: bool, bike: bool, service_day: date | None = None
 ) -> Leg:
@@ -1511,6 +1543,7 @@ def _transit_leg(
         first=hop.first,
         stops=stops,
         toward=toward,
+        towards=_towards_of(schedule, hop),
     )
 
 
@@ -3206,6 +3239,9 @@ def block(plan: Plan, schedule: Schedule | None = None) -> dict:
                 if leg.transit and leg.stops
                 else None,
                 "toward": leg.toward if leg.transit else None,
+                "towards": [{"line": line, "toward": end} for line, end in leg.towards]
+                if leg.transit and leg.towards
+                else None,
                 "turns": list(leg.turns) if leg.turns else None,
             }
         )

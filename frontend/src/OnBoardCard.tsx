@@ -5,7 +5,7 @@
  * and the stop to get off are said through the ride's outputs, never by this card.
  */
 import { useEffect, useState } from "react";
-import { laterDepartureText, nextDepartureText, onBoardRows, stopsLeftText, type OnBoardLeg, type OnBoardState } from "./lib/onBoard.ts";
+import { boardingGroups, laterDepartureText, lineBadge, nextDepartureText, onBoardRows, stopsLeftText, type OnBoardLeg, type OnBoardState } from "./lib/onBoard.ts";
 import { t } from "./lib/i18n.ts";
 
 export function OnBoardCard({ leg, state }: { leg: OnBoardLeg; state: OnBoardState }) {
@@ -33,10 +33,20 @@ export function OnBoardCard({ leg, state }: { leg: OnBoardLeg; state: OnBoardSta
 
 /**
  * Waiting to board (Stephen, 2026-11-03: "Make the screen less verbose for transit", "Line, final destination, actual
- * destination, next train", "make it more table or list than a wall of text"): the line, its way, the stop to get off
- * and the next departure, one row each, in place of the plan's boarding sentence.
+ * destination, next train", "make it more table or list than a wall of text", "Put the acceptable destination
+ * options", "You can use colors to make it compact"): the trains that will do, each as its line's coloured badge and
+ * where it is signed to; then the stop to get off, the next departure and the one after it, one row each.
  */
-export function BoardingCard({ leg, departure }: { leg: OnBoardLeg; departure: { departs: string; departs_at: string; next?: string | null; next_at?: string | null } | null }) {
+export function BoardingCard({
+  leg,
+  departure,
+  note,
+}: {
+  leg: OnBoardLeg;
+  departure: { departs: string; departs_at: string; next?: string | null; next_at?: string | null } | null;
+  /** What comes first, short: "About 4 min into the station by the elevator." */
+  note?: string | null;
+}) {
   const off = leg.stops[leg.stops.length - 1].name;
   // The minutes to a timed departure, kept current.
   const [now, setNow] = useState(() => Date.now());
@@ -47,30 +57,55 @@ export function BoardingCard({ leg, departure }: { leg: OnBoardLeg; departure: {
   }, [departure]);
   const next = nextDepartureText(leg, departure, now);
   const later = laterDepartureText(departure, now);
+  const trains = leg.trains?.length ? leg.trains : [{ line: leg.line, toward: leg.toward }];
   return (
-    <dl className="boarding">
-      <dt>{t("Line")}</dt>
-      <dd>{leg.line}</dd>
-      {leg.toward && leg.toward !== off && (
-        <>
-          <dt>{t("Toward")}</dt>
-          <dd>{leg.toward}</dd>
-        </>
-      )}
-      <dt>{t("Get off")}</dt>
-      <dd>{off}</dd>
-      {next && (
-        <>
-          <dt>{leg.bus ? t("Next bus") : t("Next train")}</dt>
-          <dd>{next}</dd>
-        </>
-      )}
-      {later && (
-        <>
-          <dt>{t("After that")}</dt>
-          <dd>{later}</dd>
-        </>
-      )}
-    </dl>
+    <div className="boarding">
+      {note && <p className="cue-then boarding-note">{note}</p>}
+      {/* One row per end station, its lines' badges first (Stephen, 2026-11-03: "Like orange/silver new Carrollton,
+          blue/silver Downtown Largo"). */}
+      <ul className="boarding-trains">
+        {boardingGroups(trains, off).map(({ lines, toward }) => (
+          <li key={`${lines.join("|")}>${toward ?? ""}`}>
+            {lines.map((line) => {
+              const badge = lineBadge(line);
+              return (
+                <span key={line} className={badge ? "line-badge" : "line-badge line-badge-plain"} style={badge ?? undefined}>
+                  {/* Compact: a coloured badge says "Orange", its colour the rest. */}
+                  {badge ? line.replace(/ Line$/, "") : line}
+                </span>
+              );
+            })}
+            {toward && (
+              <>
+                <span className="visually-hidden"> {t("toward")} </span>
+                <span className="boarding-toward">{toward}</span>
+              </>
+            )}
+          </li>
+        ))}
+      </ul>
+      <dl className="boarding-rows">
+        <dt>{t("Get off")}</dt>
+        <dd>{off}</dd>
+        {next && (
+          <>
+            <dt>{leg.bus ? t("Next bus") : t("Next train")}</dt>
+            <dd>{next}</dd>
+          </>
+        )}
+        {later && (
+          <>
+            <dt>{t("After that")}</dt>
+            <dd>{later}</dd>
+          </>
+        )}
+        {leg.rack && (
+          <>
+            <dt>{t("Bike")}</dt>
+            <dd>{t("Front rack")}</dd>
+          </>
+        )}
+      </dl>
+    </div>
   );
 }

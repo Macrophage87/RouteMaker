@@ -5350,24 +5350,53 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
   font-size: 20px;
 }
 
-/* Waiting to board (Stephen, 2026-11-03: "more table or list than a wall of text"): Line, Toward, Get off, Next train,
-   a label and its value on one row each; a long station name wraps under its own column. */
-.ride .boarding {
+/* Waiting to board (Stephen, 2026-11-03: "more table or list than a wall of text", "You can use colors to make it
+   compact"): one row per end station, its lines as coloured badges; then Get off, Next train, After that, a label and
+   its value on one row each (the label column at most 45%, so a long label wraps rather than squeeze the name). */
+.ride .boarding-trains {
+  list-style: none;
+  margin: 4px 0;
+  padding: 0;
+}
+
+.ride .boarding-trains li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 2px 0;
+  font-weight: 700;
+}
+
+.ride .line-badge {
+  display: inline-block;
+  padding: 0 0.4em;
+  border-radius: 0.35em;
+  border: 1px solid var(--text-muted);
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.ride .line-badge-plain {
+  background: transparent;
+}
+
+.ride .boarding-rows {
   display: grid;
-  grid-template-columns: max-content 1fr;
+  grid-template-columns: fit-content(45%) 1fr;
   column-gap: 0.75em;
   row-gap: 2px;
   margin: 4px 0;
 }
 
-.ride .boarding dt {
+.ride .boarding-rows dt {
   color: var(--text-muted);
 }
 
-.ride .boarding dd {
+.ride .boarding-rows dd {
   margin: 0;
   font-weight: 700;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
 }
 
 /* A steady card (the UI review, 2026-10-28: it changed height between cues and the map and buttons jumped about 75 px):

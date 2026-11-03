@@ -2393,5 +2393,31 @@ def test_vehicle_words_never_say_the_system_twice():
     assert marc.vehicle_words(("MARC Penn Line",)) == "the MARC Penn Line"
     assert marc.vehicle_words(("MARC", "Penn Line")) == "the MARC Penn Line"
     assert marc.vehicle_words(("Penn Line", "Camden Line")) == "the MARC Penn Line or Camden Line"
-    bus = transit.System(1, "test-bus", "Metrobus", transit.BUS, "bus {route}", "", True, "all", "", "")
+    bus = transit.System(
+        1, "test-bus", "Metrobus", transit.BUS, "bus {route}", "", True, "all", "", ""
+    )
     assert bus.vehicle_words(("B10",)) == "bus B10"
+
+
+def test_vehicle_words_keep_a_bus_systems_name():
+    bus = transit.System(
+        1, "test-bus", "Metrobus", transit.BUS, "bus {route}", "", True, "all", "", ""
+    )
+    assert bus.vehicle_words(("Metrobus",)) == "the Metrobus"
+
+
+def test_towards_lists_every_train_that_makes_the_ride_by_where_it_is_signed():
+    # Stephen, 2026-11-03: "Put the acceptable destination options. you still need to know which
+    # train to get on". Alpha to Charlie: only the trains through to Delta; Bravo to Charlie: the
+    # short turn to Charlie as well; the way back: Alpha, once.
+    schedule = _branch_schedule()
+    route = schedule.patterns[0].route
+
+    def hop(path):
+        return transit.Hop(
+            wait_s=0, ride_s=60, routes=(route,), path=path, system=0, pattern=0, frequent=True
+        )
+
+    assert transit._towards_of(schedule, hop((0, 1, 2))) == ((route, "Delta"),)
+    assert transit._towards_of(schedule, hop((1, 2))) == ((route, "Charlie"), (route, "Delta"))
+    assert transit._towards_of(schedule, hop((2, 1))) == ((route, "Alpha"),)

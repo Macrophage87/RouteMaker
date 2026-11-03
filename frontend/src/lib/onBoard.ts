@@ -13,6 +13,7 @@
 import type { TransitStep, TransitStop } from "./api.ts";
 import { haversineM, type LonLat } from "./geo.ts";
 import { t } from "./i18n.ts";
+import { METRO_LINES, PENN_COLOUR } from "./railStations.ts";
 import { lineAlong, snap, type RideFix } from "./navigate.ts";
 
 /** The roughest fix that places the rider among the stops: a Wi-Fi fix underground. */
@@ -31,6 +32,12 @@ export interface OnBoardLeg {
   stops: TransitStop[];
   /** "Red Line", "bus B10": as the card's badge. */
   line: string;
+  /** The trains that make the ride, any of them: each line and where it is signed to (one, the planned way, from an older API). */
+  trains?: { line: string; toward: string | null }[];
+  /** The step's own departure ("7:42 am"), where the plan names one: shown when the plan's countdown is another step's. */
+  departs?: string | null;
+  /** A bus taking the bike: it goes on the front rack. */
+  rack?: boolean;
   toward: string | null;
   bus: boolean;
   /** The planned wait at the boarding stop (seconds), for the timetable's guess at when the rider boarded. */
@@ -61,7 +68,10 @@ export function onBoardLeg(step: TransitStep): OnBoardLeg | null {
   const stops = step.stops ?? [];
   if (stops.length < 2) return null;
   const line = step.lines.length > 0 ? step.lines.join(" / ") : (step.system ?? "");
-  return { stops, line, toward: step.toward ?? null, bus: step.mode === "bus", waitS: step.wait_s, everyMin: step.every_min ?? null };
+  const trains = step.towards?.length
+    ? step.towards.map((w) => ({ line: w.line, toward: w.toward }))
+    : [{ line, toward: step.toward ?? null }];
+  return { stops, line, trains, departs: step.departs ?? null, rack: step.mode === "bus" && step.with_bike, toward: step.toward ?? null, bus: step.mode === "bus", waitS: step.wait_s, everyMin: step.every_min ?? null };
 }
 
 export function onBoardStart(now: number): OnBoardState {
@@ -194,9 +204,11 @@ export function stopsLeftText(leg: OnBoardLeg, state: Pick<OnBoardState, "at">):
  * timed departure as its time and the minutes to it ("6:27 pm, in 12 min"), "Now" once due; a frequent service as how
  * often it runs ("every 5 min"); null where the plan says neither.
  */
-export function nextDepartureText(leg: Pick<OnBoardLeg, "everyMin">, departure: { departs: string; departs_at: string } | null, nowMs: number): string | null {
+export function nextDepartureText(leg: Pick<OnBoardLeg, "everyMin" | "departs">, departure: { departs: string; departs_at: string } | null, nowMs: number): string | null {
   if (departure) return timeAndMinutes(departure.departs, departure.departs_at, nowMs);
-  return leg.everyMin ? t("every {min} min", { min: String(leg.everyMin) }) : null;
+  if (leg.everyMin) return t("every {min} min", { min: String(leg.everyMin) });
+  // The plan's countdown is another step's: the step's own time, as planned.
+  return leg.departs ?? null;
 }
 
 /** The one after it, in case the rider can't make it (Stephen, 2026-11-03: "put the train after too"); null with none. */
@@ -209,5 +221,37 @@ function timeAndMinutes(time: string, iso: string, nowMs: number): string {
   const at = Date.parse(iso);
   if (!Number.isFinite(at)) return time;
   const min = Math.ceil((at - nowMs) / 60_000);
-  return min <= 0 ? t("Now") : t("{time}, in {min} min", { time, min: String(min) });
+  // Due: "Now" for two minutes, then the time alone (it may have left).
+  if (min <= 0) return min > -2 ? t("Now") : time;
+  return t("{time}, in {min} min", { time, min: String(min) });
+}
+
+
+/** A line's colour for its badge (WMATA's, the Penn Line's gold), and the text colour that reads on it; null for others. */
+export function lineBadge(line: string): { background: string; color: string } | null {
+  const name = line.toLowerCase();
+  if (name.includes("penn")) return { background: PENN_COLOUR, color: "#ffffff" };
+  for (const style of Object.values(METRO_LINES)) {
+    if (name === `${style.label.toLowerCase()} line`) {
+      // Yellow, Silver and Orange are light: dark text (WMATA's own signs do the same on yellow).
+      const dark = style.key === "yellow" || style.key === "silver" || style.key === "orange";
+      return { background: style.color, color: dark ? "#111827" : "#ffffff" };
+    }
+  }
+  return null;
+}
+
+/**
+ * The trains grouped by where they are signed to, in first-seen order, each with its lines in order: Orange and Silver
+ * to New Carrollton, Blue and Silver to Downtown Largo. A train signed to the stop the rider gets off at shows no end.
+ */
+export function boardingGroups(trains: readonly { line: string; toward: string | null }[], off: string): { lines: string[]; toward: string | null }[] {
+  const groups: { lines: string[]; toward: string | null }[] = [];
+  for (const { line, toward } of trains) {
+    const end = toward && toward !== off ? toward : null;
+    const group = groups.find((g) => g.toward === end);
+    if (!group) groups.push({ lines: [line], toward: end });
+    else if (!group.lines.includes(line)) group.lines.push(line);
+  }
+  return groups;
 }
