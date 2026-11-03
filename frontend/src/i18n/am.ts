@@ -268,6 +268,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Walk started.": "የእግር ጉዞ ተጀመረ።",
   "End ride": "ጉዞ ጨርስ",
   "End walk": "የእግር ጉዞ ጨርስ",
+  "Start the next leg": "የሚቀጥለውን ክፍል ጀምር",
   "Done": "ተጠናቋል",
   "about": "ገደማ",
   ", arriving about": "፣ የሚደርሱት ገደማ",

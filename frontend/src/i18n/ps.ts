@@ -268,6 +268,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Walk started.": "پلي تګ پیل شو.",
   "End ride": "سفر پای ته رسول",
   "End walk": "پلي تګ پای ته رسول",
+  "Start the next leg": "بله برخه پیل کړئ",
   "Done": "بشپړ",
   "about": "شاوخوا",
   ", arriving about": "، رسېدل شاوخوا",
