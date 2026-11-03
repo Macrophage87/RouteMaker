@@ -12,7 +12,7 @@
  */
 import type { RouteProfile, RouteResponse, StressSpan } from "./api.ts";
 import { browserStore, type KeyValueStore } from "./accessMode.ts";
-import { FEET_PER_METRE, METRES_PER_MILE, formatClimb, spokenDistance } from "./format.ts";
+import { FEET_PER_METRE, METRES_PER_MILE, formatAxisFeet, formatClimb, spokenDistance } from "./format.ts";
 import { t } from "./i18n.ts";
 import { FLOW_BANDS, chartKind, corkersFor, flowBand, gradeBand, usableProfile } from "./profileChart.ts";
 import { spanClass, usableSpans } from "./routeColours.ts";
@@ -357,18 +357,42 @@ export function ridersSentence(w: AheadWindow): string {
   return t("Other riders shown: {count}, the last {distance} behind you.", { count: w.riders.length, distance: spokenDistance(w.youM - behind[0]) });
 }
 
+// ---- The y axis (Stephen 2026-11-03: "put labels on the y axis") ----------------------------------------------------
+
+/** The stress graph's levels, at the heights its bars are drawn: 1 to 4 and A for Avoid. */
+export const STRESS_TICKS: readonly { level: number; label: string }[] = [
+  { level: 1, label: "1" },
+  { level: 2, label: "2" },
+  { level: 3, label: "3" },
+  { level: 4, label: "4" },
+  { level: 5, label: "A" },
+];
+
+/** Two or three round heights in feet between the graph's bottom and top (metres, as drawn): "40 ft", "60 ft", "80 ft". */
+export function elevationTicks(lowM: number, highM: number): { m: number; label: string }[] {
+  const lowFt = lowM * FEET_PER_METRE;
+  const highFt = highM * FEET_PER_METRE;
+  const step = [10, 20, 25, 50, 100, 200, 250, 500, 1000].find((s) => (highFt - lowFt) / s <= 3) ?? 1000;
+  const ticks: { m: number; label: string }[] = [];
+  for (let ft = Math.ceil(lowFt / step) * step; ft <= highFt; ft += step) ticks.push({ m: ft / FEET_PER_METRE, label: formatAxisFeet(ft) });
+  return ticks;
+}
+
+/** The flow graph's guides as its y labels: 60 and 120 riders a minute, and 200 where the graph reaches it. */
+export function flowTicks(top: number): number[] {
+  return [60, 120, 200].filter((r) => r < top);
+}
+
 export interface AxisTick {
   m: number;
   label: string;
 }
 
-const HALF = "½";
+// Decimals, not fractions (Stephen 2026-11-03: "Decimals and not fractions"): "0.5", "1", "1.5".
 function mileLabel(miles: number): string {
-  const sign = miles < 0 ? "−" : "";
-  const a = Math.abs(miles);
-  const whole = Math.floor(a + 1e-9);
-  const half = a - whole > 0.25;
-  return sign + (half ? (whole ? `${whole}${HALF}` : HALF) : String(whole));
+  const sign = miles < 0 ? "\u2212" : "";
+  const a = Math.round(Math.abs(miles) * 10) / 10;
+  return sign + (Number.isInteger(a) ? String(a) : a.toFixed(1));
 }
 
 /** Ticks every half mile (a mile, or two, on a long window), counted from you; the last one says "mi". */

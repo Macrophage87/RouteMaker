@@ -24,6 +24,9 @@ import {
   stressBars,
   stressSentence,
   writeAhead,
+  STRESS_TICKS,
+  elevationTicks,
+  flowTicks,
 } from "./aheadGraph.ts";
 import { METRES_PER_MILE } from "./format.ts";
 
@@ -135,8 +138,8 @@ test("riders and the axis: the last rider behind said; ticks counted from you, t
   assert.equal(ridersSentence(aheadWindow(5000, 50_000)), "");
   assert.equal(ridersSentence(aheadWindow(5000, 50_000, [4000, 6000])), "Other riders shown: 2, the last 0.6 miles behind you.");
   assert.equal(ridersSentence(aheadWindow(5000, 50_000, [6000])), "Other riders shown: 1, all ahead of you.");
-  assert.deepEqual(axisTicks(aheadWindow(0, 50_000)).map((tick) => tick.label), ["½", "1", "1½", "2 mi"]);
-  assert.deepEqual(axisTicks(aheadWindow(MI, 50_000, [0])).map((tick) => tick.label), ["−1", "−½", "½", "1", "1½", "2 mi"]);
+  assert.deepEqual(axisTicks(aheadWindow(0, 50_000)).map((tick) => tick.label), ["0.5", "1", "1.5", "2 mi"]);
+  assert.deepEqual(axisTicks(aheadWindow(MI, 50_000, [0])).map((tick) => tick.label), ["−1", "−0.5", "0.5", "1", "1.5", "2 mi"]);
 });
 
 test("Ride wires it: one bubble a graph in More, pressed state, off by default, the graph at the top of the bottom panel", () => {
@@ -167,4 +170,19 @@ test("review fixes: the climb counts from your own height between samples, a ste
   assert.equal(stressSentence(stressBars([span(0, 500, 4), span(500, 5000, 2)], { fromM: 100, toM: 3000 }), 100), "Mostly LTS 2, LTS 4 here.");
   const steps = flowSteps(profileOf(40, 100, () => 10, { riders_per_min: Array.from({ length: 40 }, (_, i) => (i === 0 ? 40 : 150)) }), { fromM: 50, toM: 3000 });
   assert.equal(flowSentence(steps, 50), "Narrowest 40 riders a minute, here.");
+});
+
+test("the y axis is labelled: stress levels 1 to 4 and A, round heights in feet, the flow guides", () => {
+  assert.deepEqual(STRESS_TICKS.map((tick) => tick.label), ["1", "2", "3", "4", "A"]);
+  assert.deepEqual(elevationTicks(10, 30).map((tick) => tick.label), ["50 ft", "75 ft"]);
+  assert.deepEqual(elevationTicks(0, 400).map((tick) => tick.label), ["0 ft", "500 ft", "1,000 ft"]);
+  for (const [low, high] of [[5, 25], [100, 160], [0, 400]]) {
+    const ticks = elevationTicks(low, high);
+    assert.ok(ticks.length >= 1 && ticks.length <= 4, `${ticks.length} ticks`);
+    assert.ok(ticks.every((tick) => tick.m >= low - 1e-9 && tick.m <= high + 1e-9), "every tick inside the graph");
+  }
+  assert.deepEqual(flowTicks(150), [60, 120]);
+  assert.deepEqual(flowTicks(260), [60, 120, 200]);
+  const graph = readFileSync(new URL("../AheadGraph.tsx", import.meta.url), "utf8");
+  assert.match(graph, /<YAxis ticks=\{drawn\.yTicks\} \/>/);
 });

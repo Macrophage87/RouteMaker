@@ -25,13 +25,16 @@ import {
   flowTop,
   narrowest,
   ridersSentence,
+  STRESS_TICKS,
+  elevationTicks,
+  flowTicks,
   shortStreet,
   stressBars,
   stressSentence,
   type AheadView,
   type AheadWindow,
 } from "./lib/aheadGraph.ts";
-import { FLOW_GUIDES, GRADE_BAND_FILL } from "./lib/profileChart.ts";
+import { GRADE_BAND_FILL } from "./lib/profileChart.ts";
 
 /** The drawing's size, in viewBox units (about pixels on a phone). */
 const W = 320;
@@ -39,7 +42,8 @@ const PLOT_H = 64;
 const TOP = 6;
 const AXIS_H = 20;
 const H = TOP + PLOT_H + AXIS_H;
-const LEFT = 6;
+/** Room on the left for the y axis's labels ("450 ft"). */
+const LEFT = 46;
 const RIGHT = 6;
 
 interface Props {
@@ -80,10 +84,34 @@ export function AheadGraph({ view, route, youM, lengthM, ridersAlong = [] }: Pro
           </pattern>
         </defs>
         {drawn.body(`${id}-steep`)}
+        <YAxis ticks={drawn.yTicks} />
         <Axis w={w} x={x} />
       </svg>
     </figure>
   );
+}
+
+/** The y axis: its line and each label beside its tick, right-aligned in the gutter. */
+function YAxis({ ticks }: { ticks: readonly YTick[] }) {
+  if (!ticks.length) return null;
+  return (
+    <g className="ride-ahead-axis ride-ahead-y">
+      <line x1={LEFT} x2={LEFT} y1={TOP} y2={TOP + PLOT_H} />
+      {ticks.map((tick) => (
+        <g key={tick.label}>
+          <line x1={LEFT - 4} x2={LEFT} y1={tick.y} y2={tick.y} />
+          <text x={LEFT - 6} y={tick.y + 4} textAnchor="end">
+            {tick.label}
+          </text>
+        </g>
+      ))}
+    </g>
+  );
+}
+
+interface YTick {
+  y: number;
+  label: string;
 }
 
 type X = (m: number) => number;
@@ -120,6 +148,7 @@ function Axis({ w, x }: { w: AheadWindow; x: X }) {
 
 interface Drawn {
   sentence: string;
+  yTicks: YTick[];
   body: (hatch: string) => React.ReactNode;
 }
 
@@ -131,6 +160,7 @@ function draw(view: AheadView, route: Props["route"], w: AheadWindow, x: X, y: Y
     if (!bars.length) return null;
     return {
       sentence: stressSentence(bars, w.youM),
+      yTicks: STRESS_TICKS.map((tick) => ({ y: y(barHeight(tick.level)), label: tick.label })),
       body: () =>
         bars.map((b) => {
           const left = x(b.fromM);
@@ -168,6 +198,7 @@ function draw(view: AheadView, route: Props["route"], w: AheadWindow, x: X, y: Y
     const steepest = ahead.length ? ahead.reduce((a, b) => (b.gradePct > a.gradePct ? b : a)) : null;
     return {
       sentence: elevationSentence(shape, w),
+      yTicks: elevationTicks(shape.lowM, shape.highM).map((tick) => ({ y: ey(tick.m), label: tick.label })),
       body: (hatch) => (
         <>
           <path className="ride-ahead-ground" d={under(w.fromM, w.toM)} />
@@ -192,18 +223,14 @@ function draw(view: AheadView, route: Props["route"], w: AheadWindow, x: X, y: Y
     const low = narrowest(steps, w.youM);
     return {
       sentence: flowSentence(steps, w.youM),
+      yTicks: flowTicks(top).map((r) => ({ y: fy(r), label: String(r) })),
       body: () => (
         <>
           {steps.map((s) => (
             <rect key={s.fromM} x={x(s.fromM)} y={fy(s.riders)} width={Math.max(0.5, x(s.toM) - x(s.fromM))} height={TOP + PLOT_H - fy(s.riders)} fill={s.color} shapeRendering="crispEdges" />
           ))}
-          {FLOW_GUIDES.slice(0, 2).map((g) => (
-            <g key={g.at} className="ride-ahead-guide">
-              <line x1={LEFT} x2={W - RIGHT} y1={fy(g.at)} y2={fy(g.at)} />
-              <text x={W - RIGHT} y={fy(g.at) - 2} textAnchor="end">
-                {g.at}
-              </text>
-            </g>
+          {flowTicks(top).map((r) => (
+            <line key={r} className="ride-ahead-guide" x1={LEFT} x2={W - RIGHT} y1={fy(r)} y2={fy(r)} />
           ))}
           {low && (
             <g className="ride-ahead-narrowest">
@@ -221,6 +248,7 @@ function draw(view: AheadView, route: Props["route"], w: AheadWindow, x: X, y: Y
   const sentence = corkerSentence(marks, w.youM, profile.crossings_complete !== false);
   return {
     sentence,
+    yTicks: [],
     body: () =>
       !marks.length ? (
         <text className="ride-ahead-none" x={W / 2} y={TOP + PLOT_H / 2 + 5} textAnchor="middle">
@@ -229,7 +257,8 @@ function draw(view: AheadView, route: Props["route"], w: AheadWindow, x: X, y: Y
       ) : marks.map((c, i) => {
         const at = x(c.m);
         const right = at > W * 0.6;
-        const row = i % 2 === 0 ? TOP + 14 : TOP + 36;
+        // Three rows in turn, so a long street name does not run into the next marker's.
+        const row = TOP + 12 + (i % 3) * 20;
         return (
           <g key={c.m} className="ride-ahead-corker">
             <line x1={at} x2={at} y1={TOP + PLOT_H} y2={row + 8} />
