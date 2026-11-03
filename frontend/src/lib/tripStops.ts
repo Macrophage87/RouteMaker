@@ -7,7 +7,7 @@
  */
 import type { RouteResponse, TransitPlan } from "./api.ts";
 import { t } from "./i18n.ts";
-import type { LonLat } from "./geo.ts";
+import { MAX_POINTS, type LonLat } from "./geo.ts";
 import { isTransit, type PresetId } from "./presets.ts";
 
 /** The control at a stop, once the trip to it is done. */
@@ -19,6 +19,14 @@ export const STOPS_KEY_SEP = "+";
 /** Whether a ride type takes stops as trips of their own: Walk and the transit types (Bikeshare not yet). */
 export function stopsAsTrips(preset: PresetId): boolean {
   return isTransit(preset);
+}
+
+/** The most stops such a trip takes (core/api.py MAX_TRIP_STOPS): the server refuses a fourth. */
+export const MAX_TRIP_STOPS = 3;
+
+/** The most points a route of this ride type takes: a start, its stops and an end for trips of stops, else MAX_POINTS. */
+export function maxPointsFor(preset: PresetId): number {
+  return stopsAsTrips(preset) ? MAX_TRIP_STOPS + 2 : MAX_POINTS;
 }
 
 /** Whether a route is a trip with stops. */

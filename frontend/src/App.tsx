@@ -297,7 +297,7 @@ import { MY_GO_NOT_SAVED, MY_GO_SAVED, MY_GO_SAVED_DEVICE, fetchMyGo, goRideChip
 import { optionChosenSaid, transitOf, withTransitOption, type TransitPick } from "./lib/transit.ts";
 import { nativeBridge, nativeShareNavigator } from "./lib/nativeShell.ts";
 import { AVOID_STAIRS_EVENT, readAvoidStairs } from "./lib/avoidStairs.ts";
-import { firstTripOf, nextLegPoints, stopsAsTrips, stopsLeftOf, type StopsLeft } from "./lib/tripStops.ts";
+import { firstTripOf, maxPointsFor, nextLegPoints, stopsAsTrips, stopsLeftOf, type StopsLeft } from "./lib/tripStops.ts";
 import { TRIP_GONE_SAID, checkedTripOf, lateSaid, switchSaid, tripChecked, tripVerdict, type CheckedTrip } from "./lib/tripCheck.ts";
 import { REST_ANYWAY_MS, RIDE_REST_FINDING, fixedRide, restClosedSaid, restRequest, rideLegOf, rideTripOf, rideable as rideableRoute, walksLine, type RideTrip } from "./lib/rideTrip.ts";
 import { RIDE_TOO_LONG } from "./lib/navigate.ts";
@@ -2116,8 +2116,8 @@ export function App() {
       void goToRef.current(point, goPlaceName(namer.name(point)?.name, point), true);
       return;
     }
-    if (pointsRef.current.length >= MAX_POINTS) {
-      setNotice(maxPointsNotice());
+    if (pointsRef.current.length >= maxPointsFor(rideRef.current.preset)) {
+      setNotice(maxPointsNotice(maxPointsFor(rideRef.current.preset)));
       return;
     }
     setNotice(null);
@@ -2182,7 +2182,7 @@ export function App() {
     }
     // The ride as it is now, not as it was at the press: the rider may have turned the loop on or off meanwhile.
     const ride = rideRef.current;
-    const placed = placeFix(result, pointsRef.current, { loop: loopStops(ride.preset, ride.dials.loop), choice });
+    const placed = placeFix(result, pointsRef.current, { loop: loopStops(ride.preset, ride.dials.loop), choice, max: maxPointsFor(ride.preset) });
     if ("refuse" in placed) {
       setNotice(null);
       locateNoticeTimer.current = window.setTimeout(() => {
@@ -2313,6 +2313,10 @@ export function App() {
       void goToRef.current(point, place.name, true);
       return;
     }
+    if (role === "via" && pointsRef.current.length >= maxPointsFor(rideRef.current.preset)) {
+      setNotice(maxPointsNotice(maxPointsFor(rideRef.current.preset)));
+      return;
+    }
     const edit = stationEdit(pointsRef.current, point, role, loopVias);
     if ("refused" in edit) {
       if (edit.refused === "cap") setNotice(t("A route can have at most {count} points.", { count: MAX_POINTS }));
@@ -2340,8 +2344,8 @@ export function App() {
       setNotice(OUTSIDE_NOTICE);
       return;
     }
-    if (choice === "via" && pointsRef.current.length >= MAX_POINTS) {
-      setNotice(maxPointsNotice());
+    if (choice === "via" && pointsRef.current.length >= maxPointsFor(rideRef.current.preset)) {
+      setNotice(maxPointsNotice(maxPointsFor(rideRef.current.preset)));
       return;
     }
     setNotice(null);
@@ -2489,6 +2493,11 @@ export function App() {
   // (geocode.ts, applyPlace), named as it was found, and the map goes there.
   const pickPlace = (found: Place, choice: PlaceChoice) => {
     cancelLocateNotice();
+    // A Walk or transit trip takes at most 3 stops (lib/tripStops.ts); the server refuses a fourth.
+    if (choice === "via" && pointsRef.current.length >= maxPointsFor(rideRef.current.preset)) {
+      setNotice(maxPointsNotice(maxPointsFor(rideRef.current.preset)));
+      return;
+    }
     // A destination picked on a loop ends the ride there and turns the loop off, in one edit (as Set as end does).
     const endsLoop = loopVias && choice === "end" && pointsRef.current.length >= 1;
     const commitPick = (next: LonLat[]) => {
@@ -2914,8 +2923,8 @@ export function App() {
       void goTo(point, name);
       return;
     }
-    if (current.length >= MAX_POINTS) {
-      setNotice(maxPointsNotice());
+    if (current.length >= maxPointsFor(ride.preset)) {
+      setNotice(maxPointsNotice(maxPointsFor(ride.preset)));
       return;
     }
     const loop = loopStops(ride.preset, ride.dials.loop);
@@ -3108,8 +3117,8 @@ export function App() {
       setNotice(OUTSIDE_NOTICE);
       return;
     }
-    if (pointsRef.current.length >= MAX_POINTS) {
-      setNotice(maxPointsNotice());
+    if (pointsRef.current.length >= maxPointsFor(rideRef.current.preset)) {
+      setNotice(maxPointsNotice(maxPointsFor(rideRef.current.preset)));
       return;
     }
     setStopAsk({ mode: "add", name: "", point });
@@ -3278,8 +3287,8 @@ export function App() {
     const map = mapRef.current;
     if (!map) return;
     // Map tools' Add point while the plan is full (aria-disabled, review a11y-7): its reason, said each press.
-    if (!goTapSetsEnd(mode) && pointsRef.current.length >= MAX_POINTS) {
-      announce(maxPointsNotice());
+    if (!goTapSetsEnd(mode) && pointsRef.current.length >= maxPointsFor(preset)) {
+      announce(maxPointsNotice(maxPointsFor(preset)));
       return;
     }
     const { lng, lat } = map.getCenter();
@@ -6105,7 +6114,7 @@ export function App() {
         searchBias={goSearchBias}
         searchOrigin={goSearchOrigin}
         onPick={goAddStop}
-        full={points.length >= MAX_POINTS}
+        full={points.length >= maxPointsFor(preset)}
         orderShown={orderShown}
         ordering={ordering}
         onBestOrder={() => void bestOrder()}
@@ -6335,7 +6344,8 @@ export function App() {
           <MapTools
             toggleRef={toolsToggleRef}
             onAddPoint={addAtCentre}
-            addDisabled={!goTapSetsEnd(mode) && points.length >= MAX_POINTS}
+            addDisabled={!goTapSetsEnd(mode) && points.length >= maxPointsFor(preset)}
+            maxPoints={maxPointsFor(preset)}
             setsEnd={goTapSetsEnd(mode)}
             onRoadInfo={roadInfoAtCentre}
             onCrosshair={toolsCrosshair}

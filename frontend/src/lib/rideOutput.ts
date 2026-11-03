@@ -304,8 +304,8 @@ export interface SpeechEnv {
 /**
  * A sentence the browser still calls speaking this long after it would have ended (STUCK_BASE_MS, and STUCK_PER_CHAR_MS
  * a character) is taken as stuck: Chrome on Android can lose an utterance's end (audio focus taken by a music app, an
- * utterance cancelled mid-word), and every polite cue after it then waited for an end that never came (the owner,
- * 2026-11-03, riding with music on: "There are a number of routing calls where it's not announcing the turn").
+ * utterance cancelled mid-word), and every polite cue after it then waited for an end that never came (the owner: "There are a number of routing calls where
+ * it's not announcing the turn").
  */
 export const STUCK_BASE_MS = 6_000;
 export const STUCK_PER_CHAR_MS = 120;

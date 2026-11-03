@@ -341,9 +341,9 @@ test("Map tools' Add point, with the plan full, stays in the Tab order with its 
   assert.doesNotMatch(mapTools, /disabled=\{addDisabled\}/);
   assert.match(mapTools, /aria-disabled=\{addDisabled \|\| undefined\}\s*aria-describedby=\{addDisabled \? `\$\{panelId\}-full` : undefined\}/);
   assert.match(mapTools, /onClick=\{\(\) => \(addDisabled \? onAddPoint\(\) : run\(onAddPoint\)\)\}/);
-  assert.match(mapTools, /<span id=\{`\$\{panelId\}-full`\} className="visually-hidden">\s*\{maxPointsNotice\(\)\}/);
+  assert.match(mapTools, /<span id=\{`\$\{panelId\}-full`\} className="visually-hidden">\s*\{maxPointsNotice\(maxPoints\)\}/);
   const add = app.slice(app.indexOf("const addAtCentre = () => {"), app.indexOf("place([lng, lat]);"));
-  assert.match(add, /if \(!goTapSetsEnd\(mode\) && pointsRef\.current\.length >= MAX_POINTS\) \{\s*announce\(maxPointsNotice\(\)\);\s*return;/);
+  assert.match(add, /if \(!goTapSetsEnd\(mode\) && pointsRef\.current\.length >= maxPointsFor\(preset\)\) \{\s*announce\(maxPointsNotice\(maxPointsFor\(preset\)\)\);\s*return;/);
 });
 
 test("the 2026-10-29 a11y review: 44 px disclosures and toggles, and the charts' small text enlarged in accessibility mode", () => {

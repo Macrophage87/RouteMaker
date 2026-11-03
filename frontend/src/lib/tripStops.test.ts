@@ -5,7 +5,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import type { RouteResponse, TransitPlan, TransitStep } from "./api.ts";
 import type { LonLat } from "./geo.ts";
-import { NEXT_LEG, firstTripOf, hasStops, nextLegPoints, stopsAsTrips, stopsLeftOf } from "./tripStops.ts";
+import { MAX_TRIP_STOPS, NEXT_LEG, firstTripOf, hasStops, maxPointsFor, nextLegPoints, stopsAsTrips, stopsLeftOf } from "./tripStops.ts";
+import { MAX_POINTS } from "./geo.ts";
 
 const step = (mode: TransitStep["mode"], seconds: number, waitS = 0, to: string | null = null): TransitStep =>
   ({ mode, text: `${mode} to ${to}`, seconds, wait_s: waitS, to, lines: [], with_bike: false, route_line: false, coordinates: [] }) as unknown as TransitStep;
@@ -95,4 +96,12 @@ test("the stops left go with the ride, and the panel's Ride the rest on a trip w
   assert.match(app, /forgetLeftRide\(\);\s*\/\/ A trip's stops left go with the ride[^\n]*\n\s*tripStopsLeft\.current = null;/);
   assert.match(app, /rideTripOf\(panelLeft \? firstTripOf\(shown\) : shown, panelLeft \? routedPoints\.slice\(0, 2\) : routedPoints\)/);
   assert.match(app, /if \(!fromRide\) tripStopsLeft\.current = panelLeft;/);
+});
+
+test("a trip of stops takes the server's most stops; adding one more is refused here, not by a failed plan", () => {
+  const api = readFileSync(new URL("../../../src/core/api.py", import.meta.url), "utf8");
+  assert.equal(Number(/^MAX_TRIP_STOPS = (\d+)$/m.exec(api)?.[1]), MAX_TRIP_STOPS);
+  assert.equal(maxPointsFor("walk"), MAX_TRIP_STOPS + 2);
+  assert.equal(maxPointsFor("default"), MAX_POINTS);
+  assert.equal(maxPointsFor("bikeshare"), MAX_POINTS);
 });
