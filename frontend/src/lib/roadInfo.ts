@@ -17,7 +17,7 @@
  * listens for the gestures.
  */
 import { MAX_POINTS, type LonLat } from "./geo.ts";
-import { formatRadius } from "./format.ts";
+import { formatRadius, unitsFirstDeep } from "./format.ts";
 import { mapToolsWays } from "./accessMode.ts";
 import { applyPlace, choicesFor, type PlaceChoice } from "./geocode.ts";
 import { pointName } from "./summary.ts";
@@ -352,7 +352,7 @@ export async function fetchSegmentInfo(
     if (!info || typeof info.found !== "boolean" || !Array.isArray(info.sections)) {
       return { kind: "error", message: infoError(500) };
     }
-    return { kind: "ready", info };
+    return { kind: "ready", info: unitsFirstDeep(info) };
   } catch (error) {
     if ((error as { name?: string })?.name === "AbortError") throw error;
     return { kind: "error", message: infoError(500) };

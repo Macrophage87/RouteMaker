@@ -2,18 +2,21 @@
  * The mountain-bike trail a hover card or the road panel is about, lit up on the map (the owner, 2026-10-28: "When
  * mousing over or clicking on a trail, highlight that trail so you know where the elevation profile and rating begins
  * and ends."): a wide white band edged in black under the trail's own line, so its difficulty colour still shows (and
- * not yellow or orange, the roads' own stress colours), and a dot at each end. The line is the OSM way the profile
+ * not yellow or orange, the roads' own stress colours), and a round marker at each end with its compass point in it. The line is the OSM way the profile
  * and the rating are of (GET /api/trails/{way}/profile `line`), so the band runs exactly as far as the chart does.
  *
  * Two can be lit at once: the panel's trail, and the one under the mouse while the panel is open.
  */
 import type { LonLat } from "./geo.ts";
+import { profileEnds } from "./climbCard.ts";
+import { LABEL_FONT } from "./railLayer.ts";
 import { MTB_MIN_ZOOM, MTB_TICKS_LAYER_ID, accessibilityOn, mtbTicksPaint } from "../stressStyle.js";
 
 export const TRAIL_HIGHLIGHT_SOURCE_ID = "trail-highlight";
 export const TRAIL_HIGHLIGHT_EDGE_LAYER_ID = "trail-highlight-edge";
 export const TRAIL_HIGHLIGHT_GLOW_LAYER_ID = "trail-highlight-glow";
 export const TRAIL_HIGHLIGHT_ENDS_LAYER_ID = "trail-highlight-ends";
+export const TRAIL_HIGHLIGHT_LETTERS_LAYER_ID = "trail-highlight-letters";
 export const TRAIL_HIGHLIGHT_COLOR = "#ffffff";
 export const TRAIL_HIGHLIGHT_EDGE_COLOR = "#111111";
 
@@ -29,13 +32,23 @@ export interface HighlightMap {
 
 type Line = LonLat[] | null;
 
-/** The lines and their ends as GeoJSON: a LineString per lit trail, a Point at each end. */
+/**
+ * The lines and their ends as GeoJSON: a LineString per lit trail, a Point at each end carrying its compass point
+ * (`letter`, as the chart's ends show it: lib/climbCard.ts profileEnds; the owner, 2026-11-03: "have a beginning and
+ * end icons on the trail with the compass directions inside the marker and on the graph"). A loop's ends, too close
+ * together for a direction, are plain dots, as before.
+ */
 export function trailHighlightData(lines: Line[]): { type: "FeatureCollection"; features: object[] } {
   const features: object[] = [];
   for (const line of lines) {
     if (!line || line.length < 2) continue;
     features.push({ type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: line } });
-    for (const end of [line[0], line[line.length - 1]]) features.push({ type: "Feature", properties: {}, geometry: { type: "Point", coordinates: end } });
+    const first = line[0];
+    const last = line[line.length - 1];
+    const ends = profileEnds(first, last);
+    const point = (at: LonLat, letter: string | undefined) =>
+      ({ type: "Feature", properties: letter ? { letter } : {}, geometry: { type: "Point", coordinates: at } });
+    features.push(point(first, ends?.start), point(last, ends?.end));
   }
   return { type: "FeatureCollection", features };
 }
@@ -69,11 +82,28 @@ export function trailHighlightLayers(strong = accessibilityOn()): object[] {
       source: TRAIL_HIGHLIGHT_SOURCE_ID,
       filter: ["==", ["geometry-type"], "Point"],
       paint: {
-        "circle-radius": ["interpolate", ["linear"], ["zoom"], 7, 3.5, 14, 6],
+        // A lettered end big enough for "NW" inside it; a loop's plain dot as before.
+        // (MapLibre takes one zoom interpolation, outermost, so the case is inside each stop.)
+        "circle-radius": ["interpolate", ["linear"], ["zoom"], 7, ["case", ["has", "letter"], 9, 3.5], 14, ["case", ["has", "letter"], 11, 6]],
         "circle-color": "#ffffff",
         "circle-stroke-color": "#1a1a1a",
         "circle-stroke-width": 2.5,
       },
+    },
+    {
+      id: TRAIL_HIGHLIGHT_LETTERS_LAYER_ID,
+      type: "symbol",
+      source: TRAIL_HIGHLIGHT_SOURCE_ID,
+      filter: ["all", ["==", ["geometry-type"], "Point"], ["has", "letter"]],
+      layout: {
+        "text-field": ["get", "letter"],
+        "text-font": [LABEL_FONT],
+        "text-size": ["interpolate", ["linear"], ["zoom"], 7, 10, 14, 12],
+        // Always drawn, over any label: the marker is the point of the highlight.
+        "text-allow-overlap": true,
+        "text-ignore-placement": true,
+      },
+      paint: { "text-color": "#111111" },
     },
   ];
 }
@@ -94,8 +124,9 @@ function draw(map: HighlightMap): void {
   // follow the accessibility switch.
   const under = map.getLayer(MTB_TICKS_LAYER_ID) ? MTB_TICKS_LAYER_ID : undefined;
   for (const layer of trailHighlightLayers() as { id: string; paint: Record<string, unknown> }[]) {
-    if (!map.getLayer(layer.id)) map.addLayer(layer, layer.id === TRAIL_HIGHLIGHT_ENDS_LAYER_ID ? undefined : under);
-    else if (layer.paint["line-width"] !== undefined) map.setPaintProperty?.(layer.id, "line-width", layer.paint["line-width"]);
+    const onTop = layer.id === TRAIL_HIGHLIGHT_ENDS_LAYER_ID || layer.id === TRAIL_HIGHLIGHT_LETTERS_LAYER_ID;
+    if (!map.getLayer(layer.id)) map.addLayer(layer, onTop ? undefined : under);
+    else if (layer.paint?.["line-width"] !== undefined) map.setPaintProperty?.(layer.id, "line-width", layer.paint["line-width"]);
   }
 }
 

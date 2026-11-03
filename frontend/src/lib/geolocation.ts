@@ -144,7 +144,7 @@ export const LOCATE_MESSAGES: Record<LocateFailure, string> = {
 /** The notice when the fix is outside the map (the correctness review's N1: said as the rider's location). */
 export const LOCATION_OUTSIDE = t("Your location is outside the area this map covers (the DC region to Baltimore).");
 /** The notice when the plan has no room for another point (the same words as a map click's). */
-export const maxPointsNotice = (): string => t("A route can have at most {max} points.", { max: MAX_POINTS });
+export const maxPointsNotice = (max: number = MAX_POINTS): string => t("A route can have at most {max} points.", { max });
 
 /** Whether the button can work here, and if not, why (shown as its reason). */
 export function locateSupport(env: GeoEnv): { available: true } | { available: false; reason: string } {
@@ -379,14 +379,15 @@ export type FixPlacement = { refuse: string } | { next: LonLat[]; point: LonLat;
 export function placeFix(
   result: LocateResult,
   points: readonly LonLat[],
-  options: { loop: boolean; choice?: PlaceChoice },
+  options: { loop: boolean; choice?: PlaceChoice; max?: number },
 ): FixPlacement {
   if (!result.ok) return { refuse: LOCATE_MESSAGES[result.reason] };
   const { point, accuracyM } = result.fix;
   if (!insideCoverage(point)) return { refuse: LOCATION_OUTSIDE };
   const { loop, choice } = options;
   const adds = choice === undefined || !placeEffect(points.length, choice, loop).startsWith("replace");
-  if (adds && points.length >= MAX_POINTS) return { refuse: maxPointsNotice() };
+  const max = options.max ?? MAX_POINTS;
+  if (adds && points.length >= max) return { refuse: maxPointsNotice(max) };
   const next = choice === undefined ? addPoint(points, point, loop) : applyPlace(points, point, choice, loop);
   return { next, point, said: locationSaid(next.indexOf(point), next.length, loop, accuracyM) };
 }
