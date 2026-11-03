@@ -270,6 +270,8 @@ import { railWord } from "./lib/railWords.ts";
 import { countText } from "./lib/rideGroup.ts";
 import type { SeeEveryone } from "./app/useSeeEveryone.ts";
 import { SeeEveryoneButton } from "./SeeEveryoneButton.tsx";
+import { AheadGraph } from "./AheadGraph.tsx";
+import { AHEAD_NAME, AHEAD_OFF, AHEAD_WORD, aheadOn, aheadViews, readAhead, writeAhead, RIDER_OFF_ROUTE_M, type AheadView } from "./lib/aheadGraph.ts";
 
 /**
  * One voice for the page: the Start ride press unlocks it (iOS speaks only after a gesture has). Web
@@ -713,6 +715,9 @@ function wayBackSaid(back: { metres: number; direction: string }): string {
 
 /** No food, repair or place search given (a test's ride): those detours say they are unavailable. */
 const noPlaces = async () => null;
+const NO_DOTS: readonly LonLat[] = [];
+/** Each graph's bubble icon (lib/iconPaths.ts): a small chart of its own kind. */
+const AHEAD_ICON = { stress: "graph-stress", elevation: "graph-elevation", flow: "graph-flow", corkers: "graph-corkers" } as const;
 const noSearch: DetourDeps["geocode"] = async () => ({ ok: false, status: 0 });
 
 export function RideMode({
@@ -757,6 +762,7 @@ export function RideMode({
   everyone = null,
   keepLeft = false,
   startNote = "",
+  riderDots = NO_DOTS,
 }: {
   route: RouteResponse;
   /** The points the route was planned with, and whether it is a loop: what a re-plan builds on. */
@@ -859,6 +865,8 @@ export function RideMode({
   keepLeft?: boolean;
   /** Said once, as an answer, just after the ride starts: Broadcast's link copied where there was no share sheet. */
   startNote?: string;
+  /** The other riders' dots on a shared ride: drawn on the graph of the road ahead, which reaches back to the last one. */
+  riderDots?: readonly LonLat[];
 }) {
   const [route, setRoute] = useState(plannedRoute);
   const routeRef = useRef(route);
@@ -2149,6 +2157,17 @@ export function RideMode({
     settingsButton.current?.focus();
     press();
   };
+  // The graph of the road ahead (lib/aheadGraph.ts; Stephen 2026-11-03): off by default, one bubble a graph, one graph
+  // at a time; the lit bubble turns it off. The last choice is kept on this device.
+  const [ahead, setAhead] = useState<AheadView | null>(() => readAhead());
+  const aheadOffered = useMemo(() => aheadViews(route), [route]);
+  const aheadView = ahead !== null && aheadOffered.includes(ahead) ? ahead : null;
+  const toggleAhead = (view: AheadView) => {
+    const next = aheadView === view ? null : view;
+    setAhead(next);
+    writeAhead(next);
+    answer(next ? aheadOn(next) : AHEAD_OFF);
+  };
   // Topo lines (Stephen 2026-10-26): the same switch as Map layers' Topo lines, kept per browser. Turned on only once
   // the server is found to have the contours (lib/topoLines.ts topoArchive, asked once a ride); otherwise said why.
   const topoOn = useTopoLines();
@@ -2765,7 +2784,22 @@ export function RideMode({
     setReplanNote("");
   }, [replanNote, offNow, showToast]);
   const notesShown = !!((gps && ride.fix) || paused || wakeNote || (ride.off && replanNote) || corridorText || weatherShown);
-  const sheetShown = notesShown || restShown;
+  // The graph of the road ahead, at the top of the bottom panel while on the route and riding it.
+  const aheadAt = aheadView !== null && !ride.off && !ride.arrived ? ride.progressM : null;
+  const ridersAlong = useMemo(
+    () =>
+      aheadAt === null
+        ? []
+        : riderDots.flatMap((dot) => {
+            const on = snap(model, dot, -Infinity, Infinity, 15, aheadAt);
+            return on && on.offM <= RIDER_OFF_ROUTE_M ? [on.alongM] : [];
+          }),
+    // Snapped again as the dots move, the route changes, or a graph comes on; not each fix.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [riderDots, model, aheadAt === null],
+  );
+  const aheadShown = aheadView !== null && aheadAt !== null;
+  const sheetShown = notesShown || restShown || aheadShown;
   // The map's scales and credits sit at the bottom of the screen in a ride (the owner, 2026-10-17: "on the bottom
   // of the page in a ride"), just above the bottom panel while it shows (styles.css --ride-sheet-h).
   const sheetRef = useRef<HTMLDivElement>(null);
@@ -3463,6 +3497,20 @@ export function RideMode({
                   <span className="ride-word" aria-hidden="true">{RIDERS_NAME}</span>
                 </button>
               )}
+              {aheadOffered.map((view) => (
+                <button
+                  key={view}
+                  type="button"
+                  className={`ride-round ride-ahead-bubble ride-ahead-${view}-bubble`}
+                  onClick={() => fromMore(() => toggleAhead(view))}
+                  aria-label={AHEAD_NAME[view]}
+                  aria-pressed={aheadView === view}
+                  title={AHEAD_NAME[view]}
+                >
+                  <Icon name={AHEAD_ICON[view]} size={24} />
+                  <span className="ride-word" aria-hidden="true">{AHEAD_WORD[view]}</span>
+                </button>
+              ))}
               <button
                 type="button"
                 className="ride-round ride-topo"
@@ -3496,6 +3544,7 @@ export function RideMode({
           routing by default"): the notes, off route, Ride the rest, and the full 311 report once asked for. */}
       {sheetShown && (
         <div ref={sheetRef} className="ride-controls">
+          {aheadView !== null && aheadAt !== null && <AheadGraph view={aheadView} route={route} youM={aheadAt} lengthM={model.lengthM} ridersAlong={ridersAlong} />}
           {notesShown && (
             <div className="ride-notes">
               {gps && ride.fix && <p className="hint">{gps}</p>}

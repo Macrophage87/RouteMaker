@@ -4587,6 +4587,132 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
   overflow-y: auto;
 }
 
+/* The graph of the road ahead (AheadGraph.tsx, Stephen 2026-11-03): short, at the top of the bottom panel. The level
+   numbers, the grade and the axis are text in the app's type; the stress bars are taller where stress is higher. */
+.ride-ahead {
+  margin: 0 auto 4px;
+  max-width: 520px;
+}
+
+.ride-ahead-heading {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.ride-ahead-plot {
+  display: block;
+  width: 100%;
+  height: auto;
+  font-family: inherit;
+}
+
+.ride-ahead-plot text {
+  font-size: 13px;
+  fill: var(--text);
+}
+
+.ride-ahead-axis line {
+  stroke: var(--text-muted);
+  stroke-width: 1;
+}
+
+.ride-ahead-axis text {
+  fill: var(--text-muted);
+}
+
+.ride-ahead-plot .ride-ahead-you-word {
+  fill: var(--text);
+  font-weight: 700;
+}
+
+.ride-ahead-you {
+  fill: var(--accent);
+  stroke: var(--bg);
+  stroke-width: 1.5;
+}
+
+.ride-ahead-rider {
+  fill: var(--bg);
+  stroke: var(--text);
+  stroke-width: 2.5;
+}
+
+.ride-ahead-bar {
+  stroke: var(--bg);
+  stroke-width: 1.5;
+}
+
+.ride-ahead-plot .ride-ahead-level {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.ride-ahead-ground {
+  fill: var(--bg-soft);
+  stroke: none;
+}
+
+.ride-ahead-line {
+  fill: none;
+  stroke: var(--text);
+  stroke-width: 2;
+}
+
+.ride-ahead-hatch {
+  stroke: #7c4a03;
+  stroke-width: 1.5;
+}
+
+.ride-ahead-plot .ride-ahead-grade {
+  font-size: 14px;
+  font-weight: 700;
+  fill: #16181d;
+  paint-order: stroke;
+  stroke: #ffffff;
+  stroke-width: 3px;
+}
+
+.ride-ahead-guide line {
+  stroke: var(--text-muted);
+  stroke-dasharray: 2 3;
+}
+
+.ride-ahead-plot .ride-ahead-guide text {
+  font-size: 12px;
+  fill: var(--text);
+  paint-order: stroke;
+  stroke: var(--bg);
+  stroke-width: 3px;
+}
+
+.ride-ahead-narrowest path {
+  fill: var(--text);
+}
+
+.ride-ahead-plot .ride-ahead-narrowest text {
+  font-weight: 700;
+}
+
+.ride-ahead-corker line {
+  stroke: var(--text);
+  stroke-width: 2;
+}
+
+.ride-ahead-corker circle {
+  fill: var(--accent);
+}
+
+.ride-ahead-plot .ride-ahead-corker-n {
+  fill: var(--accent-text);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.ride-ahead-plot .ride-ahead-none {
+  fill: var(--text-muted);
+}
+
 .ride-heading {
   font-size: 0.85rem;
   margin: 0 0 4px;

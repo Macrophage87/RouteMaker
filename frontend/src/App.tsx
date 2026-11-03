@@ -6703,6 +6703,7 @@ export function App() {
           onRiders={rideCanBroadcast && rideGroupLine ? () => setRidersAsk((n) => n + 1) : null}
           keepLeft={rideStart.kept === true}
           startNote={rideStart.note}
+          riderDots={rideDots}
         />
       )}
       {roaming && (

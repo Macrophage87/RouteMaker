@@ -1,0 +1,382 @@
+/**
+ * The ride's graphs of the road ahead (Stephen 2026-11-03: "in the expand button set, put the ability to visualize
+ * the next 2 miles by either traffic stress or elevation as a short graph on the bottom, off by default"; "Mass ride
+ * can also add traffic flow and corker requirements"). Each graph is a bubble of its own in More (his pick on the
+ * decision card, "Separate bubbles"); one graph shows at a time, and pressing the lit bubble turns it off.
+ *
+ * On a shared ride (2026-11-03: "include dots on the path that show all riders, scaled back to the last one"), the
+ * graph starts at the rearmost rider instead of at you, and each rider is a dot on its axis.
+ *
+ * Everything here is pure: the window along the route, each graph's shapes in metres, and the words a screen reader
+ * hears. AheadGraph.tsx draws them. Ride's languages apply to every phrase (lib/i18n.test.ts).
+ */
+import type { RouteProfile, RouteResponse, StressSpan } from "./api.ts";
+import { browserStore, type KeyValueStore } from "./accessMode.ts";
+import { FEET_PER_METRE, METRES_PER_MILE, formatClimb, spokenDistance } from "./format.ts";
+import { t } from "./i18n.ts";
+import { FLOW_BANDS, chartKind, corkersFor, flowBand, gradeBand, usableProfile } from "./profileChart.ts";
+import { spanClass, usableSpans } from "./routeColours.ts";
+import { relativeLuminance } from "../stressStyle.js";
+
+export type AheadView = "stress" | "elevation" | "flow" | "corkers";
+
+/** How far ahead each graph looks: 2 miles. */
+export const AHEAD_M = 2 * METRES_PER_MILE;
+/** A rider further than this from you along the route is left off (a dot snapped onto a far pass of a loop). */
+export const RIDERS_REACH_M = 10 * METRES_PER_MILE;
+/** A rider's dot further than this from the route line is not on it, so it is left off. */
+export const RIDER_OFF_ROUTE_M = 60;
+
+export const AHEAD_KEY = "routemaker.ride.ahead";
+const VIEWS: readonly AheadView[] = ["stress", "elevation", "flow", "corkers"];
+
+/** The graph last shown on this device, or null (off, the default). */
+export function readAhead(store: KeyValueStore | null = browserStore()): AheadView | null {
+  try {
+    const kept = store?.getItem(AHEAD_KEY);
+    return (VIEWS as readonly string[]).includes(kept ?? "") ? (kept as AheadView) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function writeAhead(view: AheadView | null, store: KeyValueStore | null = browserStore()): void {
+  try {
+    store?.setItem(AHEAD_KEY, view ?? "");
+  } catch {
+    // Blocked site data: the choice holds for this ride only.
+  }
+}
+
+/** The bubble's name, said by a screen reader and shown as its tooltip. */
+export const AHEAD_NAME: Record<AheadView, string> = {
+  stress: t("Traffic stress graph"),
+  elevation: t("Elevation graph"),
+  flow: t("Rider flow graph"),
+  corkers: t("Corkers graph"),
+};
+/** The word under the bubble. */
+export const AHEAD_WORD: Record<AheadView, string> = {
+  stress: t("Stress"),
+  elevation: t("Elevation"),
+  flow: t("Flow"),
+  corkers: t("Corkers"),
+};
+/** The graph's heading. */
+export const AHEAD_HEADING: Record<AheadView, string> = {
+  stress: t("Traffic stress"),
+  elevation: t("Elevation"),
+  flow: t("Rider flow"),
+  corkers: t("Corkers"),
+};
+/** Said when a graph comes on: "Traffic stress graph: on." */
+export const aheadOn = (view: AheadView): string => t("{graph}: on.", { graph: AHEAD_NAME[view] });
+export const AHEAD_OFF = t("Graph off.");
+const NO_FIGURES = t("No figures for this stretch.");
+export const AHEAD_YOU = t("You");
+
+/** The graphs this route can draw, in More's order: Mass Ride's own two first, then stress and elevation. */
+export function aheadViews(route: Pick<RouteResponse, "preset" | "profile" | "stress_spans">): AheadView[] {
+  const views: AheadView[] = [];
+  const profile = route.profile ?? null;
+  if (chartKind(route) === "mass" && profile) {
+    if ((profile.riders_per_min ?? []).some((r) => typeof r === "number")) views.push("flow");
+    if (Array.isArray(profile.crossings)) views.push("corkers");
+  }
+  if (usableSpans(route.stress_spans)) views.push("stress");
+  if (usableProfile(route)) views.push("elevation");
+  return views;
+}
+
+export interface AheadWindow {
+  fromM: number;
+  toM: number;
+  /** You, metres along. */
+  youM: number;
+  /** The other riders on the line, metres along, within the window. */
+  riders: number[];
+}
+
+/**
+ * The stretch the graph draws: from you (or the rearmost rider) to 2 miles ahead of you (or the frontmost rider),
+ * never past the route's end; riders more than RIDERS_REACH_M away are left off.
+ */
+export function aheadWindow(youM: number, lengthM: number, ridersAlong: readonly number[] = []): AheadWindow {
+  const near = ridersAlong.filter((m) => Number.isFinite(m) && Math.abs(m - youM) <= RIDERS_REACH_M);
+  const fromM = Math.max(0, Math.min(youM, ...near));
+  const toM = Math.min(lengthM, Math.max(youM + AHEAD_M, ...near));
+  return { fromM, toM: Math.max(toM, fromM + 1), youM, riders: near.sort((a, b) => a - b) };
+}
+
+// ---- Traffic stress ----------------------------------------------------------------------------------------------
+
+export interface StressBar {
+  fromM: number;
+  toM: number;
+  /** 1 to 4.5 in half steps, 5 for Avoid; null where no segment was rated. */
+  level: number | null;
+  /** What the bar says on it: "2", "3.5", "A" (Avoid), "?" (not rated). */
+  label: string;
+  color: string;
+  /** The label's colour on the bar: near-black or white, whichever reads better. */
+  ink: string;
+}
+
+export function spanLevel(span: Pick<StressSpan, "tier" | "half" | "facility">): number | null {
+  if (span.tier === null) return span.facility === "path" ? 1 : null;
+  if (span.tier >= 5) return 5;
+  return span.tier + (span.half === true ? 0.5 : 0);
+}
+
+export const INK_DARK = "#16181d";
+export const INK_LIGHT = "#ffffff";
+/** Near-black on a light bar, white on a dark one (the higher contrast of the two). */
+export function inkOn(color: string): string {
+  const l = relativeLuminance(color);
+  return (l + 0.05) / (relativeLuminance(INK_DARK) + 0.05) >= (1.05) / (l + 0.05) ? INK_DARK : INK_LIGHT;
+}
+
+/** The route's sections within the window, joined where two in a row are the same level and colour. */
+export function stressBars(spans: readonly StressSpan[], w: Pick<AheadWindow, "fromM" | "toM">): StressBar[] {
+  const bars: StressBar[] = [];
+  for (const span of spans) {
+    const fromM = Math.max(span.from_m, w.fromM);
+    const toM = Math.min(span.to_m, w.toM);
+    if (toM <= fromM) continue;
+    const level = spanLevel(span);
+    const color = spanClass(span).color;
+    const last = bars[bars.length - 1];
+    if (last && last.level === level && last.color === color && last.toM >= fromM - 0.5) {
+      last.toM = toM;
+      continue;
+    }
+    const label = level === null ? "?" : level === 5 ? "A" : String(level);
+    bars.push({ fromM, toM, level, label, color, ink: inkOn(color) });
+  }
+  return bars;
+}
+
+/** A bar's height, 0 to 1: higher stress, taller bar, so the level is never told by colour alone. */
+export function barHeight(level: number | null): number {
+  if (level === null) return 0.2;
+  return 0.2 + ((Math.min(level, 5) - 1) / 4) * 0.8;
+}
+
+// "Avoid" and "LTS" are the same in every language (the catalogs keep both as they are).
+const levelWords = (level: number) => (level === 5 ? "Avoid" : `LTS ${level}`);
+
+/** "Mostly LTS 2, up to LTS 3.5 in 0.6 miles." */
+export function stressSentence(bars: readonly StressBar[], youM: number): string {
+  const ahead = bars.filter((b) => b.toM > youM && b.level !== null);
+  if (!ahead.length) return NO_FIGURES;
+  const metres = new Map<number, number>();
+  for (const b of ahead) metres.set(b.level as number, (metres.get(b.level as number) ?? 0) + b.toM - Math.max(b.fromM, youM));
+  const mostly = [...metres].sort((a, b) => b[1] - a[1] || a[0] - b[0])[0][0];
+  const top = Math.max(...metres.keys());
+  if (top === mostly) return t("{level} the whole way.", { level: levelWords(mostly) });
+  const first = ahead.find((b) => b.level === top) as StressBar;
+  return t("Mostly {level}, up to {top} in {distance}.", {
+    level: levelWords(mostly),
+    top: levelWords(top),
+    distance: spokenDistance(Math.max(0, first.fromM - youM)),
+  });
+}
+
+// ---- Elevation ---------------------------------------------------------------------------------------------------
+
+export interface ElevationShape {
+  /** [metres along, metres up], the window's ends included. */
+  points: [number, number][];
+  /** The steep stretches: 1 is 5% to 8%, 2 is 8% or more (profileChart.ts GRADE_BANDS). */
+  steep: { fromM: number; toM: number; band: 1 | 2; gradePct: number }[];
+  lowM: number;
+  highM: number;
+  /** Metres climbed from you to the window's end. */
+  climbM: number;
+  /** The steepest grade ahead of you, percent, or null. */
+  steepestPct: number | null;
+}
+
+function lerp(a: number, b: number, f: number): number {
+  return a + (b - a) * f;
+}
+
+export function elevationShape(profile: RouteProfile, w: Pick<AheadWindow, "fromM" | "toM" | "youM">): ElevationShape | null {
+  const { m, elevation_m: e, grade_pct: g } = profile;
+  const points: [number, number][] = [];
+  const steep: ElevationShape["steep"] = [];
+  let steepestPct: number | null = null;
+  let climbM = 0;
+  let prev: number | null = null;
+  const at = (i: number, j: number, target: number): number | null => {
+    const a = e[i];
+    const b = e[j];
+    if (a === null || b === null) return a ?? b;
+    return m[j] > m[i] ? lerp(a, b, (target - m[i]) / (m[j] - m[i])) : a;
+  };
+  for (let i = 0; i < m.length; i += 1) {
+    const inside = m[i] >= w.fromM && m[i] <= w.toM;
+    if (i > 0 && m[i - 1] < w.fromM && m[i] > w.fromM) {
+      const v = at(i - 1, i, w.fromM);
+      if (v !== null) points.push([w.fromM, v]);
+    }
+    if (inside && e[i] !== null) points.push([m[i], e[i] as number]);
+    if (i > 0 && m[i - 1] < w.toM && m[i] > w.toM) {
+      const v = at(i - 1, i, w.toM);
+      if (v !== null) points.push([w.toM, v]);
+    }
+    // The steep stretches, each step between two samples that overlaps the window; the steepest grade from you on.
+    if (i > 0 && m[i] > w.fromM && m[i - 1] < w.toM && m[i] > m[i - 1]) {
+      const band = gradeBand(g[i - 1]);
+      const grade = g[i - 1];
+      if (band > 0 && typeof grade === "number") {
+        const fromM = Math.max(m[i - 1], w.fromM);
+        const toM = Math.min(m[i], w.toM);
+        const last = steep[steep.length - 1];
+        if (last && last.band === band && Math.abs(last.toM - fromM) < 1) {
+          last.toM = toM;
+          last.gradePct = Math.max(last.gradePct, grade);
+        } else steep.push({ fromM, toM, band: band as 1 | 2, gradePct: grade });
+      }
+      if (typeof grade === "number" && m[i] > w.youM) steepestPct = Math.max(steepestPct ?? 0, grade);
+    }
+    if (m[i] >= w.youM && m[i] <= w.toM && e[i] !== null) {
+      if (prev !== null && (e[i] as number) > prev) climbM += (e[i] as number) - prev;
+      prev = e[i] as number;
+    }
+  }
+  if (points.length < 2) return null;
+  const ups = points.map((p) => p[1]);
+  let lowM = Math.min(...ups);
+  let highM = Math.max(...ups);
+  // At least 20 m (66 ft) tall, so a flat stretch looks flat.
+  if (highM - lowM < 20) {
+    const mid = (highM + lowM) / 2;
+    lowM = mid - 10;
+    highM = mid + 10;
+  }
+  return { points, steep, lowM, highM, climbM, steepestPct };
+}
+
+
+/** "Climb 120 ft in the next 2 miles, steepest 7%." */
+export function elevationSentence(shape: ElevationShape, w: Pick<AheadWindow, "youM" | "toM">): string {
+  const distance = spokenDistance(w.toM - w.youM);
+  if (shape.climbM * FEET_PER_METRE < 15) return t("Mostly level for the next {distance}.", { distance });
+  return t("Climb {climb} in the next {distance}, steepest {grade}%.", { climb: formatClimb(shape.climbM), distance, grade: Math.round(shape.steepestPct ?? 0) });
+}
+
+// ---- Rider flow (Mass Ride) --------------------------------------------------------------------------------------
+
+export interface FlowStep {
+  fromM: number;
+  toM: number;
+  riders: number;
+  color: string;
+}
+
+export function flowSteps(profile: RouteProfile, w: Pick<AheadWindow, "fromM" | "toM">): FlowStep[] {
+  const r = profile.riders_per_min ?? [];
+  const steps: FlowStep[] = [];
+  for (let i = 1; i < profile.m.length; i += 1) {
+    const fromM = Math.max(profile.m[i - 1], w.fromM);
+    const toM = Math.min(profile.m[i], w.toM);
+    const riders = r[i - 1];
+    if (toM <= fromM || typeof riders !== "number") continue;
+    steps.push({ fromM, toM, riders, color: flowBand(riders).color });
+  }
+  return steps;
+}
+
+/** The top of the flow graph: at least the "good" band's start (120), so the 60 and 120 guides are always in it. */
+export function flowTop(steps: readonly FlowStep[]): number {
+  return Math.max(FLOW_BANDS[2].from * 1.25, ...steps.map((s) => s.riders));
+}
+
+export function narrowest(steps: readonly FlowStep[], youM: number): FlowStep | null {
+  const ahead = steps.filter((s) => s.toM > youM);
+  return ahead.length ? ahead.reduce((a, b) => (b.riders < a.riders ? b : a)) : null;
+}
+
+/** "Narrowest 35 riders a minute, in 0.9 miles." */
+export function flowSentence(steps: readonly FlowStep[], youM: number): string {
+  const low = narrowest(steps, youM);
+  if (!low) return NO_FIGURES;
+  return t("Narrowest {riders} riders a minute, in {distance}.", { riders: Math.round(low.riders), distance: spokenDistance(Math.max(0, low.fromM - youM)) });
+}
+
+// ---- Corkers (Mass Ride) -----------------------------------------------------------------------------------------
+
+export interface CorkerMark {
+  m: number;
+  /** The cross street as mapped, or null. */
+  street: string | null;
+  corkers: number;
+}
+
+export function corkerMarks(profile: RouteProfile, w: Pick<AheadWindow, "fromM" | "toM">): CorkerMark[] {
+  return (profile.crossings ?? [])
+    .filter((c) => c.corkers_needed && c.m >= w.fromM && c.m <= w.toM)
+    .map((c) => ({ m: c.m, street: c.street && c.street.trim() ? c.street : null, corkers: corkersFor(c) }));
+}
+
+export const AHEAD_NO_CORKERS = t("No junctions needing corkers ahead.");
+
+/** A street name short enough to sit beside its marker: 16 characters at most. */
+export function shortStreet(street: string): string {
+  return street.length > 16 ? `${street.slice(0, 15).trimEnd()}\u2026` : street;
+}
+
+/** "Junctions needing corkers: 3. Next: 14th St in 0.4 miles, corkers: 2." */
+export function corkerSentence(marks: readonly CorkerMark[], youM: number, complete: boolean): string {
+  const ahead = marks.filter((c) => c.m >= youM);
+  const partial = complete ? "" : ` ${t("Some junctions were not checked.")}`;
+  if (!ahead.length) return AHEAD_NO_CORKERS + partial;
+  const next = ahead[0];
+  return (
+    t("Junctions needing corkers: {count}. Next: {street} in {distance}, corkers: {corkers}.", {
+      count: ahead.length,
+      street: next.street ?? t("an unnamed street"),
+      distance: spokenDistance(Math.max(0, next.m - youM)),
+      corkers: next.corkers,
+    }) + partial
+  );
+}
+
+// ---- Riders and the axis -----------------------------------------------------------------------------------------
+
+/** "Other riders shown: 4, the last 0.6 miles behind you." */
+export function ridersSentence(w: AheadWindow): string {
+  if (!w.riders.length) return "";
+  const behind = w.riders.filter((m) => m < w.youM);
+  if (!behind.length) return t("Other riders shown: {count}, all ahead of you.", { count: w.riders.length });
+  return t("Other riders shown: {count}, the last {distance} behind you.", { count: w.riders.length, distance: spokenDistance(w.youM - behind[0]) });
+}
+
+export interface AxisTick {
+  m: number;
+  label: string;
+}
+
+const HALF = "½";
+function mileLabel(miles: number): string {
+  const sign = miles < 0 ? "−" : "";
+  const a = Math.abs(miles);
+  const whole = Math.floor(a + 1e-9);
+  const half = a - whole > 0.25;
+  return sign + (half ? (whole ? `${whole}${HALF}` : HALF) : String(whole));
+}
+
+/** Ticks every half mile (a mile, or two, on a long window), counted from you; the last one says "mi". */
+export function axisTicks(w: Pick<AheadWindow, "fromM" | "toM" | "youM">): AxisTick[] {
+  const spanMi = (w.toM - w.fromM) / METRES_PER_MILE;
+  const step = spanMi <= 3 ? 0.5 : spanMi <= 6 ? 1 : 2;
+  const ticks: AxisTick[] = [];
+  const first = Math.ceil((w.fromM - w.youM) / METRES_PER_MILE / step - 1e-9) * step;
+  for (let mi = first; w.youM + mi * METRES_PER_MILE <= w.toM + 1; mi += step) {
+    if (Math.abs(mi) < 1e-9) continue;
+    ticks.push({ m: w.youM + mi * METRES_PER_MILE, label: mileLabel(mi) });
+  }
+  if (ticks.length) ticks[ticks.length - 1].label += " mi";
+  return ticks;
+}
