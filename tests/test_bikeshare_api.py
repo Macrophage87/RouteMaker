@@ -22,7 +22,7 @@ from test_route_api import (
     trace_answer,
 )
 
-from core import bikeshare, gbfs, presets, routing
+from core import bikeshare, gbfs, presets, routing, walk_turns
 from routemaker.geo import Point, haversine
 
 pytestmark = pytest.mark.usefixtures("weekday_clock")
@@ -67,7 +67,11 @@ class Routers:
         ]
 
     def walks(self) -> list[tuple[str, dict]]:
-        return [(u, p) for u, p in self.calls if p.get("costing") == "pedestrian"]
+        return [
+            (u, p)
+            for u, p in self.calls
+            if p.get("costing") == "pedestrian" and u.endswith("/route")
+        ]
 
 
 @pytest.fixture
@@ -170,7 +174,19 @@ class TestBikeshareAnswer:
                 payload["costing_options"]["pedestrian"]["walking_speed"]
                 == bikeshare.WALK_SPEED_KMH
             )
-            assert payload["directions_type"] == "none"
+            # The turns come with the walk, for turn-by-turn on foot (2026-11-02); no narrative.
+            assert payload["directions_type"] == "maneuvers"
+            # Stairs are walked as the router walks them unless the rider avoids them.
+            assert "step_penalty" not in payload["costing_options"]["pedestrian"]
+
+    def test_avoid_stairs_keeps_every_walk_off_flights_of_steps(self, client, world) -> None:
+        routers, _ = world
+        post(client, body(avoid_stairs=True))
+        assert routers.walks()
+        for _url, payload in routers.walks():
+            pedestrian = payload["costing_options"]["pedestrian"]
+            assert pedestrian["step_penalty"] == walk_turns.STEP_FREE_PENALTY_S
+            assert pedestrian["walking_speed"] == bikeshare.WALK_SPEED_KMH
 
     # Rebalance Ride's ride leg is Bikeshare's (the review of PR #110): each guard runs for both.
     @pytest.mark.parametrize("preset", sorted(presets.BIKESHARE_PRESETS))
