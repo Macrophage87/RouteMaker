@@ -1854,4 +1854,13 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Walk plus train or bus": "ብእግሪ ምስ ባቡር ወይ ኣውቶቡስ",
   "Walks keep to sidewalks, paths and crosswalks: the traffic and hills settings are for riding.": "ጉዕዞ ብእግሪ ኣብ መንገዲ እግረኛታት፡ መንገድታትን መሳገሪታትን ይጸንሕ፤ ቅጥዕታት ትራፊክን ዓቐብን ንብሽክለታ እዮም።",
   "Start walk": "ብእግሪ ጀምር",
+  "Run": "ጉያ",
+  "A run on trails and paths, turn by turn.": "ኣብ መገድታትን መንገዲ እግርን ጉያ፡ ጥውይ ብጥውይ።",
+  "On foot at your running pace, preferring trails, park paths and quiet streets in long unbroken stretches (packed gravel and dirt are fine) and fewer traffic lights; lit ways after dark. Make it a loop, or set a target distance and place only the start for a loop that long. Turn-by-turn directions as you run.": "ብእግሪ ብናይ ጉያ ፍጥነትኩም፡ መገድታት፡ መንገዲ መናፈሻን ህዱኣት ጎደናታትን ብነዊሕ ዘይተቛረጸ ክፋላት (ዝተጸቐጠ ጠጠርን ሓመድን ጽቡቕ እዩ) ከምኡውን ውሑድ መብራህቲ ትራፊክ ብምምራጽ፤ ድሕሪ ጸልማት ዝበርሁ መገድታት። ዙርያ ግበርዎ፡ ወይ ዝተደልየ ርሕቀት ኣቐምጡን ንኣብ ከምኡ ዝንውሓቱ ዙርያ መበገሲ ጥራይ ኣቐምጡ። ክትጎዩ ከለኹም ጥውይ ብጥውይ መምርሒ።",
+  "Start run": "ጉያ ጀምር",
+  "Run started.": "ጉያ ተጀሚሩ።",
+  "End run": "ጉያ ደምድም",
+  "Running pace": "ፍጥነት ጉያ",
+  "Your easy pace on the flat, for the run's time. Climbs still slow it. Kept on this device.": "ኣብ ጎልጎል ዝቐለለ ፍጥነትኩም፡ ንግዜ ጉያ። ዓቐብ ገና የዝሕሎ። ኣብዚ መሳርሒ ይዕቀብ።",
+  "{mile} per mile ({km} per km)": "{mile} ኣብ ማይል ({km} ኣብ ኪሜ)",
 };

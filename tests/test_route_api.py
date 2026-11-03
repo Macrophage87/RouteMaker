@@ -125,6 +125,8 @@ CONTRACT_KEYS = {
     "transit",
     # Additive, v0.7.0 Novice and Nervous: null except on that ride type.
     "novice",
+    # Additive, v0.18.0 Run: null except on a Run (core/run_plan.py).
+    "run",
     # Additive, v0.7.0 "Faster routing": true only on a first route asked for with `quick`.
     "provisional",
     # Additive, v0.8.2: true only on the match of an opened file's line sent as `follow`.
@@ -956,7 +958,10 @@ class TestPlanAlternates:
 class TestWhatIsSentToTheRouter:
     @pytest.mark.parametrize(
         "name",
-        sorted(set(presets.PRESETS) - {*presets.BIKESHARE_PRESETS, *presets.TRANSIT_PRESETS}),
+        sorted(
+            set(presets.PRESETS)
+            - {*presets.BIKESHARE_PRESETS, *presets.TRANSIT_PRESETS, presets.RUN}
+        ),
     )
     def test_every_call_goes_to_the_presets_variant(self, name, client, segments, router) -> None:
         """PLAN, Stats source: the trace goes to the same variant and costing

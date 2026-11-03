@@ -558,6 +558,8 @@ BRAKE_GRADES = MappingProxyType(
         # Walk and Walk + 🚆🚌 (2026-11-02) have no bike leg: Bikeshare + 🚶🚆🚌's, never used.
         "walk": 0.04,
         "walk-transit": 0.04,
+        # Run (2026-11-02) is planned on foot by `core.run_plan`, its hills by the slider alone.
+        "run": None,
         # Rebalance Ride (REBALANCE-RIDE) rides a share bike, as Bikeshare does.
         "rebalance": 0.04,
         # Riders who choose these want the descent.
@@ -626,6 +628,11 @@ WALK = "walk"
 WALK_TRANSIT = "walk-transit"
 ON_FOOT_PRESETS = frozenset({WALK, WALK_TRANSIT})
 TRANSIT_PRESETS = frozenset({BIKE_TRANSIT, BIKESHARE_TRANSIT, WALK, WALK_TRANSIT})
+# Run (Stephen, 2026-11-02: "would run use any different routing?", "Yes, make it in its own
+# thread"): on foot, on Walk's map, planned by `core.run_plan` (its pace, hills, trails, waits,
+# lit ways after dark and loops are there). Its preset below is Walk's, never used to ride, but
+# for its hills slider's start (0, as Default's).
+RUN = "run"
 
 
 @dataclass(frozen=True)
@@ -723,7 +730,9 @@ AVOID_GRAVEL_BECOMES = frozenset(
 # Road Bike's is 3 (the owner, 2026-11-02: "For the road cycling version, make non-cycling
 # time, such as waiting at lights carry an additional penalty (3x)"): a road rider loses
 # their pace at every stop. The time shown stays the real wait; every other ride type, 1.
-WAIT_WEIGHTS = MappingProxyType({ROAD_BIKE: 3.0})
+# Run's is 3 too (2026-11-02): a runner stopped at a light loses their pace as a road rider does
+# (`core.run_plan.weigh`, its signalled crossings).
+WAIT_WEIGHTS = MappingProxyType({ROAD_BIKE: 3.0, RUN: 3.0})
 
 
 def wait_weight_for(name: str) -> float:
@@ -1040,6 +1049,22 @@ PRESETS: MappingProxyType = MappingProxyType(
                 cycling_speed=BIKESHARE_CLASSIC_SPEED_KMH,
             ),
             _preset(
+                RUN,
+                Variant.STANDARD,
+                # On foot (`core.run_plan`): Walk's dials, never used to ride, but its hills
+                # start at 0, the slider's middle, which the run's own `use_hills` reads.
+                stress=BIKESHARE_STRESS,
+                hills=0,
+                exposure=EXPOSURE_STRESS_AVERSE,
+                bicycle_type="Hybrid",
+                avoid_bad_surfaces=CARGO_SURFACE_AVOIDANCE,
+                use_living_streets=_LIVING_STREETS,
+                maneuver_penalty=VALHALLA_MANEUVER_PENALTY_S,
+                gate_cost=CARGO_GATE_COST_S,
+                gate_penalty=CARGO_GATE_PENALTY_S,
+                cycling_speed=BIKESHARE_CLASSIC_SPEED_KMH,
+            ),
+            _preset(
                 MOUNTAIN_BIKE,
                 Variant.MTB,
                 stress=STRESS_TODAYS_TOP,
@@ -1171,6 +1196,7 @@ def rider_speed(name: str, kmh: float | None) -> float | None:
         or name in BIKESHARE_PRESETS
         or name == BIKESHARE_TRANSIT
         or name in ON_FOOT_PRESETS
+        or name == RUN
     ):
         return None
     return min(RIDER_SPEED_MAX_KMH, max(RIDER_SPEED_MIN_KMH, float(kmh)))
@@ -1239,7 +1265,7 @@ def stress_notches(name: str, stress: int) -> tuple[int | None, int | None]:
     end is a notch of its own), or on a ride type that offers neither. A position between
     notches counts from the notch below it."""
     preset = PRESETS[name]
-    if name == REBALANCE or name in TRANSIT_PRESETS or preset.stress_max <= STRESS_MIN:
+    if name in (REBALANCE, RUN) or name in TRANSIT_PRESETS or preset.stress_max <= STRESS_MIN:
         return None, None
     low, high = NOTCH_LIMITS.get(name, (STRESS_MIN, preset.stress_max))
     direct = [n for n in STEP_NOTCHES if low <= n < stress]

@@ -12,7 +12,7 @@
  */
 import { CARRYINGS, WHENS, fitTarget, hillsGradePosition, seeksClimbs, stressMax, trailsOffLocked, whenInSentence, type Dials } from "./dials.ts";
 import { formatDistance } from "./format.ts";
-import { onFoot, presetLabel, presetSaid, type PresetId } from "./presets.ts";
+import { onFoot, presetLabel, presetSaid, runs, type PresetId } from "./presets.ts";
 import { isCustom } from "./rideTypeDialog.ts";
 import { t } from "./i18n.ts";
 
@@ -65,6 +65,16 @@ export function rideSummaryParts(preset: PresetId, dials: Dials, name: (id: Pres
   const target = targetShort(dials.targetDistanceM);
   // Walk and Walk + 🚆🚌 (2026-11-02): no traffic or hills to say, only when.
   if (onFoot(preset)) return [rideTypeShort(preset, dials, name), whenShort(dials.when)];
+  // Run (2026-11-02): its hills, when, its target and loop; no traffic.
+  if (runs(preset)) {
+    return [
+      rideTypeShort(preset, dials, name),
+      ...(dials.hills < -20 ? [t("fewer climbs")] : []),
+      whenShort(dials.when),
+      ...(target ? [target] : []),
+      ...(dials.loop === true ? [t("loop")] : []),
+    ];
+  }
   return [
     rideTypeShort(preset, dials, name),
     locked ? t("most direct roadway") : trafficShort(dials.stress),

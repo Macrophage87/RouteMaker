@@ -1854,4 +1854,13 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Walk plus train or bus": "የእግር ጉዞ እና ባቡር ወይም አውቶቡስ",
   "Walks keep to sidewalks, paths and crosswalks: the traffic and hills settings are for riding.": "የእግር ጉዞዎች በእግረኛ መንገዶች፣ መንገዶች እና መሻገሪያዎች ይሄዳሉ፤ የትራፊክ እና የዳገት ቅንብሮች ለብስክሌት ናቸው።",
   "Start walk": "የእግር ጉዞ ጀምር",
+  "Run": "ሩጫ",
+  "A run on trails and paths, turn by turn.": "በመንገዶችና በእግረኛ መንገዶች ላይ ሩጫ፣ መታጠፊያ በመታጠፊያ።",
+  "On foot at your running pace, preferring trails, park paths and quiet streets in long unbroken stretches (packed gravel and dirt are fine) and fewer traffic lights; lit ways after dark. Make it a loop, or set a target distance and place only the start for a loop that long. Turn-by-turn directions as you run.": "በሩጫ ፍጥነትዎ በእግር፣ መንገዶችን፣ የፓርክ መንገዶችንና ጸጥ ያሉ ጎዳናዎችን ባልተቋረጡ ረጅም ክፍሎች (የተጠቀጠቀ ጠጠርና አፈር ችግር የለም) እና ጥቂት የትራፊክ መብራቶችን በመምረጥ፤ ከጨለማ በኋላ ብርሃን ያላቸው መንገዶች። ዙር ያድርጉት፣ ወይም የታለመ ርቀት ያስቀምጡና ለዚያ ርዝመት ዙር መነሻውን ብቻ ያስቀምጡ። በሚሮጡበት ጊዜ መታጠፊያ በመታጠፊያ አቅጣጫዎች።",
+  "Start run": "ሩጫ ጀምር",
+  "Run started.": "ሩጫ ተጀምሯል።",
+  "End run": "ሩጫ ጨርስ",
+  "Running pace": "የሩጫ ፍጥነት",
+  "Your easy pace on the flat, for the run's time. Climbs still slow it. Kept on this device.": "በሜዳ ላይ ቀላል ፍጥነትዎ፣ ለሩጫው ጊዜ። አቀበቶች አሁንም ያዘገዩታል። በዚህ መሣሪያ ላይ ይቀመጣል።",
+  "{mile} per mile ({km} per km)": "{mile} በማይል ({km} በኪሜ)",
 };

@@ -15,13 +15,22 @@ import { t } from "./i18n.ts";
  * and walks on, and Bikeshare + walk, train or bus walks or docks too. A Metro station is then reached by its
  * nearest entrance, not the elevator a bike needs (railStations.ts, walkEntrance).
  */
-export const endsOnFoot = (preset: PresetId): boolean => preset === "bikeshare" || preset === "bikeshare-transit" || onFoot(preset);
+export const endsOnFoot = (preset: PresetId): boolean => preset === "bikeshare" || preset === "bikeshare-transit" || onFoot(preset) || runs(preset);
 
 /** Walk and Walk + 🚆🚌 (Stephen, 2026-11-02: "add a walk mode and a walk+transit mode"): no bike at all. */
 export const ON_FOOT_PRESETS: readonly PresetId[] = ["walk", "walk-transit"];
 
 export function onFoot(id: PresetId): boolean {
   return ON_FOOT_PRESETS.includes(id);
+}
+
+/**
+ * Run (Stephen, 2026-11-02: "would run use any different routing?", "Yes, make it in its own thread"): on foot on
+ * Walk's map (core/run_plan.py), at the runner's pace (lib/runPace.ts), with the hills slider, loops and a target
+ * distance; no traffic slider. Followed turn by turn on foot, as Walk is.
+ */
+export function runs(id: PresetId): boolean {
+  return id === "run";
 }
 
 export type PresetId =
@@ -42,6 +51,7 @@ export type PresetId =
   | "bikeshare-transit"
   | "walk"
   | "walk-transit"
+  | "run"
   | "rebalance";
 
 export interface PresetOption {
@@ -193,6 +203,15 @@ export const PRESETS: readonly PresetOption[] = [
     description:
       "Walking at each end with Metro, MARC, VRE, Light RailLink, Metro SubwayLink or a bus between, the quickest trips by scheduled times, with WMATA's live departures on a trip leaving now; walking the whole way where that is quickest or the trip is short. Stations are reached by their nearest entrance.",
     summary: "Walking plus a train or bus.",
+  },
+  {
+    // Run (Stephen, 2026-11-02): planned on foot by core/run_plan.py.
+    id: "run",
+    label: "Run",
+    keywords: "running jog jogging foot trail loop",
+    description:
+      "On foot at your running pace, preferring trails, park paths and quiet streets in long unbroken stretches (packed gravel and dirt are fine) and fewer traffic lights; lit ways after dark. Make it a loop, or set a target distance and place only the start for a loop that long. Turn-by-turn directions as you run.",
+    summary: "A run on trails and paths, turn by turn.",
   },
   {
     // REBALANCE-RIDE (Stephen, 2026-10-12): an Adventure ride type; the description is his.

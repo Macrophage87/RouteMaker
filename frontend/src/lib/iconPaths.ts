@@ -44,6 +44,7 @@ export const ICON_PATHS = {
   "flag": "<path d=\"M5 21V4h12l-2.5 4L17 12H5\"/>",
   "file": "<path d=\"M6 3h8l4 4v14H6z\"/><path d=\"M14 3v4h4M9 13h6M9 17h6\"/>",
   "walk": "<circle cx=\"13\" cy=\"4\" r=\"1.8\"/><path d=\"M12.5 7.5 10.5 13l3 3v5M10.5 13l-2 8M12.5 7.5l3 3.5 3 .5M12.5 7.5 9 10l-1.5 3\"/>",
+  "run": "<circle cx=\"15\" cy=\"4\" r=\"1.8\"/><path d=\"M13.5 7.5 11 13l3 3-1 5M11 13l-3 3H5M13.5 7.5l3.5 2.5 2.5-1M13.5 7.5 9.5 9l-2 3\"/>",
   "user": "<circle cx=\"12\" cy=\"8\" r=\"4\"/><path d=\"M4 21a8 8 0 0 1 16 0\"/>",
   "users": "<circle cx=\"9\" cy=\"8\" r=\"3.5\"/><path d=\"M2 21a7 7 0 0 1 14 0\"/><path d=\"M16 4.6a3.5 3.5 0 0 1 0 6.8M18 14.5a7 7 0 0 1 4 6.5\"/>",
   "clock": "<circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"M12 7v5l3.5 2\"/>",

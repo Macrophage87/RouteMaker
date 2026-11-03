@@ -11,8 +11,9 @@ import type { MtbReading } from "./mtbMode.ts";
 import { formatRoughDistance } from "./format.ts";
 import { noteArrived } from "./departure.ts";
 import type { LonLat } from "./geo.ts";
-import { twoPointsOnly, type PresetId } from "./presets.ts";
+import { runs, twoPointsOnly, type PresetId } from "./presets.ts";
 import { readAvoidStairs } from "./avoidStairs.ts";
+import { paceKmh, readRunPace } from "./runPace.ts";
 import type { StressMetres } from "./stressBar.ts";
 import type { FacilityMetres } from "./facilityBar.ts";
 import type { NearbyStationsAnswer, StationAction } from "./stations.ts";
@@ -703,7 +704,7 @@ export interface StationTimes {
 
 /** A transit ride type's trip: scheduled times, with WMATA's predicted departures on a plan for now. */
 export interface TransitPlan {
-  mode: "bike-transit" | "bikeshare-transit" | "walk" | "walk-transit";
+  mode: "bike-transit" | "bikeshare-transit" | "walk" | "walk-transit" | "run";
   /** The chosen option's key, and whether it is riding the whole way. */
   key: string;
   /** The trip asked for (`transit_option`) is no longer an option: the best is chosen in its place (absent from older answers). */
@@ -923,6 +924,16 @@ export interface NoviceWalk {
   text: string;
 }
 
+export interface RunInfo {
+  pace_kmh: number;
+  dark: boolean;
+  trail_m: number;
+  signals: number;
+  target_distance_m: number | null;
+  /** Whether the run is at or under its target; null with no target. */
+  fits?: boolean | null;
+}
+
 export interface RouteResponse {
   /**
    * Live work zones and DC's closures (FOLLOWUP-WORKZONES; v0.7.0 "DC closures source"): the closures to draw on
@@ -977,6 +988,8 @@ export interface RouteResponse {
   transit?: TransitPlan | null;
   /** Present on a loop (OWNER-DECISIONS 266). */
   loop?: LoopInfo | null;
+  /** A Run's planning (core/run_plan.py): its pace, whether after dark, its trail metres and traffic lights. */
+  run?: RunInfo | null;
   /** Mountain Bike only (docs/MTB-TOPO-PLAN.md, slice 6): the route's trail reading; null or absent elsewhere. */
   mtb?: MtbReading | null;
   /** Side-street dodges found and what was done; null on a loop and on each candidate, absent from an older API. */
@@ -1487,6 +1500,8 @@ export interface RouteRequestOptions {
   dirtClosed?: boolean;
   /** Settings' Avoid stairs (lib/avoidStairs.ts); unset, as this device keeps it. Sent on Bikeshare and transit only. */
   avoidStairs?: boolean;
+  /** Run's pace in mph (lib/runPace.ts); absent, the one kept on this device. */
+  runPaceMph?: number;
 }
 
 /** Most points of a line to follow (core/follow.py MAX_POINTS). */
@@ -1531,7 +1546,9 @@ export function routeRequestBody(points: readonly LonLat[], preset: PresetId, op
       : {}),
     // Avoid stairs (Settings): the trip's walks keep off flights of steps. Only the ride types that walk on their own
     // send it; a walk beside the rider's own bike always keeps off them.
-    ...(twoPointsOnly(preset) && (options.avoidStairs ?? readAvoidStairs()) ? { avoid_stairs: true } : {}),
+    ...((twoPointsOnly(preset) || runs(preset)) && (options.avoidStairs ?? readAvoidStairs()) ? { avoid_stairs: true } : {}),
+    // Run's pace (lib/runPace.ts), kept on this device and sent with Run alone.
+    ...(runs(preset) ? { run_pace_kmh: paceKmh(options.runPaceMph ?? readRunPace()) } : {}),
     // The language of the answer's sentences (lib/i18n.ts); English, the API's own, is not sent.
     ...(language() !== "en" ? { lang: language() } : {}),
   });

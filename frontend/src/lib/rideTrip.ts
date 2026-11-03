@@ -23,6 +23,7 @@ import { haversineM, pathLengthM, type LonLat } from "./geo.ts";
 import { POOR_FIX_M, RIDE_MAX_M, START_M, WINDOW_AHEAD_M, offThreshold, snap, startState, step, type RideEvent, type RideFix, type RideModel, type RideState, type Verbosity } from "./navigate.ts";
 import type { PresetId } from "./presets.ts";
 import { ridesHidden } from "./nativeShell.ts";
+import { pointAlong } from "./lightTimes.ts";
 import { drawOf, transitOf } from "./transit.ts";
 import { t } from "./i18n.ts";
 import { onwardOf, walkPart, type OnwardPart } from "./onward.ts";
@@ -129,10 +130,10 @@ export function rideMaxM(hidden: boolean = ridesHidden()): number {
   return hidden ? Infinity : RIDE_MAX_M;
 }
 
-/** Walk and Walk + 🚆🚌 (2026-11-02): the line is a walk, the trip's first, followed on foot. */
+/** Walk, Walk + 🚆🚌 and Run (2026-11-02): the line is a walk (a run), the trip's first, followed on foot. */
 export function walksLine(route: Pick<RouteResponse, "transit">): boolean {
   const plan = transitOf(route);
-  if (!plan || (plan.mode !== "walk" && plan.mode !== "walk-transit")) return false;
+  if (!plan || (plan.mode !== "walk" && plan.mode !== "walk-transit" && plan.mode !== "run")) return false;
   const index = lineIndex(plan);
   return index >= 0 && plan.steps[index].mode === "walk";
 }
@@ -182,7 +183,7 @@ export function optionRides(option: Pick<TransitOption, "direct" | "walk" | "leg
 export function noBikeLine(route: Pick<RouteResponse, "transit">): string | null {
   const plan = transitOf(route);
   // Walk and Walk + 🚆🚌 take no bike, by choice: nothing to say.
-  if (!plan || ridesLine(route) || plan.mode === "walk" || plan.mode === "walk-transit") return null;
+  if (!plan || ridesLine(route) || plan.mode === "walk" || plan.mode === "walk-transit" || plan.mode === "run") return null;
   const index = plan.options.findIndex(optionRides);
   return index < 0 ? t("No bike on this option.") : t("No bike on this option. Pick {letter} to ride.", { letter: String.fromCharCode(65 + index) });
 }
@@ -383,11 +384,21 @@ export function rideLegOf(
   const trip = rideTripOf(route, points);
   const line = route.geometry.coordinates as LonLat[];
   if (!trip || trip.asPlanned || line.length < 2) return { points, loop, preset: route.preset, trip };
+  // A run (2026-11-02) re-plans and saves as it was planned: its stops and its loop, at the runner's pace. A loop
+  // from the start alone keeps its shape as stops a third and two thirds along it, so a re-plan still goes round.
+  if (route.preset === "run") return { points: points.length === 1 && loop ? runLoopStops(line) : points, loop, preset: "run", trip };
   // On foot: a re-plan the rider asks for (Detour, Road closed, Re-plan from here) walks, to the walk's own end.
   if (trip.onFoot) return { points: [line[0], line[line.length - 1]], loop: false, preset: "walk", trip };
   // Bikeshare + transit's share bike is a classic one ("take a classic bike").
   const ebike = bikeshareOf(route)?.bike === "ebike";
   return { points: [line[0], line[line.length - 1]], loop: false, preset: ebike ? "ebike" : "default", trip };
+}
+
+/** A run loop from its start alone, as that start and the points a third and two thirds along the loop. */
+export function runLoopStops(line: readonly LonLat[]): LonLat[] {
+  const length = pathLengthM(line);
+  const stops = [1 / 3, 2 / 3].map((share) => pointAlong(line, length * share)).filter((p): p is LonLat => p !== null);
+  return [line[0], ...stops];
 }
 
 /**

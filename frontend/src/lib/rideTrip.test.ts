@@ -30,6 +30,7 @@ import {
   rideable,
   ridesLine,
   walksLine,
+  runLoopStops,
   walkLineTurns,
   noBikeLine,
   optionRides,
@@ -539,4 +540,24 @@ test("Walk and Walk + 🚆🚌 (2026-11-02): the line is a walk, started as one,
   }
   assert.equal(state.ride.off, false);
   assert.ok(said.every((e) => e.kind === "cue"), JSON.stringify(said));
+});
+
+test("Run (2026-11-02): a re-plan or Save keeps the run's stops and loop; a loop from the start alone keeps its shape", () => {
+  const loopLine: LonLat[] = [at(0, 0), at(900, 0), at(900, 900), at(0, 0)];
+  const runPlan: TransitPlan = {
+    ...PLAN,
+    mode: "run",
+    steps: [step_({ mode: "run", text: "Run 12 min.", route_line: true, coordinates: loopLine, turns: [] })],
+    departure: null,
+  };
+  const run = line({ preset: "run", transit: runPlan, description: [], geometry: { type: "LineString", coordinates: loopLine } });
+  const stops = [at(0, 0), at(900, 0), at(900, 900)];
+  const leg = rideLegOf(run, stops, true);
+  assert.deepEqual([leg.points, leg.loop, leg.preset], [stops, true, "run"]);
+  const alone = rideLegOf(run, [at(0, 0)], true);
+  assert.equal(alone.preset, "run");
+  assert.equal(alone.loop, true);
+  assert.equal(alone.points.length, 3, "the start and two points along the loop");
+  assert.deepEqual(alone.points[0], at(0, 0));
+  assert.deepEqual(runLoopStops(loopLine).length, 3);
 });

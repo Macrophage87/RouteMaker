@@ -84,7 +84,7 @@ export interface RidingSpeedControl {
 
 /** Whether a ride type takes the rider's speed: not Mass Ride (its speed band) nor a share bike (core presets.rider_speed). */
 export function takesRiderSpeed(preset: PresetId): boolean {
-  return !["mass-ride", "bikeshare", "rebalance", "bikeshare-transit", "walk", "walk-transit"].includes(preset);
+  return !["mass-ride", "bikeshare", "rebalance", "bikeshare-transit", "walk", "walk-transit", "run"].includes(preset);
 }
 
 export const SPEED_LABEL = t("Riding speed");

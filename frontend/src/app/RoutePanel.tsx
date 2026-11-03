@@ -885,7 +885,8 @@ export function RouteSummary({
   const goMode = mode === "go";
   // "Start ride" in Go; Plan shows its first word only ("Start", "Iniciar") and keeps the rest for a screen reader.
   // Walk and Walk + 🚆🚌 (2026-11-02): "Start walk", followed turn by turn on foot.
-  const [startWord, rideWord] = firstWordAndRest(walksLine(route) ? t("Start walk") : t("Start ride"));
+  // Run (2026-11-02): "Start run".
+  const [startWord, rideWord] = firstWordAndRest(route.preset === "run" ? t("Start run") : walksLine(route) ? t("Start walk") : t("Start ride"));
   // "Elevation and climbs" (the mockup); a Mass Ride's three charts keep their own name.
   const elevationTitle = profile && chartKind(route) === "mass" ? foldName("mass") : ROUTE_FOLDS.elevation.title;
   // Start: the big button (Go), or the first of its row (Plan). In a browser, short rides only; a longer one goes to a bike computer (OD 255). The phone app rides any length.

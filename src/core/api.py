@@ -104,6 +104,7 @@ from . import (
     ratelimit,
     route_cache,
     routing,
+    run_plan,
     scenic_near,
     segment_info,
     share_links,
@@ -129,7 +130,9 @@ MAX_BODY_BYTES = 8 * 1024
 # encoded text, every character of which JSON may escape as two.
 ROUTE_MAX_BODY_BYTES = MAX_BODY_BYTES + 2 * follow.MAX_CHARS
 
-MIN_POINTS = 2
+# A start alone is a Run's loop of a target distance (`core.run_plan.target_loop`); every other
+# plan needs a start and a destination (`RouteIn.dials_fit_the_preset`).
+MIN_POINTS = 1
 MAX_POINTS = 25
 
 # A request's span: the sum of the straight-line distances between consecutive
@@ -229,7 +232,10 @@ class RouteIn(Schema):
     points: list[LonLat] = Field(
         min_length=MIN_POINTS,
         max_length=MAX_POINTS,
-        description="[lon, lat] pairs, start first, each inside the coverage area.",
+        description=(
+            "[lon, lat] pairs, start first, each inside the coverage area: at least two, or a"
+            " start alone for a Run loop with `loop` and `target_distance_m`."
+        ),
     )
     preset: PresetName
     confirm_long: StrictBool = Field(
@@ -327,6 +333,15 @@ class RouteIn(Schema):
             " pace the route is timed at instead of the ride type's, hills and junction waits"
             " still counted. Ignored on Mass Ride (its speed band) and on a share bike."
             " Absent: the ride type's own."
+        ),
+    )
+    run_pace_kmh: float | None = Field(
+        default=None,
+        ge=run_plan.RUN_PACE_MIN_KMH,
+        le=run_plan.RUN_PACE_MAX_KMH,
+        description=(
+            "Run only: the runner's pace on the flat, in km/h (6.4 to 16.1, 4 to 10 mph). Absent:"
+            " 9.7 km/h (6 mph, a 10:00 mile)."
         ),
     )
     debug_junctions: StrictBool = Field(
@@ -509,9 +524,10 @@ class RouteIn(Schema):
     depart_at: datetime | None = Field(
         default=None,
         description=(
-            "Transit ride types only: when the trip starts, ISO 8601 (with an offset, or local"
-            " time in Washington), within a year of now. Absent: now. Each system's own"
-            " calendar for that day is used, holidays and published closures included."
+            "Transit ride types and Run only: when the trip starts, ISO 8601 (with an offset, or"
+            " local time in Washington), within a year of now. Absent: now. Each system's own"
+            " calendar for that day is used, holidays and published closures included; a run"
+            " after civil dusk or before civil dawn favours lit ways."
         ),
     )
     transit_option: str | None = Field(
@@ -656,6 +672,25 @@ class RouteIn(Schema):
             self.preset = presets.ROAD_BIKE
         self.avoid_gravel = self.preset == presets.ROAD_BIKE
         preset = presets.PRESETS[self.preset]
+        run = self.preset == presets.RUN
+        if len(self.points) < 2 and not (run and self.loop and self.target_distance_m):
+            raise ValueError(
+                "points need at least 2 places, a start and a destination; a start alone plans only"
+                " a Run loop with loop and target_distance_m"
+            )
+        if run:
+            # A loop from a start alone is sized up to RUN_TARGET_MAX_M; with stops placed the
+            # target is a ceiling, as on a ride.
+            if (
+                len(self.points) == 1
+                and self.target_distance_m is not None
+                and self.target_distance_m > run_plan.RUN_TARGET_MAX_M
+            ):
+                raise ValueError("A run's target distance is at most 50 km (31 mi)")
+            if self.transit_option is not None:
+                raise ValueError("transit_option applies to the transit ride types only")
+        elif self.run_pace_kmh is not None:
+            raise ValueError("run_pace_kmh applies to the Run ride type only")
         if self.via_points:
             last = len(self.points) - 1
             if len(set(self.via_points)) != len(self.via_points) or any(
@@ -710,7 +745,7 @@ class RouteIn(Schema):
                 )
             if self.loop:
                 raise ValueError("Transit ride types do not plan loops")
-        elif self.transit_option is not None or self.depart_at is not None:
+        elif self.transit_option is not None or (self.depart_at is not None and not run):
             raise ValueError("transit_option and depart_at apply to the transit ride types only")
         if self.preset in presets.BIKESHARE_PRESETS:
             if len(self.points) != 2:
@@ -2528,6 +2563,9 @@ class RouteBody(Schema):
     loop: LoopOut | None = Field(
         default=None, description="Present on a loop: how much of the way back is the way out."
     )
+    run: RunOut | None = Field(
+        default=None, description="Present on a Run: what it was planned with and what it found."
+    )
     effort_m: float | None = Field(
         default=None,
         description=(
@@ -2589,6 +2627,25 @@ class DodgesOut(Schema):
     saved_m: float = Field(description="The metres the replacements took off the route.")
     limited: str | None
     items: list[DodgeOut]
+
+
+class RunOut(Schema):
+    """A Run's planning (`core.run_plan`)."""
+
+    pace_kmh: float = Field(description="The pace on the flat it is timed at, km/h.")
+    dark: bool = Field(description="Planned after dark: lit ways favoured.")
+    trail_m: float = Field(description="Metres on trails, park paths and tracks.")
+    signals: int = Field(description="Signalled crossings on the way, each a wait for the light.")
+    target_distance_m: float | None = Field(
+        default=None,
+        description=(
+            "The rider's target, metres: from a start alone, a loop about that long; with stops"
+            " placed, as Trailmaxxing's, the most trail at or under it."
+        ),
+    )
+    fits: bool | None = Field(
+        default=None, description="Whether the run is at or under its target (null: no target)."
+    )
 
 
 class LoopOut(Schema):
@@ -2872,7 +2929,7 @@ class TransitOut(Schema):
     """A transit ride type's trip (`core.transit`): scheduled, with WMATA's predicted
     departures on a plan for now (`core.transit_live`)."""
 
-    mode: Literal["bike-transit", "bikeshare-transit", "walk", "walk-transit"]
+    mode: Literal["bike-transit", "bikeshare-transit", "walk", "walk-transit", "run"]
     key: str = Field(description="The chosen option's key.")
     asked_gone: bool = Field(
         default=False,
@@ -3378,6 +3435,8 @@ def _route_answer(request, body: RouteIn, response: HttpResponse):
     span = span_m(routing.loop_points(body.points, loop))
     if span > MAX_SPAN_M:
         return Status(400, {"error": too_long()})
+    if body.preset == presets.RUN:
+        return _run_answer(request, body)
     if span <= CONFIRM_SPAN_M:
         if not loop and routing.long_calm_for(
             body.preset,
@@ -4023,6 +4082,67 @@ def _walked_line(
         options[plan.chosen] = dataclasses.replace(option, legs=tuple(legs))
         plan = dataclasses.replace(plan, options=options)
     return line, plan
+
+
+# A run longer than this in straight lines is refused: a marathon's span with room to spare.
+RUN_MAX_SPAN_M = 80_000
+
+
+def _run_answer(request, body: RouteIn):
+    """Run (`core.run_plan`): the answer, or the refusal where no way on foot was found."""
+    if span_m(body.points) > RUN_MAX_SPAN_M:
+        return Status(400, {"error": "A run is planned up to 50 mi (80 km) in straight lines."})
+    try:
+        return Status(200, _run_body(body, getattr(request, "routing_started", None)))
+    except run_plan.RunTimedOut as late:
+        # Busy, not no way: the same retryable answer as a bike route that ran out of time.
+        refusal = _error(503, str(late))
+        refusal["Retry-After"] = str(DEADLINE_RETRY_S)
+        return refusal
+    except run_plan.RouterDown as down:
+        return Status(502, {"error": str(down)})
+    except run_plan.NoRun as refusal:
+        return Status(422, {"error": str(refusal)})
+
+
+def _run_body(body: RouteIn, started: float | None) -> dict:
+    """A run planned on foot (`core.run_plan`), answered as Walk's line is: the line, its time
+    and length, and a `transit` block of one walk (mode "run") with its turns."""
+    if started is None:
+        started = routing.clock()
+    at = body.depart_at or timezone.now()
+    if at.tzinfo is None:
+        at = at.replace(tzinfo=ridetime.ZONE)
+    ask = run_plan.RunAsk(
+        pace_kmh=run_plan.pace_of(body.run_pace_kmh),
+        hills=0 if body.hills is None else body.hills,
+        dark=run_plan.is_dark(at, body.when),
+        loop=body.loop,
+        target_m=float(body.target_distance_m) if body.target_distance_m else None,
+    )
+    run = run_plan.plan(body.points, ask, run_plan.Router(run_plan.deadline_from(started)))
+    dials = routing.Dials(stress=body.stress, hills=body.hills, when=body.when)
+    answer = _unrouted_line(
+        [list(p) for p in run.shape], presets.RUN, dials, run.seconds, run.metres
+    )
+    answer["climb_m"] = run.climb_m or 0.0
+    answer["descent_m"] = run.descent_m or 0.0
+    answer["leg_ends"] = run.leg_ends or answer["leg_ends"]
+    answer["loop"] = run.loop
+    answer["transit"] = run_plan.worded(transit.block(run_plan.as_plan(run, at)), run.seconds)
+    answer["run"] = {
+        "pace_kmh": ask.pace_kmh,
+        "dark": ask.dark,
+        "trail_m": run.trail_m,
+        "signals": run.signals,
+        "target_distance_m": ask.target_m,
+        # A loop from a start alone is about its target, not under it: no "fits" to say.
+        "fits": (
+            None if ask.target_m is None or len(body.points) == 1 else run.metres <= ask.target_m
+        ),
+    }
+    logger.info("run plan: %d router calls, %.1f s", run.calls, routing.clock() - started)
+    return answer
 
 
 def _transit_body(body: RouteIn, started: float | None) -> dict:

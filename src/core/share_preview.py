@@ -153,6 +153,7 @@ RIDE_NAMES = {
     "rebalance": "Rebalance Ride",
     "walk": "Walk",
     "walk-transit": "Walk plus train or bus",
+    "run": "Run",
 }
 
 # Who fetches a link to preview it: chat apps, social sites and search engines. A browser is sent

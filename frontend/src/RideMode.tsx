@@ -280,6 +280,8 @@ export const rideVoice = new Voice(rideSpeech());
 export const RIDE_STARTED = t("Ride started.");
 /** As a walk starts (Walk, Walk + 🚆🚌: its button says "Start walk"). */
 export const WALK_STARTED = t("Walk started.");
+/** As a run starts (Run, 2026-11-02: its button says "Start run"). */
+export const RUN_STARTED = t("Run started.");
 /** How long after the start its note (startNote) is said: after "Ride started.". */
 export const START_NOTE_MS = 1_500;
 /** The top row's words made smaller a step at a time where a word does not fit (the owner, 2026-10-31), to at most half size. */
@@ -290,6 +292,8 @@ const TOP_FIT_MIN = 0.5;
 export const END_RIDE_NAME = t("End ride");
 /** Its words on a walk. */
 export const END_WALK_NAME = t("End walk");
+/** Its words on a run. */
+export const END_RUN_NAME = t("End run");
 /** The least a long instruction shrinks to at normal text, from its own size (styles.css .cue-text, 1.5rem): the ride's
  *  20 px for street names (the owner, 2026-10-20); longer still, its second line ends in "…". */
 const CUE_TEXT_MIN_PX = 20;
@@ -406,8 +410,8 @@ export const RIDE_SAFETY = ridesHidden() ? RIDE_SAFETY_APP : RIDE_SAFETY_BROWSER
 export const RIDE_SAFETY_SHORT = t("You ride at your own risk; the route can be wrong.");
 
 /** Called inside the Start ride press: unlock the voice with the first sentence, where the rider chose it. */
-export function startRideGesture(prefs: RidePrefs, walk = false): void {
-  if (toVoice(prefs.output)) rideVoice.unlock(walk ? WALK_STARTED : RIDE_STARTED);
+export function startRideGesture(prefs: RidePrefs, walk = false, run = false): void {
+  if (toVoice(prefs.output)) rideVoice.unlock(run ? RUN_STARTED : walk ? WALK_STARTED : RIDE_STARTED);
   // iPhones give the compass for the map's first heading only once allowed, asked inside this press (lib/compassHeading.ts).
   askCompass();
 }
@@ -2619,6 +2623,8 @@ export function RideMode({
   const minute = Math.floor(Date.now() / 60_000);
   const lightStep = progress === null ? null : Math.round(progress / 160);
   const togoS = togo?.end.seconds ?? null;
+  // End ride's name: End walk on foot, End run on a Run (2026-11-02).
+  const endName = trip?.onFoot ? (plannedRoute.preset === "run" ? END_RUN_NAME : END_WALK_NAME) : END_RIDE_NAME;
   const light = useMemo(
     () => (lightStep === null || ride.arrived ? null : rideLightCorner(model, lightStep * 160, togoS, minute * 60_000)),
     [model, lightStep, togoS === null ? null : Math.round(togoS / 60), ride.arrived, minute], // eslint-disable-line react-hooks/exhaustive-deps
@@ -2824,10 +2830,10 @@ export function RideMode({
               <button type="button" className="primary ride-end ride-done" onClick={end}>
                 <Icon name="check" size={22} />
                 {RIDE_DONE_TEXT}
-                <span className="visually-hidden">: {trip?.onFoot ? END_WALK_NAME : END_RIDE_NAME}</span>
+                <span className="visually-hidden">: {endName}</span>
               </button>
             ) : (
-              <SlideToEnd onEnd={end} onTap={slideHint} name={trip?.onFoot ? END_WALK_NAME : END_RIDE_NAME} />
+              <SlideToEnd onEnd={end} onTap={slideHint} name={endName} />
             )}
             {/* Road closed (v0.8.2; in the top row since v0.9.0, the owner, 2026-10-18: "a button you'd want to hit
                 on the fly"): one press while riding, no menu. */}

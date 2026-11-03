@@ -1854,4 +1854,13 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Walk plus train or bus": "Jalan kaki plus kereta atau bus",
   "Walks keep to sidewalks, paths and crosswalks: the traffic and hills settings are for riding.": "Jalan kaki tetap di trotoar, jalur, dan penyeberangan: pengaturan lalu lintas dan tanjakan untuk bersepeda.",
   "Start walk": "Mulai jalan",
+  "Run": "Lari",
+  "A run on trails and paths, turn by turn.": "Lari di jalur dan jalan setapak, belokan demi belokan.",
+  "On foot at your running pace, preferring trails, park paths and quiet streets in long unbroken stretches (packed gravel and dirt are fine) and fewer traffic lights; lit ways after dark. Make it a loop, or set a target distance and place only the start for a loop that long. Turn-by-turn directions as you run.": "Berjalan kaki dengan kecepatan lari Anda, mengutamakan jalur, jalan taman, dan jalan yang tenang dalam bentangan panjang tanpa terputus (kerikil padat dan tanah tidak masalah) dan lebih sedikit lampu lalu lintas; jalan yang diterangi setelah gelap. Buat putaran, atau tetapkan jarak target dan letakkan titik awal saja untuk putaran sepanjang itu. Petunjuk belokan demi belokan saat Anda berlari.",
+  "Start run": "Mulai lari",
+  "Run started.": "Lari dimulai.",
+  "End run": "Akhiri lari",
+  "Running pace": "Kecepatan lari",
+  "Your easy pace on the flat, for the run's time. Climbs still slow it. Kept on this device.": "Kecepatan santai Anda di jalan datar, untuk waktu lari. Tanjakan tetap memperlambatnya. Disimpan di perangkat ini.",
+  "{mile} per mile ({km} per km)": "{mile} per mil ({km} per km)",
 };

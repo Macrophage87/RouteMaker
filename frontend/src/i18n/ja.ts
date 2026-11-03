@@ -1854,4 +1854,13 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Walk plus train or bus": "徒歩と電車またはバス",
   "Walks keep to sidewalks, paths and crosswalks: the traffic and hills settings are for riding.": "徒歩は歩道・小道・横断歩道を通ります。交通量と坂の設定は自転車用です。",
   "Start walk": "徒歩を開始",
+  "Run": "ランニング",
+  "A run on trails and paths, turn by turn.": "トレイルや小道を走るルート、曲がり角ごとに案内。",
+  "On foot at your running pace, preferring trails, park paths and quiet streets in long unbroken stretches (packed gravel and dirt are fine) and fewer traffic lights; lit ways after dark. Make it a loop, or set a target distance and place only the start for a loop that long. Turn-by-turn directions as you run.": "あなたのランニングペースで徒歩、トレイル、公園の小道、静かな通りを途切れない長い区間で（締め固めた砂利や土も可）、信号の少ない道を優先し、暗くなってからは照明のある道を選びます。周回コースにするか、目標距離を設定して出発地点だけを置くと、その長さの周回コースになります。走りながら曲がり角ごとに案内します。",
+  "Start run": "ランニングを開始",
+  "Run started.": "ランニングを開始しました。",
+  "End run": "ランニング終了",
+  "Running pace": "ランニングペース",
+  "Your easy pace on the flat, for the run's time. Climbs still slow it. Kept on this device.": "平地での楽なペース。走る時間の計算に使います。上り坂では引き続き遅くなります。この端末に保存されます。",
+  "{mile} per mile ({km} per km)": "1マイル{mile}（1km {km}）",
 };

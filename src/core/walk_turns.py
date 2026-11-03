@@ -87,11 +87,14 @@ def walked(answer: dict, ask: walk_pricing.Ask, payload: dict) -> tuple[dict, li
     return chosen.leg, walk_pricing.crossing_turns(chosen.crossings, ask)
 
 
-def turns_of(leg: dict, shape, crossings: Sequence[dict] = ()) -> list[dict]:
+def turns_of(
+    leg: dict, shape, crossings: Sequence[dict] = (), max_turns: int = MAX_TURNS
+) -> list[dict]:
     """A routed walk's turns: [{"movement", "street", "point": [lon, lat]}], in order. `leg`
     is the router's leg (its `maneuvers`, lengths in kilometres) and `shape` its decoded line.
     `crossings` are the crossings it says (`walk_pricing.crossing_turns`, movement "cross"),
-    placed among the turns where they fall along the line."""
+    placed among the turns where they fall along the line. At most `max_turns` turns (a run's
+    line is longer than a walk to a station)."""
     out: list[dict] = []
     points = list(shape)
     for maneuver in leg.get("maneuvers") or []:
@@ -113,7 +116,7 @@ def turns_of(leg: dict, shape, crossings: Sequence[dict] = ()) -> list[dict]:
                 "point": [round(float(point[0]), 6), round(float(point[1]), 6)],
             }
         )
-        if len(out) >= MAX_TURNS:
+        if len(out) >= max_turns:
             break
     if not crossings:
         return out
