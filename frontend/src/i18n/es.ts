@@ -2372,4 +2372,7 @@ export const ES: Readonly<Record<string, string>> = {
   "Other riders shown: {count}, the last {distance} behind you.": "Otros ciclistas en pantalla: {count}; el último, {distance} detrás de usted.",
   "Mostly {level}, {top} here.": "Mayormente {level}, {top} aquí.",
   "Narrowest {riders} riders a minute, here.": "Lo más estrecho: {riders} ciclistas por minuto, aquí.",
+  "{graph}: off.": "{graph}: desactivado.",
+  "Road ahead": "Camino por delante",
+  "Turns ahead: {turns}. Busy junctions: {busy}.": "Giros por delante: {turns}. Intersecciones con mucho tráfico: {busy}.",
 };

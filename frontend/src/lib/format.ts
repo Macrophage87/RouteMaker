@@ -254,6 +254,11 @@ export function formatFeet(metres: number): string {
   return both(`${feet.toLocaleString("en-US")} ft`, `${Math.round(metres)} m`);
 }
 
+/** A short chart's height label, a round figure in feet alone, the unit once: "450 ft", "1,000 ft" (the ride's elevation graph, lib/aheadGraph.ts). */
+export function formatAxisFeet(feet: number): string {
+  return `${Math.round(feet).toLocaleString("en-US")} ft`;
+}
+
 /**
  * A place on a chart's distance axis, miles first, kilometres in brackets, short enough to label a tick:
  * "0 mi (0 km)", "4 mi (6.4 km)", "26 mi (42 km)" (the route chart, OWNER-DECISIONS 322).

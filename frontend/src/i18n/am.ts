@@ -1904,4 +1904,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Other riders shown: {count}, the last {distance} behind you.": "ሌሎች {count} ብስክሌተኞች ታይተዋል፣ የመጨረሻው ከኋላዎ {distance} ላይ ነው።",
   "Mostly {level}, {top} here.": "በአብዛኛው {level}፣ እዚህ {top}።",
   "Narrowest {riders} riders a minute, here.": "በጣም ጠባብ፦ በደቂቃ {riders} ብስክሌተኞች፣ እዚህ።",
+  "{graph}: off.": "{graph}፦ ጠፍቷል።",
+  "Road ahead": "ከፊት ያለው መንገድ",
+  "Turns ahead: {turns}. Busy junctions: {busy}.": "ከፊት ያሉ መታጠፊያዎች፦ {turns}። የተጨናነቁ መገናኛዎች፦ {busy}።",
 };

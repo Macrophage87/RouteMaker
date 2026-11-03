@@ -18,12 +18,19 @@ import {
   flowSteps,
   inkOn,
   readAhead,
+  spreadMarks,
+  turnMarks,
+  turnsSentence,
+  type TurnMark,
   ridersSentence,
   shortStreet,
   spanLevel,
   stressBars,
   stressSentence,
   writeAhead,
+  STRESS_TICKS,
+  elevationTicks,
+  flowTicks,
 } from "./aheadGraph.ts";
 import { METRES_PER_MILE } from "./format.ts";
 
@@ -43,17 +50,46 @@ function store() {
   return { getItem: (k: string) => kept.get(k) ?? null, setItem: (k: string, v: string) => void kept.set(k, v), kept };
 }
 
-test("off by default; the graph chosen is kept on this device, and turning it off is kept too", () => {
+test("off by default; the graphs chosen are kept on this device in More's order, and turning them off is kept too", () => {
   const s = store();
-  assert.equal(readAhead(s), null);
-  writeAhead("elevation", s);
-  assert.equal(s.kept.get(AHEAD_KEY), "elevation");
-  assert.equal(readAhead(s), "elevation");
-  writeAhead(null, s);
-  assert.equal(readAhead(s), null);
-  s.setItem(AHEAD_KEY, "nonsense");
-  assert.equal(readAhead(s), null);
-  assert.equal(readAhead({ getItem: () => { throw new Error("blocked"); }, setItem: () => {} }), null);
+  assert.deepEqual(readAhead(s), []);
+  writeAhead(["elevation", "stress"], s);
+  assert.equal(s.kept.get(AHEAD_KEY), "stress,elevation");
+  assert.deepEqual(readAhead(s), ["stress", "elevation"]);
+  writeAhead([], s);
+  assert.deepEqual(readAhead(s), []);
+  s.setItem(AHEAD_KEY, "nonsense,flow");
+  assert.deepEqual(readAhead(s), ["flow"]);
+  assert.deepEqual(readAhead({ getItem: () => { throw new Error("blocked"); }, setItem: () => {} }), []);
+});
+
+test("the turns strip: each turn the card shows, flagged junctions and Avoid; never work zones; said as counts ahead", () => {
+  const cue = (kind: string, atM: number, movement: TurnMark["movement"], severity: TurnMark["severity"], more: object = {}) => ({ kind, atM, movement, severity, ...more });
+  const cues = [
+    cue("turn", 100, "left", null),
+    cue("turn", 900, "right", "orange"),
+    cue("turn", 960, "left", null, { joined: true }),
+    cue("turn", 1200, "right", null, { cross: "Redland Road" }),
+    cue("hazard", 1500, null, "red", { source: "junction" }),
+    cue("hazard", 1600, null, "red", { source: "workzone" }),
+    cue("busy", 1700, null, "avoid", { source: "avoid" }),
+    cue("busy", 1800, null, null),
+    cue("turn", 9000, "left", null),
+  ];
+  const marks = turnMarks(cues, { fromM: 0, toM: AHEAD_M });
+  assert.deepEqual(marks, [
+    { m: 100, movement: "left", severity: null },
+    { m: 900, movement: "right", severity: "orange" },
+    { m: 1500, movement: null, severity: "red" },
+    { m: 1700, movement: null, severity: "avoid" },
+  ], "a jog's later turn, a crossing straight over and a work zone are left off");
+  assert.equal(turnsSentence(marks, 500), "Turns ahead: 1. Busy junctions: 2.");
+  assert.equal(turnsSentence([], 0), "", "nothing said where there is nothing");
+  // Two marks closer than the gap are drawn as one: the arrow kept, in the worse colour.
+  assert.deepEqual(spreadMarks([{ m: 900, movement: "right", severity: "orange" }, { m: 1000, movement: null, severity: "red" }, { m: 1500, movement: "left", severity: null }], 200), [
+    { m: 900, movement: "right", severity: "red" },
+    { m: 1500, movement: "left", severity: null },
+  ]);
 });
 
 test("the bubbles: stress and elevation on any ride with them; flow and corkers first on a Mass Ride only", () => {
@@ -135,15 +171,16 @@ test("riders and the axis: the last rider behind said; ticks counted from you, t
   assert.equal(ridersSentence(aheadWindow(5000, 50_000)), "");
   assert.equal(ridersSentence(aheadWindow(5000, 50_000, [4000, 6000])), "Other riders shown: 2, the last 0.6 miles behind you.");
   assert.equal(ridersSentence(aheadWindow(5000, 50_000, [6000])), "Other riders shown: 1, all ahead of you.");
-  assert.deepEqual(axisTicks(aheadWindow(0, 50_000)).map((tick) => tick.label), ["½", "1", "1½", "2 mi"]);
-  assert.deepEqual(axisTicks(aheadWindow(MI, 50_000, [0])).map((tick) => tick.label), ["−1", "−½", "½", "1", "1½", "2 mi"]);
+  assert.deepEqual(axisTicks(aheadWindow(0, 50_000)).map((tick) => tick.label), ["0.5", "1", "1.5", "2 mi"]);
+  assert.deepEqual(axisTicks(aheadWindow(MI, 50_000, [0])).map((tick) => tick.label), ["−1", "−0.5", "0.5", "1", "1.5", "2 mi"]);
 });
 
 test("Ride wires it: one bubble a graph in More, pressed state, off by default, the graph at the top of the bottom panel", () => {
   const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
-  assert.match(ride, /const \[ahead, setAhead\] = useState<AheadView \| null>\(\(\) => readAhead\(\)\);/);
-  assert.match(ride, /aria-pressed=\{aheadView === view\}/);
-  assert.match(ride, /const next = aheadView === view \? null : view;/, "the lit bubble turns it off");
+  assert.match(ride, /const \[ahead, setAhead\] = useState<AheadView\[\]>\(\(\) => readAhead\(\)\);/);
+  assert.match(ride, /aria-pressed=\{aheadShownViews\.includes\(view\)\}/);
+  assert.match(ride, /const next = on \? ahead\.filter\(\(v\) => v !== view\) : \[\.\.\.ahead, view\];/, "each bubble on or off on its own");
+  assert.match(ride, /<AheadGraph views=\{aheadShownViews\} route=\{route\} cues=\{model\.cues\}/, "the graphs on stack, with the turns");
   assert.match(ride, /const sheetShown = notesShown \|\| restShown \|\| aheadShown;/);
   assert.ok(ride.indexOf("<AheadGraph") > ride.indexOf('className="ride-controls"'));
   assert.ok(ride.indexOf("ride-ahead-bubble") < ride.indexOf('className="ride-round ride-topo"'), "before Topo and Settings");
@@ -167,4 +204,19 @@ test("review fixes: the climb counts from your own height between samples, a ste
   assert.equal(stressSentence(stressBars([span(0, 500, 4), span(500, 5000, 2)], { fromM: 100, toM: 3000 }), 100), "Mostly LTS 2, LTS 4 here.");
   const steps = flowSteps(profileOf(40, 100, () => 10, { riders_per_min: Array.from({ length: 40 }, (_, i) => (i === 0 ? 40 : 150)) }), { fromM: 50, toM: 3000 });
   assert.equal(flowSentence(steps, 50), "Narrowest 40 riders a minute, here.");
+});
+
+test("the y axis is labelled: stress levels 1 to 4 and A, round heights in feet, the flow guides", () => {
+  assert.deepEqual(STRESS_TICKS.map((tick) => tick.label), ["1", "2", "3", "4", "A"]);
+  assert.deepEqual(elevationTicks(10, 30).map((tick) => tick.label), ["50 ft", "75 ft"]);
+  assert.deepEqual(elevationTicks(0, 400).map((tick) => tick.label), ["0 ft", "500 ft", "1,000 ft"]);
+  for (const [low, high] of [[5, 25], [100, 160], [0, 400]]) {
+    const ticks = elevationTicks(low, high);
+    assert.ok(ticks.length >= 1 && ticks.length <= 4, `${ticks.length} ticks`);
+    assert.ok(ticks.every((tick) => tick.m >= low - 1e-9 && tick.m <= high + 1e-9), "every tick inside the graph");
+  }
+  assert.deepEqual(flowTicks(150), [60, 120]);
+  assert.deepEqual(flowTicks(260), [60, 120, 200]);
+  const graph = readFileSync(new URL("../AheadGraph.tsx", import.meta.url), "utf8");
+  assert.match(graph, /<YAxis ticks=\{drawn\.yTicks\} panel=\{panel\} \/>/);
 });

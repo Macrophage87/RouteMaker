@@ -1904,4 +1904,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Other riders shown: {count}, the last {distance} behind you.": "{count} lòt siklis parèt, dènye a {distance} dèyè ou.",
   "Mostly {level}, {top} here.": "Sitou {level}, {top} isit la.",
   "Narrowest {riders} riders a minute, here.": "Pi etwat: {riders} siklis pa minit, isit la.",
+  "{graph}: off.": "{graph}: etenn.",
+  "Road ahead": "Wout devan",
+  "Turns ahead: {turns}. Busy junctions: {busy}.": "Viraj devan: {turns}. Kafou ki chaje: {busy}.",
 };

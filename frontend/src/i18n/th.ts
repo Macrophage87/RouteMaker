@@ -1904,4 +1904,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Other riders shown: {count}, the last {distance} behind you.": "แสดงผู้ปั่นคนอื่น {count} คน คนสุดท้ายอยู่ข้างหลังคุณ {distance}",
   "Mostly {level}, {top} here.": "ส่วนใหญ่ {level} ตรงนี้ {top}",
   "Narrowest {riders} riders a minute, here.": "จุดแคบสุด: {riders} คันต่อนาที ตรงนี้",
+  "{graph}: off.": "{graph}: ปิด",
+  "Road ahead": "ทางข้างหน้า",
+  "Turns ahead: {turns}. Busy junctions: {busy}.": "ทางเลี้ยวข้างหน้า: {turns} ทางแยกที่การจราจรหนาแน่น: {busy}",
 };

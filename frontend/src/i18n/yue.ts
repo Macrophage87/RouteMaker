@@ -1904,4 +1904,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Other riders shown: {count}, the last {distance} behind you.": "顯示咗另外{count}個騎手，最後嗰個喺你後面{distance}。",
   "Mostly {level}, {top} here.": "大部分係{level}，呢度係{top}。",
   "Narrowest {riders} riders a minute, here.": "最窄位：每分鐘{riders}架單車，就喺呢度。",
+  "{graph}: off.": "{graph}：已閂。",
+  "Road ahead": "前面條路",
+  "Turns ahead: {turns}. Busy junctions: {busy}.": "前面轉彎：{turns}。繁忙路口：{busy}。",
 };
