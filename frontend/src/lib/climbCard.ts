@@ -20,7 +20,7 @@
  */
 import { createElement as h, useEffect, useRef, type ReactElement } from "react";
 import type { RouteProfile } from "./api.ts";
-import { formatClimb, formatDistance } from "./format.ts";
+import { formatClimb, formatDistance, unitsFirstDeep } from "./format.ts";
 import { MAX_POINTS, haversineM, type LonLat } from "./geo.ts";
 import { GRADE_BAND_FILL, elevationArea, elevationLine, elevationRange, gradeBandShapes, linear, axisDistance, type Plot } from "./profileChart.ts";
 import { pointName } from "./summary.ts";
@@ -134,7 +134,7 @@ export async function fetchClimbProfile(
     const response = await fetcher(climbProfileUrl(id), { headers: { Accept: "application/json" } });
     if (response.status === 404) return { kind: "none" };
     if (!response.ok) return { kind: "error" };
-    const body = await response.json();
+    const body = unitsFirstDeep(await response.json());
     return looksLikeProfile(body) ? { kind: "ready", profile: body } : { kind: "error" };
   } catch {
     return { kind: "error" };
@@ -290,8 +290,27 @@ export function profileEnds(start: LonLat, end: LonLat, minM = 50): ProfileEnds 
   return { start: from, end: to, words: `Runs ${COMPASS_WORDS[from]} to ${COMPASS_WORDS[to]}.` };
 }
 
+const BADGE_R = 8.5;
+
+/**
+ * A compass point in a round marker at one end of the chart's distance row: white with a dark edge and a dark letter,
+ * as the trail's ends on the map are (lib/trailHighlight.ts), so the chart's left end and the map's matching marker
+ * read as the same place (the owner, 2026-11-03: "have a beginning and end icons on the trail with the compass
+ * directions inside the marker and on the graph so it's easy to tell them apart"). The picture's name already says
+ * which way it runs, so the marker is not read on its own.
+ */
+function compassBadge(letter: string, cx: number): ReactElement {
+  const cy = PLOT.axisY - 4;
+  return h(
+    "g",
+    { className: "pc-compass", "aria-hidden": "true" },
+    h("circle", { className: "pc-compass-ring", cx, cy, r: BADGE_R }),
+    h("text", { className: "pc-compass-letter", x: cx, y: cy, textAnchor: "middle", dominantBaseline: "central" }, letter),
+  );
+}
+
 /** An elevation profile with the route chart's parts, named by `summary` (its text alternative); `ends`, the compass
- *  point at each end, in bold beside its distance. */
+ *  point at each end, in a round marker beside its distance. */
 export function ElevationProfileChart({ profile, summary, uid, ends = null }: { profile: ChartProfile; summary: string; uid: string; ends?: ProfileEnds | null }): ReactElement {
   const route: RouteProfile = { interval_m: profile.interval_m, m: profile.m, elevation_m: profile.elevation_m, grade_pct: profile.grade_pct, climbs: [] };
   const total = Math.max(profile.m[profile.m.length - 1] ?? 0, 1);
@@ -334,18 +353,10 @@ export function ElevationProfileChart({ profile, summary, uid, ends = null }: { 
         ),
       ),
       h("path", { className: "pc-line", d: elevationLine(route, plot), fill: "none" }),
-      h(
-        "text",
-        { className: "pc-axis-text", x: PLOT.left, y: PLOT.axisY, textAnchor: "start" },
-        ends && h("tspan", { className: "pc-compass" }, `${ends.start} `),
-        axisDistance(0),
-      ),
-      h(
-        "text",
-        { className: "pc-axis-text", x: PLOT.right, y: PLOT.axisY, textAnchor: "end" },
-        axisDistance(total),
-        ends && h("tspan", { className: "pc-compass" }, ` ${ends.end}`),
-      ),
+      ends && compassBadge(ends.start, PLOT.left + BADGE_R),
+      ends && compassBadge(ends.end, PLOT.right - BADGE_R),
+      h("text", { className: "pc-axis-text", x: ends ? PLOT.left + 2 * BADGE_R + 4 : PLOT.left, y: PLOT.axisY, textAnchor: "start" }, axisDistance(0)),
+      h("text", { className: "pc-axis-text", x: ends ? PLOT.right - 2 * BADGE_R - 4 : PLOT.right, y: PLOT.axisY, textAnchor: "end" }, axisDistance(total)),
     ),
     // Shown for the eye; the picture's own name says it, so it is not read twice.
     h("figcaption", { id: `${uid}-profile-text`, className: "climb-profile-text", "aria-hidden": "true" }, summary),

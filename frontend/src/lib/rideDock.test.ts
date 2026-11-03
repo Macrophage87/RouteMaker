@@ -196,7 +196,7 @@ test("RideMode: round side buttons with names; the bottom panel only when it has
   assert.match(ride, /<Icon name="detour" size=\{24\} \/>/);
   assert.match(ride, /\{shareBike && !ride\.arrived && \(/);
   // The bottom panel is gone by default.
-  assert.match(ride, /const sheetShown = notesShown \|\| restShown;/);
+  assert.match(ride, /const sheetShown = notesShown \|\| restShown \|\| aheadShown;/);
   assert.match(ride, /\{sheetShown && \(\s*<div ref=\{sheetRef\} className="ride-controls">/);
   assert.match(ride, /const corridorText = corridorWorry\(corridor\);/);
   // The time starts at the dock (or the start with no walk), and again on riding off from a dock.
@@ -220,7 +220,16 @@ test("following track-up, the rider is held two thirds of the way down the map, 
 test("in a ride the map's scales and credits sit at the bottom left, above the bottom panel when it shows", () => {
   assert.match(css, /\.app\.riding:has\(\.ride\) \.maplibregl-ctrl-bottom-right \{\s*left: 0;\s*right: auto;\s*bottom: var\(--ride-sheet-h, 0px\);/);
   assert.match(ride, /<div ref=\{sheetRef\} className="ride-controls">/);
-  assert.match(ride, /root\.style\.setProperty\("--ride-sheet-h", `\$\{sheet \? Math\.round\(sheet\.getBoundingClientRect\(\)\.height\) : 0\}px`\)/);
+  assert.match(ride, /const px = sheet \? Math\.round\(sheet\.getBoundingClientRect\(\)\.height\) : 0;\s*root\.style\.setProperty\("--ride-sheet-h", `\$\{px\}px`\);/);
+});
+
+test("the bottom panel's height reaches the map, so the arrow moves up as soon as a graph or a note shows (Stephen 2026-11-03)", () => {
+  const map = readFileSync(new URL("../MapView.tsx", import.meta.url), "utf8");
+  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  assert.match(ride, /sheetHeight\.current\?\.\(px\);/);
+  assert.match(app, /onSheetHeight=\{setRidePanelH\}/);
+  assert.match(app, /ridePanelH=\{ridePanelH\}/);
+  assert.match(map, /\}, \[props\.rider, props\.follow, props\.headingUp, props\.followReset, props\.ridePanelH\]\);/);
 });
 
 test("the ride's compass turns with the map, and a press switches north up and track-up (the owner, 2026-10-17)", () => {
