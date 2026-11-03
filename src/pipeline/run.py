@@ -880,7 +880,7 @@ class RebuildContext:
     # lane (`facility.shown_facility`; the review of 17f69082). Display only.
     facility_shown_by_way: dict[int, str] = field(default_factory=dict)
     # The roads that say `cycleway*=separate` AND have a bike way mapped beside
-    # them (`facility.separate_pairs`): only these draw faint as "the road beside
+    # them (`facility.roads_with_bikeway_beside`): only these draw faint as "the road beside
     # its cycle track" (OWNER-DECISIONS 73, 78). A road whose tag says so with
     # nothing mapped beside it (Connecticut Avenue NW, Davenport to Everett) is
     # drawn as the busy road it is, not hidden behind a bikeway that is not there.
@@ -3129,9 +3129,9 @@ def build_handlers(
         """
         if context.facility_by_way or not context.ways:
             return
-        beside, context.separate_roads = facility.separate_pairs(
-            (way.osm_id, way.tags, way.coordinates) for way in context.ways
-        )
+        placed_ways = [(way.osm_id, way.tags, way.coordinates) for way in context.ways]
+        beside = facility.beside_separate_roads(placed_ways)
+        context.separate_roads = facility.roads_with_bikeway_beside(placed_ways)
         context.short_paths_hidden = set()
         # By their place: the roads inside a military base, many with no access
         # tag of their own (the Pentagon's; OWNER-DECISIONS 88), every way inside
