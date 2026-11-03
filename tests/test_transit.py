@@ -2382,6 +2382,64 @@ def test_the_answer_carries_each_walks_turns_and_each_rides_stops(schedule) -> N
     assert all(s["stops"] is None for s in steps if s["mode"] not in transit.TRANSIT_MODES)
 
 
+def test_the_route_answer_keeps_every_key_a_transit_step_carries(schedule) -> None:
+    """The API's step schema drops what it does not name (django-ninja): each key block() gives
+    a step comes back from /api/route's schema with its value (release review, 2026-11-03:
+    `towards` and `every_min` were lost)."""
+    from core.api import TransitStepOut
+
+    plan = transit.plan_bikeshare(
+        schedule, CAPITOL_HILL, DOWNTOWN, at(2026, 9, 30, 8, 0), Straight(), SHARE
+    )
+    metro = next(o for o in plan.options if not o.direct)
+    plan = transit.drawn(transit.choose(plan, metro.key), _Turning())
+    for step in transit.block(plan, schedule)["steps"]:
+        out = TransitStepOut.model_validate(step).model_dump()
+        assert _kept(step, out)
+
+
+def _kept(given, out) -> bool:
+    """Whether `out` holds everything in `given` (the schema may add its own defaults)."""
+    if isinstance(given, dict):
+        return isinstance(out, dict) and all(
+            k in out and _kept(v, out[k]) for k, v in given.items()
+        )
+    if isinstance(given, (list, tuple)):
+        return (
+            isinstance(out, (list, tuple))
+            and len(given) == len(out)
+            and all(_kept(g, o) for g, o in zip(given, out, strict=True))
+        )
+    return given == out
+
+
+def test_a_steps_trains_and_headway_survive_the_answers_schema() -> None:
+    from core.api import LiveTrainOut, TransitStepOut
+
+    step = {
+        "mode": "metro",
+        "text": "Take the Orange Line toward New Carrollton.",
+        "seconds": 300,
+        "wait_s": 120,
+        "to": "Stadium-Armory",
+        "lines": ["Orange Line", "Silver Line"],
+        "with_bike": True,
+        "route_line": False,
+        "coordinates": [],
+        "toward": "New Carrollton",
+        "towards": [
+            {"line": "Orange Line", "toward": "New Carrollton"},
+            {"line": "Silver Line", "toward": "Downtown Largo"},
+        ],
+        "every_min": 8,
+    }
+    out = TransitStepOut.model_validate(step).model_dump()
+    assert out["towards"] == step["towards"] and out["every_min"] == 8
+    train = {"line": "Orange Line", "toward": "Vienna/Fairfax-GMU", "end": [-77.27, 38.88]}
+    out = LiveTrainOut.model_validate({**train, "minutes": [3], "when": "3 min"}).model_dump()
+    assert out["end"] == [-77.27, 38.88]
+
+
 def test_vehicle_words_never_say_the_system_twice():
     # MDOT MTA's MARC GTFS names every line "MARC": the step said "Board the MARC MARC" (Stephen,
     # 2026-11-03: "fix the marc").
