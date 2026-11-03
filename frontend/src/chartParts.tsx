@@ -23,6 +23,7 @@ import {
   type CorkerLoad,
 } from "./lib/profileChart.ts";
 import { t } from "./lib/i18n.ts";
+import { metricFirst } from "./lib/units.ts";
 
 export const WIDTH = 360;
 export const LEFT = 46;
@@ -192,11 +193,11 @@ export function Tables({
       {calm && (
         <div className="pc-table-wrap">
           <table className="pc-table">
-            <caption>{t("Rolling stress, calm miles per mile over the mile around each point")}</caption>
+            <caption>{metricFirst() ? t("Rolling stress, calm km per km over the mile around each point") : t("Rolling stress, calm miles per mile over the mile around each point")}</caption>
             <thead>
               <tr>
                 <th scope="col">{t("At")}</th>
-                <th scope="col">{t("Calm miles per mile")}</th>
+                <th scope="col">{metricFirst() ? t("Calm km per km") : t("Calm miles per mile")}</th>
                 <th scope="col">{t("Reads as")}</th>
                 <th scope="col">{t("Junctions to watch since the row before")}</th>
               </tr>
