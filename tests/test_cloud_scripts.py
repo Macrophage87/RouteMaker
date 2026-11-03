@@ -25,7 +25,7 @@ BOX = REPO / "scripts" / "cloud" / "box-rebuild.sh"
 IMPORT = REPO / "scripts" / "cloud" / "import-result.sh"
 BUILD = "20261011T093012Z"
 COMMIT = "a" * 40
-VARIANTS = ("standard", "no-trail", "ebike", "weekend", "offroad", "mtb")
+VARIANTS = ("standard", "no-trail", "ebike", "weekend", "offroad", "mtb", "paved")
 
 pytestmark = pytest.mark.skipif(shutil.which("bash") is None, reason="needs bash")
 
@@ -1157,7 +1157,7 @@ ln -s "$FAKE_DIR/graph.tar" "$stage/tiles/standard/BUILD/tiles.tar"
 echo dump >"$stage/db/routemaker.dump"
 (cd "$stage" && sha256sum tiles/standard/BUILD/tiles.tar db/routemaker.dump >SHA256SUMS)
 graphs=""
-for v in standard no-trail ebike weekend offroad mtb; do
+for v in standard no-trail ebike weekend offroad mtb paved; do
   graphs="$graphs $v=${FAKE_SHIPPED:-BUILD}"
 done
 printf 'bundle_format=1\ntiles=%s\n' "${graphs# }" >"$stage/MANIFEST.txt"
@@ -1288,6 +1288,8 @@ def test_a_beta_bundle_that_fails_never_holds_up_homes_result(
 FAKE_BETA_TOOL = r"""#!/usr/bin/env bash
 printf 'NAME %s\n' "$*" >>"$FAKE_DIR/calls.log"
 case "NAME $*" in
+  *"receive "*" db --update-data --stage-only"*)
+    exit "$(cat "$FAKE_DIR/receive_stage_rc" 2>/dev/null || echo 0)" ;;
   *"receive "*" db "*) exit "$(cat "$FAKE_DIR/receive_db_rc" 2>/dev/null || echo 0)" ;;
   "smoke "*)
     left=$(cat "$FAKE_DIR/smoke_fails" 2>/dev/null || echo 0)
@@ -1340,6 +1342,7 @@ def beta(fake):
                 CLOUD_SMOKE=str(tools["smoke"]),
                 CLOUD_SMOKE_TRIES="3",
                 CLOUD_SMOKE_WAIT_S="0",
+                CLOUD_ROUTER_WAIT_S="0",
             )
 
     Beta.live, Beta.data = live, data
@@ -1373,18 +1376,27 @@ def test_on_the_beta_the_swap_is_the_runbooks_new_data_update(fake, beta) -> Non
 
     assert done.returncode == 0, done.stdout + done.stderr
     calls = fake.calls()
+    receive = str(fake.root / "bin" / "receive")
     order = [
         "receive --bundle",
-        "sudo " + str(fake.root / "bin" / "receive"),
-        "beta-compose stop api worker",
-        "db --update-data",
-        "beta-compose up -d api worker",
-        "beta-compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend",
+        "db --update-data --stage-only",
+        f"sudo {receive}",
+        " files",
+        "db --update-data\n",
+        "beta-compose restart valhalla-standard\n",
+        "beta-compose restart valhalla-no-trail\n",
+        "beta-compose restart valhalla-ebike\n",
+        "beta-compose restart valhalla-weekend\n",
         "smoke --local",
     ]
     positions = [calls.index(step) for step in order]
     assert positions == sorted(positions), calls
-    assert " files" in calls and "--replace-db" not in calls
+    # the staging swap: the beta keeps serving, so the app is never stopped (the owner, 2026-11-02)
+    assert "stop api worker" not in calls and "up -d api worker" not in calls
+    # staging needs no sudo; the swap does (its safety dump goes to DATA_ROOT/backups)
+    stage = next(line for line in calls.splitlines() if "--stage-only" in line)
+    assert not stage.startswith("sudo")
+    assert "--replace-db" not in calls
     assert (beta.state / "predraw.log").exists()
     # The settings rows follow the links even with no trail router to start.
     assert "beta-compose exec -T api ./manage.py sync_upstreams" in calls
@@ -1403,9 +1415,7 @@ def test_on_the_beta_the_swap_starts_the_trail_routers_whose_tiles_are_there(fak
 
     assert done.returncode == 0, done.stdout + done.stderr
     calls = fake.calls()
-    restart = (
-        "beta-compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend"
-    )
+    restart = "beta-compose restart valhalla-weekend"
     start = "beta-compose up -d --force-recreate valhalla-mtb"
     sync = "beta-compose exec -T api ./manage.py sync_upstreams"
     positions = [calls.index(step) for step in (restart, start, sync, "smoke --local")]
@@ -1427,7 +1437,7 @@ def test_on_the_beta_the_swap_waits_for_deployment_to_be_paused(fake, beta) -> N
     assert beta.run("--swap").returncode == 0
 
 
-def test_on_the_beta_a_failed_database_update_starts_the_app_again(fake, beta) -> None:
+def test_on_the_beta_a_failed_database_swap_leaves_the_app_serving(fake, beta) -> None:
     assert beta.run().returncode == 0
     (fake.dir / "receive_db_rc").write_text("1")
 
@@ -1435,7 +1445,20 @@ def test_on_the_beta_a_failed_database_update_starts_the_app_again(fake, beta) -
 
     assert done.returncode == 2 and "database is as it was" in done.stderr
     calls = fake.calls()
-    assert calls.index("db --update-data") < calls.rindex("beta-compose up -d api worker")
+    assert "stop api worker" not in calls  # it never stopped serving
+    assert "restart valhalla" not in calls
+
+
+def test_on_the_beta_a_failed_staging_changes_nothing_served(fake, beta) -> None:
+    assert beta.run().returncode == 0
+    (fake.dir / "calls.log").unlink()
+    (fake.dir / "receive_stage_rc").write_text("1")
+
+    done = beta.run("--swap")
+
+    assert done.returncode == 2 and "nothing served has changed" in done.stderr
+    calls = fake.calls()
+    assert " files" not in calls and "db --update-data\n" not in calls
     assert "restart valhalla" not in calls
 
 
