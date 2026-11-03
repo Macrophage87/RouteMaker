@@ -4967,17 +4967,34 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
   margin-top: 16px;
 }
 
-/* The ride's settings, opened by the Settings bubble beside More, just under the top row. */
-.ride-mode-settings {
-  margin: 4px 0 10px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--border);
+/* The ride's settings, a popup opened by the Settings bubble beside More (Stephen 2026-11-03): over the map, the
+   ride's screen behind unchanged; tall enough for Large text, scrolled inside itself only if a phone is very short. */
+.ride-settings-dialog {
+  width: min(440px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+  box-sizing: border-box;
 }
-
-/* The settings' own heading. */
-.ride-mode-settings h3 {
-  margin: 6px 0;
-  font-size: 1rem;
+.ride-settings-dialog h2:focus {
+  outline: none;
+}
+.ride-settings-dialog .ride-safety-more {
+  margin-bottom: 4px;
+}
+/* Each picker under its name, as wide as the popup, the (i) beside it: never on a line of its own at 320 px. */
+.ride-settings-dialog .setting-line {
+  flex-wrap: nowrap;
+  align-items: flex-end;
+}
+.ride-settings-dialog .setting-row .select-setting {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+}
+.ride-settings-dialog .setting-row .select-setting select {
+  flex: none;
+  width: 100%;
+  margin-left: 0;
 }
 
 /* Larger than the panel's buttons, at every text size (the owner, 2026-10-20: "End ride and road closed could have larger font in general"). */
@@ -5640,7 +5657,7 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
   box-sizing: border-box;
 }
 
-.ride-large .cue-card > :not(.ride-top, .ride-light-below, .ride-mode-settings, .ride-togo) {
+.ride-large .cue-card > :not(.ride-top, .ride-light-below, .ride-togo) {
   flex: 1 0 auto;
 }
 

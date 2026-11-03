@@ -140,20 +140,25 @@ test("Ride settings in reach: More at the end of the side buttons opens them jus
   // No size query hides it (the Plan bar's own @container, styles.css, is the only one, and names no ride label).
   assert.doesNotMatch(css, /\.ride-top-label \{\s*position: absolute;/);
   assert.deepEqual([...css.matchAll(/@container[^{]*\{([^@]*)/g)].map((m) => /ride-/.test(m[1])), [false]);
-  assert.match(top, /ref=\{settingsPanel\}\s+id=\{`\$\{settingsId\}-settings`\}\s+className="ride-mode-settings"\s+role="group"\s+aria-label=\{RIDE_SETTINGS_TITLE\}\s+hidden=\{!settingsOpen\}\s+tabIndex=\{-1\}/);
-  // The Settings bubble comes after the panel: opened, the focus goes into it; Escape there closes it, back to the bubble.
-  assert.match(ride, /settingsPanel\.current\?\.focus\(\{ preventScroll: true \}\);/);
-  assert.match(top, /if \(event\.key === "Escape"\) \{\s*event\.preventDefault\(\);\s*setSettingsOpen\(false\);\s*settingsBubble\.current\?\.focus\(\);/);
-  assert.match(top, /<RideSettingsFields prefs=\{prefs\} onChange=\{onPrefs\}/);
-  // More: the last side button, a disclosure of its bubbles; the last bubble, Settings, a disclosure of that panel.
+  // The settings are a popup, not in the card's scroll (Stephen 2026-11-03: "Settings should be a popup, not in a
+  // scroll"): the platform's modal <dialog>, outside the top row, its heading taking the focus as it opens.
+  assert.doesNotMatch(top, /settingsPanel|RideSettingsFields/);
+  const dialog = ride.slice(ride.indexOf("<dialog\n        ref={settingsPanel}"), ride.indexOf("</dialog>", ride.indexOf("ref={settingsPanel}")));
+  assert.match(dialog, /className="ask-dialog ride-settings-dialog"\s+aria-labelledby=\{`\$\{settingsId\}-settings-title`\}\s+data-idle-close\s+onClose=\{settingsClosed\}/);
+  assert.match(ride, /if \(settingsOpen && !dialog\.open\) \{\s*dialog\.showModal\?\.\(\);\s*settingsTitle\.current\?\.focus\(\);\s*\} else if \(!settingsOpen && dialog\.open\) dialog\.close\(\);/);
+  // Two pickers (what each level says behind an (i)), so it fits a phone; Done, a tap outside, Escape or the screen left
+  // alone close it, and the focus goes back to the Settings bubble (or to More, the bubbles closed).
+  assert.match(dialog, /<RideSettingsFields prefs=\{prefs\} onChange=\{onPrefs\} idBase=\{settingsId\} compact \/>/);
+  assert.match(dialog, /if \(event\.target === event\.currentTarget\) event\.currentTarget\.close\(\);/);
+  assert.match(dialog, /onClick=\{\(\) => settingsPanel\.current\?\.close\(\)\}>\s*\{t\("Done"\)\}/);
+  assert.match(ride, /settingsBubble\.current\?\.focus\(\);\s*if \(document\.activeElement !== settingsBubble\.current\) settingsButton\.current\?\.focus\(\);/);
+  // More: the last side button, a disclosure of its bubbles; the last bubble, Settings, opens its popup.
   const rail = ride.slice(ride.indexOf("<div ref={railRef} className={`ride-rail"), ride.indexOf("{/* The bottom panel"));
   assert.match(rail, /ref=\{settingsButton\}\s+className="ride-round ride-settings-button"\s+aria-label=\{RIDE_MORE_NAME\}\s+title=\{RIDE_SETTINGS_TEXT\}\s+aria-expanded=\{moreOpen\}\s+aria-controls=\{`\$\{settingsId\}-more`\}/);
-  assert.match(rail, /ref=\{settingsBubble\}\s+className="ride-round ride-settings-bubble"\s+aria-label=\{RIDE_SETTINGS_TITLE\}\s+title=\{RIDE_SETTINGS_TITLE\}\s+aria-expanded=\{settingsOpen\}\s+aria-controls=\{`\$\{settingsId\}-settings`\}/);
+  assert.match(rail, /ref=\{settingsBubble\}\s+className="ride-round ride-settings-bubble"\s+aria-label=\{RIDE_SETTINGS_TITLE\}\s+title=\{RIDE_SETTINGS_TITLE\}\s+aria-haspopup="dialog"\s+aria-controls=\{`\$\{settingsId\}-settings`\}/);
   assert.match(rail, /<Icon name="gear" size=\{24\} \/>\s*<span className="ride-word" aria-hidden="true">\{t\("Settings"\)\}<\/span>\s*<\/button>(\s*<\/div>){4}\s*$/);
   assert.match(ride, /export const RIDE_SETTINGS_TEXT = t\("More"\);/);
   assert.doesNotMatch(rail, /ride-round ride-road-closed/);
-  // Opened, it is scrolled into view.
-  assert.match(ride, /if \(!settingsOpen\) return;\s*settingsPanel\.current\?\.scrollIntoView\?\.\(\{ block: "nearest" \}\);/);
   // One copy of the settings: the fold at the bottom is gone.
   assert.equal(ride.match(/<RideSettingsFields prefs=\{prefs\}/g)?.length, 1);
   assert.doesNotMatch(ride, /<summary>Ride settings<\/summary>/);
@@ -275,7 +280,7 @@ test("Broadcast from a ride (Stephen 2026-10-24: \"Let people broadcast from a r
 });
 
 test("More on the ride screen (Stephen 2026-10-26): the route's changes and Settings as bubbles beside it, none in the settings", () => {
-  const panel = ride.slice(ride.indexOf('className="ride-mode-settings"'), ride.indexOf("<RideSettingsFields prefs={prefs}"));
+  const panel = ride.slice(ride.indexOf('className="ask-dialog ride-settings-dialog"'), ride.indexOf("<RideSettingsFields prefs={prefs}"));
   const rail = ride.slice(ride.indexOf("<div ref={railRef} className={`ride-rail"), ride.indexOf("{/* The bottom panel"));
   const bubbles = rail.slice(rail.indexOf('className="ride-more-bubbles"'));
   // The settings panel holds the settings alone.
