@@ -36,15 +36,21 @@ test("the closure dialog: a modal, heading focused first, Reroute around them th
   assert.match(dialog, /className="primary closure-reroute"/);
   // Review F11: described by the lead line only, not the whole list with its links.
   assert.match(dialog, /aria-describedby=\{leadId\}/);
-  assert.match(dialog, /<p id=\{leadId\}>\{closureLead\(ask\.why\)\}<\/p>/);
+  assert.match(dialog, /<p id=\{leadId\}>\{closureLead\(ask\.why, ask\.onFoot\)\}<\/p>/);
 });
 
 test("Run release review S4: a run or walk's closure ask has no Reroute (its planner cannot route round them)", () => {
   const dialog = source("../ClosureDialog.tsx");
   assert.match(dialog, /\{!ask\.onFoot && \(\s*<button type="button" className="primary closure-reroute"/);
+  assert.match(dialog, /\{closureLead\(ask\.why, ask\.onFoot\)\}/);
   const app = source("../App.tsx");
-  assert.match(app, /const onFoot = !!route && walksLine\(route\) && !rideRef\.current\.imported\?\.verbatim;/);
   assert.match(app, /setClosureAsk\(\{ why, closures: found\.closures, unchecked: found\.unchecked, notices: found\.notices, onFoot \}\);/);
+  // Each check says whether the line it checks is on foot: Start ride the route on screen, Ride the rest its own,
+  // a saved route its kept answer or its ride type; an opened file's own track never.
+  assert.match(app, /\}, walksLine\(shown\)\);/);
+  assert.match(app, /checkThen\("ride", line, false, go, undefined, undefined, walksLine\(result\.route\)\)/);
+  assert.match(app, /answer \? walksLine\(answer\) : plan\.preset === "walk" \|\| runs\(plan\.preset\)/);
+  assert.match(app, /checkThen\("open", plan\.verbatim\.track, true, \(\) => \{\}\);/);
 });
 
 test("a saved route reopens as saved: the scheduler answers its plan with the saved line until it changes", () => {

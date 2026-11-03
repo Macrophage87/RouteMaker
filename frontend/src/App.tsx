@@ -3889,7 +3889,9 @@ export function App() {
   // A press's check under way (Start ride, a download, a save): another press waits for it, ignored (v0.7.0 end
   // review). The check gives up after CHECK_TIMEOUT_MS and the press goes ahead unchecked.
   const closureChecking = useRef(false);
-  const checkThen = async (why: CheckFor, line: readonly (readonly number[])[], gpx: boolean, proceed: () => void, afterGpx?: (track: number[][]) => void, onAsk?: () => void) => {
+  // `onFoot`: the line checked is a run or walk's, whose planner does not route round closures (Run release review
+  // S4), so the ask has no Reroute; an opened file's own track is never one (its closed stretches get ways round).
+  const checkThen = async (why: CheckFor, line: readonly (readonly number[])[], gpx: boolean, proceed: () => void, afterGpx?: (track: number[][]) => void, onAsk?: () => void, onFoot = false) => {
     if (line.length < 2 || closureLetGo.current === lineKey(line)) {
       proceed();
       return;
@@ -3909,9 +3911,6 @@ export function App() {
     }
     onAsk?.();
     closurePending.current = { line: line.map((v) => [...v]), index: found.index, closures: found.closures, gpx, nowOnly, proceed, afterGpx };
-    // A run or walk's planner does not route round closures (Run release review S4): no Reroute for one, except an
-    // opened file's, whose closed stretches are replaced by ways round.
-    const onFoot = !!route && walksLine(route) && !rideRef.current.imported?.verbatim;
     setClosureAsk({ why, closures: found.closures, unchecked: found.unchecked, notices: found.notices, onFoot });
   };
   const closureAnyway = () => {
@@ -4014,7 +4013,7 @@ export function App() {
     void checkUnlessFollowing("download", route.geometry.coordinates, false, () => {
       const made = routeGpxFile(route, at, routedLoop, federalRoute);
       save(made.text, made.fileName, GPX_SAID_ROUTE);
-    });
+    }, undefined, undefined, walksLine(route));
   };
   // Download a FIT or TCX course or a PDF cue sheet (Plan's GPX sheet): the route on screen, checked as Download GPX
   // is; `said` gets the line saying what was made, for the sheet's status region.
@@ -4022,7 +4021,7 @@ export function App() {
     if (!shown) return;
     const route = shown;
     const at = routedPoints;
-    void checkThen("download", route.geometry.coordinates, false, () => void Promise.resolve(downloadCourse(route, at, format, profile)).then(said));
+    void checkThen("download", route.geometry.coordinates, false, () => void Promise.resolve(downloadCourse(route, at, format, profile)).then(said), undefined, undefined, walksLine(route));
   };
   // Send to Garmin (Go and Plan's GPX sheet): the route on screen as a FIT course for Garmin Connect, checked as
   // Download GPX is.
@@ -4030,20 +4029,20 @@ export function App() {
     if (!shown) return;
     const route = shown;
     const at = routedPoints;
-    void checkUnlessFollowing("download", route.geometry.coordinates, false, () => void sendCourseToGarmin(route, at, openSavedRoute.current).then(said));
+    void checkUnlessFollowing("download", route.geometry.coordinates, false, () => void sendCourseToGarmin(route, at, openSavedRoute.current).then(said), undefined, undefined, walksLine(route));
   };
   // Send to Wahoo (the GPX sheet, once Wahoo is connected): the route on screen as a FIT course for the Wahoo app.
   const sendToWahooRoute = (said: Said) => {
     if (!shown) return;
     const route = shown;
     const at = routedPoints;
-    void checkUnlessFollowing("download", route.geometry.coordinates, false, () => void sendCourseToWahoo(route, at, openSavedRoute.current).then(said));
+    void checkUnlessFollowing("download", route.geometry.coordinates, false, () => void sendCourseToWahoo(route, at, openSavedRoute.current).then(said), undefined, undefined, walksLine(route));
   };
   // GPX, Garmin and Wahoo for a broadcast one follows are not checked for closures: the leader's to weigh, as at Start
   // (Stephen 2026-10-26), and the join sheet's buttons (BroadcastJoinDialog) come up over the ride itself.
-  const checkUnlessFollowing: typeof checkThen = async (why, line, gpx, proceed, afterGpx, onAsk) => {
+  const checkUnlessFollowing: typeof checkThen = async (why, line, gpx, proceed, afterGpx, onAsk, onFoot) => {
     if (shown && followsBroadcast(shown)) return proceed();
-    return checkThen(why, line, gpx, proceed, afterGpx, onAsk);
+    return checkThen(why, line, gpx, proceed, afterGpx, onAsk, onFoot);
   };
   // Start ride: the line about to be ridden, checked first ("Ride it anyway" goes on to the ride).
   // The voice is unlocked first, synchronously inside the press (iOS speaks only in a gesture; after the
@@ -4081,7 +4080,7 @@ export function App() {
       startRide(false);
     }, undefined, () => {
       window.clearTimeout(slow);
-    });
+    }, walksLine(shown));
   };
   // Broadcast's QR code (lib/broadcastQr.ts, BroadcastQrDialog.tsx): the link, and Start ride where it was held beside
   // Start before the ride. The link is made as the share sheet's would be, handed to a sheet that only keeps it.
@@ -4218,7 +4217,7 @@ export function App() {
       if (stillOn()) beginRide(ridePrefs, false, { route: result.route, points: asked.points });
     };
     if (!fromRide) {
-      void checkThen("ride", line, false, go);
+      void checkThen("ride", line, false, go, undefined, undefined, walksLine(result.route));
       return null;
     }
     const found = closureLetGo.current === lineKey(line) ? null : await checkClosures(origin, line, fetch, { when: planDials.when, bypass: planDials.closureBypass, nowOnly: true });
@@ -4306,7 +4305,7 @@ export function App() {
   useEffect(() => {
     if (!checkFirstAnswer.current || !route || riding) return;
     checkFirstAnswer.current = false;
-    if (!imported) void checkThen("open", route.geometry.coordinates, false, () => {});
+    if (!imported) void checkThen("open", route.geometry.coordinates, false, () => {}, undefined, undefined, walksLine(route));
   }, [route]);
   // My routes: open as saved (the line unchanged), or export.
   const openSaved = (saved: Pick<SavedRoute, "name" | "source" | "distance_m" | "line" | "inputs" | "answer" | "gpx"> & { id?: number | string }, said = OPENED_SAID(saved.name), check = true) => {
@@ -4353,7 +4352,7 @@ export function App() {
     }
     else retry();
     announce(said);
-    if (check) void checkThen("open", saved.line, false, () => {});
+    if (check) void checkThen("open", saved.line, false, () => {}, undefined, undefined, answer ? walksLine(answer) : plan.preset === "walk" || runs(plan.preset));
     // Today's map, asked quietly: more than 5% apart in distance offers Update route; nothing changes without it.
     void requestRoute(plan.points, plan.preset, { dials: plan.dials, straight: plan.drawn }).then((today) => {
       if (today.ok && savedShown.current?.key === key && differsTooMuch(saved.distance_m, today.route.distance_m))

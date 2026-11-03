@@ -2,7 +2,8 @@
  * The major closure warning (v0.7.0 plan, "GPX export as close to identical as possible, closure warning
  * first", and its correction): a modal dialog, not a toast, when a kept route runs along closures in force now.
  * "This route goes through 2 closures", each named in one line, and three choices: Reroute around them ("it" for
- * one; the default), Ride it anyway (or Download or Save anyway), and Cancel. The park-wide notices, which are not
+ * one; the default), Ride it anyway (or Download or Save anyway), and Cancel. A run or walk has no Reroute (its
+ * planner does not route round closures): Go anyway and Cancel only. The park-wide notices, which are not
  * closures on the route, wait behind "Park notices (N)" (P11). The platform's <dialog> opened with
  * showModal makes the page behind inert; the focus starts on the heading so a screen reader reads the list;
  * Escape is Cancel; on close the focus goes back where it was.
@@ -62,7 +63,7 @@ export function ClosureDialog({ ask, onReroute, onAnyway, onCancel }: { ask: Clo
             {closureHeading(ask.closures.length)}
           </h2>
           <div>
-            <p id={leadId}>{closureLead(ask.why)}</p>
+            <p id={leadId}>{closureLead(ask.why, ask.onFoot)}</p>
             <ul role="list" className="closure-list">
               {ask.closures.map((c) => (
                 <li key={c.id}>

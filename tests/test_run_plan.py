@@ -260,8 +260,9 @@ class TestALeg:
         fake = FakeCall(
             lambda payload: found,
             {
-                encode_polyline6(lights): edges(lights, "road", 1.7, signals=3),
-                encode_polyline6(none): edges(none, "road", 1.8),
+                # Sidewalks: no quiet-street or long-stretch credit, so only the lights differ.
+                encode_polyline6(lights): edges(lights, "sidewalk", 1.7, signals=3),
+                encode_polyline6(none): edges(none, "sidewalk", 1.8),
             },
         )
         walked = run_plan.run_leg(router(fake), [START, END], run_plan.RunAsk())
