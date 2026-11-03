@@ -20,7 +20,7 @@
  */
 import { createElement as h, useEffect, useRef, type ReactElement } from "react";
 import type { RouteProfile } from "./api.ts";
-import { formatClimb, formatDistance } from "./format.ts";
+import { formatClimb, formatDistance, unitsFirstDeep } from "./format.ts";
 import { MAX_POINTS, haversineM, type LonLat } from "./geo.ts";
 import { GRADE_BAND_FILL, elevationArea, elevationLine, elevationRange, gradeBandShapes, linear, axisDistance, type Plot } from "./profileChart.ts";
 import { pointName } from "./summary.ts";
@@ -134,7 +134,7 @@ export async function fetchClimbProfile(
     const response = await fetcher(climbProfileUrl(id), { headers: { Accept: "application/json" } });
     if (response.status === 404) return { kind: "none" };
     if (!response.ok) return { kind: "error" };
-    const body = await response.json();
+    const body = unitsFirstDeep(await response.json());
     return looksLikeProfile(body) ? { kind: "ready", profile: body } : { kind: "error" };
   } catch {
     return { kind: "error" };

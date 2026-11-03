@@ -12,7 +12,8 @@
  */
 import type { RouteProfile, RouteResponse, StressSpan } from "./api.ts";
 import { browserStore, type KeyValueStore } from "./accessMode.ts";
-import { FEET_PER_METRE, METRES_PER_MILE, formatAxisFeet, formatClimb, spokenDistance } from "./format.ts";
+import { metricFirst } from "./units.ts";
+import { FEET_PER_METRE, METRES_PER_MILE, formatAxisFeet, formatAxisMetres, formatClimb, spokenDistance } from "./format.ts";
 import { t } from "./i18n.ts";
 import { FLOW_BANDS, chartKind, corkersFor, flowBand, gradeBand, usableProfile } from "./profileChart.ts";
 import { spanClass, usableSpans } from "./routeColours.ts";
@@ -375,6 +376,13 @@ export const STRESS_TICKS: readonly { level: number; label: string }[] = [
 
 /** Two or three round heights in feet between the graph's bottom and top (metres, as drawn): "40 ft", "60 ft", "80 ft". */
 export function elevationTicks(lowM: number, highM: number): { m: number; label: string }[] {
+  // Metric mode (lib/units.ts): metres, on round steps.
+  if (metricFirst()) {
+    const stepM = [5, 10, 20, 25, 50, 100, 200, 250, 500].find((s) => (highM - lowM) / s <= 3) ?? 500;
+    const out: { m: number; label: string }[] = [];
+    for (let m = Math.ceil(lowM / stepM) * stepM; m <= highM; m += stepM) out.push({ m, label: formatAxisMetres(m) });
+    return out;
+  }
   const lowFt = lowM * FEET_PER_METRE;
   const highFt = highM * FEET_PER_METRE;
   const step = [10, 20, 25, 50, 100, 200, 250, 500, 1000].find((s) => (highFt - lowFt) / s <= 3) ?? 1000;
@@ -469,16 +477,20 @@ function mileLabel(miles: number): string {
   return sign + (Number.isInteger(a) ? String(a) : a.toFixed(1));
 }
 
-/** Ticks every half mile (a mile, or two, on a long window), counted from you; the last one says "mi". */
+/**
+ * Ticks every half mile (a mile, or two, on a long window), counted from you; the last one says "mi". In metric mode
+ * (lib/units.ts) the same in kilometres, the last saying "km".
+ */
 export function axisTicks(w: Pick<AheadWindow, "fromM" | "toM" | "youM">): AxisTick[] {
-  const spanMi = (w.toM - w.fromM) / METRES_PER_MILE;
-  const step = spanMi <= 3 ? 0.5 : spanMi <= 6 ? 1 : 2;
+  const unitM = metricFirst() ? 1000 : METRES_PER_MILE;
+  const span = (w.toM - w.fromM) / unitM;
+  const step = span <= 3 ? 0.5 : span <= 6 ? 1 : 2;
   const ticks: AxisTick[] = [];
-  const first = Math.ceil((w.fromM - w.youM) / METRES_PER_MILE / step - 1e-9) * step;
-  for (let mi = first; w.youM + mi * METRES_PER_MILE <= w.toM + 1; mi += step) {
-    if (Math.abs(mi) < 1e-9) continue;
-    ticks.push({ m: w.youM + mi * METRES_PER_MILE, label: mileLabel(mi) });
+  const first = Math.ceil((w.fromM - w.youM) / unitM / step - 1e-9) * step;
+  for (let n = first; w.youM + n * unitM <= w.toM + 1; n += step) {
+    if (Math.abs(n) < 1e-9) continue;
+    ticks.push({ m: w.youM + n * unitM, label: mileLabel(n) });
   }
-  if (ticks.length) ticks[ticks.length - 1].label += " mi";
+  if (ticks.length) ticks[ticks.length - 1].label += metricFirst() ? " km" : " mi";
   return ticks;
 }

@@ -34,7 +34,8 @@ import {
 } from "./lib/railClosures.ts";
 import { onSharedTick } from "./lib/sharedTick.ts";
 import { COVERAGE_BBOX, MAX_POINTS, addPoint, haversineM, insideCoverage, type LonLat } from "./lib/geo.ts";
-import { formatDistance, formatSeconds } from "./lib/format.ts";
+import { formatDistance, formatSeconds, unitsFirstDeep } from "./lib/format.ts";
+import { chooseUnits, units } from "./lib/units.ts";
 import { RETURN_PARAM as GARMIN_RETURN_PARAM, garminReturnFrom, readGarmin, withoutReturn } from "./lib/garminLink.ts";
 import { RETURN_PARAM as WAHOO_RETURN_PARAM, readWahoo, wahooReturnFrom } from "./lib/wahooLink.ts";
 import { endsOnFoot, layersTurnedOn, presetNamesRide, presetSaid, runs, twoPointsOnly, usesBikeshare, type PresetId } from "./lib/presets.ts";
@@ -611,7 +612,9 @@ export function App() {
   }, [manualOffered, loopVias]);
   // What the planner answered, and which of its routes to choose from is shown
   // (OWNER-DECISIONS 265): 0 is the answer, the others its candidates.
-  const [answer, setRoute] = useState<RouteResponse | null>(null);
+  const [answer, setAnswer] = useState<RouteResponse | null>(null);
+  // The server's sentences in the rider's units order (metric mode, lib/units.ts), once, as the answer arrives.
+  const setRoute = useCallback((next: RouteResponse | null) => setAnswer(next === null ? null : unitsFirstDeep(next)), []);
   const [choice, setChoice] = useState(0);
   // Whether the rider chose the route shown (it is then said as chosen, not as planned: the a11y review's N4).
   const [chosen, setChosen] = useState(false);
@@ -1827,6 +1830,8 @@ export function App() {
         setWeight(step.doc.weight);
       }
       if (step.doc.speed !== undefined) setRidingSpeed(step.doc.speed);
+      // The account's units, where this page was opened in the other (a reload, once: the device now keeps them).
+      if (step.doc.units && step.doc.units !== units()) void chooseUnits(step.doc.units);
       lastSettings.current = step.doc;
       setWaterPrefsState(readWaterPrefs());
       setClimbsOnState(readClimbsOn());
@@ -4437,7 +4442,7 @@ export function App() {
         // A broadcast's follower is not asked about closures (Stephen 2026-10-26: "The closure part should be leader
         // only. In general many of these closures aren't always real").
         openSaved(shared, SHARED_OPENED(shared.name), !(SHARED_RIDE && SHARED_LEAD && shared.answer));
-        if (shared.answer) setSharedOpen({ answer: shared.answer, ride: SHARED_RIDE, id: SHARED_ID, lead: SHARED_LEAD, secret: SHARED_SECRET, name: shared.name });
+        if (shared.answer) setSharedOpen({ answer: unitsFirstDeep(shared.answer), ride: SHARED_RIDE, id: SHARED_ID, lead: SHARED_LEAD, secret: SHARED_SECRET, name: shared.name });
       } else {
         setSharedNote(SHARED_GONE);
         announce(SHARED_GONE);
@@ -6963,6 +6968,19 @@ export function App() {
               {...{
                 garminReturned: GARMIN_RETURNED,
                 wahooReturned: WAHOO_RETURNED,
+                // Units (lib/units.ts) reload the page: signed in, the account gets the new choice first, so the
+                // sign-in on the reload does not put the old one back.
+                // Before the account's settings are read, nothing is saved (it would replace them): not saved, try again.
+                saveSettingsNow: !me.signed_in
+                  ? undefined
+                  : !settingsSynced
+                    ? async () => false
+                    : async () => {
+                        const doc = deviceSettings({ preset, dials }, undefined, weightStore.current?.setting());
+                        const saved = await saveSettings(window.location.origin, doc);
+                        if (saved) lastSettings.current = doc;
+                        return saved;
+                      },
                 rideText: { size: rideText, onChange: setRideText },
                 // The rider and bike weight (OWNER-DECISIONS 313-318), in Settings (the owner, 2026-10-18).
                 weight: {
