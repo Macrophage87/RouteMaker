@@ -9,7 +9,7 @@
  * worded and drawn, kept out of the components so it is tested without a DOM.
  */
 import type { JunctionGroupSummary, JunctionWarning, ProfileCrossing, RouteResponse } from "./api.ts";
-import { FEET_PER_MILE, KM_PER_MILE, formatDistance } from "./format.ts";
+import { FEET_PER_MILE, KM_PER_MILE, both, formatDistance } from "./format.ts";
 import { t } from "./i18n.ts";
 import { corkersFor } from "./profileChart.ts";
 
@@ -43,7 +43,7 @@ export const MAX_ON_MAP = 150;
 export function junctionCalmText(junction: Pick<JunctionWarning, "cost_ft" | "calm_mi" | "calm_km">): string {
   const mi = typeof junction.calm_mi === "number" ? junction.calm_mi : junction.cost_ft / FEET_PER_MILE;
   const km = typeof junction.calm_km === "number" ? junction.calm_km : mi * KM_PER_MILE;
-  return `${mi.toFixed(2)} calm mi (${km.toFixed(2)} calm km)`;
+  return both(`${mi.toFixed(2)} calm mi`, `${km.toFixed(2)} calm km`);
 }
 
 /**

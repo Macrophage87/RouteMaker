@@ -13,7 +13,7 @@
 import type { RouteResponse } from "./api.ts";
 import { abbreviateStreet } from "./course.ts";
 import { cueRows, sheetCredit, summaryLine, type CueRow } from "./cueSheetPdf.ts";
-import { formatMileMarkerUnits, milesFigure } from "./format.ts";
+import { formatMileMarkerUnits, markerFigure } from "./format.ts";
 import { exportFileName, exportName } from "./gpxText.ts";
 
 export const LOCK_WIDTH = 1179;
@@ -100,7 +100,7 @@ function rowLines(row: CueRow, measure: Measure): { lines: LockLine[]; height: n
   const roadX = turnX + COLUMNS.turn;
   const bottoms = [
     column(SIDE, COLUMNS.miles, [
-      { text: milesFigure(row.atM), px: PX.miles, weight: 700 },
+      { text: markerFigure(row.atM), px: PX.miles, weight: 700 },
       { text: formatMileMarkerUnits(row.atM), px: PX.unit, weight: 400 },
     ]),
     column(turnX, COLUMNS.turn, [
