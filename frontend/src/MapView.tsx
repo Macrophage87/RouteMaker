@@ -2681,6 +2681,29 @@ export function MapView(props: Props) {
   const stopCompass = useRef<(() => void) | null>(null);
   const compassMovedAt = useRef(0);
   const riding = !!props.rider;
+  // The ride's bottom panel grown or shrunk (a graph of the road ahead, the notes, Stephen 2026-11-03: "Make sure the
+  // map and arrow are moved up to compensate for less room on the bottom"): the follow camera puts the rider back in
+  // the open band at once, not at the next fix, which a rider stood at a light may not get for a while.
+  const [panelTop, setPanelTop] = useState(0);
+  useEffect(() => {
+    if (!riding || typeof ResizeObserver === "undefined") return;
+    let watch: ResizeObserver | null = null;
+    let frame = 0;
+    const attach = (tries: number) => {
+      const panel = document.querySelector(".ride .ride-controls");
+      if (!panel) {
+        if (tries > 0) frame = requestAnimationFrame(() => attach(tries - 1));
+        return;
+      }
+      watch = new ResizeObserver(() => setPanelTop(Math.round(panel.getBoundingClientRect().top)));
+      watch.observe(panel);
+    };
+    attach(30);
+    return () => {
+      cancelAnimationFrame(frame);
+      watch?.disconnect();
+    };
+  }, [riding]);
   useEffect(() => {
     if (!riding || !props.headingUp || gpsHeadingSeen.current) return;
     stopCompass.current = watchCompassAwhile(browserCompassEnv(), (deg) => {
@@ -2795,7 +2818,7 @@ export function MapView(props: Props) {
       return;
     }
     map.easeTo({ center: rider.point, bearing, zoom, offset: [0, ahead], padding: NO_PADDING, duration: still ? 0 : 400 });
-  }, [props.rider, props.follow, props.headingUp, props.followReset]);
+  }, [props.rider, props.follow, props.headingUp, props.followReset, panelTop]);
 
   // A ride or Roam (rideLabels: App's onBike) draws the map at a pixel ratio of at most 2, and its end gives the
   // screen's own back (the owner, 2026-11-01: battery audit; lib/followCamera.ts). The icons keep their own ratio
