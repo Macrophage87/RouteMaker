@@ -1853,7 +1853,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Get off": "하차",
   "Next train": "다음 열차",
   "Next bus": "다음 버스",
-  "{time}, in {min} min": "{time}, {min}분 후",
   "every {min} min": "{min}분 간격",
   "After that": "그다음",
   "toward": "방면",

@@ -1853,7 +1853,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Get off": "እትወርድሉ",
   "Next train": "ዝቕጽል ባቡር",
   "Next bus": "ዝቕጽል ኣውቶቡስ",
-  "{time}, in {min} min": "{time}፣ ኣብ {min} ደቒቕ",
   "every {min} min": "ኣብ ነፍሲ ወከፍ {min} ደቒቕ",
   "After that": "ድሕሪኡ",
   "toward": "ናብ",

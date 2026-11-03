@@ -52,23 +52,25 @@ export function BoardingCard({
   // The minutes to a timed departure, kept current.
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
-    if (!departure) return;
+    if (!departure && leg.bus) return;
     const timer = window.setInterval(() => setNow(Date.now()), 15_000);
     return () => window.clearInterval(timer);
-  }, [departure]);
+  }, [departure, leg.bus]);
   // WMATA's live next trains at the boarding station, read again every TIMES_TTL_MS while waiting (Stephen,
   // 2026-11-03: "Show the next train though"); none for a bus or another system, which keep the plan's times.
-  const [live, setLive] = useState<readonly LiveTrain[]>([]);
+  const [live, setLive] = useState<{ trains: readonly LiveTrain[]; asOf: string | null }>({ trains: [], asOf: null });
   const at = leg.stops[0]?.point;
   useEffect(() => {
     if (leg.bus || !at) return;
     let gone = false;
+    // A failed read keeps the last good one, which counts down until it is too old (liveForBoarding).
     const read = () =>
       void requestStationTimes(at).then((times) => {
-        if (!gone) setLive(times?.live?.trains ?? []);
+        if (!gone && times?.live) setLive({ trains: times.live.trains, asOf: times.live.as_of });
       });
     read();
-    const timer = window.setInterval(read, TIMES_TTL_MS);
+    // Just past the cache's life, so each read is a new one.
+    const timer = window.setInterval(read, TIMES_TTL_MS + 1_000);
     return () => {
       gone = true;
       window.clearInterval(timer);
@@ -76,7 +78,7 @@ export function BoardingCard({
   }, [leg.bus, at?.[0], at?.[1]]); // eslint-disable-line react-hooks/exhaustive-deps -- the station's place
   const groups = boardingGroups(leg.trains?.length ? leg.trains : [{ line: leg.line, toward: leg.toward }], off);
   // The next two trains that make the ride, each named by its line and end; else the plan's times.
-  const [first, second] = liveForBoarding(live, groups, leg.stops);
+  const [first, second] = liveForBoarding(live.trains, groups, leg.stops, { asOf: live.asOf, nowMs: now });
   const next = nextDepartureText(leg, departure, now);
   const later = laterDepartureText(departure, now);
   return (
@@ -166,7 +168,7 @@ function LineBadges({ lines }: { lines: readonly string[] }) {
   );
 }
 
-/** One live train: its line's badge, its end and when ("[Orange] New Carrollton, in 3 min, live"). */
+/** One live train: its line's badge, when and its end ("[Orange] 3 min New Carrollton"). */
 function LiveTrainLine({ train }: { train: { line: string; toward: string; minutes: number } }) {
   return (
     <span className="boarding-live">

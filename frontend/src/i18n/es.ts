@@ -2319,7 +2319,6 @@ export const ES: Readonly<Record<string, string>> = {
   "Get off": "Bájese en",
   "Next train": "Próximo tren",
   "Next bus": "Próximo autobús",
-  "{time}, in {min} min": "{time}, en {min} min",
   "every {min} min": "cada {min} min",
   "After that": "Después",
   "toward": "hacia",

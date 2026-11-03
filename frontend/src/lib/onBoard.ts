@@ -201,7 +201,8 @@ export function stopsLeftText(leg: OnBoardLeg, state: Pick<OnBoardState, "at">):
 
 /**
  * The boarding card's "Next train" (Stephen, 2026-11-03: "Line, final destination, actual destination, next train"): a
- * timed departure as its time and the minutes to it ("6:27 pm, in 12 min"), "Now" once due; a frequent service as how
+ * timed departure as the minutes to it ("7 min"; Stephen, 2026-11-03: "7 min works fine too instead of being verbose"),
+ * its time when an hour or more off, "Now" once due; a frequent service as how
  * often it runs ("every 5 min"); null where the plan says neither.
  */
 export function nextDepartureText(leg: Pick<OnBoardLeg, "everyMin" | "departs">, departure: { departs: string; departs_at: string } | null, nowMs: number): string | null {
@@ -223,14 +224,14 @@ function timeAndMinutes(time: string, iso: string, nowMs: number): string {
   const min = Math.ceil((at - nowMs) / 60_000);
   // Due: "Now" for two minutes, then the time alone (it may have left).
   if (min <= 0) return min > -2 ? t("Now") : time;
-  return t("{time}, in {min} min", { time, min: String(min) });
+  return min < 60 ? t("{min} min", { min: String(min) }) : time;
 }
 
 
 /** A line's colour for its badge (WMATA's, the Penn Line's gold), and the text colour that reads on it; null for others. */
 export function lineBadge(line: string): { background: string; color: string } | null {
   const name = line.toLowerCase();
-  if (name.includes("penn")) return { background: PENN_COLOUR, color: "#ffffff" };
+  if (/\bpenn line$/.test(name)) return { background: PENN_COLOUR, color: "#ffffff" };
   for (const style of Object.values(METRO_LINES)) {
     if (name === `${style.label.toLowerCase()} line`) {
       // White reads at 4.5:1 only on Red (6.3:1); every other line's colour takes dark text (5.7:1 and up).
@@ -255,35 +256,74 @@ export function boardingGroups(trains: readonly { line: string; toward: string |
   return groups;
 }
 
-/** A Metro station's live trains (core.transit_live.station): each line and way's next minutes. */
+/** A Metro station's live trains (core.transit_live.station): each line and way's next minutes, and where it ends. */
 export interface LiveTrain {
   line: string;
   toward: string;
+  /** WMATA's place for the train's last station; null where WMATA gave no code. */
+  end?: LonLat | null;
   minutes: number[];
 }
+
+/** A live reading this old says nothing (core.transit_live.LIVE_FRESH_S). */
+export const LIVE_FRESH_MS = 180_000;
+/** A train's end station this much nearer the boarding than the rider's stop still counts as going there. */
+const SHORT_TURN_SLACK_M = 400;
 
 function colour(line: string): string {
   return line.toLowerCase().replace(/ line$/, "").trim();
 }
 
+/** A station's name to compare: "Vienna/Fairfax-GMU", "vienna fairfax gmu" alike. */
+function nameKey(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+/** Whether a train ending at `end` takes the rider from `board` to `alight`: it heads that way and goes at least that far. */
+function goesTo(end: LonLat, board: LonLat, alight: LonLat): boolean {
+  return haversineM(end, alight) < haversineM(end, board) && haversineM(board, end) >= haversineM(board, alight) - SHORT_TURN_SLACK_M;
+}
+
 /**
  * The boarding's live next trains, soonest first (Stephen, 2026-11-03: "Show the next train though", "If the next
  * train is orange show that one. If the one after is silver show that", "Skip the ones that don't go to the right
- * place"): only trains of the ride's lines signed to one of its ends or to the stop the rider gets off at (a short
- * turn that ends there); never one the other way, one that turns back short of the rider's stop, nor a line that
- * does not make the ride.
+ * place"): only trains of the ride's lines that take the rider to the stop to get off, never one the other way, one
+ * that turns back short of it, nor a line that does not make the ride. Where WMATA gave the train's end station, its
+ * place decides; else its name must be one of that line's ends, or the stop to get off. Minutes count down from the
+ * reading's time (`asOf`); a reading over LIVE_FRESH_MS old says nothing.
  */
 export function liveForBoarding(
   live: readonly LiveTrain[],
   groups: readonly { lines: string[]; toward: string | null }[],
-  stops: readonly { name: string }[],
+  stops: readonly { name: string; point?: LonLat | null }[],
+  clock: { asOf?: string | null; nowMs?: number } = {},
 ): { line: string; toward: string; minutes: number }[] {
-  const off = stops.length > 0 ? stops[stops.length - 1].name.toLowerCase() : null;
-  const ours = new Set(groups.flatMap((g) => g.lines.map(colour)));
-  const ends = new Set(groups.map((g) => g.toward?.toLowerCase()).filter((e): e is string => !!e));
+  if (stops.length === 0) return [];
+  const board = stops[0].point ?? null;
+  const last = stops[stops.length - 1];
+  const off = nameKey(last.name);
+  const asOf = clock.asOf ? Date.parse(clock.asOf) : NaN;
+  const gone = Number.isFinite(asOf) && clock.nowMs != null ? Math.max(0, clock.nowMs - asOf) : 0;
+  if (gone > LIVE_FRESH_MS) return [];
+  const ends = new Map<string, Set<string>>();
+  for (const group of groups) {
+    for (const line of group.lines) {
+      const set = ends.get(colour(line)) ?? new Set<string>();
+      if (group.toward) set.add(nameKey(group.toward));
+      ends.set(colour(line), set);
+    }
+  }
+  const takes = (train: LiveTrain): boolean => {
+    const lineEnds = ends.get(colour(train.line));
+    if (!lineEnds) return false;
+    if (train.end && board && last.point) return goesTo(train.end, board, last.point);
+    const end = nameKey(train.toward);
+    return lineEnds.has(end) || end === off;
+  };
   return live
-    .filter((train) => ours.has(colour(train.line)) && (ends.has(train.toward.toLowerCase()) || train.toward.toLowerCase() === off))
-    .flatMap((train) => train.minutes.map((minutes) => ({ line: train.line, toward: train.toward, minutes })))
+    .filter(takes)
+    .flatMap((train) => train.minutes.map((minutes) => ({ line: train.line, toward: train.toward, minutes: Math.round(minutes - gone / 60_000) })))
+    .filter((train) => train.minutes >= 0)
     .sort((a, b) => a.minutes - b.minutes);
 }
 

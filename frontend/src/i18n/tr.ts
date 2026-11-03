@@ -1853,7 +1853,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Get off": "İneceğiniz durak",
   "Next train": "Sonraki tren",
   "Next bus": "Sonraki otobüs",
-  "{time}, in {min} min": "{time}, {min} dk sonra",
   "every {min} min": "her {min} dk'da bir",
   "After that": "Sonraki",
   "toward": "yönü",

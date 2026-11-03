@@ -177,12 +177,14 @@ test("a walk not seen to end (no GPS on the way down) hands over after its plann
   assert.equal(onwardStep(parts, s, 60_000, fix(north(30), 250, 60_000), "full").state.index, 1);
 });
 
-test("waiting to board, the card's next departure: a timed one's time and minutes, a frequent one's interval (Stephen, 2026-11-03)", () => {
+test("waiting to board, the card's next departure: a timed one's minutes, a frequent one's interval (Stephen, 2026-11-03: \"7 min works fine\")", () => {
   const departs_at = "2026-11-03T18:27:00-05:00";
   const at = Date.parse(departs_at);
   const timed = { departs: "6:27 pm", departs_at };
-  assert.equal(nextDepartureText({ everyMin: null }, timed, at - 12 * 60_000), "6:27 pm, in 12 min");
-  assert.equal(nextDepartureText({ everyMin: null }, timed, at - 30_000), "6:27 pm, in 1 min");
+  assert.equal(nextDepartureText({ everyMin: null }, timed, at - 12 * 60_000), "12 min");
+  assert.equal(nextDepartureText({ everyMin: null }, timed, at - 30_000), "1 min");
+  // An hour or more off: its time.
+  assert.equal(nextDepartureText({ everyMin: null }, timed, at - 75 * 60_000), "6:27 pm");
   assert.equal(nextDepartureText({ everyMin: null }, timed, at + 1000), "Now");
   // Long past: the time alone, never "Now" for ever.
   assert.equal(nextDepartureText({ everyMin: null }, timed, at + 5 * 60_000), "6:27 pm");
@@ -191,7 +193,7 @@ test("waiting to board, the card's next departure: a timed one's time and minute
   assert.equal(nextDepartureText({ everyMin: null, departs: "7:42 am" }, null, at), "7:42 am");
   assert.equal(nextDepartureText({ everyMin: null }, null, at), null);
   // The one after it, in case the rider can't make it.
-  assert.equal(laterDepartureText({ next: "7:15 pm", next_at: "2026-11-03T19:15:00-05:00" }, at), "7:15 pm, in 48 min");
+  assert.equal(laterDepartureText({ next: "7:15 pm", next_at: "2026-11-03T19:15:00-05:00" }, at), "48 min");
   assert.equal(laterDepartureText({ next: null, next_at: null }, at), null);
   assert.equal(laterDepartureText(null, at), null);
 });
@@ -252,4 +254,49 @@ test("the next live trains are the ones that make the ride, soonest first, each 
   assert.deepEqual(liveForBoarding([], groups, stops), []);
   assert.equal(liveNextText(3), "3 min");
   assert.equal(liveNextText(0), "Arriving");
+});
+
+test("a live train goes the ride's way by where WMATA says it ends, never by its name alone", () => {
+  const groups = [{ lines: ["Orange Line", "Silver Line"], toward: "New Carrollton" }];
+  const triangle: [number, number] = [-77.0282, 38.8937];
+  const market: [number, number] = [-76.995334, 38.884124];
+  const stops = [
+    { name: "Federal Triangle", point: triangle },
+    { name: "Eastern Market", point: market },
+  ];
+  const live = [
+    // Signed differently from the schedule's end, but ending past the rider's stop: it makes the ride.
+    { line: "Orange Line", toward: "NewCrltn", end: [-76.8718, 38.9478] as [number, number], minutes: [4] },
+    // Ends the other way, or short of the stop: skipped.
+    { line: "Silver Line", toward: "Vienna/Fairfax-GMU", end: [-77.2716, 38.8779] as [number, number], minutes: [2] },
+    { line: "Orange Line", toward: "Smithsonian", end: [-77.028, 38.8881] as [number, number], minutes: [1] },
+  ];
+  assert.deepEqual(liveForBoarding(live, groups, stops), [{ line: "Orange Line", toward: "NewCrltn", minutes: 4 }]);
+});
+
+test("without WMATA's end, a train's line and name must belong together; names compare without punctuation", () => {
+  const groups = [
+    { lines: ["Orange Line"], toward: "Vienna/Fairfax-GMU" },
+    { lines: ["Silver Line"], toward: "Ashburn" },
+  ];
+  const stops = [{ name: "Rosslyn" }, { name: "Ballston-MU" }];
+  const live = [
+    { line: "Orange Line", toward: "Vienna Fairfax GMU", minutes: [3] },
+    // Orange is a ride line and Ashburn a ride end, but no Orange train goes to Ashburn.
+    { line: "Orange Line", toward: "Ashburn", minutes: [1] },
+  ];
+  assert.deepEqual(liveForBoarding(live, groups, stops), [{ line: "Orange Line", toward: "Vienna Fairfax GMU", minutes: 3 }]);
+});
+
+test("live minutes count down from the reading's time, and a reading too old says nothing", () => {
+  const groups = [{ lines: ["Red Line"], toward: "Glenmont" }];
+  const stops = [{ name: "Union Station" }, { name: "Glenmont" }];
+  const live = [{ line: "Red Line", toward: "Glenmont", minutes: [1, 6] }];
+  const asOf = "2026-11-03T18:00:00-05:00";
+  const t0 = Date.parse(asOf);
+  assert.deepEqual(
+    liveForBoarding(live, groups, stops, { asOf, nowMs: t0 + 2 * 60_000 }).map((x) => x.minutes),
+    [4],
+  );
+  assert.deepEqual(liveForBoarding(live, groups, stops, { asOf, nowMs: t0 + 4 * 60_000 }), []);
 });
