@@ -1,12 +1,14 @@
 /**
  * The planner's figures as a screen reader says them (the a11y review's a11y-6: "mi", "h" and a bare "m" were read as
  * letters or as minutes): the same figures as lib/format.ts formatDistance, formatDuration and formatClimb, the units
- * in words, US units first and metric in brackets. Ride's own speech is lib/format.ts spokenDistance (US units only).
+ * in words, US units first and metric in brackets. In metric mode (lib/units.ts) metric alone, in words, as Ride says
+ * it. Ride's own speech is lib/format.ts spokenDistance (one unit).
  *
  * Plain data in, plain data out, so node --test runs all of it.
  */
 import { FEET_BELOW_M, FEET_PER_METRE, formatDistance, kmFigure, milesFigure } from "./format.ts";
 import { t } from "./i18n.ts";
+import { metricFirst } from "./units.ts";
 
 const DASH = "–";
 
@@ -26,6 +28,11 @@ function feetSpoken(feet: string, meters: string): string {
 /** "12.3 miles (19.8 kilometers)"; below a tenth of a mile "500 feet (150 meters)", as formatDistance shows it. */
 export function formatDistanceSpoken(metres: number): string {
   if (!usable(metres)) return formatDistance(metres);
+  if (metricFirst()) {
+    if (metres < 1000) return t("{n} meters", { n: roundShort(metres) });
+    const km = kmFigure(metres);
+    return km === "1.0" ? t("1 kilometer") : t("{n} kilometers", { n: km });
+  }
   if (metres < FEET_BELOW_M) return feetSpoken(String(roundShort(metres * FEET_PER_METRE)), String(roundShort(metres)));
   const miles = milesFigure(metres);
   const km = kmFigure(metres);
@@ -47,5 +54,6 @@ export function formatDurationSpoken(seconds: number): string {
 /** A climb or an elevation: "340 feet (104 meters)", "2,930 feet (893 meters)", as formatClimb shows it. */
 export function formatClimbSpoken(metres: number): string {
   if (!usable(metres)) return DASH;
+  if (metricFirst()) return t("{n} meters", { n: Math.round(metres).toLocaleString("en-US") });
   return feetSpoken(Math.round(metres * FEET_PER_METRE).toLocaleString("en-US"), Math.round(metres).toLocaleString("en-US"));
 }

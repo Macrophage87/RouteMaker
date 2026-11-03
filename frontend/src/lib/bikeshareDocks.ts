@@ -31,6 +31,7 @@
 import { CLIMB_FONT } from "./climbs.ts";
 import { hexToRgb, rasterise, type Raster, type Rgb } from "./stationIcons.ts";
 import { locale, t } from "./i18n.ts";
+import { unitsFirstDeep } from "./format.ts";
 
 export interface DockInfo {
   id: string;
@@ -167,7 +168,7 @@ export async function loadDocks(
   try {
     const response = await fetcher(path, { signal, credentials: "same-origin" });
     if (!response.ok) return null;
-    return parseDocks(await response.json());
+    return parseDocks(unitsFirstDeep(await response.json()));
   } catch {
     return null;
   }
