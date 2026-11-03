@@ -309,6 +309,59 @@ def test_the_road_a_separate_facility_lies_beside_is_named_too():
     assert separate_pairs([]) == (set(), set())
 
 
+def test_a_road_that_says_separate_with_only_sidewalks_beside_it_is_not_drawn_faint():
+    """Connecticut Avenue NW between Davenport and Everett Streets (OSM way 130908011,
+    `cycleway:both=separate`, only sidewalks mapped beside it) faded out on the map
+    with nothing in its place (owner report, 2026-11-03). The map draws a road faint
+    only beside a bike way that is there (`roads_with_bikeway_beside`)."""
+    from routemaker.facility import roads_with_bikeway_beside
+
+    avenue = (
+        130908011,
+        {"highway": "primary", "name": "Connecticut Avenue Northwest",
+         "cycleway:both": "separate", "sidewalk:both": "separate"},
+        _line(-77.068, 38.953),
+    )  # fmt: skip
+    sidewalk = (2, {"highway": "footway", "footway": "sidewalk"}, _line(-77.068, 38.9531))
+    assert roads_with_bikeway_beside([avenue, sidewalk]) == set()
+    track = (3, {"highway": "cycleway"}, _line(-77.068, 38.9531))
+    assert roads_with_bikeway_beside([avenue, sidewalk, track]) == {130908011}
+
+
+@pytest.mark.parametrize(
+    "track_tags",
+    [
+        {"highway": "cycleway"},
+        {"highway": "cycleway", "separation:left": "flex_post"},  # protected by its own tags
+        {"highway": "cycleway", "is_sidepath": "yes"},
+        {"highway": "footway", "footway": "sidewalk", "bicycle": "designated"},
+    ],
+)
+def test_a_cycle_track_keeps_its_road_drawn_faint_however_it_is_tagged(track_tags):
+    """15th Street NW and the like stay faint beside their tracks (OWNER-DECISIONS 73,
+    78) whether the track is a plain cycleway or protected by its own tags."""
+    from routemaker.facility import roads_with_bikeway_beside
+
+    road = (1, {"highway": "primary", "cycleway:left": "separate"}, _line(-77.03, 38.90))
+    track = (2, track_tags, _line(-77.03, 38.9001))
+    assert roads_with_bikeway_beside([road, track]) == {1}
+
+
+def test_a_long_straight_track_of_two_points_meets_every_block_beside_it():
+    """A track drawn as one long straight segment still flags each road block it runs
+    beside, not only the blocks at its two ends."""
+    from routemaker.facility import roads_with_bikeway_beside
+
+    step = 0.0013  # about 110 m of longitude here
+    blocks = [
+        (10 + k, {"highway": "primary", "cycleway:right": "separate"},
+         [(-77.03 + k * step, 38.90), (-77.03 + (k + 1) * step, 38.90)])
+        for k in range(4)
+    ]  # fmt: skip
+    track = (2, {"highway": "cycleway"}, [(-77.03, 38.9001), (-77.03 + 4 * step, 38.9001)])
+    assert roads_with_bikeway_beside([*blocks, track]) == {10, 11, 12, 13}
+
+
 def test_a_named_trail_beside_a_parkway_that_says_separate_stays_a_path():
     """The owner, 2026-10-12: Rock Creek Trail (OSM way 1355215830, highway=cycleway)
     hugs Rock Creek and Potomac Parkway (cycleway:left=separate) between P and M

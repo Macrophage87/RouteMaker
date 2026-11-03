@@ -45,7 +45,7 @@ to prefer it.
 from __future__ import annotations
 
 import math
-from collections.abc import Iterable, Sequence
+from collections.abc import Collection, Iterable, Sequence
 from enum import StrEnum
 
 from .classes import MOTOR_ONLY_HIGHWAY, TRAIL_CLASS_HIGHWAY
@@ -623,8 +623,9 @@ def has_separate_bikeway(tags: dict[str, str]) -> bool:
     2026-09-29: "there's several cases of a protected bike lane next to LTS3
     or 4. In that case, don't show the road, perhaps hide it until zoom 15-16.
     The bike lane should show up as the main." and "Keep it faint if it
-    parallels a protected bike path."; OWNER-DECISIONS 73, 78). A trail-class
-    way is the facility, not the road."""
+    parallels a protected bike path."; OWNER-DECISIONS 73, 78). The tag alone:
+    the map's `separate_bikeway` also needs the bike way to be mapped beside it
+    (`roads_with_bikeway_beside`). A trail-class way is the facility, not the road."""
     return tags.get("highway") not in TRAIL_CLASS_HIGHWAY and declares_separate(tags)
 
 
@@ -734,6 +735,9 @@ def beside_separate_roads(
 
 def separate_pairs(
     ways: Iterable[tuple[int, dict[str, str], Sequence[tuple[float, float]]]],
+    *,
+    kinds: Collection[Facility] = (Facility.PATH,),
+    step_m: float | None = None,
 ) -> tuple[set[int], set[int]]:
     """(the trails `beside_separate_roads` finds, the roads they lie beside).
 
@@ -741,6 +745,11 @@ def separate_pairs(
     "bike infrastructure": a road that says its facility is mapped separately
     and has such a trail along it. A named trail along it counts there too, though
     it stays a path in the first set.
+
+    `kinds`: the classes a trail-class way may have by its own tags to be asked
+    (a path by default). `step_m`: when given, each trail is looked at every that
+    many metres along it rather than at its vertices only, so a long straight
+    trail of two points still meets every road block it runs beside.
     """
     ways = list(ways)
     if not ways:
@@ -770,9 +779,11 @@ def separate_pairs(
     for osm_id, tags, coords in ways:
         if tags.get("highway") not in TRAIL_CLASS_HIGHWAY or len(coords) < 2:
             continue
-        if facility(tags) is not Facility.PATH:
+        if facility(tags) not in kinds:
             continue
         points = [_xy(lon, lat, lat0) for lon, lat in coords]
+        if step_m is not None:
+            points = [p for p, _bearing, _metres in _samples(points, step_m)]
         near = 0
         beside: set[int] = set()
         for p in points:
@@ -786,6 +797,21 @@ def separate_pairs(
             if not named_for_itself(tags.get("name"), (road_names.get(road) for road in beside)):
                 found.add(osm_id)
     return found, roads
+
+
+def roads_with_bikeway_beside(
+    ways: Iterable[tuple[int, dict[str, str], Sequence[tuple[float, float]]]],
+) -> set[int]:
+    """The roads the stress map draws faint and late as beside their own bike way
+    (`segment.separate_bikeway`; OWNER-DECISIONS 73, 78): a road that says
+    `cycleway*=separate` (`has_separate_bikeway`) AND has a bike way mapped along it,
+    a path or a protected track by its own tags, looked at every SIDE_STREET_STEP_M.
+    The tag alone is not enough: Connecticut Avenue NW from Davenport to Everett
+    Street (OSM way 130908011) says it with only sidewalks beside it, and faded out
+    with nothing to show in its place."""
+    return separate_pairs(
+        ways, kinds=(Facility.PATH, Facility.PROTECTED), step_m=SIDE_STREET_STEP_M
+    )[1]
 
 
 # --- An unnamed bike lane beside a named street (v0.7.0, "Go riding fixes" item 4) ------------

@@ -1480,9 +1480,12 @@ the same whatever the style decides):
   you aren't going to route around them." - "Show them faintly", then "Make
   solid at 14" (OWNER-DECISIONS 76, 77);
 - a road whose own tags say its bike facility is mapped as a way of its own
-  beside it (`segment.separate_bikeway`: 15th Street NW, Pennsylvania Avenue
-  NW) is not drawn until `BESIDE_ROAD_MIN_ZOOM` (15, of the owner's "15-16")
-  and then faint at every zoom, so the cycle track is the main line (73, and
+  beside it, and that has such a bike way mapped along it
+  (`segment.separate_bikeway`, `facility.roads_with_bikeway_beside`: 15th
+  Street NW, Pennsylvania Avenue NW; a tag with no bike way beside it, as on
+  Connecticut Avenue NW from Davenport to Everett Street, keeps the road drawn
+  as usual) is not drawn until `BESIDE_ROAD_MIN_ZOOM` (15, of the owner's
+  "15-16") and then faint at every zoom, so the cycle track is the main line (73, and
   "Keep it faint if it parallels a protected bike path.", 78);
 - only a road (`segment.map_class = 'road'`) is drawn at all. A public road a
   bicycle may not use (`'barred'`: a motorway, a trunk road with
@@ -1554,7 +1557,7 @@ the same whatever the style decides):
   ways' own access tags.
 
 `map_class` and `separate_bikeway` are **segment columns the rebuild writes**
-(`routemaker.facility.map_class`, `has_separate_bikeway`): they reach the map
+(`routemaker.facility.map_class`, `roads_with_bikeway_beside`): they reach the map
 only after a rebuild with this code. On a table without them a road a bicycle
 may not use is a motorway alone (its recorded rule, and it is not drawn),
 nothing else is left out, and no road is known to have a bikeway beside it.
