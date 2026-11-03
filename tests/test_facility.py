@@ -1150,17 +1150,24 @@ def test_a_separated_or_segregated_one_is_a_protected_bike_lane(tags) -> None:
     assert names == {2: "9th Street Northwest protected bike lane"}
 
 
+def test_a_sidewalk_signed_for_bicycles_is_the_sidewalk_beside_the_street() -> None:
+    """Kemp Mill Road (OSM way 886775743), a sidewalk tagged `bicycle=designated`. The
+    owner, 2026-11-03: "Kemp Mill road doesn't have a bike lane" and "There's a narrow
+    sidewalk which I wouldn't call a "path"."""
+    street = (1, {"highway": "tertiary", "name": "Kemp Mill Road"}, NINTH)
+    tags = {
+        "highway": "footway",
+        "footway": "sidewalk",
+        "bicycle": "designated",
+        "foot": "designated",
+    }
+    names = facility_rules.side_street_names([street, (2, tags, _east(NINTH, 6))])
+    assert names == {2: "sidewalk beside Kemp Mill Road"}
+
+
 @pytest.mark.parametrize(
     "tags",
     [
-        # Kemp Mill Road (OSM way 886775743): a sidewalk signed for bicycles. The owner,
-        # 2026-11-03: "Kemp Mill road doesn't have a bike lane".
-        {
-            "highway": "footway",
-            "footway": "sidewalk",
-            "bicycle": "designated",
-            "foot": "designated",
-        },
         {"highway": "cycleway", "foot": "designated", "segregated": "no"},
         {"highway": "path", "bicycle": "designated"},
     ],
@@ -1174,7 +1181,7 @@ def test_a_path_shared_with_walkers_is_the_path_beside_the_street_not_a_bike_lan
 @pytest.mark.parametrize(
     ("tags", "name"),
     [
-        # A sidewalk is the path beside its street even behind a kerb.
+        # A sidewalk is the sidewalk beside its street even behind a kerb.
         (
             {
                 "highway": "footway",
@@ -1182,7 +1189,7 @@ def test_a_path_shared_with_walkers_is_the_path_beside_the_street_not_a_bike_lan
                 "bicycle": "designated",
                 "separation": "kerb",
             },
-            "path beside Kemp Mill Road",
+            "sidewalk beside Kemp Mill Road",
         ),
         # Split into a walking half and a riding half: a bike lane of its own.
         (
@@ -1208,6 +1215,7 @@ def test_a_kerbed_segregated_or_foot_closed_side_way(tags, name) -> None:
     ("name", "street"),
     [
         ("path beside Kemp Mill Road", "Kemp Mill Road"),
+        ("sidewalk beside Kemp Mill Road", "Kemp Mill Road"),
         ("K Street Northwest protected bike lane", "K Street Northwest"),
         ("K Street Northwest bike lane", "K Street Northwest"),
         ("path", None),

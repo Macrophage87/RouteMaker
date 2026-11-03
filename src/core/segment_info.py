@@ -42,7 +42,7 @@ from routemaker import (
     trail_facts,
 )
 from routemaker.describe import UNNAMED_PATH, UNNAMED_ROAD
-from routemaker.facility import SHARED_PATH_PREFIX
+from routemaker.facility import SHARED_PREFIXES
 from routemaker.stress import (
     BUSY_RURAL_HIGHWAY_RULE,
     BUSY_STREET_RULE,
@@ -1429,7 +1429,7 @@ def describe(row: dict, router: dict) -> dict:
         or (row.get("sidepath_name") if path else None)
     )
     # "path beside Kemp Mill Road" (`facility.sidepath_name`) heads the panel as a title.
-    if name and name.startswith(SHARED_PATH_PREFIX):
+    if name and name.startswith(SHARED_PREFIXES):
         name = name[0].upper() + name[1:]
     name_source = ROUTER if router.get("name") else (OSM if name else None)
     kind, kind_source = road_kind(router, row)

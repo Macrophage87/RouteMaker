@@ -2570,6 +2570,14 @@ class TestFarSideTurns:
             in entries[1]["text"]
         )
 
+    def test_a_shared_sidewalk_across_the_road_is_crossed_by_its_street(self):
+        entries = self.route(onto="sidewalk beside Saint Paul Street")
+        assert entries[1]["turn"]["across"] == "Saint Paul Street"
+        assert (
+            "Cross Saint Paul Street, then right onto the sidewalk beside Saint Paul Street,"
+            in entries[1]["text"]
+        )
+
     def test_a_left_is_said_the_same_way(self):
         entries = self.route(onto="Saint Paul Street bike lane", turn=-90.0)
         assert entries[1]["turn"]["movement"] == "left"

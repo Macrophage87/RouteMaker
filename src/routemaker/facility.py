@@ -846,6 +846,12 @@ PROTECTED_BIKE_LANE_WORDS = "protected bike lane"
 # It is named as the route description names an unnamed path beside a major road at
 # plan time (`describe.beside_words`): "path beside Kemp Mill Road".
 SHARED_PATH_PREFIX = "path beside "
+# A sidewalk signed for bicycles is still a sidewalk (the owner, 2026-11-03, of the same
+# Kemp Mill Road way: "There's a narrow sidewalk which I wouldn't call a "path""):
+# "sidewalk beside Kemp Mill Road", as `describe.beside_words` says it.
+SHARED_SIDEWALK_PREFIX = "sidewalk beside "
+# Every shared-way prefix, for reading a name back (`sidepath_street`).
+SHARED_PREFIXES = (SHARED_PATH_PREFIX, SHARED_SIDEWALK_PREFIX)
 # The `foot` values that say people on foot share the way.
 SHARED_FOOT = frozenset({"yes", "designated", "permissive"})
 
@@ -867,14 +873,14 @@ def shared_with_walkers(tags: dict[str, str]) -> bool:
 
 
 def sidepath_name(street: str, tags: dict[str, str]) -> str:
-    """ "<street> protected bike lane" where the way is tagged separated from the road or
-    segregated; else "path beside <street>" where people on foot share it
-    (`shared_with_walkers`); else "<street> bike lane". A sidewalk is the path beside
-    its street even behind a kerb (`separation=kerb`): only `segregated=yes` makes it a
-    bike lane of its own."""
+    """ "sidewalk beside <street>" for a sidewalk a bicycle may ride, even behind a kerb
+    (`separation=kerb`); "<street> protected bike lane" where the way is tagged
+    separated from the road or segregated (`segregated=yes` makes a sidewalk one too);
+    else "path beside <street>" where people on foot share it (`shared_with_walkers`);
+    else "<street> bike lane"."""
     segregated = tags.get("segregated") == "yes"
     if _is_sidewalk(tags) and shared_with_walkers(tags):
-        return f"{SHARED_PATH_PREFIX}{street}"
+        return f"{SHARED_SIDEWALK_PREFIX}{street}"
     if segregated or any(_physical(tags.get(key)) for key in TRAIL_SEPARATION_KEYS):
         return f"{street} {PROTECTED_BIKE_LANE_WORDS}"
     if shared_with_walkers(tags):
@@ -888,8 +894,9 @@ def sidepath_street(name: str | None) -> str | None:
     Mill Road"), or None for any other name."""
     if not name:
         return None
-    if name.startswith(SHARED_PATH_PREFIX):
-        return name[len(SHARED_PATH_PREFIX) :] or None
+    for prefix in SHARED_PREFIXES:
+        if name.startswith(prefix):
+            return name[len(prefix) :] or None
     for words in (PROTECTED_BIKE_LANE_WORDS, BIKE_LANE_WORDS):
         if name.endswith(" " + words):
             return name[: -len(words) - 1] or None
