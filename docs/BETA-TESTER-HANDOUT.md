@@ -247,10 +247,35 @@ method" have the same groups. Typing "transit",
 - Bikeshare + 🚶🚆🚌 docks the bike before you board. At each end it walks or uses a bikeshare
   bike, whichever is quicker. The docks are named. It also offers "Walk the whole way" when
   walking is quickest or the trip is under about 1 mile (1.6 km).
+- Walk and Walk + 🚆🚌 (ride types, under Transportation) take no bike. Walk goes on foot the whole
+  way, on sidewalks, paths and crosswalks; "Start walk" follows it turn by turn. Walk + 🚆🚌 walks at
+  each end with Metro, MARC, VRE, Light RailLink, Metro SubwayLink or a bus between, and offers
+  walking the whole way where that is quickest or short. Both take a start and an end only for now.
+- Avoid stairs on walks (Settings, Riding, and the ride settings of Walk and Walk + 🚆🚌) keeps the
+  walks of Bikeshare, transit and Walk trips off flights of steps where a step-free way is near. It
+  is off unless you turn it on. A walk beside your own bike always avoids steps. A station is still
+  reached by its nearest entrance, which may have stairs.
+- Walks prefer a signal where they cross a busy road, keep clear of slip lanes, and stay off main
+  roads where no sidewalk is mapped, more so the busier the road. A quiet street is crossed anywhere. The turn by
+  turn says each crosswalk and busy crossing: "Cross Pratt Street at the signal."
+- While you ride a transit trip, until you board its first train or bus, the app plans it again from
+  where you are every 2 minutes, and at the stop until about a minute before its departure. If another
+  trip is now at least 3 minutes quicker, or yours can no longer be caught, the ride changes to it and
+  says so; a trip you picked is changed too. The ride screen starts again with the new trip, so its
+  time and distance count from the change. A delay on your trip is said with the new arrival time.
 - The steps show each ride, walk and train or bus in order, with the total door to door. They say
   how riding the whole way compares.
 - On the map, a dashed line is the ride on transit, marked with its system's name. A dotted line
   is a walk.
+- In the steps, a train or bus step has its stops ("5 transit stops") and a walk its turns ("3 turns"),
+  closed until you press them. The boarding step names the way the line runs ("the Red Line toward
+  Shady Grove").
+- In Ride mode, walks are turn by turn, as rides are, and never "off route". Once the ride to a station
+  ends and you board, the screen lists the stops ahead and says "Next stop: Union Station. Get off there."
+  one stop before yours (on a bus, to press the stop button), then "Get off here". It places you by any
+  location the phone has, a rough Wi-Fi one underground too; with none for a while it goes by the
+  timetable and says so ("by the timetable"). The ride doesn't pause at the end while a walk or a
+  train after the ride is still being followed.
 - All times are "about" and scheduled, from the agencies' published timetables, except on a trip
   leaving now: there a Metro train or Metrobus bus you can reach in time for is WMATA's live
   prediction and says "live". The time on board stays the timetable's.

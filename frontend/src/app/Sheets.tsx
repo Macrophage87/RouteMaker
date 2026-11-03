@@ -27,6 +27,7 @@ import { setTopoLines, TopoLinesSwitch } from "../lib/topoLines.ts";
 import { stressShowable, terrainLayers, terrainStatus } from "../lib/terrainSection.ts";
 import { LayerSection } from "../lib/layerSection.ts";
 import { AccessibilitySwitch } from "../lib/accessibilitySwitch.ts";
+import { AvoidStairsSwitch } from "../AvoidStairsSwitch.tsx";
 import { ACCESS_FINE_TUNE, ACCESS_HELP, ACCESS_LABEL } from "../lib/accessMode.ts";
 import { RideSettingsFields } from "../RideMode.tsx";
 import { RIDE_ICONS_HELP, RIDE_ICONS_LABEL, RIDE_TEXT_HELP, RIDE_TEXT_LABEL, readRideIconsOnly, writeRideIconsOnly, type RideTextSize } from "../lib/rideOutput.ts";
@@ -665,6 +666,8 @@ export function SettingsSheet(props: SettingsSheetProps) {
       <section aria-labelledby="settings-ride-heading" className="settings-group">
         <h3 id="settings-ride-heading" className="visually-hidden">{t("Riding")}</h3>
         <RideSettingsFields prefs={ridePrefs} onChange={changeRidePrefs} idBase="settings-ride" compact />
+        {/* Avoid stairs on walks (Stephen, 2026-11-02): a switch of its own, for Go and Plan alike. */}
+        <AvoidStairsSwitch idBase="settings-avoid-stairs" />
         {/* Rider and bike weight, for how hard hills feel (the owner, 2026-10-18: "probably belongs in settings"); set once, so last. */}
         <div className="setting-row weight-row">
           <div className="setting-line">
@@ -925,6 +928,7 @@ const RIDE_ICON: Partial<Record<PresetId, IconName>> = {
   "mountain-bike": "mtb",
   gravel: "gravel",
   fast: "fast",
+  "road-bike": "roadbike",
   ebike: "bolt",
   "mountain-goat": "mountain",
   "group-ride": "user",
@@ -932,6 +936,9 @@ const RIDE_ICON: Partial<Record<PresetId, IconName>> = {
   trailmaxxing: "trail",
   "bike-transit": "train",
   "bikeshare-transit": "train",
+  walk: "walk",
+  "walk-transit": "walk",
+  run: "run",
   rebalance: "bikeshare",
 };
 
