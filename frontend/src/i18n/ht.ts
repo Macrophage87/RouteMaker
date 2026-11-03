@@ -312,7 +312,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "No GPS signal: the cues are paused until it comes back.": "Pa gen siyal GPS: endikasyon yo kanpe jiskaske li tounen.",
   "Ride mode guides you along the planned route; you stay responsible for riding safely and obeying the rules of the road, and the route can be wrong. It needs the screen on and this page in front, and GPS with a lit screen drains the battery quickly.": "Mòd woulib la gide ou sou wout ki planifye a; se toujou ou ki responsab pou woule an sekirite epi respekte lwa sikilasyon, epi wout la ka pa bon. Li bezwen ekran an limen ak paj sa a devan, epi GPS ak ekran limen fini batri a vit.",
   "Ride mode guides you along the planned route; you stay responsible for riding safely and obeying the rules of the road, and the route can be wrong. In this app the cues go on with the screen locked until you end the ride, and GPS drains the battery.": "Mòd woulib la gide ou sou wout ki planifye a; se toujou ou ki responsab pou woule an sekirite epi respekte lwa sikilasyon, epi wout la ka pa bon. Nan aplikasyon sa a endikasyon yo kontinye ak ekran fèmen jiskaske ou fini woulib la, epi GPS fini batri a.",
-  "You ride at your own risk; the route can be wrong.": "Ou woule sou pwòp risk ou; wout la ka pa bon.",
+  "Ride with care: the route can have mistakes.": "Woule avèk prekosyon: wout la ka gen erè.",
   "Voice on.": "Vwa limen.",
   "Checking closures…": "N ap verifye fèmti yo…",
   "{name}: slide to end": "{name}: glise pou fini",

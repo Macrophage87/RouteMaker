@@ -312,7 +312,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "No GPS signal: the cues are paused until it comes back.": "没有GPS信号：信号恢复前暂停导航。",
   "Ride mode guides you along the planned route; you stay responsible for riding safely and obeying the rules of the road, and the route can be wrong. It needs the screen on and this page in front, and GPS with a lit screen drains the battery quickly.": "骑行模式沿规划的路线为你导航；安全骑行和遵守交通规则仍是你的责任，路线也可能有误。需要保持屏幕开启并让此页面在前台，屏幕亮着时GPS耗电很快。",
   "Ride mode guides you along the planned route; you stay responsible for riding safely and obeying the rules of the road, and the route can be wrong. In this app the cues go on with the screen locked until you end the ride, and GPS drains the battery.": "骑行模式沿规划的路线为你导航；安全骑行和遵守交通规则仍是你的责任，路线也可能有误。在此应用中，锁屏后导航也会继续，直到你结束骑行，GPS会耗电。",
-  "You ride at your own risk; the route can be wrong.": "骑行风险自负；路线可能有误。",
+  "Ride with care: the route can have mistakes.": "请小心骑行：路线可能有误。",
   "Voice on.": "语音已开启。",
   "Checking closures…": "正在检查封路…",
   "{name}: slide to end": "{name}：滑动结束",

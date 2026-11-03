@@ -312,7 +312,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "No GPS signal: the cues are paused until it comes back.": "لا توجد إشارة GPS: الإرشادات متوقفة حتى تعود.",
   "Ride mode guides you along the planned route; you stay responsible for riding safely and obeying the rules of the road, and the route can be wrong. It needs the screen on and this page in front, and GPS with a lit screen drains the battery quickly.": "وضع الرحلة يرشدك على المسار المخطط؛ تبقى مسؤولًا عن القيادة بأمان والالتزام بقواعد المرور، وقد يكون المسار خاطئًا. يحتاج الشاشة مضاءة وهذه الصفحة في المقدمة، وGPS مع شاشة مضاءة يستنزف البطارية بسرعة.",
   "Ride mode guides you along the planned route; you stay responsible for riding safely and obeying the rules of the road, and the route can be wrong. In this app the cues go on with the screen locked until you end the ride, and GPS drains the battery.": "وضع الرحلة يرشدك على المسار المخطط؛ تبقى مسؤولًا عن القيادة بأمان والالتزام بقواعد المرور، وقد يكون المسار خاطئًا. في هذا التطبيق تستمر الإرشادات والشاشة مقفلة حتى تنهي الرحلة، وGPS يستنزف البطارية.",
-  "You ride at your own risk; the route can be wrong.": "تقود على مسؤوليتك؛ قد يكون المسار خاطئًا.",
+  "Ride with care: the route can have mistakes.": "قُد بحذر: قد يحتوي المسار على أخطاء.",
   "Voice on.": "الصوت مُشغَّل.",
   "Checking closures…": "جارٍ التحقق من الإغلاقات…",
   "{name}: slide to end": "{name}: اسحب للإنهاء",

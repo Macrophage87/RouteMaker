@@ -312,7 +312,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "No GPS signal: the cues are paused until it comes back.": "የGPS ምልክት የለም፦ ምልክቱ እስኪመለስ መመሪያዎቹ ቆመዋል።",
   "Ride mode guides you along the planned route; you stay responsible for riding safely and obeying the rules of the road, and the route can be wrong. It needs the screen on and this page in front, and GPS with a lit screen drains the battery quickly.": "የጉዞ ሁነታ በታቀደው መንገድ ይመራዎታል፤ በደህና መንዳት እና የትራፊክ ሕጎችን ማክበር የእርስዎ ኃላፊነት ነው፣ መንገዱም ሊሳሳት ይችላል። ስክሪኑ በርቶ እና ይህ ገጽ ፊት ለፊት መሆን አለበት፣ እና GPS ከበራ ስክሪን ጋር ባትሪውን በፍጥነት ይጨርሳል።",
   "Ride mode guides you along the planned route; you stay responsible for riding safely and obeying the rules of the road, and the route can be wrong. In this app the cues go on with the screen locked until you end the ride, and GPS drains the battery.": "የጉዞ ሁነታ በታቀደው መንገድ ይመራዎታል፤ በደህና መንዳት እና የትራፊክ ሕጎችን ማክበር የእርስዎ ኃላፊነት ነው፣ መንገዱም ሊሳሳት ይችላል። በዚህ መተግበሪያ ውስጥ ጉዞውን እስኪጨርሱ ድረስ ስክሪኑ ተቆልፎም መመሪያዎቹ ይቀጥላሉ፣ እና GPS ባትሪውን ይጨርሳል።",
-  "You ride at your own risk; the route can be wrong.": "በራስዎ ኃላፊነት ይነዳሉ፤ መንገዱ ሊሳሳት ይችላል።",
+  "Ride with care: the route can have mistakes.": "በጥንቃቄ ይንዱ፤ መንገዱ ስህተት ሊኖረው ይችላል።",
   "Voice on.": "ድምፅ በርቷል።",
   "Checking closures…": "መዘጋቶችን በማጣራት ላይ…",
   "{name}: slide to end": "{name}፦ ለመጨረስ ይጎትቱ",

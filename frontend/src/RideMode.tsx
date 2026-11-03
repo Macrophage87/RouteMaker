@@ -421,7 +421,7 @@ export const RIDE_SAFETY_APP =
   t("Ride mode guides you along the planned route; you stay responsible for riding safely and obeying the rules of the road, and the route can be wrong. In this app the cues go on with the screen locked until you end the ride, and GPS drains the battery.");
 export const RIDE_SAFETY = ridesHidden() ? RIDE_SAFETY_APP : RIDE_SAFETY_BROWSER;
 /** Its first point, the one shown in the ride's settings; the rest is under "About Ride mode". */
-export const RIDE_SAFETY_SHORT = t("You ride at your own risk; the route can be wrong.");
+export const RIDE_SAFETY_SHORT = t("Ride with care: the route can have mistakes.");
 
 /** Called inside the Start ride press: unlock the voice with the first sentence, where the rider chose it. */
 export function startRideGesture(prefs: RidePrefs, walk = false, run = false): void {

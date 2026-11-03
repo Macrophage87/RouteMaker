@@ -312,7 +312,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "No GPS signal: the cues are paused until it comes back.": "GPS 신호 없음: 돌아올 때까지 안내가 멈춥니다.",
   "Ride mode guides you along the planned route; you stay responsible for riding safely and obeying the rules of the road, and the route can be wrong. It needs the screen on and this page in front, and GPS with a lit screen drains the battery quickly.": "라이드 모드는 계획한 경로를 따라 안내합니다. 안전한 주행과 교통 법규 준수는 본인 책임이며, 경로가 틀릴 수 있습니다. 화면을 켜고 이 페이지를 앞에 두어야 하며, 화면이 켜진 상태의 GPS는 배터리를 빨리 소모합니다.",
   "Ride mode guides you along the planned route; you stay responsible for riding safely and obeying the rules of the road, and the route can be wrong. In this app the cues go on with the screen locked until you end the ride, and GPS drains the battery.": "라이드 모드는 계획한 경로를 따라 안내합니다. 안전한 주행과 교통 법규 준수는 본인 책임이며, 경로가 틀릴 수 있습니다. 이 앱에서는 라이드를 끝낼 때까지 화면이 잠겨도 안내가 계속되며, GPS는 배터리를 소모합니다.",
-  "You ride at your own risk; the route can be wrong.": "본인 책임으로 주행하세요. 경로가 틀릴 수 있습니다.",
+  "Ride with care: the route can have mistakes.": "조심해서 주행하세요. 경로에 오류가 있을 수 있습니다.",
   "Voice on.": "음성 켜짐.",
   "Checking closures…": "통제 확인 중…",
   "{name}: slide to end": "{name}: 밀어서 종료",
