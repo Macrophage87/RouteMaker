@@ -6827,7 +6827,8 @@ change and no map rebuild.** The beta agent deploys it by itself from the annota
   --force-recreate api worker`, then the front end. No `migrate`. Leave the v0.19.0 map rebuild and
   its swap alone: v0.19.1 runs on either map.
 - [ ] **Beta**, by its agent, once its deployed tag (`$RM_STATE/cd/deployed-tag`) is v0.19.0: the
-  gate sees `frontend/`, `scripts/`, `src/core/` and `tests/` only and deploys. While v0.19.0 is
+  gate sees `frontend/`, `scripts/`, `src/core/`, `src/routemaker/`, `tests/` and the version in
+  `pyproject.toml` only, and deploys. While v0.19.0 is
   held or not yet marked deployed, the diff from v0.18.0 still carries `src/pipeline/schema.py` and
   the agent stops on v0.19.1 too: finish the v0.19.0 hand ship and `mark-deployed v0.19.0` first
   (then `resume` if paused), or ship v0.19.1 by hand as "Shipping an update later", then
@@ -6836,8 +6837,9 @@ change and no map rebuild.** The beta agent deploys it by itself from the annota
 - [ ] **Spot checks.** In a ride, the settings button opens a popup over the map with Colors, High
   contrast and Units first; switching Units changes the distances at once. A bike + transit ride
   shows no Done at the station and picks up the ride after the train. Bikeshare + transit's walking
-  option starts a ride. A MARC boarding never says "the MARC MARC", and the boarding screen shows Line,
-  Toward, Get off, Next train and After that as rows.
+  option starts a ride. A MARC boarding never says "the MARC MARC", and the boarding card shows a line badge
+  for each line that serves the stop with where it is signed to, then Get off, Next train and After
+  that as rows.
 - [ ] **Rollback.** The v0.19.0 api image and front end together. Nothing in the database or the
   map changes.
 
