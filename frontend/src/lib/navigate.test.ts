@@ -2694,14 +2694,20 @@ test("crossing: said once, about 10 s out, at the Full level only", () => {
   assert.equal(ride(model, "stoker", 0, 700).events.filter((e) => e.spoken.includes("Layhill")).length, 0);
 });
 
-test("crossing: one within 30 m of another cue is left to that cue", () => {
-  const model = rideModel(
-    straightRoute([
-      stretch(0, 1000, "Sligo Creek Trail.", { street: "Sligo Creek Trail", facility: "path", crossings: [{ at_m: 990, road: "Colesville Road" }] }),
-      stretch(1000, 1003, "Continue on Sligo Creek Trail, busy road (LTS 3).", { street: "Sligo Creek Trail", facility: "path", tier: 3 }),
-      stretch(1003, 2000, "Continue on Sligo Creek Trail, traffic-free path.", { street: "Sligo Creek Trail", facility: "path" }),
-    ]),
-  );
-  assert.ok(!model.cues.some((c) => c.kind === "crossing"));
-  assert.deepEqual(model.cues.map((c) => c.index), model.cues.map((_c, i) => i));
+test("crossing: one within 30 m of a cue that names the road is left to it; beside any other cue it is said", () => {
+  const model = (road: string) =>
+    rideModel(
+      straightRoute([
+        stretch(0, 1000, "Sligo Creek Trail.", { street: "Sligo Creek Trail", facility: "path", crossings: [{ at_m: 1010, road }] }),
+        stretch(1000, 2000, "Cross Sligo Creek Parkway, then bear left to stay on Sligo Creek Trail.", {
+          street: "Sligo Creek Trail",
+          facility: "path",
+          turn: { ...turning("bear_left", "Sligo Creek Trail"), across: "Sligo Creek Parkway" },
+        }),
+      ]),
+    );
+  assert.ok(!model("Sligo Creek Parkway").cues.some((c) => c.kind === "crossing"));
+  const kept = model("New Hampshire Avenue");
+  assert.equal(kept.cues.filter((c) => c.kind === "crossing").length, 1);
+  assert.deepEqual(kept.cues.map((c) => c.index), kept.cues.map((_c, i) => i));
 });
