@@ -172,6 +172,9 @@ function fromRide(cue: Cue): { type: CourseCueType; name: string; priority: numb
     }
     case "onto":
       return { type: "note", name: street ? abbreviateStreet(street) : "Continue", priority: 1 };
+    case "crossing":
+      // A road a path crosses straight over (2026-11-03): a note to cross it, by the road's name.
+      return { type: "note", name: crossName(cue.cross ?? CROSS_UNNAMED), priority: 1 };
     case "walk":
       return { type: "walk", name: "Walk bike", priority: 4 };
     case "hazard": {
