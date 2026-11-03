@@ -247,6 +247,7 @@ def test_an_empty_table_writes_nothing(segment_schemas, tmp_path):
     ("side", "road"),
     [
         ("path beside Kemp Mill Road", "Kemp Mill Road"),
+        ("sidewalk beside Kemp Mill Road", "Kemp Mill Road"),
         ("Kemp Mill Road bike lane", "Kemp Mill Road bike lane"),
         (None, None),
     ],

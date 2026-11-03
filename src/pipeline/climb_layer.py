@@ -83,7 +83,7 @@ from pathlib import Path
 
 from routemaker import climb_categories, climb_exclusions
 from routemaker.climb_categories import Climb
-from routemaker.facility import SHARED_PATH_PREFIX, sidepath_street
+from routemaker.facility import SHARED_PREFIXES, sidepath_street
 
 from . import climb_names
 from .elevation import HGT_1ARCSEC_SIDE, TileName, tile_for
@@ -210,7 +210,7 @@ class Stroke:
 def _side_name(sidepath_name: str | None) -> str | None:
     """A side-street name as a climb's road: a shared path's street ("path beside Kemp
     Mill Road" is "Kemp Mill Road", the road it climbs beside); any other as it is."""
-    if sidepath_name and sidepath_name.startswith(SHARED_PATH_PREFIX):
+    if sidepath_name and sidepath_name.startswith(SHARED_PREFIXES):
         return sidepath_street(sidepath_name)
     return sidepath_name
 
