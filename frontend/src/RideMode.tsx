@@ -164,7 +164,7 @@ import {
   type Said,
 } from "./lib/rideOutput.ts";
 import { ScreenSleepNote } from "./ScreenSleepNote.tsx";
-import { useRailFit } from "./lib/railFit.ts";
+import { RAIL_INSET_PX, railLeastPx, useRailFit } from "./lib/railFit.ts";
 import { WAITING_FOR_GPS, readOnce, watchRide, type RideGeoEnv } from "./lib/rideWatch.ts";
 import { PAUSE_CHECK_MS, PausedFixes, beatKeepsGps, heartbeatFix, movedFromPause, rideStayPausedSaid, stayStep, stayedLong, type Stay } from "./lib/ridePause.ts";
 import { askCompass } from "./lib/compassHeading.ts";
@@ -270,8 +270,17 @@ import { railWord } from "./lib/railWords.ts";
 import { countText } from "./lib/rideGroup.ts";
 import type { SeeEveryone } from "./app/useSeeEveryone.ts";
 import { SeeEveryoneButton } from "./SeeEveryoneButton.tsx";
-import { AheadGraph } from "./AheadGraph.tsx";
-import { AHEAD_NAME, AHEAD_WORD, aheadOff, aheadOn, aheadViews, readAhead, writeAhead, RIDER_OFF_ROUTE_M, RIDERS_REACH_M, type AheadView } from "./lib/aheadGraph.ts";
+import { AheadGraph, aheadLeastPx } from "./AheadGraph.tsx";
+import { AHEAD_NAME, AHEAD_WORD, aheadNoRoom, aheadOff, aheadOn, aheadViews, readAhead, writeAhead, RIDER_OFF_ROUTE_M, RIDERS_REACH_M, type AheadView } from "./lib/aheadGraph.ts";
+
+/** The bottom panel's padding and top edge (styles.css .ride-controls), and the graph's margin under it. */
+const SHEET_CHROME_PX = 21;
+const AHEAD_MARGIN_PX = 4;
+/** How far past the least room for a graph the room must go before the graph comes or goes. */
+const AHEAD_HYSTERESIS_PX = 6;
+/** The panel's side padding, and the graph's widest (styles.css .ride-controls, .ride-ahead). */
+const SHEET_SIDES_PX = 28;
+const AHEAD_MAX_W = 520;
 
 /**
  * One voice for the page: the Start ride press unlocks it (iOS speaks only after a gesture has). Web
@@ -2166,6 +2175,12 @@ export function RideMode({
   const [ahead, setAhead] = useState<AheadView[]>(() => readAhead());
   const aheadOffered = useMemo(() => aheadViews(route), [route]);
   const aheadShownViews = useMemo(() => aheadOffered.filter((view) => ahead.includes(view)), [aheadOffered, ahead]);
+  // The graphs drawn change once More closes, not at each bubble while it stays open, so the bubbles do not move
+  // under the rider's finger as the bottom panel grows (the v0.19.0 release review of "Stay open").
+  const [aheadDrawn, setAheadDrawn] = useState(aheadShownViews);
+  useEffect(() => {
+    if (!moreOpen) setAheadDrawn(aheadShownViews);
+  }, [moreOpen, aheadShownViews]);
   const toggleAhead = (view: AheadView) => {
     const on = ahead.includes(view);
     const next = on ? ahead.filter((v) => v !== view) : [...ahead, view];
@@ -2790,7 +2805,11 @@ export function RideMode({
   }, [replanNote, offNow, showToast]);
   const notesShown = !!((gps && ride.fix) || paused || wakeNote || (ride.off && replanNote) || corridorText || weatherShown);
   // The graph of the road ahead, at the top of the bottom panel while on the route and riding it.
-  const aheadAt = aheadShownViews.length > 0 && !ride.off && !ride.arrived ? ride.progressM : null;
+  const aheadWanted = aheadDrawn.length > 0 && !ride.off && !ride.arrived;
+  // Room for at least one graph beside the side buttons (aheadMaxPx below): without it none is drawn and the panel
+  // stays as it was, the bubbles still pressed for a larger screen, and the rider is told (the review of #928).
+  const [aheadFits, setAheadFits] = useState(true);
+  const aheadAt = aheadWanted && aheadFits ? ride.progressM : null;
   const ridersAlong = useMemo(
     () =>
       aheadAt === null
@@ -2827,6 +2846,71 @@ export function RideMode({
       root.style.removeProperty("--ride-sheet-h");
     };
   }, [sheetShown]);
+  // The most height the graphs may take, so the side buttons, as 44 px pills at least, keep their room between the cue
+  // card and the bottom panel (the v0.19.0 release review: with two graphs on at 360x640 the buttons rose over the
+  // card's arrival time). The map's band and the graphs together are the room; the buttons' least height comes off it.
+  const middleRef = useRef<HTMLDivElement>(null);
+  const [aheadMaxPx, setAheadMaxPx] = useState<number | null>(null);
+  const sheetChrome = useRef(SHEET_CHROME_PX);
+  useLayoutEffect(() => {
+    const middle = middleRef.current;
+    const rail = railRef.current;
+    const sheet = sheetRef.current;
+    if (!aheadWanted || !middle || !rail || typeof ResizeObserver === "undefined") {
+      setAheadMaxPx(null);
+      setAheadFits(true);
+      return;
+    }
+    const measure = () => {
+      const figure = sheet?.querySelector<HTMLElement>(".ride-ahead") ?? null;
+      const shown = !!figure && !figure.hidden;
+      const buttons = [...rail.children].filter((child) => (child as HTMLElement).offsetHeight > 2).length;
+      const clear = parseFloat(rail.style.paddingTop) || 0;
+      if (sheet) {
+        const box = getComputedStyle(sheet);
+        sheetChrome.current = Math.round(parseFloat(box.paddingTop) + parseFloat(box.paddingBottom) + parseFloat(box.borderTopWidth)) || SHEET_CHROME_PX;
+      }
+      // The map's band and the panel together, less the panel's padding and edge, the graph's margin and the buttons'
+      // least room: the same whether the panel and the graph show or not, so the answer does not flip as they come
+      // and go (the review of #928).
+      const sheetH = sheet ? sheet.offsetHeight : 0;
+      const room = Math.floor(middle.clientHeight + sheetH - sheetChrome.current - AHEAD_MARGIN_PX - railLeastPx(buttons) - RAIL_INSET_PX - clear);
+      // Whether a graph can show on this screen is told from that room alone; a note in the panel (a weak GPS fix,
+      // the weather) only takes its height from the graphs while it shows, quietly.
+      const graph = shown ? figure.getBoundingClientRect().height + AHEAD_MARGIN_PX : 0;
+      const notes = sheet ? Math.max(0, sheetH - sheetChrome.current - graph) : 0;
+      const wide = shown ? figure.clientWidth : Math.min(AHEAD_MAX_W, middle.clientWidth - SHEET_SIDES_PX);
+      // A few px each way before the answer changes, so a card a line taller for one fix does not flip it.
+      const least = aheadLeastPx(wide, textSize === "large");
+      setAheadFits((was) => (was ? room >= least - AHEAD_HYSTERESIS_PX : room >= least + AHEAD_HYSTERESIS_PX));
+      // Never below 0, and no floor: the buttons' 44 px come first. Within 2 px is the same: the graph's own rounding
+      // does not start another round.
+      const px = Math.max(0, room - notes);
+      setAheadMaxPx((was) => (was !== null && Math.abs(was - px) <= 2 ? was : px));
+    };
+    measure();
+    const watch = new ResizeObserver(measure);
+    watch.observe(middle);
+    if (sheet) watch.observe(sheet);
+    const buttons = new MutationObserver(measure);
+    buttons.observe(rail, { childList: true, attributes: true, attributeFilter: ["style"] });
+    return () => {
+      watch.disconnect();
+      buttons.disconnect();
+    };
+  }, [aheadWanted, sheetShown, textSize]);
+  // No room for a graph, or for some of them: said once a ride for each set of graphs (lib/aheadGraph.ts
+  // aheadNoRoom), never again at each fix (the review of #928).
+  const noRoomSaid = useRef(new Set<string>());
+  const sayNoRoom = (views: readonly AheadView[]) => {
+    const key = views.join(",");
+    if (!key || noRoomSaid.current.has(key)) return;
+    noRoomSaid.current.add(key);
+    answer(aheadNoRoom(views));
+  };
+  useEffect(() => {
+    if (aheadWanted && !aheadFits) sayNoRoom(aheadDrawn);
+  }, [aheadWanted, aheadFits, aheadDrawn]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Off route, back on, or out of DC: the off-route buttons or the 311 block go, and a focus that was in
   // the one that went goes to Where am I?, so W and C keep working (review a11y-3; lib/rideFocus.ts). A
@@ -3105,7 +3189,7 @@ export function RideMode({
 
       {/* The side buttons (the owner, 2026-10-17: "put these as circle icons on the side"), over the map on the
           right at thumb height; each menu opens beside them. An answer the rider asked for shows to their left. */}
-      <div className="ride-middle">
+      <div ref={middleRef} className="ride-middle">
         {/* A minimalist compass (the owner, 2026-10-17), turned with the map; a press switches north-up and track-up
             ("maybe clicking on it changes to north up"), the same choice as the ride settings' switch. */}
         <button type="button" className="ride-compass" aria-pressed={!headingUp} aria-label={t("North up")} title={t("North up")} onClick={() => onHeadingUp(!headingUp)}>
@@ -3513,7 +3597,9 @@ export function RideMode({
                   key={view}
                   type="button"
                   className={`ride-round ride-ahead-bubble ride-ahead-${view}-bubble`}
-                  onClick={() => fromMore(() => toggleAhead(view))}
+                  // More stays open after a graph is turned on or off, so several can be set in one go (Stephen
+                  // 2026-11-03, the v0.19.0 release review's item 11: "Stay open"); the focus stays on the bubble.
+                  onClick={() => toggleAhead(view)}
                   aria-label={AHEAD_NAME[view]}
                   aria-pressed={aheadShownViews.includes(view)}
                   title={AHEAD_NAME[view]}
@@ -3555,7 +3641,7 @@ export function RideMode({
           routing by default"): the notes, off route, Ride the rest, and the full 311 report once asked for. */}
       {sheetShown && (
         <div ref={sheetRef} className="ride-controls">
-          {aheadAt !== null && <AheadGraph views={aheadShownViews} route={route} cues={model.cues} youM={aheadAt} lengthM={model.lengthM} ridersAlong={ridersAlong} />}
+          {aheadAt !== null && <AheadGraph views={aheadDrawn} route={route} cues={model.cues} youM={aheadAt} lengthM={model.lengthM} ridersAlong={ridersAlong} large={textSize === "large"} maxPx={aheadMaxPx} onNoRoom={sayNoRoom} />}
           {notesShown && (
             <div className="ride-notes">
               {gps && ride.fix && <p className="hint">{gps}</p>}

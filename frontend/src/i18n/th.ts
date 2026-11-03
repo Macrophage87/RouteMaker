@@ -1908,4 +1908,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "{graph}: off.": "{graph}: ปิด",
   "Road ahead": "ทางข้างหน้า",
   "Turns ahead: {turns}. Busy junctions: {busy}.": "ทางเลี้ยวข้างหน้า: {turns} ทางแยกที่การจราจรหนาแน่น: {busy}",
+  "Turns ahead: {turns}.": "ทางเลี้ยวข้างหน้า: {turns}",
+  "Busy junctions: {busy}.": "ทางแยกที่การจราจรหนาแน่น: {busy}",
+  "No room on this screen for: {graphs}.": "หน้าจอนี้ไม่มีที่สำหรับ: {graphs}",
 };

@@ -4603,6 +4603,17 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
   max-width: 520px;
 }
 
+/* The graphs on but not drawn, for want of room (AheadGraph NOTE_PX: one line, 22 px). */
+.ride-ahead-room {
+  margin: 2px 0 0;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .ride-ahead-plot {
   display: block;
   width: 100%;
@@ -4714,7 +4725,20 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
 }
 
 .ride-ahead-plot .ride-ahead-y text {
-  font-size: 11px;
+  font-size: 12px;
+}
+
+/* The 5% to 8% climbs' dots over the amber, as the route chart's (chartParts GradePatterns), so the band is not told by
+   colour alone (the v0.19.0 release review). */
+.ride-ahead-dot {
+  fill: #1b1e24;
+  fill-opacity: 0.75;
+}
+
+/* In the dark theme the bars' edge is light, so the darkest bar (LTS 1's purple, 1.5:1 on the dark panel) still has an
+   outline of 3:1 or more (the v0.19.0 release review). */
+:root.theme-dark .ride-ahead-bar {
+  stroke: var(--text-muted);
 }
 
 .ride-ahead-narrowest path {
@@ -4741,6 +4765,8 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
 }
 
 .ride-ahead-plot .ride-ahead-street {
+  font-size: 15px;
+  font-weight: 700;
   paint-order: stroke;
   stroke: var(--bg);
   stroke-width: 4px;
@@ -4748,6 +4774,72 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
 
 .ride-ahead-plot .ride-ahead-none {
   fill: var(--text-muted);
+}
+
+/* Forced colours: the bars, grades, flow and markers keep their colours and patterns, as the route chart's do; the
+   words, arrows, lines and the ground follow the system's colours, so they read on its background (the v0.19.0
+   release review: the headings, "You" and the black arrows were dark on black). */
+@media (forced-colors: active) {
+  .ride-ahead-plot {
+    forced-color-adjust: none;
+  }
+
+  .ride-ahead-plot text,
+  .ride-ahead-plot .ride-ahead-you-word,
+  .ride-ahead-axis text {
+    fill: CanvasText;
+  }
+
+  .ride-ahead-plot .ride-ahead-level,
+  .ride-ahead-plot .ride-ahead-grade,
+  .ride-ahead-plot .ride-ahead-street {
+    fill: CanvasText !important;
+    stroke: Canvas;
+    stroke-width: 3px;
+    paint-order: stroke;
+  }
+
+  .ride-ahead-plot .ride-ahead-corker-n {
+    fill: Canvas;
+  }
+
+  .ride-ahead-corker circle,
+  .ride-ahead-you {
+    fill: CanvasText;
+    stroke: Canvas;
+  }
+
+  .ride-ahead-axis line,
+  .ride-ahead-line,
+  .ride-ahead-corker line,
+  .ride-ahead-plot .ride-ahead-guide,
+  .ride-ahead-you-line {
+    stroke: CanvasText;
+  }
+
+  .ride-ahead-arrow:not(.ride-ahead-arrow-orange, .ride-ahead-arrow-red) .ride-ahead-arrow-shaft {
+    stroke: CanvasText;
+  }
+
+  .ride-ahead-arrow:not(.ride-ahead-arrow-orange, .ride-ahead-arrow-red) .ride-ahead-arrow-head,
+  .ride-ahead-narrowest path {
+    fill: CanvasText;
+  }
+
+  .ride-ahead-ground {
+    fill: Canvas;
+    stroke: CanvasText;
+    stroke-width: 1;
+  }
+
+  .ride-ahead-bar,
+  .ride-ahead-rider {
+    stroke: CanvasText;
+  }
+
+  .ride-ahead-rider {
+    fill: Canvas;
+  }
 }
 
 .ride-heading {

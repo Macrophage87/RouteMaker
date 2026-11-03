@@ -1908,4 +1908,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "{graph}: off.": "{graph}: متوقف.",
   "Road ahead": "الطريق أمامك",
   "Turns ahead: {turns}. Busy junctions: {busy}.": "المنعطفات أمامك: {turns}. التقاطعات المزدحمة: {busy}.",
+  "Turns ahead: {turns}.": "المنعطفات أمامك: {turns}.",
+  "Busy junctions: {busy}.": "التقاطعات المزدحمة: {busy}.",
+  "No room on this screen for: {graphs}.": "لا مساحة على هذه الشاشة لـ: {graphs}.",
 };

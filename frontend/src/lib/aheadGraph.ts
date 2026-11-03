@@ -15,7 +15,7 @@ import { browserStore, type KeyValueStore } from "./accessMode.ts";
 import { metricFirst } from "./units.ts";
 import { FEET_PER_METRE, METRES_PER_MILE, formatAxisFeet, formatAxisMetres, formatClimb, spokenDistance } from "./format.ts";
 import { t } from "./i18n.ts";
-import { FLOW_BANDS, chartKind, corkersFor, flowBand, gradeBand, usableProfile } from "./profileChart.ts";
+import { FLOW_BANDS, chartKind, corkersFor, flowBand, gradeBand, shortStreet as abbreviate, usableProfile } from "./profileChart.ts";
 import { spanClass, usableSpans } from "./routeColours.ts";
 import { relativeLuminance } from "../stressStyle.js";
 
@@ -462,7 +462,91 @@ export function turnsSentence(marks: readonly TurnMark[], youM: number): string 
   const ahead = marks.filter((mark) => mark.m >= youM);
   const turns = ahead.filter((mark) => mark.movement !== null).length;
   const busy = ahead.filter((mark) => mark.severity === "orange" || mark.severity === "red").length;
-  return turns || busy ? t("Turns ahead: {turns}. Busy junctions: {busy}.", { turns, busy }) : "";
+  // A part that is zero is left out (the v0.19.0 release review: "Turns ahead: 0" said on a stretch with no turns).
+  if (turns && busy) return t("Turns ahead: {turns}. Busy junctions: {busy}.", { turns, busy });
+  if (turns) return t("Turns ahead: {turns}.", { turns });
+  return busy ? t("Busy junctions: {busy}.", { busy }) : "";
+}
+
+/**
+ * Only the y labels that keep `minGap` units from the last one kept, from the bottom up (the v0.19.0 release review:
+ * 1, 2, 3, 4 and A stacked 9 units apart on a short plot nearly touched). The first is always kept.
+ */
+export function spacedTicks<T extends { y: number }>(ticks: readonly T[], minGap: number): T[] {
+  const kept: T[] = [];
+  for (const tick of [...ticks].sort((a, b) => b.y - a.y)) {
+    if (!kept.length || kept[kept.length - 1].y - tick.y >= minGap) kept.push(tick);
+  }
+  return kept;
+}
+
+/** The tallest and shortest a graph's plot is drawn, in the drawing's units. */
+export const PLOT_MAX = 56;
+export const PLOT_MIN = 30;
+
+/**
+ * Each graph's plot height, so the stack fits `budget` units (the v0.19.0 release review: with two graphs on a small
+ * phone the bottom panel pushed the side buttons over the cue card): as tall as PLOT_MAX where there is room, down to
+ * PLOT_MIN; `fixed` is the drawing's height without the plots (the turns strip, the axis, each graph's name and gap).
+ */
+export function plotHeight(graphs: number, budget: number, fixed: number): number {
+  if (graphs <= 0 || !Number.isFinite(budget)) return PLOT_MAX;
+  return Math.max(PLOT_MIN, Math.min(PLOT_MAX, Math.floor((budget - fixed) / graphs)));
+}
+
+/**
+ * How many of `count` graphs are drawn: as many as fit `budget` units with their plots at PLOT_MIN, so the text stays
+ * readable on a small phone rather than every graph drawn too small to read; none where even one does not fit (the
+ * drawing is never scaled down, which made its text too small to read). `overhead` is the drawing's
+ * height without graphs (the turns strip and the axis) and `each` a graph's own (its name and the gap under it).
+ */
+export function graphsThatFit(count: number, budget: number, overhead: number, each: number): number {
+  for (let k = count; k >= 1; k -= 1) if (overhead + k * (each + PLOT_MIN) <= budget) return k;
+  return 0;
+}
+
+/** The graphs on but not drawn for want of room, in one line under the ones drawn (the v0.19.0 release review). */
+export const aheadNoRoom = (views: readonly AheadView[]): string =>
+  t("No room on this screen for: {graphs}.", { graphs: views.map((view) => AHEAD_HEADING[view]).join(", ") });
+
+/** A corker's label as placed: its row under the markers (0 to rows - 1), or null where it is left off. */
+export interface PlacedLabel {
+  row: number | null;
+  text: string;
+}
+
+/**
+ * The corkers' street labels, short ("14th St NW", profileChart shortStreet), each beside its marker's stem on the
+ * first of `rows` rows under the markers where it runs into no other label (the v0.19.0 release review: "14th Street
+ * Nor…" over "13th Street Nor…" and over the markers), never across another marker's stem; one that fits on none
+ * is left off, as the sentence names the
+ * next junction. `at` is each marker's x and `charW` a character's width, in the drawing's units; a label goes right
+ * of its stem, or left where `leftOf` says (near the drawing's right end).
+ */
+export function placeCorkerLabels(
+  marks: readonly { at: number; street: string | null; leftOf: boolean }[],
+  rows: number,
+  charW: number,
+): PlacedLabel[] {
+  const taken: [number, number][][] = Array.from({ length: Math.max(0, rows) }, () => []);
+  return marks.map((mark) => {
+    const text = mark.street ? labelStreet(mark.street) : "";
+    if (!text) return { row: null, text: "" };
+    const width = text.length * charW;
+    const span: [number, number] = mark.leftOf ? [mark.at - 5 - width, mark.at - 1] : [mark.at + 1, mark.at + 5 + width];
+    // Never across another marker's stem, which runs through every row.
+    if (marks.some((other) => other !== mark && other.at > span[0] - 2 && other.at < span[1] + 2)) return { row: null, text: "" };
+    const row = taken.findIndex((spans) => spans.every(([a, b]) => span[1] <= a || span[0] >= b));
+    if (row < 0) return { row: null, text: "" };
+    taken[row].push(span);
+    return { row, text };
+  });
+}
+
+/** A street as a label beside a marker: abbreviated ("14th St NW"), 14 characters at most. */
+export function labelStreet(street: string): string {
+  const short = abbreviate(street.trim());
+  return short.length > 14 ? `${short.slice(0, 13).trimEnd()}\u2026` : short;
 }
 
 export interface AxisTick {
