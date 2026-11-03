@@ -61,7 +61,7 @@ from . import account_deletion
 PATH = account_deletion.PRIVACY_PATH
 TITLE = "RouteMaker privacy policy"
 # Change with the text: the date a rider reads as when this page last said something new.
-LAST_UPDATED = ("2026-10-30", "October 30, 2026")
+LAST_UPDATED = ("2026-11-02", "November 2, 2026")
 # Unless the deployment sets PRIVACY_CONTACT (an e-mail address or a web address).
 CONTACT = "Questions, or a request about your data: ask the site's owner on Discord."
 CONTACT_LEAD = "Questions, or a request about your data: "
@@ -396,8 +396,11 @@ SECTIONS: list[tuple[str, str]] = [
         )
         + _p(
             "If you connect an AI assistant app, the routes it plans go to that app and its "
-            "maker, under their own privacy policy. It can plan routes and add them to My routes; "
-            "it cannot read your saved routes. Each route it plans gets a link that opens it, "
+            "maker, under their own privacy policy. It can plan routes and add them to My routes, "
+            "and read your saved routes when you ask it to plan from one (an app you connected "
+            "before it could do this cannot, until you connect it again); it cannot change or "
+            "delete them. When you ask about light and weather for a ride, it uses the same "
+            "weather check as Ride. Each route it plans gets a link that opens it, "
             "and a GPX download link if asked, which anyone with the link can open. Both work "
             "for a day. Disconnecting the app in Settings, or signing out everywhere, deletes its "
             "unsaved routes at once, and their links stop working."

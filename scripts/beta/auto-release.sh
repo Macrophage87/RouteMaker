@@ -48,7 +48,7 @@
 #      the compose gate runs, migrations run (only after the snapshot), the front end is installed
 #      (index.html last), the api and worker start, photon and the routers are recreated if a
 #      compose file changed, the routers restart if a valhalla/*.json changed (the routers: the
-#      four, and valhalla-offroad and valhalla-mtb once their tiles are on the host), /healthz is waited for,
+#      four, and valhalla-offroad, valhalla-mtb and valhalla-paved once their tiles are on the host), /healthz is waited for,
 #      `migrate --check` and collectstatic run in the api, and the local smoke tests run. The
 #      release is then recorded as deployed. Last,
 #      if a tile FORMAT_VERSION changed, the pre-draw runs and is waited for (OWNER-DECISIONS 436);
@@ -88,7 +88,7 @@ ROUTERS="valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend"
 # The trail routers (Gravel and Mountain Goat's, Mountain Bike's; profile `offroad`, which naming
 # them turns on): run beside the four once their promoted build is on the host, never before, since
 # a bind with create_host_path: false stops the whole `up` without it (the owner, 2026-10-20).
-TRAIL_ROUTERS="valhalla-offroad valhalla-mtb"
+TRAIL_ROUTERS="valhalla-offroad valhalla-mtb valhalla-paved"
 SECRET_KEYS="PGPASSWORD DJANGO_SECRET_KEY KEY_ENCRYPTION_KEY DISCORD_CLIENT_SECRET DISCORD_BOT_TOKEN BOT_INTERNAL_SECRET"
 UNIT=routemaker-beta-cd
 
@@ -704,7 +704,7 @@ deploy() { # tag new-sha gate-file
 	local -a trail=()
 	local router
 	for router in "${running[@]}"; do
-		case "$router" in valhalla-offroad | valhalla-mtb) trail+=("$router") ;; esac
+		case "$router" in valhalla-offroad | valhalla-mtb | valhalla-paved) trail+=("$router") ;; esac
 	done
 	if [ "${#trail[@]}" -gt 0 ]; then
 		# Never a reason to roll a release back: without them those rides are planned on the

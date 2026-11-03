@@ -73,6 +73,7 @@ Contents:
 - [Deploying v0.9.0](#deploying-v090)
 - [Deploying v0.16.0](#deploying-v0160)
 - [Deploying v0.17.0](#deploying-v0170)
+- [Deploying v0.18.0](#deploying-v0180)
 - [Deploying a planner and front-end release: rollback points and verification](#deploying-a-planner-and-front-end-release-rollback-points-and-verification)
 - [Paths bicycles may not ride (NO-BIKE-PATHS)](#paths-bicycles-may-not-ride-no-bike-paths)
 - [Mountain-bike difficulty levels (456; claude/v0-4-0-mtb-levels)](#mountain-bike-difficulty-levels-456-claudev0-4-0-mtb-levels)
@@ -2549,7 +2550,13 @@ the data of every table in `BACKUP_EXCLUDED_TABLES` (`config/procrastinate.py`):
 `cached_membership`, `app_session`, `django_session`, `rate_limit_window`,
 `stress_tile_cache`, `bikeshare_feed_cache`, `signed_out_send`, `garmin_link` and
 `wahoo_link` (riders' encrypted Garmin and Wahoo tokens: a restore asks them to connect
-again). Verified by reading the
+again), and leaving out the spare copies of the segment tables entirely (`--exclude-schema`):
+`live_old`, which a swap keeps for its rollback, the rebuild's `staging`, the beta's staged
+update `live_next` and the `live_bad` its rollback by rename sets aside. Each is a whole copy of
+the live tables, and a restore brings back `live`, not them. So a restored database has no
+`live_old`: `rollback_rebuild` refuses for want of a retired schema, `compute_review_queue
+--old-schema live_old` and `import_cloud_build`'s drift report have nothing to compare against,
+and rollback A alone (the `previous` tile links) would name a build whose tables are gone. Verified by reading the
 archive's own table of contents back with `pg_restore --list` from the same stream
 as it is written — an archive with
 no table data at all is a dump of nothing, which is what a wrong database name
@@ -2880,8 +2887,8 @@ and about 11 GB on a resume, a few minutes on this host; each manifest records i
 
 ## Tile build threads
 
-Each graph is built by one `valhalla_build_tiles` run, and the five run one
-after another (standard, no-trail, ebike, weekend, offroad). How many threads a
+Each graph is built by one `valhalla_build_tiles` run, and the seven run one
+after another (standard, no-trail, ebike, weekend, offroad, mtb, paved). How many threads a
 run uses is `mjolnir.concurrency` in that variant's
 `<DATA_ROOT>/tiles/<variant>/<build id>/build-config.json`, and the rebuild
 writes it from **`REBUILD_TILE_CONCURRENCY`** (in `.env`; unset means **4**,
@@ -4467,7 +4474,7 @@ the first host to run it is the first test of it.
 
    ```sh
    docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend
-   docker compose --profile offroad restart valhalla-offroad valhalla-mtb   # only where the off-road routers run
+   docker compose --profile offroad restart valhalla-offroad valhalla-mtb valhalla-paved   # only where the off-road routers run
    ```
 
 After that the weekly schedule carries it: Tuesdays 08:00 UTC, with the alert
@@ -4982,7 +4989,7 @@ are restarted:
 
 ```sh
 docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend
-docker compose --profile offroad restart valhalla-offroad valhalla-mtb   # only where the off-road routers run
+docker compose --profile offroad restart valhalla-offroad valhalla-mtb valhalla-paved   # only where the off-road routers run
 ```
 
 Nothing in the rebuild does this. On the beta a host-side hook does it
@@ -6137,7 +6144,7 @@ changes nothing — and `--confirm` is what performs it.
 docker compose exec -T rebuild ./manage.py rollback_rebuild            # what would happen
 docker compose exec -T rebuild ./manage.py rollback_rebuild --confirm  # do it
 docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend
-docker compose --profile offroad restart valhalla-offroad valhalla-mtb   # only where the off-road routers run
+docker compose --profile offroad restart valhalla-offroad valhalla-mtb valhalla-paved   # only where the off-road routers run
 docker compose up -d --no-deps --no-build --force-recreate api worker
 docker compose exec -T api python manage.py predraw_stress_tiles
 ```
@@ -6333,7 +6340,7 @@ tiles):
    disagree means that variant is not back yet.
 5. **Restart the routers** if any of them restarted while the links were
    wrong — it will have loaded the build that failed to swap:
-   `docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend`, and, where the off-road router runs, `docker compose --profile offroad restart valhalla-offroad valhalla-mtb`
+   `docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend`, and, where the off-road router runs, `docker compose --profile offroad restart valhalla-offroad valhalla-mtb valhalla-paved`
    (see "After a rebuild: restart the routers"). Harmless if none did.
 6. **Leave `staging` alone.** It is the failed build's output and the next
    rebuild's first stage drops it.
@@ -6647,6 +6654,94 @@ change: #864, #868, #877, #878). At home, in order, with `</dev/null` on every d
   a reviewed road's Why line is its public note; Share live posts once a pace and a watcher reads
   every 15 s.
 
+## Deploying v0.18.0
+
+Road Bike (a ride type on its own graph, replacing the Avoid gravel box; junction waits weigh 3x),
+Walk and Walk + transit, Avoid stairs, walk pricing, walks turn by turn and transit stop by stop,
+transit trips re-checked while ridden, the Run ride type, the connector's new tools (and its My routes read), the
+routing speed-up and the beta's staging swap. Two migrations (0054 adds `connector_grant.reads_routes`; 0055 gives it a database default, so the v0.17.0 api still creates grants after `migrate` and after an image rollback).
+A seventh graph, `tiles/paved`, and its router `valhalla-paved` (profile `offroad`; 768M at home,
+320M on the beta). **`lua/` changed, a Valhalla config was added, compose and the nginx template
+changed, so the beta agent stops on the tag and the deploy is by hand**, with the map built at the
+tagged commit. The Caddyfile changed (`/road-bike`, `/walk`, `/walk-transit`, `/run`). No Dockerfile or requirements change, no new
+environment variable to set (`VALHALLA_PAVED_URL` has its default), no new outbound host (the trip
+checks read WMATA through the existing shared cache) and no new scheduled job. No `mobile/` change,
+so no Play build. At home, in order, with `</dev/null` on every docker command:
+
+- [ ] **The build's commit.** The cloud box builds home's checkout HEAD, and `import-result.sh` and
+  the beta's `receive-data.sh verify` refuse a build from another commit unless given
+  `--allow-sha-mismatch`. A map built from the release branch before its last planner or front-end
+  PRs (no change under `lua/`, `valhalla/`, `src/pipeline/` or `scripts/cloud/` since the build)
+  is the same map: install it with `--allow-sha-mismatch` and say so in the run's notes.
+  Once `test` and `a11y` are green on `main`, the owner tags v0.18.0 (annotated) on that commit. The
+  agent stops and alerts: expected.
+- [ ] **Images, migrate, the api.** Before the weekly rebuild (Tuesday 08:00 UTC) or with it paused,
+  and out of 07:00-07:30 UTC: tag the running api and pipeline images for a rollback, fast-forward
+  the checkout (`lua/` is mounted from it; the new tags are written only on the paved graph, so a
+  rebuild between here and the next step changes nothing else), `docker compose build api rebuild`,
+  then `docker compose run --rm --no-deps migrate` (0054 adds `reads_routes`, default off: a grant
+  given before cannot read My routes until the rider connects again; 0055 keeps that default in
+  the database). Then, once no rebuild job is
+  queued or running, `docker compose up -d --no-deps --no-build --force-recreate api worker rebuild`.
+- [ ] **Caddy.** The Caddyfile adds `/road-bike`, `/walk`, `/walk-transit` and `/run`: validate it in a throwaway container and recreate
+  caddy alone ("Applying a Caddyfile change"). This also brings `/about/android-beta.html`, in
+  `@frontend` since v0.16.3, to this host, whose caddy was not recreated after v0.16.2/v0.16.3. Check:
+  `curl -sI https://<site>/road-bike` is a 302 to `/#preset=road-bike`, and
+  `curl -sI https://<site>/about/android-beta.html` is a 200 once the front end is published.
+- [ ] **The data directory.** `sudo sh scripts/prepare_data_root.sh --env-file ./.env` (it adds `tiles/paved` and
+  `tiles/paved/current`, owned 10001). Never name `valhalla-paved` in an `up` before its first
+  build: Docker would make `tiles/paved` as root, which the rebuild cannot write.
+- [ ] **The map**, at the tagged commit: on the cloud box (`send-inputs.sh` from this checkout, or
+  `launch.sh`, with `--beta-bundle` for the beta), or `run_rebuild_now` here. Seven graphs: about
+  20-25 minutes and one extract more than v0.17.0, about 1.1 GB more per kept build (2.2 GB with
+  `previous`), and the cloud result's `tiles-paved.tar` (a result without it is refused). The
+  rebuild's memory peak is unchanged (one graph at a time). Before the swap, the stress-change
+  report and Review's lists show no tier moved by this release (the new tags are on the paved graph
+  only). Then swap.
+- [ ] **The routers.** Restart the four. Where the `offroad` profile runs, start the new one once:
+  `docker compose --profile offroad up -d --no-deps --no-build valhalla-paved`; until it has a
+  container, a `restart` that names it restarts none of the three. Then
+  `docker compose --profile offroad restart valhalla-offroad valhalla-mtb valhalla-paved` and
+  `sync_upstreams`. On the PC the profile is off: Road Bike is then planned on the standard graph,
+  where gravel is packed gravel, and the answer warns of packed gravel (#898). Starting `valhalla-paved` alone
+  there needs about 0.75 GB spare; the owner, 2026-11-02: "pc can have road bike too", so start it there alone (`docker compose --profile offroad up -d --no-deps --no-build valhalla-paved`) after checking memory inside WSL.
+- [ ] **The front end**, last.
+- [ ] **Beta**, "A new release sha" with the data bundle (docs/BETA-RUNBOOK.md):
+  - Before anything, `free -m`: "available" at least 8803 MiB (the 8086 MiB startup peak with
+    `valhalla-paved` plus 0.7 GiB). Under it, ship as below but leave `valhalla-paved` stopped.
+    `df -h /data`: room for the bundle, a second copy of each graph, and about three times the live
+    tables for the staging.
+  - Pause the agent (`pause --wait`, then `status`); stop api and worker, snapshot the database
+    (`--label release`), copy `index.html`.
+  - Check out the tag, set `TAG=`, `"${RM_PY:-python3}" scripts/check_beta_compose.py --env-file .env` ("beta compose: ok",
+    7.65 GiB resident); build the api image; migrate in the migrate container (0054, 0055).
+  - Data: `receive-data.sh verify`, then `db --update-data --stage-only` (the staging swap's first
+    run: `live_next`, row counts checked), `sudo ... files` (installs `tiles/paved`), then
+    `sudo ... db --update-data` (the rename; `live_old` keeps v0.17.0's map tables). Not during the
+    07:00 UTC backup. Check: `\dn` shows `live` and `live_old` and no `live_next`, and there is no
+    `routemaker_stage` database.
+  - Start api and worker; the stress-tile pre-draw.
+  - Restart the four routers one at a time; then
+    `scripts/beta/beta-compose.sh up -d --force-recreate valhalla-offroad valhalla-mtb valhalla-paved`
+    (leave out `valhalla-paved` if memory was short); `sync_upstreams`.
+  - Re-render and install the nginx site (step 9: the `road-bike`, `walk`, `walk-transit` and `run` preset links), `nginx -t`, reload.
+  - The front end comes with the bundle (`files`), `index.html` last.
+  - `smoke-test.sh --local --trails` (now checks `road-bike` on the `paved` graph), then `--public`.
+  - The agent and router hook changed: `scripts/beta/auto-release.sh install` and, where installed,
+    `scripts/beta/restart-routers.sh install`, from the new checkout. Then `mark-deployed v0.18.0`
+    and `resume`.
+- [ ] **Spot checks.** A Road Bike route answers `"variant": "paved"`. A Mall gravel walk is ridden
+  on Default and avoided on Road Bike. A link with `avoidgravel=1` opens as Road Bike. `/road-bike`
+  opens Road Bike on both hosts. Walk and Walk + transit plan, and Start walk follows the turns; a Run from a start alone with a target distance plans a loop near that length. A
+  Bike + transit ride re-plans once every 2 minutes until boarding. The connector's consent page
+  lists "read your saved routes".
+- [ ] **Rollback.** At home: the `pre-rel` images; the database stays migrated (0055's default lets the
+  old api create grants). After the first v0.18.0 rebuild, `rollback_rebuild` withdraws
+  `paved` (its first build) and stops `valhalla-paved`. On the beta: the map tables by rename
+  (rollback B "by rename", from `live_old`) with rollback A. Before rolling the code back to v0.17.0
+  (rollback C), `scripts/beta/beta-compose.sh stop valhalla-paved`: v0.17.0's compose has no such
+  service and its 7.35 GiB budget does not count it.
+
 ## Deploying a planner and front-end release: rollback points and verification
 
 A release that changes the planner and the front end, with no migration and no graph, is deployed
@@ -6812,8 +6907,8 @@ foot_designated, trail_visibility, hiking_route, natural_surface, park_path, mtb
 dismount), `routemaker.zoo` and the existing `singletrack` and `cbd_sidewalk`.
 The rebuild log line "facility classes: ..." carries the count per reason.
 
-**Six graphs.** The mountain-bike class (`mtb`) is closed on the standard,
-weekend, e-bike and no-trail graphs and open on a fifth, `valhalla-offroad`
+**Seven graphs.** The mountain-bike class (`mtb`) is closed on the standard,
+weekend, e-bike, no-trail and Road Bike graphs and open on another, `valhalla-offroad`
 (`Variant.OFFROAD`), which Gravel and Mountain Goat ride (OWNER-DECISIONS
 291(2)), and on the Mountain Bike graph (below). The off-road graph has no weekend twin and falls back to the standard graph, as the
 weekend one does, when it is not promoted or not answering. Start it after the
@@ -6836,7 +6931,7 @@ command above after the swap, and `restart` it after later rebuilds as the other
 A `restart` that names `valhalla-offroad` where it has no container fails ("no such
 service", with or without `--profile offroad`) and restarts none of the other
 routers on the same line, so the four-router restart never names it. Restart it on
-its own line, `docker compose --profile offroad restart valhalla-offroad valhalla-mtb`, and only
+its own line, `docker compose --profile offroad restart valhalla-offroad valhalla-mtb valhalla-paved`, and only
 where it runs.
 
 **The Mountain Bike graph** (docs/MTB-TOPO-PLAN.md, slice 6). A sixth graph, `tiles/mtb`
@@ -6847,8 +6942,8 @@ the off-road graph with rated singletrack opened where nothing but its rating cl
 promotes it with the other five; nothing else is to run. Its router, `valhalla-mtb`, is behind
 the same compose profile as `valhalla-offroad` and is started and restarted with it:
 
-    docker compose --profile offroad up -d --no-deps --no-build valhalla-offroad valhalla-mtb
-    docker compose --profile offroad restart valhalla-offroad valhalla-mtb   # after a later swap
+    docker compose --profile offroad up -d --no-deps --no-build valhalla-offroad valhalla-mtb valhalla-paved
+    docker compose --profile offroad restart valhalla-offroad valhalla-mtb valhalla-paved   # after a later swap
 
 Start both or neither: the printed restart names both, and a `restart` naming a service with no
 container restarts none of the others on the line. One worker in 768M each (the 1536M
@@ -6883,6 +6978,21 @@ plans on the standard graph and says so. Start the pair only on a host with abou
 spare beyond the four routers. Each router's resident set has been 74-500 MB when read (the
 standard router about 450 MB over its 1.1 GB of tiles), so one worker fits in 768M; the compose
 check's 700 MB a worker leaves it little headroom past that.
+
+**The Road Bike graph** (the owner, 2026-11-02). A seventh graph, `tiles/paved`
+(`Variant.PAVED`, `valhalla/valhalla-paved.json`), which only the Road Bike ride type rides: the
+standard graph with gravel, fine gravel and compacted written as Valhalla's `gravel` class
+(`rm:rough_unpaved`, `routemaker_remap.ROUGH_UNPAVED`) and winding trails given the LTS 3 stress
+penalty (`rm:winding`, `routemaker.winding`). Every rebuild builds and promotes it with the
+other six. Its router, `valhalla-paved`, is behind the `offroad` profile with the two above and
+is started and restarted with them (the lines above name all three). One worker in 768M; the
+32G compose check holds at 32.0G because it no longer counts the `unbuilt` services, which
+never run. While the router is not running, or before the first rebuild that builds
+`tiles/paved`, Road Bike plans on the standard graph, where gravel is packed gravel. It adds
+what the Mountain Bike graph added: one more tile build (about 20-25 minutes), one more extract
+the size of the source, and about 1.1 GB per kept build directory. The cloud box's result
+carries `tiles-paved.tar`, and a result from before this graph is refused by `import-result.sh`
+(it asks for every graph's tar).
 
 **The Zoo.** `fixtures/zoo/` holds the polygon and the spur: the Harvard Street
 NW entrance to the bike racks (OSM node 9827008403), seven whole ways, written
@@ -7976,20 +8086,20 @@ copy of this deployment's database made the way the beta's is (`scripts/beta/shi
 db part): no accounts, Homes, saved or shared routes, audit log or sessions, and the approved
 overrides with their person columns blanked. So every access override and stress edit is in
 its map, and no rider's data is in the cloud. It runs the ordinary `run_rebuild_now` with every check a rebuild
-here has, and sends back the five graphs and its new segment table. Here they are swapped
+here has, and sends back the seven graphs and its new segment table. Here they are swapped
 in by the rebuild's own swap (`pipeline.promotion.perform_swap`), so `rollback_rebuild`
 undoes an imported build exactly as it undoes one built here.
 
 Three scripts, one per place, and S3 between them. `send-inputs.sh`, run here, uploads the
 stripped dump, reference, elevation and extracts to the run's `in/` folder. `box-rebuild.sh`, run
-on the box, reads `in/`, writes the five graphs and the staging dump to `out/`, and powers
+on the box, reads `in/`, writes the seven graphs and the staging dump to `out/`, and powers
 the box off. `import-result.sh`, run here, reads `out/`. Nothing in the repository names
 the bucket or the account: the run's folder is an argument. The same flow as a diagram:
 
 ```text
 this host                         s3://<bucket>/rebuild-checkpoints/transfer/<run>/   the box
 scripts/cloud/send-inputs.sh  --> in/   db.tar, reference, elevation, extracts --> box-rebuild.sh
-scripts/cloud/import-result.sh <-- out/  5 graphs, staging schema dump        <-- (powers off)
+scripts/cloud/import-result.sh <-- out/  7 graphs, staging schema dump        <-- (powers off)
 ```
 
 `scripts/cloud/launch.sh` runs the three from here with one command ("The launcher",
@@ -8170,7 +8280,7 @@ the defaults, so build those here.
    scripts/cloud/import-result.sh --profile <name> --swap "$RUN_URL"
    ```
 
-   `import_cloud_build --confirm` runs `perform_swap` (promote the five graphs, repoint
+   `import_cloud_build --confirm` runs `perform_swap` (promote the seven graphs, repoint
    the settings rows, rename `staging` into `live` and `live` into `live_old`; a failure
    undoes all of it), writes an audit row and the drift report; the script then restarts
    the routers, the off-road one where it runs, and pre-draws the stress tiles. Then the
@@ -8471,13 +8581,16 @@ scripts/cloud/import-result.sh --beta --swap "$RUN_URL"
 deployment is installed, unless it is paused with no pass running and no deploy left half
 done. Then it runs the runbook's "New data only" steps 2 to 5:
 
-1. `receive-data.sh verify`, then `sudo ... files`: each graph's old build stays as
-   `previous`.
-2. The api and worker stopped, then `sudo ... db --update-data`: its own safety dump, one
-   transaction. It resets `override` and `junction_override` to home's and empties the
-   beta's `stress_edit` history, as every data update does. If it fails, the api and
-   worker are started again on the database as it was.
-3. The api and worker started, and the four routers restarted.
+1. `receive-data.sh verify`, then `db --update-data --stage-only`: the bundle's `live`
+   schema restored beside the served one as `live_next` while the beta serves. If it fails,
+   nothing served has changed.
+2. `sudo ... files`: each graph's old build stays as `previous`.
+3. `sudo ... db --update-data`, with the api and worker running (the staging swap, the
+   owner 2026-11-02): its own safety dump, then one short transaction renames `live` to
+   `live_old` and `live_next` to `live`, as the home rebuild's swap does. It resets `override`
+   and `junction_override` to home's and empties the beta's `stress_edit` history, as every
+   data update does. If it fails, the beta still serves the database as it was. Then the
+   four routers restarted one at a time.
 4. The stress-tile pre-draw started in the background (`$RM_STATE/predraw.log`).
 5. The local smoke test, tried again while the app and routers start.
 

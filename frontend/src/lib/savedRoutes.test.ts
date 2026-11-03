@@ -227,6 +227,8 @@ test("the dialog names the closures and the choices fit what it was for", () => 
   assert.equal(rerouteLabel(2), "Reroute around them");
   assert.equal(closureLead("ride"), "Closures on this route now.");
   assert.equal(closureLead("open"), "Closures on this route now.");
+  // A run or walk has no Reroute, so its lead never offers one (Run release review).
+  assert.equal(closureLead("download", true), "Closures on this route now.");
   assert.equal(parkNoticesSummary(6), "Park notices (6)");
   const dialog = readFileSync(new URL("../ClosureDialog.tsx", import.meta.url), "utf8");
   assert.match(dialog, /<details className="closure-notices">\s*<summary className="closure-notices-heading">\{parkNoticesSummary\(ask\.notices\.length\)\}<\/summary>/);

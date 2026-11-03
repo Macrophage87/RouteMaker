@@ -94,9 +94,7 @@ def ride_graph(preset_name: str, dials: routing.Dials) -> tuple[str, dict]:
         routing._twin_down(variant) or not routing._is_promoted(variant)
     ):
         variant = routing.Variant.STANDARD.value
-    costing = presets.costing(
-        preset_name, stress, hills, assist=assist, avoid_gravel=bool(dials.avoid_gravel)
-    )
+    costing = presets.costing(preset_name, stress, hills, assist=assist)
     if dials.cycling_speed_kmh is not None:
         # As the plan times its route (`routing._plan`).
         costing["bicycle"]["cycling_speed"] = float(dials.cycling_speed_kmh)

@@ -61,7 +61,7 @@ test("Go adds no control: the choices appear only where the page passes the cour
   const app = read("../App.tsx");
   assert.match(app, /\.\.\.\(mode === "go" \? \{\} : \{ downloadCourse: downloadCourseRoute \}\)/);
   // Checked against the closures in force, as Download GPX is.
-  assert.match(app, /const downloadCourseRoute = [\s\S]{0,300}?checkThen\("download", route\.geometry\.coordinates, false, \(\) => void Promise\.resolve\(downloadCourse\(route, at, format, profile\)\)\.then\(said\)\);/);
+  assert.match(app, /const downloadCourseRoute = [\s\S]{0,300}?checkThen\("download", route\.geometry\.coordinates, false, \(\) => void Promise\.resolve\(downloadCourse\(route, at, format, profile\)\)\.then\(said\), undefined, undefined, walksLine\(route\)\);/);
   // Go's own route row keeps its GPX button alone.
   assert.ok(!/FIT|TCX/.test(read("../app/RoutePanel.tsx")));
 });

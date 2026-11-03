@@ -22,3 +22,4 @@ acceptance-reports/
 # Internal-only comparison reports (OWNER-DECISIONS 155) never belong in the repository;
 # scripts/analysis/compare_agency_lts.py refuses to write them here, and this is the backstop.
 reports/**/internal/
+.claude/worktrees/
