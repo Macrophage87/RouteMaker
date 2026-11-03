@@ -407,6 +407,10 @@ settings<sup class="cite"><a href="#ref-1" aria-label="source 1">[1]</a></sup> t
 <p>Two ride types combine a bike with Metro, buses or trains: <strong>Own Bike + transit</strong> takes
 your bike on board, and <strong>Bikeshare + transit</strong> docks a shared bike before you board. Each plan rides
 to a station or stop and takes the train or bus the rest of the way.</p>
+<p>Walk, Walk + transit and both bike + transit ride types take up to 3 stops between the start and the end, and no
+via points. Each leg is planned as a trip of its own, leaving as you reach the stop before it. At a stop, once that leg
+is done, <strong>Start the next leg</strong> plans the rest again from where you are, leaving then. Bikeshare and
+Rebalance Ride still take only a start and an end.</p>
 <figure id="fig-transit" class="has-narrow">
 <div class="fig-scroll fig-wide" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 920 160" role="img" aria-labelledby="fig-transit-t fig-transit-d" focusable="false" style="min-width:600px">
@@ -507,7 +511,7 @@ board.</li>
 <h2 id="walk">Walk and Walk + transit</h2>
 <p><strong>Walk</strong> goes on foot the whole way, on sidewalks, paths and crosswalks, at 3 mph [4.8 km/h].
 <strong>Walk + transit</strong> walks at each end with Metro, MARC, VRE, Light RailLink, Metro SubwayLink or a bus
-between, and walks the whole way where that is quickest or the trip is short. Both take a start and an end, and their
+between, and walks the whole way where that is quickest or the trip is short. Both take a start, up to 3 stops and an end, and their
 walks are said turn by turn (<a href="/about/using.html#ride">Ride</a>). The traffic and hills sliders are for riding,
 so they are not shown.</p>
 <details class="more"><summary>More: Walk and Walk + transit</summary>
@@ -544,8 +548,9 @@ fewer lights wins.</li>
 and a way not mapped as lit counts as unlit, so the run leans to lit ways without refusing the rest.</li>
 <li>A loop runs the way back off the way out where another way exists, as a ride's loop does.</li>
 <li><strong>Target distance:</strong> with only the start placed and Make it a loop on, the run tries a loop in each
-of six directions from your start, sized to the target. It keeps one within about 12% of the target where it can (sizing the best again once where
-none is), preferring one that runs no way twice, then the one with the most trail and fewest lights for its length. The
+of six directions from your start, sized to the target, each from how much longer than its straight sides the ones before it ran. It keeps one within
+about 12% of the target, preferring one that runs no way twice, then the one with the most trail and fewest lights for
+its length; where none is that near, it takes the nearest and sizes it again from what it ran, up to three times. The
 target can be up to 31 mi [50 km]. With stops placed, it works as Trailmaxxing's: each part of the run gets its share,
 and the way with the most trail and fewest traffic lights at or under it is taken.</li>
 </ul>
@@ -873,7 +878,7 @@ riding. Press a line or its row to ride it; your own setting stays as it was.</l
 <p class="next">Next: <a href="/about/stress.html">Stress ratings</a></p>
 </main>
 <footer>
-  <p>Part of RouteMaker's documentation. It describes version 0.18.0. The code is
+  <p>Part of RouteMaker's documentation. It describes version 0.19.0. The code is
   open source under the MIT licence:
   <a href="https://github.com/Macrophage87/RouteMaker">github.com/Macrophage87/RouteMaker</a>.</p>
   <p><a href="/">Back to the map</a></p>

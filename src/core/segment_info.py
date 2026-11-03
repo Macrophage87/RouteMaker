@@ -42,6 +42,7 @@ from routemaker import (
     trail_facts,
 )
 from routemaker.describe import UNNAMED_PATH, UNNAMED_ROAD
+from routemaker.facility import SHARED_PREFIXES
 from routemaker.stress import (
     BUSY_RURAL_HIGHWAY_RULE,
     BUSY_STREET_RULE,
@@ -1261,7 +1262,7 @@ def more_link(row: dict, router: dict) -> dict | None:
 
 
 # Which trail lines the compact summary shows; the rest are in the details.
-SUMMARY_TRAIL_ROWS = frozenset({"trail_surface", "smoothness", "width", "visibility"})
+SUMMARY_TRAIL_ROWS = frozenset({"trail_surface", "smoothness", "width", "visibility", "oneway"})
 
 
 # The parts of the classifier's rule the Lanes line already says.
@@ -1342,7 +1343,11 @@ def _summary_rows(row: dict, router: dict, open_: bool | None) -> list[dict]:
     facility = row.get("facility")
     against = " (against traffic only)" if row.get("facility_shown") else ""
     facility = row.get("facility_shown") or facility
-    if facility == "protected":
+    # A sidewalk or shared path named for its street ("Sidewalk beside Kemp Mill Road";
+    # `facility.sidepath_name`) is not called a bike lane (the owner, 2026-11-03: "Kemp
+    # Mill road doesn't have a bike lane"), whatever class its signs give it.
+    beside = path and str(row.get("sidepath_name") or "").startswith(SHARED_PREFIXES)
+    if facility == "protected" and not beside:
         add("bike_lane", "Bike lane", "Protected" + against)
     elif facility == "lane":
         add("bike_lane", "Bike lane", "Painted" + against)
@@ -1427,6 +1432,9 @@ def describe(row: dict, router: dict) -> dict:
         or row.get("mtb_name")
         or (row.get("sidepath_name") if path else None)
     )
+    # "path beside Kemp Mill Road" (`facility.sidepath_name`) heads the panel as a title.
+    if name and name.startswith(SHARED_PREFIXES):
+        name = name[0].upper() + name[1:]
     name_source = ROUTER if router.get("name") else (OSM if name else None)
     kind, kind_source = road_kind(router, row)
     title = name or (
