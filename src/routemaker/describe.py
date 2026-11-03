@@ -622,12 +622,20 @@ def _turns_at_paths(atoms: list[Atom], crossings: Collection[float]) -> list[Ato
     # Only the turn nearest the road on each side: the one onto the crossing and the one
     # off it, never a chain of bends along a sidewalk ("then immediately right to stay,
     # then immediately bear left to stay").
-    for c in crossings:
-        before = [i for i in range(len(atoms)) if c - FAR_SIDE_M <= at[i] <= c and near_turn(i)]
-        after = [i for i in range(len(atoms)) if c < at[i] <= c + FAR_SIDE_M and near_turn(i)]
-        for side in (before[-1:], after[:1]):
-            for i in side:
-                mark(i, atoms[i].turn)
+    # The carriageways of a divided road (events within FAR_SIDE_M of each other) are one
+    # road: one turn onto it and one off it.
+    near = [i for i in range(len(atoms)) if near_turn(i)]
+    roads: list[list[float]] = []
+    for c in sorted(crossings):
+        if roads and c - roads[-1][1] <= FAR_SIDE_M:
+            roads[-1][1] = c
+        else:
+            roads.append([c, c])
+    for first, last in roads:
+        before = [i for i in near if first - FAR_SIDE_M <= at[i] <= first]
+        after = [i for i in near if last < at[i] <= last + FAR_SIDE_M]
+        for i in before[-1:] + after[:1]:
+            mark(i, atoms[i].turn)
     i = 1
     while i < len(atoms):
         atom = atoms[i]
@@ -660,7 +668,7 @@ def _turns_at_paths(atoms: list[Atom], crossings: Collection[float]) -> list[Ato
             or out[k].fork is not None
             or abs(nxt.turn) > ALONG_TURN_DEG
             or not all(on_path(a) and _same_way(atom, a) for a in atoms[i : k + 1])
-            or not (atom.choice or nxt.choice)
+            or not any(a.choice for a in atoms[i : k + 1])
         ):
             i += 1
             continue
@@ -1896,12 +1904,12 @@ def _group_run(
 
 def _crossing(
     runs: list[_Run], turns: dict[int, _Turn], starts: list[float], events: list, i: int
-) -> str | None:
+) -> tuple[str, object | None] | None:
     """The road `runs[i]` crosses, where it is a short path across a road between two
     turns of one leg: a path under CROSS_MAX_M, turned (or forked) into and turned out
     of, with a junction event across a road (CROSS_KINDS) within CROSS_NEAR_M of it, or
-    begun or ended on a crosswalk. The event's road, else CROSS_UNNAMED; None where it
-    is not such a stretch."""
+    begun or ended on a crosswalk. The event's road, else CROSS_UNNAMED, with the event
+    matched (None for a crosswalk without one); None where it is not such a stretch."""
     run = runs[i]
     crosswalk = _crosswalk(run)
     if i + 1 >= len(runs) or runs[i + 1].leg != run.leg or not (run.path or crosswalk):
@@ -1924,10 +1932,10 @@ def _crossing(
     ]
     if near:
         middle = (start + end) / 2
-        name = _event_name(min(near, key=lambda event: abs(event.m - middle)))
-        return name or CROSS_UNNAMED
+        nearest = min(near, key=lambda event: abs(event.m - middle))
+        return _event_name(nearest) or CROSS_UNNAMED, nearest
     if crosswalk:
-        return CROSS_UNNAMED
+        return CROSS_UNNAMED, None
     return None
 
 
@@ -2343,17 +2351,36 @@ def describe_both(
                 current.severity or "", 0
             ):
                 turn.event = event
+    crossed_by: dict[int, tuple[object, str | None]] = {}
     for i in sorted(turns):
         turn = turns[i]
         crossed = _crossing(runs, turns, starts, events, i)
-        if crossed is not None:
-            turn.cross = crossed
-            turn.shape = None
-            # Two short pieces in a row each near the same road (a sidewalk, then the
-            # crosswalk): the road is crossed once, on the later, the crosswalk itself.
-            earlier = turns.get(i - 1)
-            if earlier is not None and earlier.cross == crossed and runs[i - 1].leg == runs[i].leg:
-                earlier.cross = None
+        if crossed is None:
+            continue
+        name, event = crossed
+        # Two short pieces in a row matched to the same road event (a sidewalk, then the
+        # crosswalk): the road is crossed once, on the crosswalk, else the piece the
+        # road is in, else the first; the other turn keeps its own words.
+        earlier = turns.get(i - 1)
+        if (
+            event is not None
+            and earlier is not None
+            and i - 1 in crossed_by
+            and crossed_by[i - 1][0] is event
+            and runs[i - 1].leg == runs[i].leg
+        ):
+            holds = [
+                2 * _crosswalk(runs[k])
+                + (starts[k] - JUNCTION_M <= event.m <= starts[k] + runs[k].metres + JUNCTION_M)
+                for k in (i - 1, i)
+            ]
+            if holds[1] <= holds[0]:
+                continue
+            earlier.cross = None
+            earlier.shape = crossed_by.pop(i - 1)[1]
+        crossed_by[i] = (event, turn.shape)
+        turn.cross = name
+        turn.shape = None
     for from_at, cross_at, turn_at, side, leg in far_side:
         # The turn the stretch onto the path begins with: at the node turned at, or, where a
         # short piece across the road was folded into the path's stretch, where that begins:
