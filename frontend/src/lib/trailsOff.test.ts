@@ -99,7 +99,7 @@ test("the ride line says \"roads only\", but not on Mass Ride, which always is",
 
 test("the switch is a real checkbox, labelled, and described by its hint; Mass Ride's stays in the Tab order", () => {
   const src = readFileSync(new URL("../DialsPanel.tsx", import.meta.url), "utf8");
-  const block = src.slice(src.indexOf('<div className="dial trails-off">'), src.indexOf("Avoid gravel"));
+  const block = src.slice(src.indexOf('<div className="dial trails-off">'), src.indexOf("Back to this ride type's settings"));
   assert.match(block, /<label className="toggle">[\s\S]*<input\s+type="checkbox"/);
   assert.match(block, /aria-describedby=\{trailsOffHintId\}/);
   assert.match(block, /id=\{trailsOffHintId\}/);

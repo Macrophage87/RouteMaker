@@ -288,6 +288,9 @@ PLAN_MEMORY_LIMITS = {
     # the 1536M the off-road router had alone, which keeps the swap-time peak at 32.0G.
     "valhalla-offroad": "768M",
     "valhalla-mtb": "768M",
+    # The Road Bike graph (2026-11-02), one worker in 768M too; the check holds at 32.0G because
+    # it no longer counts the `unbuilt` services (scripts/check_compose_limits.py).
+    "valhalla-paved": "768M",
     "photon": "3G",
     "postgis": "4G",
     "rebuild": "8G",
