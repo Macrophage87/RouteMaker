@@ -1781,6 +1781,42 @@ class TestApi:
         # Midday (the pinned clock): Orange every 12 minutes, so a 6-minute wait.
         assert chosen["steps"][2]["wait_s"] == 360 and chosen["band"] == "midday"
 
+    def test_a_trip_with_a_stop_is_each_legs_best_trip_one_after_another(
+        self, client, segments, router, installed
+    ) -> None:
+        """Stephen, 2026-11-03 ("Each stop starts a new trip"): the rider gets off at the stop,
+        and the leg on from it is planned as a trip of its own, leaving as the first arrives."""
+        router(standard_router())
+        first = post_transit(client, [CAPITOL_HILL, MALL]).json()["transit"]
+        second = post_transit(client, [MALL, DOWNTOWN]).json()["transit"]
+        response = post_transit(client, [CAPITOL_HILL, MALL, DOWNTOWN])
+        assert response.status_code == 200, response.content
+        assert set(response.json()) == CONTRACT_KEYS
+        trip = response.json()["transit"]
+        # One option, the two legs' best keys joined; never "riding the whole way".
+        assert trip["key"] == f"{first['key']}{transit.STOPS_KEY_SEP}{second['key']}"
+        assert len(trip["options"]) == 1 and trip["options"][0]["chosen"]
+        assert not trip["direct"]
+        modes = [s["mode"] for s in trip["steps"]]
+        assert modes == [s["mode"] for s in first["steps"]] + [s["mode"] for s in second["steps"]]
+        # The first leg ends at its stop, named so; only the first leg's line is the route's line.
+        before = len(first["steps"])
+        assert trip["stop_steps"] == [before] and first["stop_steps"] == []
+        assert trip["steps"][before - 1]["to"] == "stop 1"
+        assert [s["route_line"] for s in trip["steps"]].count(True) == 1
+        # Again with the joined key (a link reopened): the same trip.
+        again = post_transit(client, [CAPITOL_HILL, MALL, DOWNTOWN], transit_option=trip["key"])
+        assert again.json()["transit"]["key"] == trip["key"]
+
+    def test_a_walk_with_a_stop_walks_each_leg(self, client, segments, router, installed) -> None:
+        router(standard_router())
+        response = post_transit(client, [CAPITOL_HILL, MALL, DOWNTOWN], presets.WALK)
+        assert response.status_code == 200, response.content
+        trip = response.json()["transit"]
+        assert [s["mode"] for s in trip["steps"]] == ["walk", "walk"]
+        assert trip["steps"][0]["route_line"] and trip["steps"][0]["to"] == "stop 1"
+        assert trip["steps"][1]["coordinates"]
+
     def test_a_trip_asked_for_that_is_no_longer_running_is_said_gone(
         self, client, segments, router, installed
     ) -> None:
@@ -2108,10 +2144,14 @@ class TestApi:
             steps = [p["costing_options"].get("pedestrian", {}).get("step_penalty") for p in walks]
             assert steps == [walk_turns.STEP_FREE_PENALTY_S if avoid else None] * len(walks)
 
-    def test_a_transit_trip_is_two_points_no_loop_and_options_only_on_transit(
+    def test_a_transit_trip_takes_a_few_stops_no_vias_no_loop_and_options_only_on_transit(
         self, client, router, installed
     ) -> None:
-        assert post_transit(client, [CAPITOL_HILL, MALL, DOWNTOWN]).status_code == 400
+        # Stops, never vias: each leg is planned from its own two points.
+        vias = post_transit(client, [CAPITOL_HILL, MALL, DOWNTOWN], via_points=[1])
+        assert vias.status_code == 400
+        too_many = [CAPITOL_HILL] + [MALL] * (api.MAX_TRIP_STOPS + 1) + [DOWNTOWN]
+        assert post_transit(client, too_many).status_code == 400
         assert post_transit(client, [CAPITOL_HILL, DOWNTOWN], loop=True).status_code == 400
         other = post_transit(client, [CAPITOL_HILL, DOWNTOWN], "default", transit_option="direct")
         assert other.status_code == 400

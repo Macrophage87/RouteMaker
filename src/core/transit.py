@@ -1920,6 +1920,8 @@ class Option:
     hop: bool = False
     # Found on the other service day (around 1 to 5 am): that day's moment; else the plan's.
     moment: Moment | None = None
+    # A trip with stops (`joined`): the index of each later trip's first leg, one per stop.
+    stops_at: tuple[int, ...] = ()
 
     @property
     def total_s(self) -> float:
@@ -2778,6 +2780,43 @@ def plan_walk_transit(schedule, start, end, when: datetime, services: Services) 
     return Plan(presets.WALK_TRANSIT, _ranked(None, found, walk), moment, notes, _credits(schedule))
 
 
+# A trip with stops: its legs' keys, joined (never in a leg's own key, `_key_parts`).
+STOPS_KEY_SEP = "+"
+
+
+def joined(plans: list[Plan]) -> Plan:
+    """A trip with stops (Stephen, 2026-11-02: "Add the stops in for all"): each leg between them
+    planned as a trip of its own, leaving the stop when the leg before arrives there, and its chosen
+    option's legs one after another. The trip is that one option: a leg's other options are not
+    offered, and it is never "riding the whole way", which would draw it start to end past its
+    stops. Each leg's end before the last is named as its stop ("stop 1")."""
+    if len(plans) == 1:
+        return plans[0]
+    legs: list[Leg] = []
+    stops_at: list[int] = []
+    for number, plan in enumerate(plans, start=1):
+        if number > 1:
+            stops_at.append(len(legs))
+        part = list(plan.option.legs)
+        if number < len(plans) and part and part[-1].to is None:
+            part[-1] = replace(part[-1], to=t("stop {number}", number=number))
+        legs.extend(part)
+    first = plans[0]
+    option = Option(
+        STOPS_KEY_SEP.join(plan.option.key for plan in plans),
+        tuple(legs),
+        walk=all(plan.option.walk for plan in plans),
+        moment=first.option.moment,
+        stops_at=tuple(stops_at),
+    )
+    notes: list[str] = []
+    credits: dict[str, str] = {}
+    for plan in plans:
+        notes.extend(note for note in plan.notes if note not in notes)
+        credits.update(plan.credits)
+    return Plan(first.mode, [option], first.moment, notes, credits)
+
+
 def plan_walk(schedule, start, end, when: datetime, services: Services) -> Plan:
     """Walk (Stephen, 2026-11-02): the whole way on foot, by Valhalla's pedestrian costing
     (sidewalks, paths, crosswalks; Settings' Avoid stairs kept), as one option of one walk."""
@@ -3177,6 +3216,9 @@ def block(plan: Plan, schedule: Schedule | None = None) -> dict:
         # The trip asked for (`transit_option`) is in none of the options: the best is chosen
         # (`choose`), and a ride checking its trip changes to it (frontend lib/tripCheck.ts).
         "asked_gone": plan.asked is not None,
+        # A trip with stops (Stephen, 2026-11-03: each stop starts a new trip): where each trip
+        # after a stop begins, by step; ridden one trip at a time. Empty: no stops.
+        "stop_steps": list(option.stops_at),
         "direct": option.direct,
         "total_s": round(total),
         "minutes": total_min,

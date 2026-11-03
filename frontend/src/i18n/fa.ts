@@ -268,6 +268,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Walk started.": "پیاده‌روی شروع شد.",
   "End ride": "پایان سواری",
   "End walk": "پایان پیاده‌روی",
+  "Start the next leg": "شروع بخش بعدی",
   "Done": "تمام",
   "about": "حدود",
   ", arriving about": "، رسیدن حدود",

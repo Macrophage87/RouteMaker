@@ -57,6 +57,7 @@ A malformed JSON body is counted, because only a script can send one.
 from __future__ import annotations
 
 import dataclasses
+import itertools
 import json
 import logging
 import time
@@ -134,6 +135,9 @@ ROUTE_MAX_BODY_BYTES = MAX_BODY_BYTES + 2 * follow.MAX_CHARS
 # plan needs a start and a destination (`RouteIn.dials_fit_the_preset`).
 MIN_POINTS = 1
 MAX_POINTS = 25
+# The stops a Bikeshare or transit trip takes (Stephen, 2026-11-03): each leg is a search of its
+# own inside the one plan's budget, so a few.
+MAX_TRIP_STOPS = 3
 
 # A request's span: the sum of the straight-line distances between consecutive
 # points. A route's cost grows with its length - the /route search, then one
@@ -533,8 +537,9 @@ class RouteIn(Schema):
     transit_option: str | None = Field(
         default=None,
         min_length=1,
-        max_length=80,
-        pattern=r"^[a-z0-9>-]+$",
+        # A trip with stops: its legs' keys, joined by "+" (`transit.joined`).
+        max_length=80 * (MAX_TRIP_STOPS + 1) + MAX_TRIP_STOPS,
+        pattern=r"^[a-z0-9>+-]+$",
         description=(
             "Transit ride types only: the `key` of one of the answer's `transit.options`, to plan"
             " that option (its route line, steps and total). Absent, or no longer an option: the"
@@ -738,10 +743,13 @@ class RouteIn(Schema):
         ):
             raise ValueError("assist applies to the Cargo Bike ride type only")
         if self.preset in presets.TRANSIT_PRESETS:
-            if len(self.points) != 2:
+            # A start, stops and an end (Stephen, 2026-11-03: each stop starts a new trip):
+            # each leg is planned from its two points, so none is a via.
+            if len(self.points) > 2 + MAX_TRIP_STOPS or self.via_points:
                 raise ValueError(
-                    "Transit ride types take a start and an end: the bike legs, Metro and bus"
-                    " are planned from those two points"
+                    f"Transit ride types take a start, at most {MAX_TRIP_STOPS} stops and an end,"
+                    " none of them vias: each leg's bike rides, Metro and bus are planned from"
+                    " its two points"
                 )
             if self.loop:
                 raise ValueError("Transit ride types do not plan loops")
@@ -2938,6 +2946,13 @@ class TransitOut(Schema):
             " scheduled, or its departure missed): the best is chosen in its place."
         ),
     )
+    stop_steps: list[int] = Field(
+        default_factory=list,
+        description=(
+            "A trip with stops: the index in `steps` where each trip after a stop begins (each"
+            " stop starts a new trip, planned to leave as the one before arrives). Empty: none."
+        ),
+    )
     direct: bool = Field(description="The chosen option is riding the whole way.")
     total_s: int
     minutes: int
@@ -4198,36 +4213,38 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
         costing=candidate_costing,
         when=body.when or routing.default_when(),
     )
-    start, end = body.points
+    start, end = body.points[0], body.points[-1]
     # WMATA's live reading (core.wmata_live), if any: read before the search, which ranks a
     # station with no working elevator on the way 15 min down, and used after it (below).
     live = wmata_live.client.snapshot()
-    if body.preset == presets.WALK:
-        found = transit.plan_walk(schedule, start, end, when, services)
-    elif body.preset == presets.WALK_TRANSIT:
-        found = transit.plan_walk_transit(schedule, start, end, when, services)
-    elif body.preset == presets.BIKESHARE_TRANSIT:
-        found = transit.plan_bikeshare(
-            schedule, start, end, when, services, share_snapshot, hop=body.novice_hop
-        )
-        if share_note is not None:
-            found.notes.insert(0, share_note)
-    else:
-        options = presets.costing(body.preset)["bicycle"]
-        speed = presets.rider_speed(body.preset, body.cycling_speed_kmh) or options.get(
-            "cycling_speed",
-            presets.VALHALLA_DEFAULT_SPEED_KMH[options.get("bicycle_type", "Hybrid")],
-        )
-        # A station whose elevators are all out is ranked 15 min down for the bike, so the
-        # next one over usually wins (Stephen, 2026-10-21).
-        blocked = transit_live.blocked_stations(live)
-        bike_schedule = transit.with_elevators_out(
-            schedule,
-            [(station.lon, station.lat) for station in blocked],
-        )
-        found = transit.plan_bike(
-            bike_schedule, start, end, when, services, speed, hop=body.novice_hop
-        )
+
+    def search(a: list[float], b: list[float], at: datetime) -> transit.Plan:
+        if body.preset == presets.WALK:
+            plan = transit.plan_walk(schedule, a, b, at, services)
+        elif body.preset == presets.WALK_TRANSIT:
+            plan = transit.plan_walk_transit(schedule, a, b, at, services)
+        elif body.preset == presets.BIKESHARE_TRANSIT:
+            plan = transit.plan_bikeshare(
+                schedule, a, b, at, services, share_snapshot, hop=body.novice_hop
+            )
+            if share_note is not None:
+                plan.notes.insert(0, share_note)
+        else:
+            options = presets.costing(body.preset)["bicycle"]
+            speed = presets.rider_speed(body.preset, body.cycling_speed_kmh) or options.get(
+                "cycling_speed",
+                presets.VALHALLA_DEFAULT_SPEED_KMH[options.get("bicycle_type", "Hybrid")],
+            )
+            # A station whose elevators are all out is ranked 15 min down for the bike, so the
+            # next one over usually wins (Stephen, 2026-10-21).
+            blocked = transit_live.blocked_stations(live)
+            bike_schedule = transit.with_elevators_out(
+                schedule,
+                [(station.lon, station.lat) for station in blocked],
+            )
+            plan = transit.plan_bike(bike_schedule, a, b, at, services, speed, hop=body.novice_hop)
+        return plan
+
     searched = routing.clock()
     dials = routing.Dials(
         stress=body.stress,
@@ -4248,15 +4265,31 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
         # how Novice and Nervous gets past them here.
         novice_walks=False,
     )
+
     # WMATA's live reading (core.wmata_live), if any: a trip through a closed station is left out,
     # and the block says the live values (core.transit_live).
     # A plan for now takes its Metro steps' departures from WMATA's next trains, where they
     # cover them, before it is ranked.
-    found = transit_live.with_live_trains(found, live)
-    found = transit_live.skip_closed(found, live)
-    # Novice and Nervous's hop past the busy stretch (v0.11.0): planned where there is one,
-    # unless the rider chose another option.
-    found = transit.choose(found, body.transit_option, schedule, hop=body.novice_hop is not None)
+    def chosen(plan: transit.Plan, key: str | None) -> transit.Plan:
+        plan = transit_live.with_live_trains(plan, live)
+        plan = transit_live.skip_closed(plan, live)
+        # Novice and Nervous's hop past the busy stretch (v0.11.0): planned where there is one,
+        # unless the rider chose another option.
+        return transit.choose(plan, key, schedule, hop=body.novice_hop is not None)
+
+    if len(body.points) == 2:
+        found = chosen(search(start, end, when), body.transit_option)
+    else:
+        # Stops (Stephen, 2026-11-02: "Add the stops in for all"): each leg its own trip, its
+        # best option, leaving the stop as the leg before arrives there (`transit.joined`). The
+        # trip is the one option, so a key asked for is its own.
+        plans = []
+        at = when
+        for a, b in itertools.pairwise(body.points):
+            plan = chosen(search(a, b, at), None)
+            plans.append(plan)
+            at = at + timedelta(seconds=plan.option.total_s)
+        found = transit.joined(plans)
     # The chosen trip's Metrobus steps' next buses (core.wmata_bus, v0.9.0), asked now, beside
     # the routing, so the answer waits for them little if at all.
     bus_ask = _ask_buses(found)

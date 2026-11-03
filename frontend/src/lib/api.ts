@@ -709,6 +709,11 @@ export interface TransitPlan {
   key: string;
   /** The trip asked for (`transit_option`) is no longer an option: the best is chosen in its place (absent from older answers). */
   asked_gone?: boolean;
+  /**
+   * A trip with stops (Stephen, 2026-11-03: "Each stop starts a new trip"): where each trip after a stop begins, by step.
+   * Empty or absent: no stops. Ridden one trip at a time (lib/tripStops.ts).
+   */
+  stop_steps?: number[];
   direct: boolean;
   /** Quickest first; riding the whole way is always one. */
   options: TransitOption[];

@@ -296,6 +296,7 @@ import { MY_GO_NOT_SAVED, MY_GO_SAVED, MY_GO_SAVED_DEVICE, fetchMyGo, goRideChip
 import { optionChosenSaid, transitOf, withTransitOption, type TransitPick } from "./lib/transit.ts";
 import { nativeBridge, nativeShareNavigator } from "./lib/nativeShell.ts";
 import { AVOID_STAIRS_EVENT, readAvoidStairs } from "./lib/avoidStairs.ts";
+import { firstTripOf, nextLegPoints, stopsAsTrips, stopsLeftOf, type StopsLeft } from "./lib/tripStops.ts";
 import { TRIP_GONE_SAID, checkedTripOf, lateSaid, switchSaid, tripChecked, tripVerdict, type CheckedTrip } from "./lib/tripCheck.ts";
 import { REST_ANYWAY_MS, RIDE_REST_FINDING, fixedRide, restClosedSaid, restRequest, rideLegOf, rideTripOf, rideable as rideableRoute, walksLine, type RideTrip } from "./lib/rideTrip.ts";
 import { RIDE_TOO_LONG } from "./lib/navigate.ts";
@@ -2901,7 +2902,8 @@ export function App() {
   const goAddStopAt = (point: LonLat, name: string) => {
     const current = pointsRef.current;
     const ride = rideRef.current;
-    if (current.length < 2 || twoPointsOnly(ride.preset)) {
+    // Walk and the transit types take stops as trips of their own (lib/tripStops.ts); Bikeshare a start and an end.
+    if (current.length < 2 || (twoPointsOnly(ride.preset) && !stopsAsTrips(ride.preset))) {
       void goTo(point, name);
       return;
     }
@@ -3159,8 +3161,8 @@ export function App() {
   // Best order moves stops only (v0.7.0): via points go with the stop they lead to.
   const orderShown = !isMassRide(preset) && stopsThatMove(stopsOnly(points, VIA_MARKS.isVia, loopVias).points, loopVias) >= 2;
   // Go with a route (v0.7.0, "Keep adding stops by search"): "Add a stop" and Best order in the route sheet, and a
-  // chip's place a stop; never during a ride, nor on a ride type of a start and an end only.
-  const goStops = mode === "go" && !riding && points.length >= 2 && !twoPointsOnly(preset) && !isMassRide(preset);
+  // chip's place a stop; never during a ride, nor on Bikeshare (a start and an end only).
+  const goStops = mode === "go" && !riding && points.length >= 2 && (!twoPointsOnly(preset) || stopsAsTrips(preset)) && !isMassRide(preset);
   const reverseButton = useRef<HTMLButtonElement>(null);
   const orderFocused = useRef(false);
   // The button leaves when the stops drop below two (an undo, a removal, the loop): if it
@@ -3711,18 +3713,28 @@ export function App() {
   // `rest`: Ride the rest's own route (rideRest, below), ridden in place of the plan's.
   // The transit trip ridden, kept checked (lib/tripCheck.ts): its route, ride type, destination and arrival as last said.
   const tripCheck = useRef<{ route: RouteResponse; preset: PresetId; to: LonLat; trip: CheckedTrip } | null>(null);
+  // The stops left after the trip ridden now (lib/tripStops.ts): planned on from the stop by "Start the next leg".
+  const tripStopsLeft = useRef<StopsLeft | null>(null);
   const beginRide = (prefs: RidePrefs, unlocked = false, rest?: { route: RouteResponse; points: LonLat[]; roam?: boolean }) => {
-    const route = rest?.route ?? shown;
-    if (!route) return;
+    const asked = rest?.route ?? shown;
+    if (!asked) return;
+    // A trip with stops (lib/tripStops.ts, Stephen 2026-11-03): its first trip is ridden, to the first stop; the stops
+    // left are kept for "Start the next leg" there. A trip check's change or Ride the rest keeps them; a new ride drops them.
+    const askedPoints = rest?.points ?? routedPoints;
+    const left = asked.transit ? stopsLeftOf(asked, askedPoints, asked.transit.mode as PresetId) : null;
+    if (left) tripStopsLeft.current = left;
+    else if (!rest || rest.roam) tripStopsLeft.current = null;
+    const route = left ? firstTripOf(asked) : asked;
+    const ridePoints = left ? askedPoints.slice(0, 2) : askedPoints;
     if (!unlocked) startRideGesture(prefs, walksLine(route), route.preset === "run");
-    const leg = rideLegOf(route, rest?.points ?? routedPoints, rest ? false : routedLoop);
+    const leg = rideLegOf(route, ridePoints, rest ? false : routedLoop);
     // A More direct or Calmer chosen rides at its own traffic setting, so a re-route keeps to it; the plan's dials and
     // the saved default stay the rider's (lib/neighbours.ts rideDials).
     // A route everyone shares stays fixed (the owner, 2026-10-18: "For sharing mass rides and group rides, rerouting
     // defeats the purpose"; "ride is the fixed one ... route is so people can review or do it themselves
     // separately"): a link shared as a ride, opened unchanged; a Mass Ride or Group Ride, unless shared as a route.
     // Its sharer is not held to it ("Maybe make the sharer able to reroute").
-    const opened = sharedOpenNow.current?.answer === route ? sharedOpenNow.current : null;
+    const opened = sharedOpenNow.current?.answer === asked ? sharedOpenNow.current : null;
     const fixed = fixedRide(leg, opened, !!rest);
     setResumeStats(null);
     const rideDialsNow = rideDials({ ...planDials, closuresNow: true }, rest ? null : route);
@@ -3733,9 +3745,9 @@ export function App() {
     const follows = !!opened && !opened.own && !!opened.lead;
     const passOn = follows && !followedNoKey() ? followedLink() : null;
     // Leading a broadcast already (Broadcast beside Start): its link, so a resumed ride leads it again.
-    const ledLink = opened?.own && opened.lead && rideLinkSent.current?.route === route ? rideLinkSent.current.link : null;
+    const ledLink = opened?.own && opened.lead && rideLinkSent.current?.route === asked ? rideLinkSent.current.link : null;
     // A transit trip is kept checked till its first boarding (lib/tripCheck.ts, Stephen 2026-11-02).
-    const ends = rest?.points ?? routedPoints;
+    const ends = ridePoints;
     const checked = route.transit && tripChecked(route.transit.mode) && ends.length > 1 ? checkedTripOf(route.transit) : null;
     tripCheck.current = checked && route.transit ? { route, preset: route.transit.mode, to: ends[ends.length - 1], trip: checked } : null;
     const note = rideNote.current;
@@ -4225,6 +4237,23 @@ export function App() {
       return restClosedSaid(found.closures.map((c) => c.road ?? c.title ?? "a closure"));
     }
     go();
+    return null;
+  };
+  // "Start the next leg" at a stop (lib/tripStops.ts, Stephen 2026-11-03: "Each stop starts a new trip"): the rest of
+  // the trip planned again from where the rider is, leaving now, and its first trip ridden.
+  const nextLeg = async (riderAt: LonLat | null): Promise<string | null> => {
+    const left = tripStopsLeft.current;
+    if (!left) return null;
+    const n = rideNow.current.start?.n;
+    const stillOn = () => ridingNow.current && rideNow.current.start?.n === n;
+    const points = nextLegPoints(left, riderAt);
+    const result = await requestRoute(points, left.preset, { dials: { ...planDials, loop: false, closuresNow: true } });
+    if (!stillOn()) return null;
+    if (!result.ok) return `${result.error.title}. ${result.error.message}`;
+    if (!rideableRoute(result.route)) return RIDE_TOO_LONG;
+    // The last leg has no stops after it: none left once it starts (beginRide keeps them only for a trip with stops).
+    tripStopsLeft.current = null;
+    beginRide(ridePrefs, false, { route: result.route, points });
     return null;
   };
   // A check of the transit trip ridden (lib/tripCheck.ts): planned again from `riderAt`, leaving now, with the trip's
@@ -6633,6 +6662,7 @@ export function App() {
           trip={rideStart.trip}
           onRideRest={(riderAt) => rideRest(riderAt, true)}
           onTripCheck={tripCheck.current?.route === rideStart.route ? checkTrip : undefined}
+          onNextLeg={tripStopsLeft.current ? nextLeg : undefined}
           dials={rideStart.dials}
           prefs={ridePrefs}
           onPrefs={changeRidePrefs}
