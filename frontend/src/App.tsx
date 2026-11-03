@@ -297,7 +297,7 @@ import { MY_GO_NOT_SAVED, MY_GO_SAVED, MY_GO_SAVED_DEVICE, fetchMyGo, goRideChip
 import { optionChosenSaid, transitOf, withTransitOption, type TransitPick } from "./lib/transit.ts";
 import { nativeBridge, nativeShareNavigator } from "./lib/nativeShell.ts";
 import { AVOID_STAIRS_EVENT, readAvoidStairs } from "./lib/avoidStairs.ts";
-import { firstTripOf, nextLegPoints, stopsAsTrips, stopsLeftOf, type StopsLeft } from "./lib/tripStops.ts";
+import { firstTripOf, maxPointsFor, nextLegPoints, stopsAsTrips, stopsLeftOf, type StopsLeft } from "./lib/tripStops.ts";
 import { TRIP_GONE_SAID, checkedTripOf, lateSaid, switchSaid, tripChecked, tripVerdict, type CheckedTrip } from "./lib/tripCheck.ts";
 import { REST_ANYWAY_MS, RIDE_REST_FINDING, fixedRide, restClosedSaid, restRequest, rideLegOf, rideTripOf, rideable as rideableRoute, walksLine, type RideTrip } from "./lib/rideTrip.ts";
 import { RIDE_TOO_LONG } from "./lib/navigate.ts";
@@ -2116,8 +2116,8 @@ export function App() {
       void goToRef.current(point, goPlaceName(namer.name(point)?.name, point), true);
       return;
     }
-    if (pointsRef.current.length >= MAX_POINTS) {
-      setNotice(maxPointsNotice());
+    if (pointsRef.current.length >= maxPointsFor(rideRef.current.preset)) {
+      setNotice(maxPointsNotice(maxPointsFor(rideRef.current.preset)));
       return;
     }
     setNotice(null);
@@ -2914,8 +2914,8 @@ export function App() {
       void goTo(point, name);
       return;
     }
-    if (current.length >= MAX_POINTS) {
-      setNotice(maxPointsNotice());
+    if (current.length >= maxPointsFor(ride.preset)) {
+      setNotice(maxPointsNotice(maxPointsFor(ride.preset)));
       return;
     }
     const loop = loopStops(ride.preset, ride.dials.loop);
@@ -3108,8 +3108,8 @@ export function App() {
       setNotice(OUTSIDE_NOTICE);
       return;
     }
-    if (pointsRef.current.length >= MAX_POINTS) {
-      setNotice(maxPointsNotice());
+    if (pointsRef.current.length >= maxPointsFor(rideRef.current.preset)) {
+      setNotice(maxPointsNotice(maxPointsFor(rideRef.current.preset)));
       return;
     }
     setStopAsk({ mode: "add", name: "", point });

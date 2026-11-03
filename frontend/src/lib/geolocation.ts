@@ -144,7 +144,7 @@ export const LOCATE_MESSAGES: Record<LocateFailure, string> = {
 /** The notice when the fix is outside the map (the correctness review's N1: said as the rider's location). */
 export const LOCATION_OUTSIDE = t("Your location is outside the area this map covers (the DC region to Baltimore).");
 /** The notice when the plan has no room for another point (the same words as a map click's). */
-export const maxPointsNotice = (): string => t("A route can have at most {max} points.", { max: MAX_POINTS });
+export const maxPointsNotice = (max: number = MAX_POINTS): string => t("A route can have at most {max} points.", { max });
 
 /** Whether the button can work here, and if not, why (shown as its reason). */
 export function locateSupport(env: GeoEnv): { available: true } | { available: false; reason: string } {

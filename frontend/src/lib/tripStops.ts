@@ -5,6 +5,7 @@
  * there, "Start the next leg" plans the rest again from where the rider is, leaving then, as a stop takes as long as
  * it takes.
  */
+import { MAX_POINTS } from "./geo.ts";
 import type { RouteResponse, TransitPlan } from "./api.ts";
 import { t } from "./i18n.ts";
 import type { LonLat } from "./geo.ts";
@@ -19,6 +20,14 @@ export const STOPS_KEY_SEP = "+";
 /** Whether a ride type takes stops as trips of their own: Walk and the transit types (Bikeshare not yet). */
 export function stopsAsTrips(preset: PresetId): boolean {
   return isTransit(preset);
+}
+
+/** The most stops such a trip takes (core/api.py MAX_TRIP_STOPS): the server refuses a fourth. */
+export const MAX_TRIP_STOPS = 3;
+
+/** The most points a route of this ride type takes: a start, its stops and an end for trips of stops, else MAX_POINTS. */
+export function maxPointsFor(preset: PresetId): number {
+  return stopsAsTrips(preset) ? MAX_TRIP_STOPS + 2 : MAX_POINTS;
 }
 
 /** Whether a route is a trip with stops. */
