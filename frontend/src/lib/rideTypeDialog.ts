@@ -50,7 +50,7 @@ export function initialCard(current: PresetId): number {
 /**
  * Choosing a ride type: its sliders move to where it starts them; the ride
  * time the rider picked stays, since it is about the ride and not the bike.
- * Avoid gravel and Keep to roads stay, and so does Make it a loop (OWNER-DECISIONS 374): every
+ * Keep to roads stays, and so does Make it a loop (OWNER-DECISIONS 374): every
  * point after the start was placed as a loop's stop. Mass Ride has no loop
  * (loop.loopStops), so there the flag is kept unused, and the next ride type
  * brings the loop back.
@@ -59,7 +59,6 @@ export function choose(preset: PresetId, carrying: Carrying | null, current: Dia
   const start = startDials(preset, carrying, current.when, current.assist, current.bike ?? null);
   return {
     ...start,
-    ...(current.avoidGravel ? { avoidGravel: true } : {}),
     ...(current.trailsOff ? { trailsOff: true } : {}),
     ...(current.loop === true ? { loop: true } : {}),
   };
