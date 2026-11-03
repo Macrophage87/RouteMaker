@@ -84,6 +84,10 @@ TARGET_BEARINGS = (0.0, 60.0, 120.0, 180.0, 240.0, 300.0)
 ROUTED_PER_STRAIGHT = 1.3
 TARGET_TOLERANCE = 0.12
 TARGET_RESIZES = 3
+# What a triangle's run may be read as, for its straight sides (a corner snapped onto the
+# start reads as too little, a fenced estate as too much), and how far one resize may scale it.
+RATIO_RANGE = (1.0, 3.5)
+RESIZE_RANGE = (0.5, 2.0)
 # A target loop's run: 1 km to a 50 km ultra.
 RUN_TARGET_MAX_M = 50_000
 
@@ -577,13 +581,19 @@ def target_loop(router: Router, start, ask: RunAsk) -> tuple[Walked | None, dict
         ratio = sorted(ratios)[len(ratios) // 2] if ratios else ROUTED_PER_STRAIGHT
         return target / (3.0 * ratio)
 
+    asked: set[tuple[float, int]] = set()
+    latest: dict[float, tuple[float, float]] = {}  # bearing: (side, metres) last run
+
     def tried(bearing: float, side_m: float) -> None:
         walked = run_leg(
             router, triangle(start, bearing, side_m), ask, alternates=0, say_crossings=False
         )
+        asked.add((bearing, round(side_m)))
         if walked is None or walked.metres <= 0:
             return
-        ratios.append(walked.metres / (3.0 * side_m))
+        latest[bearing] = (side_m, walked.metres)
+        low, high = RATIO_RANGE
+        ratios.append(min(max(walked.metres / (3.0 * side_m), low), high))
         off = abs(walked.metres - target) / target
         spur = self_overlap(walked.shape)
         near = off <= TARGET_TOLERANCE
@@ -605,11 +615,17 @@ def target_loop(router: Router, start, ask: RunAsk) -> tuple[Walked | None, dict
         return None, {"fallback": "points", "tried": 0}
     found.sort(key=lambda f: f[0])
     for _ in range(TARGET_RESIZES):
-        rank, walked, bearing, side_m = found[0]
+        rank, _walked, bearing, _side = found[0]
         if not rank[0] or router.left() < 2.0:
             break
-        # This direction's own ratio: what its triangle ran for its straight sides.
-        tried(bearing, side_m * target / walked.metres)
+        # The nearest direction, sized from its latest run (its own ratio), a step at most
+        # RESIZE_RANGE; never the same triangle twice (the router would answer it the same).
+        side_m, metres = latest[bearing]
+        low, high = RESIZE_RANGE
+        size = side_m * min(max(target / metres, low), high)
+        if (bearing, round(size)) in asked:
+            break
+        tried(bearing, size)
         found.sort(key=lambda f: f[0])
     walked = said(router, found[0][1])
     # No way out and way back to compare: what the loop runs twice is in its rank, not its note.
