@@ -3229,13 +3229,13 @@ if (mine()) {
   // More (the gear, the owner, 2026-10-18; More 2026-10-24; bubbles 2026-10-26: "Have many of those options just expanded
   // as more bubble buttons, not in settings"): a row of round bubbles to its left, Less traffic and Fewer hills (each a
   // symbol named in full, 48 px or more), Topo lines (2026-10-26, a toggle, off) and Settings, the last opening the
-  // settings under the top row, the focus in them. P4 (71411716): each has its word (Calmer, Flatter, Topo, Settings), a
+  // settings as a popup (2026-11-03), the focus in it. P4 (71411716): each has its word (Calmer, Flatter, Topo, Settings), a
   // column going up beside the rail; where the words do not fit under round buttons (here, 320 x 700) the rail and its
   // bubbles are 44 px pills with the word beside the icon (lib/railFit.ts).
   const bubbles = await p.eval(`(() => { const g = document.querySelector('.ride .ride-settings-button'); const row = document.getElementById(g.getAttribute('aria-controls')); const m = g.getBoundingClientRect();
     const pill = !!document.querySelector('.ride .ride-rail-pill');
     const list = [...row.querySelectorAll('button')].filter((b) => b.getClientRects().length > 0).map((b) => { const r = b.getBoundingClientRect(); const word = b.querySelector('.ride-word'); return { name: b.getAttribute('aria-label'), pressed: b.getAttribute('aria-pressed'), w: Math.round(r.width), h: Math.round(r.height), round: parseFloat(getComputedStyle(b).borderRadius) >= r.width / 2 - 1, word: word && word.getClientRects().length ? word.textContent : null, left: r.right <= m.left + 1, onScreen: r.left >= 0 && r.top >= 0 }; });
-    return { expanded: g.getAttribute('aria-expanded'), shown: !row.hidden, panelShown: !document.querySelector('.ride-mode-settings').hidden, pill, list }; })()`);
+    return { expanded: g.getAttribute('aria-expanded'), shown: !row.hidden, panelShown: !!document.querySelector('.ride-settings-dialog')?.open, pill, list }; })()`);
   check("ride: More (Stephen 2026-10-26) opens bubbles to its left, each with its word: Less traffic, Fewer hills, the two graphs of the next 2 miles (#913), Topo lines (a toggle, off) and Ride settings, each round and 48 px or more (44 px pills where the words do not fit) and on screen; the settings stay closed",
     bubbles.expanded === "true" && bubbles.shown && !bubbles.panelShown && JSON.stringify(bubbles.list.map((x) => x.name)) === JSON.stringify(["Less traffic: plan again from here", "Fewer hills: plan again from here", "Traffic stress graph", "Elevation graph", "Topo lines", "Ride settings"]) && bubbles.list.find((x) => x.name === "Topo lines")?.pressed === "false" &&
       JSON.stringify(bubbles.list.map((x) => x.word)) === JSON.stringify(["Calmer", "Flatter", "Stress", "Elevation", "Topo", "Settings"]) && bubbles.list.every((x) => (bubbles.pill ? x.w >= 44 && x.h >= 44 : x.round && x.w >= 48 && x.h >= 48) && x.left && x.onScreen), JSON.stringify(bubbles));
@@ -3243,14 +3243,36 @@ if (mine()) {
   await p.eval("document.querySelector('.ride .ride-settings-bubble').click(); true");
   await sleep(200);
   // At 320 px the top row is End ride and Go round (with its words since 7c0c4e60, named in full), on one line.
-  const gear = await p.eval(`(() => { const g = document.querySelector('.ride .ride-settings-bubble'); const panel = document.querySelector('.ride-mode-settings'); const c = document.querySelector('.ride-top .ride-road-closed'); const e = document.querySelector('.ride-top .ride-end'); const a = c.getBoundingClientRect(); const b = e.getBoundingClientRect();
-    return { expanded: g.getAttribute('aria-expanded'), shown: !panel.hidden, focusIn: panel.contains(document.activeElement), change: panel.querySelectorAll('.ride-change, .ride-ease').length, width: innerWidth, name: c.getAttribute('aria-label'), oneLine: Math.abs(a.top - b.top) <= 2, w: Math.round(a.width), h: Math.round(a.height) }; })()`);
-  check("ride: the Settings bubble opens the ride's settings alone (no route changes in them), with the focus in them; at 320 px Go round, named in full, is beside End ride",
-    gear.expanded === "true" && gear.shown && gear.focusIn && gear.change === 0 && gear.width <= 379 && gear.name === "Go round: road closed ahead" && gear.oneLine && gear.w >= 44 && gear.h >= 44, JSON.stringify(gear));
-  // More again closes the bubbles and the settings.
+  // The settings are a popup over the map (Stephen 2026-11-03: "Settings should be a popup, not in a scroll"): a modal
+  // dialog named Ride settings, the focus on its heading, the whole of it in view at 320 x 700 without scrolling.
+  const gear = await p.eval(`(() => { const g = document.querySelector('.ride .ride-settings-bubble'); const panel = document.querySelector('.ride-settings-dialog'); const c = document.querySelector('.ride-top .ride-road-closed'); const e = document.querySelector('.ride-top .ride-end'); const a = c.getBoundingClientRect(); const b = e.getBoundingClientRect(); const d = panel.getBoundingClientRect();
+    return { popup: g.getAttribute('aria-haspopup'), shown: panel.open && panel.matches(':modal'), name: document.getElementById(panel.getAttribute('aria-labelledby'))?.textContent, focus: document.activeElement?.tagName, focusIn: panel.contains(document.activeElement), change: panel.querySelectorAll('.ride-change, .ride-ease').length, noScroll: panel.scrollHeight <= panel.clientHeight + 1, inView: d.top >= 0 && d.bottom <= innerHeight && d.left >= 0 && d.right <= innerWidth, width: innerWidth, roadName: c.getAttribute('aria-label'), oneLine: Math.abs(a.top - b.top) <= 2, w: Math.round(a.width), h: Math.round(a.height) }; })()`);
+  await p.shot(`${SHOTS}/ride_settings_320.png`);
+  check("ride: the Settings bubble opens the ride's settings alone (no route changes in them) as a modal popup named Ride settings, the focus on its heading, all of it in view at 320 x 700 without scrolling; behind it, at 320 px, Go round, named in full, is beside End ride",
+    gear.popup === "dialog" && gear.shown && gear.name === "Ride settings" && gear.focus === "H2" && gear.focusIn && gear.change === 0 && gear.noScroll && gear.inView && gear.width <= 379 && gear.roadName === "Go round: road closed ahead" && gear.oneLine && gear.w >= 44 && gear.h >= 44, JSON.stringify(gear));
+  // A tap inside the popup, even on its padding, leaves it open; the cues' live regions are inside it while it shows.
+  await p.eval("document.querySelector('.ride-settings-body').click(); true");
+  await sleep(150);
+  const inside = await p.eval("({ open: document.querySelector('.ride-settings-dialog').open, live: document.querySelectorAll('.ride-settings-dialog [aria-live]').length })");
+  check("ride: a tap inside the settings popup leaves it open, and the cues are said from inside it (the screen behind is inert)", inside.open && inside.live === 2, JSON.stringify(inside));
+  // Escape closes the popup alone, the focus back on the Settings bubble; Done does the same.
+  await p.key("Escape", "Escape", 27);
+  await sleep(200);
+  const escaped = await p.eval("({ open: document.querySelector('.ride-settings-dialog').open, focus: document.activeElement === document.querySelector('.ride .ride-settings-bubble'), more: document.querySelector('.ride .ride-settings-button').getAttribute('aria-expanded') })");
+  await p.eval("document.querySelector('.ride .ride-settings-bubble').click(); true");
+  await sleep(200);
+  await p.eval("[...document.querySelectorAll('.ride-settings-dialog button')].find((b) => b.textContent.trim() === 'Done').click(); true");
+  await sleep(200);
+  const done = await p.eval("({ open: document.querySelector('.ride-settings-dialog').open, focus: document.activeElement === document.querySelector('.ride .ride-settings-bubble') })");
+  check("ride: Escape or Done closes the settings popup alone, the focus back on the Settings bubble, More's bubbles still open",
+    !escaped.open && escaped.focus && escaped.more === "true" && !done.open && done.focus, JSON.stringify({ escaped, done }));
+  await p.eval("document.querySelector('.ride .ride-settings-bubble').click(); true");
+  await sleep(200);
+  // More's own close, as the screen left alone presses it (closeIdlePanels; a rider cannot reach More behind the
+  // modal), closes the bubbles and the settings.
   await p.eval("document.querySelector('.ride .ride-settings-button').click(); true");
   await sleep(200);
-  const shut = await p.eval("({ more: document.querySelector('.ride .ride-settings-button').getAttribute('aria-expanded'), panel: document.querySelector('.ride-mode-settings').hidden, row: document.querySelector('.ride-more-bubbles').hidden })");
+  const shut = await p.eval("({ more: document.querySelector('.ride .ride-settings-button').getAttribute('aria-expanded'), panel: !document.querySelector('.ride-settings-dialog').open, row: document.querySelector('.ride-more-bubbles').hidden })");
   check("ride: More pressed again closes its bubbles and the settings", shut.more === "false" && shut.panel && shut.row, JSON.stringify(shut));
   // Large text (the owner, 2026-10-20; it replaced Big text): a side button, pressed while on; the card half the screen,
   // the map below; the change said; kept on this device. A press again goes back.
@@ -3268,7 +3290,8 @@ if (mine()) {
     large.name === "Large text" && large.pressed === "true" && large.map !== "none" && large.card >= 45 && large.card <= 55 && large.distancePx > 28 && large.kept === "large" && /Large text on/.test(large.heard ?? ""), JSON.stringify(large));
   // Cues to the screen reader alone: the map is out of its reach in a ride (the owner, 2026-10-20), so a swipe goes from
   // the card to the side buttons; with the voice as well it stays.
-  const outputTo = (label) => p.eval(`(() => { document.querySelector('.ride .ride-settings-button').click(); document.querySelector('.ride .ride-settings-bubble').click(); const l = [...document.querySelectorAll('.ride-mode-settings label')].find((x) => x.textContent === ${JSON.stringify(label)}); l?.querySelector('input').click(); document.querySelector('.ride .ride-settings-button').click(); return !!l; })()`);
+  // The popup's Say cues with picker, set as a rider's pick does, then closed with Done.
+  const outputTo = (label) => p.eval(`(() => { document.querySelector('.ride .ride-settings-button').click(); document.querySelector('.ride .ride-settings-bubble').click(); const dialog = document.querySelector('.ride-settings-dialog'); const s = [...dialog.querySelectorAll('select')].find((x) => [...x.options].some((o) => o.textContent === ${JSON.stringify(label)})); const o = s && [...s.options].find((x) => x.textContent === ${JSON.stringify(label)}); if (o) { Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(s, o.value); s.dispatchEvent(new Event('change', { bubbles: true })); } [...dialog.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Done').click(); document.querySelector('.ride .ride-settings-button').click(); return !!o; })()`);
   const srPicked = await outputTo("My screen reader");
   await sleep(300);
   const srOnly = await p.eval("({ inert: document.querySelector('.map').inert, zoom: !!document.querySelector('.maplibregl-ctrl-zoom-in') })");

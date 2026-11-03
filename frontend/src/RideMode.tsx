@@ -29,7 +29,7 @@
  *   opening beside it. More opens a row of bubbles beside it (2026-10-26: "just expanded as more bubble buttons, not in
  *   settings"): the route's changes (Less traffic and Fewer hills, one step down the traffic or hills slider and a new
  *   route from here, lib/rideEase.ts; Skip this stop, lib/rideStops.ts), Topo lines on or off (lib/topoLines.ts) and
- *   Settings, the ride's settings opening under the top row. The bottom panel shows only when it
+ *   Settings, the ride's settings opening as a popup over the map. The bottom panel shows only when it
  *   has something to say or ask: GPS and screen notes, off route, Ride the rest.
  *   Answers asked for (Where am I?, a detour's progress) show for a few seconds by the buttons.
  *
@@ -625,6 +625,22 @@ export function SlideToEnd({ onEnd, onTap, name = END_RIDE_NAME }: { onEnd: () =
 }
 
 /** A live region that says the same sentence twice when it is set twice (App's count trick). */
+/**
+ * The cues' live regions inside the ride's settings popup, while it is open: the modal makes the screen behind it
+ * inert, out of a screen reader's reach, so a cue said meanwhile is said from here. Empty at first, so a cue already
+ * said is not said again as the popup opens.
+ */
+function PopupLiveRegions({ polite, assertive }: { polite: { text: string; count: number }; assertive: { text: string; count: number } }) {
+  const [at] = useState(() => ({ polite: polite.count, assertive: assertive.count }));
+  const fresh = (said: { text: string; count: number }, was: number) => (said.count === was ? { text: "", count: said.count } : said);
+  return (
+    <>
+      <LiveRegion said={fresh(polite, at.polite)} urgent={false} />
+      <LiveRegion said={fresh(assertive, at.assertive)} urgent />
+    </>
+  );
+}
+
 export function LiveRegion({ said, urgent }: { said: { text: string; count: number }; urgent: boolean }) {
   return (
     <p className="visually-hidden" role={urgent ? "alert" : "status"} aria-live={urgent ? "assertive" : "polite"}>
@@ -999,14 +1015,15 @@ export function RideMode({
   const settingsId = useId();
   // More, the last side button (closed at Start): it opens a row of bubbles beside it (Stephen 2026-10-26: "Have many
   // of those options just expanded as more bubble buttons, not in settings"): Less traffic, Fewer hills, Skip this stop
-  // and Settings, the last opening the ride's settings under the top row.
+  // and Settings, the last opening the ride's settings as a popup.
   const [moreOpen, setMoreOpen] = useState(false);
   const railRef = useRef<HTMLDivElement>(null);
   // Icons only (Settings > Display): read as the ride opens; the buttons' names are unchanged either way.
   const [iconsOnly] = useState(() => readRideIconsOnly());
   const railFit = useRailFit(railRef, iconsOnly);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const settingsPanel = useRef<HTMLDivElement>(null);
+  const settingsPanel = useRef<HTMLDialogElement>(null);
+  const settingsTitle = useRef<HTMLHeadingElement>(null);
   const settingsButton = useRef<HTMLButtonElement>(null);
   const settingsBubble = useRef<HTMLButtonElement>(null);
   // More closed closes the settings too; the focus, if it was in them, back to More. (The idle close looks for typing
@@ -1018,17 +1035,30 @@ export function RideMode({
       return;
     }
     const held = settingsPanel.current?.contains(document.activeElement) ?? false;
+    // Closed first, so More is no longer behind the modal when the focus goes to it.
+    if (settingsPanel.current?.open) settingsPanel.current.close();
     setMoreOpen(false);
     setSettingsOpen(false);
     if (held) settingsButton.current?.focus();
   };
-  // Opened, the settings are brought into view (the row above them is sticky; the card may be scrolled) and the focus
-  // goes into them: the bubbles come after them, so Tab alone would never reach them.
+  // The ride's settings are a popup over the map (Stephen 2026-11-03: "Settings should be a popup, not in a scroll"):
+  // the platform's modal <dialog>, so the ride's screen behind is inert and keeps its layout, Escape and the back
+  // gesture close it, and the focus starts on its heading so a screen reader says what opened.
   useEffect(() => {
-    if (!settingsOpen) return;
-    settingsPanel.current?.scrollIntoView?.({ block: "nearest" });
-    settingsPanel.current?.focus({ preventScroll: true });
+    const dialog = settingsPanel.current;
+    if (!dialog) return;
+    if (settingsOpen && !dialog.open) {
+      dialog.showModal?.();
+      settingsTitle.current?.focus();
+    } else if (!settingsOpen && dialog.open) dialog.close();
   }, [settingsOpen]);
+  // However it closed (Done, Escape, a tap outside it, the screen left alone): the state follows, and the focus goes
+  // back to the Settings bubble, or to More where the bubbles have closed.
+  const settingsClosed = () => {
+    setSettingsOpen(false);
+    settingsBubble.current?.focus();
+    if (document.activeElement !== settingsBubble.current) settingsButton.current?.focus();
+  };
   // The 311 button's menu (lib/ride311.ts; the owner's choice 9). One tap logs; no note in a ride (Stephen,
   // 2026-10-21: "Don't bother with a note as people use it riding"): the checklist in Reports keeps the rest.
   const [menu311, setMenu311] = useState(false);
@@ -2561,7 +2591,7 @@ export function RideMode({
   // screen as possible"), set as --cue-fit on the card. Worked out when the turn, the size or the screen changes, not each
   // fix, with a little room left for the distance's words to grow; the small print stays 16 pt or more (styles.css).
   const cardRef = useRef<HTMLDivElement>(null);
-  const fitKey = `${textSize}|${cueShown.head}|${cueShown.rest}|${distanceWords.length}|${ride.off}|${ride.arrived}|${cueSheetOn}|${settingsOpen}|${togoWords}`;
+  const fitKey = `${textSize}|${cueShown.head}|${cueShown.rest}|${distanceWords.length}|${ride.off}|${ride.arrived}|${cueSheetOn}|${togoWords}`;
   useLayoutEffect(() => {
     const card = cardRef.current;
     if (!card) return;
@@ -2593,8 +2623,6 @@ export function RideMode({
     }
     // Large text sizes the instruction itself (--cue-fit): normal text's fitted size goes.
     card.querySelector<HTMLElement>(".cue-next .cue-text")?.style.removeProperty("font-size");
-    // The ride's settings open in the card: the size stays as it was while they show.
-    if (settingsOpen) return;
     // Two scales: the distance line's (and the arrow's), as big as its one line fits across and at most half the card
     // under the top row, whatever the cue says (the owner, 2026-10-20: "When there are multiple options the arrow and
     // distance shrink, which are the most important parts"); then the instruction's, as big as the card's height allows
@@ -3027,36 +3055,6 @@ export function RideMode({
             {light.shown.join(" · ")}
           </p>
         )}
-        <div
-          ref={settingsPanel}
-          id={`${settingsId}-settings`}
-          className="ride-mode-settings"
-          role="group"
-          aria-label={RIDE_SETTINGS_TITLE}
-          hidden={!settingsOpen}
-          tabIndex={-1}
-          onKeyDown={(event) => {
-            // Escape closes it, back to the Settings bubble.
-            if (event.key === "Escape") {
-              event.preventDefault();
-              setSettingsOpen(false);
-              settingsBubble.current?.focus();
-            }
-          }}
-        >
-          <h3 className="ride-settings-title">{t("Settings")}</h3>
-          <RideSettingsFields prefs={prefs} onChange={onPrefs} idBase={settingsId} />
-          {/* One line in view (the UI review, 2026-10-28), the whole of it under About Ride mode. */}
-          <p className="hint">{RIDE_SAFETY_SHORT}</p>
-          <details className="ride-safety-more">
-            <summary>{t("About Ride mode")}</summary>
-            <p className="hint">{RIDE_SAFETY}</p>
-          </details>
-          <label className="toggle ride-toggle">
-            <input type="checkbox" checked={headingUp} onChange={(event) => onHeadingUp(event.target.checked)} />
-            {t("Turn the map to my heading")}
-          </label>
-        </div>
         {ride.arrived ? (
           <>
             {/* "Arrived: Union Station" (the UI review, 2026-10-28); Done, in the top row, opens the summary. */}
@@ -3539,7 +3537,7 @@ export function RideMode({
               (Stephen 2026-10-26): the route's changes, each one press, a new route from here (not on a route everyone
               shares, `fixed`, nor once arrived), the symbols alone on screen (2026-10-23: "Symbol should be clear"),
               Topo lines on or off (2026-10-26, always there: it changes the map, not the route), and Settings, opening
-              the ride's settings under the top row. */}
+              the ride's settings as a popup (2026-11-03). */}
           <div
             className="ride-pop ride-more"
             onKeyDown={(event) => {
@@ -3635,9 +3633,9 @@ export function RideMode({
                 className="ride-round ride-settings-bubble"
                 aria-label={RIDE_SETTINGS_TITLE}
                 title={RIDE_SETTINGS_TITLE}
-                aria-expanded={settingsOpen}
+                aria-haspopup="dialog"
                 aria-controls={`${settingsId}-settings`}
-                onClick={() => setSettingsOpen(!settingsOpen)}
+                onClick={() => setSettingsOpen(true)}
               >
                 <Icon name="gear" size={24} />
                 <span className="ride-word" aria-hidden="true">{t("Settings")}</span>
@@ -3687,6 +3685,42 @@ export function RideMode({
           )}
         </div>
       )}
+      <dialog
+        ref={settingsPanel}
+        id={`${settingsId}-settings`}
+        className="ask-dialog ride-settings-dialog"
+        aria-labelledby={`${settingsId}-settings-title`}
+        data-idle-close
+        onClose={settingsClosed}
+        // A tap on the dim map around it closes it, as Done does (its contents fill it, so a tap within never does).
+        onClick={(event) => {
+          if (event.target === event.currentTarget) event.currentTarget.close();
+        }}
+      >
+        <div className="ride-settings-body">
+          {settingsOpen && <PopupLiveRegions polite={polite} assertive={assertive} />}
+          <h2 ref={settingsTitle} id={`${settingsId}-settings-title`} tabIndex={-1}>
+            {RIDE_SETTINGS_TITLE}
+          </h2>
+          {/* The two pickers, what each level says behind its (i): the whole popup fits a phone without scrolling. */}
+          <RideSettingsFields prefs={prefs} onChange={onPrefs} idBase={settingsId} compact />
+          <label className="toggle ride-toggle">
+            <input type="checkbox" checked={headingUp} onChange={(event) => onHeadingUp(event.target.checked)} />
+            {t("Turn the map to my heading")}
+          </label>
+          {/* One line in view (the UI review, 2026-10-28), the whole of it under About Ride mode. */}
+          <p className="hint">{RIDE_SAFETY_SHORT}</p>
+          <details className="ride-safety-more">
+            <summary>{t("About Ride mode")}</summary>
+            <p className="hint">{RIDE_SAFETY}</p>
+          </details>
+          <div className="closure-choices">
+            <button type="button" className="primary" onClick={() => settingsPanel.current?.close()}>
+              {t("Done")}
+            </button>
+          </div>
+        </div>
+      </dialog>
       <RestartStopsDialog stops={restart} onContinue={continueRestart} />
     </section>
   );
