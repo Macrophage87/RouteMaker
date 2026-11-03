@@ -268,6 +268,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Walk started.": "ጉዕዞ ብእግሪ ጀሚሩ።",
   "End ride": "ጉዕዞ ወድእ",
   "End walk": "ጉዕዞ ብእግሪ ወድእ",
+  "Start the next leg": "ዝቕጽል ክፋል ጀምር",
   "Done": "ተወዲኡ",
   "about": "ኣስታት",
   ", arriving about": "፣ በጽሖ ኣስታት",

@@ -37,6 +37,7 @@
  * ones sent are a re-plan's start point and, when the rider asks for the nearest water or restroom, the
  * search's own (POST /api/nearest), each in a POST body, as planning with "Use my location" sends it.
  */
+import { NEXT_LEG } from "./lib/tripStops.ts";
 import { BROADCAST_HOLD_HINT } from "./lib/broadcastQr.ts";
 import { useHold } from "./lib/useHold.ts";
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type FocusEvent, type PointerEvent } from "react";
@@ -745,6 +746,7 @@ export function RideMode({
   trip = null,
   onRideRest,
   onTripCheck,
+  onNextLeg,
   fixed = false,
   onBroadcast = null,
   onBroadcastHold = null,
@@ -819,6 +821,11 @@ export function RideMode({
    * boarding; a quicker trip replaces this ride, a delay comes back as the words to say.
    */
   onTripCheck?: (here: LonLat, open: () => boolean) => Promise<string | null>;
+  /**
+   * A trip with stops (lib/tripStops.ts): at the stop, once this trip is done, plans the rest from `here`, leaving now,
+   * and rides its first trip; else the words to say why not. Absent: no stops left.
+   */
+  onNextLeg?: (here: LonLat | null) => Promise<string | null>;
   /**
    * The route everyone shares (the owner, 2026-10-18: "For sharing mass rides and group rides, rerouting defeats the
    * purpose. It should be fixed as everyone is using the same route"): off route, it is kept as Keep the planned route
@@ -1998,6 +2005,16 @@ export function RideMode({
       if (said && !ended.current) answer(said);
     });
   };
+  // "Start the next leg" (lib/tripStops.ts): one press at the stop; what went wrong is said.
+  const nextLegBusy = useRef(false);
+  const startNextLeg = () => {
+    if (!onNextLeg || nextLegBusy.current) return;
+    nextLegBusy.current = true;
+    void onNextLeg(restFrom(tripRef.current.lastGood, Date.now())).then((said) => {
+      nextLegBusy.current = false;
+      if (said && !ended.current) answer(said);
+    });
+  };
   const end = () => {
     ended.current = true;
     stopWatch.current?.();
@@ -2919,6 +2936,14 @@ export function RideMode({
                 {/* Where the next Metro train or Metrobus is while waiting there (v0.9.0), its mark on the map. */}
                 <NextVehicleLine ask={trip?.boarding ?? null} waiting={ride.arrived && toBoard} announce={notify} onMark={setVehicle} />
               </>
+            )}
+            {/* At a stop, the trip to it done (lib/tripStops.ts): the next leg, one press. */}
+            {onNextLeg && (onwardParts.length === 0 || onwardDone) && (
+              <div className="ride-next-leg">
+                <button type="button" className="primary" onClick={startNextLeg}>
+                  {NEXT_LEG}
+                </button>
+              </div>
             )}
             {/* A full rack: the next one, how far and which way, and one button to see it (lib/bikeParking.ts). */}
             {rackNow && rackFrom && (

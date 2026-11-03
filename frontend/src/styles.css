@@ -10448,6 +10448,16 @@ summary.closure-notices-heading {
   white-space: nowrap;
 }
 
+/* At a stop on a Walk or transit trip (lib/tripStops.ts): the next leg, one full-width press. */
+.ride-next-leg {
+  margin-top: 8px;
+}
+.ride-next-leg button {
+  width: 100%;
+  min-height: 48px;
+  font-weight: 700;
+}
+
 /* The ride's arrival line for a full bike rack (Stephen, 2026-11-01): the next one, and one button to see it. */
 .ride-next-rack {
   display: flex;

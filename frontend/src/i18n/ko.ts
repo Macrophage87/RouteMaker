@@ -268,6 +268,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Walk started.": "도보를 시작했습니다.",
   "End ride": "라이드 종료",
   "End walk": "도보 종료",
+  "Start the next leg": "다음 구간 시작",
   "Done": "완료",
   "about": "약",
   ", arriving about": ", 도착 약",
