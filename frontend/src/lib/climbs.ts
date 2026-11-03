@@ -18,7 +18,7 @@
  * map parts are functions of a small map interface so a test can run them against a stand-in.
  */
 import { EXCLUDED_CLIMB_IDS } from "./climbExclusions.ts";
-import { formatClimb, formatDistance, formatFeet, formatMilesSpelled } from "./format.ts";
+import { formatClimb, formatDistance, formatFeet, formatMilesSpelled, unitsFirstDeep } from "./format.ts";
 import type { LonLat } from "./geo.ts";
 import { hexToRgb, rasterise, type Raster, type Rgb } from "./stationIcons.ts";
 
@@ -261,7 +261,7 @@ export async function loadClimbs(
   try {
     const response = await fetcher(url);
     if (!response.ok) return null;
-    return parseClimbs(await response.json());
+    return parseClimbs(unitsFirstDeep(await response.json()));
   } catch {
     return null;
   }
