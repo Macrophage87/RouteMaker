@@ -4,7 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { TrailProfileBody, fetchTrailProfile, trailProfileSummary, trailProfileUrl, TRAIL_PROFILE_ERROR, type TrailProfile } from "./trailProfile.ts";
+import { TrailProfileBody, fetchTrailProfile, northOrWestFirst, trailProfileSummary, trailProfileUrl, TRAIL_PROFILE_ERROR, type TrailProfile } from "./trailProfile.ts";
 import { layersTurnedOn, rideTypeLayers } from "./presets.ts";
 
 const PROFILE: TrailProfile = {
@@ -64,7 +64,45 @@ test("a trail's chart says which way it runs where the answer has its ends (the 
     createElement(TrailProfileBody, { state: { kind: "ready", profile: { ...PROFILE, start: [-77.0, 38.91], end: [-77.0, 38.9] } }, uid: "t1" }),
   );
   assert.match(html, /Runs north to south\./);
-  assert.match(html, /<tspan class="pc-compass">N <\/tspan>/);
+  assert.match(html, /class="pc-compass-letter"[^>]*>N<\/text>/);
   // An older answer, without them: no letters, as before.
   assert.doesNotMatch(renderToStaticMarkup(createElement(TrailProfileBody, { state: { kind: "ready", profile: PROFILE }, uid: "t1" })), /pc-compass/);
+});
+
+// The owner, 2026-11-03: "in general people tend to envision things from North to South, and from west to east from
+// an elevation graph."
+test("a trail drawn south to north or east to west is turned to read north to south or west to east", async () => {
+  const drawn: TrailProfile = {
+    ...PROFILE,
+    m: [0, 30, 60],
+    elevation_m: [50, 52, 55],
+    grade_pct: [6.7, 8.3, 10],
+    start: [-77.0, 38.9],
+    end: [-77.001, 38.91],
+    line: [[-77.0, 38.9], [-77.0005, 38.905], [-77.001, 38.91]],
+  };
+  const turned = northOrWestFirst(drawn);
+  assert.deepEqual(turned.start, drawn.end);
+  assert.deepEqual(turned.end, drawn.start);
+  assert.deepEqual(turned.line, [...drawn.line!].reverse());
+  assert.deepEqual(turned.m, [0, 30, 60]);
+  assert.deepEqual(turned.elevation_m, [55, 52, 50]);
+  assert.deepEqual(turned.grade_pct, [-10, -8.3, -6.7], "uphill one way is downhill the other");
+  assert.equal(turned.gain_m, PROFILE.loss_m);
+  assert.equal(turned.loss_m, PROFILE.gain_m);
+  // The API's answer comes back turned, so the chart reads N first.
+  const ready = await fetchTrailProfile(42, undefined, answer(200, drawn));
+  assert.ok(ready.kind === "ready" && ready.profile.start?.[1] === 38.91);
+  const html = renderToStaticMarkup(createElement(TrailProfileBody, { state: ready, uid: "t1" }));
+  assert.match(html, /Runs north to south\./);
+  // Mostly east to west: turned to west to east.
+  const west = northOrWestFirst({ ...drawn, start: [-77.0, 38.9], end: [-77.02, 38.905], line: [[-77.0, 38.9], [-77.02, 38.905]] });
+  assert.deepEqual(west.start, [-77.02, 38.905]);
+  // Already north first, already west first, a loop, an older answer without its ends: left as drawn.
+  for (const kept of [
+    { ...drawn, start: [-77.0, 38.91], end: [-77.0, 38.9], line: null },
+    { ...drawn, start: [-77.02, 38.9], end: [-77.0, 38.901], line: null },
+    { ...drawn, start: [-77.0, 38.9], end: [-77.0001, 38.9001], line: null },
+    PROFILE,
+  ] as TrailProfile[]) assert.equal(northOrWestFirst(kept), kept);
 });

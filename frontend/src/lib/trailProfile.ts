@@ -57,6 +57,36 @@ function looksLikeProfile(body: unknown): body is TrailProfile {
   );
 }
 
+/**
+ * The profile turned, where it needs to be, so it reads from its north end to its south end, or from its west end to
+ * its east end, whichever way the trail mostly runs (the owner, 2026-11-03: "in general people tend to envision things
+ * from North to South, and from west to east from an elevation graph"). OSM draws a way in whichever direction its
+ * mapper did, so the chart, the map's start and end markers and the words all follow this turned profile. A loop (ends
+ * within 50 m, where profileEnds gives no letters) and an older answer without its ends stay as drawn.
+ */
+export function northOrWestFirst(p: TrailProfile): TrailProfile {
+  const start = p.start ?? p.line?.[0] ?? null;
+  const end = p.end ?? (p.line && p.line.length > 0 ? p.line[p.line.length - 1] : null);
+  if (!start || !end || !profileEnds(start, end)) return p;
+  const east = (end[0] - start[0]) * Math.cos((((start[1] + end[1]) / 2) * Math.PI) / 180);
+  const north = end[1] - start[1];
+  const turn = Math.abs(north) >= Math.abs(east) ? north > 0 : east < 0;
+  if (!turn) return p;
+  const total = p.m[p.m.length - 1] ?? 0;
+  return {
+    ...p,
+    gain_m: p.loss_m,
+    loss_m: p.gain_m,
+    m: p.m.map((m) => total - m).reverse(),
+    elevation_m: [...p.elevation_m].reverse(),
+    // Grades are signed, positive uphill: the other way, uphill is downhill.
+    grade_pct: p.grade_pct.map((g) => (g === null ? null : g === 0 ? 0 : -g)).reverse(),
+    start: p.end ?? null,
+    end: p.start ?? null,
+    line: p.line ? [...p.line].reverse() : p.line,
+  };
+}
+
 /** Ask the API: ready, none (not a drawn trail, or no heights) or error (try later). */
 export async function fetchTrailProfile(
   way: number,
@@ -68,7 +98,7 @@ export async function fetchTrailProfile(
     if (response.status === 404) return { kind: "none" };
     if (!response.ok) return { kind: "error" };
     const body = unitsFirstDeep(await response.json());
-    return looksLikeProfile(body) ? { kind: "ready", profile: body } : { kind: "error" };
+    return looksLikeProfile(body) ? { kind: "ready", profile: northOrWestFirst(body) } : { kind: "error" };
   } catch (error) {
     if ((error as { name?: string })?.name === "AbortError") throw error;
     return { kind: "error" };
