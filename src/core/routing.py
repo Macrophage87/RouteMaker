@@ -77,6 +77,7 @@ from concurrent.futures import wait as wait_futures
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime
+from struct import pack
 
 from django.conf import settings
 from django.db import DatabaseError, connection, transaction
@@ -143,6 +144,7 @@ from . import (
     segment_info,
     timing,
     trail_touch,
+    walk_turns,
 )
 from . import workzones as work_zones
 
@@ -1172,6 +1174,17 @@ _stress_memo: contextvars.ContextVar[dict | None] = contextvars.ContextVar(
 # The most readings remembered, the least recently used dropped first.
 STRESS_MEMO_TRIPS = 8
 
+# The same plan's reading of each piece alone, keyed by the live table's name and the ride time,
+# then the piece's way and point: the candidate routes of a search share most of their
+# stretches, and each piece's nearest-segment search is its own (the lateral join), so a piece
+# read once is not read again, whichever trip it comes in. The most pieces kept bounds it on
+# the 512M worker (about 250 bytes each); past it a reading is not added. Set and cleared by
+# `plan` as `_stress_memo` is; None outside a plan (a reading keeps its pieces for itself).
+_piece_memo: contextvars.ContextVar[dict | None] = contextvars.ContextVar(
+    "piece_memo", default=None
+)
+PIECE_MEMO_PIECES = 80_000
+
 
 def _stress_key(schema: str, when: str, pieces: list[Piece]) -> tuple:
     digest = hashlib.blake2b(digest_size=16)
@@ -1310,52 +1323,79 @@ def _read_stress(pieces: list[Piece], when: str, schema: str) -> tuple[list[tupl
             else ""
         ),
     )
-    arrays = [[p.way_id for p in pieces], [p.lon for p in pieces], [p.lat for p in pieces]]
     whens = ([when, when] + ([when] if with_half else [])) if with_facility else []
+    # Each piece once: those read already in this plan (`_piece_memo`) and those repeated in
+    # `pieces` are not asked for again.
+    memo = _piece_memo.get()
+    known = memo.setdefault((schema, when), {}) if memo is not None else {}
+    keys = [pack("qdd", p.way_id, p.lon, p.lat) for p in pieces]
+    asked: dict[bytes, Piece] = {}
+    for key, piece in zip(keys, pieces, strict=True):
+        if key not in known and key not in asked:
+            asked[key] = piece
+    # The rows repeat as `classify` keeps them, so the plan's share one set (under None and 0).
+    seen: dict[tuple, tuple] = memo.setdefault(None, {}) if memo is not None else {}
+    kept: dict = memo.setdefault(0, {}) if memo is not None else {}
+    fresh: dict[bytes, tuple] = {}
+    if asked:
+        sent = list(asked.values())
+        arrays = [[p.way_id for p in sent], [p.lon for p in sent], [p.lat for p in sent]]
+        with plan_cursor() as cursor:
+            cursor.execute(query, whens + arrays)
+            for key, row in zip(asked, cursor.fetchall(), strict=True):
+                tier, kind = row[0], row[1]
+                unpaved = row[2] if len(row) > 2 and isinstance(row[2], bool) else None
+                lanes = row[3] if len(row) > 3 and isinstance(row[3], int) else None
+                oneway = row[4] if len(row) > 4 and isinstance(row[4], bool) else None
+                # After the five fixed columns: the capacity, the half step, the surface's
+                # roughness and the hazards, each where the table has it, in that order.
+                extra = list(row[5:])
+                width = extra.pop(0) if with_capacity else None
+                half = extra.pop(0) is True if with_half else False
+                rough = extra.pop(0) if with_rough else None
+                rough = rough if isinstance(rough, bool) else None
+                hazard = extra.pop(0) if with_hazard else None
+                # Then the scenic designations and the adjustment, each kept once (they repeat).
+                words = None
+                if with_scenic:
+                    words = route_scenic.designation_of(extra.pop(0))
+                    if words is not None:
+                        words = kept.setdefault(words, words)
+                adjustment = None
+                if with_adjustments:
+                    adjustment = tuple(extra[:6])
+                    del extra[:6]
+                    # No segment, or no adjustment on it: the adjustments' own query leaves it out.
+                    if adjustment[0] is None:
+                        adjustment = None
+                    else:
+                        adjustment = kept.setdefault(adjustment, adjustment)
+                read = (
+                    str(tier) if tier in (1, 2, 3, 4, 5) else "unknown",
+                    kind if kind in FACILITY_KEYS else "unknown",
+                    unpaved,
+                    lanes,
+                    oneway,
+                    None if width is None else float(width),
+                    half,
+                    rough,
+                )
+                fresh[key] = (seen.setdefault(read, read), hazard, words, adjustment)
+        if memo is None or len(known) + len(fresh) <= PIECE_MEMO_PIECES:
+            known.update(fresh)
     rows: list[tuple] = []
-    seen: dict[tuple, tuple] = {}
     hazard_values = []
     scenic: dict[int, str] | None = {} if with_scenic else None
     adjustments: dict[int, tuple] | None = {} if with_adjustments else None
-    kept: dict = {}
-    with plan_cursor() as cursor:
-        cursor.execute(query, whens + arrays)
-        for index, row in enumerate(cursor.fetchall()):
-            tier, kind = row[0], row[1]
-            unpaved = row[2] if len(row) > 2 and isinstance(row[2], bool) else None
-            lanes = row[3] if len(row) > 3 and isinstance(row[3], int) else None
-            oneway = row[4] if len(row) > 4 and isinstance(row[4], bool) else None
-            # After the five fixed columns: the capacity, the half step, the surface's
-            # roughness and the hazards, each where the table has it, in that order.
-            extra = list(row[5:])
-            width = extra.pop(0) if with_capacity else None
-            half = extra.pop(0) is True if with_half else False
-            rough = extra.pop(0) if with_rough else None
-            rough = rough if isinstance(rough, bool) else None
-            if with_hazard:
-                hazard_values.append(extra.pop(0))
-            # Then the scenic designations and the adjustment, each kept once (they repeat).
-            if scenic is not None:
-                words = route_scenic.designation_of(extra.pop(0))
-                if words is not None:
-                    scenic[index] = kept.setdefault(words, words)
-            if adjustments is not None:
-                adjustment = tuple(extra[:6])
-                del extra[:6]
-                # No segment, or no adjustment on it: the adjustments' own query leaves it out.
-                if adjustment[0] is not None:
-                    adjustments[index] = kept.setdefault(adjustment, adjustment)
-            read = (
-                str(tier) if tier in (1, 2, 3, 4, 5) else "unknown",
-                kind if kind in FACILITY_KEYS else "unknown",
-                unpaved,
-                lanes,
-                oneway,
-                None if width is None else float(width),
-                half,
-                rough,
-            )
-            rows.append(seen.setdefault(read, read))
+    for index, key in enumerate(keys):
+        read, hazard, words, adjustment = fresh.get(key) or known[key]
+        rows.append(read)
+        if with_hazard:
+            hazard_values.append(hazard)
+        if words is not None:
+            scenic[index] = words
+        if adjustment is not None:
+            adjustments[index] = adjustment
     hazards = route_hazards.decoded(hazard_values) if with_hazard else None
     return rows, hazards, (scenic, adjustments)
 
@@ -1930,7 +1970,16 @@ _offroad_failed_at: float | None = None
 # same profile, falls back the same way: the ride is then planned on the standard graph and
 # its answer says so (`mtb.limited` = no_mtb_graph).
 _mtb_failed_at: float | None = None
-TWIN_VARIANTS = (Variant.WEEKEND.value, Variant.OFFROAD.value, Variant.MTB.value)
+# The Road Bike router (`Variant.PAVED`), a seventh behind the same profile, falls back the
+# same way: the ride is then planned on the standard graph, where gravel is packed gravel, and
+# the page warns the rider from the answer's `variant` (frontend/src/lib/roadBike.ts).
+_paved_failed_at: float | None = None
+TWIN_VARIANTS = (
+    Variant.WEEKEND.value,
+    Variant.OFFROAD.value,
+    Variant.MTB.value,
+    Variant.PAVED.value,
+)
 
 
 def _weekend_down() -> bool:
@@ -1945,7 +1994,13 @@ def _mtb_down() -> bool:
     return _mtb_failed_at is not None and clock() - _mtb_failed_at < WEEKEND_FAILURE_TTL_S
 
 
+def _paved_down() -> bool:
+    return _paved_failed_at is not None and clock() - _paved_failed_at < WEEKEND_FAILURE_TTL_S
+
+
 def _twin_down(variant: str) -> bool:
+    if variant == Variant.PAVED.value:
+        return _paved_down()
     if variant == Variant.MTB.value:
         return _mtb_down()
     return _offroad_down() if variant == Variant.OFFROAD.value else _weekend_down()
@@ -1972,7 +2027,13 @@ def _mtb_is_promoted() -> bool:
     return _promoted_row(Variant.MTB.value)
 
 
+def _paved_is_promoted() -> bool:
+    return _promoted_row(Variant.PAVED.value)
+
+
 def _is_promoted(variant: str) -> bool:
+    if variant == Variant.PAVED.value:
+        return _paved_is_promoted()
     if variant == Variant.MTB.value:
         return _mtb_is_promoted()
     if variant == Variant.OFFROAD.value:
@@ -1986,8 +2047,10 @@ def _mark_weekend(ok: bool) -> None:
 
 
 def _mark_twin(variant: str, ok: bool) -> None:
-    global _offroad_failed_at, _mtb_failed_at
-    if variant == Variant.MTB.value:
+    global _offroad_failed_at, _mtb_failed_at, _paved_failed_at
+    if variant == Variant.PAVED.value:
+        _paved_failed_at = None if ok else clock()
+    elif variant == Variant.MTB.value:
         _mtb_failed_at = None if ok else clock()
     elif variant == Variant.OFFROAD.value:
         _offroad_failed_at = None if ok else clock()
@@ -3577,9 +3640,7 @@ def _direct_request(
     """The detour check's ask for the most direct legal route (`_detour`): its costing, the
     request, and the key it is remembered by in a plan's traces (OWNER-DECISIONS 265)."""
     _stress_dial, assist, avoid_gravel = dials
-    direct_costing = _same_pace(
-        presets.costing(preset_name, 0, 0, assist=assist, avoid_gravel=avoid_gravel), request
-    )
+    direct_costing = _same_pace(presets.costing(preset_name, 0, 0, assist=assist), request)
     direct_request = {
         key: value
         for key, value in request.items()
@@ -3791,9 +3852,7 @@ def _fit_target(
         """The route at a traffic position: (length m, the tuple), or None where there
         is none, and False where there is no time or the router refused."""
         options = _same_pace(
-            presets.costing(
-                preset_name, position, hills_dial, assist=assist, avoid_gravel=avoid_gravel
-            ),
+            presets.costing(preset_name, position, hills_dial, assist=assist),
             request,
         )
         asked = {k: v for k, v in request.items() if k != "alternates"} | {
@@ -4021,24 +4080,27 @@ def walk_leg(
     `prefer_walkways`: keep to sidewalks and paths where there are (`WALKWAY_PREFERENCE`)."""
     if deadline.at - clock() < WALK_IN_MIN_LEFT_S:
         return None
-    pedestrian: dict = {"walking_speed": WALK_IN_SPEED_KMH}
+    # Walking beside a bike: never up a flight of steps where a step-free way is near
+    # (2026-11-02, with Avoid stairs; a bike is carried up stairs).
+    pedestrian: dict = walk_turns.step_free({"walking_speed": WALK_IN_SPEED_KMH})
     if prefer_walkways:
         pedestrian["sidewalk_factor"] = WALKWAY_PREFERENCE
         pedestrian["walkway_factor"] = WALKWAY_PREFERENCE
-    payload = {
-        "locations": [{"lon": p[0], "lat": p[1], "type": "break"} for p in (a, b)],
-        "costing": "pedestrian",
-        "costing_options": {"pedestrian": pedestrian},
-        "directions_type": "none",
-        "units": "kilometers",
-    }
+    # Its maneuvers; the router's own way, not priced among others (`walk_pricing`): a walk-in
+    # or a walk past a busy stretch is a few hundred metres, checked inside a small budget,
+    # and a longer way round could fail the checks the router's own way passes.
+    payload = walk_turns.directions(
+        {
+            "locations": [{"lon": p[0], "lat": p[1], "type": "break"} for p in (a, b)],
+            "costing": "pedestrian",
+            "costing_options": {"pedestrian": pedestrian},
+            "units": "kilometers",
+        }
+    )
+    payload.pop("alternates", None)
+    capped = Deadline(deadline.at, min(deadline.per_call_s, WALK_IN_CALL_S))
     try:
-        answer = _call(
-            Variant.STANDARD.value,
-            "route",
-            payload,
-            Deadline(deadline.at, min(deadline.per_call_s, WALK_IN_CALL_S)),
-        )
+        answer = _call(Variant.STANDARD.value, "route", payload, capped)
     except RouterRefused as refusal:
         if refusal.code not in NO_PATH_CODES | NO_EDGE_CODES:
             logger.warning("a walk-in was refused: %s", refusal)
@@ -4048,18 +4110,53 @@ def walk_leg(
     legs = (answer.get("trip") or {}).get("legs") or []
     if not legs:
         return None
-    metres = float((legs[0].get("summary") or {}).get("length", 0.0)) * 1000.0
+    leg = legs[0]
+    metres = float((leg.get("summary") or {}).get("length", 0.0)) * 1000.0
     if metres > WALK_IN_MAX_M:
         return None
-    shape = decode_polyline6(legs[0].get("shape", ""))
+    shape = decode_polyline6(leg.get("shape", ""))
     return {
         "geometry": {
             "type": "LineString",
             "coordinates": [[round(lon, 6), round(lat, 6)] for lon, lat in shape],
         },
         "distance_m": round(metres, 1),
-        "duration_s": round(float((legs[0].get("summary") or {}).get("time", 0.0)), 1),
+        "duration_s": round(float((leg.get("summary") or {}).get("time", 0.0)), 1),
+        # Its turns, for turn-by-turn on foot (2026-11-02).
+        "turns": walk_turns.turns_of(leg, shape),
     }
+
+
+# The least time left for one more router call in pricing a walk (`walk_asker`): a trace or a
+# `/locate` of a short walk. With less, the walk is taken as the router gave it.
+WALK_PRICE_MIN_LEFT_S = 0.5
+# The most one walk's pricing may take in all (its traces and its `/locate`), and any one of
+# its calls: a short walk's trace is tens of milliseconds, so a slow router costs a walk its
+# pricing, never the plan its time.
+WALK_PRICE_BUDGET_S = 1.5
+WALK_PRICE_CALL_S = 1.0
+
+
+def walk_asker(deadline: Deadline, variant: str = Variant.STANDARD.value):
+    """The router, as `walk_pricing` asks it (`walk_pricing.Ask`): its answer, or None where it
+    refused, could not be reached or no time is left, so a walk is never lost to its pricing.
+    All its calls together are held to WALK_PRICE_BUDGET_S from now, within `deadline`."""
+
+    budget = Deadline(
+        min(deadline.at, clock() + WALK_PRICE_BUDGET_S),
+        min(deadline.per_call_s, WALK_PRICE_CALL_S),
+    )
+
+    def ask(action: str, payload: dict):
+        if budget.at - clock() < WALK_PRICE_MIN_LEFT_S:
+            return None
+        try:
+            return _call(variant, action, payload, budget)
+        except (RouterRefused, RouterUnavailable, DeadlineExceeded) as error:
+            logger.info("a walk's %s was not answered: %s", action, error)
+            return None
+
+    return ask
 
 
 # What a walk beside a busy road may be on (`walk_roadside_m`): Valhalla's uses that are
@@ -4227,6 +4324,8 @@ def plan(
     # task still running after it holds a copy of the context, never the readings.
     memo: dict = {}
     _stress_memo.set(memo)
+    pieces_read: dict = {}
+    _piece_memo.set(pieces_read)
     # And its readings of each trace (audit S19), the same way.
     readings: dict = {}
     _reading_memo.set(readings)
@@ -4234,6 +4333,7 @@ def plan(
         return _plan_rounds(points, preset_name, long_ride, started, dials, quick, candidates)
     finally:
         memo.clear()
+        pieces_read.clear()
         readings.clear()
 
 
@@ -4468,9 +4568,7 @@ def _plan(
     # Ride, whose own graph is no-trail), not on every trails-off ride.
     lanes_as_roadway = preset.variant == Variant.NO_TRAIL.value
     avoid_gravel = bool(dials.avoid_gravel)
-    costing = presets.costing(
-        preset_name, stress_dial, hills_dial, assist=assist, avoid_gravel=avoid_gravel
-    )
+    costing = presets.costing(preset_name, stress_dial, hills_dial, assist=assist)
     if dials.cycling_speed_kmh is not None:
         costing["bicycle"]["cycling_speed"] = float(dials.cycling_speed_kmh)
     if following and dials.follow_exact:
@@ -4806,7 +4904,7 @@ def _plan(
     # a wider road chosen for the group (OWNER-DECISIONS 125, 325).
     if avoiding and not quick and not fixed and capacity_choice is None:
         middle_costing = _same_pace(
-            presets.costing(preset_name, stress_dial, 0, assist=assist, avoid_gravel=avoid_gravel),
+            presets.costing(preset_name, stress_dial, 0, assist=assist),
             request,
         )
         trip, kept_middle = no_busier_than_middle(
@@ -4872,6 +4970,7 @@ def _plan(
         seek=trailseek.seek_for(presets.calm_rate_for(stress_dial)),
         schema=validate_schema_name(settings.SEGMENT_SCHEMA_LIVE),
         avoid_gravel=avoid_gravel,
+        wait_weight=presets.wait_weight_for(preset_name),
         exposure=exposure,
         maxcalm=maxcalm,
         ceiling_m=ceiling,
@@ -4883,7 +4982,11 @@ def _plan(
         # from (none again where that ask timed out), else asked for by the search.
         # Refitted only where the target fitting asked again (`past`): a route already
         # within the target is the plan's own request, its alternatives already in `trips`.
-        rank_alternates=presets.calm_rate_for(stress_dial) > 0,
+        # And on a ride type that weighs its waits more than riding (Road Bike, 3x), at every
+        # stress: a router alternative with fewer lights is the choice the weight is for.
+        rank_alternates=(
+            presets.calm_rate_for(stress_dial) > 0 or presets.wait_weight_for(preset_name) > 1
+        ),
         router_trips=plan_alternates(request, trips, timed_out, bool(past)),
         early_alternates=early_alternates,
         options=[] if offering and not long_calm else None,
