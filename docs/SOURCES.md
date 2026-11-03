@@ -1270,8 +1270,9 @@ unchanged, and the map marks it only on a route that rides it.
 
 ## Used inside the project only (no credit)
 
-These are shown nowhere: no tile, route, fixture or page carries their data
-(OWNER-DECISIONS 152, 155, 162). An owner override row may cite one as evidence for the owner's
+None of their data is published: no tile, route, fixture or page carries it in bulk
+(OWNER-DECISIONS 152, 155, 162), and none is credited as a data source. An owner override row may
+cite one, and its road-panel "Why" note may name what the source says for that road as evidence for the owner's
 rating, never copying its data verbatim (the owner, 2026-10-31: "Research is fair use, we
 aren't sharing their data verbatim, just referencing. Keep them").
 
