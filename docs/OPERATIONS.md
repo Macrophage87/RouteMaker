@@ -2550,7 +2550,13 @@ the data of every table in `BACKUP_EXCLUDED_TABLES` (`config/procrastinate.py`):
 `cached_membership`, `app_session`, `django_session`, `rate_limit_window`,
 `stress_tile_cache`, `bikeshare_feed_cache`, `signed_out_send`, `garmin_link` and
 `wahoo_link` (riders' encrypted Garmin and Wahoo tokens: a restore asks them to connect
-again). Verified by reading the
+again), and leaving out the spare copies of the segment tables entirely (`--exclude-schema`):
+`live_old`, which a swap keeps for its rollback, the rebuild's `staging`, the beta's staged
+update `live_next` and the `live_bad` its rollback by rename sets aside. Each is a whole copy of
+the live tables, and a restore brings back `live`, not them. So a restored database has no
+`live_old`: `rollback_rebuild` refuses for want of a retired schema, `compute_review_queue
+--old-schema live_old` and `import_cloud_build`'s drift report have nothing to compare against,
+and rollback A alone (the `previous` tile links) would name a build whose tables are gone. Verified by reading the
 archive's own table of contents back with `pg_restore --list` from the same stream
 as it is written — an archive with
 no table data at all is a dump of nothing, which is what a wrong database name
@@ -6652,12 +6658,12 @@ change: #864, #868, #877, #878). At home, in order, with `</dev/null` on every d
 
 Road Bike (a ride type on its own graph, replacing the Avoid gravel box; junction waits weigh 3x),
 Walk and Walk + transit, Avoid stairs, walk pricing, walks turn by turn and transit stop by stop,
-transit trips re-checked while ridden, the connector's new tools (and its My routes read), the
+transit trips re-checked while ridden, the Run ride type, the connector's new tools (and its My routes read), the
 routing speed-up and the beta's staging swap. Two migrations (0054 adds `connector_grant.reads_routes`; 0055 gives it a database default, so the v0.17.0 api still creates grants after `migrate` and after an image rollback).
 A seventh graph, `tiles/paved`, and its router `valhalla-paved` (profile `offroad`; 768M at home,
 320M on the beta). **`lua/` changed, a Valhalla config was added, compose and the nginx template
 changed, so the beta agent stops on the tag and the deploy is by hand**, with the map built at the
-tagged commit. The Caddyfile changed (`/road-bike`, `/walk`, `/walk-transit`). No Dockerfile or requirements change, no new
+tagged commit. The Caddyfile changed (`/road-bike`, `/walk`, `/walk-transit`, `/run`). No Dockerfile or requirements change, no new
 environment variable to set (`VALHALLA_PAVED_URL` has its default), no new outbound host (the trip
 checks read WMATA through the existing shared cache) and no new scheduled job. No `mobile/` change,
 so no Play build. At home, in order, with `</dev/null` on every docker command:
@@ -6677,7 +6683,7 @@ so no Play build. At home, in order, with `</dev/null` on every docker command:
   given before cannot read My routes until the rider connects again; 0055 keeps that default in
   the database). Then, once no rebuild job is
   queued or running, `docker compose up -d --no-deps --no-build --force-recreate api worker rebuild`.
-- [ ] **Caddy.** The Caddyfile adds `/road-bike`, `/walk` and `/walk-transit`: validate it in a throwaway container and recreate
+- [ ] **Caddy.** The Caddyfile adds `/road-bike`, `/walk`, `/walk-transit` and `/run`: validate it in a throwaway container and recreate
   caddy alone ("Applying a Caddyfile change"). This also brings `/about/android-beta.html`, in
   `@frontend` since v0.16.3, to this host, whose caddy was not recreated after v0.16.2/v0.16.3. Check:
   `curl -sI https://<site>/road-bike` is a 302 to `/#preset=road-bike`, and
@@ -6718,7 +6724,7 @@ so no Play build. At home, in order, with `</dev/null` on every docker command:
   - Restart the four routers one at a time; then
     `scripts/beta/beta-compose.sh up -d --force-recreate valhalla-offroad valhalla-mtb valhalla-paved`
     (leave out `valhalla-paved` if memory was short); `sync_upstreams`.
-  - Re-render and install the nginx site (step 9: the `road-bike`, `walk` and `walk-transit` preset links), `nginx -t`, reload.
+  - Re-render and install the nginx site (step 9: the `road-bike`, `walk`, `walk-transit` and `run` preset links), `nginx -t`, reload.
   - The front end comes with the bundle (`files`), `index.html` last.
   - `smoke-test.sh --local --trails` (now checks `road-bike` on the `paved` graph), then `--public`.
   - The agent and router hook changed: `scripts/beta/auto-release.sh install` and, where installed,
@@ -6726,7 +6732,7 @@ so no Play build. At home, in order, with `</dev/null` on every docker command:
     and `resume`.
 - [ ] **Spot checks.** A Road Bike route answers `"variant": "paved"`. A Mall gravel walk is ridden
   on Default and avoided on Road Bike. A link with `avoidgravel=1` opens as Road Bike. `/road-bike`
-  opens Road Bike on both hosts. Walk and Walk + transit plan, and Start walk follows the turns. A
+  opens Road Bike on both hosts. Walk and Walk + transit plan, and Start walk follows the turns; a Run from a start alone with a target distance plans a loop near that length. A
   Bike + transit ride re-plans once every 2 minutes until boarding. The connector's consent page
   lists "read your saved routes".
 - [ ] **Rollback.** At home: the `pre-rel` images; the database stays migrated (0055's default lets the

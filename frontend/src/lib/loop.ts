@@ -7,7 +7,7 @@
 import type { RouteResponse } from "./api.ts";
 import type { Dials } from "./dials.ts";
 import { runs, twoPointsOnly, type PresetId } from "./presets.ts";
-import { fitTarget } from "./dials.ts";
+import { RUN_TARGET_MAX_M, fitTarget } from "./dials.ts";
 import { formatDistance } from "./format.ts";
 import { haversineM, type LonLat } from "./geo.ts";
 import { t } from "./i18n.ts";
@@ -146,6 +146,6 @@ export function loopNote(route: Pick<RouteResponse, "loop">): string | null {
  */
 export function runLoopFromStart(preset: PresetId, points: readonly LonLat[], dials: Pick<Dials, "loop" | "targetDistanceM">): boolean {
   const target = fitTarget(dials.targetDistanceM);
-  // A target kept from a longer ride is past a run loop's 50 km (core/run_plan.py RUN_TARGET_MAX_M).
-  return runs(preset) && points.length === 1 && dials.loop === true && target !== undefined && target <= 50_000;
+  // A target kept from a longer ride is past a run loop's 31 mi (50 km) (core/run_plan.py RUN_TARGET_MAX_M).
+  return runs(preset) && points.length === 1 && dials.loop === true && target !== undefined && target <= RUN_TARGET_MAX_M;
 }

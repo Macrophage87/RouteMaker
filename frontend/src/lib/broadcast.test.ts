@@ -326,7 +326,7 @@ test("App judges a followed broadcast once, when ready, and starts its ride with
   assert.match(app, /const sharedFollow = sharedOpen\?\.ride === true && !!sharedOpen\.lead && !sharedOpen\.own && shown === sharedOpen\.answer && !stale && rideableRoute\(shown\);/);
   assert.match(app, /if \(!ready \|\| autoRode\.current\) return;\n\s+autoRode\.current = true;\n[\s\S]*?if \(!opensIntoRide\(\{ phone: looksLikePhone\(\), onBike, resumeAsked: leftAsk !== null \}\)\) \{\n\s+if \(keyless\) \{[^}]*\}\n\s+return;\n\s+\}/);
   assert.match(app, /openSaved\(shared, SHARED_OPENED\(shared\.name\), !\(SHARED_RIDE && SHARED_LEAD && shared\.answer\)\);/);
-  assert.match(app, /if \(check\) void checkThen\("open", saved\.line, false, \(\) => \{\}\);/);
+  assert.match(app, /if \(check\) void checkThen\("open", saved\.line, false, \(\) => \{\}, undefined, undefined, answer \? walksLine\(answer\) : plan\.preset === "walk" \|\| runs\(plan\.preset\)\);/);
   assert.match(app, /if \(!shown \|\| followsBroadcast\(shown\)\) return startRide\(false\);/);
   assert.match(app, /return !!open && open\.ride && !!open\.lead && !open\.own && open\.answer === route;/);
   // Started with no press: it says so, and how to wake a phone's quiet voice (the end review's a11y finding).

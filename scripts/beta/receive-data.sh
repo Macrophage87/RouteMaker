@@ -358,6 +358,17 @@ if [ "$command_name" = db ]; then live_schema=$(manifest_value live_schema); els
 live_schema=${live_schema:-live}
 case "$pguser$pgdatabase$live_schema" in *[!A-Za-z0-9_]*) die "odd database, user or schema name" ;; esac
 
+# One database change at a time: db and restore-dump share the files they copy into the postgis
+# container (/tmp/beta.use, /tmp/beta-blanked.sql), and two updates would share the scratch
+# database and the staged schema and undo each other's work. (So whoever runs these must be able to
+# read DATA_ROOT, which prepare_data_root.sh leaves 0755.) The lock is DATA_ROOT itself,
+# opened read-only: root and the login user can both open it, and no other user can make it
+# fail or hold it, as they could a file in /tmp.
+if [ "$command_name" = db ] || [ "$command_name" = restore-dump ]; then
+	exec 7<"$data_root" || die "cannot open $data_root to lock it"
+	flock -n 7 || die "another receive-data.sh db or restore-dump is running; wait for it"
+fi
+
 # </dev/null on every `exec -T` that needs no input: it reads standard input otherwise, and would
 # swallow whatever the caller is feeding this script (a heredoc, a pipe, the rest of a loop).
 psql_q() { bc exec -T postgis psql -U "$pguser" -d "$pgdatabase" -At -c "$1" </dev/null; }
@@ -538,12 +549,6 @@ if [ "$update_data" = 1 ]; then
 	# --- the new-data update: staged beside the served tables, then one short rename ---
 	[ "$existing" = t ] || die "--update-data needs a database restored once already; run db without it first"
 	# The api and worker keep running: the served tables are not touched until the rename.
-	# One update at a time: two would share the scratch database, the staged schema and the
-	# files copied into the postgis container, and undo each other's work.
-	lockf=/tmp/routemaker-receive-data.lock
-	[ -e "$lockf" ] || (umask 0 && : >>"$lockf")
-	exec 7<"$lockf" || die "cannot open $lockf (made by another user?); remove it and run this again"
-	flock -n 7 || die "another receive-data.sh db --update-data is running; wait for it"
 	lock_timeout_ms=${RECEIVE_DATA_LOCK_TIMEOUT_MS:-3000}
 	swap_tries=${RECEIVE_DATA_SWAP_TRIES:-5}
 	[[ $lock_timeout_ms =~ ^[1-9][0-9]*$ ]] && [[ $swap_tries =~ ^[1-9][0-9]*$ ]] ||
@@ -638,7 +643,6 @@ if [ "$update_data" = 1 ]; then
 		exit 0
 	fi
 
-	snapshot update >/dev/null
 	# override, the approved junction ratings and the Avoid junctions come from home
 	# blanked (ship-data.sh). override is emptied below; the junction ratings and
 	# Avoid junctions are replaced as override's are, the beta's own junction suggestions letting
@@ -660,8 +664,13 @@ if [ "$update_data" = 1 ]; then
 		fi
 	done
 	mv "$extra.part" "$extra"
+	# After the blanked tables are read and checked, so a malformed one stops before the dump; a
+	# failed dump leaves no copy of them behind.
+	trap 'rm -f "$extra"' EXIT
+	snapshot update >/dev/null
 	bc exec -T postgis sh -c 'cat > /tmp/beta-blanked.sql' <"$extra"
 	rm -f "$extra"
+	trap - EXIT
 	before_oid=$(psql_q "select coalesce(to_regclass('public.app_user')::oid::text, 'none')")
 	note "swapping $staged in for $live_schema and updating override, the junction ratings and the Avoid junctions in one transaction, and emptying the stale stress tile cache ($accounts beta account(s) are left alone; the beta keeps serving)"
 	# psql runs it as ONE transaction that stops at the first error, so a failure renames nothing.

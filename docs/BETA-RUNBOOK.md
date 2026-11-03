@@ -998,7 +998,8 @@ continuous deployment first, as above, and resume it after.
    junctions (`avoid_junction`) are reset to home's the same way, and the beta's own half-step edit history
    (`stress_edit`, which points at the overrides it replaces) is emptied. The beta's own rider suggestions, road
    and junction, are kept; an approved one loses only its link to the edit, rating or Avoid junction it made.
-   The replaced tables stay as `live_old` until the next update (so the nightly backups carry them too), which is
+   The replaced tables stay as `live_old` until the next update (the nightly backup leaves them out, and a staged
+   `live_next` and a rolled-back `live_bad` too), which is
    what rollback B "by rename" puts back.
 
    ```sh
@@ -1014,7 +1015,8 @@ continuous deployment first, as above, and resume it after.
 4. Restart the routers **one at a time** (a router keeps the old archive mapped until restarted; one at a time, only
    one ride type is briefly unanswered, and the api plans it on the standard graph meanwhile, except while the
    standard router itself restarts, when Default rides fail for those few seconds):
-   `for r in valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend; do scripts/beta/beta-compose.sh restart "$r"; sleep 20; done`
+   `for r in valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend; do scripts/beta/beta-compose.sh restart "$r"; t=$SECONDS; until scripts/beta/beta-compose.sh exec -T api python3 -c "import urllib.request; urllib.request.urlopen('http://$r:8002/status', timeout=3)" </dev/null >/dev/null 2>&1 || [ $((SECONDS - t)) -ge 180 ]; do sleep 3; done; done`
+   (each restarts once the one before answers, or after three minutes)
    (`restart-routers.sh`, where its timer is installed, does the same by itself once the links have been still
    for five minutes), then the trail routers on their new tiles, from v0.10.1 on
    (receive-data.sh prints the line): `scripts/beta/beta-compose.sh up -d --force-recreate valhalla-offroad valhalla-mtb valhalla-paved`,

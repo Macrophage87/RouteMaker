@@ -313,6 +313,8 @@ export function isBike(value: unknown): value is Bike {
  */
 export const TARGET_MIN_M = 1_000;
 export const TARGET_MAX_M = 1_000_000;
+/** A Run loop's longest target from a start alone, core/run_plan.py RUN_TARGET_MAX_M (31 mi). */
+export const RUN_TARGET_MAX_M = 50_000;
 export const DEFAULT_CEILING_RATIO = 1.6;
 export const TARGET_CEILING_RATIO = 1.25;
 /** Novice and Nervous's shorter ceiling (`core.presets.NOVICE_CEILING_RATIO`, v0.7.0). */

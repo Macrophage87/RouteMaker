@@ -171,8 +171,15 @@ class TestWeigh:
         # Straight on across an arterial at 750 m, no crossing way mapped.
         assert walk_pricing._calm(quiet, [750.0]) == (1500.0, 0.0)
         # A sidewalk and a living street carry a stretch on.
+        # A sidewalk carries a stretch on to its 800 m but is never credited itself.
         mixed = [edge("sidewalk", 500), edge("living_street", 400)]
-        assert walk_pricing._calm(mixed) == (400.0, 900.0)
+        assert walk_pricing._calm(mixed) == (400.0, 400.0)
+
+    def test_a_long_stretch_of_sidewalk_alone_earns_no_credit(self) -> None:
+        """Release review S2: trails over sidewalks, so 1 km of sidewalk beside a main road
+        is no runner's long stretch."""
+        sidewalk = [{"use": "sidewalk", "length": 0.1, "road_class": "primary"} for _ in range(10)]
+        assert walk_pricing._calm(sidewalk) == (0.0, 0.0)
 
     def test_a_refusal_after_a_slow_call_is_still_no_way(self) -> None:
         calls = []
@@ -243,6 +250,28 @@ class TestALeg:
         caps = run_plan.leg_caps([START, END, (-77.03, 38.94)], 6000.0)
         assert sum(caps) == pytest.approx(6000.0)
         assert run_plan.leg_caps([START, END], None) == [None]
+
+    def test_the_quicker_way_with_three_lights_loses_to_one_with_none(self) -> None:
+        """Release review S3: "fewer stops"; two street ways, the lights alone decide."""
+        assert run_plan.SIGNAL_WAIT_S == 15.0
+        lights = line(START, END)
+        none = line(START, (-77.04, 38.921)) + line((-77.04, 38.921), END)[1:]
+        found = answer(leg(lights, 600.0, 1.7), leg(none, 640.0, 1.8))
+        fake = FakeCall(
+            lambda payload: found,
+            {
+                # Sidewalks: no quiet-street or long-stretch credit, so only the lights differ.
+                encode_polyline6(lights): edges(lights, "sidewalk", 1.7, signals=3),
+                encode_polyline6(none): edges(none, "sidewalk", 1.8),
+            },
+        )
+        walked = run_plan.run_leg(router(fake), [START, END], run_plan.RunAsk())
+        assert walked is not None and walked.metres == pytest.approx(1800.0)
+
+    @pytest.mark.parametrize("use", ["path", "track"])
+    def test_a_track_is_a_trail_too(self, use) -> None:
+        """Owner: packed gravel and dirt are fine."""
+        assert use in walk_pricing.TRAIL_USES
 
     def test_climb_is_read_from_the_edges_elevations(self) -> None:
         shape = line(START, END, 4)
