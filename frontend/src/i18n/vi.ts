@@ -1858,6 +1858,8 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "After that": "Chuyến sau",
   "toward": "hướng",
   "Front rack": "Giá để xe phía trước",
+  "Arriving": "Đang đến",
+  "in {min} min, live": "sau {min} phút, trực tiếp",
   "Get off here: {name}.": "Xuống ở đây: {name}.",
   "Next stop: {name}. Get off there.": "Trạm kế tiếp: {name}. Xuống ở đó.",
   "Next stop: {name}. Press the stop button to get off there.": "Trạm kế tiếp: {name}. Bấm nút dừng để xuống ở đó.",

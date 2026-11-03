@@ -1858,6 +1858,8 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "After that": "له هغې وروسته",
   "toward": "په لور",
   "Front rack": "مخکینی ریک",
+  "Arriving": "رارسېږي",
+  "in {min} min, live": "{min} دقیقې وروسته، ژوندی",
   "Get off here: {name}.": "دلته کوز شئ: {name}.",
   "Next stop: {name}. Get off there.": "بل تمځای: {name}. هلته کوز شئ.",
   "Next stop: {name}. Press the stop button to get off there.": "بل تمځای: {name}. د هلته کوزېدو لپاره د تمځای تڼۍ کېکاږئ.",

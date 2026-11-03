@@ -1858,6 +1858,8 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "After that": "بعده",
   "toward": "باتجاه",
   "Front rack": "الحامل الأمامي",
+  "Arriving": "يصل الآن",
+  "in {min} min, live": "بعد {min} دقيقة، مباشر",
   "Get off here: {name}.": "انزل هنا: {name}.",
   "Next stop: {name}. Get off there.": "المحطة التالية: {name}. انزل هناك.",
   "Next stop: {name}. Press the stop button to get off there.": "المحطة التالية: {name}. اضغط زر التوقف لتنزل هناك.",

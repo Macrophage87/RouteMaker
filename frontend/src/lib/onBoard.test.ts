@@ -6,7 +6,7 @@ import { readFileSync } from "node:fs";
 import type { TransitStep } from "./api.ts";
 import type { LonLat } from "./geo.ts";
 import type { RideFix } from "./navigate.ts";
-import { STALE_MS, boardingGroups, laterDepartureText, lineBadge, nextDepartureText, onBoardLeg, onBoardRows, onBoardStart, onBoardStep, stopsLeftText, type OnBoardState } from "./onBoard.ts";
+import { STALE_MS, boardingGroups, laterDepartureText, lineBadge, liveForBoarding, liveNextText, nextDepartureText, onBoardLeg, onBoardRows, onBoardStart, onBoardStep, stopsLeftText, type OnBoardState } from "./onBoard.ts";
 import { onwardOf, onwardStart, onwardStep } from "./onward.ts";
 
 const M_PER_DEG = 111_195;
@@ -226,4 +226,30 @@ test("the ride screen shows the boarding as rows, its departure countdown only w
   assert.match(ride, /<BoardingCard leg=\{boardingLeg\} departure=\{boardingDeparture\} note=/);
   assert.match(ride, /const boardingDeparture = trip\?\.departure && trip\.boardStep != null && trip\.departure\.step === trip\.boardStep \? trip\.departure : null;/);
   assert.match(ride, /<DepartureTimer departure=\{trip\.departure\} announce=\{notify\} noticeOnly=\{!!boardingLeg && !!boardingDeparture\} \/>/);
+});
+
+test("the next live trains are the ones that make the ride, soonest first, each named (Stephen, 2026-11-03)", () => {
+  const groups = [
+    { lines: ["Orange Line", "Silver Line"], toward: "New Carrollton" },
+    { lines: ["Blue Line", "Silver Line"], toward: "Downtown Largo" },
+  ];
+  const stops = [{ name: "Federal Triangle" }, { name: "Smithsonian" }, { name: "Eastern Market" }];
+  const live = [
+    { line: "Silver Line", toward: "Downtown Largo", minutes: [7, 19] },
+    { line: "Orange Line", toward: "New Carrollton", minutes: [3] },
+    // The other way, and a line that does not make the ride: skipped.
+    { line: "Orange Line", toward: "Vienna", minutes: [1] },
+    { line: "Red Line", toward: "Glenmont", minutes: [0] },
+    // A short turn that ends at the rider's stop makes it; one that turns back before it does not.
+    { line: "Blue Line", toward: "Eastern Market", minutes: [12] },
+    { line: "Silver Line", toward: "Smithsonian", minutes: [5] },
+  ];
+  assert.deepEqual(liveForBoarding(live, groups, stops).slice(0, 3), [
+    { line: "Orange Line", toward: "New Carrollton", minutes: 3 },
+    { line: "Silver Line", toward: "Downtown Largo", minutes: 7 },
+    { line: "Blue Line", toward: "Eastern Market", minutes: 12 },
+  ]);
+  assert.deepEqual(liveForBoarding([], groups, stops), []);
+  assert.equal(liveNextText(3), "in 3 min, live");
+  assert.equal(liveNextText(0), "Arriving");
 });

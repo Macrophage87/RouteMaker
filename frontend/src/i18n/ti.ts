@@ -1858,6 +1858,8 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "After that": "ድሕሪኡ",
   "toward": "ናብ",
   "Front rack": "ናይ ቅድሚት መቐመጢ",
+  "Arriving": "ይበጽሕ ኣሎ",
+  "in {min} min, live": "ኣብ {min} ደቒቕ፣ ቀጥታ",
   "Get off here: {name}.": "ኣብዚ ውረዱ፦ {name}።",
   "Next stop: {name}. Get off there.": "ዝቕጽል መዓርፎ፦ {name}። ኣብኡ ውረዱ።",
   "Next stop: {name}. Press the stop button to get off there.": "ዝቕጽል መዓርፎ፦ {name}። ኣብኡ ንምውራድ ናይ መዓርፎ መጠወቒ ጠውቑ።",

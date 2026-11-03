@@ -1858,6 +1858,8 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "After that": "Следующий за ним",
   "toward": "в сторону",
   "Front rack": "Передний багажник",
+  "Arriving": "Прибывает",
+  "in {min} min, live": "через {min} мин, онлайн",
   "Get off here: {name}.": "Выходите здесь: {name}.",
   "Next stop: {name}. Get off there.": "Следующая остановка: {name}. Выходите там.",
   "Next stop: {name}. Press the stop button to get off there.": "Следующая остановка: {name}. Нажмите кнопку остановки, чтобы выйти там.",

@@ -254,3 +254,40 @@ export function boardingGroups(trains: readonly { line: string; toward: string |
   }
   return groups;
 }
+
+/** A Metro station's live trains (core.transit_live.station): each line and way's next minutes. */
+export interface LiveTrain {
+  line: string;
+  toward: string;
+  minutes: number[];
+}
+
+function colour(line: string): string {
+  return line.toLowerCase().replace(/ line$/, "").trim();
+}
+
+/**
+ * The boarding's live next trains, soonest first (Stephen, 2026-11-03: "Show the next train though", "If the next
+ * train is orange show that one. If the one after is silver show that", "Skip the ones that don't go to the right
+ * place"): only trains of the ride's lines signed to one of its ends or to the stop the rider gets off at (a short
+ * turn that ends there); never one the other way, one that turns back short of the rider's stop, nor a line that
+ * does not make the ride.
+ */
+export function liveForBoarding(
+  live: readonly LiveTrain[],
+  groups: readonly { lines: string[]; toward: string | null }[],
+  stops: readonly { name: string }[],
+): { line: string; toward: string; minutes: number }[] {
+  const off = stops.length > 0 ? stops[stops.length - 1].name.toLowerCase() : null;
+  const ours = new Set(groups.flatMap((g) => g.lines.map(colour)));
+  const ends = new Set(groups.map((g) => g.toward?.toLowerCase()).filter((e): e is string => !!e));
+  return live
+    .filter((train) => ours.has(colour(train.line)) && (ends.has(train.toward.toLowerCase()) || train.toward.toLowerCase() === off))
+    .flatMap((train) => train.minutes.map((minutes) => ({ line: train.line, toward: train.toward, minutes })))
+    .sort((a, b) => a.minutes - b.minutes);
+}
+
+/** A live train's minutes on the card: "in 3 min, live", "Arriving". */
+export function liveNextText(minutes: number): string {
+  return minutes <= 0 ? t("Arriving") : t("in {min} min, live", { min: String(minutes) });
+}

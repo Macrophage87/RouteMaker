@@ -5377,6 +5377,10 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
   line-height: 1.4;
 }
 
+.ride .boarding-live .line-badge {
+  margin-right: 0.25em;
+}
+
 .ride .line-badge-plain {
   background: transparent;
 }

@@ -1858,6 +1858,8 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "After that": "Berikutnya lagi",
   "toward": "arah",
   "Front rack": "Rak depan",
+  "Arriving": "Tiba",
+  "in {min} min, live": "{min} mnt lagi, langsung",
   "Get off here: {name}.": "Turun di sini: {name}.",
   "Next stop: {name}. Get off there.": "Halte berikutnya: {name}. Turun di sana.",
   "Next stop: {name}. Press the stop button to get off there.": "Halte berikutnya: {name}. Tekan tombol berhenti untuk turun di sana.",

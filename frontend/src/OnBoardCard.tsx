@@ -5,8 +5,9 @@
  * and the stop to get off are said through the ride's outputs, never by this card.
  */
 import { useEffect, useState } from "react";
-import { boardingGroups, laterDepartureText, lineBadge, nextDepartureText, onBoardRows, stopsLeftText, type OnBoardLeg, type OnBoardState } from "./lib/onBoard.ts";
+import { boardingGroups, laterDepartureText, lineBadge, liveForBoarding, liveNextText, type LiveTrain, nextDepartureText, onBoardRows, stopsLeftText, type OnBoardLeg, type OnBoardState } from "./lib/onBoard.ts";
 import { t } from "./lib/i18n.ts";
+import { requestStationTimes, TIMES_TTL_MS } from "./lib/stationTimes.ts";
 
 export function OnBoardCard({ leg, state }: { leg: OnBoardLeg; state: OnBoardState }) {
   const off = leg.stops[leg.stops.length - 1].name;
@@ -55,33 +56,38 @@ export function BoardingCard({
     const timer = window.setInterval(() => setNow(Date.now()), 15_000);
     return () => window.clearInterval(timer);
   }, [departure]);
+  // WMATA's live next trains at the boarding station, read again every TIMES_TTL_MS while waiting (Stephen,
+  // 2026-11-03: "Show the next train though"); none for a bus or another system, which keep the plan's times.
+  const [live, setLive] = useState<readonly LiveTrain[]>([]);
+  const at = leg.stops[0]?.point;
+  useEffect(() => {
+    if (leg.bus || !at) return;
+    let gone = false;
+    const read = () =>
+      void requestStationTimes(at).then((times) => {
+        if (!gone) setLive(times?.live?.trains ?? []);
+      });
+    read();
+    const timer = window.setInterval(read, TIMES_TTL_MS);
+    return () => {
+      gone = true;
+      window.clearInterval(timer);
+    };
+  }, [leg.bus, at?.[0], at?.[1]]); // eslint-disable-line react-hooks/exhaustive-deps -- the station's place
+  const groups = boardingGroups(leg.trains?.length ? leg.trains : [{ line: leg.line, toward: leg.toward }], off);
+  // The next two trains that make the ride, each named by its line and end; else the plan's times.
+  const [first, second] = liveForBoarding(live, groups, leg.stops);
   const next = nextDepartureText(leg, departure, now);
   const later = laterDepartureText(departure, now);
-  const trains = leg.trains?.length ? leg.trains : [{ line: leg.line, toward: leg.toward }];
   return (
     <div className="boarding">
       {note && <p className="cue-then boarding-note">{note}</p>}
       {/* One row per end station, its lines' badges first (Stephen, 2026-11-03: "Like orange/silver new Carrollton,
           blue/silver Downtown Largo"). */}
       <ul className="boarding-trains">
-        {boardingGroups(trains, off).map(({ lines, toward }) => (
+        {groups.map(({ lines, toward }) => (
           <li key={`${lines.join("|")}>${toward ?? ""}`}>
-            {lines.map((line, i) => {
-              const badge = lineBadge(line);
-              const short = badge ? line.replace(/ Line$/, "") : line;
-              return (
-                <span key={line}>
-                  {/* Compact: a coloured badge says "Orange", its colour the rest; a screen reader hears the full name. */}
-                  <span className={badge ? "line-badge" : "line-badge line-badge-plain"} style={badge ?? undefined} aria-hidden="true">
-                    {short}
-                  </span>
-                  <span className="visually-hidden">
-                    {i > 0 ? ", " : ""}
-                    {line}
-                  </span>
-                </span>
-              );
-            })}
+            <LineBadges lines={lines} />
             {toward && (
               <>
                 <span className="visually-hidden"> {t("toward")} </span>
@@ -94,16 +100,35 @@ export function BoardingCard({
       <dl className="boarding-rows">
         <dt>{t("Get off")}</dt>
         <dd>{off}</dd>
-        {next && (
+        {first ? (
           <>
-            <dt>{leg.bus ? t("Next bus") : t("Next train")}</dt>
-            <dd>{next}</dd>
+            <dt>{t("Next train")}</dt>
+            <dd>
+              <LiveTrainLine train={first} />
+            </dd>
+            {second && (
+              <>
+                <dt>{t("After that")}</dt>
+                <dd>
+                  <LiveTrainLine train={second} />
+                </dd>
+              </>
+            )}
           </>
-        )}
-        {later && (
+        ) : (
           <>
-            <dt>{t("After that")}</dt>
-            <dd>{later}</dd>
+            {next && (
+              <>
+                <dt>{leg.bus ? t("Next bus") : t("Next train")}</dt>
+                <dd>{next}</dd>
+              </>
+            )}
+            {later && (
+              <>
+                <dt>{t("After that")}</dt>
+                <dd>{later}</dd>
+              </>
+            )}
           </>
         )}
         {leg.rack && (
@@ -114,5 +139,39 @@ export function BoardingCard({
         )}
       </dl>
     </div>
+  );
+}
+
+/** Lines as coloured badges ("Orange"), each read whole by a screen reader ("Orange Line"). */
+function LineBadges({ lines }: { lines: readonly string[] }) {
+  return (
+    <>
+      {lines.map((line, i) => {
+        const badge = lineBadge(line);
+        const short = badge ? line.replace(/ Line$/, "") : line;
+        return (
+          <span key={line}>
+            {/* Compact: a coloured badge says "Orange", its colour the rest; a screen reader hears the full name. */}
+            <span className={badge ? "line-badge" : "line-badge line-badge-plain"} style={badge ?? undefined} aria-hidden="true">
+              {short}
+            </span>
+            <span className="visually-hidden">
+              {i > 0 ? ", " : ""}
+              {line}
+            </span>
+          </span>
+        );
+      })}
+    </>
+  );
+}
+
+/** One live train: its line's badge, its end and when ("[Orange] New Carrollton, in 3 min, live"). */
+function LiveTrainLine({ train }: { train: { line: string; toward: string; minutes: number } }) {
+  return (
+    <span className="boarding-live">
+      <LineBadges lines={[train.line]} /> <span className="visually-hidden">{t("toward")} </span>
+      {train.toward}, {liveNextText(train.minutes)}
+    </span>
   );
 }
