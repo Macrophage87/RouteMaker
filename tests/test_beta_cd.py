@@ -1472,6 +1472,35 @@ def test_a_trail_router_with_its_tiles_is_started_on_every_deploy(beta: Beta) ->
     )
 
 
+def _paved_tiles(beta: Beta) -> None:
+    (beta.data / "tiles" / "paved" / "b1").mkdir(parents=True)
+    (beta.data / "tiles" / "paved" / "current").symlink_to("b1")
+
+
+def test_road_bike_s_router_is_started_when_the_memory_is_there(beta: Beta) -> None:
+    _paved_tiles(beta)
+    beta.release("v0.2.0", {"src/core/a.py": "x = 2\n"})
+    done = beta.agent("run", STUB_HAS_IMAGES="1", STUB_RUNNING="postgis", RM_CD_PAVED_MIN_MIB="0")
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "up -d valhalla-paved" in beta.calls().splitlines()
+
+
+def test_a_host_short_of_memory_leaves_road_bike_s_router_stopped_and_still_deploys(
+    beta: Beta,
+) -> None:
+    """2026-11-03: the agent started valhalla-paved with no memory check; the deploy now leaves
+    it stopped with a warning where available plus held memory is under the threshold."""
+    _paved_tiles(beta)
+    beta.release("v0.2.0", {"src/core/a.py": "x = 2\n"})
+    done = beta.agent(
+        "run", STUB_HAS_IMAGES="1", STUB_RUNNING="postgis", RM_CD_PAVED_MIN_MIB="99999999"
+    )
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "deployed: v0.2.0" in beta.status()
+    assert "valhalla-paved left stopped" in done.stdout
+    assert "up -d valhalla-paved" not in beta.calls().splitlines()
+
+
 def test_a_failing_row_sync_is_a_warning_not_a_rollback(beta: Beta) -> None:
     beta.release("v0.2.0", {"src/core/a.py": "x = 2\n"})
     done = beta.agent("run", STUB_HAS_IMAGES="1", STUB_RUNNING="postgis", STUB_SYNC_RC="1")

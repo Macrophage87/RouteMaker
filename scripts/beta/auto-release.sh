@@ -93,6 +93,11 @@ SECRET_KEYS="PGPASSWORD DJANGO_SECRET_KEY KEY_ENCRYPTION_KEY DISCORD_CLIENT_SECR
 UNIT=routemaker-beta-cd
 
 die() { echo "auto-release: $*" >&2; exit 2; }
+# Road Bike's router starts only where available memory plus what this project's running
+# containers already hold reaches the startup peak (8086 MiB, every cap) plus a 0.7 GiB margin.
+# Counting `available` alone, with the stack up, counted postgis, photon and memcached twice and
+# left it stopped on a host with room (2026-11-03: 5759 available + 3258 held = 9017).
+PAVED_MIN_MIB="${RM_CD_PAVED_MIN_MIB:-8803}"
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 self="$here/$(basename "${BASH_SOURCE[0]}")"
 
@@ -133,6 +138,20 @@ load_vars() {
 
 dk() { "${DOCKER:-docker}" "$@"; }
 bc() { "$RM_SRC/scripts/beta/beta-compose.sh" "$@"; }
+paved_room_mib() { # available memory plus this project's containers' resident memory, in MiB
+	local avail ids held=0
+	avail="$(awk '/^MemAvailable:/ {print int($2 / 1024)}' /proc/meminfo)"
+	[ -n "$avail" ] || return 1
+	ids="$(bc ps -q </dev/null)" || return 1
+	if [ -n "$ids" ]; then
+		# shellcheck disable=SC2086 # one argument per container id
+		held="$(timeout 30 docker stats --no-stream --format '{{.MemUsage}}' $ids </dev/null |
+			awk '{ v = $1; u = v; sub(/^[0-9.]+/, "", u); sub(/[A-Za-z]+$/, "", v)
+				f = (u == "GiB") ? 1024 : (u == "MiB") ? 1 : (u == "KiB") ? 1 / 1024 : (u == "B") ? 1 / 1048576 : 0
+				s += v * f } END { print int(s) }')" || return 1
+	fi
+	printf '%s\n' "$((avail + held))"
+}
 # The routers this host runs: the four, then each trail router whose tiles are here.
 routers() {
 	printf '%s' "$ROUTERS"
@@ -702,9 +721,22 @@ deploy() { # tag new-sha gate-file
 	# tiles arrived with a map swap planned Mountain Bike on the standard graph for releases on end.
 	# `up -d` leaves a running one alone.
 	local -a trail=()
-	local router
+	local router room
 	for router in "${running[@]}"; do
-		case "$router" in valhalla-offroad | valhalla-mtb | valhalla-paved) trail+=("$router") ;; esac
+		case "$router" in
+		valhalla-paved)
+			# Road Bike's router is the one a short host leaves stopped (BETA-RUNBOOK.md, the
+			# memory threshold): start it only with room for the startup peak.
+			if [ -z "$(bc ps -q --status running valhalla-paved </dev/null 2>/dev/null)" ]; then
+				if room="$(paved_room_mib)" && [ "$room" -ge "$PAVED_MIN_MIB" ]; then
+					trail+=("$router")
+				else
+					say "WARNING: valhalla-paved left stopped: ${room:-unknown} MiB of the $PAVED_MIN_MIB it needs (available plus what this project's containers hold); Road Bike is planned on the standard graph"
+				fi
+			fi
+			;;
+		valhalla-offroad | valhalla-mtb) trail+=("$router") ;;
+		esac
 	done
 	if [ "${#trail[@]}" -gt 0 ]; then
 		# Never a reason to roll a release back: without them those rides are planned on the

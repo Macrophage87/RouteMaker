@@ -4857,7 +4857,10 @@ has the script, the reports and the routers' addresses:
 docker compose exec -T rebuild python3 scripts/probe_bicycle_closures.py locate
 ```
 
-The gate's probes against the four **serving** routers, one pedestrian locate
+It reads the serving build's own list: after a cloud build,
+`<DATA_ROOT>/rebuild/cloud-reports/<build id>/reports/`, which `import-result.sh` unpacks
+(the `reports/` folder keeps the last local rebuild's list, which names ways a newer build may
+not have); it prints the file it read. The gate's probes against the four **serving** routers, one pedestrian locate
 each, and against `valhalla-offroad` and `valhalla-mtb` where they run (each says "not
 running, skipped" where it does not). Expect `ok` on every line. Every router but no-trail finds most of the
 probes; no-trail drops trails, singletrack with them, so it finds only the OSM
@@ -4866,12 +4869,14 @@ ok"). `OPEN:` lists ways a bicycle may use; `FOUND NONE` on a router that keeps
 trails usually means it was not restarted onto the new build. Then two trips,
 planned through the api as the planner plans them and map-matched on the router
 that served them. `--host` is the first name in the deployment's
-`DJANGO_ALLOWED_HOSTS`:
+`DJANGO_ALLOWED_HOSTS`, and `$REPORTS` is the folder `locate` printed (inside the
+container: `/data/rebuild/cloud-reports/<build id>/reports` after a cloud build, else
+`/data/rebuild/reports`):
 
 ```sh
 docker compose exec -T rebuild python3 scripts/probe_bicycle_closures.py trip \
   --preset default --from=-77.0063,38.8973 --to=-76.6158,39.3074 \
-  --avoid-ways /data/rebuild/reports/singletrack-ways.txt --host "$HOST"
+  --avoid-ways "$REPORTS/singletrack-ways.txt" --host "$HOST"
 docker compose exec -T rebuild python3 scripts/probe_bicycle_closures.py trip \
   --preset mountain-goat --from=-77.3168,38.8984 --to=-77.3318,38.8798 \
   --avoid-way 810382238 --host "$HOST"
@@ -6707,8 +6712,10 @@ so no Play build. At home, in order, with `</dev/null` on every docker command:
   there needs about 0.75 GB spare; the owner, 2026-11-02: "pc can have road bike too", so start it there alone (`docker compose --profile offroad up -d --no-deps --no-build valhalla-paved`) after checking memory inside WSL.
 - [ ] **The front end**, last.
 - [ ] **Beta**, "A new release sha" with the data bundle (docs/BETA-RUNBOOK.md):
-  - Before anything, `free -m`: "available" at least 8803 MiB (the 8086 MiB startup peak with
-    `valhalla-paved` plus 0.7 GiB). Under it, ship as below but leave `valhalla-paved` stopped.
+  - Before anything, the memory check: `free -m` "available" plus the resident memory of this
+    project's running containers (`docker stats --no-stream`) at least 8803 MiB (the 8086 MiB
+    startup peak with `valhalla-paved` plus 0.7 GiB). Under it, ship as below but leave
+    `valhalla-paved` stopped; the agent does the same check and leaves it stopped with a warning.
     `df -h /data`: room for the bundle, a second copy of each graph, and about three times the live
     tables for the staging.
   - Pause the agent (`pause --wait`, then `status`); stop api and worker, snapshot the database
@@ -6728,8 +6735,9 @@ so no Play build. At home, in order, with `</dev/null` on every docker command:
   - The front end comes with the bundle (`files`), `index.html` last.
   - `smoke-test.sh --local --trails` (now checks `road-bike` on the `paved` graph), then `--public`.
   - The agent and router hook changed: `scripts/beta/auto-release.sh install` and, where installed,
-    `scripts/beta/restart-routers.sh install`, from the new checkout. Then `mark-deployed v0.18.0`
-    and `resume`.
+    `scripts/beta/restart-routers.sh install`, from the new checkout. `mark-deployed v0.18.0`
+    comes first (`install` refuses until the running tag is marked), then the two installs, then
+    `resume`.
 - [ ] **Spot checks.** A Road Bike route answers `"variant": "paved"`. A Mall gravel walk is ridden
   on Default and avoided on Road Bike. A link with `avoidgravel=1` opens as Road Bike. `/road-bike`
   opens Road Bike on both hosts. Walk and Walk + transit plan, and Start walk follows the turns; a Run from a start alone with a target distance plans a loop near that length. A
