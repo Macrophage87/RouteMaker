@@ -6814,27 +6814,29 @@ with `</dev/null` on every docker command:
 ## Deploying v0.19.1
 
 A patch: Ride's settings as a popup (#932, #934, #936) and bike + transit rides that go on at the
-station (#937), plus the transit wording fixes. **Front end and `scripts/a11y/` only: no migration,
-no `src/` or `src/pipeline/` change, no `lua/`, compose, Caddyfile, nginx, Dockerfile or
+station (#937), plus the transit boarding screen and the "MARC MARC" wording fix (#941, which
+changes `src/core/transit.py`, so the api image is rebuilt). **No migration, no `src/pipeline/`
+change, no `lua/`, compose, Caddyfile, nginx, Dockerfile or
 requirements change, no new environment variable, outbound host or scheduled job, no `mobile/`
 change and no map rebuild.** The beta agent deploys it by itself from the annotated tag.
 
 - [ ] **The tag.** Once `test` and `a11y` are green on `main`, the owner tags v0.19.1 (annotated) on
   that commit, from the PC.
-- [ ] **At home**, the front end only: fast-forward the checkout and install the new front end
-  ("Deploying a planner and front-end release", the front-end step). No api rebuild is needed, but
-  `docker compose build api` and the recreate are harmless if done together. Leave the v0.19.0 map
-  rebuild and its swap alone: v0.19.1 runs on either map.
-- [ ] **Beta**, by its agent: the gate sees `frontend/` and `scripts/` only and deploys. If the agent
+- [ ] **At home**, as "Deploying a planner and front-end release": tag the running api image for a
+  rollback, fast-forward the checkout, `docker compose build api`, `up -d --no-deps --no-build
+  --force-recreate api worker`, then the front end. No `migrate`. Leave the v0.19.0 map rebuild and
+  its swap alone: v0.19.1 runs on either map.
+- [ ] **Beta**, by its agent: the gate sees `frontend/`, `scripts/` and `src/core/` only and deploys. If the agent
   is paused for the v0.19.0 map ship, `resume` it once that ship is done (or ship v0.19.1 by hand as
   "Shipping an update later", then `mark-deployed v0.19.1`). Stuck: `git fetch --force --tags
   origin`, then `scripts/beta/auto-release.sh retry v0.19.1`.
 - [ ] **Spot checks.** In a ride, the settings button opens a popup over the map with Colors, High
   contrast and Units first; switching Units changes the distances at once. A bike + transit ride
   shows no Done at the station and picks up the ride after the train. Bikeshare + transit's walking
-  option starts a ride.
-- [ ] **Rollback.** The v0.19.0 front end (and api image, if it was rebuilt). Nothing in the
-  database or the map changes.
+  option starts a ride. A MARC boarding reads "MARC" once, and the boarding screen shows Line,
+  Toward, Get off, Next train and After that as rows.
+- [ ] **Rollback.** The v0.19.0 api image and front end together. Nothing in the database or the
+  map changes.
 
 ## Deploying a planner and front-end release: rollback points and verification
 
