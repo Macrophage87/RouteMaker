@@ -24,6 +24,7 @@
 import { createElement as h, useSyncExternalStore, type ReactElement } from "react";
 import { METRES_PER_FOOT, formatClimb } from "./format.ts";
 import { t } from "./i18n.ts";
+import { metricFirst } from "./units.ts";
 import { darkMapOn } from "../stressStyle.js";
 
 export const TOPO_LINES_LABEL = t("Topo lines");
@@ -188,7 +189,9 @@ export function topoDarkPaint(): Record<string, Record<string, unknown>> {
  */
 export function topoLabelExpression(): Expr {
   const grouped = (value: Expr) => ["number-format", value, { locale: "en-US", "max-fraction-digits": 0 }];
-  return ["concat", grouped(ele), " ft (", grouped(["round", ["*", ele, METRES_PER_FOOT]]), " m)"];
+  const m = grouped(["round", ["*", ele, METRES_PER_FOOT]]);
+  // Metres first in metric mode (lib/units.ts).
+  return metricFirst() ? ["concat", m, " m (", grouped(ele), " ft)"] : ["concat", grouped(ele), " ft (", m, " m)"];
 }
 
 /** The same label, worked out here, for the tests and any text alternative. */

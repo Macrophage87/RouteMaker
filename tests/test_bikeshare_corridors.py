@@ -243,6 +243,16 @@ class TestMajorCorridors:
         assert ids == {1: "Kenyon Street Northwest", 830423224: "Irving Street Northwest"}
         assert counts["irving-street-bikeway"] == 2
 
+    def test_a_shared_path_is_matched_by_the_street_it_is_beside(self) -> None:
+        """A path named "path beside <street>" (`facility.sidepath_name`, 2026-11-03)
+        still counts as that street's bike way."""
+        assert mc.street_of("path beside Kenyon Street Northwest") == "Kenyon Street Northwest"
+        assert mc.street_of("Kenyon Street Northwest bike lane") == "Kenyon Street Northwest"
+        assert mc.street_of("path") is None
+        ways = [(1, {"highway": "cycleway"}, [(-77.022, 38.9295)])]
+        ids, _ = mc.way_ids(ways, {}, {1: "path beside Kenyon Street Northwest"}, mc.load())
+        assert ids == {1: "Kenyon Street Northwest"}
+
     def test_the_carl_henn_millennium_trail_in_rockville(self) -> None:
         ways = [
             (1, {"name": "Carl Henn Millennium Trail", "highway": "cycleway"}, [(-77.16, 39.08)])
