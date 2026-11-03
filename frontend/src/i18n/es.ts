@@ -2352,7 +2352,9 @@ export const ES: Readonly<Record<string, string>> = {
   "No junctions needing corkers ahead.": "No hay intersecciones que necesiten cortadores más adelante.",
   "Some junctions were not checked.": "Algunas intersecciones no se revisaron.",
   "an unnamed street": "una calle sin nombre",
-  "Junctions needing corkers: {count}. Next: {street} in {distance}, corkers: {corkers}.": "{count} intersecciones necesitan cortadores. Siguiente: {street} en {distance}, {corkers} cortadores.",
-  "Other riders shown: {count}, all ahead of you.": "Se muestran {count} ciclistas más, todos delante de usted.",
-  "Other riders shown: {count}, the last {distance} behind you.": "Se muestran {count} ciclistas más; el último, {distance} detrás de usted.",
+  "Junctions needing corkers: {count}. Next: {street} in {distance}, corkers: {corkers}.": "Intersecciones que necesitan cortadores: {count}. Siguiente: {street} en {distance}, cortadores: {corkers}.",
+  "Other riders shown: {count}, all ahead of you.": "Otros ciclistas en pantalla: {count}, todos delante de usted.",
+  "Other riders shown: {count}, the last {distance} behind you.": "Otros ciclistas en pantalla: {count}; el último, {distance} detrás de usted.",
+  "Mostly {level}, {top} here.": "Mayormente {level}, {top} aquí.",
+  "Narrowest {riders} riders a minute, here.": "Lo más estrecho: {riders} ciclistas por minuto, aquí.",
 };

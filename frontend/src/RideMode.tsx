@@ -271,7 +271,7 @@ import { countText } from "./lib/rideGroup.ts";
 import type { SeeEveryone } from "./app/useSeeEveryone.ts";
 import { SeeEveryoneButton } from "./SeeEveryoneButton.tsx";
 import { AheadGraph } from "./AheadGraph.tsx";
-import { AHEAD_NAME, AHEAD_OFF, AHEAD_WORD, aheadOn, aheadViews, readAhead, writeAhead, RIDER_OFF_ROUTE_M, type AheadView } from "./lib/aheadGraph.ts";
+import { AHEAD_NAME, AHEAD_OFF, AHEAD_WORD, aheadOn, aheadViews, readAhead, writeAhead, RIDER_OFF_ROUTE_M, RIDERS_REACH_M, type AheadView } from "./lib/aheadGraph.ts";
 
 /**
  * One voice for the page: the Start ride press unlocks it (iOS speaks only after a gesture has). Web
@@ -2791,12 +2791,12 @@ export function RideMode({
       aheadAt === null
         ? []
         : riderDots.flatMap((dot) => {
-            const on = snap(model, dot, -Infinity, Infinity, 15, aheadAt);
+            const on = snap(model, dot, aheadAt - RIDERS_REACH_M, aheadAt + RIDERS_REACH_M, 15, aheadAt);
             return on && on.offM <= RIDER_OFF_ROUTE_M ? [on.alongM] : [];
           }),
-    // Snapped again as the dots move, the route changes, or a graph comes on; not each fix.
+    // Snapped again as the dots move, the route changes, or you move on 200 m (so a loop's other pass is not taken); not each fix.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [riderDots, model, aheadAt === null],
+    [riderDots, model, aheadAt === null ? null : Math.round(aheadAt / 200)],
   );
   const aheadShown = aheadView !== null && aheadAt !== null;
   const sheetShown = notesShown || restShown || aheadShown;

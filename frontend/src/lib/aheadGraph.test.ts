@@ -151,5 +151,20 @@ test("Ride wires it: one bubble a graph in More, pressed state, off by default, 
   assert.match(app, /riderDots=\{rideDots\}/);
   const graph = readFileSync(new URL("../AheadGraph.tsx", import.meta.url), "utf8");
   assert.match(graph, /aria-hidden="true" focusable="false"/, "the picture is hidden; its sentence is read instead");
-  assert.match(graph, /aria-describedby=\{`\$\{id\}-s`\}/);
+  assert.doesNotMatch(graph, /aria-describedby/, "the sentence is read once, in its place");
+});
+
+test("review fixes: the climb counts from your own height between samples, a steep stretch behind you is drawn but not said, and 'here' for one you are on", () => {
+  // A steady 5% climb from 0 to 2000 m, then level.
+  const profile = profileOf(80, 50, (m) => (m < 2000 ? m * 0.05 : 100));
+  const mid = elevationShape(profile, aheadWindow(1025, 3950));
+  assert.ok(mid);
+  assert.equal(Math.round(mid.climbM * 10) / 10, 48.8, "from 1025 m, not from the next sample at 1050 m");
+  // 5% behind you, level ahead: drawn (a rider stretched the window back), but the sentence's steepest is ahead only.
+  const back = elevationShape(profile, aheadWindow(2500, 3950, [1500]));
+  assert.ok(back && back.steep.some((s) => s.toM <= 2000));
+  assert.ok((back.steepestPct ?? 0) < 1);
+  assert.equal(stressSentence(stressBars([span(0, 500, 4), span(500, 5000, 2)], { fromM: 100, toM: 3000 }), 100), "Mostly LTS 2, LTS 4 here.");
+  const steps = flowSteps(profileOf(40, 100, () => 10, { riders_per_min: Array.from({ length: 40 }, (_, i) => (i === 0 ? 40 : 150)) }), { fromM: 50, toM: 3000 });
+  assert.equal(flowSentence(steps, 50), "Narrowest 40 riders a minute, here.");
 });

@@ -1888,4 +1888,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Junctions needing corkers: {count}. Next: {street} in {distance}, corkers: {corkers}.": "{count}个路口需要路口守护。下一个：{distance}后的{street}，需要{corkers}人。",
   "Other riders shown: {count}, all ahead of you.": "显示了另外{count}名骑行者，都在你前面。",
   "Other riders shown: {count}, the last {distance} behind you.": "显示了另外{count}名骑行者，最后一名在你后面{distance}。",
+  "Mostly {level}, {top} here.": "大多为{level}，这里是{top}。",
+  "Narrowest {riders} riders a minute, here.": "最窄处：每分钟{riders}名骑行者，就在这里。",
 };

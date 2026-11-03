@@ -1888,4 +1888,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Junctions needing corkers: {count}. Next: {street} in {distance}, corkers: {corkers}.": "تقاطعات تحتاج إلى مغلقين: {count}. التالي: {street} بعد {distance}، مغلقون: {corkers}.",
   "Other riders shown: {count}, all ahead of you.": "يظهر {count} راكب آخر، كلهم أمامك.",
   "Other riders shown: {count}, the last {distance} behind you.": "يظهر {count} راكب آخر، آخرهم خلفك بمسافة {distance}.",
+  "Mostly {level}, {top} here.": "في الغالب {level}، و{top} هنا.",
+  "Narrowest {riders} riders a minute, here.": "أضيق نقطة: {riders} راكب في الدقيقة، هنا.",
 };

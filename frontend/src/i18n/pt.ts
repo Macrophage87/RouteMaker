@@ -1885,7 +1885,9 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "No junctions needing corkers ahead.": "Nenhum cruzamento à frente precisa de bloqueadores.",
   "Some junctions were not checked.": "Alguns cruzamentos não foram verificados.",
   "an unnamed street": "uma rua sem nome",
-  "Junctions needing corkers: {count}. Next: {street} in {distance}, corkers: {corkers}.": "{count} cruzamentos precisam de bloqueadores. Próximo: {street} em {distance}, {corkers} bloqueadores.",
-  "Other riders shown: {count}, all ahead of you.": "{count} outros ciclistas mostrados, todos à sua frente.",
-  "Other riders shown: {count}, the last {distance} behind you.": "{count} outros ciclistas mostrados, o último {distance} atrás de você.",
+  "Junctions needing corkers: {count}. Next: {street} in {distance}, corkers: {corkers}.": "Cruzamentos que precisam de bloqueadores: {count}. Próximo: {street} em {distance}, bloqueadores: {corkers}.",
+  "Other riders shown: {count}, all ahead of you.": "Outros ciclistas mostrados: {count}, todos à sua frente.",
+  "Other riders shown: {count}, the last {distance} behind you.": "Outros ciclistas mostrados: {count}, o último {distance} atrás de você.",
+  "Mostly {level}, {top} here.": "Principalmente {level}, {top} aqui.",
+  "Narrowest {riders} riders a minute, here.": "Mais estreito: {riders} ciclistas por minuto, aqui.",
 };

@@ -175,6 +175,7 @@ export function stressSentence(bars: readonly StressBar[], youM: number): string
   const top = Math.max(...metres.keys());
   if (top === mostly) return t("{level} the whole way.", { level: levelWords(mostly) });
   const first = ahead.find((b) => b.level === top) as StressBar;
+  if (first.fromM <= youM + 15) return t("Mostly {level}, {top} here.", { level: levelWords(mostly), top: levelWords(top) });
   return t("Mostly {level}, up to {top} in {distance}.", {
     level: levelWords(mostly),
     top: levelWords(top),
@@ -214,6 +215,8 @@ export function elevationShape(profile: RouteProfile, w: Pick<AheadWindow, "from
     if (a === null || b === null) return a ?? b;
     return m[j] > m[i] ? lerp(a, b, (target - m[i]) / (m[j] - m[i])) : a;
   };
+  // The climb counts from your own height, read between the two samples either side of you.
+  for (let i = 1; i < m.length && prev === null; i += 1) if (m[i - 1] <= w.youM && m[i] >= w.youM) prev = at(i - 1, i, w.youM);
   for (let i = 0; i < m.length; i += 1) {
     const inside = m[i] >= w.fromM && m[i] <= w.toM;
     if (i > 0 && m[i - 1] < w.fromM && m[i] > w.fromM) {
@@ -240,7 +243,7 @@ export function elevationShape(profile: RouteProfile, w: Pick<AheadWindow, "from
       }
       if (typeof grade === "number" && m[i] > w.youM) steepestPct = Math.max(steepestPct ?? 0, grade);
     }
-    if (m[i] >= w.youM && m[i] <= w.toM && e[i] !== null) {
+    if (m[i] > w.youM && m[i] <= w.toM && e[i] !== null) {
       if (prev !== null && (e[i] as number) > prev) climbM += (e[i] as number) - prev;
       prev = e[i] as number;
     }
@@ -302,6 +305,7 @@ export function narrowest(steps: readonly FlowStep[], youM: number): FlowStep | 
 export function flowSentence(steps: readonly FlowStep[], youM: number): string {
   const low = narrowest(steps, youM);
   if (!low) return NO_FIGURES;
+  if (low.fromM <= youM + 15) return t("Narrowest {riders} riders a minute, here.", { riders: Math.round(low.riders) });
   return t("Narrowest {riders} riders a minute, in {distance}.", { riders: Math.round(low.riders), distance: spokenDistance(Math.max(0, low.fromM - youM)) });
 }
 

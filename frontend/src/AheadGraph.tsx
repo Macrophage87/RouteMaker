@@ -64,7 +64,7 @@ export function AheadGraph({ view, route, youM, lengthM, ridersAlong = [] }: Pro
   if (!drawn) return null;
   const riders = ridersSentence(w);
   return (
-    <figure className={`ride-ahead ride-ahead-${view}`} role="group" aria-labelledby={`${id}-h`} aria-describedby={`${id}-s`}>
+    <figure className={`ride-ahead ride-ahead-${view}`} role="group" aria-labelledby={`${id}-h`}>
       <p id={`${id}-h`} className="ride-ahead-heading">
         {AHEAD_HEADING[view]}
       </p>
@@ -136,11 +136,13 @@ function draw(view: AheadView, route: Props["route"], w: AheadWindow, x: X, y: Y
           const left = x(b.fromM);
           const width = x(b.toM) - left;
           const top = y(barHeight(b.level));
+          const short = TOP + PLOT_H - top < 20;
           return (
             <g key={b.fromM}>
               <rect className="ride-ahead-bar" x={left} y={top} width={width} height={TOP + PLOT_H - top} fill={b.color} />
               {width >= b.label.length * 8 + 6 && (
-                <text className="ride-ahead-level" x={left + width / 2} y={top + 15} textAnchor="middle" style={{ fill: b.ink }}>
+                // On a bar too short to hold it, the number sits just above the bar, in the text colour.
+                <text className="ride-ahead-level" x={left + width / 2} y={short ? top - 3 : top + 15} textAnchor="middle" style={short ? undefined : { fill: b.ink }}>
                   {b.label}
                 </text>
               )}
@@ -161,7 +163,9 @@ function draw(view: AheadView, route: Props["route"], w: AheadWindow, x: X, y: Y
       if (inside.length < 2) return "";
       return `M${x(inside[0][0])} ${base} ${inside.map(([m, e]) => `L${x(m).toFixed(1)} ${ey(e).toFixed(1)}`).join(" ")} L${x(inside[inside.length - 1][0])} ${base} Z`;
     };
-    const steepest = shape.steep.length ? shape.steep.reduce((a, b) => (b.gradePct > a.gradePct ? b : a)) : null;
+    // The label names the steepest stretch ahead of you, as the sentence does.
+    const ahead = shape.steep.filter((s) => s.toM > w.youM);
+    const steepest = ahead.length ? ahead.reduce((a, b) => (b.gradePct > a.gradePct ? b : a)) : null;
     return {
       sentence: elevationSentence(shape, w),
       body: (hatch) => (

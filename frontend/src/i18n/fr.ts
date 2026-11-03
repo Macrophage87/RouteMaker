@@ -1885,7 +1885,9 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "No junctions needing corkers ahead.": "Aucune intersection ne demande de bloqueurs devant.",
   "Some junctions were not checked.": "Certaines intersections n'ont pas été vérifiées.",
   "an unnamed street": "une rue sans nom",
-  "Junctions needing corkers: {count}. Next: {street} in {distance}, corkers: {corkers}.": "{count} intersections demandent des bloqueurs. Prochaine : {street} dans {distance}, {corkers} bloqueurs.",
-  "Other riders shown: {count}, all ahead of you.": "{count} autres cyclistes affichés, tous devant vous.",
-  "Other riders shown: {count}, the last {distance} behind you.": "{count} autres cyclistes affichés, le dernier à {distance} derrière vous.",
+  "Junctions needing corkers: {count}. Next: {street} in {distance}, corkers: {corkers}.": "Intersections demandant des bloqueurs : {count}. Prochaine : {street} dans {distance}, bloqueurs : {corkers}.",
+  "Other riders shown: {count}, all ahead of you.": "Autres cyclistes affichés : {count}, tous devant vous.",
+  "Other riders shown: {count}, the last {distance} behind you.": "Autres cyclistes affichés : {count}, le dernier à {distance} derrière vous.",
+  "Mostly {level}, {top} here.": "Surtout {level}, {top} ici.",
+  "Narrowest {riders} riders a minute, here.": "Le plus étroit : {riders} cyclistes par minute, ici.",
 };

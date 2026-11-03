@@ -1888,4 +1888,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Junctions needing corkers: {count}. Next: {street} in {distance}, corkers: {corkers}.": "교차로 통제가 필요한 교차로 {count}곳. 다음: {distance} 앞 {street}, 통제 인원 {corkers}명.",
   "Other riders shown: {count}, all ahead of you.": "다른 라이더 {count}명 표시, 모두 내 앞에 있습니다.",
   "Other riders shown: {count}, the last {distance} behind you.": "다른 라이더 {count}명 표시, 마지막 라이더는 {distance} 뒤에 있습니다.",
+  "Mostly {level}, {top} here.": "대부분 {level}, 여기서 {top}.",
+  "Narrowest {riders} riders a minute, here.": "가장 좁은 곳: 분당 {riders}명, 여기.",
 };
