@@ -14,6 +14,7 @@
  *   `weight: null`, so every signed-in device clears its copy rather than putting its own back.
  * - The rider's riding speed ("speed", lib/ridingSpeed.ts), whole mph; null once set back to the ride type's own,
  *   so every signed-in device goes back too.
+ * - The units ("units", lib/units.ts): "us" or "metric" (the owner, 2026-11-03: "have a metric mode in settings").
  * - On sign-in (every signed-in load): an empty account takes this device's settings; an account that has
  *   settings wins, and its settings replace the device's. Nothing is merged silently.
  * - Signed out, everything stays on the device as before.
@@ -29,6 +30,7 @@ import { TOPO_STORAGE_KEY } from "./topoLines.ts";
 import { WEIGHT_CLEARED, WEIGHT_STORAGE_KEY, migrate as weightOf, storedSetting, type StoredWeight } from "./weight.ts";
 import { SPEED_OWN, SPEED_STORAGE_KEY, speedOf, speedSetting } from "./ridingSpeed.ts";
 import { WATER_PREFS_KEY, type WaterPrefs } from "./waterRestrooms.ts";
+import { UNITS_STORAGE_KEY, unitsOf, unitsSetting, type Units } from "./units.ts";
 
 export const SETTINGS_VERSION = 1;
 
@@ -47,6 +49,8 @@ export interface SettingsDoc {
   weight?: StoredWeight | null;
   /** The rider's riding speed in whole mph (lib/ridingSpeed.ts), or null for the ride type's own. */
   speed?: number | null;
+  /** The units shown and said (lib/units.ts). */
+  units?: Units;
 }
 
 export interface Store {
@@ -143,6 +147,8 @@ export function parseSettings(raw: unknown): SettingsDoc | null {
   }
   if (body.speed === null) doc.speed = null;
   else if (speedOf(body.speed) !== null) doc.speed = speedOf(body.speed);
+  const units = unitsOf(body.units);
+  if (units) doc.units = units;
   return doc;
 }
 
@@ -178,6 +184,8 @@ export function deviceSettings(
   if (weight !== undefined) doc.weight = weight;
   const speed = speedSetting(read(store, SPEED_STORAGE_KEY));
   if (speed !== undefined) doc.speed = speed;
+  const units = unitsSetting(read(store, UNITS_STORAGE_KEY));
+  if (units) doc.units = units;
   return doc;
 }
 
@@ -198,6 +206,7 @@ export function applyToDevice(doc: SettingsDoc, store: Store | null = local()): 
   if (doc.favorites) write(FAVORITES_KEY, JSON.stringify(doc.favorites));
   if (doc.weight !== undefined) write(WEIGHT_STORAGE_KEY, doc.weight === null ? WEIGHT_CLEARED : JSON.stringify(doc.weight));
   if (doc.speed !== undefined) write(SPEED_STORAGE_KEY, doc.speed === null ? SPEED_OWN : String(doc.speed));
+  if (doc.units) write(UNITS_STORAGE_KEY, doc.units);
 }
 
 export type SignInStep = { kind: "push-device"; doc: SettingsDoc } | { kind: "use-account"; doc: SettingsDoc };

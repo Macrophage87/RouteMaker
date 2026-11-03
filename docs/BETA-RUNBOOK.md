@@ -103,15 +103,16 @@ What to expect on this server (the owner's check, 2026-10-04); a check below tha
 - `/data` is a separate filesystem mounted `nofail`, with far more than the 25 GB this needs;
 - Docker's root may be on the root disk rather than on `/data` (that is why binds never create
   their source: "Reboot and a late `/data`"), so its free space is checked on its own;
-- available memory is at least the 8803 MiB threshold below (the 8086 MiB startup peak plus the
-  checker's 0.7 GiB margin);
+- available memory, plus what this project's own running containers already hold, is at least
+  the 8803 MiB threshold below (the 8086 MiB startup peak plus the checker's 0.7 GiB margin); the
+  containers' share counts because a redeploy replaces them rather than adding to them;
 - an x86_64 machine (the api image is built at home, on x86_64);
 - `beta.example.org` resolves to this server's own public address (checked live below; the
   address is not written down here).
 
 ```sh
 . "$HOME/routemaker-beta-state/vars.sh"
-free -m                                  # "available" must be at least 8803 MiB: the 8086 MiB startup peak plus the checker's 0.7 GiB margin (the caps total 7830 MiB = 7.65 GiB resident)
+free -m; ids=$("$RM_SRC/scripts/beta/beta-compose.sh" ps -q); [ -z "$ids" ] || docker stats --no-stream --format '{{.Name}} {{.MemUsage}}' $ids   # "available" plus the usage of this project's containers listed must be at least 8803 MiB: the 8086 MiB startup peak plus the checker's 0.7 GiB margin (the caps total 7830 MiB = 7.65 GiB resident)
 uname -m; docker info -f '{{.Architecture}}'   # both x86_64: the api image is built at home on x86_64; anything else is a stop
 df -h /data /                            # /data: at least 25 GB free (bundle 4 GB, installed copy 4 GB, backups)
 findmnt -no SOURCE,FSTYPE,OPTIONS /data  # a filesystem of its own; nofail in the options is expected (see "Reboot and a late /data")

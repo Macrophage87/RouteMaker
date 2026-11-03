@@ -186,6 +186,7 @@ ES: dict[str, str] = {
     # "Vaya en bicicleta", the time on a train or bus "viaje"; a dock is an "estación" as in
     # the app. Line and stop names stay as they are, after their noun: "tren MARC Penn Line".
     "your destination": "su destino",
+    "stop {number}": "parada {number}",
     "Ride {m} min to {place}.": "Vaya en bicicleta {m} min hasta {place}.",
     "Ride {m} min.": "Vaya en bicicleta {m} min.",
     "Walk {m} min to the bikeshare dock at {place} and take a classic bike.": (
