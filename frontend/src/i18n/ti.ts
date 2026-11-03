@@ -312,7 +312,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "No GPS signal: the cues are paused until it comes back.": "ምልክት GPS የለን፦ ክሳብ ዝምለስ መምርሒታት ደው ኢሎም።",
   "Ride mode guides you along the planned route; you stay responsible for riding safely and obeying the rules of the road, and the route can be wrong. It needs the screen on and this page in front, and GPS with a lit screen drains the battery quickly.": "ኩነታት ጉዕዞ ብዝተሓስበ መንገዲ ይመርሓካ፤ ብውሕስና ምዝዋርን ሕግታት ትራፊክ ምኽባርን ናትካ ሓላፍነት እዩ፣ መንገዲ ድማ ክጋገ ይኽእል። ስክሪን ክበርህን እዚ ገጽ ኣብ ቅድሚት ክኸውንን ኣለዎ፣ GPS ምስ ዝበርህ ስክሪን ድማ ባትሪ ቀልጢፉ የውድእ።",
   "Ride mode guides you along the planned route; you stay responsible for riding safely and obeying the rules of the road, and the route can be wrong. In this app the cues go on with the screen locked until you end the ride, and GPS drains the battery.": "ኩነታት ጉዕዞ ብዝተሓስበ መንገዲ ይመርሓካ፤ ብውሕስና ምዝዋርን ሕግታት ትራፊክ ምኽባርን ናትካ ሓላፍነት እዩ፣ መንገዲ ድማ ክጋገ ይኽእል። ኣብዚ ኣፕ ስክሪን ተዓጽዩ እውን ክሳብ ጉዕዞ ትውድእ መምርሒታት ይቕጽሉ፣ GPS ድማ ባትሪ የውድእ።",
-  "You ride at your own risk; the route can be wrong.": "ብናትካ ሓላፍነት ትዝውር፤ መንገዲ ክጋገ ይኽእል።",
+  "Ride with care: the route can have mistakes.": "ብጥንቃቐ ዝወሩ፤ መንገዲ ጌጋ ክህልዎ ይኽእል።",
   "Voice on.": "ድምጺ ርኹብ።",
   "Checking closures…": "ምዕጻዋት ይፍተሽ ኣሎ…",
   "{name}: slide to end": "{name}፦ ንምውዳእ ስሓብ",

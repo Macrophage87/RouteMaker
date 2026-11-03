@@ -312,7 +312,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "No GPS signal: the cues are paused until it comes back.": "Không có tín hiệu GPS: chỉ dẫn tạm dừng cho đến khi có lại.",
   "Ride mode guides you along the planned route; you stay responsible for riding safely and obeying the rules of the road, and the route can be wrong. It needs the screen on and this page in front, and GPS with a lit screen drains the battery quickly.": "Chế độ chuyến đi hướng dẫn bạn theo lộ trình đã lên; bạn vẫn chịu trách nhiệm đạp xe an toàn và tuân thủ luật giao thông, và lộ trình có thể sai. Cần bật màn hình và để trang này ở phía trước, và GPS khi màn hình sáng làm hao pin nhanh.",
   "Ride mode guides you along the planned route; you stay responsible for riding safely and obeying the rules of the road, and the route can be wrong. In this app the cues go on with the screen locked until you end the ride, and GPS drains the battery.": "Chế độ chuyến đi hướng dẫn bạn theo lộ trình đã lên; bạn vẫn chịu trách nhiệm đạp xe an toàn và tuân thủ luật giao thông, và lộ trình có thể sai. Trong ứng dụng này chỉ dẫn vẫn tiếp tục khi khóa màn hình cho đến khi bạn kết thúc chuyến đi, và GPS làm hao pin.",
-  "You ride at your own risk; the route can be wrong.": "Bạn tự chịu rủi ro; lộ trình có thể sai.",
+  "Ride with care: the route can have mistakes.": "Hãy đi cẩn thận: lộ trình có thể có sai sót.",
   "Voice on.": "Đã bật giọng nói.",
   "Checking closures…": "Đang kiểm tra đường đóng…",
   "{name}: slide to end": "{name}: trượt để kết thúc",

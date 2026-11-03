@@ -312,7 +312,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "No GPS signal: the cues are paused until it comes back.": "GPS sinyali yok: talimatlar sinyal dönene kadar duraklatıldı.",
   "Ride mode guides you along the planned route; you stay responsible for riding safely and obeying the rules of the road, and the route can be wrong. It needs the screen on and this page in front, and GPS with a lit screen drains the battery quickly.": "Sürüş modu sizi planlanan rotada yönlendirir; güvenli sürmek ve trafik kurallarına uymak sizin sorumluluğunuzdadır ve rota yanlış olabilir. Ekranın açık ve bu sayfanın önde olması gerekir; ekran açıkken GPS pili hızla tüketir.",
   "Ride mode guides you along the planned route; you stay responsible for riding safely and obeying the rules of the road, and the route can be wrong. In this app the cues go on with the screen locked until you end the ride, and GPS drains the battery.": "Sürüş modu sizi planlanan rotada yönlendirir; güvenli sürmek ve trafik kurallarına uymak sizin sorumluluğunuzdadır ve rota yanlış olabilir. Bu uygulamada talimatlar ekran kilitliyken de sürüşü bitirene kadar devam eder ve GPS pili tüketir.",
-  "You ride at your own risk; the route can be wrong.": "Sorumluluk size aittir; rota yanlış olabilir.",
+  "Ride with care: the route can have mistakes.": "Dikkatli sürün: rotada hatalar olabilir.",
   "Voice on.": "Ses açık.",
   "Checking closures…": "Kapanmalar kontrol ediliyor…",
   "{name}: slide to end": "{name}: bitirmek için kaydır",

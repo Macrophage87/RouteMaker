@@ -482,7 +482,7 @@ export const ES: Readonly<Record<string, string>> = {
   "Change what to find": "Cambiar qué buscar",
   "{place} · {distance} ahead": "{place} · {distance} adelante",
   "{place} · {distance} behind": "{place} · {distance} atrás",
-  "You ride at your own risk; the route can be wrong.": "Usted circula bajo su propio riesgo; la ruta puede tener errores.",
+  "Ride with care: the route can have mistakes.": "Circule con cuidado: la ruta puede tener errores.",
   "About Ride mode": "Sobre el modo recorrido",
   "Arrived: {place}": "Llegó: {place}",
   Arrived: "Llegó",

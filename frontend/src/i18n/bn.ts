@@ -312,7 +312,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "No GPS signal: the cues are paused until it comes back.": "GPS সংকেত নেই: সংকেত ফেরা পর্যন্ত নির্দেশনা থেমে আছে।",
   "Ride mode guides you along the planned route; you stay responsible for riding safely and obeying the rules of the road, and the route can be wrong. It needs the screen on and this page in front, and GPS with a lit screen drains the battery quickly.": "সফর মোড আপনাকে পরিকল্পিত রাস্তায় নিয়ে যায়; নিরাপদে চালানো ও রাস্তার নিয়ম মানা আপনারই দায়িত্ব, আর রাস্তা ভুল হতে পারে। স্ক্রিন চালু আর এই পৃষ্ঠা সামনে থাকতে হবে, আর জ্বলন্ত স্ক্রিনে GPS দ্রুত ব্যাটারি শেষ করে।",
   "Ride mode guides you along the planned route; you stay responsible for riding safely and obeying the rules of the road, and the route can be wrong. In this app the cues go on with the screen locked until you end the ride, and GPS drains the battery.": "সফর মোড আপনাকে পরিকল্পিত রাস্তায় নিয়ে যায়; নিরাপদে চালানো ও রাস্তার নিয়ম মানা আপনারই দায়িত্ব, আর রাস্তা ভুল হতে পারে। এই অ্যাপে সফর শেষ না করা পর্যন্ত স্ক্রিন লক থাকলেও নির্দেশনা চলে, আর GPS ব্যাটারি শেষ করে।",
-  "You ride at your own risk; the route can be wrong.": "আপনি নিজের ঝুঁকিতে চালান; রাস্তা ভুল হতে পারে।",
+  "Ride with care: the route can have mistakes.": "সাবধানে চালান: রাস্তায় ভুল থাকতে পারে।",
   "Voice on.": "কণ্ঠ চালু।",
   "Checking closures…": "বন্ধ রাস্তা দেখা হচ্ছে…",
   "{name}: slide to end": "{name}: শেষ করতে টানুন",

@@ -312,7 +312,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "No GPS signal: the cues are paused until it comes back.": "Pas de signal GPS : les indications sont en pause jusqu'à son retour.",
   "Ride mode guides you along the planned route; you stay responsible for riding safely and obeying the rules of the road, and the route can be wrong. It needs the screen on and this page in front, and GPS with a lit screen drains the battery quickly.": "Le mode sortie vous guide sur l'itinéraire prévu ; vous restez responsable de rouler prudemment et de respecter le code de la route, et l'itinéraire peut être faux. Il faut l'écran allumé et cette page au premier plan, et le GPS avec l'écran allumé vide vite la batterie.",
   "Ride mode guides you along the planned route; you stay responsible for riding safely and obeying the rules of the road, and the route can be wrong. In this app the cues go on with the screen locked until you end the ride, and GPS drains the battery.": "Le mode sortie vous guide sur l'itinéraire prévu ; vous restez responsable de rouler prudemment et de respecter le code de la route, et l'itinéraire peut être faux. Dans cette appli, les indications continuent écran verrouillé jusqu'à la fin de la sortie, et le GPS vide la batterie.",
-  "You ride at your own risk; the route can be wrong.": "Vous roulez à vos risques ; l'itinéraire peut être faux.",
+  "Ride with care: the route can have mistakes.": "Roulez prudemment : l'itinéraire peut comporter des erreurs.",
   "Voice on.": "Voix activée.",
   "Checking closures…": "Vérification des fermetures…",
   "{name}: slide to end": "{name} : glisser pour terminer",

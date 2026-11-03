@@ -312,7 +312,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "No GPS signal: the cues are paused until it comes back.": "د GPS نښه نشته: لارښوونې تر بېرته راتګه درېدلي دي.",
   "Ride mode guides you along the planned route; you stay responsible for riding safely and obeying the rules of the road, and the route can be wrong. It needs the screen on and this page in front, and GPS with a lit screen drains the battery quickly.": "د سفر حالت تاسو په پلان شوې لار کې لارښوونه کوي؛ خوندي چلول او د ترافیکي قواعدو پیروي ستاسو مسؤلیت دی، او لار ښايي غلطه وي. سکرین باید روښانه وي او دا پاڼه مخې ته وي، او GPS له روښانه سکرین سره بیټرۍ ژر خالي کوي.",
   "Ride mode guides you along the planned route; you stay responsible for riding safely and obeying the rules of the road, and the route can be wrong. In this app the cues go on with the screen locked until you end the ride, and GPS drains the battery.": "د سفر حالت تاسو په پلان شوې لار کې لارښوونه کوي؛ خوندي چلول او د ترافیکي قواعدو پیروي ستاسو مسؤلیت دی، او لار ښايي غلطه وي. په دې اپ کې لارښوونې له تړل شوي سکرین سره دوام کوي تر څو سفر پای ته ورسوئ، او GPS بیټرۍ خالي کوي.",
-  "You ride at your own risk; the route can be wrong.": "تاسو په خپل مسؤلیت چلوئ؛ لار ښايي غلطه وي.",
+  "Ride with care: the route can have mistakes.": "په احتیاط سره وچلوئ: لار کې ښايي تېروتنې وي.",
   "Voice on.": "غږ روښانه.",
   "Checking closures…": "بندښتونه کتل کېږي…",
   "{name}: slide to end": "{name}: د پای لپاره کش کړئ",
