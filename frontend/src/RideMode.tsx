@@ -2852,6 +2852,7 @@ export function RideMode({
   const middleRef = useRef<HTMLDivElement>(null);
   const [aheadMaxPx, setAheadMaxPx] = useState<number | null>(null);
   const sheetChrome = useRef(SHEET_CHROME_PX);
+  const measureAhead = useRef<(() => void) | null>(null);
   useLayoutEffect(() => {
     const middle = middleRef.current;
     const rail = railRef.current;
@@ -2863,7 +2864,8 @@ export function RideMode({
     }
     const measure = () => {
       const figure = sheet?.querySelector<HTMLElement>(".ride-ahead") ?? null;
-      const shown = !!figure && !figure.hidden;
+      // Drawn: a figure with its picture (one with its sentence alone takes no room).
+      const shown = !!figure && !!figure.querySelector("svg");
       const buttons = [...rail.children].filter((child) => (child as HTMLElement).offsetHeight > 2).length;
       const clear = parseFloat(rail.style.paddingTop) || 0;
       if (sheet) {
@@ -2889,16 +2891,24 @@ export function RideMode({
       setAheadMaxPx((was) => (was !== null && Math.abs(was - px) <= 2 ? was : px));
     };
     measure();
+    measureAhead.current = measure;
     const watch = new ResizeObserver(measure);
     watch.observe(middle);
     if (sheet) watch.observe(sheet);
     const buttons = new MutationObserver(measure);
     buttons.observe(rail, { childList: true, attributes: true, attributeFilter: ["style"] });
     return () => {
+      measureAhead.current = null;
       watch.disconnect();
       buttons.disconnect();
     };
   }, [aheadWanted, sheetShown, textSize]);
+  // Measured again at each render, before it is painted: a note that comes into the panel or goes (a weak GPS fix
+  // under trees) changes the graphs' room at once, not a frame later from the ResizeObserver, which drew them in
+  // three steps (the review of #928). Nothing is set where nothing changed, so it does not render again.
+  useLayoutEffect(() => {
+    measureAhead.current?.();
+  });
   // No room for a graph, or for some of them: said once a ride for each set of graphs (lib/aheadGraph.ts
   // aheadNoRoom), never again at each fix (the review of #928).
   const noRoomSaid = useRef(new Set<string>());
@@ -3639,6 +3649,11 @@ export function RideMode({
 
       {/* The bottom panel, only when it has something to say or ask (the owner: "Remove that bottom part when
           routing by default"): the notes, off route, Ride the rest, and the full 311 report once asked for. */}
+      {/* No room for any graph on this screen (Large text, a short phone): the graphs' sentence still for screen
+          readers, visually hidden (the review of #928; about/using.html says so). */}
+      {aheadWanted && !aheadFits && ride.progressM !== null && (
+        <AheadGraph views={aheadDrawn} route={route} cues={model.cues} youM={ride.progressM} lengthM={model.lengthM} ridersAlong={ridersAlong} large={textSize === "large"} maxPx={0} />
+      )}
       {sheetShown && (
         <div ref={sheetRef} className="ride-controls">
           {aheadAt !== null && <AheadGraph views={aheadDrawn} route={route} cues={model.cues} youM={aheadAt} lengthM={model.lengthM} ridersAlong={ridersAlong} large={textSize === "large"} maxPx={aheadMaxPx} onNoRoom={sayNoRoom} />}
