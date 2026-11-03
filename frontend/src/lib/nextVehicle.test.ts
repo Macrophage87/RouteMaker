@@ -143,7 +143,8 @@ test("the map's mark: its point, its name in words, its kind's badge", () => {
 
 test("Ride mode shows it at the boarding, through the ride's polite outputs; no new control", () => {
   const ride = src("RideMode.tsx");
-  assert.match(ride, /<NextVehicleLine ask=\{trip\?\.boarding \?\? null\} waiting=\{ride\.arrived\} announce=\{notify\}/);
+  // Until boarded (2026-11-02: the on-board stops take over from there).
+  assert.match(ride, /<NextVehicleLine ask=\{trip\?\.boarding \?\? null\} waiting=\{ride\.arrived && toBoard\} announce=\{notify\}/);
   const line = src("NextVehicleLine.tsx");
   assert.doesNotMatch(line, /<button|checkbox|aria-live|role="status"/);
   assert.match(line, /clearInterval/);

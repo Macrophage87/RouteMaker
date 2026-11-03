@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import type { BikesharePlan, DescriptionEntry, RouteResponse, TransitOption, TransitPlan, TransitStep } from "./api.ts";
 import type { LonLat } from "./geo.ts";
+import { walkModel } from "./walkCues.ts";
 import { loadLanguage, setLanguageForTest } from "./i18n.ts";
 import { RIDE_MAX_M, pointAt, rideModel, startState, step, type RideEvent, type RideFix, type RideState } from "./navigate.ts";
 import {
@@ -28,6 +29,9 @@ import {
   rideTripOf,
   rideable,
   ridesLine,
+  walksLine,
+  runLoopStops,
+  walkLineTurns,
   noBikeLine,
   optionRides,
   withFinish,
@@ -471,4 +475,89 @@ test("Spanish: the walk, dock and hand-off lines are Spanish, the names as they 
   } finally {
     setLanguageForTest("en");
   }
+});
+
+test("the walk to the first dock is said turn by turn, and the walk from the last dock follows the line (2026-11-02)", () => {
+  setLanguageForTest("en");
+  // North 200 m, then right (east) 200 m to the dock at the line's start.
+  const walkStart = {
+    geometry: { type: "LineString", coordinates: [at(-200, -200), at(-200, 0), at(0, 0)] },
+    distance_m: 400,
+    duration_s: 300,
+    to: "4th & E St NW",
+    turns: [{ movement: "right", street: "E St NW", point: at(-200, 0) }],
+  };
+  const route = line({ bikeshare: { ...SHARE, walk_start: walkStart } as unknown as BikesharePlan });
+  const trip = rideTripOf(route, [at(-200, -200), DESTINATION]);
+  assert.ok(trip?.approach?.walk);
+  assert.deepEqual(trip.approach.walk.cues.map((c) => c.text), ["Right onto E St NW.", ""]);
+  assert.deepEqual(trip.onward?.map((p) => p.kind), ["walk"]);
+  const model = rideModel(route);
+  let s = tripRideStart(trip);
+  const said: string[] = [];
+  for (const n of [-200, -150, -100, -60, -30, -10]) {
+    const out = tripStep(model, trip, s, fix(at(-200, n)), "full");
+    s = out.state;
+    said.push(...out.events.map((e) => e.spoken));
+    assert.equal(out.state.walking, true);
+  }
+  assert.ok(said.some((w) => /right onto E St NW|Right now onto E St NW/i.test(w)), said.join(" | "));
+});
+
+test("Walk and Walk + 🚆🚌 (2026-11-02): the line is a walk, started as one, followed turn by turn, never off route", () => {
+  const turn = { movement: "left" as const, street: "B Street", point: at(500, 0) };
+  const walkPlan: TransitPlan = {
+    ...PLAN,
+    mode: "walk",
+    steps: [step_({ mode: "walk", text: "Walk 12 min to your destination.", route_line: true, coordinates: [at(0, 0), at(500, 0), at(1000, 0)], turns: [turn] })],
+    departure: null,
+  };
+  const walk = line({ preset: "walk", transit: walkPlan, description: [] });
+  assert.equal(walksLine(walk), true);
+  assert.equal(rideable(walk), true);
+  assert.equal(noBikeLine(walk), null);
+  // The same line on Bikeshare + 🚶🚆🚌 is not walked by the ride screen (it is no ride).
+  assert.equal(walksLine(line({ transit: { ...walkPlan, mode: "bikeshare-transit" } })), false);
+  const trip = rideTripOf(walk, [at(0, 0), at(1000, 0)])!;
+  assert.deepEqual(trip.onFoot, { turns: [turn] });
+  // Followed as planned: no re-plan on a bike's ride type.
+  assert.equal(fixedRide({ preset: "walk", trip }, null, false), true);
+  // A re-plan the rider asks for walks too (Detour, Road closed), to the walk's own end, with the new walk's turns.
+  assert.deepEqual(rideLegOf(walk, [at(0, 0), at(1000, 0)], false), { points: [at(0, 0), at(1000, 0)], loop: false, preset: "walk", trip });
+  assert.deepEqual(walkLineTurns(walk), [turn]);
+  assert.equal(walkLineTurns(TRANSIT_ROUTE), null);
+  // Avoid stairs switched plans again in Go: the routing effect is keyed on planKey, which carries it.
+  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  assert.match(app, /\}, \[points, preset, planDials, planKey, confirmedKm, routeAsk, planFirst\]\);/);
+  // Far off the line: nothing said of it, and the walk is not off route.
+  const model = walkModel({ coordinates: walk.geometry.coordinates as LonLat[], turns: [turn], to: null })!;
+  let state = tripRideStart(trip);
+  const said: RideEvent[] = [];
+  for (const point of [at(0, 0), at(100, 0), at(200, 300), at(220, 320), at(240, 340), at(260, 360)]) {
+    const out = tripStep(model, trip, state, fix(point), "full");
+    state = out.state;
+    said.push(...out.events);
+  }
+  assert.equal(state.ride.off, false);
+  assert.ok(said.every((e) => e.kind === "cue"), JSON.stringify(said));
+});
+
+test("Run (2026-11-02): a re-plan or Save keeps the run's stops and loop; a loop from the start alone keeps its shape", () => {
+  const loopLine: LonLat[] = [at(0, 0), at(900, 0), at(900, 900), at(0, 0)];
+  const runPlan: TransitPlan = {
+    ...PLAN,
+    mode: "run",
+    steps: [step_({ mode: "run", text: "Run 12 min.", route_line: true, coordinates: loopLine, turns: [] })],
+    departure: null,
+  };
+  const run = line({ preset: "run", transit: runPlan, description: [], geometry: { type: "LineString", coordinates: loopLine } });
+  const stops = [at(0, 0), at(900, 0), at(900, 900)];
+  const leg = rideLegOf(run, stops, true);
+  assert.deepEqual([leg.points, leg.loop, leg.preset], [stops, true, "run"]);
+  const alone = rideLegOf(run, [at(0, 0)], true);
+  assert.equal(alone.preset, "run");
+  assert.equal(alone.loop, true);
+  assert.equal(alone.points.length, 3, "the start and two points along the loop");
+  assert.deepEqual(alone.points[0], at(0, 0));
+  assert.deepEqual(runLoopStops(loopLine).length, 3);
 });

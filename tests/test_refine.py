@@ -90,6 +90,7 @@ def context(
     maxcalm=False,
     ceiling_m=None,
     target_m=None,
+    wait_weight=1.0,
 ) -> refine.Context:
     return refine.Context(
         variant="standard",
@@ -113,6 +114,7 @@ def context(
         maxcalm=maxcalm,
         ceiling_m=ceiling_m,
         target_m=target_m,
+        wait_weight=wait_weight,
     )
 
 
@@ -190,6 +192,30 @@ class TestJunctionDelay:
         assert smooth.key(ctx) < stops.key(ctx)
         extra_m = stops.key(ctx)[2] - smooth.key(ctx)[2]
         assert extra_m == pytest.approx(refine.QUIET_COST_FACTOR * 120.0 / QUIET_COST)
+
+    def test_road_bike_weighs_waiting_three_times_in_the_ranking(self) -> None:
+        # The owner, 2026-11-02: "For the road cycling version, make non-cycling time, such as
+        # waiting at lights carry an additional penalty (3x)".
+        assert presets.wait_weight_for(presets.ROAD_BIKE) == 3.0
+        assert presets.wait_weight_for("default") == presets.wait_weight_for("fast") == 1.0
+        slow = analysis("a")
+        slow.junction_delay_s = 60.0
+        road = context(wait_weight=presets.wait_weight_for(presets.ROAD_BIKE))
+        assert slow.score(road) == pytest.approx(4000.0 + refine.QUIET_COST_FACTOR * 3 * 60.0)
+        top = context(maxcalm=True, wait_weight=3.0)
+        smooth, stops = analysis("a"), analysis("b")
+        stops.junction_delay_s = 120.0
+        extra_m = stops.key(top)[2] - smooth.key(top)[2]
+        assert extra_m == pytest.approx(refine.QUIET_COST_FACTOR * 3 * 120.0 / QUIET_COST)
+
+    def test_at_three_times_a_route_with_fewer_stops_wins_where_at_once_it_does_not(self) -> None:
+        # Two routes of the same length and calm: the stoppier one rides 100 s quicker. At 1x
+        # the quicker wins; at Road Bike's 3x the one with 30 s fewer waits does.
+        stoppy, smooth = analysis("a"), analysis("b")
+        stoppy.cost_s, smooth.cost_s = 3900.0, 4000.0
+        stoppy.junction_delay_s, smooth.junction_delay_s = 60.0, 30.0
+        assert not refine.better(smooth, stoppy, context())
+        assert refine.better(smooth, stoppy, context(wait_weight=3.0))
 
     def test_a_routes_legs_add_their_delays(self) -> None:
         one, two = analysis("a"), analysis("b")
@@ -1842,6 +1868,8 @@ class TestTrailSeek:
         self.run(monkeypatch, {}, [NO_ROUTE], ctx)
         ((schema, guide, width, has_facility, when, avoid_unpaved),) = self.asked
         assert (schema, has_facility, when, avoid_unpaved) == ("live", True, "weekend", True)
+        # Road Bike (the only ride avoiding gravel) leaves winding trails out of the seek too.
+        assert self.table_kw["avoid_winding"] is True
         straight, route = guide
         assert straight == [tuple(ctx.points[0]), tuple(ctx.points[1])]
         assert route[0] == (BASE[0], BASE[1]) and route[-1] == (BASE[0] + 0.1, BASE[1])
@@ -3166,6 +3194,12 @@ class TestStressAverseWeights:
             ("novice", None),
             # Mountain Bike (slice 6): connecting roads up to LTS 2, LTS 4 only with no other way.
             ("mountain-bike", None),
+            # Walk and Walk + 🚆🚌 (#888) take Bikeshare + 🚶🚆🚌's dials: on foot, a busy
+            # road is weighed as the calm rides weigh it.
+            ("walk", None),
+            ("walk-transit", None),
+            # Run (#901) takes Walk's preset, never used to ride.
+            ("run", None),
         ):
             exposure = presets.exposure_for(name, carrying)
             assert {k: exposure.weights[k] for k in "345"} == {"3": 1.0, "4": 8.0, "5": 16.0}, name
@@ -3181,6 +3215,9 @@ class TestStressAverseWeights:
                 "rebalance",
                 "novice",
                 "mountain-bike",
+                # Walk, Walk + 🚆🚌 (#888) and Run (#901): pinned at 8 and 16 above.
+                *presets.ON_FOOT_PRESETS,
+                presets.RUN,
             ):
                 continue
             exposure = presets.exposure_for(name, presets.CARRYING_CARGO)

@@ -134,6 +134,8 @@ tiles/offroad
 tiles/offroad/current
 tiles/mtb
 tiles/mtb/current
+tiles/paved
+tiles/paved/current
 extracts
 reference
 rebuild
