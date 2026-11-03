@@ -483,7 +483,7 @@ test("go tap: a press on the map in Go is the destination, routed as a picked on
   assert.match(appFile, /destination=\{points\.length > 0 \? goPlaceName\(namer\.name\(points\[points\.length - 1\]\)\?\.name, points\[points\.length - 1\]\) : null\}/);
   assert.doesNotMatch(appFile, /\?\? "Destination"/);
   assert.ok(place.indexOf("goTapSetsEnd") > place.indexOf("if (!insideCoverage(point))"), "a press outside the area is refused first");
-  assert.ok(place.indexOf("goTapSetsEnd") < place.indexOf("MAX_POINTS"), "Go's press is never refused for the points limit");
+  assert.ok(place.indexOf("goTapSetsEnd") < place.indexOf("maxPointsFor"), "Go's press is never refused for the points limit");
   assert.doesNotMatch(place, /goPending/, "a press is never the start of a waiting destination now");
   assert.match(appFile, /const modeRef = useRef\(mode\);\s*modeRef\.current = mode;/);
   assert.match(appFile, /const goToRef = useRef\(goTo\);\s*goToRef\.current = goTo;/);
@@ -534,7 +534,7 @@ test("go tap: a press on the map in Go is the destination, routed as a picked on
   // Located later (a look-up that answers after the press), the pressed destination is routed and said as a press is.
   assert.match(appFile, /routeGo\(result\.fix\.point, true, pending\.dest, pending\.name, !!pending\.pressed && !pending\.said, pending\.vias\);/);
   // Map tools in Go: the same button, named for what it does, and never disabled by the points limit.
-  assert.match(appFile, /addDisabled=\{!goTapSetsEnd\(mode\) && points\.length >= MAX_POINTS\}\s*setsEnd=\{goTapSetsEnd\(mode\)\}/);
+  assert.match(appFile, /addDisabled=\{!goTapSetsEnd\(mode\) && points\.length >= maxPointsFor\(preset\)\}\s*maxPoints=\{maxPointsFor\(preset\)\}\s*setsEnd=\{goTapSetsEnd\(mode\)\}/);
   assert.match(src("../MapTools.tsx"), /\{setsEnd \? SET_END_AT_CENTRE_LABEL : ADD_AT_CENTRE_LABEL\}/);
 });
 

@@ -33,6 +33,7 @@ SETTINGS_KEYS = frozenset(
         "favorites",  # the favorite ride types, listed first in the ride type pickers
         "weight",  # the rider and bike weight (frontend lib/weight.ts); personal, never logged
         "speed",  # the rider's riding speed, whole mph, or null for the ride type's own
+        "units",  # the units shown and said: "us" or "metric" (frontend lib/units.ts)
     }
 )
 SETTINGS_MAX_BYTES = 16 * 1024
@@ -49,6 +50,8 @@ WEIGHT_KEYS = frozenset({"name", "totalKg", "parts", "setAt"})
 # SPEED_MAX_MPH).
 SPEED_MIN_MPH = 8
 SPEED_MAX_MPH = 30
+# The units setting's values (frontend lib/units.ts UNITS).
+UNITS = ("us", "metric")
 
 # A saved route.
 NAME_MAX = 120
@@ -110,6 +113,9 @@ def settings_problem(data) -> str | None:
         or not SPEED_MIN_MPH <= speed <= SPEED_MAX_MPH
     ):
         return "The saved riding speed is not in the expected form."
+    units = data.get("units")
+    if units is not None and units not in UNITS:
+        return "The saved units are not in the expected form."
     return None
 
 
