@@ -18,10 +18,13 @@
 # The routers are the four, plus each trail router whose `current` link is on this host, as the
 # release agent starts them. A router that is not running is left alone (starting one is the
 # deploy's or the owner's call), and so is everything while a deploy pass holds the agent's lock.
-# Restarts go one at a time, a few seconds of 502s each for that ride type.
+# Restarts go one at a time, each once the one before answers: a few seconds of 502s each for
+# that ride type.
 #
 # Settings: $RM_STATE/vars.sh, as auto-release.sh reads it (RM_VARS names another file):
-# RM_STATE, RM_SRC and RM_DATA. RM_ROUTER_SETTLE_S [300]. RM_ROUTER_COMPOSE stands in for
+# RM_STATE, RM_SRC and RM_DATA. RM_ROUTER_SETTLE_S [300]. RM_ROUTER_WAIT_S [120]: the longest
+# wait for a restarted router to answer before the next one restarts; RM_ROUTER_PASS_S [600]: after
+# that long, a pass restarts the rest without waiting (the unit allows 15 minutes). RM_ROUTER_COMPOSE stands in for
 # beta-compose.sh and DOCKER for docker (the tests use stubs).
 set -uo pipefail
 export LC_ALL=C
@@ -48,13 +51,36 @@ load_vars() {
 	done
 	settle=${RM_ROUTER_SETTLE_S:-300}
 	[[ $settle =~ ^[0-9]+$ ]] || die "RM_ROUTER_SETTLE_S is a number of seconds ('$settle')"
+	wait_max=${RM_ROUTER_WAIT_S:-120}
+	[[ $wait_max =~ ^[0-9]+$ ]] || die "RM_ROUTER_WAIT_S is a number of seconds ('$wait_max')"
+	pass_max=${RM_ROUTER_PASS_S:-600}
+	[[ $pass_max =~ ^[0-9]+$ ]] || die "RM_ROUTER_PASS_S is a number of seconds ('$pass_max')"
 	cd_dir="$RM_STATE/cd"
 }
 
 # Every call names the offroad profile, so the trail routers are found like the four.
 bc() { "${RM_ROUTER_COMPOSE:-$RM_SRC/scripts/beta/beta-compose.sh}" --profile offroad "$@"; }
 
+# The next router restarts only once this one answers its /status, asked from the api's container
+# on the compose network, or after RM_ROUTER_WAIT_S at most: one ride type down at a time. Timed
+# by the clock, not by counting sleeps (each probe takes time of its own). With the api stopped
+# (a rollback, a deploy) nothing is served and nothing can ask, so there is no wait; and once the
+# pass has run RM_ROUTER_PASS_S, the rest restart without one, inside the unit's 15 minutes.
+wait_answer() {
+	local router=$1 start=$SECONDS
+	[ -n "$(bc ps -q api 2>/dev/null </dev/null)" ] || return 0
+	# shellcheck disable=SC2016 # python's, not the shell's
+	until bc exec -T api python3 -c 'import sys, urllib.request; urllib.request.urlopen(sys.argv[1], timeout=3)' "http://$router:8002/status" </dev/null >/dev/null 2>&1; do
+		if [ $((SECONDS - start)) -ge "$wait_max" ] || [ $((SECONDS - pass_start)) -ge "$pass_max" ]; then
+			echo "restart-routers: $router does not answer $((SECONDS - start))s after its restart; going on" >&2
+			return 0
+		fi
+		sleep 3
+	done
+}
+
 cmd_check() {
+	pass_start=$SECONDS
 	local router variant link changed now cid started started_s journal restarted=0 failed=0
 	if [ -f "$cd_dir/lock" ]; then
 		exec 9<"$cd_dir/lock"
@@ -90,6 +116,7 @@ cmd_check() {
 		echo "restart-routers: $router started before its map moved to $(readlink "$link"); restarting it"
 		if bc restart "$router" </dev/null; then
 			restarted=$((restarted + 1))
+			wait_answer "$router"
 		else
 			echo "restart-routers: $router: the restart failed" >&2
 			failed=$((failed + 1))
