@@ -2380,3 +2380,52 @@ def test_the_answer_carries_each_walks_turns_and_each_rides_stops(schedule) -> N
     assert "toward" in ride["text"]
     # Off transit, no stops; a walk not drawn, no turns.
     assert all(s["stops"] is None for s in steps if s["mode"] not in transit.TRANSIT_MODES)
+
+
+def test_vehicle_words_never_say_the_system_twice():
+    # MDOT MTA's MARC GTFS names every line "MARC": the step said "Board the MARC MARC" (Stephen,
+    # 2026-11-03: "fix the marc").
+    marc = transit.System(
+        0, "test-rail", "MARC", transit.RAIL, "the MARC {route}", "", True, "all", "", ""
+    )
+    assert marc.vehicle_words(("MARC",)) == "the MARC"
+    assert marc.vehicle_words(("Penn Line",)) == "the MARC Penn Line"
+    assert marc.vehicle_words(("MARC Penn Line",)) == "the MARC Penn Line"
+    assert marc.vehicle_words(("MARC", "Penn Line")) == "the MARC Penn Line"
+    assert marc.vehicle_words(("Penn Line", "Camden Line")) == "the MARC Penn Line or Camden Line"
+    bus = transit.System(
+        1, "test-bus", "Metrobus", transit.BUS, "bus {route}", "", True, "all", "", ""
+    )
+    assert bus.vehicle_words(("B10",)) == "bus B10"
+
+
+def test_vehicle_words_keep_a_bus_systems_name():
+    bus = transit.System(
+        1, "test-bus", "Metrobus", transit.BUS, "bus {route}", "", True, "all", "", ""
+    )
+    assert bus.vehicle_words(("Metrobus",)) == "the Metrobus"
+
+
+def test_towards_lists_every_train_that_makes_the_ride_by_where_it_is_signed():
+    # Stephen, 2026-11-03: "Put the acceptable destination options. you still need to know which
+    # train to get on". Only the patterns serving the hop now (`Hop.serving`) count: a through
+    # train to Delta and a short turn to Charlie both, each end once; with none named, the one
+    # planned.
+    schedule = _branch_schedule()
+    route = schedule.patterns[0].route
+
+    def hop(serving):
+        return transit.Hop(
+            wait_s=0,
+            ride_s=60,
+            routes=(route,),
+            path=(1, 2),
+            system=0,
+            pattern=0,
+            frequent=True,
+            serving=serving,
+        )
+
+    assert transit._towards_of(schedule, hop((0, 1))) == ((route, "Charlie"), (route, "Delta"))
+    assert transit._towards_of(schedule, hop(())) == ((route, "Delta"),)
+    assert transit._towards_of(schedule, hop((0, 0))) == ((route, "Delta"),)

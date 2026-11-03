@@ -266,7 +266,7 @@ import {
 import { onwardActive, onwardStart, onwardStep, type OnwardState } from "./lib/onward.ts";
 import { BOARDING_MS, TRIP_CHECK_MS } from "./lib/tripCheck.ts";
 import { walkModel, walkTurnLine } from "./lib/walkCues.ts";
-import { OnBoardCard } from "./OnBoardCard.tsx";
+import { BoardingCard, OnBoardCard } from "./OnBoardCard.tsx";
 import { t } from "./lib/i18n.ts";
 import { railWord } from "./lib/railWords.ts";
 import { countText } from "./lib/rideGroup.ts";
@@ -2581,6 +2581,10 @@ export function RideMode({
   // at the boarding stop, only till its planned departure is near (BOARDING_MS: the rider may be boarding).
   const tripCheckOpen = !!onTripCheck && firstTransit >= 0 && toBoard && (!trip?.shareBike || walking);
   const firstTransitPart = firstTransit >= 0 ? onwardParts[firstTransit] : null;
+  // The boarding card while the first train or bus is still to board (a walk to it shows its turn below the card).
+  const boardingLeg = ride.arrived && toBoard && firstTransitPart?.kind === "transit" && onwardIndex <= firstTransit ? firstTransitPart.leg : null;
+  // The plan's timed departure, only where it is this boarding's (a later MARC's is not the Metro's next train).
+  const boardingDeparture = trip?.departure && trip.boardStep != null && trip.departure.step === trip.boardStep ? trip.departure : null;
   const boardingSince = onwardIndex === firstTransit ? (onward?.board?.since ?? null) : null;
   const tripCheckGate = useRef({ open: tripCheckOpen, boardingSince, waitS: firstTransitPart?.kind === "transit" ? firstTransitPart.leg.waitS : 0 });
   tripCheckGate.current = { open: tripCheckOpen, boardingSince, waitS: firstTransitPart?.kind === "transit" ? firstTransitPart.leg.waitS : 0 };
@@ -3098,13 +3102,17 @@ export function RideMode({
               <OnBoardCard leg={onwardPart.leg} state={onward.board} />
             ) : (
               <>
-                {onwardPart?.kind === "walk" && onwardIndex > 0 ? null : (
+                {/* Still to board the first train or bus: its line, way, stop to get off and next departure as rows. */}
+                {boardingLeg ? (
+                  <BoardingCard leg={boardingLeg} departure={boardingDeparture} note={onwardIndex === 0 ? (trip?.boardingNote ?? null) : null} />
+                ) : onwardPart?.kind === "walk" && onwardIndex > 0 ? null : (
                   // Everything after the line done: arrived, never the line's end words again.
                   <p className="cue-text">{onwardDone ? (tripGoesOn && rest ? rest.text : arrivedShown(destinationName)) : (trip?.finish?.shown ?? arrivedShown(destinationName))}</p>
                 )}
                 {onwardWalkLine && <p className={onwardIndex > 0 ? "cue-text" : "cue-then"}>{onwardWalkLine}</p>}
                 {/* The boarding's departure, its countdown and milestones as in the trip's panel (said through the ride's outputs). */}
-                {trip?.departure && toBoard && <DepartureTimer departure={trip.departure} announce={notify} />}
+                {/* Its milestones said; on screen only a close or missed departure's notice (the card has its time). */}
+                {trip?.departure && toBoard && <DepartureTimer departure={trip.departure} announce={notify} noticeOnly={!!boardingLeg && !!boardingDeparture} />}
                 {/* Where the next Metro train or Metrobus is while waiting there (v0.9.0), its mark on the map. */}
                 <NextVehicleLine ask={trip?.boarding ?? null} waiting={ride.arrived && toBoard} announce={notify} onMark={setVehicle} />
               </>

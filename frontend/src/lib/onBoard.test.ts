@@ -2,10 +2,11 @@
 // underground too, else by the timetable; "Next stop" one before the rider's, then "Get off here".
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import type { TransitStep } from "./api.ts";
 import type { LonLat } from "./geo.ts";
 import type { RideFix } from "./navigate.ts";
-import { STALE_MS, onBoardLeg, onBoardRows, onBoardStart, onBoardStep, stopsLeftText, type OnBoardState } from "./onBoard.ts";
+import { STALE_MS, boardingGroups, laterDepartureText, lineBadge, nextDepartureText, onBoardLeg, onBoardRows, onBoardStart, onBoardStep, stopsLeftText, type OnBoardState } from "./onBoard.ts";
 import { onwardOf, onwardStart, onwardStep } from "./onward.ts";
 
 const M_PER_DEG = 111_195;
@@ -174,4 +175,55 @@ test("a walk not seen to end (no GPS on the way down) hands over after its plann
   assert.equal(onwardStep(parts, s, 200_000, null, "full").state.index, 0);
   assert.equal(onwardStep(parts, s, (180 * 1.5 + 180) * 1000 + 1, null, "full").state.index, 1);
   assert.equal(onwardStep(parts, s, 60_000, fix(north(30), 250, 60_000), "full").state.index, 1);
+});
+
+test("waiting to board, the card's next departure: a timed one's time and minutes, a frequent one's interval (Stephen, 2026-11-03)", () => {
+  const departs_at = "2026-11-03T18:27:00-05:00";
+  const at = Date.parse(departs_at);
+  const timed = { departs: "6:27 pm", departs_at };
+  assert.equal(nextDepartureText({ everyMin: null }, timed, at - 12 * 60_000), "6:27 pm, in 12 min");
+  assert.equal(nextDepartureText({ everyMin: null }, timed, at - 30_000), "6:27 pm, in 1 min");
+  assert.equal(nextDepartureText({ everyMin: null }, timed, at + 1000), "Now");
+  // Long past: the time alone, never "Now" for ever.
+  assert.equal(nextDepartureText({ everyMin: null }, timed, at + 5 * 60_000), "6:27 pm");
+  assert.equal(nextDepartureText({ everyMin: 5 }, null, at), "every 5 min");
+  // The plan's countdown is another step's: the step's own time.
+  assert.equal(nextDepartureText({ everyMin: null, departs: "7:42 am" }, null, at), "7:42 am");
+  assert.equal(nextDepartureText({ everyMin: null }, null, at), null);
+  // The one after it, in case the rider can't make it.
+  assert.equal(laterDepartureText({ next: "7:15 pm", next_at: "2026-11-03T19:15:00-05:00" }, at), "7:15 pm, in 48 min");
+  assert.equal(laterDepartureText({ next: null, next_at: null }, at), null);
+  assert.equal(laterDepartureText(null, at), null);
+});
+
+test("the trains that will do, grouped by where they are signed to, with their lines' colours (Stephen, 2026-11-03)", () => {
+  const trains = [
+    { line: "Orange Line", toward: "New Carrollton" },
+    { line: "Silver Line", toward: "New Carrollton" },
+    { line: "Blue Line", toward: "Downtown Largo" },
+    { line: "Silver Line", toward: "Downtown Largo" },
+  ];
+  assert.deepEqual(boardingGroups(trains, "Stadium-Armory"), [
+    { lines: ["Orange Line", "Silver Line"], toward: "New Carrollton" },
+    { lines: ["Blue Line", "Silver Line"], toward: "Downtown Largo" },
+  ]);
+  // Signed to the stop the rider gets off at: no end shown.
+  assert.deepEqual(boardingGroups([{ line: "Red Line", toward: "Glenmont" }], "Glenmont"), [{ lines: ["Red Line"], toward: null }]);
+  assert.deepEqual(lineBadge("Red Line"), { background: "#bf0d3e", color: "#ffffff" });
+  assert.equal(lineBadge("Yellow Line")!.color, "#111827");
+  assert.equal(lineBadge("Blue Line")!.color, "#111827");
+  assert.equal(lineBadge("Green Line")!.color, "#111827");
+  assert.deepEqual(lineBadge("MARC Penn Line"), { background: "#8a6500", color: "#ffffff" });
+  assert.equal(lineBadge("C53"), null);
+  // The leg carries every train that will do, from the API's `towards`; one, the planned way, from an older API.
+  const step = { mode: "metro", lines: ["Orange Line", "Silver Line"], wait_s: 120, toward: "New Carrollton", stops: [{ name: "A", point: [0, 0], after_s: 0 }, { name: "B", point: [0, 0.01], after_s: 60 }] } as unknown as TransitStep;
+  assert.deepEqual(onBoardLeg({ ...step, towards: [{ line: "Orange Line", toward: "New Carrollton" }, { line: "Silver Line", toward: "New Carrollton" }] })!.trains!.length, 2);
+  assert.deepEqual(onBoardLeg(step)!.trains, [{ line: "Orange Line / Silver Line", toward: "New Carrollton" }]);
+});
+
+test("the ride screen shows the boarding as rows, its departure countdown only where it is this boarding's", () => {
+  const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
+  assert.match(ride, /<BoardingCard leg=\{boardingLeg\} departure=\{boardingDeparture\} note=/);
+  assert.match(ride, /const boardingDeparture = trip\?\.departure && trip\.boardStep != null && trip\.departure\.step === trip\.boardStep \? trip\.departure : null;/);
+  assert.match(ride, /<DepartureTimer departure=\{trip\.departure\} announce=\{notify\} noticeOnly=\{!!boardingLeg && !!boardingDeparture\} \/>/);
 });
