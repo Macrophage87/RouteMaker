@@ -58,7 +58,7 @@ test("Go's route sheet keeps one 'Add a stop' field, under the route card, with 
   assert.match(source("../App.tsx"), /onEdit=\{\(opener\) => openView\("points", opener\)\}/);
   assert.match(go, /\{orderShown && \(\s*<button[^>]*onClick=\{onBestOrder\}/);
   const app = source("../App.tsx");
-  assert.match(app, /const goStops = mode === "go" && !riding && points\.length >= 2 && !twoPointsOnly\(preset\) && !isMassRide\(preset\);/);
+  assert.match(app, /const goStops = mode === "go" && !riding && points\.length >= 2 && \(!twoPointsOnly\(preset\) \|\| stopsAsTrips\(preset\)\) && !isMassRide\(preset\);/);
   // One edit, so Undo removes it; the route follows at once, as every Go edit does.
   assert.match(app, /const added = addStopWhereShortest\(current, VIA_MARKS\.named\(\[point\[0\], point\[1\]\], name\), loop\);\s*setNotice\(null\);\s*commit\(added\.points\);/);
   // A place's card (water, a restroom, food: lib/stopCard.ts) offers Add as stop once there is a route.

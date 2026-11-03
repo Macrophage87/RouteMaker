@@ -325,6 +325,8 @@ class TestSchema:
             "reason",
             # Round-2 audit D26: whether a stretch's road is one-way where it ends.
             "oneway",
+            # 2026-11-03: the busy roads a path stretch crosses, for Ride's "Cross ..." cue.
+            "crossings",
         }
         # "avoid": an Avoid-rated junction ahead (FOLLOWUP-ISECT-AVOID, OWNER-DECISIONS 307).
         # "workzone": a live work zone on the route (FOLLOWUP-WORKZONES, 341-349).

@@ -4,7 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { TrailProfileBody, fetchTrailProfile, trailProfileSummary, trailProfileUrl, TRAIL_PROFILE_ERROR, type TrailProfile } from "./trailProfile.ts";
+import { TrailProfileBody, fetchTrailProfile, northOrWestFirst, TRAIL_ONE_WAY, trailProfileSummary, trailProfileUrl, TRAIL_PROFILE_ERROR, type TrailProfile } from "./trailProfile.ts";
 import { layersTurnedOn, rideTypeLayers } from "./presets.ts";
 
 const PROFILE: TrailProfile = {
@@ -64,7 +64,65 @@ test("a trail's chart says which way it runs where the answer has its ends (the 
     createElement(TrailProfileBody, { state: { kind: "ready", profile: { ...PROFILE, start: [-77.0, 38.91], end: [-77.0, 38.9] } }, uid: "t1" }),
   );
   assert.match(html, /Runs north to south\./);
-  assert.match(html, /<tspan class="pc-compass">N <\/tspan>/);
+  assert.match(html, /class="pc-compass-letter"[^>]*>N<\/text>/);
   // An older answer, without them: no letters, as before.
   assert.doesNotMatch(renderToStaticMarkup(createElement(TrailProfileBody, { state: { kind: "ready", profile: PROFILE }, uid: "t1" })), /pc-compass/);
+});
+
+// The owner, 2026-11-03: "in general people tend to envision things from North to South, and from west to east from
+// an elevation graph."
+test("a trail drawn south to north or east to west is turned to read north to south or west to east", async () => {
+  const drawn: TrailProfile = {
+    ...PROFILE,
+    m: [0, 30, 60],
+    elevation_m: [50, 52, 55],
+    grade_pct: [6.7, 8.3, 10],
+    start: [-77.0, 38.9],
+    end: [-77.001, 38.91],
+    line: [[-77.0, 38.9], [-77.0005, 38.905], [-77.001, 38.91]],
+  };
+  const turned = northOrWestFirst(drawn);
+  assert.deepEqual(turned.start, drawn.end);
+  assert.deepEqual(turned.end, drawn.start);
+  assert.deepEqual(turned.line, [...drawn.line!].reverse());
+  assert.deepEqual(turned.m, [0, 30, 60]);
+  assert.deepEqual(turned.elevation_m, [55, 52, 50]);
+  assert.deepEqual(turned.grade_pct, [-10, -8.3, -6.7], "uphill one way is downhill the other");
+  assert.equal(turned.gain_m, PROFILE.loss_m);
+  assert.equal(turned.loss_m, PROFILE.gain_m);
+  // The API's answer comes back turned, so the chart reads N first.
+  const ready = await fetchTrailProfile(42, undefined, answer(200, drawn));
+  assert.ok(ready.kind === "ready" && ready.profile.start?.[1] === 38.91);
+  const html = renderToStaticMarkup(createElement(TrailProfileBody, { state: ready, uid: "t1" }));
+  assert.match(html, /Runs north to south\./);
+  // Mostly east to west: turned to west to east.
+  const west = northOrWestFirst({ ...drawn, start: [-77.0, 38.9], end: [-77.02, 38.905], line: [[-77.0, 38.9], [-77.02, 38.905]] });
+  assert.deepEqual(west.start, [-77.02, 38.905]);
+  // Already north first, already west first, a loop, an older answer without its ends: left as drawn.
+  for (const kept of [
+    { ...drawn, start: [-77.0, 38.91], end: [-77.0, 38.9], line: null },
+    { ...drawn, start: [-77.02, 38.9], end: [-77.0, 38.901], line: null },
+    { ...drawn, start: [-77.0, 38.9], end: [-77.0001, 38.9001], line: null },
+    PROFILE,
+  ] as TrailProfile[]) assert.equal(northOrWestFirst(kept), kept);
+});
+
+// The owner, 2026-11-03: "One way should keep it's one way. The primary direction should win." and "Make that clear
+// when clicking on it too".
+test("a one-way trail runs the way it is ridden, and says so", async () => {
+  const southToNorth: TrailProfile = { ...PROFILE, start: [-77.0, 38.9], end: [-77.0, 38.91], line: [[-77.0, 38.9], [-77.0, 38.91]] };
+  // Drawn south to north: turned when both ways, kept when ridden that way only.
+  assert.notEqual(northOrWestFirst(southToNorth), southToNorth);
+  const forward = { ...southToNorth, oneway: "forward" as const };
+  assert.equal(northOrWestFirst(forward), forward);
+  // Ridden against the way it is drawn (oneway=-1): turned to run as ridden, even though that is south to north.
+  const backward = northOrWestFirst({ ...southToNorth, start: [-77.0, 38.91], end: [-77.0, 38.9], line: [[-77.0, 38.91], [-77.0, 38.9]], oneway: "backward" });
+  assert.deepEqual(backward.start, [-77.0, 38.9]);
+  assert.equal(backward.oneway, "forward");
+  const html = renderToStaticMarkup(createElement(TrailProfileBody, { state: { kind: "ready", profile: forward }, uid: "t1" }));
+  assert.match(html, /One way: ridden south to north\./);
+  assert.doesNotMatch(html, /Runs /);
+  // A one-way loop has no compass ends: it says left to right.
+  const loop = renderToStaticMarkup(createElement(TrailProfileBody, { state: { kind: "ready", profile: { ...PROFILE, oneway: "forward" } }, uid: "t1" }));
+  assert.ok(loop.includes(`${TRAIL_ONE_WAY}.`));
 });
