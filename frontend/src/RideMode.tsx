@@ -276,6 +276,8 @@ import { AHEAD_NAME, AHEAD_WORD, aheadNoRoom, aheadOff, aheadOn, aheadViews, rea
 /** The bottom panel's padding and top edge (styles.css .ride-controls), and the graph's margin under it. */
 const SHEET_CHROME_PX = 21;
 const AHEAD_MARGIN_PX = 4;
+/** How far past the least room for a graph the room must go before the graph comes or goes. */
+const AHEAD_HYSTERESIS_PX = 6;
 /** The panel's side padding, and the graph's widest (styles.css .ride-controls, .ride-ahead). */
 const SHEET_SIDES_PX = 28;
 const AHEAD_MAX_W = 520;
@@ -2849,6 +2851,7 @@ export function RideMode({
   // card's arrival time). The map's band and the graphs together are the room; the buttons' least height comes off it.
   const middleRef = useRef<HTMLDivElement>(null);
   const [aheadMaxPx, setAheadMaxPx] = useState<number | null>(null);
+  const sheetChrome = useRef(SHEET_CHROME_PX);
   useLayoutEffect(() => {
     const middle = middleRef.current;
     const rail = railRef.current;
@@ -2860,16 +2863,29 @@ export function RideMode({
     }
     const measure = () => {
       const figure = sheet?.querySelector<HTMLElement>(".ride-ahead") ?? null;
-      const graph = figure && !figure.hidden ? figure.getBoundingClientRect().height : 0;
+      const shown = !!figure && !figure.hidden;
       const buttons = [...rail.children].filter((child) => (child as HTMLElement).offsetHeight > 2).length;
       const clear = parseFloat(rail.style.paddingTop) || 0;
-      // The same room whether the panel shows or not: with it hidden, its own padding and edge come off too.
-      const chrome = sheet ? AHEAD_MARGIN_PX : SHEET_CHROME_PX + AHEAD_MARGIN_PX;
-      // Never below 0, and no floor: the buttons' 44 px come first.
-      const px = Math.max(0, Math.floor(middle.clientHeight + graph - chrome - railLeastPx(buttons) - RAIL_INSET_PX - clear));
-      const wide = figure && !figure.hidden ? figure.clientWidth : Math.min(AHEAD_MAX_W, middle.clientWidth - SHEET_SIDES_PX);
-      setAheadFits(px >= aheadLeastPx(wide, textSize === "large"));
-      // Within 2 px is the same: the graph's own rounding does not start another round.
+      if (sheet) {
+        const box = getComputedStyle(sheet);
+        sheetChrome.current = Math.round(parseFloat(box.paddingTop) + parseFloat(box.paddingBottom) + parseFloat(box.borderTopWidth)) || SHEET_CHROME_PX;
+      }
+      // The map's band and the panel together, less the panel's padding and edge, the graph's margin and the buttons'
+      // least room: the same whether the panel and the graph show or not, so the answer does not flip as they come
+      // and go (the review of #928).
+      const sheetH = sheet ? sheet.offsetHeight : 0;
+      const room = Math.floor(middle.clientHeight + sheetH - sheetChrome.current - AHEAD_MARGIN_PX - railLeastPx(buttons) - RAIL_INSET_PX - clear);
+      // Whether a graph can show on this screen is told from that room alone; a note in the panel (a weak GPS fix,
+      // the weather) only takes its height from the graphs while it shows, quietly.
+      const graph = shown ? figure.getBoundingClientRect().height + AHEAD_MARGIN_PX : 0;
+      const notes = sheet ? Math.max(0, sheetH - sheetChrome.current - graph) : 0;
+      const wide = shown ? figure.clientWidth : Math.min(AHEAD_MAX_W, middle.clientWidth - SHEET_SIDES_PX);
+      // A few px each way before the answer changes, so a card a line taller for one fix does not flip it.
+      const least = aheadLeastPx(wide, textSize === "large");
+      setAheadFits((was) => (was ? room >= least - AHEAD_HYSTERESIS_PX : room >= least + AHEAD_HYSTERESIS_PX));
+      // Never below 0, and no floor: the buttons' 44 px come first. Within 2 px is the same: the graph's own rounding
+      // does not start another round.
+      const px = Math.max(0, room - notes);
       setAheadMaxPx((was) => (was !== null && Math.abs(was - px) <= 2 ? was : px));
     };
     measure();
@@ -2883,12 +2899,17 @@ export function RideMode({
       buttons.disconnect();
     };
   }, [aheadWanted, sheetShown, textSize]);
-  // No room for a graph: said once each time it comes to that, after More closes (lib/aheadGraph.ts aheadNoRoom).
-  const noRoomSaid = useRef("");
+  // No room for a graph, or for some of them: said once a ride for each set of graphs (lib/aheadGraph.ts
+  // aheadNoRoom), never again at each fix (the review of #928).
+  const noRoomSaid = useRef(new Set<string>());
+  const sayNoRoom = (views: readonly AheadView[]) => {
+    const key = views.join(",");
+    if (!key || noRoomSaid.current.has(key)) return;
+    noRoomSaid.current.add(key);
+    answer(aheadNoRoom(views));
+  };
   useEffect(() => {
-    const key = aheadWanted && !aheadFits ? aheadDrawn.join(",") : "";
-    if (key && key !== noRoomSaid.current) answer(aheadNoRoom(aheadDrawn));
-    noRoomSaid.current = key;
+    if (aheadWanted && !aheadFits) sayNoRoom(aheadDrawn);
   }, [aheadWanted, aheadFits, aheadDrawn]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Off route, back on, or out of DC: the off-route buttons or the 311 block go, and a focus that was in
@@ -3620,7 +3641,7 @@ export function RideMode({
           routing by default"): the notes, off route, Ride the rest, and the full 311 report once asked for. */}
       {sheetShown && (
         <div ref={sheetRef} className="ride-controls">
-          {aheadAt !== null && <AheadGraph views={aheadDrawn} route={route} cues={model.cues} youM={aheadAt} lengthM={model.lengthM} ridersAlong={ridersAlong} large={textSize === "large"} maxPx={aheadMaxPx} onNoRoom={(views) => answer(aheadNoRoom(views))} />}
+          {aheadAt !== null && <AheadGraph views={aheadDrawn} route={route} cues={model.cues} youM={aheadAt} lengthM={model.lengthM} ridersAlong={ridersAlong} large={textSize === "large"} maxPx={aheadMaxPx} onNoRoom={sayNoRoom} />}
           {notesShown && (
             <div className="ride-notes">
               {gps && ride.fix && <p className="hint">{gps}</p>}

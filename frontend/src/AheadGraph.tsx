@@ -59,6 +59,8 @@ import { ACCESS_MODE_CLASS } from "./lib/accessMode.ts";
 const W = 320;
 /** The height of the line naming graphs with no room, in CSS pixels (styles.css .ride-ahead-room). */
 const NOTE_PX = 22;
+/** How far short of the least room one graph is still drawn: Ride mode's hysteresis (RideMode AHEAD_HYSTERESIS_PX). */
+const GRACE_PX = 6;
 /** The most the drawing is enlarged for larger text. */
 const ZOOM_MAX = 1.6;
 /** The strip of turns at the top. */
@@ -161,7 +163,9 @@ export function AheadGraph({ views, route, cues, youM, lengthM, ridersAlong = []
       if (fit(1, budget - (order.length > 1 ? NOTE_PX * unit : 0), 0) === 1) {
         strip = 0;
         count = 1;
-      } else if (fit(1, budget, 0) === 1) {
+      } else if (fit(1, budget + GRACE_PX * unit, 0) === 1) {
+        // Ride mode found room for one (aheadLeastPx, give or take its few px of hysteresis): one, without the line.
+        // Less than that (a note in the panel for now): none, until it goes.
         strip = 0;
         count = 1;
         note = false;

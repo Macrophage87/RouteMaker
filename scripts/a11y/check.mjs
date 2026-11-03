@@ -5723,7 +5723,18 @@ if (mine()) {
   await p.close();
 
   const small = await rideWith({ width: 360, height: 640 });
+  // Every sentence the ride's regions take from here (as the ride section's __heard), to count the "No room" ones.
+  await small.eval("(() => { window.__said = []; const last = new WeakMap(); new MutationObserver(() => { for (const e of document.querySelectorAll('.ride [role=status], .ride [role=alert], .ride-toast p')) { const t = e.textContent.trim(); if (t && last.get(e) !== e.textContent) { last.set(e, e.textContent); window.__said.push(t); } } }).observe(document.body, { subtree: true, childList: true, characterData: true }); return true; })()");
   await turnOn(small, ["stress", "elevation"]);
+  // Six more fixes along the line: nothing about room said again (the review of #928: it was said at every fix).
+  for (let i = 5; i <= 10; i += 1) {
+    const [lon, lat] = RIDE_COORDS[i];
+    await small.s("Emulation.setGeolocationOverride", { latitude: lat, longitude: lon, accuracy: 5 });
+    await sleep(450);
+  }
+  const noRoom = await small.eval("window.__said.filter((t) => t.includes('No room on this screen'))");
+  check("ride graphs at 360x640 with two on: the graph with no room is said once, not again at each GPS fix",
+    noRoom.length === 1 && noRoom[0] === "No room on this screen for: Elevation.", JSON.stringify(noRoom));
   const room = await small.eval(`(() => {
     const card = document.querySelector('.ride .cue-card').getBoundingClientRect(), sheet = document.querySelector('.ride .ride-controls');
     const buttons = [...document.querySelector('.ride-rail').children].filter((e) => e.offsetHeight > 2).map((e) => e.getBoundingClientRect());
@@ -5792,8 +5803,8 @@ const failed = results.filter((r) => !r.ok);
 // Joining a ride on one screen (2026-10-30) adds three: Escape, Close, and 320 px.
 // Ordering favorites (2026-10-30) adds four: Edit's arrows at 320 px, names whole with fixed columns, a move saved and
 // said, and one to the bottom.
-// The ride's graphs (the v0.19.0 release review, findings 1, 4, 11 and 16, and its review of #928) add seven.
-const EXPECTED = 705;
+// The ride's graphs (the v0.19.0 release review, findings 1, 4, 11 and 16, and its reviews of #928) add eight.
+const EXPECTED = 706;
 if (SHARDS > 1) {
   // A shard runs only part of the count; CI's a11y job adds the shards' up and compares them with EXPECTED.
   writeFileSync(`${SHOTS}/a11y-count.txt`, `${results.length}\n`);
