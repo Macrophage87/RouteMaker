@@ -5381,12 +5381,6 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
   margin-right: 0.25em;
 }
 
-/* Its end, after the minutes, quieter: the badge and the minutes are what is read at a glance. */
-.ride .boarding-live-end {
-  color: var(--text-muted);
-  font-weight: 400;
-}
-
 /* Every colour badge the same size (Stephen, 2026-11-03: "have each square take up the same space"): the widest
    name, Orange or Silver or Yellow, fits; the names line up down the rows. A bus route's plain badge keeps its own. */
 .ride .line-badge:not(.line-badge-plain) {

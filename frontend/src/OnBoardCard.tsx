@@ -168,16 +168,15 @@ function LineBadges({ lines }: { lines: readonly string[] }) {
   );
 }
 
-/** One live train: its line's badge, when and its end ("[Orange] 3 min New Carrollton"). */
-function LiveTrainLine({ train }: { train: { line: string; toward: string; minutes: number } }) {
+/**
+ * One live train: its line's badge and when ("[Orange] 3 min"). Its end is left out (Stephen, 2026-11-03: "the
+ * destinations twice is redundant"): the list above says where the trains go, and every train shown goes the
+ * rider's way.
+ */
+function LiveTrainLine({ train }: { train: { line: string; minutes: number } }) {
   return (
     <span className="boarding-live">
       <LineBadges lines={[train.line]} /> {liveNextText(train.minutes)}
-      <span className="boarding-live-end">
-        {" "}
-        <span className="visually-hidden">{t("toward")} </span>
-        {train.toward}
-      </span>
     </span>
   );
 }
