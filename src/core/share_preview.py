@@ -142,6 +142,7 @@ RIDE_NAMES = {
     "mountain-bike": "Mountain Bike",
     "gravel": "Gravel",
     "fast": "Fast",
+    "road-bike": "Road Bike",
     "cargo": "Cargo Bike",
     "ebike": "E-bike",
     "bikeshare": "Bikeshare",
@@ -150,6 +151,9 @@ RIDE_NAMES = {
     "bike-transit": "Own bike plus train or bus",
     "bikeshare-transit": "Bikeshare plus walk, train or bus",
     "rebalance": "Rebalance Ride",
+    "walk": "Walk",
+    "walk-transit": "Walk plus train or bus",
+    "run": "Run",
 }
 
 # Who fetches a link to preview it: chat apps, social sites and search engines. A browser is sent

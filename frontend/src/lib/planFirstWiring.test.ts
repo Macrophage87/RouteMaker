@@ -10,9 +10,9 @@ const panel = read("../app/PlanPanel.tsx");
 
 test("Plan routes on its Route button; Go routes at once; a link, a file or Undo after Clear opens drawn", () => {
   assert.match(app, /const planFirst = mode === "plan" && !riding;/);
-  assert.match(app, /const \[routeAsk, setRouteAsk\] = useState\(initialPlan\.points\.length >= 2 \? 1 : 0\);/);
+  assert.match(app, /const \[routeAsk, setRouteAsk\] = useState\(initialPlan\.points\.length >= 2 \|\| runLoopFromStart\(initialPlan\.preset, initialPlan\.points, initialPlan\.dials\) \? 1 : 0\);/);
   assert.match(app, /if \(planFirst && !pressed && !backToDrawn\) return;/);
-  assert.match(app, /\}, \[points, preset, planDials, confirmedKm, routeAsk, planFirst\]\);/);
+  assert.match(app, /\}, \[points, preset, planDials, planKey, confirmedKm, routeAsk, planFirst\]\);/);
   // A link and an opened file are routed as they open.
   assert.ok((app.match(/forgetDrawn\(\);\s*setRouteAsk\(\(n\) => n \+ 1\);/g) ?? []).length >= 2);
   // The Route button says "Planning route", and Cancel stops the request and keeps the plan.
@@ -61,7 +61,9 @@ test("Clear says so and hands the focus to the place search; Plan's Clear stays 
 
 test("in Plan a station or a transit option is an edit like any other: it marks the plan changed and waits for Route", () => {
   // Both are part of planDials, so of planKey, which the drawn plan is compared by (all but Go's closuresNow).
-  assert.match(app, /const \{ closuresNow: _now, \.\.\.keyed \} = planDials;\s*return JSON\.stringify\(keyed\);/);
+  // Avoid stairs too (2026-11-02), where the ride type sends it.
+  // Run's pace too (2026-11-02), on a run.
+  assert.match(app, /const \{ closuresNow: _now, \.\.\.keyed \} = planDials;\s*const run = runs\(preset\);\s*return JSON\.stringify\(\{ \.\.\.keyed, stairs: \(twoPointsOnly\(preset\) \|\| run\) && avoidStairs, \.\.\.\(run \? \{ pace: runPace \} : \{\}\) \}\);/);
   assert.match(app, /pins: stationPins, transitPick \}/);
   // No exception lets them route at once: only the Route button, or going back to the drawn plan.
   assert.doesNotMatch(app, /if \(planFirst && !pressed[^\n]*samePlan/);

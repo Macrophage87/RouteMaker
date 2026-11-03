@@ -72,9 +72,11 @@ def allow(user=None, answer="allow"):
     params = authorize_params(client_id, challenge)
     page = browser.get("/oauth/authorize", params, **addr())
     assert page.status_code == 200, page.content
+    # What the page's form sends besides the rider's answer.
+    sent = {"reads_routes": "1"} if 'name="reads_routes" value="1"' in page.content.decode() else {}
     answered = browser.post(
         "/oauth/authorize",
-        {**params, "answer": answer, "csrfmiddlewaretoken": csrf},
+        {**params, **sent, "answer": answer, "csrfmiddlewaretoken": csrf},
         HTTP_X_CSRFTOKEN=csrf,
         **addr(),
     )
@@ -174,7 +176,9 @@ class TestSignIn:
         page = browser.get("/oauth/authorize", authorize_params(client_id, challenge), **addr())
         text = page.content.decode()
         assert "Allow Claude to plan routes?" in text and "add routes to your My routes" in text
-        assert "can't read your saved routes" in text and "claude.ai" in text
+        # The owner, 2026-11-02 (my_routes): it may read My routes, never change them.
+        assert "read your saved routes, when you ask it to plan from one" in text
+        assert "can't change or delete your saved routes" in text and "claude.ai" in text
         assert "frame-ancestors 'none'" in page["Content-Security-Policy"]
         assert "form-action 'self' https://claude.ai" in page["Content-Security-Policy"]
 
@@ -299,6 +303,73 @@ class TestConnector:
         assert not saved["isError"], saved
         row = SavedRoute.objects.get(user=user)
         assert row.name == "Rock Creek"
+
+    def test_my_routes_reads_only_the_rider_s_own_and_changes_nothing(self, planner) -> None:
+        """The owner, 2026-11-02: the connector may open a saved route ("my commute") by name."""
+        user, tokens, _ = tokens_for()
+        other, other_tokens, _ = tokens_for()
+        token = tokens["access_token"]
+        assert ConnectorGrant.objects.get(user=user).reads_routes is True
+        planned = call(token, "plan_route", {"points": [[-77.03, 38.9], [-77.02, 38.91]]})
+        draft_id = planned["structuredContent"]["draft_id"]
+        call(token, "save_route", {"draft_id": draft_id, "name": "Morning commute"})
+        theirs = call(other_tokens["access_token"], "my_routes", {})
+        assert not theirs["isError"] and theirs["structuredContent"]["routes"] == []
+        listed = call(token, "my_routes", {})["structuredContent"]["routes"]
+        assert [r["name"] for r in listed] == ["Morning commute"]
+        sent = len(planner)
+        opened = call(token, "my_routes", {"name": "commute"})
+        assert not opened["isError"], opened
+        assert opened["structuredContent"]["opened_from"]["route_id"] == listed[0]["route_id"]
+        assert len(planner) == sent  # the exact line as kept: not planned again
+        stolen = call(
+            other_tokens["access_token"], "my_routes", {"route_id": listed[0]["route_id"]}
+        )
+        assert stolen["isError"] and "no saved route" in stolen["content"][0]["text"]
+        assert SavedRoute.objects.filter(user=user).count() == 1
+        assert not SavedRoute.objects.filter(user=other).exists()
+
+    def test_ride_conditions_asks_the_site_s_own_weather_check(self, planner, monkeypatch) -> None:
+        from core import weather
+
+        asked = []
+
+        def check(self, points):
+            asked.append(points)
+            return {"alerts": [], "rain": None, "unchecked": []}
+
+        monkeypatch.setattr(weather.Weather, "check", check)
+        _user, tokens, _ = tokens_for()
+        token = tokens["access_token"]
+        planned = call(token, "plan_route", {"points": [[-77.03, 38.9], [-77.02, 38.91]]})
+        out = call(token, "ride_conditions", {"draft_id": planned["structuredContent"]["draft_id"]})
+        assert not out["isError"], out
+        assert out["structuredContent"]["weather"]["checked"] is True
+        assert asked and all(len(p) == 3 for p in asked[0])
+
+    def test_a_consent_page_from_before_my_routes_grants_no_read(self) -> None:
+        """A page served before v0.18.0 said "It can't read your saved routes" and sends no
+        reads_routes: answered after the deploy, its grant still cannot read them."""
+        client_id = register().json()["client_id"]
+        _verifier, challenge = pkce()
+        browser, user, csrf = signed_in()
+        params = authorize_params(client_id, challenge)
+        answered = browser.post(
+            "/oauth/authorize",
+            {**params, "answer": "allow", "csrfmiddlewaretoken": csrf},
+            HTTP_X_CSRFTOKEN=csrf,
+            **addr(),
+        )
+        assert answered.status_code == 302
+        assert ConnectorGrant.objects.get(user=user).reads_routes is False
+
+    def test_a_grant_given_before_my_routes_cannot_read_them(self, planner) -> None:
+        """Its consent page said "It can't read your saved routes": it stays so until the rider
+        connects again."""
+        user, tokens, _ = tokens_for()
+        ConnectorGrant.objects.filter(user=user).update(reads_routes=False)
+        out = call(tokens["access_token"], "my_routes", {})
+        assert out["isError"] and "connects again" in out["content"][0]["text"]
 
     def test_a_rider_cannot_reach_another_rider_s_draft(self, planner) -> None:
         _a, a_tokens, _ = tokens_for()

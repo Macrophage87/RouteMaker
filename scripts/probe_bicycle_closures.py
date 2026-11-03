@@ -51,11 +51,13 @@ ROUTERS = {
     "weekend": os.environ.get("VALHALLA_WEEKEND_URL", "http://valhalla-weekend:8002"),
     "offroad": os.environ.get("VALHALLA_OFFROAD_URL", "http://valhalla-offroad:8002"),
     "mtb": os.environ.get("VALHALLA_MTB_URL", "http://valhalla-mtb:8002"),
+    "paved": os.environ.get("VALHALLA_PAVED_URL", "http://valhalla-paved:8002"),
 }
 OFFROAD = "offroad"
 MTB = "mtb"
+PAVED = "paved"
 # Behind the compose profile `offroad`: skipped where they are not running.
-PROFILED = (OFFROAD, MTB)
+PROFILED = (OFFROAD, MTB, PAVED)
 # The off-road graph reopens the mountain-bike class on purpose.
 OFFROAD_KEEPS = ("mtb",)
 # The Mountain Bike graph (docs/MTB-TOPO-PLAN.md, slice 6) also reopens rated singletrack

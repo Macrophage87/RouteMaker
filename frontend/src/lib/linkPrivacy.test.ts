@@ -84,7 +84,7 @@ test("no link the page writes says anything of disability or assistive needs, fo
     for (const carrying of start.carrying ? (["cargo", "people"] as const) : ([null] as const)) {
       for (const when of [null, ...WHENS.map((w) => w.id)]) {
         for (const stress of [0, 40, 70, 85, 100]) {
-          for (const extras of [{}, { assist: true }, { avoidGravel: true }, { loop: true }, { targetDistanceM: 96_561 }, { avoidGravel: true, loop: true, targetDistanceM: 20_000, systemWeightKg: 93 }]) {
+          for (const extras of [{}, { assist: true }, { loop: true }, { targetDistanceM: 96_561 }, { loop: true, targetDistanceM: 20_000, systemWeightKg: 93 }]) {
             for (const points of POINT_SETS) {
               const dials: Dials = { ...startDials(preset.id, carrying, when, true), stress, hills: start.seek ? 60 : -95, ...extras };
               for (const on of [false, true]) {
