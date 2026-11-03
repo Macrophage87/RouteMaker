@@ -185,7 +185,7 @@ export function AheadGraph({ views, route, cues, youM, lengthM, ridersAlong = []
     }
     const unseen = order.slice(count);
     const unseenSaid = unseen.map((view) => `${AHEAD_HEADING[view]}: ${draw(view, route, w, x, { top: 0, h: PLOT_MIN }, width)!.sentence}`);
-    return { drawn, unseen, unseenSaid, strip, note: note && unseen.length > 0, base: at - GAP };
+    return { drawn, unseen, unseenSaid, strip, note: note && unseen.length > 0 && drawn.length > 0, base: at - GAP };
   }, [views, route, w, width, budget, unit]); // eslint-disable-line react-hooks/exhaustive-deps
   const { base } = panels;
   const untold = !panels.note && panels.drawn.length > 0 ? panels.unseen.join(",") : "";
@@ -193,16 +193,18 @@ export function AheadGraph({ views, route, cues, youM, lengthM, ridersAlong = []
     if (untold) onNoRoom?.(untold.split(",") as AheadView[]);
   }, [untold]); // eslint-disable-line react-hooks/exhaustive-deps
   const H = base + AXIS_H;
-  if (!panels.drawn.length) return <figure ref={figureRef} className="ride-ahead" hidden />;
+  if (!panels.drawn.length && !panels.unseenSaid.length) return <figure ref={figureRef} className="ride-ahead" hidden />;
   const riders = ridersSentence(w);
   const said = [
-    panels.drawn.length ? turnsSentence(turns, w.youM) : "",
+    turnsSentence(turns, w.youM),
     ...panels.drawn.map((p) => `${AHEAD_HEADING[p.view]}: ${p.drawn.sentence}`),
     ...panels.unseenSaid,
     riders,
   ].filter(Boolean).join(" ");
   return (
-    <figure ref={figureRef} className="ride-ahead" role="group" aria-label={AHEAD_GROUP}>
+    // None drawn (no room for now, or on this screen): the sentence alone, visually hidden, so a screen reader still
+    // hears the road ahead (the review of #928).
+    <figure ref={figureRef} className={panels.drawn.length ? "ride-ahead" : "ride-ahead ride-ahead-unseen"} role="group" aria-label={AHEAD_GROUP}>
       <p className="visually-hidden">{said}</p>
       {panels.drawn.length > 0 && (
         <svg className="ride-ahead-plot" viewBox={`0 0 ${width} ${H}`} aria-hidden="true" focusable="false">

@@ -5772,6 +5772,9 @@ if (mine()) {
   await large.shot(`${SHOTS}/ride_graphs_large_360x640.png`);
   check("ride graphs with Large text at 360x640 and two on: the side buttons keep 44 px and stay below the cue card",
     !!(await large.eval("!!document.querySelector('.ride-large')")) && rackFine(largeRoom) && !largeRoom.small, JSON.stringify(largeRoom));
+  const unseen = await large.eval(`(() => { const g = document.querySelector('[role=group][aria-label="Road ahead"]'); return { said: g?.querySelector('.visually-hidden')?.textContent ?? '', drawn: !!g?.querySelector('svg') }; })()`);
+  check("ride graphs with no room for any: the 'Road ahead' group keeps its sentence for screen readers, visually hidden",
+    largeRoom.graphs > 0 || (!unseen.drawn && unseen.said.includes("Traffic stress: ") && unseen.said.includes("Elevation: ")), JSON.stringify({ graphs: largeRoom.graphs, ...unseen }));
   await large.close();
 
   const forced = await rideWith({ width: 390, height: 844, scheme: "dark", forced: true });
@@ -5803,8 +5806,8 @@ const failed = results.filter((r) => !r.ok);
 // Joining a ride on one screen (2026-10-30) adds three: Escape, Close, and 320 px.
 // Ordering favorites (2026-10-30) adds four: Edit's arrows at 320 px, names whole with fixed columns, a move saved and
 // said, and one to the bottom.
-// The ride's graphs (the v0.19.0 release review, findings 1, 4, 11 and 16, and its reviews of #928) add eight.
-const EXPECTED = 706;
+// The ride's graphs (the v0.19.0 release review, findings 1, 4, 11 and 16, and its reviews of #928) add nine.
+const EXPECTED = 707;
 if (SHARDS > 1) {
   // A shard runs only part of the count; CI's a11y job adds the shards' up and compares them with EXPECTED.
   writeFileSync(`${SHOTS}/a11y-count.txt`, `${results.length}\n`);

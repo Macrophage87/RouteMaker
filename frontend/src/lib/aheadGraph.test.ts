@@ -191,7 +191,7 @@ test("Ride wires it: one bubble a graph in More, pressed state, off by default, 
   assert.match(ride, /const next = on \? ahead\.filter\(\(v\) => v !== view\) : \[\.\.\.ahead, view\];/, "each bubble on or off on its own");
   assert.match(ride, /<AheadGraph views=\{aheadDrawn\} route=\{route\} cues=\{model\.cues\}/, "the graphs on stack, with the turns");
   assert.match(ride, /const sheetShown = notesShown \|\| restShown \|\| aheadShown;/);
-  assert.ok(ride.indexOf("<AheadGraph") > ride.indexOf('className="ride-controls"'));
+  assert.ok(ride.indexOf("<AheadGraph views={aheadDrawn} route={route} cues={model.cues} youM={aheadAt}") > ride.indexOf('className="ride-controls"'));
   assert.ok(ride.indexOf("ride-ahead-bubble") < ride.indexOf('className="ride-round ride-topo"'), "before Topo and Settings");
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
   assert.match(app, /riderDots=\{rideDots\}/);
@@ -296,4 +296,12 @@ test("as many graphs are drawn as fit the room readably, and the rest named", ()
   assert.equal(graphsThatFit(2, 44 + 48, 44, 18), 1);
   assert.equal(graphsThatFit(2, 60, 44, 18), 0, "none where even one would be too small to read");
   assert.equal(graphsThatFit(0, 60, 44, 18), 0);
+});
+
+test("the graphs' room is measured before each paint, and with no room their sentence stays for screen readers (review of #928)", () => {
+  const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
+  assert.match(ride, /useLayoutEffect\(\(\) => \{\s*measureAhead\.current\?\.\(\);\s*\}\);/, "a note that comes or goes changes the room in the same frame");
+  assert.match(ride, /\{aheadWanted && !aheadFits && ride\.progressM !== null && \(\s*<AheadGraph [^>]*maxPx=\{0\} \/>/, "no room: the sentence alone");
+  const graph = readFileSync(new URL("../AheadGraph.tsx", import.meta.url), "utf8");
+  assert.match(graph, /className=\{panels\.drawn\.length \? "ride-ahead" : "ride-ahead ride-ahead-unseen"\} role="group" aria-label=\{AHEAD_GROUP\}/);
 });

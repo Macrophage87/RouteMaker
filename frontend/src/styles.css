@@ -4603,6 +4603,11 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
   max-width: 520px;
 }
 
+/* No graph drawn: the figure holds its sentence alone, for screen readers, and takes no room. */
+.ride-ahead.ride-ahead-unseen {
+  margin: 0;
+}
+
 /* The graphs on but not drawn, for want of room (AheadGraph NOTE_PX: one line, 22 px). */
 .ride-ahead-room {
   margin: 2px 0 0;
