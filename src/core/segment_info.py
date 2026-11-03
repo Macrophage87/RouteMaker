@@ -1262,7 +1262,7 @@ def more_link(row: dict, router: dict) -> dict | None:
 
 
 # Which trail lines the compact summary shows; the rest are in the details.
-SUMMARY_TRAIL_ROWS = frozenset({"trail_surface", "smoothness", "width", "visibility"})
+SUMMARY_TRAIL_ROWS = frozenset({"trail_surface", "smoothness", "width", "visibility", "oneway"})
 
 
 # The parts of the classifier's rule the Lanes line already says.

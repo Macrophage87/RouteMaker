@@ -24,6 +24,7 @@ from django.db import connection
 
 from pipeline.schema import validate_schema_name
 from routemaker import profile as profile_rules
+from routemaker import trail_facts
 from routemaker.geo import Point, haversine
 
 from . import routing, segment_info
@@ -46,12 +47,13 @@ class Unavailable(Exception):
     """The router did not answer for the heights."""
 
 
-def way_line(way_id: int) -> tuple[list[tuple[float, float]], int | None] | None:
-    """The way's line (lon, lat), its pieces joined in order, and the live table's oid;
-    None where the way is not a trail the layer draws."""
+def way_line(way_id: int) -> tuple[list[tuple[float, float]], int | None, str | None] | None:
+    """The way's line (lon, lat), its pieces joined in order, the live table's oid, and
+    which way it may be ridden where only one (`trail_facts.one_way`: "forward" as drawn,
+    "backward"); None where the way is not a trail the layer draws."""
     schema = validate_schema_name(settings.SEGMENT_SCHEMA_LIVE)
     have = segment_info.live_columns(schema)
-    wanted = [c for c in ("mtb_only", "map_class", "bike_access_reason") if c in have]
+    wanted = [c for c in ("mtb_only", "map_class", "bike_access_reason", "trail_tags") if c in have]
     if "mtb_only" not in wanted:
         return None
     select = ", ".join(wanted)
@@ -75,7 +77,8 @@ def way_line(way_id: int) -> tuple[list[tuple[float, float]], int | None] | None
             point = (float(lon), float(lat))
             if not line or line[-1] != point:
                 line.append(point)
-    return (line, oid) if len(line) >= 2 else None
+    one_way = trail_facts.one_way(segment_info.trail_tags_of(first))
+    return (line, oid, one_way) if len(line) >= 2 else None
 
 
 def samples(line: list[tuple[float, float]]) -> tuple[list[float], list[tuple[float, float]], int]:
@@ -141,7 +144,7 @@ def profile(way_id: int) -> dict | None:
     found = way_line(way_id)
     if found is None:
         return None
-    line, oid = found
+    line, oid, one_way = found
     key = (way_id, oid)
     if key in _kept:
         _kept.move_to_end(key)
@@ -173,6 +176,10 @@ def profile(way_id: int) -> dict | None:
         # owner, 2026-10-28: "highlight that trail so you know where the elevation profile and
         # rating begins and ends").
         body["line"] = line_out(line)
+        # Ridden one way only: the chart keeps that way, not north or west first (the owner,
+        # 2026-11-03: "One way should keep it's one way").
+        if one_way:
+            body["oneway"] = one_way
     _kept[key] = body
     while len(_kept) > KEEP:
         _kept.popitem(last=False)
