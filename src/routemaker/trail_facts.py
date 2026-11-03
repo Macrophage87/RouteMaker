@@ -29,7 +29,17 @@ KEYS = (
     # trail's level (the owner, 2026-10-28): `singletrack.mtb_scale_words`. No line of their own.
     "mtb:scale",
     "mtb:scale:imba",
+    # Whether it may be ridden one way only (the owner, 2026-11-03: "One way should keep it's one
+    # way", and "Make that clear when clicking on it too"): `one_way`. The panel's "One way" line.
+    "oneway",
+    "oneway:bicycle",
+    "bicycle:forward",
+    "bicycle:backward",
 )
+
+# The panel's "One way" line: the elevation profile and its end markers run the way it is ridden
+# (frontend/src/lib/trailProfile.ts northOrWestFirst keeps a one-way trail's direction).
+ONE_WAY_WORDS = "Yes: ride it as the elevation chart runs, left to right"
 
 # A kept value is at most this long (a tag is free text; the panel needs a word or two).
 MAX_VALUE = 40
@@ -115,6 +125,35 @@ def facts(tags: dict[str, str]) -> dict[str, str] | None:
     return kept or None
 
 
+_FORWARD = frozenset({"yes", "1", "true"})
+_BACKWARD = frozenset({"-1"})
+
+
+def one_way(kept: object) -> str | None:
+    """ "forward" where the trail may be ridden only the way OSM draws it, "backward" where
+    only against it, None where both ways (or not said). `oneway:bicycle` wins over
+    `oneway` (Key:oneway:bicycle: "oneway:bicycle=no" opens a one-way to bicycles)."""
+    if not isinstance(kept, dict):
+        return None
+    # Bikes barred one way ("bicycle:backward=no"): one-way for a bike, whatever `oneway` says.
+    if str(kept.get("bicycle:backward", "")).strip().lower() == "no":
+        return "forward"
+    if str(kept.get("bicycle:forward", "")).strip().lower() == "no":
+        return "backward"
+    for key in ("oneway:bicycle", "oneway"):
+        value = kept.get(key)
+        if not isinstance(value, str) or not value.strip():
+            continue
+        value = value.strip().lower()
+        if value in _FORWARD:
+            return "forward"
+        if value in _BACKWARD:
+            return "backward"
+        # "no", or a value with no direction of its own ("alternating", a time): both ways.
+        return None
+    return None
+
+
 def width_metres(value: str) -> float | None:
     """A `width` in metres: "1.5", "1.5 m", "3 ft", "3'", "2'6\""; None for anything else."""
     feet_inches = _FEET_INCHES.match(value)
@@ -180,4 +219,6 @@ def rows(kept: object) -> list[tuple[str, str, str]]:
         out.append(("uphill", "Climbing", said))
     if (sac := text("sac_scale")) and sac in SAC_WORDS:
         out.append(("hiking", "Hiking scale", SAC_WORDS[sac]))
+    if one_way(kept):
+        out.append(("oneway", "One way", ONE_WAY_WORDS))
     return out

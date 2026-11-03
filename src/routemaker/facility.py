@@ -45,7 +45,7 @@ to prefer it.
 from __future__ import annotations
 
 import math
-from collections.abc import Iterable, Sequence
+from collections.abc import Collection, Iterable, Sequence
 from enum import StrEnum
 
 from .classes import MOTOR_ONLY_HIGHWAY, TRAIL_CLASS_HIGHWAY
@@ -623,8 +623,9 @@ def has_separate_bikeway(tags: dict[str, str]) -> bool:
     2026-09-29: "there's several cases of a protected bike lane next to LTS3
     or 4. In that case, don't show the road, perhaps hide it until zoom 15-16.
     The bike lane should show up as the main." and "Keep it faint if it
-    parallels a protected bike path."; OWNER-DECISIONS 73, 78). A trail-class
-    way is the facility, not the road."""
+    parallels a protected bike path."; OWNER-DECISIONS 73, 78). The tag alone:
+    the map's `separate_bikeway` also needs the bike way to be mapped beside it
+    (`roads_with_bikeway_beside`). A trail-class way is the facility, not the road."""
     return tags.get("highway") not in TRAIL_CLASS_HIGHWAY and declares_separate(tags)
 
 
@@ -734,6 +735,9 @@ def beside_separate_roads(
 
 def separate_pairs(
     ways: Iterable[tuple[int, dict[str, str], Sequence[tuple[float, float]]]],
+    *,
+    kinds: Collection[Facility] = (Facility.PATH,),
+    step_m: float | None = None,
 ) -> tuple[set[int], set[int]]:
     """(the trails `beside_separate_roads` finds, the roads they lie beside).
 
@@ -741,6 +745,11 @@ def separate_pairs(
     "bike infrastructure": a road that says its facility is mapped separately
     and has such a trail along it. A named trail along it counts there too, though
     it stays a path in the first set.
+
+    `kinds`: the classes a trail-class way may have by its own tags to be asked
+    (a path by default). `step_m`: when given, each trail is looked at every that
+    many metres along it rather than at its vertices only, so a long straight
+    trail of two points still meets every road block it runs beside.
     """
     ways = list(ways)
     if not ways:
@@ -770,9 +779,11 @@ def separate_pairs(
     for osm_id, tags, coords in ways:
         if tags.get("highway") not in TRAIL_CLASS_HIGHWAY or len(coords) < 2:
             continue
-        if facility(tags) is not Facility.PATH:
+        if facility(tags) not in kinds:
             continue
         points = [_xy(lon, lat, lat0) for lon, lat in coords]
+        if step_m is not None:
+            points = [p for p, _bearing, _metres in _samples(points, step_m)]
         near = 0
         beside: set[int] = set()
         for p in points:
@@ -788,6 +799,21 @@ def separate_pairs(
     return found, roads
 
 
+def roads_with_bikeway_beside(
+    ways: Iterable[tuple[int, dict[str, str], Sequence[tuple[float, float]]]],
+) -> set[int]:
+    """The roads the stress map draws faint and late as beside their own bike way
+    (`segment.separate_bikeway`; OWNER-DECISIONS 73, 78): a road that says
+    `cycleway*=separate` (`has_separate_bikeway`) AND has a bike way mapped along it,
+    a path or a protected track by its own tags, looked at every SIDE_STREET_STEP_M.
+    The tag alone is not enough: Connecticut Avenue NW from Davenport to Everett
+    Street (OSM way 130908011) says it with only sidewalks beside it, and faded out
+    with nothing to show in its place."""
+    return separate_pairs(
+        ways, kinds=(Facility.PATH, Facility.PROTECTED), step_m=SIDE_STREET_STEP_M
+    )[1]
+
+
 # --- An unnamed bike lane beside a named street (v0.7.0, "Go riding fixes" item 4) ------------
 
 # The owner, 2026-10-15: "A protected bike lane was listed as an "unnamed path" near 9th
@@ -795,7 +821,9 @@ def separate_pairs(
 # - within SIDE_STREET_M, roughly parallel (SIDE_STREET_ANGLE), for most of its length
 # (SIDE_STREET_FRACTION) - is that street's bike lane: "9th Street Northwest bike lane",
 # or "9th Street Northwest protected bike lane" where its tags say it is separated from
-# the road (`separation*` physical) or segregated (`segregated=yes`). The rebuild writes
+# the road (`separation*` physical) or segregated (`segregated=yes`), or, where people on
+# foot share it, the path or the sidewalk beside that street ("sidewalk beside Kemp Mill
+# Road"). The rebuild writes
 # the name onto `segment.sidepath_name`; the route description and the road panel say it
 # where the way has no name.
 SIDE_STREET_M = 20.0
@@ -813,15 +841,67 @@ SIDE_STREET_HIGHWAY = frozenset(
 )  # fmt: skip
 BIKE_LANE_WORDS = "bike lane"
 PROTECTED_BIKE_LANE_WORDS = "protected bike lane"
+# A path shared with people on foot beside a street is not a bike lane (the owner,
+# 2026-11-03, of the sidewalk path beside Kemp Mill Road, OSM way 886775743, tagged
+# `footway=sidewalk` + `bicycle=designated`: "Kemp Mill road doesn't have a bike lane").
+# It is named as the route description names an unnamed path beside a major road at
+# plan time (`describe.beside_words`): "path beside Kemp Mill Road".
+SHARED_PATH_PREFIX = "path beside "
+# A sidewalk signed for bicycles is still a sidewalk (the owner, 2026-11-03, of the same
+# Kemp Mill Road way: "There's a narrow sidewalk which I wouldn't call a "path""):
+# "sidewalk beside Kemp Mill Road", as `describe.beside_words` says it.
+SHARED_SIDEWALK_PREFIX = "sidewalk beside "
+# Every shared-way prefix, for reading a name back (`sidepath_street`).
+SHARED_PREFIXES = (SHARED_PATH_PREFIX, SHARED_SIDEWALK_PREFIX)
+# The `foot` values that say people on foot share the way.
+SHARED_FOOT = frozenset({"yes", "designated", "permissive"})
+
+
+def _is_sidewalk(tags: dict[str, str]) -> bool:
+    return SIDEWALK in (tags.get("footway"), tags.get("path"), tags.get("cycleway"))
+
+
+def shared_with_walkers(tags: dict[str, str]) -> bool:
+    """True for a trail-class way people on foot share with bicycles, unsplit: a footway,
+    path or sidewalk a bicycle may ride, or a cycleway open to foot, that is neither
+    `segregated=yes` nor `foot=no`. A bare `highway=cycleway` says nothing of walkers,
+    so is not."""
+    if tags.get("segregated") == "yes" or tags.get("foot") == "no":
+        return False
+    if _is_sidewalk(tags):
+        return True
+    return tags.get("highway") != "cycleway" or tags.get("foot") in SHARED_FOOT
 
 
 def sidepath_name(street: str, tags: dict[str, str]) -> str:
-    """ "<street> bike lane", or "<street> protected bike lane" where the way is tagged
-    separated from the road or segregated."""
-    protected = tags.get("segregated") == "yes" or any(
-        _physical(tags.get(key)) for key in TRAIL_SEPARATION_KEYS
-    )
-    return f"{street} {PROTECTED_BIKE_LANE_WORDS if protected else BIKE_LANE_WORDS}"
+    """ "sidewalk beside <street>" for a sidewalk a bicycle may ride, even behind a kerb
+    (`separation=kerb`); "<street> protected bike lane" where the way is tagged
+    separated from the road or segregated (`segregated=yes` makes a sidewalk one too);
+    else "path beside <street>" where people on foot share it (`shared_with_walkers`);
+    else "<street> bike lane"."""
+    segregated = tags.get("segregated") == "yes"
+    if _is_sidewalk(tags) and shared_with_walkers(tags):
+        return f"{SHARED_SIDEWALK_PREFIX}{street}"
+    if segregated or any(_physical(tags.get(key)) for key in TRAIL_SEPARATION_KEYS):
+        return f"{street} {PROTECTED_BIKE_LANE_WORDS}"
+    if shared_with_walkers(tags):
+        return f"{SHARED_PATH_PREFIX}{street}"
+    return f"{street} {BIKE_LANE_WORDS}"
+
+
+def sidepath_street(name: str | None) -> str | None:
+    """The street a side-street name (`sidepath_name`) is named for ("K Street Northwest
+    protected bike lane" -> "K Street Northwest", "path beside Kemp Mill Road" -> "Kemp
+    Mill Road"), or None for any other name."""
+    if not name:
+        return None
+    for prefix in SHARED_PREFIXES:
+        if name.startswith(prefix):
+            return name[len(prefix) :] or None
+    for words in (PROTECTED_BIKE_LANE_WORDS, BIKE_LANE_WORDS):
+        if name.endswith(" " + words):
+            return name[: -len(words) - 1] or None
+    return None
 
 
 def _bearing(a: tuple[float, float], b: tuple[float, float]) -> float:

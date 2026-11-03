@@ -12,10 +12,10 @@ parallel to the way there, is the road beside it. The route description then cal
 ride's card, in its voice and in the directions.
 
 A path the rebuild already named for its street (`sidepath_names_of`: "9th Street
-Northwest protected bike lane") keeps that name, and a path or a service road with a name
-of its own keeps it. The router has BUDGET_S for all of a route's ways together (less when
-the plan is short of time); a way it does not answer in time, or answers with no such
-road, is just "service road" or "path".
+Northwest protected bike lane", "path beside Kemp Mill Road") keeps that name, and a path
+or a service road with a name of its own keeps it. The router has BUDGET_S for all of a
+route's ways together (less when the plan is short of time); a way it does not answer in
+time, or answers with no such road, is just "service road" or "path".
 """
 
 from __future__ import annotations
