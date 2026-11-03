@@ -477,6 +477,20 @@ class TestTheQuery:
                 cursor, live, 9, self.wkt(800), facility="protected", tier=3, car_free="{weekend}"
             )
             self.add(cursor, live, 10, self.wkt(900), facility="lane", tier=2, car_free="{weekend}")
+            # A creek trail that zigzags 15 m either side of its line every 43 m or so.
+            zigzag = ", ".join(
+                f"{START[0] + 0.02 + i * 0.0005} {START[1] + (1000 + (15 if i % 2 else -15)) / KY}"
+                for i in range(21)
+            )
+            self.add(
+                cursor,
+                live,
+                11,
+                f"LINESTRING({zigzag})",
+                facility="path",
+                trail=True,
+                rule=sorted(PATH_RULES)[0],
+            )
         return live
 
     def guide(self):
@@ -487,20 +501,28 @@ class TestTheQuery:
 
     def test_paths_and_protected_ways_at_lts_1_and_2_are_corridors(self, table) -> None:
         got = ts.corridor_segments(table, self.guide(), 1500.0, True, "weekday_offpeak")
-        assert self.north_of(got) == [100, 200, 700]
+        assert self.north_of(got) == [100, 200, 700, 985]
 
     def test_a_road_closed_to_cars_at_this_ride_time_is_a_path(self, table) -> None:
         got = ts.corridor_segments(table, self.guide(), 1500.0, True, "weekend")
-        assert self.north_of(got) == [100, 200, 600, 700, 800, 900]
+        assert self.north_of(got) == [100, 200, 600, 700, 800, 900, 985]
 
     def test_avoiding_gravel_leaves_the_unpaved_out(self, table) -> None:
         got = ts.corridor_segments(table, self.guide(), 1500.0, True, "weekday_offpeak", True)
+        assert self.north_of(got) == [100, 200, 985]
+
+    def test_avoiding_winding_trails_leaves_the_zigzag_out(self, table) -> None:
+        # Road Bike: its graph prices a winding trail as an LTS 3 street, so the seek must
+        # not offer one (routemaker.winding).
+        got = ts.corridor_segments(
+            table, self.guide(), 1500.0, True, "weekday_offpeak", True, avoid_winding=True
+        )
         assert self.north_of(got) == [100, 200]
 
     def test_without_the_facility_column_the_trail_rule_says(self, table) -> None:
         got = ts.corridor_segments(table, self.guide(), 1500.0, False, "weekday_offpeak")
-        # Only the way whose recorded rule is a path's.
-        assert self.north_of(got) == [100]
+        # Only the ways whose recorded rule is a path's.
+        assert self.north_of(got) == [100, 985]
 
     def test_the_vertices_come_back_as_lon_lat(self, table) -> None:
         got = ts.corridor_segments(table, self.guide(), 1500.0, True, "weekday_offpeak")
