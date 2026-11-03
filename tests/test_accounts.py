@@ -139,6 +139,21 @@ class TestSettings:
         r = send(client, "post", "/api/me/settings", {"settings": {"v": 1, "speed": speed}}, csrf)
         assert r.status_code == 400
 
+    @pytest.mark.parametrize("units", ["us", "metric"])
+    def test_the_units_choice_is_kept(self, units) -> None:
+        # The owner, 2026-11-03: "have a metric mode in settings".
+        client, user, csrf = signed_in()
+        doc = {"v": 1, "units": units}
+        r = send(client, "post", "/api/me/settings", {"settings": doc}, csrf)
+        assert r.status_code == 200
+        assert AccountSettings.objects.get(user=user).data == doc
+
+    @pytest.mark.parametrize("units", ["imperial", "km", 1, True, ["metric"]])
+    def test_units_off_the_picker_are_refused(self, units) -> None:
+        client, _user, csrf = signed_in()
+        r = send(client, "post", "/api/me/settings", {"settings": {"v": 1, "units": units}}, csrf)
+        assert r.status_code == 400
+
     def test_last_write_wins(self) -> None:
         client, user, csrf = signed_in()
         send(client, "post", "/api/me/settings", {"settings": {"v": 1, "topo": True}}, csrf)
