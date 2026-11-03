@@ -1890,4 +1890,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Other riders shown: {count}, the last {distance} behind you.": "{count} başka bisikletli gösteriliyor, sonuncusu {distance} arkanızda.",
   "Mostly {level}, {top} here.": "Çoğunlukla {level}, burada {top}.",
   "Narrowest {riders} riders a minute, here.": "En dar yer: dakikada {riders} bisikletli, burada.",
+  "{graph}: off.": "{graph}: kapalı.",
+  "Road ahead": "İlerideki yol",
+  "Turns ahead: {turns}. Busy junctions: {busy}.": "İlerideki dönüşler: {turns}. Yoğun kavşaklar: {busy}.",
 };

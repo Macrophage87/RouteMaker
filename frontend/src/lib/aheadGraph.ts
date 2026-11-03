@@ -12,7 +12,7 @@
  */
 import type { RouteProfile, RouteResponse, StressSpan } from "./api.ts";
 import { browserStore, type KeyValueStore } from "./accessMode.ts";
-import { FEET_PER_METRE, METRES_PER_MILE, formatClimb, spokenDistance } from "./format.ts";
+import { FEET_PER_METRE, METRES_PER_MILE, formatAxisFeet, formatClimb, spokenDistance } from "./format.ts";
 import { t } from "./i18n.ts";
 import { FLOW_BANDS, chartKind, corkersFor, flowBand, gradeBand, usableProfile } from "./profileChart.ts";
 import { spanClass, usableSpans } from "./routeColours.ts";
@@ -30,19 +30,22 @@ export const RIDER_OFF_ROUTE_M = 60;
 export const AHEAD_KEY = "routemaker.ride.ahead";
 const VIEWS: readonly AheadView[] = ["stress", "elevation", "flow", "corkers"];
 
-/** The graph last shown on this device, or null (off, the default). */
-export function readAhead(store: KeyValueStore | null = browserStore()): AheadView | null {
+/**
+ * The graphs on (Stephen 2026-11-03: "Have each graph share the same x axis, so it only needs to be labeled once": they
+ * stack, one axis under them all), kept on this device in More's order; none, the default, is off.
+ */
+export function readAhead(store: KeyValueStore | null = browserStore()): AheadView[] {
   try {
-    const kept = store?.getItem(AHEAD_KEY);
-    return (VIEWS as readonly string[]).includes(kept ?? "") ? (kept as AheadView) : null;
+    const kept = (store?.getItem(AHEAD_KEY) ?? "").split(",");
+    return VIEWS.filter((view) => kept.includes(view));
   } catch {
-    return null;
+    return [];
   }
 }
 
-export function writeAhead(view: AheadView | null, store: KeyValueStore | null = browserStore()): void {
+export function writeAhead(views: readonly AheadView[], store: KeyValueStore | null = browserStore()): void {
   try {
-    store?.setItem(AHEAD_KEY, view ?? "");
+    store?.setItem(AHEAD_KEY, VIEWS.filter((view) => views.includes(view)).join(","));
   } catch {
     // Blocked site data: the choice holds for this ride only.
   }
@@ -71,7 +74,9 @@ export const AHEAD_HEADING: Record<AheadView, string> = {
 };
 /** Said when a graph comes on: "Traffic stress graph: on." */
 export const aheadOn = (view: AheadView): string => t("{graph}: on.", { graph: AHEAD_NAME[view] });
-export const AHEAD_OFF = t("Graph off.");
+export const aheadOff = (view: AheadView): string => t("{graph}: off.", { graph: AHEAD_NAME[view] });
+/** The stacked graphs' name, for a screen reader. */
+export const AHEAD_GROUP = t("Road ahead");
 const NO_FIGURES = t("No figures for this stretch.");
 export const AHEAD_YOU = t("You");
 
@@ -357,18 +362,111 @@ export function ridersSentence(w: AheadWindow): string {
   return t("Other riders shown: {count}, the last {distance} behind you.", { count: w.riders.length, distance: spokenDistance(w.youM - behind[0]) });
 }
 
+// ---- The y axis (Stephen 2026-11-03: "put labels on the y axis") ----------------------------------------------------
+
+/** The stress graph's levels, at the heights its bars are drawn: 1 to 4 and A for Avoid. */
+export const STRESS_TICKS: readonly { level: number; label: string }[] = [
+  { level: 1, label: "1" },
+  { level: 2, label: "2" },
+  { level: 3, label: "3" },
+  { level: 4, label: "4" },
+  { level: 5, label: "A" },
+];
+
+/** Two or three round heights in feet between the graph's bottom and top (metres, as drawn): "40 ft", "60 ft", "80 ft". */
+export function elevationTicks(lowM: number, highM: number): { m: number; label: string }[] {
+  const lowFt = lowM * FEET_PER_METRE;
+  const highFt = highM * FEET_PER_METRE;
+  const step = [10, 20, 25, 50, 100, 200, 250, 500, 1000].find((s) => (highFt - lowFt) / s <= 3) ?? 1000;
+  const ticks: { m: number; label: string }[] = [];
+  for (let ft = Math.ceil(lowFt / step) * step; ft <= highFt; ft += step) ticks.push({ m: ft / FEET_PER_METRE, label: formatAxisFeet(ft) });
+  return ticks;
+}
+
+/** The flow graph's guides as its y labels: 60 and 120 riders a minute, and 200 where the graph reaches it. */
+export function flowTicks(top: number): number[] {
+  return [60, 120, 200].filter((r) => r < top);
+}
+
+// ---- Turns and junction markers (Stephen 2026-11-03: "an upcoming turns layer on the graph ... on the same scale. Black
+// arrows for normal turns, with orange and red for more stressful. Include the other stress markers too.") ----------
+
+export type TurnMovementKey = "left" | "right" | "bear_left" | "bear_right" | "uturn";
+export interface TurnMark {
+  m: number;
+  /** A turn's arrow; null for a junction marker that is not a turn. */
+  movement: TurnMovementKey | null;
+  /** Orange (a triangle) and red (a diamond) as the planner's junction markers; "avoid" an Avoid stretch's start. */
+  severity: "orange" | "red" | "avoid" | null;
+}
+
+interface CueLike {
+  kind: string;
+  atM: number;
+  movement: TurnMovementKey | null;
+  severity: "orange" | "red" | "avoid" | null;
+  /** A jog's later turn: drawn with the jog's first, as the cue card draws it. */
+  joined?: boolean;
+  /** A short path straight across a road: not a turn on the card, so not one here. */
+  cross?: string;
+  source?: string;
+}
+
+/**
+ * The turns and the stress markers in the window: each turn the card shows (a jog as one, a crossing straight over not
+ * at all), each junction the planner flagged orange or red, and where an Avoid stretch starts. Not work zones or
+ * hazards: they are not junctions.
+ */
+export function turnMarks(cues: readonly CueLike[], w: Pick<AheadWindow, "fromM" | "toM">): TurnMark[] {
+  const marks: TurnMark[] = [];
+  for (const c of cues) {
+    if (c.atM < w.fromM || c.atM > w.toM) continue;
+    if (c.kind === "turn") {
+      if (c.movement !== null && !c.joined && !c.cross) marks.push({ m: c.atM, movement: c.movement, severity: c.severity === "orange" || c.severity === "red" ? c.severity : null });
+    } else if (c.source === "junction" && (c.severity === "orange" || c.severity === "red")) {
+      marks.push({ m: c.atM, movement: null, severity: c.severity });
+    } else if (c.source === "avoid") {
+      marks.push({ m: c.atM, movement: null, severity: "avoid" });
+    }
+  }
+  return marks;
+}
+
+const RANK: Record<string, number> = { red: 3, orange: 2, avoid: 1 };
+
+/** Marks closer than `minM` drawn as one, so they never pile up: the turn's arrow kept, in the worse colour of the two. */
+export function spreadMarks(marks: readonly TurnMark[], minM: number): TurnMark[] {
+  const out: TurnMark[] = [];
+  for (const mark of marks) {
+    const last = out[out.length - 1];
+    if (last && mark.m - last.m < minM) {
+      const severity = (RANK[mark.severity ?? ""] ?? 0) > (RANK[last.severity ?? ""] ?? 0) ? mark.severity : last.severity;
+      out[out.length - 1] = { m: last.m, movement: last.movement ?? mark.movement, severity };
+      continue;
+    }
+    out.push({ ...mark });
+  }
+  return out;
+}
+
+/** "Turns ahead: 3. Busy junctions: 1.", or nothing where there are neither. */
+export function turnsSentence(marks: readonly TurnMark[], youM: number): string {
+  const ahead = marks.filter((mark) => mark.m >= youM);
+  const turns = ahead.filter((mark) => mark.movement !== null).length;
+  const busy = ahead.filter((mark) => mark.severity === "orange" || mark.severity === "red").length;
+  return turns || busy ? t("Turns ahead: {turns}. Busy junctions: {busy}.", { turns, busy }) : "";
+}
+
 export interface AxisTick {
   m: number;
   label: string;
 }
 
-const HALF = "½";
+// Decimals, not fractions (Stephen 2026-11-03: "Decimals and not fractions"): "0.5", "1", "1.5".
 function mileLabel(miles: number): string {
-  const sign = miles < 0 ? "−" : "";
-  const a = Math.abs(miles);
-  const whole = Math.floor(a + 1e-9);
-  const half = a - whole > 0.25;
-  return sign + (half ? (whole ? `${whole}${HALF}` : HALF) : String(whole));
+  const sign = miles < 0 ? "\u2212" : "";
+  const a = Math.round(Math.abs(miles) * 10) / 10;
+  return sign + (Number.isInteger(a) ? String(a) : a.toFixed(1));
 }
 
 /** Ticks every half mile (a mile, or two, on a long window), counted from you; the last one says "mi". */

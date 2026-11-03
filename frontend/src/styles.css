@@ -4594,17 +4594,43 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
   max-width: 520px;
 }
 
-.ride-ahead-heading {
-  margin: 0;
-  font-size: 0.95rem;
-  font-weight: 700;
-}
-
 .ride-ahead-plot {
   display: block;
   width: 100%;
   height: auto;
   font-family: inherit;
+}
+
+.ride-ahead-plot .ride-ahead-name {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.ride-ahead-arrow-shaft,
+.ride-ahead-arrow-edge {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.ride-ahead-arrow-shaft {
+  stroke: var(--text);
+  stroke-width: 3;
+}
+
+.ride-ahead-arrow-head {
+  fill: var(--text);
+}
+
+/* The dark edge under an orange or red arrow, so it holds 3:1 on the panel in either theme. */
+.ride-ahead-arrow-edge {
+  stroke-width: 5.5;
+}
+
+.ride-ahead-you-line {
+  stroke: var(--accent);
+  stroke-dasharray: 2 3;
+  opacity: 0.6;
 }
 
 .ride-ahead-plot text {
@@ -4673,17 +4699,13 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
   stroke-width: 3px;
 }
 
-.ride-ahead-guide line {
+.ride-ahead-plot .ride-ahead-guide {
   stroke: var(--text-muted);
   stroke-dasharray: 2 3;
 }
 
-.ride-ahead-plot .ride-ahead-guide text {
-  font-size: 12px;
-  fill: var(--text);
-  paint-order: stroke;
-  stroke: var(--bg);
-  stroke-width: 3px;
+.ride-ahead-plot .ride-ahead-y text {
+  font-size: 11px;
 }
 
 .ride-ahead-narrowest path {
@@ -4707,6 +4729,12 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
   fill: var(--accent-text);
   font-size: 14px;
   font-weight: 700;
+}
+
+.ride-ahead-plot .ride-ahead-street {
+  paint-order: stroke;
+  stroke: var(--bg);
+  stroke-width: 4px;
 }
 
 .ride-ahead-plot .ride-ahead-none {

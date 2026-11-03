@@ -1890,4 +1890,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Other riders shown: {count}, the last {distance} behind you.": "Đang hiện {count} người đạp xe khác, người cuối cùng ở sau bạn {distance}.",
   "Mostly {level}, {top} here.": "Chủ yếu {level}, {top} tại đây.",
   "Narrowest {riders} riders a minute, here.": "Hẹp nhất: {riders} người đạp xe mỗi phút, tại đây.",
+  "{graph}: off.": "{graph}: tắt.",
+  "Road ahead": "Đường phía trước",
+  "Turns ahead: {turns}. Busy junctions: {busy}.": "Chỗ rẽ phía trước: {turns}. Giao lộ đông xe: {busy}.",
 };
