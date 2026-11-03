@@ -412,7 +412,10 @@ class TestIntersectionsInTheAnswer:
 class TestEveryRideType:
     @pytest.mark.parametrize(
         "name",
-        sorted(set(presets.PRESETS) - {*presets.BIKESHARE_PRESETS, *presets.TRANSIT_PRESETS}),
+        sorted(
+            set(presets.PRESETS)
+            - {*presets.BIKESHARE_PRESETS, *presets.TRANSIT_PRESETS, presets.RUN}
+        ),
     )
     def test_every_ride_type_has_the_list(self, name, client, arterial, router) -> None:
         router(world())

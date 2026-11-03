@@ -12,7 +12,7 @@ from xml.sax.saxutils import quoteattr
 import pytest
 import test_tile_build_access as tiles_test
 
-from core import novice_walks, routing
+from core import novice_walks, routing, walk_turns
 from core.dedodge import encode_polyline6
 
 
@@ -234,6 +234,8 @@ class TestRouterCalls:
         assert "sidewalk_factor" not in plain
         assert preferring["sidewalk_factor"] == routing.WALKWAY_PREFERENCE
         assert preferring["walkway_factor"] == routing.WALKWAY_PREFERENCE
+        # Beside a bike, never up a flight of steps where a step-free way is near.
+        assert plain["step_penalty"] == preferring["step_penalty"] == walk_turns.STEP_FREE_PENALTY_S
 
     def test_the_roadside_metres_count_main_roads_without_a_sidewalk(self, monkeypatch) -> None:
         edges = [

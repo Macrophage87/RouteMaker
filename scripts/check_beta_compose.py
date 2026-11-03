@@ -61,9 +61,10 @@ import check_compose_limits as production  # noqa: E402
 
 REPO = Path(__file__).resolve().parent.parent
 
-# The services the beta runs. `valhalla-offroad` and `valhalla-mtb` sit behind the `offroad`
-# profile and start once their tiles are on the host (scripts/beta/auto-release.sh), so they are
-# allowed, not required; the budget always counts them (main renders with the profile on).
+# The services the beta runs. `valhalla-offroad`, `valhalla-mtb` and `valhalla-paved` sit behind
+# the `offroad` profile and start once their tiles are on the host (scripts/beta/auto-release.sh),
+# so they are allowed, not required; the budget always counts them (main renders with the
+# profile on).
 EXPECTED_SERVICES = {
     "postgis",
     "api",
@@ -77,7 +78,7 @@ EXPECTED_SERVICES = {
     # The api workers' shared answer cache (audit S14; the owner, 2026-10-27).
     "memcached",
 }
-OPTIONAL_SERVICES = {"valhalla-offroad", "valhalla-mtb"}
+OPTIONAL_SERVICES = {"valhalla-offroad", "valhalla-mtb", "valhalla-paved"}
 FORBIDDEN_SERVICES = {"caddy", "rebuild", "renderer", "bot"}
 
 # Exits before the api starts (api depends on it completing), so it is not
@@ -96,11 +97,13 @@ ONE_SHOT = {"migrate"}
 # 2026-10-25: "Raise ceiling to 7.35 GB"; the map update's stress-tile pre-draw runs in
 # the worker and was OOM-killed at 256M); it still leaves the host 1.25 GiB of the 8.6
 # for its own growth. The memcached the api's workers share (24M; the owner, 2026-10-27, at
-# "about 16 MB") fits under that ceiling, in the 40 MiB it left.
+# "about 16 MB") fits under that ceiling, in the 40 MiB it left. The Road Bike router's 320M
+# (2026-11-02, "Raise ceiling to 7.66 GB") takes the ceiling to 7.66 GiB and the startup
+# peak's margin from 1.0 to 0.7 GiB.
 HOST_AVAILABLE_GB = 8.6
-MAX_RESIDENT_GB = 7.35
+MAX_RESIDENT_GB = 7.66
 # The startup peak (resident plus the largest one-shot) must leave the host at least this much.
-PEAK_MARGIN_GB = 1.0
+PEAK_MARGIN_GB = 0.7
 
 # OWNER-DECISIONS 367.2: two route plans at once. src/config/settings.py derives the
 # pools from WEB_CONCURRENCY; these mirror its arithmetic (tests/test_beta_overlay.py
@@ -302,7 +305,7 @@ def check_budget(services: dict) -> list[str]:
     if peak_gb > HOST_AVAILABLE_GB - PEAK_MARGIN_GB:
         problems.append(
             f"startup peak (resident plus the largest one-shot) {peak_gb:.2f} GiB leaves under "
-            f"{PEAK_MARGIN_GB:.0f} GiB of the host's {HOST_AVAILABLE_GB} GiB available"
+            f"{PEAK_MARGIN_GB:g} GiB of the host's {HOST_AVAILABLE_GB} GiB available"
         )
     return problems
 
