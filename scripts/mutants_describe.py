@@ -219,8 +219,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "junction: a turn's flagged severity dropped (full)",
         D,
-        "        severity = None\n        if turn is not None and turn.event is not None and turn.event.flagged:\n            severity = turn.event.severity\n        entries.append(",
-        "        severity = None\n        if False and turn.event is not None and turn.event.flagged:\n            severity = turn.event.severity\n        entries.append(",
+        "        severity = None\n        if turn is not None and turn.event is not None and turn.event.flagged:\n            severity = turn.event.severity\n        crossings = _road_crossings(run, starts[i], events, used, scale) if run.path else []\n        entries.append(",
+        "        severity = None\n        if False and turn.event is not None and turn.event.flagged:\n            severity = turn.event.severity\n        crossings = _road_crossings(run, starts[i], events, used, scale) if run.path else []\n        entries.append(",
         PURE,
     ),
     (

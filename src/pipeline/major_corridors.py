@@ -20,7 +20,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from routemaker.facility import BIKE_LANE_WORDS, PROTECTED_BIKE_LANE_WORDS
+from routemaker.facility import sidepath_street
 
 logger = logging.getLogger(__name__)
 
@@ -82,14 +82,9 @@ def load(directory: Path = FIXTURE_DIR) -> tuple[Corridor, ...]:
 
 
 def street_of(sidepath_name: str | None) -> str | None:
-    """The street a bike lane beside it is named for ("K Street Northwest protected bike
-    lane" -> "K Street Northwest"), or None."""
-    if not sidepath_name:
-        return None
-    for words in (PROTECTED_BIKE_LANE_WORDS, BIKE_LANE_WORDS):
-        if sidepath_name.endswith(" " + words):
-            return sidepath_name[: -len(words) - 1]
-    return None
+    """The street a bike lane or shared path beside it is named for
+    (`routemaker.facility.sidepath_street`), or None."""
+    return sidepath_street(sidepath_name)
 
 
 def middle(coordinates: Sequence[tuple[float, float]]) -> tuple[float, float] | None:

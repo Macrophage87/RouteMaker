@@ -183,7 +183,7 @@ test("Share live (it was Broadcast) is one small button beside Start, in Plan an
   assert.match(panel, /<p className="hint broadcast-note" role="status">/);
   // The same line shared again goes with the same leader key; the ride starts with the sharer free to re-route.
   assert.match(app, /const lead = again \? again\.lead : ride && kept \? \(\(sharedId \? leads\.current\.get\(sharedId\) : undefined\) \?\? leadPrep\.current\) : null;/);
-  assert.match(app, /const opened = sharedOpenNow\.current\?\.answer === route \? sharedOpenNow\.current : null;/);
+  assert.match(app, /const opened = sharedOpenNow\.current\?\.answer === asked \? sharedOpenNow\.current : null;/);
   // The sharer's key is made before the press, so no await comes before the share sheet.
   assert.match(app, /useEffect\(prepareLead, \[prepareLead\]\);/);
 });

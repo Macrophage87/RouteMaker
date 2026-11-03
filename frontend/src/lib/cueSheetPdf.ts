@@ -17,7 +17,11 @@ import type { RouteResponse } from "./api.ts";
 import { parkNoticesOf, noticeMarkerName } from "./closureMap.ts";
 import { abbreviateStreet, creditLine, routeCues, type CourseCueType, type RouteCue } from "./course.ts";
 import { routeWarning } from "./dialsPanel.ts";
-import { formatClimb, formatDistance, formatDuration, formatMileMarker, formatMileMarkerUnits, milesFigure } from "./format.ts";
+import { formatClimb, formatDistance, formatDuration, formatMileMarker, formatMileMarkerUnits, markerFigure } from "./format.ts";
+import { metricFirst } from "./units.ts";
+
+/** The distance column's head, the rider's units first (lib/units.ts). */
+const markerHead = (): string => (metricFirst() ? "Km (miles)" : "Miles (km)");
 import { CREATOR } from "./gpx.ts";
 import { exportFileName, exportName } from "./gpxText.ts";
 import { TaggedPdf, textWidth, wrapText, type PdfFont, type StructElement } from "./pdf.ts";
@@ -332,7 +336,7 @@ export function cueSheetDocument(route: SheetRoute, kind: CueSheetKind, vias: re
     const t = layoutTable(
       rows,
       [
-        { head: "Miles (km)", width: 96, cell: rowDistance, font: "bold" },
+        { head: markerHead(), width: 96, cell: rowDistance, font: "bold" },
         { head: "Turn", width: 64, cell: (r) => r.turn, font: "bold" },
         { head: "Road", width: 164, cell: (r) => r.road, font: "regular" },
         { head: "Notes", width: LETTER.width - 108 - 96 - 64 - 164, cell: (r) => r.notes, font: "regular" },
@@ -358,10 +362,10 @@ export function cueSheetDocument(route: SheetRoute, kind: CueSheetKind, vias: re
     rows,
     [
       {
-        head: "Miles (km)",
+        head: markerHead(),
         width: 54,
         cell: (r) => [
-          { text: milesFigure(r.atM), size: 16, font: "bold" },
+          { text: markerFigure(r.atM), size: 16, font: "bold" },
           { text: formatMileMarkerUnits(r.atM), size: 7, font: "regular" },
         ],
         font: "bold",

@@ -1412,9 +1412,41 @@ class TestTappedTrail:
         assert body["end"][1] > body["start"][1]
         # And its line, which the map lights up from end to end.
         assert body["line"][0] == body["start"] and body["line"][-1] == body["end"]
+        # Ridden both ways: no oneway, so the chart may run it north to south.
+        assert "oneway" not in body or body["oneway"] is None
         # A road is not a trail: no profile is drawn for it.
         assert client.get("/api/trails/504/profile", **fresh_client()).status_code == 404
         assert client.get("/api/trails/999999/profile", **fresh_client()).status_code == 404
+
+    def test_a_one_way_trail_says_which_way_it_is_ridden(
+        self, client, segment_schemas, router, monkeypatch
+    ) -> None:
+        """The owner, 2026-11-03: "One way should keep it's one way" (the chart keeps the
+        way it is ridden) and "Make that clear when clicking on it too" (the panel says so)."""
+        from core import routing, trailprofile
+
+        live, _ = segment_schemas
+        trail = north(SPOT, 8)
+        insert(
+            live,
+            507,
+            [trail, north(trail, 100)],
+            bike_access_reason="mtb",
+            mtb_only=True,
+            trail_tags=json.dumps({"oneway": "-1", "surface": "dirt"}),
+        )
+        monkeypatch.setattr(
+            routing,
+            "_call",
+            lambda variant, endpoint, payload, deadline: {"height": [20.0] * len(payload["shape"])},
+        )
+        trailprofile._kept.clear()
+        body = client.get("/api/trails/507/profile", **fresh_client()).json()
+        assert body["oneway"] == "backward"
+        info = client.get(
+            INFO, {"lat": trail[1], "lon": trail[0], "trail": "true"}, **fresh_client()
+        ).json()
+        assert any(line.startswith("One way") for line in summary(info))
 
     def test_a_router_down_is_503_and_a_refusal_is_not_kept(
         self, client, segment_schemas, router, monkeypatch

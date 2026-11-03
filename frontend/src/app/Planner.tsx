@@ -9,7 +9,8 @@ import { t } from "../lib/i18n.ts";
 import { infoHelp } from "../lib/roadInfo.ts";
 import { looksLikePhone } from "../lib/startOnComputer.ts";
 import type { RouteResponse } from "../lib/api.ts";
-import { MAX_POINTS, type LonLat } from "../lib/geo.ts";
+import type { LonLat } from "../lib/geo.ts";
+import { maxPointsFor } from "../lib/tripStops.ts";
 import { YOUR_LOCATION } from "../lib/appMode.ts";
 import { usesBikeshare, type PresetId } from "../lib/presets.ts";
 import { accessibilityOn, paletteSetByAddress, setAccessibility } from "../stressStyle.js";
@@ -214,6 +215,7 @@ export function PointsSection(props: PointsSectionProps) {
           with one job, in place of one search box and its Start / Destination / Stop choice. The boxes stay open with
           a route shown, so more stops can be added by search (Stephen 2026-10-14). */}
       <PointBoxes
+        preset={preset}
         pointsSearchRef={pointsSearchRef}
         points={points}
         loopVias={loopVias}
@@ -261,6 +263,7 @@ export function PointsSection(props: PointsSectionProps) {
 
 type PointBoxesProps = Pick<
   PointsSectionProps,
+  | "preset"
   | "pointsSearchRef"
   | "points"
   | "loopVias"
@@ -292,7 +295,7 @@ type PointBoxesProps = Pick<
  * Start / Destination / Stop choice. It keeps which point a Change opened a box for; App keeps the plan.
  */
 function PointBoxes(props: PointBoxesProps) {
-  const { pointsSearchRef, points, loopVias, geoGate, searchBias, pickPlace, locateReady, locating, locateNote, locateMe, accessMode, namer, located, removeAt, reorderPoint, pointWarnings, removeRefs, orderShown, bestOrder, orderFocused, ordering } = props;
+  const { preset, pointsSearchRef, points, loopVias, geoGate, searchBias, pickPlace, locateReady, locating, locateNote, locateMe, accessMode, namer, located, removeAt, reorderPoint, pointWarnings, removeRefs, orderShown, bestOrder, orderFocused, ordering } = props;
   // Each stop's grip (lib/pointMover.ts): drag, the arrows, or a press for Up and Down. Only the stops move, as with
   // Best order: the start and the end stay, and a via point goes with the stop it leads to (App.tsx reorderPoint).
   const slots = namePoints(points, VIA_MARKS.isVia, loopVias).flatMap((n, i) => (n.role === "stop" ? [i] : []));
@@ -329,7 +332,7 @@ function PointBoxes(props: PointBoxesProps) {
     next?.current?.focus();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once per pick, after the plan it made
   }, [points]);
-  const full = points.length >= MAX_POINTS;
+  const full = points.length >= maxPointsFor(preset);
   const placeName = (index: number) => (points[index] ? (names.name(points[index])?.name ?? "a point on the map") : undefined);
   const search = (variant: "from" | "to" | "add") => (
     <PlaceSearch
