@@ -11,7 +11,11 @@ script, the rebuild's reports and the routers' addresses:
     docker compose exec -T rebuild python3 scripts/probe_bicycle_closures.py locate
     docker compose exec -T rebuild python3 scripts/probe_bicycle_closures.py trip \\
         --preset default --from=-77.0063,38.8973 --to=-76.6158,39.3074 \\
-        --avoid-ways /data/rebuild/reports/singletrack-ways.txt --host <allowed host>
+        --avoid-ways <reports>/singletrack-ways.txt --host <allowed host>
+
+where <reports> is the serving build's reports folder, which `locate` prints:
+/data/rebuild/cloud-reports/<build id>/reports after a cloud build, else
+/data/rebuild/reports.
 
 `locate` reads the probes VALIDATE_TILES wrote (`bicycle-closure-probes.csv`) and asks
 every router, with one pedestrian `/locate` each, whether any probed way has an
@@ -43,7 +47,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from pipeline import tiles  # noqa: E402
 
-REPORTS = Path(os.environ.get("DATA_ROOT", "/data")) / "rebuild" / "reports"
+DATA_ROOT = Path(os.environ.get("DATA_ROOT", "/data"))
+# A local rebuild writes its reports here; a cloud build's are unpacked by
+# scripts/cloud/import-result.sh to rebuild/cloud-reports/<build id>/reports/ and
+# this folder keeps whatever the last local rebuild wrote (serving_reports).
+REPORTS = DATA_ROOT / "rebuild" / "reports"
+CLOUD_REPORTS = DATA_ROOT / "rebuild" / "cloud-reports"
+TILES = DATA_ROOT / "tiles"
 ROUTERS = {
     "standard": os.environ.get("VALHALLA_STANDARD_URL", "http://valhalla-standard:8002"),
     "no-trail": os.environ.get("VALHALLA_NO_TRAIL_URL", "http://valhalla-no-trail:8002"),
@@ -67,9 +77,25 @@ OFFROAD_KEEPS = ("mtb",)
 # probe on it instead (MTB_KEEPS); the rebuild's own readback held the undrawn ones closed.
 MTB_KEEPS = ("mtb", "singletrack")
 KEEPS = {OFFROAD: OFFROAD_KEEPS, MTB: MTB_KEEPS}
-MAX_PROBES = 200
+# The gate writes 40 singletracks, 20 OSM closures and 8 per NO-BIKE-PATHS reason
+# (pipeline.run.CLOSURE_GATE_*): 204 on the 2026-11-03 build, so 200 refused it.
+MAX_PROBES = 400
 TIMEOUT_S = 60
 MILE_M = 1609.344
+
+
+def serving_reports(tiles: Path = TILES, cloud_reports: Path = CLOUD_REPORTS) -> Path:
+    """The reports of the build being served: the cloud build's own when the standard
+    graph's `current` names a build whose reports import-result.sh unpacked, else the
+    local rebuild's. Without this, after a cloud build the probe read the last local
+    rebuild's list, which named ways the new build no longer has (2026-11-03: five
+    false OPENs from a 2026-10-11 list)."""
+    try:
+        build = os.readlink(tiles / "standard" / "current")
+    except OSError:
+        return REPORTS
+    cloud = cloud_reports / Path(build).name / "reports"
+    return cloud if (cloud / "bicycle-closure-probes.csv").is_file() else REPORTS
 
 
 def _post(url: str, body: dict, headers: dict[str, str] | None = None) -> object:
@@ -211,7 +237,12 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     commands = parser.add_subparsers(dest="command", required=True)
     probe = commands.add_parser("locate", help="the rebuild's closure probes, on every router")
-    probe.add_argument("--probes", type=Path, default=REPORTS / "bicycle-closure-probes.csv")
+    probe.add_argument(
+        "--probes",
+        type=Path,
+        default=None,
+        help="default: the serving build's bicycle-closure-probes.csv (serving_reports)",
+    )
     probe.set_defaults(handler=locate)
     ride = commands.add_parser("trip", help="a planned route, and its distance on avoided ways")
     ride.add_argument("--preset", required=True)
@@ -229,6 +260,9 @@ def main(argv: list[str] | None = None) -> int:
     )
     ride.set_defaults(handler=trip)
     args = parser.parse_args(argv)
+    if args.command == "locate" and args.probes is None:
+        args.probes = serving_reports() / "bicycle-closure-probes.csv"
+        print(f"probes: {args.probes}")
     return args.handler(args)
 
 

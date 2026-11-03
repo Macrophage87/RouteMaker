@@ -5,6 +5,8 @@ import { routeRequestBody } from "./api.ts";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import type { DescriptionEntry, RouteResponse } from "./api.ts";
+import { unitsFirst } from "./format.ts";
+import { setUnitsForTest } from "./units.ts";
 import type { LonLat } from "./geo.ts";
 import { spokenDistance } from "./format.ts";
 import { cueParts } from "./cueShown.ts";
@@ -916,6 +918,24 @@ test("speech has no metric: a cue with metres, two brackets in one sentence", ()
   assert.equal(withoutMetric("10 mph (about 16 km/h) for 1 mi (1.6 km)."), "10 mph for 1 mi.");
   const cue = { ...rideModel(lRoute()).cues[0], text: "Walk 300 ft (90 m) across the bridge." };
   assert.equal(cueSpoken(cue, "advance", 150), "In 500 feet, walk 300 ft across the bridge.");
+});
+
+test("speech in metric mode says the metric and drops the US twin in brackets", () => {
+  setUnitsForTest("metric");
+  try {
+    // The server's words as Ride holds them in metric mode, turned round by unitsFirst.
+    assert.equal(withoutMetric(unitsFirst("Walk 300 ft (90 m) across the bridge.")), "Walk 90 m across the bridge.");
+    assert.equal(withoutMetric(unitsFirst("1.0 to 1.6 mi (1.6 to 2.6 km): 6 crossings")), "1.6 to 2.6 km: 6 crossings");
+    // Words kept from before metric was chosen are turned too.
+    assert.equal(withoutMetric("10 mph (about 16 km/h) for 1 mi (1.6 km)."), "about 16 km/h for 1.6 km.");
+    assert.equal(withoutMetric("Walk 300 ft (90 m) across the bridge."), "Walk 90 m across the bridge.");
+    assert.equal(withoutMetric(unitsFirst("10 mph (about 16 km/h) for 1 mi (1.6 km).")), "about 16 km/h for 1.6 km.");
+    assert.equal(withoutMetric("low stress (LTS 1)."), "low stress (LTS 1).");
+    const said = spokenText(unitsFirst("Walk 300 ft (90 m) across the bridge, then 0.4 mi (0.6 km) on the trail."));
+    assert.doesNotMatch(said, /\b(?:ft|mi|mph|feet|miles?)\b/);
+  } finally {
+    setUnitsForTest("us");
+  }
 });
 
 test("measureMap: a stop off the uniform scale maps onto its vertex", () => {
@@ -2628,4 +2648,86 @@ test("the screen's short words (the UI review, 2026-10-28): Where am I? in two l
   // Arrived: the destination's name where the map has one.
   assert.equal(arrivedShown("Union Station"), "Arrived: Union Station");
   assert.equal(arrivedShown(null), "Arrived");
+});
+
+// ---- A road a trail crosses (the owner, 2026-11-03: "when the trail crosses the road or you turn after crossing the road, announce that") ----
+
+function henson(): RideModel {
+  return rideModel(
+    straightRoute([
+      stretch(0, 1200, "Matthew Henson Trail, traffic-free path.", {
+        street: "Matthew Henson Trail",
+        facility: "path",
+        crossings: [{ at_m: 600, road: "Layhill Road" }],
+      }),
+      // A junction entry after the stretch, before the crossing along the line: the cues still run in order.
+      {
+        ...stretch(400, 400, "At 0.2 mi (0.4 km): Cross Alderton Road (LTS 3), no signal mapped (Higher stress junction)."),
+        kind: "junction",
+        street: "Alderton Road",
+        tier: null,
+        severity: "orange",
+        turn: { movement: "straight", onto: null, control: "none", severity: "orange" },
+      },
+    ]),
+  );
+}
+
+test("crossing: a road the trail crosses is a cue of its own, in order along the line, drawn across the road", () => {
+  const model = henson();
+  assert.deepEqual(
+    model.cues.map((c) => [c.kind, Math.round(c.atM), c.index]),
+    [
+      ["hazard", 400, 0],
+      ["crossing", 600, 1],
+      ["end", 1200, 2],
+    ],
+  );
+  const crossing = model.cues[1];
+  assert.equal(crossing.text, "Cross Layhill Road.");
+  assert.equal(crossArrow(crossing), "cross");
+  // The card leads with it only when near (about when it is said); before that the next action after it.
+  assert.equal(nextAction(model, 450)?.kind, "end");
+  assert.equal(nextAction(model, 530), crossing);
+});
+
+test("crossing: one not yet near holds back no turn's first warning after it", () => {
+  const model = rideModel(
+    straightRoute([
+      stretch(0, 1000, "Sligo Creek Trail.", { street: "Sligo Creek Trail", facility: "path", crossings: [{ at_m: 960, road: "Dennis Avenue" }] }),
+      stretch(1000, 2000, "Right onto Long Branch Trail.", { street: "Long Branch Trail", facility: "path", turn: turning("right", "Long Branch Trail") }),
+    ]),
+  );
+  const said = ride(model, "full", 0, 1000).events.map((e) => e.spoken);
+  const first = said.findIndex((s) => s.includes("Long Branch"));
+  const crossing = said.findIndex((s) => s.includes("Dennis"));
+  assert.ok(first >= 0 && crossing > first, "the turn's advance warning comes before the crossing's");
+});
+
+test("crossing: said once, about 10 s out, at the Full level only", () => {
+  const model = henson();
+  const said = ride(model, "full", 0, 700).events.map((e) => e.spoken);
+  const crossings = said.filter((s) => s.includes("Layhill"));
+  assert.equal(crossings.length, 1);
+  assert.match(crossings[0], /^In \d+ feet, cross Layhill Road\.$/);
+  assert.ok(said.some((s) => s.includes("Alderton")), "the flagged crossing before it is still said");
+  assert.equal(ride(model, "stoker", 0, 700).events.filter((e) => e.spoken.includes("Layhill")).length, 0);
+});
+
+test("crossing: one within 30 m of a cue that names the road is left to it; beside any other cue it is said", () => {
+  const model = (road: string) =>
+    rideModel(
+      straightRoute([
+        stretch(0, 1000, "Sligo Creek Trail.", { street: "Sligo Creek Trail", facility: "path", crossings: [{ at_m: 1010, road }] }),
+        stretch(1000, 2000, "Cross Sligo Creek Parkway, then bear left to stay on Sligo Creek Trail.", {
+          street: "Sligo Creek Trail",
+          facility: "path",
+          turn: { ...turning("bear_left", "Sligo Creek Trail"), across: "Sligo Creek Parkway" },
+        }),
+      ]),
+    );
+  assert.ok(!model("Sligo Creek Parkway").cues.some((c) => c.kind === "crossing"));
+  const kept = model("New Hampshire Avenue");
+  assert.equal(kept.cues.filter((c) => c.kind === "crossing").length, 1);
+  assert.deepEqual(kept.cues.map((c) => c.index), kept.cues.map((_c, i) => i));
 });

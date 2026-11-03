@@ -10,7 +10,7 @@
  */
 import { createElement as h, useEffect, useState, type ReactElement } from "react";
 import { ElevationProfileChart, gradeText, profileEnds } from "./climbCard.ts";
-import { formatClimb, formatDistance } from "./format.ts";
+import { formatClimb, formatDistance, unitsFirstDeep } from "./format.ts";
 import { setPanelTrail } from "./trailHighlight.ts";
 
 /** GET /api/trails/{way}/profile (core.api.TrailProfileOut). */
@@ -29,12 +29,15 @@ export interface TrailProfile {
   end?: [number, number] | null;
   /** The way's line, [lon, lat] from start to end, which the map lights up (older answers have none). */
   line?: [number, number][] | null;
+  /** Ridden one way only: "forward" as the line is drawn, "backward" against it (left out where both ways). */
+  oneway?: "forward" | "backward" | null;
 }
 
 export type TrailProfileState = { kind: "loading" } | { kind: "ready"; profile: TrailProfile } | { kind: "none" } | { kind: "error" };
 
 export const TRAIL_PROFILE_HEADING = "Elevation";
 export const TRAIL_PROFILE_LOADING = "Loading the elevation profile…";
+export const TRAIL_ONE_WAY = "One way: ridden left to right";
 export const TRAIL_PROFILE_ERROR = "The elevation profile is not available right now.";
 
 export function trailProfileUrl(way: number): string {
@@ -57,6 +60,47 @@ function looksLikeProfile(body: unknown): body is TrailProfile {
   );
 }
 
+/**
+ * The profile turned, where it needs to be, so it reads from its north end to its south end, or from its west end to
+ * its east end, whichever way the trail mostly runs (the owner, 2026-11-03: "in general people tend to envision things
+ * from North to South, and from west to east from an elevation graph"). OSM draws a way in whichever direction its
+ * mapper did, so the chart, the map's start and end markers and the words all follow this turned profile. A loop (ends
+ * within 50 m, where profileEnds gives no letters) and an older answer without its ends stay as drawn.
+ *
+ * A one-way trail runs the way it is ridden instead (the owner, 2026-11-03: "One way should keep it's one way. The
+ * primary direction should win. This is mainly about keeping a convention unless there's a good reason to break it.").
+ */
+export function northOrWestFirst(p: TrailProfile): TrailProfile {
+  if (p.oneway === "forward") return p;
+  if (p.oneway === "backward") return turned(p);
+  const start = p.start ?? p.line?.[0] ?? null;
+  const end = p.end ?? (p.line && p.line.length > 0 ? p.line[p.line.length - 1] : null);
+  if (!start || !end || !profileEnds(start, end)) return p;
+  const east = (end[0] - start[0]) * Math.cos((((start[1] + end[1]) / 2) * Math.PI) / 180);
+  const north = end[1] - start[1];
+  const turn = Math.abs(north) >= Math.abs(east) ? north > 0 : east < 0;
+  return turn ? turned(p) : p;
+}
+
+/** The profile from its other end. */
+function turned(p: TrailProfile): TrailProfile {
+  const total = p.m[p.m.length - 1] ?? 0;
+  return {
+    ...p,
+    gain_m: p.loss_m,
+    loss_m: p.gain_m,
+    m: p.m.map((m) => total - m).reverse(),
+    elevation_m: [...p.elevation_m].reverse(),
+    // Grades are signed, positive uphill: the other way, uphill is downhill.
+    grade_pct: p.grade_pct.map((g) => (g === null ? null : g === 0 ? 0 : -g)).reverse(),
+    start: p.end ?? null,
+    end: p.start ?? null,
+    line: p.line ? [...p.line].reverse() : p.line,
+    // A one-way trail turned to run the way it is ridden now runs forward.
+    ...(p.oneway ? { oneway: "forward" as const } : {}),
+  };
+}
+
 /** Ask the API: ready, none (not a drawn trail, or no heights) or error (try later). */
 export async function fetchTrailProfile(
   way: number,
@@ -67,8 +111,8 @@ export async function fetchTrailProfile(
     const response = await fetcher(trailProfileUrl(way), { headers: { Accept: "application/json" }, signal });
     if (response.status === 404) return { kind: "none" };
     if (!response.ok) return { kind: "error" };
-    const body = await response.json();
-    return looksLikeProfile(body) ? { kind: "ready", profile: body } : { kind: "error" };
+    const body = unitsFirstDeep(await response.json());
+    return looksLikeProfile(body) ? { kind: "ready", profile: northOrWestFirst(body) } : { kind: "error" };
   } catch (error) {
     if ((error as { name?: string })?.name === "AbortError") throw error;
     return { kind: "error" };
@@ -118,5 +162,7 @@ export function TrailProfileBody({ state, uid }: { state: TrailProfileState; uid
 export function TrailProfileChart({ profile, uid }: { profile: TrailProfile; uid: string }): ReactElement {
   const ends = profile.start && profile.end ? profileEnds(profile.start, profile.end) : null;
   const summary = trailProfileSummary(profile);
-  return h(ElevationProfileChart, { profile, summary: ends ? `${summary} ${ends.words}` : summary, uid, ends });
+  // A one-way trail says so, and which way (the owner, 2026-11-03: "Make that clear when clicking on it too").
+  const way = profile.oneway ? (ends ? `One way: ${ends.words.replace(/^Runs /, "ridden ")}` : `${TRAIL_ONE_WAY}.`) : ends?.words;
+  return h(ElevationProfileChart, { profile, summary: way ? `${summary} ${way}` : summary, uid, ends });
 }

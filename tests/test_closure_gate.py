@@ -599,3 +599,34 @@ def test_only_the_offroad_readback_leaves_out_the_mtb_probes(monkeypatch, tmp_pa
             Variant.MTB: [2, 4],
         }.get(variant, [1, 2, 3, 4])
         assert readbacks[variant] == expected, variant
+
+
+def test_after_a_cloud_build_the_probe_reads_that_builds_own_list(probe_script, tmp_path) -> None:
+    """2026-11-03: after a cloud build the probe read the last local rebuild's list
+    (2026-10-11), which named ways the new build no longer has: five false OPENs."""
+    tiles_dir = tmp_path / "tiles"
+    (tiles_dir / "standard" / "20261103T013053Z").mkdir(parents=True)
+    (tiles_dir / "standard" / "current").symlink_to("20261103T013053Z")
+    cloud = tmp_path / "cloud-reports"
+    own = cloud / "20261103T013053Z" / "reports"
+    own.mkdir(parents=True)
+    (own / "bicycle-closure-probes.csv").write_text("way_id,lon,lat,reason\n")
+    assert probe_script.serving_reports(tiles_dir, cloud) == own
+
+
+def test_after_a_local_rebuild_the_probe_reads_the_local_reports(probe_script, tmp_path) -> None:
+    tiles_dir = tmp_path / "tiles"
+    (tiles_dir / "standard" / "20261020T010000Z").mkdir(parents=True)
+    (tiles_dir / "standard" / "current").symlink_to("20261020T010000Z")
+    assert probe_script.serving_reports(tiles_dir, tmp_path / "cloud-reports") == (
+        probe_script.REPORTS
+    )
+    assert probe_script.serving_reports(tmp_path / "no-tiles", tmp_path) == probe_script.REPORTS
+
+
+def test_the_probe_takes_a_list_the_size_the_gate_writes(probe_script) -> None:
+    from pipeline import run
+
+    # 40 singletracks + 20 OSM closures + 8 per reason; 204 on the 2026-11-03 build.
+    assert probe_script.MAX_PROBES >= 204
+    assert run.CLOSURE_GATE_SINGLETRACKS + run.CLOSURE_GATE_OSM_CLOSURES < probe_script.MAX_PROBES
