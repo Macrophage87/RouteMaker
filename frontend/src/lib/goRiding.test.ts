@@ -149,9 +149,14 @@ test("Ride settings in reach: More at the end of the side buttons opens them jus
   // Two pickers (what each level says behind an (i)), so it fits a phone; Done, a tap outside, Escape or the screen left
   // alone close it, and the focus goes back to the Settings bubble (or to More, the bubbles closed).
   assert.match(dialog, /<RideSettingsFields prefs=\{prefs\} onChange=\{onPrefs\} idBase=\{settingsId\} compact \/>/);
+  // Colors and Units too, the same pickers as Settings > Display (Stephen 2026-11-03: "switch to metric or dark modes
+  // from these settings"); Units saves to the account first, as there.
+  assert.match(dialog, /<ThemeSetting idBase=\{`\$\{settingsId\}-display`\} \/>\s*<UnitsSetting idBase=\{`\$\{settingsId\}-display`\} saveNow=\{saveSettingsNow\} \/>/);
+  assert.match(source("../App.tsx"), /onPrefs=\{changeRidePrefs\}\s+saveSettingsNow=\{saveSettingsNow\}/);
+  assert.match(source("../app/Sheets.tsx"), /<ThemeSetting idBase="settings" \/>[\s\S]*<UnitsSetting idBase="settings" saveNow=\{props\.saveSettingsNow\} \/>/);
   assert.match(dialog, /if \(event\.target === event\.currentTarget\) event\.currentTarget\.close\(\);/);
   // Its contents fill it (the padding is theirs), so only a tap on the dim map around it is the dialog's own.
-  assert.match(css, /\.ride-settings-dialog \{[^}]*padding: 0;/);
+  assert.match(css, /\.ask-dialog\.ride-settings-dialog \{[^}]*padding: 0;/);
   assert.match(css, /\.ride-settings-body \{\s*padding: 16px;/);
   // The screen behind is inert while it shows: the cues are said from inside it, a cue said before it opened not again.
   assert.match(dialog, /<div className="ride-settings-body">\s*\{settingsOpen && <PopupLiveRegions polite=\{polite\} assertive=\{assertive\} \/>\}/);

@@ -4969,7 +4969,7 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
 
 /* The ride's settings, a popup opened by the Settings bubble beside More (Stephen 2026-11-03): over the map, the
    ride's screen behind unchanged; tall enough for Large text, scrolled inside itself only if a phone is very short. */
-.ride-settings-dialog {
+.ask-dialog.ride-settings-dialog {
   width: min(440px, calc(100vw - 32px));
   max-height: calc(100dvh - 32px);
   overflow-y: auto;

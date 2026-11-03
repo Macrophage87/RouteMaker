@@ -271,6 +271,7 @@ import { countText } from "./lib/rideGroup.ts";
 import type { SeeEveryone } from "./app/useSeeEveryone.ts";
 import { SeeEveryoneButton } from "./SeeEveryoneButton.tsx";
 import { AheadGraph, aheadLeastPx } from "./AheadGraph.tsx";
+import { ThemeSetting, UnitsSetting } from "./DisplaySettings.tsx";
 import { AHEAD_NAME, AHEAD_WORD, aheadNoRoom, aheadOff, aheadOn, aheadViews, readAhead, writeAhead, RIDER_OFF_ROUTE_M, RIDERS_REACH_M, type AheadView } from "./lib/aheadGraph.ts";
 
 /** The bottom panel's padding and top edge (styles.css .ride-controls), and the graph's margin under it. */
@@ -753,6 +754,7 @@ export function RideMode({
   dials,
   prefs,
   onPrefs,
+  saveSettingsNow,
   follow,
   onFollow,
   headingUp,
@@ -798,6 +800,8 @@ export function RideMode({
   dials: Dials;
   prefs: RidePrefs;
   onPrefs: (prefs: RidePrefs) => void;
+  /** Signed in: save this device's settings to the account before Units reloads the page (App's, as in Settings). */
+  saveSettingsNow?: () => Promise<boolean>;
   follow: boolean;
   onFollow: (on: boolean) => void;
   headingUp: boolean;
@@ -3704,6 +3708,11 @@ export function RideMode({
           </h2>
           {/* The two pickers, what each level says behind its (i): the whole popup fits a phone without scrolling. */}
           <RideSettingsFields prefs={prefs} onChange={onPrefs} idBase={settingsId} compact />
+          {/* Colors and Units, as in Settings > Display (Stephen 2026-11-03: "People should also be able to switch to
+              metric or dark modes from these settings"). Colors shows at once; Units reloads the page, which then
+              asks to resume the ride, as any reload does. */}
+          <ThemeSetting idBase={`${settingsId}-display`} />
+          <UnitsSetting idBase={`${settingsId}-display`} saveNow={saveSettingsNow} />
           <label className="toggle ride-toggle">
             <input type="checkbox" checked={headingUp} onChange={(event) => onHeadingUp(event.target.checked)} />
             {t("Turn the map to my heading")}
