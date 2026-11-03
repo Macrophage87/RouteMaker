@@ -16,15 +16,18 @@
  * phone app, which rides with the screen locked, has no limit (`rideMaxM`).
  */
 import { askOf, type NextVehicleAsk } from "./nextVehicle.ts";
-import type { RouteResponse, TransitDeparture, TransitOption, TransitPlan, TransitStep } from "./api.ts";
+import type { RouteResponse, TransitDeparture, TransitOption, TransitPlan, TransitStep, WalkTurn } from "./api.ts";
 import { bikeshareOf, dockCountWords } from "./bikeshare.ts";
 import { formatDistance, spokenDistance } from "./format.ts";
 import { haversineM, pathLengthM, type LonLat } from "./geo.ts";
 import { POOR_FIX_M, RIDE_MAX_M, START_M, WINDOW_AHEAD_M, offThreshold, snap, startState, step, type RideEvent, type RideFix, type RideModel, type RideState, type Verbosity } from "./navigate.ts";
 import type { PresetId } from "./presets.ts";
 import { ridesHidden } from "./nativeShell.ts";
+import { pointAlong } from "./lightTimes.ts";
 import { drawOf, transitOf } from "./transit.ts";
 import { t } from "./i18n.ts";
+import { onwardOf, walkPart, type OnwardPart } from "./onward.ts";
+import { walkModel, walkStart, walkStep } from "./walkCues.ts";
 
 /** A sentence for the screen (US units, metric in brackets) and the same for speech (US units only). */
 export interface TripWords {
@@ -45,6 +48,8 @@ export interface RideApproach {
   first: string;
   /** Said once the rider reaches it. */
   reached: string;
+  /** The walk to it as a line with its turns (lib/walkCues.ts), where the plan routed it: said turn by turn. */
+  walk?: RideModel | null;
 }
 
 export interface RideRest {
@@ -74,6 +79,16 @@ export interface RideTrip {
   shareBike?: boolean;
   /** The route is ridden as it was planned, its walks only at the ends (`walk_in`), not a leg of a bigger trip. */
   asPlanned?: boolean;
+  /**
+   * What follows the line, followed on the ride screen once it ends (lib/onward.ts): walks turn by turn and transit
+   * stop by stop (Stephen, 2026-11-02), up to a riding leg after the transit (Ride the rest's).
+   */
+  onward?: OnwardPart[];
+  /**
+   * Walk and Walk + 🚆🚌 (Stephen, 2026-11-02): the line itself is a walk, followed turn by turn on foot by its turns
+   * (lib/walkCues.ts), never off route nor re-planned (a walker crosses where they like).
+   */
+  onFoot?: { turns: readonly WalkTurn[] };
 }
 
 export const RIDE_REST = t("Ride the rest");
@@ -115,12 +130,29 @@ export function rideMaxM(hidden: boolean = ridesHidden()): number {
   return hidden ? Infinity : RIDE_MAX_M;
 }
 
+/** Walk, Walk + 🚆🚌 and Run (2026-11-02): the line is a walk (a run), the trip's first, followed on foot. */
+export function walksLine(route: Pick<RouteResponse, "transit">): boolean {
+  const plan = transitOf(route);
+  if (!plan || (plan.mode !== "walk" && plan.mode !== "walk-transit" && plan.mode !== "run")) return false;
+  const index = lineIndex(plan);
+  return index >= 0 && plan.steps[index].mode === "walk";
+}
+
+/** The turns of a Walk line (`walksLine`), from the route's own plan; null on any other route. */
+export function walkLineTurns(route: Pick<RouteResponse, "transit">): readonly WalkTurn[] | null {
+  if (!walksLine(route)) return null;
+  const plan = transitOf(route)!;
+  return plan.steps[lineIndex(plan)].turns ?? [];
+}
+
 /**
  * Whether Start ride is offered: the line is a riding leg no longer than `rideMaxM`. A Bikeshare plan's
- * line is its ride between the docks; a transit plan's is its first ride (not a walk).
+ * line is its ride between the docks; a transit plan's is its first ride (not a walk). Walk and Walk + 🚆🚌's line is
+ * its first walk, walked turn by turn.
  */
 export function rideable(route: Pick<RouteResponse, "distance_m" | "transit">, maxM: number = rideMaxM()): boolean {
   if (route.distance_m > maxM) return false;
+  if (walksLine(route)) return true;
   const plan = transitOf(route);
   if (!plan) return true;
   const index = lineIndex(plan);
@@ -129,6 +161,7 @@ export function rideable(route: Pick<RouteResponse, "distance_m" | "transit">, m
 
 /** Whether the line is a riding leg at all, however long: the too-long note is for those only. */
 export function ridesLine(route: Pick<RouteResponse, "transit">): boolean {
+  if (walksLine(route)) return true;
   const plan = transitOf(route);
   if (!plan) return true;
   const index = lineIndex(plan);
@@ -149,7 +182,8 @@ export function optionRides(option: Pick<TransitOption, "direct" | "walk" | "leg
  */
 export function noBikeLine(route: Pick<RouteResponse, "transit">): string | null {
   const plan = transitOf(route);
-  if (!plan || ridesLine(route)) return null;
+  // Walk and Walk + 🚆🚌 take no bike, by choice: nothing to say.
+  if (!plan || ridesLine(route) || plan.mode === "walk" || plan.mode === "walk-transit" || plan.mode === "run") return null;
   const index = plan.options.findIndex(optionRides);
   return index < 0 ? t("No bike on this option.") : t("No bike on this option. Pick {letter} to ride.", { letter: String.fromCharCode(65 + index) });
 }
@@ -191,6 +225,7 @@ function bikeshareTrip(route: RouteResponse): RideTrip | null {
       extra: start.kind === "dock" && start.availability === "known" ? `${dockCountWords(start, plan.bike, true)}.` : "",
       first: "",
       reached: start.kind === "free_bike" ? t("At the e-bike. Take it and ride.") : t("At {place}. Take a bike and ride.", { place: start.name }),
+      walk: walkModel({ coordinates: plan.walk_start.geometry.coordinates, turns: plan.walk_start.turns ?? [], to: start.name }),
     };
   }
   let finish: TripWords | null = null;
@@ -203,7 +238,8 @@ function bikeshareTrip(route: RouteResponse): RideTrip | null {
       spoken: `${dock}${on(walk ? spokenDistance(walk.distance_m) : "")}`,
     };
   }
-  return { approach, finish, departure: null, rest: null, shareBike: true };
+  const after = plan.walk_end ? walkPart({ coordinates: plan.walk_end.geometry.coordinates, turns: plan.walk_end.turns ?? [], to: null }, plan.walk_end.duration_s) : null;
+  return { approach, finish, departure: null, rest: null, shareBike: true, onward: after ? [after] : [] };
 }
 
 /**
@@ -234,10 +270,12 @@ function transitTrip(route: RouteResponse, destination: LonLat | null): RideTrip
     const take = before.length === 1 && before[0].mode === "take" ? before[0] : null;
     if (take && take.to) {
       const metres = take.coordinates.length >= 2 ? pathLengthM(take.coordinates) : null;
-      approach = { at, name: take.to, metres, extra: "", first: "", reached: t("At {place}. Take a bike and ride.", { place: take.to }) };
+      approach = { at, name: take.to, metres, extra: "", first: "", reached: t("At {place}. Take a bike and ride.", { place: take.to }), walk: walkOf(take) };
     } else {
       const extra = before.map((s) => s.text).join(" ");
-      approach = { at, name: null, metres: null, extra, first: before[0].text, reached: t("At the start of the ride.") };
+      // A first walk is said turn by turn; the station and the transit after it are said as before.
+      const walk = before[0].mode === "walk" || before[0].mode === "take" ? walkOf(before[0]) : null;
+      approach = { at, name: null, metres: null, extra, first: before[0].text, reached: t("At the start of the ride."), walk };
     }
   }
   // At the line's end: the plan's own steps to the first transit after it (dock, walk, into the station,
@@ -271,7 +309,13 @@ function transitTrip(route: RouteResponse, destination: LonLat | null): RideTrip
     };
   }
   const boarding = boardAt > line ? askOf(steps[boardAt]) : null;
-  return { approach, finish, departure, boarding, rest, shareBike: lineStep.mode === "bikeshare" };
+  const onFoot = walksLine(route) ? { turns: lineStep.turns ?? [] } : undefined;
+  return { approach, finish, departure, boarding, rest, shareBike: lineStep.mode === "bikeshare", onward: onwardOf(steps, line), ...(onFoot ? { onFoot } : {}) };
+}
+
+/** A walk step as a line with its turns, where it was routed. */
+function walkOf(step: TransitStep): RideModel | null {
+  return walkModel({ coordinates: step.coordinates, turns: step.turns ?? [], to: step.to });
 }
 
 /** A plain ride whose ride stops short of its start or end (the API's `walk_in`): the walk to the line first, and the walk on at the finish. */
@@ -281,7 +325,15 @@ function walkInTrip(route: RouteResponse): RideTrip | null {
   const at = route.geometry.coordinates[0] as LonLat | undefined;
   const approach: RideApproach | null =
     at && walks.start
-      ? { at, name: t("the start of the ride"), metres: walks.start.distance_m, extra: "", first: "", reached: t("At the start of the ride. Ride on.") }
+      ? {
+          at,
+          name: t("the start of the ride"),
+          metres: walks.start.distance_m,
+          extra: "",
+          first: "",
+          reached: t("At the start of the ride. Ride on."),
+          walk: walkModel({ coordinates: walks.start.geometry.coordinates, turns: walks.start.turns ?? [], to: null }),
+        }
       : null;
   const finish: TripWords | null = walks.end
     ? {
@@ -289,7 +341,8 @@ function walkInTrip(route: RouteResponse): RideTrip | null {
         spoken: t("The ride ends here. Walk your bike {distance} to your destination.", { distance: spokenDistance(walks.end.distance_m) }),
       }
     : null;
-  return { approach, finish, departure: null, rest: null, asPlanned: true };
+  const after = walks.end ? walkPart({ coordinates: walks.end.geometry.coordinates, turns: walks.end.turns ?? [], to: null }, walks.end.duration_s) : null;
+  return { approach, finish, departure: null, rest: null, asPlanned: true, onward: after ? [after] : [] };
 }
 
 /** What comes either side of the line on a Bikeshare or transit plan, or a plain ride's walk-in; null for any other route. */
@@ -312,6 +365,8 @@ export function fixedRide(
   opened: { ride?: boolean; own?: boolean } | null,
   rest: boolean,
 ): boolean {
+  // On foot (Walk, Walk + 🚆🚌): the walk is followed as planned, never re-planned on a bike's ride type.
+  if (leg.trip?.onFoot) return true;
   if (rest || (leg.trip && !leg.trip.asPlanned)) return false;
   return opened ? !!opened.ride && !opened.own : leg.preset === "mass-ride" || leg.preset === "group-ride";
 }
@@ -329,9 +384,21 @@ export function rideLegOf(
   const trip = rideTripOf(route, points);
   const line = route.geometry.coordinates as LonLat[];
   if (!trip || trip.asPlanned || line.length < 2) return { points, loop, preset: route.preset, trip };
+  // A run (2026-11-02) re-plans and saves as it was planned: its stops and its loop, at the runner's pace. A loop
+  // from the start alone keeps its shape as stops a third and two thirds along it, so a re-plan still goes round.
+  if (route.preset === "run") return { points: points.length === 1 && loop ? runLoopStops(line) : points, loop, preset: "run", trip };
+  // On foot: a re-plan the rider asks for (Detour, Road closed, Re-plan from here) walks, to the walk's own end.
+  if (trip.onFoot) return { points: [line[0], line[line.length - 1]], loop: false, preset: "walk", trip };
   // Bikeshare + transit's share bike is a classic one ("take a classic bike").
   const ebike = bikeshareOf(route)?.bike === "ebike";
   return { points: [line[0], line[line.length - 1]], loop: false, preset: ebike ? "ebike" : "default", trip };
+}
+
+/** A run loop from its start alone, as that start and the points a third and two thirds along the loop. */
+export function runLoopStops(line: readonly LonLat[]): LonLat[] {
+  const length = pathLengthM(line);
+  const stops = [1 / 3, 2 / 3].map((share) => pointAlong(line, length * share)).filter((p): p is LonLat => p !== null);
+  return [line[0], ...stops];
 }
 
 /**
@@ -361,10 +428,12 @@ export interface TripRide {
   walking: boolean;
   walkSaid: boolean;
   lastGood: { point: LonLat; at: number } | null;
+  /** The walk to the line's start, turn by turn (the approach's `walk`): where on it the rider is. */
+  walk?: RideState | null;
 }
 
 export function tripRideStart(trip: RideTrip | null, ride: RideState = startState()): TripRide {
-  return { ride, walking: !!trip?.approach, walkSaid: false, lastGood: null };
+  return { ride, walking: !!trip?.approach, walkSaid: false, lastGood: null, walk: trip?.approach?.walk ? walkStart() : null };
 }
 
 /**
@@ -393,12 +462,21 @@ export function tripStep(
         walkSaid = true;
       }
       const ride = { ...s.ride, fix, goodFix: good ? fix : s.ride.goodFix };
-      return { state: { ride, walking: true, walkSaid, lastGood }, events: [], notes };
+      // The walk's turns, said as a ride's are (lib/walkCues.ts), where the plan routed it.
+      const walked = approach.walk ? walkStep(approach.walk, s.walk ?? walkStart(), fix, level) : null;
+      return { state: { ride, walking: true, walkSaid, lastGood, walk: walked?.state ?? s.walk ?? null }, events: walked?.events ?? [], notes };
     }
     notes.push(approach.reached);
   }
+  if (trip?.onFoot) {
+    // On foot the line is never off route nor re-planned (lib/walkCues.ts walkStep's rule); its end is the trip's.
+    const out = step(model, s.ride, fix, level, false);
+    const ride = out.state.off ? { ...out.state, off: false, offSince: null, offCount: 0 } : out.state;
+    const events = out.events.filter((e) => e.kind !== "off-route" && e.kind !== "back-on-route");
+    return { state: { ride, walking: false, walkSaid, lastGood, walk: s.walk ?? null }, events: withFinish(events, trip.finish), notes };
+  }
   const out = step(model, s.ride, fix, level, replan);
-  return { state: { ride: out.state, walking: false, walkSaid, lastGood }, events: withFinish(out.events, trip?.finish ?? null), notes };
+  return { state: { ride: out.state, walking: false, walkSaid, lastGood, walk: s.walk ?? null }, events: withFinish(out.events, trip?.finish ?? null), notes };
 }
 
 /** Where Ride the rest starts: the last good fix while under REST_FIX_MAX_AGE_MS old, else null (the leg's start). */

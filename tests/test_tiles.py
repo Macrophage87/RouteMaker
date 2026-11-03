@@ -125,10 +125,11 @@ def test_the_gate_sizes_a_second_set_from_the_served_one(tmp_path) -> None:
         fraction=0.8,
         disk_usage=usage(100 * GIB, 10 * GIB),
     )
-    # Six variant extracts (the weekend twin, the off-road and the Mountain Bike graphs
-    # among them) and scratch: seven times the source (OPS review, 2026-09-28; slice 6).
-    assert gate.required == served + 7 * GIB
-    assert gate.fraction_after == pytest.approx((10 * GIB + served + 7 * GIB) / (100 * GIB))
+    # Seven variant extracts (the weekend twin, the off-road, Mountain Bike and Road Bike graphs
+    # among them) and scratch: eight times the source (OPS review, 2026-09-28; slice 6; Road
+    # Bike, 2026-11-02).
+    assert gate.required == served + 8 * GIB
+    assert gate.fraction_after == pytest.approx((10 * GIB + served + 8 * GIB) / (100 * GIB))
 
 
 def test_the_floor_applies_until_a_first_set_has_been_measured(tmp_path) -> None:
@@ -184,12 +185,12 @@ def test_a_build_landing_exactly_on_the_gate_is_allowed(tmp_path) -> None:
     alert fires when it finishes".
 
     Chosen so the arithmetic is exact rather than nearly so: a 100 GiB volume
-    10 GiB used, and a required 70 GiB (seven times a 10 GiB source), is 80
+    10 GiB used, and a required 70 GiB (eight times an 8.75 GiB source), is 80
     percent after, in floating point as well as on paper.
     """
     at_the_gate = tiles.check_disk_gate(
         tmp_path,
-        source_bytes=10 * GIB,
+        source_bytes=70 * GIB // 8,
         minimum_free=0,
         fraction=0.8,
         disk_usage=usage(100 * GIB, 10 * GIB),
@@ -201,7 +202,7 @@ def test_a_build_landing_exactly_on_the_gate_is_allowed(tmp_path) -> None:
     with pytest.raises(tiles.DiskGateRefused):
         tiles.check_disk_gate(
             tmp_path,
-            source_bytes=10 * GIB,
+            source_bytes=70 * GIB // 8,
             minimum_free=0,
             fraction=0.8,
             disk_usage=usage(100 * GIB, 10 * GIB + 1),
@@ -611,7 +612,14 @@ def test_restoring_links_nothing_moved_writes_nothing(tmp_path) -> None:
 def test_the_write_probe_reports_a_variant_directory_that_is_not_there(tmp_path) -> None:
     """Every variant is probed, and one with no directory at all cannot take a
     link either: reported, by path, alongside the ones that can."""
-    for variant in (Variant.STANDARD, Variant.EBIKE, Variant.WEEKEND, Variant.OFFROAD, Variant.MTB):
+    for variant in (
+        Variant.STANDARD,
+        Variant.EBIKE,
+        Variant.WEEKEND,
+        Variant.OFFROAD,
+        Variant.MTB,
+        Variant.PAVED,
+    ):
         (tmp_path / variant.value).mkdir()
     problems = tiles.unwritable_link_dirs(tmp_path)
     assert len(problems) == 1, problems
