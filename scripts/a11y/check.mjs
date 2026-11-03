@@ -4413,8 +4413,8 @@ if (mine()) {
 // ---- 26. Riding with kids (FOLLOWUP-KIDS-PRESET, OWNER-DECISIONS 240 (B)): a ride type like any other, by keyboard and screen reader ----
 // Novice and Nervous takes its place since 9e50f609 (hills -60, the API's "novice"; an old "kids" link opens it): the
 // checks below are the same, for it.
-// Every ride type: 15 since Own Bike + Transit and Bikeshare + Transit (#108) and Rebalance Ride (#110), in the dialog's
-// three groups (lib/rideTypeGroups.ts: Transportation 7, Adventure 6, Group 2).
+// Every ride type: 19 since Road Bike (#884), Walk and Walk + transit (#888) and Run (#901), in the dialog's
+// three groups (lib/rideTypeGroups.ts: Transportation 10, Adventure 7, Group 2).
 if (mine()) {
   const p = await open({ route: S_KIDS, hash: hashFor("default", 70) });
   const kidsCard = "[...document.querySelectorAll('.ride-type-card > button:not(.ride-fav)')].find((b) => b.querySelector('strong')?.textContent === 'Novice and Nervous')";
