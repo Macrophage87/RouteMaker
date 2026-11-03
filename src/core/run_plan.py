@@ -651,7 +651,7 @@ def plan(points: Sequence[Sequence[float]], ask: RunAsk, router: Router) -> Run:
     except NoRun as refusal:
         # Busy only where the call that came to nothing ran out of time: a refusal after a slow
         # call is still no way.
-        if router.last_late and not isinstance(refusal, RouterDown):
+        if router.last_late:
             raise RunTimedOut("Planning this run took too long; try again shortly.") from refusal
         if router.answered == 0:
             raise RouterDown("The router is not answering; try again shortly.") from refusal

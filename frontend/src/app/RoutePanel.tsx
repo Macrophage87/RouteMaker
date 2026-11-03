@@ -1051,7 +1051,7 @@ export function RouteSummary({
             </div>
             {!noBike && (
               <div className="stat-distance">
-                <dt className="visually-hidden">{transit ? t("Distance ridden") : t("Distance")}</dt>
+                <dt className="visually-hidden">{transit && !walksLine(route) ? t("Distance ridden") : t("Distance")}</dt>
                 <dd>
                   <bdi>{formatDistance(trip.distance_m)}</bdi>
                 </dd>
@@ -1177,7 +1177,7 @@ export function RouteSummary({
           {!noBike && (
             <>
               <div className="stat-distance">
-                <dt className="visually-hidden">{transit ? t("Distance ridden") : t("Distance")}</dt>
+                <dt className="visually-hidden">{transit && !walksLine(route) ? t("Distance ridden") : t("Distance")}</dt>
                 <dd>
                   <bdi>{formatDistance(trip.distance_m)}</bdi>
                 </dd>

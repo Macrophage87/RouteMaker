@@ -686,7 +686,7 @@ class RouteIn(Schema):
                 and self.target_distance_m is not None
                 and self.target_distance_m > run_plan.RUN_TARGET_MAX_M
             ):
-                raise ValueError("A run's target distance is at most 50 km (31 mi)")
+                raise ValueError("A run's target distance is at most 31 mi (50 km)")
             if self.transit_option is not None:
                 raise ValueError("transit_option applies to the transit ride types only")
         elif self.run_pace_kmh is not None:
