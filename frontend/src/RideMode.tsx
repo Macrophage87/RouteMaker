@@ -3142,9 +3142,9 @@ export function RideMode({
                   className={i === 0 ? "cue-sheet-next" : i >= CUE_SHEET_SHOWN ? "visually-hidden" : undefined}
                   aria-current={i === 0 ? "step" : undefined}
                 >
-                  <span aria-hidden="true">{row.shown}</span>
+                  <span aria-hidden="true">{unitsFirst(row.shown)}</span>
                   <span className="visually-hidden">
-                    {row.distance}: {row.text}
+                    {row.distance}: {unitsFirst(row.text)}
                   </span>
                 </li>
               ))}
@@ -3167,7 +3167,7 @@ export function RideMode({
               {/* The instruction large, the rest in small print, street words shortened; the whole sentence for screen readers. */}
               <p className="cue-text">
                 <span aria-hidden="true">{withoutFullStop(cueShown.head)}</span>
-                <span className="visually-hidden">{cue.card?.said ?? cue.rideText ?? cue.text}</span>
+                <span className="visually-hidden">{unitsFirst(cue.card?.said ?? cue.rideText ?? cue.text)}</span>
               </p>
               {/* At most one short line, always there (empty too), so the card keeps its height between turns. */}
               <p className="cue-more" aria-hidden="true">
@@ -3208,7 +3208,7 @@ export function RideMode({
           right at thumb height; each menu opens beside them. An answer the rider asked for shows to their left. */}
       <div ref={middleRef} className="ride-middle">
         {/* A minimalist compass (the owner, 2026-10-17), turned with the map; a press switches north-up and track-up
-            ("maybe clicking on it changes to north up"), the same choice as the ride settings' switch. */}
+            ("maybe clicking on it changes to north up"), the one control for it. */}
         <button type="button" className="ride-compass" aria-pressed={!headingUp} aria-label={t("North up")} title={t("North up")} onClick={() => onHeadingUp(!headingUp)}>
           <svg viewBox="0 0 40 40" width="40" height="40" aria-hidden="true">
             <path d="M20 5 L25 20 L20 17 L15 20 Z" className="ride-compass-north" />
@@ -3711,19 +3711,17 @@ export function RideMode({
           <h2 ref={settingsTitle} id={`${settingsId}-settings-title`} tabIndex={-1}>
             {RIDE_SETTINGS_TITLE}
           </h2>
-          {/* The two pickers, what each level says behind its (i): the whole popup fits a phone without scrolling. */}
-          <RideSettingsFields prefs={prefs} onChange={onPrefs} idBase={settingsId} compact />
-          {/* High contrast, Colors and Units, as in Settings > Display (Stephen 2026-11-03: "People should also be
-              able to switch to metric or dark modes from these settings"; High contrast: "Could be useful in
-              extremely bright conditions"). Each shows at once, the ride carrying on (Units with no reload:
-              "Change should happen immediately"). */}
-          <ContrastRow idBase={`${settingsId}-contrast`} />
+          {/* Colors with High contrast beside it, then Units, first (Stephen 2026-11-03: "Put high contrast with colors.
+              Colors and units first"), as in Settings > Display ("People should also be able to switch to metric or
+              dark modes from these settings"; High contrast: "Could be useful in extremely bright conditions"). Each
+              shows at once, the ride carrying on (Units with no reload: "Change should happen immediately"). */}
           <ThemeSetting idBase={`${settingsId}-display`} />
+          <ContrastRow idBase={`${settingsId}-contrast`} />
           <UnitsSetting idBase={`${settingsId}-display`} saveNow={saveSettingsNow} inRide />
-          <label className="toggle ride-toggle">
-            <input type="checkbox" checked={headingUp} onChange={(event) => onHeadingUp(event.target.checked)} />
-            {t("Turn the map to my heading")}
-          </label>
+          {/* The cues' two pickers, what each level says behind its (i): the whole popup fits a phone without scrolling.
+              No heading switch: the compass button on the map turns the map (Stephen 2026-11-03: "Turn the map to my
+              heading is already established with the compass"). */}
+          <RideSettingsFields prefs={prefs} onChange={onPrefs} idBase={settingsId} compact />
           {/* One line in view (the UI review, 2026-10-28), the whole of it under About Ride mode. */}
           <p className="hint">{RIDE_SAFETY_SHORT}</p>
           <details className="ride-safety-more">

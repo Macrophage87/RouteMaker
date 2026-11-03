@@ -19,7 +19,12 @@ export function UnitsSetting({ idBase, saveNow, inRide = false }: { idBase: stri
   const [unsaved, setUnsaved] = useState(false);
   return (
     <>
-    <SettingRow infoId={`${idBase}-units-info`} about={t("Units")} info={t("Distances, speeds and heights, on screen and spoken. The other units stay in brackets. Changing it reloads the page.")}>
+    <SettingRow infoId={`${idBase}-units-info`} about={t("Units")} info={
+        // In a ride it switches at once (switchUnitsInRide), so no word of a reload there.
+        inRide
+          ? t("Distances, speeds and heights, on screen and spoken. The other units stay in brackets.")
+          : t("Distances, speeds and heights, on screen and spoken. The other units stay in brackets. Changing it reloads the page.")
+      }>
       <SettingSelect<Units>
         label={t("Units")}
         value={choice}

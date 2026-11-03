@@ -3248,8 +3248,8 @@ if (mine()) {
   const gear = await p.eval(`(() => { const g = document.querySelector('.ride .ride-settings-bubble'); const panel = document.querySelector('.ride-settings-dialog'); const c = document.querySelector('.ride-top .ride-road-closed'); const e = document.querySelector('.ride-top .ride-end'); const a = c.getBoundingClientRect(); const b = e.getBoundingClientRect(); const d = panel.getBoundingClientRect();
     return { popup: g.getAttribute('aria-haspopup'), shown: panel.open && panel.matches(':modal'), name: document.getElementById(panel.getAttribute('aria-labelledby'))?.textContent, pickers: [...panel.querySelectorAll('select')].map((x) => x.closest('label')?.querySelector('.setting-name')?.textContent), focus: document.activeElement?.tagName, focusIn: panel.contains(document.activeElement), change: panel.querySelectorAll('.ride-change, .ride-ease').length, noScroll: panel.scrollHeight <= panel.clientHeight + 1, inView: d.top >= 0 && d.bottom <= innerHeight && d.left >= 0 && d.right <= innerWidth, width: innerWidth, roadName: c.getAttribute('aria-label'), oneLine: Math.abs(a.top - b.top) <= 2, w: Math.round(a.width), h: Math.round(a.height) }; })()`);
   await p.shot(`${SHOTS}/ride_settings_320.png`);
-  check("ride: the Settings bubble opens the ride's settings alone (no route changes in them) as a modal popup named Ride settings (Say cues with, How much to say, Colors and Units), the focus on its heading, all of it in view at 320 x 700 without scrolling; behind it, at 320 px, Go round, named in full, is beside End ride",
-    gear.popup === "dialog" && gear.shown && gear.name === "Ride settings" && JSON.stringify(gear.pickers) === JSON.stringify(["Say cues with", "How much to say", "Colors", "Units"]) && gear.focus === "H2" && gear.focusIn && gear.change === 0 && gear.noScroll && gear.inView && gear.width <= 379 && gear.roadName === "Go round: road closed ahead" && gear.oneLine && gear.w >= 44 && gear.h >= 44, JSON.stringify(gear));
+  check("ride: the Settings bubble opens the ride's settings alone (no route changes in them) as a modal popup named Ride settings (Colors, High contrast and Units first, then Say cues with and How much to say), the focus on its heading, all of it in view at 320 x 700 without scrolling; behind it, at 320 px, Go round, named in full, is beside End ride",
+    gear.popup === "dialog" && gear.shown && gear.name === "Ride settings" && JSON.stringify(gear.pickers) === JSON.stringify(["Colors", "Units", "Say cues with", "How much to say"]) && gear.focus === "H2" && gear.focusIn && gear.change === 0 && gear.noScroll && gear.inView && gear.width <= 379 && gear.roadName === "Go round: road closed ahead" && gear.oneLine && gear.w >= 44 && gear.h >= 44, JSON.stringify(gear));
   // A tap inside the popup, even on its padding, leaves it open; the cues' live regions are inside it while it shows.
   await p.eval("document.querySelector('.ride-settings-body').click(); true");
   await sleep(150);
@@ -3318,7 +3318,7 @@ if (mine()) {
   await sleep(300);
   const srOnly = await p.eval("({ inert: document.querySelector('.map').inert, zoom: !!document.querySelector('.maplibregl-ctrl-zoom-in') })");
   const axMap = await axNode(p, ".map");
-  await outputTo("Both");
+  await outputTo("Screen reader + voice");
   await sleep(300);
   const both = await p.eval("document.querySelector('.map').inert");
   check("ride: Large text off again with a second press; with cues to the screen reader alone the map is inert (out of a screen reader's reach), with Both it is not",

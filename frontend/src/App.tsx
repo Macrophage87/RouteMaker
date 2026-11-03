@@ -4657,7 +4657,8 @@ export function App() {
     } else backToRideOpener();
     // Units switched during the ride (lib/units.ts switchUnitsInRide): the reload that brings the rest of the page
     // round too, now the ride is done.
-    if (unitsReloadOwed()) window.location.reload();
+    // A moment later, once the cleared plan is in the address (the hash is written by an effect after this render).
+    if (unitsReloadOwed()) window.setTimeout(() => window.location.reload(), 300);
   };
   // Roam (RoamMode.tsx): Go's one button while Go has no destination. The voice is unlocked inside the press (iOS).
   const startRoam = () => {
