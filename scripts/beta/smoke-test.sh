@@ -162,13 +162,13 @@ check_body "a route comes back with a distance and a line" '"distance_m".*"geome
 # the standard graph instead, the trail router is down or its settings row is missing
 # (manage.py sync_upstreams).
 if [ "$trails" = 1 ]; then
-	for trail in mountain-bike:mtb gravel:offroad; do
+	for trail in mountain-bike:mtb gravel:offroad road-bike:paved; do
 		check_body "a ${trail%%:*} route is planned on the ${trail#*:} graph" "\"variant\": ?\"${trail#*:}\"" \
 			-X POST -H 'Content-Type: application/json' -H 'Accept: application/json' \
 			-d "{\"points\":[[-77.13100,39.15256],[-77.13587,39.16116]],\"preset\":\"${trail%%:*}\"}" "$base/api/route"
 	done
 else
-	printf 'SKIP  %s\n' "the Mountain Bike and Gravel graphs (give --trails where the trail routers run)"
+	printf 'SKIP  %s\n' "the Mountain Bike, Gravel and Road Bike graphs (give --trails where the trail routers run)"
 fi
 check_body "place search finds Union Station" 'Union' "$base/api/geocode?q=union%20station&limit=5&lat=38.9&lon=-77.03"
 check_status "a place name for a point (reverse)" 200 "$base/api/reverse?lat=38.8895&lon=-77.0353"

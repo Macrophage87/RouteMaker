@@ -25,12 +25,13 @@ export const RIDE_GROUPS: readonly RideGroup[] = [
     id: "transportation",
     label: t("Transportation"),
     // Rebalance Ride is here, not in Adventure (P3): a working ride from dock to dock.
-    ids: ["default", "bike-transit", "bikeshare-transit", "bikeshare", "cargo", "ebike", "novice", "rebalance"],
+    ids: ["default", "bike-transit", "bikeshare-transit", "walk-transit", "walk", "bikeshare", "cargo", "ebike", "novice", "rebalance"],
   },
   {
     id: "adventure",
     label: t("Adventure"),
-    ids: ["fast", "trailmaxxing", "mountain-goat", "mountain-bike", "gravel"],
+    // Run (2026-11-02): exercise on foot, beside the riding ones.
+    ids: ["fast", "road-bike", "trailmaxxing", "mountain-goat", "mountain-bike", "gravel", "run"],
   },
   {
     id: "group",
