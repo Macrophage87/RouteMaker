@@ -822,7 +822,8 @@ def roads_with_bikeway_beside(
 # (SIDE_STREET_FRACTION) - is that street's bike lane: "9th Street Northwest bike lane",
 # or "9th Street Northwest protected bike lane" where its tags say it is separated from
 # the road (`separation*` physical) or segregated (`segregated=yes`), or, where people on
-# foot share it, the path beside that street ("path beside Kemp Mill Road"). The rebuild writes
+# foot share it, the path or the sidewalk beside that street ("sidewalk beside Kemp Mill
+# Road"). The rebuild writes
 # the name onto `segment.sidepath_name`; the route description and the road panel say it
 # where the way has no name.
 SIDE_STREET_M = 20.0

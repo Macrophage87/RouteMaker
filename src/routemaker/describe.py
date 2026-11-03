@@ -278,8 +278,8 @@ TIER_WORDS = {
 }
 UNRATED_WORDS = "stress not rated"
 # A path with no name of its own is just "path" (the owner, 2026-10-15: not "unnamed
-# path"); one beside a named street is that street's bike lane, or the path beside it
-# where people on foot share it, named at the rebuild
+# path"); one beside a named street is that street's bike lane, or the path or the
+# sidewalk beside it where people on foot share it, named at the rebuild
 # (`routemaker.facility.side_street_names`) and handed in as the piece's name.
 UNNAMED_PATH = "path"
 # The street a stretch gets when its pieces have no name (a road) or were not traced. The
@@ -1573,6 +1573,11 @@ def _stretch_sentence(
     words = tier_words(run.tier, run.facility)
     if words == t(PATH_WORDS) and _COMMON_WAY.match(street):
         words = t("traffic-free")
+    elif _COMMON_WAY.match(street) and BESIDE in street:
+        # A sidewalk or path beside a road ("the sidewalk beside Kemp Mill Road") is not
+        # called a bike lane too (the owner, 2026-11-03: "Kemp Mill road doesn't have a
+        # bike lane"): only how busy it is.
+        words = t(TIER_WORDS.get(run.tier, UNRATED_WORDS))
     elif street.endswith(" bike lane"):
         # A bike lane named for its street ("9th Street Northwest protected bike lane")
         # already says what it is: the facility is not said twice.

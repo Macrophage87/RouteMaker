@@ -4057,8 +4057,9 @@ def build_handlers(
         )
         rows: list[dict] = []
         # An unnamed cycleway or path beside a named street is that street's bike lane
-        # (v0.7.0 "Go riding fixes" item 4), or the path beside it where people on foot
-        # share it (`facility.sidepath_name`), for the route description and the road panel.
+        # (v0.7.0 "Go riding fixes" item 4), or the path or sidewalk beside it where
+        # people on foot share it (`facility.sidepath_name`), for the route description
+        # and the road panel.
         sidepath_names = facility.side_street_names(
             [(way.osm_id, way.tags, way.coordinates) for way in context.ways]
         )

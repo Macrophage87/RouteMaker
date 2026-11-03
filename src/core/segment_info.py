@@ -1343,7 +1343,11 @@ def _summary_rows(row: dict, router: dict, open_: bool | None) -> list[dict]:
     facility = row.get("facility")
     against = " (against traffic only)" if row.get("facility_shown") else ""
     facility = row.get("facility_shown") or facility
-    if facility == "protected":
+    # A sidewalk or shared path named for its street ("Sidewalk beside Kemp Mill Road";
+    # `facility.sidepath_name`) is not called a bike lane (the owner, 2026-11-03: "Kemp
+    # Mill road doesn't have a bike lane"), whatever class its signs give it.
+    beside = path and str(row.get("sidepath_name") or "").startswith(SHARED_PREFIXES)
+    if facility == "protected" and not beside:
         add("bike_lane", "Bike lane", "Protected" + against)
     elif facility == "lane":
         add("bike_lane", "Bike lane", "Painted" + against)
