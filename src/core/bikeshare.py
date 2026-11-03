@@ -92,7 +92,7 @@ from typing import Protocol
 from routemaker.geo import Point, haversine
 from routemaker.lang import t
 
-from . import gbfs, presets
+from . import gbfs, presets, walk_turns
 
 LonLat = list[float]
 
@@ -135,6 +135,8 @@ class WalkLeg:
     coordinates: list[LonLat]
     distance_m: float
     duration_s: float
+    # Its turns, for turn-by-turn on foot (`walk_turns.turns_of`; 2026-11-02).
+    turns: tuple[dict, ...] = ()
 
 
 class Services(Protocol):
@@ -703,6 +705,7 @@ def _walk_out(leg: WalkLeg | None, to_name: str) -> dict | None:
         "distance_m": round(leg.distance_m, 1),
         "duration_s": round(leg.duration_s, 1),
         "to": to_name,
+        "turns": list(leg.turns),
     }
 
 
@@ -1244,21 +1247,26 @@ class RoutingServices:
             "directions_type": "none",
             "units": "kilometers",
         }
+        payload = walk_turns.directions(payload)
         try:
             answer = routing._call("standard", "route", payload, self._deadline)
         except routing.RouterRefused as refusal:
             if refusal.code not in routing.NO_PATH_CODES | routing.NO_EDGE_CODES:
                 routing.logger.warning("a pedestrian route was refused: %s", refusal)
             return None
-        legs = (answer.get("trip") or {}).get("legs") or []
-        if not legs:
+        # The way taken of the router's, priced for its crossings and the roads it walks with
+        # no sidewalk (`walk_turns.walked`, 2026-11-02).
+        found = walk_turns.walked(answer, routing.walk_asker(self._deadline), payload)
+        if found is None:
             return None
-        summary = legs[0].get("summary") or {}
-        shape = routing.decode_polyline6(legs[0].get("shape", ""))
+        leg, crossings = found
+        summary = leg.get("summary") or {}
+        shape = routing.decode_polyline6(leg.get("shape", ""))
         return WalkLeg(
             [list(p) for p in shape],
             float(summary.get("length", 0.0)) * 1000.0,
             float(summary.get("time", 0.0)),
+            tuple(walk_turns.turns_of(leg, shape, crossings)),
         )
 
     def ride(self, a: LonLat, b: LonLat) -> dict:
