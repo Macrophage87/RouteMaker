@@ -25,8 +25,9 @@
  * memory for the ride only; the one place a position leaves the page is the re-plan's start point
  * (`replanPoints`), in a POST body, as planning with "Use my location" already sends (395).
  */
-import { METRES_PER_MILE, formatDistance, formatRoughDistance, spokenDistance } from "./format.ts";
+import { METRES_PER_MILE, formatDistance, formatRoughDistance, spokenDistance, unitsFirst } from "./format.ts";
 import { fullStop, language, t } from "./i18n.ts";
+import { metricFirst } from "./units.ts";
 import { haversineM, type LonLat } from "./geo.ts";
 import { AVOID_PLEA } from "./avoidJunctions.ts";
 import { descriptionEntries } from "./routeDescription.ts";
@@ -1343,9 +1344,20 @@ export function inSentence(cue: Pick<Cue, "kind"> & Pick<Partial<Cue>, "source">
   return leadsWithTemplate(cue) ? lowerFirst(text) : text;
 }
 
-/** Speech drops the metric the screen keeps: " (90 m)", " (0.6 to 1.9 km)" and "(LTS 1)" kept. */
+const METRIC_BRACKET = /\s\((?:about |unos )?[\d.,]+(?: (?:to|a) [\d.,]+)? (?:km|m|km\/h)\)/g;
+const US_BRACKET = /\s\((?:about |unos )?[\d.,]+(?: (?:to|a) [\d.,]+)? (?:mi|ft|mph|miles?|millas?|feet|pies)\)/g;
+/** A speed `unitsFirst` leaves as written, "10 mph (about 16 km/h)": said in metric mode as "about 16 km/h". */
+const MPH_ABOUT_KMH = /(?<![\w.,])[\d.,]+ mph \(((?:about|unos) [\d.,]+ km\/h)\)/g;
+
+/**
+ * Speech says one unit, the rider's first, and drops the twin the screen keeps in brackets: " (90 m)" and
+ * " (0.6 to 1.9 km)" in US mode, " (300 ft)" and " (1.1 mi)" in metric mode (the words are in metric order by then,
+ * `unitsFirst`). "(LTS 1)" kept.
+ */
 export function withoutMetric(text: string): string {
-  return text.replace(/\s\((?:about |unos )?[\d.,]+(?: (?:to|a) [\d.,]+)? (?:km|m|km\/h)\)/g, "");
+  if (!metricFirst()) return text.replace(METRIC_BRACKET, "");
+  // Turned first, so words kept from before the rider chose metric are said in metric too.
+  return unitsFirst(text).replace(MPH_ABOUT_KMH, "$1").replace(US_BRACKET, "");
 }
 
 /**
