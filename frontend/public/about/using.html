@@ -836,7 +836,12 @@ Bikeshare, transit, Walk or Run trips, or a ride with a walk to its start or fro
 <li><strong>Walks and transit.</strong> On a Walk, Run, Bikeshare or transit trip, walks and runs are said turn by turn, as rides
 are, and are never "off route". On a train or bus the screen lists the stops ahead and says "Next stop: Union Station.
 Get off there." one stop before yours (on a bus, to press the stop button), then "Get off here". With no location for
-a while, underground, it follows the timetable and says so. On Walk the button reads Start walk, and on Run, Start run. With stops, the trip is followed one leg at a time,
+a while, underground, it follows the timetable and says so. On Walk the button reads Start walk, and on Run, Start run.
+A Bikeshare + transit option that takes no bike (a walk, the train, a walk) is followed as Walk + transit is, and its
+button reads Start walk too. Reaching the station does not end the ride: the train, and any walk, are followed next,
+and once you are off the train the ride after it starts by itself (<strong>Ride the rest</strong> is pressed for you;
+its button stays, for another try if the app could not plan it). A ride between two trains, such as Metro, a ride and
+then MARC, follows the second train too. With stops, the trip is followed one leg at a time,
 and at each stop <strong>Start the next leg</strong> plans the rest again from where you are.</li>
 <li><strong>Weather</strong> is checked once the ride knows where you are on the route, and every 5 minutes, along the rest of
 the route. A new alert is said once ("Weather alert: Severe Thunderstorm Warning until 6:45 PM.", with "until" only where
@@ -883,7 +888,9 @@ count again.</li>
 due. Times say whether they are live or scheduled, and a countdown shows when there are under
 five minutes to spare.</li>
 <li><strong>End ride</strong> is slid to the end ("Slide to end ››"); a tap on it says how. Once you arrive, the
-turn card reads "Arrived:" and the place, and End ride becomes a filled <strong>Done</strong>. When the route
+turn card reads "Arrived:" and the place, and End ride becomes a filled <strong>Done</strong>. At a station
+with a train still to follow, End ride stays a slide until the whole trip is done, or until the ride after the
+train cannot be planned, and no bike rack is offered there. When the route
 ends at a bike rack with others within 1,000 ft [305 m], the card also says "Rack full? Next one:" with how far and
 which way from you; <strong>Show on map</strong> pins that rack, then <strong>Next rack</strong> pins the one after,
 nearest first, and back to the first after the last. End ride or Done shows the ride
