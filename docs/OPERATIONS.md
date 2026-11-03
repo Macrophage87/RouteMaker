@@ -6799,7 +6799,7 @@ with `</dev/null` on every docker command:
   `--public`. The agent changed: `mark-deployed v0.19.0`, then `scripts/beta/auto-release.sh
   install`, then `resume`.
 - [ ] **Spot checks.** Settings > Display > Units set to "Kilometers and meters" shows km first in Go and Ride. A
-  ride's More menu offers the Stress and Elevation graphs. A trail shows lettered end markers. A Walk
+  ride's More menu offers the Stress and Elevation graphs. A trail shows compass end markers (N, S, NW and so on). A Walk
   with a stop plans. A Run from a start alone with a 5 km target comes back near 5 km. Kemp Mill Rd's
   bike-signed sidewalk reads "sidewalk beside Kemp Mill Road". A one-way trail's panel says "One way"
   and its profile runs the riding direction. A ride with Metric on says "Cross <road>" at a crossing and

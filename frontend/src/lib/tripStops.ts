@@ -5,10 +5,9 @@
  * there, "Start the next leg" plans the rest again from where the rider is, leaving then, as a stop takes as long as
  * it takes.
  */
-import { MAX_POINTS } from "./geo.ts";
 import type { RouteResponse, TransitPlan } from "./api.ts";
 import { t } from "./i18n.ts";
-import type { LonLat } from "./geo.ts";
+import { MAX_POINTS, type LonLat } from "./geo.ts";
 import { isTransit, type PresetId } from "./presets.ts";
 
 /** The control at a stop, once the trip to it is done. */

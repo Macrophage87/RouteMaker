@@ -379,14 +379,15 @@ export type FixPlacement = { refuse: string } | { next: LonLat[]; point: LonLat;
 export function placeFix(
   result: LocateResult,
   points: readonly LonLat[],
-  options: { loop: boolean; choice?: PlaceChoice },
+  options: { loop: boolean; choice?: PlaceChoice; max?: number },
 ): FixPlacement {
   if (!result.ok) return { refuse: LOCATE_MESSAGES[result.reason] };
   const { point, accuracyM } = result.fix;
   if (!insideCoverage(point)) return { refuse: LOCATION_OUTSIDE };
   const { loop, choice } = options;
   const adds = choice === undefined || !placeEffect(points.length, choice, loop).startsWith("replace");
-  if (adds && points.length >= MAX_POINTS) return { refuse: maxPointsNotice() };
+  const max = options.max ?? MAX_POINTS;
+  if (adds && points.length >= max) return { refuse: maxPointsNotice(max) };
   const next = choice === undefined ? addPoint(points, point, loop) : applyPlace(points, point, choice, loop);
   return { next, point, said: locationSaid(next.indexOf(point), next.length, loop, accuracyM) };
 }

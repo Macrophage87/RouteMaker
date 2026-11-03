@@ -926,7 +926,9 @@ test("speech in metric mode says the metric and drops the US twin in brackets", 
     // The server's words as Ride holds them in metric mode, turned round by unitsFirst.
     assert.equal(withoutMetric(unitsFirst("Walk 300 ft (90 m) across the bridge.")), "Walk 90 m across the bridge.");
     assert.equal(withoutMetric(unitsFirst("1.0 to 1.6 mi (1.6 to 2.6 km): 6 crossings")), "1.6 to 2.6 km: 6 crossings");
-    assert.equal(withoutMetric("10 mph (about 16 km/h) for 1 mi (1.6 km)."), "about 16 km/h for 1 mi.");
+    // Words kept from before metric was chosen are turned too.
+    assert.equal(withoutMetric("10 mph (about 16 km/h) for 1 mi (1.6 km)."), "about 16 km/h for 1.6 km.");
+    assert.equal(withoutMetric("Walk 300 ft (90 m) across the bridge."), "Walk 90 m across the bridge.");
     assert.equal(withoutMetric(unitsFirst("10 mph (about 16 km/h) for 1 mi (1.6 km).")), "about 16 km/h for 1.6 km.");
     assert.equal(withoutMetric("low stress (LTS 1)."), "low stress (LTS 1).");
     const said = spokenText(unitsFirst("Walk 300 ft (90 m) across the bridge, then 0.4 mi (0.6 km) on the trail."));
