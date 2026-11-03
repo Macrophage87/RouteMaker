@@ -259,7 +259,7 @@ test("Voice: a jog's next turn (urgent, after) waits for the turn being said ins
 });
 
 test("Voice: a sentence whose end never comes (Chrome on Android) no longer holds back the cues after it", () => {
-  // The owner, 2026-11-03, riding with music on: turns not announced. The browser kept calling one sentence
+  // The owner: turns not announced. The browser kept calling one sentence
   // speaking, and every polite cue waited behind it.
   let clock = 0;
   const { env, calls, end } = speech();

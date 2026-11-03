@@ -6760,44 +6760,54 @@ so no Play build. At home, in order, with `</dev/null` on every docker command:
 
 Metric mode (a Units setting), Ride's graphs of the next 2 miles, spoken trail turns and road
 crossings, trail end markers and one-way trail profiles, stops on Walk and the transit ride types,
-the Run loop length fix, "path beside" names, the faint-road rule, 175 Arlington owner rows (the
+the Run loop length fix, "path beside" and "sidewalk beside" names, the faint-road rule, 175 Arlington owner rows (the
 Bike Comfort Index review) and the v0.18.0 rebuild follow-ups (the closure probes read each build's
 own list; the beta agent leaves a stopped `valhalla-paved` stopped when memory is short). **No
 migration, no `lua/`, compose, Caddyfile, nginx, Dockerfile or requirements change, no new
 environment variable, outbound host or scheduled job, and no `mobile/` change.** `src/pipeline/`
-changed (the faint-road and "path beside" facts are written by the rebuild, and `schema.py` with
-them), and the Arlington rows are owner overrides, so the map is rebuilt at the tagged commit and
-the beta agent stops on the tag (`reason=src/pipeline/schema.py: the live table layout changed`):
+changed (the faint-road and "path beside" facts are written by the rebuild; `schema.py`'s change is a
+comment only, no table changes, but the gate stops on any change there), and the Arlington rows are
+owner overrides, so the map is rebuilt at the tagged commit and the beta agent stops on the tag
+(`reason=src/pipeline/schema.py: the live table layout changed`):
 the beta ships by hand with the data bundle. The release agent itself changed. At home, in order,
 with `</dev/null` on every docker command:
 
 - [ ] **The tag.** Once `test` and `a11y` are green on `main`, the owner tags v0.19.0 (annotated) on
   that commit, from the PC.
-- [ ] **Images and the api.** Before the weekly rebuild or with it paused: tag the running api and
+- [ ] **Images and the api.** Before the weekly rebuild or with it paused, and out of 07:00-07:30
+  UTC: tag the running api and
   pipeline images for a rollback, fast-forward the checkout, `docker compose build api rebuild`,
   then, once no rebuild job is queued or running,
   `docker compose up -d --no-deps --no-build --force-recreate api worker rebuild`. No `migrate`.
-- [ ] **The overrides.** Load the Arlington rows
-  (`fixtures/overrides/2026-11-03-owner-arlington-bci-review.json`, loaded on the PC on 2026-11-03)
-  and the edited MD review file before the build, so the map carries them.
+- [ ] **The overrides**, only after the owner confirms each file, before the build so the map
+  carries them: `load_access_overrides` as a dry run first, then with `--confirm`.
+  `fixtures/overrides/2026-11-03-owner-arlington-bci-review.json`: 175 rows and 7 retired earlier
+  owner rows. `fixtures/overrides/2026-11-01-owner-md-rating-review.json`: one more retire
+  (way 987375476). Skip a file the PC already holds (the dry run says nothing changes).
 - [ ] **The map**, at the tagged commit, in its own thread: the cloud box (`--beta-bundle` for the
   beta) or `run_rebuild_now`. Seven graphs, as v0.18.0. Before the swap, the stress-change report
-  should show only the Arlington rows' streets moving tier; the faint-road and "path beside" changes
-  move no tier. Then swap and restart the routers (as v0.18.0).
+  should show the Arlington rows' streets moving tier on top of the usual week's OSM changes; the
+  faint-road and "path beside" changes move no tier. Then swap and restart the routers (as v0.18.0).
 - [ ] **The front end**, last.
 - [ ] **Beta**, "A new release sha" with the data bundle (docs/BETA-RUNBOOK.md), as v0.18.0 without
   the migrate, Caddy or nginx steps: the memory check first (`valhalla-paved` stays stopped under
-  8803 MiB), pause the agent, snapshot, check out the tag, build the api image, `receive-data.sh
-  verify`, `db --update-data --stage-only`, `files`, `db --update-data`, start api and worker, the
+  8803 MiB), pause the agent, snapshot, check out the tag, set `TAG=`, `check_beta_compose.py`
+  ("beta compose: ok"), build the api image, `receive-data.sh verify`, `db --update-data
+  --stage-only`, `sudo ... files`, `sudo ... db --update-data` (not during the 07:00 UTC backup),
+  start api and worker, the
   pre-draw, the routers, the front end with the bundle, `smoke-test.sh --local --trails` then
   `--public`. The agent changed: `mark-deployed v0.19.0`, then `scripts/beta/auto-release.sh
   install`, then `resume`.
 - [ ] **Spot checks.** Settings > Display > Units set to Metric shows km first in Go and Ride. A
   ride's More menu offers the Stress and Elevation graphs. A trail shows lettered end markers. A Walk
   with a stop plans. A Run from a start alone with a 5 km target comes back near 5 km. Kemp Mill Rd's
-  sidepath reads "path beside". 15th Street NW is drawn faint beside its cycle track; Connecticut
+  bike-signed sidewalk reads "sidewalk beside Kemp Mill Road". A one-way trail's panel says "One way"
+  and its profile runs the riding direction. A ride with Metric on says "Cross <road>" at a crossing and
+  speaks metres, with no feet or miles. In Ride, the arrow moves up when the bottom panel grows. 15th Street NW is drawn faint beside its cycle track; Connecticut
   Avenue NW from Davenport to Everett is drawn as usual.
-- [ ] **Rollback.** At home: the `pre-rel` images and `rollback_rebuild`. On the beta: the map
+- [ ] **Rollback.** At home: the `pre-rel` images, `rollback_rebuild` and the v0.18.0 front end
+  together (a v0.18.0 api refuses a settings save that carries `units`). Loaded override rows stay
+  loaded; retire them with the loader if they must go. On the beta: the map
   tables by rename (rollback B, from `live_old`) with rollback A.
 
 ## Deploying a planner and front-end release: rollback points and verification

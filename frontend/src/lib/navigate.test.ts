@@ -5,6 +5,8 @@ import { routeRequestBody } from "./api.ts";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import type { DescriptionEntry, RouteResponse } from "./api.ts";
+import { unitsFirst } from "./format.ts";
+import { setUnitsForTest } from "./units.ts";
 import type { LonLat } from "./geo.ts";
 import { spokenDistance } from "./format.ts";
 import { cueParts } from "./cueShown.ts";
@@ -916,6 +918,22 @@ test("speech has no metric: a cue with metres, two brackets in one sentence", ()
   assert.equal(withoutMetric("10 mph (about 16 km/h) for 1 mi (1.6 km)."), "10 mph for 1 mi.");
   const cue = { ...rideModel(lRoute()).cues[0], text: "Walk 300 ft (90 m) across the bridge." };
   assert.equal(cueSpoken(cue, "advance", 150), "In 500 feet, walk 300 ft across the bridge.");
+});
+
+test("speech in metric mode says the metric and drops the US twin in brackets", () => {
+  setUnitsForTest("metric");
+  try {
+    // The server's words as Ride holds them in metric mode, turned round by unitsFirst.
+    assert.equal(withoutMetric(unitsFirst("Walk 300 ft (90 m) across the bridge.")), "Walk 90 m across the bridge.");
+    assert.equal(withoutMetric(unitsFirst("1.0 to 1.6 mi (1.6 to 2.6 km): 6 crossings")), "1.6 to 2.6 km: 6 crossings");
+    assert.equal(withoutMetric("10 mph (about 16 km/h) for 1 mi (1.6 km)."), "about 16 km/h for 1 mi.");
+    assert.equal(withoutMetric(unitsFirst("10 mph (about 16 km/h) for 1 mi (1.6 km).")), "about 16 km/h for 1.6 km.");
+    assert.equal(withoutMetric("low stress (LTS 1)."), "low stress (LTS 1).");
+    const said = spokenText(unitsFirst("Walk 300 ft (90 m) across the bridge, then 0.4 mi (0.6 km) on the trail."));
+    assert.doesNotMatch(said, /\b(?:ft|mi|mph|feet|miles?)\b/);
+  } finally {
+    setUnitsForTest("us");
+  }
 });
 
 test("measureMap: a stop off the uniform scale maps onto its vertex", () => {
