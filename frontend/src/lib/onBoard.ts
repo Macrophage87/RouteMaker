@@ -287,7 +287,7 @@ export function liveForBoarding(
     .sort((a, b) => a.minutes - b.minutes);
 }
 
-/** A live train's minutes on the card: "in 3 min, live", "Arriving". */
+/** A live train's minutes on the card: "3 min", "Arriving". */
 export function liveNextText(minutes: number): string {
-  return minutes <= 0 ? t("Arriving") : t("in {min} min, live", { min: String(minutes) });
+  return minutes <= 0 ? t("Arriving") : t("{min} min", { min: String(minutes) });
 }

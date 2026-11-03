@@ -1859,7 +1859,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "toward": "방면",
   "Front rack": "앞쪽 자전거 거치대",
   "Arriving": "도착 중",
-  "in {min} min, live": "{min}분 후 (실시간)",
+  "{min} min": "{min}분",
   "Get off here: {name}.": "여기서 내리세요: {name}.",
   "Next stop: {name}. Get off there.": "다음 정류장: {name}. 거기서 내리세요.",
   "Next stop: {name}. Press the stop button to get off there.": "다음 정류장: {name}. 하차 버튼을 눌러 거기서 내리세요.",

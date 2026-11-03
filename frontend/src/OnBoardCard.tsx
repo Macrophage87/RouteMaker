@@ -170,8 +170,12 @@ function LineBadges({ lines }: { lines: readonly string[] }) {
 function LiveTrainLine({ train }: { train: { line: string; toward: string; minutes: number } }) {
   return (
     <span className="boarding-live">
-      <LineBadges lines={[train.line]} /> <span className="visually-hidden">{t("toward")} </span>
-      {train.toward}, {liveNextText(train.minutes)}
+      <LineBadges lines={[train.line]} /> {liveNextText(train.minutes)}
+      <span className="boarding-live-end">
+        {" "}
+        <span className="visually-hidden">{t("toward")} </span>
+        {train.toward}
+      </span>
     </span>
   );
 }

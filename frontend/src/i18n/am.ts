@@ -1859,7 +1859,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "toward": "ወደ",
   "Front rack": "የፊት መደርደሪያ",
   "Arriving": "እየደረሰ ነው",
-  "in {min} min, live": "በ{min} ደቂቃ፣ ቀጥታ",
+  "{min} min": "{min} ደቂቃ",
   "Get off here: {name}.": "እዚህ ይውረዱ፦ {name}።",
   "Next stop: {name}. Get off there.": "ቀጣዩ ማቆሚያ፦ {name}። እዚያ ይውረዱ።",
   "Next stop: {name}. Press the stop button to get off there.": "ቀጣዩ ማቆሚያ፦ {name}። እዚያ ለመውረድ የማቆሚያ ቁልፉን ይጫኑ።",

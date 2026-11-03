@@ -250,6 +250,6 @@ test("the next live trains are the ones that make the ride, soonest first, each 
     { line: "Blue Line", toward: "Eastern Market", minutes: 12 },
   ]);
   assert.deepEqual(liveForBoarding([], groups, stops), []);
-  assert.equal(liveNextText(3), "in 3 min, live");
+  assert.equal(liveNextText(3), "3 min");
   assert.equal(liveNextText(0), "Arriving");
 });

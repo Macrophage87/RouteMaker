@@ -1859,7 +1859,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "toward": "की ओर",
   "Front rack": "आगे का रैक",
   "Arriving": "आ रही है",
-  "in {min} min, live": "{min} मिनट में, लाइव",
+  "{min} min": "{min} मिनट",
   "Get off here: {name}.": "यहाँ उतरें: {name}।",
   "Next stop: {name}. Get off there.": "अगला स्टॉप: {name}। वहाँ उतरें।",
   "Next stop: {name}. Press the stop button to get off there.": "अगला स्टॉप: {name}। वहाँ उतरने के लिए स्टॉप बटन दबाएँ।",

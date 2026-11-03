@@ -1859,7 +1859,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "toward": "開往",
   "Front rack": "車頭單車架",
   "Arriving": "即將到站",
-  "in {min} min, live": "{min} 分鐘後（實時）",
+  "{min} min": "{min} 分鐘",
   "Get off here: {name}.": "喺呢度落車：{name}。",
   "Next stop: {name}. Get off there.": "下一站：{name}。喺嗰度落車。",
   "Next stop: {name}. Press the stop button to get off there.": "下一站：{name}。撳落車鐘，喺嗰度落車。",
