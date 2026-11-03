@@ -38,6 +38,14 @@ export function railFit(available: number, buttons: number, large = 0, iconsOnly
   return need <= available ? "under" : "pill";
 }
 
+/** The rail's own room above and below its buttons (styles.css .ride-rail top and bottom). */
+export const RAIL_INSET_PX = 24;
+
+/** The least height the rail's buttons take: each a 44 px pill (or circle with icons only), 6 px apart. */
+export function railLeastPx(buttons: number): number {
+  return buttons <= 0 ? 0 : buttons * PILL_PX + (buttons - 1) * GAP_PX;
+}
+
 /** A box on the screen, as getBoundingClientRect gives it. */
 export interface Box {
   top: number;
