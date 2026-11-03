@@ -75,6 +75,7 @@ import { ANNOUNCE_HINT, ANNOUNCE_LABEL, type AnnounceLevel } from "../lib/announ
 import type { Status } from "./RoutePanel.tsx";
 import { APP_VERSION, versionSaid } from "../lib/appVersion.ts";
 import { LANGUAGES, LANGUAGE_NAME, chooseLanguage, language, locale, readLanguageChoice, t, type LanguageChoice } from "../lib/i18n.ts";
+import { chooseUnits, units, type Units } from "../lib/units.ts";
 import { THEME_CHOICES, chooseTheme, readThemeChoice, type ThemeChoice } from "../lib/themeClock.ts";
 
 /** The Language setting's (i) words. Street names and notices from agencies stay as they are written. */
@@ -106,6 +107,28 @@ function LanguageSetting() {
     </SettingRow>
     {language() !== "en" && <p className="hint">{language() === "es" ? t(DRAFT_NOTE_ES) : t(DRAFT_NOTE)}</p>}
     </>
+  );
+}
+
+/**
+ * Settings > Display > Units (the owner, 2026-11-03: "have a metric mode in settings"): US (miles first, metric in
+ * brackets) or Metric (kilometres first, US in brackets; Ride says metres and kilometres). Reloads, as Language does.
+ */
+function UnitsSetting({ saveNow }: { saveNow?: () => Promise<unknown> }) {
+  const [choice, setChoice] = useState<Units>(() => units());
+  return (
+    <SettingRow infoId="settings-units-info" about={t("Units")} info={t("Distances, speeds and heights, on screen and spoken. The other units stay in brackets. Changing it reloads the page.")}>
+      <SettingSelect<Units>
+        label={t("Units")}
+        value={choice}
+        options={[["us", t("Miles and feet")] as const, ["metric", t("Kilometers and meters")] as const]}
+        onChange={(next) => {
+          setChoice(next);
+          void chooseUnits(next, saveNow);
+        }}
+        describedBy="settings-units-info"
+      />
+    </SettingRow>
   );
 }
 
@@ -525,6 +548,8 @@ export interface SettingsSheetProps {
   /** Whether this server can sign anyone in (GET /api/me's sign_in): the sign-in line is shown only then. */
   signInAvailable: boolean;
   menu: { onSuggest: (opener: HTMLElement) => void; onGpx: (opener: HTMLElement) => void; onReview: ((opener: HTMLElement) => void) | null };
+  /** Signed in: save this device's settings to the account now (the Units choice reloads the page right after). */
+  saveSettingsNow?: () => Promise<unknown>;
 }
 
 /** High contrast, as the Map layers sheet has it, with its explanation behind an (i). */
@@ -755,6 +780,7 @@ export function SettingsSheet(props: SettingsSheetProps) {
         <ThemeSetting />
         {/* The app's language (the owner, 2026-10-27: "compatible with multiple languages"): unset, the phone's own. */}
         <LanguageSetting />
+        <UnitsSetting saveNow={props.saveSettingsNow} />
       </section>
       </div>
       <div role="tabpanel" id="settings-panel-account" aria-labelledby="settings-tab-account" className="settings-panel" hidden={tab !== "account"}>

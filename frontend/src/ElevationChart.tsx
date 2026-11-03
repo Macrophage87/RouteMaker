@@ -65,6 +65,7 @@ import { spanClass } from "./lib/routeColours.ts";
 import { tripPointAt, type TripRoute } from "./lib/tripRides.ts";
 import { AvoidPattern, CrossingMarker, GradePatterns, JunctionKey, LEFT, RIGHT, Tables, WIDTH, capitalise, feet, metres } from "./chartParts.tsx";
 import { MassRideCharts } from "./MassRideCharts.tsx";
+import { metricFirst } from "./lib/units.ts";
 
 /** The vertical layout of each chart, in viewBox units. */
 const LAYOUT = {
@@ -255,10 +256,10 @@ function StressChart({ route, profile, onScrub, compact = false }: ChartProps) {
             <g>
               {/* The side: the unit on the marker row (nothing else is drawn left of the plot there), and the log scale's figures, right-aligned against the plot and never crowded. */}
               <text className="pc-axis-text" x={2} y={calmLayout.markerY - 6}>
-                {t("calm mi")}
+                {metricFirst() ? t("calm km") : t("calm mi")}
               </text>
               <text className="pc-axis-text" x={2} y={calmLayout.markerY - 6 + CHART_TYPE}>
-                {t("per mi")}
+                {metricFirst() ? t("per km") : t("per mi")}
               </text>
               {calmTicks(calmMax, calmY).map((tick) => (
                 <text key={tick} className="pc-axis-text" x={LEFT - 3} y={calmY(tick) + 4} textAnchor="end">

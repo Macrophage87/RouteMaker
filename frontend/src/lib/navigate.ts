@@ -1152,7 +1152,7 @@ function joinJogs(cues: Cue[]): void {
  */
 export function roadHazardWords(text: string): string {
   // The server words it in the rider's language (routemaker.lang): "Rieles en la calle en ..., 0.4 a 1.2 mi".
-  const m = /^(.*?) (on|en) (.*?), (?:(?:at|en) [\d.]+|[\d.]+ (?:to|a) [\d.]+) mi \([^)]*\): (.*)$/.exec(text);
+  const m = /^(.*?) (on|en) (.*?), (?:(?:at|en) [\d.]+|[\d.]+ (?:to|a) [\d.]+) (?:mi|km) \([^)]*\): (.*)$/.exec(text);
   if (!m) return text;
   return `${m[1]} ${m[2]} ${m[3]}. ${m[4].charAt(0).toUpperCase()}${m[4].slice(1)}`;
 }

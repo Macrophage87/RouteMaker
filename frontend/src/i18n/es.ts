@@ -113,6 +113,19 @@ export const ES: Readonly<Record<string, string>> = {
   "{n} feet": "{n} pies",
   "1 mile": "1 milla",
   "{n} miles": "{n} millas",
+  // Metric mode (lib/units.ts, 2026-11-03).
+  "{n} meters": "{n} metros",
+  "1 kilometer": "1 kilómetro",
+  "{n} kilometers": "{n} kilómetros",
+  "km {km} (mile {mile})": "el km {km} (milla {mile})",
+  "{km} per km ({mile} per mile)": "{km} por km ({mile} por milla)",
+  "Units": "Unidades",
+  "Distances, speeds and heights, on screen and spoken. The other units stay in brackets. Changing it reloads the page.": "Distancias, velocidades y alturas, en pantalla y habladas. Las otras unidades quedan entre paréntesis. Al cambiarlo se recarga la página.",
+  "Miles and feet": "Millas y pies",
+  "Kilometers and meters": "Kilómetros y metros",
+  "Target distance (km)": "Distancia objetivo (km)",
+  "calm km": "km tranquilos",
+  "per km": "por km",
   // The planner's figures said with the units in words (lib/format.ts formatDistanceSpoken and its kin).
   "1 mile ({km} kilometers)": "1 milla ({km} kilómetros)",
   "{miles} miles ({km} kilometers)": "{miles} millas ({km} kilómetros)",
@@ -1720,8 +1733,10 @@ export const ES: Readonly<Record<string, string>> = {
   // ---- Mass Ride and Group Ride (the 2026-10-28 audit, P6) ----
   "Show me as a dot to others on this ride?": "¿Mostrarme como un punto a los demás en este recorrido?",
   "Only while the app is open. No name; gone in 2 min.": "Solo con la app abierta. Sin nombre; se borra en 2 min.",
-  "Only while the app is open and you are within a quarter mile (400 m) of the route. No name; positions are encrypted and gone after 2 minutes.":
-    "Solo mientras la app está abierta y usted está a menos de un cuarto de milla (400 m) de la ruta. Sin nombre; las posiciones van cifradas y se borran a los 2 minutos.",
+  "Only while the app is open and you are within 0.25 mi (400 m) of the route. No name; positions are encrypted and gone after 2 minutes.":
+    "Solo mientras la app está abierta y usted está a menos de 0.25 mi (400 m) de la ruta. Sin nombre; las posiciones van cifradas y se borran a los 2 minutos.",
+  "Only while the app is open and you are within 400 m (0.25 mi) of the route. No name; positions are encrypted and gone after 2 minutes.":
+    "Solo mientras la app está abierta y usted está a menos de 400 m (0.25 mi) de la ruta. Sin nombre; las posiciones van cifradas y se borran a los 2 minutos.",
   "Only while the app is open, on or off the route, so the leader and riders can find each other. No name; positions are encrypted and gone after 2 minutes.":
     "Solo mientras la app está abierta, en la ruta o fuera de ella, para que el guía y los ciclistas se encuentren. Sin nombre; las posiciones van cifradas y se borran a los 2 minutos.",
   "Yes": "Sí",

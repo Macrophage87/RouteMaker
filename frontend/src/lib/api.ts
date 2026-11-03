@@ -8,7 +8,7 @@
 import { encodePolyline6 } from "./polyline.ts";
 import type { TripLeg } from "./transitMarks.ts";
 import type { MtbReading } from "./mtbMode.ts";
-import { formatRoughDistance } from "./format.ts";
+import { formatRoughDistance, unitsFirstDeep } from "./format.ts";
 import { noteArrived } from "./departure.ts";
 import type { LonLat } from "./geo.ts";
 import { runs, twoPointsOnly, type PresetId } from "./presets.ts";
@@ -1611,9 +1611,11 @@ export async function requestRoute(
     body = null;
   }
   if (response.ok && looksLikeRoute(body)) {
+    // The server's sentences in the rider's units order (metric mode, lib/units.ts).
+    const route = unitsFirstDeep(body);
     // A departure's countdown runs from this moment by the phone's clock, not the server's (review TB-6).
-    if (body.transit?.departure) noteArrived(body.transit.departure, Date.now());
-    return { ok: true, route: body };
+    if (route.transit?.departure) noteArrived(route.transit.departure, Date.now());
+    return { ok: true, route };
   }
   const status = response.ok ? 500 : response.status;
   const error = describeError(status, body, response.headers.get("Retry-After"));
@@ -1670,7 +1672,7 @@ export async function requestNeighbours(
         (o): o is NeighbourOption =>
           !!o && (o.kind === "direct" || o.kind === "calmer") && typeof o.stress === "number" && looksLikeRoute(o.route),
       );
-      return { ok: true, options: kept };
+      return { ok: true, options: unitsFirstDeep(kept) };
     }
     return { ok: false, error: describeError(response.ok ? 500 : response.status, body, response.headers.get("Retry-After")) };
   } catch {
