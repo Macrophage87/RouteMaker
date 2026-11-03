@@ -25,6 +25,7 @@ WORDED = [
     "core/route_hazards.py",
     "core/hillseek.py",
     "core/novice_walks.py",
+    "core/run_plan.py",
     "core/workzones.py",
     "core/transit.py",
     "core/bikeshare.py",

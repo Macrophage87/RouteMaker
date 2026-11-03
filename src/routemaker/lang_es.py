@@ -197,6 +197,7 @@ ES: dict[str, str] = {
     ),
     "Walk {m} min to {place}.": "Camine {m} min hasta {place}.",
     "Walk {m} min.": "Camine {m} min.",
+    "Run {m} min.": "Corra {m} min.",
     "About {m} min into the station by the elevator.": (
         "Unos {m} min para entrar a la estación, por el ascensor."
     ),
@@ -213,6 +214,8 @@ ES: dict[str, str] = {
     ),
     "Change to {vehicle}": "Cambie al {vehicle}",
     "Board {vehicle}": "Suba al {vehicle}",
+    # Stop-by-stop transit (2026-11-02): the way the line runs, by its last stop.
+    "{vehicle} toward {place}": "{vehicle} en dirección a {place}",
     "ride {m} min to {place}": "viaje {m} min hasta {place}",
     "ride {m} min": "viaje {m} min",
     "about {m} min wait": "unos {m} min de espera",
@@ -363,6 +366,7 @@ ES: dict[str, str] = {
         "Unos {m} min de puerta a puerta, en bicicleta todo el camino."
     ),
     "About {m} min door to door, walking.": "Unos {m} min de puerta a puerta, a pie.",
+    "About {m} min, running.": "Unos {m} min, corriendo.",
     "About {m} min door to door, with live departures.": (
         "Unos {m} min de puerta a puerta, con salidas en vivo."
     ),

@@ -83,7 +83,6 @@ class TestNearest:
             "stress": 85,
             "hills": -40,
             "assist": True,
-            "avoid_gravel": True,
             "when": "weekday_offpeak",
         }
         assert post(client, body).status_code == 200
@@ -94,9 +93,7 @@ class TestNearest:
         ]
         assert payload["targets"] == [{"lon": lon, "lat": lat} for lon, lat in PLACES]
         assert payload["costing"] == "bicycle"
-        assert payload["costing_options"] == presets.costing(
-            "cargo", 85, -40, assist=True, avoid_gravel=True
-        )
+        assert payload["costing_options"] == presets.costing("cargo", 85, -40, assist=True)
 
     def test_the_graph_and_costing_are_best_orders(self, client, router) -> None:
         # The same ride asks Best order's matrix and this one on the same router and costing.

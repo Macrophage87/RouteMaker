@@ -248,6 +248,7 @@ services:
       VALHALLA_WEEKEND_URL: ${VALHALLA_WEEKEND_URL:-http://valhalla-weekend:8002}
       VALHALLA_OFFROAD_URL: ${VALHALLA_OFFROAD_URL:-http://valhalla-offroad:8002}
       VALHALLA_MTB_URL: ${VALHALLA_MTB_URL:-http://valhalla-mtb:8002}
+      VALHALLA_PAVED_URL: ${VALHALLA_PAVED_URL:-http://valhalla-paved:8002}
       # The geocoder place search and place names are proxied to
       # (core.geocode); on this network only, like the routers.
       PHOTON_URL: ${PHOTON_URL:-http://photon:2322}
@@ -388,6 +389,7 @@ services:
       VALHALLA_WEEKEND_URL: ${VALHALLA_WEEKEND_URL:-http://valhalla-weekend:8002}
       VALHALLA_OFFROAD_URL: ${VALHALLA_OFFROAD_URL:-http://valhalla-offroad:8002}
       VALHALLA_MTB_URL: ${VALHALLA_MTB_URL:-http://valhalla-mtb:8002}
+      VALHALLA_PAVED_URL: ${VALHALLA_PAVED_URL:-http://valhalla-paved:8002}
       PHOTON_URL: ${PHOTON_URL:-http://photon:2322}
     volumes:
       - ${DATA_ROOT}/backups:/data/backups
@@ -700,8 +702,10 @@ services:
   # stopped at a pull of routemaker/renderer:${TAG} from a registry that has
   # never held it. Parked behind a profile so the default `up` skips it and the
   # stack that *can* start does. handoff.md section 7 carries both rows; the
-  # service stays here, with its limits, so the sizing arithmetic and the
-  # no-published-ports rule keep counting it.
+  # service stays here, with its limits, so the no-published-ports and limits rules keep
+  # checking it. Its memory has been out of the sizing arithmetic since the Road Bike
+  # router came in (2026-11-02, scripts/check_compose_limits.py `UNBUILT_PROFILE`): it
+  # cannot start, so it is in neither peak; count it again before it is ever built.
   #
   #     docker compose --profile unbuilt up -d   # once there is something to run
   renderer:
@@ -823,6 +827,29 @@ services:
       resources:
         limits: { memory: 768M, cpus: "1" }
 
+  # The Road Bike graph (pipeline.variants.Variant.PAVED): the standard graph with gravel,
+  # fine gravel and compacted priced as gravel and winding trails priced as an LTS 3 street.
+  # Behind the same profile as valhalla-offroad and for the same reason; while it is not
+  # running the planner answers Road Bike on the standard graph. One worker in 768M, as
+  # valhalla-offroad. It fits under the 32G check because the check no longer counts the
+  # `unbuilt` services (renderer, bot), which have no image and never run
+  # (scripts/check_compose_limits.py). Start it with the other two:
+  #   docker compose --profile offroad up -d valhalla-offroad valhalla-mtb valhalla-paved
+  valhalla-paved:
+    <<: [*restart, *logging]
+    profiles: ["offroad"]
+    image: ghcr.io/valhalla/valhalla:3.9.1@sha256:4fd114eb1d26b8fc2f43bcb3df234c1b63a0bf13c277405e5943d5361dc575de
+    # As valhalla-offroad: the config path and the worker count on argv.
+    command: ["valhalla_service", "/conf/valhalla-paved.json", "1"]
+    volumes:
+      - ${DATA_ROOT}/tiles/paved:/data/tiles/paved:ro
+      - ${DATA_ROOT}/elevation:/data/elevation:ro
+      - ./valhalla:/conf:ro
+      - ./lua:/conf/lua:ro
+    deploy:
+      resources:
+        limits: { memory: 768M, cpus: "1" }
+
   # The only component that holds the bot token, and the source of authorization
   # truth. Exposes its membership interface on the internal network behind a
   # shared secret, read-only.
@@ -936,6 +963,7 @@ services:
       VALHALLA_WEEKEND_URL: ${VALHALLA_WEEKEND_URL:-http://valhalla-weekend:8002}
       VALHALLA_OFFROAD_URL: ${VALHALLA_OFFROAD_URL:-http://valhalla-offroad:8002}
       VALHALLA_MTB_URL: ${VALHALLA_MTB_URL:-http://valhalla-mtb:8002}
+      VALHALLA_PAVED_URL: ${VALHALLA_PAVED_URL:-http://valhalla-paved:8002}
     # The five directories this service writes, each bound on its own, rather
     # than `${DATA_ROOT}:/data` - which is the same volume and also carries
     # `caddy/` (the ACME account key and the deployment's TLS private key),

@@ -281,16 +281,17 @@ grade<sup class="cite"><a href="#ref-2" aria-label="source 2">[2]</a></sup>: slo
 asks the engine for<sup class="cite"><a href="#ref-2" aria-label="source 2">[2]</a></sup>. Default's hybrid bike rides compacted gravel at 80% of its pace,
 dirt at 60% and loose gravel at 40%. The cross bike of Group Ride, Trailmaxxing, Gravel and Mountain Goat
 is as quick on compacted gravel and loses less on dirt (70%) and loose gravel (50%). Mountain Bike's
-mountain bike keeps its full pace on compacted gravel, 90% on dirt and 75% on loose gravel. With Avoid
-gravel on, the engine is asked for a road bike at the same pace, which is also slower on rough pavement
-(90%) and on any gravel. Every way mapped plainly as gravel or fine gravel, road, track or path, counts as
-compacted gravel. Loose gravel is pebbles, sand, plain unpaved, or a mixed value with gravel in it such as
+mountain bike keeps its full pace on compacted gravel, 90% on dirt and 75% on loose gravel. Road Bike's
+road bike, timed at 15.5 mph [25 km/h], is also slower on rough pavement (90%) and on any gravel. On every other
+ride type, every way mapped plainly as gravel or fine gravel, road, track or path, counts as compacted gravel;
+on Road Bike's own map, gravel, fine gravel and compacted all count as gravel. Loose gravel is pebbles, sand, plain unpaved, or a mixed value with gravel in it such as
 gravel;dirt.</li>
 <li><strong>Junctions.</strong> Each junction adds its wait: 4 seconds at a District stop sign
 ridden as a yield, 8 at other stops, 15 at a signal and 12 to 30 waiting for a gap in a busier road
-(<a href="#junctions">Junctions</a>).</li>
+(<a href="#junctions">Junctions</a>). When Road Bike chooses between routes, these waits count three times
+over, because a road rider loses their pace at every stop; the time shown is still the real wait.</li>
 <li><strong>Gates.</strong> The engine adds a wait at a gate whose access isn't marked<sup class="cite"><a href="#ref-1" aria-label="source 1">[1]</a></sup>:
-30 seconds, 2 minutes on Group Ride, and 5 minutes on Cargo Bike and the bikeshare ride types.</li>
+30 seconds, 2 minutes on Group Ride and Road Bike, and 5 minutes on Cargo Bike and the bikeshare ride types.</li>
 <li><strong>Walking.</strong> Where a way is marked walk your bike, the engine times it at walking
 pace, 3.1 mph [5 km/h]<sup class="cite"><a href="#ref-2" aria-label="source 2">[2]</a></sup>. Where Novice and Nervous suggests walking on the sidewalk past a
 busy road, that stretch is timed at walking pace.</li>
@@ -310,20 +311,20 @@ type a mile of LTS 3 costs about 2.9 to 5.8 calm miles and a mile of LTS 4 about
 wider roads of the same level cost more.</p>
 <figure id="fig-costs" class="has-narrow">
 <div class="fig-scroll fig-wide" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
-<svg viewBox="0 0 800 360" role="img" aria-labelledby="fig-costs-t fig-costs-d" focusable="false" style="min-width:576px">
+<svg viewBox="0 0 800 410" role="img" aria-labelledby="fig-costs-t fig-costs-d" focusable="false" style="min-width:576px">
 <title id="fig-costs-t">What a mile of busy road costs, by ride type</title>
-<desc id="fig-costs-d">Range bars of calm miles per mile at each ride type&#x27;s starting slider. Mass Ride: LTS 3 and LTS 4 both 1. Fast: LTS 3 1.22 to 1.36, LTS 4 2.11 to 2.34. Group Ride, Gravel and Mountain Goat: 1.93 to 2.85 and 5.38 to 6.25. Default, E-bike and Cargo Bike carrying cargo: 2.88 to 5.79 and 12.85 to 15.83. Cargo Bike with passengers: 3.16 to 6.84 and 15.61 to 19.42. Trailmaxxing with no target distance: 6 and 11.</desc>
+<desc id="fig-costs-d">Range bars of calm miles per mile at each ride type&#x27;s starting slider. Mass Ride: LTS 3 and LTS 4 both 1. Fast: LTS 3 1.22 to 1.36, LTS 4 2.11 to 2.34. Group Ride, Gravel and Mountain Goat: 1.93 to 2.85 and 5.38 to 6.25. Road Bike: the same. Default, E-bike and Cargo Bike carrying cargo: 2.88 to 5.79 and 12.85 to 15.83. Cargo Bike with passengers: 3.16 to 6.84 and 15.61 to 19.42. Trailmaxxing with no target distance: 6 and 11.</desc>
 <defs><marker id="ah-costs" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
-<line class="grid" x1="280.0" y1="8" x2="280.0" y2="314"/>
-<text class="ts" x="280.0" y="330" text-anchor="middle">0</text>
-<line class="grid" x1="370.0" y1="8" x2="370.0" y2="314"/>
-<text class="ts" x="370.0" y="330" text-anchor="middle">5</text>
-<line class="grid" x1="460.0" y1="8" x2="460.0" y2="314"/>
-<text class="ts" x="460.0" y="330" text-anchor="middle">10</text>
-<line class="grid" x1="550.0" y1="8" x2="550.0" y2="314"/>
-<text class="ts" x="550.0" y="330" text-anchor="middle">15</text>
-<line class="grid" x1="640.0" y1="8" x2="640.0" y2="314"/>
-<text class="ts" x="640.0" y="330" text-anchor="middle">20</text>
+<line class="grid" x1="280.0" y1="8" x2="280.0" y2="364"/>
+<text class="ts" x="280.0" y="380" text-anchor="middle">0</text>
+<line class="grid" x1="370.0" y1="8" x2="370.0" y2="364"/>
+<text class="ts" x="370.0" y="380" text-anchor="middle">5</text>
+<line class="grid" x1="460.0" y1="8" x2="460.0" y2="364"/>
+<text class="ts" x="460.0" y="380" text-anchor="middle">10</text>
+<line class="grid" x1="550.0" y1="8" x2="550.0" y2="364"/>
+<text class="ts" x="550.0" y="380" text-anchor="middle">15</text>
+<line class="grid" x1="640.0" y1="8" x2="640.0" y2="364"/>
+<text class="ts" x="640.0" y="380" text-anchor="middle">20</text>
 <text class="t" x="270" y="36" text-anchor="end">Mass Ride</text>
 <rect x="295.0" y="18" width="6.0" height="14" fill="#f3c81a" stroke="#1c1917" stroke-width="0.8"/>
 <text class="ts" x="306.0" y="29" text-anchor="start">LTS 3: 1</text>
@@ -339,39 +340,44 @@ wider roads of the same level cost more.</p>
 <text class="ts" x="339.3" y="129" text-anchor="start">LTS 3: 1.93 to 2.85</text>
 <rect x="376.8" y="138" width="15.7" height="14" fill="#e3261c" stroke="#1c1917" stroke-width="0.8"/>
 <text class="ts" x="400.5" y="149" text-anchor="start">LTS 4: 5.38 to 6.25</text>
-<text class="t" x="270" y="186" text-anchor="end">Default, E-bike, Cargo (cargo)</text>
-<rect x="331.8" y="168" width="52.4" height="14" fill="#f3c81a" stroke="#1c1917" stroke-width="0.8"/>
-<text class="ts" x="392.22" y="179" text-anchor="start">LTS 3: 2.88 to 5.79</text>
-<rect x="511.3" y="188" width="53.6" height="14" fill="#e3261c" stroke="#1c1917" stroke-width="0.8"/>
-<text class="ts" x="572.94" y="199" text-anchor="start">LTS 4: 12.85 to 15.83</text>
-<text class="t" x="270" y="236" text-anchor="end">Cargo with passengers</text>
-<rect x="336.9" y="218" width="66.2" height="14" fill="#f3c81a" stroke="#1c1917" stroke-width="0.8"/>
-<text class="ts" x="411.12" y="229" text-anchor="start">LTS 3: 3.16 to 6.84</text>
-<rect x="561.0" y="238" width="68.6" height="14" fill="#e3261c" stroke="#1c1917" stroke-width="0.8"/>
-<text class="ts" x="637.5600000000001" y="249" text-anchor="start">LTS 4: 15.61 to 19.42</text>
-<text class="t" x="270" y="286" text-anchor="end">Trailmaxxing (no target)</text>
-<rect x="385.0" y="268" width="6.0" height="14" fill="#f3c81a" stroke="#1c1917" stroke-width="0.8"/>
-<text class="ts" x="396.0" y="279" text-anchor="start">LTS 3: 6</text>
-<rect x="475.0" y="288" width="6.0" height="14" fill="#e3261c" stroke="#1c1917" stroke-width="0.8"/>
-<text class="ts" x="486.0" y="299" text-anchor="start">LTS 4: 11</text>
-<text class="ts" x="460.0" y="350" text-anchor="middle">Calm miles per mile ridden (a quiet street = 1)</text>
+<text class="t" x="270" y="186" text-anchor="end">Road Bike</text>
+<rect x="314.7" y="168" width="16.6" height="14" fill="#f3c81a" stroke="#1c1917" stroke-width="0.8"/>
+<text class="ts" x="339.3" y="179" text-anchor="start">LTS 3: 1.93 to 2.85</text>
+<rect x="376.8" y="188" width="15.7" height="14" fill="#e3261c" stroke="#1c1917" stroke-width="0.8"/>
+<text class="ts" x="400.5" y="199" text-anchor="start">LTS 4: 5.38 to 6.25</text>
+<text class="t" x="270" y="236" text-anchor="end">Default, E-bike, Cargo (cargo)</text>
+<rect x="331.8" y="218" width="52.4" height="14" fill="#f3c81a" stroke="#1c1917" stroke-width="0.8"/>
+<text class="ts" x="392.22" y="229" text-anchor="start">LTS 3: 2.88 to 5.79</text>
+<rect x="511.3" y="238" width="53.6" height="14" fill="#e3261c" stroke="#1c1917" stroke-width="0.8"/>
+<text class="ts" x="572.94" y="249" text-anchor="start">LTS 4: 12.85 to 15.83</text>
+<text class="t" x="270" y="286" text-anchor="end">Cargo with passengers</text>
+<rect x="336.9" y="268" width="66.2" height="14" fill="#f3c81a" stroke="#1c1917" stroke-width="0.8"/>
+<text class="ts" x="411.12" y="279" text-anchor="start">LTS 3: 3.16 to 6.84</text>
+<rect x="561.0" y="288" width="68.6" height="14" fill="#e3261c" stroke="#1c1917" stroke-width="0.8"/>
+<text class="ts" x="637.5600000000001" y="299" text-anchor="start">LTS 4: 15.61 to 19.42</text>
+<text class="t" x="270" y="336" text-anchor="end">Trailmaxxing (no target)</text>
+<rect x="385.0" y="318" width="6.0" height="14" fill="#f3c81a" stroke="#1c1917" stroke-width="0.8"/>
+<text class="ts" x="396.0" y="329" text-anchor="start">LTS 3: 6</text>
+<rect x="475.0" y="338" width="6.0" height="14" fill="#e3261c" stroke="#1c1917" stroke-width="0.8"/>
+<text class="ts" x="486.0" y="349" text-anchor="start">LTS 4: 11</text>
+<text class="ts" x="460.0" y="400" text-anchor="middle">Calm miles per mile ridden (a quiet street = 1)</text>
 </svg>
 </div>
 <div class="fig-narrow">
-<svg viewBox="0 0 320 544" role="img" aria-labelledby="fig-costs-n-t fig-costs-n-d" focusable="false">
+<svg viewBox="0 0 320 620" role="img" aria-labelledby="fig-costs-n-t fig-costs-n-d" focusable="false">
 <title id="fig-costs-n-t">What a mile of busy road costs, by ride type</title>
-<desc id="fig-costs-n-d">Range bars of calm miles per mile at each ride type&#x27;s starting slider. Mass Ride: LTS 3 and LTS 4 both 1. Fast: LTS 3 1.22 to 1.36, LTS 4 2.11 to 2.34. Group Ride, Gravel and Mountain Goat: 1.93 to 2.85 and 5.38 to 6.25. Default, E-bike and Cargo Bike carrying cargo: 2.88 to 5.79 and 12.85 to 15.83. Cargo Bike with passengers: 3.16 to 6.84 and 15.61 to 19.42. Trailmaxxing with no target distance: 6 and 11.</desc>
+<desc id="fig-costs-n-d">Range bars of calm miles per mile at each ride type&#x27;s starting slider. Mass Ride: LTS 3 and LTS 4 both 1. Fast: LTS 3 1.22 to 1.36, LTS 4 2.11 to 2.34. Group Ride, Gravel and Mountain Goat: 1.93 to 2.85 and 5.38 to 6.25. Road Bike: the same. Default, E-bike and Cargo Bike carrying cargo: 2.88 to 5.79 and 12.85 to 15.83. Cargo Bike with passengers: 3.16 to 6.84 and 15.61 to 19.42. Trailmaxxing with no target distance: 6 and 11.</desc>
 <defs><marker id="ah-costs-n" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
-<line class="grid" x1="12.0" y1="8" x2="12.0" y2="464"/>
-<text class="ts" x="12.0" y="484" text-anchor="middle">0</text>
-<line class="grid" x1="84.0" y1="8" x2="84.0" y2="464"/>
-<text class="ts" x="84.0" y="484" text-anchor="middle">5</text>
-<line class="grid" x1="156.0" y1="8" x2="156.0" y2="464"/>
-<text class="ts" x="156.0" y="484" text-anchor="middle">10</text>
-<line class="grid" x1="228.0" y1="8" x2="228.0" y2="464"/>
-<text class="ts" x="228.0" y="484" text-anchor="middle">15</text>
-<line class="grid" x1="300.0" y1="8" x2="300.0" y2="464"/>
-<text class="ts" x="300.0" y="484" text-anchor="middle">20</text>
+<line class="grid" x1="12.0" y1="8" x2="12.0" y2="540"/>
+<text class="ts" x="12.0" y="560" text-anchor="middle">0</text>
+<line class="grid" x1="84.0" y1="8" x2="84.0" y2="540"/>
+<text class="ts" x="84.0" y="560" text-anchor="middle">5</text>
+<line class="grid" x1="156.0" y1="8" x2="156.0" y2="540"/>
+<text class="ts" x="156.0" y="560" text-anchor="middle">10</text>
+<line class="grid" x1="228.0" y1="8" x2="228.0" y2="540"/>
+<text class="ts" x="228.0" y="560" text-anchor="middle">15</text>
+<line class="grid" x1="300.0" y1="8" x2="300.0" y2="540"/>
+<text class="ts" x="300.0" y="560" text-anchor="middle">20</text>
 <text class="t" x="10" y="26" text-anchor="start">Mass Ride</text>
 <rect x="23.4" y="34" width="6.0" height="16" fill="#f3c81a" stroke="#1c1917" stroke-width="0.8"/>
 <text class="ts" x="34.4" y="47" text-anchor="start">LTS 3: 1</text>
@@ -387,23 +393,28 @@ wider roads of the same level cost more.</p>
 <text class="ts" x="61.040000000000006" y="199" text-anchor="start">LTS 3: 1.93 to 2.85</text>
 <rect x="89.5" y="208" width="12.5" height="16" fill="#e3261c" stroke="#1c1917" stroke-width="0.8"/>
 <text class="ts" x="110.0" y="221" text-anchor="start">LTS 4: 5.38 to 6.25</text>
-<text class="t" x="10" y="254" text-anchor="start">Default, E-bike, Cargo (cargo)</text>
-<rect x="53.5" y="262" width="41.9" height="16" fill="#f3c81a" stroke="#1c1917" stroke-width="0.8"/>
-<text class="ts" x="103.376" y="275" text-anchor="start">LTS 3: 2.88 to 5.79</text>
-<rect x="197.0" y="284" width="42.9" height="16" fill="#e3261c" stroke="#1c1917" stroke-width="0.8"/>
-<text class="ts" x="189.04" y="297" text-anchor="end">LTS 4: 12.85 to 15.83</text>
-<text class="t" x="10" y="330" text-anchor="start">Cargo with passengers</text>
-<rect x="57.5" y="338" width="53.0" height="16" fill="#f3c81a" stroke="#1c1917" stroke-width="0.8"/>
-<text class="ts" x="118.49600000000001" y="351" text-anchor="start">LTS 3: 3.16 to 6.84</text>
-<rect x="236.8" y="360" width="54.9" height="16" fill="#e3261c" stroke="#1c1917" stroke-width="0.8"/>
-<text class="ts" x="228.78400000000002" y="373" text-anchor="end">LTS 4: 15.61 to 19.42</text>
-<text class="t" x="10" y="406" text-anchor="start">Trailmaxxing (no target)</text>
-<rect x="95.4" y="414" width="6.0" height="16" fill="#f3c81a" stroke="#1c1917" stroke-width="0.8"/>
-<text class="ts" x="106.4" y="427" text-anchor="start">LTS 3: 6</text>
-<rect x="167.4" y="436" width="6.0" height="16" fill="#e3261c" stroke="#1c1917" stroke-width="0.8"/>
-<text class="ts" x="178.4" y="449" text-anchor="start">LTS 4: 11</text>
-<text class="ts" x="160.0" y="512" text-anchor="middle">Calm miles per mile ridden</text>
-<text class="ts" x="160.0" y="532" text-anchor="middle">(a quiet street = 1)</text>
+<text class="t" x="10" y="254" text-anchor="start">Road Bike</text>
+<rect x="39.8" y="262" width="13.2" height="16" fill="#f3c81a" stroke="#1c1917" stroke-width="0.8"/>
+<text class="ts" x="61.040000000000006" y="275" text-anchor="start">LTS 3: 1.93 to 2.85</text>
+<rect x="89.5" y="284" width="12.5" height="16" fill="#e3261c" stroke="#1c1917" stroke-width="0.8"/>
+<text class="ts" x="110.0" y="297" text-anchor="start">LTS 4: 5.38 to 6.25</text>
+<text class="t" x="10" y="330" text-anchor="start">Default, E-bike, Cargo (cargo)</text>
+<rect x="53.5" y="338" width="41.9" height="16" fill="#f3c81a" stroke="#1c1917" stroke-width="0.8"/>
+<text class="ts" x="103.376" y="351" text-anchor="start">LTS 3: 2.88 to 5.79</text>
+<rect x="197.0" y="360" width="42.9" height="16" fill="#e3261c" stroke="#1c1917" stroke-width="0.8"/>
+<text class="ts" x="189.04" y="373" text-anchor="end">LTS 4: 12.85 to 15.83</text>
+<text class="t" x="10" y="406" text-anchor="start">Cargo with passengers</text>
+<rect x="57.5" y="414" width="53.0" height="16" fill="#f3c81a" stroke="#1c1917" stroke-width="0.8"/>
+<text class="ts" x="118.49600000000001" y="427" text-anchor="start">LTS 3: 3.16 to 6.84</text>
+<rect x="236.8" y="436" width="54.9" height="16" fill="#e3261c" stroke="#1c1917" stroke-width="0.8"/>
+<text class="ts" x="228.78400000000002" y="449" text-anchor="end">LTS 4: 15.61 to 19.42</text>
+<text class="t" x="10" y="482" text-anchor="start">Trailmaxxing (no target)</text>
+<rect x="95.4" y="490" width="6.0" height="16" fill="#f3c81a" stroke="#1c1917" stroke-width="0.8"/>
+<text class="ts" x="106.4" y="503" text-anchor="start">LTS 3: 6</text>
+<rect x="167.4" y="512" width="6.0" height="16" fill="#e3261c" stroke="#1c1917" stroke-width="0.8"/>
+<text class="ts" x="178.4" y="525" text-anchor="start">LTS 4: 11</text>
+<text class="ts" x="160.0" y="588" text-anchor="middle">Calm miles per mile ridden</text>
+<text class="ts" x="160.0" y="608" text-anchor="middle">(a quiet street = 1)</text>
 </svg>
 </div>
 <figcaption>Each bar is a range because faster and wider roads of the same level cost more. LTS 1 and 2 cost 1 (except on the ride types below that lean toward LTS 1). Trailmaxxing and Novice and Nervous also rank LTS 4 and Avoid ahead of everything else, so these figures understate how hard they avoid them.<sup class="cite"><a href="#ref-3" aria-label="source 3">[3]</a></sup></figcaption>
@@ -550,7 +561,7 @@ way round is as bad. Not on Mass Ride, and not on paths. See
 price of more busy road.</li>
 <li><strong>Hills</strong>, by the Hills slider (see <a href="#hills">Hills</a>), and <strong>surface</strong>, by the ride type: rough DC
 pavement<sup class="cite"><a href="#ref-4" aria-label="source 4">[4]</a></sup> costs a little more, and each ride type has its own view of gravel and trails.</li>
-<li><strong>Turns</strong>: each change of street costs time, 5 seconds on most ride types and 30 on Group Ride, Mass Ride and Fast.</li>
+<li><strong>Turns</strong>: each change of street costs time, 5 seconds on most ride types and 30 on Group Ride, Mass Ride, Fast and Road Bike.</li>
 <li><strong>Stops and signals</strong>: the time a rider loses at each junction they give way at or wait
 at, counted as that much quiet riding: see <a href="#junction-time">Time lost at junctions</a>.</li>
 <li><strong>Closures</strong>: see <a href="#closures">Closures</a>.</li>
@@ -883,7 +894,7 @@ route is charged for counts its climbing as the flat riding it is worth.</p>
 <tr><th scope="row">4%</th><td>Mass Ride, Bikeshare, Bikeshare + transit, Novice and Nervous, Rebalance Ride</td></tr>
 <tr><th scope="row">5%</th><td>Group Ride</td></tr>
 <tr><th scope="row">6%</th><td>Default, Own Bike + transit, Trailmaxxing, Gravel, E-bike</td></tr>
-<tr><th scope="row">Never</th><td>Fast, Mountain Bike, Mountain Goat</td></tr>
+<tr><th scope="row">Never</th><td>Fast, Road Bike, Mountain Bike, Mountain Goat</td></tr>
 </tbody>
 </table>
 </div>
@@ -924,7 +935,7 @@ is kept. Every ride type starts the slider somewhere, and you can move it:</p>
 <tr><th scope="row">4%</th><td>Bikeshare (classic bike), Bikeshare + transit, Cargo Bike, Novice and Nervous, Rebalance Ride</td></tr>
 <tr><th scope="row">5%</th><td>Group Ride</td></tr>
 <tr><th scope="row">7%</th><td>Bikeshare (e-bike)</td></tr>
-<tr><th scope="row">8%, the middle</th><td>Default, Own Bike + transit, Trailmaxxing, Gravel</td></tr>
+<tr><th scope="row">8%, the middle</th><td>Default, Own Bike + transit, Trailmaxxing, Gravel, Road Bike</td></tr>
 <tr><th scope="row">11%</th><td>Fast</td></tr>
 <tr><th scope="row">12%</th><td>E-bike, Mountain Bike</td></tr>
 <tr><th scope="row">The far right, Seeks hills</th><td>Mountain Goat</td></tr>
@@ -1477,7 +1488,7 @@ climbing.</li>
 <p class="next">Next: <a href="/about/trails.html">Mountain Bike, Mountain Goat and Gravel</a></p>
 </main>
 <footer>
-  <p>Part of RouteMaker's documentation. It describes version 0.17.0. The code is
+  <p>Part of RouteMaker's documentation. It describes version 0.18.0. The code is
   open source under the MIT licence:
   <a href="https://github.com/Macrophage87/RouteMaker">github.com/Macrophage87/RouteMaker</a>.</p>
   <p><a href="/">Back to the map</a></p>
