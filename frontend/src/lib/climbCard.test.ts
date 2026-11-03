@@ -238,7 +238,7 @@ test("the profile chart is a picture with its text alternative", () => {
   assert.ok(html.includes("Climbs 240 ft (73 m) over 0.8 mi (1.3 km), steepest 9%. Runs west to east."));
   assert.ok(html.includes('class="pc-line"'), "the route chart's line");
   // Which way it runs, a letter at each end (the owner, 2026-10-20).
-  assert.ok(html.includes('<tspan class="pc-compass">W </tspan>') && html.includes('<tspan class="pc-compass"> E</tspan>'));
+  assert.match(html, /class="pc-compass-letter"[^>]*>W<\/text>[\s\S]*class="pc-compass-letter"[^>]*>E<\/text>/);
   assert.ok(html.includes("<dt>Steepest</dt><dd>9%</dd>"));
 });
 
@@ -356,6 +356,6 @@ test("a profile's ends say which way it runs, a letter at each end and in words 
   assert.equal(profileEnds([-77.0, 38.9], [-77.0001, 38.9001]), null);
   const profile = { interval_m: 30, m: [0, 30, 60], elevation_m: [10, 12, 15], grade_pct: [null, 6.7, 10] };
   const html = renderToStaticMarkup(createElement(ElevationProfileChart, { profile, summary: "x", uid: "u", ends: profileEnds([-77.0, 38.91], [-77.0, 38.9]) }));
-  assert.match(html, /<tspan class="pc-compass">N <\/tspan>/);
-  assert.match(html, /<tspan class="pc-compass"> S<\/tspan>/);
+  // In round markers, as the map's ends are (the owner, 2026-11-03), left end first; not read on their own.
+  assert.match(html, /<g class="pc-compass" aria-hidden="true"><circle class="pc-compass-ring"[^>]*><\/circle><text class="pc-compass-letter"[^>]*>N<\/text><\/g><g class="pc-compass" aria-hidden="true"><circle class="pc-compass-ring"[^>]*><\/circle><text class="pc-compass-letter"[^>]*>S<\/text><\/g>/);
 });

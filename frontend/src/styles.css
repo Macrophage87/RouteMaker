@@ -3709,10 +3709,19 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
 }
 
 /* A trail's or a climb's compass point at each end of its profile (the owner, 2026-10-20: "If the trail goes from N to S
-   put those directions on each end"): bold and in the text colour, so the letter stands out from its distance. */
-.pc-compass {
+   put those directions on each end"), in a round marker drawn as the trail's ends on the map are (lib/trailHighlight.ts):
+   white, a dark edge, a dark bold letter, the same in light and dark themes, as on the map. */
+.pc-compass-ring {
+  fill: #ffffff;
+  stroke: #1a1a1a;
+  stroke-width: 1.5;
+}
+
+.pc-compass-letter {
+  font-family: var(--font);
+  font-size: 8.5px;
   font-weight: 700;
-  fill: var(--text);
+  fill: #111111;
 }
 
 /* The guides' figures are in the text colour, not the band colours (2.4:1 to 3.7:1 as small text: the
