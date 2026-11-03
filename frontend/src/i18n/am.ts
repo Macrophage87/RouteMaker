@@ -1910,4 +1910,5 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Turns ahead: {turns}. Busy junctions: {busy}.": "ከፊት ያሉ መታጠፊያዎች፦ {turns}። የተጨናነቁ መገናኛዎች፦ {busy}።",
   "Turns ahead: {turns}.": "ከፊት ያሉ መታጠፊያዎች፦ {turns}።",
   "Busy junctions: {busy}.": "የተጨናነቁ መገናኛዎች፦ {busy}።",
+  "No room on this screen for: {graphs}.": "በዚህ ማያ ገጽ ላይ ቦታ የለም ለ፦ {graphs}።",
 };

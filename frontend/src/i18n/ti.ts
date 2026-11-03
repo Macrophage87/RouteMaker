@@ -1910,4 +1910,5 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Turns ahead: {turns}. Busy junctions: {busy}.": "ኣብ ቅድሚ ዘለዉ ምጥዋያት፦ {turns}። ዝተጨናነቑ መራኸቢታት፦ {busy}።",
   "Turns ahead: {turns}.": "ኣብ ቅድሚ ዘለዉ ምጥዋያት፦ {turns}።",
   "Busy junctions: {busy}.": "ዝተጨናነቑ መራኸቢታት፦ {busy}።",
+  "No room on this screen for: {graphs}.": "ኣብዚ መርኣዪ ቦታ የለን ን፦ {graphs}።",
 };

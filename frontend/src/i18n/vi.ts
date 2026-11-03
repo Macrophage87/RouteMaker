@@ -1910,4 +1910,5 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Turns ahead: {turns}. Busy junctions: {busy}.": "Chỗ rẽ phía trước: {turns}. Giao lộ đông xe: {busy}.",
   "Turns ahead: {turns}.": "Chỗ rẽ phía trước: {turns}.",
   "Busy junctions: {busy}.": "Giao lộ đông xe: {busy}.",
+  "No room on this screen for: {graphs}.": "Không đủ chỗ trên màn hình này cho: {graphs}.",
 };

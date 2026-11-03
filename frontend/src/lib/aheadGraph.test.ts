@@ -28,6 +28,7 @@ import {
   placeCorkerLabels,
   labelStreet,
   graphsThatFit,
+  aheadNoRoom,
   type TurnMark,
   ridersSentence,
   shortStreet,
@@ -188,7 +189,7 @@ test("Ride wires it: one bubble a graph in More, pressed state, off by default, 
   assert.match(ride, /aria-pressed=\{aheadShownViews\.includes\(view\)\}/);
   assert.match(ride, /onClick=\{\(\) => toggleAhead\(view\)\}/, "More stays open after a graph bubble (Stephen 2026-11-03: Stay open)");
   assert.match(ride, /const next = on \? ahead\.filter\(\(v\) => v !== view\) : \[\.\.\.ahead, view\];/, "each bubble on or off on its own");
-  assert.match(ride, /<AheadGraph views=\{aheadShownViews\} route=\{route\} cues=\{model\.cues\}/, "the graphs on stack, with the turns");
+  assert.match(ride, /<AheadGraph views=\{aheadDrawn\} route=\{route\} cues=\{model\.cues\}/, "the graphs on stack, with the turns");
   assert.match(ride, /const sheetShown = notesShown \|\| restShown \|\| aheadShown;/);
   assert.ok(ride.indexOf("<AheadGraph") > ride.indexOf('className="ride-controls"'));
   assert.ok(ride.indexOf("ride-ahead-bubble") < ride.indexOf('className="ride-round ride-topo"'), "before Topo and Settings");
@@ -254,12 +255,17 @@ test("corker labels: short names, a row each where they would run into one anoth
   assert.equal(labelStreet("Massachusetts Avenue Northwest"), "Massachusetts…");
   const near = [
     { at: 100, street: "14th Street Northwest", leftOf: false },
-    { at: 110, street: "13th Street Northwest", leftOf: false },
-    { at: 120, street: "12th Street Northwest", leftOf: false },
+    { at: 200, street: "13th Street Northwest", leftOf: true },
+    { at: 210, street: "12th Street Northwest", leftOf: false },
   ];
   const two = placeCorkerLabels(near, 2, 8.4);
-  assert.deepEqual(two.map((p) => p.row), [0, 1, null]);
-  assert.deepEqual(two.map((p) => p.text), ["14th St NW", "13th St NW", ""], "the third has no room: its name is left off");
+  assert.deepEqual(two.map((p) => p.row), [0, 1, 0]);
+  assert.deepEqual(two.map((p) => p.text), ["14th St NW", "13th St NW", "12th St NW"]);
+  const crossing = placeCorkerLabels([{ at: 100, street: "14th Street Northwest", leftOf: false }, { at: 150, street: "R St", leftOf: false }], 2, 8.4);
+  assert.deepEqual(crossing.map((p) => p.text), ["", "R St"], "a name that would cross another marker's stem is left off");
+  const rows = placeCorkerLabels([{ at: 100, street: "14th Street Northwest", leftOf: false }, { at: 200, street: "13th Street Northwest", leftOf: true }], 2, 8.4);
+  assert.deepEqual(rows.map((p) => p.row), [0, 1], "two names that would overlap each other: one row each");
+  assert.deepEqual(placeCorkerLabels(rows.length ? near.slice(0, 2) : [], 1, 8.4).map((p) => p.text), ["14th St NW", ""], "one row: the second left off");
   const apart = placeCorkerLabels([{ at: 60, street: "R St", leftOf: false }, { at: 250, street: "Q St", leftOf: true }], 1, 8.4);
   assert.deepEqual(apart.map((p) => [p.row, p.text]), [[0, "R St"], [0, "Q St"]]);
   assert.deepEqual(placeCorkerLabels(near, 0, 8.4).map((p) => p.text), ["", "", ""], "no rows: markers alone");
@@ -268,18 +274,25 @@ test("corker labels: short names, a row each where they would run into one anoth
 test("Ride gives the graphs only the room the side buttons leave, and their text grows with Large text", () => {
   const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
   assert.match(ride, /large=\{textSize === "large"\} maxPx=\{aheadMaxPx\}/);
-  assert.match(ride, /middle\.clientHeight \+ graph - railLeastPx\(buttons\) - RAIL_INSET_PX - clear/);
+  assert.match(ride, /middle\.clientHeight \+ graph - chrome - railLeastPx\(buttons\) - RAIL_INSET_PX - clear/);
+  assert.match(ride, /setAheadFits\(px >= aheadLeastPx\(wide, textSize === "large"\)\);/, "no room for one graph: none drawn, the rider told");
   const graph = readFileSync(new URL("../AheadGraph.tsx", import.meta.url), "utf8");
-  assert.match(graph, /const width = Math\.round\(W \/ textZoom\(large\)\);/);
+  assert.match(graph, /const width = useMemo\(\(\) => Math\.round\(W \/ textZoom\(large\)\), \[large\]\);/);
+  assert.doesNotMatch(graph, /squeezed/, "never drawn smaller than its text can be read");
+  assert.match(ride, /if \(!moreOpen\) setAheadDrawn\(aheadShownViews\);/, "the panel changes once More closes, so its bubbles stay put");
+  assert.match(ride, /const px = Math\.max\(0, Math\.floor\(/, "no floor that takes the buttons' room");
   assert.match(graph, /root\.classList\.contains\(ACCESS_MODE_CLASS\)/);
   const css = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
   assert.match(css, /@media \(forced-colors: active\) \{\s*\.ride-ahead-plot \{\s*forced-color-adjust: none;/);
   assert.match(css, /:root\.theme-dark \.ride-ahead-bar \{\s*stroke: var\(--text-muted\);/);
 });
 
-test("as many graphs are drawn as fit the room readably, at least one", () => {
+test("as many graphs are drawn as fit the room readably, and the rest named", () => {
+  assert.equal(aheadNoRoom(["elevation"]), "No room on this screen for: Elevation.");
+  assert.equal(aheadNoRoom(["stress", "elevation"]), "No room on this screen for: Traffic stress, Elevation.");
   assert.equal(graphsThatFit(4, Infinity, 44, 18), 4);
   assert.equal(graphsThatFit(4, 44 + 3 * 48, 44, 18), 3);
-  assert.equal(graphsThatFit(2, 60, 44, 18), 1);
+  assert.equal(graphsThatFit(2, 44 + 48, 44, 18), 1);
+  assert.equal(graphsThatFit(2, 60, 44, 18), 0, "none where even one would be too small to read");
   assert.equal(graphsThatFit(0, 60, 44, 18), 0);
 });

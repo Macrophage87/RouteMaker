@@ -10,7 +10,7 @@
  * where the planner flagged the junction (the shapes of its junction markers); you are the triangle on the axis, and on
  * a shared ride each other rider a dot.
  */
-import { Fragment, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { RouteResponse } from "./lib/api.ts";
 import {
   AHEAD_GROUP,
@@ -28,7 +28,9 @@ import {
   flowSteps,
   flowTop,
   narrowest,
+  aheadNoRoom,
   graphsThatFit,
+  PLOT_MIN,
   placeCorkerLabels,
   plotHeight,
   ridersSentence,
@@ -55,6 +57,8 @@ import { ACCESS_MODE_CLASS } from "./lib/accessMode.ts";
  *  in a narrower box, so every word and mark grows with it (the v0.19.0 release review: the graph's text stayed 11 to
  *  15 px with Large text, accessibility mode or 200% text). */
 const W = 320;
+/** The height of the line naming graphs with no room, in CSS pixels (styles.css .ride-ahead-room). */
+const NOTE_PX = 22;
 /** The most the drawing is enlarged for larger text. */
 const ZOOM_MAX = 1.6;
 /** The strip of turns at the top. */
@@ -81,6 +85,17 @@ interface Props {
   large?: boolean;
   /** The most height the drawing may take, in CSS pixels, so the side buttons keep their room over it (RideMode); null for no limit. */
   maxPx?: number | null;
+  /** Graphs on but not drawn, where there is no room for the line naming them either: the rider is told instead. */
+  onNoRoom?: (views: readonly AheadView[]) => void;
+}
+
+/**
+ * The least height one graph takes, in CSS pixels, at `widthPx` wide: its name, its plot at its shortest and the
+ * distance axis, without the turns strip, and a pixel for rounding (RideMode: with less room than this, no graph is drawn and the rider is told).
+ */
+export function aheadLeastPx(widthPx: number, large: boolean): number {
+  const width = Math.round(W / textZoom(large));
+  return Math.ceil(((AXIS_H + LABEL_H + PLOT_MIN) * widthPx) / width) + 1;
 }
 
 /** How much larger than usual the drawing's text is: the page's root text size, the ride's Large text and accessibility mode. */
@@ -98,7 +113,7 @@ interface Panel {
   h: number;
 }
 
-export function AheadGraph({ views, route, cues, youM, lengthM, ridersAlong = [], large = false, maxPx = null }: Props) {
+export function AheadGraph({ views, route, cues, youM, lengthM, ridersAlong = [], large = false, maxPx = null, onNoRoom }: Props) {
   const id = useId();
   const figureRef = useRef<HTMLElement>(null);
   // The drawing's width on screen, so a height in pixels is known in the drawing's units.
@@ -113,7 +128,8 @@ export function AheadGraph({ views, route, cues, youM, lengthM, ridersAlong = []
     watch.observe(figure);
     return () => watch.disconnect();
   }, []);
-  const width = Math.round(W / textZoom(large));
+  // Read once per Large text change, not each render.
+  const width = useMemo(() => Math.round(W / textZoom(large)), [large]);
   // Redrawn each 10 m, not each fix.
   const step = Math.floor(youM / 10) * 10;
   const ridersKey = ridersAlong.map((m) => Math.round(m / 10)).join(",");
@@ -123,17 +139,39 @@ export function AheadGraph({ views, route, cues, youM, lengthM, ridersAlong = []
   // Drawn at least 20 units apart, so two marks a block apart are one, not a blob.
   const drawnTurns = useMemo(() => spreadMarks(turns, (20 / (width - LEFT - RIGHT)) * (w.toM - w.fromM)), [turns, w, width]);
   // The plots as tall as the room allows (lib/aheadGraph.ts plotHeight): the room in pixels, in the drawing's units.
-  const budget = maxPx !== null && widthPx > 0 ? (maxPx * width) / widthPx : Infinity;
+  const unit = widthPx > 0 ? width / widthPx : 1;
+  const budget = maxPx !== null && widthPx > 0 ? maxPx * unit : Infinity;
   const panels = useMemo(() => {
-    const all = views.map((view) => ({ view, one: draw(view, route, w, x, { top: 0, h: 40 }, width) })).filter((v) => v.one !== null);
-    // Where the room holds fewer graphs than are on, the first ones are drawn (lib/aheadGraph.ts graphsThatFit); every
-    // one is still said.
-    const count = graphsThatFit(all.length, budget, TURNS_H + AXIS_H - GAP, LABEL_H + GAP);
-    const shown = all.slice(0, count).map((v) => v.view);
-    const fixed = TURNS_H + AXIS_H + shown.length * (LABEL_H + GAP) - GAP;
+    const fit = (count: number, room: number, strip = TURNS_H) => graphsThatFit(count, room, strip + AXIS_H - GAP, LABEL_H + GAP);
+    // Where the room holds fewer graphs than are on, the first ones are drawn (lib/aheadGraph.ts graphsThatFit), with a
+    // line under them naming the rest, which take its height; every one is still said. Counted from the graphs on
+    // first, so the usual case draws each once.
+    let order = views;
+    let count = fit(views.length, budget);
+    if (count < views.length) {
+      order = views.filter((view) => draw(view, route, w, x, { top: 0, h: PLOT_MIN }, width) !== null);
+      count = fit(order.length, budget);
+      if (count < order.length) count = fit(order.length, budget - NOTE_PX * unit);
+    }
+    // Room for no graph under the turns strip: one graph without it (the turns are in the sentence), the rest named
+    // in a line under it, or where there is no room for that either, told (onNoRoom).
+    let strip = TURNS_H;
+    let note = count < order.length;
+    if (count === 0 && order.length) {
+      if (fit(1, budget - (order.length > 1 ? NOTE_PX * unit : 0), 0) === 1) {
+        strip = 0;
+        count = 1;
+      } else if (fit(1, budget, 0) === 1) {
+        strip = 0;
+        count = 1;
+        note = false;
+      }
+    }
+    const shown = order.slice(0, count);
+    const fixed = strip + AXIS_H + shown.length * (LABEL_H + GAP) - GAP + (note ? NOTE_PX * unit : 0);
     const h = plotHeight(shown.length, budget, fixed);
     const drawn: { view: AheadView; panel: Panel; drawn: Drawn }[] = [];
-    let at = TURNS_H;
+    let at = strip;
     for (const view of shown) {
       const panel = { top: at + LABEL_H, h };
       const one = draw(view, route, w, x, panel, width);
@@ -141,48 +179,58 @@ export function AheadGraph({ views, route, cues, youM, lengthM, ridersAlong = []
       drawn.push({ view, panel, drawn: one });
       at = panel.top + panel.h + GAP;
     }
-    const unseen = all.slice(count).map(({ view, one }) => `${AHEAD_HEADING[view]}: ${one!.sentence}`);
-    return { drawn, unseen, base: at - GAP };
-  }, [views, route, w, width, budget]); // eslint-disable-line react-hooks/exhaustive-deps
+    const unseen = order.slice(count);
+    const unseenSaid = unseen.map((view) => `${AHEAD_HEADING[view]}: ${draw(view, route, w, x, { top: 0, h: PLOT_MIN }, width)!.sentence}`);
+    return { drawn, unseen, unseenSaid, strip, note: note && unseen.length > 0, base: at - GAP };
+  }, [views, route, w, width, budget, unit]); // eslint-disable-line react-hooks/exhaustive-deps
   const { base } = panels;
+  const untold = !panels.note && panels.drawn.length > 0 ? panels.unseen.join(",") : "";
+  useEffect(() => {
+    if (untold) onNoRoom?.(untold.split(",") as AheadView[]);
+  }, [untold]); // eslint-disable-line react-hooks/exhaustive-deps
   const H = base + AXIS_H;
-  // Still taller than the room with the plots at their shortest (four graphs on a small phone): drawn smaller to fit.
-  const squeezed = maxPx !== null && H > budget + 0.5;
   if (!panels.drawn.length) return <figure ref={figureRef} className="ride-ahead" hidden />;
   const riders = ridersSentence(w);
-  const said = [turnsSentence(turns, w.youM), ...panels.drawn.map((p) => `${AHEAD_HEADING[p.view]}: ${p.drawn.sentence}`), ...panels.unseen, riders].filter(Boolean).join(" ");
+  const said = [
+    panels.drawn.length ? turnsSentence(turns, w.youM) : "",
+    ...panels.drawn.map((p) => `${AHEAD_HEADING[p.view]}: ${p.drawn.sentence}`),
+    ...panels.unseenSaid,
+    riders,
+  ].filter(Boolean).join(" ");
   return (
     <figure ref={figureRef} className="ride-ahead" role="group" aria-label={AHEAD_GROUP}>
       <p className="visually-hidden">{said}</p>
-      <svg
-        className="ride-ahead-plot"
-        viewBox={`0 0 ${width} ${H}`}
-        aria-hidden="true"
-        focusable="false"
-        style={squeezed ? { height: `${maxPx}px` } : undefined}
-      >
-        <defs>
-          <pattern id={`${id}-climb`} width="4" height="4" patternUnits="userSpaceOnUse">
-            <rect width="4" height="4" fill={GRADE_BAND_FILL} />
-            <circle cx="2" cy="2" r="0.8" className="ride-ahead-dot" />
-          </pattern>
-          <pattern id={`${id}-steep`} width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
-            <rect width="5" height="5" fill={GRADE_BAND_FILL} />
-            <line x1="0" y1="0" x2="0" y2="5" className="ride-ahead-hatch" />
-          </pattern>
-        </defs>
-        <Turns marks={drawnTurns} x={x} />
-        {panels.drawn.map(({ view, panel, drawn }) => (
-          <Fragment key={view}>
-            <text className="ride-ahead-name" x={LEFT} y={panel.top - 3}>
-              {AHEAD_HEADING[view]}
-            </text>
-            {drawn.body(`${id}-steep`, `${id}-climb`)}
-            <YAxis ticks={drawn.yTicks} panel={panel} />
-          </Fragment>
-        ))}
-        <Axis w={w} x={x} base={base} top={TURNS_H} width={width} />
-      </svg>
+      {panels.drawn.length > 0 && (
+        <svg className="ride-ahead-plot" viewBox={`0 0 ${width} ${H}`} aria-hidden="true" focusable="false">
+          <defs>
+            <pattern id={`${id}-climb`} width="4" height="4" patternUnits="userSpaceOnUse">
+              <rect width="4" height="4" fill={GRADE_BAND_FILL} />
+              <circle cx="2" cy="2" r="0.8" className="ride-ahead-dot" />
+            </pattern>
+            <pattern id={`${id}-steep`} width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+              <rect width="5" height="5" fill={GRADE_BAND_FILL} />
+              <line x1="0" y1="0" x2="0" y2="5" className="ride-ahead-hatch" />
+            </pattern>
+          </defs>
+          {panels.strip > 0 && <Turns marks={drawnTurns} x={x} />}
+          {panels.drawn.map(({ view, panel, drawn }) => (
+            <Fragment key={view}>
+              <text className="ride-ahead-name" x={LEFT} y={panel.top - 3}>
+                {AHEAD_HEADING[view]}
+              </text>
+              {drawn.body(`${id}-steep`, `${id}-climb`)}
+              <YAxis ticks={drawn.yTicks} panel={panel} />
+            </Fragment>
+          ))}
+          <Axis w={w} x={x} base={base} top={panels.strip} width={width} />
+        </svg>
+      )}
+      {/* The graphs on but not drawn, for want of room: named, as the sentence above already says each. */}
+      {panels.note && (
+        <p className="ride-ahead-room" aria-hidden="true">
+          {aheadNoRoom(panels.unseen)}
+        </p>
+      )}
     </figure>
   );
 }
@@ -409,24 +457,34 @@ function draw(view: AheadView, route: Props["route"], w: AheadWindow, x: X, pane
           8.4,
         );
         const mark = TOP + 10;
-        return marks.map((c, i) => {
-          const at = x(c.m);
-          const { row, text } = placed[i];
-          return (
-            <g key={c.m} className="ride-ahead-corker">
-              <line x1={at} x2={at} y1={TOP + PLOT_H} y2={mark + 8} />
-              <circle cx={at} cy={mark} r={8} />
-              <text className="ride-ahead-corker-n" x={at} y={mark + 4.5} textAnchor="middle">
-                {c.corkers}
-              </text>
-              {text && row !== null && (
-                <text className="ride-ahead-street" x={at > W * 0.6 ? at - 5 : at + 5} y={mark + 23 + row * 17} textAnchor={at > W * 0.6 ? "end" : "start"}>
+        // The stems and markers first, then the names over them.
+        return (
+          <>
+            {marks.map((c) => {
+              const at = x(c.m);
+              return (
+                <g key={c.m} className="ride-ahead-corker">
+                  <line x1={at} x2={at} y1={TOP + PLOT_H} y2={mark + 8} />
+                  <circle cx={at} cy={mark} r={8} />
+                  <text className="ride-ahead-corker-n" x={at} y={mark + 4.5} textAnchor="middle">
+                    {c.corkers}
+                  </text>
+                </g>
+              );
+            })}
+            {marks.map((c, i) => {
+              const at = x(c.m);
+              const { row, text } = placed[i];
+              if (!text || row === null) return null;
+              const left = at > W * 0.6;
+              return (
+                <text key={c.m} className="ride-ahead-street" x={left ? at - 5 : at + 5} y={mark + 23 + row * 17} textAnchor={left ? "end" : "start"}>
                   {text}
                 </text>
-              )}
-            </g>
-          );
-        });
+              );
+            })}
+          </>
+        );
       })(),
   };
 }

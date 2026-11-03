@@ -4603,6 +4603,17 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
   max-width: 520px;
 }
 
+/* The graphs on but not drawn, for want of room (AheadGraph NOTE_PX: one line, 22 px). */
+.ride-ahead-room {
+  margin: 2px 0 0;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .ride-ahead-plot {
   display: block;
   width: 100%;

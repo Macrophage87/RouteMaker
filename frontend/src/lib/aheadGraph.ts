@@ -496,13 +496,18 @@ export function plotHeight(graphs: number, budget: number, fixed: number): numbe
 
 /**
  * How many of `count` graphs are drawn: as many as fit `budget` units with their plots at PLOT_MIN, so the text stays
- * readable on a small phone rather than every graph drawn too small to read; at least one. `overhead` is the drawing's
+ * readable on a small phone rather than every graph drawn too small to read; none where even one does not fit (the
+ * drawing is never scaled down, which made its text too small to read). `overhead` is the drawing's
  * height without graphs (the turns strip and the axis) and `each` a graph's own (its name and the gap under it).
  */
 export function graphsThatFit(count: number, budget: number, overhead: number, each: number): number {
-  for (let k = count; k > 1; k -= 1) if (overhead + k * (each + PLOT_MIN) <= budget) return k;
-  return Math.min(1, count);
+  for (let k = count; k >= 1; k -= 1) if (overhead + k * (each + PLOT_MIN) <= budget) return k;
+  return 0;
 }
+
+/** The graphs on but not drawn for want of room, in one line under the ones drawn (the v0.19.0 release review). */
+export const aheadNoRoom = (views: readonly AheadView[]): string =>
+  t("No room on this screen for: {graphs}.", { graphs: views.map((view) => AHEAD_HEADING[view]).join(", ") });
 
 /** A corker's label as placed: its row under the markers (0 to rows - 1), or null where it is left off. */
 export interface PlacedLabel {
@@ -513,7 +518,8 @@ export interface PlacedLabel {
 /**
  * The corkers' street labels, short ("14th St NW", profileChart shortStreet), each beside its marker's stem on the
  * first of `rows` rows under the markers where it runs into no other label (the v0.19.0 release review: "14th Street
- * Nor…" over "13th Street Nor…" and over the markers); one that fits on none is left off, as the sentence names the
+ * Nor…" over "13th Street Nor…" and over the markers), never across another marker's stem; one that fits on none
+ * is left off, as the sentence names the
  * next junction. `at` is each marker's x and `charW` a character's width, in the drawing's units; a label goes right
  * of its stem, or left where `leftOf` says (near the drawing's right end).
  */
@@ -528,6 +534,8 @@ export function placeCorkerLabels(
     if (!text) return { row: null, text: "" };
     const width = text.length * charW;
     const span: [number, number] = mark.leftOf ? [mark.at - 5 - width, mark.at - 1] : [mark.at + 1, mark.at + 5 + width];
+    // Never across another marker's stem, which runs through every row.
+    if (marks.some((other) => other !== mark && other.at > span[0] - 2 && other.at < span[1] + 2)) return { row: null, text: "" };
     const row = taken.findIndex((spans) => spans.every(([a, b]) => span[1] <= a || span[0] >= b));
     if (row < 0) return { row: null, text: "" };
     taken[row].push(span);

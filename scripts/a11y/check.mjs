@@ -5657,26 +5657,31 @@ if (mine()) {
 // phone with two graphs on, and the graph's words in the system's colour with forced colours. ----
 if (mine()) {
   const ORIGIN = `http://127.0.0.1:${PORT}`;
-  const rideWith = async ({ width, height, scheme = "light", forced = false }) => {
+  const rideWith = async ({ width, height, scheme = "light", forced = false, mass = false }) => {
     const p = await newPage(b, { width, height, mobile: true });
     await p.s("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 });
-    await mock(p, S_RIDE);
+    const route = mass ? S_MASS : S_RIDE;
+    const coords = route.geometry.coordinates;
+    await mock(p, route);
     await media(p, { scheme, forced });
     await b.send("Browser.setPermission", { permission: { name: "geolocation" }, setting: "granted", origin: ORIGIN, browserContextId: p.contextId });
-    const [lon0, lat0] = RIDE_COORDS[0];
+    const [lon0, lat0] = coords[0];
     await p.s("Emulation.setGeolocationOverride", { latitude: lat0, longitude: lon0, accuracy: 5 });
     // A screen that stays on (no "Screen may sleep" note in the panel) and the theme by the emulated scheme.
     await p.s("Page.addScriptToEvaluateOnNewDocument", {
       source: `Object.defineProperty(navigator, 'wakeLock', { configurable: true, value: { request: async () => ({ released: false, release: async () => {}, addEventListener() {} }) } });
         try { sessionStorage.setItem('routemaker.tab-mode', 'plan'); localStorage.setItem('routemaker.theme', 'phone'); localStorage.setItem('routemaker.ride', '{"output":"text","verbosity":"full","chosen":true}'); } catch {}`,
     });
-    await p.s("Page.navigate", { url: `${ORIGIN}/${hashFor("default", 70)}` });
+    await p.s("Page.navigate", { url: `${ORIGIN}/${mass ? hashFor("mass-ride", 0) : hashFor("default", 70)}` });
     if (!(await p.waitFor("!!document.querySelector('.start-ride button')", 40000))) throw new Error("no Start ride button");
     await sleep(800);
     await p.eval("document.querySelector('.start-ride button').click(); true");
     await p.waitFor("!!document.querySelector('section.ride')", 8000);
+    // A Mass Ride asks whether to show you to the others: No.
+    await sleep(500);
+    await p.eval("[...document.querySelectorAll('dialog[open] button')].find((b) => b.textContent.trim() === 'No')?.click(); true");
     for (let i = 1; i <= 4; i += 1) {
-      const [lon, lat] = RIDE_COORDS[i];
+      const [lon, lat] = coords[Math.min(i, coords.length - 1)];
       await p.s("Emulation.setGeolocationOverride", { latitude: lat, longitude: lon, accuracy: 5 });
       await sleep(350);
     }
@@ -5723,11 +5728,40 @@ if (mine()) {
     const card = document.querySelector('.ride .cue-card').getBoundingClientRect(), sheet = document.querySelector('.ride .ride-controls');
     const buttons = [...document.querySelector('.ride-rail').children].filter((e) => e.offsetHeight > 2).map((e) => e.getBoundingClientRect());
     return { cardBottom: Math.round(card.bottom), railTop: Math.round(Math.min(...buttons.map((r) => r.top))), railBottom: Math.round(Math.max(...buttons.map((r) => r.bottom))),
-      panelTop: Math.round(sheet.getBoundingClientRect().top), scrolls: sheet.scrollHeight > sheet.clientHeight + 1, graphs: document.querySelectorAll('.ride-ahead-name').length }; })()`);
+      panelTop: Math.round(sheet?.getBoundingClientRect().top ?? innerHeight), scrolls: !!sheet && sheet.scrollHeight > sheet.clientHeight + 1, graphs: document.querySelectorAll('.ride-ahead-name').length }; })()`);
   await small.shot(`${SHOTS}/ride_graphs_360x640.png`);
   check("ride graphs at 360x640 with two on: the side buttons stay between the cue card and the bottom panel, and the panel does not scroll",
     room.graphs >= 1 && room.railTop >= room.cardBottom && room.railBottom <= room.panelTop && !room.scrolls, JSON.stringify(room));
   await small.close();
+
+  // The side buttons' room, as above, with each at least 44 px and none under the ride group's bar (Send alert).
+  const rackRoom = `(() => {
+    const card = document.querySelector('.ride .cue-card').getBoundingClientRect(), sheet = document.querySelector('.ride .ride-controls');
+    const bar = document.querySelector('.ride-group-bar')?.getBoundingClientRect();
+    const buttons = [...document.querySelector('.ride-rail').children].filter((e) => e.offsetHeight > 2).map((e) => e.getBoundingClientRect());
+    return { cardBottom: Math.round(card.bottom), barBottom: bar ? Math.round(bar.bottom) : 0, railTop: Math.round(Math.min(...buttons.map((r) => r.top))),
+      railBottom: Math.round(Math.max(...buttons.map((r) => r.bottom))), least: Math.round(Math.min(...buttons.map((r) => r.height))),
+      panelTop: sheet ? Math.round(sheet.getBoundingClientRect().top) : null, graphs: document.querySelectorAll('.ride-ahead-name').length,
+      noRoom: document.querySelector('.ride-ahead-room')?.textContent ?? '',
+      said: [...document.querySelectorAll('.ride [role=status], .ride [role=alert], .ride-toast')].map((e) => e.textContent.trim()).join(' | '),
+      small: (() => { const svg = document.querySelector('.ride-ahead-plot'); if (!svg) return false; const vb = svg.viewBox.baseVal; return svg.getBoundingClientRect().width / vb.width < 0.99; })() }; })()`;
+  const rackFine = (r) => r.least >= 44 && r.railTop >= Math.max(r.cardBottom, r.barBottom) && (r.panelTop === null || r.railBottom <= r.panelTop);
+  const mass = await rideWith({ width: 360, height: 640, mass: true });
+  await turnOn(mass, ["stress"]);
+  const massRoom = await mass.eval(rackRoom);
+  await mass.shot(`${SHOTS}/ride_graphs_mass_360x640.png`);
+  check("ride graphs on a Mass Ride at 360x640 with one on: the side buttons keep 44 px, clear of Send alert, the card and the panel; a graph is never drawn smaller than its text reads, and one with no room is said",
+    rackFine(massRoom) && !massRoom.small && (massRoom.graphs === 1 || massRoom.said.includes("No room on this screen for: Traffic stress.")), JSON.stringify(massRoom));
+  await mass.close();
+  const large = await rideWith({ width: 360, height: 640 });
+  await large.eval("document.querySelector('.ride-text-size').click(); true");
+  await sleep(500);
+  await turnOn(large, ["stress", "elevation"]);
+  const largeRoom = await large.eval(rackRoom);
+  await large.shot(`${SHOTS}/ride_graphs_large_360x640.png`);
+  check("ride graphs with Large text at 360x640 and two on: the side buttons keep 44 px and stay below the cue card",
+    !!(await large.eval("!!document.querySelector('.ride-large')")) && rackFine(largeRoom) && !largeRoom.small, JSON.stringify(largeRoom));
+  await large.close();
 
   const forced = await rideWith({ width: 390, height: 844, scheme: "dark", forced: true });
   await turnOn(forced, ["stress"]);
@@ -5758,8 +5792,8 @@ const failed = results.filter((r) => !r.ok);
 // Joining a ride on one screen (2026-10-30) adds three: Escape, Close, and 320 px.
 // Ordering favorites (2026-10-30) adds four: Edit's arrows at 320 px, names whole with fixed columns, a move saved and
 // said, and one to the bottom.
-// The ride's graphs (the v0.19.0 release review, findings 1, 4, 11 and 16) add five.
-const EXPECTED = 703;
+// The ride's graphs (the v0.19.0 release review, findings 1, 4, 11 and 16, and its review of #928) add seven.
+const EXPECTED = 705;
 if (SHARDS > 1) {
   // A shard runs only part of the count; CI's a11y job adds the shards' up and compares them with EXPECTED.
   writeFileSync(`${SHOTS}/a11y-count.txt`, `${results.length}\n`);

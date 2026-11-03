@@ -1910,4 +1910,5 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Turns ahead: {turns}. Busy junctions: {busy}.": "앞의 회전: {turns}. 혼잡한 교차로: {busy}.",
   "Turns ahead: {turns}.": "앞의 회전: {turns}.",
   "Busy junctions: {busy}.": "혼잡한 교차로: {busy}.",
+  "No room on this screen for: {graphs}.": "이 화면에 표시할 공간 없음: {graphs}.",
 };

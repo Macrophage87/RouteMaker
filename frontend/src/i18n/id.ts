@@ -1910,4 +1910,5 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Turns ahead: {turns}. Busy junctions: {busy}.": "Belokan di depan: {turns}. Simpang ramai: {busy}.",
   "Turns ahead: {turns}.": "Belokan di depan: {turns}.",
   "Busy junctions: {busy}.": "Simpang ramai: {busy}.",
+  "No room on this screen for: {graphs}.": "Tidak ada ruang di layar ini untuk: {graphs}.",
 };
