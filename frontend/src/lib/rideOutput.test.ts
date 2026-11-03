@@ -12,6 +12,8 @@ import {
   RIDE_PREFS_KEY,
   ScreenWake,
   Voice,
+  STUCK_BASE_MS,
+  STUCK_PER_CHAR_MS,
   voiceFor,
   WAKE_LOST,
   WAKE_REASKS,
@@ -246,13 +248,69 @@ test("Voice: a jog's next turn (urgent, after) waits for the turn being said ins
   const voice = new Voice(env);
   voice.speak("Right now onto 6th Street Northwest.", true);
   voice.speak("Bear left now onto Rhode Island Avenue Northwest.", true, true);
-  assert.deepEqual(calls, ["cancel", "speak:Right now onto 6th Street Northwest."]);
+  // Nothing was being said: no cancel first (Chrome on Android can drop a sentence spoken straight after one).
+  assert.deepEqual(calls, ["speak:Right now onto 6th Street Northwest."]);
   end();
   assert.deepEqual(calls.at(-1), "speak:Bear left now onto Rhode Island Avenue Northwest.");
   // With nothing being said, at once.
   end();
   voice.speak("Left now.", true, true);
   assert.equal(calls.at(-1), "speak:Left now.");
+});
+
+test("Voice: a sentence whose end never comes (Chrome on Android) no longer holds back the cues after it", () => {
+  // The owner, 2026-11-03, riding with music on: turns not announced. The browser kept calling one sentence
+  // speaking, and every polite cue waited behind it.
+  let clock = 0;
+  const { env, calls, end } = speech();
+  const voice = new Voice({ ...env, now: () => clock, later: () => {} });
+  voice.speak("In 500 feet, right onto Twinbrook Connector Trail.", false);
+  clock += 4_000;
+  voice.speak("In 150 feet, right onto Twinbrook Connector Trail.", false);
+  // Still within its time: the newer one waits.
+  assert.deepEqual(calls, ["speak:In 500 feet, right onto Twinbrook Connector Trail."]);
+  clock += STUCK_BASE_MS + STUCK_PER_CHAR_MS * 60;
+  voice.speak("In 150 feet, cross Layhill Road.", false);
+  assert.deepEqual(calls.slice(1), ["cancel", "speak:In 150 feet, cross Layhill Road."]);
+  // The older cue that waited is not said after the newer one.
+  end();
+  assert.equal(calls.length, 3);
+});
+
+test("Voice: a cue waiting behind a stuck sentence goes once that sentence should have ended, with no other cue", () => {
+  let clock = 0;
+  const timers: { fn: () => void; ms: number }[] = [];
+  const { env, calls } = speech();
+  const voice = new Voice({ ...env, now: () => clock, later: (fn, ms) => void timers.push({ fn, ms }) });
+  voice.speak("In 500 feet, left onto Kersey Road.", false);
+  voice.speak("In 150 feet, left onto Kersey Road.", false);
+  assert.equal(timers.length, 1);
+  clock += timers[0].ms;
+  timers[0].fn();
+  assert.deepEqual(calls, ["speak:In 500 feet, left onto Kersey Road.", "cancel", "speak:In 150 feet, left onto Kersey Road."]);
+});
+
+test("Voice: a cancelled sentence's late end does not start a waiting one over the urgent one", () => {
+  const spoken: UtteranceLike[] = [];
+  let speaking = false;
+  const synth = { speak: (u: UtteranceLike) => { spoken.push(u); speaking = true; }, cancel: () => {}, get speaking() { return speaking; } };
+  const voice = new Voice({ synth, utterance: (text) => ({ text, lang: "", onend: null }) });
+  voice.speak("In 500 feet, left onto Kersey Road.", false);
+  voice.speak("Left now onto Kersey Road.", true);
+  voice.speak("Calmer riding.", false);
+  // The first sentence's end arrives after its cancel: the urgent one is still being said.
+  spoken[0].onend?.();
+  assert.deepEqual(spoken.map((u) => u.text), ["In 500 feet, left onto Kersey Road.", "Left now onto Kersey Road."]);
+  speaking = false;
+  spoken[1].onend?.();
+  assert.equal(spoken.at(-1)?.text, "Calmer riding.");
+});
+
+test("Voice: speech the browser paused is resumed before a cue", () => {
+  let resumed = 0;
+  const synth = { speak: () => {}, cancel: () => {}, speaking: false, paused: true, resume: () => void resumed++ };
+  new Voice({ synth, utterance: (text) => ({ text, lang: "", onend: null }) }).speak("Left now.", true);
+  assert.equal(resumed, 1);
 });
 
 test("Announcer: a jog's next turn goes at once, marked to wait for the voice", () => {

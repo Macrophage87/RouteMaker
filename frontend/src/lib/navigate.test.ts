@@ -2629,3 +2629,67 @@ test("the screen's short words (the UI review, 2026-10-28): Where am I? in two l
   assert.equal(arrivedShown("Union Station"), "Arrived: Union Station");
   assert.equal(arrivedShown(null), "Arrived");
 });
+
+// ---- A road a trail crosses (the owner, 2026-11-03: "when the trail crosses the road or you turn after crossing the road, announce that") ----
+
+function henson(): RideModel {
+  return rideModel(
+    straightRoute([
+      stretch(0, 1200, "Matthew Henson Trail, traffic-free path.", {
+        street: "Matthew Henson Trail",
+        facility: "path",
+        crossings: [{ at_m: 600, road: "Layhill Road" }],
+      }),
+      // A junction entry after the stretch, before the crossing along the line: the cues still run in order.
+      {
+        ...stretch(400, 400, "At 0.2 mi (0.4 km): Cross Alderton Road (LTS 3), no signal mapped (Higher stress junction)."),
+        kind: "junction",
+        street: "Alderton Road",
+        tier: null,
+        severity: "orange",
+        turn: { movement: "straight", onto: null, control: "none", severity: "orange" },
+      },
+    ]),
+  );
+}
+
+test("crossing: a road the trail crosses is a cue of its own, in order along the line, drawn across the road", () => {
+  const model = henson();
+  assert.deepEqual(
+    model.cues.map((c) => [c.kind, Math.round(c.atM), c.index]),
+    [
+      ["hazard", 400, 0],
+      ["crossing", 600, 1],
+      ["end", 1200, 2],
+    ],
+  );
+  const crossing = model.cues[1];
+  assert.equal(crossing.text, "Cross Layhill Road.");
+  assert.equal(crossArrow(crossing), "cross");
+  // The card leads with it only when near (about when it is said); before that the next action after it.
+  assert.equal(nextAction(model, 450)?.kind, "end");
+  assert.equal(nextAction(model, 530), crossing);
+});
+
+test("crossing: one not yet near holds back no turn's first warning after it", () => {
+  const model = rideModel(
+    straightRoute([
+      stretch(0, 1000, "Sligo Creek Trail.", { street: "Sligo Creek Trail", facility: "path", crossings: [{ at_m: 960, road: "Dennis Avenue" }] }),
+      stretch(1000, 2000, "Right onto Long Branch Trail.", { street: "Long Branch Trail", facility: "path", turn: turning("right", "Long Branch Trail") }),
+    ]),
+  );
+  const said = ride(model, "full", 0, 1000).events.map((e) => e.spoken);
+  const first = said.findIndex((s) => s.includes("Long Branch"));
+  const crossing = said.findIndex((s) => s.includes("Dennis"));
+  assert.ok(first >= 0 && crossing > first, "the turn's advance warning comes before the crossing's");
+});
+
+test("crossing: said once, about 10 s out, at the Full level only", () => {
+  const model = henson();
+  const said = ride(model, "full", 0, 700).events.map((e) => e.spoken);
+  const crossings = said.filter((s) => s.includes("Layhill"));
+  assert.equal(crossings.length, 1);
+  assert.match(crossings[0], /^In \d+ feet, cross Layhill Road\.$/);
+  assert.ok(said.some((s) => s.includes("Alderton")), "the flagged crossing before it is still said");
+  assert.equal(ride(model, "stoker", 0, 700).events.filter((e) => e.spoken.includes("Layhill")).length, 0);
+});
