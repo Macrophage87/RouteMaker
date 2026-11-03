@@ -1165,6 +1165,8 @@ export function App() {
   // See everyone is on (below): the map frames the riders by choice, so a screen left alone keeps that view.
   const seeAllNow = useRef(false);
   const [followReset, setFollowReset] = useState(0);
+  // The ride's bottom panel's height (RideMode onSheetHeight), for the follow camera (MapView ridePanelH).
+  const [ridePanelH, setRidePanelH] = useState(0);
   // Track-up by default in a ride (v0.7.0, "Go riding fixes" item 1); the ride settings' switch is the
   // option, kept on this device. Turning the map never moves the keyboard focus.
   const [headingUp, setHeadingUpState] = useState(() => readHeadingUp());
@@ -6278,6 +6280,7 @@ export function App() {
           everyone.stop();
         }}
         followReset={followReset}
+        ridePanelH={ridePanelH}
         junctionFocus={junctionFocus}
         scrubFrom={scrubPoint}
         lettered={riding ? (rideView?.lettered ?? null) : roaming && roamLettered ? roamLettered.places : lettered}
@@ -6709,6 +6712,7 @@ export function App() {
           keepLeft={rideStart.kept === true}
           startNote={rideStart.note}
           riderDots={rideDots}
+          onSheetHeight={setRidePanelH}
         />
       )}
       {roaming && (
