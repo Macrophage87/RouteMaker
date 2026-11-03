@@ -3246,10 +3246,10 @@ if (mine()) {
   // The settings are a popup over the map (Stephen 2026-11-03: "Settings should be a popup, not in a scroll"): a modal
   // dialog named Ride settings, the focus on its heading, the whole of it in view at 320 x 700 without scrolling.
   const gear = await p.eval(`(() => { const g = document.querySelector('.ride .ride-settings-bubble'); const panel = document.querySelector('.ride-settings-dialog'); const c = document.querySelector('.ride-top .ride-road-closed'); const e = document.querySelector('.ride-top .ride-end'); const a = c.getBoundingClientRect(); const b = e.getBoundingClientRect(); const d = panel.getBoundingClientRect();
-    return { popup: g.getAttribute('aria-haspopup'), shown: panel.open && panel.matches(':modal'), name: document.getElementById(panel.getAttribute('aria-labelledby'))?.textContent, focus: document.activeElement?.tagName, focusIn: panel.contains(document.activeElement), change: panel.querySelectorAll('.ride-change, .ride-ease').length, noScroll: panel.scrollHeight <= panel.clientHeight + 1, inView: d.top >= 0 && d.bottom <= innerHeight && d.left >= 0 && d.right <= innerWidth, width: innerWidth, roadName: c.getAttribute('aria-label'), oneLine: Math.abs(a.top - b.top) <= 2, w: Math.round(a.width), h: Math.round(a.height) }; })()`);
+    return { popup: g.getAttribute('aria-haspopup'), shown: panel.open && panel.matches(':modal'), name: document.getElementById(panel.getAttribute('aria-labelledby'))?.textContent, pickers: [...panel.querySelectorAll('select')].map((x) => x.closest('label')?.querySelector('.setting-name')?.textContent), focus: document.activeElement?.tagName, focusIn: panel.contains(document.activeElement), change: panel.querySelectorAll('.ride-change, .ride-ease').length, noScroll: panel.scrollHeight <= panel.clientHeight + 1, inView: d.top >= 0 && d.bottom <= innerHeight && d.left >= 0 && d.right <= innerWidth, width: innerWidth, roadName: c.getAttribute('aria-label'), oneLine: Math.abs(a.top - b.top) <= 2, w: Math.round(a.width), h: Math.round(a.height) }; })()`);
   await p.shot(`${SHOTS}/ride_settings_320.png`);
-  check("ride: the Settings bubble opens the ride's settings alone (no route changes in them) as a modal popup named Ride settings, the focus on its heading, all of it in view at 320 x 700 without scrolling; behind it, at 320 px, Go round, named in full, is beside End ride",
-    gear.popup === "dialog" && gear.shown && gear.name === "Ride settings" && gear.focus === "H2" && gear.focusIn && gear.change === 0 && gear.noScroll && gear.inView && gear.width <= 379 && gear.roadName === "Go round: road closed ahead" && gear.oneLine && gear.w >= 44 && gear.h >= 44, JSON.stringify(gear));
+  check("ride: the Settings bubble opens the ride's settings alone (no route changes in them) as a modal popup named Ride settings (Colors, High contrast and Units first, then Say cues with and How much to say), the focus on its heading, all of it in view at 320 x 700 without scrolling; behind it, at 320 px, Go round, named in full, is beside End ride",
+    gear.popup === "dialog" && gear.shown && gear.name === "Ride settings" && JSON.stringify(gear.pickers) === JSON.stringify(["Colors", "Units", "Say cues with", "How much to say"]) && gear.focus === "H2" && gear.focusIn && gear.change === 0 && gear.noScroll && gear.inView && gear.width <= 379 && gear.roadName === "Go round: road closed ahead" && gear.oneLine && gear.w >= 44 && gear.h >= 44, JSON.stringify(gear));
   // A tap inside the popup, even on its padding, leaves it open; the cues' live regions are inside it while it shows.
   await p.eval("document.querySelector('.ride-settings-body').click(); true");
   await sleep(150);
@@ -3268,6 +3268,28 @@ if (mine()) {
     !escaped.open && escaped.focus && escaped.more === "true" && !done.open && done.focus, JSON.stringify({ escaped, done }));
   await p.eval("document.querySelector('.ride .ride-settings-bubble').click(); true");
   await sleep(200);
+  // High contrast in the popup (Stephen 2026-11-03: "Could be useful in extremely bright conditions"): on at once, off again.
+  const contrastNow = () => p.eval("({ checked: document.querySelector('.ride-settings-dialog .contrast-row [role=switch]').getAttribute('aria-checked'), name: document.querySelector('.ride-settings-dialog .contrast-row .switch-label').textContent })");
+  const contrastBefore = await contrastNow();
+  await p.eval("document.querySelector('.ride-settings-dialog .contrast-row [role=switch]').click(); true");
+  await sleep(300);
+  const contrastOn = await contrastNow();
+  await p.eval("document.querySelector('.ride-settings-dialog .contrast-row [role=switch]').click(); true");
+  await sleep(300);
+  const contrastOff = await contrastNow();
+  check("ride: the settings popup's High contrast switch turns it on and off at once, the popup open",
+    contrastBefore.checked === "false" && contrastOn.checked === "true" && contrastOff.checked === "false" && /contrast/i.test(contrastOn.name), JSON.stringify({ contrastBefore, contrastOn, contrastOff }));
+  // Units in a ride switch at once, the page not reloaded (Stephen 2026-11-03: "Change should happen immediately").
+  const pickUnits = (value) => p.eval(`(() => { const s = [...document.querySelectorAll('.ride-settings-dialog select')].find((x) => x.closest('label')?.querySelector('.setting-name')?.textContent === 'Units'); Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(s, ${JSON.stringify(value)}); s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
+  await p.eval("window.__notReloaded = true; true");
+  await pickUnits("metric");
+  await sleep(400);
+  const metric = await p.eval("({ same: window.__notReloaded === true, open: document.querySelector('.ride-settings-dialog').open, distance: document.querySelector('.ride .cue-distance')?.textContent ?? '', kept: localStorage.getItem('routemaker.units') })");
+  await pickUnits("us");
+  await sleep(400);
+  const us = await p.eval("({ same: window.__notReloaded === true, distance: document.querySelector('.ride .cue-distance')?.textContent ?? '' })");
+  check("ride: Units picked in the settings popup switch the ride's figures at once (km first, then mi again), with no reload and the popup still open",
+    metric.same && metric.open && /[\d.]+ (km|m) \([\d.,]+ (mi|ft)\)/.test(metric.distance) && metric.kept === "metric" && us.same && /[\d.,]+ (mi|ft) \([\d.]+ (km|m)\)/.test(us.distance), JSON.stringify({ metric, us }));
   // More's own close, as the screen left alone presses it (closeIdlePanels; a rider cannot reach More behind the
   // modal), closes the bubbles and the settings.
   await p.eval("document.querySelector('.ride .ride-settings-button').click(); true");
@@ -3296,7 +3318,7 @@ if (mine()) {
   await sleep(300);
   const srOnly = await p.eval("({ inert: document.querySelector('.map').inert, zoom: !!document.querySelector('.maplibregl-ctrl-zoom-in') })");
   const axMap = await axNode(p, ".map");
-  await outputTo("Both");
+  await outputTo("Screen reader + voice");
   await sleep(300);
   const both = await p.eval("document.querySelector('.map').inert");
   check("ride: Large text off again with a second press; with cues to the screen reader alone the map is inert (out of a screen reader's reach), with Both it is not",

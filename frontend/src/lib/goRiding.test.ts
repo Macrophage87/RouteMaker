@@ -12,12 +12,13 @@ const map = source("../MapView.tsx");
 const summary = source("../RideSummaryCard.tsx");
 const css = source("../styles.css");
 
-test("1. track-up by default, the ride settings' switch remembered on this device", () => {
+test("1. track-up by default, the compass's choice remembered on this device", () => {
   assert.match(app, /const \[headingUp, setHeadingUpState\] = useState\(\(\) => readHeadingUp\(\)\);/);
   assert.match(app, /writeHeadingUp\(on\);\s*setHeadingUpState\(on\);/);
-  // The one control: the switch in Ride settings, unchanged.
-  assert.equal(ride.match(/Turn the map to my heading/g)?.length, 1);
-  assert.match(ride, /checked=\{headingUp\} onChange=\{\(event\) => onHeadingUp\(event\.target\.checked\)\}/);
+  // The one control: the compass on the map (Stephen 2026-11-03: "Turn the map to my heading is already established
+  // with the compass"); the settings popup's switch is gone.
+  assert.doesNotMatch(ride, /Turn the map to my heading"\)/);
+  assert.match(ride, /className="ride-compass" aria-pressed=\{!headingUp\}[^>]*onClick=\{\(\) => onHeadingUp\(!headingUp\)\}/);
   // Until a heading comes, the phone's compass (lib/compassHeading.ts) or else north-up; north-up again once the ride is over.
   assert.match(map, /props\.headingUp && compassDeg\.current !== null\s*\? compassDeg\.current\s*: props\.headingUp && following\.current\s*\? map\.getBearing\(\)\s*: 0/);
   assert.match(map, /if \(following\.current && map\.getBearing\(\) !== 0\) map\.easeTo\(\{ bearing: 0, padding: NO_PADDING, duration: 0 \}\)/);
@@ -149,9 +150,21 @@ test("Ride settings in reach: More at the end of the side buttons opens them jus
   // Two pickers (what each level says behind an (i)), so it fits a phone; Done, a tap outside, Escape or the screen left
   // alone close it, and the focus goes back to the Settings bubble (or to More, the bubbles closed).
   assert.match(dialog, /<RideSettingsFields prefs=\{prefs\} onChange=\{onPrefs\} idBase=\{settingsId\} compact \/>/);
+  // Colors and Units too, the same pickers as Settings > Display (Stephen 2026-11-03: "switch to metric or dark modes
+  // from these settings"); Units saves to the account first, as there, and in a ride switches at once with no reload
+  // ("Change should happen immediately"), the cue's words turned round and the page reloaded once the ride is done.
+  assert.match(dialog, /<ThemeSetting idBase=\{`\$\{settingsId\}-display`\} \/>\s*<ContrastRow idBase=\{`\$\{settingsId\}-contrast`\} \/>\s*<UnitsSetting idBase=\{`\$\{settingsId\}-display`\} saveNow=\{saveSettingsNow\} inRide \/>/);
+  assert.match(source("../DisplaySettings.tsx"), /const on = useSyncExternalStore\(subscribePalette, accessibilityOn\);/);
+  assert.match(source("../DisplaySettings.tsx"), /if \(inRide\) \{\s*void switchUnitsInRide\(next, saveNow\)/);
+  assert.match(ride, /const unitsNow = useSyncExternalStore\(subscribeUnits, units\);/);
+  assert.match(ride, /const cueShown = \{ \.\.\.cueWords, head: unitsFirst\(cueWords\.head\), rest: unitsFirst\(cueWords\.rest\) \};/);
+  assert.match(ride, /const fitKey = `\$\{unitsNow\}\|/);
+  assert.match(source("../App.tsx"), /\} else backToRideOpener\(\);\s*(\/\/[^\n]*\n\s*)+if \(unitsReloadOwed\(\)\) window\.setTimeout\(\(\) => window\.location\.reload\(\), 300\);/);
+  assert.match(source("../App.tsx"), /onPrefs=\{changeRidePrefs\}\s+saveSettingsNow=\{saveSettingsNow\}/);
+  assert.match(source("../app/Sheets.tsx"), /<ThemeSetting idBase="settings" \/>[\s\S]*<UnitsSetting idBase="settings" saveNow=\{props\.saveSettingsNow\} \/>/);
   assert.match(dialog, /if \(event\.target === event\.currentTarget\) event\.currentTarget\.close\(\);/);
   // Its contents fill it (the padding is theirs), so only a tap on the dim map around it is the dialog's own.
-  assert.match(css, /\.ride-settings-dialog \{[^}]*padding: 0;/);
+  assert.match(css, /\.ask-dialog\.ride-settings-dialog \{[^}]*padding: 0;/);
   assert.match(css, /\.ride-settings-body \{\s*padding: 16px;/);
   // The screen behind is inert while it shows: the cues are said from inside it, a cue said before it opened not again.
   assert.match(dialog, /<div className="ride-settings-body">\s*\{settingsOpen && <PopupLiveRegions polite=\{polite\} assertive=\{assertive\} \/>\}/);
@@ -251,7 +264,7 @@ test("ride card: fewer words on screen, the whole of them for screen readers (th
   // One TimeToGo for both to-go times (the next stop and the end, lib/arrival.ts), its "about" and "arriving about" read.
   assert.equal((ride.match(/<span className="visually-hidden">\{t\("about"\)\} <\/span>/g) ?? []).length, 1, "\"about\" before the to-go time stays for screen readers");
   assert.equal((ride.match(/<TimeToGo seconds=/g) ?? []).length, 2, "both to-go times");
-  assert.match(ride, /<span aria-hidden="true">\{withoutFullStop\(cueShown\.head\)\}<\/span>\s*<span className="visually-hidden">\{cue\.card\?\.said \?\? cue\.rideText \?\? cue\.text\}<\/span>/, "the full stop goes from the shown head only; the whole sentence is read");
+  assert.match(ride, /<span aria-hidden="true">\{withoutFullStop\(cueShown\.head\)\}<\/span>\s*<span className="visually-hidden">\{unitsFirst\(cue\.card\?\.said \?\? cue\.rideText \?\? cue\.text\)\}<\/span>/, "the full stop goes from the shown head only; the whole sentence is read");
 });
 
 test("Broadcast from a ride (Stephen 2026-10-24: \"Let people broadcast from a ride\"): a side button, Share ride's link, the ride going on", () => {

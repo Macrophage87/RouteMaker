@@ -40,7 +40,7 @@
 import { NEXT_LEG } from "./lib/tripStops.ts";
 import { BROADCAST_HOLD_HINT } from "./lib/broadcastQr.ts";
 import { useHold } from "./lib/useHold.ts";
-import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type FocusEvent, type PointerEvent } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type FocusEvent, type PointerEvent } from "react";
 import { HoldTimer } from "./lib/holdTimer.ts";
 import { rejoinsFirst, startsWayBack, wayBackRoute } from "./lib/rejoin.ts";
 import {
@@ -80,7 +80,8 @@ import type { Dials } from "./lib/dials.ts";
 import { haversineM, type LonLat } from "./lib/geo.ts";
 import { placeLetter, type LetteredPlace } from "./lib/letteredPlaces.ts";
 import type { PresetId } from "./lib/presets.ts";
-import { formatDistance, formatDuration, spokenDistance } from "./lib/format.ts";
+import { formatDistance, formatDuration, spokenDistance, unitsFirst } from "./lib/format.ts";
+import { subscribeUnits, units } from "./lib/units.ts";
 import { arrivalClock, atPace, paceFactor, paceStart, paceStep, type PaceTrack } from "./lib/arrival.ts";
 import { cueParts } from "./lib/cueShown.ts";
 import { jogArrowPath } from "./lib/jogArrow.ts";
@@ -271,6 +272,7 @@ import { countText } from "./lib/rideGroup.ts";
 import type { SeeEveryone } from "./app/useSeeEveryone.ts";
 import { SeeEveryoneButton } from "./SeeEveryoneButton.tsx";
 import { AheadGraph, aheadLeastPx } from "./AheadGraph.tsx";
+import { ContrastRow, ThemeSetting, UnitsSetting } from "./DisplaySettings.tsx";
 import { AHEAD_NAME, AHEAD_WORD, aheadNoRoom, aheadOff, aheadOn, aheadViews, readAhead, writeAhead, RIDER_OFF_ROUTE_M, RIDERS_REACH_M, type AheadView } from "./lib/aheadGraph.ts";
 
 /** The bottom panel's padding and top edge (styles.css .ride-controls), and the graph's margin under it. */
@@ -753,6 +755,7 @@ export function RideMode({
   dials,
   prefs,
   onPrefs,
+  saveSettingsNow,
   follow,
   onFollow,
   headingUp,
@@ -798,6 +801,8 @@ export function RideMode({
   dials: Dials;
   prefs: RidePrefs;
   onPrefs: (prefs: RidePrefs) => void;
+  /** Signed in: save this device's settings to the account before Units reloads the page (App's, as in Settings). */
+  saveSettingsNow?: () => Promise<boolean>;
   follow: boolean;
   onFollow: (on: boolean) => void;
   headingUp: boolean;
@@ -2486,7 +2491,11 @@ export function RideMode({
     .map((t) => (t && t.seconds !== null ? `${formatDuration(t.seconds)}${arrivalClock(clockMs, t.seconds)}`.length : 0))
     .join(",");
   // A run of signalized crossings has a card of its own (lib/navigate.ts signalsCard); any other cue is split at its first comma.
-  const cueShown = cue?.card ?? cueParts(cue ? (cue.rideText ?? cue.text) : "");
+  // Units switched during the ride (lib/units.ts switchUnitsInRide): the screen figured again at once, and the
+  // server's words in the cue, turned at arrival, turned round now.
+  const unitsNow = useSyncExternalStore(subscribeUnits, units);
+  const cueWords = cue?.card ?? cueParts(cue ? (cue.rideText ?? cue.text) : "");
+  const cueShown = { ...cueWords, head: unitsFirst(cueWords.head), rest: unitsFirst(cueWords.rest) };
   // A detour row's place ahead on the route or behind the rider, where the rider is on it (detourRowShown). Where each
   // place falls along the route is worked out once a list (or route), not each fix; only the rider's side of it moves.
   const detourAlong = useMemo(() => (detourList?.items ?? []).map((item) => snap(model, item.place.point)?.alongM ?? null), [detourList, model]);
@@ -2591,7 +2600,7 @@ export function RideMode({
   // screen as possible"), set as --cue-fit on the card. Worked out when the turn, the size or the screen changes, not each
   // fix, with a little room left for the distance's words to grow; the small print stays 16 pt or more (styles.css).
   const cardRef = useRef<HTMLDivElement>(null);
-  const fitKey = `${textSize}|${cueShown.head}|${cueShown.rest}|${distanceWords.length}|${ride.off}|${ride.arrived}|${cueSheetOn}|${togoWords}`;
+  const fitKey = `${unitsNow}|${textSize}|${cueShown.head}|${cueShown.rest}|${distanceWords.length}|${ride.off}|${ride.arrived}|${cueSheetOn}|${togoWords}`;
   useLayoutEffect(() => {
     const card = cardRef.current;
     if (!card) return;
@@ -3133,9 +3142,9 @@ export function RideMode({
                   className={i === 0 ? "cue-sheet-next" : i >= CUE_SHEET_SHOWN ? "visually-hidden" : undefined}
                   aria-current={i === 0 ? "step" : undefined}
                 >
-                  <span aria-hidden="true">{row.shown}</span>
+                  <span aria-hidden="true">{unitsFirst(row.shown)}</span>
                   <span className="visually-hidden">
-                    {row.distance}: {row.text}
+                    {row.distance}: {unitsFirst(row.text)}
                   </span>
                 </li>
               ))}
@@ -3158,7 +3167,7 @@ export function RideMode({
               {/* The instruction large, the rest in small print, street words shortened; the whole sentence for screen readers. */}
               <p className="cue-text">
                 <span aria-hidden="true">{withoutFullStop(cueShown.head)}</span>
-                <span className="visually-hidden">{cue.card?.said ?? cue.rideText ?? cue.text}</span>
+                <span className="visually-hidden">{unitsFirst(cue.card?.said ?? cue.rideText ?? cue.text)}</span>
               </p>
               {/* At most one short line, always there (empty too), so the card keeps its height between turns. */}
               <p className="cue-more" aria-hidden="true">
@@ -3199,7 +3208,7 @@ export function RideMode({
           right at thumb height; each menu opens beside them. An answer the rider asked for shows to their left. */}
       <div ref={middleRef} className="ride-middle">
         {/* A minimalist compass (the owner, 2026-10-17), turned with the map; a press switches north-up and track-up
-            ("maybe clicking on it changes to north up"), the same choice as the ride settings' switch. */}
+            ("maybe clicking on it changes to north up"), the one control for it. */}
         <button type="button" className="ride-compass" aria-pressed={!headingUp} aria-label={t("North up")} title={t("North up")} onClick={() => onHeadingUp(!headingUp)}>
           <svg viewBox="0 0 40 40" width="40" height="40" aria-hidden="true">
             <path d="M20 5 L25 20 L20 17 L15 20 Z" className="ride-compass-north" />
@@ -3702,12 +3711,17 @@ export function RideMode({
           <h2 ref={settingsTitle} id={`${settingsId}-settings-title`} tabIndex={-1}>
             {RIDE_SETTINGS_TITLE}
           </h2>
-          {/* The two pickers, what each level says behind its (i): the whole popup fits a phone without scrolling. */}
+          {/* Colors with High contrast beside it, then Units, first (Stephen 2026-11-03: "Put high contrast with colors.
+              Colors and units first"), as in Settings > Display ("People should also be able to switch to metric or
+              dark modes from these settings"; High contrast: "Could be useful in extremely bright conditions"). Each
+              shows at once, the ride carrying on (Units with no reload: "Change should happen immediately"). */}
+          <ThemeSetting idBase={`${settingsId}-display`} />
+          <ContrastRow idBase={`${settingsId}-contrast`} />
+          <UnitsSetting idBase={`${settingsId}-display`} saveNow={saveSettingsNow} inRide />
+          {/* The cues' two pickers, what each level says behind its (i): the whole popup fits a phone without scrolling.
+              No heading switch: the compass button on the map turns the map (Stephen 2026-11-03: "Turn the map to my
+              heading is already established with the compass"). */}
           <RideSettingsFields prefs={prefs} onChange={onPrefs} idBase={settingsId} compact />
-          <label className="toggle ride-toggle">
-            <input type="checkbox" checked={headingUp} onChange={(event) => onHeadingUp(event.target.checked)} />
-            {t("Turn the map to my heading")}
-          </label>
           {/* One line in view (the UI review, 2026-10-28), the whole of it under About Ride mode. */}
           <p className="hint">{RIDE_SAFETY_SHORT}</p>
           <details className="ride-safety-more">

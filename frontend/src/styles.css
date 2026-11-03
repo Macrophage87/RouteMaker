@@ -4969,7 +4969,7 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
 
 /* The ride's settings, a popup opened by the Settings bubble beside More (Stephen 2026-11-03): over the map, the
    ride's screen behind unchanged; tall enough for Large text, scrolled inside itself only if a phone is very short. */
-.ride-settings-dialog {
+.ask-dialog.ride-settings-dialog {
   width: min(440px, calc(100vw - 32px));
   max-height: calc(100dvh - 32px);
   overflow-y: auto;
@@ -5000,6 +5000,14 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
   flex: none;
   width: 100%;
   margin-left: 0;
+}
+/* High contrast's switch across the popup, its (i) beside it, as in Settings. */
+.ride-settings-dialog .contrast-row {
+  grid-template-columns: 1fr auto;
+  margin-bottom: 8px;
+}
+.ride-settings-dialog .contrast-row .switch {
+  width: 100%;
 }
 
 /* Larger than the panel's buttons, at every text size (the owner, 2026-10-20: "End ride and road closed could have larger font in general"). */
