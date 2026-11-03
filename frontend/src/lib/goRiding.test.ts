@@ -150,8 +150,15 @@ test("Ride settings in reach: More at the end of the side buttons opens them jus
   // alone close it, and the focus goes back to the Settings bubble (or to More, the bubbles closed).
   assert.match(dialog, /<RideSettingsFields prefs=\{prefs\} onChange=\{onPrefs\} idBase=\{settingsId\} compact \/>/);
   // Colors and Units too, the same pickers as Settings > Display (Stephen 2026-11-03: "switch to metric or dark modes
-  // from these settings"); Units saves to the account first, as there.
-  assert.match(dialog, /<ThemeSetting idBase=\{`\$\{settingsId\}-display`\} \/>\s*<UnitsSetting idBase=\{`\$\{settingsId\}-display`\} saveNow=\{saveSettingsNow\} \/>/);
+  // from these settings"); Units saves to the account first, as there, and in a ride switches at once with no reload
+  // ("Change should happen immediately"), the cue's words turned round and the page reloaded once the ride is done.
+  assert.match(dialog, /<ContrastRow idBase=\{`\$\{settingsId\}-contrast`\} \/>\s*<ThemeSetting idBase=\{`\$\{settingsId\}-display`\} \/>\s*<UnitsSetting idBase=\{`\$\{settingsId\}-display`\} saveNow=\{saveSettingsNow\} inRide \/>/);
+  assert.match(source("../DisplaySettings.tsx"), /const on = useSyncExternalStore\(subscribePalette, accessibilityOn\);/);
+  assert.match(source("../DisplaySettings.tsx"), /if \(inRide\) \{\s*void switchUnitsInRide\(next, saveNow\)/);
+  assert.match(ride, /const unitsNow = useSyncExternalStore\(subscribeUnits, units\);/);
+  assert.match(ride, /const cueShown = \{ \.\.\.cueWords, head: unitsFirst\(cueWords\.head\), rest: unitsFirst\(cueWords\.rest\) \};/);
+  assert.match(ride, /const fitKey = `\$\{unitsNow\}\|/);
+  assert.match(source("../App.tsx"), /\} else backToRideOpener\(\);\s*\/\/[^\n]*\n[^\n]*\n\s*if \(unitsReloadOwed\(\)\) window\.location\.reload\(\);/);
   assert.match(source("../App.tsx"), /onPrefs=\{changeRidePrefs\}\s+saveSettingsNow=\{saveSettingsNow\}/);
   assert.match(source("../app/Sheets.tsx"), /<ThemeSetting idBase="settings" \/>[\s\S]*<UnitsSetting idBase="settings" saveNow=\{props\.saveSettingsNow\} \/>/);
   assert.match(dialog, /if \(event\.target === event\.currentTarget\) event\.currentTarget\.close\(\);/);

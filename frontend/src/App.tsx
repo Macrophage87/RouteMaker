@@ -35,7 +35,7 @@ import {
 import { onSharedTick } from "./lib/sharedTick.ts";
 import { COVERAGE_BBOX, MAX_POINTS, addPoint, haversineM, insideCoverage, type LonLat } from "./lib/geo.ts";
 import { formatDistance, formatSeconds, unitsFirstDeep } from "./lib/format.ts";
-import { chooseUnits, units } from "./lib/units.ts";
+import { chooseUnits, units, unitsReloadOwed } from "./lib/units.ts";
 import { RETURN_PARAM as GARMIN_RETURN_PARAM, garminReturnFrom, readGarmin, withoutReturn } from "./lib/garminLink.ts";
 import { RETURN_PARAM as WAHOO_RETURN_PARAM, readWahoo, wahooReturnFrom } from "./lib/wahooLink.ts";
 import { endsOnFoot, layersTurnedOn, presetNamesRide, presetSaid, runs, twoPointsOnly, usesBikeshare, type PresetId } from "./lib/presets.ts";
@@ -4655,6 +4655,9 @@ export function App() {
       if (document.activeElement instanceof HTMLElement && document.activeElement.closest(".go-search")) document.activeElement.blur();
       window.requestAnimationFrame(() => document.querySelector<HTMLElement>(".go-bar-start")?.focus());
     } else backToRideOpener();
+    // Units switched during the ride (lib/units.ts switchUnitsInRide): the reload that brings the rest of the page
+    // round too, now the ride is done.
+    if (unitsReloadOwed()) window.location.reload();
   };
   // Roam (RoamMode.tsx): Go's one button while Go has no destination. The voice is unlocked inside the press (iOS).
   const startRoam = () => {

@@ -5001,6 +5001,14 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
   width: 100%;
   margin-left: 0;
 }
+/* High contrast's switch across the popup, its (i) beside it, as in Settings. */
+.ride-settings-dialog .contrast-row {
+  grid-template-columns: 1fr auto;
+  margin-bottom: 8px;
+}
+.ride-settings-dialog .contrast-row .switch {
+  width: 100%;
+}
 
 /* Larger than the panel's buttons, at every text size (the owner, 2026-10-20: "End ride and road closed could have larger font in general"). */
 .ride .ride-road-closed,

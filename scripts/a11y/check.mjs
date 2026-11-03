@@ -3268,6 +3268,28 @@ if (mine()) {
     !escaped.open && escaped.focus && escaped.more === "true" && !done.open && done.focus, JSON.stringify({ escaped, done }));
   await p.eval("document.querySelector('.ride .ride-settings-bubble').click(); true");
   await sleep(200);
+  // High contrast in the popup (Stephen 2026-11-03: "Could be useful in extremely bright conditions"): on at once, off again.
+  const contrastNow = () => p.eval("({ checked: document.querySelector('.ride-settings-dialog .contrast-row [role=switch]').getAttribute('aria-checked'), name: document.querySelector('.ride-settings-dialog .contrast-row .switch-label').textContent })");
+  const contrastBefore = await contrastNow();
+  await p.eval("document.querySelector('.ride-settings-dialog .contrast-row [role=switch]').click(); true");
+  await sleep(300);
+  const contrastOn = await contrastNow();
+  await p.eval("document.querySelector('.ride-settings-dialog .contrast-row [role=switch]').click(); true");
+  await sleep(300);
+  const contrastOff = await contrastNow();
+  check("ride: the settings popup's High contrast switch turns it on and off at once, the popup open",
+    contrastBefore.checked === "false" && contrastOn.checked === "true" && contrastOff.checked === "false" && /contrast/i.test(contrastOn.name), JSON.stringify({ contrastBefore, contrastOn, contrastOff }));
+  // Units in a ride switch at once, the page not reloaded (Stephen 2026-11-03: "Change should happen immediately").
+  const pickUnits = (value) => p.eval(`(() => { const s = [...document.querySelectorAll('.ride-settings-dialog select')].find((x) => x.closest('label')?.querySelector('.setting-name')?.textContent === 'Units'); Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(s, ${JSON.stringify(value)}); s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
+  await p.eval("window.__notReloaded = true; true");
+  await pickUnits("metric");
+  await sleep(400);
+  const metric = await p.eval("({ same: window.__notReloaded === true, open: document.querySelector('.ride-settings-dialog').open, distance: document.querySelector('.ride .cue-distance')?.textContent ?? '', kept: localStorage.getItem('routemaker.units') })");
+  await pickUnits("us");
+  await sleep(400);
+  const us = await p.eval("({ same: window.__notReloaded === true, distance: document.querySelector('.ride .cue-distance')?.textContent ?? '' })");
+  check("ride: Units picked in the settings popup switch the ride's figures at once (km first, then mi again), with no reload and the popup still open",
+    metric.same && metric.open && /[\d.]+ (km|m) \([\d.,]+ (mi|ft)\)/.test(metric.distance) && metric.kept === "metric" && us.same && /[\d.,]+ (mi|ft) \([\d.]+ (km|m)\)/.test(us.distance), JSON.stringify({ metric, us }));
   // More's own close, as the screen left alone presses it (closeIdlePanels; a rider cannot reach More behind the
   // modal), closes the bubbles and the settings.
   await p.eval("document.querySelector('.ride .ride-settings-button').click(); true");

@@ -277,7 +277,7 @@ test("rideModel: a run of signals is a short card, Corkers on a Mass Ride; the v
   // No busy road and none more: the streets alone.
   assert.equal(signalsCard({ number: 2, count: 2, lts4: 0, streets: ["A Street Southeast", "B Street"], more: 0 }, "2 crossings.", false).rest, "A St, B St");
   const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
-  assert.match(ride, /const cueShown = cue\?\.card \?\? cueParts\(/);
+  assert.match(ride, /const cueWords = cue\?\.card \?\? cueParts\(/);
   assert.match(ride, /<span className="visually-hidden">\{cue\.card\?\.said \?\? cue\.rideText \?\? cue\.text\}<\/span>/);
 });
 

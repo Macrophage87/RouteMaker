@@ -40,7 +40,7 @@
 import { NEXT_LEG } from "./lib/tripStops.ts";
 import { BROADCAST_HOLD_HINT } from "./lib/broadcastQr.ts";
 import { useHold } from "./lib/useHold.ts";
-import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type FocusEvent, type PointerEvent } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type FocusEvent, type PointerEvent } from "react";
 import { HoldTimer } from "./lib/holdTimer.ts";
 import { rejoinsFirst, startsWayBack, wayBackRoute } from "./lib/rejoin.ts";
 import {
@@ -80,7 +80,8 @@ import type { Dials } from "./lib/dials.ts";
 import { haversineM, type LonLat } from "./lib/geo.ts";
 import { placeLetter, type LetteredPlace } from "./lib/letteredPlaces.ts";
 import type { PresetId } from "./lib/presets.ts";
-import { formatDistance, formatDuration, spokenDistance } from "./lib/format.ts";
+import { formatDistance, formatDuration, spokenDistance, unitsFirst } from "./lib/format.ts";
+import { subscribeUnits, units } from "./lib/units.ts";
 import { arrivalClock, atPace, paceFactor, paceStart, paceStep, type PaceTrack } from "./lib/arrival.ts";
 import { cueParts } from "./lib/cueShown.ts";
 import { jogArrowPath } from "./lib/jogArrow.ts";
@@ -271,7 +272,7 @@ import { countText } from "./lib/rideGroup.ts";
 import type { SeeEveryone } from "./app/useSeeEveryone.ts";
 import { SeeEveryoneButton } from "./SeeEveryoneButton.tsx";
 import { AheadGraph, aheadLeastPx } from "./AheadGraph.tsx";
-import { ThemeSetting, UnitsSetting } from "./DisplaySettings.tsx";
+import { ContrastRow, ThemeSetting, UnitsSetting } from "./DisplaySettings.tsx";
 import { AHEAD_NAME, AHEAD_WORD, aheadNoRoom, aheadOff, aheadOn, aheadViews, readAhead, writeAhead, RIDER_OFF_ROUTE_M, RIDERS_REACH_M, type AheadView } from "./lib/aheadGraph.ts";
 
 /** The bottom panel's padding and top edge (styles.css .ride-controls), and the graph's margin under it. */
@@ -2490,7 +2491,11 @@ export function RideMode({
     .map((t) => (t && t.seconds !== null ? `${formatDuration(t.seconds)}${arrivalClock(clockMs, t.seconds)}`.length : 0))
     .join(",");
   // A run of signalized crossings has a card of its own (lib/navigate.ts signalsCard); any other cue is split at its first comma.
-  const cueShown = cue?.card ?? cueParts(cue ? (cue.rideText ?? cue.text) : "");
+  // Units switched during the ride (lib/units.ts switchUnitsInRide): the screen figured again at once, and the
+  // server's words in the cue, turned at arrival, turned round now.
+  const unitsNow = useSyncExternalStore(subscribeUnits, units);
+  const cueWords = cue?.card ?? cueParts(cue ? (cue.rideText ?? cue.text) : "");
+  const cueShown = { ...cueWords, head: unitsFirst(cueWords.head), rest: unitsFirst(cueWords.rest) };
   // A detour row's place ahead on the route or behind the rider, where the rider is on it (detourRowShown). Where each
   // place falls along the route is worked out once a list (or route), not each fix; only the rider's side of it moves.
   const detourAlong = useMemo(() => (detourList?.items ?? []).map((item) => snap(model, item.place.point)?.alongM ?? null), [detourList, model]);
@@ -2595,7 +2600,7 @@ export function RideMode({
   // screen as possible"), set as --cue-fit on the card. Worked out when the turn, the size or the screen changes, not each
   // fix, with a little room left for the distance's words to grow; the small print stays 16 pt or more (styles.css).
   const cardRef = useRef<HTMLDivElement>(null);
-  const fitKey = `${textSize}|${cueShown.head}|${cueShown.rest}|${distanceWords.length}|${ride.off}|${ride.arrived}|${cueSheetOn}|${togoWords}`;
+  const fitKey = `${unitsNow}|${textSize}|${cueShown.head}|${cueShown.rest}|${distanceWords.length}|${ride.off}|${ride.arrived}|${cueSheetOn}|${togoWords}`;
   useLayoutEffect(() => {
     const card = cardRef.current;
     if (!card) return;
@@ -3708,11 +3713,13 @@ export function RideMode({
           </h2>
           {/* The two pickers, what each level says behind its (i): the whole popup fits a phone without scrolling. */}
           <RideSettingsFields prefs={prefs} onChange={onPrefs} idBase={settingsId} compact />
-          {/* Colors and Units, as in Settings > Display (Stephen 2026-11-03: "People should also be able to switch to
-              metric or dark modes from these settings"). Colors shows at once; Units reloads the page, which then
-              asks to resume the ride, as any reload does. */}
+          {/* High contrast, Colors and Units, as in Settings > Display (Stephen 2026-11-03: "People should also be
+              able to switch to metric or dark modes from these settings"; High contrast: "Could be useful in
+              extremely bright conditions"). Each shows at once, the ride carrying on (Units with no reload:
+              "Change should happen immediately"). */}
+          <ContrastRow idBase={`${settingsId}-contrast`} />
           <ThemeSetting idBase={`${settingsId}-display`} />
-          <UnitsSetting idBase={`${settingsId}-display`} saveNow={saveSettingsNow} />
+          <UnitsSetting idBase={`${settingsId}-display`} saveNow={saveSettingsNow} inRide />
           <label className="toggle ride-toggle">
             <input type="checkbox" checked={headingUp} onChange={(event) => onHeadingUp(event.target.checked)} />
             {t("Turn the map to my heading")}

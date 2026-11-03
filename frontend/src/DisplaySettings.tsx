@@ -2,17 +2,19 @@
  * Colors and Units: in Settings > Display, and in a ride's settings popup (Stephen 2026-11-03: "People should also be
  * able to switch to metric or dark modes from these settings"). One copy, so the two never differ.
  */
-import { useState } from "react";
-import { SettingRow, SettingSelect } from "./SettingRow.tsx";
+import { useState, useSyncExternalStore } from "react";
+import { InfoButton, SettingRow, SettingSelect } from "./SettingRow.tsx";
+import { AccessibilitySwitch } from "./lib/accessibilitySwitch.ts";
+import { accessibilityOn, accessibilitySource, paletteSetByAddress, setAccessibility, subscribePalette } from "./stressStyle.js";
 import { t } from "./lib/i18n.ts";
 import { THEME_CHOICES, chooseTheme, readThemeChoice, type ThemeChoice } from "./lib/themeClock.ts";
-import { chooseUnits, units, type Units } from "./lib/units.ts";
+import { chooseUnits, switchUnitsInRide, units, type Units } from "./lib/units.ts";
 
 /**
  * Settings > Display > Units (the owner, 2026-11-03: "have a metric mode in settings"): US (miles first, metric in
  * brackets) or Metric (kilometres first, US in brackets; Ride says metres and kilometres). Reloads, as Language does.
  */
-export function UnitsSetting({ idBase, saveNow }: { idBase: string; saveNow?: () => Promise<boolean> }) {
+export function UnitsSetting({ idBase, saveNow, inRide = false }: { idBase: string; saveNow?: () => Promise<boolean>; inRide?: boolean }) {
   const [choice, setChoice] = useState<Units>(() => units());
   const [unsaved, setUnsaved] = useState(false);
   return (
@@ -26,6 +28,16 @@ export function UnitsSetting({ idBase, saveNow }: { idBase: string; saveNow?: ()
           setChoice(next);
           setUnsaved(false);
           // Signed in, the account is saved first; not saved, the choice goes back and says so.
+          // In a ride, no reload: it switches at once and the ride carries on (switchUnitsInRide).
+          if (inRide) {
+            void switchUnitsInRide(next, saveNow).then((switched) => {
+              if (!switched && units() !== next) {
+                setChoice(units());
+                setUnsaved(true);
+              }
+            });
+            return;
+          }
           void chooseUnits(next, saveNow).then((reloaded) => {
             if (!reloaded && units() !== next) {
               setChoice(units());
@@ -66,5 +78,27 @@ export function ThemeSetting({ idBase }: { idBase: string }) {
         describedBy={`${idBase}-theme-info`}
       />
     </SettingRow>
+  );
+}
+
+/**
+ * High contrast in the ride's settings popup, as Settings has it (app/Sheets.tsx ContrastRow), with its explanation
+ * behind an (i); shown as it is now, wherever it was changed.
+ */
+export function ContrastRow({ idBase }: { idBase: string }) {
+  const [open, setOpen] = useState(false);
+  const on = useSyncExternalStore(subscribePalette, accessibilityOn);
+  return (
+    <div className="setting-row contrast-row">
+      <AccessibilitySwitch
+        idBase={idBase}
+        on={on}
+        source={accessibilitySource()}
+        paletteFromAddress={paletteSetByAddress()}
+        onChange={(on) => setAccessibility(on)}
+        hintHidden={!open}
+      />
+      <InfoButton open={open} onToggle={() => setOpen((was) => !was)} controls={`${idBase}-hint`} about="high contrast" />
+    </div>
   );
 }
