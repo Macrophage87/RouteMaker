@@ -996,7 +996,13 @@ export function rideModel(route: RouteResponse, vias: readonly number[] = [], na
   }
   // A crossing is inside its stretch, so an entry after the stretch (a junction, a walk) can come before it: the cues
   // in order along the line, which `step` reads them in.
-  cues.sort((a, b) => a.atM - b.atM).forEach((cue, i) => (cue.index = i));
+  cues.sort((a, b) => a.atM - b.atM);
+  // A crossing within CROSSING_NEAR_CUE_M of another cue is left to it: three sentences in 17 m at Colesville Road (the
+  // PC check, 2026-11-03) are too many, and the card already shows the road's change.
+  const kept = cues.filter((cue, i) => cue.kind !== "crossing" || !cues.some((other, j) => j !== i && other.kind !== "crossing" && Math.abs(other.atM - cue.atM) <= CROSSING_NEAR_CUE_M));
+  cues.length = 0;
+  cues.push(...kept);
+  cues.forEach((cue, i) => (cue.index = i));
   joinJogs(cues);
   const farSide = farSideAtEnd(route.arrival_side, entries);
   cues.push({ index: cues.length, kind: "end", atM: lengthM, text: endWords(route.arrival_side), movement: null, street: null, severity: null, tier: null, stop: null, ...(farSide ? { farSide } : {}) });
@@ -1657,6 +1663,9 @@ function ahead(model: RideModel, cue: Cue, progressM: number): boolean {
   const then = model.cues[cue.index + 1]?.atM ?? Infinity;
   return isStartUTurn(cue) && progressM < Math.min(PASSED_M, then / 2);
 }
+
+/** A road a path crosses is not said on its own this near another cue (a turn, a busy stretch's start). */
+export const CROSSING_NEAR_CUE_M = 30;
 
 /** A road a path crosses leads the card only this near (about when it is said); before that the next turn does. */
 export const CROSSING_SHOWN_M = 100;

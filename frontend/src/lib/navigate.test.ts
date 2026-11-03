@@ -2693,3 +2693,15 @@ test("crossing: said once, about 10 s out, at the Full level only", () => {
   assert.ok(said.some((s) => s.includes("Alderton")), "the flagged crossing before it is still said");
   assert.equal(ride(model, "stoker", 0, 700).events.filter((e) => e.spoken.includes("Layhill")).length, 0);
 });
+
+test("crossing: one within 30 m of another cue is left to that cue", () => {
+  const model = rideModel(
+    straightRoute([
+      stretch(0, 1000, "Sligo Creek Trail.", { street: "Sligo Creek Trail", facility: "path", crossings: [{ at_m: 990, road: "Colesville Road" }] }),
+      stretch(1000, 1003, "Continue on Sligo Creek Trail, busy road (LTS 3).", { street: "Sligo Creek Trail", facility: "path", tier: 3 }),
+      stretch(1003, 2000, "Continue on Sligo Creek Trail, traffic-free path.", { street: "Sligo Creek Trail", facility: "path" }),
+    ]),
+  );
+  assert.ok(!model.cues.some((c) => c.kind === "crossing"));
+  assert.deepEqual(model.cues.map((c) => c.index), model.cues.map((_c, i) => i));
+});

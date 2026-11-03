@@ -1523,6 +1523,21 @@ class DescriptionTurnOut(Schema):
             " `onto` stays the path's own. Null elsewhere."
         ),
     )
+    cross: str | None = Field(
+        default=None,
+        description=(
+            "A short path across a road between two turns (`describe._crossing`): the road,"
+            ' said in place of the turn ("Cross Redland Road"), or "the road" where it has no'
+            " name; absent elsewhere. Ride draws it across the road."
+        ),
+    )
+    across: str | None = Field(
+        default=None,
+        description=(
+            'A turn just past a road crossed straight over: the road, said first ("Cross'
+            ' Saint Paul Street, then right onto ..."); absent elsewhere.'
+        ),
+    )
 
 
 class DescriptionCrossingOut(Schema):

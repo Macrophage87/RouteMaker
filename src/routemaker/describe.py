@@ -574,6 +574,10 @@ def _said_turns(atoms: list[Atom], crossings: Collection[float] = ()) -> list[At
     return _turns_at_paths(out, crossings)
 
 
+# A node turning less than this is a through node to `_turns_at_paths`' two-node rule.
+THROUGH_NODE_DEG = 5.0
+
+
 def _turns_at_paths(atoms: list[Atom], crossings: Collection[float]) -> list[Atom]:
     """`_said_turns`' two rules for a path's own turns (the owner, 2026-11-03, on a morning
     ride: "There are a number of routing calls where it's not announcing the turn"):
@@ -603,19 +607,27 @@ def _turns_at_paths(atoms: list[Atom], crossings: Collection[float]) -> list[Ato
         side = "right" if turn > 0 else "left"
         out[i] = replace(out[i], fork=side if abs(turn) > BEAR_MAX_DEG else f"bear_{side}")
 
-    for i, atom in enumerate(atoms):
+    def near_turn(i: int) -> bool:
+        atom = atoms[i]
         if i == 0 or atom.turn is None or atom.roundabout or out[i].fork is not None:
-            continue
+            return False
         if not (on_path(atom) and on_path(atoms[i - 1])):
-            continue
+            return False
         # Onto or off a crosswalk (most are unnamed) as well as along one way.
         walk = CROSSING_USE in (atom.use, atoms[i - 1].use)
         if not (walk or _same_way(atoms[i - 1], atom)):
-            continue
-        if ALONG_TURN_DEG < abs(atom.turn) < HAIRPIN_DEG and any(
-            abs(at[i] - c) <= FAR_SIDE_M for c in crossings
-        ):
-            mark(i, atom.turn)
+            return False
+        return ALONG_TURN_DEG < abs(atom.turn) < HAIRPIN_DEG
+
+    # Only the turn nearest the road on each side: the one onto the crossing and the one
+    # off it, never a chain of bends along a sidewalk ("then immediately right to stay,
+    # then immediately bear left to stay").
+    for c in crossings:
+        before = [i for i in range(len(atoms)) if c - FAR_SIDE_M <= at[i] <= c and near_turn(i)]
+        after = [i for i in range(len(atoms)) if c < at[i] <= c + FAR_SIDE_M and near_turn(i)]
+        for side in (before[-1:], after[:1]):
+            for i in side:
+                mark(i, atoms[i].turn)
     i = 1
     while i < len(atoms):
         atom = atoms[i]
@@ -628,11 +640,14 @@ def _turns_at_paths(atoms: list[Atom], crossings: Collection[float]) -> list[Ato
         ):
             i += 1
             continue
+        # The next node that turns at all: a through node between (a junction read
+        # straight on, `turn` 0) is passed over, its own small turn added in.
         k = next(
             (
                 k
                 for k in range(i + 1, len(atoms))
-                if atoms[k].turn is not None or at[k] - at[i] >= JOG_MIN_M
+                if (atoms[k].turn is not None and abs(atoms[k].turn) >= THROUGH_NODE_DEG)
+                or at[k] - at[i] >= JOG_MIN_M
             ),
             None,
         )
@@ -649,7 +664,7 @@ def _turns_at_paths(atoms: list[Atom], crossings: Collection[float]) -> list[Ato
         ):
             i += 1
             continue
-        net = atom.turn + nxt.turn
+        net = sum(a.turn for a in atoms[i : k + 1] if a.turn is not None)
         # Past BEAR_MAX_DEG together: a gentle curve of a winding trail past a side path is
         # no turn to say.
         if BEAR_MAX_DEG < abs(net) < HAIRPIN_DEG and (atom.turn > 0) == (nxt.turn > 0):
@@ -2328,11 +2343,17 @@ def describe_both(
                 current.severity or "", 0
             ):
                 turn.event = event
-    for i, turn in turns.items():
+    for i in sorted(turns):
+        turn = turns[i]
         crossed = _crossing(runs, turns, starts, events, i)
         if crossed is not None:
             turn.cross = crossed
             turn.shape = None
+            # Two short pieces in a row each near the same road (a sidewalk, then the
+            # crosswalk): the road is crossed once, on the later, the crosswalk itself.
+            earlier = turns.get(i - 1)
+            if earlier is not None and earlier.cross == crossed and runs[i - 1].leg == runs[i].leg:
+                earlier.cross = None
     for from_at, cross_at, turn_at, side, leg in far_side:
         # The turn the stretch onto the path begins with: at the node turned at, or, where a
         # short piece across the road was folded into the path's stretch, where that begins:

@@ -3462,3 +3462,53 @@ class TestRideTurnsMissed:
         entries = d.describe(legs, [crossing(315)])
         assert self.moves(entries) == [None, "right", "right"]
         assert entries[1]["turn"]["cross"] == "Layhill Road"
+
+    def test_a_through_node_between_the_two_bends_is_passed_over(self):
+        # As mapped at Colt Terrace Park: +24 and +43, 12 m apart, a node read straight on between.
+        legs = [
+            flat(
+                path("", 300, 15),
+                turned([d.Atom(6.0, "1", "path", (), "cycleway", 40, 40)], 24),
+                turned([d.Atom(6.0, "1", "path", (), "cycleway", 40, 40)], 0.0, choice=False),
+                turned(path("", 120, 85), 43, choice=False),
+                road("Kersey Road", 1, 400, 85, 85),
+            )
+        ]
+        assert self.moves(d.describe(legs))[:2] == [None, "right"]
+
+    def test_a_sidewalk_then_its_crosswalk_cross_the_road_once(self):
+        # Layhill Road westbound: off the trail onto its sidewalk, round onto the crosswalk,
+        # over the road, up the far side: one "Cross Layhill Road".
+        sidewalk = turned([d.Atom(16.0, "1", "none", (), "sidewalk", 180, 180)], -50, choice=False)
+        crosswalk = turned(
+            [d.Atom(30.0, "1", "none", (), "pedestrian_crossing", 270, 270)], 90, choice=False
+        )
+        legs = [
+            flat(
+                path("Matthew Henson Trail", 284, 205),
+                sidewalk,
+                crosswalk,
+                turned(path("Matthew Henson Trail", 600, 0), 90, choice=False),
+            )
+        ]
+        entries = d.describe(legs, [crossing(312)])
+        crossed = [e["turn"].get("cross") for e in entries if e["turn"]]
+        assert crossed.count("Layhill Road") == 1
+
+
+def test_the_api_keeps_the_crossing_words_for_ride():
+    """`turn.cross` and `turn.across` reached the answer's schema only from 2026-11-03: Ride's
+    "Cross Layhill Road" was worded in the text but never said."""
+    from core import api
+
+    turn = api.DescriptionTurnOut.model_validate(
+        {
+            "movement": "right",
+            "onto": "x",
+            "control": None,
+            "severity": None,
+            "cross": "Layhill Road",
+            "across": "Elm Street",
+        }
+    )
+    assert turn.cross == "Layhill Road" and turn.across == "Elm Street"
