@@ -161,3 +161,18 @@ test("the choice is kept in this browser and with the account; a browser that wi
   assert.equal(saved, false);
   assert.equal(units(), "us");
 });
+
+test("the next-2-miles graph: its distance axis counts kilometres and its height axis metres in metric mode, decimals", async () => {
+  const { axisTicks, elevationTicks } = await import("./aheadGraph.ts");
+  const w = { fromM: 0, youM: 0, toM: 3_219 };
+  assert.deepEqual(axisTicks(w).map((tick) => tick.label), ["0.5", "1", "1.5", "2 mi"]);
+  assert.equal(elevationTicks(10, 40).every((tick) => / ft$/.test(tick.label)), true);
+  inUnits("metric", () => {
+    const ticks = axisTicks(w);
+    assert.deepEqual(ticks.map((tick) => tick.label), ["1", "2", "3 km"]);
+    assert.equal(ticks[0].m, 1000);
+    const heights = elevationTicks(10, 40);
+    assert.deepEqual(heights.map((tick) => tick.label), ["10 m", "20 m", "30 m", "40 m"].filter((_, i) => i < heights.length));
+    assert.equal(heights.every((tick) => / m$/.test(tick.label)), true);
+  });
+});
