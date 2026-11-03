@@ -365,6 +365,49 @@ class TestLoops:
             <= len(run_plan.TARGET_BEARINGS) + 1
         )
 
+    @staticmethod
+    def winding_router(ratio_of, use_of=lambda north: "road"):
+        """Triangles run `ratio_of(north, side_m)` times their straight sides, `north` whether
+        the first corner is north of the start."""
+
+        def routes(payload):
+            points = [(loc["lon"], loc["lat"]) for loc in payload["locations"]]
+            north = points[1][1] > START[1] + 1e-6 and abs(points[1][0] - START[0]) < 1e-6
+            shape = []
+            for a, b in zip(points, points[1:], strict=False):
+                shape.extend(line(a, b, 10)[1 if shape else 0 :])
+            straight = sum(
+                run_plan.haversine(run_plan.Point(*a), run_plan.Point(*b))
+                for a, b in zip(points, points[1:], strict=False)
+            )
+            km = straight * ratio_of(north, straight / 3.0) / 1000.0
+            fake.traces[encode_polyline6(shape)] = edges(shape, use_of(north), km)
+            return answer(leg(shape, km * 370.0, km))
+
+        fake = FakeCall(routes, {})
+        return fake
+
+    def test_a_winding_map_still_gives_a_loop_near_its_target(self) -> None:
+        """PC check, v0.18.0: a 5,000 m target came back 8,242 m. Here, as in a city, the
+        smaller the triangle the more its run winds (2.2 times its sides at the first guess,
+        2.7 once sized down), so one resize is not enough: it is sized again from each run."""
+        target = 5000.0
+        fake = self.winding_router(lambda north, side: 1.5 + 900.0 / side)
+        run = run_plan.plan([START], run_plan.RunAsk(loop=True, target_m=target), router(fake))
+        assert abs(run.metres - target) / target <= run_plan.TARGET_TOLERANCE
+
+    def test_off_target_the_nearest_loop_wins_over_the_better_run(self) -> None:
+        """Where no loop is near enough, nearness decides, not trail: the northern loop is all
+        path but runs three times its sides; it is never the one kept."""
+        target = 5000.0
+        fake = self.winding_router(
+            lambda north, side: (2.4 if north else 1.5) + 900.0 / side,
+            lambda north: "path" if north else "road",
+        )
+        r = router(fake)
+        run = run_plan.plan([START], run_plan.RunAsk(loop=True, target_m=target), r)
+        assert abs(run.metres - target) / target <= run_plan.TARGET_TOLERANCE
+
     def test_a_start_alone_needs_a_loop_and_a_target(self) -> None:
         with pytest.raises(run_plan.NoRun):
             run_plan.plan([START], run_plan.RunAsk(), router(FakeCall(lambda p: None, {})))

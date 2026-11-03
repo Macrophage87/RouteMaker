@@ -76,11 +76,14 @@ CIVIL_TWILIGHT_DEG = -6.0
 
 # A loop from a start alone (`target_loop`): equilateral triangles from the start, of
 # `TARGET_BEARINGS` first headings, sized so the run is about the target; a run within
-# `TARGET_TOLERANCE` of it is near enough, and the best is sized again once where it is not.
+# `TARGET_TOLERANCE` of it is near enough, and the nearest is sized again, up to
+# `TARGET_RESIZES` times, where none is.
 TARGET_BEARINGS = (0.0, 60.0, 120.0, 180.0, 240.0, 300.0)
-# How much longer a run on the map is than its straight lines (a first guess, corrected after).
+# How much longer a run on the map is than its straight lines: a first guess, then each
+# direction's triangle is sized from what the ones before it ran (their median).
 ROUTED_PER_STRAIGHT = 1.3
 TARGET_TOLERANCE = 0.12
+TARGET_RESIZES = 3
 # A target loop's run: 1 km to a 50 km ultra.
 RUN_TARGET_MAX_M = 50_000
 
@@ -560,13 +563,19 @@ def triangle(start, bearing_deg: float, side_m: float) -> list[tuple[float, floa
 
 def target_loop(router: Router, start, ask: RunAsk) -> tuple[Walked | None, dict]:
     """A loop of about `ask.target_m` from `start` alone: a triangle in each of `TARGET_BEARINGS`,
-    sized from `ROUTED_PER_STRAIGHT`; the one nearest the target (within `TARGET_TOLERANCE`
-    first), then with the least run twice (`self_overlap`), then the best for a run. The best is
-    sized once more where it is not within the tolerance."""
+    sized from how much longer than its straight sides the router's runs come back (first
+    `ROUTED_PER_STRAIGHT`, then the median of the triangles run so far). A loop within
+    `TARGET_TOLERANCE` of the target first, the one with the least run twice
+    (`self_overlap`), then the best for a run; where none is within it, the nearest, sized
+    again from what it ran, up to `TARGET_RESIZES` times."""
     assert ask.target_m is not None
     target = float(ask.target_m)
-    side = target / (3.0 * ROUTED_PER_STRAIGHT)
     found: list[tuple[tuple, Walked, float, float]] = []
+    ratios: list[float] = []
+
+    def side_for() -> float:
+        ratio = sorted(ratios)[len(ratios) // 2] if ratios else ROUTED_PER_STRAIGHT
+        return target / (3.0 * ratio)
 
     def tried(bearing: float, side_m: float) -> None:
         walked = run_leg(
@@ -574,10 +583,14 @@ def target_loop(router: Router, start, ask: RunAsk) -> tuple[Walked | None, dict
         )
         if walked is None or walked.metres <= 0:
             return
+        ratios.append(walked.metres / (3.0 * side_m))
         off = abs(walked.metres - target) / target
         spur = self_overlap(walked.shape)
+        near = off <= TARGET_TOLERANCE
         rank = (
-            off > TARGET_TOLERANCE,
+            not near,
+            # Off the target, the nearest first: a loop 65% long is no fit, however good a run.
+            0.0 if near else off,
             spur > refine.LOOP_OVERLAP_OK,
             walked.score / walked.metres,
             off,
@@ -587,12 +600,15 @@ def target_loop(router: Router, start, ask: RunAsk) -> tuple[Walked | None, dict
     for bearing in TARGET_BEARINGS:
         if router.left() < 2.0:
             break
-        tried(bearing, side)
+        tried(bearing, side_for())
     if not found:
         return None, {"fallback": "points", "tried": 0}
     found.sort(key=lambda f: f[0])
-    rank, walked, bearing, side_m = found[0]
-    if rank[0] and router.left() >= 2.0:
+    for _ in range(TARGET_RESIZES):
+        rank, walked, bearing, side_m = found[0]
+        if not rank[0] or router.left() < 2.0:
+            break
+        # This direction's own ratio: what its triangle ran for its straight sides.
         tried(bearing, side_m * target / walked.metres)
         found.sort(key=lambda f: f[0])
     walked = said(router, found[0][1])
