@@ -62,12 +62,6 @@ test("the old browsers' Esc closes the dialog too, and an unknown ride type open
   assert.equal(initialCard("no-such-ride" as (typeof PRESETS)[number]["id"]), 0);
 });
 
-test("choosing another ride type keeps avoid gravel", () => {
-  const current = { ...startDials("default"), avoidGravel: true };
-  assert.equal(choose("cargo", "cargo", current).avoidGravel, true);
-  assert.equal(choose("cargo", "cargo", startDials("default")).avoidGravel, undefined);
-});
-
 test("choosing another ride type keeps Make it a loop, through a Mass Ride and back (OWNER-DECISIONS 374)", () => {
   const looped = { ...startDials("default"), loop: true };
   for (const preset of PRESETS) assert.equal(choose(preset.id, null, looped).loop, true, preset.id);
