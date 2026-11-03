@@ -1948,15 +1948,17 @@ class Option:
         with no ride at all (Walk + 🚆🚌, or a Bikeshare + 🚶🚆🚌 trip walked the whole way) has its
         first walk however short: started at the stop, its line is still the trip's start, so the
         transit after it is followed stop by stop (the api draws a few yards straight)."""
-        if not any(leg.mode in (RIDE, SHARE) for leg in self.legs):
-            for index, leg in enumerate(self.legs):
+        # A trip with stops (`joined`): its first trip's legs only, the answer's line being its.
+        legs = self.legs[: self.stops_at[0]] if self.stops_at else self.legs
+        if not any(leg.mode in (RIDE, SHARE) for leg in legs):
+            for index, leg in enumerate(legs):
                 if leg.mode in (WALK, TAKE):
                     return index
         for modes in ((RIDE, SHARE), (WALK, TAKE)):
-            for index, leg in enumerate(self.legs):
+            for index, leg in enumerate(legs):
                 if leg.mode in modes and line_m(leg) >= MIN_LINE_M:
                     return index
-        for index, leg in enumerate(self.legs):
+        for index, leg in enumerate(legs):
             if leg.mode in (RIDE, SHARE, WALK, TAKE):
                 return index
         return 0

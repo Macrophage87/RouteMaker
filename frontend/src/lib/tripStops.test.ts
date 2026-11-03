@@ -90,3 +90,9 @@ test("Go's Add a stop takes stops on Walk and the transit types, not Bikeshare",
   assert.match(app, /if \(current\.length < 2 \|\| \(twoPointsOnly\(ride\.preset\) && !stopsAsTrips\(ride\.preset\)\)\) \{/);
   assert.match(app, /\(!twoPointsOnly\(preset\) \|\| stopsAsTrips\(preset\)\) && !isMassRide\(preset\)/);
 });
+
+test("the stops left go with the ride, and the panel's Ride the rest on a trip with stops rides to the first stop", () => {
+  assert.match(app, /forgetLeftRide\(\);\s*\/\/ A trip's stops left go with the ride[^\n]*\n\s*tripStopsLeft\.current = null;/);
+  assert.match(app, /rideTripOf\(panelLeft \? firstTripOf\(shown\) : shown, panelLeft \? routedPoints\.slice\(0, 2\) : routedPoints\)/);
+  assert.match(app, /if \(!fromRide\) tripStopsLeft\.current = panelLeft;/);
+});

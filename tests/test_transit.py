@@ -469,6 +469,39 @@ def test_a_walk_of_a_few_yards_is_the_line_only_of_a_trip_with_no_ride() -> None
     assert transit.Option("k", tiny).ride == 0
 
 
+def test_a_trip_with_stops_draws_its_line_in_its_first_trip_only() -> None:
+    """Review of #907: a first leg walked a few yards and a later leg's share ride: the line is
+    still the first leg's walk, never a ride after the stop."""
+    a, b = (-77.0, 38.9), (-77.00005, 38.9)  # about 4 m
+    far = (-77.01, 38.9)
+    moment = transit.moments_of(datetime(2026, 11, 3, 12, 0, tzinfo=ZONE))[0]
+    walked = transit.Plan(
+        "bikeshare-transit",
+        [transit.Option("w", (transit.Leg(transit.WALK, 3.0, (a, b)),), walk=True)],
+        moment,
+        [],
+    )
+    ridden = transit.Plan(
+        "bikeshare-transit",
+        [
+            transit.Option(
+                "r",
+                (
+                    transit.Leg(transit.TAKE, 60.0, (b, b)),
+                    transit.Leg(transit.SHARE, 600.0, (b, far)),
+                ),
+            )
+        ],
+        moment,
+        [],
+    )
+    joined = transit.joined([walked, ridden])
+    assert joined.option.stops_at == (1,)
+    assert joined.ride == 0
+    assert joined.option.key == "w+r" and not joined.option.walk
+    assert joined.legs[0].to == "stop 1"
+
+
 def test_the_blackout_list_has_july_4_every_year_and_dates_by_hand(tmp_path) -> None:
     assert transit.bike_blackout(date(2026, 7, 4))
     assert transit.bike_blackout(date(2031, 7, 4))

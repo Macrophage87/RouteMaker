@@ -4213,7 +4213,11 @@ export function App() {
       beginRide(ridePrefs, false, held);
       return null;
     }
-    const trip = fromRide ? rideStart?.trip : shown ? rideTripOf(shown, routedPoints) : null;
+    // From the panel, a trip with stops: its first trip's rest, to the first stop, the stops after it kept for the ride
+    // (lib/tripStops.ts; review of #907: never the last leg's, past the stops).
+    const panelLeft = !fromRide && shown ? stopsLeftOf(shown, routedPoints, (shown.transit?.mode ?? preset) as PresetId) : null;
+    const trip = fromRide ? rideStart?.trip : shown ? rideTripOf(panelLeft ? firstTripOf(shown) : shown, panelLeft ? routedPoints.slice(0, 2) : routedPoints) : null;
+    if (!fromRide) tripStopsLeft.current = panelLeft;
     const rest = trip?.rest;
     if (!rest) return null;
     const asked = restRequest(rest, riderAt);
@@ -4470,6 +4474,8 @@ export function App() {
   const endRide = useCallback((after: EndedPlan, stats: RideStats) => {
     const { start, mode: endedIn } = rideNow.current;
     forgetLeftRide();
+    // A trip's stops left go with the ride: a later Ride the rest never offers them (review of #907).
+    tripStopsLeft.current = null;
     // A detour from Roam: back to roaming, with no summary (the ride was a short way to water, a restroom or food).
     if (start?.roam) {
       setRiding(false);

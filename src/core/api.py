@@ -4213,12 +4213,16 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
         costing=candidate_costing,
         when=body.when or routing.default_when(),
     )
-    start, end = body.points[0], body.points[-1]
+    # With stops, the first leg is planned here as a trip of its own; the legs after it are
+    # searched once it is timed (`with_later_legs`, below).
+    start, end = body.points[0], body.points[1]
     # WMATA's live reading (core.wmata_live), if any: read before the search, which ranks a
     # station with no working elevator on the way 15 min down, and used after it (below).
     live = wmata_live.client.snapshot()
 
-    def search(a: list[float], b: list[float], at: datetime) -> transit.Plan:
+    def search(
+        a: list[float], b: list[float], at: datetime, services=services, schedule=schedule
+    ) -> transit.Plan:
         if body.preset == presets.WALK:
             plan = transit.plan_walk(schedule, a, b, at, services)
         elif body.preset == presets.WALK_TRANSIT:
@@ -4277,19 +4281,39 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
         # unless the rider chose another option.
         return transit.choose(plan, key, schedule, hop=body.novice_hop is not None)
 
-    if len(body.points) == 2:
-        found = chosen(search(start, end, when), body.transit_option)
-    else:
-        # Stops (Stephen, 2026-11-02: "Add the stops in for all"): each leg its own trip, its
-        # best option, leaving the stop as the leg before arrives there (`transit.joined`). The
-        # trip is the one option, so a key asked for is its own.
-        plans = []
-        at = when
-        for a, b in itertools.pairwise(body.points):
-            plan = chosen(search(a, b, at), None)
-            plans.append(plan)
-            at = at + timedelta(seconds=plan.option.total_s)
-        found = transit.joined(plans)
+    # A trip with stops is asked for by its legs' keys joined (`transit.joined`): the first is
+    # the first leg's.
+    asked_key = body.transit_option
+    if asked_key is not None and len(body.points) > 2:
+        asked_key = asked_key.split(transit.STOPS_KEY_SEP)[0]
+    found = chosen(search(start, end, when), asked_key)
+
+    def with_later_legs(plan: transit.Plan) -> transit.Plan:
+        """Stops (Stephen, 2026-11-03: "Each stop starts a new trip"): each leg after the first
+        searched as a trip of its own, leaving its stop as the leg before arrives (as timed),
+        on its own service day's schedule and router calls, and its best option joined after.
+        The first leg is the answer's line, timed and checked as any trip is."""
+        later = list(itertools.pairwise(body.points[1:]))
+        if not later:
+            return plan
+        plans = [plan]
+        at = when + timedelta(seconds=plan.option.total_s)
+        for number, (a, b) in enumerate(later):
+            left = started + routing.PLAN_BUDGET_S - routing.ANSWER_RESERVE_S - routing.clock()
+            leg_services = transit.RoutingServices(
+                routing.clock() + max(0.0, min(TRANSIT_CANDIDATES_S, left) / (len(later) - number)),
+                leg_preset,
+                costing=candidate_costing,
+                when=body.when or routing.default_when(),
+            )
+            leg_schedule = transit.load(
+                settings.TRANSIT_SCHEDULE_PATH, transit.moment_of(at).service_day
+            )
+            leg = chosen(search(a, b, at, leg_services, leg_schedule), None)
+            plans.append(leg)
+            at = at + timedelta(seconds=leg.option.total_s)
+        return transit.joined(plans)
+
     # The chosen trip's Metrobus steps' next buses (core.wmata_bus, v0.9.0), asked now, beside
     # the routing, so the answer waits for them little if at all.
     bus_ask = _ask_buses(found)
@@ -4309,6 +4333,7 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
         # The later rides routed for their stress colours (`lines`) are drawn as routed; the
         # trip's other walks and rides are routed for the map (transit.drawn).
         lines = lines or {}
+        plan = with_later_legs(plan)
         buses = _buses_for(plan, bus_ask)
         plan = transit_live.with_live_buses(plan, buses)
         block = _transit_block(transit.drawn(plan, draw, skip=lines), schedule, live, buses)
