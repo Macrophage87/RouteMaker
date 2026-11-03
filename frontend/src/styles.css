@@ -4974,6 +4974,11 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
   max-height: calc(100dvh - 32px);
   overflow-y: auto;
   box-sizing: border-box;
+  padding: 0;
+}
+/* The padding on the contents, so a tap anywhere in the popup lands on them, never on the dialog (its backdrop close). */
+.ride-settings-body {
+  padding: 16px;
 }
 .ride-settings-dialog h2:focus {
   outline: none;

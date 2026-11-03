@@ -150,6 +150,12 @@ test("Ride settings in reach: More at the end of the side buttons opens them jus
   // alone close it, and the focus goes back to the Settings bubble (or to More, the bubbles closed).
   assert.match(dialog, /<RideSettingsFields prefs=\{prefs\} onChange=\{onPrefs\} idBase=\{settingsId\} compact \/>/);
   assert.match(dialog, /if \(event\.target === event\.currentTarget\) event\.currentTarget\.close\(\);/);
+  // Its contents fill it (the padding is theirs), so only a tap on the dim map around it is the dialog's own.
+  assert.match(css, /\.ride-settings-dialog \{[^}]*padding: 0;/);
+  assert.match(css, /\.ride-settings-body \{\s*padding: 16px;/);
+  // The screen behind is inert while it shows: the cues are said from inside it, a cue said before it opened not again.
+  assert.match(dialog, /<div className="ride-settings-body">\s*\{settingsOpen && <PopupLiveRegions polite=\{polite\} assertive=\{assertive\} \/>\}/);
+  assert.match(ride, /const fresh = \(said: \{ text: string; count: number \}, was: number\) => \(said\.count === was \? \{ text: "", count: said\.count \} : said\);/);
   assert.match(dialog, /onClick=\{\(\) => settingsPanel\.current\?\.close\(\)\}>\s*\{t\("Done"\)\}/);
   assert.match(ride, /settingsBubble\.current\?\.focus\(\);\s*if \(document\.activeElement !== settingsBubble\.current\) settingsButton\.current\?\.focus\(\);/);
   // More: the last side button, a disclosure of its bubbles; the last bubble, Settings, opens its popup.

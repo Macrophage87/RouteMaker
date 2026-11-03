@@ -3250,6 +3250,11 @@ if (mine()) {
   await p.shot(`${SHOTS}/ride_settings_320.png`);
   check("ride: the Settings bubble opens the ride's settings alone (no route changes in them) as a modal popup named Ride settings, the focus on its heading, all of it in view at 320 x 700 without scrolling; behind it, at 320 px, Go round, named in full, is beside End ride",
     gear.popup === "dialog" && gear.shown && gear.name === "Ride settings" && gear.focus === "H2" && gear.focusIn && gear.change === 0 && gear.noScroll && gear.inView && gear.width <= 379 && gear.roadName === "Go round: road closed ahead" && gear.oneLine && gear.w >= 44 && gear.h >= 44, JSON.stringify(gear));
+  // A tap inside the popup, even on its padding, leaves it open; the cues' live regions are inside it while it shows.
+  await p.eval("document.querySelector('.ride-settings-body').click(); true");
+  await sleep(150);
+  const inside = await p.eval("({ open: document.querySelector('.ride-settings-dialog').open, live: document.querySelectorAll('.ride-settings-dialog [aria-live]').length })");
+  check("ride: a tap inside the settings popup leaves it open, and the cues are said from inside it (the screen behind is inert)", inside.open && inside.live === 2, JSON.stringify(inside));
   // Escape closes the popup alone, the focus back on the Settings bubble; Done does the same.
   await p.key("Escape", "Escape", 27);
   await sleep(200);
@@ -3263,7 +3268,8 @@ if (mine()) {
     !escaped.open && escaped.focus && escaped.more === "true" && !done.open && done.focus, JSON.stringify({ escaped, done }));
   await p.eval("document.querySelector('.ride .ride-settings-bubble').click(); true");
   await sleep(200);
-  // More again closes the bubbles and the settings.
+  // More's own close, as the screen left alone presses it (closeIdlePanels; a rider cannot reach More behind the
+  // modal), closes the bubbles and the settings.
   await p.eval("document.querySelector('.ride .ride-settings-button').click(); true");
   await sleep(200);
   const shut = await p.eval("({ more: document.querySelector('.ride .ride-settings-button').getAttribute('aria-expanded'), panel: !document.querySelector('.ride-settings-dialog').open, row: document.querySelector('.ride-more-bubbles').hidden })");
