@@ -255,6 +255,8 @@ class Router:
         self.calls = 0
         self.answered = 0
         self.timed_out = False
+        # Whether the last call that gave nothing gave it for want of time, not a refusal.
+        self.last_late = False
 
     def left(self) -> float:
         return self.until - routing.clock()
@@ -264,7 +266,7 @@ class Router:
         (`walk_pricing.Ask`)."""
         left = self.left()
         if left <= 0.3:
-            self.timed_out = True
+            self.timed_out = self.last_late = True
             return None
         self.calls += 1
         try:
@@ -272,16 +274,19 @@ class Router:
         except routing.RouterRefused as refused:
             # An answer, if not a way: the router is up.
             self.answered += 1
+            self.last_late = False
             logger.info("a run's %s was refused: %s", action, refused)
             return None
         except routing.DeadlineExceeded as error:
-            self.timed_out = True
+            self.timed_out = self.last_late = True
             logger.info("a run's %s ran out of time: %s", action, error)
             return None
         except routing.RouterUnavailable as error:
+            self.last_late = False
             logger.info("a run's %s was not answered: %s", action, error)
             return None
         self.answered += 1
+        self.last_late = False
         return answer
 
 
@@ -469,6 +474,7 @@ def way_back(
     start,
     ask: RunAsk,
     cap_m: float | None = None,
+    alternates: int = ALTERNATES,
 ) -> tuple[Walked | None, dict]:
     """A loop's way back from `end` to `start` by another way than `way_out`, as a ride's loop
     is made (`refine.make_loop`): the exclusions thinned (`refine.LOOP_THINNING`) until the
@@ -495,7 +501,15 @@ def way_back(
             info["fallback"] = info["fallback"] or "time"
             break
         info["tried"] += 1
-        walked = run_leg(router, [end, start], ask, exclude=chosen, alternates=0, cap_m=cap_m)
+        walked = run_leg(
+            router,
+            [end, start],
+            ask,
+            exclude=chosen,
+            alternates=0,
+            say_crossings=False,
+            cap_m=cap_m,
+        )
         if walked is None:
             continue
         share = overlap_share(way_out, walked.shape)
@@ -510,13 +524,14 @@ def way_back(
             break
     if best is None or best[3] >= refine.LOOP_OUT_AND_BACK:
         info["fallback"] = "out_and_back" if info["tried"] else info["fallback"] or "points"
-        plain = run_leg(router, [end, start], ask, cap_m=cap_m)
+        plain = run_leg(router, [end, start], ask, alternates=alternates, cap_m=cap_m)
         if plain is not None:
             info.update(_shares(overlap_share(way_out, plain.shape), plain.metres))
         return plain, info
     _rank, walked, excluded, share = best
     info.update(_shares(share, walked.metres), excluded=excluded)
-    return walked, info
+    # Its crossings said, now it is kept (one `/locate`).
+    return said(router, walked), info
 
 
 def _shares(share: float, metres: float) -> dict:
@@ -634,7 +649,9 @@ def plan(points: Sequence[Sequence[float]], ask: RunAsk, router: Router) -> Run:
     try:
         run = _plan(points, ask, router)
     except NoRun as refusal:
-        if router.timed_out and not isinstance(refusal, RouterDown):
+        # Busy only where the call that came to nothing ran out of time: a refusal after a slow
+        # call is still no way.
+        if router.last_late and not isinstance(refusal, RouterDown):
             raise RunTimedOut("Planning this run took too long; try again shortly.") from refusal
         if router.answered == 0:
             raise RouterDown("The router is not answering; try again shortly.") from refusal
@@ -677,7 +694,9 @@ def _plan(points: Sequence[Sequence[float]], ask: RunAsk, router: Router) -> Run
     info = None
     if loop:
         way_out = _joined(parts).shape
-        back, info = way_back(router, way_out, out_points[-1], points[-1], ask, caps[-1])
+        back, info = way_back(
+            router, way_out, out_points[-1], points[-1], ask, caps[-1], alternates
+        )
         if back is None:
             raise NoRun("No way back on foot could be found to the start.")
         parts.append(back)

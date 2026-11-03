@@ -160,6 +160,33 @@ class TestWeigh:
         assert walk_pricing._calm(broken) == (500.0, 0.0)
         assert walk_pricing._calm(busy) == (0.0, 0.0)
 
+    def test_a_road_crossing_or_light_breaks_a_long_stretch_without_an_edge_of_its_own(
+        self,
+    ) -> None:
+        def edge(use, metres, road_class="residential"):
+            return {"use": use, "length": metres / 1000.0, "road_class": road_class}
+
+        quiet = [edge("road", 750), edge("road", 750)]
+        assert walk_pricing._calm(quiet) == (1500.0, 1500.0)
+        # Straight on across an arterial at 750 m, no crossing way mapped.
+        assert walk_pricing._calm(quiet, [750.0]) == (1500.0, 0.0)
+        # A sidewalk and a living street carry a stretch on.
+        mixed = [edge("sidewalk", 500), edge("living_street", 400)]
+        assert walk_pricing._calm(mixed) == (400.0, 900.0)
+
+    def test_a_refusal_after_a_slow_call_is_still_no_way(self) -> None:
+        calls = []
+
+        def slow_then_no(action, payload, cap_s):
+            calls.append(action)
+            if len(calls) == 1:
+                raise routing.DeadlineExceeded("slow")
+            raise routing.RouterRefused(400, 442, "no path")
+
+        r = router(slow_then_no)
+        assert r.ask("route", {}) is None and r.last_late
+        assert r.ask("route", {}) is None and not r.last_late
+
     def test_each_light_costs_its_wait_three_times(self) -> None:
         light = walk_pricing.Crossing(
             m=10.0, point=(0.0, 0.0), level=walk_pricing.BUSY, signal=True, marked=True, slip=False

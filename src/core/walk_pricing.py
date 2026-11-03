@@ -347,7 +347,8 @@ def read(trace: dict, seconds_per_m: float) -> Reading:
         for edge in edges
         if str(edge.get("use") or "") in TRAIL_USES
     )
-    quiet, long = _calm(edges)
+    # A stretch ends at every crossing of a road busier than quiet, or with a light.
+    quiet, long = _calm(edges, [c.m for c in crossings if c.signal or c.level > QUIET])
     climb, descent = _climb(edges)
     return Reading(
         round(roadside, 1),
@@ -366,25 +367,48 @@ def read(trace: dict, seconds_per_m: float) -> Reading:
 LONG_STRETCH_M = 800.0
 
 
-def _calm(edges: Sequence[dict]) -> tuple[float, float]:
+# Streets as quiet as a road at QUIET to run along; and ways that carry a stretch on without
+# counting as quiet themselves (a sidewalk beside an unknown road, a service way).
+QUIET_STREET_USES = frozenset({"living_street", "culdesac"})
+CONTINUING_USES = frozenset({"sidewalk", "service_road", "driveway", "alley"})
+
+
+def _calm(edges: Sequence[dict], breaks: Sequence[float] = ()) -> tuple[float, float]:
     """(metres on quiet streets, metres in long unbroken calm stretches): a calm edge is a
-    trail (`TRAIL_USES`) or a road QUIET to walk along; a crossing or any other edge breaks
-    the stretch."""
-    quiet = long = run = 0.0
-    for edge in edges:
-        use = str(edge.get("use") or "")
-        metres = float(edge.get("length") or 0.0) * 1000.0
-        on_road = use == "road" and roadside_level(edge) == QUIET
-        if on_road:
-            quiet += metres
-        if use in TRAIL_USES or on_road:
-            run += metres
-            continue
+    trail (`TRAIL_USES`) or a quiet street, and a sidewalk or service way carries a stretch
+    on; any other edge breaks it, and so does a crossing at `breaks` (metres along) whether
+    or not it has an edge of its own."""
+    marks = sorted(breaks)
+    quiet = long = run = along = 0.0
+    k = 0
+
+    def close() -> None:
+        nonlocal long, run
         if run >= LONG_STRETCH_M:
             long += run
         run = 0.0
-    if run >= LONG_STRETCH_M:
-        long += run
+
+    for edge in edges:
+        use = str(edge.get("use") or "")
+        metres = float(edge.get("length") or 0.0) * 1000.0
+        start, along = along, along + metres
+        on_road = (use == "road" and roadside_level(edge) == QUIET) or use in QUIET_STREET_USES
+        if on_road:
+            quiet += metres
+        if not (use in TRAIL_USES or on_road or use in CONTINUING_USES):
+            close()
+            continue
+        while k < len(marks) and marks[k] < start:
+            k += 1
+        # A crossing inside or at the end of this edge: the stretch ends there.
+        at = start
+        while k < len(marks) and marks[k] <= along:
+            run += marks[k] - at
+            close()
+            at = marks[k]
+            k += 1
+        run += along - at
+    close()
     return quiet, long
 
 

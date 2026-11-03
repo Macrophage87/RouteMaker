@@ -4136,7 +4136,10 @@ def _run_body(body: RouteIn, started: float | None) -> dict:
         "trail_m": run.trail_m,
         "signals": run.signals,
         "target_distance_m": ask.target_m,
-        "fits": None if ask.target_m is None else run.metres <= ask.target_m,
+        # A loop from a start alone is about its target, not under it: no "fits" to say.
+        "fits": (
+            None if ask.target_m is None or len(body.points) == 1 else run.metres <= ask.target_m
+        ),
     }
     logger.info("run plan: %d router calls, %.1f s", run.calls, routing.clock() - started)
     return answer
