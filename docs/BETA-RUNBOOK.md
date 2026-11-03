@@ -15,7 +15,7 @@ a message naming `RM_BETA_HOST` when it is missing; on a server set up before v0
 
 | Where | What | Undo |
 | --- | --- | --- |
-| Docker | One compose project, `routemaker-beta`: containers postgis, api, worker, photon and four routers, plus the two trail routers (valhalla-offroad, valhalla-mtb) once their tiles are on the host; one network | `scripts/beta/beta-compose.sh down` |
+| Docker | One compose project, `routemaker-beta`: containers postgis, api, worker, photon and four routers, plus the three trail routers (valhalla-offroad, valhalla-mtb, valhalla-paved) once their tiles are on the host; one network | `scripts/beta/beta-compose.sh down` |
 | `/data/routemaker-src` | The checkout of the exact release sha | `rm -rf` it |
 | `/data/routemaker` | `DATA_ROOT`: tiles, database files, Photon index, base map, front end, backups | `rm -rf` it, only after the owner agrees |
 | `/data/routemaker-incoming` | The bundle as shipped from home (about 4 GB) | `rm -rf` it |
@@ -34,8 +34,8 @@ already exists (`/data` included: it holds other people's data).
 It does not touch the other sites, `nginx.conf`, the firewall, the system packages' configuration,
 or Docker's daemon settings. If a step seems to need any of those, **stop and ask the owner**.
 
-The memory budget is hard: every container has a cap (`compose.beta.yaml`, 7510 MiB = 7.33 GiB
-resident in all with the two trail routers and the 24M memcached, 7766 MiB = 7.58 GiB at the startup peak, against the host's 8.6 GiB available), so a spike restarts a
+The memory budget is hard: every container has a cap (`compose.beta.yaml`, 7830 MiB = 7.65 GiB
+resident in all with the three trail routers and the 24M memcached, 8086 MiB = 7.90 GiB at the startup peak, against the host's 8.6 GiB available), so a spike restarts a
 RouteMaker container rather than starving another site. Every RouteMaker container also has
 `cpu_shares: 512` and `oom_score_adj: 500`: under CPU contention the other sites win, and a
 host-wide out-of-memory kill picks a RouteMaker process first.
@@ -103,15 +103,15 @@ What to expect on this server (the owner's check, 2026-10-04); a check below tha
 - `/data` is a separate filesystem mounted `nofail`, with far more than the 25 GB this needs;
 - Docker's root may be on the root disk rather than on `/data` (that is why binds never create
   their source: "Reboot and a late `/data`"), so its free space is checked on its own;
-- available memory is at least the 8790 MiB threshold below (the 7766 MiB startup peak plus the
-  checker's 1 GiB margin);
+- available memory is at least the 8803 MiB threshold below (the 8086 MiB startup peak plus the
+  checker's 0.7 GiB margin);
 - an x86_64 machine (the api image is built at home, on x86_64);
 - `beta.example.org` resolves to this server's own public address (checked live below; the
   address is not written down here).
 
 ```sh
 . "$HOME/routemaker-beta-state/vars.sh"
-free -m                                  # "available" must be at least 8790 MiB: the 7766 MiB startup peak plus the checker's 1 GiB margin (the caps total 7510 MiB = 7.33 GiB resident)
+free -m                                  # "available" must be at least 8803 MiB: the 8086 MiB startup peak plus the checker's 0.7 GiB margin (the caps total 7830 MiB = 7.65 GiB resident)
 uname -m; docker info -f '{{.Architecture}}'   # both x86_64: the api image is built at home on x86_64; anything else is a stop
 df -h /data /                            # /data: at least 25 GB free (bundle 4 GB, installed copy 4 GB, backups)
 findmnt -no SOURCE,FSTYPE,OPTIONS /data  # a filesystem of its own; nofail in the options is expected (see "Reboot and a late /data")
@@ -308,7 +308,7 @@ from `.env` (the rendered config holds every secret), only the table and any pro
 prints a problem, stop and report it. It checks: no caddy or rebuild; a memory cap, CPU cap and
 `memswap_limit` on every container; `cpu_shares` below 1024 and `oom_score_adj` at least 500 on
 every container; only the api publishing a port and only on `127.0.0.1`; the resident total under
-7.35 GiB (the two trail routers always counted) and the startup peak (plus the largest one-shot) leaving 1 GiB of the host's 8.6; at most
+7.66 GiB (the three trail routers always counted) and the startup peak (plus the largest one-shot) leaving 0.7 GiB of the host's 8.6; at most
 six gunicorn workers with one left free beside the routing, geocoding and tile pools; Photon's heap
 plus capped direct buffers inside its cap; the weekly rebuild paused; every long-running service
 restarting `unless-stopped` and Django debug off; and in `.env`, no `COMPOSE_PROFILES` or
@@ -821,6 +821,23 @@ If that update also carried a db part (`db --update-data`), do **B** as well, wi
 against the new `live` mix segment attributes from one build with edges from another. A Photon index
 that the update's `files` replaced has no `previous`: rollback A does not bring it back.
 
+**B by rename. Go back to the previous map tables while serving** (after a `db --update-data` from v0.18.0 on,
+which keeps the replaced tables as `live_old`): one short transaction puts them back, with the api and worker
+running. It changes only the map tables: `override` and the junction ratings stay home's new ones (the full
+B below puts those back too). Do it with rollback A, then restart the routers one at a time as in "New data only"
+step 4:
+
+```sh
+. "$HOME/routemaker-beta-state/vars.sh"
+cd "$RM_SRC"
+scripts/beta/beta-compose.sh exec -T postgis psql -U routemaker -d routemaker -1 -v ON_ERROR_STOP=1 -c "SET LOCAL lock_timeout = '10s'" -c "DO \$\$ DECLARE t text; BEGIN FOR t IN SELECT format('%I.%I', schemaname, tablename) FROM pg_tables WHERE schemaname = 'live' ORDER BY tablename <> 'segment', tablename LOOP EXECUTE 'LOCK TABLE ' || t || ' IN ACCESS EXCLUSIVE MODE'; END LOOP; END \$\$" -c "DROP SCHEMA IF EXISTS live_bad CASCADE" -c "ALTER SCHEMA live RENAME TO live_bad" -c "ALTER SCHEMA live_old RENAME TO live" -c "TRUNCATE public.stress_tile_cache"
+```
+
+It locks every live table first (segment first, as the update does), so no request reads old and new
+together; it leaves any staged `live_next` alone. Then the stress-tile pre-draw as in "New data only"
+step 3. The rejected tables stay as `live_bad`; once the beta works, drop them:
+`scripts/beta/beta-compose.sh exec -T postgis psql -U routemaker -d routemaker -c "DROP SCHEMA live_bad CASCADE"`.
+
 **B. Go back to the previous database:** restore the safety dump the last data update wrote
 (`pre-update-<time>.dump` from `db --update-data`, or `pre-restore-<time>.dump` from `--replace-db`).
 `restore-dump` takes a `pre-rollback` snapshot of what is there first, restores the dump into a
@@ -829,7 +846,8 @@ untouched), and swaps it in by rename. These dumps leave out the tables the nigh
 out, so after a restore everyone is signed out and riders connect Garmin or Wahoo again. The database as it was stays beside it as
 `routemaker_before_<time>`; once the beta works, drop it
 (`scripts/beta/beta-compose.sh exec -T postgis dropdb -U routemaker routemaker_before_<time>`). It needs
-free space on `/data` for a second copy of the database (about 1.5 GB):
+free space on `/data` for a second copy of the database (about 1.5 GB before v0.18.0; from v0.18.0 on the
+database also holds `live_old`, about as much again as the live tables):
 
 ```sh
 . "$HOME/routemaker-beta-state/vars.sh"
@@ -949,12 +967,30 @@ continuous deployment first, as above, and resume it after.
 1. At home: `ship-data.sh ...` as before; `--without` leaves out parts that did not change
    (`--without photon --without basemap --without elevation` for a new tile build and database). It sends only
    what differs, because rsync compares.
-2. Server: `receive-data.sh --bundle "$RM_INCOMING" --env-file .env verify`, then `sudo ... files`.
+2. Server: `receive-data.sh --bundle "$RM_INCOMING" --env-file .env verify`. If the bundle has a db part,
+   **stage it now, while the beta serves** (the owner, 2026-11-02: no downtime for a map swap). This restores the
+   bundle's `live` schema beside the served one as `live_next` (through a scratch database that is dropped
+   afterwards), checks its row counts, and renames nothing; it needs no sudo, and room on `$RM_DATA` for about
+   two more copies of the live tables (it says if there is not). It is the slow part, a few minutes per GB:
+
+   ```sh
+   . "$HOME/routemaker-beta-state/vars.sh"
+   cd "$RM_SRC"
+   scripts/beta/receive-data.sh --bundle "$RM_INCOMING" --env-file .env db --update-data --stage-only
+   ```
+
+   Then `sudo scripts/beta/receive-data.sh --bundle "$RM_INCOMING" --env-file .env files`.
    `files` adds the new build beside the old and swaps `current` (the old stays as `previous`, which is rollback A).
    If the bundle carries the Photon index, `files` stops photon, replaces the index and starts it again.
-3. If the bundle has a db part, use the **update path**, never `--replace-db`: it restores only the `live` schema
-   and the `override` data (and empties the beta's stress-tile cache, which the new `live` table makes stale), in
-   one transaction, after a `pre-update` safety dump, and leaves
+3. If the bundle has a db part, use the **update path**, never `--replace-db`, straight after `files`. The api and
+   worker keep running: it reuses `live_next` (or stages it first, if step 2's staging was skipped), takes a
+   `pre-update` safety dump, then in **one short transaction** renames `live` to `live_old` and `live_next` to
+   `live` (the rename the home rebuild's swap makes) and replaces the `override` data (and empties the beta's
+   stress-tile cache, which the new `live` table makes stale). Requests queue for the second or two the rename
+   holds its locks; a reader that holds them longer costs the rename an attempt (five of 3 s, a few seconds apart,
+   so about 35 s of queued requests at worst), and if all five fail nothing has changed and `live_next` is kept for
+   another try. Do not run it while the nightly backup runs (07:00 UTC, 2 AM ET in winter, 3 AM in summer, for a few
+   minutes): its `pg_dump` holds the tables for minutes and every attempt fails. It leaves
    the beta's own accounts, sessions and audit log alone (`--replace-db` would delete them; it refuses while any
    exist). **It resets `override` to home's**: an override added or edited on the beta is lost (it is in the
    `pre-update` safety dump). Make override changes at home, or ask the owner before updating if any were made on
@@ -962,23 +998,28 @@ continuous deployment first, as above, and resume it after.
    junctions (`avoid_junction`) are reset to home's the same way, and the beta's own half-step edit history
    (`stress_edit`, which points at the overrides it replaces) is emptied. The beta's own rider suggestions, road
    and junction, are kept; an approved one loses only its link to the edit, rating or Avoid junction it made.
-   Stop the api and worker first so nothing writes during it:
+   The replaced tables stay as `live_old` until the next update (the nightly backup leaves them out, and a staged
+   `live_next` and a rolled-back `live_bad` too), which is
+   what rollback B "by rename" puts back.
 
    ```sh
    . "$HOME/routemaker-beta-state/vars.sh"
    cd "$RM_SRC"
-   scripts/beta/beta-compose.sh stop api worker
    sudo scripts/beta/receive-data.sh --bundle "$RM_INCOMING" --env-file .env db --update-data
-   scripts/beta/beta-compose.sh up -d api worker
    ( umask 077; setsid nohup sh -c 'scripts/beta/beta-compose.sh exec -T worker ./manage.py predraw_stress_tiles ; echo "predraw exit $?"' < /dev/null > "${RM_STATE:?set RM_STATE (section 0)}/predraw.log" 2>&1 & )
    tail -n 3 "$RM_STATE/predraw.log"   # the step 8 pre-draw: poll for "predraw exit N" as step 8 says
    ```
 
    The pre-draw is not optional: until it finishes, every map view draws its tiles live (step 8,
    "Draw the stress tiles"). Run it before telling the testers the update is in.
-4. `scripts/beta/beta-compose.sh restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend`
-   (a router keeps the old archive mapped until restarted), then the trail routers on their new tiles, from v0.10.1 on
-   (receive-data.sh prints the line): `scripts/beta/beta-compose.sh up -d --force-recreate valhalla-offroad valhalla-mtb`,
+4. Restart the routers **one at a time** (a router keeps the old archive mapped until restarted; one at a time, only
+   one ride type is briefly unanswered, and the api plans it on the standard graph meanwhile, except while the
+   standard router itself restarts, when Default rides fail for those few seconds):
+   `for r in valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend; do scripts/beta/beta-compose.sh restart "$r"; t=$SECONDS; until scripts/beta/beta-compose.sh exec -T api python3 -c "import urllib.request; urllib.request.urlopen('http://$r:8002/status', timeout=3)" </dev/null >/dev/null 2>&1 || [ $((SECONDS - t)) -ge 180 ]; do sleep 3; done; done`
+   (each restarts once the one before answers, or after three minutes)
+   (`restart-routers.sh`, where its timer is installed, does the same by itself once the links have been still
+   for five minutes), then the trail routers on their new tiles, from v0.10.1 on
+   (receive-data.sh prints the line): `scripts/beta/beta-compose.sh up -d --force-recreate valhalla-offroad valhalla-mtb valhalla-paved`,
    then the settings rows from the new links: `scripts/beta/beta-compose.sh exec -T api ./manage.py sync_upstreams`.
 5. `scripts/beta/smoke-test.sh --local --trails`, then `--public`.
 
@@ -1002,8 +1043,8 @@ anything can run `migrate` (rollback C restores that snapshot), and the app star
 5. `scripts/beta/beta-compose.sh build api` (or load the image built at home, step 6).
 6. Migrate, in the small migrate container (the api stays stopped):
    `scripts/beta/beta-compose.sh run --rm --no-deps migrate ./manage.py migrate --noinput`.
-7. If the data changed: the "New data only" steps 2 and 3 (`verify`, `files`, `db --update-data`) **without** their
-   final `up -d api worker` line; the app is started once, in the next step.
+7. If the data changed: the "New data only" steps 2 and 3 (`verify`, the staging, `files`, `db --update-data`;
+   the update works the same with the app stopped); the app is started once, in the next step.
 8. `scripts/beta/beta-compose.sh up -d api worker` (recreates them on the new image; `migrate` finds nothing to do),
    then the migrations check and `collectstatic` from step 8 (`exec -T api ...`), the stress-tile pre-draw from
    step 8 if step 7 ran `db --update-data` (or the release changed what the tiles draw), and the smoke tests. Routers and
@@ -1344,8 +1385,8 @@ and `$RM_DATA/tiles/mtb/current` exist):
 . "$HOME/routemaker-beta-state/vars.sh"
 cd "$RM_SRC"
 scripts/beta/auto-release.sh install                                  # the agent that knows the trail routers
-"${RM_PY:-python3}" scripts/check_beta_compose.py --env-file .env      # "beta compose: ok", 7.33 GiB resident
-scripts/beta/beta-compose.sh up -d valhalla-offroad valhalla-mtb
+"${RM_PY:-python3}" scripts/check_beta_compose.py --env-file .env      # "beta compose: ok", 7.65 GiB resident
+scripts/beta/beta-compose.sh up -d valhalla-offroad valhalla-mtb valhalla-paved
 ```
 
 From then on the agent starts any that is not running on every deploy (a deliberate `stop` of one is undone by

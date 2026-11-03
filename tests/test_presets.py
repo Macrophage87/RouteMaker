@@ -9,6 +9,7 @@ what the table says passes and one that contradicts it fails.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -39,8 +40,15 @@ CONTRACT_PRESETS = {
     # TRANSIT-ASSIST (Stephen, 2026-10-12): the two transit ride types.
     "bike-transit",
     "bikeshare-transit",
+    # Walk and Walk + 🚆🚌 (Stephen, 2026-11-02: "add a walk mode and a walk+transit mode").
+    "walk",
+    "walk-transit",
     # REBALANCE-RIDE (Stephen, 2026-10-12): Rebalance Ride.
     "rebalance",
+    # Road Bike (Stephen, 2026-11-02), in the Avoid gravel box's place.
+    "road-bike",
+    # Run (Stephen, 2026-11-02): on foot, on Walk's map (core.run_plan).
+    "run",
 }
 
 # The factor dials Valhalla reads on a 0..1 scale; outside it the service
@@ -410,12 +418,19 @@ def test_every_ride_types_brake_grade_is_the_owners_approved_table() -> None:
         # (core.presets, "The transit ride types"): Default's and Bikeshare's.
         "bike-transit": 0.06,
         "bikeshare-transit": 0.04,
+        # Walk and Walk + 🚆🚌 ride nothing: Bikeshare + 🚶🚆🚌's, never used.
+        "walk": 0.04,
+        "walk-transit": 0.04,
+        # Run is planned on foot (core.run_plan): no descent charged.
+        "run": None,
         # Rebalance Ride rides a share bike, as Bikeshare (core.presets, "Rebalance Ride").
         "rebalance": 0.04,
         "mountain-goat": None,
         # Mountain Bike (slice 6): a rider who chose it wants the descent, as Mountain Goat.
         "mountain-bike": None,
         "fast": None,
+        # Road Bike (2026-11-02): a road bike descends fast, as Fast's rider does.
+        "road-bike": None,
     }
     assert dict(presets.BRAKE_GRADES) == approved
     for name, preset in presets.PRESETS.items():
@@ -435,18 +450,6 @@ def test_use_hills_follows_every_slider_step(hills, use_hills) -> None:
     assert presets.use_hills_for(hills) == use_hills
 
 
-def test_avoid_gravel_raises_every_presets_surface_avoidance_and_arms_no_exclusion() -> None:
-    """OWNER-DECISIONS 91, 92, 111: any ride type, off by default; at most
-    AVOID_GRAVEL_SURFACES, never the hard exclusion at 1.0; a preset already
-    avoiding more keeps its own."""
-    for name in presets.PRESETS:
-        plain = presets.costing(name)["bicycle"]["avoid_bad_surfaces"]
-        steered = presets.costing(name, avoid_gravel=True)["bicycle"]["avoid_bad_surfaces"]
-        assert steered == max(plain, presets.AVOID_GRAVEL_SURFACES), name
-        assert steered < 1.0, name
-        assert presets.costing(name, avoid_gravel=False) == presets.costing(name), name
-
-
 def test_valhallas_default_speeds_are_pinned_by_value() -> None:
     """The speeds a preset with none of its own keeps when the box switches it
     to Road (Valhalla 3.5.1's bicycle defaults, km/h): review r2."""
@@ -456,32 +459,40 @@ def test_valhallas_default_speeds_are_pinned_by_value() -> None:
         "Hybrid": 18.0,
         "Mountain": 16.0,
     }
-    for name in presets.PRESETS:
-        plain = presets.costing(name)["bicycle"]
-        if "cycling_speed" not in plain:
-            steered = presets.costing(name, avoid_gravel=True)["bicycle"]["cycling_speed"]
-            assert (
-                steered == {"Cross": 20.0, "Hybrid": 18.0, "Mountain": 16.0}[plain["bicycle_type"]]
-            ), name
 
 
-def test_avoid_gravel_rides_as_road_at_the_presets_own_speed() -> None:
-    """Review r1, S1: the dial prices only surfaces worse than the type's
-    minimum, and Cross admits gravel, Hybrid dirt; so the box rides as Road,
-    which admits compacted and better, without changing the ride's speed."""
-    for name in presets.PRESETS:
-        plain = presets.costing(name)["bicycle"]
-        steered = presets.costing(name, avoid_gravel=True)["bicycle"]
-        assert steered["bicycle_type"] == "Road", name
-        own = plain.get("cycling_speed")
-        expected = (
-            own if own is not None else presets.VALHALLA_DEFAULT_SPEED_KMH[plain["bicycle_type"]]
-        )
-        assert steered["cycling_speed"] == expected, name
-        for key in set(plain) - {"bicycle_type", "cycling_speed", "avoid_bad_surfaces"}:
-            assert steered[key] == plain[key], (name, key)
-    assistless = presets.costing("cargo", assist=True, avoid_gravel=True)["bicycle"]
-    assert assistless["cycling_speed"] == presets.PRESETS["cargo"].assist_speed_kmh
+def test_road_bike_rides_a_road_bicycle_on_its_own_graph_with_fewer_turns() -> None:
+    """Stephen, 2026-11-02: Avoid gravel "is intended for road bikes that can't handle gravel or
+    dirt"; "Add a road-bike map graph"; "a separate mode that assumes a faster speed and also
+    is less tolerant of turns"."""
+    road = presets.PRESETS[presets.ROAD_BIKE]
+    bicycle = presets.costing(presets.ROAD_BIKE)["bicycle"]
+    assert road.variant == Variant.PAVED.value
+    assert bicycle["bicycle_type"] == "Road"
+    # Valhalla's own Road pace, 15.5 mph, above Default's hybrid 11.2 mph.
+    assert "cycling_speed" not in bicycle
+    assert presets.VALHALLA_DEFAULT_SPEED_KMH["Road"] > presets.VALHALLA_DEFAULT_SPEED_KMH["Hybrid"]
+    # Steeply priced, never the hard exclusion at 1.0 (a ride starting on gravel still plans).
+    assert bicycle["avoid_bad_surfaces"] == presets.ROAD_BIKE_SURFACES == 0.9
+    assert bicycle["maneuver_penalty"] == presets.HIGH_MANEUVER_PENALTY_S
+    assert bicycle["maneuver_penalty"] > options("default")["maneuver_penalty"]
+    assert road.stress == presets.ROAD_BIKE_STRESS == 40
+    # No weekend twin: the weekend keeps it on its own graph; trails off is the no-trail graph.
+    assert presets.variant_for_ride(presets.ROAD_BIKE, "weekend") == Variant.PAVED.value
+    assert presets.variant_for_ride(presets.ROAD_BIKE, "weekday_offpeak", trails_off=True) == (
+        Variant.NO_TRAIL.value
+    )
+
+
+def test_the_box_becomes_road_bike_only_on_a_riders_own_bike() -> None:
+    assert presets.ROAD_BIKE not in presets.AVOID_GRAVEL_BECOMES
+    assert presets.AVOID_GRAVEL_BECOMES <= set(presets.PRESETS)
+    for kept in ("cargo", "ebike", "group-ride", "mass-ride", "bikeshare", "mountain-bike"):
+        assert kept not in presets.AVOID_GRAVEL_BECOMES
+    front = (Path(__file__).resolve().parents[1] / "frontend/src/lib/presets.ts").read_text()
+    listed = re.search(r"AVOID_GRAVEL_BECOMES: readonly PresetId\[\] = \[([^\]]*)\]", front)
+    assert listed, "the front end's list"
+    assert set(re.findall(r'"([a-z-]+)"', listed.group(1))) == set(presets.AVOID_GRAVEL_BECOMES)
 
 
 class TestTargetDistance:

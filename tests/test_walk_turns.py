@@ -1,0 +1,96 @@
+"""Turn-by-turn on foot (Stephen, 2026-11-02): a walk's turns from the router's maneuvers."""
+
+import pytest
+
+from core import walk_turns
+
+SHAPE = [(-77.0, 38.9), (-77.0, 38.901), (-77.001, 38.901), (-77.001, 38.9012), (-77.002, 38.9012)]
+
+
+def _leg(*maneuvers) -> dict:
+    return {"maneuvers": list(maneuvers)}
+
+
+def test_turns_carry_the_movement_the_street_and_the_point() -> None:
+    leg = _leg(
+        {"type": 2, "begin_shape_index": 0, "length": 0.1, "street_names": ["1st St NE"]},
+        {"type": 15, "begin_shape_index": 1, "length": 0.09, "street_names": ["F St NE"]},
+        {"type": 9, "begin_shape_index": 3, "length": 0.09, "street_names": ["3rd St NE"]},
+        {"type": 4, "begin_shape_index": 4, "length": 0.0},
+    )
+    assert walk_turns.turns_of(leg, SHAPE) == [
+        {"movement": "left", "street": "F St NE", "point": [-77.0, 38.901]},
+        {"movement": "bear_right", "street": "3rd St NE", "point": [-77.001, 38.9012]},
+    ]
+
+
+def test_an_unnamed_crosswalk_jog_is_not_said_but_a_long_unnamed_path_is() -> None:
+    leg = _leg(
+        {"type": 10, "begin_shape_index": 1, "length": 0.012},  # onto the crosswalk
+        {"type": 14, "begin_shape_index": 2, "length": 0.2},  # onto a path, a long way
+    )
+    assert walk_turns.turns_of(leg, SHAPE) == [
+        {"movement": "left", "street": None, "point": [-77.001, 38.901]}
+    ]
+
+
+def test_no_maneuvers_and_bad_indices_give_no_turns() -> None:
+    assert walk_turns.turns_of({}, SHAPE) == []
+    leg = _leg({"type": 10, "begin_shape_index": 99, "length": 1, "street_names": ["A St"]})
+    assert walk_turns.turns_of(leg, SHAPE) == []
+
+
+def test_the_request_asks_for_maneuvers() -> None:
+    assert walk_turns.directions({"directions_type": "none"})["directions_type"] == "maneuvers"
+
+
+def test_avoid_stairs_puts_a_step_penalty_on_the_walk_only_within_its_block() -> None:
+    payload = {"costing": "pedestrian", "costing_options": {"pedestrian": {"walking_speed": 4.8}}}
+    assert "step_penalty" not in walk_turns.directions(payload)["costing_options"]["pedestrian"]
+    with walk_turns.stairs_avoided(True):
+        asked = walk_turns.directions(payload)
+    assert asked["costing_options"]["pedestrian"] == {
+        "walking_speed": 4.8,
+        "step_penalty": walk_turns.STEP_FREE_PENALTY_S,
+    }
+    assert asked["directions_type"] == "maneuvers"
+    # The caller's payload is left as it was, and the setting ends with the block.
+    assert payload["costing_options"]["pedestrian"] == {"walking_speed": 4.8}
+    assert not walk_turns.avoiding_stairs()
+
+
+# Review of v0.18.0 (S10): each of Valhalla's turning maneuvers is said as its own movement,
+# so a walker is never told "left" at a sharp right (valhalla/odin/maneuver.h).
+@pytest.mark.parametrize(
+    ("maneuver_type", "movement"),
+    [
+        (9, "bear_right"),  # slight right
+        (10, "right"),
+        (11, "right"),  # sharp right
+        (12, "uturn"),  # U-turn right
+        (13, "uturn"),  # U-turn left
+        (14, "left"),  # sharp left
+        (15, "left"),
+        (16, "bear_left"),  # slight left
+    ],
+)
+def test_each_turning_maneuver_is_said_as_its_movement(maneuver_type, movement) -> None:
+    leg = _leg({"type": maneuver_type, "begin_shape_index": 1, "street_names": ["F St NE"]})
+    assert walk_turns.turns_of(leg, SHAPE) == [
+        {"movement": movement, "street": "F St NE", "point": [-77.0, 38.901]}
+    ]
+
+
+@pytest.mark.parametrize("maneuver_type", [1, 2, 3, 4, 5, 6, 7, 8, 17, 18, 19, 20, 21])
+def test_a_maneuver_that_does_not_turn_is_not_said(maneuver_type) -> None:
+    leg = _leg({"type": maneuver_type, "begin_shape_index": 1, "street_names": ["F St NE"]})
+    assert walk_turns.turns_of(leg, SHAPE) == []
+
+
+def test_a_walk_carries_at_most_40_turns() -> None:
+    leg = _leg(
+        *({"type": 10, "begin_shape_index": 1, "street_names": [f"{n} St"]} for n in range(41))
+    )
+    turns = walk_turns.turns_of(leg, SHAPE)
+    assert len(turns) == 40
+    assert turns[-1]["street"] == "39 St"

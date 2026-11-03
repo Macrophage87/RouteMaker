@@ -1254,6 +1254,47 @@ for _, penalty in ipairs({ "compacted", "dirt", "gravel", "paved_rough" }) do
     M.remap_way({ highway = "path", surface = "gravel" },
       { is_trail_class = true, reviewer_surface_penalty = penalty }).surface == "compacted")
 end
+-- The road-bike graph (`rm:rough_unpaved`) prices gravel, fine gravel and compacted as gravel,
+-- so a road bike is kept off them; every other graph is as above.
+for _, surface in ipairs({ "gravel", "fine_gravel", "compacted" }) do
+  for _, highway in ipairs({ "footway", "path", "track", "residential" }) do
+    check("on the road-bike graph a " .. surface .. " " .. highway .. " is gravel",
+      M.remap_way({ highway = highway, surface = surface },
+        { is_trail_class = (highway == "footway" or highway == "path"), rough_unpaved = true })
+        .surface == "gravel")
+  end
+end
+check("the Mall's gravel walk is gravel on the road-bike graph", M.remap_way({ highway = "footway",
+  surface = "gravel", smoothness = "intermediate", bicycle = "yes" },
+  { is_trail_class = true, rough_unpaved = true }).surface == "gravel")
+check("and so is one under a reviewer's penalty", M.remap_way({ highway = "path",
+  surface = "gravel" }, { is_trail_class = true, reviewer_surface_penalty = "paved_rough",
+  rough_unpaved = true }).surface == "gravel")
+for _, surface in ipairs({ "dirt", "ground", "sand", "asphalt", "concrete", "unpaved" }) do
+  check("on the road-bike graph " .. surface .. " keeps its own surface", M.remap_way({
+    highway = "path", surface = surface }, { is_trail_class = true, rough_unpaved = true })
+    .surface == nil)
+end
+check("a poor PCI street is not made gravel on the road-bike graph", M.remap_way({
+  highway = "residential", surface = "asphalt" }, { pci = "poor", rough_unpaved = true })
+  .surface == "compacted")
+check("a brick path stays paved on the road-bike graph", M.remap_way({ highway = "footway",
+  surface = "brick" }, { is_trail_class = true, rough_unpaved = true }).surface == "paving_stones")
+-- A winding trail on the road-bike graph (`rm:winding`) pays the LTS 3 stress penalty.
+check("a winding cycleway pays the stress penalty", M.remap_way({ highway = "cycleway",
+  surface = "asphalt" }, { is_trail_class = true, winding = true }).bicycle == M.STRESS_PENALTY_BICYCLE)
+check("so does a winding path marked for bicycles", M.remap_way({ highway = "footway",
+  bicycle = "designated" }, { is_trail_class = true, winding = true }).bicycle
+  == M.STRESS_PENALTY_BICYCLE)
+check("a straight cycleway does not", M.remap_way({ highway = "cycleway" },
+  { is_trail_class = true }).bicycle == nil)
+check("a winding footway closed to bicycles stays closed", M.remap_way({ highway = "footway" },
+  { is_trail_class = true, winding = true }).bicycle ~= M.STRESS_PENALTY_BICYCLE)
+check("a winding path with bicycle=no stays closed", M.remap_way({ highway = "path",
+  bicycle = "no" }, { is_trail_class = true, winding = true }).bicycle ~= M.STRESS_PENALTY_BICYCLE)
+check("a winding path with bicycle=dismount is still walked", M.remap_way({ highway = "path",
+  bicycle = "dismount" }, { is_trail_class = true, winding = true }).bicycle
+  ~= M.STRESS_PENALTY_BICYCLE)
 for _, surface in ipairs({ "metal", "metal_grid", "brick", "bricks", "sett", "tartan", "rubber",
     "cobblestone", "unhewn_cobblestone", "paving_stones:lanes", "asphalt:lanes", "boardwalk" }) do
   check(surface .. " is paved", M.is_paved({ surface = surface }))

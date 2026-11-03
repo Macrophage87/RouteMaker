@@ -637,7 +637,8 @@ def test_a_plan_for_now_boards_the_next_train_wmata_predicts_that_the_rider_can_
     step = next(s for s in block["steps"] if s["mode"] == "metro")
     assert step["source"] == "live"
     assert step["text"].startswith(
-        "Board the Orange Line at 8:11 am live from Eastern Market: you arrive 8:05 am, 6 min"
+        "Board the Orange Line toward Metro Center at 8:11 am live from Eastern Market: you arrive"
+        " 8:05 am, 6 min"
         " spare; next train after that: 8:19 am live."
     )
     assert block["live_times"] and block["summary"].endswith("with live departures.")
