@@ -29,6 +29,7 @@ import {
   NOVICE_CEILING_RATIO,
   TARGET_CEILING_RATIO,
   TARGET_MAX_M,
+  RUN_TARGET_MAX_M,
   TARGET_MIN_M,
   STRESS_MAX,
   STRESS_MIN,
@@ -159,8 +160,6 @@ export function parseTarget(text: string, maxM: number = TARGET_MAX_M): number |
   return metres >= TARGET_MIN_M && metres <= maxM ? metres : null;
 }
 
-/** A Run loop's longest target, core/run_plan.py RUN_TARGET_MAX_M (31 mi). */
-export const RUN_TARGET_MAX_M = 50_000;
 const RUN_TARGET_MAX_MILES = Math.floor(RUN_TARGET_MAX_M / METRES_PER_MILE);
 export const parseRunTarget = (text: string): number | undefined | null => parseTarget(text, RUN_TARGET_MAX_M);
 
@@ -201,7 +200,7 @@ export function runTargetView(dials: Dials): TargetView {
 }
 
 export const RUN_TARGET_HINT = t("Optional: the most trail at or under this. With Make it a loop on and only the start placed, a loop about this long.");
-export const RUN_TARGET_HOW = t("With stops placed, each part of the run gets its share of the target, and the way with the most trail and fewest traffic lights at or under it is taken, as on Trailmaxxing. With only the start placed and Make it a loop on, the run tries a loop in each of six directions from your start, each sized to your target, and keeps the one nearest it that runs a way twice least.");
+export const RUN_TARGET_HOW = t("With stops placed, each part of the run gets its share of the target, and the way with the most trail and fewest traffic lights at or under it is taken, as on Trailmaxxing. With only the start placed and Make it a loop on, the run tries a loop in each of six directions from your start, each sized to your target. It keeps a loop within 12% of the target first, then the one that runs a way twice least, then the one with the most trail and fewest traffic lights for its length.");
 
 /**
  * Run's hills (2026-11-02): the slider's left half, from not minding climbs (the middle) to avoiding them, as

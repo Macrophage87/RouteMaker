@@ -3909,7 +3909,10 @@ export function App() {
     }
     onAsk?.();
     closurePending.current = { line: line.map((v) => [...v]), index: found.index, closures: found.closures, gpx, nowOnly, proceed, afterGpx };
-    setClosureAsk({ why, closures: found.closures, unchecked: found.unchecked, notices: found.notices });
+    // A run or walk's planner does not route round closures (Run release review S4): no Reroute for one, except an
+    // opened file's, whose closed stretches are replaced by ways round.
+    const onFoot = !!route && walksLine(route) && !rideRef.current.imported?.verbatim;
+    setClosureAsk({ why, closures: found.closures, unchecked: found.unchecked, notices: found.notices, onFoot });
   };
   const closureAnyway = () => {
     const pending = closurePending.current;

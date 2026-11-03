@@ -18,6 +18,11 @@ export interface ClosureAsk {
   unchecked: string | null;
   /** v0.7.0: "Check before you go" (NPS park alerts, advisories that could not be placed), shown under the list. */
   notices?: ClosureNotice[];
+  /**
+   * A run or walk planned on foot (Run, 2026-11-02 release review S4): its planner does not route round closures, so
+   * planning again would bring back the same line. "Reroute" is left out; "Go anyway" and "Cancel" stay.
+   */
+  onFoot?: boolean;
 }
 
 export function ClosureDialog({ ask, onReroute, onAnyway, onCancel }: { ask: ClosureAsk | null; onReroute: () => void; onAnyway: () => void; onCancel: () => void }) {
@@ -103,9 +108,11 @@ export function ClosureDialog({ ask, onReroute, onAnyway, onCancel }: { ask: Clo
             {ask.unchecked && <p className="hint">{ask.unchecked}</p>}
           </div>
           <div className="closure-choices">
-            <button type="button" className="primary closure-reroute" onClick={onReroute}>
-              {rerouteLabel(ask.closures.length)}
-            </button>
+            {!ask.onFoot && (
+              <button type="button" className="primary closure-reroute" onClick={onReroute}>
+                {rerouteLabel(ask.closures.length)}
+              </button>
+            )}
             <button type="button" className="secondary closure-anyway" onClick={onAnyway}>
               {anywayLabel(ask.why)}
             </button>

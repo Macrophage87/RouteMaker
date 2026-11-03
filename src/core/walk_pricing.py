@@ -374,19 +374,20 @@ CONTINUING_USES = frozenset({"sidewalk", "service_road", "driveway", "alley"})
 
 
 def _calm(edges: Sequence[dict], breaks: Sequence[float] = ()) -> tuple[float, float]:
-    """(metres on quiet streets, metres in long unbroken calm stretches): a calm edge is a
-    trail (`TRAIL_USES`) or a quiet street, and a sidewalk or service way carries a stretch
-    on; any other edge breaks it, and so does a crossing at `breaks` (metres along) whether
-    or not it has an edge of its own."""
+    """(metres on quiet streets, trail and quiet-street metres in long unbroken stretches): a
+    calm edge is a trail (`TRAIL_USES`) or a quiet street; a sidewalk or service way carries
+    a stretch on, counting to its length but never credited itself (trails over sidewalks);
+    any other edge breaks it, and so does a crossing at `breaks` (metres along) whether or
+    not it has an edge of its own."""
     marks = sorted(breaks)
-    quiet = long = run = along = 0.0
+    quiet = long = run = calm = along = 0.0
     k = 0
 
     def close() -> None:
-        nonlocal long, run
+        nonlocal long, run, calm
         if run >= LONG_STRETCH_M:
-            long += run
-        run = 0.0
+            long += calm
+        run = calm = 0.0
 
     for edge in edges:
         use = str(edge.get("use") or "")
@@ -395,7 +396,8 @@ def _calm(edges: Sequence[dict], breaks: Sequence[float] = ()) -> tuple[float, f
         on_road = (use == "road" and roadside_level(edge) == QUIET) or use in QUIET_STREET_USES
         if on_road:
             quiet += metres
-        if not (use in TRAIL_USES or on_road or use in CONTINUING_USES):
+        credited = use in TRAIL_USES or on_road
+        if not (credited or use in CONTINUING_USES):
             close()
             continue
         while k < len(marks) and marks[k] < start:
@@ -404,10 +406,12 @@ def _calm(edges: Sequence[dict], breaks: Sequence[float] = ()) -> tuple[float, f
         at = start
         while k < len(marks) and marks[k] <= along:
             run += marks[k] - at
+            calm += (marks[k] - at) if credited else 0.0
             close()
             at = marks[k]
             k += 1
         run += along - at
+        calm += (along - at) if credited else 0.0
     close()
     return quiet, long
 

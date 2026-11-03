@@ -39,6 +39,14 @@ test("the closure dialog: a modal, heading focused first, Reroute around them th
   assert.match(dialog, /<p id=\{leadId\}>\{closureLead\(ask\.why\)\}<\/p>/);
 });
 
+test("Run release review S4: a run or walk's closure ask has no Reroute (its planner cannot route round them)", () => {
+  const dialog = source("../ClosureDialog.tsx");
+  assert.match(dialog, /\{!ask\.onFoot && \(\s*<button type="button" className="primary closure-reroute"/);
+  const app = source("../App.tsx");
+  assert.match(app, /const onFoot = !!route && walksLine\(route\) && !rideRef\.current\.imported\?\.verbatim;/);
+  assert.match(app, /setClosureAsk\(\{ why, closures: found\.closures, unchecked: found\.unchecked, notices: found\.notices, onFoot \}\);/);
+});
+
 test("a saved route reopens as saved: the scheduler answers its plan with the saved line until it changes", () => {
   assert.match(app, /if \(saved && saved\.key === keptPlanKey\(plan\.points, plan\.preset, plan\.dials\)\)/);
   assert.match(app, /return \{ ok: true, route: saved\.answer \}/);
