@@ -1150,6 +1150,27 @@ def test_a_separated_or_segregated_one_is_a_protected_bike_lane(tags) -> None:
     assert names == {2: "9th Street Northwest protected bike lane"}
 
 
+@pytest.mark.parametrize(
+    "tags",
+    [
+        # Kemp Mill Road (OSM way 886775743): a sidewalk signed for bicycles. The owner,
+        # 2026-11-03: "Kemp Mill road doesn't have a bike lane".
+        {
+            "highway": "footway",
+            "footway": "sidewalk",
+            "bicycle": "designated",
+            "foot": "designated",
+        },
+        {"highway": "cycleway", "foot": "designated", "segregated": "no"},
+        {"highway": "path", "bicycle": "designated"},
+    ],
+)
+def test_a_path_shared_with_walkers_is_the_path_beside_the_street_not_a_bike_lane(tags) -> None:
+    street = (1, {"highway": "tertiary", "name": "Kemp Mill Road"}, NINTH)
+    names = facility_rules.side_street_names([street, (2, tags, _east(NINTH, 6))])
+    assert names == {2: "path beside Kemp Mill Road"}
+
+
 def test_a_named_far_crossing_leaving_or_alley_side_way_is_not_named() -> None:
     street = (1, {"highway": "secondary", "name": "9th Street Northwest"}, NINTH)
     named = (2, {"highway": "cycleway", "name": "Metropolitan Branch Trail"}, _east(NINTH, 8))
