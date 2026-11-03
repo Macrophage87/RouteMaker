@@ -2380,3 +2380,18 @@ def test_the_answer_carries_each_walks_turns_and_each_rides_stops(schedule) -> N
     assert "toward" in ride["text"]
     # Off transit, no stops; a walk not drawn, no turns.
     assert all(s["stops"] is None for s in steps if s["mode"] not in transit.TRANSIT_MODES)
+
+
+def test_vehicle_words_never_say_the_system_twice():
+    # MDOT MTA's MARC GTFS names every line "MARC": the step said "Board the MARC MARC" (Stephen,
+    # 2026-11-03: "fix the marc").
+    marc = transit.System(
+        0, "test-rail", "MARC", transit.RAIL, "the MARC {route}", "", True, "all", "", ""
+    )
+    assert marc.vehicle_words(("MARC",)) == "the MARC"
+    assert marc.vehicle_words(("Penn Line",)) == "the MARC Penn Line"
+    assert marc.vehicle_words(("MARC Penn Line",)) == "the MARC Penn Line"
+    assert marc.vehicle_words(("MARC", "Penn Line")) == "the MARC Penn Line"
+    assert marc.vehicle_words(("Penn Line", "Camden Line")) == "the MARC Penn Line or Camden Line"
+    bus = transit.System(1, "test-bus", "Metrobus", transit.BUS, "bus {route}", "", True, "all", "", "")
+    assert bus.vehicle_words(("B10",)) == "bus B10"

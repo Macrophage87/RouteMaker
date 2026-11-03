@@ -312,7 +312,20 @@ class System:
     last_day: date | None = None
 
     def vehicle_words(self, routes) -> str:
-        return self.words.format(route=" or ".join(routes))
+        """The vehicle a step boards: "the MARC Penn Line", "bus B10". A route the feed names after
+        the system itself (MDOT MTA's MARC GTFS calls every line "MARC") is not said twice: "the
+        MARC", never "the MARC MARC" (Stephen, 2026-11-03: "fix the marc")."""
+        name = self.name.lower()
+        named = []
+        for route in routes:
+            route = route.strip()
+            if route.lower().startswith(name + " "):
+                route = route[len(name) + 1 :]
+            if route and route.lower() != name and route not in named:
+                named.append(route)
+        if not named:
+            return " ".join(self.words.replace("{route}", "").split()) or self.name
+        return self.words.format(route=" or ".join(named))
 
     def route_name(self, route: str) -> str:
         """A route as a note names it: "MARC Camden Line", "Metro Orange Line"."""
