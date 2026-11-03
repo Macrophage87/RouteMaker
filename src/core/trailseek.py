@@ -53,6 +53,7 @@ from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 
 from pipeline.schema import SEEK_INDEX_PREDICATE, trails_predicate
+from routemaker import winding
 
 from . import routing
 
@@ -643,6 +644,7 @@ def corridor_segments(
     when: str,
     avoid_unpaved: bool = False,
     timeout_s: float = TABLE_TIMEOUT_S,
+    avoid_winding: bool = False,
 ) -> list[list[LonLat]]:
     """The low-stress trail segments within `width_m` of the guide lines (the
     straight line and the router's route), as lists of (lon, lat).
@@ -659,7 +661,11 @@ def corridor_segments(
     which the planner can then prove; without it the trail rule is the
     overview index's. It runs under a statement timeout of `timeout_s`, or what is left
     of the plan where that is less (`routing.plan_cursor`); one that runs past it raises
-    SeekOutOfTime."""
+    SeekOutOfTime.
+
+    With `avoid_winding` (Road Bike) a segment that bends as a winding trail does
+    (`routemaker.winding`) is left out: the road-bike graph prices those ways as an LTS 3
+    street, and a seek that offered one would steer the plan back onto it."""
     query = corridor_query(schema, guide, width_m, has_facility, when, avoid_unpaved)
     if query is None:
         return []
@@ -672,7 +678,10 @@ def corridor_segments(
         raise
     except routing.DeadlineExceeded as error:
         raise SeekOutOfTime("the trail table read ran out of time") from error
-    return [_parse_line(row[0]) for row in rows]
+    segments = [_parse_line(row[0]) for row in rows]
+    if avoid_winding:
+        segments = [s for s in segments if not winding.is_winding(s)]
+    return segments
 
 
 def corridor_query(

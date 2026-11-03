@@ -6,7 +6,8 @@
  */
 import type { RouteResponse } from "./api.ts";
 import type { Dials } from "./dials.ts";
-import { twoPointsOnly, type PresetId } from "./presets.ts";
+import { runs, twoPointsOnly, type PresetId } from "./presets.ts";
+import { RUN_TARGET_MAX_M, fitTarget } from "./dials.ts";
 import { formatDistance } from "./format.ts";
 import { haversineM, type LonLat } from "./geo.ts";
 import { t } from "./i18n.ts";
@@ -137,4 +138,14 @@ export function loopNote(route: Pick<RouteResponse, "loop">): string | null {
   if (loop.overlap_pct == null || loop.shared_m == null) return null;
   if (loop.shared_m <= 0) return "The way back shares no road with the way out.";
   return `${Math.round(loop.overlap_pct)}% of the way back, ${formatDistance(loop.shared_m)}, is on roads the way out used.`;
+}
+
+/**
+ * Whether a Run is planned from its start alone (Run, 2026-11-02): Make it a loop on and a target distance set, so
+ * the API finds a loop about that long from the start (core/run_plan.py target_loop).
+ */
+export function runLoopFromStart(preset: PresetId, points: readonly LonLat[], dials: Pick<Dials, "loop" | "targetDistanceM">): boolean {
+  const target = fitTarget(dials.targetDistanceM);
+  // A target kept from a longer ride is past a run loop's 31 mi (50 km) (core/run_plan.py RUN_TARGET_MAX_M).
+  return runs(preset) && points.length === 1 && dials.loop === true && target !== undefined && target <= RUN_TARGET_MAX_M;
 }

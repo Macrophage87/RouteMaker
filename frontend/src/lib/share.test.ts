@@ -223,7 +223,8 @@ test("App: Broadcast shows everywhere; with no share sheet it copies, and the ri
   assert.match(app, /const startRideNoted = \(note: string\) => \{\s*rideNote\.current = note;/);
   assert.match(app, /const closureCancel = \(\) => \{\s*closurePending\.current = null;\s*rideNote\.current = "";/);
   assert.match(app, /const closureReroute = async \(\) => \{\s*const pending = closurePending\.current;\s*closurePending\.current = null;\s*rideNote\.current = "";/);
-  assert.equal((app.match(/rideNote\.current = /g) ?? []).length, 4, "set only by a press, and cleared where no ride starts or one does");
+  // And by a transit trip's check (lib/tripCheck.ts): the change to a quicker trip, said as that ride starts.
+  assert.equal((app.match(/rideNote\.current = /g) ?? []).length, 5, "set only by a press or a trip's change, and cleared where no ride starts or one does");
   // The note is taken once by the next ride and handed to the ride screen.
   assert.match(app, /const note = rideNote\.current;\s*rideNote\.current = "";\s*setRideStart\(\(before\) => \(\{[^\n]*note, n:/);
   assert.match(app, /startNote=\{rideStart\.note\}/);

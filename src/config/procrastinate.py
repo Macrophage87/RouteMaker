@@ -1250,6 +1250,7 @@ def perform_backup(now=None, timeout_s: float | None = None) -> Path:
                     f"--username={database['USER']}",
                     # Excluded, not merely unprotected. See the task docstring.
                     *(f"--exclude-table-data=*.{table}" for table in BACKUP_EXCLUDED_TABLES),
+                    *(f"--exclude-schema={schema}" for schema in backup_excluded_schemas()),
                     database["NAME"],
                 ],
                 part,
@@ -1395,6 +1396,28 @@ def _remaining(deadline: float, what: str) -> float:
 # One entry of a custom-format archive's table of contents, as pg_restore
 # --list prints it: "1234; 0 5678 TABLE DATA public app_user routemaker".
 _TOC_ENTRY = re.compile(r"^\d+;\s+\d+\s+\d+\s+TABLE DATA\s+(\S+)\s+(\S+)", re.MULTILINE)
+
+
+def backup_excluded_schemas() -> tuple[str, ...]:
+    """The spare copies of the segment tables, left out of the nightly dump: the retired
+    schema a swap keeps for its rollback (`live_old`), the rebuild's `staging` (built, or left by
+    a build that did not swap; a pg_dump reading it would also hold locks a rebuild running
+    across 07:00 drops and alters), the beta's staged update (`live_next`,
+    scripts/beta/receive-data.sh) and the tables its rollback by rename sets aside (`live_bad`,
+    docs/BETA-RUNBOOK.md). Each is a whole copy of the live tables, so
+    keeping them would double or triple every dump and its restore time, and neither is
+    something a restore from a backup goes back to: a restore brings back `live`, the graph
+    it was taken from. (After such a restore `rollback_rebuild` refuses, for want of a
+    retired schema, rather than rolling back to nothing.)"""
+    from django.conf import settings
+
+    live = settings.SEGMENT_SCHEMA_LIVE
+    return (
+        settings.SEGMENT_SCHEMA_RETIRED,
+        settings.SEGMENT_SCHEMA_STAGING,
+        f"{live}_next",
+        f"{live}_bad",
+    )
 
 
 def verify_dump_listing(listing: str) -> list[str]:
