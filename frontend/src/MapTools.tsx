@@ -24,6 +24,8 @@ interface Props {
   onAddPoint: () => void;
   /** The plan has the most points it can: Add point is unavailable. */
   addDisabled: boolean;
+  /** The most points this ride type takes (lib/tripStops.ts maxPointsFor), for the reason said when full. */
+  maxPoints?: number;
   /** Go: the spot at the center is the destination, and the button says so. */
   setsEnd?: boolean;
   /** The road panel for the road at the map's center. */
@@ -36,7 +38,7 @@ interface Props {
   onShown?: () => void;
 }
 
-export function MapTools({ onAddPoint, addDisabled, setsEnd = false, onRoadInfo, onCrosshair, toggleRef: outerRef, onShown }: Props) {
+export function MapTools({ onAddPoint, addDisabled, maxPoints, setsEnd = false, onRoadInfo, onCrosshair, toggleRef: outerRef, onShown }: Props) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const ownRef = useRef<HTMLButtonElement>(null);
@@ -110,7 +112,7 @@ export function MapTools({ onAddPoint, addDisabled, setsEnd = false, onRoadInfo,
         </button>
         {addDisabled && (
           <span id={`${panelId}-full`} className="visually-hidden">
-            {maxPointsNotice()}
+            {maxPointsNotice(maxPoints)}
           </span>
         )}
         <button type="button" aria-haspopup="dialog" onClick={() => run(onRoadInfo)}>
