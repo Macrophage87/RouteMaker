@@ -2030,7 +2030,7 @@ would be a circle and a route through a climb an out-and-back), and needs no reb
   `CIRCUITY x (start to foot + summit to end) + climb length <= ratio x the router's
   own length`, with `CIRCUITY` 1.2: an ellipse round the straight line, which widens
   as the dial goes right. Left out: climbs the router's own routes already ride uphill
-  (they add nothing), and mostly unpaved ones under Avoid gravel. Ranked by category
+  (they add nothing), and mostly unpaved ones on Road Bike. Ranked by category
   (HC first), then height gained, then the shorter estimate.
 - **The proposals**, at most `MAX_CANDIDATES` (3) router calls, as the trail seek's:
   the best climb with the best other one that fits the budget beside it (both, in the
@@ -2153,10 +2153,16 @@ unless named; PLAN.md quotes the owner's words):
 - *The CBD rule* (`routemaker.cbd`, item 104): a sidewalk inside DDOT's Central
   Business District and outside the federal areas and the Architect of the
   Capitol's polygon is closed to bicycles (`rm:no_bicycle=cbd_sidewalk`).
-- *Avoid gravel* (items 91, 92): the box raises `avoid_bad_surfaces` to 0.9 and
-  rides the route as a Road bicycle at the preset's own speed, so every surface
-  worse than compacted is priced steeply on every preset; a ride that starts or
-  ends on gravel is still planned.
+- *Road Bike* (the owner, 2026-11-02, replacing the Avoid gravel box of items 91 and 92): its own
+  graph (`Variant.PAVED`), where gravel, fine gravel and compacted are Valhalla's `gravel` class
+  and winding trails (`routemaker.winding`, 40 degrees of turning per 100 m or more) pay the LTS 3
+  stress penalty; a Road bicycle at `avoid_bad_surfaces` 0.9 prices gravel at about seventeen
+  times a paved path. Every other graph prices gravel as packed gravel (`compacted`, #877). A
+  link or plan with the old box ticked plans as Road Bike on a rider's own bike
+  (`presets.AVOID_GRAVEL_BECOMES`); elsewhere the box is dropped. When routes are ranked, its junction waits (signals,
+  stop signs, gaps in traffic: `routemaker.junction_delay`) weigh three times their seconds (the
+  owner, 2026-11-02: "make non-cycling time, such as waiting at lights carry an additional
+  penalty (3x)"; `presets.WAIT_WEIGHTS`); the time shown is still the real wait.
 
 Measured over the region's source extract (2026-09-30, the current head's
 rules; 98,411 road miles, proposed, construction, platform and corridor ways
@@ -4605,7 +4611,7 @@ replacing the symlink, keeps `previous` for rollback, and repoints the
 `valhalla_service` does not reload tiles, so after a promotion the serving
 containers are restarted to load the new extract (`docker compose restart
 valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend`, and, where the
-off-road router runs, `docker compose --profile offroad restart valhalla-offroad valhalla-mtb`:
+off-road router runs, `docker compose --profile offroad restart valhalla-offroad valhalla-mtb valhalla-paved`:
 a `restart` naming a service with no container fails and restarts none of the rest); starting them against the
 new build before stopping the old ones is the blue/green arrangement the plan
 describes and phase 1 does not implement. `pipeline.promotion.rollback` undoes
@@ -4774,8 +4780,7 @@ older link opens as before, and Mass Ride is trails off whatever the link says),
 in the request as `trails_off: true`, in the Ride line as "roads only" (not on
 Mass Ride), in a GPX export's dials comment as `trailsoff=1` (read back on
 import, so the file reopens on roads only) and its description as "roads only,
-no trails" (neither on Mass Ride), and stays when the ride type changes, as
-Avoid gravel does. The
+no trails" (neither on Mass Ride), and stays when the ride type changes. The
 control is a real checkbox with the label "Keep to roads, not trails",
 described by its hint ("No bike paths, trails or stairs. Can use the Key and
 Memorial Bridge roadways."; on Mass Ride it starts "A mass ride always keeps to
@@ -6056,7 +6061,7 @@ here", "Add as stop"), announcements and the GPX (`summary.pointName`, `pointTex
 `gpx.planPointName`, `loop.loopStops`). Inside a sentence the start is "the start" ("Stop 2 added,
 between Stop 1 and the start"), and a change that renames the points is announced: the toggle, a
 ride type into or out of Mass Ride (which has no loop), and an undo or redo that brings another loop
-state back (`pointText.loopChangeSaid`). A new ride type keeps the toggle, as it keeps Avoid gravel
+state back (`pointText.loopChangeSaid`). A new ride type keeps the toggle, as it keeps Keep to roads
 (`rideTypeDialog.choose`), so only Mass Ride turns the loop off; it keeps the flag unused (it is no
 moved setting there, and Reset keeps it), and the next ride type brings the loop back.
 Dragging the route line works on the closing leg too: the

@@ -17,7 +17,9 @@
 import { InfoButton, SettingRow, SettingSelect } from "./SettingRow.tsx";
 import { SPEED_HINT, SPEED_LABEL, speedOptions, takesRiderSpeed, type RidingSpeedControl } from "./lib/ridingSpeed.ts";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
-import type { PresetId } from "./lib/presets.ts";
+import { onFoot, runs, type PresetId } from "./lib/presets.ts";
+import { AvoidStairsSwitch } from "./AvoidStairsSwitch.tsx";
+import { RunPaceSelect } from "./RunPaceSelect.tsx";
 import { BIKESHARE_HILLS, RIDE_SIZE_DEFAULT, WHENS, fitRideSize, offersBike, rideSizeOf, type Bike, type Dials, type When } from "./lib/dials.ts";
 import { BIKES } from "./lib/bikeshare.ts";
 import {
@@ -31,10 +33,13 @@ import {
   withMtbLevel,
   withMtbPreferred,
 } from "./lib/mtbMode.ts";
-import { RIDE_SIZE_LABEL, panelView, parseTarget, type SliderView } from "./lib/dialsPanel.ts";
+import { RIDE_SIZE_LABEL, panelView, parseRunTarget, parseTarget, runHillsView, type SliderView } from "./lib/dialsPanel.ts";
 import { Debounce, KEY_SETTLE_MS } from "./lib/settle.ts";
 import { t } from "./lib/i18n.ts";
 import { sentences } from "./lib/sentences.ts";
+
+/** Walk and Walk + 🚆🚌 in the sliders' place: a walk is planned on foot, not by traffic or hills. */
+export const ON_FOOT_DIALS_NOTE = t("Walks keep to sidewalks, paths and crosswalks: the traffic and hills settings are for riding.");
 
 interface Props {
   preset: PresetId;
@@ -402,28 +407,56 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, ridingSpeed 
           {t("Follows e-bike rules and plans at a little more speed. Hills still count; with a strong motor, move the hills slider toward Fastest yourself.")}
         </p>
       )}
-      <Slider
-        label={t("Traffic")}
-        about="traffic"
-        view={view.traffic}
-        value={draft.stress}
-        onDraft={(stress) => setDraft({ ...draft, stress })}
-        onRelease={release}
-      />
-      {view.warning && (
-        <p className="notice traffic-tolerant" role="note">
-          {view.warning}
-        </p>
+      {/* Walk and Walk + 🚆🚌 (2026-11-02) ride nothing: no traffic or hills to set, said once in their place. Run
+          (2026-11-02) has no traffic either: its hills, its pace and Avoid stairs. */}
+      {onFoot(preset) ? (
+        <>
+          {/* Stairs are walked unless the rider says (Stephen, 2026-11-02: "make that a clear option"): the same switch as
+              Settings', and turning it plans again (App.tsx, AVOID_STAIRS_EVENT). */}
+          <AvoidStairsSwitch idBase="dials-avoid-stairs" />
+          <p className="hint on-foot-dials">{ON_FOOT_DIALS_NOTE}</p>
+        </>
+      ) : !runs(preset) ? (
+        <>
+        <Slider
+          label={t("Traffic")}
+          about="traffic"
+          view={view.traffic}
+          value={draft.stress}
+          onDraft={(stress) => setDraft({ ...draft, stress })}
+          onRelease={release}
+        />
+        {view.warning && (
+          <p className="notice traffic-tolerant" role="note">
+            {view.warning}
+          </p>
+        )}
+        <Slider
+          label={t("Hills")}
+          dial="hills"
+          about="hills"
+          view={view.hills}
+          value={draft.hills}
+          onDraft={(hills) => setDraft({ ...draft, hills })}
+          onRelease={release}
+        />
+        </>
+      ) : (
+        <>
+          {/* Run (2026-11-02): no traffic slider; its hills in words, its pace, and Avoid stairs. */}
+          <Slider
+            label={t("Hills")}
+            dial="hills"
+            about="hills"
+            view={runHillsView(draft.hills)}
+            value={Math.min(draft.hills, 0)}
+            onDraft={(hills) => setDraft({ ...draft, hills })}
+            onRelease={release}
+          />
+          <RunPaceSelect idBase="dials-run-pace" />
+          <AvoidStairsSwitch idBase="dials-avoid-stairs" />
+        </>
       )}
-      <Slider
-        label={t("Hills")}
-        dial="hills"
-        about="hills"
-        view={view.hills}
-        value={draft.hills}
-        onDraft={(hills) => setDraft({ ...draft, hills })}
-        onRelease={release}
-      />
       {/* The rider's own speed, under Hills (the owner, 2026-10-27: "Some people who ride much faster than the
           defaults would like to be able to override the speed as an advanced feature", "next to hill speed or max
           grade"). Not on a ride type that keeps its own pace (Mass Ride, a share bike). */}
@@ -476,7 +509,8 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, ridingSpeed 
         ))}
         {/* One line, the rest behind its (i) (Plan streamline, Stephen 2026-10-17; P10, one (i) per row). */}
         <div className="dial-head">
-          <p className="hint">{t("Weekend car-free roads, such as Beach Drive and Sligo Creek Parkway, count as paths.")}</p>
+          {/* About riding: not said on foot (Walk keeps When for Walk + transit's timetable). */}
+          {!onFoot(preset) && !runs(preset) && <p className="hint">{t("Weekend car-free roads, such as Beach Drive and Sligo Creek Parkway, count as paths.")}</p>}
           <InfoButton open={whenInfo} onToggle={() => setWhenInfo(!whenInfo)} controls={whenInfoId} about="when" />
         </div>
         <DialInfo id={whenInfoId} open={whenInfo}>
@@ -491,45 +525,40 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, ridingSpeed 
           hint={view.target.hint}
           how={view.target.how}
           about="target distance"
-          parse={parseTarget}
+          parse={runs(preset) ? parseRunTarget : parseTarget}
           onCommit={(targetDistanceM) => onCommit(withField(dials, "targetDistanceM", targetDistanceM))}
         />
       )}
       {/* The rider and bike weight is in Settings (the owner, 2026-10-18: "somewhere hidden, and probably belongs in settings"). */}
-      <div className="dial trails-off">
-        <div className="dial-head">
-          <label className="toggle">
-            {/* aria-disabled, not disabled, when always on (Mass Ride): it stays in the Tab order with its
-                reason in its description, and a press changes nothing (as the loop box does). */}
-            <input
-              type="checkbox"
-              checked={view.trailsOff.checked}
-              aria-disabled={view.trailsOff.locked || undefined}
-              aria-describedby={trailsOffHintId}
-              onChange={(event) => {
-                if (view.trailsOff.locked) return;
-                onCommit({ ...dials, trailsOff: event.target.checked });
-              }}
-            />
-            {view.trailsOff.label}
-          </label>
-          <InfoButton open={trailsOffInfo} onToggle={() => setTrailsOffInfo(!trailsOffInfo)} controls={trailsOffInfoId} about={view.trailsOff.howAbout} />
+      {/* Roads, not trails: a riding choice, which a walk does not take. */}
+      {!onFoot(preset) && !runs(preset) && (
+        <div className="dial trails-off">
+          <div className="dial-head">
+            <label className="toggle">
+              {/* aria-disabled, not disabled, when always on (Mass Ride): it stays in the Tab order with its
+                  reason in its description, and a press changes nothing (as the loop box does). */}
+              <input
+                type="checkbox"
+                checked={view.trailsOff.checked}
+                aria-disabled={view.trailsOff.locked || undefined}
+                aria-describedby={trailsOffHintId}
+                onChange={(event) => {
+                  if (view.trailsOff.locked) return;
+                  onCommit({ ...dials, trailsOff: event.target.checked });
+                }}
+              />
+              {view.trailsOff.label}
+            </label>
+            <InfoButton open={trailsOffInfo} onToggle={() => setTrailsOffInfo(!trailsOffInfo)} controls={trailsOffInfoId} about={view.trailsOff.howAbout} />
+          </div>
+          <p className="hint" id={trailsOffHintId}>
+            {view.trailsOff.hint}
+          </p>
+          <DialInfo id={trailsOffInfoId} open={trailsOffInfo}>
+            <Bullets text={view.trailsOff.how} />
+          </DialInfo>
         </div>
-        <p className="hint" id={trailsOffHintId}>
-          {view.trailsOff.hint}
-        </p>
-        <DialInfo id={trailsOffInfoId} open={trailsOffInfo}>
-          <Bullets text={view.trailsOff.how} />
-        </DialInfo>
-      </div>
-      <label className="toggle">
-        <input
-          type="checkbox"
-          checked={dials.avoidGravel === true}
-          onChange={(event) => onCommit({ ...dials, avoidGravel: event.target.checked })}
-        />
-        {t("Avoid gravel")}
-      </label>
+      )}
       {view.reset && (
         <button type="button" className="link" onClick={() => view.reset && onCommit(view.reset)}>
           {t("Back to this ride type's settings")}

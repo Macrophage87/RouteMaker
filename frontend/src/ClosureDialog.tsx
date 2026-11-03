@@ -2,7 +2,8 @@
  * The major closure warning (v0.7.0 plan, "GPX export as close to identical as possible, closure warning
  * first", and its correction): a modal dialog, not a toast, when a kept route runs along closures in force now.
  * "This route goes through 2 closures", each named in one line, and three choices: Reroute around them ("it" for
- * one; the default), Ride it anyway (or Download or Save anyway), and Cancel. The park-wide notices, which are not
+ * one; the default), Ride it anyway (or Download or Save anyway), and Cancel. A run or walk has no Reroute (its
+ * planner does not route round closures): Go anyway and Cancel only. The park-wide notices, which are not
  * closures on the route, wait behind "Park notices (N)" (P11). The platform's <dialog> opened with
  * showModal makes the page behind inert; the focus starts on the heading so a screen reader reads the list;
  * Escape is Cancel; on close the focus goes back where it was.
@@ -18,6 +19,11 @@ export interface ClosureAsk {
   unchecked: string | null;
   /** v0.7.0: "Check before you go" (NPS park alerts, advisories that could not be placed), shown under the list. */
   notices?: ClosureNotice[];
+  /**
+   * A run or walk planned on foot (Run, 2026-11-02 release review S4): its planner does not route round closures, so
+   * planning again would bring back the same line. "Reroute" is left out; "Go anyway" and "Cancel" stay.
+   */
+  onFoot?: boolean;
 }
 
 export function ClosureDialog({ ask, onReroute, onAnyway, onCancel }: { ask: ClosureAsk | null; onReroute: () => void; onAnyway: () => void; onCancel: () => void }) {
@@ -57,7 +63,7 @@ export function ClosureDialog({ ask, onReroute, onAnyway, onCancel }: { ask: Clo
             {closureHeading(ask.closures.length)}
           </h2>
           <div>
-            <p id={leadId}>{closureLead(ask.why)}</p>
+            <p id={leadId}>{closureLead(ask.why, ask.onFoot)}</p>
             <ul role="list" className="closure-list">
               {ask.closures.map((c) => (
                 <li key={c.id}>
@@ -103,9 +109,11 @@ export function ClosureDialog({ ask, onReroute, onAnyway, onCancel }: { ask: Clo
             {ask.unchecked && <p className="hint">{ask.unchecked}</p>}
           </div>
           <div className="closure-choices">
-            <button type="button" className="primary closure-reroute" onClick={onReroute}>
-              {rerouteLabel(ask.closures.length)}
-            </button>
+            {!ask.onFoot && (
+              <button type="button" className="primary closure-reroute" onClick={onReroute}>
+                {rerouteLabel(ask.closures.length)}
+              </button>
+            )}
             <button type="button" className="secondary closure-anyway" onClick={onAnyway}>
               {anywayLabel(ask.why)}
             </button>

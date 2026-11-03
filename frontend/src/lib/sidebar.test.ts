@@ -78,10 +78,10 @@ test("the Ride line: the mockup's words for a Default ride, ride type first", ()
 });
 
 test("the Ride line follows the sliders, the ride time, the loop and gravel; and names a moved ride Custom", () => {
-  const dials: Dials = { ...startDials("default", null, "weekend"), stress: 100, hills: -90, loop: true, avoidGravel: true };
+  const dials: Dials = { ...startDials("default", null, "weekend"), stress: 100, hills: -90, loop: true };
   assert.equal(
     rideSummary("default", dials),
-    "Custom (based on Default) · calmest · hills up to 2% · weekend · loop · avoids gravel",
+    "Custom (based on Default) · calmest · hills up to 2% · weekend · loop",
   );
   assert.equal(whenShort("weekday_rush"), "weekday rush");
   assert.equal(whenShort("weekday_offpeak"), "weekday off-hours");
@@ -192,9 +192,10 @@ test("App puts the ride type's button first and every dial behind the Ride setti
     'label={t("Hills")}',
     '<legend>{t("When")}</legend>',
     "{view.target && (",
-    "Avoid gravel",
   ].map(at);
-  assert.deepEqual(order, [...order].sort((a, b) => a - b), "Traffic, Hills, When, target distance, gravel");
+  assert.deepEqual(order, [...order].sort((a, b) => a - b), "Traffic, Hills, When, target distance");
+  // The Avoid gravel box became the Road Bike ride type (Stephen, 2026-11-02).
+  assert.equal(dials.includes('t("Avoid gravel")'), false);
   // "Make it a loop" is no longer behind the Edit button (OWNER-DECISIONS 388): it is by the search, in the Points section.
   assert.doesNotMatch(dials, /loopView|withLoop|type="checkbox"\s+checked=\{loop/, "the dials panel has no loop toggle");
   const points = app.slice(app.indexOf("const pointsSection ="), app.indexOf("const routeSection ="));
