@@ -167,6 +167,7 @@ def test_trail_routers_count_only_where_their_tiles_are(host: Host) -> None:
 
 
 def test_each_stale_router_is_restarted_one_at_a_time(host: Host) -> None:
+    (host.tmp / "running" / "api").write_text("id-api\n")
     for variant in ("standard", "no-trail", "ebike", "weekend"):
         host.tiles(variant, moved_ago=600)
         host.router(f"valhalla-{variant}", started_ago=7200)
@@ -189,15 +190,44 @@ def test_each_stale_router_is_restarted_one_at_a_time(host: Host) -> None:
     ], log
 
 
-def test_a_router_that_does_not_answer_is_waited_for_then_passed(host: Host) -> None:
+def test_a_router_that_does_not_answer_is_waited_for_by_the_clock_then_passed(host: Host) -> None:
+    (host.tmp / "running" / "api").write_text("id-api\n")
     for variant in ("standard", "ebike"):
         host.tiles(variant, moved_ago=600)
         host.router(f"valhalla-{variant}", started_ago=7200)
     (host.tmp / "router-mute").write_text("")
-    done = host.run("check", RM_ROUTER_WAIT_S="0")
+    began = time.monotonic()
+    done = host.run("check", RM_ROUTER_WAIT_S="4")
+    took = time.monotonic() - began
     assert done.returncode == 0, done.stderr
     assert "valhalla-standard does not answer" in done.stderr
     assert host.restarted() == ["valhalla-standard", "valhalla-ebike"]
+    # about 4 s each (the clock, not a count of sleeps), never far past it
+    assert 7 <= took < 20, took
+
+
+def test_the_pass_stops_waiting_once_its_budget_is_spent(host: Host) -> None:
+    (host.tmp / "running" / "api").write_text("id-api\n")
+    for variant in ("standard", "no-trail", "ebike", "weekend"):
+        host.tiles(variant, moved_ago=600)
+        host.router(f"valhalla-{variant}", started_ago=7200)
+    (host.tmp / "router-mute").write_text("")
+    began = time.monotonic()
+    done = host.run("check", RM_ROUTER_WAIT_S="60", RM_ROUTER_PASS_S="3")
+    assert done.returncode == 0, done.stderr
+    assert len(host.restarted()) == 4
+    assert time.monotonic() - began < 20
+
+
+def test_with_the_api_stopped_nothing_is_waited_for(host: Host) -> None:
+    # no running/api: a rollback or deploy has the api stopped, so nothing is served or asked
+    host.tiles("standard", moved_ago=600)
+    host.router("valhalla-standard", started_ago=7200)
+    (host.tmp / "router-mute").write_text("")
+    done = host.run("check", RM_ROUTER_WAIT_S="60")
+    assert done.returncode == 0, done.stderr
+    assert host.restarted() == ["valhalla-standard"]
+    assert " exec " not in (host.tmp / "compose.log").read_text()
 
 
 def test_a_failed_restart_fails_the_pass(host: Host) -> None:

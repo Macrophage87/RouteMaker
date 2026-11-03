@@ -2551,9 +2551,12 @@ the data of every table in `BACKUP_EXCLUDED_TABLES` (`config/procrastinate.py`):
 `stress_tile_cache`, `bikeshare_feed_cache`, `signed_out_send`, `garmin_link` and
 `wahoo_link` (riders' encrypted Garmin and Wahoo tokens: a restore asks them to connect
 again), and leaving out the spare copies of the segment tables entirely (`--exclude-schema`):
-`live_old`, which a swap keeps for its rollback, and the beta's staged update `live_next`.
-Each is a whole copy of the live tables, and a restore brings back `live`, not them; after a
-restore `rollback_rebuild` refuses for want of a retired schema. Verified by reading the
+`live_old`, which a swap keeps for its rollback, the rebuild's `staging`, the beta's staged
+update `live_next` and the `live_bad` its rollback by rename sets aside. Each is a whole copy of
+the live tables, and a restore brings back `live`, not them. So a restored database has no
+`live_old`: `rollback_rebuild` refuses for want of a retired schema, `compute_review_queue
+--old-schema live_old` and `import_cloud_build`'s drift report have nothing to compare against,
+and rollback A alone (the `previous` tile links) would name a build whose tables are gone. Verified by reading the
 archive's own table of contents back with `pg_restore --list` from the same stream
 as it is written — an archive with
 no table data at all is a dump of nothing, which is what a wrong database name

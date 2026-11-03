@@ -360,7 +360,8 @@ case "$pguser$pgdatabase$live_schema" in *[!A-Za-z0-9_]*) die "odd database, use
 
 # One database change at a time: db and restore-dump share the files they copy into the postgis
 # container (/tmp/beta.use, /tmp/beta-blanked.sql), and two updates would share the scratch
-# database and the staged schema and undo each other's work. The lock is DATA_ROOT itself,
+# database and the staged schema and undo each other's work. (So whoever runs these must be able to
+# read DATA_ROOT, which prepare_data_root.sh leaves 0755.) The lock is DATA_ROOT itself,
 # opened read-only: root and the login user can both open it, and no other user can make it
 # fail or hold it, as they could a file in /tmp.
 if [ "$command_name" = db ] || [ "$command_name" = restore-dump ]; then
@@ -663,10 +664,13 @@ if [ "$update_data" = 1 ]; then
 		fi
 	done
 	mv "$extra.part" "$extra"
-	# After the blanked tables are read and checked, so a malformed one stops before the dump.
+	# After the blanked tables are read and checked, so a malformed one stops before the dump; a
+	# failed dump leaves no copy of them behind.
+	trap 'rm -f "$extra"' EXIT
 	snapshot update >/dev/null
 	bc exec -T postgis sh -c 'cat > /tmp/beta-blanked.sql' <"$extra"
 	rm -f "$extra"
+	trap - EXIT
 	before_oid=$(psql_q "select coalesce(to_regclass('public.app_user')::oid::text, 'none')")
 	note "swapping $staged in for $live_schema and updating override, the junction ratings and the Avoid junctions in one transaction, and emptying the stale stress tile cache ($accounts beta account(s) are left alone; the beta keeps serving)"
 	# psql runs it as ONE transaction that stops at the first error, so a failure renames nothing.

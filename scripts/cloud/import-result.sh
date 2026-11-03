@@ -181,17 +181,18 @@ if [ "$beta" = 1 ]; then
 	# The next one restarts only once this one answers its /status (asked from the api's
 	# container, on the compose network), or after CLOUD_ROUTER_WAIT_S at most.
 	note "restarting the routers one at a time so they serve the new graphs"
+	router_wait=${CLOUD_ROUTER_WAIT_S:-180}
+	[[ $router_wait =~ ^[0-9]+$ ]] || die "CLOUD_ROUTER_WAIT_S is a number of seconds ('$router_wait')"
 	for router in "${routers[@]}"; do
 		"$bcompose" restart "$router"
-		waited=0
+		start=$SECONDS  # the clock, not a count of sleeps: each probe takes time of its own
 		# shellcheck disable=SC2016 # python's, not the shell's
-		until "$bcompose" exec -T api python3 -c 'import sys, urllib.request; urllib.request.urlopen(sys.argv[1], timeout=5)' "http://$router:8002/status" </dev/null >/dev/null 2>&1; do
-			if [ "$waited" -ge "${CLOUD_ROUTER_WAIT_S:-180}" ]; then
-				note "WARNING: $router does not answer ${waited}s after its restart; going on with the next. Look at: $bcompose logs --tail 50 $router"
+		until "$bcompose" exec -T api python3 -c 'import sys, urllib.request; urllib.request.urlopen(sys.argv[1], timeout=3)' "http://$router:8002/status" </dev/null >/dev/null 2>&1; do
+			if [ $((SECONDS - start)) -ge "$router_wait" ]; then
+				note "WARNING: $router does not answer $((SECONDS - start))s after its restart; going on with the next. Look at: $bcompose logs --tail 50 $router"
 				break
 			fi
 			sleep 3
-			waited=$((waited + 3))
 		done
 	done
 	# The trail routers (Mountain Bike's, Gravel and Mountain Goat's): started, or recreated onto the

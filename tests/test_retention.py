@@ -687,6 +687,8 @@ def test_the_nightly_dump_leaves_out_the_spare_copies_of_the_segment_tables(
     (command,) = seen
     assert f"--exclude-schema={settings.SEGMENT_SCHEMA_RETIRED}" in command
     assert f"--exclude-schema={settings.SEGMENT_SCHEMA_LIVE}_next" in command
+    assert f"--exclude-schema={settings.SEGMENT_SCHEMA_STAGING}" in command
+    assert f"--exclude-schema={settings.SEGMENT_SCHEMA_LIVE}_bad" in command
     # the live tables themselves stay in
     assert not any(arg == f"--exclude-schema={settings.SEGMENT_SCHEMA_LIVE}" for arg in command)
     assert not list(tmp_path.iterdir())  # the part file is removed on the way out
