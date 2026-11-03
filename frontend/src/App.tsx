@@ -34,7 +34,8 @@ import {
 } from "./lib/railClosures.ts";
 import { onSharedTick } from "./lib/sharedTick.ts";
 import { COVERAGE_BBOX, MAX_POINTS, addPoint, haversineM, insideCoverage, type LonLat } from "./lib/geo.ts";
-import { formatDistance, formatSeconds } from "./lib/format.ts";
+import { formatDistance, formatSeconds, unitsFirstDeep } from "./lib/format.ts";
+import { chooseUnits, units } from "./lib/units.ts";
 import { RETURN_PARAM as GARMIN_RETURN_PARAM, garminReturnFrom, readGarmin, withoutReturn } from "./lib/garminLink.ts";
 import { RETURN_PARAM as WAHOO_RETURN_PARAM, readWahoo, wahooReturnFrom } from "./lib/wahooLink.ts";
 import { endsOnFoot, layersTurnedOn, presetNamesRide, presetSaid, runs, twoPointsOnly, usesBikeshare, type PresetId } from "./lib/presets.ts";
@@ -296,6 +297,7 @@ import { MY_GO_NOT_SAVED, MY_GO_SAVED, MY_GO_SAVED_DEVICE, fetchMyGo, goRideChip
 import { optionChosenSaid, transitOf, withTransitOption, type TransitPick } from "./lib/transit.ts";
 import { nativeBridge, nativeShareNavigator } from "./lib/nativeShell.ts";
 import { AVOID_STAIRS_EVENT, readAvoidStairs } from "./lib/avoidStairs.ts";
+import { firstTripOf, maxPointsFor, nextLegPoints, stopsAsTrips, stopsLeftOf, type StopsLeft } from "./lib/tripStops.ts";
 import { TRIP_GONE_SAID, checkedTripOf, lateSaid, switchSaid, tripChecked, tripVerdict, type CheckedTrip } from "./lib/tripCheck.ts";
 import { REST_ANYWAY_MS, RIDE_REST_FINDING, fixedRide, restClosedSaid, restRequest, rideLegOf, rideTripOf, rideable as rideableRoute, walksLine, type RideTrip } from "./lib/rideTrip.ts";
 import { RIDE_TOO_LONG } from "./lib/navigate.ts";
@@ -610,7 +612,9 @@ export function App() {
   }, [manualOffered, loopVias]);
   // What the planner answered, and which of its routes to choose from is shown
   // (OWNER-DECISIONS 265): 0 is the answer, the others its candidates.
-  const [answer, setRoute] = useState<RouteResponse | null>(null);
+  const [answer, setAnswer] = useState<RouteResponse | null>(null);
+  // The server's sentences in the rider's units order (metric mode, lib/units.ts), once, as the answer arrives.
+  const setRoute = useCallback((next: RouteResponse | null) => setAnswer(next === null ? null : unitsFirstDeep(next)), []);
   const [choice, setChoice] = useState(0);
   // Whether the rider chose the route shown (it is then said as chosen, not as planned: the a11y review's N4).
   const [chosen, setChosen] = useState(false);
@@ -1161,6 +1165,8 @@ export function App() {
   // See everyone is on (below): the map frames the riders by choice, so a screen left alone keeps that view.
   const seeAllNow = useRef(false);
   const [followReset, setFollowReset] = useState(0);
+  // The ride's bottom panel's height (RideMode onSheetHeight), for the follow camera (MapView ridePanelH).
+  const [ridePanelH, setRidePanelH] = useState(0);
   // Track-up by default in a ride (v0.7.0, "Go riding fixes" item 1); the ride settings' switch is the
   // option, kept on this device. Turning the map never moves the keyboard focus.
   const [headingUp, setHeadingUpState] = useState(() => readHeadingUp());
@@ -1826,6 +1832,8 @@ export function App() {
         setWeight(step.doc.weight);
       }
       if (step.doc.speed !== undefined) setRidingSpeed(step.doc.speed);
+      // The account's units, where this page was opened in the other (a reload, once: the device now keeps them).
+      if (step.doc.units && step.doc.units !== units()) void chooseUnits(step.doc.units);
       lastSettings.current = step.doc;
       setWaterPrefsState(readWaterPrefs());
       setClimbsOnState(readClimbsOn());
@@ -2108,8 +2116,8 @@ export function App() {
       void goToRef.current(point, goPlaceName(namer.name(point)?.name, point), true);
       return;
     }
-    if (pointsRef.current.length >= MAX_POINTS) {
-      setNotice(maxPointsNotice());
+    if (pointsRef.current.length >= maxPointsFor(rideRef.current.preset)) {
+      setNotice(maxPointsNotice(maxPointsFor(rideRef.current.preset)));
       return;
     }
     setNotice(null);
@@ -2174,7 +2182,7 @@ export function App() {
     }
     // The ride as it is now, not as it was at the press: the rider may have turned the loop on or off meanwhile.
     const ride = rideRef.current;
-    const placed = placeFix(result, pointsRef.current, { loop: loopStops(ride.preset, ride.dials.loop), choice });
+    const placed = placeFix(result, pointsRef.current, { loop: loopStops(ride.preset, ride.dials.loop), choice, max: maxPointsFor(ride.preset) });
     if ("refuse" in placed) {
       setNotice(null);
       locateNoticeTimer.current = window.setTimeout(() => {
@@ -2305,6 +2313,10 @@ export function App() {
       void goToRef.current(point, place.name, true);
       return;
     }
+    if (role === "via" && pointsRef.current.length >= maxPointsFor(rideRef.current.preset)) {
+      setNotice(maxPointsNotice(maxPointsFor(rideRef.current.preset)));
+      return;
+    }
     const edit = stationEdit(pointsRef.current, point, role, loopVias);
     if ("refused" in edit) {
       if (edit.refused === "cap") setNotice(t("A route can have at most {count} points.", { count: MAX_POINTS }));
@@ -2332,8 +2344,8 @@ export function App() {
       setNotice(OUTSIDE_NOTICE);
       return;
     }
-    if (choice === "via" && pointsRef.current.length >= MAX_POINTS) {
-      setNotice(maxPointsNotice());
+    if (choice === "via" && pointsRef.current.length >= maxPointsFor(rideRef.current.preset)) {
+      setNotice(maxPointsNotice(maxPointsFor(rideRef.current.preset)));
       return;
     }
     setNotice(null);
@@ -2481,6 +2493,11 @@ export function App() {
   // (geocode.ts, applyPlace), named as it was found, and the map goes there.
   const pickPlace = (found: Place, choice: PlaceChoice) => {
     cancelLocateNotice();
+    // A Walk or transit trip takes at most 3 stops (lib/tripStops.ts); the server refuses a fourth.
+    if (choice === "via" && pointsRef.current.length >= maxPointsFor(rideRef.current.preset)) {
+      setNotice(maxPointsNotice(maxPointsFor(rideRef.current.preset)));
+      return;
+    }
     // A destination picked on a loop ends the ride there and turns the loop off, in one edit (as Set as end does).
     const endsLoop = loopVias && choice === "end" && pointsRef.current.length >= 1;
     const commitPick = (next: LonLat[]) => {
@@ -2901,12 +2918,13 @@ export function App() {
   const goAddStopAt = (point: LonLat, name: string) => {
     const current = pointsRef.current;
     const ride = rideRef.current;
-    if (current.length < 2 || twoPointsOnly(ride.preset)) {
+    // Walk and the transit types take stops as trips of their own (lib/tripStops.ts); Bikeshare a start and an end.
+    if (current.length < 2 || (twoPointsOnly(ride.preset) && !stopsAsTrips(ride.preset))) {
       void goTo(point, name);
       return;
     }
-    if (current.length >= MAX_POINTS) {
-      setNotice(maxPointsNotice());
+    if (current.length >= maxPointsFor(ride.preset)) {
+      setNotice(maxPointsNotice(maxPointsFor(ride.preset)));
       return;
     }
     const loop = loopStops(ride.preset, ride.dials.loop);
@@ -3099,8 +3117,8 @@ export function App() {
       setNotice(OUTSIDE_NOTICE);
       return;
     }
-    if (pointsRef.current.length >= MAX_POINTS) {
-      setNotice(maxPointsNotice());
+    if (pointsRef.current.length >= maxPointsFor(rideRef.current.preset)) {
+      setNotice(maxPointsNotice(maxPointsFor(rideRef.current.preset)));
       return;
     }
     setStopAsk({ mode: "add", name: "", point });
@@ -3159,8 +3177,8 @@ export function App() {
   // Best order moves stops only (v0.7.0): via points go with the stop they lead to.
   const orderShown = !isMassRide(preset) && stopsThatMove(stopsOnly(points, VIA_MARKS.isVia, loopVias).points, loopVias) >= 2;
   // Go with a route (v0.7.0, "Keep adding stops by search"): "Add a stop" and Best order in the route sheet, and a
-  // chip's place a stop; never during a ride, nor on a ride type of a start and an end only.
-  const goStops = mode === "go" && !riding && points.length >= 2 && !twoPointsOnly(preset) && !isMassRide(preset);
+  // chip's place a stop; never during a ride, nor on Bikeshare (a start and an end only).
+  const goStops = mode === "go" && !riding && points.length >= 2 && (!twoPointsOnly(preset) || stopsAsTrips(preset)) && !isMassRide(preset);
   const reverseButton = useRef<HTMLButtonElement>(null);
   const orderFocused = useRef(false);
   // The button leaves when the stops drop below two (an undo, a removal, the loop): if it
@@ -3269,8 +3287,8 @@ export function App() {
     const map = mapRef.current;
     if (!map) return;
     // Map tools' Add point while the plan is full (aria-disabled, review a11y-7): its reason, said each press.
-    if (!goTapSetsEnd(mode) && pointsRef.current.length >= MAX_POINTS) {
-      announce(maxPointsNotice());
+    if (!goTapSetsEnd(mode) && pointsRef.current.length >= maxPointsFor(preset)) {
+      announce(maxPointsNotice(maxPointsFor(preset)));
       return;
     }
     const { lng, lat } = map.getCenter();
@@ -3711,18 +3729,28 @@ export function App() {
   // `rest`: Ride the rest's own route (rideRest, below), ridden in place of the plan's.
   // The transit trip ridden, kept checked (lib/tripCheck.ts): its route, ride type, destination and arrival as last said.
   const tripCheck = useRef<{ route: RouteResponse; preset: PresetId; to: LonLat; trip: CheckedTrip } | null>(null);
+  // The stops left after the trip ridden now (lib/tripStops.ts): planned on from the stop by "Start the next leg".
+  const tripStopsLeft = useRef<StopsLeft | null>(null);
   const beginRide = (prefs: RidePrefs, unlocked = false, rest?: { route: RouteResponse; points: LonLat[]; roam?: boolean }) => {
-    const route = rest?.route ?? shown;
-    if (!route) return;
+    const asked = rest?.route ?? shown;
+    if (!asked) return;
+    // A trip with stops (lib/tripStops.ts, Stephen 2026-11-03): its first trip is ridden, to the first stop; the stops
+    // left are kept for "Start the next leg" there. A trip check's change or Ride the rest keeps them; a new ride drops them.
+    const askedPoints = rest?.points ?? routedPoints;
+    const left = asked.transit ? stopsLeftOf(asked, askedPoints, asked.transit.mode as PresetId) : null;
+    if (left) tripStopsLeft.current = left;
+    else if (!rest || rest.roam) tripStopsLeft.current = null;
+    const route = left ? firstTripOf(asked) : asked;
+    const ridePoints = left ? askedPoints.slice(0, 2) : askedPoints;
     if (!unlocked) startRideGesture(prefs, walksLine(route), route.preset === "run");
-    const leg = rideLegOf(route, rest?.points ?? routedPoints, rest ? false : routedLoop);
+    const leg = rideLegOf(route, ridePoints, rest ? false : routedLoop);
     // A More direct or Calmer chosen rides at its own traffic setting, so a re-route keeps to it; the plan's dials and
     // the saved default stay the rider's (lib/neighbours.ts rideDials).
     // A route everyone shares stays fixed (the owner, 2026-10-18: "For sharing mass rides and group rides, rerouting
     // defeats the purpose"; "ride is the fixed one ... route is so people can review or do it themselves
     // separately"): a link shared as a ride, opened unchanged; a Mass Ride or Group Ride, unless shared as a route.
     // Its sharer is not held to it ("Maybe make the sharer able to reroute").
-    const opened = sharedOpenNow.current?.answer === route ? sharedOpenNow.current : null;
+    const opened = sharedOpenNow.current?.answer === asked ? sharedOpenNow.current : null;
     const fixed = fixedRide(leg, opened, !!rest);
     setResumeStats(null);
     const rideDialsNow = rideDials({ ...planDials, closuresNow: true }, rest ? null : route);
@@ -3733,9 +3761,9 @@ export function App() {
     const follows = !!opened && !opened.own && !!opened.lead;
     const passOn = follows && !followedNoKey() ? followedLink() : null;
     // Leading a broadcast already (Broadcast beside Start): its link, so a resumed ride leads it again.
-    const ledLink = opened?.own && opened.lead && rideLinkSent.current?.route === route ? rideLinkSent.current.link : null;
+    const ledLink = opened?.own && opened.lead && rideLinkSent.current?.route === asked ? rideLinkSent.current.link : null;
     // A transit trip is kept checked till its first boarding (lib/tripCheck.ts, Stephen 2026-11-02).
-    const ends = rest?.points ?? routedPoints;
+    const ends = ridePoints;
     const checked = route.transit && tripChecked(route.transit.mode) && ends.length > 1 ? checkedTripOf(route.transit) : null;
     tripCheck.current = checked && route.transit ? { route, preset: route.transit.mode, to: ends[ends.length - 1], trip: checked } : null;
     const note = rideNote.current;
@@ -4203,7 +4231,11 @@ export function App() {
       beginRide(ridePrefs, false, held);
       return null;
     }
-    const trip = fromRide ? rideStart?.trip : shown ? rideTripOf(shown, routedPoints) : null;
+    // From the panel, a trip with stops: its first trip's rest, to the first stop, the stops after it kept for the ride
+    // (lib/tripStops.ts; review of #907: never the last leg's, past the stops).
+    const panelLeft = !fromRide && shown ? stopsLeftOf(shown, routedPoints, (shown.transit?.mode ?? preset) as PresetId) : null;
+    const trip = fromRide ? rideStart?.trip : shown ? rideTripOf(panelLeft ? firstTripOf(shown) : shown, panelLeft ? routedPoints.slice(0, 2) : routedPoints) : null;
+    if (!fromRide) tripStopsLeft.current = panelLeft;
     const rest = trip?.rest;
     if (!rest) return null;
     const asked = restRequest(rest, riderAt);
@@ -4227,6 +4259,23 @@ export function App() {
       return restClosedSaid(found.closures.map((c) => c.road ?? c.title ?? "a closure"));
     }
     go();
+    return null;
+  };
+  // "Start the next leg" at a stop (lib/tripStops.ts, Stephen 2026-11-03: "Each stop starts a new trip"): the rest of
+  // the trip planned again from where the rider is, leaving now, and its first trip ridden.
+  const nextLeg = async (riderAt: LonLat | null): Promise<string | null> => {
+    const left = tripStopsLeft.current;
+    if (!left) return null;
+    const n = rideNow.current.start?.n;
+    const stillOn = () => ridingNow.current && rideNow.current.start?.n === n;
+    const points = nextLegPoints(left, riderAt);
+    const result = await requestRoute(points, left.preset, { dials: { ...planDials, loop: false, closuresNow: true } });
+    if (!stillOn()) return null;
+    if (!result.ok) return `${result.error.title}. ${result.error.message}`;
+    if (!rideableRoute(result.route)) return RIDE_TOO_LONG;
+    // The last leg has no stops after it: none left once it starts (beginRide keeps them only for a trip with stops).
+    tripStopsLeft.current = null;
+    beginRide(ridePrefs, false, { route: result.route, points });
     return null;
   };
   // A check of the transit trip ridden (lib/tripCheck.ts): planned again from `riderAt`, leaving now, with the trip's
@@ -4404,7 +4453,7 @@ export function App() {
         // A broadcast's follower is not asked about closures (Stephen 2026-10-26: "The closure part should be leader
         // only. In general many of these closures aren't always real").
         openSaved(shared, SHARED_OPENED(shared.name), !(SHARED_RIDE && SHARED_LEAD && shared.answer));
-        if (shared.answer) setSharedOpen({ answer: shared.answer, ride: SHARED_RIDE, id: SHARED_ID, lead: SHARED_LEAD, secret: SHARED_SECRET, name: shared.name });
+        if (shared.answer) setSharedOpen({ answer: unitsFirstDeep(shared.answer), ride: SHARED_RIDE, id: SHARED_ID, lead: SHARED_LEAD, secret: SHARED_SECRET, name: shared.name });
       } else {
         setSharedNote(SHARED_GONE);
         announce(SHARED_GONE);
@@ -4443,6 +4492,8 @@ export function App() {
   const endRide = useCallback((after: EndedPlan, stats: RideStats) => {
     const { start, mode: endedIn } = rideNow.current;
     forgetLeftRide();
+    // A trip's stops left go with the ride: a later Ride the rest never offers them (review of #907).
+    tripStopsLeft.current = null;
     // A detour from Roam: back to roaming, with no summary (the ride was a short way to water, a restroom or food).
     if (start?.roam) {
       setRiding(false);
@@ -6063,7 +6114,7 @@ export function App() {
         searchBias={goSearchBias}
         searchOrigin={goSearchOrigin}
         onPick={goAddStop}
-        full={points.length >= MAX_POINTS}
+        full={points.length >= maxPointsFor(preset)}
         orderShown={orderShown}
         ordering={ordering}
         onBestOrder={() => void bestOrder()}
@@ -6238,6 +6289,7 @@ export function App() {
           everyone.stop();
         }}
         followReset={followReset}
+        ridePanelH={ridePanelH}
         junctionFocus={junctionFocus}
         scrubFrom={scrubPoint}
         lettered={riding ? (rideView?.lettered ?? null) : roaming && roamLettered ? roamLettered.places : lettered}
@@ -6292,7 +6344,8 @@ export function App() {
           <MapTools
             toggleRef={toolsToggleRef}
             onAddPoint={addAtCentre}
-            addDisabled={!goTapSetsEnd(mode) && points.length >= MAX_POINTS}
+            addDisabled={!goTapSetsEnd(mode) && points.length >= maxPointsFor(preset)}
+            maxPoints={maxPointsFor(preset)}
             setsEnd={goTapSetsEnd(mode)}
             onRoadInfo={roadInfoAtCentre}
             onCrosshair={toolsCrosshair}
@@ -6635,6 +6688,7 @@ export function App() {
           trip={rideStart.trip}
           onRideRest={(riderAt) => rideRest(riderAt, true)}
           onTripCheck={tripCheck.current?.route === rideStart.route ? checkTrip : undefined}
+          onNextLeg={tripStopsLeft.current ? nextLeg : undefined}
           dials={rideStart.dials}
           prefs={ridePrefs}
           onPrefs={changeRidePrefs}
@@ -6667,6 +6721,8 @@ export function App() {
           onRiders={rideCanBroadcast && rideGroupLine ? () => setRidersAsk((n) => n + 1) : null}
           keepLeft={rideStart.kept === true}
           startNote={rideStart.note}
+          riderDots={rideDots}
+          onSheetHeight={setRidePanelH}
         />
       )}
       {roaming && (
@@ -6926,6 +6982,19 @@ export function App() {
               {...{
                 garminReturned: GARMIN_RETURNED,
                 wahooReturned: WAHOO_RETURNED,
+                // Units (lib/units.ts) reload the page: signed in, the account gets the new choice first, so the
+                // sign-in on the reload does not put the old one back.
+                // Before the account's settings are read, nothing is saved (it would replace them): not saved, try again.
+                saveSettingsNow: !me.signed_in
+                  ? undefined
+                  : !settingsSynced
+                    ? async () => false
+                    : async () => {
+                        const doc = deviceSettings({ preset, dials }, undefined, weightStore.current?.setting());
+                        const saved = await saveSettings(window.location.origin, doc);
+                        if (saved) lastSettings.current = doc;
+                        return saved;
+                      },
                 rideText: { size: rideText, onChange: setRideText },
                 // The rider and bike weight (OWNER-DECISIONS 313-318), in Settings (the owner, 2026-10-18).
                 weight: {

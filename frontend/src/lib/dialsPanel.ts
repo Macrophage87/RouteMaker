@@ -17,6 +17,7 @@ import {
 } from "./format.ts";
 import { runs, type PresetId } from "./presets.ts";
 import { t } from "./i18n.ts";
+import { metricFirst } from "./units.ts";
 import {
   HILLS_MIN,
   RIDE_SIZE_DEFAULT,
@@ -142,29 +143,34 @@ export const TRAILS_OFF_HOW_ABOUT = t("keep to roads");
 export const TRAILS_OFF_HOW =
   t("Leaves out every separate bike path, trail, sidewalk or footway, boardwalk, pedestrian street, bridle path and set of stairs, however it is signed for bikes. Bridges whose bike route is a side path, such as Chain Bridge, are left out. Unpaved farm and forest roads stay. Bike lanes painted on a road stay, with no extra credit for them. Never rides against a one-way street's traffic. Where roads alone cannot join your points, there is no route.");
 
-export const TARGET_LABEL = t("Target distance (miles)");
+/** The target is typed in miles, or in kilometres in metric mode (lib/units.ts). */
+export const TARGET_LABEL = metricFirst() ? t("Target distance (km)") : t("Target distance (miles)");
+const typedUnitM = (): number => (metricFirst() ? 1000 : METRES_PER_MILE);
 
-/** The input's text for a length in metres: miles to a tenth, no trailing ".0"; empty for none. */
+/** The input's text for a length in metres: miles (or km) to a tenth, no trailing ".0"; empty for none. */
 export function targetText(metres: number | undefined): string {
   if (metres === undefined) return "";
-  const miles = Math.round((metres / METRES_PER_MILE) * 10) / 10;
-  return String(miles);
+  const figure = Math.round((metres / typedUnitM()) * 10) / 10;
+  return String(figure);
 }
 
-/** Metres for what was typed in miles, or undefined for empty (the default); null where it is not a usable entry. */
+/** Metres for what was typed in miles (or km), or undefined for empty (the default); null where it is not a usable entry. */
 export function parseTarget(text: string, maxM: number = TARGET_MAX_M): number | undefined | null {
-  const trimmed = text.trim().replace(/\s*(mi|miles)$/i, "");
+  const trimmed = text.trim().replace(metricFirst() ? /\s*(km|kilometers?|kilometres?)$/i : /\s*(mi|miles)$/i, "");
   if (trimmed === "") return undefined;
   if (!/^\d+(\.\d+)?$/.test(trimmed)) return null;
-  const metres = Math.round(Number(trimmed) * METRES_PER_MILE);
+  const metres = Math.round(Number(trimmed) * typedUnitM());
   return metres >= TARGET_MIN_M && metres <= maxM ? metres : null;
 }
 
-const RUN_TARGET_MAX_MILES = Math.floor(RUN_TARGET_MAX_M / METRES_PER_MILE);
+const runTargetMaxTyped = (): number => Math.floor(RUN_TARGET_MAX_M / typedUnitM());
 export const parseRunTarget = (text: string): number | undefined | null => parseTarget(text, RUN_TARGET_MAX_M);
 
 const TARGET_MIN_MILES = Math.ceil((TARGET_MIN_M / METRES_PER_MILE) * 10) / 10;
 const TARGET_MAX_MILES = Math.floor(TARGET_MAX_M / METRES_PER_MILE);
+/** The input's own bounds, in the unit typed. */
+const targetMinTyped = (): number => Math.ceil((TARGET_MIN_M / typedUnitM()) * 10) / 10;
+const targetMaxTyped = (): number => Math.floor(TARGET_MAX_M / typedUnitM());
 
 /** A description is read on every focus, so it is kept under this many characters (the a11y review's N1). */
 export const DESCRIPTION_MAX_CHARS = 150;
@@ -180,8 +186,8 @@ export function targetView(dials: Dials): TargetView {
   return {
     label: TARGET_LABEL,
     value: targetText(set),
-    min: TARGET_MIN_MILES,
-    max: TARGET_MAX_MILES,
+    min: targetMinTyped(),
+    max: targetMaxTyped(),
     rule: t("Enter {range}, or leave it empty.", { range: milesRange(TARGET_MIN_MILES, TARGET_MAX_MILES, TARGET_MIN_M, TARGET_MAX_M) }),
     hint,
     how: TARGET_HOW,
@@ -192,8 +198,8 @@ export function targetView(dials: Dials): TargetView {
 export function runTargetView(dials: Dials): TargetView {
   return {
     ...targetView(dials),
-    max: RUN_TARGET_MAX_MILES,
-    rule: t("Enter {range}, or leave it empty.", { range: milesRange(TARGET_MIN_MILES, RUN_TARGET_MAX_MILES, TARGET_MIN_M, RUN_TARGET_MAX_M) }),
+    max: runTargetMaxTyped(),
+    rule: t("Enter {range}, or leave it empty.", { range: milesRange(TARGET_MIN_MILES, Math.floor(RUN_TARGET_MAX_M / METRES_PER_MILE), TARGET_MIN_M, RUN_TARGET_MAX_M) }),
     hint: RUN_TARGET_HINT,
     how: RUN_TARGET_HOW,
   };
