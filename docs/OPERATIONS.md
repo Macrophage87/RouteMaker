@@ -74,6 +74,7 @@ Contents:
 - [Deploying v0.16.0](#deploying-v0160)
 - [Deploying v0.17.0](#deploying-v0170)
 - [Deploying v0.18.0](#deploying-v0180)
+- [Deploying v0.19.0](#deploying-v0190)
 - [Deploying a planner and front-end release: rollback points and verification](#deploying-a-planner-and-front-end-release-rollback-points-and-verification)
 - [Paths bicycles may not ride (NO-BIKE-PATHS)](#paths-bicycles-may-not-ride-no-bike-paths)
 - [Mountain-bike difficulty levels (456; claude/v0-4-0-mtb-levels)](#mountain-bike-difficulty-levels-456-claudev0-4-0-mtb-levels)
@@ -1480,9 +1481,12 @@ the same whatever the style decides):
   you aren't going to route around them." - "Show them faintly", then "Make
   solid at 14" (OWNER-DECISIONS 76, 77);
 - a road whose own tags say its bike facility is mapped as a way of its own
-  beside it (`segment.separate_bikeway`: 15th Street NW, Pennsylvania Avenue
-  NW) is not drawn until `BESIDE_ROAD_MIN_ZOOM` (15, of the owner's "15-16")
-  and then faint at every zoom, so the cycle track is the main line (73, and
+  beside it, and that has such a bike way mapped along it
+  (`segment.separate_bikeway`, `facility.roads_with_bikeway_beside`: 15th
+  Street NW, Pennsylvania Avenue NW; a tag with no bike way beside it, as on
+  Connecticut Avenue NW from Davenport to Everett Street, keeps the road drawn
+  as usual) is not drawn until `BESIDE_ROAD_MIN_ZOOM` (15, of the owner's
+  "15-16") and then faint at every zoom, so the cycle track is the main line (73, and
   "Keep it faint if it parallels a protected bike path.", 78);
 - only a road (`segment.map_class = 'road'`) is drawn at all. A public road a
   bicycle may not use (`'barred'`: a motorway, a trunk road with
@@ -1554,7 +1558,7 @@ the same whatever the style decides):
   ways' own access tags.
 
 `map_class` and `separate_bikeway` are **segment columns the rebuild writes**
-(`routemaker.facility.map_class`, `has_separate_bikeway`): they reach the map
+(`routemaker.facility.map_class`, `roads_with_bikeway_beside`): they reach the map
 only after a rebuild with this code. On a table without them a road a bicycle
 may not use is a motorway alone (its recorded rule, and it is not drawn),
 nothing else is left out, and no road is known to have a bikeway beside it.
@@ -3560,7 +3564,9 @@ in `routing.ATTRIBUTION` and `VOLUME_CREDITS`:
   Montgomery's ratings are no longer installed.
 
 Arlington's Bike Comfort Index is internal comparison only and is never
-credited because nothing of it is published. Alexandria's Transport Streets was
+credited as a data source, because its data is not published; the Arlington review
+rows' "Why" notes cite it by name where our level differs from Arlington's (the
+owner, 2026-11-03: fair use as research, criticism and review). Alexandria's Transport Streets was
 too until 2026-10-16 (CC0, the city's OpenData portal); it is credited "City of
 Alexandria" (docs/SOURCES.md).
 
@@ -4857,7 +4863,10 @@ has the script, the reports and the routers' addresses:
 docker compose exec -T rebuild python3 scripts/probe_bicycle_closures.py locate
 ```
 
-The gate's probes against the four **serving** routers, one pedestrian locate
+It reads the serving build's own list: after a cloud build,
+`<DATA_ROOT>/rebuild/cloud-reports/<build id>/reports/`, which `import-result.sh` unpacks
+(the `reports/` folder keeps the last local rebuild's list, which names ways a newer build may
+not have); it prints the file it read. The gate's probes against the four **serving** routers, one pedestrian locate
 each, and against `valhalla-offroad` and `valhalla-mtb` where they run (each says "not
 running, skipped" where it does not). Expect `ok` on every line. Every router but no-trail finds most of the
 probes; no-trail drops trails, singletrack with them, so it finds only the OSM
@@ -4866,12 +4875,14 @@ ok"). `OPEN:` lists ways a bicycle may use; `FOUND NONE` on a router that keeps
 trails usually means it was not restarted onto the new build. Then two trips,
 planned through the api as the planner plans them and map-matched on the router
 that served them. `--host` is the first name in the deployment's
-`DJANGO_ALLOWED_HOSTS`:
+`DJANGO_ALLOWED_HOSTS`, and `$REPORTS` is the folder of the file `locate` printed (inside the
+container: `/data/rebuild/cloud-reports/<build id>/reports` after a cloud build, else
+`/data/rebuild/reports`):
 
 ```sh
 docker compose exec -T rebuild python3 scripts/probe_bicycle_closures.py trip \
   --preset default --from=-77.0063,38.8973 --to=-76.6158,39.3074 \
-  --avoid-ways /data/rebuild/reports/singletrack-ways.txt --host "$HOST"
+  --avoid-ways "$REPORTS/singletrack-ways.txt" --host "$HOST"
 docker compose exec -T rebuild python3 scripts/probe_bicycle_closures.py trip \
   --preset mountain-goat --from=-77.3168,38.8984 --to=-77.3318,38.8798 \
   --avoid-way 810382238 --host "$HOST"
@@ -6707,8 +6718,10 @@ so no Play build. At home, in order, with `</dev/null` on every docker command:
   there needs about 0.75 GB spare; the owner, 2026-11-02: "pc can have road bike too", so start it there alone (`docker compose --profile offroad up -d --no-deps --no-build valhalla-paved`) after checking memory inside WSL.
 - [ ] **The front end**, last.
 - [ ] **Beta**, "A new release sha" with the data bundle (docs/BETA-RUNBOOK.md):
-  - Before anything, `free -m`: "available" at least 8803 MiB (the 8086 MiB startup peak with
-    `valhalla-paved` plus 0.7 GiB). Under it, ship as below but leave `valhalla-paved` stopped.
+  - Before anything, the memory check: `free -m` "available" plus the resident memory of this
+    project's running containers (`docker stats --no-stream`) at least 8803 MiB (the 8086 MiB
+    startup peak with `valhalla-paved` plus 0.7 GiB). Under it, ship as below but leave
+    `valhalla-paved` stopped; the agent does the same check and leaves it stopped with a warning.
     `df -h /data`: room for the bundle, a second copy of each graph, and about three times the live
     tables for the staging.
   - Pause the agent (`pause --wait`, then `status`); stop api and worker, snapshot the database
@@ -6728,8 +6741,9 @@ so no Play build. At home, in order, with `</dev/null` on every docker command:
   - The front end comes with the bundle (`files`), `index.html` last.
   - `smoke-test.sh --local --trails` (now checks `road-bike` on the `paved` graph), then `--public`.
   - The agent and router hook changed: `scripts/beta/auto-release.sh install` and, where installed,
-    `scripts/beta/restart-routers.sh install`, from the new checkout. Then `mark-deployed v0.18.0`
-    and `resume`.
+    `scripts/beta/restart-routers.sh install`, from the new checkout. `mark-deployed v0.18.0`
+    comes first (`install` refuses until the running tag is marked), then the two installs, then
+    `resume`.
 - [ ] **Spot checks.** A Road Bike route answers `"variant": "paved"`. A Mall gravel walk is ridden
   on Default and avoided on Road Bike. A link with `avoidgravel=1` opens as Road Bike. `/road-bike`
   opens Road Bike on both hosts. Walk and Walk + transit plan, and Start walk follows the turns; a Run from a start alone with a target distance plans a loop near that length. A
@@ -6741,6 +6755,60 @@ so no Play build. At home, in order, with `</dev/null` on every docker command:
   (rollback B "by rename", from `live_old`) with rollback A. Before rolling the code back to v0.17.0
   (rollback C), `scripts/beta/beta-compose.sh stop valhalla-paved`: v0.17.0's compose has no such
   service and its 7.35 GiB budget does not count it.
+
+## Deploying v0.19.0
+
+Metric mode (a Units setting), Ride's graphs of the next 2 miles, spoken trail turns and road
+crossings, trail end markers and one-way trail profiles, stops on Walk and the transit ride types,
+the Run loop length fix, "path beside" and "sidewalk beside" names, the faint-road rule, 175 Arlington owner rows (the
+Bike Comfort Index review) and the v0.18.0 rebuild follow-ups (the closure probes read each build's
+own list; the beta agent leaves a stopped `valhalla-paved` stopped when memory is short). **No
+migration, no `lua/`, compose, Caddyfile, nginx, Dockerfile or requirements change, no new
+environment variable, outbound host or scheduled job, and no `mobile/` change.** `src/pipeline/`
+changed (the faint-road and "path beside" facts are written by the rebuild; `schema.py`'s change is a
+comment only, no table changes, but the gate stops on any change there), and the Arlington rows are
+owner overrides, so the map is rebuilt at the tagged commit and the beta agent stops on the tag
+(`reason=src/pipeline/schema.py: the live table layout changed`):
+the beta ships by hand with the data bundle. The release agent itself changed. At home, in order,
+with `</dev/null` on every docker command:
+
+- [ ] **The tag.** Once `test` and `a11y` are green on `main`, the owner tags v0.19.0 (annotated) on
+  that commit, from the PC.
+- [ ] **Images and the api.** Before the weekly rebuild or with it paused, and out of 07:00-07:30
+  UTC: tag the running api and
+  pipeline images for a rollback, fast-forward the checkout, `docker compose build api rebuild`,
+  then, once no rebuild job is queued or running,
+  `docker compose up -d --no-deps --no-build --force-recreate api worker rebuild`. No `migrate`.
+- [ ] **The overrides**, only after the owner confirms each file, before the build so the map
+  carries them: `load_access_overrides` as a dry run first, then with `--confirm`.
+  `fixtures/overrides/2026-11-03-owner-arlington-bci-review.json`: 175 rows and 7 retired earlier
+  owner rows. `fixtures/overrides/2026-11-01-owner-md-rating-review.json`: one more retire
+  (way 987375476). Skip a file the PC already holds (the dry run says nothing changes).
+- [ ] **The map**, at the tagged commit, in its own thread: the cloud box (`--beta-bundle` for the
+  beta) or `run_rebuild_now`. Seven graphs, as v0.18.0. Before the swap, the stress-change report
+  should show the Arlington rows' streets moving tier on top of the usual week's OSM changes; the
+  faint-road and "path beside" changes move no tier. Then swap and restart the routers (as v0.18.0).
+- [ ] **The front end**, last.
+- [ ] **Beta**, "A new release sha" with the data bundle (docs/BETA-RUNBOOK.md), as v0.18.0 without
+  the migrate, Caddy or nginx steps: the memory check first (`valhalla-paved` stays stopped under
+  8803 MiB), pause the agent, snapshot, check out the tag, set `TAG=`, `check_beta_compose.py`
+  ("beta compose: ok"), build the api image, `receive-data.sh verify`, `db --update-data
+  --stage-only`, `sudo ... files`, `sudo ... db --update-data` (not during the 07:00 UTC backup),
+  start api and worker, the
+  pre-draw, the routers, the front end with the bundle, `smoke-test.sh --local --trails` then
+  `--public`. The agent changed: `mark-deployed v0.19.0`, then `scripts/beta/auto-release.sh
+  install`, then `resume`.
+- [ ] **Spot checks.** Settings > Display > Units set to "Kilometers and meters" shows km first in Go and Ride. A
+  ride's More menu offers the Stress and Elevation graphs. A trail shows compass end markers (N, S, NW and so on). A Walk
+  with a stop plans. A Run from a start alone with a 5 km target comes back near 5 km. Kemp Mill Rd's
+  bike-signed sidewalk reads "sidewalk beside Kemp Mill Road". A one-way trail's panel says "One way"
+  and its profile runs the riding direction. A ride with Metric on says "Cross <road>" at a crossing and
+  speaks metres, with no feet or miles. In Ride, the arrow moves up when the bottom panel grows. 15th Street NW is drawn faint beside its cycle track; Connecticut
+  Avenue NW from Davenport to Everett is drawn as usual.
+- [ ] **Rollback.** At home: the `pre-rel` images, `rollback_rebuild` and the v0.18.0 front end
+  together (a v0.18.0 api refuses a settings save that carries `units`). Loaded override rows stay
+  loaded; retire them with the loader if they must go. On the beta: the map
+  tables by rename (rollback B, from `live_old`) with rollback A.
 
 ## Deploying a planner and front-end release: rollback points and verification
 

@@ -10,7 +10,8 @@
  * first with metric in brackets, as everywhere else (format.ts).
  */
 import type { ProfileCalm, ProfileClimb, ProfileCrossing, ProfileRange, RouteProfile, RouteResponse, StressSpan } from "./api.ts";
-import { FEET_PER_METRE, METRES_PER_MILE, formatAxisDistance, formatClimb, formatDistance, formatGroupLength } from "./format.ts";
+import { FEET_PER_METRE, METRES_PER_MILE, both, formatAxisDistance, formatClimb, formatDistance, formatGroupLength } from "./format.ts";
+import { metricFirst } from "./units.ts";
 import { formatClimbSpoken } from "./spokenFigures.ts";
 import { haversineM, type LonLat } from "./geo.ts";
 import { t } from "./i18n.ts";
@@ -157,14 +158,19 @@ export function flowBand(riders: number): FlowBand {
 
 // ---- Distance and the figures' words -------------------------------------------------------------
 
-/** Miles to one place: "4.2". */
+/** Miles to one place: "4.2"; kilometres in metric mode (lib/units.ts). */
 export function miles(metres: number): string {
-  return (Math.max(metres, 0) / METRES_PER_MILE).toFixed(1);
+  return (Math.max(metres, 0) / (metricFirst() ? 1000 : METRES_PER_MILE)).toFixed(1);
 }
 
-/** "Mile 4.2", as the announcement says it. */
+/** "mile 4.2" ("km 6.8" in metric mode), a place along the route inside a sentence. */
+export function milePlace(metres: number): string {
+  return `${metricFirst() ? "km" : "mile"} ${miles(metres)}`;
+}
+
+/** "Mile 4.2" ("Km 6.8" in metric mode), as the announcement says it. */
 export function mileWord(metres: number): string {
-  return `Mile ${miles(metres)}`;
+  return `${metricFirst() ? "Km" : "Mile"} ${miles(metres)}`;
 }
 
 /** A position on the distance axis, miles first: "4 mi (6.4 km)". */
@@ -375,7 +381,7 @@ export function needSentence(profile: RouteProfile, need: RideNeed): string | nu
   if (below.metres <= 0) return `${line} No part of the route with a figure is below it.`;
   const share = Math.round((below.metres / below.known) * 100);
   const all = below.metres >= below.known;
-  const part = all ? "All of the route with a figure is below it" : `${formatDistance(below.metres)} of the route${share > 0 ? `, ${share}% of what has a figure,` : ""} is below it, from mile ${miles(below.first ?? 0)}`;
+  const part = all ? "All of the route with a figure is below it" : `${formatDistance(below.metres)} of the route${share > 0 ? `, ${share}% of what has a figure,` : ""} is below it, from ${milePlace(below.first ?? 0)}`;
   return `${line} ${part}.`;
 }
 
@@ -813,7 +819,7 @@ export function crossingClause(profile: RouteProfile, metres: number): string {
   const partial = crossingsPartial(profile);
   if (next) {
     const gap = unchecked.some((r) => r.to_m > metres && r.from_m < next.m);
-    return ` Next${partial ? ` ${PARTIAL_JUNCTIONS}` : ""}: ${crossingName(next)} at mile ${miles(next.m)}, ${corkerWords(next)}.${gap ? " Part of the way to it was not checked for intersections." : ""}`;
+    return ` Next${partial ? ` ${PARTIAL_JUNCTIONS}` : ""}: ${crossingName(next)} at ${milePlace(next.m)}, ${corkerWords(next)}.${gap ? " Part of the way to it was not checked for intersections." : ""}`;
   }
   const gapAhead = unchecked.some((r) => r.to_m > metres);
   if (partial) return ` No ${PARTIAL_JUNCTIONS}s ahead${gapAhead ? "; part of the way ahead was not checked for intersections" : ""}.`;
@@ -940,10 +946,10 @@ export function capacitySentences(pair: CapacityPair): string[] {
       Math.round(flat.rpm) === Math.round(hills.rpm)
         ? aboutFigure(flat.rpm)
         : `${aboutFigure(flat.rpm)} on the flat, ${aboutFigure(hills.rpm)} with the hills`;
-    out.push(`${capitalise(NARROWEST_BOTH)}: ${figures}, at mile ${miles(flat.atM)}, marked on the chart.`);
+    out.push(`${capitalise(NARROWEST_BOTH)}: ${figures}, at ${milePlace(flat.atM)}, marked on the chart.`);
   } else {
-    if (flat) out.push(`${capitalise(NARROWEST_FLAT)}: ${aboutFigure(flat.rpm)}, at mile ${miles(flat.atM)}.`);
-    if (hills) out.push(`${capitalise(NARROWEST_HILLS)}: ${aboutFigure(hills.rpm)}, at mile ${miles(hills.atM)}, marked on the chart.`);
+    if (flat) out.push(`${capitalise(NARROWEST_FLAT)}: ${aboutFigure(flat.rpm)}, at ${milePlace(flat.atM)}.`);
+    if (hills) out.push(`${capitalise(NARROWEST_HILLS)}: ${aboutFigure(hills.rpm)}, at ${milePlace(hills.atM)}, marked on the chart.`);
   }
   const typical = typicalLines(pair);
   if (typical.length > 0) out.push(`${typical.map((line, i) => `${i === 0 ? capitalise(line.label) : line.label}: about ${line.text}`).join("; ")}.`);
@@ -959,7 +965,7 @@ export function elevationSentences(route: Pick<RouteResponse, "distance_m">, pro
   const sentences = [`Over ${formatDistance(total)}, elevation runs from ${elevationWords(lo)} to ${elevationWords(hi)}.`];
   const steep = steepest(profile);
   if (steep && Math.abs(steep.gradePct) >= 1) {
-    sentences.push(`The steepest section is ${Math.round(Math.abs(steep.gradePct))}% ${steep.gradePct < 0 ? "downhill" : "uphill"} at mile ${miles(steep.m)}.`);
+    sentences.push(`The steepest section is ${Math.round(Math.abs(steep.gradePct))}% ${steep.gradePct < 0 ? "downhill" : "uphill"} at ${milePlace(steep.m)}.`);
   } else {
     sentences.push("The route is close to level.");
   }
@@ -1014,7 +1020,7 @@ export function summaryText(route: RouteResponse, profile: RouteProfile, kind: C
     if (shares) sentences.push(`Traffic stress along it: ${shares}.`);
     const { places, more } = busyPlaces(route.stress_spans);
     if (places.length > 0) {
-      sentences.push(`LTS 3 or worse starts at mile${places.length === 1 ? "" : "s"} ${listWords(places)}${more > 0 ? `, and ${more} more ${more === 1 ? "place" : "places"}` : ""}.`);
+      sentences.push(`LTS 3 or worse starts at ${metricFirst() ? "km" : `mile${places.length === 1 ? "" : "s"}`} ${listWords(places)}${more > 0 ? `, and ${more} more ${more === 1 ? "place" : "places"}` : ""}.`);
     }
     const calm = usableCalm(profile);
     if (calm) sentences.push(...calmSentences(profile, calm));
@@ -1407,7 +1413,7 @@ export function avoidNear(calm: ProfileCalm, metres: number): boolean {
 /** "1.4 calm miles per mile, LTS 1 to 2 level", with ", Avoid nearby" where the mile around holds some; null where not rated. */
 export function calmWords(calm: ProfileCalm, ratio: number | null | undefined, metres: number): string | null {
   if (ratio === null || ratio === undefined || !Number.isFinite(ratio)) return null;
-  const words = [`${calmFigure(ratio)} calm miles per mile`, calmBand(ratio, calm.bands).word];
+  const words = [`${calmFigure(ratio)} ${calmPer()}`, calmBand(ratio, calm.bands).word];
   if (avoidNear(calm, metres)) words.push("Avoid nearby");
   return words.join(", ");
 }
@@ -1420,7 +1426,7 @@ const SEVERITY_WORDS: Readonly<Record<"orange" | "red", string>> = { orange: "hi
  */
 export function nextJunctionClause(calm: ProfileCalm, metres: number): string {
   const next = calm.points.find((p) => p.kind === "junction" && p.severity !== null && p.m >= metres);
-  return next && next.severity ? ` Next junction to watch: ${SEVERITY_WORDS[next.severity]}, mile ${miles(next.m)}.` : "";
+  return next && next.severity ? ` Next junction to watch: ${SEVERITY_WORDS[next.severity]}, ${milePlace(next.m)}.` : "";
 }
 
 /** The highest window: its value and where (the first, where several tie). */
@@ -1456,7 +1462,7 @@ export function calmSentences(profile: RouteProfile, calm: ProfileCalm): string[
   if (rated > 0) {
     const average = calm.total_calm_m / rated;
     out.push(
-      `Rolling stress: ${calmDistance(calm.total_calm_m)} over ${formatDistance(rated)} rated, ${calmFigure(average)} calm miles per mile (calm km per km) on average; about 1 is all quiet streets.`,
+      `Rolling stress: ${calmDistance(calm.total_calm_m)} over ${formatDistance(rated)} rated, ${calmFigure(average)} ${metricFirst() ? "calm km per km (calm miles per mile)" : "calm miles per mile (calm km per km)"} on average; about 1 is all quiet streets.`,
     );
   }
   const peak = calmPeak(profile, calm);
@@ -1467,7 +1473,7 @@ export function calmSentences(profile: RouteProfile, calm: ProfileCalm): string[
     if (orange > 0) junctions.push(`${orange} higher stress ${orange === 1 ? "junction" : "junctions"}`);
     const avoid = avoidNear(calm, peak.m) ? ", Avoid nearby" : "";
     out.push(
-      `The most stressful mile is around mile ${miles(peak.m)}: ${calmFigure(peak.ratio)} calm miles per mile, ${calmBand(peak.ratio, calm.bands).word}${avoid}${junctions.length ? `, with ${listWords(junctions)}` : ""}.`,
+      `The most stressful mile is around ${milePlace(peak.m)}: ${calmFigure(peak.ratio)} ${calmPer()}, ${calmBand(peak.ratio, calm.bands).word}${avoid}${junctions.length ? `, with ${listWords(junctions)}` : ""}.`,
     );
   }
   if (!calm.junctions_counted) out.push("Junctions could not be read for this route, so they are not counted.");
@@ -1485,11 +1491,16 @@ export function calmSource(calm: ProfileCalm): string {
     : "Rolling stress: what the routing charges for each road, by its own speed, lanes and bike lane, and for each junction, as quiet-street miles, over the mile around each point (stress ratings: RouteMaker, from OpenStreetMap).";
 }
 
+/** The rolling-stress ratio's unit: calm miles per mile, or in metric mode calm km per km (the same figure). */
+export function calmPer(): string {
+  return metricFirst() ? "calm km per km" : "calm miles per mile";
+}
+
 /** Calm miles, km in brackets: "7.4 calm mi (11.9 calm km)". */
 export function calmDistance(metres: number): string {
   const mi = metres / METRES_PER_MILE;
   const km = metres / 1000;
-  return `${mi.toFixed(1)} calm mi (${km.toFixed(1)} calm km)`;
+  return both(`${mi.toFixed(1)} calm mi`, `${km.toFixed(1)} calm km`);
 }
 
 export interface CalmRow {

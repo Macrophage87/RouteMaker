@@ -314,6 +314,10 @@ interface Props {
   onRiderMoved?: () => void;
   /** Changed: the follow camera goes back to the ride's own zoom at the next fix, as at a ride's start (lib/idleRecentre.ts). */
   followReset?: number;
+  /** The ride's bottom panel's height in CSS pixels (RideMode onSheetHeight): changed (a graph of the road ahead, a note;
+   *  Stephen 2026-11-03: "Make sure the map and arrow are moved up to compensate for less room on the bottom"), the
+   *  follow camera puts the rider back in the open band at once, not at the next fix a rider stood at a light may not get. */
+  ridePanelH?: number;
   onReady: (map: MapLibreMap) => void;
   onCanvasFocus: (focused: boolean) => void;
   /** Which rail stations show (the panel's toggles). */
@@ -2795,7 +2799,7 @@ export function MapView(props: Props) {
       return;
     }
     map.easeTo({ center: rider.point, bearing, zoom, offset: [0, ahead], padding: NO_PADDING, duration: still ? 0 : 400 });
-  }, [props.rider, props.follow, props.headingUp, props.followReset]);
+  }, [props.rider, props.follow, props.headingUp, props.followReset, props.ridePanelH]);
 
   // A ride or Roam (rideLabels: App's onBike) draws the map at a pixel ratio of at most 2, and its end gives the
   // screen's own back (the owner, 2026-11-01: battery audit; lib/followCamera.ts). The icons keep their own ratio

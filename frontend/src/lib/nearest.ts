@@ -24,7 +24,7 @@
 import { describeError } from "./api.ts";
 import { closureFields, dialFields, type Dials } from "./dials.ts";
 import { detourOf, projector, type RouteForDetour } from "./food.ts";
-import { formatDistance, formatDuration, formatExtra, milesFigure } from "./format.ts";
+import { formatDistance, formatDuration, formatExtra, milesFigure, unitsFirstDeep } from "./format.ts";
 import { MAX_POINTS, haversineM, type LonLat } from "./geo.ts";
 import { LOCATE_MESSAGES, LOCATION_OUTSIDE, type Fix, type LocateResult } from "./geolocation.ts";
 import { twoPointsOnly, type PresetId } from "./presets.ts";
@@ -190,7 +190,7 @@ export async function requestNearest(
   }
   let body: unknown = null;
   try {
-    body = await response.json();
+    body = unitsFirstDeep(await response.json());
   } catch {
     body = null;
   }

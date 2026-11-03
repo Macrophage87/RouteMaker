@@ -10,6 +10,7 @@
 import { browserStore, type KeyValueStore } from "./accessMode.ts";
 import { KMH_PER_MPH } from "./format.ts";
 import { t } from "./i18n.ts";
+import { metricFirst } from "./units.ts";
 
 export const RUN_PACE_KEY = "routemaker.run.paceMph";
 /** The picker's paces, in mph: a 15:00 mile to a 6:00 one, half a mph apart. */
@@ -64,7 +65,8 @@ export function paceText(mph: number, perKm = false): string {
 export function paceOptions(): (readonly [string, string])[] {
   const out: (readonly [string, string])[] = [];
   for (let mph = RUN_PACE_MIN_MPH; mph <= RUN_PACE_MAX_MPH; mph += RUN_PACE_STEP_MPH) {
-    out.push([String(mph), t("{mile} per mile ({km} per km)", { mile: paceText(mph), km: paceText(mph, true) })]);
+    const vars = { mile: paceText(mph), km: paceText(mph, true) };
+    out.push([String(mph), metricFirst() ? t("{km} per km ({mile} per mile)", vars) : t("{mile} per mile ({km} per km)", vars)]);
   }
   return out;
 }
