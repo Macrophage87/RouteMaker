@@ -9,7 +9,7 @@ Every command is copied from those guides; where this document and a guide disag
 is wrong and this document is the newer one, so fix the guide.
 
 Budget for a first pass: an afternoon to the first rebuild, then the rebuild itself (hours; the
-elevation download and six Valhalla tile builds, one per routing graph), then an hour for the rest. The checklist can be
+elevation download and seven Valhalla tile builds, one per routing graph), then an hour for the rest. The checklist can be
 resumed across that (`--resume`).
 
 ## 0. What you need before you start
@@ -45,7 +45,7 @@ What changes locally:
   its true peak for a DC-region build is unmeasured (`handoff.md` §7), which is why the plan sizes
   the host at 32 GB; 16 GB will probably do, less is a gamble. Disk: 50 GB free for the extract,
   the elevation tiles and two tile sets, and the rebuild refuses to start under 20 GiB.
-- **Time.** The same as on a server; the elevation download and the six tile builds take hours
+- **Time.** The same as on a server; the elevation download and the seven tile builds take hours
   wherever they run.
 - **What it cannot tell you.** Whether the certificate is issued, the name resolves, the firewall
   is right, or the sizing holds under real traffic. Everything else in A1 to A6 is the same path.
@@ -235,8 +235,8 @@ On a fresh host this is the runbook's two-phase first rebuild, and the script fo
           --volume-source ddot --volume-year 2024 --aadt-property AADT
   ```
 
-- **Second run** (hours): elevation tiles from 3DEP, the six variant tile builds (standard,
-  no-trail, ebike, weekend, offroad and mtb), validation,
+- **Second run** (hours): elevation tiles from 3DEP, the seven variant tile builds (standard,
+  no-trail, ebike, weekend, offroad, mtb and paved), validation,
   the swap. The script polls the run row every minute up to eight hours; `docker compose logs -f
   rebuild` in another terminal shows the stages. When it succeeds the script checks the promotion
   links, restarts the routers that are running, sends a canary route to each, and runs `check_operations`.

@@ -40,6 +40,8 @@ from routemaker.ridetime import ZONE
 
 # The API tests take these two of test_route_api's fixtures by name.
 FIXTURES = (router, segments)
+# The real router services, which `installed` replaces with straight lines.
+ROUTING_SERVICES = transit.RoutingServices
 
 REPO = Path(__file__).resolve().parents[1]
 DATA = Path(__file__).parent / "data" / "transit"
@@ -444,7 +446,7 @@ def test_a_schedule_about_to_run_out_is_logged_and_alerted(tmp_path, caplog) -> 
     assert ("the transit schedule runs out" in caplog.text) is expected
 
 
-def test_a_walk_of_a_few_yards_is_not_the_answers_line() -> None:
+def test_a_walk_of_a_few_yards_is_the_line_only_of_a_trip_with_no_ride() -> None:
     a, b = (-77.0, 38.9), (-77.00005, 38.9)  # about 4 m apart
     far = (-77.01, 38.9)
     legs = (
@@ -455,9 +457,14 @@ def test_a_walk_of_a_few_yards_is_not_the_answers_line() -> None:
         transit.Leg(transit.WALK, 400.0, (far, (-77.02, 38.9))),
     )
     assert transit.line_m(legs[0]) < transit.MIN_LINE_M
-    # The first walk is a few yards: the line is the last walk, which the router can route.
-    assert transit.Option("k", legs).ride == 4
-    # Every ride and walk a few yards: the first walk, which the API draws start to end instead.
+    # A share bike after a few yards' walk: the line is the ride, which the router can route.
+    dock = (-77.005, 38.9)
+    shared = (legs[0], transit.Leg(transit.SHARE, 120.0, (b, dock)), *legs[1:])
+    assert transit.Option("k", shared).ride == 1
+    # A trip with no ride, started at the stop (Walk + 🚆🚌): its line is still its first walk,
+    # however short, so the train after it is followed stop by stop and checked, and the last walk
+    # is not the line (the release review's S1).
+    assert transit.Option("k", legs).ride == 0
     tiny = (legs[0], legs[1], legs[2], legs[3], transit.Leg(transit.WALK, 3.0, (far, far)))
     assert transit.Option("k", tiny).ride == 0
 
@@ -496,10 +503,33 @@ def test_own_bike_lists_the_direct_ride_and_the_quickest_transit_trips(schedule)
     words = [leg.words(last=i == 4) for i, leg in enumerate(metro.legs)]
     assert words[1] == "About 4 min into the station by the elevator."
     assert words[2] == (
-        "Board the Orange Line (every 10 min, scheduled; about 5 min wait); ride 10 min to"
-        " Federal Triangle."
+        "Board the Orange Line toward Metro Center (every 10 min, scheduled; about 5 min wait);"
+        " ride 10 min to Federal Triangle."
     )
     assert words[4].endswith("min to your destination.")
+    # Stop by stop (2026-11-02): every stop of the ride in order, boarding and alighting
+    # included, timed from the first and ending at the ride's own time, and the way it runs.
+    ride = metro.legs[2]
+    names = [name for name, _point, _s in ride.stops]
+    assert names[0] == "Eastern Market" and names[-1] == "Federal Triangle"
+    assert len(names) >= 3
+    times = [s for _name, _point, s in ride.stops]
+    assert times[0] == 0 and times == sorted(times)
+    assert abs(times[-1] - ride.seconds) < 1
+    assert ride.toward == "Metro Center"
+    assert [list(p) for _n, p, _s in ride.stops] == [list(p) for p in ride.coordinates]
+
+
+def test_a_ride_to_the_last_stop_says_no_toward() -> None:
+    leg = transit.Leg(
+        transit.METRO,
+        600.0,
+        to="Metro Center",
+        vehicle="the Orange Line",
+        system="Metro",
+        toward="Metro Center",
+    )
+    assert leg.words().startswith("Board the Orange Line (")
 
 
 def _valhalla(seconds: float, a, b) -> dict:
@@ -585,7 +615,9 @@ def test_a_change_at_the_same_station(schedule) -> None:
         "Smithsonian",
         True,
     )
-    assert second.words().startswith("Change to the Orange Line (every 10 min, scheduled;")
+    assert second.words().startswith(
+        "Change to the Orange Line toward Eastern Market (every 10 min, scheduled;"
+    )
 
 
 def test_dc_to_baltimore_takes_marc_with_the_bike(schedule) -> None:
@@ -1278,6 +1310,41 @@ def test_a_short_trip_offers_walking_the_whole_way_among_the_options(schedule) -
     assert row["legs"] == [{"mode": "walk", "system": None, "lines": [], "minutes": row["minutes"]}]
 
 
+def test_walk_transit_walks_both_ends_of_every_trip_and_never_takes_a_bike(schedule) -> None:
+    # Stephen, 2026-11-02: "add a walk mode and a walk+transit mode".
+    plan = transit.plan_walk_transit(
+        schedule, CAPITOL_HILL, DOWNTOWN, at(2026, 9, 30, 8, 0), Straight()
+    )
+    assert plan.mode == presets.WALK_TRANSIT and plan.direct is None
+    assert [leg.mode for leg in plan.options[0].legs] == ["walk", "enter", "metro", "exit", "walk"]
+    for option in plan.options:
+        assert not {leg.mode for leg in option.legs} & {"ride", "take", "bikeshare"}
+    assert transit.label(plan.options[0], presets.WALK_TRANSIT).startswith("Walk, Metro to")
+
+
+def test_walk_transit_walks_a_short_trip_and_with_no_transit_walks_or_says_why(schedule) -> None:
+    short = transit.plan_walk_transit(
+        schedule, CAPITOL_HILL, NEAR_CAPITOL_HILL, at(2026, 9, 30, 12, 0), Straight()
+    )
+    assert any(o.walk for o in short.options)
+    # At a time with no service (as the bikeshare test's), the walk is the answer where it is
+    # under WALK_FALLBACK_M, and a plain refusal past it.
+    quiet = at(2026, 10, 17, 12, 0)
+    alone = transit.plan_walk_transit(schedule, CAPITOL_HILL, DOWNTOWN, quiet, Straight())
+    assert [o.walk for o in alone.options] == [True]
+    far = [CAPITOL_HILL[0] - 0.2, CAPITOL_HILL[1]]  # about 11 mi (17 km) west
+    with pytest.raises(transit.NoTransit, match="too far to walk"):
+        transit.plan_walk_transit(schedule, CAPITOL_HILL, far, quiet, Straight())
+
+
+def test_walk_is_one_option_walked_the_whole_way(schedule) -> None:
+    plan = transit.plan_walk(schedule, CAPITOL_HILL, DOWNTOWN, at(2026, 9, 30, 8, 0), Straight())
+    assert plan.mode == presets.WALK and [o.key for o in plan.options] == [transit.WALK_ONLY]
+    out = transit.block(plan, schedule)
+    assert out["mode"] == "walk" and out["summary"].endswith("door to door, walking.")
+    assert [s["mode"] for s in out["steps"]] == ["walk"] and out["credits"] == []
+
+
 def test_walking_the_whole_way_is_offered_when_quickest_or_short_and_not_otherwise(
     schedule,
 ) -> None:
@@ -1714,6 +1781,27 @@ class TestApi:
         # Midday (the pinned clock): Orange every 12 minutes, so a 6-minute wait.
         assert chosen["steps"][2]["wait_s"] == 360 and chosen["band"] == "midday"
 
+    def test_a_trip_asked_for_that_is_no_longer_running_is_said_gone(
+        self, client, segments, router, installed
+    ) -> None:
+        """Review of v0.18.0 (S4): a ride checking its trip (frontend lib/tripCheck.ts) asks
+        for it by key; where it is in none of the options (missed, cancelled), the best is
+        chosen and the answer says the trip asked for is gone, so the rider is told "Your
+        trip is no longer running as planned" rather than switched quietly."""
+        router(standard_router())
+        first = post_transit(client, [CAPITOL_HILL, DOWNTOWN]).json()["transit"]
+        assert first["asked_gone"] is False
+        metro = next(o for o in first["options"] if not o["direct"])
+        kept = post_transit(client, [CAPITOL_HILL, DOWNTOWN], transit_option=metro["key"])
+        assert kept.status_code == 200, kept.content
+        assert kept.json()["transit"]["key"] == metro["key"]
+        assert kept.json()["transit"]["asked_gone"] is False
+        gone = post_transit(client, [CAPITOL_HILL, DOWNTOWN], transit_option="no-such-trip")
+        assert gone.status_code == 200, gone.content
+        trip = gone.json()["transit"]
+        assert trip["asked_gone"] is True
+        assert trip["key"] != "no-such-trip" and trip["key"] == first["key"]
+
     def test_a_novice_hop_is_planned_past_the_busy_stretch(
         self, client, segments, router, installed, monkeypatch
     ) -> None:
@@ -1961,6 +2049,65 @@ class TestApi:
         assert trip["steps"][0]["mode"] == trip["steps"][-1]["mode"] == "walk"
         assert deadlines[0] == 1005.0 + api.TRANSIT_CANDIDATES_S
 
+    def test_walk_answers_the_walk_with_its_turns_and_asks_no_bike_route(
+        self, client, segments, router, installed, monkeypatch
+    ) -> None:
+        # Stephen, 2026-11-02: "add a walk mode and a walk+transit mode".
+        fake = router(standard_router())
+        turn = {"movement": "left", "street": "F St NE", "point": [-77.0, 38.89]}
+
+        class Turning(Bendy):
+            def walk(self, a, b):
+                found = super().walk(a, b)
+                return found and replace(found, turns=(turn,))
+
+        monkeypatch.setattr(transit, "RoutingServices", lambda *_args, **_kwargs: Turning())
+        response = post_transit(client, [CAPITOL_HILL, DOWNTOWN], presets.WALK)
+        assert response.status_code == 200, response.content
+        body = response.json()
+        assert body["transit"]["mode"] == "walk" and "route" not in fake.endpoints()
+        steps = body["transit"]["steps"]
+        assert [s["mode"] for s in steps] == ["walk"] and steps[0]["route_line"]
+        # A turn carries no crossing's fields (`walk_pricing`): null.
+        plain = {**turn, "control": None, "busy": None, "slip": None}
+        assert steps[0]["turns"] == [plain] and len(body["geometry"]["coordinates"]) == 3
+        # Walk + 🚆🚌's line is its first walk, walked with its turns; no bike anywhere.
+        both = post_transit(client, [CAPITOL_HILL, DOWNTOWN], presets.WALK_TRANSIT)
+        assert both.status_code == 200, both.content
+        trip = both.json()["transit"]
+        assert trip["mode"] == "walk-transit"
+        assert [s["mode"] for s in trip["steps"]] == ["walk", "enter", "metro", "exit", "walk"]
+        assert trip["steps"][0]["route_line"] and trip["steps"][0]["turns"] == [plain]
+        assert "route" not in fake.endpoints()
+        # Novice and Nervous's legs are for the ride types with a bike.
+        assert (
+            post_transit(
+                client, [CAPITOL_HILL, DOWNTOWN], presets.WALK, novice_legs=True
+            ).status_code
+            == 400
+        )
+
+    @pytest.mark.parametrize("preset", [presets.WALK, presets.WALK_TRANSIT])
+    def test_walk_asks_the_router_for_its_turns_and_avoids_stairs_where_asked(
+        self, preset, client, segments, router, installed, monkeypatch
+    ) -> None:
+        """Review of v0.18.0 (S2): Walk's and Walk + 🚆🚌's walks ask the router itself for
+        their maneuvers (turn by turn on foot, #886), and with Avoid stairs on (#887) for a
+        step-free way (`walk_turns.STEP_FREE_PENALTY_S`); with it off, no step penalty."""
+        from core import walk_turns
+
+        monkeypatch.setattr(transit, "RoutingServices", ROUTING_SERVICES)
+        for avoid in (True, False):
+            fake = router(standard_router())
+            response = post_transit(client, [CAPITOL_HILL, DOWNTOWN], preset, avoid_stairs=avoid)
+            assert response.status_code == 200, response.content
+            routed = [p for url, p in fake.calls if url.endswith("/route")]
+            walks = [p for p in routed if p["costing"] == "pedestrian"]
+            assert walks, (preset, avoid)
+            assert all(p["directions_type"] == "maneuvers" for p in walks)
+            steps = [p["costing_options"].get("pedestrian", {}).get("step_penalty") for p in walks]
+            assert steps == [walk_turns.STEP_FREE_PENALTY_S if avoid else None] * len(walks)
+
     def test_a_transit_trip_is_two_points_no_loop_and_options_only_on_transit(
         self, client, router, installed
     ) -> None:
@@ -2126,3 +2273,37 @@ def test_a_much_slower_hop_is_listed_but_not_planned(schedule, monkeypatch) -> N
     monkeypatch.setattr(transit, "HOP_SLACK_S", hop.total_s - quickest - 1.0)
     assert transit.choose(plan, None, hop=True).chosen == 0
     assert any(o.hop for o in plan.options)
+
+
+class _Turning(Straight):
+    """Walks routed with one turn half way along (as Valhalla's maneuvers give it)."""
+
+    def walk(self, a, b):
+        routed = super().walk(a, b)
+        middle = ((a[0] + b[0]) / 2, (a[1] + b[1]) / 2)
+        turn = {"movement": "left", "street": "F St NE", "point": list(middle)}
+        return transit.Ride(
+            routed.seconds, (tuple(a), middle, tuple(b)), routed.metres, turns=(turn,)
+        )
+
+
+def test_the_answer_carries_each_walks_turns_and_each_rides_stops(schedule) -> None:
+    """Turn by turn on foot and stop by stop on transit (Stephen, 2026-11-02): the steps carry
+    a walk's turns where it was drawn, and a transit step's stops and the way it runs."""
+    plan = transit.plan_bikeshare(
+        schedule, CAPITOL_HILL, DOWNTOWN, at(2026, 9, 30, 8, 0), Straight(), SHARE
+    )
+    metro = next(o for o in plan.options if not o.direct)
+    plan = transit.drawn(transit.choose(plan, metro.key), _Turning())
+    steps = transit.block(plan, schedule)["steps"]
+    walk = next(s for s in steps if s["mode"] == "walk" and not s["route_line"])
+    assert walk["turns"] == [
+        {"movement": "left", "street": "F St NE", "point": walk["turns"][0]["point"]}
+    ]
+    ride = next(s for s in steps if s["mode"] == "metro")
+    assert ride["stops"][0]["name"] == "Eastern Market" and ride["stops"][0]["after_s"] == 0
+    assert ride["stops"][-1]["after_s"] == ride["seconds"]
+    assert ride["toward"]
+    assert "toward" in ride["text"]
+    # Off transit, no stops; a walk not drawn, no turns.
+    assert all(s["stops"] is None for s in steps if s["mode"] not in transit.TRANSIT_MODES)
