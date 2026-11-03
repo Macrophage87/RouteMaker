@@ -7,7 +7,7 @@
  * riders (owner decision, 2026-09-26).
  */
 import { MAX_POINTS, insideCoverage, type LonLat } from "./geo.ts";
-import { PRESET_ALIASES, parsePreset, type PresetId } from "./presets.ts";
+import { AVOID_GRAVEL_BECOMES, PRESET_ALIASES, parsePreset, type PresetId } from "./presets.ts";
 import { VIA_MARKS, decodeDrawn, decodeStopNames, decodeVias, drawnLegs, encodeStopNames, stopNames } from "./pointKinds.ts";
 import { STRESS_DEFAULT_AT, fitDials, isBike, isCarrying, isWhen, type Dials } from "./dials.ts";
 import { METRES_PER_MILE } from "./format.ts";
@@ -104,7 +104,6 @@ export function encodePlan(
     if (dials.when) params.set("when", dials.when);
     if (dials.carrying) params.set("carrying", dials.carrying);
     if (dials.assist) params.set("assist", "1");
-    if (dials.avoidGravel) params.set("avoidgravel", "1");
     // "Keep to roads, not trails" (OWNER-DECISIONS 463, 463b). Absent is trails on, except on Mass Ride, which is always off.
     if (dials.trailsOff) params.set("trailsoff", "1");
     // A novice rider's transit plan (v0.7.0): its bike legs as Novice and Nervous plans them.
@@ -161,7 +160,11 @@ export function decodePlan(hash: string): Plan {
     if (points.length === MAX_POINTS) break;
   }
   const named = params.get("preset");
-  const preset = parsePreset(named);
+  // The retired "Avoid gravel" box (Stephen, 2026-11-02, "Replace the box"): a link with it ticked on a
+  // rider's own-bike ride type opens as Road Bike, its sliders as linked; elsewhere the box is dropped.
+  const linkedPreset = parsePreset(named);
+  const preset: PresetId =
+    params.get("avoidgravel") === "1" && AVOID_GRAVEL_BECOMES.includes(linkedPreset) ? "road-bike" : linkedPreset;
   // A link to a ride type since renamed (Riding with kids, now Novice and Nervous, v0.7.0) opens the new ride
   // type at its own starting sliders: the old ones were the old ride type's.
   const renamed = named !== null && Object.hasOwn(PRESET_ALIASES, named);
@@ -179,7 +182,6 @@ export function decodePlan(hash: string): Plan {
     when: isWhen(when) ? when : null,
     carrying: isCarrying(carrying) ? carrying : null,
     assist: params.get("assist") === "1",
-    avoidGravel: params.get("avoidgravel") === "1",
     trailsOff: params.get("trailsoff") === "1",
     noviceLegs: params.get("novice") === "1",
     ...(isBike(params.get("bike")) ? { bike: params.get("bike") as "classic" | "ebike" } : {}),

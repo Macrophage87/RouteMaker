@@ -12,7 +12,7 @@
  */
 import { CARRYINGS, WHENS, fitTarget, hillsGradePosition, seeksClimbs, stressMax, trailsOffLocked, whenInSentence, type Dials } from "./dials.ts";
 import { formatDistance } from "./format.ts";
-import { presetLabel, presetSaid, type PresetId } from "./presets.ts";
+import { onFoot, presetLabel, presetSaid, runs, type PresetId } from "./presets.ts";
 import { isCustom } from "./rideTypeDialog.ts";
 import { t } from "./i18n.ts";
 
@@ -63,6 +63,18 @@ export function targetShort(metres: Dials["targetDistanceM"]): string | null {
 export function rideSummaryParts(preset: PresetId, dials: Dials, name: (id: PresetId) => string = presetLabel): string[] {
   const locked = stressMax(preset) === 0;
   const target = targetShort(dials.targetDistanceM);
+  // Walk and Walk + 🚆🚌 (2026-11-02): no traffic or hills to say, only when.
+  if (onFoot(preset)) return [rideTypeShort(preset, dials, name), whenShort(dials.when)];
+  // Run (2026-11-02): its hills, when, its target and loop; no traffic.
+  if (runs(preset)) {
+    return [
+      rideTypeShort(preset, dials, name),
+      ...(dials.hills < -20 ? [t("fewer climbs")] : []),
+      whenShort(dials.when),
+      ...(target ? [target] : []),
+      ...(dials.loop === true ? [t("loop")] : []),
+    ];
+  }
   return [
     rideTypeShort(preset, dials, name),
     locked ? t("most direct roadway") : trafficShort(dials.stress),
@@ -71,7 +83,6 @@ export function rideSummaryParts(preset: PresetId, dials: Dials, name: (id: Pres
     ...(target ? [target] : []),
     ...(dials.loop === true && preset !== "mass-ride" ? [t("loop")] : []),
     ...(dials.trailsOff === true && !trailsOffLocked(preset) ? [t("roads only")] : []),
-    ...(dials.avoidGravel === true ? [t("avoids gravel")] : []),
   ];
 }
 

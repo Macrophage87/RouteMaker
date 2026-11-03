@@ -151,9 +151,10 @@ export const GO_CLEARED_SAID = t("Route cleared. Undo brings it back.");
 export const CLEAR_FOCUS_WAIT_MS = 1000;
 
 /** The Route button: its label, and why it does nothing now (null: it routes). */
-export function routeButton(state: { points: number; drawn: boolean; changed: boolean; routeShown: boolean; loop?: boolean }): { label: string; unavailable: string | null } {
+export function routeButton(state: { points: number; drawn: boolean; changed: boolean; routeShown: boolean; loop?: boolean; fromStart?: boolean }): { label: string; unavailable: string | null } {
   const label = state.drawn && (state.changed || !state.routeShown) ? UPDATE_LABEL : ROUTE_LABEL;
-  if (state.points < 2) return { label: ROUTE_LABEL, unavailable: state.loop ? ROUTE_NEEDS_STOP : ROUTE_NEEDS_POINTS };
+  // A Run loop from its start alone (lib/loop.ts runLoopFromStart) routes with one point.
+  if (state.points < (state.fromStart ? 1 : 2)) return { label: ROUTE_LABEL, unavailable: state.loop ? ROUTE_NEEDS_STOP : ROUTE_NEEDS_POINTS };
   if (state.drawn && state.routeShown && !state.changed) return { label, unavailable: ROUTE_UP_TO_DATE };
   return { label, unavailable: null };
 }

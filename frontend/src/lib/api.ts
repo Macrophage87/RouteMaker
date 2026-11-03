@@ -11,7 +11,9 @@ import type { MtbReading } from "./mtbMode.ts";
 import { formatRoughDistance } from "./format.ts";
 import { noteArrived } from "./departure.ts";
 import type { LonLat } from "./geo.ts";
-import { twoPointsOnly, type PresetId } from "./presets.ts";
+import { runs, twoPointsOnly, type PresetId } from "./presets.ts";
+import { readAvoidStairs } from "./avoidStairs.ts";
+import { paceKmh, readRunPace } from "./runPace.ts";
 import type { StressMetres } from "./stressBar.ts";
 import type { FacilityMetres } from "./facilityBar.ts";
 import type { NearbyStationsAnswer, StationAction } from "./stations.ts";
@@ -473,12 +475,36 @@ export interface BikeshareStop {
   docks_available: number | null;
 }
 
+/** A walk's turn (2026-11-02, core.walk_turns): said in the rider's language with a ride's turn words (lib/walkCues.ts). */
+export interface WalkTurn {
+  /** "cross": a crossing the walk says (core/walk_pricing.py, 2026-11-02), with its control. */
+  movement: "left" | "right" | "bear_left" | "bear_right" | "uturn" | "cross";
+  /** The street turned onto, or crossed; null: a path or sidewalk with no name, or a road not named. */
+  street: string | null;
+  point: LonLat;
+  /** A crossing's: at a signal, at a crosswalk with no signal, or neither. */
+  control?: "signal" | "crosswalk" | "none" | null;
+  /** A crossing's: a busy road is crossed. */
+  busy?: boolean | null;
+  /** A crossing's: a slip lane is crossed. */
+  slip?: boolean | null;
+}
+
 /** A walk leg (core.api.BikeshareWalkOut). */
 export interface BikeshareWalk {
   geometry: { type: "LineString"; coordinates: LonLat[] };
   distance_m: number;
   duration_s: number;
   to: string;
+  /** Its turns in order, for turn-by-turn on foot; absent from an older API. */
+  turns?: WalkTurn[];
+}
+
+/** A transit step's stop (2026-11-02): its name, where it is, and the scheduled seconds after leaving the step's first stop. */
+export interface TransitStop {
+  name: string;
+  point: LonLat;
+  after_s: number;
 }
 
 /** The operator's own price information (core.api.BikeshareFeeOut): information, not a quote. */
@@ -540,6 +566,12 @@ export interface TransitStep {
    * routed in time (an older API too): the step is then drawn as a plain line.
    */
   stress_spans?: StressSpan[] | null;
+  /** A transit step's stops in order, the one boarded and the one left included (stop by stop, 2026-11-02). */
+  stops?: TransitStop[] | null;
+  /** A transit step's way, by its last stop: "Shady Grove". */
+  toward?: string | null;
+  /** A walk's turns in order, where it was routed in time (turn by turn on foot, 2026-11-02). */
+  turns?: WalkTurn[] | null;
   /** A ride after the route line, routed: its length, climb and descent (metres) and elevation profile, so the
    * trip's totals and chart cover every ride (Stephen, 2026-10-21). Absent where it was not routed in time. */
   distance_m?: number | null;
@@ -672,9 +704,11 @@ export interface StationTimes {
 
 /** A transit ride type's trip: scheduled times, with WMATA's predicted departures on a plan for now. */
 export interface TransitPlan {
-  mode: "bike-transit" | "bikeshare-transit";
+  mode: "bike-transit" | "bikeshare-transit" | "walk" | "walk-transit" | "run";
   /** The chosen option's key, and whether it is riding the whole way. */
   key: string;
+  /** The trip asked for (`transit_option`) is no longer an option: the best is chosen in its place (absent from older answers). */
+  asked_gone?: boolean;
   direct: boolean;
   /** Quickest first; riding the whole way is always one. */
   options: TransitOption[];
@@ -890,6 +924,16 @@ export interface NoviceWalk {
   text: string;
 }
 
+export interface RunInfo {
+  pace_kmh: number;
+  dark: boolean;
+  trail_m: number;
+  signals: number;
+  target_distance_m: number | null;
+  /** Whether the run is at or under its target; null with no target. */
+  fits?: boolean | null;
+}
+
 export interface RouteResponse {
   /**
    * Live work zones and DC's closures (FOLLOWUP-WORKZONES; v0.7.0 "DC closures source"): the closures to draw on
@@ -944,6 +988,8 @@ export interface RouteResponse {
   transit?: TransitPlan | null;
   /** Present on a loop (OWNER-DECISIONS 266). */
   loop?: LoopInfo | null;
+  /** A Run's planning (core/run_plan.py): its pace, whether after dark, its trail metres and traffic lights. */
+  run?: RunInfo | null;
   /** Mountain Bike only (docs/MTB-TOPO-PLAN.md, slice 6): the route's trail reading; null or absent elsewhere. */
   mtb?: MtbReading | null;
   /** Side-street dodges found and what was done; null on a loop and on each candidate, absent from an older API. */
@@ -965,7 +1011,7 @@ export interface RouteResponse {
    */
   neighbour?: { kind: NeighbourKind; stress: number; line: string } | null;
   preset: PresetId;
-  variant: "standard" | "no-trail" | "ebike" | "weekend" | "offroad" | "mtb";
+  variant: "standard" | "no-trail" | "ebike" | "weekend" | "offroad" | "mtb" | "paved";
   /** A ride type that skips dirt trails rides one here (a point on one opened it, core/trail_touch.py). A ride then opens them all to its re-plans. */
   dirt_trails?: boolean;
   /** A ride marked a dirt trail closed (bad conditions): no dirt trail is ridden, and the ride's re-plans say so after. */
@@ -1452,6 +1498,10 @@ export interface RouteRequestOptions {
   aheadOnly?: boolean;
   /** With `rideReplan`: the rider marked a dirt trail closed this ride, so the re-plan rides none (`dirt_closed`). */
   dirtClosed?: boolean;
+  /** Settings' Avoid stairs (lib/avoidStairs.ts); unset, as this device keeps it. Sent on Bikeshare and transit only. */
+  avoidStairs?: boolean;
+  /** Run's pace in mph (lib/runPace.ts); absent, the one kept on this device. */
+  runPaceMph?: number;
 }
 
 /** Most points of a line to follow (core/follow.py MAX_POINTS). */
@@ -1494,6 +1544,11 @@ export function routeRequestBody(points: readonly LonLat[], preset: PresetId, op
     ...(options.rideReplan
       ? { ride_replan: true, ...(options.dirtRidden ? { dirt_ridden: true } : {}), ...(options.dirtClosed ? { dirt_closed: true } : {}) }
       : {}),
+    // Avoid stairs (Settings): the trip's walks keep off flights of steps. Only the ride types that walk on their own
+    // send it; a walk beside the rider's own bike always keeps off them.
+    ...((twoPointsOnly(preset) || runs(preset)) && (options.avoidStairs ?? readAvoidStairs()) ? { avoid_stairs: true } : {}),
+    // Run's pace (lib/runPace.ts), kept on this device and sent with Run alone.
+    ...(runs(preset) ? { run_pace_kmh: paceKmh(options.runPaceMph ?? readRunPace()) } : {}),
     // The language of the answer's sentences (lib/i18n.ts); English, the API's own, is not sent.
     ...(language() !== "en" ? { lang: language() } : {}),
   });
