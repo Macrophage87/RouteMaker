@@ -25,7 +25,8 @@ export const NEIGHBOUR_NAME: Record<NeighbourKind, string> = { direct: t("More d
  * transit ride types, nor Rebalance Ride, whose docks are the point of it.
  */
 export function offersNeighbours(preset: PresetId): boolean {
-  return !isTransit(preset) && preset !== "rebalance" && preset !== "mass-ride";
+  // Nor Run (2026-11-02): it has no traffic slider.
+  return !isTransit(preset) && preset !== "rebalance" && preset !== "mass-ride" && preset !== "run";
 }
 
 /**

@@ -135,7 +135,10 @@ class TestInTheAnswer:
 
     @pytest.mark.parametrize(
         "preset",
-        sorted(set(presets.PRESETS) - {*presets.BIKESHARE_PRESETS, *presets.TRANSIT_PRESETS}),
+        sorted(
+            set(presets.PRESETS)
+            - {*presets.BIKESHARE_PRESETS, *presets.TRANSIT_PRESETS, presets.RUN}
+        ),
     )
     def test_every_preset_is_described(self, client, router, preset):
         router(named_world())

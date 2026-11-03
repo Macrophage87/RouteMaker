@@ -10,7 +10,7 @@
  * tests/test_presets.py reads STARTS and holds it equal to the API's table.
  */
 import type { LonLat } from "./geo.ts";
-import { isTransit, usesBikeshare, type PresetId } from "./presets.ts";
+import { isTransit, onFoot, usesBikeshare, type PresetId } from "./presets.ts";
 import { DEFAULT_MTB_LEVEL, defaultMtbPreferred, fitMtbLevel, mtbLevelOf, mtbPreferredOf } from "./mtbMode.ts";
 import { t } from "./i18n.ts";
 
@@ -30,12 +30,6 @@ export interface Dials {
   carrying: Carrying | null;
   /** Cargo Bike only: electric assist (e-bike rules, a faster pace, the same hills start). */
   assist: boolean;
-  /**
-   * "Avoid gravel" (OWNER-DECISIONS 91, 92, 111): steer off unpaved surfaces.
-   * Any ride type, off by default on all of them; absent is off. It is about
-   * the ride, not the bike, so it stays when the ride type changes.
-   */
-  avoidGravel?: boolean;
   /**
    * "Keep to roads, not trails" (OWNER-DECISIONS 463, 463b; 2026-09-26, "Every type,
    * roadways ok"): plan on roadways only, on any ride type, e-bike rides included (463a). Absent is off (trails allowed), except on
@@ -215,6 +209,8 @@ export const STARTS: Record<PresetId, Start> = {
   gravel: { stress: 40, hills: 0, seek: true },
   // A strong rider: an LT1 grade of about 11% (`core.presets.FAST_HILLS`; Stephen, 2026-10-23: "More for fast").
   fast: { stress: 10, hills: 40, seek: true },
+  // Road Bike (Stephen, 2026-11-02): "Balanced" traffic, as Group Ride and Gravel (core.presets ROAD_BIKE_STRESS).
+  "road-bike": { stress: 40, hills: 0, seek: true },
   cargo: { stress: 70, hills: -60, seek: true, carrying: { cargo: 70, people: 80 }, assist: true },
   // Toward "fine with hills" (242): `core.presets.EBIKE_HILLS`.
   ebike: { stress: 70, hills: 50, seek: true },
@@ -225,6 +221,11 @@ export const STARTS: Record<PresetId, Start> = {
   // The transit ride types' bike legs start as Default's own bike and Bikeshare's classic (core.presets).
   "bike-transit": { stress: 70, hills: 0, seek: true },
   "bikeshare-transit": { stress: 80, hills: -60, seek: true },
+  // Walk and Walk + 🚆🚌 (2026-11-02) ride nothing: Bikeshare + 🚶🚆🚌's start, never used (core.presets ON_FOOT_PRESETS).
+  walk: { stress: 80, hills: -60, seek: true },
+  "walk-transit": { stress: 80, hills: -60, seek: true },
+  // Run (2026-11-02): on foot; its traffic is never used, its hills start where they do not mind climbs (core.presets).
+  run: { stress: 80, hills: 0, seek: true },
   // REBALANCE-RIDE: Bikeshare's own start (core.presets REBALANCE), with its bike choice.
   rebalance: { stress: 80, hills: -60, seek: true, assist: true },
 };
@@ -312,6 +313,8 @@ export function isBike(value: unknown): value is Bike {
  */
 export const TARGET_MIN_M = 1_000;
 export const TARGET_MAX_M = 1_000_000;
+/** A Run loop's longest target from a start alone, core/run_plan.py RUN_TARGET_MAX_M (31 mi). */
+export const RUN_TARGET_MAX_M = 50_000;
 export const DEFAULT_CEILING_RATIO = 1.6;
 export const TARGET_CEILING_RATIO = 1.25;
 /** Novice and Nervous's shorter ceiling (`core.presets.NOVICE_CEILING_RATIO`, v0.7.0). */
@@ -402,12 +405,11 @@ export function fitDials(preset: PresetId, dials: Partial<Dials>): Dials {
     ...(start.bike ? { bike: start.bike } : {}),
     // Only an e-bike can end outside a dock, and never on Rebalance Ride (it ends where a bike is needed).
     ...(start.bike === "ebike" && dials.ending === "outside_dock" && preset !== "rebalance" ? { ending: "outside_dock" as const } : {}),
-    ...(dials.avoidGravel === true ? { avoidGravel: true } : {}),
     ...(dials.trailsOff === true ? { trailsOff: true } : {}),
     ...(fitTarget(dials.targetDistanceM) !== undefined ? { targetDistanceM: fitTarget(dials.targetDistanceM) } : {}),
     ...(dials.loop === true ? { loop: true } : {}),
-    ...(isTransit(preset) && dials.noviceLegs === true ? { noviceLegs: true } : {}),
-    ...(isTransit(preset) && dials.noviceLegs === true && dials.noviceHop ? { noviceHop: dials.noviceHop } : {}),
+    ...(isTransit(preset) && !onFoot(preset) && dials.noviceLegs === true ? { noviceLegs: true } : {}),
+    ...(isTransit(preset) && !onFoot(preset) && dials.noviceLegs === true && dials.noviceHop ? { noviceHop: dials.noviceHop } : {}),
     // The level, on Mountain Bike only, and only when it is not the default (the link stays short).
     ...(preset === "mountain-bike" && fitMtbLevel(dials.mtbLevel) !== undefined && fitMtbLevel(dials.mtbLevel) !== DEFAULT_MTB_LEVEL
       ? { mtbLevel: fitMtbLevel(dials.mtbLevel) }
@@ -428,7 +430,6 @@ export function dialFields(dials: Dials): Record<string, string | number | boole
   if (dials.when) fields.when = dials.when;
   if (dials.carrying) fields.carrying = dials.carrying;
   if (dials.assist) fields.assist = true;
-  if (dials.avoidGravel) fields.avoid_gravel = true;
   if (dials.trailsOff) fields.trails_off = true;
   const target = fitTarget(dials.targetDistanceM);
   if (target !== undefined) fields.target_distance_m = target;

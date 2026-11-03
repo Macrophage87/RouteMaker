@@ -2461,9 +2461,9 @@ class ConnectorClient(models.Model):
 
 class ConnectorGrant(models.Model):
     """One rider's consent to one app: the short-lived code (only its SHA-256), then the tokens
-    the app trades it for (only their SHA-256s). It can only plan and add routes to My routes
-    (and, for an instance admin, write draft posts): it signs nobody in and reads none of the
-    account's routes. A ban or deletion ends every grant (User.save)."""
+    the app trades it for (only their SHA-256s). It can only plan, add routes to My routes and
+    (where `reads_routes`) read them (and, for an instance admin, write draft posts): it signs
+    nobody in and changes no saved route. A ban or deletion ends every grant (User.save)."""
 
     user = models.ForeignKey("User", on_delete=models.CASCADE, related_name="connector_grants")
     client = models.ForeignKey(ConnectorClient, on_delete=models.CASCADE, related_name="grants")
@@ -2479,6 +2479,10 @@ class ConnectorGrant(models.Model):
     # means someone else holds a copy, so the grant ends (RFC 6749 4.1.2, RFC 9700 4.14.2).
     spent_code_digest = models.CharField(max_length=64, null=True, blank=True, db_index=True)
     previous_refresh_digest = models.CharField(max_length=64, null=True, blank=True, db_index=True)
+    # Whether the rider allowed this app to read My routes (the owner, 2026-11-02: the
+    # connector's my_routes). The consent page says so from v0.18.0; a grant given before then
+    # was told "It can't read your saved routes" and stays without it until connected again.
+    reads_routes = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     last_used_at = models.DateTimeField(null=True, blank=True)
 
