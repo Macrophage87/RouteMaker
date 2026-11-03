@@ -1280,8 +1280,8 @@ aren't sharing their data verbatim, just referencing. Keep them").
   (`fixtures/overrides/2026-10-31-owner-virginia-ratings.json`, R2) and by the Arlington
   review rows (`fixtures/overrides/2026-11-03-owner-arlington-bci-review.json`), whose
   road-panel "Why" notes name Arlington's comfort level where ours differs. The owner,
-  2026-11-03: citing it is fair use (research, criticism and review); a few figures are
-  quoted per street, the data itself is never copied in.
+  2026-11-03: citing it is fair use (research, criticism and review); a row's reason
+  quotes the index's figures for that way's blocks, and the dataset itself is never copied in.
 - Arlington County's Intersection Points
   (<https://arlgis.arlingtonva.us/arcgis/rest/services/Open_Data/od_Intersection_Points/FeatureServer/0>),
   319 signalised intersections (2026-10-19): installable as a signal list

@@ -14,11 +14,11 @@
     "category": "other",
     "visibility": "public",
     "annotation_status": "approved",
-    "public_note": "Arlington's comfort index calls this street Most Comfortable; we rate it 1.5: one lane each way, under 1,000 cars a day, most drivers at 16 mph or less. Our line for quiet Arlington streets is 1.5.",
+    "public_note": "Arlington's Bike Comfort Index calls this street Most Comfortable; we rate it 1.5: one lane each way, under 1,000 cars a day. Our line for quiet Arlington streets is 1.5.",
     "display": "map",
     "half": true
    },
-   "reason": "The owner, 2026-11-03, on the Arlington Bike Comfort Index review card: \"1.5, wider line, split by block\". Rule: an Arlington residential or unclassified street rated LTS 2, with no VDOT count, where every block Arlington's Bike Comfort Index scores along this way shows under 1,500 vehicles a day and an 85th-percentile speed of 25 mph or less (at least one of the two a street-specific figure, not a class average), is LTS 1.5. This way: 7th Street North, highway=residential, no VDOT count; Bike Comfort Index blocks: 153/day, 85th pct 16 mph; 307/day, 85th pct 21.2499 mph. LTS 2 -> 1.5.",
+   "reason": "The owner, 2026-11-03, on the Arlington Bike Comfort Index review card: \"1.5, wider line, split by block\". Rule: an Arlington residential or unclassified street rated LTS 2, with no VDOT count, where every block Arlington's Bike Comfort Index scores along this way shows under 1,500 vehicles a day and an 85th-percentile speed of 25 mph or less (at least one of the two a street-specific figure, not a class average), is LTS 1.5. This way: 7th Street North, highway=residential, no VDOT count; Bike Comfort Index blocks: 153/day, 85th pct 16 mph; 307/day, 85th pct 21.2 mph (class average). LTS 2 -> 1.5.",
    "evidence": "Arlington County Bike Comfort Index (Arlington County DES, ArcGIS), read 2026-11-03, cited for research and review; RouteMaker v0.18.0 map tiles on beta (build 20261103T013053Z), read 2026-11-03: LTS 2; OSM API, read 2026-11-03: way 8795148, 7th Street North, highway=residential.",
    "fingerprint": {
     "name": "7th Street North",
@@ -79,11 +79,11 @@
     "category": "other",
     "visibility": "public",
     "annotation_status": "approved",
-    "public_note": "Arlington's Bike Comfort Index rates this street LTS 2; we rate it 1.5: one lane each way, under 1,000 cars a day, most drivers at 20 mph or less. Our line for quiet Arlington streets is 1.5.",
+    "public_note": "Arlington's Bike Comfort Index rates this street LTS 2; we rate it 1.5: one lane each way, under 1,000 cars a day. Our line for quiet Arlington streets is 1.5.",
     "display": "map",
     "half": true
    },
-   "reason": "The owner, 2026-11-03, on the Arlington Bike Comfort Index review card: \"1.5, wider line, split by block\". Rule: an Arlington residential or unclassified street rated LTS 2, with no VDOT count, where every block Arlington's Bike Comfort Index scores along this way shows under 1,500 vehicles a day and an 85th-percentile speed of 25 mph or less (at least one of the two a street-specific figure, not a class average), is LTS 1.5. This way: North Stuart Street, highway=residential, no VDOT count; Bike Comfort Index blocks: 272/day, 85th pct 19 mph; 398/day, 85th pct 20 mph; 220/day, 85th pct 21.2499 mph; 95/day, 85th pct 12 mph. LTS 2 -> 1.5.",
+   "reason": "The owner, 2026-11-03, on the Arlington Bike Comfort Index review card: \"1.5, wider line, split by block\". Rule: an Arlington residential or unclassified street rated LTS 2, with no VDOT count, where every block Arlington's Bike Comfort Index scores along this way shows under 1,500 vehicles a day and an 85th-percentile speed of 25 mph or less (at least one of the two a street-specific figure, not a class average), is LTS 1.5. This way: North Stuart Street, highway=residential, no VDOT count; Bike Comfort Index blocks: 272/day, 85th pct 19 mph; 398/day, 85th pct 20 mph; 220/day, 85th pct 21.2 mph (class average); 95/day, 85th pct 12 mph. LTS 2 -> 1.5.",
    "evidence": "Arlington County Bike Comfort Index (Arlington County DES, ArcGIS), read 2026-11-03, cited for research and review; RouteMaker v0.18.0 map tiles on beta (build 20261103T013053Z), read 2026-11-03: LTS 2; OSM API, read 2026-11-03: way 8795794, North Stuart Street, highway=residential, lanes=1, maxspeed=25 mph.",
    "fingerprint": {
     "name": "North Stuart Street",
@@ -123,11 +123,11 @@
     "category": "other",
     "visibility": "public",
     "annotation_status": "approved",
-    "public_note": "Arlington's Bike Comfort Index rates this street LTS 2; we rate it 1.5: one lane each way, under 1,000 cars a day, most drivers at 17 mph or less. Our line for quiet Arlington streets is 1.5.",
+    "public_note": "Arlington's Bike Comfort Index rates this street LTS 2; we rate it 1.5: one lane each way, under 1,000 cars a day. Our line for quiet Arlington streets is 1.5.",
     "display": "map",
     "half": true
    },
-   "reason": "The owner, 2026-11-03, on the Arlington Bike Comfort Index review card: \"1.5, wider line, split by block\". Rule: an Arlington residential or unclassified street rated LTS 2, with no VDOT count, where every block Arlington's Bike Comfort Index scores along this way shows under 1,500 vehicles a day and an 85th-percentile speed of 25 mph or less (at least one of the two a street-specific figure, not a class average), is LTS 1.5. This way: North Uhle Street, highway=residential, no VDOT count; Bike Comfort Index blocks: 152/day, 85th pct 17 mph; 42/day, 85th pct 18.5714 mph. LTS 2 -> 1.5.",
+   "reason": "The owner, 2026-11-03, on the Arlington Bike Comfort Index review card: \"1.5, wider line, split by block\". Rule: an Arlington residential or unclassified street rated LTS 2, with no VDOT count, where every block Arlington's Bike Comfort Index scores along this way shows under 1,500 vehicles a day and an 85th-percentile speed of 25 mph or less (at least one of the two a street-specific figure, not a class average), is LTS 1.5. This way: North Uhle Street, highway=residential, no VDOT count; Bike Comfort Index blocks: 152/day, 85th pct 17 mph; 42/day, 85th pct 18.6 mph (class average). LTS 2 -> 1.5.",
    "evidence": "Arlington County Bike Comfort Index (Arlington County DES, ArcGIS), read 2026-11-03, cited for research and review; RouteMaker v0.18.0 map tiles on beta (build 20261103T013053Z), read 2026-11-03: LTS 2; OSM API, read 2026-11-03: way 8795806, North Uhle Street, highway=residential.",
    "fingerprint": {
     "name": "North Uhle Street",
@@ -237,7 +237,7 @@
     "display": "map",
     "half": true
    },
-   "reason": "The owner, 2026-11-03, on the Arlington Bike Comfort Index review card: \"1.5, wider line, split by block\". Rule: an Arlington residential or unclassified street rated LTS 2, with no VDOT count, where every block Arlington's Bike Comfort Index scores along this way shows under 1,500 vehicles a day and an 85th-percentile speed of 25 mph or less (at least one of the two a street-specific figure, not a class average), is LTS 1.5. This way: North Custis Road, highway=residential, no VDOT count; Bike Comfort Index blocks: 173/day, 85th pct 21.2499 mph. LTS 2 -> 1.5.",
+   "reason": "The owner, 2026-11-03, on the Arlington Bike Comfort Index review card: \"1.5, wider line, split by block\". Rule: an Arlington residential or unclassified street rated LTS 2, with no VDOT count, where every block Arlington's Bike Comfort Index scores along this way shows under 1,500 vehicles a day and an 85th-percentile speed of 25 mph or less (at least one of the two a street-specific figure, not a class average), is LTS 1.5. This way: North Custis Road, highway=residential, no VDOT count; Bike Comfort Index blocks: 173/day, 85th pct 21.2 mph (class average). LTS 2 -> 1.5.",
    "evidence": "Arlington County Bike Comfort Index (Arlington County DES, ArcGIS), read 2026-11-03, cited for research and review; RouteMaker v0.18.0 map tiles on beta (build 20261103T013053Z), read 2026-11-03: LTS 2; OSM API, read 2026-11-03: way 8795945, North Custis Road, highway=residential, lanes=2.",
    "fingerprint": {
     "name": "North Custis Road",
@@ -270,28 +270,6 @@
   },
   {
    "kind": "stress",
-   "osm_way_id": 8795977,
-   "value": {
-    "tier": 1,
-    "adjustment_id": "arl-bci-quiet-w8795977",
-    "category": "other",
-    "visibility": "public",
-    "annotation_status": "approved",
-    "public_note": "Arlington's comfort index calls this street Most Comfortable; we rate it 1.5: one lane each way, under 1,000 cars a day, most drivers at 21 mph or less. Our line for quiet Arlington streets is 1.5.",
-    "display": "map",
-    "half": true
-   },
-   "reason": "The owner, 2026-11-03, on the Arlington Bike Comfort Index review card: \"1.5, wider line, split by block\". Rule: an Arlington residential or unclassified street rated LTS 2, with no VDOT count, where every block Arlington's Bike Comfort Index scores along this way shows under 1,500 vehicles a day and an 85th-percentile speed of 25 mph or less (at least one of the two a street-specific figure, not a class average), is LTS 1.5. This way: 11th Street North, highway=residential, no VDOT count; Bike Comfort Index blocks: 423/day, 85th pct 21 mph. LTS 2 -> 1.5.",
-   "evidence": "Arlington County Bike Comfort Index (Arlington County DES, ArcGIS), read 2026-11-03, cited for research and review; RouteMaker v0.18.0 map tiles on beta (build 20261103T013053Z), read 2026-11-03: LTS 2; OSM API, read 2026-11-03: way 8795977, 11th Street North, highway=residential, maxspeed=25 mph.",
-   "fingerprint": {
-    "name": "11th Street North",
-    "highway": "residential",
-    "length_m": 157.0,
-    "line": "-77.107990,38.884577 -77.109794,38.884437"
-   }
-  },
-  {
-   "kind": "stress",
    "osm_way_id": 8796007,
    "value": {
     "tier": 1,
@@ -299,11 +277,11 @@
     "category": "other",
     "visibility": "public",
     "annotation_status": "approved",
-    "public_note": "Arlington's comfort index calls this street Most Comfortable; we rate it 1.5: one lane each way, under 1,000 cars a day, most drivers at 18 mph or less. Our line for quiet Arlington streets is 1.5.",
+    "public_note": "Arlington's Bike Comfort Index calls this street Most Comfortable; we rate it 1.5: one lane each way, under 1,000 cars a day. Our line for quiet Arlington streets is 1.5.",
     "display": "map",
     "half": true
    },
-   "reason": "The owner, 2026-11-03, on the Arlington Bike Comfort Index review card: \"1.5, wider line, split by block\". Rule: an Arlington residential or unclassified street rated LTS 2, with no VDOT count, where every block Arlington's Bike Comfort Index scores along this way shows under 1,500 vehicles a day and an 85th-percentile speed of 25 mph or less (at least one of the two a street-specific figure, not a class average), is LTS 1.5. This way: 5th Street North, highway=residential, no VDOT count; Bike Comfort Index blocks: 282/day, 85th pct 21.2499 mph; 145/day, 85th pct 17 mph; 125/day, 85th pct 18 mph. LTS 2 -> 1.5.",
+   "reason": "The owner, 2026-11-03, on the Arlington Bike Comfort Index review card: \"1.5, wider line, split by block\". Rule: an Arlington residential or unclassified street rated LTS 2, with no VDOT count, where every block Arlington's Bike Comfort Index scores along this way shows under 1,500 vehicles a day and an 85th-percentile speed of 25 mph or less (at least one of the two a street-specific figure, not a class average), is LTS 1.5. This way: 5th Street North, highway=residential, no VDOT count; Bike Comfort Index blocks: 282/day, 85th pct 21.2 mph (class average); 145/day, 85th pct 17 mph; 125/day, 85th pct 18 mph. LTS 2 -> 1.5.",
    "evidence": "Arlington County Bike Comfort Index (Arlington County DES, ArcGIS), read 2026-11-03, cited for research and review; RouteMaker v0.18.0 map tiles on beta (build 20261103T013053Z), read 2026-11-03: LTS 2; OSM API, read 2026-11-03: way 8796007, 5th Street North, highway=residential.",
    "fingerprint": {
     "name": "5th Street North",
@@ -409,11 +387,11 @@
     "category": "other",
     "visibility": "public",
     "annotation_status": "approved",
-    "public_note": "Arlington's comfort index calls this street Most Comfortable; we rate it 1.5: one lane each way, under 1,000 cars a day, most drivers at 17 mph or less. Our line for quiet Arlington streets is 1.5.",
+    "public_note": "Arlington's Bike Comfort Index calls this street Most Comfortable; we rate it 1.5: one lane each way, under 1,000 cars a day. Our line for quiet Arlington streets is 1.5.",
     "display": "map",
     "half": true
    },
-   "reason": "The owner, 2026-11-03, on the Arlington Bike Comfort Index review card: \"1.5, wider line, split by block\". Rule: an Arlington residential or unclassified street rated LTS 2, with no VDOT count, where every block Arlington's Bike Comfort Index scores along this way shows under 1,500 vehicles a day and an 85th-percentile speed of 25 mph or less (at least one of the two a street-specific figure, not a class average), is LTS 1.5. This way: 11th Street South, highway=residential, no VDOT count; Bike Comfort Index blocks: 388/day, 85th pct 17 mph; 318/day, 85th pct 17.5 mph. LTS 2 -> 1.5.",
+   "reason": "The owner, 2026-11-03, on the Arlington Bike Comfort Index review card: \"1.5, wider line, split by block\". Rule: an Arlington residential or unclassified street rated LTS 2, with no VDOT count, where every block Arlington's Bike Comfort Index scores along this way shows under 1,500 vehicles a day and an 85th-percentile speed of 25 mph or less (at least one of the two a street-specific figure, not a class average), is LTS 1.5. This way: 11th Street South, highway=residential, no VDOT count; Bike Comfort Index blocks: 388/day, 85th pct 17 mph; 318/day, 85th pct 17.5 mph (class average). LTS 2 -> 1.5.",
    "evidence": "Arlington County Bike Comfort Index (Arlington County DES, ArcGIS), read 2026-11-03, cited for research and review; RouteMaker v0.18.0 map tiles on beta (build 20261103T013053Z), read 2026-11-03: LTS 2; OSM API, read 2026-11-03: way 8796086, 11th Street South, highway=residential.",
    "fingerprint": {
     "name": "11th Street South",
@@ -453,7 +431,7 @@
     "category": "other",
     "visibility": "public",
     "annotation_status": "approved",
-    "public_note": "Arlington's comfort index calls this street Most Comfortable; we rate it 1.5: one lane each way, under 1,000 cars a day, most drivers at 24 mph or less. Our line for quiet Arlington streets is 1.5.",
+    "public_note": "Arlington's Bike Comfort Index calls this street Most Comfortable; we rate it 1.5: one-way, under 1,000 cars a day, most drivers at 24 mph or less. Our line for quiet Arlington streets is 1.5.",
     "display": "map",
     "half": true
    },
@@ -511,28 +489,6 @@
   },
   {
    "kind": "stress",
-   "osm_way_id": 8796343,
-   "value": {
-    "tier": 1,
-    "adjustment_id": "arl-bci-quiet-w8796343",
-    "category": "other",
-    "visibility": "public",
-    "annotation_status": "approved",
-    "public_note": "Arlington's Bike Comfort Index calls this street Comfortable; we rate it 1.5: one lane each way, under 1,000 cars a day, most drivers at 21 mph or less. Our line for quiet Arlington streets is 1.5.",
-    "display": "map",
-    "half": true
-   },
-   "reason": "The owner, 2026-11-03, on the Arlington Bike Comfort Index review card: \"1.5, wider line, split by block\". Rule: an Arlington residential or unclassified street rated LTS 2, with no VDOT count, where every block Arlington's Bike Comfort Index scores along this way shows under 1,500 vehicles a day and an 85th-percentile speed of 25 mph or less (at least one of the two a street-specific figure, not a class average), is LTS 1.5. This way: 22nd Street North, highway=residential, no VDOT count; Bike Comfort Index blocks: 104/day, 85th pct 20 mph; 104/day, 85th pct 21 mph. LTS 2 -> 1.5.",
-   "evidence": "Arlington County Bike Comfort Index (Arlington County DES, ArcGIS), read 2026-11-03, cited for research and review; RouteMaker v0.18.0 map tiles on beta (build 20261103T013053Z), read 2026-11-03: LTS 2; OSM API, read 2026-11-03: way 8796343, 22nd Street North, highway=residential.",
-   "fingerprint": {
-    "name": "22nd Street North",
-    "highway": "residential",
-    "length_m": 208.5,
-    "line": "-77.119886,38.899466 -77.119967,38.899439 -77.122241,38.899077"
-   }
-  },
-  {
-   "kind": "stress",
    "osm_way_id": 8796436,
    "value": {
     "tier": 3,
@@ -582,11 +538,11 @@
     "category": "other",
     "visibility": "public",
     "annotation_status": "approved",
-    "public_note": "Arlington's Bike Comfort Index rates this street LTS 1; we rate it 1.5: one lane each way, under 1,000 cars a day, most drivers at 15 mph or less. Our line for quiet Arlington streets is 1.5.",
+    "public_note": "Arlington's Bike Comfort Index rates this street LTS 1; we rate it 1.5: one lane each way, under 1,000 cars a day. Our line for quiet Arlington streets is 1.5.",
     "display": "map",
     "half": true
    },
-   "reason": "The owner, 2026-11-03, on the Arlington Bike Comfort Index review card: \"1.5, wider line, split by block\". Rule: an Arlington residential or unclassified street rated LTS 2, with no VDOT count, where every block Arlington's Bike Comfort Index scores along this way shows under 1,500 vehicles a day and an 85th-percentile speed of 25 mph or less (at least one of the two a street-specific figure, not a class average), is LTS 1.5. This way: 24th Street South, highway=residential, no VDOT count; Bike Comfort Index blocks: 210/day, 85th pct 15 mph; 215/day, 85th pct 21.2499 mph. LTS 2 -> 1.5.",
+   "reason": "The owner, 2026-11-03, on the Arlington Bike Comfort Index review card: \"1.5, wider line, split by block\". Rule: an Arlington residential or unclassified street rated LTS 2, with no VDOT count, where every block Arlington's Bike Comfort Index scores along this way shows under 1,500 vehicles a day and an 85th-percentile speed of 25 mph or less (at least one of the two a street-specific figure, not a class average), is LTS 1.5. This way: 24th Street South, highway=residential, no VDOT count; Bike Comfort Index blocks: 210/day, 85th pct 15 mph; 215/day, 85th pct 21.2 mph (class average). LTS 2 -> 1.5.",
    "evidence": "Arlington County Bike Comfort Index (Arlington County DES, ArcGIS), read 2026-11-03, cited for research and review; RouteMaker v0.18.0 map tiles on beta (build 20261103T013053Z), read 2026-11-03: LTS 2; OSM API, read 2026-11-03: way 8796538, 24th Street South, highway=residential, lanes=2.",
    "fingerprint": {
     "name": "24th Street South",
@@ -604,11 +560,11 @@
     "category": "other",
     "visibility": "public",
     "annotation_status": "approved",
-    "public_note": "Arlington's Bike Comfort Index rates this street LTS 2; we rate it 1.5: one lane each way, under 1,000 cars a day, most drivers at 21 mph or less. Our line for quiet Arlington streets is 1.5.",
+    "public_note": "Arlington's Bike Comfort Index rates this street LTS 2; we rate it 1.5: one lane each way, under 1,000 cars a day. Our line for quiet Arlington streets is 1.5.",
     "display": "map",
     "half": true
    },
-   "reason": "The owner, 2026-11-03, on the Arlington Bike Comfort Index review card: \"1.5, wider line, split by block\". Rule: an Arlington residential or unclassified street rated LTS 2, with no VDOT count, where every block Arlington's Bike Comfort Index scores along this way shows under 1,500 vehicles a day and an 85th-percentile speed of 25 mph or less (at least one of the two a street-specific figure, not a class average), is LTS 1.5. This way: 30th Street North, highway=residential, no VDOT count; Bike Comfort Index blocks: 207/day, 85th pct 21 mph; 302/day, 85th pct 21 mph; 104/day, 85th pct 21.2499 mph. LTS 2 -> 1.5.",
+   "reason": "The owner, 2026-11-03, on the Arlington Bike Comfort Index review card: \"1.5, wider line, split by block\". Rule: an Arlington residential or unclassified street rated LTS 2, with no VDOT count, where every block Arlington's Bike Comfort Index scores along this way shows under 1,500 vehicles a day and an 85th-percentile speed of 25 mph or less (at least one of the two a street-specific figure, not a class average), is LTS 1.5. This way: 30th Street North, highway=residential, no VDOT count; Bike Comfort Index blocks: 207/day, 85th pct 21 mph; 302/day, 85th pct 21 mph; 104/day, 85th pct 21.2 mph (class average). LTS 2 -> 1.5.",
    "evidence": "Arlington County Bike Comfort Index (Arlington County DES, ArcGIS), read 2026-11-03, cited for research and review; RouteMaker v0.18.0 map tiles on beta (build 20261103T013053Z), read 2026-11-03: LTS 2; OSM API, read 2026-11-03: way 8796568, 30th Street North, highway=residential.",
    "fingerprint": {
     "name": "30th Street North",
@@ -663,28 +619,6 @@
   },
   {
    "kind": "stress",
-   "osm_way_id": 8796732,
-   "value": {
-    "tier": 1,
-    "adjustment_id": "arl-bci-quiet-w8796732",
-    "category": "other",
-    "visibility": "public",
-    "annotation_status": "approved",
-    "public_note": "Arlington's Bike Comfort Index calls this street Comfortable; we rate it 1.5: one lane each way, under 1,000 cars a day, most drivers at 17 mph or less. Our line for quiet Arlington streets is 1.5.",
-    "display": "map",
-    "half": true
-   },
-   "reason": "The owner, 2026-11-03, on the Arlington Bike Comfort Index review card: \"1.5, wider line, split by block\". Rule: an Arlington residential or unclassified street rated LTS 2, with no VDOT count, where every block Arlington's Bike Comfort Index scores along this way shows under 1,500 vehicles a day and an 85th-percentile speed of 25 mph or less (at least one of the two a street-specific figure, not a class average), is LTS 1.5. This way: 14th Street North, highway=residential, no VDOT count; Bike Comfort Index blocks: 968/day, 85th pct 21.2499 mph; 123/day, 85th pct 17 mph. LTS 2 -> 1.5.",
-   "evidence": "Arlington County Bike Comfort Index (Arlington County DES, ArcGIS), read 2026-11-03, cited for research and review; RouteMaker v0.18.0 map tiles on beta (build 20261103T013053Z), read 2026-11-03: LTS 2; OSM API, read 2026-11-03: way 8796732, 14th Street North, highway=residential.",
-   "fingerprint": {
-    "name": "14th Street North",
-    "highway": "residential",
-    "length_m": 180.4,
-    "line": "-77.118544,38.887751 -77.119999,38.887446 -77.120562,38.887350"
-   }
-  },
-  {
-   "kind": "stress",
    "osm_way_id": 8796886,
    "value": {
     "tier": 1,
@@ -718,57 +652,13 @@
     "display": "map",
     "half": true
    },
-   "reason": "The owner, 2026-11-03, on the Arlington Bike Comfort Index review card: \"1.5, wider line, split by block\". Rule: an Arlington residential or unclassified street rated LTS 2, with no VDOT count, where every block Arlington's Bike Comfort Index scores along this way shows under 1,500 vehicles a day and an 85th-percentile speed of 25 mph or less (at least one of the two a street-specific figure, not a class average), is LTS 1.5. This way: 1st Street South, highway=residential, no VDOT count; Bike Comfort Index blocks: 85/day, 85th pct 17.5 mph; 129/day, 85th pct 21.2499 mph. LTS 2 -> 1.5.",
+   "reason": "The owner, 2026-11-03, on the Arlington Bike Comfort Index review card: \"1.5, wider line, split by block\". Rule: an Arlington residential or unclassified street rated LTS 2, with no VDOT count, where every block Arlington's Bike Comfort Index scores along this way shows under 1,500 vehicles a day and an 85th-percentile speed of 25 mph or less (at least one of the two a street-specific figure, not a class average), is LTS 1.5. This way: 1st Street South, highway=residential, no VDOT count; Bike Comfort Index blocks: 85/day, 85th pct 17.5 mph (class average); 129/day, 85th pct 21.2 mph (class average). LTS 2 -> 1.5.",
    "evidence": "Arlington County Bike Comfort Index (Arlington County DES, ArcGIS), read 2026-11-03, cited for research and review; RouteMaker v0.18.0 map tiles on beta (build 20261103T013053Z), read 2026-11-03: LTS 2; OSM API, read 2026-11-03: way 8796888, 1st Street South, highway=residential, lanes=2.",
    "fingerprint": {
     "name": "1st Street South",
     "highway": "residential",
     "length_m": 392.2,
     "line": "-77.130890,38.866087 -77.130856,38.865732 -77.130895,38.865423 -77.134566,38.865308"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 8796913,
-   "value": {
-    "tier": 1,
-    "adjustment_id": "arl-bci-quiet-w8796913",
-    "category": "other",
-    "visibility": "public",
-    "annotation_status": "approved",
-    "public_note": "Arlington's comfort index calls this street Most Comfortable; we rate it 1.5: one lane each way, under 1,500 cars a day, most drivers at 25 mph or less. Our line for quiet Arlington streets is 1.5.",
-    "display": "map",
-    "half": true
-   },
-   "reason": "The owner, 2026-11-03, on the Arlington Bike Comfort Index review card: \"1.5, wider line, split by block\". Rule: an Arlington residential or unclassified street rated LTS 2, with no VDOT count, where every block Arlington's Bike Comfort Index scores along this way shows under 1,500 vehicles a day and an 85th-percentile speed of 25 mph or less (at least one of the two a street-specific figure, not a class average), is LTS 1.5. This way: South Wakefield Street, highway=residential, no VDOT count; Bike Comfort Index blocks: 998/day, 85th pct 22 mph; 927/day, 85th pct 25 mph; 1,337/day, 85th pct 22 mph. LTS 2 -> 1.5.",
-   "evidence": "Arlington County Bike Comfort Index (Arlington County DES, ArcGIS), read 2026-11-03, cited for research and review; RouteMaker v0.18.0 map tiles on beta (build 20261103T013053Z), read 2026-11-03: LTS 2; OSM API, read 2026-11-03: way 8796913, South Wakefield Street, highway=residential, lanes=2.",
-   "fingerprint": {
-    "name": "South Wakefield Street",
-    "highway": "residential",
-    "length_m": 252.3,
-    "line": "-77.109865,38.863987 -77.109677,38.863879 -77.109563,38.863719 -77.108688,38.861941"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 8796982,
-   "value": {
-    "tier": 1,
-    "adjustment_id": "arl-bci-quiet-w8796982",
-    "category": "other",
-    "visibility": "public",
-    "annotation_status": "approved",
-    "public_note": "Arlington's Bike Comfort Index rates this street LTS 1; we rate it 1.5: one lane each way, under 1,000 cars a day, most drivers at 18 mph or less. Our line for quiet Arlington streets is 1.5.",
-    "display": "map",
-    "half": true
-   },
-   "reason": "The owner, 2026-11-03, on the Arlington Bike Comfort Index review card: \"1.5, wider line, split by block\". Rule: an Arlington residential or unclassified street rated LTS 2, with no VDOT count, where every block Arlington's Bike Comfort Index scores along this way shows under 1,500 vehicles a day and an 85th-percentile speed of 25 mph or less (at least one of the two a street-specific figure, not a class average), is LTS 1.5. This way: 2nd Street South, highway=residential, no VDOT count; Bike Comfort Index blocks: 23/day, 85th pct 18 mph; 197/day, 85th pct 21.2499 mph. LTS 2 -> 1.5.",
-   "evidence": "Arlington County Bike Comfort Index (Arlington County DES, ArcGIS), read 2026-11-03, cited for research and review; RouteMaker v0.18.0 map tiles on beta (build 20261103T013053Z), read 2026-11-03: LTS 2; OSM API, read 2026-11-03: way 8796982, 2nd Street South, highway=residential, lanes=2.",
-   "fingerprint": {
-    "name": "2nd Street South",
-    "highway": "residential",
-    "length_m": 361.9,
-    "line": "-77.130833,38.864786 -77.130893,38.864756 -77.131013,38.864742 -77.132737,38.864704 -77.134813,38.864637 -77.134998,38.864646"
    }
   },
   {
@@ -802,11 +692,11 @@
     "category": "other",
     "visibility": "public",
     "annotation_status": "approved",
-    "public_note": "Arlington's Bike Comfort Index calls this street Comfortable; we rate it 1.5: one lane each way, under 1,000 cars a day, most drivers at 25 mph or less. Our line for quiet Arlington streets is 1.5.",
+    "public_note": "Arlington's Bike Comfort Index calls this street Comfortable; we rate it 1.5: one lane each way, under 1,000 cars a day. Our line for quiet Arlington streets is 1.5.",
     "display": "map",
     "half": true
    },
-   "reason": "The owner, 2026-11-03, on the Arlington Bike Comfort Index review card: \"1.5, wider line, split by block\". Rule: an Arlington residential or unclassified street rated LTS 2, with no VDOT count, where every block Arlington's Bike Comfort Index scores along this way shows under 1,500 vehicles a day and an 85th-percentile speed of 25 mph or less (at least one of the two a street-specific figure, not a class average), is LTS 1.5. This way: North Granada Street, highway=residential, no VDOT count; Bike Comfort Index blocks: 269/day, 85th pct 25 mph; 93/day, 85th pct 21 mph; 144/day, 85th pct 21.2499 mph; 143/day, 85th pct 22 mph; 69/day, 85th pct 22 mph. LTS 2 -> 1.5.",
+   "reason": "The owner, 2026-11-03, on the Arlington Bike Comfort Index review card: \"1.5, wider line, split by block\". Rule: an Arlington residential or unclassified street rated LTS 2, with no VDOT count, where every block Arlington's Bike Comfort Index scores along this way shows under 1,500 vehicles a day and an 85th-percentile speed of 25 mph or less (at least one of the two a street-specific figure, not a class average), is LTS 1.5. This way: North Granada Street, highway=residential, no VDOT count; Bike Comfort Index blocks: 269/day, 85th pct 25 mph; 93/day, 85th pct 21 mph; 144/day, 85th pct 21.2 mph (class average); 143/day, 85th pct 22 mph; 69/day, 85th pct 22 mph. LTS 2 -> 1.5.",
    "evidence": "Arlington County Bike Comfort Index (Arlington County DES, ArcGIS), read 2026-11-03, cited for research and review; RouteMaker v0.18.0 map tiles on beta (build 20261103T013053Z), read 2026-11-03: LTS 2; OSM API, read 2026-11-03: way 8797044, North Granada Street, highway=residential, lanes=2.",
    "fingerprint": {
     "name": "North Granada Street",
@@ -850,7 +740,7 @@
     "display": "map",
     "half": true
    },
-   "reason": "The owner, 2026-11-03, on the Arlington Bike Comfort Index review card: \"1.5, wider line, split by block\". Rule: an Arlington residential or unclassified street rated LTS 2, with no VDOT count, where every block Arlington's Bike Comfort Index scores along this way shows under 1,500 vehicles a day and an 85th-percentile speed of 25 mph or less (at least one of the two a street-specific figure, not a class average), is LTS 1.5. This way: 4th Street North, highway=residential, no VDOT count; Bike Comfort Index blocks: 439/day, 85th pct 21.2499 mph. LTS 2 -> 1.5.",
+   "reason": "The owner, 2026-11-03, on the Arlington Bike Comfort Index review card: \"1.5, wider line, split by block\". Rule: an Arlington residential or unclassified street rated LTS 2, with no VDOT count, where every block Arlington's Bike Comfort Index scores along this way shows under 1,500 vehicles a day and an 85th-percentile speed of 25 mph or less (at least one of the two a street-specific figure, not a class average), is LTS 1.5. This way: 4th Street North, highway=residential, no VDOT count; Bike Comfort Index blocks: 439/day, 85th pct 21.2 mph (class average). LTS 2 -> 1.5.",
    "evidence": "Arlington County Bike Comfort Index (Arlington County DES, ArcGIS), read 2026-11-03, cited for research and review; RouteMaker v0.18.0 map tiles on beta (build 20261103T013053Z), read 2026-11-03: LTS 2; OSM API, read 2026-11-03: way 8797164, 4th Street North, highway=residential, lanes=2.",
    "fingerprint": {
     "name": "4th Street North",
@@ -872,7 +762,7 @@
     "display": "map",
     "half": true
    },
-   "reason": "The owner, 2026-11-03, on the Arlington Bike Comfort Index review card: \"1.5, wider line, split by block\". Rule: an Arlington residential or unclassified street rated LTS 2, with no VDOT count, where every block Arlington's Bike Comfort Index scores along this way shows under 1,500 vehicles a day and an 85th-percentile speed of 25 mph or less (at least one of the two a street-specific figure, not a class average), is LTS 1.5. This way: 3rd Street South, highway=residential, no VDOT count; Bike Comfort Index blocks: 4/day, 85th pct 21 mph; 120/day, 85th pct 22 mph; 308/day, 85th pct 20 mph; 462/day, 85th pct 22 mph; 504/day, 85th pct 16 mph. LTS 2 -> 1.5.",
+   "reason": "The owner, 2026-11-03, on the Arlington Bike Comfort Index review card: \"1.5, wider line, split by block\". Rule: an Arlington residential or unclassified street rated LTS 2, with no VDOT count, where every block Arlington's Bike Comfort Index scores along this way shows under 1,500 vehicles a day and an 85th-percentile speed of 25 mph or less (at least one of the two a street-specific figure, not a class average), is LTS 1.5. This way: 3rd Street South, highway=residential, no VDOT count; Bike Comfort Index blocks: 4/day (no usable count), 85th pct 21 mph; 120/day, 85th pct 22 mph; 308/day, 85th pct 20 mph; 462/day, 85th pct 22 mph; 504/day, 85th pct 16 mph. LTS 2 -> 1.5.",
    "evidence": "Arlington County Bike Comfort Index (Arlington County DES, ArcGIS), read 2026-11-03, cited for research and review; RouteMaker v0.18.0 map tiles on beta (build 20261103T013053Z), read 2026-11-03: LTS 2; OSM API, read 2026-11-03: way 8797222, 3rd Street South, highway=residential.",
    "fingerprint": {
     "name": "3rd Street South",
@@ -901,50 +791,6 @@
     "highway": "residential",
     "length_m": 320.9,
     "line": "-77.109865,38.863987 -77.113173,38.865288"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 8797401,
-   "value": {
-    "tier": 1,
-    "adjustment_id": "arl-bci-quiet-w8797401",
-    "category": "other",
-    "visibility": "public",
-    "annotation_status": "approved",
-    "public_note": "Arlington's Bike Comfort Index rates this street LTS 2; we rate it 1.5: one lane each way, under 1,000 cars a day, most drivers at 25 mph or less. Our line for quiet Arlington streets is 1.5.",
-    "display": "map",
-    "half": true
-   },
-   "reason": "The owner, 2026-11-03, on the Arlington Bike Comfort Index review card: \"1.5, wider line, split by block\". Rule: an Arlington residential or unclassified street rated LTS 2, with no VDOT count, where every block Arlington's Bike Comfort Index scores along this way shows under 1,500 vehicles a day and an 85th-percentile speed of 25 mph or less (at least one of the two a street-specific figure, not a class average), is LTS 1.5. This way: 19th Street North, highway=residential, no VDOT count; Bike Comfort Index blocks: 170/day, 85th pct 24 mph; 169/day, 85th pct 25 mph; 204/day, 85th pct 23 mph; 311/day, 85th pct 21 mph; 318/day, 85th pct 23 mph; 334/day, 85th pct 19 mph. LTS 2 -> 1.5.",
-   "evidence": "Arlington County Bike Comfort Index (Arlington County DES, ArcGIS), read 2026-11-03, cited for research and review; RouteMaker v0.18.0 map tiles on beta (build 20261103T013053Z), read 2026-11-03: LTS 2; OSM API, read 2026-11-03: way 8797401, 19th Street North, highway=residential, maxspeed=25 mph.",
-   "fingerprint": {
-    "name": "19th Street North",
-    "highway": "residential",
-    "length_m": 880.2,
-    "line": "-77.136653,38.891474 -77.136743,38.891390 -77.138054,38.889541 -77.138220,38.889432 -77.140919,38.888583 -77.141198,38.888431 -77.141355,38.888372 -77.143987,38.887633 -77.144077,38.887593 -77.144598,38.887447 -77.144816,38.887447"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 8797407,
-   "value": {
-    "tier": 1,
-    "adjustment_id": "arl-bci-quiet-w8797407",
-    "category": "other",
-    "visibility": "public",
-    "annotation_status": "approved",
-    "public_note": "Arlington's Bike Comfort Index calls this street Comfortable; we rate it 1.5: one lane each way, under 1,000 cars a day, most drivers at 23 mph or less. Our line for quiet Arlington streets is 1.5.",
-    "display": "map",
-    "half": true
-   },
-   "reason": "The owner, 2026-11-03, on the Arlington Bike Comfort Index review card: \"1.5, wider line, split by block\". Rule: an Arlington residential or unclassified street rated LTS 2, with no VDOT count, where every block Arlington's Bike Comfort Index scores along this way shows under 1,500 vehicles a day and an 85th-percentile speed of 25 mph or less (at least one of the two a street-specific figure, not a class average), is LTS 1.5. This way: 19th Street North, highway=residential, no VDOT count; Bike Comfort Index blocks: 389/day, 85th pct 22 mph; 338/day, 85th pct 23 mph; 416/day, 85th pct 22 mph. LTS 2 -> 1.5.",
-   "evidence": "Arlington County Bike Comfort Index (Arlington County DES, ArcGIS), read 2026-11-03, cited for research and review; RouteMaker v0.18.0 map tiles on beta (build 20261103T013053Z), read 2026-11-03: LTS 2; OSM API, read 2026-11-03: way 8797407, 19th Street North, highway=residential.",
-   "fingerprint": {
-    "name": "19th Street North",
-    "highway": "residential",
-    "length_m": 247.1,
-    "line": "-77.125117,38.892940 -77.127649,38.891913"
    }
   },
   {
@@ -978,11 +824,11 @@
     "category": "other",
     "visibility": "public",
     "annotation_status": "approved",
-    "public_note": "Arlington's Bike Comfort Index rates this street LTS 2; we rate it 1.5: one lane each way, under 1,000 cars a day, most drivers at 22 mph or less. Our line for quiet Arlington streets is 1.5.",
+    "public_note": "Arlington's Bike Comfort Index rates this street LTS 2; we rate it 1.5: one lane each way, under 1,000 cars a day. Our line for quiet Arlington streets is 1.5.",
     "display": "map",
     "half": true
    },
-   "reason": "The owner, 2026-11-03, on the Arlington Bike Comfort Index review card: \"1.5, wider line, split by block\". Rule: an Arlington residential or unclassified street rated LTS 2, with no VDOT count, where every block Arlington's Bike Comfort Index scores along this way shows under 1,500 vehicles a day and an 85th-percentile speed of 25 mph or less (at least one of the two a street-specific figure, not a class average), is LTS 1.5. This way: 9th Road North, highway=residential, no VDOT count; Bike Comfort Index blocks: 58/day, 85th pct 20 mph; 15/day, 85th pct 22 mph; 293/day, 85th pct 21.2499 mph. LTS 2 -> 1.5.",
+   "reason": "The owner, 2026-11-03, on the Arlington Bike Comfort Index review card: \"1.5, wider line, split by block\". Rule: an Arlington residential or unclassified street rated LTS 2, with no VDOT count, where every block Arlington's Bike Comfort Index scores along this way shows under 1,500 vehicles a day and an 85th-percentile speed of 25 mph or less (at least one of the two a street-specific figure, not a class average), is LTS 1.5. This way: 9th Road North, highway=residential, no VDOT count; Bike Comfort Index blocks: 58/day, 85th pct 20 mph; 15/day, 85th pct 22 mph; 293/day, 85th pct 21.2 mph (class average). LTS 2 -> 1.5.",
    "evidence": "Arlington County Bike Comfort Index (Arlington County DES, ArcGIS), read 2026-11-03, cited for research and review; RouteMaker v0.18.0 map tiles on beta (build 20261103T013053Z), read 2026-11-03: LTS 2; OSM API, read 2026-11-03: way 8797565, 9th Road North, highway=residential.",
    "fingerprint": {
     "name": "9th Road North",
@@ -1000,39 +846,17 @@
     "category": "other",
     "visibility": "public",
     "annotation_status": "approved",
-    "public_note": "Arlington's comfort index calls this street Most Comfortable; we rate it 1.5: one lane each way, under 1,000 cars a day, most drivers at 21 mph or less. Our line for quiet Arlington streets is 1.5.",
+    "public_note": "Arlington's Bike Comfort Index calls this street Most Comfortable; we rate it 1.5: one lane each way, under 1,000 cars a day. Our line for quiet Arlington streets is 1.5.",
     "display": "map",
     "half": true
    },
-   "reason": "The owner, 2026-11-03, on the Arlington Bike Comfort Index review card: \"1.5, wider line, split by block\". Rule: an Arlington residential or unclassified street rated LTS 2, with no VDOT count, where every block Arlington's Bike Comfort Index scores along this way shows under 1,500 vehicles a day and an 85th-percentile speed of 25 mph or less (at least one of the two a street-specific figure, not a class average), is LTS 1.5. This way: 9th Road North, highway=residential, no VDOT count; Bike Comfort Index blocks: 194/day, 85th pct 21 mph; 293/day, 85th pct 21.2499 mph. LTS 2 -> 1.5.",
+   "reason": "The owner, 2026-11-03, on the Arlington Bike Comfort Index review card: \"1.5, wider line, split by block\". Rule: an Arlington residential or unclassified street rated LTS 2, with no VDOT count, where every block Arlington's Bike Comfort Index scores along this way shows under 1,500 vehicles a day and an 85th-percentile speed of 25 mph or less (at least one of the two a street-specific figure, not a class average), is LTS 1.5. This way: 9th Road North, highway=residential, no VDOT count; Bike Comfort Index blocks: 194/day, 85th pct 21 mph; 293/day, 85th pct 21.2 mph (class average). LTS 2 -> 1.5.",
    "evidence": "Arlington County Bike Comfort Index (Arlington County DES, ArcGIS), read 2026-11-03, cited for research and review; RouteMaker v0.18.0 map tiles on beta (build 20261103T013053Z), read 2026-11-03: LTS 2; OSM API, read 2026-11-03: way 8797566, 9th Road North, highway=residential.",
    "fingerprint": {
     "name": "9th Road North",
     "highway": "residential",
     "length_m": 237.3,
     "line": "-77.127684,38.878958 -77.127786,38.878923 -77.127908,38.878906 -77.128018,38.878935 -77.128221,38.879037 -77.128341,38.879036 -77.128477,38.879007 -77.129616,38.878642 -77.130116,38.878553 -77.130245,38.878599"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 8797648,
-   "value": {
-    "tier": 1,
-    "adjustment_id": "arl-bci-quiet-w8797648",
-    "category": "other",
-    "visibility": "public",
-    "annotation_status": "approved",
-    "public_note": "Arlington's Bike Comfort Index calls this street Comfortable; we rate it 1.5: one lane each way, under 1,500 cars a day, most drivers at 19 mph or less. Our line for quiet Arlington streets is 1.5.",
-    "display": "map",
-    "half": true
-   },
-   "reason": "The owner, 2026-11-03, on the Arlington Bike Comfort Index review card: \"1.5, wider line, split by block\". Rule: an Arlington residential or unclassified street rated LTS 2, with no VDOT count, where every block Arlington's Bike Comfort Index scores along this way shows under 1,500 vehicles a day and an 85th-percentile speed of 25 mph or less (at least one of the two a street-specific figure, not a class average), is LTS 1.5. This way: 9th Street North, highway=residential, no VDOT count; Bike Comfort Index blocks: 613/day, 85th pct 15 mph; 900/day, 85th pct 16 mph; 1,300/day, 85th pct 19 mph. LTS 2 -> 1.5.",
-   "evidence": "Arlington County Bike Comfort Index (Arlington County DES, ArcGIS), read 2026-11-03, cited for research and review; RouteMaker v0.18.0 map tiles on beta (build 20261103T013053Z), read 2026-11-03: LTS 2; OSM API, read 2026-11-03: way 8797648, 9th Street North, highway=residential, maxspeed=25 mph.",
-   "fingerprint": {
-    "name": "9th Street North",
-    "highway": "residential",
-    "length_m": 213.5,
-    "line": "-77.102941,38.882651 -77.103034,38.882589 -77.103771,38.882202 -77.104442,38.881869 -77.104537,38.881836 -77.104987,38.881582"
    }
   },
   {
@@ -1066,7 +890,7 @@
     "category": "other",
     "visibility": "public",
     "annotation_status": "approved",
-    "public_note": "Arlington's comfort index calls this street Most Comfortable; we rate it 1.5: one lane each way, under 1,000 cars a day, most drivers at 20 mph or less. Our line for quiet Arlington streets is 1.5.",
+    "public_note": "Arlington's Bike Comfort Index calls this street Most Comfortable; we rate it 1.5: one-way, under 1,000 cars a day, most drivers at 20 mph or less. Our line for quiet Arlington streets is 1.5.",
     "display": "map",
     "half": true
    },
@@ -1099,50 +923,6 @@
     "highway": "residential",
     "length_m": 431.3,
     "line": "-77.082457,38.864853 -77.083693,38.864690 -77.084670,38.864544 -77.087010,38.864241 -77.087215,38.864154 -77.087340,38.864134"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 8797761,
-   "value": {
-    "tier": 1,
-    "adjustment_id": "arl-bci-quiet-w8797761",
-    "category": "other",
-    "visibility": "public",
-    "annotation_status": "approved",
-    "public_note": "Arlington's Bike Comfort Index calls this street Comfortable; we rate it 1.5: one lane each way, under 1,000 cars a day, most drivers at 24 mph or less. Our line for quiet Arlington streets is 1.5.",
-    "display": "map",
-    "half": true
-   },
-   "reason": "The owner, 2026-11-03, on the Arlington Bike Comfort Index review card: \"1.5, wider line, split by block\". Rule: an Arlington residential or unclassified street rated LTS 2, with no VDOT count, where every block Arlington's Bike Comfort Index scores along this way shows under 1,500 vehicles a day and an 85th-percentile speed of 25 mph or less (at least one of the two a street-specific figure, not a class average), is LTS 1.5. This way: North Jefferson Street, highway=residential, no VDOT count; Bike Comfort Index blocks: 557/day, 85th pct 21 mph; 670/day, 85th pct 24 mph. LTS 2 -> 1.5.",
-   "evidence": "Arlington County Bike Comfort Index (Arlington County DES, ArcGIS), read 2026-11-03, cited for research and review; RouteMaker v0.18.0 map tiles on beta (build 20261103T013053Z), read 2026-11-03: LTS 2; OSM API, read 2026-11-03: way 8797761, North Jefferson Street, highway=residential, lanes=2.",
-   "fingerprint": {
-    "name": "North Jefferson Street",
-    "highway": "residential",
-    "length_m": 214.5,
-    "line": "-77.126490,38.872366 -77.127269,38.874198"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 8797766,
-   "value": {
-    "tier": 1,
-    "adjustment_id": "arl-bci-quiet-w8797766",
-    "category": "other",
-    "visibility": "public",
-    "annotation_status": "approved",
-    "public_note": "Arlington's Bike Comfort Index rates this street LTS 2; we rate it 1.5: one lane each way, under 1,000 cars a day, most drivers at 20 mph or less. Our line for quiet Arlington streets is 1.5.",
-    "display": "map",
-    "half": true
-   },
-   "reason": "The owner, 2026-11-03, on the Arlington Bike Comfort Index review card: \"1.5, wider line, split by block\". Rule: an Arlington residential or unclassified street rated LTS 2, with no VDOT count, where every block Arlington's Bike Comfort Index scores along this way shows under 1,500 vehicles a day and an 85th-percentile speed of 25 mph or less (at least one of the two a street-specific figure, not a class average), is LTS 1.5. This way: North Jefferson Street, highway=residential, no VDOT count; Bike Comfort Index blocks: 477/day, 85th pct 20 mph; 406/day, 85th pct 19 mph. LTS 2 -> 1.5.",
-   "evidence": "Arlington County Bike Comfort Index (Arlington County DES, ArcGIS), read 2026-11-03, cited for research and review; RouteMaker v0.18.0 map tiles on beta (build 20261103T013053Z), read 2026-11-03: LTS 2; OSM API, read 2026-11-03: way 8797766, North Jefferson Street, highway=residential, maxspeed=25 mph.",
-   "fingerprint": {
-    "name": "North Jefferson Street",
-    "highway": "residential",
-    "length_m": 402.2,
-    "line": "-77.140485,38.895624 -77.140526,38.895710 -77.142738,38.898786"
    }
   },
   {
@@ -1198,39 +978,17 @@
     "category": "other",
     "visibility": "public",
     "annotation_status": "approved",
-    "public_note": "Arlington's Bike Comfort Index rates this street LTS 2; we rate it 1.5: one lane each way, under 1,500 cars a day, most drivers at 24 mph or less. Our line for quiet Arlington streets is 1.5.",
+    "public_note": "Arlington's Bike Comfort Index rates this street LTS 2; we rate it 1.5: one lane each way, under 1,500 cars a day. Our line for quiet Arlington streets is 1.5.",
     "display": "map",
     "half": true
    },
-   "reason": "The owner, 2026-11-03, on the Arlington Bike Comfort Index review card: \"1.5, wider line, split by block\". Rule: an Arlington residential or unclassified street rated LTS 2, with no VDOT count, where every block Arlington's Bike Comfort Index scores along this way shows under 1,500 vehicles a day and an 85th-percentile speed of 25 mph or less (at least one of the two a street-specific figure, not a class average), is LTS 1.5. This way: North Adams Street, highway=residential, no VDOT count; Bike Comfort Index blocks: 681/day, 85th pct 19 mph; 943/day, 85th pct 21.2499 mph; 190/day, 85th pct 18 mph; 851/day, 85th pct 20 mph; 1,309/day, 85th pct 24 mph. LTS 2 -> 1.5.",
+   "reason": "The owner, 2026-11-03, on the Arlington Bike Comfort Index review card: \"1.5, wider line, split by block\". Rule: an Arlington residential or unclassified street rated LTS 2, with no VDOT count, where every block Arlington's Bike Comfort Index scores along this way shows under 1,500 vehicles a day and an 85th-percentile speed of 25 mph or less (at least one of the two a street-specific figure, not a class average), is LTS 1.5. This way: North Adams Street, highway=residential, no VDOT count; Bike Comfort Index blocks: 681/day, 85th pct 19 mph; 943/day, 85th pct 21.2 mph (class average); 190/day, 85th pct 18 mph; 851/day, 85th pct 20 mph; 1,309/day, 85th pct 24 mph. LTS 2 -> 1.5.",
    "evidence": "Arlington County Bike Comfort Index (Arlington County DES, ArcGIS), read 2026-11-03, cited for research and review; RouteMaker v0.18.0 map tiles on beta (build 20261103T013053Z), read 2026-11-03: LTS 2; OSM API, read 2026-11-03: way 28155072, North Adams Street, highway=residential.",
    "fingerprint": {
     "name": "North Adams Street",
     "highway": "residential",
     "length_m": 663.8,
     "line": "-77.087567,38.891811 -77.088804,38.894858 -77.088856,38.895017 -77.088961,38.896342 -77.089130,38.897618"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 28173345,
-   "value": {
-    "tier": 1,
-    "adjustment_id": "arl-bci-quiet-w28173345",
-    "category": "other",
-    "visibility": "public",
-    "annotation_status": "approved",
-    "public_note": "Arlington's comfort index calls this street Most Comfortable; we rate it 1.5: one lane each way, under 1,500 cars a day, most drivers at 23 mph or less. Our line for quiet Arlington streets is 1.5.",
-    "display": "map",
-    "half": true
-   },
-   "reason": "The owner, 2026-11-03, on the Arlington Bike Comfort Index review card: \"1.5, wider line, split by block\". Rule: an Arlington residential or unclassified street rated LTS 2, with no VDOT count, where every block Arlington's Bike Comfort Index scores along this way shows under 1,500 vehicles a day and an 85th-percentile speed of 25 mph or less (at least one of the two a street-specific figure, not a class average), is LTS 1.5. This way: Key Boulevard, highway=residential, no VDOT count; Bike Comfort Index blocks: 1,254/day, 85th pct 20 mph; 1,159/day, 85th pct 21 mph; 821/day, 85th pct 19 mph; 1,091/day, 85th pct 20 mph; 1,205/day, 85th pct 23 mph. LTS 2 -> 1.5.",
-   "evidence": "Arlington County Bike Comfort Index (Arlington County DES, ArcGIS), read 2026-11-03, cited for research and review; RouteMaker v0.18.0 map tiles on beta (build 20261103T013053Z), read 2026-11-03: LTS 2; OSM API, read 2026-11-03: way 28173345, Key Boulevard, highway=residential, lanes=2, maxspeed=25 mph.",
-   "fingerprint": {
-    "name": "Key Boulevard",
-    "highway": "residential",
-    "length_m": 427.0,
-    "line": "-77.086130,38.893396 -77.088799,38.892718 -77.089080,38.892669 -77.090907,38.892511"
    }
   },
   {
@@ -1286,7 +1044,7 @@
     "category": "other",
     "visibility": "public",
     "annotation_status": "approved",
-    "public_note": "Arlington's comfort index calls this street Most Comfortable; we rate it 1.5: one lane each way, under 1,000 cars a day, most drivers at 20 mph or less. Our line for quiet Arlington streets is 1.5.",
+    "public_note": "Arlington's Bike Comfort Index calls this street Most Comfortable; we rate it 1.5: one-way, under 1,000 cars a day, most drivers at 20 mph or less. Our line for quiet Arlington streets is 1.5.",
     "display": "map",
     "half": true
    },
@@ -1386,28 +1144,6 @@
   },
   {
    "kind": "stress",
-   "osm_way_id": 44643268,
-   "value": {
-    "tier": 1,
-    "adjustment_id": "arl-bci-quiet-w44643268",
-    "category": "other",
-    "visibility": "public",
-    "annotation_status": "approved",
-    "public_note": "Arlington's Bike Comfort Index rates this street LTS 1; we rate it 1.5: one lane each way, under 1,500 cars a day, most drivers at 15 mph or less. Our line for quiet Arlington streets is 1.5.",
-    "display": "map",
-    "half": true
-   },
-   "reason": "The owner, 2026-11-03, on the Arlington Bike Comfort Index review card: \"1.5, wider line, split by block\". Rule: an Arlington residential or unclassified street rated LTS 2, with no VDOT count, where every block Arlington's Bike Comfort Index scores along this way shows under 1,500 vehicles a day and an 85th-percentile speed of 25 mph or less (at least one of the two a street-specific figure, not a class average), is LTS 1.5. This way: North Scott Street, highway=residential, no VDOT count; Bike Comfort Index blocks: 1,199/day, 85th pct 16.1379 mph; 1,199/day, 85th pct 15 mph. LTS 2 -> 1.5.",
-   "evidence": "Arlington County Bike Comfort Index (Arlington County DES, ArcGIS), read 2026-11-03, cited for research and review; RouteMaker v0.18.0 map tiles on beta (build 20261103T013053Z), read 2026-11-03: LTS 2; OSM API, read 2026-11-03: way 44643268, North Scott Street, highway=residential.",
-   "fingerprint": {
-    "name": "North Scott Street",
-    "highway": "residential",
-    "length_m": 130.1,
-    "line": "-77.080618,38.888968 -77.080348,38.889269 -77.080298,38.889368 -77.080283,38.889526 -77.080325,38.889916 -77.080254,38.890051"
-   }
-  },
-  {
-   "kind": "stress",
    "osm_way_id": 45306802,
    "value": {
     "tier": 3,
@@ -1426,28 +1162,6 @@
     "highway": "primary",
     "length_m": 73.1,
     "line": "-77.069421,38.894627 -77.068893,38.894354 -77.068739,38.894243"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 45843291,
-   "value": {
-    "tier": 1,
-    "adjustment_id": "arl-bci-quiet-w45843291",
-    "category": "other",
-    "visibility": "public",
-    "annotation_status": "approved",
-    "public_note": "Arlington's Bike Comfort Index calls this street Comfortable; we rate it 1.5: one lane each way, under 100 cars a day, most drivers at 21 mph or less. Our line for quiet Arlington streets is 1.5.",
-    "display": "map",
-    "half": true
-   },
-   "reason": "The owner, 2026-11-03, on the Arlington Bike Comfort Index review card: \"1.5, wider line, split by block\". Rule: an Arlington residential or unclassified street rated LTS 2, with no VDOT count, where every block Arlington's Bike Comfort Index scores along this way shows under 1,500 vehicles a day and an 85th-percentile speed of 25 mph or less (at least one of the two a street-specific figure, not a class average), is LTS 1.5. This way: North George Mason Drive, highway=residential, no VDOT count; Bike Comfort Index blocks: 17/day, 85th pct 21.2499 mph; 17/day, 85th pct 21 mph. LTS 2 -> 1.5.",
-   "evidence": "Arlington County Bike Comfort Index (Arlington County DES, ArcGIS), read 2026-11-03, cited for research and review; RouteMaker v0.18.0 map tiles on beta (build 20261103T013053Z), read 2026-11-03: LTS 2; OSM API, read 2026-11-03: way 45843291, North George Mason Drive, highway=residential.",
-   "fingerprint": {
-    "name": "North George Mason Drive",
-    "highway": "residential",
-    "length_m": 161.8,
-    "line": "-77.137062,38.904476 -77.136803,38.904196 -77.136494,38.903801 -77.136374,38.903588 -77.136302,38.903421 -77.136253,38.903185"
    }
   },
   {
@@ -1647,28 +1361,6 @@
   },
   {
    "kind": "stress",
-   "osm_way_id": 106192788,
-   "value": {
-    "tier": 1,
-    "adjustment_id": "arl-bci-quiet-w106192788",
-    "category": "other",
-    "visibility": "public",
-    "annotation_status": "approved",
-    "public_note": "Arlington's comfort index calls this street Most Comfortable; we rate it 1.5: one lane each way, under 1,000 cars a day, most drivers at 17 mph or less. Our line for quiet Arlington streets is 1.5.",
-    "display": "map",
-    "half": true
-   },
-   "reason": "The owner, 2026-11-03, on the Arlington Bike Comfort Index review card: \"1.5, wider line, split by block\". Rule: an Arlington residential or unclassified street rated LTS 2, with no VDOT count, where every block Arlington's Bike Comfort Index scores along this way shows under 1,500 vehicles a day and an 85th-percentile speed of 25 mph or less (at least one of the two a street-specific figure, not a class average), is LTS 1.5. This way: South Clark Street, highway=residential, no VDOT count; Bike Comfort Index blocks: 338/day, 85th pct 17 mph; 390/day, 85th pct 21.2499 mph; 442/day, 85th pct 16 mph. LTS 2 -> 1.5.",
-   "evidence": "Arlington County Bike Comfort Index (Arlington County DES, ArcGIS), read 2026-11-03, cited for research and review; RouteMaker v0.18.0 map tiles on beta (build 20261103T013053Z), read 2026-11-03: LTS 2; OSM API, read 2026-11-03: way 106192788, South Clark Street, highway=residential, lanes=1.",
-   "fingerprint": {
-    "name": "South Clark Street",
-    "highway": "residential",
-    "length_m": 296.9,
-    "line": "-77.051691,38.842715 -77.051931,38.844630 -77.051931,38.844861 -77.051872,38.845374"
-   }
-  },
-  {
-   "kind": "stress",
    "osm_way_id": 109341782,
    "value": {
     "tier": 3,
@@ -1680,57 +1372,13 @@
     "display": "map",
     "half": true
    },
-   "reason": "The owner, 2026-11-03, asked for a skeptical review of every place our LTS differs from Arlington County's Bike Comfort Index by a full level or more (\"make sure we are consistent\"). Unit B144 (Washington Blvd), rater plus skeptics: 2+ lanes each way at 30 mph over 8,000/day is LTS 4; one-lane blocks 3.5. LTS 3 -> 3.5 (this way is one lane each way, so the 12,000/day step gives 3.5; the 2-lane one-way pieces are 4).",
+   "reason": "The owner, 2026-11-03, asked for a skeptical review of every place our LTS differs from Arlington County's Bike Comfort Index by a full level or more (\"make sure we are consistent\"). Unit B144 (Washington Blvd), rater plus skeptics: 2+ lanes each way at 30 mph over 8,000/day is LTS 4; one-lane blocks 3.5. This way is one lane each way (OSM lanes=2, two-way), so the 12,000/day step gives 3.5, not 4 (rules skeptic: 2+2 at 30 mph over 8,000/day is 4; R5 for 1+1). LTS 3 -> 3.5.",
    "evidence": "Arlington County Bike Comfort Index (Arlington County DES, ArcGIS), read 2026-11-03, cited for research and review; RouteMaker v0.18.0 map tiles on beta (build 20261103T013053Z), read 2026-11-03: LTS 3; OSM API, read 2026-11-03: way 109341782, Washington Boulevard, highway=secondary, lanes=2, maxspeed=30 mph.",
    "fingerprint": {
     "name": "Washington Boulevard",
     "highway": "secondary",
     "length_m": 417.6,
     "line": "-77.120460,38.885302 -77.123554,38.885174 -77.125279,38.885127"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 125964897,
-   "value": {
-    "tier": 1,
-    "adjustment_id": "arl-bci-quiet-w125964897",
-    "category": "other",
-    "visibility": "public",
-    "annotation_status": "approved",
-    "public_note": "Arlington's Bike Comfort Index calls this street Most Comfortable; we rate it 1.5: one lane each way, under 100 cars a day, most drivers at 18 mph or less. Our line for quiet Arlington streets is 1.5.",
-    "display": "map",
-    "half": true
-   },
-   "reason": "The owner, 2026-11-03, on the Arlington Bike Comfort Index review card: \"1.5, wider line, split by block\". Rule: an Arlington residential or unclassified street rated LTS 2, with no VDOT count, where every block Arlington's Bike Comfort Index scores along this way shows under 1,500 vehicles a day and an 85th-percentile speed of 25 mph or less (at least one of the two a street-specific figure, not a class average), is LTS 1.5. This way: 22nd Street North, highway=residential, no VDOT count; Bike Comfort Index blocks: 41/day, 85th pct 18 mph. LTS 2 -> 1.5.",
-   "evidence": "Arlington County Bike Comfort Index (Arlington County DES, ArcGIS), read 2026-11-03, cited for research and review; RouteMaker v0.18.0 map tiles on beta (build 20261103T013053Z), read 2026-11-03: LTS 2; OSM API, read 2026-11-03: way 125964897, 22nd Street North, highway=residential.",
-   "fingerprint": {
-    "name": "22nd Street North",
-    "highway": "residential",
-    "length_m": 81.9,
-    "line": "-77.098540,38.897291 -77.098613,38.897276 -77.098689,38.897285 -77.099446,38.897471"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 125964902,
-   "value": {
-    "tier": 1,
-    "adjustment_id": "arl-bci-quiet-w125964902",
-    "category": "other",
-    "visibility": "public",
-    "annotation_status": "approved",
-    "public_note": "Arlington's Bike Comfort Index calls this street Comfortable; we rate it 1.5: one lane each way, under 1,000 cars a day, most drivers at 19 mph or less. Our line for quiet Arlington streets is 1.5.",
-    "display": "map",
-    "half": true
-   },
-   "reason": "The owner, 2026-11-03, on the Arlington Bike Comfort Index review card: \"1.5, wider line, split by block\". Rule: an Arlington residential or unclassified street rated LTS 2, with no VDOT count, where every block Arlington's Bike Comfort Index scores along this way shows under 1,500 vehicles a day and an 85th-percentile speed of 25 mph or less (at least one of the two a street-specific figure, not a class average), is LTS 1.5. This way: North Fillmore Street, highway=residential, no VDOT count; Bike Comfort Index blocks: 48/day, 85th pct 16 mph; 173/day, 85th pct 17 mph; 131/day, 85th pct 19 mph. LTS 2 -> 1.5.",
-   "evidence": "Arlington County Bike Comfort Index (Arlington County DES, ArcGIS), read 2026-11-03, cited for research and review; RouteMaker v0.18.0 map tiles on beta (build 20261103T013053Z), read 2026-11-03: LTS 2; OSM API, read 2026-11-03: way 125964902, North Fillmore Street, highway=residential.",
-   "fingerprint": {
-    "name": "North Fillmore Street",
-    "highway": "residential",
-    "length_m": 289.8,
-    "line": "-77.098540,38.897291 -77.098486,38.897340 -77.098277,38.897837 -77.098272,38.897911 -77.098326,38.898006 -77.098777,38.898597 -77.098808,38.898687 -77.098801,38.898776 -77.098435,38.899705"
    }
   },
   {
@@ -1779,72 +1427,6 @@
   },
   {
    "kind": "stress",
-   "osm_way_id": 154897539,
-   "value": {
-    "tier": 1,
-    "adjustment_id": "arl-bci-quiet-w154897539",
-    "category": "other",
-    "visibility": "public",
-    "annotation_status": "approved",
-    "public_note": "Arlington's comfort index calls this street Most Comfortable; we rate it 1.5: one lane each way, under 1,000 cars a day, most drivers at 19 mph or less. Our line for quiet Arlington streets is 1.5.",
-    "display": "map",
-    "half": true
-   },
-   "reason": "The owner, 2026-11-03, on the Arlington Bike Comfort Index review card: \"1.5, wider line, split by block\". Rule: an Arlington residential or unclassified street rated LTS 2, with no VDOT count, where every block Arlington's Bike Comfort Index scores along this way shows under 1,500 vehicles a day and an 85th-percentile speed of 25 mph or less (at least one of the two a street-specific figure, not a class average), is LTS 1.5. This way: South Monroe Street, highway=residential, no VDOT count; Bike Comfort Index blocks: 506/day, 85th pct 19 mph. LTS 2 -> 1.5.",
-   "evidence": "Arlington County Bike Comfort Index (Arlington County DES, ArcGIS), read 2026-11-03, cited for research and review; RouteMaker v0.18.0 map tiles on beta (build 20261103T013053Z), read 2026-11-03: LTS 2; OSM API, read 2026-11-03: way 154897539, South Monroe Street, highway=residential.",
-   "fingerprint": {
-    "name": "South Monroe Street",
-    "highway": "residential",
-    "length_m": 106.1,
-    "line": "-77.095741,38.864866 -77.095343,38.863964"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 154897568,
-   "value": {
-    "tier": 1,
-    "adjustment_id": "arl-bci-quiet-w154897568",
-    "category": "other",
-    "visibility": "public",
-    "annotation_status": "approved",
-    "public_note": "Arlington's comfort index calls this street Most Comfortable; we rate it 1.5: one lane each way, under 1,000 cars a day, most drivers at 24 mph or less. Our line for quiet Arlington streets is 1.5.",
-    "display": "map",
-    "half": true
-   },
-   "reason": "The owner, 2026-11-03, on the Arlington Bike Comfort Index review card: \"1.5, wider line, split by block\". Rule: an Arlington residential or unclassified street rated LTS 2, with no VDOT count, where every block Arlington's Bike Comfort Index scores along this way shows under 1,500 vehicles a day and an 85th-percentile speed of 25 mph or less (at least one of the two a street-specific figure, not a class average), is LTS 1.5. This way: 7th Street South, highway=residential, no VDOT count; Bike Comfort Index blocks: 746/day, 85th pct 24 mph. LTS 2 -> 1.5.",
-   "evidence": "Arlington County Bike Comfort Index (Arlington County DES, ArcGIS), read 2026-11-03, cited for research and review; RouteMaker v0.18.0 map tiles on beta (build 20261103T013053Z), read 2026-11-03: LTS 2; OSM API, read 2026-11-03: way 154897568, 7th Street South, highway=residential.",
-   "fingerprint": {
-    "name": "7th Street South",
-    "highway": "residential",
-    "length_m": 149.1,
-    "line": "-77.095833,38.864905 -77.097447,38.864436"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 154897569,
-   "value": {
-    "tier": 1,
-    "adjustment_id": "arl-bci-quiet-w154897569",
-    "category": "other",
-    "visibility": "public",
-    "annotation_status": "approved",
-    "public_note": "Arlington's comfort index calls this street Most Comfortable; we rate it 1.5: one lane each way, under 1,000 cars a day, most drivers at 24 mph or less. Our line for quiet Arlington streets is 1.5.",
-    "display": "map",
-    "half": true
-   },
-   "reason": "The owner, 2026-11-03, on the Arlington Bike Comfort Index review card: \"1.5, wider line, split by block\". Rule: an Arlington residential or unclassified street rated LTS 2, with no VDOT count, where every block Arlington's Bike Comfort Index scores along this way shows under 1,500 vehicles a day and an 85th-percentile speed of 25 mph or less (at least one of the two a street-specific figure, not a class average), is LTS 1.5. This way: 7th Street South, highway=residential, no VDOT count; Bike Comfort Index blocks: 651/day, 85th pct 24 mph. LTS 2 -> 1.5.",
-   "evidence": "Arlington County Bike Comfort Index (Arlington County DES, ArcGIS), read 2026-11-03, cited for research and review; RouteMaker v0.18.0 map tiles on beta (build 20261103T013053Z), read 2026-11-03: LTS 2; OSM API, read 2026-11-03: way 154897569, 7th Street South, highway=residential.",
-   "fingerprint": {
-    "name": "7th Street South",
-    "highway": "residential",
-    "length_m": 266.9,
-    "line": "-77.097582,38.864402 -77.100478,38.863578"
-   }
-  },
-  {
-   "kind": "stress",
    "osm_way_id": 154897574,
    "value": {
     "tier": 1,
@@ -1889,28 +1471,6 @@
   },
   {
    "kind": "stress",
-   "osm_way_id": 157032040,
-   "value": {
-    "tier": 1,
-    "adjustment_id": "arl-bci-quiet-w157032040",
-    "category": "other",
-    "visibility": "public",
-    "annotation_status": "approved",
-    "public_note": "Arlington's comfort index calls this street Most Comfortable; we rate it 1.5: one lane each way, under 1,000 cars a day, most drivers at 20 mph or less. Our line for quiet Arlington streets is 1.5.",
-    "display": "map",
-    "half": true
-   },
-   "reason": "The owner, 2026-11-03, on the Arlington Bike Comfort Index review card: \"1.5, wider line, split by block\". Rule: an Arlington residential or unclassified street rated LTS 2, with no VDOT count, where every block Arlington's Bike Comfort Index scores along this way shows under 1,500 vehicles a day and an 85th-percentile speed of 25 mph or less (at least one of the two a street-specific figure, not a class average), is LTS 1.5. This way: 12th Street South, highway=residential, no VDOT count; Bike Comfort Index blocks: 416/day, 85th pct 20 mph; 586/day, 85th pct 20 mph. LTS 2 -> 1.5.",
-   "evidence": "Arlington County Bike Comfort Index (Arlington County DES, ArcGIS), read 2026-11-03, cited for research and review; RouteMaker v0.18.0 map tiles on beta (build 20261103T013053Z), read 2026-11-03: LTS 2; OSM API, read 2026-11-03: way 157032040, 12th Street South, highway=residential.",
-   "fingerprint": {
-    "name": "12th Street South",
-    "highway": "residential",
-    "length_m": 290.7,
-    "line": "-77.088526,38.860417 -77.091590,38.859554 -77.091687,38.859540"
-   }
-  },
-  {
-   "kind": "stress",
    "osm_way_id": 170237484,
    "value": {
     "tier": 2,
@@ -1932,28 +1492,6 @@
   },
   {
    "kind": "stress",
-   "osm_way_id": 179911652,
-   "value": {
-    "tier": 1,
-    "adjustment_id": "arl-bci-quiet-w179911652",
-    "category": "other",
-    "visibility": "public",
-    "annotation_status": "approved",
-    "public_note": "Arlington's comfort index calls this street Most Comfortable; we rate it 1.5: one lane each way, under 1,000 cars a day, most drivers at 20 mph or less. Our line for quiet Arlington streets is 1.5.",
-    "display": "map",
-    "half": true
-   },
-   "reason": "The owner, 2026-11-03, on the Arlington Bike Comfort Index review card: \"1.5, wider line, split by block\". Rule: an Arlington residential or unclassified street rated LTS 2, with no VDOT count, where every block Arlington's Bike Comfort Index scores along this way shows under 1,500 vehicles a day and an 85th-percentile speed of 25 mph or less (at least one of the two a street-specific figure, not a class average), is LTS 1.5. This way: South Irving Street, highway=residential, no VDOT count; Bike Comfort Index blocks: 322/day, 85th pct 20 mph. LTS 2 -> 1.5.",
-   "evidence": "Arlington County Bike Comfort Index (Arlington County DES, ArcGIS), read 2026-11-03, cited for research and review; RouteMaker v0.18.0 map tiles on beta (build 20261103T013053Z), read 2026-11-03: LTS 2; OSM API, read 2026-11-03: way 179911652, South Irving Street, highway=residential.",
-   "fingerprint": {
-    "name": "South Irving Street",
-    "highway": "residential",
-    "length_m": 67.8,
-    "line": "-77.090113,38.863274 -77.090097,38.863200 -77.090131,38.862926 -77.090193,38.862672"
-   }
-  },
-  {
-   "kind": "stress",
    "osm_way_id": 180828382,
    "value": {
     "tier": 1,
@@ -1961,11 +1499,11 @@
     "category": "other",
     "visibility": "public",
     "annotation_status": "approved",
-    "public_note": "Arlington's Bike Comfort Index calls this street Most Comfortable; we rate it 1.5: one lane each way, under 1,000 cars a day. Our line for quiet Arlington streets is 1.5.",
+    "public_note": "Arlington's Bike Comfort Index calls this street Most Comfortable; we rate it 1.5: one-way, under 1,000 cars a day. Our line for quiet Arlington streets is 1.5.",
     "display": "map",
     "half": true
    },
-   "reason": "The owner, 2026-11-03, on the Arlington Bike Comfort Index review card: \"1.5, wider line, split by block\". Rule: an Arlington residential or unclassified street rated LTS 2, with no VDOT count, where every block Arlington's Bike Comfort Index scores along this way shows under 1,500 vehicles a day and an 85th-percentile speed of 25 mph or less (at least one of the two a street-specific figure, not a class average), is LTS 1.5. This way: South Ball Street, highway=residential, no VDOT count; Bike Comfort Index blocks: 824/day, 85th pct 15.5 mph. LTS 2 -> 1.5.",
+   "reason": "The owner, 2026-11-03, on the Arlington Bike Comfort Index review card: \"1.5, wider line, split by block\". Rule: an Arlington residential or unclassified street rated LTS 2, with no VDOT count, where every block Arlington's Bike Comfort Index scores along this way shows under 1,500 vehicles a day and an 85th-percentile speed of 25 mph or less (at least one of the two a street-specific figure, not a class average), is LTS 1.5. This way: South Ball Street, highway=residential, no VDOT count; Bike Comfort Index blocks: 824/day, 85th pct 15.5 mph (class average). LTS 2 -> 1.5.",
    "evidence": "Arlington County Bike Comfort Index (Arlington County DES, ArcGIS), read 2026-11-03, cited for research and review; RouteMaker v0.18.0 map tiles on beta (build 20261103T013053Z), read 2026-11-03: LTS 2; OSM API, read 2026-11-03: way 180828382, South Ball Street, highway=residential.",
    "fingerprint": {
     "name": "South Ball Street",
@@ -2016,28 +1554,6 @@
     "highway": "tertiary",
     "length_m": 53.0,
     "line": "-77.050075,38.862809 -77.050332,38.862858 -77.050677,38.862893"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 185328077,
-   "value": {
-    "tier": 1,
-    "adjustment_id": "arl-bci-quiet-w185328077",
-    "category": "other",
-    "visibility": "public",
-    "annotation_status": "approved",
-    "public_note": "Arlington's comfort index calls this street Most Comfortable; we rate it 1.5: one lane each way, under 1,000 cars a day, most drivers at 14 mph or less. Our line for quiet Arlington streets is 1.5.",
-    "display": "map",
-    "half": true
-   },
-   "reason": "The owner, 2026-11-03, on the Arlington Bike Comfort Index review card: \"1.5, wider line, split by block\". Rule: an Arlington residential or unclassified street rated LTS 2, with no VDOT count, where every block Arlington's Bike Comfort Index scores along this way shows under 1,500 vehicles a day and an 85th-percentile speed of 25 mph or less (at least one of the two a street-specific figure, not a class average), is LTS 1.5. This way: North Barton Street, highway=residential, no VDOT count; Bike Comfort Index blocks: 417/day, 85th pct 14 mph. LTS 2 -> 1.5.",
-   "evidence": "Arlington County Bike Comfort Index (Arlington County DES, ArcGIS), read 2026-11-03, cited for research and review; RouteMaker v0.18.0 map tiles on beta (build 20261103T013053Z), read 2026-11-03: LTS 2; OSM API, read 2026-11-03: way 185328077, North Barton Street, highway=residential, lanes=1.",
-   "fingerprint": {
-    "name": "North Barton Street",
-    "highway": "residential",
-    "length_m": 88.6,
-    "line": "-77.088703,38.891317 -77.088727,38.891390 -77.088802,38.892110"
    }
   },
   {
@@ -2628,28 +2144,6 @@
   },
   {
    "kind": "stress",
-   "osm_way_id": 470612197,
-   "value": {
-    "tier": 1,
-    "adjustment_id": "arl-bci-quiet-w470612197",
-    "category": "other",
-    "visibility": "public",
-    "annotation_status": "approved",
-    "public_note": "Arlington's comfort index calls this street Most Comfortable; we rate it 1.5: one lane each way, under 1,500 cars a day, most drivers at 25 mph or less. Our line for quiet Arlington streets is 1.5.",
-    "display": "map",
-    "half": true
-   },
-   "reason": "The owner, 2026-11-03, on the Arlington Bike Comfort Index review card: \"1.5, wider line, split by block\". Rule: an Arlington residential or unclassified street rated LTS 2, with no VDOT count, where every block Arlington's Bike Comfort Index scores along this way shows under 1,500 vehicles a day and an 85th-percentile speed of 25 mph or less (at least one of the two a street-specific figure, not a class average), is LTS 1.5. This way: North Pershing Drive, highway=residential, no VDOT count; Bike Comfort Index blocks: 1,141/day, 85th pct 24 mph; 677/day, 85th pct 21.2499 mph; 712/day, 85th pct 25 mph. LTS 2 -> 1.5.",
-   "evidence": "Arlington County Bike Comfort Index (Arlington County DES, ArcGIS), read 2026-11-03, cited for research and review; RouteMaker v0.18.0 map tiles on beta (build 20261103T013053Z), read 2026-11-03: LTS 2; OSM API, read 2026-11-03: way 470612197, North Pershing Drive, highway=residential, lanes=2, maxspeed=25 mph.",
-   "fingerprint": {
-    "name": "North Pershing Drive",
-    "highway": "residential",
-    "length_m": 306.0,
-    "line": "-77.110844,38.869807 -77.108247,38.871674"
-   }
-  },
-  {
-   "kind": "stress",
    "osm_way_id": 474893725,
    "value": {
     "tier": 2,
@@ -2782,50 +2276,6 @@
   },
   {
    "kind": "stress",
-   "osm_way_id": 488811616,
-   "value": {
-    "tier": 1,
-    "adjustment_id": "arl-bci-quiet-w488811616",
-    "category": "other",
-    "visibility": "public",
-    "annotation_status": "approved",
-    "public_note": "Arlington's comfort index calls this street Most Comfortable; we rate it 1.5: one lane each way, under 1,000 cars a day, most drivers at 20 mph or less. Our line for quiet Arlington streets is 1.5.",
-    "display": "map",
-    "half": true
-   },
-   "reason": "The owner, 2026-11-03, on the Arlington Bike Comfort Index review card: \"1.5, wider line, split by block\". Rule: an Arlington residential or unclassified street rated LTS 2, with no VDOT count, where every block Arlington's Bike Comfort Index scores along this way shows under 1,500 vehicles a day and an 85th-percentile speed of 25 mph or less (at least one of the two a street-specific figure, not a class average), is LTS 1.5. This way: North Jackson Street, highway=residential, no VDOT count; Bike Comfort Index blocks: 428/day, 85th pct 19 mph; 665/day, 85th pct 20 mph. LTS 2 -> 1.5.",
-   "evidence": "Arlington County Bike Comfort Index (Arlington County DES, ArcGIS), read 2026-11-03, cited for research and review; RouteMaker v0.18.0 map tiles on beta (build 20261103T013053Z), read 2026-11-03: LTS 2; OSM API, read 2026-11-03: way 488811616, North Jackson Street, highway=residential, lanes=2.",
-   "fingerprint": {
-    "name": "North Jackson Street",
-    "highway": "residential",
-    "length_m": 200.7,
-    "line": "-77.099175,38.887326 -77.099208,38.887695 -77.099400,38.889122"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 488811628,
-   "value": {
-    "tier": 1,
-    "adjustment_id": "arl-bci-quiet-w488811628",
-    "category": "other",
-    "visibility": "public",
-    "annotation_status": "approved",
-    "public_note": "Arlington's comfort index calls this street Most Comfortable; we rate it 1.5: one lane each way, under 1,500 cars a day, most drivers at 24 mph or less. Our line for quiet Arlington streets is 1.5.",
-    "display": "map",
-    "half": true
-   },
-   "reason": "The owner, 2026-11-03, on the Arlington Bike Comfort Index review card: \"1.5, wider line, split by block\". Rule: an Arlington residential or unclassified street rated LTS 2, with no VDOT count, where every block Arlington's Bike Comfort Index scores along this way shows under 1,500 vehicles a day and an 85th-percentile speed of 25 mph or less (at least one of the two a street-specific figure, not a class average), is LTS 1.5. This way: North Monroe Street, highway=residential, no VDOT count; Bike Comfort Index blocks: 1,277/day, 85th pct 20 mph; 1,354/day, 85th pct 24 mph; 1,139/day, 85th pct 20 mph. LTS 2 -> 1.5.",
-   "evidence": "Arlington County Bike Comfort Index (Arlington County DES, ArcGIS), read 2026-11-03, cited for research and review; RouteMaker v0.18.0 map tiles on beta (build 20261103T013053Z), read 2026-11-03: LTS 2; OSM API, read 2026-11-03: way 488811628, North Monroe Street, highway=residential.",
-   "fingerprint": {
-    "name": "North Monroe Street",
-    "highway": "residential",
-    "length_m": 356.1,
-    "line": "-77.100387,38.876086 -77.101034,38.877691 -77.101534,38.878661 -77.101783,38.879095"
-   }
-  },
-  {
-   "kind": "stress",
    "osm_way_id": 488811631,
    "value": {
     "tier": 1,
@@ -2855,7 +2305,7 @@
     "category": "other",
     "visibility": "public",
     "annotation_status": "approved",
-    "public_note": "Arlington's comfort index calls this street Most Comfortable; we rate it 1.5: one lane each way, under 1,000 cars a day, most drivers at 21 mph or less. Our line for quiet Arlington streets is 1.5.",
+    "public_note": "Arlington's Bike Comfort Index calls this street Most Comfortable; we rate it 1.5: one-way, under 1,000 cars a day, most drivers at 21 mph or less. Our line for quiet Arlington streets is 1.5.",
     "display": "map",
     "half": true
    },
@@ -3053,7 +2503,7 @@
     "display": "map",
     "half": true
    },
-   "reason": "The owner, 2026-11-03, asked for a skeptical review of every place our LTS differs from Arlington County's Bike Comfort Index by a full level or more (\"make sure we are consistent\"). Unit B144 (Washington Blvd), rater plus skeptics: 2+ lanes each way at 30 mph over 8,000/day is LTS 4; one-lane blocks 3.5. LTS 3 -> 3.5 (this way is one lane each way, so the 12,000/day step gives 3.5; the 2-lane one-way pieces are 4).",
+   "reason": "The owner, 2026-11-03, asked for a skeptical review of every place our LTS differs from Arlington County's Bike Comfort Index by a full level or more (\"make sure we are consistent\"). Unit B144 (Washington Blvd), rater plus skeptics: 2+ lanes each way at 30 mph over 8,000/day is LTS 4; one-lane blocks 3.5. This way is one lane each way (OSM lanes=2, two-way), so the 12,000/day step gives 3.5, not 4 (rules skeptic: 2+2 at 30 mph over 8,000/day is 4; R5 for 1+1). LTS 3 -> 3.5.",
    "evidence": "Arlington County Bike Comfort Index (Arlington County DES, ArcGIS), read 2026-11-03, cited for research and review; RouteMaker v0.18.0 map tiles on beta (build 20261103T013053Z), read 2026-11-03: LTS 3; OSM API, read 2026-11-03: way 582000965, Washington Boulevard, highway=secondary, lanes=2, maxspeed=30 mph.",
    "fingerprint": {
     "name": "Washington Boulevard",
@@ -3172,28 +2622,6 @@
   },
   {
    "kind": "stress",
-   "osm_way_id": 590645022,
-   "value": {
-    "tier": 1,
-    "adjustment_id": "arl-bci-quiet-w590645022",
-    "category": "other",
-    "visibility": "public",
-    "annotation_status": "approved",
-    "public_note": "Arlington's Bike Comfort Index calls this street Most Comfortable; we rate it 1.5: one lane each way, under 1,500 cars a day. Our line for quiet Arlington streets is 1.5.",
-    "display": "map",
-    "half": true
-   },
-   "reason": "The owner, 2026-11-03, on the Arlington Bike Comfort Index review card: \"1.5, wider line, split by block\". Rule: an Arlington residential or unclassified street rated LTS 2, with no VDOT count, where every block Arlington's Bike Comfort Index scores along this way shows under 1,500 vehicles a day and an 85th-percentile speed of 25 mph or less (at least one of the two a street-specific figure, not a class average), is LTS 1.5. This way: 1st Road North, highway=residential, no VDOT count; Bike Comfort Index blocks: 1,058/day, 85th pct 21.2499 mph. LTS 2 -> 1.5.",
-   "evidence": "Arlington County Bike Comfort Index (Arlington County DES, ArcGIS), read 2026-11-03, cited for research and review; RouteMaker v0.18.0 map tiles on beta (build 20261103T013053Z), read 2026-11-03: LTS 2; OSM API, read 2026-11-03: way 590645022, 1st Road North, highway=residential, lanes=2.",
-   "fingerprint": {
-    "name": "1st Road North",
-    "highway": "residential",
-    "length_m": 38.1,
-    "line": "-77.116286,38.867799 -77.116371,38.868025 -77.116427,38.868123"
-   }
-  },
-  {
-   "kind": "stress",
    "osm_way_id": 590831820,
    "value": {
     "tier": 3,
@@ -3223,39 +2651,17 @@
     "category": "other",
     "visibility": "public",
     "annotation_status": "approved",
-    "public_note": "Arlington's comfort index calls this street Most Comfortable; we rate it 1.5: one lane each way, under 1,000 cars a day, most drivers at 22 mph or less. Our line for quiet Arlington streets is 1.5.",
+    "public_note": "Arlington's Bike Comfort Index calls this street Most Comfortable; we rate it 1.5: one lane each way, under 1,000 cars a day. Our line for quiet Arlington streets is 1.5.",
     "display": "map",
     "half": true
    },
-   "reason": "The owner, 2026-11-03, on the Arlington Bike Comfort Index review card: \"1.5, wider line, split by block\". Rule: an Arlington residential or unclassified street rated LTS 2, with no VDOT count, where every block Arlington's Bike Comfort Index scores along this way shows under 1,500 vehicles a day and an 85th-percentile speed of 25 mph or less (at least one of the two a street-specific figure, not a class average), is LTS 1.5. This way: South Park Drive, highway=residential, no VDOT count; Bike Comfort Index blocks: 249/day, 85th pct 22 mph; 8/day, 85th pct 22 mph; 128/day, 85th pct 21.2499 mph. LTS 2 -> 1.5.",
+   "reason": "The owner, 2026-11-03, on the Arlington Bike Comfort Index review card: \"1.5, wider line, split by block\". Rule: an Arlington residential or unclassified street rated LTS 2, with no VDOT count, where every block Arlington's Bike Comfort Index scores along this way shows under 1,500 vehicles a day and an 85th-percentile speed of 25 mph or less (at least one of the two a street-specific figure, not a class average), is LTS 1.5. This way: South Park Drive, highway=residential, no VDOT count; Bike Comfort Index blocks: 249/day, 85th pct 22 mph; 8/day, 85th pct 22 mph; 128/day, 85th pct 21.2 mph (class average). LTS 2 -> 1.5.",
    "evidence": "Arlington County Bike Comfort Index (Arlington County DES, ArcGIS), read 2026-11-03, cited for research and review; RouteMaker v0.18.0 map tiles on beta (build 20261103T013053Z), read 2026-11-03: LTS 2; OSM API, read 2026-11-03: way 648888786, South Park Drive, highway=residential.",
    "fingerprint": {
     "name": "South Park Drive",
     "highway": "residential",
     "length_m": 390.8,
     "line": "-77.115673,38.866641 -77.115641,38.866438 -77.115654,38.866292 -77.115885,38.865932 -77.116129,38.865472 -77.116483,38.864632 -77.116642,38.864372 -77.116994,38.863955 -77.117169,38.863779 -77.117332,38.863695 -77.117586,38.863608"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 660605346,
-   "value": {
-    "tier": 1,
-    "adjustment_id": "arl-bci-quiet-w660605346",
-    "category": "other",
-    "visibility": "public",
-    "annotation_status": "approved",
-    "public_note": "Arlington's Bike Comfort Index rates this street LTS 2; we rate it 1.5: one lane each way, under 1,000 cars a day, most drivers at 22 mph or less. Our line for quiet Arlington streets is 1.5.",
-    "display": "map",
-    "half": true
-   },
-   "reason": "The owner, 2026-11-03, on the Arlington Bike Comfort Index review card: \"1.5, wider line, split by block\". Rule: an Arlington residential or unclassified street rated LTS 2, with no VDOT count, where every block Arlington's Bike Comfort Index scores along this way shows under 1,500 vehicles a day and an 85th-percentile speed of 25 mph or less (at least one of the two a street-specific figure, not a class average), is LTS 1.5. This way: 14th Street North, highway=residential, no VDOT count; Bike Comfort Index blocks: 61/day, 85th pct 17 mph; 146/day, 85th pct 22 mph; 160/day, 85th pct 20 mph. LTS 2 -> 1.5.",
-   "evidence": "Arlington County Bike Comfort Index (Arlington County DES, ArcGIS), read 2026-11-03, cited for research and review; RouteMaker v0.18.0 map tiles on beta (build 20261103T013053Z), read 2026-11-03: LTS 2; OSM API, read 2026-11-03: way 660605346, 14th Street North, highway=residential, maxspeed=25 mph.",
-   "fingerprint": {
-    "name": "14th Street North",
-    "highway": "residential",
-    "length_m": 501.6,
-    "line": "-77.121763,38.886857 -77.126183,38.885958 -77.127130,38.885759 -77.127360,38.885692"
    }
   },
   {
@@ -3267,11 +2673,11 @@
     "category": "other",
     "visibility": "public",
     "annotation_status": "approved",
-    "public_note": "Arlington's Bike Comfort Index calls this street Most Comfortable; we rate it 1.5: one lane each way, under 1,000 cars a day. Our line for quiet Arlington streets is 1.5.",
+    "public_note": "Arlington's Bike Comfort Index calls this street Most Comfortable; we rate it 1.5: one-way, under 1,000 cars a day. Our line for quiet Arlington streets is 1.5.",
     "display": "map",
     "half": true
    },
-   "reason": "The owner, 2026-11-03, on the Arlington Bike Comfort Index review card: \"1.5, wider line, split by block\". Rule: an Arlington residential or unclassified street rated LTS 2, with no VDOT count, where every block Arlington's Bike Comfort Index scores along this way shows under 1,500 vehicles a day and an 85th-percentile speed of 25 mph or less (at least one of the two a street-specific figure, not a class average), is LTS 1.5. This way: 11th Street South, highway=residential, no VDOT count; Bike Comfort Index blocks: 266/day, 85th pct 16.5 mph. LTS 2 -> 1.5.",
+   "reason": "The owner, 2026-11-03, on the Arlington Bike Comfort Index review card: \"1.5, wider line, split by block\". Rule: an Arlington residential or unclassified street rated LTS 2, with no VDOT count, where every block Arlington's Bike Comfort Index scores along this way shows under 1,500 vehicles a day and an 85th-percentile speed of 25 mph or less (at least one of the two a street-specific figure, not a class average), is LTS 1.5. This way: 11th Street South, highway=residential, no VDOT count; Bike Comfort Index blocks: 266/day, 85th pct 16.5 mph (class average). LTS 2 -> 1.5.",
    "evidence": "Arlington County Bike Comfort Index (Arlington County DES, ArcGIS), read 2026-11-03, cited for research and review; RouteMaker v0.18.0 map tiles on beta (build 20261103T013053Z), read 2026-11-03: LTS 2; OSM API, read 2026-11-03: way 671952803, 11th Street South, highway=residential.",
    "fingerprint": {
     "name": "11th Street South",
@@ -3436,28 +2842,6 @@
   },
   {
    "kind": "stress",
-   "osm_way_id": 751612183,
-   "value": {
-    "tier": 1,
-    "adjustment_id": "arl-bci-quiet-w751612183",
-    "category": "other",
-    "visibility": "public",
-    "annotation_status": "approved",
-    "public_note": "Arlington's Bike Comfort Index rates this street LTS 1; we rate it 1.5: one lane each way, under 1,000 cars a day, most drivers at 24 mph or less. Our line for quiet Arlington streets is 1.5.",
-    "display": "map",
-    "half": true
-   },
-   "reason": "The owner, 2026-11-03, on the Arlington Bike Comfort Index review card: \"1.5, wider line, split by block\". Rule: an Arlington residential or unclassified street rated LTS 2, with no VDOT count, where every block Arlington's Bike Comfort Index scores along this way shows under 1,500 vehicles a day and an 85th-percentile speed of 25 mph or less (at least one of the two a street-specific figure, not a class average), is LTS 1.5. This way: South Monroe Street, highway=residential, no VDOT count; Bike Comfort Index blocks: 402/day, 85th pct 23 mph; 425/day, 85th pct 20 mph; 367/day, 85th pct 24 mph; 678/day, 85th pct 24.5 mph. LTS 2 -> 1.5.",
-   "evidence": "Arlington County Bike Comfort Index (Arlington County DES, ArcGIS), read 2026-11-03, cited for research and review; RouteMaker v0.18.0 map tiles on beta (build 20261103T013053Z), read 2026-11-03: LTS 2; OSM API, read 2026-11-03: way 751612183, South Monroe Street, highway=residential, lanes=2.",
-   "fingerprint": {
-    "name": "South Monroe Street",
-    "highway": "residential",
-    "length_m": 799.0,
-    "line": "-77.090667,38.852610 -77.088284,38.846915 -77.088176,38.846704 -77.088118,38.846633 -77.088037,38.846558 -77.087728,38.846371 -77.087619,38.846290 -77.087543,38.846211 -77.087474,38.846112 -77.087416,38.845967"
-   }
-  },
-  {
-   "kind": "stress",
    "osm_way_id": 756261971,
    "value": {
     "tier": 1,
@@ -3509,7 +2893,7 @@
     "category": "other",
     "visibility": "public",
     "annotation_status": "approved",
-    "public_note": "Arlington's comfort index calls this street Most Comfortable; we rate it 1.5: one lane each way, under 1,000 cars a day, most drivers at 23 mph or less. Our line for quiet Arlington streets is 1.5.",
+    "public_note": "Arlington's Bike Comfort Index calls this street Most Comfortable; we rate it 1.5: one-way, under 1,000 cars a day, most drivers at 23 mph or less. Our line for quiet Arlington streets is 1.5.",
     "display": "map",
     "half": true
    },
@@ -3520,50 +2904,6 @@
     "highway": "residential",
     "length_m": 75.9,
     "line": "-77.166179,38.889335 -77.165692,38.888983 -77.165502,38.888911"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 876385759,
-   "value": {
-    "tier": 1,
-    "adjustment_id": "arl-bci-quiet-w876385759",
-    "category": "other",
-    "visibility": "public",
-    "annotation_status": "approved",
-    "public_note": "Arlington's Bike Comfort Index rates this street LTS 1; we rate it 1.5: one lane each way, under 1,500 cars a day, most drivers at 19 mph or less. Our line for quiet Arlington streets is 1.5.",
-    "display": "map",
-    "half": true
-   },
-   "reason": "The owner, 2026-11-03, on the Arlington Bike Comfort Index review card: \"1.5, wider line, split by block\". Rule: an Arlington residential or unclassified street rated LTS 2, with no VDOT count, where every block Arlington's Bike Comfort Index scores along this way shows under 1,500 vehicles a day and an 85th-percentile speed of 25 mph or less (at least one of the two a street-specific figure, not a class average), is LTS 1.5. This way: 12th Street South, highway=residential, no VDOT count; Bike Comfort Index blocks: 1,244/day, 85th pct 19 mph. LTS 2 -> 1.5.",
-   "evidence": "Arlington County Bike Comfort Index (Arlington County DES, ArcGIS), read 2026-11-03, cited for research and review; RouteMaker v0.18.0 map tiles on beta (build 20261103T013053Z), read 2026-11-03: LTS 2; OSM API, read 2026-11-03: way 876385759, 12th Street South, highway=residential.",
-   "fingerprint": {
-    "name": "12th Street South",
-    "highway": "residential",
-    "length_m": 51.9,
-    "line": "-77.075355,38.863434 -77.075943,38.863344"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 876385762,
-   "value": {
-    "tier": 1,
-    "adjustment_id": "arl-bci-quiet-w876385762",
-    "category": "other",
-    "visibility": "public",
-    "annotation_status": "approved",
-    "public_note": "Arlington's Bike Comfort Index rates this street LTS 1; we rate it 1.5: one lane each way, under 1,500 cars a day, most drivers at 19 mph or less. Our line for quiet Arlington streets is 1.5.",
-    "display": "map",
-    "half": true
-   },
-   "reason": "The owner, 2026-11-03, on the Arlington Bike Comfort Index review card: \"1.5, wider line, split by block\". Rule: an Arlington residential or unclassified street rated LTS 2, with no VDOT count, where every block Arlington's Bike Comfort Index scores along this way shows under 1,500 vehicles a day and an 85th-percentile speed of 25 mph or less (at least one of the two a street-specific figure, not a class average), is LTS 1.5. This way: 12th Street South, highway=residential, no VDOT count; Bike Comfort Index blocks: 1,244/day, 85th pct 19 mph. LTS 2 -> 1.5.",
-   "evidence": "Arlington County Bike Comfort Index (Arlington County DES, ArcGIS), read 2026-11-03, cited for research and review; RouteMaker v0.18.0 map tiles on beta (build 20261103T013053Z), read 2026-11-03: LTS 2; OSM API, read 2026-11-03: way 876385762, 12th Street South, highway=residential.",
-   "fingerprint": {
-    "name": "12th Street South",
-    "highway": "residential",
-    "length_m": 14.7,
-    "line": "-77.075943,38.863344 -77.076107,38.863311"
    }
   },
   {
@@ -3763,28 +3103,6 @@
   },
   {
    "kind": "stress",
-   "osm_way_id": 967544118,
-   "value": {
-    "tier": 1,
-    "adjustment_id": "arl-bci-quiet-w967544118",
-    "category": "other",
-    "visibility": "public",
-    "annotation_status": "approved",
-    "public_note": "Arlington's Bike Comfort Index calls this street Comfortable; we rate it 1.5: one lane each way, under 1,000 cars a day, most drivers at 25 mph or less. Our line for quiet Arlington streets is 1.5.",
-    "display": "map",
-    "half": true
-   },
-   "reason": "The owner, 2026-11-03, on the Arlington Bike Comfort Index review card: \"1.5, wider line, split by block\". Rule: an Arlington residential or unclassified street rated LTS 2, with no VDOT count, where every block Arlington's Bike Comfort Index scores along this way shows under 1,500 vehicles a day and an 85th-percentile speed of 25 mph or less (at least one of the two a street-specific figure, not a class average), is LTS 1.5. This way: 22nd Street North, highway=residential, no VDOT count; Bike Comfort Index blocks: 343/day, 85th pct 18.5 mph; 435/day, 85th pct 25 mph; 484/day, 85th pct 21 mph; 515/day, 85th pct 24.7395 mph; 292/day, 85th pct 25 mph; 350/day, 85th pct 25 mph; 386/day, 85th pct 23 mph; 370/day, 85th pct 21 mph; 457/day, 85th pct 22 mph. LTS 2 -> 1.5.",
-   "evidence": "Arlington County Bike Comfort Index (Arlington County DES, ArcGIS), read 2026-11-03, cited for research and review; RouteMaker v0.18.0 map tiles on beta (build 20261103T013053Z), read 2026-11-03: LTS 2; OSM API, read 2026-11-03: way 967544118, 22nd Street North, highway=residential.",
-   "fingerprint": {
-    "name": "22nd Street North",
-    "highway": "residential",
-    "length_m": 1405.7,
-    "line": "-77.156259,38.888755 -77.155211,38.888723 -77.154420,38.888734 -77.153926,38.888713 -77.153610,38.888728 -77.152026,38.889056 -77.149867,38.889439 -77.149301,38.889551 -77.144899,38.890316 -77.143903,38.890497 -77.142809,38.890725 -77.141787,38.891057 -77.141621,38.891136 -77.141494,38.891220 -77.141383,38.891328 -77.141318,38.891418 -77.141274,38.891523 -77.141220,38.891754 -77.141229,38.891959"
-   }
-  },
-  {
-   "kind": "stress",
    "osm_way_id": 971246585,
    "value": {
     "tier": 3,
@@ -3814,7 +3132,7 @@
     "category": "other",
     "visibility": "public",
     "annotation_status": "approved",
-    "public_note": "Arlington's comfort index calls this street Most Comfortable; we rate it 1.5: one lane each way, under 1,000 cars a day, most drivers at 20 mph or less. Our line for quiet Arlington streets is 1.5.",
+    "public_note": "Arlington's Bike Comfort Index calls this street Most Comfortable; we rate it 1.5: one-way, under 1,000 cars a day, most drivers at 20 mph or less. Our line for quiet Arlington streets is 1.5.",
     "display": "map",
     "half": true
    },
@@ -3836,7 +3154,7 @@
     "category": "other",
     "visibility": "public",
     "annotation_status": "approved",
-    "public_note": "Arlington's comfort index calls this street Most Comfortable; we rate it 1.5: one lane each way, under 1,000 cars a day, most drivers at 20 mph or less. Our line for quiet Arlington streets is 1.5.",
+    "public_note": "Arlington's Bike Comfort Index calls this street Most Comfortable; we rate it 1.5: one-way, under 1,000 cars a day, most drivers at 20 mph or less. Our line for quiet Arlington streets is 1.5.",
     "display": "map",
     "half": true
    },
@@ -3858,7 +3176,7 @@
     "category": "other",
     "visibility": "public",
     "annotation_status": "approved",
-    "public_note": "Arlington's comfort index calls this street Most Comfortable; we rate it 1.5: one lane each way, under 1,000 cars a day, most drivers at 20 mph or less. Our line for quiet Arlington streets is 1.5.",
+    "public_note": "Arlington's Bike Comfort Index calls this street Most Comfortable; we rate it 1.5: one-way, under 1,000 cars a day, most drivers at 20 mph or less. Our line for quiet Arlington streets is 1.5.",
     "display": "map",
     "half": true
    },
@@ -3880,7 +3198,7 @@
     "category": "other",
     "visibility": "public",
     "annotation_status": "approved",
-    "public_note": "Arlington's comfort index calls this street Most Comfortable; we rate it 1.5: one lane each way, under 1,000 cars a day, most drivers at 20 mph or less. Our line for quiet Arlington streets is 1.5.",
+    "public_note": "Arlington's Bike Comfort Index calls this street Most Comfortable; we rate it 1.5: one-way, under 1,000 cars a day, most drivers at 20 mph or less. Our line for quiet Arlington streets is 1.5.",
     "display": "map",
     "half": true
    },
@@ -3916,28 +3234,6 @@
   },
   {
    "kind": "stress",
-   "osm_way_id": 1063937372,
-   "value": {
-    "tier": 1,
-    "adjustment_id": "arl-bci-quiet-w1063937372",
-    "category": "other",
-    "visibility": "public",
-    "annotation_status": "approved",
-    "public_note": "Arlington's Bike Comfort Index rates this street LTS 1; we rate it 1.5: one lane each way, under 1,500 cars a day. Our line for quiet Arlington streets is 1.5.",
-    "display": "map",
-    "half": true
-   },
-   "reason": "The owner, 2026-11-03, on the Arlington Bike Comfort Index review card: \"1.5, wider line, split by block\". Rule: an Arlington residential or unclassified street rated LTS 2, with no VDOT count, where every block Arlington's Bike Comfort Index scores along this way shows under 1,500 vehicles a day and an 85th-percentile speed of 25 mph or less (at least one of the two a street-specific figure, not a class average), is LTS 1.5. This way: South Queen Street, highway=residential, no VDOT count; Bike Comfort Index blocks: 1,216/day, 85th pct 21.2499 mph. LTS 2 -> 1.5.",
-   "evidence": "Arlington County Bike Comfort Index (Arlington County DES, ArcGIS), read 2026-11-03, cited for research and review; RouteMaker v0.18.0 map tiles on beta (build 20261103T013053Z), read 2026-11-03: LTS 2; OSM API, read 2026-11-03: way 1063937372, South Queen Street, highway=residential, maxspeed=25 mph.",
-   "fingerprint": {
-    "name": "South Queen Street",
-    "highway": "residential",
-    "length_m": 59.0,
-    "line": "-77.072523,38.860996 -77.072435,38.860470"
-   }
-  },
-  {
-   "kind": "stress",
    "osm_way_id": 1072175571,
    "value": {
     "tier": 1,
@@ -3949,7 +3245,7 @@
     "display": "map",
     "half": true
    },
-   "reason": "The owner, 2026-11-03, on the Arlington Bike Comfort Index review card: \"1.5, wider line, split by block\". Rule: an Arlington residential or unclassified street rated LTS 2, with no VDOT count, where every block Arlington's Bike Comfort Index scores along this way shows under 1,500 vehicles a day and an 85th-percentile speed of 25 mph or less (at least one of the two a street-specific figure, not a class average), is LTS 1.5. This way: 3rd Street North, highway=residential, no VDOT count; Bike Comfort Index blocks: 130/day, 85th pct 21.2499 mph. LTS 2 -> 1.5.",
+   "reason": "The owner, 2026-11-03, on the Arlington Bike Comfort Index review card: \"1.5, wider line, split by block\". Rule: an Arlington residential or unclassified street rated LTS 2, with no VDOT count, where every block Arlington's Bike Comfort Index scores along this way shows under 1,500 vehicles a day and an 85th-percentile speed of 25 mph or less (at least one of the two a street-specific figure, not a class average), is LTS 1.5. This way: 3rd Street North, highway=residential, no VDOT count; Bike Comfort Index blocks: 130/day, 85th pct 21.2 mph (class average). LTS 2 -> 1.5.",
    "evidence": "Arlington County Bike Comfort Index (Arlington County DES, ArcGIS), read 2026-11-03, cited for research and review; RouteMaker v0.18.0 map tiles on beta (build 20261103T013053Z), read 2026-11-03: LTS 2; OSM API, read 2026-11-03: way 1072175571, 3rd Street North, highway=residential.",
    "fingerprint": {
     "name": "3rd Street North",
@@ -4147,123 +3443,13 @@
     "display": "map",
     "half": true
    },
-   "reason": "The owner, 2026-11-03, asked for a skeptical review of every place our LTS differs from Arlington County's Bike Comfort Index by a full level or more (\"make sure we are consistent\"). Unit B144 (Washington Blvd), rater plus skeptics: 2+ lanes each way at 30 mph over 8,000/day is LTS 4; one-lane blocks 3.5. LTS 3 -> 3.5 (this way is one lane each way, so the 12,000/day step gives 3.5; the 2-lane one-way pieces are 4).",
+   "reason": "The owner, 2026-11-03, asked for a skeptical review of every place our LTS differs from Arlington County's Bike Comfort Index by a full level or more (\"make sure we are consistent\"). Unit B144 (Washington Blvd), rater plus skeptics: 2+ lanes each way at 30 mph over 8,000/day is LTS 4; one-lane blocks 3.5. This way is one lane each way (OSM lanes=2, two-way), so the 12,000/day step gives 3.5, not 4 (rules skeptic: 2+2 at 30 mph over 8,000/day is 4; R5 for 1+1). LTS 3 -> 3.5.",
    "evidence": "Arlington County Bike Comfort Index (Arlington County DES, ArcGIS), read 2026-11-03, cited for research and review; RouteMaker v0.18.0 map tiles on beta (build 20261103T013053Z), read 2026-11-03: LTS 3; OSM API, read 2026-11-03: way 1183726405, Washington Boulevard, highway=secondary, lanes=2, maxspeed=30 mph.",
    "fingerprint": {
     "name": "Washington Boulevard",
     "highway": "secondary",
     "length_m": 202.4,
     "line": "-77.144390,38.886619 -77.146087,38.887213 -77.146292,38.887268 -77.146549,38.887301"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 1207368088,
-   "value": {
-    "tier": 1,
-    "adjustment_id": "arl-bci-quiet-w1207368088",
-    "category": "other",
-    "visibility": "public",
-    "annotation_status": "approved",
-    "public_note": "Arlington's Bike Comfort Index calls this street Comfortable; we rate it 1.5: one lane each way, under 1,500 cars a day, most drivers at 25 mph or less. Our line for quiet Arlington streets is 1.5.",
-    "display": "map",
-    "half": true
-   },
-   "reason": "The owner, 2026-11-03, on the Arlington Bike Comfort Index review card: \"1.5, wider line, split by block\". Rule: an Arlington residential or unclassified street rated LTS 2, with no VDOT count, where every block Arlington's Bike Comfort Index scores along this way shows under 1,500 vehicles a day and an 85th-percentile speed of 25 mph or less (at least one of the two a street-specific figure, not a class average), is LTS 1.5. This way: South Wakefield Street, highway=residential, no VDOT count; Bike Comfort Index blocks: 927/day, 85th pct 25 mph; 928/day, 85th pct 21 mph; 962/day, 85th pct 23 mph; 1,019/day, 85th pct 21 mph; 876/day, 85th pct 21.2499 mph; 982/day, 85th pct 24 mph. LTS 2 -> 1.5.",
-   "evidence": "Arlington County Bike Comfort Index (Arlington County DES, ArcGIS), read 2026-11-03, cited for research and review; RouteMaker v0.18.0 map tiles on beta (build 20261103T013053Z), read 2026-11-03: LTS 2; OSM API, read 2026-11-03: way 1207368088, South Wakefield Street, highway=residential, lanes=2.",
-   "fingerprint": {
-    "name": "South Wakefield Street",
-    "highway": "residential",
-    "length_m": 551.4,
-    "line": "-77.108688,38.861941 -77.106394,38.857316"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 1210651738,
-   "value": {
-    "tier": 1,
-    "adjustment_id": "arl-bci-quiet-w1210651738",
-    "category": "other",
-    "visibility": "public",
-    "annotation_status": "approved",
-    "public_note": "Arlington's comfort index calls this street Most Comfortable; we rate it 1.5: one lane each way, under 1,000 cars a day, most drivers at 19 mph or less. Our line for quiet Arlington streets is 1.5.",
-    "display": "map",
-    "half": true
-   },
-   "reason": "The owner, 2026-11-03, on the Arlington Bike Comfort Index review card: \"1.5, wider line, split by block\". Rule: an Arlington residential or unclassified street rated LTS 2, with no VDOT count, where every block Arlington's Bike Comfort Index scores along this way shows under 1,500 vehicles a day and an 85th-percentile speed of 25 mph or less (at least one of the two a street-specific figure, not a class average), is LTS 1.5. This way: Key Boulevard, highway=residential, no VDOT count; Bike Comfort Index blocks: 846/day, 85th pct 19 mph. LTS 2 -> 1.5.",
-   "evidence": "Arlington County Bike Comfort Index (Arlington County DES, ArcGIS), read 2026-11-03, cited for research and review; RouteMaker v0.18.0 map tiles on beta (build 20261103T013053Z), read 2026-11-03: LTS 2; OSM API, read 2026-11-03: way 1210651738, Key Boulevard, highway=residential, lanes=2, maxspeed=25 mph.",
-   "fingerprint": {
-    "name": "Key Boulevard",
-    "highway": "residential",
-    "length_m": 94.0,
-    "line": "-77.093104,38.891874 -77.094070,38.891488"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 1210651742,
-   "value": {
-    "tier": 1,
-    "adjustment_id": "arl-bci-quiet-w1210651742",
-    "category": "other",
-    "visibility": "public",
-    "annotation_status": "approved",
-    "public_note": "Arlington's comfort index calls this street Most Comfortable; we rate it 1.5: one lane each way, under 1,000 cars a day, most drivers at 19 mph or less. Our line for quiet Arlington streets is 1.5.",
-    "display": "map",
-    "half": true
-   },
-   "reason": "The owner, 2026-11-03, on the Arlington Bike Comfort Index review card: \"1.5, wider line, split by block\". Rule: an Arlington residential or unclassified street rated LTS 2, with no VDOT count, where every block Arlington's Bike Comfort Index scores along this way shows under 1,500 vehicles a day and an 85th-percentile speed of 25 mph or less (at least one of the two a street-specific figure, not a class average), is LTS 1.5. This way: Key Boulevard, highway=residential, no VDOT count; Bike Comfort Index blocks: 965/day, 85th pct 19 mph. LTS 2 -> 1.5.",
-   "evidence": "Arlington County Bike Comfort Index (Arlington County DES, ArcGIS), read 2026-11-03, cited for research and review; RouteMaker v0.18.0 map tiles on beta (build 20261103T013053Z), read 2026-11-03: LTS 2; OSM API, read 2026-11-03: way 1210651742, Key Boulevard, highway=residential, lanes=2, maxspeed=25 mph.",
-   "fingerprint": {
-    "name": "Key Boulevard",
-    "highway": "residential",
-    "length_m": 79.2,
-    "line": "-77.092167,38.892223 -77.092994,38.891917"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 1210651746,
-   "value": {
-    "tier": 1,
-    "adjustment_id": "arl-bci-quiet-w1210651746",
-    "category": "other",
-    "visibility": "public",
-    "annotation_status": "approved",
-    "public_note": "Arlington's comfort index calls this street Most Comfortable; we rate it 1.5: one lane each way, under 1,000 cars a day, most drivers at 18 mph or less. Our line for quiet Arlington streets is 1.5.",
-    "display": "map",
-    "half": true
-   },
-   "reason": "The owner, 2026-11-03, on the Arlington Bike Comfort Index review card: \"1.5, wider line, split by block\". Rule: an Arlington residential or unclassified street rated LTS 2, with no VDOT count, where every block Arlington's Bike Comfort Index scores along this way shows under 1,500 vehicles a day and an 85th-percentile speed of 25 mph or less (at least one of the two a street-specific figure, not a class average), is LTS 1.5. This way: Key Boulevard, highway=residential, no VDOT count; Bike Comfort Index blocks: 860/day, 85th pct 18 mph. LTS 2 -> 1.5.",
-   "evidence": "Arlington County Bike Comfort Index (Arlington County DES, ArcGIS), read 2026-11-03, cited for research and review; RouteMaker v0.18.0 map tiles on beta (build 20261103T013053Z), read 2026-11-03: LTS 2; OSM API, read 2026-11-03: way 1210651746, Key Boulevard, highway=residential, lanes=2, maxspeed=25 mph.",
-   "fingerprint": {
-    "name": "Key Boulevard",
-    "highway": "residential",
-    "length_m": 88.2,
-    "line": "-77.091038,38.892499 -77.091344,38.892466 -77.091552,38.892424 -77.092009,38.892277"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 1218512520,
-   "value": {
-    "tier": 1,
-    "adjustment_id": "arl-bci-quiet-w1218512520",
-    "category": "other",
-    "visibility": "public",
-    "annotation_status": "approved",
-    "public_note": "Arlington's Bike Comfort Index calls this street Comfortable; we rate it 1.5: one lane each way, under 1,000 cars a day, most drivers at 25 mph or less. Our line for quiet Arlington streets is 1.5.",
-    "display": "map",
-    "half": true
-   },
-   "reason": "The owner, 2026-11-03, on the Arlington Bike Comfort Index review card: \"1.5, wider line, split by block\". Rule: an Arlington residential or unclassified street rated LTS 2, with no VDOT count, where every block Arlington's Bike Comfort Index scores along this way shows under 1,500 vehicles a day and an 85th-percentile speed of 25 mph or less (at least one of the two a street-specific figure, not a class average), is LTS 1.5. This way: North Harrison Street, highway=residential, no VDOT count; Bike Comfort Index blocks: 769/day, 85th pct 25 mph; 1/day, 85th pct 21.2499 mph; 88/day, 85th pct 22 mph. LTS 2 -> 1.5.",
-   "evidence": "Arlington County Bike Comfort Index (Arlington County DES, ArcGIS), read 2026-11-03, cited for research and review; RouteMaker v0.18.0 map tiles on beta (build 20261103T013053Z), read 2026-11-03: LTS 2; OSM API, read 2026-11-03: way 1218512520, North Harrison Street, highway=residential, lanes=2, maxspeed=25 mph.",
-   "fingerprint": {
-    "name": "North Harrison Street",
-    "highway": "residential",
-    "length_m": 306.9,
-    "line": "-77.145948,38.910293 -77.147934,38.911034 -77.148661,38.911191 -77.149046,38.911255 -77.149186,38.911362"
    }
   },
   {
@@ -4421,28 +3607,6 @@
   },
   {
    "kind": "stress",
-   "osm_way_id": 1434030425,
-   "value": {
-    "tier": 1,
-    "adjustment_id": "arl-bci-quiet-w1434030425",
-    "category": "other",
-    "visibility": "public",
-    "annotation_status": "approved",
-    "public_note": "Arlington's comfort index calls this street Most Comfortable; we rate it 1.5: one lane each way, under 1,000 cars a day, most drivers at 25 mph or less. Our line for quiet Arlington streets is 1.5.",
-    "display": "map",
-    "half": true
-   },
-   "reason": "The owner, 2026-11-03, on the Arlington Bike Comfort Index review card: \"1.5, wider line, split by block\". Rule: an Arlington residential or unclassified street rated LTS 2, with no VDOT count, where every block Arlington's Bike Comfort Index scores along this way shows under 1,500 vehicles a day and an 85th-percentile speed of 25 mph or less (at least one of the two a street-specific figure, not a class average), is LTS 1.5. This way: North Harrison Street, highway=residential, no VDOT count; Bike Comfort Index blocks: 769/day, 85th pct 25 mph. LTS 2 -> 1.5.",
-   "evidence": "Arlington County Bike Comfort Index (Arlington County DES, ArcGIS), read 2026-11-03, cited for research and review; RouteMaker v0.18.0 map tiles on beta (build 20261103T013053Z), read 2026-11-03: LTS 2; OSM API, read 2026-11-03: way 1434030425, North Harrison Street, highway=residential, lanes=2, maxspeed=25 mph.",
-   "fingerprint": {
-    "name": "North Harrison Street",
-    "highway": "residential",
-    "length_m": 312.6,
-    "line": "-77.146010,38.907642 -77.145520,38.909565 -77.145511,38.909715 -77.145566,38.909945 -77.145618,38.910032 -77.145749,38.910168 -77.145948,38.910293"
-   }
-  },
-  {
-   "kind": "stress",
    "osm_way_id": 1434871465,
    "value": {
     "tier": 2,
@@ -4503,28 +3667,6 @@
     "highway": "residential",
     "length_m": 59.1,
     "line": "-77.065992,38.855514 -77.066675,38.855499"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 1454061377,
-   "value": {
-    "tier": 1,
-    "adjustment_id": "arl-bci-quiet-w1454061377",
-    "category": "other",
-    "visibility": "public",
-    "annotation_status": "approved",
-    "public_note": "Arlington's comfort index calls this street Most Comfortable; we rate it 1.5: one lane each way, under 1,000 cars a day, most drivers at 17 mph or less. Our line for quiet Arlington streets is 1.5.",
-    "display": "map",
-    "half": true
-   },
-   "reason": "The owner, 2026-11-03, on the Arlington Bike Comfort Index review card: \"1.5, wider line, split by block\". Rule: an Arlington residential or unclassified street rated LTS 2, with no VDOT count, where every block Arlington's Bike Comfort Index scores along this way shows under 1,500 vehicles a day and an 85th-percentile speed of 25 mph or less (at least one of the two a street-specific figure, not a class average), is LTS 1.5. This way: 14th Street North, highway=residential, no VDOT count; Bike Comfort Index blocks: 123/day, 85th pct 17 mph. LTS 2 -> 1.5.",
-   "evidence": "Arlington County Bike Comfort Index (Arlington County DES, ArcGIS), read 2026-11-03, cited for research and review; RouteMaker v0.18.0 map tiles on beta (build 20261103T013053Z), read 2026-11-03: LTS 2; OSM API, read 2026-11-03: way 1454061377, 14th Street North, highway=residential.",
-   "fingerprint": {
-    "name": "14th Street North",
-    "highway": "residential",
-    "length_m": 21.9,
-    "line": "-77.118300,38.887806 -77.118544,38.887751"
    }
   },
   {

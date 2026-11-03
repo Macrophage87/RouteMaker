@@ -469,7 +469,7 @@ def test_every_row_of_every_override_file_carries_a_valid_fingerprint() -> None:
         + 8998
         + 434
         - 1  # River Road 987375476, retired: OSM merged it (rebuild 2026-11-03)
-        + 214  # Arlington Bike Comfort Index review (the owner, 2026-11-03)
+        + 175  # Arlington Bike Comfort Index review (the owner, 2026-11-03)
     )
     for name, document in documents.items():
         if name == "2026-10-06-owner-crosswalk-links.json":
@@ -524,7 +524,7 @@ def test_the_override_counts_the_owner_asked_about() -> None:
         + 8998
         + 434
         - 1  # River Road 987375476, retired: OSM merged it (rebuild 2026-11-03)
-        + 214  # Arlington Bike Comfort Index review (the owner, 2026-11-03)
+        + 175  # Arlington Bike Comfort Index review (the owner, 2026-11-03)
     )
 
 
@@ -604,7 +604,7 @@ def test_the_fixture_fingerprints_load_by_kind_and_way() -> None:
         + 8998
         + 434
         - 1  # River Road 987375476, retired: OSM merged it (rebuild 2026-11-03)
-        + 207  # Arlington Bike Comfort Index review's 214 rows (the owner, 2026-11-03), 7 on ways
+        + 168  # Arlington Bike Comfort Index review's 175 rows (the owner, 2026-11-03), 7 on ways
         # that already had a row, which the file retires
     )
     assert ("access", 50426889) in found and ("stress", 1562097556) in found
