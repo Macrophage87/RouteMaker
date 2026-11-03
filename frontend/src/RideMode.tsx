@@ -763,6 +763,7 @@ export function RideMode({
   keepLeft = false,
   startNote = "",
   riderDots = NO_DOTS,
+  onSheetHeight,
 }: {
   route: RouteResponse;
   /** The points the route was planned with, and whether it is a loop: what a re-plan builds on. */
@@ -867,6 +868,9 @@ export function RideMode({
   startNote?: string;
   /** The other riders' dots on a shared ride: drawn on the graph of the road ahead, which reaches back to the last one. */
   riderDots?: readonly LonLat[];
+  /** The bottom panel's height in CSS pixels (0 while it is hidden), at each change: the map's follow camera keeps the
+   *  rider's arrow above it (MapView ridePanelH). */
+  onSheetHeight?: (px: number) => void;
 }) {
   const [route, setRoute] = useState(plannedRoute);
   const routeRef = useRef(route);
@@ -2804,10 +2808,16 @@ export function RideMode({
   // The map's scales and credits sit at the bottom of the screen in a ride (the owner, 2026-10-17: "on the bottom
   // of the page in a ride"), just above the bottom panel while it shows (styles.css --ride-sheet-h).
   const sheetRef = useRef<HTMLDivElement>(null);
+  const sheetHeight = useRef(onSheetHeight);
+  sheetHeight.current = onSheetHeight;
   useLayoutEffect(() => {
     const root = document.documentElement;
     const sheet = sheetRef.current;
-    const set = () => root.style.setProperty("--ride-sheet-h", `${sheet ? Math.round(sheet.getBoundingClientRect().height) : 0}px`);
+    const set = () => {
+      const px = sheet ? Math.round(sheet.getBoundingClientRect().height) : 0;
+      root.style.setProperty("--ride-sheet-h", `${px}px`);
+      sheetHeight.current?.(px);
+    };
     set();
     if (!sheet || typeof ResizeObserver === "undefined") return () => root.style.removeProperty("--ride-sheet-h");
     const observer = new ResizeObserver(set);
