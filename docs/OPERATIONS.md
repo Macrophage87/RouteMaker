@@ -6838,8 +6838,8 @@ change and no map rebuild.** The beta agent deploys it by itself from the annota
   contrast and Units first; switching Units changes the distances at once. A bike + transit ride
   shows no Done at the station and picks up the ride after the train. Bikeshare + transit's walking
   option starts a ride. A MARC boarding never says "the MARC MARC", and the boarding card shows a line badge
-  for each line that serves the stop with where it is signed to, then Get off, Next train and After
-  that as rows.
+  for each line that makes the ride, with where it is signed to, then Get off, Next train (Next bus
+  for a bus) and After that as rows.
 - [ ] **Rollback.** The v0.19.0 api image and front end together. Nothing in the database or the
   map changes.
 
