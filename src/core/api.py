@@ -104,6 +104,7 @@ from . import (
     ratelimit,
     route_cache,
     routing,
+    run_plan,
     scenic_near,
     segment_info,
     share_links,
@@ -112,6 +113,7 @@ from . import (
     trailprofile,
     transit,
     transit_live,
+    walk_turns,
     wmata_bus,
     wmata_live,
     wmata_trains,
@@ -128,7 +130,9 @@ MAX_BODY_BYTES = 8 * 1024
 # encoded text, every character of which JSON may escape as two.
 ROUTE_MAX_BODY_BYTES = MAX_BODY_BYTES + 2 * follow.MAX_CHARS
 
-MIN_POINTS = 2
+# A start alone is a Run's loop of a target distance (`core.run_plan.target_loop`); every other
+# plan needs a start and a destination (`RouteIn.dials_fit_the_preset`).
+MIN_POINTS = 1
 MAX_POINTS = 25
 
 # A request's span: the sum of the straight-line distances between consecutive
@@ -228,7 +232,10 @@ class RouteIn(Schema):
     points: list[LonLat] = Field(
         min_length=MIN_POINTS,
         max_length=MAX_POINTS,
-        description="[lon, lat] pairs, start first, each inside the coverage area.",
+        description=(
+            "[lon, lat] pairs, start first, each inside the coverage area: at least two, or a"
+            " start alone for a Run loop with `loop` and `target_distance_m`."
+        ),
     )
     preset: PresetName
     confirm_long: StrictBool = Field(
@@ -291,7 +298,10 @@ class RouteIn(Schema):
     )
     avoid_gravel: StrictBool = Field(
         default=False,
-        description="Steer off unpaved surfaces where there is a paved way round. Any ride type.",
+        description=(
+            "Retired: the box became the Road Bike ride type. Ticked on a rider's own-bike"
+            " ride type it plans as `road-bike`; elsewhere it is ignored."
+        ),
     )
     trails_off: StrictBool = Field(
         default=False,
@@ -323,6 +333,15 @@ class RouteIn(Schema):
             " pace the route is timed at instead of the ride type's, hills and junction waits"
             " still counted. Ignored on Mass Ride (its speed band) and on a share bike."
             " Absent: the ride type's own."
+        ),
+    )
+    run_pace_kmh: float | None = Field(
+        default=None,
+        ge=run_plan.RUN_PACE_MIN_KMH,
+        le=run_plan.RUN_PACE_MAX_KMH,
+        description=(
+            "Run only: the runner's pace on the flat, in km/h (6.4 to 16.1, 4 to 10 mph). Absent:"
+            " 9.7 km/h (6 mph, a 10:00 mile)."
         ),
     )
     debug_junctions: StrictBool = Field(
@@ -369,6 +388,14 @@ class RouteIn(Schema):
             " one without a catalog yet, or any other, is answered in English, so an app that"
             " knows a language this server does not still gets its route. Street and place"
             " names, agencies' own notices and the closure cards' words are not translated."
+        ),
+    )
+    avoid_stairs: StrictBool = Field(
+        default=False,
+        description=(
+            "Settings' \"Avoid stairs\" (2026-11-02): the plan's walks (Bikeshare, transit, a"
+            " walk to a station or a dock) keep off flights of steps wherever a step-free way is"
+            " near. A walk beside the rider's own bike always does."
         ),
     )
     heading: float | None = Field(
@@ -497,9 +524,10 @@ class RouteIn(Schema):
     depart_at: datetime | None = Field(
         default=None,
         description=(
-            "Transit ride types only: when the trip starts, ISO 8601 (with an offset, or local"
-            " time in Washington), within a year of now. Absent: now. Each system's own"
-            " calendar for that day is used, holidays and published closures included."
+            "Transit ride types and Run only: when the trip starts, ISO 8601 (with an offset, or"
+            " local time in Washington), within a year of now. Absent: now. Each system's own"
+            " calendar for that day is used, holidays and published closures included; a run"
+            " after civil dusk or before civil dawn favours lit ways."
         ),
     )
     transit_option: str | None = Field(
@@ -636,7 +664,33 @@ class RouteIn(Schema):
 
     @model_validator(mode="after")
     def dials_fit_the_preset(self):
+        # The "Avoid gravel" box became the Road Bike ride type (the owner, 2026-11-02:
+        # "Replace the box"): an old link or saved plan with it ticked plans as Road Bike where
+        # the ride was a rider's own bike (`presets.AVOID_GRAVEL_BECOMES`), and loses the box
+        # elsewhere. Road Bike always carries it, which keeps unpaved climbs out of its search.
+        if self.avoid_gravel and self.preset in presets.AVOID_GRAVEL_BECOMES:
+            self.preset = presets.ROAD_BIKE
+        self.avoid_gravel = self.preset == presets.ROAD_BIKE
         preset = presets.PRESETS[self.preset]
+        run = self.preset == presets.RUN
+        if len(self.points) < 2 and not (run and self.loop and self.target_distance_m):
+            raise ValueError(
+                "points need at least 2 places, a start and a destination; a start alone plans only"
+                " a Run loop with loop and target_distance_m"
+            )
+        if run:
+            # A loop from a start alone is sized up to RUN_TARGET_MAX_M; with stops placed the
+            # target is a ceiling, as on a ride.
+            if (
+                len(self.points) == 1
+                and self.target_distance_m is not None
+                and self.target_distance_m > run_plan.RUN_TARGET_MAX_M
+            ):
+                raise ValueError("A run's target distance is at most 31 mi (50 km)")
+            if self.transit_option is not None:
+                raise ValueError("transit_option applies to the transit ride types only")
+        elif self.run_pace_kmh is not None:
+            raise ValueError("run_pace_kmh applies to the Run ride type only")
         if self.via_points:
             last = len(self.points) - 1
             if len(set(self.via_points)) != len(self.via_points) or any(
@@ -651,8 +705,11 @@ class RouteIn(Schema):
                 not 0 <= index < last for index in self.straight_legs
             ):
                 raise ValueError("straight_legs are distinct indices of legs between the points")
-        if self.novice_legs and self.preset not in presets.TRANSIT_PRESETS:
-            raise ValueError("novice_legs applies to the transit ride types only")
+        if self.novice_legs and self.preset not in {
+            presets.BIKE_TRANSIT,
+            presets.BIKESHARE_TRANSIT,
+        }:
+            raise ValueError("novice_legs applies to the transit ride types with a bike only")
         if self.novice_hop is not None and not self.novice_legs:
             raise ValueError("novice_hop goes with novice_legs")
         if self.hills is not None and self.hills > 0 and not preset.hills_seek:
@@ -688,7 +745,7 @@ class RouteIn(Schema):
                 )
             if self.loop:
                 raise ValueError("Transit ride types do not plan loops")
-        elif self.transit_option is not None or self.depart_at is not None:
+        elif self.transit_option is not None or (self.depart_at is not None and not run):
             raise ValueError("transit_option and depart_at apply to the transit ride types only")
         if self.preset in presets.BIKESHARE_PRESETS:
             if len(self.points) != 2:
@@ -1865,6 +1922,24 @@ class BikeshareStopOut(Schema):
     docks_available: int | None = Field(description="Free slots; null: unknown or not a dock.")
 
 
+class WalkTurnOut(Schema):
+    """A walk's turn (2026-11-02, turn-by-turn on foot; `core.walk_turns`): the app says it
+    in the rider's language as it says a ride's turns."""
+
+    movement: Literal["left", "right", "bear_left", "bear_right", "uturn", "cross"]
+    street: str | None = Field(
+        description="The street turned onto, or crossed; null: a path or sidewalk, or no name."
+    )
+    point: list[float] = Field(description="[lon, lat] of the turn.")
+    # A crossing's (`movement` "cross"; `core.walk_pricing`, 2026-11-02).
+    control: Literal["signal", "crosswalk", "none"] | None = Field(
+        default=None,
+        description="A crossing's: at a signal, at a crosswalk with no signal, or neither.",
+    )
+    busy: bool | None = Field(default=None, description="A crossing's: a busy road is crossed.")
+    slip: bool | None = Field(default=None, description="A crossing's: a slip lane is crossed.")
+
+
 class BikeshareWalkOut(Schema):
     """A walk leg (Valhalla pedestrian costing)."""
 
@@ -1872,6 +1947,10 @@ class BikeshareWalkOut(Schema):
     distance_m: float
     duration_s: float
     to: str = Field(description="Where it goes: a dock's name, or `your destination`.")
+    turns: list[WalkTurnOut] = Field(
+        default_factory=list,
+        description="Its turns in order, for turn-by-turn on foot (empty: none, or not asked).",
+    )
 
 
 class WalkInOut(Schema):
@@ -2373,7 +2452,7 @@ class WorkZonesOut(Schema):
 
 class RouteBody(Schema):
     preset: PresetName
-    variant: Literal["standard", "no-trail", "ebike", "weekend", "offroad", "mtb"]
+    variant: Literal["standard", "no-trail", "ebike", "weekend", "offroad", "mtb", "paved"]
     # A ride type that does not plan on dirt trails rides one here, as a point on one, or a
     # ride's re-plan, opened it (`core.trail_touch`). A ride sends `dirt_ridden` after one.
     dirt_trails: bool = False
@@ -2484,6 +2563,9 @@ class RouteBody(Schema):
     loop: LoopOut | None = Field(
         default=None, description="Present on a loop: how much of the way back is the way out."
     )
+    run: RunOut | None = Field(
+        default=None, description="Present on a Run: what it was planned with and what it found."
+    )
     effort_m: float | None = Field(
         default=None,
         description=(
@@ -2545,6 +2627,25 @@ class DodgesOut(Schema):
     saved_m: float = Field(description="The metres the replacements took off the route.")
     limited: str | None
     items: list[DodgeOut]
+
+
+class RunOut(Schema):
+    """A Run's planning (`core.run_plan`)."""
+
+    pace_kmh: float = Field(description="The pace on the flat it is timed at, km/h.")
+    dark: bool = Field(description="Planned after dark: lit ways favoured.")
+    trail_m: float = Field(description="Metres on trails, park paths and tracks.")
+    signals: int = Field(description="Signalled crossings on the way, each a wait for the light.")
+    target_distance_m: float | None = Field(
+        default=None,
+        description=(
+            "The rider's target, metres: from a start alone, a loop about that long; with stops"
+            " placed, as Trailmaxxing's, the most trail at or under it."
+        ),
+    )
+    fits: bool | None = Field(
+        default=None, description="Whether the run is at or under its target (null: no target)."
+    )
 
 
 class LoopOut(Schema):
@@ -2627,6 +2728,15 @@ class TransitLiveOut(Schema):
     as_of: str = Field(description="When WMATA was read, local ISO time.")
 
 
+class TransitStopOut(Schema):
+    name: str
+    point: list[float] = Field(description="[lon, lat]")
+    after_s: int = Field(
+        description="Seconds after leaving the step's first stop, as scheduled (the timetable's"
+        " run times, scaled to the step's own ride time)."
+    )
+
+
 class TransitStepOut(Schema):
     mode: Literal[
         "ride",
@@ -2683,6 +2793,24 @@ class TransitStepOut(Schema):
             "[lon, lat] for the map: Metro and bus through their stops, walks straight, the far"
             " end's ride as routed; empty for the route line's own step."
         )
+    )
+    stops: list[TransitStopOut] | None = Field(
+        default=None,
+        description=(
+            "A transit step's stops in order, the one boarded and the one left included, for"
+            " stop-by-stop directions (2026-11-02). Null off transit."
+        ),
+    )
+    toward: str | None = Field(
+        default=None,
+        description='A transit step\'s way, by its last stop: "Shady Grove". Null off transit.',
+    )
+    turns: list[WalkTurnOut] | None = Field(
+        default=None,
+        description=(
+            "A walk's turns in order, where it was routed in time, for turn-by-turn on foot"
+            " (2026-11-02). Null otherwise."
+        ),
     )
     stress_spans: list[StressSpanOut] | None = Field(
         default=None,
@@ -2801,8 +2929,15 @@ class TransitOut(Schema):
     """A transit ride type's trip (`core.transit`): scheduled, with WMATA's predicted
     departures on a plan for now (`core.transit_live`)."""
 
-    mode: Literal["bike-transit", "bikeshare-transit"]
+    mode: Literal["bike-transit", "bikeshare-transit", "walk", "walk-transit", "run"]
     key: str = Field(description="The chosen option's key.")
+    asked_gone: bool = Field(
+        default=False,
+        description=(
+            "The trip asked for (`transit_option`) is no longer one of the options (no longer"
+            " scheduled, or its departure missed): the best is chosen in its place."
+        ),
+    )
     direct: bool = Field(description="The chosen option is riding the whole way.")
     total_s: int
     minutes: int
@@ -3234,7 +3369,7 @@ def route(request, body: RouteIn, response: HttpResponse):
     # Its calls on the pool are kept, so a cancelled plan can wait for them (below).
     tracking = parallel.track() if watch is not None else None
     try:
-        with lang.speaking(body.lang):
+        with lang.speaking(body.lang), walk_turns.stairs_avoided(body.avoid_stairs):
             answered = _route_answer(request, body, response)
     finally:
         if tracking is not None:
@@ -3300,6 +3435,8 @@ def _route_answer(request, body: RouteIn, response: HttpResponse):
     span = span_m(routing.loop_points(body.points, loop))
     if span > MAX_SPAN_M:
         return Status(400, {"error": too_long()})
+    if body.preset == presets.RUN:
+        return _run_answer(request, body)
     if span <= CONFIRM_SPAN_M:
         if not loop and routing.long_calm_for(
             body.preset,
@@ -3473,7 +3610,7 @@ def route_neighbours(request, body: RouteIn):
         kind: body.model_copy(update={"stress": notch, "quick": False, "candidates": False})
         for kind, notch in wanted
     }
-    with lang.speaking(body.lang):
+    with lang.speaking(body.lang), walk_turns.stairs_avoided(body.avoid_stairs):
         answered = {kind: _neighbour(bodies[kind], started) for kind, _ in wanted}
     options = [
         {"kind": kind, "stress": notch, "route": answered[kind]}
@@ -3916,22 +4053,96 @@ def _unrouted_line(
     }
 
 
-def _walked_line(plan: transit.Plan, preset_name: str, dials, services=None) -> dict:
+def _walked_line(
+    plan: transit.Plan, preset_name: str, dials, services=None
+) -> tuple[dict, transit.Plan]:
     """The answer's line is a walk (walking the whole way, or a trip whose line is a walk): the
     walk itself, as the pedestrian router walked it (or straight where it did not), timed at
-    walking pace; no bike route is asked. `services` walks a leg not yet walked by the router."""
+    walking pace; no bike route is asked. `services` walks a leg not yet walked by the router.
+    Returns the line and the plan with that walk's turns on its step, for turn by turn on foot."""
     leg = plan.legs[plan.ride]
     points = [list(p) for p in leg.coordinates]
     metres = None
+    turns = leg.turns
     walked = services.walk(points[0], points[-1]) if services is not None else None
     if walked is not None and len(walked.coordinates) >= 2:
         points = [list(p) for p in walked.coordinates]
         metres = walked.metres
+        turns = walked.turns
     elif not leg.estimated:
         metres = sum(
             haversine(Point(*a), Point(*b)) for a, b in zip(points, points[1:], strict=False)
         )
-    return _unrouted_line(points, preset_name, dials, leg.seconds, metres)
+    line = _unrouted_line(points, preset_name, dials, leg.seconds, metres)
+    if turns != leg.turns:
+        option = plan.option
+        legs = list(option.legs)
+        legs[plan.ride] = dataclasses.replace(leg, turns=turns)
+        options = list(plan.options)
+        options[plan.chosen] = dataclasses.replace(option, legs=tuple(legs))
+        plan = dataclasses.replace(plan, options=options)
+    return line, plan
+
+
+# A run longer than this in straight lines is refused: a marathon's span with room to spare.
+RUN_MAX_SPAN_M = 80_000
+
+
+def _run_answer(request, body: RouteIn):
+    """Run (`core.run_plan`): the answer, or the refusal where no way on foot was found."""
+    if span_m(body.points) > RUN_MAX_SPAN_M:
+        return Status(400, {"error": "A run is planned up to 50 mi (80 km) in straight lines."})
+    try:
+        return Status(200, _run_body(body, getattr(request, "routing_started", None)))
+    except run_plan.RunTimedOut as late:
+        # Busy, not no way: the same retryable answer as a bike route that ran out of time.
+        refusal = _error(503, str(late))
+        refusal["Retry-After"] = str(DEADLINE_RETRY_S)
+        return refusal
+    except run_plan.RouterDown as down:
+        return Status(502, {"error": str(down)})
+    except run_plan.NoRun as refusal:
+        return Status(422, {"error": str(refusal)})
+
+
+def _run_body(body: RouteIn, started: float | None) -> dict:
+    """A run planned on foot (`core.run_plan`), answered as Walk's line is: the line, its time
+    and length, and a `transit` block of one walk (mode "run") with its turns."""
+    if started is None:
+        started = routing.clock()
+    at = body.depart_at or timezone.now()
+    if at.tzinfo is None:
+        at = at.replace(tzinfo=ridetime.ZONE)
+    ask = run_plan.RunAsk(
+        pace_kmh=run_plan.pace_of(body.run_pace_kmh),
+        hills=0 if body.hills is None else body.hills,
+        dark=run_plan.is_dark(at, body.when),
+        loop=body.loop,
+        target_m=float(body.target_distance_m) if body.target_distance_m else None,
+    )
+    run = run_plan.plan(body.points, ask, run_plan.Router(run_plan.deadline_from(started)))
+    dials = routing.Dials(stress=body.stress, hills=body.hills, when=body.when)
+    answer = _unrouted_line(
+        [list(p) for p in run.shape], presets.RUN, dials, run.seconds, run.metres
+    )
+    answer["climb_m"] = run.climb_m or 0.0
+    answer["descent_m"] = run.descent_m or 0.0
+    answer["leg_ends"] = run.leg_ends or answer["leg_ends"]
+    answer["loop"] = run.loop
+    answer["transit"] = run_plan.worded(transit.block(run_plan.as_plan(run, at)), run.seconds)
+    answer["run"] = {
+        "pace_kmh": ask.pace_kmh,
+        "dark": ask.dark,
+        "trail_m": run.trail_m,
+        "signals": run.signals,
+        "target_distance_m": ask.target_m,
+        # A loop from a start alone is about its target, not under it: no "fits" to say.
+        "fits": (
+            None if ask.target_m is None or len(body.points) == 1 else run.metres <= ask.target_m
+        ),
+    }
+    logger.info("run plan: %d router calls, %.1f s", run.calls, routing.clock() - started)
+    return answer
 
 
 def _transit_body(body: RouteIn, started: float | None) -> dict:
@@ -3991,7 +4202,11 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
     # WMATA's live reading (core.wmata_live), if any: read before the search, which ranks a
     # station with no working elevator on the way 15 min down, and used after it (below).
     live = wmata_live.client.snapshot()
-    if body.preset == presets.BIKESHARE_TRANSIT:
+    if body.preset == presets.WALK:
+        found = transit.plan_walk(schedule, start, end, when, services)
+    elif body.preset == presets.WALK_TRANSIT:
+        found = transit.plan_walk_transit(schedule, start, end, when, services)
+    elif body.preset == presets.BIKESHARE_TRANSIT:
         found = transit.plan_bikeshare(
             schedule, start, end, when, services, share_snapshot, hop=body.novice_hop
         )
@@ -4068,19 +4283,25 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
         return answer
 
     if found.option.walk:
-        return answered(_walked_line(found, body.preset, dials), found)
+        return answered(*_walked_line(found, body.preset, dials))
     leg = found.legs[found.ride]
-    # The line is the chosen option's first ride (or walk). Riding directly there, or an option
-    # whose every ride and walk is a few yards (nothing the router could route), is drawn start to
-    # end instead, and the plan keeps its own times.
+    if body.preset in presets.ON_FOOT_PRESETS:
+        # Walk + 🚆🚌 never rides: its line is its first walk, walked (straight where a few yards).
+        far = transit.line_m(leg) >= transit.MIN_LINE_M
+        return answered(*_walked_line(found, body.preset, dials, draw if far else None))
+    # The line is the chosen option's first ride (or walk). Riding directly there, or a line that
+    # is a ride of a few yards (nothing the router could route), is drawn start to end instead, and
+    # the plan keeps its own times. A line that is a walk of a few yards is drawn straight.
+    short = transit.line_m(leg) < transit.MIN_LINE_M
     whole = (found.option.direct and body.preset == presets.BIKE_TRANSIT) or (
-        transit.line_m(leg) < transit.MIN_LINE_M
+        short and leg.mode in (transit.RIDE, transit.SHARE)
     )
     retime = not whole or found.option.direct
     if not whole and leg.mode in (transit.WALK, transit.TAKE):
         # The line is a walk (Bikeshare + 🚶🚆🚌 with no ride worth a line): walked by the
-        # pedestrian router, never the bike's, and the plan keeps its walking times.
-        return answered(_walked_line(found, body.preset, dials, draw), found)
+        # pedestrian router, never the bike's, and the plan keeps its walking times. A trip walked
+        # with no ride at all has its first walk as its line however short (drawn straight).
+        return answered(*_walked_line(found, body.preset, dials, None if short else draw))
     if whole:
         ride_from, ride_to = list(start), list(end)
     else:
@@ -4144,10 +4365,16 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
             # times stay the plan's own: timing them again could drop this option too.
             leg = timed.legs[timed.ride]
             if timed.option.walk:
-                return answered(_walked_line(timed, body.preset, dials), timed)
+                return answered(*_walked_line(timed, body.preset, dials))
+            if body.preset in presets.ON_FOOT_PRESETS:
+                far = transit.line_m(leg) >= transit.MIN_LINE_M
+                return answered(*_walked_line(timed, body.preset, dials, draw if far else None))
             walked = leg.mode in (transit.WALK, transit.TAKE) and not timed.option.direct
-            if walked and transit.line_m(leg) >= transit.MIN_LINE_M:
-                return answered(_walked_line(timed, body.preset, dials, draw), timed)
+            if walked:
+                # As the first pass: a walk of a few yards (a trip with no ride, started at the
+                # stop) is drawn straight, never as a bike route over the transit.
+                far = transit.line_m(leg) >= transit.MIN_LINE_M
+                return answered(*_walked_line(timed, body.preset, dials, draw if far else None))
             again_whole = timed.option.direct and body.preset == presets.BIKE_TRANSIT
             if again_whole:
                 points = [list(start), list(end)]

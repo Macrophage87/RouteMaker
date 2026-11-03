@@ -103,6 +103,8 @@
 	redir @preset-gravel /#preset=gravel 302
 	@preset-fast path /fast /fast/
 	redir @preset-fast /#preset=fast 302
+	@preset-road-bike path /road-bike /road-bike/
+	redir @preset-road-bike /#preset=road-bike 302
 	@preset-cargo path /cargo /cargo/
 	redir @preset-cargo /#preset=cargo 302
 	@preset-ebike path /ebike /ebike/
@@ -120,6 +122,12 @@
 	redir @preset-bikeshare-transit /#preset=bikeshare-transit 302
 	@preset-rebalance path /rebalance /rebalance/
 	redir @preset-rebalance /#preset=rebalance 302
+	@preset-walk path /walk /walk/
+	redir @preset-walk /#preset=walk 302
+	@preset-walk-transit path /walk-transit /walk-transit/
+	redir @preset-walk-transit /#preset=walk-transit 302
+	@preset-run path /run /run/
+	redir @preset-run /#preset=run 302
 
 	# Django's collected assets, from the volume `collectstatic` writes and this
 	# service mounts read-only (${DATA_ROOT}/static -> /srv/static). STATIC_URL

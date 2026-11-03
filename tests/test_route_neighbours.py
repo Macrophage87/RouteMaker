@@ -187,6 +187,32 @@ class TestBikeshare:
             assert plan["start"]["station_id"] == docks["pickup_station"]
             assert plan["end"]["station_id"] == docks["dropoff_station"]
 
+    def test_options_walk_to_the_docks_step_free_where_the_rider_avoids_stairs(
+        self,
+        client,
+        world,  # noqa: F811
+    ) -> None:
+        """Review of v0.18.0 (S2): Avoid stairs (#887) reaches the options' walks too."""
+        from core import walk_turns
+
+        routers, _ = world
+        own = client.post(
+            "/api/route", data=json.dumps(bikeshare_body()), content_type="application/json"
+        ).json()["bikeshare"]
+        docks = {
+            "pickup_station": own["start"]["station_id"],
+            "dropoff_station": own["end"]["station_id"],
+        }
+        for avoid in (True, False):
+            routers.calls.clear()
+            response = post(client, bikeshare_body(**docks, avoid_stairs=avoid))
+            assert response.status_code == 200, response.content
+            assert response.json()["options"]
+            walks = [p for _u, p in routers.calls if p["costing"] == "pedestrian"]
+            assert walks, avoid
+            steps = [p["costing_options"].get("pedestrian", {}).get("step_penalty") for p in walks]
+            assert steps == [walk_turns.STEP_FREE_PENALTY_S if avoid else None] * len(walks)
+
     def test_no_options_without_the_riders_docks(self, client, world) -> None:  # noqa: F811
         routers, _ = world
         response = post(client, bikeshare_body())
