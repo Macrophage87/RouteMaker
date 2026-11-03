@@ -2408,16 +2408,24 @@ def test_vehicle_words_keep_a_bus_systems_name():
 
 def test_towards_lists_every_train_that_makes_the_ride_by_where_it_is_signed():
     # Stephen, 2026-11-03: "Put the acceptable destination options. you still need to know which
-    # train to get on". Alpha to Charlie: only the trains through to Delta; Bravo to Charlie: the
-    # short turn to Charlie as well; the way back: Alpha, once.
+    # train to get on". Only the patterns serving the hop now (`Hop.serving`) count: a through
+    # train to Delta and a short turn to Charlie both, each end once; with none named, the one
+    # planned.
     schedule = _branch_schedule()
     route = schedule.patterns[0].route
 
-    def hop(path):
+    def hop(serving):
         return transit.Hop(
-            wait_s=0, ride_s=60, routes=(route,), path=path, system=0, pattern=0, frequent=True
+            wait_s=0,
+            ride_s=60,
+            routes=(route,),
+            path=(1, 2),
+            system=0,
+            pattern=0,
+            frequent=True,
+            serving=serving,
         )
 
-    assert transit._towards_of(schedule, hop((0, 1, 2))) == ((route, "Delta"),)
-    assert transit._towards_of(schedule, hop((1, 2))) == ((route, "Charlie"), (route, "Delta"))
-    assert transit._towards_of(schedule, hop((2, 1))) == ((route, "Alpha"),)
+    assert transit._towards_of(schedule, hop((0, 1))) == ((route, "Charlie"), (route, "Delta"))
+    assert transit._towards_of(schedule, hop(())) == ((route, "Delta"),)
+    assert transit._towards_of(schedule, hop((0, 0))) == ((route, "Delta"),)

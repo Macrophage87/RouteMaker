@@ -233,9 +233,8 @@ export function lineBadge(line: string): { background: string; color: string } |
   if (name.includes("penn")) return { background: PENN_COLOUR, color: "#ffffff" };
   for (const style of Object.values(METRO_LINES)) {
     if (name === `${style.label.toLowerCase()} line`) {
-      // Yellow, Silver and Orange are light: dark text (WMATA's own signs do the same on yellow).
-      const dark = style.key === "yellow" || style.key === "silver" || style.key === "orange";
-      return { background: style.color, color: dark ? "#111827" : "#ffffff" };
+      // White reads at 4.5:1 only on Red (6.3:1); every other line's colour takes dark text (5.7:1 and up).
+      return { background: style.color, color: style.key === "red" ? "#ffffff" : "#111827" };
     }
   }
   return null;

@@ -211,7 +211,9 @@ test("the trains that will do, grouped by where they are signed to, with their l
   assert.deepEqual(boardingGroups([{ line: "Red Line", toward: "Glenmont" }], "Glenmont"), [{ lines: ["Red Line"], toward: null }]);
   assert.deepEqual(lineBadge("Red Line"), { background: "#bf0d3e", color: "#ffffff" });
   assert.equal(lineBadge("Yellow Line")!.color, "#111827");
-  assert.equal(lineBadge("MARC Penn Line")!.background, "#8a6500");
+  assert.equal(lineBadge("Blue Line")!.color, "#111827");
+  assert.equal(lineBadge("Green Line")!.color, "#111827");
+  assert.deepEqual(lineBadge("MARC Penn Line"), { background: "#8a6500", color: "#ffffff" });
   assert.equal(lineBadge("C53"), null);
   // The leg carries every train that will do, from the API's `towards`; one, the planned way, from an older API.
   const step = { mode: "metro", lines: ["Orange Line", "Silver Line"], wait_s: 120, toward: "New Carrollton", stops: [{ name: "A", point: [0, 0], after_s: 0 }, { name: "B", point: [0, 0.01], after_s: 60 }] } as unknown as TransitStep;
@@ -223,5 +225,5 @@ test("the ride screen shows the boarding as rows, its departure countdown only w
   const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
   assert.match(ride, /<BoardingCard leg=\{boardingLeg\} departure=\{boardingDeparture\} note=/);
   assert.match(ride, /const boardingDeparture = trip\?\.departure && trip\.boardStep != null && trip\.departure\.step === trip\.boardStep \? trip\.departure : null;/);
-  assert.match(ride, /<DepartureTimer departure=\{trip\.departure\} announce=\{notify\} noticeOnly=\{!!boardingDeparture\} \/>/);
+  assert.match(ride, /<DepartureTimer departure=\{trip\.departure\} announce=\{notify\} noticeOnly=\{!!boardingLeg && !!boardingDeparture\} \/>/);
 });

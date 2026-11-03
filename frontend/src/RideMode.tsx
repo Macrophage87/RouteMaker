@@ -3112,7 +3112,7 @@ export function RideMode({
                 {onwardWalkLine && <p className={onwardIndex > 0 ? "cue-text" : "cue-then"}>{onwardWalkLine}</p>}
                 {/* The boarding's departure, its countdown and milestones as in the trip's panel (said through the ride's outputs). */}
                 {/* Its milestones said; on screen only a close or missed departure's notice (the card has its time). */}
-                {trip?.departure && toBoard && <DepartureTimer departure={trip.departure} announce={notify} noticeOnly={!!boardingDeparture} />}
+                {trip?.departure && toBoard && <DepartureTimer departure={trip.departure} announce={notify} noticeOnly={!!boardingLeg && !!boardingDeparture} />}
                 {/* Where the next Metro train or Metrobus is while waiting there (v0.9.0), its mark on the map. */}
                 <NextVehicleLine ask={trip?.boarding ?? null} waiting={ride.arrived && toBoard} announce={notify} onMark={setVehicle} />
               </>

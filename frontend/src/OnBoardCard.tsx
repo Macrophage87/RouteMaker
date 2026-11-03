@@ -66,12 +66,19 @@ export function BoardingCard({
       <ul className="boarding-trains">
         {boardingGroups(trains, off).map(({ lines, toward }) => (
           <li key={`${lines.join("|")}>${toward ?? ""}`}>
-            {lines.map((line) => {
+            {lines.map((line, i) => {
               const badge = lineBadge(line);
+              const short = badge ? line.replace(/ Line$/, "") : line;
               return (
-                <span key={line} className={badge ? "line-badge" : "line-badge line-badge-plain"} style={badge ?? undefined}>
-                  {/* Compact: a coloured badge says "Orange", its colour the rest. */}
-                  {badge ? line.replace(/ Line$/, "") : line}
+                <span key={line}>
+                  {/* Compact: a coloured badge says "Orange", its colour the rest; a screen reader hears the full name. */}
+                  <span className={badge ? "line-badge" : "line-badge line-badge-plain"} style={badge ?? undefined} aria-hidden="true">
+                    {short}
+                  </span>
+                  <span className="visually-hidden">
+                    {i > 0 ? ", " : ""}
+                    {line}
+                  </span>
                 </span>
               );
             })}

@@ -395,6 +395,9 @@ class Hop:
     later: tuple[float, ...] = ()  # every later departure seen, for a rider who misses one
     every: float | None = None  # a frequent service: minutes between departures
     first: float | None = None  # typical Metro before its first train: that train (minutes)
+    # The patterns whose trains make this ride now (a frequent service's every one that has a
+    # departure coming, an infrequent one's the train taken), for the ends they are signed to.
+    serving: tuple[int, ...] = ()
 
     @property
     def total_s(self) -> float:
@@ -1430,6 +1433,7 @@ def _hop(minute: float, entries, typical: bool = False) -> Hop:
             True,
             every=gap,
             first=first,
+            serving=tuple(sorted({e[2].index for e in entries})),
         )
     later_times = []
     for dep in times:
@@ -1446,6 +1450,7 @@ def _hop(minute: float, entries, typical: bool = False) -> Hop:
         deps[0],
         later_times[0] if later_times else None,
         tuple(later_times),
+        serving=(pattern.index,),
     )
 
 
@@ -1493,22 +1498,14 @@ def _stops_of(
 
 
 def _towards_of(schedule: Schedule, hop: Hop) -> tuple[tuple[str, str], ...]:
-    """Each route of the hop with the last stop of every pattern of it that calls at the hop's
-    first stop and then its last (the trains a rider can board there for this ride), each once,
-    in the hop's route order. A loop has no last stop to sign it by."""
-    if len(hop.path) < 2:
-        return ()
-    board, alight = hop.path[0], hop.path[-1]
-    routes = set(hop.routes)
+    """Each pattern that makes the hop now (`Hop.serving`, else the one planned) as its route and
+    the last stop its trains are signed to, each pair once, in the hop's route order. A loop has
+    no last stop to sign it by."""
     found: list[tuple[str, str]] = []
-    for pattern in schedule.patterns:
-        if pattern.system != hop.system or pattern.route not in routes:
-            continue
+    for index in hop.serving or (hop.pattern,):
+        pattern = schedule.patterns[index]
         stops = pattern.stops
-        if not stops or stops[0] == stops[-1] or board not in stops:
-            continue
-        at = stops.index(board)
-        if alight not in stops[at + 1 :]:
+        if not stops or stops[0] == stops[-1]:
             continue
         pair = (pattern.route, schedule.stops[stops[-1]].name)
         if pair not in found:
