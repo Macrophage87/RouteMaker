@@ -405,23 +405,56 @@ interface CueLike {
   atM: number;
   movement: TurnMovementKey | null;
   severity: "orange" | "red" | "avoid" | null;
+  /** A jog's later turn: drawn with the jog's first, as the cue card draws it. */
+  joined?: boolean;
+  /** A short path straight across a road: not a turn on the card, so not one here. */
+  cross?: string;
+  source?: string;
 }
 
-/** The turns and the stress markers in the window: every turn, and every other cue the planner flagged. */
+/**
+ * The turns and the stress markers in the window: each turn the card shows (a jog as one, a crossing straight over not
+ * at all), each junction the planner flagged orange or red, and where an Avoid stretch starts. Not work zones or
+ * hazards: they are not junctions.
+ */
 export function turnMarks(cues: readonly CueLike[], w: Pick<AheadWindow, "fromM" | "toM">): TurnMark[] {
-  return cues
-    .filter((c) => c.atM >= w.fromM && c.atM <= w.toM)
-    .filter((c) => (c.kind === "turn" && c.movement !== null) || c.severity !== null)
-    .map((c) => ({ m: c.atM, movement: c.kind === "turn" ? c.movement : null, severity: c.severity }));
+  const marks: TurnMark[] = [];
+  for (const c of cues) {
+    if (c.atM < w.fromM || c.atM > w.toM) continue;
+    if (c.kind === "turn") {
+      if (c.movement !== null && !c.joined && !c.cross) marks.push({ m: c.atM, movement: c.movement, severity: c.severity === "orange" || c.severity === "red" ? c.severity : null });
+    } else if (c.source === "junction" && (c.severity === "orange" || c.severity === "red")) {
+      marks.push({ m: c.atM, movement: null, severity: c.severity });
+    } else if (c.source === "avoid") {
+      marks.push({ m: c.atM, movement: null, severity: "avoid" });
+    }
+  }
+  return marks;
 }
 
-/** "Turns ahead: 3. Busy junctions: 1." */
+const RANK: Record<string, number> = { red: 3, orange: 2, avoid: 1 };
+
+/** Marks closer than `minM` drawn as one, so they never pile up: the turn's arrow kept, in the worse colour of the two. */
+export function spreadMarks(marks: readonly TurnMark[], minM: number): TurnMark[] {
+  const out: TurnMark[] = [];
+  for (const mark of marks) {
+    const last = out[out.length - 1];
+    if (last && mark.m - last.m < minM) {
+      const severity = (RANK[mark.severity ?? ""] ?? 0) > (RANK[last.severity ?? ""] ?? 0) ? mark.severity : last.severity;
+      out[out.length - 1] = { m: last.m, movement: last.movement ?? mark.movement, severity };
+      continue;
+    }
+    out.push({ ...mark });
+  }
+  return out;
+}
+
+/** "Turns ahead: 3. Busy junctions: 1.", or nothing where there are neither. */
 export function turnsSentence(marks: readonly TurnMark[], youM: number): string {
   const ahead = marks.filter((mark) => mark.m >= youM);
-  return t("Turns ahead: {turns}. Busy junctions: {busy}.", {
-    turns: ahead.filter((mark) => mark.movement !== null).length,
-    busy: ahead.filter((mark) => mark.severity !== null).length,
-  });
+  const turns = ahead.filter((mark) => mark.movement !== null).length;
+  const busy = ahead.filter((mark) => mark.severity === "orange" || mark.severity === "red").length;
+  return turns || busy ? t("Turns ahead: {turns}. Busy junctions: {busy}.", { turns, busy }) : "";
 }
 
 export interface AxisTick {

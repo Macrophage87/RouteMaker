@@ -35,6 +35,7 @@ import {
   shortStreet,
   stressBars,
   stressSentence,
+  spreadMarks,
   turnMarks,
   turnsSentence,
   type AheadView,
@@ -52,7 +53,7 @@ const W = 320;
 const TURNS_H = 26;
 /** Each graph: its name, then its plot. */
 const LABEL_H = 14;
-const PLOT_H = 52;
+const PLOT_H = 56;
 const GAP = 4;
 const AXIS_H = 22;
 /** Room on the left for the y axis's labels ("450 ft"). */
@@ -63,7 +64,7 @@ interface Props {
   views: readonly AheadView[];
   route: Pick<RouteResponse, "profile" | "stress_spans">;
   /** The ride's cues, for the turns strip. */
-  cues: readonly Pick<Cue, "kind" | "atM" | "movement" | "severity">[];
+  cues: readonly Pick<Cue, "kind" | "atM" | "movement" | "severity" | "joined" | "cross" | "source">[];
   /** You, metres along the route. */
   youM: number;
   lengthM: number;
@@ -85,6 +86,8 @@ export function AheadGraph({ views, route, cues, youM, lengthM, ridersAlong = []
   const w = useMemo(() => aheadWindow(step, lengthM, ridersAlong), [step, lengthM, ridersKey]); // eslint-disable-line react-hooks/exhaustive-deps
   const x = (m: number) => LEFT + ((m - w.fromM) / (w.toM - w.fromM)) * (W - LEFT - RIGHT);
   const turns = useMemo(() => turnMarks(cues, w), [cues, w]);
+  // Drawn at least 20 units apart, so two marks a block apart are one, not a blob.
+  const drawnTurns = useMemo(() => spreadMarks(turns, (20 / (W - LEFT - RIGHT)) * (w.toM - w.fromM)), [turns, w]);
   const panels = useMemo(() => {
     const drawn: { view: AheadView; panel: Panel; drawn: Drawn }[] = [];
     let at = TURNS_H;
@@ -112,7 +115,7 @@ export function AheadGraph({ views, route, cues, youM, lengthM, ridersAlong = []
             <line x1="0" y1="0" x2="0" y2="5" className="ride-ahead-hatch" />
           </pattern>
         </defs>
-        <Turns marks={turns} x={x} />
+        <Turns marks={drawnTurns} x={x} />
         {panels.drawn.map(({ view, panel, drawn }) => (
           <Fragment key={view}>
             <text className="ride-ahead-name" x={LEFT} y={panel.top - 3}>
@@ -128,16 +131,24 @@ export function AheadGraph({ views, route, cues, youM, lengthM, ridersAlong = []
   );
 }
 
-/** A turn's arrow, drawn about a point, pointing up the screen and off to its side; left ones are right ones mirrored. */
-const ARROWS: Record<NonNullable<TurnMark["movement"]>, { d: string; flip: boolean }> = {
-  right: { d: "M-5 7V-1H4M1-5l4 4-4 4", flip: false },
-  left: { d: "M-5 7V-1H4M1-5l4 4-4 4", flip: true },
-  bear_right: { d: "M-3 7V2L3-4M-1-5h5v5", flip: false },
-  bear_left: { d: "M-3 7V2L3-4M-1-5h5v5", flip: true },
-  uturn: { d: "M3 7V-1a3.5 3.5 0 0 0-7 0v4M-7 0l3 3 3-3", flip: false },
+/**
+ * A turn's arrow, drawn about a point: a shaft and a solid head; left ones are right ones mirrored (Stephen 2026-11-03:
+ * "clean up the arrows").
+ */
+const ARROWS: Record<NonNullable<TurnMark["movement"]>, { shaft: string; head: string; flip: boolean }> = {
+  right: { shaft: "M-5 9V1a2 2 0 0 1 2-2H1", head: "M0-6.5L7.5-1L0 4.5Z", flip: false },
+  left: { shaft: "M-5 9V1a2 2 0 0 1 2-2H1", head: "M0-6.5L7.5-1L0 4.5Z", flip: true },
+  bear_right: { shaft: "M-4 9V3.5L2.5-3", head: "M6.5-7L5.5 2L-2.5-6Z", flip: false },
+  bear_left: { shaft: "M-4 9V3.5L2.5-3", head: "M6.5-7L5.5 2L-2.5-6Z", flip: true },
+  uturn: { shaft: "M4 9V-2a4 4 0 0 0-8 0V2", head: "M-9 1L-4 8L1 1Z", flip: false },
 };
 
-/** The strip of turns and junction markers, over the graphs on the same scale. */
+/**
+ * The strip of turns and junction markers, over the graphs on the same scale. A turn is a black arrow, or orange or red
+ * where the planner flagged its junction (Stephen 2026-11-03: "make those arrows that color alone"), each in a dark edge
+ * so it holds 3:1 on the panel; a flagged junction that is not a turn is the planner's own marker, an orange triangle
+ * or a red diamond, and an Avoid stretch a magenta square.
+ */
 function Turns({ marks, x }: { marks: readonly TurnMark[]; x: X }) {
   const cy = TURNS_H / 2;
   return (
@@ -145,25 +156,22 @@ function Turns({ marks, x }: { marks: readonly TurnMark[]; x: X }) {
       {marks.map((mark, i) => {
         const cx = x(mark.m);
         const colour = mark.severity === "orange" || mark.severity === "red" ? SEVERITY_COLOURS[mark.severity] : null;
-        // The planner's own shapes: an orange triangle, a red diamond; Avoid a magenta square.
-        const shape =
-          mark.severity === "orange" ? (
-            <path d={`M${cx} ${cy - 11}l10.5 19h-21z`} fill={colour?.fill} stroke={colour?.stroke} strokeWidth={1.5} />
-          ) : mark.severity === "red" ? (
-            <path d={`M${cx} ${cy - 11}l11 11-11 11-11-11z`} fill={colour?.fill} stroke={colour?.stroke} strokeWidth={1.5} />
-          ) : mark.severity === "avoid" ? (
-            <rect x={cx - 9} y={cy - 9} width={18} height={18} fill={ROUTE_AVOID_MAGENTA} stroke="#1c1917" strokeWidth={1.5} />
-          ) : null;
-        if (!mark.movement) return <g key={i}>{shape}</g>;
-        const arrow = ARROWS[mark.movement];
-        return (
-          <g key={i}>
-            {shape}
-            <g transform={`translate(${cx} ${cy + (shape ? 2 : 0)}) scale(${arrow.flip ? -1 : 1} 1)`}>
-              <path className={shape ? "ride-ahead-arrow-on" : "ride-ahead-arrow"} d={arrow.d} />
+        if (mark.movement) {
+          const arrow = ARROWS[mark.movement];
+          return (
+            <g key={i} transform={`translate(${cx} ${cy}) scale(${arrow.flip ? -1 : 1} 1)`} className={colour ? `ride-ahead-arrow ride-ahead-arrow-${mark.severity}` : "ride-ahead-arrow"}>
+              {colour && <path d={arrow.shaft} className="ride-ahead-arrow-edge" stroke={colour.stroke} />}
+              {colour && <path d={arrow.head} className="ride-ahead-arrow-edge" stroke={colour.stroke} fill={colour.stroke} />}
+              <path d={arrow.shaft} className="ride-ahead-arrow-shaft" style={colour ? { stroke: colour.fill } : undefined} />
+              <path d={arrow.head} className="ride-ahead-arrow-head" style={colour ? { fill: colour.fill } : undefined} />
             </g>
-          </g>
-        );
+          );
+        }
+        if (mark.severity === "orange" || mark.severity === "red") {
+          const d = mark.severity === "orange" ? `M${cx} ${cy - 9}l9 16h-18z` : `M${cx} ${cy - 9}l9 9-9 9-9-9z`;
+          return <path key={i} d={d} fill={colour?.fill} stroke={colour?.stroke} strokeWidth={1.5} />;
+        }
+        return <rect key={i} x={cx - 7} y={cy - 7} width={14} height={14} fill={ROUTE_AVOID_MAGENTA} stroke="#1c1917" strokeWidth={1.5} />;
       })}
     </g>
   );
@@ -316,7 +324,7 @@ function draw(view: AheadView, route: Props["route"], w: AheadWindow, x: X, pane
           {low && (
             <g className="ride-ahead-narrowest">
               <path d={`M${x((low.fromM + low.toM) / 2)} ${fy(low.riders) - 2} l-5 -8 h10 z`} />
-              <text x={Math.min(W - 60, Math.max(40, x((low.fromM + low.toM) / 2)))} y={TOP + 10} textAnchor="middle">
+              <text x={Math.min(W - 20, Math.max(LEFT + 12, x((low.fromM + low.toM) / 2)))} y={TOP + 10} textAnchor="middle">
                 {Math.round(low.riders)}
               </text>
             </g>

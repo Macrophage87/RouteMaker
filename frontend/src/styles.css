@@ -4606,21 +4606,25 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
   font-weight: 700;
 }
 
-.ride-ahead-arrow,
-.ride-ahead-arrow-on {
+.ride-ahead-arrow-shaft,
+.ride-ahead-arrow-edge {
   fill: none;
-  stroke-width: 2.5;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
 
-.ride-ahead-arrow {
+.ride-ahead-arrow-shaft {
   stroke: var(--text);
+  stroke-width: 3;
 }
 
-/* On an orange triangle or a red diamond: near-black, as the planner's markers draw their symbols. */
-.ride-ahead-arrow-on {
-  stroke: #1c1917;
+.ride-ahead-arrow-head {
+  fill: var(--text);
+}
+
+/* The dark edge under an orange or red arrow, so it holds 3:1 on the panel in either theme. */
+.ride-ahead-arrow-edge {
+  stroke-width: 5.5;
 }
 
 .ride-ahead-you-line {

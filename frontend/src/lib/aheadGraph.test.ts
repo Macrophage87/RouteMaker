@@ -18,6 +18,7 @@ import {
   flowSteps,
   inkOn,
   readAhead,
+  spreadMarks,
   turnMarks,
   turnsSentence,
   type TurnMark,
@@ -62,12 +63,33 @@ test("off by default; the graphs chosen are kept on this device in More's order,
   assert.deepEqual(readAhead({ getItem: () => { throw new Error("blocked"); }, setItem: () => {} }), []);
 });
 
-test("the turns strip: every turn with its arrow, and each flagged junction marker; said as counts ahead", () => {
-  const cue = (kind: string, atM: number, movement: TurnMark["movement"], severity: TurnMark["severity"]) => ({ kind, atM, movement, severity });
-  const cues = [cue("turn", 100, "left", null), cue("turn", 900, "right", "orange"), cue("crossing", 1500, null, "red"), cue("busy", 1800, null, null), cue("turn", 9000, "left", null)];
+test("the turns strip: each turn the card shows, flagged junctions and Avoid; never work zones; said as counts ahead", () => {
+  const cue = (kind: string, atM: number, movement: TurnMark["movement"], severity: TurnMark["severity"], more: object = {}) => ({ kind, atM, movement, severity, ...more });
+  const cues = [
+    cue("turn", 100, "left", null),
+    cue("turn", 900, "right", "orange"),
+    cue("turn", 960, "left", null, { joined: true }),
+    cue("turn", 1200, "right", null, { cross: "Redland Road" }),
+    cue("hazard", 1500, null, "red", { source: "junction" }),
+    cue("hazard", 1600, null, "red", { source: "workzone" }),
+    cue("busy", 1700, null, "avoid", { source: "avoid" }),
+    cue("busy", 1800, null, null),
+    cue("turn", 9000, "left", null),
+  ];
   const marks = turnMarks(cues, { fromM: 0, toM: AHEAD_M });
-  assert.deepEqual(marks, [{ m: 100, movement: "left", severity: null }, { m: 900, movement: "right", severity: "orange" }, { m: 1500, movement: null, severity: "red" }]);
+  assert.deepEqual(marks, [
+    { m: 100, movement: "left", severity: null },
+    { m: 900, movement: "right", severity: "orange" },
+    { m: 1500, movement: null, severity: "red" },
+    { m: 1700, movement: null, severity: "avoid" },
+  ], "a jog's later turn, a crossing straight over and a work zone are left off");
   assert.equal(turnsSentence(marks, 500), "Turns ahead: 1. Busy junctions: 2.");
+  assert.equal(turnsSentence([], 0), "", "nothing said where there is nothing");
+  // Two marks closer than the gap are drawn as one: the arrow kept, in the worse colour.
+  assert.deepEqual(spreadMarks([{ m: 900, movement: "right", severity: "orange" }, { m: 1000, movement: null, severity: "red" }, { m: 1500, movement: "left", severity: null }], 200), [
+    { m: 900, movement: "right", severity: "red" },
+    { m: 1500, movement: "left", severity: null },
+  ]);
 });
 
 test("the bubbles: stress and elevation on any ride with them; flow and corkers first on a Mass Ride only", () => {
