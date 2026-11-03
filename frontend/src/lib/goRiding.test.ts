@@ -230,7 +230,8 @@ test("End ride in Plan keeps the plan and its routes; part way it starts where t
 
 test("End ride is slid until the rider has arrived (the owner, 2026-10-19: \"Add a swipe confirmation on ending the ride unless at the destination\")", () => {
   const top = ride.slice(ride.indexOf("<div ref={topRef} className="), ride.indexOf("{ride.arrived ? (\n          <>"));
-  assert.match(top, /\{ride\.arrived \? \(\s*<button type="button" className="primary ride-end ride-done" onClick=\{end\}>[\s\S]*?\) : \(\s*<SlideToEnd onEnd=\{end\} onTap=\{slideHint\} name=\{endName\} \/>/);
+  // Arrived at the trip's end: a station with the train still to follow is not it (Stephen, 2026-11-03).
+  assert.match(top, /\{ride\.arrived && !tripGoesOn \? \(\s*<button type="button" className="primary ride-end ride-done" onClick=\{end\}>[\s\S]*?\) : \(\s*<SlideToEnd onEnd=\{end\} onTap=\{slideHint\} name=\{endName\} \/>/);
   const slide = ride.slice(ride.indexOf("function SlideToEnd("), ride.indexOf("/** A live region"));
   // A native range, named End ride, so arrows and a screen reader's adjust gestures move it; the end ends the ride.
   assert.match(slide, /type="range"[\s\S]*min=\{0\}\s*max=\{100\}\s*step=\{25\}/);

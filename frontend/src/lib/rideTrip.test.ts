@@ -108,8 +108,12 @@ test("Start ride is offered on a Bikeshare plan and on a transit plan's riding l
   assert.equal(ridesLine(BIKESHARE), true);
   assert.equal(rideable(TRANSIT_ROUTE), true);
   const walkLine = { ...PLAN, steps: PLAN.steps.map((s) => (s.route_line ? { ...s, mode: "walk" as const } : s)) };
-  assert.equal(rideable(line({ transit: walkLine })), false);
-  assert.equal(ridesLine(line({ transit: walkLine })), false);
+  // Bikeshare + 🚶🚆🚌's option that takes no bike is walked, as Walk + 🚆🚌's is (Stephen, 2026-11-03: "it doesn't even
+  // give an option to start"); its walk, train and walk are followed in turn.
+  assert.equal(rideable(line({ transit: walkLine })), true);
+  assert.equal(ridesLine(line({ transit: walkLine })), true);
+  assert.equal(walksLine(line({ transit: walkLine })), true);
+  assert.deepEqual(rideTripOf(line({ transit: walkLine }), [at(0, -400), TRIP_END])!.onward!.map((p) => p.kind), ["walk"]);
   // No line step at all: nothing to ride, so no "too long" note either, unless riding your own bike the whole way.
   const noLine = { ...PLAN, steps: PLAN.steps.map((s) => ({ ...s, route_line: false })) };
   assert.equal(rideable(line({ transit: noLine })), false);
@@ -129,10 +133,13 @@ test("an option with no ride says which option rides, in Start's place, with no 
   assert.equal(optionRides(option({ legs: [{ mode: "bikeshare", minutes: 8 }, metro] })), true);
   assert.equal(optionRides(option({ direct: true })), true);
   assert.equal(optionRides(option({ direct: true, walk: true })), false);
+  // An option with no line to follow at all says so; one that walks first is walked (Start walk), so says nothing.
+  const noLine = { ...PLAN, steps: PLAN.steps.map((s) => ({ ...s, route_line: false })) };
   const walkLine = { ...PLAN, steps: PLAN.steps.map((s) => (s.route_line ? { ...s, mode: "walk" as const } : s)) };
   const options = [option({ legs: [walkLeg, metro, walkLeg] }), option({ legs: [walkLeg, metro] }), option({ legs: [walkLeg] , walk: true }), option({ direct: true })];
-  assert.equal(noBikeLine(line({ transit: { ...walkLine, options } })), "No bike on this option. Pick D to ride.");
-  assert.equal(noBikeLine(line({ transit: { ...walkLine, options: options.slice(0, 2) } })), "No bike on this option.");
+  assert.equal(noBikeLine(line({ transit: { ...noLine, options } })), "No bike on this option. Pick D to ride.");
+  assert.equal(noBikeLine(line({ transit: { ...noLine, options: options.slice(0, 2) } })), "No bike on this option.");
+  assert.equal(noBikeLine(line({ transit: { ...walkLine, options } })), null);
   // An option that rides, and a route that is not a transit trip, have no such line.
   assert.equal(noBikeLine(line({ transit: { ...PLAN, options } })), null);
   assert.equal(noBikeLine(BIKESHARE), null);
@@ -315,6 +322,26 @@ test("Ride the rest: the last riding leg after the transit, offered near or past
   // Your own bike's last ride is Default's.
   const own = { ...PLAN, mode: "bike-transit" as const, steps: PLAN.steps.map((s) => (s.mode === "bikeshare" ? { ...s, mode: "ride" as const } : s)) };
   assert.equal(rideTripOf(line({ transit: own }), [at(0, 0), TRIP_END])!.rest!.preset, "default");
+  // A ride between two trains (Metro, then a ride to MARC, then MARC): the rest is the trip again on the plan's own
+  // ride type, from the stop where the first train ends, so its line is that ride and the MARC after it is followed.
+  const marc = {
+    ...own,
+    steps: [
+      ...own.steps.slice(0, 5),
+      step_({ mode: "ride", to: "Union Station MARC", text: "Ride 5 min to Union Station MARC.", coordinates: [at(5000, 4000), at(5400, 4000)] }),
+      step_({ mode: "enter", text: "About 4 min into the station." }),
+      step_({ mode: "rail", to: "Penn Station MARC", text: "Board the MARC.", coordinates: [at(5400, 4000), at(9000, 9000)] }),
+      step_({ mode: "exit", text: "About 4 min out of the station." }),
+      step_({ mode: "ride", text: "Ride 1 min to your destination.", coordinates: [at(9000, 9000), at(9100, 9000)] }),
+    ],
+  };
+  const between = rideTripOf(line({ preset: "bike-transit", transit: marc }), [at(0, 0), TRIP_END])!.rest!;
+  assert.equal(between.preset, "bike-transit");
+  assert.equal(between.text, "Ride 5 min to Union Station MARC.");
+  assert.equal(between.alightName, "Federal Triangle");
+  assert.deepEqual(between.alight, at(5000, 4000));
+  assert.equal(between.metres, null);
+  assert.deepEqual(restRequest(between, at(5010, 4000)), { points: [at(5010, 4000), TRIP_END], preset: "bike-transit" });
   // Riding the whole way has nothing after the line.
   assert.equal(rideTripOf(line({ transit: { ...PLAN, steps: [PLAN.steps[1]] } }), [at(0, 0), TRIP_END])!.rest, null);
 });
@@ -516,8 +543,9 @@ test("Walk and Walk + 🚆🚌 (2026-11-02): the line is a walk, started as one,
   assert.equal(walksLine(walk), true);
   assert.equal(rideable(walk), true);
   assert.equal(noBikeLine(walk), null);
-  // The same line on Bikeshare + 🚶🚆🚌 is not walked by the ride screen (it is no ride).
-  assert.equal(walksLine(line({ transit: { ...walkPlan, mode: "bikeshare-transit" } })), false);
+  // The same line on Bikeshare + 🚶🚆🚌 (its option with no bike) is walked too; Bike + 🚆🚌 never walks its line.
+  assert.equal(walksLine(line({ transit: { ...walkPlan, mode: "bikeshare-transit" } })), true);
+  assert.equal(walksLine(line({ transit: { ...walkPlan, mode: "bike-transit" } })), false);
   const trip = rideTripOf(walk, [at(0, 0), at(1000, 0)])!;
   assert.deepEqual(trip.onFoot, { turns: [turn] });
   // Followed as planned: no re-plan on a bike's ride type.
@@ -560,4 +588,15 @@ test("Run (2026-11-02): a re-plan or Save keeps the run's stops and loop; a loop
   assert.equal(alone.points.length, 3, "the start and two points along the loop");
   assert.deepEqual(alone.points[0], at(0, 0));
   assert.deepEqual(runLoopStops(loopLine).length, 3);
+});
+
+test("at the station the trip goes on (Stephen, 2026-11-03): no Done while a train or walk follows, and the ride after it starts by itself", () => {
+  const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
+  // The line's end with parts still to follow, or the ride after them still to start, is not the end of the trip.
+  assert.match(ride, /const tripGoesOn = ride\.arrived && \(\(onwardParts\.length > 0 && !onwardDone\) \|\| \(onwardDone && !!rest && !!onRideRest\)\);/);
+  assert.match(ride, /\{ride\.arrived && !tripGoesOn \? \(\s*<button type="button" className="primary ride-end ride-done" onClick=\{end\}>/);
+  // Off the train: Ride the rest, once, with no press.
+  assert.match(ride, /if \(!onwardDone \|\| !rest \|\| !onRideRest \|\| restAuto\.current \|\| ended\.current\) return;\s*restAuto\.current = true;\s*rideTheRest\(\);/);
+  // No bike rack offered at a station the bike goes on from.
+  assert.match(ride, /if \(!ride\.arrived \|\| plan\.current\.loop \|\| !racks \|\| onwardParts\.length > 0\) return;/);
 });

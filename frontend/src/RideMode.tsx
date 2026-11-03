@@ -2511,7 +2511,8 @@ export function RideMode({
   useEffect(() => {
     setArrivalRacks(null);
     setRackShown(-1);
-    if (!ride.arrived || plan.current.loop || !racks) return;
+    // Not at a station or a dock with a train or a walk still to follow: the bike is not parked there.
+    if (!ride.arrived || plan.current.loop || !racks || onwardParts.length > 0) return;
     const end = plan.current.points[plan.current.points.length - 1];
     let live = true;
     void racks().then((all) => {
@@ -2548,6 +2549,18 @@ export function RideMode({
   const onwardDone = onwardParts.length > 0 && onwardIndex >= onwardParts.length;
   const onwardPart = ride.arrived ? (onwardParts[onwardIndex] ?? null) : null;
   const onwardWalkLine = onwardPart?.kind === "walk" ? walkTurnLine(onwardPart.model, onward?.walk ?? null) : null;
+  // The trip goes on past the line's end (Stephen, 2026-11-03: "the ride just ends when you reach the station. It
+  // should start the transit phase"): the walk or the train after it, then the ride after the transit, which starts by
+  // itself (Ride the rest, below). Till then the ride is not over: End ride stays a slide, and no Done.
+  const tripGoesOn = ride.arrived && ((onwardParts.length > 0 && !onwardDone) || (onwardDone && !!rest && !!onRideRest));
+  // Off the train (and any walk after it) with a ride still to go: Ride the rest starts by itself, once (Stephen,
+  // 2026-11-03: "It should let you switch between modes"). Its button stays for a second try (closures said, no route).
+  const restAuto = useRef(false);
+  useEffect(() => {
+    if (!onwardDone || !rest || !onRideRest || restAuto.current || ended.current) return;
+    restAuto.current = true;
+    rideTheRest();
+  }, [onwardDone]); // eslint-disable-line react-hooks/exhaustive-deps -- once, as the parts after the line end
   // Still to board the first transit after the line (its departure and where its next train is are shown till then).
   const firstTransit = onwardParts.findIndex((p) => p.kind === "transit");
   const toBoard = firstTransit < 0 || onwardIndex < firstTransit || (onwardIndex === firstTransit && (onward?.board?.boardedAt ?? null) === null);
@@ -3019,7 +3032,7 @@ export function RideMode({
                 rider has arrived, End ride is slid, not tapped. */}
             {/* Once arrived, a filled Done (the UI review, 2026-10-28): the ride is over, so it reads as the next step,
                 not a warning; its name says it ends the ride. */}
-            {ride.arrived ? (
+            {ride.arrived && !tripGoesOn ? (
               <button type="button" className="primary ride-end ride-done" onClick={end}>
                 <Icon name="check" size={22} />
                 {RIDE_DONE_TEXT}
@@ -3074,7 +3087,7 @@ export function RideMode({
               <>
                 {onwardPart?.kind === "walk" && onwardIndex > 0 ? null : (
                   // Everything after the line done: arrived, never the line's end words again.
-                  <p className="cue-text">{onwardDone ? arrivedShown(destinationName) : (trip?.finish?.shown ?? arrivedShown(destinationName))}</p>
+                  <p className="cue-text">{onwardDone ? (tripGoesOn && rest ? rest.text : arrivedShown(destinationName)) : (trip?.finish?.shown ?? arrivedShown(destinationName))}</p>
                 )}
                 {onwardWalkLine && <p className={onwardIndex > 0 ? "cue-text" : "cue-then"}>{onwardWalkLine}</p>}
                 {/* The boarding's departure, its countdown and milestones as in the trip's panel (said through the ride's outputs). */}
