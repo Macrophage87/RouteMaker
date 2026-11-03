@@ -592,11 +592,18 @@ test("Run (2026-11-02): a re-plan or Save keeps the run's stops and loop; a loop
 
 test("at the station the trip goes on (Stephen, 2026-11-03): no Done while a train or walk follows, and the ride after it starts by itself", () => {
   const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
-  // The line's end with parts still to follow, or the ride after them still to start, is not the end of the trip.
-  assert.match(ride, /const tripGoesOn = ride\.arrived && \(\(onwardParts\.length > 0 && !onwardDone\) \|\| \(onwardDone && !!rest && !!onRideRest\)\);/);
+  // A transit trip's line end with parts still to follow, or the ride after the train still to start, is not the end;
+  // a plain ride's walk on (walkInTrip) is, as before, and a failed automatic start brings Done back.
+  assert.match(ride, /const goesOnPast = !!rest \|\| onwardParts\.some\(\(p\) => p\.kind === "transit"\);/);
+  assert.match(ride, /const tripGoesOn = ride\.arrived && goesOnPast && \(\(onwardParts\.length > 0 && !onwardDone\) \|\| \(onwardDone && restNext && !restFailed\)\);/);
   assert.match(ride, /\{ride\.arrived && !tripGoesOn \? \(\s*<button type="button" className="primary ride-end ride-done" onClick=\{end\}>/);
-  // Off the train: Ride the rest, once, with no press.
-  assert.match(ride, /if \(!onwardDone \|\| !rest \|\| !onRideRest \|\| restAuto\.current \|\| ended\.current\) return;\s*restAuto\.current = true;\s*rideTheRest\(\);/);
-  // No bike rack offered at a station the bike goes on from.
-  assert.match(ride, /if \(!ride\.arrived \|\| plan\.current\.loop \|\| !racks \|\| onwardParts\.length > 0\) return;/);
+  assert.match(ride, /restBusy\.current = false;\s*setRestFailed\(!!said\);/);
+  // Off a train followed stop by stop: Ride the rest, once, with no press, and no "press Ride the rest" or arrival said first.
+  assert.match(ride, /const restNext = !!rest && !!onRideRest && onwardParts\.some\(\(p\) => p\.kind === "transit"\);/);
+  assert.match(ride, /if \(!onwardDone \|\| !restNext \|\| restAuto\.current \|\| ended\.current\) return;\s*restAuto\.current = true;\s*rideTheRest\(\);/);
+  assert.match(ride, /if \(!restShown \|\| !rest \|\| restSaid\.current \|\| restNext\) return;/);
+  assert.match(ride, /if \(!\(restNextRef\.current && line === t\(ARRIVED_SAID\)\)\) notify\(line\);/);
+  // No bike rack offered at a station the bike goes on from; a ride's walk on keeps it. No next leg beside the ride to go.
+  assert.match(ride, /if \(!ride\.arrived \|\| plan\.current\.loop \|\| !racks \|\| !!trip\?\.rest \|\| onwardParts\.some\(\(p\) => p\.kind === "transit"\)\) return;/);
+  assert.match(ride, /\{onNextLeg && !rest && \(onwardParts\.length === 0 \|\| onwardDone\) && \(/);
 });

@@ -146,6 +146,7 @@ import {
   type RideState,
   type Verbosity,
   endWords,
+  ARRIVED_SAID,
 } from "./lib/navigate.ts";
 import { statsPause, statsStart, statsStep, type RideStats } from "./lib/rideStats.ts";
 import {
@@ -966,6 +967,8 @@ export function RideMode({
   // What follows the line once it ends (lib/onward.ts): walks turn by turn, transit stop by stop (2026-11-02).
   const onwardParts = useMemo(() => trip?.onward ?? [], [trip]);
   const onwardRef = useRef<OnwardState | null>(null);
+  // A train is followed after the line and a ride comes after it: that ride starts by itself once off (restAuto, below).
+  const restNextRef = useRef(false);
   const [onward, setOnward] = useState<OnwardState | null>(null);
   const rideRef = useRef(ride);
   const prefsRef = useRef(prefs);
@@ -1625,7 +1628,8 @@ export function RideMode({
       setOnward(out.state);
       say(out.events);
       // The next stop and the stop to get off are said as notes are, whatever the voice level: they are the trip's.
-      for (const line of out.said) notify(line);
+      // With the ride after them about to start by itself, the last walk's end is no arrival (the release review).
+      for (const line of out.said) if (!(restNextRef.current && line === t(ARRIVED_SAID))) notify(line);
     },
     [onwardParts, say, notify],
   );
@@ -2041,11 +2045,16 @@ export function RideMode({
   const rest = trip?.rest ?? null;
   const restShown = !!rest && !!onRideRest && !walking && restNear(rest, ride.fix?.point ?? null, ride.arrived);
   const restSaid = useRef(false);
+  // Off the train, the ride after it starts by itself (restAuto, below): no "press Ride the rest" to say then.
+  const restNext = !!rest && !!onRideRest && onwardParts.some((p) => p.kind === "transit");
+  restNextRef.current = restNext;
+  // The automatic start said why it could not (no route, closures held, too long): Done and the button are back.
+  const [restFailed, setRestFailed] = useState(false);
   useEffect(() => {
-    if (!restShown || !rest || restSaid.current) return;
+    if (!restShown || !rest || restSaid.current || restNext) return;
     restSaid.current = true;
     notify(restReadySaid(rest));
-  }, [restShown, rest, notify]);
+  }, [restShown, rest, notify, restNext]);
   const restBusy = useRef(false);
   const rideTheRest = () => {
     if (!onRideRest || restBusy.current) return;
@@ -2058,6 +2067,7 @@ export function RideMode({
     // The last good fix, kept after arrival (the line's goodFix stops at the drop-off), while fresh.
     void onRideRest(restFrom(tripRef.current.lastGood, Date.now())).then((said) => {
       restBusy.current = false;
+      setRestFailed(!!said);
       if (said && !ended.current) answer(said);
     });
   };
@@ -2512,7 +2522,7 @@ export function RideMode({
     setArrivalRacks(null);
     setRackShown(-1);
     // Not at a station or a dock with a train or a walk still to follow: the bike is not parked there.
-    if (!ride.arrived || plan.current.loop || !racks || onwardParts.length > 0) return;
+    if (!ride.arrived || plan.current.loop || !racks || !!trip?.rest || onwardParts.some((p) => p.kind === "transit")) return;
     const end = plan.current.points[plan.current.points.length - 1];
     let live = true;
     void racks().then((all) => {
@@ -2552,12 +2562,15 @@ export function RideMode({
   // The trip goes on past the line's end (Stephen, 2026-11-03: "the ride just ends when you reach the station. It
   // should start the transit phase"): the walk or the train after it, then the ride after the transit, which starts by
   // itself (Ride the rest, below). Till then the ride is not over: End ride stays a slide, and no Done.
-  const tripGoesOn = ride.arrived && ((onwardParts.length > 0 && !onwardDone) || (onwardDone && !!rest && !!onRideRest));
+  // A transit trip's only: a plain ride's walk on from where it ends (walkInTrip) is the end of the ride, as before.
+  const goesOnPast = !!rest || onwardParts.some((p) => p.kind === "transit");
+  const tripGoesOn = ride.arrived && goesOnPast && ((onwardParts.length > 0 && !onwardDone) || (onwardDone && restNext && !restFailed));
   // Off the train (and any walk after it) with a ride still to go: Ride the rest starts by itself, once (Stephen,
   // 2026-11-03: "It should let you switch between modes"). Its button stays for a second try (closures said, no route).
   const restAuto = useRef(false);
   useEffect(() => {
-    if (!onwardDone || !rest || !onRideRest || restAuto.current || ended.current) return;
+    // Only after a train followed stop by stop: walks timed out back to back are no sign the rider is off it.
+    if (!onwardDone || !restNext || restAuto.current || ended.current) return;
     restAuto.current = true;
     rideTheRest();
   }, [onwardDone]); // eslint-disable-line react-hooks/exhaustive-deps -- once, as the parts after the line end
@@ -3097,7 +3110,8 @@ export function RideMode({
               </>
             )}
             {/* At a stop, the trip to it done (lib/tripStops.ts): the next leg, one press. */}
-            {onNextLeg && (onwardParts.length === 0 || onwardDone) && (
+            {/* Never beside the ride after a train, still to go to the stop. */}
+            {onNextLeg && !rest && (onwardParts.length === 0 || onwardDone) && (
               <div className="ride-next-leg">
                 <button type="button" className="primary" onClick={startNextLeg}>
                   {NEXT_LEG}
