@@ -38,7 +38,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import UTC, date, timedelta
 from pathlib import Path
 from xml.sax.saxutils import escape
 
@@ -94,14 +94,27 @@ PRESETS = (
     "mountain-bike",
     "gravel",
     "fast",
+    "road-bike",
     "cargo",
     "ebike",
     "bikeshare",
     "rebalance",
     "bike-transit",
     "bikeshare-transit",
+    # Walk and Walk + 🚆🚌 (2026-11-02): on foot, a start and an end.
+    "walk",
+    "walk-transit",
+    # Run (2026-11-02): on foot, trails first, loops (core/run_plan.py).
+    "run",
 )
-TWO_POINT_PRESETS = ("bikeshare", "rebalance", "bike-transit", "bikeshare-transit")
+TWO_POINT_PRESETS = (
+    "bikeshare",
+    "rebalance",
+    "bike-transit",
+    "bikeshare-transit",
+    "walk",
+    "walk-transit",
+)
 KG_PER_LB = 0.45359237
 # Densify the route line to this spacing for the Metro check, so a long straight segment
 # cannot hide a stretch past the limit between its two vertices.
@@ -433,6 +446,38 @@ class Api:
             raise ToolError(f"the exact route was not kept ({status}): {message}")
         return body["id"]
 
+    def weather_check(self, points: list[list[float]]) -> dict:
+        """POST /api/weather/check: the NWS alerts in force along the ride and the first point
+        where rain is forecast as the rider gets there. The site rounds the points and keeps
+        nothing (core.weather)."""
+        status, payload, _ = self._request("POST", "/api/weather/check", {"points": points})
+        if status != 200 or not isinstance(payload, dict):
+            message = payload.get("error") if isinstance(payload, dict) else payload
+            raise ToolError(f"the weather check failed ({status}): {message}")
+        return payload
+
+    def saved_routes(self) -> list[dict]:
+        """GET /api/me/routes: the signed-in rider's saved routes (names and figures only)."""
+        status, payload, _ = self._request("GET", "/api/me/routes")
+        if status in (401, 403):
+            raise ToolError(
+                "My routes is read only through RouteMaker's own connector, signed in"
+                " (Settings > Connectors in the assistant app); here, paste the route's link"
+                " into open_link"
+            )
+        if status != 200 or not isinstance(payload, dict):
+            message = payload.get("error") if isinstance(payload, dict) else payload
+            raise ToolError(f"My routes could not be read ({status}): {message}")
+        return payload.get("routes") or []
+
+    def saved_route(self, route_id: int) -> dict:
+        """GET /api/me/routes/{id}: one of the rider's saved routes, with its line and answer."""
+        status, payload, _ = self._request("GET", f"/api/me/routes/{int(route_id)}")
+        if status != 200 or not isinstance(payload, dict):
+            message = payload.get("error") if isinstance(payload, dict) else payload
+            raise ToolError(f"that saved route could not be opened ({status}): {message}")
+        return payload
+
 
 # --- Points, links and files ----------------------------------------------------------------
 
@@ -615,8 +660,6 @@ def plan_fragment(points, vias, preset: str, dials: dict, sent: dict) -> str:
         parts.append(f"carrying={dials['carrying']}")
     if dials.get("assist"):
         parts.append("assist=1")
-    if dials.get("avoid_gravel"):
-        parts.append("avoidgravel=1")
     if dials.get("trails_off"):
         parts.append("trailsoff=1")
     if sent.get("novice_legs"):
@@ -646,7 +689,6 @@ def page_dials(dials: dict, sent: dict) -> dict:
         "when": sent.get("when"),
         "carrying": dials.get("carrying"),
         "assist": bool(dials.get("assist")),
-        "avoidGravel": bool(dials.get("avoid_gravel")),
         "trailsOff": bool(dials.get("trails_off")),
         "loop": bool(dials.get("loop")),
     }
@@ -664,6 +706,8 @@ def page_dials(dials: dict, sent: dict) -> dict:
 
 
 PRESET_ALIASES = {"kids": "novice"}  # planHash.ts PRESET_ALIASES
+# presets.ts AVOID_GRAVEL_BECOMES: the ride types an old Avoid gravel link turns into Road Bike.
+AVOID_GRAVEL_BECOMES = ("default", "fast", "trailmaxxing", "novice", "gravel", "mountain-goat")
 STRESS_DEFAULT_AT = 70  # dials.ts: the stress slider's Default
 
 
@@ -759,6 +803,10 @@ def parse_fragment(fragment: str) -> tuple[list, list[int], str, dict]:
     preset = PRESET_ALIASES.get(one("preset") or "", one("preset") or "default")
     if preset not in PRESETS:
         preset = "default"
+    # The retired Avoid gravel box: a link with it ticked on a rider's own bike opens as Road
+    # Bike, its sliders as linked, as the page does (planHash.ts, AVOID_GRAVEL_BECOMES).
+    if one("avoidgravel") == "1" and preset in AVOID_GRAVEL_BECOMES:
+        preset = "road-bike"
 
     def number(key):
         try:
@@ -777,7 +825,6 @@ def parse_fragment(fragment: str) -> tuple[list, list[int], str, dict]:
         else None,
         "carrying": one("carrying") if one("carrying") in ("cargo", "people") else None,
         "assist": one("assist") == "1",
-        "avoid_gravel": one("avoidgravel") == "1",
         "trails_off": one("trailsoff") == "1",
         "novice_legs": one("novice") == "1",
         "loop": one("loop") == "1",
@@ -881,6 +928,13 @@ def summary(answer: dict) -> dict:
             },
         ),
     }
+    unpaved = _unpaved_mi(answer)
+    if unpaved >= 0.05:
+        out["unpaved"] = miles_text(unpaved * METRES_PER_MILE)
+    waits = (answer.get("junction_delay_s") or 0.0) / 60
+    if waits >= 0.5:
+        # The time the route spends at signals and stop signs, inside moving_time.
+        out["junction_waits"] = f"{waits:.0f} min"
     if answer.get("loop"):
         pct = answer["loop"].get("overlap_pct")
         if pct is not None:
@@ -983,6 +1037,7 @@ def _bridged(rows: list[dict]) -> list[dict]:
                 for table in ("tiers", "facility"):
                     for key, miles in part[table].items():
                         before[table][key] = before[table].get(key, 0.0) + miles
+                before["unpaved"] = before.get("unpaved", 0.0) + part.get("unpaved", 0.0)
             before["to_mi"] = row["to_mi"]
             continue
         out.append(row)
@@ -1007,6 +1062,9 @@ def road_list(answer: dict) -> dict | None:
             rows.append(last)
         last["to_mi"] = entry["to_mi"]
         last["tiers"][tier] = last["tiers"].get(tier, 0.0) + miles
+        surface = entry.get("surface")
+        unpaved = miles if surface == "unpaved" else miles / 2 if surface == "partly unpaved" else 0
+        last["unpaved"] = last.get("unpaved", 0.0) + unpaved
         # "none" (known no facility, round-2 D28) and None (not known) are both plain street.
         kind = entry.get("facility")
         kind = kind if kind in ("path", "protected", "lane") else "street"
@@ -1057,6 +1115,9 @@ def road_list(answer: dict) -> dict | None:
         facility = max(facilities, key=facilities.get)
         if facility != "street":
             item["facility"] = facility
+        unpaved = sum(r.get("unpaved", 0.0) for r in group)
+        if unpaved >= 0.05:
+            item["unpaved_mi"] = round(unpaved, 1)
         designations = {
             s["designation"]
             for s in scenic
@@ -1827,6 +1888,10 @@ def route_details(plan: Plan) -> dict:
     spurs = via_spurs(plan)
     if spurs:
         out["via_spurs"] = spurs
+    legs = leg_rows(plan)
+    if legs:
+        out["legs"] = legs
+    out.update(grades_and_hazards(answer))
     out.update(route_closures(plan))
     capacity = mass_capacity(answer)
     if capacity:
@@ -1901,6 +1966,14 @@ def mass_capacity(answer: dict) -> dict | None:
 CLOSURE_SAID = ("on_route", "may_still_apply", "routed_round", "bypassed")
 # A stop or via point reached this close to a closed stretch is on it (metres along the route).
 ON_CLOSURE_M = 30.0
+# Potential closures along the route (a permit, planned utility work: effect "possible"), the
+# first this many by mile. The owner, 2026-11-02: return "the link or citation to where the
+# closures would or could be".
+MAX_POTENTIAL = 20
+# The site lists the potential closures on its map view round the route (up to 400 m off it),
+# without saying where the route meets them: one is along the route where its line comes this
+# close (miles, about 30 m).
+POTENTIAL_NEAR_MI = 0.02
 CLOSURES_NEAR_MAX_MI = 10.0  # the site's map view is at most 0.4 by 0.3 degrees
 
 
@@ -1927,6 +2000,47 @@ def _points_along(plan: Plan) -> list[tuple[int, float]]:
         cum.append(cum[-1] + haversine_mi((p[0], p[1]), (q[0], q[1])) * METRES_PER_MILE)
     scale = (plan.answer.get("distance_m") or cum[-1]) / (cum[-1] or 1.0)
     return [(i + 1, cum[min(end, len(cum) - 1)] * scale) for i, end in enumerate(ends[:-1])]
+
+
+def _route_cells(flat_route: list) -> dict[tuple[int, int], list[int]]:
+    """The route's steps by the POTENTIAL_NEAR_MI square each comes near, so a point checks
+    only the few steps round it."""
+    cells: dict[tuple[int, int], list[int]] = {}
+    for i in range(len(flat_route) - 1):
+        (ax, ay), (bx, by) = flat_route[i], flat_route[i + 1]
+        x0 = math.floor((min(ax, bx) - POTENTIAL_NEAR_MI) / POTENTIAL_NEAR_MI)
+        x1 = math.floor((max(ax, bx) + POTENTIAL_NEAR_MI) / POTENTIAL_NEAR_MI)
+        y0 = math.floor((min(ay, by) - POTENTIAL_NEAR_MI) / POTENTIAL_NEAR_MI)
+        y1 = math.floor((max(ay, by) + POTENTIAL_NEAR_MI) / POTENTIAL_NEAR_MI)
+        if (x1 - x0 + 1) * (y1 - y0 + 1) > 10_000:  # a long straight step: checked everywhere
+            cells.setdefault(("all", 0), []).append(i)  # type: ignore[arg-type]
+            continue
+        for cx in range(x0, x1 + 1):
+            for cy in range(y0, y1 + 1):
+                cells.setdefault((cx, cy), []).append(i)
+    return cells
+
+
+def _route_span(flat_route: list, cum: list, cells: dict, flat, pts: list):
+    """The miles along the route (flat points `flat_route`, miles `cum` at each, steps by
+    `_route_cells`) where it comes within POTENTIAL_NEAR_MI of any of `pts`, first and last;
+    None when it never does."""
+    near = []
+    for p in pts:
+        x, y = flat((p[0], p[1]))
+        cell = (math.floor(x / POTENTIAL_NEAR_MI), math.floor(y / POTENTIAL_NEAR_MI))
+        best = None
+        for i in cells.get(cell, []) + cells.get(("all", 0), []):  # type: ignore[call-overload]
+            (ax, ay), (bx, by) = flat_route[i], flat_route[i + 1]
+            dx, dy = bx - ax, by - ay
+            seg = dx * dx + dy * dy
+            f = 0.0 if seg == 0 else max(0.0, min(1.0, ((x - ax) * dx + (y - ay) * dy) / seg))
+            d = math.hypot(ax + f * dx - x, ay + f * dy - y)
+            if d <= POTENTIAL_NEAR_MI and (best is None or d < best[0]):
+                best = (d, cum[i] + f * (cum[i + 1] - cum[i]))
+        if best is not None:
+            near.append(best[1])
+    return (min(near), max(near)) if near else None
 
 
 def _closure_id(row: dict) -> str:
@@ -1978,7 +2092,32 @@ def route_closures(plan: Plan) -> dict:
         return {}
     rows: dict[tuple, dict] = {}
     spans: list[tuple[float, float, tuple]] = []  # where the route rides through one, metres
+    potential: dict[str, dict] = {}
+    route = plan.line
+    flat = _flat((route[0][0], route[0][1])) if len(route) >= 2 else None
+    flat_route = [flat((p[0], p[1])) for p in route] if flat else []
+    cum = _cum_miles(route) if flat else []
+    cells = _route_cells(flat_route)
+    total_mi = (plan.answer.get("distance_m") or 0.0) / METRES_PER_MILE
+    scale = total_mi / cum[-1] if total_mi and cum and cum[-1] else 1.0
     for row in zones.get("closures") or []:
+        if row.get("effect") == "possible":
+            # A permit or planned work on the map round the route: it may close the road (or
+            # the bike lane) some time in its window. Never routed round: said, with its
+            # source, when the route rides along it.
+            pts = row.get("line") or ([row["point"]] if row.get("point") else [])
+            span = _route_span(flat_route, cum, cells, flat, pts) if flat and pts else None
+            if span is None:
+                continue
+            said = potential.setdefault(_closure_id(row), _closure_row(row))
+            said.pop("effect", None)
+            said["closes"] = "bike lane" if row.get("kind") == "lane" else "road"
+            a, b = span[0] * scale, span[1] * scale
+            said["from_mi"] = round(min(said.get("from_mi", a), a), 1)
+            said["to_mi"] = round(max(said.get("to_mi", b), b), 1)
+            if row.get("point") and "lon_lat" not in said:
+                said["lon_lat"] = row["point"]
+            continue
         if row.get("effect") not in CLOSURE_SAID:
             continue
         key = (_closure_id(row), row.get("effect"))
@@ -1992,10 +2131,21 @@ def route_closures(plan: Plan) -> dict:
             if row["effect"] == "on_route" and row.get("kind") != "lane":
                 spans.append((row["from_m"], row["to_m"], key))
     notices = [_notice_row(n) for n in zones.get("notices") or [] if isinstance(n, dict)]
-    if not rows and not notices:
+    if not rows and not notices and not potential:
         return {}
     said = sorted(rows.values(), key=lambda r: (r["effect"] != "on_route", r.get("from_mi", 0)))
     out: dict = {"closures": said}
+    if potential:
+        listed = sorted(potential.values(), key=lambda r: r["from_mi"])
+        out["potential_closures"] = listed[:MAX_POTENTIAL]
+        if len(listed) > MAX_POTENTIAL:
+            out["potential_closures_more"] = len(listed) - MAX_POTENTIAL
+        out["potential_closures_note"] = (
+            "permits and planned work that allow closing the road or bike lane some time in"
+            " their window: they may be open, and the route is not planned round them. Give"
+            " the rider each one's source and link; avoid one with revise_route's avoid"
+            " (from_mi, to_mi) if the rider wants."
+        )
     if notices:
         out["check_before_you_go"] = notices
     if zones.get("ride_at"):
@@ -2020,6 +2170,521 @@ def route_closures(plan: Plan) -> dict:
         else:
             words += " The router found no way round from these points: try others."
         out["closure_warning"] = words
+    return out
+
+
+# --- Optimizing a route: its figures, its legs, its segments, roads to avoid ------------------
+#
+# The owner, 2026-11-02: "We'd want to make sure that an llm would be able to revise a call and
+# would have access to routing data for optimization", for long trips and rides done often,
+# such as a commute. Everything here reads the answer the site already gave (or a draft's kept
+# one) and keeps nothing new.
+
+# Roads to avoid (`blocked_lines`, as Ride's "Road closed"): the site takes up to 10 lines of
+# up to 50 points each. A stretch is cut back this far at each end so the junctions where the
+# route would join it stay open.
+MAX_AVOID = 10
+AVOID_LINE_POINTS = 50
+AVOID_TRIM_MI = 0.02
+# Alternatives (`candidates`): the routes at other stress levels the site found, each kept as a
+# draft of its own.
+MAX_ALTERNATIVES = 3
+# An alternative's draft follows its own line when planned again (the site's `follow`, which
+# takes up to 5,000 points in 64 KB): thinned to this many points.
+ALTERNATIVE_FOLLOW_POINTS = 3000
+# route_segments: rows a page, by default and at most.
+SEGMENT_ROWS = 60
+MAX_SEGMENT_ROWS = 200
+
+
+def pace_kmh(mph) -> float:
+    """The rider's pace on the flat, mph, as the site's `cycling_speed_kmh` (8 to 50 km/h)."""
+    value = finite(mph)
+    if not 5 <= value <= 31:
+        raise ToolError("pace_mph is 5 to 31")
+    return round(value * METRES_PER_MILE / 1000, 1)
+
+
+def _cum_miles(line: list) -> list[float]:
+    """Miles along the line at each of its points, by straight steps."""
+    cum = [0.0]
+    for p, q in zip(line, line[1:], strict=False):
+        cum.append(cum[-1] + haversine_mi((p[0], p[1]), (q[0], q[1])))
+    return cum
+
+
+def _thinned(points: list, most: int) -> list:
+    """At most `most` of the points, evenly picked, the first and last kept."""
+    if len(points) <= most:
+        return points
+    step = (len(points) - 1) / (most - 1)
+    return [points[round(i * step)] for i in range(most)]
+
+
+def line_between(plan: Plan, a_mi: float, b_mi: float) -> list[list[float]]:
+    """The route's line from mile `a_mi` to `b_mi` (the answer's own miles), [lon, lat] pairs,
+    at most AVOID_LINE_POINTS of them."""
+    line = plan.line
+    cum = _cum_miles(line)
+    scale = (cum[-1] or 1.0) / max((plan.answer.get("distance_m") or 0.0) / METRES_PER_MILE, 1e-9)
+    a, b = a_mi * scale, b_mi * scale
+
+    def at(d: float) -> list[float]:
+        k = max(1, min(len(cum) - 1, bisect.bisect_left(cum, d)))
+        p, q = line[k - 1], line[k]
+        f = (d - cum[k - 1]) / (cum[k] - cum[k - 1]) if cum[k] > cum[k - 1] else 0.0
+        f = min(1.0, max(0.0, f))  # never past the line's ends
+        return [round(p[0] + (q[0] - p[0]) * f, 6), round(p[1] + (q[1] - p[1]) * f, 6)]
+
+    inside = [
+        [round(v[0], 6), round(v[1], 6)] for v, d in zip(line, cum, strict=False) if a < d < b
+    ]
+    return _thinned([at(a), *inside, at(b)], AVOID_LINE_POINTS)
+
+
+def _road_runs(plan: Plan, road: str) -> list[tuple[float, float]]:
+    """The mile ranges of the draft that ride a road of that name (a few metres of another
+    street between two pieces is one run)."""
+    wanted = road.strip().casefold()
+    runs: list[list[float]] = []
+    for entry in _stretches(plan.answer):
+        street = _street(entry).casefold()
+        if not (street == wanted or (len(wanted) >= 4 and wanted in street)):
+            continue
+        if runs and entry["from_mi"] - runs[-1][1] <= BRIDGE_MI:
+            runs[-1][1] = entry["to_mi"]
+        else:
+            runs.append([entry["from_mi"], entry["to_mi"]])
+    return [(a, b) for a, b in runs]
+
+
+def avoid_lines(plan: Plan | None, asked) -> tuple[list[list[list[float]]], list[str]]:
+    """The lines of road to leave out, from what was asked: a road by name or a mile range (of
+    the draft `plan`), or a line of [lon, lat] pairs; and what each was, to say back."""
+    if not isinstance(asked, list):
+        raise ToolError("avoid is a list")
+    lines: list[list[list[float]]] = []
+    said: list[str] = []
+    for item in asked:
+        if not isinstance(item, dict):
+            raise ToolError("each avoid is an object: road, from_mi and to_mi, or line")
+        if item.get("line") is not None:
+            raw = item["line"]
+            if not isinstance(raw, list) or len(raw) < 2:
+                raise ToolError("avoid.line is [lon, lat] pairs, two or more")
+            pts = [[finite(p[0]), finite(p[1])] for p in raw]
+            for p in pts:
+                if not inside_coverage((p[0], p[1])):
+                    raise ToolError("an avoid.line point is outside the map's area")
+            lines.append(_thinned(pts, AVOID_LINE_POINTS))
+            said.append(f"a line of {len(pts)} points")
+            continue
+        if plan is None:
+            raise ToolError(
+                "avoid by road or miles reads the draft's own roads: plan first, then"
+                " revise_route with avoid (or give avoid as a line here)"
+            )
+        if item.get("road"):
+            runs = _road_runs(plan, str(item["road"]))
+            if not runs:
+                raise ToolError(f"the draft does not ride {item['road']!r}: check its roads")
+        elif item.get("from_mi") is not None and item.get("to_mi") is not None:
+            a, b = finite(item["from_mi"]), finite(item["to_mi"])
+            total = (plan.answer.get("distance_m") or 0.0) / METRES_PER_MILE
+            if not 0 <= a < b or a >= total:
+                raise ToolError(
+                    f"avoid's from_mi is 0 or more, below to_mi and on the draft ({total:.1f} mi)"
+                )
+            runs = [(a, min(b, total))]
+        else:
+            raise ToolError("each avoid gives road, from_mi and to_mi, or line")
+        for a, b in runs:
+            if b - a > 2.5 * AVOID_TRIM_MI:
+                a, b = a + AVOID_TRIM_MI, b - AVOID_TRIM_MI
+            lines.append(line_between(plan, a, b))
+            what = f"{item['road']} " if item.get("road") else ""
+            said.append(f"{what}miles {a:.1f} to {b:.1f}".strip())
+    return lines, said
+
+
+def _unpaved_mi(answer: dict) -> float:
+    """Miles on stretches the site calls unpaved (half of each partly unpaved one)."""
+    total = 0.0
+    for entry in _stretches(answer):
+        miles = max(0.0, entry["to_mi"] - entry["from_mi"])
+        if entry.get("surface") == "unpaved":
+            total += miles
+        elif entry.get("surface") == "partly unpaved":
+            total += miles / 2
+    return total
+
+
+def figures(answer: dict) -> dict:
+    """The route in the numbers a rider weighs one plan against another by."""
+    stress = answer.get("stress_m") or {}
+    found = answer.get("intersections") or []
+    return {
+        "miles": round((answer.get("distance_m") or 0.0) / METRES_PER_MILE, 2),
+        "minutes": round((answer.get("duration_s") or 0.0) / 60, 1),
+        "climb_ft": round((answer.get("climb_m") or 0.0) * FEET_PER_METRE),
+        "miles_lts_3_up": round(
+            sum(stress.get(k, 0.0) or 0.0 for k in ("3", "4", "5")) / METRES_PER_MILE, 2
+        ),
+        "miles_lts_4_up": round(
+            sum(stress.get(k, 0.0) or 0.0 for k in ("4", "5")) / METRES_PER_MILE, 2
+        ),
+        "unpaved_mi": round(_unpaved_mi(answer), 2),
+        "very_high_junctions": sum(1 for j in found if j.get("severity") == "red"),
+        "higher_junctions": sum(1 for j in found if j.get("severity") == "orange"),
+        "junction_wait_minutes": round((answer.get("junction_delay_s") or 0.0) / 60, 1),
+    }
+
+
+def figures_change(before: dict, after: dict) -> dict:
+    """Each figure before and after a revision, and by how much it moved (after less before)."""
+    return {
+        key: {
+            "before": before[key],
+            "after": after[key],
+            "change": round(after[key] - before[key], 2),
+        }
+        for key in before
+        if key in after
+    }
+
+
+def leg_rows(plan: Plan) -> list[dict]:
+    """The route between each stop (via points do not split it): miles, minutes, climb and
+    busy miles, for planning food, water and overnight stops on a long ride."""
+    answer = plan.answer
+    along = _points_along(plan)
+    if not along:
+        return []
+    vias = set(plan.vias)
+    total_mi = (answer.get("distance_m") or 0.0) / METRES_PER_MILE
+    cuts = [0.0]
+    stops = [0]
+    for index, metres in along:
+        if index not in vias:
+            cuts.append(metres / METRES_PER_MILE)
+            stops.append(index)
+    cuts.append(total_mi)
+    stops.append(len(plan.points) - 1)
+    if len(cuts) <= 2:
+        return []
+    clock = _clock(answer)
+    rows = []
+    for k in range(len(cuts) - 1):
+        a, b = cuts[k], cuts[k + 1]
+        busy = sum(
+            max(0.0, min(b, e["to_mi"]) - max(a, e["from_mi"]))
+            for e in _stretches(answer)
+            if (e.get("tier") or 0) >= 3
+        )
+        rows.append(
+            {
+                "from_point": stops[k],
+                "to_point": stops[k + 1],
+                "from_mi": round(a, 1),
+                "miles": round(b - a, 1),
+                "minutes": round(clock(b) - clock(a)),
+                "climb_ft": round(_gain_ft(answer, a, b)),
+                "miles_lts_3_up": round(busy, 1),
+            }
+        )
+    return rows
+
+
+def _clock(answer: dict):
+    """minutes(mile): the site's own minutes from the start to `mile` (`time_marks`, hills and
+    junction waits in place), else the ride's minutes spread evenly."""
+    total_mi = max((answer.get("distance_m") or 0.0) / METRES_PER_MILE, 1e-9)
+    total_min = (answer.get("duration_s") or 0.0) / 60
+    marks = [
+        (m[0] * total_mi, m[1] / 60)
+        for m in answer.get("time_marks") or []
+        if isinstance(m, (list, tuple)) and len(m) >= 2
+    ]
+    if len(marks) < 2:
+        return lambda mile: total_min * min(max(mile, 0.0), total_mi) / total_mi
+    marks.sort()
+    miles = [m for m, _ in marks]
+
+    def minutes(mile: float) -> float:
+        if mile <= miles[0]:
+            return marks[0][1] * (mile / miles[0] if miles[0] > 0 else 1.0)
+        if mile >= miles[-1]:
+            return marks[-1][1]
+        k = bisect.bisect_left(miles, mile)
+        (m0, t0), (m1, t1) = marks[k - 1], marks[k]
+        return t0 + (t1 - t0) * ((mile - m0) / (m1 - m0) if m1 > m0 else 0.0)
+
+    return minutes
+
+
+def _gain_ft(answer: dict, a: float, b: float) -> float:
+    """Feet climbed from mile `a` to `b`, every rise counted (not net)."""
+    up = 0.0
+    for x, y, grade in _grades(answer):
+        overlap = min(y, b) - max(x, a)
+        if overlap > 0 and grade > 0:
+            up += grade / 100 * overlap * METRES_PER_MILE
+    return up * FEET_PER_METRE
+
+
+def _grade_in(answer: dict, a: float, b: float) -> tuple[float | None, float | None]:
+    """The average and steepest uphill grade (%) from mile `a` to `b`; None without heights."""
+    rise, run, steepest = 0.0, 0.0, None
+    for x, y, grade in _grades(answer):
+        overlap = min(y, b) - max(x, a)
+        if overlap <= 0:
+            continue
+        rise += grade * overlap
+        run += overlap
+        steepest = grade if steepest is None else max(steepest, grade)
+    if run <= 0:
+        return None, None
+    return round(rise / run, 1), round(steepest, 1)
+
+
+def grades_and_hazards(answer: dict) -> dict:
+    """The steep and very steep grades the site marks (up or down) and the cobbles and rails the
+    route meets, with their miles."""
+    scale = _traced_scale(answer) / METRES_PER_MILE
+    out: dict = {}
+    steep = [
+        {
+            "from_mi": round(g["from_m"] * scale, 2),
+            "to_mi": round(g["to_m"] * scale, 2),
+            "direction": g.get("direction"),
+            "grade_pct": g.get("grade_pct"),
+            "level": g.get("level"),
+        }
+        for g in answer.get("steep_grades") or []
+    ]
+    if steep:
+        out["steep_grades"] = steep
+    hazards = [
+        {
+            "from_mi": round(h["from_m"] * scale, 2),
+            "to_mi": round(h["to_m"] * scale, 2),
+            "kinds": h.get("kinds"),
+            "road": h.get("road"),
+        }
+        for h in answer.get("road_hazards") or []
+    ]
+    if hazards:
+        out["road_hazards"] = hazards
+    return out
+
+
+def route_segments(
+    plan: Plan, from_mi: float = 0.0, to_mi: float | None = None, rows: int = SEGMENT_ROWS
+) -> dict:
+    """The route stretch by stretch from `from_mi` to `to_mi`: road, LTS, facility, surface,
+    grades, climb and minutes; every higher and very-high junction; steep grades and hazards.
+    Paged: `next_from_mi` where there are more rows."""
+    answer = plan.answer
+    total = (answer.get("distance_m") or 0.0) / METRES_PER_MILE
+    end = total if to_mi is None else min(total, to_mi)
+    clock = _clock(answer)
+    out_rows: list[dict] = []
+    next_from = None
+    for entry in _stretches(answer):
+        if entry["to_mi"] <= from_mi or entry["from_mi"] >= end:
+            continue
+        a, b = max(from_mi, entry["from_mi"]), min(end, entry["to_mi"])
+        key = (
+            _street(entry),
+            entry.get("tier"),
+            entry.get("facility")
+            if entry.get("facility") in ("path", "protected", "lane")
+            else None,
+            entry.get("surface"),
+        )
+        last = out_rows[-1] if out_rows else None
+        if last is not None and last["_key"] == key and a - last["_b"] <= 0.01:
+            last["_b"] = b
+            continue
+        if len(out_rows) >= rows:
+            next_from = round(a, 2)
+            break
+        out_rows.append({"_key": key, "_a": a, "_b": b, "_oneway": entry.get("oneway")})
+    segments = []
+    for row in out_rows:
+        street, tier, facility, surface = row["_key"]
+        a, b = row["_a"], row["_b"]
+        avg, steepest = _grade_in(answer, a, b)
+        seg = {
+            "from_mi": round(a, 2),
+            "to_mi": round(b, 2),
+            "road": street,
+            "lts": tier,
+            "facility": facility or "street",
+            "minutes": round(clock(b) - clock(a), 1),
+        }
+        if surface:
+            seg["surface"] = surface
+        if avg is not None:
+            seg["grade_pct"] = avg
+            if steepest is not None and steepest >= avg + 2:
+                seg["steepest_pct"] = steepest
+            gain = _gain_ft(answer, a, b)
+            if gain >= 10:
+                seg["climb_ft"] = round(gain)
+        if row["_oneway"]:
+            seg["one_way"] = True
+        segments.append(seg)
+    stop = next_from if next_from is not None else end
+    scale = _traced_scale(answer) / METRES_PER_MILE
+    stretches = _stretches(answer)
+    junctions = []
+    for j in answer.get("intersections") or []:
+        mile = (j.get("m") or 0) * scale
+        if not from_mi <= mile <= stop:
+            continue
+        on = next((e for e in stretches if e["from_mi"] <= mile <= e["to_mi"]), None)
+        junctions.append(
+            {
+                "at_mi": round(mile, 2),
+                "level": "very high" if j.get("severity") == "red" else "higher",
+                "road": _street(on) if on and _street(on) not in NAMELESS else None,
+                "reason": j.get("reason"),
+                "lon_lat": [j.get("lon"), j.get("lat")],
+            }
+        )
+    out: dict = {
+        "from_mi": round(from_mi, 2),
+        "to_mi": round(stop, 2),
+        "route_miles": round(total, 2),
+        "segments": segments,
+        "junctions": junctions,
+    }
+    extra = grades_and_hazards(answer)
+    for key, items in extra.items():
+        kept = [i for i in items if i["to_mi"] >= from_mi and i["from_mi"] <= stop]
+        if kept:
+            out[key] = kept
+    if next_from is not None:
+        out["next_from_mi"] = next_from
+    if not stretches:
+        out["note"] = "the site sent no stretch-by-stretch description for this route"
+    return out
+
+
+# --- Light and weather at the ride's time -----------------------------------------------------
+
+# Civil twilight (the sun 6 degrees below the horizon): "Dawn" and "Dusk" in the app (#822).
+TWILIGHT_DEG = -6.0
+# The weather check takes up to 12 points along the line, up to 48 hours ahead.
+WEATHER_POINTS = 12
+WEATHER_AHEAD_S = 172800
+
+
+def _eastern_offset(moment_utc) -> timedelta:
+    """America/New_York's offset at a UTC moment (zoneinfo where it has its data, else the US
+    rule: daylight time from the second Sunday of March to the first Sunday of November)."""
+    from datetime import datetime
+
+    try:
+        from zoneinfo import ZoneInfo
+
+        return moment_utc.astimezone(ZoneInfo("America/New_York")).utcoffset()
+    except Exception:  # noqa: BLE001 - no tz data on this computer: the rule
+        year = moment_utc.year
+        march = datetime(year, 3, 8, 7, tzinfo=UTC)
+        march += timedelta(days=(6 - march.weekday()) % 7)
+        november = datetime(year, 11, 1, 6, tzinfo=UTC)
+        november += timedelta(days=(6 - november.weekday()) % 7)
+        return timedelta(hours=-4 if march <= moment_utc < november else -5)
+
+
+def eastern(moment_utc) -> str:
+    """A UTC moment as New York's clock reads it, 'YYYY-MM-DD HH:MM'."""
+    return (moment_utc + _eastern_offset(moment_utc)).strftime("%Y-%m-%d %H:%M")
+
+
+def parse_depart(text: str | None, now=None):
+    """`depart_at` as an aware UTC datetime: ISO 8601, New York's time where it names no
+    zone; now when absent."""
+    from datetime import datetime
+
+    now = now or datetime.now(UTC)
+    if not text:
+        return now
+    try:
+        moment = datetime.fromisoformat(str(text).strip().replace("Z", "+00:00"))
+    except ValueError:
+        raise ToolError("depart_at is an ISO 8601 date and time, e.g. 2026-11-03T05:30") from None
+    if moment.tzinfo is None:
+        # Local time plus five hours is about the UTC moment: read the offset there.
+        guess = moment.replace(tzinfo=UTC) + timedelta(hours=5)
+        moment = moment.replace(tzinfo=UTC) - _eastern_offset(guess)
+    return moment.astimezone(UTC)
+
+
+def twilight(day: date, lon: float, lat: float):
+    """Civil dawn and dusk on `day` at a place, as aware UTC datetimes (NOAA's sunrise
+    equation with the sun at TWILIGHT_DEG, to a minute or two)."""
+    from datetime import datetime
+
+    n = (day - date(2000, 1, 1)).days - lon / 360.0
+    m = math.radians((357.5291 + 0.98560028 * n) % 360)
+    c = 1.9148 * math.sin(m) + 0.02 * math.sin(2 * m) + 0.0003 * math.sin(3 * m)
+    ecl = math.radians((math.degrees(m) + c + 180 + 102.9372) % 360)
+    transit = n + 0.0053 * math.sin(m) - 0.0069 * math.sin(2 * ecl)
+    dec = math.asin(math.sin(ecl) * math.sin(math.radians(23.44)))
+    phi = math.radians(lat)
+    cos_w = (math.sin(math.radians(TWILIGHT_DEG)) - math.sin(phi) * math.sin(dec)) / (
+        math.cos(phi) * math.cos(dec)
+    )
+    half = math.degrees(math.acos(max(-1.0, min(1.0, cos_w)))) / 360.0
+    noon = datetime(2000, 1, 1, 12, tzinfo=UTC)
+    return noon + timedelta(days=transit - half), noon + timedelta(days=transit + half)
+
+
+def light_at(moment, lon: float, lat: float) -> dict:
+    """Whether it is light or dark at a place and moment, with that day's dawn and dusk."""
+    local_day = (moment + _eastern_offset(moment)).date()
+    dawn, dusk = twilight(local_day, lon, lat)
+    return {
+        "at": eastern(moment),
+        "light": "light" if dawn <= moment <= dusk else "dark",
+        "dawn": eastern(dawn)[-5:],
+        "dusk": eastern(dusk)[-5:],
+    }
+
+
+def weather_points(plan: Plan, ahead_s: float) -> list[list[float]]:
+    """Up to WEATHER_POINTS points along the route, each [lon, lat, seconds until the rider is
+    there], the ride starting `ahead_s` seconds from now."""
+    line = plan.line
+    cum = _cum_miles(line)
+    total = cum[-1] or 1.0
+    clock = _clock(plan.answer)
+    route_mi = (plan.answer.get("distance_m") or 0.0) / METRES_PER_MILE
+    count = min(WEATHER_POINTS, max(2, math.ceil(total / 5) + 1))
+    out = []
+    for i in range(count):
+        d = total * i / (count - 1)
+        k = max(1, min(len(cum) - 1, bisect.bisect_left(cum, d)))
+        p = line[k] if cum[k] - d < d - cum[k - 1] else line[k - 1]
+        seconds = ahead_s + clock(route_mi * d / total) * 60
+        out.append([round(p[0], 5), round(p[1], 5), round(min(WEATHER_AHEAD_S, max(0.0, seconds)))])
+    return out
+
+
+def _saved_label(row: dict) -> dict:
+    """A saved route as my_routes lists it."""
+    out = {
+        "route_id": row.get("id"),
+        "name": row.get("name"),
+        "miles": round((row.get("distance_m") or 0.0) / METRES_PER_MILE, 1),
+        "ride_type": row.get("preset") or None,
+        "updated": str(row.get("updated_at") or "")[:10],
+    }
+    if row.get("closure_alerts"):
+        out["closures_on_it"] = len(row["closure_alerts"])
     return out
 
 
@@ -2251,10 +2916,15 @@ RIDE_OPTIONS = {
             " target_miles). novice: Novice and Nervous, every road read one stress level up."
             " group-ride: a club ride. mass-ride: a large group on the direct roadway (no loops,"
             " stress and hills held low). mountain-goat: seeks climbs. mountain-bike: trails by"
-            " IMBA level. gravel: unpaved welcome. fast: direct, traffic tolerant. cargo: cargo"
+            " IMBA level. gravel: unpaved welcome. fast: direct, traffic tolerant. road-bike: a"
+            " road bike, off gravel, dirt and winding trails where there is a paved way round,"
+            " fewer turns. cargo: cargo"
             " bike (carrying, assist). ebike: e-bike rules and pace. bikeshare and rebalance:"
             " Capital Bikeshare dock to dock (two points). bike-transit and bikeshare-transit:"
-            " bike plus Metro and bus (two points; depart_at, transit_option)."
+            " bike plus Metro and bus (two points; depart_at, transit_option). walk: on foot,"
+            " turn by turn (two points). walk-transit: on foot plus Metro and bus (two points;"
+            " depart_at, transit_option). run: a run on foot, trails, paths and quiet streets"
+            " in long stretches first, fewer traffic lights, lit ways after dark; loops."
         ),
     },
     "stress": {
@@ -2290,6 +2960,16 @@ RIDE_OPTIONS = {
     "target_miles": {
         "type": "number",
         "description": "At stress 100 (Trailmaxxing) only: a soft target distance, miles.",
+    },
+    "pace_mph": {
+        "type": "number",
+        "minimum": 5,
+        "maximum": 31,
+        "description": (
+            "The rider's own speed on the flat, mph (the app's Riding speed): times and arrival"
+            " are worked out at it, hills and junction waits still counted. Absent: the ride"
+            " type's own pace. Not on Mass Ride or a share bike."
+        ),
     },
     "carrying": {"type": "string", "enum": ["cargo", "people"], "description": "Cargo only."},
     "assist": {"type": "boolean", "description": "Cargo only: electric assist."},
@@ -2338,7 +3018,6 @@ RIDE_OPTIONS = {
         "type": "boolean",
         "description": "Transit ride types only: plan the bike legs as Novice and Nervous.",
     },
-    "avoid_gravel": {"type": "boolean", "default": False},
     "trails_off": {
         "type": "boolean",
         "default": False,
@@ -2379,6 +3058,45 @@ INTERVALS = {
     },
 }
 
+AVOID = {
+    "type": "array",
+    "maxItems": MAX_AVOID,
+    "items": {
+        "type": "object",
+        "properties": {
+            "road": {"type": "string", "description": "A road the draft rides, by its name."},
+            "from_mi": {"type": "number", "minimum": 0},
+            "to_mi": {"type": "number", "exclusiveMinimum": 0},
+            "line": {
+                "type": "array",
+                "items": POINT_SCHEMA,
+                "minItems": 2,
+                "description": "[lon, lat] pairs along the road to leave out.",
+            },
+        },
+    },
+    "description": (
+        "Roads to leave out of the plan, as Ride's Road closed does: each a road the draft"
+        " rides (by name: every stretch of it), a mile range of the draft (from_mi, to_mi),"
+        " or a line of [lon, lat] pairs. The route neither rides along nor crosses them, so"
+        " give the stretch to avoid, not a whole long road. Kept as the draft is revised;"
+        f" {MAX_AVOID} at most. plan_route takes lines only (there is no draft yet)."
+    ),
+}
+
+ALTERNATIVES = {
+    "type": "boolean",
+    "default": False,
+    "description": (
+        "Also answer the other routes the site's search finds for these points at the same"
+        f" settings (up to {MAX_ALTERNATIVES}, ranked after the chosen one): each with its own"
+        " draft_id, its figures (miles, minutes, climb, LTS 3+ miles, unpaved miles,"
+        " junctions), extra miles and minutes against the chosen route, and main roads, to"
+        " compare, revise, read with route_segments or save. An alternative's draft keeps"
+        " its own line when revised (a new pace, a road to avoid) until its points change."
+    ),
+}
+
 TRIM_SPURS = {
     "type": "boolean",
     "default": True,
@@ -2396,7 +3114,6 @@ PASSED_OPTIONS = (
     "when",
     "carrying",
     "assist",
-    "avoid_gravel",
     "trails_off",
     "mtb_level",
     "mtb_preferred",
@@ -2553,11 +3270,21 @@ TOOLS = [
             " one is asked back. `closures` lists the closures it goes through or round, and"
             " `closure_warning` says when one is on the route (often a via point only a closed"
             " path reaches: move it); `check_before_you_go` lists park notices for the ride's"
-            " time, such as a deer-management closure at night (warnings, not routed round)."
+            " time, such as a deer-management closure at night (warnings, not routed round);"
+            " `potential_closures` lists the permits and planned work along the route that may"
+            " close the road or bike lane in their window (DDOT permits, DDOT ProTrack+, DC"
+            " Water, WSSC Water), with their miles, source and link: not routed round."
+            " Every closure row names its source and links to it: give the rider both."
             " Read these before sending the link, and say the busy parts, any closure and any"
             " notice."
             " With max_miles_from_metro it checks the distance from Metro and, with"
             " fix_metro_rounds, adds the nearest station as a via point where the route strays."
+            " The summary also gives unpaved miles and the minutes spent waiting at signals and"
+            " stop signs; `legs` gives miles, minutes, climb and busy miles between stops (for"
+            " food, water and overnight stops), and `steep_grades` and `road_hazards` (cobbles,"
+            " rails) say where. To optimize, read the route stretch by stretch with"
+            " route_segments, ask for `alternatives`, set the rider's pace_mph, `avoid` a"
+            " stretch, and compare revisions by revise_route's `changed_from_previous`."
         ),
         "inputSchema": {
             "type": "object",
@@ -2595,9 +3322,27 @@ TOOLS = [
                 "fix_metro_rounds": {"type": "integer", "minimum": 0, "maximum": 4, "default": 0},
                 "trim_spurs": TRIM_SPURS,
                 "intervals": INTERVALS,
+                "avoid": AVOID,
+                "alternatives": ALTERNATIVES,
+                "follow": {
+                    "type": "object",
+                    "properties": {
+                        "polyline": {"type": "string", "minLength": 4},
+                        "exact": {
+                            "type": "boolean",
+                            "default": False,
+                            "description": "Follow the line as ridden, against one-way streets.",
+                        },
+                    },
+                    "required": ["polyline"],
+                    "description": (
+                        "Plan along a line the rider has (a GPX track, a drawn route) instead of"
+                        " through points: an encoded polyline at precision 6, planned as the"
+                        " app plans an opened file. Leave points out."
+                    ),
+                },
                 **RIDE_OPTIONS,
             },
-            "required": ["points"],
         },
         "annotations": {"readOnlyHint": True, "openWorldHint": False},
     },
@@ -2670,7 +3415,10 @@ TOOLS = [
         "description": (
             "Change a draft the rider has looked at and plan it again, as a new draft (the old"
             " one stays, to go back to). Send only what changes: points to add, move or remove,"
-            " the ride type, any setting, loop, or the Metro limit. Nothing is saved."
+            " the ride type, any setting, loop, the Metro limit, or roads to avoid. Nothing is"
+            " saved. `changed_from_previous` gives each figure (miles, minutes, climb, LTS 3+"
+            " and 4+ miles, unpaved miles, junctions, junction waits) before and after, so you"
+            " can tell whether the change helped; revise until the gains are small."
         ),
         "inputSchema": {
             "type": "object",
@@ -2732,13 +3480,92 @@ TOOLS = [
                     k: {kk: vv for kk, vv in v.items() if kk != "default"}
                     for k, v in RIDE_OPTIONS.items()
                 },
+                "avoid": AVOID,
+                "alternatives": ALTERNATIVES,
                 "clear_settings": {
                     "type": "array",
-                    "items": {"type": "string", "enum": [*PASSED_OPTIONS, "max_miles_from_metro"]},
-                    "description": "Settings to set back to the ride type's own.",
+                    "items": {
+                        "type": "string",
+                        "enum": [*PASSED_OPTIONS, "max_miles_from_metro", "pace_mph", "avoid"],
+                    },
+                    "description": (
+                        "Settings to set back to the ride type's own; avoid forgets every road"
+                        " to avoid."
+                    ),
                 },
             },
             "required": ["draft_id"],
+        },
+        "annotations": {"readOnlyHint": True, "openWorldHint": False},
+    },
+    {
+        "name": "route_segments",
+        "description": (
+            "Read a draft stretch by stretch, for optimizing it: each stretch's miles, road,"
+            " LTS (1 calmest to 4, 5 Avoid), facility (path, protected, lane, street), surface"
+            " where unpaved, average and steepest uphill grade, climb, one-way, and minutes at"
+            " the draft's pace (hills and junction waits in place); every higher and very-high"
+            " stress junction with its reason; steep grades and road hazards. Give from_mi and"
+            " to_mi to read part of a long ride; `next_from_mi` says where the next page starts."
+            " Reads the draft only: nothing is planned or saved."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "draft_id": {"type": "string"},
+                "from_mi": {"type": "number", "minimum": 0, "default": 0},
+                "to_mi": {"type": "number", "exclusiveMinimum": 0},
+                "max_rows": {
+                    "type": "integer",
+                    "minimum": 5,
+                    "maximum": MAX_SEGMENT_ROWS,
+                    "default": SEGMENT_ROWS,
+                },
+            },
+            "required": ["draft_id"],
+        },
+        "annotations": {"readOnlyHint": True, "openWorldHint": False},
+    },
+    {
+        "name": "ride_conditions",
+        "description": (
+            "Light and weather for riding a draft at a time: whether it is dark at the start"
+            " and the finish (civil dawn and dusk, as the app's Dawn and Dusk), the arrival"
+            " time at the draft's pace, and within 48 hours the National Weather Service"
+            " alerts along the route and the first place rain is forecast as the rider gets"
+            " there. For a commute, try the times the rider could leave. Times are New York's."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "draft_id": {"type": "string"},
+                "depart_at": {
+                    "type": "string",
+                    "description": (
+                        "ISO 8601 date and time the ride starts; New York's time where it names"
+                        " no zone. Absent: now."
+                    ),
+                },
+            },
+            "required": ["draft_id"],
+        },
+        "annotations": {"readOnlyHint": True, "openWorldHint": True},
+    },
+    {
+        "name": "my_routes",
+        "description": (
+            "The rider's saved routes (My routes), on RouteMaker's own connector: with no"
+            " arguments, their names, miles and ride types; with route_id or name, open one as"
+            ' a draft to revise or read ("my commute"), as open_link opens a link. Reads'
+            " only: My routes is never changed here (save_route adds, on the rider's word)."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "route_id": {"type": "integer"},
+                "name": {"type": "string", "minLength": 1, "maxLength": 120},
+                "max_miles_from_metro": RIDE_OPTIONS["max_miles_from_metro"],
+            },
         },
         "annotations": {"readOnlyHint": True, "openWorldHint": False},
     },
@@ -2885,6 +3712,21 @@ POST_FIELDS = (
 )
 
 
+def encode_polyline(line: list, precision: int = 6) -> str:
+    """[[lon, lat], ...] as an encoded polyline, the way Valhalla writes one."""
+    factor, out, last = 10**precision, [], (0, 0)
+    for point in line:
+        here = (round(point[1] * factor), round(point[0] * factor))
+        for delta in (here[0] - last[0], here[1] - last[1]):
+            value = ~(delta << 1) if delta < 0 else delta << 1
+            while value >= 0x20:
+                out.append(chr((0x20 | (value & 0x1F)) + 63))
+                value >>= 5
+            out.append(chr(value + 63))
+        last = here
+    return "".join(out)
+
+
 def decode_polyline(encoded: str, precision: int = 6) -> list[list[float]]:
     """An encoded polyline (Valhalla's, precision 6) as [[lon, lat], ...]."""
     factor = 10**precision
@@ -3025,6 +3867,7 @@ class Server:
         gpx_link=None,
         posts: bool = False,
         icons: list[dict] | None = None,
+        routes_read: bool = True,
     ):
         self._api_factory = api_factory
         self._api: Api | None = None
@@ -3042,6 +3885,10 @@ class Server:
         # On the site: the app's icons, for serverInfo (MCP 2025-11-25), so an assistant app
         # that shows them draws RouteMaker's logo beside the connector.
         self.icons = icons or []
+        # Whether my_routes may read the rider's My routes: on the site, a grant the rider gave
+        # on a consent page that said so (core.connector). On a rider's own computer the site
+        # refuses the read itself (no sign-in).
+        self.routes_read = routes_read
 
     def tools(self) -> list[dict]:
         """The tools, as tools/list gives them: without the post tool unless posts may be
@@ -3236,7 +4083,60 @@ class Server:
             options["target_distance_m"] = int(finite(args["target_miles"]) * METRES_PER_MILE)
         if args.get("rider_weight_lb"):
             options["system_weight_kg"] = round(finite(args["rider_weight_lb"]) * KG_PER_LB)
+        if args.get("pace_mph"):
+            options["cycling_speed_kmh"] = pace_kmh(args["pace_mph"])
         return options
+
+    def _alternatives(self, first: Plan, options: dict, limit) -> list[dict]:
+        """The other routes the site's search found for the first plan (`candidates`, ranked
+        after it, at the same settings), each kept as a draft of its own to compare, revise,
+        read by route_segments or save. Its draft follows its own line when planned again (a
+        new pace, an avoid), until its points are changed."""
+        out = []
+        main_mi = (first.answer.get("distance_m") or 0.0) / METRES_PER_MILE
+        main_min = (first.answer.get("duration_s") or 0.0) / 60
+        for found in (first.answer.get("candidates") or [])[:MAX_ALTERNATIVES]:
+            line = (found.get("geometry") or {}).get("coordinates")
+            if not line:
+                continue
+            alt_options = dict(options)
+            alt_options["follow"] = encode_polyline(_thinned(line, ALTERNATIVE_FOLLOW_POINTS))
+            alt_options.pop("follow_exact", None)
+            sent = request_body(first.points, first.vias, first.preset, alt_options)
+            check = metro_check(line, limit, self.stations) if limit else None
+            plan = Plan(
+                list(first.points),
+                list(first.vias),
+                first.preset,
+                {**found, "candidates": None},
+                check,
+                sent,
+            )
+            draft_id = self.drafts.put(
+                Draft(
+                    plan,
+                    alt_options,
+                    limit,
+                    "RouteMaker route",
+                    ride_key=ride_key_for(first.preset, None),
+                )
+            )
+            roads = (road_list(found) or {}).get("roads") or []
+            longest = sorted(roads, key=lambda r: r["miles"], reverse=True)[:5]
+            fig = figures(found)
+            row = {
+                "draft_id": draft_id,
+                "rank": found.get("rank"),
+                "extra_miles": round(fig["miles"] - main_mi, 2),
+                "extra_minutes": round(fig["minutes"] - main_min, 1),
+                "figures": fig,
+                "main_roads": [r["road"] for r in longest],
+            }
+            if check is not None:
+                row["metro_check_ok"] = check["ok"]
+            out.append(row)
+        first.answer["candidates"] = None
+        return out
 
     def _plan(self, call: Call, points, vias, preset, options, limit) -> Plan:
         call.check()
@@ -3250,7 +4150,6 @@ class Server:
             **{
                 k: answered.get(k)
                 for k in (
-                    "avoid_gravel",
                     "trails_off",
                     "target_distance_m",
                     "loop",
@@ -3577,25 +4476,158 @@ class Server:
         if not fragment:
             match = re.search(r"(?:^|[#&?])([pq]=.*)$", link)
             fragment = match.group(1) if match else ""
-        points, vias, preset, options = parse_fragment(fragment)
         limit = args.get("max_miles_from_metro")
         answer = (shared or {}).get("answer")
         kept_hash = str(((shared or {}).get("inputs") or {}).get("hash") or "").lstrip("#")
         asked_hash = re.sub(r"&route=[^&]*", "", fragment).lstrip("#")
         if has_points and asked_hash != kept_hash:
             answer = None  # the rider changed the route in the app: plan what the link says now
+        name = str((shared or {}).get("name") or "RouteMaker route")
+        return self._open_kept(call, fragment, answer, name, limit)
+
+    def _open_kept(self, call: Call, fragment: str, answer, name: str, limit) -> dict:
+        """A draft of a kept route (shared or saved): its exact line where it is kept, else its
+        plan planned again."""
+        points, vias, preset, options = parse_fragment(fragment)
         if isinstance(answer, dict) and (answer.get("geometry") or {}).get("coordinates"):
-            # The exact route that was shared: kept as it is, not planned again.
+            # The exact route that was kept: as it is, not planned again.
             line = answer["geometry"]["coordinates"]
             check = metro_check(line, limit, self.stations) if limit else None
             sent = request_body(points, vias, preset, options)
             plan = Plan(list(points), list(vias), preset, answer, check, sent)
-            name = str(shared.get("name") or "RouteMaker route")
             return self._draft(plan, options, limit, [], name, ride_key=ride_key_of(fragment))
         plan, notes = self._plan_and_fix(call, points, vias, preset, options, limit, 0)
-        return self._draft(
-            plan, options, limit, notes, "RouteMaker route", ride_key=ride_key_of(fragment)
+        return self._draft(plan, options, limit, notes, name, ride_key=ride_key_of(fragment))
+
+    # my_routes
+    def my_routes(self, args: dict, call: Call) -> dict:
+        if not self.routes_read:
+            raise ToolError(
+                "this connection was allowed before RouteMaker's connector could read My routes;"
+                " to let it, the rider disconnects it (RouteMaker Settings > Account > AI"
+                " assistants) and connects again. Meanwhile, paste the route's link into open_link"
+            )
+        rows = self.api.saved_routes()
+        listed = [_saved_label(r) for r in rows]
+        wanted_id = args.get("route_id")
+        wanted_name = str(args.get("name") or "").strip()
+        if wanted_id is None and not wanted_name:
+            return {
+                "routes": listed,
+                "note": "open one as a draft with route_id or name; nothing here changes My routes",
+            }
+        if wanted_id is not None:
+            match = [r for r in rows if str(r.get("id")) == str(wanted_id)]
+        else:
+            folded = wanted_name.casefold()
+            match = [r for r in rows if str(r.get("name") or "").casefold() == folded]
+            if not match:
+                match = [r for r in rows if folded in str(r.get("name") or "").casefold()]
+        if not match:
+            raise ToolError("no saved route by that " + ("id" if wanted_id is not None else "name"))
+        if len(match) > 1:
+            return {
+                "routes": [_saved_label(r) for r in match],
+                "note": (
+                    "more than one saved route matches: ask the rider which, then give route_id"
+                ),
+            }
+        call.check()
+        kept = self.api.saved_route(int(match[0]["id"]))
+        fragment = str((kept.get("inputs") or {}).get("hash") or "")
+        if not has_plan_points(fragment):
+            raise ToolError(
+                "that saved route keeps no plan to continue from (an opened file?): open it in"
+                " the app instead"
+            )
+        out = self._open_kept(
+            call,
+            fragment,
+            kept.get("answer"),
+            str(kept.get("name") or "RouteMaker route"),
+            args.get("max_miles_from_metro"),
         )
+        out["opened_from"] = _saved_label(kept)
+        return out
+
+    # route_segments
+    def route_segments(self, args: dict, call: Call) -> dict:
+        draft = self._kept_draft(args)
+        start = max(0.0, finite(args.get("from_mi") or 0))
+        end = finite(args["to_mi"]) if args.get("to_mi") is not None else None
+        if end is not None and end <= start:
+            raise ToolError("to_mi is past from_mi")
+        rows = int(args.get("max_rows") or SEGMENT_ROWS)
+        rows = max(5, min(MAX_SEGMENT_ROWS, rows))
+        return {"draft_id": str(args["draft_id"]), **route_segments(draft.plan, start, end, rows)}
+
+    # ride_conditions
+    def ride_conditions(self, args: dict, call: Call) -> dict:
+        from datetime import datetime
+
+        draft = self._kept_draft(args)
+        plan = draft.plan
+        now = datetime.now(UTC)
+        depart = parse_depart(args.get("depart_at"), now)
+        ride_s = plan.answer.get("duration_s") or 0.0
+        finish = depart + timedelta(seconds=ride_s)
+        line = plan.line
+        out: dict = {
+            "draft_id": str(args["draft_id"]),
+            "depart": eastern(depart),
+            "arrive": eastern(finish),
+            "start": light_at(depart, line[0][0], line[0][1]),
+            "finish": light_at(finish, line[-1][0], line[-1][1]),
+            "times": "America/New_York",
+        }
+        dark = [k for k in ("start", "finish") if out[k]["light"] == "dark"]
+        if dark:
+            out["lights_needed"] = (
+                "dark at the " + " and the ".join(dark) + ": front and rear lights"
+            )
+        ahead = (depart - now).total_seconds()
+        if ahead < -ride_s:
+            out["weather"] = {"checked": False, "why": "the ride's time has passed"}
+        elif ahead + ride_s > WEATHER_AHEAD_S:
+            out["weather"] = {
+                "checked": False,
+                "why": "forecasts reach 48 hours ahead; ask again nearer the day",
+            }
+        else:
+            call.check()
+            asked = weather_points(plan, max(0.0, ahead))
+            try:
+                found = self.api.weather_check(asked)
+            except ToolError as error:
+                out["weather"] = {"checked": False, "why": str(error)}
+            else:
+                rain = found.get("rain")
+                if isinstance(rain, dict) and isinstance(rain.get("index"), int):
+                    route_mi = (plan.answer.get("distance_m") or 0.0) / METRES_PER_MILE
+                    rain = {
+                        "at_mi": round(route_mi * rain["index"] / max(1, len(asked) - 1), 1),
+                        "starts": eastern(now + timedelta(seconds=rain.get("starts_in_s") or 0)),
+                        "inches_in_15_min": rain.get("inches"),
+                        "heavy": bool(rain.get("heavy")),
+                    }
+                keys = ("event", "severity", "onset", "ends", "area", "instruction", "url")
+                out["weather"] = {
+                    "checked": True,
+                    "alerts": [
+                        {k: a.get(k) for k in keys if a.get(k)} for a in found.get("alerts") or []
+                    ],
+                    "first_rain": rain,
+                    "unchecked": found.get("unchecked") or [],
+                    "source": "National Weather Service alerts; Open-Meteo (NOAA HRRR) rain",
+                }
+        return out
+
+    def _kept_draft(self, args: dict) -> Draft:
+        draft_id = str(args["draft_id"])
+        draft = self.drafts.get(draft_id)
+        if draft is None:
+            raise ToolError(f"no draft {draft_id} (drafts last only a while; plan it again)")
+        return draft
 
     # revise_route
     def revise_route(self, args: dict, call: Call) -> dict:
@@ -3635,6 +4667,7 @@ class Server:
             if row[0] not in removed:
                 built.append(row)
             built.extend(added.get(row[0], []))
+        reshaped = bool(args.get("points") or args.get("move_points") or removed or added)
         points = [row[1] for row in built]
         vias = {i for i, row in enumerate(built) if row[2]}
         if args.get("via_points") is not None:
@@ -3646,16 +4679,42 @@ class Server:
         if preset != plan.preset:
             # A new ride type starts from its own settings, as in the app; keep the shape of the
             # ride (a loop, the ride time) and what this call sets.
-            options = {k: v for k, v in options.items() if k in ("loop", "when")}
+            # The followed line, the roads to avoid and the rider's pace are the rider's, not
+            # the ride type's: they stay too.
+            kept = ("loop", "when", "follow", "follow_exact", "blocked_lines", "cycling_speed_kmh")
+            options = {k: v for k, v in options.items() if k in kept}
         options.update({k: v for k, v in self._options(args).items() if k in args})
         if "target_miles" in args:
             options["target_distance_m"] = self._options(args).get("target_distance_m")
         if "rider_weight_lb" in args:
             options["system_weight_kg"] = self._options(args).get("system_weight_kg")
+        if args.get("pace_mph"):
+            options["cycling_speed_kmh"] = pace_kmh(args["pace_mph"])
         limit = args.get("max_miles_from_metro", draft.limit)
+        early_notes: list[str] = []
+        if reshaped and options.get("follow"):
+            # A followed line has only its two ends: new points plan through them instead.
+            options.pop("follow", None)
+            options.pop("follow_exact", None)
+            early_notes.append("planned through its points now, no longer along the followed line")
+        if args.get("avoid"):
+            lines, avoided = avoid_lines(plan, args["avoid"])
+            kept = [*(options.get("blocked_lines") or []), *lines]
+            if len(kept) > MAX_AVOID:
+                early_notes.append(
+                    f"the site takes {MAX_AVOID} roads to avoid at most: the earliest were let go"
+                )
+            options["blocked_lines"] = kept[-MAX_AVOID:]
+            early_notes.append(
+                "left out of the plan (not ridden along or across): " + "; ".join(avoided)
+            )
         for key in args.get("clear_settings") or []:
             if key == "max_miles_from_metro":
                 limit = None
+            elif key == "pace_mph":
+                options.pop("cycling_speed_kmh", None)
+            elif key == "avoid":
+                options.pop("blocked_lines", None)
             else:
                 options.pop(key, None)
         intervals = draft.intervals
@@ -3666,10 +4725,14 @@ class Server:
             options["debug_junctions"] = True
         rounds = int(args.get("fix_metro_rounds") or 0)
         trim = bool(args.get("trim_spurs", draft.trim_spurs))
+        first = alternatives = None
+        if args.get("alternatives"):
+            first = self._plan(call, points, vias, preset, {**options, "candidates": True}, limit)
+            alternatives = self._alternatives(first, options, limit)
         revised, notes = self._plan_and_fix(
-            call, points, vias, preset, options, limit, rounds, trim
+            call, points, vias, preset, options, limit, rounds, trim, first=first
         )
-        return self._draft(
+        out = self._draft(
             revised,
             options,
             limit,
@@ -3682,15 +4745,44 @@ class Server:
             # Mass Ride and Group Ride are different rides: a change between them is a new key.
             ride_key=draft.ride_key if preset == plan.preset else None,
         )
+        if early_notes:
+            out["notes"] = [*early_notes, *out.get("notes", [])]
+        # Whether the change helped, figure by figure (the owner, 2026-10-24: "Revise until
+        # improvements are minimal").
+        out["changed_from_previous"] = figures_change(figures(plan.answer), figures(revised.answer))
+        if alternatives is not None:
+            out["alternatives"] = self._alternatives_said(alternatives, revised is not first)
+        return out
 
     # plan_route
     def plan_route(self, args: dict, call: Call) -> dict:
         taken: list[dict] = []
-        points = self._points(list(args["points"]), taken)
+        options = self._options(args)
+        follow = args.get("follow")
+        if follow is not None:
+            if args.get("points") or args.get("best_order") or args.get("loop"):
+                raise ToolError(
+                    "follow plans along its own line: leave points, loop and best_order out"
+                )
+            if not isinstance(follow, dict) or not isinstance(follow.get("polyline"), str):
+                raise ToolError("follow: an object with the line as polyline")
+            line = decode_polyline(follow["polyline"])
+            if len(line) < 2:
+                raise ToolError("follow.polyline has fewer than two points")
+            points = [tuple(line[0]), tuple(line[-1])]
+            options["follow"] = follow["polyline"]
+            options["follow_exact"] = bool(follow.get("exact"))
+        else:
+            if not args.get("points"):
+                raise ToolError("missing argument 'points'")
+            points = self._points(list(args["points"]), taken)
         vias = [int(i) for i in args.get("via_points") or []]
         preset = args.get("preset") or "default"
         limit = args.get("max_miles_from_metro")
-        options = self._options(args)
+        avoided: list[str] = []
+        if args.get("avoid"):
+            lines, avoided = avoid_lines(None, args["avoid"])
+            options["blocked_lines"] = lines[-MAX_AVOID:]
         intervals = _intervals_asked(args.get("intervals"))
         if intervals:
             # Every junction, quiet stop signs too, for where an effort must stop.
@@ -3698,12 +4790,18 @@ class Server:
         rounds = int(args.get("fix_metro_rounds") or 0)
         trim = bool(args.get("trim_spurs", True))
         ordered = first = None
+        alternatives = None
         if args.get("best_order"):
             first, ordered = self._best_order(call, points, vias, preset, options, limit, taken)
             points = first.points
+        elif args.get("alternatives"):
+            first = self._plan(call, points, vias, preset, {**options, "candidates": True}, limit)
+            alternatives = self._alternatives(first, options, limit)
         plan, notes = self._plan_and_fix(
             call, points, vias, preset, options, limit, rounds, trim, first=first
         )
+        if avoided:
+            notes.append("left out of the plan (not ridden along or across): " + "; ".join(avoided))
         if ordered:
             notes.insert(0, ordered["note"])
             # Numbered as the draft's points are, after any Metro station put in.
@@ -3722,6 +4820,20 @@ class Server:
         )
         if ordered:
             out["checkpoint_order"] = ordered["order"]
+        if alternatives is not None:
+            out["alternatives"] = self._alternatives_said(alternatives, plan is not first)
+        return out
+
+    @staticmethod
+    def _alternatives_said(alternatives: list[dict], replanned: bool) -> dict:
+        out: dict = {"routes": alternatives}
+        if not alternatives:
+            out["note"] = "the site found no other route that rides differently at another stress"
+        elif replanned:
+            out["note"] = (
+                "extra miles and minutes are against the first plan; this draft was planned"
+                " again after it (see notes)"
+            )
         return out
 
     def _best_order(self, call: Call, points, vias, preset, options, limit, taken):
@@ -3904,6 +5016,9 @@ class Server:
             "save_route": self.save_route,
             "gpx_route": self.gpx_route,
             "draft_route_post": self.draft_route_post,
+            "route_segments": self.route_segments,
+            "ride_conditions": self.ride_conditions,
+            "my_routes": self.my_routes,
         }.get(name)
 
     def call(self, name: str, args: dict, call: Call | None = None) -> dict:

@@ -288,9 +288,7 @@ class TestEndpoint:
         for url, payload in fake.calls:
             assert url == f"{routing.settings.VALHALLA_UPSTREAMS['ebike']}/route"
             assert payload["costing"] == "bicycle"
-            assert payload["costing_options"] == presets.costing(
-                "cargo", 85, -40, assist=True, avoid_gravel=False
-            )
+            assert payload["costing_options"] == presets.costing("cargo", 85, -40, assist=True)
             assert {loc["type"] for loc in payload["locations"]} == {"break"}
             # Each stop matched as the plan's own /route matches it.
             assert {loc["radius"] for loc in payload["locations"]} == {routing.STOP_RADIUS_M}
@@ -506,16 +504,13 @@ class TestEndpoint:
             "stress": 85,
             "hills": -40,
             "assist": True,
-            "avoid_gravel": True,
             "when": "weekday_offpeak",
         }
         assert post(client, body).status_code == 200
         url, payload = fake.calls[-1]
         assert url.startswith(routing.settings.VALHALLA_UPSTREAMS["ebike"])
         assert payload["costing"] == "bicycle"
-        assert payload["costing_options"] == presets.costing(
-            "cargo", 85, -40, assist=True, avoid_gravel=True
-        )
+        assert payload["costing_options"] == presets.costing("cargo", 85, -40, assist=True)
         assert payload["sources"] == payload["targets"]
         # Each stop matched as the plan's own /route matches it.
         assert payload["sources"] == [

@@ -15,7 +15,7 @@ import {
   formatPerMile,
   formatRoughDistance,
 } from "./format.ts";
-import type { PresetId } from "./presets.ts";
+import { runs, type PresetId } from "./presets.ts";
 import { t } from "./i18n.ts";
 import {
   HILLS_MIN,
@@ -29,6 +29,7 @@ import {
   NOVICE_CEILING_RATIO,
   TARGET_CEILING_RATIO,
   TARGET_MAX_M,
+  RUN_TARGET_MAX_M,
   TARGET_MIN_M,
   STRESS_MAX,
   STRESS_MIN,
@@ -151,13 +152,16 @@ export function targetText(metres: number | undefined): string {
 }
 
 /** Metres for what was typed in miles, or undefined for empty (the default); null where it is not a usable entry. */
-export function parseTarget(text: string): number | undefined | null {
+export function parseTarget(text: string, maxM: number = TARGET_MAX_M): number | undefined | null {
   const trimmed = text.trim().replace(/\s*(mi|miles)$/i, "");
   if (trimmed === "") return undefined;
   if (!/^\d+(\.\d+)?$/.test(trimmed)) return null;
   const metres = Math.round(Number(trimmed) * METRES_PER_MILE);
-  return metres >= TARGET_MIN_M && metres <= TARGET_MAX_M ? metres : null;
+  return metres >= TARGET_MIN_M && metres <= maxM ? metres : null;
 }
+
+const RUN_TARGET_MAX_MILES = Math.floor(RUN_TARGET_MAX_M / METRES_PER_MILE);
+export const parseRunTarget = (text: string): number | undefined | null => parseTarget(text, RUN_TARGET_MAX_M);
 
 const TARGET_MIN_MILES = Math.ceil((TARGET_MIN_M / METRES_PER_MILE) * 10) / 10;
 const TARGET_MAX_MILES = Math.floor(TARGET_MAX_M / METRES_PER_MILE);
@@ -183,6 +187,38 @@ export function targetView(dials: Dials): TargetView {
     how: TARGET_HOW,
   };
 }
+
+/** Run's target distance (2026-11-02): with Make it a loop and the start alone, a loop about that long. */
+export function runTargetView(dials: Dials): TargetView {
+  return {
+    ...targetView(dials),
+    max: RUN_TARGET_MAX_MILES,
+    rule: t("Enter {range}, or leave it empty.", { range: milesRange(TARGET_MIN_MILES, RUN_TARGET_MAX_MILES, TARGET_MIN_M, RUN_TARGET_MAX_M) }),
+    hint: RUN_TARGET_HINT,
+    how: RUN_TARGET_HOW,
+  };
+}
+
+export const RUN_TARGET_HINT = t("Optional: the most trail at or under this. With Make it a loop on and only the start placed, a loop about this long.");
+export const RUN_TARGET_HOW = t("With stops placed, each part of the run gets its share of the target, and the way with the most trail and fewest traffic lights at or under it is taken, as on Trailmaxxing. With only the start placed and Make it a loop on, the run tries a loop in each of six directions from your start, each sized to your target. It keeps a loop within 12% of the target first, then the one that runs a way twice least, then the one with the most trail and fewest traffic lights for its length.");
+
+/**
+ * Run's hills (2026-11-02): the slider's left half, from not minding climbs (the middle) to avoiding them, as
+ * Valhalla's walking `use_hills` reads it (core/presets.py use_hills_for). A runner's climbs are not a bike's gears, so
+ * the slider shows words, not grades.
+ */
+export function runHillsView(hills: number): SliderView {
+  return {
+    min: HILLS_MIN,
+    max: 0,
+    words: hills <= -67 ? t("Avoids climbs") : hills < -20 ? t("Fewer climbs") : t("Doesn't mind hills"),
+    ends: [t("Avoid hills"), "", t("Doesn't mind hills")],
+    disabled: false,
+    note: RUN_HILLS_NOTE,
+  };
+}
+
+export const RUN_HILLS_NOTE = t("Left keeps the run off climbs where a flatter way is near.");
 
 /** The target's "How this works" (OWNER-DECISIONS 258-262, 267, 271, 287(2), 287(3), 435). */
 export const TARGET_HOW =
@@ -276,7 +312,6 @@ export function panelView(preset: PresetId, dials: Dials, draft: Dials = dials):
   const hiddenLoop = preset === "mass-ride" && dials.loop === true;
   const start = {
     ...plain,
-    ...(dials.avoidGravel ? { avoidGravel: true } : {}),
     ...(dials.trailsOff ? { trailsOff: true } : {}),
     ...(hiddenLoop ? { loop: true } : {}),
   };
@@ -330,7 +365,7 @@ export function panelView(preset: PresetId, dials: Dials, draft: Dials = dials):
           how: HILLS_HOW,
         },
     rideSize: offersRideSize(preset) ? rideSizeView(rideSizeOf(draft)) : null,
-    target: offersTargetDistance(preset, dials.stress) ? targetView(dials) : null,
+    target: runs(preset) ? runTargetView(dials) : offersTargetDistance(preset, dials.stress) ? targetView(dials) : null,
     trailsOff: {
       label: TRAILS_OFF_LABEL,
       checked: trailsAreOff(preset, dials),
