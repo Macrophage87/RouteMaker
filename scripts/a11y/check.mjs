@@ -5652,6 +5652,83 @@ if (mine()) {
   await p.close();
 }
 
+// ---- The ride's graphs of the road ahead (#913/#918; the v0.19.0 release review's findings 1, 4 and 16): More's
+// graph bubbles, the figure's one sentence, the side buttons kept between the cue card and the bottom panel on a small
+// phone with two graphs on, and the graph's words in the system's colour with forced colours. ----
+if (mine()) {
+  const ORIGIN = `http://127.0.0.1:${PORT}`;
+  const rideWith = async ({ width, height, scheme = "light", forced = false }) => {
+    const p = await newPage(b, { width, height, mobile: true });
+    await p.s("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 });
+    await mock(p, S_RIDE);
+    await media(p, { scheme, forced });
+    await b.send("Browser.setPermission", { permission: { name: "geolocation" }, setting: "granted", origin: ORIGIN, browserContextId: p.contextId });
+    const [lon0, lat0] = RIDE_COORDS[0];
+    await p.s("Emulation.setGeolocationOverride", { latitude: lat0, longitude: lon0, accuracy: 5 });
+    // A screen that stays on (no "Screen may sleep" note in the panel) and the theme by the emulated scheme.
+    await p.s("Page.addScriptToEvaluateOnNewDocument", {
+      source: `Object.defineProperty(navigator, 'wakeLock', { configurable: true, value: { request: async () => ({ released: false, release: async () => {}, addEventListener() {} }) } });
+        try { sessionStorage.setItem('routemaker.tab-mode', 'plan'); localStorage.setItem('routemaker.theme', 'phone'); localStorage.setItem('routemaker.ride', '{"output":"text","verbosity":"full","chosen":true}'); } catch {}`,
+    });
+    await p.s("Page.navigate", { url: `${ORIGIN}/${hashFor("default", 70)}` });
+    if (!(await p.waitFor("!!document.querySelector('.start-ride button')", 40000))) throw new Error("no Start ride button");
+    await sleep(800);
+    await p.eval("document.querySelector('.start-ride button').click(); true");
+    await p.waitFor("!!document.querySelector('section.ride')", 8000);
+    for (let i = 1; i <= 4; i += 1) {
+      const [lon, lat] = RIDE_COORDS[i];
+      await p.s("Emulation.setGeolocationOverride", { latitude: lat, longitude: lon, accuracy: 5 });
+      await sleep(350);
+    }
+    return p;
+  };
+  const turnOn = async (p, views) => {
+    for (const view of views) {
+      await p.eval("document.querySelector('.ride-settings-button').click(); true");
+      await sleep(250);
+      await p.eval(`document.querySelector('.ride-ahead-${view}-bubble').click(); true`);
+      await sleep(250);
+    }
+    await sleep(800);
+  };
+
+  const p = await rideWith({ width: 390, height: 844 });
+  await p.eval("document.querySelector('.ride-settings-button').click(); true");
+  await sleep(250);
+  const bubbles = await p.eval("[...document.querySelectorAll('.ride-ahead-bubble')].map((e) => { const r = e.getBoundingClientRect(); return { name: e.getAttribute('aria-label'), pressed: e.getAttribute('aria-pressed'), w: Math.round(r.width), h: Math.round(r.height) }; })");
+  await p.eval("document.querySelector('.ride-settings-button').click(); true");
+  check("ride graphs: More has a Traffic stress graph and an Elevation graph bubble, each named, not pressed (off by default), 44 px or more",
+    JSON.stringify(bubbles.map((x) => [x.name, x.pressed])) === JSON.stringify([["Traffic stress graph", "false"], ["Elevation graph", "false"]]) && bubbles.every((x) => x.w >= 44 && x.h >= 44), JSON.stringify(bubbles));
+  await turnOn(p, ["stress"]);
+  const figure = await p.eval(`(() => { const f = document.querySelector('.ride-ahead'); const said = f?.querySelector('.visually-hidden')?.textContent ?? '';
+    return { role: f?.getAttribute('role'), name: f?.getAttribute('aria-label'), hidden: f?.querySelector('svg')?.getAttribute('aria-hidden'), said,
+      pressed: document.querySelector('.ride-ahead-stress-bubble')?.getAttribute('aria-pressed') }; })()`);
+  check("ride graphs: on, the graph is a group named 'Road ahead' whose picture is hidden and whose one sentence says the stress ahead; its bubble is pressed",
+    figure.role === "group" && figure.name === "Road ahead" && figure.hidden === "true" && figure.said.includes("Traffic stress: ") && figure.pressed === "true", JSON.stringify(figure));
+  await p.close();
+
+  const small = await rideWith({ width: 360, height: 640 });
+  await turnOn(small, ["stress", "elevation"]);
+  const room = await small.eval(`(() => {
+    const card = document.querySelector('.ride .cue-card').getBoundingClientRect(), sheet = document.querySelector('.ride .ride-controls');
+    const buttons = [...document.querySelector('.ride-rail').children].filter((e) => e.offsetHeight > 2).map((e) => e.getBoundingClientRect());
+    return { cardBottom: Math.round(card.bottom), railTop: Math.round(Math.min(...buttons.map((r) => r.top))), railBottom: Math.round(Math.max(...buttons.map((r) => r.bottom))),
+      panelTop: Math.round(sheet.getBoundingClientRect().top), scrolls: sheet.scrollHeight > sheet.clientHeight + 1, graphs: document.querySelectorAll('.ride-ahead-name').length }; })()`);
+  await small.shot(`${SHOTS}/ride_graphs_360x640.png`);
+  check("ride graphs at 360x640 with two on: the side buttons stay between the cue card and the bottom panel, and the panel does not scroll",
+    room.graphs >= 1 && room.railTop >= room.cardBottom && room.railBottom <= room.panelTop && !room.scrolls, JSON.stringify(room));
+  await small.close();
+
+  const forced = await rideWith({ width: 390, height: 844, scheme: "dark", forced: true });
+  await turnOn(forced, ["stress"]);
+  const ink = await forced.eval(`(() => { const name = document.querySelector('.ride-ahead-name'), bg = getComputedStyle(document.querySelector('.ride .ride-controls')).backgroundColor;
+    return { name: name && getComputedStyle(name).fill, you: getComputedStyle(document.querySelector('.ride-ahead-you-word')).fill, bg }; })()`);
+  await forced.shot(`${SHOTS}/ride_graphs_forced.png`);
+  check("ride graphs in forced colours: the graph's heading and 'You' are in the system's text colour, not the panel's",
+    ink.name && ink.name === ink.you && ink.name !== ink.bg && ink.name !== "rgb(0, 0, 0)", JSON.stringify(ink));
+  await forced.close();
+}
+
 b.close();
 
 const failed = results.filter((r) => !r.ok);
@@ -5671,7 +5748,8 @@ const failed = results.filter((r) => !r.ok);
 // Joining a ride on one screen (2026-10-30) adds three: Escape, Close, and 320 px.
 // Ordering favorites (2026-10-30) adds four: Edit's arrows at 320 px, names whole with fixed columns, a move saved and
 // said, and one to the bottom.
-const EXPECTED = 698;
+// The ride's graphs (the v0.19.0 release review, findings 1, 4 and 16) add four.
+const EXPECTED = 702;
 if (SHARDS > 1) {
   // A shard runs only part of the count; CI's a11y job adds the shards' up and compares them with EXPECTED.
   writeFileSync(`${SHOTS}/a11y-count.txt`, `${results.length}\n`);

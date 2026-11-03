@@ -1908,4 +1908,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "{graph}: off.": "{graph}: خاموش.",
   "Road ahead": "مسیر پیش رو",
   "Turns ahead: {turns}. Busy junctions: {busy}.": "پیچ‌های پیش رو: {turns}. تقاطع‌های شلوغ: {busy}.",
+  "Turns ahead: {turns}.": "پیچ‌های پیش رو: {turns}.",
+  "Busy junctions: {busy}.": "تقاطع‌های شلوغ: {busy}.",
 };

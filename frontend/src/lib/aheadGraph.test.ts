@@ -21,6 +21,13 @@ import {
   spreadMarks,
   turnMarks,
   turnsSentence,
+  spacedTicks,
+  plotHeight,
+  PLOT_MAX,
+  PLOT_MIN,
+  placeCorkerLabels,
+  labelStreet,
+  graphsThatFit,
   type TurnMark,
   ridersSentence,
   shortStreet,
@@ -187,7 +194,7 @@ test("Ride wires it: one bubble a graph in More, pressed state, off by default, 
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
   assert.match(app, /riderDots=\{rideDots\}/);
   const graph = readFileSync(new URL("../AheadGraph.tsx", import.meta.url), "utf8");
-  assert.match(graph, /aria-hidden="true" focusable="false"/, "the picture is hidden; its sentence is read instead");
+  assert.match(graph, /aria-hidden="true"\s+focusable="false"/, "the picture is hidden; its sentence is read instead");
   assert.doesNotMatch(graph, /aria-describedby/, "the sentence is read once, in its place");
 });
 
@@ -219,4 +226,59 @@ test("the y axis is labelled: stress levels 1 to 4 and A, round heights in feet,
   assert.deepEqual(flowTicks(260), [60, 120, 200]);
   const graph = readFileSync(new URL("../AheadGraph.tsx", import.meta.url), "utf8");
   assert.match(graph, /<YAxis ticks=\{drawn\.yTicks\} panel=\{panel\} \/>/);
+});
+
+test("the turns sentence leaves out a part that is zero (v0.19.0 release review)", () => {
+  const turn = { m: 600, movement: "left" as const, severity: null };
+  const busy = { m: 700, movement: null, severity: "red" as const };
+  assert.equal(turnsSentence([turn], 0), "Turns ahead: 1.");
+  assert.equal(turnsSentence([busy, busy], 0), "Busy junctions: 2.");
+});
+
+test("y labels keep their distance; the bottom one is always kept", () => {
+  const ticks = [1, 2, 3, 4, 5].map((n) => ({ y: 100 - n * 9, label: String(n) }));
+  assert.deepEqual(spacedTicks(ticks, 13).map((t) => t.label), ["1", "3", "5"]);
+  assert.deepEqual(spacedTicks(ticks, 9).map((t) => t.label), ["1", "2", "3", "4", "5"]);
+});
+
+test("plots shrink to fit the room the side buttons leave, between their least and most", () => {
+  assert.equal(plotHeight(2, Infinity, 100), PLOT_MAX);
+  assert.equal(plotHeight(2, 180, 100), 40);
+  assert.equal(plotHeight(4, 150, 130), PLOT_MIN);
+  assert.equal(plotHeight(1, 1000, 60), PLOT_MAX);
+});
+
+test("corker labels: short names, a row each where they would run into one another, left off where no row has room", () => {
+  assert.equal(labelStreet("14th Street Northwest"), "14th St NW");
+  assert.equal(labelStreet("Massachusetts Avenue Northwest"), "Massachusetts…");
+  const near = [
+    { at: 100, street: "14th Street Northwest", leftOf: false },
+    { at: 110, street: "13th Street Northwest", leftOf: false },
+    { at: 120, street: "12th Street Northwest", leftOf: false },
+  ];
+  const two = placeCorkerLabels(near, 2, 8.4);
+  assert.deepEqual(two.map((p) => p.row), [0, 1, null]);
+  assert.deepEqual(two.map((p) => p.text), ["14th St NW", "13th St NW", ""], "the third has no room: its name is left off");
+  const apart = placeCorkerLabels([{ at: 60, street: "R St", leftOf: false }, { at: 250, street: "Q St", leftOf: true }], 1, 8.4);
+  assert.deepEqual(apart.map((p) => [p.row, p.text]), [[0, "R St"], [0, "Q St"]]);
+  assert.deepEqual(placeCorkerLabels(near, 0, 8.4).map((p) => p.text), ["", "", ""], "no rows: markers alone");
+});
+
+test("Ride gives the graphs only the room the side buttons leave, and their text grows with Large text", () => {
+  const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
+  assert.match(ride, /large=\{textSize === "large"\} maxPx=\{aheadMaxPx\}/);
+  assert.match(ride, /middle\.clientHeight \+ graph - railLeastPx\(buttons\) - RAIL_INSET_PX - clear/);
+  const graph = readFileSync(new URL("../AheadGraph.tsx", import.meta.url), "utf8");
+  assert.match(graph, /const width = Math\.round\(W \/ textZoom\(large\)\);/);
+  assert.match(graph, /root\.classList\.contains\(ACCESS_MODE_CLASS\)/);
+  const css = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
+  assert.match(css, /@media \(forced-colors: active\) \{\s*\.ride-ahead-plot \{\s*forced-color-adjust: none;/);
+  assert.match(css, /:root\.theme-dark \.ride-ahead-bar \{\s*stroke: var\(--text-muted\);/);
+});
+
+test("as many graphs are drawn as fit the room readably, at least one", () => {
+  assert.equal(graphsThatFit(4, Infinity, 44, 18), 4);
+  assert.equal(graphsThatFit(4, 44 + 3 * 48, 44, 18), 3);
+  assert.equal(graphsThatFit(2, 60, 44, 18), 1);
+  assert.equal(graphsThatFit(0, 60, 44, 18), 0);
 });

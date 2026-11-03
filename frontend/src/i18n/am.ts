@@ -1908,4 +1908,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "{graph}: off.": "{graph}፦ ጠፍቷል።",
   "Road ahead": "ከፊት ያለው መንገድ",
   "Turns ahead: {turns}. Busy junctions: {busy}.": "ከፊት ያሉ መታጠፊያዎች፦ {turns}። የተጨናነቁ መገናኛዎች፦ {busy}።",
+  "Turns ahead: {turns}.": "ከፊት ያሉ መታጠፊያዎች፦ {turns}።",
+  "Busy junctions: {busy}.": "የተጨናነቁ መገናኛዎች፦ {busy}።",
 };

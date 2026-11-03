@@ -164,7 +164,7 @@ import {
   type Said,
 } from "./lib/rideOutput.ts";
 import { ScreenSleepNote } from "./ScreenSleepNote.tsx";
-import { useRailFit } from "./lib/railFit.ts";
+import { RAIL_INSET_PX, railLeastPx, useRailFit } from "./lib/railFit.ts";
 import { WAITING_FOR_GPS, readOnce, watchRide, type RideGeoEnv } from "./lib/rideWatch.ts";
 import { PAUSE_CHECK_MS, PausedFixes, beatKeepsGps, heartbeatFix, movedFromPause, rideStayPausedSaid, stayStep, stayedLong, type Stay } from "./lib/ridePause.ts";
 import { askCompass } from "./lib/compassHeading.ts";
@@ -272,6 +272,9 @@ import type { SeeEveryone } from "./app/useSeeEveryone.ts";
 import { SeeEveryoneButton } from "./SeeEveryoneButton.tsx";
 import { AheadGraph } from "./AheadGraph.tsx";
 import { AHEAD_NAME, AHEAD_WORD, aheadOff, aheadOn, aheadViews, readAhead, writeAhead, RIDER_OFF_ROUTE_M, RIDERS_REACH_M, type AheadView } from "./lib/aheadGraph.ts";
+
+/** The least height the graphs of the road ahead are given, in px, however short the screen: below it they would not read. */
+const AHEAD_LEAST_PX = 72;
 
 /**
  * One voice for the page: the Start ride press unlocks it (iOS speaks only after a gesture has). Web
@@ -2827,6 +2830,39 @@ export function RideMode({
       root.style.removeProperty("--ride-sheet-h");
     };
   }, [sheetShown]);
+  // The most height the graphs may take, so the side buttons, as 44 px pills at least, keep their room between the cue
+  // card and the bottom panel (the v0.19.0 release review: with two graphs on at 360x640 the buttons rose over the
+  // card's arrival time). The map's band and the graphs together are the room; the buttons' least height comes off it.
+  const middleRef = useRef<HTMLDivElement>(null);
+  const [aheadMaxPx, setAheadMaxPx] = useState<number | null>(null);
+  useLayoutEffect(() => {
+    const middle = middleRef.current;
+    const rail = railRef.current;
+    const sheet = sheetRef.current;
+    if (!aheadShown || !middle || !rail || !sheet || typeof ResizeObserver === "undefined") {
+      setAheadMaxPx(null);
+      return;
+    }
+    const measure = () => {
+      const figure = sheet.querySelector<HTMLElement>(".ride-ahead");
+      const graph = figure && !figure.hidden ? figure.getBoundingClientRect().height : 0;
+      const buttons = [...rail.children].filter((child) => (child as HTMLElement).offsetHeight > 2).length;
+      const clear = parseFloat(rail.style.paddingTop) || 0;
+      const px = Math.max(AHEAD_LEAST_PX, Math.floor(middle.clientHeight + graph - railLeastPx(buttons) - RAIL_INSET_PX - clear));
+      // Within 2 px is the same: the graph's own rounding does not start another round.
+      setAheadMaxPx((was) => (was !== null && Math.abs(was - px) <= 2 ? was : px));
+    };
+    measure();
+    const watch = new ResizeObserver(measure);
+    watch.observe(middle);
+    watch.observe(sheet);
+    const buttons = new MutationObserver(measure);
+    buttons.observe(rail, { childList: true, attributes: true, attributeFilter: ["style"] });
+    return () => {
+      watch.disconnect();
+      buttons.disconnect();
+    };
+  }, [aheadShown]);
 
   // Off route, back on, or out of DC: the off-route buttons or the 311 block go, and a focus that was in
   // the one that went goes to Where am I?, so W and C keep working (review a11y-3; lib/rideFocus.ts). A
@@ -3105,7 +3141,7 @@ export function RideMode({
 
       {/* The side buttons (the owner, 2026-10-17: "put these as circle icons on the side"), over the map on the
           right at thumb height; each menu opens beside them. An answer the rider asked for shows to their left. */}
-      <div className="ride-middle">
+      <div ref={middleRef} className="ride-middle">
         {/* A minimalist compass (the owner, 2026-10-17), turned with the map; a press switches north-up and track-up
             ("maybe clicking on it changes to north up"), the same choice as the ride settings' switch. */}
         <button type="button" className="ride-compass" aria-pressed={!headingUp} aria-label={t("North up")} title={t("North up")} onClick={() => onHeadingUp(!headingUp)}>
@@ -3555,7 +3591,7 @@ export function RideMode({
           routing by default"): the notes, off route, Ride the rest, and the full 311 report once asked for. */}
       {sheetShown && (
         <div ref={sheetRef} className="ride-controls">
-          {aheadAt !== null && <AheadGraph views={aheadShownViews} route={route} cues={model.cues} youM={aheadAt} lengthM={model.lengthM} ridersAlong={ridersAlong} />}
+          {aheadAt !== null && <AheadGraph views={aheadShownViews} route={route} cues={model.cues} youM={aheadAt} lengthM={model.lengthM} ridersAlong={ridersAlong} large={textSize === "large"} maxPx={aheadMaxPx} />}
           {notesShown && (
             <div className="ride-notes">
               {gps && ride.fix && <p className="hint">{gps}</p>}

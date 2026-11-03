@@ -2379,4 +2379,6 @@ export const ES: Readonly<Record<string, string>> = {
   "{graph}: off.": "{graph}: desactivado.",
   "Road ahead": "Camino por delante",
   "Turns ahead: {turns}. Busy junctions: {busy}.": "Giros por delante: {turns}. Intersecciones con mucho tráfico: {busy}.",
+  "Turns ahead: {turns}.": "Giros por delante: {turns}.",
+  "Busy junctions: {busy}.": "Intersecciones con mucho tráfico: {busy}.",
 };

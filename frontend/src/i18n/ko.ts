@@ -1908,4 +1908,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "{graph}: off.": "{graph}: 꺼짐.",
   "Road ahead": "앞길",
   "Turns ahead: {turns}. Busy junctions: {busy}.": "앞의 회전: {turns}. 혼잡한 교차로: {busy}.",
+  "Turns ahead: {turns}.": "앞의 회전: {turns}.",
+  "Busy junctions: {busy}.": "혼잡한 교차로: {busy}.",
 };
