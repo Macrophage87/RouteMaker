@@ -1558,6 +1558,14 @@ class DescriptionGroupOut(Schema):
     )
 
 
+class DescriptionRoadCrossingOut(Schema):
+    """A busy road a stretch on a path crosses straight over (the owner, 2026-11-03: "when
+    the trail crosses the road ... announce that"), for Ride's "Cross Layhill Road" cue."""
+
+    at_m: int = Field(description="Metres along the route, scaled as the entries are.")
+    road: str = Field(description='The road as mapped, or "the road" where it has no name.')
+
+
 class DescriptionEntryOut(Schema):
     """One entry of the route's description (`routemaker.describe`; OWNER-DECISIONS
     220: blind cyclists, many riding as tandem stokers, need the route in words).
@@ -1651,6 +1659,14 @@ class DescriptionEntryOut(Schema):
         description=(
             "On a stretch: its `street` is its trail's route relation's name, carried by "
             "no way of it itself; the ride gives no cue for a change onto such a name."
+        ),
+    )
+    crossings: list[DescriptionRoadCrossingOut] | None = Field(
+        default=None,
+        description=(
+            "On a stretch on a path, in the full description: the busy roads it crosses"
+            " straight over that no turn or junction entry already says, in order; null"
+            " where none."
         ),
     )
 

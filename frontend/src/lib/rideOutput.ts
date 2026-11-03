@@ -271,6 +271,11 @@ export interface SpeechApi {
   speak(utterance: UtteranceLike): void;
   cancel(): void;
   readonly speaking: boolean;
+  /** Queued, not yet started (the browser's; absent in a stub). */
+  readonly pending?: boolean;
+  /** Paused by the browser (Chrome pauses speech in a page it has hidden); absent in a stub. */
+  readonly paused?: boolean;
+  resume?(): void;
 }
 
 export interface UtteranceLike {
@@ -290,7 +295,18 @@ export interface SpeechEnv {
   utterance: (text: string) => UtteranceLike;
   /** The phone's voices; empty while the browser is still listing them. */
   voices?: () => readonly VoiceLike[];
+  /** The clock, for a sentence that never ends (`Voice`); Date.now where absent. */
+  now?: () => number;
 }
+
+/**
+ * A sentence the browser still calls speaking this long after it would have ended (STUCK_BASE_MS, and STUCK_PER_CHAR_MS
+ * a character) is taken as stuck: Chrome on Android can lose an utterance's end (audio focus taken by a music app, an
+ * utterance cancelled mid-word), and every polite cue after it then waited for an end that never came (the owner,
+ * 2026-11-03, riding with music on: "There are a number of routing calls where it's not announcing the turn").
+ */
+export const STUCK_BASE_MS = 6_000;
+export const STUCK_PER_CHAR_MS = 120;
 
 /**
  * The phone's voice for the language in force: the first tag it is asked by (lib/i18n.ts voiceTags), matched whole,
@@ -326,6 +342,10 @@ export function browserSpeech(): SpeechEnv {
  */
 export class Voice {
   private waiting: string | null = null;
+  /** The utterance being said, held so the browser cannot collect it before its end fires (a Chrome bug). */
+  private current: UtteranceLike | null = null;
+  /** When it was started, and by when it should have ended. */
+  private endsBy = 0;
   private readonly env: SpeechEnv;
 
   constructor(env: SpeechEnv) {
@@ -344,18 +364,23 @@ export class Voice {
   speak(text: string, urgent: boolean, after = false): void {
     const synth = this.env.synth;
     if (!synth || !text) return;
-    if (urgent && after && synth.speaking) {
+    // Paused by the browser (a hidden page), speech would queue and never be heard.
+    if (synth.paused) synth.resume?.();
+    const busy = this.busy();
+    if (urgent && after && busy) {
       // A jog's next turn: straight after the turn being said, not over it.
       this.waiting = text;
       return;
     }
     if (urgent) {
       this.waiting = null;
-      synth.cancel();
+      // Cancelled only where something is being said: Chrome on Android can drop an utterance spoken straight after a
+      // cancel of nothing.
+      if (synth.speaking || synth.pending) synth.cancel();
       this.start(text);
       return;
     }
-    if (synth.speaking) {
+    if (busy) {
       this.waiting = text;
       return;
     }
@@ -364,7 +389,23 @@ export class Voice {
 
   stop(): void {
     this.waiting = null;
+    this.current = null;
     this.env.synth?.cancel();
+  }
+
+  /** Whether a sentence is being said: the browser's word, unless that sentence is long past its end (STUCK_BASE_MS). */
+  private busy(): boolean {
+    const synth = this.env.synth;
+    if (!synth?.speaking) return false;
+    if (this.current === null || this.now() <= this.endsBy) return true;
+    // Stuck: let it go, so the cue waiting behind it is said.
+    this.current = null;
+    synth.cancel();
+    return false;
+  }
+
+  private now(): number {
+    return (this.env.now ?? Date.now)();
   }
 
   private start(text: string): void {
@@ -383,14 +424,21 @@ export class Voice {
       if (back === null || back === text) english = text;
     }
     if (voice === null && english === null) return this.next();
-    const utterance = this.env.utterance(english ?? text);
+    const said = english ?? text;
+    const utterance = this.env.utterance(said);
     utterance.lang = english !== null ? speechLang("en") : speechLang();
     if (voice && english === null) utterance.voice = voice;
-    utterance.onend = () => this.next();
+    utterance.onend = () => {
+      // Only the sentence being said ends it: a cancelled one's late end does not start the next over it.
+      if (this.current === utterance) this.next();
+    };
+    this.current = utterance;
+    this.endsBy = this.now() + STUCK_BASE_MS + STUCK_PER_CHAR_MS * said.length;
     this.env.synth?.speak(utterance);
   }
 
   private next(): void {
+    this.current = null;
     const next = this.waiting;
     this.waiting = null;
     if (next) this.start(next);

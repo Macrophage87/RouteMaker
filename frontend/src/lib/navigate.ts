@@ -219,7 +219,7 @@ const MAX_SPEED_MS = 20;
 
 // ---- The ride's model ---------------------------------------------------------------------------
 
-export type CueKind = "turn" | "onto" | "hazard" | "walk" | "busy" | "calmer" | "unpaved" | "laneEnds" | "stop" | "end";
+export type CueKind = "turn" | "onto" | "hazard" | "crossing" | "walk" | "busy" | "calmer" | "unpaved" | "laneEnds" | "stop" | "end";
 
 /** A turn's movement: a bear is a change of street a little off straight (the API's describe.SLIGHT_MIN_DEG). */
 export type TurnMovement = "left" | "right" | "bear_left" | "bear_right" | "uturn";
@@ -982,6 +982,10 @@ export function rideModel(route: RouteResponse, vias: readonly number[] = [], na
         source: entry.kind,
       });
     }
+    // The busy roads a path crosses straight over (the owner, 2026-11-03): "Cross Layhill Road.", drawn across it.
+    for (const crossing of entry.kind === "stretch" ? (entry.crossings ?? []) : []) {
+      cues.push({ index: cues.length, kind: "crossing", atM: toLine(crossing.at_m), text: crossWords(crossing.road), cross: crossing.road, movement: null, street: crossing.road, severity: null, tier: null, stop: null, source: "stretch" });
+    }
     if (entry.kind === "stretch") {
       before = entry;
       if (!isUnnamed(entry.street) && entry.to_m - entry.from_m >= ONTO_TRAIL_MIN_M) lastNamed = { street: entry.street as string, toM: entry.to_m };
@@ -990,6 +994,9 @@ export function rideModel(route: RouteResponse, vias: readonly number[] = [], na
       lastNamed = null;
     }
   }
+  // A crossing is inside its stretch, so an entry after the stretch (a junction, a walk) can come before it: the cues
+  // in order along the line, which `step` reads them in.
+  cues.sort((a, b) => a.atM - b.atM).forEach((cue, i) => (cue.index = i));
   joinJogs(cues);
   const farSide = farSideAtEnd(route.arrival_side, entries);
   cues.push({ index: cues.length, kind: "end", atM: lengthM, text: endWords(route.arrival_side), movement: null, street: null, severity: null, tier: null, stop: null, ...(farSide ? { farSide } : {}) });
@@ -1320,7 +1327,7 @@ function lowerFirst(text: string): string {
  */
 function leadsWithTemplate(cue: Pick<Cue, "kind"> & Pick<Partial<Cue>, "source">): boolean {
   if (cue.kind === "hazard") return cue.source !== "workzone";
-  return cue.kind === "turn" || cue.kind === "onto" || cue.kind === "busy" || cue.kind === "calmer" || cue.kind === "unpaved" || cue.kind === "laneEnds" || cue.kind === "walk";
+  return cue.kind === "turn" || cue.kind === "onto" || cue.kind === "crossing" || cue.kind === "busy" || cue.kind === "calmer" || cue.kind === "unpaved" || cue.kind === "laneEnds" || cue.kind === "walk";
 }
 
 /** A cue's words placed after "In 500 feet, ": the first letter lowered only where it is the app's template. */
@@ -1425,6 +1432,8 @@ export function phasesFor(level: Verbosity, cue: Cue, speedMs: number): { phase:
       { phase: "now", withinM: now },
     ];
   }
+  // A road a path crosses (2026-11-03): said once, about 10 s out, close enough to act on and never stacked on a turn's.
+  if (cue.kind === "crossing") return [{ phase: "prepare", withinM: prepare }];
   // A hazard, a walk, a stretch's change: said once, early.
   return [{ phase: "advance", withinM: advance }];
 }
@@ -1648,7 +1657,7 @@ function ahead(model: RideModel, cue: Cue, progressM: number): boolean {
 
 /** The next turn, new named way, flagged junction or walk: what the cue card leads with. */
 export function nextAction(model: RideModel, progressM: number): Cue | null {
-  return model.cues.find((c) => ahead(model, c, progressM) && (c.kind === "turn" || c.kind === "onto" || c.kind === "hazard" || c.kind === "walk" || c.kind === "stop" || c.kind === "end")) ?? null;
+  return model.cues.find((c) => ahead(model, c, progressM) && (c.kind === "turn" || c.kind === "onto" || c.kind === "hazard" || c.kind === "crossing" || c.kind === "walk" || c.kind === "stop" || c.kind === "end")) ?? null;
 }
 
 /** The stretch the rider is on: its street as the API names it, or null. */
@@ -1871,7 +1880,7 @@ export function whereAmI(
         : t("On {way}.", { way }),
   ];
   const progress = state.progressM;
-  const cue = model.cues.find((c) => ahead(model, c, progress) && (c.kind === "turn" || c.kind === "onto" || c.kind === "hazard" || c.kind === "walk"));
+  const cue = model.cues.find((c) => ahead(model, c, progress) && (c.kind === "turn" || c.kind === "onto" || c.kind === "hazard" || c.kind === "crossing" || c.kind === "walk"));
   if (isStartUTurn(cue)) sentences.push(t("Next: {cue}", { cue: lowerFirst((cue as Cue).text) }));
   else if (cue) {
     sentences.push(t("Next, in {distance}: {cue}", { distance: dist(cue.atM - state.progressM), cue: inSentence(cue, cueWords(cue, !metric)) }));
@@ -1909,7 +1918,7 @@ export function whereAmIShown(
   const mile = named ? trailMileAt(miles, stretch!.street as string, pointAt(model, progress)) : null;
   const street = named ?? capital(wayRidden(stretch) ?? t("the route"));
   const lines = [mile ? `${street} · ${mileWords(mile)}` : street];
-  const cue = model.cues.find((c) => ahead(model, c, progress) && (c.kind === "turn" || c.kind === "onto" || c.kind === "hazard" || c.kind === "walk"));
+  const cue = model.cues.find((c) => ahead(model, c, progress) && (c.kind === "turn" || c.kind === "onto" || c.kind === "hazard" || c.kind === "crossing" || c.kind === "walk"));
   const next: string[] = [];
   if (cue) {
     // A turn's street, else the named path it leads to, else a jog's next named street; any other cue its short words.

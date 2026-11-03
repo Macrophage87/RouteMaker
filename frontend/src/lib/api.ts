@@ -340,6 +340,12 @@ export interface DescriptionEntry {
    */
   relation_name?: boolean;
   /**
+   * On a stretch on a path: the busy roads it crosses straight over that no turn or junction entry says (the owner,
+   * 2026-11-03: "when the trail crosses the road ... announce that"), each where along the route (scaled as the
+   * entries) and the road, "the road" where it has no name; Ride says "Cross Layhill Road." Absent from an older API.
+   */
+  crossings?: { at_m: number; road: string }[] | null;
+  /**
    * On an "avoid": why the junction is rated Avoid ("no safe crossing"), as `street` is its name; Ride words its cue
    * from the two (round-2 audit R2). Absent from an older API.
    */
