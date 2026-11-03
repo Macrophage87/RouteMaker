@@ -3412,3 +3412,35 @@ class TestRideTurnsMissed:
 
     def test_bends_that_cancel_are_not_said(self):
         assert self.moves(d.describe(self.loop(second=-38.0))) == [None, "straight"]
+
+    def sligo_turn(self, events):
+        legs = [
+            flat(path("Sligo Creek Trail", 400, 0), turned(path("Long Branch Trail", 600, 90), 90))
+        ]
+        return d.describe(legs, events)
+
+    @pytest.mark.parametrize("m", [398, 400, 401])
+    def test_a_road_crossed_at_the_turn_is_said_with_it_once(self, m):
+        entries = self.sligo_turn([crossing(m, "university boulevard west")])
+        assert entries[1]["turn"]["across"] == "University Boulevard West"
+        assert all("crossings" not in e for e in entries)
+
+    def test_a_flagged_crossing_before_a_turn_keeps_its_own_entry(self):
+        entries = self.sligo_turn([crossing(385, "university boulevard west", True)])
+        assert "across" not in entries[1]["turn"]
+        assert [e["kind"] for e in entries] == ["stretch", "junction", "stretch"]
+
+    def test_turns_onto_and_off_an_unnamed_crosswalk_are_said(self):
+        crosswalk = turned(
+            [d.Atom(30.0, "1", "none", (), "pedestrian_crossing", 270, 270)], 100, choice=False
+        )
+        legs = [
+            flat(
+                path("Matthew Henson Trail", 300, 170),
+                crosswalk,
+                turned(path("Matthew Henson Trail", 600, 0), 90, choice=False),
+            )
+        ]
+        entries = d.describe(legs, [crossing(315)])
+        assert self.moves(entries) == [None, "right", "right"]
+        assert entries[1]["turn"]["cross"] == "Layhill Road"

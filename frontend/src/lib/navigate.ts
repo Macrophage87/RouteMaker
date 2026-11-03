@@ -1569,6 +1569,9 @@ export function step(
       said[cue.index] = phases.map((p) => p.phase);
       continue;
     }
+    // A road a path crosses is said only about 10 s out: one not yet near holds back no cue after it (a turn's or a
+    // hazard's earlier warning).
+    if (cue.kind === "crossing" && distance > phases[0].withinM) continue;
     // A jog's later turn waits until the rider is past the turn before: step by step at the junction.
     if (cue.joined && progress < model.cues[cue.index - 1].atM) break;
     // The nearest phase whose threshold is reached; any farther one is then skipped, not said late.
@@ -1655,9 +1658,12 @@ function ahead(model: RideModel, cue: Cue, progressM: number): boolean {
   return isStartUTurn(cue) && progressM < Math.min(PASSED_M, then / 2);
 }
 
+/** A road a path crosses leads the card only this near (about when it is said); before that the next turn does. */
+export const CROSSING_SHOWN_M = 100;
+
 /** The next turn, new named way, flagged junction or walk: what the cue card leads with. */
 export function nextAction(model: RideModel, progressM: number): Cue | null {
-  return model.cues.find((c) => ahead(model, c, progressM) && (c.kind === "turn" || c.kind === "onto" || c.kind === "hazard" || c.kind === "crossing" || c.kind === "walk" || c.kind === "stop" || c.kind === "end")) ?? null;
+  return model.cues.find((c) => ahead(model, c, progressM) && (c.kind === "turn" || c.kind === "onto" || c.kind === "hazard" || (c.kind === "crossing" && c.atM - progressM <= CROSSING_SHOWN_M) || c.kind === "walk" || c.kind === "stop" || c.kind === "end")) ?? null;
 }
 
 /** The stretch the rider is on: its street as the API names it, or null. */
@@ -1880,7 +1886,7 @@ export function whereAmI(
         : t("On {way}.", { way }),
   ];
   const progress = state.progressM;
-  const cue = model.cues.find((c) => ahead(model, c, progress) && (c.kind === "turn" || c.kind === "onto" || c.kind === "hazard" || c.kind === "crossing" || c.kind === "walk"));
+  const cue = model.cues.find((c) => ahead(model, c, progress) && (c.kind === "turn" || c.kind === "onto" || c.kind === "hazard" || c.kind === "walk"));
   if (isStartUTurn(cue)) sentences.push(t("Next: {cue}", { cue: lowerFirst((cue as Cue).text) }));
   else if (cue) {
     sentences.push(t("Next, in {distance}: {cue}", { distance: dist(cue.atM - state.progressM), cue: inSentence(cue, cueWords(cue, !metric)) }));
@@ -1918,7 +1924,7 @@ export function whereAmIShown(
   const mile = named ? trailMileAt(miles, stretch!.street as string, pointAt(model, progress)) : null;
   const street = named ?? capital(wayRidden(stretch) ?? t("the route"));
   const lines = [mile ? `${street} · ${mileWords(mile)}` : street];
-  const cue = model.cues.find((c) => ahead(model, c, progress) && (c.kind === "turn" || c.kind === "onto" || c.kind === "hazard" || c.kind === "crossing" || c.kind === "walk"));
+  const cue = model.cues.find((c) => ahead(model, c, progress) && (c.kind === "turn" || c.kind === "onto" || c.kind === "hazard" || c.kind === "walk"));
   const next: string[] = [];
   if (cue) {
     // A turn's street, else the named path it leads to, else a jog's next named street; any other cue its short words.

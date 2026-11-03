@@ -297,6 +297,8 @@ export interface SpeechEnv {
   voices?: () => readonly VoiceLike[];
   /** The clock, for a sentence that never ends (`Voice`); Date.now where absent. */
   now?: () => number;
+  /** Run `fn` after `ms` (the stuck check); setTimeout where absent. */
+  later?: (fn: () => void, ms: number) => void;
 }
 
 /**
@@ -346,6 +348,7 @@ export class Voice {
   private current: UtteranceLike | null = null;
   /** When it was started, and by when it should have ended. */
   private endsBy = 0;
+  private timer: true | null = null;
   private readonly env: SpeechEnv;
 
   constructor(env: SpeechEnv) {
@@ -382,9 +385,27 @@ export class Voice {
     }
     if (busy) {
       this.waiting = text;
+      this.watch();
       return;
     }
+    // A newer polite cue takes the place of any older one still waiting.
+    this.waiting = null;
     this.start(text);
+  }
+
+  /** With a cue waiting, check once the sentence being said should have ended: stuck, the cue goes then, not later. */
+  private watch(): void {
+    if (this.timer !== null) return;
+    const later = this.env.later ?? ((fn: () => void, ms: number) => {
+      const timer = setTimeout(fn, ms) as unknown as { unref?: () => void };
+      timer.unref?.();
+    });
+    this.timer = true;
+    later(() => {
+      this.timer = null;
+      if (this.waiting !== null && !this.busy()) this.next();
+      else if (this.waiting !== null) this.watch();
+    }, Math.max(250, this.endsBy - this.now() + 50));
   }
 
   stop(): void {

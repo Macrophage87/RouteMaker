@@ -262,8 +262,8 @@ test("Voice: a sentence whose end never comes (Chrome on Android) no longer hold
   // The owner, 2026-11-03, riding with music on: turns not announced. The browser kept calling one sentence
   // speaking, and every polite cue waited behind it.
   let clock = 0;
-  const { env, calls } = speech();
-  const voice = new Voice({ ...env, now: () => clock });
+  const { env, calls, end } = speech();
+  const voice = new Voice({ ...env, now: () => clock, later: () => {} });
   voice.speak("In 500 feet, right onto Twinbrook Connector Trail.", false);
   clock += 4_000;
   voice.speak("In 150 feet, right onto Twinbrook Connector Trail.", false);
@@ -272,6 +272,22 @@ test("Voice: a sentence whose end never comes (Chrome on Android) no longer hold
   clock += STUCK_BASE_MS + STUCK_PER_CHAR_MS * 60;
   voice.speak("In 150 feet, cross Layhill Road.", false);
   assert.deepEqual(calls.slice(1), ["cancel", "speak:In 150 feet, cross Layhill Road."]);
+  // The older cue that waited is not said after the newer one.
+  end();
+  assert.equal(calls.length, 3);
+});
+
+test("Voice: a cue waiting behind a stuck sentence goes once that sentence should have ended, with no other cue", () => {
+  let clock = 0;
+  const timers: { fn: () => void; ms: number }[] = [];
+  const { env, calls } = speech();
+  const voice = new Voice({ ...env, now: () => clock, later: (fn, ms) => void timers.push({ fn, ms }) });
+  voice.speak("In 500 feet, left onto Kersey Road.", false);
+  voice.speak("In 150 feet, left onto Kersey Road.", false);
+  assert.equal(timers.length, 1);
+  clock += timers[0].ms;
+  timers[0].fn();
+  assert.deepEqual(calls, ["speak:In 500 feet, left onto Kersey Road.", "cancel", "speak:In 150 feet, left onto Kersey Road."]);
 });
 
 test("Voice: a cancelled sentence's late end does not start a waiting one over the urgent one", () => {

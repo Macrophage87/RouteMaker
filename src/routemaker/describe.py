@@ -585,7 +585,7 @@ def _turns_at_paths(atoms: list[Atom], crossings: Collection[float]) -> list[Ato
     - A turn spread over two nodes of a path less than JOG_MIN_M apart, where another way
       meets one of them (`Atom.choice`), is read as the one junction it is: each node's own
       turn is small (the line is read only to the next node), but together more than
-      ALONG_TURN_DEG ("right" round a little loop of paths at Colt Terrace Park, onto the
+      BEAR_MAX_DEG ("right" round a little loop of paths at Colt Terrace Park, onto the
       path to Kersey Road), said at the sharper node."""
     at: list[float] = []
     walked = 0.0
@@ -604,7 +604,11 @@ def _turns_at_paths(atoms: list[Atom], crossings: Collection[float]) -> list[Ato
     for i, atom in enumerate(atoms):
         if i == 0 or atom.turn is None or atom.roundabout or out[i].fork is not None:
             continue
-        if not (on_path(atom) and on_path(atoms[i - 1]) and _same_way(atoms[i - 1], atom)):
+        if not (on_path(atom) and on_path(atoms[i - 1])):
+            continue
+        # Onto or off a crosswalk (most are unnamed) as well as along one way.
+        walk = CROSSING_USE in (atom.use, atoms[i - 1].use)
+        if not (walk or _same_way(atoms[i - 1], atom)):
             continue
         if ALONG_TURN_DEG < abs(atom.turn) < HAIRPIN_DEG and any(
             abs(at[i] - c) <= FAR_SIDE_M for c in crossings
@@ -644,7 +648,9 @@ def _turns_at_paths(atoms: list[Atom], crossings: Collection[float]) -> list[Ato
             i += 1
             continue
         net = atom.turn + nxt.turn
-        if ALONG_TURN_DEG < abs(net) < HAIRPIN_DEG and (atom.turn > 0) == (nxt.turn > 0):
+        # Past BEAR_MAX_DEG together: a gentle curve of a winding trail past a side path is
+        # no turn to say.
+        if BEAR_MAX_DEG < abs(net) < HAIRPIN_DEG and (atom.turn > 0) == (nxt.turn > 0):
             mark(k if abs(nxt.turn) >= abs(atom.turn) else i, net)
             i = k + 1
             continue
@@ -2387,7 +2393,9 @@ def describe_both(
             index
             for index, event in enumerate(events)
             if event.kind == "crossing"
-            and max(starts[i - 1], starts[i] - FAR_SIDE_M) <= event.m <= starts[i] - FAR_SIDE_MIN_M
+            # A flagged crossing keeps its own entry and wording; at the turn's node too.
+            and not event.flagged
+            and max(starts[i - 1], starts[i] - FAR_SIDE_M) <= event.m <= starts[i] + JUNCTION_M
             and (index not in used or events[index] is turn.event)
             and not event.road_names & ways
         ]

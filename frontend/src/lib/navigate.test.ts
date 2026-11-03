@@ -2666,7 +2666,22 @@ test("crossing: a road the trail crosses is a cue of its own, in order along the
   const crossing = model.cues[1];
   assert.equal(crossing.text, "Cross Layhill Road.");
   assert.equal(crossArrow(crossing), "cross");
-  assert.equal(nextAction(model, 450), crossing);
+  // The card leads with it only when near (about when it is said); before that the next action after it.
+  assert.equal(nextAction(model, 450)?.kind, "end");
+  assert.equal(nextAction(model, 530), crossing);
+});
+
+test("crossing: one not yet near holds back no turn's first warning after it", () => {
+  const model = rideModel(
+    straightRoute([
+      stretch(0, 1000, "Sligo Creek Trail.", { street: "Sligo Creek Trail", facility: "path", crossings: [{ at_m: 960, road: "Dennis Avenue" }] }),
+      stretch(1000, 2000, "Right onto Long Branch Trail.", { street: "Long Branch Trail", facility: "path", turn: turning("right", "Long Branch Trail") }),
+    ]),
+  );
+  const said = ride(model, "full", 0, 1000).events.map((e) => e.spoken);
+  const first = said.findIndex((s) => s.includes("Long Branch"));
+  const crossing = said.findIndex((s) => s.includes("Dennis"));
+  assert.ok(first >= 0 && crossing > first, "the turn's advance warning comes before the crossing's");
 });
 
 test("crossing: said once, about 10 s out, at the Full level only", () => {
