@@ -78,7 +78,10 @@ def sent_options(fake: FakeRouter) -> dict:
 class TestTheSlidersReachTheRouter:
     @pytest.mark.parametrize(
         "name",
-        sorted(set(presets.PRESETS) - {*presets.BIKESHARE_PRESETS, *presets.TRANSIT_PRESETS}),
+        sorted(
+            set(presets.PRESETS)
+            - {*presets.BIKESHARE_PRESETS, *presets.TRANSIT_PRESETS, presets.RUN}
+        ),
     )
     def test_absent_dials_are_the_presets_start(self, name, client, facility_segments, router):
         fake = router(standard_router())
@@ -93,7 +96,7 @@ class TestTheSlidersReachTheRouter:
         "name",
         sorted(
             set(presets.PRESETS)
-            - {"mass-ride", *presets.BIKESHARE_PRESETS, *presets.TRANSIT_PRESETS}
+            - {"mass-ride", *presets.BIKESHARE_PRESETS, *presets.TRANSIT_PRESETS, presets.RUN}
         ),
     )
     @pytest.mark.parametrize(("stress", "use_roads"), [(0, 1.0), (35, 0.55), (70, 0.1), (100, 0.0)])
@@ -368,7 +371,7 @@ class TestSeekingClimbs:
         from pathlib import Path
 
         configs = sorted((Path(settings.BASE_DIR) / "valhalla").glob("valhalla-*.json"))
-        assert len(configs) == 6
+        assert len(configs) == 7
         for path in configs:
             limits = json.loads(path.read_text())["service_limits"]
             assert routing.SEEK_ALTERNATES == limits["max_alternates"], path.name
@@ -583,7 +586,10 @@ class TestTheWeekendGraph:
 
     @pytest.mark.parametrize(
         "name",
-        sorted(set(presets.PRESETS) - {*presets.BIKESHARE_PRESETS, *presets.TRANSIT_PRESETS}),
+        sorted(
+            set(presets.PRESETS)
+            - {*presets.BIKESHARE_PRESETS, *presets.TRANSIT_PRESETS, presets.RUN}
+        ),
     )
     def test_a_weekend_ride_on_the_standard_graph_takes_its_twin(
         self, name, client, facility_segments, router
@@ -1510,7 +1516,7 @@ def test_the_calm_search_swaps_the_routers_climbing_charge_for_the_riders():
         hill_m=2000.0,
     )
     ctx = type("Ctx", (), {})()
-    ctx.rate, ctx.weight, ctx.quiet_cost = 0.0, 1.0, 0.44
+    ctx.rate, ctx.weight, ctx.quiet_cost, ctx.wait_weight = 0.0, 1.0, 0.44, 1.0
     assert read.score(ctx) == pytest.approx(600.0 + 0.44 * (2000.0 - 1300.0))
 
 
@@ -2019,8 +2025,97 @@ class TestNoBusierThanMiddleFallbacks:
 
 
 @db
-class TestAvoidGravel:
-    """OWNER-DECISIONS 91, 92, 111: the "Avoid gravel" box."""
+class TestRoadBike:
+    """Stephen, 2026-11-02: the Avoid gravel box became the Road Bike ride type, on its own
+    graph (`Variant.PAVED`), and an old request with the box ticked plans as Road Bike on a
+    rider's own bike."""
+
+    def test_road_bike_plans_on_the_road_bike_graph_as_a_road_bicycle(
+        self, client, facility_segments, router
+    ):
+        fake = router(standard_router())
+        body = post(client, good_body("road-bike")).json()
+        assert body["preset"] == "road-bike"
+        assert body["variant"] == "paved"
+        assert body["dials"]["avoid_gravel"] is True
+        assert fake.calls[0][0].startswith(settings.VALHALLA_UPSTREAMS["paved"])
+        options = fake.calls[0][1]["costing_options"]["bicycle"]
+        assert options["bicycle_type"] == "Road"
+        assert options["avoid_bad_surfaces"] == presets.ROAD_BIKE_SURFACES
+
+    @pytest.mark.parametrize(("name", "weight"), [("road-bike", 3.0), ("default", 1.0)])
+    def test_the_search_weighs_road_bikes_waits_three_times(
+        self, name, weight, client, facility_segments, router, monkeypatch
+    ):
+        """The owner, 2026-11-02: "For the road cycling version, make non-cycling time, such
+        as waiting at lights carry an additional penalty (3x)"."""
+        seen = []
+
+        class Seen(refine.Context):
+            def __init__(self, *a, **k):
+                super().__init__(*a, **k)
+                seen.append(self)
+
+        monkeypatch.setattr(refine, "Context", Seen)
+        router(standard_router())
+        assert post(client, good_body(name)).status_code == 200
+        assert seen and {ctx.wait_weight for ctx in seen} == {weight}
+        # At its own stress (40, below the calm search's rate) Road Bike still ranks the
+        # router's alternatives, where a route with fewer lights comes from.
+        assert {ctx.rank_alternates for ctx in seen} == {name == "road-bike"}
+
+    def test_a_router_that_does_not_answer_falls_back_to_the_standard_map_and_says_which(
+        self, client, facility_segments, router
+    ):
+        """The page tells the rider the paved-only map is not available from the answer's
+        `variant` (frontend/src/lib/roadBike.ts; the v0.18.0 release review)."""
+        standard = standard_router()
+
+        def transport(url, payload, timeout):
+            if url.startswith(settings.VALHALLA_UPSTREAMS["paved"]):
+                raise routing.RouterUnavailable("connection refused")
+            return standard(url, payload, timeout)
+
+        router(transport)
+        body = post(client, good_body("road-bike")).json()
+        assert body["preset"] == "road-bike" and body["variant"] == "standard"
+        assert routing._paved_down()
+
+    def test_a_road_bike_router_outage_is_remembered_against_its_own_graph(
+        self, client, facility_segments, router
+    ):
+        """Review of v0.18.0 (S7): a road-bike router that does not answer is remembered as
+        down (so the next Road Bike plan does not wait on it again), and against the paved
+        graph alone: the weekend graph is not marked down, so weekend rides keep theirs."""
+        standard = standard_router()
+        paved_calls = []
+
+        def transport(url, payload, timeout):
+            if url.startswith(settings.VALHALLA_UPSTREAMS["paved"]):
+                paved_calls.append(url)
+                raise routing.RouterUnavailable("connection refused")
+            return standard(url, payload, timeout)
+
+        router(transport)
+        first = post(client, good_body("road-bike")).json()
+        assert first["variant"] == "standard"
+        assert len(paved_calls) == 1
+        second = post(client, good_body("road-bike")).json()
+        assert second["preset"] == "road-bike" and second["variant"] == "standard"
+        assert len(paved_calls) == 1, "remembered as down for a minute"
+        assert routing._weekend_failed_at is None
+        assert not routing._weekend_down()
+        assert routing._offroad_failed_at is None and routing._mtb_failed_at is None
+
+    def test_a_road_bike_map_not_yet_promoted_plans_on_standard(
+        self, client, facility_segments, router, monkeypatch
+    ):
+        monkeypatch.setattr(routing, "_paved_is_promoted", lambda: False)
+        fake = router(standard_router())
+        body = post(client, good_body("road-bike")).json()
+        assert body["variant"] == "standard"
+        base = settings.VALHALLA_UPSTREAMS["paved"]
+        assert all(not url.startswith(base) for url, _ in fake.calls)
 
     def test_off_by_default_and_echoed(self, client, facility_segments, router):
         fake = router(standard_router())
@@ -2029,14 +2124,25 @@ class TestAvoidGravel:
         sent = fake.calls[0][1]["costing_options"]["bicycle"]["avoid_bad_surfaces"]
         assert sent == presets.costing("cargo")["bicycle"]["avoid_bad_surfaces"]
 
-    @pytest.mark.parametrize("name", ["default", "gravel", "cargo", "mass-ride"])
-    def test_checked_it_steers_off_unpaved_surfaces(self, name, client, facility_segments, router):
+    @pytest.mark.parametrize("name", sorted(presets.AVOID_GRAVEL_BECOMES))
+    def test_the_old_box_on_a_riders_own_bike_plans_as_road_bike(
+        self, name, client, facility_segments, router
+    ):
         fake = router(standard_router())
         body = post(client, {**good_body(name), "avoid_gravel": True}).json()
-        assert body["dials"]["avoid_gravel"] is True
-        for _url, payload in fake.calls:
-            options = payload["costing_options"]["bicycle"]
-            assert options["avoid_bad_surfaces"] >= presets.AVOID_GRAVEL_SURFACES
+        assert body["preset"] == "road-bike"
+        assert body["variant"] == "paved"
+        assert fake.calls[0][0].startswith(settings.VALHALLA_UPSTREAMS["paved"])
+
+    @pytest.mark.parametrize("name", ["cargo", "mass-ride", "group-ride", "ebike"])
+    def test_elsewhere_the_old_box_is_dropped(self, name, client, facility_segments, router):
+        fake = router(standard_router())
+        body = post(client, {**good_body(name), "avoid_gravel": True}).json()
+        assert body["preset"] == name
+        assert body["dials"]["avoid_gravel"] is False
+        assert body["variant"] != "paved"
+        sent = fake.calls[0][1]["costing_options"]["bicycle"]
+        assert sent["bicycle_type"] == presets.costing(name)["bicycle"]["bicycle_type"]
 
     def test_only_a_boolean(self, client, facility_segments, router):
         fake = router(standard_router())

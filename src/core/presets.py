@@ -555,12 +555,19 @@ BRAKE_GRADES = MappingProxyType(
         # they are built on, Default's own bike and Bikeshare's share bike.
         "bike-transit": 0.06,
         "bikeshare-transit": 0.04,
+        # Walk and Walk + 🚆🚌 (2026-11-02) have no bike leg: Bikeshare + 🚶🚆🚌's, never used.
+        "walk": 0.04,
+        "walk-transit": 0.04,
+        # Run (2026-11-02) is planned on foot by `core.run_plan`, its hills by the slider alone.
+        "run": None,
         # Rebalance Ride (REBALANCE-RIDE) rides a share bike, as Bikeshare does.
         "rebalance": 0.04,
         # Riders who choose these want the descent.
         "mountain-goat": None,
         "mountain-bike": None,
         "fast": None,
+        # A road bike descends fast and brakes late, as Fast's rider does.
+        "road-bike": None,
     }
 )
 
@@ -613,7 +620,19 @@ BIKESHARE_PRESETS = frozenset({BIKESHARE, REBALANCE})
 
 BIKE_TRANSIT = "bike-transit"
 BIKESHARE_TRANSIT = "bikeshare-transit"
-TRANSIT_PRESETS = frozenset({BIKE_TRANSIT, BIKESHARE_TRANSIT})
+# Walk and Walk + 🚆🚌 (Stephen, 2026-11-02: "add a walk mode and a walk+transit mode"): planned
+# by `core.transit` like the transit ride types (a start and an end, the trip in steps), on foot
+# by Valhalla's pedestrian costing; no bike leg, so their presets below are Bikeshare + 🚶🚆🚌's,
+# never used to ride.
+WALK = "walk"
+WALK_TRANSIT = "walk-transit"
+ON_FOOT_PRESETS = frozenset({WALK, WALK_TRANSIT})
+TRANSIT_PRESETS = frozenset({BIKE_TRANSIT, BIKESHARE_TRANSIT, WALK, WALK_TRANSIT})
+# Run (Stephen, 2026-11-02: "would run use any different routing?", "Yes, make it in its own
+# thread"): on foot, on Walk's map, planned by `core.run_plan` (its pace, hills, trails, waits,
+# lit ways after dark and loops are there). Its preset below is Walk's, never used to ride, but
+# for its hills slider's start (0, as Default's).
+RUN = "run"
 
 
 @dataclass(frozen=True)
@@ -677,6 +696,49 @@ def resolve_preset(name: str) -> str:
 # - About 6 mph (10 km/h) on singletrack for the time shown (`mtbmode.duration_s`).
 MOUNTAIN_BIKE = "mountain-bike"
 MTB_HILLS = 50
+
+# Road Bike (the owner, 2026-11-02, replacing the "Avoid gravel" box: the box "is intended for
+# road bikes that can't handle gravel or dirt"; "Add a road-bike map graph"; "Make it a
+# separate mode that assumes a faster speed and also is less tolerant of turns"; "Road bikes
+# would probably stay away from trails with lots of direction changes ... For instance Sligo
+# Creek Trail"). The implementation's defaults, stated here so they can be argued with:
+#
+# - Its own graph (`Variant.PAVED`): gravel, fine gravel and compacted priced as gravel, which a
+#   road bicycle at `ROAD_BIKE_SURFACES` prices at about seventeen times a paved path, and a
+#   winding trail priced as an LTS 3 street (`routemaker.winding`).
+# - `avoid_bad_surfaces` 0.9, as the Avoid gravel box had it (OWNER-DECISIONS 91, 92, 111): steep
+#   without making a surface impassable, so a ride that starts or ends on gravel is still planned.
+#   With "Keep to roads" on, Road Bike rides the no-trail graph, where gravel is packed gravel
+#   (about three times a paved road): there is no road-bike twin of that graph.
+# - Valhalla's Road bicycle at its own pace, 15.5 mph (25 km/h), where Default's hybrid rides
+#   11.2 mph; the rider's own speed (`rider_speed`) still wins.
+# - Fewer turns: Group Ride's and Fast's maneuver penalty (`HIGH_MANEUVER_PENALTY_S`), and
+#   Group Ride's gate cost (a road bike slows hard for a gate or bollard).
+# - Traffic and hills: stress 40, "Balanced" (Group Ride's and Gravel's start), and Default's
+#   hills; living streets as Fast (0.2): a shared street is slow for a road bike.
+ROAD_BIKE = "road-bike"
+ROAD_BIKE_STRESS = 40
+ROAD_BIKE_SURFACES = 0.9
+# The ride types a ticked "Avoid gravel" box (retired with Road Bike's arrival) plans as Road
+# Bike: a rider's own bike, carrying nothing (`core.api.RouteIn`). Cargo, E-bike, a group, a
+# share bike, a transit trip and Mountain Bike keep their own ride and lose the box.
+AVOID_GRAVEL_BECOMES = frozenset(
+    {"default", "fast", "trailmaxxing", "novice", "gravel", "mountain-goat"}
+)
+# What a second spent stopped at a junction (a signal, a stop sign, a wait for a gap:
+# `routemaker.junction_delay`) costs when routes are ranked, against a second of riding.
+# Road Bike's is 3 (the owner, 2026-11-02: "For the road cycling version, make non-cycling
+# time, such as waiting at lights carry an additional penalty (3x)"): a road rider loses
+# their pace at every stop. The time shown stays the real wait; every other ride type, 1.
+# Run's is 3 too (2026-11-02): a runner stopped at a light loses their pace as a road rider does
+# (`core.run_plan.weigh`, its signalled crossings).
+WAIT_WEIGHTS = MappingProxyType({ROAD_BIKE: 3.0, RUN: 3.0})
+
+
+def wait_weight_for(name: str) -> float:
+    """How much a ride type's junction waits weigh in the ranking (`WAIT_WEIGHTS`)."""
+    return WAIT_WEIGHTS.get(name, 1.0)
+
 
 BIKESHARE_BIKES = MappingProxyType(
     {
@@ -957,6 +1019,52 @@ PRESETS: MappingProxyType = MappingProxyType(
                 cycling_speed=BIKESHARE_CLASSIC_SPEED_KMH,
             ),
             _preset(
+                WALK,
+                Variant.STANDARD,
+                # On foot: Bikeshare + 🚶🚆🚌's dials, never used to ride (`ON_FOOT_PRESETS`).
+                stress=BIKESHARE_STRESS,
+                hills=BIKESHARE_BIKES[BIKE_CLASSIC].hills,
+                exposure=EXPOSURE_STRESS_AVERSE,
+                bicycle_type="Hybrid",
+                avoid_bad_surfaces=CARGO_SURFACE_AVOIDANCE,
+                use_living_streets=_LIVING_STREETS,
+                maneuver_penalty=VALHALLA_MANEUVER_PENALTY_S,
+                gate_cost=CARGO_GATE_COST_S,
+                gate_penalty=CARGO_GATE_PENALTY_S,
+                cycling_speed=BIKESHARE_CLASSIC_SPEED_KMH,
+            ),
+            _preset(
+                WALK_TRANSIT,
+                Variant.STANDARD,
+                # On foot: Bikeshare + 🚶🚆🚌's dials, never used to ride (`ON_FOOT_PRESETS`).
+                stress=BIKESHARE_STRESS,
+                hills=BIKESHARE_BIKES[BIKE_CLASSIC].hills,
+                exposure=EXPOSURE_STRESS_AVERSE,
+                bicycle_type="Hybrid",
+                avoid_bad_surfaces=CARGO_SURFACE_AVOIDANCE,
+                use_living_streets=_LIVING_STREETS,
+                maneuver_penalty=VALHALLA_MANEUVER_PENALTY_S,
+                gate_cost=CARGO_GATE_COST_S,
+                gate_penalty=CARGO_GATE_PENALTY_S,
+                cycling_speed=BIKESHARE_CLASSIC_SPEED_KMH,
+            ),
+            _preset(
+                RUN,
+                Variant.STANDARD,
+                # On foot (`core.run_plan`): Walk's dials, never used to ride, but its hills
+                # start at 0, the slider's middle, which the run's own `use_hills` reads.
+                stress=BIKESHARE_STRESS,
+                hills=0,
+                exposure=EXPOSURE_STRESS_AVERSE,
+                bicycle_type="Hybrid",
+                avoid_bad_surfaces=CARGO_SURFACE_AVOIDANCE,
+                use_living_streets=_LIVING_STREETS,
+                maneuver_penalty=VALHALLA_MANEUVER_PENALTY_S,
+                gate_cost=CARGO_GATE_COST_S,
+                gate_penalty=CARGO_GATE_PENALTY_S,
+                cycling_speed=BIKESHARE_CLASSIC_SPEED_KMH,
+            ),
+            _preset(
                 MOUNTAIN_BIKE,
                 Variant.MTB,
                 stress=STRESS_TODAYS_TOP,
@@ -967,6 +1075,19 @@ PRESETS: MappingProxyType = MappingProxyType(
                 use_living_streets=_LIVING_STREETS,
                 maneuver_penalty=VALHALLA_MANEUVER_PENALTY_S,
                 gate_cost=VALHALLA_GATE_COST_S,
+                gate_penalty=VALHALLA_GATE_PENALTY_S,
+            ),
+            _preset(
+                ROAD_BIKE,
+                Variant.PAVED,
+                # See "Road Bike" above.
+                stress=ROAD_BIKE_STRESS,
+                hills=0,
+                bicycle_type="Road",
+                avoid_bad_surfaces=ROAD_BIKE_SURFACES,
+                use_living_streets=0.2,
+                maneuver_penalty=HIGH_MANEUVER_PENALTY_S,
+                gate_cost=HIGH_GATE_COST_S,
                 gate_penalty=VALHALLA_GATE_PENALTY_S,
             ),
             _preset(
@@ -1050,16 +1171,9 @@ def variant_for_ride(name: str, when: str, assist: bool = False, trails_off: boo
     return preset.variant
 
 
-# "Avoid gravel" (OWNER-DECISIONS 91, 92, 111: "We can have an 'avoid gravel'
-# check"; off by default on every ride type, Cargo Bike included - "Cargo tends
-# to have pretty wide tires"). Valhalla's `avoid_bad_surfaces` at this value
-# prices every surface worse than the bicycle type's own minimum steeply without
-# making it impassable, so a ride that starts or ends on gravel is still
-# planned, and a preset already avoiding more keeps its own value.
-AVOID_GRAVEL_SURFACES = 0.9
 # Valhalla's default cycling speed by bicycle type (km/h; Road 15.5 mph,
 # Cross 12.4, Hybrid 11.2, Mountain 9.9), which a ride takes when its preset
-# names none; kept when the box switches the type to Road.
+# names none.
 VALHALLA_DEFAULT_SPEED_KMH = {"Road": 25.0, "Cross": 20.0, "Hybrid": 18.0, "Mountain": 16.0}
 
 
@@ -1076,7 +1190,14 @@ def rider_speed(name: str, kmh: float | None) -> float | None:
     """The pace a ride of preset `name` is planned at for a rider who set `kmh`, or None for the
     ride type's own. Mass Ride keeps its speed band (the field rides at the group's pace), and a
     share bike its own pace (`BIKESHARE_BIKES`): neither is the rider's own bike."""
-    if kmh is None or name == "mass-ride" or name in BIKESHARE_PRESETS or name == BIKESHARE_TRANSIT:
+    if (
+        kmh is None
+        or name == "mass-ride"
+        or name in BIKESHARE_PRESETS
+        or name == BIKESHARE_TRANSIT
+        or name in ON_FOOT_PRESETS
+        or name == RUN
+    ):
         return None
     return min(RIDER_SPEED_MAX_KMH, max(RIDER_SPEED_MIN_KMH, float(kmh)))
 
@@ -1086,7 +1207,6 @@ def costing(
     stress: int | None = None,
     hills: int | None = None,
     assist: bool = False,
-    avoid_gravel: bool = False,
 ) -> dict:
     """The `costing_options` block for one preset, as a fresh copy.
 
@@ -1103,18 +1223,6 @@ def costing(
     speed = PRESETS[name].assist_speed_kmh
     if assist and speed is not None:
         options["cycling_speed"] = speed
-    if avoid_gravel:
-        options["avoid_bad_surfaces"] = max(options["avoid_bad_surfaces"], AVOID_GRAVEL_SURFACES)
-        # The dial prices only surfaces worse than the bicycle type's own
-        # minimum, and Cross admits gravel, Hybrid dirt (PLAN, "Every preset
-        # states its bicycle_type"), so on those types the box steered off
-        # nothing it was asked to (review r1, S1). Road admits compacted and
-        # better, so the box rides as Road; the preset's own speed is kept, so
-        # the time estimate does not jump to Road's default.
-        kind = options.get("bicycle_type", "Hybrid")
-        if kind != "Road":
-            options.setdefault("cycling_speed", VALHALLA_DEFAULT_SPEED_KMH[kind])
-            options["bicycle_type"] = "Road"
     return {"bicycle": options}
 
 
@@ -1157,7 +1265,7 @@ def stress_notches(name: str, stress: int) -> tuple[int | None, int | None]:
     end is a notch of its own), or on a ride type that offers neither. A position between
     notches counts from the notch below it."""
     preset = PRESETS[name]
-    if name == REBALANCE or name in TRANSIT_PRESETS or preset.stress_max <= STRESS_MIN:
+    if name in (REBALANCE, RUN) or name in TRANSIT_PRESETS or preset.stress_max <= STRESS_MIN:
         return None, None
     low, high = NOTCH_LIMITS.get(name, (STRESS_MIN, preset.stress_max))
     direct = [n for n in STEP_NOTCHES if low <= n < stress]

@@ -121,6 +121,7 @@ def test_one_valhalla_process_per_tile_variant() -> None:
         "valhalla-mtb",
         "valhalla-no-trail",
         "valhalla-offroad",
+        "valhalla-paved",
         "valhalla-standard",
         "valhalla-weekend",
     ]

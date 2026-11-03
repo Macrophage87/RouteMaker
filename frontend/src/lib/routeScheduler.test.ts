@@ -576,7 +576,7 @@ test("one deliberate press goes at once: Plan's Route, Try again, a transit pick
   // The flag is read and cleared at the top of the route effect, before any early return, so it never carries
   // over to a later edit.
   const effect = app.slice(app.indexOf("// Route when the plan changes (Go) or the Route button is pressed (Plan)."));
-  assert.match(effect, /^[^\n]*\n\s*useEffect\(\(\) => \{\s*const now = sendNow\.current;\s*sendNow\.current = false;\s*if \(points\.length < 2\) \{/);
+  assert.match(effect, /^[^\n]*\n\s*useEffect\(\(\) => \{\s*const now = sendNow\.current;\s*sendNow\.current = false;\s*\/\/[^\n]*\n\s*if \(points\.length < 2 && !runLoopFromStart\(preset, points, planDials\)\) \{/);
   assert.match(effect, /\}, \{ now: now \|\| \(goPickedNow\.current && mode === "go"\) \}\);/);
   const press = app.slice(app.indexOf("const pressRoute = () => {"), app.indexOf("const cancelRouting"));
   assert.match(press, /sendNow\.current = true;\s*setRouteAsk\(\(n\) => n \+ 1\);/);
