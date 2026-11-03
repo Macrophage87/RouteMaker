@@ -307,7 +307,7 @@ not in your account, so set them once on each phone or computer you use<sup clas
 <caption>Every accessibility setting</caption>
 <thead><tr><th scope="col">Setting</th><th scope="col">Where</th><th scope="col">What it does</th><th scope="col">Kept</th></tr></thead>
 <tbody>
-<tr><th scope="row">High contrast</th><td>Settings, Display, under Accessibility mode</td><td>Bolder map lines, stronger borders and text, stronger street names, and map colors that don't rely on red and green. Off unless your device asks for more contrast.</td><td>On this device</td></tr>
+<tr><th scope="row">High contrast</th><td>Settings, Display, under Accessibility mode; More, then the Settings gear, during a ride</td><td>Bolder map lines, stronger borders and text, stronger street names, and map colors that don't rely on red and green. Off unless your device asks for more contrast.</td><td>On this device</td></tr>
 <tr><th scope="row">Accessibility mode</th><td>Settings, Display; also the first button on every page</td><td>Turns on High contrast, Large text during a ride and Map tools by the map's zoom buttons together (Map tools adds a point, sets a destination or gets road info at the map center); off turns all three off. High contrast and Large text can then be set on their own.</td><td>On this device</td></tr>
 <tr><th scope="row">Screen-reader detail</th><td>Settings, Display</td><td>Brief: the route, guidance and errors. Full: also what the app is doing. Unset, Go is brief and Plan is full.</td><td>On this device</td></tr>
 <tr><th scope="row">Language</th><td>Settings, Display</td><td>Phone default or one of 21 languages, all but English first drafts. Spanish: the whole app, the route's
@@ -315,12 +315,13 @@ sentences and the voice. The other 19: Go, Ride, Roam and Settings, with Plan an
 and the cues spoken in English where the phone has no voice for the language; Arabic, Farsi and Pashto read right to
 left. Street names and agency notices stay as written. Choosing a different language reloads the page. Phone default unless you choose: a phone set to any of the
 21 opens Go and Ride in it, drafts included.</td><td>On this device</td></tr>
-<tr><th scope="row">Units</th><td>Settings, Display</td><td>Miles and feet, or Kilometers and meters: every figure on screen metric first with US units in brackets, and the voice and screen-reader figures say meters and kilometers. Miles and feet unless you choose. Changing it reloads the page.</td><td>On this device; with your account when signed in</td></tr>
-<tr><th scope="row">Colors</th><td>Settings, Display</td><td>Sunrise and sunset (light by day, dark from sunset to sunrise), Phone's setting, Always light or Always dark. Sunrise and sunset unless you choose.</td><td>On this device</td></tr>
-<tr><th scope="row">Say cues with</th><td>Settings, Riding; More, then the Settings gear, during a ride</td><td>My screen reader, App voice, Both, or Neither (on screen only). App voice unless you choose.</td><td>On this device</td></tr>
+<tr><th scope="row">Units</th><td>Settings, Display; More, then the Settings gear, during a ride</td><td>Miles and feet, or Kilometers and meters: every figure on screen metric first with US units in brackets, and the voice and screen-reader figures say meters and kilometers. Miles and feet unless you choose. Changing it reloads the page, except during a ride: there it changes at once
+and the ride carries on, and the page reloads when you press Done on the ride summary.</td><td>On this device; with your account when signed in</td></tr>
+<tr><th scope="row">Colors</th><td>Settings, Display; More, then the Settings gear, during a ride</td><td>Sunrise and sunset (light by day, dark from sunset to sunrise), Phone's setting, Always light or Always dark. Sunrise and sunset unless you choose.</td><td>On this device</td></tr>
+<tr><th scope="row">Say cues with</th><td>Settings, Riding; More, then the Settings gear, during a ride</td><td>My screen reader, App voice, Screen reader + voice, or Neither (on screen only). App voice unless you choose.</td><td>On this device</td></tr>
 <tr><th scope="row">How much to say</th><td>Settings, Riding; More, then the Settings gear, during a ride</td><td>Full, Turns only or Quiet (below). Full unless you choose.</td><td>On this device</td></tr>
 <tr><th scope="row">Large text during a ride</th><td>Settings, Display, under Accessibility mode; the Large text button during a ride</td><td>The next turn as big as it fits on the top half of the screen, with the map below and larger street names, for bright sun or near sight. Off unless you turn it on.</td><td>On this device</td></tr>
-<tr><th scope="row">Turn the map to my heading</th><td>More, then the Settings gear, during a ride</td><td>The map turns with you during a ride, from the phone's compass until GPS gives a heading. On unless you turn it off.</td><td>On this device</td></tr>
+<tr><th scope="row">North up</th><td>The compass button at the map's top left, during a ride or Roam</td><td>Pressed, the map keeps north up. Not pressed, the map turns with you, from the phone's compass until GPS gives a heading. Not pressed unless you press it.</td><td>On this device</td></tr>
 </tbody>
 </table>
 </div>
@@ -607,7 +608,7 @@ voice saying every turn until you change them in Settings, Riding, or in More, t
 
 <ul>
 <li><strong>Say cues with</strong>: <strong>My screen reader</strong>, <strong>App
-voice</strong>, <strong>Both</strong>, or <strong>Neither (on screen only)</strong>. Cues never move
+voice</strong>, <strong>Screen reader + voice</strong>, or <strong>Neither (on screen only)</strong>. Cues never move
 focus.</li>
 <li><strong>How much to say</strong>: <strong>Full</strong>, every turn, early and again close to it, and just past a turn onto a stretch of a
 mile [1.6 km] or more, how far it goes on: "Continue on Washington and Old Dominion Trail for 2 miles.";
@@ -639,8 +640,9 @@ hears it, such as "Runs north to south."</li>
 reader hears whether it is pressed, and each press says "Large text on" or "off".</li>
 <li>With <strong>Say cues with</strong> set to <strong>My screen reader</strong>, the map is hidden from
 the screen reader during a ride, so swiping goes from the next turn straight to the ride's buttons.</li>
-<li><strong>Turn the map to my heading</strong>, in More, then the Settings gear, during a ride, turns the map with you; turn it off
-to keep north up. At the start of a ride or Roam, before GPS gives a heading (it needs you moving), the map turns
+<li>The <strong>compass</strong> button at the map's top left, during a ride or Roam, turns with the map and
+switches north up on and off; a screen reader hears it as "North up" and whether it is pressed. With it not pressed,
+the default, the map turns with you. At the start of a ride or Roam, before GPS gives a heading (it needs you moving), the map turns
 to the way the phone faces, from its compass, and GPS takes over once you move. To save battery the compass also stops after 2 minutes without a GPS
 heading, or when the page goes out of sight, and does not start again by itself. On an iPhone, pressing
 Start ride or Roam asks for motion and orientation access; without it the map stays north up until you
