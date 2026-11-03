@@ -83,6 +83,7 @@ from pathlib import Path
 
 from routemaker import climb_categories, climb_exclusions
 from routemaker.climb_categories import Climb
+from routemaker.facility import SHARED_PATH_PREFIX, sidepath_street
 
 from . import climb_names
 from .elevation import HGT_1ARCSEC_SIDE, TileName, tile_for
@@ -204,6 +205,14 @@ class Stroke:
     coords: list[tuple[float, float]] = field(default_factory=list)
     # edge_part[i] is the index into `parts` of the edge coords[i] -> coords[i + 1].
     edge_part: list[int] = field(default_factory=list)
+
+
+def _side_name(sidepath_name: str | None) -> str | None:
+    """A side-street name as a climb's road: a shared path's street ("path beside Kemp
+    Mill Road" is "Kemp Mill Road", the road it climbs beside); any other as it is."""
+    if sidepath_name and sidepath_name.startswith(SHARED_PATH_PREFIX):
+        return sidepath_street(sidepath_name)
+    return sidepath_name
 
 
 def _metres(a: tuple[float, float], b: tuple[float, float]) -> float:
@@ -678,7 +687,7 @@ def read_segments(schema: str) -> list[SegmentLine]:
                     oneway=bool(oneway),
                     unpaved=unpaved,
                     trail_name=trail_name or None,
-                    name=mtb_name or trail_name or sidepath_name or None,
+                    name=mtb_name or trail_name or _side_name(sidepath_name) or None,
                     trail=bool(trail),
                     mtb=bool(mtb),
                     tier=None if tier is None else int(tier),

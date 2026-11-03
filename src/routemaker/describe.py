@@ -93,6 +93,7 @@ import re
 from collections.abc import Collection
 from dataclasses import dataclass, replace
 
+from .facility import sidepath_street
 from .intersections import (
     STRAIGHT_MAX_DEG,
     Control,
@@ -277,7 +278,8 @@ TIER_WORDS = {
 }
 UNRATED_WORDS = "stress not rated"
 # A path with no name of its own is just "path" (the owner, 2026-10-15: not "unnamed
-# path"); one beside a named street is that street's bike lane, named at the rebuild
+# path"); one beside a named street is that street's bike lane, or the path beside it
+# where people on foot share it, named at the rebuild
 # (`routemaker.facility.side_street_names`) and handed in as the piece's name.
 UNNAMED_PATH = "path"
 # The street a stretch gets when its pieces have no name (a road) or were not traced. The
@@ -1897,8 +1899,8 @@ def _far_side_turns(atoms: list[Atom]) -> list[tuple[float, float, float, str]]:
 def _road_crossed(events: list, at_m: float, run: _Run) -> str:
     """The road crossed at `at_m` (`_far_side_turns`), as `_crossing` names it: the
     nearest junction event across a road (CROSS_KINDS) within CROSS_NEAR_M, else the
-    street a path named for it is beside ("Saint Paul Street bike lane"), else
-    CROSS_UNNAMED."""
+    street a path named for it is beside ("Saint Paul Street bike lane", "path beside
+    Kemp Mill Road"; `facility.sidepath_street`), else CROSS_UNNAMED."""
     near = [
         event
         for event in events
@@ -1906,11 +1908,7 @@ def _road_crossed(events: list, at_m: float, run: _Run) -> str:
     ]
     if near:
         return _event_name(min(near, key=lambda event: abs(event.m - at_m)))
-    label = run.label or ""
-    for words in (" protected bike lane", " bike lane"):
-        if label.endswith(words):
-            return label[: -len(words)]
-    return CROSS_UNNAMED
+    return sidepath_street(run.label) or CROSS_UNNAMED
 
 
 def _nearest_events(
