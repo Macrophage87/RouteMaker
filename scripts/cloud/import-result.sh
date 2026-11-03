@@ -17,7 +17,7 @@
 #      graphs under DATA_ROOT/tiles
 #   3. takes a safety dump of the database into --stage, leaving out the same tables the
 #      nightly backup does (--no-safety-dump skips it)
-#   4. unpacks the six graphs' build directories under DATA_ROOT/tiles, beside the ones
+#   4. unpacks the seven graphs' build directories under DATA_ROOT/tiles, beside the ones
 #      being served, and restores the box's segment table as the staging schema
 #   5. runs `manage.py import_cloud_build <build> --overrides-read-at <the dump's read_at>`, dry:
 #      every check the swap makes, and what it would change; it also precomputes Review's queue
@@ -39,11 +39,13 @@
 #   Without --swap: downloads RUN_URL/beta/ to --incoming and runs receive-data.sh verify.
 #   With --swap: refuses unless what is in --incoming was downloaded from this run, and,
 #   where continuous deployment is installed, unless it is paused with no pass running and
-#   no deploy left half done. Then receive-data.sh verify and `files` (sudo; each graph's
-#   old build stays as `previous`), stops the api and worker, `db --update-data` (sudo;
-#   after its own safety dump, in one transaction; resets override and junction_override to
-#   home's and empties the beta's stress_edit history, as every data update does), starts
-#   them again (also when the update fails), restarts the four routers (and starts the trail
+#   no deploy left half done. Then receive-data.sh verify, `db --update-data --stage-only`
+#   (the bundle's live tables restored beside the served ones while the beta serves),
+#   `files` (sudo; each graph's old build stays as `previous`), `db --update-data` (sudo;
+#   after its own safety dump, one short transaction renames the staged tables in; resets
+#   override and junction_override to home's and empties the beta's stress_edit history, as
+#   every data update does; the api and worker are never stopped), restarts the four routers
+#   one at a time (and starts the trail
 #   routers whose tiles are there, then writes the settings rows: sync_upstreams), starts the
 #   stress-tile pre-draw in the background, and runs the local smoke test, retried while the
 #   app and routers start. Then run smoke-test.sh --public yourself. Rollback is the
@@ -65,7 +67,7 @@
 #   -h, --help
 # Environment (for tests): CLOUD_AWS [aws], CLOUD_DOCKER [docker], CLOUD_SUDO [sudo],
 # CLOUD_GIT [git], CLOUD_RECEIVE, CLOUD_BETA_COMPOSE, CLOUD_SMOKE [the scripts/beta/ ones],
-# CLOUD_SMOKE_TRIES [20], CLOUD_SMOKE_WAIT_S [15].
+# CLOUD_SMOKE_TRIES [20], CLOUD_SMOKE_WAIT_S [15], CLOUD_ROUTER_WAIT_S [180, the longest wait for a restarted router to answer].
 set -Eeuo pipefail
 
 die() { echo "import-result: $*" >&2; exit 2; }
@@ -162,28 +164,48 @@ if [ "$beta" = 1 ]; then
 	[ -s "$incoming/MANIFEST.txt" ] && [ "$(cat "$incoming/.cloud-run" 2>/dev/null)" = "$url" ] ||
 		die "$incoming does not hold this run's bundle: run this without --swap first"
 	receive_ verify
+	# The staging swap (the owner, 2026-11-02): the slow restore runs beside the served tables
+	# first, while the beta serves; the tile links and the rename then follow within seconds.
+	# The api and worker are never stopped.
+	note "staging the new database tables beside the served ones (the beta keeps serving)"
+	receive_ db --update-data --stage-only ||
+		die "staging the database failed; nothing served has changed. Look at the error above, then run --swap again"
 	note "installing the graphs (each one's old build stays as \`previous\`)"
 	sudo_receive files
-	note "stopping the api and worker for the database update"
-	"$bcompose" stop api worker
 	if ! sudo_receive db --update-data; then
-		"$bcompose" up -d api worker
-		die "db --update-data failed; it runs in one transaction, so the database is as it was. The api and worker are started again; the new graphs are installed (rollback A puts the old ones back)"
+		die "db --update-data failed. If it said \"the swap is committed\" above, the beta serves the new tables: restart the routers by hand (${routers[*]}), then \`$bcompose up -d --force-recreate\` each trail router whose tiles are here, \`sync_upstreams\` and the stress-tile pre-draw. Otherwise its swap rolled back in one transaction, so the database is as it was and the beta still serves it; the new graphs are installed (rollback A puts the old ones back), or run --swap again"
 	fi
-	"$bcompose" up -d api worker
-	note "restarting the routers so they serve the new graphs"
-	"$bcompose" restart "${routers[@]}"
+	# One at a time, so only one ride type is briefly unanswered at once; the api plans a ride
+	# whose router does not answer on the standard graph meanwhile (while the standard router
+	# itself restarts, Default rides fail for those few seconds).
+	# The next one restarts only once this one answers its /status (asked from the api's
+	# container, on the compose network), or after CLOUD_ROUTER_WAIT_S at most.
+	note "restarting the routers one at a time so they serve the new graphs"
+	router_wait=${CLOUD_ROUTER_WAIT_S:-180}
+	[[ $router_wait =~ ^[0-9]+$ ]] || die "CLOUD_ROUTER_WAIT_S is a number of seconds ('$router_wait')"
+	for router in "${routers[@]}"; do
+		"$bcompose" restart "$router"
+		start=$SECONDS  # the clock, not a count of sleeps: each probe takes time of its own
+		# shellcheck disable=SC2016 # python's, not the shell's
+		until "$bcompose" exec -T api python3 -c 'import sys, urllib.request; urllib.request.urlopen(sys.argv[1], timeout=3)' "http://$router:8002/status" </dev/null >/dev/null 2>&1; do
+			if [ $((SECONDS - start)) -ge "$router_wait" ]; then
+				note "WARNING: $router does not answer $((SECONDS - start))s after its restart; going on with the next. Look at: $bcompose logs --tail 50 $router"
+				break
+			fi
+			sleep 3
+		done
+	done
 	# The trail routers (Mountain Bike's, Gravel and Mountain Goat's): started, or recreated onto the
 	# new build, whenever their tiles are here. A restart alone never starts one that is not running,
 	# and without them the api plans those rides on the standard graph (`mtb.limited` no_mtb_graph).
 	trail=()
-	for variant in offroad mtb; do
+	for variant in offroad mtb paved; do
 		[ -L "$data_root/tiles/$variant/current" ] && trail+=("valhalla-$variant")
 	done
 	if [ "${#trail[@]}" -gt 0 ]; then
 		note "starting the trail routers on the new graphs: ${trail[*]}"
 		"$bcompose" up -d --force-recreate "${trail[@]}" ||
-			note "WARNING: a trail router did not start; Mountain Bike, Gravel and Mountain Goat stay on the standard graph until: $bcompose up -d --force-recreate ${trail[*]}"
+			note "WARNING: a trail router did not start; Mountain Bike, Gravel, Mountain Goat and Road Bike stay on the standard graph until: $bcompose up -d --force-recreate ${trail[*]}"
 	fi
 	# The settings rows the api serves each variant by, written from the links `files` moved
 	# (receive-data.sh runs it too, when the api is up; run again here, it changes nothing).
@@ -240,9 +262,11 @@ if [ "$swap" = 1 ]; then
 	import_cmd --confirm ${extra[@]+"${extra[@]}"}
 	note "restarting the routers so they serve the new graphs"
 	compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend
-	for router in valhalla-offroad valhalla-mtb; do
+	for router in valhalla-offroad valhalla-mtb valhalla-paved; do
 		if [ -n "$(compose --profile offroad ps -q "$router" 2>/dev/null)" ]; then
 			compose --profile offroad restart "$router"
+		else
+			note "$router is not running here, so its ride types plan on the standard graph; start it with \`docker compose --profile offroad up -d --no-deps --no-build $router\` if this host has the memory"
 		fi
 	done
 	note "drawing the stress tiles again"
@@ -292,7 +316,7 @@ if [ "$installed" = 0 ]; then
 	[ "$(psql_ "SELECT to_regnamespace('staging') IS NULL")" = t ] ||
 		die "a staging schema already exists here (left by a rebuild that did not swap, or an install that stopped). If you are sure nothing needs it: docker compose exec -T postgis psql -U $pguser -d $pgdb -c 'DROP SCHEMA staging CASCADE', then run this again"
 	need=0
-	for variant in standard no-trail ebike weekend offroad mtb; do
+	for variant in standard no-trail ebike weekend offroad mtb paved; do
 		[ -f "$stage/tiles-$variant.tar" ] || die "the result has no tiles-$variant.tar"
 		for link in current previous; do
 			[ "$($SUDO readlink "$data_root/tiles/$variant/$link" 2>/dev/null)" != "$build" ] ||
@@ -328,7 +352,7 @@ fi
 # --- 4. install --------------------------------------------------------------------------
 if [ "$installed" = 0 ]; then
 	note "unpacking the graphs under $data_root/tiles"
-	for variant in standard no-trail ebike weekend offroad mtb; do
+	for variant in standard no-trail ebike weekend offroad mtb paved; do
 		# Neither link names it (checked above), so a directory here is an unpack that stopped.
 		$SUDO rm -rf "${data_root:?}/tiles/$variant/$build"
 		$SUDO tar -C "$data_root/tiles" --numeric-owner -xf "$stage/tiles-$variant.tar"

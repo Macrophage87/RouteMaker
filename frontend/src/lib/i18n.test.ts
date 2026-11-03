@@ -296,6 +296,11 @@ test("each of DC's languages has every turn sentence Ride says (the owner, 2026-
 const GO_RIDE_SCREENS = ["app/Go.tsx", "RideMode.tsx", "RideGroup.tsx", "RoamMode.tsx", "app/Sheets.tsx"];
 const GO_RIDE_ALSO = [
   "TransitSummary.tsx",
+  // Stop by stop and turn by turn on foot (2026-11-02): the on-board card and its words.
+  "OnBoardCard.tsx",
+  "lib/onBoard.ts",
+  // Settings' Avoid stairs (2026-11-02), for Go and Plan alike.
+  "lib/avoidStairs.ts",
   "AvoidNotice.tsx",
   "lib/accessMode.ts",
   "lib/skipLink.ts",
