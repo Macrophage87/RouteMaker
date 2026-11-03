@@ -8,7 +8,7 @@
 import { encodePolyline6 } from "./polyline.ts";
 import type { TripLeg } from "./transitMarks.ts";
 import type { MtbReading } from "./mtbMode.ts";
-import { formatRoughDistance } from "./format.ts";
+import { formatRoughDistance, unitsFirstDeep } from "./format.ts";
 import { noteArrived } from "./departure.ts";
 import type { LonLat } from "./geo.ts";
 import { runs, twoPointsOnly, type PresetId } from "./presets.ts";
@@ -339,6 +339,12 @@ export interface DescriptionEntry {
    * ride never cues "Continue onto" it. Absent from an older API.
    */
   relation_name?: boolean;
+  /**
+   * On a stretch on a path: the busy roads it crosses straight over that no turn or junction entry says (the owner,
+   * 2026-11-03: "when the trail crosses the road ... announce that"), each where along the route (scaled as the
+   * entries) and the road, "the road" where it has no name; Ride says "Cross Layhill Road." Absent from an older API.
+   */
+  crossings?: { at_m: number; road: string }[] | null;
   /**
    * On an "avoid": why the junction is rated Avoid ("no safe crossing"), as `street` is its name; Ride words its cue
    * from the two (round-2 audit R2). Absent from an older API.
@@ -709,6 +715,11 @@ export interface TransitPlan {
   key: string;
   /** The trip asked for (`transit_option`) is no longer an option: the best is chosen in its place (absent from older answers). */
   asked_gone?: boolean;
+  /**
+   * A trip with stops (Stephen, 2026-11-03: "Each stop starts a new trip"): where each trip after a stop begins, by step.
+   * Empty or absent: no stops. Ridden one trip at a time (lib/tripStops.ts).
+   */
+  stop_steps?: number[];
   direct: boolean;
   /** Quickest first; riding the whole way is always one. */
   options: TransitOption[];
@@ -1600,9 +1611,11 @@ export async function requestRoute(
     body = null;
   }
   if (response.ok && looksLikeRoute(body)) {
+    // The server's sentences in the rider's units order (metric mode, lib/units.ts).
+    const route = unitsFirstDeep(body);
     // A departure's countdown runs from this moment by the phone's clock, not the server's (review TB-6).
-    if (body.transit?.departure) noteArrived(body.transit.departure, Date.now());
-    return { ok: true, route: body };
+    if (route.transit?.departure) noteArrived(route.transit.departure, Date.now());
+    return { ok: true, route };
   }
   const status = response.ok ? 500 : response.status;
   const error = describeError(status, body, response.headers.get("Retry-After"));
@@ -1659,7 +1672,7 @@ export async function requestNeighbours(
         (o): o is NeighbourOption =>
           !!o && (o.kind === "direct" || o.kind === "calmer") && typeof o.stress === "number" && looksLikeRoute(o.route),
       );
-      return { ok: true, options: kept };
+      return { ok: true, options: unitsFirstDeep(kept) };
     }
     return { ok: false, error: describeError(response.ok ? 500 : response.status, body, response.headers.get("Retry-After")) };
   } catch {

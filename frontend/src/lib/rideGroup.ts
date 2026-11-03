@@ -13,7 +13,7 @@
  *   role goes with each position and comes back on each dot; still no name. It is self-declared: a ride link
  *   has no sign-in, so a role says what the rider chose, nothing more.
  * - Your dot is sent about every 2 s on a ride of 20 or fewer, 5 s on a bigger one (slower on a very big ride: the server sets the pace) while the app is open and in front (never in the background), and only
- *   while you are within a quarter mile (400 m) of the route line. Sharing ends when you turn it off, close
+ *   while you are within 0.25 mi (400 m) of the route line. Sharing ends when you turn it off, close
  *   the app, are off the route for 10 minutes (Group and Mass Rides; a broadcast shows you on or off it), or 12 hours after the ride's start (your answer).
  * - Dots show their age: under 30 s solid (with a brief pulse ring when a new reading lands), 30-90 s faded,
  *   90 s to 2 min a hollow ring, then gone. Only dots within a quarter mile of the route are drawn.

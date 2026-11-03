@@ -3,11 +3,17 @@
  * first, metric in brackets. The owner, 2026-09-27: "This is a US-based map, so
  * people are more used to miles over km. Have both, but metric should be
  * secondary." - and 2026-09-29, "The US customary unit change wasn't made
- * yet." (OWNER-DECISIONS 85). The one formatter: nothing else writes a unit.
+ * yet." (OWNER-DECISIONS 85). The one formatter: nothing else writes a unit (the server's words are turned round
+ * here too, `unitsFirst`).
  * Stored values and API fields stay metric.
+ *
+ * Metric mode (the owner, 2026-11-03: "have a metric mode in settings", "Decimals and not fractions";
+ * lib/units.ts): every figure here turns round, metric first and US in brackets ("7.6 km (4.7 mi)"), and
+ * Ride's voice says metres and kilometres. `both` is the one place the order is chosen.
  */
 
 import { t } from "./i18n.ts";
+import { metricFirst } from "./units.ts";
 
 const DASH = "–";
 export const METRES_PER_MILE = 1609.344;
@@ -15,10 +21,12 @@ export const FEET_PER_MILE = 5280;
 /** The words for the units a rider types in (the target distance, the system weight). */
 export const MILES_WORD = "miles";
 export const POUNDS_WORD = "pounds";
-/** A quarter mile, said as the plan says it (the ride dots' reach, lib/rideGroup.ts). */
-export const QUARTER_MILE = "a quarter mile (400 m)";
-/** Places to see along a route (v0.7.0, lib/places.ts). */
-export const HALF_MILE = "half a mile (0.8 km)";
+/**
+ * The ride dots' reach (lib/rideGroup.ts) and places to see along a route (v0.7.0, lib/places.ts), as decimals,
+ * never fractions (the owner, 2026-11-03: "Decimals and not fractions").
+ */
+export const QUARTER_MILE = both("0.25 mi", "400 m");
+export const HALF_MILE = both("0.5 mi", "0.8 km");
 export const FEET_PER_METRE = 3.28084;
 export const METRES_PER_FOOT = 0.3048;
 export const KM_PER_MILE = 1.609344;
@@ -35,6 +43,70 @@ export const SEEK_MAX_SPAN_M = 50_000;
 
 /** How far apart a start and an end may be for the hills slider to weigh alternatives when avoiding hills (src/core/routing.py). */
 export const AVOID_MAX_SPAN_M = 25_000;
+
+/**
+ * A US figure and its metric twin in the rider's order: "4.7 mi (7.6 km)", or in metric mode "7.6 km (4.7 mi)".
+ * A function declaration, so the constants above can use it.
+ */
+export function both(us: string, metric: string): string {
+  return metricFirst() ? `${metric} (${us})` : `${us} (${metric})`;
+}
+
+/**
+ * Words written elsewhere (the API's descriptions and road facts) with a US figure and its metric in brackets,
+ * turned round in metric mode: "1.1 to 1.8 mi (1.7 to 2.9 km)" to "1.7 to 2.9 km (1.1 to 1.8 mi)", "12 mph
+ * (19 km/h)" to "19 km/h (12 mph)", "300 ft (91 m)" to "91 m (300 ft)". As written in US mode.
+ */
+const PAIR_RE = /((?<![\w.,])[+-]?\d[\d.,]*(?: (?:to|a|–|-) [+-]?\d[\d.,]*)?) (mi|ft|mph|miles?|millas?|feet|pies|calm mi) \(([+-]?\d[\d.,]*(?: (?:to|a|–|-) [+-]?\d[\d.,]*)?) (km|m|km\/h|metros?|calm km)\)/g;
+export function unitsFirst(text: string): string {
+  if (!text) return text;
+  // Back the other way in US mode, for words kept while metric was chosen (a route saved then).
+  if (!metricFirst()) return text.replace(METRIC_PAIR_RE, (_all, metric: string, metricUnit: string, us: string, usUnit: string) => `${us} ${usUnit} (${metric} ${metricUnit})`);
+  return text.replace(PAIR_RE, (_all, us: string, usUnit: string, metric: string, metricUnit: string) => `${metric} ${metricUnit} (${us} ${usUnit})`);
+}
+const METRIC_PAIR_RE = /((?<![\w.,])[+-]?\d[\d.,]*(?: (?:to|a|–|-) [+-]?\d[\d.,]*)?) (km|m|km\/h|metros?|calm km) \(([+-]?\d[\d.,]*(?: (?:to|a|–|-) [+-]?\d[\d.,]*)?) (mi|ft|mph|miles?|millas?|feet|pies|calm mi)\)/g;
+
+/**
+ * An API answer with every sentence in it turned round as `unitsFirst` does (a planned route, a road's facts), so
+ * the panel, Go and Ride show the server's words in the rider's order. Numbers, flags and names untouched.
+ */
+export function unitsFirstDeep<T>(value: T): T {
+  // The same answer turned round twice is the same object, so an answer kept by identity elsewhere (a shared ride's,
+  // App's sharedOpen) still matches the one shown.
+  const memo = metricFirst() ? TURNED_METRIC : TURNED_US;
+  if (value && typeof value === "object") {
+    const known = memo.get(value as object);
+    if (known) return known as T;
+  }
+  const test = metricFirst() ? PAIR_TEST : METRIC_PAIR_TEST;
+  // What holds nothing to turn is returned as it is, the same object, so a part kept by identity (a departure's
+  // arrival clock, lib/departure.ts) stays the same part.
+  const walk = (v: unknown): unknown => {
+    if (typeof v === "string") return test.test(v) ? unitsFirst(v) : v;
+    if (Array.isArray(v)) {
+      // A line's coordinates hold no words: not walked.
+      if (!v.length || typeof v[0] === "number" || (Array.isArray(v[0]) && typeof v[0][0] === "number")) return v;
+      const out = v.map(walk);
+      return out.some((x, i) => x !== v[i]) ? out : v;
+    }
+    if (v && typeof v === "object") {
+      let out: Record<string, unknown> | null = null;
+      for (const [k, x] of Object.entries(v as Record<string, unknown>)) {
+        const y = walk(x);
+        if (y !== x) (out ??= { ...(v as Record<string, unknown>) })[k] = y;
+      }
+      return out ?? v;
+    }
+    return v;
+  };
+  const out = walk(value) as T;
+  if (value && typeof value === "object") memo.set(value as object, out as object);
+  return out;
+}
+const TURNED_METRIC = new WeakMap<object, object>();
+const TURNED_US = new WeakMap<object, object>();
+const PAIR_TEST = /\d (?:mi|ft|mph|miles?|millas?|feet|pies|calm mi) \(/;
+const METRIC_PAIR_TEST = /\d (?:km|m|km\/h|metros?|calm km) \(\S/;
 
 function usable(value: number): boolean {
   return Number.isFinite(value) && value >= 0;
@@ -60,7 +132,7 @@ export function kmFigure(metres: number): string {
  * name (TCX caps it at 15 characters). Anywhere with room says `formatDistance`.
  */
 export function formatMilesCapped(metres: number): string {
-  return `${milesFigure(metres)} mi`;
+  return metricFirst() ? `${kmFigure(metres)} km` : `${milesFigure(metres)} mi`;
 }
 
 /**
@@ -69,7 +141,7 @@ export function formatMilesCapped(metres: number): string {
  */
 export function milesRange(minMiles: number, maxMiles: number, minM: number, maxM: number): string {
   const km = (m: number) => Math.round(m / 1000).toLocaleString("en-US");
-  return `${minMiles} to ${maxMiles} ${MILES_WORD} (${km(minM)} to ${km(maxM)} km)`;
+  return both(`${minMiles} to ${maxMiles} ${MILES_WORD}`, `${km(minM)} to ${km(maxM)} km`);
 }
 
 /**
@@ -87,9 +159,9 @@ export function formatMileRange(fromM: number, toM: number): string {
     const length = toM - fromM;
     const feet = length * FEET_PER_METRE;
     const ft = feet >= 100 ? Math.round(feet / 10) * 10 : Math.round(feet);
-    return `${mi(fromM)} mi (${km(fromM)} km), for ${ft} ft (${Math.round(length)} m)`;
+    return `${both(`${mi(fromM)} mi`, `${km(fromM)} km`)}, for ${both(`${ft} ft`, `${Math.round(length)} m`)}`;
   }
-  return `${mi(fromM)} to ${mi(toM)} mi (${km(fromM)} to ${km(toM)} km)`;
+  return both(`${mi(fromM)} to ${mi(toM)} mi`, `${km(fromM)} to ${km(toM)} km`);
 }
 
 /** "55 to 1,543 pounds (25 to 700 kg)": a weight range, pounds first. */
@@ -103,11 +175,16 @@ export function poundsRange(minLb: number, maxLb: number, minKg: number, maxKg: 
  * "mi (20.0 km)".
  */
 export function formatMileMarker(metres: number): string {
-  return `${milesFigure(metres)} ${formatMileMarkerUnits(metres)}`;
+  return `${markerFigure(metres)} ${formatMileMarkerUnits(metres)}`;
+}
+
+/** The marker's large figure: miles, or kilometres in metric mode. */
+export function markerFigure(metres: number): string {
+  return metricFirst() ? kmFigure(metres) : milesFigure(metres);
 }
 
 export function formatMileMarkerUnits(metres: number): string {
-  return `mi (${kmFigure(metres)} km)`;
+  return metricFirst() ? `km (${milesFigure(metres)} mi)` : `mi (${kmFigure(metres)} km)`;
 }
 
 /**
@@ -116,27 +193,28 @@ export function formatMileMarkerUnits(metres: number): string {
  */
 export function formatDistanceChange(metres: number): string {
   const m = Math.abs(metres);
-  return `${(m / METRES_PER_MILE).toFixed(1)} mi (${kmFigure(m)} km)`;
+  return both(`${(m / METRES_PER_MILE).toFixed(1)} mi`, `${kmFigure(m)} km`);
 }
 
 /** A change of distance in miles alone, without its sign, for a short line on screen: "0.3 mi" (P3's re-plan toast). */
 export function formatMilesChange(metres: number): string {
-  return `${(Math.abs(metres) / METRES_PER_MILE).toFixed(1)} mi`;
+  return metricFirst() ? `${kmFigure(Math.abs(metres))} km` : `${(Math.abs(metres) / METRES_PER_MILE).toFixed(1)} mi`;
 }
 
 /** How far along a route, miles first: "mile 12.4 (20.0 km)"; under a tenth of a mile, "the start". */
 export function formatMilePost(metres: number): string {
   if (!usable(metres) || metres < FEET_BELOW_M) return t("the start");
-  return t("mile {mile} ({km} km)", { mile: milesFigure(metres), km: kmFigure(metres) });
+  const vars = { mile: milesFigure(metres), km: kmFigure(metres) };
+  return metricFirst() ? t("km {km} (mile {mile})", vars) : t("mile {mile} ({km} km)", vars);
 }
 
 /** "4.7 mi (7.6 km)"; below a tenth of a mile "500 ft (150 m)". */
 export function formatDistance(metres: number): string {
   if (!usable(metres)) return DASH;
   if (metres < FEET_BELOW_M) {
-    return `${roundShort(metres * FEET_PER_METRE)} ft (${roundShort(metres)} m)`;
+    return both(`${roundShort(metres * FEET_PER_METRE)} ft`, `${roundShort(metres)} m`);
   }
-  return `${milesFigure(metres)} mi (${kmFigure(metres)} km)`;
+  return both(`${milesFigure(metres)} mi`, `${kmFigure(metres)} km`);
 }
 
 /**
@@ -149,10 +227,10 @@ export function formatStationDistance(metres: number): string {
   if (!usable(metres)) return "distance unknown";
   if (metres < FEET_BELOW_M) {
     const feet = metres >= 30 ? Math.round((metres * FEET_PER_METRE) / 10) * 10 : Math.round(metres * FEET_PER_METRE);
-    return `${feet} ft (${roundShort(metres)} m)`;
+    return both(`${feet} ft`, `${roundShort(metres)} m`);
   }
   const metric = metres < 995 ? `${Math.round(metres / 10) * 10} m` : `${kmFigure(metres)} km`;
-  return `${milesFigure(metres)} mi (${metric})`;
+  return both(`${milesFigure(metres)} mi`, metric);
 }
 
 /**
@@ -164,7 +242,7 @@ export function formatRadius(metres: number): string {
   if (!usable(metres) || metres >= FEET_BELOW_M) return formatDistance(metres);
   const feet = Math.max(10, Math.round((metres * FEET_PER_METRE) / 10) * 10);
   const metric = metres >= 100 ? Math.round(metres / 10) * 10 : Math.max(1, Math.round(metres));
-  return `${feet} ft (${metric} m)`;
+  return both(`${feet} ft`, `${metric} m`);
 }
 
 /**
@@ -177,7 +255,7 @@ export function formatAboutRadius(metres: number): string {
   const miles = metres / METRES_PER_MILE;
   const mi = miles < 0.95 ? miles.toFixed(1) : String(Math.round(miles));
   const km = metres < 1_950 ? String(Number((metres / 1000).toFixed(1))) : String(Math.round(metres / 1000));
-  return `${mi} mi (${km} km)`;
+  return both(`${mi} mi`, `${km} km`);
 }
 
 /**
@@ -186,7 +264,17 @@ export function formatAboutRadius(metres: number): string {
  */
 export function formatFeet(metres: number): string {
   const feet = Math.round(metres * FEET_PER_METRE);
-  return `${feet.toLocaleString("en-US")} ft (${Math.round(metres)} m)`;
+  return both(`${feet.toLocaleString("en-US")} ft`, `${Math.round(metres)} m`);
+}
+
+/** A short chart's height label, a round figure in feet alone, the unit once: "450 ft", "1,000 ft" (the ride's elevation graph, lib/aheadGraph.ts). */
+export function formatAxisFeet(feet: number): string {
+  return `${Math.round(feet).toLocaleString("en-US")} ft`;
+}
+
+/** A height tick in metric mode (lib/units.ts): "40 m". */
+export function formatAxisMetres(metres: number): string {
+  return `${Math.round(metres).toLocaleString("en-US")} m`;
 }
 
 /**
@@ -196,7 +284,7 @@ export function formatFeet(metres: number): string {
 export function formatAxisDistance(metres: number): string {
   const at = Math.max(Number.isFinite(metres) ? metres : 0, 0);
   const short = (value: number) => (value >= 10 ? Math.round(value) : Number(value.toFixed(1))).toString();
-  return `${short(at / METRES_PER_MILE)} mi (${short(at / 1000)} km)`;
+  return both(`${short(at / METRES_PER_MILE)} mi`, `${short(at / 1000)} km`);
 }
 
 /**
@@ -207,14 +295,14 @@ export function formatAxisDistance(metres: number): string {
  */
 export function formatRunMiles(miles: number): string {
   const metres = miles * METRES_PER_MILE;
-  if (miles < 0.5) return `${Math.round(miles * FEET_PER_MILE).toLocaleString("en-US")} ft (${kmFigure(metres)} km)`;
+  if (miles < 0.5) return both(`${Math.round(miles * FEET_PER_MILE).toLocaleString("en-US")} ft`, `${kmFigure(metres)} km`);
   return formatDistance(metres);
 }
 
 /** An extra distance inside a sentence, miles first, metric in brackets: "+1.2 mi (1.9 km)". */
 export function formatExtra(metres: number): string {
   if (!usable(metres)) return DASH;
-  return `+${milesFigure(metres)} mi (${kmFigure(metres)} km)`;
+  return `+${both(`${milesFigure(metres)} mi`, `${kmFigure(metres)} km`)}`;
 }
 
 /**
@@ -226,7 +314,7 @@ export function formatPerMile(ratio: number): string {
   if (!usable(ratio)) return DASH;
   if (ratio < 10) {
     const miles = Math.max(0.1, Math.round(ratio * 10) / 10);
-    return `${miles.toFixed(1)} mi (${kmFigure(miles * METRES_PER_MILE)} km)`;
+    return both(`${miles.toFixed(1)} mi`, `${kmFigure(miles * METRES_PER_MILE)} km`);
   }
   return formatRoughDistance(ratio * METRES_PER_MILE);
 }
@@ -239,15 +327,15 @@ export function formatGroupLength(metres: number): string {
   if (!usable(metres)) return DASH;
   if (metres < METRES_PER_MILE) {
     const feet = Math.round((metres * FEET_PER_METRE) / 10) * 10;
-    return `${feet.toLocaleString("en-US")} ft (${Math.round(metres / 5) * 5} m)`;
+    return both(`${feet.toLocaleString("en-US")} ft`, `${Math.round(metres / 5) * 5} m`);
   }
-  return `${(metres / METRES_PER_MILE).toFixed(2)} mi (${kmFigure(metres)} km)`;
+  return both(`${(metres / METRES_PER_MILE).toFixed(2)} mi`, `${kmFigure(metres)} km`);
 }
 
 /** A round figure for a limit or a span, in whole units: "31 mi (50 km)". */
 export function formatRoughDistance(metres: number): string {
   if (!usable(metres)) return DASH;
-  return `${Math.round(metres / METRES_PER_MILE)} mi (${Math.round(metres / 1000)} km)`;
+  return both(`${Math.round(metres / METRES_PER_MILE)} mi`, `${Math.round(metres / 1000)} km`);
 }
 
 export function formatDuration(seconds: number): string {
@@ -261,7 +349,7 @@ export function formatDuration(seconds: number): string {
 /** A climb, a descent or an elevation: "266 ft (81 m)", "2,930 ft (893 m)" (thousands separated, as the repo writes them). */
 export function formatClimb(metres: number): string {
   if (!usable(metres)) return DASH;
-  return `${Math.round(metres * FEET_PER_METRE).toLocaleString("en-US")} ft (${Math.round(metres).toLocaleString("en-US")} m)`;
+  return both(`${Math.round(metres * FEET_PER_METRE).toLocaleString("en-US")} ft`, `${Math.round(metres).toLocaleString("en-US")} m`);
 }
 
 /**
@@ -272,19 +360,19 @@ export function formatClimb(metres: number): string {
 export function formatMilesSpelled(metres: number): string {
   if (!usable(metres)) return DASH;
   const miles = (metres / METRES_PER_MILE).toFixed(1);
-  return `${miles} ${miles === "1.0" ? "mile" : "miles"} (${kmFigure(metres)} km)`;
+  return both(`${miles} ${miles === "1.0" ? "mile" : "miles"}`, `${kmFigure(metres)} km`);
 }
 
 /** A speed from km/h: "12 mph (19 km/h)". */
 export function formatSpeed(kmh: number): string {
   if (!usable(kmh)) return DASH;
-  return `${Math.round(kmh / KMH_PER_MPH)} mph (${Math.round(kmh)} km/h)`;
+  return both(`${Math.round(kmh / KMH_PER_MPH)} mph`, `${Math.round(kmh)} km/h`);
 }
 
 /** A range of speeds from mph: "6 to 8 mph (10 to 13 km/h)", said as a range by a screen reader (not "6 minus 8"), miles first (the Mass Ride map's 6 to 8 mph, OWNER-DECISIONS 326). */
 export function formatSpeedRange(lowMph: number, highMph: number): string {
   if (!usable(lowMph) || !usable(highMph)) return DASH;
-  return `${Math.round(lowMph)} to ${Math.round(highMph)} mph (${Math.round(lowMph * KMH_PER_MPH)} to ${Math.round(highMph * KMH_PER_MPH)} km/h)`;
+  return both(`${Math.round(lowMph)} to ${Math.round(highMph)} mph`, `${Math.round(lowMph * KMH_PER_MPH)} to ${Math.round(highMph * KMH_PER_MPH)} km/h`);
 }
 
 /** A whole number of seconds, for "trying again in ...": "1 second", "5 seconds". */
@@ -292,11 +380,21 @@ export function formatSeconds(seconds: number): string {
   return seconds === 1 ? "1 second" : `${seconds} seconds`;
 }
 
-/** The distance as said, US units only (Ride mode, WEB-NAV-plan.md Q4): "50 feet", "300 feet", "700 feet", "0.4 miles", "1 mile".
+/** The distance as said, one unit only (Ride mode, WEB-NAV-plan.md Q4): "50 feet", "300 feet", "700 feet", "0.4 miles", "1 mile".
  *  Feet up to just under 1,000 ft, so a first warning at riding speed (about 160-300 m) is not
- *  rounded to tenths of a mile, up to a third off (routing audit D7). */
+ *  rounded to tenths of a mile, up to a third off (routing audit D7). In metric mode metres up to just under
+ *  a kilometre, on the same steps ("50 meters", "300 meters"), then kilometres to a tenth ("1.5 kilometers"). */
 export function spokenDistance(metres: number): string {
   const m = Math.max(0, metres);
+  if (metricFirst()) {
+    if (m < 950) {
+      const rounded = m >= 500 ? Math.round(m / 100) * 100 : m >= 200 ? Math.round(m / 50) * 50 : Math.max(10, Math.round(m / 10) * 10);
+      return t("{n} meters", { n: rounded });
+    }
+    const km = Math.round(m / 100) / 10;
+    if (km === 1) return t("1 kilometer");
+    return t("{n} kilometers", { n: Number.isInteger(km) ? km.toFixed(0) : km.toFixed(1) });
+  }
   const feet = m * FEET_PER_METRE;
   if (feet < 950) {
     const rounded = feet >= 500 ? Math.round(feet / 100) * 100
