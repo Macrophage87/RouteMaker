@@ -1523,6 +1523,21 @@ class DescriptionTurnOut(Schema):
             " `onto` stays the path's own. Null elsewhere."
         ),
     )
+    cross: str | None = Field(
+        default=None,
+        description=(
+            "A short path across a road between two turns (`describe._crossing`): the road,"
+            ' said in place of the turn ("Cross Redland Road"), or "the road" where it has no'
+            " name; absent elsewhere. Ride draws it across the road."
+        ),
+    )
+    across: str | None = Field(
+        default=None,
+        description=(
+            'A turn just past a road crossed straight over: the road, said first ("Cross'
+            ' Saint Paul Street, then right onto ..."); absent elsewhere.'
+        ),
+    )
 
 
 class DescriptionCrossingOut(Schema):
@@ -1556,6 +1571,14 @@ class DescriptionGroupOut(Schema):
             "(OWNER-DECISIONS 248); null in the overview, which keeps one line per group."
         ),
     )
+
+
+class DescriptionRoadCrossingOut(Schema):
+    """A busy road a stretch on a path crosses straight over (the owner, 2026-11-03: "when
+    the trail crosses the road ... announce that"), for Ride's "Cross Layhill Road" cue."""
+
+    at_m: int = Field(description="Metres along the route, scaled as the entries are.")
+    road: str = Field(description='The road as mapped, or "the road" where it has no name.')
 
 
 class DescriptionEntryOut(Schema):
@@ -1651,6 +1674,14 @@ class DescriptionEntryOut(Schema):
         description=(
             "On a stretch: its `street` is its trail's route relation's name, carried by "
             "no way of it itself; the ride gives no cue for a change onto such a name."
+        ),
+    )
+    crossings: list[DescriptionRoadCrossingOut] | None = Field(
+        default=None,
+        description=(
+            "On a stretch on a path, in the full description: the busy roads it crosses"
+            " straight over that no turn or junction entry already says, in order; null"
+            " where none."
         ),
     )
 

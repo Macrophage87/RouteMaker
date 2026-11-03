@@ -3563,7 +3563,9 @@ in `routing.ATTRIBUTION` and `VOLUME_CREDITS`:
   Montgomery's ratings are no longer installed.
 
 Arlington's Bike Comfort Index is internal comparison only and is never
-credited because nothing of it is published. Alexandria's Transport Streets was
+credited as a data source, because its data is not published; the Arlington review
+rows' "Why" notes cite it by name where our level differs from Arlington's (the
+owner, 2026-11-03: fair use as research, criticism and review). Alexandria's Transport Streets was
 too until 2026-10-16 (CC0, the city's OpenData portal); it is credited "City of
 Alexandria" (docs/SOURCES.md).
 

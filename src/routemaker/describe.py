@@ -93,6 +93,7 @@ import re
 from collections.abc import Collection
 from dataclasses import dataclass, replace
 
+from .facility import sidepath_street
 from .intersections import (
     STRAIGHT_MAX_DEG,
     Control,
@@ -277,7 +278,8 @@ TIER_WORDS = {
 }
 UNRATED_WORDS = "stress not rated"
 # A path with no name of its own is just "path" (the owner, 2026-10-15: not "unnamed
-# path"); one beside a named street is that street's bike lane, named at the rebuild
+# path"); one beside a named street is that street's bike lane, or the path or the
+# sidewalk beside it where people on foot share it, named at the rebuild
 # (`routemaker.facility.side_street_names`) and handed in as the piece's name.
 UNNAMED_PATH = "path"
 # The street a stretch gets when its pieces have no name (a road) or were not traced. The
@@ -543,7 +545,7 @@ def _same_way(a: Atom, b: Atom) -> bool:
     return _one_street(frozenset(n.lower() for n in a.names), frozenset(n.lower() for n in b.names))
 
 
-def _said_turns(atoms: list[Atom]) -> list[Atom]:
+def _said_turns(atoms: list[Atom], crossings: Collection[float] = ()) -> list[Atom]:
     """`atoms` with each clear turn the fork rule missed marked as one (`Atom.fork`), so
     it is said and never folded away: a turnaround (HAIRPIN_DEG or more) onto any way,
     and a turn of more than ALONG_TURN_DEG along one street where another way a bicycle
@@ -569,6 +571,115 @@ def _said_turns(atoms: list[Atom]) -> list[Atom]:
         ):
             side = "right" if atom.turn > 0 else "left"
             out[i] = replace(atom, fork=side if turn > BEAR_MAX_DEG else f"bear_{side}")
+    return _turns_at_paths(out, crossings)
+
+
+# A node turning less than this is a through node to `_turns_at_paths`' two-node rule.
+THROUGH_NODE_DEG = 5.0
+
+
+def _turns_at_paths(atoms: list[Atom], crossings: Collection[float]) -> list[Atom]:
+    """`_said_turns`' two rules for a path's own turns (the owner, 2026-11-03, on a morning
+    ride: "There are a number of routing calls where it's not announcing the turn"):
+
+    - Near a busy road the path crosses (`crossings`, junction events in the leg's measure),
+      a turn of more than ALONG_TURN_DEG within FAR_SIDE_M of the crossing is said along one
+      way too, with no other way to choose there: Matthew Henson Trail turns onto Layhill
+      Road's crosswalk, over the road and up the far side, all one trail by name, said not
+      at all. Its turns then make the crosswalk a stretch of its own, "Cross Layhill Road"
+      (`_crossing`), with the turn after it.
+    - A turn spread over two nodes of a path less than JOG_MIN_M apart, where another way
+      meets one of them (`Atom.choice`), is read as the one junction it is: each node's own
+      turn is small (the line is read only to the next node), but together more than
+      BEAR_MAX_DEG ("right" round a little loop of paths at Colt Terrace Park, onto the
+      path to Kersey Road), said at the sharper node."""
+    at: list[float] = []
+    walked = 0.0
+    for atom in atoms:
+        at.append(walked)
+        walked += max(atom.metres, 0.0)
+    out = list(atoms)
+
+    def on_path(atom: Atom) -> bool:
+        return atom.use in PATH_USES or atom.use == CROSSING_USE
+
+    def mark(i: int, turn: float) -> None:
+        side = "right" if turn > 0 else "left"
+        out[i] = replace(out[i], fork=side if abs(turn) > BEAR_MAX_DEG else f"bear_{side}")
+
+    def near_turn(i: int) -> bool:
+        atom = atoms[i]
+        if i == 0 or atom.turn is None or atom.roundabout or out[i].fork is not None:
+            return False
+        if not (on_path(atom) and on_path(atoms[i - 1])):
+            return False
+        # Onto or off a crosswalk (most are unnamed) as well as along one way.
+        walk = CROSSING_USE in (atom.use, atoms[i - 1].use)
+        if not (walk or _same_way(atoms[i - 1], atom)):
+            return False
+        return ALONG_TURN_DEG < abs(atom.turn) < HAIRPIN_DEG
+
+    # Only the turn nearest the road on each side: the one onto the crossing and the one
+    # off it, never a chain of bends along a sidewalk ("then immediately right to stay,
+    # then immediately bear left to stay").
+    # The carriageways of a divided road (events within FAR_SIDE_M of each other) are one
+    # road: one turn onto it and one off it.
+    near = [i for i in range(len(atoms)) if near_turn(i)]
+    roads: list[list[float]] = []
+    for c in sorted(crossings):
+        if roads and c - roads[-1][1] <= FAR_SIDE_M:
+            roads[-1][1] = c
+        else:
+            roads.append([c, c])
+    for first, last in roads:
+        before = [i for i in near if first - FAR_SIDE_M <= at[i] <= first]
+        after = [i for i in near if last < at[i] <= last + FAR_SIDE_M]
+        for i in before[-1:] + after[:1]:
+            mark(i, atoms[i].turn)
+    i = 1
+    while i < len(atoms):
+        atom = atoms[i]
+        if (
+            atom.turn is None
+            or atom.roundabout
+            or out[i].fork is not None
+            or abs(atom.turn) > ALONG_TURN_DEG
+            or not (on_path(atom) and on_path(atoms[i - 1]) and _same_way(atoms[i - 1], atom))
+        ):
+            i += 1
+            continue
+        # The next node that turns at all: a through node between (a junction read
+        # straight on, `turn` 0) is passed over, its own small turn added in.
+        k = next(
+            (
+                k
+                for k in range(i + 1, len(atoms))
+                if (atoms[k].turn is not None and abs(atoms[k].turn) >= THROUGH_NODE_DEG)
+                or at[k] - at[i] >= JOG_MIN_M
+            ),
+            None,
+        )
+        nxt = atoms[k] if k is not None else None
+        if (
+            nxt is None
+            or nxt.turn is None
+            or at[k] - at[i] >= JOG_MIN_M
+            or nxt.roundabout
+            or out[k].fork is not None
+            or abs(nxt.turn) > ALONG_TURN_DEG
+            or not all(on_path(a) and _same_way(atom, a) for a in atoms[i : k + 1])
+            or not any(a.choice for a in atoms[i : k + 1])
+        ):
+            i += 1
+            continue
+        net = sum(a.turn for a in atoms[i : k + 1] if a.turn is not None)
+        # Past BEAR_MAX_DEG together: a gentle curve of a winding trail past a side path is
+        # no turn to say.
+        if BEAR_MAX_DEG < abs(net) < HAIRPIN_DEG and (atom.turn > 0) == (nxt.turn > 0):
+            mark(k if abs(nxt.turn) >= abs(atom.turn) else i, net)
+            i = k + 1
+            continue
+        i += 1
     return out
 
 
@@ -685,6 +796,21 @@ def _first_turn(before: _Run | None, run: _Run, after: _Run | None) -> bool:
     if _same_street(run, after):
         return False
     return _movement_between(run, after) in TURN_WORDS
+
+
+def _turn_before_fork(before: _Run | None, run: _Run, after: _Run | None) -> bool:
+    """Whether `run` is a short stretch turned onto, at least JOG_MIN_M long, with a fork
+    at its end (`_forks`): it cannot go into the stretch after (a fork is never folded
+    into), and folded into the one before, its turn would go unsaid and the fork's would
+    be said in its place (the owner, 2026-11-03, off Veirs Mill Road onto Twinbrook
+    Connector Trail: a left onto the trail, then a right 36 m on where a path meets it,
+    said only as "Right onto Twinbrook Connector Trail"). Kept, the two are said as the
+    jog they are."""
+    if before is None or after is None or not _forks(after) or run.metres < JOG_MIN_M:
+        return False
+    if _same_street(before, run) or _circle(run) or run.untraced:
+        return False
+    return _movement_between(before, run) in TURN_WORDS
 
 
 def _jog(before: _Run | None, run: _Run, after: _Run | None) -> bool:
@@ -818,6 +944,7 @@ def _absorb_tiny(runs: list[_Run]) -> list[_Run]:
                 or _jog(before, run, after)
                 or _last_turn(before, run, after)
                 or _first_turn(before, run, after)
+                or _turn_before_fork(before, run, after)
             ):
                 i += 1
                 continue
@@ -1571,6 +1698,11 @@ def _stretch_sentence(
     words = tier_words(run.tier, run.facility)
     if words == t(PATH_WORDS) and _COMMON_WAY.match(street):
         words = t("traffic-free")
+    elif _COMMON_WAY.match(street) and BESIDE in street:
+        # A sidewalk or path beside a road ("the sidewalk beside Kemp Mill Road") is not
+        # called a bike lane too (the owner, 2026-11-03: "Kemp Mill road doesn't have a
+        # bike lane"): only how busy it is.
+        words = t(TIER_WORDS.get(run.tier, UNRATED_WORDS))
     elif street.endswith(" bike lane"):
         # A bike lane named for its street ("9th Street Northwest protected bike lane")
         # already says what it is: the facility is not said twice.
@@ -1772,12 +1904,12 @@ def _group_run(
 
 def _crossing(
     runs: list[_Run], turns: dict[int, _Turn], starts: list[float], events: list, i: int
-) -> str | None:
+) -> tuple[str, object | None] | None:
     """The road `runs[i]` crosses, where it is a short path across a road between two
     turns of one leg: a path under CROSS_MAX_M, turned (or forked) into and turned out
     of, with a junction event across a road (CROSS_KINDS) within CROSS_NEAR_M of it, or
-    begun or ended on a crosswalk. The event's road, else CROSS_UNNAMED; None where it
-    is not such a stretch."""
+    begun or ended on a crosswalk. The event's road, else CROSS_UNNAMED, with the event
+    matched (None for a crosswalk without one); None where it is not such a stretch."""
     run = runs[i]
     crosswalk = _crosswalk(run)
     if i + 1 >= len(runs) or runs[i + 1].leg != run.leg or not (run.path or crosswalk):
@@ -1800,10 +1932,10 @@ def _crossing(
     ]
     if near:
         middle = (start + end) / 2
-        name = _event_name(min(near, key=lambda event: abs(event.m - middle)))
-        return name or CROSS_UNNAMED
+        nearest = min(near, key=lambda event: abs(event.m - middle))
+        return _event_name(nearest) or CROSS_UNNAMED, nearest
     if crosswalk:
-        return CROSS_UNNAMED
+        return CROSS_UNNAMED, None
     return None
 
 
@@ -1897,8 +2029,8 @@ def _far_side_turns(atoms: list[Atom]) -> list[tuple[float, float, float, str]]:
 def _road_crossed(events: list, at_m: float, run: _Run) -> str:
     """The road crossed at `at_m` (`_far_side_turns`), as `_crossing` names it: the
     nearest junction event across a road (CROSS_KINDS) within CROSS_NEAR_M, else the
-    street a path named for it is beside ("Saint Paul Street bike lane"), else
-    CROSS_UNNAMED."""
+    street a path named for it is beside ("Saint Paul Street bike lane", "path beside
+    Kemp Mill Road"; `facility.sidepath_street`), else CROSS_UNNAMED."""
     near = [
         event
         for event in events
@@ -1906,11 +2038,33 @@ def _road_crossed(events: list, at_m: float, run: _Run) -> str:
     ]
     if near:
         return _event_name(min(near, key=lambda event: abs(event.m - at_m)))
-    label = run.label or ""
-    for words in (" protected bike lane", " bike lane"):
-        if label.endswith(words):
-            return label[: -len(words)]
-    return CROSS_UNNAMED
+    return sidepath_street(run.label) or CROSS_UNNAMED
+
+
+# A divided road's two carriageways crossed this near one another are one crossing to say.
+CROSSING_SAID_APART_M = 40.0
+
+
+def _road_crossings(run: _Run, start: float, events: list, used: set[int], scale: float) -> list:
+    """The busy roads the path stretch `run` (from `start`, in the pieces' measure) crosses
+    straight over, for Ride's "Cross Layhill Road" (the owner, 2026-11-03: "when the trail
+    crosses the road ... announce that"): each junction event of kind "crossing" inside it
+    that no turn took (`used`) and that is not flagged (a flagged one is its own junction
+    entry, said as a busy crossing), about another road than the path's own; a divided
+    road's carriageways within CROSSING_SAID_APART_M are one. Scaled as the entries are."""
+    found: list[dict] = []
+    last: tuple[float, str] | None = None
+    for index, event in enumerate(events):
+        if index in used or event.flagged or event.kind != "crossing":
+            continue
+        if not start <= event.m < start + run.metres or event.road_names & run.names:
+            continue
+        road = _event_name(event) or CROSS_UNNAMED
+        if last is not None and last[1] == road and event.m - last[0] < CROSSING_SAID_APART_M:
+            continue
+        last = (event.m, road)
+        found.append({"at_m": round(event.m * scale), "road": road})
+    return found
 
 
 def _nearest_events(
@@ -2068,7 +2222,14 @@ def describe_both(
                 )
             continue
         # The ways off circles are read from the marked atoms: the runs begin with them.
-        content = _said_turns(content)
+        # The busy roads crossed on this leg (junction events, in the leg's own measure).
+        leg_end = leg_at + sum(atom.metres for atom in content if atom.metres > 0)
+        crossed_at = [
+            e.m - leg_at
+            for e in events or ()
+            if e.kind == "crossing" and leg_at - FAR_SIDE_M <= e.m <= leg_end + FAR_SIDE_M
+        ]
+        content = _said_turns(content, crossed_at)
         content, found = _circle_exits(content)
         exits.update(found)
         far_side.extend(
@@ -2190,11 +2351,36 @@ def describe_both(
                 current.severity or "", 0
             ):
                 turn.event = event
-    for i, turn in turns.items():
+    crossed_by: dict[int, tuple[object, str | None]] = {}
+    for i in sorted(turns):
+        turn = turns[i]
         crossed = _crossing(runs, turns, starts, events, i)
-        if crossed is not None:
-            turn.cross = crossed
-            turn.shape = None
+        if crossed is None:
+            continue
+        name, event = crossed
+        # Two short pieces in a row matched to the same road event (a sidewalk, then the
+        # crosswalk): the road is crossed once, on the crosswalk, else the piece the
+        # road is in, else the first; the other turn keeps its own words.
+        earlier = turns.get(i - 1)
+        if (
+            event is not None
+            and earlier is not None
+            and i - 1 in crossed_by
+            and crossed_by[i - 1][0] is event
+            and runs[i - 1].leg == runs[i].leg
+        ):
+            holds = [
+                2 * _crosswalk(runs[k])
+                + (starts[k] - JUNCTION_M <= event.m <= starts[k] + runs[k].metres + JUNCTION_M)
+                for k in (i - 1, i)
+            ]
+            if holds[1] <= holds[0]:
+                continue
+            earlier.cross = None
+            earlier.shape = crossed_by.pop(i - 1)[1]
+        crossed_by[i] = (event, turn.shape)
+        turn.cross = name
+        turn.shape = None
     for from_at, cross_at, turn_at, side, leg in far_side:
         # The turn the stretch onto the path begins with: at the node turned at, or, where a
         # short piece across the road was folded into the path's stretch, where that begins:
@@ -2237,6 +2423,42 @@ def describe_both(
             turn.across_event = events[found]
             if turn.event is None:
                 turn.event = events[found]
+    # A turn just past a busy road the route crossed straight over on a path (the owner,
+    # 2026-11-03: "when the trail crosses the road or you turn after crossing the road,
+    # announce that"): said with the crossing, "Cross Layhill Road, then right onto ...",
+    # as a far-side turn is, whatever the way turned onto.
+    for i, turn in turns.items():
+        if (
+            i == 0
+            or turn.cross is not None
+            or turn.across is not None
+            or turn.exit is not None
+            or turn.movement not in TURN_WORDS
+            or not runs[i - 1].path
+            or runs[i - 1].leg != runs[i].leg
+            or (i - 1 in turns and turns[i - 1].cross is not None)
+        ):
+            continue
+        ways = runs[i - 1].names | runs[i].names
+        near = [
+            index
+            for index, event in enumerate(events)
+            if event.kind == "crossing"
+            # A flagged crossing keeps its own entry and wording; at the turn's node too.
+            and not event.flagged
+            and max(starts[i - 1], starts[i] - FAR_SIDE_M) <= event.m <= starts[i] + JUNCTION_M
+            and (index not in used or events[index] is turn.event)
+            and not event.road_names & ways
+        ]
+        if not near:
+            continue
+        found = max(near, key=lambda index: events[index].m)
+        turn.across = _event_name(events[found]) or CROSS_UNNAMED
+        turn.across_event = events[found]
+        turn.shape = None
+        used.add(found)
+        if turn.event is None:
+            turn.event = events[found]
     # A busy road crossed straight over a few metres from a turn (or a name change) is
     # not that turn's junction: a crossing, slip lane or along event about neither street,
     # and not the road the turn crosses (`cross`, `across_event`), is given back, so it is
@@ -2276,6 +2498,7 @@ def describe_both(
         severity = None
         if turn is not None and turn.event is not None and turn.event.flagged:
             severity = turn.event.severity
+        crossings = _road_crossings(run, starts[i], events, used, scale) if run.path else []
         entries.append(
             (
                 (start, 1, i),
@@ -2306,6 +2529,7 @@ def describe_both(
                         **({"toward": turn.toward} if turn.toward else {}),
                     },
                     severity=severity,
+                    **({"crossings": crossings} if crossings else {}),
                 ),
             )
         )
