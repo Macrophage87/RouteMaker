@@ -77,7 +77,7 @@ export function BoardingCard({
     };
   }, [leg.bus, at?.[0], at?.[1]]); // eslint-disable-line react-hooks/exhaustive-deps -- the station's place
   const groups = boardingGroups(leg.trains?.length ? leg.trains : [{ line: leg.line, toward: leg.toward }], off);
-  // The next two trains that make the ride, each named by its line and end; else the plan's times.
+  // The next two trains that make the ride, each named by its line; else the plan's times.
   const [first, second] = liveForBoarding(live.trains, groups, leg.stops, { asOf: live.asOf, nowMs: now });
   const next = nextDepartureText(leg, departure, now);
   const later = laterDepartureText(departure, now);
