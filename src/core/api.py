@@ -6133,6 +6133,13 @@ class TrailProfileOut(Schema):
             " points): the map lights up the section the chart and the rating are of."
         ),
     )
+    oneway: Literal["forward", "backward"] | None = Field(
+        default=None,
+        description=(
+            "Ridden one way only: forward as the line is drawn, backward against it; left"
+            " out where both ways. The chart then runs the way it is ridden."
+        ),
+    )
 
 
 @api.get(

@@ -58,3 +58,18 @@ def test_the_two_difficulty_scales_are_kept_with_no_line_of_their_own() -> None:
     kept = trail_facts.facts({"mtb:scale": "2", "mtb:scale:imba": "3", "highway": "path"})
     assert kept == {"mtb:scale": "2", "mtb:scale:imba": "3"}
     assert trail_facts.rows(kept) == []
+
+
+def test_a_one_way_trail_says_so_and_which_way_it_is_drawn() -> None:
+    """The owner, 2026-11-03: "One way should keep it's one way" and "Make that clear when
+    clicking on it too"."""
+    assert trail_facts.facts({"oneway": "yes", "highway": "path"}) == {"oneway": "yes"}
+    assert trail_facts.one_way({"oneway": "yes"}) == "forward"
+    assert trail_facts.one_way({"oneway": "-1"}) == "backward"
+    # oneway:bicycle wins: "no" opens a walkers' one-way to bikes both ways.
+    assert trail_facts.one_way({"oneway": "yes", "oneway:bicycle": "no"}) is None
+    assert trail_facts.one_way({"oneway:bicycle": "yes"}) == "forward"
+    for both in ({"oneway": "no"}, {"oneway": "alternating"}, {}, None):
+        assert trail_facts.one_way(both) is None
+    assert trail_facts.rows({"oneway": "yes"}) == [("oneway", "One way", trail_facts.ONE_WAY_WORDS)]
+    assert trail_facts.rows({"oneway": "no"}) == []
