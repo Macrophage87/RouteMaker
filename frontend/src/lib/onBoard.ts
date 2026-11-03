@@ -35,6 +35,8 @@ export interface OnBoardLeg {
   bus: boolean;
   /** The planned wait at the boarding stop (seconds), for the timetable's guess at when the rider boarded. */
   waitS: number;
+  /** A frequent service's minutes between departures; null for a timed one (its departure says when). */
+  everyMin?: number | null;
 }
 
 export interface OnBoardState {
@@ -59,7 +61,7 @@ export function onBoardLeg(step: TransitStep): OnBoardLeg | null {
   const stops = step.stops ?? [];
   if (stops.length < 2) return null;
   const line = step.lines.length > 0 ? step.lines.join(" / ") : (step.system ?? "");
-  return { stops, line, toward: step.toward ?? null, bus: step.mode === "bus", waitS: step.wait_s };
+  return { stops, line, toward: step.toward ?? null, bus: step.mode === "bus", waitS: step.wait_s, everyMin: step.every_min ?? null };
 }
 
 export function onBoardStart(now: number): OnBoardState {
@@ -185,4 +187,27 @@ export function onBoardRows(leg: OnBoardLeg, state: OnBoardState): { name: strin
 export function stopsLeftText(leg: OnBoardLeg, state: Pick<OnBoardState, "at">): string {
   const left = leg.stops.length - 1 - state.at;
   return left === 1 ? t("1 stop left") : t("{count} stops left", { count: left });
+}
+
+/**
+ * The boarding card's "Next train" (Stephen, 2026-11-03: "Line, final destination, actual destination, next train"): a
+ * timed departure as its time and the minutes to it ("6:27 pm, in 12 min"), "Now" once due; a frequent service as how
+ * often it runs ("every 5 min"); null where the plan says neither.
+ */
+export function nextDepartureText(leg: Pick<OnBoardLeg, "everyMin">, departure: { departs: string; departs_at: string } | null, nowMs: number): string | null {
+  if (departure) return timeAndMinutes(departure.departs, departure.departs_at, nowMs);
+  return leg.everyMin ? t("every {min} min", { min: String(leg.everyMin) }) : null;
+}
+
+/** The one after it, in case the rider can't make it (Stephen, 2026-11-03: "put the train after too"); null with none. */
+export function laterDepartureText(departure: { next?: string | null; next_at?: string | null } | null, nowMs: number): string | null {
+  if (!departure?.next) return null;
+  return departure.next_at ? timeAndMinutes(departure.next, departure.next_at, nowMs) : departure.next;
+}
+
+function timeAndMinutes(time: string, iso: string, nowMs: number): string {
+  const at = Date.parse(iso);
+  if (!Number.isFinite(at)) return time;
+  const min = Math.ceil((at - nowMs) / 60_000);
+  return min <= 0 ? t("Now") : t("{time}, in {min} min", { time, min: String(min) });
 }

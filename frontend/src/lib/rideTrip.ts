@@ -74,6 +74,8 @@ export interface RideTrip {
   departure: TransitDeparture | null;
   /** The Metro or Metrobus boarding the finish leads to: where its next train or bus is, while waiting (lib/nextVehicle.ts). */
   boarding?: NextVehicleAsk | null;
+  /** The plan's step of the first train or bus after the line, by its place; null with none (the departure is its own where `step` matches). */
+  boardStep?: number | null;
   rest: RideRest | null;
   /** The line is ridden on a share bike (Ride mode's dock button and undocked time, lib/rideDock.ts). */
   shareBike?: boolean;
@@ -321,7 +323,7 @@ function transitTrip(route: RouteResponse, destination: LonLat | null): RideTrip
   }
   const boarding = boardAt > line ? askOf(steps[boardAt]) : null;
   const onFoot = walksLine(route) ? { turns: lineStep.turns ?? [] } : undefined;
-  return { approach, finish, departure, boarding, rest, shareBike: lineStep.mode === "bikeshare", onward: onwardOf(steps, line), ...(onFoot ? { onFoot } : {}) };
+  return { approach, finish, departure, boarding, boardStep: boardAt > line ? boardAt : null, rest, shareBike: lineStep.mode === "bikeshare", onward: onwardOf(steps, line), ...(onFoot ? { onFoot } : {}) };
 }
 
 /** A walk step as a line with its turns, where it was routed. */

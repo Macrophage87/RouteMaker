@@ -2,10 +2,11 @@
 // underground too, else by the timetable; "Next stop" one before the rider's, then "Get off here".
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import type { TransitStep } from "./api.ts";
 import type { LonLat } from "./geo.ts";
 import type { RideFix } from "./navigate.ts";
-import { STALE_MS, onBoardLeg, onBoardRows, onBoardStart, onBoardStep, stopsLeftText, type OnBoardState } from "./onBoard.ts";
+import { STALE_MS, laterDepartureText, nextDepartureText, onBoardLeg, onBoardRows, onBoardStart, onBoardStep, stopsLeftText, type OnBoardState } from "./onBoard.ts";
 import { onwardOf, onwardStart, onwardStep } from "./onward.ts";
 
 const M_PER_DEG = 111_195;
@@ -174,4 +175,27 @@ test("a walk not seen to end (no GPS on the way down) hands over after its plann
   assert.equal(onwardStep(parts, s, 200_000, null, "full").state.index, 0);
   assert.equal(onwardStep(parts, s, (180 * 1.5 + 180) * 1000 + 1, null, "full").state.index, 1);
   assert.equal(onwardStep(parts, s, 60_000, fix(north(30), 250, 60_000), "full").state.index, 1);
+});
+
+test("waiting to board, the card's next departure: a timed one's time and minutes, a frequent one's interval (Stephen, 2026-11-03)", () => {
+  const departs_at = "2026-11-03T18:27:00-05:00";
+  const at = Date.parse(departs_at);
+  assert.equal(nextDepartureText({ everyMin: null }, { departs: "6:27 pm", departs_at }, at - 12 * 60_000), "6:27 pm, in 12 min");
+  assert.equal(nextDepartureText({ everyMin: null }, { departs: "6:27 pm", departs_at }, at - 30_000), "6:27 pm, in 1 min");
+  assert.equal(nextDepartureText({ everyMin: null }, { departs: "6:27 pm", departs_at }, at + 1000), "Now");
+  assert.equal(nextDepartureText({ everyMin: 5 }, null, at), "every 5 min");
+  assert.equal(nextDepartureText({ everyMin: null }, null, at), null);
+  // The one after it, in case the rider can't make it.
+  assert.equal(laterDepartureText({ next: "7:15 pm", next_at: "2026-11-03T19:15:00-05:00" }, at), "7:15 pm, in 48 min");
+  assert.equal(laterDepartureText({ next: null, next_at: null }, at), null);
+  assert.equal(laterDepartureText(null, at), null);
+});
+
+test("the ride screen shows the boarding as rows (Line, Toward, Get off, Next train), not the plan's sentence", () => {
+  const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
+  const card = readFileSync(new URL("../OnBoardCard.tsx", import.meta.url), "utf8");
+  assert.match(ride, /\{boardingLeg \? \(\s*<BoardingCard leg=\{boardingLeg\} departure=\{boardingDeparture\} \/>/);
+  assert.match(ride, /const boardingDeparture = trip\?\.departure && trip\.boardStep != null && trip\.departure\.step === trip\.boardStep \? trip\.departure : null;/);
+  assert.match(ride, /<DepartureTimer departure=\{trip\.departure\} announce=\{notify\} noticeOnly=\{!!boardingLeg\} \/>/);
+  assert.match(card, /<dl className="boarding">[\s\S]*t\("Line"\)[\s\S]*t\("Toward"\)[\s\S]*t\("Get off"\)[\s\S]*t\("Next bus"\) : t\("Next train"\)[\s\S]*t\("After that"\)/);
 });
