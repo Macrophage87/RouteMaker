@@ -132,9 +132,11 @@ ROCK_CREEK_NAME = "Rock Creek Park"
 # --- The sun ------------------------------------------------------------------------
 
 
-def sun_times(day: date, lat: float = _LAT0, lon: float = -77.1) -> tuple[datetime, datetime]:
+def sun_times(
+    day: date, lat: float = _LAT0, lon: float = -77.1, altitude_deg: float = -0.833
+) -> tuple[datetime, datetime]:
     """Sunrise and sunset on `day` (NOAA's sunrise equation, to a minute or two), as aware UTC
-    times."""
+    times. `altitude_deg` -6 gives civil dawn and dusk instead."""
     n = (day - date(2000, 1, 1)).days - lon / 360.0  # the local solar noon, days after J2000
     m = math.radians((357.5291 + 0.98560028 * n) % 360)
     c = 1.9148 * math.sin(m) + 0.02 * math.sin(2 * m) + 0.0003 * math.sin(3 * m)
@@ -142,7 +144,7 @@ def sun_times(day: date, lat: float = _LAT0, lon: float = -77.1) -> tuple[dateti
     transit = n + 0.0053 * math.sin(m) - 0.0069 * math.sin(2 * ecl)
     dec = math.asin(math.sin(ecl) * math.sin(math.radians(23.44)))
     phi = math.radians(lat)
-    cos_w = (math.sin(math.radians(-0.833)) - math.sin(phi) * math.sin(dec)) / (
+    cos_w = (math.sin(math.radians(altitude_deg)) - math.sin(phi) * math.sin(dec)) / (
         math.cos(phi) * math.cos(dec)
     )
     half = math.degrees(math.acos(max(-1.0, min(1.0, cos_w)))) / 360.0
