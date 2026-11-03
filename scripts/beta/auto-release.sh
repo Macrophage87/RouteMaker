@@ -48,7 +48,8 @@
 #      the compose gate runs, migrations run (only after the snapshot), the front end is installed
 #      (index.html last), the api and worker start, photon and the routers are recreated if a
 #      compose file changed, the routers restart if a valhalla/*.json changed (the routers: the
-#      four, and valhalla-offroad, valhalla-mtb and valhalla-paved once their tiles are on the host), /healthz is waited for,
+#      four, and valhalla-offroad, valhalla-mtb and valhalla-paved once their tiles are on the host; a stopped
+#      valhalla-paved only with the memory for it, RM_CD_PAVED_MIN_MIB), /healthz is waited for,
 #      `migrate --check` and collectstatic run in the api, and the local smoke tests run. The
 #      release is then recorded as deployed. Last,
 #      if a tile FORMAT_VERSION changed, the pre-draw runs and is waited for (OWNER-DECISIONS 436);
@@ -76,6 +77,8 @@
 #   RM_CD_KEEP                   release snapshots kept in $RM_STATE/cd/backups [3]
 #   RM_CD_WAIT_ALERT_MIN         minutes a release may wait (CI, node_modules, the node image, the
 #                                network) before the owner is alerted [30]
+#   RM_CD_PAVED_MIN_MIB          MiB of available memory plus what this project's running containers
+#                                hold, below which a stopped valhalla-paved is left stopped [8803]
 #   RM_CD_HOST                   Host header for the local health check [RM_BETA_HOST from the
 #                                checkout's .env; one of the two is required]
 # DOCKER and CURL name the docker and curl binaries [docker, curl] (the tests use stubs).
@@ -93,11 +96,6 @@ SECRET_KEYS="PGPASSWORD DJANGO_SECRET_KEY KEY_ENCRYPTION_KEY DISCORD_CLIENT_SECR
 UNIT=routemaker-beta-cd
 
 die() { echo "auto-release: $*" >&2; exit 2; }
-# Road Bike's router starts only where available memory plus what this project's running
-# containers already hold reaches the startup peak (8086 MiB, every cap) plus a 0.7 GiB margin.
-# Counting `available` alone, with the stack up, counted postgis, photon and memcached twice and
-# left it stopped on a host with room (2026-11-03: 5759 available + 3258 held = 9017).
-PAVED_MIN_MIB="${RM_CD_PAVED_MIN_MIB:-8803}"
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 self="$here/$(basename "${BASH_SOURCE[0]}")"
 
@@ -129,6 +127,12 @@ load_vars() {
 	[ -n "$health_host" ] || die "no host for the health check: set RM_BETA_HOST=<the beta's name> in $RM_SRC/.env (docs/BETA-RUNBOOK.md, section 0)"
 	docker_free_gib=${RM_CD_DOCKER_FREE_GIB:-3}
 	case "$docker_free_gib" in '' | *[!0-9]*) die "RM_CD_DOCKER_FREE_GIB must be a whole number of GiB" ;; esac
+	# Road Bike's router starts only where available memory plus what this project's running
+	# containers already hold reaches the startup peak (8086 MiB, every cap) plus a 0.7 GiB margin.
+	# Counting `available` alone, with the stack up, counted postgis, photon and memcached twice
+	# and left it stopped on a host with room (2026-11-03: 5759 available + 3258 held = 9017).
+	paved_min_mib=${RM_CD_PAVED_MIN_MIB:-8803}
+	case "$paved_min_mib" in '' | *[!0-9]*) die "RM_CD_PAVED_MIN_MIB must be a whole number of MiB" ;; esac
 	progress="$cd_dir/in-progress"
 	# The agent's own files: the installed copy, so a release cannot change the agent under a pass.
 	logic="$cd_dir/bin/cd_logic.py"
@@ -140,12 +144,13 @@ dk() { "${DOCKER:-docker}" "$@"; }
 bc() { "$RM_SRC/scripts/beta/beta-compose.sh" "$@"; }
 paved_room_mib() { # available memory plus this project's containers' resident memory, in MiB
 	local avail ids held=0
-	avail="$(awk '/^MemAvailable:/ {print int($2 / 1024)}' /proc/meminfo)"
+	# RM_CD_MEMINFO: the tests' stand-in for /proc/meminfo
+	avail="$(awk '/^MemAvailable:/ {print int($2 / 1024)}' "${RM_CD_MEMINFO:-/proc/meminfo}")"
 	[ -n "$avail" ] || return 1
 	ids="$(bc ps -q </dev/null)" || return 1
 	if [ -n "$ids" ]; then
 		# shellcheck disable=SC2086 # one argument per container id
-		held="$(timeout 30 docker stats --no-stream --format '{{.MemUsage}}' $ids </dev/null |
+		held="$(timeout 30 "${DOCKER:-docker}" stats --no-stream --format '{{.MemUsage}}' $ids </dev/null |
 			awk '{ v = $1; u = v; sub(/^[0-9.]+/, "", u); sub(/[A-Za-z]+$/, "", v)
 				f = (u == "GiB") ? 1024 : (u == "MiB") ? 1 : (u == "KiB") ? 1 / 1024 : (u == "B") ? 1 / 1048576 : 0
 				s += v * f } END { print int(s) }')" || return 1
@@ -710,8 +715,21 @@ deploy() { # tag new-sha gate-file
 	mark started "start the api and worker" || return 1
 	step "start the api and worker" bc up -d api worker </dev/null || return 1
 	# The routers to recreate or restart: the four, and each trail router whose tiles are there.
-	local -a running
-	read -ra running <<<"$(routers)"
+	# Road Bike's router is the one a short host leaves stopped (BETA-RUNBOOK.md, the memory
+	# threshold): a stopped one without room for its startup peak is dropped from the list, so
+	# no step below (recreate, start, restart) starts it. A running one stays in.
+	local -a running=() all
+	local router room
+	read -ra all <<<"$(routers)"
+	for router in "${all[@]}"; do
+		if [ "$router" = valhalla-paved ] && [ -z "$(bc ps -q --status running valhalla-paved </dev/null 2>/dev/null)" ]; then
+			if ! { room="$(paved_room_mib)" && [ "$room" -ge "$paved_min_mib" ]; }; then
+				say "WARNING: valhalla-paved left stopped: ${room:-unknown} MiB of the $paved_min_mib it needs (available plus what this project's containers hold); Road Bike is planned on the standard graph"
+				continue
+			fi
+		fi
+		running+=("$router")
+	done
 	if [ "$(kv compose_changed "$gate_file")" = 1 ]; then
 		mark services "recreate photon and the routers whose compose settings changed" || return 1
 		step "recreate photon and the routers" bc up -d photon "${running[@]}" </dev/null || return 1
@@ -721,22 +739,8 @@ deploy() { # tag new-sha gate-file
 	# tiles arrived with a map swap planned Mountain Bike on the standard graph for releases on end.
 	# `up -d` leaves a running one alone.
 	local -a trail=()
-	local router room
 	for router in "${running[@]}"; do
-		case "$router" in
-		valhalla-paved)
-			# Road Bike's router is the one a short host leaves stopped (BETA-RUNBOOK.md, the
-			# memory threshold): start it only with room for the startup peak.
-			if [ -z "$(bc ps -q --status running valhalla-paved </dev/null 2>/dev/null)" ]; then
-				if room="$(paved_room_mib)" && [ "$room" -ge "$PAVED_MIN_MIB" ]; then
-					trail+=("$router")
-				else
-					say "WARNING: valhalla-paved left stopped: ${room:-unknown} MiB of the $PAVED_MIN_MIB it needs (available plus what this project's containers hold); Road Bike is planned on the standard graph"
-				fi
-			fi
-			;;
-		valhalla-offroad | valhalla-mtb) trail+=("$router") ;;
-		esac
+		case "$router" in valhalla-offroad | valhalla-mtb | valhalla-paved) trail+=("$router") ;; esac
 	done
 	if [ "${#trail[@]}" -gt 0 ]; then
 		# Never a reason to roll a release back: without them those rides are planned on the

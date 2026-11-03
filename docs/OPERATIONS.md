@@ -4869,7 +4869,7 @@ ok"). `OPEN:` lists ways a bicycle may use; `FOUND NONE` on a router that keeps
 trails usually means it was not restarted onto the new build. Then two trips,
 planned through the api as the planner plans them and map-matched on the router
 that served them. `--host` is the first name in the deployment's
-`DJANGO_ALLOWED_HOSTS`, and `$REPORTS` is the folder `locate` printed (inside the
+`DJANGO_ALLOWED_HOSTS`, and `$REPORTS` is the folder of the file `locate` printed (inside the
 container: `/data/rebuild/cloud-reports/<build id>/reports` after a cloud build, else
 `/data/rebuild/reports`):
 

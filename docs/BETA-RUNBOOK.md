@@ -112,7 +112,7 @@ What to expect on this server (the owner's check, 2026-10-04); a check below tha
 
 ```sh
 . "$HOME/routemaker-beta-state/vars.sh"
-free -m; docker stats --no-stream --format '{{.Name}} {{.MemUsage}}'   # "available" plus this project's containers' usage must be at least 8803 MiB: the 8086 MiB startup peak plus the checker's 0.7 GiB margin (the caps total 7830 MiB = 7.65 GiB resident)
+free -m; ids=$("$RM_SRC/scripts/beta/beta-compose.sh" ps -q); [ -z "$ids" ] || docker stats --no-stream --format '{{.Name}} {{.MemUsage}}' $ids   # "available" plus the usage of this project's containers listed must be at least 8803 MiB: the 8086 MiB startup peak plus the checker's 0.7 GiB margin (the caps total 7830 MiB = 7.65 GiB resident)
 uname -m; docker info -f '{{.Architecture}}'   # both x86_64: the api image is built at home on x86_64; anything else is a stop
 df -h /data /                            # /data: at least 25 GB free (bundle 4 GB, installed copy 4 GB, backups)
 findmnt -no SOURCE,FSTYPE,OPTIONS /data  # a filesystem of its own; nofail in the options is expected (see "Reboot and a late /data")

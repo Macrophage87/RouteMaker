@@ -596,6 +596,9 @@ STUB_COMPOSE = """#!/bin/sh
 echo "$*" >> "$STUB_LOG"
 case "$*" in
   "ps --status running --services") [ -n "${STUB_RUNNING:-}" ] && printf '%s\\n' $STUB_RUNNING ;;
+  # STUB_PAVED_UP=1: valhalla-paved is running; STUB_IDS: this project's container ids
+  "ps -q --status running valhalla-paved") [ -n "${STUB_PAVED_UP:-}" ] && echo paved1 ;;
+  "ps -q") [ -n "${STUB_IDS:-}" ] && printf '%s\\n' $STUB_IDS ;;
   *"--format {{.Health}}"*) echo healthy ;;
   *pg_dump*) echo "PGDMP a fake dump" ;;
   *django_migrations*) echo t ;;
@@ -645,6 +648,9 @@ case "$*" in
     fi
     exit "${STUB_BUILD_RC:-0}" ;;
   info*) [ -n "${STUB_DOCKER_ROOT:-}" ] && echo "$STUB_DOCKER_ROOT"; exit 0 ;;
+  # STUB_STATS: MemUsage lines, "|" between them; STUB_STATS_RC: docker stats fails
+  stats*) [ -n "${STUB_STATS_RC:-}" ] && exit "$STUB_STATS_RC"
+    printf '%s\n' "${STUB_STATS:-}" | tr '|' '\n'; exit 0 ;;
   inspect*) echo "stub/postgis:16"; exit 0 ;;
   run*)
     out=""; src=""; dest=""; saved=""; prev=""
@@ -1477,12 +1483,40 @@ def _paved_tiles(beta: Beta) -> None:
     (beta.data / "tiles" / "paved" / "current").symlink_to("b1")
 
 
-def test_road_bike_s_router_is_started_when_the_memory_is_there(beta: Beta) -> None:
+# What this project's containers hold, in the units `docker stats` mixes: 1536 + 1228.8 + 300 +
+# 0.5 MiB = 3065 MiB.
+_HELD = "1.5GiB / 2GiB|1.2GiB / 2GiB|300MiB / 1GiB|512KiB / 64MiB"
+
+
+def _paved_host(beta: Beta, available_mib: int, **env: str) -> dict[str, str]:
     _paved_tiles(beta)
+    meminfo = beta.tmp / "meminfo"
+    meminfo.write_text(f"MemTotal: 16000000 kB\nMemAvailable: {available_mib * 1024} kB\n")
+    return {
+        "STUB_HAS_IMAGES": "1",
+        "STUB_RUNNING": "postgis",
+        "RM_CD_MEMINFO": str(meminfo),
+        "STUB_IDS": "c1 c2 c3 c4",
+        "STUB_STATS": _HELD,
+        **env,
+    }
+
+
+def _paved_started(calls: str) -> bool:
+    return any(
+        "valhalla-paved" in line and line.startswith(("up -d", "restart "))
+        for line in calls.splitlines()
+    )
+
+
+def test_road_bike_s_router_starts_where_available_plus_held_memory_reaches_the_threshold(
+    beta: Beta,
+) -> None:
     beta.release("v0.2.0", {"src/core/a.py": "x = 2\n"})
-    done = beta.agent("run", STUB_HAS_IMAGES="1", STUB_RUNNING="postgis", RM_CD_PAVED_MIN_MIB="0")
+    done = beta.agent("run", **_paved_host(beta, 5738))  # 5738 + 3065 = 8803
     assert done.returncode == 0, done.stdout + done.stderr
     assert "up -d valhalla-paved" in beta.calls().splitlines()
+    assert "left stopped" not in done.stdout
 
 
 def test_a_host_short_of_memory_leaves_road_bike_s_router_stopped_and_still_deploys(
@@ -1490,15 +1524,58 @@ def test_a_host_short_of_memory_leaves_road_bike_s_router_stopped_and_still_depl
 ) -> None:
     """2026-11-03: the agent started valhalla-paved with no memory check; the deploy now leaves
     it stopped with a warning where available plus held memory is under the threshold."""
-    _paved_tiles(beta)
     beta.release("v0.2.0", {"src/core/a.py": "x = 2\n"})
-    done = beta.agent(
-        "run", STUB_HAS_IMAGES="1", STUB_RUNNING="postgis", RM_CD_PAVED_MIN_MIB="99999999"
-    )
+    done = beta.agent("run", **_paved_host(beta, 5737))  # 8802
     assert done.returncode == 0, done.stdout + done.stderr
     assert "deployed: v0.2.0" in beta.status()
-    assert "valhalla-paved left stopped" in done.stdout
-    assert "up -d valhalla-paved" not in beta.calls().splitlines()
+    assert "valhalla-paved left stopped: 8802 MiB of the 8803" in done.stdout
+    assert not _paved_started(beta.calls())
+
+
+def test_a_failed_memory_reading_leaves_road_bike_s_router_stopped(beta: Beta) -> None:
+    beta.release("v0.2.0", {"src/core/a.py": "x = 2\n"})
+    done = beta.agent("run", **_paved_host(beta, 9000, STUB_STATS_RC="1"))
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "deployed: v0.2.0" in beta.status()
+    assert "valhalla-paved left stopped: unknown MiB" in done.stdout
+    assert not _paved_started(beta.calls())
+
+
+def test_a_compose_change_on_a_short_host_recreates_the_routers_but_not_road_bike_s(
+    beta: Beta,
+) -> None:
+    beta.release("v0.2.0", {"compose.beta.yaml": "services: {}\n"})
+    done = beta.agent("run", **_paved_host(beta, 1000))
+    assert "deployed: v0.2.0" in beta.status(), done.stdout
+    assert f"up -d photon {ROUTERS}\n" in beta.calls()
+    assert not _paved_started(beta.calls())
+
+
+def test_a_router_config_change_on_a_short_host_never_restarts_a_stopped_road_bike_router(
+    beta: Beta,
+) -> None:
+    beta.release("v0.2.0", {"valhalla/valhalla-standard.json": _vjson(logging__color=True)})
+    done = beta.agent("run", **_paved_host(beta, 1000))
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert _restarts(beta.calls()) == [f"restart {ROUTERS}"]
+
+
+def test_a_running_road_bike_router_is_restarted_with_the_others_and_never_measured(
+    beta: Beta,
+) -> None:
+    beta.release("v0.2.0", {"valhalla/valhalla-standard.json": _vjson(logging__color=True)})
+    done = beta.agent("run", **_paved_host(beta, 1000, STUB_PAVED_UP="1"))
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "left stopped" not in done.stdout
+    assert _restarts(beta.calls()) == [f"restart {ROUTERS} valhalla-paved"]
+    assert "docker stats" not in beta.calls()
+
+
+def test_a_threshold_that_is_not_a_number_stops_the_agent(beta: Beta) -> None:
+    beta.vars.write_text(beta.vars.read_text() + "export RM_CD_PAVED_MIN_MIB=8.8G\n")
+    done = beta.agent("run")
+    assert done.returncode == 2
+    assert "RM_CD_PAVED_MIN_MIB must be a whole number" in done.stderr
 
 
 def test_a_failing_row_sync_is_a_warning_not_a_rollback(beta: Beta) -> None:
