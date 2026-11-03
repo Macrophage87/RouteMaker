@@ -91,6 +91,11 @@ export const ICON_PATHS = {
   "elevator-out": "<rect x=\"5\" y=\"3\" width=\"14\" height=\"18\" rx=\"2\"/><path d=\"M9.5 10 12 7l2.5 3M9.5 14l2.5 3 2.5-3M3 21 21 3\"/>",
   // A rain cloud (weather along the route, Stephen 2026-10-24).
   "rain": "<path d=\"M7 15a4 4 0 0 1-.6-8 5.5 5.5 0 0 1 10.6 1.5A3.3 3.3 0 0 1 17 15z\"/><path d=\"M8 18l-1 2.5M12 18l-1 2.5M16 18l-1 2.5\"/>",
+  // The ride's graphs of the road ahead (lib/aheadGraph.ts, 2026-11-03): a base line under each, its own kind of chart above.
+  "graph-stress": "<path d=\"M2.5 21h19\"/><path d=\"M4 21v-5h4v5M10 21v-10h4v10M16 21v-15h4v15\" fill=\"currentColor\" stroke=\"none\"/>",
+  "graph-elevation": "<path d=\"M2.5 21h19\"/><path d=\"M3 17l4.5-6 3.5 3.5 4-8 6 9\"/>",
+  "graph-flow": "<path d=\"M2.5 21h19\"/><path d=\"M3 18V9c3 0 3 5 6 5s3-8 6-8 3 5 6 5v7z\" fill=\"currentColor\" stroke=\"none\"/>",
+  "graph-corkers": "<path d=\"M2.5 21h19\"/><path d=\"M7 21v-9M17 21v-9\"/><circle cx=\"7\" cy=\"7\" r=\"3.5\"/><circle cx=\"17\" cy=\"7\" r=\"3.5\"/>",
 } as const;
 
 export type IconName = keyof typeof ICON_PATHS;

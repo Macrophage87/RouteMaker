@@ -2,11 +2,14 @@
 // clicking on a trail, highlight that trail so you know where the elevation profile and rating begins and ends.").
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import * as spec from "@maplibre/maplibre-gl-style-spec";
 import {
   TRAIL_HIGHLIGHT_EDGE_LAYER_ID,
   TRAIL_HIGHLIGHT_ENDS_LAYER_ID,
   TRAIL_HIGHLIGHT_GLOW_LAYER_ID,
+  TRAIL_HIGHLIGHT_LETTERS_LAYER_ID,
   TRAIL_HIGHLIGHT_SOURCE_ID,
+  trailHighlightLayers,
   attachTrailHighlight,
   setHoverTrail,
   setPanelTrail,
@@ -48,6 +51,35 @@ test("the lit trail is its line and a dot at each end", () => {
   assert.equal(trailHighlightData([null, [[-77, 39]]]).features.length, 0);
 });
 
+// The owner, 2026-11-03: "have a beginning and end icons on the trail with the compass directions inside the marker
+// and on the graph so it's easy to tell them apart."
+test("each end of the lit trail carries its compass point, as the chart's ends do; a loop's ends are plain dots", () => {
+  const letters = (line: LonLat[]) =>
+    trailHighlightData([line]).features.slice(1).map((f) => (f as { properties: { letter?: string } }).properties.letter);
+  assert.deepEqual(letters([[-77.0, 38.91], [-77.0, 38.9]]), ["N", "S"]);
+  assert.deepEqual(letters([[-77.02, 38.9], [-77.0, 38.9]]), ["W", "E"]);
+  assert.deepEqual(letters([[-77.0, 38.9], [-77.0001, 38.9001]]), [undefined, undefined]);
+  const layer = trailHighlightLayers(false).find((l) => (l as { id: string }).id === TRAIL_HIGHLIGHT_LETTERS_LAYER_ID) as {
+    type: string; filter: unknown; layout: Record<string, unknown>;
+  };
+  assert.equal(layer.type, "symbol");
+  assert.deepEqual(layer.layout["text-field"], ["get", "letter"]);
+  assert.equal(layer.layout["text-allow-overlap"], true, "always drawn: the marker is the point of the highlight");
+  assert.deepEqual(layer.layout["text-font"], ["Noto Sans Medium"], "a face the base map's glyphs carry");
+});
+
+test("the highlight's layers are a style MapLibre accepts, with the accessibility switch on and off", () => {
+  for (const strong of [false, true]) {
+    const errors = spec.validateStyleMin({
+      version: 8,
+      glyphs: "https://x/{fontstack}/{range}.pbf",
+      sources: { [TRAIL_HIGHLIGHT_SOURCE_ID]: { type: "geojson", data: trailHighlightData([LINE]) } },
+      layers: trailHighlightLayers(strong),
+    } as never);
+    assert.deepEqual(errors.map((e: { message: string }) => e.message), []);
+  }
+});
+
 test("the band goes under the trail's own lines, the ends on top, and both clear when the trail is let go", () => {
   const map = stubMap([MTB_TICKS_LAYER_ID, "mtb-trail-label"]);
   const detach = attachTrailHighlight(map);
@@ -55,7 +87,7 @@ test("the band goes under the trail's own lines, the ends on top, and both clear
     // Nothing lit, nothing added.
     assert.equal(map.data(), undefined);
     setHoverTrail(LINE);
-    assert.deepEqual(map.order, [TRAIL_HIGHLIGHT_EDGE_LAYER_ID, TRAIL_HIGHLIGHT_GLOW_LAYER_ID, MTB_TICKS_LAYER_ID, "mtb-trail-label", TRAIL_HIGHLIGHT_ENDS_LAYER_ID]);
+    assert.deepEqual(map.order, [TRAIL_HIGHLIGHT_EDGE_LAYER_ID, TRAIL_HIGHLIGHT_GLOW_LAYER_ID, MTB_TICKS_LAYER_ID, "mtb-trail-label", TRAIL_HIGHLIGHT_ENDS_LAYER_ID, TRAIL_HIGHLIGHT_LETTERS_LAYER_ID]);
     assert.equal(map.data()?.features.length, 3);
     // The panel's trail and the one under the mouse together.
     setPanelTrail(OTHER);
@@ -81,7 +113,8 @@ test("a trail's hover card hands the map the way's line from its profile", async
     const lit: LonLat[][] = [];
     const element = await trailHoverChart("https://example.test", [-77.1, 39.1], (line) => lit.push(line))();
     assert.ok(element);
-    assert.deepEqual(lit, [LINE]);
+    // Drawn east to west, mostly: turned, so it reads west to east (lib/trailProfile.ts northOrWestFirst).
+    assert.deepEqual(lit, [[...LINE].reverse()]);
   } finally {
     globalThis.fetch = real;
   }
