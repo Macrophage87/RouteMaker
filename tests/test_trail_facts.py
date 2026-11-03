@@ -69,6 +69,11 @@ def test_a_one_way_trail_says_so_and_which_way_it_is_drawn() -> None:
     # oneway:bicycle wins: "no" opens a walkers' one-way to bikes both ways.
     assert trail_facts.one_way({"oneway": "yes", "oneway:bicycle": "no"}) is None
     assert trail_facts.one_way({"oneway:bicycle": "yes"}) == "forward"
+    assert trail_facts.facts({"oneway:bicycle": "-1"}) == {"oneway:bicycle": "-1"}
+    assert trail_facts.one_way({"oneway:bicycle": "-1"}) == "backward"
+    # Bikes barred one way is one-way for a bike.
+    assert trail_facts.one_way({"bicycle:backward": "no"}) == "forward"
+    assert trail_facts.one_way({"bicycle:forward": "no", "oneway": "no"}) == "backward"
     for both in ({"oneway": "no"}, {"oneway": "alternating"}, {}, None):
         assert trail_facts.one_way(both) is None
     assert trail_facts.rows({"oneway": "yes"}) == [("oneway", "One way", trail_facts.ONE_WAY_WORDS)]

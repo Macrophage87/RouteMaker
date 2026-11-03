@@ -33,11 +33,13 @@ KEYS = (
     # way", and "Make that clear when clicking on it too"): `one_way`. The panel's "One way" line.
     "oneway",
     "oneway:bicycle",
+    "bicycle:forward",
+    "bicycle:backward",
 )
 
 # The panel's "One way" line: the elevation profile and its end markers run the way it is ridden
 # (frontend/src/lib/trailProfile.ts northOrWestFirst keeps a one-way trail's direction).
-ONE_WAY_WORDS = "Ride it in one direction only, as the elevation profile runs"
+ONE_WAY_WORDS = "Yes: ride it as the elevation chart runs, left to right"
 
 # A kept value is at most this long (a tag is free text; the panel needs a word or two).
 MAX_VALUE = 40
@@ -124,7 +126,7 @@ def facts(tags: dict[str, str]) -> dict[str, str] | None:
 
 
 _FORWARD = frozenset({"yes", "1", "true"})
-_BACKWARD = frozenset({"-1", "reverse"})
+_BACKWARD = frozenset({"-1"})
 
 
 def one_way(kept: object) -> str | None:
@@ -133,6 +135,11 @@ def one_way(kept: object) -> str | None:
     `oneway` (Key:oneway:bicycle: "oneway:bicycle=no" opens a one-way to bicycles)."""
     if not isinstance(kept, dict):
         return None
+    # Bikes barred one way ("bicycle:backward=no"): one-way for a bike, whatever `oneway` says.
+    if str(kept.get("bicycle:backward", "")).strip().lower() == "no":
+        return "forward"
+    if str(kept.get("bicycle:forward", "")).strip().lower() == "no":
+        return "backward"
     for key in ("oneway:bicycle", "oneway"):
         value = kept.get(key)
         if not isinstance(value, str) or not value.strip():
