@@ -241,3 +241,17 @@ def test_an_empty_table_writes_nothing(segment_schemas, tmp_path):
             schema=live,
         )
     assert not out.exists()
+
+
+@pytest.mark.parametrize(
+    ("side", "road"),
+    [
+        ("path beside Kemp Mill Road", "Kemp Mill Road"),
+        ("Kemp Mill Road bike lane", "Kemp Mill Road bike lane"),
+        (None, None),
+    ],
+)
+def test_a_shared_path_climbs_as_its_street(side, road) -> None:
+    """A climb on the path beside a road is named for the road (2026-11-03), not "path
+    beside ..."."""
+    assert climb_layer._side_name(side) == road

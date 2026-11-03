@@ -850,13 +850,18 @@ SHARED_PATH_PREFIX = "path beside "
 SHARED_FOOT = frozenset({"yes", "designated", "permissive"})
 
 
+def _is_sidewalk(tags: dict[str, str]) -> bool:
+    return SIDEWALK in (tags.get("footway"), tags.get("path"), tags.get("cycleway"))
+
+
 def shared_with_walkers(tags: dict[str, str]) -> bool:
     """True for a trail-class way people on foot share with bicycles, unsplit: a footway,
-    path or sidewalk a bicycle may ride, or a cycleway open to foot that is not
-    `segregated=yes`. A bare `highway=cycleway` says nothing of walkers, so is not."""
-    if tags.get("segregated") == "yes":
+    path or sidewalk a bicycle may ride, or a cycleway open to foot, that is neither
+    `segregated=yes` nor `foot=no`. A bare `highway=cycleway` says nothing of walkers,
+    so is not."""
+    if tags.get("segregated") == "yes" or tags.get("foot") == "no":
         return False
-    if SIDEWALK in (tags.get("footway"), tags.get("path"), tags.get("cycleway")):
+    if _is_sidewalk(tags):
         return True
     return tags.get("highway") != "cycleway" or tags.get("foot") in SHARED_FOOT
 
@@ -864,14 +869,31 @@ def shared_with_walkers(tags: dict[str, str]) -> bool:
 def sidepath_name(street: str, tags: dict[str, str]) -> str:
     """ "<street> protected bike lane" where the way is tagged separated from the road or
     segregated; else "path beside <street>" where people on foot share it
-    (`shared_with_walkers`); else "<street> bike lane"."""
-    if tags.get("segregated") == "yes" or any(
-        _physical(tags.get(key)) for key in TRAIL_SEPARATION_KEYS
-    ):
+    (`shared_with_walkers`); else "<street> bike lane". A sidewalk is the path beside
+    its street even behind a kerb (`separation=kerb`): only `segregated=yes` makes it a
+    bike lane of its own."""
+    segregated = tags.get("segregated") == "yes"
+    if _is_sidewalk(tags) and shared_with_walkers(tags):
+        return f"{SHARED_PATH_PREFIX}{street}"
+    if segregated or any(_physical(tags.get(key)) for key in TRAIL_SEPARATION_KEYS):
         return f"{street} {PROTECTED_BIKE_LANE_WORDS}"
     if shared_with_walkers(tags):
         return f"{SHARED_PATH_PREFIX}{street}"
     return f"{street} {BIKE_LANE_WORDS}"
+
+
+def sidepath_street(name: str | None) -> str | None:
+    """The street a side-street name (`sidepath_name`) is named for ("K Street Northwest
+    protected bike lane" -> "K Street Northwest", "path beside Kemp Mill Road" -> "Kemp
+    Mill Road"), or None for any other name."""
+    if not name:
+        return None
+    if name.startswith(SHARED_PATH_PREFIX):
+        return name[len(SHARED_PATH_PREFIX) :] or None
+    for words in (PROTECTED_BIKE_LANE_WORDS, BIKE_LANE_WORDS):
+        if name.endswith(" " + words):
+            return name[: -len(words) - 1] or None
+    return None
 
 
 def _bearing(a: tuple[float, float], b: tuple[float, float]) -> float:

@@ -1171,6 +1171,54 @@ def test_a_path_shared_with_walkers_is_the_path_beside_the_street_not_a_bike_lan
     assert names == {2: "path beside Kemp Mill Road"}
 
 
+@pytest.mark.parametrize(
+    ("tags", "name"),
+    [
+        # A sidewalk is the path beside its street even behind a kerb.
+        (
+            {
+                "highway": "footway",
+                "footway": "sidewalk",
+                "bicycle": "designated",
+                "separation": "kerb",
+            },
+            "path beside Kemp Mill Road",
+        ),
+        # Split into a walking half and a riding half: a bike lane of its own.
+        (
+            {
+                "highway": "footway",
+                "footway": "sidewalk",
+                "bicycle": "designated",
+                "segregated": "yes",
+            },
+            "Kemp Mill Road protected bike lane",
+        ),
+        # Closed to people on foot: not shared.
+        ({"highway": "path", "bicycle": "designated", "foot": "no"}, "Kemp Mill Road bike lane"),
+    ],
+)
+def test_a_kerbed_segregated_or_foot_closed_side_way(tags, name) -> None:
+    street = (1, {"highway": "tertiary", "name": "Kemp Mill Road"}, NINTH)
+    names = facility_rules.side_street_names([street, (2, tags, _east(NINTH, 6))])
+    assert names == {2: name}
+
+
+@pytest.mark.parametrize(
+    ("name", "street"),
+    [
+        ("path beside Kemp Mill Road", "Kemp Mill Road"),
+        ("K Street Northwest protected bike lane", "K Street Northwest"),
+        ("K Street Northwest bike lane", "K Street Northwest"),
+        ("path", None),
+        ("Metropolitan Branch Trail", None),
+        (None, None),
+    ],
+)
+def test_sidepath_street_reads_the_street_back(name, street) -> None:
+    assert facility_rules.sidepath_street(name) == street
+
+
 def test_a_named_far_crossing_leaving_or_alley_side_way_is_not_named() -> None:
     street = (1, {"highway": "secondary", "name": "9th Street Northwest"}, NINTH)
     named = (2, {"highway": "cycleway", "name": "Metropolitan Branch Trail"}, _east(NINTH, 8))
