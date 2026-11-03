@@ -879,6 +879,12 @@ class RebuildContext:
     # The class the map shows where it is not `facility_by_way`'s: a contraflow-only
     # lane (`facility.shown_facility`; the review of 17f69082). Display only.
     facility_shown_by_way: dict[int, str] = field(default_factory=dict)
+    # The roads that say `cycleway*=separate` AND have a bike way mapped beside
+    # them (`facility.separate_pairs`): only these draw faint as "the road beside
+    # its cycle track" (OWNER-DECISIONS 73, 78). A road whose tag says so with
+    # nothing mapped beside it (Connecticut Avenue NW, Davenport to Everett) is
+    # drawn as the busy road it is, not hidden behind a bikeway that is not there.
+    separate_roads: set[int] = field(default_factory=set)
     car_free_by_way: dict[int, frozenset[str]] = field(default_factory=dict)
     # The route level of each way in an OSM route relation (`pipeline.trail_routes`).
     trail_routes: dict[int, int] = field(default_factory=dict)
@@ -1070,6 +1076,7 @@ class RebuildContext:
             "use_sidepath_paths",
             "facility_by_way",
             "facility_shown_by_way",
+            "separate_roads",
             "car_free_by_way",
             "trail_routes",
             "route_names",
@@ -3122,7 +3129,7 @@ def build_handlers(
         """
         if context.facility_by_way or not context.ways:
             return
-        beside = facility.beside_separate_roads(
+        beside, context.separate_roads = facility.separate_pairs(
             (way.osm_id, way.tags, way.coordinates) for way in context.ways
         )
         context.short_paths_hidden = set()
@@ -4137,7 +4144,7 @@ def build_handlers(
                         facility_shown=context.facility_shown_by_way.get(way.osm_id),
                         car_free_when=car_free_when,
                         map_class=way_map_class,
-                        separate_bikeway=facility.has_separate_bikeway(way.tags),
+                        separate_bikeway=way.osm_id in context.separate_roads,
                         mtb_only=way.osm_id in context.mtb_only,
                         # The difficulty level the mountain-bike layer draws it in (456),
                         # on rated singletrack alone: a level means closed on every graph.

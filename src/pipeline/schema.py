@@ -445,7 +445,8 @@ SEEK_INDEX_PREDICATE = (
 )
 
 # Two facts about a way the map draws from, written by the rebuild beside the
-# facility (routemaker.facility.map_class and has_separate_bikeway). The
+# facility (routemaker.facility.map_class, and separate_pairs: a road that says
+# `cycleway*=separate` and has a bike way mapped beside it). The
 # owner, 2026-09-29: "there are several expressways shown as LTS4. just show
 # them in white." and "there's several cases of a protected bike lane next to
 # LTS3 or 4. In that case, don't show the road, perhaps hide it until zoom

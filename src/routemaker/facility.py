@@ -623,8 +623,10 @@ def has_separate_bikeway(tags: dict[str, str]) -> bool:
     2026-09-29: "there's several cases of a protected bike lane next to LTS3
     or 4. In that case, don't show the road, perhaps hide it until zoom 15-16.
     The bike lane should show up as the main." and "Keep it faint if it
-    parallels a protected bike path."; OWNER-DECISIONS 73, 78). A trail-class
-    way is the facility, not the road."""
+    parallels a protected bike path."; OWNER-DECISIONS 73, 78), but only where
+    such a bike way is mapped beside it (`separate_pairs`, the rebuild's
+    `separate_bikeway`): the tag alone is not enough. A trail-class way is the
+    facility, not the road."""
     return tags.get("highway") not in TRAIL_CLASS_HIGHWAY and declares_separate(tags)
 
 

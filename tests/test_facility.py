@@ -309,6 +309,26 @@ def test_the_road_a_separate_facility_lies_beside_is_named_too():
     assert separate_pairs([]) == (set(), set())
 
 
+def test_a_road_that_says_separate_with_only_sidewalks_beside_it_is_not_drawn_faint():
+    """Stephen, 2026-11-03, of Connecticut Avenue NW between Davenport and Everett
+    Streets (OSM way 130908011, `cycleway:both=separate`, no bike way mapped beside
+    it): "Why is this segment shown less pronounced?". The map draws a road faint
+    only beside a bike way that is there (`separate_bikeway`, from the roads side of
+    `separate_pairs`), so a tag alone, with sidewalks beside it, keeps it a busy road."""
+    from routemaker.facility import separate_pairs
+
+    avenue = (
+        130908011,
+        {"highway": "primary", "name": "Connecticut Avenue Northwest",
+         "cycleway:both": "separate", "sidewalk:both": "separate"},
+        _line(-77.068, 38.953),
+    )  # fmt: skip
+    sidewalk = (2, {"highway": "footway", "footway": "sidewalk"}, _line(-77.068, 38.9531))
+    assert separate_pairs([avenue, sidewalk]) == (set(), set())
+    track = (3, {"highway": "cycleway"}, _line(-77.068, 38.9531))
+    assert separate_pairs([avenue, sidewalk, track])[1] == {130908011}
+
+
 def test_a_named_trail_beside_a_parkway_that_says_separate_stays_a_path():
     """The owner, 2026-10-12: Rock Creek Trail (OSM way 1355215830, highway=cycleway)
     hugs Rock Creek and Potomac Parkway (cycleway:left=separate) between P and M
