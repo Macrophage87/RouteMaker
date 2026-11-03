@@ -3462,3 +3462,140 @@ class TestRideTurnsMissed:
         entries = d.describe(legs, [crossing(315)])
         assert self.moves(entries) == [None, "right", "right"]
         assert entries[1]["turn"]["cross"] == "Layhill Road"
+
+    def test_a_through_node_between_the_two_bends_is_passed_over(self):
+        # As mapped at Colt Terrace Park: +24 and +43, 12 m apart, a node read straight on between.
+        legs = [
+            flat(
+                path("", 300, 15),
+                turned([d.Atom(6.0, "1", "path", (), "cycleway", 40, 40)], 24),
+                turned([d.Atom(6.0, "1", "path", (), "cycleway", 40, 40)], 0.0, choice=False),
+                turned(path("", 120, 85), 43, choice=False),
+                road("Kersey Road", 1, 400, 85, 85),
+            )
+        ]
+        assert self.moves(d.describe(legs))[:2] == [None, "right"]
+
+    def test_a_sidewalk_then_its_crosswalk_cross_the_road_once_on_the_crosswalk(self):
+        # Layhill Road westbound: right off the trail onto its sidewalk, right onto the
+        # crosswalk, over the road, right up the far side. Both short pieces are near the
+        # road; until 2026-11-03 each said "Cross Layhill Road".
+        legs = [
+            flat(
+                path("Matthew Henson Trail", 284, 205),
+                turned([d.Atom(16.0, "1", "none", (), "sidewalk", 270, 270)], 65),
+                turned(
+                    [d.Atom(30.0, "1", "none", (), "pedestrian_crossing", 340, 340)],
+                    70,
+                    choice=False,
+                ),
+                turned(path("Matthew Henson Trail", 600, 0), 90, choice=False),
+            )
+        ]
+        entries = d.describe(legs, [crossing(306)])
+        crossed = [e["turn"].get("cross") for e in entries if e["turn"]]
+        assert crossed == [None, "Layhill Road", None]
+        assert "Right onto the path" in entries[1]["text"]
+
+    def test_a_piece_just_past_the_crosswalk_does_not_take_its_crossing(self):
+        legs = [
+            flat(
+                path("Matthew Henson Trail", 300, 170),
+                turned(
+                    [d.Atom(30.0, "1", "none", (), "pedestrian_crossing", 270, 270)],
+                    100,
+                    choice=False,
+                ),
+                turned([d.Atom(8.0, "1", "none", (), "sidewalk", 0, 0)], 90),
+                turned(path("Matthew Henson Trail", 600, 300), -60),
+            )
+        ]
+        entries = d.describe(legs, [crossing(325)])
+        crossed = [e["turn"].get("cross") for e in entries if e["turn"]]
+        assert crossed[0] == "Layhill Road"
+        assert crossed.count("Layhill Road") == 1
+
+    def test_bends_by_a_divided_road_are_said_once_each_side(self):
+        # Two carriageways 10 m apart and the trail bending at every node: the bend onto the
+        # road and the one off it, not a chain of "to stay on".
+        def bend(heading):
+            return turned(
+                [
+                    d.Atom(
+                        10.0, "1", "path", ("Matthew Henson Trail",), "cycleway", heading, heading
+                    )
+                ],
+                50,
+                choice=False,
+            )
+
+        legs = [
+            flat(
+                path("Matthew Henson Trail", 290, 90),
+                bend(140),
+                bend(190),
+                bend(240),
+                bend(290),
+                turned(path("Matthew Henson Trail", 600, 340), 50, choice=False),
+            )
+        ]
+        entries = d.describe(legs, [crossing(312), crossing(322)])
+        turns = [e["turn"] for e in entries if e["turn"]]
+        assert len(turns) <= 2
+        assert [t.get("cross") for t in turns].count("Layhill Road") == 1
+
+    def test_a_side_path_at_the_through_node_is_the_choice(self):
+        legs = [
+            flat(
+                path("", 300, 15),
+                turned([d.Atom(6.0, "1", "path", (), "cycleway", 40, 40)], 24, choice=False),
+                turned([d.Atom(6.0, "1", "path", (), "cycleway", 40, 40)], 0.0),
+                turned(path("", 120, 85), 43, choice=False),
+                road("Kersey Road", 1, 400, 85, 85),
+            )
+        ]
+        assert self.moves(d.describe(legs))[:2] == [None, "right"]
+
+
+def test_the_api_keeps_the_crossing_words_for_ride():
+    """`turn.cross` and `turn.across` reached the answer's schema only from 2026-11-03: Ride's
+    "Cross Layhill Road" was worded in the text but never said."""
+    from core import api
+
+    turn = api.DescriptionTurnOut.model_validate(
+        {
+            "movement": "right",
+            "onto": "x",
+            "control": None,
+            "severity": None,
+            "cross": "Layhill Road",
+            "across": "Elm Street",
+        }
+    )
+    assert turn.cross == "Layhill Road" and turn.across == "Elm Street"
+
+
+def test_every_key_describe_says_is_in_the_api_schema():
+    """A key missing from the schema is dropped from the answer without a word (2026-10-16,
+    2026-11-03): every key of an entry and its turn reaches Ride."""
+    from core import api
+
+    legs = [
+        flat(
+            path("Matthew Henson Trail", 300, 170),
+            turned(
+                [d.Atom(30.0, "1", "none", (), "pedestrian_crossing", 270, 270)], 100, choice=False
+            ),
+            turned(path("Matthew Henson Trail", 600, 0), 90, choice=False),
+            turned(path("Long Branch Trail", 600, 90), 90),
+        )
+    ]
+    entries = d.describe(
+        legs, [crossing(315), crossing(700, "dennis avenue"), crossing(930, "piney branch road")]
+    )
+    entry_keys = set(api.DescriptionEntryOut.model_fields)
+    turn_keys = set(api.DescriptionTurnOut.model_fields)
+    for entry in entries:
+        assert set(entry) <= entry_keys, set(entry) - entry_keys
+        if entry.get("turn"):
+            assert set(entry["turn"]) <= turn_keys, set(entry["turn"]) - turn_keys
