@@ -526,7 +526,7 @@ see the map.</p>
 <text class="ts" x="160.0" y="494.5" text-anchor="middle">every change to the points</text>
 </svg>
 </div>
-<figcaption>Up to 25 points. Points can also be added by tapping the map.</figcaption>
+<figcaption>Up to 25 points (a start, up to 3 stops and an end on Walk and the transit ride types). Points can also be added by tapping the map.</figcaption>
 </figure>
 <details class="more"><summary>More: Plan</summary>
 <div class="more-body">
@@ -541,7 +541,8 @@ has short editing tips: taps and press-and-hold on a phone, the keys on a comput
 <strong>Route</strong> button's place) sets your start where you are.</li>
 <li>Type places into <strong>From</strong>, <strong>To</strong> and <strong>Add a stop</strong>, or tap
 the map: in Plan, the first tap or search is the start (on a loop, the start and finish), then the end; what later
-taps add is below. Up to 25 points in all. Each shows its street or neighborhood under its name.</li>
+taps add is below. Up to 25 points in all; on Walk, Walk + transit and both bike + transit types, a start, up to 3
+stops and an end, with no via points, and on Bikeshare and Rebalance Ride a start and an end. Each shows its street or neighborhood under its name.</li>
 <li>Once there is a start and an end, a tap or click on the map adds a <strong>via point</strong> (in a loop, a tap adds a stop), a small
 hollow ring that only shapes the route: it has no number and is never a cue on the ride.
 <strong>Ctrl+click</strong> (Cmd+click on a Mac), or <strong>Add as stop</strong> in the road panel, adds a
@@ -794,7 +795,13 @@ route." or "Already the flattest route." (On a Mass Ride, whose traffic level is
 The steps last for this ride only, Plan's sliders stay as they were, and a step that finds no route, or only one
 leading back to the old line, is undone. With a stop ahead, <strong>Skip this stop</strong> shows a skip mark with the
 stop's number under it. These three are hidden on a shared or fixed route and once you have arrived, and pressing one closes
-the column. <strong>Topo lines</strong> (the contour icon), just before the gear, is always there. It
+the column. Then comes one bubble for each graph of the next 2 mi [3.2 km] the route can draw: <strong>Stress</strong>
+and <strong>Elevation</strong>, with <strong>Flow</strong> and <strong>Corkers</strong> first on a Mass Ride. Each
+turns its graph on or off and says so; More stays open, and the graphs change once it closes. While you are on the route, the graphs that are on stack at the top of the bottom panel on
+one distance axis, with a strip marking turns and busy junctions; on a shared ride they reach back to the last rider,
+each rider a dot. Off unless you turn them on, and kept on this device. On a short screen or with Large text
+there may not be room for every graph that is on: only the first ones in More's order are drawn, or none, and a line
+names the rest, or, with no room for that line either, the app says "No room on this screen for: Elevation." once. <strong>Topo lines</strong> (the contour icon), just before the gear, is always there. It
 turns the map's contour lines on or off, the same switch as Topo lines in Layers, Trails and terrain, and says "Topo lines on."
 or "Topo lines off.", and like those it closes the column; a screen reader hears its name and whether it is on. Where the server has no contours it
 says they are not available, and with no signal it says it needs a connection. The <strong>Settings</strong> gear opens the ride's settings under the top row: who says the cues and how
@@ -822,7 +829,8 @@ Bikeshare, transit, Walk or Run trips, or a ride with a walk to its start or fro
 <li><strong>Walks and transit.</strong> On a Walk, Run, Bikeshare or transit trip, walks and runs are said turn by turn, as rides
 are, and are never "off route". On a train or bus the screen lists the stops ahead and says "Next stop: Union Station.
 Get off there." one stop before yours (on a bus, to press the stop button), then "Get off here". With no location for
-a while, underground, it follows the timetable and says so. On Walk the button reads Start walk, and on Run, Start run.</li>
+a while, underground, it follows the timetable and says so. On Walk the button reads Start walk, and on Run, Start run. With stops, the trip is followed one leg at a time,
+and at each stop <strong>Start the next leg</strong> plans the rest again from where you are.</li>
 <li><strong>Weather</strong> is checked once the ride knows where you are on the route, and every 5 minutes, along the rest of
 the route. A new alert is said once ("Weather alert: Severe Thunderstorm Warning until 6:45 PM.", with "until" only where
 the NWS gives the end time), and again only if the NWS changes its end time or severity, interrupting
@@ -963,7 +971,7 @@ ratings</a>. At zoom 11 and further out, the stress map draws only the long trai
 the Capital Crescent, the Metropolitan Branch Trail and the W&amp;OD, and roads closed to cars at set
 times. They show from the map's widest zoom, drawn above its main roads. The
 busiest bike corridors and long calm streets show there too, the long trails are named from zoom 10,
-and the well-known corridors at zoom 10 and 11. From zoom 12 the other paths and roads join them, with busy roads drawn faint until zoom 14.
+and the well-known corridors at zoom 10 and 11. From zoom 12 the other paths and roads join them, with busy roads drawn faint until zoom 14 (one with its bike way mapped beside it waits for zoom 15 and stays faint).
 In a city the map builds up as a road map does for cars. Off-road paths, protected lanes, the busier
 <a href="/about/stress.html#popular">popular bike corridors</a> and long calm streets come first, at zoom 12.
 Painted lanes and the other corridors follow at zoom 13. Every other street, sidewalk and busy road waits for
@@ -1203,6 +1211,11 @@ With Phone default, a phone set to any of them opens Go and Ride in that languag
 choose here wins. Dates and times, such as when a route was saved, follow the app's language.
 Every language but English is a first draft, waiting for a native speaker's check. Arabic, Farsi and Pashto are
 written right to left, and the page turns round for them.</li>
+<li><strong>Units</strong> (Display): <strong>Miles and feet</strong>, the default, or <strong>Kilometers and
+meters</strong>. With kilometers, every distance, height and speed shows metric first with US units in brackets, such
+as "7.6 km (4.7 mi)", and the voice and screen readers say meters and kilometers. The target distance is then typed in kilometers, and the
+cue sheet, lock screen, charts, contour labels and run pace follow. Kept on this device, and with your account when you
+are signed in; changing it reloads the app, as Language does.</li>
 <li><strong>Spanish</strong> covers the whole app. It changes the app's words and the voice (Spanish cues are said
 in US Spanish). The route's own sentences come in Spanish too, in Go and Plan: the <strong>Directions</strong>, hazard
 and work-zone lines, steep grades, climbs, Novice and Nervous walk-your-bike lines and Avoid-rated junction
@@ -1310,7 +1323,7 @@ leader</strong> to follow again. While you ride yourself, the map follows you in
 <li>As your ride starts (Start ride, Share live, or a leader's link), never while you plan, it asks once whether to <strong>show me
 as a dot</strong> and, if you lead, your role:
 <strong>Participant</strong>, <strong>Lead line</strong>, <strong>Sweep</strong> or
-<strong>Corker</strong>. Your dot is sent only while the app is open, and only within a quarter mile
+<strong>Corker</strong>. Your dot is sent only while the app is open, and only within 0.25 mi
 [400 m] of the route. On a Share ride or Share live link, it is shown on or off the route
 while your page is open and in front, riding or not, so the leader and riders who get separated can find each other. It stops when you turn it off
 (tap the riders count, or on a ride with Share live, More, then Riders), close the app, are off the route for 10 minutes (not counted on a
@@ -1381,7 +1394,7 @@ from the app's next update.</li>
 <p class="next">Next: <a href="/about/accessibility.html">Accessibility</a></p>
 </main>
 <footer>
-  <p>Part of RouteMaker's documentation. It describes version 0.18.0. The code is
+  <p>Part of RouteMaker's documentation. It describes version 0.19.0. The code is
   open source under the MIT licence:
   <a href="https://github.com/Macrophage87/RouteMaker">github.com/Macrophage87/RouteMaker</a>.</p>
   <p><a href="/">Back to the map</a></p>

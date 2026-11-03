@@ -778,7 +778,7 @@ test("App: the look-up's answer is placed with the ride read after the wait and 
   assert.ok(waited > 0 && ride > waited, "the ride is read after the wait (S2, AW2)");
   assert.match(
     locateBody,
-    /placeFix\(result, pointsRef\.current, \{ loop: loopStops\(ride\.preset, ride\.dials\.loop\), choice \}\)/,
+    /placeFix\(result, pointsRef\.current, \{ loop: loopStops\(ride\.preset, ride\.dials\.loop\), choice, max: maxPointsFor\(ride\.preset\) \}\)/,
     "the fresh points, the fresh loop flag and the choice (S3, AW3)",
   );
   // Plan's From and To put their box away first (Plan streamline, 2026-10-17).
