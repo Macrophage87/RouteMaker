@@ -335,7 +335,7 @@ def from_point(p: dict) -> Rack:
 
 
 def fetch_layer(layer: str, fields: str, order: str) -> list[dict]:
-    """Every feature of an ArcGIS layer, a page of PAGE at a time, in lon/lat."""
+    """Every feature of an ArcGIS layer, a page of PAGE at a time, asked for in lon/lat."""
     features: list[dict] = []
     offset = 0
     while True:
@@ -372,6 +372,12 @@ def inventory_features(web_map: dict) -> list[dict]:
     """The 2021 inventory's features, kept inside the web map as a feature collection."""
     for layer in web_map.get("operationalLayers") or []:
         if layer.get("title") == BALTIMORE_INVENTORY:
+            for sub in (layer.get("featureCollection") or {}).get("layers") or []:
+                sr = (sub.get("featureSet") or {}).get("spatialReference") or (
+                    (sub.get("layerDefinition") or {}).get("extent") or {}
+                ).get("spatialReference")
+                if sr and (sr.get("latestWkid") or sr.get("wkid")) not in (3857, 102100):
+                    raise RuntimeError(f"Baltimore inventory: not web Mercator ({sr})")
             return [
                 f
                 for sub in (layer.get("featureCollection") or {}).get("layers") or []
@@ -432,7 +438,8 @@ def read_extract(path: Path) -> list[Rack]:
     return one_place(found)
 
 
-def document(ddot: list[Rack], osm: list[Rack], balt: list[Rack] = ()) -> dict:
+def document(ddot: list[Rack], osm: list[Rack], balt: list[Rack] | None = None) -> dict:
+    balt = balt or []
     cities = sorted(ddot, key=lambda r: r.id) + sorted(balt, key=lambda r: r.id)
     # Lockers or a bike room are not the stands a city lists beside them: always kept.
     rooms = [r for r in osm if r.kind in ("l", "b")]
