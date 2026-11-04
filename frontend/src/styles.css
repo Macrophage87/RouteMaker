@@ -4967,17 +4967,47 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
   margin-top: 16px;
 }
 
-/* The ride's settings, opened by the Settings bubble beside More, just under the top row. */
-.ride-mode-settings {
-  margin: 4px 0 10px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--border);
+/* The ride's settings, a popup opened by the Settings bubble beside More (Stephen 2026-11-03): over the map, the
+   ride's screen behind unchanged; tall enough for Large text, scrolled inside itself only if a phone is very short. */
+.ask-dialog.ride-settings-dialog {
+  width: min(440px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+  box-sizing: border-box;
+  padding: 0;
 }
-
-/* The settings' own heading. */
-.ride-mode-settings h3 {
-  margin: 6px 0;
-  font-size: 1rem;
+/* The padding on the contents, so a tap anywhere in the popup lands on them, never on the dialog (its backdrop close). */
+.ride-settings-body {
+  padding: 16px;
+}
+.ride-settings-dialog h2:focus {
+  outline: none;
+}
+.ride-settings-dialog .ride-safety-more {
+  margin-bottom: 4px;
+}
+/* Each picker under its name, as wide as the popup, the (i) beside it: never on a line of its own at 320 px. */
+.ride-settings-dialog .setting-line {
+  flex-wrap: nowrap;
+  align-items: flex-end;
+}
+.ride-settings-dialog .setting-row .select-setting {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+}
+.ride-settings-dialog .setting-row .select-setting select {
+  flex: none;
+  width: 100%;
+  margin-left: 0;
+}
+/* High contrast's switch across the popup, its (i) beside it, as in Settings. */
+.ride-settings-dialog .contrast-row {
+  grid-template-columns: 1fr auto;
+  margin-bottom: 8px;
+}
+.ride-settings-dialog .contrast-row .switch {
+  width: 100%;
 }
 
 /* Larger than the panel's buttons, at every text size (the owner, 2026-10-20: "End ride and road closed could have larger font in general"). */
@@ -5315,8 +5345,73 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
 /* The walk's next turn under a dock or the approach ("then" lines) and stop by stop's card (the stop to get off at is
    the one name a transit rider must not miss): the same 20 px (the release review's S3). Large text's is below. */
 .ride .cue-then,
-.ride .onboard {
+.ride .onboard,
+.ride .boarding {
   font-size: 20px;
+}
+
+/* Waiting to board (Stephen, 2026-11-03: "more table or list than a wall of text", "You can use colors to make it
+   compact"): one row per end station, its lines as coloured badges; then Get off, Next train, After that, a label and
+   its value on one row each (the label column at most 45%, so a long label wraps rather than squeeze the name). */
+.ride .boarding-trains {
+  list-style: none;
+  margin: 4px 0;
+  padding: 0;
+}
+
+.ride .boarding-trains li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 2px 0;
+  font-weight: 700;
+}
+
+.ride .line-badge {
+  display: inline-block;
+  padding: 0 0.4em;
+  border-radius: 0.35em;
+  border: 1px solid var(--text-muted);
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.ride .boarding-live .line-badge {
+  margin-right: 0.25em;
+}
+
+/* Every colour badge the same size (Stephen, 2026-11-03: "have each square take up the same space"): the widest
+   name, Orange or Silver or Yellow, fits; the names line up down the rows. A bus route's plain badge keeps its own. */
+.ride .line-badge:not(.line-badge-plain) {
+  box-sizing: border-box;
+  width: 4.4em;
+  text-align: center;
+  font-size: 0.8em;
+  white-space: nowrap;
+  overflow-wrap: normal;
+}
+
+.ride .line-badge-plain {
+  background: transparent;
+}
+
+.ride .boarding-rows {
+  display: grid;
+  grid-template-columns: fit-content(45%) 1fr;
+  column-gap: 0.75em;
+  row-gap: 2px;
+  margin: 4px 0;
+}
+
+.ride .boarding-rows dt {
+  color: var(--text-muted);
+}
+
+.ride .boarding-rows dd {
+  margin: 0;
+  font-weight: 700;
+  overflow-wrap: break-word;
 }
 
 /* A steady card (the UI review, 2026-10-28: it changed height between cues and the map and buttons jumped about 75 px):
@@ -5640,7 +5735,7 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
   box-sizing: border-box;
 }
 
-.ride-large .cue-card > :not(.ride-top, .ride-light-below, .ride-mode-settings, .ride-togo) {
+.ride-large .cue-card > :not(.ride-top, .ride-light-below, .ride-togo) {
   flex: 1 0 auto;
 }
 
@@ -5683,7 +5778,8 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
 }
 
 .ride-large .cue-more,
-.ride-large .cue-then {
+.ride-large .cue-then,
+.ride-large .boarding {
   font-size: max(16pt, calc(var(--cue-fit, 1) * 1.25rem));
 }
 
@@ -10407,6 +10503,7 @@ summary.closure-notices-heading {
   gap: 2px;
 }
 .load-route-dialog .closure-choices button,
+.ride-settings-dialog .closure-choices button,
 .resume-ride-dialog .closure-choices button {
   min-height: 44px;
 }
