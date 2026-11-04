@@ -181,3 +181,22 @@ def test_compare_places_ranks_a_place_with_no_way_there_last(tools, api) -> None
     )
     assert [row["place"] for row in out["places"]] == [HERE, THERE]
     assert out["places"][1]["unreachable"] == 1
+
+
+def test_reach_with_only_some_rings_links_to_just_those(tools, api) -> None:
+    out = tools.call("reach", {"points": [HERE], "minutes": [45, 15]})
+    assert api.reached[0]["minutes"] == [15, 45]
+    assert out["link"].endswith("reach=from.any.calm.15.45")
+
+
+def test_reach_at_minutes_the_app_does_not_draw_says_what_the_link_opens(tools, api) -> None:
+    out = tools.call("reach", {"points": [HERE], "minutes": [20, 45]})
+    assert out["link_rings"] == [45]
+    assert out["link"].endswith("reach=from.any.calm.45")
+    assert tools.call("reach", {"points": [HERE], "minutes": [10]})["link_rings"] == [
+        15,
+        30,
+        45,
+        60,
+    ]
+    assert "link_rings" not in tools.call("reach", {"points": [HERE]})

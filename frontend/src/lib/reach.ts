@@ -26,10 +26,22 @@ export interface ReachView {
   combine: ReachCombine;
   /** Lay the calm streets' rings over the rider's own. */
   calm: boolean;
+  /** The rings drawn, some of REACH_MINUTES, never none (Stephen 2026-11-04: "Allow for only certain isochrones to be selected"). */
+  minutes: readonly number[];
 }
 
-export const REACH_DEFAULT: ReachView = { direction: "from", combine: "any", calm: true };
 export const REACH_MINUTES = [15, 30, 45, 60] as const;
+export const REACH_DEFAULT: ReachView = { direction: "from", combine: "any", calm: true, minutes: REACH_MINUTES };
+
+/** The rings with one minute turned on or off; the last one left stays on. */
+export function toggleMinutes(chosen: readonly number[], minute: number): number[] {
+  const next = chosen.includes(minute) ? chosen.filter((m) => m !== minute) : [...chosen, minute];
+  return next.length ? REACH_MINUTES.filter((m) => next.includes(m)) : [...chosen];
+}
+
+function allMinutes(chosen: readonly number[]): boolean {
+  return REACH_MINUTES.every((m) => chosen.includes(m));
+}
 /** core/reach.py MAX_POINTS. */
 export const REACH_MAX_POINTS = 5;
 
@@ -88,6 +100,7 @@ export function reachBody(points: readonly LonLat[], preset: PresetId, dials: Di
     ...fields,
     ...(preset === "run" && runPaceKmh ? { run_pace_kmh: runPaceKmh } : {}),
     ...closureFields(dials),
+    minutes: REACH_MINUTES.filter((m) => view.minutes.includes(m)),
     direction: view.direction,
     combine: sent.length > 1 ? view.combine : "any",
     // Side by side draws a colour a point; a dashed calm set for each as well would not read.
@@ -224,11 +237,12 @@ export function reachFeatures(answer: ReachAnswer): { type: "FeatureCollection";
 
 // --- the link ------------------------------------------------------------------------------------------------------
 
-/** The fragment's field: `reach=from.any.calm`, `reach=to.each`. */
+/** The fragment's field: `reach=from.any.calm`, `reach=to.each`, `reach=from.any.calm.15.45` (only some rings). */
 export const REACH_PARAM = "reach";
 
 export function reachHashParam(view: ReachView): string {
-  return `${REACH_PARAM}=${[view.direction, view.combine, ...(view.calm ? ["calm"] : [])].join(".")}`;
+  const minutes = allMinutes(view.minutes) ? [] : REACH_MINUTES.filter((m) => view.minutes.includes(m)).map(String);
+  return `${REACH_PARAM}=${[view.direction, view.combine, ...(view.calm ? ["calm"] : []), ...minutes].join(".")}`;
 }
 
 /** The view a link names, or null for a link without `reach=`. */
@@ -237,10 +251,12 @@ export function reachFromHash(hash: string): ReachView | null {
   const raw = params.get(REACH_PARAM);
   if (raw === null) return null;
   const parts = raw.split(".");
+  const minutes = REACH_MINUTES.filter((m) => parts.includes(String(m)));
   return {
     direction: parts.includes("to") ? "to" : "from",
     combine: parts.includes("all") ? "all" : parts.includes("each") ? "each" : "any",
     calm: parts.includes("calm"),
+    minutes: minutes.length ? minutes : REACH_MINUTES,
   };
 }
 

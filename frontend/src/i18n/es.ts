@@ -2444,6 +2444,8 @@ export const ES: Readonly<Record<string, string>> = {
   "Dashed: the same minutes at Low-stress.": "Discontinuo: los mismos minutos con Estrés bajo.",
   "{rideType}, with your Ride settings.": "{rideType}, con sus ajustes del recorrido.",
   "Ring by ring": "Anillo por anillo",
+  Minutes: "Minutos",
+  "At least one ring stays on.": "Al menos un anillo queda activo.",
   "Point {number}": "Punto {number}",
   "{minutes} min": "{minutes} min",
   "Metro: {stations}.": "Metro: {stations}.",
