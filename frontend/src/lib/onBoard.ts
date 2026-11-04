@@ -11,6 +11,7 @@
  * only ever move on, never back.
  */
 import type { TransitStep, TransitStop } from "./api.ts";
+import { formatDuration } from "./format.ts";
 import { haversineM, type LonLat } from "./geo.ts";
 import { t } from "./i18n.ts";
 import { METRO_LINES, PENN_COLOUR } from "./railStations.ts";
@@ -216,6 +217,22 @@ export function onBoardSecondsLeft(leg: Pick<OnBoardLeg, "stops">, state: Pick<O
   const next = leg.stops[Math.min(at + 1, last)].after_s;
   const ridden = Math.min(Math.max((nowMs - state.boardedAt) / 1000, reached), next);
   return Math.max(0, leg.stops[last].after_s - ridden);
+}
+
+/**
+ * Where am I? on transit (Stephen, 2026-11-04: it said "You have arrived at the end of the route" on the train): the
+ * line and its way, the stop to get off and, on board, the stops and time left. `shown` as short lines, `spoken` whole.
+ */
+export function onBoardWhere(leg: OnBoardLeg, state: Pick<OnBoardState, "at" | "boardedAt">, nowMs: number, clock: (nowMs: number, seconds: number) => string): { shown: string[]; spoken: string } {
+  const off = leg.stops[leg.stops.length - 1].name;
+  const way = leg.toward && leg.toward !== off ? t("{line} toward {place}", { line: leg.line, place: leg.toward }) : leg.line;
+  const getOff = t("Get off at {name}", { name: off });
+  const left = onBoardSecondsLeft(leg, state, nowMs);
+  if (left === null) return { shown: [way, getOff], spoken: `${way}. ${getOff}.` };
+  const stops = stopsLeftText(leg, state);
+  const time = `${formatDuration(left)} · ${clock(nowMs, left)}`;
+  const said = `${stops}, ${t("about")} ${formatDuration(left)}${t(", arriving about")} ${clock(nowMs, left)}`;
+  return { shown: [`${getOff}`, `${stops} · ${time}`], spoken: `${way}. ${getOff}. ${said}.` };
 }
 
 /** The line's colour on the map: its badge's (a Metro line's, the Penn Line's), else null for the map's transit colour. */

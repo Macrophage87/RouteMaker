@@ -264,7 +264,7 @@ import {
   type RideTrip,
   walkLineTurns,
 } from "./lib/rideTrip.ts";
-import { onwardActive, onwardStart, onwardStep, type OnwardState } from "./lib/onward.ts";
+import { onwardActive, onwardStart, onwardStep, onwardWhere, type OnwardState } from "./lib/onward.ts";
 import { onBoardPath, type OnBoardPath } from "./lib/onBoard.ts";
 import { BOARDING_MS, TRIP_CHECK_MS } from "./lib/tripCheck.ts";
 import { walkModel, walkTurnLine } from "./lib/walkCues.ts";
@@ -2040,14 +2040,17 @@ export function RideMode({
   const askWhere = useCallback(() => {
     // Walking to the dock: the walk, from here.
     const walk = tripRef.current.walking && approach ? approachWords(approach, rideRef.current.fix?.point ?? null) : null;
-    const spoken = walk ? walk.spoken : whereAmI(modelRef.current, rideRef.current, false, milesRef.current, arrivingAt);
+    // Past the line, the part followed now (Stephen, 2026-11-04: "an erroneous you have arrived when pressing the map
+    // center button" on the train): the train or bus's stops and time left, or the walk's next turn.
+    const after = !walk && rideRef.current.arrived ? onwardWhere(onwardParts, onwardRef.current) : null;
+    const spoken = walk ? walk.spoken : after ? after.spoken : whereAmI(modelRef.current, rideRef.current, false, milesRef.current, arrivingAt);
     // Shown as two short lines (whereAmIShown), said whole.
-    showToast(walk ? walk.shown : whereAmIShown(modelRef.current, rideRef.current, milesRef.current, arrivingAt).join("\n"));
+    showToast(walk ? walk.shown : after ? after.shown.join("\n") : whereAmIShown(modelRef.current, rideRef.current, milesRef.current, arrivingAt).join("\n"));
     // On demand: through the chosen outputs; with neither chosen, through the polite region too, since
     // the rider asked (the answer is also on screen).
     announcer.current?.answer(spoken);
     if (prefsRef.current.output === "neither") setPolite((s) => ({ text: spoken, count: s.count + 1 }));
-  }, [approach, showToast, arrivingAt]);
+  }, [approach, showToast, arrivingAt, onwardParts]);
   // Where am I? and Re-centre are one button (the owner, 2026-10-20: "We can merge the where am I and the center on map
   // button functionality"): the map follows the rider again, and the answer is said and shown.
   const findMe = useCallback(() => {

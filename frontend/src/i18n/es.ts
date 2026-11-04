@@ -2508,5 +2508,5 @@ export const ES: Readonly<Record<string, string>> = {
   "Weather alert: {event} from {start}.": "Alerta meteorológica: {event} desde {start}.",
   "Weather alert: {event} until {end}.": "Alerta meteorológica: {event} hasta {end}.",
   "Weather alert: {event}.": "Alerta meteorológica: {event}.",
-  "Trip ends about {time}": "El viaje termina hacia las {time}",
+  "Trip ends about {time}": "Fin del viaje: aprox. {time}",
 };

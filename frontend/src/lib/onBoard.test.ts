@@ -7,7 +7,7 @@ import type { TransitStep } from "./api.ts";
 import type { LonLat } from "./geo.ts";
 import type { RideFix } from "./navigate.ts";
 import { STALE_MS, boardingGroups, lineColour, onBoardFeatures, onBoardPath, onBoardSecondsLeft, laterDepartureText, lineBadge, liveForBoarding, liveNextText, nextDepartureText, onBoardLeg, onBoardRows, onBoardStart, onBoardStep, stopsLeftText, type OnBoardState } from "./onBoard.ts";
-import { onwardOf, onwardStart, onwardStep } from "./onward.ts";
+import { onwardOf, onwardStart, onwardStep, onwardWhere } from "./onward.ts";
 
 const M_PER_DEG = 111_195;
 function north(m: number): LonLat {
@@ -352,4 +352,22 @@ test("the path on the map: the stops ahead in the line's colour, the one to get 
   assert.ok(features.every((f) => /^#/.test(f.properties.colour)));
   assert.deepEqual(features.filter((f) => f.properties.off).length, 1);
   assert.equal(onBoardFeatures(null).features.length, 0);
+});
+
+// Stephen, 2026-11-04: "It also has an erroneous you have arrived when pressing the map center button" (on the train).
+test("Where am I? on transit: the line and stop to get off while waiting; the stops and time left on board; never 'arrived'", () => {
+  const exit: TransitStep = { ...STEP, mode: "exit", text: "Leave the station.", seconds: 90, wait_s: 0, lines: [], stops: null };
+  const parts = onwardOf([{ ...STEP, mode: "ride", route_line: true, coordinates: [] }, STEP, exit], 0);
+  const t0 = 1_000_000;
+  const waiting = onwardWhere(parts, onwardStart(parts, t0), t0)!;
+  assert.deepEqual(waiting.shown, ["Red Line toward Shady Grove", "Get off at Union Station"]);
+  assert.ok(!/arrived/i.test(waiting.spoken));
+  const state = onwardStart(parts, t0);
+  const riding = { ...state, board: { ...state.board!, boardedAt: t0, at: 2 } };
+  const on = onwardWhere(parts, riding, t0 + 60_000)!;
+  assert.equal(on.shown[1].startsWith("3 stops left · 6 min"), true);
+  assert.match(on.spoken, /^Red Line toward Shady Grove\. Get off at Union Station\. 3 stops left, about 6 min, arriving about /);
+  // Nothing followed any more: the line's own answer stands.
+  assert.equal(onwardWhere(parts, { ...state, index: parts.length }, t0), null);
+  assert.equal(onwardWhere([], null, t0), null);
 });

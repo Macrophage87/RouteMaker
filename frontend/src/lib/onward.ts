@@ -9,9 +9,10 @@ import type { TransitStep } from "./api.ts";
 import { haversineM } from "./geo.ts";
 import { t } from "./i18n.ts";
 import { ARRIVED_SAID, type RideEvent, type RideFix, type RideModel, type RideState, type Verbosity } from "./navigate.ts";
-import { onBoardLeg, onBoardStart, onBoardStep, AT_STOP_M, ROUGH_FIX_M, type OnBoardLeg, type OnBoardState } from "./onBoard.ts";
+import { onBoardLeg, onBoardStart, onBoardStep, onBoardWhere, AT_STOP_M, ROUGH_FIX_M, type OnBoardLeg, type OnBoardState } from "./onBoard.ts";
 import { drawOf } from "./transit.ts";
-import { walkModel, walkStart, walkStep, type WalkPath } from "./walkCues.ts";
+import { walkModel, walkStart, walkStep, walkTurnLine, type WalkPath } from "./walkCues.ts";
+import { arrivalClock } from "./arrival.ts";
 
 /** A walk, with its planned seconds (null: unknown), or a train or bus. */
 export type OnwardPart = { kind: "walk"; model: RideModel; to: string | null; seconds: number | null } | { kind: "transit"; leg: OnBoardLeg };
@@ -109,4 +110,23 @@ export function onwardStep(
   const out = onBoardStep(part.leg, state.board ?? onBoardStart(now), now, fix);
   if (!out.state.done) return { state: { ...state, board: out.state }, events: [], said: out.said };
   return { state: begin(parts, state.index + 1, now), events: [], said: out.said };
+}
+
+/**
+ * Where am I? past the line (Stephen, 2026-11-04: on the train it said "You have arrived at the end of the route"): the
+ * train or bus followed now (waiting: its line and the stop to get off; on board: the stops and time left), or the
+ * walk's next turn; null once nothing is followed (the line's own answer then stands).
+ */
+export function onwardWhere(parts: readonly OnwardPart[], state: OnwardState | null, nowMs: number = Date.now()): { shown: string[]; spoken: string } | null {
+  const current = state ?? (parts.length > 0 ? onwardStart(parts, nowMs) : null);
+  if (!current || !onwardActive(parts, current)) return null;
+  const part = parts[current.index];
+  if (part.kind === "transit") return onBoardWhere(part.leg, current.board ?? onBoardStart(nowMs), nowMs, arrivalClock);
+  const line = walkTurnLine(part.model, current.walk ?? walkStart());
+  if (!line) {
+    if (!part.to) return null;
+    const to = t("Walk to {place}{distance}.", { place: part.to, distance: "" });
+    return { shown: [to], spoken: to };
+  }
+  return { shown: [line], spoken: `${line}.` };
 }
