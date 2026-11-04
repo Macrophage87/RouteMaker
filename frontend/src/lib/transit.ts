@@ -317,7 +317,8 @@ export function transitMarkers(plan: TransitPlan | null): TransitMarker[] {
   const out: TransitMarker[] = [];
   for (const step of plan?.steps ?? []) {
     if (drawOf(step) !== "transit" || step.coordinates.length < 2) continue;
-    const [lon, lat] = middle(step.coordinates);
+    // The middle stop where the step lists them (its line may be a track's many points), else the line's middle.
+    const [lon, lat] = step.stops && step.stops.length >= 2 ? middle(step.stops.map((stop) => stop.point)) : middle(step.coordinates);
     const lines = step.lines.join(" or ");
     const bus = step.mode === "bus";
     const badge = bus ? t("Bus") : (step.system ?? t("Train"));

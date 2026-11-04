@@ -46,6 +46,8 @@ export interface OnBoardLeg {
   waitS: number;
   /** A frequent service's minutes between departures; null for a timed one (its departure says when). */
   everyMin?: number | null;
+  /** The line's track from the stop boarded to the one to get off (the feed's shapes.txt), where the API sent one; else none. */
+  track?: LonLat[] | null;
   /** The plan's seconds from the stop to get off to the trip's end (the walks, waits and rides after it); null: not known. */
   afterS?: number | null;
 }
@@ -75,7 +77,7 @@ export function onBoardLeg(step: TransitStep, afterS: number | null = null): OnB
   const trains = step.towards?.length
     ? step.towards.map((w) => ({ line: w.line, toward: w.toward }))
     : [{ line, toward: step.toward ?? null }];
-  return { stops, line, trains, departs: step.departs ?? null, rack: step.mode === "bus" && step.with_bike, toward: step.toward ?? null, bus: step.mode === "bus", waitS: step.wait_s, everyMin: step.every_min ?? null, afterS };
+  return { stops, line, trains, departs: step.departs ?? null, rack: step.mode === "bus" && step.with_bike, toward: step.toward ?? null, bus: step.mode === "bus", waitS: step.wait_s, everyMin: step.every_min ?? null, afterS, track: (step.coordinates?.length ?? 0) > stops.length ? step.coordinates : null };
 }
 
 export function onBoardStart(now: number): OnBoardState {
@@ -210,13 +212,21 @@ export function stopsLeftText(leg: OnBoardLeg, state: Pick<OnBoardState, "at">):
  * from the stop the fix says). Null while waiting to board.
  */
 export function onBoardSecondsLeft(leg: Pick<OnBoardLeg, "stops">, state: Pick<OnBoardState, "at" | "boardedAt">, nowMs: number): number | null {
+  return onBoardSecondsTo(leg, state, nowMs, leg.stops.length - 1);
+}
+
+/**
+ * The seconds to the stop at `index` (Stephen, 2026-11-04: "see if you can find the etas for each intermediate
+ * station"), worked out as onBoardSecondsLeft's; 0 for one passed, null while waiting.
+ */
+export function onBoardSecondsTo(leg: Pick<OnBoardLeg, "stops">, state: Pick<OnBoardState, "at" | "boardedAt">, nowMs: number, index: number): number | null {
   if (state.boardedAt === null) return null;
   const last = leg.stops.length - 1;
   const at = Math.min(Math.max(0, state.at), last);
   const reached = leg.stops[at].after_s;
   const next = leg.stops[Math.min(at + 1, last)].after_s;
   const ridden = Math.min(Math.max((nowMs - state.boardedAt) / 1000, reached), next);
-  return Math.max(0, leg.stops[last].after_s - ridden);
+  return Math.max(0, leg.stops[Math.min(Math.max(0, index), last)].after_s - ridden);
 }
 
 /**
@@ -254,17 +264,35 @@ export interface OnBoardPath {
   bus: boolean;
 }
 
+/** The track from its point nearest `from` (the stop reached) on; null without a track. */
+function trackFrom(track: readonly LonLat[] | null, from: LonLat): LonLat[] | null {
+  if (!track || track.length < 2) return null;
+  let best = 0;
+  let bestM = Infinity;
+  track.forEach((point, i) => {
+    const m = haversineM(point, from);
+    if (m < bestM) {
+      bestM = m;
+      best = i;
+    }
+  });
+  const rest = track.slice(Math.min(best, track.length - 2));
+  return rest.length >= 2 ? rest : null;
+}
+
 /**
  * The path drawn while waiting for the train or bus and on it (Stephen, 2026-11-04: "if you can show the path too"):
  * from the last stop reached (the boarding stop while waiting) to the stop to get off, through every stop between, so
- * a Metro line goes station to station. The timetable has no track shapes, so between two stops it is a straight line.
+ * a Metro line goes station to station: along the line's track where the timetable has it (Stephen, 2026-11-04: "Can't
+ * you find the shape files for the routes?"), else straight from stop to stop.
  */
-export function onBoardPath(leg: Pick<OnBoardLeg, "stops" | "line" | "trains" | "bus">, at: number): OnBoardPath | null {
+export function onBoardPath(leg: Pick<OnBoardLeg, "stops" | "line" | "trains" | "bus" | "track">, at: number): OnBoardPath | null {
   const last = leg.stops.length - 1;
-  const ahead = leg.stops.slice(Math.min(Math.max(0, at), Math.max(0, last - 1)));
+  const from = Math.min(Math.max(0, at), Math.max(0, last - 1));
+  const ahead = leg.stops.slice(from);
   if (ahead.length < 2) return null;
   return {
-    coordinates: ahead.map((stop) => stop.point),
+    coordinates: trackFrom(leg.track ?? null, ahead[0].point) ?? ahead.map((stop) => stop.point),
     colour: lineColour([...(leg.trains ?? []).map((train) => train.line), leg.line]),
     stops: ahead.map((stop, i) => ({ point: stop.point, name: stop.name, off: i === ahead.length - 1 })),
     bus: leg.bus,

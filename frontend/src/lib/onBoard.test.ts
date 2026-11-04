@@ -6,7 +6,7 @@ import { readFileSync } from "node:fs";
 import type { TransitStep } from "./api.ts";
 import type { LonLat } from "./geo.ts";
 import type { RideFix } from "./navigate.ts";
-import { STALE_MS, boardingGroups, lineColour, onBoardFeatures, onBoardPath, onBoardSecondsLeft, laterDepartureText, lineBadge, liveForBoarding, liveNextText, nextDepartureText, onBoardLeg, onBoardRows, onBoardStart, onBoardStep, stopsLeftText, type OnBoardState } from "./onBoard.ts";
+import { STALE_MS, boardingGroups, lineColour, onBoardFeatures, onBoardPath, onBoardSecondsLeft, onBoardSecondsTo, laterDepartureText, lineBadge, liveForBoarding, liveNextText, nextDepartureText, onBoardLeg, onBoardRows, onBoardStart, onBoardStep, stopsLeftText, type OnBoardState } from "./onBoard.ts";
 import { onwardOf, onwardStart, onwardStep, onwardWhere } from "./onward.ts";
 
 const M_PER_DEG = 111_195;
@@ -370,4 +370,34 @@ test("Where am I? on transit: the line and stop to get off while waiting; the st
   // Nothing followed any more: the line's own answer stands.
   assert.equal(onwardWhere(parts, { ...state, index: parts.length }, t0), null);
   assert.equal(onwardWhere([], null, t0), null);
+});
+
+test("the path follows the line's track where the API sent one, from the stop reached", () => {
+  // A track with a bend between each pair of stops: twice the stops, less one.
+  const track: LonLat[] = [];
+  NAMES.forEach((_, i) => {
+    track.push(north(i * 1200));
+    if (i < NAMES.length - 1) track.push([-76.995, 38.9 + (i * 1200 + 600) / M_PER_DEG]);
+  });
+  const leg = onBoardLeg({ ...STEP, coordinates: track })!;
+  assert.equal(leg.track?.length, 11);
+  const waiting = onBoardPath(leg, 0)!;
+  assert.equal(waiting.coordinates.length, 11);
+  // At Rhode Island Ave (stop 3): the track from there, its bends kept.
+  const on = onBoardPath(leg, 3)!;
+  assert.deepEqual(on.coordinates[0], north(3600));
+  assert.equal(on.coordinates.length, 5);
+  // Stops-only coordinates (an older schedule): no track, stop to stop.
+  assert.equal(LEG.track, null);
+});
+
+test("each stop ahead's time: its timetable time from where the train is; a passed one is 0; none while waiting", () => {
+  const t0 = 1_000_000;
+  assert.equal(onBoardSecondsTo(LEG, { at: 0, boardedAt: null }, t0, 3), null);
+  // A minute after boarding at Takoma: Brookland (stop 2, 4 min in) is 3 min off; Fort Totten 1 min.
+  assert.equal(onBoardSecondsTo(LEG, { at: 0, boardedAt: t0 }, t0 + 60_000, 2), 180);
+  assert.equal(onBoardSecondsTo(LEG, { at: 0, boardedAt: t0 }, t0 + 60_000, 1), 60);
+  // Past Brookland (the fix says stop 3): it is 0, Union Station 4 min.
+  assert.equal(onBoardSecondsTo(LEG, { at: 3, boardedAt: t0 }, t0 + 60_000, 2), 0);
+  assert.equal(onBoardSecondsTo(LEG, { at: 3, boardedAt: t0 }, t0 + 60_000, 5), onBoardSecondsLeft(LEG, { at: 3, boardedAt: t0 }, t0 + 60_000));
 });

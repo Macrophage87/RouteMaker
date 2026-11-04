@@ -31,8 +31,12 @@ test("RIDE-1: hidden in the installed app, the ride's map so far goes to the las
 test("RIDE-3: weak GPS is shown in the ride's GPS note and said once; a good fix clears it; no new control", () => {
   const onFix = ride.slice(ride.indexOf("const onFix = useCallback("), ride.indexOf("const onFixRef = useRef(onFix);"));
   assert.match(onFix, /const weighed = weighFix\(gpsWeak\.current, fix\.accuracyM, lastFixAt\.current\);/);
-  assert.match(onFix, /if \(weighed\.sayNow\) notify\(GPS_WEAK_SAID\);/);
-  assert.match(onFix, /setGps\(weighed\.weak \? GPS_WEAK_SAID : ""\);/);
+  // Never on a train or bus past the line (Stephen, 2026-11-04: "stop the GPS is weak notifications on metrorail").
+  assert.match(onFix, /if \(weighed\.sayNow && !onTransitRef\.current\) notify\(GPS_WEAK_SAID\);/);
+  assert.match(onFix, /setGps\(weighed\.weak && !onTransitRef\.current \? GPS_WEAK_SAID : ""\);/);
+  // Nor a lost signal underground (the timetable places the train), unless the watch has stopped for good.
+  assert.match(ride, /if \(onTransitRef\.current && reason !== "denied" && reason !== "insecure" && reason !== "unsupported"\) return;/);
+  assert.match(ride, /onTransitRef\.current = onTransit;/);
   // The existing note line, the one the GPS-lost notes use.
   assert.equal(ride.match(/\{gps && ride\.fix && <p className="hint">\{gps\}<\/p>\}/g)?.length, 1);
   // A new watch (Start, Resume) gives the first fixes their 12 s again.

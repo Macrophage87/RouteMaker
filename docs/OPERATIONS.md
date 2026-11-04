@@ -2413,6 +2413,11 @@ metro-typical.json from each line's page (`https://www.wmata.com/ridertools/line
 - The zips and the built file are the agencies' data. Keep them on the host and never commit them
   (docs/SOURCES.md, "Transit timetables").
 - The web process reads the file again when it changes, so no restart is needed.
+- Rail lines follow their tracks (Stephen, 2026-11-04: "Can't you find the shape files for the
+  routes?"). The build reads each rail feed's `shapes.txt` and stores each pattern's track, cut at
+  its stops; the report says "<system>: N of M patterns follow their track". A feed with no
+  `shapes.txt`, a bus, or Metro on its typical timetable is drawn straight from stop to stop, as
+  before. A schedule built before this keeps working, with straight lines, until the next refresh.
 
 **Refresh at least every 45 days.** The file holds 45 days of service from the build date
 (`--date`, default yesterday in Washington, so tonight's trips after midnight are covered on

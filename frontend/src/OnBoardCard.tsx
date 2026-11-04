@@ -5,7 +5,7 @@
  * and the stop to get off are said through the ride's outputs, never by this card.
  */
 import { useEffect, useState } from "react";
-import { boardingGroups, laterDepartureText, lineBadge, liveForBoarding, liveNextText, type LiveTrain, nextDepartureText, onBoardRows, onBoardSecondsLeft, stopsLeftText, type OnBoardLeg, type OnBoardState } from "./lib/onBoard.ts";
+import { boardingGroups, laterDepartureText, lineBadge, liveForBoarding, liveNextText, type LiveTrain, nextDepartureText, onBoardRows, onBoardSecondsLeft, onBoardSecondsTo, stopsLeftText, type OnBoardLeg, type OnBoardState } from "./lib/onBoard.ts";
 import { arrivalClock } from "./lib/arrival.ts";
 import { formatDuration } from "./lib/format.ts";
 import { t } from "./lib/i18n.ts";
@@ -15,7 +15,10 @@ export function OnBoardCard({ leg, state }: { leg: OnBoardLeg; state: OnBoardSta
   const off = leg.stops[leg.stops.length - 1].name;
   // The way, unless it is the stop to get off at ("toward Shady Grove" then "Get off at Shady Grove" says it twice).
   const way = leg.toward && leg.toward !== off ? t("{line} toward {place}", { line: leg.line, place: leg.toward }) : leg.line;
-  const rows = onBoardRows(leg, state).filter((row, i) => i >= state.at || row.off);
+  // Each row keeps its stop's place in the leg, for its time.
+  const rows = onBoardRows(leg, state)
+    .map((row, index) => ({ ...row, index }))
+    .filter((row) => row.index >= state.at || row.off);
   // The time left kept current between stops (the timetable's run, lib/onBoard.ts onBoardSecondsLeft).
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -50,10 +53,22 @@ export function OnBoardCard({ leg, state }: { leg: OnBoardLeg; state: OnBoardSta
             <span>{row.name}</span>
             {row.next && !row.off && <span className="onboard-mark"> · {t("next")}</span>}
             {row.off && <span className="onboard-mark"> · {row.next ? t("next, get off") : t("get off")}</span>}
+            {/* Each stop ahead's clock time (Stephen, 2026-11-04: "the etas for each intermediate station"). */}
+            {left !== null && row.index > state.at && <StopClock seconds={onBoardSecondsTo(leg, state, now, row.index) ?? 0} nowMs={now} />}
           </li>
         ))}
       </ol>
     </div>
+  );
+}
+
+/** A stop's clock time at the row's end: "5:31 PM", heard as "arriving about 5:31 PM". */
+function StopClock({ seconds, nowMs }: { seconds: number; nowMs: number }) {
+  return (
+    <span className="onboard-eta">
+      <span className="visually-hidden">{t(", arriving about")} </span>
+      {arrivalClock(nowMs, seconds)}
+    </span>
   );
 }
 
