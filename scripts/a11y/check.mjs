@@ -5781,13 +5781,14 @@ if (mine()) {
     await sleep(450);
   }
   const noRoom = await small.eval("window.__said.filter((t) => t.includes('No room on this screen'))");
+  // Traffic stress is a ribbon now (Stephen 2026-11-04), so elevation usually fits under it; where it does not, it is said once.
   check("ride graphs at 360x640 with two on: the graph with no room is said once, not again at each GPS fix",
-    noRoom.length === 1 && noRoom[0] === "No room on this screen for: Elevation.", JSON.stringify(noRoom));
+    noRoom.length === 0 || (noRoom.length === 1 && noRoom[0] === "No room on this screen for: Elevation."), JSON.stringify(noRoom));
   const room = await small.eval(`(() => {
     const card = document.querySelector('.ride .cue-card').getBoundingClientRect(), sheet = document.querySelector('.ride .ride-controls');
     const buttons = [...document.querySelector('.ride-rail').children].filter((e) => e.offsetHeight > 2).map((e) => e.getBoundingClientRect());
     return { cardBottom: Math.round(card.bottom), railTop: Math.round(Math.min(...buttons.map((r) => r.top))), railBottom: Math.round(Math.max(...buttons.map((r) => r.bottom))),
-      panelTop: Math.round(sheet?.getBoundingClientRect().top ?? innerHeight), scrolls: !!sheet && sheet.scrollHeight > sheet.clientHeight + 1, graphs: document.querySelectorAll('.ride-ahead-name').length }; })()`);
+      panelTop: Math.round(sheet?.getBoundingClientRect().top ?? innerHeight), scrolls: !!sheet && sheet.scrollHeight > sheet.clientHeight + 1, graphs: document.querySelectorAll('.ride-ahead-name, .ride-ahead-ribbon').length }; })()`);
   await small.shot(`${SHOTS}/ride_graphs_360x640.png`);
   check("ride graphs at 360x640 with two on: the side buttons stay between the cue card and the bottom panel, and the panel does not scroll",
     room.graphs >= 1 && room.railTop >= room.cardBottom && room.railBottom <= room.panelTop && !room.scrolls, JSON.stringify(room));
@@ -5800,7 +5801,7 @@ if (mine()) {
     const buttons = [...document.querySelector('.ride-rail').children].filter((e) => e.offsetHeight > 2).map((e) => e.getBoundingClientRect());
     return { cardBottom: Math.round(card.bottom), barBottom: bar ? Math.round(bar.bottom) : 0, railTop: Math.round(Math.min(...buttons.map((r) => r.top))),
       railBottom: Math.round(Math.max(...buttons.map((r) => r.bottom))), least: Math.round(Math.min(...buttons.map((r) => r.height))),
-      panelTop: sheet ? Math.round(sheet.getBoundingClientRect().top) : null, graphs: document.querySelectorAll('.ride-ahead-name').length,
+      panelTop: sheet ? Math.round(sheet.getBoundingClientRect().top) : null, graphs: document.querySelectorAll('.ride-ahead-name, .ride-ahead-ribbon').length,
       noRoom: document.querySelector('.ride-ahead-room')?.textContent ?? '',
       said: [...document.querySelectorAll('.ride [role=status], .ride [role=alert], .ride-toast')].map((e) => e.textContent.trim()).join(' | '),
       small: (() => { const svg = document.querySelector('.ride-ahead-plot'); if (!svg) return false; const vb = svg.viewBox.baseVal; return svg.getBoundingClientRect().width / vb.width < 0.99; })() }; })()`;
@@ -5827,7 +5828,7 @@ if (mine()) {
 
   const forced = await rideWith({ width: 390, height: 844, scheme: "dark", forced: true });
   await turnOn(forced, ["stress"]);
-  const ink = await forced.eval(`(() => { const name = document.querySelector('.ride-ahead-name'), bg = getComputedStyle(document.querySelector('.ride .ride-controls')).backgroundColor;
+  const ink = await forced.eval(`(() => { const name = document.querySelector('.ride-ahead-name, .ride-ahead-ribbon-name'), bg = getComputedStyle(document.querySelector('.ride .ride-controls')).backgroundColor;
     return { name: name && getComputedStyle(name).fill, you: getComputedStyle(document.querySelector('.ride-ahead-you-word')).fill, bg }; })()`);
   await forced.shot(`${SHOTS}/ride_graphs_forced.png`);
   check("ride graphs in forced colours: the graph's heading and 'You' are in the system's text colour, not the panel's",

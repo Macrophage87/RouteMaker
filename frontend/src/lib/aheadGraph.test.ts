@@ -13,6 +13,8 @@ import {
   corkerMarks,
   corkerSentence,
   elevationSentence,
+  facilitySentence,
+  facilityStretches,
   elevationShape,
   flowSentence,
   flowSteps,
@@ -320,5 +322,31 @@ test("the graphs' room is measured before each paint, and with no room their sen
   assert.match(ride, /useLayoutEffect\(\(\) => \{\s*measureAhead\.current\?\.\(\);\s*\}\);/, "a note that comes or goes changes the room in the same frame");
   assert.match(ride, /\{aheadWanted && !aheadFits && ride\.progressM !== null && \(\s*<AheadGraph [^>]*maxPx=\{0\} \/>/, "no room: the sentence alone");
   const graph = readFileSync(new URL("../AheadGraph.tsx", import.meta.url), "utf8");
-  assert.match(graph, /className=\{panels\.drawn\.length \? "ride-ahead" : "ride-ahead ride-ahead-unseen"\} role="group" aria-label=\{AHEAD_GROUP\}/);
+  assert.match(graph, /className=\{panels\.any \? "ride-ahead" : "ride-ahead ride-ahead-unseen"\} role="group" aria-label=\{AHEAD_GROUP\}/);
+});
+
+test("the stress ribbon's rails: trails and bike lanes along the window, joined, painted lanes on LTS 4 left off, and said", () => {
+  const span = (from_m: number, to_m: number, tier: number | null, facility: StressSpan["facility"]): StressSpan => ({ from_m, to_m, tier, facility });
+  const spans = [
+    span(0, 200, 2, "none"),
+    span(200, 500, 1, "path"),
+    span(500, 800, 1, "path"),
+    span(800, 1000, 3, "protected"),
+    span(1000, 1200, 4, "lane"),
+    span(1200, 1500, 2, "lane"),
+  ];
+  const rails = facilityStretches(spans, aheadWindow(0, 50_000));
+  assert.deepEqual(rails.map((r) => [r.fromM, r.toM, r.facility]), [[200, 800, "path"], [800, 1000, "protected"], [1200, 1500, "lane"]]);
+  assert.equal(rails[0].color, "#4c1d95", "the map's trail purple");
+  assert.deepEqual(facilityStretches(spans, { fromM: 900, toM: 1100 }).map((r) => [r.fromM, r.toM]), [[900, 1000]], "clipped to the window");
+  assert.equal(facilitySentence(rails, 0), "Trail in 700 feet, for 0.4 miles. Protected bike lane in 0.5 miles, for 700 feet.");
+  assert.equal(facilitySentence(rails, 300), "Trail here, for 0.3 miles. Protected bike lane in 0.3 miles, for 700 feet.");
+  assert.equal(facilitySentence(rails, 2000), "");
+});
+
+test("traffic stress is a ribbon with the turns on it, not a graph, so it fits beside elevation (Stephen 2026-11-04: always a ribbon)", () => {
+  const graph = readFileSync(new URL("../AheadGraph.tsx", import.meta.url), "utf8");
+  assert.match(graph, /const graphs = views\.filter\(\(view\) => view !== "stress"\);/, "stress takes no graph's room");
+  assert.match(graph, /<Ribbon bars=\{panels\.ribbon\} rails=\{panels\.rails\}/);
+  assert.match(graph, /const railYs = \[top \+ RAIL_H \/ 2, band \+ RIBBON_H \+ RAIL_GAP \+ RAIL_H \/ 2\];/, "rails on the top and bottom edges");
 });
