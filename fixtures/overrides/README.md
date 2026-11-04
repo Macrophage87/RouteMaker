@@ -662,7 +662,7 @@ in the database still names it: delete that row in the admin when loading the fi
   plans/region-overrides). Fingerprints are from extract-20261031 (`rematch.fingerprint_of`).
   The Maryland dry run lists about 35,000 rows. Not loaded: the owner confirms each file, then
   a rebuild.
-- `2026-11-04-owner-baltimore-city-review.json` (1,563 ways, 142.6 mi; 323 retired): a second
+- `2026-11-04-owner-baltimore-city-review.json` (963 ways, 99.6 mi; 167 retired): a second
   review of Baltimore City with the city's own data. Every city street block was matched to
   Open Baltimore's Street Centerline (Native) speed limits, MDOT SHA's counts and lanes, and
   Baltimore City DOT's bike facilities, 2024 truck routes, restricted-hours routes and speed
@@ -671,14 +671,19 @@ in the database still names it: delete that row in the admin when loading the fi
   rating. Differing from LTS rating is a flag for increased scrutiny, not that our rating is
   wrong."), and a skeptic checked each difference from our map, MDOT SHA's LTS and the city's
   planning LTS. The owner, 2026-11-04: "Add them in with the clear justification in the why, not
-  just as an owner decision." So each `public_note` gives the way's facts (lanes, the city's
-  speed and any speed MDOT SHA assumed, the way's own SHA count, the facility, a truck route)
-  and the level they lead to. Main causes: MDOT SHA assumed 35 mph where the city records 25 or
-  30 (down), truck routes on two-lane streets (up half a step), divided roads rated on both
+  just as an owner decision." So each `public_note` gives that way's own facts as its road
+  panel shows them on the 2026-11-02 map (lanes, posted speed and any speed MDOT SHA assumed,
+  the count and its year, the bike facility or one the city records that our map lacks, a city
+  truck route, a restricted-hours route, a count shared by both sides of a divided road) and the
+  level they lead to. Main causes: MDOT SHA assumed 35 mph where the city records 25 or 30
+  (down), truck routes on two-lane streets (up half a step), divided roads rated on both
   carriageways' count (down), and counted streets an earlier row put on the wrong side of the
   5,000 a day line. Where a way had a 2026-11-01 Maryland review row, that row is under
-  `retire`. Left out: quiet uncounted local streets at 1 (they stay 1), ways a change covers
-  less than 60% of (393), ways already at the level (43), ways in the 2026-10-01 Baltimore
-  facilities file (6), ways whose level rested on another block's count (89), and every group
-  a skeptic was unsure about. Fingerprints are from OSM as served by the OSM API on 2026-11-04.
-  Not loaded: the owner confirms the file, then a rebuild.
+  `retire`. Left out: quiet residential streets at 1 with no truck or rush-hour route and under
+  1,500 a day (they stay 1, the owner 2026-11-01; 35), ways a change covers less than 60% of
+  (393), ways already at the level (43), ways in the 2026-10-01 Baltimore facilities file (6),
+  ways whose own count differs by more than 15% from the count the skeptic used (313) or has a
+  count the skeptic did not use (9), ways whose road panel answered for another way (114), ways
+  where the skeptic's lanes, speed or count are not what the way's road panel shows (215), and
+  every group a skeptic was unsure about. Fingerprints are from OSM as served by the OSM API on
+  2026-11-04. Not loaded: the owner confirms the file, then a rebuild.
