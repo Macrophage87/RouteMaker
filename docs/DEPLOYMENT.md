@@ -40,7 +40,7 @@ Two changes, and they are one decision:
   `compose.yaml`'s `api` service has the measured table for all five values.)
 
 The three third-party images are written out the same way —
-`docker.io/library/caddy:2.8-alpine`, `docker.io/postgis/postgis:16-3.4`,
+`docker.io/library/caddy:2.10-alpine`, `docker.io/postgis/postgis:16-3.4`,
 `docker.io/rtuszik/photon-docker:2.4.0`, and Valhalla's `ghcr.io/valhalla/valhalla:3.9.1`.
 Nothing about where they come from changes; what changes is that the registry is
 stated rather than defaulted. Since v0.7.0 each also carries its `@sha256:` digest in
@@ -1433,7 +1433,9 @@ tracks — was run against this file on both postures: `caddy validate` accepts
 it, and a live server started from it returned
 `Strict-Transport-Security: max-age=31536000` on a static file and on a proxied
 path (a 502, with the api absent, which is the point: the header is the site's
-and not the upstream's). Everything else below is still read as text.
+and not the upstream's). Everything else below is still read as text. That run
+predates the move to `caddy:2.10-alpine` (Caddy 2.10.2); run the validate
+command under "Changing the Caddyfile on a running stack" against the new image before deploying it.
 
 The file routes four things and no more (the base map and the front end have
 sections of their own: docs/OPERATIONS.md, "The base map", and "The public
@@ -1468,7 +1470,7 @@ mount the source and leaves caddy exited. `up -d` alone does not recreate it.
 Validate the new file in a throwaway container, then recreate caddy alone:
 
 ```sh
-docker run --rm -e CADDY_SITE_ADDRESS=:80 -v "$PWD/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2.8-alpine@sha256:af32e97399febea808609119bb21544d0265c58a02836576e32a2d082c262c17 caddy validate --config /etc/caddy/Caddyfile
+docker run --rm -e CADDY_SITE_ADDRESS=:80 -v "$PWD/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2.10-alpine@sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d caddy validate --config /etc/caddy/Caddyfile
 docker compose up -d --no-deps --no-build --force-recreate caddy
 ```
 

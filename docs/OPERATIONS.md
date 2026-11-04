@@ -3841,7 +3841,7 @@ and the rule assumes Caddy is the TLS edge, because behind another
 TLS-terminating proxy Caddy sees `http` and refuses every `https` page.
 
 **The per-IP range-request limit PLAN asks for is not in place**: the stock
-`caddy:2.8-alpine` image has no rate-limit module, and adding one means building
+`caddy:2.10-alpine` image has no rate-limit module, and adding one means building
 Caddy with a third-party module. Until then nothing bounds how fast one address
 can read the archive, and that is a gate on opening the site to anything beyond
 this machine (docs/DEPLOYMENT.md, "Build").
@@ -3940,7 +3940,7 @@ throwaway container of the same image (this is what `tests/test_preset_links.py`
 does), then recreate caddy alone:
 
 ```sh
-docker run --rm -e CADDY_SITE_ADDRESS=:80 -v "$PWD/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2.8-alpine@sha256:af32e97399febea808609119bb21544d0265c58a02836576e32a2d082c262c17 caddy validate --config /etc/caddy/Caddyfile
+docker run --rm -e CADDY_SITE_ADDRESS=:80 -v "$PWD/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2.10-alpine@sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d caddy validate --config /etc/caddy/Caddyfile
 docker compose up -d --no-deps --no-build --force-recreate caddy
 ```
 

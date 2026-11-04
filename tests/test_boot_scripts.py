@@ -108,7 +108,7 @@ case "$sub" in
       exit 1
     fi
     cat "$FAKE_DIR/ps.txt" ;;
-  config) echo "docker.io/library/caddy:2.8-alpine"; echo "docker.io/postgis/postgis:16-3.4" ;;
+  config) echo "docker.io/library/caddy:2.10-alpine"; echo "docker.io/postgis/postgis:16-3.4" ;;
   exec)
     [ -e "$FAKE_DIR/psql.hang" ] && exec sleep 30
     n=$(cat "$FAKE_DIR/psql.fail_n" 2>/dev/null || echo 0)
