@@ -57,6 +57,15 @@ class TestTheFile:
         block = BY_ID["connave-1600-nb"]
         assert (block.first_day, block.last_day) == (date(2026, 8, 31), date(2026, 11, 3))
 
+    def test_what_each_advisory_says_of_people_on_foot_is_kept(self) -> None:
+        """Run and Walk go round only a closure its source says closes the way on foot."""
+        assert BY_ID["tr-bridge-trail"].on_foot is True  # "The walking and biking trail"
+        assert BY_ID["connave-1600-nb"].on_foot is False  # "protected walkway for pedestrians"
+        assert BY_ID["connave-deckover"].on_foot is None  # says nothing of walkers
+        [zone, *_] = advisories.zones_of(BY_ID["tr-bridge-trail"])
+        assert zone.on_foot is True
+        assert wz.Zone.from_json(json.loads(json.dumps(zone.to_json()))).on_foot is True
+
 
 class TestTheReminders:
     """Audit 2026-10-29: a closure on a guessed last day dropped out silently, and a file never

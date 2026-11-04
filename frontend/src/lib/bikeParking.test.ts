@@ -100,6 +100,19 @@ test("words: what it is, how many, covered, a key for lockers, the source last; 
   assert.equal(rackPlaceName(near, null), "Bike rack");
 });
 
+test("Baltimore City DOT's racks say so; an id that only starts with b is OpenStreetMap's", () => {
+  const [bc, ba, bs] = parseBikeParking({
+    points: [
+      { id: "bc12", x: -76.61, y: 39.29, r: 3 },
+      { id: "ba7", x: -76.62, y: 39.3, cv: 1 },
+      { id: "bs2", x: -76.63, y: 39.28, r: 2 },
+    ],
+  })!;
+  assert.deepEqual(rackDetails(bc), ["Racks: 3.", "From Baltimore City DOT's bike racks."]);
+  assert.deepEqual(rackDetails(ba), ["Covered.", "From Baltimore City DOT's bike racks."]);
+  assert.deepEqual(rackDetails(bs), ["Racks: 2.", "From Baltimore City DOT's bike racks."]);
+});
+
 test("the spot card's rows: a pin each, icon alone, its card's Ride here a stop card's", () => {
   const racks = parseBikeParking(file)!;
   const rows = rackSpotRows(racksNear(SPOT, racks));

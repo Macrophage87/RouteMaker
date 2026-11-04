@@ -318,6 +318,7 @@ export function layersTurnedOn(from: string, to: string): RideTypeLayers {
 /**
  * The ride types a link or saved plan with the retired "Avoid gravel" box ticked opens as Road Bike
  * (Stephen, 2026-11-02: "Replace the box"): a rider's own bike, carrying nothing. Elsewhere the box
- * is dropped. The same list as core.presets.AVOID_GRAVEL_BECOMES.
+ * is dropped, Novice and Nervous and Trailmaxxing included: they keep their calm start and Novice's
+ * protections. The same list as core.presets.AVOID_GRAVEL_BECOMES.
  */
-export const AVOID_GRAVEL_BECOMES: readonly PresetId[] = ["default", "fast", "trailmaxxing", "novice", "gravel", "mountain-goat"];
+export const AVOID_GRAVEL_BECOMES: readonly PresetId[] = ["default", "fast", "gravel", "mountain-goat"];

@@ -491,6 +491,8 @@ def plan_zones(
     bypass=(),
     reserve=(0.0, 0),
     now_only: bool = False,
+    at: datetime | None = None,
+    on_foot: bool = False,
 ) -> rules.PlanZones | None:
     """The zones in force for a plan through `points` with the ride-time dial at `when`;
     None where work zones are not running (no refresh has ever been stored).
@@ -499,20 +501,24 @@ def plan_zones(
     moment, and one with no end given "may still apply" on a later ride and is not
     routed round. `bypass` names the closures the rider chose to route through. DDOT's
     permits (`rules.possible`) are never routed round, only flagged on the plan's map;
-    `now_only` (Go and a ride, v0.9.1) leaves them out altogether."""
+    `now_only` (Go and a ride, v0.9.1) leaves them out altogether. `at` is the ride's own
+    moment where the plan has one (a run's or a trip's departure), instead of the dial's.
+    `on_foot` (Run, Walk, Walk + transit) routes round only the closures whose source says
+    they close the way on foot too (`rules.for_plan`)."""
     found = snapshot()
     if not found.status:
         return None
     now = now or _now()
     plan = rules.for_plan(
         found.zones,
-        ride_moment(when, now),
+        at or ride_moment(when, now),
         points,
         found.status,
         now=now,
         bypass=bypass,
         reserve=reserve,
         now_only=now_only,
+        on_foot=on_foot,
     )
     plan.notices = list(found.notices)
     return plan
@@ -537,6 +543,32 @@ def blocked_rings(lines) -> list[list[list[float]]]:
         used_vertices += len(ring)
         rings.append(ring)
     return rings[::-1]
+
+
+def foot_zones(
+    points, when: str, at: datetime | None = None, blocked_lines=(), bypass=(), now_only=False
+) -> tuple[rules.PlanZones | None, list[list[list[float]]]]:
+    """The closures a plan on foot (Run, Walk, Walk + transit) leaves out, as a ride's are
+    (`routing.plan`): the roads the rider marked closed on this outing (`blocked_lines`) take
+    the router's polygon budget first, and the closures that close the way on foot
+    (`rules.for_plan`, `on_foot`) fit the rest; the others are warned of on the route. DDOT's
+    permits are never routed round. (The zones, None where work zones are not running; the
+    rings for the router's `exclude_polygons`.)"""
+    blocked = blocked_rings(blocked_lines)
+    plan = plan_zones(
+        points,
+        when,
+        bypass=bypass,
+        reserve=rules.budget_used(blocked),
+        now_only=now_only,
+        at=at,
+        on_foot=True,
+    )
+    if plan is None:
+        return None, blocked
+    plan.blocked = blocked
+    plan.exclude = list(plan.exclude) + blocked
+    return plan, list(plan.exclude)
 
 
 def _trip_line(trip: dict) -> list[tuple[float, float]]:
@@ -978,6 +1010,7 @@ def closure_row(
     future: bool,
     passage: rules.Passage | None = None,
     scale: float = 1.0,
+    on_foot: bool = False,
 ) -> dict:
     """One closure as the map and its card show it (the API's `ClosureOut`). One whose line is
     still a long straight line between the feed's points (`approximate`) is given no line, and
@@ -999,7 +1032,7 @@ def closure_row(
         "end": None if zone.end is None else zone.end.isoformat(),
         "effect": effect,
         "delay_s": None if delay_s is None else round(delay_s),
-        "effect_text": rules.effect_text(zone, effect, delay_s),
+        "effect_text": rules.effect_text(zone, effect, delay_s, on_foot),
         "can_bypass": zone.kind in (rules.CLOSED, rules.UNKNOWN) and effect != rules.POSSIBLE,
         "bypassed": effect == rules.BYPASSED,
         "from_m": None if passage is None else round(passage.from_m * scale),
@@ -1174,6 +1207,7 @@ def map_rows(coordinates, plan: rules.PlanZones, passages, scale: float, now) ->
             plan.future,
             on_route.get(zone.zone_id),
             scale,
+            plan.on_foot,
         )
         rows.append((near, row))
     # DDOT's permits after every other closure, so the ones a layer may hide never crowd a

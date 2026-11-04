@@ -132,22 +132,41 @@ const ms = (iso: string | null) => {
   return Number.isFinite(t) ? t : null;
 };
 
-/** An alert in one line: "Severe Thunderstorm Warning until 6:45 PM"; "Heat Advisory from 11:00 AM to 8:00 PM". */
-export function alertLine(alert: WeatherAlert, now: number): string {
+/**
+ * An alert's times, as the phrases of `alertLine` and `alertSaid` place them: from (and to) when it starts later, until
+ * when it is in force now, or neither. The NWS's own event name ({event}) stays as the agency wrote it.
+ */
+function alertWhen(alert: WeatherAlert, now: number): { kind: "from-to" | "from" | "until" | "plain"; places: Record<string, string> } {
   const onset = ms(alert.onset);
   const ends = ms(alert.ends);
-  if (onset !== null && onset > now + 60_000) return `${alert.event} from ${lightClock(onset)}${ends !== null ? ` to ${lightClock(ends)}` : ""}`;
-  return ends !== null ? `${alert.event} until ${lightClock(ends)}` : alert.event;
+  const event = alert.event;
+  if (onset !== null && onset > now + 60_000) {
+    return ends !== null ? { kind: "from-to", places: { event, start: lightClock(onset), end: lightClock(ends) } } : { kind: "from", places: { event, start: lightClock(onset) } };
+  }
+  return ends !== null ? { kind: "until", places: { event, end: lightClock(ends) } } : { kind: "plain", places: { event } };
+}
+
+/** An alert in one line, in the language in force: "Severe Thunderstorm Warning until 6:45 PM"; "Heat Advisory from 11:00 AM to 8:00 PM". */
+export function alertLine(alert: WeatherAlert, now: number): string {
+  const { kind, places } = alertWhen(alert, now);
+  if (kind === "from-to") return t("{event} from {start} to {end}", places);
+  if (kind === "from") return t("{event} from {start}", places);
+  if (kind === "until") return t("{event} until {end}", places);
+  return alert.event;
 }
 
 /** The link's words beside each alert. */
 export const NWS_LINK = t("NWS notice");
 /** Its accessible name: "Severe Thunderstorm Warning: National Weather Service notice (opens in a new tab)". */
-export const nwsLinkName = (alert: WeatherAlert) => `${alert.event}: National Weather Service notice (opens in a new tab)`;
+export const nwsLinkName = (alert: WeatherAlert) => t("{event}: National Weather Service notice (opens in a new tab)", { event: alert.event });
 
-/** Said: "Weather alert: Severe Thunderstorm Warning until 6:45 PM." */
+/** Said, a whole sentence in the language in force: "Weather alert: Severe Thunderstorm Warning until 6:45 PM." */
 export function alertSaid(alert: WeatherAlert, now: number): string {
-  return `Weather alert: ${alertLine(alert, now)}.`;
+  const { kind, places } = alertWhen(alert, now);
+  if (kind === "from-to") return t("Weather alert: {event} from {start} to {end}.", places);
+  if (kind === "from") return t("Weather alert: {event} from {start}.", places);
+  if (kind === "until") return t("Weather alert: {event} until {end}.", places);
+  return t("Weather alert: {event}.", places);
 }
 
 /** Whether an alert is said urgently (assertive, interrupting): Extreme, or a warning rated Severe. */

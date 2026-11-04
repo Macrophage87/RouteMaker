@@ -686,7 +686,9 @@ the new plan goes without waiting for it to finish.</p>
 <text class="tb" x="310" y="350" text-anchor="end">Bottom</text>
 </svg>
 </div>
-<figcaption>MapLibre draws every layer in the browser<sup class="cite"><a href="#ref-9" aria-label="source 9">[9]</a></sup>. The base map and contours are single files read a piece at a time with range requests<sup class="cite"><a href="#ref-8" aria-label="source 8">[8]</a></sup>; the stress lines are vector tiles<sup class="cite"><a href="#ref-7" aria-label="source 7">[7]</a></sup> made by PostGIS<sup class="cite"><a href="#ref-6" aria-label="source 6">[6]</a></sup> and cached.</figcaption>
+<figcaption>MapLibre draws every layer in the browser<sup class="cite"><a href="#ref-9" aria-label="source 9">[9]</a></sup>. The base map and contours are single files read a piece at a time with range requests<sup class="cite"><a href="#ref-8" aria-label="source 8">[8]</a></sup>; the stress lines are vector tiles<sup class="cite"><a href="#ref-7" aria-label="source 7">[7]</a></sup> made by PostGIS<sup class="cite"><a href="#ref-6" aria-label="source 6">[6]</a></sup> and cached. Each
+stress tile also holds a second layer of the long trails' names, one joined and smoothed line per name, so a name
+has room to fit along it.</figcaption>
 </figure>
 
 <h2 id="live">Live data</h2>
@@ -922,7 +924,8 @@ opened (kept with that app's draft). A Share ride or Share live link is also a s
 the server like any shared link.</li>
 <li><strong>Backups.</strong> Nightly database backups are encrypted with age to the owner's X25519 public key. The
 private key is kept on the owner's computer, not on the server, so the server can write a backup but never read
-one.</li>
+one. A copy of each encrypted backup is also kept on the owner's computer, the newest seven, as on the server. The
+copies taken just before RouteMaker is updated are not encrypted; they stay on the server for at most 6.5 days.</li>
 <li>The ride encryption is <code>frontend/src/lib/rideSeal.ts</code> in the open source repository, for anyone to
 check.</li>
 </ul>
@@ -979,7 +982,7 @@ release has short rider-facing notes.</li>
 <p class="next">Next: <a href="/about/acknowledgements.html">Acknowledgements</a></p>
 </main>
 <footer>
-  <p>Part of RouteMaker's documentation. It describes version 0.19.1. The code is
+  <p>Part of RouteMaker's documentation. It describes version 0.20.0. The code is
   open source under the MIT licence:
   <a href="https://github.com/Macrophage87/RouteMaker">github.com/Macrophage87/RouteMaker</a>.</p>
   <p><a href="/">Back to the map</a></p>

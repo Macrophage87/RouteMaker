@@ -27,7 +27,29 @@ const PROPS = new Set(["aria-label", "title", "placeholder", "alt"]);
  * announce() or setNotice() was English on a Spanish page): a plain string there, or in either branch of a `?:`, is
  * reported as "said".
  */
-const SAYERS = new Set(["announce", "announceExtra", "setNotice", "setNoticeSaying", "say", "sayDetour", "showToast"]);
+const SAYERS = new Set(["announce", "announceExtra", "setNotice", "setNoticeSaying", "say", "sayDetour", "showToast", "answer", "tell", "notify"]);
+
+/**
+ * Go and Ride's components, where a constant passed by name is read too (the 2026-11-04 review: "Ride ended" shown as
+ * {RIDE_SUMMARY_TITLE} and "Still riding." said as announce(STILL_RIDING_SAID) were English in every language): a
+ * NAME shown, put in one of PROPS or passed to a SAYER must be a constant worded through t(), not a plain string.
+ */
+const BY_NAME = new Set([
+  "App.tsx",
+  "app/Go.tsx",
+  "app/Sheets.tsx",
+  "app/RoutePanel.tsx",
+  "RideMode.tsx",
+  "RideGroup.tsx",
+  "RoamMode.tsx",
+  "RideSummaryCard.tsx",
+  "DepartureTimer.tsx",
+  "StartOnComputerDialog.tsx",
+  "PlaceSearch.tsx",
+  "WeatherLines.tsx",
+  "OnBoardCard.tsx",
+  "TransitSummary.tsx",
+]);
 
 /**
  * What may stay as written, by file (relative to src/) and its text, with why. A whole file is "*". An entry that
@@ -37,6 +59,8 @@ const ALLOWED: readonly { file: string; text: string; why: string }[] = [
   { file: "ReviewMode.tsx", text: "*", why: "the reviewers' screen (signed-in reviewers only), English as the review tools are" },
   { file: "ClosureReview.tsx", text: "*", why: "the reviewers' closure list (signed-in reviewers only), English as the review tools are" },
   { file: "App.tsx", text: "v", why: "the version's prefix, v0.15.1" },
+  { file: "App.tsx", text: "RouteMaker", why: "the app's name (PLANNER_TITLE)" },
+  { file: "AheadGraph.tsx", text: "LTS", why: "the stress ribbon's gutter label: LTS is the same in every language (lib/aheadGraph.ts levelWords)" },
   { file: "MyRoutes.tsx", text: "GPX", why: "the file format's name" },
   { file: "app/RoutePanel.tsx", text: "GPX", why: "the file format's name" },
   { file: "RailStations.tsx", text: "Metro", why: "the system's name" },
@@ -48,6 +72,51 @@ function sources(dir: string): string[] {
     if (statSync(path).isDirectory()) return sources(path);
     return name.endsWith(".tsx") && !name.includes(".test.") ? [path] : [];
   });
+}
+
+/** Every module (.ts and .tsx, not tests nor the catalogs), for the constants a component may show by name. */
+function modules(dir: string): string[] {
+  return readdirSync(dir).flatMap((name) => {
+    const path = join(dir, name);
+    if (statSync(path).isDirectory()) return name === "i18n" ? [] : modules(path);
+    return /\.tsx?$/.test(name) && !name.includes(".test.") ? [path] : [];
+  });
+}
+
+/**
+ * The constants written as a plain string or template (`const NAME = "..."`), by name and file, and the files that
+ * define each name at all: `t("...")` and anything else is not plain.
+ */
+function constantsIn(files: readonly { file: string; source: string }[]): { plain: Map<string, Map<string, string>>; defined: Map<string, Set<string>> } {
+  const plain = new Map<string, Map<string, string>>();
+  const defined = new Map<string, Set<string>>();
+  for (const { file, source } of files) {
+    for (const m of source.matchAll(/(?:^|\n)\s*(?:export )?const ([A-Z][A-Z0-9_]*)\b(?:: [^=\n]+)? =/g)) {
+      if (!defined.has(m[1])) defined.set(m[1], new Set());
+      defined.get(m[1])!.add(file);
+    }
+    for (const m of source.matchAll(/(?:^|\n)\s*(?:export )?const ([A-Z][A-Z0-9_]*)\b(?:: [^=\n]+)? =\s*(["'`])((?:(?!\2)[^\\]|\\[^])*)\2\s*;/g)) {
+      if (!plain.has(m[1])) plain.set(m[1], new Map());
+      plain.get(m[1])!.set(file, m[2] === "`" ? m[3].replace(/\$\{[^}]*\}/g, "${…}") : m[3]);
+    }
+  }
+  return { plain, defined };
+}
+
+/**
+ * A resolver for one file: a NAME's plain text where it names a plain constant (this file's own, else the one
+ * every file that defines it agrees is plain), null otherwise.
+ */
+function plainConstants(consts: ReturnType<typeof constantsIn>, file: string): (name: string) => string | null {
+  return (name) => {
+    const texts = consts.plain.get(name);
+    if (!texts) return null;
+    const own = texts.get(file);
+    if (own !== undefined) return own;
+    if (consts.defined.get(name)?.has(file)) return null;
+    const where = [...(consts.defined.get(name) ?? [])];
+    return where.length > 0 && where.every((f) => texts.has(f)) ? texts.get(where[0])! : null;
+  };
 }
 
 interface Found {
@@ -84,8 +153,11 @@ function branchesOf(node: any): any[] {
   return [node];
 }
 
-/** What one component file shows untranslated; `file` is its name in the report. */
-function untranslated(source: string, file: string): Found[] {
+/**
+ * What one component file shows untranslated; `file` is its name in the report. With `named`, a constant shown or said
+ * by its NAME counts as its text (BY_NAME).
+ */
+function untranslated(source: string, file: string, named: ((name: string) => string | null) | null = null): Found[] {
   const lineStarts = [0];
   for (let i = 0; i < source.length; i += 1) if (source[i] === "\n") lineStarts.push(i + 1);
   const lineOf = (offset: number) => {
@@ -105,6 +177,15 @@ function untranslated(source: string, file: string): Found[] {
     const lead = text.length - text.trimStart().length;
     if (LETTER.test(shown.replace(/\$\{…\}/g, ""))) found.push({ file, line: lineOf(start + lead), text: shown, where });
   };
+  // A plain constant shown or said by its NAME, in either branch of a `?:` (BY_NAME).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const byName = (node: any, where: string) => {
+    if (!named) return;
+    for (const branch of branchesOf(node)) {
+      const text = branch?.type === "Identifier" ? named(branch.name) : null;
+      if (text !== null) add(branch.start, text, `${where} ${branch.name}`);
+    }
+  };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const walk = (node: any, parent: any): void => {
     if (!node || typeof node !== "object") return;
@@ -116,15 +197,18 @@ function untranslated(source: string, file: string): Found[] {
     else if (node.type === "JSXExpressionContainer" && (parent?.type === "JSXElement" || parent?.type === "JSXFragment")) {
       const text = stringOf(node.expression);
       if (text !== null) add(node.start, text, "text");
+      byName(node.expression, "text");
     } else if (node.type === "JSXAttribute" && node.name?.type === "JSXIdentifier" && PROPS.has(node.name.name)) {
       const value = node.value?.type === "JSXExpressionContainer" ? node.value.expression : node.value;
       const text = stringOf(value);
       if (text !== null) add(node.start, text, node.name.name);
+      byName(value, node.name.name);
     } else if (node.type === "CallExpression" && SAYERS.has(calleeName(node.callee) ?? "")) {
       for (const branch of branchesOf(node.arguments?.[0])) {
         const text = stringOf(branch);
         if (text !== null) add(branch.start, text, "said");
       }
+      byName(node.arguments?.[0], "said");
     }
     for (const key of Object.keys(node)) if (key !== "start" && key !== "end") walk(node[key], node);
   };
@@ -135,7 +219,11 @@ function untranslated(source: string, file: string): Found[] {
 const allowed = (f: Found) => ALLOWED.some((a) => a.file === f.file && (a.text === "*" || a.text === f.text));
 
 test("rider-visible text in components goes through t(): no plain JSX text or aria-label, title, placeholder, alt", () => {
-  const all = sources(SRC).flatMap((path) => untranslated(readFileSync(path, "utf8"), relative(SRC, path).split("\\").join("/")));
+  const nameOf = (path: string) => relative(SRC, path).split("\\").join("/");
+  const consts = constantsIn(modules(SRC).map((path) => ({ file: nameOf(path), source: readFileSync(path, "utf8") })));
+  const components = sources(SRC);
+  assert.deepEqual([...BY_NAME].filter((file) => !components.some((path) => nameOf(path) === file)), [], "BY_NAME lists components that are gone");
+  const all = components.flatMap((path) => untranslated(readFileSync(path, "utf8"), nameOf(path), BY_NAME.has(nameOf(path)) ? plainConstants(consts, nameOf(path)) : null));
   const bad = all.filter((f) => !allowed(f));
   const lines = bad.map((f) => `  src/${f.file}:${f.line} ${f.where === "text" ? "text" : f.where} ${JSON.stringify(f.text)}`);
   assert.equal(
@@ -170,4 +258,34 @@ test("the lint finds plain text, plain props, plain string children and plain sa
     [7, "said", "Plain said ${…}"],
     [8, "said", "Plain member said"],
   ]);
+});
+
+test("in Go and Ride a constant shown or said by its name must be worded through t(), wherever it is defined", () => {
+  const consts = constantsIn([
+    { file: "lib/words.ts", source: 'export const TITLE = "Ride ended";\nexport const DONE = t("Done");\nexport const TOO_LONG =\n  `Up to ${MAX} only.`;\nexport const MARK = "·";' },
+    { file: "lib/other.ts", source: 'export const DONE = "Done";' },
+    {
+      file: "sample.tsx",
+      source: 'const NOTICE = "Outside the map.";\nconst TRANSLATED = t("Inside");',
+    },
+  ]);
+  const sample = [
+    'const NOTICE = "Outside the map.";',
+    'const TRANSLATED = t("Inside");',
+    "export const A = () => (",
+    "  <h2 aria-label={TITLE}>{TITLE} {DONE} {MARK} {TRANSLATED}</h2>",
+    ");",
+    "setNotice(NOTICE);",
+    "ride.current?.answer(ok ? TOO_LONG : TRANSLATED);",
+    "tell(UNKNOWN);",
+  ].join("\n");
+  const found = untranslated(sample, "sample.tsx", plainConstants(consts, "sample.tsx")).map((f) => [f.line, f.where, f.text]);
+  assert.deepEqual(found, [
+    [4, "aria-label TITLE", "Ride ended"],
+    [4, "text TITLE", "Ride ended"],
+    [6, "said NOTICE", "Outside the map."],
+    [7, "said TOO_LONG", "Up to ${…} only."],
+  ]);
+  // Outside Go and Ride (no resolver) a name is not read.
+  assert.deepEqual(untranslated(sample, "sample.tsx"), []);
 });

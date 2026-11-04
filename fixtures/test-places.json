@@ -1,0 +1,24 @@
+{
+  "about": "Public places spread over the area the map covers, for tests that should hold in the city, the suburbs and the country alike (the owner, 2026-11-04: \"a mix of locations, as well as urban, suburban, and rural\"). Each is a landmark, never a home. names is what a geocoder gives for the spot (state, county, city), for the 311 lookup; report311 is the 311 the log sends the rider to, or null where it names none.",
+  "inside": [
+    {"name": "Dupont Circle", "setting": "urban", "lon": -77.0434, "lat": 38.9097, "dc": true, "names": {"state": "District of Columbia", "county": "", "city": "Washington"}, "report311": "dc"},
+    {"name": "Anacostia Park", "setting": "urban", "lon": -76.9740, "lat": 38.8710, "dc": true, "names": {"state": "District of Columbia", "county": "", "city": "Washington"}, "report311": "dc"},
+    {"name": "Baltimore Inner Harbor", "setting": "urban", "lon": -76.6098, "lat": 39.2856, "dc": false, "names": {"state": "Maryland", "county": "", "city": "Baltimore"}, "report311": "baltimore-city"},
+    {"name": "Rosslyn", "setting": "urban", "lon": -77.0710, "lat": 38.8967, "dc": false, "names": {"state": "Virginia", "county": "Arlington County", "city": "Arlington"}, "report311": "arlington"},
+    {"name": "Old Town Alexandria", "setting": "urban", "lon": -77.0430, "lat": 38.8048, "dc": false, "names": {"state": "Virginia", "county": "City of Alexandria", "city": "Alexandria"}, "report311": "alexandria"},
+    {"name": "Wheaton Regional Park", "setting": "suburban", "lon": -77.0500, "lat": 39.0550, "dc": false, "names": {"state": "Maryland", "county": "Montgomery County", "city": "Wheaton"}, "report311": "moco"},
+    {"name": "Bowie Town Center", "setting": "suburban", "lon": -76.7330, "lat": 38.9445, "dc": false, "names": {"state": "Maryland", "county": "Prince George's County", "city": "Bowie"}, "report311": "pg"},
+    {"name": "Columbia Lakefront", "setting": "suburban", "lon": -76.8610, "lat": 39.2155, "dc": false, "names": {"state": "Maryland", "county": "Howard County", "city": "Columbia"}, "report311": "howard"},
+    {"name": "Reston Town Center", "setting": "suburban", "lon": -77.3590, "lat": 38.9590, "dc": false, "names": {"state": "Virginia", "county": "Fairfax County", "city": "Reston"}, "report311": "va"},
+    {"name": "Poolesville", "setting": "rural", "lon": -77.4170, "lat": 39.1455, "dc": false, "names": {"state": "Maryland", "county": "Montgomery County", "city": "Poolesville"}, "report311": "moco"},
+    {"name": "Sugarloaf Mountain", "setting": "rural", "lon": -77.3950, "lat": 39.2620, "dc": false, "names": {"state": "Maryland", "county": "Frederick County", "city": ""}, "report311": "frederick"},
+    {"name": "Jug Bay, Patuxent River Park", "setting": "rural", "lon": -76.7080, "lat": 38.7730, "dc": false, "names": {"state": "Maryland", "county": "Prince George's County", "city": ""}, "report311": "pg"},
+    {"name": "Purcellville", "setting": "rural", "lon": -77.7150, "lat": 39.1370, "dc": false, "names": {"state": "Virginia", "county": "Loudoun County", "city": "Purcellville"}, "report311": "va"},
+    {"name": "Harpers Ferry", "setting": "rural", "lon": -77.7400, "lat": 39.3250, "dc": false, "names": {"state": "West Virginia", "county": "Jefferson County", "city": "Harpers Ferry"}, "report311": null}
+  ],
+  "outside": [
+    {"name": "Philadelphia", "lon": -75.1652, "lat": 39.9526},
+    {"name": "Richmond", "lon": -77.4360, "lat": 37.5407},
+    {"name": "Pittsburgh", "lon": -79.9959, "lat": 40.4406}
+  ]
+}
