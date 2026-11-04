@@ -5781,9 +5781,11 @@ if (mine()) {
     await sleep(450);
   }
   const noRoom = await small.eval("window.__said.filter((t) => t.includes('No room on this screen'))");
-  // Traffic stress is a ribbon now (Stephen 2026-11-04), so elevation usually fits under it; where it does not, it is said once.
-  check("ride graphs at 360x640 with two on: the graph with no room is said once, not again at each GPS fix",
-    noRoom.length === 0 || (noRoom.length === 1 && noRoom[0] === "No room on this screen for: Elevation."), JSON.stringify(noRoom));
+  // Traffic stress is a ribbon now (Stephen 2026-11-04), so Elevation may fit under it, or be named in the line under it;
+  // only where neither is on screen is it said, and then once.
+  const elevationShown = await small.eval("[...document.querySelectorAll('.ride-ahead-name, .ride-ahead-room')].some((e) => e.textContent.includes('Elevation'))");
+  check("ride graphs at 360x640 with two on: Elevation drawn or named under the ribbon, or said once with no room, not again at each GPS fix",
+    elevationShown ? noRoom.length === 0 : noRoom.length === 1 && noRoom[0] === "No room on this screen for: Elevation.", JSON.stringify({ elevationShown, noRoom }));
   const room = await small.eval(`(() => {
     const card = document.querySelector('.ride .cue-card').getBoundingClientRect(), sheet = document.querySelector('.ride .ride-controls');
     const buttons = [...document.querySelector('.ride-rail').children].filter((e) => e.offsetHeight > 2).map((e) => e.getBoundingClientRect());
