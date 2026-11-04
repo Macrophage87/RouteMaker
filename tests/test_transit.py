@@ -2554,6 +2554,16 @@ def test_shape_cuts_runs_the_track_through_each_stop() -> None:
     assert build.shape_cuts(line, [(0.0, 0.0), (0.0, 0.05)]) is None
     # Too little to cut.
     assert build.shape_cuts([(0.0, 0.0)], stops) is None
+    # A long straight with no vertex near a stop: placed on the segment all the same.
+    points, cuts = build.shape_cuts([(0.0, 0.0), (0.03, 0.0)], stops)
+    assert [points[c] for c in cuts] == [[0.0, 0.0], [0.01, 0.0], [0.02, 0.0]]
+    # Out and back past the first stop: each stop is taken on its first pass, not the way back.
+    there_and_back = [(0.0, 0.0), (0.03, 0.0), (0.03, 0.001), (0.0, 0.001)]
+    points, cuts = build.shape_cuts(
+        there_and_back, [(0.0, 0.0), (0.02, 0.0), (0.03, 0.001), (0.01, 0.001)]
+    )
+    assert cuts == sorted(cuts) and len(set(cuts)) == 4
+    assert [0.03, 0.0] in points[cuts[1] : cuts[2] + 1]
 
 
 def test_the_build_keeps_rail_tracks_and_a_marc_ride_follows_its_track(schedule) -> None:

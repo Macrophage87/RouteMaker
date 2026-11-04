@@ -2593,9 +2593,11 @@ export function RideMode({
   const onwardPart = ride.arrived ? (onwardParts[onwardIndex] ?? null) : null;
   const onTransit = onwardPart?.kind === "transit";
   onTransitRef.current = onTransit;
-  // A weak-GPS note from before the train goes on boarding (no fix may come underground to clear it).
+  // A weak-GPS note from before the train goes on boarding (no fix may come underground to clear it); off the train,
+  // the weak-GPS clock starts afresh, so a walk with poor fixes after it is told so once, as any walk is.
   useEffect(() => {
     if (onTransit) setGps("");
+    else gpsWeak.current = { goodAt: Date.now(), weak: false };
   }, [onTransit]);
   const onwardWalkLine = onwardPart?.kind === "walk" ? walkTurnLine(onwardPart.model, onward?.walk ?? null) : null;
   // The trip goes on past the line's end (Stephen, 2026-11-03: "the ride just ends when you reach the station. It

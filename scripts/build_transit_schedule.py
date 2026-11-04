@@ -441,38 +441,60 @@ def _simplified(points: list, tolerance_m: float) -> list:
     return _simplified(points[: at + 1], tolerance_m)[:-1] + _simplified(points[at:], tolerance_m)
 
 
+def _onto(a, b, p) -> tuple[float, float]:
+    """Where `p` falls on the segment a-b (0 to 1) and how far it is from it (metres)."""
+    lat = math.radians(p[1])
+    sx, sy = 111_320.0 * math.cos(lat), 110_540.0
+    ax, ay, bx, by, px, py = a[0] * sx, a[1] * sy, b[0] * sx, b[1] * sy, p[0] * sx, p[1] * sy
+    dx, dy = bx - ax, by - ay
+    length = dx * dx + dy * dy
+    t = 0.0 if length == 0 else max(0.0, min(1.0, ((px - ax) * dx + (py - ay) * dy) / length))
+    return t, math.hypot(px - ax - t * dx, py - ay - t * dy)
+
+
+# Past the best place found for a stop, the search ends once the track is this much farther off:
+# a loop or an out-and-back coming near the stop again later is not taken for it.
+SHAPE_LEAVE_M = 500.0
+
+
 def shape_cuts(line: list, stops: list) -> tuple[list[list[float]], list[int]] | None:
     """A pattern's track (Stephen, 2026-11-04: "Can't you find the shape files for the routes?"):
     the shape from its first stop to its last, through each stop's own point, simplified, and the
     index of each stop's point in it, so a ride from one stop to another is a slice. Each stop is
-    placed at the nearest shape point not behind the stop before it. None where a stop is over
-    SHAPE_STOP_M from the shape (not this pattern's track) or the shape is too short."""
+    placed on the nearest segment not behind the stop before it, the first pass by it (the search
+    ends once the track has left it). None where a stop is over SHAPE_STOP_M from the shape (not
+    this pattern's track) or the shape is too short."""
     if len(line) < 2 or len(stops) < 2:
         return None
-    at: list[int] = []
-    start = 0
+    placed: list[tuple[int, float]] = []
+    seg, frac = 0, 0.0
     for stop in stops:
         best, best_d = None, math.inf
-        for i in range(start, len(line)):
-            d = distance_m(line[i], stop)
+        for i in range(seg, len(line) - 1):
+            t, d = _onto(line[i], line[i + 1], stop)
+            if i == seg and t < frac:
+                t, d = frac, distance_m(stop, _along(line[i], line[i + 1], frac))
             if d < best_d:
-                best, best_d = i, d
+                best, best_d = (i, t), d
+            elif best_d <= SHAPE_STOP_M and d > best_d + SHAPE_LEAVE_M:
+                break
         if best is None or best_d > SHAPE_STOP_M:
             return None
-        at.append(best)
-        start = best
-    points: list[list[float]] = []
-    cuts: list[int] = []
-    for k in range(len(stops)):
-        if k == 0:
-            points.append(_round(stops[0]))
-            cuts.append(0)
-            continue
-        between = [stops[k - 1], *line[at[k - 1] + 1 : at[k]], stops[k]]
+        placed.append(best)
+        seg, frac = best
+    points: list[list[float]] = [_round(stops[0])]
+    cuts: list[int] = [0]
+    for k in range(1, len(stops)):
+        (i1, _t1), (i2, _t2) = placed[k - 1], placed[k]
+        between = [stops[k - 1], *line[i1 + 1 : i2 + 1], stops[k]]
         kept = _simplified(between, SHAPE_TOLERANCE_M)
         points.extend(_round(p) for p in kept[1:])
         cuts.append(len(points) - 1)
     return points, cuts
+
+
+def _along(a, b, t: float) -> tuple[float, float]:
+    return (a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t)
 
 
 def _stops(feed) -> dict[str, dict]:
