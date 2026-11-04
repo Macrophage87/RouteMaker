@@ -26,6 +26,7 @@ which matches is refused, and the plan is made without it (`api._planned`).
 
 from __future__ import annotations
 
+import bisect
 import math
 
 from routemaker.geo import Point, bearing_delta, bearing_lonlat, haversine
@@ -534,25 +535,45 @@ def crosswalk_cuts(answer: dict, keep) -> list[dict]:
             and float(length) * 1000.0 < map_match.SCRAP_M
         )
 
+    positions = [i for i, e in enumerate(matched) if isinstance(e, int)]
+    order = [matched[i] for i in positions]
+    if order != sorted(order):
+        return []
     out: list[dict] = []
     for first, last in map_match._tangles(edges):
         metres = sum(edge_m(i) for i in range(first, last + 1))
-        # A scrap of road between the tangle and the junction it turns at belongs to it.
-        while first - 2 >= 0 and road_scrap(first - 1) and road(first - 2):
+        # A scrap of road between the tangle and the junction it turns at belongs to it: under
+        # map_match.SCRAP_M on each side in all.
+        taken = 0.0
+        while (
+            first - 2 >= 0
+            and road_scrap(first - 1)
+            and road(first - 2)
+            and taken + edge_m(first - 1) < map_match.SCRAP_M
+        ):
             first -= 1
-            metres += edge_m(first)
-        while last + 2 < len(edges) and road_scrap(last + 1) and road(last + 2):
+            taken += edge_m(first)
+        metres += taken
+        taken = 0.0
+        while (
+            last + 2 < len(edges)
+            and road_scrap(last + 1)
+            and road(last + 2)
+            and taken + edge_m(last + 1) < map_match.SCRAP_M
+        ):
             last += 1
-            metres += edge_m(last)
+            taken += edge_m(last)
+        metres += taken
         begin = (edges[first] or {}).get("begin_shape_index")
         end = (edges[last] or {}).get("end_shape_index")
         if not (isinstance(begin, int) and isinstance(end, int) and 0 <= begin < end < len(shape)):
             continue
-        before_it = [i for i, e in enumerate(matched) if isinstance(e, int) and e < first]
-        after_it = [i for i, e in enumerate(matched) if isinstance(e, int) and e > last]
-        if not before_it or not after_it:
+        # The matched points' edges run in order along the line (checked below for those between).
+        b_i = bisect.bisect_left(order, first)
+        a_i = bisect.bisect_right(order, last)
+        if b_i == 0 or a_i >= len(order):
             continue
-        after, before = before_it[-1], after_it[0]
+        after, before = positions[b_i - 1], positions[a_i]
         inside = range(after + 1, before)
         if after >= before or any(i in keep for i in inside):
             continue
@@ -598,23 +619,52 @@ def uncut(
         way = _shape(leg) if leg else []
         if len(way) < 2 or map_match._metres(way) > cut["metres"] + map_match.DETOUR_SLACK_M:
             continue
-        # The way's ends where they are the points either side already: not twice.
-        ends = (shape[cut["after"]], shape[cut["before"]])
-        if haversine(Point(*way[0]), Point(ends[0]["lon"], ends[0]["lat"])) < SAME_M:
-            way = way[1:]
-        if way and haversine(Point(*way[-1]), Point(ends[1]["lon"], ends[1]["lat"])) < SAME_M:
-            way = way[:-1]
         pieces.append((cut["after"], cut["before"], [{"lon": lon, "lat": lat} for lon, lat in way]))
     if not pieces:
         return None
     out: list = [None if i in dropped else p for i, p in enumerate(shape)]
     for after, before, way in reversed(pieces):
-        out[after + 1 : before] = way
+        out[after + 1 : before] = [{**p, "_way": True} for p in way]
     out = [p for p in out if p is not None]
-    vias = [i for i, p in enumerate(out) if p.get("type") == routing.VIA_LOCATION_TYPE]
-    line, kept = clear_corners([(p["lon"], p["lat"]) for p in out], vias)
+    # The way's ends where they are the points either side already: not twice.
+    out = [
+        p
+        for i, p in enumerate(out)
+        if not (
+            p.get("_way")
+            and any(
+                0 <= j < len(out)
+                and not out[j].get("_way")
+                and haversine(Point(p["lon"], p["lat"]), Point(out[j]["lon"], out[j]["lat"]))
+                < SAME_M
+                for j in (i - 1, i + 1)
+            )
+        )
+    ]
+    # The corners cleared again only round the ways put in (`clear_corners` keeps every
+    # other point): the rest of the line was cleared before (`request_for`).
+    near = set()
+    for i, p in enumerate(out):
+        if p.get("_way"):
+            near.add(i)
+            metres, j = 0.0, i - 1
+            while j >= 0 and not out[j].get("_way"):
+                metres += haversine(
+                    Point(out[j]["lon"], out[j]["lat"]), Point(out[j + 1]["lon"], out[j + 1]["lat"])
+                )
+                if metres > CORNER_CLEAR_M:
+                    break
+                near.add(j)
+                j -= 1
+    vias = {i for i, p in enumerate(out) if p.get("type") == routing.VIA_LOCATION_TYPE}
+    fixed = (set(range(len(out))) - near) | vias
+    line, kept = clear_corners([(p["lon"], p["lat"]) for p in out], fixed)
+    via_at = set()
+    for old, new in zip(sorted(fixed), kept, strict=True):
+        if old in vias:
+            via_at.add(new)
     cleared = [{"lon": lon, "lat": lat} for lon, lat in line]
-    for i in kept:
+    for i in via_at:
         cleared[i]["type"] = routing.VIA_LOCATION_TYPE
     return cleared
 

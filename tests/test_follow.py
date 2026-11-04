@@ -571,6 +571,41 @@ class TestCrosswalkCorners:
         traced, _ = self.followed(monkeypatch, way=block)
         assert traced == approx_points(self.LINE)
 
+    def shape(self, vias=()) -> list[dict]:
+        out = [{"lon": lon, "lat": lat} for lon, lat in self.LINE]
+        for i in vias:
+            out[i]["type"] = routing.VIA_LOCATION_TYPE
+        return out
+
+    def way(self, points):
+        return lambda a, b: leg(points, 0.007) if points is not None else None
+
+    def test_the_junction_stays_when_the_point_on_it_is_left_out_as_wrong_way(self) -> None:
+        # Review: J, the cut's anchor, dropped by `wrong_way` took the way's own J with it,
+        # and the line cut the corner straight from S1 to T.
+        cuts = follow.crosswalk_cuts(self.ridden(), {0, 7})
+        out = follow.uncut(self.shape(), cuts, self.way([self.J, self.T]), dropped={2})
+        assert [(p["lon"], p["lat"]) for p in out] == approx_points(
+            [self.S0, self.S1, self.J, self.T, self.W1, self.W2]
+        )
+
+    def test_a_plans_point_outside_the_cut_keeps_its_place(self) -> None:
+        cuts = follow.crosswalk_cuts(self.ridden(), {0, 1, 7})
+        out = follow.uncut(self.shape(vias=(1, 6)), cuts, self.way([self.J, self.T]))
+        assert [i for i, p in enumerate(out) if p.get("type")] == [1, 4]
+        assert (out[4]["lon"], out[4]["lat"]) == pytest.approx(self.W1)
+
+    def test_crosswalks_back_to_where_they_left_are_cut_out_and_a_refusal_leaves_them(
+        self,
+    ) -> None:
+        loop = {"after": 2, "before": 6, "a": self.J, "b": self.J, "metres": 20.0}
+        out = follow.uncut(self.shape(), [loop], self.way(None))
+        assert [(p["lon"], p["lat"]) for p in out] == approx_points(
+            [self.S0, self.S1, self.J, self.W1, self.W2]
+        )
+        cuts = follow.crosswalk_cuts(self.ridden(), {0, 7})
+        assert follow.uncut(self.shape(), cuts, self.way(None)) is None
+
     def test_in_the_manual_mode_the_crosswalks_are_followed_as_ridden(self, monkeypatch) -> None:
         traced, calls = self.followed(monkeypatch, exact=True)
         assert traced == approx_points(self.LINE)
