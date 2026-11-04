@@ -156,7 +156,7 @@ test("detour rows: the place's own name, how far, ahead or behind; the kind's bu
 
 test("the ride's settings: one line on the risk in view, the rest under About Ride mode", () => {
   assert.match(ride, /<p className="hint">\{RIDE_SAFETY_SHORT\}<\/p>\s*<details className="ride-safety-more">\s*<summary>\{t\("About Ride mode"\)\}<\/summary>\s*<p className="hint">\{RIDE_SAFETY\}<\/p>/);
-  assert.match(ride, /export const RIDE_SAFETY_SHORT = t\("You ride at your own risk; the route can be wrong\."\);/);
+  assert.match(ride, /export const RIDE_SAFETY_SHORT = t\("Ride with care: the route can have mistakes\."\);/);
 });
 
 test("Resume names the ride where it can, and its buttons are full-size targets", () => {
