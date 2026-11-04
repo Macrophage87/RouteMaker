@@ -1,7 +1,7 @@
 // The base map's flavour, kept in line with the theme, the ride, the light and tunnels (lib/mapFlavour.ts,
 // lib/tunnelDark.ts; the owner, 2026-11-01: battery audit). Its own hook, so MapView only names it.
 import { useEffect, useRef } from "react";
-import { THEME_EVENT, nextSunTurn, themeIsDark } from "./lib/themeClock.ts";
+import { THEME_EVENT, nextSunTurn, setTunnelTheme, themeIsDark } from "./lib/themeClock.ts";
 import { applyMapFlavour, mapFlavourFor, type FlavourMap, type MapFlavour } from "./lib/mapFlavour.ts";
 import { BASEMAP_SOURCE_ID } from "./lib/mapStyle.ts";
 import { NO_TUNNEL, TUNNEL_NEAR_M, aheadOnLine, inTunnelAt, nearRoad, roadLayerIds, tunnelCheckWait, tunnelStep, type NearRoad, type TunnelState } from "./lib/tunnelDark.ts";
@@ -97,7 +97,10 @@ export function useMapFlavour(
       const next = tunnelStep(tunnel, seen, Date.now(), at);
       const turned = next.dark !== tunnel.dark;
       tunnel = next;
-      if (turned) update();
+      if (!turned) return;
+      // The page turns with the map (lib/themeClock.ts setTunnelTheme), first, so the map reads the page's new theme.
+      setTunnelTheme(tunnel.dark);
+      update();
     };
     fixCame.current = onBike
       ? () => {
@@ -116,6 +119,8 @@ export function useMapFlavour(
       fixCame.current = null;
       window.removeEventListener(THEME_EVENT, update);
       map.off("load", update);
+      // The ride or Roam is over (or the map gone): no tunnel holds the page dark any more.
+      if (tunnel.dark) setTunnelTheme(false);
     };
   }, [mapRef, loaded, onBike]);
   useEffect(() => {
