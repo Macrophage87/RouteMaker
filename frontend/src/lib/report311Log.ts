@@ -130,7 +130,7 @@ export interface LogEntry {
   kind: ReportKind;
   lat: number;
   lon: number;
-  /** The place words ("on R Street Northeast near 4th Street Northeast"), or null with none. */
+  /** The place words ("on Georgia Avenue Northwest near Kennedy Street Northwest"), or null with none. */
   place: string | null;
   note: string;
   /** The day it was logged ("2026-10-20", Washington's time). */
@@ -298,7 +298,7 @@ export function jurisdictionOf(entry: LogEntry): Jurisdiction | null {
 
 /**
  * The report to paste into the site: what, where (the words, the area, the GPS position), the day, and the
- * note. "Pothole. Location: on R Street Northeast, Washington, DC. GPS 38.91260, -77.00709. Seen Oct 20."
+ * note. "Pothole. Location: on Georgia Avenue Northwest, Washington, DC. GPS 38.95660, -77.02750. Seen Oct 20."
  */
 export function entryText(entry: LogEntry): string {
   const area = jurisdictionOf(entry);
@@ -729,7 +729,7 @@ export function panelPlace(title: string | null, point: LonLat): ReportPlace {
   return { words: named ? `on ${named}` : null, point };
 }
 
-/** What the panel says once a problem is logged: "Logged for 311: Pothole on R Street Northeast." */
+/** What the panel says once a problem is logged: "Logged for 311: Pothole on Georgia Avenue Northwest." */
 export function panelLoggedSaid(entry: LogEntry): string {
   return t("Logged for 311: {kind}{place}. It is in your 311 checklist in Reports.", { kind: kindShown(entry.kind), place: entry.place ? ` ${entry.place}` : "" });
 }

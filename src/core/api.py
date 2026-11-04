@@ -103,6 +103,7 @@ from . import (
     plan_cancel,
     presets,
     ratelimit,
+    reach,
     route_cache,
     routing,
     run_plan,
@@ -119,6 +120,7 @@ from . import (
     wmata_live,
     wmata_trains,
 )
+from . import workzones as work_zones
 
 logger = logging.getLogger(__name__)
 
@@ -4176,18 +4178,44 @@ def _run_body(body: RouteIn, started: float | None) -> dict:
     at = body.depart_at or timezone.now()
     if at.tzinfo is None:
         at = at.replace(tzinfo=ridetime.ZONE)
+    # The closures in force at the run, matched as a ride's are: at its departure where one is
+    # given, else at the ride-time dial's moment.
+    when = body.when or routing.default_when()
+    zones_at = at if body.depart_at is not None else work_zones.ride_moment(when)
+    zones, exclude = work_zones.foot_zones(
+        body.points,
+        when,
+        at=zones_at,
+        blocked_lines=_blocked(body),
+        bypass=body.closure_bypass,
+        now_only=body.closures_now,
+    )
     ask = run_plan.RunAsk(
         pace_kmh=run_plan.pace_of(body.run_pace_kmh),
         hills=0 if body.hills is None else body.hills,
         dark=run_plan.is_dark(at, body.when),
         loop=body.loop,
         target_m=float(body.target_distance_m) if body.target_distance_m else None,
+        exclude_polygons=tuple(exclude),
     )
-    run = run_plan.plan(body.points, ask, run_plan.Router(run_plan.deadline_from(started)))
+    until = run_plan.deadline_from(started)
+    try:
+        run = run_plan.plan(body.points, ask, run_plan.Router(until))
+    except (run_plan.RunTimedOut, run_plan.RouterDown):
+        raise
+    except run_plan.NoRun:
+        # No way round the closures: run through them, each warned of, as a ride is
+        # (`work_zones.drop_exclusions`); the roads the rider marked closed stay out.
+        if zones is None or len(zones.exclude) <= len(zones.blocked):
+            raise
+        work_zones.drop_exclusions({}, zones)
+        ask = dataclasses.replace(ask, exclude_polygons=tuple(zones.exclude))
+        run = run_plan.plan(body.points, ask, run_plan.Router(until))
     dials = routing.Dials(stress=body.stress, hills=body.hills, when=body.when)
     answer = _unrouted_line(
         [list(p) for p in run.shape], presets.RUN, dials, run.seconds, run.metres
     )
+    work_zones.with_work_zones(answer, zones)
     answer["climb_m"] = run.climb_m or 0.0
     answer["descent_m"] = run.descent_m or 0.0
     answer["leg_ends"] = run.leg_ends or answer["leg_ends"]
@@ -4255,11 +4283,26 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
     own_speed = presets.rider_speed(body.preset, body.cycling_speed_kmh)
     if own_speed is not None:
         candidate_costing["bicycle"]["cycling_speed"] = own_speed
+    # Walk and Walk + transit go round the closures that close the way on foot, and the roads
+    # the rider marked closed, at the trip's departure (`work_zones.foot_zones`).
+    foot_zones, walk_exclude = None, []
+    if body.preset in presets.ON_FOOT_PRESETS:
+        foot_zones, walk_exclude = work_zones.foot_zones(
+            body.points,
+            body.when or routing.default_when(),
+            at=when,
+            blocked_lines=_blocked(body),
+            bypass=body.closure_bypass,
+            now_only=body.closures_now,
+        )
+    walk_keep = foot_zones.blocked if foot_zones is not None else walk_exclude
     services = transit.RoutingServices(
         candidates_until,
         leg_preset,
         costing=candidate_costing,
         when=body.when or routing.default_when(),
+        walk_exclude=walk_exclude,
+        walk_keep=walk_keep,
     )
     # With stops, the first leg is planned here as a trip of its own; the legs after it are
     # searched once it is timed (`with_later_legs`, below).
@@ -4353,6 +4396,8 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
                 leg_preset,
                 costing=candidate_costing,
                 when=body.when or routing.default_when(),
+                walk_exclude=walk_exclude,
+                walk_keep=walk_keep,
             )
             leg_schedule = transit.load(
                 settings.TRANSIT_SCHEDULE_PATH, transit.moment_of(at).service_day
@@ -4375,6 +4420,8 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
         max_calls=transit.MAX_DRAW_CALLS,
         per_call_s=transit.DRAW_CALL_S,
         costing=leg_costing,
+        walk_exclude=walk_exclude,
+        walk_keep=walk_keep,
     )
 
     def answered(answer: dict, plan: transit.Plan, lines: dict[int, dict] | None = None) -> dict:
@@ -4386,6 +4433,9 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
         plan = transit_live.with_live_buses(plan, buses)
         block = _transit_block(transit.drawn(plan, draw, skip=lines), schedule, live, buses)
         answer["transit"] = _with_leg_lines(block, lines)
+        if body.preset in presets.ON_FOOT_PRESETS:
+            # The walk's closures, warned of as a ride's are (a ride's line has its own).
+            work_zones.with_work_zones(answer, foot_zones)
         return answer
 
     if found.option.walk:
@@ -5461,6 +5511,227 @@ def nearest_places(request, body: NearestIn, response: HttpResponse):
         refusal = _error(503, "Finding the nearest places took too long; try again shortly.")
         refusal["Retry-After"] = str(DEADLINE_RETRY_S)
         return refusal
+
+
+# --- Reach: where a rider can be in 15, 30, 45 and 60 minutes (Stephen, 2026-11-04) ----------
+
+
+class ReachIn(Schema):
+    """Where the rings start (or end), the ride type and its dials, and how to draw them."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    points: list[LonLat] = Field(
+        min_length=1,
+        max_length=reach.MAX_POINTS,
+        description=(
+            f"[lon, lat] pairs, 1 to {reach.MAX_POINTS}, each inside the coverage area: where"
+            " the rings start (or, with `direction` to, where they end)."
+        ),
+    )
+    preset: PresetName = Field(
+        description=(
+            "The ride type whose graph, speed and traffic setting the rings use. Bikeshare rides"
+            " as a plain bike; Walk and Run go on foot; the transit ride types have no rings yet."
+        )
+    )
+    stress: StrictInt | None = Field(
+        default=None,
+        ge=presets.STRESS_MIN,
+        le=presets.STRESS_MAX,
+        description=(
+            "Traffic tolerance, the route's own slider. Above Low-stress (80) the rings are"
+            " Low-stress's: `stress_used` says which. Absent: the ride type's start."
+        ),
+    )
+    hills: StrictInt | None = Field(
+        default=None, ge=presets.HILLS_MIN, le=presets.HILLS_MAX, description="The hills slider."
+    )
+    when: WhenName | None = Field(default=None, description="The ride time, as a plan's.")
+    carrying: CarryingName | None = Field(default=None, description="Cargo Bike's load.")
+    assist: StrictBool = Field(default=False, description="Cargo Bike's electric assist.")
+    avoid_gravel: StrictBool = Field(default=False, description="As a plan's.")
+    trails_off: StrictBool = Field(default=False, description="Keep to roads, not trails.")
+    cycling_speed_kmh: float | None = Field(
+        default=None,
+        ge=presets.RIDER_SPEED_MIN_KMH,
+        le=presets.RIDER_SPEED_MAX_KMH,
+        description="The rider's own speed on the flat, km/h. Absent: the ride type's.",
+    )
+    run_pace_kmh: float | None = Field(
+        default=None,
+        ge=run_plan.RUN_PACE_MIN_KMH,
+        le=run_plan.RUN_PACE_MAX_KMH,
+        description="Run only: the runner's pace, km/h.",
+    )
+    closure_bypass: list[Annotated[str, Field(min_length=1, max_length=200)]] = Field(
+        default_factory=list, max_length=50, description="Closures ridden through, as a plan's."
+    )
+    closures_now: StrictBool = Field(default=False, description="As a plan's.")
+    minutes: list[StrictInt] = Field(
+        default_factory=lambda: list(reach.MINUTES),
+        min_length=1,
+        max_length=reach.MAX_RINGS,
+        description=(
+            f"The rings, minutes, each {reach.MIN_MINUTES} to {reach.MAX_MINUTES}."
+            " Absent: 15, 30, 45 and 60."
+        ),
+    )
+    direction: Literal["from", "to"] = Field(
+        default="from",
+        description="from: where you can get to from the points; to: where you can come from.",
+    )
+    combine: Literal["any", "all", "each"] = Field(
+        default="any",
+        description=(
+            "With several points: any (within the time of at least one), all (within the time"
+            " of every one: somewhere they can all reach) or each (a set of rings per point)."
+        ),
+    )
+    calm: StrictBool = Field(
+        default=False,
+        description=(
+            "Also the rings at Low-stress, to lay calm streets over the rider's own setting:"
+            " for one point or a combined answer, on a bike ride type that can go calmer."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def fits(self):
+        west, south, east, north = settings.COVERAGE_BBOX
+        for index, (lon, lat) in enumerate(self.points):
+            if not (west <= lon <= east and south <= lat <= north):
+                raise ValueError(f"point {index} is outside the area this map covers")
+        if any(not reach.MIN_MINUTES <= m <= reach.MAX_MINUTES for m in self.minutes):
+            raise ValueError(f"minutes are {reach.MIN_MINUTES} to {reach.MAX_MINUTES} each")
+        if self.preset in reach.NOT_YET:
+            raise ValueError(
+                "The transit ride types have no reach rings yet; pick a bike ride type, Walk or Run"
+            )
+        preset = presets.PRESETS[self.preset]
+        if self.run_pace_kmh is not None and self.preset != presets.RUN:
+            raise ValueError("run_pace_kmh applies to the Run ride type only")
+        if self.stress is not None and self.stress > preset.stress_max:
+            raise ValueError(f"this ride type's traffic slider stops at {preset.stress_max}")
+        if self.carrying is not None and (
+            preset.carrying is None or self.carrying not in preset.carrying
+        ):
+            raise ValueError("carrying applies to the Cargo Bike ride type only")
+        if self.assist and preset.assist_speed_kmh is None:
+            raise ValueError("assist applies to the Cargo Bike ride type only")
+        return self
+
+
+class ReachPlacesOut(Schema):
+    metro: int = Field(description="Metro stations inside the ring.")
+    racks: int = Field(description="Bike racks inside the ring.")
+    food: int = Field(description="Places to eat inside the ring.")
+    sights: int = Field(description="Places to see inside the ring.")
+
+
+class ReachRingOut(Schema):
+    minutes: int
+    geometry: dict | None = Field(
+        description="GeoJSON Polygon or MultiPolygon, lon/lat; null where nothing is reached."
+    )
+    area_sq_mi: float
+    area_km2: float
+    places: ReachPlacesOut = Field(description="Places inside (a ring holds the smaller ones).")
+
+
+class ReachGroupOut(Schema):
+    point: int | None = Field(
+        description="The point these rings are from (index in `points`); null when combined."
+    )
+    rings: list[ReachRingOut] = Field(description="Smallest first.")
+    metro_stations: list[str] = Field(description="Metro stations inside, nearest ring first.")
+
+
+class ReachCalmOut(Schema):
+    stress: int
+    groups: list[ReachGroupOut]
+
+
+class ReachOut(Schema):
+    preset: str = Field(description="The ride type the rings are for (Bikeshare's is default).")
+    minutes: list[int]
+    direction: str
+    combine: str
+    stress_used: int | None = Field(
+        description="The traffic setting the rings were drawn at; null on foot."
+    )
+    groups: list[ReachGroupOut]
+    calm: ReachCalmOut | None
+    calm_offered: bool = Field(
+        description="Whether this ride type and setting have calmer rings to show at all."
+    )
+    unplaced: list[int] = Field(
+        description="Points the router could not place on this ride type's map (left out)."
+    )
+
+
+@api.post(
+    "/reach",
+    response={
+        200: ReachOut,
+        400: ErrorOut,
+        422: ErrorOut,
+        429: ErrorOut,
+        500: ErrorOut,
+        502: ErrorOut,
+        503: BusyOut,
+    },
+    summary="Where a rider can be in 15, 30, 45 and 60 minutes (reach rings, isochrones)",
+    by_alias=True,
+)
+@decorate_view(
+    ratelimit.in_flight_limited(ratelimit.ROUTING_IN_FLIGHT),
+    ratelimit.rate_limited(ratelimit.ROUTING),
+    json_body_only,
+    errors_as_json,
+)
+def reach_rings(request, body: ReachIn, response: HttpResponse):
+    """Reach (Stephen, 2026-11-04): the router's isochrones for the ride type and its dials,
+    from one point or several, with the places inside each ring. Nothing is stored."""
+    dials = routing.Dials(
+        stress=body.stress,
+        hills=body.hills,
+        when=body.when,
+        closure_bypass=tuple(body.closure_bypass),
+        closures_now=body.closures_now,
+        cycling_speed_kmh=presets.rider_speed(body.preset, body.cycling_speed_kmh),
+        carrying=body.carrying,
+        assist=body.assist,
+        avoid_gravel=body.avoid_gravel,
+        trails_off=body.trails_off,
+    )
+    started = getattr(request, "routing_started", None)
+    try:
+        answer = reach.reach(
+            body.points,
+            body.preset,
+            dials,
+            minutes=body.minutes,
+            direction=body.direction,
+            combine=body.combine,
+            calm=body.calm,
+            run_pace_kmh=body.run_pace_kmh,
+            started=started,
+        )
+    except reach.ReachRefused as refusal:
+        return _error(422, str(refusal))
+    except routing.DeadlineExceeded:
+        refusal = _error(503, "Drawing the rings took too long; try again shortly.")
+        refusal["Retry-After"] = str(DEADLINE_RETRY_S)
+        return refusal
+    except routing.RouterUnavailable:
+        refusal = _error(503, "The router is busy; try again shortly.")
+        refusal["Retry-After"] = str(DEADLINE_RETRY_S)
+        return refusal
+    except routing.RouterRefused as refusal:
+        logger.warning("reach: the router refused the rings (%s)", refusal.code)
+        return _error(502, "The router could not draw these rings.")
+    return Status(200, answer)
 
 
 class CoverageGeometry(Schema):
@@ -7827,7 +8098,14 @@ def weather_check(request):
     problem = weather.points_problem(points)
     if problem:
         return _error(400, problem)
-    out = JsonResponse(weather.shared().check([tuple(p) for p in points]))
+    inside = weather.inside_coverage(points)
+    if not inside:
+        return _error(400, "the points are outside the area this map covers")
+    found = weather.shared().check([tuple(p) for p in inside])
+    if len(inside) < len(points):
+        # Points past the edge were not asked: never read as "no alerts, no rain" there.
+        found["unchecked"] = sorted({*found["unchecked"], "alerts", "rain"})
+    out = JsonResponse(found)
     out["Cache-Control"] = "no-store"
     return out
 

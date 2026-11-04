@@ -37,7 +37,7 @@ LITTLE_BENNETT = "moco-G06"
 
 class TestRockCreek:
     def test_a_night_ride_on_beach_drive_is_told_it_may_close(self) -> None:
-        at = local(2026, 12, 1, 20, 0)
+        at = local(2025, 12, 1, 20, 0)
         [notice] = found(along(BEACH_DRIVE), at)
         assert notice.source == deer.NPS and notice.area == BEACH_DRIVE
         assert "may close" in notice.title
@@ -47,33 +47,54 @@ class TestRockCreek:
     @pytest.mark.parametrize(
         "at",
         [
-            local(2026, 12, 1, 12, 0),  # midday: outside the hours
-            local(2026, 12, 2, 4, 30),  # after 4 am
-            local(2026, 6, 10, 21, 0),  # out of season
-            local(2026, 11, 9, 21, 0),  # the night before the season
+            local(2025, 12, 1, 12, 0),  # midday: outside the hours
+            local(2025, 12, 2, 4, 30),  # after 4 am
+            local(2025, 6, 10, 21, 0),  # out of season
+            local(2025, 11, 9, 21, 0),  # the night before the season
         ],
     )
     def test_only_inside_the_closure_hours_and_season(self, at) -> None:
         assert found(along(BEACH_DRIVE), at) == []
 
     def test_a_ride_starting_just_before_it_closes_is_told(self) -> None:
-        assert found(along(BEACH_DRIVE), local(2026, 12, 1, 18, 0))
-        assert not found(along(BEACH_DRIVE), local(2026, 12, 1, 17, 30))
+        assert found(along(BEACH_DRIVE), local(2025, 12, 1, 18, 0))
+        assert not found(along(BEACH_DRIVE), local(2025, 12, 1, 17, 30))
 
-    def test_this_winter_is_said_as_expected_last_winter_as_posted(self) -> None:
+    def test_a_season_not_yet_posted_is_said_as_expected(self, monkeypatch) -> None:
+        monkeypatch.setattr(
+            deer,
+            "ROCK_CREEK_SEASONS",
+            (*deer.ROCK_CREEK_SEASONS, (date(2026, 11, 10), date(2027, 3, 31), False)),
+        )
         [this] = found(along(BEACH_DRIVE), local(2026, 12, 1, 20, 0))
         [last] = found(along(BEACH_DRIVE), local(2025, 12, 1, 20, 0))
         assert "expected" in this.text and "expected" not in last.text
+
+    @pytest.mark.parametrize(
+        "at",
+        [
+            local(2026, 11, 10, 20, 0),  # the first night of the assumed season
+            local(2026, 12, 1, 20, 0),
+            local(2027, 3, 31, 23, 0),  # its last night
+        ],
+    )
+    def test_no_rock_creek_deer_notice_in_the_2026_27_season(self, at) -> None:
+        """The owner, 2026-11-04, of the assumed 2026-27 season: "For rock creek, that's no
+        longer the case." Montgomery Parks' closures are unchanged."""
+        assert found(along(BEACH_DRIVE), at) == []
+        season = deer.windows(date(2026, 4, 1), date(2027, 4, 1))
+        assert not [w for w in season if w.source == deer.NPS]
+        assert [w for w in season if w.source == deer.MOCO]
 
     def test_a_route_that_only_crosses_is_not_told(self) -> None:
         line = along(BEACH_DRIVE)
         lon, lat = line[len(line) // 2]
         across = [(lon - 0.001, lat), (lon + 0.001, lat)]
-        assert found(across, local(2026, 12, 1, 20, 0)) == []
+        assert found(across, local(2025, 12, 1, 20, 0)) == []
 
     def test_a_route_elsewhere_is_not_told(self) -> None:
         downtown = [(-77.03, 38.90), (-77.02, 38.90)]
-        assert found(downtown, local(2026, 12, 1, 20, 0)) == []
+        assert found(downtown, local(2025, 12, 1, 20, 0)) == []
 
 
 class TestMontgomeryParks:
@@ -140,14 +161,14 @@ def test_the_sources_are_named() -> None:
 
 
 def test_a_notice_survives_the_stored_copy() -> None:
-    [notice] = found(along(BEACH_DRIVE), local(2026, 12, 1, 20, 0))
+    [notice] = found(along(BEACH_DRIVE), local(2025, 12, 1, 20, 0))
     assert dc.Notice.from_json(json.loads(json.dumps(notice.to_json()))) == notice
 
 
 def test_a_route_answer_carries_the_notice_on_its_map_and_in_its_description() -> None:
     from core import workzones as core_zones
 
-    at = local(2026, 12, 1, 20, 0)
+    at = local(2025, 12, 1, 20, 0)
     plan = wz.PlanZones(status={"md": "current"}, at=at, notices=deer.notices(at))
     body = {
         "geometry": {"coordinates": along(BEACH_DRIVE)},
@@ -161,7 +182,7 @@ def test_a_route_answer_carries_the_notice_on_its_map_and_in_its_description() -
     assert row["source_name"] == "NPS, Rock Creek Park deer management"
     assert any("Check before you go" in str(entry) for entry in out["description"])
     # By day, nothing.
-    noon = local(2026, 12, 1, 12, 0)
+    noon = local(2025, 12, 1, 12, 0)
     plan = wz.PlanZones(status={"md": "current"}, at=noon, notices=deer.notices(noon))
     body = {
         "geometry": {"coordinates": along(BEACH_DRIVE)},
@@ -172,12 +193,12 @@ def test_a_route_answer_carries_the_notice_on_its_map_and_in_its_description() -
 
 
 def test_the_last_night_and_the_night_the_clocks_change() -> None:
-    assert found(along(BEACH_DRIVE), local(2027, 3, 31, 23, 0))
-    assert found(along(BEACH_DRIVE), local(2027, 4, 1, 3, 30))
-    assert not found(along(BEACH_DRIVE), local(2027, 4, 1, 20, 0))
-    # Mar 14, 2027 springs forward at 2 am: the window still opens at 6:45 pm local.
-    [notice] = found(along(BEACH_DRIVE), local(2027, 3, 14, 19, 0))
-    assert notice.start == local(2027, 3, 14, 18, 45) and notice.end == local(2027, 3, 15, 4, 0)
+    assert found(along(BEACH_DRIVE), local(2026, 3, 31, 23, 0))
+    assert found(along(BEACH_DRIVE), local(2026, 4, 1, 3, 30))
+    assert not found(along(BEACH_DRIVE), local(2026, 4, 1, 20, 0))
+    # Mar 8, 2026 sprang forward at 2 am: the window still opens at 6:45 pm local.
+    [notice] = found(along(BEACH_DRIVE), local(2026, 3, 8, 19, 0))
+    assert notice.start == local(2026, 3, 8, 18, 45) and notice.end == local(2026, 3, 9, 4, 0)
 
 
 def test_sunday_nights_are_not_sharpshooting_nights() -> None:
@@ -191,9 +212,9 @@ def test_back_to_back_hunt_days_are_said_once() -> None:
 
 
 def test_the_route_cache_turns_over_when_a_notice_comes_in() -> None:
-    made = deer.notices(local(2026, 12, 1, 12, 0))
-    assert local(2026, 12, 1, 17, 45) in deer.moments(made)
-    assert local(2026, 12, 2, 4, 0) in deer.moments(made)
+    made = deer.notices(local(2025, 12, 1, 12, 0))
+    assert local(2025, 12, 1, 17, 45) in deer.moments(made)
+    assert local(2025, 12, 2, 4, 0) in deer.moments(made)
 
 
 def test_the_api_takes_the_new_sources() -> None:
@@ -202,18 +223,26 @@ def test_the_api_takes_the_new_sources() -> None:
 
     at = local(2026, 12, 8, 13, 0)
     for notice in (
-        *found(along(BEACH_DRIVE), local(2026, 12, 1, 20, 0)),
+        *found(along(BEACH_DRIVE), local(2025, 12, 1, 20, 0)),
         *found(along(LITTLE_BENNETT), at),
     ):
         ClosureNoticeOut(**core_zones.notice_row(notice, at, False))
 
 
-def test_the_assumed_season_and_the_end_of_the_tables_are_reminders() -> None:
+def test_the_assumed_season_and_the_end_of_the_tables_are_reminders(monkeypatch) -> None:
     """Audit 2026-10-29: nothing prompted a check of the assumed Rock Creek season, or next
     season's dates once these run out (`scripts/ddot_advisories.py watch` prints these)."""
-    assert deer.check_due(date(2026, 10, 20)) == []
-    (assumed,) = deer.check_due(date(2026, 10, 30))
-    assert "assumed" in assumed and "2026-11-10" in assumed
+    # With no assumed season (the owner, 2026-11-04), only the tables' end is a reminder.
+    assert deer.check_due(date(2026, 10, 30)) == []
     assert deer.check_due(date(2027, 2, 15)) == []
     (end,) = deer.check_due(date(2027, 3, 5))
     assert "end 2027-03-31" in end
+    # A season added later as assumed is still a reminder before its first night.
+    monkeypatch.setattr(
+        deer,
+        "ROCK_CREEK_SEASONS",
+        (*deer.ROCK_CREEK_SEASONS, (date(2027, 11, 10), date(2028, 3, 31), False)),
+    )
+    assert deer.check_due(date(2027, 10, 20)) == []
+    (assumed,) = deer.check_due(date(2027, 10, 30))
+    assert "assumed" in assumed and "2027-11-10" in assumed
