@@ -2679,19 +2679,6 @@ def _followed(variant: str, request: dict, deadline: Deadline) -> dict:
     def trace_attributes(payload: dict) -> dict:
         return _call(variant, "trace_attributes", payload, deadline)
 
-    around = None
-    if not exact:
-        # By default the file's stretches against one-way traffic are left out of the match,
-        # and the router goes round them (`follow.wrong_way`).
-        keep = {i for i, p in enumerate(request["shape"]) if p.get("type") == VIA_LOCATION_TYPE}
-        keep |= {0, len(line) - 1}
-        found = follow.wrong_way(line, keep, trace_attributes, options)
-        if found is not None:
-            dropped, around = found
-            if dropped:
-                shape = [p for i, p in enumerate(request["shape"]) if i not in dropped]
-                request = {**request, "shape": shape}
-    answer = _call(variant, "trace_route", request, deadline)
     # The router's own way across a gap keeps every rule the ride type rides by.
     bridge = {k: v for k, v in request.items() if k not in follow.TRACE_ONLY}
     bridge["costing_options"] = follow.without_ignored(request.get("costing_options") or {})
@@ -2709,6 +2696,30 @@ def _followed(variant: str, request: dict, deadline: Deadline) -> dict:
         except (RouterRefused, RouterUnavailable):
             return None
         return legs[0] if len(legs) == 1 else None
+
+    around = None
+    if not exact and len(line) >= 2:
+        # By default the file's stretches against one-way traffic are left out of the match,
+        # and the router goes round them (`follow.wrong_way`); and where the file itself goes
+        # round a corner on its crosswalks, it is put back on the road (`follow.uncut`).
+        keep = {i for i, p in enumerate(request["shape"]) if p.get("type") == VIA_LOCATION_TYPE}
+        keep |= {0, len(line) - 1}
+        ridden = follow.as_ridden(line, trace_attributes, options)
+        found = (
+            None
+            if ridden is None
+            else follow.wrong_way(line, keep, trace_attributes, options, answer=ridden)
+        )
+        dropped: set[int] = set()
+        if found is not None:
+            dropped, around = found
+        cuts = [] if ridden is None else follow.crosswalk_cuts(ridden, keep)
+        shape = follow.uncut(request["shape"], cuts, route_between, dropped) if cuts else None
+        if shape is None and dropped:
+            shape = [p for i, p in enumerate(request["shape"]) if i not in dropped]
+        if shape is not None:
+            request = {**request, "shape": shape}
+    answer = _call(variant, "trace_route", request, deadline)
 
     joined = follow.joined(answer, line, route_between, request.get("elevation_interval"))
     joined["against_traffic"] = (
