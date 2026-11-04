@@ -390,3 +390,19 @@ test("a leader's second ride on the same line is not shown on the first ride's l
   assert.match(ended, /rideLinkSent\.current = null;/);
   assert.match(ended, /const after = sharedAfterRide\(sharedOpenNow\.current\);\s*if \(after !== sharedOpenNow\.current\) \{\s*sharedOpenNow\.current = after;\s*setSharedOpen\(after\);\s*\}/);
 });
+
+test("undoing End ride keeps leading the same shared ride", () => {
+  const app = read("../App.tsx");
+  // End ride keeps the ride's shared line and the link it went out with, beside the ride Undo rides again.
+  const end = app.slice(app.indexOf("const endRide = useCallback("), app.indexOf("const undoEndRide = () => {"));
+  assert.match(end, /endedRide\.current = start \? \{ start, from, stats, shared: sharedOpenNow\.current, linkSent: rideLinkSent\.current \} : null;/);
+  // Undo puts them back: the same leader key and secret, so those following still see the leader, and Share live
+  // sends the same link again.
+  const undo = app.slice(app.indexOf("const undoEndRide = () => {"), app.indexOf("\n  };\n", app.indexOf("const undoEndRide = () => {")));
+  assert.match(
+    undo,
+    /if \(ended\.shared\) \{\s*sharedOpenNow\.current = ended\.shared;\s*setSharedOpen\(ended\.shared\);\s*\}\s*if \(ended\.linkSent\) \{\s*rideLinkSent\.current = ended\.linkSent;\s*if \(ended\.linkSent\.id && ended\.linkSent\.lead\) leads\.current\.set\(ended\.linkSent\.id, ended\.linkSent\.lead\);\s*\}/,
+  );
+  // Before the ride is on again, so the ride starts on its shared line.
+  assert.ok(undo.indexOf("setSharedOpen(ended.shared)") < undo.indexOf("setRiding(true)"));
+});
