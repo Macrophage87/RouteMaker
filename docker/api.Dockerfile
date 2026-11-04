@@ -140,6 +140,11 @@ COPY --chown=root:root frontend/src/climb-data/climbs.json ./frontend/src/climb-
 # mcp/, as a rider's own computer does, with the Metro stations it measures routes against.
 COPY --chown=root:root mcp/routemaker_mcp.py ./mcp/routemaker_mcp.py
 COPY --chown=root:root frontend/src/rail-data/metro-stations.geojson ./frontend/src/rail-data/metro-stations.geojson
+# Reach (src/core/reach.py, Stephen 2026-11-04) counts the places inside each ring: bike racks,
+# places to eat and places to see, the files the page's own layers read (and the Metro stations above).
+COPY --chown=root:root frontend/src/amenity-data/bike-parking.json ./frontend/src/amenity-data/bike-parking.json
+COPY --chown=root:root frontend/src/amenity-data/food.json ./frontend/src/amenity-data/food.json
+COPY --chown=root:root frontend/src/amenity-data/places.json ./frontend/src/amenity-data/places.json
 ENV PYTHONPATH=/app/src
 
 # Read-only to the process that runs it: nothing in the application writes to

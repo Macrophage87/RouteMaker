@@ -28,6 +28,7 @@ import hashlib
 import hmac
 import http.client
 import json
+import logging
 import os
 import secrets
 import urllib.error
@@ -37,6 +38,8 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 from django.conf import settings
+
+logger = logging.getLogger(__name__)
 
 AUTHORIZE_URL = "https://connect.garmin.com/oauth2Confirm"
 TOKEN_URL = "https://diauth.garmin.com/di-oauth2-service/oauth/token"
@@ -56,6 +59,11 @@ class GarminError(RuntimeError):
 
 class NotConnected(GarminError):
     """The account has no live Garmin connection (none, or Garmin refused its refresh token)."""
+
+
+class Unreadable(GarminError):
+    """A kept token that this server's key cannot open (KEY_ENCRYPTION_KEY wrong or changed). The
+    link is kept, since the right key opens it again; the rider is told to try again later."""
 
 
 # Whether Settings offers Connect: on since the course send (core.garmin_courses) and the privacy
@@ -281,7 +289,8 @@ def seal(token: str, account_id: int) -> str:
 
 
 def unseal(value: str, account_id: int) -> str:
-    """The token back. Raises NotConnected if it cannot be read (another key, another account)."""
+    """The token back. Raises Unreadable if it cannot be read (another key, another account): not
+    NotConnected, since a link must outlive a wrong or changed KEY_ENCRYPTION_KEY."""
     from cryptography.exceptions import InvalidTag
 
     version, _, payload = value.partition(".")
@@ -291,17 +300,41 @@ def unseal(value: str, account_id: int) -> str:
         raw = base64.urlsafe_b64decode(payload.encode("ascii"))
         plain = _cipher().decrypt(raw[:12], raw[12:], f"account:{account_id}".encode())
     except (InvalidTag, ValueError) as error:
-        raise NotConnected("The Garmin connection could not be read. Connect again.") from error
+        logger.error(
+            "A kept Garmin token for account %s could not be decrypted: check that "
+            "KEY_ENCRYPTION_KEY is the one it was sealed under. The link is kept.",
+            account_id,
+        )
+        raise Unreadable("Sending to Garmin failed for now. Try again later.") from error
     return plain.decode()
 
 
 # Garmin's deregistration notice (the rider disconnected in Garmin Connect).
 
 
-def deregistered_user_ids(body) -> list[str]:
-    """The Garmin user ids in a deregistration notice: {"deregistrations": [{"userId": …}, …]}."""
+def deregistrations(body) -> list[tuple[str, str]]:
+    """(Garmin user id, user access token) for each entry of a deregistration notice:
+    {"deregistrations": [{"userId": …, "userAccessToken": …}, …]}. Garmin's Health API notices
+    carry both; an entry without the token is left out, since the token is what shows the notice
+    is about the connection this server holds (the notice is not otherwise signed)."""
     rows = body.get("deregistrations") if isinstance(body, dict) else None
     if not isinstance(rows, list):
         return []
-    ids = [row.get("userId") for row in rows[:1000] if isinstance(row, dict)]
-    return [i for i in ids if isinstance(i, str) and 0 < len(i) <= 64]
+    found = []
+    for row in rows[:1000]:
+        if not isinstance(row, dict):
+            continue
+        user, token = row.get("userId"), row.get("userAccessToken")
+        if isinstance(user, str) and 0 < len(user) <= 64 and isinstance(token, str) and token:
+            found.append((user, token))
+    return found
+
+
+def holds(value: str, token: str, account_id: int) -> bool:
+    """Whether the sealed `value` is `token`, compared in constant time. False when it cannot be
+    read, so an unreadable link is never removed on the strength of a notice."""
+    try:
+        kept = unseal(value, account_id)
+    except Unreadable:
+        return False
+    return hmac.compare_digest(kept.encode(), token.encode())

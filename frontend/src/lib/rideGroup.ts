@@ -223,6 +223,15 @@ export function followsWithoutKey(broadcast: { leading: boolean; secret?: string
   return !!broadcast && !broadcast.leading && !broadcast.secret;
 }
 
+/**
+ * The shared line once a ride ends. The sharer's own ride link ends with the ride: the next ride on the same line
+ * shares nothing until Share ride or Broadcast is pressed again, under a new token and secret. A link opened from
+ * someone else's share is theirs, and stays as it is.
+ */
+export function sharedAfterRide<T extends { own?: boolean }>(open: T | null): T | null {
+  return open?.own ? null : open;
+}
+
 /** On a broadcast: shown on or off the route, so the leader and the riders can find each other. */
 export const BROADCAST_CONSENT_NOTE = "Only while the app is open, on or off the route, so the leader and riders can find each other. No name; positions are encrypted and gone after 2 minutes.";
 /**
@@ -416,7 +425,7 @@ export function dotName(role: RideRole, alongM: number, myAlongM: number | null,
 }
 
 /** The sharer of a broadcast ride, as the key and the dots name them. */
-export const LEADER_LABEL = "Ride leader";
+export const LEADER_LABEL = t("Ride leader");
 
 /** What tapping a dot says: "Sweep, 0.5 mi (0.8 km) behind. Seen 40 s ago." */
 export function dotSaid(ageS: number, name: string | null = null): string {

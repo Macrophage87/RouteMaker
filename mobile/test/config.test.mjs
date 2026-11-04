@@ -235,3 +235,16 @@ test("Android: tapped links open the store app only, for the site it was built w
   assert.equal(workflow.split("ROUTEMAKER_LINK_SITE").length - 1, 2);
   assert.match(workflow, /ROUTEMAKER_LINK_SITE: https:\/\/routes\.example\.org\n/);
 });
+
+test("Android: every ride type's address opens in the app, and nothing else is listed", () => {
+  // The ride types are the planner's presets (frontend/src/lib/presets.ts); the site sends each one's
+  // address, and a renamed one's old address, to the map (the Caddyfile's @preset-* and @renamed-*).
+  const presets = readFileSync(here("../../frontend/src/lib/presets.ts"), "utf8");
+  const ids = [...presets.matchAll(/^ {4}id: "([^"]+)",$/gm)].map((m) => m[1]);
+  assert.ok(ids.length > 10, "the preset ids were found");
+  const caddyfile = readFileSync(here("../../Caddyfile"), "utf8");
+  const renamed = [...caddyfile.matchAll(/^\s*@renamed-(\S+) path /gm)].map((m) => m[1]);
+  const links = readFileSync(here("../android/app/src/links/AndroidManifest.xml"), "utf8");
+  const listed = [...links.matchAll(/android:pathPrefix="\/([^"]+)"/g)].map((m) => m[1]).filter((p) => p !== "s/");
+  assert.deepEqual([...listed].sort(), [...new Set([...ids, ...renamed])].sort());
+});

@@ -430,6 +430,17 @@ class TestAMalformedDiscordPayloadIsRefusedRatherThanCrashing:
         response = client.get(reverse("login-callback"), {"state": state, "code": "abc"})
         assert response.status_code == 400
 
+    def test_a_discord_reply_slower_than_the_timeout_is_the_sign_in_failure_page(
+        self, client, monkeypatch
+    ) -> None:
+        def slow(*_args, **_kwargs):
+            raise TimeoutError("timed out")
+
+        _response, state = start_login(client)
+        monkeypatch.setattr("core.auth_views.urllib.request.urlopen", slow)
+        response = client.get(reverse("login-callback"), {"state": state, "code": "abc"})
+        assert response.status_code == 400
+
     def test_a_well_formed_payload_still_signs_in(self, client, monkeypatch) -> None:
         """So the two above are the malformed shapes and not the fake transport
         refusing everything."""
