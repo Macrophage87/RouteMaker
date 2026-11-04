@@ -576,6 +576,8 @@ export interface TransitStep {
   stops?: TransitStop[] | null;
   /** A transit step's way, by its last stop: "Shady Grove". */
   toward?: string | null;
+  /** Every line that makes the ride and where its trains are signed to (Stephen, 2026-11-03: "Put the acceptable destination options"). */
+  towards?: { line: string; toward: string }[] | null;
   /** A walk's turns in order, where it was routed in time (turn by turn on foot, 2026-11-02). */
   turns?: WalkTurn[] | null;
   /** A ride after the route line, routed: its length, climb and descent (metres) and elevation profile, so the
@@ -691,7 +693,7 @@ export interface StationLineTime {
 export interface StationLive {
   station: string;
   /** The next trains by line and way: minutes (0 arriving), and in words ("3 min, 11 min"; "arriving"). */
-  trains: { line: string; toward: string; minutes: number[]; when: string }[];
+  trains: { line: string; toward: string; end?: [number, number] | null; minutes: number[]; when: string }[];
   /** "Elevator out at Gallery Place: carry your bike on the stairs." */
   elevators: { words: string; where: string }[];
   /** WMATA's rail incidents on the station's lines. */
