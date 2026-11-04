@@ -120,7 +120,9 @@ test("wired: a ride or Roam watches, a move by hand marks the map away, and the 
   assert.match(map, /map\.on\("movestart", moved\);/);
   // The panels the ride's screen opens all show as expanded toggles there or in the group bar.
   const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
-  for (const open of ["detourOpen", "dockOpen", "menu311", "moreOpen", "settingsOpen"]) assert.match(ride, new RegExp(`aria-expanded=\\{${open}\\}`));
+  for (const open of ["detourOpen", "dockOpen", "menu311", "moreOpen"]) assert.match(ride, new RegExp(`aria-expanded=\\{${open}\\}`));
+  // The ride's settings are a modal <dialog> (dialog[open] above), closed by the screen left alone too.
+  assert.match(ride, /className="ask-dialog ride-settings-dialog"[^>]*data-idle-close/);
   const group = readFileSync(new URL("../RideGroup.tsx", import.meta.url), "utf8");
   for (const open of ["ridersOpen", "alertOpen"]) assert.match(group, new RegExp(`aria-expanded=\\{${open}\\}`));
   assert.match(RIDE_PANEL_OPEN, /\.ride \[aria-expanded="true"\]/);

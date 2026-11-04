@@ -22,7 +22,8 @@ export const OUTPUT_LABELS: Record<CueOutput, string> = {
   "screen-reader": t("My screen reader"),
   // "App voice" (it was RouteMaker's voice): short enough for Settings' dropdown at 390 px.
   voice: t("App voice"),
-  both: t("Both"),
+  // Named in full (Stephen 2026-11-03: "Say cues with both isn't clear").
+  both: t("Screen reader + voice"),
   neither: t("Neither (on screen only)"),
 };
 
@@ -67,8 +68,8 @@ export function writeRidePrefs(prefs: RidePrefs, store: KeyValueStore | null = b
 
 /**
  * Whether the map turns with the rider's heading in a ride: track-up by default (the owner, 2026-10-15:
- * "Aim for track up rather than north up, but leave that an option"); the ride settings' switch
- * ("Turn the map to my heading") turns it off, and the choice is kept on this device.
+ * "Aim for track up rather than north up, but leave that an option"); the ride's compass button turns it off
+ * (north up) and on again, and the choice is kept on this device.
  */
 export const HEADING_UP_KEY = "routemaker.headingUp";
 export const HEADING_UP_DEFAULT = true;
