@@ -451,10 +451,14 @@ def station(point, live: wmata_live.Snapshot | None) -> dict | None:
     trains = []
     for (line, toward), group in groups.items():
         group.sort(key=lambda train: train.minutes)
+        # Where the train ends, so a ride's boarding card can tell a train going its way, and far
+        # enough, from WMATA's place rather than its name ("Vienna/Fairfax-GMU").
+        end = live.stations.get(group[0].destination_code or "")
         trains.append(
             {
                 "line": line,
                 "toward": toward,
+                "end": [end.lon, end.lat] if end else None,
                 "minutes": [train.minutes for train in group[:TRAINS_SHOWN]],
                 "when": _when(group),
             }
