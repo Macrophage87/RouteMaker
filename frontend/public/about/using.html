@@ -804,11 +804,18 @@ there may not be room for every graph that is on: only the first ones in More's 
 names the rest, or, with no room for that line either, the app says "No room on this screen for: Elevation." once. <strong>Topo lines</strong> (the contour icon), just before the gear, is always there. It
 turns the map's contour lines on or off, the same switch as Topo lines in Layers, Trails and terrain, and says "Topo lines on."
 or "Topo lines off.", and like those it closes the column; a screen reader hears its name and whether it is on. Where the server has no contours it
-says they are not available, and with no signal it says it needs a connection. The <strong>Settings</strong> gear opens the ride's settings under the top row: who says the cues and how
-much, and <strong>Turn the map to my heading</strong>. Until GPS knows which way you are going, which needs you moving, the map turns to
-the way the phone faces, from its compass; on an iPhone, Start ride or Roam asks for motion and orientation
-access first. Pressing More again closes the column and the settings. Escape
-in the settings closes just them; Escape on the column closes both. Opening Detour, a dock list or 311 closes them too.
+says they are not available, and with no signal it says it needs a connection. The <strong>Settings</strong> gear opens <strong>Ride settings</strong> as a popup over the map:
+<strong>Colors</strong>, <strong>High contrast</strong> and <strong>Units</strong>, the same as in Settings, Display;
+<strong>Say cues with</strong> and <strong>How much to say</strong> (what each level says is behind its (i)); the
+safety line, About Ride mode and <strong>Done</strong>. Each change shows at once. A new Units choice does not reload
+the page in a ride: the ride carries on, and the screen, the cue list and the voice switch to the new units straight
+away. The rest of the app follows with one reload when you press Done on the ride summary. Done, Escape, the back
+gesture, a tap on the map around the popup or leaving the screen alone closes it, and the focus goes back to the gear;
+while it is open, cues are still said to a screen reader. Pressing More again, or Escape, closes the column. Opening
+Detour, a dock list or 311 closes it too. The round <strong>compass</strong> at the map's top left, under the turn
+card, turns with the map, and a press switches between north up and the map turning to your heading, the default, kept
+on this device. Until GPS knows which way you are going, which needs you moving, the map turns to the way the phone
+faces, from its compass; on an iPhone, Start ride or Roam asks for motion and orientation access first.
 A screen reader hears each in full, such as "Less traffic: plan again from here" and "Skip stop 2, Union Market",
 the gear as "Ride settings", and the button as "More: change the route or the map, and ride settings".</li>
 <li>The stops still ahead are drawn on the ride's map with their numbers and names; via
@@ -829,7 +836,12 @@ Bikeshare, transit, Walk or Run trips, or a ride with a walk to its start or fro
 <li><strong>Walks and transit.</strong> On a Walk, Run, Bikeshare or transit trip, walks and runs are said turn by turn, as rides
 are, and are never "off route". On a train or bus the screen lists the stops ahead and says "Next stop: Union Station.
 Get off there." one stop before yours (on a bus, to press the stop button), then "Get off here". With no location for
-a while, underground, it follows the timetable and says so. On Walk the button reads Start walk, and on Run, Start run. With stops, the trip is followed one leg at a time,
+a while, underground, it follows the timetable and says so. On Walk the button reads Start walk, and on Run, Start run.
+A Bikeshare + transit option that takes no bike (a walk, the train, a walk) is followed as Walk + transit is, and its
+button reads Start walk too. Reaching the station does not end the ride: the train, and any walk, are followed next,
+and once you are off the train the ride after it starts by itself (<strong>Ride the rest</strong> is pressed for you;
+its button stays, for another try if the app could not plan it). A ride between two trains, such as Metro, a ride and
+then MARC, follows the second train too. With stops, the trip is followed one leg at a time,
 and at each stop <strong>Start the next leg</strong> plans the rest again from where you are.</li>
 <li><strong>Weather</strong> is checked once the ride knows where you are on the route, and every 5 minutes, along the rest of
 the route. A new alert is said once ("Weather alert: Severe Thunderstorm Warning until 6:45 PM.", with "until" only where
@@ -872,11 +884,21 @@ can't leave the ride.</li>
 the nearest dock</strong> finds the closest dock with room, or the one that adds least to the ride.
 Stopping by a dock for a while marks the bike as docked; <strong>Restart the time</strong> starts the
 count again.</li>
-<li><strong>Waiting for a train or bus</strong>, the ride shows where the next one is and when it is
+<li><strong>Waiting for a train or bus</strong>, the turn card becomes a short boarding card. First come the
+trains or buses that will do, one row per end station, each line as a badge in its own color (Metro's lines and
+MARC's Penn Line) before the station's name: Orange and Silver badges, then New Carrollton, on one row, and Blue
+and Silver, then Downtown Largo, on the next. Below them are the
+rows <strong>Get off</strong> (your stop), <strong>Next train</strong> or <strong>Next bus</strong> (its time and
+the minutes to it, such as "6:27 pm, in 12 min", or how often it runs, such as "every 5 min") and <strong>After
+that</strong> (the one after, in case you miss it). On a bus that takes the bike, a <strong>Bike</strong> row reads
+"Front rack", and after a share bike the card first says where to dock it. A screen reader hears each line's full
+name and "toward" before its end station. The ride also shows where the next one is and when it is
 due. Times say whether they are live or scheduled, and a countdown shows when there are under
 five minutes to spare.</li>
 <li><strong>End ride</strong> is slid to the end ("Slide to end ››"); a tap on it says how. Once you arrive, the
-turn card reads "Arrived:" and the place, and End ride becomes a filled <strong>Done</strong>. When the route
+turn card reads "Arrived:" and the place, and End ride becomes a filled <strong>Done</strong>. At a station
+with a train still to follow, End ride stays a slide until the whole trip is done, or until the ride after the
+train cannot be planned, and no bike rack is offered there. When the route
 ends at a bike rack with others within 1,000 ft [305 m], the card also says "Rack full? Next one:" with how far and
 which way from you; <strong>Show on map</strong> pins that rack, then <strong>Next rack</strong> pins the one after,
 nearest first, and back to the first after the last. End ride or Done shows the ride
@@ -1215,7 +1237,8 @@ written right to left, and the page turns round for them.</li>
 meters</strong>. With kilometers, every distance, height and speed shows metric first with US units in brackets, such
 as "7.6 km (4.7 mi)", and the voice and screen readers say meters and kilometers. The target distance is then typed in kilometers, and the
 cue sheet, lock screen, charts, contour labels and run pace follow. Kept on this device, and with your account when you
-are signed in; changing it reloads the app, as Language does.</li>
+are signed in; changing it reloads the app, as Language does. In a ride's settings it switches at once
+instead and the ride carries on; the reload waits until you press Done on the ride summary.</li>
 <li><strong>Spanish</strong> covers the whole app. It changes the app's words and the voice (Spanish cues are said
 in US Spanish). The route's own sentences come in Spanish too, in Go and Plan: the <strong>Directions</strong>, hazard
 and work-zone lines, steep grades, climbs, Novice and Nervous walk-your-bike lines and Avoid-rated junction
@@ -1394,7 +1417,7 @@ from the app's next update.</li>
 <p class="next">Next: <a href="/about/accessibility.html">Accessibility</a></p>
 </main>
 <footer>
-  <p>Part of RouteMaker's documentation. It describes version 0.19.0. The code is
+  <p>Part of RouteMaker's documentation. It describes version 0.19.1. The code is
   open source under the MIT licence:
   <a href="https://github.com/Macrophage87/RouteMaker">github.com/Macrophage87/RouteMaker</a>.</p>
   <p><a href="/">Back to the map</a></p>

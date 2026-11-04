@@ -84,7 +84,8 @@ test("at the stop, one press plans the rest from where the rider is and rides it
   assert.match(app, /const points = nextLegPoints\(left, riderAt\);/);
   assert.match(app, /tripStopsLeft\.current = null;\s*beginRide\(ridePrefs, false, \{ route: result\.route, points \}\);/);
   // Shown once the trip to the stop is done: arrived, and every walk and train after the line followed.
-  assert.match(ride, /\{onNextLeg && \(onwardParts\.length === 0 \|\| onwardDone\) && \(/);
+  // Not beside the ride after a train (Ride the rest's, started by itself), still to go to the stop.
+  assert.match(ride, /\{onNextLeg && !rest && \(onwardParts\.length === 0 \|\| onwardDone\) && \(/);
 });
 
 test("Go's Add a stop takes stops on Walk and the transit types, not Bikeshare", () => {
