@@ -244,8 +244,9 @@ class TestOnlyWhereAClosureIs:
 class TestTheRidersRoadsComeFirst:
     def test_the_latest_fit_the_routers_limits(self) -> None:
         line = ((-77.03, 38.905), (-77.03, 38.906), (-77.029, 38.907))
-        rings = workzones.blocked_rings([line] * 30)
-        assert 0 < len(rings) < 30
+        many = wz.MAX_VERTICES + 1
+        rings = workzones.blocked_rings([line] * many)
+        assert 0 < len(rings) < many
         assert sum(len(r) for r in rings) <= wz.MAX_VERTICES
 
     def test_the_closures_fit_in_what_is_left(self) -> None:
@@ -267,6 +268,7 @@ class TestTheRidersRoadsComeFirst:
         at = datetime.now(UTC)
         points = [(-77.05, 38.89), (-77.02, 38.93)]
         free = wz.for_plan(zones, at, points, {"md": "current"}, now=at)
-        held = wz.for_plan(zones, at, points, {"md": "current"}, now=at, reserve=(0.0, 90))
+        reserve = (0.0, wz.MAX_VERTICES - 90)
+        held = wz.for_plan(zones, at, points, {"md": "current"}, now=at, reserve=reserve)
         assert len(held.excluded) < len(free.excluded)
-        assert sum(len(r) for r in held.exclude) <= wz.MAX_VERTICES - 90
+        assert sum(len(r) for r in held.exclude) <= 90
