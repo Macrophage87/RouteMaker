@@ -5242,10 +5242,10 @@ if (mine()) {
   await sleep(2100);
   const later = await p.eval("document.querySelector('.departure-label span')?.textContent ?? ''");
   check("transit (Go): an infrequent departure is said plainly: the MARC, when, from where, when you arrive and the spare, and the one after",
-    shown && /^MARC Penn Line \d{1,2}:\d{2} [ap]m scheduled from Union Station\. You arrive \d{1,2}:\d{2} [ap]m \(3 min spare\)\. Next after that: \d{1,2}:\d{2} [ap]m scheduled\.$/.test(first.text),
+    shown && /^MARC Penn Line \d{1,2}:\d{2} [AP]M scheduled from Union Station\. You arrive \d{1,2}:\d{2} [AP]M \(3 min spare\)\. Next after that: \d{1,2}:\d{2} [AP]M scheduled\.$/.test(first.text),
     JSON.stringify(first));
   check("transit (Go): cutting it close shows a mm:ss countdown and the spare, in the panel and on the map's label at the boarding stop, neither a live region",
-    /Cutting it close\. Departs in \d{2}:\d{2}, scheduled; time to spare \d{2}:\d{2}\./.test(first.timer) && /^MARC \d{1,2}:\d{2} [ap]m scheduled · in \d{2}:\d{2} · \d{2}:\d{2} spare$/.test(first.label) && first.labelHidden === "true" && !first.live && later !== first.label,
+    /Cutting it close\. Departs in \d{2}:\d{2}, scheduled; time to spare \d{2}:\d{2}\./.test(first.timer) && /^MARC \d{1,2}:\d{2} [AP]M scheduled · in \d{2}:\d{2} · \d{2}:\d{2} spare$/.test(first.label) && first.labelHidden === "true" && !first.live && later !== first.label,
     JSON.stringify({ first, later }));
   check("transit (Go): both systems' timetables are credited", /WMATA GTFS \(scheduled times\); MDOT MTA GTFS \(scheduled times\)/.test(first.credit), first.credit);
   await p.shot(`${SHOTS}/transit_departure.png`);
@@ -5452,7 +5452,7 @@ if (mine()) {
   const q = await bare({ width: 1280, height: 900, mobile: false });
   const wide = await q.eval(`({ mode: ${modeNow}, top: !!document.querySelector('nav.go-top'), chips: [...document.querySelectorAll('.map-chips .map-chip')].map((x) => x.textContent.trim()) })`);
   // Places to see joined Plan's map chips in 2b38bf1c ("Go: Repair and Sights behind More; Plan: Places to see").
-  check("go: a shared link opens in Go on a phone, and a wide screen opens in Plan, with Eat, Water and Places to see chips on the map (behind Find)", linked === "Go" && wide.mode === "Plan" && !wide.top && JSON.stringify(wide.chips) === JSON.stringify(["Find", "Eat", "Water", "Places to see"]), JSON.stringify({ linked, wide }));
+  check("go: a shared link opens in Go on a phone, and a wide screen opens in Plan, with Eat, Water, Places to see and Reach chips on the map (behind Find)", linked === "Go" && wide.mode === "Plan" && !wide.top && JSON.stringify(wide.chips) === JSON.stringify(["Find", "Eat", "Water", "Places to see", "Reach"]), JSON.stringify({ linked, wide }));
   // Folded behind Find (the owner, 2026-10-21: "It's more room"): Find opens the row, Escape folds it back to Find,
   // and a choice opens its sheet and folds the row.
   const fold = "(() => { const t = document.querySelector('.map-chips-toggle'); const r = document.getElementById(t.getAttribute('aria-controls')); return { expanded: t.getAttribute('aria-expanded'), hidden: r.hidden }; })()";
@@ -5781,13 +5781,16 @@ if (mine()) {
     await sleep(450);
   }
   const noRoom = await small.eval("window.__said.filter((t) => t.includes('No room on this screen'))");
-  check("ride graphs at 360x640 with two on: the graph with no room is said once, not again at each GPS fix",
-    noRoom.length === 1 && noRoom[0] === "No room on this screen for: Elevation.", JSON.stringify(noRoom));
+  // Traffic stress is a ribbon now (Stephen 2026-11-04), so Elevation may fit under it, or be named in the line under it;
+  // only where neither is on screen is it said, and then once.
+  const elevationShown = await small.eval("[...document.querySelectorAll('.ride-ahead-name, .ride-ahead-room')].some((e) => e.textContent.includes('Elevation'))");
+  check("ride graphs at 360x640 with two on: Elevation drawn or named under the ribbon, or said once with no room, not again at each GPS fix",
+    elevationShown ? noRoom.length === 0 : noRoom.length === 1 && noRoom[0] === "No room on this screen for: Elevation.", JSON.stringify({ elevationShown, noRoom }));
   const room = await small.eval(`(() => {
     const card = document.querySelector('.ride .cue-card').getBoundingClientRect(), sheet = document.querySelector('.ride .ride-controls');
     const buttons = [...document.querySelector('.ride-rail').children].filter((e) => e.offsetHeight > 2).map((e) => e.getBoundingClientRect());
     return { cardBottom: Math.round(card.bottom), railTop: Math.round(Math.min(...buttons.map((r) => r.top))), railBottom: Math.round(Math.max(...buttons.map((r) => r.bottom))),
-      panelTop: Math.round(sheet?.getBoundingClientRect().top ?? innerHeight), scrolls: !!sheet && sheet.scrollHeight > sheet.clientHeight + 1, graphs: document.querySelectorAll('.ride-ahead-name').length }; })()`);
+      panelTop: Math.round(sheet?.getBoundingClientRect().top ?? innerHeight), scrolls: !!sheet && sheet.scrollHeight > sheet.clientHeight + 1, graphs: document.querySelectorAll('.ride-ahead-name, .ride-ahead-ribbon').length }; })()`);
   await small.shot(`${SHOTS}/ride_graphs_360x640.png`);
   check("ride graphs at 360x640 with two on: the side buttons stay between the cue card and the bottom panel, and the panel does not scroll",
     room.graphs >= 1 && room.railTop >= room.cardBottom && room.railBottom <= room.panelTop && !room.scrolls, JSON.stringify(room));
@@ -5800,7 +5803,7 @@ if (mine()) {
     const buttons = [...document.querySelector('.ride-rail').children].filter((e) => e.offsetHeight > 2).map((e) => e.getBoundingClientRect());
     return { cardBottom: Math.round(card.bottom), barBottom: bar ? Math.round(bar.bottom) : 0, railTop: Math.round(Math.min(...buttons.map((r) => r.top))),
       railBottom: Math.round(Math.max(...buttons.map((r) => r.bottom))), least: Math.round(Math.min(...buttons.map((r) => r.height))),
-      panelTop: sheet ? Math.round(sheet.getBoundingClientRect().top) : null, graphs: document.querySelectorAll('.ride-ahead-name').length,
+      panelTop: sheet ? Math.round(sheet.getBoundingClientRect().top) : null, graphs: document.querySelectorAll('.ride-ahead-name, .ride-ahead-ribbon').length,
       noRoom: document.querySelector('.ride-ahead-room')?.textContent ?? '',
       said: [...document.querySelectorAll('.ride [role=status], .ride [role=alert], .ride-toast')].map((e) => e.textContent.trim()).join(' | '),
       small: (() => { const svg = document.querySelector('.ride-ahead-plot'); if (!svg) return false; const vb = svg.viewBox.baseVal; return svg.getBoundingClientRect().width / vb.width < 0.99; })() }; })()`;
@@ -5827,7 +5830,7 @@ if (mine()) {
 
   const forced = await rideWith({ width: 390, height: 844, scheme: "dark", forced: true });
   await turnOn(forced, ["stress"]);
-  const ink = await forced.eval(`(() => { const name = document.querySelector('.ride-ahead-name'), bg = getComputedStyle(document.querySelector('.ride .ride-controls')).backgroundColor;
+  const ink = await forced.eval(`(() => { const name = document.querySelector('.ride-ahead-name, .ride-ahead-ribbon-name'), bg = getComputedStyle(document.querySelector('.ride .ride-controls')).backgroundColor;
     return { name: name && getComputedStyle(name).fill, you: getComputedStyle(document.querySelector('.ride-ahead-you-word')).fill, bg }; })()`);
   await forced.shot(`${SHOTS}/ride_graphs_forced.png`);
   check("ride graphs in forced colours: the graph's heading and 'You' are in the system's text colour, not the panel's",

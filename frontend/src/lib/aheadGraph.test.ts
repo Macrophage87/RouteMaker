@@ -13,6 +13,8 @@ import {
   corkerMarks,
   corkerSentence,
   elevationSentence,
+  facilitySentence,
+  facilityStretches,
   elevationShape,
   flowSentence,
   flowSteps,
@@ -41,6 +43,8 @@ import {
   flowTicks,
 } from "./aheadGraph.ts";
 import { METRES_PER_MILE } from "./format.ts";
+import { setUnitsForTest } from "./units.ts";
+import { setAccessibility } from "../stressStyle.js";
 
 const MI = METRES_PER_MILE;
 const span = (from_m: number, to_m: number, tier: number | null, half = false, facility: StressSpan["facility"] = "none"): StressSpan => ({ from_m, to_m, tier, facility, half });
@@ -183,6 +187,22 @@ test("riders and the axis: the last rider behind said; ticks counted from you, t
   assert.deepEqual(axisTicks(aheadWindow(MI, 50_000, [0])).map((tick) => tick.label), ["−1", "−0.5", "0.5", "1", "1.5", "2 mi"]);
 });
 
+test("near the end the axis keeps its labels: smaller steps when under two miles are left, in miles or kilometres", () => {
+  const labels = (youM: number, lengthM: number) => axisTicks(aheadWindow(youM, lengthM)).map((tick) => tick.label);
+  // Stephen 2026-11-04: 0.3 mi left and the axis had no labels at all.
+  assert.deepEqual(labels(0, 0.3 * MI), ["0.1", "0.2", "0.3 mi"]);
+  assert.deepEqual(labels(0, 1 * MI), ["0.2", "0.4", "0.6", "0.8", "1 mi"]);
+  assert.deepEqual(labels(0, 0.15 * MI), ["0.05", "0.1", "0.15 mi"]);
+  assert.deepEqual(labels(0, 1.5 * MI), ["0.5", "1", "1.5 mi"]);
+  setUnitsForTest("metric");
+  try {
+    assert.deepEqual(labels(0, 500), ["0.1", "0.2", "0.3", "0.4", "0.5 km"]);
+    assert.deepEqual(labels(0, 3000), ["0.5", "1", "1.5", "2", "2.5", "3 km"]);
+  } finally {
+    setUnitsForTest("us");
+  }
+});
+
 test("Ride wires it: one bubble a graph in More, pressed state, off by default, the graph at the top of the bottom panel", () => {
   const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
   assert.match(ride, /const \[ahead, setAhead\] = useState<AheadView\[\]>\(\(\) => readAhead\(\)\);/);
@@ -190,7 +210,7 @@ test("Ride wires it: one bubble a graph in More, pressed state, off by default, 
   assert.match(ride, /onClick=\{\(\) => toggleAhead\(view\)\}/, "More stays open after a graph bubble (Stephen 2026-11-03: Stay open)");
   assert.match(ride, /const next = on \? ahead\.filter\(\(v\) => v !== view\) : \[\.\.\.ahead, view\];/, "each bubble on or off on its own");
   assert.match(ride, /<AheadGraph views=\{aheadDrawn\} route=\{route\} cues=\{model\.cues\}/, "the graphs on stack, with the turns");
-  assert.match(ride, /const sheetShown = notesShown \|\| restShown \|\| aheadShown;/);
+  assert.match(ride, /const sheetShown = notesShown \|\| restOffered \|\| aheadShown;/);
   assert.ok(ride.indexOf("<AheadGraph views={aheadDrawn} route={route} cues={model.cues} youM={aheadAt}") > ride.indexOf('className="ride-controls"'));
   assert.ok(ride.indexOf("ride-ahead-bubble") < ride.indexOf('className="ride-round ride-topo"'), "before Topo and Settings");
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
@@ -285,7 +305,7 @@ test("Ride gives the graphs only the room the side buttons leave, and their text
   assert.match(graph, /root\.classList\.contains\(ACCESS_MODE_CLASS\)/);
   const css = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
   assert.match(css, /@media \(forced-colors: active\) \{\s*\.ride-ahead-plot \{\s*forced-color-adjust: none;/);
-  assert.match(css, /:root\.theme-dark \.ride-ahead-bar \{\s*stroke: var\(--text-muted\);/);
+  assert.match(css, /\n\.ride-ahead-bar \{\s*stroke: var\(--text-muted\);/, "the bars' edge, in every theme (stylesAccessibility.test.ts measures it)");
 });
 
 test("as many graphs are drawn as fit the room readably, and the rest named", () => {
@@ -303,5 +323,57 @@ test("the graphs' room is measured before each paint, and with no room their sen
   assert.match(ride, /useLayoutEffect\(\(\) => \{\s*measureAhead\.current\?\.\(\);\s*\}\);/, "a note that comes or goes changes the room in the same frame");
   assert.match(ride, /\{aheadWanted && !aheadFits && ride\.progressM !== null && \(\s*<AheadGraph [^>]*maxPx=\{0\} \/>/, "no room: the sentence alone");
   const graph = readFileSync(new URL("../AheadGraph.tsx", import.meta.url), "utf8");
-  assert.match(graph, /className=\{panels\.drawn\.length \? "ride-ahead" : "ride-ahead ride-ahead-unseen"\} role="group" aria-label=\{AHEAD_GROUP\}/);
+  assert.match(graph, /className=\{panels\.any \? "ride-ahead" : "ride-ahead ride-ahead-unseen"\} role="group" aria-label=\{AHEAD_GROUP\}/);
+});
+
+test("the stress ribbon's rails: trails and bike lanes along the window, joined, painted lanes on LTS 4 left off, and said", () => {
+  const span = (from_m: number, to_m: number, tier: number | null, facility: StressSpan["facility"]): StressSpan => ({ from_m, to_m, tier, facility });
+  const spans = [
+    span(0, 200, 2, "none"),
+    span(200, 500, 1, "path"),
+    span(500, 800, 1, "path"),
+    span(800, 1000, 3, "protected"),
+    span(1000, 1200, 4, "lane"),
+    span(1200, 1500, 2, "lane"),
+  ];
+  const rails = facilityStretches(spans, aheadWindow(0, 50_000));
+  assert.deepEqual(rails.map((r) => [r.fromM, r.toM, r.facility]), [[200, 800, "path"], [800, 1000, "protected"], [1200, 1500, "lane"]]);
+  assert.equal(rails[0].color, "#4c1d95", "the map's trail purple");
+  assert.deepEqual(facilityStretches(spans, { fromM: 900, toM: 1100 }).map((r) => [r.fromM, r.toM]), [[900, 1000]], "clipped to the window");
+  assert.equal(facilitySentence(rails, 0), "Trail in 700 feet, for 0.4 miles. Protected bike lane in 0.5 miles, for 700 feet.");
+  assert.equal(facilitySentence(rails, 300), "Trail here, for 0.3 miles. Protected bike lane in 0.3 miles, for 700 feet.");
+  assert.equal(facilitySentence(rails, 2000), "");
+});
+
+test("traffic stress is a ribbon with the turns on it, not a graph, so it fits beside elevation (Stephen 2026-11-04: always a ribbon)", () => {
+  const graph = readFileSync(new URL("../AheadGraph.tsx", import.meta.url), "utf8");
+  assert.match(graph, /const graphs = views\.filter\(\(view\) => view !== "stress"\);/, "stress takes no graph's room");
+  assert.match(graph, /<Ribbon bars=\{panels\.ribbon\} rails=\{panels\.rails\}/);
+  assert.match(graph, /const railYs = \[top \+ RAIL_H \/ 2, band \+ RIBBON_H \+ RAIL_GAP \+ RAIL_H \/ 2\];/, "rails on the top and bottom edges");
+});
+
+test("the ribbon's half steps: their own colour by default; in the colour-blind-friendly palette the level's colour with the next level's dash, as on the map", () => {
+  const spans: StressSpan[] = [
+    { from_m: 0, to_m: 300, tier: 3, facility: "none" },
+    { from_m: 300, to_m: 600, tier: 3, facility: "none", half: true },
+  ];
+  const plain = stressBars(spans, aheadWindow(0, 50_000));
+  assert.deepEqual(plain.map((b) => b.label), ["3", "3.5"]);
+  assert.notEqual(plain[1].color, plain[0].color, "3.5 in its own colour");
+  assert.equal(plain[1].halfDash, undefined);
+  setAccessibility(true, { remember: false });
+  try {
+    const cvd = stressBars(spans, aheadWindow(0, 50_000));
+    assert.deepEqual(cvd.map((b) => b.label), ["3", "3.5"]);
+    assert.equal(cvd[1].color, cvd[0].color, "LTS 3's colour");
+    assert.equal(cvd[1].halfDash, stressBars([{ from_m: 0, to_m: 300, tier: 4, facility: "none" }], aheadWindow(0, 50_000))[0].color, "LTS 4's colour as its dash");
+    const top = stressBars([{ from_m: 0, to_m: 300, tier: 4, facility: "none", half: true }], aheadWindow(0, 50_000))[0];
+    assert.equal(top.label, "4.5");
+    assert.ok(top.halfDash && top.halfOutline, "4.5's dash has its outline, as on the map (458b)");
+  } finally {
+    setAccessibility(false, { remember: false });
+  }
+  const graph = readFileSync(new URL("../AheadGraph.tsx", import.meta.url), "utf8");
+  assert.match(graph, /\{b\.halfDash && \(/, "the dash drawn on the ribbon");
+  assert.match(graph, /const dash = level === 4\.5 \? \[6, 3, 1\.5, 3\] : \[6, 4\];/, "4.5 a dash-dot, as the map's HALF_STEP_TOP_DASH");
 });
