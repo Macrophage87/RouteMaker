@@ -189,6 +189,8 @@ def test_it_introduces_itself_and_lists_its_tools(tools) -> None:
         "climbs_near",
         "closures_near",
         "plan_route",
+        "reach",
+        "compare_places",
         "plan_metro_loop",
         "open_link",
         "revise_route",

@@ -408,6 +408,23 @@ class Api:
             raise ToolError(f"the climb search failed ({status}): {message}")
         return payload.get("climbs", [])
 
+    def reach(self, body: dict) -> dict:
+        """POST /api/reach: the reach rings (isochrones) for points, a ride type and its dials."""
+        status, payload, _ = self._request("POST", "/api/reach", body, timeout=ROUTE_TIMEOUT_S)
+        if status != 200 or not isinstance(payload, dict):
+            message = payload.get("error") if isinstance(payload, dict) else payload
+            raise ToolError(f"the reach rings could not be drawn ({status}): {message}")
+        return payload
+
+    def nearest(self, body: dict) -> dict:
+        """POST /api/nearest: riding time and distance from the first point to each other
+        one, on the ride type's own graph and dials (one matrix row)."""
+        status, payload, _ = self._request("POST", "/api/nearest", body, timeout=ROUTE_TIMEOUT_S)
+        if status != 200 or not isinstance(payload, dict):
+            message = payload.get("error") if isinstance(payload, dict) else payload
+            raise ToolError(f"the riding times could not be found ({status}): {message}")
+        return payload
+
     def closures_map(self, box: tuple[float, float, float, float], permits: bool) -> list[dict]:
         """GET /api/closures/map: the closures in force now with any part in the box."""
         params = {"bbox": ",".join(f"{v:.5f}" for v in box), "permits": str(permits).lower()}
@@ -3108,6 +3125,25 @@ TRIM_SPURS = {
 }
 
 # The plan tools' options, as POST /api/route names them (all optional).
+# Reach (Stephen, 2026-11-04): the rings' points (core/reach.py MAX_POINTS) and the ride
+# options they take.
+REACH_MAX_POINTS = 5
+REACH_OPTIONS = (
+    "preset",
+    "stress",
+    "hills",
+    "when",
+    "pace_mph",
+    "carrying",
+    "assist",
+    "trails_off",
+)
+REACH_NOT_YET = frozenset({"bike-transit", "bikeshare-transit", "walk-transit"})
+REACH_ON_FOOT = frozenset({"walk", "run"})
+# The calm layer's setting (core/reach.py CALM_STRESS: Low-stress).
+CALM_STRESS = 80
+
+
 PASSED_OPTIONS = (
     "stress",
     "hills",
@@ -3343,6 +3379,79 @@ TOOLS = [
                 },
                 **RIDE_OPTIONS,
             },
+        },
+        "annotations": {"readOnlyHint": True, "openWorldHint": False},
+    },
+    {
+        "name": "reach",
+        "description": (
+            "Where a rider can be in 15, 30, 45 and 60 minutes (reach rings, isochrones) from one"
+            " to five points, by any bike ride type (its graph, pace and traffic setting), on"
+            " foot (walk, run), from the points or to them. For each ring: its area (sq mi and"
+            " km2) and the Metro stations, bike racks, places to eat and places to see inside;"
+            " with calm (default on) the same rings at Low-stress (stress 80), so the gap shows"
+            " what busy roads add. Several points combine as any (within the time of at least"
+            " one), all (somewhere every point reaches: a meeting spot) or each (a set per"
+            " point). Lower stress shrinks the rings to calmer ways; above 80 they are 80's."
+            " The link opens the same rings in the app (Plan, Reach), shareable. The transit"
+            " ride types have no rings yet."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "points": {
+                    "type": "array",
+                    "items": POINT_SCHEMA,
+                    "minItems": 1,
+                    "maxItems": REACH_MAX_POINTS,
+                },
+                "minutes": {
+                    "type": "array",
+                    "items": {"type": "integer", "minimum": 5, "maximum": 60},
+                    "minItems": 1,
+                    "maxItems": 4,
+                    "default": [15, 30, 45, 60],
+                },
+                "direction": {"type": "string", "enum": ["from", "to"], "default": "from"},
+                "combine": {"type": "string", "enum": ["any", "all", "each"], "default": "any"},
+                "calm": {"type": "boolean", "default": True},
+                **{k: RIDE_OPTIONS[k] for k in REACH_OPTIONS},
+            },
+            "required": ["points"],
+        },
+        "annotations": {"readOnlyHint": True, "openWorldHint": False},
+    },
+    {
+        "name": "compare_places",
+        "description": (
+            "Compare 2 to 6 places to start from (a home, a hotel, an office)"
+            " against 1 to 3 places the rider goes, each with an optional minute limit: one row"
+            " per place, with the riding minutes and miles to each destination at the rider's"
+            " traffic setting and at Low-stress (calm_minutes), and whether each limit is met,"
+            " best first. Times are the router's own on the ride type's graph (one matrix row"
+            " a place), not full routes: plan the chosen one with plan_route. Bike ride types"
+            " only. Each row has a reach link to its rings in the app."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "places": {"type": "array", "items": POINT_SCHEMA, "minItems": 2, "maxItems": 6},
+                "destinations": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 3,
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "place": POINT_SCHEMA,
+                            "max_minutes": {"type": "number", "exclusiveMinimum": 0},
+                        },
+                        "required": ["place"],
+                    },
+                },
+                **{k: RIDE_OPTIONS[k] for k in REACH_OPTIONS},
+            },
+            "required": ["places", "destinations"],
         },
         "annotations": {"readOnlyHint": True, "openWorldHint": False},
     },
@@ -5000,6 +5109,186 @@ class Server:
             )
         return self._draft(best, options, limit, notes, f"{target:.0f} mi Metro loop", taken=taken)
 
+    def _reach_dials(self, args: dict, preset: str) -> dict:
+        """The ride options a reach or compare_places call sends, as the site's fields."""
+        body: dict = {}
+        for key in ("stress", "hills", "when", "carrying", "assist", "trails_off"):
+            if args.get(key) is not None:
+                body[key] = args[key]
+        if args.get("pace_mph"):
+            if preset == "run":
+                body["run_pace_kmh"] = round(finite(args["pace_mph"]) * METRES_PER_MILE / 1000, 1)
+            elif preset not in REACH_ON_FOOT:
+                body["cycling_speed_kmh"] = pace_kmh(args["pace_mph"])
+        return body
+
+    def _reach_link(
+        self, points, preset: str, body: dict, direction: str, combine: str, calm: bool
+    ):
+        parts = [
+            "p=" + ";".join(f"{lon:.5f},{lat:.5f}" for lon, lat in points),
+            f"preset={preset}",
+            "v=2",
+        ]
+        for key, field in (
+            ("stress", "stress"),
+            ("hills", "hills"),
+            ("when", "when"),
+            ("carrying", "carrying"),
+        ):
+            if body.get(key) is not None:
+                parts.append(f"{field}={body[key]}")
+        if body.get("assist"):
+            parts.append("assist=1")
+        if body.get("trails_off"):
+            parts.append("trailsoff=1")
+        parts.append("reach=" + ".".join([direction, combine, *(["calm"] if calm else [])]))
+        return f"{self.api.base}/#" + "&".join(parts)
+
+    def reach(self, args: dict, call: Call) -> dict:
+        call.check()
+        preset = str(args.get("preset") or "default")
+        if preset not in PRESETS:
+            raise ToolError(f"no ride type {preset!r}")
+        if preset in REACH_NOT_YET:
+            raise ToolError(
+                "the transit ride types have no reach rings yet: pick a bike ride type, walk or run"
+            )
+        values = args.get("points") or []
+        if not 1 <= len(values) <= REACH_MAX_POINTS:
+            raise ToolError(f"points: 1 to {REACH_MAX_POINTS}")
+        taken: list[dict] = []
+        points = self._points(list(values), taken)
+        direction = "to" if args.get("direction") == "to" else "from"
+        combine = str(args.get("combine") or "any")
+        if combine not in ("any", "all", "each"):
+            raise ToolError("combine is any, all or each")
+        calm = args.get("calm") is not False
+        minutes = args.get("minutes") or [15, 30, 45, 60]
+        try:
+            minutes = sorted({int(m) for m in minutes})
+        except (TypeError, ValueError):
+            raise ToolError("minutes are whole numbers, 5 to 60") from None
+        dials = self._reach_dials(args, preset)
+        body = {
+            "points": [list(p) for p in points],
+            "preset": preset,
+            "minutes": minutes,
+            "direction": direction,
+            "combine": combine,
+            "calm": calm,
+            **dials,
+        }
+        answer = self.api.reach(body)
+
+        def rings(groups: list[dict]) -> list[dict]:
+            out = []
+            for group in groups:
+                row = {
+                    "rings": [
+                        {
+                            "minutes": r["minutes"],
+                            "area_sq_mi": r["area_sq_mi"],
+                            "area_km2": r["area_km2"],
+                            "places": r["places"],
+                        }
+                        for r in group["rings"]
+                    ],
+                    "metro_stations": group.get("metro_stations", []),
+                }
+                if group.get("point") is not None:
+                    row["point"] = group["point"]
+                out.append(row)
+            return out
+
+        out: dict = {
+            "ride_type": answer.get("preset", preset),
+            "direction": direction,
+            "combine": combine if len(points) > 1 else None,
+            "stress_used": answer.get("stress_used"),
+            "groups": rings(answer.get("groups") or []),
+            "link": self._reach_link(points, preset, dials, direction, combine, calm),
+        }
+        if answer.get("calm"):
+            out["calm"] = {
+                "stress": answer["calm"]["stress"],
+                "groups": rings(answer["calm"]["groups"]),
+            }
+        if answer.get("unplaced"):
+            out["unplaced_points"] = answer["unplaced"]
+        if taken:
+            out["points_taken_as"] = taken
+        return out
+
+    def compare_places(self, args: dict, call: Call) -> dict:
+        preset = str(args.get("preset") or "default")
+        if preset not in PRESETS:
+            raise ToolError(f"no ride type {preset!r}")
+        if preset in REACH_NOT_YET or preset in REACH_ON_FOOT:
+            raise ToolError("compare_places is for the bike ride types")
+        if preset in ("bikeshare", "rebalance"):
+            preset = "default"
+        places = args.get("places") or []
+        dests = args.get("destinations") or []
+        if not 2 <= len(places) <= 6 or not 1 <= len(dests) <= 3:
+            raise ToolError("places: 2 to 6; destinations: 1 to 3")
+        taken: list[dict] = []
+        starts = self._points(list(places), taken)
+        ends = self._points([d.get("place") if isinstance(d, dict) else d for d in dests], taken)
+        limits = [
+            finite(d["max_minutes"]) if isinstance(d, dict) and d.get("max_minutes") else None
+            for d in dests
+        ]
+        dials = self._reach_dials(args, preset)
+        rows = []
+        for i, start in enumerate(starts):
+            call.check()
+            body = {"points": [list(start), *[list(e) for e in ends]], "preset": preset, **dials}
+            own = self.api.nearest(body)
+            calm_body = {**body, "stress": CALM_STRESS}
+            stress = dials.get("stress")
+            calm = (
+                None
+                if stress is not None and stress >= CALM_STRESS
+                else self.api.nearest(calm_body)
+            )
+            trips = []
+            for j in range(len(ends)):
+                got = (own.get("places") or [{}] * len(ends))[j]
+                seconds = got.get("time_s")
+                metres = got.get("distance_m")
+                minutes = None if seconds is None else round(seconds / 60, 1)
+                trip = {
+                    "to": dests[j].get("place") if isinstance(dests[j], dict) else dests[j],
+                    "minutes": minutes,
+                    "miles": None if metres is None else round(metres / METRES_PER_MILE, 2),
+                    "by": own.get("by"),
+                }
+                if calm is not None:
+                    calm_s = (calm.get("places") or [{}] * len(ends))[j].get("time_s")
+                    trip["calm_minutes"] = None if calm_s is None else round(calm_s / 60, 1)
+                if limits[j] is not None:
+                    trip["max_minutes"] = limits[j]
+                    trip["within_limit"] = minutes is not None and minutes <= limits[j]
+                trips.append(trip)
+            met = sum(1 for t in trips if t.get("within_limit"))
+            total = sum(t["minutes"] for t in trips if t["minutes"] is not None)
+            rows.append(
+                {
+                    "place": places[i],
+                    "at": list(start),
+                    "trips": trips,
+                    "limits_met": met,
+                    "total_minutes": round(total, 1),
+                    "reach_link": self._reach_link([start], preset, dials, "from", "any", True),
+                }
+            )
+        rows.sort(key=lambda r: (-r["limits_met"], r["total_minutes"]))
+        out: dict = {"ride_type": preset, "places": rows}
+        if taken:
+            out["points_taken_as"] = taken
+        return out
+
     def handler(self, name: str):
         if name in POST_TOOLS and not self.posts:
             return None
@@ -5019,6 +5308,8 @@ class Server:
             "route_segments": self.route_segments,
             "ride_conditions": self.ride_conditions,
             "my_routes": self.my_routes,
+            "reach": self.reach,
+            "compare_places": self.compare_places,
         }.get(name)
 
     def call(self, name: str, args: dict, call: Call | None = None) -> dict:
