@@ -364,12 +364,16 @@ test("the ribbon's half steps: their own colour by default; in the colour-blind-
   setAccessibility(true, { remember: false });
   try {
     const cvd = stressBars(spans, aheadWindow(0, 50_000));
-    assert.deepEqual(cvd.map((b) => b.label), ["3", "3.5"], "two stretches still, the 3.5 not joined to the 3");
+    assert.deepEqual(cvd.map((b) => b.label), ["3", "3.5"]);
     assert.equal(cvd[1].color, cvd[0].color, "LTS 3's colour");
     assert.equal(cvd[1].halfDash, stressBars([{ from_m: 0, to_m: 300, tier: 4, facility: "none" }], aheadWindow(0, 50_000))[0].color, "LTS 4's colour as its dash");
+    const top = stressBars([{ from_m: 0, to_m: 300, tier: 4, facility: "none", half: true }], aheadWindow(0, 50_000))[0];
+    assert.equal(top.label, "4.5");
+    assert.ok(top.halfDash && top.halfOutline, "4.5's dash has its outline, as on the map (458b)");
   } finally {
     setAccessibility(false, { remember: false });
   }
   const graph = readFileSync(new URL("../AheadGraph.tsx", import.meta.url), "utf8");
   assert.match(graph, /\{b\.halfDash && \(/, "the dash drawn on the ribbon");
+  assert.match(graph, /const dash = level === 4\.5 \? \[6, 3, 1\.5, 3\] : \[6, 4\];/, "4.5 a dash-dot, as the map's HALF_STEP_TOP_DASH");
 });

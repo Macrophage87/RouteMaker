@@ -160,7 +160,7 @@ export function stressBars(spans: readonly StressSpan[], w: Pick<AheadWindow, "f
     const cls = spanClass(span);
     const color = cls.color;
     const last = bars[bars.length - 1];
-    if (last && last.level === level && last.color === color && last.halfDash === cls.halfDash && last.toM >= fromM - 0.5) {
+    if (last && last.level === level && last.color === color && last.toM >= fromM - 0.5) {
       last.toM = toM;
       continue;
     }
