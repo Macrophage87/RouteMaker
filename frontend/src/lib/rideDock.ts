@@ -38,7 +38,7 @@ export const DOCK_STILL_M = 15;
 export const DOCKED_M = 30;
 /** Docked, then this far from the dock: a bike taken again, so the time starts from 0. */
 export const LEFT_DOCK_M = 50;
-export const DOCKED_SHOWN = "Docked";
+export const DOCKED_SHOWN = t("Docked");
 export const RESTART_TIME = t("Restart the time");
 export const TIME_RESTARTED = t("Undocked time restarted.");
 export const dockedSaid = (name: string): string => t("Docked at {dock}? The undocked time starts again when you ride off.", { dock: name });

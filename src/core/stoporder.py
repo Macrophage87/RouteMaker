@@ -153,6 +153,11 @@ def ask_matrix(variant: str, payload: dict, deadline) -> dict:
     return _ask(variant, "sources_to_targets", payload, deadline)[0]
 
 
+def ask_isochrone(variant: str, payload: dict, deadline) -> dict:
+    """One isochrone call on the ride's graph (`_ask`); for `core.reach`'s rings."""
+    return _ask(variant, "isochrone", payload, deadline)[0]
+
+
 def _pairs_chains(n: int) -> list[list[int]]:
     """Chains of point indices whose consecutive pairs are every leg an order of
     points 0..n-1 (the ends fixed) may ride, each once: one walk from the start

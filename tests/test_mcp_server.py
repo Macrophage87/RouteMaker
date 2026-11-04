@@ -189,6 +189,8 @@ def test_it_introduces_itself_and_lists_its_tools(tools) -> None:
         "climbs_near",
         "closures_near",
         "plan_route",
+        "reach",
+        "compare_places",
         "plan_metro_loop",
         "open_link",
         "revise_route",
@@ -853,7 +855,14 @@ def test_old_and_renamed_links_open_as_the_page_opens_them(fragment, stress, hil
 
 @pytest.mark.parametrize(
     "linked, opens",
-    [("default", "road-bike"), ("gravel", "road-bike"), ("cargo", "cargo"), ("ebike", "ebike")],
+    [
+        ("default", "road-bike"),
+        ("gravel", "road-bike"),
+        ("cargo", "cargo"),
+        ("ebike", "ebike"),
+        ("novice", "novice"),
+        ("trailmaxxing", "trailmaxxing"),
+    ],
 )
 def test_a_link_with_the_retired_avoid_gravel_box_opens_as_the_page_opens_it(linked, opens) -> None:
     """The owner, 2026-11-02, "Replace the box": on a rider's own bike the box opens as Road

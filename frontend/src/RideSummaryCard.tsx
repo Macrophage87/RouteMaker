@@ -17,7 +17,7 @@ import { t } from "./lib/i18n.ts";
 import { SAVE_SPOT_TEXT, SAVED_TO_FAVORITES } from "./lib/favoritePlaces.ts";
 import { OPEN_REPORTS, REPORTS_WHERE, openCount, outstandingSaid, useReport311Log } from "./lib/report311Log.ts";
 
-export const RIDE_SUMMARY_TITLE = "Ride ended";
+export const RIDE_SUMMARY_TITLE = t("Ride ended");
 /** The stress shares are shown once this much was ridden along the route. */
 const STRESS_MIN_M = METRES_PER_MILE / 10;
 

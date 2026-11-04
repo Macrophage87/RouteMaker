@@ -20,6 +20,7 @@
  * - Signed out, everything stays on the device as before.
  */
 import { FAVORITES_KEY, parseFavorites } from "./favoriteRides.ts";
+import { t } from "./i18n.ts";
 import { CLIMBS_FROM_KEY, CLIMBS_KEY, CLIMB_CATEGORIES, type ClimbCategory } from "./climbs.ts";
 import type { Dials } from "./dials.ts";
 import { LAYER_SECTIONS_KEY } from "./layerSection.ts";
@@ -257,7 +258,81 @@ export async function saveSettings(origin: string, doc: SettingsDoc, post: Fetch
   }
 }
 
+/** The waits between tries of the sign-in read of the settings, when it could not be read (a 5xx, a timeout, offline). */
+export const SETTINGS_RETRY_MS: readonly number[] = [2000, 8000, 30000];
+
+/** The window's timer and events that retryUntil uses (a test passes a stand-in). */
+export interface RetryEnv {
+  setTimeout(run: () => void, ms: number): number;
+  clearTimeout(id: number): void;
+  addEventListener(type: "focus" | "online", run: () => void): void;
+  removeEventListener(type: "focus" | "online", run: () => void): void;
+}
+
+/**
+ * Runs `attempt` now and again after each of `delays` until it answers true; past the last wait, on the next time the
+ * page has the focus or is back online (either of which also tries at once during the waits). One try at a time.
+ * Returns a stop, for when the page no longer needs the answer.
+ */
+export function retryUntil(attempt: () => Promise<boolean>, env: RetryEnv, delays: readonly number[] = SETTINGS_RETRY_MS): () => void {
+  let stopped = false;
+  let busy = false;
+  let tries = 0;
+  let timer: number | undefined;
+  const clear = () => {
+    if (timer !== undefined) env.clearTimeout(timer);
+    timer = undefined;
+  };
+  const unlisten = () => {
+    env.removeEventListener("focus", again);
+    env.removeEventListener("online", again);
+  };
+  const run = async () => {
+    if (stopped || busy) return;
+    busy = true;
+    const done = await attempt().catch(() => false);
+    busy = false;
+    if (stopped) return;
+    if (done) {
+      stopped = true;
+      unlisten();
+      return;
+    }
+    if (tries < delays.length) timer = env.setTimeout(() => {
+      timer = undefined;
+      void run();
+    }, delays[tries++]);
+  };
+  function again() {
+    if (busy) return;
+    clear();
+    void run();
+  }
+  env.addEventListener("focus", again);
+  env.addEventListener("online", again);
+  void run();
+  return () => {
+    stopped = true;
+    clear();
+    unlisten();
+  };
+}
+
+/**
+ * A Units change made before the account's settings could be read on sign-in: the account is read now and, where it
+ * holds settings, saved with only the units changed (never this device's other settings over the account's). Where it
+ * still cannot be read, or is empty (the sign-in read gives it this device's), the change stays on this device: true.
+ */
+export async function saveUnitsUnsynced(origin: string, units: Units | undefined, get: Fetch = fetch, post: Fetch = fetch, cookie?: string): Promise<boolean> {
+  const account = await fetchSettings(origin, get);
+  if (!account) return true;
+  const doc: SettingsDoc = { ...account };
+  if (units) doc.units = units;
+  else delete doc.units;
+  return saveSettings(origin, doc, post, cookie);
+}
+
 /** The Settings sheet's one line for a rider who can sign in (the plan, item 4). */
 export const SIGN_IN_LINE = "Sign in with Discord to save routes and sync settings across devices.";
 /** Said once the account's settings are in use on this device. */
-export const ACCOUNT_SETTINGS_USED = "Your account's saved settings are in use on this device.";
+export const ACCOUNT_SETTINGS_USED = t("Your account's saved settings are in use on this device.");
