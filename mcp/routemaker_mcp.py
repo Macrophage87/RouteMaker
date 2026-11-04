@@ -3393,7 +3393,9 @@ TOOLS = [
             " what busy roads add. Several points combine as any (within the time of at least"
             " one), all (somewhere every point reaches: a meeting spot) or each (a set per"
             " point). Lower stress shrinks the rings to calmer ways; above 80 they are 80's."
-            " The link opens the same rings in the app (Plan, Reach), shareable. The transit"
+            " The link opens the same rings in the app (Plan, Reach), shareable; the app draws"
+            " only 15, 30, 45 and 60, and link_rings says which when other minutes were asked."
+            " The transit"
             " ride types have no rings yet."
         ),
         "inputSchema": {
@@ -5220,6 +5222,11 @@ class Server:
             "groups": rings(answer.get("groups") or []),
             "link": self._reach_link(points, preset, dials, direction, combine, calm, minutes),
         }
+        # The app draws only 15, 30, 45 and 60: say which of them the link opens when the rings
+        # asked for differ, so the link does not quietly disagree with the answer.
+        app_rings = [m for m in minutes if m in (15, 30, 45, 60)] or [15, 30, 45, 60]
+        if app_rings != minutes:
+            out["link_rings"] = app_rings
         if answer.get("calm"):
             out["calm"] = {
                 "stress": answer["calm"]["stress"],

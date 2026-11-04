@@ -2445,6 +2445,7 @@ export const ES: Readonly<Record<string, string>> = {
   "{rideType}, with your Ride settings.": "{rideType}, con sus ajustes del recorrido.",
   "Ring by ring": "Anillo por anillo",
   Minutes: "Minutos",
+  "At least one ring stays on.": "Al menos un anillo queda activo.",
   "Point {number}": "Punto {number}",
   "{minutes} min": "{minutes} min",
   "Metro: {stations}.": "Metro: {stations}.",
