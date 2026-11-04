@@ -662,7 +662,7 @@ in the database still names it: delete that row in the admin when loading the fi
   plans/region-overrides). Fingerprints are from extract-20261031 (`rematch.fingerprint_of`).
   The Maryland dry run lists about 35,000 rows. Not loaded: the owner confirms each file, then
   a rebuild.
-- `2026-11-04-owner-baltimore-city-review.json` (963 ways, 99.6 mi; 167 retired): a second
+- `2026-11-04-owner-baltimore-city-review.json` (698 ways, 80.7 mi; 147 retired): a second
   review of Baltimore City with the city's own data. Every city street block was matched to
   Open Baltimore's Street Centerline (Native) speed limits, MDOT SHA's counts and lanes, and
   Baltimore City DOT's bike facilities, 2024 truck routes, restricted-hours routes and speed
@@ -684,6 +684,7 @@ in the database still names it: delete that row in the admin when loading the fi
   (393), ways already at the level (43), ways in the 2026-10-01 Baltimore facilities file (6),
   ways whose own count differs by more than 15% from the count the skeptic used (313) or has a
   count the skeptic did not use (9), ways whose road panel answered for another way (114), ways
-  where the skeptic's lanes, speed or count are not what the way's road panel shows (215), and
-  every group a skeptic was unsure about. Fingerprints are from OSM as served by the OSM API on
+  where the skeptic's lanes, speed or count are not what the way's road panel shows, or whose
+  speed is not posted, or that are closed to bikes or are ramps (462), notes over 200
+  characters (21), and every group a skeptic was unsure about. Fingerprints are from OSM as served by the OSM API on
   2026-11-04. Not loaded: the owner confirms the file, then a rebuild.
