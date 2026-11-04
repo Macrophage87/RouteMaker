@@ -42,7 +42,7 @@ import {
   EMPTY_HAZARDS,
 } from "./mapGlue.ts";
 import { BASEMAP_SOURCE_ID, MASS_SOURCE_ID, STRESS_SOURCE_ID, massSource, stressSource } from "./mapStyle.ts";
-import { HIGH_STRESS_LANE_MIN_TIER, TRAIL_LABEL_LAYER_ID, drawnAt, isMtbLayerId, massRideOn, setAccessibility, setHighStressLanes, setMassRide, stressFilters, stressOverlayLayers } from "../stressStyle.js";
+import { HIGH_STRESS_LANE_MIN_TIER, ROAD_LABEL_LAYER_IDS, TRAIL_LABEL_LAYER_ID, drawnAt, isMtbLayerId, massRideOn, setAccessibility, setHighStressLanes, setMassRide, stressFilters, stressOverlayLayers } from "../stressStyle.js";
 import { ROUTE_BOTTOM_LAYER, railLayers } from "./railLayer.ts";
 import { HAZARD_SOURCE_ID, massLayerIds, massLayers } from "../massStyle.js";
 
@@ -112,6 +112,10 @@ test("the trails' names go over the base map's labels, which give way to them, a
   };
   assert.equal(names(base), undefined, "on top of a map of the base map's layers alone");
   assert.equal(names([...base, { id: "route-casing", type: "line" }, { id: "rail-names", type: "symbol" }]), "route-casing", "under a route up first");
+  // In a ride the street names are lifted over the route (lib/rideLabelOrder.ts): the trail names still go under it.
+  const streets = ROAD_LABEL_LAYER_IDS.map((id) => ({ id, type: "symbol", source: BASEMAP_SOURCE_ID }));
+  const riding = [...base, { id: "route-casing", type: "line" }, ...streets, { id: "route-name", type: "symbol" }, { id: "rail-names", type: "symbol" }];
+  assert.equal(names(riding), "route-casing", "under the route in a ride, not over the lifted street names");
 });
 
 test("the overlay is added with the toggle's visibility", () => {

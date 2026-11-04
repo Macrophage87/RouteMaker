@@ -2110,6 +2110,36 @@ class TestTrailName:
         # The lines are drawn from the stress layer as before, a feature per class.
         assert len([f for f in layers["stress"].features if f.properties.get("trail_name")]) >= 2
 
+    @pytest.mark.parametrize("z", [10, 11, 12, 13, 14])
+    def test_a_names_car_free_times_are_its_lines(self, client, segment_schemas, z) -> None:
+        """A way a zoomed-out tile holds only for its car-free times (`car_free_only`) is named
+        in those times alone, as its line is drawn: the names' layer carries the same times."""
+        live, _ = segment_schemas
+        insert_trail(live, False, 3, 10.0, car_free=["weekend"])
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"UPDATE {live}.segment SET facility = 'none', is_trail_class = false, "
+                "trail_name = 'Beach Drive', bike_popular = 3"
+            )
+        layers = decode(client.get(url(*tile_of(*CENTRE, z))).content)
+        lines = [f for f in layers["stress"].features if f.properties.get("trail_name")]
+        names = layers.get(stress_tiles.TRAIL_NAME_LAYER)
+        if not lines:
+            assert names is None
+            return
+        assert [f.properties.get("car_free_only") for f in names.features] == [
+            f.properties.get("car_free_only") for f in lines
+        ]
+
+    def test_a_mountain_bike_trail_is_not_in_the_names_layer(self, client, segment_schemas) -> None:
+        live, _ = segment_schemas
+        insert_trail(live, False, 3, 10.0)
+        with connection.cursor() as cursor:
+            cursor.execute(f"ALTER TABLE {live}.segment ADD COLUMN IF NOT EXISTS mtb_only boolean")
+            cursor.execute(f"UPDATE {live}.segment SET mtb_only = true")
+        layers = decode(client.get(url(*tile_of(*CENTRE, 12))).content)
+        assert stress_tiles.TRAIL_NAME_LAYER not in layers
+
     def test_no_names_layer_without_a_name(self, client, segment_schemas) -> None:
         live, _ = segment_schemas
         insert_trail(live, False, 3)

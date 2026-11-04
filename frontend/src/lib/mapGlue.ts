@@ -140,8 +140,10 @@ export function addStressOverlay(map: OverlayMap, origin: string, visible: boole
   if (!map.getSource(HAZARD_SOURCE_ID)) map.addSource(HAZARD_SOURCE_ID, { type: "geojson", data: EMPTY_HAZARDS });
   const firstSymbol = map.getStyle().layers.find((layer) => layer.type === "symbol")?.id;
   // Just over the base map's last layer (its top label), under whatever the app added already (a route up first).
+  // Not counting the street names, which a ride lifts over the route (lib/rideLabelOrder.ts): over them the trail
+  // names would go home over the route after the ride.
   const styleLayers = map.getStyle().layers;
-  const lastBase = styleLayers.map((layer) => layer.source).lastIndexOf(BASEMAP_SOURCE_ID);
+  const lastBase = styleLayers.map((layer) => (ROAD_LABEL_LAYER_IDS.includes(layer.id) ? undefined : layer.source)).lastIndexOf(BASEMAP_SOURCE_ID);
   const overBaseLabels = lastBase === -1 ? firstSymbol : styleLayers[lastBase + 1]?.id;
   for (const layer of stressOverlayLayers(STRESS_SOURCE_ID, when) as Array<{ id: string; layout?: object }>) {
     // The Mass Ride layers (massStyle.js) are on only in that mode, and the stress map's only out of it.

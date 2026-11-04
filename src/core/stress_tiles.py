@@ -681,8 +681,9 @@ SELECT '{table}'::regclass::oid,
 # the names from it (frontend/src/stressStyle.js, TRAIL_LABEL) and the lines from the stress layer
 # as before. ST_CollectionExtract first: a segment clipped to the coverage box can come back as a
 # MultiLineString, and ST_Collect would make a GeometryCollection that ST_LineMerge cannot read.
-# Only the names a way is drawn with every ride time, and no mountain-bike trail's (they carry
-# their own `name`, MTB_NAME_COLUMN).
+# A road the zoomed-out tiles hold only for its car-free times keeps its `car_free_only`, so the
+# map names it only then, as it draws it; no mountain-bike trail's name (they carry their own
+# `name`, MTB_NAME_COLUMN).
 TRAIL_NAME_LAYER = "trail_names"
 TRAIL_NAME_SIMPLIFY_PX = 4
 # A tile is drawn 512 pixels wide (MapLibre's vector tiles): a pixel is 1/512 of its width.
@@ -690,7 +691,7 @@ TILE_PX = 512
 
 _NAMES = """,
 names AS (
-    SELECT {name} AS trail_name,
+    SELECT {columns},
            ST_AsMVTGeom(
                ST_Simplify(
                    ST_LineMerge(
@@ -706,7 +707,7 @@ names AS (
       {coverage}
       AND {where}
       AND {name} IS NOT NULL
-    GROUP BY 1, bounds.env
+    GROUP BY {group_by}, bounds.env
 )"""
 _NAMES_TILE = (
     f" || COALESCE((SELECT ST_AsMVT(names.*, '{TRAIL_NAME_LAYER}', %(extent)s, 'geom') "
@@ -811,14 +812,17 @@ def tile_sql(level: Level, optional: frozenset[str] = frozenset(), clip: bool = 
     coverage = f"AND s.geometry && {_COVERAGE_BOX}" if clip else ""
     names = names_tile = ""
     if "trail_name" in carried:
-        # The names' own layer (TRAIL_NAME_LAYER): the ways named, drawn in every ride time (not a
-        # car-free road's `car_free_only`) and not a mountain-bike trail's.
+        # The names' own layer (TRAIL_NAME_LAYER): the ways named, with a car-free road's
+        # `car_free_only` (the map names it in those times alone), and not a mountain-bike trail's.
         named = [f"({where})"]
-        if "car_free_only" in carried:
-            named.append(f"({carried['car_free_only']}) IS NULL")
         if "mtb" in carried:
             named.append(f"({carried['mtb']}) IS NOT TRUE")
+        name_columns = {"trail_name": carried["trail_name"]}
+        if "car_free_only" in carried:
+            name_columns["car_free_only"] = carried["car_free_only"]
         names = _NAMES.format(
+            columns=", ".join(f"{expression} AS {n}" for n, expression in name_columns.items()),
+            group_by=", ".join(name_columns.values()),
             name=carried["trail_name"],
             table=_table(),
             geometry=geometry,
