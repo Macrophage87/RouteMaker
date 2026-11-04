@@ -371,3 +371,22 @@ test("a shared dot goes from the ride's own position while riding, never from a 
   assert.match(group, /if \(!shareOn \|\| !front \|\| !ride \|\| !token\) return;\s*return \(\) => \{\s*\/\/[^\n]*\n\s*void leaveRide\(origin, ride, token\);\s*forgetSent\(\);\s*\};\s*\}, \[shareOn, front, ride, token, origin\]\);/);
   assert.match(group, /if \(!shareOn \|\| !front \|\| !ownFix \|\| !ride \|\| !token \|\| !consent\) return;/);
 });
+
+test("a leader's second ride on the same line is not shown on the first ride's link", async () => {
+  const { sharedAfterRide } = await import("./rideGroup.ts");
+  const line = { id: "line" };
+  // The leader's own shared ride: once it ends, the next ride on the same line has no link until shared again.
+  const led = { answer: line, ride: true, own: true, id: "ride-a", lead: KEY, secret: newRideSecret() };
+  assert.equal(sharedAfterRide(led), null);
+  // A link opened from someone else's share stays as it was: the rider still follows that leader and can pass it on.
+  const followed = { answer: line, ride: true, id: "ride-b", lead: KEY, secret: newRideSecret() };
+  assert.equal(sharedAfterRide(followed), followed);
+  const route = { answer: line, ride: false };
+  assert.equal(sharedAfterRide(route), route);
+  assert.equal(sharedAfterRide(null), null);
+  // Applied as the ride ends, beside the ride's link and leads.
+  const app = read("../App.tsx");
+  const ended = app.slice(app.indexOf("if (rodeBefore.current && !riding) {"), app.indexOf("rodeBefore.current = riding;"));
+  assert.match(ended, /rideLinkSent\.current = null;/);
+  assert.match(ended, /const after = sharedAfterRide\(sharedOpenNow\.current\);\s*if \(after !== sharedOpenNow\.current\) \{\s*sharedOpenNow\.current = after;\s*setSharedOpen\(after\);\s*\}/);
+});

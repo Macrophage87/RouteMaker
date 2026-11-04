@@ -342,7 +342,7 @@ import { KNOWN_OPERATORS, docksStatus, mergeOperators, operatorsToAsk, readOpera
 import { SaveRoute } from "./SaveRoute.tsx";
 import { firstWordAndRest, planLanguageAttributes } from "./lib/i18n.ts";
 import { SAVE_ROUTE } from "./lib/savedRoutes.ts";
-import { BROADCAST_FOLLOWING, BROADCAST_NO_KEY, consentFor, followsWithoutKey, forgetAnsweredHere, isRideLink, isRideLinkType, presetSecret, leadConsent, leaderKey, newToken, opensIntoRide, rideOf, type RideLinkType } from "./lib/rideGroup.ts";
+import { BROADCAST_FOLLOWING, BROADCAST_NO_KEY, consentFor, followsWithoutKey, forgetAnsweredHere, isRideLink, isRideLinkType, presetSecret, leadConsent, leaderKey, newToken, opensIntoRide, rideOf, sharedAfterRide, type RideLinkType } from "./lib/rideGroup.ts";
 import { newRideSecret, secretFrom, withSecret, withoutSecret } from "./lib/rideSeal.ts";
 
 // Before the map adds the stress source (MapView, after its first probe).
@@ -3646,6 +3646,12 @@ export function App() {
       // Nor its lead: the next ride on the same line is a new ride, under a new token and secret, so the earlier
       // link's holders do not see it (2026-10-29). Roam's leads end with Roam.
       for (const id of [...leads.current.keys()]) if (!id.startsWith("roam|")) leads.current.delete(id);
+      // Nor the line as led: the sharer's ride link ends with the ride (lib/rideGroup.ts sharedAfterRide).
+      const after = sharedAfterRide(sharedOpenNow.current);
+      if (after !== sharedOpenNow.current) {
+        sharedOpenNow.current = after;
+        setSharedOpen(after);
+      }
       // A Group or Mass Ride secret this page made is made again: last ride's link reads nothing on the next. One from a link
       // opened here is the link's, the ride its sender leads.
       if (groupSecretOwn.current) setGroupSecret(newRideSecret());

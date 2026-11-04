@@ -223,6 +223,15 @@ export function followsWithoutKey(broadcast: { leading: boolean; secret?: string
   return !!broadcast && !broadcast.leading && !broadcast.secret;
 }
 
+/**
+ * The shared line once a ride ends. The sharer's own ride link ends with the ride: the next ride on the same line
+ * shares nothing until Share ride or Broadcast is pressed again, under a new token and secret. A link opened from
+ * someone else's share is theirs, and stays as it is.
+ */
+export function sharedAfterRide<T extends { own?: boolean }>(open: T | null): T | null {
+  return open?.own ? null : open;
+}
+
 /** On a broadcast: shown on or off the route, so the leader and the riders can find each other. */
 export const BROADCAST_CONSENT_NOTE = "Only while the app is open, on or off the route, so the leader and riders can find each other. No name; positions are encrypted and gone after 2 minutes.";
 /**
