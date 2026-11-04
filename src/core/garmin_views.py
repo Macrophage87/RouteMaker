@@ -5,10 +5,10 @@
 - GET /auth/garmin/callback: checks the state, exchanges the code once, reads the Garmin user id,
   keeps the encrypted tokens (core.models.GarminLink) and sends the rider back to the app with
   `?garmin=connected` (or `declined`, `failed`), which Settings reads to say what happened.
-- POST /garmin/deregistrations: Garmin's notice that riders disconnected in Garmin Connect;
-  their links are deleted. It carries no secret, so the most a forged one can do is end a
-  connection, which the rider makes again in one tap, and only for a Garmin user id the sender
-  already knows (Garmin's are opaque).
+- POST /garmin/deregistrations: Garmin's notice that riders disconnected in Garmin Connect. It is
+  not signed, so a link is deleted only when its entry carries the user access token that link
+  holds (Garmin's notices name both the user id and the token); any other entry changes nothing.
+  A link whose notice did not match still ends at its next use, when Garmin refuses its refresh.
 
 `disconnect` (Settings and account deletion) and `access_for` (sending a course) are the account
 actions; the Settings endpoints are in core.api beside the connected assistant apps.
@@ -17,6 +17,7 @@ actions; the Settings endpoints are in core.api beside the connected assistant a
 from __future__ import annotations
 
 import json
+import logging
 from datetime import datetime
 
 from django.conf import settings
@@ -27,6 +28,8 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
 from . import garmin, ratelimit
+
+log = logging.getLogger(__name__)
 
 STATE_SESSION_KEY = "garmin_connect_request"
 BACK = "/?garmin="
@@ -179,6 +182,27 @@ def deregistrations(request):
         body = json.loads(request.body or b"{}")
     except ValueError:
         return HttpResponse(status=400)
-    ids = garmin.deregistered_user_ids(body)
-    removed = GarminLink.objects.filter(garmin_user_id__in=ids).delete()[0] if ids else 0
+    entries = garmin.deregistrations(body)
+    tokens: dict[str, list[str]] = {}
+    for garmin_user, token in entries:
+        tokens.setdefault(garmin_user, []).append(token)
+    # A link goes only when the notice names the access token it holds: the notice carries no
+    # signature, and the token is the one thing in it that only Garmin and this server know.
+    gone = [
+        link.pk
+        for link in GarminLink.objects.filter(garmin_user_id__in=list(tokens))
+        if any(
+            garmin.holds(link.access_token, token, link.user_id)
+            for token in tokens[link.garmin_user_id]
+        )
+    ]
+    removed = GarminLink.objects.filter(pk__in=gone).delete()[0] if gone else 0
+    rows = body.get("deregistrations") if isinstance(body, dict) else None
+    asked = min(len(rows), 1000) if isinstance(rows, list) else 0
+    if len(gone) < asked:
+        # A count only (never an id or token): a run of these means Garmin's notices carry no
+        # access token, or another one, and riders who disconnected keep their link.
+        log.warning(
+            "garmin deregistration: %d of %d entries removed no link", asked - len(gone), asked
+        )
     return JsonResponse({"removed": removed})

@@ -4,13 +4,14 @@ thread"): `core.run_plan` on a hand-made router, and the API's answer for it."""
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
 
 from core import presets, refine, routing, run_plan, walk_pricing
 from core.dedodge import encode_polyline6
+from routemaker import workzones as wz
 
 EASTERN = ZoneInfo("America/New_York")
 START = (-77.05, 38.92)
@@ -658,3 +659,140 @@ class TestTheApi:
             "pedestrian"
         ]
         assert pedestrian["use_lit"] == run_plan.USE_LIT_AFTER_DARK
+
+
+# --- Closures on a run ---------------------------------------------------------------------------
+
+# Far enough from every hand-read closure in force that only these tests' own are near.
+EAST_A = (-76.96, 38.98)
+EAST_B = (-76.94, 38.98)
+MARKED = [[-76.95, 38.975], [-76.95, 38.977]]
+
+
+@pytest.fixture
+def fresh_zones():
+    from core import workzones
+
+    workzones.forget()
+    yield
+    workzones.forget()
+
+
+def store_zones(zones) -> None:
+    from core import workzones
+    from core.models import BikeshareFeedCache
+
+    BikeshareFeedCache.objects.create(
+        key=workzones.KEY,
+        payload={"feeds": {"md": {"read_at": datetime.now(UTC).isoformat(),
+                                  "zones": [z.to_json() for z in zones]}}},
+        fetched_at=datetime.now(UTC),
+    )  # fmt: skip
+
+
+def closed(zone_id, zone_line, on_foot) -> wz.Zone:
+    until = datetime.now(UTC) + timedelta(days=30)
+    return wz.Zone(zone_id, "md", wz.CLOSED, 0, tuple(zone_line), "Side Road", None, None, until,
+                   on_foot=on_foot)  # fmt: skip
+
+
+def run_router(monkeypatch, shape, refuse=lambda payload: False):
+    """The router: every route is `shape`, or refused (no path) where `refuse(payload)`."""
+    asked: list[tuple[str, dict]] = []
+    trace = edges(shape, "footway", 2.0)
+
+    def transport(url, payload, timeout):
+        action = url.rsplit("/", 1)[1]
+        asked.append((action, json.loads(json.dumps(payload))))
+        if action == "route":
+            if refuse(payload):
+                raise routing.RouterRefused(400, 442, "No path could be found for input")
+            return answer(leg(shape, 1200.0, 2.0))
+        if action == "trace_attributes":
+            return trace
+        return []
+
+    monkeypatch.setattr(routing, "_transport", transport)
+    return asked
+
+
+@db
+@pytest.mark.usefixtures("fresh_zones")
+class TestClosuresOnARun:
+    def test_a_run_goes_round_a_closure_shut_on_foot_and_the_road_the_runner_marked(
+        self, client, monkeypatch
+    ) -> None:
+        north = [(-76.955, 38.985), (-76.945, 38.985)]
+        along = [(-76.955, 38.98), (-76.945, 38.98)]
+        store_zones([closed("md-shut", north, True), closed("md-unsaid", along, None)])
+        asked = run_router(monkeypatch, line(EAST_A, EAST_B))
+        response = post(
+            client,
+            {"points": [list(EAST_A), list(EAST_B)], "preset": "run", "blocked_lines": [MARKED]},
+        )
+        assert response.status_code == 200, response.content
+        rings = next(p for a, p in asked if a == "route")["exclude_polygons"]
+        assert rings == [wz.polygon(closed("md-shut", north, True)), wz.line_ring(MARKED)]
+        # The closure whose source does not say it shuts the way on foot is run along, warned.
+        zones = response.json()["work_zones"]
+        [on_route] = zones["on_route"]
+        assert on_route["id"] == "md-unsaid" and on_route["warning"] is True
+        row = next(r for r in zones["closures"] if r["id"] == "md-unsaid")
+        assert "people on foot" in row["effect_text"]
+
+    def test_with_no_way_round_a_closure_the_run_goes_through_it_warned(
+        self, client, monkeypatch
+    ) -> None:
+        along = [(-76.955, 38.98), (-76.945, 38.98)]
+        store_zones([closed("md-shut", along, True)])
+        asked = run_router(
+            monkeypatch,
+            line(EAST_A, EAST_B),
+            refuse=lambda payload: len(payload.get("exclude_polygons") or []) > 1,
+        )
+        response = post(
+            client,
+            {"points": [list(EAST_A), list(EAST_B)], "preset": "run", "blocked_lines": [MARKED]},
+        )
+        assert response.status_code == 200, response.content
+        routes = [p for a, p in asked if a == "route"]
+        assert len(routes[0]["exclude_polygons"]) == 2
+        # Asked again with only the runner's own marked road left out.
+        assert routes[-1]["exclude_polygons"] == [wz.line_ring(MARKED)]
+        [on_route] = response.json()["work_zones"]["on_route"]
+        assert on_route["id"] == "md-shut" and on_route["warning"] is True
+
+    def test_a_night_run_in_rock_creek_is_told_of_the_deer_closure_never_sent_round_it(
+        self, client, monkeypatch
+    ) -> None:
+        """The owner, 2026-11-04: the deer closures are "a may close, not a will close": a run
+        gets the bike route's notice, and is never routed round them."""
+        from core import workzones
+        from routemaker import deer_closures as deer
+        from routemaker import ridetime
+
+        # In the posted 2025-26 season.
+        night = datetime(2026, 1, 15, 20, 0, tzinfo=EASTERN).astimezone(UTC)
+        monkeypatch.setattr(workzones, "_now", lambda: night)
+        beach = list(max(deer.ways()["rocr-deer"].lines, key=len))
+        store_zones([])
+        asked = run_router(monkeypatch, beach)
+        response = post(
+            client,
+            {
+                "points": [list(beach[0]), list(beach[-1])],
+                "preset": "run",
+                "when": ridetime.when_at(night),
+            },
+        )
+        assert response.status_code == 200, response.content
+        [notice] = response.json()["work_zones"]["notices"]
+        assert notice["area_name"] == "Rock Creek Park"
+        lons = [p[0] for p in beach]
+        lats = [p[1] for p in beach]
+        for _action, payload in asked:
+            for ring in payload.get("exclude_polygons") or []:
+                assert not any(
+                    min(lons) <= lon <= max(lons) and min(lats) <= lat <= max(lats)
+                    for lon, lat in ring
+                ), "a deer closure is never routed round"
