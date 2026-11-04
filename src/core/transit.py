@@ -1649,11 +1649,11 @@ class RoutingServices:
         try:
             try:
                 answer = routing._call("standard", "route", payload, deadline)
-            except routing.RouterRefused as refusal:
-                if (
-                    "exclude_polygons" not in payload
-                    or len(self._walk_exclude) <= len(self._walk_keep)
-                    or refusal.code not in routing.NO_PATH_CODES
+            except routing.RouterRefused:
+                # Any refusal (no path, or a spot inside a closure strip, 170/171): try again
+                # without the closures, as a run does.
+                if "exclude_polygons" not in payload or len(self._walk_exclude) <= len(
+                    self._walk_keep
                 ):
                     raise
                 # No walk round the closures: through them (warned of), as a ride goes.

@@ -771,7 +771,8 @@ class TestClosuresOnARun:
         from routemaker import deer_closures as deer
         from routemaker import ridetime
 
-        night = datetime(2026, 1, 15, 20, 0, tzinfo=EASTERN).astimezone(UTC)  # the posted 2025-26 season
+        # In the posted 2025-26 season.
+        night = datetime(2026, 1, 15, 20, 0, tzinfo=EASTERN).astimezone(UTC)
         monkeypatch.setattr(workzones, "_now", lambda: night)
         beach = list(max(deer.ways()["rocr-deer"].lines, key=len))
         store_zones([])

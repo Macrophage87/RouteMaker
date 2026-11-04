@@ -365,17 +365,23 @@ class TestUsingAndEnding:
         ],
     )
     def test_a_deregistration_notice_without_the_rider_s_access_token_changes_nothing(
-        self, fake, entry
+        self, fake, entry, caplog
     ) -> None:
         _mine, user, _ = self._linked(fake)
-        r = Client().post(
-            "/garmin/deregistrations",
-            data=json.dumps({"deregistrations": [entry]}),
-            content_type="application/json",
-            **addr(),
-        )
+        with caplog.at_level("WARNING", logger="core.garmin_views"):
+            r = Client().post(
+                "/garmin/deregistrations",
+                data=json.dumps({"deregistrations": [entry]}),
+                content_type="application/json",
+                **addr(),
+            )
         assert r.status_code == 200 and r.json() == {"removed": 0}
         assert GarminLink.objects.filter(user=user).exists()
+        # Said in the log as a count, never the id or token, so a notice shape that never
+        # matches is seen.
+        [said] = [rec.getMessage() for rec in caplog.records if rec.name == "core.garmin_views"]
+        assert said == "garmin deregistration: 1 of 1 entries removed no link"
+        assert "garmin-user" not in said and "access" not in said
 
     def test_a_deregistration_notice_for_a_link_the_key_cannot_open_changes_nothing(
         self, fake, settings

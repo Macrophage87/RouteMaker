@@ -17,6 +17,7 @@ actions; the Settings endpoints are in core.api beside the connected assistant a
 from __future__ import annotations
 
 import json
+import logging
 from datetime import datetime
 
 from django.conf import settings
@@ -27,6 +28,8 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
 from . import garmin, ratelimit
+
+log = logging.getLogger(__name__)
 
 STATE_SESSION_KEY = "garmin_connect_request"
 BACK = "/?garmin="
@@ -194,4 +197,12 @@ def deregistrations(request):
         )
     ]
     removed = GarminLink.objects.filter(pk__in=gone).delete()[0] if gone else 0
+    rows = body.get("deregistrations") if isinstance(body, dict) else None
+    asked = min(len(rows), 1000) if isinstance(rows, list) else 0
+    if len(gone) < asked:
+        # A count only (never an id or token): a run of these means Garmin's notices carry no
+        # access token, or another one, and riders who disconnected keep their link.
+        log.warning(
+            "garmin deregistration: %d of %d entries removed no link", asked - len(gone), asked
+        )
     return JsonResponse({"removed": removed})

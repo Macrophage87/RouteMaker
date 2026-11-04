@@ -635,6 +635,21 @@ Verify before deleting the old copy: `docker compose ps` all up,
 in its free-space line, and — if tiles were already built — a route. Then `rm`
 the old tree.
 
+## A release that changes `valhalla/*.json`
+
+The routers read their config (`./valhalla:/conf:ro`) once, when they start, and
+`docker compose up -d` leaves a running router alone when only that bind's
+contents changed. So after a release whose diff touches `valhalla/*.json`,
+restart every router, before or together with the api:
+
+    docker compose restart $(docker compose config --services | grep '^valhalla-')
+
+Until they restart, the api can send what the old config refuses. v0.20.0 is
+such a release: the api sends closure polygons of up to 1000 vertices
+(`workzones.MAX_VERTICES`), which the old configs' `max_exclude_polygons_vertices`
+of 100 turns away, and a ride past several curved closures then reads as no route.
+A rollback to a release before that needs nothing: its api sends fewer.
+
 ## Bumping the `postgis` image
 
 `docker.io/postgis/postgis:16-3.4` is a floating patch tag: it is PostgreSQL 16

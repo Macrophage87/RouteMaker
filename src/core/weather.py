@@ -440,10 +440,12 @@ def points_problem(points: object) -> str | None:
             or not (-180 <= p[0] <= 180 and -90 <= p[1] <= 90 and 0 <= p[2] <= 48 * 3600)
         ):
             return "Each point is [lon, lat, seconds until there], seconds 0 to 172800."
-    # Only the area routes are planned in (RouteIn.inside_coverage's box and words): a ride's
-    # line never leaves it.
-    west, south, east, north = settings.COVERAGE_BBOX
-    for index, (lon, lat, _seconds) in enumerate(points):
-        if not (west <= lon <= east and south <= lat <= north):
-            return f"point {index} is outside the area this map covers"
     return None
+
+
+def inside_coverage(points: list) -> list:
+    """The points inside the area routes are planned in (`settings.COVERAGE_BBOX`). A point
+    past its edge (a roaming rider over the line) is left unasked: the check says the alerts
+    and rain unchecked rather than refusing the points that are inside."""
+    west, south, east, north = settings.COVERAGE_BBOX
+    return [p for p in points if west <= p[0] <= east and south <= p[1] <= north]

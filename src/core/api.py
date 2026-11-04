@@ -8095,7 +8095,14 @@ def weather_check(request):
     problem = weather.points_problem(points)
     if problem:
         return _error(400, problem)
-    out = JsonResponse(weather.shared().check([tuple(p) for p in points]))
+    inside = weather.inside_coverage(points)
+    if not inside:
+        return _error(400, "the points are outside the area this map covers")
+    found = weather.shared().check([tuple(p) for p in inside])
+    if len(inside) < len(points):
+        # Points past the edge were not asked: never read as "no alerts, no rain" there.
+        found["unchecked"] = sorted({*found["unchecked"], "alerts", "rain"})
+    out = JsonResponse(found)
     out["Cache-Control"] = "no-store"
     return out
 
