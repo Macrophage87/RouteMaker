@@ -167,7 +167,7 @@ test("the checklist: open entries by website, newest first; not looked up last; 
   const c = entry({ id: "c", where: "dc", at: "2026-10-20T11:00:00.000Z" });
   const d = entry({ id: "d", where: null });
   const e = entry({ id: "e", where: "dc", reported: "2026-10-20T12:00:00.000Z" });
-  const groups = openGroups([a, b, c, d, e]);
+  const groups = openGroups([a, b, c, d, e], NOON);
   assert.deepEqual(
     groups.map((g) => [g.heading, g.entries.map((x) => x.id)]),
     [
@@ -177,7 +177,7 @@ test("the checklist: open entries by website, newest first; not looked up last; 
     ],
   );
   assert.equal(groups[0].site?.url, "https://311.dc.gov/citizen/s/");
-  assert.deepEqual(archived([a, e]).map((x) => x.id), ["e"]);
+  assert.deepEqual(archived([a, e], NOON).map((x) => x.id), ["e"]);
 });
 
 test("stale: an open entry older than 30 days goes to Archived by itself, not reported; nothing is deleted", () => {
