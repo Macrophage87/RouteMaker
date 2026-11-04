@@ -4699,6 +4699,24 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
   font-weight: 700;
 }
 
+.ride-ahead-plot .ride-ahead-ribbon-name {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.ride-ahead-ribbon-turn {
+  stroke: var(--text);
+  stroke-width: 2;
+}
+
+.ride-ahead-rail-edge {
+  stroke: transparent;
+}
+
+:root.theme-dark .ride-ahead-rail-edge {
+  stroke: var(--text-muted);
+}
+
 .ride-ahead-ground {
   fill: var(--bg-soft);
   stroke: none;
@@ -4815,6 +4833,7 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
   }
 
   .ride-ahead-axis line,
+  .ride-ahead-ribbon-turn,
   .ride-ahead-line,
   .ride-ahead-corker line,
   .ride-ahead-plot .ride-ahead-guide,
@@ -4829,6 +4848,10 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
   .ride-ahead-arrow:not(.ride-ahead-arrow-orange, .ride-ahead-arrow-red) .ride-ahead-arrow-head,
   .ride-ahead-narrowest path {
     fill: CanvasText;
+  }
+
+  .ride-ahead-rail-edge {
+    stroke: CanvasText;
   }
 
   .ride-ahead-ground {

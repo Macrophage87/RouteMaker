@@ -5,7 +5,8 @@
  * graph share the same x axis, so it only needs to be labeled once"). Drawn in SVG; the picture is hidden from screen
  * readers, which hear one sentence a graph instead. Not a control: More's bubbles choose the graphs.
  *
- * Stress bars are taller where stress is higher and carry their level, so colour is never the only cue; steep grades
+ * Traffic stress is a ribbon under the turns, not a graph, so it fits beside elevation (Stephen 2026-11-04), each stretch
+ * carrying its level, so colour is never the only cue, with the map's trail and bike lane rails on its edges; steep grades
  * are amber and hatched as on the route chart; turns are arrows, black, or orange on a triangle and red on a diamond
  * where the planner flagged the junction (the shapes of its junction markers); you are the triangle on the axis, and on
  * a shared ride each other rider a dot.
@@ -19,7 +20,6 @@ import {
   AHEAD_YOU,
   aheadWindow,
   axisTicks,
-  barHeight,
   corkerMarks,
   corkerSentence,
   elevationSentence,
@@ -35,11 +35,14 @@ import {
   plotHeight,
   ridersSentence,
   spacedTicks,
-  STRESS_TICKS,
   elevationTicks,
   flowTicks,
   stressBars,
   stressSentence,
+  facilityStretches,
+  facilitySentence,
+  type FacilityStretch,
+  type StressBar,
   spreadMarks,
   turnMarks,
   turnsSentence,
@@ -66,6 +69,23 @@ const GRACE_PX = 6;
 const ZOOM_MAX = 1.6;
 /** The strip of turns at the top. */
 const TURNS_H = 26;
+/**
+ * Traffic stress, a ribbon of the stress colours under the turns, each stretch carrying its level, so it sits beside
+ * the other graphs (Stephen 2026-11-04: "You can't have both elevation and traffic stress. Maybe just make the traffic
+ * stress a color ribbon with the turns on it").
+ */
+const RIBBON_H = 18;
+/**
+ * The trails and bike lanes along the ribbon's top and bottom edges, as the map's rails flank the route (Stephen
+ * 2026-11-04: "put the bike lane or pbl markings on the top and bottom. Purple for trail"): each rail's width.
+ */
+const RAIL_H = 5;
+/** A hair of panel between each rail and the ribbon, so a trail's purple stays apart from LTS 1's. */
+const RAIL_GAP = 1.5;
+/** The ribbon with its rails, top to bottom. */
+const RIBBON_BLOCK = RAIL_H + RAIL_GAP + RIBBON_H + RAIL_GAP + RAIL_H;
+/** The rails' dashes at this size, the map's look (stressStyle.js FACILITIES): trail solid, protected in posts, painted in dots. */
+const RAIL_DASH: Record<FacilityStretch["facility"], string | undefined> = { path: undefined, protected: "5 3", lane: "2 3" };
 /** Each graph: its name, then its plot. */
 const LABEL_H = 14;
 const GAP = 4;
@@ -145,34 +165,61 @@ export function AheadGraph({ views, route, cues, youM, lengthM, ridersAlong = []
   const unit = widthPx > 0 ? width / widthPx : 1;
   const budget = maxPx !== null && widthPx > 0 ? maxPx * unit : Infinity;
   const panels = useMemo(() => {
-    const fit = (count: number, room: number, strip = TURNS_H) => graphsThatFit(count, room, strip + AXIS_H - GAP, LABEL_H + GAP);
+    // Stress is the ribbon, not a graph (Stephen 2026-11-04): it sits under the turns strip, and the graphs share the
+    // room under it. Its rails' room is kept whether or not one is in sight, so nothing under it jumps as one comes and goes.
+    const ribbon = views.includes("stress") && route.stress_spans ? stressBars(route.stress_spans, w) : [];
+    const rails = ribbon.length && route.stress_spans ? facilityStretches(route.stress_spans, w) : [];
+    const ribbonH = ribbon.length ? RIBBON_BLOCK + GAP : 0;
+    const graphs = views.filter((view) => view !== "stress");
+    const fit = (count: number, room: number, strip: number) => graphsThatFit(count, room, strip + AXIS_H - GAP, LABEL_H + GAP);
     // Where the room holds fewer graphs than are on, the first ones are drawn (lib/aheadGraph.ts graphsThatFit), with a
     // line under them naming the rest, which take its height; every one is still said. Counted from the graphs on
     // first, so the usual case draws each once.
-    let order = views;
-    let count = fit(views.length, budget);
-    if (count < views.length) {
-      order = views.filter((view) => draw(view, route, w, x, { top: 0, h: PLOT_MIN }, width) !== null);
-      count = fit(order.length, budget);
-      if (count < order.length) count = fit(order.length, budget - NOTE_PX * unit);
+    let order: readonly AheadView[] = graphs;
+    let turnsH = TURNS_H;
+    let count = fit(graphs.length, budget, turnsH + ribbonH);
+    if (count < graphs.length) {
+      order = graphs.filter((view) => draw(view, route, w, x, { top: 0, h: PLOT_MIN }, width) !== null);
+      count = fit(order.length, budget, turnsH + ribbonH);
+      if (count < order.length) count = fit(order.length, budget - NOTE_PX * unit, turnsH + ribbonH);
     }
     // Room for no graph under the turns strip: one graph without it (the turns are in the sentence), the rest named
     // in a line under it, or where there is no room for that either, told (onNoRoom).
-    let strip = TURNS_H;
     let note = count < order.length;
     if (count === 0 && order.length) {
-      if (fit(1, budget - (order.length > 1 ? NOTE_PX * unit : 0), 0) === 1) {
-        strip = 0;
+      if (fit(1, budget - (order.length > 1 ? NOTE_PX * unit : 0), ribbonH) === 1) {
+        turnsH = 0;
         count = 1;
-      } else if (fit(1, budget + GRACE_PX * unit, 0) === 1) {
+      } else if (!ribbon.length && fit(1, budget + GRACE_PX * unit, 0) === 1) {
         // Ride mode found room for one (aheadLeastPx, give or take its few px of hysteresis): one, without the line.
-        // Less than that (a note in the panel for now): none, until it goes.
-        strip = 0;
+        // Less than that (a note in the panel for now): none, until it goes. With the ribbon on, the ribbon alone is
+        // drawn instead (below), within the room.
+        turnsH = 0;
         count = 1;
         note = false;
       }
     }
+    // No graph fits beside the ribbon: the ribbon alone, with the turns where they fit, and the graphs not drawn named
+    // under it where that line fits too, else told (onNoRoom). With no room for even the ribbon, it is said, not drawn.
+    let ribbonDrawn = ribbon.length > 0;
+    if (ribbonDrawn && count === 0) {
+      const alone = (turns: number) => turns + ribbonH + AXIS_H;
+      const line = order.length ? NOTE_PX * unit : 0;
+      const pick = (
+        [
+          [TURNS_H, true],
+          [0, true],
+          [TURNS_H, false],
+          [0, false],
+        ] as const
+      ).find(([turns, withLine]) => (withLine || line > 0) && budget >= alone(turns) + (withLine ? line : 0));
+      if (pick) {
+        turnsH = pick[0];
+        note = order.length > 0 && pick[1];
+      } else ribbonDrawn = false;
+    }
     const shown = order.slice(0, count);
+    const strip = turnsH + (ribbonDrawn ? ribbonH : 0);
     const fixed = strip + AXIS_H + shown.length * (LABEL_H + GAP) - GAP + (note ? NOTE_PX * unit : 0);
     const h = plotHeight(shown.length, budget, fixed);
     const drawn: { view: AheadView; panel: Panel; drawn: Drawn }[] = [];
@@ -186,19 +233,35 @@ export function AheadGraph({ views, route, cues, youM, lengthM, ridersAlong = []
     }
     const unseen = order.slice(count);
     const unseenSaid = unseen.map((view) => `${AHEAD_HEADING[view]}: ${draw(view, route, w, x, { top: 0, h: PLOT_MIN }, width)!.sentence}`);
-    return { drawn, unseen, unseenSaid, strip, note: note && unseen.length > 0 && drawn.length > 0, base: at - GAP };
+    const any = drawn.length > 0 || ribbonDrawn;
+    const ribbonSaid = ribbon.length ? [`${AHEAD_HEADING.stress}: ${stressSentence(ribbon, w.youM)}`, facilitySentence(rails, w.youM)].filter(Boolean).join(" ") : "";
+    return {
+      drawn,
+      unseen,
+      unseenSaid,
+      turnsH,
+      strip,
+      ribbon: ribbonDrawn ? ribbon : [],
+      rails,
+      ribbonSaid,
+      any,
+      note: note && unseen.length > 0 && any,
+      // With the ribbon alone, the axis goes right under it (its GAP is in ribbonH).
+      base: drawn.length ? at - GAP : strip,
+    };
   // The units in use too: switched during a ride (lib/units.ts switchUnitsInRide), the heights and sentences follow.
   }, [views, route, w, width, budget, unit, units()]); // eslint-disable-line react-hooks/exhaustive-deps
   const { base } = panels;
-  const untold = !panels.note && panels.drawn.length > 0 ? panels.unseen.join(",") : "";
+  const untold = !panels.note && panels.any ? panels.unseen.join(",") : "";
   useEffect(() => {
     if (untold) onNoRoom?.(untold.split(",") as AheadView[]);
   }, [untold]); // eslint-disable-line react-hooks/exhaustive-deps
   const H = base + AXIS_H;
-  if (!panels.drawn.length && !panels.unseenSaid.length) return <figure ref={figureRef} className="ride-ahead" hidden />;
+  if (!panels.any && !panels.unseenSaid.length && !panels.ribbonSaid) return <figure ref={figureRef} className="ride-ahead" hidden />;
   const riders = ridersSentence(w);
   const said = [
     turnsSentence(turns, w.youM),
+    panels.ribbonSaid,
     ...panels.drawn.map((p) => `${AHEAD_HEADING[p.view]}: ${p.drawn.sentence}`),
     ...panels.unseenSaid,
     riders,
@@ -206,9 +269,9 @@ export function AheadGraph({ views, route, cues, youM, lengthM, ridersAlong = []
   return (
     // None drawn (no room for now, or on this screen): the sentence alone, visually hidden, so a screen reader still
     // hears the road ahead (the review of #928).
-    <figure ref={figureRef} className={panels.drawn.length ? "ride-ahead" : "ride-ahead ride-ahead-unseen"} role="group" aria-label={AHEAD_GROUP}>
+    <figure ref={figureRef} className={panels.any ? "ride-ahead" : "ride-ahead ride-ahead-unseen"} role="group" aria-label={AHEAD_GROUP}>
       <p className="visually-hidden">{said}</p>
-      {panels.drawn.length > 0 && (
+      {panels.any && (
         <svg className="ride-ahead-plot" viewBox={`0 0 ${width} ${H}`} aria-hidden="true" focusable="false">
           <defs>
             <pattern id={`${id}-climb`} width="4" height="4" patternUnits="userSpaceOnUse">
@@ -220,7 +283,8 @@ export function AheadGraph({ views, route, cues, youM, lengthM, ridersAlong = []
               <line x1="0" y1="0" x2="0" y2="5" className="ride-ahead-hatch" />
             </pattern>
           </defs>
-          {panels.strip > 0 && <Turns marks={drawnTurns} x={x} />}
+          {panels.turnsH > 0 && <Turns marks={drawnTurns} x={x} />}
+          {panels.ribbon.length > 0 && <Ribbon bars={panels.ribbon} rails={panels.rails} x={x} top={panels.turnsH} turns={panels.turnsH > 0 ? drawnTurns : []} />}
           {panels.drawn.map(({ view, panel, drawn }) => (
             <Fragment key={view}>
               <text className="ride-ahead-name" x={LEFT} y={panel.top - 3}>
@@ -285,6 +349,50 @@ function Turns({ marks, x }: { marks: readonly TurnMark[]; x: X }) {
         }
         return <rect key={i} x={cx - 7} y={cy - 7} width={14} height={14} fill={ROUTE_AVOID_MAGENTA} stroke="#1c1917" strokeWidth={1.5} />;
       })}
+    </g>
+  );
+}
+
+/**
+ * Traffic stress as a ribbon: each stretch in its stress colour, its level on it where it fits (so colour is never the
+ * only cue), "LTS" in the gutter, and a line through it at each turn above, tying the turn to the stretch it leads onto.
+ * Along its top and bottom edges, each trail or bike lane as the map draws its rails beside the route (trail solid
+ * purple, protected lane in posts, painted in dots); the sentence says them too.
+ */
+function Ribbon({ bars, rails, x, top, turns }: { bars: readonly StressBar[]; rails: readonly FacilityStretch[]; x: X; top: number; turns: readonly TurnMark[] }) {
+  const band = top + RAIL_H + RAIL_GAP;
+  const railYs = [top + RAIL_H / 2, band + RIBBON_H + RAIL_GAP + RAIL_H / 2];
+  return (
+    <g className="ride-ahead-ribbon">
+      <text className="ride-ahead-ribbon-name" x={LEFT - 6} y={band + RIBBON_H / 2 + 5} textAnchor="end">
+        LTS
+      </text>
+      {bars.map((b) => {
+        const left = x(b.fromM);
+        const width = x(b.toM) - left;
+        return (
+          <g key={b.fromM}>
+            <rect className="ride-ahead-bar" x={left} y={band} width={width} height={RIBBON_H} fill={b.color} />
+            {width >= b.label.length * 8 + 6 && (
+              <text className="ride-ahead-level" x={left + width / 2} y={band + RIBBON_H / 2 + 5} textAnchor="middle" style={{ fill: b.ink }}>
+                {b.label}
+              </text>
+            )}
+          </g>
+        );
+      })}
+      {rails.map((rail) =>
+        railYs.map((y) => (
+          <g key={`${rail.fromM}-${y}`} className="ride-ahead-rail">
+            {/* An edge, so the dark trail purple still reads on the dark panel (styles.css). */}
+            <line className="ride-ahead-rail-edge" x1={x(rail.fromM)} x2={x(rail.toM)} y1={y} y2={y} strokeWidth={RAIL_H + 1.5} strokeDasharray={RAIL_DASH[rail.facility]} />
+            <line x1={x(rail.fromM)} x2={x(rail.toM)} y1={y} y2={y} stroke={rail.color} strokeWidth={RAIL_H} strokeDasharray={RAIL_DASH[rail.facility]} />
+          </g>
+        )),
+      )}
+      {turns.filter((mark) => mark.movement).map((mark, i) => (
+        <line key={i} className="ride-ahead-ribbon-turn" x1={x(mark.m)} x2={x(mark.m)} y1={top} y2={top + RIBBON_BLOCK} />
+      ))}
     </g>
   );
 }
@@ -355,33 +463,6 @@ function draw(view: AheadView, route: Props["route"], w: AheadWindow, x: X, pane
   const TOP = panel.top;
   const PLOT_H = panel.h;
   const y = (f: number) => TOP + PLOT_H * (1 - f);
-  if (view === "stress") {
-    if (!route.stress_spans) return null;
-    const bars = stressBars(route.stress_spans, w);
-    if (!bars.length) return null;
-    return {
-      sentence: stressSentence(bars, w.youM),
-      yTicks: STRESS_TICKS.map((tick) => ({ y: y(barHeight(tick.level)), label: tick.label })),
-      body: () =>
-        bars.map((b) => {
-          const left = x(b.fromM);
-          const width = x(b.toM) - left;
-          const top = y(barHeight(b.level));
-          const short = TOP + PLOT_H - top < 20;
-          return (
-            <g key={b.fromM}>
-              <rect className="ride-ahead-bar" x={left} y={top} width={width} height={TOP + PLOT_H - top} fill={b.color} />
-              {width >= b.label.length * 8 + 6 && (
-                // On a bar too short to hold it, the number sits just above the bar, in the text colour.
-                <text className="ride-ahead-level" x={left + width / 2} y={short ? top - 3 : top + 15} textAnchor="middle" style={short ? undefined : { fill: b.ink }}>
-                  {b.label}
-                </text>
-              )}
-            </g>
-          );
-        }),
-    };
-  }
   if (!profile) return null;
   if (view === "elevation") {
     const shape = elevationShape(profile, w);

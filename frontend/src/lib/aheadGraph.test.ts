@@ -13,6 +13,8 @@ import {
   corkerMarks,
   corkerSentence,
   elevationSentence,
+  facilitySentence,
+  facilityStretches,
   elevationShape,
   flowSentence,
   flowSteps,
@@ -41,6 +43,7 @@ import {
   flowTicks,
 } from "./aheadGraph.ts";
 import { METRES_PER_MILE } from "./format.ts";
+import { setUnitsForTest } from "./units.ts";
 
 const MI = METRES_PER_MILE;
 const span = (from_m: number, to_m: number, tier: number | null, half = false, facility: StressSpan["facility"] = "none"): StressSpan => ({ from_m, to_m, tier, facility, half });
@@ -183,6 +186,22 @@ test("riders and the axis: the last rider behind said; ticks counted from you, t
   assert.deepEqual(axisTicks(aheadWindow(MI, 50_000, [0])).map((tick) => tick.label), ["−1", "−0.5", "0.5", "1", "1.5", "2 mi"]);
 });
 
+test("near the end the axis keeps its labels: smaller steps when under two miles are left, in miles or kilometres", () => {
+  const labels = (youM: number, lengthM: number) => axisTicks(aheadWindow(youM, lengthM)).map((tick) => tick.label);
+  // Stephen 2026-11-04: 0.3 mi left and the axis had no labels at all.
+  assert.deepEqual(labels(0, 0.3 * MI), ["0.1", "0.2", "0.3 mi"]);
+  assert.deepEqual(labels(0, 1 * MI), ["0.2", "0.4", "0.6", "0.8", "1 mi"]);
+  assert.deepEqual(labels(0, 0.15 * MI), ["0.05", "0.1", "0.15 mi"]);
+  assert.deepEqual(labels(0, 1.5 * MI), ["0.5", "1", "1.5 mi"]);
+  setUnitsForTest("metric");
+  try {
+    assert.deepEqual(labels(0, 500), ["0.1", "0.2", "0.3", "0.4", "0.5 km"]);
+    assert.deepEqual(labels(0, 3000), ["0.5", "1", "1.5", "2", "2.5", "3 km"]);
+  } finally {
+    setUnitsForTest("us");
+  }
+});
+
 test("Ride wires it: one bubble a graph in More, pressed state, off by default, the graph at the top of the bottom panel", () => {
   const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
   assert.match(ride, /const \[ahead, setAhead\] = useState<AheadView\[\]>\(\(\) => readAhead\(\)\);/);
@@ -303,5 +322,31 @@ test("the graphs' room is measured before each paint, and with no room their sen
   assert.match(ride, /useLayoutEffect\(\(\) => \{\s*measureAhead\.current\?\.\(\);\s*\}\);/, "a note that comes or goes changes the room in the same frame");
   assert.match(ride, /\{aheadWanted && !aheadFits && ride\.progressM !== null && \(\s*<AheadGraph [^>]*maxPx=\{0\} \/>/, "no room: the sentence alone");
   const graph = readFileSync(new URL("../AheadGraph.tsx", import.meta.url), "utf8");
-  assert.match(graph, /className=\{panels\.drawn\.length \? "ride-ahead" : "ride-ahead ride-ahead-unseen"\} role="group" aria-label=\{AHEAD_GROUP\}/);
+  assert.match(graph, /className=\{panels\.any \? "ride-ahead" : "ride-ahead ride-ahead-unseen"\} role="group" aria-label=\{AHEAD_GROUP\}/);
+});
+
+test("the stress ribbon's rails: trails and bike lanes along the window, joined, painted lanes on LTS 4 left off, and said", () => {
+  const span = (from_m: number, to_m: number, tier: number | null, facility: StressSpan["facility"]): StressSpan => ({ from_m, to_m, tier, facility });
+  const spans = [
+    span(0, 200, 2, "none"),
+    span(200, 500, 1, "path"),
+    span(500, 800, 1, "path"),
+    span(800, 1000, 3, "protected"),
+    span(1000, 1200, 4, "lane"),
+    span(1200, 1500, 2, "lane"),
+  ];
+  const rails = facilityStretches(spans, aheadWindow(0, 50_000));
+  assert.deepEqual(rails.map((r) => [r.fromM, r.toM, r.facility]), [[200, 800, "path"], [800, 1000, "protected"], [1200, 1500, "lane"]]);
+  assert.equal(rails[0].color, "#4c1d95", "the map's trail purple");
+  assert.deepEqual(facilityStretches(spans, { fromM: 900, toM: 1100 }).map((r) => [r.fromM, r.toM]), [[900, 1000]], "clipped to the window");
+  assert.equal(facilitySentence(rails, 0), "Trail in 700 feet, for 0.4 miles. Protected bike lane in 0.5 miles, for 700 feet.");
+  assert.equal(facilitySentence(rails, 300), "Trail here, for 0.3 miles. Protected bike lane in 0.3 miles, for 700 feet.");
+  assert.equal(facilitySentence(rails, 2000), "");
+});
+
+test("traffic stress is a ribbon with the turns on it, not a graph, so it fits beside elevation (Stephen 2026-11-04: always a ribbon)", () => {
+  const graph = readFileSync(new URL("../AheadGraph.tsx", import.meta.url), "utf8");
+  assert.match(graph, /const graphs = views\.filter\(\(view\) => view !== "stress"\);/, "stress takes no graph's room");
+  assert.match(graph, /<Ribbon bars=\{panels\.ribbon\} rails=\{panels\.rails\}/);
+  assert.match(graph, /const railYs = \[top \+ RAIL_H \/ 2, band \+ RIBBON_H \+ RAIL_GAP \+ RAIL_H \/ 2\];/, "rails on the top and bottom edges");
 });
