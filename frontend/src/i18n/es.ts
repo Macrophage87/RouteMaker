@@ -2300,6 +2300,7 @@ export const ES: Readonly<Record<string, string>> = {
   "Covered.": "Cubierto.",
   "You may need a key, a card or a rental.": "Puede que necesites una llave, una tarjeta o un alquiler.",
   "From DDOT's public bike racks.": "De la lista pública de estacionamientos de bicicletas de DDOT.",
+  "From Baltimore City DOT's bike racks.": "De la lista de estacionamientos de bicicletas del DOT de la Ciudad de Baltimore.",
   "From OpenStreetMap.": "De OpenStreetMap.",
   "Ride to the bike rack, {distance} away": "Ir al estacionamiento de bicicletas, a {distance}",
   "End at the bike rack, {distance} away": "Terminar en el estacionamiento de bicicletas, a {distance}",

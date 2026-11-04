@@ -1834,6 +1834,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Covered.": "有上蓋。",
   "You may need a key, a card or a rental.": "可能要鎖匙、卡或者租用。",
   "From DDOT's public bike racks.": "來自 DDOT 公共單車泊車架名單。",
+  "From Baltimore City DOT's bike racks.": "來自巴爾的摩市交通局嘅單車泊車架名單。",
   "From OpenStreetMap.": "來自 OpenStreetMap。",
   "Ride to the bike rack, {distance} away": "踩去單車泊車架，距離 {distance}",
   "End at the bike rack, {distance} away": "喺單車泊車架結束，距離 {distance}",

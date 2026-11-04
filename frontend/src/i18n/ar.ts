@@ -1834,6 +1834,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Covered.": "مسقوف.",
   "You may need a key, a card or a rental.": "قد تحتاج إلى مفتاح أو بطاقة أو استئجار.",
   "From DDOT's public bike racks.": "من قائمة DDOT العامة لمواقف الدراجات.",
+  "From Baltimore City DOT's bike racks.": "من قائمة مواقف الدراجات لدى إدارة النقل في مدينة بالتيمور.",
   "From OpenStreetMap.": "من OpenStreetMap.",
   "Ride to the bike rack, {distance} away": "اذهب إلى موقف الدراجات، على بعد {distance}",
   "End at the bike rack, {distance} away": "انتهِ عند موقف الدراجات، على بعد {distance}",

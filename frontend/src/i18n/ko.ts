@@ -1834,6 +1834,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Covered.": "지붕 있음.",
   "You may need a key, a card or a rental.": "열쇠, 카드 또는 대여가 필요할 수 있습니다.",
   "From DDOT's public bike racks.": "DDOT 공공 자전거 거치대 목록에서.",
+  "From Baltimore City DOT's bike racks.": "볼티모어시 교통국 자전거 거치대 목록에서.",
   "From OpenStreetMap.": "OpenStreetMap에서.",
   "Ride to the bike rack, {distance} away": "자전거 거치대로 가기, {distance} 거리",
   "End at the bike rack, {distance} away": "자전거 거치대에서 끝내기, {distance} 거리",

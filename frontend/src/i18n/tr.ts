@@ -1834,6 +1834,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Covered.": "Üstü kapalı.",
   "You may need a key, a card or a rental.": "Anahtar, kart veya kiralama gerekebilir.",
   "From DDOT's public bike racks.": "DDOT'nin herkese açık bisiklet park yerleri listesinden.",
+  "From Baltimore City DOT's bike racks.": "Baltimore Şehri Ulaştırma Dairesi'nin bisiklet park yerleri listesinden.",
   "From OpenStreetMap.": "OpenStreetMap'ten.",
   "Ride to the bike rack, {distance} away": "Bisiklet park yerine git, {distance} uzakta",
   "End at the bike rack, {distance} away": "Bisiklet park yerinde bitir, {distance} uzakta",
