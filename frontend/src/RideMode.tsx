@@ -75,7 +75,7 @@ import {
   type RestartStop,
 } from "./lib/rideStops.ts";
 import { RestartStopsDialog } from "./RestartStopsDialog.tsx";
-import { keepLeftRide } from "./lib/rideResume.ts";
+import { keepLeftRide, keepLeftRidePast } from "./lib/rideResume.ts";
 import type { Dials } from "./lib/dials.ts";
 import { haversineM, type LonLat } from "./lib/geo.ts";
 import { placeLetter, type LetteredPlace } from "./lib/letteredPlaces.ts";
@@ -785,6 +785,7 @@ export function RideMode({
   geoEnv,
   keepLastRide = false,
   trip = null,
+  resumedPast = null,
   onRideRest,
   onTripCheck,
   onNextLeg,
@@ -859,6 +860,11 @@ export function RideMode({
    * rider reaches it (never "off route"), and the dock or the boarding said at the end. Null otherwise.
    */
   trip?: RideTrip | null;
+  /**
+   * A trip resumed past its line (lib/rideResume.ts, Stephen 2026-11-04: switching apps on the train ended the ride):
+   * the walk or train it was following, carried on from; the line itself is taken as ridden. Null: from the start.
+   */
+  resumedPast?: OnwardState | null;
   /** Ride the rest: plans the trip's last riding leg from `here` and starts it; else the words to say why not. */
   onRideRest?: (here: LonLat | null) => Promise<string | null>;
   /**
@@ -974,19 +980,24 @@ export function RideMode({
   const closedPending = useRef(false);
   const milesRef = useRef(trailMiles);
   milesRef.current = trailMiles;
-  const [ride, setRide] = useState<RideState>(startState);
+  // Resumed past the line: arrived at its end, the part after it followed on from where it was.
+  const [ride, setRide] = useState<RideState>(() => (resumedPast ? { ...startState(), arrived: true } : startState()));
   // A Bikeshare or transit plan's walk to its first dock (lib/rideTrip.ts): until the rider reaches the
   // line's start, the walk is said and shown, and no fix is taken as off route.
   const approach = trip?.approach ?? null;
-  const [walking, setWalking] = useState(approach !== null);
+  const [walking, setWalking] = useState(approach !== null && !resumedPast);
   // The walk, whether it has been said, and the last good fix (lib/rideTrip.ts tripStep); its `ride` is rideRef's.
-  const tripRef = useRef(tripRideStart(trip));
+  const tripRef = useRef(resumedPast ? { ...tripRideStart(trip, { ...startState(), arrived: true }), walking: false, walk: null } : tripRideStart(trip));
   // What follows the line once it ends (lib/onward.ts): walks turn by turn, transit stop by stop (2026-11-02).
   const onwardParts = useMemo(() => trip?.onward ?? [], [trip]);
-  const onwardRef = useRef<OnwardState | null>(null);
+  const onwardRef = useRef<OnwardState | null>(resumedPast);
   // A train is followed after the line and a ride comes after it: that ride starts by itself once off (restAuto, below).
   const restNextRef = useRef(false);
-  const [onward, setOnward] = useState<OnwardState | null>(null);
+  const [onward, setOnward] = useState<OnwardState | null>(resumedPast);
+  // Kept with the trip left going, so switching apps and back (a page reloaded) carries on from here (lib/rideResume.ts).
+  useEffect(() => {
+    if (onward) keepLeftRidePast(onward);
+  }, [onward]);
   const rideRef = useRef(ride);
   const prefsRef = useRef(prefs);
   prefsRef.current = prefs;

@@ -13,6 +13,7 @@ import type { ViaMarks } from "./pointKinds.ts";
 import { t } from "./i18n.ts";
 import { secretFrom } from "./rideSeal.ts";
 import { leadKeyFrom, rideLinkFrom, sharedIdFrom } from "./sharedRoutes.ts";
+import type { OnwardState } from "./onward.ts";
 
 export const RIDE_RESUME_KEY = "routemaker.ride-left";
 /** A ride left longer than this is not offered: a day's ride, not yesterday's. */
@@ -49,6 +50,14 @@ export interface LeftRide {
    * see the leader (Stephen 2026-10-30). Kept on this device only, never sent. Left out by a re-route, which keeps it.
    */
   leads?: string | null;
+  /**
+   * A Bikeshare or transit trip (Stephen 2026-11-04: on the train, "when switching off it terminated the route without
+   * offering a resume", switching apps): `route` and `points` are the whole trip's, its riding leg worked out again at
+   * Resume (lib/rideTrip.ts rideLegOf).
+   */
+  wholeTrip?: boolean;
+  /** Past the trip's line: the walk or train being followed (lib/onward.ts), so Resume carries on with it. */
+  past?: OnwardState | null;
 }
 
 interface Kept {
@@ -67,6 +76,8 @@ interface Kept {
   passOn?: string;
   follows?: boolean;
   leads?: string;
+  trip?: boolean;
+  past?: OnwardState;
 }
 
 interface Store {
@@ -111,6 +122,8 @@ export function keepLeftRide(ride: LeftRide, marks: Pick<ViaMarks, "isVia" | "is
     ...(passOn ? { passOn } : {}),
     ...(follows ? { follows } : {}),
     ...(leads ? { leads } : {}),
+    ...(ride.wholeTrip ? { trip: true } : {}),
+    ...(ride.wholeTrip && ride.past ? { past: ride.past } : {}),
   };
   try {
     store?.setItem(RIDE_RESUME_KEY, JSON.stringify(kept));
@@ -163,6 +176,26 @@ export function keepLeftRideLeads(link: string, store: Store | null = local()): 
   } catch {
     // Full or blocked storage: the ride goes on, only resumed without its broadcast.
   }
+}
+
+/** A trip past its line: the part followed now kept with the trip left going, so Resume carries on from it. */
+export function keepLeftRidePast(past: OnwardState, store: Store | null = local()): void {
+  try {
+    const raw = store?.getItem(RIDE_RESUME_KEY);
+    if (!raw) return;
+    const was = JSON.parse(raw) as Kept;
+    if (!was.trip) return;
+    store?.setItem(RIDE_RESUME_KEY, JSON.stringify({ ...was, past }));
+  } catch {
+    // Full or blocked storage: Resume starts the trip's leg again instead.
+  }
+}
+
+/** A kept onward state as written by keepLeftRidePast; null for anything else. */
+function pastOf(value: unknown): OnwardState | null {
+  const past = value as Partial<OnwardState> | null;
+  if (!past || typeof past !== "object" || typeof past.index !== "number" || typeof past.since !== "number") return null;
+  return { index: past.index, since: past.since, walk: past.walk ?? null, board: past.board ?? null };
 }
 
 /**
@@ -231,5 +264,6 @@ export function leftRide(marks: Pick<ViaMarks, "via" | "drawn" | "named">, now: 
     ...(typeof kept.passOn === "string" ? { passOn: kept.passOn } : {}),
     ...(kept.follows === true ? { follows: true } : {}),
     ...(typeof kept.leads === "string" ? { leads: kept.leads } : {}),
+    ...(kept.trip === true ? { wholeTrip: true, past: pastOf(kept.past) } : {}),
   };
 }

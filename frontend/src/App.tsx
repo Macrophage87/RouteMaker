@@ -323,6 +323,7 @@ import { BroadcastJoinDialog, type JoinAsk } from "./BroadcastJoinDialog.tsx";
 import { joinActions, joinKey, joinLine, joinShown, joinTitle, keepJoinShown, showJoin, type JoinAction } from "./lib/broadcastJoin.ts";
 import { canSendToGarmin, handGpx } from "./lib/sendToGarmin.ts";
 import { ResumeRideDialog } from "./ResumeRideDialog.tsx";
+import type { OnwardState } from "./lib/onward.ts";
 import { forgetLeftRide, keepLeftRide, keepLeftRideLeads, leftRide, resumedBroadcast } from "./lib/rideResume.ts";
 import { StopNameDialog, type StopNameAsk } from "./StopNameDialog.tsx";
 import { LoadRouteDialog } from "./LoadRouteDialog.tsx";
@@ -1124,6 +1125,8 @@ export function App() {
     dials: Dials;
     preset: PresetId;
     trip: RideTrip | null;
+    /** A trip resumed past its line: the walk or train it was following (lib/rideResume.ts LeftRide.past). */
+    past?: OnwardState | null;
     /** The route everyone shares: never re-planned on its own during the ride (RideMode `fixed`). */
     fixed: boolean;
     /** A detour from Roam: ending it goes back to roaming, with no summary. */
@@ -3776,9 +3779,10 @@ export function App() {
     const fixed = fixedRide(leg, opened, !!rest);
     setResumeStats(null);
     const rideDialsNow = rideDials({ ...planDials, closuresNow: true }, rest ? null : route);
-    // Kept on this device so a page closed mid-ride can resume it (lib/rideResume.ts); a trip's leg, Ride the rest
-    // and a detour from Roam are not.
-    const kept = !rest && !leg.trip;
+    // Kept on this device so a page closed mid-ride can resume it (lib/rideResume.ts): a Bikeshare or transit trip
+    // whole, its leg worked out again at Resume (Stephen 2026-11-04: on the train, switching apps "terminated the route
+    // without offering a resume"), and Ride the rest; a detour from Roam is not.
+    const kept = !rest?.roam;
     // Following someone's broadcast: its link, for Share live to pass on, a resumed ride too.
     const follows = !!opened && !opened.own && !!opened.lead;
     const passOn = follows && !followedNoKey() ? followedLink() : null;
@@ -3793,8 +3797,9 @@ export function App() {
     setRideStart((before) => ({ route, ...leg, dials: rideDialsNow, fixed, roam: rest?.roam === true, kept, passOn, follows, leads: ledLink, note, n: (before?.n ?? 0) + 1 }));
     if (kept) {
       // The destination's name kept too, so a Resume after a reload can name the ride (the UI review, 2026-10-28).
-      const destination = leg.loop ? null : (namer.name(leg.points[leg.points.length - 1])?.name ?? null);
-      keepLeftRide({ route, points: leg.points, loop: leg.loop, preset: leg.preset, dials: rideDialsNow, fixed, destination, passOn, follows, leads: ledLink }, VIA_MARKS, Date.now());
+      const destination = leg.loop ? null : (namer.name(ridePoints[ridePoints.length - 1] ?? leg.points[leg.points.length - 1])?.name ?? null);
+      const whole = leg.trip ? { points: ridePoints, loop: false, preset: route.preset, wholeTrip: true } : { points: leg.points, loop: leg.loop, preset: leg.preset };
+      keepLeftRide({ route, ...whole, dials: rideDialsNow, fixed, destination, passOn, follows, leads: ledLink }, VIA_MARKS, Date.now());
     }
     else forgetLeftRide();
     // The installed app keeps the ride's route as the last ride (OWNER-DECISIONS 465a); End ride gives it
@@ -4627,8 +4632,11 @@ export function App() {
     startRideGesture(ridePrefs);
     endedRide.current = null;
     setRideEnded(null);
+    // A trip's riding leg worked out again from the whole trip; past its line, the walk or train followed carries on.
+    const leg = left.wholeTrip ? rideLegOf(left.route, left.points, left.loop) : null;
+    const resumed = leg ? { points: leg.points, loop: leg.loop, preset: leg.preset, trip: leg.trip, past: left.past ?? null } : { trip: null, past: null };
     setResumeStats(null);
-    setRideStart((before) => ({ ...left, trip: null, kept: true, n: (before?.n ?? 0) + 1 }));
+    setRideStart((before) => ({ ...left, ...resumed, kept: true, n: (before?.n ?? 0) + 1 }));
     keepLeftRide(left, VIA_MARKS, Date.now());
     // On a broadcast, followed or led: the ride is on it again, its dots, alerts and leader with it (lib/rideResume.ts).
     const on = resumedBroadcast(left);
@@ -4676,7 +4684,8 @@ export function App() {
       rideLinkSent.current = ended.linkSent;
       if (ended.linkSent.id && ended.linkSent.lead) leads.current.set(ended.linkSent.id, ended.linkSent.lead);
     }
-    if (ended.start.kept) keepLeftRide(ended.start, VIA_MARKS, Date.now());
+    // A trip's leg is kept whole only at its start (beginRide); Undo leaves the one kept then.
+    if (ended.start.kept && !ended.start.trip) keepLeftRide(ended.start, VIA_MARKS, Date.now());
     setFollow(true);
     setRideView(null);
     setRiding(true);
@@ -6744,6 +6753,7 @@ export function App() {
           loop={rideStart.loop}
           preset={rideStart.preset}
           trip={rideStart.trip}
+          resumedPast={rideStart.past ?? null}
           onRideRest={(riderAt) => rideRest(riderAt, true)}
           onTripCheck={tripCheck.current?.route === rideStart.route ? checkTrip : undefined}
           onNextLeg={tripStopsLeft.current ? nextLeg : undefined}

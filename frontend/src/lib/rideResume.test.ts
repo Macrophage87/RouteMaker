@@ -10,7 +10,7 @@ import { ViaMarks } from "./pointKinds.ts";
 import { leaderKey, newToken } from "./rideGroup.ts";
 import { newRideSecret, withSecret } from "./rideSeal.ts";
 import { asRideLink } from "./sharedRoutes.ts";
-import { RESUME_MAX_MS, RIDE_RESUME_KEY, forgetLeftRide, keepLeftRide, keepLeftRideLeads, leftRide, resumedBroadcast } from "./rideResume.ts";
+import { RESUME_MAX_MS, RIDE_RESUME_KEY, forgetLeftRide, keepLeftRide, keepLeftRideLeads, keepLeftRidePast, leftRide, resumedBroadcast } from "./rideResume.ts";
 
 function memory() {
   const items = new Map<string, string>();
@@ -61,7 +61,7 @@ test("a ride left too long ago, or unreadable, is not offered and is forgotten; 
 
 test("the page keeps the ride at Start, forgets it at End, and asks at load; nothing goes to the server", () => {
   const app = src("../App.tsx");
-  assert.match(app, /if \(kept\) \{[\s\S]{0,300}?keepLeftRide\(\{ route, points: leg\.points, loop: leg\.loop, preset: leg\.preset, dials: rideDialsNow, fixed, destination, passOn, follows, leads: ledLink \}/);
+  assert.match(app, /if \(kept\) \{[\s\S]{0,500}?keepLeftRide\(\{ route, \.\.\.whole, dials: rideDialsNow, fixed, destination, passOn, follows, leads: ledLink \}/);
   assert.match(app, /const endRide = useCallback\(\(after: EndedPlan, stats: RideStats\) => \{\s*const \{ start, mode: endedIn \} = rideNow\.current;\s*forgetLeftRide\(\);/);
   assert.match(app, /const \[leftAsk, setLeftAsk\] = useState\(\(\) => \(SHARED_RIDE && SHARED_LEAD \? null : leftRide\(VIA_MARKS, Date\.now\(\)\)\)\);/);
   assert.match(app, /<ResumeRideDialog\s+open=\{leftAsk !== null && !riding && !roaming\}/);
@@ -74,9 +74,11 @@ test("each new route of the ride is kept in its place, and the question holds th
   assert.match(ride, /const auto = !keepRef\.current && !fixedRef\.current && !restartOpen\.current;/);
   assert.match(ride, /!fixedRef\.current && !restartOpen\.current && !uturns\.current\.held && state\.goodFix && state\.goodFix\.accuracyM <= OFF_SURE_M && !replanHeld\(replannedFrom\.current, state\.goodFix\.point\)\) void replan/);
   const app = src("../App.tsx");
-  assert.match(app, /const kept = !rest && !leg\.trip;/);
+  // A Bikeshare or transit trip is kept whole, Ride the rest too (Stephen 2026-11-04); a detour from Roam is not.
+  assert.match(app, /const kept = !rest\?\.roam;/);
+  assert.match(app, /const whole = leg\.trip \? \{ points: ridePoints, loop: false, preset: route\.preset, wholeTrip: true \} : \{ points: leg\.points, loop: leg\.loop, preset: leg\.preset \};/);
   assert.match(app, /keepLeft=\{rideStart\.kept === true\}/);
-  assert.match(app, /if \(ended\.start\.kept\) keepLeftRide\(ended\.start, VIA_MARKS, Date\.now\(\)\);/);
+  assert.match(app, /if \(ended\.start\.kept && !ended\.start\.trip\) keepLeftRide\(ended\.start, VIA_MARKS, Date\.now\(\)\);/);
 });
 
 test("the ride's destination is kept with it, through its re-routes, to name it in the question (the UI review, 2026-10-28)", () => {
@@ -176,4 +178,41 @@ test("a ride link opened to follow joins that ride: no Resume question for a rid
 test("the automatic re-plan while off route never starts from a rough fix", () => {
   const ride = src("../RideMode.tsx");
   assert.match(ride, /out\.state\.off && auto && !gate\.busy && fix\.accuracyM <= OFF_SURE_M/);
+});
+
+// Stephen 2026-11-04: on the train, switching apps "terminated the route without offering a resume".
+test("a transit trip is kept whole, with the walk or train it is following, and Resume carries on from there", () => {
+  const store = memory();
+  const marks = new ViaMarks();
+  const points: LonLat[] = [[-77, 38.9], [-77.01, 38.9]];
+  // A plain ride says nothing of a trip, and a past written for it is dropped.
+  keepLeftRide({ route, points, loop: false, preset: "standard", dials, fixed: false }, marks, 0, store);
+  keepLeftRidePast({ index: 1, since: 5, walk: null, board: null }, store);
+  assert.equal(leftRide(marks, 0, store)?.wholeTrip, undefined);
+  assert.equal(leftRide(marks, 0, store)?.past, undefined);
+  // A trip: kept whole, then the train it is on.
+  keepLeftRide({ route, points, loop: false, preset: "transit", dials, fixed: false, wholeTrip: true }, marks, 0, store);
+  assert.equal(leftRide(marks, 0, store)?.wholeTrip, true);
+  assert.equal(leftRide(marks, 0, store)?.past, null);
+  const board = { since: 10, boardedAt: 20, at: 3, fixAt: 30, saidNext: false, saidOff: false, done: false };
+  keepLeftRidePast({ index: 1, since: 10, walk: null, board }, store);
+  assert.deepEqual(leftRide(marks, 0, store)?.past, { index: 1, since: 10, walk: null, board });
+  // Kept again at Resume, with where it was.
+  const left = leftRide(marks, 0, store)!;
+  keepLeftRide(left, marks, 0, store);
+  assert.equal(leftRide(marks, 0, store)?.past?.board?.at, 3);
+  // Unreadable progress: Resume starts the leg again rather than failing.
+  const raw = JSON.parse(store.getItem(RIDE_RESUME_KEY)!);
+  store.setItem(RIDE_RESUME_KEY, JSON.stringify({ ...raw, past: { index: "x" } }));
+  assert.equal(leftRide(marks, 0, store)?.past, null);
+});
+
+test("Resume of a trip works its leg out again and carries on past the line; the ride screen starts there", () => {
+  const app = src("../App.tsx");
+  assert.match(app, /const leg = left\.wholeTrip \? rideLegOf\(left\.route, left\.points, left\.loop\) : null;/);
+  assert.match(app, /resumedPast=\{rideStart\.past \?\? null\}/);
+  const ride = src("../RideMode.tsx");
+  assert.match(ride, /useState<RideState>\(\(\) => \(resumedPast \? \{ \.\.\.startState\(\), arrived: true \} : startState\(\)\)\)/);
+  assert.match(ride, /const onwardRef = useRef<OnwardState \| null>\(resumedPast\);/);
+  assert.match(ride, /if \(onward\) keepLeftRidePast\(onward\);/);
 });

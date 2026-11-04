@@ -87,8 +87,8 @@ test("a resumed ride keeps Share live, its link made from the ride's own plan (S
   // their broadcast's link is kept with the ride and passed on, resumed or not, their leader still leading.
   // One without its key is never passed on, and no ride of the rider's own is made in its place: no Share live.
   assert.match(app, /const follows = !!opened && !opened\.own && !!opened\.lead;\s*const passOn = follows && !followedNoKey\(\) \? followedLink\(\) : null;/);
-  assert.match(app, /keepLeftRide\(\{ route, points: leg\.points, loop: leg\.loop, preset: leg\.preset, dials: rideDialsNow, fixed, destination, passOn, follows, leads: ledLink \}/);
+  assert.match(app, /keepLeftRide\(\{ route, \.\.\.whole, dials: rideDialsNow, fixed, destination, passOn, follows, leads: ledLink \}/);
   assert.match(app, /passingOn=\{passesOn \|\| !!rideStart\.passOn\}/);
   // Resume keeps the ride kept, so the rail still offers it.
-  assert.match(app, /setRideStart\(\(before\) => \(\{ \.\.\.left, trip: null, kept: true, n: \(before\?\.n \?\? 0\) \+ 1 \}\)\);/);
+  assert.match(app, /setRideStart\(\(before\) => \(\{ \.\.\.left, \.\.\.resumed, kept: true, n: \(before\?\.n \?\? 0\) \+ 1 \}\)\);/);
 });
