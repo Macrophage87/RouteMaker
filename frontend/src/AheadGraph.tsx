@@ -52,6 +52,7 @@ import { SEVERITY_COLOURS } from "./lib/intersectionMarkers.ts";
 import { ROUTE_AVOID_MAGENTA } from "./lib/avoidColour.ts";
 import { GRADE_BAND_FILL } from "./lib/profileChart.ts";
 import { ACCESS_MODE_CLASS } from "./lib/accessMode.ts";
+import { units } from "./lib/units.ts";
 
 /** The drawing's width, in viewBox units (about pixels on a phone), at the usual text size; larger text draws the same
  *  in a narrower box, so every word and mark grows with it (the v0.19.0 release review: the graph's text stayed 11 to
@@ -186,7 +187,8 @@ export function AheadGraph({ views, route, cues, youM, lengthM, ridersAlong = []
     const unseen = order.slice(count);
     const unseenSaid = unseen.map((view) => `${AHEAD_HEADING[view]}: ${draw(view, route, w, x, { top: 0, h: PLOT_MIN }, width)!.sentence}`);
     return { drawn, unseen, unseenSaid, strip, note: note && unseen.length > 0 && drawn.length > 0, base: at - GAP };
-  }, [views, route, w, width, budget, unit]); // eslint-disable-line react-hooks/exhaustive-deps
+  // The units in use too: switched during a ride (lib/units.ts switchUnitsInRide), the heights and sentences follow.
+  }, [views, route, w, width, budget, unit, units()]); // eslint-disable-line react-hooks/exhaustive-deps
   const { base } = panels;
   const untold = !panels.note && panels.drawn.length > 0 ? panels.unseen.join(",") : "";
   useEffect(() => {

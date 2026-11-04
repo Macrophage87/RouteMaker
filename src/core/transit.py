@@ -312,7 +312,23 @@ class System:
     last_day: date | None = None
 
     def vehicle_words(self, routes) -> str:
-        return self.words.format(route=" or ".join(routes))
+        """The vehicle a step boards: "the MARC Penn Line", "bus B10". A route the feed names after
+        the system itself (MDOT MTA's MARC GTFS calls every line "MARC") is not said twice: "the
+        MARC", never "the MARC MARC" (Stephen, 2026-11-03: "fix the marc")."""
+        name = self.name.lower()
+        named = []
+        for route in routes:
+            route = route.strip()
+            if route.lower().startswith(name + " "):
+                route = route[len(name) + 1 :]
+            if route and route.lower() != name and route not in named:
+                named.append(route)
+        if not named:
+            bare = " ".join(self.words.replace("{route}", "").split())
+            # "the MARC"; a bus whose route is its system's name keeps the name ("the Metrobus",
+            # never "bus").
+            return bare if self.name.lower() in bare.lower() else f"the {self.name}"
+        return self.words.format(route=" or ".join(named))
 
     def route_name(self, route: str) -> str:
         """A route as a note names it: "MARC Camden Line", "Metro Orange Line"."""
@@ -379,6 +395,9 @@ class Hop:
     later: tuple[float, ...] = ()  # every later departure seen, for a rider who misses one
     every: float | None = None  # a frequent service: minutes between departures
     first: float | None = None  # typical Metro before its first train: that train (minutes)
+    # The patterns whose trains make this ride now (a frequent service's every one that has a
+    # departure coming, an infrequent one's the train taken), for the ends they are signed to.
+    serving: tuple[int, ...] = ()
 
     @property
     def total_s(self) -> float:
@@ -1084,6 +1103,10 @@ class Leg:
     # directions for transit"); and the way it runs, its last stop's name ("toward Shady Grove").
     stops: tuple[tuple[str, tuple[float, float], float], ...] = ()
     toward: str | None = None
+    # Every line that makes the ride and where its trains are signed to, each once: ("Orange Line",
+    # "New Carrollton"), ("Silver Line", "Downtown Largo") (Stephen, 2026-11-03: "Put the acceptable
+    # destination options. you still need to know which train to get on").
+    towards: tuple[tuple[str, str], ...] = ()
     # A walk's turns as the router gives them (`walk_turns.turns_of`), for turn-by-turn on foot.
     turns: tuple[dict, ...] = ()
     # A ride's time on busy roads and waiting at junctions, added again for ranking only
@@ -1410,6 +1433,7 @@ def _hop(minute: float, entries, typical: bool = False) -> Hop:
             True,
             every=gap,
             first=first,
+            serving=tuple(sorted({e[2].index for e in entries})),
         )
     later_times = []
     for dep in times:
@@ -1426,6 +1450,7 @@ def _hop(minute: float, entries, typical: bool = False) -> Hop:
         deps[0],
         later_times[0] if later_times else None,
         tuple(later_times),
+        serving=(pattern.index,),
     )
 
 
@@ -1472,6 +1497,23 @@ def _stops_of(
     return stops, end or None
 
 
+def _towards_of(schedule: Schedule, hop: Hop) -> tuple[tuple[str, str], ...]:
+    """Each pattern that makes the hop now (`Hop.serving`, else the one planned) as its route and
+    the last stop its trains are signed to, each pair once, in the hop's route order. A loop has
+    no last stop to sign it by."""
+    found: list[tuple[str, str]] = []
+    for index in hop.serving or (hop.pattern,):
+        pattern = schedule.patterns[index]
+        stops = pattern.stops
+        if not stops or stops[0] == stops[-1]:
+            continue
+        pair = (pattern.route, schedule.stops[stops[-1]].name)
+        if pair not in found:
+            found.append(pair)
+    order = {route: i for i, route in enumerate(hop.routes)}
+    return tuple(sorted(found, key=lambda p: (order.get(p[0], len(order)), p[1])))
+
+
 def _transit_leg(
     schedule: Schedule, hop: Hop, change: bool, bike: bool, service_day: date | None = None
 ) -> Leg:
@@ -1498,6 +1540,7 @@ def _transit_leg(
         first=hop.first,
         stops=stops,
         toward=toward,
+        towards=_towards_of(schedule, hop),
     )
 
 
@@ -3193,6 +3236,9 @@ def block(plan: Plan, schedule: Schedule | None = None) -> dict:
                 if leg.transit and leg.stops
                 else None,
                 "toward": leg.toward if leg.transit else None,
+                "towards": [{"line": line, "toward": end} for line, end in leg.towards]
+                if leg.transit and leg.towards
+                else None,
                 "turns": list(leg.turns) if leg.turns else None,
             }
         )
