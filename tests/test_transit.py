@@ -1425,6 +1425,39 @@ def test_the_walk_the_whole_way_is_routed_with_pedestrian_costing(monkeypatch) -
     assert option.walk and option.legs[0].seconds == 420.0 and not option.legs[0].estimated
 
 
+def test_a_walk_goes_round_closures_and_through_them_only_where_there_is_no_way_round(
+    monkeypatch,
+) -> None:
+    """Walk and Walk + transit: each walk leaves the closures out (`exclude_polygons`); where
+    the router has no way round them, it is walked again with only the rider's own marked
+    roads left out."""
+    from core import routing
+
+    closure = [[-77.0, 38.9], [-77.0, 38.901], [-77.001, 38.901], [-77.0, 38.9]]
+    marked = [[-77.01, 38.9], [-77.01, 38.901], [-77.011, 38.901], [-77.01, 38.9]]
+    asked = []
+
+    def answer(graph, endpoint, payload, deadline):
+        asked.append(payload.get("exclude_polygons"))
+        if len(payload.get("exclude_polygons") or []) == 2:
+            raise routing.RouterRefused(400, 442, "No path could be found for input")
+        return {"trip": {"legs": [{"shape": "", "summary": {"time": 420.0, "length": 0.55}}]}}
+
+    monkeypatch.setattr(routing, "_call", answer)
+    monkeypatch.setattr(routing, "decode_polyline6", lambda _shape: [(-77.0, 38.9), (-77.01, 38.9)])
+    services = transit.RoutingServices(
+        routing.clock() + 30, presets.WALK, walk_exclude=[closure, marked], walk_keep=[marked]
+    )
+    walked = services.walk(CAPITOL_HILL, NEAR_CAPITOL_HILL)
+    assert walked is not None and walked.seconds == 420.0
+    assert asked[0] == [closure, marked]
+    assert asked[1] == [marked]
+    # A ride is never asked round them here (a ride's line has its own closures).
+    asked.clear()
+    services.ride(CAPITOL_HILL, NEAR_CAPITOL_HILL)
+    assert asked == [None]
+
+
 class Bendy(Straight):
     """The router, its lines bent through a point off the straight one, and each call kept."""
 
@@ -2462,6 +2495,24 @@ def test_vehicle_words_keep_a_bus_systems_name():
         1, "test-bus", "Metrobus", transit.BUS, "bus {route}", "", True, "all", "", ""
     )
     assert bus.vehicle_words(("Metrobus",)) == "the Metrobus"
+
+
+def test_a_hop_says_which_patterns_serve_it():
+    """`Hop.serving` (the boarding card's trains): a frequent hop, every pattern that makes it; a
+    timed one, only the train taken."""
+    from types import SimpleNamespace
+
+    def pattern(index, route):
+        return SimpleNamespace(index=index, route=route, stops=(1, 2, 3), system=0)
+
+    orange, silver = pattern(4, "Orange Line"), pattern(7, "Silver Line")
+    frequent = [((600.0, 606.0, 612.0), 120.0, orange, 0, 2), ((603.0, 609.0), 130.0, silver, 0, 2)]
+    hop = transit._hop(598.0, frequent)
+    assert hop.frequent and hop.serving == (4, 7)
+    # The train taken is the soonest there, not the first listed nor the lowest index.
+    timed = [((700.0,), 120.0, orange, 0, 2), ((640.0,), 130.0, silver, 0, 2)]
+    hop = transit._hop(598.0, timed)
+    assert not hop.frequent and hop.serving == (7,)
 
 
 def test_towards_lists_every_train_that_makes_the_ride_by_where_it_is_signed():
