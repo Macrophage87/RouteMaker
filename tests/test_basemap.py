@@ -145,7 +145,7 @@ def test_nothing_re_encodes_the_bytes_a_range_names() -> None:
             "header Content-Type application/vnd.mapbox-vector-tile*",
             "header Content-Type application/json*",
         ], f"the API's encodes must be confined to their content types: {api}"
-        assert "@route_answers path /api/route /api/stop-order /api/nearest" in api, api
+        assert "@route_answers path /api/route /api/stop-order /api/nearest /api/reach" in api, api
 
 
 def test_only_the_three_contract_paths_are_served() -> None:

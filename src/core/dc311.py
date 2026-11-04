@@ -25,6 +25,7 @@ is not sent from here, and stays in the rider's 311 log.
 
 from __future__ import annotations
 
+import http.client
 import json
 import logging
 import time
@@ -167,7 +168,7 @@ def send(kind: str, lat: float, lon: float, description: str) -> str | None:
         raise NotSent("outside_dc", "Reports to DC 311 are for Washington, DC only.", 400)
     try:
         code = service_code(kind, services())
-    except (OSError, ValueError, urllib.error.URLError):
+    except (OSError, ValueError, urllib.error.URLError, http.client.HTTPException):
         logger.warning("DC 311's service list could not be read")
         raise NotSent("dc311_unreachable", "DC 311 could not be reached.", 502) from None
     if code is None:
@@ -186,9 +187,19 @@ def send(kind: str, lat: float, lon: float, description: str) -> str | None:
         # The status only: never the form, which carries the key and the rider's place.
         logger.warning("DC 311 refused a report: HTTP %s", error.code)
         raise NotSent("dc311_refused", "DC 311 did not take the report.", 502) from None
-    except (OSError, ValueError, urllib.error.URLError):
+    except urllib.error.URLError:
+        # urlopen raises this only where sending the request failed: DC never had it whole.
         logger.warning("DC 311 could not be reached to send a report")
         raise NotSent("dc311_unreachable", "DC 311 could not be reached.", 502) from None
+    except (OSError, ValueError, http.client.HTTPException):
+        # The request went, and the answer was slow, dropped, cut off or not JSON: DC may have
+        # filed the report, so the rider is told to check rather than to send it again.
+        logger.warning("DC 311's answer to a report could not be read")
+        raise NotSent(
+            "dc311_unknown",
+            "DC 311 may already have this report; check before sending it again.",
+            502,
+        ) from None
     first = answer[0] if isinstance(answer, list) and answer else {}
     if not isinstance(first, dict):
         return None

@@ -512,6 +512,15 @@ export function restNear(rest: Pick<RideRest, "alight" | "to">, here: LonLat | n
   return firstRideDone && haversineM(here, rest.to) < haversineM(rest.alight, rest.to);
 }
 
+/**
+ * Whether Ride the rest may start by itself once the train is behind the rider: a fresh fix (REST_FIX_MAX_AGE_MS) at
+ * the stop where the transit ends, or past it. The parts after the line can end on the timetable's clock alone,
+ * under ground or on a late train, and a ride started then would be planned for a rider still on board.
+ */
+export function restAutoReady(rest: Pick<RideRest, "alight" | "to">, fix: { point: LonLat; at: number } | null, now: number): boolean {
+  return !!fix && now - fix.at < REST_FIX_MAX_AGE_MS && restNear(rest, fix.point, true);
+}
+
 /** Ride the rest's request: from where the rider is (else the leg's own start) to the destination. */
 export function restRequest(rest: RideRest, here: LonLat | null): { points: LonLat[]; preset: PresetId } | null {
   const from = here ?? rest.from;

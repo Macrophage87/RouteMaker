@@ -600,6 +600,8 @@ case "$*" in
   "ps -q --status running valhalla-paved") [ -n "${STUB_PAVED_UP:-}" ] && echo paved1 ;;
   "ps -q") [ -n "${STUB_IDS:-}" ] && printf '%s\\n' $STUB_IDS ;;
   *"--format {{.Health}}"*) echo healthy ;;
+  # STUB_DBS: the database names postgis lists
+  *"select datname from pg_database"*) [ -n "${STUB_DBS:-}" ] && printf '%s\\n' $STUB_DBS ;;
   *pg_dump*) echo "PGDMP a fake dump" ;;
   *django_migrations*) echo t ;;
   *pg_stat_activity*) echo 0 ;;
@@ -1209,6 +1211,52 @@ def test_a_failure_without_a_migration_leaves_the_database_alone(beta: Beta) -> 
     calls = beta.calls()
     assert "pg_restore" not in calls and "migrate --noinput" not in calls
     assert "predraw" not in calls
+
+
+def _db_stamp(hours_ago: float) -> str:
+    return time.strftime("%Y%m%d%H%M%S", time.gmtime(time.time() - hours_ago * 3600))
+
+
+def test_rollback_copies_older_than_six_and_a_half_days_are_dropped_newer_and_live_kept(
+    beta: Beta,
+) -> None:
+    """restore-dump's <db>_before_<utc> databases are whole copies; the privacy page says copies
+    taken before an update stay under a week, so every pass drops them at 6.5 days and says so."""
+    aged = [f"routemaker_before_{_db_stamp(24 * 9)}", f"routemaker_before_{_db_stamp(158)}"]
+    young = f"routemaker_before_{_db_stamp(150)}"
+    others = [
+        "routemaker",
+        "routemaker_restore",
+        f"other_before_{_db_stamp(24 * 30)}",
+        "routemaker_before_2026",
+        "routemaker_before_20261301000000",
+    ]
+    done = beta.agent("run", STUB_DBS=" ".join([*aged, young, *others]))
+    assert done.returncode == 0, done.stdout + done.stderr
+    dropped = re.findall(r'drop database if exists "([^"]+)"', beta.calls())
+    assert sorted(dropped) == sorted(aged)
+    for name in aged:
+        assert f"dropped the kept database {name}" in done.stdout
+    assert young not in done.stdout
+    # A dry run drops nothing.
+    beta.log.unlink()
+    beta.agent("run", "--dry-run", STUB_DBS=" ".join(aged))
+    assert "drop database" not in beta.calls()
+
+
+def test_a_paused_or_broken_agent_drops_no_kept_database(beta: Beta) -> None:
+    """While the owner has the agent paused or BROKEN, a kept <db>_before_ copy may be the one
+    they restore from, so no pass drops it, however old."""
+    aged = f"routemaker_before_{_db_stamp(24 * 9)}"
+    for flag in ("PAUSED", "BROKEN"):
+        (beta.cd / flag).write_text("2026-11-04T21:00:00Z held by hand\n")
+        if beta.log.exists():
+            beta.log.unlink()
+        beta.agent("run", STUB_DBS=aged)
+        assert "drop database" not in beta.calls()
+        (beta.cd / flag).unlink()
+    beta.agent("run", STUB_DBS=aged)
+    assert f'drop database if exists "{aged}"' in beta.calls()
 
 
 def test_mark_deployed_records_a_release_shipped_by_hand(beta: Beta) -> None:
