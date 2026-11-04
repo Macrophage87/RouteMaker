@@ -12,12 +12,13 @@ const map = source("../MapView.tsx");
 const summary = source("../RideSummaryCard.tsx");
 const css = source("../styles.css");
 
-test("1. track-up by default, the ride settings' switch remembered on this device", () => {
+test("1. track-up by default, the compass's choice remembered on this device", () => {
   assert.match(app, /const \[headingUp, setHeadingUpState\] = useState\(\(\) => readHeadingUp\(\)\);/);
   assert.match(app, /writeHeadingUp\(on\);\s*setHeadingUpState\(on\);/);
-  // The one control: the switch in Ride settings, unchanged.
-  assert.equal(ride.match(/Turn the map to my heading/g)?.length, 1);
-  assert.match(ride, /checked=\{headingUp\} onChange=\{\(event\) => onHeadingUp\(event\.target\.checked\)\}/);
+  // The one control: the compass on the map (Stephen 2026-11-03: "Turn the map to my heading is already established
+  // with the compass"); the settings popup's switch is gone.
+  assert.doesNotMatch(ride, /Turn the map to my heading"\)/);
+  assert.match(ride, /className="ride-compass" aria-pressed=\{!headingUp\}[^>]*onClick=\{\(\) => onHeadingUp\(!headingUp\)\}/);
   // Until a heading comes, the phone's compass (lib/compassHeading.ts) or else north-up; north-up again once the ride is over.
   assert.match(map, /props\.headingUp && compassDeg\.current !== null\s*\? compassDeg\.current\s*: props\.headingUp && following\.current\s*\? map\.getBearing\(\)\s*: 0/);
   assert.match(map, /if \(following\.current && map\.getBearing\(\) !== 0\) map\.easeTo\(\{ bearing: 0, padding: NO_PADDING, duration: 0 \}\)/);
@@ -140,20 +141,43 @@ test("Ride settings in reach: More at the end of the side buttons opens them jus
   // No size query hides it (the Plan bar's own @container, styles.css, is the only one, and names no ride label).
   assert.doesNotMatch(css, /\.ride-top-label \{\s*position: absolute;/);
   assert.deepEqual([...css.matchAll(/@container[^{]*\{([^@]*)/g)].map((m) => /ride-/.test(m[1])), [false]);
-  assert.match(top, /ref=\{settingsPanel\}\s+id=\{`\$\{settingsId\}-settings`\}\s+className="ride-mode-settings"\s+role="group"\s+aria-label=\{RIDE_SETTINGS_TITLE\}\s+hidden=\{!settingsOpen\}\s+tabIndex=\{-1\}/);
-  // The Settings bubble comes after the panel: opened, the focus goes into it; Escape there closes it, back to the bubble.
-  assert.match(ride, /settingsPanel\.current\?\.focus\(\{ preventScroll: true \}\);/);
-  assert.match(top, /if \(event\.key === "Escape"\) \{\s*event\.preventDefault\(\);\s*setSettingsOpen\(false\);\s*settingsBubble\.current\?\.focus\(\);/);
-  assert.match(top, /<RideSettingsFields prefs=\{prefs\} onChange=\{onPrefs\}/);
-  // More: the last side button, a disclosure of its bubbles; the last bubble, Settings, a disclosure of that panel.
+  // The settings are a popup, not in the card's scroll (Stephen 2026-11-03: "Settings should be a popup, not in a
+  // scroll"): the platform's modal <dialog>, outside the top row, its heading taking the focus as it opens.
+  assert.doesNotMatch(top, /settingsPanel|RideSettingsFields/);
+  const dialog = ride.slice(ride.indexOf("<dialog\n        ref={settingsPanel}"), ride.indexOf("</dialog>", ride.indexOf("ref={settingsPanel}")));
+  assert.match(dialog, /className="ask-dialog ride-settings-dialog"\s+aria-labelledby=\{`\$\{settingsId\}-settings-title`\}\s+data-idle-close\s+onClose=\{settingsClosed\}/);
+  assert.match(ride, /if \(settingsOpen && !dialog\.open\) \{\s*dialog\.showModal\?\.\(\);\s*settingsTitle\.current\?\.focus\(\);\s*\} else if \(!settingsOpen && dialog\.open\) dialog\.close\(\);/);
+  // Two pickers (what each level says behind an (i)), so it fits a phone; Done, a tap outside, Escape or the screen left
+  // alone close it, and the focus goes back to the Settings bubble (or to More, the bubbles closed).
+  assert.match(dialog, /<RideSettingsFields prefs=\{prefs\} onChange=\{onPrefs\} idBase=\{settingsId\} compact \/>/);
+  // Colors and Units too, the same pickers as Settings > Display (Stephen 2026-11-03: "switch to metric or dark modes
+  // from these settings"); Units saves to the account first, as there, and in a ride switches at once with no reload
+  // ("Change should happen immediately"), the cue's words turned round and the page reloaded once the ride is done.
+  assert.match(dialog, /<ThemeSetting idBase=\{`\$\{settingsId\}-display`\} \/>\s*<ContrastRow idBase=\{`\$\{settingsId\}-contrast`\} \/>\s*<UnitsSetting idBase=\{`\$\{settingsId\}-display`\} saveNow=\{saveSettingsNow\} inRide \/>/);
+  assert.match(source("../DisplaySettings.tsx"), /const on = useSyncExternalStore\(subscribePalette, accessibilityOn\);/);
+  assert.match(source("../DisplaySettings.tsx"), /if \(inRide\) \{\s*void switchUnitsInRide\(next, saveNow\)/);
+  assert.match(ride, /const unitsNow = useSyncExternalStore\(subscribeUnits, units\);/);
+  assert.match(ride, /const cueShown = \{ \.\.\.cueWords, head: unitsFirst\(cueWords\.head\), rest: unitsFirst\(cueWords\.rest\) \};/);
+  assert.match(ride, /const fitKey = `\$\{unitsNow\}\|/);
+  assert.match(source("../App.tsx"), /\} else backToRideOpener\(\);\s*(\/\/[^\n]*\n\s*)+if \(unitsReloadOwed\(\)\) window\.setTimeout\(\(\) => window\.location\.reload\(\), 300\);/);
+  assert.match(source("../App.tsx"), /onPrefs=\{changeRidePrefs\}\s+saveSettingsNow=\{saveSettingsNow\}/);
+  assert.match(source("../app/Sheets.tsx"), /<ThemeSetting idBase="settings" \/>[\s\S]*<UnitsSetting idBase="settings" saveNow=\{props\.saveSettingsNow\} \/>/);
+  assert.match(dialog, /if \(event\.target === event\.currentTarget\) event\.currentTarget\.close\(\);/);
+  // Its contents fill it (the padding is theirs), so only a tap on the dim map around it is the dialog's own.
+  assert.match(css, /\.ask-dialog\.ride-settings-dialog \{[^}]*padding: 0;/);
+  assert.match(css, /\.ride-settings-body \{\s*padding: 16px;/);
+  // The screen behind is inert while it shows: the cues are said from inside it, a cue said before it opened not again.
+  assert.match(dialog, /<div className="ride-settings-body">\s*\{settingsOpen && <PopupLiveRegions polite=\{polite\} assertive=\{assertive\} \/>\}/);
+  assert.match(ride, /const fresh = \(said: \{ text: string; count: number \}, was: number\) => \(said\.count === was \? \{ text: "", count: said\.count \} : said\);/);
+  assert.match(dialog, /onClick=\{\(\) => settingsPanel\.current\?\.close\(\)\}>\s*\{t\("Done"\)\}/);
+  assert.match(ride, /settingsBubble\.current\?\.focus\(\);\s*if \(document\.activeElement !== settingsBubble\.current\) settingsButton\.current\?\.focus\(\);/);
+  // More: the last side button, a disclosure of its bubbles; the last bubble, Settings, opens its popup.
   const rail = ride.slice(ride.indexOf("<div ref={railRef} className={`ride-rail"), ride.indexOf("{/* The bottom panel"));
   assert.match(rail, /ref=\{settingsButton\}\s+className="ride-round ride-settings-button"\s+aria-label=\{RIDE_MORE_NAME\}\s+title=\{RIDE_SETTINGS_TEXT\}\s+aria-expanded=\{moreOpen\}\s+aria-controls=\{`\$\{settingsId\}-more`\}/);
-  assert.match(rail, /ref=\{settingsBubble\}\s+className="ride-round ride-settings-bubble"\s+aria-label=\{RIDE_SETTINGS_TITLE\}\s+title=\{RIDE_SETTINGS_TITLE\}\s+aria-expanded=\{settingsOpen\}\s+aria-controls=\{`\$\{settingsId\}-settings`\}/);
+  assert.match(rail, /ref=\{settingsBubble\}\s+className="ride-round ride-settings-bubble"\s+aria-label=\{RIDE_SETTINGS_TITLE\}\s+title=\{RIDE_SETTINGS_TITLE\}\s+aria-haspopup="dialog"\s+aria-controls=\{`\$\{settingsId\}-settings`\}/);
   assert.match(rail, /<Icon name="gear" size=\{24\} \/>\s*<span className="ride-word" aria-hidden="true">\{t\("Settings"\)\}<\/span>\s*<\/button>(\s*<\/div>){4}\s*$/);
   assert.match(ride, /export const RIDE_SETTINGS_TEXT = t\("More"\);/);
   assert.doesNotMatch(rail, /ride-round ride-road-closed/);
-  // Opened, it is scrolled into view.
-  assert.match(ride, /if \(!settingsOpen\) return;\s*settingsPanel\.current\?\.scrollIntoView\?\.\(\{ block: "nearest" \}\);/);
   // One copy of the settings: the fold at the bottom is gone.
   assert.equal(ride.match(/<RideSettingsFields prefs=\{prefs\}/g)?.length, 1);
   assert.doesNotMatch(ride, /<summary>Ride settings<\/summary>/);
@@ -206,7 +230,8 @@ test("End ride in Plan keeps the plan and its routes; part way it starts where t
 
 test("End ride is slid until the rider has arrived (the owner, 2026-10-19: \"Add a swipe confirmation on ending the ride unless at the destination\")", () => {
   const top = ride.slice(ride.indexOf("<div ref={topRef} className="), ride.indexOf("{ride.arrived ? (\n          <>"));
-  assert.match(top, /\{ride\.arrived \? \(\s*<button type="button" className="primary ride-end ride-done" onClick=\{end\}>[\s\S]*?\) : \(\s*<SlideToEnd onEnd=\{end\} onTap=\{slideHint\} name=\{endName\} \/>/);
+  // Arrived at the trip's end: a station with the train still to follow is not it (Stephen, 2026-11-03).
+  assert.match(top, /\{ride\.arrived && !tripGoesOn \? \(\s*<button type="button" className="primary ride-end ride-done" onClick=\{end\}>[\s\S]*?\) : \(\s*<SlideToEnd onEnd=\{end\} onTap=\{slideHint\} name=\{endName\} \/>/);
   const slide = ride.slice(ride.indexOf("function SlideToEnd("), ride.indexOf("/** A live region"));
   // A native range, named End ride, so arrows and a screen reader's adjust gestures move it; the end ends the ride.
   assert.match(slide, /type="range"[\s\S]*min=\{0\}\s*max=\{100\}\s*step=\{25\}/);
@@ -240,7 +265,7 @@ test("ride card: fewer words on screen, the whole of them for screen readers (th
   // One TimeToGo for both to-go times (the next stop and the end, lib/arrival.ts), its "about" and "arriving about" read.
   assert.equal((ride.match(/<span className="visually-hidden">\{t\("about"\)\} <\/span>/g) ?? []).length, 1, "\"about\" before the to-go time stays for screen readers");
   assert.equal((ride.match(/<TimeToGo seconds=/g) ?? []).length, 2, "both to-go times");
-  assert.match(ride, /<span aria-hidden="true">\{withoutFullStop\(cueShown\.head\)\}<\/span>\s*<span className="visually-hidden">\{cue\.card\?\.said \?\? cue\.rideText \?\? cue\.text\}<\/span>/, "the full stop goes from the shown head only; the whole sentence is read");
+  assert.match(ride, /<span aria-hidden="true">\{withoutFullStop\(cueShown\.head\)\}<\/span>\s*<span className="visually-hidden">\{unitsFirst\(cue\.card\?\.said \?\? cue\.rideText \?\? cue\.text\)\}<\/span>/, "the full stop goes from the shown head only; the whole sentence is read");
 });
 
 test("Broadcast from a ride (Stephen 2026-10-24: \"Let people broadcast from a ride\"): a side button, Share ride's link, the ride going on", () => {
@@ -275,7 +300,7 @@ test("Broadcast from a ride (Stephen 2026-10-24: \"Let people broadcast from a r
 });
 
 test("More on the ride screen (Stephen 2026-10-26): the route's changes and Settings as bubbles beside it, none in the settings", () => {
-  const panel = ride.slice(ride.indexOf('className="ride-mode-settings"'), ride.indexOf("<RideSettingsFields prefs={prefs}"));
+  const panel = ride.slice(ride.indexOf('className="ask-dialog ride-settings-dialog"'), ride.indexOf("<RideSettingsFields prefs={prefs}"));
   const rail = ride.slice(ride.indexOf("<div ref={railRef} className={`ride-rail"), ride.indexOf("{/* The bottom panel"));
   const bubbles = rail.slice(rail.indexOf('className="ride-more-bubbles"'));
   // The settings panel holds the settings alone.
