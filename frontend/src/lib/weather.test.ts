@@ -21,7 +21,12 @@ import {
   weatherToShow,
   type WeatherAlert,
   type WeatherRain,
+  nwsLinkName,
 } from "./weather.ts";
+import { loadLanguage, setLanguageForTest } from "./i18n.ts";
+
+// Spanish's catalog is fetched on choosing it (lib/i18n.ts loadLanguage), as the app does before it starts.
+await loadLanguage("es");
 
 // About 22 km due north from the Mall, in 1 km steps.
 const LINE = Array.from({ length: 23 }, (_, i) => [-77.03, 38.89 + i * 0.009]);
@@ -81,6 +86,22 @@ test("an alert in one line, at the region's clock", () => {
   assert.equal(alertLine(alert({ onset: "2026-10-24T23:00:00Z", ends: "2026-10-25T01:00:00Z", event: "Heat Advisory" }), NOW), "Heat Advisory from 7:00 PM to 9:00 PM");
   assert.equal(alertLine(alert({ ends: null }), NOW), "Severe Thunderstorm Warning");
   assert.equal(alertSaid(alert(), NOW), "Weather alert: Severe Thunderstorm Warning until 6:45 PM.");
+  assert.equal(alertSaid(alert({ onset: "2026-10-24T23:00:00Z", ends: "2026-10-25T01:00:00Z", event: "Heat Advisory" }), NOW), "Weather alert: Heat Advisory from 7:00 PM to 9:00 PM.");
+  assert.equal(alertSaid(alert({ onset: "2026-10-24T23:00:00Z", ends: null, event: "Heat Advisory" }), NOW), "Weather alert: Heat Advisory from 7:00 PM.");
+  assert.equal(alertSaid(alert({ ends: null }), NOW), "Weather alert: Severe Thunderstorm Warning.");
+  assert.equal(nwsLinkName(alert()), "Severe Thunderstorm Warning: National Weather Service notice (opens in a new tab)");
+});
+
+test("in Spanish an alert is a Spanish sentence around the NWS's own event name, said and shown", () => {
+  setLanguageForTest("es");
+  try {
+    assert.match(alertSaid(alert(), NOW), /^Alerta meteorológica: Severe Thunderstorm Warning hasta 6:45\sPM\.$/u);
+    assert.match(alertLine(alert({ onset: "2026-10-24T23:00:00Z", ends: "2026-10-25T01:00:00Z", event: "Heat Advisory" }), NOW), /^Heat Advisory de 7:00\sPM a 9:00\sPM$/u);
+    assert.equal(alertSaid(alert({ ends: null }), NOW), "Alerta meteorológica: Severe Thunderstorm Warning.");
+    assert.equal(nwsLinkName(alert()), "Severe Thunderstorm Warning: aviso del Servicio Meteorológico Nacional (se abre en una pestaña nueva)");
+  } finally {
+    setLanguageForTest("en");
+  }
 });
 
 test("only warnings rated Severe or Extreme interrupt", () => {

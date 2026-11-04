@@ -960,6 +960,11 @@ export function placeLabelPaint(id, strong = accessibilityOn(), dark = darkMapOn
  * on every house at zoom 18, 13 px so they do not crowd each other out; the base map's italics and letter spacing go.
  * The route numbers in their shields are 12 px (the base map's 8) with the shield drawn 1.5 times as large (1.2 for
  * its 0.8), so the number still fits it. The names, filters and zooms are the base map's own.
+ *
+ * The route numbers are quiet: the owner, 2026-11-04, "In dark mode all the route numbers are hard to see" and "they
+ * aren't really that important. They are mostly roads we won't use". So a mid grey, legible and no more: 7.6:1 on
+ * the light map's white shield, and on the dark map's black shield (the dark sprite's) a light grey, 8.3:1, where
+ * the light map's dark grey was 1.4:1 and could not be read.
  */
 export const OTHER_LABEL = {
   font: ROAD_LABEL.font,
@@ -981,10 +986,11 @@ export const OTHER_LABEL = {
   water: "#1e3a8a",
   island: ROAD_LABEL.color,
   address: "#57534e",
-  shield: { size: 12, iconSize: 1.2, color: "#2e2a2b" },
+  shield: { size: 12, iconSize: 1.2, color: "#57534e", darkColor: "#a8a29e" },
   /**
    * On the dark map (the owner, 2026-11-01: battery audit): the street names' dark halo, and a light tint of each
-   * colour, 7:1 or more on it, so a park still reads green and a creek blue. The shields keep their own paint.
+   * colour, 7:1 or more on it, so a park still reads green and a creek blue. The shields keep their own paint; the
+   * number in one is shield.darkColor.
    */
   dark: {
     poiColors: ["#86efac", "#93c5fd", "#c4b5fd", "#7dd3fc", "#fdba74", "#f9a8d4"],
@@ -1039,7 +1045,7 @@ function clearOtherLabel(layer, dark = false) {
         ...layer,
         filter: laterMotorways(layer.filter),
         layout: { ...layer.layout, "text-font": [L.font], "text-size": L.shield.size, "icon-size": L.shield.iconSize },
-        paint: { ...layer.paint, "text-color": L.shield.color },
+        paint: { ...layer.paint, "text-color": dark ? L.shield.darkColor : L.shield.color },
       };
     default:
       return named(dark ? D.water : L.water);
@@ -1131,11 +1137,26 @@ export function withClearRoadLabels(layers, strong = accessibilityOn(), dark = f
  * drawn along the line from TRAIL_LABEL_MIN_ZOOM (zoom 10 since the owner's "label the long ones"), in the
  * street names' face, size and white halo (ROAD_LABEL; 20 px and shortened in a ride, as they are) but in the
  * purple of the off-road path's rails (FACILITIES, `path`): 10.9:1 on the halo, near-black purple (15.2:1) with the
- * accessibility switch. The layer is under the base map's labels, so a street name or a station's wins a place
- * both want; and the climbs go under it (MapView). From zoom 15 the base map names every path too, in the same
- * purple (roadLabelPaint). The name is on the canvas, out of a screen reader's reach; the road panel says it.
+ * accessibility switch. From zoom 15 the base map names every path too, in the same purple (roadLabelPaint). The
+ * name is on the canvas, out of a screen reader's reach; the road panel says it.
+ *
+ * MORE OF THEM. The owner, 2026-11-04, of the route numbers: "they aren't really that important. They are mostly roads
+ * we won't use", and "If anything more labeling on the longer distance trails". Measured on the live tiles over seven
+ * views of z10-13 (Rock Creek, the Metropolitan Branch, Sligo Creek, the Mount Vernon and Capital Crescent trails),
+ * no trail name was drawn in any, for three reasons, each fixed here:
+ * - the stress layer's lines come cut into a piece per segment and a feature per class, too short for a name: the
+ *   names come from a layer of their own, TRAIL_NAME_TILE_LAYER, a joined and smoothed line per name
+ *   (core/stress_tiles.py, TRAIL_NAME_LAYER);
+ * - a name could bend only 30 degrees along a trail's curves: maxAngle is MapLibre's own 45;
+ * - the layer was under all of the base map's labels, so every street name, route number, park and neighbourhood
+ *   took its place first: it is now over them (lib/mapGlue.ts addStressOverlay), and the base map's labels give way
+ *   to a trail's name. The app's own marks (stations, the route, its stops) stay over it. In a ride the street names
+ *   are lifted over it as before (lib/rideLabelOrder.ts), and the climbs go under the lowest name (MapView).
+ * Together, 22 names in those seven views.
  */
 export const TRAIL_LABEL_LAYER_ID = "trail-name";
+/** The stress tiles' layer of the trails' names (core/stress_tiles.py, TRAIL_NAME_LAYER). */
+export const TRAIL_NAME_TILE_LAYER = "trail_names";
 // From zoom 10 (the owner, 2026-10-21: "And futher out obviously label the long ones" ... "Basically
 // anything long"): the zoomed-out tiles carry the long trails' names too (core/stress_tiles.py).
 export const TRAIL_LABEL_MIN_ZOOM = 10;
@@ -1145,9 +1166,10 @@ export const TRAIL_LABEL = {
   /** On the dark map, on the street names' dark halo: a light violet (the owner, 2026-11-01: battery audit). */
   darkColor: "#c4b5fd",
   darkStrongColor: "#f5f3ff",
-  // MapLibre's own spacing, so a name finds a place between the street and station names; a gentle bend at most, so it reads.
+  // MapLibre's own spacing, so a name finds a place between the street and station names; MapLibre's own bend, so a
+  // name can follow a creek trail's curves (2026-11-04: 30 placed almost none).
   spacing: 250,
-  maxAngle: 30,
+  maxAngle: 45,
   padding: 6,
 };
 
@@ -1179,7 +1201,7 @@ export function trailLabelLayers(sourceId = "stress", when = DEFAULT_WHEN, stron
       id: TRAIL_LABEL_LAYER_ID,
       type: "symbol",
       source: sourceId,
-      "source-layer": STRESS_TILE_LAYER,
+      "source-layer": TRAIL_NAME_TILE_LAYER,
       minzoom: TRAIL_LABEL_MIN_ZOOM,
       filter: stressFilters(when)[TRAIL_LABEL_LAYER_ID],
       layout: {

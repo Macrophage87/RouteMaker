@@ -11,7 +11,7 @@
  * (no RECORD_AUDIO); an app built before the plugin shows no Speak.
  */
 import { nativeBridge, type CapacitorBridge } from "./nativeShell.ts";
-import { language, speechLang } from "./i18n.ts";
+import { language, speechLang, t } from "./i18n.ts";
 
 
 interface Recognition {
@@ -65,17 +65,17 @@ export function speechSupported(env: SpeechEnv | undefined = browserEnv(), app: 
   return app ? appListens(app) : ctorOf(env) !== null;
 }
 
-export const SPEAK_LABEL = "Speak";
-export const LISTENING_SAID = "Listening. Say the issue, then tap Send.";
+export const SPEAK_LABEL = t("Speak");
+export const LISTENING_SAID = t("Listening. Say the issue, then tap Send.");
 export const SPEECH_FAILED: Record<string, string> = {
-  "not-allowed": "The microphone is not allowed; allow it in the browser's settings, or type the issue.",
-  "no-speech": "Nothing was heard. Tap Speak and try again, or type the issue.",
-  network: "Speech needs a connection here. Type the issue instead.",
-  "service-not-allowed": "Speech is not allowed here. Type the issue instead.",
-  "audio-capture": "No microphone was found. Type the issue instead.",
-  unavailable: "This phone has no speech input. Type the issue instead.",
+  "not-allowed": t("The microphone is not allowed; allow it in the browser's settings, or type the issue."),
+  "no-speech": t("Nothing was heard. Tap Speak and try again, or type the issue."),
+  network: t("Speech needs a connection here. Type the issue instead."),
+  "service-not-allowed": t("Speech is not allowed here. Type the issue instead."),
+  "audio-capture": t("No microphone was found. Type the issue instead."),
+  unavailable: t("This phone has no speech input. Type the issue instead."),
 };
-export const SPEECH_OTHER_FAILED = "Speech did not work. Type the issue instead.";
+export const SPEECH_OTHER_FAILED = t("Speech did not work. Type the issue instead.");
 
 /**
  * Listen once: each result's words (cut to `max` characters) go to `onText` as they come; `onEnd` gets null when it
