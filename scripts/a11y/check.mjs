@@ -3255,6 +3255,9 @@ if (mine()) {
   await sleep(150);
   const inside = await p.eval("({ open: document.querySelector('.ride-settings-dialog').open, live: document.querySelectorAll('.ride-settings-dialog [aria-live]').length })");
   check("ride: a tap inside the settings popup leaves it open, and the cues are said from inside it (the screen behind is inert)", inside.open && inside.live === 2, JSON.stringify(inside));
+  // Every button in the popup, Done included, is a 44 px target (the owner's 44 px rule; Done was 35 px in v0.19.1's review).
+  const popupTargets = await p.eval("[...document.querySelectorAll('.ride-settings-dialog button')].filter((b) => b.getClientRects().length && !b.closest('details:not([open]) > :not(summary)')).map((b) => ({ name: b.textContent.trim() || b.getAttribute('aria-label'), h: Math.round(b.getBoundingClientRect().height) }))");
+  check("ride: every button in the settings popup, Done included, is at least 44 px tall", popupTargets.length > 0 && popupTargets.every((x) => x.h >= 44), JSON.stringify(popupTargets));
   // Escape closes the popup alone, the focus back on the Settings bubble; Done does the same.
   await p.key("Escape", "Escape", 27);
   await sleep(200);
@@ -5852,7 +5855,7 @@ const failed = results.filter((r) => !r.ok);
 // Ordering favorites (2026-10-30) adds four: Edit's arrows at 320 px, names whole with fixed columns, a move saved and
 // said, and one to the bottom.
 // The ride's graphs (the v0.19.0 release review, findings 1, 4, 11 and 16, and its reviews of #928) add nine.
-const EXPECTED = 707;
+const EXPECTED = 712;
 if (SHARDS > 1) {
   // A shard runs only part of the count; CI's a11y job adds the shards' up and compares them with EXPECTED.
   writeFileSync(`${SHOTS}/a11y-count.txt`, `${results.length}\n`);
