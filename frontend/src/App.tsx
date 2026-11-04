@@ -7,6 +7,8 @@ import { rideViewKept } from "./lib/rideViewKept.ts";
 import { RoadInfoDialog } from "./RoadInfoDialog.tsx";
 import { GoSpotDialog, type SpotRequest } from "./GoSpotDialog.tsx";
 import { MapTools } from "./MapTools.tsx";
+import { ReachSheet } from "./ReachSheet.tsx";
+import { REACH_DEFAULT, reachFromHash, type ReachView } from "./lib/reach.ts";
 import { t } from "./lib/i18n.ts";
 import { APP_VERSION, versionShort } from "./lib/appVersion.ts";
 import { ACCESS_LABEL, ACCESS_MODE_CLASS, accessModeParts, accessModeToggle, browserStore, readAccessMode, writeAccessMode } from "./lib/accessMode.ts";
@@ -39,7 +41,7 @@ import { chooseUnits, units, unitsReloadOwed } from "./lib/units.ts";
 import { RETURN_PARAM as GARMIN_RETURN_PARAM, garminReturnFrom, readGarmin, withoutReturn } from "./lib/garminLink.ts";
 import { RETURN_PARAM as WAHOO_RETURN_PARAM, readWahoo, wahooReturnFrom } from "./lib/wahooLink.ts";
 import { endsOnFoot, layersTurnedOn, presetNamesRide, presetSaid, runs, twoPointsOnly, usesBikeshare, type PresetId } from "./lib/presets.ts";
-import { RUN_PACE_EVENT, paceOf, readRunPace } from "./lib/runPace.ts";
+import { RUN_PACE_EVENT, paceKmh, paceOf, readRunPace } from "./lib/runPace.ts";
 import { atFromHash, decodePlan, encodePlan } from "./lib/planHash.ts";
 import { RouteScheduler, type SchedulerState } from "./lib/routeScheduler.ts";
 import { confirmedUpTo, sendsConfirmation, spanKm } from "./lib/longRide.ts";
@@ -930,6 +932,8 @@ export function App() {
   // Settings). The planner stays in the page, hidden,
   // so nothing it holds is lost (OWNER-DECISIONS 312).
   const [view, setView] = useState<PanelView>("planner");
+  // Reach's From/To, how several points combine and Calm streets (ReachSheet.tsx); a link with `reach=` opens Reach.
+  const [reachView, setReachView] = useState<ReachView>(() => reachFromHash(OPENED_HASH) ?? REACH_DEFAULT);
   // With a route shown the points are two or three lines and "Edit points" (the mockup's route view);
   // this opens the search, Add point and the rest again.
   const [, setEditPoints] = useState(false);
@@ -3451,6 +3455,11 @@ export function App() {
   // Back from Garmin or Wahoo: Settings, where its line says what happened.
   useEffect(() => {
     if (GARMIN_RETURNED !== null || WAHOO_RETURNED !== null) openView("settings", null);
+    // A shared Reach link (lib/reach.ts): Plan, with the rings.
+    else if (reachFromHash(OPENED_HASH)) {
+      if (modeRef.current !== "plan") changeMode("plan");
+      openView("reach", null);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on arrival
   }, []);
   // Back (or Escape): to the sheet this one was opened from, or the planner, and the focus to what opened it.
@@ -6642,7 +6651,7 @@ export function App() {
           )}
         </div>
       )}
-      {!riding && !goMode && <PlanMapChips onFood={(chip) => openView("food", chip)} onWater={(chip) => openView("nearest", chip)} onPlaces={openPlaces} />}
+      {!riding && !goMode && <PlanMapChips onFood={(chip) => openView("food", chip)} onWater={(chip) => openView("nearest", chip)} onPlaces={openPlaces} onReach={(chip) => openView("reach", chip)} />}
       {/* In Plan, Undo and Redo are in the plan's bar at the top of the map instead. */}
       {!riding && narrow && !planFirst && !goMode && (can.undo || can.redo) && (
         // On a phone the sheet may be hidden while the rider edits the map,
@@ -7020,6 +7029,20 @@ export function App() {
                 announcements: { level: announceLevel(announceChoice, mode), choose: chooseAnnounce },
                 signInAvailable: me.sign_in,
               }}
+            />
+            <ReachSheet
+              open={view === "reach" && !goMode && !riding}
+              onBack={sheetNav.back}
+              backLabel={sheetNav.backLabel("reach")}
+              getMap={getMap}
+              points={points}
+              preset={preset}
+              dials={dials}
+              runPaceKmh={paceKmh(runPace)}
+              view={reachView}
+              onView={setReachView}
+              home={myGo.home?.point ?? null}
+              onRideSettings={(opener) => openView("ride", opener, true)}
             />
             <NearestSheet nav={sheetNav}>
               <NearestFinder {...nearestProps} folded={false} />

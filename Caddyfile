@@ -334,7 +334,7 @@
 		# over mobile data in Ride mode) and carry no secret: only these paths, so no answer
 		# that holds a session's token is compressed beside what a request put in it
 		# (review speed-4). The beta's nginx compresses JSON already.
-		@route_answers path /api/route /api/stop-order /api/nearest
+		@route_answers path /api/route /api/stop-order /api/nearest /api/reach
 		encode @route_answers zstd gzip {
 			match {
 				header Content-Type application/json*

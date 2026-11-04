@@ -10881,3 +10881,14 @@ summary.closure-notices-heading {
   margin: 4px 0 0;
   padding-inline-start: 20px;
 }
+
+/* Reach (ReachSheet.tsx, Stephen 2026-11-04): the answer first, then three short choices, then the rings behind a fold. */
+.reach-sheet { display: flex; flex-direction: column; gap: 0.6rem; padding: 0 0.25rem 1rem; }
+.reach-answer { font-size: 1.05rem; font-weight: 600; margin: 0.25rem 0 0; min-height: 1.5em; }
+.reach-choice { border: 0; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0.25rem 1rem; }
+.reach-choice legend { font-weight: 600; padding: 0; margin-bottom: 0.25rem; }
+.reach-choice label, .reach-calm { display: inline-flex; align-items: center; gap: 0.35rem; min-height: 44px; }
+.reach-ride { margin: 0; }
+.reach-sheet .hint { margin: 0; }
+.reach-rings ul { margin: 0.25rem 0; padding-left: 1.25rem; }
+.reach-rings h3 { font-size: 1rem; margin: 0.5rem 0 0; }

@@ -25,7 +25,8 @@
       "locate",
       "status",
       "sources_to_targets",
-      "height"
+      "height",
+      "isochrone"
     ],
     "service": {
       "proxy": "ipc:///tmp/loki"
