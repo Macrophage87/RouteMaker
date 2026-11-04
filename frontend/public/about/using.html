@@ -815,7 +815,7 @@ says they are not available, and with no signal it says it needs a connection. T
 safety line, About Ride mode and <strong>Done</strong>. Each change shows at once. A new Units choice does not reload
 the page in a ride: the ride carries on, and the screen, the cue list and the voice switch to the new units straight
 away. The rest of the app follows with one reload when you press Done on the ride summary. Done, Escape, the back
-gesture, a tap on the map around the popup or leaving the screen alone closes it, and the focus goes back to the gear;
+gesture, or a tap on the map around the popup closes it (being left alone does not), and the focus goes back to the gear;
 while it is open, cues are still said to a screen reader. Pressing More again, or Escape, closes the column. Opening
 Detour, a dock list or 311 closes it too. The round <strong>compass</strong> at the map's top left, under the turn
 card, turns with the map, and a press switches between north up and the map turning to your heading, the default, kept
@@ -857,11 +857,12 @@ for an Extreme alert or a Severe warning; rain is said when it is first forecast
 and when it turns heavy. Both stay in the bottom panel until you press the big <strong>Dismiss</strong> button (an X) beside them; an alert you have not dismissed, or rain
 coming within 15 minutes or turning heavy, brings them back.</li>
 <li><strong>Left alone.</strong> During a ride or Roam, if you have moved the map by hand, 30 seconds
-with no touch, wheel or key and nothing open puts it back on you, following at the ride's zoom (<strong>Where am
+with no touch, wheel, key or focus move and nothing open puts it back on you, following at the ride's zoom (<strong>Where am
 I?</strong> does it at once). The same 30 seconds closes a map card (a stop, place, station, closure or climb), the
 road info and the side menus (Detour, More, the dock, 311, Riders, Send alert), and the map then goes back to you. Kept
 open: a menu you are typing or speaking in (a Detour search, Send alert while its box holds words or Speak listens) and anything asking you
-something (Send alert's Send to everyone?, Already done?, a stop's name, the group's question, Resume your ride?). In
+something (Send alert's Send to everyone?, Already done?, a stop's name, Resume your ride?), and a dialog with the focus in it, such as Ride settings or the join sheet.
+The group's "Show me as a dot?" question still closes, as its No. In
 accessibility mode nothing closes on its own. A map card's close button (X) is 44 px across.</li>
 <li><strong>Off the route</strong>, RouteMaker plans again from where you are, and <strong>Reroute</strong>
 and <strong>Keep going</strong> appear just under End ride and Go round, as big as they are. On a route you picked over the top-ranked
@@ -1227,7 +1228,9 @@ become via points. Named points become stops and keep their names; a name that o
 such as Stop 2 or Start, is dropped, and a point named Via point, as RouteMaker writes them, stays a via
 point.</li>
 <li>In Plan, <strong>Snap to the map's streets</strong> turns the track into a plan you can change, or
-<strong>Follow the file exactly</strong> rides it as drawn, for a road closed for an event. Load route's <strong>Snap to roads</strong> and <strong>Exactly as drawn</strong> are the same choice, made before the file opens.</li>
+<strong>Follow the file exactly</strong> rides it as drawn, for a road closed for an event. Load route's <strong>Snap to roads</strong> and <strong>Exactly as drawn</strong> are the same choice, made before the file opens.
+Except with Follow the file exactly, which keeps them, a file that goes round a street corner on its crosswalks is
+put back on the road at that corner, so a plain corner is not drawn as a road crossing.</li>
 </ul>
 
 </div></details>

@@ -385,10 +385,14 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
   over OpenStreetMap's stands within 25 m (123 OSM stands dropped; OSM lockers and bike rooms are
   always kept). Their own licence fields are empty and they sit outside the portal; the owner
   (2026-11-04): "Baltimore city data is public domain, just like DC. It's in the city code."
-  Credit: Baltimore City Department of Transportation.
+  Credit: Baltimore City Department of Transportation (its own row on the Acknowledgements page,
+  linked to the parking page above).
 - Licence: open, by Baltimore City Code Art. 1 §9-1(h)
-  (<https://codes.baltimorecity.gov/us/md/cities/baltimore/code/1/9-1#(h)>).
-- Records: `fixtures/datasets/README.md`.
+  (<https://codes.baltimorecity.gov/us/md/cities/baltimore/code/1/9-1#(h)>), which names the Open Data
+  Portal; the rack layers, outside it, rest on the owner's reading above.
+- Records: `fixtures/datasets/README.md` for the portal items. The three rack layers have no row there
+  (no hash was kept): their record is the retrieval date and counts above and the `source` line of
+  `frontend/src/amenity-data/bike-parking.json`, rebuilt by `scripts/build_bike_parking.py --baltimore`.
 
 ## City of Alexandria
 
