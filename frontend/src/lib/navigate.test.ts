@@ -7,7 +7,7 @@ import { readFileSync } from "node:fs";
 import type { DescriptionEntry, RouteResponse } from "./api.ts";
 import { unitsFirst } from "./format.ts";
 import { setUnitsForTest } from "./units.ts";
-import type { LonLat } from "./geo.ts";
+import { haversineM, type LonLat } from "./geo.ts";
 import { spokenDistance } from "./format.ts";
 import { cueParts } from "./cueShown.ts";
 import {
@@ -912,6 +912,150 @@ test("jitter back 50 m: progress goes back exactly the tolerance", () => {
   const s = ride(model, "full", 0, 400).state;
   const out = step(model, s, fix(pointAt(model, 350)), "full");
   assert.ok(Math.abs((out.state.progressM ?? 0) - 370) < 0.01, `${out.state.progressM}`);
+});
+
+/** East 1,000 m on A Street and back west on it to 300 m, then right (north) 500 m on Back Street: the turn at 1,700 m. */
+function outAndBack(): RideModel {
+  return rideModel({
+    ...lRoute(),
+    geometry: { type: "LineString", coordinates: [at(0, 0), at(1000, 0), at(300, 0), at(300, 500)] },
+    distance_m: 2200,
+    leg_ends: [3],
+    description: [
+      stretch(0, 1700, "0.0 to 1.1 mi (0.0 to 1.7 km): A Street, low stress (LTS 1).", { street: "A Street" }),
+      stretch(1700, 2200, "1.1 to 1.4 mi (1.7 to 2.2 km): Right onto Back Street, low stress (LTS 1).", {
+        street: "Back Street",
+        turn: { movement: "right", onto: "Back Street", control: "none", severity: null },
+      }),
+    ],
+  });
+}
+
+/** Ride from point to point, `stepM` a fix, from `state`; every event said. */
+function rideThrough(model: RideModel, points: LonLat[], state: RideState = startState(), extra: Partial<RideFix> = {}, stepM = 5) {
+  const events: RideEvent[] = [];
+  let s = state;
+  for (let i = 1; i < points.length; i += 1) {
+    const [a, b] = [points[i - 1], points[i]];
+    const n = Math.max(1, Math.round(haversineM(a, b) / stepM));
+    for (let k = i === 1 ? 0 : 1; k <= n; k += 1) {
+      const p: LonLat = [a[0] + ((b[0] - a[0]) * k) / n, a[1] + ((b[1] - a[1]) * k) / n];
+      const out = step(model, s, fix(p, extra), "full");
+      s = out.state;
+      events.push(...out.events);
+    }
+  }
+  return { state: s, events };
+}
+
+test("a ride resumed on the way back of an out-and-back gets the return leg's cues", () => {
+  const model = outAndBack();
+  assert.equal(model.cues[0].street, "Back Street");
+  // Resumed at x = 600 m riding west: on the way back (1,400 m along), not the way out (600 m). By the movement of the
+  // first fixes, then by the browser's heading from the first fix.
+  for (const extra of [{}, { headingDeg: 270 }]) {
+    const r = rideThrough(model, [at(600, 0), at(300, 0), at(300, 100)], startState(), extra);
+    const label = JSON.stringify(extra);
+    assert.deepEqual(
+      r.events.filter((e) => e.kind !== "cue"),
+      [],
+      `${label}: never off route on the turn the plan makes`,
+    );
+    assert.ok(r.events.some((e) => e.cue?.street === "Back Street" && e.phase === "now"), `${label}: ${r.events.map((e) => e.spoken)}`);
+    assert.ok(Math.abs((r.state.progressM ?? 0) - 1800) < 6, `${label}: ${r.state.progressM}`);
+  }
+  // Riding east from x = 600 m is the way out, as before.
+  const out = rideThrough(model, [at(600, 0), at(800, 0)]);
+  assert.ok(Math.abs((out.state.progressM ?? 0) - 800) < 6, `${out.state.progressM}`);
+});
+
+test("a ride resumed on two passes of the line waits, saying nothing, until the way the rider is going is known", () => {
+  const model = outAndBack();
+  // Standing still at x = 600 m: no heading, no movement. Not placed, nothing said.
+  let s = startState();
+  for (let i = 0; i < 5; i += 1) {
+    const out = step(model, s, fix(at(600, 1 - (i % 2) * 2), { speedMs: 0 }), "full");
+    s = out.state;
+    assert.deepEqual(out.events, []);
+  }
+  assert.equal(s.progressM, null);
+  // One pass only (x = 200 m is before the way back reaches it): placed at once, as before.
+  assert.ok(Math.abs((step(model, startState(), fix(at(200, 0), { speedMs: 0 }), "full").state.progressM ?? 0) - 200) < 1);
+  // Start at the start: at the start at once, as before.
+  assert.ok(Math.abs((step(model, startState(), fix(at(10, 0), { speedMs: 0 }), "full").state.progressM ?? 99) - 10) < 1);
+});
+
+test("a loop started part-way round does not arrive at once", () => {
+  // A 4 km square loop that comes back west along y = 0; the rider starts 70 m east of the start, on the way back in.
+  const model = bare([at(0, 0), at(0, 1000), at(1000, 1000), at(1000, 0), at(0, 0)]);
+  const r = rideThrough(model, [at(70, 0), at(0, 0), at(0, 300)]);
+  assert.equal(r.state.arrived, false);
+  assert.deepEqual(
+    r.events.filter((e) => e.phase === "arrive" || e.kind !== "cue"),
+    [],
+    r.events.map((e) => e.spoken).join(" | "),
+  );
+  assert.ok(Math.abs((r.state.progressM ?? 0) - 300) < 6, `${r.state.progressM}`);
+  // ...and arrives once round.
+  const round = ride(model, "full", 305, model.lengthM, 5, r.state);
+  assert.equal(round.state.arrived, true);
+});
+
+test("a ride first placed just short of its end arrives only after riding on to it", () => {
+  const model = rideModel(lRoute());
+  const first = step(model, startState(), fix(pointAt(model, model.lengthM - 15)), "full");
+  assert.equal(first.state.arrived, false);
+  assert.deepEqual(first.events, []);
+  const on = ride(model, "full", model.lengthM - 7, model.lengthM, 1, first.state);
+  assert.equal(on.state.arrived, true);
+});
+
+test("riding the line backwards for a block is noticed", () => {
+  const model = rideModel(lRoute());
+  const s = ride(model, "full", 0, 700).state;
+  // Back west along A Street from 700 m: off route (so the app re-plans) once 200 m back, said once.
+  const back = rideThrough(model, [at(700, 0), at(300, 0)], s);
+  assert.deepEqual(
+    back.events.map((e) => e.spoken),
+    [OFF_ROUTE_SAID],
+  );
+  assert.equal(back.state.off, true);
+  // Progress stays where the rider turned: the way back and a re-plan count from there.
+  assert.ok(Math.abs((back.state.progressM ?? 0) - 700) < 6, `${back.state.progressM}`);
+  assert.ok(wayBack(model, back.state)!.metres > 350);
+  // Turned round again: back on the route once riding forward along it, where the rider is.
+  const again = rideThrough(model, [at(300, 0), at(330, 0)], back.state);
+  assert.equal(again.state.off, false);
+  assert.deepEqual(
+    again.events.map((e) => e.kind),
+    ["back-on-route"],
+  );
+  assert.ok(Math.abs((again.state.progressM ?? 0) - 330) < 6, `${again.state.progressM}`);
+});
+
+test("a short way back (a missed turn taken again, GPS at a stop) is not the wrong way", () => {
+  const model = rideModel(lRoute());
+  let s = ride(model, "full", 0, 700).state;
+  // 150 m back and on again.
+  const back = rideThrough(model, [at(700, 0), at(550, 0), at(900, 0)], s);
+  assert.equal(
+    back.events.some((e) => e.kind === "off-route"),
+    false,
+  );
+  // A long stop with the fix wandering 25 m either way.
+  s = back.state;
+  for (let i = 0; i < 120; i += 1) {
+    const out = step(model, s, fix(at(900 + (i % 2 ? 25 : -25), 0), { speedMs: 0 }), "full");
+    s = out.state;
+    assert.equal(out.events.some((e) => e.kind === "off-route"), false, `${i}`);
+  }
+  // The way back of an out-and-back after a stop at its far end is not the wrong way either.
+  const model2 = outAndBack();
+  let t = ride(model2, "full", 0, 990).state;
+  for (let i = 0; i < 20; i += 1) t = step(model2, t, fix(at(995, 0), { speedMs: 0 }), "full").state;
+  const home = rideThrough(model2, [at(995, 0), at(300, 0), at(300, 100)], t);
+  assert.equal(home.state.off, false);
+  assert.equal(home.events.some((e) => e.kind === "off-route"), false, home.events.map((e) => e.spoken).join(" | "));
 });
 
 test("speech has no metric: a cue with metres, two brackets in one sentence", () => {
