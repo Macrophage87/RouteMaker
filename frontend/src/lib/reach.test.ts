@@ -14,6 +14,7 @@ import {
   reachSentence,
   requestReach,
   sharesHome,
+  toggleMinutes,
   withReach,
   type ReachAnswer,
 } from "./reach.ts";
@@ -95,7 +96,7 @@ test("map features: largest first, the calm ones marked", () => {
 });
 
 test("the link: reach= added to the plan's fragment, read back, replaced not repeated", () => {
-  const view = { direction: "to" as const, combine: "each" as const, calm: false };
+  const view = { direction: "to" as const, combine: "each" as const, calm: false, minutes: [15, 30, 45, 60] };
   assert.equal(reachHashParam(view), "reach=to.each");
   const hash = withReach("#v=2&q=abc&preset=fast", view);
   assert.equal(hash, "#v=2&q=abc&preset=fast&reach=to.each");
@@ -121,4 +122,17 @@ test("a refusal is a sentence to say", async () => {
   assert.ok(!lost.ok && /connection/.test(lost.message));
   const fine = await requestReach({}, async () => new Response(JSON.stringify(ANSWER), { status: 200 }));
   assert.ok(fine.ok);
+});
+
+test("only some rings: sent, kept in the link, and never none", () => {
+  const view = { ...REACH_DEFAULT, minutes: [15, 45] };
+  assert.deepEqual(reachBody([HERE], "default", startDials("default"), view).minutes, [15, 45]);
+  assert.deepEqual(reachBody([HERE], "default", startDials("default"), REACH_DEFAULT).minutes, [15, 30, 45, 60]);
+  assert.equal(withReach("#v=2", view), "#v=2&reach=from.any.calm.15.45");
+  assert.deepEqual(reachFromHash("#reach=from.any.calm.15.45")?.minutes, [15, 45]);
+  // An older link, with no minutes named, opens all four.
+  assert.deepEqual(reachFromHash("#reach=from.any")?.minutes, [15, 30, 45, 60]);
+  assert.deepEqual(toggleMinutes([15, 45], 30), [15, 30, 45]);
+  assert.deepEqual(toggleMinutes([15, 45], 15), [45]);
+  assert.deepEqual(toggleMinutes([45], 45), [45]);
 });

@@ -27,6 +27,8 @@ import {
   requestReach,
   sharesHome,
   sideBySide,
+  toggleMinutes,
+  REACH_MINUTES,
   withReach,
   type ReachAnswer,
   type ReachCombine,
@@ -211,6 +213,21 @@ export function ReachSheet({ open, onBack, backLabel, getMap, points, preset, di
           <label>
             <input type="radio" name="reach-direction" checked={view.direction === "to"} onChange={() => direction("to")} /> {multi ? t("To the points") : t("To the point")}
           </label>
+        </fieldset>
+
+        <fieldset className="reach-choice">
+          <legend>{t("Minutes")}</legend>
+          {REACH_MINUTES.map((m) => (
+            <label key={m}>
+              <input
+                type="checkbox"
+                checked={view.minutes.includes(m)}
+                disabled={view.minutes.length === 1 && view.minutes.includes(m)}
+                onChange={() => onView({ ...view, minutes: toggleMinutes(view.minutes, m) })}
+              />{" "}
+              {t("{minutes} min", { minutes: m })}
+            </label>
+          ))}
         </fieldset>
 
         {multi && (
