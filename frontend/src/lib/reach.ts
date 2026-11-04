@@ -16,6 +16,7 @@ import { closureFields, dialFields, type Dials } from "./dials.ts";
 import { areaText, KM_PER_MILE } from "./format.ts";
 import { t } from "./i18n.ts";
 import { haversineM, type LonLat } from "./geo.ts";
+import { withoutSecret } from "./rideSeal.ts";
 import type { PresetId } from "./presets.ts";
 
 export type ReachDirection = "from" | "to";
@@ -81,6 +82,8 @@ export interface ReachAnswer {
   stress_used: number | null;
   groups: ReachGroup[];
   calm: { stress: number; groups: ReachGroup[] } | null;
+  /** False when this ride type and slider have no calmer rings to show (Calm streets is then hidden). */
+  calm_offered?: boolean;
   unplaced: number[];
 }
 
@@ -211,7 +214,7 @@ export function reachNotes(answer: ReachAnswer, stress: number | undefined, poin
 }
 
 /** One colour per point for Side by side; the first is the rings' own colour. */
-export const REACH_COLOURS = ["#7b4fd6", "#d6457b", "#2f8fd6", "#c98a00", "#2fa36b"] as const;
+export const REACH_COLOURS = ["#7b4fd6", "#d6457b", "#2f8fd6", "#a86f00", "#23804f"] as const;
 export const REACH_CALM_COLOUR = "#00897b";
 
 export interface ReachFeature {
@@ -279,3 +282,12 @@ export function sharesHome(points: readonly LonLat[], home: LonLat | null | unde
 
 /** Square miles in square kilometres, for tests and the MCP's figures. */
 export const KM2_PER_SQ_MI = KM_PER_MILE * KM_PER_MILE;
+
+/** The link "Share these rings" hands out: the plan with its rings, never the Group or Mass Ride
+ * secret (`k=`), since a ring link is often posted where anyone can read it. */
+export function reachShareLink(
+  where: { origin: string; pathname: string; search: string; hash: string },
+  view: ReachView,
+): string {
+  return withoutSecret(`${where.origin}${where.pathname}${where.search}${withReach(where.hash, view)}`);
+}

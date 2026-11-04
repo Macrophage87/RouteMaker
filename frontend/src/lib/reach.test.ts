@@ -11,6 +11,7 @@ import {
   reachHashParam,
   reachNotes,
   reachOffered,
+  reachShareLink,
   reachSentence,
   requestReach,
   sharesHome,
@@ -135,4 +136,11 @@ test("only some rings: sent, kept in the link, and never none", () => {
   assert.deepEqual(toggleMinutes([15, 45], 30), [15, 30, 45]);
   assert.deepEqual(toggleMinutes([15, 45], 15), [45]);
   assert.deepEqual(toggleMinutes([45], 45), [45]);
+});
+
+test("a shared ring link never carries the Group or Mass Ride secret", () => {
+  const where = { origin: "https://example.org", pathname: "/", search: "", hash: "#p=-77.03,38.9&k=s3cr3tKEY&ride=1" };
+  const link = reachShareLink(where, REACH_DEFAULT);
+  assert.ok(!link.includes("k=s3cr3tKEY"), link);
+  assert.ok(link.includes("p=-77.03,38.9") && link.includes("reach=from.any.calm"), link);
 });

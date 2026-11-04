@@ -255,6 +255,17 @@ class TestCalm:
             assert post(client, body).json()["calm"] is None, body
         assert len(calls(fake)) == 1 + 1 + 1 + 2
 
+    def test_the_answer_says_whether_calm_streets_can_show_anything(self, client, router) -> None:
+        """The page hides Calm streets where it would draw nothing, so it is never a dead box."""
+        router(FakeRouter({"isochrone": isochrone_answer}))
+        for body, offered in (
+            ({"points": [HERE], "preset": "default", "stress": 40, "calm": False}, True),
+            ({"points": [HERE], "preset": "default", "stress": 90, "calm": True}, False),
+            ({"points": [HERE], "preset": "mass-ride", "calm": True}, False),
+            ({"points": [HERE], "preset": "walk", "calm": True}, False),
+        ):
+            assert post(client, body).json()["calm_offered"] is offered, body
+
 
 @pytest.mark.django_db
 def test_places_inside_each_ring_are_counted(client, router, monkeypatch) -> None:

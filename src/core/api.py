@@ -5662,6 +5662,9 @@ class ReachOut(Schema):
     )
     groups: list[ReachGroupOut]
     calm: ReachCalmOut | None
+    calm_offered: bool = Field(
+        description="Whether this ride type and setting have calmer rings to show at all."
+    )
     unplaced: list[int] = Field(
         description="Points the router could not place on this ride type's map (left out)."
     )
