@@ -2476,9 +2476,10 @@ def test_a_hop_says_which_patterns_serve_it():
     frequent = [((600.0, 606.0, 612.0), 120.0, orange, 0, 2), ((603.0, 609.0), 130.0, silver, 0, 2)]
     hop = transit._hop(598.0, frequent)
     assert hop.frequent and hop.serving == (4, 7)
-    timed = [((640.0,), 120.0, orange, 0, 2), ((700.0,), 130.0, silver, 0, 2)]
+    # The train taken is the soonest there, not the first listed nor the lowest index.
+    timed = [((700.0,), 120.0, orange, 0, 2), ((640.0,), 130.0, silver, 0, 2)]
     hop = transit._hop(598.0, timed)
-    assert not hop.frequent and hop.serving == (4,)
+    assert not hop.frequent and hop.serving == (7,)
 
 
 def test_towards_lists_every_train_that_makes_the_ride_by_where_it_is_signed():

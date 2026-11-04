@@ -602,7 +602,7 @@ test("at the station the trip goes on (Stephen, 2026-11-03): no Done while a tra
   // Off a train followed stop by stop: Ride the rest, once, with no press, and no "press Ride the rest" or arrival said first.
   assert.match(ride, /const restNext = !!rest && !!onRideRest && onwardParts\.some\(\(p\) => p\.kind === "transit"\);/);
   assert.match(ride, /if \(!onwardDone \|\| !restNext \|\| !restReady \|\| restAuto\.current \|\| ended\.current\) return;\s*restAuto\.current = true;\s*rideTheRest\(\);/);
-  assert.match(ride, /const restReady = !!rest && restAutoReady\(rest, ride\.fix \?\? null, Date\.now\(\)\);/);
+  assert.match(ride, /const restReady = !!rest && restAutoReady\(rest, tripRef\.current\.lastGood \?\? null, Date\.now\(\)\);/);
   assert.match(ride, /if \(!restShown \|\| !rest \|\| restSaid\.current \|\| restNext\) return;/);
   assert.match(ride, /if \(!\(restNextRef\.current && line === t\(ARRIVED_SAID\)\)\) notify\(line\);/);
   // No bike rack offered at a station the bike goes on from; a ride's walk on keeps it. No next leg beside the ride to go.
