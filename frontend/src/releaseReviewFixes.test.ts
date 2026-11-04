@@ -33,7 +33,8 @@ test("the stop to get off at is marked in words in the trip's steps, not by bold
 });
 
 test("the ride's then-lines and stop by stop's card are the ride's 20 px (S3)", () => {
-  assert.match(css, /\.ride \.cue-then,\s*\.ride \.onboard \{\s*font-size: 20px;\s*\}/);
+  // The boarding card's rows too (Stephen, 2026-11-03).
+  assert.match(css, /\.ride \.cue-then,\s*\.ride \.onboard,\s*\.ride \.boarding \{\s*font-size: 20px;\s*\}/);
   // Large text's own, larger size still wins: it comes after.
-  assert.ok(css.indexOf(".ride-large .cue-then {") > css.indexOf(".ride .onboard {"));
+  assert.ok(css.indexOf(".ride-large .cue-then,\n.ride-large .boarding {") > css.indexOf(".ride .boarding {"));
 });

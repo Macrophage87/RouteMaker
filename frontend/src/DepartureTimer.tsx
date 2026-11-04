@@ -15,6 +15,7 @@ export function DepartureTimer({
   announce,
   onMissed,
   compact = false,
+  noticeOnly = false,
   now = () => Date.now(),
 }: {
   departure: TransitDeparture;
@@ -22,6 +23,8 @@ export function DepartureTimer({
   onMissed?: () => void;
   /** Go's sheet at its smallest: one line, the map label's words, the same milestones and miss. */
   compact?: boolean;
+  /** The ride screen's boarding card shows the departure: here only a close or missed one's notice, its milestones still said. */
+  noticeOnly?: boolean;
   now?: () => number;
 }) {
   const [at, setAt] = useState(now);
@@ -56,11 +59,14 @@ export function DepartureTimer({
       </p>
     );
   }
+  if (noticeOnly && !state.close && !state.missed) return null;
   return (
     <div className="departure">
-      <p className="departure-text">
-        <strong>{departureText(departure)}</strong>
-      </p>
+      {!noticeOnly && (
+        <p className="departure-text">
+          <strong>{departureText(departure)}</strong>
+        </p>
+      )}
       {state.close && !state.missed && (
         <p className="departure-timer notice">
           {t("Cutting it close. Departs in")} <span className="departure-count">{mmss(state.toDepartS)}</span>, {sourceWord(departure)}; {t("time to spare")}{" "}
