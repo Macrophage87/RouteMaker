@@ -396,7 +396,7 @@ def reach(
         "stress_used": used,
         "groups": groups,
         "calm": None if calm_groups is None else {"stress": CALM_STRESS, "groups": calm_groups},
-        # Whether Calm streets can say anything for this ride type and slider (the page hides it if not).
+        # Whether Calm streets can show anything here (the page hides it if not).
         "calm_offered": calm_offered(preset_name, dials),
         "unplaced": unplaced,
     }
