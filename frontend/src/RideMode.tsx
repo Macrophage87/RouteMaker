@@ -255,6 +255,7 @@ import {
   RIDE_REST_FINDING,
   RIDE_REST_HINT,
   approachWords,
+  restAutoReady,
   restFrom,
   restNear,
   restReadySaid,
@@ -266,7 +267,7 @@ import {
 import { onwardActive, onwardStart, onwardStep, type OnwardState } from "./lib/onward.ts";
 import { BOARDING_MS, TRIP_CHECK_MS } from "./lib/tripCheck.ts";
 import { walkModel, walkTurnLine } from "./lib/walkCues.ts";
-import { OnBoardCard } from "./OnBoardCard.tsx";
+import { BoardingCard, OnBoardCard } from "./OnBoardCard.tsx";
 import { t } from "./lib/i18n.ts";
 import { railWord } from "./lib/railWords.ts";
 import { countText } from "./lib/rideGroup.ts";
@@ -747,6 +748,9 @@ const NO_DOTS: readonly LonLat[] = [];
 /** Each graph's bubble icon (lib/iconPaths.ts): a small chart of its own kind. */
 const AHEAD_ICON = { stress: "graph-stress", elevation: "graph-elevation", flow: "graph-flow", corkers: "graph-corkers" } as const;
 const noSearch: DetourDeps["geocode"] = async () => ({ ok: false, status: 0 });
+
+/** How long off the train with no good fix before "press Ride the rest" is said. */
+const REST_WAIT_SAID_MS = 20_000;
 
 export function RideMode({
   route: plannedRoute,
@@ -2568,12 +2572,25 @@ export function RideMode({
   // Off the train (and any walk after it) with a ride still to go: Ride the rest starts by itself, once (Stephen,
   // 2026-11-03: "It should let you switch between modes"). Its button stays for a second try (closures said, no route).
   const restAuto = useRef(false);
+  // Off it by a fresh fix at the stop or past it (restAutoReady): never on the timetable's clock alone, under ground.
+  // The last good fix (a coarse one under ground is no sign of being up at the stop).
+  const restReady = !!rest && restAutoReady(rest, tripRef.current.lastGood ?? null, Date.now());
   useEffect(() => {
     // Only after a train followed stop by stop: walks timed out back to back are no sign the rider is off it.
-    if (!onwardDone || !restNext || restAuto.current || ended.current) return;
+    if (!onwardDone || !restNext || !restReady || restAuto.current || ended.current) return;
     restAuto.current = true;
     rideTheRest();
-  }, [onwardDone]); // eslint-disable-line react-hooks/exhaustive-deps -- once, as the parts after the line end
+  }, [onwardDone, restReady]); // eslint-disable-line react-hooks/exhaustive-deps -- once, off the train and above ground
+  // Off the train with no good fix there yet: after a while, "press Ride the rest" is said once, as off a plain ride.
+  useEffect(() => {
+    if (!onwardDone || !restNext || restReady || !rest || restAuto.current || restSaid.current) return;
+    const timer = window.setTimeout(() => {
+      if (restAuto.current || restSaid.current || ended.current) return;
+      restSaid.current = true;
+      notify(restReadySaid(rest));
+    }, REST_WAIT_SAID_MS);
+    return () => window.clearTimeout(timer);
+  }, [onwardDone, restNext, restReady, rest, notify]);
   // Still to board the first transit after the line (its departure and where its next train is are shown till then).
   const firstTransit = onwardParts.findIndex((p) => p.kind === "transit");
   const toBoard = firstTransit < 0 || onwardIndex < firstTransit || (onwardIndex === firstTransit && (onward?.board?.boardedAt ?? null) === null);
@@ -2581,6 +2598,10 @@ export function RideMode({
   // at the boarding stop, only till its planned departure is near (BOARDING_MS: the rider may be boarding).
   const tripCheckOpen = !!onTripCheck && firstTransit >= 0 && toBoard && (!trip?.shareBike || walking);
   const firstTransitPart = firstTransit >= 0 ? onwardParts[firstTransit] : null;
+  // The boarding card while the first train or bus is still to board (a walk to it shows its turn below the card).
+  const boardingLeg = ride.arrived && toBoard && firstTransitPart?.kind === "transit" && onwardIndex <= firstTransit ? firstTransitPart.leg : null;
+  // The plan's timed departure, only where it is this boarding's (a later MARC's is not the Metro's next train).
+  const boardingDeparture = trip?.departure && trip.boardStep != null && trip.departure.step === trip.boardStep ? trip.departure : null;
   const boardingSince = onwardIndex === firstTransit ? (onward?.board?.since ?? null) : null;
   const tripCheckGate = useRef({ open: tripCheckOpen, boardingSince, waitS: firstTransitPart?.kind === "transit" ? firstTransitPart.leg.waitS : 0 });
   tripCheckGate.current = { open: tripCheckOpen, boardingSince, waitS: firstTransitPart?.kind === "transit" ? firstTransitPart.leg.waitS : 0 };
@@ -2886,7 +2907,9 @@ export function RideMode({
     [riderDots, model, aheadAt === null ? null : Math.round(aheadAt / 200)],
   );
   const aheadShown = aheadAt !== null;
-  const sheetShown = notesShown || restShown || aheadShown;
+  // Off the train but no fresh fix there yet (under ground, or off at another stop): the button, for a press.
+  const restOffered = restShown || (onwardDone && restNext);
+  const sheetShown = notesShown || restOffered || aheadShown;
   // The map's scales and credits sit at the bottom of the screen in a ride (the owner, 2026-10-17: "on the bottom
   // of the page in a ride"), just above the bottom panel while it shows (styles.css --ride-sheet-h).
   const sheetRef = useRef<HTMLDivElement>(null);
@@ -3098,13 +3121,17 @@ export function RideMode({
               <OnBoardCard leg={onwardPart.leg} state={onward.board} />
             ) : (
               <>
-                {onwardPart?.kind === "walk" && onwardIndex > 0 ? null : (
+                {/* Still to board the first train or bus: its line, way, stop to get off and next departure as rows. */}
+                {boardingLeg ? (
+                  <BoardingCard leg={boardingLeg} departure={boardingDeparture} note={onwardIndex === 0 ? (trip?.boardingNote ?? null) : null} />
+                ) : onwardPart?.kind === "walk" && onwardIndex > 0 ? null : (
                   // Everything after the line done: arrived, never the line's end words again.
                   <p className="cue-text">{onwardDone ? (tripGoesOn && rest ? rest.text : arrivedShown(destinationName)) : (trip?.finish?.shown ?? arrivedShown(destinationName))}</p>
                 )}
                 {onwardWalkLine && <p className={onwardIndex > 0 ? "cue-text" : "cue-then"}>{onwardWalkLine}</p>}
                 {/* The boarding's departure, its countdown and milestones as in the trip's panel (said through the ride's outputs). */}
-                {trip?.departure && toBoard && <DepartureTimer departure={trip.departure} announce={notify} />}
+                {/* Its milestones said; on screen only a close or missed departure's notice (the card has its time). */}
+                {trip?.departure && toBoard && <DepartureTimer departure={trip.departure} announce={notify} noticeOnly={!!boardingLeg && !!boardingDeparture} />}
                 {/* Where the next Metro train or Metrobus is while waiting there (v0.9.0), its mark on the map. */}
                 <NextVehicleLine ask={trip?.boarding ?? null} waiting={ride.arrived && toBoard} announce={notify} onMark={setVehicle} />
               </>
@@ -3709,7 +3736,7 @@ export function RideMode({
               )}
             </div>
           )}
-          {restShown && (
+          {restOffered && (
             <div className="actions ride-rest">
               <button type="button" onClick={rideTheRest} aria-describedby={`${settingsId}-rest`}>
                 {RIDE_REST}

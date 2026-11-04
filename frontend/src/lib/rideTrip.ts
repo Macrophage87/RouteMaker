@@ -74,6 +74,13 @@ export interface RideTrip {
   departure: TransitDeparture | null;
   /** The Metro or Metrobus boarding the finish leads to: where its next train or bus is, while waiting (lib/nextVehicle.ts). */
   boarding?: NextVehicleAsk | null;
+  /**
+   * On the boarding card, the share bike's dock before the train ("Dock at X."); the way into the station is not shown
+   * (Stephen, 2026-11-03: "Not all stations require an elevator, some you can just walk through").
+   */
+  boardingNote?: string | null;
+  /** The plan's step of the first train or bus after the line, by its place; null with none (the departure is its own where `step` matches). */
+  boardStep?: number | null;
   rest: RideRest | null;
   /** The line is ridden on a share bike (Ride mode's dock button and undocked time, lib/rideDock.ts). */
   shareBike?: boolean;
@@ -321,7 +328,7 @@ function transitTrip(route: RouteResponse, destination: LonLat | null): RideTrip
   }
   const boarding = boardAt > line ? askOf(steps[boardAt]) : null;
   const onFoot = walksLine(route) ? { turns: lineStep.turns ?? [] } : undefined;
-  return { approach, finish, departure, boarding, rest, shareBike: lineStep.mode === "bikeshare", onward: onwardOf(steps, line), ...(onFoot ? { onFoot } : {}) };
+  return { approach, finish, departure, boarding, boardStep: boardAt > line ? boardAt : null, boardingNote: boardAt > line && dock ? dock : null, rest, shareBike: lineStep.mode === "bikeshare", onward: onwardOf(steps, line), ...(onFoot ? { onFoot } : {}) };
 }
 
 /** A walk step as a line with its turns, where it was routed. */
@@ -503,6 +510,15 @@ export function restNear(rest: Pick<RideRest, "alight" | "to">, here: LonLat | n
   if (!here || !rest.alight) return false;
   if (haversineM(here, rest.alight) <= REST_NEAR_M) return true;
   return firstRideDone && haversineM(here, rest.to) < haversineM(rest.alight, rest.to);
+}
+
+/**
+ * Whether Ride the rest may start by itself once the train is behind the rider: a fresh fix (REST_FIX_MAX_AGE_MS) at
+ * the stop where the transit ends, or past it. The parts after the line can end on the timetable's clock alone,
+ * under ground or on a late train, and a ride started then would be planned for a rider still on board.
+ */
+export function restAutoReady(rest: Pick<RideRest, "alight" | "to">, fix: { point: LonLat; at: number } | null, now: number): boolean {
+  return !!fix && now - fix.at < REST_FIX_MAX_AGE_MS && restNear(rest, fix.point, true);
 }
 
 /** Ride the rest's request: from where the rider is (else the leg's own start) to the destination. */
