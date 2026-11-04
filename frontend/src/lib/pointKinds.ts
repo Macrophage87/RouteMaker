@@ -371,6 +371,26 @@ export function stopNames(points: readonly LonLat[], nameOf: (p: LonLat) => stri
   return out;
 }
 
+/**
+ * Each stop's number in the plan the ride began with (`planned`), by its place in `points`, the plan as it now stands
+ * (a re-route's [here, ...the points left], the same pairs): the plan's stop 3 stays stop 3 after a re-route, as on the
+ * plan, the cue sheet and a group's shared plan (navigate.ts rideModel). Stops are numbered among themselves, via
+ * points left out, as rideModel numbers them. A point the plan did not have (a detour's place) takes the next number
+ * after the plan's, so no two stops share one.
+ */
+export function plannedStopNumbers(points: readonly LonLat[], planned: readonly LonLat[], isVia: (p: LonLat) => boolean): Map<number, number> {
+  const out = new Map<number, number>();
+  const plannedVias = viaIndices(planned, isVia);
+  // A loop's last point is a stop, so the plan's numbers run up to its point count less its via points.
+  let next = planned.length - plannedVias.length;
+  for (let i = 1; i < points.length; i += 1) {
+    const at = planned.lastIndexOf(points[i]);
+    if (at > 0) out.set(i, at - plannedVias.filter((v) => v < at).length);
+    else if (!isVia(points[i])) out.set(i, next++);
+  }
+  return out;
+}
+
 /** The link's `sn` values: "2:Union Market", one per named stop. */
 export function encodeStopNames(names: ReadonlyMap<number, string>): string[] {
   return [...names].sort(([a], [b]) => a - b).map(([i, name]) => `${i}:${name}`);

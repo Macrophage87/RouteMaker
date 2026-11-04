@@ -487,7 +487,8 @@ def test_road_bike_rides_a_road_bicycle_on_its_own_graph_with_fewer_turns() -> N
 def test_the_box_becomes_road_bike_only_on_a_riders_own_bike() -> None:
     assert presets.ROAD_BIKE not in presets.AVOID_GRAVEL_BECOMES
     assert presets.AVOID_GRAVEL_BECOMES <= set(presets.PRESETS)
-    for kept in ("cargo", "ebike", "group-ride", "mass-ride", "bikeshare", "mountain-bike"):
+    kept_types = ("cargo", "ebike", "group-ride", "mass-ride", "bikeshare", "mountain-bike")
+    for kept in (*kept_types, "novice", "trailmaxxing"):
         assert kept not in presets.AVOID_GRAVEL_BECOMES
     front = (Path(__file__).resolve().parents[1] / "frontend/src/lib/presets.ts").read_text()
     listed = re.search(r"AVOID_GRAVEL_BECOMES: readonly PresetId\[\] = \[([^\]]*)\]", front)

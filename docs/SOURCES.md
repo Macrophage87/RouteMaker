@@ -194,9 +194,10 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
     pins and "Ride to the bike rack" on a tapped spot's card, "End at the bike rack" under
     a route's card, and the racks layer drawn with Water and restrooms
     (`frontend/src/amenity-data/bike-parking.json`; `lib/bikeParking.ts`). DC's racks win
-    over OpenStreetMap's within 25 m. OpenStreetMap's public amenity=bicycle_parking fills the
+    over OpenStreetMap's within 25 m (from 2026-11-04 OSM lockers and bike rooms are always kept). OpenStreetMap's public amenity=bicycle_parking fills the
     rest of the region: `--pbf` on the PC, 2026-11-01, from the 2026-10-31 extract, 2,753
     places, 439 dropped for a DDOT rack within 25 m, 2,314 kept (ODbL 1.0); 6,228 places in all.
+    Baltimore City DOT's racks added 2026-11-04 (see Open Baltimore below): 6,351 places.
 
 ## DDOT Pavement Condition Index (DC-PCI)
 
@@ -371,9 +372,27 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
   `a0346799b9e519e56b7add57e186f484f051f8ba555adca334e7fe4023ed7eed`; all retrieved
   2026-10-01. Baltimore's speeds where OSM has none, its one-way streets, and the
   bike lanes and trail access the 2026-10-01 override file corrects.
+- Bike racks: the Baltimore City Department of Transportation's **Baltimore City Bike Racks
+  and Scooter Parking Map** (web map `b14d91d49b584dfdb1c6ca3713a30231`, linked from
+  <https://www.baltimorecity.gov/transportation/our-work/bike-baltimore/bike-and-scooter-parking>):
+  **BCDOT Installed Bike Racks** (item `688603423f30439395c0956be800d9c5`, Installed=Yes and
+  `Rack_Count` only; the layer's requester names and contacts are never fetched), **Scooter
+  Corrals** (item `25f5c095fd68418b814840f13f1c5989`, only those with bike racks) and the map's
+  own **Bike Racks Additional** (2021 inventory of racks open to the public, with rack count and
+  covered). Retrieved 2026-11-04 with `scripts/build_bike_parking.py --baltimore` (Stephen,
+  2026-11-04: "Also, add in the bike racks from BCDOT"): 111 installed racks, 2 corrals and 149
+  inventory racks, 246 places after joining and an installed rack winning within 25 m; they win
+  over OpenStreetMap's stands within 25 m (123 OSM stands dropped; OSM lockers and bike rooms are
+  always kept). Their own licence fields are empty and they sit outside the portal; the owner
+  (2026-11-04): "Baltimore city data is public domain, just like DC. It's in the city code."
+  Credit: Baltimore City Department of Transportation (its own row on the Acknowledgements page,
+  linked to the parking page above).
 - Licence: open, by Baltimore City Code Art. 1 §9-1(h)
-  (<https://codes.baltimorecity.gov/us/md/cities/baltimore/code/1/9-1#(h)>).
-- Records: `fixtures/datasets/README.md`.
+  (<https://codes.baltimorecity.gov/us/md/cities/baltimore/code/1/9-1#(h)>), which names the Open Data
+  Portal; the rack layers, outside it, rest on the owner's reading above.
+- Records: `fixtures/datasets/README.md` for the portal items. The three rack layers have no row there
+  (no hash was kept): their record is the retrieval date and counts above and the `source` line of
+  `frontend/src/amenity-data/bike-parking.json`, rebuilt by `scripts/build_bike_parking.py --baltimore`.
 
 ## City of Alexandria
 
@@ -718,9 +737,11 @@ never routed round.
   Management Plan", <https://www.nps.gov/rocr/learn/management/record-of-determination-for-the-temporary-closure-of-certain-park-roads-and-park-areas-for-the-2025-2026-implementation-of-the-rock-creek-park-white-tailed-deer-management-plan.htm>,
   read 2026-10-25: Nov 10, 2025 to Mar 31, 2026; Bingham Drive, Sherrill Drive and three
   car-free stretches of Beach Drive "may also [be] closed to pedestrians, bicyclists and
-  non-motorized recreation from 6:45 p.m. to 4 a.m.". The 2026-27 dates are assumed the same
-  (the owner, 2026-10-25) and said as expected until NPS posts them. Public domain U.S.
-  government information.
+  non-motorized recreation from 6:45 p.m. to 4 a.m.". No 2026-27 season is shown: the dates
+  once assumed the same (the owner, 2026-10-25) were taken out on the owner's word of
+  2026-11-04, "For rock creek, that's no longer the case."
+  (<https://www.nps.gov/rocr/learn/management/white-tailed-deer-management.htm>, updated
+  2026-10-30, gives no 2026-27 closure dates.) Public domain U.S. government information.
 - **Montgomery Parks.** "Deer Population Management Schedule & Locations", Fall 2026 to Winter
   2027, <https://montgomeryparks.org/deer-population-management-schedule-locations/>, read
   2026-10-25: Park Police sharpshooting ("Parks and Trails Closed, January 15 - March 31 from
@@ -1163,6 +1184,8 @@ docs/OPERATIONS.md, "Transit schedule". Systems, rules and sources are listed in
     content without express written permission in advance from VRE." Queries to its data feeds are
     allowed. No attribution is required; the plan credit above is given all the same. The feed and
     the schedule built from it stay on the host and are never committed (owner question 1).
+    The owner, 2026-11-04: "This is a free open source project so non-commercial is a nonissue
+    for vre" (RouteMaker is free and non-commercial).
   - Bike rules: <https://www.vre.org/about/onboard-policies/> (Baggage/Bicycles, read 2026-10-12).
     "Full-size and collapsible bicycles are allowed on all trains." Tether the bike with a bungee
     cord to the bench seats at a car's south end (the north-end bench is priority seating); bikes

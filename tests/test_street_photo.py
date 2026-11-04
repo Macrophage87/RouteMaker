@@ -273,3 +273,32 @@ def test_a_looked_up_url_on_another_host_is_not_fetched(settings) -> None:
     assert other.image("1002") is None and image.calls == []
     settings.MAPILLARY_ACCESS_TOKEN = ""
     assert street_photo.StreetPhoto(Graph("x"), fetch_image=image).image("1002") is None
+
+
+class CutOff:
+    """Mapillary's answer ends part way through: the read raises IncompleteRead."""
+
+    def open(self, _request, timeout=None):
+        return self
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc) -> bool:
+        return False
+
+    def read(self, *_args) -> bytes:
+        import http.client
+
+        raise http.client.IncompleteRead(b"{", 100)
+
+
+def test_a_cut_off_answer_from_mapillary_is_no_photo_not_an_error(settings, monkeypatch) -> None:
+    settings.MAPILLARY_ACCESS_TOKEN = SECRET
+    monkeypatch.setattr(street_photo, "_OPENER", CutOff())
+    looked_up = street_photo.StreetPhoto(street_photo.http_get, bearing=lambda *_: None)
+    assert looked_up.photo(LON, LAT, 5) is None
+    assert looked_up.image("1002") is None  # the Graph lookup of the image cut off
+    thumb = "https://scontent-iad3-1.xx.fbcdn.net/m1/v/t6/An1002.jpg?oe=1"
+    fetched = street_photo.StreetPhoto(Graph(thumb), fetch_image=street_photo.image_get)
+    assert fetched.image("1002") is None  # the image file itself cut off

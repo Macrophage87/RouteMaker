@@ -13,7 +13,9 @@ import {
   parseSettings,
   planFromSetting,
   planSetting,
+  retryUntil,
   saveSettings,
+  saveUnitsUnsynced,
 } from "./accountSettings.ts";
 import { startDials } from "./dials.ts";
 import { HOME_OFFER_KEY, answerHomeOffer, deviceHome, homeOffer } from "./homeMove.ts";
@@ -160,4 +162,122 @@ test("signed in, the rider and bike weight goes with the account and comes back 
   assert.deepEqual(deviceSettings(null, tablet).weight, weight);
   // Where the browser refuses storage, the weight App holds is the one sent.
   assert.deepEqual(deviceSettings(null, null, weight).weight, weight);
+});
+
+/** A clock and window events a test drives by hand (retryUntil's RetryEnv). */
+class FakeWindow {
+  now = 0;
+  next = 1;
+  timers = new Map<number, { at: number; run: () => void }>();
+  listeners = new Map<string, Set<() => void>>();
+  setTimeout(run: () => void, ms: number) {
+    const id = this.next++;
+    this.timers.set(id, { at: this.now + ms, run });
+    return id;
+  }
+  clearTimeout(id: number) {
+    this.timers.delete(id);
+  }
+  addEventListener(type: string, run: () => void) {
+    if (!this.listeners.has(type)) this.listeners.set(type, new Set());
+    this.listeners.get(type)?.add(run);
+  }
+  removeEventListener(type: string, run: () => void) {
+    this.listeners.get(type)?.delete(run);
+  }
+  async advance(ms: number) {
+    this.now += ms;
+    for (const [id, timer] of [...this.timers]) {
+      if (timer.at <= this.now) {
+        this.timers.delete(id);
+        timer.run();
+      }
+    }
+    await settle();
+  }
+  async fire(type: string) {
+    for (const run of [...(this.listeners.get(type) ?? [])]) run();
+    await settle();
+  }
+}
+
+const settle = () => new Promise((done) => setImmediate(done));
+
+test("a settings read that fails at sign-in is tried again, a few times and then on the next focus or online", async () => {
+  const win = new FakeWindow();
+  let tries = 0;
+  let answer = false;
+  const stop = retryUntil(
+    async () => {
+      tries++;
+      return answer;
+    },
+    win,
+    [2000, 8000],
+  );
+  await settle();
+  assert.equal(tries, 1, "tried at once");
+  await win.advance(2000);
+  assert.equal(tries, 2, "again after the first wait");
+  await win.advance(8000);
+  assert.equal(tries, 3, "again after the second");
+  await win.advance(60000);
+  assert.equal(tries, 3, "then no more timed tries");
+  await win.fire("focus");
+  assert.equal(tries, 4, "the page's next focus tries again");
+  answer = true;
+  await win.fire("online");
+  assert.equal(tries, 5, "back online tries again");
+  await win.fire("focus");
+  await win.advance(60000);
+  assert.equal(tries, 5, "once read, it stops");
+  assert.equal(win.listeners.get("focus")?.size, 0);
+  stop();
+});
+
+test("a settings retry stops when the page is done with it", async () => {
+  const win = new FakeWindow();
+  let tries = 0;
+  const stop = retryUntil(
+    async () => {
+      tries++;
+      return false;
+    },
+    win,
+    [1000],
+  );
+  await settle();
+  stop();
+  await win.advance(1000);
+  await win.fire("focus");
+  assert.equal(tries, 1);
+  assert.equal(win.timers.size, 0);
+});
+
+test("Units chosen before the account's settings could be read still apply, and a readable account gets only the units", async () => {
+  const unreadable = (async () => new Response("{}", { status: 503 })) as unknown as typeof fetch;
+  let posted = 0;
+  const post = (async () => {
+    posted++;
+    return new Response("{}", { status: 200 });
+  }) as unknown as typeof fetch;
+  assert.equal(await saveUnitsUnsynced("https://x.test", "metric", unreadable, post, ""), true, "kept on this device");
+  assert.equal(posted, 0, "nothing replaces the account's settings unread");
+  let sent: RequestInit | undefined;
+  const account = (async () => new Response(JSON.stringify({ settings: { v: 1, topo: true, units: "us" } }), { status: 200 })) as unknown as typeof fetch;
+  const record = (async (_u: string, init?: RequestInit) => {
+    sent = init;
+    return new Response("{}", { status: 200 });
+  }) as unknown as typeof fetch;
+  assert.equal(await saveUnitsUnsynced("https://x.test", "metric", account, record, ""), true);
+  assert.deepEqual(JSON.parse(String(sent?.body)), { settings: { v: 1, topo: true, units: "metric" } });
+  const refused = (async () => new Response("{}", { status: 500 })) as unknown as typeof fetch;
+  assert.equal(await saveUnitsUnsynced("https://x.test", "metric", account, refused, ""), false, "a failed save is said as one");
+});
+
+test("App tries the sign-in settings read again, and an unread account does not undo a Units change", () => {
+  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  assert.match(app, /retryUntil\(\(\) => syncSettingsOnSignIn\(origin, \(\) => live\), window\)/);
+  assert.match(app, /!settingsSynced\s*\?\s*\(\) => saveUnitsUnsynced\(/);
+  assert.doesNotMatch(app, /!settingsSynced\s*\?\s*async \(\) => false/);
 });

@@ -119,3 +119,74 @@ def test_a_row_of_racks_is_one_place():
         ]
     )
     assert part[0].racks is None
+
+
+def test_baltimore_installed_racks_only_and_no_contacts():
+    at = {"x": -76.61, "y": 39.29}
+    r = mod.baltimore_installed(
+        {"attributes": {"OBJECTID": 3, "Installed": "Yes", "Rack_Count": "2"}, "geometry": at}
+    )
+    assert r == mod.Rack(id="bc3", lon=-76.61, lat=39.29, racks=2)
+    no = {"attributes": {"OBJECTID": 4, "Installed": "No"}, "geometry": at}
+    assert mod.baltimore_installed(no) is None
+    # The layer holds requesters' names and contacts: the fetch never asks for them.
+    import inspect
+
+    fetch = inspect.getsource(mod.fetch_baltimore)
+    assert '"OBJECTID,Installed,Rack_Count"' in fetch and "Own" not in fetch
+
+
+def test_baltimore_corrals_need_bike_racks():
+    at = {"x": -76.63, "y": 39.28}
+    assert (
+        mod.baltimore_corral({"attributes": {"FID": 1, "Rack_Count": 3}, "geometry": at}).racks == 3
+    )
+    assert mod.baltimore_corral({"attributes": {"FID": 2, "Rack_Count": 0}, "geometry": at}) is None
+
+
+def test_baltimore_inventory_from_web_mercator():
+    web_map = {
+        "operationalLayers": [
+            {
+                "title": "Bike Racks Additional",
+                "featureCollection": {
+                    "layers": [
+                        {
+                            "featureSet": {
+                                "features": [
+                                    {"attributes": {"FID": 0}},
+                                    {
+                                        "geometry": {"x": -8528454, "y": 4763536},
+                                        "attributes": {"FID": 2, "RACK_COUNT": 3, "COVERED": "Y"},
+                                    },
+                                ]
+                            }
+                        }
+                    ]
+                },
+            }
+        ]
+    }
+    racks = [r for r in map(mod.baltimore_inventory, mod.inventory_features(web_map)) if r]
+    assert len(racks) == 1
+    r = racks[0]
+    assert (r.id, r.racks, r.covered) == ("ba2", 3, True)
+    assert abs(r.lon - -76.6125) < 0.001 and abs(r.lat - 39.2918) < 0.001
+
+
+def test_baltimore_installed_beats_corral_beats_inventory():
+    bc = mod.Rack(id="bc1", lon=-76.61, lat=39.29, racks=1)
+    bs = mod.Rack(id="bs1", lon=-76.6101, lat=39.29, racks=2)  # about 9 m from bc1
+    ba = mod.Rack(id="ba1", lon=-76.6102, lat=39.29)  # about 17 m from bc1
+    far = mod.Rack(id="ba2", lon=-76.62, lat=39.29)
+    assert [r.id for r in mod.baltimore([bc], [bs], [ba, far])] == ["bc1", "ba2"]
+
+
+def test_a_city_rack_beats_an_osm_stand_but_not_lockers():
+    bc = mod.Rack(id="bc1", lon=-76.61, lat=39.29)
+    stand = mod.Rack(id="n1", lon=-76.6101, lat=39.29, kind="s")
+    room = mod.Rack(id="n2", lon=-76.6101, lat=39.29, kind="b")
+    doc = mod.document([], [stand, room], [bc])
+    assert [p["id"] for p in doc["points"]] == ["bc1", "n2"]
+    assert "Baltimore City Department of Transportation" in doc["source"]
+    assert mod.city("bc1") == "bc" and mod.city("n1") is None

@@ -11,7 +11,7 @@
  * a map card (a stop, a place, a station, a closure, a climb), the road info, and the side menus (Detour, More, the
  * dock, 311, the riders, Alert), so the map then goes back to the rider. Kept open: a menu with words typed or being
  * typed (a Detour search, Alert's Other, its microphone listening), and anything asking (Alert's Send to everyone?, Already
- * done?, a stop's name, Resume). The group's question, asked as the ride starts, closes as its No (the 2026-10-28 audit,
+ * done?, a stop's name, Resume), and a dialog with the focus in it (Ride settings, the join sheet). The group's question, asked as the ride starts, closes as its No (the 2026-10-28 audit,
  * P6: it never stays over the ride's buttons). Accessibility mode closes nothing on its own: a screen
  * reader's reading touches nothing. A menu closed with the focus in it hands the focus to its toggle; a map card, to
  * the map.
@@ -20,8 +20,11 @@
 /** How long the screen is left alone before the map goes back to the rider. */
 export const IDLE_RECENTRE_MS = 30_000;
 
-/** What counts as touching the screen: the 30 s count from a finger lifted, so a long pinch is not cut short. */
-export const IDLE_TOUCH_EVENTS = ["pointerdown", "pointerup", "wheel", "keydown"] as const;
+/**
+ * What counts as touching the screen: the 30 s count from a finger lifted, so a long pinch is not cut short. The focus
+ * moving counts too: a screen reader's swipe from one control to the next moves it without a pointer or a key.
+ */
+export const IDLE_TOUCH_EVENTS = ["pointerdown", "pointerup", "wheel", "keydown", "focusin"] as const;
 
 /**
  * An open panel during a ride or Roam: a toggle shown expanded within the ride's screen or the group bar, the group's
@@ -51,6 +54,8 @@ export interface IdleWindow {
 
 /** Marks a side menu's toggle, or a dialog, that a screen left alone closes (closeIdlePanels). */
 export const IDLE_CLOSE_ATTR = "data-idle-close";
+/** The value of IDLE_CLOSE_ATTR on a dialog that closes even with the focus in it (a question whose close is its No). */
+export const IDLE_CLOSE_ALWAYS = "always";
 
 /** A map card with its close button: maplibre's popups. */
 const MAP_CARD_CLOSE = ".maplibregl-popup .maplibregl-popup-close-button";
@@ -98,7 +103,9 @@ export function closeIdlePanels(doc: Document): boolean {
     if (held) toggle.focus({ preventScroll: true });
   }
   for (const dialog of doc.querySelectorAll<HTMLDialogElement>(`dialog[open][${IDLE_CLOSE_ATTR}]`)) {
-    if (typingIn(dialog, active)) continue;
+    // A dialog with the focus in it is being read or used (a screen reader's reading touches nothing): it stays. The
+    // group's question (IDLE_CLOSE_ALWAYS) closes as its No all the same, so it never stays over the ride's buttons.
+    if ((dialog.getAttribute(IDLE_CLOSE_ATTR) !== IDLE_CLOSE_ALWAYS && dialog.contains(active)) || typingIn(dialog, active)) continue;
     // Its own close handler gives the focus back (RoadInfoDialog).
     dialog.close();
     closed = true;
