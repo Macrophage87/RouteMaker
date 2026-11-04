@@ -194,9 +194,10 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
     pins and "Ride to the bike rack" on a tapped spot's card, "End at the bike rack" under
     a route's card, and the racks layer drawn with Water and restrooms
     (`frontend/src/amenity-data/bike-parking.json`; `lib/bikeParking.ts`). DC's racks win
-    over OpenStreetMap's within 25 m. OpenStreetMap's public amenity=bicycle_parking fills the
+    over OpenStreetMap's within 25 m (from 2026-11-04 OSM lockers and bike rooms are always kept). OpenStreetMap's public amenity=bicycle_parking fills the
     rest of the region: `--pbf` on the PC, 2026-11-01, from the 2026-10-31 extract, 2,753
     places, 439 dropped for a DDOT rack within 25 m, 2,314 kept (ODbL 1.0); 6,228 places in all.
+    Baltimore City DOT's racks added 2026-11-04 (see Open Baltimore below): 6,351 places.
 
 ## DDOT Pavement Condition Index (DC-PCI)
 
@@ -371,6 +372,20 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
   `a0346799b9e519e56b7add57e186f484f051f8ba555adca334e7fe4023ed7eed`; all retrieved
   2026-10-01. Baltimore's speeds where OSM has none, its one-way streets, and the
   bike lanes and trail access the 2026-10-01 override file corrects.
+- Bike racks: the Baltimore City Department of Transportation's **Baltimore City Bike Racks
+  and Scooter Parking Map** (web map `b14d91d49b584dfdb1c6ca3713a30231`, linked from
+  <https://www.baltimorecity.gov/transportation/our-work/bike-baltimore/bike-and-scooter-parking>):
+  **BCDOT Installed Bike Racks** (item `688603423f30439395c0956be800d9c5`, Installed=Yes and
+  `Rack_Count` only; the layer's requester names and contacts are never fetched), **Scooter
+  Corrals** (item `25f5c095fd68418b814840f13f1c5989`, only those with bike racks) and the map's
+  own **Bike Racks Additional** (2021 inventory of racks open to the public, with rack count and
+  covered). Retrieved 2026-11-04 with `scripts/build_bike_parking.py --baltimore` (Stephen,
+  2026-11-04: "Also, add in the bike racks from BCDOT"): 111 installed racks, 2 corrals and 149
+  inventory racks, 246 places after joining and an installed rack winning within 25 m; they win
+  over OpenStreetMap's stands within 25 m (123 OSM stands dropped; OSM lockers and bike rooms are
+  always kept). Their own licence fields are empty and they sit outside the portal; the owner
+  (2026-11-04): "Baltimore city data is public domain, just like DC. It's in the city code."
+  Credit: Baltimore City Department of Transportation.
 - Licence: open, by Baltimore City Code Art. 1 §9-1(h)
   (<https://codes.baltimorecity.gov/us/md/cities/baltimore/code/1/9-1#(h)>).
 - Records: `fixtures/datasets/README.md`.

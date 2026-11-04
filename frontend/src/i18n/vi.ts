@@ -1834,6 +1834,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Covered.": "Có mái che.",
   "You may need a key, a card or a rental.": "Có thể cần chìa khóa, thẻ hoặc thuê.",
   "From DDOT's public bike racks.": "Từ danh sách chỗ để xe đạp công cộng của DDOT.",
+  "From Baltimore City DOT's bike racks.": "Từ danh sách chỗ để xe đạp của Sở Giao thông Thành phố Baltimore.",
   "From OpenStreetMap.": "Từ OpenStreetMap.",
   "Ride to the bike rack, {distance} away": "Đạp đến chỗ để xe đạp, cách {distance}",
   "End at the bike rack, {distance} away": "Kết thúc ở chỗ để xe đạp, cách {distance}",

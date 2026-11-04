@@ -793,7 +793,7 @@ export function App() {
   useEffect(() => {
     if (waterOn) void ensureRepair();
   }, [waterOn, ensureRepair]);
-  // Bike racks (lib/bikeParking.ts; Stephen, 2026-11-01): DDOT's in DC, OpenStreetMap's elsewhere. Drawn with the
+  // Bike racks (lib/bikeParking.ts; Stephen, 2026-11-01): DDOT's in DC, BCDOT's in Baltimore, OpenStreetMap's elsewhere. Drawn with the
   // water layer's switch, and offered by Go near a tapped spot and a route's end. Loaded when first needed.
   const [racksData, setRacksData] = useState<BikeRack[] | "unavailable" | null>(null);
   const racksLoad = useRef<Promise<BikeRack[] | null> | null>(null);
