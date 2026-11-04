@@ -498,6 +498,7 @@ export const ES: Readonly<Record<string, string>> = {
   "Logged for 311: {kind}.": "Registrado para el 311: {kind}.",
   "Sending to DC 311…": "Enviando al 311 de DC…",
   "Sent to DC 311.": "Enviado al 311 de DC.",
+  "DC 311 may already have this report. Check before sending it again.": "Puede que el 311 de DC ya tenga este reporte. Compruébelo antes de enviarlo de nuevo.",
   "No 311 website known here": "No se conoce un sitio web del 311 aquí",
   "Website not looked up yet": "Aún no se buscó el sitio web",
   "Your place on the route is not known yet, so nothing was logged.": "Aún no se conoce su posición en la ruta, así que no se registró nada.",

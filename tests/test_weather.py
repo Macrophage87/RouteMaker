@@ -302,6 +302,20 @@ def test_points_problem(points, ok) -> None:
     assert (weather.points_problem(points) is None) is ok
 
 
+@pytest.mark.parametrize(
+    "point",
+    [
+        pytest.param([2.35, 48.86, 0], id="Paris"),
+        pytest.param([-122.42, 37.77, 0], id="San Francisco"),
+        pytest.param([-77.0, 40.5, 0], id="north of the area"),
+    ],
+)
+def test_a_point_outside_the_mapped_area_is_not_checked(point) -> None:
+    """Routes are planned only inside COVERAGE_BBOX, so the check is too, in the routing words."""
+    inside = [-77.031, 38.901, 0]
+    assert weather.points_problem([inside, point]) == "point 1 is outside the area this map covers"
+
+
 @pytest.mark.django_db
 def test_the_endpoint(client, monkeypatch) -> None:
     fake = Fake(
@@ -324,3 +338,11 @@ def test_the_endpoint(client, monkeypatch) -> None:
         **headers,
     )
     assert bad.status_code == 400
+    far = client.post(
+        "/api/weather/check",
+        data=json.dumps({"points": [[2.35, 48.86, 0]]}),
+        content_type="application/json",
+        **headers,
+    )
+    assert far.status_code == 400
+    assert far.json() == {"error": "point 0 is outside the area this map covers"}

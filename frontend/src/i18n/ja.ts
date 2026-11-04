@@ -558,6 +558,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Open Reports": "レポートを開く",
   "Logged for 311: {kind}{place}. It is in your 311 checklist in Reports.": "311用に記録しました：{kind}{place}。レポートの311チェックリストにあります。",
   "Sent to DC 311.": "DC 311に送信しました。",
+  "DC 311 may already have this report. Check before sending it again.": "DC 311はこの報告をすでに受け取っているかもしれません。もう一度送る前に確認してください。",
   "water": "水",
   "restrooms": "トイレ",
   "restroom": "トイレ",

@@ -558,6 +558,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Open Reports": "Louvri Rapò",
   "Logged for 311: {kind}{place}. It is in your 311 checklist in Reports.": "Anrejistre pou 311: {kind}{place}. Li nan lis 311 ou nan Rapò.",
   "Sent to DC 311.": "Voye bay 311 DC.",
+  "DC 311 may already have this report. Check before sending it again.": "311 DC ka gen tan rapò sa a deja. Verifye anvan ou voye l ankò.",
   "water": "dlo",
   "restrooms": "twalèt",
   "restroom": "twalèt",

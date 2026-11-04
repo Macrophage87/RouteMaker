@@ -558,6 +558,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Open Reports": "باز کردن گزارش‌ها",
   "Logged for 311: {kind}{place}. It is in your 311 checklist in Reports.": "برای 311 ثبت شد: {kind}{place}. در فهرست 311 شما در گزارش‌ها است.",
   "Sent to DC 311.": "به 311 واشنگتن دی‌سی فرستاده شد.",
+  "DC 311 may already have this report. Check before sending it again.": "ممکن است این گزارش از قبل به 311 واشنگتن دی‌سی رسیده باشد. پیش از فرستادن دوباره، بررسی کنید.",
   "water": "آب",
   "restrooms": "سرویس‌های بهداشتی",
   "restroom": "سرویس بهداشتی",

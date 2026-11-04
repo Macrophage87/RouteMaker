@@ -209,7 +209,7 @@ import { corridorWorry, type PrefetchResult } from "./lib/corridor.ts";
 import { copyCorridor, endCorridor, keepCorridor } from "./lib/corridorStore.ts";
 import { lastRideAdopter } from "./lib/offlineKeep.ts";
 import { blockOf, rescueRideFocus, type RideBlock } from "./lib/rideFocus.ts";
-import { REPORT_SENT, report311Enabled, sendReport311, reportPlace, type ReportKind } from "./lib/report311.ts";
+import { REPORT_MAYBE_SENT, REPORT_SENT, report311Enabled, sendReport311, reportPlace, type ReportKind } from "./lib/report311.ts";
 import { entryText, kindShown, report311Log, type LogEntry } from "./lib/report311Log.ts";
 import { RIDE_311_NAME, RIDE_311_TEXT, Ride311Menu, ride311Shown } from "./lib/ride311.ts";
 import {
@@ -1125,10 +1125,10 @@ export function RideMode({
     const entry = report311Log().add(kind, place);
     if (serverOn311 && entry.where === "dc") {
       setSaid311(t("Sending to DC 311…"));
-      void sendReport311(window.location.origin, kind, place, entryText(entry)).then((sent) => {
+      void sendReport311(window.location.origin, kind, place, entryText(entry)).then((result) => {
         if (ended.current) return;
-        if (sent) report311Log().setReported(entry.id, true);
-        tell311(sent ? REPORT_SENT : loggedSaid(entry));
+        if (result === "sent") report311Log().setReported(entry.id, true);
+        tell311(result === "sent" ? REPORT_SENT : result === "maybe_sent" ? REPORT_MAYBE_SENT : loggedSaid(entry));
       });
     } else tell311(loggedSaid(entry));
   };

@@ -41,6 +41,8 @@ from collections.abc import Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 
+from django.conf import settings
+
 logger = logging.getLogger(__name__)
 
 USER_AGENT = "RouteMaker (https://github.com/Macrophage87/RouteMaker, 1)"
@@ -438,4 +440,10 @@ def points_problem(points: object) -> str | None:
             or not (-180 <= p[0] <= 180 and -90 <= p[1] <= 90 and 0 <= p[2] <= 48 * 3600)
         ):
             return "Each point is [lon, lat, seconds until there], seconds 0 to 172800."
+    # Only the area routes are planned in (RouteIn.inside_coverage's box and words): a ride's
+    # line never leaves it.
+    west, south, east, north = settings.COVERAGE_BBOX
+    for index, (lon, lat, _seconds) in enumerate(points):
+        if not (west <= lon <= east and south <= lat <= north):
+            return f"point {index} is outside the area this map covers"
     return None

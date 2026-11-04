@@ -558,6 +558,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Open Reports": "신고 열기",
   "Logged for 311: {kind}{place}. It is in your 311 checklist in Reports.": "311용으로 기록됨: {kind}{place}. 신고의 311 체크리스트에 있습니다.",
   "Sent to DC 311.": "DC 311로 보냈습니다.",
+  "DC 311 may already have this report. Check before sending it again.": "DC 311에 이 신고가 이미 접수되었을 수 있습니다. 다시 보내기 전에 확인하세요.",
   "water": "물",
   "restrooms": "화장실",
   "restroom": "화장실",
