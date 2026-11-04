@@ -1929,4 +1929,12 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Turns ahead: {turns}.": "ከፊት ያሉ መታጠፊያዎች፦ {turns}።",
   "Busy junctions: {busy}.": "የተጨናነቁ መገናኛዎች፦ {busy}።",
   "No room on this screen for: {graphs}.": "በዚህ ማያ ገጽ ላይ ቦታ የለም ለ፦ {graphs}።",
+  // ---- Accessibility mode's confirmation and help, the (i) names, and Go's outside-the-area notice (2026-11-04 review) ----
+  "Accessibility mode on: high contrast, large text during a ride, and Map tools by the map's zoom buttons.": "የተደራሽነት ሁነታ በርቷል፦ ከፍተኛ ንፅፅር፣ በጉዞ ጊዜ ትልቅ ጽሑፍ፣ እና ከካርታው የማጉያ አዝራሮች አጠገብ የካርታ መሣሪያዎች።",
+  "Accessibility mode off: high contrast and large ride text are off, and Map tools is hidden.": "የተደራሽነት ሁነታ ጠፍቷል፦ ከፍተኛ ንፅፅር እና የጉዞ ትልቅ ጽሑፍ ጠፍተዋል፤ የካርታ መሣሪያዎች ተደብቀዋል።",
+  "For keyboard or screen reader use, turn on accessibility mode. It turns on high contrast, large text during a ride, and Map tools by the map's zoom buttons; it is kept on this device, and is also the first button on the page.": "ለቁልፍ ሰሌዳ ወይም ለስክሪን አንባቢ አጠቃቀም የተደራሽነት ሁነታን ያብሩ። ከፍተኛ ንፅፅርን፣ በጉዞ ጊዜ ትልቅ ጽሑፍን፣ እና ከካርታው የማጉያ አዝራሮች አጠገብ የካርታ መሣሪያዎችን ያበራል፤ በዚህ መሣሪያ ላይ ይቀመጣል፣ እንዲሁም በገጹ ላይ የመጀመሪያው አዝራር ነው።",
+  "For keyboard or screen reader use, turn on accessibility mode (the first button on the page, or in Settings).": "ለቁልፍ ሰሌዳ ወይም ለስክሪን አንባቢ አጠቃቀም የተደራሽነት ሁነታን ያብሩ (በገጹ ላይ የመጀመሪያው አዝራር፣ ወይም በቅንብሮች ውስጥ)።",
+  "running pace": "የሩጫ ፍጥነት",
+  "screen-reader detail": "የስክሪን አንባቢ ዝርዝር",
+  "That point is outside the area this map covers (the DC region to Baltimore).": "ያ ነጥብ ይህ ካርታ ከሚሸፍነው ክልል ውጭ ነው (ከDC ክልል እስከ ባልቲሞር)።",
 };

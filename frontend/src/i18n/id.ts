@@ -1929,4 +1929,12 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Turns ahead: {turns}.": "Belokan di depan: {turns}.",
   "Busy junctions: {busy}.": "Simpang ramai: {busy}.",
   "No room on this screen for: {graphs}.": "Tidak ada ruang di layar ini untuk: {graphs}.",
+  // ---- Accessibility mode's confirmation and help, the (i) names, and Go's outside-the-area notice (2026-11-04 review) ----
+  "Accessibility mode on: high contrast, large text during a ride, and Map tools by the map's zoom buttons.": "Mode aksesibilitas aktif: kontras tinggi, teks besar saat perjalanan, dan Alat peta di dekat tombol zoom peta.",
+  "Accessibility mode off: high contrast and large ride text are off, and Map tools is hidden.": "Mode aksesibilitas nonaktif: kontras tinggi dan teks besar perjalanan dimatikan, dan Alat peta disembunyikan.",
+  "For keyboard or screen reader use, turn on accessibility mode. It turns on high contrast, large text during a ride, and Map tools by the map's zoom buttons; it is kept on this device, and is also the first button on the page.": "Untuk penggunaan keyboard atau pembaca layar, aktifkan mode aksesibilitas. Mode ini mengaktifkan kontras tinggi, teks besar saat perjalanan, dan Alat peta di dekat tombol zoom peta; disimpan di perangkat ini, dan juga merupakan tombol pertama di halaman.",
+  "For keyboard or screen reader use, turn on accessibility mode (the first button on the page, or in Settings).": "Untuk penggunaan keyboard atau pembaca layar, aktifkan mode aksesibilitas (tombol pertama di halaman, atau di Pengaturan).",
+  "running pace": "kecepatan lari",
+  "screen-reader detail": "detail pembaca layar",
+  "That point is outside the area this map covers (the DC region to Baltimore).": "Titik itu di luar area yang dicakup peta ini (wilayah DC sampai Baltimore).",
 };

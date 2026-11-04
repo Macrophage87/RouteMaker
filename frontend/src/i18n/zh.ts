@@ -1929,4 +1929,12 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Turns ahead: {turns}.": "前方转弯：{turns}。",
   "Busy junctions: {busy}.": "繁忙路口：{busy}。",
   "No room on this screen for: {graphs}.": "此屏幕没有空间显示：{graphs}。",
+  // ---- Accessibility mode's confirmation and help, the (i) names, and Go's outside-the-area notice (2026-11-04 review) ----
+  "Accessibility mode on: high contrast, large text during a ride, and Map tools by the map's zoom buttons.": "无障碍模式已开启：高对比度、骑行时用大字，以及地图缩放按钮旁的地图工具。",
+  "Accessibility mode off: high contrast and large ride text are off, and Map tools is hidden.": "无障碍模式已关闭：高对比度和骑行大字已关闭，地图工具已隐藏。",
+  "For keyboard or screen reader use, turn on accessibility mode. It turns on high contrast, large text during a ride, and Map tools by the map's zoom buttons; it is kept on this device, and is also the first button on the page.": "如需使用键盘或读屏软件，请开启无障碍模式。它会开启高对比度、骑行时用大字，以及地图缩放按钮旁的地图工具；此设置保存在本设备上，也是页面上的第一个按钮。",
+  "For keyboard or screen reader use, turn on accessibility mode (the first button on the page, or in Settings).": "如需使用键盘或读屏软件，请开启无障碍模式（页面上的第一个按钮，或在设置中）。",
+  "running pace": "跑步配速",
+  "screen-reader detail": "读屏详细程度",
+  "That point is outside the area this map covers (the DC region to Baltimore).": "那个点超出了此地图的范围（从DC地区到巴尔的摩）。",
 };

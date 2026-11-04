@@ -1929,4 +1929,12 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Turns ahead: {turns}.": "ኣብ ቅድሚ ዘለዉ ምጥዋያት፦ {turns}።",
   "Busy junctions: {busy}.": "ዝተጨናነቑ መራኸቢታት፦ {busy}።",
   "No room on this screen for: {graphs}.": "ኣብዚ መርኣዪ ቦታ የለን ን፦ {graphs}።",
+  // ---- Accessibility mode's confirmation and help, the (i) names, and Go's outside-the-area notice (2026-11-04 review) ----
+  "Accessibility mode on: high contrast, large text during a ride, and Map tools by the map's zoom buttons.": "ናይ ተበጻሕነት ኣገባብ በሪሁ፦ ልዑል ፍልልይ፣ ኣብ ጉዕዞ ዓቢ ጽሑፍ፣ ከምኡውን ኣብ ጥቓ መጉልሒ መጠወቒታት ካርታ ናይ ካርታ መሳርሒታት።",
+  "Accessibility mode off: high contrast and large ride text are off, and Map tools is hidden.": "ናይ ተበጻሕነት ኣገባብ ጠፊኡ፦ ልዑል ፍልልይን ዓቢ ጽሑፍ ጉዕዞን ጠፊኦም፣ ናይ ካርታ መሳርሒታት ተሓቢኦም።",
+  "For keyboard or screen reader use, turn on accessibility mode. It turns on high contrast, large text during a ride, and Map tools by the map's zoom buttons; it is kept on this device, and is also the first button on the page.": "ብኪቦርድ ወይ ብኣንባቢ ስክሪን ንምጥቃም፣ ናይ ተበጻሕነት ኣገባብ ኣብርሁ። ልዑል ፍልልይ፣ ኣብ ጉዕዞ ዓቢ ጽሑፍ፣ ከምኡውን ኣብ ጥቓ መጉልሒ መጠወቒታት ካርታ ናይ ካርታ መሳርሒታት የብርህ፤ ኣብዚ መሳርሒ ይዕቀብ፣ ኣብ ገጽ ድማ ቀዳማይ መጠወቒ እዩ።",
+  "For keyboard or screen reader use, turn on accessibility mode (the first button on the page, or in Settings).": "ብኪቦርድ ወይ ብኣንባቢ ስክሪን ንምጥቃም፣ ናይ ተበጻሕነት ኣገባብ ኣብርሁ (ኣብ ገጽ ቀዳማይ መጠወቒ፣ ወይ ኣብ ቅጥዕታት)።",
+  "running pace": "ፍጥነት ጉያ",
+  "screen-reader detail": "ዝርዝር ናይ ስክሪን ኣንባቢ",
+  "That point is outside the area this map covers (the DC region to Baltimore).": "እቲ ነጥቢ ካብ ክልል እዚ ካርታ ወጻኢ እዩ (ካብ ዞባ DC ክሳብ ባልቲሞር)።",
 };

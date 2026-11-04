@@ -1929,4 +1929,12 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Turns ahead: {turns}.": "مخکې کږلېچونه: {turns}.",
   "Busy junctions: {busy}.": "ګڼې څلورلارې: {busy}.",
   "No room on this screen for: {graphs}.": "په دې سکرین کې ځای نشته د: {graphs}.",
+  // ---- Accessibility mode's confirmation and help, the (i) names, and Go's outside-the-area notice (2026-11-04 review) ----
+  "Accessibility mode on: high contrast, large text during a ride, and Map tools by the map's zoom buttons.": "د لاسرسي حالت چالان شو: لوړ تضاد، د سفر پر مهال لوی متن، او د نقشې د زوم تڼیو تر څنګ د نقشې وسایل.",
+  "Accessibility mode off: high contrast and large ride text are off, and Map tools is hidden.": "د لاسرسي حالت بند شو: لوړ تضاد او د سفر لوی متن بند دي، او د نقشې وسایل پټ دي.",
+  "For keyboard or screen reader use, turn on accessibility mode. It turns on high contrast, large text during a ride, and Map tools by the map's zoom buttons; it is kept on this device, and is also the first button on the page.": "د کیبورډ یا سکرین لوستونکي د کارولو لپاره، د لاسرسي حالت چالان کړئ. دا لوړ تضاد، د سفر پر مهال لوی متن، او د نقشې د زوم تڼیو تر څنګ د نقشې وسایل چالانوي؛ په دې وسیله کې ساتل کېږي، او د پاڼې لومړۍ تڼۍ هم ده.",
+  "For keyboard or screen reader use, turn on accessibility mode (the first button on the page, or in Settings).": "د کیبورډ یا سکرین لوستونکي د کارولو لپاره، د لاسرسي حالت چالان کړئ (د پاڼې لومړۍ تڼۍ، یا په تنظیماتو کې).",
+  "running pace": "منډې سرعت",
+  "screen-reader detail": "سکرین لوستونکي جزئیاتو",
+  "That point is outside the area this map covers (the DC region to Baltimore).": "هغه ټکی د دې نقشې له سیمې بهر دی (د DC سیمه تر بالتیمور).",
 };

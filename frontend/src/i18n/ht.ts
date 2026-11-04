@@ -1929,4 +1929,12 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Turns ahead: {turns}.": "Viraj devan: {turns}.",
   "Busy junctions: {busy}.": "Kafou ki chaje: {busy}.",
   "No room on this screen for: {graphs}.": "Pa gen plas sou ekran sa a pou: {graphs}.",
+  // ---- Accessibility mode's confirmation and help, the (i) names, and Go's outside-the-area notice (2026-11-04 review) ----
+  "Accessibility mode on: high contrast, large text during a ride, and Map tools by the map's zoom buttons.": "Mòd aksesibilite limen: gwo kontras, gwo tèks pandan woulib, ak Zouti kat la bò bouton zoom kat la.",
+  "Accessibility mode off: high contrast and large ride text are off, and Map tools is hidden.": "Mòd aksesibilite etenn: gwo kontras ak gwo tèks woulib etenn, epi Zouti kat la kache.",
+  "For keyboard or screen reader use, turn on accessibility mode. It turns on high contrast, large text during a ride, and Map tools by the map's zoom buttons; it is kept on this device, and is also the first button on the page.": "Pou itilize klavye oswa lektè ekran, limen mòd aksesibilite. Li limen gwo kontras, gwo tèks pandan woulib, ak Zouti kat la bò bouton zoom kat la; li rete sou aparèy sa a, epi se premye bouton sou paj la tou.",
+  "For keyboard or screen reader use, turn on accessibility mode (the first button on the page, or in Settings).": "Pou itilize klavye oswa lektè ekran, limen mòd aksesibilite (premye bouton sou paj la, oswa nan Paramèt).",
+  "running pace": "vitès kous",
+  "screen-reader detail": "detay pou lektè ekran",
+  "That point is outside the area this map covers (the DC region to Baltimore).": "Pwen sa a andeyò zòn kat sa a kouvri (rejyon DC rive Baltimore).",
 };

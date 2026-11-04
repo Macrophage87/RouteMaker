@@ -1929,4 +1929,12 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Turns ahead: {turns}.": "ทางเลี้ยวข้างหน้า: {turns}",
   "Busy junctions: {busy}.": "ทางแยกที่การจราจรหนาแน่น: {busy}",
   "No room on this screen for: {graphs}.": "หน้าจอนี้ไม่มีที่สำหรับ: {graphs}",
+  // ---- Accessibility mode's confirmation and help, the (i) names, and Go's outside-the-area notice (2026-11-04 review) ----
+  "Accessibility mode on: high contrast, large text during a ride, and Map tools by the map's zoom buttons.": "เปิดโหมดการช่วยการเข้าถึงแล้ว: ความคมชัดสูง ตัวอักษรใหญ่ระหว่างปั่น และเครื่องมือแผนที่ข้างปุ่มซูมของแผนที่",
+  "Accessibility mode off: high contrast and large ride text are off, and Map tools is hidden.": "ปิดโหมดการช่วยการเข้าถึงแล้ว: ปิดความคมชัดสูงและตัวอักษรใหญ่ระหว่างปั่น และซ่อนเครื่องมือแผนที่",
+  "For keyboard or screen reader use, turn on accessibility mode. It turns on high contrast, large text during a ride, and Map tools by the map's zoom buttons; it is kept on this device, and is also the first button on the page.": "หากใช้คีย์บอร์ดหรือโปรแกรมอ่านหน้าจอ ให้เปิดโหมดการช่วยการเข้าถึง โหมดนี้จะเปิดความคมชัดสูง ตัวอักษรใหญ่ระหว่างปั่น และเครื่องมือแผนที่ข้างปุ่มซูมของแผนที่ ระบบจะจำไว้ในอุปกรณ์นี้ และยังเป็นปุ่มแรกของหน้าด้วย",
+  "For keyboard or screen reader use, turn on accessibility mode (the first button on the page, or in Settings).": "หากใช้คีย์บอร์ดหรือโปรแกรมอ่านหน้าจอ ให้เปิดโหมดการช่วยการเข้าถึง (ปุ่มแรกของหน้า หรือในตั้งค่า)",
+  "running pace": "ความเร็ววิ่ง",
+  "screen-reader detail": "รายละเอียดของโปรแกรมอ่านหน้าจอ",
+  "That point is outside the area this map covers (the DC region to Baltimore).": "จุดนั้นอยู่นอกพื้นที่ของแผนที่นี้ (ภูมิภาค DC ถึงบัลติมอร์)",
 };

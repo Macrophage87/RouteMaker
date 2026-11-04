@@ -1929,4 +1929,12 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Turns ahead: {turns}.": "この先の曲がり角：{turns}。",
   "Busy junctions: {busy}.": "交通量の多い交差点：{busy}。",
   "No room on this screen for: {graphs}.": "この画面には表示する余地がありません：{graphs}。",
+  // ---- Accessibility mode's confirmation and help, the (i) names, and Go's outside-the-area notice (2026-11-04 review) ----
+  "Accessibility mode on: high contrast, large text during a ride, and Map tools by the map's zoom buttons.": "アクセシビリティモードをオンにしました：ハイコントラスト、ライド中の大きな文字、地図のズームボタンの横のマップツール。",
+  "Accessibility mode off: high contrast and large ride text are off, and Map tools is hidden.": "アクセシビリティモードをオフにしました：ハイコントラストとライド中の大きな文字はオフになり、マップツールは非表示です。",
+  "For keyboard or screen reader use, turn on accessibility mode. It turns on high contrast, large text during a ride, and Map tools by the map's zoom buttons; it is kept on this device, and is also the first button on the page.": "キーボードやスクリーンリーダーで使うには、アクセシビリティモードをオンにしてください。ハイコントラスト、ライド中の大きな文字、地図のズームボタンの横のマップツールがオンになります。この端末に保存され、ページの最初のボタンでもあります。",
+  "For keyboard or screen reader use, turn on accessibility mode (the first button on the page, or in Settings).": "キーボードやスクリーンリーダーで使うには、アクセシビリティモードをオンにしてください（ページの最初のボタン、または設定から）。",
+  "running pace": "ランニングペース",
+  "screen-reader detail": "スクリーンリーダーの詳しさ",
+  "That point is outside the area this map covers (the DC region to Baltimore).": "その地点はこの地図の範囲外です（DC周辺からボルチモアまで）。",
 };

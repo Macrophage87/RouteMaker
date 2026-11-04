@@ -29,6 +29,7 @@ import {
   type Language,
   planLanguageAttributes,
 } from "./i18n.ts";
+import { ACCESS_FINE_TUNE, ACCESS_HELP, ACCESS_LABEL, ACCESS_OFF_SAID, ACCESS_ON_SAID, ACCESS_SENTENCE_WHERE } from "./accessMode.ts";
 import { arrivalSideWords, crossingWords, cueSpoken, endWords, exitWords, ontoWords, stopText, turnWords, type Cue } from "./navigate.ts";
 import { spokenDistance } from "./format.ts";
 import * as navigate from "./navigate.ts";
@@ -355,6 +356,39 @@ function goRidePhrases(): Map<string, string> {
   }
   return found;
 }
+
+test("accessibility mode's spoken confirmation and its help are in each of DC's languages (2026-11-04 review)", async () => {
+  // Said through t(step.said) and shown through t(ACCESS_HELP): built strings the t("...") scan above cannot see.
+  const phrases = { ACCESS_LABEL, ACCESS_ON_SAID, ACCESS_OFF_SAID, ACCESS_HELP, ACCESS_SENTENCE_WHERE, ACCESS_FINE_TUNE };
+  for (const lang of LANGUAGES.filter((l) => l !== "en")) {
+    const catalog = lang === "es" ? ES : await catalogOfFile(lang);
+    assert.deepEqual(Object.entries(phrases).filter(([, english]) => !(english in catalog)).map(([name]) => name), [], lang);
+  }
+});
+
+test("each (i) button's name is in the page's language: every about= in Spanish, and Go and Ride's in all (2026-11-04 review)", async () => {
+  // InfoButton names itself t("About {about}", { about: t(about) }); an about missing from a catalog reads half in English.
+  const aboutsIn = (files: readonly string[]) => files.flatMap((path) => [...readFileSync(path, "utf8").matchAll(/\babout="([^"]+)"/g)].map((m) => m[1]));
+  const everywhere = aboutsIn(sources(SRC).filter((path) => path.endsWith(".tsx")));
+  assert.ok(everywhere.includes("running pace") && everywhere.includes("screen-reader detail"));
+  assert.deepEqual(everywhere.filter((about) => !(about in ES)), [], "es");
+  const goRide = aboutsIn(goRideFiles().filter((file) => file.endsWith(".tsx")).map((file) => join(SRC, file)));
+  assert.ok(goRide.includes("screen-reader detail"), "Settings > Display's Screen-reader detail is Go's");
+  for (const lang of LANGUAGES.filter((l) => l !== "en" && l !== "es")) {
+    const catalog = await catalogOfFile(lang);
+    assert.deepEqual(goRide.filter((about) => !(about in catalog)), [], lang);
+  }
+});
+
+test("Go's outside-the-area notice is in the page's language (2026-11-04 review)", async () => {
+  const english = "That point is outside the area this map covers (the DC region to Baltimore).";
+  const app = readFileSync(join(SRC, "App.tsx"), "utf8");
+  assert.ok(app.includes(`const OUTSIDE_NOTICE = t(${JSON.stringify(english)});`), "passed through t()");
+  for (const lang of LANGUAGES.filter((l) => l !== "en")) {
+    const catalog = lang === "es" ? ES : await catalogOfFile(lang);
+    assert.ok(english in catalog, lang);
+  }
+});
 
 test("each of DC's languages has every phrase Go and Ride show, constants passed to t() too (the 2026-10-29 review)", async () => {
   const phrases = goRidePhrases();

@@ -1929,4 +1929,12 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Turns ahead: {turns}.": "आगे के मोड़: {turns}।",
   "Busy junctions: {busy}.": "व्यस्त चौराहे: {busy}।",
   "No room on this screen for: {graphs}.": "इस स्क्रीन पर इनके लिए जगह नहीं: {graphs}।",
+  // ---- Accessibility mode's confirmation and help, the (i) names, and Go's outside-the-area notice (2026-11-04 review) ----
+  "Accessibility mode on: high contrast, large text during a ride, and Map tools by the map's zoom buttons.": "सुलभता मोड चालू: उच्च कंट्रास्ट, सवारी के दौरान बड़ा टेक्स्ट, और नक्शे के ज़ूम बटनों के पास नक्शा टूल।",
+  "Accessibility mode off: high contrast and large ride text are off, and Map tools is hidden.": "सुलभता मोड बंद: उच्च कंट्रास्ट और सवारी का बड़ा टेक्स्ट बंद हैं, और नक्शा टूल छिपे हैं।",
+  "For keyboard or screen reader use, turn on accessibility mode. It turns on high contrast, large text during a ride, and Map tools by the map's zoom buttons; it is kept on this device, and is also the first button on the page.": "कीबोर्ड या स्क्रीन रीडर से इस्तेमाल के लिए सुलभता मोड चालू करें। यह उच्च कंट्रास्ट, सवारी के दौरान बड़ा टेक्स्ट, और नक्शे के ज़ूम बटनों के पास नक्शा टूल चालू करता है; यह इसी डिवाइस पर रखा जाता है, और पेज का पहला बटन भी है।",
+  "For keyboard or screen reader use, turn on accessibility mode (the first button on the page, or in Settings).": "कीबोर्ड या स्क्रीन रीडर से इस्तेमाल के लिए सुलभता मोड चालू करें (पेज का पहला बटन, या सेटिंग्ज़ में)।",
+  "running pace": "दौड़ की गति",
+  "screen-reader detail": "स्क्रीन रीडर के विवरण",
+  "That point is outside the area this map covers (the DC region to Baltimore).": "वह बिंदु इस नक्शे के इलाके से बाहर है (DC क्षेत्र से बाल्टीमोर तक)।",
 };

@@ -1929,4 +1929,12 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Turns ahead: {turns}.": "پیچ‌های پیش رو: {turns}.",
   "Busy junctions: {busy}.": "تقاطع‌های شلوغ: {busy}.",
   "No room on this screen for: {graphs}.": "در این صفحه جا نیست برای: {graphs}.",
+  // ---- Accessibility mode's confirmation and help, the (i) names, and Go's outside-the-area notice (2026-11-04 review) ----
+  "Accessibility mode on: high contrast, large text during a ride, and Map tools by the map's zoom buttons.": "حالت دسترس‌پذیری روشن شد: کنتراست بالا، متن بزرگ هنگام سواری، و ابزارهای نقشه کنار دکمه‌های بزرگ‌نمایی نقشه.",
+  "Accessibility mode off: high contrast and large ride text are off, and Map tools is hidden.": "حالت دسترس‌پذیری خاموش شد: کنتراست بالا و متن بزرگ سواری خاموش‌اند و ابزارهای نقشه پنهان است.",
+  "For keyboard or screen reader use, turn on accessibility mode. It turns on high contrast, large text during a ride, and Map tools by the map's zoom buttons; it is kept on this device, and is also the first button on the page.": "برای استفاده با صفحه‌کلید یا صفحه‌خوان، حالت دسترس‌پذیری را روشن کنید. این حالت کنتراست بالا، متن بزرگ هنگام سواری و ابزارهای نقشه کنار دکمه‌های بزرگ‌نمایی نقشه را روشن می‌کند؛ روی همین دستگاه نگه داشته می‌شود و اولین دکمه صفحه هم هست.",
+  "For keyboard or screen reader use, turn on accessibility mode (the first button on the page, or in Settings).": "برای استفاده با صفحه‌کلید یا صفحه‌خوان، حالت دسترس‌پذیری را روشن کنید (اولین دکمه صفحه، یا در تنظیمات).",
+  "running pace": "سرعت دویدن",
+  "screen-reader detail": "جزئیات صفحه‌خوان",
+  "That point is outside the area this map covers (the DC region to Baltimore).": "آن نقطه بیرون از محدوده این نقشه است (منطقه واشنگتن دی‌سی تا بالتیمور).",
 };

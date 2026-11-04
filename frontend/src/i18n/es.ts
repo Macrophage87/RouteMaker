@@ -2452,4 +2452,8 @@ export const ES: Readonly<Record<string, string>> = {
   "Metro: {stations}.": "Metro: {stations}.",
   "Share these rings": "Compartir estos anillos",
   "The link shows rings from your Home.": "El enlace muestra anillos desde su Casa.",
+  // ---- Accessibility mode's confirmation and help, the (i) names, and Go's outside-the-area notice (2026-11-04 review) ----
+  "running pace": "ritmo de carrera",
+  "screen-reader detail": "detalle del lector de pantalla",
+  "That point is outside the area this map covers (the DC region to Baltimore).": "Ese punto está fuera del área que cubre este mapa (la región de DC hasta Baltimore).",
 };

@@ -1929,4 +1929,12 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Turns ahead: {turns}.": "المنعطفات أمامك: {turns}.",
   "Busy junctions: {busy}.": "التقاطعات المزدحمة: {busy}.",
   "No room on this screen for: {graphs}.": "لا مساحة على هذه الشاشة لـ: {graphs}.",
+  // ---- Accessibility mode's confirmation and help, the (i) names, and Go's outside-the-area notice (2026-11-04 review) ----
+  "Accessibility mode on: high contrast, large text during a ride, and Map tools by the map's zoom buttons.": "تم تشغيل وضع إمكانية الوصول: تباين عالٍ، ونص كبير أثناء الرحلة، وأدوات الخريطة بجانب أزرار تكبير الخريطة.",
+  "Accessibility mode off: high contrast and large ride text are off, and Map tools is hidden.": "تم إيقاف وضع إمكانية الوصول: أُوقف التباين العالي والنص الكبير أثناء الرحلة، وأُخفيت أدوات الخريطة.",
+  "For keyboard or screen reader use, turn on accessibility mode. It turns on high contrast, large text during a ride, and Map tools by the map's zoom buttons; it is kept on this device, and is also the first button on the page.": "لاستخدام لوحة المفاتيح أو قارئ الشاشة، شغّل وضع إمكانية الوصول. فهو يشغّل التباين العالي، والنص الكبير أثناء الرحلة، وأدوات الخريطة بجانب أزرار تكبير الخريطة؛ ويُحفظ على هذا الجهاز، وهو أيضًا أول زر في الصفحة.",
+  "For keyboard or screen reader use, turn on accessibility mode (the first button on the page, or in Settings).": "لاستخدام لوحة المفاتيح أو قارئ الشاشة، شغّل وضع إمكانية الوصول (أول زر في الصفحة، أو في الإعدادات).",
+  "running pace": "سرعة الجري",
+  "screen-reader detail": "تفاصيل قارئ الشاشة",
+  "That point is outside the area this map covers (the DC region to Baltimore).": "تلك النقطة خارج نطاق هذه الخريطة (منطقة واشنطن العاصمة حتى بالتيمور).",
 };

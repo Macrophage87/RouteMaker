@@ -1929,4 +1929,12 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Turns ahead: {turns}.": "Поворотов впереди: {turns}.",
   "Busy junctions: {busy}.": "Оживлённых перекрёстков: {busy}.",
   "No room on this screen for: {graphs}.": "Нет места на этом экране для: {graphs}.",
+  // ---- Accessibility mode's confirmation and help, the (i) names, and Go's outside-the-area notice (2026-11-04 review) ----
+  "Accessibility mode on: high contrast, large text during a ride, and Map tools by the map's zoom buttons.": "Режим доступности включён: высокая контрастность, крупный текст в поездке и Инструменты карты у кнопок масштаба карты.",
+  "Accessibility mode off: high contrast and large ride text are off, and Map tools is hidden.": "Режим доступности выключен: высокая контрастность и крупный текст в поездке выключены, Инструменты карты скрыты.",
+  "For keyboard or screen reader use, turn on accessibility mode. It turns on high contrast, large text during a ride, and Map tools by the map's zoom buttons; it is kept on this device, and is also the first button on the page.": "Для работы с клавиатурой или экранным диктором включите режим доступности. Он включает высокую контрастность, крупный текст в поездке и Инструменты карты у кнопок масштаба карты; он сохраняется на этом устройстве и также является первой кнопкой на странице.",
+  "For keyboard or screen reader use, turn on accessibility mode (the first button on the page, or in Settings).": "Для работы с клавиатурой или экранным диктором включите режим доступности (первая кнопка на странице или в Настройках).",
+  "running pace": "темпе бега",
+  "screen-reader detail": "подробностях для экранного диктора",
+  "That point is outside the area this map covers (the DC region to Baltimore).": "Эта точка вне области этой карты (от округа Колумбия до Балтимора).",
 };

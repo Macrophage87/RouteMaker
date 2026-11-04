@@ -1929,4 +1929,12 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Turns ahead: {turns}.": "앞의 회전: {turns}.",
   "Busy junctions: {busy}.": "혼잡한 교차로: {busy}.",
   "No room on this screen for: {graphs}.": "이 화면에 표시할 공간 없음: {graphs}.",
+  // ---- Accessibility mode's confirmation and help, the (i) names, and Go's outside-the-area notice (2026-11-04 review) ----
+  "Accessibility mode on: high contrast, large text during a ride, and Map tools by the map's zoom buttons.": "접근성 모드 켜짐: 고대비, 라이드 중 큰 글씨, 지도 확대/축소 버튼 옆의 지도 도구.",
+  "Accessibility mode off: high contrast and large ride text are off, and Map tools is hidden.": "접근성 모드 꺼짐: 고대비와 라이드 중 큰 글씨가 꺼지고, 지도 도구가 숨겨집니다.",
+  "For keyboard or screen reader use, turn on accessibility mode. It turns on high contrast, large text during a ride, and Map tools by the map's zoom buttons; it is kept on this device, and is also the first button on the page.": "키보드나 화면 낭독기를 사용하려면 접근성 모드를 켜세요. 고대비, 라이드 중 큰 글씨, 지도 확대/축소 버튼 옆의 지도 도구가 켜집니다. 이 기기에 저장되며, 페이지의 첫 번째 버튼이기도 합니다.",
+  "For keyboard or screen reader use, turn on accessibility mode (the first button on the page, or in Settings).": "키보드나 화면 낭독기를 사용하려면 접근성 모드를 켜세요(페이지의 첫 번째 버튼 또는 설정).",
+  "running pace": "달리기 페이스",
+  "screen-reader detail": "화면 낭독기 상세도",
+  "That point is outside the area this map covers (the DC region to Baltimore).": "그 지점은 이 지도 범위 밖입니다 (DC 지역에서 볼티모어까지).",
 };

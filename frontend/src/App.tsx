@@ -305,7 +305,7 @@ import { REST_ANYWAY_MS, RIDE_REST_FINDING, fixedRide, restClosedSaid, restReque
 import { RIDE_TOO_LONG } from "./lib/navigate.ts";
 import { fetchMe, NO_ME, type Me } from "./lib/stressEditor.ts";
 import { reloadFavorites, useFavoriteRides } from "./lib/favoriteRides.ts";
-import { ACCOUNT_SETTINGS_USED, applyToDevice, deviceSettings, fetchSettings, onSignIn, planFromSetting, sameSettings, saveSettings, SAVE_SETTLE_MS, type SettingsDoc } from "./lib/accountSettings.ts";
+import { ACCOUNT_SETTINGS_USED, applyToDevice, deviceSettings, fetchSettings, onSignIn, planFromSetting, retryUntil, sameSettings, saveSettings, saveUnitsUnsynced, SAVE_SETTLE_MS, type SettingsDoc } from "./lib/accountSettings.ts";
 import { HOME_KEPT, HOME_MOVED, answerHomeOffer, deviceHome, homeOffer, type HomeOffer } from "./lib/homeMove.ts";
 import { OPENED_SAID, SAVED_SAID, SAVE_FAILED, UNCHANGED_SAID, UPDATE_ROUTE, VERSION_SAID, defaultRouteName, differenceLine, differsTooMuch, gpxSave, afterDelete, afterRename, planSave, saveAsVersion, savedAnswer, versionOf, type OpenSaved, type SavedRoute } from "./lib/savedRoutes.ts";
 import { checkClosures, closedStretches, reroutedSaid, spliceDetours, type Closure, type CheckFor } from "./lib/closureCheck.ts";
@@ -470,7 +470,8 @@ const NO_POINTS: LonLat[] = [];
 const NO_LEGS: number[] = [];
 const ignore = () => undefined;
 
-const OUTSIDE_NOTICE = "That point is outside the area this map covers (the DC region to Baltimore).";
+// In the page's language (the language is read once at load: lib/i18n.ts), as Go shows it.
+const OUTSIDE_NOTICE = t("That point is outside the area this map covers (the DC region to Baltimore).");
 
 export function App() {
   const [points, setPoints] = useState<LonLat[]>(initialPlan.points);
@@ -1815,9 +1816,12 @@ export function App() {
   const favoriteRides = useFavoriteRides();
   const [settingsSynced, setSettingsSynced] = useState(false);
   const [homeAsk, setHomeAsk] = useState<HomeOffer | null>(null);
-  const syncSettingsOnSignIn = async (origin: string, live: () => boolean) => {
+  // True once the account's settings were read (whether this page then took them or not); false to try again
+  // (retryUntil: a few times, then on the next focus or back online).
+  const syncSettingsOnSignIn = async (origin: string, live: () => boolean): Promise<boolean> => {
     const account = await fetchSettings(origin);
-    if (!live() || account === undefined) return;
+    if (!live()) return true;
+    if (account === undefined) return false;
     const device = deviceSettings({ preset: rideRef.current.preset, dials: rideRef.current.dials }, undefined, weightStore.current?.setting());
     const step = onSignIn(account, device);
     if (step.kind === "push-device") {
@@ -1852,9 +1856,11 @@ export function App() {
       if (!sameSettings(step.doc, device)) announce(ACCOUNT_SETTINGS_USED);
     }
     setSettingsSynced(true);
+    return true;
   };
   useEffect(() => {
     let live = true;
+    let stopSync: (() => void) | undefined;
     const origin = window.location.origin;
     void fetchMe(origin).then(async (found) => {
       if (!live) return;
@@ -1881,7 +1887,7 @@ export function App() {
         }
         return;
       }
-      void syncSettingsOnSignIn(origin, () => live);
+      stopSync = retryUntil(() => syncSettingsOnSignIn(origin, () => live), window);
       // The 311 checklist (lib/report311Log.ts): this device's and the account's, merged by entry.
       void report311Log().signIn();
       loadFavorites();
@@ -1900,6 +1906,7 @@ export function App() {
     });
     return () => {
       live = false;
+      stopSync?.();
     };
   }, []);
   // The installable app (WEB-NAV-plan.md section 8): a new version ready, and offline, said through the
@@ -6240,11 +6247,12 @@ export function App() {
 
   // Units (lib/units.ts) reload the page: signed in, the account gets the new choice first, so the sign-in on the
   // reload does not put the old one back. Before the account's settings are read, nothing is saved (it would replace
-  // them): not saved, try again. Settings and a ride's settings popup both use it.
+  // them): the account is read then and saved with only the units changed, or, still unreadable, the choice stays on
+  // this device (saveUnitsUnsynced) while the sign-in read is tried again. Settings and a ride's settings popup both use it.
   const saveSettingsNow = !me.signed_in
     ? undefined
     : !settingsSynced
-      ? async () => false
+      ? () => saveUnitsUnsynced(window.location.origin, deviceSettings({ preset, dials }, undefined, weightStore.current?.setting()).units)
       : async () => {
           const doc = deviceSettings({ preset, dials }, undefined, weightStore.current?.setting());
           const saved = await saveSettings(window.location.origin, doc);

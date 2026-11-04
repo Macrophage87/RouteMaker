@@ -1929,4 +1929,12 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Turns ahead: {turns}.": "Chỗ rẽ phía trước: {turns}.",
   "Busy junctions: {busy}.": "Giao lộ đông xe: {busy}.",
   "No room on this screen for: {graphs}.": "Không đủ chỗ trên màn hình này cho: {graphs}.",
+  // ---- Accessibility mode's confirmation and help, the (i) names, and Go's outside-the-area notice (2026-11-04 review) ----
+  "Accessibility mode on: high contrast, large text during a ride, and Map tools by the map's zoom buttons.": "Đã bật chế độ trợ năng: tương phản cao, chữ lớn khi đạp, và Công cụ bản đồ cạnh các nút thu phóng của bản đồ.",
+  "Accessibility mode off: high contrast and large ride text are off, and Map tools is hidden.": "Đã tắt chế độ trợ năng: tương phản cao và chữ lớn khi đạp đã tắt, và Công cụ bản đồ được ẩn.",
+  "For keyboard or screen reader use, turn on accessibility mode. It turns on high contrast, large text during a ride, and Map tools by the map's zoom buttons; it is kept on this device, and is also the first button on the page.": "Để dùng bàn phím hoặc trình đọc màn hình, hãy bật chế độ trợ năng. Chế độ này bật tương phản cao, chữ lớn khi đạp, và Công cụ bản đồ cạnh các nút thu phóng của bản đồ; được lưu trên thiết bị này, và cũng là nút đầu tiên trên trang.",
+  "For keyboard or screen reader use, turn on accessibility mode (the first button on the page, or in Settings).": "Để dùng bàn phím hoặc trình đọc màn hình, hãy bật chế độ trợ năng (nút đầu tiên trên trang, hoặc trong Cài đặt).",
+  "running pace": "tốc độ chạy",
+  "screen-reader detail": "chi tiết cho trình đọc màn hình",
+  "That point is outside the area this map covers (the DC region to Baltimore).": "Điểm đó nằm ngoài vùng bản đồ này (vùng DC đến Baltimore).",
 };

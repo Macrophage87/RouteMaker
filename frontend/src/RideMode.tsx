@@ -55,7 +55,7 @@ import {
   withClosed,
 } from "./lib/roadClosed.ts";
 import { requestRoute, type ErrorKind, type RouteResponse } from "./lib/api.ts";
-import { VIA_MARKS, drawnLegs, stopNames, viaIndices, type RideStopMark } from "./lib/pointKinds.ts";
+import { VIA_MARKS, drawnLegs, plannedStopNumbers, stopNames, viaIndices, type RideStopMark } from "./lib/pointKinds.ts";
 import {
   SKIP_STOP,
   RESTART_AUTO_M,
@@ -923,6 +923,8 @@ export function RideMode({
   const easing = useRef<{ which: Ease; ticket: number; before: RouteResponse; outcome: "pending" | "found" | "rejoin" } | null>(null);
   // What a re-plan builds on: the plan's points at first, then the last re-plan's (never a loop: its end is sent).
   const plan = useRef({ points: plannedPoints, loop: plannedLoop });
+  // The plan the ride began with: its stop numbers stay the stops' numbers through every re-route (plannedStopNumbers).
+  const firstPlan = useRef(plannedPoints);
   // The via points are not announced (v0.7.0): the model leaves them out of its cues.
   // A re-route that turns the rider round starts with "Make a U-turn." (lib/navigate.ts withUTurn).
   const uturnRoute = useRef<RouteResponse | null>(null);
@@ -935,8 +937,8 @@ export function RideMode({
     // A re-plan on foot (rideTrip.ts rideLegOf: Walk's own) brings its own turns; the planned walk's are its own.
     const onFoot = trip?.onFoot ? walkModel({ coordinates: r.geometry.coordinates as LonLat[], turns: walkLineTurns(r) ?? trip.onFoot.turns, to: null }, endWords(null)) : null;
     if (onFoot) return onFoot;
-    // A stop's own name (2026-10-24) is said and shown with its number.
-    const built = rideModel(r, viaIndices(points, VIA_MARKS.isVia), stopNames(points, VIA_MARKS.nameOf, VIA_MARKS.isVia, plan.current.loop));
+    // A stop's own name (2026-10-24) is said and shown with its number, the plan's number after a re-route too.
+    const built = rideModel(r, viaIndices(points, VIA_MARKS.isVia), stopNames(points, VIA_MARKS.nameOf, VIA_MARKS.isVia, plan.current.loop), plannedStopNumbers(points, firstPlan.current, VIA_MARKS.isVia));
     return r === uturnRoute.current ? withUTurn(built) : built;
   };
   const model = useMemo(() => modelOf(route, plan.current.points), [route]);
@@ -948,7 +950,15 @@ export function RideMode({
   const otherRef = useRef(other);
   otherRef.current = other;
   const otherModel = useMemo(
-    () => (other ? rideModel(other, viaIndices(plan.current.points, VIA_MARKS.isVia), stopNames(plan.current.points, VIA_MARKS.nameOf, VIA_MARKS.isVia, plan.current.loop)) : null),
+    () =>
+      other
+        ? rideModel(
+            other,
+            viaIndices(plan.current.points, VIA_MARKS.isVia),
+            stopNames(plan.current.points, VIA_MARKS.nameOf, VIA_MARKS.isVia, plan.current.loop),
+            plannedStopNumbers(plan.current.points, firstPlan.current, VIA_MARKS.isVia),
+          )
+        : null,
     [other],
   );
   const otherModelRef = useRef(otherModel);

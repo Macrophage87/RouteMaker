@@ -1929,4 +1929,12 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Turns ahead: {turns}.": "সামনের বাঁক: {turns}।",
   "Busy junctions: {busy}.": "ব্যস্ত মোড়: {busy}।",
   "No room on this screen for: {graphs}.": "এই স্ক্রিনে জায়গা নেই: {graphs}।",
+  // ---- Accessibility mode's confirmation and help, the (i) names, and Go's outside-the-area notice (2026-11-04 review) ----
+  "Accessibility mode on: high contrast, large text during a ride, and Map tools by the map's zoom buttons.": "অ্যাক্সেসিবিলিটি মোড চালু: উচ্চ কনট্রাস্ট, সফরের সময় বড় লেখা, আর মানচিত্রের জুম বোতামের পাশে মানচিত্র টুল।",
+  "Accessibility mode off: high contrast and large ride text are off, and Map tools is hidden.": "অ্যাক্সেসিবিলিটি মোড বন্ধ: উচ্চ কনট্রাস্ট ও সফরের বড় লেখা বন্ধ, আর মানচিত্র টুল লুকানো।",
+  "For keyboard or screen reader use, turn on accessibility mode. It turns on high contrast, large text during a ride, and Map tools by the map's zoom buttons; it is kept on this device, and is also the first button on the page.": "কিবোর্ড বা স্ক্রিন রিডারে ব্যবহারের জন্য অ্যাক্সেসিবিলিটি মোড চালু করুন। এটি উচ্চ কনট্রাস্ট, সফরের সময় বড় লেখা, আর মানচিত্রের জুম বোতামের পাশে মানচিত্র টুল চালু করে; এটি এই ডিভাইসে রাখা থাকে, আর এটি পাতার প্রথম বোতামও।",
+  "For keyboard or screen reader use, turn on accessibility mode (the first button on the page, or in Settings).": "কিবোর্ড বা স্ক্রিন রিডারে ব্যবহারের জন্য অ্যাক্সেসিবিলিটি মোড চালু করুন (পাতার প্রথম বোতাম, বা সেটিংসে)।",
+  "running pace": "দৌড়ের গতি",
+  "screen-reader detail": "স্ক্রিন রিডারের বিবরণ",
+  "That point is outside the area this map covers (the DC region to Baltimore).": "ওই বিন্দু এই মানচিত্রের এলাকার বাইরে (DC এলাকা থেকে বাল্টিমোর)।",
 };

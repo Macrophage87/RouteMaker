@@ -1929,4 +1929,12 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Turns ahead: {turns}.": "Virages devant : {turns}.",
   "Busy junctions: {busy}.": "Intersections chargées : {busy}.",
   "No room on this screen for: {graphs}.": "Pas de place sur cet écran pour : {graphs}.",
+  // ---- Accessibility mode's confirmation and help, the (i) names, and Go's outside-the-area notice (2026-11-04 review) ----
+  "Accessibility mode on: high contrast, large text during a ride, and Map tools by the map's zoom buttons.": "Mode accessibilité activé : contraste élevé, grand texte pendant la sortie, et Outils de carte près des boutons de zoom de la carte.",
+  "Accessibility mode off: high contrast and large ride text are off, and Map tools is hidden.": "Mode accessibilité désactivé : le contraste élevé et le grand texte de sortie sont désactivés, et Outils de carte est masqué.",
+  "For keyboard or screen reader use, turn on accessibility mode. It turns on high contrast, large text during a ride, and Map tools by the map's zoom buttons; it is kept on this device, and is also the first button on the page.": "Pour utiliser un clavier ou un lecteur d'écran, activez le mode accessibilité. Il active le contraste élevé, le grand texte pendant la sortie et Outils de carte près des boutons de zoom de la carte ; il est conservé sur cet appareil et c'est aussi le premier bouton de la page.",
+  "For keyboard or screen reader use, turn on accessibility mode (the first button on the page, or in Settings).": "Pour utiliser un clavier ou un lecteur d'écran, activez le mode accessibilité (le premier bouton de la page, ou dans Réglages).",
+  "running pace": "l'allure de course",
+  "screen-reader detail": "l'option Détail pour lecteur d'écran",
+  "That point is outside the area this map covers (the DC region to Baltimore).": "Ce point est hors de la zone couverte par la carte (la région de DC jusqu'à Baltimore).",
 };

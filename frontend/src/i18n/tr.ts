@@ -1929,4 +1929,12 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Turns ahead: {turns}.": "İlerideki dönüşler: {turns}.",
   "Busy junctions: {busy}.": "Yoğun kavşaklar: {busy}.",
   "No room on this screen for: {graphs}.": "Bu ekranda yer yok: {graphs}.",
+  // ---- Accessibility mode's confirmation and help, the (i) names, and Go's outside-the-area notice (2026-11-04 review) ----
+  "Accessibility mode on: high contrast, large text during a ride, and Map tools by the map's zoom buttons.": "Erişilebilirlik modu açık: yüksek kontrast, sürüşte büyük yazı ve haritanın yakınlaştırma düğmelerinin yanında Harita araçları.",
+  "Accessibility mode off: high contrast and large ride text are off, and Map tools is hidden.": "Erişilebilirlik modu kapalı: yüksek kontrast ve sürüşte büyük yazı kapalı, Harita araçları gizli.",
+  "For keyboard or screen reader use, turn on accessibility mode. It turns on high contrast, large text during a ride, and Map tools by the map's zoom buttons; it is kept on this device, and is also the first button on the page.": "Klavye veya ekran okuyucu kullanımı için erişilebilirlik modunu açın. Yüksek kontrastı, sürüşte büyük yazıyı ve haritanın yakınlaştırma düğmelerinin yanındaki Harita araçlarını açar; bu cihazda saklanır ve sayfadaki ilk düğmedir.",
+  "For keyboard or screen reader use, turn on accessibility mode (the first button on the page, or in Settings).": "Klavye veya ekran okuyucu kullanımı için erişilebilirlik modunu açın (sayfadaki ilk düğme ya da Ayarlar'da).",
+  "running pace": "koşu temposu",
+  "screen-reader detail": "ekran okuyucu ayrıntısı",
+  "That point is outside the area this map covers (the DC region to Baltimore).": "O nokta bu haritanın kapsadığı alanın dışında (DC bölgesinden Baltimore'a).",
 };
