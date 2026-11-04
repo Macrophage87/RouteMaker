@@ -2380,3 +2380,110 @@ def test_the_answer_carries_each_walks_turns_and_each_rides_stops(schedule) -> N
     assert "toward" in ride["text"]
     # Off transit, no stops; a walk not drawn, no turns.
     assert all(s["stops"] is None for s in steps if s["mode"] not in transit.TRANSIT_MODES)
+
+
+def test_the_route_answer_keeps_every_key_a_transit_step_carries(schedule) -> None:
+    """The API's step schema drops what it does not name (django-ninja): each key block() gives
+    a step comes back from /api/route's schema with its value (release review, 2026-11-03:
+    `towards` and `every_min` were lost)."""
+    from core.api import TransitStepOut
+
+    plan = transit.plan_bikeshare(
+        schedule, CAPITOL_HILL, DOWNTOWN, at(2026, 9, 30, 8, 0), Straight(), SHARE
+    )
+    metro = next(o for o in plan.options if not o.direct)
+    plan = transit.drawn(transit.choose(plan, metro.key), _Turning())
+    for step in transit.block(plan, schedule)["steps"]:
+        out = TransitStepOut.model_validate(step).model_dump()
+        assert _kept(step, out)
+
+
+def _kept(given, out) -> bool:
+    """Whether `out` holds everything in `given` (the schema may add its own defaults)."""
+    if isinstance(given, dict):
+        return isinstance(out, dict) and all(
+            k in out and _kept(v, out[k]) for k, v in given.items()
+        )
+    if isinstance(given, (list, tuple)):
+        return (
+            isinstance(out, (list, tuple))
+            and len(given) == len(out)
+            and all(_kept(g, o) for g, o in zip(given, out, strict=True))
+        )
+    return given == out
+
+
+def test_a_steps_trains_and_headway_survive_the_answers_schema() -> None:
+    from core.api import LiveTrainOut, TransitStepOut
+
+    step = {
+        "mode": "metro",
+        "text": "Take the Orange Line toward New Carrollton.",
+        "seconds": 300,
+        "wait_s": 120,
+        "to": "Stadium-Armory",
+        "lines": ["Orange Line", "Silver Line"],
+        "with_bike": True,
+        "route_line": False,
+        "coordinates": [],
+        "toward": "New Carrollton",
+        "towards": [
+            {"line": "Orange Line", "toward": "New Carrollton"},
+            {"line": "Silver Line", "toward": "Downtown Largo"},
+        ],
+        "every_min": 8,
+    }
+    out = TransitStepOut.model_validate(step).model_dump()
+    assert out["towards"] == step["towards"] and out["every_min"] == 8
+    train = {"line": "Orange Line", "toward": "Vienna/Fairfax-GMU", "end": [-77.27, 38.88]}
+    out = LiveTrainOut.model_validate({**train, "minutes": [3], "when": "3 min"}).model_dump()
+    assert out["end"] == [-77.27, 38.88]
+
+
+def test_vehicle_words_never_say_the_system_twice():
+    # MDOT MTA's MARC GTFS names every line "MARC": the step said "Board the MARC MARC" (Stephen,
+    # 2026-11-03: "fix the marc").
+    marc = transit.System(
+        0, "test-rail", "MARC", transit.RAIL, "the MARC {route}", "", True, "all", "", ""
+    )
+    assert marc.vehicle_words(("MARC",)) == "the MARC"
+    assert marc.vehicle_words(("Penn Line",)) == "the MARC Penn Line"
+    assert marc.vehicle_words(("MARC Penn Line",)) == "the MARC Penn Line"
+    assert marc.vehicle_words(("MARC", "Penn Line")) == "the MARC Penn Line"
+    assert marc.vehicle_words(("Penn Line", "Camden Line")) == "the MARC Penn Line or Camden Line"
+    bus = transit.System(
+        1, "test-bus", "Metrobus", transit.BUS, "bus {route}", "", True, "all", "", ""
+    )
+    assert bus.vehicle_words(("B10",)) == "bus B10"
+
+
+def test_vehicle_words_keep_a_bus_systems_name():
+    bus = transit.System(
+        1, "test-bus", "Metrobus", transit.BUS, "bus {route}", "", True, "all", "", ""
+    )
+    assert bus.vehicle_words(("Metrobus",)) == "the Metrobus"
+
+
+def test_towards_lists_every_train_that_makes_the_ride_by_where_it_is_signed():
+    # Stephen, 2026-11-03: "Put the acceptable destination options. you still need to know which
+    # train to get on". Only the patterns serving the hop now (`Hop.serving`) count: a through
+    # train to Delta and a short turn to Charlie both, each end once; with none named, the one
+    # planned.
+    schedule = _branch_schedule()
+    route = schedule.patterns[0].route
+
+    def hop(serving):
+        return transit.Hop(
+            wait_s=0,
+            ride_s=60,
+            routes=(route,),
+            path=(1, 2),
+            system=0,
+            pattern=0,
+            frequent=True,
+            serving=serving,
+        )
+
+    assert transit._towards_of(schedule, hop((0, 1))) == ((route, "Charlie"), (route, "Delta"))
+    assert transit._towards_of(schedule, hop(())) == ((route, "Delta"),)
+    assert transit._towards_of(schedule, hop((0, 0))) == ((route, "Delta"),)

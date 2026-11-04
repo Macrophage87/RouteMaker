@@ -75,6 +75,7 @@ Contents:
 - [Deploying v0.17.0](#deploying-v0170)
 - [Deploying v0.18.0](#deploying-v0180)
 - [Deploying v0.19.0](#deploying-v0190)
+- [Deploying v0.19.1](#deploying-v0191)
 - [Deploying a planner and front-end release: rollback points and verification](#deploying-a-planner-and-front-end-release-rollback-points-and-verification)
 - [Paths bicycles may not ride (NO-BIKE-PATHS)](#paths-bicycles-may-not-ride-no-bike-paths)
 - [Mountain-bike difficulty levels (456; claude/v0-4-0-mtb-levels)](#mountain-bike-difficulty-levels-456-claudev0-4-0-mtb-levels)
@@ -6809,6 +6810,38 @@ with `</dev/null` on every docker command:
   together (a v0.18.0 api refuses a settings save that carries `units`). Loaded override rows stay
   loaded; retire them with the loader if they must go. On the beta: the map
   tables by rename (rollback B, from `live_old`) with rollback A.
+
+## Deploying v0.19.1
+
+A patch: Ride's settings as a popup (#932, #934, #936) and bike + transit rides that go on at the
+station (#937), plus the transit boarding screen and the "MARC MARC" wording fix (#941, which
+changes `src/core/transit.py`, so the api image is rebuilt). **No migration, no `src/pipeline/`
+change, no `lua/`, compose, Caddyfile, nginx, Dockerfile or
+requirements change, no new environment variable, outbound host or scheduled job, no `mobile/`
+change and no map rebuild.** The beta agent deploys it by itself from the annotated tag.
+
+- [ ] **The tag.** Once `test` and `a11y` are green on `main`, the owner tags v0.19.1 (annotated) on
+  that commit, from the PC.
+- [ ] **At home**, as "Deploying a planner and front-end release": tag the running api image for a
+  rollback, fast-forward the checkout, `docker compose build api`, `up -d --no-deps --no-build
+  --force-recreate api worker`, then the front end. No `migrate`. Leave the v0.19.0 map rebuild and
+  its swap alone: v0.19.1 runs on either map.
+- [ ] **Beta**, by its agent, once its deployed tag (`$RM_STATE/cd/deployed-tag`) is v0.19.0: the
+  gate sees `frontend/`, `scripts/`, `src/core/`, `src/routemaker/`, `tests/` and the version in
+  `pyproject.toml` only, and deploys. While v0.19.0 is
+  held or not yet marked deployed, the diff from v0.18.0 still carries `src/pipeline/schema.py` and
+  the agent stops on v0.19.1 too: finish the v0.19.0 hand ship and `mark-deployed v0.19.0` first
+  (then `resume` if paused), or ship v0.19.1 by hand as "Shipping an update later", then
+  `mark-deployed v0.19.1`. Stuck: `git fetch --force --tags
+  origin`, then `scripts/beta/auto-release.sh retry v0.19.1`.
+- [ ] **Spot checks.** In a ride, the settings button opens a popup over the map with Colors, High
+  contrast and Units first; switching Units changes the distances at once. A bike + transit ride
+  shows no Done at the station and picks up the ride after the train. Bikeshare + transit's walking
+  option starts a ride. A MARC boarding never says "the MARC MARC", and the boarding card shows a line badge
+  for each line that makes the ride, with where it is signed to, then Get off, Next train (Next bus
+  for a bus) and After that as rows.
+- [ ] **Rollback.** The v0.19.0 api image and front end together. Nothing in the database or the
+  map changes.
 
 ## Deploying a planner and front-end release: rollback points and verification
 
