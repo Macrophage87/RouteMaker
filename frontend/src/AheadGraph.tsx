@@ -373,8 +373,16 @@ function Ribbon({ bars, rails, x, top, turns }: { bars: readonly StressBar[]; ra
         return (
           <g key={b.fromM}>
             <rect className="ride-ahead-bar" x={left} y={band} width={width} height={RIBBON_H} fill={b.color} />
+            {b.halfDash && (
+              // A half step in the colour-blind-friendly palette: the next level's dash along its foot, as on the map.
+              <g className="ride-ahead-half-dash">
+                {b.halfOutline && <line x1={left} x2={left + width} y1={band + RIBBON_H - 3} y2={band + RIBBON_H - 3} stroke={b.halfOutline} strokeWidth={5} strokeDasharray="6 4" />}
+                <line x1={left} x2={left + width} y1={band + RIBBON_H - 3} y2={band + RIBBON_H - 3} stroke={b.halfDash} strokeWidth={3.5} strokeDasharray="6 4" />
+              </g>
+            )}
             {width >= b.label.length * 8 + 6 && (
-              <text className="ride-ahead-level" x={left + width / 2} y={band + RIBBON_H / 2 + 5} textAnchor="middle" style={{ fill: b.ink }}>
+              // Lifted a little over a half step's dash, so the dash runs under the number.
+              <text className="ride-ahead-level" x={left + width / 2} y={band + RIBBON_H / 2 + (b.halfDash ? 3 : 5)} textAnchor="middle" style={{ fill: b.ink }}>
                 {b.label}
               </text>
             )}

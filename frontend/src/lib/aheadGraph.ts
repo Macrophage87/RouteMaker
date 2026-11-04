@@ -126,6 +126,13 @@ export interface StressBar {
   color: string;
   /** The label's colour on the bar: near-black or white, whichever reads better. */
   ink: string;
+  /**
+   * In the colour-blind-friendly palette, where a half step has no colour of its own: the next level's colour, drawn
+   * as a dash on it, as the map and the route draw one (routeColours.ts halfDash; the owner 2026-10-31, "keep dashes
+   * with the same rules"), and the outline under that dash where it needs one.
+   */
+  halfDash?: string;
+  halfOutline?: string;
 }
 
 export function spanLevel(span: Pick<StressSpan, "tier" | "half" | "facility">): number | null {
@@ -150,14 +157,23 @@ export function stressBars(spans: readonly StressSpan[], w: Pick<AheadWindow, "f
     const toM = Math.min(span.to_m, w.toM);
     if (toM <= fromM) continue;
     const level = spanLevel(span);
-    const color = spanClass(span).color;
+    const cls = spanClass(span);
+    const color = cls.color;
     const last = bars[bars.length - 1];
-    if (last && last.level === level && last.color === color && last.toM >= fromM - 0.5) {
+    if (last && last.level === level && last.color === color && last.halfDash === cls.halfDash && last.toM >= fromM - 0.5) {
       last.toM = toM;
       continue;
     }
     const label = level === null ? "?" : level === 5 ? "A" : String(level);
-    bars.push({ fromM, toM, level, label, color, ink: inkOn(color) });
+    bars.push({
+      fromM,
+      toM,
+      level,
+      label,
+      color,
+      ink: inkOn(color),
+      ...(cls.halfDash ? { halfDash: cls.halfDash, ...(cls.halfOutline ? { halfOutline: cls.halfOutline } : {}) } : {}),
+    });
   }
   return bars;
 }
