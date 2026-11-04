@@ -799,9 +799,14 @@ the column. Then comes one bubble for each graph of the next 2 mi [3.2 km] the r
 and <strong>Elevation</strong>, with <strong>Flow</strong> and <strong>Corkers</strong> first on a Mass Ride. Each
 turns its graph on or off and says so; More stays open, and the graphs change once it closes. While you are on the route, the graphs that are on stack at the top of the bottom panel on
 one distance axis, with a strip marking turns and busy junctions; on a shared ride they reach back to the last rider,
-each rider a dot. Off unless you turn them on, and kept on this device. On a short screen or with Large text
+each rider a dot. Stress is not a graph but a thin ribbon under the turns, in the map's stress colors with each
+stretch's level written on it and half steps dashed as on the map, so it fits beside Elevation. Along its top and
+bottom edges run the map's rails: solid purple for a trail, posts for a protected bike lane and dots for a painted
+one (a painted lane on an LTS 4 road is left off, as on the map). Off unless you turn them on, and kept on this device. On a short screen or with Large text
 there may not be room for every graph that is on: only the first ones in More's order are drawn, or none, and a line
-names the rest, or, with no room for that line either, the app says "No room on this screen for: Elevation." once. <strong>Topo lines</strong> (the contour icon), just before the gear, is always there. It
+names the rest, or, with no room for that line either, the app says "No room on this screen for: Elevation." once.
+With no room for a graph beside the ribbon, the ribbon is drawn alone, and with no room even for that it is said
+instead. <strong>Topo lines</strong> (the contour icon), just before the gear, is always there. It
 turns the map's contour lines on or off, the same switch as Topo lines in Layers, Trails and terrain, and says "Topo lines on."
 or "Topo lines off.", and like those it closes the column; a screen reader hears its name and whether it is on. Where the server has no contours it
 says they are not available, and with no signal it says it needs a connection. The <strong>Settings</strong> gear opens <strong>Ride settings</strong> as a popup over the map:
@@ -840,7 +845,9 @@ a while, underground, it follows the timetable and says so. On Walk the button r
 A Bikeshare + transit option that takes no bike (a walk, the train, a walk) is followed as Walk + transit is, and its
 button reads Start walk too. Reaching the station does not end the ride: the train, and any walk, are followed next,
 and once you are off the train the ride after it starts by itself (<strong>Ride the rest</strong> is pressed for you;
-its button stays, for another try if the app could not plan it). A ride between two trains, such as Metro, a ride and
+its button stays, for another try if the app could not plan it). It waits for a fresh GPS fix at your stop or past it,
+never the timetable alone, so after an underground station it starts once GPS is back; with no fix after 20 seconds
+it says once to press Ride the rest. A ride between two trains, such as Metro, a ride and
 then MARC, follows the second train too. With stops, the trip is followed one leg at a time,
 and at each stop <strong>Start the next leg</strong> plans the rest again from where you are.</li>
 <li><strong>Weather</strong> is checked once the ride knows where you are on the route, and every 5 minutes, along the rest of
@@ -1011,7 +1018,8 @@ ramp that rises left to right for uphill and falls for downhill in the direction
 grade shows beside it, such as "+9%" or "-6%" (<a href="/about/routing.html#steep">Steep grades</a>).</li>
 <li><strong>Water and restrooms</strong>: drinking fountains and taps (with untreated water marked),
 flush and portable restrooms, and bike repair stands, from street zoom; and bike racks, pink squares with
-a U-shaped rack, from zoom 15 (a few blocks across). In DC the racks are DDOT's public bike racks, and in
+a U-shaped rack, from zoom 17 (a couple of blocks across); the three racks Go pins near an end you picked show at any zoom.
+In DC the racks are DDOT's public bike racks, and in
 Baltimore the Baltimore City Department of Transportation's (its installed racks, scooter corrals with bike racks and
 its 2021 inventory of public racks), with OpenStreetMap's where the city lists none; elsewhere they are
 OpenStreetMap's. OpenStreetMap's bike lockers and bike rooms are kept everywhere, even beside a city's rack. Racks within 50 ft [15 m] of each other
