@@ -1018,6 +1018,10 @@ export function RideMode({
   const lastFixAt = useRef(Date.now());
   // The last good fix and whether the weak-GPS note is up (lib/navigate.ts weighFix); a new watch starts afresh.
   const gpsWeak = useRef<GpsWeakness>({ goodAt: Date.now(), weak: false });
+  // On a train or bus past the line, or waiting for it (Stephen, 2026-11-04: "stop the GPS is weak notifications on
+  // metrorail"): there are no turn cues to pause, and the stops follow any rough fix or the timetable, so a weak or
+  // lost GPS is neither said nor shown.
+  const onTransitRef = useRef(false);
   // Weak GPS for long enough (cueSheetShown): the card shows the turns ahead as a list.
   const [cueSheetOn, setCueSheetOn] = useState(false);
   const cueSheetRef = useRef(false);
@@ -1673,8 +1677,8 @@ export function RideMode({
       // Only poor fixes for a while: the cues are paused, so the GPS note says so, once (review RIDE-3).
       const weighed = weighFix(gpsWeak.current, fix.accuracyM, lastFixAt.current);
       gpsWeak.current = { goodAt: weighed.goodAt, weak: weighed.weak };
-      if (weighed.sayNow) notify(GPS_WEAK_SAID);
-      setGps(weighed.weak ? GPS_WEAK_SAID : "");
+      if (weighed.sayNow && !onTransitRef.current) notify(GPS_WEAK_SAID);
+      setGps(weighed.weak && !onTransitRef.current ? GPS_WEAK_SAID : "");
       checkCueSheet(lastFixAt.current);
       // Arrived: how long the rider has stayed within STAY_M, for the pause at the destination (checkStay).
       stay.current = rideRef.current.arrived ? stayStep(stay.current, fix) : null;
@@ -1790,6 +1794,8 @@ export function RideMode({
       (reason) => {
         // Paused, a lone failure says nothing: the rider is not riding. A watch stopped for good still stops.
         if (pausedRef.current && reason !== "denied" && reason !== "insecure" && reason !== "unsupported") return;
+        // Underground on a train, no fix is expected: the timetable places it (lib/onBoard.ts), nothing is said.
+        if (onTransitRef.current && reason !== "denied" && reason !== "insecure" && reason !== "unsupported") return;
         if (reason === "timeout") {
           // Many phones report a lost signal as a timeout: said once no fix has come for GPS_LOST_MS.
           if (gpsSaid.current !== reason && Date.now() - lastFixAt.current >= GPS_LOST_MS) {
@@ -2585,6 +2591,12 @@ export function RideMode({
   const onwardIndex = onward?.index ?? 0;
   const onwardDone = onwardParts.length > 0 && onwardIndex >= onwardParts.length;
   const onwardPart = ride.arrived ? (onwardParts[onwardIndex] ?? null) : null;
+  const onTransit = onwardPart?.kind === "transit";
+  onTransitRef.current = onTransit;
+  // A weak-GPS note from before the train goes on boarding (no fix may come underground to clear it).
+  useEffect(() => {
+    if (onTransit) setGps("");
+  }, [onTransit]);
   const onwardWalkLine = onwardPart?.kind === "walk" ? walkTurnLine(onwardPart.model, onward?.walk ?? null) : null;
   // The trip goes on past the line's end (Stephen, 2026-11-03: "the ride just ends when you reach the station. It
   // should start the transit phase"): the walk or the train after it, then the ride after the transit, which starts by

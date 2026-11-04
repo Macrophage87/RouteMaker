@@ -2538,3 +2538,48 @@ def test_towards_lists_every_train_that_makes_the_ride_by_where_it_is_signed():
     assert transit._towards_of(schedule, hop((0, 1))) == ((route, "Charlie"), (route, "Delta"))
     assert transit._towards_of(schedule, hop(())) == ((route, "Delta"),)
     assert transit._towards_of(schedule, hop((0, 0))) == ((route, "Delta"),)
+
+
+# Stephen, 2026-11-04: "Can't you find the shape files for the routes?" A rail pattern's track
+# from shapes.txt, cut at its stops; a hop's line is the track between the stops it rides.
+def test_shape_cuts_runs_the_track_through_each_stop() -> None:
+    line = [(0.0, 0.0), (0.005, 0.002), (0.01, 0.0), (0.015, 0.002), (0.02, 0.0)]
+    stops = [(0.0, 0.0), (0.01, 0.0), (0.02, 0.0)]
+    points, cuts = build.shape_cuts(line, stops)
+    assert cuts[0] == 0 and cuts[-1] == len(points) - 1
+    assert [points[c] for c in cuts] == [[0.0, 0.0], [0.01, 0.0], [0.02, 0.0]]
+    # The bends between the stops (over 200 m off the straight line) are kept.
+    assert [0.005, 0.002] in points and [0.015, 0.002] in points
+    # A stop far off the shape: not this pattern's track.
+    assert build.shape_cuts(line, [(0.0, 0.0), (0.0, 0.05)]) is None
+    # Too little to cut.
+    assert build.shape_cuts([(0.0, 0.0)], stops) is None
+
+
+def test_the_build_keeps_rail_tracks_and_a_marc_ride_follows_its_track(schedule) -> None:
+    doc = doc_from()
+    penn = [p for p in doc["patterns"] if p["route"] == "Penn Line"]
+    drawn = [p for p in penn if p.get("shape")]
+    assert drawn, "the Penn Line's patterns with a shape_id carry their track"
+    for p in drawn:
+        assert len(p["cuts"]) == len(p["stops"]) and p["cuts"][-1] == len(p["shape"]) - 1
+    # A feed without shapes.txt, or a bus: no track (drawn stop to stop).
+    assert not any(p.get("shape") for p in doc["patterns"] if p["route"] == "Camden Line")
+    assert any("follow their track" in line for line in built(date(2026, 9, 28))[1])
+    plan = plan_bike(schedule, NOMA, BALTIMORE, at(2026, 9, 30, 6, 20))
+    (marc,) = transit_legs(plan.options[0])
+    # More than its stops: the bends between them, from the track.
+    assert len(marc.coordinates) > len(marc.stops)
+    assert tuple(marc.coordinates[0]) == tuple(marc.stops[0][1])
+    assert tuple(marc.coordinates[-1]) == tuple(marc.stops[-1][1])
+
+
+def test_a_schedule_whose_track_does_not_fit_its_stops_draws_stop_to_stop(tmp_path) -> None:
+    doc = doc_from()
+    for p in doc["patterns"]:
+        if p.get("shape"):
+            p["cuts"] = p["cuts"][:-1]
+    path = tmp_path / "schedule.json"
+    path.write_text(json.dumps(doc))
+    loaded = transit.load(path, date(2026, 9, 30))
+    assert not any(p.cuts for p in loaded.patterns)

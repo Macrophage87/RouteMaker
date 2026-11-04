@@ -10866,6 +10866,16 @@ summary.closure-notices-heading {
 }
 .onboard-stops li {
   padding: 3px 0;
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 0.25em;
+}
+/* Each stop's clock time at the row's end (2026-11-04), in the normal weight so the names lead. */
+.onboard-stops .onboard-eta {
+  margin-inline-start: auto;
+  padding-inline-start: 0.75em;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
 }
 .onboard-stops .onboard-next,
 .onboard-stops .onboard-off {

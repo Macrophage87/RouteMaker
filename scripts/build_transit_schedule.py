@@ -313,6 +313,11 @@ def patterns(feed, services: dict[str, str], names, stop_key, bike_rule: str) ->
         for row in _rows(feed, "trips.txt")
         if row["service_id"] in services
     }
+    shape_of = {
+        row["trip_id"]: (row.get("shape_id") or "").strip()
+        for row in _rows(feed, "trips.txt")
+        if row["service_id"] in services
+    }
     times: dict[str, list[tuple[int, str, int]]] = {}
     for row in _rows(feed, "stop_times.txt"):
         trip = row["trip_id"]
@@ -355,8 +360,11 @@ def patterns(feed, services: dict[str, str], names, stop_key, bike_rule: str) ->
         if trip in repeat:
             starts = [t for begin, end, every in repeat[trip] for t in range(begin, end, every)]
         pattern = found.setdefault(
-            (names.get(route, route), tuple(stops)), {"runs": {}, "trips": {}}
+            (names.get(route, route), tuple(stops)), {"runs": {}, "trips": {}, "shape": ""}
         )
+        # The first trip's track that names one: the pattern's line on the map (shapes.txt).
+        if not pattern["shape"] and shape_of.get(trip):
+            pattern["shape"] = shape_of[trip]
         for first in starts:
             band = band_index(first / 60)
             if band is not None:
@@ -380,9 +388,91 @@ def patterns(feed, services: dict[str, str], names, stop_key, bike_rule: str) ->
                 "trips": {
                     sid: sorted(deps) for sid, deps in sorted(found_pattern["trips"].items())
                 },
+                **({"shape_id": found_pattern["shape"]} if found_pattern["shape"] else {}),
             }
         )
     return out
+
+
+# --- Track shapes (shapes.txt) ------------------------------------------------------------
+
+# A shape is drawn to within this of the agency's line (metres), keeping each stop's point.
+SHAPE_TOLERANCE_M = 8.0
+# A stop farther than this from its pattern's shape: the shape is not that pattern's, left out.
+SHAPE_STOP_M = 400.0
+
+
+def shapes(feed, wanted: set[str]) -> dict[str, list[tuple[float, float]]]:
+    """The wanted shapes' points in order (shapes.txt, by shape_pt_sequence); none where the
+    feed has no shapes.txt."""
+    if "shapes.txt" not in feed.namelist():
+        return {}
+    found: dict[str, list[tuple[int, tuple[float, float]]]] = {}
+    for row in _rows(feed, "shapes.txt"):
+        sid = row["shape_id"]
+        if sid in wanted:
+            point = (float(row["shape_pt_lon"]), float(row["shape_pt_lat"]))
+            found.setdefault(sid, []).append((int(row["shape_pt_sequence"]), point))
+    return {sid: [p for _seq, p in sorted(rows)] for sid, rows in found.items()}
+
+
+def _simplified(points: list, tolerance_m: float) -> list:
+    """Douglas-Peucker on a short stretch, both ends kept (metres, by a local flat projection)."""
+    if len(points) <= 2:
+        return list(points)
+    lat = math.radians(points[0][1])
+    sx, sy = 111_320.0 * math.cos(lat), 110_540.0
+
+    def off(p, a, b) -> float:
+        ax, ay, bx, by = a[0] * sx, a[1] * sy, b[0] * sx, b[1] * sy
+        px, py = p[0] * sx, p[1] * sy
+        dx, dy = bx - ax, by - ay
+        length = dx * dx + dy * dy
+        t = 0.0 if length == 0 else max(0.0, min(1.0, ((px - ax) * dx + (py - ay) * dy) / length))
+        return math.hypot(px - ax - t * dx, py - ay - t * dy)
+
+    worst, at = 0.0, 0
+    for i in range(1, len(points) - 1):
+        d = off(points[i], points[0], points[-1])
+        if d > worst:
+            worst, at = d, i
+    if worst <= tolerance_m:
+        return [points[0], points[-1]]
+    return _simplified(points[: at + 1], tolerance_m)[:-1] + _simplified(points[at:], tolerance_m)
+
+
+def shape_cuts(line: list, stops: list) -> tuple[list[list[float]], list[int]] | None:
+    """A pattern's track (Stephen, 2026-11-04: "Can't you find the shape files for the routes?"):
+    the shape from its first stop to its last, through each stop's own point, simplified, and the
+    index of each stop's point in it, so a ride from one stop to another is a slice. Each stop is
+    placed at the nearest shape point not behind the stop before it. None where a stop is over
+    SHAPE_STOP_M from the shape (not this pattern's track) or the shape is too short."""
+    if len(line) < 2 or len(stops) < 2:
+        return None
+    at: list[int] = []
+    start = 0
+    for stop in stops:
+        best, best_d = None, math.inf
+        for i in range(start, len(line)):
+            d = distance_m(line[i], stop)
+            if d < best_d:
+                best, best_d = i, d
+        if best is None or best_d > SHAPE_STOP_M:
+            return None
+        at.append(best)
+        start = best
+    points: list[list[float]] = []
+    cuts: list[int] = []
+    for k in range(len(stops)):
+        if k == 0:
+            points.append(_round(stops[0]))
+            cuts.append(0)
+            continue
+        between = [stops[k - 1], *line[at[k - 1] + 1 : at[k]], stops[k]]
+        kept = _simplified(between, SHAPE_TOLERANCE_M)
+        points.extend(_round(p) for p in kept[1:])
+        cuts.append(len(points) - 1)
+    return points, cuts
 
 
 def _stops(feed) -> dict[str, dict]:
@@ -391,6 +481,13 @@ def _stops(feed) -> dict[str, dict]:
 
 def _point(row) -> tuple[float, float]:
     return (float(row["stop_lon"]), float(row["stop_lat"]))
+
+
+def _point_of(row: dict) -> tuple[float, float]:
+    """An output stop's place: its "point" (a GTFS row's own place where it has none)."""
+    if "point" in row:
+        return (float(row["point"][0]), float(row["point"][1]))
+    return _point(row)
 
 
 class _Stops:
@@ -569,6 +666,22 @@ def build(
                 key,
                 config["bike"]["vehicle"],
             )
+            # Rail's tracks (a bus runs the streets the map shows already; its shapes would be
+            # most of the file).
+            tracks = (
+                shapes(feed, {p["shape_id"] for p in found if p.get("shape_id")})
+                if config["mode"] != "bus"
+                else {}
+            )
+        drawn = 0
+        for pattern in found:
+            line = tracks.get(pattern.pop("shape_id", ""), [])
+            cut = shape_cuts(line, [_point_of(stops.rows[s]) for s in pattern["stops"]])
+            if cut is not None:
+                pattern["shape"], pattern["cuts"] = cut
+                drawn += 1
+        if tracks:
+            report.append(f"{config['id']}: {drawn} of {len(found)} patterns follow their track")
         for pattern in found:
             pattern["system"] = system
             pattern["trips"] = {str(index[sid]): deps for sid, deps in pattern["trips"].items()}

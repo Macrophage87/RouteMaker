@@ -371,3 +371,22 @@ test("Where am I? on transit: the line and stop to get off while waiting; the st
   assert.equal(onwardWhere(parts, { ...state, index: parts.length }, t0), null);
   assert.equal(onwardWhere([], null, t0), null);
 });
+
+test("the path follows the line's track where the API sent one, from the stop reached", () => {
+  // A track with a bend between each pair of stops: twice the stops, less one.
+  const track: LonLat[] = [];
+  NAMES.forEach((_, i) => {
+    track.push(north(i * 1200));
+    if (i < NAMES.length - 1) track.push([-76.995, 38.9 + (i * 1200 + 600) / M_PER_DEG]);
+  });
+  const leg = onBoardLeg({ ...STEP, coordinates: track })!;
+  assert.equal(leg.track?.length, 11);
+  const waiting = onBoardPath(leg, 0)!;
+  assert.equal(waiting.coordinates.length, 11);
+  // At Rhode Island Ave (stop 3): the track from there, its bends kept.
+  const on = onBoardPath(leg, 3)!;
+  assert.deepEqual(on.coordinates[0], north(3600));
+  assert.equal(on.coordinates.length, 5);
+  // Stops-only coordinates (an older schedule): no track, stop to stop.
+  assert.equal(LEG.track, null);
+});
