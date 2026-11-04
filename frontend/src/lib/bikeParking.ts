@@ -3,7 +3,9 @@
  * show the nearby racks and offer them as a routing option", then "They should also be seen on the map").
  *
  * The data is amenity-data/bike-parking.json, built by scripts/build_bike_parking.py: DDOT's Public Bike Racks in DC
- * (DC Open Data, CC BY 4.0; DC's data wins over OSM), and OpenStreetMap's public bicycle parking elsewhere (ODbL).
+ * (DC Open Data, CC BY 4.0; DC's data wins over OSM), Baltimore City DOT's racks and corrals in Baltimore (Stephen,
+ * 2026-11-04: "Also, add in the bike racks from BCDOT"; open by Baltimore City Code Art. 1 §9-1(h), wins over OSM
+ * too), and OpenStreetMap's public bicycle parking elsewhere (ODbL).
  * Loaded the first time Go asks for it or the layer is shown.
  *
  * Three places use it:
@@ -24,11 +26,11 @@ import { WATER_ICON_PADDING } from "./waterRestrooms.ts";
 import { t } from "./i18n.ts";
 
 export interface BikeRack {
-  /** "dc123" for DDOT's OBJECTID, else the OSM element ("n123", "w456"). */
+  /** "dc123" for DDOT's OBJECTID; "bc", "bs" or "ba" and a number for Baltimore City DOT's; else the OSM element ("n123", "w456"). */
   id: string;
   lon: number;
   lat: number;
-  /** DDOT: how many racks (a U-rack holds two bikes). */
+  /** DDOT or Baltimore: how many racks (a U-rack holds two bikes). */
   racks?: number;
   /** OSM: how many bikes. */
   capacity?: number;
@@ -78,6 +80,7 @@ export async function loadBikeParking(
 
 export const rackPoint = (rack: BikeRack): LonLat => [rack.lon, rack.lat];
 const fromDdot = (rack: BikeRack) => rack.id.startsWith("dc");
+const fromBaltimore = (rack: BikeRack) => /^b[acs]\d/.test(rack.id);
 
 /** What it is: "Bike rack", "Bike lockers" or "Bike room". */
 export function rackKindText(rack: BikeRack): string {
@@ -96,7 +99,13 @@ export function rackDetails(rack: BikeRack): string[] {
   else if (rack.capacity) out.push(t("Spaces: {count}.", { count: rack.capacity }));
   if (rack.covered) out.push(t("Covered."));
   if (rack.kind === "l") out.push(t("You may need a key, a card or a rental."));
-  out.push(fromDdot(rack) ? t("From DDOT's public bike racks.") : t("From OpenStreetMap."));
+  out.push(
+    fromDdot(rack)
+      ? t("From DDOT's public bike racks.")
+      : fromBaltimore(rack)
+        ? t("From Baltimore City DOT's bike racks.")
+        : t("From OpenStreetMap."),
+  );
   return out;
 }
 

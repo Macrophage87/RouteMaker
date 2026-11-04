@@ -595,7 +595,7 @@ rollback() { # old-sha old-short
 				dump=$(cat "$cd_dir/run-snapshot" 2>/dev/null)
 				if [ -n "$dump" ] && [ -f "$dump" ]; then
 					if step "restore the pre-release snapshot" env RECEIVE_DATA_REPO="$RM_SRC" "$receive" --env-file "$RM_SRC/.env" --backups-dir "$cd_dir/backups" restore-dump "$dump" </dev/null; then
-						say "note: the database as it was before the rollback is kept beside it as <db>_before_<time> (receive-data.sh's last lines in the run log name it); the owner drops it once the beta works"
+						say "note: the database as it was before the rollback is kept beside it as <db>_before_<time> (receive-data.sh's last lines in the run log name it); a pass drops it once it is 6.5 days old"
 					else
 						ok=0
 					fi
@@ -788,6 +788,36 @@ prune_aged_snapshots() {
 			{ [ -n "$keep_file" ] && [ "$f" -ef "$keep_file" ]; } && continue
 			rm -f -- "$f"
 		done
+}
+
+# The databases restore-dump keeps beside the one it puts back (<db>_before_<UTC yyyymmddHHMMSS>)
+# are whole copies, sign-ins and connections included, so they go after 6.5 days too, by the
+# instant in the name. Every pass runs this. Only a name that is exactly <db>_before_ and 14 digits
+# is dropped: never the live database, never one whose instant cannot be read or is younger.
+# postgis not answering drops nothing and is tried again next pass.
+KEPT_DB_MAX_AGE_S=561600
+prune_kept_dbs() {
+	local pguser pgdb names name stamp made now
+	pguser=$(env_value PGUSER 2>/dev/null); pguser=${pguser:-routemaker}
+	pgdb=$(env_value PGDATABASE 2>/dev/null); pgdb=${pgdb:-routemaker}
+	case "$pguser$pgdb" in *[!A-Za-z0-9_]*) say "WARNING: PGUSER or PGDATABASE in .env is not a plain name; no kept database dropped"; return 0 ;; esac
+	names=$(bc exec -T postgis psql -U "$pguser" -d postgres -At -c "select datname from pg_database where datname like '%\_before\_%' order by datname" </dev/null 2>>"$run_log") ||
+		{ echo "kept databases: postgis did not answer; none dropped this pass" >>"$run_log"; return 0; }
+	now=$(date -u +%s)
+	for name in $names; do
+		[ "$name" != "$pgdb" ] || continue
+		stamp=${name#"${pgdb}_before_"}
+		[ "$stamp" != "$name" ] || continue
+		case "$stamp" in [0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]) ;; *) continue ;; esac
+		made=$(date -u -d "${stamp:0:4}-${stamp:4:2}-${stamp:6:2} ${stamp:8:2}:${stamp:10:2}:${stamp:12:2}" +%s 2>/dev/null) || continue
+		[ $((now - made)) -gt "$KEPT_DB_MAX_AGE_S" ] || continue
+		if bc exec -T postgis psql -U "$pguser" -d postgres -v ON_ERROR_STOP=1 -At -c "drop database if exists \"$name\"" </dev/null >>"$run_log" 2>&1; then
+			say "dropped the kept database $name (made $stamp UTC, over 6.5 days ago)"
+		else
+			say "WARNING: could not drop the kept database $name (over 6.5 days old; a session may hold it); tried again next pass"
+		fi
+	done
+	return 0
 }
 
 prune() {
@@ -1048,6 +1078,8 @@ cmd_run() {
 	if [ "$dry_run" = 1 ]; then say "auto-release pass at $stamp (dry run: fetches, then changes nothing)"; else say "auto-release pass at $stamp"; fi
 	say "run log: $run_log"
 	[ "$dry_run" = 1 ] || prune_aged_snapshots
+	# A paused or BROKEN agent drops no database: a kept copy may be what the owner restores from.
+	[ "$dry_run" = 1 ] || [ -f "$cd_dir/PAUSED" ] || [ -f "$cd_dir/BROKEN" ] || prune_kept_dbs
 	pass; local rc=$?
 	trap - TERM INT HUP
 	rm -f "$report"
@@ -1081,7 +1113,7 @@ cmd_status() {
 	echo "api images: ${n:-0} (one a release; each deploy keeps the deployed and the previous one, for rollback C, and prunes older ones)"
 	pguser=$(env_value PGUSER 2>/dev/null); pguser=${pguser:-routemaker}
 	n=$(bc exec -T postgis psql -U "$pguser" -d postgres -At -c "select count(*) from pg_database where datname like '%\_before\_%'" </dev/null 2>/dev/null)
-	echo "kept dbs:   ${n:-unknown} <db>_before_<time> databases left by restores (the owner drops them once the beta works)"
+	echo "kept dbs:   ${n:-unknown} <db>_before_<time> databases left by restores (each pass drops those over 6.5 days old)"
 	echo "node_modules: $(find "$cd_dir/node_modules" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | grep -c .) lockfile copies in $cd_dir/node_modules"
 	if command -v systemctl >/dev/null 2>&1; then
 		echo "timer:      $(systemctl --user is-enabled "$UNIT.timer" 2>/dev/null || echo not-installed), $(systemctl --user is-active "$UNIT.timer" 2>/dev/null)"

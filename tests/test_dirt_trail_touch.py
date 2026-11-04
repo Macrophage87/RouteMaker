@@ -318,6 +318,38 @@ class TestThroughTheApi:
         assert post(client, body).json()["variant"] == "offroad"
         assert {graph_of(url) for url, _ in routes(fake)} == {"offroad"}
 
+    def test_an_end_on_a_dirt_trail_at_the_weekend_is_planned_on_the_off_road_graph(
+        self, client, segments, router
+    ) -> None:
+        """A Saturday, Sunday or holiday ride plans on the weekend graph, where dirt trails are
+        closed as on the standard one: a stop on one is honoured all the same."""
+        add_trail(segments, TOUCHED, END_TRAIL)
+        fake = router(plain_router())
+        response = post(client, {**good_body(), "when": "weekend"})
+        assert response.status_code == 200, response.content
+        assert response.json()["variant"] == "offroad"
+        assert {graph_of(url) for url, _ in routes(fake)} == {"offroad"}
+
+    def test_a_weekend_ride_re_plan_from_on_a_dirt_trail_may_ride_any(
+        self, client, segments, router
+    ) -> None:
+        add_trail(segments, TOUCHED, START_TRAIL)
+        fake = router(plain_router())
+        body = {**good_body(), "when": "weekend", "ride_replan": True}
+        response = post(client, body)
+        assert response.status_code == 200, response.content
+        assert response.json()["variant"] == "offroad"
+        assert {graph_of(url) for url, _ in routes(fake)} == {"offroad"}
+
+    def test_a_weekend_ride_with_no_dirt_trail_near_stays_on_the_weekend_graph(
+        self, client, segments, router
+    ) -> None:
+        add_trail(segments, TOUCHED, [(-77.045, 38.905), (-77.045, 38.906)])
+        fake = router(plain_router())
+        response = post(client, {**good_body(), "when": "weekend"})
+        assert response.json()["variant"] == "weekend"
+        assert {graph_of(url) for url, _ in routes(fake)} == {"weekend"}
+
     def test_road_closed_on_a_dirt_trail_closes_dirt_for_the_ride(
         self, client, segments, router
     ) -> None:

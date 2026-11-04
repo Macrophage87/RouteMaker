@@ -19,6 +19,7 @@
  * Credit: © OpenStreetMap contributors (ODbL), docs/SOURCES.md.
  */
 import DC_DATA from "../massride-data/dc-boundary.json" with { type: "json" };
+import { t } from "./i18n.ts";
 import type { LonLat } from "./geo.ts";
 import type { RouteResponse } from "./api.ts";
 import { withDarkPaint } from "./darkPaint.ts";
@@ -37,10 +38,10 @@ const POLYGONS: Ring[][] = DC_BOUNDARY.geometry.coordinates;
 
 /** In words, wherever the Mass Ride map is described (the legend, the planner). */
 export const MASS_DC_ONLY =
-  "Mass Ride planning covers DC only for now. Outside the District of Columbia the map is grayed out and no riders-per-minute figures are drawn.";
+  t("Mass Ride planning covers DC only for now. Outside the District of Columbia the map is grayed out and no riders-per-minute figures are drawn.");
 
 /** The boundary's credit, under the legend (OWNER-DECISIONS 301, 306: every source a rider sees is named). */
-export const DC_BOUNDARY_CREDIT = "District of Columbia boundary: © OpenStreetMap contributors (ODbL).";
+export const DC_BOUNDARY_CREDIT = t("District of Columbia boundary: © OpenStreetMap contributors (ODbL).");
 
 /** The notice for a Mass Ride route that leaves the District (418a). */
 export const MASS_OUTSIDE_DC_NOTICE = "Part of this route is outside the area Mass Ride planning covers (DC only for now).";
