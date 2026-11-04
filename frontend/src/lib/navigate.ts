@@ -1355,7 +1355,8 @@ const MPH_ABOUT_KMH = /(?<![\w.,])[\d.,]+ mph \(((?:about|unos) [\d.,]+ km\/h)\)
  * `unitsFirst`). "(LTS 1)" kept.
  */
 export function withoutMetric(text: string): string {
-  if (!metricFirst()) return text.replace(METRIC_BRACKET, "");
+  // Turned first here too, so words kept from before a switch back to US during a ride are said in US units.
+  if (!metricFirst()) return unitsFirst(text).replace(METRIC_BRACKET, "");
   // Turned first, so words kept from before the rider chose metric are said in metric too.
   return unitsFirst(text).replace(MPH_ABOUT_KMH, "$1").replace(US_BRACKET, "");
 }
