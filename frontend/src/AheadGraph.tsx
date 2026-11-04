@@ -124,10 +124,13 @@ interface Props {
 /**
  * The least height one graph takes, in CSS pixels, at `widthPx` wide: its name, its plot at its shortest and the
  * distance axis, without the turns strip, and a pixel for rounding (RideMode: with less room than this, no graph is drawn and the rider is told).
+ * With Traffic stress on, the least is the stress ribbon's alone (it is drawn without the other graphs where they do
+ * not fit, the v0.20.0 release review: at 360 x 640 the ribbon was never drawn because one graph did not fit).
  */
-export function aheadLeastPx(widthPx: number, large: boolean): number {
+export function aheadLeastPx(widthPx: number, large: boolean, ribbon = false): number {
   const width = Math.round(W / textZoom(large));
-  return Math.ceil(((AXIS_H + LABEL_H + PLOT_MIN) * widthPx) / width) + 1;
+  const units = ribbon ? Math.min(RIBBON_BLOCK + GAP + AXIS_H, AXIS_H + LABEL_H + PLOT_MIN) : AXIS_H + LABEL_H + PLOT_MIN;
+  return Math.ceil((units * widthPx) / width) + 1;
 }
 
 /** How much larger than usual the drawing's text is: the page's root text size, the ride's Large text and accessibility mode. */
@@ -209,6 +212,7 @@ export function AheadGraph({ views, route, cues, youM, lengthM, ridersAlong = []
       }
     }
     // No graph fits beside the ribbon: the ribbon alone, with the turns where they fit, and the graphs not drawn named
+    // (within Ride mode's few px of hysteresis, as one graph alone above, so the room it found is never refused here)
     // under it where that line fits too, else told (onNoRoom). With no room for even the ribbon, it is said, not drawn.
     let ribbonDrawn = ribbon.length > 0;
     if (ribbonDrawn && count === 0) {
@@ -221,7 +225,7 @@ export function AheadGraph({ views, route, cues, youM, lengthM, ridersAlong = []
           [TURNS_H, false],
           [0, false],
         ] as const
-      ).find(([turns, withLine]) => (withLine || line > 0) && budget >= alone(turns) + (withLine ? line : 0));
+      ).find(([turns, withLine]) => (withLine || line > 0) && budget + GRACE_PX * unit >= alone(turns) + (withLine ? line : 0));
       if (pick) {
         turnsH = pick[0];
         note = order.length > 0 && pick[1];
