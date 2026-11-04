@@ -76,9 +76,10 @@ test("each new route of the ride is kept in its place, and the question holds th
   const app = src("../App.tsx");
   // A Bikeshare or transit trip is kept whole, Ride the rest too (Stephen 2026-11-04); a detour from Roam is not.
   assert.match(app, /const kept = !rest\?\.roam;/);
-  assert.match(app, /const whole = leg\.trip \? \{ points: ridePoints, loop: false, preset: route\.preset, wholeTrip: true \} : \{ points: leg\.points, loop: leg\.loop, preset: leg\.preset \};/);
+  // Its loop as rideLegOf was given it (a walk_in loop or run stays a loop).
+  assert.match(app, /const whole = leg\.trip \? \{ points: ridePoints, loop: rest \? false : routedLoop, preset: route\.preset, wholeTrip: true \} : \{ points: leg\.points, loop: leg\.loop, preset: leg\.preset \};/);
   assert.match(app, /keepLeft=\{rideStart\.kept === true\}/);
-  assert.match(app, /if \(ended\.start\.kept && !ended\.start\.trip\) keepLeftRide\(ended\.start, VIA_MARKS, Date\.now\(\)\);/);
+  assert.match(app, /if \(ended\.start\.kept\) keepLeftRide\(ended\.start\.whole \? \{ \.\.\.ended\.start, \.\.\.ended\.start\.whole \} : ended\.start, VIA_MARKS, Date\.now\(\)\);/);
 });
 
 test("the ride's destination is kept with it, through its re-routes, to name it in the question (the UI review, 2026-10-28)", () => {
@@ -214,5 +215,5 @@ test("Resume of a trip works its leg out again and carries on past the line; the
   const ride = src("../RideMode.tsx");
   assert.match(ride, /useState<RideState>\(\(\) => \(resumedPast \? \{ \.\.\.startState\(\), arrived: true \} : startState\(\)\)\)/);
   assert.match(ride, /const onwardRef = useRef<OnwardState \| null>\(resumedPast\);/);
-  assert.match(ride, /if \(onward\) keepLeftRidePast\(onward\);/);
+  assert.match(ride, /if \(onwardRef\.current\) keepLeftRidePast\(onwardRef\.current\);\s*\}, \[pastKey\]\);/);
 });

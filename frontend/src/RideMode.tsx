@@ -995,9 +995,11 @@ export function RideMode({
   const restNextRef = useRef(false);
   const [onward, setOnward] = useState<OnwardState | null>(resumedPast);
   // Kept with the trip left going, so switching apps and back (a page reloaded) carries on from here (lib/rideResume.ts).
+  // Written when the part, the stop reached or the boarding changes, not at each timetable tick.
+  const pastKey = onward ? `${onward.index}|${onward.board?.at ?? ""}|${onward.board?.boardedAt ?? ""}|${onward.board?.done ?? ""}` : null;
   useEffect(() => {
-    if (onward) keepLeftRidePast(onward);
-  }, [onward]);
+    if (onwardRef.current) keepLeftRidePast(onwardRef.current);
+  }, [pastKey]);
   const rideRef = useRef(ride);
   const prefsRef = useRef(prefs);
   prefsRef.current = prefs;
