@@ -5,10 +5,11 @@
  * lib/pointKinds.ts); and, on the route itself, the drawn legs dashed.
  */
 import type { LonLat } from "./geo.ts";
+import { t } from "./i18n.ts";
 import { legPoints, validLegEnds } from "./lineEdit.ts";
 
 /** What shows that manual mode is on, beside the switch (Stephen 2026-10-20: "make it clear that manual mode is being used"). */
-export const MANUAL_BADGE = "Manual mode: taps join with straight lines";
+export const MANUAL_BADGE = t("Manual mode: taps join with straight lines");
 
 type Line = { type: "Feature"; properties: { drawn: boolean }; geometry: { type: "LineString"; coordinates: number[][] } };
 export type LegLines = { type: "FeatureCollection"; features: Line[] };

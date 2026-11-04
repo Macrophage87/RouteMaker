@@ -992,7 +992,7 @@ function ConsentDialog({
     <dialog
       ref={dialogRef}
       className="ask-dialog ride-consent"
-      data-idle-close
+      data-idle-close="always"
       aria-labelledby={join ? `${id}-title ${id}-q` : `${id}-q`}
       aria-describedby={join ? `${id}-line ${id}-offer ${id}-note` : `${id}-note`}
       onClose={() => {

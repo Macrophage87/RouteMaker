@@ -26,7 +26,7 @@ import { leadKeyOfMark, leadMark } from "./linkCode.ts";
 const LEAD_PARAM = "lead";
 
 /** The big button's name in Go with no destination, the card's heading, and its end. */
-export const ROAM_NAME = "Roam";
+export const ROAM_NAME = t("Roam");
 export const END_ROAM_NAME = t("End roam");
 export const ROAM_STARTED = t("Roaming. The map follows you and shows the roads ahead.");
 export const ROAM_ENDED = t("Roam ended.");

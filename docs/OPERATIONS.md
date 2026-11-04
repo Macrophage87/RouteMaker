@@ -26,6 +26,8 @@ Contents:
 - [Avoid-rated junctions: adding one (FOLLOWUP-ISECT-AVOID, OWNER-DECISIONS 307-310, 335)](#avoid-rated-junctions-adding-one-followup-isect-avoid-owner-decisions-307-310-335)
 - [Backups](#backups)
 - [Restoring one](#restoring-one)
+- [Off-box copies of beta backups](#off-box-copies-of-beta-backups)
+- [Restoring beta's database from a backup](#restoring-betas-database-from-a-backup)
 - [The rebuild's own budget](#the-rebuilds-own-budget)
 - [Tile build threads](#tile-build-threads)
 - [Rebuild checkpoints](#rebuild-checkpoints)
@@ -76,6 +78,7 @@ Contents:
 - [Deploying v0.18.0](#deploying-v0180)
 - [Deploying v0.19.0](#deploying-v0190)
 - [Deploying v0.19.1](#deploying-v0191)
+- [Deploying v0.20.0](#deploying-v0200)
 - [Deploying a planner and front-end release: rollback points and verification](#deploying-a-planner-and-front-end-release-rollback-points-and-verification)
 - [Paths bicycles may not ride (NO-BIKE-PATHS)](#paths-bicycles-may-not-ride-no-bike-paths)
 - [Mountain-bike difficulty levels (456; claude/v0-4-0-mtb-levels)](#mountain-bike-difficulty-levels-456-claudev0-4-0-mtb-levels)
@@ -2599,6 +2602,11 @@ owner's key. The plain archive exists only in the pipes between `pg_dump`, `age`
   `auto-release.sh` pass names in `run-snapshot`, or the one `restore-dump` is putting back):
   a rollback undoes an update within hours, and a database put back a week later would undo
   a week of riders' changes anyway.
+- **The database a restore sets aside goes too.** `restore-dump` keeps the database it replaces
+  beside the restored one as `<db>_before_<UTC yyyymmddHHMMSS>`: a whole, plain copy, sign-ins
+  and connections included. Every `auto-release.sh` pass on the beta drops each one more than
+  6½ days old, by the instant in its name, and logs it; younger ones and the live database are
+  never touched.
 
 ### Setting up the key (the owner, once)
 
@@ -2670,7 +2678,8 @@ and 30-day remote retention is **not built**, so today every copy of the databas
 sits on the same volume as the database. The nightly EBS snapshot of the data
 volume is what stands between this deployment and a lost host until that lands,
 and it is in the deployment actions below because nothing in this repository
-takes it.
+takes it. For the beta, the owner's PC now pulls a copy every night
+([Off-box copies of beta backups](#off-box-copies-of-beta-backups)).
 
 ## Restoring one
 
@@ -2805,6 +2814,163 @@ degraded-guild sweep within five minutes, the membership sweep within six
 hours, and **`nightly_backup` not until the next 07:00 UTC**. A
 `check_operations` that names only `nightly_backup` in the hours after a
 restore is the restore, not a second fault.
+
+## Off-box copies of beta backups
+
+**What:** every night the owner's PC copies the beta's encrypted dumps
+(`/data/routemaker/backups/routemaker-<UTC>.dump.age`, written at 07:00 UTC) into
+`C:\Users\steph\Documents\RouteMaker\beta-backups`, which the PC's own backup covers. Only
+`.dump.age` files travel, never the plain `pre-*.dump` ones; they are useless without your
+backup key file, which stays on the PC. The newest 7 are kept there, as on the beta, so deleted data leaves them within a week as the privacy page says.
+
+**How:** `scripts/pc/pull-beta-backups.sh`, run in WSL. It runs only `find` and a copy on the
+beta, under `sudo -n` (the folder is 0700, owned by the containers' uid). It writes `<name>.part`,
+checks the size against the beta's, renames, prunes old copies in that folder only, and adds
+one line to `pull-beta-backups.log` there. It asks nothing and exits 1 with the reason when
+ssh, the copy or `sudo` fails, or when the newest dump is over 48 h old (the beta's backup
+stopped). `RM_BETA_SSH` (default `chubby`) and `RM_BACKUP_DIR` override the host and the folder.
+
+**Install, once.** In WSL, check that both work with no prompt (each prints nothing and
+exits 0):
+
+```sh
+ssh -o BatchMode=yes chubby true
+```
+
+```sh
+ssh -o BatchMode=yes chubby sudo -n true
+```
+
+If the first fails, your ssh key needs a passphrase and a scheduled run has no agent to ask:
+give this job a key of its own without one, or load yours with `keychain` from `~/.profile`
+(it then works until WSL restarts). The script reports it as `ssh chubby did not connect
+(exit 255)`. Then run it once by hand, and register the nightly task (current user, no admin;
+running it again just replaces the task):
+
+```sh
+~/src/RouteMaker/scripts/pc/pull-beta-backups.sh
+```
+
+```sh
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$(wslpath -w ~/src/RouteMaker/scripts/pc/install-backup-pull-task.ps1)"
+```
+
+The task (`RouteMaker - Pull beta backups`, in the Task Scheduler Library root) runs `wsl.exe -d Ubuntu-26.04 -- bash -lc
+"~/src/RouteMaker/scripts/pc/pull-beta-backups.sh"` daily at 04:00 New York time: 1 h after
+the dump in summer (07:00 UTC is 03:00 EDT), 2 h in winter (02:00 EST). If the PC is off or
+asleep then, it runs as soon as it can. It runs only while you are signed in to Windows.
+
+**Did it run?** The last lines of the log, `ok ... newest=routemaker-<yesterday>...`:
+
+```sh
+tail -n 3 /mnt/c/Users/steph/Documents/RouteMaker/beta-backups/pull-beta-backups.log
+```
+
+or in PowerShell, `Get-ScheduledTaskInfo -TaskPath '\' -TaskName 'RouteMaker - Pull
+beta backups'` (`LastTaskResult` 0 is ok, 1 is a `FAILED` line in the log).
+
+### Test-restore once (on the PC, beta untouched)
+
+Proves the key still opens the dumps and that a dump restores. Docker on the PC; the plain
+archive exists only inside a throwaway container. Every few months, and after a key change.
+
+1. Start an empty PostGIS like the beta's, no ports published:
+
+   ```sh
+   docker run -d --name rm-restore-test -e POSTGRES_PASSWORD=test postgis/postgis:16-3.4
+   ```
+
+2. Decrypt the newest copy into it (age asks for the passphrase if your key file has one):
+
+   ```sh
+   f=$(ls -1 /mnt/c/Users/steph/Documents/RouteMaker/beta-backups/routemaker-*.dump.age | tail -n 1); echo "$f"
+   ```
+
+   ```sh
+   age -d -i <your backup key file> "$f" | docker exec -i rm-restore-test sh -c 'cat > /tmp/d.dump'
+   ```
+
+3. Restore it into a fresh database, all or nothing (as `restore-dump` does on the beta):
+
+   ```sh
+   docker exec rm-restore-test sh -c 'until pg_isready -U postgres -q; do sleep 1; done; createdb -U postgres -T template_postgis rmtest && pg_restore --list /tmp/d.dump | sed "/ SCHEMA - public /d" > /tmp/use && pg_restore -U postgres -d rmtest --no-owner --no-privileges --single-transaction --exit-on-error -L /tmp/use /tmp/d.dump && echo RESTORED'
+   ```
+
+4. Count rows: accounts, saved routes, migrations. Non-zero, and close to the beta's:
+
+   ```sh
+   docker exec rm-restore-test psql -U postgres -d rmtest -Atc "select (select count(*) from app_user), (select count(*) from saved_route), (select count(*) from django_migrations)"
+   ```
+
+5. Throw it away (the container, its volume and the plain dump in it):
+
+   ```sh
+   docker rm -fv rm-restore-test
+   ```
+
+Write the date and the three counts in your notes. No `RESTORED` in step 3 means the beta
+procedure below would fail too: find out why before you need it.
+
+## Restoring beta's database from a backup
+
+For a lost or corrupted beta database once the plain `pre-*.dump` files are gone or too old.
+Not [Restoring one](#restoring-one): its bare `docker compose` would start `caddy` and the
+`rebuild` service on the beta. This uses only `beta-compose.sh` and `receive-data.sh
+restore-dump`, which restores into a scratch database (`routemaker_restore`) in one
+transaction, checks it, and only then swaps it in by rename, keeping the current one as
+`routemaker_before_<time>`. It needs free space on `/data` for a second copy of the database.
+Everyone is signed out and riders connect Garmin or Wahoo again (those tables are not in
+backups). Do the [test-restore](#test-restore-once-on-the-pc-beta-untouched) first if you
+have not lately.
+
+1. **On the beta**, stop the release agent and the app (variables from BETA-RUNBOOK section 0):
+
+   ```sh
+   . "$HOME/routemaker-beta-state/vars.sh"; cd "$RM_SRC"
+   ```
+
+   ```sh
+   "$RM_STATE/cd/bin/auto-release.sh" pause --wait "restoring a backup"
+   ```
+
+   ```sh
+   scripts/beta/beta-compose.sh stop api worker && scripts/beta/beta-compose.sh up -d postgis
+   ```
+
+2. **On the PC (WSL)**, decrypt the chosen copy and send it to the beta's state folder, mode
+   600 (the key never goes to the server):
+
+   ```sh
+   age -d -i <your backup key file> /mnt/c/Users/steph/Documents/RouteMaker/beta-backups/routemaker-<instant>.dump.age | ssh chubby 'umask 077; cat > "$HOME/routemaker-beta-state/restore.dump"'
+   ```
+
+3. **On the beta**, restore into the scratch database and swap (it takes a `pre-rollback`
+   dump of what is there first; a failure discards the scratch copy and changes nothing):
+
+   ```sh
+   sudo scripts/beta/receive-data.sh --env-file .env restore-dump "$RM_STATE/restore.dump"
+   ```
+
+4. **Verify** before the app starts: the restored database against the kept one.
+
+   ```sh
+   for db in routemaker routemaker_before_<time>; do scripts/beta/beta-compose.sh exec -T postgis psql -U routemaker -d "$db" -Atc "select '$db', (select count(*) from app_user), (select count(*) from saved_route)"; done
+   ```
+
+5. **Start, then clean up.** The api's `migrate` brings a dump from an older release forward:
+
+   ```sh
+   scripts/beta/beta-compose.sh up -d api worker && rm -f "$RM_STATE/restore.dump"
+   ```
+
+   ```sh
+   "$RM_STATE/cd/bin/auto-release.sh" resume
+   ```
+
+   Then the step 8 pre-draw as in BETA-RUNBOOK, rollback B. Once the beta works, drop the old
+   database: `scripts/beta/beta-compose.sh exec -T postgis dropdb -U routemaker
+   routemaker_before_<time>`. The operations page shows `nightly_backup` stale until the next
+   07:00 UTC ([It will page for the first few hours](#it-will-page-for-the-first-few-hours-and-that-is-the-restore)).
 
 ## The rebuild's own budget
 
@@ -3676,7 +3842,7 @@ and the rule assumes Caddy is the TLS edge, because behind another
 TLS-terminating proxy Caddy sees `http` and refuses every `https` page.
 
 **The per-IP range-request limit PLAN asks for is not in place**: the stock
-`caddy:2.8-alpine` image has no rate-limit module, and adding one means building
+`caddy:2.10-alpine` image has no rate-limit module, and adding one means building
 Caddy with a third-party module. Until then nothing bounds how fast one address
 can read the archive, and that is a gate on opening the site to anything beyond
 this machine (docs/DEPLOYMENT.md, "Build").
@@ -3775,7 +3941,7 @@ throwaway container of the same image (this is what `tests/test_preset_links.py`
 does), then recreate caddy alone:
 
 ```sh
-docker run --rm -e CADDY_SITE_ADDRESS=:80 -v "$PWD/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2.8-alpine@sha256:af32e97399febea808609119bb21544d0265c58a02836576e32a2d082c262c17 caddy validate --config /etc/caddy/Caddyfile
+docker run --rm -e CADDY_SITE_ADDRESS=:80 -v "$PWD/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2.10-alpine@sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d caddy validate --config /etc/caddy/Caddyfile
 docker compose up -d --no-deps --no-build --force-recreate caddy
 ```
 
@@ -5329,8 +5495,10 @@ out.
    release), `posted`, `road` (as the card says it), `reason`, `first_day`, `last_day` (whole
    days in the region's time; "about eight weeks" counted to its end, "the duration of the
    project" to the project's stated end, with `"end_estimated": true` where the day is
-   counted or guessed rather than given), `ways` (OpenStreetMap way ids) and `lines`
-   (`python scripts/ddot_advisories.py lines WAY ...` prints them).
+   counted or guessed rather than given), `on_foot` where the release says so (`true`: closed
+   to people on foot too, so Run and Walk go round it; `false`: a walkway is kept; left out
+   where it does not say, and Run and Walk only warn of it), `ways` (OpenStreetMap way ids)
+   and `lines` (`python scripts/ddot_advisories.py lines WAY ...` prints them).
 3. Add the advisory's link to `seen` either way, set `updated` to today, and ship it in the
    next release. A later advisory that extends or ends a closure changes its `last_day`. A
    file whose `updated` is more than 45 days old is labelled stale on the route ("last read
@@ -5391,10 +5559,17 @@ in `src/routemaker/deer_closures.py` and the ways they close in
 before it opens), shows it in its notices, on its map and in the connector's
 `check_before_you_go`. Nothing is shown outside the windows.
 
+Rock Creek has no 2026-27 season: the assumed one (Nov 10, 2026 to Mar 31, 2027, said as
+expected) was taken out on the owner's word of 2026-11-04, "For rock creek, that's no longer the
+case." (NPS's deer-management page, updated 2026-10-30, gives no 2026-27 closure dates.) So no
+Rock Creek deer notice shows this winter; Montgomery Parks' closures are unchanged.
+`ROCK_CREEK_SEASONS` keeps the posted 2025-26 season, so a season NPS posts later is one more row.
+
 **Each autumn:**
 
-1. When NPS posts Rock Creek's record of determination for the new winter, set its dates in
-   `ROCK_CREEK_SEASONS` with `posted` True (the notice stops saying "expected"), and its hours
+1. When NPS posts Rock Creek's record of determination for a new winter, add its dates to
+   `ROCK_CREEK_SEASONS` with `posted` True (a row with `posted` False is said as "expected",
+   and only on the owner's say-so), and its hours
    in `ROCK_CREEK_HOURS`. Check its list of roads closed to bicycles against `ROCK_CREEK_WAYS` in
    `scripts/build_deer_closures.py`.
 2. When Montgomery Parks posts the new schedule, set `SHARPSHOOTING_SEASON`, `SHARPSHOOTING`
@@ -6842,6 +7017,59 @@ change and no map rebuild.** The beta agent deploys it by itself from the annota
   for a bus) and After that as rows.
 - [ ] **Rollback.** The v0.19.0 api image and front end together. Nothing in the database or the
   map changes.
+
+## Deploying v0.20.0
+
+Reach's rings (#961, #962), Ride's stress ribbon (#956, #960), long-trail names and quieter route
+numbers (#951, tile `FORMAT_VERSION` 15 to 16), Baltimore City DOT's racks (#953), 698 Baltimore City
+owner rows (#955), the dark tunnel page (#957), the follow crosswalk fix (#959), Ride the rest waiting
+for a fix (#950) and the 2026-11-04 repo review's fixes (#963, #964, #967, #969). **No migration, no
+`src/pipeline/` change, no `lua/` change and no map rebuild.** What does change for the host: every
+`valhalla/*.json` (the `isochrone` action and `max_exclude_polygons_vertices` 1000), the Caddy image
+(2.8 to 2.10) and the Caddyfile, `docker/api.Dockerfile` (the amenity files Reach counts),
+`scripts/beta/` (the agent prunes `_before_` databases over 6.5 days old), `scripts/pc/` (the backup
+pull) and `mobile/` (the links manifest). The tile format change means **both** images are built
+(the `rebuild` service pre-draws tiles too, and a format-15 rebuild image would evict the api's
+format-16 cache every week). The beta agent's gate stops on the compose image line and the
+Dockerfile, so the beta ships by hand. At home, in order, with `</dev/null` on every docker command:
+
+- [ ] **The tag.** Once `test` and `a11y` are green on `main`, the owner tags v0.20.0 (annotated) on
+  that commit, from the PC.
+- [ ] **Rollback points and images**, as "Deploying a planner and front-end release", with the
+  weekly rebuild paused or not due, and out of 07:00-07:30 UTC: tag the running api **and pipeline**
+  images `pre-rel-<short>`, fast-forward the checkout, then `docker compose build api rebuild`.
+- [ ] **Caddy**, after the fast-forward: `docker compose pull caddy`, validate the new Caddyfile against the new image ("Changing
+  the Caddyfile on a running stack" in docs/DEPLOYMENT.md), then
+  `docker compose up -d --no-deps --no-build --force-recreate caddy`.
+- [ ] **The routers, before the api.** Restart every router ("A release that changes
+  `valhalla/*.json`" in docs/DEPLOYMENT.md). The v0.19.1 api works with the new configs; the new api
+  needs them (Reach answers nothing and a ride past several curved closures can read as no route).
+- [ ] **The api.** `docker compose up -d --no-deps --no-build --force-recreate api worker`, and
+  `rebuild` too once no rebuild job is queued or running. No `migrate`. Then the tile pre-draw
+  (the `FORMAT_VERSION` change).
+- [ ] **The front end**, last.
+- [ ] **The overrides: none in v0.20.0.** `fixtures/overrides/2026-11-04-owner-baltimore-city-review.json`
+  is not loaded with this release: the release review found rows whose evidence is another street's
+  block, so the file is being corrected first. Load it (stdin, dry run then `--confirm`, as in "First
+  rebuild on a fresh host") only after the owner confirms the corrected file.
+- [ ] **The PC backup pull**, once: "Off-box copies of beta backups", Install.
+- [ ] **Android**, a new build (the links manifest changed).
+- [ ] **Beta**, by hand as "Shipping an update later" (docs/BETA-RUNBOOK.md): no data bundle; build
+  the api image, restart the routers (all of them that run, `valhalla-paved` included: its config
+  changed too), the api and worker, the pre-draw, the front end, `smoke-test.sh --local --trails`
+  then `--public`. Caddy is not used on the beta. The agent changed: `mark-deployed v0.20.0`, then
+  `scripts/beta/auto-release.sh install`, then `resume`. Its first pass drops any `_before_`
+  database over 6.5 days old (the owner chose this, 2026-11-04). The beta's map swap from the
+  v0.19.0 rebuild is separate and still waits for the owner.
+- [ ] **Spot checks.** Plan > Find > Reach draws rings from a point and the 15/30/45/60 choice changes
+  them. In a ride, More > Stress shows the colour ribbon under the turns. A long trail's name shows
+  along it at a mid zoom, and US route shields are grey in dark mode. Baltimore racks show with the
+  Water and restrooms layer from zoom 17. A route past several closures still plans.
+- [ ] **Rollback.** The `pre-rel` api and pipeline images (`--force-recreate api worker rebuild`),
+  the v0.19.1 front end, and Caddy back on the 2.8 digest (check out v0.19.1's `compose.yaml` and
+  `Caddyfile`, then recreate `caddy`), then the pre-draw again (format 15). The routers need no
+  restart back: a v0.19.1 api sends fewer vertices and no isochrone call. Loaded override rows stay;
+  retire them with the loader if they must go.
 
 ## Deploying a planner and front-end release: rollback points and verification
 

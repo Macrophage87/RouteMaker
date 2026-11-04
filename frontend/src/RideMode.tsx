@@ -55,7 +55,7 @@ import {
   withClosed,
 } from "./lib/roadClosed.ts";
 import { requestRoute, type ErrorKind, type RouteResponse } from "./lib/api.ts";
-import { VIA_MARKS, drawnLegs, stopNames, viaIndices, type RideStopMark } from "./lib/pointKinds.ts";
+import { VIA_MARKS, drawnLegs, plannedStopNumbers, stopNames, viaIndices, type RideStopMark } from "./lib/pointKinds.ts";
 import {
   SKIP_STOP,
   RESTART_AUTO_M,
@@ -209,7 +209,7 @@ import { corridorWorry, type PrefetchResult } from "./lib/corridor.ts";
 import { copyCorridor, endCorridor, keepCorridor } from "./lib/corridorStore.ts";
 import { lastRideAdopter } from "./lib/offlineKeep.ts";
 import { blockOf, rescueRideFocus, type RideBlock } from "./lib/rideFocus.ts";
-import { REPORT_SENT, report311Enabled, sendReport311, reportPlace, type ReportKind } from "./lib/report311.ts";
+import { REPORT_MAYBE_SENT, REPORT_SENT, report311Enabled, sendReport311, reportPlace, type ReportKind } from "./lib/report311.ts";
 import { entryText, kindShown, report311Log, type LogEntry } from "./lib/report311Log.ts";
 import { RIDE_311_NAME, RIDE_311_TEXT, Ride311Menu, ride311Shown } from "./lib/ride311.ts";
 import {
@@ -255,6 +255,7 @@ import {
   RIDE_REST_FINDING,
   RIDE_REST_HINT,
   approachWords,
+  restAutoReady,
   restFrom,
   restNear,
   restReadySaid,
@@ -351,9 +352,9 @@ export const RIDE_SETTINGS_TEXT = t("More");
 export const EASE_WORD: Record<Ease, string> = { calmer: t("Calmer"), flatter: t("Flatter") };
 export const RIDE_MORE_NAME = t("More: change the route or the map, and ride settings");
 /** Topo lines from More (Stephen 2026-10-26: "In the ... section allow topo lines to be toggled on and off during a ride"): Map layers' own switch (lib/topoLines.ts). */
-export const RIDE_TOPO_ON = `${TOPO_LINES_LABEL} on.`;
-export const RIDE_TOPO_OFF = `${TOPO_LINES_LABEL} off.`;
-export const RIDE_TOPO_OFFLINE = `${TOPO_LINES_LABEL} need a connection. Try again once you have signal.`;
+export const RIDE_TOPO_ON = t("Topo lines on.");
+export const RIDE_TOPO_OFF = t("Topo lines off.");
+export const RIDE_TOPO_OFFLINE = t("Topo lines need a connection. Try again once you have signal.");
 export const RIDE_SETTINGS_TITLE = t("Ride settings");
 export const RIDE_CHANGE_TITLE = t("Change the route");
 /** Broadcast on the ride screen (Stephen 2026-10-24: "Let people broadcast from a ride"): Plan's and Go's Broadcast, the ride already going. */
@@ -748,6 +749,9 @@ const NO_DOTS: readonly LonLat[] = [];
 const AHEAD_ICON = { stress: "graph-stress", elevation: "graph-elevation", flow: "graph-flow", corkers: "graph-corkers" } as const;
 const noSearch: DetourDeps["geocode"] = async () => ({ ok: false, status: 0 });
 
+/** How long off the train with no good fix before "press Ride the rest" is said. */
+const REST_WAIT_SAID_MS = 20_000;
+
 export function RideMode({
   route: plannedRoute,
   points: plannedPoints,
@@ -919,6 +923,8 @@ export function RideMode({
   const easing = useRef<{ which: Ease; ticket: number; before: RouteResponse; outcome: "pending" | "found" | "rejoin" } | null>(null);
   // What a re-plan builds on: the plan's points at first, then the last re-plan's (never a loop: its end is sent).
   const plan = useRef({ points: plannedPoints, loop: plannedLoop });
+  // The plan the ride began with: its stop numbers stay the stops' numbers through every re-route (plannedStopNumbers).
+  const firstPlan = useRef(plannedPoints);
   // The via points are not announced (v0.7.0): the model leaves them out of its cues.
   // A re-route that turns the rider round starts with "Make a U-turn." (lib/navigate.ts withUTurn).
   const uturnRoute = useRef<RouteResponse | null>(null);
@@ -931,8 +937,8 @@ export function RideMode({
     // A re-plan on foot (rideTrip.ts rideLegOf: Walk's own) brings its own turns; the planned walk's are its own.
     const onFoot = trip?.onFoot ? walkModel({ coordinates: r.geometry.coordinates as LonLat[], turns: walkLineTurns(r) ?? trip.onFoot.turns, to: null }, endWords(null)) : null;
     if (onFoot) return onFoot;
-    // A stop's own name (2026-10-24) is said and shown with its number.
-    const built = rideModel(r, viaIndices(points, VIA_MARKS.isVia), stopNames(points, VIA_MARKS.nameOf, VIA_MARKS.isVia, plan.current.loop));
+    // A stop's own name (2026-10-24) is said and shown with its number, the plan's number after a re-route too.
+    const built = rideModel(r, viaIndices(points, VIA_MARKS.isVia), stopNames(points, VIA_MARKS.nameOf, VIA_MARKS.isVia, plan.current.loop), plannedStopNumbers(points, firstPlan.current, VIA_MARKS.isVia));
     return r === uturnRoute.current ? withUTurn(built) : built;
   };
   const model = useMemo(() => modelOf(route, plan.current.points), [route]);
@@ -944,7 +950,15 @@ export function RideMode({
   const otherRef = useRef(other);
   otherRef.current = other;
   const otherModel = useMemo(
-    () => (other ? rideModel(other, viaIndices(plan.current.points, VIA_MARKS.isVia), stopNames(plan.current.points, VIA_MARKS.nameOf, VIA_MARKS.isVia, plan.current.loop)) : null),
+    () =>
+      other
+        ? rideModel(
+            other,
+            viaIndices(plan.current.points, VIA_MARKS.isVia),
+            stopNames(plan.current.points, VIA_MARKS.nameOf, VIA_MARKS.isVia, plan.current.loop),
+            plannedStopNumbers(plan.current.points, firstPlan.current, VIA_MARKS.isVia),
+          )
+        : null,
     [other],
   );
   const otherModelRef = useRef(otherModel);
@@ -1121,10 +1135,10 @@ export function RideMode({
     const entry = report311Log().add(kind, place);
     if (serverOn311 && entry.where === "dc") {
       setSaid311(t("Sending to DC 311…"));
-      void sendReport311(window.location.origin, kind, place, entryText(entry)).then((sent) => {
+      void sendReport311(window.location.origin, kind, place, entryText(entry)).then((result) => {
         if (ended.current) return;
-        if (sent) report311Log().setReported(entry.id, true);
-        tell311(sent ? REPORT_SENT : loggedSaid(entry));
+        if (result === "sent") report311Log().setReported(entry.id, true);
+        tell311(result === "sent" ? REPORT_SENT : result === "maybe_sent" ? REPORT_MAYBE_SENT : loggedSaid(entry));
       });
     } else tell311(loggedSaid(entry));
   };
@@ -2568,12 +2582,25 @@ export function RideMode({
   // Off the train (and any walk after it) with a ride still to go: Ride the rest starts by itself, once (Stephen,
   // 2026-11-03: "It should let you switch between modes"). Its button stays for a second try (closures said, no route).
   const restAuto = useRef(false);
+  // Off it by a fresh fix at the stop or past it (restAutoReady): never on the timetable's clock alone, under ground.
+  // The last good fix (a coarse one under ground is no sign of being up at the stop).
+  const restReady = !!rest && restAutoReady(rest, tripRef.current.lastGood ?? null, Date.now());
   useEffect(() => {
     // Only after a train followed stop by stop: walks timed out back to back are no sign the rider is off it.
-    if (!onwardDone || !restNext || restAuto.current || ended.current) return;
+    if (!onwardDone || !restNext || !restReady || restAuto.current || ended.current) return;
     restAuto.current = true;
     rideTheRest();
-  }, [onwardDone]); // eslint-disable-line react-hooks/exhaustive-deps -- once, as the parts after the line end
+  }, [onwardDone, restReady]); // eslint-disable-line react-hooks/exhaustive-deps -- once, off the train and above ground
+  // Off the train with no good fix there yet: after a while, "press Ride the rest" is said once, as off a plain ride.
+  useEffect(() => {
+    if (!onwardDone || !restNext || restReady || !rest || restAuto.current || restSaid.current) return;
+    const timer = window.setTimeout(() => {
+      if (restAuto.current || restSaid.current || ended.current) return;
+      restSaid.current = true;
+      notify(restReadySaid(rest));
+    }, REST_WAIT_SAID_MS);
+    return () => window.clearTimeout(timer);
+  }, [onwardDone, restNext, restReady, rest, notify]);
   // Still to board the first transit after the line (its departure and where its next train is are shown till then).
   const firstTransit = onwardParts.findIndex((p) => p.kind === "transit");
   const toBoard = firstTransit < 0 || onwardIndex < firstTransit || (onwardIndex === firstTransit && (onward?.board?.boardedAt ?? null) === null);
@@ -2890,7 +2917,9 @@ export function RideMode({
     [riderDots, model, aheadAt === null ? null : Math.round(aheadAt / 200)],
   );
   const aheadShown = aheadAt !== null;
-  const sheetShown = notesShown || restShown || aheadShown;
+  // Off the train but no fresh fix there yet (under ground, or off at another stop): the button, for a press.
+  const restOffered = restShown || (onwardDone && restNext);
+  const sheetShown = notesShown || restOffered || aheadShown;
   // The map's scales and credits sit at the bottom of the screen in a ride (the owner, 2026-10-17: "on the bottom
   // of the page in a ride"), just above the bottom panel while it shows (styles.css --ride-sheet-h).
   const sheetRef = useRef<HTMLDivElement>(null);
@@ -2950,7 +2979,7 @@ export function RideMode({
       const notes = sheet ? Math.max(0, sheetH - sheetChrome.current - graph) : 0;
       const wide = shown ? figure.clientWidth : Math.min(AHEAD_MAX_W, middle.clientWidth - SHEET_SIDES_PX);
       // A few px each way before the answer changes, so a card a line taller for one fix does not flip it.
-      const least = aheadLeastPx(wide, textSize === "large");
+      const least = aheadLeastPx(wide, textSize === "large", aheadDrawn.includes("stress"));
       setAheadFits((was) => (was ? room >= least - AHEAD_HYSTERESIS_PX : room >= least + AHEAD_HYSTERESIS_PX));
       // Never below 0, and no floor: the buttons' 44 px come first. Within 2 px is the same: the graph's own rounding
       // does not start another round.
@@ -2969,7 +2998,7 @@ export function RideMode({
       watch.disconnect();
       buttons.disconnect();
     };
-  }, [aheadWanted, sheetShown, textSize]);
+  }, [aheadWanted, sheetShown, textSize, aheadDrawn]);
   // Measured again at each render, before it is painted: a note that comes into the panel or goes (a weak GPS fix
   // under trees) changes the graphs' room at once, not a frame later from the ResizeObserver, which drew them in
   // three steps (the review of #928). Nothing is set where nothing changed, so it does not render again.
@@ -3717,7 +3746,7 @@ export function RideMode({
               )}
             </div>
           )}
-          {restShown && (
+          {restOffered && (
             <div className="actions ride-rest">
               <button type="button" onClick={rideTheRest} aria-describedby={`${settingsId}-rest`}>
                 {RIDE_REST}

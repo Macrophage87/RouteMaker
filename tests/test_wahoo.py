@@ -131,7 +131,7 @@ class TestProtocol:
 
         sealed = wahoo.seal("secret-token", 7)
         assert "secret-token" not in sealed and wahoo.unseal(sealed, 7) == "secret-token"
-        with pytest.raises(wahoo.NotConnected):
+        with pytest.raises(wahoo.Unreadable):
             wahoo.unseal(sealed, 8)
         assert len(settings.WAHOO_TOKEN_KEY) == 32
         assert settings.WAHOO_TOKEN_KEY not in (settings.GARMIN_TOKEN_KEY, settings.TOMBSTONE_KEY)
@@ -235,6 +235,23 @@ class TestUsingAndEnding:
             wahoo_views.access_for(user)
         assert not isinstance(raised.value, wahoo.NotConnected)
         assert WahooLink.objects.filter(user=user).exists()
+
+    def test_a_key_that_cannot_open_a_stored_link_keeps_the_link(self, fake, settings) -> None:
+        # A wrong or changed KEY_ENCRYPTION_KEY: sending fails for now, the link stays, and it
+        # works again once the right key is back.
+        mine, user, csrf = self._linked(fake)
+        right = settings.WAHOO_TOKEN_KEY
+        settings.WAHOO_TOKEN_KEY = bytes(32)
+        r = send(mine, "post", "/api/me/wahoo/routes", {"line": LINE, "fit": FIT_B64}, csrf)
+        assert r.status_code == 502
+        assert "try again later" in r.json()["error"].lower()
+        with pytest.raises(wahoo.WahooError) as raised:
+            wahoo_views.access_for(user, fresh=True)
+        assert not isinstance(raised.value, wahoo.NotConnected)
+        assert WahooLink.objects.filter(user=user).exists()
+        assert fake.calls == []
+        settings.WAHOO_TOKEN_KEY = right
+        assert wahoo_views.access_for(user) == "access-1"
 
     def test_disconnect_withdraws_access_and_keeps_the_routes(self, fake) -> None:
         mine, user, csrf = self._linked(fake)
