@@ -255,6 +255,7 @@ import {
   RIDE_REST_FINDING,
   RIDE_REST_HINT,
   approachWords,
+  restAutoReady,
   restFrom,
   restNear,
   restReadySaid,
@@ -747,6 +748,9 @@ const NO_DOTS: readonly LonLat[] = [];
 /** Each graph's bubble icon (lib/iconPaths.ts): a small chart of its own kind. */
 const AHEAD_ICON = { stress: "graph-stress", elevation: "graph-elevation", flow: "graph-flow", corkers: "graph-corkers" } as const;
 const noSearch: DetourDeps["geocode"] = async () => ({ ok: false, status: 0 });
+
+/** How long off the train with no good fix before "press Ride the rest" is said. */
+const REST_WAIT_SAID_MS = 20_000;
 
 export function RideMode({
   route: plannedRoute,
@@ -2568,12 +2572,25 @@ export function RideMode({
   // Off the train (and any walk after it) with a ride still to go: Ride the rest starts by itself, once (Stephen,
   // 2026-11-03: "It should let you switch between modes"). Its button stays for a second try (closures said, no route).
   const restAuto = useRef(false);
+  // Off it by a fresh fix at the stop or past it (restAutoReady): never on the timetable's clock alone, under ground.
+  // The last good fix (a coarse one under ground is no sign of being up at the stop).
+  const restReady = !!rest && restAutoReady(rest, tripRef.current.lastGood ?? null, Date.now());
   useEffect(() => {
     // Only after a train followed stop by stop: walks timed out back to back are no sign the rider is off it.
-    if (!onwardDone || !restNext || restAuto.current || ended.current) return;
+    if (!onwardDone || !restNext || !restReady || restAuto.current || ended.current) return;
     restAuto.current = true;
     rideTheRest();
-  }, [onwardDone]); // eslint-disable-line react-hooks/exhaustive-deps -- once, as the parts after the line end
+  }, [onwardDone, restReady]); // eslint-disable-line react-hooks/exhaustive-deps -- once, off the train and above ground
+  // Off the train with no good fix there yet: after a while, "press Ride the rest" is said once, as off a plain ride.
+  useEffect(() => {
+    if (!onwardDone || !restNext || restReady || !rest || restAuto.current || restSaid.current) return;
+    const timer = window.setTimeout(() => {
+      if (restAuto.current || restSaid.current || ended.current) return;
+      restSaid.current = true;
+      notify(restReadySaid(rest));
+    }, REST_WAIT_SAID_MS);
+    return () => window.clearTimeout(timer);
+  }, [onwardDone, restNext, restReady, rest, notify]);
   // Still to board the first transit after the line (its departure and where its next train is are shown till then).
   const firstTransit = onwardParts.findIndex((p) => p.kind === "transit");
   const toBoard = firstTransit < 0 || onwardIndex < firstTransit || (onwardIndex === firstTransit && (onward?.board?.boardedAt ?? null) === null);
@@ -2890,7 +2907,9 @@ export function RideMode({
     [riderDots, model, aheadAt === null ? null : Math.round(aheadAt / 200)],
   );
   const aheadShown = aheadAt !== null;
-  const sheetShown = notesShown || restShown || aheadShown;
+  // Off the train but no fresh fix there yet (under ground, or off at another stop): the button, for a press.
+  const restOffered = restShown || (onwardDone && restNext);
+  const sheetShown = notesShown || restOffered || aheadShown;
   // The map's scales and credits sit at the bottom of the screen in a ride (the owner, 2026-10-17: "on the bottom
   // of the page in a ride"), just above the bottom panel while it shows (styles.css --ride-sheet-h).
   const sheetRef = useRef<HTMLDivElement>(null);
@@ -3717,7 +3736,7 @@ export function RideMode({
               )}
             </div>
           )}
-          {restShown && (
+          {restOffered && (
             <div className="actions ride-rest">
               <button type="button" onClick={rideTheRest} aria-describedby={`${settingsId}-rest`}>
                 {RIDE_REST}

@@ -190,7 +190,7 @@ test("Ride wires it: one bubble a graph in More, pressed state, off by default, 
   assert.match(ride, /onClick=\{\(\) => toggleAhead\(view\)\}/, "More stays open after a graph bubble (Stephen 2026-11-03: Stay open)");
   assert.match(ride, /const next = on \? ahead\.filter\(\(v\) => v !== view\) : \[\.\.\.ahead, view\];/, "each bubble on or off on its own");
   assert.match(ride, /<AheadGraph views=\{aheadDrawn\} route=\{route\} cues=\{model\.cues\}/, "the graphs on stack, with the turns");
-  assert.match(ride, /const sheetShown = notesShown \|\| restShown \|\| aheadShown;/);
+  assert.match(ride, /const sheetShown = notesShown \|\| restOffered \|\| aheadShown;/);
   assert.ok(ride.indexOf("<AheadGraph views={aheadDrawn} route={route} cues={model.cues} youM={aheadAt}") > ride.indexOf('className="ride-controls"'));
   assert.ok(ride.indexOf("ride-ahead-bubble") < ride.indexOf('className="ride-round ride-topo"'), "before Topo and Settings");
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
