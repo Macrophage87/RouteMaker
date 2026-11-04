@@ -724,7 +724,7 @@ def page_dials(dials: dict, sent: dict) -> dict:
 
 PRESET_ALIASES = {"kids": "novice"}  # planHash.ts PRESET_ALIASES
 # presets.ts AVOID_GRAVEL_BECOMES: the ride types an old Avoid gravel link turns into Road Bike.
-AVOID_GRAVEL_BECOMES = ("default", "fast", "trailmaxxing", "novice", "gravel", "mountain-goat")
+AVOID_GRAVEL_BECOMES = ("default", "fast", "gravel", "mountain-goat")
 STRESS_DEFAULT_AT = 70  # dials.ts: the stress slider's Default
 
 

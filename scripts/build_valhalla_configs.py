@@ -108,6 +108,14 @@ OVERRIDES: dict = {
         # past it rather than degrading, so a busy week of closures would start
         # failing requests silently.
         "max_exclude_polygons_length": 50000,
+        # The vertices, counted over all the polygons of a request (upstream's default 100).
+        # A closure's ring is up to 25 vertices since curved roads keep their curve (audit
+        # 2026-10-29), so 100 took about four, and the rest were only warned of. 1,000 leaves
+        # the perimeter above as the limit that binds: about 20 curved closures of 1.25 km fill
+        # it at about 460 vertices, with room left for the roads the rider marked closed and
+        # the dirt-trail strips. Must equal `routemaker.workzones.MAX_VERTICES`, which the
+        # planner fits its rings to (tests/test_valhalla_config.py).
+        "max_exclude_polygons_vertices": 1000,
         # Layer 4 candidate generation uses per-leg alternates.
         "max_alternates": 3,
         "trace": {"max_shape": 32000, "max_distance": 200000.0},

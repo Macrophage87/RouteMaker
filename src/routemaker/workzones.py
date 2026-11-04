@@ -117,10 +117,12 @@ ALONG_SHARE = 0.6
 # at each end stay open; and the half width of the strip excluded either side.
 TRIM_M = 20.0
 HALF_WIDTH_M = 6.0
-# The router's limits (valhalla/*.json): the total perimeter of the polygons, metres,
-# and the vertices, counted over all of them.
+# The router's limits (valhalla/*.json, `service_limits.max_exclude_polygons_length` and
+# `max_exclude_polygons_vertices`, set in scripts/build_valhalla_configs.py): the total
+# perimeter of the polygons, metres, and the vertices, counted over all of them. A test pins
+# these to the configs.
 MAX_PERIMETER_M = 50_000.0
-MAX_VERTICES = 100
+MAX_VERTICES = 1000
 # A polygon is at most this many vertices along each side. The line is thinned to within
 # `THIN_M` of the road, so a 6 m strip still covers a curved road with half its width to
 # spare (audit 2026-10-29: thinned to 5 points, a closed road on a long curve drifted 50 to

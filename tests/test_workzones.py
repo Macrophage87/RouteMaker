@@ -242,6 +242,32 @@ class TestTheStripCoversTheRoad:
 
 
 class TestTheClosuresKeptOnALongRide:
+    def test_a_dozen_closures_on_curved_roads_near_a_ride_are_all_routed_round(self) -> None:
+        """Each closure is a quarter circle of 800 m radius (about 1.26 km of road), whose ring
+        keeps the curve: a dozen of them along a ride are all left out of the route, not
+        warned of as "may be closed"."""
+
+        def curve(n: int) -> tuple[tuple[float, float], ...]:
+            lon0, lat0, radius = -77.10 + n * 0.02, 38.90, 800.0
+            m_lat = math.pi / 180 * 6_371_008.8
+            m_lon = m_lat * math.cos(math.radians(lat0))
+            return tuple(
+                (
+                    lon0 + radius * math.cos(a) / m_lon,
+                    lat0 + radius * math.sin(a) / m_lat,
+                )
+                for a in (math.radians(90 * i / 40) for i in range(41))
+            )
+
+        curved = [
+            wz.Zone(f"md-curve-{n}", "md", wz.CLOSED, 0, curve(n), None, None, None, None)
+            for n in range(12)
+        ]
+        assert all(len(wz.polygon(z)) > 15 for z in curved)
+        plan = wz.for_plan(curved, AT, [(-77.12, 38.89), (-76.86, 38.91)], {"md": "current"})
+        assert not plan.unexcluded
+        assert len(plan.excluded) == 12
+
     def test_closures_by_the_start_and_end_come_before_one_off_the_way(self) -> None:
         # DC to Baltimore: one closure by each end, on the way; one by the middle of the
         # stops' box but 4 km off the line between them.
