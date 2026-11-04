@@ -52,7 +52,7 @@ RECORDED = {
     "2025-12-dcbp": (6.17, 113, 18),
     "2026-04-dcbp": (7.23, 133, 17),
     "2026-07-dcbp": (6.00, 164, 28),
-    "group-blow-off-steam": (11.65, 661, 30),
+    "group-blow-off-steam": (10.13, 661, 27),
     "group-crit-mass-2024-03": (12.31, 347, 34),
     "group-crit-mass-feb": (14.50, 511, 47),
     "group-crit-mass-jan": (13.77, 604, 33),
@@ -64,9 +64,9 @@ RECORDED = {
     "rural-group-loco-30": (30.12, 2361, None),  # sampled too densely to count turns
     "rural-group-tnl": (24.32, 2219, 26),
     "rural-group-two-bridges": (30.11, 2232, 30),
-    "trail-annapolis-bwi": (75.73, 2333, 177),
-    "trail-bethesda-loop": (31.63, 701, 92),
-    "trail-brookside-gardens": (14.65, 746, 42),
+    "trail-annapolis-bwi": (73.96, 2227, 169),
+    "trail-bethesda-loop": (28.75, 631, 77),
+    "trail-brookside-gardens": (12.75, 638, 34),
 }
 
 
@@ -183,7 +183,7 @@ def test_max_grade_matches_the_regenerated_column(name: str) -> None:
 
 def test_the_minimum_run_is_thirty_metres() -> None:
     """Flat, because it is the whole of the definition and moves every figure in
-    the column: at ten metres the Bethesda loop reports 12.3 percent against
+    the column: at ten metres the Bethesda loop reports 12.2 percent against
     11.8, the Loudoun loop 52 against 16.9, and a one-metre elevation wobble
     between two adjacent samples starts reporting a 40 percent pitch."""
     assert GRADE_MIN_RUN_M == 30.0

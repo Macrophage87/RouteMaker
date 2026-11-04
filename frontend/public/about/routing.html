@@ -1187,6 +1187,12 @@ route detours round a closure, the standard way is shown too, and you are follow
 take. On ride types that skip dirt trails, Go round on a dirt trail is taken as a sign
 the trails are in bad shape: the rest of that ride's re-routes stay off dirt trails, even to a stop on one,
 and a new plan opts back in. A road that only crosses a dirt trail does not count.</li>
+<li><strong>On foot</strong> (Run, Walk and Walk + transit), a route goes round the roads you marked closed and only
+those closures whose source says the way is closed to people on foot too, such as a work zone whose sidewalk is
+closed. A closure to traffic whose source says nothing of people on foot is a warning on the route instead ("closed
+to traffic; the source does not say whether people on foot can pass"), and one that keeps a walkway open is left
+out. Where there is no way round, the route goes through, with each closure warned of. DDOT permits and deer notices
+are never routed round, as for a ride.</li>
 <li><strong>On the map</strong>, from zoom 11, the closures in force now show even with no route (a
 route's own closures show at any zoom): red where a way is closed, orange where a bike lane is blocked or a work zone can be ridden past. Each
 leaves the map once past its end.</li>
@@ -1203,8 +1209,9 @@ in force.</li>
 on a route through the park, never as closures.</li>
 <li><strong>Deer-management closures</strong> are shown as a <strong>Check before you go</strong> notice,
 never routed round. In Rock Creek Park, Bingham Drive, Sherrill Drive and three car-free stretches of
-Beach Drive may be closed to bikes from 6:45 pm to 4 am, November 10 to March 31<sup class="cite"><a href="#ref-31" aria-label="source 31">[31]</a></sup>; the
-2026-27 dates are taken to be the same and said as expected until the Park Service posts them.
+Beach Drive were closed to bikes from 6:45 pm to 4 am, November 10, 2025 to March 31, 2026<sup class="cite"><a href="#ref-31" aria-label="source 31">[31]</a></sup>.
+The Park Service has posted no 2026-27 dates, and a deer notice says a road may close, not that it will, so no
+Rock Creek notice is given this winter; a season the Park Service posts later will be added.
 Montgomery Parks closes its sharpshooting parks from sunset to sunrise, Monday to Friday nights, January
 15 to March 31, and its firearms-hunt parks all day on each hunt date<sup class="cite"><a href="#ref-32" aria-label="source 32">[32]</a></sup>. A notice shows only
 when the route runs along at least 330 ft [100 m] of the closed roads or trails and the ride time
@@ -1416,7 +1423,14 @@ reader, App voice, both or neither.</li>
 <li><strong>Off route.</strong> You are off route when you are more than 100 ft [30 m] from the line
 for three readings over 8 seconds. Only readings accurate to 65 ft [20 m] count, so a rough GPS fix, at the
 start or between tall buildings, never re-routes you on its own; Re-plan from here still works. Readings less
-accurate than 160 ft [50 m] are not used for cues.</li>
+accurate than 160 ft [50 m] are not used for cues. Riding back along the route about 650 ft [200 m] behind
+the farthest point you reached is off route too, said once, so the app plans again; three readings in a row going
+forward along the route put you back on it.</li>
+<li><strong>Starting part way along.</strong> A ride started away from its start (Resume, Undo after End ride, or Start
+pressed part way along) on a route that passes the same spot twice, such as an out-and-back, waits quietly until it
+knows which way you are going: your heading once you ride at 4.5 mph [2 m/s] or more, or the way you have moved
+once you have gone 65 ft [20 m]. A loop started on its last street, riding toward the start, waits until the start. A
+ride that starts within 330 ft [100 m] of its end arrives only after you ride on.</li>
 <li><strong>Re-routing</strong> plans on from where you are, in the direction you are heading.</li>
 <li><strong>A U-turn you keep riding past.</strong> After two "Make a U-turn" re-routes in a row that you
 ride on past, the third is planned in the direction you are heading first, and that route is kept: "New route
@@ -1493,7 +1507,7 @@ climbing.</li>
 <p class="next">Next: <a href="/about/trails.html">Mountain Bike, Mountain Goat and Gravel</a></p>
 </main>
 <footer>
-  <p>Part of RouteMaker's documentation. It describes version 0.19.1. The code is
+  <p>Part of RouteMaker's documentation. It describes version 0.20.0. The code is
   open source under the MIT licence:
   <a href="https://github.com/Macrophage87/RouteMaker">github.com/Macrophage87/RouteMaker</a>.</p>
   <p><a href="/">Back to the map</a></p>
