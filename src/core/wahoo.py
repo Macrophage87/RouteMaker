@@ -27,6 +27,7 @@ import base64
 import hmac
 import http.client
 import json
+import logging
 import os
 import secrets
 import urllib.error
@@ -36,6 +37,8 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 from django.conf import settings
+
+logger = logging.getLogger(__name__)
 
 BASE_URL = "https://api.wahooligan.com"
 AUTHORIZE_URL = f"{BASE_URL}/oauth/authorize"
@@ -58,6 +61,11 @@ class WahooError(RuntimeError):
 
 class NotConnected(WahooError):
     """The account has no live Wahoo connection (none, or Wahoo refused its refresh token)."""
+
+
+class Unreadable(WahooError):
+    """A kept token that this server's key cannot open (KEY_ENCRYPTION_KEY wrong or changed). The
+    link is kept, since the right key opens it again; the rider is told to try again later."""
 
 
 def offered() -> bool:
@@ -259,7 +267,8 @@ def seal(token: str, account_id: int) -> str:
 
 
 def unseal(value: str, account_id: int) -> str:
-    """The token back. Raises NotConnected if it cannot be read (another key, another account)."""
+    """The token back. Raises Unreadable if it cannot be read (another key, another account): not
+    NotConnected, since a link must outlive a wrong or changed KEY_ENCRYPTION_KEY."""
     from cryptography.exceptions import InvalidTag
 
     version, _, payload = value.partition(".")
@@ -269,5 +278,10 @@ def unseal(value: str, account_id: int) -> str:
         raw = base64.urlsafe_b64decode(payload.encode("ascii"))
         plain = _cipher().decrypt(raw[:12], raw[12:], f"account:{account_id}".encode())
     except (InvalidTag, ValueError) as error:
-        raise NotConnected("The Wahoo connection could not be read. Connect again.") from error
+        logger.error(
+            "A kept Wahoo token for account %s could not be decrypted: check that "
+            "KEY_ENCRYPTION_KEY is the one it was sealed under. The link is kept.",
+            account_id,
+        )
+        raise Unreadable("Sending to Wahoo failed for now. Try again later.") from error
     return plain.decode()

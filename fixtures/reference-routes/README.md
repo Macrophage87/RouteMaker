@@ -57,9 +57,9 @@ as point pairs, so a stretch ridden twice is one revisit and not one per sample.
 
 | Route | Distance | Gain | Max grade | Turns/mi | Shape | Jurisdictions |
 |---|---|---|---|---|---|---|
-| Bethesda Loop | 31.63 mi | 701 ft | 11.8% | 2.9 | loop | DC, MD |
-| Brookside Gardens | 14.65 mi | 746 ft | 8.3% | 2.9 | point-to-point | DC, MD |
-| Annapolis and BWI | 75.73 mi | 2333 ft | 11.3% | 2.3 | point-to-point | DC, MD |
+| Bethesda Loop | 28.75 mi | 631 ft | 11.8% | 2.7 | loop (ends trimmed) | DC, MD |
+| Brookside Gardens | 12.75 mi | 638 ft | 8.3% | 2.7 | point-to-point | DC, MD |
+| Annapolis and BWI | 73.96 mi | 2227 ft | 11.3% | 2.3 | point-to-point | DC, MD |
 
 Supplied with the note that some roadway sections are unavoidable, which is the
 point: a trail route is not trails only, it is trails plus the connectors
@@ -69,7 +69,7 @@ between them.
 
 | Route | Distance | Gain | Max grade | Turns/mi | Shape | Revisits |
 |---|---|---|---|---|---|---|
-| Blow off steam | 11.65 mi | 661 ft | 10.9% | 2.6 | point-to-point | 0 |
+| Blow off steam | 10.13 mi | 661 ft | 10.9% | 2.7 | point-to-point | 0 |
 | Crit Mass 2024-03 | 12.31 mi | 347 ft | 9.9% | 2.8 | point-to-point | 2 |
 | Crit Mass Jan | 13.77 mi | 604 ft | 8.6% | 2.4 | point-to-point | 0 |
 | Crit Mass Feb | 14.50 mi | 511 ft | 8.5% | 3.2 | point-to-point | 0 |
@@ -184,10 +184,10 @@ knowing because turn count alone does not separate a trail route from a road one
 
 | | Mass Ride | Group Ride, city | Group Ride, rural | Trailmaxxing |
 |---|---|---|---|---|
-| Distance | 5 to 7.5 mi | 12 to 35 mi | 24 to 30 mi | 15 to 76 mi |
-| Gain | 63 to 164 ft | 347 to 985 ft | 2219 to 2361 ft | 701 to 2333 ft |
+| Distance | 5 to 7.5 mi | 10 to 35 mi | 24 to 30 mi | 13 to 74 mi |
+| Gain | 63 to 164 ft | 347 to 985 ft | 2219 to 2361 ft | 631 to 2227 ft |
 | Max grade | 4.4 to 6.3% | 8.5 to 10.9% | 14.5 to 19.0% | 8.3 to 11.8% |
-| Turns per mile | 2.3 to 4.7 | 2.4 to 3.3 | 1.0 to 1.1 | 2.3 to 2.9 |
+| Turns per mile | 2.3 to 4.7 | 2.4 to 3.3 | 1.0 to 1.1 | 2.3 to 2.7 |
 | Shape | point-to-point | mostly point-to-point | loop | either |
 | May revisit its line | no | yes | yes | yes |
 
@@ -258,6 +258,14 @@ commit. Every blob in every commit has been scanned to confirm it. These routes
 are mass rides, whose ride purpose defaults to First Amendment assembly, which is
 the category the attribution rule in the plan protects; recreational routes are
 attributed normally.
+
+Four files - `trail-annapolis-bwi`, `trail-bethesda-loop`,
+`trail-brookside-gardens` and `group-blow-off-steam` - had the start and end of
+each trace trimmed so fixture endpoints are not personal locations. Only the
+ends that needed it were cut; the rest of each file is unchanged. Every figure
+in the tables above is measured on the trimmed files, which is why the Bethesda
+Loop no longer closes, and the table calls it a loop with its ends trimmed
+rather than a closed one.
 
 ## Provenance
 

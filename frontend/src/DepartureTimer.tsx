@@ -5,10 +5,15 @@
  * (10, 5 and 2 minutes) and a miss are said through `announce`, the page's one status line. A miss
  * asks for a new plan (`onMissed`), which takes the next departure. No animation: the numbers change.
  */
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import type { TransitDeparture } from "./lib/api.ts";
 import { countdown, departureText, mapLabel, milestone, milestoneSaid, missedSaid, mmss, sourceWord } from "./lib/departure.ts";
 import { t } from "./lib/i18n.ts";
+
+/** A translated sentence with its {places} filled by elements, so a language puts the countdown where its grammar wants it. */
+function withPlaces(sentence: string, places: Readonly<Record<string, ReactNode>>): ReactNode[] {
+  return sentence.split(/\{(\w+)\}/).map((part, i) => <Fragment key={i}>{i % 2 === 1 ? (part in places ? places[part] : `{${part}}`) : part}</Fragment>);
+}
 
 export function DepartureTimer({
   departure,
@@ -69,8 +74,11 @@ export function DepartureTimer({
       )}
       {state.close && !state.missed && (
         <p className="departure-timer notice">
-          {t("Cutting it close. Departs in")} <span className="departure-count">{mmss(state.toDepartS)}</span>, {sourceWord(departure)}; {t("time to spare")}{" "}
-          <span className="departure-count">{mmss(state.spareS)}</span>.
+          {withPlaces(t("Cutting it close. Departs in {count}, {source}; time to spare {spare}."), {
+            count: <span className="departure-count">{mmss(state.toDepartS)}</span>,
+            source: sourceWord(departure),
+            spare: <span className="departure-count">{mmss(state.spareS)}</span>,
+          })}
         </p>
       )}
       {state.missed && <p className="departure-timer notice">{missedSaid(departure)}</p>}

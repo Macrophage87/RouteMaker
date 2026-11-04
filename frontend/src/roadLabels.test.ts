@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { layers as protomapsLayers, namedFlavor } from "@protomaps/basemaps";
-import { BOUNDARY_LAYER_ID, BOUNDARY_LINE, HIGHWAY_LABEL_MIN_ZOOM, OTHER_LABEL, OTHER_LABEL_LAYER_IDS, PLACE_LABEL, PLACE_LABEL_LAYER_IDS, ROAD_LABEL, ROAD_LABEL_LAYER_IDS, placeLabelPaint, TRAIL_LABEL, TRAIL_LABEL_LAYER_ID, TRAIL_LABEL_MIN_ZOOM, contrastRatio, rideRoadLabelField, rideTrailLabelField, roadLabelPaint, stressFilters, trailLabelLayers, trailLabelPaint, withClearRoadLabels } from "./stressStyle.js";
+import { BOUNDARY_LAYER_ID, BOUNDARY_LINE, HIGHWAY_LABEL_MIN_ZOOM, OTHER_LABEL, OTHER_LABEL_LAYER_IDS, PLACE_LABEL, PLACE_LABEL_LAYER_IDS, ROAD_LABEL, ROAD_LABEL_LAYER_IDS, placeLabelPaint, TRAIL_LABEL, TRAIL_LABEL_LAYER_ID, TRAIL_LABEL_MIN_ZOOM, TRAIL_NAME_TILE_LAYER, contrastRatio, rideRoadLabelField, rideTrailLabelField, roadLabelPaint, stressFilters, trailLabelLayers, trailLabelPaint, withClearRoadLabels } from "./stressStyle.js";
 import { setStressPalette } from "./lib/mapGlue.ts";
 
 type Layer = { id: string; type: string; layout?: Record<string, unknown>; paint?: Record<string, unknown> };
@@ -185,6 +185,11 @@ test("trail names: along each major trail from zoom 10 (\"label the long ones\")
   assert.equal(layer.layout?.["text-size"], ROAD_LABEL.size);
   assert.deepEqual(layer.paint, trailLabelPaint(false));
   assert.deepEqual((layer as { filter?: unknown }).filter, stressFilters("weekday_offpeak")[TRAIL_LABEL_LAYER_ID]);
+  // 2026-11-04 ("If anything more labeling on the longer distance trails"): from the tiles' joined line per name, not
+  // the stress layer's short pieces, and bending as far as MapLibre's own 45 degrees (30 placed almost none).
+  assert.equal((layer as { "source-layer"?: string })["source-layer"], TRAIL_NAME_TILE_LAYER);
+  assert.equal(TRAIL_NAME_TILE_LAYER, "trail_names");
+  assert.equal(layer.layout?.["text-max-angle"], 45);
 });
 
 test("trail names: dark purple on the street names' white halo, darker with the switch, and not the street names' grey", () => {

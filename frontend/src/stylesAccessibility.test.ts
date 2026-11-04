@@ -187,6 +187,29 @@ test("every box's placeholder is one token, at least 4.5:1 on the panel and its 
   }
 });
 
+test("the stress ribbon's bars have an edge of 3:1 or more on the ride panel in every theme, the light one too (2026-11-04 review)", () => {
+  // The forced-colours block's own rule (CanvasText) is the system's; this is the one the themes use.
+  const bar = rules(css).filter((r) => r.selectors.length === 1 && r.selectors[0] === ".ride-ahead-bar");
+  assert.equal(bar.length, 1, "one rule sets the bars' edge for every theme");
+  const token = /stroke:\s*var\((--[a-z-]+)\)/.exec(bar[0].declarations)?.[1];
+  assert.ok(token, "the edge is a theme token");
+  assert.ok(!rules(css).some((r) => r.selectors.some((s) => /\.ride-ahead-bar$/.test(s) && s.startsWith(":root"))), "no theme sets it apart");
+  const block = (selector: string) => rules(css).find((r) => r.selectors.includes(selector))?.declarations ?? "";
+  const valueIn = (blocks: string[], name: string) => {
+    for (const body of blocks) if (new RegExp(`${name}:\\s*#`).test(body)) return property(body, name);
+    assert.fail(`${name} in ${blocks.length} blocks`);
+  };
+  // Each theme's blocks, the most specific first.
+  for (const blocks of [[":root"], [":root.a11y", ":root"], [":root.theme-dark", ":root"], [":root.theme-dark.a11y", ":root.theme-dark", ":root"]]) {
+    const bodies = blocks.map(block);
+    const edge = valueIn(bodies, token);
+    for (const fill of ["--bg", "--bg-soft"]) {
+      const panel = valueIn(bodies, fill);
+      assert.ok(contrastRatio(edge, panel) >= 3, `${blocks[0]}: ${edge} on ${fill} ${panel} is ${contrastRatio(edge, panel).toFixed(2)}:1`);
+    }
+  }
+});
+
 test("the ride's Detour search box has the shared search box's look, not the browser's grey (P5)", () => {
   const shared = rules(css).find((r) => r.selectors.includes('.place-search input[type="search"]'));
   assert.ok(shared?.selectors.includes('.detour-search input[type="search"]'));

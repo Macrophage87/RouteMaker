@@ -302,6 +302,41 @@ def test_points_problem(points, ok) -> None:
     assert (weather.points_problem(points) is None) is ok
 
 
+@pytest.mark.parametrize(
+    "point",
+    [
+        pytest.param([2.35, 48.86, 0], id="Paris"),
+        pytest.param([-122.42, 37.77, 0], id="San Francisco"),
+        pytest.param([-77.0, 40.5, 0], id="north of the area"),
+    ],
+)
+def test_a_point_outside_the_mapped_area_is_not_checked(point) -> None:
+    """Routes are planned only inside COVERAGE_BBOX, so the check is too; the inside points
+    still are."""
+    inside = [-77.031, 38.901, 0]
+    assert weather.points_problem([inside, point]) is None
+    assert weather.inside_coverage([inside, point]) == [inside]
+
+
+@pytest.mark.django_db
+def test_a_rider_roaming_past_the_edge_still_hears_the_alerts_inside(client, monkeypatch) -> None:
+    """A point over the edge leaves the alerts and rain unchecked, never the whole check refused
+    (a 400 the page reads as "no alerts")."""
+    fake = Fake(
+        alerts={"38.90,-77.03": [alert("Tornado Warning", "Extreme")]}, rain=rain_doc([[0.0] * 8])
+    )
+    monkeypatch.setattr(weather, "_shared", weather.Weather(fetch=fake, clock=lambda: NOW))
+    r = client.post(
+        "/api/weather/check",
+        data=json.dumps({"points": [[-77.031, 38.901, 0], [-77.0, 40.5, 600]]}),
+        content_type="application/json",
+        HTTP_X_FORWARDED_FOR="198.51.100.13",
+    )
+    assert r.status_code == 200
+    assert [a["event"] for a in r.json()["alerts"]] == ["Tornado Warning"]
+    assert r.json()["unchecked"] == ["alerts", "rain"]
+
+
 @pytest.mark.django_db
 def test_the_endpoint(client, monkeypatch) -> None:
     fake = Fake(
@@ -324,3 +359,11 @@ def test_the_endpoint(client, monkeypatch) -> None:
         **headers,
     )
     assert bad.status_code == 400
+    far = client.post(
+        "/api/weather/check",
+        data=json.dumps({"points": [[2.35, 48.86, 0]]}),
+        content_type="application/json",
+        **headers,
+    )
+    assert far.status_code == 400
+    assert far.json() == {"error": "the points are outside the area this map covers"}

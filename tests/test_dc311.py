@@ -4,7 +4,9 @@ service code for the problem. No test reaches DC: the transport is replaced."""
 
 from __future__ import annotations
 
+import http.client
 import json
+import urllib.error
 
 import pytest
 
@@ -69,6 +71,57 @@ def test_each_problem_finds_its_service_or_is_not_sent(dc, settings) -> None:
     with pytest.raises(dc311.NotSent) as refused:
         dc311.send("pothole", 39.29, -76.61, "Baltimore")
     assert refused.value.code == "outside_dc"
+    assert dc == []
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        pytest.param(http.client.IncompleteRead(b"[{", 40), id="answer cut off"),
+        pytest.param(http.client.RemoteDisconnected("closed"), id="answer dropped"),
+        pytest.param(TimeoutError("timed out"), id="answer slower than the timeout"),
+        pytest.param(json.JSONDecodeError("Expecting value", "<html>", 0), id="answer not JSON"),
+    ],
+)
+def test_a_report_whose_answer_is_lost_may_have_been_filed_and_is_not_offered_again(
+    dc, settings, monkeypatch, fault
+) -> None:
+    settings.DC311_API_KEY = "placeholder-not-a-key"
+
+    def post(url, form):
+        raise fault
+
+    monkeypatch.setattr(dc311, "_post", post)
+    with pytest.raises(dc311.NotSent) as unsure:
+        dc311.send("pothole", HERE["lat"], HERE["lon"], "Pothole.")
+    assert unsure.value.code == "dc311_unknown" and unsure.value.status == 502
+    assert "check before sending it again" in unsure.value.message
+
+
+def test_a_report_dc_never_received_is_still_could_not_be_reached(
+    dc, settings, monkeypatch
+) -> None:
+    settings.DC311_API_KEY = "placeholder-not-a-key"
+
+    def post(url, form):
+        raise urllib.error.URLError(ConnectionRefusedError())
+
+    monkeypatch.setattr(dc311, "_post", post)
+    with pytest.raises(dc311.NotSent) as refused:
+        dc311.send("pothole", HERE["lat"], HERE["lon"], "Pothole.")
+    assert refused.value.code == "dc311_unreachable"
+
+
+def test_a_cut_off_service_list_is_could_not_be_reached(dc, settings, monkeypatch) -> None:
+    settings.DC311_API_KEY = "placeholder-not-a-key"
+
+    def get(url):
+        raise http.client.IncompleteRead(b"[", 100)
+
+    monkeypatch.setattr(dc311, "_get", get)
+    with pytest.raises(dc311.NotSent) as refused:
+        dc311.send("pothole", HERE["lat"], HERE["lon"], "Pothole.")
+    assert refused.value.code == "dc311_unreachable"
     assert dc == []
 
 
@@ -175,6 +228,27 @@ def test_every_address_together_is_held_to_an_hourly_cap(client, dc, settings, m
         )
         codes.append(r.status_code)
     assert codes == [200, 200, 429] and len(dc) == 2
+
+
+@pytest.mark.django_db
+def test_a_send_whose_answer_was_cut_off_tells_the_page_to_check_not_to_resend(
+    client, dc, settings, monkeypatch
+) -> None:
+    settings.DC311_API_KEY = "placeholder-not-a-key"
+
+    def post(url, form):
+        raise http.client.IncompleteRead(b"[{", 40)
+
+    monkeypatch.setattr(dc311, "_post", post)
+    sign_in(client)
+    ticket = client.get("/api/report311").json()["ticket"]
+    r = client.post(
+        "/api/report311",
+        data=json.dumps({"kind": "pothole", **HERE, "ticket": ticket}),
+        content_type="application/json",
+        HTTP_X_FORWARDED_FOR="198.51.100.80",
+    )
+    assert r.status_code == 502 and r.json()["code"] == "dc311_unknown"
 
 
 @pytest.mark.django_db

@@ -100,7 +100,9 @@ test("3. 311: one tap logs the pick (and sends it where the server has DC's key)
   assert.match(pick, /const entry = report311Log\(\)\.add\(kind, place\);/);
   assert.match(pick, /if \(serverOn311 && entry\.where === "dc"\)/);
   assert.match(pick, /sendReport311\(window\.location\.origin, kind, place, entryText\(entry\)\)/);
-  assert.match(pick, /if \(sent\) report311Log\(\)\.setReported\(entry\.id, true\);/);
+  assert.match(pick, /if \(result === "sent"\) report311Log\(\)\.setReported\(entry\.id, true\);/);
+  // DC's answer lost (dc311_unknown): the rider is told to check, never invited to send it again.
+  assert.match(pick, /result === "maybe_sent" \? REPORT_MAYBE_SENT : loggedSaid\(entry\)/);
   assert.match(pick, /tell311\(loggedSaid\(entry\)\)/);
   assert.doesNotMatch(ride, /smsHref|sms:/, "no text message: DC's text line answers only Welcome (2026-10-20)");
   // The confirmation line under the button, and nothing to type: a rider is riding (Stephen, 2026-10-21).

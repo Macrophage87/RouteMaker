@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
+  IDLE_CLOSE_ALWAYS,
   IDLE_CLOSE_ATTR,
   IDLE_CLOSE_SETTLE_MS,
   IDLE_HOLD_ATTR,
@@ -343,4 +344,47 @@ test("closeIdlePanels: each card, menu and dialog closes by its own close; typed
   // Nothing left to close: says so, and a second look closes nothing more.
   active = body;
   assert.equal(closeIdlePanels(doc), false);
+});
+
+test("a dialog with the focus in it (Ride settings, the join sheet) stays open when the screen is left alone; the group's question still closes", () => {
+  const body = new FakeEl("body");
+  const pickerInSettings = new FakeEl("select");
+  const settings = new FakeEl("dialog", [], { open: "", [IDLE_CLOSE_ATTR]: "" }).add(pickerInSettings);
+  const join = new FakeEl("dialog", [], { open: "", [IDLE_CLOSE_ATTR]: "" }).add(new FakeEl("button"));
+  body.add(settings, join);
+  let active: FakeEl = pickerInSettings;
+  const doc = {
+    body,
+    get activeElement() {
+      return active;
+    },
+    querySelector: (sel: string) => body.querySelector(sel),
+    querySelectorAll: (sel: string) => body.querySelectorAll(sel),
+    getElementById: () => null,
+  } as unknown as Document;
+  assert.equal(closeIdlePanels(doc), true, "the join sheet, without the focus, closes");
+  assert.equal(settings.closes, 0, "Ride settings, with the focus in it, stays");
+  assert.equal(join.closes, 1);
+  // The group's question closes as its No even with the focus on its first button.
+  const first = new FakeEl("button");
+  const question = new FakeEl("dialog", [], { open: "", [IDLE_CLOSE_ATTR]: IDLE_CLOSE_ALWAYS }).add(first);
+  body.add(question);
+  active = first;
+  assert.equal(closeIdlePanels(doc), true);
+  assert.equal(question.closes, 1);
+  const group = readFileSync(new URL("../RideGroup.tsx", import.meta.url), "utf8");
+  assert.match(group, new RegExp(`className="ask-dialog ride-consent"\\s+${IDLE_CLOSE_ATTR}="${IDLE_CLOSE_ALWAYS}"`));
+});
+
+test("the focus moving (a screen reader's swipe) starts the 30 s again, like a touch", () => {
+  assert.ok((IDLE_TOUCH_EVENTS as readonly string[]).includes("focusin"));
+  const w = fakeWindow();
+  let closes = 0;
+  watchIdleRecentre(w.win, { away: () => false, panelOpen: () => true, recentre: () => undefined, closePanels: () => ((closes += 1), true) });
+  w.advance(25_000);
+  w.touch("focusin");
+  w.advance(25_000);
+  assert.equal(closes, 0);
+  w.advance(5_000);
+  assert.equal(closes, 1);
 });
