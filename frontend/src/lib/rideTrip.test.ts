@@ -17,6 +17,7 @@ import {
   approachWords,
   fixedRide,
   restClosedSaid,
+  restAutoReady,
   restFrom,
   tripRideStart,
   tripStep,
@@ -600,10 +601,24 @@ test("at the station the trip goes on (Stephen, 2026-11-03): no Done while a tra
   assert.match(ride, /restBusy\.current = false;\s*setRestFailed\(!!said\);/);
   // Off a train followed stop by stop: Ride the rest, once, with no press, and no "press Ride the rest" or arrival said first.
   assert.match(ride, /const restNext = !!rest && !!onRideRest && onwardParts\.some\(\(p\) => p\.kind === "transit"\);/);
-  assert.match(ride, /if \(!onwardDone \|\| !restNext \|\| restAuto\.current \|\| ended\.current\) return;\s*restAuto\.current = true;\s*rideTheRest\(\);/);
+  assert.match(ride, /if \(!onwardDone \|\| !restNext \|\| !restReady \|\| restAuto\.current \|\| ended\.current\) return;\s*restAuto\.current = true;\s*rideTheRest\(\);/);
+  assert.match(ride, /const restReady = !!rest && restAutoReady\(rest, ride\.fix \?\? null, Date\.now\(\)\);/);
   assert.match(ride, /if \(!restShown \|\| !rest \|\| restSaid\.current \|\| restNext\) return;/);
   assert.match(ride, /if \(!\(restNextRef\.current && line === t\(ARRIVED_SAID\)\)\) notify\(line\);/);
   // No bike rack offered at a station the bike goes on from; a ride's walk on keeps it. No next leg beside the ride to go.
   assert.match(ride, /if \(!ride\.arrived \|\| plan\.current\.loop \|\| !racks \|\| !!trip\?\.rest \|\| onwardParts\.some\(\(p\) => p\.kind === "transit"\)\) return;/);
   assert.match(ride, /\{onNextLeg && !rest && \(onwardParts\.length === 0 \|\| onwardDone\) && \(/);
+});
+
+test("Ride the rest starts by itself only on a fresh fix at the stop off the train or past it, never under ground on the clock", () => {
+  const rest = { alight: [-77.0, 38.9] as LonLat, to: [-77.0, 39.0] as LonLat };
+  const now = 1_000_000;
+  // At the stop, fresh: go.
+  assert.equal(restAutoReady(rest, { point: [-77.0, 38.9005], at: now - 5_000 }, now), true);
+  // Past it, toward the destination: go.
+  assert.equal(restAutoReady(rest, { point: [-77.0, 38.95], at: now - 5_000 }, now), true);
+  // The last fix from before the train (the boarding station, far back) or an old one: wait.
+  assert.equal(restAutoReady(rest, { point: [-77.0, 38.8], at: now - 5_000 }, now), false);
+  assert.equal(restAutoReady(rest, { point: [-77.0, 38.9005], at: now - 120_000 }, now), false);
+  assert.equal(restAutoReady(rest, null, now), false);
 });

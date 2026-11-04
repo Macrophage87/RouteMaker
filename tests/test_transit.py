@@ -2464,6 +2464,23 @@ def test_vehicle_words_keep_a_bus_systems_name():
     assert bus.vehicle_words(("Metrobus",)) == "the Metrobus"
 
 
+def test_a_hop_says_which_patterns_serve_it():
+    """`Hop.serving` (the boarding card's trains): a frequent hop, every pattern that makes it; a
+    timed one, only the train taken."""
+    from types import SimpleNamespace
+
+    def pattern(index, route):
+        return SimpleNamespace(index=index, route=route, stops=(1, 2, 3), system=0)
+
+    orange, silver = pattern(4, "Orange Line"), pattern(7, "Silver Line")
+    frequent = [((600.0, 606.0, 612.0), 120.0, orange, 0, 2), ((603.0, 609.0), 130.0, silver, 0, 2)]
+    hop = transit._hop(598.0, frequent)
+    assert hop.frequent and hop.serving == (4, 7)
+    timed = [((640.0,), 120.0, orange, 0, 2), ((700.0,), 130.0, silver, 0, 2)]
+    hop = transit._hop(598.0, timed)
+    assert not hop.frequent and hop.serving == (4,)
+
+
 def test_towards_lists_every_train_that_makes_the_ride_by_where_it_is_signed():
     # Stephen, 2026-11-03: "Put the acceptable destination options. you still need to know which
     # train to get on". Only the patterns serving the hop now (`Hop.serving`) count: a through
