@@ -30,6 +30,7 @@ import { AccessibilitySwitch } from "../lib/accessibilitySwitch.ts";
 import { AvoidStairsSwitch } from "../AvoidStairsSwitch.tsx";
 import { ACCESS_FINE_TUNE, ACCESS_HELP, ACCESS_LABEL } from "../lib/accessMode.ts";
 import { RideSettingsFields } from "../RideMode.tsx";
+import { ThemeSetting, UnitsSetting } from "../DisplaySettings.tsx";
 import { RIDE_ICONS_HELP, RIDE_ICONS_LABEL, RIDE_TEXT_HELP, RIDE_TEXT_LABEL, readRideIconsOnly, writeRideIconsOnly, type RideTextSize } from "../lib/rideOutput.ts";
 import type { RidePrefs } from "../lib/rideOutput.ts";
 import type { RailVisibility } from "../lib/railStations.ts";
@@ -75,8 +76,6 @@ import { ANNOUNCE_HINT, ANNOUNCE_LABEL, type AnnounceLevel } from "../lib/announ
 import type { Status } from "./RoutePanel.tsx";
 import { APP_VERSION, versionSaid } from "../lib/appVersion.ts";
 import { LANGUAGES, LANGUAGE_NAME, chooseLanguage, language, locale, readLanguageChoice, t, type LanguageChoice } from "../lib/i18n.ts";
-import { chooseUnits, units, type Units } from "../lib/units.ts";
-import { THEME_CHOICES, chooseTheme, readThemeChoice, type ThemeChoice } from "../lib/themeClock.ts";
 
 /** The Language setting's (i) words. Street names and notices from agencies stay as they are written. */
 const LANGUAGE_HINT = "The app's words and the voice. Street names and agency notices stay as written. Changing it reloads the page.";
@@ -107,67 +106,6 @@ function LanguageSetting() {
     </SettingRow>
     {language() !== "en" && <p className="hint">{language() === "es" ? t(DRAFT_NOTE_ES) : t(DRAFT_NOTE)}</p>}
     </>
-  );
-}
-
-/**
- * Settings > Display > Units (the owner, 2026-11-03: "have a metric mode in settings"): US (miles first, metric in
- * brackets) or Metric (kilometres first, US in brackets; Ride says metres and kilometres). Reloads, as Language does.
- */
-function UnitsSetting({ saveNow }: { saveNow?: () => Promise<boolean> }) {
-  const [choice, setChoice] = useState<Units>(() => units());
-  const [unsaved, setUnsaved] = useState(false);
-  return (
-    <>
-    <SettingRow infoId="settings-units-info" about={t("Units")} info={t("Distances, speeds and heights, on screen and spoken. The other units stay in brackets. Changing it reloads the page.")}>
-      <SettingSelect<Units>
-        label={t("Units")}
-        value={choice}
-        options={[["us", t("Miles and feet")] as const, ["metric", t("Kilometers and meters")] as const]}
-        onChange={(next) => {
-          setChoice(next);
-          setUnsaved(false);
-          // Signed in, the account is saved first; not saved, the choice goes back and says so.
-          void chooseUnits(next, saveNow).then((reloaded) => {
-            if (!reloaded && units() !== next) {
-              setChoice(units());
-              setUnsaved(true);
-            }
-          });
-        }}
-        describedBy="settings-units-info"
-      />
-    </SettingRow>
-    {unsaved && <p className="notice" role="status">{t("Units were not saved to your account; try again shortly.")}</p>}
-    </>
-  );
-}
-
-/**
- * Settings > Display > Colors (the owner, 2026-11-01: "There's the ability to use whatever setting you want still?"):
- * the sun by default, or the phone's own setting, or always light or dark (lib/themeClock.ts). It shows at once.
- */
-function ThemeSetting() {
-  const [choice, setChoice] = useState<ThemeChoice>(() => readThemeChoice());
-  const words: Record<ThemeChoice, string> = {
-    sun: t("Sunrise and sunset"),
-    phone: t("Phone's setting"),
-    light: t("Always light"),
-    dark: t("Always dark"),
-  };
-  return (
-    <SettingRow infoId="settings-theme-info" about={t("Colors")} info={t("Sunrise and sunset: light by day, dark from sunset to sunrise, which also saves battery on most phones.")}>
-      <SettingSelect<ThemeChoice>
-        label={t("Colors")}
-        value={choice}
-        options={THEME_CHOICES.map((id) => [id, words[id]] as const)}
-        onChange={(next) => {
-          setChoice(next);
-          chooseTheme(next);
-        }}
-        describedBy="settings-theme-info"
-      />
-    </SettingRow>
   );
 }
 
@@ -788,10 +726,10 @@ export function SettingsSheet(props: SettingsSheetProps) {
           />
         </SettingRow>
         {/* Light or dark (the owner, 2026-11-01): by the sun unless the rider picks otherwise. */}
-        <ThemeSetting />
+        <ThemeSetting idBase="settings" />
         {/* The app's language (the owner, 2026-10-27: "compatible with multiple languages"): unset, the phone's own. */}
         <LanguageSetting />
-        <UnitsSetting saveNow={props.saveSettingsNow} />
+        <UnitsSetting idBase="settings" saveNow={props.saveSettingsNow} />
       </section>
       </div>
       <div role="tabpanel" id="settings-panel-account" aria-labelledby="settings-tab-account" className="settings-panel" hidden={tab !== "account"}>

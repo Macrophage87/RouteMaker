@@ -35,7 +35,7 @@ import {
 import { onSharedTick } from "./lib/sharedTick.ts";
 import { COVERAGE_BBOX, MAX_POINTS, addPoint, haversineM, insideCoverage, type LonLat } from "./lib/geo.ts";
 import { formatDistance, formatSeconds, unitsFirstDeep } from "./lib/format.ts";
-import { chooseUnits, units } from "./lib/units.ts";
+import { chooseUnits, units, unitsReloadOwed } from "./lib/units.ts";
 import { RETURN_PARAM as GARMIN_RETURN_PARAM, garminReturnFrom, readGarmin, withoutReturn } from "./lib/garminLink.ts";
 import { RETURN_PARAM as WAHOO_RETURN_PARAM, readWahoo, wahooReturnFrom } from "./lib/wahooLink.ts";
 import { endsOnFoot, layersTurnedOn, presetNamesRide, presetSaid, runs, twoPointsOnly, usesBikeshare, type PresetId } from "./lib/presets.ts";
@@ -4655,6 +4655,10 @@ export function App() {
       if (document.activeElement instanceof HTMLElement && document.activeElement.closest(".go-search")) document.activeElement.blur();
       window.requestAnimationFrame(() => document.querySelector<HTMLElement>(".go-bar-start")?.focus());
     } else backToRideOpener();
+    // Units switched during the ride (lib/units.ts switchUnitsInRide): the reload that brings the rest of the page
+    // round too, now the ride is done.
+    // A moment later, once the cleared plan is in the address (the hash is written by an effect after this render).
+    if (unitsReloadOwed()) window.setTimeout(() => window.location.reload(), 300);
   };
   // Roam (RoamMode.tsx): Go's one button while Go has no destination. The voice is unlocked inside the press (iOS).
   const startRoam = () => {
@@ -6202,6 +6206,19 @@ export function App() {
   const rideGroupLine =
     !roamBroadcast?.leading && (goMode || riding || (rideBroadcast && !rideBroadcast.leading)) && rideGroupType && rideGroupRoute ? (rideGroupRoute.geometry.coordinates as LonLat[]) : null;
 
+  // Units (lib/units.ts) reload the page: signed in, the account gets the new choice first, so the sign-in on the
+  // reload does not put the old one back. Before the account's settings are read, nothing is saved (it would replace
+  // them): not saved, try again. Settings and a ride's settings popup both use it.
+  const saveSettingsNow = !me.signed_in
+    ? undefined
+    : !settingsSynced
+      ? async () => false
+      : async () => {
+          const doc = deviceSettings({ preset, dials }, undefined, weightStore.current?.setting());
+          const saved = await saveSettings(window.location.origin, doc);
+          if (saved) lastSettings.current = doc;
+          return saved;
+        };
   return (
     <div className={`app${onBike ? " riding" : ""}${roaming ? " roaming" : ""}${goMode && !onBike ? " go-mode" : ""}${accessMode ? " access-mode" : ""}`}>
       {/* Past the map, its markers and its controls (up to 150 junction
@@ -6692,6 +6709,7 @@ export function App() {
           dials={rideStart.dials}
           prefs={ridePrefs}
           onPrefs={changeRidePrefs}
+          saveSettingsNow={saveSettingsNow}
           follow={follow}
           onFollow={setFollow}
           headingUp={headingUp}
@@ -6982,19 +7000,7 @@ export function App() {
               {...{
                 garminReturned: GARMIN_RETURNED,
                 wahooReturned: WAHOO_RETURNED,
-                // Units (lib/units.ts) reload the page: signed in, the account gets the new choice first, so the
-                // sign-in on the reload does not put the old one back.
-                // Before the account's settings are read, nothing is saved (it would replace them): not saved, try again.
-                saveSettingsNow: !me.signed_in
-                  ? undefined
-                  : !settingsSynced
-                    ? async () => false
-                    : async () => {
-                        const doc = deviceSettings({ preset, dials }, undefined, weightStore.current?.setting());
-                        const saved = await saveSettings(window.location.origin, doc);
-                        if (saved) lastSettings.current = doc;
-                        return saved;
-                      },
+                saveSettingsNow,
                 rideText: { size: rideText, onChange: setRideText },
                 // The rider and bike weight (OWNER-DECISIONS 313-318), in Settings (the owner, 2026-10-18).
                 weight: {
