@@ -11,9 +11,12 @@ ride time inside one of its windows (`in_force`):
 - **Rock Creek Park** (NPS; `ROCK_CREEK_URL`). Bingham Drive, Sherrill Drive and three car-free
   stretches of Beach Drive "may also [be] closed to pedestrians, bicyclists and non-motorized
   recreation from 6:45 p.m. to 4 a.m.", every night of the season. The record covers Nov 10,
-  2025 to Mar 31, 2026; NPS had not posted the 2026-27 one when this was written, and the owner
-  chose (2026-10-25) to assume the same dates again, said as expected (`ROCK_CREEK_SEASONS`).
-  The roads it closes to cars only are left out: bicycles may still use them.
+  2025 to Mar 31, 2026. The owner had chosen (2026-10-25) to assume the same dates for 2026-27;
+  then, 2026-11-04, of that assumed season and NPS's deer-management page (updated 2026-10-30,
+  with no 2026-27 closure dates): "For rock creek, that's no longer the case." So there is no
+  2026-27 season in `ROCK_CREEK_SEASONS` and no Rock Creek deer notice this winter. A season
+  NPS posts later goes in with `posted` True; one assumed with `posted` False is said as
+  expected. The roads it closes to cars only are left out: bicycles may still use them.
 - **Montgomery Parks** (`MOCO_URL`, "Fall 2026 - Winter 2027"). Park Police sharpshooting:
   "Parks and Trails Closed, January 15 - March 31 from Sunset - Sunrise, Monday-Friday", at
   the parks of `SHARPSHOOTING`. Firearms hunts: "Parks are CLOSED for 24 hours on each
@@ -65,11 +68,11 @@ _STEP_M = 10.0
 _CELL_M = 30.0
 _LAT0 = 39.0
 
-# (first night, last night, posted by NPS). The owner, 2026-10-25, chose "Assume Nov 10 to Mar
-# 31 again" until NPS posts this winter's record.
-ROCK_CREEK_SEASONS = (
+# (first night, last night, posted by NPS). The assumed 2026-27 season (the owner, 2026-10-25,
+# "Assume Nov 10 to Mar 31 again") was taken out on the owner's word of 2026-11-04: "For rock
+# creek, that's no longer the case."
+ROCK_CREEK_SEASONS: tuple[tuple[date, date, bool], ...] = (
     (date(2025, 11, 10), date(2026, 3, 31), True),
-    (date(2026, 11, 10), date(2027, 3, 31), False),
 )
 ROCK_CREEK_HOURS = (time(18, 45), time(4, 0))
 

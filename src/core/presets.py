@@ -721,10 +721,11 @@ ROAD_BIKE_STRESS = 40
 ROAD_BIKE_SURFACES = 0.9
 # The ride types a ticked "Avoid gravel" box (retired with Road Bike's arrival) plans as Road
 # Bike: a rider's own bike, carrying nothing (`core.api.RouteIn`). Cargo, E-bike, a group, a
-# share bike, a transit trip and Mountain Bike keep their own ride and lose the box.
-AVOID_GRAVEL_BECOMES = frozenset(
-    {"default", "fast", "trailmaxxing", "novice", "gravel", "mountain-goat"}
-)
+# share bike, a transit trip and Mountain Bike keep their own ride and lose the box. So do
+# Novice and Nervous and Trailmaxxing: as Road Bike they would lose their calm start (Road
+# Bike's is "Balanced"), Novice's protections and its pace, which a rider who ticked the box
+# on them never asked to give up.
+AVOID_GRAVEL_BECOMES = frozenset({"default", "fast", "gravel", "mountain-goat"})
 # What a second spent stopped at a junction (a signal, a stop sign, a wait for a gap:
 # `routemaker.junction_delay`) costs when routes are ranked, against a second of riding.
 # Road Bike's is 3 (the owner, 2026-11-02: "For the road cycling version, make non-cycling

@@ -405,3 +405,9 @@ export function spokenDistance(metres: number): string {
   if (miles === 1) return t("1 mile");
   return t("{n} miles", { n: Number.isInteger(miles) ? miles.toFixed(0) : miles.toFixed(1) });
 }
+
+/** An area (Reach's rings, lib/reach.ts): "12 sq mi (31 km²)", or in metric mode "31 km² (12 sq mi)". */
+export function areaText(sqMi: number, km2: number): string {
+  const fixed = (n: number) => (n >= 10 ? n.toFixed(0) : n.toFixed(1));
+  return both(`${fixed(sqMi)} sq mi`, `${fixed(km2)} km²`);
+}

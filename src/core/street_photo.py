@@ -31,6 +31,7 @@ credits "Mapillary" with a link, and the creator's name where given (docs/SOURCE
 
 from __future__ import annotations
 
+import http.client
 import json
 import logging
 import math
@@ -119,7 +120,13 @@ def http_get(url: str, headers: dict, timeout: float) -> bytes:
             body = response.read(MAX_BYTES + 1)
     except urllib.error.HTTPError as error:
         raise Unavailable(f"HTTP {error.code}") from None
-    except (TimeoutError, urllib.error.URLError, ConnectionError, OSError) as error:
+    except (
+        TimeoutError,
+        urllib.error.URLError,
+        ConnectionError,
+        OSError,
+        http.client.HTTPException,  # a reply cut off part way (IncompleteRead, BadStatusLine)
+    ) as error:
         raise Unavailable(type(error).__name__) from None
     if len(body) > MAX_BYTES:
         raise Unavailable("larger than expected")
@@ -136,7 +143,13 @@ def image_get(url: str, headers: dict, timeout: float) -> bytes:
             body = response.read(MAX_BYTES + 1)
     except urllib.error.HTTPError as error:
         raise Unavailable(f"HTTP {error.code}") from None
-    except (TimeoutError, urllib.error.URLError, ConnectionError, OSError) as error:
+    except (
+        TimeoutError,
+        urllib.error.URLError,
+        ConnectionError,
+        OSError,
+        http.client.HTTPException,  # a reply cut off part way (IncompleteRead, BadStatusLine)
+    ) as error:
         raise Unavailable(type(error).__name__) from None
     if len(body) > MAX_BYTES:
         raise Unavailable("larger than expected")
