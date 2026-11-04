@@ -78,6 +78,7 @@ Contents:
 - [Deploying v0.18.0](#deploying-v0180)
 - [Deploying v0.19.0](#deploying-v0190)
 - [Deploying v0.19.1](#deploying-v0191)
+- [Deploying v0.20.0](#deploying-v0200)
 - [Deploying a planner and front-end release: rollback points and verification](#deploying-a-planner-and-front-end-release-rollback-points-and-verification)
 - [Paths bicycles may not ride (NO-BIKE-PATHS)](#paths-bicycles-may-not-ride-no-bike-paths)
 - [Mountain-bike difficulty levels (456; claude/v0-4-0-mtb-levels)](#mountain-bike-difficulty-levels-456-claudev0-4-0-mtb-levels)
@@ -7016,6 +7017,59 @@ change and no map rebuild.** The beta agent deploys it by itself from the annota
   for a bus) and After that as rows.
 - [ ] **Rollback.** The v0.19.0 api image and front end together. Nothing in the database or the
   map changes.
+
+## Deploying v0.20.0
+
+Reach's rings (#961, #962), Ride's stress ribbon (#956, #960), long-trail names and quieter route
+numbers (#951, tile `FORMAT_VERSION` 15 to 16), Baltimore City DOT's racks (#953), 698 Baltimore City
+owner rows (#955), the dark tunnel page (#957), the follow crosswalk fix (#959), Ride the rest waiting
+for a fix (#950) and the 2026-11-04 repo review's fixes (#963, #964, #967, #969). **No migration, no
+`src/pipeline/` change, no `lua/` change and no map rebuild.** What does change for the host: every
+`valhalla/*.json` (the `isochrone` action and `max_exclude_polygons_vertices` 1000), the Caddy image
+(2.8 to 2.10) and the Caddyfile, `docker/api.Dockerfile` (the amenity files Reach counts),
+`scripts/beta/` (the agent prunes `_before_` databases over 6.5 days old), `scripts/pc/` (the backup
+pull) and `mobile/` (the links manifest). The tile format change means **both** images are built
+(the `rebuild` service pre-draws tiles too, and a format-15 rebuild image would evict the api's
+format-16 cache every week). The beta agent's gate stops on the compose image line and the
+Dockerfile, so the beta ships by hand. At home, in order, with `</dev/null` on every docker command:
+
+- [ ] **The tag.** Once `test` and `a11y` are green on `main`, the owner tags v0.20.0 (annotated) on
+  that commit, from the PC.
+- [ ] **Rollback points and images**, as "Deploying a planner and front-end release", with the
+  weekly rebuild paused or not due, and out of 07:00-07:30 UTC: tag the running api **and pipeline**
+  images `pre-rel-<short>`, fast-forward the checkout, then `docker compose build api rebuild`.
+- [ ] **Caddy**, after the fast-forward: `docker compose pull caddy`, validate the new Caddyfile against the new image ("Changing
+  the Caddyfile on a running stack" in docs/DEPLOYMENT.md), then
+  `docker compose up -d --no-deps --no-build --force-recreate caddy`.
+- [ ] **The routers, before the api.** Restart every router ("A release that changes
+  `valhalla/*.json`" in docs/DEPLOYMENT.md). The v0.19.1 api works with the new configs; the new api
+  needs them (Reach answers nothing and a ride past several curved closures can read as no route).
+- [ ] **The api.** `docker compose up -d --no-deps --no-build --force-recreate api worker`, and
+  `rebuild` too once no rebuild job is queued or running. No `migrate`. Then the tile pre-draw
+  (the `FORMAT_VERSION` change).
+- [ ] **The front end**, last.
+- [ ] **The overrides: none in v0.20.0.** `fixtures/overrides/2026-11-04-owner-baltimore-city-review.json`
+  is not loaded with this release: the release review found rows whose evidence is another street's
+  block, so the file is being corrected first. Load it (stdin, dry run then `--confirm`, as in "First
+  rebuild on a fresh host") only after the owner confirms the corrected file.
+- [ ] **The PC backup pull**, once: "Off-box copies of beta backups", Install.
+- [ ] **Android**, a new build (the links manifest changed).
+- [ ] **Beta**, by hand as "Shipping an update later" (docs/BETA-RUNBOOK.md): no data bundle; build
+  the api image, restart the routers (all of them that run, `valhalla-paved` included: its config
+  changed too), the api and worker, the pre-draw, the front end, `smoke-test.sh --local --trails`
+  then `--public`. Caddy is not used on the beta. The agent changed: `mark-deployed v0.20.0`, then
+  `scripts/beta/auto-release.sh install`, then `resume`. Its first pass drops any `_before_`
+  database over 6.5 days old (the owner chose this, 2026-11-04). The beta's map swap from the
+  v0.19.0 rebuild is separate and still waits for the owner.
+- [ ] **Spot checks.** Plan > Find > Reach draws rings from a point and the 15/30/45/60 choice changes
+  them. In a ride, More > Stress shows the colour ribbon under the turns. A long trail's name shows
+  along it at a mid zoom, and US route shields are grey in dark mode. Baltimore racks show with the
+  Water and restrooms layer from zoom 17. A route past several closures still plans.
+- [ ] **Rollback.** The `pre-rel` api and pipeline images (`--force-recreate api worker rebuild`),
+  the v0.19.1 front end, and Caddy back on the 2.8 digest (check out v0.19.1's `compose.yaml` and
+  `Caddyfile`, then recreate `caddy`), then the pre-draw again (format 15). The routers need no
+  restart back: a v0.19.1 api sends fewer vertices and no isochrone call. Loaded override rows stay;
+  retire them with the loader if they must go.
 
 ## Deploying a planner and front-end release: rollback points and verification
 

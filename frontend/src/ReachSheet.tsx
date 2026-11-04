@@ -29,7 +29,7 @@ import {
   sideBySide,
   toggleMinutes,
   REACH_MINUTES,
-  withReach,
+  reachShareLink,
   type ReachAnswer,
   type ReachCombine,
   type ReachDirection,
@@ -174,8 +174,7 @@ export function ReachSheet({ open, onBack, backLabel, getMap, points, preset, di
   }, [getMap]);
 
   const share = async () => {
-    const hash = withReach(window.location.hash, view);
-    const link = `${window.location.origin}${window.location.pathname}${window.location.search}${hash}`;
+    const link = reachShareLink(window.location, view);
     if (navigator.share) {
       try {
         await navigator.share({ title: t("RouteMaker reach"), url: link });
@@ -251,7 +250,7 @@ export function ReachSheet({ open, onBack, backLabel, getMap, points, preset, di
           </fieldset>
         )}
 
-        {!onFoot && !sideBySide(points.length, view) && (
+        {!onFoot && !sideBySide(points.length, view) && answer?.calm_offered !== false && (
           <div>
             <label className="reach-calm">
               <input type="checkbox" checked={view.calm} onChange={(e) => onView({ ...view, calm: e.target.checked })} /> {t("Calm streets")}

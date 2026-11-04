@@ -1077,7 +1077,9 @@ cmd_run() {
 	fi
 	if [ "$dry_run" = 1 ]; then say "auto-release pass at $stamp (dry run: fetches, then changes nothing)"; else say "auto-release pass at $stamp"; fi
 	say "run log: $run_log"
-	[ "$dry_run" = 1 ] || { prune_aged_snapshots; prune_kept_dbs; }
+	[ "$dry_run" = 1 ] || prune_aged_snapshots
+	# A paused or BROKEN agent drops no database: a kept copy may be what the owner restores from.
+	[ "$dry_run" = 1 ] || [ -f "$cd_dir/PAUSED" ] || [ -f "$cd_dir/BROKEN" ] || prune_kept_dbs
 	pass; local rc=$?
 	trap - TERM INT HUP
 	rm -f "$report"
