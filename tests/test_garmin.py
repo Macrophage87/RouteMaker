@@ -129,9 +129,9 @@ class TestProtocol:
         assert "secret-token" not in sealed and sealed.startswith("v1.")
         assert garmin.unseal(sealed, 7) == "secret-token"
         assert garmin.seal("secret-token", 7) != sealed  # a fresh nonce each time
-        with pytest.raises(garmin.NotConnected):
+        with pytest.raises(garmin.Unreadable):
             garmin.unseal(sealed, 8)
-        with pytest.raises(garmin.NotConnected):
+        with pytest.raises(garmin.Unreadable):
             garmin.unseal("v0." + sealed[3:], 7)
 
     def test_the_token_key_is_its_own_subkey(self) -> None:
@@ -140,11 +140,19 @@ class TestProtocol:
         assert len(settings.GARMIN_TOKEN_KEY) == 32
         assert settings.GARMIN_TOKEN_KEY != settings.TOMBSTONE_KEY
 
-    def test_deregistration_notice_ids(self) -> None:
-        body = {"deregistrations": [{"userId": "a"}, {"userId": ""}, {"userId": 5}, "x", {}]}
-        assert garmin.deregistered_user_ids(body) == ["a"]
-        assert garmin.deregistered_user_ids([]) == []
-        assert garmin.deregistered_user_ids({"deregistrations": "a"}) == []
+    def test_deregistration_notice_entries_need_an_id_and_a_token(self) -> None:
+        rows = [
+            {"userId": "a", "userAccessToken": "t"},
+            {"userId": "b"},
+            {"userId": "c", "userAccessToken": ""},
+            {"userId": "", "userAccessToken": "t"},
+            {"userId": 5, "userAccessToken": "t"},
+            "x",
+            {},
+        ]
+        assert garmin.deregistrations({"deregistrations": rows}) == [("a", "t")]
+        assert garmin.deregistrations([]) == []
+        assert garmin.deregistrations({"deregistrations": "a"}) == []
 
 
 @pytest.fixture
@@ -290,13 +298,29 @@ class TestUsingAndEnding:
         link = GarminLink.objects.get(user=user)
         assert garmin.unseal(link.refresh_token, user.pk) == "refresh-1"
 
-    def test_a_token_that_does_not_decrypt_ends_the_connection(self, fake) -> None:
+    def test_a_key_that_cannot_open_a_stored_link_keeps_the_link(self, fake, settings) -> None:
+        # A wrong or changed KEY_ENCRYPTION_KEY is ours to fix: the rider is told to try again
+        # later, and the link works again once the right key is back.
+        _mine, user, _ = self._linked(fake)
+        right = settings.GARMIN_TOKEN_KEY
+        settings.GARMIN_TOKEN_KEY = hashlib.sha256(b"another key").digest()
+        for fresh in (False, True):
+            with pytest.raises(garmin.GarminError) as raised:
+                garmin_views.access_for(user, fresh=fresh)
+            assert not isinstance(raised.value, garmin.NotConnected)
+            assert "try again later" in str(raised.value).lower()
+        assert GarminLink.objects.filter(user=user).exists()
+        assert fake.calls == []
+        settings.GARMIN_TOKEN_KEY = right
+        assert garmin_views.access_for(user) == "access-1"
+
+    def test_a_token_sealed_for_another_account_keeps_the_link(self, fake) -> None:
         _mine, user, _ = self._linked(fake)
         other = make_user()
         GarminLink.objects.filter(user=user).update(access_token=garmin.seal("access-1", other.pk))
-        with pytest.raises(garmin.NotConnected):
+        with pytest.raises(garmin.Unreadable):
             garmin_views.access_for(user)
-        assert not GarminLink.objects.filter(user=user).exists()
+        assert GarminLink.objects.filter(user=user).exists()
 
     def test_disconnect_tells_garmin_and_deletes(self, fake) -> None:
         mine, user, csrf = self._linked(fake)
@@ -321,13 +345,53 @@ class TestUsingAndEnding:
         connect(kept)
         r = Client().post(
             "/garmin/deregistrations",
-            data=json.dumps({"deregistrations": [{"userId": "garmin-user-1"}]}),
+            data=json.dumps(
+                {"deregistrations": [{"userId": "garmin-user-1", "userAccessToken": "access-1"}]}
+            ),
             content_type="application/json",
             **addr(),
         )
         assert r.status_code == 200 and r.json() == {"removed": 1}
         assert not GarminLink.objects.filter(user=user).exists()
         assert GarminLink.objects.filter(user=kept_user).exists()
+
+    @pytest.mark.parametrize(
+        "entry",
+        [
+            {"userId": "garmin-user-1"},
+            {"userId": "garmin-user-1", "userAccessToken": "access-2"},
+            {"userId": "garmin-user-1", "userAccessToken": ""},
+            {"userId": "garmin-user-2", "userAccessToken": "access-1"},
+        ],
+    )
+    def test_a_deregistration_notice_without_the_rider_s_access_token_changes_nothing(
+        self, fake, entry
+    ) -> None:
+        _mine, user, _ = self._linked(fake)
+        r = Client().post(
+            "/garmin/deregistrations",
+            data=json.dumps({"deregistrations": [entry]}),
+            content_type="application/json",
+            **addr(),
+        )
+        assert r.status_code == 200 and r.json() == {"removed": 0}
+        assert GarminLink.objects.filter(user=user).exists()
+
+    def test_a_deregistration_notice_for_a_link_the_key_cannot_open_changes_nothing(
+        self, fake, settings
+    ) -> None:
+        _mine, user, _ = self._linked(fake)
+        settings.GARMIN_TOKEN_KEY = hashlib.sha256(b"another key").digest()
+        r = Client().post(
+            "/garmin/deregistrations",
+            data=json.dumps(
+                {"deregistrations": [{"userId": "garmin-user-1", "userAccessToken": "access-1"}]}
+            ),
+            content_type="application/json",
+            **addr(),
+        )
+        assert r.status_code == 200 and r.json() == {"removed": 0}
+        assert GarminLink.objects.filter(user=user).exists()
 
     def test_a_malformed_notice_removes_nothing(self, fake) -> None:
         _mine, user, _ = self._linked(fake)
