@@ -557,18 +557,25 @@ export interface AxisTick {
 // Decimals, not fractions (Stephen 2026-11-03: "Decimals and not fractions"): "0.5", "1", "1.5".
 function mileLabel(miles: number): string {
   const sign = miles < 0 ? "\u2212" : "";
-  const a = Math.round(Math.abs(miles) * 10) / 10;
-  return sign + (Number.isInteger(a) ? String(a) : a.toFixed(1));
+  const a = Math.round(Math.abs(miles) * 100) / 100;
+  return sign + String(a);
 }
 
 /**
- * Ticks every half mile (a mile, or two, on a long window), counted from you; the last one says "mi". In metric mode
- * (lib/units.ts) the same in kilometres, the last saying "km".
+ * Tick steps, smallest first: the axis takes the first that puts at most six ticks on the window (five for the short
+ * steps, so a few hundred feet left is not crowded with labels).
+ */
+const TICK_STEPS = [0.05, 0.1, 0.2, 0.5, 1, 2];
+
+/**
+ * Ticks every half mile (a mile, or two, on a long window), counted from you; the last one says "mi". Near the end of
+ * a ride, where under two miles are left, the steps shrink (0.2, 0.1, 0.05) so the axis still has labels. In metric
+ * mode (lib/units.ts) the same in kilometres, the last saying "km".
  */
 export function axisTicks(w: Pick<AheadWindow, "fromM" | "toM" | "youM">): AxisTick[] {
   const unitM = metricFirst() ? 1000 : METRES_PER_MILE;
   const span = (w.toM - w.fromM) / unitM;
-  const step = span <= 3 ? 0.5 : span <= 6 ? 1 : 2;
+  const step = TICK_STEPS.find((s) => span / s <= (s < 0.5 ? 5 : 6)) ?? TICK_STEPS[TICK_STEPS.length - 1];
   const ticks: AxisTick[] = [];
   const first = Math.ceil((w.fromM - w.youM) / unitM / step - 1e-9) * step;
   for (let n = first; w.youM + n * unitM <= w.toM + 1; n += step) {

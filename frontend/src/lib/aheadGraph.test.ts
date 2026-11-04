@@ -41,6 +41,7 @@ import {
   flowTicks,
 } from "./aheadGraph.ts";
 import { METRES_PER_MILE } from "./format.ts";
+import { setUnitsForTest } from "./units.ts";
 
 const MI = METRES_PER_MILE;
 const span = (from_m: number, to_m: number, tier: number | null, half = false, facility: StressSpan["facility"] = "none"): StressSpan => ({ from_m, to_m, tier, facility, half });
@@ -181,6 +182,22 @@ test("riders and the axis: the last rider behind said; ticks counted from you, t
   assert.equal(ridersSentence(aheadWindow(5000, 50_000, [6000])), "Other riders shown: 1, all ahead of you.");
   assert.deepEqual(axisTicks(aheadWindow(0, 50_000)).map((tick) => tick.label), ["0.5", "1", "1.5", "2 mi"]);
   assert.deepEqual(axisTicks(aheadWindow(MI, 50_000, [0])).map((tick) => tick.label), ["−1", "−0.5", "0.5", "1", "1.5", "2 mi"]);
+});
+
+test("near the end the axis keeps its labels: smaller steps when under two miles are left, in miles or kilometres", () => {
+  const labels = (youM: number, lengthM: number) => axisTicks(aheadWindow(youM, lengthM)).map((tick) => tick.label);
+  // Stephen 2026-11-04: 0.3 mi left and the axis had no labels at all.
+  assert.deepEqual(labels(0, 0.3 * MI), ["0.1", "0.2", "0.3 mi"]);
+  assert.deepEqual(labels(0, 1 * MI), ["0.2", "0.4", "0.6", "0.8", "1 mi"]);
+  assert.deepEqual(labels(0, 0.15 * MI), ["0.05", "0.1", "0.15 mi"]);
+  assert.deepEqual(labels(0, 1.5 * MI), ["0.5", "1", "1.5 mi"]);
+  setUnitsForTest("metric");
+  try {
+    assert.deepEqual(labels(0, 500), ["0.1", "0.2", "0.3", "0.4", "0.5 km"]);
+    assert.deepEqual(labels(0, 3000), ["0.5", "1", "1.5", "2", "2.5", "3 km"]);
+  } finally {
+    setUnitsForTest("us");
+  }
 });
 
 test("Ride wires it: one bubble a graph in More, pressed state, off by default, the graph at the top of the bottom panel", () => {
