@@ -2134,6 +2134,22 @@ class TestRoadBike:
         assert body["variant"] == "paved"
         assert fake.calls[0][0].startswith(settings.VALHALLA_UPSTREAMS["paved"])
 
+    @pytest.mark.parametrize("name", ["novice", "trailmaxxing"])
+    def test_the_old_box_on_a_calm_ride_type_keeps_the_ride_type(
+        self, name, client, facility_segments, router
+    ):
+        """An old link or saved plan on Novice and Nervous or Trailmaxxing keeps its calm start
+        and Novice's protections and pace, not Road Bike's "Balanced" start at 15.5 mph."""
+        fake = router(standard_router())
+        body = post(client, {**good_body(name), "avoid_gravel": True}).json()
+        assert body["preset"] == name
+        assert body["dials"]["stress"] == presets.PRESETS[name].stress
+        assert body["variant"] != "paved"
+        sent = fake.calls[0][1]["costing_options"]["bicycle"]
+        own = presets.costing(name)["bicycle"]
+        assert sent["bicycle_type"] == own["bicycle_type"]
+        assert sent.get("cycling_speed") == own.get("cycling_speed")
+
     @pytest.mark.parametrize("name", ["cargo", "mass-ride", "group-ride", "ebike"])
     def test_elsewhere_the_old_box_is_dropped(self, name, client, facility_segments, router):
         fake = router(standard_router())
