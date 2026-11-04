@@ -845,7 +845,9 @@ step 3. The rejected tables stay as `live_bad`; once the beta works, drop them:
 **fresh** database in one transaction (a failure discards it and leaves the current database
 untouched), and swaps it in by rename. These dumps leave out the tables the nightly backup leaves
 out, so after a restore everyone is signed out and riders connect Garmin or Wahoo again. The database as it was stays beside it as
-`routemaker_before_<time>`; once the beta works, drop it
+`routemaker_before_<time>` (`<time>` is UTC, `yyyymmddHHMMSS`). It is a whole copy, sign-ins and
+Garmin and Wahoo connections included, so the release agent drops it once it is 6½ days old (see
+"Disk" under continuous deployment); once the beta works, drop it sooner
 (`scripts/beta/beta-compose.sh exec -T postgis dropdb -U routemaker routemaker_before_<time>`). It needs
 free space on `/data` for a second copy of the database (about 1.5 GB before v0.18.0; from v0.18.0 on the
 database also holds `live_old`, about as much again as the live tables):
@@ -1217,7 +1219,7 @@ A tag is never moved or reused: a fix is the next patch number. The agent's scri
 7. **Any failure after the stop rolls back by itself** (rollback A/C as above, without sudo): stop the
    api and worker, check out the previous release, `TAG` back, the compose gate; the database from
    the pre-release snapshot **only if a migration ran** (`restore-dump`, which keeps the database as
-   it was beside it as `routemaker_before_<time>` for the owner to drop); `index.html` and `beta-build.txt` back only if
+   it was beside it as `routemaker_before_<time>`, dropped by a later pass at 6½ days); `index.html` and `beta-build.txt` back only if
    the new front end was installed; start the api and worker; the routers again if they were
    restarted; the step 8 pre-draw after a database restore (a failure there is a warning); the smoke tests. The tag is then marked
    failed (`$RM_STATE/cd/failed/<tag>`) and not tried again until `retry <tag>`. A failure before the
@@ -1365,10 +1367,14 @@ them. The systemd units are written only by `install`: rerun
 the units changed, or if the report says the copy failed.
 
 **Disk.** `status` shows the free space on Docker's root and `$RM_STATE`, the number of api
-images, the `<db>_before_<time>` databases automatic restores left, and the `node_modules` copies.
+images, the `<db>_before_<time>` databases restores left, and the `node_modules` copies.
 Each deploy prunes old api images, build cache and `node_modules` copies (step 6), and the agent
-keeps `RM_CD_KEEP` snapshots. It never drops a database: once a release has run well, the owner
-drops the kept ones, `drop database "<db>_before_<time>"` in postgis. `receive-data.sh` keeps the
+keeps `RM_CD_KEEP` snapshots. Every pass (not a dry run, and also while paused) drops each
+`<db>_before_<time>` database more than 6½ days old, whether an automatic rollback or a restore by
+hand made it, as the privacy page promises for copies taken before an update; it reads the age from
+the UTC instant in the name and logs each one it drops in the pass's report. It drops nothing else:
+never the live database, `<db>_restore`, or a name that is not exactly `<db>_before_` and 14 digits.
+To be rid of one sooner, once a release has run well, `drop database "<db>_before_<time>"` in postgis. `receive-data.sh` keeps the
 newest 3 of each kind of its own safety dumps in `DATA_ROOT/backups` (`pre-update-*`,
 `pre-restore-*`, `pre-rollback-*`; `RECEIVE_DATA_KEEP`).
 

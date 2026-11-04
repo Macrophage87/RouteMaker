@@ -2599,6 +2599,11 @@ owner's key. The plain archive exists only in the pipes between `pg_dump`, `age`
   `auto-release.sh` pass names in `run-snapshot`, or the one `restore-dump` is putting back):
   a rollback undoes an update within hours, and a database put back a week later would undo
   a week of riders' changes anyway.
+- **The database a restore sets aside goes too.** `restore-dump` keeps the database it replaces
+  beside the restored one as `<db>_before_<UTC yyyymmddHHMMSS>`: a whole, plain copy, sign-ins
+  and connections included. Every `auto-release.sh` pass on the beta drops each one more than
+  6½ days old, by the instant in its name, and logs it; younger ones and the live database are
+  never touched.
 
 ### Setting up the key (the owner, once)
 
