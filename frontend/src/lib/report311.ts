@@ -101,6 +101,11 @@ export function reportPlace(model: RideModel, progressM: number, miles: TrailMil
 // DC311_API_KEY), a DC pick in a ride is also sent there, and its log entry is checked off as reported.
 
 export const REPORT_SENT = t("Sent to DC 311.");
+/** Said where DC's answer to a send was lost (`dc311_unknown`): DC may have the report, so it is not offered again. */
+export const REPORT_MAYBE_SENT = t("DC 311 may already have this report. Check before sending it again.");
+
+/** How a send ended: taken by DC, not sent, or sent with DC's answer lost (it may have been filed). */
+export type Report311Result = "sent" | "not_sent" | "maybe_sent";
 
 type Fetch = typeof fetch;
 
@@ -118,25 +123,26 @@ export async function report311Enabled(origin: string, get: Fetch = fetch): Prom
 
 /**
  * Send one report through the server (POST /api/report311): the problem, the point the words describe and
- * the report's words (lib/report311Log.ts entryText). True when DC took it; false otherwise (off, refused,
- * no signal), and the entry stays on the checklist.
+ * the report's words (lib/report311Log.ts entryText). "sent" when DC took it; "maybe_sent" when the server
+ * sent it but DC's answer was lost (`dc311_unknown`), so DC may have filed it; "not_sent" otherwise (off,
+ * refused, no signal). Unless sent, the entry stays on the checklist.
  */
-export async function sendReport311(origin: string, kind: ReportKind, place: ReportPlace, description: string, post: Fetch = fetch): Promise<boolean> {
+export async function sendReport311(origin: string, kind: ReportKind, place: ReportPlace, description: string, post: Fetch = fetch): Promise<Report311Result> {
   try {
     // A fresh short-lived ticket from GET /api/report311 first: the server takes a send only with one.
     const status = await post(`${origin}/api/report311`, { headers: { Accept: "application/json" } });
-    if (!status.ok) return false;
+    if (!status.ok) return "not_sent";
     const { ticket } = (await status.json()) as { ticket?: unknown };
-    if (typeof ticket !== "string") return false;
+    if (typeof ticket !== "string") return "not_sent";
     const response = await post(`${origin}/api/report311`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
       body: JSON.stringify({ kind, lat: Number(place.point[1].toFixed(5)), lon: Number(place.point[0].toFixed(5)), description, ticket }),
     });
-    if (!response.ok) return false;
-    const body = (await response.json()) as { sent?: unknown };
-    return body.sent === true;
+    const body = (await response.json()) as { sent?: unknown; code?: unknown };
+    if (response.ok) return body.sent === true ? "sent" : "not_sent";
+    return body.code === "dc311_unknown" ? "maybe_sent" : "not_sent";
   } catch {
-    return false;
+    return "not_sent";
   }
 }

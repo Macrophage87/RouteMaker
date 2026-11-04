@@ -73,7 +73,7 @@ export function setHazardData(map: HazardMap | null, data: object | null): void 
   source?.setData?.(data ?? EMPTY_HAZARDS);
 }
 import type { When } from "./dials.ts";
-import { MASS_SOURCE_ID, STRESS_SOURCE_ID, massSource, stressSource } from "./mapStyle.ts";
+import { BASEMAP_SOURCE_ID, MASS_SOURCE_ID, STRESS_SOURCE_ID, massSource, stressSource } from "./mapStyle.ts";
 import { setDcMaskVisibility } from "./dcBoundary.ts";
 import { withDarkPaint } from "./darkPaint.ts";
 import type { RouteResponse } from "./api.ts";
@@ -85,7 +85,7 @@ import { transitRideLines, transitRideSections } from "./transit.ts";
 export interface OverlayMap {
   getSource(id: string): unknown;
   addSource(id: string, source: ReturnType<typeof stressSource> | ReturnType<typeof massSource> | { type: "geojson"; data: object }): void;
-  getStyle(): { layers: ReadonlyArray<{ id: string; type: string }> };
+  getStyle(): { layers: ReadonlyArray<{ id: string; type: string; source?: string }> };
   addLayer(layer: object, beforeId?: string): void;
   getLayer(id: string): unknown;
   setLayoutProperty(id: string, name: string, value: unknown): void;
@@ -139,10 +139,19 @@ export function addStressOverlay(map: OverlayMap, origin: string, visible: boole
   // The approved Mass Ride hazards (massStyle.js hazardLayers): empty until MapView is given them.
   if (!map.getSource(HAZARD_SOURCE_ID)) map.addSource(HAZARD_SOURCE_ID, { type: "geojson", data: EMPTY_HAZARDS });
   const firstSymbol = map.getStyle().layers.find((layer) => layer.type === "symbol")?.id;
+  // Just over the base map's last layer (its top label), under whatever the app added already (a route up first).
+  // Not counting the street names, which a ride lifts over the route (lib/rideLabelOrder.ts): over them the trail
+  // names would go home over the route after the ride.
+  const styleLayers = map.getStyle().layers;
+  const lastBase = styleLayers.map((layer) => (ROAD_LABEL_LAYER_IDS.includes(layer.id) ? undefined : layer.source)).lastIndexOf(BASEMAP_SOURCE_ID);
+  const overBaseLabels = lastBase === -1 ? firstSymbol : styleLayers[lastBase + 1]?.id;
   for (const layer of stressOverlayLayers(STRESS_SOURCE_ID, when) as Array<{ id: string; layout?: object }>) {
     // The Mass Ride layers (massStyle.js) are on only in that mode, and the stress map's only out of it.
     const shown = overlayLayerShown(layer.id, visible);
-    map.addLayer({ ...layer, layout: { ...layer.layout, visibility: shown ? "visible" : "none" } }, firstSymbol);
+    // The trails' names over the base map's labels, which give way to them (stressStyle.js TRAIL_LABEL, 2026-11-04),
+    // and under the app's own layers.
+    const before = layer.id === TRAIL_LABEL_LAYER_ID ? overBaseLabels : firstSymbol;
+    map.addLayer({ ...layer, layout: { ...layer.layout, visibility: shown ? "visible" : "none" } }, before);
   }
   setBasemapPathLabels(map, massRideOn());
   return true;

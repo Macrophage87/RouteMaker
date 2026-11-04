@@ -404,20 +404,24 @@ Atkinson Hyperlegible lacks some of their letters, and the other scripts (Arabic
 the device's fonts for their letters. Street names sit on a white outline (a dark one on the dark map) so they stay readable over the colored
 lines. Major trails are named along the line in purple, from the zoom where every street appears: a
 trail on a regional or longer bike route (or, if paved, a long walking route), or a named trail at least
-2.5 mi [4 km] long (5 mi [8 km] if unpaved). Close in, every path's name is purple too. Metro and MARC station names are drawn larger than street names (18 px, 24 px while riding)
+2.5 mi [4 km] long (5 mi [8 km] if unpaved). A major trail's name is placed over the base map's own
+labels: street names, route numbers, parks and neighborhoods give way to it, while station names, the route
+and its stops stay on top. It can bend with a creek trail's curves. Close in, every path's name is purple too. Metro and MARC station names are drawn larger than street names (18 px, 24 px while riding)
 and on top of the map's pins and route, from city zoom in. Where names crowd, the station with the
 most lines keeps its name. Town names are in extra-bold type, and neighborhood names in
 extra-bold small capitals, both on the same outline. Every other name on the map (parks, water,
 trails, scenic spots, route numbers) is in the street names' type and outline too. National Airport's station is labelled National Airport (DCA), and the base map's own airport
 names are left off near the airport stations. Interstate names and route shields wait for zoom 14, where every road is drawn at full strength;
-US and state route numbers show as the base map has them.</li>
+US and state route numbers show in their shields in a quiet grey, quieter than the street names but still
+easy to read: 7.6:1 on the light map's white shields and 8.3:1 on the dark map's black ones.</li>
 <li><strong>Text size.</strong> Panels follow your browser's or phone's zoom. During a ride, the
 <strong>Large text</strong> button (Text) makes the next turn as big as it fits on the top half of the
 screen, with no ride text under 16 pt, and makes the map's street names larger.</li>
 <li><strong>Light and dark colors</strong> follow the sun unless you choose otherwise: light by day and dark
 from sunset to sunrise, the map included, which also saves battery on most phones. Settings, Display, Colors can
 instead follow your phone's setting, or stay always light or always dark. During a ride or Roam the map is also dark
-from sunset to sunrise and in a tunnel, whichever you choose. The map's zoom buttons, scale and credits turn dark
+from sunset to sunrise, whichever you choose, and in a tunnel the whole screen turns dark, panels included, then goes
+back to your Colors choice once you are out. The map's zoom buttons, scale and credits turn dark
 whenever the map does. The stress colors stay the same; on the dark map, a line whose color would not stand out gets a white
 edge. Windows' contrast themes are supported<sup class="cite"><a href="#ref-2" aria-label="source 2">[2]</a></sup>.</li>
 <li><strong>Less motion.</strong> When your device asks for reduced motion, the turning section arrows
@@ -619,8 +623,11 @@ and busy crossing included, and on a train or bus "Next stop" is said one stop b
 (<a href="/about/using.html#ride">Ride</a>).</li>
 <li><strong>Graphs of the road ahead</strong> (More, during a ride) are pictures a screen reader skips. Each bubble
 says its graph's name and whether it is on, and a screen reader hears each graph's heading and one sentence instead,
-such as how much the next 2 mi [3.2 km] climbs and its steepest grade. A graph with no room on the screen, as can
-happen with Large text, is still in that sentence, and the app says which ones it could not draw.</li>
+such as how much the next 2 mi [3.2 km] climbs and its steepest grade. Stress is a ribbon with each stretch's
+level written on it, so color is never the only cue, and its sentence says the main level and the worst ahead
+("Mostly LTS 2, up to LTS 3 in 0.4 miles."), then the next two trails or bike lanes ("Trail in 0.2 miles, for 1.1
+miles."). A graph with no room on the screen, as can happen with Large text, is still in that sentence, and the app
+says which ones it could not draw.</li>
 <li><strong>Where am I?</strong> says where you are at any time and centers the map on you again, and how far the next stop and the end are and when you should reach them: "1.2 miles
 to stop 2, arriving about 6:42 AM"; on a
 keyboard, press W or C while focus is in the ride panel. The to-go line under the turn is read in full: "To stop 2, 1.2 mi (1.9 km), about 8 min,
@@ -668,9 +675,10 @@ major-trail names' purple, and darker in accessibility mode like the other names
 name is left unlabelled. In a ride the route's names come before the other street names, so the street
 you are on keeps its name. The labels are drawn on the map only; <strong>Directions</strong> with
 <strong>Full detail</strong> says every name in words, so a screen reader hears them there.</li>
-<li>During a ride or Roam, map cards, the road info and the side menus close after 30 seconds with no touch, wheel
-or key, and the map goes back to you. In accessibility mode nothing closes on its own, since a screen reader's
-reading touches nothing. A menu that closes with the focus in it hands the focus to its button; a map card hands
+<li>During a ride or Roam, map cards, the road info and the side menus close after 30 seconds with no touch, wheel,
+key or focus move, and the map goes back to you. In accessibility mode nothing closes on its own, since a screen
+reader's reading touches nothing. A dialog with the focus in it, such as Ride settings or the join sheet, stays
+open (the group's "Show me as a dot?" question still closes, as its No). A menu that closes with the focus in it hands the focus to its button; a map card hands
 it to the map.</li>
 <li><strong>End ride</strong> is a slider, so it isn't ended by a stray tap; the arrow keys or End move
 it too.</li>
@@ -719,7 +727,7 @@ and screen reader names.</p>
 <p class="next">Next: <a href="/about/ride-types.html">Ride types</a></p>
 </main>
 <footer>
-  <p>Part of RouteMaker's documentation. It describes version 0.19.1. The code is
+  <p>Part of RouteMaker's documentation. It describes version 0.20.0. The code is
   open source under the MIT licence:
   <a href="https://github.com/Macrophage87/RouteMaker">github.com/Macrophage87/RouteMaker</a>.</p>
   <p><a href="/">Back to the map</a></p>

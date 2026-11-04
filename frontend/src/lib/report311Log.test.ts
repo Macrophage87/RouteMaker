@@ -30,7 +30,7 @@ import {
   type Store,
 } from "./report311Log.ts";
 
-const DC_SPOT = { words: "on R Street Northeast", point: [-77.00709, 38.9126] as [number, number] };
+const DC_SPOT = { words: "on Georgia Avenue Northwest", point: [-77.0275, 38.9566] as [number, number] };
 const MOCO_SPOT = { words: "on Capital Crescent Trail at about mile 3.2", point: [-77.0957, 38.9851] as [number, number] };
 const NOON = new Date("2026-10-20T16:00:00Z");
 const MOCO_AT = { lat: 38.9851, lon: -77.0957 };
@@ -58,8 +58,8 @@ function entry(over: Partial<LogEntry> = {}): LogEntry {
 test("an entry: the problem, the place words, the GPS position to 5 places and the day; DC known at once, elsewhere looked up", () => {
   const dc = newEntry("pothole", DC_SPOT, NOON);
   assert.equal(dc.where, "dc");
-  assert.equal(dc.lat, 38.9126);
-  assert.equal(dc.lon, -77.00709);
+  assert.equal(dc.lat, 38.9566);
+  assert.equal(dc.lon, -77.0275);
   assert.equal(dc.at, "2026-10-20");
   assert.equal(dc.reported, null);
   assert.equal(newEntry("tree", MOCO_SPOT, NOON).where, null, "outside DC: waits for the server's lookup");
@@ -67,12 +67,12 @@ test("an entry: the problem, the place words, the GPS position to 5 places and t
 });
 
 test("the report to paste: what, where, the area, GPS and the day, then the note", () => {
-  assert.equal(entryText(entry()), "Pothole. Location: on R Street Northeast, Washington, DC. GPS 38.91260, -77.00709. Seen Oct 20.");
+  assert.equal(entryText(entry()), "Pothole. Location: on Georgia Avenue Northwest, Washington, DC. GPS 38.95660, -77.02750. Seen Oct 20.");
   assert.equal(
     entryText(entry({ kind: "tree", where: "moco", place: MOCO_SPOT.words, lat: 38.9851, lon: -77.0957, note: "  across the  trail " })),
     "Downed tree. Location: on Capital Crescent Trail at about mile 3.2, Montgomery County. GPS 38.98510, -77.09570. Seen Oct 20. across the trail.",
   );
-  assert.equal(entryText(entry({ place: null, where: "va" })), "Pothole. Location: GPS 38.91260, -77.00709. Seen Oct 20.", "a state's roads add no area name");
+  assert.equal(entryText(entry({ place: null, where: "va" })), "Pothole. Location: GPS 38.95660, -77.02750. Seen Oct 20.", "a state's roads add no area name");
 });
 
 test("the log keeps the day and the exact spot, never the time of day: new entries, check-offs and the ids", () => {
@@ -84,7 +84,7 @@ test("the log keeps the day and the exact spot, never the time of day: new entri
   assert.equal(made.rev, 0);
   assert.match(made.id, /^[0-9a-f]{16}$/, "a random id, with no time in it");
   assert.ok(!made.id.includes(late.getTime().toString(36)));
-  assert.deepEqual([made.lat, made.lon], [38.9126, -77.00709], "the spot stays exact: crews need it");
+  assert.deepEqual([made.lat, made.lon], [38.9566, -77.0275], "the spot stays exact: crews need it");
   const log = new Report311LogStore(memory(), "https://x", fakeFetch(() => ({ status: 404 })).fn);
   const added = log.add("pothole", DC_SPOT, late);
   log.setReported(added.id, true, new Date("2026-10-21T03:15:00Z"));
@@ -109,7 +109,7 @@ test("a copy kept on this device before is cut to days as the page opens, ids to
   const log = new Report311LogStore(store, "https://x", fakeFetch(() => ({ status: 404 })).fn);
   const [read] = log.list();
   assert.deepEqual([read.id, read.at, read.changed, read.reported, read.rev], ["1a2b3c4d", "2026-10-20", "2026-10-20", "2026-10-20", 0]);
-  assert.deepEqual([read.lat, read.lon], [38.9126, -77.00709]);
+  assert.deepEqual([read.lat, read.lon], [38.9566, -77.0275]);
   // Written back at once, both copies: no time is left on the device.
   for (const key of [LOG_KEY, ACCOUNT_LOG_KEY]) {
     const raw = store.data.get(key) ?? "";
@@ -167,7 +167,7 @@ test("the checklist: open entries by website, newest first; not looked up last; 
   const c = entry({ id: "c", where: "dc", at: "2026-10-20T11:00:00.000Z" });
   const d = entry({ id: "d", where: null });
   const e = entry({ id: "e", where: "dc", reported: "2026-10-20T12:00:00.000Z" });
-  const groups = openGroups([a, b, c, d, e]);
+  const groups = openGroups([a, b, c, d, e], NOON);
   assert.deepEqual(
     groups.map((g) => [g.heading, g.entries.map((x) => x.id)]),
     [
@@ -177,7 +177,7 @@ test("the checklist: open entries by website, newest first; not looked up last; 
     ],
   );
   assert.equal(groups[0].site?.url, "https://311.dc.gov/citizen/s/");
-  assert.deepEqual(archived([a, e]).map((x) => x.id), ["e"]);
+  assert.deepEqual(archived([a, e], NOON).map((x) => x.id), ["e"]);
 });
 
 test("stale: an open entry older than 30 days goes to Archived by itself, not reported; nothing is deleted", () => {
@@ -387,10 +387,10 @@ test("one lookup with no answer does not stop the others", async () => {
 });
 
 test("the road panel's Log for 311: the road's name and its nearest point; an unnamed way is the GPS alone", () => {
-  assert.deepEqual(panelPlace("R Street Northeast", [-77, 38.9]), { words: "on R Street Northeast", point: [-77, 38.9] });
+  assert.deepEqual(panelPlace("Georgia Avenue Northwest", [-77, 38.9]), { words: "on Georgia Avenue Northwest", point: [-77, 38.9] });
   assert.equal(panelPlace("unnamed path", [-77, 38.9]).words, null);
   assert.equal(panelPlace(null, [-77, 38.9]).words, null);
-  assert.equal(panelLoggedSaid(entry()), "Logged for 311: Pothole on R Street Northeast. It is in your 311 checklist in Reports.");
+  assert.equal(panelLoggedSaid(entry()), "Logged for 311: Pothole on Georgia Avenue Northwest. It is in your 311 checklist in Reports.");
   const panel = readFileSync(new URL("../RoadInfoDialog.tsx", import.meta.url), "utf8");
   assert.match(panel, /aria-expanded=\{logMenu\} aria-controls=\{logMenuId\} onClick=\{\(\) => setLogMenu\(!logMenu\)\}>\s*\{LOG_311_TEXT\}/);
   assert.match(panel, /report311Log\(\)\.add\(k\.kind, panelPlace\(ready\?\.title \?\? null, ready\?\.on_way \?\? request\.point\)\)/);

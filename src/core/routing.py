@@ -1980,6 +1980,10 @@ TWIN_VARIANTS = (
     Variant.MTB.value,
     Variant.PAVED.value,
 )
+# The graphs whose rides take a dirt trail the rider touched (`core.trail_touch`): the standard
+# graph and its weekend twin, which a Saturday, Sunday or holiday ride plans on. Both close the
+# dirt trails, and a touched ride is planned on the off-road graph instead.
+TRAIL_TOUCH_VARIANTS = frozenset({Variant.STANDARD.value, Variant.WEEKEND.value})
 
 
 def _weekend_down() -> bool:
@@ -2679,19 +2683,6 @@ def _followed(variant: str, request: dict, deadline: Deadline) -> dict:
     def trace_attributes(payload: dict) -> dict:
         return _call(variant, "trace_attributes", payload, deadline)
 
-    around = None
-    if not exact:
-        # By default the file's stretches against one-way traffic are left out of the match,
-        # and the router goes round them (`follow.wrong_way`).
-        keep = {i for i, p in enumerate(request["shape"]) if p.get("type") == VIA_LOCATION_TYPE}
-        keep |= {0, len(line) - 1}
-        found = follow.wrong_way(line, keep, trace_attributes, options)
-        if found is not None:
-            dropped, around = found
-            if dropped:
-                shape = [p for i, p in enumerate(request["shape"]) if i not in dropped]
-                request = {**request, "shape": shape}
-    answer = _call(variant, "trace_route", request, deadline)
     # The router's own way across a gap keeps every rule the ride type rides by.
     bridge = {k: v for k, v in request.items() if k not in follow.TRACE_ONLY}
     bridge["costing_options"] = follow.without_ignored(request.get("costing_options") or {})
@@ -2709,6 +2700,30 @@ def _followed(variant: str, request: dict, deadline: Deadline) -> dict:
         except (RouterRefused, RouterUnavailable):
             return None
         return legs[0] if len(legs) == 1 else None
+
+    around = None
+    if not exact and len(line) >= 2:
+        # By default the file's stretches against one-way traffic are left out of the match,
+        # and the router goes round them (`follow.wrong_way`); and where the file itself goes
+        # round a corner on its crosswalks, it is put back on the road (`follow.uncut`).
+        keep = {i for i, p in enumerate(request["shape"]) if p.get("type") == VIA_LOCATION_TYPE}
+        keep |= {0, len(line) - 1}
+        ridden = follow.as_ridden(line, trace_attributes, options)
+        found = (
+            None
+            if ridden is None
+            else follow.wrong_way(line, keep, trace_attributes, options, answer=ridden)
+        )
+        dropped: set[int] = set()
+        if found is not None:
+            dropped, around = found
+        cuts = [] if ridden is None else follow.crosswalk_cuts(ridden, keep)
+        shape = follow.uncut(request["shape"], cuts, route_between, dropped) if cuts else None
+        if shape is None and dropped:
+            shape = [p for i, p in enumerate(request["shape"]) if i not in dropped]
+        if shape is not None:
+            request = {**request, "shape": shape}
+    answer = _call(variant, "trace_route", request, deadline)
 
     joined = follow.joined(answer, line, route_between, request.get("elevation_interval"))
     joined["against_traffic"] = (
@@ -4539,12 +4554,14 @@ def _plan(
     # trail, any reroutes should include dirt"). A dirt trail the rider marked closed on this
     # ride says its conditions are bad: no dirt trail at all for the rest of the ride
     # (2026-10-21: "assume that means bad riding conditions until it's opted back in").
+    # A weekend or holiday ride on the standard graph's weekend twin, where dirt trails are
+    # closed just the same, follows the same rule (`TRAIL_TOUCH_VARIANTS`).
     touched_trails: frozenset[int] = frozenset()
     per_point: tuple[frozenset[int], ...] = ()
     dirt_closed = False
     any_dirt = False
     if (
-        variant == Variant.STANDARD.value
+        variant in TRAIL_TOUCH_VARIANTS
         and dials.trail_touch
         and dials.follow is None
         and not dials.straight
