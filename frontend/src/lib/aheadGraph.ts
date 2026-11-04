@@ -17,7 +17,7 @@ import { FEET_PER_METRE, METRES_PER_MILE, formatAxisFeet, formatAxisMetres, form
 import { t } from "./i18n.ts";
 import { FLOW_BANDS, chartKind, corkersFor, flowBand, gradeBand, shortStreet as abbreviate, usableProfile } from "./profileChart.ts";
 import { spanClass, usableSpans } from "./routeColours.ts";
-import { relativeLuminance } from "../stressStyle.js";
+import { FACILITIES, HIGH_STRESS_LANE_MIN_TIER, relativeLuminance } from "../stressStyle.js";
 
 export type AheadView = "stress" | "elevation" | "flow" | "corkers";
 
@@ -126,6 +126,13 @@ export interface StressBar {
   color: string;
   /** The label's colour on the bar: near-black or white, whichever reads better. */
   ink: string;
+  /**
+   * In the colour-blind-friendly palette, where a half step has no colour of its own: the next level's colour, drawn
+   * as a dash on it, as the map and the route draw one (routeColours.ts halfDash; the owner 2026-10-31, "keep dashes
+   * with the same rules"), and the outline under that dash where it needs one.
+   */
+  halfDash?: string;
+  halfOutline?: string;
 }
 
 export function spanLevel(span: Pick<StressSpan, "tier" | "half" | "facility">): number | null {
@@ -150,14 +157,23 @@ export function stressBars(spans: readonly StressSpan[], w: Pick<AheadWindow, "f
     const toM = Math.min(span.to_m, w.toM);
     if (toM <= fromM) continue;
     const level = spanLevel(span);
-    const color = spanClass(span).color;
+    const cls = spanClass(span);
+    const color = cls.color;
     const last = bars[bars.length - 1];
     if (last && last.level === level && last.color === color && last.toM >= fromM - 0.5) {
       last.toM = toM;
       continue;
     }
     const label = level === null ? "?" : level === 5 ? "A" : String(level);
-    bars.push({ fromM, toM, level, label, color, ink: inkOn(color) });
+    bars.push({
+      fromM,
+      toM,
+      level,
+      label,
+      color,
+      ink: inkOn(color),
+      ...(cls.halfDash ? { halfDash: cls.halfDash, ...(cls.halfOutline ? { halfOutline: cls.halfOutline } : {}) } : {}),
+    });
   }
   return bars;
 }
@@ -187,6 +203,68 @@ export function stressSentence(bars: readonly StressBar[], youM: number): string
     top: levelWords(top),
     distance: spokenDistance(Math.max(0, first.fromM - youM)),
   });
+}
+
+// ---- Trails and bike lanes ---------------------------------------------------------------------------------------
+
+/**
+ * A trail or bike lane along the window (Stephen 2026-11-04, of the stress ribbon: "Include when it's a trail and when
+ * there's bike infrastructure"), drawn as the map draws its rail: the trail solid, the protected lane in posts, the
+ * painted lane in dots. A painted lane on LTS 4 or Avoid is left off, as the map leaves it off (OWNER-DECISIONS 275).
+ */
+export interface FacilityStretch {
+  fromM: number;
+  toM: number;
+  facility: "path" | "protected" | "lane";
+  /** The map's rail colour (stressStyle.js FACILITIES). */
+  color: string;
+}
+
+/** What each is called when said: "Trail in 0.3 miles, for 0.4 miles." */
+export const FACILITY_WORDS: Record<FacilityStretch["facility"], string> = {
+  path: t("Trail"),
+  protected: t("Protected bike lane"),
+  lane: t("Painted bike lane"),
+};
+
+export function facilityStretches(
+  spans: readonly Pick<StressSpan, "from_m" | "to_m" | "tier" | "facility">[],
+  w: Pick<AheadWindow, "fromM" | "toM">,
+): FacilityStretch[] {
+  const out: FacilityStretch[] = [];
+  for (const span of spans) {
+    const facility = span.facility;
+    if (facility !== "path" && facility !== "protected" && facility !== "lane") continue;
+    if (facility === "lane" && typeof span.tier === "number" && span.tier >= HIGH_STRESS_LANE_MIN_TIER) continue;
+    const fromM = Math.max(span.from_m, w.fromM);
+    const toM = Math.min(span.to_m, w.toM);
+    if (toM <= fromM) continue;
+    const last = out[out.length - 1];
+    if (last && last.facility === facility && last.toM >= fromM - 0.5) {
+      last.toM = toM;
+      continue;
+    }
+    const rail = FACILITIES.find((f: { facility: string }) => f.facility === facility) as { color: string };
+    out.push({ fromM, toM, facility, color: rail.color });
+  }
+  return out;
+}
+
+/** The next two trails or bike lanes ahead, said: "Trail here, for 0.3 miles. Painted bike lane in 0.8 miles, for 500 feet." */
+export function facilitySentence(stretches: readonly FacilityStretch[], youM: number): string {
+  return stretches
+    .filter((s) => s.toM > youM + 15)
+    .slice(0, 2)
+    .map((s) =>
+      s.fromM <= youM + 15
+        ? t("{kind} here, for {distance}.", { kind: FACILITY_WORDS[s.facility], distance: spokenDistance(s.toM - youM) })
+        : t("{kind} in {distance}, for {length}.", {
+            kind: FACILITY_WORDS[s.facility],
+            distance: spokenDistance(s.fromM - youM),
+            length: spokenDistance(s.toM - s.fromM),
+          }),
+    )
+    .join(" ");
 }
 
 // ---- Elevation ---------------------------------------------------------------------------------------------------
@@ -557,18 +635,25 @@ export interface AxisTick {
 // Decimals, not fractions (Stephen 2026-11-03: "Decimals and not fractions"): "0.5", "1", "1.5".
 function mileLabel(miles: number): string {
   const sign = miles < 0 ? "\u2212" : "";
-  const a = Math.round(Math.abs(miles) * 10) / 10;
-  return sign + (Number.isInteger(a) ? String(a) : a.toFixed(1));
+  const a = Math.round(Math.abs(miles) * 100) / 100;
+  return sign + String(a);
 }
 
 /**
- * Ticks every half mile (a mile, or two, on a long window), counted from you; the last one says "mi". In metric mode
- * (lib/units.ts) the same in kilometres, the last saying "km".
+ * Tick steps, smallest first: the axis takes the first that puts at most six ticks on the window (five for the short
+ * steps, so a few hundred feet left is not crowded with labels).
+ */
+const TICK_STEPS = [0.05, 0.1, 0.2, 0.5, 1, 2];
+
+/**
+ * Ticks every half mile (a mile, or two, on a long window), counted from you; the last one says "mi". Near the end of
+ * a ride, where under two miles are left, the steps shrink (0.2, 0.1, 0.05) so the axis still has labels. In metric
+ * mode (lib/units.ts) the same in kilometres, the last saying "km".
  */
 export function axisTicks(w: Pick<AheadWindow, "fromM" | "toM" | "youM">): AxisTick[] {
   const unitM = metricFirst() ? 1000 : METRES_PER_MILE;
   const span = (w.toM - w.fromM) / unitM;
-  const step = span <= 3 ? 0.5 : span <= 6 ? 1 : 2;
+  const step = TICK_STEPS.find((s) => span / s <= (s < 0.5 ? 5 : 6)) ?? TICK_STEPS[TICK_STEPS.length - 1];
   const ticks: AxisTick[] = [];
   const first = Math.ceil((w.fromM - w.youM) / unitM / step - 1e-9) * step;
   for (let n = first; w.youM + n * unitM <= w.toM + 1; n += step) {

@@ -17,7 +17,7 @@ import { t } from "./i18n.ts";
  * the bottom bar, the map's chips and Go's Menu open (UI-CLEANUP, the approved mockup of 2026-10-11). The
  * legend is in Layers, each key in its own layer's section (the owner, 2026-10-19).
  */
-export type PanelView = "planner" | "layers" | "suggest" | "review" | "gpx" | "settings" | "nearest" | "food" | "ride" | "repair" | "places" | "points";
+export type PanelView = "planner" | "layers" | "suggest" | "review" | "gpx" | "settings" | "nearest" | "food" | "ride" | "repair" | "places" | "points" | "reach";
 
 /** The planner's own heading, where the focus goes when the Plan button returns to it (OWNER-DECISIONS 392). */
 export const PLANNER_TITLE = "RouteMaker";
@@ -43,6 +43,8 @@ export const SHEET_TITLES: Record<Exclude<PanelView, "planner">, string> = {
   places: t("Places to see"),
   // Go's Edit route (edit-route redesign, Stephen 2026-10-18): Plan's points, from the route card.
   points: t("Edit route"),
+  // Reach (Stephen, 2026-11-04): where you can be in 15, 30, 45 and 60 minutes, from Plan's Find chips. Plan is English.
+  reach: "Reach",
 };
 
 /** The Files sheet's name on its buttons and its heading (the owner, 2026-10-18), short enough for the bar. */
