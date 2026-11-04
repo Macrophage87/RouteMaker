@@ -662,3 +662,23 @@ in the database still names it: delete that row in the admin when loading the fi
   plans/region-overrides). Fingerprints are from extract-20261031 (`rematch.fingerprint_of`).
   The Maryland dry run lists about 35,000 rows. Not loaded: the owner confirms each file, then
   a rebuild.
+- `2026-11-04-owner-baltimore-city-review.json` (1,563 ways, 142.6 mi; 323 retired): a second
+  review of Baltimore City with the city's own data. Every city street block was matched to
+  Open Baltimore's Street Centerline (Native) speed limits, MDOT SHA's counts and lanes, and
+  Baltimore City DOT's bike facilities, 2024 truck routes, restricted-hours routes and speed
+  humps; groups of blocks with the same facts were rated blind, with every LTS level hidden
+  (the owner, 2026-11-04: "make sure that the LTS ratings are done independent of the LTS
+  rating. Differing from LTS rating is a flag for increased scrutiny, not that our rating is
+  wrong."), and a skeptic checked each difference from our map, MDOT SHA's LTS and the city's
+  planning LTS. The owner, 2026-11-04: "Add them in with the clear justification in the why, not
+  just as an owner decision." So each `public_note` gives the way's facts (lanes, the city's
+  speed and any speed MDOT SHA assumed, the way's own SHA count, the facility, a truck route)
+  and the level they lead to. Main causes: MDOT SHA assumed 35 mph where the city records 25 or
+  30 (down), truck routes on two-lane streets (up half a step), divided roads rated on both
+  carriageways' count (down), and counted streets an earlier row put on the wrong side of the
+  5,000 a day line. Where a way had a 2026-11-01 Maryland review row, that row is under
+  `retire`. Left out: quiet uncounted local streets at 1 (they stay 1), ways a change covers
+  less than 60% of (393), ways already at the level (43), ways in the 2026-10-01 Baltimore
+  facilities file (6), ways whose level rested on another block's count (89), and every group
+  a skeptic was unsure about. Fingerprints are from OSM as served by the OSM API on 2026-11-04.
+  Not loaded: the owner confirms the file, then a rebuild.
