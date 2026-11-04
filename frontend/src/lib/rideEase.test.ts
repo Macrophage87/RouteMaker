@@ -81,7 +81,7 @@ test("ride: the buttons re-plan from here with the ride's own dials, kept only w
   assert.match(ride, /sameLine\(found\.geometry\.coordinates, press\.before\.geometry\.coordinates\)\) note = EASE_SAME\[press\.which\];/);
   // Bubbles beside More (Stephen 2026-10-26), not in the settings; not on a route everyone shares, nor once arrived;
   // the symbol with a short word under it (the UI review, 2026-10-28), named in full, the short words as its title.
-  const panel = ride.slice(ride.indexOf('className="ride-mode-settings"'), ride.indexOf("<RideSettingsFields prefs={prefs}"));
+  const panel = ride.slice(ride.indexOf('className="ask-dialog ride-settings-dialog"'), ride.indexOf("<RideSettingsFields prefs={prefs}"));
   const bubbles = ride.slice(ride.indexOf('className="ride-more-bubbles"'), ride.indexOf("{/* The bottom panel"));
   assert.match(bubbles, /\{!fixed &&\s+!ride\.arrived &&\s+\(\["calmer", "flatter"\] as const\)\.map/);
   assert.match(bubbles, /className=\{`ride-round ride-ease ride-\$\{which\}`\}\s+onClick=\{\(\) => fromMore\(\(\) => void ease\(which\)\)\}\s+aria-label=\{EASE_NAME\[which\]\}\s+title=\{EASE_SHOWN\[which\]\}/);
