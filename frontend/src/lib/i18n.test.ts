@@ -319,6 +319,22 @@ const GO_RIDE_ALSO = [
   "lib/summary.ts",
   // Go's Where to? microphone (PlaceSearch.tsx, which is Plan's too, so only this module's phrases).
   "lib/placeDictation.ts",
+  // Ride's transit departure timer and the weather alerts said in Ride and Roam (the 2026-11-04 review).
+  "DepartureTimer.tsx",
+  "lib/departure.ts",
+  "lib/weather.ts",
+  // Shown or said in Go and Ride through App and the shared components (the 2026-11-04 review): Share live and opening
+  // a shared link, the end of a ride, Back held during a ride, Start ride on a computer, a shared place in Where to?,
+  // the alert panel's Speak, and the account's settings and Home at sign-in.
+  "lib/sharedRoutes.ts",
+  "RideSummaryCard.tsx",
+  "lib/rideBack.ts",
+  "StartOnComputerDialog.tsx",
+  "lib/startOnComputer.ts",
+  "lib/sharedLocation.ts",
+  "lib/speechInput.ts",
+  "lib/accountSettings.ts",
+  "lib/homeMove.ts",
 ];
 
 function goRideFiles(): string[] {
@@ -397,6 +413,32 @@ test("each of DC's languages has every phrase Go and Ride show, constants passed
   for (const lang of LANGUAGES.filter((l) => l !== "en")) {
     const catalog = lang === "es" ? ES : await catalogOfFile(lang);
     assert.deepEqual([...phrases].filter(([english]) => !(english in catalog)).map(([english, file]) => `${english} (${file})`), [], lang);
+  }
+});
+
+test("Go and Ride's named phrases are worded in the language in force as their modules load (the 2026-11-04 review)", async () => {
+  await loadLanguage("es");
+  setLanguageForTest("es");
+  try {
+    // A fresh copy of each module, loaded with Spanish in force as the app loads them after the catalog.
+    const fresh = <M,>(path: string): Promise<M> => import(`${path}?es-${Date.now()}`) as Promise<M>;
+    const back = await fresh<typeof import("./rideBack.ts")>("./rideBack.ts");
+    assert.equal(back.STILL_RIDING_SAID, ES["Still riding. Use End ride to stop."]);
+    const roam = await fresh<typeof import("./roam.ts")>("./roam.ts");
+    assert.equal(roam.ROAM_NAME, ES["Roam"]);
+    const group = await fresh<typeof import("./rideGroup.ts")>("./rideGroup.ts");
+    assert.equal(group.LEADER_LABEL, "Líder del recorrido");
+    const speech = await fresh<typeof import("./speechInput.ts")>("./speechInput.ts");
+    assert.equal(speech.SPEAK_LABEL, "Hablar");
+    assert.equal(speech.SPEECH_FAILED["no-speech"], "No se oyó nada. Toca Hablar e inténtalo de nuevo, o escribe el problema.");
+    const computer = await fresh<typeof import("./startOnComputer.ts")>("./startOnComputer.ts");
+    assert.equal(computer.COMPUTER_HEADING, "Esto parece una computadora");
+    const shared = await fresh<typeof import("./sharedLocation.ts")>("./sharedLocation.ts");
+    assert.equal(shared.SHARED_OPENING, "Abriendo el enlace compartido…");
+    const nav = await fresh<typeof import("./navigate.ts")>("./navigate.ts");
+    assert.match(nav.RIDE_TOO_LONG, /^Iniciar recorrido en un navegador es para recorridos de hasta 30 mi/);
+  } finally {
+    setLanguageForTest("en");
   }
 });
 

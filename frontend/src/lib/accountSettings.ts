@@ -20,6 +20,7 @@
  * - Signed out, everything stays on the device as before.
  */
 import { FAVORITES_KEY, parseFavorites } from "./favoriteRides.ts";
+import { t } from "./i18n.ts";
 import { CLIMBS_FROM_KEY, CLIMBS_KEY, CLIMB_CATEGORIES, type ClimbCategory } from "./climbs.ts";
 import type { Dials } from "./dials.ts";
 import { LAYER_SECTIONS_KEY } from "./layerSection.ts";
@@ -334,4 +335,4 @@ export async function saveUnitsUnsynced(origin: string, units: Units | undefined
 /** The Settings sheet's one line for a rider who can sign in (the plan, item 4). */
 export const SIGN_IN_LINE = "Sign in with Discord to save routes and sync settings across devices.";
 /** Said once the account's settings are in use on this device. */
-export const ACCOUNT_SETTINGS_USED = "Your account's saved settings are in use on this device.";
+export const ACCOUNT_SETTINGS_USED = t("Your account's saved settings are in use on this device.");

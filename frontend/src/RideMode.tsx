@@ -352,9 +352,9 @@ export const RIDE_SETTINGS_TEXT = t("More");
 export const EASE_WORD: Record<Ease, string> = { calmer: t("Calmer"), flatter: t("Flatter") };
 export const RIDE_MORE_NAME = t("More: change the route or the map, and ride settings");
 /** Topo lines from More (Stephen 2026-10-26: "In the ... section allow topo lines to be toggled on and off during a ride"): Map layers' own switch (lib/topoLines.ts). */
-export const RIDE_TOPO_ON = `${TOPO_LINES_LABEL} on.`;
-export const RIDE_TOPO_OFF = `${TOPO_LINES_LABEL} off.`;
-export const RIDE_TOPO_OFFLINE = `${TOPO_LINES_LABEL} need a connection. Try again once you have signal.`;
+export const RIDE_TOPO_ON = t("Topo lines on.");
+export const RIDE_TOPO_OFF = t("Topo lines off.");
+export const RIDE_TOPO_OFFLINE = t("Topo lines need a connection. Try again once you have signal.");
 export const RIDE_SETTINGS_TITLE = t("Ride settings");
 export const RIDE_CHANGE_TITLE = t("Change the route");
 /** Broadcast on the ride screen (Stephen 2026-10-24: "Let people broadcast from a ride"): Plan's and Go's Broadcast, the ride already going. */

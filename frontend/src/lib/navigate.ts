@@ -58,8 +58,9 @@ export const VERBOSITY_LABELS: Record<Verbosity, string> = {
  * with no Start ride).
  */
 export const RIDE_MAX_M = 30 * METRES_PER_MILE;
-export const RIDE_TOO_LONG =
-  `Start ride in a browser is for rides up to ${formatRoughDistance(RIDE_MAX_M)}. Use the phone app, or Download GPX for a bike computer.`;
+export const RIDE_TOO_LONG = t("Start ride in a browser is for rides up to {distance}. Use the phone app, or Download GPX for a bike computer.", {
+  distance: formatRoughDistance(RIDE_MAX_M),
+});
 
 // ---- Thresholds (plan sections 2 and 4) ---------------------------------------------------------
 

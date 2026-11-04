@@ -425,7 +425,7 @@ export function dotName(role: RideRole, alongM: number, myAlongM: number | null,
 }
 
 /** The sharer of a broadcast ride, as the key and the dots name them. */
-export const LEADER_LABEL = "Ride leader";
+export const LEADER_LABEL = t("Ride leader");
 
 /** What tapping a dot says: "Sweep, 0.5 mi (0.8 km) behind. Seen 40 s ago." */
 export function dotSaid(ageS: number, name: string | null = null): string {
