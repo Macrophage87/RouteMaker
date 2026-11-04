@@ -23,9 +23,9 @@ def entry(**changes) -> dict:
     return {
         "id": "1a2b3c4d5e6f7a8b",
         "kind": "pothole",
-        "lat": 38.9126,
-        "lon": -77.00709,
-        "place": "on R Street Northeast",
+        "lat": 38.94938,
+        "lon": -77.02655,
+        "place": "on Georgia Avenue Northwest",
         "note": "",
         "at": "2026-10-20",
         "changed": "2026-10-20",
@@ -97,7 +97,7 @@ class TestLogChecks:
         assert kept == entry(
             id="1a2b3c4d", at="2026-10-20", changed="2026-10-20", reported="2026-10-20"
         )
-        assert (kept["lat"], kept["lon"]) == (38.9126, -77.00709), "the spot stays exact"
+        assert (kept["lat"], kept["lon"]) == (38.94938, -77.02655), "the spot stays exact"
         # An account's copy kept from before is cut the same way as it is merged.
         [again] = report_log.merge_logs([timed], [])
         assert again == kept
@@ -181,7 +181,7 @@ class TestWhichSite:
             raise AssertionError("DC needs no lookup")
 
         monkeypatch.setattr(geocode, "area", no_photon)
-        assert report_log.where(38.9126, -77.00709, lang="en") == "dc"
+        assert report_log.where(38.94938, -77.02655, lang="en") == "dc"
 
     def test_elsewhere_from_photon(self, monkeypatch) -> None:
         monkeypatch.setattr(
@@ -222,7 +222,7 @@ class TestWhereEndpoint:
         )
         r = where(client, 38.88, -77.1)
         assert r.status_code == 200 and r.json() == {"where": "arlington"}
-        r = where(client, 38.9126, -77.00709)
+        r = where(client, 38.94938, -77.02655)
         assert r.json() == {"where": "dc"}
         # The point is never in the URL, where a server log would keep it.
         assert client.get("/api/report311/where?lat=38.88&lon=-77.1", **addr()).status_code == 405
