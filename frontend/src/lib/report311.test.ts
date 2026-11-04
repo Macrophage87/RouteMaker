@@ -4,7 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import type { RideModel } from "./navigate.ts";
-import { PLACE_NEAR_M, REPORT_KINDS, REPORT_SENT, gpsWords, isUnnamed, placeWords, report311Enabled, reportPlace, sendReport311, type ReportPlace } from "./report311.ts";
+import { PLACE_NEAR_M, REPORT_KINDS, REPORT_MAYBE_SENT, REPORT_SENT, gpsWords, isUnnamed, placeWords, report311Enabled, reportPlace, sendReport311, type ReportPlace } from "./report311.ts";
 import { parseTrailMiles } from "./trailMiles.ts";
 
 function fakeFetch(answers: { status: number; body?: unknown; throws?: boolean }[]) {
@@ -28,16 +28,26 @@ test("the server's sender: asked once whether it is on, and a report sent with t
   // A fresh signed ticket is asked for first (GET), and sent back with the report (POST).
   const send = fakeFetch([{ status: 200, body: { enabled: true, ticket: "t1" } }, { status: 200, body: { sent: true, id: "1" } }]);
   assert.equal(REPORT_SENT, "Sent to DC 311.");
-  assert.equal(await sendReport311("https://x", "pothole", JUNCTION, "Pothole. Location: on Q Street Northwest.", send.fn), true);
+  assert.equal(await sendReport311("https://x", "pothole", JUNCTION, "Pothole. Location: on Q Street Northwest.", send.fn), "sent");
   assert.equal(send.calls[0].init?.method, undefined);
   const body = JSON.parse(String(send.calls[1].init?.body));
   assert.equal(send.calls[1].init?.method, "POST");
   assert.deepEqual(body, { kind: "pothole", lat: 38.91057, lon: -77.0389, description: "Pothole. Location: on Q Street Northwest.", ticket: "t1" });
   // Off, refused or no signal: not sent, and the entry stays on the checklist.
-  assert.equal(await sendReport311("https://x", "pothole", JUNCTION, "", fakeFetch([{ status: 200, body: { enabled: false } }]).fn), false);
+  assert.equal(await sendReport311("https://x", "pothole", JUNCTION, "", fakeFetch([{ status: 200, body: { enabled: false } }]).fn), "not_sent");
   const ticketed = { status: 200, body: { enabled: true, ticket: "t1" } };
-  assert.equal(await sendReport311("https://x", "pothole", JUNCTION, "", fakeFetch([ticketed, { status: 503, body: { code: "dc311_off" } }]).fn), false);
-  assert.equal(await sendReport311("https://x", "pothole", JUNCTION, "", fakeFetch([{ status: 0, throws: true }]).fn), false);
+  assert.equal(await sendReport311("https://x", "pothole", JUNCTION, "", fakeFetch([ticketed, { status: 503, body: { code: "dc311_off" } }]).fn), "not_sent");
+  assert.equal(await sendReport311("https://x", "pothole", JUNCTION, "", fakeFetch([{ status: 0, throws: true }]).fn), "not_sent");
+});
+
+test("a send whose answer from DC was lost may have been filed: the rider is told to check, not to send it again", async () => {
+  const ticketed = { status: 200, body: { enabled: true, ticket: "t1" } };
+  const lost = fakeFetch([ticketed, { status: 502, body: { code: "dc311_unknown" } }]);
+  assert.equal(await sendReport311("https://x", "pothole", JUNCTION, "", lost.fn), "maybe_sent");
+  assert.equal(REPORT_MAYBE_SENT, "DC 311 may already have this report. Check before sending it again.");
+  // Not reached at all is still plainly not sent.
+  const unreachable = fakeFetch([ticketed, { status: 502, body: { code: "dc311_unreachable" } }]);
+  assert.equal(await sendReport311("https://x", "pothole", JUNCTION, "", unreachable.fn), "not_sent");
 });
 
 const JUNCTION: ReportPlace = { words: "on Q Street Northwest near R Street Northwest", point: [-77.0389012, 38.9105678] };
