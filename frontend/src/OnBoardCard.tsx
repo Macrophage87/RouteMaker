@@ -5,7 +5,9 @@
  * and the stop to get off are said through the ride's outputs, never by this card.
  */
 import { useEffect, useState } from "react";
-import { boardingGroups, laterDepartureText, lineBadge, liveForBoarding, liveNextText, type LiveTrain, nextDepartureText, onBoardRows, stopsLeftText, type OnBoardLeg, type OnBoardState } from "./lib/onBoard.ts";
+import { boardingGroups, laterDepartureText, lineBadge, liveForBoarding, liveNextText, type LiveTrain, nextDepartureText, onBoardRows, onBoardSecondsLeft, stopsLeftText, type OnBoardLeg, type OnBoardState } from "./lib/onBoard.ts";
+import { arrivalClock } from "./lib/arrival.ts";
+import { formatDuration } from "./lib/format.ts";
 import { t } from "./lib/i18n.ts";
 import { requestStationTimes, TIMES_TTL_MS } from "./lib/stationTimes.ts";
 
@@ -14,11 +16,34 @@ export function OnBoardCard({ leg, state }: { leg: OnBoardLeg; state: OnBoardSta
   // The way, unless it is the stop to get off at ("toward Shady Grove" then "Get off at Shady Grove" says it twice).
   const way = leg.toward && leg.toward !== off ? t("{line} toward {place}", { line: leg.line, place: leg.toward }) : leg.line;
   const rows = onBoardRows(leg, state).filter((row, i) => i >= state.at || row.off);
+  // The time left kept current between stops (the timetable's run, lib/onBoard.ts onBoardSecondsLeft).
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 15_000);
+    return () => window.clearInterval(timer);
+  }, []);
+  const left = onBoardSecondsLeft(leg, state, now);
   return (
     <div className="onboard">
       <p className="cue-then onboard-way">{way}</p>
       <p className="cue-text">{t("Get off at {name}", { name: off })}</p>
-      <p className="cue-then">{stopsLeftText(leg, state)}</p>
+      {/* "3 stops left · 12 min · 6:42 PM" (Stephen, 2026-11-04: "When on transit, put the approximate time left to
+          arrival"), as a ride's time to go reads: "about" and "arriving about" for a screen reader only. */}
+      <p className="cue-then onboard-left">
+        {stopsLeftText(leg, state)}
+        {left !== null && (
+          <>
+            <span aria-hidden="true"> · </span>
+            <span className="visually-hidden">, {t("about")} </span>
+            {formatDuration(left)}
+            <span aria-hidden="true"> · </span>
+            <span className="visually-hidden">{t(", arriving about")} </span>
+            <span className="ride-arrive">{arrivalClock(now, left)}</span>
+          </>
+        )}
+      </p>
+      {/* The whole trip's end, from the plan's times after the stop (the walk, the ride after the train). */}
+      {left !== null && leg.afterS != null && leg.afterS > 0 && <p className="cue-then onboard-trip-end">{t("Trip ends about {time}", { time: arrivalClock(now, left + leg.afterS) })}</p>}
       <ol className="onboard-stops" aria-label={t("Stops ahead")}>
         {rows.map((row, i) => (
           <li key={`${i}-${row.name}`} className={row.next ? "onboard-next" : row.off ? "onboard-off" : undefined}>

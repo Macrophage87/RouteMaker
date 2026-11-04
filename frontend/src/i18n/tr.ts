@@ -2010,4 +2010,5 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "None of your points is on federal land.": "Noktalarınızın hiçbiri federal arazide değil.",
   "Mass Ride planning covers DC only for now. Outside the District of Columbia the map is grayed out and no riders-per-minute figures are drawn.": "Mass Ride planlaması şimdilik yalnızca DC'yi kapsıyor. Columbia Bölgesi dışında harita gri görünür ve dakika başına sürücü sayısı çizilmez.",
   "District of Columbia boundary: © OpenStreetMap contributors (ODbL).": "Columbia Bölgesi sınırı: © OpenStreetMap katkıda bulunanları (ODbL).",
+  "Trip ends about {time}": "Yolculuk yaklaşık {time} biter",
 };
