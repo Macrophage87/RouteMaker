@@ -714,6 +714,7 @@ class TestOverviewIndex:
 def trails_plan(optional: frozenset[str]) -> str:
     z, x, y = tile_of(*CENTRE, 10)
     params = {"z": z, "x": x, "y": y, "extent": 4096, "buffer": 32, "margin": 0.01, "unit": 1.0}
+    params["name_unit"] = 4.0
     with connection.cursor() as cursor:
         # A handful of rows is a sequential scan otherwise.
         cursor.execute("SET enable_seqscan = off")
@@ -1085,8 +1086,9 @@ class TestProbes:
         # 2026-10-17: "Both from 12"); 11 carries a major trail's name (`trail_name`); 12 is
         # v0.10.2's `dense`; 13 carries `popular` and keeps the popular corridors and long calm
         # roads at z10-11, with the long trails' names; 14 names a major corridor's ways; 15
-        # keeps every mountain-bike trail at z7-11 and carries a rated trail's two scales.
-        assert stress_tiles.FORMAT_VERSION == 15
+        # keeps every mountain-bike trail at z7-11 and carries a rated trail's two scales; 16
+        # carries the trails' names in a layer of their own, a joined line per name.
+        assert stress_tiles.FORMAT_VERSION == 16
 
     def test_a_format_bump_changes_the_etag(self, client, live, monkeypatch) -> None:
         path = url(*tile_of(*CENTRE, 14))
@@ -1595,7 +1597,7 @@ class TestLongTrails:
         for level in (stress_tiles.TRAILS, stress_tiles.TRAILS_NEAR):
             z, x, y = tile_of(*CENTRE, level.min_zoom)
             params = {"z": z, "x": x, "y": y, "extent": 4096, "buffer": 32, "margin": 0.01}
-            params["unit"] = 1.0
+            params["unit"] = params["name_unit"] = 1.0
             with connection.cursor() as cursor:
                 cursor.execute("SET enable_seqscan = off")
                 try:
@@ -1746,7 +1748,7 @@ class TestEveryStreetFromZ12:
     def test_the_etag_names_the_column_and_the_format_is_bumped(self, client, ride) -> None:
         insert_ride(ride, run_mi=1.0)
         etag = client.get(url(*tile_of(*CENTRE, 12)))["ETag"]
-        assert "+pkcfarmwoxivszhbtlg-v15" in etag, etag
+        assert "+pkcfarmwoxivszhbtlg-v16" in etag, etag
         assert stress_tiles.ETAG_LETTERS[stress_tiles.CALM_RUN_COLUMN] == "k"
         assert len(set(stress_tiles.ETAG_LETTERS.values())) == len(stress_tiles.ETAG_LETTERS)
         assert len(etag) < 64
@@ -1811,7 +1813,7 @@ class TestRoadside:
     def test_the_etag_names_the_column(self, client, beside) -> None:
         self.put(beside, True)
         etag = client.get(url(*tile_of(*CENTRE, 14)))["ETag"]
-        assert "+pcfarmwoxievszhbtlg-v15" in etag, etag
+        assert "+pcfarmwoxievszhbtlg-v16" in etag, etag
         assert stress_tiles.ETAG_LETTERS[stress_tiles.ROADSIDE_COLUMN] == "e"
         assert len(set(stress_tiles.ETAG_LETTERS.values())) == len(stress_tiles.ETAG_LETTERS)
 
@@ -1883,7 +1885,7 @@ class TestMtbLevel:
     def test_the_etag_names_the_column(self, client, levelled) -> None:
         self.put(levelled, 3400, 2, 0)
         etag = client.get(url(*tile_of(*CENTRE, 14)))["ETag"]
-        assert "+pcfarmwdoxivszhbtlg-v15" in etag, etag
+        assert "+pcfarmwdoxivszhbtlg-v16" in etag, etag
         assert stress_tiles.ETAG_LETTERS[stress_tiles.MTB_LEVEL_COLUMN] == "d"
         assert len(set(stress_tiles.ETAG_LETTERS.values())) == len(stress_tiles.ETAG_LETTERS)
         assert stress_tiles.OPTIONAL_PROPERTIES["mtb_level"] == "mtb_level"
@@ -1944,7 +1946,7 @@ class TestMtbName:
     def test_the_etag_names_the_column(self, client, named) -> None:
         self.put(named, 3602, "Fairland Loop", 0)
         etag = client.get(url(*tile_of(*CENTRE, 14)))["ETag"]
-        assert "+pcfarmwnoxivszhbtlg-v15" in etag, etag
+        assert "+pcfarmwnoxivszhbtlg-v16" in etag, etag
         assert stress_tiles.ETAG_LETTERS[stress_tiles.MTB_NAME_COLUMN] == "n"
         assert len(set(stress_tiles.ETAG_LETTERS.values())) == len(stress_tiles.ETAG_LETTERS)
         assert stress_tiles.OPTIONAL_PROPERTIES["name"] == "mtb_name"
@@ -2074,6 +2076,47 @@ class TestTrailName:
             cursor.execute(f"UPDATE {live}.segment SET trail_name = 'Capital Crescent Trail'")
         assert self.names(client, z) == ["Capital Crescent Trail"]
 
+    @staticmethod
+    def insert_split_trail(live, name="Sligo Creek Trail", tiers=(1, 1, 1, 1), mtb=False) -> None:
+        """A named trail of four segments, as the rebuild stores one cut at its junctions, every
+        other one drawn the other way round (as OSM's ways often are), each of its own tier."""
+        lon, lat, step = CENTRE[0] - 0.002, CENTRE[1], 0.001
+        with connection.cursor() as cursor:
+            for i, tier in enumerate(tiers):
+                a, b = (lon + i * step, lon + (i + 1) * step)
+                a, b = (b, a) if i % 2 else (a, b)
+                cursor.execute(
+                    f"INSERT INTO {live}.segment (osm_way_id, ordinal, geometry, stress_tier, "
+                    "stress_rule, is_trail_class, is_unpaved, facility, trail_name, trail_route, "
+                    "trail_run_m) VALUES (%s, 0, ST_MakeLine(ST_MakePoint(%s, %s), "
+                    "ST_MakePoint(%s, %s)), %s, %s, true, false, 'path', %s, 3, %s)",
+                    [
+                        70 + i, a, lat, b, lat, tier, trail_rule("path", OPEN), name,
+                        round(10 * MILE),
+                    ],
+                )  # fmt: skip
+
+    @pytest.mark.parametrize("z", [10, 11, 12, 13, 14])
+    def test_a_trails_name_has_one_line_to_sit_on(self, client, segment_schemas, z) -> None:
+        """The owner, 2026-11-04: "If anything more labeling on the longer distance trails". A
+        trail is cut into a segment per junction and a feature per class, each too short for its
+        name; the names' own layer joins them, one line per name, whichever way each was drawn."""
+        live, _ = segment_schemas
+        self.insert_split_trail(live, tiers=(1, 2, 1, 2))
+        layers = decode(client.get(url(*tile_of(*CENTRE, z))).content)
+        names = layers[stress_tiles.TRAIL_NAME_LAYER].features
+        assert [f.properties for f in names] == [{"trail_name": "Sligo Creek Trail"}]
+        assert len(names[0].lines) == 1, names[0].lines
+        # The lines are drawn from the stress layer as before, a feature per class.
+        assert len([f for f in layers["stress"].features if f.properties.get("trail_name")]) >= 2
+
+    def test_no_names_layer_without_a_name(self, client, segment_schemas) -> None:
+        live, _ = segment_schemas
+        insert_trail(live, False, 3)
+        layers = decode(client.get(url(*tile_of(*CENTRE, 12))).content)
+        assert stress_tiles.TRAIL_NAME_LAYER not in layers
+        assert layers["stress"].features
+
     def test_a_road_is_not_named_as_a_trail(self, client, segment_schemas) -> None:
         """A calm road carries `trail_name` for its calm run; a road closed to cars at set
         times keeps its street name. Neither is a trail name."""
@@ -2186,6 +2229,7 @@ RPM_PER_METRE_BY_FORMAT = {
     (13, 2): "29.526",
     (14, 2): "29.526",
     (15, 2): "29.526",
+    (16, 2): "29.526",
 }
 
 
@@ -2427,7 +2471,7 @@ class TestPopularCorridors:
         live, _ = segment_schemas
         self.put(live, popular=1)
         etag = client.get(url(*tile_of(*CENTRE, 14)))["ETag"]
-        assert "+pcfarmwoxivszhbtlg-v15" in etag, etag
+        assert "+pcfarmwoxivszhbtlg-v16" in etag, etag
         assert len(etag) < 64
 
     @pytest.mark.parametrize("calm", [False, True])

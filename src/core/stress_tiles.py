@@ -187,7 +187,8 @@ CONTENT_TYPE = "application/vnd.mapbox-vector-tile"
 # `trail_name` on a way of the top popular class (POPULAR_NAMED_MIN_CLASS), and `dense` from
 # 8 km a square (DENSE_ROAD_M), and a slip road's `link`. 15: every mountain-bike trail at z7-11
 # (ZOOMED_OUT_MTB), and a rated trail's `mtb_scale` and `mtb_imba` (MTB_SCALE_PROPERTIES).
-FORMAT_VERSION = 15
+# 16: the trails' names in a layer of their own, a joined line per name (TRAIL_NAME_LAYER).
+FORMAT_VERSION = 16
 
 # Five minutes (OWNER-DECISIONS 460.6, "5 min sounds good"): an instance admin's change in
 # the road panel (core.stress_edits) is in the tiles at once, and other riders' browsers
@@ -582,8 +583,11 @@ features AS (
       AND {where}
     GROUP BY {group_by}, bounds.env
 )
+{names}
 SELECT '{table}'::regclass::oid,
-       (SELECT ST_AsMVT(features.*, '{layer}', %(extent)s, 'geom') FROM features)
+       COALESCE(
+           (SELECT ST_AsMVT(features.*, '{layer}', %(extent)s, 'geom') FROM features), ''::bytea
+       ){names_tile}
 """
 
 # THE CITY GRID. The owner, 2026-10-21: "lts colored roads look very crowded at the nax zoom
@@ -637,8 +641,11 @@ features AS (
       AND {where}
     GROUP BY {group_by}, bounds.env
 )
+{names}
 SELECT '{table}'::regclass::oid,
-       (SELECT ST_AsMVT(features.*, '{layer}', %(extent)s, 'geom') FROM features)
+       COALESCE(
+           (SELECT ST_AsMVT(features.*, '{layer}', %(extent)s, 'geom') FROM features), ''::bytea
+       ){names_tile}
 """
 
 _PER_SEGMENT = """
@@ -653,9 +660,58 @@ features AS (
       {coverage}
       AND {where}
 )
+{names}
 SELECT '{table}'::regclass::oid,
-       (SELECT ST_AsMVT(features.*, '{layer}', %(extent)s, 'geom') FROM features)
+       COALESCE(
+           (SELECT ST_AsMVT(features.*, '{layer}', %(extent)s, 'geom') FROM features), ''::bytea
+       ){names_tile}
 """
+
+
+# THE TRAILS' NAMES, A LAYER OF THEIR OWN. The owner, 2026-11-04: "If anything more labeling on the
+# longer distance trails". The names drawn from the stress layer's own lines were almost never
+# placed: a trail reaches it cut into a feature per class (tier, facility, surface, city grid and
+# the rest) and each feature into a part per segment, a few dozen pixels long zoomed out, where a
+# name needs one part as long as itself, and wiggling at every vertex. Measured on the live tiles
+# of 2026-11-03 over seven views of z10-13 (Rock Creek, the Metropolitan Branch, Sligo Creek, the
+# Mount Vernon and the Capital Crescent trails among them): no trail name drawn in any. So a tile
+# carries each name's ways a second time, in TRAIL_NAME_LAYER, as one feature per name: joined end
+# to end (ST_LineMerge, which joins where two segments meet and no third, so a spur stays its own
+# line) and simplified to TRAIL_NAME_SIMPLIFY_PX, smooth enough for a name to follow. The map draws
+# the names from it (frontend/src/stressStyle.js, TRAIL_LABEL) and the lines from the stress layer
+# as before. ST_CollectionExtract first: a segment clipped to the coverage box can come back as a
+# MultiLineString, and ST_Collect would make a GeometryCollection that ST_LineMerge cannot read.
+# Only the names a way is drawn with every ride time, and no mountain-bike trail's (they carry
+# their own `name`, MTB_NAME_COLUMN).
+TRAIL_NAME_LAYER = "trail_names"
+TRAIL_NAME_SIMPLIFY_PX = 4
+# A tile is drawn 512 pixels wide (MapLibre's vector tiles): a pixel is 1/512 of its width.
+TILE_PX = 512
+
+_NAMES = """,
+names AS (
+    SELECT {name} AS trail_name,
+           ST_AsMVTGeom(
+               ST_Simplify(
+                   ST_LineMerge(
+                       ST_CollectionExtract(ST_Collect(ST_Transform({geometry}, 3857)), 2)
+                   ),
+                   %(name_unit)s
+               ),
+               bounds.env, %(extent)s, %(buffer)s, true
+           ) AS geom
+    FROM {table} AS s, bounds
+    WHERE s.geometry && ST_Transform(
+              ST_TileEnvelope(%(z)s, %(x)s, %(y)s, margin => %(margin)s), 4326)
+      {coverage}
+      AND {where}
+      AND {name} IS NOT NULL
+    GROUP BY 1, bounds.env
+)"""
+_NAMES_TILE = (
+    f" || COALESCE((SELECT ST_AsMVT(names.*, '{TRAIL_NAME_LAYER}', %(extent)s, 'geom') "
+    "FROM names), ''::bytea)"
+)
 
 
 def _table() -> str:
@@ -751,12 +807,33 @@ def tile_sql(level: Level, optional: frozenset[str] = frozenset(), clip: bool = 
         where = f"({where}) AND NOT {MOTOR_ONLY_RULE}"
     if level.dense:
         carried["dense"] = DENSE_RULE
+    geometry = f"ST_ClipByBox2D(s.geometry, {_COVERAGE_BOX})" if clip else "s.geometry"
+    coverage = f"AND s.geometry && {_COVERAGE_BOX}" if clip else ""
+    names = names_tile = ""
+    if "trail_name" in carried:
+        # The names' own layer (TRAIL_NAME_LAYER): the ways named, drawn in every ride time (not a
+        # car-free road's `car_free_only`) and not a mountain-bike trail's.
+        named = [f"({where})"]
+        if "car_free_only" in carried:
+            named.append(f"({carried['car_free_only']}) IS NULL")
+        if "mtb" in carried:
+            named.append(f"({carried['mtb']}) IS NOT TRUE")
+        names = _NAMES.format(
+            name=carried["trail_name"],
+            table=_table(),
+            geometry=geometry,
+            coverage=coverage,
+            where=" AND ".join(named),
+        )
+        names_tile = _NAMES_TILE
     return template.format(
         table=_table(),
         cell=DENSE_CELL_M,
         where=where,
-        geometry=f"ST_ClipByBox2D(s.geometry, {_COVERAGE_BOX})" if clip else "s.geometry",
-        coverage=f"AND s.geometry && {_COVERAGE_BOX}" if clip else "",
+        geometry=geometry,
+        coverage=coverage,
+        names=names,
+        names_tile=names_tile,
         layer=LAYER,
         columns=", ".join(f"{expression} AS {name}" for name, expression in carried.items()),
         group_by=", ".join(carried.values()),
@@ -794,6 +871,8 @@ def render(
         "margin": level.buffer / level.extent,
         # One tile unit, in metres of EPSG:3857: finer detail is not drawn.
         "unit": WORLD_M / 2**z / level.extent,
+        # The trails' names' lines are simpler (TRAIL_NAME_SIMPLIFY_PX), so a name can follow one.
+        "name_unit": WORLD_M / 2**z / TILE_PX * TRAIL_NAME_SIMPLIFY_PX,
     }
     clip = straddles_coverage(z, x, y, level.buffer / level.extent)
     try:

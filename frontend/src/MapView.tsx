@@ -501,6 +501,10 @@ function riderOffset(container: HTMLElement, at: number): number {
 }
 /** The closures in force at the ride (v0.7.0, lib/closureMap.ts). */
 const CLOSURE_SOURCE = "closures";
+/** Whether a layer is a street's or a major trail's name. */
+const isNameLayer = (id: string) => id === TRAIL_LABEL_LAYER_ID || ROAD_LABEL_LAYER_IDS.includes(id);
+/** The lowest of the street and trail names (the trails' are over the base map's labels since 2026-11-04): the climbs go under it. */
+const lowestName = (map: maplibregl.Map) => map.getStyle().layers.map((layer) => layer.id).find(isNameLayer) ?? TRAIL_LABEL_LAYER_ID;
 /** The names the closed stretches' lines go under: the major trails' and the streets'. */
 const CLOSURE_NAME_LAYERS: readonly string[] = [TRAIL_LABEL_LAYER_ID, ...ROAD_LABEL_LAYER_IDS];
 /** The lines they stay over though added over the trail names: the Mass Ride map's (massStyle.js), not its label. */
@@ -857,10 +861,11 @@ export function MapView(props: Props) {
       // "The climb dots go over the road name"): the names are placed first and a summit gives way to one, as two
       // summits give way to each other. Under the route, the water and the stations too. Without the names, the route.
       const layerIds = map.getStyle().layers.map((layer) => layer.id);
-      // The major trails' names too (stressStyle.js, TRAIL_LABEL), the lowest of them all. In a ride the names are
-      // lifted over the route (lib/rideLabelOrder.ts): the climbs go under the route, and under the names once home.
+      // The major trails' names too (stressStyle.js, TRAIL_LABEL), over the base map's labels: under the lowest name of
+      // all. In a ride the names are lifted over the route (lib/rideLabelOrder.ts): the climbs go under the route, and
+      // under the names once home.
       const lifted = labelHomes.current.size > 0;
-      const underNames = (!lifted && layerIds.find((id) => id === TRAIL_LABEL_LAYER_ID || ROAD_LABEL_LAYER_IDS.includes(id))) || ROUTE_BOTTOM_LAYER;
+      const underNames = (!lifted && layerIds.find(isNameLayer)) || ROUTE_BOTTOM_LAYER;
       addClimbs(map as unknown as ClimbsMap, data, on, iconPixelRatio(), underNames, callbacks.current.climbsFrom ?? CLIMBS_FROM_DEFAULT);
     };
     const anyPopupOpen = () => popupsOpen(popup.current, rail, map.getContainer());
@@ -1307,8 +1312,8 @@ export function MapView(props: Props) {
       if (added) setHazardData(map, callbacks.current.massHazards ?? null);
       // A route already up fades the road colours it is drawn over (an overlay that came after the route).
       if (added) setOverlayFade(map, routeOverlayFade(callbacks.current.route));
-      // Climbs that came first are under the trail names it brings, as syncClimbs puts them when the names are there.
-      if (added) climbsUnder(map, TRAIL_LABEL_LAYER_ID);
+      // Climbs that came first are under the names, as syncClimbs puts them when the names are there.
+      if (added) climbsUnder(map, lowestName(map));
       // Closures drawn first go under the trail names it brings, as they went under the street names.
       if (added) closuresUnder(map, labelHomes.current.size > 0);
       return added;
@@ -2905,7 +2910,7 @@ export function MapView(props: Props) {
       // Climbs added during the ride went under the route: home, they go back under the names, as syncClimbs puts them;
       // closures added (or trail names come) during it go under the names too.
       if (setRideLabelOrder(map, riding, labelHomes.current)) {
-        climbsUnder(map, TRAIL_LABEL_LAYER_ID);
+        climbsUnder(map, lowestName(map));
         closuresUnder(map, false);
       }
     };

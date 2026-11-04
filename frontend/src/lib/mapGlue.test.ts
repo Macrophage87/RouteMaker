@@ -41,15 +41,15 @@ import {
   type OverlayMap,
   EMPTY_HAZARDS,
 } from "./mapGlue.ts";
-import { MASS_SOURCE_ID, STRESS_SOURCE_ID, massSource, stressSource } from "./mapStyle.ts";
-import { HIGH_STRESS_LANE_MIN_TIER, drawnAt, isMtbLayerId, massRideOn, setAccessibility, setHighStressLanes, setMassRide, stressFilters, stressOverlayLayers } from "../stressStyle.js";
+import { BASEMAP_SOURCE_ID, MASS_SOURCE_ID, STRESS_SOURCE_ID, massSource, stressSource } from "./mapStyle.ts";
+import { HIGH_STRESS_LANE_MIN_TIER, TRAIL_LABEL_LAYER_ID, drawnAt, isMtbLayerId, massRideOn, setAccessibility, setHighStressLanes, setMassRide, stressFilters, stressOverlayLayers } from "../stressStyle.js";
 import { ROUTE_BOTTOM_LAYER, railLayers } from "./railLayer.ts";
 import { HAZARD_SOURCE_ID, massLayerIds, massLayers } from "../massStyle.js";
 
 // The Mass Ride map's layers (massStyle.js) are on the map always and drawn only in that mode.
 const MASS_IDS = new Set<string>(massLayerIds());
 
-function fakeMap(styleLayers: Array<{ id: string; type: string }>) {
+function fakeMap(styleLayers: Array<{ id: string; type: string; source?: string }>) {
   const sources = new Map<string, unknown>();
   const added: Array<{ layer: { id: string; layout?: { visibility?: string } }; before: string | undefined }> = [];
   const layout: Array<[string, string, string]> = [];
@@ -95,11 +95,23 @@ test("the overlay is added exactly as stressOverlayLayers lists it, in its order
   }
 });
 
-test("the overlay goes under the first label layer, all of it", () => {
+test("the overlay goes under the first label layer, all of it but the trails' names", () => {
   const { map, added } = fakeMap(BASE);
   addStressOverlay(map, "https://example.test", true);
   assert.ok(added.length > 0);
-  for (const a of added) assert.equal(a.before, "road-labels");
+  for (const a of added) if (a.layer.id !== TRAIL_LABEL_LAYER_ID) assert.equal(a.before, "road-labels");
+});
+
+test("the trails' names go over the base map's labels, which give way to them, and under the app's own layers", () => {
+  // The owner, 2026-11-04: "If anything more labeling on the longer distance trails" (stressStyle.js TRAIL_LABEL).
+  const base = BASE.map((layer) => ({ ...layer, source: BASEMAP_SOURCE_ID }));
+  const names = (layers: Array<{ id: string; type: string; source?: string }>) => {
+    const { map, added } = fakeMap(layers);
+    addStressOverlay(map, "https://example.test", true);
+    return added.find((a) => a.layer.id === TRAIL_LABEL_LAYER_ID)!.before;
+  };
+  assert.equal(names(base), undefined, "on top of a map of the base map's layers alone");
+  assert.equal(names([...base, { id: "route-casing", type: "line" }, { id: "rail-names", type: "symbol" }]), "route-casing", "under a route up first");
 });
 
 test("the overlay is added with the toggle's visibility", () => {
