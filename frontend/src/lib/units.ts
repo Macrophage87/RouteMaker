@@ -79,3 +79,42 @@ export async function chooseUnits(next: Units, beforeReload?: () => Promise<bool
   if (typeof location !== "undefined") location.reload();
   return true;
 }
+
+/**
+ * Chosen during a ride (Stephen 2026-11-03: "Change should happen immediately"): no reload, which would stop the cues
+ * until Resume and lose the ride's figures. The choice is kept and, signed in, saved to the account first as
+ * chooseUnits does; then it is in use at once, and the ride's screen, figured at each render, follows (subscribeUnits).
+ * What was figured once at load (the planner's labels, the map's contour labels) follows on the reload owed for the
+ * ride's end (unitsReloadOwed; App's Done on the ride summary). True when switched.
+ */
+export async function switchUnitsInRide(next: Units, beforeSave?: () => Promise<boolean>, store: KeyValueStore | null = browserStore()): Promise<boolean> {
+  if (next === current) return false;
+  const before = current;
+  writeUnits(next, store);
+  if (readUnits(store) !== next) return false;
+  if (beforeSave) {
+    const saved = await Promise.race([beforeSave().catch(() => false), new Promise<boolean>((done) => setTimeout(() => done(false), 4000))]);
+    if (!saved) {
+      writeUnits(before, store);
+      return false;
+    }
+  }
+  current = next;
+  reloadOwed = true;
+  for (const listener of listeners) listener();
+  return true;
+}
+
+let reloadOwed = false;
+const listeners = new Set<() => void>();
+
+/** Units switched during a ride: the page reloads once the ride is done, so everything figured at load follows. */
+export function unitsReloadOwed(): boolean {
+  return reloadOwed;
+}
+
+/** Called when the units in use change during a ride (useSyncExternalStore with `units`). */
+export function subscribeUnits(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
