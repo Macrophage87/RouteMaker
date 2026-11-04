@@ -7026,7 +7026,7 @@ owner rows (#955), the dark tunnel page (#957), the follow crosswalk fix (#959),
 for a fix (#950) and the 2026-11-04 repo review's fixes (#963, #964, #967, #969). **No migration, no
 `src/pipeline/` change, no `lua/` change and no map rebuild.** What does change for the host: every
 `valhalla/*.json` (the `isochrone` action and `max_exclude_polygons_vertices` 1000), the Caddy image
-(2.8 to 2.10.2) and the Caddyfile, `docker/api.Dockerfile` (the amenity files Reach counts),
+(2.8 to 2.10) and the Caddyfile, `docker/api.Dockerfile` (the amenity files Reach counts),
 `scripts/beta/` (the agent prunes `_before_` databases over 6.5 days old), `scripts/pc/` (the backup
 pull) and `mobile/` (the links manifest). The tile format change means **both** images are built
 (the `rebuild` service pre-draws tiles too, and a format-15 rebuild image would evict the api's
@@ -7038,7 +7038,7 @@ Dockerfile, so the beta ships by hand. At home, in order, with `</dev/null` on e
 - [ ] **Rollback points and images**, as "Deploying a planner and front-end release", with the
   weekly rebuild paused or not due, and out of 07:00-07:30 UTC: tag the running api **and pipeline**
   images `pre-rel-<short>`, fast-forward the checkout, then `docker compose build api rebuild`.
-- [ ] **Caddy**, after the fast-forward: validate the new Caddyfile against the new image ("Changing
+- [ ] **Caddy**, after the fast-forward: `docker compose pull caddy`, validate the new Caddyfile against the new image ("Changing
   the Caddyfile on a running stack" in docs/DEPLOYMENT.md), then
   `docker compose up -d --no-deps --no-build --force-recreate caddy`.
 - [ ] **The routers, before the api.** Restart every router ("A release that changes
