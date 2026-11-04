@@ -479,6 +479,104 @@ class TestWrongWay:
         assert answer["against_traffic"] == [{"name": "Row 2", "distance_m": 300.0}]
 
 
+class TestCrosswalkCorners:
+    """Stephen 2026-11-04, "There are still phantom red intersections": a followed line that
+    itself goes round a four-way stop's corner on its crosswalks (up one street, across the
+    crosswalk a few metres past the junction, down the crosswalk over the other street) was
+    followed onto them, a red LTS 4 "Cross the road" piece. By default it is put back on the
+    road at the junction."""
+
+    # North up a street to the junction J, on 6 m past it to a crosswalk's node C, across that
+    # crosswalk to the corner K, across the other street's crosswalk to its node T 7 m west of
+    # J, then west along that street.
+    S0, S1 = (-77.0, 38.899), (-77.0, 38.8995)
+    J, C = (-77.0, 38.9), (-77.0, 38.900054)
+    K, T = (-77.00008, 38.900063), (-77.00008, 38.9)
+    W1, W2 = (-77.0005, 38.9), (-77.001, 38.9)
+    LINE = [S0, S1, J, C, K, T, W1, W2]
+    EDGES = [
+        {"use": "road", "length": 0.111, "begin_shape_index": 0, "end_shape_index": 2},
+        {"use": "road", "length": 0.006, "begin_shape_index": 2, "end_shape_index": 3},
+        {
+            "use": "pedestrian_crossing",
+            "length": 0.007,
+            "begin_shape_index": 3,
+            "end_shape_index": 4,
+        },
+        {
+            "use": "pedestrian_crossing",
+            "length": 0.007,
+            "begin_shape_index": 4,
+            "end_shape_index": 5,
+        },
+        {"use": "road", "length": 0.086, "begin_shape_index": 5, "end_shape_index": 7},
+    ]
+    MATCHED = [{"edge_index": i} for i in (0, 0, 0, 1, 2, 3, 4, 4)]
+
+    def ridden(self, edges=None) -> dict:
+        return {
+            "edges": self.EDGES if edges is None else edges,
+            "matched_points": self.MATCHED,
+            "shape": encode_polyline6(self.LINE),
+        }
+
+    def test_the_crosswalks_round_the_corner_are_cut_from_the_junction(self) -> None:
+        cuts = follow.crosswalk_cuts(self.ridden(), {0, 7})
+        assert len(cuts) == 1
+        cut = cuts[0]
+        # The 6 m of road past the junction goes with the crosswalks: the way back starts at J.
+        assert (cut["after"], cut["before"]) == (2, 6)
+        assert cut["a"] == pytest.approx(self.J)
+        assert cut["b"] == pytest.approx(self.T)
+        assert cut["metres"] == pytest.approx(20.0)
+
+    def test_a_plans_point_on_the_crosswalks_or_crosswalks_onto_a_path_are_kept(self) -> None:
+        assert follow.crosswalk_cuts(self.ridden(), {0, 4, 7}) == []
+        onto_path = [*self.EDGES[:4], {**self.EDGES[4], "use": "cycleway"}]
+        assert follow.crosswalk_cuts(self.ridden(onto_path), {0, 7}) == []
+
+    def followed(self, monkeypatch, exact=False, way=None) -> tuple[list, list]:
+        """`routing._followed` of LINE, the router's way round being `way` (J to T by
+        default): the shape traced and the endpoints called."""
+        calls = []
+
+        def fake(variant, endpoint, payload, deadline):
+            calls.append((endpoint, payload))
+            if endpoint == "trace_attributes":
+                return self.ridden()
+            if endpoint == "route":
+                return {"trip": {"legs": [leg(way or [self.J, self.T], 0.007)]}}
+            return {"trip": {"legs": [leg(self.LINE, 0.2)]}}
+
+        monkeypatch.setattr(routing, "_call", fake)
+        shape = [{"lon": lon, "lat": lat} for lon, lat in self.LINE]
+        options = {"bicycle": follow.EXACT} if exact else {"bicycle": {}}
+        asked = {"shape": shape, "costing_options": options, "shape_match": "map_snap"}
+        routing._followed("standard", asked, routing.Deadline(1e12, 10))
+        traced = next(p for endpoint, p in calls if endpoint == "trace_route")
+        return [(p["lon"], p["lat"]) for p in traced["shape"]], calls
+
+    def test_by_default_the_line_turns_at_the_junction_on_the_road(self, monkeypatch) -> None:
+        traced, calls = self.followed(monkeypatch)
+        assert traced == approx_points([self.S0, self.S1, self.J, self.T, self.W1, self.W2])
+        # Matched as ridden once, asking what each way is, and the router's way asked once.
+        attributes = [p for endpoint, p in calls if endpoint == "trace_attributes"]
+        assert len(attributes) == 1
+        assert "edge.use" in attributes[0]["filters"]["attributes"]
+        assert [endpoint for endpoint, _ in calls].count("route") == 1
+
+    def test_a_way_round_much_longer_than_the_crosswalks_leaves_the_line(self, monkeypatch) -> None:
+        # Round the block, about 220 m: not the same corner, so the line stays as it is.
+        block = [self.J, (-77.0, 38.901), (-77.001, 38.901), (-77.001, 38.9), self.T]
+        traced, _ = self.followed(monkeypatch, way=block)
+        assert traced == approx_points(self.LINE)
+
+    def test_in_the_manual_mode_the_crosswalks_are_followed_as_ridden(self, monkeypatch) -> None:
+        traced, calls = self.followed(monkeypatch, exact=True)
+        assert traced == approx_points(self.LINE)
+        assert "route" not in [endpoint for endpoint, _ in calls]
+
+
 def follow_body(preset: str = "mass-ride", **extra) -> dict:
     return {
         "points": [list(VERTICES[0]), list(VERTICES[2]), list(VERTICES[-1])],

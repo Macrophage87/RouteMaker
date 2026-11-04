@@ -430,16 +430,11 @@ def gone_round(stretches: list[dict], route_line) -> list[dict]:
     ]
 
 
-def wrong_way(
-    line, keep, trace_attributes, costing_options: dict
-) -> tuple[set[int], list[dict]] | None:
-    """Where `line` rides against one-way traffic, matched as ridden: the indexes of its
-    points on such a way (never those in `keep`, the plan's points), to leave out of the
-    match so the router goes round, and the stretches (`against_traffic`), each with the
-    middle of every edge in it (`at`, for `gone_round`). None where the router refused the
-    line; a router that does not answer is raised, as the trace after it would be."""
-    if len(line) < 2:
-        return set(), []
+def as_ridden(line, trace_attributes, costing_options: dict) -> dict | None:
+    """`line` matched as ridden, one-way traffic and turn restrictions ignored (`IGNORED`):
+    the router's `/trace_attributes` answer, which `wrong_way` and `crosswalk_cuts` read.
+    None where the router refused the line; a router that does not answer is raised, as the
+    trace after it would be."""
     payload = {
         "encoded_polyline": _encode(line),
         "costing": "bicycle",
@@ -456,6 +451,8 @@ def wrong_way(
                 "edge.names",
                 "edge.traversability",
                 "edge.forward",
+                # What `crosswalk_cuts` reads (map_match.FOOT_USES, ROAD_USES).
+                "edge.use",
                 "edge.begin_shape_index",
                 "edge.end_shape_index",
                 "matched.edge_index",
@@ -467,9 +464,26 @@ def wrong_way(
         },
     }
     try:
-        answer = trace_attributes(payload)
+        return trace_attributes(payload)
     except routing.RouterRefused:
         return None
+
+
+def wrong_way(
+    line, keep, trace_attributes, costing_options: dict, *, answer: dict | None = None
+) -> tuple[set[int], list[dict]] | None:
+    """Where `line` rides against one-way traffic, matched as ridden (`as_ridden`, or its
+    `answer` where it is given): the indexes of its points on such a way (never those in
+    `keep`, the plan's points), to leave out of the match so the router goes round, and the
+    stretches (`against_traffic`), each with the middle of every edge in it (`at`, for
+    `gone_round`). None where the router refused the line; a router that does not answer is
+    raised, as the trace after it would be."""
+    if len(line) < 2:
+        return set(), []
+    if answer is None:
+        answer = as_ridden(line, trace_attributes, costing_options)
+        if answer is None:
+            return None
     edges = answer.get("edges") or []
     against = {i for i, edge in enumerate(edges) if _against(edge)}
     if not against:
@@ -481,6 +495,128 @@ def wrong_way(
     }
     shape = routing.decode_polyline6(answer.get("shape") or "")
     return dropped, _stretches(edges, shape)
+
+
+def crosswalk_cuts(answer: dict, keep) -> list[dict]:
+    """Where the line itself goes round a corner on its crosswalks (Stephen 2026-11-04, "There
+    are still phantom red intersections", a residential four-way stop with a ladder crosswalk
+    on each arm). `clear_corners` keeps the matcher from cutting a corner the line turns on
+    the road; a line that already rides the crosswalks round it (a file made from such a
+    route, or a GPS track cutting the corner) was followed onto them, a red "Cross the road"
+    piece. Each crosswalk tangle of the match as ridden (`answer`, `as_ridden`'s;
+    `map_match._tangles`) is taken with the scraps of road under map_match.SCRAP_M either side
+    of it, so the way back on the road starts and ends at the junction rather than a few
+    metres past it. Each cut gives the line's points to replace (those between `after` and
+    `before`; never round a plan's point in `keep`), the road points either side of it on the
+    match's line (`a`, `b`) and its length in metres (`metres`), for the router's own way
+    between them (`uncut`). An opened file snapped to the map (POST /api/match) is
+    untangled there already."""
+    from . import map_match
+
+    edges = answer.get("edges") or []
+    matched = [(point or {}).get("edge_index") for point in answer.get("matched_points") or []]
+    shape = routing.decode_polyline6(answer.get("shape") or "")
+    if not edges or not matched or not shape:
+        return []
+
+    def edge_m(i: int) -> float:
+        length = (edges[i] or {}).get("length")
+        return float(length) * 1000.0 if isinstance(length, (int, float)) else 0.0
+
+    def road(i: int) -> bool:
+        return (edges[i] or {}).get("use") in map_match.ROAD_USES
+
+    def road_scrap(i: int) -> bool:
+        length = (edges[i] or {}).get("length")
+        return (
+            road(i)
+            and isinstance(length, (int, float))
+            and float(length) * 1000.0 < map_match.SCRAP_M
+        )
+
+    out: list[dict] = []
+    for first, last in map_match._tangles(edges):
+        metres = sum(edge_m(i) for i in range(first, last + 1))
+        # A scrap of road between the tangle and the junction it turns at belongs to it.
+        while first - 2 >= 0 and road_scrap(first - 1) and road(first - 2):
+            first -= 1
+            metres += edge_m(first)
+        while last + 2 < len(edges) and road_scrap(last + 1) and road(last + 2):
+            last += 1
+            metres += edge_m(last)
+        begin = (edges[first] or {}).get("begin_shape_index")
+        end = (edges[last] or {}).get("end_shape_index")
+        if not (isinstance(begin, int) and isinstance(end, int) and 0 <= begin < end < len(shape)):
+            continue
+        before_it = [i for i, e in enumerate(matched) if isinstance(e, int) and e < first]
+        after_it = [i for i, e in enumerate(matched) if isinstance(e, int) and e > last]
+        if not before_it or not after_it:
+            continue
+        after, before = before_it[-1], after_it[0]
+        inside = range(after + 1, before)
+        if after >= before or any(i in keep for i in inside):
+            continue
+        if any(isinstance(matched[i], int) and not first <= matched[i] <= last for i in inside):
+            continue
+        if out and after < out[-1]["before"]:
+            continue
+        out.append(
+            {
+                "after": after,
+                "before": before,
+                "a": tuple(shape[begin]),
+                "b": tuple(shape[end]),
+                "metres": metres,
+            }
+        )
+    return out
+
+
+def uncut(
+    shape: list[dict], cuts: list[dict], route_between, dropped=frozenset()
+) -> list[dict] | None:
+    """`shape` (a `/trace_route`'s, `request_for`'s), its points in `dropped` (`wrong_way`'s)
+    left out, with each of `crosswalk_cuts`' `cuts` put back on the road: its points replaced
+    by the router's way from `a` to `b` (`route_between(a, b)`, a leg or None), where that way
+    is no more than map_match.DETOUR_SLACK_M longer than the tangle, and a tangle that comes
+    back to the point it left cut out; then each corner cleared again (`clear_corners`), the
+    plan's points (`routing.VIA_LOCATION_TYPE`) kept. None where no cut was made; at most
+    map_match.MAX_UNTANGLED routes are asked for."""
+    from . import map_match
+
+    pieces: list[tuple[int, int, list]] = []
+    asked = 0
+    for cut in cuts:
+        a, b = cut["a"], cut["b"]
+        if haversine(Point(*a), Point(*b)) < SAME_M:
+            pieces.append((cut["after"], cut["before"], []))
+            continue
+        if asked >= map_match.MAX_UNTANGLED:
+            continue
+        asked += 1
+        leg = route_between(a, b)
+        way = _shape(leg) if leg else []
+        if len(way) < 2 or map_match._metres(way) > cut["metres"] + map_match.DETOUR_SLACK_M:
+            continue
+        # The way's ends where they are the points either side already: not twice.
+        ends = (shape[cut["after"]], shape[cut["before"]])
+        if haversine(Point(*way[0]), Point(ends[0]["lon"], ends[0]["lat"])) < SAME_M:
+            way = way[1:]
+        if way and haversine(Point(*way[-1]), Point(ends[1]["lon"], ends[1]["lat"])) < SAME_M:
+            way = way[:-1]
+        pieces.append((cut["after"], cut["before"], [{"lon": lon, "lat": lat} for lon, lat in way]))
+    if not pieces:
+        return None
+    out: list = [None if i in dropped else p for i, p in enumerate(shape)]
+    for after, before, way in reversed(pieces):
+        out[after + 1 : before] = way
+    out = [p for p in out if p is not None]
+    vias = [i for i, p in enumerate(out) if p.get("type") == routing.VIA_LOCATION_TYPE]
+    line, kept = clear_corners([(p["lon"], p["lat"]) for p in out], vias)
+    cleared = [{"lon": lon, "lat": lat} for lon, lat in line]
+    for i in kept:
+        cleared[i]["type"] = routing.VIA_LOCATION_TYPE
+    return cleared
 
 
 def against_traffic(line, trace_attributes, costing_options: dict) -> list[dict] | None:
