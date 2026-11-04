@@ -924,7 +924,8 @@ opened (kept with that app's draft). A Share ride or Share live link is also a s
 the server like any shared link.</li>
 <li><strong>Backups.</strong> Nightly database backups are encrypted with age to the owner's X25519 public key. The
 private key is kept on the owner's computer, not on the server, so the server can write a backup but never read
-one.</li>
+one. A copy of each encrypted backup is also kept on the owner's computer, the newest seven, as on the server. The
+copies taken just before RouteMaker is updated are not encrypted; they stay on the server for at most 6.5 days.</li>
 <li>The ride encryption is <code>frontend/src/lib/rideSeal.ts</code> in the open source repository, for anyone to
 check.</li>
 </ul>
