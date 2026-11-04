@@ -56,6 +56,10 @@ class Closure:
     # The last day is a guess ("for the duration of the project" read to the project's
     # expected end): `reminders` asks for it to be checked before it comes.
     end_estimated: bool = False
+    # What the advisory says of people on foot (`workzones.Zone.on_foot`): true, the way is
+    # closed to them too ("The walking and biking trail ... is closed"); false, they are let
+    # through ("Pedestrian access is kept"); absent (None), it does not say.
+    on_foot: bool | None = None
 
     @property
     def start(self) -> datetime:
@@ -89,6 +93,7 @@ def parse(data: Mapping) -> tuple[list[Closure], str]:
                 last_day=date.fromisoformat(row["last_day"]),
                 lines=lines,
                 end_estimated=bool(row.get("end_estimated")),
+                on_foot=row["on_foot"] if isinstance(row.get("on_foot"), bool) else None,
             )
         )
     return out, str(data.get("updated") or "")
@@ -160,6 +165,7 @@ def zones_of(closure: Closure, source: str = SOURCE) -> list[wz.Zone]:
             title=f"{closure.road}: closed",
             url=closure.page,
             published=published,
+            on_foot=closure.on_foot,
         )
         for index, line in enumerate(closure.lines)
     ]

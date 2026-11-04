@@ -217,7 +217,8 @@ test("the retired Avoid gravel box: an old link opens as Road Bike on a rider's 
   }
   // Its sliders stay as the link had them.
   assert.equal(decodePlan(`#preset=default&v=${PLAN_VERSION}&stress=70&hills=0&avoidgravel=1`).dials.stress, 70);
-  for (const preset of ["cargo", "ebike", "group-ride", "mass-ride", "bikeshare", "mountain-bike"] as const) {
+  // Novice and Nervous and Trailmaxxing keep their calm start and Novice's protections.
+  for (const preset of ["cargo", "ebike", "group-ride", "mass-ride", "bikeshare", "mountain-bike", "novice", "trailmaxxing"] as const) {
     assert.equal(decodePlan(`#preset=${preset}&avoidgravel=1`).preset, preset, preset);
   }
   assert.equal(decodePlan("#preset=default&avoidgravel=0").preset, "default");

@@ -7,6 +7,8 @@ import { rideViewKept } from "./lib/rideViewKept.ts";
 import { RoadInfoDialog } from "./RoadInfoDialog.tsx";
 import { GoSpotDialog, type SpotRequest } from "./GoSpotDialog.tsx";
 import { MapTools } from "./MapTools.tsx";
+import { ReachSheet } from "./ReachSheet.tsx";
+import { REACH_DEFAULT, reachFromHash, type ReachView } from "./lib/reach.ts";
 import { t } from "./lib/i18n.ts";
 import { APP_VERSION, versionShort } from "./lib/appVersion.ts";
 import { ACCESS_LABEL, ACCESS_MODE_CLASS, accessModeParts, accessModeToggle, browserStore, readAccessMode, writeAccessMode } from "./lib/accessMode.ts";
@@ -39,7 +41,7 @@ import { chooseUnits, units, unitsReloadOwed } from "./lib/units.ts";
 import { RETURN_PARAM as GARMIN_RETURN_PARAM, garminReturnFrom, readGarmin, withoutReturn } from "./lib/garminLink.ts";
 import { RETURN_PARAM as WAHOO_RETURN_PARAM, readWahoo, wahooReturnFrom } from "./lib/wahooLink.ts";
 import { endsOnFoot, layersTurnedOn, presetNamesRide, presetSaid, runs, twoPointsOnly, usesBikeshare, type PresetId } from "./lib/presets.ts";
-import { RUN_PACE_EVENT, paceOf, readRunPace } from "./lib/runPace.ts";
+import { RUN_PACE_EVENT, paceKmh, paceOf, readRunPace } from "./lib/runPace.ts";
 import { atFromHash, decodePlan, encodePlan } from "./lib/planHash.ts";
 import { RouteScheduler, type SchedulerState } from "./lib/routeScheduler.ts";
 import { confirmedUpTo, sendsConfirmation, spanKm } from "./lib/longRide.ts";
@@ -303,7 +305,7 @@ import { REST_ANYWAY_MS, RIDE_REST_FINDING, fixedRide, restClosedSaid, restReque
 import { RIDE_TOO_LONG } from "./lib/navigate.ts";
 import { fetchMe, NO_ME, type Me } from "./lib/stressEditor.ts";
 import { reloadFavorites, useFavoriteRides } from "./lib/favoriteRides.ts";
-import { ACCOUNT_SETTINGS_USED, applyToDevice, deviceSettings, fetchSettings, onSignIn, planFromSetting, sameSettings, saveSettings, SAVE_SETTLE_MS, type SettingsDoc } from "./lib/accountSettings.ts";
+import { ACCOUNT_SETTINGS_USED, applyToDevice, deviceSettings, fetchSettings, onSignIn, planFromSetting, retryUntil, sameSettings, saveSettings, saveUnitsUnsynced, SAVE_SETTLE_MS, type SettingsDoc } from "./lib/accountSettings.ts";
 import { HOME_KEPT, HOME_MOVED, answerHomeOffer, deviceHome, homeOffer, type HomeOffer } from "./lib/homeMove.ts";
 import { OPENED_SAID, SAVED_SAID, SAVE_FAILED, UNCHANGED_SAID, UPDATE_ROUTE, VERSION_SAID, defaultRouteName, differenceLine, differsTooMuch, gpxSave, afterDelete, afterRename, planSave, saveAsVersion, savedAnswer, versionOf, type OpenSaved, type SavedRoute } from "./lib/savedRoutes.ts";
 import { checkClosures, closedStretches, reroutedSaid, spliceDetours, type Closure, type CheckFor } from "./lib/closureCheck.ts";
@@ -340,7 +342,7 @@ import { KNOWN_OPERATORS, docksStatus, mergeOperators, operatorsToAsk, readOpera
 import { SaveRoute } from "./SaveRoute.tsx";
 import { firstWordAndRest, planLanguageAttributes } from "./lib/i18n.ts";
 import { SAVE_ROUTE } from "./lib/savedRoutes.ts";
-import { BROADCAST_FOLLOWING, BROADCAST_NO_KEY, consentFor, followsWithoutKey, forgetAnsweredHere, isRideLink, isRideLinkType, presetSecret, leadConsent, leaderKey, newToken, opensIntoRide, rideOf, type RideLinkType } from "./lib/rideGroup.ts";
+import { BROADCAST_FOLLOWING, BROADCAST_NO_KEY, consentFor, followsWithoutKey, forgetAnsweredHere, isRideLink, isRideLinkType, presetSecret, leadConsent, leaderKey, newToken, opensIntoRide, rideOf, sharedAfterRide, type RideLinkType } from "./lib/rideGroup.ts";
 import { newRideSecret, secretFrom, withSecret, withoutSecret } from "./lib/rideSeal.ts";
 
 // Before the map adds the stress source (MapView, after its first probe).
@@ -468,7 +470,8 @@ const NO_POINTS: LonLat[] = [];
 const NO_LEGS: number[] = [];
 const ignore = () => undefined;
 
-const OUTSIDE_NOTICE = "That point is outside the area this map covers (the DC region to Baltimore).";
+// In the page's language (the language is read once at load: lib/i18n.ts), as Go shows it.
+const OUTSIDE_NOTICE = t("That point is outside the area this map covers (the DC region to Baltimore).");
 
 export function App() {
   const [points, setPoints] = useState<LonLat[]>(initialPlan.points);
@@ -793,7 +796,7 @@ export function App() {
   useEffect(() => {
     if (waterOn) void ensureRepair();
   }, [waterOn, ensureRepair]);
-  // Bike racks (lib/bikeParking.ts; Stephen, 2026-11-01): DDOT's in DC, OpenStreetMap's elsewhere. Drawn with the
+  // Bike racks (lib/bikeParking.ts; Stephen, 2026-11-01): DDOT's in DC, BCDOT's in Baltimore, OpenStreetMap's elsewhere. Drawn with the
   // water layer's switch, and offered by Go near a tapped spot and a route's end. Loaded when first needed.
   const [racksData, setRacksData] = useState<BikeRack[] | "unavailable" | null>(null);
   const racksLoad = useRef<Promise<BikeRack[] | null> | null>(null);
@@ -930,6 +933,8 @@ export function App() {
   // Settings). The planner stays in the page, hidden,
   // so nothing it holds is lost (OWNER-DECISIONS 312).
   const [view, setView] = useState<PanelView>("planner");
+  // Reach's From/To, how several points combine and Calm streets (ReachSheet.tsx); a link with `reach=` opens Reach.
+  const [reachView, setReachView] = useState<ReachView>(() => reachFromHash(OPENED_HASH) ?? REACH_DEFAULT);
   // With a route shown the points are two or three lines and "Edit points" (the mockup's route view);
   // this opens the search, Add point and the rest again.
   const [, setEditPoints] = useState(false);
@@ -1811,9 +1816,12 @@ export function App() {
   const favoriteRides = useFavoriteRides();
   const [settingsSynced, setSettingsSynced] = useState(false);
   const [homeAsk, setHomeAsk] = useState<HomeOffer | null>(null);
-  const syncSettingsOnSignIn = async (origin: string, live: () => boolean) => {
+  // True once the account's settings were read (whether this page then took them or not); false to try again
+  // (retryUntil: a few times, then on the next focus or back online).
+  const syncSettingsOnSignIn = async (origin: string, live: () => boolean): Promise<boolean> => {
     const account = await fetchSettings(origin);
-    if (!live() || account === undefined) return;
+    if (!live()) return true;
+    if (account === undefined) return false;
     const device = deviceSettings({ preset: rideRef.current.preset, dials: rideRef.current.dials }, undefined, weightStore.current?.setting());
     const step = onSignIn(account, device);
     if (step.kind === "push-device") {
@@ -1848,9 +1856,11 @@ export function App() {
       if (!sameSettings(step.doc, device)) announce(ACCOUNT_SETTINGS_USED);
     }
     setSettingsSynced(true);
+    return true;
   };
   useEffect(() => {
     let live = true;
+    let stopSync: (() => void) | undefined;
     const origin = window.location.origin;
     void fetchMe(origin).then(async (found) => {
       if (!live) return;
@@ -1877,7 +1887,7 @@ export function App() {
         }
         return;
       }
-      void syncSettingsOnSignIn(origin, () => live);
+      stopSync = retryUntil(() => syncSettingsOnSignIn(origin, () => live), window);
       // The 311 checklist (lib/report311Log.ts): this device's and the account's, merged by entry.
       void report311Log().signIn();
       loadFavorites();
@@ -1896,6 +1906,7 @@ export function App() {
     });
     return () => {
       live = false;
+      stopSync?.();
     };
   }, []);
   // The installable app (WEB-NAV-plan.md section 8): a new version ready, and offline, said through the
@@ -3451,6 +3462,11 @@ export function App() {
   // Back from Garmin or Wahoo: Settings, where its line says what happened.
   useEffect(() => {
     if (GARMIN_RETURNED !== null || WAHOO_RETURNED !== null) openView("settings", null);
+    // A shared Reach link (lib/reach.ts): Plan, with the rings.
+    else if (reachFromHash(OPENED_HASH)) {
+      if (modeRef.current !== "plan") changeMode("plan");
+      openView("reach", null);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on arrival
   }, []);
   // Back (or Escape): to the sheet this one was opened from, or the planner, and the focus to what opened it.
@@ -3637,6 +3653,12 @@ export function App() {
       // Nor its lead: the next ride on the same line is a new ride, under a new token and secret, so the earlier
       // link's holders do not see it (2026-10-29). Roam's leads end with Roam.
       for (const id of [...leads.current.keys()]) if (!id.startsWith("roam|")) leads.current.delete(id);
+      // Nor the line as led: the sharer's ride link ends with the ride (lib/rideGroup.ts sharedAfterRide).
+      const after = sharedAfterRide(sharedOpenNow.current);
+      if (after !== sharedOpenNow.current) {
+        sharedOpenNow.current = after;
+        setSharedOpen(after);
+      }
       // A Group or Mass Ride secret this page made is made again: last ride's link reads nothing on the next. One from a link
       // opened here is the link's, the ride its sender leads.
       if (groupSecretOwn.current) setGroupSecret(newRideSecret());
@@ -4482,7 +4504,15 @@ export function App() {
   // The ride just ended, kept for Undo while its summary shows (the owner, 2026-10-20: "When ending a ride, perhaps
   // summary stats rather than programming that ride again"). In memory only, as the ride itself is.
   // `from`: the plan End ride left starting where the rider was (Plan, part way), so Undo takes that edit back too.
-  const endedRide = useRef<{ start: NonNullable<typeof rideStart>; from: LonLat[] | null; stats: RideStats } | null>(null);
+  // `shared` and `linkSent`: the line the ride was shared as and the link it went out with, which the ride's end lets
+  // go (sharedAfterRide) and Undo puts back, so the ride is led again under the same key.
+  const endedRide = useRef<{
+    start: NonNullable<typeof rideStart>;
+    from: LonLat[] | null;
+    stats: RideStats;
+    shared: typeof sharedOpen;
+    linkSent: typeof rideLinkSent.current;
+  } | null>(null);
   // Undo's ride carries on from the ended ride's figures (RideMode's resumeStats); a new Start begins from nought.
   const [resumeStats, setResumeStats] = useState<RideStats | null>(null);
   // `destination`: the ride's end, not a loop's (its start), for the summary's Save to Favorites (Stephen 2026-10-26).
@@ -4518,7 +4548,7 @@ export function App() {
       setFromHere((f) => [...f, from![0]]);
     }
     const note = from ? RIDE_ENDED_FROM_HERE_NOTE : endedIn !== "go" && after === "no-fix" ? RIDE_ENDED_NO_FIX_NOTE : null;
-    endedRide.current = start ? { start, from, stats } : null;
+    endedRide.current = start ? { start, from, stats, shared: sharedOpenNow.current, linkSent: rideLinkSent.current } : null;
     setRiding(false);
     setRideStart(null);
     setRideView(null);
@@ -4637,6 +4667,15 @@ export function App() {
     startRideGesture(ridePrefs);
     setResumeStats(ended.stats);
     setRideStart(ended.start);
+    // The same shared ride, led under the same key: those following keep their leader.
+    if (ended.shared) {
+      sharedOpenNow.current = ended.shared;
+      setSharedOpen(ended.shared);
+    }
+    if (ended.linkSent) {
+      rideLinkSent.current = ended.linkSent;
+      if (ended.linkSent.id && ended.linkSent.lead) leads.current.set(ended.linkSent.id, ended.linkSent.lead);
+    }
     if (ended.start.kept) keepLeftRide(ended.start, VIA_MARKS, Date.now());
     setFollow(true);
     setRideView(null);
@@ -6208,11 +6247,12 @@ export function App() {
 
   // Units (lib/units.ts) reload the page: signed in, the account gets the new choice first, so the sign-in on the
   // reload does not put the old one back. Before the account's settings are read, nothing is saved (it would replace
-  // them): not saved, try again. Settings and a ride's settings popup both use it.
+  // them): the account is read then and saved with only the units changed, or, still unreadable, the choice stays on
+  // this device (saveUnitsUnsynced) while the sign-in read is tried again. Settings and a ride's settings popup both use it.
   const saveSettingsNow = !me.signed_in
     ? undefined
     : !settingsSynced
-      ? async () => false
+      ? () => saveUnitsUnsynced(window.location.origin, deviceSettings({ preset, dials }, undefined, weightStore.current?.setting()).units)
       : async () => {
           const doc = deviceSettings({ preset, dials }, undefined, weightStore.current?.setting());
           const saved = await saveSettings(window.location.origin, doc);
@@ -6642,7 +6682,7 @@ export function App() {
           )}
         </div>
       )}
-      {!riding && !goMode && <PlanMapChips onFood={(chip) => openView("food", chip)} onWater={(chip) => openView("nearest", chip)} onPlaces={openPlaces} />}
+      {!riding && !goMode && <PlanMapChips onFood={(chip) => openView("food", chip)} onWater={(chip) => openView("nearest", chip)} onPlaces={openPlaces} onReach={(chip) => openView("reach", chip)} />}
       {/* In Plan, Undo and Redo are in the plan's bar at the top of the map instead. */}
       {!riding && narrow && !planFirst && !goMode && (can.undo || can.redo) && (
         // On a phone the sheet may be hidden while the rider edits the map,
@@ -7020,6 +7060,20 @@ export function App() {
                 announcements: { level: announceLevel(announceChoice, mode), choose: chooseAnnounce },
                 signInAvailable: me.sign_in,
               }}
+            />
+            <ReachSheet
+              open={view === "reach" && !goMode && !riding}
+              onBack={sheetNav.back}
+              backLabel={sheetNav.backLabel("reach")}
+              getMap={getMap}
+              points={points}
+              preset={preset}
+              dials={dials}
+              runPaceKmh={paceKmh(runPace)}
+              view={reachView}
+              onView={setReachView}
+              home={myGo.home?.point ?? null}
+              onRideSettings={(opener) => openView("ride", opener, true)}
             />
             <NearestSheet nav={sheetNav}>
               <NearestFinder {...nearestProps} folded={false} />
