@@ -8,6 +8,7 @@
  "advisory": "https://purplelinemd.com/media/z3somshb/notice-dixon-closure-072426.pdf",
  "posted": "2026-07-24",
  "road": "Bonifant St, Ramsey Ave to Georgia Ave",
+ "on_foot": false,
  "reason": "Closed to traffic for Purple Line track work, Dixon Ave junction included. Pedestrian access is kept round the work zone.",
  "first_day": "2026-07-24",
  "last_day": "2027-03-31",

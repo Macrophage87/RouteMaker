@@ -25,6 +25,7 @@
 import type { LonLat } from "./geo.ts";
 import type { Place } from "./geocode.ts";
 import { parsePlusCode } from "./plusCode.ts";
+import { t } from "./i18n.ts";
 
 /**
  * `typed`: the point was typed rather than read from a link: coordinates, or a plus code (its `name`); the place is
@@ -294,9 +295,9 @@ export function sharedPlace(point: LonLat, name?: string, typed?: "coordinates" 
   return { name: name ?? "Shared location", label, lon: point[0], lat: point[1], kind: "shared" };
 }
 
-export const SHARED_OPENING = "Opening the shared link…";
-export const SHARED_UNREADABLE = "That link has no place RouteMaker can read. Type the place instead.";
-export const SHARED_FAILED = "That link could not be opened just now; try again shortly.";
+export const SHARED_OPENING = t("Opening the shared link…");
+export const SHARED_UNREADABLE = t("That link has no place RouteMaker can read. Type the place instead.");
+export const SHARED_FAILED = t("That link could not be opened just now; try again shortly.");
 
 type FetchLike = (url: string, init: RequestInit) => Promise<{ ok: boolean; json(): Promise<unknown> }>;
 

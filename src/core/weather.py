@@ -41,6 +41,8 @@ from collections.abc import Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 
+from django.conf import settings
+
 logger = logging.getLogger(__name__)
 
 USER_AGENT = "RouteMaker (https://github.com/Macrophage87/RouteMaker, 1)"
@@ -439,3 +441,11 @@ def points_problem(points: object) -> str | None:
         ):
             return "Each point is [lon, lat, seconds until there], seconds 0 to 172800."
     return None
+
+
+def inside_coverage(points: list) -> list:
+    """The points inside the area routes are planned in (`settings.COVERAGE_BBOX`). A point
+    past its edge (a roaming rider over the line) is left unasked: the check says the alerts
+    and rain unchecked rather than refusing the points that are inside."""
+    west, south, east, north = settings.COVERAGE_BBOX
+    return [p for p in points if west <= p[0] <= east and south <= p[1] <= north]
