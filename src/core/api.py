@@ -2776,6 +2776,11 @@ class TransitStopOut(Schema):
     )
 
 
+class TransitTowardOut(Schema):
+    line: str = Field(description='"Orange Line".')
+    toward: str = Field(description='Where it is signed to, its last stop: "New Carrollton".')
+
+
 class TransitStepOut(Schema):
     mode: Literal[
         "ride",
@@ -2843,6 +2848,18 @@ class TransitStepOut(Schema):
     toward: str | None = Field(
         default=None,
         description='A transit step\'s way, by its last stop: "Shady Grove". Null off transit.',
+    )
+    towards: list[TransitTowardOut] | None = Field(
+        default=None,
+        description=(
+            "Every train or bus that makes a transit step, by line and where it is signed to"
+            ' ("Orange Line" to "New Carrollton", "Silver Line" to "Downtown Largo"), from the'
+            " services running then. Null off transit."
+        ),
+    )
+    every_min: int | None = Field(
+        default=None,
+        description="A frequent transit step's headway, minutes; null: it runs by the timetable.",
     )
     turns: list[WalkTurnOut] | None = Field(
         default=None,
@@ -4810,6 +4827,9 @@ class LineTimeOut(Schema):
 class LiveTrainOut(Schema):
     line: str = Field(description='"Red Line".')
     toward: str = Field(description="The train's last stop.")
+    end: list[float] | None = Field(
+        default=None, description="WMATA's [lon, lat] for that last stop; null with no code."
+    )
     minutes: list[int] = Field(description="Minutes until the next trains that way (0: arriving).")
     when: str = Field(description='"3 min, 11 min"; "arriving", "boarding".')
 
