@@ -2979,7 +2979,7 @@ export function RideMode({
       const notes = sheet ? Math.max(0, sheetH - sheetChrome.current - graph) : 0;
       const wide = shown ? figure.clientWidth : Math.min(AHEAD_MAX_W, middle.clientWidth - SHEET_SIDES_PX);
       // A few px each way before the answer changes, so a card a line taller for one fix does not flip it.
-      const least = aheadLeastPx(wide, textSize === "large");
+      const least = aheadLeastPx(wide, textSize === "large", aheadDrawn.includes("stress"));
       setAheadFits((was) => (was ? room >= least - AHEAD_HYSTERESIS_PX : room >= least + AHEAD_HYSTERESIS_PX));
       // Never below 0, and no floor: the buttons' 44 px come first. Within 2 px is the same: the graph's own rounding
       // does not start another round.
@@ -2998,7 +2998,7 @@ export function RideMode({
       watch.disconnect();
       buttons.disconnect();
     };
-  }, [aheadWanted, sheetShown, textSize]);
+  }, [aheadWanted, sheetShown, textSize, aheadDrawn]);
   // Measured again at each render, before it is painted: a note that comes into the panel or goes (a weak GPS fix
   // under trees) changes the graphs' room at once, not a frame later from the ResizeObserver, which drew them in
   // three steps (the review of #928). Nothing is set where nothing changed, so it does not render again.
