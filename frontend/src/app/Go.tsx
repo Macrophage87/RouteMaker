@@ -7,6 +7,7 @@
  *
  * Plan keeps the full panel; its map has Eat, Water and Places to see chips (PlanMapChips), where Go has place chips.
  */
+import { SHEET_TITLES } from "../lib/sidebar.ts";
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { Icon } from "../Icon.tsx";
 import { IosLocationHelp } from "../IosLocationHelp.tsx";
@@ -883,10 +884,13 @@ export function PlanMapChips({
   onFood,
   onWater,
   onPlaces,
+  onReach,
 }: {
   onFood: (chip: HTMLButtonElement) => void;
   onWater: (chip: HTMLButtonElement) => void;
   onPlaces: (chip: HTMLButtonElement) => void;
+  /** Reach (Stephen, 2026-11-04): where you can be in 15, 30, 45 and 60 minutes. Plan only. */
+  onReach?: (chip: HTMLButtonElement) => void;
 }) {
   const [open, setOpen] = useState(false);
   const rowId = useId();
@@ -927,6 +931,12 @@ export function PlanMapChips({
           <Icon name="camera" size={18} />
           {t("Places to see")}
         </button>
+        {onReach && (
+          <button type="button" className="chip map-chip" onClick={pick(onReach)}>
+            <Icon name="clock" size={18} />
+            {SHEET_TITLES.reach}
+          </button>
+        )}
       </div>
     </div>
   );

@@ -8,6 +8,7 @@
  * names the pattern in words, so no kind is told apart by colour alone.
  */
 import { createElement as h, type ReactElement } from "react";
+import { t } from "./i18n.ts";
 import {
   FEDERAL_KINDS,
   FEDERAL_NOTE,
@@ -98,7 +99,7 @@ export function FederalLegend(): ReactElement {
 
 /** The heading of the list of the plan's points on federal land. */
 export const FEDERAL_POINTS_HEADING = "Your points on federal land:";
-export const FEDERAL_POINTS_NONE = "None of your points is on federal land.";
+export const FEDERAL_POINTS_NONE = t("None of your points is on federal land.");
 
 /** "Stop 2 – The Mall (National Park Service)"; "Stop 2 – next to The Mall (...)" within 20 m of its edge. */
 export function federalPointText(point: FederalPoint, name: string): string {

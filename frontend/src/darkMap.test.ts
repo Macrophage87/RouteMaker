@@ -723,3 +723,18 @@ test("the map's own controls on the dark map: every word 4.5:1 or more on the da
   }
   assert.ok(dark.some((r) => /filter:\s*invert\(1\)/.test(r.declarations)));
 });
+
+test("route numbers in their shields: legible on each map's shield (7:1 or more) and quieter than the street names", () => {
+  // The owner, 2026-11-04: "In dark mode all the route numbers are hard to see" ... "they aren't really that
+  // important". The shields' fill, measured in the pinned sprites (scripts/fetch_basemap.sh ASSETS_COMMIT,
+  // sprites/v4/<flavour>, generic_shield and US:I): white on the light map, black on the dark.
+  const shieldFill = { light: "#ffffff", dark: "#000000" } as const;
+  for (const flavour of ["light", "dark"] as const) {
+    const shields = (basemapLayers(flavour, false) as Painted[]).find((l) => l.id === "roads_shields")!;
+    const colour = shields.paint?.["text-color"] as string;
+    const ratio = contrastRatio(colour, shieldFill[flavour]);
+    assert.ok(ratio >= 7, `${flavour}: ${colour} on ${shieldFill[flavour]} is ${ratio.toFixed(2)}:1`);
+    const street = flavour === "dark" ? contrastRatio(ROAD_LABEL.darkColor, ROAD_LABEL.darkHalo) : contrastRatio(ROAD_LABEL.color, ROAD_LABEL.halo);
+    assert.ok(ratio < street, `${flavour}: the route number (${ratio.toFixed(2)}:1) is quieter than a street name (${street.toFixed(2)}:1)`);
+  }
+});
