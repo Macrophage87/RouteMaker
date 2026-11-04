@@ -74,6 +74,13 @@ export interface RideTrip {
   departure: TransitDeparture | null;
   /** The Metro or Metrobus boarding the finish leads to: where its next train or bus is, while waiting (lib/nextVehicle.ts). */
   boarding?: NextVehicleAsk | null;
+  /**
+   * On the boarding card, the share bike's dock before the train ("Dock at X."); the way into the station is not shown
+   * (Stephen, 2026-11-03: "Not all stations require an elevator, some you can just walk through").
+   */
+  boardingNote?: string | null;
+  /** The plan's step of the first train or bus after the line, by its place; null with none (the departure is its own where `step` matches). */
+  boardStep?: number | null;
   rest: RideRest | null;
   /** The line is ridden on a share bike (Ride mode's dock button and undocked time, lib/rideDock.ts). */
   shareBike?: boolean;
@@ -130,10 +137,15 @@ export function rideMaxM(hidden: boolean = ridesHidden()): number {
   return hidden ? Infinity : RIDE_MAX_M;
 }
 
-/** Walk, Walk + 🚆🚌 and Run (2026-11-02): the line is a walk (a run), the trip's first, followed on foot. */
+/**
+ * Walk, Walk + 🚆🚌 and Run (2026-11-02): the line is a walk (a run), the trip's first, followed on foot. So is a
+ * Bikeshare + 🚶🚆🚌 option that takes no bike.
+ */
 export function walksLine(route: Pick<RouteResponse, "transit">): boolean {
   const plan = transitOf(route);
-  if (!plan || (plan.mode !== "walk" && plan.mode !== "walk-transit" && plan.mode !== "run")) return false;
+  // Bikeshare + 🚶🚆🚌's option with no bike (walk, train, walk) is walked as Walk + 🚆🚌's is (Stephen, 2026-11-03:
+  // "When you do bikeshare + transit, it doesn't even give an option to start").
+  if (!plan || (plan.mode !== "walk" && plan.mode !== "walk-transit" && plan.mode !== "run" && plan.mode !== "bikeshare-transit")) return false;
   const index = lineIndex(plan);
   return index >= 0 && plan.steps[index].mode === "walk";
 }
@@ -286,31 +298,37 @@ function transitTrip(route: RouteResponse, destination: LonLat | null): RideTrip
   const words = [dock, ...steps.slice(line + 1, upTo + 1).map((s) => withoutSpare(s.text))].filter(Boolean).join(" ");
   const finish = words ? same(words) : null;
   const departure = plan.departure && plan.departure.step > line ? plan.departure : null;
-  // After the transit: the last riding leg, if it is not the line itself.
-  let lastTransit = -1;
-  steps.forEach((s, i) => {
-    if (isTransitStep(s)) lastTransit = i;
-  });
+  // After the transit: the next riding leg after it (where the followed walks and train end, lib/onward.ts), if it is
+  // not the line itself. Where more transit follows that leg (a ride between Metro and MARC), the rest is the trip
+  // again from where the rider is, on the plan's own ride type: its line is that ride, and the train after it is
+  // followed in turn (Stephen, 2026-11-03: "It should start the transit phase", "It should let you switch between modes").
+  const firstTransit = steps.findIndex((s, i) => i > line && isTransitStep(s));
   let rest: RideRest | null = null;
-  const restAt = lastTransit < 0 ? -1 : steps.findIndex((s, i) => i > lastTransit && isRiding(s));
+  const restAt = firstTransit < 0 ? -1 : steps.findIndex((s, i) => i > firstTransit && isRiding(s));
   const to = destination;
   if (restAt > line && to) {
     const step = steps[restAt];
-    const off = steps[lastTransit];
+    let offAt = firstTransit;
+    steps.forEach((s, i) => {
+      if (i < restAt && isTransitStep(s)) offAt = i;
+    });
+    const off = steps[offAt];
     const alight = off.coordinates.length > 0 ? off.coordinates[off.coordinates.length - 1] : null;
+    const moreTransit = steps.some((s, i) => i > restAt && isTransitStep(s));
     rest = {
       text: step.text,
       alight,
       alightName: off.to,
       from: step.coordinates[0] ?? alight,
       to,
-      preset: step.mode === "bikeshare" ? "bikeshare" : "default",
-      metres: step.coordinates.length >= 2 ? pathLengthM(step.coordinates) : null,
+      preset: moreTransit ? (plan.mode as PresetId) : step.mode === "bikeshare" ? "bikeshare" : "default",
+      // The trip again is its own transit plan: only its line is ridden, whatever the length to the destination.
+      metres: moreTransit ? null : step.coordinates.length >= 2 ? pathLengthM(step.coordinates) : null,
     };
   }
   const boarding = boardAt > line ? askOf(steps[boardAt]) : null;
   const onFoot = walksLine(route) ? { turns: lineStep.turns ?? [] } : undefined;
-  return { approach, finish, departure, boarding, rest, shareBike: lineStep.mode === "bikeshare", onward: onwardOf(steps, line), ...(onFoot ? { onFoot } : {}) };
+  return { approach, finish, departure, boarding, boardStep: boardAt > line ? boardAt : null, boardingNote: boardAt > line && dock ? dock : null, rest, shareBike: lineStep.mode === "bikeshare", onward: onwardOf(steps, line), ...(onFoot ? { onFoot } : {}) };
 }
 
 /** A walk step as a line with its turns, where it was routed. */
