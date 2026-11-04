@@ -393,7 +393,7 @@ a route you can ask to keep the points where they are.</p>
 
 </div></details>
 <h2 id="tools">What an assistant can do</h2>
-<p>The assistant has fourteen tools, and instance admins get one more on the web. Only <code>save_route</code> adds to My routes, and only when you ask it to save; an admin's <code>draft_route_post</code> writes a draft post that only admins see.</p>
+<p>The assistant has sixteen tools, and instance admins get one more on the web. Only <code>save_route</code> adds to My routes, and only when you ask it to save; an admin's <code>draft_route_post</code> writes a draft post that only admins see.</p>
 <details class="more"><summary>More: What an assistant can do</summary>
 <div class="more-body">
 
@@ -415,6 +415,16 @@ busy miles between stops (for food, water or an overnight stop), and where the s
 cobbles and rails are. It can time the route at your own pace, leave out a road, follow a line you already have, and
 answer the other routes its search found at the same settings, each as its own draft with its extra miles and
 minutes against the chosen route.</td></tr>
+<tr><th scope="row"><code>reach</code></th><td>Says where you can get to in 15, 30, 45 and 60 minutes (or other
+minutes, 5 to 60) from or to one to five places, by a bike ride type, Walk or Run: each ring's area and the Metro
+stations, bike racks, places to eat and places to see inside, by default the same at Low-stress too, and a link that
+opens the rings in Plan's Reach. Several places combine as any, all (somewhere every one reaches, such as a place to
+meet) or each. The transit ride types have no rings yet.</td></tr>
+<tr><th scope="row"><code>compare_places</code></th><td>Compares 2 to 6 places to start from, such as a hotel or an
+office, against 1 to 3 places you ride to, each with an optional limit in minutes: riding minutes and miles to each,
+at your traffic setting and at Low-stress, and whether each limit is met, best first, each with a link to its
+rings. The times are the router's, not full routes; plan_route plans the one you choose. Bike ride types
+only.</td></tr>
 <tr><th scope="row"><code>revise_route</code></th><td>Changes a draft (add, move or remove points; another ride type or setting; roads to avoid, by name, by a stretch of miles or as a line) and plans it again as a new draft. The old one stays. Its answer gives each figure before and after (miles, minutes, climb, miles on stress level 3 and up and on 4 and up, unpaved miles, junctions and junction waits), so the assistant can tell whether a change helped.</td></tr>
 <tr><th scope="row"><code>route_segments</code></th><td>Reads a draft stretch by stretch: miles, road, stress level, bike facility, surface, average and steepest grade, climb, one-way and minutes, plus every higher- and very-high-stress junction with its reason, steep grades and hazards. A long ride is read a page at a time.</td></tr>
 <tr><th scope="row"><code>ride_conditions</code></th><td>Says whether it is light or dark at the start and the finish of a ride at a given time (by civil dawn and dusk, as the app's Dawn and Dusk), when you arrive, and, within 48 hours, the National Weather Service alerts along the route and where rain is first forecast, through the site's own weather check (points rounded, nothing kept).</td></tr>
