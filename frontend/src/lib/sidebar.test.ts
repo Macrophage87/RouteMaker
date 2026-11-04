@@ -734,7 +734,7 @@ test("the bottom bar is Plan, Layers, Reports, Save & load and Settings: real bu
 
 test("a sheet: Back is a labelled button, its heading takes the focus, Escape goes back", () => {
   // One name per thing (P12): Save & load as on its buttons, and each place sheet as its chip says it.
-  assert.deepEqual(Object.values(SHEET_TITLES), ["Layers", "Reports", "Review", "Save & load", "Settings", "Nearest", "Eat", "Ride", "Repair", "Places to see", "Edit route"]);
+  assert.deepEqual(Object.values(SHEET_TITLES), ["Layers", "Reports", "Review", "Save & load", "Settings", "Nearest", "Eat", "Ride", "Repair", "Places to see", "Edit route", "Reach"]);
   assert.equal(SHEET_TITLES.gpx, SAVE_LOAD);
   // In visible words, not only an arrow, so the name and the label are one (OWNER-DECISIONS 393).
   assert.equal(BACK_LABEL, "Back to planner");
