@@ -131,6 +131,9 @@ class RunAsk:
     dark: bool = False
     loop: bool = False
     target_m: float | None = None
+    # The closures and the roads the rider marked closed that the run goes round, as rings
+    # of [lon, lat] (`core.workzones.foot_zones`): the router's `exclude_polygons`.
+    exclude_polygons: tuple = ()
 
 
 @dataclass
@@ -316,6 +319,8 @@ def _payload(points: Sequence[Sequence[float]], ask: RunAsk, alternates: int) ->
         "costing_options": costing_options(ask),
         "units": "kilometers",
     }
+    if ask.exclude_polygons:
+        payload["exclude_polygons"] = [[list(p) for p in ring] for ring in ask.exclude_polygons]
     # The maneuvers (turn by turn), kept off stairs where the rider asked (`walk_turns`).
     payload = walk_turns.directions(payload)
     if alternates:

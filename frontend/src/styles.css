@@ -4689,14 +4689,35 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
   stroke-width: 2.5;
 }
 
+/* The bars' edge is the muted text colour, 3:1 or more on the panel in every theme (WCAG 1.4.11), so a pale bar (LTS 1's
+   #d2eafc in the accessibility palette, 1.24:1 on white) still shows where it starts and ends; the 1.5 width keeps
+   neighbouring bars apart (the v0.19.0 release review for the dark theme, the 2026-11-04 review for the light one). */
 .ride-ahead-bar {
-  stroke: var(--bg);
+  stroke: var(--text-muted);
   stroke-width: 1.5;
 }
 
 .ride-ahead-plot .ride-ahead-level {
   font-size: 14px;
   font-weight: 700;
+}
+
+.ride-ahead-plot .ride-ahead-ribbon-name {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.ride-ahead-ribbon-turn {
+  stroke: var(--text);
+  stroke-width: 2;
+}
+
+.ride-ahead-rail-edge {
+  stroke: transparent;
+}
+
+:root.theme-dark .ride-ahead-rail-edge {
+  stroke: var(--text-muted);
 }
 
 .ride-ahead-ground {
@@ -4738,12 +4759,6 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
 .ride-ahead-dot {
   fill: #1b1e24;
   fill-opacity: 0.75;
-}
-
-/* In the dark theme the bars' edge is light, so the darkest bar (LTS 1's purple, 1.5:1 on the dark panel) still has an
-   outline of 3:1 or more (the v0.19.0 release review). */
-:root.theme-dark .ride-ahead-bar {
-  stroke: var(--text-muted);
 }
 
 .ride-ahead-narrowest path {
@@ -4815,6 +4830,7 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
   }
 
   .ride-ahead-axis line,
+  .ride-ahead-ribbon-turn,
   .ride-ahead-line,
   .ride-ahead-corker line,
   .ride-ahead-plot .ride-ahead-guide,
@@ -4829,6 +4845,10 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
   .ride-ahead-arrow:not(.ride-ahead-arrow-orange, .ride-ahead-arrow-red) .ride-ahead-arrow-head,
   .ride-ahead-narrowest path {
     fill: CanvasText;
+  }
+
+  .ride-ahead-rail-edge {
+    stroke: CanvasText;
   }
 
   .ride-ahead-ground {
@@ -10858,3 +10878,14 @@ summary.closure-notices-heading {
   margin: 4px 0 0;
   padding-inline-start: 20px;
 }
+
+/* Reach (ReachSheet.tsx, Stephen 2026-11-04): the answer first, then three short choices, then the rings behind a fold. */
+.reach-sheet { display: flex; flex-direction: column; gap: 0.6rem; padding: 0 0.25rem 1rem; }
+.reach-answer { font-size: 1.05rem; font-weight: 600; margin: 0.25rem 0 0; min-height: 1.5em; }
+.reach-choice { border: 0; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0.25rem 1rem; }
+.reach-choice legend { font-weight: 600; padding: 0; margin-bottom: 0.25rem; }
+.reach-choice label, .reach-calm { display: inline-flex; align-items: center; gap: 0.35rem; min-height: 44px; }
+.reach-ride { margin: 0; }
+.reach-sheet .hint { margin: 0; }
+.reach-rings ul { margin: 0.25rem 0; padding-left: 1.25rem; }
+.reach-rings h3 { font-size: 1rem; margin: 0.5rem 0 0; }

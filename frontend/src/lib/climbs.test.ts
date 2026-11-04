@@ -381,5 +381,5 @@ test("climbs added before the trail names are moved under them once the names co
   assert.equal(climbsUnder(map, "trail-name"), true);
   assert.deepEqual(order, ["climbs-line", CLIMBS_MARKER_LAYER, "trail-name", "route-casing"]);
   const view = readFileSync(new URL("../MapView.tsx", import.meta.url), "utf8");
-  assert.match(view, /if \(added\) climbsUnder\(map, TRAIL_LABEL_LAYER_ID\);/);
+  assert.match(view, /if \(added\) climbsUnder\(map, lowestName\(map\)\);/);
 });

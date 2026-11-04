@@ -379,7 +379,7 @@ test("the closed stretches' lines go under the street names, so a name reads ove
   for (const id of CLOSURE_LINE_LAYERS) assert.match(view, new RegExp(`id: "${id}"`));
   assert.match(view, /if \(added\) closuresUnder\(map, labelHomes\.current\.size > 0\);/, "when the trail names come");
   assert.match(view, /closuresUnder\(map, labelHomes\.current\.size > 0\);\n\s+\/\/ Under the route \(before its casing\)/, "when the lines are added");
-  assert.match(view, /climbsUnder\(map, TRAIL_LABEL_LAYER_ID\);\n\s+closuresUnder\(map, false\);/, "after a ride, with the names home");
+  assert.match(view, /climbsUnder\(map, lowestName\(map\)\);\n\s+closuresUnder\(map, false\);/, "after a ride, with the names home");
 });
 
 test("the Mass Ride map's lines stay under the closures, though they come over the trail names", () => {
