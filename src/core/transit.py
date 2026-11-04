@@ -1590,8 +1590,16 @@ class RoutingServices:
         per_call_s: float = CANDIDATE_CALL_S,
         costing: dict | None = None,
         when: str | None = None,
+        walk_exclude: list | None = None,
+        walk_keep: list | None = None,
     ) -> None:
         self._until = until
+        # A walk's way round closures (Walk, Walk + transit; `core.workzones.foot_zones`): the
+        # rings left out of each walk (`exclude_polygons`). Where none is found round them, the
+        # walk is asked again with only `walk_keep` (the roads the rider marked closed) left
+        # out, and the answer warns of the closures it walks through.
+        self._walk_exclude = list(walk_exclude or [])
+        self._walk_keep = list(walk_keep or [])
         # The ride time setting the busy roads are read at; None: rides are not traced.
         self._when = when
         self._preset = preset_name
@@ -1636,8 +1644,25 @@ class RoutingServices:
         if costing == "pedestrian":
             # A walk's turns come with it, for turn-by-turn on foot (2026-11-02).
             payload = walk_turns.directions(payload)
+            if self._walk_exclude:
+                payload["exclude_polygons"] = self._walk_exclude
         try:
-            answer = routing._call("standard", "route", payload, deadline)
+            try:
+                answer = routing._call("standard", "route", payload, deadline)
+            except routing.RouterRefused:
+                # Any refusal (no path, or a spot inside a closure strip, 170/171): try again
+                # without the closures, as a run does.
+                if "exclude_polygons" not in payload or len(self._walk_exclude) <= len(
+                    self._walk_keep
+                ):
+                    raise
+                # No walk round the closures: through them (warned of), as a ride goes.
+                payload = {
+                    key: value for key, value in payload.items() if key != "exclude_polygons"
+                }
+                if self._walk_keep:
+                    payload["exclude_polygons"] = self._walk_keep
+                answer = routing._call("standard", "route", payload, deadline)
         except (routing.RouterRefused, routing.RouterUnavailable, routing.DeadlineExceeded):
             return None
         finally:

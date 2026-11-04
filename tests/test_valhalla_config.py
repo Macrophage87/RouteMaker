@@ -93,6 +93,26 @@ def test_exclude_polygon_limit_is_raised_above_the_default(config: dict) -> None
     assert config["service_limits"]["max_exclude_polygons_length"] > 10_000
 
 
+def test_the_planner_fits_closures_to_the_routers_own_polygon_limits(config: dict) -> None:
+    """The planner fits closures, the rider's closed roads and the dirt-trail strips to these
+    limits and warns of the rest. Below them the router refuses the request; above them
+    closures it could route round are only warned of."""
+    from routemaker import workzones
+
+    limits = config["service_limits"]
+    assert limits["max_exclude_polygons_vertices"] == workzones.MAX_VERTICES
+    assert limits["max_exclude_polygons_length"] == workzones.MAX_PERIMETER_M
+
+
+def test_a_dozen_curved_closures_fit_the_routers_polygon_budget(config: dict) -> None:
+    """A closure on a curved road keeps its curve, a ring of up to 25 vertices: upstream's
+    default of 100 vertices took about four, and the rest were only warned of."""
+    from routemaker import workzones
+
+    longest_ring = 2 * workzones.MAX_LINE_POINTS + 1
+    assert config["service_limits"]["max_exclude_polygons_vertices"] >= 12 * longest_ring
+
+
 def test_alternates_are_available(config: dict) -> None:
     """Layer 4 candidate generation uses per-leg alternates."""
     assert config["service_limits"]["max_alternates"] >= 2

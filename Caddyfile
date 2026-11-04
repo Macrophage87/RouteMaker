@@ -166,7 +166,8 @@
 	# TLS-terminating proxy {scheme} is http and every https page is refused.
 	#
 	# The per-IP range-request limit PLAN asks for is NOT here: the stock
-	# caddy image (2.8.4, `caddy list-modules`) carries no rate-limit module.
+	# caddy image carries no rate-limit module (`caddy list-modules` on 2.8.4;
+	# rate limiting is still a third-party module in 2.10).
 	# Adding one means building Caddy with a third-party module (for example
 	# mholt/caddy-ratelimit via xcaddy), which is recorded as an owner item.
 	handle_path /basemap/* {

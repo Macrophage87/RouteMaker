@@ -112,6 +112,8 @@ import {
   type RideState,
   type Verbosity,
 } from "./navigate.ts";
+import { stopsAhead as stopsAheadOf } from "./navigate.ts";
+import { ViaMarks, plannedStopNumbers, viaIndices } from "./pointKinds.ts";
 import { parseTrailMiles } from "./trailMiles.ts";
 import { loadLanguage, setLanguageForTest } from "./i18n.ts";
 
@@ -1223,6 +1225,55 @@ test("a via point is no cue and no number, and a passed one is dropped from the 
   assert.deepEqual(replanPoints(model, 700, at(700, 50), plan, false), [at(700, 50), plan[2], plan[3]]);
   assert.deepEqual(replanPoints(model, 100, at(100, 50), plan, false), [at(100, 50), plan[1], plan[2], plan[3]]);
   assert.deepEqual(replanPoints(model, 1200, at(1200, 50), plan, false), [at(1200, 50), plan[3]]);
+});
+
+test("after a re-route the stops left keep the plan's numbers: the plan's stop 3 is still stop 3 (2026-11-04 review)", () => {
+  const marks = new ViaMarks();
+  // The plan: start, stops 1-4, end. Off route after stop 2: the re-plan asks for [here, stop 3, stop 4, end].
+  const plan: LonLat[] = [at(0, 0), at(200, 0), at(400, 0), at(600, 0), at(800, 0), at(1000, 0)];
+  const here = at(450, 40);
+  const replanned = [here, plan[3], plan[4], plan[5]];
+  const coordinates = [here, at(600, 0), at(800, 0), at(1000, 0)];
+  const description: DescriptionEntry[] = [
+    stretch(0, 160, "a"),
+    { ...stretch(160, 160, "Stop 1."), kind: "via", via: 1 },
+    stretch(160, 360, "b"),
+    { ...stretch(360, 360, "Stop 2."), kind: "via", via: 2 },
+    stretch(360, 560, "c"),
+  ];
+  const route = { ...lRoute(), geometry: { type: "LineString" as const, coordinates }, distance_m: 560, leg_ends: [1, 2, 3], description };
+  const numbers = plannedStopNumbers(replanned, plan, marks.isVia);
+  const model = rideModel(route, viaIndices(replanned, marks.isVia), new Map(), numbers);
+  const stops = model.cues.filter((c) => c.kind === "stop");
+  assert.deepEqual(stops.map((c) => [c.text, c.stop]), [["Stop 3.", 3], ["Stop 4.", 4]]);
+  // The map's marks and Already done? still find each stop's own point.
+  assert.deepEqual(stopsAheadOf(model, 0, replanned).map(({ point, number }) => [point, number]), [[plan[3], 3], [plan[4], 4]]);
+  // The plan as it began: the numbers are its own.
+  assert.deepEqual([...plannedStopNumbers(plan, plan, marks.isVia)].slice(0, 4), [[1, 1], [2, 2], [3, 3], [4, 4]]);
+  // Ride builds every model, the re-routes' included, with the numbers of the plan it began with.
+  const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
+  assert.match(ride, /rideModel\(r, viaIndices\(points, VIA_MARKS\.isVia\), stopNames\([^)]*\), plannedStopNumbers\(points, firstPlan\.current, VIA_MARKS\.isVia\)\)/);
+});
+
+test("after a re-route, with via points in the plan, stops keep the numbers counted among stops only", () => {
+  const marks = new ViaMarks();
+  // Start, via, stop 1, via, stop 2, end. Past stop 1: [here, via, stop 2, end].
+  const plan: LonLat[] = [at(0, 0), marks.via(at(200, 0)), at(400, 0), marks.via(at(600, 0)), at(800, 0), at(1000, 0)];
+  const replanned = [at(500, 40), plan[3], plan[4], plan[5]];
+  const coordinates = [replanned[0], at(600, 0), at(800, 0), at(1000, 0)];
+  const description: DescriptionEntry[] = [
+    stretch(0, 160, "a"),
+    { ...stretch(160, 160, "Via."), kind: "via", via: 1 },
+    stretch(160, 360, "b"),
+    { ...stretch(360, 360, "Stop."), kind: "via", via: 2 },
+    stretch(360, 560, "c"),
+  ];
+  const route = { ...lRoute(), geometry: { type: "LineString" as const, coordinates }, distance_m: 560, leg_ends: [1, 2, 3], description };
+  const model = rideModel(route, viaIndices(replanned, marks.isVia), new Map(), plannedStopNumbers(replanned, plan, marks.isVia));
+  assert.deepEqual(model.cues.filter((c) => c.kind === "stop").map((c) => [c.text, c.stop, c.point]), [["Stop 2.", 2, 2]]);
+  // A detour's place, new to the plan, takes the next number after the plan's, so no two stops share one.
+  const detour = at(700, 30);
+  assert.equal(plannedStopNumbers([replanned[0], detour, plan[4], plan[5]], plan, marks.isVia).get(1), 4, "stop 2 and the end (3) are the plan's");
 });
 
 test("the stretch after a via point is read against the one before it; after a stop it starts afresh (audit D29)", () => {

@@ -3841,7 +3841,7 @@ and the rule assumes Caddy is the TLS edge, because behind another
 TLS-terminating proxy Caddy sees `http` and refuses every `https` page.
 
 **The per-IP range-request limit PLAN asks for is not in place**: the stock
-`caddy:2.8-alpine` image has no rate-limit module, and adding one means building
+`caddy:2.10-alpine` image has no rate-limit module, and adding one means building
 Caddy with a third-party module. Until then nothing bounds how fast one address
 can read the archive, and that is a gate on opening the site to anything beyond
 this machine (docs/DEPLOYMENT.md, "Build").
@@ -3940,7 +3940,7 @@ throwaway container of the same image (this is what `tests/test_preset_links.py`
 does), then recreate caddy alone:
 
 ```sh
-docker run --rm -e CADDY_SITE_ADDRESS=:80 -v "$PWD/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2.8-alpine@sha256:af32e97399febea808609119bb21544d0265c58a02836576e32a2d082c262c17 caddy validate --config /etc/caddy/Caddyfile
+docker run --rm -e CADDY_SITE_ADDRESS=:80 -v "$PWD/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2.10-alpine@sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d caddy validate --config /etc/caddy/Caddyfile
 docker compose up -d --no-deps --no-build --force-recreate caddy
 ```
 
@@ -5494,8 +5494,10 @@ out.
    release), `posted`, `road` (as the card says it), `reason`, `first_day`, `last_day` (whole
    days in the region's time; "about eight weeks" counted to its end, "the duration of the
    project" to the project's stated end, with `"end_estimated": true` where the day is
-   counted or guessed rather than given), `ways` (OpenStreetMap way ids) and `lines`
-   (`python scripts/ddot_advisories.py lines WAY ...` prints them).
+   counted or guessed rather than given), `on_foot` where the release says so (`true`: closed
+   to people on foot too, so Run and Walk go round it; `false`: a walkway is kept; left out
+   where it does not say, and Run and Walk only warn of it), `ways` (OpenStreetMap way ids)
+   and `lines` (`python scripts/ddot_advisories.py lines WAY ...` prints them).
 3. Add the advisory's link to `seen` either way, set `updated` to today, and ship it in the
    next release. A later advisory that extends or ends a closure changes its `last_day`. A
    file whose `updated` is more than 45 days old is labelled stale on the route ("last read
@@ -5556,10 +5558,17 @@ in `src/routemaker/deer_closures.py` and the ways they close in
 before it opens), shows it in its notices, on its map and in the connector's
 `check_before_you_go`. Nothing is shown outside the windows.
 
+Rock Creek has no 2026-27 season: the assumed one (Nov 10, 2026 to Mar 31, 2027, said as
+expected) was taken out on the owner's word of 2026-11-04, "For rock creek, that's no longer the
+case." (NPS's deer-management page, updated 2026-10-30, gives no 2026-27 closure dates.) So no
+Rock Creek deer notice shows this winter; Montgomery Parks' closures are unchanged.
+`ROCK_CREEK_SEASONS` keeps the posted 2025-26 season, so a season NPS posts later is one more row.
+
 **Each autumn:**
 
-1. When NPS posts Rock Creek's record of determination for the new winter, set its dates in
-   `ROCK_CREEK_SEASONS` with `posted` True (the notice stops saying "expected"), and its hours
+1. When NPS posts Rock Creek's record of determination for a new winter, add its dates to
+   `ROCK_CREEK_SEASONS` with `posted` True (a row with `posted` False is said as "expected",
+   and only on the owner's say-so), and its hours
    in `ROCK_CREEK_HOURS`. Check its list of roads closed to bicycles against `ROCK_CREEK_WAYS` in
    `scripts/build_deer_closures.py`.
 2. When Montgomery Parks posts the new schedule, set `SHARPSHOOTING_SEASON`, `SHARPSHOOTING`

@@ -5,6 +5,7 @@
  * for that Home, so the question is not asked again on every load.
  */
 import { DEVICE_KEY, parseMyGo, type Home } from "./myGo.ts";
+import { t } from "./i18n.ts";
 
 /** The device Home a rider answered (Move or Keep) about, so it is asked once. */
 export const HOME_OFFER_KEY = "routemaker.home-offer";
@@ -91,5 +92,5 @@ export function answerHomeOffer(device: Home, store: Store | null = local()): vo
   }
 }
 
-export const HOME_MOVED = "Home moved to your account.";
-export const HOME_KEPT = "Your account's Home is unchanged.";
+export const HOME_MOVED = t("Home moved to your account.");
+export const HOME_KEPT = t("Your account's Home is unchanged.");

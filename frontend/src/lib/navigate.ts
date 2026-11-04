@@ -58,8 +58,9 @@ export const VERBOSITY_LABELS: Record<Verbosity, string> = {
  * with no Start ride).
  */
 export const RIDE_MAX_M = 30 * METRES_PER_MILE;
-export const RIDE_TOO_LONG =
-  `Start ride in a browser is for rides up to ${formatRoughDistance(RIDE_MAX_M)}. Use the phone app, or Download GPX for a bike computer.`;
+export const RIDE_TOO_LONG = t("Start ride in a browser is for rides up to {distance}. Use the phone app, or Download GPX for a bike computer.", {
+  distance: formatRoughDistance(RIDE_MAX_M),
+});
 
 // ---- Thresholds (plan sections 2 and 4) ---------------------------------------------------------
 
@@ -922,7 +923,12 @@ function stopCueText(number: number, name: string | undefined, side: "left" | "r
   return side ? `${stopText(number, name)} ${arrivalSideWords(side)}` : stopText(number, name);
 }
 
-export function rideModel(route: RouteResponse, vias: readonly number[] = [], names: ReadonlyMap<number, string> = new Map()): RideModel {
+/**
+ * `numbers`: a stop's number by its place in the request, where it is not that place's own (a re-route asks for
+ * [here, ...the points left], so the plan's stop 3 is its point 1 then): the plan's numbers are kept (pointKinds.ts
+ * plannedStopNumbers), so "stop 3" stays stop 3 on the card, the map and the cue sheet.
+ */
+export function rideModel(route: RouteResponse, vias: readonly number[] = [], names: ReadonlyMap<number, string> = new Map(), numbers: ReadonlyMap<number, number> = new Map()): RideModel {
   const coordinates = route.geometry.coordinates;
   const along = lineAlong(coordinates);
   const lengthM = along.length ? along[along.length - 1] : 0;
@@ -949,10 +955,12 @@ export function rideModel(route: RouteResponse, vias: readonly number[] = [], na
     // A bike lane that ends on the same street (D28): its own cue, or said first in a busy road's.
     const ends = (kind === null || kind === "busy") && laneEnds(entries, i, before);
     if (ends && kind === null) kind = "laneEnds";
+    // With no via points a stop's number is its place in the request, or the plan's number kept through a re-route.
+    const placeNumber = entry.via != null ? (numbers.get(entry.via) ?? entry.via) : undefined;
     if (kind === "stop" && vias.length && entry.via != null) {
       // Stops are numbered among themselves: the via points before this one are left out of its number.
       const point = entry.via;
-      const number = point - vias.filter((v) => v < point).length;
+      const number = numbers.get(point) ?? point - vias.filter((v) => v < point).length;
       const stopName = names.get(point);
       const side = stopSide(route, point);
       cues.push({ index: cues.length, kind, atM: fromM, text: stopCueText(number, stopName, side), ...(side ? { side } : {}), movement: null, street: entry.turn?.onto ?? entry.street ?? null, severity: entry.severity ?? entry.turn?.severity ?? null, tier: entry.tier, stop: number, point, source: entry.kind, ...(stopName ? { stopName } : {}) });
@@ -963,7 +971,7 @@ export function rideModel(route: RouteResponse, vias: readonly number[] = [], na
         atM: fromM,
         text:
           kind === "stop"
-            ? stopCueText(entry.via ?? cues.filter((c) => c.kind === "stop").length + 1, entry.via != null ? names.get(entry.via) : undefined, stopSide(route, entry.via))
+            ? stopCueText(placeNumber ?? cues.filter((c) => c.kind === "stop").length + 1, entry.via != null ? names.get(entry.via) : undefined, stopSide(route, entry.via))
             : kind === "turn" && entry.turn?.cross
               ? crossWords(entry.turn.cross)
               : kind === "turn" && entry.turn?.across
@@ -996,7 +1004,9 @@ export function rideModel(route: RouteResponse, vias: readonly number[] = [], na
         street: entry.turn?.onto ?? entry.street ?? null,
         severity: entry.severity ?? entry.turn?.severity ?? null,
         tier: entry.tier,
-        stop: kind === "stop" ? (entry.via ?? cues.filter((c) => c.kind === "stop").length + 1) : null,
+        stop: kind === "stop" ? (placeNumber ?? cues.filter((c) => c.kind === "stop").length + 1) : null,
+        // Its place in the request where its number is the plan's (stopsAhead and Already done? find the point by it).
+        ...(kind === "stop" && entry.via != null && placeNumber !== entry.via ? { point: entry.via } : {}),
         ...(kind === "stop" && entry.via != null && names.get(entry.via) ? { stopName: names.get(entry.via) } : {}),
         ...(kind === "stop" && stopSide(route, entry.via) ? { side: stopSide(route, entry.via) as "left" | "right" } : {}),
         source: entry.kind,

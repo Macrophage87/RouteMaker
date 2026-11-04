@@ -305,7 +305,7 @@ test("Ride gives the graphs only the room the side buttons leave, and their text
   assert.match(graph, /root\.classList\.contains\(ACCESS_MODE_CLASS\)/);
   const css = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
   assert.match(css, /@media \(forced-colors: active\) \{\s*\.ride-ahead-plot \{\s*forced-color-adjust: none;/);
-  assert.match(css, /:root\.theme-dark \.ride-ahead-bar \{\s*stroke: var\(--text-muted\);/);
+  assert.match(css, /\n\.ride-ahead-bar \{\s*stroke: var\(--text-muted\);/, "the bars' edge, in every theme (stylesAccessibility.test.ts measures it)");
 });
 
 test("as many graphs are drawn as fit the room readably, and the rest named", () => {

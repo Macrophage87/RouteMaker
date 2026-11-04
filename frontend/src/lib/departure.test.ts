@@ -15,7 +15,14 @@ import {
   missedSaid,
   mmss,
   noteArrived,
+  sourceWord,
 } from "./departure.ts";
+import { loadLanguage, setLanguageForTest } from "./i18n.ts";
+
+// Spanish's catalog is fetched on choosing it (lib/i18n.ts loadLanguage), as the app does before it starts.
+await loadLanguage("es");
+/** Intl's clocks may space "7:42 AM" with a narrow no-break space. */
+const plain = (text: string) => text.replace(/\s/gu, " ");
 
 const SRC = new URL("../", import.meta.url);
 const src = (path: string) => readFileSync(new URL(path, SRC), "utf8");
@@ -43,12 +50,41 @@ const at = (clock: string) => Date.parse(`2026-10-13T${clock}-04:00`);
 
 test("the departure is said plainly: which, when, from where, when you arrive, and the one after", () => {
   assert.equal(
-    departureText(DEPARTURE),
-    "MARC Penn Line 7:42 am scheduled from Union Station. You arrive 7:36 am (6 min spare). Next after that: 8:15 am scheduled.",
+    plain(departureText(DEPARTURE)),
+    "MARC Penn Line 7:42 AM scheduled from Union Station. You arrive 7:36 AM (6 min spare). Next after that: 8:15 AM scheduled.",
   );
   assert.match(departureText({ ...DEPARTURE, next: null, next_at: null }), /No later one within the hour\.$/);
-  assert.equal(clockOf("2026-10-13T13:05:00-04:00"), "1:05 pm");
-  assert.equal(clockOf("2026-10-13T00:10:00-04:00"), "12:10 am");
+  assert.equal(plain(departureText({ ...DEPARTURE, board_at: null })).split(".")[0], "MARC Penn Line 7:42 AM scheduled");
+  assert.equal(plain(clockOf("2026-10-13T13:05:00-04:00", "en-US")), "1:05 PM");
+  assert.equal(plain(clockOf("2026-10-13T00:10:00-04:00", "en-US")), "12:10 AM");
+});
+
+test("a departure's clock is the phone's own 12 or 24 hour clock, at the station's time, from the API's ISO time", () => {
+  // A 24-hour phone, and the same moment written in UTC: still Washington's 7:42 pm.
+  assert.equal(clockOf("2026-10-13T19:42:00-04:00", "en-GB"), "19:42");
+  assert.equal(clockOf("2026-10-13T23:42:00Z", "en-GB"), "19:42");
+  assert.equal(plain(clockOf("2026-10-13T23:42:00Z", "en-US")), "7:42 PM");
+  assert.equal(clockOf("2026-10-13T19:42:00-04:00", "fr-FR"), "19:42");
+  // The API's own English clock ("7:42 am") and map label are never shown.
+  const odd = { ...DEPARTURE, departs: "SERVER CLOCK", next: "SERVER NEXT", label: "SERVER LABEL" };
+  for (const text of [departureText(odd), mapLabel(odd, at("07:00:00")), milestoneSaid(odd, 300), missedSaid(odd)]) {
+    assert.doesNotMatch(text, /SERVER|\bam\b|\bpm\b/);
+  }
+});
+
+test("in Spanish the timer, its milestones, its miss and the map's label are Spanish, the source word too", () => {
+  setLanguageForTest("es");
+  try {
+    assert.equal(sourceWord(DEPARTURE), "según horario");
+    assert.equal(sourceWord({ source: "live" }), "en tiempo real");
+    assert.match(plain(milestoneSaid(DEPARTURE, 300)), /^El MARC 7:42 a\.\s?m\. \(según horario\) sale en 5 minutos\.$/u);
+    assert.match(plain(missedSaid(DEPARTURE)), /^Puede que pierdas el MARC 7:42 a\.\s?m\. \(según horario\)\. Planeando la siguiente salida\.$/u);
+    assert.match(plain(mapLabel(DEPARTURE, at("07:01:30"))), /^MARC 7:42 a\.\s?m\. \(según horario\) · en 40:30 · 04:30 de sobra$/u);
+    assert.match(plain(departureText(DEPARTURE)), /^MARC Penn Line 7:42 a\.\s?m\. \(según horario\) desde Union Station\. Llegada: 7:36 a\.\s?m\. \(6 min de sobra\)\. La siguiente: 8:15 a\.\s?m\. \(según horario\)\.$/u);
+    assert.doesNotMatch(departureText(DEPARTURE), /scheduled|You arrive|Next after/);
+  } finally {
+    setLanguageForTest("en");
+  }
 });
 
 test("the spare time counts down from the plan's moment; under 5 min is cutting it close, under none a miss", () => {
@@ -77,7 +113,7 @@ test("TB-6: the countdown runs from when the answer arrived, so a wrong phone cl
   assert.equal(fresh.missed, false, "not marked missed at once");
   assert.equal(fresh.toDepartS, 42 * 60);
   assert.equal(countdown(fast, at("07:11:30")).spareS, 270);
-  assert.equal(mapLabel(fast, at("07:11:30")), "MARC 7:42 am scheduled · in 40:30 · 04:30 spare");
+  assert.equal(plain(mapLabel(fast, at("07:11:30"))), "MARC 7:42 AM scheduled · in 40:30 · 04:30 spare");
   // A phone 10 minutes slow: 7 minutes after the answer it is missed, though the phone says 6:57.
   const slow = { ...DEPARTURE };
   noteArrived(slow, at("06:50:00"));
@@ -113,9 +149,9 @@ test("the timer reads mm:ss, never below zero", () => {
 });
 
 test("the map's label is the plan's words, and the countdown when cutting it close", () => {
-  assert.equal(mapLabel(DEPARTURE, at("07:00:00")), "MARC 7:42 am scheduled · 6 min spare");
-  assert.equal(mapLabel(DEPARTURE, at("07:01:30")), "MARC 7:42 am scheduled · in 40:30 · 04:30 spare");
-  assert.equal(mapLabel(DEPARTURE, at("07:07:00")), "MARC 7:42 am scheduled · missed");
+  assert.equal(plain(mapLabel(DEPARTURE, at("07:00:00"))), "MARC 7:42 AM scheduled · 6 min spare");
+  assert.equal(plain(mapLabel(DEPARTURE, at("07:01:30"))), "MARC 7:42 AM scheduled · in 40:30 · 04:30 spare");
+  assert.equal(plain(mapLabel(DEPARTURE, at("07:07:00"))), "MARC 7:42 AM scheduled · missed");
 });
 
 test("the label sits above the stop, or below when the start or end marker is near and above it", () => {
@@ -134,10 +170,10 @@ test("milestones are said once each at 10, 5 and 2 minutes, and a miss says what
   assert.equal(milestone(305, 299), 300);
   assert.equal(milestone(121, 119), 120);
   assert.equal(milestone(119, 100), null);
-  assert.equal(milestoneSaid(DEPARTURE, 300), "MARC 7:42 am scheduled leaves in 5 minutes.");
-  assert.equal(missedSaid(DEPARTURE), "You may miss the MARC 7:42 am scheduled. Planning the next departure.");
+  assert.equal(plain(milestoneSaid(DEPARTURE, 300)), "MARC 7:42 AM scheduled leaves in 5 minutes.");
+  assert.equal(plain(missedSaid(DEPARTURE)), "You may miss the MARC 7:42 AM scheduled. Planning the next departure.");
   // Live times (v0.7) will say so with the same words.
-  assert.equal(milestoneSaid({ ...DEPARTURE, source: "live" }, 300), "MARC 7:42 am live leaves in 5 minutes.");
+  assert.equal(plain(milestoneSaid({ ...DEPARTURE, source: "live" }, 300)), "MARC 7:42 AM live leaves in 5 minutes.");
 });
 
 test("the countdown is not a live region, and the map's label is hidden from screen readers", () => {

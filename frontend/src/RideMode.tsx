@@ -55,7 +55,7 @@ import {
   withClosed,
 } from "./lib/roadClosed.ts";
 import { requestRoute, type ErrorKind, type RouteResponse } from "./lib/api.ts";
-import { VIA_MARKS, drawnLegs, stopNames, viaIndices, type RideStopMark } from "./lib/pointKinds.ts";
+import { VIA_MARKS, drawnLegs, plannedStopNumbers, stopNames, viaIndices, type RideStopMark } from "./lib/pointKinds.ts";
 import {
   SKIP_STOP,
   RESTART_AUTO_M,
@@ -209,7 +209,7 @@ import { corridorWorry, type PrefetchResult } from "./lib/corridor.ts";
 import { copyCorridor, endCorridor, keepCorridor } from "./lib/corridorStore.ts";
 import { lastRideAdopter } from "./lib/offlineKeep.ts";
 import { blockOf, rescueRideFocus, type RideBlock } from "./lib/rideFocus.ts";
-import { REPORT_SENT, report311Enabled, sendReport311, reportPlace, type ReportKind } from "./lib/report311.ts";
+import { REPORT_MAYBE_SENT, REPORT_SENT, report311Enabled, sendReport311, reportPlace, type ReportKind } from "./lib/report311.ts";
 import { entryText, kindShown, report311Log, type LogEntry } from "./lib/report311Log.ts";
 import { RIDE_311_NAME, RIDE_311_TEXT, Ride311Menu, ride311Shown } from "./lib/ride311.ts";
 import {
@@ -352,9 +352,9 @@ export const RIDE_SETTINGS_TEXT = t("More");
 export const EASE_WORD: Record<Ease, string> = { calmer: t("Calmer"), flatter: t("Flatter") };
 export const RIDE_MORE_NAME = t("More: change the route or the map, and ride settings");
 /** Topo lines from More (Stephen 2026-10-26: "In the ... section allow topo lines to be toggled on and off during a ride"): Map layers' own switch (lib/topoLines.ts). */
-export const RIDE_TOPO_ON = `${TOPO_LINES_LABEL} on.`;
-export const RIDE_TOPO_OFF = `${TOPO_LINES_LABEL} off.`;
-export const RIDE_TOPO_OFFLINE = `${TOPO_LINES_LABEL} need a connection. Try again once you have signal.`;
+export const RIDE_TOPO_ON = t("Topo lines on.");
+export const RIDE_TOPO_OFF = t("Topo lines off.");
+export const RIDE_TOPO_OFFLINE = t("Topo lines need a connection. Try again once you have signal.");
 export const RIDE_SETTINGS_TITLE = t("Ride settings");
 export const RIDE_CHANGE_TITLE = t("Change the route");
 /** Broadcast on the ride screen (Stephen 2026-10-24: "Let people broadcast from a ride"): Plan's and Go's Broadcast, the ride already going. */
@@ -923,6 +923,8 @@ export function RideMode({
   const easing = useRef<{ which: Ease; ticket: number; before: RouteResponse; outcome: "pending" | "found" | "rejoin" } | null>(null);
   // What a re-plan builds on: the plan's points at first, then the last re-plan's (never a loop: its end is sent).
   const plan = useRef({ points: plannedPoints, loop: plannedLoop });
+  // The plan the ride began with: its stop numbers stay the stops' numbers through every re-route (plannedStopNumbers).
+  const firstPlan = useRef(plannedPoints);
   // The via points are not announced (v0.7.0): the model leaves them out of its cues.
   // A re-route that turns the rider round starts with "Make a U-turn." (lib/navigate.ts withUTurn).
   const uturnRoute = useRef<RouteResponse | null>(null);
@@ -935,8 +937,8 @@ export function RideMode({
     // A re-plan on foot (rideTrip.ts rideLegOf: Walk's own) brings its own turns; the planned walk's are its own.
     const onFoot = trip?.onFoot ? walkModel({ coordinates: r.geometry.coordinates as LonLat[], turns: walkLineTurns(r) ?? trip.onFoot.turns, to: null }, endWords(null)) : null;
     if (onFoot) return onFoot;
-    // A stop's own name (2026-10-24) is said and shown with its number.
-    const built = rideModel(r, viaIndices(points, VIA_MARKS.isVia), stopNames(points, VIA_MARKS.nameOf, VIA_MARKS.isVia, plan.current.loop));
+    // A stop's own name (2026-10-24) is said and shown with its number, the plan's number after a re-route too.
+    const built = rideModel(r, viaIndices(points, VIA_MARKS.isVia), stopNames(points, VIA_MARKS.nameOf, VIA_MARKS.isVia, plan.current.loop), plannedStopNumbers(points, firstPlan.current, VIA_MARKS.isVia));
     return r === uturnRoute.current ? withUTurn(built) : built;
   };
   const model = useMemo(() => modelOf(route, plan.current.points), [route]);
@@ -948,7 +950,15 @@ export function RideMode({
   const otherRef = useRef(other);
   otherRef.current = other;
   const otherModel = useMemo(
-    () => (other ? rideModel(other, viaIndices(plan.current.points, VIA_MARKS.isVia), stopNames(plan.current.points, VIA_MARKS.nameOf, VIA_MARKS.isVia, plan.current.loop)) : null),
+    () =>
+      other
+        ? rideModel(
+            other,
+            viaIndices(plan.current.points, VIA_MARKS.isVia),
+            stopNames(plan.current.points, VIA_MARKS.nameOf, VIA_MARKS.isVia, plan.current.loop),
+            plannedStopNumbers(plan.current.points, firstPlan.current, VIA_MARKS.isVia),
+          )
+        : null,
     [other],
   );
   const otherModelRef = useRef(otherModel);
@@ -1125,10 +1135,10 @@ export function RideMode({
     const entry = report311Log().add(kind, place);
     if (serverOn311 && entry.where === "dc") {
       setSaid311(t("Sending to DC 311…"));
-      void sendReport311(window.location.origin, kind, place, entryText(entry)).then((sent) => {
+      void sendReport311(window.location.origin, kind, place, entryText(entry)).then((result) => {
         if (ended.current) return;
-        if (sent) report311Log().setReported(entry.id, true);
-        tell311(sent ? REPORT_SENT : loggedSaid(entry));
+        if (result === "sent") report311Log().setReported(entry.id, true);
+        tell311(result === "sent" ? REPORT_SENT : result === "maybe_sent" ? REPORT_MAYBE_SENT : loggedSaid(entry));
       });
     } else tell311(loggedSaid(entry));
   };

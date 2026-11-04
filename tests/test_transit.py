@@ -1425,6 +1425,39 @@ def test_the_walk_the_whole_way_is_routed_with_pedestrian_costing(monkeypatch) -
     assert option.walk and option.legs[0].seconds == 420.0 and not option.legs[0].estimated
 
 
+def test_a_walk_goes_round_closures_and_through_them_only_where_there_is_no_way_round(
+    monkeypatch,
+) -> None:
+    """Walk and Walk + transit: each walk leaves the closures out (`exclude_polygons`); where
+    the router has no way round them, it is walked again with only the rider's own marked
+    roads left out."""
+    from core import routing
+
+    closure = [[-77.0, 38.9], [-77.0, 38.901], [-77.001, 38.901], [-77.0, 38.9]]
+    marked = [[-77.01, 38.9], [-77.01, 38.901], [-77.011, 38.901], [-77.01, 38.9]]
+    asked = []
+
+    def answer(graph, endpoint, payload, deadline):
+        asked.append(payload.get("exclude_polygons"))
+        if len(payload.get("exclude_polygons") or []) == 2:
+            raise routing.RouterRefused(400, 442, "No path could be found for input")
+        return {"trip": {"legs": [{"shape": "", "summary": {"time": 420.0, "length": 0.55}}]}}
+
+    monkeypatch.setattr(routing, "_call", answer)
+    monkeypatch.setattr(routing, "decode_polyline6", lambda _shape: [(-77.0, 38.9), (-77.01, 38.9)])
+    services = transit.RoutingServices(
+        routing.clock() + 30, presets.WALK, walk_exclude=[closure, marked], walk_keep=[marked]
+    )
+    walked = services.walk(CAPITOL_HILL, NEAR_CAPITOL_HILL)
+    assert walked is not None and walked.seconds == 420.0
+    assert asked[0] == [closure, marked]
+    assert asked[1] == [marked]
+    # A ride is never asked round them here (a ride's line has its own closures).
+    asked.clear()
+    services.ride(CAPITOL_HILL, NEAR_CAPITOL_HILL)
+    assert asked == [None]
+
+
 class Bendy(Straight):
     """The router, its lines bent through a point off the straight one, and each call kept."""
 

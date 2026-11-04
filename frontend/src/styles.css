@@ -4689,8 +4689,11 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
   stroke-width: 2.5;
 }
 
+/* The bars' edge is the muted text colour, 3:1 or more on the panel in every theme (WCAG 1.4.11), so a pale bar (LTS 1's
+   #d2eafc in the accessibility palette, 1.24:1 on white) still shows where it starts and ends; the 1.5 width keeps
+   neighbouring bars apart (the v0.19.0 release review for the dark theme, the 2026-11-04 review for the light one). */
 .ride-ahead-bar {
-  stroke: var(--bg);
+  stroke: var(--text-muted);
   stroke-width: 1.5;
 }
 
@@ -4756,12 +4759,6 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
 .ride-ahead-dot {
   fill: #1b1e24;
   fill-opacity: 0.75;
-}
-
-/* In the dark theme the bars' edge is light, so the darkest bar (LTS 1's purple, 1.5:1 on the dark panel) still has an
-   outline of 3:1 or more (the v0.19.0 release review). */
-:root.theme-dark .ride-ahead-bar {
-  stroke: var(--text-muted);
 }
 
 .ride-ahead-narrowest path {
