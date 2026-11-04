@@ -342,7 +342,7 @@ import { KNOWN_OPERATORS, docksStatus, mergeOperators, operatorsToAsk, readOpera
 import { SaveRoute } from "./SaveRoute.tsx";
 import { firstWordAndRest, planLanguageAttributes } from "./lib/i18n.ts";
 import { SAVE_ROUTE } from "./lib/savedRoutes.ts";
-import { BROADCAST_FOLLOWING, BROADCAST_NO_KEY, consentFor, followsWithoutKey, forgetAnsweredHere, isRideLink, isRideLinkType, presetSecret, leadConsent, leaderKey, newToken, opensIntoRide, rideOf, type RideLinkType } from "./lib/rideGroup.ts";
+import { BROADCAST_FOLLOWING, BROADCAST_NO_KEY, consentFor, followsWithoutKey, forgetAnsweredHere, isRideLink, isRideLinkType, presetSecret, leadConsent, leaderKey, newToken, opensIntoRide, rideOf, sharedAfterRide, type RideLinkType } from "./lib/rideGroup.ts";
 import { newRideSecret, secretFrom, withSecret, withoutSecret } from "./lib/rideSeal.ts";
 
 // Before the map adds the stress source (MapView, after its first probe).
@@ -3646,6 +3646,12 @@ export function App() {
       // Nor its lead: the next ride on the same line is a new ride, under a new token and secret, so the earlier
       // link's holders do not see it (2026-10-29). Roam's leads end with Roam.
       for (const id of [...leads.current.keys()]) if (!id.startsWith("roam|")) leads.current.delete(id);
+      // Nor the line as led: the sharer's ride link ends with the ride (lib/rideGroup.ts sharedAfterRide).
+      const after = sharedAfterRide(sharedOpenNow.current);
+      if (after !== sharedOpenNow.current) {
+        sharedOpenNow.current = after;
+        setSharedOpen(after);
+      }
       // A Group or Mass Ride secret this page made is made again: last ride's link reads nothing on the next. One from a link
       // opened here is the link's, the ride its sender leads.
       if (groupSecretOwn.current) setGroupSecret(newRideSecret());
@@ -4491,7 +4497,15 @@ export function App() {
   // The ride just ended, kept for Undo while its summary shows (the owner, 2026-10-20: "When ending a ride, perhaps
   // summary stats rather than programming that ride again"). In memory only, as the ride itself is.
   // `from`: the plan End ride left starting where the rider was (Plan, part way), so Undo takes that edit back too.
-  const endedRide = useRef<{ start: NonNullable<typeof rideStart>; from: LonLat[] | null; stats: RideStats } | null>(null);
+  // `shared` and `linkSent`: the line the ride was shared as and the link it went out with, which the ride's end lets
+  // go (sharedAfterRide) and Undo puts back, so the ride is led again under the same key.
+  const endedRide = useRef<{
+    start: NonNullable<typeof rideStart>;
+    from: LonLat[] | null;
+    stats: RideStats;
+    shared: typeof sharedOpen;
+    linkSent: typeof rideLinkSent.current;
+  } | null>(null);
   // Undo's ride carries on from the ended ride's figures (RideMode's resumeStats); a new Start begins from nought.
   const [resumeStats, setResumeStats] = useState<RideStats | null>(null);
   // `destination`: the ride's end, not a loop's (its start), for the summary's Save to Favorites (Stephen 2026-10-26).
@@ -4527,7 +4541,7 @@ export function App() {
       setFromHere((f) => [...f, from![0]]);
     }
     const note = from ? RIDE_ENDED_FROM_HERE_NOTE : endedIn !== "go" && after === "no-fix" ? RIDE_ENDED_NO_FIX_NOTE : null;
-    endedRide.current = start ? { start, from, stats } : null;
+    endedRide.current = start ? { start, from, stats, shared: sharedOpenNow.current, linkSent: rideLinkSent.current } : null;
     setRiding(false);
     setRideStart(null);
     setRideView(null);
@@ -4646,6 +4660,15 @@ export function App() {
     startRideGesture(ridePrefs);
     setResumeStats(ended.stats);
     setRideStart(ended.start);
+    // The same shared ride, led under the same key: those following keep their leader.
+    if (ended.shared) {
+      sharedOpenNow.current = ended.shared;
+      setSharedOpen(ended.shared);
+    }
+    if (ended.linkSent) {
+      rideLinkSent.current = ended.linkSent;
+      if (ended.linkSent.id && ended.linkSent.lead) leads.current.set(ended.linkSent.id, ended.linkSent.lead);
+    }
     if (ended.start.kept) keepLeftRide(ended.start, VIA_MARKS, Date.now());
     setFollow(true);
     setRideView(null);
