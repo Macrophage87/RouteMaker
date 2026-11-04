@@ -18,6 +18,7 @@ connections, made in Settings and encrypted; see core.garmin and core.wahoo.)
 
 from __future__ import annotations
 
+import http.client
 import json
 import urllib.error
 import urllib.parse
@@ -299,7 +300,18 @@ def exchange_code(code: str) -> tuple[int, str]:
         # nothing stores them, and the only thing kept is the id.
         discord_user_id = int(profile["id"])
         granted_scopes = token.get("scope", "")
-    except (urllib.error.URLError, KeyError, ValueError, TypeError) as error:
+    # urlopen wraps only the sending in URLError: a reply that is slow (TimeoutError), dropped
+    # (ConnectionResetError, an OSError) or cut off (http.client.HTTPException) arrives unwrapped,
+    # and is the same failed exchange.
+    except (
+        urllib.error.URLError,
+        TimeoutError,
+        OSError,
+        http.client.HTTPException,
+        KeyError,
+        ValueError,
+        TypeError,
+    ) as error:
         raise LoginRefused(f"the Discord exchange failed: {error}") from error
 
     return discord_user_id, granted_scopes

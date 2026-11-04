@@ -4,9 +4,10 @@
  * a back while riding lands on the entry before it, and the ride's is pushed again at once. End ride
  * takes the ride's entry off, so the history is as it was before the ride.
  */
+import { t } from "./i18n.ts";
 
 /** Said, politely, each time a back gesture is held during a ride. */
-export const STILL_RIDING_SAID = "Still riding. Use End ride to stop.";
+export const STILL_RIDING_SAID = t("Still riding. Use End ride to stop.");
 
 /** The parts of `window` the guard uses. */
 export interface BackWindow {

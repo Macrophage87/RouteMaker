@@ -122,6 +122,15 @@ function phoneTheme(): PhoneTheme | null {
 let follower: ((choice: ThemeChoice) => void) | null = null;
 
 /**
+ * Whether the rider is in a tunnel (lib/tunnelDark.ts, by useMapFlavour.ts). The map goes dark there, and the page
+ * with it: a dark map between white panels was the one bright-dark split on the screen (the owner, 2026-11-04:
+ * "When on a tunnel the map changes color but it's still white elsewhere"). Light again after the tunnel.
+ */
+let inTunnel = false;
+/** followTheme's look, once started: setTunnelTheme runs it again. */
+let relook: (() => void) | null = null;
+
+/**
  * Follow the rider's choice from now on: set the theme, then again at each sunrise and sunset when following the
  * sun, when the phone's theme changes when following the phone, and when the page is shown again (a phone asleep
  * through sunset). Called before the first render, so the app never draws in the wrong theme.
@@ -139,7 +148,7 @@ export function followTheme(
     if (timer !== undefined) win.clearTimeout(timer);
     timer = undefined;
     const at = now();
-    if (applyTheme(page, themeDarkFor(choice, at, phone?.matches ?? false))) win.dispatchEvent(new Event(THEME_EVENT));
+    if (applyTheme(page, inTunnel || themeDarkFor(choice, at, phone?.matches ?? false))) win.dispatchEvent(new Event(THEME_EVENT));
     const wait = themeWait(choice, at);
     if (wait !== null) timer = win.setTimeout(look, wait) as unknown as number;
   };
@@ -154,6 +163,17 @@ export function followTheme(
     choice = next;
     look();
   };
+  relook = look;
+}
+
+/**
+ * The rider went into a tunnel (true) or came out of one (false): the page turns dark with the map, then back to the
+ * rider's choice. The theme event tells the map, as for any turn of the theme.
+ */
+export function setTunnelTheme(on: boolean): void {
+  if (inTunnel === on) return;
+  inTunnel = on;
+  relook?.();
 }
 
 /** Settings > Display > Colors: keep the rider's choice and show it at once (the page and, by the event, the map). */
