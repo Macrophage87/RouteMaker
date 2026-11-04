@@ -662,7 +662,7 @@ in the database still names it: delete that row in the admin when loading the fi
   plans/region-overrides). Fingerprints are from extract-20261031 (`rematch.fingerprint_of`).
   The Maryland dry run lists about 35,000 rows. Not loaded: the owner confirms each file, then
   a rebuild.
-- `2026-11-04-owner-baltimore-city-review.json` (678 ways, 79.3 mi; 143 retired): a second
+- `2026-11-04-owner-baltimore-city-review.json` (671 ways, 78.4 mi; 140 retired): a second
   review of Baltimore City with the city's own data. Every city street block was matched to
   Open Baltimore's Street Centerline (Native) speed limits, MDOT SHA's counts and lanes, and
   Baltimore City DOT's bike facilities, 2024 truck routes, restricted-hours routes and speed
@@ -689,8 +689,10 @@ in the database still names it: delete that row in the admin when loading the fi
   characters (21), and every group a skeptic was unsure about. Each row's `evidence` cites the
   way's own Open Baltimore blocks (same street name, covering at least 60% of the way), the MDOT
   SHA LTS record on its main block, and the count's source and year as the road panel shows it.
-  A 2026-11-04 recheck left out ways whose own blocks cover less than 60% of them (14), whose
-  posted speed differs from the city's record for their blocks (4, among them North Greene St,
-  which OSM tags 40 mph where the city and SHA record 25), whose SHA-assumed speed is not on
-  their own block (1), or whose road panel could not be read again (1). Fingerprints are from OSM as served by the OSM API on
+  A 2026-11-04 recheck left out ways whose own blocks (by street name and block label) cover
+  less than 60% of them (15), whose posted speed differs from the city's record for their blocks
+  (4, among them North Greene St, which OSM tags 40 mph where the city and SHA record 25), whose
+  SHA-assumed speed is not on their own block (1), whose note's bike facility, truck route or
+  rush-hour route the city's record for their block does not match (6), or whose road panel
+  could not be read again (1). Block names are as the city spells them (N F0REST PARK AVE). Fingerprints are from OSM as served by the OSM API on
   2026-11-04. Not loaded: the owner confirms the file, then a rebuild.

@@ -285,28 +285,6 @@
   },
   {
    "kind": "stress",
-   "osm_way_id": 6003270,
-   "value": {
-    "tier": 3,
-    "adjustment_id": "bmore-review-b00874-1",
-    "category": "other",
-    "annotation_status": "approved",
-    "public_note": "Our review: 3 lanes in this direction, 30 mph posted (MDOT SHA assumed 40), about 8,472 cars a day (2024 count), the count is shared by both sides of the divided road, no bike lane, so LTS 3.5.",
-    "visibility": "public",
-    "display": "map",
-    "half": true
-   },
-   "reason": "LTS 3.5 (Baltimore City review profile B00874, pattern: SHA assumed a faster speed than the city records; was 4 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: Saint Paul St: 3 lanes per direction (divided), 30 mph (posted on our map; city 30, SHA 40 assumed), 8,472/day (2024 count). 3 lanes one way at 25-30 mph, 5,000-15,000/day: 3.5; SHA's record (3 through lanes) covers this carriageway alone, so the count is this side's: rated as a 3-lane one-way street. Change from current 4: the count, speed and lanes above put it here, and the blind rater reached the same level independently.",
-   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 300 BLK SAINT PAUL PL (30 mph, principal arterial, 130 m of this way); 200 BLK SAINT PAUL PL (30 mph, principal arterial, 120 m of this way); 300 BLK SAINT PAUL PL (30 mph, principal arterial, 70 m of this way); MDOT SHA Bicycle LTS record on 300 BLK SAINT PAUL PL: 3 through lanes, assumed 40 mph, AADT 9,481; traffic count 8,472 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; OSM way 6003270 v27 (highway=primary, 590 m) via the OSM API 2026-11-04.",
-   "fingerprint": {
-    "name": "Saint Paul Street",
-    "highway": "primary",
-    "length_m": 593.6,
-    "line": "-76.613971,39.296408 -76.613915,39.296324 -76.613792,39.295801 -76.613595,39.293225 -76.613539,39.292271 -76.613576,39.292101 -76.613910,39.291323 -76.613952,39.291141"
-   }
-  },
-  {
-   "kind": "stress",
    "osm_way_id": 6003320,
    "value": {
     "tier": 2,
@@ -383,7 +361,7 @@
     "half": true
    },
    "reason": "LTS 1.5 (Baltimore City review profile B01350, pattern: SHA assumed a faster speed than the city records; was 2 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: Beechdale Rd: 1 lane each way (assumed, not mapped), 25 mph (posted on our map; city 25, SHA 35 assumed), 405/day (2024 count). at or under 1,500/day at 25 mph: quiet, 1.5 (Fairfax 1,001-1,500/day and Arlington <1,000/day anchors). Change from current 2: the count, speed and lanes above put it here, and the blind rater reached the same level independently.",
-   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: UNIT BLK BEECHDALE RD (25 mph, collector, 161 m of this way); MDOT SHA Bicycle LTS record on UNIT BLK BEECHDALE RD: 1 through lanes, assumed 35 mph, AADT 332; traffic count 405 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; OSM way 6004195 v8 (highway=residential, 161 m) via the OSM API 2026-11-04.",
+   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: UNIT BLK BEECHDALE RD (25 mph, collector, 161 m of this way); MDOT SHA Bicycle LTS record on UNIT BLK BEECHDALE RD: 1 through lane, assumed 35 mph, AADT 332; traffic count 405 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; OSM way 6004195 v8 (highway=residential, 161 m) via the OSM API 2026-11-04.",
    "fingerprint": {
     "name": "Beechdale Road",
     "highway": "residential",
@@ -426,7 +404,7 @@
     "half": true
    },
    "reason": "LTS 3.5 (Baltimore City review profile B00657, pattern: Divided road count counted twice; was 4 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: Southwestern Blvd: 2 lanes per direction (divided), 35 mph (posted on our map; city 35, SHA 35), 6,352/day (2024 count). 2 lanes one way at 35 mph, under 5,000/day: 3.5; divided road: the 6,352/day is shared across both carriageways (region rule; ~3,176 each), so each side is rated as a 2-lane one-way street at that volume. Change from current 4: the count, speed and lanes above put it here, and the blind rater reached the same level independently.",
-   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 3700 BLK SOUTHWESTERN BLVD (35 mph, principal arterial, 366 m of this way); 3900 BLK SOUTHWESTERN BLVD (35 mph, principal arterial, 132 m of this way); MDOT SHA Bicycle LTS record on 3700 BLK SOUTHWESTERN BLVD: 6 through lanes, posted 35 mph, AADT 5,681; traffic count 6,352 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; Baltimore City DOT truck route class null (2024) on 3700 BLK SOUTHWESTERN BLVD; OSM way 6004330 v22 (highway=primary, 498 m) via the OSM API 2026-11-04.",
+   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 3700 BLK SOUTHWESTERN BLVD (35 mph, principal arterial, 366 m of this way); 3900 BLK SOUTHWESTERN BLVD (35 mph, principal arterial, 132 m of this way); MDOT SHA Bicycle LTS record on 3700 BLK SOUTHWESTERN BLVD: 6 through lanes, posted 35 mph, AADT 5,681; traffic count 6,352 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; OSM way 6004330 v22 (highway=primary, 498 m) via the OSM API 2026-11-04.",
    "fingerprint": {
     "name": "Southwestern Boulevard",
     "highway": "primary",
@@ -663,7 +641,7 @@
     "half": true
    },
    "reason": "LTS 1.5 (Baltimore City review profile B00525, pattern: Other, down; was 2 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: N Monastery Ave (0.41 mi). Residential 25 mph street at 600-1,742/day with 2 recorded speed humps; current 2 is SHA's 2 on an assumed 35 mph. Humps take a modest-volume local street down half a step: 1.5. [Facts: lanes not mapped, 25 mph, posted, 1,742/day, no bike lane, 2 speed hump(s).]",
-   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: UNIT BLK N MONASTERY AVE (25 mph, collector, 187 m of this way); UNIT BLK N MONASTERY AVE (25 mph, collector, 42 m of this way); MDOT SHA Bicycle LTS record on UNIT BLK N MONASTERY AVE: 1 through lanes, posted 25 mph, AADT 2,170; traffic count 1,742 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; OSM way 6006751 v9 (highway=residential, 229 m) via the OSM API 2026-11-04.",
+   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: UNIT BLK N MONASTERY AVE (25 mph, collector, 187 m of this way); UNIT BLK N MONASTERY AVE (25 mph, collector, 42 m of this way); MDOT SHA Bicycle LTS record on UNIT BLK N MONASTERY AVE: 1 through lane, posted 25 mph, AADT 2,170; traffic count 1,742 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; OSM way 6006751 v9 (highway=residential, 229 m) via the OSM API 2026-11-04.",
    "fingerprint": {
     "name": "North Monastery Avenue",
     "highway": "residential",
@@ -1135,7 +1113,7 @@
     "half": true
    },
    "reason": "LTS 1.5 (Baltimore City review profile B00880, pattern: SHA assumed a faster speed than the city records; was 3 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: Millington Ave: 1 lane one way, 25 mph (posted on our map; city 25, SHA 35 assumed), 750/day (2024 count), 3 city speed hump(s). at or under 1,500/day at 25 mph: quiet, 1.5 (Fairfax 1,001-1,500/day and Arlington <1,000/day anchors). SHA's 3 rests on an assumed 35 mph where the city records 25. Change from current 3: the count, speed and lanes above put it here, and the blind rater reached the same level independently.",
-   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 500 BLK MILLINGTON AVE (25 mph, collector, 32 m of this way); 400 BLK MILLINGTON AVE (25 mph, collector, 22 m of this way); 500 BLK MILLINGTON AVE (25 mph, collector, 22 m of this way); MDOT SHA Bicycle LTS record on 500 BLK MILLINGTON AVE: 1 through lanes, assumed 35 mph, AADT 892; traffic count 750 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; OSM way 6011030 v14 (highway=residential, 97 m) via the OSM API 2026-11-04.",
+   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 500 BLK MILLINGTON AVE (25 mph, collector, 32 m of this way); 400 BLK MILLINGTON AVE (25 mph, collector, 22 m of this way); 500 BLK MILLINGTON AVE (25 mph, collector, 22 m of this way); MDOT SHA Bicycle LTS record on 500 BLK MILLINGTON AVE: 1 through lane, assumed 35 mph, AADT 892; traffic count 750 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; OSM way 6011030 v14 (highway=residential, 97 m) via the OSM API 2026-11-04.",
    "fingerprint": {
     "name": "Millington Avenue",
     "highway": "residential",
@@ -1399,28 +1377,6 @@
   },
   {
    "kind": "stress",
-   "osm_way_id": 6015434,
-   "value": {
-    "tier": 3,
-    "adjustment_id": "bmore-review-b01220-1",
-    "category": "other",
-    "annotation_status": "approved",
-    "public_note": "Our review: 2 lanes each way, 25 mph posted, about 12,100 cars a day (2024 count), no bike lane, rush-hour parking bans add a lane at peak, so LTS 3.5.",
-    "visibility": "public",
-    "display": "map",
-    "half": true
-   },
-   "reason": "LTS 3.5 (Baltimore City review profile B01220, pattern: Other, down; was 4 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: N Fulton Ave: 2 lanes each way, 25 mph (city 25, OSM 25, SHA 25), 12,100/day (2024 count), Restricted Hours Route (4 lanes at peak). 2 lanes each way at 25 mph, 6,000-18,000/day: 3.5 (VA urban arterial anchor 3.5 at 12k; our reviewed 4-lane 30 mph at 15,600/day = 3.5). Change from current 4.0: the count/speed above puts it in this band and the rater agrees.",
-   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 2300 BLK N FULTON AVE (25 mph, minor arterial, 71 m of this way); 2300 BLK N FULTON AVE (25 mph, minor arterial, 40 m of this way); 2300 BLK N FULTON AVE (25 mph, minor arterial, 30 m of this way); MDOT SHA Bicycle LTS record on 2300 BLK N FULTON AVE: 4 through lanes, posted 25 mph, AADT 10,683; traffic count 12,100 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; OSM way 6015434 v27 (highway=tertiary, 364 m) via the OSM API 2026-11-04.",
-   "fingerprint": {
-    "name": "North Fulton Avenue",
-    "highway": "tertiary",
-    "length_m": 365.3,
-    "line": "-76.643565,39.315758 -76.644319,39.315077 -76.646272,39.313229"
-   }
-  },
-  {
-   "kind": "stress",
    "osm_way_id": 6015673,
    "value": {
     "tier": 1,
@@ -1562,7 +1518,7 @@
     "half": true
    },
    "reason": "LTS 1.5 (Baltimore City review profile B01311, pattern: SHA assumed a faster speed than the city records; was 3 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: E 24th St: 1 lane one way, 25 mph (city 25, OSM 25, SHA 35 assumed), 790/day (2024 count), no bike facility. At or under 1,500/day at 25 mph: quiet, 1.5 (Stephen's Fairfax 1,001-1,500/day and Arlington <1,000/day anchors). SHA's 3 rests on an assumed 35 mph where the city records 25. Change from current 3.0: the count/speed above puts it in this band and the rater agrees.",
-   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 100 BLK E 24TH ST (25 mph, collector, 50 m of this way); MDOT SHA Bicycle LTS record on 100 BLK E 24TH ST: 1 through lanes, assumed 35 mph, AADT 952; traffic count 790 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; OSM way 6017470 v15 (highway=residential, 50 m) via the OSM API 2026-11-04.",
+   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 100 BLK E 24TH ST (25 mph, collector, 50 m of this way); MDOT SHA Bicycle LTS record on 100 BLK E 24TH ST: 1 through lane, assumed 35 mph, AADT 952; traffic count 790 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; OSM way 6017470 v15 (highway=residential, 50 m) via the OSM API 2026-11-04.",
    "fingerprint": {
     "name": "East 24th Street",
     "highway": "residential",
@@ -1604,8 +1560,8 @@
     "display": "map",
     "half": true
    },
-   "reason": "LTS 3.5 (Baltimore City review profile B00619, pattern: SHA assumed a faster speed than the city records; was 4 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: E 25th St: 2 lanes each way, 30 mph (city 30, OSM 30, SHA 35 assumed), 7,840/day (2024 count), truck route null. 2 lanes each way at 30 mph, 6,000-18,000/day: 3.5 (VA urban arterial anchor 3.5 at 12k; our reviewed 4-lane 30 mph at 15,600/day = 3.5). Change from current 4.0: the count/speed above puts it in this band and the rater agrees.",
-   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: UNIT BLK E 25TH ST (30 mph, minor arterial, 95 m of this way); UNIT BLK E 25TH ST (30 mph, minor arterial, 42 m of this way); MDOT SHA Bicycle LTS record on UNIT BLK E 25TH ST: 4 through lanes, assumed 35 mph, AADT 8,992; traffic count 7,840 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; Baltimore City DOT truck route class null (2024) on UNIT BLK E 25TH ST; OSM way 6017923 v18 (highway=secondary, 137 m) via the OSM API 2026-11-04.",
+   "reason": "LTS 3.5 (Baltimore City review profile B00619, pattern: SHA assumed a faster speed than the city records; was 4 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: E 25th St: 2 lanes each way, 30 mph (city 30, OSM 30, SHA 35 assumed), 7,840/day (2024 count), no truck route. 2 lanes each way at 30 mph, 6,000-18,000/day: 3.5 (VA urban arterial anchor 3.5 at 12k; our reviewed 4-lane 30 mph at 15,600/day = 3.5). Change from current 4.0: the count/speed above puts it in this band and the rater agrees.",
+   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: UNIT BLK E 25TH ST (30 mph, minor arterial, 95 m of this way); UNIT BLK E 25TH ST (30 mph, minor arterial, 42 m of this way); MDOT SHA Bicycle LTS record on UNIT BLK E 25TH ST: 4 through lanes, assumed 35 mph, AADT 8,992; traffic count 7,840 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; OSM way 6017923 v18 (highway=secondary, 137 m) via the OSM API 2026-11-04.",
    "fingerprint": {
     "name": "East 25th Street",
     "highway": "secondary",
@@ -2097,7 +2053,7 @@
     "half": true
    },
    "reason": "LTS 3.5 (Baltimore City review profile B01610, pattern: Owner row disagrees with the facts; was 3 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: E McComas St: 1 lane one way, 30 mph (city 30, OSM 30, SHA 30), 9,915/day (2024 count), truck route Thru. 6,000-10,000/day at 30 mph on a two-lane (or one-lane one-way) street: 3; plus half a step for the city's Thru truck route on a narrow two-lane street (Baltimore brief). SHA's 2 does not reflect the count/lanes above. Change from current 3.0: the count/speed above puts it in this band and the rater agrees.",
-   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 200 BLK E MCCOMAS ST (30 mph, minor arterial, 178 m of this way); 100 BLK E MCCOMAS ST (30 mph, minor arterial, 31 m of this way); 200 BLK E MCCOMAS ST (30 mph, minor arterial, 10 m of this way); MDOT SHA Bicycle LTS record on 200 BLK E MCCOMAS ST: 1 through lanes, posted 30 mph, AADT 4,734; traffic count 9,915 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; Baltimore City DOT truck route class Thru (2024) on 200 BLK E MCCOMAS ST; OSM way 11941211 v19 (highway=primary, 220 m) via the OSM API 2026-11-04.",
+   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 200 BLK E MCCOMAS ST (30 mph, minor arterial, 178 m of this way); 100 BLK E MCCOMAS ST (30 mph, minor arterial, 31 m of this way); 200 BLK E MCCOMAS ST (30 mph, minor arterial, 10 m of this way); MDOT SHA Bicycle LTS record on 200 BLK E MCCOMAS ST: 1 through lane, posted 30 mph, AADT 4,734; traffic count 9,915 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; Baltimore City DOT truck route class Thru (2024) on 200 BLK E MCCOMAS ST; OSM way 11941211 v19 (highway=primary, 220 m) via the OSM API 2026-11-04.",
    "fingerprint": {
     "name": "East McComas Street",
     "highway": "primary",
@@ -2290,7 +2246,7 @@
     "display": "map"
    },
    "reason": "LTS 4 (Baltimore City review profile B01797, pattern: Owner row disagrees with the facts; was 3.5 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: S Howard St: 2 lanes each way (mapped; SHA 3 through lanes), 25 mph posted (city 25, SHA 40 assumed), 62,342/day (2024 count; SHA AADT 47,721 agrees it is very heavy). Our owner-reviewed 3.5 was set on a 4-lane 25 mph street, but 62,000/day is about twice Connecticut Ave NW's 25-30k/day, which Stephen rates 4: 4. Not 4.5 (rater): 4.5 is for urban 55 mph roads and posted expressways, and Connecticut Ave at 4-6 lanes is held at 4.",
-   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 100 BLK S HOWARD ST (25 mph, principal arterial, 64 m of this way); MDOT SHA Bicycle LTS record on 100 BLK S HOWARD ST: 3 through lanes, assumed 40 mph, AADT 47,721; traffic count 62,342 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; Baltimore City DOT truck route class null (2024) on 100 BLK S HOWARD ST; OSM way 24668023 v21 (highway=primary, 64 m) via the OSM API 2026-11-04.",
+   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 100 BLK S HOWARD ST (25 mph, principal arterial, 64 m of this way); MDOT SHA Bicycle LTS record on 100 BLK S HOWARD ST: 3 through lanes, assumed 40 mph, AADT 47,721; traffic count 62,342 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; OSM way 24668023 v21 (highway=primary, 64 m) via the OSM API 2026-11-04.",
    "fingerprint": {
     "name": "South Howard Street",
     "highway": "primary",
@@ -2566,7 +2522,7 @@
     "display": "map"
    },
    "reason": "LTS 2 (Baltimore City review profile B02219, pattern: Owner row disagrees with the facts; was 2.5 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: E Lanvale St: 2 lanes one way, 25 mph (posted on our map; city 25, SHA 25), 2,342/day (2024 count), our map: lane, city facility: Contraflow Bike Lane. 2 lanes one way at 25-30 mph, 1,500-2,500/day: 2.5 (as our reviewed McMechen St 1,900 and W Rogers Ave 2,300 = 2.5); painted lane on our map (city layer: Contraflow Bike Lane): half a step down (R St NW painted 2 vs unpainted 2.5), floor 2. Change from current 2.5: the count, speed and lanes above put it here, and the blind rater reached the same level independently.",
-   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 100 BLK E LANVALE ST (25 mph, minor arterial, 55 m of this way); 100 BLK E LANVALE ST (25 mph, minor arterial, 44 m of this way); MDOT SHA Bicycle LTS record on 100 BLK E LANVALE ST: 1 through lanes, posted 25 mph, AADT 3,443; traffic count 2,342 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; Baltimore City DOT bike facility on 100 BLK E LANVALE ST: Contraflow Bike Lane; OSM way 47988576 v17 (highway=secondary, 99 m) via the OSM API 2026-11-04.",
+   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 100 BLK E LANVALE ST (25 mph, minor arterial, 55 m of this way); 100 BLK E LANVALE ST (25 mph, minor arterial, 44 m of this way); MDOT SHA Bicycle LTS record on 100 BLK E LANVALE ST: 1 through lane, posted 25 mph, AADT 3,443; traffic count 2,342 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; Baltimore City DOT bike facility on 100 BLK E LANVALE ST: Contraflow Bike Lane; OSM way 47988576 v17 (highway=secondary, 99 m) via the OSM API 2026-11-04.",
    "fingerprint": {
     "name": "East Lanvale Street",
     "highway": "secondary",
@@ -2851,7 +2807,7 @@
     "half": true
    },
    "reason": "LTS 3.5 (Baltimore City review profile B01579, pattern: Divided road count counted twice; was 4 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: W Cold Spring Ln: 2 lanes per direction (divided), 25 mph (posted on our map; city 25, SHA 25), 15,542/day (2024 count). 2 lanes one way at 25-30 mph, 6,000-15,000/day: 3.5 (our reviewed one-way rule, e.g. 3-lane one-way 25 mph at 9,100/day = 3.5); divided road: the 15,542/day is shared across both carriageways (region rule; ~7,771 each), so each side is rated as a 2-lane one-way street at that volume. Change from current 4: the count, speed and lanes above put it here, and the blind rater reached the same level independently.",
-   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 700 BLK W COLD SPRING LN (25 mph, principal arterial, 92 m of this way); 700 BLK W COLD SPRING LN (25 mph, principal arterial, 31 m of this way); 700 BLK W COLD SPRING LN (25 mph, principal arterial, 10 m of this way); MDOT SHA Bicycle LTS record on 700 BLK W COLD SPRING LN: 4 through lanes, posted 25 mph, AADT 12,770; traffic count 15,542 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; Baltimore City DOT truck route class null (2024) on 700 BLK W COLD SPRING LN; OSM way 49667511 v11 (highway=primary, 133 m) via the OSM API 2026-11-04.",
+   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 700 BLK W COLD SPRING LN (25 mph, principal arterial, 92 m of this way); 700 BLK W COLD SPRING LN (25 mph, principal arterial, 31 m of this way); 700 BLK W COLD SPRING LN (25 mph, principal arterial, 10 m of this way); MDOT SHA Bicycle LTS record on 700 BLK W COLD SPRING LN: 4 through lanes, posted 25 mph, AADT 12,770; traffic count 15,542 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; OSM way 49667511 v11 (highway=primary, 133 m) via the OSM API 2026-11-04.",
    "fingerprint": {
     "name": "West Cold Spring Lane",
     "highway": "primary",
@@ -3876,28 +3832,6 @@
   },
   {
    "kind": "stress",
-   "osm_way_id": 93107459,
-   "value": {
-    "tier": 3,
-    "adjustment_id": "bmore-review-b00431-1",
-    "category": "other",
-    "annotation_status": "approved",
-    "public_note": "Our review: 3 lanes in this direction, 25 mph posted, about 12,341 cars a day (2024 count), no bike lane, rush-hour parking bans add a lane at peak, so LTS 3.5.",
-    "visibility": "public",
-    "display": "map",
-    "half": true
-   },
-   "reason": "LTS 3.5 (Baltimore City review profile B00431, pattern: Divided road count counted twice; was 4 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: E Pratt St (0.52 mi). One-way, 3 lanes at 25 mph, 12,341/day, peak bus lane (no truck route). The owner rated W 29th St (3 lanes one way, 25 mph, 12,362/day) at 3.5. 3.5. [Facts: 3 in this direction (one-way/divided), 25 mph, posted, 12,341/day, no bike lane, peak parking ban (3 peak lanes, bus lane).]",
-   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 800 BLK E PRATT ST (25 mph, minor arterial, 83 m of this way); 900 BLK E PRATT ST (25 mph, minor arterial, 73 m of this way); 800 BLK E PRATT ST (25 mph, minor arterial, 42 m of this way); MDOT SHA Bicycle LTS record on 800 BLK E PRATT ST: 3 through lanes, posted 25 mph, AADT 10,392; traffic count 12,341 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; Baltimore City DOT truck route class Thru (2024) on 800 BLK E PRATT ST; Baltimore City DOT restricted-hours route on 800 BLK E PRATT ST; OSM way 93107459 v22 (highway=secondary, 229 m) via the OSM API 2026-11-04.",
-   "fingerprint": {
-    "name": "East Pratt Street",
-    "highway": "secondary",
-    "length_m": 229.0,
-    "line": "-76.603943,39.287040 -76.601546,39.287933"
-   }
-  },
-  {
-   "kind": "stress",
    "osm_way_id": 93108174,
    "value": {
     "tier": 3,
@@ -3910,7 +3844,7 @@
     "half": true
    },
    "reason": "LTS 3.5 (Baltimore City review profile B01814, pattern: Other, down; was 4 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: E 28th St: 2 lanes one way, 30 mph (city 30, OSM 30, SHA 30), 12,100/day (2024 count), no bike facility. 2 lanes one way at 30 mph, 6,000-15,000/day: 3.5 (our reviewed one-way rule, e.g. 3-lane one-way 25 mph at 9,100/day = 3.5). Change from current 4.0: the count/speed above puts it in this band and the rater agrees.",
-   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 500 BLK E 28TH ST (30 mph, minor arterial, 138 m of this way); MDOT SHA Bicycle LTS record on 500 BLK E 28TH ST: 1 through lanes, posted 30 mph, AADT 10,683; traffic count 12,100 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; OSM way 93108174 v14 (highway=tertiary, 138 m) via the OSM API 2026-11-04.",
+   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 500 BLK E 28TH ST (30 mph, minor arterial, 138 m of this way); MDOT SHA Bicycle LTS record on 500 BLK E 28TH ST: 1 through lane, posted 30 mph, AADT 10,683; traffic count 12,100 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; OSM way 93108174 v14 (highway=tertiary, 138 m) via the OSM API 2026-11-04.",
    "fingerprint": {
     "name": "East 28th Street",
     "highway": "tertiary",
@@ -4059,7 +3993,7 @@
     "display": "map"
    },
    "reason": "LTS 2 (Baltimore City review profile B02027, pattern: Owner row disagrees with the facts; was 2.5 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: N Howard St: 1 lane one way, 25 mph (posted on our map; city 25, SHA 35 assumed), 1,980/day (2024 count). 1,500-4,000/day at 25 mph: below the ~5,000/day line, 2 (1st St NW rule). city planning LTS 3 is ~2017 and compare-only. Change from current 2.5: the count, speed and lanes above put it here, and the blind rater reached the same level independently.",
-   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 300 BLK N HOWARD ST (25 mph, collector, 117 m of this way); MDOT SHA Bicycle LTS record on 300 BLK N HOWARD ST: 1 through lanes, assumed 35 mph, AADT 1,361; traffic count 1,980 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; OSM way 98102292 v13 (highway=primary, 117 m) via the OSM API 2026-11-04.",
+   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 300 BLK N HOWARD ST (25 mph, collector, 117 m of this way); MDOT SHA Bicycle LTS record on 300 BLK N HOWARD ST: 1 through lane, assumed 35 mph, AADT 1,361; traffic count 1,980 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; OSM way 98102292 v13 (highway=primary, 117 m) via the OSM API 2026-11-04.",
    "fingerprint": {
     "name": "North Howard Street",
     "highway": "primary",
@@ -4124,7 +4058,7 @@
     "display": "map"
    },
    "reason": "LTS 2 (Baltimore City review profile B01192, pattern: Owner row disagrees with the facts; was 2.5 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: N Howard St: 1 lane one way, 25 mph (posted on our map; city 25, SHA 35 assumed), 1,980/day (2024 count). 1,500-4,000/day at 25 mph: below the ~5,000/day line, 2 (1st St NW rule). SHA's 3 rests on an assumed 35 mph where the city records 25; city planning LTS 3 is ~2017 and compare-only. Change from current 2.5: the count, speed and lanes above put it here, and the blind rater reached the same level independently.",
-   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 200 BLK N HOWARD ST (25 mph, collector, 75 m of this way); 200 BLK N HOWARD ST (25 mph, collector, 75 m of this way); MDOT SHA Bicycle LTS record on 200 BLK N HOWARD ST: 1 through lanes, assumed 35 mph, AADT 1,361; traffic count 1,980 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; OSM way 98102321 v14 (highway=primary, 150 m) via the OSM API 2026-11-04.",
+   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 200 BLK N HOWARD ST (25 mph, collector, 75 m of this way); 200 BLK N HOWARD ST (25 mph, collector, 75 m of this way); MDOT SHA Bicycle LTS record on 200 BLK N HOWARD ST: 1 through lane, assumed 35 mph, AADT 1,361; traffic count 1,980 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; OSM way 98102321 v14 (highway=primary, 150 m) via the OSM API 2026-11-04.",
    "fingerprint": {
     "name": "North Howard Street",
     "highway": "primary",
@@ -4233,7 +4167,7 @@
     "display": "map"
    },
    "reason": "LTS 2 (Baltimore City review profile B01257, pattern: Owner row disagrees with the facts; was 2.5 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: N Howard St: 1 lane per direction (divided), 25 mph (posted on our map; city 25, SHA 35 assumed), 1,980/day (2024 count). 1,500-4,000/day at 25 mph: below the ~5,000/day line, 2 (1st St NW rule). city planning LTS 3 is ~2017 and compare-only. Change from current 2.5: the count, speed and lanes above put it here, and the blind rater reached the same level independently.",
-   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 500 BLK N HOWARD ST (25 mph, collector, 126 m of this way); MDOT SHA Bicycle LTS record on 500 BLK N HOWARD ST: 1 through lanes, assumed 35 mph, AADT 1,361; traffic count 1,980 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; OSM way 98117556 v13 (highway=primary, 126 m) via the OSM API 2026-11-04.",
+   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 500 BLK N HOWARD ST (25 mph, collector, 126 m of this way); MDOT SHA Bicycle LTS record on 500 BLK N HOWARD ST: 1 through lane, assumed 35 mph, AADT 1,361; traffic count 1,980 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; OSM way 98117556 v13 (highway=primary, 126 m) via the OSM API 2026-11-04.",
    "fingerprint": {
     "name": "North Howard Street",
     "highway": "primary",
@@ -4254,7 +4188,7 @@
     "display": "map"
    },
    "reason": "LTS 4 (Baltimore City review profile B01797, pattern: Owner row disagrees with the facts; was 3.5 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: S Howard St: 2 lanes each way (mapped; SHA 3 through lanes), 25 mph posted (city 25, SHA 40 assumed), 62,342/day (2024 count; SHA AADT 47,721 agrees it is very heavy). Our owner-reviewed 3.5 was set on a 4-lane 25 mph street, but 62,000/day is about twice Connecticut Ave NW's 25-30k/day, which Stephen rates 4: 4. Not 4.5 (rater): 4.5 is for urban 55 mph roads and posted expressways, and Connecticut Ave at 4-6 lanes is held at 4.",
-   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 100 BLK S HOWARD ST (25 mph, principal arterial, 10 m of this way); MDOT SHA Bicycle LTS record on 100 BLK S HOWARD ST: 3 through lanes, assumed 40 mph, AADT 47,721; traffic count 62,342 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; Baltimore City DOT truck route class null (2024) on 100 BLK S HOWARD ST; OSM way 98117566 v10 (highway=primary, 10 m) via the OSM API 2026-11-04.",
+   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 100 BLK S HOWARD ST (25 mph, principal arterial, 10 m of this way); MDOT SHA Bicycle LTS record on 100 BLK S HOWARD ST: 3 through lanes, assumed 40 mph, AADT 47,721; traffic count 62,342 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; OSM way 98117566 v10 (highway=primary, 10 m) via the OSM API 2026-11-04.",
    "fingerprint": {
     "name": "South Howard Street",
     "highway": "primary",
@@ -4449,7 +4383,7 @@
     "display": "map"
    },
    "reason": "LTS 2 (Baltimore City review profile B01192, pattern: Owner row disagrees with the facts; was 2.5 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: N Howard St: 1 lane one way, 25 mph (posted on our map; city 25, SHA 35 assumed), 1,980/day (2024 count). 1,500-4,000/day at 25 mph: below the ~5,000/day line, 2 (1st St NW rule). SHA's 3 rests on an assumed 35 mph where the city records 25; city planning LTS 3 is ~2017 and compare-only. Change from current 2.5: the count, speed and lanes above put it here, and the blind rater reached the same level independently.",
-   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 100 BLK N HOWARD ST (25 mph, collector, 60 m of this way); 100 BLK N HOWARD ST (25 mph, collector, 60 m of this way); MDOT SHA Bicycle LTS record on 100 BLK N HOWARD ST: 1 through lanes, assumed 35 mph, AADT 1,361; traffic count 1,980 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; OSM way 98289457 v11 (highway=primary, 120 m) via the OSM API 2026-11-04.",
+   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 100 BLK N HOWARD ST (25 mph, collector, 60 m of this way); 100 BLK N HOWARD ST (25 mph, collector, 60 m of this way); MDOT SHA Bicycle LTS record on 100 BLK N HOWARD ST: 1 through lane, assumed 35 mph, AADT 1,361; traffic count 1,980 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; OSM way 98289457 v11 (highway=primary, 120 m) via the OSM API 2026-11-04.",
    "fingerprint": {
     "name": "North Howard Street",
     "highway": "primary",
@@ -4534,8 +4468,8 @@
     "display": "map",
     "half": true
    },
-   "reason": "LTS 3.5 (Baltimore City review profile B00619, pattern: SHA assumed a faster speed than the city records; was 4 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: E 25th St: 2 lanes each way, 30 mph (city 30, OSM 30, SHA 35 assumed), 7,840/day (2024 count), truck route null. 2 lanes each way at 30 mph, 6,000-18,000/day: 3.5 (VA urban arterial anchor 3.5 at 12k; our reviewed 4-lane 30 mph at 15,600/day = 3.5). Change from current 4.0: the count/speed above puts it in this band and the rater agrees.",
-   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 100 BLK E 25TH ST (30 mph, minor arterial, 50 m of this way); 100 BLK E 25TH ST (30 mph, minor arterial, 50 m of this way); 200 BLK E 25TH ST (30 mph, minor arterial, 30 m of this way); MDOT SHA Bicycle LTS record on 100 BLK E 25TH ST: 4 through lanes, assumed 35 mph, AADT 8,992; traffic count 7,840 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; Baltimore City DOT truck route class null (2024) on 100 BLK E 25TH ST; OSM way 98289561 v19 (highway=secondary, 161 m) via the OSM API 2026-11-04.",
+   "reason": "LTS 3.5 (Baltimore City review profile B00619, pattern: SHA assumed a faster speed than the city records; was 4 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: E 25th St: 2 lanes each way, 30 mph (city 30, OSM 30, SHA 35 assumed), 7,840/day (2024 count), no truck route. 2 lanes each way at 30 mph, 6,000-18,000/day: 3.5 (VA urban arterial anchor 3.5 at 12k; our reviewed 4-lane 30 mph at 15,600/day = 3.5). Change from current 4.0: the count/speed above puts it in this band and the rater agrees.",
+   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 100 BLK E 25TH ST (30 mph, minor arterial, 50 m of this way); 100 BLK E 25TH ST (30 mph, minor arterial, 50 m of this way); 200 BLK E 25TH ST (30 mph, minor arterial, 30 m of this way); MDOT SHA Bicycle LTS record on 100 BLK E 25TH ST: 4 through lanes, assumed 35 mph, AADT 8,992; traffic count 7,840 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; OSM way 98289561 v19 (highway=secondary, 161 m) via the OSM API 2026-11-04.",
    "fingerprint": {
     "name": "East 25th Street",
     "highway": "secondary",
@@ -4642,7 +4576,7 @@
     "display": "map"
    },
    "reason": "LTS 3 (Baltimore City review profile B01387, pattern: Owner row disagrees with the facts; was 3.5 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: W Mulberry St: 2 lanes one way, 30 mph (posted on our map; city 30, SHA 35 assumed), 5,332/day (2024 count). 2 lanes one way at 25-30 mph, 2,500-6,000/day: 3 (our one-way rule: 2-lane one-way 25 mph at 4,400/day = 3). SHA's 4 rests on an assumed 35 mph where the city records 30. Change from current 3.5: the count, speed and lanes above put it here, and the blind rater reached the same level independently.",
-   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 600 BLK W MULBERRY ST (30 mph, collector, 209 m of this way); MDOT SHA Bicycle LTS record on 600 BLK W MULBERRY ST: 2 through lanes, assumed 35 mph, AADT 6,103; traffic count 5,332 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; Baltimore City DOT truck route class null (2024) on 600 BLK W MULBERRY ST; OSM way 104320710 v15 (highway=primary, 219 m) via the OSM API 2026-11-04.",
+   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 600 BLK W MULBERRY ST (30 mph, collector, 209 m of this way); MDOT SHA Bicycle LTS record on 600 BLK W MULBERRY ST: 2 through lanes, assumed 35 mph, AADT 6,103; traffic count 5,332 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; OSM way 104320710 v15 (highway=primary, 219 m) via the OSM API 2026-11-04.",
    "fingerprint": {
     "name": "West Mulberry Street",
     "highway": "primary",
@@ -4748,7 +4682,7 @@
     "display": "map"
    },
    "reason": "LTS 2 (Baltimore City review profile B01107, pattern: Truck route; was 1 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: Uncounted local on a city Local truck route: the city designates it for truck access, a concrete heavy-vehicle fact on a two-lane street. Half a step over the 1.5 of a quiet local: 2 (brief: truck routes on narrow streets add up to half a step). Our 1-1.5 omits the truck route. Weaker than a Thru route; an on-the-spot look at truck use would settle 1.5 vs 2. [6.79 mi (Mount Hope Dr, Portal St, Key Hwy E, Beckley St); city speed 25 mph; no SHA count; city facility: Path or Sidepath, Signed Bike Route; truck route: Local; 2 speed humps; SHA LTS 1, city planning LTS 1/2/4]",
-   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 1500 BLK E LEXINGTON ST (25 mph, local street, 61 m of this way); 1500 BLK E LEXINGTON ST (25 mph, local street, 31 m of this way); MDOT SHA Bicycle LTS record on 1500 BLK E LEXINGTON ST: 1 through lanes, assumed 25 mph, no AADT; Baltimore City DOT truck route class Local (2024) on 1500 BLK E LEXINGTON ST; OSM way 107445234 v9 (highway=residential, 92 m) via the OSM API 2026-11-04.",
+   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 1500 BLK E LEXINGTON ST (25 mph, local street, 61 m of this way); 1500 BLK E LEXINGTON ST (25 mph, local street, 31 m of this way); MDOT SHA Bicycle LTS record on 1500 BLK E LEXINGTON ST: 1 through lane, assumed 25 mph, no AADT; Baltimore City DOT truck route class Local (2024) on 1500 BLK E LEXINGTON ST; OSM way 107445234 v9 (highway=residential, 92 m) via the OSM API 2026-11-04.",
    "fingerprint": {
     "name": "East Lexington Street",
     "highway": "residential",
@@ -5093,7 +5027,7 @@
     "half": true
    },
    "reason": "LTS 3.5 (Baltimore City review profile B02000, pattern: Owner row disagrees with the facts; was 3 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: E McComas St: 1 lane one way, 30 mph (city 30, OSM 30, SHA 30), 9,915/day (2024 count), city facility: Separated Bike Lane, truck route Thru. 6,000-10,000/day at 30 mph on a two-lane (or one-lane one-way) street: 3; plus half a step for the city's Thru truck route on a narrow two-lane street (Baltimore brief). SHA's 2 does not reflect the count/lanes above. Change from current 3.0: the count/speed above puts it in this band and the rater agrees.",
-   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 600 BLK E MCCOMAS ST (30 mph, minor arterial, 95 m of this way); 700 BLK E MCCOMAS ST (30 mph, minor arterial, 21 m of this way); MDOT SHA Bicycle LTS record on 600 BLK E MCCOMAS ST: 1 through lanes, posted 30 mph, AADT 4,734; traffic count 9,915 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; Baltimore City DOT truck route class Thru (2024) on 600 BLK E MCCOMAS ST; Baltimore City DOT bike facility on 600 BLK E MCCOMAS ST: Separated Bike Lane; OSM way 130714988 v7 (highway=primary, 116 m) via the OSM API 2026-11-04.",
+   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 600 BLK E MCCOMAS ST (30 mph, minor arterial, 95 m of this way); 700 BLK E MCCOMAS ST (30 mph, minor arterial, 21 m of this way); MDOT SHA Bicycle LTS record on 600 BLK E MCCOMAS ST: 1 through lane, posted 30 mph, AADT 4,734; traffic count 9,915 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; Baltimore City DOT truck route class Thru (2024) on 600 BLK E MCCOMAS ST; Baltimore City DOT bike facility on 600 BLK E MCCOMAS ST: Separated Bike Lane; OSM way 130714988 v7 (highway=primary, 116 m) via the OSM API 2026-11-04.",
    "fingerprint": {
     "name": "East McComas Street",
     "highway": "primary",
@@ -5221,7 +5155,7 @@
     "display": "map"
    },
    "reason": "LTS 2 (Baltimore City review profile B01465, pattern: Other, up; was 1 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: Current 1 rests only on SHA's 1; our map draws no facility here and the city layer records a painted (not separated) bike lane. 2 lanes one way at 30 mph, 3,582/day: with the painted lane this is 2 (as the adjacent Guilford Ave block B01698), without it 2.5 (rater). City lane credited because the street is calm; flagged.",
-   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 400 BLK GUILFORD AVE (30 mph, minor arterial, 199 m of this way); MDOT SHA Bicycle LTS record on 400 BLK GUILFORD AVE: 2 through lanes, posted 25 mph, AADT 4,191; traffic count 3,582 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; Baltimore City DOT truck route class null (2024) on 400 BLK GUILFORD AVE; Baltimore City DOT bike facility on 400 BLK GUILFORD AVE: Bike Lane; OSM way 132521405 v14 (highway=secondary, 199 m) via the OSM API 2026-11-04.",
+   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 400 BLK GUILFORD AVE (30 mph, minor arterial, 199 m of this way); MDOT SHA Bicycle LTS record on 400 BLK GUILFORD AVE: 2 through lanes, posted 25 mph, AADT 4,191; traffic count 3,582 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; Baltimore City DOT bike facility on 400 BLK GUILFORD AVE: Bike Lane; OSM way 132521405 v14 (highway=secondary, 199 m) via the OSM API 2026-11-04.",
    "fingerprint": {
     "name": "Guilford Avenue",
     "highway": "secondary",
@@ -5369,8 +5303,8 @@
     "display": "map",
     "half": true
    },
-   "reason": "LTS 3.5 (Baltimore City review profile B00750, pattern: Other, down; was 4 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: E 33rd St: 2 lanes one way, 30 mph (city 30, OSM 30, SHA 30), 8,472/day (2024 count), city facility: Shared Lane Markings, truck route null. 2 lanes one way at 30 mph, 6,000-15,000/day: 3.5 (our reviewed one-way rule, e.g. 3-lane one-way 25 mph at 9,100/day = 3.5). Change from current 4.0: the count/speed above puts it in this band and the rater agrees.",
-   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 300 BLK E 33RD ST (30 mph, principal arterial, 116 m of this way); 300 BLK E 33RD ST (30 mph, principal arterial, 42 m of this way); MDOT SHA Bicycle LTS record on 300 BLK E 33RD ST: 4 through lanes, posted 30 mph, AADT 9,500; traffic count 8,472 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; Baltimore City DOT truck route class null (2024) on 300 BLK E 33RD ST; Baltimore City DOT bike facility on 300 BLK E 33RD ST: Shared Lane Markings; OSM way 132609849 v15 (highway=primary, 158 m) via the OSM API 2026-11-04.",
+   "reason": "LTS 3.5 (Baltimore City review profile B00750, pattern: Other, down; was 4 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: E 33rd St: 2 lanes one way, 30 mph (city 30, OSM 30, SHA 30), 8,472/day (2024 count), city facility: Shared Lane Markings, no truck route. 2 lanes one way at 30 mph, 6,000-15,000/day: 3.5 (our reviewed one-way rule, e.g. 3-lane one-way 25 mph at 9,100/day = 3.5). Change from current 4.0: the count/speed above puts it in this band and the rater agrees.",
+   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 300 BLK E 33RD ST (30 mph, principal arterial, 116 m of this way); 300 BLK E 33RD ST (30 mph, principal arterial, 42 m of this way); MDOT SHA Bicycle LTS record on 300 BLK E 33RD ST: 4 through lanes, posted 30 mph, AADT 9,500; traffic count 8,472 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; Baltimore City DOT bike facility on 300 BLK E 33RD ST: Shared Lane Markings; OSM way 132609849 v15 (highway=primary, 158 m) via the OSM API 2026-11-04.",
    "fingerprint": {
     "name": "East 33rd Street",
     "highway": "primary",
@@ -5391,8 +5325,8 @@
     "display": "map",
     "half": true
    },
-   "reason": "LTS 3.5 (Baltimore City review profile B01967, pattern: SHA assumed a faster speed than the city records; was 4 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: E 33rd St: 2 lanes one way, 30 mph (city 30, OSM 30, SHA 40 assumed), 8,472/day (2024 count), city facility: Path or Sidepath, truck route null. 2 lanes one way at 30 mph, 6,000-15,000/day: 3.5 (our reviewed one-way rule, e.g. 3-lane one-way 25 mph at 9,100/day = 3.5). Change from current 4.0: the count/speed above puts it in this band and the rater agrees.",
-   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: UNIT BLK E 33RD ST (30 mph, principal arterial, 31 m of this way); UNIT BLK E 33RD ST (30 mph, principal arterial, 20 m of this way); MDOT SHA Bicycle LTS record on UNIT BLK E 33RD ST: 3 through lanes, assumed 40 mph, AADT 9,500; traffic count 8,472 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; Baltimore City DOT truck route class null (2024) on UNIT BLK E 33RD ST; Baltimore City DOT bike facility on UNIT BLK E 33RD ST: Path or Sidepath; OSM way 132609861 v19 (highway=primary, 51 m) via the OSM API 2026-11-04.",
+   "reason": "LTS 3.5 (Baltimore City review profile B01967, pattern: SHA assumed a faster speed than the city records; was 4 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: E 33rd St: 2 lanes one way, 30 mph (city 30, OSM 30, SHA 40 assumed), 8,472/day (2024 count), city facility: Path or Sidepath, no truck route. 2 lanes one way at 30 mph, 6,000-15,000/day: 3.5 (our reviewed one-way rule, e.g. 3-lane one-way 25 mph at 9,100/day = 3.5). Change from current 4.0: the count/speed above puts it in this band and the rater agrees.",
+   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: UNIT BLK E 33RD ST (30 mph, principal arterial, 31 m of this way); UNIT BLK E 33RD ST (30 mph, principal arterial, 20 m of this way); MDOT SHA Bicycle LTS record on UNIT BLK E 33RD ST: 3 through lanes, assumed 40 mph, AADT 9,500; traffic count 8,472 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; Baltimore City DOT bike facility on UNIT BLK E 33RD ST: Path or Sidepath; OSM way 132609861 v19 (highway=primary, 51 m) via the OSM API 2026-11-04.",
    "fingerprint": {
     "name": "East 33rd Street",
     "highway": "primary",
@@ -6487,28 +6421,6 @@
   },
   {
    "kind": "stress",
-   "osm_way_id": 196949922,
-   "value": {
-    "tier": 2,
-    "adjustment_id": "bmore-review-b01935-1",
-    "category": "other",
-    "annotation_status": "approved",
-    "public_note": "Our review: one lane each way, 25 mph posted (MDOT SHA assumed 35), about 8,974 cars a day (2024 count), painted bike lane, a city truck route for deliveries, so LTS 2.5.",
-    "visibility": "public",
-    "display": "map",
-    "half": true
-   },
-   "reason": "LTS 2.5 (Baltimore City review profile B01935, pattern: Owner row disagrees with the facts; was 2 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: W 41st St: 1 lane each way, 25 mph (posted on our map; city 25, SHA 35 assumed), 8,974/day (2024 count), our map: lane, city facility: Buffered Bike Lane, truck route Local. 8,000-12,000/day on a 25 mph two-lane street: above the 3,000-8,000/day 2.5 band, 3; painted lane on our map (city layer: Buffered Bike Lane): half a step down (R St NW painted 2 vs unpainted 2.5), floor 2; Restricted Hours Route: its peak lanes are already within the mapped lanes, no bump. Change from current 2: the count, speed and lanes above put it here, and the blind rater reached the same level independently.",
-   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 1400 BLK W 41ST ST (25 mph, minor arterial, 116 m of this way); 1600 BLK W 41ST ST (30 mph, minor arterial, 11 m of this way); MDOT SHA Bicycle LTS record on 1400 BLK W 41ST ST: 3 through lanes, assumed 35 mph, AADT 8,255; traffic count 8,974 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; Baltimore City DOT truck route class Local (2024) on 1400 BLK W 41ST ST; Baltimore City DOT bike facility on 1400 BLK W 41ST ST: Buffered Bike Lane; Baltimore City DOT restricted-hours route on 1400 BLK W 41ST ST; OSM way 196949922 v13 (highway=secondary, 127 m) via the OSM API 2026-11-04.",
-   "fingerprint": {
-    "name": "West 41st Street",
-    "highway": "secondary",
-    "length_m": 126.6,
-    "line": "-76.641193,39.336149 -76.642505,39.335633"
-   }
-  },
-  {
-   "kind": "stress",
    "osm_way_id": 197613665,
    "value": {
     "tier": 2,
@@ -6584,7 +6496,7 @@
     "display": "map"
    },
    "reason": "LTS 2 (Baltimore City review profile B00675, pattern: SHA assumed a faster speed than the city records; was 3 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: Armistead Way: 1 lane each way, 25 mph (posted on our map; city 25, SHA 35 assumed), 3,190/day (2024 count). 1,500-4,000/day at 25 mph: below the ~5,000/day line, 2 (1st St NW rule). SHA's 3 rests on an assumed 35 mph where the city records 25. Change from current 3: the count, speed and lanes above put it here, and the blind rater reached the same level independently.",
-   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 1200 BLK ARMISTEAD WAY (25 mph, collector, 112 m of this way); 1100 BLK ARMISTEAD WAY (25 mph, collector, 72 m of this way); 1100 BLK ARMISTEAD WAY (25 mph, collector, 61 m of this way); MDOT SHA Bicycle LTS record on 1200 BLK ARMISTEAD WAY: 1 through lanes, assumed 35 mph, AADT 2,712; traffic count 3,190 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; OSM way 198707902 v7 (highway=residential, 368 m) via the OSM API 2026-11-04.",
+   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 1200 BLK ARMISTEAD WAY (25 mph, collector, 112 m of this way); 1100 BLK ARMISTEAD WAY (25 mph, collector, 72 m of this way); 1100 BLK ARMISTEAD WAY (25 mph, collector, 61 m of this way); MDOT SHA Bicycle LTS record on 1200 BLK ARMISTEAD WAY: 1 through lane, assumed 35 mph, AADT 2,712; traffic count 3,190 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; OSM way 198707902 v7 (highway=residential, 368 m) via the OSM API 2026-11-04.",
    "fingerprint": {
     "name": "Armistead Way",
     "highway": "residential",
@@ -6969,7 +6881,7 @@
     "half": true
    },
    "reason": "LTS 3.5 (Baltimore City review profile B00928, pattern: Divided road count counted twice; was 4 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: W Cold Spring Ln: 2 lanes per direction (divided), 30 mph (posted on our map; city 30, SHA 30), 15,542/day (2024 count). 2 lanes one way at 25-30 mph, 6,000-15,000/day: 3.5 (our reviewed one-way rule, e.g. 3-lane one-way 25 mph at 9,100/day = 3.5); divided road: the 15,542/day is shared across both carriageways (region rule; ~7,771 each), so each side is rated as a 2-lane one-way street at that volume. Change from current 4: the count, speed and lanes above put it here, and the blind rater reached the same level independently.",
-   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 900 BLK W COLD SPRING LN (30 mph, principal arterial, 253 m of this way); 1100 BLK W COLD SPRING LN (30 mph, principal arterial, 71 m of this way); MDOT SHA Bicycle LTS record on 900 BLK W COLD SPRING LN: 4 through lanes, posted 30 mph, AADT 12,770; traffic count 15,542 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; Baltimore City DOT truck route class null (2024) on 900 BLK W COLD SPRING LN; OSM way 208502677 v11 (highway=primary, 324 m) via the OSM API 2026-11-04.",
+   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 900 BLK W COLD SPRING LN (30 mph, principal arterial, 253 m of this way); 1100 BLK W COLD SPRING LN (30 mph, principal arterial, 71 m of this way); MDOT SHA Bicycle LTS record on 900 BLK W COLD SPRING LN: 4 through lanes, posted 30 mph, AADT 12,770; traffic count 15,542 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; OSM way 208502677 v11 (highway=primary, 324 m) via the OSM API 2026-11-04.",
    "fingerprint": {
     "name": "West Cold Spring Lane",
     "highway": "primary",
@@ -7547,7 +7459,7 @@
     "display": "map"
    },
    "reason": "LTS 2 (Baltimore City review profile B00661, pattern: SHA assumed a faster speed than the city records; was 3 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: Winston Ave: 2 lanes one way, 25 mph (posted on our map; city 25, SHA 35 assumed), 1,385/day (2024 count), city facility: Signed Bike Route, 2 city speed hump(s). 2 lanes one way at 25-30 mph, under 1,500/day: 2-2.5. SHA's 3 rests on an assumed 35 mph where the city records 25. Change from current 3: the count, speed and lanes above put it here, and the blind rater reached the same level independently.",
-   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 600 BLK WINSTON AVE (25 mph, collector, 90 m of this way); 500 BLK WINSTON AVE (25 mph, collector, 90 m of this way); 800 BLK WINSTON AVE (25 mph, collector, 80 m of this way); MDOT SHA Bicycle LTS record on 600 BLK WINSTON AVE: 1 through lanes, assumed 35 mph, AADT 1,182; traffic count 1,385 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; Baltimore City DOT bike facility on 600 BLK WINSTON AVE: Signed Bike Route; OSM way 323919336 v10 (highway=tertiary, 531 m) via the OSM API 2026-11-04.",
+   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 600 BLK WINSTON AVE (25 mph, collector, 90 m of this way); 500 BLK WINSTON AVE (25 mph, collector, 90 m of this way); 800 BLK WINSTON AVE (25 mph, collector, 80 m of this way); MDOT SHA Bicycle LTS record on 600 BLK WINSTON AVE: 1 through lane, assumed 35 mph, AADT 1,182; traffic count 1,385 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; Baltimore City DOT bike facility on 600 BLK WINSTON AVE: Signed Bike Route; OSM way 323919336 v10 (highway=tertiary, 531 m) via the OSM API 2026-11-04.",
    "fingerprint": {
     "name": "Winston Avenue",
     "highway": "tertiary",
@@ -7698,7 +7610,7 @@
     "half": true
    },
    "reason": "LTS 1.5 (Baltimore City review profile B00880, pattern: SHA assumed a faster speed than the city records; was 3 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: Millington Ave: 1 lane one way, 25 mph (posted on our map; city 25, SHA 35 assumed), 750/day (2024 count), 3 city speed hump(s). at or under 1,500/day at 25 mph: quiet, 1.5 (Fairfax 1,001-1,500/day and Arlington <1,000/day anchors). SHA's 3 rests on an assumed 35 mph where the city records 25. Change from current 3: the count, speed and lanes above put it here, and the blind rater reached the same level independently.",
-   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 300 BLK MILLINGTON AVE (25 mph, collector, 62 m of this way); 400 BLK MILLINGTON AVE (25 mph, collector, 62 m of this way); 400 BLK MILLINGTON AVE (25 mph, collector, 51 m of this way); MDOT SHA Bicycle LTS record on 300 BLK MILLINGTON AVE: 1 through lanes, assumed 35 mph, AADT 892; traffic count 750 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; OSM way 395192036 v5 (highway=residential, 257 m) via the OSM API 2026-11-04.",
+   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 300 BLK MILLINGTON AVE (25 mph, collector, 62 m of this way); 400 BLK MILLINGTON AVE (25 mph, collector, 62 m of this way); 400 BLK MILLINGTON AVE (25 mph, collector, 51 m of this way); MDOT SHA Bicycle LTS record on 300 BLK MILLINGTON AVE: 1 through lane, assumed 35 mph, AADT 892; traffic count 750 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; OSM way 395192036 v5 (highway=residential, 257 m) via the OSM API 2026-11-04.",
    "fingerprint": {
     "name": "Millington Avenue",
     "highway": "residential",
@@ -7741,8 +7653,8 @@
     "display": "map",
     "half": true
    },
-   "reason": "LTS 3.5 (Baltimore City review profile B02317, pattern: Other, down; was 4 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: E 33rd St: 2 lanes one way, 30 mph (city 30, OSM 30, SHA 30), 8,472/day (2024 count), city facility: Shared Lane Markings, truck route null. 2 lanes one way at 30 mph, 6,000-15,000/day: 3.5 (our reviewed one-way rule, e.g. 3-lane one-way 25 mph at 9,100/day = 3.5). Change from current 4.0: the count/speed above puts it in this band and the rater agrees.",
-   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 100 BLK E 33RD ST (30 mph, principal arterial, 44 m of this way); 100 BLK E 33RD ST (30 mph, principal arterial, 33 m of this way); MDOT SHA Bicycle LTS record on 100 BLK E 33RD ST: 3 through lanes, posted 30 mph, AADT 9,500; traffic count 8,472 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; Baltimore City DOT truck route class null (2024) on 100 BLK E 33RD ST; Baltimore City DOT bike facility on 100 BLK E 33RD ST: Shared Lane Markings; OSM way 399093877 v13 (highway=primary, 77 m) via the OSM API 2026-11-04.",
+   "reason": "LTS 3.5 (Baltimore City review profile B02317, pattern: Other, down; was 4 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: E 33rd St: 2 lanes one way, 30 mph (city 30, OSM 30, SHA 30), 8,472/day (2024 count), city facility: Shared Lane Markings, no truck route. 2 lanes one way at 30 mph, 6,000-15,000/day: 3.5 (our reviewed one-way rule, e.g. 3-lane one-way 25 mph at 9,100/day = 3.5). Change from current 4.0: the count/speed above puts it in this band and the rater agrees.",
+   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 100 BLK E 33RD ST (30 mph, principal arterial, 44 m of this way); 100 BLK E 33RD ST (30 mph, principal arterial, 33 m of this way); MDOT SHA Bicycle LTS record on 100 BLK E 33RD ST: 3 through lanes, posted 30 mph, AADT 9,500; traffic count 8,472 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; Baltimore City DOT bike facility on 100 BLK E 33RD ST: Shared Lane Markings; OSM way 399093877 v13 (highway=primary, 77 m) via the OSM API 2026-11-04.",
    "fingerprint": {
     "name": "East 33rd Street",
     "highway": "primary",
@@ -8170,8 +8082,8 @@
     "display": "map",
     "half": true
    },
-   "reason": "LTS 3.5 (Baltimore City review profile B01800, pattern: Owner row disagrees with the facts; was 3 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: South St: 2 lanes each way, 30 mph (city 30, OSM 30, SHA 25), 9,020/day (2024 count), city facility: Bike Lane, truck route null. 2 lanes each way at 30 mph, 6,000-18,000/day: 3.5 (VA urban arterial anchor 3.5 at 12k; our reviewed 4-lane 30 mph at 15,600/day = 3.5). SHA's 2 does not reflect the count/lanes above. Change from current 3.0: the count/speed above puts it in this band and the rater agrees.",
-   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 100 BLK SOUTH ST (30 mph, principal arterial, 138 m of this way); MDOT SHA Bicycle LTS record on 100 BLK SOUTH ST: 4 through lanes, posted 25 mph, AADT 6,642; traffic count 9,020 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; Baltimore City DOT truck route class null (2024) on 100 BLK SOUTH ST; Baltimore City DOT bike facility on 100 BLK SOUTH ST: Bike Lane; OSM way 424998869 v9 (highway=primary, 138 m) via the OSM API 2026-11-04.",
+   "reason": "LTS 3.5 (Baltimore City review profile B01800, pattern: Owner row disagrees with the facts; was 3 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: South St: 2 lanes each way, 30 mph (city 30, OSM 30, SHA 25), 9,020/day (2024 count), city facility: Bike Lane, no truck route. 2 lanes each way at 30 mph, 6,000-18,000/day: 3.5 (VA urban arterial anchor 3.5 at 12k; our reviewed 4-lane 30 mph at 15,600/day = 3.5). SHA's 2 does not reflect the count/lanes above. Change from current 3.0: the count/speed above puts it in this band and the rater agrees.",
+   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 100 BLK SOUTH ST (30 mph, principal arterial, 138 m of this way); MDOT SHA Bicycle LTS record on 100 BLK SOUTH ST: 4 through lanes, posted 25 mph, AADT 6,642; traffic count 9,020 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; Baltimore City DOT bike facility on 100 BLK SOUTH ST: Bike Lane; OSM way 424998869 v9 (highway=primary, 138 m) via the OSM API 2026-11-04.",
    "fingerprint": {
     "name": "South Street",
     "highway": "primary",
@@ -8235,7 +8147,7 @@
     "display": "map"
    },
    "reason": "LTS 4 (Baltimore City review profile B01797, pattern: Owner row disagrees with the facts; was 3.5 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: S Howard St: 2 lanes each way (mapped; SHA 3 through lanes), 25 mph posted (city 25, SHA 40 assumed), 62,342/day (2024 count; SHA AADT 47,721 agrees it is very heavy). Our owner-reviewed 3.5 was set on a 4-lane 25 mph street, but 62,000/day is about twice Connecticut Ave NW's 25-30k/day, which Stephen rates 4: 4. Not 4.5 (rater): 4.5 is for urban 55 mph roads and posted expressways, and Connecticut Ave at 4-6 lanes is held at 4.",
-   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 100 BLK S HOWARD ST (25 mph, principal arterial, 23 m of this way); MDOT SHA Bicycle LTS record on 100 BLK S HOWARD ST: 3 through lanes, assumed 40 mph, AADT 47,721; traffic count 62,342 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; Baltimore City DOT truck route class null (2024) on 100 BLK S HOWARD ST; OSM way 425002423 v6 (highway=primary, 23 m) via the OSM API 2026-11-04.",
+   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 100 BLK S HOWARD ST (25 mph, principal arterial, 23 m of this way); MDOT SHA Bicycle LTS record on 100 BLK S HOWARD ST: 3 through lanes, assumed 40 mph, AADT 47,721; traffic count 62,342 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; OSM way 425002423 v6 (highway=primary, 23 m) via the OSM API 2026-11-04.",
    "fingerprint": {
     "name": "South Howard Street",
     "highway": "primary",
@@ -8256,8 +8168,8 @@
     "display": "map",
     "half": true
    },
-   "reason": "LTS 3.5 (Baltimore City review profile B01967, pattern: SHA assumed a faster speed than the city records; was 4 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: E 33rd St: 2 lanes one way, 30 mph (city 30, OSM 30, SHA 40 assumed), 8,472/day (2024 count), city facility: Path or Sidepath, truck route null. 2 lanes one way at 30 mph, 6,000-15,000/day: 3.5 (our reviewed one-way rule, e.g. 3-lane one-way 25 mph at 9,100/day = 3.5). Change from current 4.0: the count/speed above puts it in this band and the rater agrees.",
-   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: UNIT BLK E 33RD ST (30 mph, principal arterial, 33 m of this way); MDOT SHA Bicycle LTS record on UNIT BLK E 33RD ST: 3 through lanes, assumed 40 mph, AADT 9,500; traffic count 8,472 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; Baltimore City DOT truck route class null (2024) on UNIT BLK E 33RD ST; Baltimore City DOT bike facility on UNIT BLK E 33RD ST: Path or Sidepath; OSM way 425002735 v14 (highway=primary, 33 m) via the OSM API 2026-11-04.",
+   "reason": "LTS 3.5 (Baltimore City review profile B01967, pattern: SHA assumed a faster speed than the city records; was 4 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: E 33rd St: 2 lanes one way, 30 mph (city 30, OSM 30, SHA 40 assumed), 8,472/day (2024 count), city facility: Path or Sidepath, no truck route. 2 lanes one way at 30 mph, 6,000-15,000/day: 3.5 (our reviewed one-way rule, e.g. 3-lane one-way 25 mph at 9,100/day = 3.5). Change from current 4.0: the count/speed above puts it in this band and the rater agrees.",
+   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: UNIT BLK E 33RD ST (30 mph, principal arterial, 33 m of this way); MDOT SHA Bicycle LTS record on UNIT BLK E 33RD ST: 3 through lanes, assumed 40 mph, AADT 9,500; traffic count 8,472 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; Baltimore City DOT bike facility on UNIT BLK E 33RD ST: Path or Sidepath; OSM way 425002735 v14 (highway=primary, 33 m) via the OSM API 2026-11-04.",
    "fingerprint": {
     "name": "East 33rd Street",
     "highway": "primary",
@@ -8278,8 +8190,8 @@
     "display": "map",
     "half": true
    },
-   "reason": "LTS 3.5 (Baltimore City review profile B02317, pattern: Other, down; was 4 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: E 33rd St: 2 lanes one way, 30 mph (city 30, OSM 30, SHA 30), 8,472/day (2024 count), city facility: Shared Lane Markings, truck route null. 2 lanes one way at 30 mph, 6,000-15,000/day: 3.5 (our reviewed one-way rule, e.g. 3-lane one-way 25 mph at 9,100/day = 3.5). Change from current 4.0: the count/speed above puts it in this band and the rater agrees.",
-   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 100 BLK E 33RD ST (30 mph, principal arterial, 14 m of this way); MDOT SHA Bicycle LTS record on 100 BLK E 33RD ST: 3 through lanes, posted 30 mph, AADT 9,500; traffic count 8,472 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; Baltimore City DOT truck route class null (2024) on 100 BLK E 33RD ST; Baltimore City DOT bike facility on 100 BLK E 33RD ST: Shared Lane Markings; OSM way 425002736 v8 (highway=primary, 14 m) via the OSM API 2026-11-04.",
+   "reason": "LTS 3.5 (Baltimore City review profile B02317, pattern: Other, down; was 4 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: E 33rd St: 2 lanes one way, 30 mph (city 30, OSM 30, SHA 30), 8,472/day (2024 count), city facility: Shared Lane Markings, no truck route. 2 lanes one way at 30 mph, 6,000-15,000/day: 3.5 (our reviewed one-way rule, e.g. 3-lane one-way 25 mph at 9,100/day = 3.5). Change from current 4.0: the count/speed above puts it in this band and the rater agrees.",
+   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 100 BLK E 33RD ST (30 mph, principal arterial, 14 m of this way); MDOT SHA Bicycle LTS record on 100 BLK E 33RD ST: 3 through lanes, posted 30 mph, AADT 9,500; traffic count 8,472 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; Baltimore City DOT bike facility on 100 BLK E 33RD ST: Shared Lane Markings; OSM way 425002736 v8 (highway=primary, 14 m) via the OSM API 2026-11-04.",
    "fingerprint": {
     "name": "East 33rd Street",
     "highway": "primary",
@@ -8990,7 +8902,7 @@
     "half": true
    },
    "reason": "LTS 1.5 (Baltimore City review profile B01350, pattern: SHA assumed a faster speed than the city records; was 2 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: Beechdale Rd: 1 lane each way (assumed, not mapped), 25 mph (posted on our map; city 25, SHA 35 assumed), 405/day (2024 count). at or under 1,500/day at 25 mph: quiet, 1.5 (Fairfax 1,001-1,500/day and Arlington <1,000/day anchors). Change from current 2: the count, speed and lanes above put it here, and the blind rater reached the same level independently.",
-   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: UNIT BLK BEECHDALE RD (25 mph, collector, 71 m of this way); MDOT SHA Bicycle LTS record on UNIT BLK BEECHDALE RD: 1 through lanes, assumed 35 mph, AADT 332; traffic count 405 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; OSM way 513601907 v5 (highway=residential, 71 m) via the OSM API 2026-11-04.",
+   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: UNIT BLK BEECHDALE RD (25 mph, collector, 71 m of this way); MDOT SHA Bicycle LTS record on UNIT BLK BEECHDALE RD: 1 through lane, assumed 35 mph, AADT 332; traffic count 405 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; OSM way 513601907 v5 (highway=residential, 71 m) via the OSM API 2026-11-04.",
    "fingerprint": {
     "name": "Beechdale Road",
     "highway": "residential",
@@ -9012,7 +8924,7 @@
     "half": true
    },
    "reason": "LTS 3.5 (Baltimore City review profile B00189, pattern: Divided road count counted twice; was 4 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: E Cold Spring Ln (0.83 mi). Divided, 2 lanes each direction at 25 mph posted, 15,090/day, no bike lane. Owner-rated 4-lane 25 mph streets are 3.5 up to 19,390/day (Quarantine Rd, Falls Rd, Argonne Dr); 4 is for Connecticut Ave-type volumes (25-30k). 3.5. [Facts: 2 in this direction (one-way/divided), 25 mph, posted, 15,090/day, no bike lane.]",
-   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 1500 BLK E COLD SPRING LN (25 mph, principal arterial, 129 m of this way); MDOT SHA Bicycle LTS record on 1500 BLK E COLD SPRING LN: 4 through lanes, posted 25 mph, AADT 13,393; traffic count 15,090 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; Baltimore City DOT truck route class null (2024) on 1500 BLK E COLD SPRING LN; OSM way 519385664 v4 (highway=primary, 129 m) via the OSM API 2026-11-04.",
+   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 1500 BLK E COLD SPRING LN (25 mph, principal arterial, 129 m of this way); MDOT SHA Bicycle LTS record on 1500 BLK E COLD SPRING LN: 4 through lanes, posted 25 mph, AADT 13,393; traffic count 15,090 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; OSM way 519385664 v4 (highway=primary, 129 m) via the OSM API 2026-11-04.",
    "fingerprint": {
     "name": "East Cold Spring Lane",
     "highway": "primary",
@@ -9034,7 +8946,7 @@
     "half": true
    },
    "reason": "LTS 3.5 (Baltimore City review profile B00189, pattern: Divided road count counted twice; was 4 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: E Cold Spring Ln (0.83 mi). Divided, 2 lanes each direction at 25 mph posted, 15,090/day, no bike lane. Owner-rated 4-lane 25 mph streets are 3.5 up to 19,390/day (Quarantine Rd, Falls Rd, Argonne Dr); 4 is for Connecticut Ave-type volumes (25-30k). 3.5. [Facts: 2 in this direction (one-way/divided), 25 mph, posted, 15,090/day, no bike lane.]",
-   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 1500 BLK E COLD SPRING LN (25 mph, principal arterial, 45 m of this way); MDOT SHA Bicycle LTS record on 1500 BLK E COLD SPRING LN: 4 through lanes, posted 25 mph, AADT 13,393; traffic count 15,090 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; Baltimore City DOT truck route class null (2024) on 1500 BLK E COLD SPRING LN; OSM way 519385666 v8 (highway=primary, 45 m) via the OSM API 2026-11-04.",
+   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 1500 BLK E COLD SPRING LN (25 mph, principal arterial, 45 m of this way); MDOT SHA Bicycle LTS record on 1500 BLK E COLD SPRING LN: 4 through lanes, posted 25 mph, AADT 13,393; traffic count 15,090 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; OSM way 519385666 v8 (highway=primary, 45 m) via the OSM API 2026-11-04.",
    "fingerprint": {
     "name": "East Cold Spring Lane",
     "highway": "primary",
@@ -9056,7 +8968,7 @@
     "half": true
    },
    "reason": "LTS 3.5 (Baltimore City review profile B00189, pattern: Divided road count counted twice; was 4 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: E Cold Spring Ln (0.83 mi). Divided, 2 lanes each direction at 25 mph posted, 15,090/day, no bike lane. Owner-rated 4-lane 25 mph streets are 3.5 up to 19,390/day (Quarantine Rd, Falls Rd, Argonne Dr); 4 is for Connecticut Ave-type volumes (25-30k). 3.5. [Facts: 2 in this direction (one-way/divided), 25 mph, posted, 15,090/day, no bike lane.]",
-   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 1500 BLK E COLD SPRING LN (25 mph, principal arterial, 188 m of this way); MDOT SHA Bicycle LTS record on 1500 BLK E COLD SPRING LN: 4 through lanes, posted 25 mph, AADT 13,393; traffic count 15,090 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; Baltimore City DOT truck route class null (2024) on 1500 BLK E COLD SPRING LN; OSM way 519385667 v5 (highway=primary, 188 m) via the OSM API 2026-11-04.",
+   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 1500 BLK E COLD SPRING LN (25 mph, principal arterial, 188 m of this way); MDOT SHA Bicycle LTS record on 1500 BLK E COLD SPRING LN: 4 through lanes, posted 25 mph, AADT 13,393; traffic count 15,090 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; OSM way 519385667 v5 (highway=primary, 188 m) via the OSM API 2026-11-04.",
    "fingerprint": {
     "name": "East Cold Spring Lane",
     "highway": "primary",
@@ -9078,7 +8990,7 @@
     "half": true
    },
    "reason": "LTS 3.5 (Baltimore City review profile B00189, pattern: Divided road count counted twice; was 4 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: E Cold Spring Ln (0.83 mi). Divided, 2 lanes each direction at 25 mph posted, 15,090/day, no bike lane. Owner-rated 4-lane 25 mph streets are 3.5 up to 19,390/day (Quarantine Rd, Falls Rd, Argonne Dr); 4 is for Connecticut Ave-type volumes (25-30k). 3.5. [Facts: 2 in this direction (one-way/divided), 25 mph, posted, 15,090/day, no bike lane.]",
-   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 1600 BLK E COLD SPRING LN (25 mph, principal arterial, 143 m of this way); MDOT SHA Bicycle LTS record on 1600 BLK E COLD SPRING LN: 4 through lanes, posted 25 mph, AADT 13,393; traffic count 15,090 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; Baltimore City DOT truck route class null (2024) on 1600 BLK E COLD SPRING LN; OSM way 519385668 v6 (highway=primary, 143 m) via the OSM API 2026-11-04.",
+   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 1600 BLK E COLD SPRING LN (25 mph, principal arterial, 143 m of this way); MDOT SHA Bicycle LTS record on 1600 BLK E COLD SPRING LN: 4 through lanes, posted 25 mph, AADT 13,393; traffic count 15,090 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; OSM way 519385668 v6 (highway=primary, 143 m) via the OSM API 2026-11-04.",
    "fingerprint": {
     "name": "East Cold Spring Lane",
     "highway": "primary",
@@ -9100,7 +9012,7 @@
     "half": true
    },
    "reason": "LTS 3.5 (Baltimore City review profile B00189, pattern: Divided road count counted twice; was 4 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: E Cold Spring Ln (0.83 mi). Divided, 2 lanes each direction at 25 mph posted, 15,090/day, no bike lane. Owner-rated 4-lane 25 mph streets are 3.5 up to 19,390/day (Quarantine Rd, Falls Rd, Argonne Dr); 4 is for Connecticut Ave-type volumes (25-30k). 3.5. [Facts: 2 in this direction (one-way/divided), 25 mph, posted, 15,090/day, no bike lane.]",
-   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 1600 BLK E COLD SPRING LN (25 mph, principal arterial, 129 m of this way); MDOT SHA Bicycle LTS record on 1600 BLK E COLD SPRING LN: 4 through lanes, posted 25 mph, AADT 13,393; traffic count 15,090 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; Baltimore City DOT truck route class null (2024) on 1600 BLK E COLD SPRING LN; OSM way 519385669 v5 (highway=primary, 129 m) via the OSM API 2026-11-04.",
+   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 1600 BLK E COLD SPRING LN (25 mph, principal arterial, 129 m of this way); MDOT SHA Bicycle LTS record on 1600 BLK E COLD SPRING LN: 4 through lanes, posted 25 mph, AADT 13,393; traffic count 15,090 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; OSM way 519385669 v5 (highway=primary, 129 m) via the OSM API 2026-11-04.",
    "fingerprint": {
     "name": "East Cold Spring Lane",
     "highway": "primary",
@@ -9209,7 +9121,7 @@
     "display": "map"
    },
    "reason": "LTS 2 (Baltimore City review profile B02746, pattern: SHA assumed a faster speed than the city records; was 3 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: Fairhaven Ave: 1 lane one way, 25 mph (posted on our map; city 25, SHA 35 assumed), 2,825/day (2024 count). 1,500-4,000/day at 25 mph: below the ~5,000/day line, 2 (1st St NW rule). SHA's 3 rests on an assumed 35 mph where the city records 25. Change from current 3: the count, speed and lanes above put it here, and the blind rater reached the same level independently.",
-   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 3600 BLK FAIRHAVEN AVE (25 mph, collector, 61 m of this way); 3600 BLK FAIRHAVEN AVE (25 mph, collector, 20 m of this way); MDOT SHA Bicycle LTS record on 3600 BLK FAIRHAVEN AVE: 1 through lanes, assumed 35 mph, AADT 2,412; traffic count 2,825 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; OSM way 521988003 v5 (highway=tertiary, 81 m) via the OSM API 2026-11-04.",
+   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 3600 BLK FAIRHAVEN AVE (25 mph, collector, 61 m of this way); 3600 BLK FAIRHAVEN AVE (25 mph, collector, 20 m of this way); MDOT SHA Bicycle LTS record on 3600 BLK FAIRHAVEN AVE: 1 through lane, assumed 35 mph, AADT 2,412; traffic count 2,825 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; OSM way 521988003 v5 (highway=tertiary, 81 m) via the OSM API 2026-11-04.",
    "fingerprint": {
     "name": "Fairhaven Avenue",
     "highway": "tertiary",
@@ -9403,7 +9315,7 @@
     "half": true
    },
    "reason": "LTS 1.5 (Baltimore City review profile B00632, pattern: SHA assumed a faster speed than the city records; was 3 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: Taney Rd: 1 lane one way, 25 mph (posted on our map; city 25, SHA 35 assumed), 1,400/day (2024 count). at or under 1,500/day at 25 mph: quiet, 1.5 (Fairfax 1,001-1,500/day and Arlington <1,000/day anchors). SHA's 3 rests on an assumed 35 mph where the city records 25. Change from current 3: the count, speed and lanes above put it here, and the blind rater reached the same level independently.",
-   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 3200 BLK TANEY RD (25 mph, collector, 141 m of this way); 3300 BLK TANEY RD (25 mph, collector, 141 m of this way); 3400 BLK TANEY RD (25 mph, collector, 131 m of this way); MDOT SHA Bicycle LTS record on 3200 BLK TANEY RD: 1 through lanes, assumed 35 mph, AADT 1,122; traffic count 1,400 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; OSM way 540429686 v8 (highway=residential, 534 m) via the OSM API 2026-11-04.",
+   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 3200 BLK TANEY RD (25 mph, collector, 141 m of this way); 3300 BLK TANEY RD (25 mph, collector, 141 m of this way); 3400 BLK TANEY RD (25 mph, collector, 131 m of this way); MDOT SHA Bicycle LTS record on 3200 BLK TANEY RD: 1 through lane, assumed 35 mph, AADT 1,122; traffic count 1,400 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; OSM way 540429686 v8 (highway=residential, 534 m) via the OSM API 2026-11-04.",
    "fingerprint": {
     "name": "Taney Road",
     "highway": "residential",
@@ -9748,8 +9660,8 @@
     "display": "map",
     "half": true
    },
-   "reason": "LTS 3.5 (Baltimore City review profile B00750, pattern: Other, down; was 4 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: E 33rd St: 2 lanes one way, 30 mph (city 30, OSM 30, SHA 30), 8,472/day (2024 count), city facility: Shared Lane Markings, truck route null. 2 lanes one way at 30 mph, 6,000-15,000/day: 3.5 (our reviewed one-way rule, e.g. 3-lane one-way 25 mph at 9,100/day = 3.5). Change from current 4.0: the count/speed above puts it in this band and the rater agrees.",
-   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 400 BLK E 33RD ST (30 mph, principal arterial, 71 m of this way); 400 BLK E 33RD ST (30 mph, principal arterial, 71 m of this way); 300 BLK E 33RD ST (30 mph, principal arterial, 10 m of this way); MDOT SHA Bicycle LTS record on 400 BLK E 33RD ST: 4 through lanes, posted 30 mph, AADT 9,500; traffic count 8,472 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; Baltimore City DOT truck route class null (2024) on 400 BLK E 33RD ST; Baltimore City DOT bike facility on 400 BLK E 33RD ST: Shared Lane Markings; OSM way 546440245 v10 (highway=primary, 152 m) via the OSM API 2026-11-04.",
+   "reason": "LTS 3.5 (Baltimore City review profile B00750, pattern: Other, down; was 4 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: E 33rd St: 2 lanes one way, 30 mph (city 30, OSM 30, SHA 30), 8,472/day (2024 count), city facility: Shared Lane Markings, no truck route. 2 lanes one way at 30 mph, 6,000-15,000/day: 3.5 (our reviewed one-way rule, e.g. 3-lane one-way 25 mph at 9,100/day = 3.5). Change from current 4.0: the count/speed above puts it in this band and the rater agrees.",
+   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 400 BLK E 33RD ST (30 mph, principal arterial, 71 m of this way); 400 BLK E 33RD ST (30 mph, principal arterial, 71 m of this way); 300 BLK E 33RD ST (30 mph, principal arterial, 10 m of this way); MDOT SHA Bicycle LTS record on 400 BLK E 33RD ST: 4 through lanes, posted 30 mph, AADT 9,500; traffic count 8,472 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; Baltimore City DOT bike facility on 400 BLK E 33RD ST: Shared Lane Markings; OSM way 546440245 v10 (highway=primary, 152 m) via the OSM API 2026-11-04.",
    "fingerprint": {
     "name": "East 33rd Street",
     "highway": "primary",
@@ -9835,7 +9747,7 @@
     "half": true
    },
    "reason": "LTS 3.5 (Baltimore City review profile B00189, pattern: Divided road count counted twice; was 4 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: E Cold Spring Ln (0.83 mi). Divided, 2 lanes each direction at 25 mph posted, 15,090/day, no bike lane. Owner-rated 4-lane 25 mph streets are 3.5 up to 19,390/day (Quarantine Rd, Falls Rd, Argonne Dr); 4 is for Connecticut Ave-type volumes (25-30k). 3.5. [Facts: 2 in this direction (one-way/divided), 25 mph, posted, 15,090/day, no bike lane.]",
-   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 1600 BLK E COLD SPRING LN (25 mph, principal arterial, 34 m of this way); MDOT SHA Bicycle LTS record on 1600 BLK E COLD SPRING LN: 4 through lanes, posted 25 mph, AADT 13,393; traffic count 15,090 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; Baltimore City DOT truck route class null (2024) on 1600 BLK E COLD SPRING LN; OSM way 546710554 v1 (highway=primary, 34 m) via the OSM API 2026-11-04.",
+   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 1600 BLK E COLD SPRING LN (25 mph, principal arterial, 34 m of this way); MDOT SHA Bicycle LTS record on 1600 BLK E COLD SPRING LN: 4 through lanes, posted 25 mph, AADT 13,393; traffic count 15,090 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; OSM way 546710554 v1 (highway=primary, 34 m) via the OSM API 2026-11-04.",
    "fingerprint": {
     "name": "East Cold Spring Lane",
     "highway": "primary",
@@ -9857,7 +9769,7 @@
     "half": true
    },
    "reason": "LTS 3.5 (Baltimore City review profile B00189, pattern: Divided road count counted twice; was 4 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: E Cold Spring Ln (0.83 mi). Divided, 2 lanes each direction at 25 mph posted, 15,090/day, no bike lane. Owner-rated 4-lane 25 mph streets are 3.5 up to 19,390/day (Quarantine Rd, Falls Rd, Argonne Dr); 4 is for Connecticut Ave-type volumes (25-30k). 3.5. [Facts: 2 in this direction (one-way/divided), 25 mph, posted, 15,090/day, no bike lane.]",
-   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 1500 BLK E COLD SPRING LN (25 mph, principal arterial, 30 m of this way); MDOT SHA Bicycle LTS record on 1500 BLK E COLD SPRING LN: 4 through lanes, posted 25 mph, AADT 13,393; traffic count 15,090 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; Baltimore City DOT truck route class null (2024) on 1500 BLK E COLD SPRING LN; OSM way 546710563 v5 (highway=primary, 30 m) via the OSM API 2026-11-04.",
+   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 1500 BLK E COLD SPRING LN (25 mph, principal arterial, 30 m of this way); MDOT SHA Bicycle LTS record on 1500 BLK E COLD SPRING LN: 4 through lanes, posted 25 mph, AADT 13,393; traffic count 15,090 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; OSM way 546710563 v5 (highway=primary, 30 m) via the OSM API 2026-11-04.",
    "fingerprint": {
     "name": "East Cold Spring Lane",
     "highway": "primary",
@@ -9879,7 +9791,7 @@
     "half": true
    },
    "reason": "LTS 3.5 (Baltimore City review profile B00189, pattern: Divided road count counted twice; was 4 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: E Cold Spring Ln (0.83 mi). Divided, 2 lanes each direction at 25 mph posted, 15,090/day, no bike lane. Owner-rated 4-lane 25 mph streets are 3.5 up to 19,390/day (Quarantine Rd, Falls Rd, Argonne Dr); 4 is for Connecticut Ave-type volumes (25-30k). 3.5. [Facts: 2 in this direction (one-way/divided), 25 mph, posted, 15,090/day, no bike lane.]",
-   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 1500 BLK E COLD SPRING LN (25 mph, principal arterial, 148 m of this way); MDOT SHA Bicycle LTS record on 1500 BLK E COLD SPRING LN: 4 through lanes, posted 25 mph, AADT 13,393; traffic count 15,090 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; Baltimore City DOT truck route class null (2024) on 1500 BLK E COLD SPRING LN; OSM way 546710564 v2 (highway=primary, 148 m) via the OSM API 2026-11-04.",
+   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 1500 BLK E COLD SPRING LN (25 mph, principal arterial, 148 m of this way); MDOT SHA Bicycle LTS record on 1500 BLK E COLD SPRING LN: 4 through lanes, posted 25 mph, AADT 13,393; traffic count 15,090 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; OSM way 546710564 v2 (highway=primary, 148 m) via the OSM API 2026-11-04.",
    "fingerprint": {
     "name": "East Cold Spring Lane",
     "highway": "primary",
@@ -9901,7 +9813,7 @@
     "half": true
    },
    "reason": "LTS 3.5 (Baltimore City review profile B00189, pattern: Divided road count counted twice; was 4 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: E Cold Spring Ln (0.83 mi). Divided, 2 lanes each direction at 25 mph posted, 15,090/day, no bike lane. Owner-rated 4-lane 25 mph streets are 3.5 up to 19,390/day (Quarantine Rd, Falls Rd, Argonne Dr); 4 is for Connecticut Ave-type volumes (25-30k). 3.5. [Facts: 2 in this direction (one-way/divided), 25 mph, posted, 15,090/day, no bike lane.]",
-   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 1400 BLK E COLD SPRING LN (25 mph, principal arterial, 31 m of this way); MDOT SHA Bicycle LTS record on 1400 BLK E COLD SPRING LN: 4 through lanes, posted 25 mph, AADT 13,393; traffic count 15,090 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; Baltimore City DOT truck route class null (2024) on 1400 BLK E COLD SPRING LN; OSM way 546710565 v7 (highway=primary, 31 m) via the OSM API 2026-11-04.",
+   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 1400 BLK E COLD SPRING LN (25 mph, principal arterial, 31 m of this way); MDOT SHA Bicycle LTS record on 1400 BLK E COLD SPRING LN: 4 through lanes, posted 25 mph, AADT 13,393; traffic count 15,090 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; OSM way 546710565 v7 (highway=primary, 31 m) via the OSM API 2026-11-04.",
    "fingerprint": {
     "name": "East Cold Spring Lane",
     "highway": "primary",
@@ -10010,7 +9922,7 @@
     "half": true
    },
    "reason": "LTS 3.5 (Baltimore City review profile B00189, pattern: Divided road count counted twice; was 4 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: E Cold Spring Ln (0.83 mi). Divided, 2 lanes each direction at 25 mph posted, 15,090/day, no bike lane. Owner-rated 4-lane 25 mph streets are 3.5 up to 19,390/day (Quarantine Rd, Falls Rd, Argonne Dr); 4 is for Connecticut Ave-type volumes (25-30k). 3.5. [Facts: 2 in this direction (one-way/divided), 25 mph, posted, 15,090/day, no bike lane.]",
-   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 1400 BLK E COLD SPRING LN (25 mph, principal arterial, 52 m of this way); MDOT SHA Bicycle LTS record on 1400 BLK E COLD SPRING LN: 4 through lanes, posted 25 mph, AADT 13,393; traffic count 15,090 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; Baltimore City DOT truck route class null (2024) on 1400 BLK E COLD SPRING LN; OSM way 547776312 v3 (highway=primary, 52 m) via the OSM API 2026-11-04.",
+   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 1400 BLK E COLD SPRING LN (25 mph, principal arterial, 52 m of this way); MDOT SHA Bicycle LTS record on 1400 BLK E COLD SPRING LN: 4 through lanes, posted 25 mph, AADT 13,393; traffic count 15,090 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; OSM way 547776312 v3 (highway=primary, 52 m) via the OSM API 2026-11-04.",
    "fingerprint": {
     "name": "East Cold Spring Lane",
     "highway": "primary",
@@ -10524,7 +10436,7 @@
     "half": true
    },
    "reason": "LTS 2.5 (Baltimore City review profile B02230, pattern: Owner row disagrees with the facts; was 3 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: Guilford Ave, 2 lanes one way, painted lane (our map + city), 3,582/day, RH record 2 lanes: 2.5 as the other painted Guilford Ave one-way blocks; current 3 does not credit the painted lane our map draws.",
-   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 300 BLK GUILFORD AVE (30 mph, minor arterial, 48 m of this way); MDOT SHA Bicycle LTS record on 300 BLK GUILFORD AVE: 2 through lanes, posted 25 mph, AADT 4,191; traffic count 3,582 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; Baltimore City DOT truck route class null (2024) on 300 BLK GUILFORD AVE; Baltimore City DOT bike facility on 300 BLK GUILFORD AVE: Bike Lane; Baltimore City DOT restricted-hours route on 300 BLK GUILFORD AVE; OSM way 605659580 v1 (highway=secondary, 48 m) via the OSM API 2026-11-04.",
+   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 300 BLK GUILFORD AVE (30 mph, minor arterial, 48 m of this way); MDOT SHA Bicycle LTS record on 300 BLK GUILFORD AVE: 2 through lanes, posted 25 mph, AADT 4,191; traffic count 3,582 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; Baltimore City DOT bike facility on 300 BLK GUILFORD AVE: Bike Lane; Baltimore City DOT restricted-hours route on 300 BLK GUILFORD AVE; OSM way 605659580 v1 (highway=secondary, 48 m) via the OSM API 2026-11-04.",
    "fingerprint": {
     "name": "Guilford Avenue",
     "highway": "secondary",
@@ -10695,7 +10607,7 @@
     "display": "map"
    },
    "reason": "LTS 4 (Baltimore City review profile B01797, pattern: Owner row disagrees with the facts; was 3.5 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: S Howard St: 2 lanes each way (mapped; SHA 3 through lanes), 25 mph posted (city 25, SHA 40 assumed), 62,342/day (2024 count; SHA AADT 47,721 agrees it is very heavy). Our owner-reviewed 3.5 was set on a 4-lane 25 mph street, but 62,000/day is about twice Connecticut Ave NW's 25-30k/day, which Stephen rates 4: 4. Not 4.5 (rater): 4.5 is for urban 55 mph roads and posted expressways, and Connecticut Ave at 4-6 lanes is held at 4.",
-   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 100 BLK S HOWARD ST (25 mph, principal arterial, 38 m of this way); MDOT SHA Bicycle LTS record on 100 BLK S HOWARD ST: 3 through lanes, assumed 40 mph, AADT 47,721; traffic count 62,342 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; Baltimore City DOT truck route class null (2024) on 100 BLK S HOWARD ST; OSM way 773745201 v4 (highway=primary, 38 m) via the OSM API 2026-11-04.",
+   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 100 BLK S HOWARD ST (25 mph, principal arterial, 38 m of this way); MDOT SHA Bicycle LTS record on 100 BLK S HOWARD ST: 3 through lanes, assumed 40 mph, AADT 47,721; traffic count 62,342 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; OSM way 773745201 v4 (highway=primary, 38 m) via the OSM API 2026-11-04.",
    "fingerprint": {
     "name": "South Howard Street",
     "highway": "primary",
@@ -10716,7 +10628,7 @@
     "display": "map"
    },
    "reason": "LTS 4 (Baltimore City review profile B01797, pattern: Owner row disagrees with the facts; was 3.5 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: S Howard St: 2 lanes each way (mapped; SHA 3 through lanes), 25 mph posted (city 25, SHA 40 assumed), 62,342/day (2024 count; SHA AADT 47,721 agrees it is very heavy). Our owner-reviewed 3.5 was set on a 4-lane 25 mph street, but 62,000/day is about twice Connecticut Ave NW's 25-30k/day, which Stephen rates 4: 4. Not 4.5 (rater): 4.5 is for urban 55 mph roads and posted expressways, and Connecticut Ave at 4-6 lanes is held at 4.",
-   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 100 BLK S HOWARD ST (25 mph, principal arterial, 4 m of this way); MDOT SHA Bicycle LTS record on 100 BLK S HOWARD ST: 3 through lanes, assumed 40 mph, AADT 47,721; traffic count 62,342 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; Baltimore City DOT truck route class null (2024) on 100 BLK S HOWARD ST; OSM way 773745202 v2 (highway=primary, 4 m) via the OSM API 2026-11-04.",
+   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 100 BLK S HOWARD ST (25 mph, principal arterial, 4 m of this way); MDOT SHA Bicycle LTS record on 100 BLK S HOWARD ST: 3 through lanes, assumed 40 mph, AADT 47,721; traffic count 62,342 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; OSM way 773745202 v2 (highway=primary, 4 m) via the OSM API 2026-11-04.",
    "fingerprint": {
     "name": "South Howard Street",
     "highway": "primary",
@@ -10737,8 +10649,8 @@
     "display": "map",
     "half": true
    },
-   "reason": "LTS 3.5 (Baltimore City review profile B02317, pattern: Other, down; was 4 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: E 33rd St: 2 lanes one way, 30 mph (city 30, OSM 30, SHA 30), 8,472/day (2024 count), city facility: Shared Lane Markings, truck route null. 2 lanes one way at 30 mph, 6,000-15,000/day: 3.5 (our reviewed one-way rule, e.g. 3-lane one-way 25 mph at 9,100/day = 3.5). Change from current 4.0: the count/speed above puts it in this band and the rater agrees.",
-   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 100 BLK E 33RD ST (30 mph, principal arterial, 10 m of this way); MDOT SHA Bicycle LTS record on 100 BLK E 33RD ST: 3 through lanes, posted 30 mph, AADT 9,500; traffic count 8,472 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; Baltimore City DOT truck route class null (2024) on 100 BLK E 33RD ST; Baltimore City DOT bike facility on 100 BLK E 33RD ST: Shared Lane Markings; OSM way 809232378 v7 (highway=primary, 10 m) via the OSM API 2026-11-04.",
+   "reason": "LTS 3.5 (Baltimore City review profile B02317, pattern: Other, down; was 4 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: E 33rd St: 2 lanes one way, 30 mph (city 30, OSM 30, SHA 30), 8,472/day (2024 count), city facility: Shared Lane Markings, no truck route. 2 lanes one way at 30 mph, 6,000-15,000/day: 3.5 (our reviewed one-way rule, e.g. 3-lane one-way 25 mph at 9,100/day = 3.5). Change from current 4.0: the count/speed above puts it in this band and the rater agrees.",
+   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 100 BLK E 33RD ST (30 mph, principal arterial, 10 m of this way); MDOT SHA Bicycle LTS record on 100 BLK E 33RD ST: 3 through lanes, posted 30 mph, AADT 9,500; traffic count 8,472 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; Baltimore City DOT bike facility on 100 BLK E 33RD ST: Shared Lane Markings; OSM way 809232378 v7 (highway=primary, 10 m) via the OSM API 2026-11-04.",
    "fingerprint": {
     "name": "East 33rd Street",
     "highway": "primary",
@@ -10759,8 +10671,8 @@
     "display": "map",
     "half": true
    },
-   "reason": "LTS 3.5 (Baltimore City review profile B01967, pattern: SHA assumed a faster speed than the city records; was 4 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: E 33rd St: 2 lanes one way, 30 mph (city 30, OSM 30, SHA 40 assumed), 8,472/day (2024 count), city facility: Path or Sidepath, truck route null. 2 lanes one way at 30 mph, 6,000-15,000/day: 3.5 (our reviewed one-way rule, e.g. 3-lane one-way 25 mph at 9,100/day = 3.5). Change from current 4.0: the count/speed above puts it in this band and the rater agrees.",
-   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: UNIT BLK E 33RD ST (30 mph, principal arterial, 64 m of this way); UNIT BLK E 33RD ST (30 mph, principal arterial, 53 m of this way); MDOT SHA Bicycle LTS record on UNIT BLK E 33RD ST: 3 through lanes, assumed 40 mph, AADT 9,500; traffic count 8,472 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; Baltimore City DOT truck route class null (2024) on UNIT BLK E 33RD ST; Baltimore City DOT bike facility on UNIT BLK E 33RD ST: Path or Sidepath; OSM way 809232451 v9 (highway=primary, 116 m) via the OSM API 2026-11-04.",
+   "reason": "LTS 3.5 (Baltimore City review profile B01967, pattern: SHA assumed a faster speed than the city records; was 4 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: E 33rd St: 2 lanes one way, 30 mph (city 30, OSM 30, SHA 40 assumed), 8,472/day (2024 count), city facility: Path or Sidepath, no truck route. 2 lanes one way at 30 mph, 6,000-15,000/day: 3.5 (our reviewed one-way rule, e.g. 3-lane one-way 25 mph at 9,100/day = 3.5). Change from current 4.0: the count/speed above puts it in this band and the rater agrees.",
+   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: UNIT BLK E 33RD ST (30 mph, principal arterial, 64 m of this way); UNIT BLK E 33RD ST (30 mph, principal arterial, 53 m of this way); MDOT SHA Bicycle LTS record on UNIT BLK E 33RD ST: 3 through lanes, assumed 40 mph, AADT 9,500; traffic count 8,472 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; Baltimore City DOT bike facility on UNIT BLK E 33RD ST: Path or Sidepath; OSM way 809232451 v9 (highway=primary, 116 m) via the OSM API 2026-11-04.",
    "fingerprint": {
     "name": "East 33rd Street",
     "highway": "primary",
@@ -11254,8 +11166,8 @@
     "display": "map",
     "half": true
    },
-   "reason": "LTS 3.5 (Baltimore City review profile B00750, pattern: Other, down; was 4 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: E 33rd St: 2 lanes one way, 30 mph (city 30, OSM 30, SHA 30), 8,472/day (2024 count), city facility: Shared Lane Markings, truck route null. 2 lanes one way at 30 mph, 6,000-15,000/day: 3.5 (our reviewed one-way rule, e.g. 3-lane one-way 25 mph at 9,100/day = 3.5). Change from current 4.0: the count/speed above puts it in this band and the rater agrees.",
-   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 200 BLK E 33RD ST (30 mph, principal arterial, 118 m of this way); MDOT SHA Bicycle LTS record on 200 BLK E 33RD ST: 4 through lanes, posted 30 mph, AADT 9,500; traffic count 8,472 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; Baltimore City DOT truck route class null (2024) on 200 BLK E 33RD ST; Baltimore City DOT bike facility on 200 BLK E 33RD ST: Shared Lane Markings; OSM way 947448834 v5 (highway=primary, 118 m) via the OSM API 2026-11-04.",
+   "reason": "LTS 3.5 (Baltimore City review profile B00750, pattern: Other, down; was 4 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: E 33rd St: 2 lanes one way, 30 mph (city 30, OSM 30, SHA 30), 8,472/day (2024 count), city facility: Shared Lane Markings, no truck route. 2 lanes one way at 30 mph, 6,000-15,000/day: 3.5 (our reviewed one-way rule, e.g. 3-lane one-way 25 mph at 9,100/day = 3.5). Change from current 4.0: the count/speed above puts it in this band and the rater agrees.",
+   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 200 BLK E 33RD ST (30 mph, principal arterial, 118 m of this way); MDOT SHA Bicycle LTS record on 200 BLK E 33RD ST: 4 through lanes, posted 30 mph, AADT 9,500; traffic count 8,472 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; Baltimore City DOT bike facility on 200 BLK E 33RD ST: Shared Lane Markings; OSM way 947448834 v5 (highway=primary, 118 m) via the OSM API 2026-11-04.",
    "fingerprint": {
     "name": "East 33rd Street",
     "highway": "primary",
@@ -11276,8 +11188,8 @@
     "display": "map",
     "half": true
    },
-   "reason": "LTS 3.5 (Baltimore City review profile B00619, pattern: SHA assumed a faster speed than the city records; was 4 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: E 25th St: 2 lanes each way, 30 mph (city 30, OSM 30, SHA 35 assumed), 7,840/day (2024 count), truck route null. 2 lanes each way at 30 mph, 6,000-18,000/day: 3.5 (VA urban arterial anchor 3.5 at 12k; our reviewed 4-lane 30 mph at 15,600/day = 3.5). Change from current 4.0: the count/speed above puts it in this band and the rater agrees.",
-   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 300 BLK E 25TH ST (30 mph, minor arterial, 71 m of this way); 300 BLK E 25TH ST (30 mph, minor arterial, 61 m of this way); 400 BLK E 25TH ST (30 mph, minor arterial, 61 m of this way); MDOT SHA Bicycle LTS record on 300 BLK E 25TH ST: 4 through lanes, assumed 35 mph, AADT 8,992; traffic count 7,840 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; Baltimore City DOT truck route class null (2024) on 300 BLK E 25TH ST; OSM way 947455334 v4 (highway=secondary, 253 m) via the OSM API 2026-11-04.",
+   "reason": "LTS 3.5 (Baltimore City review profile B00619, pattern: SHA assumed a faster speed than the city records; was 4 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: E 25th St: 2 lanes each way, 30 mph (city 30, OSM 30, SHA 35 assumed), 7,840/day (2024 count), no truck route. 2 lanes each way at 30 mph, 6,000-18,000/day: 3.5 (VA urban arterial anchor 3.5 at 12k; our reviewed 4-lane 30 mph at 15,600/day = 3.5). Change from current 4.0: the count/speed above puts it in this band and the rater agrees.",
+   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 300 BLK E 25TH ST (30 mph, minor arterial, 71 m of this way); 300 BLK E 25TH ST (30 mph, minor arterial, 61 m of this way); 400 BLK E 25TH ST (30 mph, minor arterial, 61 m of this way); MDOT SHA Bicycle LTS record on 300 BLK E 25TH ST: 4 through lanes, assumed 35 mph, AADT 8,992; traffic count 7,840 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; OSM way 947455334 v4 (highway=secondary, 253 m) via the OSM API 2026-11-04.",
    "fingerprint": {
     "name": "East 25th Street",
     "highway": "secondary",
@@ -11454,27 +11366,6 @@
     "highway": "tertiary",
     "length_m": 116.0,
     "line": "-76.612349,39.277036 -76.612217,39.275998"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 947732352,
-   "value": {
-    "tier": 3,
-    "adjustment_id": "bmore-review-b00634-1",
-    "category": "other",
-    "annotation_status": "approved",
-    "public_note": "Our review: one lane each way, 25 mph posted (MDOT SHA assumed 35), about 9,415 cars a day (2024 count), no bike lane, so LTS 3.",
-    "visibility": "public",
-    "display": "map"
-   },
-   "reason": "LTS 3 (Baltimore City review profile B00634, pattern: Owner row disagrees with the facts; was 2.5 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: Light St: 1 lane each way, 25 mph (posted on our map; city 25, SHA 35 assumed), 9,415/day (2024 count). 8,000-12,000/day on a 25 mph two-lane street: above the 3,000-8,000/day 2.5 band, 3. SHA's 4 rests on an assumed 35 mph where the city records 25; city planning LTS 2 is ~2017 and compare-only. Change from current 2.5: the count, speed and lanes above put it here, and the blind rater reached the same level independently.",
-   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 1000 BLK LIGHT ST (25 mph, minor arterial, 62 m of this way); 1000 BLK LIGHT ST (25 mph, minor arterial, 41 m of this way); 1000 BLK LIGHT ST (25 mph, minor arterial, 31 m of this way); MDOT SHA Bicycle LTS record on 1000 BLK LIGHT ST: 2 through lanes, assumed 35 mph, AADT 8,115; traffic count 9,415 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; Baltimore City DOT bike facility on 1000 BLK LIGHT ST: Bike Lane; OSM way 947732352 v1 (highway=tertiary, 134 m) via the OSM API 2026-11-04.",
-   "fingerprint": {
-    "name": "Light Street",
-    "highway": "tertiary",
-    "length_m": 134.5,
-    "line": "-76.612565,39.278234 -76.612349,39.277036"
    }
   },
   {
@@ -12390,8 +12281,8 @@
     "display": "map",
     "half": true
    },
-   "reason": "LTS 3.5 (Baltimore City review profile B00750, pattern: Other, down; was 4 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: E 33rd St: 2 lanes one way, 30 mph (city 30, OSM 30, SHA 30), 8,472/day (2024 count), city facility: Shared Lane Markings, truck route null. 2 lanes one way at 30 mph, 6,000-15,000/day: 3.5 (our reviewed one-way rule, e.g. 3-lane one-way 25 mph at 9,100/day = 3.5). Change from current 4.0: the count/speed above puts it in this band and the rater agrees.",
-   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 300 BLK E 33RD ST (30 mph, principal arterial, 45 m of this way); MDOT SHA Bicycle LTS record on 300 BLK E 33RD ST: 4 through lanes, posted 30 mph, AADT 9,500; traffic count 8,472 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; Baltimore City DOT truck route class null (2024) on 300 BLK E 33RD ST; Baltimore City DOT bike facility on 300 BLK E 33RD ST: Shared Lane Markings; OSM way 965606761 v4 (highway=primary, 45 m) via the OSM API 2026-11-04.",
+   "reason": "LTS 3.5 (Baltimore City review profile B00750, pattern: Other, down; was 4 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: E 33rd St: 2 lanes one way, 30 mph (city 30, OSM 30, SHA 30), 8,472/day (2024 count), city facility: Shared Lane Markings, no truck route. 2 lanes one way at 30 mph, 6,000-15,000/day: 3.5 (our reviewed one-way rule, e.g. 3-lane one-way 25 mph at 9,100/day = 3.5). Change from current 4.0: the count/speed above puts it in this band and the rater agrees.",
+   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 300 BLK E 33RD ST (30 mph, principal arterial, 45 m of this way); MDOT SHA Bicycle LTS record on 300 BLK E 33RD ST: 4 through lanes, posted 30 mph, AADT 9,500; traffic count 8,472 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; Baltimore City DOT bike facility on 300 BLK E 33RD ST: Shared Lane Markings; OSM way 965606761 v4 (highway=primary, 45 m) via the OSM API 2026-11-04.",
    "fingerprint": {
     "name": "East 33rd Street",
     "highway": "primary",
@@ -12532,28 +12423,6 @@
   },
   {
    "kind": "stress",
-   "osm_way_id": 974039867,
-   "value": {
-    "tier": 2,
-    "adjustment_id": "bmore-review-b01935-1",
-    "category": "other",
-    "annotation_status": "approved",
-    "public_note": "Our review: one lane each way, 25 mph posted (MDOT SHA assumed 35), about 8,974 cars a day (2024 count), painted bike lane, a city truck route for deliveries, so LTS 2.5.",
-    "visibility": "public",
-    "display": "map",
-    "half": true
-   },
-   "reason": "LTS 2.5 (Baltimore City review profile B01935, pattern: Owner row disagrees with the facts; was 2 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: W 41st St: 1 lane each way, 25 mph (posted on our map; city 25, SHA 35 assumed), 8,974/day (2024 count), our map: lane, city facility: Buffered Bike Lane, truck route Local. 8,000-12,000/day on a 25 mph two-lane street: above the 3,000-8,000/day 2.5 band, 3; painted lane on our map (city layer: Buffered Bike Lane): half a step down (R St NW painted 2 vs unpainted 2.5), floor 2; Restricted Hours Route: its peak lanes are already within the mapped lanes, no bump. Change from current 2: the count, speed and lanes above put it here, and the blind rater reached the same level independently.",
-   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 1400 BLK W 41ST ST (25 mph, minor arterial, 14 m of this way); MDOT SHA Bicycle LTS record on 1400 BLK W 41ST ST: 3 through lanes, assumed 35 mph, AADT 8,255; traffic count 8,974 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; Baltimore City DOT truck route class Local (2024) on 1400 BLK W 41ST ST; Baltimore City DOT bike facility on 1400 BLK W 41ST ST: Buffered Bike Lane; Baltimore City DOT restricted-hours route on 1400 BLK W 41ST ST; OSM way 974039867 v3 (highway=secondary, 14 m) via the OSM API 2026-11-04.",
-   "fingerprint": {
-    "name": "West 41st Street",
-    "highway": "secondary",
-    "length_m": 14.0,
-    "line": "-76.641048,39.336205 -76.641193,39.336149"
-   }
-  },
-  {
-   "kind": "stress",
    "osm_way_id": 974164312,
    "value": {
     "tier": 2,
@@ -12652,8 +12521,8 @@
     "display": "map",
     "half": true
    },
-   "reason": "LTS 3.5 (Baltimore City review profile B01967, pattern: SHA assumed a faster speed than the city records; was 4 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: E 33rd St: 2 lanes one way, 30 mph (city 30, OSM 30, SHA 40 assumed), 8,472/day (2024 count), city facility: Path or Sidepath, truck route null. 2 lanes one way at 30 mph, 6,000-15,000/day: 3.5 (our reviewed one-way rule, e.g. 3-lane one-way 25 mph at 9,100/day = 3.5). Change from current 4.0: the count/speed above puts it in this band and the rater agrees.",
-   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: UNIT BLK E 33RD ST (30 mph, principal arterial, 40 m of this way); MDOT SHA Bicycle LTS record on UNIT BLK E 33RD ST: 3 through lanes, assumed 40 mph, AADT 9,500; traffic count 8,472 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; Baltimore City DOT truck route class null (2024) on UNIT BLK E 33RD ST; Baltimore City DOT bike facility on UNIT BLK E 33RD ST: Path or Sidepath; OSM way 979417612 v3 (highway=primary, 40 m) via the OSM API 2026-11-04.",
+   "reason": "LTS 3.5 (Baltimore City review profile B01967, pattern: SHA assumed a faster speed than the city records; was 4 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: E 33rd St: 2 lanes one way, 30 mph (city 30, OSM 30, SHA 40 assumed), 8,472/day (2024 count), city facility: Path or Sidepath, no truck route. 2 lanes one way at 30 mph, 6,000-15,000/day: 3.5 (our reviewed one-way rule, e.g. 3-lane one-way 25 mph at 9,100/day = 3.5). Change from current 4.0: the count/speed above puts it in this band and the rater agrees.",
+   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: UNIT BLK E 33RD ST (30 mph, principal arterial, 40 m of this way); MDOT SHA Bicycle LTS record on UNIT BLK E 33RD ST: 3 through lanes, assumed 40 mph, AADT 9,500; traffic count 8,472 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; Baltimore City DOT bike facility on UNIT BLK E 33RD ST: Path or Sidepath; OSM way 979417612 v3 (highway=primary, 40 m) via the OSM API 2026-11-04.",
    "fingerprint": {
     "name": "East 33rd Street",
     "highway": "primary",
@@ -12823,8 +12692,8 @@
     "display": "map",
     "half": true
    },
-   "reason": "LTS 3.5 (Baltimore City review profile B00619, pattern: SHA assumed a faster speed than the city records; was 4 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: E 25th St: 2 lanes each way, 30 mph (city 30, OSM 30, SHA 35 assumed), 7,840/day (2024 count), truck route null. 2 lanes each way at 30 mph, 6,000-18,000/day: 3.5 (VA urban arterial anchor 3.5 at 12k; our reviewed 4-lane 30 mph at 15,600/day = 3.5). Change from current 4.0: the count/speed above puts it in this band and the rater agrees.",
-   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 200 BLK E 25TH ST (30 mph, minor arterial, 59 m of this way); MDOT SHA Bicycle LTS record on 200 BLK E 25TH ST: 4 through lanes, assumed 35 mph, AADT 8,992; traffic count 7,840 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; Baltimore City DOT truck route class null (2024) on 200 BLK E 25TH ST; OSM way 998607753 v3 (highway=secondary, 59 m) via the OSM API 2026-11-04.",
+   "reason": "LTS 3.5 (Baltimore City review profile B00619, pattern: SHA assumed a faster speed than the city records; was 4 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: E 25th St: 2 lanes each way, 30 mph (city 30, OSM 30, SHA 35 assumed), 7,840/day (2024 count), no truck route. 2 lanes each way at 30 mph, 6,000-18,000/day: 3.5 (VA urban arterial anchor 3.5 at 12k; our reviewed 4-lane 30 mph at 15,600/day = 3.5). Change from current 4.0: the count/speed above puts it in this band and the rater agrees.",
+   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 200 BLK E 25TH ST (30 mph, minor arterial, 59 m of this way); MDOT SHA Bicycle LTS record on 200 BLK E 25TH ST: 4 through lanes, assumed 35 mph, AADT 8,992; traffic count 7,840 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; OSM way 998607753 v3 (highway=secondary, 59 m) via the OSM API 2026-11-04.",
    "fingerprint": {
     "name": "East 25th Street",
     "highway": "secondary",
@@ -12909,7 +12778,7 @@
     "half": true
    },
    "reason": "LTS 3.5 (Baltimore City review profile B00657, pattern: Divided road count counted twice; was 4 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: Southwestern Blvd: 2 lanes per direction (divided), 35 mph (posted on our map; city 35, SHA 35), 6,352/day (2024 count). 2 lanes one way at 35 mph, under 5,000/day: 3.5; divided road: the 6,352/day is shared across both carriageways (region rule; ~3,176 each), so each side is rated as a 2-lane one-way street at that volume. Change from current 4: the count, speed and lanes above put it here, and the blind rater reached the same level independently.",
-   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 3900 BLK SOUTHWESTERN BLVD (35 mph, principal arterial, 29 m of this way); MDOT SHA Bicycle LTS record on 3900 BLK SOUTHWESTERN BLVD: 6 through lanes, posted 35 mph, AADT 5,681; traffic count 6,352 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; Baltimore City DOT truck route class null (2024) on 3900 BLK SOUTHWESTERN BLVD; OSM way 1051451617 v2 (highway=primary, 29 m) via the OSM API 2026-11-04.",
+   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 3900 BLK SOUTHWESTERN BLVD (35 mph, principal arterial, 29 m of this way); MDOT SHA Bicycle LTS record on 3900 BLK SOUTHWESTERN BLVD: 6 through lanes, posted 35 mph, AADT 5,681; traffic count 6,352 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; OSM way 1051451617 v2 (highway=primary, 29 m) via the OSM API 2026-11-04.",
    "fingerprint": {
     "name": "Southwestern Boulevard",
     "highway": "primary",
@@ -12974,7 +12843,7 @@
     "half": true
    },
    "reason": "LTS 3.5 (Baltimore City review profile B00189, pattern: Divided road count counted twice; was 4 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: E Cold Spring Ln (0.83 mi). Divided, 2 lanes each direction at 25 mph posted, 15,090/day, no bike lane. Owner-rated 4-lane 25 mph streets are 3.5 up to 19,390/day (Quarantine Rd, Falls Rd, Argonne Dr); 4 is for Connecticut Ave-type volumes (25-30k). 3.5. [Facts: 2 in this direction (one-way/divided), 25 mph, posted, 15,090/day, no bike lane.]",
-   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 1600 BLK E COLD SPRING LN (25 mph, principal arterial, 24 m of this way); MDOT SHA Bicycle LTS record on 1600 BLK E COLD SPRING LN: 4 through lanes, posted 25 mph, AADT 13,393; traffic count 15,090 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; Baltimore City DOT truck route class null (2024) on 1600 BLK E COLD SPRING LN; OSM way 1062440545 v1 (highway=primary, 24 m) via the OSM API 2026-11-04.",
+   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 1600 BLK E COLD SPRING LN (25 mph, principal arterial, 24 m of this way); MDOT SHA Bicycle LTS record on 1600 BLK E COLD SPRING LN: 4 through lanes, posted 25 mph, AADT 13,393; traffic count 15,090 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; OSM way 1062440545 v1 (highway=primary, 24 m) via the OSM API 2026-11-04.",
    "fingerprint": {
     "name": "East Cold Spring Lane",
     "highway": "primary",
@@ -13343,34 +13212,12 @@
     "half": true
    },
    "reason": "LTS 2.5 (Baltimore City review profile B02230, pattern: Owner row disagrees with the facts; was 3 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: Guilford Ave, 2 lanes one way, painted lane (our map + city), 3,582/day, RH record 2 lanes: 2.5 as the other painted Guilford Ave one-way blocks; current 3 does not credit the painted lane our map draws.",
-   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 300 BLK GUILFORD AVE (30 mph, minor arterial, 8 m of this way); MDOT SHA Bicycle LTS record on 300 BLK GUILFORD AVE: 2 through lanes, posted 25 mph, AADT 4,191; traffic count 3,582 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; Baltimore City DOT truck route class null (2024) on 300 BLK GUILFORD AVE; Baltimore City DOT bike facility on 300 BLK GUILFORD AVE: Bike Lane; Baltimore City DOT restricted-hours route on 300 BLK GUILFORD AVE; OSM way 1088310151 v1 (highway=secondary, 8 m) via the OSM API 2026-11-04.",
+   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 300 BLK GUILFORD AVE (30 mph, minor arterial, 8 m of this way); MDOT SHA Bicycle LTS record on 300 BLK GUILFORD AVE: 2 through lanes, posted 25 mph, AADT 4,191; traffic count 3,582 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; Baltimore City DOT bike facility on 300 BLK GUILFORD AVE: Bike Lane; Baltimore City DOT restricted-hours route on 300 BLK GUILFORD AVE; OSM way 1088310151 v1 (highway=secondary, 8 m) via the OSM API 2026-11-04.",
    "fingerprint": {
     "name": "Guilford Avenue",
     "highway": "secondary",
     "length_m": 7.8,
     "line": "-76.611305,39.294559 -76.611301,39.294488"
-   }
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 1122032024,
-   "value": {
-    "tier": 2,
-    "adjustment_id": "bmore-review-b02082-1",
-    "category": "other",
-    "annotation_status": "approved",
-    "public_note": "Our review: 2 lanes each way, 30 mph posted (MDOT SHA assumed 35), about 3,104 cars a day (2024 count), painted bike lane, a city truck route for deliveries, so LTS 2.5.",
-    "visibility": "public",
-    "display": "map",
-    "half": true
-   },
-   "reason": "LTS 2.5 (Baltimore City review profile B02082, pattern: Owner row disagrees with the facts; was 3 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: S Central Ave: 2 lanes each way, 30 mph (posted on our map; city 30, SHA 35 assumed), 3,104/day (2024 count), our map: lane, city facility: Separated Bike Lane, truck route Local. 4 lanes at 25-30 mph, 2,500-6,000/day: 3 (our reviewed 4-lane 30 mph rule); our map shows 6 lanes on this short block but SHA counts 2 through lanes (the extra mapped lanes are turn lanes): rated on 2; painted lane on our map (city layer: Separated Bike Lane): half a step down (R St NW painted 2 vs unpainted 2.5), floor 2. Change from current 3: the count, speed and lanes above put it here, and the blind rater reached the same level independently.",
-   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: 600 BLK S CENTRAL AVE (30 mph, minor arterial, 16 m of this way); MDOT SHA Bicycle LTS record on 600 BLK S CENTRAL AVE: 2 through lanes, assumed 35 mph, AADT 6,965; traffic count 3,104 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; Baltimore City DOT truck route class Local (2024) on 600 BLK S CENTRAL AVE; Baltimore City DOT bike facility on 600 BLK S CENTRAL AVE: Separated Bike Lane; OSM way 1122032024 v4 (highway=secondary, 16 m) via the OSM API 2026-11-04.",
-   "fingerprint": {
-    "name": "South Central Avenue",
-    "highway": "secondary",
-    "length_m": 15.8,
-    "line": "-76.599090,39.283943 -76.599080,39.283801"
    }
   },
   {
@@ -14507,7 +14354,7 @@
     "half": true
    },
    "reason": "LTS 1.5 (Baltimore City review profile B01311, pattern: SHA assumed a faster speed than the city records; was 3 on the 2026-11-02 map). The owner, 2026-11-04: \"Add them in with the clear justification in the why, not just as an owner decision.\" Rated blind from the road's facts with every LTS level hidden (owner 2026-11-04: differing from an LTS rating is a flag for scrutiny, not proof), then checked by a skeptic. Skeptic: E 24th St: 1 lane one way, 25 mph (city 25, OSM 25, SHA 35 assumed), 790/day (2024 count), no bike facility. At or under 1,500/day at 25 mph: quiet, 1.5 (Stephen's Fairfax 1,001-1,500/day and Arlington <1,000/day anchors). SHA's 3 rests on an assumed 35 mph where the city records 25. Change from current 3.0: the count/speed above puts it in this band and the rater agrees.",
-   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: UNIT BLK E 24TH ST (25 mph, collector, 73 m of this way); 100 BLK E 24TH ST (25 mph, collector, 52 m of this way); UNIT BLK E 24TH ST (25 mph, collector, 32 m of this way); MDOT SHA Bicycle LTS record on UNIT BLK E 24TH ST: 1 through lanes, assumed 35 mph, AADT 952; traffic count 790 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; OSM way 1491815573 v1 (highway=residential, 189 m) via the OSM API 2026-11-04.",
+   "evidence": "Street Centerline (Native), Open Baltimore, read 2026-11-04, this way's own blocks: UNIT BLK E 24TH ST (25 mph, collector, 73 m of this way); 100 BLK E 24TH ST (25 mph, collector, 52 m of this way); UNIT BLK E 24TH ST (25 mph, collector, 32 m of this way); MDOT SHA Bicycle LTS record on UNIT BLK E 24TH ST: 1 through lane, assumed 35 mph, AADT 952; traffic count 790 vehicles a day (2024 count), source State of Maryland (MDOT SHA), as the RouteMaker road panel shows it for this way on the 2026-11-02 map; OSM way 1491815573 v1 (highway=residential, 189 m) via the OSM API 2026-11-04.",
    "fingerprint": {
     "name": "East 24th Street",
     "highway": "residential",
@@ -15434,20 +15281,6 @@
   },
   {
    "kind": "stress",
-   "osm_way_id": 196949922,
-   "value": {
-    "tier": 2,
-    "adjustment_id": "md-review-p015937-1",
-    "category": "other",
-    "annotation_status": "approved",
-    "public_note": "MDOT SHA's LTS layer says 3, but this is a 25 mph two-lane street with a painted bike lane, carrying about 9,000 cars a day, so 2.",
-    "visibility": "public",
-    "display": "map"
-   },
-   "reason": "Replaced by the 2026-11-04 Baltimore City review row (LTS 2.5); was set by 2026-11-01-owner-md-rating-review.json."
-  },
-  {
-   "kind": "stress",
    "osm_way_id": 197613665,
    "value": {
     "tier": 2,
@@ -16160,21 +15993,6 @@
   },
   {
    "kind": "stress",
-   "osm_way_id": 947732352,
-   "value": {
-    "tier": 2,
-    "adjustment_id": "md-review-p014247-1",
-    "category": "other",
-    "annotation_status": "approved",
-    "half": true,
-    "public_note": "MDOT SHA's LTS layer says 4, but this is a 25 mph two-lane street with only sharrows, carrying about 9,400 cars a day, so 2.5.",
-    "visibility": "public",
-    "display": "map"
-   },
-   "reason": "Replaced by the 2026-11-04 Baltimore City review row (LTS 3); was set by 2026-11-01-owner-md-rating-review.json."
-  },
-  {
-   "kind": "stress",
    "osm_way_id": 947828490,
    "value": {
     "tier": 2,
@@ -16359,20 +16177,6 @@
     "category": "other",
     "annotation_status": "approved",
     "public_note": "MDOT SHA's LTS layer says 1, but this is a 30 mph 2-lane one-way street with a painted bike lane, carrying about 3,600 cars a day, so 2.",
-    "visibility": "public",
-    "display": "map"
-   },
-   "reason": "Replaced by the 2026-11-04 Baltimore City review row (LTS 2.5); was set by 2026-11-01-owner-md-rating-review.json."
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 1122032024,
-   "value": {
-    "tier": 3,
-    "adjustment_id": "md-review-p042742-1",
-    "category": "other",
-    "annotation_status": "approved",
-    "public_note": "MDOT SHA's LTS layer says 2; our review of this road's speed, lanes and traffic puts it at 3.",
     "visibility": "public",
     "display": "map"
    },
