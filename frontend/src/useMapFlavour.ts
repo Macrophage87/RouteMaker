@@ -98,7 +98,7 @@ export function useMapFlavour(
       const turned = next.dark !== tunnel.dark;
       tunnel = next;
       if (!turned) return;
-      // The page turns with the map (lib/themeClock.ts setTunnelTheme), first, so the map reads the page's new theme.
+      // The page turns with the map (lib/themeClock.ts setTunnelTheme); update() covers a page whose theme did not turn.
       setTunnelTheme(tunnel.dark);
       update();
     };

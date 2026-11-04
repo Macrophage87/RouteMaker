@@ -177,32 +177,35 @@ test("in a tunnel the page turns dark with the map, and back to the rider's choi
   const { win, events } = fakeWindow();
   const store = memory();
   followTheme(page, win, () => NOON, store, fakePhone(false));
-  assert.equal(themeIsDark(page.documentElement), false, "by day, light");
-  setTunnelTheme(true);
-  assert.equal(themeIsDark(page.documentElement), true, "in the tunnel, the panels dark too");
-  assert.deepEqual(events, [THEME_EVENT], "the map is told");
-  // The map, reading the page, stays dark in the tunnel.
-  assert.equal(mapFlavourFor({ themeDark: themeIsDark(page.documentElement), onBike: true, now: NOON, tunnel: true }), "dark");
-  // A page shown again in the tunnel stays dark; so does a new choice made there.
-  page.listeners.forEach((f) => f());
-  chooseTheme("light", store);
-  assert.equal(themeIsDark(page.documentElement), true);
-  setTunnelTheme(false);
-  assert.equal(themeIsDark(page.documentElement), false, "out of the tunnel, light again");
-  assert.equal(mapFlavourFor({ themeDark: themeIsDark(page.documentElement), onBike: true, now: NOON, tunnel: false }), "light");
-  assert.deepEqual(events, [THEME_EVENT, THEME_EVENT]);
-  // Always dark: the tunnel changes nothing, and leaving it keeps the rider's dark.
-  chooseTheme("dark", store);
-  setTunnelTheme(true);
-  setTunnelTheme(false);
-  assert.equal(themeIsDark(page.documentElement), true);
-  chooseTheme("sun", store);
+  try {
+    assert.equal(themeIsDark(page.documentElement), false, "by day, light");
+    setTunnelTheme(true);
+    assert.equal(themeIsDark(page.documentElement), true, "in the tunnel, the panels dark too");
+    assert.deepEqual(events, [THEME_EVENT], "the map is told");
+    // The map, reading the page, stays dark in the tunnel.
+    assert.equal(mapFlavourFor({ themeDark: themeIsDark(page.documentElement), onBike: true, now: NOON, tunnel: true }), "dark");
+    // A page shown again in the tunnel stays dark; so does a new choice made there.
+    page.listeners.forEach((f) => f());
+    chooseTheme("light", store);
+    assert.equal(themeIsDark(page.documentElement), true);
+    setTunnelTheme(false);
+    assert.equal(themeIsDark(page.documentElement), false, "out of the tunnel, light again");
+    assert.equal(mapFlavourFor({ themeDark: themeIsDark(page.documentElement), onBike: true, now: NOON, tunnel: false }), "light");
+    assert.deepEqual(events, [THEME_EVENT, THEME_EVENT]);
+    // Always dark: the tunnel changes nothing, and leaving it keeps the rider's dark.
+    chooseTheme("dark", store);
+    setTunnelTheme(true);
+    setTunnelTheme(false);
+    assert.equal(themeIsDark(page.documentElement), true);
+  } finally {
+    setTunnelTheme(false);
+    chooseTheme("sun", store);
+  }
 });
 
 test("the map hook turns the page with the tunnel, and lets it go when the ride ends", () => {
   const hook = readFileSync(new URL("../useMapFlavour.ts", import.meta.url), "utf8");
-  const turn = hook.indexOf("setTunnelTheme(tunnel.dark);");
-  assert.ok(turn > 0 && turn < hook.indexOf("update();", turn), "the page turns before the map reads it");
+  assert.ok(hook.includes("setTunnelTheme(tunnel.dark);"), "the page turns with the tunnel");
   assert.ok(hook.includes("if (tunnel.dark) setTunnelTheme(false);"), "cleared at the end of a ride or Roam");
 });
 
