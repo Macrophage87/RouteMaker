@@ -26,6 +26,7 @@ import {
   reachSentence,
   requestReach,
   sharesHome,
+  sideBySide,
   withReach,
   type ReachAnswer,
   type ReachCombine,
@@ -142,6 +143,7 @@ export function ReachSheet({ open, onBack, backLabel, getMap, points, preset, di
     return () => {
       abort.abort();
       window.clearTimeout(timer);
+      setBusy(false);
     };
   }, [open, bodyKey, offered]);
 
@@ -226,7 +228,7 @@ export function ReachSheet({ open, onBack, backLabel, getMap, points, preset, di
           </fieldset>
         )}
 
-        {!onFoot && (
+        {!onFoot && !sideBySide(points.length, view) && (
           <div>
             <label className="reach-calm">
               <input type="checkbox" checked={view.calm} onChange={(e) => onView({ ...view, calm: e.target.checked })} /> {t("Calm streets")}

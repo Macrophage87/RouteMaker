@@ -5247,9 +5247,11 @@ class Server:
             own = self.api.nearest(body)
             calm_body = {**body, "stress": CALM_STRESS}
             stress = dials.get("stress")
+            # No calm figure where it says nothing: Mass Ride's slider is locked, and a slider
+            # already at or past Low-stress is its own calm (core.reach.calm_offered).
             calm = (
                 None
-                if stress is not None and stress >= CALM_STRESS
+                if preset == "mass-ride" or (stress is not None and stress >= CALM_STRESS)
                 else self.api.nearest(calm_body)
             )
             trips = []
@@ -5272,6 +5274,7 @@ class Server:
                     trip["within_limit"] = minutes is not None and minutes <= limits[j]
                 trips.append(trip)
             met = sum(1 for t in trips if t.get("within_limit"))
+            unreachable = sum(1 for t in trips if t["minutes"] is None)
             total = sum(t["minutes"] for t in trips if t["minutes"] is not None)
             rows.append(
                 {
@@ -5280,10 +5283,13 @@ class Server:
                     "trips": trips,
                     "limits_met": met,
                     "total_minutes": round(total, 1),
+                    "unreachable": unreachable,
                     "reach_link": self._reach_link([start], preset, dials, "from", "any", True),
                 }
             )
-        rows.sort(key=lambda r: (-r["limits_met"], r["total_minutes"]))
+        # A place with a trip the router could not make ranks below every place it could: its
+        # total leaves that trip out and would otherwise look short.
+        rows.sort(key=lambda r: (-r["limits_met"], r["unreachable"], r["total_minutes"]))
         out: dict = {"ride_type": preset, "places": rows}
         if taken:
             out["points_taken_as"] = taken

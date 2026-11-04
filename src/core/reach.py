@@ -178,8 +178,11 @@ def area_sq_m(geom: GEOSGeometry) -> float:
 
 
 def _valid(geom: GEOSGeometry) -> GEOSGeometry:
-    # Valhalla's simplification can cross a ring over itself (its docs say so).
-    return geom if geom.valid else geom.make_valid()
+    # Valhalla's simplification can cross a ring over itself (its docs say so). make_valid
+    # always, never `.valid` first: GEOS logs why a shape is invalid with a coordinate in it,
+    # and the rider's places stay out of the logs. A fixed ring can come back as a collection
+    # with stray lines, so only its areas are kept.
+    return _polygons_only(geom.make_valid())
 
 
 def geojson(geom: GEOSGeometry) -> dict | None:

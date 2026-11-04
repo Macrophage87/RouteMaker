@@ -121,6 +121,12 @@ def test_every_router_endpoint_the_api_calls_is_enabled(config: dict) -> None:
         assert action in actions
 
 
+def test_reach_rings_endpoint_is_enabled(config: dict) -> None:
+    """Reach asks every router for `isochrone` (core.reach, Stephen 2026-11-04). Without the
+    action loki refuses it and every Reach request fails."""
+    assert "isochrone" in config["loki"]["actions"]
+
+
 def test_worker_counts_come_from_the_command_line_not_the_config(config: dict) -> None:
     """These configs used to carry loki_workers, thor_workers and odin_workers,
     and this test used to assert them.

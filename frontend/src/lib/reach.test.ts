@@ -55,6 +55,9 @@ test("several points: at most five, combined as chosen; Mass Ride's size is not 
   assert.equal((body.points as LonLat[]).length, REACH_MAX_POINTS);
   assert.equal(body.combine, "all");
   assert.equal(body.ride_size, undefined);
+  // Side by side: one colour a point, no calm layer asked for.
+  assert.equal(reachBody(many, "default", startDials("default"), { ...REACH_DEFAULT, combine: "each" }).calm, false);
+  assert.equal(reachBody([HERE], "default", startDials("default"), { ...REACH_DEFAULT, combine: "each" }).calm, true);
 });
 
 test("Run sends its pace; other ride types do not", () => {

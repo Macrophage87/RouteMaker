@@ -287,3 +287,22 @@ def test_area_is_in_ground_units() -> None:
     # 0.01 degrees square at 38.9 N: 1,113 m x 866 m of ground, about 0.372 sq mi.
     geom = GEOSGeometry(json.dumps(square(-77.0, 38.9, 0.005)), srid=4326)
     assert reach.area_sq_m(geom) / reach.SQ_M_PER_SQ_MI == pytest.approx(0.372, rel=0.01)
+
+
+def test_a_ring_that_crosses_itself_is_fixed_to_areas_only(caplog) -> None:
+    """Valhalla's simplifying can cross a ring over itself. Before: the fixed shape could be a
+    collection with lines in it, which the overlap and the GeoJSON could not take (a 500), and
+    asking `.valid` first logged GEOS's reason with a coordinate of the rider's place in it."""
+    import logging
+
+    caplog.set_level(logging.DEBUG)
+    bowtie = {
+        "type": "Polygon",
+        "coordinates": [
+            [[-77.0, 38.9], [-76.99, 38.91], [-76.99, 38.9], [-77.0, 38.91], [-77.0, 38.9]]
+        ],
+    }
+    answer = {"features": [{"geometry": bowtie, "properties": {"contour": 15}}]}
+    (ring,) = reach._rings_from(answer, [15])
+    assert ring.geom_type in ("Polygon", "MultiPolygon") and ring.valid and not ring.empty
+    assert "38.9" not in caplog.text and "-77" not in caplog.text

@@ -152,3 +152,32 @@ def test_compare_places_is_for_bike_ride_types(tools) -> None:
             "compare_places",
             {"places": [HERE, THERE], "destinations": [{"place": WORK}], "preset": "walk"},
         )
+
+
+def test_compare_places_on_a_mass_ride_asks_no_calm_row(tools, api) -> None:
+    """Mass Ride's slider is locked, so a Low-stress figure would say nothing."""
+    out = tools.call(
+        "compare_places",
+        {"places": [HERE, THERE], "destinations": [{"place": WORK}], "preset": "mass-ride"},
+    )
+    assert len(api.nearest_asked) == 2
+    assert all("calm_minutes" not in t for row in out["places"] for t in row["trips"])
+
+
+def test_compare_places_ranks_a_place_with_no_way_there_last(tools, api) -> None:
+    """Before: a trip the router could not make counted as 0 minutes and ranked that place first."""
+    real = api.nearest
+
+    def nearest(body):
+        got = real(body)
+        if body["points"][0] == THERE:
+            got["places"] = [{"distance_m": None, "time_s": None} for _ in got["places"]]
+        return got
+
+    api.nearest = nearest
+    out = tools.call(
+        "compare_places",
+        {"places": [THERE, HERE], "destinations": [{"place": WORK}], "stress": 90},
+    )
+    assert [row["place"] for row in out["places"]] == [HERE, THERE]
+    assert out["places"][1]["unreachable"] == 1

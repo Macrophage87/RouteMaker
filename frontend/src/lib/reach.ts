@@ -90,8 +90,14 @@ export function reachBody(points: readonly LonLat[], preset: PresetId, dials: Di
     ...closureFields(dials),
     direction: view.direction,
     combine: sent.length > 1 ? view.combine : "any",
-    calm: view.calm,
+    // Side by side draws a colour a point; a dashed calm set for each as well would not read.
+    calm: view.calm && !sideBySide(sent.length, view),
   };
+}
+
+/** Several points drawn one colour each, where the calm layer is not offered. */
+export function sideBySide(pointCount: number, view: ReachView): boolean {
+  return pointCount > 1 && view.combine === "each";
 }
 
 function isAnswer(value: unknown): value is ReachAnswer {

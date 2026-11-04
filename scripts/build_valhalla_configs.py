@@ -83,7 +83,8 @@ OVERRIDES: dict = {
         # route reports nothing. sources_to_targets is the riding-time matrix
         # "Best order" orders a ride's stops by past ten stops, or when the legs'
         # costs fail (OWNER-DECISIONS 449, core.stoporder). height gives a leg drawn in
-        # Plan's manual mode its elevations (v0.9.1, core.routing._drawn).
+        # Plan's manual mode its elevations (v0.9.1, core.routing._drawn). isochrone draws
+        # Reach's rings (core.reach, Stephen 2026-11-04).
         "actions": [
             "route",
             "trace_route",
@@ -92,6 +93,7 @@ OVERRIDES: dict = {
             "status",
             "sources_to_targets",
             "height",
+            "isochrone",
         ],
         "service_defaults": {"radius": 0, "minimum_reachability": 50},
     },
