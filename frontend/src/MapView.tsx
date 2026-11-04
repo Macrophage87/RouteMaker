@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { vehicleBadge, type VehicleMark } from "./lib/nextVehicle.ts";
+import { onBoardFeatures, type OnBoardPath } from "./lib/onBoard.ts";
 import { followZoom } from "./lib/idleRecentre.ts";
 import { followMoveNeeded, mapPixelRatio } from "./lib/followCamera.ts";
 import { createPortal } from "react-dom";
@@ -301,6 +302,12 @@ interface Props {
    * lib/nextVehicle.ts): a labelled mark, its kind's badge on it, unlike the rider's arrow. Null: none.
    */
   nextVehicle?: VehicleMark | null;
+  /**
+   * The train or bus's way while the rider waits for it and rides it (Stephen, 2026-11-04: "if you can show the path
+   * too"; lib/onBoard.ts onBoardPath): solid in the line's colour, a dot at each stop ahead, a ring at the stop to get
+   * off. Null: none.
+   */
+  transitPath?: OnBoardPath | null;
   /** Go outside a ride (the owner, 2026-10-17): the location found, drawn as the ride's still dot; no camera work, and the route is framed as ever. */
   youDot?: LonLat | null;
   follow?: boolean;
@@ -523,6 +530,8 @@ const WALK_IN_SOURCE = "walk-in";
 // attribution, shown while the trip is (OWNER-DECISIONS 301).
 const TRANSIT_SOURCE = "transit-trip";
 const TRANSIT_LAYERS = ["transit-casing", "transit-ride", "transit-walk", "transit-line"];
+// The train or bus the rider waits for or rides (lib/onBoard.ts onBoardPath), over the trip's dashed lines.
+const ONBOARD_SOURCE = "onboard-path";
 /** How far from the line's centre a mouse, or a finger, still grabs it. */
 const MOUSE_HIT_PX = 8;
 /** The line layer of Go's other routes to choose from, which a press is tested against (lib/routeChoice.ts). */
@@ -1655,6 +1664,54 @@ export function MapView(props: Props) {
         paint: { "line-color": TRANSIT_COLOUR, "line-width": TRANSIT_LINE_WIDTH, "line-dasharray": TRANSIT_DASH },
       });
       syncTransit(map, callbacks.current.route);
+      map.addSource(ONBOARD_SOURCE, { type: "geojson", data: onBoardFeatures(null) });
+      map.addLayer({
+        id: "onboard-casing",
+        type: "line",
+        source: ONBOARD_SOURCE,
+        filter: ["==", ["geometry-type"], "LineString"],
+        layout: { "line-join": "round", "line-cap": "round" },
+        paint: { "line-color": TRANSIT_CASING, "line-width": ONBOARD_LINE_WIDTH + 4 },
+      });
+      map.addLayer({
+        id: "onboard-line",
+        type: "line",
+        source: ONBOARD_SOURCE,
+        filter: ["==", ["geometry-type"], "LineString"],
+        layout: { "line-join": "round", "line-cap": "round" },
+        paint: { "line-color": ["get", "colour"], "line-width": ONBOARD_LINE_WIDTH },
+      });
+      map.addLayer({
+        id: "onboard-stops",
+        type: "circle",
+        source: ONBOARD_SOURCE,
+        filter: ["==", ["geometry-type"], "Point"],
+        paint: {
+          // Each stop a white dot ringed in the line's colour; the stop to get off larger, filled with it.
+          "circle-radius": ["case", ["get", "off"], 8, 4.5],
+          "circle-color": ["case", ["get", "off"], ["get", "colour"], "#ffffff"],
+          "circle-stroke-color": ["case", ["get", "off"], "#ffffff", ["get", "colour"]],
+          "circle-stroke-width": 3,
+        },
+      });
+      // A bus's stop to get off named on the line (a station's name is on the base map already).
+      map.addLayer({
+        id: "onboard-off-name",
+        type: "symbol",
+        source: ONBOARD_SOURCE,
+        filter: ["all", ["==", ["geometry-type"], "Point"], ["get", "off"], ["get", "bus"]],
+        layout: {
+          "text-field": ["get", "name"],
+          "text-font": [LABEL_FONT],
+          "text-size": RIDE_STATION_NAME_SIZE,
+          "text-anchor": "top",
+          "text-offset": [0, 0.9],
+          "text-max-width": 12,
+          "text-allow-overlap": true,
+        },
+        paint: { "text-color": "#111827", "text-halo-color": "#ffffff", "text-halo-width": 3 },
+      });
+      syncOnBoard(map, callbacks.current.transitPath ?? null);
       map.addSource(EDIT_SOURCE, { type: "geojson", data: editData(null, []) });
       map.addLayer({
         id: "route-edit-preview",
@@ -2485,6 +2542,13 @@ export function MapView(props: Props) {
     }
   }, [props.route, props.stale, props.permitsOn, areaClosures]);
 
+  // The train or bus's path (lib/onBoard.ts onBoardPath), redrawn as the stops go by.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loaded.current) return;
+    syncOnBoard(map, props.transitPath ?? null);
+  }, [props.transitPath]);
+
   // Where the next train or bus is (v0.9.0): a mark named in words ("Next bus: Bus 52 is 0.8 mi away (1.3 km), 3
   // stops back (Data: WMATA, live)"), not a button (it does nothing when pressed); moved in place at each answer.
   const vehicleMarker = useRef<Marker | null>(null);
@@ -3276,6 +3340,13 @@ function syncTransit(map: MapLibreMap, route: RouteResponse | null): void {
   for (const id of TRANSIT_LAYERS) {
     if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", visibility);
   }
+}
+
+/** The line under the train or bus's path: a little wider than the trip's dashed lines, so it reads as the one now. */
+const ONBOARD_LINE_WIDTH = 6;
+
+function syncOnBoard(map: MapLibreMap, path: OnBoardPath | null): void {
+  (map.getSource(ONBOARD_SOURCE) as GeoJSONSource | undefined)?.setData(onBoardFeatures(path) as never);
 }
 
 /** Station icons are drawn for the screen's pixel density, whole numbers only. */

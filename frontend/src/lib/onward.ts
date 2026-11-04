@@ -36,7 +36,8 @@ export function walkPart(path: WalkPath, seconds: number | null = null): OnwardP
 /** A transit plan's steps after its line, as parts to follow, up to its next riding leg (Ride the rest's). */
 export function onwardOf(steps: readonly TransitStep[], after: number): OnwardPart[] {
   const parts: OnwardPart[] = [];
-  for (const step of steps.slice(after + 1)) {
+  for (let i = after + 1; i < steps.length; i += 1) {
+    const step = steps[i];
     const draw = drawOf(step);
     if (draw === "ride") break;
     if (step.mode === "walk" || step.mode === "take") {
@@ -45,7 +46,8 @@ export function onwardOf(steps: readonly TransitStep[], after: number): OnwardPa
       // A walk to a dock: the share bike's ride after it is Ride the rest's.
       if (step.mode === "take") break;
     } else if (draw === "transit") {
-      const leg = onBoardLeg(step);
+      // The trip's end from the stop to get off: every step after it, its wait too (as the plan's total adds them).
+      const leg = onBoardLeg(step, steps.slice(i + 1).reduce((sum, later) => sum + later.seconds + later.wait_s, 0));
       if (leg) parts.push({ kind: "transit", leg });
     }
   }

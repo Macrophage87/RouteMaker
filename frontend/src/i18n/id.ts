@@ -2010,4 +2010,5 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "None of your points is on federal land.": "Tidak ada titik Anda yang berada di lahan federal.",
   "Mass Ride planning covers DC only for now. Outside the District of Columbia the map is grayed out and no riders-per-minute figures are drawn.": "Perencanaan Mass Ride untuk sementara hanya mencakup DC. Di luar District of Columbia peta berwarna abu-abu dan angka pesepeda per menit tidak ditampilkan.",
   "District of Columbia boundary: © OpenStreetMap contributors (ODbL).": "Batas District of Columbia: © kontributor OpenStreetMap (ODbL).",
+  "Trip ends about {time}": "Perjalanan selesai sekitar {time}",
 };

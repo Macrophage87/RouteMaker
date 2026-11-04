@@ -2010,4 +2010,5 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "None of your points is on federal land.": "연방 토지에 있는 지점이 없습니다.",
   "Mass Ride planning covers DC only for now. Outside the District of Columbia the map is grayed out and no riders-per-minute figures are drawn.": "Mass Ride 계획은 지금은 DC만 다룹니다. 컬럼비아 특별구 밖에서는 지도가 회색으로 표시되고 분당 라이더 수는 그려지지 않습니다.",
   "District of Columbia boundary: © OpenStreetMap contributors (ODbL).": "컬럼비아 특별구 경계: © OpenStreetMap 기여자 (ODbL).",
+  "Trip ends about {time}": "여정 종료 약 {time}",
 };

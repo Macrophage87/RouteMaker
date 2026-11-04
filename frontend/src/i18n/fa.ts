@@ -2010,4 +2010,5 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "None of your points is on federal land.": "هیچ‌کدام از نقاط شما روی زمین فدرال نیست.",
   "Mass Ride planning covers DC only for now. Outside the District of Columbia the map is grayed out and no riders-per-minute figures are drawn.": "برنامه‌ریزی Mass Ride فعلاً فقط دی‌سی را پوشش می‌دهد. بیرون از ناحیه کلمبیا نقشه خاکستری است و هیچ رقمی از دوچرخه‌سواران در دقیقه نشان داده نمی‌شود.",
   "District of Columbia boundary: © OpenStreetMap contributors (ODbL).": "مرز ناحیه کلمبیا: © مشارکت‌کنندگان OpenStreetMap (ODbL).",
+  "Trip ends about {time}": "سفر حدود {time} تمام می‌شود",
 };

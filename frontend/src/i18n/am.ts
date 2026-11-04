@@ -2010,4 +2010,5 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "None of your points is on federal land.": "ከነጥቦችዎ አንዱም በፌዴራል መሬት ላይ የለም።",
   "Mass Ride planning covers DC only for now. Outside the District of Columbia the map is grayed out and no riders-per-minute figures are drawn.": "የMass Ride እቅድ ለአሁን ዲሲን ብቻ ይሸፍናል። ከኮሎምቢያ ዲስትሪክት ውጭ ካርታው ግራጫ ይሆናል፣ የደቂቃ የተሳፋሪ አሃዞችም አይታዩም።",
   "District of Columbia boundary: © OpenStreetMap contributors (ODbL).": "የኮሎምቢያ ዲስትሪክት ወሰን: © OpenStreetMap አበርካቾች (ODbL)።",
+  "Trip ends about {time}": "ጉዞው በግምት {time} ያበቃል",
 };

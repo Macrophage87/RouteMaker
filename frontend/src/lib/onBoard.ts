@@ -14,6 +14,7 @@ import type { TransitStep, TransitStop } from "./api.ts";
 import { haversineM, type LonLat } from "./geo.ts";
 import { t } from "./i18n.ts";
 import { METRO_LINES, PENN_COLOUR } from "./railStations.ts";
+import { TRANSIT_COLOUR } from "./transit.ts";
 import { lineAlong, snap, type RideFix } from "./navigate.ts";
 
 /** The roughest fix that places the rider among the stops: a Wi-Fi fix underground. */
@@ -44,6 +45,8 @@ export interface OnBoardLeg {
   waitS: number;
   /** A frequent service's minutes between departures; null for a timed one (its departure says when). */
   everyMin?: number | null;
+  /** The plan's seconds from the stop to get off to the trip's end (the walks, waits and rides after it); null: not known. */
+  afterS?: number | null;
 }
 
 export interface OnBoardState {
@@ -63,15 +66,15 @@ export interface OnBoardState {
   pending?: { at: number; boarded: boolean } | null;
 }
 
-/** A transit step as one to follow; null without at least two stops (an older API). */
-export function onBoardLeg(step: TransitStep): OnBoardLeg | null {
+/** A transit step as one to follow; null without at least two stops (an older API). `afterS`: the plan's seconds after it to the trip's end. */
+export function onBoardLeg(step: TransitStep, afterS: number | null = null): OnBoardLeg | null {
   const stops = step.stops ?? [];
   if (stops.length < 2) return null;
   const line = step.lines.length > 0 ? step.lines.join(" / ") : (step.system ?? "");
   const trains = step.towards?.length
     ? step.towards.map((w) => ({ line: w.line, toward: w.toward }))
     : [{ line, toward: step.toward ?? null }];
-  return { stops, line, trains, departs: step.departs ?? null, rack: step.mode === "bus" && step.with_bike, toward: step.toward ?? null, bus: step.mode === "bus", waitS: step.wait_s, everyMin: step.every_min ?? null };
+  return { stops, line, trains, departs: step.departs ?? null, rack: step.mode === "bus" && step.with_bike, toward: step.toward ?? null, bus: step.mode === "bus", waitS: step.wait_s, everyMin: step.every_min ?? null, afterS };
 }
 
 export function onBoardStart(now: number): OnBoardState {
@@ -197,6 +200,71 @@ export function onBoardRows(leg: OnBoardLeg, state: OnBoardState): { name: strin
 export function stopsLeftText(leg: OnBoardLeg, state: Pick<OnBoardState, "at">): string {
   const left = leg.stops.length - 1 - state.at;
   return left === 1 ? t("1 stop left") : t("{count} stops left", { count: left });
+}
+
+/**
+ * The seconds to the stop to get off, on board (Stephen, 2026-11-04: "When on transit, put the approximate time left
+ * to arrival"): the timetable's run from the last stop reached, less the time the train has been going since by the
+ * clock, but never past the next stop, which is not reached yet (a late train holds there, an early one is taken
+ * from the stop the fix says). Null while waiting to board.
+ */
+export function onBoardSecondsLeft(leg: Pick<OnBoardLeg, "stops">, state: Pick<OnBoardState, "at" | "boardedAt">, nowMs: number): number | null {
+  if (state.boardedAt === null) return null;
+  const last = leg.stops.length - 1;
+  const at = Math.min(Math.max(0, state.at), last);
+  const reached = leg.stops[at].after_s;
+  const next = leg.stops[Math.min(at + 1, last)].after_s;
+  const ridden = Math.min(Math.max((nowMs - state.boardedAt) / 1000, reached), next);
+  return Math.max(0, leg.stops[last].after_s - ridden);
+}
+
+/** The line's colour on the map: its badge's (a Metro line's, the Penn Line's), else null for the map's transit colour. */
+export function lineColour(lines: readonly string[]): string | null {
+  for (const line of lines) {
+    const badge = lineBadge(line);
+    if (badge) return badge.background;
+  }
+  return null;
+}
+
+/** The train or bus's way on the ride's map: the stops still ahead joined in order, the one to get off marked. */
+export interface OnBoardPath {
+  coordinates: LonLat[];
+  /** The line's colour (lineColour); null: the map's transit colour. */
+  colour: string | null;
+  stops: { point: LonLat; name: string; off: boolean }[];
+  /** A bus's stops are not on the base map: the stop to get off is named on the line. */
+  bus: boolean;
+}
+
+/**
+ * The path drawn while waiting for the train or bus and on it (Stephen, 2026-11-04: "if you can show the path too"):
+ * from the last stop reached (the boarding stop while waiting) to the stop to get off, through every stop between, so
+ * a Metro line goes station to station. The timetable has no track shapes, so between two stops it is a straight line.
+ */
+export function onBoardPath(leg: Pick<OnBoardLeg, "stops" | "line" | "trains" | "bus">, at: number): OnBoardPath | null {
+  const last = leg.stops.length - 1;
+  const ahead = leg.stops.slice(Math.min(Math.max(0, at), Math.max(0, last - 1)));
+  if (ahead.length < 2) return null;
+  return {
+    coordinates: ahead.map((stop) => stop.point),
+    colour: lineColour([...(leg.trains ?? []).map((train) => train.line), leg.line]),
+    stops: ahead.map((stop, i) => ({ point: stop.point, name: stop.name, off: i === ahead.length - 1 })),
+    bus: leg.bus,
+  };
+}
+
+/** The train or bus's path as the map's features: its line, then a point at each stop ahead. */
+export function onBoardFeatures(path: OnBoardPath | null): { type: "FeatureCollection"; features: unknown[] } {
+  if (!path) return { type: "FeatureCollection", features: [] };
+  const colour = path.colour ?? TRANSIT_COLOUR;
+  return {
+    type: "FeatureCollection",
+    features: [
+      { type: "Feature", properties: { colour }, geometry: { type: "LineString", coordinates: path.coordinates } },
+      ...path.stops.map((stop) => ({ type: "Feature", properties: { colour, off: stop.off, bus: path.bus, name: stop.name }, geometry: { type: "Point", coordinates: stop.point } })),
+    ],
+  };
 }
 
 /**

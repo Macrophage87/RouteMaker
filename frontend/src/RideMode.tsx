@@ -265,6 +265,7 @@ import {
   walkLineTurns,
 } from "./lib/rideTrip.ts";
 import { onwardActive, onwardStart, onwardStep, type OnwardState } from "./lib/onward.ts";
+import { onBoardPath, type OnBoardPath } from "./lib/onBoard.ts";
 import { BOARDING_MS, TRIP_CHECK_MS } from "./lib/tripCheck.ts";
 import { walkModel, walkTurnLine } from "./lib/walkCues.ts";
 import { BoardingCard, OnBoardCard } from "./OnBoardCard.tsx";
@@ -464,6 +465,8 @@ export interface RideView {
   lettered?: LetteredPlace[] | null;
   /** A lettered pin pressed: Detour opens on its row. */
   onLettered?: (index: number) => void;
+  /** The train or bus waited for or ridden past the line, its stops ahead (lib/onBoard.ts onBoardPath). */
+  transitPath?: OnBoardPath | null;
 }
 
 function arrowFor(
@@ -1948,6 +1951,12 @@ export function RideMode({
     [model, aheadKey, stopName],
   );
   const nextStop = ride.arrived ? null : (stops[0] ?? null);
+  // The train or bus's path on the map (Stephen, 2026-11-04: "if you can show the path too"): past the line, the one
+  // waited for or ridden now (the next one while walking to it), from the last stop reached to the stop to get off.
+  const pathIndex = ride.arrived ? (onward?.index ?? 0) : -1;
+  const pathPart = pathIndex < 0 ? null : (onwardParts.slice(pathIndex).find((p) => p.kind === "transit") ?? null);
+  const pathAt = pathPart && pathPart === onwardParts[pathIndex] && onward?.board?.boardedAt != null ? onward.board.at : 0;
+  const transitPath = useMemo<OnBoardPath | null>(() => (pathPart?.kind === "transit" ? onBoardPath(pathPart.leg, pathAt) : null), [pathPart, pathAt]);
   // Detour's places, lettered on the map as in its rows (Find food's pins, 2026-10-28): while the menu is open, and
   // after a row's Show on map until the menu next closes. They go with the list (a new search, a detour or Instead chosen).
   const detourLetters = useMemo(() => detourLettered(detourList), [detourList]);
@@ -1972,8 +1981,9 @@ export function RideMode({
       stops,
       lettered,
       onLettered,
+      transitPath,
     });
-  }, [route, other, fix, onView, vehicle, stops, lettered, onLettered]);
+  }, [route, other, fix, onView, vehicle, stops, lettered, onLettered, transitPath]);
 
   // The map along the route, kept for dead spots (lib/corridor.ts, plan section 6): fetched at Start ride
   // and again for a re-plan's new route (only the tiles the first did not cover), kept a day for the same route

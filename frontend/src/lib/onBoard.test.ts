@@ -6,7 +6,7 @@ import { readFileSync } from "node:fs";
 import type { TransitStep } from "./api.ts";
 import type { LonLat } from "./geo.ts";
 import type { RideFix } from "./navigate.ts";
-import { STALE_MS, boardingGroups, laterDepartureText, lineBadge, liveForBoarding, liveNextText, nextDepartureText, onBoardLeg, onBoardRows, onBoardStart, onBoardStep, stopsLeftText, type OnBoardState } from "./onBoard.ts";
+import { STALE_MS, boardingGroups, lineColour, onBoardFeatures, onBoardPath, onBoardSecondsLeft, laterDepartureText, lineBadge, liveForBoarding, liveNextText, nextDepartureText, onBoardLeg, onBoardRows, onBoardStart, onBoardStep, stopsLeftText, type OnBoardState } from "./onBoard.ts";
 import { onwardOf, onwardStart, onwardStep } from "./onward.ts";
 
 const M_PER_DEG = 111_195;
@@ -299,4 +299,57 @@ test("live minutes count down from the reading's time, and a reading too old say
     [4],
   );
   assert.deepEqual(liveForBoarding(live, groups, stops, { asOf, nowMs: t0 + 4 * 60_000 }), []);
+});
+
+// Stephen, 2026-11-04: "When on transit, put the approximate time left to arrival. Also, if you can show the path too."
+test("time left on board: none while waiting; the timetable's run from the stop reached, held at the next stop when late", () => {
+  const t0 = 1_000_000;
+  // Waiting: no time left shown (the boarding card has the departure).
+  assert.equal(onBoardSecondsLeft(LEG, { at: 0, boardedAt: null }, t0), null);
+  // Just boarded at Takoma: the whole run, 10 min.
+  assert.equal(onBoardSecondsLeft(LEG, { at: 0, boardedAt: t0 }, t0), 600);
+  // A minute on: 9 min left.
+  assert.equal(onBoardSecondsLeft(LEG, { at: 0, boardedAt: t0 }, t0 + 60_000), 540);
+  // Five minutes on, still short of Fort Totten (a late train): held at Fort Totten's, 8 min.
+  assert.equal(onBoardSecondsLeft(LEG, { at: 0, boardedAt: t0 }, t0 + 300_000), 480);
+  // The fix says Rhode Island Ave already (an early train, a late boarding seen): from there, 4 min.
+  assert.equal(onBoardSecondsLeft(LEG, { at: 3, boardedAt: t0 }, t0 + 60_000), 240);
+  // At the stop to get off: none left.
+  assert.equal(onBoardSecondsLeft(LEG, { at: 5, boardedAt: t0 }, t0 + 900_000), 0);
+});
+
+test("the trip's end after the stop to get off: every later step's time and wait, from the plan", () => {
+  const exit: TransitStep = { ...STEP, mode: "exit", text: "Leave the station.", seconds: 90, wait_s: 0, lines: [], stops: null };
+  const ride: TransitStep = { ...STEP, mode: "ride", text: "Ride to the end.", seconds: 420, wait_s: 0, lines: [], stops: null, coordinates: [north(6000), north(7000)] };
+  const enter: TransitStep = { ...STEP, mode: "enter", text: "Into the station.", seconds: 60, wait_s: 0, lines: [], stops: null };
+  const parts = onwardOf([{ ...STEP, mode: "ride", route_line: true, coordinates: [] }, enter, STEP, exit, ride], 0);
+  const train = parts.find((p) => p.kind === "transit");
+  assert.ok(train && train.kind === "transit");
+  assert.equal(train.leg.afterS, 510);
+  // From onBoardLeg alone (no plan around it): not known.
+  assert.equal(LEG.afterS, null);
+});
+
+test("the path on the map: the stops ahead in the line's colour, the one to get off marked; a bus names it", () => {
+  const waiting = onBoardPath(LEG, 0)!;
+  assert.equal(waiting.coordinates.length, 6);
+  assert.equal(waiting.colour, lineColour(["Red Line"]));
+  assert.notEqual(waiting.colour, null);
+  assert.deepEqual(
+    waiting.stops.map((s) => s.off),
+    [false, false, false, false, false, true],
+  );
+  // Three stops on: only the rest drawn; at the stop before the last, still a line to it.
+  assert.equal(onBoardPath(LEG, 3)!.coordinates.length, 3);
+  assert.equal(onBoardPath(LEG, 5)!.coordinates.length, 2);
+  // A line with no colour of its own: the map's transit colour.
+  const bus = onBoardLeg({ ...STEP, mode: "bus", lines: ["B10"], towards: null })!;
+  const busPath = onBoardPath(bus, 0)!;
+  assert.equal(busPath.colour, null);
+  const features = onBoardFeatures(busPath).features as { geometry: { type: string }; properties: { colour: string; off?: boolean; bus?: boolean } }[];
+  assert.equal(features[0].geometry.type, "LineString");
+  assert.equal(features.length, 7);
+  assert.ok(features.every((f) => /^#/.test(f.properties.colour)));
+  assert.deepEqual(features.filter((f) => f.properties.off).length, 1);
+  assert.equal(onBoardFeatures(null).features.length, 0);
 });
