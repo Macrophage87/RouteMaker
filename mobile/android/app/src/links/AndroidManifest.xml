@@ -16,7 +16,9 @@
                 <data android:path="/" />
                 <!-- A shared route's short link (core.share_preview). -->
                 <data android:pathPrefix="/s/" />
-                <!-- The ride types' own addresses (the beta's nginx, "the ride types"). -->
+                <!-- The ride types' own addresses: every preset in frontend/src/lib/presets.ts, and /kids
+                     (novice's old name), as the Caddyfile redirects them. mobile/test/config.test.mjs
+                     holds this list equal to those. -->
                 <data android:pathPrefix="/default" />
                 <data android:pathPrefix="/trailmaxxing" />
                 <data android:pathPrefix="/group-ride" />
@@ -25,12 +27,16 @@
                 <data android:pathPrefix="/mountain-bike" />
                 <data android:pathPrefix="/gravel" />
                 <data android:pathPrefix="/fast" />
+                <data android:pathPrefix="/road-bike" />
                 <data android:pathPrefix="/cargo" />
                 <data android:pathPrefix="/ebike" />
                 <data android:pathPrefix="/bikeshare" />
                 <data android:pathPrefix="/novice" />
                 <data android:pathPrefix="/bike-transit" />
                 <data android:pathPrefix="/bikeshare-transit" />
+                <data android:pathPrefix="/walk" />
+                <data android:pathPrefix="/walk-transit" />
+                <data android:pathPrefix="/run" />
                 <data android:pathPrefix="/rebalance" />
                 <data android:pathPrefix="/kids" />
             </intent-filter>
