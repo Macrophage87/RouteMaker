@@ -44,6 +44,7 @@ import {
 } from "./aheadGraph.ts";
 import { METRES_PER_MILE } from "./format.ts";
 import { setUnitsForTest } from "./units.ts";
+import { setAccessibility } from "../stressStyle.js";
 
 const MI = METRES_PER_MILE;
 const span = (from_m: number, to_m: number, tier: number | null, half = false, facility: StressSpan["facility"] = "none"): StressSpan => ({ from_m, to_m, tier, facility, half });
@@ -349,4 +350,30 @@ test("traffic stress is a ribbon with the turns on it, not a graph, so it fits b
   assert.match(graph, /const graphs = views\.filter\(\(view\) => view !== "stress"\);/, "stress takes no graph's room");
   assert.match(graph, /<Ribbon bars=\{panels\.ribbon\} rails=\{panels\.rails\}/);
   assert.match(graph, /const railYs = \[top \+ RAIL_H \/ 2, band \+ RIBBON_H \+ RAIL_GAP \+ RAIL_H \/ 2\];/, "rails on the top and bottom edges");
+});
+
+test("the ribbon's half steps: their own colour by default; in the colour-blind-friendly palette the level's colour with the next level's dash, as on the map", () => {
+  const spans: StressSpan[] = [
+    { from_m: 0, to_m: 300, tier: 3, facility: "none" },
+    { from_m: 300, to_m: 600, tier: 3, facility: "none", half: true },
+  ];
+  const plain = stressBars(spans, aheadWindow(0, 50_000));
+  assert.deepEqual(plain.map((b) => b.label), ["3", "3.5"]);
+  assert.notEqual(plain[1].color, plain[0].color, "3.5 in its own colour");
+  assert.equal(plain[1].halfDash, undefined);
+  setAccessibility(true, { remember: false });
+  try {
+    const cvd = stressBars(spans, aheadWindow(0, 50_000));
+    assert.deepEqual(cvd.map((b) => b.label), ["3", "3.5"]);
+    assert.equal(cvd[1].color, cvd[0].color, "LTS 3's colour");
+    assert.equal(cvd[1].halfDash, stressBars([{ from_m: 0, to_m: 300, tier: 4, facility: "none" }], aheadWindow(0, 50_000))[0].color, "LTS 4's colour as its dash");
+    const top = stressBars([{ from_m: 0, to_m: 300, tier: 4, facility: "none", half: true }], aheadWindow(0, 50_000))[0];
+    assert.equal(top.label, "4.5");
+    assert.ok(top.halfDash && top.halfOutline, "4.5's dash has its outline, as on the map (458b)");
+  } finally {
+    setAccessibility(false, { remember: false });
+  }
+  const graph = readFileSync(new URL("../AheadGraph.tsx", import.meta.url), "utf8");
+  assert.match(graph, /\{b\.halfDash && \(/, "the dash drawn on the ribbon");
+  assert.match(graph, /const dash = level === 4\.5 \? \[6, 3, 1\.5, 3\] : \[6, 4\];/, "4.5 a dash-dot, as the map's HALF_STEP_TOP_DASH");
 });

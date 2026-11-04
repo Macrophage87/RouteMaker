@@ -82,6 +82,15 @@ const RIBBON_H = 18;
 const RAIL_H = 5;
 /** A hair of panel between each rail and the ribbon, so a trail's purple stays apart from LTS 1's. */
 const RAIL_GAP = 1.5;
+/**
+ * A half step's dash on the ribbon in the colour-blind-friendly palette, as the map's: a dash for 1.5 to 3.5, a
+ * dash-dot for 4.5 (stressStyle.js HALF_STEP_TOP_DASH); its outline each dash a pixel longer at both ends.
+ */
+function halfDash(level: number | null): { dash: string; outline: string } {
+  const dash = level === 4.5 ? [6, 3, 1.5, 3] : [6, 4];
+  return { dash: dash.join(" "), outline: dash.map((d, i) => (i % 2 ? d - 2 : d + 2)).join(" ") };
+}
+
 /** The ribbon with its rails, top to bottom. */
 const RIBBON_BLOCK = RAIL_H + RAIL_GAP + RIBBON_H + RAIL_GAP + RAIL_H;
 /** The rails' dashes at this size, the map's look (stressStyle.js FACILITIES): trail solid, protected in posts, painted in dots. */
@@ -373,8 +382,20 @@ function Ribbon({ bars, rails, x, top, turns }: { bars: readonly StressBar[]; ra
         return (
           <g key={b.fromM}>
             <rect className="ride-ahead-bar" x={left} y={band} width={width} height={RIBBON_H} fill={b.color} />
+            {b.halfDash && (
+              // A half step in the colour-blind-friendly palette: the next level's dash along its foot, as on the map.
+              <g className="ride-ahead-half-dash">
+                {b.halfOutline && (
+                  // The outline a pixel round each dash, its ends too (as the map's scaledDash), so 4.5's dash keeps
+                  // its rim on LTS 4's red.
+                  <line x1={left} x2={left + width} y1={band + RIBBON_H - 3} y2={band + RIBBON_H - 3} stroke={b.halfOutline} strokeWidth={5.5} strokeDasharray={halfDash(b.level).outline} strokeDashoffset={1} />
+                )}
+                <line x1={left} x2={left + width} y1={band + RIBBON_H - 3} y2={band + RIBBON_H - 3} stroke={b.halfDash} strokeWidth={3.5} strokeDasharray={halfDash(b.level).dash} />
+              </g>
+            )}
             {width >= b.label.length * 8 + 6 && (
-              <text className="ride-ahead-level" x={left + width / 2} y={band + RIBBON_H / 2 + 5} textAnchor="middle" style={{ fill: b.ink }}>
+              // Lifted a little over a half step's dash, so the dash runs under the number.
+              <text className="ride-ahead-level" x={left + width / 2} y={band + RIBBON_H / 2 + (b.halfDash ? 3 : 5)} textAnchor="middle" style={{ fill: b.ink }}>
                 {b.label}
               </text>
             )}
