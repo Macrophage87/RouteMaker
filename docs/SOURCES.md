@@ -1178,6 +1178,8 @@ docs/OPERATIONS.md, "Transit schedule". Systems, rules and sources are listed in
     content without express written permission in advance from VRE." Queries to its data feeds are
     allowed. No attribution is required; the plan credit above is given all the same. The feed and
     the schedule built from it stay on the host and are never committed (owner question 1).
+    The owner, 2026-11-04: "This is a free open source project so non-commercial is a nonissue
+    for vre" (RouteMaker is free and non-commercial).
   - Bike rules: <https://www.vre.org/about/onboard-policies/> (Baggage/Bicycles, read 2026-10-12).
     "Full-size and collapsible bicycles are allowed on all trains." Tether the bike with a bungee
     cord to the bench seats at a car's south end (the north-end bench is priority seating); bikes
