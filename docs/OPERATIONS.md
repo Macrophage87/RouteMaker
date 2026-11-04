@@ -5556,10 +5556,17 @@ in `src/routemaker/deer_closures.py` and the ways they close in
 before it opens), shows it in its notices, on its map and in the connector's
 `check_before_you_go`. Nothing is shown outside the windows.
 
+Rock Creek has no 2026-27 season: the assumed one (Nov 10, 2026 to Mar 31, 2027, said as
+expected) was taken out on the owner's word of 2026-11-04, "For rock creek, that's no longer the
+case." (NPS's deer-management page, updated 2026-10-30, gives no 2026-27 closure dates.) So no
+Rock Creek deer notice shows this winter; Montgomery Parks' closures are unchanged.
+`ROCK_CREEK_SEASONS` keeps the posted 2025-26 season, so a season NPS posts later is one more row.
+
 **Each autumn:**
 
-1. When NPS posts Rock Creek's record of determination for the new winter, set its dates in
-   `ROCK_CREEK_SEASONS` with `posted` True (the notice stops saying "expected"), and its hours
+1. When NPS posts Rock Creek's record of determination for a new winter, add its dates to
+   `ROCK_CREEK_SEASONS` with `posted` True (a row with `posted` False is said as "expected",
+   and only on the owner's say-so), and its hours
    in `ROCK_CREEK_HOURS`. Check its list of roads closed to bicycles against `ROCK_CREEK_WAYS` in
    `scripts/build_deer_closures.py`.
 2. When Montgomery Parks posts the new schedule, set `SHARPSHOOTING_SEASON`, `SHARPSHOOTING`

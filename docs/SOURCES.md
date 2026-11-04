@@ -733,9 +733,11 @@ never routed round.
   Management Plan", <https://www.nps.gov/rocr/learn/management/record-of-determination-for-the-temporary-closure-of-certain-park-roads-and-park-areas-for-the-2025-2026-implementation-of-the-rock-creek-park-white-tailed-deer-management-plan.htm>,
   read 2026-10-25: Nov 10, 2025 to Mar 31, 2026; Bingham Drive, Sherrill Drive and three
   car-free stretches of Beach Drive "may also [be] closed to pedestrians, bicyclists and
-  non-motorized recreation from 6:45 p.m. to 4 a.m.". The 2026-27 dates are assumed the same
-  (the owner, 2026-10-25) and said as expected until NPS posts them. Public domain U.S.
-  government information.
+  non-motorized recreation from 6:45 p.m. to 4 a.m.". No 2026-27 season is shown: the dates
+  once assumed the same (the owner, 2026-10-25) were taken out on the owner's word of
+  2026-11-04, "For rock creek, that's no longer the case."
+  (<https://www.nps.gov/rocr/learn/management/white-tailed-deer-management.htm>, updated
+  2026-10-30, gives no 2026-27 closure dates.) Public domain U.S. government information.
 - **Montgomery Parks.** "Deer Population Management Schedule & Locations", Fall 2026 to Winter
   2027, <https://montgomeryparks.org/deer-population-management-schedule-locations/>, read
   2026-10-25: Park Police sharpshooting ("Parks and Trails Closed, January 15 - March 31 from
