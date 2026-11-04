@@ -96,6 +96,15 @@ def test_the_answers_are_read_as_wmata_documents_them() -> None:
     assert live.station_near([-77.5, 38.5]) is None
 
 
+def test_a_station_cards_trains_say_where_they_end() -> None:
+    live = snapshot()
+    card = transit_live.station([-76.995334, 38.884124], live)
+    assert card is not None
+    vienna = live.stations["K08"]
+    ends = {t["toward"]: t["end"] for t in card["trains"]}
+    assert ends["Vienna/Fairfax-GMU"] == [vienna.lon, vienna.lat]
+
+
 def test_a_line_is_the_same_line_by_its_colour() -> None:
     assert wmata_live.same_line("Red Line", "RED")
     assert wmata_live.same_line("Metrorail Orange Line", "Orange Line")

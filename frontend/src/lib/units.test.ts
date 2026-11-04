@@ -18,13 +18,13 @@ import {
   unitsFirstDeep,
 } from "./format.ts";
 import { formatClimbSpoken, formatDistanceSpoken } from "./spokenFigures.ts";
-import { chooseUnits, readUnits, setUnitsForTest, units, type Units } from "./units.ts";
+import { chooseUnits, readUnits, setUnitsForTest, subscribeUnits, switchUnitsInRide, units, unitsReloadOwed, type Units } from "./units.ts";
 import { applyToDevice, deviceSettings, parseSettings } from "./accountSettings.ts";
 import { parseTarget, targetText } from "./dialsPanel.ts";
 import { paceOptions } from "./runPace.ts";
 import { topoLabelExpression } from "./topoLines.ts";
 import { calmDistance, mileWord } from "./profileChart.ts";
-import { roadHazardWords } from "./navigate.ts";
+import { roadHazardWords, withoutMetric } from "./navigate.ts";
 
 class Memory {
   map = new Map<string, string>();
@@ -200,4 +200,32 @@ test("the next-2-miles graph: its distance axis counts kilometres and its height
     assert.deepEqual(heights.map((tick) => tick.label), ["10 m", "20 m", "30 m", "40 m"].filter((_, i) => i < heights.length));
     assert.equal(heights.every((tick) => / m$/.test(tick.label)), true);
   });
+});
+
+test("Units changed in a ride switch at once, no reload (Stephen 2026-11-03: \"Change should happen immediately\"); the reload waits for the ride's end", async () => {
+  try {
+    // The account's save refused: nothing switches, the old choice kept.
+    const kept = new Memory();
+    assert.equal(await switchUnitsInRide("metric", async () => false, kept), false);
+    assert.equal(units(), "us");
+    assert.equal(readUnits(kept), "us");
+    assert.equal(unitsReloadOwed(), false);
+    // Saved: in use at once, the ride's screen told, and the reload owed for the ride's end.
+    let told = 0;
+    const stop = subscribeUnits(() => (told += 1));
+    assert.equal(await switchUnitsInRide("metric", async () => true, kept), true);
+    stop();
+    assert.equal(units(), "metric");
+    assert.equal(readUnits(kept), "metric");
+    assert.equal(told, 1);
+    assert.equal(unitsReloadOwed(), true);
+    assert.equal(formatDistance(1609.344), "1.6 km (1.0 mi)");
+    // A cue's words turned at arrival in US order are shown and said in metric now, and back again in US.
+    assert.equal(unitsFirst("Continue for 1.2 mi (1.9 km)"), "Continue for 1.9 km (1.2 mi)");
+    assert.equal(withoutMetric("Continue for 1.2 mi (1.9 km)"), "Continue for 1.9 km");
+    setUnitsForTest("us");
+    assert.equal(withoutMetric("Continue for 1.9 km (1.2 mi)"), "Continue for 1.2 mi");
+  } finally {
+    setUnitsForTest("us");
+  }
 });
