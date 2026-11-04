@@ -4,7 +4,7 @@
 # same task with the same settings.
 #
 # From WSL:   powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$(wslpath -w ~/src/RouteMaker/scripts/pc/install-backup-pull-task.ps1)"
-# Remove:     Unregister-ScheduledTask -TaskPath '\RouteMaker\' -TaskName 'Pull beta backups' -Confirm:$false
+# Remove:     Unregister-ScheduledTask -TaskPath '\' -TaskName 'RouteMaker - Pull beta backups' -Confirm:$false
 #
 # When: 04:00 local time (America/New_York). The beta's dump starts at 07:00 UTC
 # (config.procrastinate NIGHTLY_BACKUP_CRON) and may take up to 30 minutes: that is 03:00 EDT in
@@ -18,8 +18,8 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 
-$taskPath = '\RouteMaker\'
-$taskName = 'Pull beta backups'
+$taskPath = '\'  # the root folder: making a new folder can need admin rights
+$taskName = 'RouteMaker - Pull beta backups'
 $user = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
 
 # Double quotes, not single: Windows passes "..." to wsl.exe as one argument with the quotes

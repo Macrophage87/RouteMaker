@@ -2820,7 +2820,7 @@ restore is the restore, not a second fault.
 (`/data/routemaker/backups/routemaker-<UTC>.dump.age`, written at 07:00 UTC) into
 `C:\Users\steph\Documents\RouteMaker\beta-backups`, which the PC's own backup covers. Only
 `.dump.age` files travel, never the plain `pre-*.dump` ones; they are useless without your
-backup key file, which stays on the PC. The newest 14 are kept there (the beta keeps 7).
+backup key file, which stays on the PC. The newest 7 are kept there, as on the beta, so deleted data leaves them within a week as the privacy page says.
 
 **How:** `scripts/pc/pull-beta-backups.sh`, run in WSL. It runs only `find` and a copy on the
 beta, under `sudo -n` (the folder is 0700, owned by the containers' uid). It writes `<name>.part`,
@@ -2854,7 +2854,7 @@ running it again just replaces the task):
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$(wslpath -w ~/src/RouteMaker/scripts/pc/install-backup-pull-task.ps1)"
 ```
 
-The task (`\RouteMaker\Pull beta backups`) runs `wsl.exe -d Ubuntu-26.04 -- bash -lc
+The task (`RouteMaker - Pull beta backups`, in the Task Scheduler Library root) runs `wsl.exe -d Ubuntu-26.04 -- bash -lc
 "~/src/RouteMaker/scripts/pc/pull-beta-backups.sh"` daily at 04:00 New York time: 1 h after
 the dump in summer (07:00 UTC is 03:00 EDT), 2 h in winter (02:00 EST). If the PC is off or
 asleep then, it runs as soon as it can. It runs only while you are signed in to Windows.
@@ -2865,8 +2865,8 @@ asleep then, it runs as soon as it can. It runs only while you are signed in to 
 tail -n 3 /mnt/c/Users/steph/Documents/RouteMaker/beta-backups/pull-beta-backups.log
 ```
 
-or in PowerShell, `Get-ScheduledTaskInfo -TaskPath '\RouteMaker\' -TaskName 'Pull beta
-backups'` (`LastTaskResult` 0 is ok, 1 is a `FAILED` line in the log).
+or in PowerShell, `Get-ScheduledTaskInfo -TaskPath '\' -TaskName 'RouteMaker - Pull
+beta backups'` (`LastTaskResult` 0 is ok, 1 is a `FAILED` line in the log).
 
 ### Test-restore once (on the PC, beta untouched)
 

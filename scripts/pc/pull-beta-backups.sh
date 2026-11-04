@@ -23,7 +23,7 @@
 #   RM_BETA_BACKUPS     the backups folder on the beta [/data/routemaker/backups]
 #   RM_BETA_SUDO        prefix for the two commands on the beta ["sudo -n"]; empty if the
 #                       login user can read that folder itself
-#   RM_BACKUP_KEEP      copies kept here [14]
+#   RM_BACKUP_KEEP      copies kept here [7, as on the beta: the privacy page promises deleted data leaves backups within a week]
 set -euo pipefail
 export LC_ALL=C
 
@@ -31,7 +31,7 @@ host=${RM_BETA_SSH:-chubby}
 dest=${RM_BACKUP_DIR:-/mnt/c/Users/steph/Documents/RouteMaker/beta-backups}
 remote_dir=${RM_BETA_BACKUPS:-/data/routemaker/backups}
 sudo_cmd=${RM_BETA_SUDO-sudo -n}
-keep=${RM_BACKUP_KEEP:-14}
+keep=${RM_BACKUP_KEEP:-7}
 log="$dest/pull-beta-backups.log"
 name_re='^routemaker-[0-9]{8}T[0-9]{6}Z\.dump\.age$'
 # BatchMode: a key that needs a passphrase (no agent in a scheduled run) fails at once, not waits.

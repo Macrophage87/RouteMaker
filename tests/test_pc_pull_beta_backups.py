@@ -135,7 +135,7 @@ def test_only_the_encrypted_dumps_are_copied_whole(env) -> None:
     assert " copied=0 " in (env["dest"] / "pull-beta-backups.log").read_text().splitlines()[-1]
 
 
-def test_retention_keeps_the_newest_14_and_touches_nothing_else(env) -> None:
+def test_retention_keeps_the_newest_7_and_touches_nothing_else(env) -> None:
     for h in range(20, 20 + 24 * 16, 24):  # 16 older copies already here
         put(env["dest"], name(h))
     put(env["dest"], "notes.txt")
@@ -149,13 +149,13 @@ def test_retention_keeps_the_newest_14_and_touches_nothing_else(env) -> None:
     assert result.returncode == 0, result.stderr
     dumps = sorted(n for n in files(env["dest"]) if n.endswith(".dump.age"))
     every = sorted([*new, *(name(h) for h in range(20, 20 + 24 * 16, 24))], reverse=True)
-    assert dumps == sorted(every[:14])
+    assert dumps == sorted(every[:7])
     assert "notes.txt" in files(env["dest"])
     assert not any(n.endswith(".part") for n in files(env["dest"]))
 
 
 def test_a_copy_that_breaks_off_leaves_no_part_and_deletes_nothing(env) -> None:
-    old = [name(h) for h in range(30, 30 + 24 * 15, 24)]  # 15: one over the keep
+    old = [name(h) for h in range(30, 30 + 24 * 8, 24)]  # 8: one over the keep
     for n in old:
         put(env["dest"], n)
     put(env["remote"], name(2), size=4000)

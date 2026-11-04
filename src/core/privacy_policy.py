@@ -136,8 +136,9 @@ RIDE_CRYPTO = [
     "planned line is kept on the server like any shared link (see Shared links).",
     "Nightly database backups are encrypted with age to the owner's X25519 public key; the "
     "matching private key is kept on the owner's computer, not on the server, so the server can "
-    "write a nightly backup but never read one. The copies taken just before RouteMaker is "
-    "updated are not encrypted; they stay on the server for less than a week.",
+    "write a nightly backup but never read one. A copy of each encrypted backup is also kept on "
+    "the owner's computer, the newest seven, as on the server. The copies taken just before "
+    "RouteMaker is updated are not encrypted; they stay on the server for less than a week.",
     "RouteMaker is open source (MIT license), so anyone can check this: the ride encryption is "
     "frontend/src/lib/rideSeal.ts in github.com/Macrophage87/RouteMaker.",
 ]
