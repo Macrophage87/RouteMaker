@@ -26,6 +26,8 @@ Contents:
 - [Avoid-rated junctions: adding one (FOLLOWUP-ISECT-AVOID, OWNER-DECISIONS 307-310, 335)](#avoid-rated-junctions-adding-one-followup-isect-avoid-owner-decisions-307-310-335)
 - [Backups](#backups)
 - [Restoring one](#restoring-one)
+- [Off-box copies of beta backups](#off-box-copies-of-beta-backups)
+- [Restoring beta's database from a backup](#restoring-betas-database-from-a-backup)
 - [The rebuild's own budget](#the-rebuilds-own-budget)
 - [Tile build threads](#tile-build-threads)
 - [Rebuild checkpoints](#rebuild-checkpoints)
@@ -2675,7 +2677,8 @@ and 30-day remote retention is **not built**, so today every copy of the databas
 sits on the same volume as the database. The nightly EBS snapshot of the data
 volume is what stands between this deployment and a lost host until that lands,
 and it is in the deployment actions below because nothing in this repository
-takes it.
+takes it. For the beta, the owner's PC now pulls a copy every night
+([Off-box copies of beta backups](#off-box-copies-of-beta-backups)).
 
 ## Restoring one
 
@@ -2810,6 +2813,163 @@ degraded-guild sweep within five minutes, the membership sweep within six
 hours, and **`nightly_backup` not until the next 07:00 UTC**. A
 `check_operations` that names only `nightly_backup` in the hours after a
 restore is the restore, not a second fault.
+
+## Off-box copies of beta backups
+
+**What:** every night the owner's PC copies the beta's encrypted dumps
+(`/data/routemaker/backups/routemaker-<UTC>.dump.age`, written at 07:00 UTC) into
+`C:\Users\steph\Documents\RouteMaker\beta-backups`, which the PC's own backup covers. Only
+`.dump.age` files travel, never the plain `pre-*.dump` ones; they are useless without your
+backup key file, which stays on the PC. The newest 14 are kept there (the beta keeps 7).
+
+**How:** `scripts/pc/pull-beta-backups.sh`, run in WSL. It runs only `find` and a copy on the
+beta, under `sudo -n` (the folder is 0700, owned by the containers' uid). It writes `<name>.part`,
+checks the size against the beta's, renames, prunes old copies in that folder only, and adds
+one line to `pull-beta-backups.log` there. It asks nothing and exits 1 with the reason when
+ssh, the copy or `sudo` fails, or when the newest dump is over 48 h old (the beta's backup
+stopped). `RM_BETA_SSH` (default `chubby`) and `RM_BACKUP_DIR` override the host and the folder.
+
+**Install, once.** In WSL, check that both work with no prompt (each prints nothing and
+exits 0):
+
+```sh
+ssh -o BatchMode=yes chubby true
+```
+
+```sh
+ssh -o BatchMode=yes chubby sudo -n true
+```
+
+If the first fails, your ssh key needs a passphrase and a scheduled run has no agent to ask:
+give this job a key of its own without one, or load yours with `keychain` from `~/.profile`
+(it then works until WSL restarts). The script reports it as `ssh chubby did not connect
+(exit 255)`. Then run it once by hand, and register the nightly task (current user, no admin;
+running it again just replaces the task):
+
+```sh
+~/src/RouteMaker/scripts/pc/pull-beta-backups.sh
+```
+
+```sh
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$(wslpath -w ~/src/RouteMaker/scripts/pc/install-backup-pull-task.ps1)"
+```
+
+The task (`\RouteMaker\Pull beta backups`) runs `wsl.exe -d Ubuntu-26.04 -- bash -lc
+"~/src/RouteMaker/scripts/pc/pull-beta-backups.sh"` daily at 04:00 New York time: 1 h after
+the dump in summer (07:00 UTC is 03:00 EDT), 2 h in winter (02:00 EST). If the PC is off or
+asleep then, it runs as soon as it can. It runs only while you are signed in to Windows.
+
+**Did it run?** The last lines of the log, `ok ... newest=routemaker-<yesterday>...`:
+
+```sh
+tail -n 3 /mnt/c/Users/steph/Documents/RouteMaker/beta-backups/pull-beta-backups.log
+```
+
+or in PowerShell, `Get-ScheduledTaskInfo -TaskPath '\RouteMaker\' -TaskName 'Pull beta
+backups'` (`LastTaskResult` 0 is ok, 1 is a `FAILED` line in the log).
+
+### Test-restore once (on the PC, beta untouched)
+
+Proves the key still opens the dumps and that a dump restores. Docker on the PC; the plain
+archive exists only inside a throwaway container. Every few months, and after a key change.
+
+1. Start an empty PostGIS like the beta's, no ports published:
+
+   ```sh
+   docker run -d --name rm-restore-test -e POSTGRES_PASSWORD=test postgis/postgis:16-3.4
+   ```
+
+2. Decrypt the newest copy into it (age asks for the passphrase if your key file has one):
+
+   ```sh
+   f=$(ls -1 /mnt/c/Users/steph/Documents/RouteMaker/beta-backups/routemaker-*.dump.age | tail -n 1); echo "$f"
+   ```
+
+   ```sh
+   age -d -i <your backup key file> "$f" | docker exec -i rm-restore-test sh -c 'cat > /tmp/d.dump'
+   ```
+
+3. Restore it into a fresh database, all or nothing (as `restore-dump` does on the beta):
+
+   ```sh
+   docker exec rm-restore-test sh -c 'until pg_isready -U postgres -q; do sleep 1; done; createdb -U postgres -T template_postgis rmtest && pg_restore --list /tmp/d.dump | sed "/ SCHEMA - public /d" > /tmp/use && pg_restore -U postgres -d rmtest --no-owner --no-privileges --single-transaction --exit-on-error -L /tmp/use /tmp/d.dump && echo RESTORED'
+   ```
+
+4. Count rows: accounts, saved routes, migrations. Non-zero, and close to the beta's:
+
+   ```sh
+   docker exec rm-restore-test psql -U postgres -d rmtest -Atc "select (select count(*) from app_user), (select count(*) from saved_route), (select count(*) from django_migrations)"
+   ```
+
+5. Throw it away (the container, its volume and the plain dump in it):
+
+   ```sh
+   docker rm -fv rm-restore-test
+   ```
+
+Write the date and the three counts in your notes. No `RESTORED` in step 3 means the beta
+procedure below would fail too: find out why before you need it.
+
+## Restoring beta's database from a backup
+
+For a lost or corrupted beta database once the plain `pre-*.dump` files are gone or too old.
+Not [Restoring one](#restoring-one): its bare `docker compose` would start `caddy` and the
+`rebuild` service on the beta. This uses only `beta-compose.sh` and `receive-data.sh
+restore-dump`, which restores into a scratch database (`routemaker_restore`) in one
+transaction, checks it, and only then swaps it in by rename, keeping the current one as
+`routemaker_before_<time>`. It needs free space on `/data` for a second copy of the database.
+Everyone is signed out and riders connect Garmin or Wahoo again (those tables are not in
+backups). Do the [test-restore](#test-restore-once-on-the-pc-beta-untouched) first if you
+have not lately.
+
+1. **On the beta**, stop the release agent and the app (variables from BETA-RUNBOOK section 0):
+
+   ```sh
+   . "$HOME/routemaker-beta-state/vars.sh"; cd "$RM_SRC"
+   ```
+
+   ```sh
+   "$RM_STATE/cd/bin/auto-release.sh" pause --wait "restoring a backup"
+   ```
+
+   ```sh
+   scripts/beta/beta-compose.sh stop api worker && scripts/beta/beta-compose.sh up -d postgis
+   ```
+
+2. **On the PC (WSL)**, decrypt the chosen copy and send it to the beta's state folder, mode
+   600 (the key never goes to the server):
+
+   ```sh
+   age -d -i <your backup key file> /mnt/c/Users/steph/Documents/RouteMaker/beta-backups/routemaker-<instant>.dump.age | ssh chubby 'umask 077; cat > "$HOME/routemaker-beta-state/restore.dump"'
+   ```
+
+3. **On the beta**, restore into the scratch database and swap (it takes a `pre-rollback`
+   dump of what is there first; a failure discards the scratch copy and changes nothing):
+
+   ```sh
+   sudo scripts/beta/receive-data.sh --env-file .env restore-dump "$RM_STATE/restore.dump"
+   ```
+
+4. **Verify** before the app starts: the restored database against the kept one.
+
+   ```sh
+   for db in routemaker routemaker_before_<time>; do scripts/beta/beta-compose.sh exec -T postgis psql -U routemaker -d "$db" -Atc "select '$db', (select count(*) from app_user), (select count(*) from saved_route)"; done
+   ```
+
+5. **Start, then clean up.** The api's `migrate` brings a dump from an older release forward:
+
+   ```sh
+   scripts/beta/beta-compose.sh up -d api worker && rm -f "$RM_STATE/restore.dump"
+   ```
+
+   ```sh
+   "$RM_STATE/cd/bin/auto-release.sh" resume
+   ```
+
+   Then the step 8 pre-draw as in BETA-RUNBOOK, rollback B. Once the beta works, drop the old
+   database: `scripts/beta/beta-compose.sh exec -T postgis dropdb -U routemaker
+   routemaker_before_<time>`. The operations page shows `nightly_backup` stale until the next
+   07:00 UTC ([It will page for the first few hours](#it-will-page-for-the-first-few-hours-and-that-is-the-restore)).
 
 ## The rebuild's own budget
 
