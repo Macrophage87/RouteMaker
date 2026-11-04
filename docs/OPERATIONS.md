@@ -5494,8 +5494,10 @@ out.
    release), `posted`, `road` (as the card says it), `reason`, `first_day`, `last_day` (whole
    days in the region's time; "about eight weeks" counted to its end, "the duration of the
    project" to the project's stated end, with `"end_estimated": true` where the day is
-   counted or guessed rather than given), `ways` (OpenStreetMap way ids) and `lines`
-   (`python scripts/ddot_advisories.py lines WAY ...` prints them).
+   counted or guessed rather than given), `on_foot` where the release says so (`true`: closed
+   to people on foot too, so Run and Walk go round it; `false`: a walkway is kept; left out
+   where it does not say, and Run and Walk only warn of it), `ways` (OpenStreetMap way ids)
+   and `lines` (`python scripts/ddot_advisories.py lines WAY ...` prints them).
 3. Add the advisory's link to `seen` either way, set `updated` to today, and ship it in the
    next release. A later advisory that extends or ends a closure changes its `last_day`. A
    file whose `updated` is more than 45 days old is labelled stale on the route ("last read

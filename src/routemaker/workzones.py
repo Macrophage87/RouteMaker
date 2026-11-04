@@ -204,6 +204,12 @@ class Zone:
     # The feed gave only its two ends (a MultiPoint, or a line of two points): its line is
     # put on the road between them (`core.workzones.place`).
     from_ends: bool = False
+    # Whether the source says the closure holds for people on foot too (Run, Walk and Walk +
+    # transit; `for_plan`'s `on_foot`): True, it closes the way on foot as well (a closed
+    # sidewalk, a trail closed to walking and biking); False, people on foot are let through
+    # (a kept walkway); None, the source does not say. A closure to traffic is not one to
+    # people on foot unless its source says so.
+    on_foot: bool | None = None
 
     @property
     def firm_end(self) -> bool:
@@ -230,6 +236,7 @@ class Zone:
             "roads": list(self.roads),
             "approximate": self.approximate,
             "from_ends": self.from_ends,
+            "on_foot": self.on_foot,
         }
 
     @classmethod
@@ -252,7 +259,13 @@ class Zone:
             roads=tuple(str(r) for r in row.get("roads") or ()),
             approximate=bool(row.get("approximate")),
             from_ends=bool(row.get("from_ends")),
+            on_foot=_on_foot(row.get("on_foot")),
         )
+
+
+def _on_foot(value) -> bool | None:
+    """A stored `on_foot`: True or False as said, None where it is not."""
+    return value if isinstance(value, bool) else None
 
 
 def _when(value) -> datetime | None:
@@ -273,6 +286,15 @@ def _lanes(properties: Mapping) -> list[tuple[str, str]]:
         if isinstance(lane, Mapping):
             out.append((str(lane.get("type") or "general"), str(lane.get("status") or "")))
     return out
+
+
+def sidewalk_closed(properties: Mapping) -> bool | None:
+    """Whether a road event says its sidewalk is closed (a WZDx lane of type "sidewalk"):
+    True closed, False open, None where it lists no sidewalk."""
+    walks = [status for kind, status in _lanes(properties) if kind == "sidewalk"]
+    if not walks:
+        return None
+    return any(status == "closed" for status in walks)
 
 
 def classify(properties: Mapping) -> tuple[str, float, str]:
@@ -352,6 +374,7 @@ def parse_feature(feature: Mapping, source: str) -> Zone | None:
         reason=why,
         roads=tuple(roads),
         from_ends=len(line) == 2,
+        on_foot=sidewalk_closed(properties),
     )
 
 
@@ -876,6 +899,8 @@ class PlanZones:
     # The rings of the roads the rider marked closed on this ride (`blocked_lines`), at the
     # end of `exclude`: kept out of every request, even where the closures are let back in.
     blocked: list[list[list[float]]] = field(default_factory=list)
+    # A plan on foot (Run, Walk, Walk + transit; `for_plan`'s `on_foot`).
+    on_foot: bool = False
 
     @property
     def any(self) -> bool:
@@ -1003,8 +1028,14 @@ def for_plan(
     bypass: Iterable[str] = (),
     reserve: tuple[float, int] = (0.0, 0),
     now_only: bool = False,
+    on_foot: bool = False,
 ) -> PlanZones:
     """What a plan through `points` (lon, lat) at ride time `at` does with the zones.
+
+    `on_foot` (Run, Walk, Walk + transit): a closure is routed round only where its source
+    says it closes the way on foot too (`Zone.on_foot` True). One whose source does not say
+    is warned of on the route and not routed round, as a closure to traffic need not close
+    the sidewalk; one whose source says people on foot are let through is left out.
 
     `reserve` is the router's polygon budget (perimeter, vertices) already taken by the
     roads the rider marked closed (v0.8.2): the closures fit in what is left.
@@ -1015,7 +1046,7 @@ def for_plan(
     closures that may happen (`possible`: DDOT's permits) are only flagged
     (`PlanZones.possible`), and `now_only` (Go and a ride) leaves them out."""
     future = is_future(at, now)
-    plan = PlanZones(status=dict(status), at=at, future=future)
+    plan = PlanZones(status=dict(status), at=at, future=future, on_foot=on_foot)
     if not points:
         return plan
     bypassed = set(bypass)
@@ -1029,7 +1060,10 @@ def for_plan(
                 plan.possible.append(zone)
             continue
         if zone.kind == LANE:
-            plan.lanes.append(zone)
+            if not on_foot:
+                plan.lanes.append(zone)
+            continue
+        if on_foot and zone.on_foot is False:
             continue
         if zone.kind in (CLOSED, UNKNOWN) and zone.zone_id in bypassed:
             plan.bypassed.append(zone)
@@ -1037,7 +1071,9 @@ def for_plan(
         if zone.kind == CLOSED and future and not zone.firm_end:
             plan.uncertain.append(zone)
             continue
-        if zone.kind == CLOSED:
+        if zone.kind == CLOSED and on_foot and zone.on_foot is not True:
+            plan.passable.append(zone)
+        elif zone.kind == CLOSED:
             if _near_point(zone, points):
                 plan.unexcluded.append(zone)
             else:
@@ -1245,8 +1281,9 @@ ON_ROUTE, ROUTED_ROUND, BYPASSED, MAY_APPLY, NO_EFFECT, POSSIBLE = (
 )
 
 
-def effect_text(zone: Zone, effect: str, delay_s: float | None) -> str:
-    """What the closure does to this route, and the delay its detour adds."""
+def effect_text(zone: Zone, effect: str, delay_s: float | None, on_foot: bool = False) -> str:
+    """What the closure does to this route, and the delay its detour adds. `on_foot`: the
+    route is a run or a walk (`for_plan`)."""
     if effect == ROUTED_ROUND:
         if delay_s is None:
             return "Your route goes round it."
@@ -1273,6 +1310,11 @@ def effect_text(zone: Zone, effect: str, delay_s: float | None) -> str:
             return (
                 "On your route: every lane closed; the agency does not say whether bicycles "
                 "can pass."
+            )
+        if on_foot and zone.on_foot is not True:
+            return (
+                "On your route: closed to traffic; the source does not say whether people on"
+                " foot can pass."
             )
         return "On your route: no way round it was found. Walk through or choose another way."
     return "No effect on your route"

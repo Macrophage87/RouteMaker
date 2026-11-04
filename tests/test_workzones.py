@@ -150,6 +150,40 @@ class TestThePlan:
         )
         assert not plan.any
 
+    def test_on_foot_only_a_closure_said_to_close_the_way_on_foot_is_routed_round(self) -> None:
+        """Run, Walk and Walk + transit: a closure to traffic need not close the sidewalk."""
+        north = ((-77.0300, 38.9500), (-77.0300, 38.9530))
+
+        def closed(zone_id, on_foot):
+            return wz.Zone(zone_id, "md", wz.CLOSED, 0, north, "Road", None, None, None,
+                           on_foot=on_foot)  # fmt: skip
+
+        lane = wz.Zone("dc-lane", "mpd", wz.LANE, 0, north, "Road", None, None, None)
+        found = [closed("walkers-barred", True), closed("unsaid", None), closed("kept", False)]
+        plan = wz.for_plan([*found, lane], AT, NORTH, {"md": "current"}, on_foot=True)
+        assert [z.zone_id for z in plan.excluded] == ["walkers-barred"]
+        assert [z.zone_id for z in plan.passable] == ["unsaid"]  # warned of on the route
+        assert plan.lanes == [] and plan.on_foot
+        unsaid = found[1]
+        said = wz.effect_text(unsaid, wz.ON_ROUTE, None, on_foot=True)
+        assert "does not say whether people on foot can pass" in said
+        # A ride goes round all three, as before.
+        ride = wz.for_plan([*found, lane], AT, NORTH, {"md": "current"})
+        assert {z.zone_id for z in ride.excluded} == {"walkers-barred", "unsaid", "kept"}
+
+    def test_a_closed_sidewalk_closes_the_way_on_foot(self) -> None:
+        def event(lanes):
+            return {
+                "id": "x",
+                "geometry": {"type": "LineString", "coordinates": [[-77.0, 38.9], [-77.0, 38.91]]},
+                "properties": {"vehicle_impact": "all-lanes-closed", "lanes": lanes},
+            }
+
+        closed = wz.parse_feature(event([{"type": "sidewalk", "status": "closed"}]), "md")
+        kept = wz.parse_feature(event([{"type": "sidewalk", "status": "open"}]), "md")
+        unsaid = wz.parse_feature(event([{"type": "general", "status": "closed"}]), "md")
+        assert (closed.on_foot, kept.on_foot, unsaid.on_foot) == (True, False, None)
+
     def test_the_routers_limits_are_kept(self) -> None:
         many = [
             wz.Zone(f"md-{n}", "md", wz.CLOSED, 0, line, None, None, None, None)

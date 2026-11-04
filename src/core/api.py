@@ -120,6 +120,7 @@ from . import (
     wmata_live,
     wmata_trains,
 )
+from . import workzones as work_zones
 
 logger = logging.getLogger(__name__)
 
@@ -4177,18 +4178,44 @@ def _run_body(body: RouteIn, started: float | None) -> dict:
     at = body.depart_at or timezone.now()
     if at.tzinfo is None:
         at = at.replace(tzinfo=ridetime.ZONE)
+    # The closures in force at the run, matched as a ride's are: at its departure where one is
+    # given, else at the ride-time dial's moment.
+    when = body.when or routing.default_when()
+    zones_at = at if body.depart_at is not None else work_zones.ride_moment(when)
+    zones, exclude = work_zones.foot_zones(
+        body.points,
+        when,
+        at=zones_at,
+        blocked_lines=_blocked(body),
+        bypass=body.closure_bypass,
+        now_only=body.closures_now,
+    )
     ask = run_plan.RunAsk(
         pace_kmh=run_plan.pace_of(body.run_pace_kmh),
         hills=0 if body.hills is None else body.hills,
         dark=run_plan.is_dark(at, body.when),
         loop=body.loop,
         target_m=float(body.target_distance_m) if body.target_distance_m else None,
+        exclude_polygons=tuple(exclude),
     )
-    run = run_plan.plan(body.points, ask, run_plan.Router(run_plan.deadline_from(started)))
+    until = run_plan.deadline_from(started)
+    try:
+        run = run_plan.plan(body.points, ask, run_plan.Router(until))
+    except (run_plan.RunTimedOut, run_plan.RouterDown):
+        raise
+    except run_plan.NoRun:
+        # No way round the closures: run through them, each warned of, as a ride is
+        # (`work_zones.drop_exclusions`); the roads the rider marked closed stay out.
+        if zones is None or len(zones.exclude) <= len(zones.blocked):
+            raise
+        work_zones.drop_exclusions({}, zones)
+        ask = dataclasses.replace(ask, exclude_polygons=tuple(zones.exclude))
+        run = run_plan.plan(body.points, ask, run_plan.Router(until))
     dials = routing.Dials(stress=body.stress, hills=body.hills, when=body.when)
     answer = _unrouted_line(
         [list(p) for p in run.shape], presets.RUN, dials, run.seconds, run.metres
     )
+    work_zones.with_work_zones(answer, zones)
     answer["climb_m"] = run.climb_m or 0.0
     answer["descent_m"] = run.descent_m or 0.0
     answer["leg_ends"] = run.leg_ends or answer["leg_ends"]
@@ -4256,11 +4283,26 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
     own_speed = presets.rider_speed(body.preset, body.cycling_speed_kmh)
     if own_speed is not None:
         candidate_costing["bicycle"]["cycling_speed"] = own_speed
+    # Walk and Walk + transit go round the closures that close the way on foot, and the roads
+    # the rider marked closed, at the trip's departure (`work_zones.foot_zones`).
+    foot_zones, walk_exclude = None, []
+    if body.preset in presets.ON_FOOT_PRESETS:
+        foot_zones, walk_exclude = work_zones.foot_zones(
+            body.points,
+            body.when or routing.default_when(),
+            at=when,
+            blocked_lines=_blocked(body),
+            bypass=body.closure_bypass,
+            now_only=body.closures_now,
+        )
+    walk_keep = foot_zones.blocked if foot_zones is not None else walk_exclude
     services = transit.RoutingServices(
         candidates_until,
         leg_preset,
         costing=candidate_costing,
         when=body.when or routing.default_when(),
+        walk_exclude=walk_exclude,
+        walk_keep=walk_keep,
     )
     # With stops, the first leg is planned here as a trip of its own; the legs after it are
     # searched once it is timed (`with_later_legs`, below).
@@ -4354,6 +4396,8 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
                 leg_preset,
                 costing=candidate_costing,
                 when=body.when or routing.default_when(),
+                walk_exclude=walk_exclude,
+                walk_keep=walk_keep,
             )
             leg_schedule = transit.load(
                 settings.TRANSIT_SCHEDULE_PATH, transit.moment_of(at).service_day
@@ -4376,6 +4420,8 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
         max_calls=transit.MAX_DRAW_CALLS,
         per_call_s=transit.DRAW_CALL_S,
         costing=leg_costing,
+        walk_exclude=walk_exclude,
+        walk_keep=walk_keep,
     )
 
     def answered(answer: dict, plan: transit.Plan, lines: dict[int, dict] | None = None) -> dict:
@@ -4387,6 +4433,9 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
         plan = transit_live.with_live_buses(plan, buses)
         block = _transit_block(transit.drawn(plan, draw, skip=lines), schedule, live, buses)
         answer["transit"] = _with_leg_lines(block, lines)
+        if body.preset in presets.ON_FOOT_PRESETS:
+            # The walk's closures, warned of as a ride's are (a ride's line has its own).
+            work_zones.with_work_zones(answer, foot_zones)
         return answer
 
     if found.option.walk:
