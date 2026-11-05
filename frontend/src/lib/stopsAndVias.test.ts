@@ -178,8 +178,8 @@ test("a re-route keeps every stop and via point still ahead, close or not (only 
   assert.deepEqual(withoutStop(points, replanKept(model, 900, points, false), here, 2), [here, points[3], points[4]]);
   // The re-route and its way back use the same kept points (the skipped stop left out).
   const rideSrc = src("../RideMode.tsx");
-  assert.match(rideSrc, /const fromM = replanFromM\(modelRef\.current, current\.progressM \?\? 0, here\);/);
-  assert.match(rideSrc, /: replanKept\(modelRef\.current, current\.progressM \?\? 0, plan\.current\.points, plan\.current\.loop, fromM\)\.filter\(\(i\) => i !== skip\);/);
+  assert.match(rideSrc, /const fromM = replanFromM\(modelRef\.current, progressM, here\);/);
+  assert.match(rideSrc, /: replanKept\(modelRef\.current, progressM, plan\.current\.points, plan\.current\.loop, fromM\)\.filter\(\(i\) => i !== skip\);/);
   assert.match(rideSrc, /const kept = keptPoints;/);
 });
 

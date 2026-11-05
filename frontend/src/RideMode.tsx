@@ -138,6 +138,7 @@ import {
   whereAmIShown,
   arrivedShown,
   snap,
+  heldProgressM,
   CUE_SHEET_SHOWN,
   type Cue,
   type RideEvent,
@@ -1052,6 +1053,8 @@ export function RideMode({
   const statsRef = useRef<RideStats>(resumeStats ? statsPause(resumeStats) : statsStart(Date.now()));
   // Each re-plan's ticket: "Keep the planned route" or a newer re-plan voids an older one's answer.
   const replanTicket = useRef(0);
+  // The ticket of the automatic re-plan under way (off route, not asked for), voided once back on the planned route.
+  const autoReplan = useRef<number | null>(null);
   // Where the last new route was asked from, until the rider is on its line (lib/navigate.ts replanHeld).
   const replannedFrom = useRef<LonLat | null>(null);
   const settingsId = useId();
@@ -1374,10 +1377,12 @@ export function RideMode({
       // skipped (Skip this stop, or a place chosen instead of it) is left out.
       // The same kept points for the way back below, so its stops keep their numbers in the new plan.
       // A restart part way (`done`, RestartStopsDialog): the stops the rider left unticked, behind or not.
-      const fromM = replanFromM(modelRef.current, current.progressM ?? 0, here);
+      // Not yet placed (held for the way the rider is going): from the first pass near here, never the start (heldProgressM).
+      const progressM = heldProgressM(modelRef.current, current, here);
+      const fromM = replanFromM(modelRef.current, progressM, here);
       const keptPoints = done
-        ? restartKept(modelRef.current, current.progressM ?? 0, plan.current.points, plan.current.loop, done)
-        : replanKept(modelRef.current, current.progressM ?? 0, plan.current.points, plan.current.loop, fromM).filter((i) => i !== skip);
+        ? restartKept(modelRef.current, progressM, plan.current.points, plan.current.loop, done)
+        : replanKept(modelRef.current, progressM, plan.current.points, plan.current.loop, fromM).filter((i) => i !== skip);
       const left = withoutStop(plan.current.points, keptPoints, here, skip ?? -1);
       // `let`: a re-route that leaves out the next via point (VIA_SKIP_EXTRA_S, below) rides the points without it.
       let points = via ? detourPoints(left, via) : left;
@@ -1393,6 +1398,7 @@ export function RideMode({
         return false;
       }
       const ticket = (replanTicket.current += 1);
+      autoReplan.current = !asked && !via && !done ? ticket : null;
       if (check) checking.current = true;
       // A held U-turn's check for a way ahead (UTURN_RECHECK_MS) is silent: nothing shown or said unless it finds one.
       if (!check) {
@@ -1444,7 +1450,7 @@ export function RideMode({
       // plan only where there is no way back. A way back is a short ask or three, not a plan to the end.
       const backFirst = rejoinsFirst(routeRef.current, { asked, detour: !!via, check, restart: !!done, skip: skip !== undefined });
       if (backFirst) {
-        const back = await wayBackRoute(routeRef.current, modelRef.current, current.progressM ?? 0, here, keptPoints, ask, voided, closed);
+        const back = await wayBackRoute(routeRef.current, modelRef.current, progressM, here, keptPoints, ask, voided, closed);
         if ("route" in back) {
           found = back.route;
           note = REPLAN_REJOIN_AHEAD;
@@ -1478,13 +1484,15 @@ export function RideMode({
         // pass. The no-signal timer runs on through it.
         if (!result.ok && !backFirst && !via && !check && startsWayBack(result.error.kind) && !voided()) {
           const kept = keptPoints;
-          const back = await wayBackRoute(routeRef.current, modelRef.current, current.progressM ?? 0, here, kept, ask, voided, closed);
+          const back = await wayBackRoute(routeRef.current, modelRef.current, progressM, here, kept, ask, voided, closed);
           if ("route" in back) found = back.route;
           else if (back.failed) failed = back.failed;
           note = REPLAN_REJOIN;
         }
       }
       window.clearTimeout(timer);
+      // Answered: no longer under way (a new route taken now is the one the rider then rides).
+      if (autoReplan.current === ticket) autoReplan.current = null;
       if (check) checking.current = false;
       else if (!released) gate.finish(found !== null);
       // Let go at the timeout and answered late with a route that is still taken (nothing newer since): the back-off
@@ -1751,8 +1759,10 @@ export function RideMode({
           notify(restartSaid(named));
         }
       }
-      // Off this line but on the other one (the standard way, or the detour): followed there, not re-planned.
-      if (out.state.off && fix.accuracyM <= POOR_FIX_M) {
+      // Off this line but on the other one (the standard way, or the detour): followed there, not re-planned. Not when
+      // off for riding this line the wrong way (backAtM): the rider is still on it, and on the other line where they share
+      // a street, so the two would swap every block (2026-11-05 review).
+      if (out.state.off && out.state.backAtM === undefined && fix.accuracyM <= POOR_FIX_M) {
         const at = onOtherLine(otherModelRef.current, fix.point, fix.accuracyM, out.state.progressM ?? -Infinity);
         if (at !== null) {
           takeOther(at, fix);
@@ -1769,6 +1779,15 @@ export function RideMode({
       }
       // Back on the planned route: "Keep" has done its work; leaving it again re-plans as usual.
       if (out.events.some((e) => e.kind === "back-on-route") || (keepRef.current && !out.state.off)) setKeepPlanned(false);
+      // Back on it with an automatic re-plan still under way: its answer is dropped (voided, as Keep does), so a late
+      // new route from the off-route spot never replaces the one the rider is riding (2026-11-04 review). The rider's
+      // own asks (Re-plan from here, a detour, Road closed) stand.
+      if (!out.state.off && autoReplan.current === replanTicket.current) {
+        autoReplan.current = null;
+        replanTicket.current += 1;
+        setReplanning(false);
+        setReplanNote("");
+      }
       // Never from a rough fix (OFF_SURE_M): a re-plan from a Wi-Fi guess 300 m out would be wrong at once.
       // Not after "No route found ahead": that route stays up (Re-plan from here still asks again), checked quietly.
       // On the line again: the next automatic re-plan need not wait for the rider to move (REPLAN_MOVED_M).
