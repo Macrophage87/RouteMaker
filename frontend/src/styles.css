@@ -10864,14 +10864,27 @@ summary.closure-notices-heading {
   max-height: 40vh;
   overflow-y: auto;
 }
+/* Each clock stays on its stop's row (the UI review, 2026-11-05: at 320 px long names pushed it onto its own line):
+   the name takes the room left and wraps within it. */
 .onboard-stops li {
-  padding: 3px 0;
+  padding: 2px 0;
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  align-items: baseline;
   column-gap: 0.25em;
+}
+.onboard-stops .onboard-name {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.onboard-stops .onboard-more {
+  padding: 0;
+  line-height: 1;
 }
 /* Each stop's clock time at the row's end (2026-11-04), in the normal weight so the names lead. */
 .onboard-stops .onboard-eta {
+  flex: none;
   margin-inline-start: auto;
   padding-inline-start: 0.75em;
   font-weight: 400;

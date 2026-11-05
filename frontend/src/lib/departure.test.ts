@@ -16,6 +16,7 @@ import {
   mmss,
   noteArrived,
   sourceWord,
+  wallClockOf,
 } from "./departure.ts";
 import { loadLanguage, setLanguageForTest } from "./i18n.ts";
 
@@ -186,4 +187,17 @@ test("the countdown is not a live region, and the map's label is hidden from scr
   assert.match(src("app/RoutePanel.tsx"), /\{go\.peek && transit\?\.departure && \(\s*<DepartureTimer\s*compact/);
   // Frequent services carry no departure, so no timer: the panel shows one only when the API gives it.
   assert.match(src("TransitSummary.tsx"), /\{plan\.departure && <DepartureTimer/);
+});
+
+test("a time the API wrote in English words shows on the phone's own clock, as an ISO time does", () => {
+  assert.equal(plain(wallClockOf("8:15 am", "en-US")), "8:15 AM");
+  assert.equal(wallClockOf("8:15 pm", "en-GB"), "20:15");
+  // Midnight and noon as clockOf shows them.
+  assert.equal(wallClockOf("12:05 am", "en-GB"), clockOf("2026-11-05T00:05:00-05:00", "en-GB"));
+  assert.equal(plain(wallClockOf("7:42 am", "en-US")), plain(clockOf("2026-11-05T07:42:00-05:00", "en-US")));
+  assert.equal(wallClockOf("12:05 pm", "en-GB"), "12:05");
+  assert.equal(plain(wallClockOf("8:15 pm", "fr")), "20:15");
+  // Anything else as it came.
+  assert.equal(wallClockOf("soon", "en-GB"), "soon");
+  assert.equal(wallClockOf("13:05 pm", "en-GB"), "13:05 pm");
 });

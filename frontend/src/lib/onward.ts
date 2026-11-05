@@ -8,10 +8,11 @@
 import type { TransitStep } from "./api.ts";
 import { haversineM } from "./geo.ts";
 import { t } from "./i18n.ts";
-import { ARRIVED_SAID, type RideEvent, type RideFix, type RideModel, type RideState, type Verbosity } from "./navigate.ts";
+import { ARRIVED_SAID, inSentence, type RideEvent, type RideFix, type RideModel, type RideState, type Verbosity } from "./navigate.ts";
 import { onBoardLeg, onBoardStart, onBoardStep, onBoardWhere, AT_STOP_M, ROUGH_FIX_M, type OnBoardLeg, type OnBoardState } from "./onBoard.ts";
 import { drawOf } from "./transit.ts";
-import { walkModel, walkStart, walkStep, walkTurnLine, type WalkPath } from "./walkCues.ts";
+import { nextWalkTurn, walkModel, walkStart, walkStep, walkTurnLine, type WalkPath } from "./walkCues.ts";
+import { spokenDistance } from "./format.ts";
 import { arrivalClock } from "./arrival.ts";
 
 /** A walk, with its planned seconds (null: unknown), or a train or bus. */
@@ -122,11 +123,14 @@ export function onwardWhere(parts: readonly OnwardPart[], state: OnwardState | n
   if (!current || !onwardActive(parts, current)) return null;
   const part = parts[current.index];
   if (part.kind === "transit") return onBoardWhere(part.leg, current.board ?? onBoardStart(nowMs), nowMs, arrivalClock);
-  const line = walkTurnLine(part.model, current.walk ?? walkStart());
-  if (!line) {
+  const walk = current.walk ?? walkStart();
+  const line = walkTurnLine(part.model, walk);
+  const next = line ? nextWalkTurn(part.model, walk) : null;
+  if (!line || !next) {
     if (!part.to) return null;
     const to = t("Walk to {place}{distance}.", { place: part.to, distance: "" });
     return { shown: [to], spoken: to };
   }
-  return { shown: [line], spoken: `${line}.` };
+  // Said with the distance in one unit, in words ("300 feet"); the turn's own sentence ends it.
+  return { shown: [line], spoken: t("In {distance}, {cue}", { distance: spokenDistance(next.metres), cue: inSentence(next.cue, next.cue.text) }) };
 }

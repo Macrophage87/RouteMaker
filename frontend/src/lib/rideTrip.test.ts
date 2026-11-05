@@ -32,6 +32,7 @@ import {
   ridesLine,
   walksLine,
   runLoopStops,
+  stepText,
   walkLineTurns,
   noBikeLine,
   optionRides,
@@ -42,6 +43,7 @@ import {
 
 // Spanish's catalog is fetched on choosing it (lib/i18n.ts loadLanguage), as the app does before it starts.
 await loadLanguage("es");
+await loadLanguage("fr");
 
 const M_PER_DEG = 111_195;
 const LAT = 38.9;
@@ -621,4 +623,29 @@ test("Ride the rest starts by itself only on a fresh fix at the stop off the tra
   assert.equal(restAutoReady(rest, { point: [-77.0, 38.8], at: now - 5_000 }, now), false);
   assert.equal(restAutoReady(rest, { point: [-77.0, 38.9005], at: now - 120_000 }, now), false);
   assert.equal(restAutoReady(rest, null, now), false);
+});
+
+test("the hand-off from the bike to the train is in the rider's language where the server words only English and Spanish", () => {
+  const boarding = PLAN.steps[3];
+  // English (and Spanish): the server's own sentence.
+  assert.equal(stepText(boarding), boarding.text);
+  setLanguageForTest("fr");
+  try {
+    const trip = rideTripOf(TRANSIT_ROUTE, [at(0, -400), TRIP_END])!;
+    assert.equal(
+      trip.finish!.shown.replace(/\s/gu, " "),
+      "Déposez à Eastern Market. Environ 1 min pour entrer dans la station. Montez dans Orange Line. Environ 1 min à bord jusqu'à Federal Triangle.",
+    );
+    assert.doesNotMatch(trip.finish!.shown, /Board|am scheduled/);
+    // A timed departure on the phone's clock, the way and a bus's rack.
+    const bus = { ...boarding, mode: "bus" as const, lines: ["bus 90"], toward: "Woodley Park", with_bike: true, departs: "7:42 pm", stops: [{ name: "Eastern Market", point: at(0, 0), after_s: 0 }, { name: "U St", point: at(0, 900), after_s: 600 }] };
+    assert.equal(
+      stepText(bus).replace(/\s/gu, " "),
+      "Mettez votre vélo sur le porte-vélos avant du bus. Montez dans bus 90 direction Woodley Park. Départ à 19:42. Environ 1 min à bord jusqu'à U St.",
+    );
+    assert.equal(stepText({ ...PLAN.steps[2], text: "About 2 min into the station by the elevator." }), "Environ 1 min pour entrer dans la station par l'ascenseur.");
+    assert.equal(stepText(PLAN.steps[0]), "Marchez 1 min jusqu'à la station de vélos en libre-service 4th & E St NW et prenez un vélo classique.");
+  } finally {
+    setLanguageForTest("en");
+  }
 });

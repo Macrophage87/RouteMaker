@@ -324,7 +324,7 @@ import { joinActions, joinKey, joinLine, joinShown, joinTitle, keepJoinShown, sh
 import { canSendToGarmin, handGpx } from "./lib/sendToGarmin.ts";
 import { ResumeRideDialog } from "./ResumeRideDialog.tsx";
 import type { OnwardState } from "./lib/onward.ts";
-import { forgetLeftRide, keepLeftRide, keepLeftRideLeads, leftRide, resumedBroadcast } from "./lib/rideResume.ts";
+import { forgetLeftRide, keepLeftRide, keepLeftRideLeads, leftRide, leftRidePast, resumedBroadcast } from "./lib/rideResume.ts";
 import { StopNameDialog, type StopNameAsk } from "./StopNameDialog.tsx";
 import { LoadRouteDialog } from "./LoadRouteDialog.tsx";
 import { LOAD_ROUTE, withGpxChoice, type GpxChoice } from "./lib/loadRoute.ts";
@@ -3758,6 +3758,11 @@ export function App() {
   const tripCheck = useRef<{ route: RouteResponse; preset: PresetId; to: LonLat; trip: CheckedTrip } | null>(null);
   // The stops left after the trip ridden now (lib/tripStops.ts): planned on from the stop by "Start the next leg".
   const tripStopsLeft = useRef<StopsLeft | null>(null);
+  // A transit trip is kept checked till its first boarding (lib/tripCheck.ts, Stephen 2026-11-02): at Start, and at Resume.
+  const checkTripOf = (route: RouteResponse, ends: readonly LonLat[]) => {
+    const checked = route.transit && tripChecked(route.transit.mode) && ends.length > 1 ? checkedTripOf(route.transit) : null;
+    return checked && route.transit ? { route, preset: route.transit.mode, to: ends[ends.length - 1], trip: checked } : null;
+  };
   const beginRide = (prefs: RidePrefs, unlocked = false, rest?: { route: RouteResponse; points: LonLat[]; roam?: boolean }) => {
     const asked = rest?.route ?? shown;
     if (!asked) return;
@@ -3790,10 +3795,7 @@ export function App() {
     const passOn = follows && !followedNoKey() ? followedLink() : null;
     // Leading a broadcast already (Broadcast beside Start): its link, so a resumed ride leads it again.
     const ledLink = opened?.own && opened.lead && rideLinkSent.current?.route === asked ? rideLinkSent.current.link : null;
-    // A transit trip is kept checked till its first boarding (lib/tripCheck.ts, Stephen 2026-11-02).
-    const ends = ridePoints;
-    const checked = route.transit && tripChecked(route.transit.mode) && ends.length > 1 ? checkedTripOf(route.transit) : null;
-    tripCheck.current = checked && route.transit ? { route, preset: route.transit.mode, to: ends[ends.length - 1], trip: checked } : null;
+    tripCheck.current = checkTripOf(route, ridePoints);
     // A trip is kept whole, as rideLegOf was given it (its loop too: a walk_in loop or run), its leg worked out again
     // at Resume; Undo keeps it again from here.
     const whole = leg.trip ? { points: ridePoints, loop: rest ? false : routedLoop, preset: route.preset, wholeTrip: true } : { points: leg.points, loop: leg.loop, preset: leg.preset };
@@ -3803,7 +3805,7 @@ export function App() {
     if (kept) {
       // The destination's name kept too, so a Resume after a reload can name the ride (the UI review, 2026-10-28).
       const destination = leg.loop ? null : (namer.name(ridePoints[ridePoints.length - 1] ?? leg.points[leg.points.length - 1])?.name ?? null);
-      keepLeftRide({ route, ...whole, dials: rideDialsNow, fixed, destination, passOn, follows, leads: ledLink }, VIA_MARKS, Date.now());
+      keepLeftRide({ route, ...whole, dials: rideDialsNow, fixed, destination, passOn, follows, leads: ledLink, stopsLeft: tripStopsLeft.current }, VIA_MARKS, Date.now());
     }
     else forgetLeftRide();
     // The installed app keeps the ride's route as the last ride (OWNER-DECISIONS 465a); End ride gives it
@@ -4521,6 +4523,9 @@ export function App() {
     stats: RideStats;
     shared: typeof sharedOpen;
     linkSent: typeof rideLinkSent.current;
+    /** A trip past its line: the walk or train it was following, so Undo carries on from it. */
+    past: OnwardState | null;
+    stopsLeft: StopsLeft | null;
   } | null>(null);
   // Undo's ride carries on from the ended ride's figures (RideMode's resumeStats); a new Start begins from nought.
   const [resumeStats, setResumeStats] = useState<RideStats | null>(null);
@@ -4530,8 +4535,11 @@ export function App() {
   rideNow.current = { start: rideStart, mode };
   const endRide = useCallback((after: EndedPlan, stats: RideStats) => {
     const { start, mode: endedIn } = rideNow.current;
+    // Past a trip's line, the walk or train followed (as kept for Resume), for Undo.
+    const past = start?.whole ? leftRidePast() : null;
     forgetLeftRide();
-    // A trip's stops left go with the ride: a later Ride the rest never offers them (review of #907).
+    // A trip's stops left go with the ride: a later Ride the rest never offers them (review of #907); Undo puts them back.
+    const stopsLeft = tripStopsLeft.current;
     tripStopsLeft.current = null;
     // A detour from Roam: back to roaming, with no summary (the ride was a short way to water, a restroom or food).
     if (start?.roam) {
@@ -4557,7 +4565,7 @@ export function App() {
       setFromHere((f) => [...f, from![0]]);
     }
     const note = from ? RIDE_ENDED_FROM_HERE_NOTE : endedIn !== "go" && after === "no-fix" ? RIDE_ENDED_NO_FIX_NOTE : null;
-    endedRide.current = start ? { start, from, stats, shared: sharedOpenNow.current, linkSent: rideLinkSent.current } : null;
+    endedRide.current = start ? { start, from, stats, shared: sharedOpenNow.current, linkSent: rideLinkSent.current, past, stopsLeft } : null;
     setRiding(false);
     setRideStart(null);
     setRideView(null);
@@ -4640,6 +4648,9 @@ export function App() {
     const leg = left.wholeTrip ? rideLegOf(left.route, left.points, left.loop) : null;
     const whole = { points: left.points, loop: left.loop, preset: left.preset, wholeTrip: true };
     const resumed = leg ? { points: leg.points, loop: leg.loop, preset: leg.preset, trip: leg.trip, past: left.past ?? null, whole } : { trip: null, past: null, whole: null };
+    // The trip's check (till its first boarding) and its stops left, as Start had them.
+    tripStopsLeft.current = left.stopsLeft ?? null;
+    tripCheck.current = checkTripOf(left.route, left.points);
     setResumeStats(null);
     setRideStart((before) => ({ ...left, ...resumed, kept: true, n: (before?.n ?? 0) + 1 }));
     keepLeftRide(left, VIA_MARKS, Date.now());
@@ -4679,8 +4690,9 @@ export function App() {
     if (ended.from && pointsRef.current === ended.from) edits.retract();
     startRideGesture(ridePrefs);
     setResumeStats(ended.stats);
-    // A trip carries on from its line again (the progress kept went at End ride).
-    setRideStart({ ...ended.start, past: null });
+    // A trip past its line carries on with the walk or train it was following; else from its line.
+    setRideStart({ ...ended.start, past: ended.past });
+    tripStopsLeft.current = ended.stopsLeft;
     // The same shared ride, led under the same key: those following keep their leader.
     if (ended.shared) {
       sharedOpenNow.current = ended.shared;
@@ -4691,7 +4703,7 @@ export function App() {
       if (ended.linkSent.id && ended.linkSent.lead) leads.current.set(ended.linkSent.id, ended.linkSent.lead);
     }
     // A trip is kept whole again, as at its start (End ride forgot it), so switching apps after Undo still resumes.
-    if (ended.start.kept) keepLeftRide(ended.start.whole ? { ...ended.start, ...ended.start.whole } : ended.start, VIA_MARKS, Date.now());
+    if (ended.start.kept) keepLeftRide({ ...(ended.start.whole ? { ...ended.start, ...ended.start.whole } : ended.start), past: ended.past, stopsLeft: ended.stopsLeft }, VIA_MARKS, Date.now());
     setFollow(true);
     setRideView(null);
     setRiding(true);
