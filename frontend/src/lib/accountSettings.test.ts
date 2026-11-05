@@ -338,6 +338,9 @@ test("a late read merges the favorite ride stars one by one: a star here is adde
   const late = signInLate(account, device, atLoad);
   assert.deepEqual(late.doc.favorites, ["gravel", "novice", "trailmaxxing"]);
   assert.deepEqual(late.save?.favorites, ["gravel", "novice", "trailmaxxing"]);
+  // A ride unstarred on another device since load stays unstarred, though this device still shows its star.
+  const elsewhere = signInLate({ v: 1, favorites: ["gravel" as const] }, { v: 1, favorites: ["gravel" as const, "cargo" as const, "novice" as const] }, atLoad);
+  assert.deepEqual(elsewhere.doc.favorites, ["gravel", "novice"]);
   // The Layers sections: the one changed here is this device's, the account's others are kept.
   const sectionsAtLoad = { v: 1, sections: { water: ["a"] } };
   const merged = signInLate({ v: 1, sections: { water: ["a"], rail: ["r"] } }, { v: 1, sections: { water: ["a", "b"] } }, sectionsAtLoad);

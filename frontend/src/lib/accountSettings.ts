@@ -244,7 +244,9 @@ export function signInLate(account: SettingsDoc | null, device: SettingsDoc, atL
       // Star by star: a ride starred or unstarred here, and the account's other stars (another device's) kept.
       const was = new Set(atLoad.favorites ?? []);
       const now = new Set(device.favorites ?? []);
-      const merged = [...(step.doc.favorites ?? []), ...(device.favorites ?? [])].filter((id) => !(was.has(id) && !now.has(id)));
+      const starred = [...now].filter((id) => !was.has(id));
+      const unstarred = new Set([...was].filter((id) => !now.has(id)));
+      const merged = [...(step.doc.favorites ?? []), ...starred].filter((id) => !unstarred.has(id));
       doc.favorites = [...new Set(merged)];
       continue;
     }
