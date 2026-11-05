@@ -210,7 +210,7 @@ test("Go's places are Home, Eat, Water and Restroom (Work only in Favorites); Ho
   assert.match(appFile, /homeReady: myGo\.home !== null,/);
   // Without a Home, the chip opens Go's Home sheet in place (was: My Go in Settings); with one, it rides there.
   assert.match(go, /onClick=\{\(event\) => \(places\.homeReady \? places\.onHome\(event\.currentTarget\) : setHomeOpen\(!homeOpen\)\)\}/);
-  assert.match(appFile, /if \(!home\) return;[\s\S]*?void goTo\(home\.point, home\.label \|\| "Home"\);/);
+  assert.match(appFile, /if \(!home\) return;[\s\S]*?void goTo\(home\.point, home\.label \|\| t\("Home"\)\);/);
   // Water and Restroom search from the rider's location, in their own sheet.
   assert.match(appFile, /onWater: \(chip\) => openNearest\("water", chip\),/);
   assert.match(appFile, /onRestroom: \(chip\) => openNearest\("restroom", chip\),/);

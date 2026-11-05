@@ -14,10 +14,11 @@
  */
 import { closureFields, dialFields, type Dials } from "./dials.ts";
 import { areaText, KM_PER_MILE } from "./format.ts";
-import { t } from "./i18n.ts";
+import { language, t } from "./i18n.ts";
 import { haversineM, type LonLat } from "./geo.ts";
 import { withoutSecret } from "./rideSeal.ts";
 import type { PresetId } from "./presets.ts";
+import { VIA_MARKS, namePoints } from "./pointKinds.ts";
 
 export type ReachDirection = "from" | "to";
 export type ReachCombine = "any" | "all" | "each";
@@ -141,12 +142,36 @@ export async function requestReach(body: Record<string, unknown>, fetchImpl: Fet
   }
   if (response.ok && isAnswer(payload)) return { ok: true, answer: payload };
   if (response.status === 429 || response.status === 503) return { ok: false, message: t("The router is busy. Try again in a moment.") };
+  // The server's refusals are English sentences: the two Reach has are worded here, in the page's language; any other
+  // is shown as written only on an English page.
+  if (response.status === 422) return { ok: false, message: t("None of the points is on a street or path this ride type rides; move them onto one and try again.") };
+  if (response.status === 502) return { ok: false, message: t("The router could not draw these rings. Try again.") };
   const error = (payload as { error?: unknown } | null)?.error;
-  if (typeof error === "string" && error) return { ok: false, message: error };
+  if (typeof error === "string" && error && language() === "en") return { ok: false, message: error };
   return { ok: false, message: t("The rings could not be drawn. Try again.") };
 }
 
 export { areaText };
+
+/** A point's name as its marker on the map has it: Start, Stop 1, Via point, End (lib/pointKinds.ts namePoints). */
+export function reachPointNames(points: readonly LonLat[], loop: boolean, isVia: (p: LonLat) => boolean = (p) => VIA_MARKS.isVia(p)): string[] {
+  return namePoints(points, isVia, loop).map((n) =>
+    n.role === "start"
+      ? loop
+        ? t("Start and finish")
+        : t("Start")
+      : n.role === "end"
+        ? t("End")
+        : n.role === "via"
+          ? t("Via point")
+          : t("Stop {number}", { number: n.number ?? 0 }),
+  );
+}
+
+/** Whether a share sheet was closed by the rider (nothing to copy then), not missing or refused. */
+export function shareCancelled(error: unknown): boolean {
+  return typeof error === "object" && error !== null && (error as { name?: unknown }).name === "AbortError";
+}
 
 function metroText(n: number): string {
   return n === 1 ? t("{count} Metro station", { count: n }) : t("{count} Metro stations", { count: n });
@@ -192,7 +217,7 @@ export function reachSentence(answer: ReachAnswer, pointCount: number): string {
   const vars = { where, minutes: ring.minutes, area: areaText(ring.area_sq_mi, ring.area_km2), metro: metroText(ring.places.metro) };
   let text = to ? t("{where}, {minutes} min comes from {area} and {metro}.", vars) : t("{where}, {minutes} min reaches {area} and {metro}.", vars);
   const calm = answer.calm?.groups[0]?.rings[pick];
-  if (calm) text += ` ${t("On calm streets: {area} and {metro}.", { area: areaText(calm.area_sq_mi, calm.area_km2), metro: metroText(calm.places.metro) })}`;
+  if (calm) text += ` ${t("On Low-stress streets: {area} and {metro}.", { area: areaText(calm.area_sq_mi, calm.area_km2), metro: metroText(calm.places.metro) })}`;
   return text;
 }
 
@@ -200,7 +225,7 @@ export function reachSentence(answer: ReachAnswer, pointCount: number): string {
 export function reachNotes(answer: ReachAnswer, stress: number | undefined, pointCount: number): string[] {
   const notes: string[] = [];
   if (answer.stress_used !== null && stress !== undefined && stress > answer.stress_used) {
-    notes.push(t("Above Low-stress the rings are Low-stress's: they show where calm ways reach, not the long calm detours a route may take."));
+    notes.push(t("At Calm and Calmest, the rings are drawn at Low-stress: they show where low-stress ways reach in the time, not the long detours a calm route takes."));
   }
   if (answer.unplaced.length) {
     notes.push(

@@ -37,7 +37,7 @@ import {
 import { onSharedTick } from "./lib/sharedTick.ts";
 import { COVERAGE_BBOX, MAX_POINTS, addPoint, haversineM, insideCoverage, type LonLat } from "./lib/geo.ts";
 import { formatDistance, formatSeconds, unitsFirstDeep } from "./lib/format.ts";
-import { chooseUnits, units, unitsReloadOwed } from "./lib/units.ts";
+import { chooseUnits, switchUnitsInRide, units, unitsReloadOwed } from "./lib/units.ts";
 import { RETURN_PARAM as GARMIN_RETURN_PARAM, garminReturnFrom, readGarmin, withoutReturn } from "./lib/garminLink.ts";
 import { RETURN_PARAM as WAHOO_RETURN_PARAM, readWahoo, wahooReturnFrom } from "./lib/wahooLink.ts";
 import { endsOnFoot, layersTurnedOn, presetNamesRide, presetSaid, runs, twoPointsOnly, usesBikeshare, type PresetId } from "./lib/presets.ts";
@@ -305,7 +305,7 @@ import { REST_ANYWAY_MS, RIDE_REST_FINDING, fixedRide, restClosedSaid, restReque
 import { RIDE_TOO_LONG } from "./lib/navigate.ts";
 import { fetchMe, NO_ME, type Me } from "./lib/stressEditor.ts";
 import { reloadFavorites, useFavoriteRides } from "./lib/favoriteRides.ts";
-import { ACCOUNT_SETTINGS_USED, applyToDevice, deviceSettings, fetchSettings, onSignIn, planFromSetting, retryUntil, sameSettings, saveSettings, saveUnitsUnsynced, SAVE_SETTLE_MS, type SettingsDoc } from "./lib/accountSettings.ts";
+import { ACCOUNT_SETTINGS_USED, applyToDevice, deviceSettings, fetchSettings, planFromSetting, retryUntil, sameSettings, saveSettings, saveUnitsUnsynced, SAVE_SETTLE_MS, setUnitsPending, signInLate, unitsPending, type SettingsDoc } from "./lib/accountSettings.ts";
 import { HOME_KEPT, HOME_MOVED, answerHomeOffer, deviceHome, homeOffer, type HomeOffer } from "./lib/homeMove.ts";
 import { OPENED_SAID, SAVED_SAID, SAVE_FAILED, UNCHANGED_SAID, UPDATE_ROUTE, VERSION_SAID, defaultRouteName, differenceLine, differsTooMuch, gpxSave, afterDelete, afterRename, planSave, saveAsVersion, savedAnswer, versionOf, type OpenSaved, type SavedRoute } from "./lib/savedRoutes.ts";
 import { checkClosures, closedStretches, reroutedSaid, spliceDetours, type Closure, type CheckFor } from "./lib/closureCheck.ts";
@@ -907,6 +907,8 @@ export function App() {
   // Whether the grey coverage mask is on the map, and whether the stress tiles
   // carry bike-facility data; each legend line is shown only when it is true.
   const [coverageShown, setCoverageShown] = useState(false);
+  // The map has loaded (onReady): what waits on the map, such as Reach's rings from a shared link, is drawn then.
+  const [mapReady, setMapReady] = useState(false);
   const [facilitiesShown, setFacilitiesShown] = useState<ReadonlySet<string>>(new Set());
   // The stress tiles carry the Mass Ride capacity (a table built before the column does not): the Mass Ride
   // map, legend and panel are then about riders per minute, and otherwise as they were (OWNER-DECISIONS 325, 387).
@@ -1847,17 +1849,25 @@ export function App() {
   const favoriteRides = useFavoriteRides();
   const [settingsSynced, setSettingsSynced] = useState(false);
   const [homeAsk, setHomeAsk] = useState<HomeOffer | null>(null);
+  // This device's settings when the page first asked for the account's: a read that comes later (retryUntil) keeps
+  // what was changed here since (lib/accountSettings.ts signInLate).
+  const settingsAtLoad = useRef<SettingsDoc | null>(null);
   // True once the account's settings were read (whether this page then took them or not); false to try again
   // (retryUntil: a few times, then on the next focus or back online).
   const syncSettingsOnSignIn = async (origin: string, live: () => boolean): Promise<boolean> => {
+    const deviceNow = () => deviceSettings({ preset: rideRef.current.preset, dials: rideRef.current.dials }, undefined, weightStore.current?.setting());
+    settingsAtLoad.current ??= deviceNow();
     const account = await fetchSettings(origin);
     if (!live()) return true;
     if (account === undefined) return false;
-    const device = deviceSettings({ preset: rideRef.current.preset, dials: rideRef.current.dials }, undefined, weightStore.current?.setting());
-    const step = onSignIn(account, device);
+    const device = deviceNow();
+    const step = signInLate(account, device, settingsAtLoad.current, unitsPending());
+    // A pending Units choice is done with once the account holds it.
+    const keep = (saved: boolean) => saved && setUnitsPending(false);
+    if (!step.save) setUnitsPending(false);
     if (step.kind === "push-device") {
       lastSettings.current = device;
-      void saveSettings(origin, device);
+      void saveSettings(origin, device).then(keep);
     } else {
       applyToDevice(step.doc);
       reloadFavorites();
@@ -1871,9 +1881,18 @@ export function App() {
         setWeight(step.doc.weight);
       }
       if (step.doc.speed !== undefined) setRidingSpeed(step.doc.speed);
-      // The account's units, where this page was opened in the other (a reload, once: the device now keeps them).
-      if (step.doc.units && step.doc.units !== units()) void chooseUnits(step.doc.units);
+      // The account's units, where this page was opened in the other (a reload, once: the device now keeps them). In
+      // a ride or Roam, no reload, which would stop the cues: they switch at once, the reload owed for the ride's end.
+      if (step.doc.units && step.doc.units !== units()) {
+        if (ridingNow.current || roamingNow.current) void switchUnitsInRide(step.doc.units);
+        else void chooseUnits(step.doc.units);
+      }
       lastSettings.current = step.doc;
+      // What was changed on this device since load goes to the account (auto-save waits for this read).
+      if (step.save) {
+        lastSettings.current = step.save;
+        void saveSettings(origin, step.save).then(keep);
+      }
       setWaterPrefsState(readWaterPrefs());
       setClimbsOnState(readClimbsOn());
       setClimbsFromState(readClimbsFrom());
@@ -2989,8 +3008,8 @@ export function App() {
   const goHome = () => {
     const home = myGoRef.current.home;
     if (!home) return;
-    namer.remember(home.point, home.label || "Home", home.label || "Home");
-    void goTo(home.point, home.label || "Home");
+    namer.remember(home.point, home.label || t("Home"), home.label || t("Home"));
+    void goTo(home.point, home.label || t("Home"));
   };
   // Home at a spot on the map (the road panel's Set as Home, or Pick on the map then a tap): named by a name the page
   // has, else the reverse look-up (through the page's one geocoding gate), else its coordinates.
@@ -4317,7 +4336,7 @@ export function App() {
     if (!stillOn()) return null;
     if (found && found.closures.length > 0) {
       restHeld.current = { route: result.route, points: asked.points, n, at: Date.now() };
-      return restClosedSaid(found.closures.map((c) => c.road ?? c.title ?? "a closure"));
+      return restClosedSaid(found.closures.map((c) => c.road ?? c.title ?? t("a closure")));
     }
     go();
     return null;
@@ -6420,6 +6439,7 @@ export function App() {
         }}
         onReady={(map) => {
           mapRef.current = map;
+          setMapReady(true);
           setStopCardFrame({ padding: framePadding, instant: () => window.matchMedia("(prefers-reduced-motion: reduce)").matches });
           if (centreWhenReady.current) flyToInView(centreWhenReady.current, 15);
           void fetchCoverage(window.location.origin).then((coverage) => {
@@ -6990,7 +7010,7 @@ export function App() {
                   rides={goRides}
                   notice={notice}
                   route={points.length > 1 || status.kind !== "idle" ? routeSection : null}
-                  startLine={goStartLine(goStart, points.length > 0 ? (namer.name(points[0])?.name ?? "the point on the map") : null, goStart.kind === "here" && here?.point === goStart.point ? here.accuracyM : 0)}
+                  startLine={goStartLine(goStart, points.length > 0 ? (namer.name(points[0])?.name ?? t("the point on the map")) : null, goStart.kind === "here" && here?.point === goStart.point ? here.accuracyM : 0)}
                   startMissing={goStart.kind === "none" && points.length === 0}
                   onStartPick={goStartPick}
                 />
@@ -7127,7 +7147,9 @@ export function App() {
               onBack={sheetNav.back}
               backLabel={sheetNav.backLabel("reach")}
               getMap={getMap}
+              mapReady={mapReady}
               points={points}
+              loop={loopVias}
               preset={preset}
               dials={dials}
               runPaceKmh={paceKmh(runPace)}

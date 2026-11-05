@@ -2034,4 +2034,12 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Departs {time}.": "{time} 開出。",
   "About {m} min on board to {place}.": "搭車大約{m}分鐘去{place}。",
   "About {m} min on board.": "搭車大約{m}分鐘。",
+  // ---- The 2026-11-05 review: phrases found missing or newly marked ----
+  "Times are from each system's published timetables for this {day}: where trains or buses come every 15 minutes or less, the wait is half the time between them; otherwise it is the time to the next one.": "時間嚟自各系統公佈嘅呢個{day}嘅時間表：列車或巴士每15分鐘或更短一班嘅地方，等候時間係班次相隔嘅一半；否則係到下一班嘅時間。",
+  "a closure": "一段封路",
+  "the point on the map": "地圖上嘅點",
+  "Closed": "已關閉",
+  "The shared place has no map point. Type “{query}” in Where to? to find it.": "分享嘅地點喺地圖上冇點。喺「去邊？」輸入「{query}」嚟搵。",
+  "Reach": "可達範圍",
+  "Bus {name}": "巴士{name}",
 };

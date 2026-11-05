@@ -83,9 +83,12 @@ test("in Spanish the timer, its milestones, its miss and the map's label are Spa
     assert.match(plain(mapLabel(DEPARTURE, at("07:01:30"))), /^MARC 7:42 a\.\s?m\. \(según horario\) · en 40:30 · 04:30 de sobra$/u);
     assert.match(plain(departureText(DEPARTURE)), /^MARC Penn Line 7:42 a\.\s?m\. \(según horario\) desde Union Station\. Llegada: 7:36 a\.\s?m\. \(6 min de sobra\)\. La siguiente: 8:15 a\.\s?m\. \(según horario\)\.$/u);
     assert.doesNotMatch(departureText(DEPARTURE), /scheduled|You arrive|Next after/);
+    // A bus is named in Spanish too, not the server's "bus B10" (the 2026-11-05 review).
+    assert.match(plain(departureText({ ...DEPARTURE, vehicle: "bus B10" })), /^Autobús B10 7:42 a\.\s?m\./u);
   } finally {
     setLanguageForTest("en");
   }
+  assert.match(plain(departureText({ ...DEPARTURE, vehicle: "bus B10" })), /^Bus B10 7:42 AM/);
 });
 
 test("the spare time counts down from the plan's moment; under 5 min is cutting it close, under none a miss", () => {

@@ -3302,7 +3302,7 @@ export function RideMode({
           </div>
         ) : (
           <>
-            <p className="cue-text">{gps || "Finding your place on the route."}</p>
+            <p className="cue-text">{gps || t("Finding your place on the route.")}</p>
             <IosLocationHelp notice={gps} />
           </>
         )}

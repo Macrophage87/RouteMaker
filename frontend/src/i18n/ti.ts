@@ -2034,4 +2034,12 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Departs {time}.": "ብ{time} ይብገስ።",
   "About {m} min on board to {place}.": "ክሳብ {place} ኣብ ተሽከርካሪ ኣስታት {m} ደቒቕ።",
   "About {m} min on board.": "ኣብ ተሽከርካሪ ኣስታት {m} ደቒቕ።",
+  // ---- The 2026-11-05 review: phrases found missing or newly marked ----
+  "Times are from each system's published timetables for this {day}: where trains or buses come every 15 minutes or less, the wait is half the time between them; otherwise it is the time to the next one.": "እቲ ግዜታት ካብ ዝተሓትመ መደባት ነፍሲ ወከፍ ስርዓት ናይዚ {day} እዩ፦ ባቡራት ወይ ኣውቶቡሳት ኣብ ነፍሲ ወከፍ 15 ደቒቕ ወይ ካብኡ ንታሕቲ ኣብ ዝመጽኡሉ፣ ምጽባይ ፍርቂ ናይቲ ኣብ መንጎኦም ዘሎ ግዜ እዩ፤ እንተዘይኮይኑ ክሳብ እቲ ዝቕጽል ዘሎ ግዜ እዩ።",
+  "a closure": "ዕጽው",
+  "the point on the map": "እቲ ኣብ ካርታ ዘሎ ነጥቢ",
+  "Closed": "ዕጹው",
+  "The shared place has no map point. Type “{query}” in Where to? to find it.": "እቲ ዝተኻፈለ ቦታ ኣብ ካርታ ነጥቢ የብሉን። ንምርካቡ “{query}” ኣብ ናበይ? ጽሓፉ።",
+  "Reach": "ክልል በጽሖ",
+  "Bus {name}": "ኣውቶቡስ {name}",
 };

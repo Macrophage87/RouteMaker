@@ -62,7 +62,7 @@ test("a saved route reopens as saved: the scheduler answers its plan with the sa
 });
 
 test("signed in: account settings win on sign-in, changes save once they settle, and Home is offered, not merged", () => {
-  assert.match(app, /const step = onSignIn\(account, device\)/);
+  assert.match(app, /const step = signInLate\(account, device, settingsAtLoad\.current, unitsPending\(\)\)/);
   assert.match(app, /SAVE_SETTLE_MS\)/);
   assert.match(app, /setHomeAsk\(homeOffer\(deviceHome\(\), account\.home\)\)/);
   assert.match(app, /if \(move\) saveMyGoNow\(\{ \.\.\.myGoRef\.current, home: offer\.device \}, false\)/);

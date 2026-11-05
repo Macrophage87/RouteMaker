@@ -16,7 +16,10 @@
  *   so every signed-in device goes back too.
  * - The units ("units", lib/units.ts): "us" or "metric" (the owner, 2026-11-03: "have a metric mode in settings").
  * - On sign-in (every signed-in load): an empty account takes this device's settings; an account that has
- *   settings wins, and its settings replace the device's. Nothing is merged silently.
+ *   settings wins, and its settings replace the device's. Where the read came late (it failed at load and was tried
+ *   again, retryUntil), what the rider changed on this device since load is kept and saved to the account, and a
+ *   Units choice made while the account could not be read is too (unitsPending): the rest is the account's
+ *   (signInLate).
  * - Signed out, everything stays on the device as before.
  */
 import { FAVORITES_KEY, parseFavorites } from "./favoriteRides.ts";
@@ -220,6 +223,49 @@ export function onSignIn(account: SettingsDoc | null, device: SettingsDoc): Sign
   return hasSettings(account) ? { kind: "use-account", doc: account as SettingsDoc } : { kind: "push-device", doc: device };
 }
 
+/** The settings a document holds, by key, for comparing one with another. */
+const KEYS: readonly (keyof SettingsDoc)[] = ["plan", "water", "climbs", "climbsFrom", "topo", "sections", "bikeshare", "favorites", "weight", "speed", "units"];
+
+/**
+ * The sign-in step where the account's settings were read late (the 2026-11-05 review: a read that failed at load
+ * succeeded mid-ride and replaced what the rider had changed since). `atLoad` is this device's settings when the
+ * page first asked; each key the device has changed since, and the units where a choice is pending (made while the
+ * account could not be read), are the device's; the rest are the account's. `save` is the document to put in the
+ * account, or null where it holds it already.
+ */
+export function signInLate(account: SettingsDoc | null, device: SettingsDoc, atLoad: SettingsDoc, unitsPending = false): SignInStep & { save: SettingsDoc | null } {
+  const step = onSignIn(account, device);
+  if (step.kind === "push-device") return { ...step, save: device };
+  const kept = KEYS.filter((key) => JSON.stringify(device[key]) !== JSON.stringify(atLoad[key]) || (key === "units" && unitsPending));
+  if (kept.length === 0) return { ...step, save: null };
+  const doc: SettingsDoc = { ...step.doc };
+  for (const key of kept) {
+    if (device[key] === undefined) delete doc[key];
+    else (doc as unknown as Record<string, unknown>)[key] = device[key];
+  }
+  return { kind: "use-account", doc, save: sameSettings(doc, step.doc) ? null : doc };
+}
+
+/** Marks a Units choice made while the account could not be read: the next read keeps it (signInLate). */
+export const UNITS_PENDING_KEY = "routemaker.unitsPending";
+
+export function unitsPending(store: Store | null = local()): boolean {
+  try {
+    return store?.getItem(UNITS_PENDING_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function setUnitsPending(pending: boolean, store: Store | null = local()): void {
+  try {
+    if (pending) store?.setItem(UNITS_PENDING_KEY, "1");
+    else store?.removeItem(UNITS_PENDING_KEY);
+  } catch {
+    // Not kept: the choice still stays on this device for this visit.
+  }
+}
+
 /** Two documents hold the same settings (so a save would change nothing). */
 export function sameSettings(a: SettingsDoc | null, b: SettingsDoc | null): boolean {
   return JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
@@ -321,15 +367,30 @@ export function retryUntil(attempt: () => Promise<boolean>, env: RetryEnv, delay
 /**
  * A Units change made before the account's settings could be read on sign-in: the account is read now and, where it
  * holds settings, saved with only the units changed (never this device's other settings over the account's). Where it
- * still cannot be read, or is empty (the sign-in read gives it this device's), the change stays on this device: true.
+ * is empty (the sign-in read gives it this device's), the change stays on this device: true. Where it still cannot be
+ * read, the change stays on this device and is marked pending, so the sign-in read, when it succeeds, keeps it and
+ * saves it to the account rather than putting the account's units back (signInLate): true.
  */
-export async function saveUnitsUnsynced(origin: string, units: Units | undefined, get: Fetch = fetch, post: Fetch = fetch, cookie?: string): Promise<boolean> {
+export async function saveUnitsUnsynced(
+  origin: string,
+  units: Units | undefined,
+  get: Fetch = fetch,
+  post: Fetch = fetch,
+  cookie?: string,
+  store: Store | null = local(),
+): Promise<boolean> {
   const account = await fetchSettings(origin, get);
+  if (account === undefined) {
+    setUnitsPending(true, store);
+    return true;
+  }
   if (!account) return true;
   const doc: SettingsDoc = { ...account };
   if (units) doc.units = units;
   else delete doc.units;
-  return saveSettings(origin, doc, post, cookie);
+  const saved = await saveSettings(origin, doc, post, cookie);
+  if (saved) setUnitsPending(false, store);
+  return saved;
 }
 
 /** The Settings sheet's one line for a rider who can sign in (the plan, item 4). */

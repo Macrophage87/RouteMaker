@@ -16,6 +16,7 @@ import { presetLabel, type PresetId } from "./lib/presets.ts";
 import { ROUTE_BOTTOM_LAYER } from "./lib/railLayer.ts";
 import {
   REACH_CALM_COLOUR,
+  REACH_COLOURS,
   REACH_MAX_POINTS,
   areaText,
   placesText,
@@ -23,8 +24,10 @@ import {
   reachFeatures,
   reachNotes,
   reachOffered,
+  reachPointNames,
   reachSentence,
   requestReach,
+  shareCancelled,
   sharesHome,
   sideBySide,
   toggleMinutes,
@@ -98,7 +101,11 @@ interface Props {
   onBack: () => void;
   backLabel: string;
   getMap: () => MapLibreMap | null;
+  /** The map has loaded (MapView's onReady): rings that came before it are drawn then. */
+  mapReady: boolean;
   points: readonly LonLat[];
+  /** Make it a loop is on: the first point is the start and finish (the markers' names). */
+  loop: boolean;
   preset: PresetId;
   dials: Dials;
   runPaceKmh?: number;
@@ -109,7 +116,7 @@ interface Props {
   onRideSettings: (opener: HTMLElement) => void;
 }
 
-export function ReachSheet({ open, onBack, backLabel, getMap, points, preset, dials, runPaceKmh, view, onView, home, onRideSettings }: Props) {
+export function ReachSheet({ open, onBack, backLabel, getMap, mapReady, points, loop, preset, dials, runPaceKmh, view, onView, home, onRideSettings }: Props) {
   const [answer, setAnswer] = useState<ReachAnswer | null>(null);
   const [said, setSaid] = useState("");
   const [busy, setBusy] = useState(false);
@@ -125,7 +132,7 @@ export function ReachSheet({ open, onBack, backLabel, getMap, points, preset, di
     if (!open) return;
     if (!bodyKey) {
       setAnswer(null);
-      setSaid(offered ? t("Put a point on the map (search for a place or tap the map) to see where you can get from it.") : t("The transit ride types have no rings yet. Pick a bike ride type, Walk or Run in Ride settings."));
+      setSaid(offered ? t("Tap the map to put a point, or go back to the planner to search for a place. The rings show where you can get from it.") : t("The transit ride types have no rings yet. Pick a bike ride type, Walk or Run in Ride settings."));
       return;
     }
     const abort = new AbortController();
@@ -167,7 +174,7 @@ export function ReachSheet({ open, onBack, backLabel, getMap, points, preset, di
       if (bounds) map.fitBounds(bounds, { padding, maxZoom: 15, duration: 600 });
       fittedFor.current = pointsKey;
     }
-  }, [open, answer, getMap, pointsKey]);
+  }, [open, answer, getMap, pointsKey, mapReady]);
   useEffect(() => () => {
     const map = getMap();
     if (map) clearRings(map);
@@ -179,8 +186,9 @@ export function ReachSheet({ open, onBack, backLabel, getMap, points, preset, di
       try {
         await navigator.share({ title: t("RouteMaker reach"), url: link });
         return;
-      } catch {
-        // Closed or refused: copied instead.
+      } catch (error) {
+        // Closed by the rider: nothing is copied. Refused or failing: copied instead.
+        if (shareCancelled(error)) return;
       }
     }
     const done = await copyText(link, navigator.clipboard, () => false);
@@ -192,6 +200,7 @@ export function ReachSheet({ open, onBack, backLabel, getMap, points, preset, di
   const combine = (c: ReachCombine) => onView({ ...view, combine: c });
   const notes = answer ? reachNotes(answer, dials.stress, points.length) : [];
   const onFoot = preset === "walk" || preset === "run";
+  const names = reachPointNames(points, loop);
 
   return (
     <SheetFrame id="sheet-reach" title={SHEET_TITLES.reach} open={open} onBack={onBack} backLabel={backLabel}>
@@ -253,9 +262,9 @@ export function ReachSheet({ open, onBack, backLabel, getMap, points, preset, di
         {!onFoot && !sideBySide(points.length, view) && answer?.calm_offered !== false && (
           <div>
             <label className="reach-calm">
-              <input type="checkbox" checked={view.calm} onChange={(e) => onView({ ...view, calm: e.target.checked })} /> {t("Calm streets")}
+              <input type="checkbox" checked={view.calm} onChange={(e) => onView({ ...view, calm: e.target.checked })} /> {t("Low-stress streets")}
             </label>
-            <p className="hint">{t("Dashed: the same minutes at Low-stress.")}</p>
+            <p className="hint">{t("Dashed: the same minutes on Low-stress streets only.")}</p>
           </div>
         )}
 
@@ -271,7 +280,13 @@ export function ReachSheet({ open, onBack, backLabel, getMap, points, preset, di
             <summary>{t("Ring by ring")}</summary>
             {answer.groups.map((group, g) => (
               <div key={g}>
-                {answer.groups.length > 1 && <h3>{t("Point {number}", { number: (group.point ?? g) + 1 })}</h3>}
+                {answer.groups.length > 1 && (
+                  <h3>
+                    {/* The colour its rings have on the map (reachFeatures), beside the marker's own name. */}
+                    <span className="reach-key" aria-hidden="true" style={{ background: REACH_COLOURS[(group.point ?? g) % REACH_COLOURS.length] }} />
+                    {names[group.point ?? g] ?? t("Point {number}", { number: (group.point ?? g) + 1 })}
+                  </h3>
+                )}
                 <ul>
                   {group.rings.map((ring) => (
                     <li key={ring.minutes}>
@@ -286,10 +301,16 @@ export function ReachSheet({ open, onBack, backLabel, getMap, points, preset, di
         )}
 
         <p>
-          <button type="button" className="chip" onClick={share} disabled={!answer}>
+          <button type="button" className="chip" onClick={share} disabled={!answer} aria-describedby={answer ? undefined : "reach-share-hint"}>
             <Icon name="link" size={16} />
             {t("Share these rings")}
           </button>
+          {!answer && (
+            <span id="reach-share-hint" className="hint">
+              {" "}
+              {t("Ready once the rings are drawn.")}
+            </span>
+          )}
           {sharesHome(points, home) && <span className="hint"> {t("The link shows rings from your Home.")}</span>}
         </p>
         <p className="hint" role="status">

@@ -128,6 +128,7 @@ import {
   RIDE_LINE_WIDTH,
   TRANSIT_CASING,
   TRANSIT_CASING_WIDTH,
+  onBoardPaint,
   TRANSIT_COLOUR,
   TRANSIT_DASH,
   TRANSIT_LINE_WIDTH,
@@ -1671,7 +1672,7 @@ export function MapView(props: Props) {
         source: ONBOARD_SOURCE,
         filter: ["==", ["geometry-type"], "LineString"],
         layout: { "line-join": "round", "line-cap": "round" },
-        paint: { "line-color": TRANSIT_CASING, "line-width": ONBOARD_LINE_WIDTH + 4 },
+        paint: { "line-color": onBoardPaint(openedFlavour === "dark").casing, "line-width": ONBOARD_LINE_WIDTH + 4 },
       });
       map.addLayer({
         id: "onboard-line",
@@ -1687,10 +1688,11 @@ export function MapView(props: Props) {
         source: ONBOARD_SOURCE,
         filter: ["==", ["geometry-type"], "Point"],
         paint: {
-          // Each stop a white dot ringed in the line's colour; the stop to get off larger, filled with it.
+          // Each stop a white dot ringed in the line's colour (dark on the light map, onBoardPaint); the stop to get off
+          // larger, filled with it.
           "circle-radius": ["case", ["get", "off"], 8, 4.5],
           "circle-color": ["case", ["get", "off"], ["get", "colour"], "#ffffff"],
-          "circle-stroke-color": ["case", ["get", "off"], "#ffffff", ["get", "colour"]],
+          "circle-stroke-color": onBoardPaint(openedFlavour === "dark").stopRing as never,
           "circle-stroke-width": 3,
         },
       });
@@ -2223,6 +2225,10 @@ export function MapView(props: Props) {
     setRailFlavour(mapRef.current, RAIL_STATIONS, PENN_COLOUR, iconPixelRatio(), dark);
     // The group ride's two-minute rings (lib/rideDotsLayer.ts), drawn at the same pixel ratio as RideGroup adds them.
     setRideDotsFlavour(mapRef.current, iconPixelRatio(), dark);
+    // The train or bus path's casing and its stops' rings (lib/transit.ts onBoardPaint).
+    const onBoard = onBoardPaint(dark);
+    if (mapRef.current.getLayer("onboard-casing")) mapRef.current.setPaintProperty("onboard-casing", "line-color", onBoard.casing);
+    if (mapRef.current.getLayer("onboard-stops")) mapRef.current.setPaintProperty("onboard-stops", "circle-stroke-color", onBoard.stopRing as never);
   });
 
   // The accessibility switch (or the system's request for more contrast):

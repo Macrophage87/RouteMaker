@@ -123,7 +123,13 @@ export function wallClockOf(text: string, locale: string | undefined = clockLoca
   return format.format(Date.UTC(2000, 0, 1, hour, minute));
 }
 
-function vehicleName(vehicle: string): string {
+/**
+ * The server's vehicle ("the MARC Penn Line", "bus B10", src/core/transitdata/systems.json "words") as the sentence
+ * names it: a train by its own name, a bus as "Bus B10" in the language in force.
+ */
+export function vehicleName(vehicle: string): string {
+  const bus = /^bus (.+)$/i.exec(vehicle);
+  if (bus) return t("Bus {name}", { name: bus[1] });
   const name = vehicle.replace(/^the /, "");
   return name.charAt(0).toUpperCase() + name.slice(1);
 }

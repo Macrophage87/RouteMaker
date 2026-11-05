@@ -2034,4 +2034,12 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Departs {time}.": "{time} 출발.",
   "About {m} min on board to {place}.": "{place}까지 탑승 약 {m}분.",
   "About {m} min on board.": "탑승 약 {m}분.",
+  // ---- The 2026-11-05 review: phrases found missing or newly marked ----
+  "Times are from each system's published timetables for this {day}: where trains or buses come every 15 minutes or less, the wait is half the time between them; otherwise it is the time to the next one.": "시간은 각 교통 시스템이 이 {day}에 대해 게시한 시간표 기준입니다: 열차나 버스가 15분 이내 간격으로 오는 곳은 대기 시간이 간격의 절반이고, 그렇지 않으면 다음 차까지의 시간입니다.",
+  "a closure": "통제 구간",
+  "the point on the map": "지도 위의 지점",
+  "Closed": "닫힘",
+  "The shared place has no map point. Type “{query}” in Where to? to find it.": "공유된 장소에 지도 위 지점이 없습니다. 찾으려면 어디로?에 “{query}”을(를) 입력하세요.",
+  "Reach": "도달 범위",
+  "Bus {name}": "버스 {name}",
 };

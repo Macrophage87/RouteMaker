@@ -6,6 +6,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { contrastRatio } from "../stressStyle.js";
 import { BikeshareSection } from "./bikeshareSection.ts";
+import { setCatalogForTest, setLanguageForTest } from "./i18n.ts";
 import {
   BIKE_ICON,
   BOLT_ICON,
@@ -26,6 +27,7 @@ import {
   OTHER_RIDES_PREF_KEY,
   SIGN_COLOURS,
   SPACE_ICON,
+  closedLabel,
   dockCard,
   dockCounts,
   docksBox,
@@ -271,4 +273,29 @@ test("App: shown whenever a licensed service is switched on, its default followi
   assert.match(app, /operatorsToAsk\(docksChoices, docksOperators\)/);
   assert.match(app, /const docksActive = docksAsk\.length > 0;/);
   assert.match(app, /<BikeshareDocksOverlay\s+active=\{docksActive\}/);
+});
+
+test("a closed dock's word on the map is in the page's language where the map's font has its letters", () => {
+  const field = () => JSON.stringify((docksLayers().find((l) => l.id === DOCK_LABELS)!.layout as Record<string, unknown>)["text-field"]);
+  try {
+    setCatalogForTest("es", { Closed: "Cerrada" });
+    setLanguageForTest("es");
+    assert.equal(closedLabel(), "Cerrada");
+    assert.ok(field().includes('"Cerrada"'));
+    setCatalogForTest("vi", { Closed: "Đã đóng" });
+    setLanguageForTest("vi");
+    assert.equal(closedLabel(), "Đã đóng");
+    setCatalogForTest("ru", { Closed: "Закрыта" });
+    setLanguageForTest("ru");
+    assert.equal(closedLabel(), "Закрыта");
+    // The font has no Ethiopic or CJK letters: English, not empty boxes.
+    setCatalogForTest("am", { Closed: "ዝግ" });
+    setLanguageForTest("am");
+    assert.equal(closedLabel(), "Closed");
+    setCatalogForTest("zh", { Closed: "已关闭" });
+    setLanguageForTest("zh");
+    assert.equal(closedLabel(), "Closed");
+  } finally {
+    setLanguageForTest("en");
+  }
 });

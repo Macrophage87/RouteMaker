@@ -16,6 +16,9 @@ import {
   retryUntil,
   saveSettings,
   saveUnitsUnsynced,
+  setUnitsPending,
+  signInLate,
+  unitsPending,
 } from "./accountSettings.ts";
 import { startDials } from "./dials.ts";
 import { HOME_OFFER_KEY, answerHomeOffer, deviceHome, homeOffer } from "./homeMove.ts";
@@ -280,4 +283,49 @@ test("App tries the sign-in settings read again, and an unread account does not 
   assert.match(app, /retryUntil\(\(\) => syncSettingsOnSignIn\(origin, \(\) => live\), window\)/);
   assert.match(app, /!settingsSynced\s*\?\s*\(\) => saveUnitsUnsynced\(/);
   assert.doesNotMatch(app, /!settingsSynced\s*\?\s*async \(\) => false/);
+});
+
+test("a settings read that comes late keeps what was changed on this device since load, and saves it to the account", () => {
+  const atLoad = { v: 1, topo: false, speed: 12, units: "us" as const };
+  const account = { v: 1, topo: true, speed: 14, climbs: true, units: "metric" as const };
+  // Nothing changed here since load: the account wins, as at any sign-in, and nothing is saved.
+  assert.deepEqual(signInLate(account, atLoad, atLoad), { kind: "use-account", doc: account, save: null });
+  // The riding speed changed mid-ride: kept, the rest the account's, and the result saved.
+  const device = { ...atLoad, speed: 16 };
+  const late = signInLate(account, device, atLoad);
+  assert.equal(late.kind, "use-account");
+  assert.deepEqual(late.doc, { v: 1, topo: true, speed: 16, climbs: true, units: "metric" });
+  assert.deepEqual(late.save, late.doc);
+  // A setting cleared here since load is cleared in the account too.
+  const cleared = signInLate(account, { v: 1, topo: false, units: "us" as const }, atLoad);
+  assert.equal("speed" in cleared.doc, false);
+  // An empty account still takes the device's.
+  assert.deepEqual(signInLate(null, device, atLoad), { kind: "push-device", doc: device, save: device });
+});
+
+test("a Units choice made while the account could not be read is kept by the next read, not undone", async () => {
+  const store = new Memory();
+  const unreadable = (async () => new Response("{}", { status: 503 })) as unknown as typeof fetch;
+  const post = (async () => new Response("{}", { status: 200 })) as unknown as typeof fetch;
+  assert.equal(await saveUnitsUnsynced("https://x.test", "metric", unreadable, post, "", store), true);
+  assert.equal(unitsPending(store), true, "marked pending");
+  // The page reloaded in Metric; the account, read now, still says Miles: the device's Metric stays and is saved.
+  const device = { v: 1, topo: true, units: "metric" as const };
+  const step = signInLate({ v: 1, topo: true, units: "us" }, device, device, unitsPending(store));
+  assert.equal(step.doc.units, "metric");
+  assert.deepEqual(step.save, { v: 1, topo: true, units: "metric" });
+  setUnitsPending(false, store);
+  assert.equal(unitsPending(store), false);
+  // Saved to a readable account: nothing left pending.
+  setUnitsPending(true, store);
+  const account = (async () => new Response(JSON.stringify({ settings: { v: 1, units: "us" } }), { status: 200 })) as unknown as typeof fetch;
+  assert.equal(await saveUnitsUnsynced("https://x.test", "metric", account, post, "", store), true);
+  assert.equal(unitsPending(store), false);
+});
+
+test("App: a late settings read keeps this device's changes, and in a ride or Roam switches units without a reload", () => {
+  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  assert.match(app, /const step = signInLate\(account, device, settingsAtLoad\.current, unitsPending\(\)\);/);
+  assert.match(app, /if \(ridingNow\.current \|\| roamingNow\.current\) void switchUnitsInRide\(step\.doc\.units\);\s*else void chooseUnits\(step\.doc\.units\);/);
+  assert.match(app, /void saveSettings\(origin, step\.save\)/);
 });

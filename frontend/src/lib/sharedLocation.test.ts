@@ -192,3 +192,16 @@ test("a plus code read through readShared becomes a place with no request", asyn
   assert.equal(read.place.name, "87C4VXQX+P3");
   assert.equal(read.place.kind, "pluscode");
 });
+
+test("a shared place with no map point is said in the page's language", async () => {
+  const { loadLanguage, setLanguageForTest } = await import("./i18n.ts");
+  const { sharedQuerySaid } = await import("../app/sharedLaunch.ts");
+  assert.equal(sharedQuerySaid("Union Station"), "The shared place has no map point. Type “Union Station” in Where to? to find it.");
+  await loadLanguage("es");
+  setLanguageForTest("es");
+  try {
+    assert.equal(sharedQuerySaid("Union Station"), "El lugar compartido no tiene un punto en el mapa. Escriba “Union Station” en ¿Adónde? para encontrarlo.");
+  } finally {
+    setLanguageForTest("en");
+  }
+});

@@ -2034,4 +2034,12 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Departs {time}.": "المغادرة {time}.",
   "About {m} min on board to {place}.": "حوالي {m} د على متن المركبة إلى {place}.",
   "About {m} min on board.": "حوالي {m} د على متن المركبة.",
+  // ---- The 2026-11-05 review: phrases found missing or newly marked ----
+  "Times are from each system's published timetables for this {day}: where trains or buses come every 15 minutes or less, the wait is half the time between them; otherwise it is the time to the next one.": "الأوقات من الجداول المنشورة لكل نظام لهذا اليوم ({day}): حيث تأتي القطارات أو الحافلات كل 15 دقيقة أو أقل، يكون الانتظار نصف المدة بينها؛ وإلا فهو الوقت حتى التالي.",
+  "a closure": "إغلاق",
+  "the point on the map": "النقطة على الخريطة",
+  "Closed": "مغلقة",
+  "The shared place has no map point. Type “{query}” in Where to? to find it.": "المكان المشارَك ليس له نقطة على الخريطة. اكتب “{query}” في إلى أين؟ للعثور عليه.",
+  "Reach": "المدى",
+  "Bus {name}": "الحافلة {name}",
 };

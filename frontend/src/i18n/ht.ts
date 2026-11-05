@@ -2034,4 +2034,12 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Departs {time}.": "Li pati a {time}.",
   "About {m} min on board to {place}.": "Anviwon {m} min abò rive {place}.",
   "About {m} min on board.": "Anviwon {m} min abò.",
+  // ---- The 2026-11-05 review: phrases found missing or newly marked ----
+  "Times are from each system's published timetables for this {day}: where trains or buses come every 15 minutes or less, the wait is half the time between them; otherwise it is the time to the next one.": "Lè yo soti nan orè chak sistèm pibliye pou {day} sa a: kote tren oswa bis pase chak 15 minit oswa mwens, tan pou tann lan se mwatye tan ant yo; sinon, se tan jiska pwochen an.",
+  "a closure": "yon fèmen",
+  "the point on the map": "pwen an sou kat la",
+  "Closed": "Fèmen",
+  "The shared place has no map point. Type “{query}” in Where to? to find it.": "Kote yo pataje a pa gen yon pwen sou kat la. Tape “{query}” nan Ki kote ou prale? pou jwenn li.",
+  "Reach": "Distans",
+  "Bus {name}": "Bis {name}",
 };
