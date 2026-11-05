@@ -5327,6 +5327,47 @@ bus road moved for another reason (an OSM edit since the last extract): check it
 history there. The ways also drop out of the car-free path
 count on the map (fewer `facility = 'path'` roads, outside the trail classes).
 
+## The open data download (after a map swap)
+
+The owner, 2026-11-05: "In our documentation is it possible to offer a link to download all of
+our data in common formats that could be readable by gis and the like?", then "GitHub Releases"
+for where the files live, and "For anything we don't hava license on, just link to it." The
+Acknowledgements page links to the repository's data releases ("Download our data").
+
+What is in it, and what stays out of its columns and is linked instead (Maryland's state
+layers, Arlington's Bike Comfort Index, Capital Bikeshare's trips, live closures; the owner:
+agency data is cited "In our why's"), is `routemaker.open_data`'s docstring; the README written with the files says the same to whoever downloads them.
+Nothing from rides, riders, accounts or logs is read (`core.open_data_export`).
+
+1. After the swap is done and the routers are restarted, on the PC, from the checkout (the api
+   image has GDAL, which adds the spatial index; the bike-parking file comes from the checkout):
+
+   ```sh
+   mkdir -p ~/routemaker-data/exports && sudo chown 10001:10001 ~/routemaker-data/exports
+   docker compose run --rm --no-deps \
+     -v ~/routemaker-data/exports:/data/exports \
+     -v "$PWD/frontend/src/amenity-data:/amenity:ro" \
+     api python manage.py export_open_data --out /data/exports --racks /amenity/bike-parking.json
+   ```
+
+   It reads the live table (about 1.4 million segments) and writes, for the day's date,
+   `routemaker-data-<date>/` (the GeoPackage, `csv/`, `geojson/`, README.md, LICENSE.md), three
+   zips (`-gpkg`, `-csv`, `-geojson`) and `-SHA256SUMS`. It writes nothing to the database.
+   It also reads Arlington's Bike Comfort Index from the county's ArcGIS service, for
+   `agency-comparison.json` only (miles in each bucket, no Arlington data in the files; its
+   comfort categories read as 1 to 4, the owner, 2026-11-05: "assuming that LTS1 is "most
+   comfortable" to LTS4 being "Not Recommended""). If the service is down it says so and
+   leaves Arlington out; `--no-arlington` skips it.
+2. Copy `agency-comparison.json` into the docs generator's folder, beside its `content.py`
+   (the copy the Methodology and architecture docs thread builds from), so the stress page's comparison charts carry the new numbers.
+3. Show the owner the README and the counts it printed. Uploading publishes the files: it waits
+   for the owner's go each time.
+4. With the go, make a release named and tagged `data-<date>` on
+   <https://github.com/Macrophage87/RouteMaker/releases/new> (target `main`, "Set as the latest
+   release" off, so an app release is never displaced), paste README.md's first two sections as
+   its notes, and attach the three zips and the SHA256SUMS file. Each zip must stay under
+   GitHub's 2 GiB limit per file.
+
 ## Maryland traffic counts (MDOT SHA)
 
 FOLLOWUP-MDOT-AADT (OWNER-DECISIONS 429; download approved for the v0.5.0 rebuild,

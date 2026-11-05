@@ -41,8 +41,8 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
     VDOT one in the one table the derivative is published from. It holds the
     publishing agency, and `volume_aadt` and `volume_year` the count and its
     vintage, so a query over this table can name the segments any one agency
-    influenced. Naming them is not the same as being able to exclude them from
-    an export, which is unbuilt; see the review log.
+    influenced, and the open data download (`routemaker.open_data`) leaves
+    Maryland's counts out by that name.
     """
     validate_schema_name(schema)
     refuse_live_schema(schema)
