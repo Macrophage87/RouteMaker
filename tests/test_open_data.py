@@ -72,54 +72,55 @@ class TestRatedBy:
         assert open_data.level_text(2.5) == "LTS 2.5"
         assert open_data.level_text(None) == ""
 
-    def test_where_our_formula_agrees_with_maryland_it_says_so(self):
+    def test_where_the_review_kept_marylands_level_it_says_so(self):
         """The owner, 2026-11-05: "if our methodology agrees with MD SHA, we state our
-        methodology and that it's in agreement"."""
-        row = seg(stress_tier=2, stress_half=True, stress_ratings=ratings("mdot-sha", 2, True))
+        methodology and that it's in agreement", and "I had the whole map reviewed"."""
+        row = seg(
+            stress_tier=2,
+            stress_half=True,
+            stress_ratings=ratings("mdot-sha", 2, True, agencies=[("mdot-sha", 2.5)]),
+        )
         out = open_data.road_row(row, ACCESS)
-        assert (out["lts"], out["rated_by"]) == (2.5, open_data.MD_AGREES)
+        assert (out["lts"], out["rated_by"]) == (2.5, "reviewed; agrees with MDOT SHA")
 
-    def test_where_it_differs_our_formula_is_the_level(self):
-        """The map takes SHA's level where no county or DDOT rating exists; the download gives
-        ours (the owner, 2026-11-05: "we have used our ratings")."""
+    def test_the_map_level_stands_and_the_formula_is_shown_beside_it(self):
         rule = "agency rating: MDOT SHA LTS 4; SHA's record: urban; 2 lanes; 12000 cars a day"
         row = seg(
             stress_tier=4,
             stress_rule=rule,
-            stress_ratings={**ratings("mdot-sha", 3, agencies=[("mdot-sha", 4)]),
-                            "formula_rule": "mixed traffic, 30 mph"},
-        )  # fmt: skip
+            stress_ratings=ratings("mdot-sha", 3, agencies=[("mdot-sha", 4)]),
+        )
         out = open_data.road_row(row, ACCESS)
-        assert out["rated_by"] == open_data.MD_DIFFERS
-        assert (out["lts"], out["formula_lts"]) == (3.0, 3.0)
-        assert out["rule"] == "mixed traffic, 30 mph"
+        assert (out["lts"], out["formula_lts"]) == (4.0, 3.0)
+        assert out["rated_by"] == "reviewed; agrees with MDOT SHA"
+        # SHA's record (its level and counts) is not handed on in a column.
+        assert out["rule"] is None
         assert "SHA" not in json.dumps({k: v for k, v in out.items() if k != "rated_by"})
-
-    def test_an_owner_row_over_a_maryland_way_hides_its_level(self):
-        row = open_data.owner_row(
-            {"row_id": "mdot-sha-1", "tier": 4, "computed_tier": 4, "formula": 2}
-        )
-        assert (row["lts"], row["formula_lts"], row["rated_by"]) == (2.0, 2.0, open_data.MD_DIFFERS)
-        owner = open_data.owner_row(
-            {
-                "row_id": "md-review-1",
-                "tier": 2,
-                "computed_tier": 4,
-                "formula": 3,
-                "formula_half": True,
-            }
-        )
-        assert (owner["lts"], owner["formula_lts"]) == (2.0, 3.5)
-
-    def test_a_county_rating_is_named(self):
-        row = seg(stress_ratings=ratings("moco", 4, agencies=[("moco", 3), ("mdot-sha", 4)]))
-        assert open_data.road_row(row, ACCESS)["rated_by"] == "Montgomery County Planning"
-
-    def test_no_column_carries_maryland_level(self):
-        row = seg(stress_tier=4, stress_ratings=ratings("mdot-sha", 3, agencies=[("mdot-sha", 4)]))
-        out = open_data.road_row(row, ACCESS)
-        assert 4.0 not in out.values()
         assert out["moco_lts"] is None and out["ddot_lts"] is None
+
+    def test_where_a_reviewed_row_differs_the_agency_is_named(self):
+        row = seg(
+            stress_tier=2,
+            stress_adjustment_id="md-review-1",
+            stress_ratings=ratings("owner", 3, agencies=[("mdot-sha", 4)]),
+        )
+        assert open_data.road_row(row, ACCESS)["rated_by"] == "owner (reviewed); MDOT SHA differs"
+
+    def test_an_owner_row_carries_the_map_level_and_the_formula(self):
+        row = open_data.owner_row(
+            {"row_id": "md-review-1", "tier": 2, "computed_tier": 4, "formula": 3,
+             "formula_half": True}
+        )  # fmt: skip
+        assert (row["lts"], row["formula_lts"], row["rated_by"]) == (2.0, 3.5, "owner (reviewed)")
+
+    def test_each_agency_is_named(self):
+        row = seg(
+            stress_tier=4,
+            stress_ratings=ratings("moco", 4, agencies=[("moco", 4), ("mdot-sha", 3)]),
+        )
+        assert open_data.road_row(row, ACCESS)["rated_by"] == (
+            "reviewed; agrees with Montgomery County Planning; MDOT SHA differs"
+        )
 
 
 class TestRoadRow:
@@ -194,8 +195,8 @@ def test_rating_rows():
         {"row_id": "dc-review-1", "tier": 2, "half": True, "length_m": 1609.344, "ways": 2}
     )
     assert (row["lts"], row["rated_by"], row["length_mi"]) == (2.5, "owner (reviewed)", 1.0)
-    md = open_data.owner_row({"row_id": "mdot-sha-1", "tier": 4, "formula": 4})
-    assert md["rated_by"] == open_data.MD_AGREES
+    md = open_data.owner_row({"row_id": "mdot-sha-1", "tier": 4, "formula": 3})
+    assert (md["lts"], md["formula_lts"]) == (4.0, 3.0)
 
 
 def test_racks_split_by_source_and_keep_no_other_field():
@@ -230,18 +231,21 @@ def test_the_readme_links_every_source_left_out_and_names_no_server():
     assert not re.search(r"routemakerdc|chubby|amazonaws", text, re.IGNORECASE)
 
 
-def test_agency_comparison_against_our_own_level():
+def test_agency_comparison_against_the_map_level():
     """The owner, 2026-11-05: "Also put comparison charts for each if the agencies in the
-    documentation". Our own level is a reviewed row's, else the formula's, never the
-    agency's own level the map used."""
+    documentation"; the map's level is the reviewed one ("I had the whole map reviewed")."""
     cmp = open_data.Comparison()
-    # MDOT SHA used on the map at 4; our formula says 3: MDOT a level higher.
+    # The review kept MDOT SHA's 4: the same.
     cmp.add(
         seg(stress_tier=4, stress_ratings=ratings("mdot-sha", 3, agencies=[("mdot-sha", 4)])),
         1609.344,
     )
-    # Montgomery's 5 is our 4.5; the formula 4.5 too: the same.
-    cmp.add(seg(stress_ratings=ratings("moco", 4, True, agencies=[("moco", 5)])), 1609.344)
+    # Montgomery's 5 is our 4.5; the map 4.5 too: the same.
+    cmp.add(
+        seg(stress_tier=4, stress_half=True,
+            stress_ratings=ratings("moco", 4, True, agencies=[("moco", 5)])),
+        1609.344,
+    )  # fmt: skip
     # An owner row at 1 against DDOT's 3: DDOT two levels higher.
     cmp.add(
         seg(stress_tier=1, stress_adjustment_id="dc-review-1",
@@ -252,12 +256,29 @@ def test_agency_comparison_against_our_own_level():
     cmp.add(seg(stress_ratings=ratings("mdot-sha", 4, agencies=[("mdot-sha", 5)])), 1609.344)
     cmp.add(seg(map_class="hidden", stress_ratings=ratings("ddot", 1, agencies=[("ddot", 4)])), 1e6)
     out = cmp.summary()
-    assert out["mdot-sha"]["miles"] == 1.0
-    assert out["mdot-sha"]["buckets"]["agency_higher"] == {"miles": 1.0, "percent": 100.0}
+    assert out["mdot-sha"]["buckets"]["same"] == {"miles": 1.0, "percent": 100.0}
     assert out["moco"]["buckets"]["same"]["miles"] == 1.0
     assert out["ddot"]["buckets"]["agency_much_higher"]["miles"] == 2.0
     assert out["ddot"]["miles"] == 2.0
     assert out["mdot-sha"]["name"] == "MDOT SHA"
+    assert "arlington" not in out  # not read this run
+
+
+def test_arlington_comfort_reads_as_levels_one_to_four():
+    """The owner, 2026-11-05: "For arlington go for comfort rating, assuming that LTS1 is
+    "most comfortable" to LTS4 being "Not Recommended"". Unrated streets are not compared."""
+    cmp = open_data.Comparison()
+    cmp.add_arlington("Most Comfortable", seg(stress_tier=1, stress_half=True), 1609.344)
+    cmp.add_arlington("Not Recommended", seg(stress_tier=4), 1609.344)
+    cmp.add_arlington("Comfortable", seg(stress_tier=4), 1609.344)
+    cmp.add_arlington("Background", seg(stress_tier=2), 1e6)
+    cmp.add_arlington("Trail", seg(stress_tier=1), 1e6)
+    out = cmp.summary()["arlington"]
+    assert out["name"] == "Arlington County (Bike Comfort Index)"
+    assert out["miles"] == 3.0
+    assert out["buckets"]["ours_higher"]["miles"] == 1.0
+    assert out["buckets"]["same"]["miles"] == 1.0
+    assert out["buckets"]["ours_much_higher"]["miles"] == 1.0
 
 
 # --- Files ---------------------------------------------------------------------------------
@@ -336,7 +357,11 @@ def test_the_export_end_to_end(segment_schemas, tmp_path: Path):
     racks.write_text(json.dumps({"points": [{"id": "dc1", "x": -77.0, "y": 38.9, "r": 3}]}))
     out = tmp_path / "out"
 
-    result = open_data_export.export(out, "2026-11-05", racks)
+    # One Arlington comfort line along way 1 (LTS 3 on the map): "Comfortable" reads as 2.
+    line = {"type": "LineString", "coordinates": [[-77, 38.9], [-76.99, 38.901]]}
+    arlington = [("Comfortable", json.dumps(line))]
+
+    result = open_data_export.export(out, "2026-11-05", racks, arlington=arlington)
 
     assert result.counts == {
         "roads": 3,
@@ -368,7 +393,9 @@ def test_the_export_end_to_end(segment_schemas, tmp_path: Path):
     with zipfile.ZipFile(out / "routemaker-data-2026-11-05-csv.zip") as archive:
         assert "routemaker-data-2026-11-05/README.md" in archive.namelist()
     compared = json.loads((folder / "agency-comparison.json").read_text())
-    assert set(compared["agencies"]) == {"moco", "ddot", "mdot-sha"}
+    assert set(compared["agencies"]) == {"moco", "ddot", "mdot-sha", "arlington"}
+    arl = compared["agencies"]["arlington"]
+    assert arl["buckets"]["ours_higher"]["percent"] == 100.0  # way 1 only, not 2 or 3
     assert "How our ratings compare" in (folder / "README.md").read_text()
     sums = (out / "routemaker-data-2026-11-05-SHA256SUMS").read_text().splitlines()
     assert len(sums) == 3
@@ -379,5 +406,8 @@ def test_the_export_reads_only_the_map():
     privacy rule: nothing identifying is published)."""
     source = (Path(__file__).parents[1] / "src/core/open_data_export.py").read_text()
     tables = set(re.findall(r"FROM\s+\{?([\w.]+)\}?", source))
-    assert tables <= {"schema", "schema}.segment", "information_schema.columns"}, tables
+    # arlington_comfort is the temp table of Arlington's lines; nearby, a CTE over segment.
+    allowed = {"schema", "schema}.segment", "information_schema.columns", "arlington_comfort",
+               "nearby"}  # fmt: skip
+    assert tables <= allowed, tables
     assert not re.search(r"\b(ride|rider|user|account|presence|access_log)s?\b\.", source)

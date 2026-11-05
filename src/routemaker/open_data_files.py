@@ -396,9 +396,13 @@ def readme(
     if comparison:
         w("## How our ratings compare with each agency's\n\n")
         w(
-            "Over the roads both rate: the agency's published level against RouteMaker's own "
-            "(a reviewed row where there is one, else our formula). Miles, and the share of "
-            "the miles both rate. Also in `agency-comparison.json`.\n\n"
+            "Over the roads both rate: the agency's published level against the map's level, "
+            "which is RouteMaker's reviewed level (set on the best evidence without looking at "
+            "the agency's, then compared; where they differ the road is checked harder). "
+            "Arlington rates comfort, not stress: its Most Comfortable, Comfortable, Less "
+            "Comfortable and Not Recommended are read as 1 to 4, and its unrated streets and "
+            "trails are left out. Miles, and the share of the miles both rate. Also in "
+            "`agency-comparison.json`.\n\n"
         )
         for summary in comparison.values():
             w(f"### {summary['name']} ({summary['miles']:,} mi both rate)\n\n")

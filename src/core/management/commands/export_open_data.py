@@ -1,8 +1,10 @@
 """Write the public data download from the live map (`core.open_data_export`).
 
-Read-only: it reads the live segment table and the bike-parking file and writes files under
-`--out`, nothing else. Run after a map swap, then upload the zips to a GitHub data release
-once the owner has looked at them. See docs/OPERATIONS.md, "The open data download".
+Read-only: it reads the live segment table and the bike-parking file, and Arlington's Bike
+Comfort Index from the county's service for the comparison (miles only; `--no-arlington`
+skips it), and writes files under `--out`, nothing else. Run after a map swap, then upload
+the zips to a GitHub data release once the owner has looked at them. See docs/OPERATIONS.md,
+"The open data download".
 """
 
 from __future__ import annotations
@@ -34,10 +36,24 @@ class Command(BaseCommand):
             help="The bike-parking file (frontend/src/amenity-data/bike-parking.json).",
         )
         parser.add_argument(
+            "--no-arlington",
+            action="store_true",
+            help="Skip reading Arlington's Bike Comfort Index for the comparison.",
+        )
+        parser.add_argument(
             "--date", default=None, help="The date the files are named for (default today, UTC)."
         )
 
-    def handle(self, *args, out: Path, racks: Path, date: str | None, **options) -> None:
+    def handle(
+        self, *args, out: Path, racks: Path, date: str | None, no_arlington: bool, **options
+    ) -> None:
         started = time.monotonic()
-        result = open_data_export.export(out, date or built_stamp(), racks)
+        arlington = None
+        if not no_arlington:
+            try:
+                arlington = open_data_export.fetch_arlington()
+                self.stdout.write(f"Arlington comfort lines: {len(arlington):,}")
+            except OSError as error:  # the county's service is down: the rest still exports
+                self.stderr.write(f"Arlington's comfort index not read ({error}); left out")
+        result = open_data_export.export(out, date or built_stamp(), racks, arlington=arlington)
         self.stdout.write(f"open data: {result.summary()}, in {time.monotonic() - started:.0f} s")

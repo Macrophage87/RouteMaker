@@ -24,6 +24,8 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import urllib.parse
+import urllib.request
 import zipfile
 from collections.abc import Iterator
 from dataclasses import dataclass, field
@@ -170,6 +172,93 @@ def trail_rows(schema: str | None = None) -> Iterator[tuple[dict, bytes]]:
             yield open_data.trail_row(row), bytes(wkb)
 
 
+# A segment counts as on an Arlington comfort line where at least this share of it lies
+# within this many metres of the line (cross streets touch only a few metres of it).
+ARLINGTON_BUFFER_M = 12
+ARLINGTON_SHARE = 0.6
+
+
+def fetch_arlington(url: str = open_data.ARLINGTON_BCI_URL) -> list[tuple[str, str]]:
+    """Arlington's comfort lines as (map code, GeoJSON geometry), read from the county's
+    service for the comparison only; nothing of it is written to the download."""
+    out: list[tuple[str, str]] = []
+    offset = 0
+    while True:
+        query = urllib.parse.urlencode(
+            {
+                "where": "MapCode IN ({})".format(
+                    ", ".join(f"'{code}'" for code in open_data.ARLINGTON_COMFORT)
+                ),
+                "outFields": "MapCode",
+                "outSR": 4326,
+                "f": "geojson",
+                "resultOffset": offset,
+                "resultRecordCount": 2000,
+            }
+        )
+        request = urllib.request.Request(
+            f"{url}/query?{query}", headers={"User-Agent": "RouteMaker open data export"}
+        )
+        with urllib.request.urlopen(request, timeout=60) as response:  # noqa: S310 (fixed https URL)
+            page = json.load(response)
+        features = page.get("features") or []
+        for feature in features:
+            code = (feature.get("properties") or {}).get("MapCode")
+            if code in open_data.ARLINGTON_COMFORT and feature.get("geometry"):
+                out.append((code, json.dumps(feature["geometry"])))
+        if not features or not (
+            page.get("exceededTransferLimit")
+            or page.get("properties", {}).get("exceededTransferLimit")
+        ):
+            return out
+        offset += len(features)
+
+
+def arlington_comparison(
+    lines: list[tuple[str, str]], comparison: open_data.Comparison, schema: str | None = None
+) -> int:
+    """Add each live segment that runs along one of Arlington's comfort lines to the
+    comparison, against the line it runs along most. Returns the segments matched."""
+    schema = schema or _schema()
+    if not lines:
+        return 0
+    matched = 0
+    with transaction.atomic(), connection.cursor() as cursor:
+        cursor.execute("CREATE TEMP TABLE arlington_comfort (code text, g geometry) ON COMMIT DROP")
+        cursor.executemany(
+            "INSERT INTO arlington_comfort VALUES "
+            "(%s, ST_Transform(ST_SetSRID(ST_GeomFromGeoJSON(%s), 4326), 26918))",
+            lines,
+        )
+        cursor.execute("CREATE INDEX ON arlington_comfort USING gist (g)")
+        cursor.execute("ANALYZE arlington_comfort")
+        cursor.execute(
+            f"""WITH area AS (
+                    SELECT ST_Transform(ST_SetSRID(ST_Extent(g), 26918), 4326) AS box
+                    FROM arlington_comfort),
+                nearby AS (
+                    SELECT seg.stress_tier, seg.stress_half, seg.map_class,
+                           ST_Length(seg.geometry::geography) AS length_m,
+                           ST_Transform(seg.geometry, 26918) AS g
+                    FROM {schema}.segment seg, area
+                    WHERE seg.geometry && area.box)
+                SELECT s.stress_tier, s.stress_half, s.map_class, s.length_m, best.code
+                FROM nearby s CROSS JOIN LATERAL (
+                    SELECT a.code,
+                           ST_Length(ST_Intersection(s.g, ST_Buffer(a.g, %s))) AS along
+                    FROM arlington_comfort a
+                    WHERE ST_DWithin(s.g, a.g, %s)
+                    ORDER BY along DESC LIMIT 1) best
+                WHERE best.along >= %s * ST_Length(s.g)""",
+            [ARLINGTON_BUFFER_M, ARLINGTON_BUFFER_M, ARLINGTON_SHARE],
+        )
+        for tier, half, map_class, length_m, code in cursor.fetchall():
+            row = {"stress_tier": tier, "stress_half": half, "map_class": map_class}
+            comparison.add_arlington(code, row, length_m or 0.0)
+            matched += 1
+    return matched
+
+
 def rack_points(path: Path) -> dict[str, list[tuple[dict, bytes]]]:
     data = json.loads(path.read_text(encoding="utf-8"))
     return {
@@ -192,8 +281,15 @@ class Result:
         return f"{self.folder}: {counts}; {index}; {len(self.zips)} zips"
 
 
-def export(out_dir: Path, built: str, racks: Path | None, schema: str | None = None) -> Result:
-    """Write the download for `built` (a date) under `out_dir`."""
+def export(
+    out_dir: Path,
+    built: str,
+    racks: Path | None,
+    schema: str | None = None,
+    arlington: list[tuple[str, str]] | None = None,
+) -> Result:
+    """Write the download for `built` (a date) under `out_dir`. `arlington` is Arlington's
+    comfort lines (`fetch_arlington`), for the comparison only; None leaves it out."""
     folder = out_dir / f"routemaker-data-{built}"
     (folder / "csv").mkdir(parents=True, exist_ok=True)
     (folder / "geojson").mkdir(exist_ok=True)
@@ -235,6 +331,8 @@ def export(out_dir: Path, built: str, racks: Path | None, schema: str | None = N
     gpkg.close()
     result.indexed = files.add_spatial_index(gpkg.path, [n for n, *_ in layers])
 
+    if arlington:
+        arlington_comparison(arlington, comparison, schema)
     result.comparison = comparison.summary()
     (folder / "agency-comparison.json").write_text(
         json.dumps({"built": built, "agencies": result.comparison}, indent=1) + "\n",

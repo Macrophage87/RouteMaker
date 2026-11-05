@@ -53,12 +53,17 @@ RATED_BY_WORDS = {
     "service road": "formula, service-road step",
     agency_lts.PAINTED_LANE_USED: "formula, painted-lane rule",
 }
-# Maryland's layer is consulted for agreement, never taken as the method (the owner,
-# 2026-11-05: "if our methodology agrees with MD SHA, we state our methodology and that it's
-# in agreement"). Our formula's level is given beside the level (`formula_lts`).
-MD_AGREES = "formula, in agreement with MDOT SHA"
-MD_DIFFERS = "formula; MDOT SHA differs"
-MD_CHECKED = "RouteMaker, checked against MDOT SHA"
+# The owner, 2026-11-05: "Our map levels are described based on the best available evidence
+# blinded to agency ratings and then compared to the local agency ratings. When they differ
+# they are scruitinized more, when they match, then it's futher supported.", and "I had the
+# whole map reviewed" (the region review of 2026-11-01, which wrote a row only where it
+# changed a level). So every level here is the map's, and `rated_by` says, agency by agency,
+# whether it agrees ("if our methodology agrees with MD SHA, we state our methodology and
+# that it's in agreement").
+AGREES = "agrees with {name}"
+# A level the review kept where it matched an agency's (no row written).
+REVIEWED = "reviewed"
+DIFFERS = "{name} differs"
 
 
 def level_of(tier: int | None, half: bool | None) -> float | None:
@@ -107,47 +112,54 @@ def formula_level(row: Mapping) -> float | None:
     return level_of(row.get("stress_tier"), row.get("stress_half"))
 
 
-def maryland_used(row: Mapping) -> bool:
-    """Whether the map's level on the way is MDOT SHA's (its rating chosen, or a row of its
-    loaded as an override), with no owner's or community row over it."""
+def _source(row: Mapping) -> str | None:
+    """Who set the map's level: an override row's source, else `stress_ratings.used`."""
     ratings = row.get("stress_ratings") or {}
     used = ratings.get("used") if isinstance(ratings, Mapping) else None
     adjustment = row.get("stress_adjustment_id")
-    source = agency_lts.adjustment_source(adjustment) if adjustment else used
-    return source == MARYLAND
+    return agency_lts.adjustment_source(adjustment) if adjustment else used
+
+
+def agency_used(row: Mapping) -> bool:
+    """Whether the map's level on the way is an agency's level, kept by the review (the
+    owner's region review of 2026-11-01 wrote a row only where it changed a level)."""
+    return _source(row) in agency_lts.AGENCIES
 
 
 def download_level(row: Mapping) -> float | None:
-    """The level the download gives the way: the map's, except where the map's is MDOT
-    SHA's, where it is ours, the formula's with the owner's rules (the owner, 2026-11-05:
-    "we have used our ratings and only consulted the state numbers for agreement")."""
-    if maryland_used(row):
-        formula = formula_level(row)
-        if formula is not None:
-            return formula
+    """The level the download gives the way: the map's, which is the reviewed level (the
+    owner, 2026-11-05: "I had the whole map reviewed")."""
     return level_of(row.get("stress_tier"), row.get("stress_half"))
 
 
+def agency_agreement(row: Mapping, level: float | None) -> list[str]:
+    """For each agency that rates the way (a ban aside), whether its published level, on our
+    scale, matches ours."""
+    ratings = row.get("stress_ratings")
+    if level is None or not isinstance(ratings, Mapping):
+        return []
+    words = []
+    for held in ratings.get("agencies", ()):
+        agency, published = held.get("agency"), held.get("level")
+        if agency not in agency_lts.AGENCIES or published is None:
+            continue
+        if agency_lts.PROHIBITING_LEVELS.get(agency) == float(published):
+            continue
+        same = agency_lts.map_level(agency, float(published)) == level
+        words.append((AGREES if same else DIFFERS).format(name=agency_lts.source_name(agency)))
+    return words
+
+
 def rated_by(row: Mapping) -> str:
-    """Who set the download's level, in words: an owner's or the community's reviewed row,
-    a county's or the District's rating, the formula and its owner rules, and, where MDOT
-    SHA rates the way too, whether our formula agrees with it."""
-    ratings = row.get("stress_ratings") or {}
-    used = ratings.get("used") if isinstance(ratings, Mapping) else None
-    adjustment = row.get("stress_adjustment_id")
-    source = agency_lts.adjustment_source(adjustment) if adjustment else used
-    if source == MARYLAND:
-        formula = formula_level(row)
-        if formula is None:
-            return MD_CHECKED
-        if formula == level_of(row.get("stress_tier"), row.get("stress_half")):
-            return MD_AGREES
-        return MD_DIFFERS
-    if source in RATED_BY_WORDS:
-        return RATED_BY_WORDS[source]
+    """How the download's level was set, in words, and which agencies agree: "owner
+    (reviewed); agrees with DDOT", "formula; MDOT SHA differs", "formula, rural floor"."""
+    source = _source(row)
     if source in agency_lts.AGENCIES:
-        return agency_lts.source_name(source)
-    return RATED_BY_WORDS[agency_lts.FORMULA_USED]
+        base = REVIEWED
+    else:
+        base = RATED_BY_WORDS.get(source or "", RATED_BY_WORDS[agency_lts.FORMULA_USED])
+    agreement = agency_agreement(row, download_level(row))
+    return "; ".join([base, *agreement])
 
 
 def agency_levels(row: Mapping) -> dict[str, float | None]:
@@ -221,9 +233,9 @@ def road_row(row: Mapping, access: Mapping[str, tuple[bool, str]]) -> dict:
         "rated_by": rated_by(row),
         "formula_lts": formula_level(row),
         "why": public_note(row.get("stress_adjustment_note"), row.get("stress_adjustment_display")),
-        "rule": (row.get("stress_ratings") or {}).get("formula_rule")
-        if maryland_used(row)
-        else row.get("stress_rule"),
+        # Where the level is an agency's, kept by the review, the rule names the agency's
+        # record (its level and counts), which goes out only as a cited Why note.
+        "rule": None if agency_used(row) else row.get("stress_rule"),
         "facility": row.get("facility"),
         "trail": row.get("is_trail_class"),
         "unpaved": row.get("is_unpaved"),
@@ -388,13 +400,13 @@ FIELD_NOTES = {
     "ordinal": "The segment's place along its way, from 0 (ways are cut at junctions).",
     "lts": "Level of traffic stress: 1 (calmest) to 4.5 in half steps, 5 = Avoid.",
     "lts_text": "The level in words: 'LTS 2.5' or 'Avoid'.",
-    "rated_by": "Who set the level: formula (and its owner rules), owner (reviewed), "
-    "community (reviewed), Montgomery County Planning, DDOT, or, where MDOT SHA's level was "
-    "consulted, our formula and whether it agrees.",
+    "rated_by": "How the level was set (formula and its rules; owner or community, a "
+    "reviewed rating row; reviewed, a level the review kept), then whether each agency that "
+    "rates the road agrees or differs.",
     "why": "The reviewed note the map shows for the road, where there is one; agency figures "
     "in it are cited.",
-    "rule": "The rule that set the level, in words (the formula's, where MDOT SHA also rates "
-    "the way).",
+    "rule": "The formula's rule for the level, in words (blank where the review kept a level "
+    "an agency also gives).",
     "facility": "Bike facility: path, protected, lane or none.",
     "trail": "True for a path or trail (no motor traffic).",
     "unpaved": "True where unpaved, false where paved, blank where not mapped.",
@@ -441,6 +453,10 @@ FIELD_NOTES = {
 }
 
 # Sources we have no licence to pass on: linked, not included (the owner, 2026-11-05).
+ARLINGTON_BCI_URL = (
+    "https://services1.arcgis.com/JrtUzVcH8S2wnzVH/arcgis/rest/services/"
+    "Bike_Comfort_Index/FeatureServer/0"
+)
 LINKED_NOT_INCLUDED: tuple[tuple[str, str, str], ...] = (
     (
         "MDOT SHA Annual Average Daily Traffic (Maryland traffic counts)",
@@ -459,8 +475,9 @@ LINKED_NOT_INCLUDED: tuple[tuple[str, str, str], ...] = (
     ),
     (
         "Arlington County Bike Comfort Index",
-        "https://services1.arcgis.com/JrtUzVcH8S2wnzVH/arcgis/rest/services/Bike_Comfort_Index/FeatureServer/0",
-        "Not included as data; our Arlington ratings are, and their Why notes cite it.",
+        ARLINGTON_BCI_URL,
+        "Not included as data; our Arlington ratings are, their Why notes cite it, and the "
+        "comparison counts miles only.",
     ),
     (
         "Capital Bikeshare system data",
@@ -502,21 +519,18 @@ COMPARE_BUCKETS = (
     ("ours_much_higher", "RouteMaker 2 or more levels more stressful"),
 )
 COMPARED_AGENCIES = ("moco", "ddot", MARYLAND)
-
-
-def our_own_level(row: Mapping) -> float | None:
-    """RouteMaker's own level for a way: an owner's or the community's reviewed row, else the
-    formula's (`formula_level`)."""
-    adjustment = row.get("stress_adjustment_id")
-    if adjustment and agency_lts.adjustment_source(adjustment) in (
-        agency_lts.OWNER,
-        agency_lts.COMMUNITY,
-    ):
-        return level_of(row.get("stress_tier"), row.get("stress_half"))
-    ratings = row.get("stress_ratings")
-    if isinstance(ratings, Mapping) and ratings.get("formula") is not None:
-        return level_of(ratings["formula"], ratings.get("formula_half"))
-    return None
+ARLINGTON = "arlington"
+ARLINGTON_NAME = "Arlington County (Bike Comfort Index)"
+# Arlington rates comfort, not stress. The owner, 2026-11-05: "For arlington go for comfort
+# rating, assuming that LTS1 is "most comfortable" to LTS4 being "Not Recommended"". Its
+# other map codes (Background, the unrated local streets; Trail; Not Applicable) are not
+# compared.
+ARLINGTON_COMFORT = {
+    "Most Comfortable": 1.0,
+    "Comfortable": 2.0,
+    "Less Comfortable": 3.0,
+    "Not Recommended": 4.0,
+}
 
 
 def compare_bucket(agency_level: float, ours: float) -> str:
@@ -538,13 +552,13 @@ class Comparison:
     def __init__(self) -> None:
         self.metres: dict[str, dict[str, float]] = {
             agency: dict.fromkeys((key for key, _ in COMPARE_BUCKETS), 0.0)
-            for agency in COMPARED_AGENCIES
+            for agency in (*COMPARED_AGENCIES, ARLINGTON)
         }
 
     def add(self, row: Mapping, length_m: float) -> None:
         if row.get("map_class") not in (None, "road", "alley"):
             return
-        ours = our_own_level(row)
+        ours = download_level(row)
         ratings = row.get("stress_ratings")
         if ours is None or not isinstance(ratings, Mapping):
             return
@@ -557,12 +571,22 @@ class Comparison:
             mapped = agency_lts.map_level(agency, float(level))
             self.metres[agency][compare_bucket(mapped, ours)] += length_m
 
+    def add_arlington(self, comfort: str, row: Mapping, length_m: float) -> None:
+        """A segment matched to an Arlington comfort line (`ARLINGTON_COMFORT`)."""
+        level = ARLINGTON_COMFORT.get(comfort)
+        ours = download_level(row)
+        if level is None or ours is None or row.get("map_class") not in (None, "road", "alley"):
+            return
+        self.metres[ARLINGTON][compare_bucket(level, ours)] += length_m
+
     def summary(self) -> dict:
         out = {}
         for agency, buckets in self.metres.items():
             total = sum(buckets.values())
+            if agency == ARLINGTON and not total:
+                continue  # not fetched this run
             out[agency] = {
-                "name": agency_lts.source_name(agency),
+                "name": ARLINGTON_NAME if agency == ARLINGTON else agency_lts.source_name(agency),
                 "miles": round(total / 1609.344, 1),
                 "buckets": {
                     key: {

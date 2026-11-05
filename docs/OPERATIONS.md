@@ -5353,9 +5353,16 @@ Nothing from rides, riders, accounts or logs is read (`core.open_data_export`).
    It reads the live table (about 1.4 million segments) and writes, for the day's date,
    `routemaker-data-<date>/` (the GeoPackage, `csv/`, `geojson/`, README.md, LICENSE.md), three
    zips (`-gpkg`, `-csv`, `-geojson`) and `-SHA256SUMS`. It writes nothing to the database.
-2. Show the owner the README and the counts it printed. Uploading publishes the files: it waits
+   It also reads Arlington's Bike Comfort Index from the county's ArcGIS service, for
+   `agency-comparison.json` only (miles in each bucket, no Arlington data in the files; its
+   comfort categories read as 1 to 4, the owner, 2026-11-05: "assuming that LTS1 is "most
+   comfortable" to LTS4 being "Not Recommended""). If the service is down it says so and
+   leaves Arlington out; `--no-arlington` skips it.
+2. Copy `agency-comparison.json` to the docs generator's folder (the Methodology thread's
+   copy), so the stress page's comparison charts carry the new numbers.
+3. Show the owner the README and the counts it printed. Uploading publishes the files: it waits
    for the owner's go each time.
-3. With the go, make a release named and tagged `data-<date>` on
+4. With the go, make a release named and tagged `data-<date>` on
    <https://github.com/Macrophage87/RouteMaker/releases/new> (target `main`, "Set as the latest
    release" off, so an app release is never displaced), paste README.md's first two sections as
    its notes, and attach the three zips and the SHA256SUMS file. Each zip must stay under

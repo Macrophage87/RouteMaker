@@ -305,8 +305,9 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
   those counts out of its columns and links this layer instead, as it does MDOT's Bicycle
   LTS and Scenic Byways: its levels are RouteMaker's own (the owner, 2026-11-05: "For
   Maryland, we have used our ratings and only consulted the state numbers for agreement
-  ... We can cite all these agency data as fair use", "In our why's"), so a row names our
-  formula and whether MDOT SHA agrees, and a Why note may cite a figure.
+  ... We can cite all these agency data as fair use", "In our why's"; "I had the whole map
+  reviewed"), so a row carries the map's reviewed level, says how it was set and whether
+  MDOT SHA agrees, and a Why note may cite a figure.
 - Records: the download's README; docs/DEVELOPMENT.md, "Reference data".
 
 ### Maryland Bicycle Level of Traffic Stress (MDOT SHA, v0.8.1)
