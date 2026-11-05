@@ -120,10 +120,14 @@ def files(folder: Path) -> set[str]:
     return {p.name for p in folder.iterdir()} if folder.exists() else set()
 
 
-def test_the_pc_and_beta_names_come_from_the_environment_or_a_local_file_never_the_repo(env, tmp_path) -> None:
+def test_the_pc_and_beta_names_come_from_the_environment_or_a_local_file_never_the_repo(
+    env, tmp_path
+) -> None:
     put(env["remote"], name(6), size=5000)
     bare = {k: v for k, v in env["env"].items() if k not in ("RM_BETA_SSH", "RM_BACKUP_DIR")}
-    missing = subprocess.run(["bash", str(SCRIPT)], env=bare, capture_output=True, text=True, timeout=60)
+    missing = subprocess.run(
+        ["bash", str(SCRIPT)], env=bare, capture_output=True, text=True, timeout=60
+    )
     assert missing.returncode == 1 and "set RM_BETA_SSH and RM_BACKUP_DIR" in missing.stderr
     local = tmp_path / ".config" / "routemaker" / "pull-beta-backups.env"
     local.parent.mkdir(parents=True)
