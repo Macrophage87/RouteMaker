@@ -7819,6 +7819,9 @@ def shared_route_add(request):
     )
     from . import share_preview
 
+    if shared_routes.gone(body["id"]):
+        # A link kept before and gone: its id is never another route's.
+        return _stress_error(409, "That link's route is already kept.", code="taken")
     try:
         with transaction.atomic():
             row = SharedRoute(
