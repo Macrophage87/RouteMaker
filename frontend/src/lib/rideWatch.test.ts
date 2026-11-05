@@ -6,7 +6,9 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  FIX_TIME_BACK_MS,
   ON_BOARD_WATCH_OPTIONS,
+  fixTime,
   READING_OPTIONS,
   WATCH_OPTIONS,
   handOver,
@@ -208,11 +210,27 @@ test("Ride mode swaps its watch on boarding and at the walk or ride after, and n
   const ride = code(readFileSync(fileURLToPath(new URL("../RideMode.tsx", import.meta.url)), "utf8"));
   assert.match(ride, /stopWatch\.current = handOver\(stopWatch\.current, \(\) => watchRide\(/);
   assert.match(ride, /rideWatchOptions\(onBoard\)/);
-  assert.match(ride, /const onBoard = onTransitRef\.current;/);
+  assert.match(ride, /const onBoard = lowPowerRef\.current;/);
+  assert.match(ride, /const lowPower = lowPowerOnBoard\(onTransit, onward\?\.board\);\s*lowPowerRef\.current = lowPower;/);
   const guard = "if (ridesHidden() || pausedRef.current || !stopWatch.current) return;";
   assert.ok(ride.includes(guard), "no swap in the phone app, nor with the ride paused or ended");
   const swap = ride.slice(ride.indexOf(guard));
-  assert.match(swap.slice(0, 300), /watchOnBoard\.current === onTransit\) return;\s*startWatch\(\);\s*\}, \[onTransit, startWatch\]\)/);
+  assert.match(swap.slice(0, 300), /watchOnBoard\.current === lowPower\) return;\s*startWatch\(\);\s*\}, \[lowPower, startWatch\]\)/);
   // The old stop-then-start, which left a gap with no watch, is gone.
   assert.doesNotMatch(ride, /stopWatch\.current\?\.\(\);\s*gpsWeak\.current = \{ goodAt: Date\.now\(\), weak: false \};\s*stopWatch\.current = watchRide\(/);
+});
+
+test("a fix keeps the position's own time, so a cached reading is never taken as new", () => {
+  assert.equal(fixTime(90_000, 100_000), 90_000);
+  assert.equal(fixTime(undefined, 100_000), 100_000);
+  assert.equal(fixTime(Number.NaN, 100_000), 100_000);
+  // A time ahead of the clock, or too far back to be this reading (a clock in another epoch): the time now.
+  assert.equal(fixTime(100_001, 100_000), 100_000);
+  assert.equal(fixTime(200_000 - FIX_TIME_BACK_MS - 1, 200_000), 200_000);
+  const { api, send } = stubApi();
+  const fixes: RideFix[] = [];
+  watchRide({ isSecureContext: true, geolocation: api }, (f) => fixes.push(f), () => assert.fail(), () => 100_000);
+  send({ coords: { latitude: 38.9, longitude: -77, accuracy: 300 }, timestamp: 75_000 });
+  send({ coords: { latitude: 38.9, longitude: -77, accuracy: 300 } });
+  assert.deepEqual(fixes.map((f) => f.at), [75_000, 100_000]);
 });

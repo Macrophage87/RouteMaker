@@ -75,6 +75,15 @@ export interface OnBoardState {
   pending?: { at: number; boarded: boolean } | null;
 }
 
+/**
+ * Whether the ride's watch may be low power (lib/rideWatch.ts ON_BOARD_WATCH_OPTIONS): on a train or bus, until "Next
+ * stop" is said. From then the GPS has the last stop's run to warm up to high accuracy before the walk or ride after,
+ * whose first turns come soon after getting off (2026-11-05 review).
+ */
+export function lowPowerOnBoard(onTransit: boolean, board: Pick<OnBoardState, "saidNext" | "done"> | null | undefined): boolean {
+  return onTransit && !board?.saidNext && !board?.done;
+}
+
 /** A transit step as one to follow; null without at least two stops (an older API). `afterS`: the plan's seconds after it to the trip's end. */
 export function onBoardLeg(step: TransitStep, afterS: number | null = null): OnBoardLeg | null {
   const stops = step.stops ?? [];
@@ -153,10 +162,14 @@ export function onBoardStep(leg: OnBoardLeg, state: OnBoardState, now: number, f
   const next: OnBoardState = { ...state };
   const said: string[] = [];
   const last = leg.stops.length - 1;
-  const placed = fix ? byFix(leg, state, fix, now) : null;
+  // A fix counts at its own time (a low-power watch may give one cached up to its maximumAge): one older than the last
+  // used, or than STALE_MS, places nothing, so the timetable takes over when no fresh one comes.
+  const fixAt = fix ? Math.min(now, fix.at) : null;
+  const fresh = fix !== null && fixAt !== null && now - fixAt < STALE_MS && fixAt >= (state.fixAt ?? -Infinity);
+  const placed = fresh ? byFix(leg, state, fix, now) : null;
   let estimated = false;
   if (placed) {
-    next.fixAt = now;
+    next.fixAt = fixAt;
     const pending = state.pending ?? null;
     const agreed = placed.sure || (pending !== null && pending.boarded && placed.boarded);
     const at = placed.sure ? placed.at : pending && agreed ? Math.min(pending.at, placed.at) : Math.min(placed.at, last - 2);

@@ -267,7 +267,7 @@ import {
   walkLineTurns,
 } from "./lib/rideTrip.ts";
 import { onwardActive, onwardStart, onwardStep, onwardWhere, type OnwardState } from "./lib/onward.ts";
-import { onBoardPath, type OnBoardPath } from "./lib/onBoard.ts";
+import { lowPowerOnBoard, onBoardPath, type OnBoardPath } from "./lib/onBoard.ts";
 import { BOARDING_MS, TRIP_CHECK_MS } from "./lib/tripCheck.ts";
 import { walkModel, walkTurnLine } from "./lib/walkCues.ts";
 import { BoardingCard, OnBoardCard } from "./OnBoardCard.tsx";
@@ -1037,6 +1037,8 @@ export function RideMode({
   // metrorail"): there are no turn cues to pause, and the stops follow any rough fix or the timetable, so a weak or
   // lost GPS is neither said nor shown.
   const onTransitRef = useRef(false);
+  // On a train or bus until "Next stop" (lib/onBoard.ts lowPowerOnBoard): the watch's low-power stretch.
+  const lowPowerRef = useRef(false);
   // Weak GPS for long enough (cueSheetShown): the card shows the turns ahead as a list.
   const [cueSheetOn, setCueSheetOn] = useState(false);
   const cueSheetRef = useRef(false);
@@ -1820,7 +1822,7 @@ export function RideMode({
   // for where the rider is now: low power on a train or bus, high accuracy otherwise.
   const startWatch = useCallback(() => {
     gpsWeak.current = { goodAt: Date.now(), weak: false };
-    const onBoard = onTransitRef.current;
+    const onBoard = lowPowerRef.current;
     watchOnBoard.current = onBoard;
     stopWatch.current = handOver(stopWatch.current, () => watchRide(
       env,
@@ -2640,14 +2642,17 @@ export function RideMode({
     if (onTransit) setGps("");
     else gpsWeak.current = { goodAt: Date.now(), weak: false };
   }, [onTransit]);
-  // Boarding, the watch goes low power; off the train or bus, high accuracy again for the walk or ride after (the new
-  // watch starts before the old one stops). The phone app keeps its one watch: its native watcher takes no accuracy
-  // option, and Android 14+ refuses a new location service with the screen locked. A paused or ended ride has none.
+  // Boarding, the watch goes low power; at "Next stop", high accuracy again, so the GPS is warm for the walk or ride
+  // after (the new watch starts before the old one stops). The phone app keeps its one watch: its native watcher takes
+  // no accuracy option, and Android 14+ refuses a new location service with the screen locked. A paused or ended ride
+  // has none.
+  const lowPower = lowPowerOnBoard(onTransit, onward?.board);
+  lowPowerRef.current = lowPower;
   useEffect(() => {
     if (ridesHidden() || pausedRef.current || !stopWatch.current) return;
-    if (watchOnBoard.current === null || watchOnBoard.current === onTransit) return;
+    if (watchOnBoard.current === null || watchOnBoard.current === lowPower) return;
     startWatch();
-  }, [onTransit, startWatch]);
+  }, [lowPower, startWatch]);
   const onwardWalkLine = onwardPart?.kind === "walk" ? walkTurnLine(onwardPart.model, onward?.walk ?? null) : null;
   // The trip goes on past the line's end (Stephen, 2026-11-03: "the ride just ends when you reach the station. It
   // should start the transit phase"): the walk or the train after it, then the ride after the transit, which starts by

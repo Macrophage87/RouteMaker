@@ -6,7 +6,7 @@ import { readFileSync } from "node:fs";
 import type { TransitStep } from "./api.ts";
 import type { LonLat } from "./geo.ts";
 import type { RideFix } from "./navigate.ts";
-import { CARD_STOPS_AHEAD, STALE_MS, boardingGroups, moreStopsText, onBoardCardRows, onBoardWhere, lineColour, onBoardFeatures, onBoardPath, onBoardSecondsLeft, onBoardSecondsTo, laterDepartureText, lineBadge, liveForBoarding, liveNextText, nextDepartureText, onBoardLeg, onBoardRows, onBoardStart, onBoardStep, stopsLeftText, type OnBoardState } from "./onBoard.ts";
+import { CARD_STOPS_AHEAD, STALE_MS, boardingGroups, moreStopsText, onBoardCardRows, onBoardWhere, lineColour, onBoardFeatures, onBoardPath, onBoardSecondsLeft, onBoardSecondsTo, laterDepartureText, lineBadge, liveForBoarding, liveNextText, lowPowerOnBoard, nextDepartureText, onBoardLeg, onBoardRows, onBoardStart, onBoardStep, stopsLeftText, type OnBoardState } from "./onBoard.ts";
 import { onwardOf, onwardStart, onwardStep, onwardWhere } from "./onward.ts";
 import { arrivalClock } from "./arrival.ts";
 import { englishOf, setCatalogForTest, setLanguageForTest } from "./i18n.ts";
@@ -497,4 +497,36 @@ test("the on-board card has no unlabelled arrival clock beside Trip ends, says t
   assert.match(card, /document\.removeEventListener\("visibilitychange", readShown\);/);
   const css = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
   assert.match(css, /\.onboard-stops li \{[^}]*flex-wrap: nowrap;/);
+});
+
+test("a fix counts at its own time: a cached one repeated places nothing new, and the timetable still takes over", () => {
+  let s = onBoardStart(0);
+  // Boarded and placed at Fort Totten by a fix taken at 300 s.
+  s = onBoardStep(LEG, { ...s, boardedAt: 240_000 }, 300_000, fix(north(1200), 300, 300_000)).state;
+  assert.equal(s.at, 1);
+  assert.equal(s.fixAt, 300_000);
+  // The same reading given again later (a low-power watch's cache): it keeps its time, so it is not fresh...
+  s = onBoardStep(LEG, s, 300_000 + STALE_MS - 1000, fix(north(1200), 300, 300_000)).state;
+  assert.equal(s.fixAt, 300_000);
+  // ...and past STALE_MS the timetable moves the train on, though readings still come.
+  const later = 240_000 + 3 * 120_000 + 1000;
+  s = onBoardStep(LEG, s, later, fix(north(1200), 300, 300_000)).state;
+  assert.equal(s.at, 3, "by the timetable");
+  // A fix older than the last one used places nothing either.
+  const older = onBoardStep(LEG, { ...s, fixAt: 400_000 }, 410_000, fix(north(4800), 50, 390_000)).state;
+  assert.equal(older.at, 3);
+  assert.equal(older.fixAt, 400_000);
+});
+
+test("the watch is low power on a train or bus until 'Next stop', so the GPS is warm before getting off", () => {
+  assert.equal(lowPowerOnBoard(false, null), false);
+  assert.equal(lowPowerOnBoard(true, null), true, "arriving at the platform, before following starts");
+  const waiting = onBoardStart(0);
+  assert.equal(lowPowerOnBoard(true, waiting), true);
+  // At NoMa: "Next stop: Union Station" is said, and high accuracy comes back with it.
+  const near = onBoardStep(LEG, { ...waiting, boardedAt: 0, at: 3 }, 500_000, fix(north(4800), 50, 500_000));
+  assert.equal(near.state.saidNext, true);
+  assert.equal(lowPowerOnBoard(true, near.state), false);
+  assert.equal(lowPowerOnBoard(true, { saidNext: false, done: true }), false);
+  assert.equal(lowPowerOnBoard(false, waiting), false, "the walk after");
 });
