@@ -37,7 +37,7 @@ import {
 import { onSharedTick } from "./lib/sharedTick.ts";
 import { COVERAGE_BBOX, MAX_POINTS, addPoint, haversineM, insideCoverage, type LonLat } from "./lib/geo.ts";
 import { formatDistance, formatSeconds, unitsFirstDeep } from "./lib/format.ts";
-import { chooseUnits, units, unitsReloadOwed } from "./lib/units.ts";
+import { chooseUnits, switchUnitsInRide, units, unitsReloadOwed } from "./lib/units.ts";
 import { RETURN_PARAM as GARMIN_RETURN_PARAM, garminReturnFrom, readGarmin, withoutReturn } from "./lib/garminLink.ts";
 import { RETURN_PARAM as WAHOO_RETURN_PARAM, readWahoo, wahooReturnFrom } from "./lib/wahooLink.ts";
 import { endsOnFoot, layersTurnedOn, presetNamesRide, presetSaid, runs, twoPointsOnly, usesBikeshare, type PresetId } from "./lib/presets.ts";
@@ -305,7 +305,7 @@ import { REST_ANYWAY_MS, RIDE_REST_FINDING, fixedRide, restClosedSaid, restReque
 import { RIDE_TOO_LONG } from "./lib/navigate.ts";
 import { fetchMe, NO_ME, type Me } from "./lib/stressEditor.ts";
 import { reloadFavorites, useFavoriteRides } from "./lib/favoriteRides.ts";
-import { ACCOUNT_SETTINGS_USED, applyToDevice, deviceSettings, fetchSettings, onSignIn, planFromSetting, retryUntil, sameSettings, saveSettings, saveUnitsUnsynced, SAVE_SETTLE_MS, type SettingsDoc } from "./lib/accountSettings.ts";
+import { ACCOUNT_SETTINGS_USED, applyToDevice, deviceSettings, fetchSettings, planFromSetting, retryUntil, sameSettings, saveSettings, saveUnitsUnsynced, SAVE_SETTLE_MS, setUnitsPending, signInLate, unitsPending, type SettingsDoc } from "./lib/accountSettings.ts";
 import { HOME_KEPT, HOME_MOVED, answerHomeOffer, deviceHome, homeOffer, type HomeOffer } from "./lib/homeMove.ts";
 import { OPENED_SAID, SAVED_SAID, SAVE_FAILED, UNCHANGED_SAID, UPDATE_ROUTE, VERSION_SAID, defaultRouteName, differenceLine, differsTooMuch, gpxSave, afterDelete, afterRename, planSave, saveAsVersion, savedAnswer, versionOf, type OpenSaved, type SavedRoute } from "./lib/savedRoutes.ts";
 import { checkClosures, closedStretches, reroutedSaid, spliceDetours, type Closure, type CheckFor } from "./lib/closureCheck.ts";
@@ -318,13 +318,14 @@ import type { DeviceProfileId } from "./lib/deviceProfiles.ts";
 import { LEAD_PARAM, RIDE_PARAM, SHARED_GONE, SHARED_INPUTS_ONLY, SHARED_OPENED, SHARED_PATH, SHARED_REVOKED, SHARED_REVOKED_ERROR, SHARE_KEEP_DEFAULT, SHARE_RIDE_WAIT, BROADCAST_NO_LEAD, BROADCAST_RIDE_FAILED, BROADCAST_RIDE_NO_LEAD, BROADCAST_SHARE_FAILED, asRideLink, leadKeyFrom, gpxShareFile, keepFields, newSharedId, previewImageOk, readShared, rideLinkFrom, sharedBody, sharedIdFrom, storeShared, withSharedId, type ShareKeep } from "./lib/sharedRoutes.ts";
 import { ClosureDialog, type ClosureAsk } from "./ClosureDialog.tsx";
 import { StartOnComputerDialog } from "./StartOnComputerDialog.tsx";
+import { SameRideDialog } from "./SameRideDialog.tsx";
 import { BroadcastQrDialog } from "./BroadcastQrDialog.tsx";
 import { BroadcastJoinDialog, type JoinAsk } from "./BroadcastJoinDialog.tsx";
 import { joinActions, joinKey, joinLine, joinShown, joinTitle, keepJoinShown, showJoin, type JoinAction } from "./lib/broadcastJoin.ts";
 import { canSendToGarmin, handGpx } from "./lib/sendToGarmin.ts";
 import { ResumeRideDialog } from "./ResumeRideDialog.tsx";
 import type { OnwardState } from "./lib/onward.ts";
-import { forgetLeftRide, keepLeftRide, keepLeftRideLeads, leftRide, resumedBroadcast } from "./lib/rideResume.ts";
+import { forgetLeftRide, keepLeftRide, keepLeftRideLeads, leftRide, leftRidePast, resumedBroadcast } from "./lib/rideResume.ts";
 import { StopNameDialog, type StopNameAsk } from "./StopNameDialog.tsx";
 import { LoadRouteDialog } from "./LoadRouteDialog.tsx";
 import { LOAD_ROUTE, withGpxChoice, type GpxChoice } from "./lib/loadRoute.ts";
@@ -343,7 +344,7 @@ import { KNOWN_OPERATORS, docksStatus, mergeOperators, operatorsToAsk, readOpera
 import { SaveRoute } from "./SaveRoute.tsx";
 import { firstWordAndRest, planLanguageAttributes } from "./lib/i18n.ts";
 import { SAVE_ROUTE } from "./lib/savedRoutes.ts";
-import { BROADCAST_FOLLOWING, BROADCAST_NO_KEY, consentFor, followsWithoutKey, forgetAnsweredHere, isRideLink, isRideLinkType, presetSecret, leadConsent, leaderKey, newToken, opensIntoRide, rideOf, sharedAfterRide, type RideLinkType } from "./lib/rideGroup.ts";
+import { BROADCAST_FOLLOWING, BROADCAST_NO_KEY, consentFor, followsWithoutKey, asksSameRide, forgetAnsweredHere, isOwnSecret, isRideLink, isRideLinkType, markOwnSecret, markRideSent, newRide, planSecrets, presetSecret, rideLeadFor, ridePlanKey, rideSecretOf, leadConsent, leaderKey, newToken, opensIntoRide, rideOf, sharedAfterRide, type PlanSecrets, type RideLinkType } from "./lib/rideGroup.ts";
 import { newRideSecret, secretFrom, withSecret, withoutSecret } from "./lib/rideSeal.ts";
 
 // Before the map adds the stress source (MapView, after its first probe).
@@ -440,6 +441,8 @@ const ROAM_FOLLOW = roamLinkFrom(window.location.hash);
 // A Group Ride plan link's secret (lib/rideSeal.ts), read once here likewise: not a broadcast's.
 // From the plan as opened, so one kept over a sign-in keeps its secret too.
 const PLAN_SECRET = SHARED_RIDE || ROAM_FOLLOW ? null : secretFrom(OPENED_HASH);
+// Whether the page made that secret itself in this tab (before a reload, a sign-in or a visit to another page), not a link.
+const PLAN_SECRET_OWN = PLAN_SECRET === null || isOwnSecret(PLAN_SECRET);
 /** The opened link to pass on: its path, the query's own parameters (the line, ride and leader), and its fragment;
  * nothing a messaging app added on the way (its tracking parameters). */
 function passedOnLink(at: Pick<Location, "origin" | "pathname" | "search" | "hash">): string {
@@ -905,6 +908,8 @@ export function App() {
   // Whether the grey coverage mask is on the map, and whether the stress tiles
   // carry bike-facility data; each legend line is shown only when it is true.
   const [coverageShown, setCoverageShown] = useState(false);
+  // The map has loaded (onReady): what waits on the map, such as Reach's rings from a shared link, is drawn then.
+  const [mapReady, setMapReady] = useState(false);
   const [facilitiesShown, setFacilitiesShown] = useState<ReadonlySet<string>>(new Set());
   // The stress tiles carry the Mass Ride capacity (a table built before the column does not): the Mass Ride
   // map, legend and panel are then about riders per minute, and otherwise as they were (OWNER-DECISIONS 325, 387).
@@ -1478,8 +1483,14 @@ export function App() {
   // The page itself is opening a plan of the rider's own (a saved or kept route), told apart from a link pasted in.
   const ownHashOpen = useRef(false);
   const [groupSecret, setGroupSecret] = useState<string>(() => PLAN_SECRET ?? newRideSecret());
-  // Whether this page made the secret (not one from a link opened here): made again when a ride ends.
-  const groupSecretOwn = useRef(PLAN_SECRET === null);
+  // Whether this page made the secret (not one from a link opened here): made again when a ride ends. One the page made
+  // in this tab is still its own after a reload, a sign-in or a visit to another page (lib/rideGroup.ts isOwnSecret).
+  const groupSecretOwn = useRef(PLAN_SECRET_OWN);
+  // The page's own secret for each plan (lib/rideGroup.ts planSecrets): each plan is its own ride.
+  const ownSecrets = useRef<PlanSecrets | null>(null);
+  ownSecrets.current ??= planSecrets();
+  // The points the secret in force is for.
+  const secretPlan = useRef(points);
   const presetBefore = useRef(preset);
   useEffect(() => {
     const was = presetBefore.current;
@@ -1490,6 +1501,23 @@ export function App() {
       return next.secret;
     });
   }, [preset]);
+  // Another plan of the page's own is another ride (2026-11-05): its own secret, the one it had if it was planned
+  // before, else a new one. Clear starts afresh, even from a link's plan. A ride keeps its secret while it goes.
+  useEffect(() => {
+    if (secretPlan.current === points) return;
+    secretPlan.current = points;
+    if (riding) return;
+    const empty = points.length === 0;
+    if (empty) groupSecretOwn.current = true;
+    if (groupSecretOwn.current) setGroupSecret(ownSecrets.current!.secretFor(ridePlanKey(preset, points), empty));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- a change of points only; a change of type is above.
+  }, [points]);
+  // The page's own secret is kept for its plan, and marked as its own in this tab.
+  useEffect(() => {
+    if (!groupSecretOwn.current) return;
+    ownSecrets.current!.keep(ridePlanKey(preset, secretPlan.current), groupSecret);
+    markOwnSecret(groupSecret);
+  }, [groupSecret, preset]);
   // Keep the link in step with the plan, without adding history entries. Exactly encodePlan's
   // fragment, which never holds the weight (313); Copy link builds the same one (linkToCopy).
   useEffect(() => {
@@ -1521,6 +1549,7 @@ export function App() {
       const linked = own ? null : secretFrom(window.location.hash);
       groupSecretOwn.current = linked === null;
       setGroupSecret(linked ?? newRideSecret());
+      ownSecrets.current!.forget();
       setConfirmedKm(null);
       // Another plan: undo does not reach back into the one before it.
       history.current.clear();
@@ -1821,17 +1850,29 @@ export function App() {
   const favoriteRides = useFavoriteRides();
   const [settingsSynced, setSettingsSynced] = useState(false);
   const [homeAsk, setHomeAsk] = useState<HomeOffer | null>(null);
+  // This device's settings when the page first asked for the account's: a read that comes later (retryUntil) keeps
+  // what was changed here since (lib/accountSettings.ts signInLate).
+  const settingsAtLoad = useRef<SettingsDoc | null>(null);
+  if (settingsAtLoad.current === null) settingsAtLoad.current = deviceSettings({ preset, dials }, undefined, weightStore.current?.setting());
   // True once the account's settings were read (whether this page then took them or not); false to try again
   // (retryUntil: a few times, then on the next focus or back online).
   const syncSettingsOnSignIn = async (origin: string, live: () => boolean): Promise<boolean> => {
+    const deviceNow = () => deviceSettings({ preset: rideRef.current.preset, dials: rideRef.current.dials }, undefined, weightStore.current?.setting());
     const account = await fetchSettings(origin);
     if (!live()) return true;
     if (account === undefined) return false;
-    const device = deviceSettings({ preset: rideRef.current.preset, dials: rideRef.current.dials }, undefined, weightStore.current?.setting());
-    const step = onSignIn(account, device);
+    const device = deviceNow();
+    const step = signInLate(account, device, settingsAtLoad.current ?? device, unitsPending());
+    // A pending Units choice is done with once the account holds it. A save that fails keeps it pending, and leaves
+    // the account's copy as the last saved, so the next change here sends the whole of it again (the auto-save).
+    const keep = (saved: boolean) => {
+      if (saved) setUnitsPending(false);
+      else lastSettings.current = account;
+    };
+    if (!step.save) setUnitsPending(false);
     if (step.kind === "push-device") {
       lastSettings.current = device;
-      void saveSettings(origin, device);
+      void saveSettings(origin, device).then(keep);
     } else {
       applyToDevice(step.doc);
       reloadFavorites();
@@ -1845,9 +1886,18 @@ export function App() {
         setWeight(step.doc.weight);
       }
       if (step.doc.speed !== undefined) setRidingSpeed(step.doc.speed);
-      // The account's units, where this page was opened in the other (a reload, once: the device now keeps them).
-      if (step.doc.units && step.doc.units !== units()) void chooseUnits(step.doc.units);
+      // The account's units, where this page was opened in the other (a reload, once: the device now keeps them). In
+      // a ride or Roam, no reload, which would stop the cues: they switch at once, the reload owed for the ride's end.
+      if (step.doc.units && step.doc.units !== units()) {
+        if (ridingNow.current || roamingNow.current) void switchUnitsInRide(step.doc.units);
+        else void chooseUnits(step.doc.units);
+      }
       lastSettings.current = step.doc;
+      // What was changed on this device since load goes to the account (auto-save waits for this read).
+      if (step.save) {
+        lastSettings.current = step.save;
+        void saveSettings(origin, step.save).then(keep);
+      }
       setWaterPrefsState(readWaterPrefs());
       setClimbsOnState(readClimbsOn());
       setClimbsFromState(readClimbsFrom());
@@ -2963,8 +3013,8 @@ export function App() {
   const goHome = () => {
     const home = myGoRef.current.home;
     if (!home) return;
-    namer.remember(home.point, home.label || "Home", home.label || "Home");
-    void goTo(home.point, home.label || "Home");
+    namer.remember(home.point, home.label || t("Home"), home.label || t("Home"));
+    void goTo(home.point, home.label || t("Home"));
   };
   // Home at a spot on the map (the road panel's Set as Home, or Pick on the map then a tap): named by a name the page
   // has, else the reverse look-up (through the page's one geocoding gate), else its coordinates.
@@ -3518,17 +3568,70 @@ export function App() {
     if (modeRef.current !== "go") changeMode("go");
     goToPlace(place);
   }, setNotice);
+  // "Same ride or a new one?" (SameRideDialog; 2026-11-05): a Group or Mass Ride plan of the page's own whose link went
+  // out more than 12 hours ago (lib/rideGroup.ts asksSameRide) is asked about before its link goes out again or its ride
+  // starts. Same ride keeps the key; New ride makes a new one, for every plan that had the old; going back does nothing.
+  // A ride link (Share ride, Broadcast; `ride`) is asked about by its leader's secret, the one it would go out with
+  // (rideLeadNow): New ride drops every leader the ride links went out with too, so the next goes with a new one.
+  // Start ride (`start`) is asked about by the secret the ride would go under: the led line's this page shared, else the plan's.
+  const [sameRideAsk, setSameRideAsk] = useState<{ then: (secret: string) => void; secret: string; cancel?: () => void } | null>(null);
+  const sameRideFirst = (go: (secret: string) => void, ride = false, cancel?: () => void, start = false) => {
+    const now = Date.now();
+    const lead = ride && followedInRide() === null ? rideLeadNow() : null;
+    const led = start && !riding && sharedOpenNow.current?.own && sharedOpenNow.current.answer === shown ? rideSecretOf(sharedOpenNow.current, groupSecret) : null;
+    const asked = ride
+      ? lead && asksSameRide(lead.secret, now)
+        ? lead.secret
+        : null
+      : led && led !== groupSecret && asksSameRide(led, now)
+        ? led
+        : !riding && isRideLink(preset, points) && groupSecretOwn.current && asksSameRide(groupSecret, now)
+          ? groupSecret
+          : null;
+    if (asked) setSameRideAsk({ then: go, secret: asked, cancel });
+    else go(groupSecret);
+  };
+  // The same, for a press that answers what to say (the ride screen's Broadcast): "" when going back.
+  const sameRideThen = (go: () => Promise<string>): Promise<string> =>
+    new Promise((resolve) => sameRideFirst(() => void go().then(resolve), true, () => resolve("")));
+  const answerSameRide = (same: boolean | null) => {
+    const ask = sameRideAsk;
+    setSameRideAsk(null);
+    if (!ask) return;
+    if (same === null) return ask.cancel?.();
+    if (same) {
+      markRideSent(ask.secret, Date.now(), true);
+      return ask.then(groupSecret);
+    }
+    rideLinkSent.current = null;
+    // Nor the line as led by this page (a pasted or opened link's stays): a ride started now goes under the new key.
+    const after = sharedAfterRide(sharedOpenNow.current);
+    if (after !== sharedOpenNow.current) {
+      sharedOpenNow.current = after;
+      setSharedOpen(after);
+    }
+    const fresh = newRide(leads.current, ownSecrets.current!, groupSecret);
+    prepareLead();
+    setGroupSecret(fresh);
+    ask.then(fresh);
+  };
+  // When the plan's own secret first went out in a link: asked about once it is 12 hours old.
+  const planLinkSent = (secret: string) => {
+    if (isRideLinkType(preset) && groupSecretOwn.current) markRideSent(secret, Date.now());
+  };
+  const copyLink = () => sameRideFirst((secret) => void copyLinkWith(secret));
   // "Copy link": this page with the plan's fragment from encodePlan, which never holds the weight
   // (OWNER-DECISIONS 313). Cleared first and set again a moment later, so a second press is said again.
   // v0.9.0, "share the exact route": it names the exact line shown too, as Share's does (sharedLinkNow), so a link copied
   // into a group chat opens the identical route; a line that could not be kept is said after the copy.
-  const copyLink = async () => {
+  const copyLinkWith = async (secret: string) => {
     const press = ++linkPresses.current;
     setLinkSaid("");
     setLinkSpoken("");
     const note = linkNote;
-    const { link, kept } = sharedLinkNow();
+    const { link, kept } = sharedLinkNow(secret);
     const done = await copyText(link, navigator.clipboard, selectionCopy);
+    if (done) planLinkSent(secret);
     window.setTimeout(() => {
       if (press === linkPresses.current) setLinkSaid(linkSaidFor(done));
       if (press === linkPresses.current) setLinkSpoken(linkSpokenFor(done, note));
@@ -3599,9 +3702,10 @@ export function App() {
   };
   // Share's link: the plan's inputs, and the exact line's id with that line sent (once per line and keeping).
   // Share as image's QR code makes its link here too.
-  const sharedLinkNow = () => {
+  // `secret`: the plan's, or the new one "New ride" just made (SameRideDialog), before the page has it.
+  const sharedLinkNow = (secret = groupSecret) => {
     const from = rideOwnShare() ?? { points, preset, dials };
-    let link = withSecret(linkToCopy(window.location, from.points, from.preset, from.dials, viaIndices(from.points, VIA_MARKS.isVia)), isRideLinkType(from.preset) ? groupSecret : null);
+    let link = withSecret(linkToCopy(window.location, from.points, from.preset, from.dials, viaIndices(from.points, VIA_MARKS.isVia)), isRideLinkType(from.preset) ? secret : null);
     const exact = shareExact();
     let kept: Promise<boolean> | null = null;
     if (exact) {
@@ -3650,6 +3754,15 @@ export function App() {
   // re-route or a plan made again since), it is that same link (Stephen 2026-10-26: "if you press and share multiple
   // times in the same ride, it's the same link").
   const rideLinkSent = useRef<{ route: RouteResponse; keep: ShareKeep; link: string; lead: Lead | null; id: string | null } | null>(null);
+  // The leader a ride link pressed now would go out with, as shareRoute picks it (lib/rideGroup.ts rideLeadFor).
+  const rideLeadNow = () => {
+    const sharedRoute = rideOwnShare()?.route ?? shown;
+    const rideRoute = riding && rideStart ? rideStart.route : sharedRoute;
+    const sent = rideLinkSent.current?.route === rideRoute && rideLinkSent.current.keep === shareKeep ? rideLinkSent.current : null;
+    const exact = sent ? null : shareExact();
+    const line = sent ? sent.id : exact && sharedLine.current?.of === exact.of ? sharedLine.current.id : null;
+    return rideLeadFor(sent, line, leads.current, leadPrep.current);
+  };
   // A ride ended: its link is not the next ride's.
   const rodeBefore = useRef(riding);
   useEffect(() => {
@@ -3666,7 +3779,7 @@ export function App() {
       }
       // A Group or Mass Ride secret this page made is made again: last ride's link reads nothing on the next. One from a link
       // opened here is the link's, the ride its sender leads.
-      if (groupSecretOwn.current) setGroupSecret(newRideSecret());
+      if (groupSecretOwn.current) setGroupSecret((ridden) => ownSecrets.current!.renew(ridden));
       // The ride's dot answers too, for a ride page already gone with the ride (Plan): the next ride asks again.
       forgetAnsweredHere();
     }
@@ -3676,7 +3789,8 @@ export function App() {
   // and led by the sharer (LEAD_PARAM). Answers whether it was shared as a ride the sharer leads (Broadcast starts it),
   // and what was said.
   // `nav`: the sheet to open; Broadcast passes broadcastNav, which copies the link where there is no sheet.
-  const shareRoute = async (ride = false, nav: ShareNavigator | undefined = shareNav): Promise<{ led: boolean; said: string }> => {
+  // `secret`: as for sharedLinkNow.
+  const shareRoute = async (ride = false, nav: ShareNavigator | undefined = shareNav, secret = groupSecret): Promise<{ led: boolean; said: string }> => {
     const ownRide = rideOwnShare();
     const sharedRoute = ownRide?.route ?? shown;
     if (!sharedRoute || sharing.current) return { led: false, said: "" };
@@ -3696,11 +3810,11 @@ export function App() {
     // The ride's own route while riding (the plan's may have been made again since), else the one shown.
     const rideRoute = riding && rideStart ? rideStart.route : sharedRoute;
     const again = ride && rideLinkSent.current?.route === rideRoute && rideLinkSent.current.keep === shareKeep ? rideLinkSent.current : null;
-    const now = again ? null : sharedLinkNow();
+    const now = again ? null : sharedLinkNow(secret);
     const kept = again ? Promise.resolve(true) : now!.kept;
     const exact = again ? null : now!.exact;
     const sharedId = again ? again.id : (sharedLine.current?.id ?? null);
-    const lead = again ? again.lead : ride && kept ? ((sharedId ? leads.current.get(sharedId) : undefined) ?? leadPrep.current) : null;
+    const lead = ride && kept ? rideLeadFor(again, sharedId, leads.current, leadPrep.current) : null;
     // A ride link carries its own leader's secret, never the plan's (a Group Ride's): one without a leader carries none.
     const link = again ? again.link : ride && kept ? (lead ? withSecret(asRideLink(now!.link, lead.key), lead.secret) : withoutSecret(asRideLink(now!.link))) : now!.link;
     const file = exact?.file ? gpxShareFile(exact.file.text, exact.file.fileName) : null;
@@ -3712,11 +3826,17 @@ export function App() {
     try {
       const done = await outcome;
       said = shareSaidFor(done);
+      // The plan's link, with its Group or Mass Ride secret, went out (a ride link carries the leader's instead).
+      if (!ride && done === "shared") planLinkSent(secret);
+      // A ride link, with its leader's: when it first went out, asked about once it is 12 hours old.
+      if (ride && lead && done === "shared") markRideSent(lead.secret, Date.now());
       // The line not kept: the link plans again when opened. Said unless the sheet failed (that line says more),
       // and the next press tries again with a new id.
       if (kept && !(await kept)) {
         if (sharedLine.current?.kept === kept) sharedLine.current = null;
         if (done !== "failed" && done !== "cancelled") said = SHARED_INPUTS_ONLY;
+        // The link went out with the prepared lead's key and secret, kept or not: the next ride shared gets new ones.
+        if (ride && done === "shared" && lead && lead === leadPrep.current) prepareLead();
       } else if (ride && kept && done === "shared") {
         // The one who shared a ride has the same location sharing, but leads it: re-routed off it as any ride is (the
         // owner, 2026-10-18: "Maybe make the sharer able to reroute").
@@ -3758,6 +3878,11 @@ export function App() {
   const tripCheck = useRef<{ route: RouteResponse; preset: PresetId; to: LonLat; trip: CheckedTrip } | null>(null);
   // The stops left after the trip ridden now (lib/tripStops.ts): planned on from the stop by "Start the next leg".
   const tripStopsLeft = useRef<StopsLeft | null>(null);
+  // A transit trip is kept checked till its first boarding (lib/tripCheck.ts, Stephen 2026-11-02): at Start, and at Resume.
+  const checkTripOf = (route: RouteResponse, ends: readonly LonLat[]) => {
+    const checked = route.transit && tripChecked(route.transit.mode) && ends.length > 1 ? checkedTripOf(route.transit) : null;
+    return checked && route.transit ? { route, preset: route.transit.mode, to: ends[ends.length - 1], trip: checked } : null;
+  };
   const beginRide = (prefs: RidePrefs, unlocked = false, rest?: { route: RouteResponse; points: LonLat[]; roam?: boolean }) => {
     const asked = rest?.route ?? shown;
     if (!asked) return;
@@ -3790,10 +3915,7 @@ export function App() {
     const passOn = follows && !followedNoKey() ? followedLink() : null;
     // Leading a broadcast already (Broadcast beside Start): its link, so a resumed ride leads it again.
     const ledLink = opened?.own && opened.lead && rideLinkSent.current?.route === asked ? rideLinkSent.current.link : null;
-    // A transit trip is kept checked till its first boarding (lib/tripCheck.ts, Stephen 2026-11-02).
-    const ends = ridePoints;
-    const checked = route.transit && tripChecked(route.transit.mode) && ends.length > 1 ? checkedTripOf(route.transit) : null;
-    tripCheck.current = checked && route.transit ? { route, preset: route.transit.mode, to: ends[ends.length - 1], trip: checked } : null;
+    tripCheck.current = checkTripOf(route, ridePoints);
     // A trip is kept whole, as rideLegOf was given it (its loop too: a walk_in loop or run), its leg worked out again
     // at Resume; Undo keeps it again from here.
     const whole = leg.trip ? { points: ridePoints, loop: rest ? false : routedLoop, preset: route.preset, wholeTrip: true } : { points: leg.points, loop: leg.loop, preset: leg.preset };
@@ -3803,7 +3925,7 @@ export function App() {
     if (kept) {
       // The destination's name kept too, so a Resume after a reload can name the ride (the UI review, 2026-10-28).
       const destination = leg.loop ? null : (namer.name(ridePoints[ridePoints.length - 1] ?? leg.points[leg.points.length - 1])?.name ?? null);
-      keepLeftRide({ route, ...whole, dials: rideDialsNow, fixed, destination, passOn, follows, leads: ledLink }, VIA_MARKS, Date.now());
+      keepLeftRide({ route, ...whole, dials: rideDialsNow, fixed, destination, passOn, follows, leads: ledLink, stopsLeft: tripStopsLeft.current }, VIA_MARKS, Date.now());
     }
     else forgetLeftRide();
     // The installed app keeps the ride's route as the last ride (OWNER-DECISIONS 465a); End ride gives it
@@ -3871,7 +3993,8 @@ export function App() {
       const doc = deviceSettings({ preset, dials }, undefined, weightStore.current?.setting());
       if (sameSettings(doc, lastSettings.current)) return;
       lastSettings.current = doc;
-      void saveSettings(window.location.origin, doc);
+      // Saved with its units: a Units choice still pending (saveUnitsUnsynced) is in the account now.
+      void saveSettings(window.location.origin, doc).then((saved) => saved && setUnitsPending(false));
     }, SAVE_SETTLE_MS);
     return () => window.clearTimeout(timer);
   }, [me.signed_in, settingsSynced, preset, dials, waterPrefs, climbsOn, climbsFrom, showTopoLines, favoriteRides, weight, ridingSpeed]);
@@ -4115,7 +4238,7 @@ export function App() {
     const open = sharedOpenNow.current;
     return !!open && open.ride && !!open.lead && !open.own && open.answer === route;
   };
-  const startRideChecked = () => startRideNoted("");
+  const startRideChecked = () => sameRideFirst(() => startRideNoted(""), false, undefined, true);
   // `note`: what the ride screen says once up (rideStart.note): Broadcast's link copied, else nothing. Set by each press,
   // so a ride started any other way after a Broadcast that did not start one says nothing.
   const startRideNoted = (note: string) => {
@@ -4166,7 +4289,8 @@ export function App() {
   // What went wrong is said beside the button (Go's Route file sheet, where Share says it, is usually closed).
   // On a computer it asks first, before the link goes (review S1): Go back shares nothing, Start anyway presses again.
   const [broadcastNote, setBroadcastNote] = useState({ text: "", count: 0 });
-  const broadcastRide = () => {
+  const broadcastRide = () => sameRideFirst(broadcastRideNow, true);
+  const broadcastRideNow = () => {
     if (followedNoKey()) {
       setBroadcastNote((n) => ({ text: BROADCAST_NO_KEY, count: n.count + 1 }));
       return;
@@ -4197,7 +4321,8 @@ export function App() {
   // Broadcast sends it, the ride already going; the rider leads once it went with its key. Answers what to say.
   // The broadcast a ride follows: the link this page opened, else the one kept with a resumed ride.
   const followedInRide = () => followedLink() ?? rideStart?.passOn ?? null;
-  const broadcastFromRide = async (): Promise<string> => {
+  const broadcastFromRide = () => sameRideThen(broadcastFromRideNow);
+  const broadcastFromRideNow = async (): Promise<string> => {
     if (followedNoKey()) return BROADCAST_NO_KEY;
     const followed = followedInRide();
     if (followed) return (await passOn(followed, broadcastNav)).said;
@@ -4207,7 +4332,8 @@ export function App() {
     return said === SHARE_FAILED ? (canShare ? BROADCAST_RIDE_FAILED : BROADCAST_RIDE_COPY_FAILED) : said;
   };
   // Broadcast held beside Start: its link as a QR code, with Start ride; the sharer leads, as Broadcast's sheet does.
-  const broadcastQr = () => {
+  const broadcastQr = () => sameRideFirst(broadcastQrNow, true);
+  const broadcastQrNow = () => {
     if (followedNoKey()) {
       setBroadcastNote((n) => ({ text: BROADCAST_NO_KEY, count: n.count + 1 }));
       return;
@@ -4227,7 +4353,8 @@ export function App() {
     });
   };
   // Held on the ride screen: the same, without Start (the ride is going). Answers what to say.
-  const broadcastQrFromRide = async (): Promise<string> => {
+  const broadcastQrFromRide = () => sameRideThen(broadcastQrFromRideNow);
+  const broadcastQrFromRideNow = async (): Promise<string> => {
     if (followedNoKey()) return BROADCAST_NO_KEY;
     const followed = followedInRide();
     if (followed) {
@@ -4287,7 +4414,7 @@ export function App() {
     if (!stillOn()) return null;
     if (found && found.closures.length > 0) {
       restHeld.current = { route: result.route, points: asked.points, n, at: Date.now() };
-      return restClosedSaid(found.closures.map((c) => c.road ?? c.title ?? "a closure"));
+      return restClosedSaid(found.closures.map((c) => c.road ?? c.title ?? t("a closure")));
     }
     go();
     return null;
@@ -4521,6 +4648,9 @@ export function App() {
     stats: RideStats;
     shared: typeof sharedOpen;
     linkSent: typeof rideLinkSent.current;
+    /** A trip past its line: the walk or train it was following, so Undo carries on from it. */
+    past: OnwardState | null;
+    stopsLeft: StopsLeft | null;
   } | null>(null);
   // Undo's ride carries on from the ended ride's figures (RideMode's resumeStats); a new Start begins from nought.
   const [resumeStats, setResumeStats] = useState<RideStats | null>(null);
@@ -4530,8 +4660,11 @@ export function App() {
   rideNow.current = { start: rideStart, mode };
   const endRide = useCallback((after: EndedPlan, stats: RideStats) => {
     const { start, mode: endedIn } = rideNow.current;
+    // Past a trip's line, the walk or train followed (as kept for Resume), for Undo.
+    const past = start?.whole ? leftRidePast() : null;
     forgetLeftRide();
-    // A trip's stops left go with the ride: a later Ride the rest never offers them (review of #907).
+    // A trip's stops left go with the ride: a later Ride the rest never offers them (review of #907); Undo puts them back.
+    const stopsLeft = tripStopsLeft.current;
     tripStopsLeft.current = null;
     // A detour from Roam: back to roaming, with no summary (the ride was a short way to water, a restroom or food).
     if (start?.roam) {
@@ -4557,7 +4690,7 @@ export function App() {
       setFromHere((f) => [...f, from![0]]);
     }
     const note = from ? RIDE_ENDED_FROM_HERE_NOTE : endedIn !== "go" && after === "no-fix" ? RIDE_ENDED_NO_FIX_NOTE : null;
-    endedRide.current = start ? { start, from, stats, shared: sharedOpenNow.current, linkSent: rideLinkSent.current } : null;
+    endedRide.current = start ? { start, from, stats, shared: sharedOpenNow.current, linkSent: rideLinkSent.current, past, stopsLeft } : null;
     setRiding(false);
     setRideStart(null);
     setRideView(null);
@@ -4640,6 +4773,9 @@ export function App() {
     const leg = left.wholeTrip ? rideLegOf(left.route, left.points, left.loop) : null;
     const whole = { points: left.points, loop: left.loop, preset: left.preset, wholeTrip: true };
     const resumed = leg ? { points: leg.points, loop: leg.loop, preset: leg.preset, trip: leg.trip, past: left.past ?? null, whole } : { trip: null, past: null, whole: null };
+    // The trip's check (till its first boarding) and its stops left, as Start had them.
+    tripStopsLeft.current = left.stopsLeft ?? null;
+    tripCheck.current = checkTripOf(left.route, left.points);
     setResumeStats(null);
     setRideStart((before) => ({ ...left, ...resumed, kept: true, n: (before?.n ?? 0) + 1 }));
     keepLeftRide(left, VIA_MARKS, Date.now());
@@ -4679,8 +4815,9 @@ export function App() {
     if (ended.from && pointsRef.current === ended.from) edits.retract();
     startRideGesture(ridePrefs);
     setResumeStats(ended.stats);
-    // A trip carries on from its line again (the progress kept went at End ride).
-    setRideStart({ ...ended.start, past: null });
+    // A trip past its line carries on with the walk or train it was following; else from its line.
+    setRideStart({ ...ended.start, past: ended.past });
+    tripStopsLeft.current = ended.stopsLeft;
     // The same shared ride, led under the same key: those following keep their leader.
     if (ended.shared) {
       sharedOpenNow.current = ended.shared;
@@ -4691,7 +4828,7 @@ export function App() {
       if (ended.linkSent.id && ended.linkSent.lead) leads.current.set(ended.linkSent.id, ended.linkSent.lead);
     }
     // A trip is kept whole again, as at its start (End ride forgot it), so switching apps after Undo still resumes.
-    if (ended.start.kept) keepLeftRide(ended.start.whole ? { ...ended.start, ...ended.start.whole } : ended.start, VIA_MARKS, Date.now());
+    if (ended.start.kept) keepLeftRide({ ...(ended.start.whole ? { ...ended.start, ...ended.start.whole } : ended.start), past: ended.past, stopsLeft: ended.stopsLeft }, VIA_MARKS, Date.now());
     setFollow(true);
     setRideView(null);
     setRiding(true);
@@ -4712,8 +4849,14 @@ export function App() {
     // Units switched during the ride (lib/units.ts switchUnitsInRide): the reload that brings the rest of the page
     // round too, now the ride is done.
     // A moment later, once the cleared plan is in the address (the hash is written by an effect after this render).
-    if (unitsReloadOwed()) window.setTimeout(() => window.location.reload(), 300);
+    reloadIfUnitsOwed();
   };
+  // Units switched during a ride or Roam (lib/units.ts switchUnitsInRide, or a late settings read): the reload owed
+  // brings the rest of the page round (labels and figures made once at load) once the ride or Roam is over. A detour
+  // ridden from Roam comes back to Roam, not here, so the reload waits for Roam's end (endRoam).
+  function reloadIfUnitsOwed() {
+    if (unitsReloadOwed()) window.setTimeout(() => window.location.reload(), 300);
+  }
   // Roam (RoamMode.tsx): Go's one button while Go has no destination. The voice is unlocked inside the press (iOS).
   const startRoam = () => {
     // The location blocked (Go's look-up said so): Roam would only wait for it, so Go stays and says why (P11).
@@ -4757,7 +4900,11 @@ export function App() {
     if (done !== "shared") return done === "failed" && !canShare ? BROADCAST_RIDE_COPY_FAILED : shareSaidFor(done);
     // Again while leading: the sheet was the answer; a copy is said.
     if (mine) return broadcastSaid("");
-    if (!roamingNow.current) return "";
+    // Roam ended while the sheet was open: the link went out with the prepared lead, so the next broadcast gets a new one.
+    if (!roamingNow.current) {
+      prepareLead();
+      return "";
+    }
     const on = await rideOf(lead.secret);
     if (on) leadConsent(on.id, lead.token);
     leads.current.set(`roam|${id}`, lead);
@@ -4781,6 +4928,7 @@ export function App() {
     announce(ROAM_ENDED);
     // Back to Go's Menu, the first control of its bar (the Roam button is under it).
     window.setTimeout(() => document.querySelector<HTMLElement>(".go-menu")?.focus(), 0);
+    reloadIfUnitsOwed();
   };
   // Roam's watch found the location blocked (or none to be had): back in Go, which says why in one line (P11),
   // rather than a Roam card looking for the road for ever.
@@ -4791,6 +4939,7 @@ export function App() {
     if (reason === "denied") setGoStart((s) => (s.kind === "here" ? s : { kind: "none", why: "denied" }));
     setNotice(reason === "denied" ? ROAM_LOCATION_OFF : LOCATE_MESSAGES[reason]);
     window.setTimeout(() => document.querySelector<HTMLElement>(".go-menu")?.focus(), 0);
+    reloadIfUnitsOwed();
   };
   // Ride here from Roam's Detour: a route from where the rider is to the place, on Go's ride type and settings, ridden
   // as any ride is; its end comes back to Roam (endRide). Answers the words to say why not, or null once it started.
@@ -6376,6 +6525,7 @@ export function App() {
         }}
         onReady={(map) => {
           mapRef.current = map;
+          setMapReady(true);
           setStopCardFrame({ padding: framePadding, instant: () => window.matchMedia("(prefers-reduced-motion: reduce)").matches });
           if (centreWhenReady.current) flyToInView(centreWhenReady.current, 15);
           void fetchCoverage(window.location.origin).then((coverage) => {
@@ -6529,6 +6679,7 @@ export function App() {
         onNotNow={dropLeft}
         onLater={() => setLeftAsk(null)}
       />
+      <SameRideDialog open={sameRideAsk !== null} onSame={() => answerSameRide(true)} onNew={() => answerSameRide(false)} onCancel={() => answerSameRide(null)} />
       <StartOnComputerDialog
         open={computerAsk !== null}
         onBack={() => setComputerAsk(null)}
@@ -6946,7 +7097,7 @@ export function App() {
                   rides={goRides}
                   notice={notice}
                   route={points.length > 1 || status.kind !== "idle" ? routeSection : null}
-                  startLine={goStartLine(goStart, points.length > 0 ? (namer.name(points[0])?.name ?? "the point on the map") : null, goStart.kind === "here" && here?.point === goStart.point ? here.accuracyM : 0)}
+                  startLine={goStartLine(goStart, points.length > 0 ? (namer.name(points[0])?.name ?? t("the point on the map")) : null, goStart.kind === "here" && here?.point === goStart.point ? here.accuracyM : 0)}
                   startMissing={goStart.kind === "none" && points.length === 0}
                   onStartPick={goStartPick}
                 />
@@ -7044,7 +7195,7 @@ export function App() {
                       save={saveProps ? <SaveRoute {...saveProps} label={SAVE_ROUTE} /> : null}
                       canShare={canShare}
                       ready={!!shown}
-                      shareRoute={(ride) => void shareRoute(ride)}
+                      shareRoute={(ride) => (ride ? sameRideFirst(() => void shareRoute(true), true) : sameRideFirst((secret) => void shareRoute(false, shareNav, secret)))}
                       shareKeep={shareKeep}
                       onShareKeep={mode === "plan" && me.signed_in ? setShareKeep : null}
                       shareSaid={shareSaid}
@@ -7083,7 +7234,9 @@ export function App() {
               onBack={sheetNav.back}
               backLabel={sheetNav.backLabel("reach")}
               getMap={getMap}
+              mapReady={mapReady}
               points={points}
+              loop={loopVias}
               preset={preset}
               dials={dials}
               runPaceKmh={paceKmh(runPace)}

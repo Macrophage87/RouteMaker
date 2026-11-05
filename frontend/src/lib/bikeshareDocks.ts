@@ -347,6 +347,16 @@ const HALO = { "text-halo-color": "#ffffff", "text-halo-width": 1.5 };
  */
 export const BUBBLE_PADDING = [3, 4, 3, 23];
 
+/**
+ * A closed dock's words on the map ("Dock closed": named, so a language agrees "closed" with its word for a dock), in the language in force where the map's font (CLIMB_FONT) has its letters (Latin,
+ * Vietnamese's and Cyrillic); in English where it has none (Ethiopic, Arabic, the CJK and Indic scripts), so the
+ * label never draws as empty boxes.
+ */
+export function closedLabel(): string {
+  const word = t("Dock closed");
+  return /^[\u0000-\u052f\u1e00-\u1eff\s]*$/.test(word) ? word : "Dock closed";
+}
+
 /** The layers, bottom to top. */
 export function docksLayers(): Array<Record<string, unknown>> {
   const sign = (icon: string, field: string) => [["image", icon], {}, ["concat", " ", ["get", field], "  "], {}];
@@ -378,7 +388,7 @@ export function docksLayers(): Array<Record<string, unknown>> {
       filter: notCluster,
       minzoom: DOCK_LABELS_ZOOM,
       layout: {
-        "text-field": ["case", ["get", "closed"], ["format", "Closed", {}], ["format", ...sign(BIKE_ICON, "c"), ...sign(BOLT_ICON, "e"), ...sign(SPACE_ICON, "d")]],
+        "text-field": ["case", ["get", "closed"], ["format", closedLabel(), {}], ["format", ...sign(BIKE_ICON, "c"), ...sign(BOLT_ICON, "e"), ...sign(SPACE_ICON, "d")]],
         "text-font": [CLIMB_FONT],
         "text-size": 12,
         "text-anchor": "left",

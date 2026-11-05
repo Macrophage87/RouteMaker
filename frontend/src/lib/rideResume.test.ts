@@ -10,7 +10,7 @@ import { ViaMarks } from "./pointKinds.ts";
 import { leaderKey, newToken } from "./rideGroup.ts";
 import { newRideSecret, withSecret } from "./rideSeal.ts";
 import { asRideLink } from "./sharedRoutes.ts";
-import { RESUME_MAX_MS, RIDE_RESUME_KEY, forgetLeftRide, keepLeftRide, keepLeftRideLeads, keepLeftRidePast, leftRide, resumedBroadcast } from "./rideResume.ts";
+import { RESUME_MAX_MS, RIDE_RESUME_KEY, forgetLeftRide, keepLeftRide, keepLeftRideLeads, keepLeftRidePast, leftRide, leftRidePast, resumedBroadcast } from "./rideResume.ts";
 
 function memory() {
   const items = new Map<string, string>();
@@ -61,8 +61,8 @@ test("a ride left too long ago, or unreadable, is not offered and is forgotten; 
 
 test("the page keeps the ride at Start, forgets it at End, and asks at load; nothing goes to the server", () => {
   const app = src("../App.tsx");
-  assert.match(app, /if \(kept\) \{[\s\S]{0,500}?keepLeftRide\(\{ route, \.\.\.whole, dials: rideDialsNow, fixed, destination, passOn, follows, leads: ledLink \}/);
-  assert.match(app, /const endRide = useCallback\(\(after: EndedPlan, stats: RideStats\) => \{\s*const \{ start, mode: endedIn \} = rideNow\.current;\s*forgetLeftRide\(\);/);
+  assert.match(app, /if \(kept\) \{[\s\S]{0,500}?keepLeftRide\(\{ route, \.\.\.whole, dials: rideDialsNow, fixed, destination, passOn, follows, leads: ledLink, stopsLeft: tripStopsLeft\.current \}/);
+  assert.match(app, /const endRide = useCallback\(\(after: EndedPlan, stats: RideStats\) => \{\s*const \{ start, mode: endedIn \} = rideNow\.current;[\s\S]{0,200}?const past = start\?\.whole \? leftRidePast\(\) : null;\s*forgetLeftRide\(\);/);
   assert.match(app, /const \[leftAsk, setLeftAsk\] = useState\(\(\) => \(SHARED_RIDE && SHARED_LEAD \? null : leftRide\(VIA_MARKS, Date\.now\(\)\)\)\);/);
   assert.match(app, /<ResumeRideDialog\s+open=\{leftAsk !== null && !riding && !roaming\}/);
   assert.doesNotMatch(src("./rideResume.ts"), /fetch\(|origin/);
@@ -79,7 +79,9 @@ test("each new route of the ride is kept in its place, and the question holds th
   // Its loop as rideLegOf was given it (a walk_in loop or run stays a loop).
   assert.match(app, /const whole = leg\.trip \? \{ points: ridePoints, loop: rest \? false : routedLoop, preset: route\.preset, wholeTrip: true \} : \{ points: leg\.points, loop: leg\.loop, preset: leg\.preset \};/);
   assert.match(app, /keepLeft=\{rideStart\.kept === true\}/);
-  assert.match(app, /if \(ended\.start\.kept\) keepLeftRide\(ended\.start\.whole \? \{ \.\.\.ended\.start, \.\.\.ended\.start\.whole \} : ended\.start, VIA_MARKS, Date\.now\(\)\);/);
+  // Undo keeps it whole again with what End ride read of it (the walk or train followed, the stops left), never the
+  // progress an earlier Resume started from.
+  assert.match(app, /if \(ended\.start\.kept\) keepLeftRide\(\{ \.\.\.\(ended\.start\.whole \? \{ \.\.\.ended\.start, \.\.\.ended\.start\.whole \} : ended\.start\), past: ended\.past, stopsLeft: ended\.stopsLeft \}, VIA_MARKS, Date\.now\(\)\);/);
 });
 
 test("the ride's destination is kept with it, through its re-routes, to name it in the question (the UI review, 2026-10-28)", () => {
@@ -159,7 +161,7 @@ test("Resume puts the page back on the kept broadcast; Broadcast from the ride s
   assert.match(app, /if \(led && riding && rideStart\?\.kept\) \{\s*keepLeftRideLeads\(link\);\s*setRideStart\(\(before\) => \(before \? \{ \.\.\.before, leads: link \}/);
   // End ride then Undo keeps it too: the ride's start carries the link it leads.
   assert.match(app, /kept, passOn, follows, leads: ledLink, note,/);
-  assert.match(app, /keepLeftRide\(\{[^}]*passOn, follows, leads: ledLink \}/);
+  assert.match(app, /keepLeftRide\(\{[^}]*passOn, follows, leads: ledLink, stopsLeft: tripStopsLeft\.current \}/);
 });
 
 test("a link Broadcast makes (its leader's key and the ride's key) reads back as the same leader and key on resume", async () => {
@@ -216,4 +218,61 @@ test("Resume of a trip works its leg out again and carries on past the line; the
   assert.match(ride, /useState<RideState>\(\(\) => \(resumedPast \? \{ \.\.\.startState\(\), arrived: true \} : startState\(\)\)\)/);
   assert.match(ride, /const onwardRef = useRef<OnwardState \| null>\(resumedPast\);/);
   assert.match(ride, /if \(onwardRef\.current\) keepLeftRidePast\(onwardRef\.current\);\s*\}, \[pastKey\]\);/);
+});
+
+test("a run loop planned from its start alone is kept with its one point and offered for Resume", () => {
+  const store = memory();
+  const marks = new ViaMarks();
+  keepLeftRide({ route, points: [[-77, 38.9]], loop: true, preset: "run", dials, fixed: false, wholeTrip: true }, marks, 0, store);
+  const left = leftRide(marks, 60_000, store);
+  assert.ok(left);
+  assert.deepEqual(left.points, [[-77, 38.9]]);
+  assert.equal(left.loop, true);
+  // A one-point ride that is no loop says nothing to resume.
+  keepLeftRide({ route, points: [[-77, 38.9]], loop: false, preset: "standard", dials, fixed: false }, marks, 0, store);
+  assert.equal(leftRide(marks, 0, store), null);
+});
+
+test("a trip with stops keeps the stops after it, marked as they were, so Resume still offers Start the next leg", () => {
+  const store = memory();
+  const marks = new ViaMarks();
+  const stopsLeft = { preset: "transit" as const, points: [marks.named([-77.01, 38.9], "Union Market"), marks.via([-77.02, 38.91]), [-77.03, 38.92] as LonLat] };
+  keepLeftRide({ route, points: [[-77, 38.9], [-77.01, 38.9]], loop: false, preset: "transit", dials, fixed: false, wholeTrip: true, stopsLeft }, marks, 0, store);
+  const back = new ViaMarks();
+  const left = leftRide(back, 0, store)!;
+  assert.equal(left.stopsLeft?.preset, "transit");
+  assert.deepEqual(left.stopsLeft?.points, [[-77.01, 38.9], [-77.02, 38.91], [-77.03, 38.92]]);
+  assert.equal(back.nameOf(left.stopsLeft!.points[0]), "Union Market");
+  assert.equal(back.isVia(left.stopsLeft!.points[1]), true);
+  // Kept again at Resume with them; a trip with none has none.
+  keepLeftRide(left, back, 0, store);
+  assert.equal(leftRide(back, 0, store)?.stopsLeft?.points.length, 3);
+  keepLeftRide({ route, points: [[-77, 38.9], [-77.01, 38.9]], loop: false, preset: "transit", dials, fixed: false, wholeTrip: true }, marks, 0, store);
+  assert.equal(leftRide(marks, 0, store)?.stopsLeft, undefined);
+});
+
+test("End ride reads the walk or train a trip was following, so Undo carries on from it; a plain ride has none", () => {
+  const store = memory();
+  const marks = new ViaMarks();
+  const points: LonLat[] = [[-77, 38.9], [-77.01, 38.9]];
+  keepLeftRide({ route, points, loop: false, preset: "transit", dials, fixed: false, wholeTrip: true }, marks, 0, store);
+  assert.equal(leftRidePast(store), null);
+  const board = { since: 10, boardedAt: 20, at: 3, fixAt: 30, saidNext: false, saidOff: false, done: false };
+  keepLeftRidePast({ index: 1, since: 10, walk: null, board }, store);
+  assert.deepEqual(leftRidePast(store), { index: 1, since: 10, walk: null, board });
+  keepLeftRide({ route, points, loop: false, preset: "standard", dials, fixed: false }, marks, 0, store);
+  assert.equal(leftRidePast(store), null);
+  assert.equal(leftRidePast(memory()), null);
+});
+
+test("Undo after End ride past a trip's line rides on with the train or walk; Resume checks the trip again and keeps its stops", () => {
+  const app = src("../App.tsx");
+  const end = app.slice(app.indexOf("const endRide = useCallback("), app.indexOf("const undoEndRide = () => {"));
+  assert.match(end, /const past = start\?\.whole \? leftRidePast\(\) : null;\s*forgetLeftRide\(\);/);
+  const undo = app.slice(app.indexOf("const undoEndRide = () => {"), app.indexOf("const finishRide = () => {"));
+  assert.match(undo, /setRideStart\(\{ \.\.\.ended\.start, past: ended\.past \}\);/);
+  assert.doesNotMatch(undo, /past: null/);
+  const resume = app.slice(app.indexOf("const resumeLeft = () => {"), app.indexOf("const dropLeft = () => {"));
+  assert.match(resume, /tripStopsLeft\.current = left\.stopsLeft \?\? null;\s*tripCheck\.current = checkTripOf\(left\.route, left\.points\);/);
+  assert.match(app, /tripCheck\.current = checkTripOf\(route, ridePoints\);/);
 });

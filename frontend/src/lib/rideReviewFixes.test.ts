@@ -39,8 +39,8 @@ test("RIDE-3: weak GPS is shown in the ride's GPS note and said once; a good fix
   assert.match(ride, /onTransitRef\.current = onTransit;/);
   // The existing note line, the one the GPS-lost notes use.
   assert.equal(ride.match(/\{gps && ride\.fix && <p className="hint">\{gps\}<\/p>\}/g)?.length, 1);
-  // A new watch (Start, Resume) gives the first fixes their 12 s again.
-  assert.match(ride, /stopWatch\.current\?\.\(\);\s*gpsWeak\.current = \{ goodAt: Date\.now\(\), weak: false \};/);
+  // A new watch (Start, Resume, the swap on and off a train or bus) gives the first fixes their 12 s again.
+  assert.match(ride, /const startWatch = useCallback\(\(\) => \{\s*gpsWeak\.current = \{ goodAt: Date\.now\(\), weak: false \};/);
 });
 
 test("RIDE-3 (owner, 2026-10-16): weak GPS for long shows the turns ahead as a list, said once; a good fix brings the card back", () => {
@@ -119,4 +119,28 @@ test("a re-plan after Road closed turns round freely: both of its calls leave th
   assert.match(ride, /void replan\(fix\.point, undefined, true, true\);/);
   assert.match(ride, /void replanRef\.current\(rideRef\.current\.goodFix\?\.point \?\? here, undefined, true, true\);/);
   assert.match(ride, /const heading = turnRound \? null : \(current\.goodFix\?\.headingDeg \?\? null\);/);
+});
+
+test("back on the planned route, an automatic re-plan still under way is dropped; the rider's own asks stand (2026-11-04 review)", () => {
+  const replan = ride.slice(ride.indexOf("const replan = useCallback("), ride.indexOf("// No good fix for a minute"));
+  // Only an automatic re-plan (not asked, no detour, no restart) is marked, and the mark goes once it is answered.
+  assert.match(replan, /const ticket = \(replanTicket\.current \+= 1\);\s*autoReplan\.current = !asked && !via && !done \? ticket : null;/);
+  assert.match(replan, /window\.clearTimeout\(timer\);\s*\/\/[^\n]*\n\s*if \(autoReplan\.current === ticket\) autoReplan\.current = null;/);
+  // On the line again: voided as Keep voids it, so its late answer never replaces the route.
+  assert.match(
+    ride,
+    /if \(voidsAutoReplan\(out\.state, autoReplan\.current, replanTicket\.current\)\) \{\s*autoReplan\.current = null;\s*replanTicket\.current \+= 1;\s*setReplanning\(false\);\s*setReplanNote\(""\);\s*\}/,
+  );
+  assert.match(replan, /const voided = \(\) => ended\.current \|\| ticket !== replanTicket\.current;/);
+});
+
+test("riding the line the wrong way past a marked closure never swaps to the other line (2026-11-05 review)", () => {
+  // The other line (the standard way, or the detour) is taken only when off this one, not when off for riding it backwards.
+  assert.match(ride, /if \(out\.state\.off && out\.state\.backAtM === undefined && fix\.accuracyM <= POOR_FIX_M\) \{\s*const at = onOtherLine\(/);
+});
+
+test("a re-plan before the ride is placed counts from the rider's place on the line, never from its start (2026-11-05 review)", () => {
+  const replan = ride.slice(ride.indexOf("const replan = useCallback("), ride.indexOf("// No good fix for a minute"));
+  assert.match(replan, /const progressM = heldProgressM\(modelRef\.current, current, here\);/);
+  assert.doesNotMatch(replan, /current\.progressM \?\? 0/);
 });

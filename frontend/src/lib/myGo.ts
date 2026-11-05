@@ -50,15 +50,17 @@ export const GO_RIDES: readonly PresetId[] = ["default", ...GO_FIXED];
 
 /**
  * The rider's own ride type first, then the fixed ones; where the rider's own is one of them, Default fills its place.
- * With the ride type in use (`current`), it goes first, so the chip row always shows it, pressed (P3: picked from
- * the Ride sheet, Mass Ride showed no chip at all); the rider's starred ride types (lib/favoriteRides.ts) follow the
- * rider's own. Each ride type once, in one row that scrolls sideways.
+ * The ride type in use (`current`), when it is not among them, goes first, so the chip row always shows it, pressed
+ * (P3: picked from the Ride sheet, Mass Ride showed no chip at all); one already in the row keeps its place, so a
+ * chip tapped never jumps under the finger (2026-11-05 review). The rider's starred ride types
+ * (lib/favoriteRides.ts) follow the rider's own. Each ride type once, in one row that scrolls sideways.
  */
 export function goRideChips(myRide: PresetId | null, current: PresetId | null = null, favorites: readonly PresetId[] = []): PresetId[] {
   const own = myRide ?? "default";
   const rest = GO_FIXED.filter((id) => id !== own);
   const fixed = rest.length === GO_FIXED.length ? rest : [...rest, "default" as const];
-  return [...new Set([...(current ? [current] : []), own, ...favorites, ...fixed])];
+  const row = [...new Set([own, ...favorites, ...fixed])];
+  return current && !row.includes(current) ? [current, ...row] : row;
 }
 
 /** The first chip's description: it is the rider's own, set in Settings. */

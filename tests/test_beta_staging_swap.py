@@ -195,21 +195,63 @@ def test_stage_only_renames_nothing_and_the_update_reuses_it(beta) -> None:
     assert psql(BETA_DB, "select coalesce(obj_description('live'::regnamespace), '')") == ""
 
 
-def hold(table: str, seconds: int) -> threading.Thread:
-    """An open transaction that has read `table` and keeps its lock for `seconds`."""
-    held = threading.Event()
+HOLDER = "rm-staging-swap-reader"
 
-    def reader() -> None:
-        sql = f"begin; select count(*) from {table}; select pg_sleep({seconds}); commit;"
-        proc = subprocess.Popen(["psql", "-d", BETA_DB, "-Atq", "-c", sql])
-        time.sleep(1)
-        held.set()
-        proc.wait()
 
-    t = threading.Thread(target=reader)
-    t.start()
-    held.wait()
-    return t
+def until(sql: str, ready, what: str, limit_s: float = 60.0) -> str:
+    """Poll `sql` on the beta database until `ready(its answer)`; the answer."""
+    ends = time.monotonic() + limit_s
+    while True:
+        got = psql(BETA_DB, sql)
+        if ready(got):
+            return got
+        assert time.monotonic() < ends, what
+        time.sleep(0.02)
+
+
+class Reader:
+    """An open transaction that has read `table` and keeps its lock until `release`. Made once
+    the server shows the lock held, however long psql took to get there; released by the test,
+    never by a clock, so a slow machine cannot end it before the rename has met it."""
+
+    def __init__(self, table: str) -> None:
+        sql = f"begin; select count(*) from {table}; select pg_sleep(600); commit;"
+        self.proc = subprocess.Popen(
+            ["psql", "-d", BETA_DB, "-Atq", "-c", sql],
+            env={**os.environ, "PGAPPNAME": HOLDER},
+            stderr=subprocess.DEVNULL,
+        )
+        holding = (
+            "select count(*) from pg_locks l join pg_stat_activity a using (pid)"
+            f" where a.application_name = '{HOLDER}' and l.relation = '{table}'::regclass"
+            " and l.mode = 'AccessShareLock' and l.granted"
+        )
+
+        def held(count: str) -> bool:
+            assert self.proc.poll() is None, f"the reader of {table} ended before it held it"
+            return count == "1"
+
+        until(holding, held, f"the reader never held {table}")
+
+    def release(self) -> None:
+        mine = f"from pg_stat_activity where application_name = '{HOLDER}'"
+        psql(BETA_DB, f"select pg_cancel_backend(pid) {mine}")
+        self.proc.wait(timeout=30)
+
+
+def waiting_for(table: str, other_than: str = "") -> str:
+    """The server process of a lock request on `table` still waiting (another than `other_than`):
+    an attempt of the rename, met by the reader."""
+    waiting = (
+        "select coalesce(string_agg(pid::text, ' '), '') from pg_locks"
+        f" where relation = '{table}'::regclass and not granted"
+    )
+    pids = until(
+        waiting,
+        lambda got: any(pid != other_than for pid in got.split()),
+        f"no attempt of the rename waited for {table}",
+    )
+    return next(pid for pid in pids.split() if pid != other_than)
 
 
 @pytest.mark.parametrize("table", ["live.segment", "live.node"])
@@ -220,9 +262,17 @@ def test_a_reader_holding_a_served_table_delays_the_rename_but_does_not_fail_it(
     # A long reader holds a lock the rename's ACCESS EXCLUSIVE waits for; lock_timeout makes
     # that an attempt, tried again. Every live table is locked, not segment alone: a join that
     # opened node first would otherwise read the old node beside the new segment.
-    t = hold(table, 5)
-    done = beta()
-    t.join()
+    reader = Reader(table)
+    ran: dict = {}
+    swap = threading.Thread(target=lambda: ran.update(done=beta()))
+    swap.start()
+    try:
+        # The reader goes once a second attempt is waiting for it: the first has given up.
+        waiting_for(table, other_than=waiting_for(table))
+    finally:
+        reader.release()
+        swap.join(120)
+    done = ran["done"]
 
     assert done.returncode == 0, done.stderr
     assert "trying again" in done.stderr
@@ -232,9 +282,11 @@ def test_a_reader_holding_a_served_table_delays_the_rename_but_does_not_fail_it(
 
 def test_when_every_attempt_waits_too_long_nothing_changes(beta) -> None:
     assert beta("--stage-only").returncode == 0
-    t = hold("live.segment", 8)
-    done = beta(RECEIVE_DATA_SWAP_TRIES="2", RECEIVE_DATA_LOCK_TIMEOUT_MS="500")
-    t.join()
+    reader = Reader("live.segment")
+    try:
+        done = beta(RECEIVE_DATA_SWAP_TRIES="2", RECEIVE_DATA_LOCK_TIMEOUT_MS="500")
+    finally:
+        reader.release()
 
     assert done.returncode == 2 and "still serves the old live" in done.stderr
     assert segments("live") == ["old road"]
