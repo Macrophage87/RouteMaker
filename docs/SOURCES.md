@@ -300,9 +300,13 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
   the metadata." The item's own `licenseInfo` (read 2026-10-11) is a disclaimer: the
   data is provided "AS IS" without warranty. So the credit names the State of
   Maryland, and the conditional arrangement in PLAN.md stands: every segment a
-  Maryland count reached carries `volume_source = 'mdot-sha'`, and no published
-  derivative exists that could carry it (none is built); one that is built must
-  withhold those segments or wait for the waiver PLAN.md asks the owner to request.
+  Maryland count reached carries `volume_source = 'mdot-sha'`. The open data download
+  (v0.21.0, `routemaker.open_data`; docs/OPERATIONS.md, "The open data download") leaves
+  those counts out of its columns and links this layer instead, as it does MDOT's Bicycle
+  LTS and Scenic Byways: its levels are RouteMaker's own (the owner, 2026-11-05: "For
+  Maryland, we have used our ratings and only consulted the state numbers for agreement
+  ... We can cite all these agency data as fair use", "In our why's"), so a row names our
+  formula and whether MDOT SHA agrees, and a Why note may cite a figure.
 - Records: the download's README; docs/DEVELOPMENT.md, "Reference data".
 
 ### Maryland Bicycle Level of Traffic Stress (MDOT SHA, v0.8.1)
