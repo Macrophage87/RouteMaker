@@ -2038,7 +2038,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Times are from each system's published timetables for this {day}: where trains or buses come every 15 minutes or less, the wait is half the time between them; otherwise it is the time to the next one.": "Thời gian lấy từ lịch chạy đã công bố của từng hệ thống cho {day} này: nơi tàu hoặc xe buýt đến mỗi 15 phút hoặc ít hơn, thời gian chờ bằng nửa khoảng cách giữa các chuyến; nếu không, là thời gian đến chuyến kế tiếp.",
   "a closure": "một đoạn đóng cửa",
   "the point on the map": "điểm trên bản đồ",
-  "Closed": "Đã đóng",
+  "Dock closed": "Trạm đã đóng",
   "The shared place has no map point. Type “{query}” in Where to? to find it.": "Địa điểm được chia sẻ không có điểm trên bản đồ. Gõ “{query}” vào Đi đâu? để tìm.",
   "Reach": "Phạm vi",
   "Bus {name}": "Xe buýt {name}",

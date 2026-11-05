@@ -2038,7 +2038,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Times are from each system's published timetables for this {day}: where trains or buses come every 15 minutes or less, the wait is half the time between them; otherwise it is the time to the next one.": "Os tempos vêm dos horários publicados de cada sistema para este {day}: onde trens ou ônibus passam a cada 15 minutos ou menos, a espera é metade do intervalo entre eles; caso contrário, é o tempo até o próximo.",
   "a closure": "um bloqueio",
   "the point on the map": "o ponto no mapa",
-  "Closed": "Fechada",
+  "Dock closed": "Estação fechada",
   "The shared place has no map point. Type “{query}” in Where to? to find it.": "O local compartilhado não tem um ponto no mapa. Digite “{query}” em Para onde? para encontrá-lo.",
   "Reach": "Alcance",
   "Bus {name}": "Ônibus {name}",

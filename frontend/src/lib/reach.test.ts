@@ -154,6 +154,9 @@ test("Side by side names each point's rings as its marker on the map is named: S
   assert.deepEqual(reachPointNames(points, false, () => false), ["Start", "Stop 1", "End"]);
   assert.deepEqual(reachPointNames(points, true, () => false), ["Start and finish", "Stop 1", "Stop 2"]);
   assert.deepEqual(reachPointNames(points, false, (p) => p === points[1]), ["Start", "Via point", "End"]);
+  // Two via points never read the same.
+  const four: LonLat[] = [...points, [-77.02, 38.93]];
+  assert.deepEqual(reachPointNames(four, false, (p) => p === four[1] || p === four[2]), ["Start", "Via point 1", "Via point 2", "End"]);
   const sheet = readFileSync(new URL("../ReachSheet.tsx", import.meta.url), "utf8");
   // The list's group headings use these names, with the group's colour beside them.
   assert.match(sheet, /names\[group\.point \?\? g\]/);

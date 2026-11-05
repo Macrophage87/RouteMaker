@@ -325,7 +325,40 @@ test("a Units choice made while the account could not be read is kept by the nex
 
 test("App: a late settings read keeps this device's changes, and in a ride or Roam switches units without a reload", () => {
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
-  assert.match(app, /const step = signInLate\(account, device, settingsAtLoad\.current, unitsPending\(\)\);/);
+  assert.match(app, /const step = signInLate\(account, device, settingsAtLoad\.current \?\? device, unitsPending\(\)\);/);
   assert.match(app, /if \(ridingNow\.current \|\| roamingNow\.current\) void switchUnitsInRide\(step\.doc\.units\);\s*else void chooseUnits\(step\.doc\.units\);/);
   assert.match(app, /void saveSettings\(origin, step\.save\)/);
+});
+
+test("a late read merges the favorite ride stars one by one: a star here is added, an unstar here removed, another device's kept", () => {
+  const atLoad = { v: 1, favorites: ["gravel" as const, "cargo" as const] };
+  const account = { v: 1, favorites: ["gravel" as const, "cargo" as const, "novice" as const] };
+  // Starred Trailmaxxing and unstarred Cargo on this device since load; Novice was starred on another device.
+  const device = { v: 1, favorites: ["gravel" as const, "trailmaxxing" as const] };
+  const late = signInLate(account, device, atLoad);
+  assert.deepEqual(late.doc.favorites, ["gravel", "novice", "trailmaxxing"]);
+  assert.deepEqual(late.save?.favorites, ["gravel", "novice", "trailmaxxing"]);
+  // The Layers sections: the one changed here is this device's, the account's others are kept.
+  const sectionsAtLoad = { v: 1, sections: { water: ["a"] } };
+  const merged = signInLate({ v: 1, sections: { water: ["a"], rail: ["r"] } }, { v: 1, sections: { water: ["a", "b"] } }, sectionsAtLoad);
+  assert.deepEqual(merged.doc.sections, { water: ["a", "b"], rail: ["r"] });
+});
+
+test("App: the baseline is the device's settings at page load, and a failed save keeps a Units choice pending", () => {
+  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  assert.match(app, /if \(settingsAtLoad\.current === null\) settingsAtLoad\.current = deviceSettings\(\{ preset, dials \}/);
+  assert.doesNotMatch(app, /settingsAtLoad\.current \?\?= /);
+  assert.match(app, /if \(saved\) setUnitsPending\(false\);\s*else lastSettings\.current = account;/);
+  assert.match(app, /saveSettings\(window\.location\.origin, doc\)\.then\(\(saved\) => saved && setUnitsPending\(false\)\)/);
+});
+
+test("units switched during Roam (a late settings read, or Settings) bring the rest of the page round when Roam ends", () => {
+  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  const body = (name: string) => {
+    const at = app.indexOf(`const ${name} = `);
+    assert.ok(at > 0, name);
+    return app.slice(at, app.indexOf("\n  };", at));
+  };
+  for (const name of ["endRoam", "roamLocationOff", "finishRide"]) assert.match(body(name), /reloadIfUnitsOwed\(\);/, name);
+  assert.match(app, /function reloadIfUnitsOwed\(\) \{\s*if \(unitsReloadOwed\(\)\) window\.setTimeout\(\(\) => window\.location\.reload\(\), 300\);/);
 });

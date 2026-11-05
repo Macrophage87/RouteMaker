@@ -8,7 +8,9 @@ import {
   IDLE_HOLD_ATTR,
   IDLE_RECENTRE_MS,
   IDLE_TOUCH_EVENTS,
+  InputWay,
   RIDE_PANEL_OPEN,
+  TOUCH_FOCUS_MS,
   followZoom,
   closeIdlePanels,
   typingIn,
@@ -102,7 +104,8 @@ test("following, unmoved: the map is left alone", () => {
 test("the ride over: no listener and no timer is left", () => {
   const w = fakeWindow();
   const stop = watchIdleRecentre(w.win, { away: () => true, panelOpen: () => false, recentre: () => assert.fail("recentred after the ride") });
-  assert.equal(w.listening(), IDLE_TOUCH_EVENTS.length);
+  // The touch events, and the three that keep how the focus got there (InputWay).
+  assert.equal(w.listening(), IDLE_TOUCH_EVENTS.length + 3);
   stop();
   assert.equal(w.listening(), 0);
   assert.equal(w.timers.size, 0);
@@ -332,7 +335,8 @@ test("closeIdlePanels: each card, menu and dialog closes by its own close; typed
     querySelectorAll: (sel: string) => body.querySelectorAll(sel),
     getElementById: (id: string) => body.all().find((e) => e.attrs.id === id) ?? null,
   } as unknown as Document;
-  assert.equal(closeIdlePanels(doc), true);
+  // The focus in Detour came from a tap (a finger's, InputWay).
+  assert.equal(closeIdlePanels(doc, () => false), true);
   assert.equal(cardX.presses, 1);
   assert.equal(detour.presses, 1);
   assert.equal(detour.focused, 1, "the focus was in Detour: it goes to Detour's toggle");
@@ -343,7 +347,7 @@ test("closeIdlePanels: each card, menu and dialog closes by its own close; typed
   assert.equal(canvas.focused, 0);
   // Nothing left to close: says so, and a second look closes nothing more.
   active = body;
-  assert.equal(closeIdlePanels(doc), false);
+  assert.equal(closeIdlePanels(doc, () => false), false);
 });
 
 test("a dialog with the focus in it (Ride settings, the join sheet) stays open when the screen is left alone; the group's question still closes", () => {
@@ -414,9 +418,10 @@ test("an idle close that moves the focus leaves no 30 s running: a menu opened l
   assert.equal(closes, 2);
 });
 
-test("a map card or side menu with a key's or screen reader's focus shown in it stays open; a tap's focus does not hold it", () => {
+test("a map card or side menu with a key's or screen reader's focus in it stays open; a tap's focus does not hold it", () => {
   const body = new FakeEl("body");
-  const shown = (el: FakeEl) => Object.assign(el, { matches: (sel: string) => sel === ":focus-visible" });
+  let keyFocus = true;
+  const shown = (el: FakeEl) => ((keyFocus = true), el);
   const inCard = new FakeEl("button");
   const cardX = new FakeEl("button", ["maplibregl-popup-close-button"], {}, (x) => x.parent!.children.splice(0));
   const card = new FakeEl("div", ["maplibregl-popup"]).add(cardX);
@@ -434,20 +439,61 @@ test("a map card or side menu with a key's or screen reader's focus shown in it 
     querySelectorAll: (sel: string) => body.querySelectorAll(sel),
     getElementById: (id: string) => body.all().find((e) => e.attrs.id === id) ?? null,
   } as unknown as Document;
-  closeIdlePanels(doc);
+  const close = () => closeIdlePanels(doc, () => keyFocus);
+  close();
   assert.equal(more.presses, 0, "the menu with the focus shown stays");
   assert.equal(cardX.presses, 1, "the card without the focus closes");
   active = shown(inCard);
   const card2X = new FakeEl("button", ["maplibregl-popup-close-button"]);
   body.add(new FakeEl("div", ["maplibregl-popup"]).add(inCard, card2X));
-  closeIdlePanels(doc);
+  close();
   assert.equal(card2X.presses, 0, "the card with the focus shown stays");
   assert.equal(more.presses, 1, "the menu, the focus now elsewhere, closes");
   // A finger's tap focuses without showing it: the menu still closes, and the focus goes to its toggle.
   more.attrs["aria-expanded"] = "true";
+  keyFocus = false;
   active = new FakeEl("button");
   menu.add(active);
-  closeIdlePanels(doc);
+  close();
   assert.equal(more.presses, 2);
   assert.equal(more.focused, 1);
+});
+
+test("how the focus got there: a key or a screen reader's move holds a menu; a tap, and the heading a tapped menu focuses, do not", () => {
+  let now = 0;
+  const way = new InputWay(() => now);
+  assert.equal(way.keyFocus(), false);
+  // A tap opens a menu, which focuses its heading by script at once (matched by :focus-visible on iOS Safari).
+  way.touch();
+  now += 50;
+  way.focus();
+  assert.equal(way.keyFocus(), false, "a tapped menu still idle-closes");
+  // A key moves the focus.
+  way.key();
+  assert.equal(way.keyFocus(), true);
+  // A tap again: a finger's.
+  now += 5000;
+  way.touch();
+  assert.equal(way.keyFocus(), false);
+  // A screen reader's swipe moves the focus with no touch before it.
+  now += TOUCH_FOCUS_MS + 1;
+  way.focus();
+  assert.equal(way.keyFocus(), true);
+});
+
+test("the watch keeps how the focus got there, and the focus a close moves is no one's", () => {
+  let now = 0;
+  const way = new InputWay(() => now);
+  const w = fakeWindow();
+  const stop = watchIdleRecentre(w.win, { away: () => false, panelOpen: () => false, recentre: () => undefined, closePanels: () => (w.touch("focusin"), true) }, IDLE_RECENTRE_MS, way);
+  w.touch("pointerdown");
+  now += 40_000;
+  w.advance(IDLE_RECENTRE_MS);
+  assert.equal(way.keyFocus(), false, "the close's own focus move is not a screen reader's");
+  w.touch("keydown");
+  assert.equal(way.keyFocus(), true);
+  w.touch("pointerdown");
+  assert.equal(way.keyFocus(), false);
+  stop();
+  assert.equal(w.listening(), 0);
 });

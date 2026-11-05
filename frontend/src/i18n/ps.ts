@@ -2038,7 +2038,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Times are from each system's published timetables for this {day}: where trains or buses come every 15 minutes or less, the wait is half the time between them; otherwise it is the time to the next one.": "وختونه د هر سیسټم له خپرو شویو مهالوېشونو څخه د دې {day} لپاره دي: چېرې چې اورګاډي یا بسونه هرو ۱۵ دقیقو یا لږ وخت کې راځي، انتظار د هغوی ترمنځ د وخت نیمایي دی؛ که نه، تر راتلونکي پورې وخت دی.",
   "a closure": "بندېدنه",
   "the point on the map": "په نقشه کې ټکی",
-  "Closed": "بند",
+  "Dock closed": "تمځای بند دی",
   "The shared place has no map point. Type “{query}” in Where to? to find it.": "شریک شوی ځای په نقشه کې ټکی نه لري. د موندلو لپاره “{query}” په چېرته؟ کې ولیکئ.",
   "Reach": "رسېدنه",
   "Bus {name}": "بس {name}",

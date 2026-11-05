@@ -240,6 +240,26 @@ export function signInLate(account: SettingsDoc | null, device: SettingsDoc, atL
   if (kept.length === 0) return { ...step, save: null };
   const doc: SettingsDoc = { ...step.doc };
   for (const key of kept) {
+    if (key === "favorites") {
+      // Star by star: a ride starred or unstarred here, and the account's other stars (another device's) kept.
+      const was = new Set(atLoad.favorites ?? []);
+      const now = new Set(device.favorites ?? []);
+      const merged = [...(step.doc.favorites ?? []), ...(device.favorites ?? [])].filter((id) => !(was.has(id) && !now.has(id)));
+      doc.favorites = [...new Set(merged)];
+      continue;
+    }
+    if (key === "sections") {
+      // Section by section: the Layers sections changed here, the account's others kept.
+      const sections = { ...(step.doc.sections ?? {}) };
+      for (const name of new Set([...Object.keys(device.sections ?? {}), ...Object.keys(atLoad.sections ?? {})])) {
+        const here = device.sections?.[name];
+        if (JSON.stringify(here) === JSON.stringify(atLoad.sections?.[name])) continue;
+        if (here === undefined) delete sections[name];
+        else sections[name] = here;
+      }
+      doc.sections = sections;
+      continue;
+    }
     if (device[key] === undefined) delete doc[key];
     else (doc as unknown as Record<string, unknown>)[key] = device[key];
   }

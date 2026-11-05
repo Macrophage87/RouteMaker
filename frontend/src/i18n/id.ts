@@ -2038,7 +2038,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Times are from each system's published timetables for this {day}: where trains or buses come every 15 minutes or less, the wait is half the time between them; otherwise it is the time to the next one.": "Waktu diambil dari jadwal terbitan setiap sistem untuk {day} ini: jika kereta atau bus datang setiap 15 menit atau kurang, waktu tunggu adalah setengah dari jarak antarkedatangan; jika tidak, waktu sampai yang berikutnya.",
   "a closure": "penutupan jalan",
   "the point on the map": "titik di peta",
-  "Closed": "Tutup",
+  "Dock closed": "Dok tutup",
   "The shared place has no map point. Type “{query}” in Where to? to find it.": "Tempat yang dibagikan tidak punya titik di peta. Ketik “{query}” di Mau ke mana? untuk menemukannya.",
   "Reach": "Jangkauan",
   "Bus {name}": "Bus {name}",

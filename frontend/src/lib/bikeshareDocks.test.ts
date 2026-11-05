@@ -195,7 +195,7 @@ test("the map: docks grouped below zoom 14, labelled with the three signs from 1
   assert.equal(labels.minzoom, DOCK_LABELS_ZOOM);
   const field = JSON.stringify((labels.layout as Record<string, unknown>)["text-field"]);
   for (const icon of [BIKE_ICON, BOLT_ICON, SPACE_ICON]) assert.ok(field.includes(`["image","${icon}"]`), icon);
-  assert.ok(field.includes('"Closed"'));
+  assert.ok(field.includes('"Dock closed"'));
   assert.equal((labels.layout as Record<string, unknown>)["text-allow-overlap"], false, "colliding labels are thinned");
   assert.equal(layers.find((l) => l.id === FREE_POINTS)!.minzoom, DOCK_LABELS_ZOOM);
   const geo = docksGeoJson(parseDocks(answer)!.docks) as { features: Array<{ properties: Record<string, unknown> }> };
@@ -278,23 +278,23 @@ test("App: shown whenever a licensed service is switched on, its default followi
 test("a closed dock's word on the map is in the page's language where the map's font has its letters", () => {
   const field = () => JSON.stringify((docksLayers().find((l) => l.id === DOCK_LABELS)!.layout as Record<string, unknown>)["text-field"]);
   try {
-    setCatalogForTest("es", { Closed: "Cerrada" });
+    setCatalogForTest("es", { "Dock closed": "Estación cerrada" });
     setLanguageForTest("es");
-    assert.equal(closedLabel(), "Cerrada");
-    assert.ok(field().includes('"Cerrada"'));
-    setCatalogForTest("vi", { Closed: "Đã đóng" });
+    assert.equal(closedLabel(), "Estación cerrada");
+    assert.ok(field().includes('"Estación cerrada"'));
+    setCatalogForTest("vi", { "Dock closed": "Trạm đã đóng" });
     setLanguageForTest("vi");
-    assert.equal(closedLabel(), "Đã đóng");
-    setCatalogForTest("ru", { Closed: "Закрыта" });
+    assert.equal(closedLabel(), "Trạm đã đóng");
+    setCatalogForTest("ru", { "Dock closed": "Станция закрыта" });
     setLanguageForTest("ru");
-    assert.equal(closedLabel(), "Закрыта");
+    assert.equal(closedLabel(), "Станция закрыта");
     // The font has no Ethiopic or CJK letters: English, not empty boxes.
-    setCatalogForTest("am", { Closed: "ዝግ" });
+    setCatalogForTest("am", { "Dock closed": "ጣቢያው ዝግ ነው" });
     setLanguageForTest("am");
-    assert.equal(closedLabel(), "Closed");
-    setCatalogForTest("zh", { Closed: "已关闭" });
+    assert.equal(closedLabel(), "Dock closed");
+    setCatalogForTest("zh", { "Dock closed": "站点已关闭" });
     setLanguageForTest("zh");
-    assert.equal(closedLabel(), "Closed");
+    assert.equal(closedLabel(), "Dock closed");
   } finally {
     setLanguageForTest("en");
   }

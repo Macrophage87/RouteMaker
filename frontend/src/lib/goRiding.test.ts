@@ -161,7 +161,7 @@ test("Ride settings in reach: More at the end of the side buttons opens them jus
   assert.match(ride, /const unitsNow = useSyncExternalStore\(subscribeUnits, units\);/);
   assert.match(ride, /const cueShown = \{ \.\.\.cueWords, head: unitsFirst\(cueWords\.head\), rest: unitsFirst\(cueWords\.rest\) \};/);
   assert.match(ride, /const fitKey = `\$\{unitsNow\}\|/);
-  assert.match(source("../App.tsx"), /\} else backToRideOpener\(\);\s*(\/\/[^\n]*\n\s*)+if \(unitsReloadOwed\(\)\) window\.setTimeout\(\(\) => window\.location\.reload\(\), 300\);/);
+  assert.match(source("../App.tsx"), /\} else backToRideOpener\(\);\s*(\/\/[^\n]*\n\s*)+reloadIfUnitsOwed\(\);/);
   assert.match(source("../App.tsx"), /onPrefs=\{changeRidePrefs\}\s+saveSettingsNow=\{saveSettingsNow\}/);
   assert.match(source("../app/Sheets.tsx"), /<ThemeSetting idBase="settings" \/>[\s\S]*<UnitsSetting idBase="settings" saveNow=\{props\.saveSettingsNow\} \/>/);
   assert.match(dialog, /if \(event\.target === event\.currentTarget\) event\.currentTarget\.close\(\);/);

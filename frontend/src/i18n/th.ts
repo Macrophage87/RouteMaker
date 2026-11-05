@@ -2038,7 +2038,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Times are from each system's published timetables for this {day}: where trains or buses come every 15 minutes or less, the wait is half the time between them; otherwise it is the time to the next one.": "เวลามาจากตารางเวลาที่เผยแพร่ของแต่ละระบบสำหรับ{day}นี้: ที่ซึ่งรถไฟหรือรถบัสมาทุก 15 นาทีหรือน้อยกว่า เวลารอคือครึ่งหนึ่งของช่วงห่าง ไม่เช่นนั้นคือเวลาถึงคันถัดไป",
   "a closure": "การปิดถนน",
   "the point on the map": "จุดบนแผนที่",
-  "Closed": "ปิด",
+  "Dock closed": "จุดจอดปิด",
   "The shared place has no map point. Type “{query}” in Where to? to find it.": "สถานที่ที่แชร์มาไม่มีจุดบนแผนที่ พิมพ์ “{query}” ในไปไหน? เพื่อค้นหา",
   "Reach": "ระยะเข้าถึง",
   "Bus {name}": "รถบัส {name}",

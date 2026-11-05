@@ -204,6 +204,10 @@ function parseGoogle(url: URL): Shared | null {
     const point = parseCoordinates(searched);
     return point ? { kind: "point", point } : { kind: "query", text: searched };
   }
+  // A directions link's destination by name ("?api=1&destination=Union+Station", "?daddr=Union+Station"): searched
+  // for, never the view's centre (the numbers are read above).
+  const destination = words(url.searchParams.get("destination") ?? url.searchParams.get("daddr"));
+  if (destination) return { kind: "query", text: destination };
   const at = /@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/.exec(path);
   if (at) {
     const point = parseCoordinates(`${at[1]},${at[2]}`);

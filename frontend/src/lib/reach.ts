@@ -153,9 +153,15 @@ export async function requestReach(body: Record<string, unknown>, fetchImpl: Fet
 
 export { areaText };
 
-/** A point's name as its marker on the map has it: Start, Stop 1, Via point, End (lib/pointKinds.ts namePoints). */
+/**
+ * A point's name as its marker on the map has it: Start, Stop 1, Via point, End (lib/pointKinds.ts namePoints). Two
+ * via points or more are numbered among themselves (Via point 1, Via point 2), so no two groups read the same.
+ */
 export function reachPointNames(points: readonly LonLat[], loop: boolean, isVia: (p: LonLat) => boolean = (p) => VIA_MARKS.isVia(p)): string[] {
-  return namePoints(points, isVia, loop).map((n) =>
+  const named = namePoints(points, isVia, loop);
+  const vias = named.filter((n) => n.role === "via").length;
+  let via = 0;
+  return named.map((n) =>
     n.role === "start"
       ? loop
         ? t("Start and finish")
@@ -163,7 +169,9 @@ export function reachPointNames(points: readonly LonLat[], loop: boolean, isVia:
       : n.role === "end"
         ? t("End")
         : n.role === "via"
-          ? t("Via point")
+          ? vias > 1
+            ? t("Via point {number}", { number: (via += 1) })
+            : t("Via point")
           : t("Stop {number}", { number: n.number ?? 0 }),
   );
 }

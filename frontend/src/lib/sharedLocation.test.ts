@@ -58,6 +58,13 @@ test("a Google directions link to a named place opens that place, never the dire
     kind: "query",
     text: "Union Station, Washington, DC",
   });
+  // Google's own directions links with the destination as a parameter.
+  assert.deepEqual(parseShared("https://www.google.com/maps/dir/?api=1&destination=Union+Station"), { kind: "query", text: "Union Station" });
+  assert.deepEqual(parseShared("https://maps.google.com/maps?saddr=38.9,-77.0&daddr=Union+Station"), { kind: "query", text: "Union Station" });
+  assert.deepEqual(parseShared("https://www.google.com/maps/dir/?api=1&origin=38.9,-77.0&destination=Union+Station&travelmode=bicycling"), {
+    kind: "query",
+    text: "Union Station",
+  });
 });
 
 test("a Google search link searches for its words, not the view's centre", () => {

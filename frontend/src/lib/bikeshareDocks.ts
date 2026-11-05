@@ -348,13 +348,13 @@ const HALO = { "text-halo-color": "#ffffff", "text-halo-width": 1.5 };
 export const BUBBLE_PADDING = [3, 4, 3, 23];
 
 /**
- * A closed dock's word on the map, in the language in force where the map's font (CLIMB_FONT) has its letters (Latin,
+ * A closed dock's words on the map ("Dock closed": named, so a language agrees "closed" with its word for a dock), in the language in force where the map's font (CLIMB_FONT) has its letters (Latin,
  * Vietnamese's and Cyrillic); in English where it has none (Ethiopic, Arabic, the CJK and Indic scripts), so the
  * label never draws as empty boxes.
  */
 export function closedLabel(): string {
-  const word = t("Closed");
-  return /^[\u0000-\u052f\u1e00-\u1eff\s]*$/.test(word) ? word : "Closed";
+  const word = t("Dock closed");
+  return /^[\u0000-\u052f\u1e00-\u1eff\s]*$/.test(word) ? word : "Dock closed";
 }
 
 /** The layers, bottom to top. */

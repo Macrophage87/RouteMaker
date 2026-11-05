@@ -2038,7 +2038,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Times are from each system's published timetables for this {day}: where trains or buses come every 15 minutes or less, the wait is half the time between them; otherwise it is the time to the next one.": "時間は各交通機関が公表しているこの{day}の時刻表によるものです：列車やバスが15分以内の間隔で来る場合、待ち時間は間隔の半分、それ以外は次の便までの時間です。",
   "a closure": "通行止め",
   "the point on the map": "地図上の地点",
-  "Closed": "休止中",
+  "Dock closed": "ポート休止中",
   "The shared place has no map point. Type “{query}” in Where to? to find it.": "共有された場所には地図上の地点がありません。見つけるには「どこへ？」に「{query}」と入力してください。",
   "Reach": "到達範囲",
   "Bus {name}": "バス{name}",

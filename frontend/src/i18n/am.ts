@@ -2038,7 +2038,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Times are from each system's published timetables for this {day}: where trains or buses come every 15 minutes or less, the wait is half the time between them; otherwise it is the time to the next one.": "ጊዜዎቹ ከእያንዳንዱ ሥርዓት የታተሙ የዚህ {day} መርሃ ግብሮች ናቸው፦ ባቡሮች ወይም አውቶቡሶች በየ15 ደቂቃ ወይም ከዚያ ባነሰ በሚመጡበት፣ መጠበቂያው በመካከላቸው ካለው ጊዜ ግማሽ ነው፤ ካልሆነ ግን እስከሚቀጥለው ያለው ጊዜ ነው።",
   "a closure": "መዘጋት",
   "the point on the map": "በካርታው ላይ ያለው ነጥብ",
-  "Closed": "ዝግ",
+  "Dock closed": "ጣቢያው ዝግ ነው",
   "The shared place has no map point. Type “{query}” in Where to? to find it.": "የተጋራው ቦታ በካርታ ላይ ነጥብ የለውም። ለማግኘት “{query}” በወዴት? ውስጥ ይጻፉ።",
   "Reach": "መድረሻ ክልል",
   "Bus {name}": "አውቶቡስ {name}",

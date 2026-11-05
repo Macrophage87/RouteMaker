@@ -1852,18 +1852,22 @@ export function App() {
   // This device's settings when the page first asked for the account's: a read that comes later (retryUntil) keeps
   // what was changed here since (lib/accountSettings.ts signInLate).
   const settingsAtLoad = useRef<SettingsDoc | null>(null);
+  if (settingsAtLoad.current === null) settingsAtLoad.current = deviceSettings({ preset, dials }, undefined, weightStore.current?.setting());
   // True once the account's settings were read (whether this page then took them or not); false to try again
   // (retryUntil: a few times, then on the next focus or back online).
   const syncSettingsOnSignIn = async (origin: string, live: () => boolean): Promise<boolean> => {
     const deviceNow = () => deviceSettings({ preset: rideRef.current.preset, dials: rideRef.current.dials }, undefined, weightStore.current?.setting());
-    settingsAtLoad.current ??= deviceNow();
     const account = await fetchSettings(origin);
     if (!live()) return true;
     if (account === undefined) return false;
     const device = deviceNow();
-    const step = signInLate(account, device, settingsAtLoad.current, unitsPending());
-    // A pending Units choice is done with once the account holds it.
-    const keep = (saved: boolean) => saved && setUnitsPending(false);
+    const step = signInLate(account, device, settingsAtLoad.current ?? device, unitsPending());
+    // A pending Units choice is done with once the account holds it. A save that fails keeps it pending, and leaves
+    // the account's copy as the last saved, so the next change here sends the whole of it again (the auto-save).
+    const keep = (saved: boolean) => {
+      if (saved) setUnitsPending(false);
+      else lastSettings.current = account;
+    };
     if (!step.save) setUnitsPending(false);
     if (step.kind === "push-device") {
       lastSettings.current = device;
@@ -3920,7 +3924,8 @@ export function App() {
       const doc = deviceSettings({ preset, dials }, undefined, weightStore.current?.setting());
       if (sameSettings(doc, lastSettings.current)) return;
       lastSettings.current = doc;
-      void saveSettings(window.location.origin, doc);
+      // Saved with its units: a Units choice still pending (saveUnitsUnsynced) is in the account now.
+      void saveSettings(window.location.origin, doc).then((saved) => saved && setUnitsPending(false));
     }, SAVE_SETTLE_MS);
     return () => window.clearTimeout(timer);
   }, [me.signed_in, settingsSynced, preset, dials, waterPrefs, climbsOn, climbsFrom, showTopoLines, favoriteRides, weight, ridingSpeed]);
@@ -4771,8 +4776,14 @@ export function App() {
     // Units switched during the ride (lib/units.ts switchUnitsInRide): the reload that brings the rest of the page
     // round too, now the ride is done.
     // A moment later, once the cleared plan is in the address (the hash is written by an effect after this render).
-    if (unitsReloadOwed()) window.setTimeout(() => window.location.reload(), 300);
+    reloadIfUnitsOwed();
   };
+  // Units switched during a ride or Roam (lib/units.ts switchUnitsInRide, or a late settings read): the reload owed
+  // brings the rest of the page round (labels and figures made once at load) once the ride or Roam is over. A detour
+  // ridden from Roam comes back to Roam, not here, so the reload waits for Roam's end (endRoam).
+  function reloadIfUnitsOwed() {
+    if (unitsReloadOwed()) window.setTimeout(() => window.location.reload(), 300);
+  }
   // Roam (RoamMode.tsx): Go's one button while Go has no destination. The voice is unlocked inside the press (iOS).
   const startRoam = () => {
     // The location blocked (Go's look-up said so): Roam would only wait for it, so Go stays and says why (P11).
@@ -4844,6 +4855,7 @@ export function App() {
     announce(ROAM_ENDED);
     // Back to Go's Menu, the first control of its bar (the Roam button is under it).
     window.setTimeout(() => document.querySelector<HTMLElement>(".go-menu")?.focus(), 0);
+    reloadIfUnitsOwed();
   };
   // Roam's watch found the location blocked (or none to be had): back in Go, which says why in one line (P11),
   // rather than a Roam card looking for the road for ever.
@@ -4854,6 +4866,7 @@ export function App() {
     if (reason === "denied") setGoStart((s) => (s.kind === "here" ? s : { kind: "none", why: "denied" }));
     setNotice(reason === "denied" ? ROAM_LOCATION_OFF : LOCATE_MESSAGES[reason]);
     window.setTimeout(() => document.querySelector<HTMLElement>(".go-menu")?.focus(), 0);
+    reloadIfUnitsOwed();
   };
   // Ride here from Roam's Detour: a route from where the rider is to the place, on Go's ride type and settings, ridden
   // as any ride is; its end comes back to Roam (endRide). Answers the words to say why not, or null once it started.

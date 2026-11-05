@@ -2038,7 +2038,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Times are from each system's published timetables for this {day}: where trains or buses come every 15 minutes or less, the wait is half the time between them; otherwise it is the time to the next one.": "Süreler her sistemin bu {day} için yayımladığı tarifelerdendir: trenlerin veya otobüslerin 15 dakikada bir ya da daha sık geldiği yerlerde bekleme, aradaki sürenin yarısıdır; aksi hâlde bir sonrakine kadar geçen süredir.",
   "a closure": "bir kapanış",
   "the point on the map": "haritadaki nokta",
-  "Closed": "Kapalı",
+  "Dock closed": "İstasyon kapalı",
   "The shared place has no map point. Type “{query}” in Where to? to find it.": "Paylaşılan yerin haritada bir noktası yok. Bulmak için Nereye? alanına “{query}” yazın.",
   "Reach": "Erişim",
   "Bus {name}": "Otobüs {name}",

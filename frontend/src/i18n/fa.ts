@@ -2038,7 +2038,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Times are from each system's published timetables for this {day}: where trains or buses come every 15 minutes or less, the wait is half the time between them; otherwise it is the time to the next one.": "زمان‌ها از جدول‌های منتشرشدهٔ هر سامانه برای این {day} است: جایی که قطار یا اتوبوس هر ۱۵ دقیقه یا کمتر می‌آید، انتظار نصف فاصلهٔ بین آن‌هاست؛ وگرنه زمان تا بعدی است.",
   "a closure": "یک انسداد",
   "the point on the map": "نقطهٔ روی نقشه",
-  "Closed": "بسته",
+  "Dock closed": "ایستگاه بسته است",
   "The shared place has no map point. Type “{query}” in Where to? to find it.": "مکان هم‌رسانی‌شده نقطه‌ای روی نقشه ندارد. برای یافتنش “{query}” را در کجا؟ بنویسید.",
   "Reach": "دسترسی",
   "Bus {name}": "اتوبوس {name}",
