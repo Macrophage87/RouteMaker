@@ -178,6 +178,10 @@ ARLINGTON_BUFFER_M = 12
 ARLINGTON_SHARE = 0.6
 
 
+class ArlingtonUnavailable(OSError):
+    """The county's service failed or answered with an error; Arlington is left out."""
+
+
 def fetch_arlington(url: str = open_data.ARLINGTON_BCI_URL) -> list[tuple[str, str]]:
     """Arlington's comfort lines as (map code, GeoJSON geometry), read from the county's
     service for the comparison only; nothing of it is written to the download."""
@@ -192,6 +196,7 @@ def fetch_arlington(url: str = open_data.ARLINGTON_BCI_URL) -> list[tuple[str, s
                 "outFields": "MapCode",
                 "outSR": 4326,
                 "f": "geojson",
+                "orderByFields": "OBJECTID",
                 "resultOffset": offset,
                 "resultRecordCount": 2000,
             }
@@ -200,7 +205,13 @@ def fetch_arlington(url: str = open_data.ARLINGTON_BCI_URL) -> list[tuple[str, s
             f"{url}/query?{query}", headers={"User-Agent": "RouteMaker open data export"}
         )
         with urllib.request.urlopen(request, timeout=60) as response:  # noqa: S310 (fixed https URL)
-            page = json.load(response)
+            try:
+                page = json.load(response)
+            except ValueError as error:
+                raise ArlingtonUnavailable(f"not JSON at offset {offset}") from error
+        # ArcGIS reports a failure as a 200 with an "error" member: never a partial count.
+        if not isinstance(page, dict) or "error" in page:
+            raise ArlingtonUnavailable(f"ArcGIS error at offset {offset}: {page!r:.200}")
         features = page.get("features") or []
         for feature in features:
             code = (feature.get("properties") or {}).get("MapCode")
@@ -217,8 +228,9 @@ def fetch_arlington(url: str = open_data.ARLINGTON_BCI_URL) -> list[tuple[str, s
 def arlington_comparison(
     lines: list[tuple[str, str]], comparison: open_data.Comparison, schema: str | None = None
 ) -> int:
-    """Add each live segment that runs along one of Arlington's comfort lines to the
-    comparison, against the line it runs along most. Returns the segments matched."""
+    """Add each live segment that runs along Arlington's comfort lines to the comparison,
+    against the comfort category it runs along most (summed over every piece of that
+    category, as the county cuts a street into short lines). Returns the segments matched."""
     schema = schema or _schema()
     if not lines:
         return 0
@@ -245,9 +257,10 @@ def arlington_comparison(
                 SELECT s.stress_tier, s.stress_half, s.map_class, s.length_m, best.code
                 FROM nearby s CROSS JOIN LATERAL (
                     SELECT a.code,
-                           ST_Length(ST_Intersection(s.g, ST_Buffer(a.g, %s))) AS along
+                           ST_Length(ST_Intersection(s.g, ST_Union(ST_Buffer(a.g, %s)))) AS along
                     FROM arlington_comfort a
                     WHERE ST_DWithin(s.g, a.g, %s)
+                    GROUP BY a.code
                     ORDER BY along DESC LIMIT 1) best
                 WHERE best.along >= %s * ST_Length(s.g)""",
             [ARLINGTON_BUFFER_M, ARLINGTON_BUFFER_M, ARLINGTON_SHARE],

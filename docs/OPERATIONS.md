@@ -5358,8 +5358,8 @@ Nothing from rides, riders, accounts or logs is read (`core.open_data_export`).
    comfort categories read as 1 to 4, the owner, 2026-11-05: "assuming that LTS1 is "most
    comfortable" to LTS4 being "Not Recommended""). If the service is down it says so and
    leaves Arlington out; `--no-arlington` skips it.
-2. Copy `agency-comparison.json` to the docs generator's folder (the Methodology thread's
-   copy), so the stress page's comparison charts carry the new numbers.
+2. Copy `agency-comparison.json` into the docs generator's folder, beside its `content.py`
+   (the copy the Methodology and architecture docs thread builds from), so the stress page's comparison charts carry the new numbers.
 3. Show the owner the README and the counts it printed. Uploading publishes the files: it waits
    for the owner's go each time.
 4. With the go, make a release named and tagged `data-<date>` on

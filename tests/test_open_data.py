@@ -357,9 +357,17 @@ def test_the_export_end_to_end(segment_schemas, tmp_path: Path):
     racks.write_text(json.dumps({"points": [{"id": "dc1", "x": -77.0, "y": 38.9, "r": 3}]}))
     out = tmp_path / "out"
 
-    # One Arlington comfort line along way 1 (LTS 3 on the map): "Comfortable" reads as 2.
-    line = {"type": "LineString", "coordinates": [[-77, 38.9], [-76.99, 38.901]]}
-    arlington = [("Comfortable", json.dumps(line))]
+    # Way 1 (LTS 3 on the map) runs along two short Arlington pieces, both "Comfortable"
+    # (read as 2), neither covering 60% of it alone; one "Not Recommended" piece is shorter.
+    def piece(x0, x1):
+        y = lambda x: 38.9 + (x + 77) * 0.1  # noqa: E731 (on way 1's line)
+        return json.dumps({"type": "LineString", "coordinates": [[x0, y(x0)], [x1, y(x1)]]})
+
+    arlington = [
+        ("Comfortable", piece(-77.0, -76.9955)),
+        ("Comfortable", piece(-76.9955, -76.992)),
+        ("Not Recommended", piece(-76.992, -76.99)),
+    ]
 
     result = open_data_export.export(out, "2026-11-05", racks, arlington=arlington)
 
@@ -411,3 +419,37 @@ def test_the_export_reads_only_the_map():
                "nearby"}  # fmt: skip
     assert tables <= allowed, tables
     assert not re.search(r"\b(ride|rider|user|account|presence|access_log)s?\b\.", source)
+
+
+def test_arlington_errors_never_give_a_partial_count(monkeypatch):
+    """ArcGIS answers a failure with a 200 and an "error" member, or with a broken page: the
+    export then leaves Arlington out (the command catches OSError) rather than count part."""
+    import io
+    import urllib.request
+
+    from core import open_data_export
+
+    pages = iter(
+        [
+            {"features": [{"properties": {"MapCode": "Comfortable"},
+                           "geometry": {"type": "LineString", "coordinates": [[0, 0], [1, 1]]}}],
+             "exceededTransferLimit": True},
+            {"error": {"code": 500, "message": "busy"}},
+        ]
+    )  # fmt: skip
+
+    class Reply(io.BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    monkeypatch.setattr(
+        urllib.request, "urlopen", lambda *a, **k: Reply(json.dumps(next(pages)).encode())
+    )
+    with pytest.raises(OSError):
+        open_data_export.fetch_arlington()
+    monkeypatch.setattr(urllib.request, "urlopen", lambda *a, **k: Reply(b"<html>"))
+    with pytest.raises(OSError):
+        open_data_export.fetch_arlington()
