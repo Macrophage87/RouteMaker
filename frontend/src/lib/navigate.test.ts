@@ -12,6 +12,7 @@ import { spokenDistance } from "./format.ts";
 import { cueParts } from "./cueShown.ts";
 import {
   heldProgressM,
+  voidsAutoReplan,
   OFF_SURE_M,
   CUE_SHEET_SHOWN,
   arrivedShown,
@@ -1083,6 +1084,55 @@ test("turning back a block on a lollipop's stem is the wrong way, never a jump p
   const again = rideThrough(model, [at(550, 0), at(1000, 0), at(1000, 300)], back.state);
   assert.equal(again.state.off, false);
   assert.ok(Math.abs((again.state.progressM ?? 0) - 1300) < 6, `${again.state.progressM}`);
+});
+
+test("an out-and-back turned round a little short of its far end rides home on the way back, never off route", () => {
+  const model = outAndBack();
+  for (const x of [975, 960, 950, 940, 900]) {
+    let s = ride(model, "full", 0, x).state;
+    for (let i = 0; i < 5; i += 1) s = step(model, s, fix(at(x, 0), { speedMs: 0 }), "full").state;
+    const home = rideThrough(model, [at(x, 0), at(300, 0), at(300, 100)], s);
+    const said = home.events.map((e) => e.spoken).join(" | ");
+    assert.equal(
+      home.events.some((e) => e.kind !== "cue"),
+      false,
+      `${x}: ${said}`,
+    );
+    assert.equal(home.state.off, false, `${x}`);
+    assert.ok(home.events.some((e) => e.cue?.street === "Back Street" && e.phase === "now"), `${x}: ${said}`);
+  }
+});
+
+test("a late automatic re-plan is dropped once the rider is back on the planned route (2026-11-04 review)", () => {
+  // The page's loop (RideMode onFix): off route starts an automatic re-plan with its ticket; each fix after, back on
+  // the route voids it, and the answer is then taken only if its ticket is still the latest (`voided`).
+  const model = rideModel(lRoute());
+  let s = ride(model, "full", 0, 400).state;
+  let ticket = 0;
+  let auto: number | null = null;
+  let mine: number | null = null;
+  const events: string[] = [];
+  // 35 m beside the line for 8 s (a sidewalk round a work-zone fence), then back on it.
+  const path: LonLat[] = [];
+  for (let m = 405; m <= 470; m += 5) path.push(at(m, 35));
+  for (let m = 475; m <= 520; m += 5) path.push(at(m, 0));
+  for (const p of path) {
+    const out = step(model, s, fix(p), "full");
+    s = out.state;
+    events.push(...out.events.map((e) => e.kind));
+    if (voidsAutoReplan(s, auto, ticket)) {
+      auto = null;
+      ticket += 1;
+    }
+    if (s.off && mine === null) mine = auto = ticket += 1;
+  }
+  assert.deepEqual(events, ["off-route", "back-on-route"]);
+  assert.notEqual(mine, null);
+  // The answer arrives now: its ticket is no longer the latest, so it is dropped.
+  assert.notEqual(mine, ticket);
+  // While still off route it would have been taken.
+  assert.equal(voidsAutoReplan({ ...s, off: true }, 7, 7), false);
+  assert.equal(voidsAutoReplan(s, 7, 8), false, "a newer re-plan (the rider's own ask) is not voided");
 });
 
 test("a ride resumed standing still on two passes is not placed by GPS drift", () => {

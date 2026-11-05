@@ -139,6 +139,7 @@ import {
   arrivedShown,
   snap,
   heldProgressM,
+  voidsAutoReplan,
   CUE_SHEET_SHOWN,
   type Cue,
   type RideEvent,
@@ -1782,7 +1783,7 @@ export function RideMode({
       // Back on it with an automatic re-plan still under way: its answer is dropped (voided, as Keep does), so a late
       // new route from the off-route spot never replaces the one the rider is riding (2026-11-04 review). The rider's
       // own asks (Re-plan from here, a detour, Road closed) stand.
-      if (!out.state.off && autoReplan.current === replanTicket.current) {
+      if (voidsAutoReplan(out.state, autoReplan.current, replanTicket.current)) {
         autoReplan.current = null;
         replanTicket.current += 1;
         setReplanning(false);

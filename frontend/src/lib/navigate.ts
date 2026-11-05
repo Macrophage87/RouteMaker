@@ -215,6 +215,11 @@ export const BACK_TOLERANCE_M = 30;
  * missed turn; back on route takes REJOIN_FIXES fixes in a row going forward along the line.
  */
 export const WRONG_WAY_M = 200;
+/**
+ * The later pass taken on riding the line backwards lies at most this much farther on than the rider came back: an
+ * out-and-back turned round short of its far end (a few hundred metres at most), never a loop's length away.
+ */
+export const LATER_PASS_SLACK_M = 2 * WRONG_WAY_M;
 /** The search for the rider's place on the line looks this far behind the last progress... */
 export const WINDOW_BEHIND_M = 60;
 /** ...and this far ahead, plus FAST_MS a second since the last good fix (a tunnel gap). */
@@ -1622,6 +1627,14 @@ function firstPlace(model: RideModel, state: RideState, fix: RideFix, accuracyM:
 }
 
 /**
+ * Whether the automatic re-plan under way (`autoTicket`, while it is the latest `ticket`) is dropped at this ride state:
+ * once back on the planned route, its late answer never replaces the route the rider is riding (2026-11-04 review).
+ */
+export function voidsAutoReplan(state: RideState, autoTicket: number | null, ticket: number): boolean {
+  return !state.off && autoTicket !== null && autoTicket === ticket;
+}
+
+/**
  * The progress a re-plan counts from (Detour, Re-plan from here, Road closed): the ride's, or, not yet placed (held for
  * the direction of travel), the first pass of the line near `here`. Never the start: the stops before the rider are done.
  */
@@ -1714,15 +1727,15 @@ export function step(
       const furthest = Math.max(state.furthestM ?? state.progressM, progress);
       next.furthestM = furthest;
       // Backwards along one pass of the line that a later pass runs the other way (an out-and-back's way out, after a
-      // stop at its far end): forward along that later pass, from here. Only as far on as the rider has come back, so
-      // the turn is that pass's own far end: turning back on a lollipop's stem is the wrong way, never a jump past the
-      // loop to the way home (2026-11-05 review).
+      // stop at its far end, or turned back a little short of it): forward along that later pass, from here. Only as far
+      // on as the rider has come back plus LATER_PASS_SLACK_M, so the turn is near that pass's own far end: turning back
+      // on a lollipop's stem is the wrong way, never a jump past the whole loop to the way home (2026-11-05 review).
       const later =
         furthest - progress >= WRONG_WAY_M
           ? passesNear(model, fix.point).find(
               (s) =>
                 s.alongM > furthest &&
-                s.alongM - furthest <= furthest - found.alongM + PASS_GAP_M &&
+                s.alongM - furthest <= furthest - found.alongM + LATER_PASS_SLACK_M &&
                 s.offM <= threshold &&
                 bearingGap(lineBearing(model, s.alongM), lineBearing(model, found.alongM)) > 90,
             )

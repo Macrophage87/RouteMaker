@@ -129,7 +129,7 @@ test("back on the planned route, an automatic re-plan still under way is dropped
   // On the line again: voided as Keep voids it, so its late answer never replaces the route.
   assert.match(
     ride,
-    /if \(!out\.state\.off && autoReplan\.current === replanTicket\.current\) \{\s*autoReplan\.current = null;\s*replanTicket\.current \+= 1;\s*setReplanning\(false\);\s*setReplanNote\(""\);\s*\}/,
+    /if \(voidsAutoReplan\(out\.state, autoReplan\.current, replanTicket\.current\)\) \{\s*autoReplan\.current = null;\s*replanTicket\.current \+= 1;\s*setReplanning\(false\);\s*setReplanNote\(""\);\s*\}/,
   );
   assert.match(replan, /const voided = \(\) => ended\.current \|\| ticket !== replanTicket\.current;/);
 });
