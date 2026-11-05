@@ -1137,6 +1137,37 @@ class TestHalfStepsBeneathAnEdit:
 
 
 @db
+class TestAnEditFromATableWithoutTheHalfColumn:
+    """An edit made on a live table built before `stress_computed_half` stores its states
+    without it; undoing and replaying it on a rebuilt table that has it still work."""
+
+    def rebuilt_with(self, schema, state: dict) -> None:
+        rebuild_without_the_edit(schema)
+        stress_edits.write_rows(schema, {f"{WAY}:0": {**state, "stress_computed_half": False}})
+
+    def test_undo_and_replay_succeed(self, live) -> None:
+        with connection.cursor() as cursor:
+            cursor.execute(f"ALTER TABLE {live}.segment DROP COLUMN stress_computed_half")
+        segment_info.forget_columns()
+        admin = make_user()
+        done = edit(live, admin, 4, public_note="Heavy turning traffic", display="map")
+        after = done.edit.after[f"{WAY}:0"]
+        assert "stress_computed_half" not in after and after["stress_computed_tier"] == 3
+
+        self.rebuilt_with(live, after)
+        assert live_row(live)["stress_computed_half"] is False
+        stress_edits.undo(admin, done.edit.pk)
+        row = live_row(live)
+        assert (row["stress_tier"], row["stress_adjustment_id"]) == (3, None)
+        assert row["stress_computed_half"] is None
+
+        self.rebuilt_with(live, after)
+        stress_edits.reapply_since(None)
+        row = live_row(live)
+        assert (row["stress_tier"], row["stress_computed_half"]) == (3, None)
+
+
+@db
 class TestReplayOnlyLiveRows:
     def test_an_edit_whose_override_row_was_deleted_is_not_brought_back(self, live) -> None:
         done = edit(live, make_user(), 4)

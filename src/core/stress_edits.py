@@ -258,6 +258,15 @@ def write_rows(schema: str, states: dict) -> int:
     with connection.cursor() as cursor:
         for key, state in states.items():
             way, ordinal = (int(part) for part in key.split(":"))
+            if (
+                "stress_computed_tier" in state
+                and "stress_computed_half" not in state
+                and "stress_computed_half" in columns
+            ):
+                # A state stored from a table without the column (an edit made before the
+                # rebuild that added it): the half goes with the tier it qualifies, so a
+                # state that clears the adjustment clears it too (`segment_adjustment_shown`).
+                state = {**state, "stress_computed_half": None}
             use = [c for c in columns if c in state]
             if not use:
                 continue
