@@ -93,6 +93,7 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
             row.get("hazard"),
             row.get("facility_shown"),
             _json_or_none(row.get("trail_tags")),
+            _computed_half(row["stress"]),
         )
         for row in rows
     ]
@@ -103,7 +104,7 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
             args = ",".join(
                 cursor.mogrify(
                     "(%s,%s,ST_GeomFromText(%s,4326),%s,%s,%s::jsonb,%s,%s,%s,%s,%s,%s,%s,%s,%s,"
-                    "%s::text[],%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s,%s,%s,%s::jsonb)",
+                    "%s::text[],%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s,%s,%s,%s::jsonb,%s)",
                     (
                         way_id,
                         ordinal,
@@ -149,6 +150,7 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
                         hazard,
                         facility_shown,
                         trail_tags,
+                        computed_half,
                     ),
                 )
                 for (
@@ -196,6 +198,7 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
                     hazard,
                     facility_shown,
                     trail_tags,
+                    computed_half,
                 ) in batch
             )
             cursor.execute(
@@ -213,7 +216,7 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
                      stress_unsmoothed_tier, mass_usable_width_m, bike_access_reason,
                      stress_half, mtb_level, mtb_name, stress_ratings, sidepath_name,
                      scenic, hazard,
-                     facility_shown, trail_tags)
+                     facility_shown, trail_tags, stress_computed_half)
                     VALUES {args}"""
             )
             written += len(batch)
@@ -315,6 +318,15 @@ def _adjustment_columns(stress: StressResult) -> tuple:
         exposed.get("public_note"),
         exposed.get("display"),
     )
+
+
+def _computed_half(stress: StressResult) -> bool | None:
+    """Whether the level an adjustment replaced was a half step, where the row may say
+    what it replaced (`stress_computed_tier`); None everywhere else."""
+    adjustment = getattr(stress, "adjustment", None)
+    if adjustment is None or "computed_tier" not in adjustment.exposed():
+        return None
+    return bool(getattr(adjustment, "computed_half", False))
 
 
 def _attr_sources_json(stress: StressResult) -> str | None:

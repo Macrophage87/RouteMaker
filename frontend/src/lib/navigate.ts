@@ -192,10 +192,19 @@ export const START_M = 50;
 export const PLACE_HEADING_MIN_MS = 2;
 /** ...else the way the rider has moved since the first fix, once this far (or the fix's accuracy, if more). */
 export const PLACE_MOVED_M = 20;
+/**
+ * A browser speed under this is standing still (2026-11-05 review): GPS drift is no direction of travel, and the
+ * movement is measured afresh from where the rider stood.
+ */
+export const PLACE_STILL_MS = 1;
 /** Two near points of the line closer along it than this are one pass, not two. */
 export const PASS_GAP_M = 50;
 /** Passes whose bearing is within this of the best match are equally good: the first along is taken. */
 export const PLACE_SAME_DEG = 30;
+/** A direction of travel this far or more off every pass crosses the line (riding out to it from a cafe): no pick. */
+export const PLACE_ACROSS_DEG = 60;
+/** A held ride off the line beside more than one pass waits for the line within this; farther, placed as before. */
+export const PLACE_HOLD_OFF_M = 200;
 /** A ride first placed this near its end arrives only after riding this far along the line (never on a first fix). */
 export const ARRIVE_RIDDEN_M = 40;
 /** Progress never moves back by more than this while on route (GPS jitter at a light). */
@@ -206,6 +215,11 @@ export const BACK_TOLERANCE_M = 30;
  * missed turn; back on route takes REJOIN_FIXES fixes in a row going forward along the line.
  */
 export const WRONG_WAY_M = 200;
+/**
+ * The later pass taken on riding the line backwards lies at most this much farther on than the rider came back: an
+ * out-and-back turned round short of its far end (a few hundred metres at most), never a loop's length away.
+ */
+export const LATER_PASS_SLACK_M = 2 * WRONG_WAY_M;
 /** The search for the rider's place on the line looks this far behind the last progress... */
 export const WINDOW_BEHIND_M = 60;
 /** ...and this far ahead, plus FAST_MS a second since the last good fix (a tunnel gap). */
@@ -1549,42 +1563,84 @@ function rejoinCount(state: RideState, found: Snap): number {
   return state.rejoin === null || found.alongM <= state.rejoin.alongM + 2 ? 1 : state.rejoin.count + 1;
 }
 
-/** The rider's direction of travel: the browser's heading when moving, else the way moved since `from`; null if unknown. */
+/** The browser says the rider is standing still (PLACE_STILL_MS). */
+function standingStill(fix: RideFix): boolean {
+  return fix.speedMs !== null && Number.isFinite(fix.speedMs) && fix.speedMs < PLACE_STILL_MS;
+}
+
+/**
+ * The rider's direction of travel: the browser's heading when moving, else the way moved since `from`; null if unknown,
+ * or standing still (GPS drift at rest is no direction; 2026-11-05 review).
+ */
 function travelHeading(from: { point: LonLat } | undefined, fix: RideFix, accuracyM: number): number | null {
   const { headingDeg, speedMs } = fix;
+  if (standingStill(fix)) return null;
   if (headingDeg !== null && Number.isFinite(headingDeg) && speedMs !== null && Number.isFinite(speedMs) && speedMs >= PLACE_HEADING_MIN_MS) return headingDeg;
   if (from && haversineM(from.point, fix.point) >= Math.max(PLACE_MOVED_M, accuracyM)) return bearingDeg(from.point, fix.point);
   return null;
 }
 
 /**
- * Where a ride not yet placed starts on the line (review 2026-11-04 P2), or "hold" to wait for the direction of travel.
- * Near the start, the start (a loop's return leg passes it too). Away from it (Resume, Undo after End ride, Start
- * pressed part way) on one pass of the line, that pass; on more than one (an out-and-back's way out and way back), the
- * one whose bearing matches the way the rider is going, held until that is known. A loop's last stretch ridden toward
- * its start is held until the start (a ride started part way round, not one about to arrive). Off the line, the
- * nearest point of all, as before.
+ * Where a ride not yet placed starts on the line (review 2026-11-04 P2), or "hold" to wait for the direction of travel
+ * ("wait": the same, with the movement measured afresh from this fix). Near the start, the start (a loop's return leg
+ * passes it too), unless another pass goes through it too (a figure-eight from home, a second loop): then as below.
+ * Away from it (Resume, Undo after End ride, Start pressed part way) on one pass of the line, that pass; on more than
+ * one (an out-and-back's way out and way back), the one whose bearing matches the way the rider is going, held until
+ * that is known. A loop's last stretch ridden toward its start is held until the start (a ride started part way round,
+ * not one about to arrive). Off the line beside more than one pass (a cafe set back from the street), held until on the
+ * line; else the nearest point of all, as before.
  */
-function firstPlace(model: RideModel, state: RideState, fix: RideFix, accuracyM: number): Snap | "hold" | null {
+function firstPlace(model: RideModel, state: RideState, fix: RideFix, accuracyM: number): Snap | "hold" | "wait" | null {
   const threshold = offThreshold(accuracyM);
   const start = model.coordinates[0];
-  if (start && haversineM(fix.point, start) <= START_M) {
-    const atStart = snap(model, fix.point, 0, WINDOW_AHEAD_M);
-    // A held ride takes the start once on the line there; a first fix takes it at once (Start at the start).
-    if (atStart && (!state.placing || atStart.offM <= threshold)) return atStart;
-  }
-  const passes = passesNear(model, fix.point);
-  if (!passes.length) return null;
-  if (Math.min(...passes.map((s) => s.offM)) > threshold) return snap(model, fix.point);
   const end = model.coordinates[model.coordinates.length - 1];
   const loop = !!start && !!end && haversineM(start, end) <= START_M;
   const nearLoopEnd = (s: Snap) => loop && model.lengthM - s.alongM < END_PART_WAY_M;
   const heading = travelHeading(state.placing, fix, accuracyM);
+  // The pass whose bearing matches the way the rider is going; "wait" when that crosses them all (riding out to the line).
+  const byHeading = (passes: Snap[], h: number): { pick: Snap; gap: number } | "wait" => {
+    const gaps = passes.map((s) => bearingGap(lineBearing(model, s.alongM), h));
+    const gap = Math.min(...gaps);
+    if (passes.length > 1 && gap >= PLACE_ACROSS_DEG) return "wait";
+    return { pick: passes.find((_, i) => gaps[i] <= gap + PLACE_SAME_DEG)!, gap };
+  };
+  if (start && haversineM(fix.point, start) <= START_M) {
+    const atStart = snap(model, fix.point, 0, WINDOW_AHEAD_M);
+    // A held ride takes the start once on the line there; a first fix takes it at once (Start at the start)...
+    if (atStart && (!state.placing || atStart.offM <= threshold)) {
+      // ...unless the line passes the start again, other than as a loop's finish: then by the way the rider goes.
+      const others = passesNear(model, fix.point).filter((s) => s.alongM > WINDOW_AHEAD_M && !nearLoopEnd(s) && s.offM <= threshold);
+      if (!others.length) return atStart;
+      if (heading === null) return "hold";
+      const by = byHeading([atStart, ...others], heading);
+      return by === "wait" ? by : by.pick;
+    }
+  }
+  const passes = passesNear(model, fix.point);
+  if (!passes.length) return null;
+  const nearest = Math.min(...passes.map((s) => s.offM));
+  if (nearest > threshold) return passes.length > 1 && nearest <= PLACE_HOLD_OFF_M ? "wait" : snap(model, fix.point);
   if (heading === null) return passes.length > 1 || passes.some(nearLoopEnd) ? "hold" : passes[0];
-  const gaps = passes.map((s) => bearingGap(lineBearing(model, s.alongM), heading));
-  const bestGap = Math.min(...gaps);
-  const pick = passes.find((_, i) => gaps[i] <= bestGap + PLACE_SAME_DEG)!;
-  return nearLoopEnd(pick) && bestGap < 90 ? "hold" : pick;
+  const by = byHeading(passes, heading);
+  if (by === "wait") return by;
+  return nearLoopEnd(by.pick) && by.gap < 90 ? "hold" : by.pick;
+}
+
+/**
+ * Whether the automatic re-plan under way (`autoTicket`, while it is the latest `ticket`) is dropped at this ride state:
+ * once back on the planned route, its late answer never replaces the route the rider is riding (2026-11-04 review).
+ */
+export function voidsAutoReplan(state: RideState, autoTicket: number | null, ticket: number): boolean {
+  return !state.off && autoTicket !== null && autoTicket === ticket;
+}
+
+/**
+ * The progress a re-plan counts from (Detour, Re-plan from here, Road closed): the ride's, or, not yet placed (held for
+ * the direction of travel), the first pass of the line near `here`. Never the start: the stops before the rider are done.
+ */
+export function heldProgressM(model: RideModel, state: RideState, here: LonLat): number {
+  if (state.progressM !== null) return state.progressM;
+  return passesNear(model, here)[0]?.alongM ?? 0;
 }
 
 /**
@@ -1612,8 +1668,9 @@ export function step(
   if (state.progressM === null) {
     // The first fix (firstPlace): held, with nothing said, while the direction of travel is needed and not yet known.
     const placed = firstPlace(model, state, fix, accuracy);
-    if (placed === "hold") {
-      next.placing = state.placing ?? { point: fix.point, at: fix.at };
+    if (placed === "hold" || placed === "wait") {
+      // Standing still, or off the line or crossing it: the way the rider goes is measured from here on.
+      next.placing = placed === "wait" || standingStill(fix) || !state.placing ? { point: fix.point, at: fix.at } : state.placing;
       next.goodAt = fix.at;
       return { state: next, events };
     }
@@ -1670,11 +1727,17 @@ export function step(
       const furthest = Math.max(state.furthestM ?? state.progressM, progress);
       next.furthestM = furthest;
       // Backwards along one pass of the line that a later pass runs the other way (an out-and-back's way out, after a
-      // stop at its far end): forward along that later pass, from here.
+      // stop at its far end, or turned back a little short of it): forward along that later pass, from here. Only as far
+      // on as the rider has come back plus LATER_PASS_SLACK_M, so the turn is near that pass's own far end: turning back
+      // on a lollipop's stem is the wrong way, never a jump past the whole loop to the way home (2026-11-05 review).
       const later =
         furthest - progress >= WRONG_WAY_M
           ? passesNear(model, fix.point).find(
-              (s) => s.alongM > furthest && s.offM <= threshold && bearingGap(lineBearing(model, s.alongM), lineBearing(model, found.alongM)) > 90,
+              (s) =>
+                s.alongM > furthest &&
+                s.alongM - furthest <= furthest - found.alongM + LATER_PASS_SLACK_M &&
+                s.offM <= threshold &&
+                bearingGap(lineBearing(model, s.alongM), lineBearing(model, found.alongM)) > 90,
             )
           : undefined;
       if (later) {

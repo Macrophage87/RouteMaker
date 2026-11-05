@@ -392,9 +392,32 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
   (2026-11-04): "Baltimore city data is public domain, just like DC. It's in the city code."
   Credit: Baltimore City Department of Transportation (its own row on the Acknowledgements page,
   linked to the parking page above).
+- City review layers (the 2026-11-04 Baltimore City rating review,
+  `fixtures/overrides/2026-11-04-owner-baltimore-city-review.json`): four Baltimore City layers,
+  read 2026-11-04 beside the Street Centerline (Native) and matched to its blocks, as facts for
+  each block's rating and its public note:
+  - Truck routes (Baltimore City Department of Transportation, 2024): the class on the block,
+    `Thru` or `Local`, cited in the rows' evidence as "Baltimore City DOT truck route class Thru
+    (2024)" and said in the notes as "a city through-truck route" or "a city truck route for
+    deliveries".
+  - Restricted-hours routes (Baltimore City Department of Transportation): the rush-hour
+    parking-ban streets, with their hours, peak lanes, 2019 daily count and bus lane; cited as
+    "Baltimore City DOT restricted-hours route" and said in the notes as a rush-hour route.
+  - Speed humps (Baltimore City Department of Transportation): the humps on the way's own
+    blocks, counted in the rows' reasons ("2 speed humps"); no public note names them.
+  - The city's planning LTS (the Baltimore City Department of Transportation's bicycle level
+    of traffic stress, field `LTS`): compare-only, like MDOT SHA's LTS; the skeptic checked each
+    difference from it, and the rows' reasons quote it ("city planning LTS 1/2/4"). It sets no
+    level and no public note quotes it.
+  The review was run outside the repository; the four layers' item ids, sizes and sha256 were
+  not kept, and are to be copied here when the layers are next fetched. Credit: Open Baltimore,
+  as above; its Acknowledgements row reads "Bike facilities, truck and rush-hour routes, speed
+  humps and planning stress ratings in Baltimore".
 - Licence: open, by Baltimore City Code Art. 1 §9-1(h)
   (<https://codes.baltimorecity.gov/us/md/cities/baltimore/code/1/9-1#(h)>), which names the Open Data
-  Portal; the rack layers, outside it, rest on the owner's reading above.
+  Portal; the rack layers, outside it, rest on the owner's reading above, and so do the four
+  review layers wherever they sit (the owner, 2026-11-04: "Baltimore city data is public domain,
+  just like DC. It's in the city code.").
 - Records: `fixtures/datasets/README.md` for the portal items. The three rack layers have no row there
   (no hash was kept): their record is the retrieval date and counts above and the `source` line of
   `frontend/src/amenity-data/bike-parking.json`, rebuilt by `scripts/build_bike_parking.py --baltimore`.

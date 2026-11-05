@@ -138,6 +138,8 @@ import {
   whereAmIShown,
   arrivedShown,
   snap,
+  heldProgressM,
+  voidsAutoReplan,
   CUE_SHEET_SHOWN,
   type Cue,
   type RideEvent,
@@ -167,7 +169,7 @@ import {
 } from "./lib/rideOutput.ts";
 import { ScreenSleepNote } from "./ScreenSleepNote.tsx";
 import { RAIL_INSET_PX, railLeastPx, useRailFit } from "./lib/railFit.ts";
-import { WAITING_FOR_GPS, readOnce, watchRide, type RideGeoEnv } from "./lib/rideWatch.ts";
+import { WAITING_FOR_GPS, handOver, readOnce, rideWatchOptions, watchRide, type RideGeoEnv } from "./lib/rideWatch.ts";
 import { PAUSE_CHECK_MS, PausedFixes, beatKeepsGps, heartbeatFix, movedFromPause, rideStayPausedSaid, stayStep, stayedLong, type Stay } from "./lib/ridePause.ts";
 import { askCompass } from "./lib/compassHeading.ts";
 import { rideGeoEnv, rideSpeech, rideWake, ridesHidden, showCue, speaksAloud } from "./lib/nativeShell.ts";
@@ -265,7 +267,7 @@ import {
   walkLineTurns,
 } from "./lib/rideTrip.ts";
 import { onwardActive, onwardStart, onwardStep, onwardWhere, type OnwardState } from "./lib/onward.ts";
-import { onBoardPath, type OnBoardPath } from "./lib/onBoard.ts";
+import { lowPowerOnBoard, onBoardPath, type OnBoardPath } from "./lib/onBoard.ts";
 import { BOARDING_MS, TRIP_CHECK_MS } from "./lib/tripCheck.ts";
 import { walkModel, walkTurnLine } from "./lib/walkCues.ts";
 import { BoardingCard, OnBoardCard } from "./OnBoardCard.tsx";
@@ -1035,6 +1037,8 @@ export function RideMode({
   // metrorail"): there are no turn cues to pause, and the stops follow any rough fix or the timetable, so a weak or
   // lost GPS is neither said nor shown.
   const onTransitRef = useRef(false);
+  // On a train or bus until "Next stop" (lib/onBoard.ts lowPowerOnBoard): the watch's low-power stretch.
+  const lowPowerRef = useRef(false);
   // Weak GPS for long enough (cueSheetShown): the card shows the turns ahead as a list.
   const [cueSheetOn, setCueSheetOn] = useState(false);
   const cueSheetRef = useRef(false);
@@ -1052,6 +1056,8 @@ export function RideMode({
   const statsRef = useRef<RideStats>(resumeStats ? statsPause(resumeStats) : statsStart(Date.now()));
   // Each re-plan's ticket: "Keep the planned route" or a newer re-plan voids an older one's answer.
   const replanTicket = useRef(0);
+  // The ticket of the automatic re-plan under way (off route, not asked for), voided once back on the planned route.
+  const autoReplan = useRef<number | null>(null);
   // Where the last new route was asked from, until the rider is on its line (lib/navigate.ts replanHeld).
   const replannedFrom = useRef<LonLat | null>(null);
   const settingsId = useId();
@@ -1374,10 +1380,12 @@ export function RideMode({
       // skipped (Skip this stop, or a place chosen instead of it) is left out.
       // The same kept points for the way back below, so its stops keep their numbers in the new plan.
       // A restart part way (`done`, RestartStopsDialog): the stops the rider left unticked, behind or not.
-      const fromM = replanFromM(modelRef.current, current.progressM ?? 0, here);
+      // Not yet placed (held for the way the rider is going): from the first pass near here, never the start (heldProgressM).
+      const progressM = heldProgressM(modelRef.current, current, here);
+      const fromM = replanFromM(modelRef.current, progressM, here);
       const keptPoints = done
-        ? restartKept(modelRef.current, current.progressM ?? 0, plan.current.points, plan.current.loop, done)
-        : replanKept(modelRef.current, current.progressM ?? 0, plan.current.points, plan.current.loop, fromM).filter((i) => i !== skip);
+        ? restartKept(modelRef.current, progressM, plan.current.points, plan.current.loop, done)
+        : replanKept(modelRef.current, progressM, plan.current.points, plan.current.loop, fromM).filter((i) => i !== skip);
       const left = withoutStop(plan.current.points, keptPoints, here, skip ?? -1);
       // `let`: a re-route that leaves out the next via point (VIA_SKIP_EXTRA_S, below) rides the points without it.
       let points = via ? detourPoints(left, via) : left;
@@ -1393,6 +1401,7 @@ export function RideMode({
         return false;
       }
       const ticket = (replanTicket.current += 1);
+      autoReplan.current = !asked && !via && !done ? ticket : null;
       if (check) checking.current = true;
       // A held U-turn's check for a way ahead (UTURN_RECHECK_MS) is silent: nothing shown or said unless it finds one.
       if (!check) {
@@ -1444,7 +1453,7 @@ export function RideMode({
       // plan only where there is no way back. A way back is a short ask or three, not a plan to the end.
       const backFirst = rejoinsFirst(routeRef.current, { asked, detour: !!via, check, restart: !!done, skip: skip !== undefined });
       if (backFirst) {
-        const back = await wayBackRoute(routeRef.current, modelRef.current, current.progressM ?? 0, here, keptPoints, ask, voided, closed);
+        const back = await wayBackRoute(routeRef.current, modelRef.current, progressM, here, keptPoints, ask, voided, closed);
         if ("route" in back) {
           found = back.route;
           note = REPLAN_REJOIN_AHEAD;
@@ -1478,13 +1487,15 @@ export function RideMode({
         // pass. The no-signal timer runs on through it.
         if (!result.ok && !backFirst && !via && !check && startsWayBack(result.error.kind) && !voided()) {
           const kept = keptPoints;
-          const back = await wayBackRoute(routeRef.current, modelRef.current, current.progressM ?? 0, here, kept, ask, voided, closed);
+          const back = await wayBackRoute(routeRef.current, modelRef.current, progressM, here, kept, ask, voided, closed);
           if ("route" in back) found = back.route;
           else if (back.failed) failed = back.failed;
           note = REPLAN_REJOIN;
         }
       }
       window.clearTimeout(timer);
+      // Answered: no longer under way (a new route taken now is the one the rider then rides).
+      if (autoReplan.current === ticket) autoReplan.current = null;
       if (check) checking.current = false;
       else if (!released) gate.finish(found !== null);
       // Let go at the timeout and answered late with a route that is still taken (nothing newer since): the back-off
@@ -1751,8 +1762,10 @@ export function RideMode({
           notify(restartSaid(named));
         }
       }
-      // Off this line but on the other one (the standard way, or the detour): followed there, not re-planned.
-      if (out.state.off && fix.accuracyM <= POOR_FIX_M) {
+      // Off this line but on the other one (the standard way, or the detour): followed there, not re-planned. Not when
+      // off for riding this line the wrong way (backAtM): the rider is still on it, and on the other line where they share
+      // a street, so the two would swap every block (2026-11-05 review).
+      if (out.state.off && out.state.backAtM === undefined && fix.accuracyM <= POOR_FIX_M) {
         const at = onOtherLine(otherModelRef.current, fix.point, fix.accuracyM, out.state.progressM ?? -Infinity);
         if (at !== null) {
           takeOther(at, fix);
@@ -1769,6 +1782,15 @@ export function RideMode({
       }
       // Back on the planned route: "Keep" has done its work; leaving it again re-plans as usual.
       if (out.events.some((e) => e.kind === "back-on-route") || (keepRef.current && !out.state.off)) setKeepPlanned(false);
+      // Back on it with an automatic re-plan still under way: its answer is dropped (voided, as Keep does), so a late
+      // new route from the off-route spot never replaces the one the rider is riding (2026-11-04 review). The rider's
+      // own asks (Re-plan from here, a detour, Road closed) stand.
+      if (voidsAutoReplan(out.state, autoReplan.current, replanTicket.current)) {
+        autoReplan.current = null;
+        replanTicket.current += 1;
+        setReplanning(false);
+        setReplanNote("");
+      }
       // Never from a rough fix (OFF_SURE_M): a re-plan from a Wi-Fi guess 300 m out would be wrong at once.
       // Not after "No route found ahead": that route stays up (Re-plan from here still asks again), checked quietly.
       // On the line again: the next automatic re-plan need not wait for the rider to move (REPLAN_MOVED_M).
@@ -1794,10 +1816,15 @@ export function RideMode({
   const stopWatch = useRef<(() => void) | null>(null);
   // Paused at the destination in the app, the watch runs on and its fixes are only held (lib/ridePause.ts PausedFixes).
   const pausedFixes = useRef(new PausedFixes()).current;
+  // Whether the running watch has the on-board options (lib/rideWatch.ts ON_BOARD_WATCH_OPTIONS), or null with none.
+  const watchOnBoard = useRef<boolean | null>(null);
+  // Started (or, running, swapped: the new watch before the old one stops, lib/rideWatch.ts handOver) with the options
+  // for where the rider is now: low power on a train or bus, high accuracy otherwise.
   const startWatch = useCallback(() => {
-    stopWatch.current?.();
     gpsWeak.current = { goodAt: Date.now(), weak: false };
-    stopWatch.current = watchRide(
+    const onBoard = lowPowerRef.current;
+    watchOnBoard.current = onBoard;
+    stopWatch.current = handOver(stopWatch.current, () => watchRide(
       env,
       (fix) => {
         // Paused: no line, map or cue work, only held for the 30 s check (the owner, 2026-11-01: battery audit).
@@ -1828,10 +1855,13 @@ export function RideMode({
           if (reason === "denied" || reason === "insecure" || reason === "unsupported") {
             stopWatch.current?.();
             stopWatch.current = null;
+            watchOnBoard.current = null;
           }
         }
       },
-    );
+      undefined,
+      rideWatchOptions(onBoard),
+    ));
   }, [env, notify, pausedFixes]);
 
   useEffect(() => {
@@ -2612,6 +2642,17 @@ export function RideMode({
     if (onTransit) setGps("");
     else gpsWeak.current = { goodAt: Date.now(), weak: false };
   }, [onTransit]);
+  // Boarding, the watch goes low power; at "Next stop", high accuracy again, so the GPS is warm for the walk or ride
+  // after (the new watch starts before the old one stops). The phone app keeps its one watch: its native watcher takes
+  // no accuracy option, and Android 14+ refuses a new location service with the screen locked. A paused or ended ride
+  // has none.
+  const lowPower = lowPowerOnBoard(onTransit, onward?.board);
+  lowPowerRef.current = lowPower;
+  useEffect(() => {
+    if (ridesHidden() || pausedRef.current || !stopWatch.current) return;
+    if (watchOnBoard.current === null || watchOnBoard.current === lowPower) return;
+    startWatch();
+  }, [lowPower, startWatch]);
   const onwardWalkLine = onwardPart?.kind === "walk" ? walkTurnLine(onwardPart.model, onward?.walk ?? null) : null;
   // The trip goes on past the line's end (Stephen, 2026-11-03: "the ride just ends when you reach the station. It
   // should start the transit phase"): the walk or the train after it, then the ride after the transit, which starts by
@@ -3282,7 +3323,7 @@ export function RideMode({
           </div>
         ) : (
           <>
-            <p className="cue-text">{gps || "Finding your place on the route."}</p>
+            <p className="cue-text">{gps || t("Finding your place on the route.")}</p>
             <IosLocationHelp notice={gps} />
           </>
         )}
@@ -3440,6 +3481,21 @@ export function RideMode({
                         {label}
                       </button>
                     ))}
+                    {/* The owner, 2026-11-05: a road-closed Go round inside Detour too, for a rider who pressed
+                        Detour at a closure (street signs read "ROAD CLOSED / DETOUR"); the top-row button stays. */}
+                    {!walking && !ride.arrived && (
+                      <button
+                        type="button"
+                        className="secondary detour-road-closed"
+                        onClick={() => {
+                          setDetourOpen(false);
+                          roadClosed();
+                        }}
+                      >
+                        <Icon name="barrier" size={20} />
+                        {ROAD_CLOSED_NAME}
+                      </button>
+                    )}
                   </div>
                 ) : (
                   <p className="detour-picked">
