@@ -2042,4 +2042,5 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "The shared place has no map point. Type “{query}” in Where to? to find it.": "分享的地点在地图上没有点。在“去哪里？”中输入“{query}”来查找。",
   "Reach": "可达范围",
   "Bus {name}": "公交{name}",
+  "The rings take trails of every level.": "范围包括所有级别的小径。",
 };

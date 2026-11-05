@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { startDials } from "./dials.ts";
+import { decodePlan } from "./planHash.ts";
 import {
   REACH_DEFAULT,
   REACH_MAX_POINTS,
@@ -91,6 +92,29 @@ test("notes: rings held at Low-stress, points left out", () => {
   assert.equal(reachNotes(ANSWER, 70, 1).length, 0);
   assert.equal(reachNotes({ ...ANSWER, stress_used: 80 }, 100, 1).length, 1);
   assert.match(reachNotes({ ...ANSWER, unplaced: [1] }, 70, 2)[0], /1 point is off/);
+});
+
+test("Bikeshare with the share e-bike chosen asks for e-bike rings; the classic does not", () => {
+  const ebike = reachBody([HERE], "bikeshare", { ...startDials("bikeshare"), bike: "ebike" }, REACH_DEFAULT);
+  assert.equal(ebike.assist, true);
+  assert.equal(ebike.bike, undefined);
+  const classic = reachBody([HERE], "bikeshare", { ...startDials("bikeshare"), bike: "classic" }, REACH_DEFAULT);
+  assert.notEqual(classic.assist, true);
+});
+
+test("the MCP server's Bikeshare e-bike reach link opens e-bike rings", () => {
+  // As mcp/routemaker_mcp.py _reach_link writes it for preset bikeshare with assist.
+  const plan = decodePlan("#p=-77.05000,38.90000&preset=bikeshare&v=2&bike=ebike&reach=from.any.calm");
+  assert.equal(plan.dials.bike, "ebike");
+  const body = reachBody(plan.points, plan.preset, plan.dials, REACH_DEFAULT);
+  assert.equal(body.preset, "bikeshare");
+  assert.equal(body.assist, true);
+  assert.equal(body.hills, -20);
+});
+
+test("Mountain Bike's rings say they take trails of every level", () => {
+  assert.deepEqual(reachNotes({ ...ANSWER, trail_level_applied: false }, 70, 1), ["The rings take trails of every level."]);
+  assert.equal(reachNotes({ ...ANSWER, trail_level_applied: null }, 70, 1).length, 0);
 });
 
 test("map features: largest first, the calm ones marked", () => {

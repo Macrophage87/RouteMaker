@@ -2042,4 +2042,5 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "The shared place has no map point. Type “{query}” in Where to? to find it.": "شریک شوی ځای په نقشه کې ټکی نه لري. د موندلو لپاره “{query}” په چېرته؟ کې ولیکئ.",
   "Reach": "رسېدنه",
   "Bus {name}": "بس {name}",
+  "The rings take trails of every level.": "کړۍ د هرې کچې لارې پکې شاملې دي.",
 };

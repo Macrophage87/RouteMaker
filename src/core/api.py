@@ -5584,7 +5584,10 @@ class ReachIn(Schema):
     )
     when: WhenName | None = Field(default=None, description="The ride time, as a plan's.")
     carrying: CarryingName | None = Field(default=None, description="Cargo Bike's load.")
-    assist: StrictBool = Field(default=False, description="Cargo Bike's electric assist.")
+    assist: StrictBool = Field(
+        default=False,
+        description="Cargo Bike's electric assist; on Bikeshare, the share e-bike's rings.",
+    )
     avoid_gravel: StrictBool = Field(default=False, description="As a plan's.")
     trails_off: StrictBool = Field(default=False, description="Keep to roads, not trails.")
     cycling_speed_kmh: float | None = Field(

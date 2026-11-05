@@ -2042,4 +2042,5 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "The shared place has no map point. Type “{query}” in Where to? to find it.": "مکان هم‌رسانی‌شده نقطه‌ای روی نقشه ندارد. برای یافتنش “{query}” را در کجا؟ بنویسید.",
   "Reach": "دسترسی",
   "Bus {name}": "اتوبوس {name}",
+  "The rings take trails of every level.": "حلقه‌ها مسیرهای همه سطوح را در بر می‌گیرند.",
 };

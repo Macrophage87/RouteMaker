@@ -2042,4 +2042,5 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "The shared place has no map point. Type “{query}” in Where to? to find it.": "የተጋራው ቦታ በካርታ ላይ ነጥብ የለውም። ለማግኘት “{query}” በወዴት? ውስጥ ይጻፉ።",
   "Reach": "መድረሻ ክልል",
   "Bus {name}": "አውቶቡስ {name}",
+  "The rings take trails of every level.": "ቀለበቶቹ የሁሉም ደረጃ መንገዶችን ይይዛሉ።",
 };

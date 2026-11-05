@@ -162,6 +162,26 @@ class TestThePlan:
         near = wz.for_plan(zones().values(), AT, NORTH, {"md": "current"}, reach_m=10)
         assert [z.zone_id for z in near.excluded] == ["md-wz-closed-bikes"]
 
+    def test_with_the_wider_box_the_nearest_closures_still_win_the_routers_budget(self) -> None:
+        """More closures in the box than the router's polygon budget holds: those nearest the
+        rider's points are left out of the route, the far ones (only in the box because the plan
+        reaches that far) are warned of instead, and the budget is never passed."""
+
+        def closed(zone_id, lon, lat):
+            line = ((lon, lat), (lon, lat + 0.003))
+            return wz.Zone(zone_id, "md", wz.CLOSED, 0, line, "Road", None, None, None)
+
+        near = [closed(f"near-{i}", -77.0300 + 0.0004 * (i + 1), 38.9500) for i in range(120)]
+        far = closed("far", -77.0300, 39.0500)  # about 10 km north of the points
+        plan = wz.for_plan([far, *near], AT, NORTH, {"md": "current"}, reach_m=15_000)
+        used_m, used_vertices = wz.budget_used(plan.exclude)
+        assert used_m <= wz.MAX_PERIMETER_M and used_vertices <= wz.MAX_VERTICES
+        excluded = {z.zone_id for z in plan.excluded}
+        assert "far" not in excluded and "far" in {z.zone_id for z in plan.unexcluded}
+        # Nearest first: the excluded closures are the first ones out from the points.
+        assert excluded == {f"near-{i}" for i in range(len(excluded))}
+        assert 0 < len(excluded) < len(near)
+
     def test_how_far_a_way_of_a_given_length_can_go_from_its_points(self) -> None:
         start = (-77.03, 38.90)
         # A loop from one point reaches half its length.

@@ -2548,4 +2548,5 @@ export const ES: Readonly<Record<string, string>> = {
   "The router could not draw these rings. Try again.": "El enrutador no pudo dibujar estos anillos. Inténtelo de nuevo.",
   "On Low-stress streets: {area} and {metro}.": "Por calles de estrés bajo: {area} y {metro}.",
   "At Calm and Calmest, the rings are drawn at Low-stress: they show where low-stress ways reach in the time, not the long detours a calm route takes.": "En Tranquilo y Lo más tranquilo, los anillos se dibujan con Estrés bajo: muestran hasta dónde llegan las vías de estrés bajo en ese tiempo, no los largos desvíos que toma una ruta tranquila.",
+  "The rings take trails of every level.": "Los anillos incluyen senderos de todos los niveles.",
 };

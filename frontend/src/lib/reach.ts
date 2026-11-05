@@ -86,6 +86,8 @@ export interface ReachAnswer {
   /** False when this ride type and slider have no calmer rings to show (Calm streets is then hidden). */
   calm_offered?: boolean;
   unplaced: number[];
+  /** Mountain Bike: false, the rings take trails of every level (a plan keeps to the rider's); null elsewhere. */
+  trail_level_applied?: boolean | null;
 }
 
 export type ReachResult = { ok: true; answer: ReachAnswer } | { ok: false; message: string };
@@ -97,11 +99,14 @@ export function reachBody(points: readonly LonLat[], preset: PresetId, dials: Di
   const sent = points.slice(0, REACH_MAX_POINTS);
   const fields = dialFields({ ...dials, systemWeightKg: undefined, targetDistanceM: undefined, loop: false });
   // A ride's own fields the rings do not take: Mass Ride's size, Mountain Bike's levels, a share bike's docks.
+  // A share e-bike is Reach's `assist` on Bikeshare: its pace, hills and graph, as the plan rides it.
+  const shareEbike = preset === "bikeshare" && fields.bike === "ebike";
   for (const key of ["ride_size", "mtb_level", "mtb_preferred", "bike", "ending", "pickup_station", "dropoff_station", "transit_option", "novice_legs", "novice_hop"]) delete fields[key];
   return {
     points: sent,
     preset,
     ...fields,
+    ...(shareEbike ? { assist: true } : {}),
     ...(preset === "run" && runPaceKmh ? { run_pace_kmh: runPaceKmh } : {}),
     ...closureFields(dials),
     minutes: REACH_MINUTES.filter((m) => view.minutes.includes(m)),
@@ -243,6 +248,7 @@ export function reachNotes(answer: ReachAnswer, stress: number | undefined, poin
     );
   }
   if (pointCount > REACH_MAX_POINTS) notes.push(t("Only the first {count} points are used.", { count: REACH_MAX_POINTS }));
+  if (answer.trail_level_applied === false) notes.push(t("The rings take trails of every level."));
   return notes;
 }
 

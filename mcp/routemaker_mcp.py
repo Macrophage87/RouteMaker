@@ -5232,7 +5232,10 @@ class Server:
         ):
             if body.get(key) is not None:
                 parts.append(f"{field}={body[key]}")
-        if body.get("assist"):
+        if body.get("assist") and preset == "bikeshare":
+            # The app's Bikeshare takes the share e-bike as its bike choice, not an assist box.
+            parts.append("bike=ebike")
+        elif body.get("assist"):
             parts.append("assist=1")
         if body.get("trails_off"):
             parts.append("trailsoff=1")
@@ -5319,6 +5322,11 @@ class Server:
             }
         if answer.get("unplaced"):
             out["unplaced_points"] = answer["unplaced"]
+        if answer.get("trail_level_applied") is False:
+            out["trail_level"] = (
+                "the rings take mountain-bike trails of every level; a planned ride keeps to the"
+                " rider's level"
+            )
         if taken:
             out["points_taken_as"] = taken
         return out
