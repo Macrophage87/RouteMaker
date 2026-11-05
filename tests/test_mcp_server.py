@@ -1176,3 +1176,99 @@ def test_a_ride_turned_into_a_run_or_back_keeps_no_pace_of_the_other_kind(tools)
     assert StandIn.routes[-1]["run_pace_kmh"] == 9.7
     tools.call("revise_route", {"draft_id": paced["draft_id"], "preset": "default"})
     assert "run_pace_kmh" not in StandIn.routes[-1]
+
+
+# --- The app's drawn legs and stop names (`line=`, `sn=`) and its ride links (2026-11-05) ------
+
+DRAWN_LINK = (
+    "https://routes.example.org/#p=-77.03000,38.90000;-77.01000,38.93000;-77.02000,38.91000"
+    "&line=1&sn=1:Union+Market&preset=default&v=2&stress=70&hills=0"
+)
+
+
+def test_a_link_s_drawn_legs_and_stop_names_are_planned_and_carried_to_the_next_link(tools):
+    out = tools.call("open_link", {"link": DRAWN_LINK})
+    sent = StandIn.routes[-1]
+    # The drawn leg is ridden as drawn; the name is the link's, never sent to the planner.
+    assert sent["straight_legs"] == [1]
+    assert "Union Market" not in json.dumps(sent)
+    fragment = parse_qs(out["link"].split("#", 1)[1])
+    assert fragment["line"] == ["1"] and fragment["sn"] == ["1:Union Market"]
+
+
+def test_a_revised_draft_keeps_its_drawn_legs_and_stop_names_on_the_moved_numbers(tools):
+    opened = tools.call("open_link", {"link": DRAWN_LINK})
+    # A coffee stop before Union Market: it is point 2 now, and its leg on to the end is leg 2.
+    out = tools.call(
+        "revise_route",
+        {"draft_id": opened["draft_id"], "add_points": [{"after": 0, "point": [-77.025, 38.92]}]},
+    )
+    assert StandIn.routes[-1]["straight_legs"] == [2]
+    fragment = parse_qs(out["link"].split("#", 1)[1])
+    assert fragment["line"] == ["2"] and fragment["sn"] == ["2:Union Market"]
+    # A point between a drawn leg's two ends: that leg is planned now. A moved stop loses its name.
+    split = tools.call(
+        "revise_route",
+        {
+            "draft_id": opened["draft_id"],
+            "add_points": [{"after": 1, "point": [-77.015, 38.92]}],
+            "move_points": [{"index": 1, "to": [-77.012, 38.931]}],
+        },
+    )
+    assert "straight_legs" not in StandIn.routes[-1]
+    fragment = parse_qs(split["link"].split("#", 1)[1])
+    assert "line" not in fragment and "sn" not in fragment
+
+
+def test_a_metro_station_put_in_moves_the_drawn_legs_and_names_after_it() -> None:
+    options = {"straight_legs": [0, 1, 3], "stop_names": {1: "A", 3: "B"}, "stress": 70}
+    moved = mcp.marks_with_point_at(options, 2)
+    assert moved["straight_legs"] == [0, 4] and moved["stop_names"] == {1: "A", 4: "B"}
+    assert moved["stress"] == 70 and options["straight_legs"] == [0, 1, 3]
+    assert "stop_names" not in mcp.request_body([(0, 0), (1, 1)], [], "default", moved)
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="needs Node for the page's own code")
+def test_the_page_reads_the_drawn_legs_and_stop_names_the_assistant_writes(tmp_path) -> None:
+    points = [(-77.03651, 38.89768), (-77.00911, 38.88990), (-77.02101, 38.90455), (-77.0, 38.9)]
+    names = {1: "Union Market, east door", 2: "a via point", 3: "the end is no stop"}
+    fragment = mcp.plan_fragment(
+        points, [2], "default", {"stress": 70, "hills": 0}, {"straight_legs": [0, 2]}, names
+    )
+    script = tmp_path / "decode.mts"
+    plan_hash = Path(__file__).resolve().parents[1] / "frontend/src/lib/planHash.ts"
+    script.write_text(
+        f"import {{ decodePlan }} from {json.dumps(str(plan_hash))};\n"
+        "const plan = decodePlan(process.argv[2]);\n"
+        "const names = Object.fromEntries(plan.names);\n"
+        "console.log(JSON.stringify({ drawn: plan.drawn, names }));\n"
+    )
+    done = subprocess.run(
+        ["node", str(script), fragment], capture_output=True, text=True, timeout=60, check=True
+    )
+    plan = json.loads(done.stdout.strip().splitlines()[-1])
+    # A via point and the end carry no name, as the page's own stopNames writes them.
+    assert plan == {"drawn": [0, 2], "names": {"1": "Union Market, east door"}}
+    back, _, _, options = mcp.parse_fragment(fragment)
+    assert len(back) == 4 and options["straight_legs"] == [0, 2]
+    assert options["stop_names"] == {1: "Union Market, east door"}
+
+
+@pytest.mark.parametrize("extra", ["&k=" + "A" * 22, "&k=" + "A" * 22 + "&ride=1&lead=abc123"])
+def test_an_app_ride_link_opens_its_kept_route_as_shared(tools, monkeypatch, extra) -> None:
+    """The app's Group Ride and Share ride links add the ride's key, ride mark and leader to the
+    kept plan: the route opened is the one the leader shared, not a new plan."""
+    planned = tools.call("plan_route", {"points": [[-77.03, 38.9], [-77.02, 38.91]]})
+    answer = StandIn.shared[planned["link"].rsplit("route=", 1)[1]]["answer"]
+    hash_ = "#p=-77.03000,38.90000;-77.02000,38.91000&preset=group-ride&v=2&stress=50&hills=0"
+    monkeypatch.setattr(
+        tools.api, "shared_route", lambda _id: {"inputs": {"hash": hash_}, "answer": answer}
+    )
+    before = len(StandIn.routes)
+    link = f"https://routes.example.org/s/Ab12Cd34{hash_}{extra}&route=Ab12Cd34"
+    opened = tools.call("open_link", {"link": link})
+    assert len(StandIn.routes) == before, "kept as shared, not planned again"
+    assert _key_of(opened["link"]) == "A" * 22
+    # A plan changed in the app is still planned again.
+    tools.call("open_link", {"link": link.replace("stress=50", "stress=60")})
+    assert len(StandIn.routes) == before + 1 and StandIn.routes[-1]["stress"] == 60

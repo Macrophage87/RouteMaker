@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import base64
 import bisect
+import dataclasses
 import itertools
 import json
 import math
@@ -670,12 +671,42 @@ def ride_key_for(preset: str, key: str | None) -> str | None:
     return key if isinstance(key, str) and RIDE_KEY_RE.fullmatch(key) else new_ride_key()
 
 
-def plan_fragment(points, vias, preset: str, dials: dict, sent: dict) -> str:
+STOP_NAME_MAX = 40  # pointKinds.ts STOP_NAME_MAX
+
+
+def clean_stop_name(name) -> str | None:
+    """A stop's name as the page keeps it (pointKinds.ts `cleanStopName`): spaces squeezed,
+    trimmed, at most STOP_NAME_MAX characters; None when nothing is left."""
+    clean = re.sub(r"\s+", " ", str(name or "")).strip()[:STOP_NAME_MAX].strip()
+    return clean or None
+
+
+def link_stop_names(names, count: int, vias, loop: bool) -> dict[int, str]:
+    """The names a link carries for a plan of `count` points (pointKinds.ts `stopNames`): the
+    stops between the ends only, a loop's last point included, never a via point."""
+    out: dict[int, str] = {}
+    for i, name in sorted((names or {}).items()):
+        last = i == count - 1
+        middle = 0 < i < (count if loop else count - 1)
+        clean = clean_stop_name(name)
+        if clean and middle and (last or i not in vias):
+            out[i] = clean
+    return out
+
+
+def plan_fragment(points, vias, preset: str, dials: dict, sent: dict, names=None) -> str:
     """The page's own plan link fragment (frontend/src/lib/planHash.ts `encodePlan`): the
-    answer's `dials`, and what only the request carried (`sent`, the POST /api/route body)."""
+    answer's `dials`, what only the request carried (`sent`, the POST /api/route body: the
+    legs drawn in the app's manual mode among it) and the stops' own `names` by index."""
     parts = ["p=" + ";".join(f"{lon:.5f},{lat:.5f}" for lon, lat in points)]
     if vias:
         parts.append("via=" + ",".join(str(i) for i in vias))
+    drawn = sorted({i for i in sent.get("straight_legs") or [] if 0 <= i < len(points) - 1})
+    if drawn:
+        parts.append("line=" + ",".join(str(i) for i in drawn))
+    for i, name in link_stop_names(names, len(points), set(vias), bool(dials.get("loop"))).items():
+        # As URLSearchParams writes it, with the page's commas left bare.
+        parts.append(urllib.parse.urlencode({"sn": f"{i}:{name}"}).replace("%2C", ","))
     parts.append("preset=" + preset)
     parts.append("v=2")
     parts.append(f"stress={dials['stress']}")
@@ -802,6 +833,18 @@ def fragment_points(params: dict) -> list[tuple[float, float]]:
 PLAN_POINTS_RE = re.compile(r"(?:^|[#&?])[pq]=[^&]")
 
 
+# A link's fields that are not its plan: the ride's key, its ride mark and leader, the kept
+# route's id and the Reach view (rideSeal.ts, sharedRoutes.ts, App.tsx).
+NOT_THE_PLAN = ("k", "ride", "lead", "route", "reach")
+
+
+def plan_params(fragment: str) -> list[tuple[str, str]]:
+    """A link fragment's plan, field by field and in no order: the same plan however the app
+    added a ride's key, ride mark, leader or kept route id to its link."""
+    pairs = urllib.parse.parse_qsl(str(fragment or "").lstrip("#"), keep_blank_values=True)
+    return sorted((k, v) for k, v in pairs if k not in NOT_THE_PLAN)
+
+
 def has_plan_points(fragment: str) -> bool:
     """Whether a link's fragment carries stops in either form (`q=` or the older `p=`)."""
     return bool(PLAN_POINTS_RE.search(str(fragment or "")))
@@ -866,7 +909,56 @@ def parse_fragment(fragment: str) -> tuple[list, list[int], str, dict]:
             options["target_distance_m"] = int(float(one("targetmi")) * METRES_PER_MILE)
         except ValueError:
             pass
+    # The legs drawn in the app's manual mode (`line=0,2`, pointKinds.ts `decodeDrawn`), ridden
+    # as drawn (POST /api/route's `straight_legs`), and the stops' own names (`sn=2:Union
+    # Market`, `decodeStopNames`), carried to the next link.
+    drawn = {int(i) for i in (one("line") or "").split(",") if i.isdigit()}
+    options["straight_legs"] = sorted(i for i in drawn if i < len(points) - 1) or None
+    names: dict[int, str] = {}
+    for value in params.get("sn") or []:
+        at, _, name = value.partition(":")
+        clean = clean_stop_name(name)
+        if at.isdigit() and 0 < int(at) < len(points) and clean:
+            names[int(at)] = clean
+    options["stop_names"] = names or None
     return points, vias, preset, options
+
+
+# What a plan's options carry for its link only, never sent to POST /api/route.
+LINK_ONLY_OPTIONS = ("stop_names",)
+
+
+def marks_with_point_at(options: dict, at: int) -> dict:
+    """The options with a point put in at index `at` (a Metro station): the drawn legs and the
+    stops' names after it move up one; the drawn leg it splits is planned, not drawn."""
+    out = dict(options)
+    if options.get("straight_legs"):
+        legs = [i if i < at - 1 else i + 1 for i in options["straight_legs"] if i != at - 1]
+        out["straight_legs"] = legs or None
+    if options.get("stop_names"):
+        out["stop_names"] = {i if i < at else i + 1: n for i, n in options["stop_names"].items()}
+    return out
+
+
+def marks_revised(plan, built: list, whole: bool) -> tuple[list[int] | None, dict | None]:
+    """The drawn legs and stops' names of `plan` on the revised points (`built`: rows of [the
+    draft's index or None for a point added, point, via]). A leg stays drawn while its two
+    points stay side by side; a name stays with its point unless the point moved. None of
+    either when every point was given anew (`whole`)."""
+    if whole:
+        return None, None
+    at = {row[0]: k for k, row in enumerate(built) if row[0] is not None}
+    legs = sorted(
+        at[i]
+        for i in plan.sent.get("straight_legs") or []
+        if i in at and i + 1 in at and at[i + 1] == at[i] + 1
+    )
+    names = {
+        at[i]: name
+        for i, name in (plan.names or {}).items()
+        if i in at and tuple(built[at[i]][1]) == tuple(plan.points[i])
+    }
+    return legs or None, names or None
 
 
 def routes_dir() -> Path:
@@ -2747,7 +2839,7 @@ class Draft:
     def fragment(self, dials: dict) -> str:
         """The draft's plan link fragment, with its ride key."""
         plan = self.plan
-        fragment = plan_fragment(plan.points, plan.vias, plan.preset, dials, plan.sent)
+        fragment = plan_fragment(plan.points, plan.vias, plan.preset, dials, plan.sent, plan.names)
         return with_ride_key(fragment, self.ride_key)
 
 
@@ -2759,6 +2851,8 @@ class Plan:
     answer: dict
     check: dict | None
     sent: dict
+    # The stops' own names by index (the link's `sn=`), carried from the link opened.
+    names: dict[int, str] = dataclasses.field(default_factory=dict)
 
     @property
     def line(self) -> list[list[float]]:
@@ -2776,7 +2870,13 @@ def request_body(points, vias, preset: str, options: dict) -> dict:
     }
     if vias:
         body["via_points"] = list(vias)
-    body.update({k: v for k, v in options.items() if v is not None and v is not False})
+    body.update(
+        {
+            k: v
+            for k, v in options.items()
+            if v is not None and v is not False and k not in LINK_ONLY_OPTIONS
+        }
+    )
     return body
 
 
@@ -2790,7 +2890,8 @@ def plan_once(api, stations, points, vias, preset, options, limit_mi) -> Plan:
     sent = request_body(points, vias, preset, options)
     answer = api.route(sent)
     check = metro_check(answer["geometry"]["coordinates"], limit_mi, stations) if limit_mi else None
-    return Plan(list(points), list(vias), preset, answer, check, sent)
+    names = dict(options.get("stop_names") or {})
+    return Plan(list(points), list(vias), preset, answer, check, sent, names)
 
 
 def leg_of(plan: Plan, at_mile: float) -> int:
@@ -4459,6 +4560,8 @@ class Server:
         notes: list[str] = []
         call.report(0, rounds + 1, "planning the route")
         plan = first or self._plan(call, points, vias, preset, options, limit)
+        # The options of the plan kept so far: a station put in moves the drawn legs and names.
+        current = options
         for done in range(rounds if limit else 0):
             fix = with_metro_fix(plan, self.stations)
             if fix is None:
@@ -4468,13 +4571,23 @@ class Server:
                 break
             new_points, new_vias, station = fix
             call.report(done + 1, rounds + 1, f"replanning by way of {station}")
-            again = self._plan(call, new_points, new_vias, preset, options, limit)
+            at = next(
+                (
+                    i
+                    for i, (a, b) in enumerate(zip(new_points, plan.points, strict=False))
+                    if a != b
+                ),
+                len(plan.points),
+            )
+            shifted = marks_with_point_at(current, at)
+            again = self._plan(call, new_points, new_vias, preset, shifted, limit)
             notes.append(
                 f"added {station} as a via point: {plan.check['miles_over_limit']} -> "
                 f"{again.check['miles_over_limit']} mi over the limit"
             )
             if again.check["miles_over_limit"] <= plan.check["miles_over_limit"]:
                 plan = again
+                current = shifted
         pruned = without_spurs(plan) if trim_spurs else None
         if pruned is not None and call.time_for_another_plan():
             # A via point off the road through (a pier's end, a landmark beside a trail) is
@@ -4482,7 +4595,7 @@ class Server:
             # and short spurs"): it moves to where the spur leaves the road and is planned again.
             new_points, new_vias, moved = pruned
             call.report(rounds + 1, rounds + 2, "planning again without out-and-backs")
-            again = self._plan(call, new_points, new_vias, preset, options, limit)
+            again = self._plan(call, new_points, new_vias, preset, current, limit)
             if again.answer["distance_m"] < plan.answer["distance_m"] and (
                 again.check is None
                 or again.check["miles_over_limit"] <= plan.check["miles_over_limit"]
@@ -4658,9 +4771,8 @@ class Server:
             fragment = match.group(1) if match else ""
         limit = args.get("max_miles_from_metro")
         answer = (shared or {}).get("answer")
-        kept_hash = str(((shared or {}).get("inputs") or {}).get("hash") or "").lstrip("#")
-        asked_hash = re.sub(r"&route=[^&]*", "", fragment).lstrip("#")
-        if has_points and asked_hash != kept_hash:
+        kept_hash = str(((shared or {}).get("inputs") or {}).get("hash") or "")
+        if has_points and plan_params(fragment) != plan_params(kept_hash):
             answer = None  # the rider changed the route in the app: plan what the link says now
         name = str((shared or {}).get("name") or "RouteMaker route")
         return self._open_kept(call, fragment, answer, name, limit)
@@ -4678,7 +4790,8 @@ class Server:
             line = answer["geometry"]["coordinates"]
             check = metro_check(line, limit, self.stations) if limit else None
             sent = request_body(points, vias, preset, options)
-            plan = Plan(list(points), list(vias), preset, answer, check, sent)
+            names = dict(options.get("stop_names") or {})
+            plan = Plan(list(points), list(vias), preset, answer, check, sent, names)
             return self._draft(plan, options, limit, [], name, ride_key=ride_key)
         plan, notes = self._plan_and_fix(call, points, vias, preset, options, limit, 0)
         return self._draft(plan, options, limit, notes, name, ride_key=ride_key)
@@ -4858,6 +4971,7 @@ class Server:
                 built.append(row)
             built.extend(added.get(row[0], []))
         reshaped = bool(args.get("points") or args.get("move_points") or removed or added)
+        drawn, names = marks_revised(plan, built, bool(args.get("points")))
         points = [row[1] for row in built]
         vias = {i for i, row in enumerate(built) if row[2]}
         if args.get("via_points") is not None:
@@ -4876,6 +4990,10 @@ class Server:
                 # A riding speed is no running pace: the run starts at Run's own.
                 kept = kept[:-1]
             options = {k: v for k, v in options.items() if k in kept}
+        # The legs drawn in the app and the stops' names are the rider's: they stay, on the
+        # revised points, whatever the ride type.
+        options["straight_legs"] = drawn
+        options["stop_names"] = names
         asked = self._options(args, preset)
         options.update({k: v for k, v in asked.items() if k in args})
         if "target_miles" in args:
