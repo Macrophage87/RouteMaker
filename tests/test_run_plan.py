@@ -645,12 +645,18 @@ class TestTheApi:
         assert response.status_code == 400
 
     def test_a_run_may_say_when_it_starts(self, client, fake_router) -> None:
+        # 7 pm on the next 21 December, long after dusk, and always within the year of now
+        # the API takes (api.WHEN_RANGE): a fixed date would be refused a year after it.
+        now = datetime.now(EASTERN)
+        at = datetime(now.year, 12, 21, 19, tzinfo=EASTERN)
+        if at <= now:
+            at = at.replace(year=now.year + 1)
         response = post(
             client,
             {
                 "points": [list(START), list(END)],
                 "preset": "run",
-                "depart_at": "2026-11-02T19:00:00-05:00",
+                "depart_at": at.isoformat(),
             },
         )
         assert response.status_code == 200, response.content

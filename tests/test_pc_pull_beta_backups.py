@@ -55,8 +55,20 @@ exec "$@"
 """
 
 
+_clock: dict[str, datetime] = {}
+
+
+@pytest.fixture(autouse=True)
+def _one_clock_per_test():
+    """Every name a test makes is stamped from one clock reading, taken as the test starts, so a
+    name made again after the script has run is the same name, whichever second it is now."""
+    _clock["now"] = datetime.now(UTC)
+    yield
+    _clock.clear()
+
+
 def name(hours_ago: float) -> str:
-    t = datetime.now(UTC) - timedelta(hours=hours_ago)
+    t = _clock["now"] - timedelta(hours=hours_ago)
     return f"routemaker-{t:%Y%m%dT%H%M%SZ}.dump.age"
 
 
@@ -139,8 +151,9 @@ def test_only_the_encrypted_dumps_are_copied_whole(env) -> None:
 
 
 def test_retention_keeps_the_newest_7_and_touches_nothing_else(env) -> None:
-    for h in range(20, 20 + 24 * 16, 24):  # 16 older copies already here
-        put(env["dest"], name(h))
+    older = [name(h) for h in range(20, 20 + 24 * 16, 24)]  # 16 older copies already here
+    for n in older:
+        put(env["dest"], n)
     put(env["dest"], "notes.txt")
     new = [name(2), name(3)]
     for n in new:
@@ -151,7 +164,7 @@ def test_retention_keeps_the_newest_7_and_touches_nothing_else(env) -> None:
 
     assert result.returncode == 0, result.stderr
     dumps = sorted(n for n in files(env["dest"]) if n.endswith(".dump.age"))
-    every = sorted([*new, *(name(h) for h in range(20, 20 + 24 * 16, 24))], reverse=True)
+    every = sorted([*new, *older], reverse=True)
     assert dumps == sorted(every[:7])
     assert "notes.txt" in files(env["dest"])
     assert not any(n.endswith(".part") for n in files(env["dest"]))
