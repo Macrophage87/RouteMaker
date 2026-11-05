@@ -2827,7 +2827,7 @@ restore is the restore, not a second fault.
 
 **What:** every night the owner's PC copies the beta's encrypted dumps
 (`/data/routemaker/backups/routemaker-<UTC>.dump.age`, written at 07:00 UTC) into
-`C:\Users\steph\Documents\RouteMaker\beta-backups`, which the PC's own backup covers. Only
+`C:\Users\<you>\Documents\RouteMaker\beta-backups`, which the PC's own backup covers. Only
 `.dump.age` files travel, never the plain `pre-*.dump` ones; they are useless without your
 backup key file, which stays on the PC. Like the beta, it keeps at most the newest 7 and none
 over 6½ days old (by the time in the name), the newest one excepted, and it prunes on every run,
@@ -2839,7 +2839,9 @@ marker file (the time of the last good pull) in the state folder for `alert.sh w
 checks the size against the beta's, renames, prunes old copies in that folder only, and adds
 one line to `pull-beta-backups.log` there. It asks nothing and exits 1 with the reason when
 ssh, the copy or `sudo` fails, or when the newest dump is over 48 h old (the beta's backup
-stopped). `RM_BETA_SSH` (default `chubby`) and `RM_BACKUP_DIR` override the host and the folder.
+stopped). `RM_BETA_SSH` (the beta's ssh alias) and `RM_BACKUP_DIR` (the folder above) are required: set them in
+the environment or, once, in `~/.config/routemaker/pull-beta-backups.env` (one `KEY=value` per line,
+outside the repo, so this PC's names stay out of it).
 After a run that ends ok it writes the newest dump's name to
 `~/routemaker-beta-state/pc-backup-pull` on the beta (only if that folder exists). The beta's
 `alert.sh watch` posts in the owner's alert channel once that file is over 36 h old, so a pull
@@ -2849,16 +2851,16 @@ that fails, or that stops running at all, is reported there (BETA-RUNBOOK, "Aler
 exits 0):
 
 ```sh
-ssh -o BatchMode=yes chubby true
+ssh -o BatchMode=yes <beta-ssh-alias> true
 ```
 
 ```sh
-ssh -o BatchMode=yes chubby sudo -n true
+ssh -o BatchMode=yes <beta-ssh-alias> sudo -n true
 ```
 
 If the first fails, your ssh key needs a passphrase and a scheduled run has no agent to ask:
 give this job a key of its own without one, or load yours with `keychain` from `~/.profile`
-(it then works until WSL restarts). The script reports it as `ssh chubby did not connect
+(it then works until WSL restarts). The script reports it as `ssh <beta-ssh-alias> did not connect
 (exit 255)`. Then run it once by hand, and register the nightly task (current user, no admin;
 running it again just replaces the task):
 
@@ -2883,7 +2885,7 @@ beta's alert channel.
 **Did it run?** The last lines of the log, `ok ... newest=routemaker-<yesterday>...`:
 
 ```sh
-tail -n 3 /mnt/c/Users/steph/Documents/RouteMaker/beta-backups/pull-beta-backups.log
+tail -n 3 /mnt/c/Users/<you>/Documents/RouteMaker/beta-backups/pull-beta-backups.log
 ```
 
 or in PowerShell, `Get-ScheduledTaskInfo -TaskPath '\' -TaskName 'RouteMaker - Pull
@@ -2905,7 +2907,7 @@ archive exists only inside a throwaway container. Every few months, and after a 
 2. Decrypt the newest copy into it (age asks for the passphrase if your key file has one):
 
    ```sh
-   f=$(ls -1 /mnt/c/Users/steph/Documents/RouteMaker/beta-backups/routemaker-*.dump.age | tail -n 1); echo "$f"
+   f=$(ls -1 /mnt/c/Users/<you>/Documents/RouteMaker/beta-backups/routemaker-*.dump.age | tail -n 1); echo "$f"
    ```
 
    ```sh
@@ -2963,7 +2965,7 @@ have not lately.
    600 (the key never goes to the server):
 
    ```sh
-   age -d -i <your backup key file> /mnt/c/Users/steph/Documents/RouteMaker/beta-backups/routemaker-<instant>.dump.age | ssh chubby 'umask 077; cat > "$HOME/routemaker-beta-state/restore.dump"'
+   age -d -i <your backup key file> /mnt/c/Users/<you>/Documents/RouteMaker/beta-backups/routemaker-<instant>.dump.age | ssh <beta-ssh-alias> 'umask 077; cat > "$HOME/routemaker-beta-state/restore.dump"'
    ```
 
 3. **On the beta**, restore into the scratch database and swap (it takes a `pre-rollback`
@@ -7118,6 +7120,12 @@ pattern's track from the feed's `shapes.txt` (the schedule's `shape` and `cuts`)
   system means its feed has no `shapes.txt`. Then the beta: ship the `transit` part alone
   (BETA-RUNBOOK, "the bundle carries the transit ride types' schedule"). Without this step the
   tracks are straight stop to stop until the next 45-day refresh.
+- [ ] **Migration 0056** (`shared_route_gone`) with the api, as any migration.
+- [ ] **The PC backup pull's two names**, once, before the next 04:00 run: the script no longer
+  carries this PC's folder or the beta's ssh alias. In WSL write
+  `~/.config/routemaker/pull-beta-backups.env` with `RM_BETA_SSH=<beta-ssh-alias>` and
+  `RM_BACKUP_DIR=/mnt/c/Users/<you>/Documents/RouteMaker/beta-backups` ("Off-box copies of beta
+  backups"). Until then each pull exits 1 saying so, and `alert.sh watch` reports it after 36 h.
 - [ ] **Spot checks.** A bike + transit ride on MARC or Metro: on board, the card shows the stops
   and minutes left and an arrival time, the stop list shows each stop's time, and the ride map
   draws the line in its colour along the track, with the stop to get off filled. Where am I? on the

@@ -26,8 +26,10 @@
 # or stops running (the PC off, the task gone, the key not loading) is reported there.
 #
 # Environment (defaults in brackets):
-#   RM_BETA_SSH         ssh host alias of the beta [chubby]
-#   RM_BACKUP_DIR       local folder [/mnt/c/Users/steph/Documents/RouteMaker/beta-backups]
+#   RM_BETA_SSH         ssh host alias of the beta (required)
+#   RM_BACKUP_DIR       local folder, e.g. /mnt/c/Users/<you>/Documents/RouteMaker/beta-backups (required)
+# The two required ones may instead be set, one KEY=value per line, in
+# ~/.config/routemaker/pull-beta-backups.env (outside the repo; read as text, never run).
 #   RM_BETA_BACKUPS     the backups folder on the beta [/data/routemaker/backups]
 #   RM_BETA_SUDO        prefix for the two commands on the beta ["sudo -n"]; empty if the
 #                       login user can read that folder itself
@@ -37,8 +39,18 @@
 set -euo pipefail
 export LC_ALL=C
 
-host=${RM_BETA_SSH:-chubby}
-dest=${RM_BACKUP_DIR:-/mnt/c/Users/steph/Documents/RouteMaker/beta-backups}
+# This PC's own names stay out of the public repo: from the environment, or from a local file.
+local_env=${RM_PULL_ENV:-$HOME/.config/routemaker/pull-beta-backups.env}
+local_value() { # key
+	[ -f "$local_env" ] || return 0
+	sed -n "s/^$1=//p" "$local_env" | tail -n 1
+}
+host=${RM_BETA_SSH:-$(local_value RM_BETA_SSH)}
+dest=${RM_BACKUP_DIR:-$(local_value RM_BACKUP_DIR)}
+if [ -z "$host" ] || [ -z "$dest" ]; then
+	echo "pull-beta-backups: FAILED: set RM_BETA_SSH and RM_BACKUP_DIR, or put them in $local_env" >&2
+	exit 1
+fi
 remote_dir=${RM_BETA_BACKUPS:-/data/routemaker/backups}
 sudo_cmd=${RM_BETA_SUDO-sudo -n}
 keep=${RM_BACKUP_KEEP:-7}

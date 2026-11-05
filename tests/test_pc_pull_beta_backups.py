@@ -92,7 +92,7 @@ def env(tmp_path: Path):
             "PATH": f"{bin_dir}:/usr/bin:/bin",
             "HOME": str(tmp_path),
             "STUB_LOG": str(tmp_path / "stub.log"),
-            "RM_BETA_SSH": "chubby",
+            "RM_BETA_SSH": "beta-host",
             "RM_BACKUP_DIR": str(dest),
             "RM_BETA_BACKUPS": str(remote),
         },
@@ -120,6 +120,19 @@ def files(folder: Path) -> set[str]:
     return {p.name for p in folder.iterdir()} if folder.exists() else set()
 
 
+def test_the_pc_and_beta_names_come_from_the_environment_or_a_local_file_never_the_repo(env, tmp_path) -> None:
+    put(env["remote"], name(6), size=5000)
+    bare = {k: v for k, v in env["env"].items() if k not in ("RM_BETA_SSH", "RM_BACKUP_DIR")}
+    missing = subprocess.run(["bash", str(SCRIPT)], env=bare, capture_output=True, text=True, timeout=60)
+    assert missing.returncode == 1 and "set RM_BETA_SSH and RM_BACKUP_DIR" in missing.stderr
+    local = tmp_path / ".config" / "routemaker" / "pull-beta-backups.env"
+    local.parent.mkdir(parents=True)
+    local.write_text(f"RM_BETA_SSH=beta-host\nRM_BACKUP_DIR={env['dest']}\n")
+    ok = subprocess.run(["bash", str(SCRIPT)], env=bare, capture_output=True, text=True, timeout=60)
+    assert ok.returncode == 0, ok.stderr
+    assert (env["dest"] / name(6)).exists()
+
+
 def test_only_the_encrypted_dumps_are_copied_whole(env) -> None:
     wanted = {name(30), name(6), name(54)}
     for n in wanted:
@@ -137,10 +150,10 @@ def test_only_the_encrypted_dumps_are_copied_whole(env) -> None:
     for n in wanted:
         assert (env["dest"] / n).read_bytes() == (env["remote"] / n).read_bytes()
     log = (env["dest"] / "pull-beta-backups.log").read_text().splitlines()
-    assert len(log) == 1 and " ok host=chubby copied=3 " in log[0] and "via=rsync" in log[0]
+    assert len(log) == 1 and " ok host=beta-host copied=3 " in log[0] and "via=rsync" in log[0]
     # On the beta: one listing, the rsync copies, then the run is recorded; nothing else.
     calls = env["log"].read_text().splitlines()
-    remote_cmds = [line for line in calls if line.startswith("chubby\t")]
+    remote_cmds = [line for line in calls if line.startswith("beta-host\t")]
     assert len(remote_cmds) == 2, remote_cmds
     assert "find " in remote_cmds[0] and "pc-backup-pull" in remote_cmds[1]
     assert not any("rm " in c for c in remote_cmds)
@@ -195,13 +208,13 @@ def test_a_failing_ssh_exits_non_zero_and_still_drops_copies_past_the_week(env) 
     result = run(env, STUB_SSH_FAIL="1")
 
     assert result.returncode != 0
-    assert "ssh chubby did not connect" in result.stderr
-    assert "Is the beta (chubby) reachable" in result.stderr
+    assert "ssh beta-host did not connect" in result.stderr
+    assert "Is the beta (beta-host) reachable" in result.stderr
     # 30 h to 150 h old stay (six copies, under the keep); 174 h and older go.
     young = {n for h, n in zip(range(30, 30 + 24 * 16, 24), old, strict=True) if h <= 156}
     assert files(env["dest"]) == young | {"pull-beta-backups.log"}
     log = (env["dest"] / "pull-beta-backups.log").read_text()
-    assert "FAILED ssh chubby did not connect" in log
+    assert "FAILED ssh beta-host did not connect" in log
     assert "(removed 10 by age or count)" in log
     # A failed run is not recorded on the beta, so the beta's alert sees the copy go stale.
     assert not (Path(env["env"]["HOME"]) / "routemaker-beta-state").exists()
