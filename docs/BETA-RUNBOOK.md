@@ -881,7 +881,10 @@ sudo scripts/beta/receive-data.sh --env-file .env restore-dump "$RM_DATA/backups
 sudo cp -p "$RM_DATA/backups/index.html.pre-release-<time>" "$RM_DATA/frontend/index.html.new" && sudo mv -T "$RM_DATA/frontend/index.html.new" "$RM_DATA/frontend/index.html"
 scripts/beta/beta-compose.sh up -d api worker                     # recreates them on the old image; migrate finds nothing to do
 scripts/beta/beta-compose.sh up -d photon valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend   # recreates only those whose image or command the release changed
-scripts/beta/beta-compose.sh restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend   # needed if the release changed valhalla/*.json or lua/: the routers read them only at start
+# needed if the release changed valhalla/*.json or lua/: the routers read them only at start. Every router that runs,
+# the trail ones (valhalla-offroad valhalla-mtb valhalla-paved) included; the [ -n ] guard keeps an empty list from restarting the stack
+routers=$(scripts/beta/beta-compose.sh --profile offroad ps --services --status running </dev/null | grep '^valhalla-')
+[ -n "$routers" ] && scripts/beta/beta-compose.sh --profile offroad restart $routers </dev/null
 ( umask 077; setsid nohup sh -c 'scripts/beta/beta-compose.sh exec -T worker ./manage.py predraw_stress_tiles ; echo "predraw exit $?"' < /dev/null > "${RM_STATE:?set RM_STATE (section 0)}/predraw.log" 2>&1 & )
 tail -n 3 "$RM_STATE/predraw.log"   # the step 8 pre-draw: poll for "predraw exit N" as step 8 says
 ```
@@ -1052,10 +1055,14 @@ anything can run `migrate` (rollback C restores that snapshot), and the app star
    then the migrations check and `collectstatic` from step 8 (`exec -T api ...`), the stress-tile pre-draw from
    step 8 if step 7 ran `db --update-data` (or the release changed what the tiles draw), and the smoke tests. Routers and
    Photon restart only if their image or command changed in the release (`beta-compose.sh up -d <name>` recreates
-   exactly the ones that did). The four routers also need a restart if `valhalla/*.json` or `lua/` changed, because
-   they read those files only at start and `up -d` sees nothing to recreate:
-   `scripts/beta/beta-compose.sh restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend`
-   (the same line as rollback A), with `valhalla-offroad valhalla-mtb` added once their tiles are on the host.
+   exactly the ones that did). Every router that runs (the four, and each trail router, `valhalla-offroad
+   valhalla-mtb valhalla-paved`, whose tiles are on the host) also needs a restart if `valhalla/*.json` or `lua/`
+   changed, because they read those files only at start and `up -d` sees nothing to recreate:
+   `routers=$(scripts/beta/beta-compose.sh --profile offroad ps --services --status running </dev/null | grep '^valhalla-')`
+   then `[ -n "$routers" ] && scripts/beta/beta-compose.sh --profile offroad restart $routers </dev/null`
+   (the same lines as rollback A and DEPLOYMENT.md, "A release that changes `valhalla/*.json`": `--profile offroad`
+   so the trail routers are listed, `--status running` so a stopped one is not started, and the `[ -n ]` guard
+   because a bare `restart` would restart the whole stack).
    Check with `git diff --stat <old sha>..<new sha> -- valhalla lua`.
    **v0.15.0 only:** postgis's command (its log settings) and memcached's network change, so recreate those two
    first, `scripts/beta/beta-compose.sh up -d postgis memcached`, wait until `beta-compose.sh ps` shows postgis
