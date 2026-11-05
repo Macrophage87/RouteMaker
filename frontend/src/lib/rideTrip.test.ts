@@ -641,8 +641,10 @@ test("the hand-off from the bike to the train is in the rider's language where t
     const bus = { ...boarding, mode: "bus" as const, lines: ["bus 90"], toward: "Woodley Park", with_bike: true, departs: "7:42 pm", stops: [{ name: "Eastern Market", point: at(0, 0), after_s: 0 }, { name: "U St", point: at(0, 900), after_s: 600 }] };
     assert.equal(
       stepText(bus).replace(/\s/gu, " "),
-      "Mettez votre vélo sur le porte-vélos avant du bus. Montez dans bus 90 direction Woodley Park. Départ à 19:42. Environ 1 min à bord jusqu'à U St.",
+      "Mettez votre vélo sur le porte-vélos avant du bus. Montez dans bus 90 direction Woodley Park. Départ à 19:42 selon l'horaire. Environ 1 min à bord jusqu'à U St.",
     );
+    // Whether the time is the timetable's or a live prediction stays said in every language.
+    assert.match(stepText({ ...bus, source: "live" as const }).replace(/\s/gu, " "), /Départ à 19:42 en temps réel\./u);
     assert.equal(stepText({ ...PLAN.steps[2], text: "About 2 min into the station by the elevator." }), "Environ 1 min pour entrer dans la station par l'ascenseur.");
     assert.equal(stepText(PLAN.steps[0]), "Marchez 1 min jusqu'à la station de vélos en libre-service 4th & E St NW et prenez un vélo classique.");
   } finally {

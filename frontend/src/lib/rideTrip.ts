@@ -26,7 +26,7 @@ import { ridesHidden } from "./nativeShell.ts";
 import { pointAlong } from "./lightTimes.ts";
 import { drawOf, transitOf } from "./transit.ts";
 import { serverWordsIn, t } from "./i18n.ts";
-import { wallClockOf } from "./departure.ts";
+import { sourceWord, wallClockOf } from "./departure.ts";
 import { onwardOf, walkPart, type OnwardPart } from "./onward.ts";
 import { walkModel, walkStart, walkStep } from "./walkCues.ts";
 
@@ -294,7 +294,7 @@ export function stepText(step: TransitStep): string {
       const words = [
         step.mode === "bus" && step.with_bike ? t("Put your bike on the bus's front rack.") : "",
         board,
-        step.departs ? t("Departs {time}.", { time: wallClockOf(step.departs) }) : "",
+        step.departs ? t("Departs {time}.", { time: `${wallClockOf(step.departs)} ${sourceWord(step)}` }) : "",
         off ? t("About {m} min on board to {place}.", { m, place: off }) : t("About {m} min on board.", { m }),
       ];
       return words.filter(Boolean).join(" ");
