@@ -11,7 +11,8 @@
  * a map card (a stop, a place, a station, a closure, a climb), the road info, and the side menus (Detour, More, the
  * dock, 311, the riders, Alert), so the map then goes back to the rider. Kept open: a menu with words typed or being
  * typed (a Detour search, Alert's Other, its microphone listening), and anything asking (Alert's Send to everyone?, Already
- * done?, a stop's name, Resume), and a dialog with the focus in it (Ride settings, the join sheet). The group's question, asked as the ride starts, closes as its No (the 2026-10-28 audit,
+ * done?, a stop's name, Resume), a dialog with the focus in it (Ride settings, the join sheet), and a map card or
+ * side menu with a key's or a screen reader's focus shown in it (a finger's tap focuses without showing it). The group's question, asked as the ride starts, closes as its No (the 2026-10-28 audit,
  * P6: it never stays over the ride's buttons). Accessibility mode closes nothing on its own: a screen
  * reader's reading touches nothing. A menu closed with the focus in it hands the focus to its toggle; a map card, to
  * the map.
@@ -79,6 +80,19 @@ export function typingIn(box: Element, active: Element | null): boolean {
 }
 
 /**
+ * The focus shown at `active` (a key's or a screen reader's, not a finger's tap, which browsers focus without showing):
+ * someone is reading or using what holds it, so a map card or side menu holding it stays, as a dialog does.
+ */
+function focusShown(active: Element | null): boolean {
+  if (!active || typeof active.matches !== "function") return false;
+  try {
+    return active.matches(":focus-visible");
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Close what a screen left alone closes (above): the map's cards, the road info and the ride's side menus, each by
  * its own close (its X, its toggle, the dialog's close), so each puts things back as a press would. Whether any closed.
  */
@@ -90,6 +104,7 @@ export function closeIdlePanels(doc: Document): boolean {
     const card = button.closest(".maplibregl-popup");
     if (!card || typingIn(card, active)) continue;
     const held = card.contains(active);
+    if (held && focusShown(active)) continue;
     button.click();
     closed = true;
     if (held && lost()) doc.querySelector<HTMLElement>(".maplibregl-canvas")?.focus({ preventScroll: true });
@@ -97,7 +112,8 @@ export function closeIdlePanels(doc: Document): boolean {
   for (const toggle of doc.querySelectorAll<HTMLElement>(`[${IDLE_CLOSE_ATTR}][aria-expanded="true"]`)) {
     const panel = doc.getElementById(toggle.getAttribute("aria-controls") ?? "");
     if (panel && typingIn(panel, active)) continue;
-    const held = panel?.contains(active) ?? false;
+    const held = (panel?.contains(active) ?? false) || toggle === active;
+    if (held && focusShown(active)) continue;
     toggle.click();
     closed = true;
     if (held) toggle.focus({ preventScroll: true });
@@ -137,6 +153,9 @@ export function watchIdleRecentre(win: IdleWindow, watch: IdleRecentre, idleMs: 
   const fire = () => {
     timer = null;
     if (watch.closePanels?.()) {
+      // Closing a panel that held the focus moves the focus (to its toggle, the map, or back from a dialog), and that
+      // focusin armed a fresh 30 s: cleared, or it would be left running and close the next menu early.
+      if (timer !== null) win.clearTimeout(timer);
       timer = win.setTimeout(settle, IDLE_CLOSE_SETTLE_MS);
       return;
     }

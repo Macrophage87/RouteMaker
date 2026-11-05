@@ -388,3 +388,66 @@ test("the focus moving (a screen reader's swipe) starts the 30 s again, like a t
   w.advance(5_000);
   assert.equal(closes, 1);
 });
+
+test("an idle close that moves the focus leaves no 30 s running: a menu opened later gets its full 30 s from the last touch", () => {
+  const w = fakeWindow();
+  let closes = 0;
+  watchIdleRecentre(w.win, {
+    away: () => false,
+    panelOpen: () => false,
+    recentre: () => undefined,
+    // Closing a menu that held the focus hands it to the toggle: a focusin.
+    closePanels: () => ((closes += 1), w.touch("focusin"), true),
+  });
+  w.advance(IDLE_RECENTRE_MS);
+  assert.equal(closes, 1);
+  // The rider opens another menu at 40 s and touches it at 45 s and 55 s.
+  w.advance(10_000);
+  w.touch();
+  w.advance(5_000);
+  w.touch();
+  w.advance(10_000);
+  w.touch();
+  w.advance(IDLE_RECENTRE_MS - 1);
+  assert.equal(closes, 1, "nothing closes before 30 s after the last touch");
+  w.advance(1);
+  assert.equal(closes, 2);
+});
+
+test("a map card or side menu with a key's or screen reader's focus shown in it stays open; a tap's focus does not hold it", () => {
+  const body = new FakeEl("body");
+  const shown = (el: FakeEl) => Object.assign(el, { matches: (sel: string) => sel === ":focus-visible" });
+  const inCard = new FakeEl("button");
+  const cardX = new FakeEl("button", ["maplibregl-popup-close-button"], {}, (x) => x.parent!.children.splice(0));
+  const card = new FakeEl("div", ["maplibregl-popup"]).add(cardX);
+  const inMenu = new FakeEl("button");
+  const menu = new FakeEl("div", [], { id: "more" }).add(inMenu);
+  const more = new FakeEl("button", [], { [IDLE_CLOSE_ATTR]: "", "aria-expanded": "true", "aria-controls": "more" }, (t) => (t.attrs["aria-expanded"] = "false"));
+  body.add(card, more, menu);
+  let active: FakeEl = shown(inMenu);
+  const doc = {
+    body,
+    get activeElement() {
+      return active;
+    },
+    querySelector: (sel: string) => body.querySelector(sel),
+    querySelectorAll: (sel: string) => body.querySelectorAll(sel),
+    getElementById: (id: string) => body.all().find((e) => e.attrs.id === id) ?? null,
+  } as unknown as Document;
+  closeIdlePanels(doc);
+  assert.equal(more.presses, 0, "the menu with the focus shown stays");
+  assert.equal(cardX.presses, 1, "the card without the focus closes");
+  active = shown(inCard);
+  const card2X = new FakeEl("button", ["maplibregl-popup-close-button"]);
+  body.add(new FakeEl("div", ["maplibregl-popup"]).add(inCard, card2X));
+  closeIdlePanels(doc);
+  assert.equal(card2X.presses, 0, "the card with the focus shown stays");
+  assert.equal(more.presses, 1, "the menu, the focus now elsewhere, closes");
+  // A finger's tap focuses without showing it: the menu still closes, and the focus goes to its toggle.
+  more.attrs["aria-expanded"] = "true";
+  active = new FakeEl("button");
+  menu.add(active);
+  closeIdlePanels(doc);
+  assert.equal(more.presses, 2);
+  assert.equal(more.focused, 1);
+});
