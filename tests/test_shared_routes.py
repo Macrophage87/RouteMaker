@@ -430,6 +430,13 @@ def test_the_table_is_never_shipped_to_the_beta_and_is_documented() -> None:
     assert "0022_shared_route" in operations
 
 
+def test_retired_link_ids_are_never_shipped_to_the_beta_and_are_documented() -> None:
+    ship = (REPO / "scripts" / "beta" / "ship-data.sh").read_text()
+    assert "shared_route_gone" in ship.split("EXCLUDED_TABLE_DATA=(", 1)[1].split(")", 1)[0].split()
+    operations = (REPO / "docs" / "OPERATIONS.md").read_text()
+    assert "| `shared_route_gone` rows" in operations and "2 years" in operations
+
+
 def test_the_migration_follows_the_newest() -> None:
     migrations = sorted((REPO / "src" / "core" / "migrations").glob("0*.py"))
     names = [m.name for m in migrations]
