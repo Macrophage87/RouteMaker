@@ -3460,6 +3460,21 @@ export function RideMode({
                         {label}
                       </button>
                     ))}
+                    {/* The owner, 2026-11-05: a road-closed Go round inside Detour too, for a rider who pressed
+                        Detour at a closure (street signs read "ROAD CLOSED / DETOUR"); the top-row button stays. */}
+                    {!walking && !ride.arrived && (
+                      <button
+                        type="button"
+                        className="secondary detour-road-closed"
+                        onClick={() => {
+                          setDetourOpen(false);
+                          roadClosed();
+                        }}
+                      >
+                        <Icon name="barrier" size={20} />
+                        {ROAD_CLOSED_NAME}
+                      </button>
+                    )}
                   </div>
                 ) : (
                   <p className="detour-picked">
