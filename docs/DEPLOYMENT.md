@@ -640,9 +640,16 @@ the old tree.
 The routers read their config (`./valhalla:/conf:ro`) once, when they start, and
 `docker compose up -d` leaves a running router alone when only that bind's
 contents changed. So after a release whose diff touches `valhalla/*.json`,
-restart every router, before or together with the api:
+restart every router that runs, the `offroad` profile's (`valhalla-offroad`,
+`valhalla-mtb`, `valhalla-paved`) included, before or together with the api:
 
-    docker compose restart $(docker compose config --services | grep '^valhalla-')
+    docker compose --profile offroad restart $(docker compose --profile offroad ps --services --status running </dev/null | grep '^valhalla-') </dev/null
+
+`--profile offroad` on both: without it compose leaves the profile's services
+out of every list, so a plain `config --services` or `ps --services` never names
+them. `--status running` keeps the list to the routers that run here: a
+`restart` starts a stopped container too, and one naming a service with no
+container fails and restarts nothing.
 
 Until they restart, the api can send what the old config refuses. v0.20.0 is
 such a release: the api sends closure polygons of up to 1000 vertices

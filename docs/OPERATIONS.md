@@ -79,6 +79,7 @@ Contents:
 - [Deploying v0.19.0](#deploying-v0190)
 - [Deploying v0.19.1](#deploying-v0191)
 - [Deploying v0.20.0](#deploying-v0200)
+- [Deploying v0.21.0 (draft)](#deploying-v0210-draft)
 - [Deploying a planner and front-end release: rollback points and verification](#deploying-a-planner-and-front-end-release-rollback-points-and-verification)
 - [Paths bicycles may not ride (NO-BIKE-PATHS)](#paths-bicycles-may-not-ride-no-bike-paths)
 - [Mountain-bike difficulty levels (456; claude/v0-4-0-mtb-levels)](#mountain-bike-difficulty-levels-456-claudev0-4-0-mtb-levels)
@@ -2611,7 +2612,8 @@ owner's key. The plain archive exists only in the pipes between `pg_dump`, `age`
   beside the restored one as `<db>_before_<UTC yyyymmddHHMMSS>`: a whole, plain copy, sign-ins
   and connections included. Every `auto-release.sh` pass on the beta drops each one more than
   6½ days old, by the instant in its name, and logs it; younger ones and the live database are
-  never touched.
+  never touched. While the agent is paused or BROKEN the newest one is spared (it may be the copy
+  being restored from), and once it is over 6½ days old the alert channel says so once a day.
 
 ### Setting up the key (the owner, once)
 
@@ -2826,7 +2828,9 @@ restore is the restore, not a second fault.
 (`/data/routemaker/backups/routemaker-<UTC>.dump.age`, written at 07:00 UTC) into
 `C:\Users\steph\Documents\RouteMaker\beta-backups`, which the PC's own backup covers. Only
 `.dump.age` files travel, never the plain `pre-*.dump` ones; they are useless without your
-backup key file, which stays on the PC. The newest 7 are kept there, as on the beta, so deleted data leaves them within a week as the privacy page says.
+backup key file, which stays on the PC. Like the beta, it keeps at most the newest 7 and none
+over 6½ days old (by the time in the name), the newest one excepted, and it prunes on every run,
+a failed one too, so deleted data leaves them within a week as the privacy page says.
 
 **How:** `scripts/pc/pull-beta-backups.sh`, run in WSL. It runs only `find` and a copy on the
 beta, under `sudo -n` (the folder is 0700, owned by the containers' uid). It writes `<name>.part`,
@@ -2834,6 +2838,10 @@ checks the size against the beta's, renames, prunes old copies in that folder on
 one line to `pull-beta-backups.log` there. It asks nothing and exits 1 with the reason when
 ssh, the copy or `sudo` fails, or when the newest dump is over 48 h old (the beta's backup
 stopped). `RM_BETA_SSH` (default `chubby`) and `RM_BACKUP_DIR` override the host and the folder.
+After a run that ends ok it writes the newest dump's name to
+`~/routemaker-beta-state/pc-backup-pull` on the beta (only if that folder exists). The beta's
+`alert.sh watch` posts in the owner's alert channel once that file is over 36 h old, so a pull
+that fails, or that stops running at all, is reported there (BETA-RUNBOOK, "Alerts").
 
 **Install, once.** In WSL, check that both work with no prompt (each prints nothing and
 exits 0):
@@ -2860,10 +2868,15 @@ running it again just replaces the task):
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$(wslpath -w ~/src/RouteMaker/scripts/pc/install-backup-pull-task.ps1)"
 ```
 
-The task (`RouteMaker - Pull beta backups`, in the Task Scheduler Library root) runs `wsl.exe -d Ubuntu-26.04 -- bash -lc
-"~/src/RouteMaker/scripts/pc/pull-beta-backups.sh"` daily at 04:00 New York time: 1 h after
-the dump in summer (07:00 UTC is 03:00 EDT), 2 h in winter (02:00 EST). If the PC is off or
-asleep then, it runs as soon as it can. It runs only while you are signed in to Windows.
+The task (`RouteMaker - Pull beta backups`, in the Task Scheduler Library root) runs
+`~/src/RouteMaker/scripts/pc/pull-beta-backups.sh` in `Ubuntu-26.04` daily at 04:00 New York
+time: 1 h after the dump in summer (07:00 UTC is 03:00 EDT), 2 h in winter (02:00 EST). If the
+PC is off or asleep then, it runs as soon as it can. It runs only while you are signed in to
+Windows, and only while that distro is already running: it checks with `wsl.exe -l --running`
+first and otherwise ends with result 3 and starts nothing, because booting the distro would
+start the home stack (`routemaker-boot.service`, [DEPLOYMENT.md](DEPLOYMENT.md), "Starting the
+stack after a reboot"). A PC whose distro stays down for 36 h shows up as a stale copy on the
+beta's alert channel.
 
 **Did it run?** The last lines of the log, `ok ... newest=routemaker-<yesterday>...`:
 
@@ -2872,17 +2885,19 @@ tail -n 3 /mnt/c/Users/steph/Documents/RouteMaker/beta-backups/pull-beta-backups
 ```
 
 or in PowerShell, `Get-ScheduledTaskInfo -TaskPath '\' -TaskName 'RouteMaker - Pull
-beta backups'` (`LastTaskResult` 0 is ok, 1 is a `FAILED` line in the log).
+beta backups'` (`LastTaskResult` 0 is ok, 1 is a `FAILED` line in the log, 3 is a night the
+distro was not running, so nothing ran).
 
 ### Test-restore once (on the PC, beta untouched)
 
 Proves the key still opens the dumps and that a dump restores. Docker on the PC; the plain
 archive exists only inside a throwaway container. Every few months, and after a key change.
 
-1. Start an empty PostGIS like the beta's, no ports published:
+1. Start an empty PostGIS, the same image as the stack's (`compose.yaml`, by digest), with no
+   network at all: the dump goes in through `docker exec`, so it needs none.
 
    ```sh
-   docker run -d --name rm-restore-test -e POSTGRES_PASSWORD=test postgis/postgis:16-3.4
+   docker run -d --name rm-restore-test --network none -e POSTGRES_PASSWORD=test docker.io/postgis/postgis:16-3.4@sha256:44126d872ac91993766c341e369c539e8196614321765d36a6f1bab0419a5fa5
    ```
 
 2. Decrypt the newest copy into it (age asks for the passphrase if your key file has one):
@@ -7046,8 +7061,8 @@ Dockerfile, so the beta ships by hand. At home, in order, with `</dev/null` on e
 - [ ] **Caddy**, after the fast-forward: `docker compose pull caddy`, validate the new Caddyfile against the new image ("Changing
   the Caddyfile on a running stack" in docs/DEPLOYMENT.md), then
   `docker compose up -d --no-deps --no-build --force-recreate caddy`.
-- [ ] **The routers, before the api.** Restart every router ("A release that changes
-  `valhalla/*.json`" in docs/DEPLOYMENT.md). The v0.19.1 api works with the new configs; the new api
+- [ ] **The routers, before the api.** Restart every router that runs, the `offroad` profile's
+  included ("A release that changes `valhalla/*.json`" in docs/DEPLOYMENT.md). The v0.19.1 api works with the new configs; the new api
   needs them (Reach answers nothing and a ride past several curved closures can read as no route).
 - [ ] **The api.** `docker compose up -d --no-deps --no-build --force-recreate api worker`, and
   `rebuild` too once no rebuild job is queued or running. No `migrate`. Then the tile pre-draw
@@ -7075,6 +7090,37 @@ Dockerfile, so the beta ships by hand. At home, in order, with `</dev/null` on e
   `Caddyfile`, then recreate `caddy`), then the pre-draw again (format 15). The routers need no
   restart back: a v0.19.1 api sends fewer vertices and no isochrone call. Loaded override rows stay;
   retire them with the loader if they must go.
+
+## Deploying v0.21.0 (draft)
+
+A draft, kept while the release branch grows: "Prepare v0.21.0" completes it, with the version,
+`docs/releases/v0.21.0.md` and the full order of steps. So far it carries the transit-in-ride work
+that landed after v0.20.0 was prepared: time left on the train or bus (#976), rail lines along
+their tracks and each stop's time (#978), and resuming a transit trip (#979).
+
+**For the release notes** (`docs/releases/v0.21.0.md`, written at "Prepare v0.21.0"):
+
+- On a train or bus: the stops and time left to your stop, each stop's time, when the trip ends,
+  and the line drawn on the map in its colour (rail along its track)
+- Where am I? on transit says the line and the stop to get off, or the stops and time left
+- A transit, Bikeshare, Walk or Run trip can be resumed after switching apps, on the train or
+  the walk where it was
+
+**What changes for the host** (so far): `scripts/build_transit_schedule.py` now stores each rail
+pattern's track from the feed's `shapes.txt` (the schedule's `shape` and `cuts`), and
+`src/core/transit.py` reads it. An old schedule keeps working, drawn stop to stop.
+
+- [ ] **The transit schedule, rebuilt with the new script** once the release is on the PC, so rail
+  lines follow their tracks ("Transit schedule", Build it on the home PC). The build's report says
+  "<system>: N of M patterns follow their track" for MARC, Light RailLink and the rest; 0 for a
+  system means its feed has no `shapes.txt`. Then the beta: ship the `transit` part alone
+  (BETA-RUNBOOK, "the bundle carries the transit ride types' schedule"). Without this step the
+  tracks are straight stop to stop until the next 45-day refresh.
+- [ ] **Spot checks.** A bike + transit ride on MARC or Metro: on board, the card shows the stops
+  and minutes left and an arrival time, the stop list shows each stop's time, and the ride map
+  draws the line in its colour along the track, with the stop to get off filled. Where am I? on the
+  train gives the line and the stop to get off, never "arrived". Switch apps on the train, come
+  back, press Resume: the trip carries on with the stops and time left.
 
 ## Deploying a planner and front-end release: rollback points and verification
 

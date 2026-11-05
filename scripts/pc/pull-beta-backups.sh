@@ -14,8 +14,16 @@
 # run under `sudo -n` there (RM_BETA_SUDO): a sudo that would ask for a password fails instead.
 #
 # Here it writes each file as <name>.part, checks its size against the beta's, then renames it;
-# keeps the newest RM_BACKUP_KEEP and deletes older routemaker-*.dump.age only in RM_BACKUP_DIR;
-# and appends one line per run to RM_BACKUP_DIR/pull-beta-backups.log. Exit 0 ok, 1 failed.
+# keeps the newest RM_BACKUP_KEEP that are under RM_BACKUP_MAX_AGE_H old (by the UTC time in the
+# name; the newest copy is always kept) and deletes the other routemaker-*.dump.age, only in
+# RM_BACKUP_DIR. That retention runs on every run, a failed one too, as the beta's does
+# (config.procrastinate BACKUP_MAX_AGE), so a run of failures never keeps old copies past the week.
+# It appends one line per run to RM_BACKUP_DIR/pull-beta-backups.log. Exit 0 ok, 1 failed.
+#
+# After a run that ends ok it writes the newest dump's name to RM_BETA_STATE/pc-backup-pull on
+# the beta (the login user's own state folder; written only if that folder exists). The beta's
+# alert.sh watch posts in the owner's channel when that file is over 36 h old, so a pull that fails
+# or stops running (the PC off, the task gone, the key not loading) is reported there.
 #
 # Environment (defaults in brackets):
 #   RM_BETA_SSH         ssh host alias of the beta [chubby]
@@ -24,6 +32,8 @@
 #   RM_BETA_SUDO        prefix for the two commands on the beta ["sudo -n"]; empty if the
 #                       login user can read that folder itself
 #   RM_BACKUP_KEEP      copies kept here [7, as on the beta: the privacy page promises deleted data leaves backups within a week]
+#   RM_BACKUP_MAX_AGE_H hours a copy is kept, the newest excepted [156, the beta's 6.5 days]
+#   RM_BETA_STATE       the beta's state folder, from the login user's home [routemaker-beta-state]
 set -euo pipefail
 export LC_ALL=C
 
@@ -32,6 +42,8 @@ dest=${RM_BACKUP_DIR:-/mnt/c/Users/steph/Documents/RouteMaker/beta-backups}
 remote_dir=${RM_BETA_BACKUPS:-/data/routemaker/backups}
 sudo_cmd=${RM_BETA_SUDO-sudo -n}
 keep=${RM_BACKUP_KEEP:-7}
+max_age_h=${RM_BACKUP_MAX_AGE_H:-156}
+remote_state=${RM_BETA_STATE:-routemaker-beta-state}
 log="$dest/pull-beta-backups.log"
 name_re='^routemaker-[0-9]{8}T[0-9]{6}Z\.dump\.age$'
 # BatchMode: a key that needs a passphrase (no agent in a scheduled run) fails at once, not waits.
@@ -39,12 +51,47 @@ ssh_opts=(-o BatchMode=yes -o ConnectTimeout=30 -o ServerAliveInterval=30)
 
 say() { echo "pull-beta-backups: $*" >&2; }
 log_line() { [ -d "$dest" ] && printf '%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" >>"$log" || true; }
-fail() { say "FAILED: $*"; log_line "FAILED $*"; exit 1; }
+# Set once the settings are checked: from then on a failure still applies the retention.
+can_prune=0
+removed=0
+fail() {
+	local note=""
+	say "FAILED: $*"
+	if [ "$can_prune" = 1 ]; then
+		prune_local || true
+		note=" (removed $removed by age or count)"
+	fi
+	log_line "FAILED $*$note"
+	exit 1
+}
+
+# Seconds since the epoch of the UTC time in a dump's name, or nothing.
+taken_at() { # name
+	local stamp=${1#routemaker-}
+	stamp=${stamp%.dump.age}
+	date -u -d "${stamp:0:8} ${stamp:9:2}:${stamp:11:2}:${stamp:13:2}" +%s 2>/dev/null
+}
+# Retention, only of our own file names, only in this folder: the newest is always kept; of the
+# rest, those past the keep-th newest or over max_age_h old go.
+prune_local() {
+	local old n=0 t now
+	now=$(date -u +%s)
+	while IFS= read -r old; do
+		n=$((n + 1))
+		[ "$n" -gt 1 ] || continue
+		t=$(taken_at "$old") || t=""
+		if [ "$n" -gt "$keep" ] || { [ -n "$t" ] && [ $((now - t)) -gt $((max_age_h * 3600)) ]; }; then
+			rm -f -- "$dest/$old" && removed=$((removed + 1))
+		fi
+	done < <(find "$dest" -maxdepth 1 -type f -name 'routemaker-*.dump.age' -printf '%f\n' | grep -E "$name_re" | sort -r)
+}
 
 [[ $keep =~ ^[1-9][0-9]*$ ]] || fail "RM_BACKUP_KEEP must be a whole number of 1 or more"
+[[ $max_age_h =~ ^[1-9][0-9]*$ ]] || fail "RM_BACKUP_MAX_AGE_H must be a whole number of 1 or more"
 case "$remote_dir" in /*) ;; *) fail "RM_BETA_BACKUPS must be an absolute path" ;; esac
-case "$remote_dir$sudo_cmd" in *"'"*) fail "RM_BETA_BACKUPS and RM_BETA_SUDO may not contain a quote" ;; esac
+case "$remote_dir$sudo_cmd$remote_state" in *"'"*) fail "RM_BETA_BACKUPS, RM_BETA_SUDO and RM_BETA_STATE may not contain a quote" ;; esac
 mkdir -p "$dest" || { say "FAILED: cannot create $dest"; exit 1; }
+can_prune=1
 
 # A .part left by a run that was killed (ours, or rsync's own temporary file) is never a backup.
 current_part=""
@@ -62,7 +109,7 @@ listing=$(ssh "${ssh_opts[@]}" "$host" "$remote_cmd" </dev/null)
 status=$?
 set -e
 if [ "$status" = 255 ]; then
-	fail "ssh $host did not connect (exit 255). Is the PC online, and does the ssh key load without a prompt? A key with a passphrase needs an agent; see docs/OPERATIONS.md, \"Off-box copies of beta backups\"."
+	fail "ssh $host did not connect (exit 255). Is the beta ($host) reachable, and does the ssh key load without a prompt? A key with a passphrase needs an agent; see docs/OPERATIONS.md, \"Off-box copies of beta backups\"."
 elif [ "$status" != 0 ]; then
 	fail "listing $remote_dir on $host failed (exit $status). If sudo wants a password there, see docs/OPERATIONS.md, \"Off-box copies of beta backups\"."
 fi
@@ -108,22 +155,27 @@ while read -r name size; do
 	current_part=""
 done <<<"$listing"
 
-[ "$errors" = 0 ] || fail "$errors of the new dumps did not copy whole (copied $copied); nothing was deleted here"
-[ "$seen" -gt 0 ] || fail "no routemaker-*.dump.age in $remote_dir on $host; nothing was deleted here"
+[ "$errors" = 0 ] || fail "$errors of the new dumps did not copy whole (copied $copied)"
+[ "$seen" -gt 0 ] || fail "no routemaker-*.dump.age in $remote_dir on $host"
 
-# Retention, only of our own file names, only in this folder.
-removed=0
-while IFS= read -r old; do
-	rm -f -- "$dest/$old" && removed=$((removed + 1))
-done < <(find "$dest" -maxdepth 1 -type f -name 'routemaker-*.dump.age' -printf '%f\n' | sort -r | tail -n +"$((keep + 1))")
+prune_local
 
-newest=$(find "$dest" -maxdepth 1 -type f -name 'routemaker-*.dump.age' -printf '%f\n' | sort -r | head -n 1)
-kept=$(find "$dest" -maxdepth 1 -type f -name 'routemaker-*.dump.age' | wc -l)
+newest=$(find "$dest" -maxdepth 1 -type f -name 'routemaker-*.dump.age' -printf '%f\n' | grep -E "$name_re" | sort -r | head -n 1 || true)
+kept=$(find "$dest" -maxdepth 1 -type f -name 'routemaker-*.dump.age' -printf '%f\n' | grep -cE "$name_re" || true)
 # The beta keeps its newest dump whatever its age, so a beta whose backups stopped still copies
 # "ok"; this is the line that says so. 48 h: one missed night is not yet an alarm.
-stamp=${newest#routemaker-}; stamp=${stamp%.dump.age}
-taken=$(date -u -d "${stamp:0:8} ${stamp:9:2}:${stamp:11:2}:${stamp:13:2}" +%s 2>/dev/null || echo 0)
+taken=$(taken_at "$newest") || taken=0
 age_h=$((($(date -u +%s) - taken) / 3600))
-[ "$age_h" -le 48 ] || fail "the newest dump ($newest) is ${age_h} h old: the beta's nightly backup has stopped (copied $copied, removed $removed, kept $kept)"
-log_line "ok host=$host copied=$copied removed=$removed kept=$kept newest=$newest via=$([ "$use_rsync" = 1 ] && echo rsync || echo copy)"
+[ "$age_h" -le 48 ] || fail "the newest dump ($newest) is ${age_h} h old: the beta's nightly backup has stopped (copied $copied, kept $kept)"
+
+# The beta's alert.sh watch reads this file's age (see the header). Not written, the run is still
+# ok here, and the beta reports the pull as stale once the file is over 36 h old.
+mark_cmd="cd && [ -d '$remote_state' ] && umask 077 && printf '%s\\n' '$newest' >'$remote_state/pc-backup-pull.new' && mv -f '$remote_state/pc-backup-pull.new' '$remote_state/pc-backup-pull'"
+marked=yes
+# shellcheck disable=SC2029 # expanded here on purpose: the names are checked above
+ssh "${ssh_opts[@]}" "$host" "$mark_cmd" </dev/null >/dev/null 2>&1 || {
+	marked=no
+	say "note: could not record this run in $remote_state/pc-backup-pull on $host; the beta will report the pull as stale"
+}
+log_line "ok host=$host copied=$copied removed=$removed kept=$kept newest=$newest via=$([ "$use_rsync" = 1 ] && echo rsync || echo copy) marked=$marked"
 say "ok: copied $copied, removed $removed, keeping $kept; newest $newest"

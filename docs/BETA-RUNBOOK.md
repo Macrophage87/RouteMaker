@@ -1369,10 +1369,13 @@ the units changed, or if the report says the copy failed.
 **Disk.** `status` shows the free space on Docker's root and `$RM_STATE`, the number of api
 images, the `<db>_before_<time>` databases restores left, and the `node_modules` copies.
 Each deploy prunes old api images, build cache and `node_modules` copies (step 6), and the agent
-keeps `RM_CD_KEEP` snapshots. Every pass (not a dry run, and also while paused) drops each
+keeps `RM_CD_KEEP` snapshots. Every pass (not a dry run; paused and BROKEN included) drops each
 `<db>_before_<time>` database more than 6½ days old, whether an automatic rollback or a restore by
 hand made it, as the privacy page promises for copies taken before an update; it reads the age from
-the UTC instant in the name and logs each one it drops in the pass's report. It drops nothing else:
+the UTC instant in the name and logs each one it drops in the pass's report. While the agent is
+paused or BROKEN it spares the newest one, which may be the copy you restore from: once that is over
+6½ days old each pass says so in its report and the alert channel is told once a day, until you
+drop it or resume. It drops nothing else:
 never the live database, `<db>_restore`, or a name that is not exactly `<db>_before_` and 14 digits.
 To be rid of one sooner, once a release has run well, `drop database "<db>_before_<time>"` in postgis. `receive-data.sh` keeps the
 newest 3 of each kind of its own safety dumps in `DATA_ROOT/backups` (`pre-update-*`,
@@ -1459,6 +1462,13 @@ What is posted, each as one short message starting "RouteMaker beta:":
   day while it lasts, and "working again" when it clears. No check runs while a deploy pass holds
   the agent's lock (a deploy stops the api on purpose). The weekly rebuild's waiting job is
   reported as paused, not stale (above), so it never posts.
+- **The PC's copy of the backups:** once the owner's PC pulls the nightly dumps
+  (docs/OPERATIONS.md, "Off-box copies of beta backups"), each run that ends ok writes
+  `~/routemaker-beta-state/pc-backup-pull`. The same check posts once that file is over 36 h old
+  (the pull failing, or not running at all), once a day while it lasts, and again when it is
+  fresh. No file, no check.
+- **A kept database:** while the agent is paused or BROKEN, a pass that spares the newest
+  `<db>_before_<time>` database past 6½ days says so once a day ("Disk", above).
 - **Releases:** the release agent posts each deploy, and a rollback, a failure, a hold, an
   interrupted pass, BROKEN, a setting error, checkout drift or a disk stall once per tag (again
   once a day while it lasts). A release that has waited over 30 minutes for the same reason (CI

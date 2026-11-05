@@ -9,6 +9,7 @@ server or the network.
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 from datetime import UTC, datetime, timedelta
@@ -125,10 +126,12 @@ def test_only_the_encrypted_dumps_are_copied_whole(env) -> None:
         assert (env["dest"] / n).read_bytes() == (env["remote"] / n).read_bytes()
     log = (env["dest"] / "pull-beta-backups.log").read_text().splitlines()
     assert len(log) == 1 and " ok host=chubby copied=3 " in log[0] and "via=rsync" in log[0]
-    # On the beta: one listing, then rsync copies; nothing else.
+    # On the beta: one listing, the rsync copies, then the run is recorded; nothing else.
     calls = env["log"].read_text().splitlines()
     remote_cmds = [line for line in calls if line.startswith("chubby\t")]
-    assert len(remote_cmds) == 1 and "find " in remote_cmds[0] and "rm " not in remote_cmds[0]
+    assert len(remote_cmds) == 2, remote_cmds
+    assert "find " in remote_cmds[0] and "pc-backup-pull" in remote_cmds[1]
+    assert not any("rm " in c for c in remote_cmds)
 
     again = run(env)
     assert again.returncode == 0, again.stderr
@@ -154,8 +157,9 @@ def test_retention_keeps_the_newest_7_and_touches_nothing_else(env) -> None:
     assert not any(n.endswith(".part") for n in files(env["dest"]))
 
 
-def test_a_copy_that_breaks_off_leaves_no_part_and_deletes_nothing(env) -> None:
-    old = [name(h) for h in range(30, 30 + 24 * 8, 24)]  # 8: one over the keep
+def test_a_copy_that_breaks_off_leaves_no_part_and_keeps_the_past_weeks_copies(env) -> None:
+    hours = range(30, 30 + 24 * 8, 24)  # 8 copies, 30 h to 198 h old
+    old = [name(h) for h in hours]
     for n in old:
         put(env["dest"], n)
     put(env["remote"], name(2), size=4000)
@@ -164,25 +168,76 @@ def test_a_copy_that_breaks_off_leaves_no_part_and_deletes_nothing(env) -> None:
 
     assert result.returncode == 1
     assert "did not copy whole" in result.stderr
-    assert files(env["dest"]) == set(old) | {"pull-beta-backups.log"}
+    week = {n for h, n in zip(hours, old, strict=True) if h <= 156}
+    assert files(env["dest"]) == week | {"pull-beta-backups.log"}
     assert "FAILED" in (env["dest"] / "pull-beta-backups.log").read_text()
 
 
-def test_a_failing_ssh_exits_non_zero_and_leaves_the_copies_alone(env) -> None:
+def test_a_failing_ssh_exits_non_zero_and_still_drops_copies_past_the_week(env) -> None:
     old = [name(h) for h in range(30, 30 + 24 * 16, 24)]
     for n in old:
         put(env["dest"], n)
-    before = {n: (env["dest"] / n).read_bytes() for n in old}
     put(env["remote"], name(2))
 
     result = run(env, STUB_SSH_FAIL="1")
 
     assert result.returncode != 0
     assert "ssh chubby did not connect" in result.stderr
-    assert {n: (env["dest"] / n).read_bytes() for n in old} == before
-    assert files(env["dest"]) == set(old) | {"pull-beta-backups.log"}
+    assert "Is the beta (chubby) reachable" in result.stderr
+    # 30 h to 150 h old stay (six copies, under the keep); 174 h and older go.
+    young = {n for h, n in zip(range(30, 30 + 24 * 16, 24), old, strict=True) if h <= 156}
+    assert files(env["dest"]) == young | {"pull-beta-backups.log"}
     log = (env["dest"] / "pull-beta-backups.log").read_text()
     assert "FAILED ssh chubby did not connect" in log
+    assert "(removed 10 by age or count)" in log
+    # A failed run is not recorded on the beta, so the beta's alert sees the copy go stale.
+    assert not (Path(env["env"]["HOME"]) / "routemaker-beta-state").exists()
+
+
+def test_a_long_run_of_failures_leaves_only_the_newest_copy(env) -> None:
+    old = [name(h) for h in (24 * 10, 24 * 11, 24 * 12, 24 * 13)]
+    for n in old:
+        put(env["dest"], n)
+
+    result = run(env, STUB_SSH_FAIL="1")
+
+    assert result.returncode == 1
+    assert files(env["dest"]) == {old[0], "pull-beta-backups.log"}
+
+
+def test_copies_past_the_week_go_once_the_beta_answers_again(env) -> None:
+    """The beta's backups failed for ten days: it now holds one fresh dump, and the copies here
+    from before the gap are dropped by age, not kept because there are fewer than seven."""
+    stale = [name(24 * d) for d in range(10, 17)]
+    for n in stale:
+        put(env["dest"], n)
+    fresh = name(3)
+    put(env["remote"], fresh)
+
+    result = run(env)
+
+    assert result.returncode == 0, result.stderr
+    assert files(env["dest"]) == {fresh, "pull-beta-backups.log"}
+    assert " removed=7 " in (env["dest"] / "pull-beta-backups.log").read_text()
+
+
+def test_an_ok_run_is_recorded_in_the_beta_state_folder_for_its_alert(env) -> None:
+    state = Path(env["env"]["HOME"]) / "routemaker-beta-state"
+    n = name(5)
+    put(env["remote"], n)
+
+    # No state folder there: nothing is created, and the run is still ok.
+    first = run(env)
+    assert first.returncode == 0, first.stderr
+    assert not state.exists()
+    assert "marked=no" in (env["dest"] / "pull-beta-backups.log").read_text()
+
+    state.mkdir()
+    second = run(env)
+    assert second.returncode == 0, second.stderr
+    assert (state / "pc-backup-pull").read_text() == n + "\n"
+    assert oct((state / "pc-backup-pull").stat().st_mode & 0o777) == "0o600"
+    assert "marked=yes" in (env["dest"] / "pull-beta-backups.log").read_text().splitlines()[-1]
 
 
 @pytest.mark.skipif(
@@ -215,3 +270,31 @@ def test_a_beta_whose_backups_stopped_is_reported(env) -> None:
     assert result.returncode == 1
     assert "nightly backup has stopped" in result.stderr
     assert len(files(env["dest"])) == 2  # the copy is still made, and the log
+
+
+def test_the_nightly_task_runs_only_in_a_distro_that_is_already_running() -> None:
+    """The distro that serves the home stack starts the stack when it boots, and the stack must not
+    come up by itself, so the scheduled task never starts a distro: it asks which are running
+    first, and the only `wsl.exe -d` comes after that check."""
+    ps1 = (REPO / "scripts" / "pc" / "install-backup-pull-task.ps1").read_text()
+    action = ps1[ps1.index("New-ScheduledTaskAction") :].split("\n", 2)[:2]
+    assert "'powershell.exe'" in action[0] and "-EncodedCommand $encoded" in action[1]
+    command = ps1[ps1.index('$command = @"') : ps1.index('"@')]
+    check = command.index("wsl.exe -l --running")
+    start = command.index("wsl.exe -d")
+    assert check < start
+    assert "-notcontains $(Quote $Distro)) { exit 3 }" in command[check:start]
+    assert command.count("wsl.exe -d") == 1
+
+
+def test_the_test_restore_runs_the_stacks_own_postgis_image_with_no_network() -> None:
+    """The test-restore container receives a decrypted dump: it runs the exact image the stack
+    runs (compose.yaml, by digest), and has no network."""
+    compose = (REPO / "compose.yaml").read_text()
+    image = re.search(r"image: (docker\.io/postgis/postgis:\S+@sha256:[0-9a-f]{64})", compose)
+    assert image
+    ops = (REPO / "docs" / "OPERATIONS.md").read_text()
+    runs = [line for line in ops.splitlines() if "docker run" in line and "rm-restore-test" in line]
+    assert len(runs) == 1, runs
+    assert image.group(1) in runs[0]
+    assert "--network none" in runs[0]

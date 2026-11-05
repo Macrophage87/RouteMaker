@@ -26,6 +26,7 @@ import json
 import logging
 import math
 import shutil
+import subprocess
 import sys
 from dataclasses import replace
 from datetime import date, datetime
@@ -2593,3 +2594,21 @@ def test_a_schedule_whose_track_does_not_fit_its_stops_draws_stop_to_stop(tmp_pa
     path.write_text(json.dumps(doc))
     loaded = transit.load(path, date(2026, 9, 30))
     assert not any(p.cuts for p in loaded.patterns)
+
+
+def test_regenerating_the_fixture_as_its_docstring_says_gives_the_committed_files(tmp_path) -> None:
+    """make_fixture.py writes every file under tests/data/transit, the MARC track and its shape_id
+    included, so running it again (to add a system or a station) never drops the track the tests
+    above ride on."""
+    fixture = REPO / "tests" / "data" / "transit"
+    subprocess.run(
+        [sys.executable, "-I", str(fixture / "make_fixture.py"), str(tmp_path)],
+        check=True,
+        capture_output=True,
+        timeout=120,
+    )
+    committed = {p.relative_to(fixture): p.read_bytes() for p in fixture.rglob("*.txt")}
+    made = {p.relative_to(tmp_path): p.read_bytes() for p in tmp_path.rglob("*.txt")}
+    assert Path("marc/shapes.txt") in made
+    assert sorted(made) == sorted(committed)
+    assert [k for k in committed if made[k] != committed[k]] == []
