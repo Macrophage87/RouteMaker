@@ -2832,8 +2832,9 @@ backup key file, which stays on the PC. Like the beta, it keeps at most the newe
 over 6½ days old (by the time in the name), the newest one excepted, and it prunes on every run,
 a failed one too, so deleted data leaves them within a week as the privacy page says.
 
-**How:** `scripts/pc/pull-beta-backups.sh`, run in WSL. It runs only `find` and a copy on the
-beta, under `sudo -n` (the folder is 0700, owned by the containers' uid). It writes `<name>.part`,
+**How:** `scripts/pc/pull-beta-backups.sh`, run in WSL. On the beta it runs `find` and a copy
+under `sudo -n` (the folder is 0700, owned by the containers' uid), and, without sudo, writes one
+marker file (the time of the last good pull) in the state folder for `alert.sh watch`. It writes `<name>.part`,
 checks the size against the beta's, renames, prunes old copies in that folder only, and adds
 one line to `pull-beta-backups.log` there. It asks nothing and exits 1 with the reason when
 ssh, the copy or `sudo` fails, or when the newest dump is over 48 h old (the beta's backup
