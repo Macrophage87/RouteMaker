@@ -1114,3 +1114,29 @@ def test_the_post_tool_is_offered_only_where_posts_may_be_written(tools) -> None
     assert out["error"]["code"] == -32602
     admin = mcp.Server(lambda: None, stations=STATIONS, posts=True)
     assert "draft_route_post" in [t["name"] for t in admin.tools()]
+
+
+def test_a_run_is_timed_at_the_runner_s_own_pace(tools) -> None:
+    """The site reads a run's pace from run_pace_kmh (4 to 10 mph), never a riding speed."""
+    points = [[-77.03, 38.90], [-77.02, 38.91]]
+    first = tools.call("plan_route", {"points": points, "preset": "run", "pace_mph": 4.5})
+    sent = StandIn.routes[-1]
+    assert sent["run_pace_kmh"] == 7.2 and "cycling_speed_kmh" not in sent
+    tools.call("revise_route", {"draft_id": first["draft_id"], "pace_mph": 6})
+    sent = StandIn.routes[-1]
+    assert sent["run_pace_kmh"] == 9.7 and "cycling_speed_kmh" not in sent
+    with pytest.raises(mcp.ToolError, match="4 to 10"):
+        tools.call("plan_route", {"points": points, "preset": "run", "pace_mph": 12})
+
+
+def test_a_ride_turned_into_a_run_or_back_keeps_no_pace_of_the_other_kind(tools) -> None:
+    points = [[-77.03, 38.90], [-77.02, 38.91]]
+    ride = tools.call("plan_route", {"points": points, "pace_mph": 18})
+    assert StandIn.routes[-1]["cycling_speed_kmh"] == 29.0
+    run = tools.call("revise_route", {"draft_id": ride["draft_id"], "preset": "run"})
+    sent = StandIn.routes[-1]
+    assert "cycling_speed_kmh" not in sent and "run_pace_kmh" not in sent
+    paced = tools.call("revise_route", {"draft_id": run["draft_id"], "pace_mph": 6})
+    assert StandIn.routes[-1]["run_pace_kmh"] == 9.7
+    tools.call("revise_route", {"draft_id": paced["draft_id"], "preset": "default"})
+    assert "run_pace_kmh" not in StandIn.routes[-1]

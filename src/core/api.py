@@ -5608,6 +5608,11 @@ class ReachIn(Schema):
             raise ValueError(
                 "The transit ride types have no reach rings yet; pick a bike ride type, Walk or Run"
             )
+        # As a plan's (`RouteIn.dials_fit_the_preset`): the old "Avoid gravel" box rides as Road
+        # Bike on a rider's own bike, and is dropped elsewhere.
+        if self.avoid_gravel and self.preset in presets.AVOID_GRAVEL_BECOMES:
+            self.preset = presets.ROAD_BIKE
+        self.avoid_gravel = self.preset == presets.ROAD_BIKE
         preset = presets.PRESETS[self.preset]
         if self.run_pace_kmh is not None and self.preset != presets.RUN:
             raise ValueError("run_pace_kmh applies to the Run ride type only")
@@ -8098,11 +8103,14 @@ def weather_check(request):
     problem = weather.points_problem(points)
     if problem:
         return _error(400, problem)
-    inside = weather.inside_coverage(points)
-    if not inside:
+    kept = weather.inside_indices(points)
+    if not kept:
         return _error(400, "the points are outside the area this map covers")
-    found = weather.shared().check([tuple(p) for p in inside])
-    if len(inside) < len(points):
+    found = weather.shared().check([tuple(points[i]) for i in kept])
+    if found.get("rain") is not None:
+        # Counted among the points asked: told as a place in the points sent.
+        found["rain"]["index"] = kept[found["rain"]["index"]]
+    if len(kept) < len(points):
         # Points past the edge were not asked: never read as "no alerts, no rain" there.
         found["unchecked"] = sorted({*found["unchecked"], "alerts", "rain"})
     out = JsonResponse(found)

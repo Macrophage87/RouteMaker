@@ -132,6 +132,22 @@ class TestRings:
         assert response.json()["preset"] == preset
         assert calls(fake)[0]["costing"] == "bicycle"
 
+    def test_the_old_avoid_gravel_box_rides_as_a_plan_with_it_does(self, client, router) -> None:
+        """A plan with the box ticked on a rider's own bike is planned as Road Bike; so are
+        its rings. Elsewhere the box is dropped, as a plan drops it."""
+        fake = router(FakeRouter({"isochrone": isochrone_answer}))
+        ticked = post(client, {"points": [HERE], "preset": "default", "avoid_gravel": True})
+        assert ticked.status_code == 200, ticked.content
+        assert ticked.json()["preset"] == presets.ROAD_BIKE
+        post(client, {"points": [HERE], "preset": presets.ROAD_BIKE})
+        as_box, as_road_bike = calls(fake)
+        assert as_box["costing_options"] == as_road_bike["costing_options"]
+        novice = post(client, {"points": [HERE], "preset": "novice", "avoid_gravel": True})
+        assert novice.status_code == 200 and novice.json()["preset"] == "novice"
+        post(client, {"points": [HERE], "preset": "novice"})
+        boxed, plain = calls(fake)[2:]
+        assert boxed["costing_options"] == plain["costing_options"]
+
     def test_walk_and_run_go_on_foot(self, client, router) -> None:
         fake = router(FakeRouter({"isochrone": isochrone_answer}))
         post(client, {"points": [HERE], "preset": "walk"})

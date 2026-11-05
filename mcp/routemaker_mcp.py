@@ -2222,6 +2222,22 @@ def pace_kmh(mph) -> float:
     return round(value * METRES_PER_MILE / 1000, 1)
 
 
+def run_pace_kmh(mph) -> float:
+    """A runner's pace, mph, as the site's `run_pace_kmh` (core/run_plan.py: 4 to 10 mph)."""
+    value = finite(mph)
+    if not 4 <= value <= 10:
+        raise ToolError("a run's pace_mph is 4 to 10")
+    return round(value * METRES_PER_MILE / 1000, 1)
+
+
+def pace_option(mph, preset: str) -> tuple[str, float]:
+    """The pace field the site reads for the ride type, and its value: Run's running pace, a
+    bike's riding speed (the site keeps Walk's and a share bike's own)."""
+    if preset == "run":
+        return "run_pace_kmh", run_pace_kmh(mph)
+    return "cycling_speed_kmh", pace_kmh(mph)
+
+
 def _cum_miles(line: list) -> list[float]:
     """Miles along the line at each of its points, by straight steps."""
     cum = [0.0]
@@ -2980,12 +2996,13 @@ RIDE_OPTIONS = {
     },
     "pace_mph": {
         "type": "number",
-        "minimum": 5,
+        "minimum": 4,
         "maximum": 31,
         "description": (
-            "The rider's own speed on the flat, mph (the app's Riding speed): times and arrival"
-            " are worked out at it, hills and junction waits still counted. Absent: the ride"
-            " type's own pace. Not on Mass Ride or a share bike."
+            "The rider's own speed on the flat, mph (the app's Riding speed), 5 to 31: times and"
+            " arrival are worked out at it, hills and junction waits still counted. On Run, the"
+            " running pace, 4 to 10. Absent: the ride type's own pace. Not on Mass Ride, a share"
+            " bike or Walk."
         ),
     },
     "carrying": {"type": "string", "enum": ["cargo", "people"], "description": "Cargo only."},
@@ -3142,6 +3159,44 @@ REACH_NOT_YET = frozenset({"bike-transit", "bikeshare-transit", "walk-transit"})
 REACH_ON_FOOT = frozenset({"walk", "run"})
 # The calm layer's setting (core/reach.py CALM_STRESS: Low-stress).
 CALM_STRESS = 80
+# Where each bike ride type's traffic slider starts (core/presets.py stress_start), and Cargo
+# Bike's by what it carries: the calm rule reads it when no stress is given.
+STRESS_START = {
+    "default": 70,
+    "trailmaxxing": 100,
+    "novice": 100,
+    "group-ride": 40,
+    "mass-ride": 0,
+    "mountain-goat": 40,
+    "mountain-bike": 80,
+    "gravel": 40,
+    "fast": 10,
+    "road-bike": 40,
+    "cargo": 70,
+    "ebike": 70,
+    "bikeshare": 80,
+    "rebalance": 80,
+}
+CARGO_STRESS_START = {"cargo": 70, "people": 80}
+# compare_places: one place needs a matrix row (or two, with the calm one) of the site's
+# nearest-place search, each held to its own budget; a place is not begun with less than this
+# left of the call's time, so none is answered in straight lines for want of it.
+COMPARE_PLACE_S = 12
+
+
+def calm_offered(preset: str, dials: dict) -> bool:
+    """Whether a calm figure says anything (core/reach.py calm_offered): a bike ride type that
+    is set below Low-stress, and whose slider is not locked (Mass Ride). A ride type at or past
+    Low-stress, from its start or the rider's stress, is its own calm."""
+    if preset in REACH_ON_FOOT or preset in REACH_NOT_YET or preset == "mass-ride":
+        return False
+    stress = dials.get("stress")
+    if stress is None:
+        if preset == "cargo":
+            stress = CARGO_STRESS_START.get(dials.get("carrying") or "cargo", STRESS_START["cargo"])
+        else:
+            stress = STRESS_START.get(preset, STRESS_START["default"])
+    return stress < CALM_STRESS
 
 
 PASSED_OPTIONS = (
@@ -3429,10 +3484,12 @@ TOOLS = [
             "Compare 2 to 6 places to start from (a home, a hotel, an office)"
             " against 1 to 3 places the rider goes, each with an optional minute limit: one row"
             " per place, with the riding minutes and miles to each destination at the rider's"
-            " traffic setting and at Low-stress (calm_minutes), and whether each limit is met,"
-            " best first. Times are the router's own on the ride type's graph (one matrix row"
-            " a place), not full routes: plan the chosen one with plan_route. Bike ride types"
-            " only. Each row has a reach link to its rings in the app."
+            " traffic setting and at Low-stress (calm_minutes; none where the setting is"
+            " already Low-stress or calmer), and whether each limit is met, best first. Times"
+            " are the router's own on the ride type's graph (one matrix row a place), not full"
+            " routes: plan the chosen one with plan_route. Bike ride types only. Each row has a"
+            " reach link to its rings in the app. Places left when time runs out are listed in"
+            " not_compared."
         ),
         "inputSchema": {
             "type": "object",
@@ -4187,7 +4244,7 @@ class Server:
             rows.sort(key=lambda r: r["miles"])
         return {"stations": rows, "source": "DC Open Data, Metro Stations Regional (CC BY 4.0)"}
 
-    def _options(self, args: dict) -> dict:
+    def _options(self, args: dict, preset: str | None = None) -> dict:
         options = {key: args.get(key) for key in PASSED_OPTIONS}
         options["loop"] = bool(args.get("loop"))
         if args.get("target_miles"):
@@ -4195,7 +4252,8 @@ class Server:
         if args.get("rider_weight_lb"):
             options["system_weight_kg"] = round(finite(args["rider_weight_lb"]) * KG_PER_LB)
         if args.get("pace_mph"):
-            options["cycling_speed_kmh"] = pace_kmh(args["pace_mph"])
+            field, kmh = pace_option(args["pace_mph"], preset or args.get("preset") or "default")
+            options[field] = kmh
         return options
 
     def _alternatives(self, first: Plan, options: dict, limit) -> list[dict]:
@@ -4793,14 +4851,21 @@ class Server:
             # The followed line, the roads to avoid and the rider's pace are the rider's, not
             # the ride type's: they stay too.
             kept = ("loop", "when", "follow", "follow_exact", "blocked_lines", "cycling_speed_kmh")
+            if preset == "run":
+                # A riding speed is no running pace: the run starts at Run's own.
+                kept = kept[:-1]
             options = {k: v for k, v in options.items() if k in kept}
-        options.update({k: v for k, v in self._options(args).items() if k in args})
+        asked = self._options(args, preset)
+        options.update({k: v for k, v in asked.items() if k in args})
         if "target_miles" in args:
-            options["target_distance_m"] = self._options(args).get("target_distance_m")
+            options["target_distance_m"] = asked.get("target_distance_m")
         if "rider_weight_lb" in args:
-            options["system_weight_kg"] = self._options(args).get("system_weight_kg")
+            options["system_weight_kg"] = asked.get("system_weight_kg")
         if args.get("pace_mph"):
-            options["cycling_speed_kmh"] = pace_kmh(args["pace_mph"])
+            options.pop("cycling_speed_kmh", None)
+            options.pop("run_pace_kmh", None)
+            field, kmh = pace_option(args["pace_mph"], preset)
+            options[field] = kmh
         limit = args.get("max_miles_from_metro", draft.limit)
         early_notes: list[str] = []
         if reshaped and options.get("follow"):
@@ -4824,6 +4889,7 @@ class Server:
                 limit = None
             elif key == "pace_mph":
                 options.pop("cycling_speed_kmh", None)
+                options.pop("run_pace_kmh", None)
             elif key == "avoid":
                 options.pop("blocked_lines", None)
             else:
@@ -5117,11 +5183,9 @@ class Server:
         for key in ("stress", "hills", "when", "carrying", "assist", "trails_off"):
             if args.get(key) is not None:
                 body[key] = args[key]
-        if args.get("pace_mph"):
-            if preset == "run":
-                body["run_pace_kmh"] = round(finite(args["pace_mph"]) * METRES_PER_MILE / 1000, 1)
-            elif preset not in REACH_ON_FOOT:
-                body["cycling_speed_kmh"] = pace_kmh(args["pace_mph"])
+        if args.get("pace_mph") and preset != "walk":
+            field, kmh = pace_option(args["pace_mph"], preset)
+            body[field] = kmh
         return body
 
     def _reach_link(
@@ -5258,20 +5322,20 @@ class Server:
             for d in dests
         ]
         dials = self._reach_dials(args, preset)
+        # No calm figure where it says nothing: Mass Ride's slider is locked, and a ride type
+        # set at or past Low-stress (its start or the rider's stress) is its own calm.
+        offered = calm_offered(preset, dials)
         rows = []
+        not_compared = []
         for i, start in enumerate(starts):
             call.check()
+            if call.deadline is not None and time.monotonic() + COMPARE_PLACE_S > call.deadline:
+                not_compared = places[i:]
+                break
             body = {"points": [list(start), *[list(e) for e in ends]], "preset": preset, **dials}
             own = self.api.nearest(body)
             calm_body = {**body, "stress": CALM_STRESS}
-            stress = dials.get("stress")
-            # No calm figure where it says nothing: Mass Ride's slider is locked, and a slider
-            # already at or past Low-stress is its own calm (core.reach.calm_offered).
-            calm = (
-                None
-                if preset == "mass-ride" or (stress is not None and stress >= CALM_STRESS)
-                else self.api.nearest(calm_body)
-            )
+            calm = self.api.nearest(calm_body) if offered else None
             trips = []
             for j in range(len(ends)):
                 got = (own.get("places") or [{}] * len(ends))[j]
@@ -5302,13 +5366,19 @@ class Server:
                     "limits_met": met,
                     "total_minutes": round(total, 1),
                     "unreachable": unreachable,
-                    "reach_link": self._reach_link([start], preset, dials, "from", "any", True),
+                    "reach_link": self._reach_link([start], preset, dials, "from", "any", offered),
                 }
             )
         # A place with a trip the router could not make ranks below every place it could: its
         # total leaves that trip out and would otherwise look short.
         rows.sort(key=lambda r: (-r["limits_met"], r["unreachable"], r["total_minutes"]))
         out: dict = {"ride_type": preset, "places": rows}
+        if not_compared:
+            out["not_compared"] = not_compared
+            out["notes"] = [
+                f"ran out of time after {len(rows)} of {len(places)} places: the rest"
+                " (not_compared) were not measured; ask again with just those"
+            ]
         if taken:
             out["points_taken_as"] = taken
         return out

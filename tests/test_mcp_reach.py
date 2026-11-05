@@ -200,3 +200,68 @@ def test_reach_at_minutes_the_app_does_not_draw_says_what_the_link_opens(tools, 
         60,
     ]
     assert "link_rings" not in tools.call("reach", {"points": [HERE]})
+
+
+def test_compare_places_on_novice_asks_one_row_a_place(tools, api) -> None:
+    """Novice starts at the top of the slider, past Low-stress: its own minutes are the calm
+    ones, so no second row is asked and the reach link offers no calm layer."""
+    out = tools.call(
+        "compare_places",
+        {"places": [HERE, THERE], "destinations": [{"place": WORK}], "preset": "novice"},
+    )
+    assert len(api.nearest_asked) == 2
+    assert all("stress" not in body for body in api.nearest_asked)
+    assert all("calm_minutes" not in t for row in out["places"] for t in row["trips"])
+    assert all(row["reach_link"].endswith("reach=from.any") for row in out["places"])
+
+
+def test_compare_places_on_a_cargo_bike_carrying_people_asks_one_row_a_place(tools, api) -> None:
+    tools.call(
+        "compare_places",
+        {
+            "places": [HERE, THERE],
+            "destinations": [{"place": WORK}],
+            "preset": "cargo",
+            "carrying": "people",
+        },
+    )
+    assert len(api.nearest_asked) == 2
+
+
+def test_the_calm_rule_is_the_site_s_own() -> None:
+    """compare_places offers a calm figure exactly where the site's reach offers calm rings."""
+    from core import presets, reach, routing
+
+    for name in presets.PRESETS:
+        if name in reach.NOT_YET or name in reach.ON_FOOT:
+            continue
+        assert mcp.STRESS_START[name] == presets.stress_start(name), name
+        for carrying in [None, *(presets.PRESETS[name].carrying or [])]:
+            for stress in (None, 0, 40, 70, 79, 80, 90, 100):
+                site = reach.calm_offered(name, routing.Dials(stress=stress, carrying=carrying))
+                ours = mcp.calm_offered(name, {"stress": stress, "carrying": carrying})
+                assert ours is site, (name, carrying, stress)
+    assert mcp.CARGO_STRESS_START == dict(presets.PRESETS["cargo"].carrying)
+    assert mcp.CALM_STRESS == reach.CALM_STRESS
+
+
+def test_compare_places_out_of_time_says_which_places_were_not_compared(tools, api) -> None:
+    """A place begun with too little of the call's time left would come back in straight lines
+    and rank as unreachable: it is listed as not compared instead."""
+    call = mcp.Call(deadline=mcp.time.monotonic() + 600)
+    real = api.nearest
+
+    def nearest(body):
+        # The first place takes the rest of the call's time.
+        call.deadline = mcp.time.monotonic() + 1
+        return real(body)
+
+    api.nearest = nearest
+    out = tools.call(
+        "compare_places",
+        {"places": [HERE, THERE], "destinations": [{"place": WORK}], "stress": 90},
+        call,
+    )
+    assert [row["place"] for row in out["places"]] == [HERE]
+    assert out["not_compared"] == [THERE]
+    assert "ran out of time after 1 of 2 places" in out["notes"][0]
