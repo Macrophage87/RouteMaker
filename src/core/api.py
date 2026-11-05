@@ -5734,9 +5734,10 @@ class ReachOut(Schema):
     },
     summary="Where a rider can be in 15, 30, 45 and 60 minutes (reach rings, isochrones)",
     description=(
-        "Counted as one routing request for each isochrone call the answer needs (a point on"
-        " a layer: the rider's own, and Calm streets), and at least one; a call answered from"
-        " the short-term cache counts nothing. Optional headers, as POST /api/route's:"
+        "Counted on limits of its own, apart from routing's: the request, and each isochrone"
+        " call it makes (a point on a layer: the rider's own, and Calm streets), as it is made;"
+        " a call answered from the short-term cache, or not made, counts nothing. Optional"
+        " headers, as POST /api/route's:"
         " `X-Plan-Id` names the request, so POST /api/route/cancel can stop it (409 `code`"
         " `plan_cancelled`); `X-Plan-Replaces` names the request this one replaces."
     ),
@@ -5747,7 +5748,7 @@ class ReachOut(Schema):
 @decorate_view(
     ratelimit.in_flight_limited(ratelimit.ROUTING_IN_FLIGHT, wait_for=_replacing_wait_s),
     _records_replaced_plan,
-    ratelimit.rate_limited(ratelimit.ROUTING),
+    ratelimit.rate_limited(ratelimit.REACH),
     json_body_only,
     errors_as_json,
 )
@@ -5767,23 +5768,21 @@ def reach_rings(request, body: ReachIn, response: HttpResponse):
     return answered
 
 
-class _OverRoutingLimit(Exception):
+class _OverReachLimit(Exception):
     def __init__(self, retry_after_s: int) -> None:
         super().__init__(retry_after_s)
         self.retry_after_s = retry_after_s
 
 
 def _reach_charge(request):
-    """Count a Reach answer's isochrone calls against the routing limit, one each; the
-    request's own count (`rate_limited`) is the first."""
+    """Count one isochrone call, just before it is made, on Reach's own limit; a call refused
+    is not counted (`ratelimit.take`)."""
     client = ratelimit.client_key(ratelimit.client_address(request))
 
-    def charge(calls: int) -> None:
-        if calls <= 1:
-            return
-        decision = ratelimit.hit(ratelimit.ROUTING, client, calls - 1)
+    def charge() -> None:
+        decision = ratelimit.take(ratelimit.REACH_ISOCHRONES, client)
         if not decision.allowed:
-            raise _OverRoutingLimit(decision.retry_after_s)
+            raise _OverReachLimit(decision.retry_after_s)
 
     return charge
 
@@ -5803,7 +5802,7 @@ def _reach_answer(request, body: ReachIn):
     )
     started = getattr(request, "routing_started", None)
     try:
-        # A request cancelled before it started makes no call and is not counted again.
+        # A request cancelled before it started makes no call.
         routing.check_cancel()
         answer = reach.reach(
             body.points,
@@ -5817,7 +5816,7 @@ def _reach_answer(request, body: ReachIn):
             started=started,
             charge=_reach_charge(request),
         )
-    except _OverRoutingLimit as over:
+    except _OverReachLimit as over:
         refusal = _error(429, "Too many requests from this address; try again shortly.")
         refusal["Retry-After"] = str(over.retry_after_s)
         return refusal

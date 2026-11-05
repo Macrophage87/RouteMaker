@@ -68,14 +68,19 @@ def cancel(client, plan: str, address: str):
     )  # fmt: skip
 
 
-def routing_count(address: str) -> int:
+def count(limit: ratelimit.Limit, address: str) -> int:
+    """What `address` has spent of `limit` in this window."""
     with connection.cursor() as cursor:
         cursor.execute(
             "SELECT hits FROM rate_limit_window WHERE scope = %s AND client = %s",
-            [ratelimit.ROUTING.scope, ratelimit.client_key(address)],
+            [limit.scope, ratelimit.client_key(address)],
         )
         row = cursor.fetchone()
     return 0 if row is None else row[0]
+
+
+def isochrones(address: str) -> int:
+    return count(ratelimit.REACH_ISOCHRONES, address)
 
 
 @db
@@ -139,7 +144,7 @@ class TestAReplacedRequestStops:
 
 @db
 class TestEachIsochroneCounts:
-    def test_each_point_on_each_layer_counts_as_a_routing_request(self, client, router) -> None:
+    def test_each_isochrone_made_counts_once_on_reachs_own_limit(self, client, router) -> None:
         fake = router(FakeRouter({"isochrone": isochrone_answer}))
         address = "198.51.100.66"
         response = post(
@@ -148,24 +153,66 @@ class TestEachIsochroneCounts:
         )  # fmt: skip
         assert response.status_code == 200
         assert len(calls(fake)) == 4
-        assert routing_count(address) == 4
+        assert isochrones(address) == 4
+        assert count(ratelimit.REACH, address) == 1
 
-    def test_one_point_one_layer_counts_once(self, client, router) -> None:
+    def test_reach_never_spends_the_routing_budget_go_plans_with(self, client, router) -> None:
         router(FakeRouter({"isochrone": isochrone_answer}))
         address = "198.51.100.67"
-        assert post(client, {"points": [HERE], "preset": "default"}, address).status_code == 200
-        assert routing_count(address) == 1
+        body = {"points": FIVE, "preset": "default", "stress": 40, "calm": True}
+        for _ in range(6):
+            assert post(client, body, address).status_code in (200, 429)
+        assert count(ratelimit.ROUTING, address) == 0
 
-    def test_rings_past_the_limit_are_refused_before_any_router_call(self, client, router) -> None:
+    def test_a_refused_isochrone_is_not_counted_and_not_made(self, client, router) -> None:
         fake = router(FakeRouter({"isochrone": isochrone_answer}))
         address = "198.51.100.68"
+        room = 3
         ratelimit.hit(
-            ratelimit.ROUTING, ratelimit.client_key(address), ratelimit.ROUTING.requests - 3
+            ratelimit.REACH_ISOCHRONES,
+            ratelimit.client_key(address),
+            ratelimit.REACH_ISOCHRONES.requests - room,
         )
         response = post(client, {"points": FIVE, "preset": "default"}, address)
         assert response.status_code == 429
         assert int(response["Retry-After"]) >= 1
-        assert calls(fake) == []
+        # The calls that fitted were made; the one refused, and those after it, were not.
+        assert len(calls(fake)) == room
+        assert isochrones(address) == ratelimit.REACH_ISOCHRONES.requests
+        # Refused again: nothing more is spent.
+        assert post(client, {"points": FIVE, "preset": "default"}, address).status_code == 429
+        assert isochrones(address) == ratelimit.REACH_ISOCHRONES.requests
+
+    def test_a_cancelled_request_spends_nothing_past_its_cancel(
+        self, client, router, monkeypatch
+    ) -> None:
+        monkeypatch.setattr(plan_cancel, "POLL_S", 0.0)
+        address = "198.51.100.69"
+
+        def first_then_cancelled(payload: dict) -> dict:
+            if len(calls(fake)) == 1:
+                cancel(client, PLAN, address)
+            return isochrone_answer(payload)
+
+        fake = router(FakeRouter({"isochrone": first_then_cancelled}))
+        response = post(
+            client, {"points": FIVE, "preset": "default", "stress": 40, "calm": True}, address,
+            HTTP_X_PLAN_ID=PLAN,
+        )  # fmt: skip
+        assert response.status_code == 409
+        assert isochrones(address) == 1
+
+
+class TestTake:
+    @pytest.mark.django_db
+    def test_take_counts_only_what_fits(self) -> None:
+        limit = ratelimit.Limit(scope="test-take", requests=2, window_s=60)
+        key = ratelimit.client_key("198.51.100.90")
+        assert ratelimit.take(limit, key).allowed
+        assert ratelimit.take(limit, key).allowed
+        refused = ratelimit.take(limit, key)
+        assert not refused.allowed and 1 <= refused.retry_after_s <= 60
+        assert count(limit, "198.51.100.90") == 2
 
 
 @db
@@ -187,8 +234,9 @@ class TestKeptBriefly:
             by_minute = {r["minutes"]: r for r in first.json()["groups"][0]["rings"]}
             assert [r["area_km2"] for r in rings] == [by_minute[m]["area_km2"] for m in minutes]
         assert len(calls(fake)) == 2
-        # Answered from the cache, each counted once, as a request.
-        assert routing_count(address) == 2 + 4
+        # Answered from the cache: the requests count, the isochrones are not counted again.
+        assert isochrones(address) == 2
+        assert count(ratelimit.REACH, address) == 5
 
     def test_calm_streets_turned_on_asks_only_for_the_calm_layer(
         self, client, router, kept

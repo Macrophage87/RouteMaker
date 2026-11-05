@@ -35,9 +35,9 @@ routes cache (`core.route_cache`) for KEEP_S, under a digest of everything the c
 turning a ring off and on again, Calm streets, or closing and reopening the sheet does not ask
 the router again. KEEP_S is under the two minutes a rider's position may be kept.
 
-Each isochrone call is counted against the routing limit, one plan a call (`reach`'s
-`charge`), and a call answered from the cache costs nothing; the request itself counts as the
-first. A request that names itself (`X-Plan-Id`, as a plan, `core.plan_cancel`) stops at its
+Each isochrone call is counted as it is made (`reach`'s `charge`: Reach's own limits,
+`ratelimit.REACH_ISOCHRONES`, apart from a plan's), and a call answered from the cache costs
+nothing. A request that names itself (`X-Plan-Id`, as a plan, `core.plan_cancel`) stops at its
 next router call once the page has replaced it.
 """
 
@@ -368,10 +368,20 @@ class _Ask:
             key = _keep_key(variant, wider)
             self.kept = None if key is None else route_cache.get(key)
 
-    def rings(self, minutes: list[int], deadline: routing.Deadline) -> list[GEOSGeometry] | None:
-        """The point's rings; None where the router could not place the point on its map."""
+    def rings(
+        self,
+        minutes: list[int],
+        deadline: routing.Deadline,
+        charge: Callable[[], None] | None = None,
+    ) -> list[GEOSGeometry] | None:
+        """The point's rings; None where the router could not place the point on its map.
+        `charge()` just before the router is asked: never for a kept answer, nor once the
+        request has been cancelled."""
         answer = self.kept
         if answer is None:
+            routing.check_cancel()
+            if charge is not None:
+                charge()
             try:
                 answer, graph = stoporder.ask_isochrone(self.variant, self.payload, deadline)
             except routing.RouterRefused as refusal:
@@ -442,12 +452,12 @@ def reach(
     calm: bool = False,
     run_pace_kmh: float | None = None,
     started: float | None = None,
-    charge: Callable[[int], None] | None = None,
+    charge: Callable[[], None] | None = None,
 ) -> dict:
     """The rings, as the API's body. Raises ReachRefused when no point is on the map,
     DeadlineExceeded past the budget, and RouterUnavailable / RouterRefused as a plan does.
-    `charge(calls)`, before any router call: the isochrone calls the answer needs that the
-    cache does not hold (it may raise, and then none is made)."""
+    `charge()`, just before each isochrone call the cache does not answer (it may raise, and
+    then that call and those after it are not made)."""
     if preset_name in NOT_YET:
         raise ValueError(f"{preset_name} has no reach yet")
     if preset_name == presets.BIKESHARE:
@@ -508,7 +518,7 @@ def reach(
     def layer(layer_asks: list[_Ask]) -> tuple[list[dict], list[int]]:
         sets, placed, unplaced = [], [], []
         for index, ask in enumerate(layer_asks):
-            rings = ask.rings(minutes, deadline)
+            rings = ask.rings(minutes, deadline, charge)
             if rings is None:
                 logger.info("reach: the %s router could not place point %d", ask.variant, index)
                 unplaced.append(index)
@@ -533,8 +543,6 @@ def reach(
         if calm and single and calm_offered(preset_name, dials)
         else None
     )
-    if charge is not None:
-        charge(sum(ask.kept is None for ask in own_asks + (calm_asks or [])))
     groups, unplaced = layer(own_asks)
     calm_groups = None if calm_asks is None else layer(calm_asks)[0]
     return {
