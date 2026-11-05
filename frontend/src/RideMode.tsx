@@ -169,7 +169,7 @@ import {
 } from "./lib/rideOutput.ts";
 import { ScreenSleepNote } from "./ScreenSleepNote.tsx";
 import { RAIL_INSET_PX, railLeastPx, useRailFit } from "./lib/railFit.ts";
-import { WAITING_FOR_GPS, readOnce, watchRide, type RideGeoEnv } from "./lib/rideWatch.ts";
+import { WAITING_FOR_GPS, handOver, readOnce, rideWatchOptions, watchRide, type RideGeoEnv } from "./lib/rideWatch.ts";
 import { PAUSE_CHECK_MS, PausedFixes, beatKeepsGps, heartbeatFix, movedFromPause, rideStayPausedSaid, stayStep, stayedLong, type Stay } from "./lib/ridePause.ts";
 import { askCompass } from "./lib/compassHeading.ts";
 import { rideGeoEnv, rideSpeech, rideWake, ridesHidden, showCue, speaksAloud } from "./lib/nativeShell.ts";
@@ -1814,10 +1814,15 @@ export function RideMode({
   const stopWatch = useRef<(() => void) | null>(null);
   // Paused at the destination in the app, the watch runs on and its fixes are only held (lib/ridePause.ts PausedFixes).
   const pausedFixes = useRef(new PausedFixes()).current;
+  // Whether the running watch has the on-board options (lib/rideWatch.ts ON_BOARD_WATCH_OPTIONS), or null with none.
+  const watchOnBoard = useRef<boolean | null>(null);
+  // Started (or, running, swapped: the new watch before the old one stops, lib/rideWatch.ts handOver) with the options
+  // for where the rider is now: low power on a train or bus, high accuracy otherwise.
   const startWatch = useCallback(() => {
-    stopWatch.current?.();
     gpsWeak.current = { goodAt: Date.now(), weak: false };
-    stopWatch.current = watchRide(
+    const onBoard = onTransitRef.current;
+    watchOnBoard.current = onBoard;
+    stopWatch.current = handOver(stopWatch.current, () => watchRide(
       env,
       (fix) => {
         // Paused: no line, map or cue work, only held for the 30 s check (the owner, 2026-11-01: battery audit).
@@ -1848,10 +1853,13 @@ export function RideMode({
           if (reason === "denied" || reason === "insecure" || reason === "unsupported") {
             stopWatch.current?.();
             stopWatch.current = null;
+            watchOnBoard.current = null;
           }
         }
       },
-    );
+      undefined,
+      rideWatchOptions(onBoard),
+    ));
   }, [env, notify, pausedFixes]);
 
   useEffect(() => {
@@ -2632,6 +2640,14 @@ export function RideMode({
     if (onTransit) setGps("");
     else gpsWeak.current = { goodAt: Date.now(), weak: false };
   }, [onTransit]);
+  // Boarding, the watch goes low power; off the train or bus, high accuracy again for the walk or ride after (the new
+  // watch starts before the old one stops). The phone app keeps its one watch: its native watcher takes no accuracy
+  // option, and Android 14+ refuses a new location service with the screen locked. A paused or ended ride has none.
+  useEffect(() => {
+    if (ridesHidden() || pausedRef.current || !stopWatch.current) return;
+    if (watchOnBoard.current === null || watchOnBoard.current === onTransit) return;
+    startWatch();
+  }, [onTransit, startWatch]);
   const onwardWalkLine = onwardPart?.kind === "walk" ? walkTurnLine(onwardPart.model, onward?.walk ?? null) : null;
   // The trip goes on past the line's end (Stephen, 2026-11-03: "the ride just ends when you reach the station. It
   // should start the transit phase"): the walk or the train after it, then the ride after the transit, which starts by

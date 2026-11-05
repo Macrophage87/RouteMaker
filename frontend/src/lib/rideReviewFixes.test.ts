@@ -39,8 +39,8 @@ test("RIDE-3: weak GPS is shown in the ride's GPS note and said once; a good fix
   assert.match(ride, /onTransitRef\.current = onTransit;/);
   // The existing note line, the one the GPS-lost notes use.
   assert.equal(ride.match(/\{gps && ride\.fix && <p className="hint">\{gps\}<\/p>\}/g)?.length, 1);
-  // A new watch (Start, Resume) gives the first fixes their 12 s again.
-  assert.match(ride, /stopWatch\.current\?\.\(\);\s*gpsWeak\.current = \{ goodAt: Date\.now\(\), weak: false \};/);
+  // A new watch (Start, Resume, the swap on and off a train or bus) gives the first fixes their 12 s again.
+  assert.match(ride, /const startWatch = useCallback\(\(\) => \{\s*gpsWeak\.current = \{ goodAt: Date\.now\(\), weak: false \};/);
 });
 
 test("RIDE-3 (owner, 2026-10-16): weak GPS for long shows the turns ahead as a list, said once; a good fix brings the card back", () => {
