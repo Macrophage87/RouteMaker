@@ -344,7 +344,7 @@ import { KNOWN_OPERATORS, docksStatus, mergeOperators, operatorsToAsk, readOpera
 import { SaveRoute } from "./SaveRoute.tsx";
 import { firstWordAndRest, planLanguageAttributes } from "./lib/i18n.ts";
 import { SAVE_ROUTE } from "./lib/savedRoutes.ts";
-import { BROADCAST_FOLLOWING, BROADCAST_NO_KEY, consentFor, followsWithoutKey, asksSameRide, forgetAnsweredHere, isOwnSecret, isRideLink, isRideLinkType, markOwnSecret, markRideSent, planSecrets, presetSecret, ridePlanKey, leadConsent, leaderKey, newToken, opensIntoRide, rideOf, sharedAfterRide, type PlanSecrets, type RideLinkType } from "./lib/rideGroup.ts";
+import { BROADCAST_FOLLOWING, BROADCAST_NO_KEY, consentFor, followsWithoutKey, asksSameRide, forgetAnsweredHere, isOwnSecret, isRideLink, isRideLinkType, markOwnSecret, markRideSent, newRide, planSecrets, presetSecret, rideLeadFor, ridePlanKey, leadConsent, leaderKey, newToken, opensIntoRide, rideOf, sharedAfterRide, type PlanSecrets, type RideLinkType } from "./lib/rideGroup.ts";
 import { newRideSecret, secretFrom, withSecret, withoutSecret } from "./lib/rideSeal.ts";
 
 // Before the map adds the stress source (MapView, after its first probe).
@@ -3571,20 +3571,31 @@ export function App() {
   // "Same ride or a new one?" (SameRideDialog; 2026-11-05): a Group or Mass Ride plan of the page's own whose link went
   // out more than 12 hours ago (lib/rideGroup.ts asksSameRide) is asked about before its link goes out again or its ride
   // starts. Same ride keeps the key; New ride makes a new one, for every plan that had the old; going back does nothing.
-  const [sameRideAsk, setSameRideAsk] = useState<{ then: (secret: string) => void } | null>(null);
-  const sameRideFirst = (go: (secret: string) => void) => {
-    if (!riding && isRideLink(preset, points) && groupSecretOwn.current && asksSameRide(groupSecret, Date.now())) setSameRideAsk({ then: go });
+  // A ride link (Share ride, Broadcast; `ride`) is asked about by its leader's secret, the one it would go out with
+  // (rideLeadNow): New ride drops every leader the ride links went out with too, so the next goes with a new one.
+  const [sameRideAsk, setSameRideAsk] = useState<{ then: (secret: string) => void; secret: string; cancel?: () => void } | null>(null);
+  const sameRideFirst = (go: (secret: string) => void, ride = false, cancel?: () => void) => {
+    const now = Date.now();
+    const lead = ride && followedInRide() === null ? rideLeadNow() : null;
+    const asked = ride ? (lead && asksSameRide(lead.secret, now) ? lead.secret : null) : !riding && isRideLink(preset, points) && groupSecretOwn.current && asksSameRide(groupSecret, now) ? groupSecret : null;
+    if (asked) setSameRideAsk({ then: go, secret: asked, cancel });
     else go(groupSecret);
   };
-  const answerSameRide = (same: boolean) => {
+  // The same, for a press that answers what to say (the ride screen's Broadcast): "" when going back.
+  const sameRideThen = (go: () => Promise<string>): Promise<string> =>
+    new Promise((resolve) => sameRideFirst(() => void go().then(resolve), true, () => resolve("")));
+  const answerSameRide = (same: boolean | null) => {
     const ask = sameRideAsk;
     setSameRideAsk(null);
     if (!ask) return;
+    if (same === null) return ask.cancel?.();
     if (same) {
-      markRideSent(groupSecret, Date.now(), true);
+      markRideSent(ask.secret, Date.now(), true);
       return ask.then(groupSecret);
     }
-    const fresh = ownSecrets.current!.renew(groupSecret);
+    rideLinkSent.current = null;
+    const fresh = newRide(leads.current, ownSecrets.current!, groupSecret);
+    prepareLead();
     setGroupSecret(fresh);
     ask.then(fresh);
   };
@@ -3727,6 +3738,15 @@ export function App() {
   // re-route or a plan made again since), it is that same link (Stephen 2026-10-26: "if you press and share multiple
   // times in the same ride, it's the same link").
   const rideLinkSent = useRef<{ route: RouteResponse; keep: ShareKeep; link: string; lead: Lead | null; id: string | null } | null>(null);
+  // The leader a ride link pressed now would go out with, as shareRoute picks it (lib/rideGroup.ts rideLeadFor).
+  const rideLeadNow = () => {
+    const sharedRoute = rideOwnShare()?.route ?? shown;
+    const rideRoute = riding && rideStart ? rideStart.route : sharedRoute;
+    const sent = rideLinkSent.current?.route === rideRoute && rideLinkSent.current.keep === shareKeep ? rideLinkSent.current : null;
+    const exact = sent ? null : shareExact();
+    const line = sent ? sent.id : exact && sharedLine.current?.of === exact.of ? sharedLine.current.id : null;
+    return rideLeadFor(sent, line, leads.current, leadPrep.current);
+  };
   // A ride ended: its link is not the next ride's.
   const rodeBefore = useRef(riding);
   useEffect(() => {
@@ -3778,7 +3798,7 @@ export function App() {
     const kept = again ? Promise.resolve(true) : now!.kept;
     const exact = again ? null : now!.exact;
     const sharedId = again ? again.id : (sharedLine.current?.id ?? null);
-    const lead = again ? again.lead : ride && kept ? ((sharedId ? leads.current.get(sharedId) : undefined) ?? leadPrep.current) : null;
+    const lead = ride && kept ? rideLeadFor(again, sharedId, leads.current, leadPrep.current) : null;
     // A ride link carries its own leader's secret, never the plan's (a Group Ride's): one without a leader carries none.
     const link = again ? again.link : ride && kept ? (lead ? withSecret(asRideLink(now!.link, lead.key), lead.secret) : withoutSecret(asRideLink(now!.link))) : now!.link;
     const file = exact?.file ? gpxShareFile(exact.file.text, exact.file.fileName) : null;
@@ -3792,6 +3812,8 @@ export function App() {
       said = shareSaidFor(done);
       // The plan's link, with its Group or Mass Ride secret, went out (a ride link carries the leader's instead).
       if (!ride && done === "shared") planLinkSent(secret);
+      // A ride link, with its leader's: when it first went out, asked about once it is 12 hours old.
+      if (ride && lead && done === "shared") markRideSent(lead.secret, Date.now());
       // The line not kept: the link plans again when opened. Said unless the sheet failed (that line says more),
       // and the next press tries again with a new id.
       if (kept && !(await kept)) {
@@ -4251,7 +4273,8 @@ export function App() {
   // What went wrong is said beside the button (Go's Route file sheet, where Share says it, is usually closed).
   // On a computer it asks first, before the link goes (review S1): Go back shares nothing, Start anyway presses again.
   const [broadcastNote, setBroadcastNote] = useState({ text: "", count: 0 });
-  const broadcastRide = () => {
+  const broadcastRide = () => sameRideFirst(broadcastRideNow, true);
+  const broadcastRideNow = () => {
     if (followedNoKey()) {
       setBroadcastNote((n) => ({ text: BROADCAST_NO_KEY, count: n.count + 1 }));
       return;
@@ -4282,7 +4305,8 @@ export function App() {
   // Broadcast sends it, the ride already going; the rider leads once it went with its key. Answers what to say.
   // The broadcast a ride follows: the link this page opened, else the one kept with a resumed ride.
   const followedInRide = () => followedLink() ?? rideStart?.passOn ?? null;
-  const broadcastFromRide = async (): Promise<string> => {
+  const broadcastFromRide = () => sameRideThen(broadcastFromRideNow);
+  const broadcastFromRideNow = async (): Promise<string> => {
     if (followedNoKey()) return BROADCAST_NO_KEY;
     const followed = followedInRide();
     if (followed) return (await passOn(followed, broadcastNav)).said;
@@ -4292,7 +4316,8 @@ export function App() {
     return said === SHARE_FAILED ? (canShare ? BROADCAST_RIDE_FAILED : BROADCAST_RIDE_COPY_FAILED) : said;
   };
   // Broadcast held beside Start: its link as a QR code, with Start ride; the sharer leads, as Broadcast's sheet does.
-  const broadcastQr = () => {
+  const broadcastQr = () => sameRideFirst(broadcastQrNow, true);
+  const broadcastQrNow = () => {
     if (followedNoKey()) {
       setBroadcastNote((n) => ({ text: BROADCAST_NO_KEY, count: n.count + 1 }));
       return;
@@ -4312,7 +4337,8 @@ export function App() {
     });
   };
   // Held on the ride screen: the same, without Start (the ride is going). Answers what to say.
-  const broadcastQrFromRide = async (): Promise<string> => {
+  const broadcastQrFromRide = () => sameRideThen(broadcastQrFromRideNow);
+  const broadcastQrFromRideNow = async (): Promise<string> => {
     if (followedNoKey()) return BROADCAST_NO_KEY;
     const followed = followedInRide();
     if (followed) {
@@ -6637,7 +6663,7 @@ export function App() {
         onNotNow={dropLeft}
         onLater={() => setLeftAsk(null)}
       />
-      <SameRideDialog open={sameRideAsk !== null} onSame={() => answerSameRide(true)} onNew={() => answerSameRide(false)} onCancel={() => setSameRideAsk(null)} />
+      <SameRideDialog open={sameRideAsk !== null} onSame={() => answerSameRide(true)} onNew={() => answerSameRide(false)} onCancel={() => answerSameRide(null)} />
       <StartOnComputerDialog
         open={computerAsk !== null}
         onBack={() => setComputerAsk(null)}
@@ -7153,7 +7179,7 @@ export function App() {
                       save={saveProps ? <SaveRoute {...saveProps} label={SAVE_ROUTE} /> : null}
                       canShare={canShare}
                       ready={!!shown}
-                      shareRoute={(ride) => (ride ? void shareRoute(true) : sameRideFirst((secret) => void shareRoute(false, shareNav, secret)))}
+                      shareRoute={(ride) => (ride ? sameRideFirst(() => void shareRoute(true), true) : sameRideFirst((secret) => void shareRoute(false, shareNav, secret)))}
                       shareKeep={shareKeep}
                       onShareKeep={mode === "plan" && me.signed_in ? setShareKeep : null}
                       shareSaid={shareSaid}

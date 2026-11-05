@@ -2,7 +2,7 @@
  * "Same ride or a new one?" (2026-11-05): asked once when the organiser copies or shares a Group or Mass Ride plan's
  * link, or starts its ride, and the plan's link went out more than 12 hours ago (lib/rideGroup.ts asksSameRide). Same
  * ride keeps the link's key; New ride makes a new ride id and key, then goes on. The platform's modal <dialog>: New
- * ride takes the focus, and Escape goes back with nothing sent or started.
+ * ride takes the focus, and Escape goes back with nothing sent or started; a browser without it shows it in the page.
  */
 import { useEffect, useId, useRef } from "react";
 import { NEW_RIDE, SAME_RIDE, SAME_RIDE_LEAD, SAME_RIDE_QUESTION } from "./lib/rideGroup.ts";
@@ -18,10 +18,13 @@ export function SameRideDialog({ open, onSame, onNew, onCancel }: { open: boolea
     if (!dialog) return;
     if (open && !dialog.open) {
       opener.current = document.activeElement;
-      dialog.showModal?.();
+      // A browser without the modal dialog shows it open in the page, and Escape is read below.
+      if (typeof dialog.showModal === "function") dialog.showModal();
+      else dialog.setAttribute("open", "");
       newRef.current?.focus();
     } else if (!open && dialog.open) {
-      dialog.close();
+      if (typeof dialog.close === "function") dialog.close();
+      else dialog.removeAttribute("open");
       if (opener.current instanceof HTMLElement && opener.current.isConnected) opener.current.focus();
     }
   }, [open]);
@@ -34,6 +37,13 @@ export function SameRideDialog({ open, onSame, onNew, onCancel }: { open: boolea
       onCancel={(event) => {
         event.preventDefault();
         onCancel();
+      }}
+      onKeyDown={(event) => {
+        // Where there is no modal dialog there is no cancel event: Escape goes back here.
+        if (event.key === "Escape" && typeof dialogRef.current?.showModal !== "function") {
+          event.preventDefault();
+          onCancel();
+        }
       }}
     >
       {open && (

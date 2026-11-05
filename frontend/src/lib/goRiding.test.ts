@@ -284,7 +284,7 @@ test("Broadcast from a ride (Stephen 2026-10-24: \"Let people broadcast from a r
   // The share sheet opens inside the press: nothing awaited before onBroadcast.
   assert.match(ride, /broadcastBusy\.current = true;\s*try \{\s*const said = await onBroadcast\(\);/);
   // App: Share ride's link (shareRoute(true)), the rider its leader; no new ride started.
-  const fromRide = app.slice(app.indexOf("const broadcastFromRide = async"), app.indexOf("// Broadcast held beside Start"));
+  const fromRide = app.slice(app.indexOf("const broadcastFromRideNow = async"), app.indexOf("// Broadcast held beside Start"));
   assert.match(fromRide, /await shareRoute\(true, broadcastNav\)/);
   assert.doesNotMatch(fromRide, /startRide/);
   // Only the plan's own route, never Ride the rest's or a detour from Roam; one following another's link passes theirs

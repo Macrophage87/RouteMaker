@@ -50,29 +50,85 @@ test("the organiser saying Same ride is not asked again for 12 hours; only a dig
   assert.equal(asksSameRide(secret, thursday, null), false);
 });
 
-test("Copy link, Share and Start ride on a Group or Mass Ride plan ask first; New ride makes a new key, going back sends nothing", () => {
-  const app = source("../App.tsx");
-  assert.match(
-    app,
-    /const sameRideFirst = \(go: \(secret: string\) => void\) => \{\s*if \(!riding && isRideLink\(preset, points\) && groupSecretOwn\.current && asksSameRide\(groupSecret, Date\.now\(\)\)\) setSameRideAsk\(\{ then: go \}\);\s*else go\(groupSecret\);\s*\};/,
-  );
-  assert.match(app, /const copyLink = \(\) => sameRideFirst\(\(secret\) => void copyLinkWith\(secret\)\);/);
-  assert.match(app, /shareRoute=\{\(ride\) => \(ride \? void shareRoute\(true\) : sameRideFirst\(\(secret\) => void shareRoute\(false, shareNav, secret\)\)\)\}/);
-  assert.match(app, /const startRideChecked = \(\) => sameRideFirst\(\(\) => startRideNoted\(""\)\);/);
-  // The link carries the key chosen, and when it went out is kept.
-  assert.match(app, /const \{ link, kept \} = sharedLinkNow\(secret\);\s*const done = await copyText\(link, navigator\.clipboard, selectionCopy\);\s*if \(done\) planLinkSent\(secret\);/);
-  assert.match(app, /isRideLinkType\(from\.preset\) \? secret : null\);/);
-  assert.match(app, /if \(!ride && done === "shared"\) planLinkSent\(secret\);/);
-  // New ride: no plan keeps the old key.
-  assert.match(app, /const fresh = ownSecrets\.current!\.renew\(groupSecret\);\s*setGroupSecret\(fresh\);\s*ask\.then\(fresh\);/);
-  assert.match(app, /markRideSent\(groupSecret, Date\.now\(\), true\);\s*return ask\.then\(groupSecret\);/);
-  assert.match(app, /<SameRideDialog open=\{sameRideAsk !== null\} onSame=\{\(\) => answerSameRide\(true\)\} onNew=\{\(\) => answerSameRide\(false\)\} onCancel=\{\(\) => setSameRideAsk\(null\)\} \/>/);
+
+test("after New ride the next Share ride or Broadcast goes out with a new leader key and secret, and the plan with a new key", async () => {
+  const { asksSameRide, markRideSent, newRide, planSecrets, rideLeadFor, ridePlanKey } = rideGroup;
+  const { asRideLink, withSharedId } = await import("./sharedRoutes.ts");
+  const { secretFrom, withSecret } = await import("./rideSeal.ts");
+  const store = memoryStore();
+  const monday = Date.UTC(2026, 10, 2, 18);
+  const saturday = monday + 5 * 24 * HOUR;
+  type Lead = { token: string; key: string; secret: string };
+  const lead = (key: string): Lead => ({ token: `t-${key}`, key, secret: newRideSecret() });
+  // Monday: Share ride for this line went out under `monday`'s leader; Roam broadcast a leader of its own.
+  const mondayLead = lead("a".repeat(32));
+  const roamLead = lead("c".repeat(32));
+  const prepared = lead("b".repeat(32));
+  const leads = new Map<string, Lead>([["line-1", mondayLead], ["roam|r1", roamLead]]);
+  let sent: { lead: Lead | null } | null = { lead: mondayLead };
+  markRideSent(mondayLead.secret, monday, false, store);
+  const secrets = planSecrets();
+  const planKey = ridePlanKey("group-ride", [[-77.03, 38.9], [-77.0, 38.95]]);
+  const planSecret = secrets.secretFor(planKey, false);
+  secrets.keep(planKey, planSecret);
+  // Saturday's Broadcast would reuse Monday's leader: asked first.
+  assert.equal(rideLeadFor(sent, "line-1", leads, prepared), mondayLead);
+  assert.equal(rideLeadFor(null, "line-1", leads, prepared), mondayLead);
+  assert.equal(asksSameRide(rideLeadFor(sent, "line-1", leads, prepared)!.secret, saturday, store), true);
+  // New ride: the link sent and the line's leader are dropped, the plan gets a new key.
+  sent = null;
+  const fresh = newRide(leads, secrets, planSecret);
+  const next = rideLeadFor(sent, "line-1", leads, prepared)!;
+  assert.equal(next, prepared);
+  assert.equal(leads.get("roam|r1"), roamLead, "Roam's leader goes with Roam");
+  assert.notEqual(fresh, planSecret);
+  assert.notEqual(secrets.secretFor(planKey, false), planSecret);
+  assert.equal(asksSameRide(next.secret, saturday, store), false);
+  // The link as shareRoute builds it carries the new leader and secret, not Monday's.
+  const base = withSharedId("https://routemaker.example/#p=-77.03,38.9;-77,38.95&preset=group-ride&v=2", "0123456789abcdef0123456789abcdef");
+  const link = new URL(withSecret(asRideLink(base, next.key), next.secret));
+  assert.equal(secretFrom(link.hash), prepared.secret);
+  assert.notEqual(secretFrom(link.hash), mondayLead.secret);
+  assert.doesNotMatch(link.hash, new RegExp(mondayLead.key));
+  assert.equal(secretFrom(new URL(withSecret(base, fresh)).hash), fresh);
 });
 
-test("the question is a modal dialog named by its heading: New ride takes the focus, Escape goes back", () => {
+test("Copy link, Share, Share ride, Broadcast and Start ride ask first; New ride makes new keys, going back sends nothing", () => {
+  const app = source("../App.tsx");
+  // A plan's link by the plan's key; a ride link by the leader's it would go out with.
+  assert.match(app, /const lead = ride && followedInRide\(\) === null \? rideLeadNow\(\) : null;/);
+  assert.match(
+    app,
+    /const asked = ride \? \(lead && asksSameRide\(lead\.secret, now\) \? lead\.secret : null\) : !riding && isRideLink\(preset, points\) && groupSecretOwn\.current && asksSameRide\(groupSecret, now\) \? groupSecret : null;\s*if \(asked\) setSameRideAsk\(\{ then: go, secret: asked, cancel \}\);\s*else go\(groupSecret\);/,
+  );
+  assert.match(app, /return rideLeadFor\(sent, line, leads\.current, leadPrep\.current\);/);
+  assert.match(app, /const lead = ride && kept \? rideLeadFor\(again, sharedId, leads\.current, leadPrep\.current\) : null;/);
+  assert.match(app, /const copyLink = \(\) => sameRideFirst\(\(secret\) => void copyLinkWith\(secret\)\);/);
+  assert.match(app, /shareRoute=\{\(ride\) => \(ride \? sameRideFirst\(\(\) => void shareRoute\(true\), true\) : sameRideFirst\(\(secret\) => void shareRoute\(false, shareNav, secret\)\)\)\}/);
+  assert.match(app, /const startRideChecked = \(\) => sameRideFirst\(\(\) => startRideNoted\(""\)\);/);
+  assert.match(app, /const broadcastRide = \(\) => sameRideFirst\(broadcastRideNow, true\);/);
+  assert.match(app, /const broadcastQr = \(\) => sameRideFirst\(broadcastQrNow, true\);/);
+  assert.match(app, /const broadcastFromRide = \(\) => sameRideThen\(broadcastFromRideNow\);/);
+  assert.match(app, /const broadcastQrFromRide = \(\) => sameRideThen\(broadcastQrFromRideNow\);/);
+  // When each link first went out: the plan's, and a ride link's leader.
+  assert.match(app, /const \{ link, kept \} = sharedLinkNow\(secret\);\s*const done = await copyText\(link, navigator\.clipboard, selectionCopy\);\s*if \(done\) planLinkSent\(secret\);/);
+  assert.match(app, /if \(!ride && done === "shared"\) planLinkSent\(secret\);/);
+  assert.match(app, /if \(ride && lead && done === "shared"\) markRideSent\(lead\.secret, Date\.now\(\)\);/);
+  // Same ride: kept, and not asked again for 12 hours. New ride: no link sent or leader kept, a new prepared leader.
+  assert.match(app, /markRideSent\(ask\.secret, Date\.now\(\), true\);\s*return ask\.then\(groupSecret\);/);
+  assert.match(app, /rideLinkSent\.current = null;\s*const fresh = newRide\(leads\.current, ownSecrets\.current!, groupSecret\);\s*prepareLead\(\);\s*setGroupSecret\(fresh\);\s*ask\.then\(fresh\);/);
+  // Going back: nothing goes, and the ride screen's press says nothing.
+  assert.match(app, /if \(same === null\) return ask\.cancel\?\.\(\);/);
+  assert.match(app, /new Promise\(\(resolve\) => sameRideFirst\(\(\) => void go\(\)\.then\(resolve\), true, \(\) => resolve\(""\)\)\);/);
+  assert.match(app, /<SameRideDialog open=\{sameRideAsk !== null\} onSame=\{\(\) => answerSameRide\(true\)\} onNew=\{\(\) => answerSameRide\(false\)\} onCancel=\{\(\) => answerSameRide\(null\)\} \/>/);
+});
+
+test("the question is a modal dialog named by its heading: New ride takes the focus, Escape goes back, also without showModal", () => {
   const dialog = source("../SameRideDialog.tsx");
-  assert.match(dialog, /dialog\.showModal\?\.\(\);\s*newRef\.current\?\.focus\(\);/);
+  assert.match(dialog, /if \(typeof dialog\.showModal === "function"\) dialog\.showModal\(\);\s*else dialog\.setAttribute\("open", ""\);\s*newRef\.current\?\.focus\(\);/);
+  assert.match(dialog, /if \(typeof dialog\.close === "function"\) dialog\.close\(\);\s*else dialog\.removeAttribute\("open"\);/);
   assert.match(dialog, /aria-labelledby=\{headingId\}\s*aria-describedby=\{leadId\}/);
   assert.match(dialog, /onCancel=\{\(event\) => \{\s*event\.preventDefault\(\);\s*onCancel\(\);\s*\}\}/);
+  assert.match(dialog, /if \(event\.key === "Escape" && typeof dialogRef\.current\?\.showModal !== "function"\) \{\s*event\.preventDefault\(\);\s*onCancel\(\);/);
   assert.match(dialog, /<h2 id=\{headingId\}>\{SAME_RIDE_QUESTION\}<\/h2>/);
 });

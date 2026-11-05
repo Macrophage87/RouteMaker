@@ -173,6 +173,24 @@ export function markRideSent(secret: string, now: number, again = false, store: 
   }
 }
 
+/**
+ * The leader a ride link (Share ride, Broadcast) goes out with: the one last sent for this route (`sent`), else the one
+ * this line was shared with (`leads`, by the line's id), else the prepared one, which has not gone out.
+ */
+export function rideLeadFor<L>(sent: { lead: L | null } | null, line: string | null, leads: ReadonlyMap<string, L>, prepared: L | null): L | null {
+  if (sent) return sent.lead;
+  return (line ? leads.get(line) : undefined) ?? prepared;
+}
+
+/**
+ * New ride ("Same ride or a new one?"): no line keeps the leader its ride links went out with (Roam's go with Roam), so
+ * the next ride link goes with the prepared leader, and the plan gets a new secret in place of `secret`; the new one.
+ */
+export function newRide<L>(leads: Map<string, L>, secrets: PlanSecrets, secret: string): string {
+  for (const id of [...leads.keys()]) if (!id.startsWith("roam|")) leads.delete(id);
+  return secrets.renew(secret);
+}
+
 /** Whether a link with this secret went out longer ago than SAME_RIDE_ASK_MS: ask "Same ride or a new one?" first. */
 export function asksSameRide(secret: string, now: number, store: Store | null = session()): boolean {
   const at = sentTimes(store)[`d${secretDigest(secret)}`];
