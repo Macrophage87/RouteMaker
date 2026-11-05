@@ -652,6 +652,16 @@ def with_ride_key(fragment: str, key: str | None) -> str:
     return lead + "&".join(params)
 
 
+def without_ride_marks(fragment: str) -> str:
+    """The fragment without a ride's key, its ride mark or its leader (`k=`, `ride=`, `lead=`):
+    a route kept in My routes is a plan, and each ride opened from it is a new ride."""
+    lead = "#" if fragment.startswith("#") else ""
+    marks = ("k=", "ride=", "lead=")
+    return lead + "&".join(
+        p for p in fragment.lstrip("#").split("&") if p and not p.startswith(marks)
+    )
+
+
 def ride_key_for(preset: str, key: str | None) -> str | None:
     """A ride type's key: the one it had (`key`), else a new one; none for a ride type whose
     link is not a live ride."""
@@ -4540,7 +4550,8 @@ class Server:
         else:
             dials = self._dials(plan)
             fragment = draft.fragment(dials)
-            saved = self.api.save(kept_route(plan, name, fragment, dials))
+            # My routes keeps the plan, never the ride's key: each ride opened from it is new.
+            saved = self.api.save(kept_route(plan, name, without_ride_marks(fragment), dials))
             out["saved"] = {
                 "id": saved.get("id"),
                 "name": saved.get("name"),
@@ -4654,19 +4665,23 @@ class Server:
         name = str((shared or {}).get("name") or "RouteMaker route")
         return self._open_kept(call, fragment, answer, name, limit)
 
-    def _open_kept(self, call: Call, fragment: str, answer, name: str, limit) -> dict:
+    def _open_kept(
+        self, call: Call, fragment: str, answer, name: str, limit, keep_key: bool = True
+    ) -> dict:
         """A draft of a kept route (shared or saved): its exact line where it is kept, else its
-        plan planned again."""
+        plan planned again. A link's ride keeps its key; one opened from My routes
+        (`keep_key` False) is a new ride, with a new key."""
         points, vias, preset, options = parse_fragment(fragment)
+        ride_key = ride_key_of(fragment) if keep_key else None
         if isinstance(answer, dict) and (answer.get("geometry") or {}).get("coordinates"):
             # The exact route that was kept: as it is, not planned again.
             line = answer["geometry"]["coordinates"]
             check = metro_check(line, limit, self.stations) if limit else None
             sent = request_body(points, vias, preset, options)
             plan = Plan(list(points), list(vias), preset, answer, check, sent)
-            return self._draft(plan, options, limit, [], name, ride_key=ride_key_of(fragment))
+            return self._draft(plan, options, limit, [], name, ride_key=ride_key)
         plan, notes = self._plan_and_fix(call, points, vias, preset, options, limit, 0)
-        return self._draft(plan, options, limit, notes, name, ride_key=ride_key_of(fragment))
+        return self._draft(plan, options, limit, notes, name, ride_key=ride_key)
 
     # my_routes
     def my_routes(self, args: dict, call: Call) -> dict:
@@ -4715,8 +4730,14 @@ class Server:
             kept.get("answer"),
             str(kept.get("name") or "RouteMaker route"),
             args.get("max_miles_from_metro"),
+            keep_key=False,
         )
         out["opened_from"] = _saved_label(kept)
+        if parse_fragment(fragment)[2] in RIDE_LINK_TYPES:
+            out.setdefault("notes", []).append(
+                "a new ride, with its own ride key: links sent for an earlier ride on this route"
+                " do not show this one"
+            )
         return out
 
     # route_segments

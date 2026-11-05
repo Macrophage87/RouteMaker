@@ -1081,6 +1081,42 @@ def test_the_fragment_keeps_one_key() -> None:
     assert len(made) == 22 and mcp.RIDE_KEY_RE.fullmatch(made)
 
 
+def test_a_ride_saved_to_my_routes_keeps_no_ride_key_and_each_reopening_is_a_new_ride(
+    stand_in, tmp_path
+) -> None:
+    tools = mcp.Server(lambda: mcp.Api(stand_in), STATIONS, out_dir=tmp_path, files=False)
+    kept: dict[int, dict] = {}
+
+    def save(body: dict) -> dict:
+        kept[1] = {"id": 1, **body}
+        return {"id": 1, "name": body["name"]}
+
+    tools.api.save = save
+    tools.api.saved_routes = lambda: [{"id": 1, "name": kept[1]["name"]}]
+    tools.api.saved_route = lambda route_id: kept[route_id]
+    first = tools.call(
+        "plan_route", {"points": [[-77.03, 38.9], [-77.02, 38.91]], "preset": "group-ride"}
+    )
+    key = _key_of(first["link"])
+    assert key
+    tools.call("save_route", {"draft_id": first["draft_id"], "name": "Tuesday group ride"})
+    saved = parse_qs(kept[1]["inputs"]["hash"].lstrip("#"))
+    assert not {"k", "ride", "lead"} & set(saved) and saved["preset"] == ["group-ride"]
+    once = tools.call("my_routes", {"route_id": 1})
+    twice = tools.call("my_routes", {"route_id": 1})
+    keys = {key, _key_of(once["link"]), _key_of(twice["link"])}
+    assert len(keys) == 3 and all(k and mcp.RIDE_KEY_RE.fullmatch(k) for k in keys)
+    assert "a new ride" in once["notes"][-1]
+    # A route saved before with a ride key in it: each reopening is a new ride too.
+    kept[1]["inputs"]["hash"] = mcp.with_ride_key(kept[1]["inputs"]["hash"], key)
+    assert _key_of(tools.call("my_routes", {"route_id": 1})["link"]) not in (None, key)
+
+
+def test_a_fragment_kept_as_a_plan_has_no_ride_marks() -> None:
+    fragment = "#p=1,2;3,4&preset=group-ride&ride=1&lead=" + "c" * 22 + "&k=" + "A" * 43
+    assert mcp.without_ride_marks(fragment) == "#p=1,2;3,4&preset=group-ride"
+
+
 # --- Featured routes posts ------------------------------------------------------------------
 
 
