@@ -2043,4 +2043,9 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Reach": "Phạm vi",
   "Bus {name}": "Xe buýt {name}",
   "The rings take trails of every level.": "Các vòng gồm đường mòn ở mọi cấp độ.",
+  // ---- Same ride or a new one? (SameRideDialog, 2026-11-05) ----
+  "Same ride or a new one?": "Cùng chuyến đi hay chuyến mới?",
+  "This ride's link went out more than 12 hours ago. A new ride gets a new link, so those with the earlier link do not see it.": "Liên kết của chuyến đi này đã được gửi hơn 12 giờ trước. Chuyến mới có liên kết mới, nên những người có liên kết cũ không thấy nó.",
+  "Same ride": "Cùng chuyến đi",
+  "New ride": "Chuyến mới",
 };

@@ -2043,4 +2043,9 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Reach": "Distans",
   "Bus {name}": "Bis {name}",
   "The rings take trails of every level.": "Bag sèk yo pran tras tout nivo.",
+  // ---- Same ride or a new one? (SameRideDialog, 2026-11-05) ----
+  "Same ride or a new one?": "Menm woulib la oswa yon nouvo?",
+  "This ride's link went out more than 12 hours ago. A new ride gets a new link, so those with the earlier link do not see it.": "Lyen woulib sa a te pati gen plis pase 12 èdtan. Yon nouvo woulib gen yon nouvo lyen, kidonk moun ki gen ansyen lyen an pa wè l.",
+  "Same ride": "Menm woulib la",
+  "New ride": "Nouvo woulib",
 };

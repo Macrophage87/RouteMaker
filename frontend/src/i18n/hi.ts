@@ -2043,4 +2043,9 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Reach": "पहुँच",
   "Bus {name}": "बस {name}",
   "The rings take trails of every level.": "घेरों में हर स्तर की ट्रेल शामिल हैं।",
+  // ---- Same ride or a new one? (SameRideDialog, 2026-11-05) ----
+  "Same ride or a new one?": "वही सवारी या नई?",
+  "This ride's link went out more than 12 hours ago. A new ride gets a new link, so those with the earlier link do not see it.": "इस सवारी का लिंक 12 घंटे से भी पहले भेजा गया था। नई सवारी को नया लिंक मिलता है, इसलिए जिनके पास पुराना लिंक है वे इसे नहीं देखते।",
+  "Same ride": "वही सवारी",
+  "New ride": "नई सवारी",
 };

@@ -2043,4 +2043,9 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Reach": "도달 범위",
   "Bus {name}": "버스 {name}",
   "The rings take trails of every level.": "범위에는 모든 등급의 트레일이 포함됩니다.",
+  // ---- Same ride or a new one? (SameRideDialog, 2026-11-05) ----
+  "Same ride or a new one?": "같은 라이드인가요, 새 라이드인가요?",
+  "This ride's link went out more than 12 hours ago. A new ride gets a new link, so those with the earlier link do not see it.": "이 라이드의 링크는 12시간도 더 전에 보내졌습니다. 새 라이드는 새 링크를 받으므로 이전 링크를 가진 사람에게는 보이지 않습니다.",
+  "Same ride": "같은 라이드",
+  "New ride": "새 라이드",
 };

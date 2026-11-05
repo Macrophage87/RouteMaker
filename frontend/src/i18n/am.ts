@@ -2043,4 +2043,9 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Reach": "መድረሻ ክልል",
   "Bus {name}": "አውቶቡስ {name}",
   "The rings take trails of every level.": "ቀለበቶቹ የሁሉም ደረጃ መንገዶችን ይይዛሉ።",
+  // ---- Same ride or a new one? (SameRideDialog, 2026-11-05) ----
+  "Same ride or a new one?": "ያው ጉዞ ነው ወይስ አዲስ?",
+  "This ride's link went out more than 12 hours ago. A new ride gets a new link, so those with the earlier link do not see it.": "የዚህ ጉዞ ሊንክ ከ12 ሰዓት በፊት ተልኳል። አዲስ ጉዞ አዲስ ሊንክ ያገኛል፣ ስለዚህ የቀድሞው ሊንክ ያላቸው አያዩትም።",
+  "Same ride": "ያው ጉዞ",
+  "New ride": "አዲስ ጉዞ",
 };

@@ -318,6 +318,7 @@ import type { DeviceProfileId } from "./lib/deviceProfiles.ts";
 import { LEAD_PARAM, RIDE_PARAM, SHARED_GONE, SHARED_INPUTS_ONLY, SHARED_OPENED, SHARED_PATH, SHARED_REVOKED, SHARED_REVOKED_ERROR, SHARE_KEEP_DEFAULT, SHARE_RIDE_WAIT, BROADCAST_NO_LEAD, BROADCAST_RIDE_FAILED, BROADCAST_RIDE_NO_LEAD, BROADCAST_SHARE_FAILED, asRideLink, leadKeyFrom, gpxShareFile, keepFields, newSharedId, previewImageOk, readShared, rideLinkFrom, sharedBody, sharedIdFrom, storeShared, withSharedId, type ShareKeep } from "./lib/sharedRoutes.ts";
 import { ClosureDialog, type ClosureAsk } from "./ClosureDialog.tsx";
 import { StartOnComputerDialog } from "./StartOnComputerDialog.tsx";
+import { SameRideDialog } from "./SameRideDialog.tsx";
 import { BroadcastQrDialog } from "./BroadcastQrDialog.tsx";
 import { BroadcastJoinDialog, type JoinAsk } from "./BroadcastJoinDialog.tsx";
 import { joinActions, joinKey, joinLine, joinShown, joinTitle, keepJoinShown, showJoin, type JoinAction } from "./lib/broadcastJoin.ts";
@@ -343,7 +344,7 @@ import { KNOWN_OPERATORS, docksStatus, mergeOperators, operatorsToAsk, readOpera
 import { SaveRoute } from "./SaveRoute.tsx";
 import { firstWordAndRest, planLanguageAttributes } from "./lib/i18n.ts";
 import { SAVE_ROUTE } from "./lib/savedRoutes.ts";
-import { BROADCAST_FOLLOWING, BROADCAST_NO_KEY, consentFor, followsWithoutKey, forgetAnsweredHere, isOwnSecret, isRideLink, isRideLinkType, markOwnSecret, planSecrets, presetSecret, ridePlanKey, leadConsent, leaderKey, newToken, opensIntoRide, rideOf, sharedAfterRide, type PlanSecrets, type RideLinkType } from "./lib/rideGroup.ts";
+import { BROADCAST_FOLLOWING, BROADCAST_NO_KEY, consentFor, followsWithoutKey, asksSameRide, forgetAnsweredHere, isOwnSecret, isRideLink, isRideLinkType, markOwnSecret, markRideSent, planSecrets, presetSecret, ridePlanKey, leadConsent, leaderKey, newToken, opensIntoRide, rideOf, sharedAfterRide, type PlanSecrets, type RideLinkType } from "./lib/rideGroup.ts";
 import { newRideSecret, secretFrom, withSecret, withoutSecret } from "./lib/rideSeal.ts";
 
 // Before the map adds the stress source (MapView, after its first probe).
@@ -3567,17 +3568,43 @@ export function App() {
     if (modeRef.current !== "go") changeMode("go");
     goToPlace(place);
   }, setNotice);
+  // "Same ride or a new one?" (SameRideDialog; 2026-11-05): a Group or Mass Ride plan of the page's own whose link went
+  // out more than 12 hours ago (lib/rideGroup.ts asksSameRide) is asked about before its link goes out again or its ride
+  // starts. Same ride keeps the key; New ride makes a new one, for every plan that had the old; going back does nothing.
+  const [sameRideAsk, setSameRideAsk] = useState<{ then: (secret: string) => void } | null>(null);
+  const sameRideFirst = (go: (secret: string) => void) => {
+    if (!riding && isRideLink(preset, points) && groupSecretOwn.current && asksSameRide(groupSecret, Date.now())) setSameRideAsk({ then: go });
+    else go(groupSecret);
+  };
+  const answerSameRide = (same: boolean) => {
+    const ask = sameRideAsk;
+    setSameRideAsk(null);
+    if (!ask) return;
+    if (same) {
+      markRideSent(groupSecret, Date.now(), true);
+      return ask.then(groupSecret);
+    }
+    const fresh = ownSecrets.current!.renew(groupSecret);
+    setGroupSecret(fresh);
+    ask.then(fresh);
+  };
+  // When the plan's own secret first went out in a link: asked about once it is 12 hours old.
+  const planLinkSent = (secret: string) => {
+    if (isRideLinkType(preset) && groupSecretOwn.current) markRideSent(secret, Date.now());
+  };
+  const copyLink = () => sameRideFirst((secret) => void copyLinkWith(secret));
   // "Copy link": this page with the plan's fragment from encodePlan, which never holds the weight
   // (OWNER-DECISIONS 313). Cleared first and set again a moment later, so a second press is said again.
   // v0.9.0, "share the exact route": it names the exact line shown too, as Share's does (sharedLinkNow), so a link copied
   // into a group chat opens the identical route; a line that could not be kept is said after the copy.
-  const copyLink = async () => {
+  const copyLinkWith = async (secret: string) => {
     const press = ++linkPresses.current;
     setLinkSaid("");
     setLinkSpoken("");
     const note = linkNote;
-    const { link, kept } = sharedLinkNow();
+    const { link, kept } = sharedLinkNow(secret);
     const done = await copyText(link, navigator.clipboard, selectionCopy);
+    if (done) planLinkSent(secret);
     window.setTimeout(() => {
       if (press === linkPresses.current) setLinkSaid(linkSaidFor(done));
       if (press === linkPresses.current) setLinkSpoken(linkSpokenFor(done, note));
@@ -3648,9 +3675,10 @@ export function App() {
   };
   // Share's link: the plan's inputs, and the exact line's id with that line sent (once per line and keeping).
   // Share as image's QR code makes its link here too.
-  const sharedLinkNow = () => {
+  // `secret`: the plan's, or the new one "New ride" just made (SameRideDialog), before the page has it.
+  const sharedLinkNow = (secret = groupSecret) => {
     const from = rideOwnShare() ?? { points, preset, dials };
-    let link = withSecret(linkToCopy(window.location, from.points, from.preset, from.dials, viaIndices(from.points, VIA_MARKS.isVia)), isRideLinkType(from.preset) ? groupSecret : null);
+    let link = withSecret(linkToCopy(window.location, from.points, from.preset, from.dials, viaIndices(from.points, VIA_MARKS.isVia)), isRideLinkType(from.preset) ? secret : null);
     const exact = shareExact();
     let kept: Promise<boolean> | null = null;
     if (exact) {
@@ -3725,7 +3753,8 @@ export function App() {
   // and led by the sharer (LEAD_PARAM). Answers whether it was shared as a ride the sharer leads (Broadcast starts it),
   // and what was said.
   // `nav`: the sheet to open; Broadcast passes broadcastNav, which copies the link where there is no sheet.
-  const shareRoute = async (ride = false, nav: ShareNavigator | undefined = shareNav): Promise<{ led: boolean; said: string }> => {
+  // `secret`: as for sharedLinkNow.
+  const shareRoute = async (ride = false, nav: ShareNavigator | undefined = shareNav, secret = groupSecret): Promise<{ led: boolean; said: string }> => {
     const ownRide = rideOwnShare();
     const sharedRoute = ownRide?.route ?? shown;
     if (!sharedRoute || sharing.current) return { led: false, said: "" };
@@ -3745,7 +3774,7 @@ export function App() {
     // The ride's own route while riding (the plan's may have been made again since), else the one shown.
     const rideRoute = riding && rideStart ? rideStart.route : sharedRoute;
     const again = ride && rideLinkSent.current?.route === rideRoute && rideLinkSent.current.keep === shareKeep ? rideLinkSent.current : null;
-    const now = again ? null : sharedLinkNow();
+    const now = again ? null : sharedLinkNow(secret);
     const kept = again ? Promise.resolve(true) : now!.kept;
     const exact = again ? null : now!.exact;
     const sharedId = again ? again.id : (sharedLine.current?.id ?? null);
@@ -3761,6 +3790,8 @@ export function App() {
     try {
       const done = await outcome;
       said = shareSaidFor(done);
+      // The plan's link, with its Group or Mass Ride secret, went out (a ride link carries the leader's instead).
+      if (!ride && done === "shared") planLinkSent(secret);
       // The line not kept: the link plans again when opened. Said unless the sheet failed (that line says more),
       // and the next press tries again with a new id.
       if (kept && !(await kept)) {
@@ -4169,7 +4200,7 @@ export function App() {
     const open = sharedOpenNow.current;
     return !!open && open.ride && !!open.lead && !open.own && open.answer === route;
   };
-  const startRideChecked = () => startRideNoted("");
+  const startRideChecked = () => sameRideFirst(() => startRideNoted(""));
   // `note`: what the ride screen says once up (rideStart.note): Broadcast's link copied, else nothing. Set by each press,
   // so a ride started any other way after a Broadcast that did not start one says nothing.
   const startRideNoted = (note: string) => {
@@ -6606,6 +6637,7 @@ export function App() {
         onNotNow={dropLeft}
         onLater={() => setLeftAsk(null)}
       />
+      <SameRideDialog open={sameRideAsk !== null} onSame={() => answerSameRide(true)} onNew={() => answerSameRide(false)} onCancel={() => setSameRideAsk(null)} />
       <StartOnComputerDialog
         open={computerAsk !== null}
         onBack={() => setComputerAsk(null)}
@@ -7121,7 +7153,7 @@ export function App() {
                       save={saveProps ? <SaveRoute {...saveProps} label={SAVE_ROUTE} /> : null}
                       canShare={canShare}
                       ready={!!shown}
-                      shareRoute={(ride) => void shareRoute(ride)}
+                      shareRoute={(ride) => (ride ? void shareRoute(true) : sameRideFirst((secret) => void shareRoute(false, shareNav, secret)))}
                       shareKeep={shareKeep}
                       onShareKeep={mode === "plan" && me.signed_in ? setShareKeep : null}
                       shareSaid={shareSaid}

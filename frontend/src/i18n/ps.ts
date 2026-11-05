@@ -2043,4 +2043,9 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Reach": "رسېدنه",
   "Bus {name}": "بس {name}",
   "The rings take trails of every level.": "کړۍ د هرې کچې لارې پکې شاملې دي.",
+  // ---- Same ride or a new one? (SameRideDialog, 2026-11-05) ----
+  "Same ride or a new one?": "هماغه سفر که نوی سفر؟",
+  "This ride's link went out more than 12 hours ago. A new ride gets a new link, so those with the earlier link do not see it.": "د دې سفر لینک له 12 ساعتونو ډېر مخکې لېږل شوی. نوی سفر نوی لینک لري، نو هغوی چې پخوانی لینک لري دا نه ویني.",
+  "Same ride": "هماغه سفر",
+  "New ride": "نوی سفر",
 };

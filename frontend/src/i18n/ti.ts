@@ -2043,4 +2043,9 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Reach": "ክልል በጽሖ",
   "Bus {name}": "ኣውቶቡስ {name}",
   "The rings take trails of every level.": "እቲ ቀለበታት ናይ ኩሉ ደረጃ መገድታት ሒዙ እዩ።",
+  // ---- Same ride or a new one? (SameRideDialog, 2026-11-05) ----
+  "Same ride or a new one?": "እቲ ሓደ ጉዕዞ ድዩ ወይስ ሓድሽ?",
+  "This ride's link went out more than 12 hours ago. A new ride gets a new link, so those with the earlier link do not see it.": "ሊንክ ናይዚ ጉዕዞ ቅድሚ ልዕሊ 12 ሰዓት ተላኢኹ። ሓድሽ ጉዕዞ ሓድሽ ሊንክ ይረክብ፣ ስለዚ እቶም ናይ ቀደም ሊንክ ዘለዎም ኣይርእይዎን።",
+  "Same ride": "እቲ ሓደ ጉዕዞ",
+  "New ride": "ሓድሽ ጉዕዞ",
 };

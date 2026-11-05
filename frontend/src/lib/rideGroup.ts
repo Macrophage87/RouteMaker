@@ -136,6 +136,49 @@ export function isOwnSecret(secret: string, store: Store | null = session()): bo
   return ownSecretList(store).includes(secretDigest(secret));
 }
 
+/** When each of the page's own secrets first went out in a link (Copy link or Share), by digest, in this tab only:
+ * nothing of it is sent anywhere. Kept again when the organiser says a later copy is the same ride. */
+export const RIDE_SENT_KEY = "routemaker.own-ride-sent";
+/** A plan's link that went out longer ago than this is asked about before it goes out again or is ridden: the same ride,
+ * or a new one (2026-11-05). */
+export const SAME_RIDE_ASK_MS = 12 * 3600_000;
+export const SAME_RIDE_QUESTION = t("Same ride or a new one?");
+export const SAME_RIDE_LEAD = t("This ride's link went out more than 12 hours ago. A new ride gets a new link, so those with the earlier link do not see it.");
+export const SAME_RIDE = t("Same ride");
+export const NEW_RIDE = t("New ride");
+
+function sentTimes(store: Store | null): Record<string, number> {
+  try {
+    const raw = JSON.parse(store?.getItem(RIDE_SENT_KEY) ?? "{}") as unknown;
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+    return Object.fromEntries(Object.entries(raw).filter((e): e is [string, number] => typeof e[1] === "number"));
+  } catch {
+    return {};
+  }
+}
+
+/** A link with this secret went out now: kept unless one went out before (`again`: the organiser said it is the same ride). */
+export function markRideSent(secret: string, now: number, again = false, store: Store | null = session()): void {
+  const times = sentTimes(store);
+  // Never a number-like key, so the object keeps the order the times went in.
+  const digest = `d${secretDigest(secret)}`;
+  if (times[digest] !== undefined && !again) return;
+  delete times[digest];
+  times[digest] = now;
+  const kept = Object.entries(times).slice(-20);
+  try {
+    store?.setItem(RIDE_SENT_KEY, JSON.stringify(Object.fromEntries(kept)));
+  } catch {
+    // Not kept: the next copy is not asked about.
+  }
+}
+
+/** Whether a link with this secret went out longer ago than SAME_RIDE_ASK_MS: ask "Same ride or a new one?" first. */
+export function asksSameRide(secret: string, now: number, store: Store | null = session()): boolean {
+  const at = sentTimes(store)[`d${secretDigest(secret)}`];
+  return at !== undefined && now - at > SAME_RIDE_ASK_MS;
+}
+
 export function isRideLink(preset: PresetId, points: readonly LonLat[]): preset is RideLinkType {
   return isRideLinkType(preset) && points.length >= 2;
 }

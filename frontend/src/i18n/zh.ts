@@ -2043,4 +2043,9 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Reach": "可达范围",
   "Bus {name}": "公交{name}",
   "The rings take trails of every level.": "范围包括所有级别的小径。",
+  // ---- Same ride or a new one? (SameRideDialog, 2026-11-05) ----
+  "Same ride or a new one?": "同一次骑行还是新的一次？",
+  "This ride's link went out more than 12 hours ago. A new ride gets a new link, so those with the earlier link do not see it.": "这次骑行的链接是在12小时多以前发出的。新的骑行有新的链接，所以持有之前链接的人看不到它。",
+  "Same ride": "同一次骑行",
+  "New ride": "新的骑行",
 };

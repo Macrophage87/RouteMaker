@@ -2549,4 +2549,9 @@ export const ES: Readonly<Record<string, string>> = {
   "On Low-stress streets: {area} and {metro}.": "Por calles de estrés bajo: {area} y {metro}.",
   "At Calm and Calmest, the rings are drawn at Low-stress: they show where low-stress ways reach in the time, not the long detours a calm route takes.": "En Tranquilo y Lo más tranquilo, los anillos se dibujan con Estrés bajo: muestran hasta dónde llegan las vías de estrés bajo en ese tiempo, no los largos desvíos que toma una ruta tranquila.",
   "The rings take trails of every level.": "Los anillos incluyen senderos de todos los niveles.",
+  // ---- Same ride or a new one? (SameRideDialog, 2026-11-05) ----
+  "Same ride or a new one?": "¿El mismo recorrido o uno nuevo?",
+  "This ride's link went out more than 12 hours ago. A new ride gets a new link, so those with the earlier link do not see it.": "El enlace de este recorrido se envió hace más de 12 horas. Un recorrido nuevo tiene un enlace nuevo, así que quienes tienen el enlace anterior no lo ven.",
+  "Same ride": "El mismo recorrido",
+  "New ride": "Recorrido nuevo",
 };

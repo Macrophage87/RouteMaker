@@ -71,11 +71,11 @@ test("the shared URL is Copy link's, at its full precision and without the weigh
   assert.doesNotMatch(`${sent[0].url} ${sent[0].text}`, /weight|97\.5|\bkg\b|\blbs?\b/i);
   // App hands share the link Copy link copies, with only the shared line's id added (lib/sharedRoutes.ts).
   // The plan's, or a resumed ride's own (rideOwnShare), as Copy link would have copied it.
-  assert.match(app, /const from = rideOwnShare\(\) \?\? \{ points, preset, dials \};\s*let link = withSecret\(linkToCopy\(window\.location, from\.points, from\.preset, from\.dials, viaIndices\(from\.points, VIA_MARKS\.isVia\)\), isRideLinkType\(from\.preset\) \? groupSecret : null\);/);
+  assert.match(app, /const from = rideOwnShare\(\) \?\? \{ points, preset, dials \};\s*let link = withSecret\(linkToCopy\(window\.location, from\.points, from\.preset, from\.dials, viaIndices\(from\.points, VIA_MARKS\.isVia\)\), isRideLinkType\(from\.preset\) \? secret : null\);/);
   assert.match(app, /link = withSharedId\(link, id\);/);
   assert.match(app, /shareContent\(link, distanceM, presetSaid\(ownRide\?\.preset \?\? preset\)\)/);
   // Copy link copies that same link, the exact line's id and all (v0.9.0, "share the exact route").
-  assert.match(app, /const \{ link, kept \} = sharedLinkNow\(\);\s*const done = await copyText\(link, navigator\.clipboard, selectionCopy\);/);
+  assert.match(app, /const \{ link, kept \} = sharedLinkNow\(secret\);\s*const done = await copyText\(link, navigator\.clipboard, selectionCopy\);/);
 });
 
 test("the rider closing the sheet is silent; any other failure says so and offers Copy link", async () => {
@@ -128,7 +128,7 @@ test("share() is called within the press: synchronously in shareLink, and before
   void shareLink({ share: async () => void (called = true) }, shareContent("https://x.test/", 1, "Default"));
   assert.equal(called, true, "share() called synchronously");
   // App's handler: no await before shareLink(...), and a press while a sheet is open is skipped.
-  const start = app.indexOf("const shareRoute = async (ride = false, nav: ShareNavigator | undefined = shareNav): Promise<{ led: boolean; said: string }> => {");
+  const start = app.indexOf("const shareRoute = async (ride = false, nav: ShareNavigator | undefined = shareNav, secret = groupSecret): Promise<{ led: boolean; said: string }> => {");
   assert.ok(start > 0);
   const body = app.slice(start, app.indexOf("\n  };\n", start));
   const call = body.indexOf("shareLink(nav, content)");
@@ -219,7 +219,7 @@ test("App: Broadcast shows everywhere; with no share sheet it copies, and the ri
   assert.match(app, /said === SHARE_FAILED \? \(canShare \? BROADCAST_RIDE_FAILED : BROADCAST_RIDE_COPY_FAILED\) : said/);
   // Each Start ride press sets the note (plain Start: none), and Go back or Reroute at a closure drops it, so a later
   // ride never says a copy it did not make.
-  assert.match(app, /const startRideChecked = \(\) => startRideNoted\(""\);/);
+  assert.match(app, /const startRideChecked = \(\) => sameRideFirst\(\(\) => startRideNoted\(""\)\);/);
   assert.match(app, /const startRideNoted = \(note: string\) => \{\s*rideNote\.current = note;/);
   assert.match(app, /const closureCancel = \(\) => \{\s*closurePending\.current = null;\s*rideNote\.current = "";/);
   assert.match(app, /const closureReroute = async \(\) => \{\s*const pending = closurePending\.current;\s*closurePending\.current = null;\s*rideNote\.current = "";/);
