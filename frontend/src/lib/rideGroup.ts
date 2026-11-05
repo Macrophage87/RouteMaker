@@ -45,6 +45,97 @@ export function presetSecret(was: PresetId, now: PresetId, secret: string, own: 
   return { secret: make(), own: true };
 }
 
+/** A plan as the page's own ride secrets know it: its ride type and its points, in order. */
+export function ridePlanKey(preset: PresetId, points: readonly LonLat[]): string {
+  return `${preset}|${points.map((p) => `${p[0]},${p[1]}`).join(";")}`;
+}
+
+/**
+ * The page's own ride secrets, one for each plan (2026-11-05): each plan is its own ride, with its own id and key, so
+ * links copied for different plans in one tab are different rides. The same plan again (undo, or copied a second
+ * time) has the same secret, so it gives the same link. An empty plan (Clear) starts afresh: no earlier plan's secret
+ * comes back. A ride's end retires the secret it was ridden under, for every plan that had it.
+ */
+export interface PlanSecrets {
+  /** The secret for this plan: the one it had, else a new one. */
+  secretFor(plan: string, empty: boolean): string;
+  /** This plan has this secret (the page's own, as it is now). */
+  keep(plan: string, secret: string): void;
+  /** No plan keeps this secret any more: a new one in its place. */
+  renew(secret: string): string;
+  /** Every plan's secret forgotten. */
+  forget(): void;
+}
+
+export function planSecrets(make: () => string = newRideSecret, max = 32): PlanSecrets {
+  const byPlan = new Map<string, string>();
+  return {
+    secretFor(plan, empty) {
+      if (empty) {
+        byPlan.clear();
+        return make();
+      }
+      return byPlan.get(plan) ?? make();
+    },
+    keep(plan, secret) {
+      byPlan.delete(plan);
+      byPlan.set(plan, secret);
+      while (byPlan.size > max) byPlan.delete(byPlan.keys().next().value!);
+    },
+    renew(secret) {
+      for (const [plan, kept] of [...byPlan]) if (kept === secret) byPlan.delete(plan);
+      return make();
+    },
+    forget() {
+      byPlan.clear();
+    },
+  };
+}
+
+/** The page's own ride secrets in this tab (sessionStorage), as digests: a reload, a sign-in or a visit to another
+ * page brings the plan back with its secret, which is still the page's own, not a link's. */
+export const OWN_SECRETS_KEY = "routemaker.own-ride-secrets";
+
+/** A short digest of a secret (53 bits, not reversible to it): enough to tell the page's own from a link's. */
+function secretDigest(secret: string): string {
+  let h1 = 0xdeadbeef;
+  let h2 = 0x41c6ce57;
+  for (let i = 0; i < secret.length; i++) {
+    const c = secret.charCodeAt(i);
+    h1 = Math.imul(h1 ^ c, 2654435761);
+    h2 = Math.imul(h2 ^ c, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
+}
+
+function ownSecretList(store: Store | null): string[] {
+  try {
+    const raw = JSON.parse(store?.getItem(OWN_SECRETS_KEY) ?? "[]") as unknown;
+    return Array.isArray(raw) ? raw.filter((r): r is string => typeof r === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Mark a secret as the page's own in this tab. */
+export function markOwnSecret(secret: string, store: Store | null = session()): void {
+  const digest = secretDigest(secret);
+  const list = ownSecretList(store).filter((d) => d !== digest);
+  list.push(digest);
+  try {
+    store?.setItem(OWN_SECRETS_KEY, JSON.stringify(list.slice(-20)));
+  } catch {
+    // Not kept: after a reload the secret is taken as a link's.
+  }
+}
+
+/** Whether a secret the page opened with is one it made itself in this tab. */
+export function isOwnSecret(secret: string, store: Store | null = session()): boolean {
+  return ownSecretList(store).includes(secretDigest(secret));
+}
+
 export function isRideLink(preset: PresetId, points: readonly LonLat[]): preset is RideLinkType {
   return isRideLinkType(preset) && points.length >= 2;
 }

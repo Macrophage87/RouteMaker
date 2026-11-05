@@ -308,7 +308,7 @@ test("a ride link opened without a key gets a new key, the opener's own ride", (
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
   // On opening: the link's secret, or a new one (never none).
   assert.match(app, /useState<string>\(\(\) => PLAN_SECRET \?\? newRideSecret\(\)\)/);
-  assert.match(app, /const groupSecretOwn = useRef\(PLAN_SECRET === null\);/);
+  assert.match(app, /const groupSecretOwn = useRef\(PLAN_SECRET_OWN\);/);
   // A link opened in the tab: its secret; without one, a new one, the page's own.
   assert.match(app, /const linked = own \? null : secretFrom\(window\.location\.hash\);\s*groupSecretOwn\.current = linked === null;\s*setGroupSecret\(linked \?\? newRideSecret\(\)\);/);
   // A broadcast or Roam link without one: the ride page makes its own.

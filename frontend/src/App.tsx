@@ -343,7 +343,7 @@ import { KNOWN_OPERATORS, docksStatus, mergeOperators, operatorsToAsk, readOpera
 import { SaveRoute } from "./SaveRoute.tsx";
 import { firstWordAndRest, planLanguageAttributes } from "./lib/i18n.ts";
 import { SAVE_ROUTE } from "./lib/savedRoutes.ts";
-import { BROADCAST_FOLLOWING, BROADCAST_NO_KEY, consentFor, followsWithoutKey, forgetAnsweredHere, isRideLink, isRideLinkType, presetSecret, leadConsent, leaderKey, newToken, opensIntoRide, rideOf, sharedAfterRide, type RideLinkType } from "./lib/rideGroup.ts";
+import { BROADCAST_FOLLOWING, BROADCAST_NO_KEY, consentFor, followsWithoutKey, forgetAnsweredHere, isOwnSecret, isRideLink, isRideLinkType, markOwnSecret, planSecrets, presetSecret, ridePlanKey, leadConsent, leaderKey, newToken, opensIntoRide, rideOf, sharedAfterRide, type PlanSecrets, type RideLinkType } from "./lib/rideGroup.ts";
 import { newRideSecret, secretFrom, withSecret, withoutSecret } from "./lib/rideSeal.ts";
 
 // Before the map adds the stress source (MapView, after its first probe).
@@ -440,6 +440,8 @@ const ROAM_FOLLOW = roamLinkFrom(window.location.hash);
 // A Group Ride plan link's secret (lib/rideSeal.ts), read once here likewise: not a broadcast's.
 // From the plan as opened, so one kept over a sign-in keeps its secret too.
 const PLAN_SECRET = SHARED_RIDE || ROAM_FOLLOW ? null : secretFrom(OPENED_HASH);
+// Whether the page made that secret itself in this tab (before a reload, a sign-in or a visit to another page), not a link.
+const PLAN_SECRET_OWN = PLAN_SECRET === null || isOwnSecret(PLAN_SECRET);
 /** The opened link to pass on: its path, the query's own parameters (the line, ride and leader), and its fragment;
  * nothing a messaging app added on the way (its tracking parameters). */
 function passedOnLink(at: Pick<Location, "origin" | "pathname" | "search" | "hash">): string {
@@ -1478,8 +1480,14 @@ export function App() {
   // The page itself is opening a plan of the rider's own (a saved or kept route), told apart from a link pasted in.
   const ownHashOpen = useRef(false);
   const [groupSecret, setGroupSecret] = useState<string>(() => PLAN_SECRET ?? newRideSecret());
-  // Whether this page made the secret (not one from a link opened here): made again when a ride ends.
-  const groupSecretOwn = useRef(PLAN_SECRET === null);
+  // Whether this page made the secret (not one from a link opened here): made again when a ride ends. One the page made
+  // in this tab is still its own after a reload, a sign-in or a visit to another page (lib/rideGroup.ts isOwnSecret).
+  const groupSecretOwn = useRef(PLAN_SECRET_OWN);
+  // The page's own secret for each plan (lib/rideGroup.ts planSecrets): each plan is its own ride.
+  const ownSecrets = useRef<PlanSecrets | null>(null);
+  ownSecrets.current ??= planSecrets();
+  // The points the secret in force is for.
+  const secretPlan = useRef(points);
   const presetBefore = useRef(preset);
   useEffect(() => {
     const was = presetBefore.current;
@@ -1490,6 +1498,23 @@ export function App() {
       return next.secret;
     });
   }, [preset]);
+  // Another plan of the page's own is another ride (2026-11-05): its own secret, the one it had if it was planned
+  // before, else a new one. Clear starts afresh, even from a link's plan. A ride keeps its secret while it goes.
+  useEffect(() => {
+    if (secretPlan.current === points) return;
+    secretPlan.current = points;
+    if (riding) return;
+    const empty = points.length === 0;
+    if (empty) groupSecretOwn.current = true;
+    if (groupSecretOwn.current) setGroupSecret(ownSecrets.current!.secretFor(ridePlanKey(preset, points), empty));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- a change of points only; a change of type is above.
+  }, [points]);
+  // The page's own secret is kept for its plan, and marked as its own in this tab.
+  useEffect(() => {
+    if (!groupSecretOwn.current) return;
+    ownSecrets.current!.keep(ridePlanKey(preset, secretPlan.current), groupSecret);
+    markOwnSecret(groupSecret);
+  }, [groupSecret, preset]);
   // Keep the link in step with the plan, without adding history entries. Exactly encodePlan's
   // fragment, which never holds the weight (313); Copy link builds the same one (linkToCopy).
   useEffect(() => {
@@ -1521,6 +1546,7 @@ export function App() {
       const linked = own ? null : secretFrom(window.location.hash);
       groupSecretOwn.current = linked === null;
       setGroupSecret(linked ?? newRideSecret());
+      ownSecrets.current!.forget();
       setConfirmedKm(null);
       // Another plan: undo does not reach back into the one before it.
       history.current.clear();
@@ -3666,7 +3692,7 @@ export function App() {
       }
       // A Group or Mass Ride secret this page made is made again: last ride's link reads nothing on the next. One from a link
       // opened here is the link's, the ride its sender leads.
-      if (groupSecretOwn.current) setGroupSecret(newRideSecret());
+      if (groupSecretOwn.current) setGroupSecret((ridden) => ownSecrets.current!.renew(ridden));
       // The ride's dot answers too, for a ride page already gone with the ride (Plan): the next ride asks again.
       forgetAnsweredHere();
     }
@@ -3717,6 +3743,8 @@ export function App() {
       if (kept && !(await kept)) {
         if (sharedLine.current?.kept === kept) sharedLine.current = null;
         if (done !== "failed" && done !== "cancelled") said = SHARED_INPUTS_ONLY;
+        // The link went out with the prepared lead's key and secret, kept or not: the next ride shared gets new ones.
+        if (ride && done === "shared" && lead && lead === leadPrep.current) prepareLead();
       } else if (ride && kept && done === "shared") {
         // The one who shared a ride has the same location sharing, but leads it: re-routed off it as any ride is (the
         // owner, 2026-10-18: "Maybe make the sharer able to reroute").
@@ -4769,7 +4797,11 @@ export function App() {
     if (done !== "shared") return done === "failed" && !canShare ? BROADCAST_RIDE_COPY_FAILED : shareSaidFor(done);
     // Again while leading: the sheet was the answer; a copy is said.
     if (mine) return broadcastSaid("");
-    if (!roamingNow.current) return "";
+    // Roam ended while the sheet was open: the link went out with the prepared lead, so the next broadcast gets a new one.
+    if (!roamingNow.current) {
+      prepareLead();
+      return "";
+    }
     const on = await rideOf(lead.secret);
     if (on) leadConsent(on.id, lead.token);
     leads.current.set(`roam|${id}`, lead);
