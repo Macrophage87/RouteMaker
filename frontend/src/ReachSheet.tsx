@@ -26,7 +26,7 @@ import {
   reachOffered,
   reachPointNames,
   reachSentence,
-  requestReach,
+  ReachRequests,
   shareCancelled,
   sharesHome,
   sideBySide,
@@ -122,6 +122,8 @@ export function ReachSheet({ open, onBack, backLabel, getMap, mapReady, points, 
   const [busy, setBusy] = useState(false);
   const [shareSaid, setShareSaid] = useState("");
   const fittedFor = useRef("");
+  // Named requests, so one given up on is stopped on the server and frees the rider's routing slot.
+  const requests = useRef<ReachRequests | null>(null);
   const offered = reachOffered(preset);
   // Refit when the points or the rings drawn change: a 60 minute ring turned on or off moves the edge.
   const pointsKey = JSON.stringify([points.slice(0, REACH_MAX_POINTS), view.minutes]);
@@ -139,7 +141,8 @@ export function ReachSheet({ open, onBack, backLabel, getMap, mapReady, points, 
     const timer = window.setTimeout(async () => {
       setBusy(true);
       setSaid(t("Drawing the rings…"));
-      const result = await requestReach(JSON.parse(bodyKey), undefined, abort.signal);
+      requests.current ??= new ReachRequests();
+      const result = await requests.current.ask(JSON.parse(bodyKey), abort.signal);
       if (abort.signal.aborted) return;
       setBusy(false);
       if (result.ok) {
@@ -152,6 +155,7 @@ export function ReachSheet({ open, onBack, backLabel, getMap, mapReady, points, 
     }, ASK_AFTER_MS);
     return () => {
       abort.abort();
+      requests.current?.drop();
       window.clearTimeout(timer);
       setBusy(false);
     };

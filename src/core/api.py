@@ -5726,23 +5726,69 @@ class ReachOut(Schema):
         200: ReachOut,
         400: ErrorOut,
         422: ErrorOut,
+        409: CancelledOut,
         429: ErrorOut,
         500: ErrorOut,
         502: ErrorOut,
         503: BusyOut,
     },
     summary="Where a rider can be in 15, 30, 45 and 60 minutes (reach rings, isochrones)",
+    description=(
+        "Counted as one routing request for each isochrone call the answer needs (a point on"
+        " a layer: the rider's own, and Calm streets), and at least one; a call answered from"
+        " the short-term cache counts nothing. Optional headers, as POST /api/route's:"
+        " `X-Plan-Id` names the request, so POST /api/route/cancel can stop it (409 `code`"
+        " `plan_cancelled`); `X-Plan-Replaces` names the request this one replaces."
+    ),
     by_alias=True,
 )
+# As /api/route's (innermost first): the error guard, the content-type check, the count, a
+# replaced request's cancel, the slots.
 @decorate_view(
-    ratelimit.in_flight_limited(ratelimit.ROUTING_IN_FLIGHT),
+    ratelimit.in_flight_limited(ratelimit.ROUTING_IN_FLIGHT, wait_for=_replacing_wait_s),
+    _records_replaced_plan,
     ratelimit.rate_limited(ratelimit.ROUTING),
     json_body_only,
     errors_as_json,
 )
 def reach_rings(request, body: ReachIn, response: HttpResponse):
     """Reach (Stephen, 2026-11-04): the router's isochrones for the ride type and its dials,
-    from one point or several, with the places inside each ring. Nothing is stored."""
+    from one point or several, with the places inside each ring. Nothing is stored past
+    `reach.KEEP_S`. A request that names itself stops at its next router call once
+    cancelled (`core.plan_cancel`), and gives its slot back."""
+    watch = plan_cancel.watch_for(request)
+    watching = routing.watch_cancel(watch)
+    try:
+        answered = _reach_answer(request, body)
+    finally:
+        routing.unwatch_cancel(watching)
+    if watch is not None and watch.cancelled:
+        return plan_cancel.cancelled_answer()
+    return answered
+
+
+class _OverRoutingLimit(Exception):
+    def __init__(self, retry_after_s: int) -> None:
+        super().__init__(retry_after_s)
+        self.retry_after_s = retry_after_s
+
+
+def _reach_charge(request):
+    """Count a Reach answer's isochrone calls against the routing limit, one each; the
+    request's own count (`rate_limited`) is the first."""
+    client = ratelimit.client_key(ratelimit.client_address(request))
+
+    def charge(calls: int) -> None:
+        if calls <= 1:
+            return
+        decision = ratelimit.hit(ratelimit.ROUTING, client, calls - 1)
+        if not decision.allowed:
+            raise _OverRoutingLimit(decision.retry_after_s)
+
+    return charge
+
+
+def _reach_answer(request, body: ReachIn):
     dials = routing.Dials(
         stress=body.stress,
         hills=body.hills,
@@ -5757,6 +5803,8 @@ def reach_rings(request, body: ReachIn, response: HttpResponse):
     )
     started = getattr(request, "routing_started", None)
     try:
+        # A request cancelled before it started makes no call and is not counted again.
+        routing.check_cancel()
         answer = reach.reach(
             body.points,
             body.preset,
@@ -5767,7 +5815,12 @@ def reach_rings(request, body: ReachIn, response: HttpResponse):
             calm=body.calm,
             run_pace_kmh=body.run_pace_kmh,
             started=started,
+            charge=_reach_charge(request),
         )
+    except _OverRoutingLimit as over:
+        refusal = _error(429, "Too many requests from this address; try again shortly.")
+        refusal["Retry-After"] = str(over.retry_after_s)
+        return refusal
     except reach.ReachRefused as refusal:
         return _error(422, str(refusal))
     except routing.DeadlineExceeded:

@@ -12,7 +12,9 @@
  *
  * Plain data in, plain data out, so node --test runs all of it; the sheet is ReachSheet.tsx.
  */
+import { cancelRoute } from "./api.ts";
 import { closureFields, dialFields, type Dials } from "./dials.ts";
+import { newPlanId } from "./routeScheduler.ts";
 import { areaText, KM_PER_MILE } from "./format.ts";
 import { language, t } from "./i18n.ts";
 import { haversineM, type LonLat } from "./geo.ts";
@@ -90,9 +92,19 @@ export interface ReachAnswer {
   trail_level_applied?: boolean | null;
 }
 
-export type ReachResult = { ok: true; answer: ReachAnswer } | { ok: false; message: string };
+/** `retryAfterS`: the router or the limits were busy, and said when to ask again (Retry-After). */
+export type ReachResult = { ok: true; answer: ReachAnswer } | { ok: false; message: string; retryAfterS?: number };
 
 type FetchLike = (url: string, init: RequestInit) => Promise<Response>;
+
+/** The request's name (X-Plan-Id), so the API can stop it once the sheet moves on, and the one it replaces. */
+export interface ReachIds {
+  planId?: string;
+  replaces?: string;
+}
+
+/** A busy answer is asked again once, after its Retry-After, where that is no longer than this. */
+export const REACH_RETRY_MAX_S = 10;
 
 /** The request's body: the points (at most REACH_MAX_POINTS, the first ones), the ride type and its dials. */
 export function reachBody(points: readonly LonLat[], preset: PresetId, dials: Dials, view: ReachView, runPaceKmh?: number): Record<string, unknown> {
@@ -127,12 +139,17 @@ function isAnswer(value: unknown): value is ReachAnswer {
   return !!v && Array.isArray(v.groups) && Array.isArray(v.minutes) && v.groups.every((g) => Array.isArray(g.rings));
 }
 
-export async function requestReach(body: Record<string, unknown>, fetchImpl: FetchLike = (url, init) => fetch(url, init), signal?: AbortSignal): Promise<ReachResult> {
+export async function requestReach(body: Record<string, unknown>, fetchImpl: FetchLike = (url, init) => fetch(url, init), signal?: AbortSignal, ids: ReachIds = {}): Promise<ReachResult> {
   let response: Response;
   try {
     response = await fetchImpl("/api/reach", {
       method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        ...(ids.planId ? { "X-Plan-Id": ids.planId } : {}),
+        ...(ids.replaces ? { "X-Plan-Replaces": ids.replaces } : {}),
+      },
       body: JSON.stringify(body),
       signal,
     });
@@ -146,7 +163,11 @@ export async function requestReach(body: Record<string, unknown>, fetchImpl: Fet
     payload = null;
   }
   if (response.ok && isAnswer(payload)) return { ok: true, answer: payload };
-  if (response.status === 429 || response.status === 503) return { ok: false, message: t("The router is busy. Try again in a moment.") };
+  if (response.status === 429 || response.status === 503) {
+    const after = Number(response.headers.get("Retry-After"));
+    const message = t("The router is busy. Try again in a moment.");
+    return Number.isFinite(after) && after > 0 ? { ok: false, message, retryAfterS: after } : { ok: false, message };
+  }
   // The server's refusals are English sentences: the two Reach has are worded here, in the page's language; any other
   // is shown as written only on an English page.
   if (response.status === 422) return { ok: false, message: t("None of the points is on a street or path this ride type rides; move them onto one and try again.") };
@@ -154,6 +175,64 @@ export async function requestReach(body: Record<string, unknown>, fetchImpl: Fet
   const error = (payload as { error?: unknown } | null)?.error;
   if (typeof error === "string" && error && language() === "en") return { ok: false, message: error };
   return { ok: false, message: t("The rings could not be drawn. Try again.") };
+}
+
+function pause(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(resolve, ms);
+    signal?.addEventListener("abort", () => {
+      clearTimeout(timer);
+      resolve();
+    });
+  });
+}
+
+/**
+ * The sheet's Reach requests, as Go's plans (lib/routeScheduler.ts, routing audit S7): each is named (X-Plan-Id). One the
+ * sheet gives up on, for a newer one or because it closed, is cancelled (POST /api/route/cancel), so the API stops it at
+ * its next router call and gives back its routing slot; the next request names it (X-Plan-Replaces), so the API may wait
+ * a moment for that slot instead of refusing. A busy answer is asked again once after its Retry-After.
+ */
+export interface ReachRequestsOptions {
+  fetchImpl?: FetchLike;
+  cancel?: (planId: string) => void;
+  planId?: () => string;
+  wait?: (ms: number, signal?: AbortSignal) => Promise<void>;
+}
+
+export class ReachRequests {
+  private running: string | null = null;
+  private replaced: string | null = null;
+  private readonly options: ReachRequestsOptions;
+
+  constructor(options: ReachRequestsOptions = {}) {
+    this.options = options;
+  }
+
+  async ask(body: Record<string, unknown>, signal?: AbortSignal): Promise<ReachResult> {
+    const planId = (this.options.planId ?? newPlanId)();
+    const replaces = this.replaced ?? undefined;
+    this.replaced = null;
+    this.running = planId;
+    try {
+      let result = await requestReach(body, this.options.fetchImpl, signal, { planId, replaces });
+      if (!result.ok && result.retryAfterS !== undefined && result.retryAfterS <= REACH_RETRY_MAX_S && !signal?.aborted) {
+        await (this.options.wait ?? pause)(result.retryAfterS * 1000, signal);
+        if (!signal?.aborted) result = await requestReach(body, this.options.fetchImpl, signal, { planId, replaces });
+      }
+      return result;
+    } finally {
+      if (this.running === planId) this.running = null;
+    }
+  }
+
+  /** The request in flight is no longer wanted: stop it on the server. Nothing in flight, nothing sent. */
+  drop(): void {
+    if (this.running === null) return;
+    (this.options.cancel ?? ((id: string) => cancelRoute(id)))(this.running);
+    this.replaced = this.running;
+    this.running = null;
+  }
 }
 
 export { areaText };
