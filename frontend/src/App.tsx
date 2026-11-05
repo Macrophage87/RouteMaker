@@ -344,7 +344,7 @@ import { KNOWN_OPERATORS, docksStatus, mergeOperators, operatorsToAsk, readOpera
 import { SaveRoute } from "./SaveRoute.tsx";
 import { firstWordAndRest, planLanguageAttributes } from "./lib/i18n.ts";
 import { SAVE_ROUTE } from "./lib/savedRoutes.ts";
-import { BROADCAST_FOLLOWING, BROADCAST_NO_KEY, consentFor, followsWithoutKey, asksSameRide, forgetAnsweredHere, isOwnSecret, isRideLink, isRideLinkType, markOwnSecret, markRideSent, newRide, planSecrets, presetSecret, rideLeadFor, ridePlanKey, leadConsent, leaderKey, newToken, opensIntoRide, rideOf, sharedAfterRide, type PlanSecrets, type RideLinkType } from "./lib/rideGroup.ts";
+import { BROADCAST_FOLLOWING, BROADCAST_NO_KEY, consentFor, followsWithoutKey, asksSameRide, forgetAnsweredHere, isOwnSecret, isRideLink, isRideLinkType, markOwnSecret, markRideSent, newRide, planSecrets, presetSecret, rideLeadFor, ridePlanKey, rideSecretOf, leadConsent, leaderKey, newToken, opensIntoRide, rideOf, sharedAfterRide, type PlanSecrets, type RideLinkType } from "./lib/rideGroup.ts";
 import { newRideSecret, secretFrom, withSecret, withoutSecret } from "./lib/rideSeal.ts";
 
 // Before the map adds the stress source (MapView, after its first probe).
@@ -3573,11 +3573,21 @@ export function App() {
   // starts. Same ride keeps the key; New ride makes a new one, for every plan that had the old; going back does nothing.
   // A ride link (Share ride, Broadcast; `ride`) is asked about by its leader's secret, the one it would go out with
   // (rideLeadNow): New ride drops every leader the ride links went out with too, so the next goes with a new one.
+  // Start ride (`start`) is asked about by the secret the ride would go under: the led line's this page shared, else the plan's.
   const [sameRideAsk, setSameRideAsk] = useState<{ then: (secret: string) => void; secret: string; cancel?: () => void } | null>(null);
-  const sameRideFirst = (go: (secret: string) => void, ride = false, cancel?: () => void) => {
+  const sameRideFirst = (go: (secret: string) => void, ride = false, cancel?: () => void, start = false) => {
     const now = Date.now();
     const lead = ride && followedInRide() === null ? rideLeadNow() : null;
-    const asked = ride ? (lead && asksSameRide(lead.secret, now) ? lead.secret : null) : !riding && isRideLink(preset, points) && groupSecretOwn.current && asksSameRide(groupSecret, now) ? groupSecret : null;
+    const led = start && !riding && sharedOpenNow.current?.own && sharedOpenNow.current.answer === shown ? rideSecretOf(sharedOpenNow.current, groupSecret) : null;
+    const asked = ride
+      ? lead && asksSameRide(lead.secret, now)
+        ? lead.secret
+        : null
+      : led && led !== groupSecret && asksSameRide(led, now)
+        ? led
+        : !riding && isRideLink(preset, points) && groupSecretOwn.current && asksSameRide(groupSecret, now)
+          ? groupSecret
+          : null;
     if (asked) setSameRideAsk({ then: go, secret: asked, cancel });
     else go(groupSecret);
   };
@@ -3594,6 +3604,12 @@ export function App() {
       return ask.then(groupSecret);
     }
     rideLinkSent.current = null;
+    // Nor the line as led by this page (a pasted or opened link's stays): a ride started now goes under the new key.
+    const after = sharedAfterRide(sharedOpenNow.current);
+    if (after !== sharedOpenNow.current) {
+      sharedOpenNow.current = after;
+      setSharedOpen(after);
+    }
     const fresh = newRide(leads.current, ownSecrets.current!, groupSecret);
     prepareLead();
     setGroupSecret(fresh);
@@ -4222,7 +4238,7 @@ export function App() {
     const open = sharedOpenNow.current;
     return !!open && open.ride && !!open.lead && !open.own && open.answer === route;
   };
-  const startRideChecked = () => sameRideFirst(() => startRideNoted(""));
+  const startRideChecked = () => sameRideFirst(() => startRideNoted(""), false, undefined, true);
   // `note`: what the ride screen says once up (rideStart.note): Broadcast's link copied, else nothing. Set by each press,
   // so a ride started any other way after a Broadcast that did not start one says nothing.
   const startRideNoted = (note: string) => {

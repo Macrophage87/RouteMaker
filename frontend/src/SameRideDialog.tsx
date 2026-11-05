@@ -16,13 +16,15 @@ export function SameRideDialog({ open, onSame, onNew, onCancel }: { open: boolea
   useEffect(() => {
     const dialog = dialogRef.current;
     if (!dialog) return;
-    if (open && !dialog.open) {
+    // Read from the attribute: a browser without the modal dialog has no `open` property either.
+    const shown = dialog.hasAttribute("open");
+    if (open && !shown) {
       opener.current = document.activeElement;
       // A browser without the modal dialog shows it open in the page, and Escape is read below.
       if (typeof dialog.showModal === "function") dialog.showModal();
       else dialog.setAttribute("open", "");
       newRef.current?.focus();
-    } else if (!open && dialog.open) {
+    } else if (!open && shown) {
       if (typeof dialog.close === "function") dialog.close();
       else dialog.removeAttribute("open");
       if (opener.current instanceof HTMLElement && opener.current.isConnected) opener.current.focus();

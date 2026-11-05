@@ -219,7 +219,7 @@ test("App: Broadcast shows everywhere; with no share sheet it copies, and the ri
   assert.match(app, /said === SHARE_FAILED \? \(canShare \? BROADCAST_RIDE_FAILED : BROADCAST_RIDE_COPY_FAILED\) : said/);
   // Each Start ride press sets the note (plain Start: none), and Go back or Reroute at a closure drops it, so a later
   // ride never says a copy it did not make.
-  assert.match(app, /const startRideChecked = \(\) => sameRideFirst\(\(\) => startRideNoted\(""\)\);/);
+  assert.match(app, /const startRideChecked = \(\) => sameRideFirst\(\(\) => startRideNoted\(""\), false, undefined, true\);/);
   assert.match(app, /const startRideNoted = \(note: string\) => \{\s*rideNote\.current = note;/);
   assert.match(app, /const closureCancel = \(\) => \{\s*closurePending\.current = null;\s*rideNote\.current = "";/);
   assert.match(app, /const closureReroute = async \(\) => \{\s*const pending = closurePending\.current;\s*closurePending\.current = null;\s*rideNote\.current = "";/);

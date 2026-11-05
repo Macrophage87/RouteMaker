@@ -191,6 +191,14 @@ export function newRide<L>(leads: Map<string, L>, secrets: PlanSecrets, secret: 
   return secrets.renew(secret);
 }
 
+/**
+ * The secret a ride started now rides under, as RideGroup reads it: the led line's (a Share ride or Broadcast this page
+ * sent or opened), else the plan's.
+ */
+export function rideSecretOf(open: { ride?: boolean; id?: string; lead?: string | null; secret?: string | null } | null, plan: string): string | null {
+  return open?.ride && open.id && open.lead ? (open.secret ?? null) : plan;
+}
+
 /** Whether a link with this secret went out longer ago than SAME_RIDE_ASK_MS: ask "Same ride or a new one?" first. */
 export function asksSameRide(secret: string, now: number, store: Store | null = session()): boolean {
   const at = sentTimes(store)[`d${secretDigest(secret)}`];
