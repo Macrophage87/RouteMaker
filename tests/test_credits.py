@@ -108,9 +108,13 @@ def test_every_city_layer_the_baltimore_review_cites_has_a_source_record() -> No
     """The 2026-11-04 Baltimore City review's truck routes, restricted-hours routes, speed humps
     and the city's planning LTS are recorded and credited under "Open Baltimore"."""
     review = json.loads(
-        (REPO / "fixtures" / "overrides" / "2026-11-04-owner-baltimore-city-review.json").read_text()
+        (
+            REPO / "fixtures" / "overrides" / "2026-11-04-owner-baltimore-city-review.json"
+        ).read_text()
     )
-    cited = " ".join(r.get("evidence", "") + " " + r.get("reason", "") for r in review["rows"]).lower()
+    cited = " ".join(
+        r.get("evidence", "") + " " + r.get("reason", "") for r in review["rows"]
+    ).lower()
     text = SOURCES.read_text()
     section = text[text.index("## Open Baltimore") :]
     section = section[: section.index("\n## ", 1)].lower()

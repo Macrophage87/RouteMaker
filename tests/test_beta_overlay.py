@@ -3828,13 +3828,21 @@ def test_the_runbook_restarts_every_running_router_after_a_config_change() -> No
         "routers=$(scripts/beta/beta-compose.sh --profile offroad ps --services --status running"
         " </dev/null | grep '^valhalla-')"
     )
-    restart = '[ -n "$routers" ] && scripts/beta/beta-compose.sh --profile offroad restart $routers </dev/null'
-    step_8 = RUNBOOK[RUNBOOK.index("The four routers also need") if "The four routers also need" in RUNBOOK else RUNBOOK.index("Every router that runs (the four") :]
+    restart = (
+        '[ -n "$routers" ] && scripts/beta/beta-compose.sh --profile offroad restart $routers'
+        " </dev/null"
+    )
+    step_8 = RUNBOOK[RUNBOOK.index("8. `scripts/beta/beta-compose.sh up -d api worker`") :]
     step_8 = step_8[: step_8.index("Check with `git diff --stat")]
     assert listing in step_8 and restart in step_8, step_8
     assert "valhalla-paved" in step_8, step_8
-    rollback = RUNBOOK[RUNBOOK.index("recreates only those whose image or command the release changed") :]
+    rollback = RUNBOOK[
+        RUNBOOK.index("recreates only those whose image or command the release changed") :
+    ]
     rollback = rollback[: rollback.index("```")]
     assert listing in rollback and restart in rollback, rollback
-    bare = "beta-compose.sh restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend   # needed"
+    bare = (
+        "beta-compose.sh restart valhalla-standard valhalla-no-trail valhalla-ebike"
+        " valhalla-weekend   # needed"
+    )
     assert bare not in RUNBOOK
