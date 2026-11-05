@@ -89,6 +89,9 @@ HALF_COLUMN = "stress_half"
 ADJUSTMENT_COLUMNS = (
     "stress_adjustment_id",
     "stress_computed_tier",
+    # Whether the level the adjustment replaced was a half step; a live table built before
+    # it has no such column, and its "before" is read as a whole step.
+    "stress_computed_half",
     "stress_adjustment_direction",
     "stress_adjustment_category",
     "stress_adjustment_note",
@@ -298,17 +301,20 @@ def is_adjusted(row: dict) -> bool:
     ).startswith("override:")
 
 
-def classifier_tier(row: dict) -> int | None:
-    """The tier the classifier gave the way, or None when the row does not say.
+def classifier_step(row: dict) -> float | int | None:
+    """The level the way had before any override, half step included (an agency's 2.5, the
+    service-road step's 1.5), or None when the row does not say.
 
-    A way no override reached carries it as its tier. An adjusted way carries it only
-    where the adjustment is public (`StressAdjustment.exposed`): a hidden adjustment's
-    row says nothing of what it replaced, and nothing here guesses.
+    A way no override reached carries it as its tier and `stress_half`. An adjusted way
+    carries it only where the adjustment is public (`StressAdjustment.exposed`): a hidden
+    adjustment's row says nothing of what it replaced, and nothing here guesses.
     """
     if not is_adjusted(row):
-        return int(row[TIER_COLUMN])
+        return current_step(row)
     computed = row.get("stress_computed_tier")
-    return int(computed) if computed is not None else None
+    if computed is None:
+        return None
+    return segment_info.step_value(int(computed), row.get("stress_computed_half") is True)
 
 
 def current_step(row: dict) -> float | int:
@@ -316,15 +322,21 @@ def current_step(row: dict) -> float | int:
     return segment_info.step_value(int(row[TIER_COLUMN]), row.get(HALF_COLUMN) is True)
 
 
-def new_state(row: dict, spec: Spec, adjustment_id: str, base: int | None) -> dict:
-    """What `row` holds once `spec` is applied (the rebuild's `apply_stress`, in place)."""
+def new_state(row: dict, spec: Spec, adjustment_id: str, base: float | int | None) -> dict:
+    """What `row` holds once `spec` is applied (the rebuild's `apply_stress`, in place).
+
+    `base` is the way's level before any override (`classifier_step`), half step included."""
     state: dict = {}
+    base_tier = None if base is None else int(base)
+    base_half = base is not None and base != int(base)
     if HALF_COLUMN in row:
         state[HALF_COLUMN] = False
     if spec.at_least and base is not None and base >= spec.step:
-        # A floor the way already meets: the classifier's tier stands and so does its rule,
-        # where the row still has it.
-        state[TIER_COLUMN] = base
+        # A floor the way already meets: the classifier's level stands, half step and all,
+        # and so does its rule, where the row still has it.
+        state[TIER_COLUMN] = base_tier
+        if HALF_COLUMN in row:
+            state[HALF_COLUMN] = base_half
         state[RULE_COLUMN] = FLOOR_MET_RULE if is_adjusted(row) else row[RULE_COLUMN]
         for column in ADJUSTMENT_COLUMNS:
             if column in row:
@@ -345,7 +357,8 @@ def new_state(row: dict, spec: Spec, adjustment_id: str, base: int | None) -> di
         direction = "same"
     wanted = {
         "stress_adjustment_id": adjustment_id,
-        "stress_computed_tier": base if shown else None,
+        "stress_computed_tier": base_tier if shown else None,
+        "stress_computed_half": base_half if shown else None,
         "stress_adjustment_direction": direction if shown else None,
         "stress_adjustment_category": spec.category if shown else None,
         "stress_adjustment_note": spec.public_note if shown else None,
@@ -504,7 +517,7 @@ def editor_state(actor, way_id: int, now: datetime | None = None) -> dict:
         raise NotFound("That road is not in the data.")
     live = _live_override([way_id])
     first = next(iter(rows.values()))
-    base = classifier_tier(first)
+    base = classifier_step(first)
     current: dict = {
         "step": current_step(first),
         "words": segment_info.words_for(int(first[TIER_COLUMN]), first.get(HALF_COLUMN) is True),
@@ -701,7 +714,7 @@ def apply(
             lives = {o.osm_way_id: o for o in _live_overrides(way_ids, lock=True)}
             live = lives.get(way_ids[0])
 
-            bases = {k: classifier_tier(r) for k, r in rows.items()}
+            bases = {k: classifier_step(r) for k, r in rows.items()}
             if spec.at_least and any(b is None for b in bases.values()):
                 raise Invalid(
                     "Only raise it is not available here: an earlier override hides the level "
@@ -1063,12 +1076,49 @@ def undo(actor, edit_id: int, *, now: datetime | None = None) -> EditResult:
 # --- Promotions and rollbacks --------------------------------------------------------
 
 
+def replayable_ways(edit: StressEdit) -> set[int]:
+    """The ways of `edit` whose state may be replayed: those whose override row is still the
+    way's live one (approved, not superseded). A change whose row was deleted in the admin,
+    unapproved, or replaced since (a later change, an undo) is not brought back; an undo is
+    replayed where the row it reinstated is live, or where it reinstated none."""
+    ways = [int(w) for w in edit.osm_way_ids]
+    pairs = list(edit.override_rows or []) or [
+        {"way": ways[0] if ways else None, "override": edit.override_id}
+    ]
+    wanted = {int(p["way"]): p.get("override") for p in pairs if p.get("way") is not None}
+    undo = edit.action == StressEdit.Action.UNDO
+    rows = {
+        o.pk: o
+        for o in Override.objects.filter(
+            pk__in=[pk for pk in wanted.values() if pk], kind=Override.Kind.STRESS
+        )
+    }
+    replayable = set()
+    for way in ways:
+        pk = wanted.get(way)
+        if not pk:
+            if undo:
+                replayable.add(way)
+            continue
+        row = rows.get(pk)
+        if (
+            row is not None
+            and row.osm_way_id == way
+            and row.approved
+            and row.superseded_by_id is None
+        ):
+            replayable.add(way)
+    return replayable
+
+
 def reapply_since(since: datetime | None) -> int:
     """Re-apply the edits made after `since` (every edit when None) to the live table.
 
     In order, from each edit's `after`, so a change and a later undo of it both replay and the
-    way ends where it should. Idempotent: a row already in the edit's state is left alone, so
-    running it twice does nothing the second time. Returns the number of rows it changed.
+    way ends where it should. Only the ways whose override row is still live are replayed
+    (`replayable_ways`): an edit whose row was since deleted or replaced is not brought back.
+    Idempotent: a row already in the edit's state is left alone, so running it twice does
+    nothing the second time. Returns the number of rows it changed.
     """
     schema = live_schema()
     oid = live_oid(schema)
@@ -1080,10 +1130,12 @@ def reapply_since(since: datetime | None) -> int:
     with transaction.atomic():
         for edit in edits.order_by("id"):
             _lock_ways([int(w) for w in edit.osm_way_ids])
-            changed = write_rows(schema, edit.after)
+            live = replayable_ways(edit)
+            state = {k: v for k, v in edit.after.items() if int(k.split(":")[0]) in live}
+            changed = write_rows(schema, state) if state else 0
             if changed:
                 total += changed
-                changed_ways.update(int(w) for w in edit.osm_way_ids)
+                changed_ways.update(live)
                 if oid not in edit.reapplied_to and oid != edit.applied_to:
                     StressEdit.objects.filter(pk=edit.pk).update(
                         reapplied_to=[*edit.reapplied_to, oid]

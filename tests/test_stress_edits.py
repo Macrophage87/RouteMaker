@@ -1076,6 +1076,102 @@ class TestAdmin:
         assert f"discord:{admin.discord_user_id}".encode() not in row.content
 
 
+HALF_WAY = 5003
+
+
+def half_spec(tier: int, *, half: bool = False, at_least: bool = False, note=None):
+    return stress_edits.Spec(
+        tier=tier,
+        at_least=at_least,
+        category="other",
+        reason=REASON,
+        public_note=note,
+        display="map",
+        half=half,
+    )
+
+
+def edit_half(schema, admin, change):
+    return stress_edits.apply(admin, [HALF_WAY], change, token(schema, HALF_WAY))
+
+
+def table_with_the_half_way(schema, tier: int, half: bool) -> None:
+    """A rebuilt live table in which HALF_WAY is at `tier` (and a half)."""
+    rebuild_without_the_edit(schema)
+    make_segment(schema, HALF_WAY, tier, lon=LON, lat=LAT + 0.01, stress_half=half)
+
+
+@db
+class TestHalfStepsBeneathAnEdit:
+    def test_only_raise_it_leaves_a_road_above_the_floor_at_its_half_step(self, live) -> None:
+        make_segment(live, HALF_WAY, 2, lon=LON, lat=LAT + 0.01, stress_half=True)
+        result = edit_half(live, make_user(), half_spec(2, at_least=True))
+        row = live_row(live, HALF_WAY)
+        assert (row["stress_tier"], row["stress_half"]) == (2, True)
+        assert result.ways[0]["changed"] is False
+
+    def test_only_raise_it_still_leaves_the_half_step_after_a_swap(self, live) -> None:
+        make_segment(live, HALF_WAY, 2, lon=LON, lat=LAT + 0.01, stress_half=True)
+        read_at = timezone.now() - timedelta(minutes=5)
+        edit_half(live, make_user(), half_spec(2, at_least=True))
+        table_with_the_half_way(live, 2, True)
+        stress_edits.after_promotion(read_at)
+        row = live_row(live, HALF_WAY)
+        assert (row["stress_tier"], row["stress_half"]) == (2, True)
+
+    def test_a_whole_level_below_a_half_step_is_a_lowering_from_that_half_step(self, live) -> None:
+        make_segment(live, HALF_WAY, 2, lon=LON, lat=LAT + 0.01, stress_half=True)
+        edit_half(live, make_user(), half_spec(2, note="Calm in practice"))
+        row = live_row(live, HALF_WAY)
+        assert row["stress_adjustment_direction"] == "down"
+        assert (row["stress_computed_tier"], row["stress_computed_half"]) == (2, True)
+        before = [r for r in segment_info.stress_rows(row) if r["label"].startswith("Before")]
+        assert [r["value"] for r in before] == [segment_info.tier_text(2, True)]
+
+    def test_the_half_step_a_road_already_had_is_no_change_and_no_before_line(self, live) -> None:
+        make_segment(live, HALF_WAY, 1, lon=LON, lat=LAT + 0.01, stress_half=True)
+        edit_half(live, make_user(), half_spec(1, half=True, note="Alley, so 1.5"))
+        row = live_row(live, HALF_WAY)
+        assert row["stress_adjustment_direction"] == "same"
+        assert not [r for r in segment_info.stress_rows(row) if r["label"].startswith("Before")]
+
+
+@db
+class TestReplayOnlyLiveRows:
+    def test_an_edit_whose_override_row_was_deleted_is_not_brought_back(self, live) -> None:
+        done = edit(live, make_user(), 4)
+        Override.objects.filter(pk=done.edit.override_id).delete()
+        rebuild_without_the_edit(live)
+        assert stress_edits.after_rollback() == 0
+        assert live_row(live)["stress_tier"] == 3
+
+    def test_an_edit_whose_override_row_was_unapproved_is_not_brought_back(self, live) -> None:
+        done = edit(live, make_user(), 4)
+        Override.objects.filter(pk=done.edit.override_id).update(approved=False)
+        rebuild_without_the_edit(live)
+        assert stress_edits.reapply_since(None) == 0
+        assert live_row(live)["stress_tier"] == 3
+
+    def test_the_dry_run_says_which_edits_it_skips(self, live) -> None:
+        done = edit(live, make_user(), 4)
+        Override.objects.filter(pk=done.edit.override_id).delete()
+        out = io.StringIO()
+        call_command("reapply_stress_edits", since="all", stdout=out)
+        assert "skipped way(s) [5001]" in out.getvalue()
+
+    def test_an_undo_still_replays_where_it_reinstated_nothing(self, live) -> None:
+        admin = make_user()
+        done = edit(live, admin, 4)
+        stress_edits.undo(admin, done.edit.pk)
+        rebuild_without_the_edit(live)
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"UPDATE {live}.segment SET stress_tier = 4 WHERE osm_way_id = %s", [WAY]
+            )
+        stress_edits.reapply_since(None)
+        assert live_row(live)["stress_tier"] == 3
+
+
 @db
 class TestReapplyCommand:
     def run(self, *args, **options) -> str:
