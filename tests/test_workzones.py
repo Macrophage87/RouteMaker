@@ -150,6 +150,30 @@ class TestThePlan:
         )
         assert not plan.any
 
+    def test_a_plan_that_reaches_further_looks_for_closures_as_far_out(self) -> None:
+        """Audit 2026-11-05: a loop, a climb search or a Reach ring goes well past 5 km from the
+        rider's points; the closures out there are left out of it too."""
+        # 38.9500-38.9530: about 10 km north of a point at 38.86.
+        far = [(-77.0300, 38.8600)]
+        assert not wz.for_plan(zones().values(), AT, far, {"md": "current"}).excluded
+        plan = wz.for_plan(zones().values(), AT, far, {"md": "current"}, reach_m=12_000)
+        assert [z.zone_id for z in plan.excluded] == ["md-wz-closed-bikes"]
+        # Never closer in than the closures' own margin.
+        near = wz.for_plan(zones().values(), AT, NORTH, {"md": "current"}, reach_m=10)
+        assert [z.zone_id for z in near.excluded] == ["md-wz-closed-bikes"]
+
+    def test_how_far_a_way_of_a_given_length_can_go_from_its_points(self) -> None:
+        start = (-77.03, 38.90)
+        # A loop from one point reaches half its length.
+        assert wz.detour_reach_m([start], 30_000) == pytest.approx(15_000)
+        # Between two points 10 km apart, 15 km reaches the ellipse's half-width.
+        east = (-77.03 + 10_000 / (111_195 * math.cos(math.radians(38.90))), 38.90)
+        assert wz.detour_reach_m([start, east], 15_000) == pytest.approx(
+            10_000 * math.sqrt(1.5**2 - 1) / 2, rel=1e-3
+        )
+        # No longer than the straight line: no slack.
+        assert wz.detour_reach_m([start, east], 5_000) == 0.0
+
     def test_on_foot_only_a_closure_said_to_close_the_way_on_foot_is_routed_round(self) -> None:
         """Run, Walk and Walk + transit: a closure to traffic need not close the sidewalk."""
         north = ((-77.0300, 38.9500), (-77.0300, 38.9530))

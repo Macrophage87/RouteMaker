@@ -4118,6 +4118,29 @@ def _unrouted_line(
     }
 
 
+def _walk_closures(plan: transit.Plan, zones, skip: int | None) -> list:
+    """The closures the chosen trip's walks run along (`rules.along`), all but leg `skip` (the
+    answer's own line, checked with its body), in trip order. A closure the trip was to go round
+    that a walk still runs along (walked through where there was no way round, as
+    `transit.RoutingServices` falls back) moves from `excluded` to `unexcluded`, so the summary
+    does not count it as routed round."""
+    if zones is None:
+        return []
+    checked = [*zones.passable, *zones.unexcluded, *zones.bypassed, *zones.uncertain]
+    checked += zones.excluded
+    found = []
+    for index, leg in enumerate(plan.option.legs):
+        if index == skip or leg.mode not in (transit.WALK, transit.TAKE):
+            continue
+        found.extend(work_zones.rules.along(leg.coordinates, checked))
+    walked = {p.zone.zone_id for p in found}
+    through = [z for z in zones.excluded if z.zone_id in walked]
+    if through:
+        zones.excluded = [z for z in zones.excluded if z.zone_id not in walked]
+        zones.unexcluded.extend(through)
+    return found
+
+
 def _walked_line(
     plan: transit.Plan, preset_name: str, dials, services=None
 ) -> tuple[dict, transit.Plan]:
@@ -4182,6 +4205,7 @@ def _run_body(body: RouteIn, started: float | None) -> dict:
     # given, else at the ride-time dial's moment.
     when = body.when or routing.default_when()
     zones_at = at if body.depart_at is not None else work_zones.ride_moment(when)
+    target_m = float(body.target_distance_m) if body.target_distance_m else None
     zones, exclude = work_zones.foot_zones(
         body.points,
         when,
@@ -4189,13 +4213,14 @@ def _run_body(body: RouteIn, started: float | None) -> dict:
         blocked_lines=_blocked(body),
         bypass=body.closure_bypass,
         now_only=body.closures_now,
+        reach_m=run_plan.zones_reach_m(body.points, target_m),
     )
     ask = run_plan.RunAsk(
         pace_kmh=run_plan.pace_of(body.run_pace_kmh),
         hills=0 if body.hills is None else body.hills,
         dark=run_plan.is_dark(at, body.when),
         loop=body.loop,
-        target_m=float(body.target_distance_m) if body.target_distance_m else None,
+        target_m=target_m,
         exclude_polygons=tuple(exclude),
     )
     until = run_plan.deadline_from(started)
@@ -4283,18 +4308,18 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
     own_speed = presets.rider_speed(body.preset, body.cycling_speed_kmh)
     if own_speed is not None:
         candidate_costing["bicycle"]["cycling_speed"] = own_speed
-    # Walk and Walk + transit go round the closures that close the way on foot, and the roads
-    # the rider marked closed, at the trip's departure (`work_zones.foot_zones`).
-    foot_zones, walk_exclude = None, []
-    if body.preset in presets.ON_FOOT_PRESETS:
-        foot_zones, walk_exclude = work_zones.foot_zones(
-            body.points,
-            body.when or routing.default_when(),
-            at=when,
-            blocked_lines=_blocked(body),
-            bypass=body.closure_bypass,
-            now_only=body.closures_now,
-        )
+    # Every trip's walks (Walk's and Walk + transit's, and those to and from the bike or the
+    # docks on Bike + and Bikeshare + transit) go round the closures that close the way on
+    # foot, and the roads the rider marked closed, at the trip's departure
+    # (`work_zones.foot_zones`).
+    foot_zones, walk_exclude = work_zones.foot_zones(
+        body.points,
+        body.when or routing.default_when(),
+        at=when,
+        blocked_lines=_blocked(body),
+        bypass=body.closure_bypass,
+        now_only=body.closures_now,
+    )
     walk_keep = foot_zones.blocked if foot_zones is not None else walk_exclude
     services = transit.RoutingServices(
         candidates_until,
@@ -4428,14 +4453,23 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
         # The later rides routed for their stress colours (`lines`) are drawn as routed; the
         # trip's other walks and rides are routed for the map (transit.drawn).
         lines = lines or {}
+        line_walked = plan.legs[plan.ride].mode in (transit.WALK, transit.TAKE)
         plan = with_later_legs(plan)
         buses = _buses_for(plan, bus_ask)
         plan = transit_live.with_live_buses(plan, buses)
-        block = _transit_block(transit.drawn(plan, draw, skip=lines), schedule, live, buses)
+        plan = transit.drawn(plan, draw, skip=lines)
+        block = _transit_block(plan, schedule, live, buses)
         answer["transit"] = _with_leg_lines(block, lines)
-        if body.preset in presets.ON_FOOT_PRESETS:
+        # The trip's other walks: each closure along one said, and one a walk goes through (no
+        # way round it) no longer counted as routed round.
+        walks = _walk_closures(plan, foot_zones, plan.option.ride if line_walked else None)
+        if body.preset in presets.ON_FOOT_PRESETS or line_walked:
             # The walk's closures, warned of as a ride's are (a ride's line has its own).
             work_zones.with_work_zones(answer, foot_zones)
+        notes = answer["transit"]["notes"]
+        for text in dict.fromkeys(work_zones.rules.heads_up(p.zone) for p in walks):
+            if text not in notes:
+                notes.append(text)
         return answer
 
     if found.option.walk:
@@ -5532,7 +5566,8 @@ class ReachIn(Schema):
     preset: PresetName = Field(
         description=(
             "The ride type whose graph, speed and traffic setting the rings use. Bikeshare rides"
-            " as a plain bike; Walk and Run go on foot; the transit ride types have no rings yet."
+            " the share bike (the classic, or the e-bike with `assist`); Walk and Run go on foot;"
+            " the transit ride types have no rings yet."
         )
     )
     stress: StrictInt | None = Field(
@@ -5658,7 +5693,7 @@ class ReachCalmOut(Schema):
 
 
 class ReachOut(Schema):
-    preset: str = Field(description="The ride type the rings are for (Bikeshare's is default).")
+    preset: str = Field(description="The ride type the rings are for.")
     minutes: list[int]
     direction: str
     combine: str
@@ -5672,6 +5707,13 @@ class ReachOut(Schema):
     )
     unplaced: list[int] = Field(
         description="Points the router could not place on this ride type's map (left out)."
+    )
+    trail_level_applied: bool | None = Field(
+        default=None,
+        description=(
+            "Mountain Bike: false, the rings take trails of every level (a plan keeps to the"
+            " rider's); null on every other ride type."
+        ),
     )
 
 

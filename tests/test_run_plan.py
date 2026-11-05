@@ -740,6 +740,28 @@ class TestClosuresOnARun:
         row = next(r for r in zones["closures"] if r["id"] == "md-unsaid")
         assert "people on foot" in row["effect_text"]
 
+    def test_a_long_loop_from_a_start_alone_goes_round_a_closure_far_from_the_start(
+        self, client, monkeypatch
+    ) -> None:
+        """Audit 2026-11-05: a 30 km loop's corners lie about 8 km out, past the closures' own
+        5 km margin round the start; a trail shut on foot up there is still left out."""
+        # About 11 km north of EAST_A.
+        far = [(-76.965, 39.08), (-76.955, 39.08)]
+        store_zones([closed("md-far", far, True)])
+        asked = run_router(monkeypatch, line(EAST_A, EAST_B))
+        response = post(
+            client,
+            {
+                "points": [list(EAST_A)],
+                "preset": "run",
+                "loop": True,
+                "target_distance_m": 30_000,
+            },
+        )
+        assert response.status_code == 200, response.content
+        rings = next(p for a, p in asked if a == "route").get("exclude_polygons")
+        assert rings == [wz.polygon(closed("md-far", far, True))]
+
     def test_with_no_way_round_a_closure_the_run_goes_through_it_warned(
         self, client, monkeypatch
     ) -> None:

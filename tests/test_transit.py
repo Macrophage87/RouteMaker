@@ -1823,6 +1823,39 @@ def post_transit(client, points, preset=presets.BIKE_TRANSIT, **extra):
     return client.post("/api/route", data=json.dumps(body), content_type="application/json")
 
 
+@pytest.fixture
+def fresh_zones():
+    from core import workzones
+
+    workzones.forget()
+    yield
+    workzones.forget()
+
+
+def store_zones(zones) -> None:
+    from datetime import UTC
+
+    from core import workzones
+    from core.models import BikeshareFeedCache
+
+    BikeshareFeedCache.objects.create(
+        key=workzones.KEY,
+        payload={"feeds": {"md": {"read_at": datetime.now(UTC).isoformat(),
+                                  "zones": [z.to_json() for z in zones]}}},
+        fetched_at=datetime.now(UTC),
+    )  # fmt: skip
+
+
+def shut_on_foot(zone_id, zone_line):
+    from datetime import UTC, timedelta
+
+    from routemaker import workzones as wz
+
+    until = datetime.now(UTC) + timedelta(days=30)
+    return wz.Zone(zone_id, "md", wz.CLOSED, 0, tuple(zone_line), "Side Road", None, None, until,
+                   on_foot=True)  # fmt: skip
+
+
 @db
 @pytest.mark.usefixtures("weekday_clock")
 class TestApi:
@@ -1883,6 +1916,57 @@ class TestApi:
         assert [s["mode"] for s in trip["steps"]] == ["walk", "walk"]
         assert trip["steps"][0]["route_line"] and trip["steps"][0]["to"] == "stop 1"
         assert trip["steps"][1]["coordinates"]
+
+    @pytest.mark.usefixtures("fresh_zones")
+    def test_a_closure_on_a_later_walk_is_said_and_not_counted_as_routed_round(
+        self, client, segments, router, installed
+    ) -> None:
+        """Audit 2026-11-05: only the answer's own line (the first walk) was checked; the walk
+        on from the stop goes through a closure (the walks here are straight lines, as a walk
+        with no way round falls back to), and the trip says so."""
+        from routemaker import workzones as wz
+
+        # On the walk from MALL up to DOWNTOWN, clear of both ends.
+        on_second = [(-77.0300, 38.8895), (-77.0300, 38.8935)]
+        store_zones([shut_on_foot("md-second", on_second)])
+        router(standard_router())
+        response = post_transit(client, [CAPITOL_HILL, MALL, DOWNTOWN], presets.WALK)
+        assert response.status_code == 200, response.content
+        body = response.json()
+        assert [s["mode"] for s in body["transit"]["steps"]] == ["walk", "walk"]
+        assert body["work_zones"]["routed_round"] == 0
+        said = wz.heads_up(shut_on_foot("md-second", on_second))
+        assert said in body["transit"]["notes"]
+        row = next(r for r in body["work_zones"]["closures"] if r["id"] == "md-second")
+        assert row["effect"] != wz.ROUTED_ROUND
+
+    @pytest.mark.parametrize("preset", [presets.BIKE_TRANSIT, presets.BIKESHARE_TRANSIT])
+    @pytest.mark.usefixtures("fresh_zones")
+    def test_the_walks_of_a_bike_and_transit_trip_go_round_closures_shut_on_foot(
+        self, client, segments, router, installed, monkeypatch, preset
+    ) -> None:
+        """Incomplete #967 (audit 2026-11-05): the walks to and from the bike or the docks were
+        walked through a closed sidewalk and the roads the rider marked closed."""
+        from routemaker import workzones as wz
+
+        shut = [(-77.0100, 38.8900), (-77.0100, 38.8930)]
+        marked = [[-77.02, 38.89], [-77.02, 38.892]]
+        store_zones([shut_on_foot("md-shut", shut)])
+        seen = []
+
+        def services(until, leg_preset, **options):
+            seen.append(options)
+            return Straight()
+
+        monkeypatch.setattr(transit, "RoutingServices", services)
+        monkeypatch.setattr(gbfs.client, "snapshot", lambda: SHARE)
+        router(standard_router())
+        response = post_transit(client, [CAPITOL_HILL, DOWNTOWN], preset, blocked_lines=[marked])
+        assert response.status_code == 200, response.content
+        ring, blocked = wz.polygon(shut_on_foot("md-shut", shut)), wz.line_ring(marked)
+        for options in seen:
+            assert options["walk_exclude"] == [ring, blocked]
+            assert options["walk_keep"] == [blocked]
 
     def test_a_trip_asked_for_that_is_no_longer_running_is_said_gone(
         self, client, segments, router, installed

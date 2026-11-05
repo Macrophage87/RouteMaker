@@ -8,16 +8,21 @@ should be sharable too". The plan is the doc "Visualization toolkit plan" (phase
 Each ring is Valhalla's own isochrone (`/isochrone`, polygons) on the graph and with the costing
 the ride type's route would use (`stoporder.ride_graph`): the same variant, stress dial
 (`use_roads`), hills, speed, assist and trails-off switch as a plan, and the same closures left
-out (`stoporder.ride_exclusions`). The time is the riding time along the least-cost way, so a low
-traffic tolerance shrinks the rings to where the calm ways reach in that time. It is the router's
-preference, not a hard cap: a ring at Low-stress still crosses a busy road where the router would.
-Above Low-stress (`presets.STRESS_TODAYS_TOP`) the plan's calm detour search takes over, which an
-isochrone cannot run; there the rings are Low-stress's (`use_roads` 0), and the answer says so
-(`stress_used`).
+out (`stoporder.ride_exclusions`), looked up as far out as the largest ring can reach
+(`zones_reach_m`), not only near the points. The time is the riding time along the least-cost
+way, so a low traffic tolerance shrinks the rings to where the calm ways reach in that time. It
+is the router's preference, not a hard cap: a ring at Low-stress still crosses a busy road
+where the router would. Above Low-stress (`presets.STRESS_TODAYS_TOP`) the plan's calm detour
+search takes over, which an isochrone cannot run; there the rings are Low-stress's (`use_roads`
+0), and the answer says so (`stress_used`).
 
 Walk and Run go on foot (Valhalla's pedestrian costing on the standard graph, at a walk or the
-runner's pace). The transit ride types are not here yet (phase 2): Bikeshare rides as a plain
-bike, as the nearest-place search does.
+runner's pace, a run with its plan's own settings, `run_plan.costing_options`), round the
+closures that close the way on foot and the roads marked closed, as their plans go
+(`workzones.foot_zones`). Bikeshare rides the share bike, as its plan does: the classic's pace,
+stress and hills, or with `assist` the e-bike's on the e-bike graph. Mountain Bike's trail
+level is held by its plan after the router answers (`core.mtb`), which an isochrone cannot do:
+the answer says so (`trail_level_applied`). The transit ride types are not here yet (phase 2).
 
 Several points (up to MAX_POINTS) combine one of three ways: `any` (anywhere within the time of
 at least one point: the union), `all` (anywhere within the time of every point: the overlap) and
@@ -39,7 +44,8 @@ from pathlib import Path
 
 from django.contrib.gis.geos import GEOSGeometry, Point
 
-from . import presets, routing, run_plan, stoporder
+from . import mtb, presets, routing, run_plan, stoporder
+from . import workzones as work_zones
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +89,9 @@ FOOD_PATH = Path(__file__).resolve().parents[2] / "frontend/src/amenity-data/foo
 SIGHTS_PATH = Path(__file__).resolve().parents[2] / "frontend/src/amenity-data/places.json"
 
 ON_FOOT = frozenset({presets.WALK, presets.RUN})
+# How much further than its pace on the flat a ring may reach (a long descent is ridden faster):
+# the closures are looked up this much past minutes x speed (`zones_reach_m`).
+REACH_SLACK = 1.25
 NOT_YET = frozenset({presets.BIKE_TRANSIT, presets.BIKESHARE_TRANSIT, presets.WALK_TRANSIT})
 
 
@@ -218,19 +227,51 @@ def _ride(
     preset_name: str, dials: routing.Dials, run_pace_kmh: float | None
 ) -> tuple[str, str, dict]:
     """(variant, costing, costing_options) for a ride type's rings."""
-    if preset_name in ON_FOOT:
-        speed = (
-            run_plan.pace_of(run_pace_kmh)
-            if preset_name == presets.RUN
-            else routing.WALK_IN_SPEED_KMH
+    if preset_name == presets.RUN:
+        # The run's own settings (hills, tracks, living streets, lit ways after dark), as
+        # `run_plan` asks for its legs.
+        when = dials.when or routing.default_when()
+        ask = run_plan.RunAsk(
+            pace_kmh=run_plan.pace_of(run_pace_kmh),
+            hills=0 if dials.hills is None else dials.hills,
+            dark=run_plan.is_dark(work_zones.ride_moment(when), when),
         )
+        return routing.Variant.STANDARD.value, "pedestrian", run_plan.costing_options(ask)
+    if preset_name in ON_FOOT:
         return (
             routing.Variant.STANDARD.value,
             "pedestrian",
-            {"pedestrian": {"walking_speed": speed}},
+            {"pedestrian": {"walking_speed": routing.WALK_IN_SPEED_KMH}},
         )
     variant, costing = stoporder.ride_graph(preset_name, dials)
     return variant, "bicycle", costing
+
+
+def share_bike_dials(dials: routing.Dials) -> routing.Dials:
+    """A Bikeshare ride's dials as its plan sets them (`api._bikeshare_body`): the share bike's
+    own hills start and assist, the e-bike where `assist` is asked, else the classic."""
+    bike = presets.BIKE_EBIKE if dials.assist else presets.BIKE_CLASSIC
+    profile = presets.BIKESHARE_BIKES[bike]
+    return replace(
+        dials,
+        hills=profile.hills if dials.hills is None else dials.hills,
+        assist=profile.assist,
+        cycling_speed_kmh=None,
+    )
+
+
+def zones_reach_m(options: dict, minutes: list[int]) -> float:
+    """How far the largest ring can reach from its point (minutes x the pace on the flat, with
+    `REACH_SLACK`): how far out the closures are looked up (audit 2026-11-05)."""
+    block = options.get("pedestrian") or options.get("bicycle") or {}
+    if "walking_speed" in block:
+        kmh = float(block["walking_speed"])
+    else:
+        kmh = float(
+            block.get("cycling_speed")
+            or presets.VALHALLA_DEFAULT_SPEED_KMH[block.get("bicycle_type", "Hybrid")]
+        )
+    return max(minutes) / 60.0 * kmh * 1000.0 * REACH_SLACK
 
 
 def _rings_from(answer: dict, minutes: list[int]) -> list[GEOSGeometry]:
@@ -345,8 +386,7 @@ def reach(
     if preset_name in NOT_YET:
         raise ValueError(f"{preset_name} has no reach yet")
     if preset_name == presets.BIKESHARE:
-        # Its ride between docks, as the nearest-place search rides it.
-        preset_name = "default"
+        dials = share_bike_dials(dials)
     minutes = sorted(set(minutes))
     if started is None:
         started = routing.clock()
@@ -355,9 +395,22 @@ def reach(
     )
     moved, _ = routing.move_zoo_points(points)
     reverse = direction == TO
-    exclude = [] if preset_name in ON_FOOT else stoporder.ride_exclusions(moved, dials)
     used = stress_of(preset_name, dials)
     own = dials if used is None or used == dials.stress else _with_stress(dials, used)
+    reach_m = zones_reach_m(_ride(preset_name, own, run_pace_kmh)[2], minutes)
+    if preset_name in ON_FOOT:
+        # The closures that close the way on foot and the roads marked closed, as a Walk or a
+        # Run plan leaves out (`workzones.foot_zones`).
+        _zones, exclude = work_zones.foot_zones(
+            moved,
+            dials.when or routing.default_when(),
+            blocked_lines=dials.blocked,
+            bypass=dials.closure_bypass,
+            now_only=dials.closures_now,
+            reach_m=reach_m,
+        )
+    else:
+        exclude = stoporder.ride_exclusions(moved, dials, reach_m)
 
     def layer(layer_dials: routing.Dials) -> tuple[list[dict], list[int]]:
         variant, costing, options = _ride(preset_name, layer_dials, run_pace_kmh)
@@ -399,6 +452,8 @@ def reach(
         # Whether Calm streets can show anything here (the page hides it if not).
         "calm_offered": calm_offered(preset_name, dials),
         "unplaced": unplaced,
+        # Mountain Bike's trail level is held by its plan, not by the rings (`core.mtb`).
+        "trail_level_applied": False if preset_name == mtb.PRESET else None,
     }
 
 
