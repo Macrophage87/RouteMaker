@@ -49,6 +49,29 @@ test("Google Maps links: the place's own point first, then the query, then the v
   near(pointOf(`https://consent.google.com/m?continue=${encodeURIComponent("https://www.google.com/maps/@38.8892686,-77.050176,15z")}`)?.point, LINCOLN);
 });
 
+test("a Google directions link to a named place opens that place, never the directions' start", () => {
+  assert.deepEqual(parseShared("https://www.google.com/maps/dir/38.9,-77.0/Union+Station/@38.89,-77.01,13z/data=!3m1!4b1"), {
+    kind: "query",
+    text: "Union Station",
+  });
+  assert.deepEqual(parseShared("https://www.google.com/maps/dir//Union+Station,+Washington,+DC/@38.89,-77.01,13z"), {
+    kind: "query",
+    text: "Union Station, Washington, DC",
+  });
+  // Google's own directions links with the destination as a parameter.
+  assert.deepEqual(parseShared("https://www.google.com/maps/dir/?api=1&destination=Union+Station"), { kind: "query", text: "Union Station" });
+  assert.deepEqual(parseShared("https://maps.google.com/maps?saddr=38.9,-77.0&daddr=Union+Station"), { kind: "query", text: "Union Station" });
+  assert.deepEqual(parseShared("https://www.google.com/maps/dir/?api=1&origin=38.9,-77.0&destination=Union+Station&travelmode=bicycling"), {
+    kind: "query",
+    text: "Union Station",
+  });
+});
+
+test("a Google search link searches for its words, not the view's centre", () => {
+  assert.deepEqual(parseShared("https://www.google.com/maps/search/Union+Station/@38.8973,-77.0063,15z"), { kind: "query", text: "Union Station" });
+  near(pointOf("https://www.google.com/maps/search/38.8892686,+-77.050176/@38.8,-77.1,13z")?.point, LINCOLN);
+});
+
 test("Apple Maps and Waze links", () => {
   const apple = pointOf("https://maps.apple.com/?ll=38.8892686,-77.050176&q=Lincoln%20Memorial");
   near(apple?.point, LINCOLN);
@@ -175,4 +198,17 @@ test("a plus code read through readShared becomes a place with no request", asyn
   assert.ok("place" in read);
   assert.equal(read.place.name, "87C4VXQX+P3");
   assert.equal(read.place.kind, "pluscode");
+});
+
+test("a shared place with no map point is said in the page's language", async () => {
+  const { loadLanguage, setLanguageForTest } = await import("./i18n.ts");
+  const { sharedQuerySaid } = await import("../app/sharedLaunch.ts");
+  assert.equal(sharedQuerySaid("Union Station"), "The shared place has no map point. Type “Union Station” in Where to? to find it.");
+  await loadLanguage("es");
+  setLanguageForTest("es");
+  try {
+    assert.equal(sharedQuerySaid("Union Station"), "El lugar compartido no tiene un punto en el mapa. Escriba “Union Station” en ¿Adónde? para encontrarlo.");
+  } finally {
+    setLanguageForTest("en");
+  }
 });

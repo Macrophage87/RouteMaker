@@ -126,6 +126,8 @@ API_IMAGE="ghcr.io/macrophage87/routemaker-api"
 #                                     core.signed_out_suggestions), kept 24 hours: never shipped.
 #   shared_route                      routes riders shared with the Share button (v0.7.0;
 #                                     core.shared_routes): a rider's own lines, never shipped.
+#   shared_route_gone                 ids of shared links whose route has gone, with the time (v0.21.0;
+#                                     core.shared_routes): home's own link ids, never shipped.
 #   saved_route_version               earlier versions of a rider's saved routes (v0.7.0): never shipped.
 #   reviewed_closure                  closures home's reviewers confirmed (v0.7.0; core.reviewed_closures):
 #                                     the reviewer's account and a rider's reported words, never shipped.
@@ -159,7 +161,7 @@ EXCLUDED_TABLE_DATA=(
 	django_admin_log scheduled_run stress_tile_cache bikeshare_feed_cache
 	app_user audit_log bootstrap_claim pending_instance_admin_removal ban_tombstone
 	configured_guild role_mapping stress_suggestion mass_hazard junction_suggestion stress_edit
-	my_go account_settings saved_route saved_route_version signed_out_send shared_route reviewed_closure
+	my_go account_settings saved_route saved_route_version signed_out_send shared_route shared_route_gone reviewed_closure
 	review_item review_ruling review_queue_state
 	stress_suggestion_review assistant_key connector_client connector_grant connector_draft
 	report311_log garmin_link wahoo_link route_post route_post_section route_post_photo

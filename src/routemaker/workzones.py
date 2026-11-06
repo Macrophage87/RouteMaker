@@ -134,7 +134,10 @@ THIN_M = HALF_WIDTH_M / 2
 # A closure within this distance of a point the rider placed is not excluded (the
 # router could not start or stop there); it is warned of instead.
 NEAR_POINT_M = 50.0
-# How far beyond the box of the rider's points a closure may lie and still matter.
+# How far beyond the box of the rider's points a closure may lie and still matter, at least:
+# a plan that can go further from them (a loop sized to a target, a climb search, Reach's
+# rings) widens it to its own reach (`for_plan`'s `reach_m`, `detour_reach_m`). The closures
+# still fit the router's polygon budget nearest first (`fit_polygons`).
 BOX_MARGIN_M = 5_000.0
 
 # Lines a feed gives as only their ends (Maryland's MultiPoint: WZDx's start and end points)
@@ -935,11 +938,25 @@ class PlanZones:
         return sum(p.zone.penalty_s for p in passages)
 
 
-def _box(points: Sequence[Sequence[float]]) -> tuple[float, float, float, float]:
+def detour_reach_m(points: Sequence[Sequence[float]], allowed_m: float) -> float:
+    """How far from the straight lines through `points`, in order, a way through them of at
+    most `allowed_m` in all can go: on the longest leg (`d`), with all the slack (`e`, what
+    `allowed_m` leaves over the straight lines) spent there, the ellipse's half-width,
+    sqrt(e * (2d + e)) / 2. A loop from one point reaches half its length."""
+    lat0 = points[0][1]
+    xy = [_xy(p[0], p[1], lat0) for p in points]
+    legs = [math.dist(a, b) for a, b in zip(xy, xy[1:], strict=False)] or [0.0]
+    slack = max(float(allowed_m) - sum(legs), 0.0)
+    return math.sqrt(slack * (2.0 * max(legs) + slack)) / 2.0
+
+
+def _box(
+    points: Sequence[Sequence[float]], margin_m: float = BOX_MARGIN_M
+) -> tuple[float, float, float, float]:
     lons = [p[0] for p in points]
     lats = [p[1] for p in points]
     lat0 = sum(lats) / len(lats)
-    dlat = BOX_MARGIN_M / (math.pi / 180 * _EARTH_M)
+    dlat = margin_m / (math.pi / 180 * _EARTH_M)
     dlon = dlat / max(math.cos(math.radians(lat0)), 0.01)
     return min(lons) - dlon, min(lats) - dlat, max(lons) + dlon, max(lats) + dlat
 
@@ -1029,8 +1046,13 @@ def for_plan(
     reserve: tuple[float, int] = (0.0, 0),
     now_only: bool = False,
     on_foot: bool = False,
+    reach_m: float = 0.0,
 ) -> PlanZones:
     """What a plan through `points` (lon, lat) at ride time `at` does with the zones.
+
+    The zones looked at lie within `BOX_MARGIN_M` of the box round `points`, or within
+    `reach_m` where the plan can go further from them than that (a loop sized to a target,
+    a climb search, Reach's rings: audit 2026-11-05).
 
     `on_foot` (Run, Walk, Walk + transit): a closure is routed round only where its source
     says it closes the way on foot too (`Zone.on_foot` True). One whose source does not say
@@ -1050,7 +1072,7 @@ def for_plan(
     if not points:
         return plan
     bypassed = set(bypass)
-    box = _box(points)
+    box = _box(points, max(BOX_MARGIN_M, float(reach_m)))
     closures = []
     for zone in zones:
         if not active(zone, at) or not _in_box(zone, box):
