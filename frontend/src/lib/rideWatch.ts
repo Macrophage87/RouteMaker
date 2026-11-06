@@ -19,6 +19,30 @@ export const WATCH_OPTIONS = { enableHighAccuracy: true, maximumAge: 2_000, time
  */
 export const READING_OPTIONS = { enableHighAccuracy: true, maximumAge: 25_000, timeout: 20_000 } as const;
 
+/**
+ * On a train or bus leg (lib/onBoard.ts): the stops follow any fix up to ROUGH_FIX_M (a Wi-Fi fix underground) or
+ * the timetable, and there are no turn cues, so the GNSS radio need not search all the ride: no high accuracy, a
+ * reading up to 10 s old (each stamped with its own time, so an old one is never taken as new), 30 s to answer
+ * (2026-11-05 review, performance). WATCH_OPTIONS again for the walk or ride
+ * after.
+ */
+export const ON_BOARD_WATCH_OPTIONS = { enableHighAccuracy: false, maximumAge: 10_000, timeout: 30_000 } as const;
+
+/** The ride's watch options: ON_BOARD_WATCH_OPTIONS on a train or bus, WATCH_OPTIONS otherwise. */
+export function rideWatchOptions(onBoard: boolean): WatchOptions {
+  return onBoard ? ON_BOARD_WATCH_OPTIONS : WATCH_OPTIONS;
+}
+
+/**
+ * Swap a running watch for a new one: the new watch starts first and only then is the old one stopped, so no fix is
+ * lost at the hand-off (for a moment both deliver). Answers the new watch's stop function.
+ */
+export function handOver(stopOld: (() => void) | null, startNew: () => () => void): () => void {
+  const stopNew = startNew();
+  stopOld?.();
+  return stopNew;
+}
+
 export interface WatchOptions {
   enableHighAccuracy: boolean;
   maximumAge: number;
@@ -60,6 +84,15 @@ function finite(value: number | null | undefined): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
+/** How far back a position's own time is believed; outside it (a clock in another epoch, a time ahead), the time now. */
+export const FIX_TIME_BACK_MS = 120_000;
+
+/** A fix's time: the position's own when plausible (a cached reading is as old as it is), else `nowMs`. */
+export function fixTime(timestamp: number | null | undefined, nowMs: number): number {
+  const at = finite(timestamp);
+  return at !== null && at <= nowMs && nowMs - at <= FIX_TIME_BACK_MS ? at : nowMs;
+}
+
 /**
  * Watch the position: each usable fix to `onFix`; a failure to `onFail` (a timeout is not the end of
  * the watch, a refusal is, and the caller stops it). Answers the stop function.
@@ -89,7 +122,7 @@ export function watchRide(
         accuracyM: cleanAccuracy(position.coords.accuracy),
         speedMs: speed !== null && speed >= 0 ? speed : null,
         headingDeg: heading !== null && speed !== null && speed > 0.5 ? heading : null,
-        at: now(),
+        at: fixTime(position.timestamp, now()),
       });
     },
     (error) => {

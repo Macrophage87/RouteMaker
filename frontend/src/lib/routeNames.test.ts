@@ -75,7 +75,9 @@ test("the layer is in the street names' face, size and halo; the ride's size is 
 });
 
 test("in a ride the route's names go up with the street names, on top of them", () => {
-  assert.equal(RIDE_LABEL_LAYERS.at(-1), ROUTE_NAME_LAYER_ID);
+  // Over every street name; only the route's mile markers (lib/routeMiles.ts) go above it.
+  const at = RIDE_LABEL_LAYERS.indexOf(ROUTE_NAME_LAYER_ID);
+  assert.ok(RIDE_LABEL_LAYERS.slice(0, at).length === 3 && RIDE_LABEL_LAYERS.slice(at + 1).every((id) => id.startsWith("route-mile-")));
 });
 
 test("MapView draws the names over the route line, under its hazard marks, and refreshes them with the route", () => {

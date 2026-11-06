@@ -168,12 +168,16 @@ test("Go's ride types: the rider's own (My Go, Default until set), then Own Bike
   // The rider's own is a transit type: no chip twice, and Default fills the third place.
   assert.deepEqual(goRideChips("bike-transit"), ["bike-transit", "bikeshare-transit", "default"]);
   assert.deepEqual(goRideChips("bikeshare-transit"), ["bikeshare-transit", "bike-transit", "default"]);
-  // P3: the ride type in use first, always (Mass Ride picked from the Ride sheet showed no chip), then the rider's
-  // own, the starred ones, and the fixed ones; each once.
+  // P3: the ride type in use first when the row lacks it (Mass Ride picked from the Ride sheet showed no chip), then
+  // the rider's own, the starred ones, and the fixed ones; each once.
   assert.deepEqual(goRideChips(null, "mass-ride"), ["mass-ride", "default", "bike-transit", "bikeshare-transit"]);
   assert.deepEqual(goRideChips(null, "default"), ["default", "bike-transit", "bikeshare-transit"]);
-  assert.deepEqual(goRideChips("cargo", "bike-transit", ["gravel", "cargo"]), ["bike-transit", "cargo", "gravel", "bikeshare-transit"]);
-  assert.deepEqual(goRideChips(null, "gravel", ["gravel", "novice"]), ["gravel", "default", "novice", "bike-transit", "bikeshare-transit"]);
+  assert.deepEqual(goRideChips("cargo", "trailmaxxing", ["gravel", "cargo"]), ["trailmaxxing", "cargo", "gravel", "bike-transit", "bikeshare-transit"]);
+  // A chip already in the row keeps its place when tapped (2026-11-05 review: the chip tapped jumped to the front).
+  assert.deepEqual(goRideChips(null, "bike-transit"), ["default", "bike-transit", "bikeshare-transit"]);
+  assert.deepEqual(goRideChips(null, "bikeshare-transit"), ["default", "bike-transit", "bikeshare-transit"]);
+  assert.deepEqual(goRideChips("cargo", "bike-transit", ["gravel", "cargo"]), ["cargo", "gravel", "bike-transit", "bikeshare-transit"]);
+  assert.deepEqual(goRideChips(null, "gravel", ["gravel", "novice"]), ["default", "gravel", "novice", "bike-transit", "bikeshare-transit"]);
   // App: the chips from the ride in use, My Go's ride (described as the rider's own) and the favorites; Ride type &
   // settings opens the Ride sheet with every type; the chip in use says when its sliders were moved.
   assert.match(
@@ -206,7 +210,7 @@ test("Go's places are Home, Eat, Water and Restroom (Work only in Favorites); Ho
   assert.match(appFile, /homeReady: myGo\.home !== null,/);
   // Without a Home, the chip opens Go's Home sheet in place (was: My Go in Settings); with one, it rides there.
   assert.match(go, /onClick=\{\(event\) => \(places\.homeReady \? places\.onHome\(event\.currentTarget\) : setHomeOpen\(!homeOpen\)\)\}/);
-  assert.match(appFile, /if \(!home\) return;[\s\S]*?void goTo\(home\.point, home\.label \|\| "Home"\);/);
+  assert.match(appFile, /if \(!home\) return;[\s\S]*?void goTo\(home\.point, home\.label \|\| t\("Home"\)\);/);
   // Water and Restroom search from the rider's location, in their own sheet.
   assert.match(appFile, /onWater: \(chip\) => openNearest\("water", chip\),/);
   assert.match(appFile, /onRestroom: \(chip\) => openNearest\("restroom", chip\),/);

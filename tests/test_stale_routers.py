@@ -7,9 +7,12 @@ fake rows and a fake `/status`, so no database or router is needed.
 
 from __future__ import annotations
 
+import http.client
 import os
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
+
+import pytest
 
 from core.management.commands.check_operations import ROUTER_RESTART_GRACE, stale_routers
 
@@ -63,3 +66,19 @@ def test_tiles_this_container_cannot_see_are_skipped(tmp_path) -> None:
     asked = []
     lines = stale_routers([row("weekend")], tmp_path, NOW, status=asked.append)
     assert lines == [] and asked == [], "it asked a router it had nothing to compare with"
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [http.client.IncompleteRead(b'{"tileset_last'), http.client.BadStatusLine("garbled")],
+)
+def test_a_router_whose_status_answer_breaks_off_is_left_to_the_other_checks(
+    monkeypatch, failure
+) -> None:
+    from core.management.commands import check_operations
+
+    def urlopen(*_args, **_kwargs):
+        raise failure
+
+    monkeypatch.setattr(check_operations.urllib.request, "urlopen", urlopen)
+    assert check_operations.router_tileset_modified("http://router:8002") is None

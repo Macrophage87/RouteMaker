@@ -4,8 +4,11 @@
  * stops still ahead, the next one marked, the last one "get off". Plain text that changes in place; the next stop
  * and the stop to get off are said through the ride's outputs, never by this card.
  */
-import { useEffect, useState } from "react";
-import { boardingGroups, laterDepartureText, lineBadge, liveForBoarding, liveNextText, type LiveTrain, nextDepartureText, onBoardRows, stopsLeftText, type OnBoardLeg, type OnBoardState } from "./lib/onBoard.ts";
+import { Fragment, useEffect, useState } from "react";
+import { boardingGroups, laterDepartureText, lineBadge, liveForBoarding, liveNextText, moreStopsText, type LiveTrain, nextDepartureText, onBoardCardRows, onBoardSecondsLeft, onBoardSecondsTo, stopsLeftText, type OnBoardLeg, type OnBoardState } from "./lib/onBoard.ts";
+import { arrivalClock } from "./lib/arrival.ts";
+import { formatDuration } from "./lib/format.ts";
+import { formatDurationSpoken } from "./lib/spokenFigures.ts";
 import { t } from "./lib/i18n.ts";
 import { requestStationTimes, TIMES_TTL_MS } from "./lib/stationTimes.ts";
 
@@ -13,22 +16,65 @@ export function OnBoardCard({ leg, state }: { leg: OnBoardLeg; state: OnBoardSta
   const off = leg.stops[leg.stops.length - 1].name;
   // The way, unless it is the stop to get off at ("toward Shady Grove" then "Get off at Shady Grove" says it twice).
   const way = leg.toward && leg.toward !== off ? t("{line} toward {place}", { line: leg.line, place: leg.toward }) : leg.line;
-  const rows = onBoardRows(leg, state).filter((row, i) => i >= state.at || row.off);
+  // The next few stops and the stop to get off, each with its place in the leg, for its time (compact at 320 px).
+  const { rows, hidden } = onBoardCardRows(leg, state);
+  // The time left kept current between stops (the timetable's run, lib/onBoard.ts onBoardSecondsLeft).
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 15_000);
+    return () => window.clearInterval(timer);
+  }, []);
+  const left = onBoardSecondsLeft(leg, state, now);
   return (
     <div className="onboard">
       <p className="cue-then onboard-way">{way}</p>
       <p className="cue-text">{t("Get off at {name}", { name: off })}</p>
-      <p className="cue-then">{stopsLeftText(leg, state)}</p>
+      {/* "3 stops left · 12 min" (Stephen, 2026-11-04: "When on transit, put the approximate time left to arrival"),
+          heard as "3 stops left, about 12 minutes". The arrival clock is the stop to get off's row's, not repeated here
+          unlabelled beside "Trip ends about" (the UI review, 2026-11-05). */}
+      <p className="cue-then onboard-left">
+        {stopsLeftText(leg, state)}
+        {left !== null && (
+          <>
+            <span aria-hidden="true"> · {formatDuration(left)}</span>
+            <span className="visually-hidden">, {t("about")} {formatDurationSpoken(left)}</span>
+          </>
+        )}
+      </p>
+      {/* The whole trip's end, from the plan's times after the stop (the walk, the ride after the train). */}
+      {left !== null && leg.afterS != null && leg.afterS > 0 && <p className="cue-then onboard-trip-end">{t("Trip ends about {time}", { time: arrivalClock(now, left + leg.afterS) })}</p>}
       <ol className="onboard-stops" aria-label={t("Stops ahead")}>
         {rows.map((row, i) => (
-          <li key={`${i}-${row.name}`} className={row.next ? "onboard-next" : row.off ? "onboard-off" : undefined}>
-            <span>{row.name}</span>
-            {row.next && !row.off && <span className="onboard-mark"> · {t("next")}</span>}
-            {row.off && <span className="onboard-mark"> · {row.next ? t("next, get off") : t("get off")}</span>}
-          </li>
+          <Fragment key={`${i}-${row.name}`}>
+            {row.off && hidden > 0 && (
+              <li className="onboard-more">
+                <span aria-hidden="true">…</span>
+                <span className="visually-hidden">{moreStopsText(hidden)}</span>
+              </li>
+            )}
+            <li className={row.next ? "onboard-next" : row.off ? "onboard-off" : undefined}>
+              <span className="onboard-name">
+                {row.name}
+                {row.next && !row.off && <span className="onboard-mark"> · {t("next")}</span>}
+                {row.off && <span className="onboard-mark"> · {row.next ? t("next, get off") : t("get off")}</span>}
+              </span>
+              {/* Each stop ahead's clock time (Stephen, 2026-11-04: "the etas for each intermediate station"). */}
+              {left !== null && row.index > state.at && <StopClock seconds={onBoardSecondsTo(leg, state, now, row.index) ?? 0} nowMs={now} />}
+            </li>
+          </Fragment>
         ))}
       </ol>
     </div>
+  );
+}
+
+/** A stop's clock time at the row's end: "5:31 PM", heard as "arriving about 5:31 PM". */
+function StopClock({ seconds, nowMs }: { seconds: number; nowMs: number }) {
+  return (
+    <span className="onboard-eta">
+      <span className="visually-hidden">{t(", arriving about")} </span>
+      {arrivalClock(nowMs, seconds)}
+    </span>
   );
 }
 
@@ -68,12 +114,19 @@ export function BoardingCard({
       void requestStationTimes(at).then((times) => {
         if (!gone && times?.live) setLive({ trains: times.live.trains, asOf: times.live.as_of });
       });
-    read();
+    // Not while the page is hidden (a phone in a pocket on the platform): nothing reads the answers till it shows.
+    const shown = () => typeof document === "undefined" || document.visibilityState !== "hidden";
+    const readShown = () => {
+      if (shown()) read();
+    };
+    readShown();
     // Just past the cache's life, so each read is a new one.
-    const timer = window.setInterval(read, TIMES_TTL_MS + 1_000);
+    const timer = window.setInterval(readShown, TIMES_TTL_MS + 1_000);
+    document.addEventListener("visibilitychange", readShown);
     return () => {
       gone = true;
       window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", readShown);
     };
   }, [leg.bus, at?.[0], at?.[1]]); // eslint-disable-line react-hooks/exhaustive-deps -- the station's place
   const groups = boardingGroups(leg.trains?.length ? leg.trains : [{ line: leg.line, toward: leg.toward }], off);
