@@ -55,7 +55,8 @@
 #            snapshot is taken first; the dump is restored into a fresh database in one
 #            transaction and swapped in by rename, and the current database is kept beside it
 #            as <db>_before_<utc> (yyyymmddHHMMSS); the release agent (auto-release.sh) drops it
-#            once it is 6.5 days old (not while paused or BROKEN), or the owner sooner. Stop the api and worker before it.
+#            once it is 6.5 days old (while paused or BROKEN, every one but the newest), or the owner
+#            sooner. Stop the api and worker before it.
 #
 # Options:
 #   --bundle DIR             the directory ship-data.sh sent to (verify, files, db)
@@ -530,7 +531,7 @@ if [ "$command_name" = restore-dump ]; then
 	done
 	psql_on postgres -1 -c "alter database \"$pgdatabase\" rename to \"$kept\"" -c "alter database \"$fresh\" rename to \"$pgdatabase\"" >/dev/null ||
 		die "the swap failed (above) and was rolled back: $pgdatabase is unchanged, and the restored copy is $fresh"
-	note "restored. The database as it was is kept as $kept; the release agent drops it after 6.5 days unless it is paused or BROKEN (scripts/beta/auto-release.sh), or drop it sooner once the beta works: scripts/beta/beta-compose.sh exec -T postgis dropdb -U $pguser $kept"
+	note "restored. The database as it was is kept as $kept; the release agent drops it after 6.5 days (while it is paused or BROKEN, only once a newer one is kept; scripts/beta/auto-release.sh), or drop it sooner once the beta works: scripts/beta/beta-compose.sh exec -T postgis dropdb -U $pguser $kept"
 	note "Start the stack on the release this dump belongs to: scripts/beta/beta-compose.sh up -d api worker"
 	exit 0
 fi
