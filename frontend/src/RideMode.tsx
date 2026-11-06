@@ -75,6 +75,7 @@ import {
   type RestartStop,
 } from "./lib/rideStops.ts";
 import { RestartStopsDialog } from "./RestartStopsDialog.tsx";
+import { StartFirstDialog } from "./StartFirstDialog.tsx";
 import { keepLeftRide, keepLeftRidePast } from "./lib/rideResume.ts";
 import type { Dials } from "./lib/dials.ts";
 import { haversineM, type LonLat } from "./lib/geo.ts";
@@ -130,6 +131,8 @@ import {
   secondsBetween,
   startState,
   startsAway,
+  START_ASK_HEADING,
+  START_ASK_LEAD,
   START_FIRST_SAID,
   stopsAhead,
   toGo,
@@ -273,7 +276,7 @@ import { lowPowerOnBoard, onBoardPath, type OnBoardPath } from "./lib/onBoard.ts
 import { BOARDING_MS, TRIP_CHECK_MS } from "./lib/tripCheck.ts";
 import { walkModel, walkTurnLine } from "./lib/walkCues.ts";
 import { BoardingCard, OnBoardCard } from "./OnBoardCard.tsx";
-import { t } from "./lib/i18n.ts";
+import { fullStop, t } from "./lib/i18n.ts";
 import { railWord } from "./lib/railWords.ts";
 import { countText } from "./lib/rideGroup.ts";
 import type { SeeEveryone } from "./app/useSeeEveryone.ts";
@@ -1596,8 +1599,12 @@ export function RideMode({
   // the line. Not on a Bikeshare or transit trip (its walk to the dock comes first), on foot (Walk's turns are the planned
   // walk's own, lib/walkCues.ts), on a resumed ride or after Undo.
   const startChecked = useRef(!startFirst || !!trip?.approach || !!trip?.onFoot || resumeStats !== null || resumedPast !== null);
-  // The way to the start under way: fixes move the marker only, so the rider is not placed part way along meanwhile.
+  // Go to the start or Join from here asked, or the way to the start under way: fixes move the marker only, so the
+  // rider is not placed part way along meanwhile.
   const toStartAsking = useRef(false);
+  const [startAsk, setStartAsk] = useState(false);
+  // Where it was asked: ridden RESTART_AUTO_M from there unanswered, it closes by itself (onFix).
+  const startAskAt = useRef<LonLat | null>(null);
   // The way to the start (lib/rejoin.ts toStartRoute): from here to the start, planned on its own, then the planned
   // route unchanged, so a chosen route, a file or a group's shared line stays as it was. Answers whether it was taken;
   // not taken (no route, no signal, a newer ask), the ride goes on as before.
@@ -1646,6 +1653,27 @@ export function RideMode({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [preset, sayDetour, trip, keepLeft],
   );
+  // The rider's answer (StartFirstDialog), or the ride's own once they ride on: to the start, its stop 1, or on from here
+  // as a ride off its line, re-planned to the route ahead, with Already done? asked about the stops behind as usual.
+  const chooseStart = (start: boolean, at?: LonLat) => {
+    if (!startAskAt.current) return;
+    startAskAt.current = null;
+    setStartAsk(false);
+    const here = at ?? rideRef.current.goodFix?.point ?? rideRef.current.fix?.point;
+    if (!start || !here) {
+      toStartAsking.current = false;
+      return;
+    }
+    // The stops behind the rider are not asked about: none are, the whole route is ahead.
+    const asked = restartAsked.current;
+    restartAsked.current = true;
+    void rideToStart(here).then((taken) => {
+      toStartAsking.current = false;
+      if (!taken) restartAsked.current = asked;
+    });
+  };
+  const chooseStartRef = useRef(chooseStart);
+  chooseStartRef.current = chooseStart;
 
   // The rider took the other line (lib/roadClosed.ts onOtherLine): it is the ride's route from here, the one left
   // the other line, with no re-plan and no "off route" (the owner, 2026-10-17: "If you take the standard route, just
@@ -1786,20 +1814,22 @@ export function RideMode({
       checkCueSheet(lastFixAt.current);
       // Arrived: how long the rider has stayed within STAY_M, for the pause at the destination (checkStay).
       stay.current = rideRef.current.arrived ? stayStep(stay.current, fix) : null;
-      // Away from the start at the first fix (lib/navigate.ts startsAway): the start becomes the first stop. Until the way
-      // there is answered the marker only moves; not found, the ride goes on as it would have.
+      // Away from the start at the first fix (lib/navigate.ts startsAway): Go to the start or Join from here
+      // (StartFirstDialog). While it is asked, and until the way to the start is answered, the marker only moves.
       if (!startChecked.current && rideRef.current.progressM === null && fix.accuracyM <= POOR_FIX_M) {
         startChecked.current = true;
         if (startsAway(modelRef.current, fix)) {
           toStartAsking.current = true;
-          const asked = restartAsked.current;
-          // The stops behind the rider are not asked about: none are, the whole route is ahead.
-          restartAsked.current = true;
-          void rideToStart(fix.point).then((taken) => {
-            toStartAsking.current = false;
-            if (!taken) restartAsked.current = asked;
-          });
+          startAskAt.current = fix.point;
+          setStartAsk(true);
+          notify(`${START_ASK_HEADING}${fullStop()} ${START_ASK_LEAD}`);
         }
+      }
+      // Left unanswered while the rider rides on (RESTART_AUTO_M, as Already done?): the start if they are still away
+      // from it and off the line, else joined from here.
+      const startAskedAt = startAskAt.current;
+      if (startAskedAt && fix.accuracyM <= POOR_FIX_M && haversineM(fix.point, startAskedAt) >= RESTART_AUTO_M) {
+        chooseStartRef.current(startsAway(modelRef.current, fix), fix.point);
       }
       if (toStartAsking.current) {
         const held = { ...rideRef.current, fix };
@@ -4001,6 +4031,7 @@ export function RideMode({
         </div>
       </dialog>
       <RestartStopsDialog stops={restart} onContinue={continueRestart} />
+      <StartFirstDialog open={startAsk} onChoose={(start) => chooseStart(start)} />
     </section>
   );
 }

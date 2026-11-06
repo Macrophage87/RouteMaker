@@ -125,6 +125,16 @@ test("RideMode asks for the way to the start once, at the first fix, before the 
   // Not on a Bikeshare or transit trip (its walk to the dock), on foot, resumed or after Undo.
   assert.match(ride, /const startChecked = useRef\(!startFirst \|\| !!trip\?\.approach \|\| !!trip\?\.onFoot \|\| resumeStats !== null \|\| resumedPast !== null\)/);
   assert.match(ride, /if \(!startChecked\.current && rideRef\.current\.progressM === null && fix\.accuracyM <= POOR_FIX_M\) \{\s+startChecked\.current = true;\s+if \(startsAway\(modelRef\.current, fix\)\)/);
+  // It asks first (Stephen, 2026-11-06: "the option of going to the start or to reroute from there"), said as it opens,
+  // and closes by itself once the rider has ridden RESTART_AUTO_M on: to the start if still away from it, else joined.
+  assert.match(ride, /setStartAsk\(true\);\s*notify\(`\$\{START_ASK_HEADING\}\$\{fullStop\(\)\} \$\{START_ASK_LEAD\}`\);/);
+  assert.match(ride, /haversineM\(fix\.point, startAskedAt\) >= RESTART_AUTO_M\) \{\s*chooseStartRef\.current\(startsAway\(modelRef\.current, fix\), fix\.point\);/);
+  // Join from here: the ride goes on as any ride off its line, with Already done? asked as usual.
+  assert.match(ride, /if \(!start \|\| !here\) \{\s*toStartAsking\.current = false;\s*return;\s*\}/);
+  const dialog = readFileSync(new URL("../StartFirstDialog.tsx", import.meta.url), "utf8");
+  // Go to the start takes the focus, and Escape is Go to the start.
+  assert.match(dialog, /startRef\.current\?\.focus\(\)/);
+  assert.match(dialog, /event\.preventDefault\(\);\s*onChoose\(true\);/);
   // The planned route itself is kept after the way there (a chosen route, a file, a group's line).
   assert.match(ride, /toStartRoute\(found, routeRef\.current, was\.points\.length, was\.loop\)/);
   // The start is stop 1 and the plan's stops one on.
