@@ -829,6 +829,20 @@ A screen reader hears each in full, such as "Less traffic: plan again from here"
 the gear as "Ride settings", and the button as "More: change the route or the map, and ride settings".</li>
 <li>The stops still ahead are drawn on the ride's map with their numbers and names; via
 points are not.</li>
+<li><strong>Away from the start.</strong> When the ride's first good GPS fix (within 165 ft [50 m]) finds you more
+than 650 ft [200 m] from the route's start and off the route line, it asks, aloud too: "Not near the start. Go to
+the start first, or join the route from here?" <strong>Go to the start</strong> has the focus, and Escape picks it: "Not
+near the start: going there first." The start becomes stop 1, named Start, the plan's stops follow as 2, 3 and so on,
+and the route after the start is ridden as planned, whether a route you picked, a file followed exactly or a group's
+shared line. On the way there, once you are within 650 ft [200 m] of the start, it says "At the start of the ride. Ride
+on." and the planned route takes over from where you are, so a big start with many entrances, such as Union Station,
+needs no one spot reached. Skip this stop skips the start, and if no way there is found, it says so and the ride goes
+on as with Join from here. <strong>Join
+from here</strong> rides on as any ride off its line does: it plans a way onto the route ahead, and Already done? asks
+about the stops behind. Ride 650 ft [200 m] on without answering and the question closes by itself, going to the start
+if you rode toward it and are still away from it and off the line, otherwise joining from where you are. Nothing is asked at the start or
+on the line part way along, or on a Bikeshare or transit trip, Walk, a resumed ride, after Undo, on Ride the rest or
+on a Roam detour.</li>
 <li><strong>Already done?</strong> If the ride finds you already past one of its stops, as when you
 start again part way along or resume a ride, it lists the route's stops with the ones behind you ticked ("Ticked stops
 are skipped. Untick one to go back to it."). <strong>Continue</strong> rides the rest. Untick a stop and the ride plans
@@ -1459,7 +1473,7 @@ from the app's next update.</li>
 <p class="next">Next: <a href="/about/accessibility.html">Accessibility</a></p>
 </main>
 <footer>
-  <p>Part of RouteMaker's documentation. It describes version 0.21.0. The code is
+  <p>Part of RouteMaker's documentation. It describes version 0.21.1. The code is
   open source under the MIT licence:
   <a href="https://github.com/Macrophage87/RouteMaker">github.com/Macrophage87/RouteMaker</a>.</p>
   <p><a href="/">Back to the map</a></p>
