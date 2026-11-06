@@ -124,7 +124,7 @@ test("a line the server does not answer for is given up on, so Share and Copy li
   const kept = (async () => new Response("{}", { status: 201 })) as typeof fetch;
   assert.equal(await storeShared("https://x.test", "{}", kept, 20), true);
   // Copy link says "Link copied." at once; a line not kept is said after, on its own.
-  const copy = app.slice(app.indexOf("const copyLink = async () => {"), app.indexOf("\n  };\n", app.indexOf("const copyLink = async () => {")));
+  const copy = app.slice(app.indexOf("const copyLinkWith = async (secret: string) => {"), app.indexOf("\n  };\n", app.indexOf("const copyLinkWith = async (secret: string) => {")));
   assert.ok(copy.indexOf("setLinkSaid(linkSaidFor(done))") < copy.indexOf("await kept"));
 });
 

@@ -344,7 +344,7 @@ class TestTheRidesOwnSettings:
         closure = [[-77.04, 38.89], [-77.03, 38.89], [-77.03, 38.91], [-77.04, 38.89]]
         seen = {}
 
-        def plan_zones(points, when, bypass=(), reserve=(0.0, 0), now_only=False):
+        def plan_zones(points, when, bypass=(), reserve=(0.0, 0), now_only=False, reach_m=0.0):
             seen.update(points=points, bypass=bypass, now_only=now_only)
             return SimpleNamespace(exclude=[closure])
 

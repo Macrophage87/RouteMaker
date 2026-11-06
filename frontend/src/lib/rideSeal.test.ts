@@ -308,7 +308,7 @@ test("a ride link opened without a key gets a new key, the opener's own ride", (
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
   // On opening: the link's secret, or a new one (never none).
   assert.match(app, /useState<string>\(\(\) => PLAN_SECRET \?\? newRideSecret\(\)\)/);
-  assert.match(app, /const groupSecretOwn = useRef\(PLAN_SECRET === null\);/);
+  assert.match(app, /const groupSecretOwn = useRef\(PLAN_SECRET_OWN\);/);
   // A link opened in the tab: its secret; without one, a new one, the page's own.
   assert.match(app, /const linked = own \? null : secretFrom\(window\.location\.hash\);\s*groupSecretOwn\.current = linked === null;\s*setGroupSecret\(linked \?\? newRideSecret\(\)\);/);
   // A broadcast or Roam link without one: the ride page makes its own.
@@ -337,7 +337,7 @@ test("the page puts each ride's secret in its links: Share ride, Broadcast, Roam
   assert.match(app, /roamLink\(window\.location\.origin, id, lead\.key, lead\.secret\)/);
   assert.match(app, /roamLink\(window\.location\.origin, roamBroadcast\.id, roamBroadcast\.lead, roamBroadcast\.secret\)/);
   assert.match(app, /withSecret\(encodePlan\([^\n]*isRideLinkType\(preset\) \? groupSecret : null\)/);
-  assert.match(app, /withSecret\(linkToCopy\([^\n]*isRideLinkType\(from\.preset\) \? groupSecret : null\)/);
+  assert.match(app, /withSecret\(linkToCopy\([^\n]*isRideLinkType\(from\.preset\) \? secret : null\)/);
   // The leader's answer is kept under the sealed ride's id, the one its page reads.
   assert.match(app, /if \(lead && sharedId\) \{\s*const on = await rideOf\(lead\.secret\);\s*if \(on\) leadConsent\(on\.id, lead\.token\);/);
   // A Group or Mass Ride plan carries the page's secret (Stephen 2026-10-29: "Mass rides should be encrypted too."),
