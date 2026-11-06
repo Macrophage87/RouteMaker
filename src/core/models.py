@@ -17,6 +17,7 @@ from django.conf import settings
 from django.contrib.auth.base_user import AbstractBaseUser
 from django.contrib.gis.db import models
 from django.db import IntegrityError, transaction
+from django.db.models.signals import post_delete
 from django.utils import timezone
 
 from . import standing
@@ -2239,6 +2240,32 @@ class SharedRoute(models.Model):
 
     def __str__(self) -> str:
         return f"Shared route {self.pk[:6]}…"
+
+
+class SharedRouteGone(models.Model):
+    """A shared link's id once its row is gone (it expired, or went with its draft or account),
+    so the id is never kept again for another route (core.shared_routes). Only the id and when
+    it went: no route, name, owner or anything else of the row. Deleted itself after
+    `core.shared_routes.GONE_KEPT`."""
+
+    id = models.CharField(primary_key=True, max_length=32)
+    gone_at = models.DateTimeField(db_index=True)
+
+    class Meta:
+        db_table = "shared_route_gone"
+
+    def __str__(self) -> str:
+        return f"Gone shared route {self.pk[:6]}…"
+
+
+def _shared_route_gone(sender, instance, **kwargs) -> None:
+    """However a shared route's row goes (prune, its draft or its owner deleted), its id stays."""
+    SharedRouteGone.objects.bulk_create(
+        [SharedRouteGone(id=instance.pk, gone_at=timezone.now())], ignore_conflicts=True
+    )
+
+
+post_delete.connect(_shared_route_gone, sender=SharedRoute, dispatch_uid="core.shared_route_gone")
 
 
 class ReviewedClosure(models.Model):

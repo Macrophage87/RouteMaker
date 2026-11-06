@@ -16,6 +16,7 @@ import type { ToGo } from "./navigate.ts";
 import { clockLocale, t } from "./i18n.ts";
 import type { When } from "./dials.ts";
 import { whenAt } from "./rideTime.ts";
+import { ZONE } from "./departure.ts";
 
 /** A halt counted up to this, in seconds. */
 export const HALT_CAP_S = 90;
@@ -102,10 +103,14 @@ export function paceFactor(track: PaceTrack): number {
   return 1 + (ratio - 1) * weight;
 }
 
-/** The clock time `seconds` from `nowMs`, rounded to the minute, in the device's own 12 or 24 hour clock where it reads the app's language (lib/i18n.ts clockLocale): "6:42 AM", "18:42". */
+/**
+ * The clock time `seconds` from `nowMs`, rounded to the minute, in the device's own 12 or 24 hour clock where it reads
+ * the app's language (lib/i18n.ts clockLocale): "6:42 AM", "18:42". On the region's clock, whatever the phone's zone,
+ * as a departure's (lib/departure.ts clockOf), so one card never mixes two zones.
+ */
 export function arrivalClock(nowMs: number, seconds: number, locale: string | undefined = clockLocale()): string {
   const at = new Date(Math.round((nowMs + seconds * 1000) / 60_000) * 60_000);
-  return new Intl.DateTimeFormat(locale, { hour: "numeric", minute: "2-digit" }).format(at);
+  return new Intl.DateTimeFormat(locale, { timeZone: ZONE, hour: "numeric", minute: "2-digit" }).format(at);
 }
 
 /**

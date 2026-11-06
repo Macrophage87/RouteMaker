@@ -38,6 +38,7 @@ from dataclasses import dataclass, field, replace
 from datetime import datetime
 
 from routemaker import deer_closures
+from routemaker import workzones as zone_rules
 from routemaker.geo import Point, haversine
 from routemaker.lang import t
 from routemaker.ridetime import NIGHT
@@ -185,6 +186,16 @@ def is_dark(at: datetime, when: str | None = None) -> bool:
     local = moment.astimezone(deer_closures.ZONE)
     dawn, dusk = deer_closures.sun_times(local.date(), altitude_deg=CIVIL_TWILIGHT_DEG)
     return not (dawn <= moment <= dusk)
+
+
+def zones_reach_m(points: Sequence[Sequence[float]], target_m: float | None) -> float:
+    """How far from `points` a run with a target can go, for the closures it looks up
+    (`core.workzones.foot_zones`, audit 2026-11-05): a run of at most the target's ceiling
+    through them (a loop from a start alone reaches half that). 0 without a target (the
+    closures' own margin)."""
+    if not target_m:
+        return 0.0
+    return zone_rules.detour_reach_m(points, presets.target_ceiling_m(float(target_m)))
 
 
 def costing_options(ask: RunAsk) -> dict:

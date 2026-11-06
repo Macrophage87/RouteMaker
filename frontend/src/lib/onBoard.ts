@@ -11,9 +11,13 @@
  * only ever move on, never back.
  */
 import type { TransitStep, TransitStop } from "./api.ts";
+import { formatDuration } from "./format.ts";
+import { formatDurationSpoken } from "./spokenFigures.ts";
 import { haversineM, type LonLat } from "./geo.ts";
 import { t } from "./i18n.ts";
 import { METRO_LINES, PENN_COLOUR } from "./railStations.ts";
+import { clockOf, wallClockOf } from "./departure.ts";
+import { TRANSIT_COLOUR } from "./transit.ts";
 import { lineAlong, snap, type RideFix } from "./navigate.ts";
 
 /** The roughest fix that places the rider among the stops: a Wi-Fi fix underground. */
@@ -44,12 +48,20 @@ export interface OnBoardLeg {
   waitS: number;
   /** A frequent service's minutes between departures; null for a timed one (its departure says when). */
   everyMin?: number | null;
+  /** The line's track from the stop boarded to the one to get off (the feed's shapes.txt), where the API sent one; else none. */
+  track?: LonLat[] | null;
+  /** The plan's seconds from the stop to get off to the trip's end (the walks, waits and rides after it); null: not known. */
+  afterS?: number | null;
 }
 
 export interface OnBoardState {
   /** When following began (the rider reached the boarding stop, or the walk to it ended). */
   since: number;
-  /** When the rider was seen on board, or the timetable's guess; null while waiting. */
+  /**
+   * When the train left the boarding stop: counted back by the timetable from the stop where the rider was first seen
+   * on board (boarding is often first seen a stop or two on), or the timetable's guess; null while waiting. The stops'
+   * `after_s` count from it.
+   */
   boardedAt: number | null;
   /** The last stop reached, by its place in `stops` (0: the boarding stop). */
   at: number;
@@ -63,15 +75,24 @@ export interface OnBoardState {
   pending?: { at: number; boarded: boolean } | null;
 }
 
-/** A transit step as one to follow; null without at least two stops (an older API). */
-export function onBoardLeg(step: TransitStep): OnBoardLeg | null {
+/**
+ * Whether the ride's watch may be low power (lib/rideWatch.ts ON_BOARD_WATCH_OPTIONS): on a train or bus, until "Next
+ * stop" is said. From then the GPS has the last stop's run to warm up to high accuracy before the walk or ride after,
+ * whose first turns come soon after getting off (2026-11-05 review).
+ */
+export function lowPowerOnBoard(onTransit: boolean, board: Pick<OnBoardState, "saidNext" | "done"> | null | undefined): boolean {
+  return onTransit && !board?.saidNext && !board?.done;
+}
+
+/** A transit step as one to follow; null without at least two stops (an older API). `afterS`: the plan's seconds after it to the trip's end. */
+export function onBoardLeg(step: TransitStep, afterS: number | null = null): OnBoardLeg | null {
   const stops = step.stops ?? [];
   if (stops.length < 2) return null;
   const line = step.lines.length > 0 ? step.lines.join(" / ") : (step.system ?? "");
   const trains = step.towards?.length
     ? step.towards.map((w) => ({ line: w.line, toward: w.toward }))
     : [{ line, toward: step.toward ?? null }];
-  return { stops, line, trains, departs: step.departs ?? null, rack: step.mode === "bus" && step.with_bike, toward: step.toward ?? null, bus: step.mode === "bus", waitS: step.wait_s, everyMin: step.every_min ?? null };
+  return { stops, line, trains, departs: step.departs ?? null, rack: step.mode === "bus" && step.with_bike, toward: step.toward ?? null, bus: step.mode === "bus", waitS: step.wait_s, everyMin: step.every_min ?? null, afterS, track: (step.coordinates?.length ?? 0) > stops.length ? step.coordinates : null };
 }
 
 export function onBoardStart(now: number): OnBoardState {
@@ -141,15 +162,21 @@ export function onBoardStep(leg: OnBoardLeg, state: OnBoardState, now: number, f
   const next: OnBoardState = { ...state };
   const said: string[] = [];
   const last = leg.stops.length - 1;
-  const placed = fix ? byFix(leg, state, fix, now) : null;
+  // A fix counts at its own time (a low-power watch may give one cached up to its maximumAge): one older than the last
+  // used, or than STALE_MS, places nothing, so the timetable takes over when no fresh one comes.
+  const fixAt = fix ? Math.min(now, fix.at) : null;
+  const fresh = fix !== null && fixAt !== null && now - fixAt < STALE_MS && fixAt >= (state.fixAt ?? -Infinity);
+  const placed = fresh ? byFix(leg, state, fix, now) : null;
   let estimated = false;
   if (placed) {
-    next.fixAt = now;
+    next.fixAt = fixAt;
     const pending = state.pending ?? null;
     const agreed = placed.sure || (pending !== null && pending.boarded && placed.boarded);
     const at = placed.sure ? placed.at : pending && agreed ? Math.min(pending.at, placed.at) : Math.min(placed.at, last - 2);
-    if (placed.boarded && agreed && next.boardedAt === null) next.boardedAt = now;
-    if (next.boardedAt !== null) next.at = Math.max(next.at, at);
+    const boarding = placed.boarded && agreed && next.boardedAt === null;
+    if (boarding || next.boardedAt !== null) next.at = Math.max(next.at, at);
+    // First seen on board at a stop past the first: the train left the first that stop's run before now.
+    if (boarding) next.boardedAt = now - leg.stops[Math.min(next.at, last)].after_s * 1000;
     next.pending = placed.sure ? null : { at: placed.at, boarded: placed.boarded };
   } else if (now - (next.fixAt ?? next.since) >= STALE_MS) {
     // No fix that places the rider for a while (underground with no Wi-Fi): the timetable, from the boarding seen,
@@ -193,10 +220,143 @@ export function onBoardRows(leg: OnBoardLeg, state: OnBoardState): { name: strin
   }));
 }
 
+/** The on-board card's stops ahead before the stop to get off; the rest are one "…" row (the UI review, 2026-11-05: 320 px). */
+export const CARD_STOPS_AHEAD = 3;
+
+/**
+ * The on-board card's rows, each with its stop's place in the leg: the next CARD_STOPS_AHEAD stops ahead, then the stop
+ * to get off; `hidden` is how many stops between them the card leaves out (shown as one "…" row).
+ */
+export function onBoardCardRows(leg: OnBoardLeg, state: OnBoardState, ahead: number = CARD_STOPS_AHEAD): { rows: (ReturnType<typeof onBoardRows>[number] & { index: number })[]; hidden: number } {
+  const all = onBoardRows(leg, state).map((row, index) => ({ ...row, index }));
+  const last = all.length - 1;
+  const between = all.filter((row) => row.index > state.at && row.index < last);
+  const shown = between.slice(0, ahead);
+  return { rows: [...shown, all[last]], hidden: between.length - shown.length };
+}
+
+/** "3 more stops" for the card's "…" row, said to a screen reader. */
+export function moreStopsText(count: number): string {
+  return count === 1 ? t("1 more stop") : t("{count} more stops", { count });
+}
+
 /** "3 stops left" from where the rider is (from the boarding stop while waiting). */
 export function stopsLeftText(leg: OnBoardLeg, state: Pick<OnBoardState, "at">): string {
   const left = leg.stops.length - 1 - state.at;
   return left === 1 ? t("1 stop left") : t("{count} stops left", { count: left });
+}
+
+/**
+ * The seconds to the stop to get off, on board (Stephen, 2026-11-04: "When on transit, put the approximate time left
+ * to arrival"): the timetable's run from the last stop reached, less the time the train has been going since by the
+ * clock, but never past the next stop, which is not reached yet (a late train holds there, an early one is taken
+ * from the stop the fix says). Null while waiting to board.
+ */
+export function onBoardSecondsLeft(leg: Pick<OnBoardLeg, "stops">, state: Pick<OnBoardState, "at" | "boardedAt">, nowMs: number): number | null {
+  return onBoardSecondsTo(leg, state, nowMs, leg.stops.length - 1);
+}
+
+/**
+ * The seconds to the stop at `index` (Stephen, 2026-11-04: "see if you can find the etas for each intermediate
+ * station"), worked out as onBoardSecondsLeft's; 0 for one passed, null while waiting.
+ */
+export function onBoardSecondsTo(leg: Pick<OnBoardLeg, "stops">, state: Pick<OnBoardState, "at" | "boardedAt">, nowMs: number, index: number): number | null {
+  if (state.boardedAt === null) return null;
+  const last = leg.stops.length - 1;
+  const at = Math.min(Math.max(0, state.at), last);
+  const reached = leg.stops[at].after_s;
+  const next = leg.stops[Math.min(at + 1, last)].after_s;
+  const ridden = Math.min(Math.max((nowMs - state.boardedAt) / 1000, reached), next);
+  return Math.max(0, leg.stops[Math.min(Math.max(0, index), last)].after_s - ridden);
+}
+
+/**
+ * Where am I? on transit (Stephen, 2026-11-04: it said "You have arrived at the end of the route" on the train): the
+ * line and its way, the stop to get off and, on board, the stops and time left. `shown` as short lines, `spoken` whole.
+ */
+export function onBoardWhere(leg: OnBoardLeg, state: Pick<OnBoardState, "at" | "boardedAt">, nowMs: number, clock: (nowMs: number, seconds: number) => string): { shown: string[]; spoken: string } {
+  const off = leg.stops[leg.stops.length - 1].name;
+  const way = leg.toward && leg.toward !== off ? t("{line} toward {place}", { line: leg.line, place: leg.toward }) : leg.line;
+  const getOff = t("Get off at {name}", { name: off });
+  // Spoken as whole sentences, each in the language's own words and full stop, so a phone with no voice for it can
+  // read them back in English (lib/i18n.ts englishOf); the time in words ("12 minutes"), not the screen's "12 min".
+  const heading =
+    leg.toward && leg.toward !== off
+      ? `${t("{line} toward {place}.", { line: leg.line, place: leg.toward })} ${t("Get off at {name}.", { name: off })}`
+      : t("{line}, get off at {name}.", { line: leg.line, name: off });
+  const left = onBoardSecondsLeft(leg, state, nowMs);
+  if (left === null) return { shown: [way, getOff], spoken: heading };
+  const stops = stopsLeftText(leg, state);
+  const time = `${formatDuration(left)} · ${clock(nowMs, left)}`;
+  const said = t("{stops}, about {time}, arriving about {clock}.", { stops, time: formatDurationSpoken(left), clock: clock(nowMs, left) });
+  return { shown: [`${getOff}`, `${stops} · ${time}`], spoken: `${heading} ${said}` };
+}
+
+/** The line's colour on the map: its badge's (a Metro line's, the Penn Line's), else null for the map's transit colour. */
+export function lineColour(lines: readonly string[]): string | null {
+  for (const line of lines) {
+    const badge = lineBadge(line);
+    if (badge) return badge.background;
+  }
+  return null;
+}
+
+/** The train or bus's way on the ride's map: the stops still ahead joined in order, the one to get off marked. */
+export interface OnBoardPath {
+  coordinates: LonLat[];
+  /** The line's colour (lineColour); null: the map's transit colour. */
+  colour: string | null;
+  stops: { point: LonLat; name: string; off: boolean }[];
+  /** A bus's stops are not on the base map: the stop to get off is named on the line. */
+  bus: boolean;
+}
+
+/** The track from its point nearest `from` (the stop reached) on; null without a track. */
+function trackFrom(track: readonly LonLat[] | null, from: LonLat): LonLat[] | null {
+  if (!track || track.length < 2) return null;
+  let best = 0;
+  let bestM = Infinity;
+  track.forEach((point, i) => {
+    const m = haversineM(point, from);
+    if (m < bestM) {
+      bestM = m;
+      best = i;
+    }
+  });
+  const rest = track.slice(Math.min(best, track.length - 2));
+  return rest.length >= 2 ? rest : null;
+}
+
+/**
+ * The path drawn while waiting for the train or bus and on it (Stephen, 2026-11-04: "if you can show the path too"):
+ * from the last stop reached (the boarding stop while waiting) to the stop to get off, through every stop between, so
+ * a Metro line goes station to station: along the line's track where the timetable has it (Stephen, 2026-11-04: "Can't
+ * you find the shape files for the routes?"), else straight from stop to stop.
+ */
+export function onBoardPath(leg: Pick<OnBoardLeg, "stops" | "line" | "trains" | "bus" | "track">, at: number): OnBoardPath | null {
+  const last = leg.stops.length - 1;
+  const from = Math.min(Math.max(0, at), Math.max(0, last - 1));
+  const ahead = leg.stops.slice(from);
+  if (ahead.length < 2) return null;
+  return {
+    coordinates: trackFrom(leg.track ?? null, ahead[0].point) ?? ahead.map((stop) => stop.point),
+    colour: lineColour([...(leg.trains ?? []).map((train) => train.line), leg.line]),
+    stops: ahead.map((stop, i) => ({ point: stop.point, name: stop.name, off: i === ahead.length - 1 })),
+    bus: leg.bus,
+  };
+}
+
+/** The train or bus's path as the map's features: its line, then a point at each stop ahead. */
+export function onBoardFeatures(path: OnBoardPath | null): { type: "FeatureCollection"; features: unknown[] } {
+  if (!path) return { type: "FeatureCollection", features: [] };
+  const colour = path.colour ?? TRANSIT_COLOUR;
+  return {
+    type: "FeatureCollection",
+    features: [
+      { type: "Feature", properties: { colour }, geometry: { type: "LineString", coordinates: path.coordinates } },
+      ...path.stops.map((stop) => ({ type: "Feature", properties: { colour, off: stop.off, bus: path.bus, name: stop.name }, geometry: { type: "Point", coordinates: stop.point } })),
+    ],
+  };
 }
 
 /**
@@ -208,19 +368,21 @@ export function stopsLeftText(leg: OnBoardLeg, state: Pick<OnBoardState, "at">):
 export function nextDepartureText(leg: Pick<OnBoardLeg, "everyMin" | "departs">, departure: { departs: string; departs_at: string } | null, nowMs: number): string | null {
   if (departure) return timeAndMinutes(departure.departs, departure.departs_at, nowMs);
   if (leg.everyMin) return t("every {min} min", { min: String(leg.everyMin) });
-  // The plan's countdown is another step's: the step's own time, as planned.
-  return leg.departs ?? null;
+  // The plan's countdown is another step's: the step's own time, as planned, on the phone's clock.
+  return leg.departs ? wallClockOf(leg.departs) : null;
 }
 
 /** The one after it, in case the rider can't make it (Stephen, 2026-11-03: "put the train after too"); null with none. */
 export function laterDepartureText(departure: { next?: string | null; next_at?: string | null } | null, nowMs: number): string | null {
   if (!departure?.next) return null;
-  return departure.next_at ? timeAndMinutes(departure.next, departure.next_at, nowMs) : departure.next;
+  return departure.next_at ? timeAndMinutes(departure.next, departure.next_at, nowMs) : wallClockOf(departure.next);
 }
 
-function timeAndMinutes(time: string, iso: string, nowMs: number): string {
+/** The minutes to a departure, or its time on the phone's clock (lib/departure.ts clockOf), never the API's English "8:15 am". */
+function timeAndMinutes(words: string, iso: string, nowMs: number): string {
   const at = Date.parse(iso);
-  if (!Number.isFinite(at)) return time;
+  if (!Number.isFinite(at)) return wallClockOf(words);
+  const time = clockOf(iso);
   const min = Math.ceil((at - nowMs) / 60_000);
   // Due: "Now" for two minutes, then the time alone (it may have left).
   if (min <= 0) return min > -2 ? t("Now") : time;

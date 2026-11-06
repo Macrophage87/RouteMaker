@@ -493,6 +493,7 @@ def plan_zones(
     now_only: bool = False,
     at: datetime | None = None,
     on_foot: bool = False,
+    reach_m: float = 0.0,
 ) -> rules.PlanZones | None:
     """The zones in force for a plan through `points` with the ride-time dial at `when`;
     None where work zones are not running (no refresh has ever been stored).
@@ -504,7 +505,8 @@ def plan_zones(
     `now_only` (Go and a ride, v0.9.1) leaves them out altogether. `at` is the ride's own
     moment where the plan has one (a run's or a trip's departure), instead of the dial's.
     `on_foot` (Run, Walk, Walk + transit) routes round only the closures whose source says
-    they close the way on foot too (`rules.for_plan`)."""
+    they close the way on foot too (`rules.for_plan`). `reach_m`: how far from `points` the
+    plan can go, where that is past `rules.BOX_MARGIN_M` (`rules.for_plan`)."""
     found = snapshot()
     if not found.status:
         return None
@@ -519,6 +521,7 @@ def plan_zones(
         reserve=reserve,
         now_only=now_only,
         on_foot=on_foot,
+        reach_m=reach_m,
     )
     plan.notices = list(found.notices)
     return plan
@@ -546,7 +549,13 @@ def blocked_rings(lines) -> list[list[list[float]]]:
 
 
 def foot_zones(
-    points, when: str, at: datetime | None = None, blocked_lines=(), bypass=(), now_only=False
+    points,
+    when: str,
+    at: datetime | None = None,
+    blocked_lines=(),
+    bypass=(),
+    now_only=False,
+    reach_m: float = 0.0,
 ) -> tuple[rules.PlanZones | None, list[list[list[float]]]]:
     """The closures a plan on foot (Run, Walk, Walk + transit) leaves out, as a ride's are
     (`routing.plan`): the roads the rider marked closed on this outing (`blocked_lines`) take
@@ -563,6 +572,7 @@ def foot_zones(
         now_only=now_only,
         at=at,
         on_foot=True,
+        reach_m=reach_m,
     )
     if plan is None:
         return None, blocked

@@ -191,6 +191,30 @@ def _weekend_router_state(monkeypatch):
 _REAL_WEEKEND_CHECK: dict = {}
 
 
+def drain_router_pool() -> None:
+    """The process-wide router pool (`core.parallel`) is put aside: tasks still queued on it
+    are cancelled, those running are waited for, and the next submit starts a fresh pool."""
+    parallel = sys.modules.get("core.parallel")
+    if parallel is None:
+        return
+    with parallel._lock:
+        pool, parallel._pool, parallel._pool_size = parallel._pool, None, 0
+    if pool is not None:
+        pool.shutdown(wait=True, cancel_futures=True)
+
+
+@pytest.fixture(autouse=True)
+def _router_pool_of_its_own(monkeypatch, settings):
+    """Each test starts on an empty router pool and leaves none of its work on it. A task a
+    test left running (an ask its plan abandoned, a trace still queued) would otherwise call
+    `routing._call` during a later test, through whatever stub that test put there. The pool
+    is drained before this test's own patches and settings are undone (this fixture asks for
+    them first), so its tasks finish against the stubs they were started with."""
+    drain_router_pool()
+    yield
+    drain_router_pool()
+
+
 @pytest.fixture(autouse=True)
 def _no_kept_routes(settings):
     """The answer cache (`core.route_cache`, v0.7.0) is off: route tests change the segment
