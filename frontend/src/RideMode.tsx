@@ -42,7 +42,7 @@ import { BROADCAST_HOLD_HINT } from "./lib/broadcastQr.ts";
 import { useHold } from "./lib/useHold.ts";
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type FocusEvent, type PointerEvent } from "react";
 import { HoldTimer } from "./lib/holdTimer.ts";
-import { rejoinsFirst, startsWayBack, wayBackRoute } from "./lib/rejoin.ts";
+import { rejoinsFirst, startsWayBack, toStartRoute, wayBackRoute } from "./lib/rejoin.ts";
 import {
   ON_DETOUR_SAID,
   ON_STANDARD_SAID,
@@ -75,6 +75,7 @@ import {
   type RestartStop,
 } from "./lib/rideStops.ts";
 import { RestartStopsDialog } from "./RestartStopsDialog.tsx";
+import { StartFirstDialog } from "./StartFirstDialog.tsx";
 import { keepLeftRide, keepLeftRidePast } from "./lib/rideResume.ts";
 import type { Dials } from "./lib/dials.ts";
 import { haversineM, type LonLat } from "./lib/geo.ts";
@@ -129,6 +130,12 @@ import {
   rideModel,
   secondsBetween,
   startState,
+  startsAway,
+  START_ASK_HEADING,
+  START_ASK_LEAD,
+  START_FIRST_SAID,
+  START_NEAR_M,
+  START_REACHED_SAID,
   stopsAhead,
   toGo,
   wayBack,
@@ -271,7 +278,7 @@ import { lowPowerOnBoard, onBoardPath, type OnBoardPath } from "./lib/onBoard.ts
 import { BOARDING_MS, TRIP_CHECK_MS } from "./lib/tripCheck.ts";
 import { walkModel, walkTurnLine } from "./lib/walkCues.ts";
 import { BoardingCard, OnBoardCard } from "./OnBoardCard.tsx";
-import { t } from "./lib/i18n.ts";
+import { fullStop, t } from "./lib/i18n.ts";
 import { railWord } from "./lib/railWords.ts";
 import { countText } from "./lib/rideGroup.ts";
 import type { SeeEveryone } from "./app/useSeeEveryone.ts";
@@ -801,6 +808,7 @@ export function RideMode({
   everyone = null,
   keepLeft = false,
   startNote = "",
+  startFirst = false,
   riderDots = NO_DOTS,
   onSheetHeight,
 }: {
@@ -912,6 +920,12 @@ export function RideMode({
   keepLeft?: boolean;
   /** Said once, as an answer, just after the ride starts: Broadcast's link copied where there was no share sheet. */
   startNote?: string;
+  /**
+   * A ride just started from Start ride (not resumed, not Ride the rest): if its first fix is away from the start and off
+   * the line (lib/navigate.ts startsAway), the way to the start is ridden first, the start its first stop (Stephen,
+   * 2026-11-06). Not on a Bikeshare or transit trip, whose walk to the dock comes first already, nor on foot.
+   */
+  startFirst?: boolean;
   /** The other riders' dots on a shared ride: drawn on the graph of the road ahead, which reaches back to the last one. */
   riderDots?: readonly LonLat[];
   /** The bottom panel's height in CSS pixels (0 while it is hidden), at each change: the map's follow camera keeps the
@@ -943,13 +957,26 @@ export function RideMode({
   // (REPLAN_NO_AHEAD), the U-turn route is held: left up and not re-planned again on its own (lib/navigate.ts uturnStep).
   const uturns = useRef<UTurnState>(UTURN_START);
   const checking = useRef(false);
+  // The start, made the ride's first stop (rideToStart, below): stop 1 for the rest of the ride, the plan's stops one
+  // on from their own numbers (Stephen, 2026-11-06: "the starting point will be the first stop").
+  const startStop = useRef<LonLat | null>(null);
+  const stopNumbers = (points: readonly LonLat[]) => {
+    const first = startStop.current;
+    const at = first ? points.indexOf(first) : -1;
+    if (at < 0) return plannedStopNumbers(points, firstPlan.current, VIA_MARKS.isVia);
+    // Numbered without the start stop (so a loop's finish or a detour takes its usual next number), then one on.
+    const numbers = plannedStopNumbers(points.filter((_, i) => i !== at), firstPlan.current, VIA_MARKS.isVia);
+    const out = new Map<number, number>([[at, 1]]);
+    for (const [i, n] of numbers) out.set(i < at ? i : i + 1, n + 1);
+    return out;
+  };
   const modelOf = (r: RouteResponse, points: readonly LonLat[]) => {
     // Walk and Walk + 🚆🚌 (2026-11-02): the line is a walk, its cues its turns (lib/walkCues.ts).
     // A re-plan on foot (rideTrip.ts rideLegOf: Walk's own) brings its own turns; the planned walk's are its own.
     const onFoot = trip?.onFoot ? walkModel({ coordinates: r.geometry.coordinates as LonLat[], turns: walkLineTurns(r) ?? trip.onFoot.turns, to: null }, endWords(null)) : null;
     if (onFoot) return onFoot;
     // A stop's own name (2026-10-24) is said and shown with its number, the plan's number after a re-route too.
-    const built = rideModel(r, viaIndices(points, VIA_MARKS.isVia), stopNames(points, VIA_MARKS.nameOf, VIA_MARKS.isVia, plan.current.loop), plannedStopNumbers(points, firstPlan.current, VIA_MARKS.isVia));
+    const built = rideModel(r, viaIndices(points, VIA_MARKS.isVia), stopNames(points, VIA_MARKS.nameOf, VIA_MARKS.isVia, plan.current.loop), stopNumbers(points));
     return r === uturnRoute.current ? withUTurn(built) : built;
   };
   const model = useMemo(() => modelOf(route, plan.current.points), [route]);
@@ -967,7 +994,7 @@ export function RideMode({
             other,
             viaIndices(plan.current.points, VIA_MARKS.isVia),
             stopNames(plan.current.points, VIA_MARKS.nameOf, VIA_MARKS.isVia, plan.current.loop),
-            plannedStopNumbers(plan.current.points, firstPlan.current, VIA_MARKS.isVia),
+            stopNumbers(plan.current.points),
           )
         : null,
     [other],
@@ -1363,6 +1390,9 @@ export function RideMode({
     announcer.current?.answer(text);
     if (prefsRef.current.output === "neither") setPolite((s) => ({ text, count: s.count + 1 }));
   }, [showToast]);
+  // A ride's one route request (a re-plan, a detour, the way to the start): the route alone, at the ride's own dials.
+  const askRoute = (to: LonLat[], heading: number | null, aheadOnly: boolean) =>
+    requestRoute(to, preset, { dials: { ...dialsRef.current, loop: false }, vias: viaIndices(to, VIA_MARKS.isVia), straight: drawnLegs(to), routeOnly: true, confirmLong: true, blocked: blockedRef.current, heading, aheadOnly, rideReplan: true, dirtRidden: dirtRidden.current, dirtClosed: dirtClosed.current });
   // The re-plan (plan section 4): one POST /api/route from here through the stops not yet passed to the end.
   // With `via`, a detour: from here to that place first, then on through what was left (the nearest water
   // or restroom, below). A detour's place becomes a stop of the new route, so it is cued and arrived at.
@@ -1438,8 +1468,7 @@ export function RideMode({
       }, REPLAN_TIMEOUT_MS);
       // The rider is riding a plan already made: a long one is not asked to be confirmed again (a signed-out
       // rider's re-plan of a long ride was refused for want of it).
-      const ask = (to: LonLat[]) =>
-        requestRoute(to, preset, { dials: { ...dialsRef.current, loop: false }, vias: viaIndices(to, VIA_MARKS.isVia), straight: drawnLegs(to), routeOnly: true, confirmLong: true, blocked: blockedRef.current, heading, aheadOnly, rideReplan: true, dirtRidden: dirtRidden.current, dirtClosed: dirtClosed.current });
+      const ask = (to: LonLat[]) => askRoute(to, heading, aheadOnly);
       let found: RouteResponse | null = null;
       let failed: ErrorKind | null = null;
       let note = REPLAN_FOUND;
@@ -1566,6 +1595,132 @@ export function RideMode({
   );
   const replanRef = useRef(replan);
   replanRef.current = replan;
+
+  // The ride started away from its start (Stephen, 2026-11-06: "If you start a route and aren't near the starting point,
+  // the starting point will be the first stop"): asked once, at the first good enough fix before the rider is placed on
+  // the line. Not on a Bikeshare or transit trip (its walk to the dock comes first), on foot (Walk's turns are the planned
+  // walk's own, lib/walkCues.ts), on a resumed ride or after Undo.
+  const startChecked = useRef(!startFirst || !!trip?.approach || !!trip?.onFoot || resumeStats !== null || resumedPast !== null);
+  // Go to the start or Join from here asked, or the way to the start under way: fixes move the marker only, so the
+  // rider is not placed part way along meanwhile.
+  const toStartAsking = useRef(false);
+  const [startAsk, setStartAsk] = useState(false);
+  // Where it was asked: ridden RESTART_AUTO_M from there unanswered, it closes by itself (onFix).
+  const startAskAt = useRef<LonLat | null>(null);
+  // The route as planned, kept while the rider rides to its start: back within START_NEAR_M of the start (anywhere
+  // round a big place such as Union Station or Dupont Circle, any entrance), it is the ride's route again from where
+  // they are (startReached, onFix). Stephen, 2026-11-06: "Make sure to route from there, because many locations can be
+  // quite large ... We shouldn't expect them to go to a specific one."
+  const beforeStart = useRef<{ route: RouteResponse; plan: { points: LonLat[]; loop: boolean }; asked: boolean } | null>(null);
+  // The way to the start (lib/rejoin.ts toStartRoute): from here to the start, planned on its own, then the planned
+  // route unchanged, so a chosen route, a file or a group's shared line stays as it was. Answers whether it was taken;
+  // not taken (no route, no signal, a newer ask), the ride goes on as before.
+  const rideToStart = useCallback(
+    async (here: LonLat, asked: boolean): Promise<boolean> => {
+      const start = plan.current.points[0];
+      // Not through the re-plan gate: a failed ask here never holds back the first re-route, and Re-plan from here
+      // pressed meanwhile goes ahead (its newer ticket drops this answer). Automatic re-plans wait (toStartAsking).
+      if (ended.current || !start) return false;
+      const ticket = (replanTicket.current += 1);
+      setReplanning(true);
+      setReplanNote("");
+      const result = await Promise.race([
+        askRoute([here, start], null, false),
+        new Promise<null>((done) => window.setTimeout(() => done(null), REPLAN_TIMEOUT_MS)),
+      ]).catch(() => null);
+      const found = result && result.ok ? result.route : null;
+      if (ended.current || ticket !== replanTicket.current) return false;
+      setReplanning(false);
+      if (!found) {
+        // The rider asked for it (or rode on away from the line): said, and the ride goes on as Join from here.
+        const said = !result || (!result.ok && result.error.kind === "network") ? REPLAN_NO_SIGNAL : REPLAN_FAILED;
+        setReplanNote(said);
+        sayDetour(said);
+        return false;
+      }
+      const was = plan.current;
+      beforeStart.current = { route: routeRef.current, plan: was, asked };
+      // The start as a stop of its own, named and numbered 1, so the cue says "Stop 1, Start."; the plan's own pairs after it.
+      const first = VIA_MARKS.named([start[0], start[1]], t("Start"));
+      startStop.current = first;
+      const points = [here, first, ...was.points.slice(1), ...(was.loop ? [start] : [])];
+      const joined = toStartRoute(found, routeRef.current, was.points.length, was.loop);
+      plan.current = { points, loop: false };
+      replannedFrom.current = here;
+      announcer.current?.drop();
+      const model = modelOf(joined, points);
+      modelRef.current = model;
+      if (found.dirt_trails) dirtRidden.current = true;
+      setRoute(joined);
+      if (!trip && keepLeft) keepLeftRide({ route: joined, points, loop: false, preset, dials: dialsRef.current, fixed: fixedRef.current }, VIA_MARKS, Date.now());
+      otherRef.current = null;
+      setOther(null);
+      onStandard.current = false;
+      const fresh = { ...startState(), fix: rideRef.current.fix, goodFix: rideRef.current.goodFix };
+      rideRef.current = fresh;
+      setRide(fresh);
+      setReplanNote(START_FIRST_SAID);
+      sayDetour(START_FIRST_SAID);
+      return true;
+    },
+    // modelOf reads refs only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [preset, sayDetour, trip, keepLeft],
+  );
+  // The rider's answer (StartFirstDialog), or the ride's own once they ride on: to the start, its stop 1, or on from here
+  // as a ride off its line, re-planned to the route ahead, with Already done? asked about the stops behind as usual.
+  const chooseStart = (start: boolean, at?: LonLat) => {
+    const askedAt = startAskAt.current;
+    if (!askedAt) return;
+    startAskAt.current = null;
+    setStartAsk(false);
+    // A rough fix since the ask (a Wi-Fi guess under trees) is not planned from: the ask's own fix is.
+    const last = rideRef.current.fix;
+    const here = at ?? (last && last.accuracyM <= POOR_FIX_M ? last.point : askedAt);
+    if (!start || !here) {
+      toStartAsking.current = false;
+      return;
+    }
+    // The stops behind the rider are not asked about: none are, the whole route is ahead.
+    const asked = restartAsked.current;
+    restartAsked.current = true;
+    void rideToStart(here, asked).then((taken) => {
+      toStartAsking.current = false;
+      if (!taken) restartAsked.current = asked;
+    });
+  };
+  const chooseStartRef = useRef(chooseStart);
+  chooseStartRef.current = chooseStart;
+  // Near the start on the way there: the planned route again, unchanged, and the ride starts from here as any ride
+  // started within START_NEAR_M of its start does (placed on the line, or joined to it as when off it).
+  const startReached = () => {
+    const back = beforeStart.current;
+    if (!back) return;
+    beforeStart.current = null;
+    startStop.current = null;
+    // A re-plan still under way on the way there is dropped: its answer would bring the way to the start back.
+    autoReplan.current = null;
+    replanTicket.current += 1;
+    setReplanning(false);
+    // Already done? is asked about the planned route's stops as on any ride begun here.
+    restartAsked.current = back.asked;
+    plan.current = back.plan;
+    replannedFrom.current = null;
+    announcer.current?.drop();
+    modelRef.current = modelOf(back.route, back.plan.points);
+    setRoute(back.route);
+    if (!trip && keepLeft) keepLeftRide({ route: back.route, points: back.plan.points, loop: back.plan.loop, preset, dials: dialsRef.current, fixed: fixedRef.current }, VIA_MARKS, Date.now());
+    otherRef.current = null;
+    setOther(null);
+    onStandard.current = false;
+    const fresh = { ...startState(), fix: rideRef.current.fix, goodFix: rideRef.current.goodFix };
+    rideRef.current = fresh;
+    setRide(fresh);
+    setReplanNote(START_REACHED_SAID);
+    sayDetour(START_REACHED_SAID);
+  };
+  const startReachedRef = useRef(startReached);
+  startReachedRef.current = startReached;
 
   // The rider took the other line (lib/roadClosed.ts onOtherLine): it is the ride's route from here, the one left
   // the other line, with no re-plan and no "off route" (the owner, 2026-10-17: "If you take the standard route, just
@@ -1706,6 +1861,38 @@ export function RideMode({
       checkCueSheet(lastFixAt.current);
       // Arrived: how long the rider has stayed within STAY_M, for the pause at the destination (checkStay).
       stay.current = rideRef.current.arrived ? stayStep(stay.current, fix) : null;
+      // Away from the start at the first fix (lib/navigate.ts startsAway): Go to the start or Join from here
+      // (StartFirstDialog). While it is asked, and until the way to the start is answered, the marker only moves.
+      if (!startChecked.current && rideRef.current.progressM === null && fix.accuracyM <= POOR_FIX_M) {
+        startChecked.current = true;
+        if (startsAway(modelRef.current, fix)) {
+          toStartAsking.current = true;
+          startAskAt.current = fix.point;
+          setStartAsk(true);
+          notify(`${START_ASK_HEADING}${fullStop()} ${START_ASK_LEAD}`);
+        }
+      }
+      // Left unanswered while the rider rides on (RESTART_AUTO_M, as Already done?): the start if they rode toward it and
+      // are still away from it and off the line; else (riding away from the start, toward the line) joined from here,
+      // never turned back.
+      const startAskedAt = startAskAt.current;
+      if (startAskedAt && fix.accuracyM <= POOR_FIX_M && haversineM(fix.point, startAskedAt) >= RESTART_AUTO_M) {
+        const startAt = plan.current.points[0];
+        const toward = !!startAt && haversineM(fix.point, startAt) < haversineM(startAskedAt, startAt);
+        chooseStartRef.current(toward && startsAway(modelRef.current, fix), fix.point);
+      }
+      // Only while the start is still the next point: skipped, passed, or a detour put before it, the way there is over.
+      const startWas = beforeStart.current?.plan.points[0];
+      if (startWas && startStop.current && plan.current.points[1] !== startStop.current) beforeStart.current = null;
+      else if (startWas && !toStartAsking.current && fix.accuracyM <= POOR_FIX_M && haversineM(fix.point, startWas) <= START_NEAR_M) {
+        startReachedRef.current();
+      }
+      if (toStartAsking.current) {
+        const held = { ...rideRef.current, fix };
+        rideRef.current = held;
+        setRide(held);
+        return;
+      }
       // "Already done?" left unanswered while the rider rides on (gloves, the phone on the bars): once they are
       // RESTART_AUTO_M from where it was asked, it closes with the stops as marked, says so, and re-routing runs again.
       const askedAt = restartAt.current;
@@ -1807,7 +1994,7 @@ export function RideMode({
         announcer.current?.answer(whereAmI(modelRef.current, out.state, false, milesRef.current, arrivingAt));
       }
     },
-    [gate, replan, say, notify, checkCueSheet, approach, trip, takeOther, stopName, arrivingAt, followOnward],
+    [gate, replan, say, notify, checkCueSheet, approach, trip, takeOther, stopName, arrivingAt, followOnward, rideToStart],
   );
   const onFixRef = useRef(onFix);
   onFixRef.current = onFix;
@@ -3900,6 +4087,7 @@ export function RideMode({
         </div>
       </dialog>
       <RestartStopsDialog stops={restart} onContinue={continueRestart} />
+      <StartFirstDialog open={startAsk} onChoose={(start) => chooseStart(start)} />
     </section>
   );
 }
