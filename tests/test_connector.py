@@ -653,6 +653,99 @@ class TestRoutePostDrafts:
         assert "draft_route_post" not in names
 
 
+def test_the_in_process_api_answers_every_call_the_tools_make() -> None:
+    """Each `self.api.<name>` the tools use is the site's own here, not only in the HTTP Api."""
+    import re
+    from pathlib import Path
+
+    source = (
+        Path(connector.__file__).resolve().parents[2] / "mcp" / "routemaker_mcp.py"
+    ).read_text()
+    used = set(re.findall(r"self\.api\.([a-z_]+)", source)) - {"base"}
+    assert used and {"reach", "nearest"} <= used
+    assert [name for name in sorted(used) if not hasattr(connector.InProcessApi, name)] == []
+
+
+@db
+class TestReachThroughTheSiteConnector:
+    """reach and compare_places through /mcp and the site's own /api/reach and /api/nearest."""
+
+    def test_reach_draws_its_rings_with_the_site_s_reach(self, monkeypatch) -> None:
+        from core import reach
+
+        asked = []
+
+        def rings(points, preset_name, dials, **kwargs):
+            asked.append((points, preset_name, kwargs))
+            group = {"point": None, "rings": [], "metro_stations": ["Union Station"]}
+            return {
+                "preset": preset_name,
+                "minutes": kwargs["minutes"],
+                "direction": kwargs["direction"],
+                "combine": kwargs["combine"],
+                "stress_used": 70,
+                "groups": [group],
+                "calm": None,
+                "calm_offered": True,
+                "unplaced": [],
+            }
+
+        monkeypatch.setattr(reach, "reach", rings)
+        _user, tokens, _ = tokens_for()
+        out = call(tokens["access_token"], "reach", {"points": [[-77.006, 38.897]]})
+        assert not out["isError"], out
+        assert asked and asked[0][1] == "default"
+        assert out["structuredContent"]["groups"][0]["metro_stations"] == ["Union Station"]
+
+    def test_compare_places_asks_the_site_s_nearest_search(self, monkeypatch) -> None:
+        from core import nearest
+
+        asked = []
+
+        def distances(points, preset_name, dials, started=None):
+            asked.append((preset_name, dials.stress, started))
+            return {"by": "riding", "places": [{"distance_m": 3000, "time_s": 600}]}
+
+        monkeypatch.setattr(nearest, "distances", distances)
+        _user, tokens, _ = tokens_for()
+        out = call(
+            tokens["access_token"],
+            "compare_places",
+            {
+                "places": [[-77.04, 38.90], [-77.03, 38.90]],
+                "destinations": [{"place": [-77.00, 38.89]}],
+            },
+        )
+        assert not out["isError"], out
+        # Default rides below Low-stress: its own row and the calm one, a place.
+        assert [(p, s) for p, s, _ in asked] == [("default", None), ("default", 80)] * 2
+        rows = out["structuredContent"]["places"]
+        assert [t["minutes"] for row in rows for t in row["trips"]] == [10.0, 10.0]
+
+    def test_each_riding_time_counts_its_own_budget_inside_the_call_s(self, monkeypatch) -> None:
+        """compare_places asks up to twelve rows one after another: the later ones are not left
+        with what the first ones spent, and none runs past the /mcp call's budget."""
+        from core import nearest, routing
+
+        user = make_user()
+        outer = Client().get("/healthz").wsgi_request
+        seen = []
+
+        def distances(points, preset_name, dials, started=None):
+            seen.append(started)
+            return {"by": "riding", "places": [{"distance_m": 3000, "time_s": 600}]}
+
+        monkeypatch.setattr(nearest, "distances", distances)
+        body = {"points": [[-77.04, 38.90], [-77.00, 38.89]], "preset": "default"}
+        outer.routing_started = routing.clock() - 20
+        connector.InProcessApi(outer, user).nearest(body)
+        assert seen[-1] >= outer.routing_started + 19
+        outer.routing_started = routing.clock() - 50
+        connector.InProcessApi(outer, user).nearest(body)
+        cap = outer.routing_started + connector.CALL_BUDGET_S - nearest.NEAREST_BUDGET_S
+        assert seen[-1] == pytest.approx(cap)
+
+
 @db
 def test_a_registration_grants_nothing_by_itself() -> None:
     client_id = register().json()["client_id"]

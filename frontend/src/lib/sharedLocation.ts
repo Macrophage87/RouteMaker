@@ -15,7 +15,8 @@
  * - plus codes (lib/plusCode.ts): "87C4VXQ7+GV", or "VXQ7+GV Washington" near the start or the map's view;
  * - geo: links (RFC 5870): "geo:38.8893,-77.0502", with "?q=lat,lon(Label)" or "?q=an address";
  * - Google Maps: the place's own "!3d…!4d…" first, then "?q=", "query=", "destination=", "daddr=", "ll=",
- *   "/dir/…/lat,lon", then the view's "@lat,lon"; the name from "/place/<name>/";
+ *   the last "/dir/…" stop (its lat,lon, or its name to search for), "/search/<words>/" (searched for), then the
+ *   view's "@lat,lon"; the name from "/place/<name>/";
  *   consent.google.com's "continue=" link is read for the link inside it;
  * - Apple Maps: "coordinate=", "ll=", "daddr=", "sll=", "q=lat,lon"; the name from "name=" or "q=";
  * - Waze: "ll=", "to=ll.lat,lon", and "waze.com/ul/h<geohash>" links (decoded here).
@@ -184,15 +185,29 @@ function parseGoogle(url: URL): Shared | null {
   }
   const query = fromParams(url.searchParams, ["q", "query", "destination", "daddr", "ll", "center"]);
   if (query) return { kind: "point", point: query, name };
-  // Directions: the last stop that is a pair of numbers.
+  // Directions: the last stop, the destination: its point if it is a pair of numbers, else its name to search for.
+  // Never an earlier stop, which is where the directions start (often the sender's own location).
   const dir = /\/dir\/(.*)$/.exec(path);
   if (dir) {
     const stops = dir[1].split("/").filter((s) => s && !s.startsWith("@") && !s.startsWith("data="));
-    for (let i = stops.length - 1; i >= 0; i -= 1) {
-      const point = parseCoordinates(stops[i]);
+    const last = stops[stops.length - 1];
+    if (last !== undefined) {
+      const point = parseCoordinates(last);
       if (point) return { kind: "point", point };
+      const text = words(last);
+      if (text) return { kind: "query", text };
     }
   }
+  // A search: the words searched for, not the view's centre, which can be a mile or more from the place.
+  const searched = words(/\/search\/([^/@]+)/.exec(path)?.[1]);
+  if (searched) {
+    const point = parseCoordinates(searched);
+    return point ? { kind: "point", point } : { kind: "query", text: searched };
+  }
+  // A directions link's destination by name ("?api=1&destination=Union+Station", "?daddr=Union+Station"): searched
+  // for, never the view's centre (the numbers are read above).
+  const destination = words(url.searchParams.get("destination") ?? url.searchParams.get("daddr"));
+  if (destination) return { kind: "query", text: destination };
   const at = /@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/.exec(path);
   if (at) {
     const point = parseCoordinates(`${at[1]},${at[2]}`);
