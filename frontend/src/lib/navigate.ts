@@ -186,6 +186,12 @@ export const FAR_SIDE_LAST_M = 45;
 /** A first fix this close to the route's start starts at the start (a loop's start is its end too). */
 export const START_M = 50;
 /**
+ * Starting a ride this far (about 650 ft, two short blocks) or more from the route's start, and off its line, the start
+ * becomes the ride's first stop (Stephen, 2026-11-06: "If you start a route and aren't near the starting point, the
+ * starting point will be the first stop"): a route from here to the start, then on along the plan (startsAway).
+ */
+export const START_NEAR_M = 200;
+/**
  * A first fix away from the start that lies on more than one pass of the line (an out-and-back's way out and way back)
  * is placed by the direction of travel (review 2026-11-04 P2): the browser's heading at this speed or more...
  */
@@ -1648,6 +1654,33 @@ export function heldProgressM(model: RideModel, state: RideState, here: LonLat):
   if (state.progressM !== null) return state.progressM;
   return passesNear(model, here)[0]?.alongM ?? 0;
 }
+
+/**
+ * Whether the ride's first fix is away from its start (START_NEAR_M) and off its line, so the start becomes the first
+ * stop. On the line part way along is no such start: that rider has joined the route, and the stops behind them are
+ * asked about (lib/rideStops.ts restartStops). A poor fix (POOR_FIX_M) or a line with no length decides nothing.
+ */
+export function startsAway(model: Pick<RideModel, "coordinates" | "along">, fix: RideFix): boolean {
+  const accuracy = fix.accuracyM > 0 ? fix.accuracyM : 0;
+  const start = model.coordinates[0];
+  if (accuracy > POOR_FIX_M || model.coordinates.length < 2 || !start) return false;
+  if (haversineM(fix.point, start) < START_NEAR_M) return false;
+  const on = snap(model, fix.point);
+  return on === null || on.offM > offThreshold(accuracy);
+}
+
+/** Said when a ride starts away from its start: the way there comes first. */
+export const START_FIRST_SAID = t("Not near the start: going there first.");
+/** Back within START_NEAR_M of the start on the way there (any entrance of a big place): the planned route from here. */
+export const START_REACHED_SAID = t("At the start of the ride. Ride on.");
+/**
+ * The question asked then (Stephen, 2026-11-06: "they should be given the option of going to the start or to reroute
+ * from there, such as if they are already on the route"): StartFirstDialog's words, said as it opens.
+ */
+export const START_ASK_HEADING = t("Not near the start");
+export const START_ASK_LEAD = t("Go to the start first, or join the route from here?");
+export const START_ASK_START = t("Go to the start");
+export const START_ASK_JOIN = t("Join from here");
 
 /**
  * One fix into the ride: the new state and what to say. `replan` says whether a new way is looked for
