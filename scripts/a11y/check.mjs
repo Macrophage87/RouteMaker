@@ -3210,6 +3210,11 @@ if (mine()) {
     p.routeRequests - before === 1 && first && Math.abs(first[0] - off[0]) < 0.0001 && Math.abs(first[1] - off[1]) < 0.0001 && after.heard.filter((t) => t === "!Off the planned route; finding a new way.").length === 1,
     JSON.stringify({ requests: p.routeRequests - before, first, heard: after.heard.slice(-4) }));
   check("ride: a re-plan never writes the address bar", after.hash === shownHash, after.hash);
+  // Back on the line and riding on, so the ride is placed again for the checks below that read the card's distance:
+  // a ride waits for the way the rider goes before it places itself (d6bd2d32), and a re-plan answered after the
+  // last fix above would leave it waiting ("Finding your place on the route.") on a busy machine.
+  for (let i = 0; i <= 10; i += 1) await goTo(lerp(RIDE_COORDS[10], RIDE_COORDS[12], i / 10));
+  await p.waitFor("!!document.querySelector('.ride .cue-distance')", 8000);
 
   // 320 px, and the text sizes.
   await p.s("Emulation.setDeviceMetricsOverride", { width: 320, height: 700, deviceScaleFactor: 2, mobile: true });
