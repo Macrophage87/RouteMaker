@@ -26,6 +26,7 @@ import json
 import logging
 import math
 import shutil
+import subprocess
 import sys
 from dataclasses import replace
 from datetime import date, datetime
@@ -1822,6 +1823,39 @@ def post_transit(client, points, preset=presets.BIKE_TRANSIT, **extra):
     return client.post("/api/route", data=json.dumps(body), content_type="application/json")
 
 
+@pytest.fixture
+def fresh_zones():
+    from core import workzones
+
+    workzones.forget()
+    yield
+    workzones.forget()
+
+
+def store_zones(zones) -> None:
+    from datetime import UTC
+
+    from core import workzones
+    from core.models import BikeshareFeedCache
+
+    BikeshareFeedCache.objects.create(
+        key=workzones.KEY,
+        payload={"feeds": {"md": {"read_at": datetime.now(UTC).isoformat(),
+                                  "zones": [z.to_json() for z in zones]}}},
+        fetched_at=datetime.now(UTC),
+    )  # fmt: skip
+
+
+def shut_on_foot(zone_id, zone_line):
+    from datetime import UTC, timedelta
+
+    from routemaker import workzones as wz
+
+    until = datetime.now(UTC) + timedelta(days=30)
+    return wz.Zone(zone_id, "md", wz.CLOSED, 0, tuple(zone_line), "Side Road", None, None, until,
+                   on_foot=True)  # fmt: skip
+
+
 @db
 @pytest.mark.usefixtures("weekday_clock")
 class TestApi:
@@ -1882,6 +1916,57 @@ class TestApi:
         assert [s["mode"] for s in trip["steps"]] == ["walk", "walk"]
         assert trip["steps"][0]["route_line"] and trip["steps"][0]["to"] == "stop 1"
         assert trip["steps"][1]["coordinates"]
+
+    @pytest.mark.usefixtures("fresh_zones")
+    def test_a_closure_on_a_later_walk_is_said_and_not_counted_as_routed_round(
+        self, client, segments, router, installed
+    ) -> None:
+        """Audit 2026-11-05: only the answer's own line (the first walk) was checked; the walk
+        on from the stop goes through a closure (the walks here are straight lines, as a walk
+        with no way round falls back to), and the trip says so."""
+        from routemaker import workzones as wz
+
+        # On the walk from MALL up to DOWNTOWN, clear of both ends.
+        on_second = [(-77.0300, 38.8895), (-77.0300, 38.8935)]
+        store_zones([shut_on_foot("md-second", on_second)])
+        router(standard_router())
+        response = post_transit(client, [CAPITOL_HILL, MALL, DOWNTOWN], presets.WALK)
+        assert response.status_code == 200, response.content
+        body = response.json()
+        assert [s["mode"] for s in body["transit"]["steps"]] == ["walk", "walk"]
+        assert body["work_zones"]["routed_round"] == 0
+        said = wz.heads_up(shut_on_foot("md-second", on_second))
+        assert said in body["transit"]["notes"]
+        row = next(r for r in body["work_zones"]["closures"] if r["id"] == "md-second")
+        assert row["effect"] != wz.ROUTED_ROUND
+
+    @pytest.mark.parametrize("preset", [presets.BIKE_TRANSIT, presets.BIKESHARE_TRANSIT])
+    @pytest.mark.usefixtures("fresh_zones")
+    def test_the_walks_of_a_bike_and_transit_trip_go_round_closures_shut_on_foot(
+        self, client, segments, router, installed, monkeypatch, preset
+    ) -> None:
+        """Incomplete #967 (audit 2026-11-05): the walks to and from the bike or the docks were
+        walked through a closed sidewalk and the roads the rider marked closed."""
+        from routemaker import workzones as wz
+
+        shut = [(-77.0100, 38.8900), (-77.0100, 38.8930)]
+        marked = [[-77.02, 38.89], [-77.02, 38.892]]
+        store_zones([shut_on_foot("md-shut", shut)])
+        seen = []
+
+        def services(until, leg_preset, **options):
+            seen.append(options)
+            return Straight()
+
+        monkeypatch.setattr(transit, "RoutingServices", services)
+        monkeypatch.setattr(gbfs.client, "snapshot", lambda: SHARE)
+        router(standard_router())
+        response = post_transit(client, [CAPITOL_HILL, DOWNTOWN], preset, blocked_lines=[marked])
+        assert response.status_code == 200, response.content
+        ring, blocked = wz.polygon(shut_on_foot("md-shut", shut)), wz.line_ring(marked)
+        for options in seen:
+            assert options["walk_exclude"] == [ring, blocked]
+            assert options["walk_keep"] == [blocked]
 
     def test_a_trip_asked_for_that_is_no_longer_running_is_said_gone(
         self, client, segments, router, installed
@@ -2538,3 +2623,76 @@ def test_towards_lists_every_train_that_makes_the_ride_by_where_it_is_signed():
     assert transit._towards_of(schedule, hop((0, 1))) == ((route, "Charlie"), (route, "Delta"))
     assert transit._towards_of(schedule, hop(())) == ((route, "Delta"),)
     assert transit._towards_of(schedule, hop((0, 0))) == ((route, "Delta"),)
+
+
+# Stephen, 2026-11-04: "Can't you find the shape files for the routes?" A rail pattern's track
+# from shapes.txt, cut at its stops; a hop's line is the track between the stops it rides.
+def test_shape_cuts_runs_the_track_through_each_stop() -> None:
+    line = [(0.0, 0.0), (0.005, 0.002), (0.01, 0.0), (0.015, 0.002), (0.02, 0.0)]
+    stops = [(0.0, 0.0), (0.01, 0.0), (0.02, 0.0)]
+    points, cuts = build.shape_cuts(line, stops)
+    assert cuts[0] == 0 and cuts[-1] == len(points) - 1
+    assert [points[c] for c in cuts] == [[0.0, 0.0], [0.01, 0.0], [0.02, 0.0]]
+    # The bends between the stops (over 200 m off the straight line) are kept.
+    assert [0.005, 0.002] in points and [0.015, 0.002] in points
+    # A stop far off the shape: not this pattern's track.
+    assert build.shape_cuts(line, [(0.0, 0.0), (0.0, 0.05)]) is None
+    # Too little to cut.
+    assert build.shape_cuts([(0.0, 0.0)], stops) is None
+    # A long straight with no vertex near a stop: placed on the segment all the same.
+    points, cuts = build.shape_cuts([(0.0, 0.0), (0.03, 0.0)], stops)
+    assert [points[c] for c in cuts] == [[0.0, 0.0], [0.01, 0.0], [0.02, 0.0]]
+    # Out and back past the first stop: each stop is taken on its first pass, not the way back.
+    there_and_back = [(0.0, 0.0), (0.03, 0.0), (0.03, 0.001), (0.0, 0.001)]
+    points, cuts = build.shape_cuts(
+        there_and_back, [(0.0, 0.0), (0.02, 0.0), (0.03, 0.001), (0.01, 0.001)]
+    )
+    assert cuts == sorted(cuts) and len(set(cuts)) == 4
+    assert [0.03, 0.0] in points[cuts[1] : cuts[2] + 1]
+
+
+def test_the_build_keeps_rail_tracks_and_a_marc_ride_follows_its_track(schedule) -> None:
+    doc = doc_from()
+    penn = [p for p in doc["patterns"] if p["route"] == "Penn Line"]
+    drawn = [p for p in penn if p.get("shape")]
+    assert drawn, "the Penn Line's patterns with a shape_id carry their track"
+    for p in drawn:
+        assert len(p["cuts"]) == len(p["stops"]) and p["cuts"][-1] == len(p["shape"]) - 1
+    # A feed without shapes.txt, or a bus: no track (drawn stop to stop).
+    assert not any(p.get("shape") for p in doc["patterns"] if p["route"] == "Camden Line")
+    assert any("follow their track" in line for line in built(date(2026, 9, 28))[1])
+    plan = plan_bike(schedule, NOMA, BALTIMORE, at(2026, 9, 30, 6, 20))
+    (marc,) = transit_legs(plan.options[0])
+    # More than its stops: the bends between them, from the track.
+    assert len(marc.coordinates) > len(marc.stops)
+    assert tuple(marc.coordinates[0]) == tuple(marc.stops[0][1])
+    assert tuple(marc.coordinates[-1]) == tuple(marc.stops[-1][1])
+
+
+def test_a_schedule_whose_track_does_not_fit_its_stops_draws_stop_to_stop(tmp_path) -> None:
+    doc = doc_from()
+    for p in doc["patterns"]:
+        if p.get("shape"):
+            p["cuts"] = p["cuts"][:-1]
+    path = tmp_path / "schedule.json"
+    path.write_text(json.dumps(doc))
+    loaded = transit.load(path, date(2026, 9, 30))
+    assert not any(p.cuts for p in loaded.patterns)
+
+
+def test_regenerating_the_fixture_as_its_docstring_says_gives_the_committed_files(tmp_path) -> None:
+    """make_fixture.py writes every file under tests/data/transit, the MARC track and its shape_id
+    included, so running it again (to add a system or a station) never drops the track the tests
+    above ride on."""
+    fixture = REPO / "tests" / "data" / "transit"
+    subprocess.run(
+        [sys.executable, "-I", str(fixture / "make_fixture.py"), str(tmp_path)],
+        check=True,
+        capture_output=True,
+        timeout=120,
+    )
+    committed = {p.relative_to(fixture): p.read_bytes() for p in fixture.rglob("*.txt")}
+    made = {p.relative_to(tmp_path): p.read_bytes() for p in tmp_path.rglob("*.txt")}
+    assert Path("marc/shapes.txt") in made
+    assert sorted(made) == sorted(committed)
+    assert [k for k in committed if made[k] != committed[k]] == []

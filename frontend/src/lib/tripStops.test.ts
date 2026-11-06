@@ -94,7 +94,11 @@ test("Go's Add a stop takes stops on Walk and the transit types, not Bikeshare",
 });
 
 test("the stops left go with the ride, and the panel's Ride the rest on a trip with stops rides to the first stop", () => {
-  assert.match(app, /forgetLeftRide\(\);\s*\/\/ A trip's stops left go with the ride[^\n]*\n\s*tripStopsLeft\.current = null;/);
+  assert.match(app, /forgetLeftRide\(\);\s*\/\/ A trip's stops left go with the ride[^\n]*\n\s*const stopsLeft = tripStopsLeft\.current;\s*tripStopsLeft\.current = null;/);
+  // Kept with the ride left going, so Resume still offers "Start the next leg"; Undo puts them back.
+  assert.match(app, /leads: ledLink, stopsLeft: tripStopsLeft\.current \}, VIA_MARKS/);
+  assert.match(app, /tripStopsLeft\.current = left\.stopsLeft \?\? null;/);
+  assert.match(app, /tripStopsLeft\.current = ended\.stopsLeft;/);
   assert.match(app, /rideTripOf\(panelLeft \? firstTripOf\(shown\) : shown, panelLeft \? routedPoints\.slice\(0, 2\) : routedPoints\)/);
   assert.match(app, /if \(!fromRide\) tripStopsLeft\.current = panelLeft;/);
 });
