@@ -12,12 +12,15 @@
  *
  * Plain data in, plain data out, so node --test runs all of it; the sheet is ReachSheet.tsx.
  */
+import { cancelRoute } from "./api.ts";
 import { closureFields, dialFields, type Dials } from "./dials.ts";
+import { newPlanId } from "./routeScheduler.ts";
 import { areaText, KM_PER_MILE } from "./format.ts";
-import { t } from "./i18n.ts";
+import { language, t } from "./i18n.ts";
 import { haversineM, type LonLat } from "./geo.ts";
 import { withoutSecret } from "./rideSeal.ts";
 import type { PresetId } from "./presets.ts";
+import { VIA_MARKS, namePoints } from "./pointKinds.ts";
 
 export type ReachDirection = "from" | "to";
 export type ReachCombine = "any" | "all" | "each";
@@ -85,22 +88,37 @@ export interface ReachAnswer {
   /** False when this ride type and slider have no calmer rings to show (Calm streets is then hidden). */
   calm_offered?: boolean;
   unplaced: number[];
+  /** Mountain Bike: false, the rings take trails of every level (a plan keeps to the rider's); null elsewhere. */
+  trail_level_applied?: boolean | null;
 }
 
-export type ReachResult = { ok: true; answer: ReachAnswer } | { ok: false; message: string };
+/** `retryAfterS`: the router or the limits were busy, and said when to ask again (Retry-After). */
+export type ReachResult = { ok: true; answer: ReachAnswer } | { ok: false; message: string; retryAfterS?: number };
 
 type FetchLike = (url: string, init: RequestInit) => Promise<Response>;
+
+/** The request's name (X-Plan-Id), so the API can stop it once the sheet moves on, and the one it replaces. */
+export interface ReachIds {
+  planId?: string;
+  replaces?: string;
+}
+
+/** A busy answer is asked again once, after its Retry-After, where that is no longer than this. */
+export const REACH_RETRY_MAX_S = 10;
 
 /** The request's body: the points (at most REACH_MAX_POINTS, the first ones), the ride type and its dials. */
 export function reachBody(points: readonly LonLat[], preset: PresetId, dials: Dials, view: ReachView, runPaceKmh?: number): Record<string, unknown> {
   const sent = points.slice(0, REACH_MAX_POINTS);
   const fields = dialFields({ ...dials, systemWeightKg: undefined, targetDistanceM: undefined, loop: false });
   // A ride's own fields the rings do not take: Mass Ride's size, Mountain Bike's levels, a share bike's docks.
+  // A share e-bike is Reach's `assist` on Bikeshare: its pace, hills and graph, as the plan rides it.
+  const shareEbike = preset === "bikeshare" && fields.bike === "ebike";
   for (const key of ["ride_size", "mtb_level", "mtb_preferred", "bike", "ending", "pickup_station", "dropoff_station", "transit_option", "novice_legs", "novice_hop"]) delete fields[key];
   return {
     points: sent,
     preset,
     ...fields,
+    ...(shareEbike ? { assist: true } : {}),
     ...(preset === "run" && runPaceKmh ? { run_pace_kmh: runPaceKmh } : {}),
     ...closureFields(dials),
     minutes: REACH_MINUTES.filter((m) => view.minutes.includes(m)),
@@ -121,12 +139,17 @@ function isAnswer(value: unknown): value is ReachAnswer {
   return !!v && Array.isArray(v.groups) && Array.isArray(v.minutes) && v.groups.every((g) => Array.isArray(g.rings));
 }
 
-export async function requestReach(body: Record<string, unknown>, fetchImpl: FetchLike = (url, init) => fetch(url, init), signal?: AbortSignal): Promise<ReachResult> {
+export async function requestReach(body: Record<string, unknown>, fetchImpl: FetchLike = (url, init) => fetch(url, init), signal?: AbortSignal, ids: ReachIds = {}): Promise<ReachResult> {
   let response: Response;
   try {
     response = await fetchImpl("/api/reach", {
       method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        ...(ids.planId ? { "X-Plan-Id": ids.planId } : {}),
+        ...(ids.replaces ? { "X-Plan-Replaces": ids.replaces } : {}),
+      },
       body: JSON.stringify(body),
       signal,
     });
@@ -140,13 +163,107 @@ export async function requestReach(body: Record<string, unknown>, fetchImpl: Fet
     payload = null;
   }
   if (response.ok && isAnswer(payload)) return { ok: true, answer: payload };
-  if (response.status === 429 || response.status === 503) return { ok: false, message: t("The router is busy. Try again in a moment.") };
+  if (response.status === 429 || response.status === 503) {
+    const after = Number(response.headers.get("Retry-After"));
+    const message = t("The router is busy. Try again in a moment.");
+    return Number.isFinite(after) && after > 0 ? { ok: false, message, retryAfterS: after } : { ok: false, message };
+  }
+  // The server's refusals are English sentences: the two Reach has are worded here, in the page's language; any other
+  // is shown as written only on an English page.
+  if (response.status === 422) return { ok: false, message: t("None of the points is on a street or path this ride type rides; move them onto one and try again.") };
+  if (response.status === 502) return { ok: false, message: t("The router could not draw these rings. Try again.") };
   const error = (payload as { error?: unknown } | null)?.error;
-  if (typeof error === "string" && error) return { ok: false, message: error };
+  if (typeof error === "string" && error && language() === "en") return { ok: false, message: error };
   return { ok: false, message: t("The rings could not be drawn. Try again.") };
 }
 
+function pause(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(resolve, ms);
+    signal?.addEventListener("abort", () => {
+      clearTimeout(timer);
+      resolve();
+    });
+  });
+}
+
+/**
+ * The sheet's Reach requests, as Go's plans (lib/routeScheduler.ts, routing audit S7): each is named (X-Plan-Id). One the
+ * sheet gives up on, for a newer one or because it closed, is cancelled (POST /api/route/cancel), so the API stops it at
+ * its next router call and gives back its routing slot; the next request names it (X-Plan-Replaces), so the API may wait
+ * a moment for that slot instead of refusing. A busy answer is asked again once after its Retry-After.
+ */
+export interface ReachRequestsOptions {
+  fetchImpl?: FetchLike;
+  cancel?: (planId: string) => void;
+  planId?: () => string;
+  wait?: (ms: number, signal?: AbortSignal) => Promise<void>;
+}
+
+export class ReachRequests {
+  private running: string | null = null;
+  private replaced: string | null = null;
+  private readonly options: ReachRequestsOptions;
+
+  constructor(options: ReachRequestsOptions = {}) {
+    this.options = options;
+  }
+
+  async ask(body: Record<string, unknown>, signal?: AbortSignal): Promise<ReachResult> {
+    const planId = (this.options.planId ?? newPlanId)();
+    const replaces = this.replaced ?? undefined;
+    this.replaced = null;
+    this.running = planId;
+    try {
+      let result = await requestReach(body, this.options.fetchImpl, signal, { planId, replaces });
+      if (!result.ok && result.retryAfterS !== undefined && result.retryAfterS <= REACH_RETRY_MAX_S && !signal?.aborted) {
+        await (this.options.wait ?? pause)(result.retryAfterS * 1000, signal);
+        if (!signal?.aborted) result = await requestReach(body, this.options.fetchImpl, signal, { planId, replaces });
+      }
+      return result;
+    } finally {
+      if (this.running === planId) this.running = null;
+    }
+  }
+
+  /** The request in flight is no longer wanted: stop it on the server. Nothing in flight, nothing sent. */
+  drop(): void {
+    if (this.running === null) return;
+    (this.options.cancel ?? ((id: string) => cancelRoute(id)))(this.running);
+    this.replaced = this.running;
+    this.running = null;
+  }
+}
+
 export { areaText };
+
+/**
+ * A point's name as its marker on the map has it: Start, Stop 1, Via point, End (lib/pointKinds.ts namePoints). Two
+ * via points or more are numbered among themselves (Via point 1, Via point 2), so no two groups read the same.
+ */
+export function reachPointNames(points: readonly LonLat[], loop: boolean, isVia: (p: LonLat) => boolean = (p) => VIA_MARKS.isVia(p)): string[] {
+  const named = namePoints(points, isVia, loop);
+  const vias = named.filter((n) => n.role === "via").length;
+  let via = 0;
+  return named.map((n) =>
+    n.role === "start"
+      ? loop
+        ? t("Start and finish")
+        : t("Start")
+      : n.role === "end"
+        ? t("End")
+        : n.role === "via"
+          ? vias > 1
+            ? t("Via point {number}", { number: (via += 1) })
+            : t("Via point")
+          : t("Stop {number}", { number: n.number ?? 0 }),
+  );
+}
+
+/** Whether a share sheet was closed by the rider (nothing to copy then), not missing or refused. */
+export function shareCancelled(error: unknown): boolean {
+  return typeof error === "object" && error !== null && (error as { name?: unknown }).name === "AbortError";
+}
 
 function metroText(n: number): string {
   return n === 1 ? t("{count} Metro station", { count: n }) : t("{count} Metro stations", { count: n });
@@ -192,7 +309,7 @@ export function reachSentence(answer: ReachAnswer, pointCount: number): string {
   const vars = { where, minutes: ring.minutes, area: areaText(ring.area_sq_mi, ring.area_km2), metro: metroText(ring.places.metro) };
   let text = to ? t("{where}, {minutes} min comes from {area} and {metro}.", vars) : t("{where}, {minutes} min reaches {area} and {metro}.", vars);
   const calm = answer.calm?.groups[0]?.rings[pick];
-  if (calm) text += ` ${t("On calm streets: {area} and {metro}.", { area: areaText(calm.area_sq_mi, calm.area_km2), metro: metroText(calm.places.metro) })}`;
+  if (calm) text += ` ${t("On Low-stress streets: {area} and {metro}.", { area: areaText(calm.area_sq_mi, calm.area_km2), metro: metroText(calm.places.metro) })}`;
   return text;
 }
 
@@ -200,7 +317,7 @@ export function reachSentence(answer: ReachAnswer, pointCount: number): string {
 export function reachNotes(answer: ReachAnswer, stress: number | undefined, pointCount: number): string[] {
   const notes: string[] = [];
   if (answer.stress_used !== null && stress !== undefined && stress > answer.stress_used) {
-    notes.push(t("Above Low-stress the rings are Low-stress's: they show where calm ways reach, not the long calm detours a route may take."));
+    notes.push(t("At Calm and Calmest, the rings are drawn at Low-stress: they show where low-stress ways reach in the time, not the long detours a calm route takes."));
   }
   if (answer.unplaced.length) {
     notes.push(
@@ -210,6 +327,7 @@ export function reachNotes(answer: ReachAnswer, stress: number | undefined, poin
     );
   }
   if (pointCount > REACH_MAX_POINTS) notes.push(t("Only the first {count} points are used.", { count: REACH_MAX_POINTS }));
+  if (answer.trail_level_applied === false) notes.push(t("The rings take trails of every level."));
   return notes;
 }
 

@@ -546,9 +546,10 @@ def _rider(state: dict, token: str, now: float) -> dict:
 
 
 def _check(ride_id: str, token: str) -> None:
-    if not RIDE_ID.match(ride_id or ""):
+    # A token from a JSON body may be any JSON value: only a string can be one.
+    if not isinstance(ride_id, str) or not RIDE_ID.match(ride_id):
         raise Refused(404, "Not a ride link.")
-    if not TOKEN.match(token or ""):
+    if not isinstance(token, str) or not TOKEN.match(token):
         raise Refused(400, "The ride token is missing.")
 
 

@@ -359,6 +359,33 @@ class TestParallel:
         future = parallel.submit(lambda: threading.current_thread().name)
         assert future.done() and future.result() == threading.current_thread().name
 
+    def test_work_left_on_the_pool_is_settled_before_the_next_test(self, settings) -> None:
+        """tests/conftest.py drains the pool between tests: what one test left running has
+        finished and what it left queued never runs, so neither reaches the next test's stubs,
+        and the next test starts on an empty pool of its own."""
+        from conftest import drain_router_pool
+
+        settings.ROUTER_PARALLEL_CALLS = 2
+        release = threading.Event()
+        ran: list[int] = []
+
+        def call(n: int) -> int:
+            release.wait(5)
+            time.sleep(0.05)
+            ran.append(n)
+            return n
+
+        futures = [parallel.submit(call, n) for n in range(4)]
+        pool = parallel._pool
+        threading.Timer(0.1, release.set).start()
+        drain_router_pool()
+        assert futures[0].done() and futures[1].done(), "the running two were waited for"
+        assert sorted(ran) == [0, 1]
+        assert futures[2].cancelled() and futures[3].cancelled(), "the queued two never go"
+        assert parallel._pool is None
+        assert parallel.submit(lambda: 7).result(timeout=5) == 7
+        assert parallel._pool is not pool
+
 
 # --- Step 5: the short-term cache ----------------------------------------------------------
 

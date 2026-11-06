@@ -9,6 +9,8 @@ which edits a table has not yet got.
 
 Dry by default, like `rollback_rebuild`: without `--confirm` it lists the edits it would
 replay and writes nothing. It is idempotent: a row already in an edit's state is left alone.
+An edit whose override row is no longer live (deleted or unapproved in the admin, or replaced
+by a later change) is listed as skipped and not replayed (`stress_edits.replayable_ways`).
 
     docker compose exec -T api python manage.py reapply_stress_edits --since 2026-10-09T00:00:00Z
     docker compose exec -T api python manage.py reapply_stress_edits --since all --confirm
@@ -72,8 +74,17 @@ class Command(BaseCommand):
         edits = edits.order_by("id")
         self.stdout.write(f"{edits.count()} edits ({label})")
         for edit in edits:
+            skipped = sorted(
+                {int(w) for w in edit.osm_way_ids} - stress_edits.replayable_ways(edit)
+            )
+            note = (
+                f" (skipped way(s) {skipped}: the override row is no longer live)"
+                if skipped
+                else ""
+            )
             self.stdout.write(
-                f"  {edit.pk}: {edit.action} of way(s) {edit.osm_way_ids} at {edit.at.isoformat()}"
+                f"  {edit.pk}: {edit.action} of way(s) {edit.osm_way_ids} at "
+                f"{edit.at.isoformat()}{note}"
             )
         if not options["confirm"]:
             self.stdout.write("dry run: nothing written; pass --confirm to write")
