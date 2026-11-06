@@ -25,7 +25,8 @@ import type { PresetId } from "./presets.ts";
 import { ridesHidden } from "./nativeShell.ts";
 import { pointAlong } from "./lightTimes.ts";
 import { drawOf, transitOf } from "./transit.ts";
-import { t } from "./i18n.ts";
+import { serverWordsIn, t } from "./i18n.ts";
+import { sourceWord, wallClockOf } from "./departure.ts";
 import { onwardOf, walkPart, type OnwardPart } from "./onward.ts";
 import { walkModel, walkStart, walkStep } from "./walkCues.ts";
 
@@ -263,6 +264,44 @@ export function withoutSpare(text: string): string {
   return text.replace(/: (?:you arrive|llegada) [^;]*; (\w)/, (_, first: string) => `. ${first.toUpperCase()}`);
 }
 
+/**
+ * A plan step's sentence as the ride screen shows and says it: the API's own where it words the language in force
+ * (English, Spanish: lib/i18n.ts serverWordsIn), else worded here from the step's fields in the language in force, so
+ * the hand-off from the bike to the train is not English in the other 19.
+ */
+export function stepText(step: TransitStep): string {
+  if (serverWordsIn()) return step.text;
+  const m = Math.max(1, Math.round(step.seconds / 60));
+  const lift = /\bby the elevator\b/.test(step.text);
+  switch (step.mode) {
+    case "walk":
+      return step.to ? t("Walk {m} min to {place}.", { m, place: step.to }) : t("Walk {m} min.", { m });
+    case "take":
+      return t("Walk {m} min to the bikeshare dock at {place} and take a classic bike.", { m, place: step.to ?? "" });
+    case "bikeshare":
+      return t("Ride the bikeshare bike {m} min and dock it at {place}.", { m, place: step.to ?? "" });
+    case "ride":
+      return step.to ? t("Ride {m} min to {place}.", { m, place: step.to }) : t("Ride {m} min.", { m });
+    case "enter":
+      return lift ? t("About {m} min into the station by the elevator.", { m }) : t("About {m} min into the station.", { m });
+    case "exit":
+      return lift ? t("About {m} min out of the station by the elevator.", { m }) : t("About {m} min out of the station.", { m });
+    default: {
+      const line = step.lines.length > 0 ? step.lines.join(" / ") : (step.system ?? "");
+      const stops = step.stops ?? [];
+      const off = stops.length > 0 ? stops[stops.length - 1].name : (step.to ?? "").replace(/^the stop at /, "") || null;
+      const board = step.toward && step.toward !== off ? t("Board {line} toward {place}.", { line, place: step.toward }) : t("Board {line}.", { line });
+      const words = [
+        step.mode === "bus" && step.with_bike ? t("Put your bike on the bus's front rack.") : "",
+        board,
+        step.departs ? t("Departs {time}.", { time: `${wallClockOf(step.departs)} ${sourceWord(step)}` }) : "",
+        off ? t("About {m} min on board to {place}.", { m, place: off }) : t("About {m} min on board.", { m }),
+      ];
+      return words.filter(Boolean).join(" ");
+    }
+  }
+}
+
 function same(text: string): TripWords {
   return { shown: text, spoken: text };
 }
@@ -284,10 +323,10 @@ function transitTrip(route: RouteResponse, destination: LonLat | null): RideTrip
       const metres = take.coordinates.length >= 2 ? pathLengthM(take.coordinates) : null;
       approach = { at, name: take.to, metres, extra: "", first: "", reached: t("At {place}. Take a bike and ride.", { place: take.to }), walk: walkOf(take) };
     } else {
-      const extra = before.map((s) => s.text).join(" ");
+      const extra = before.map(stepText).join(" ");
       // A first walk is said turn by turn; the station and the transit after it are said as before.
       const walk = before[0].mode === "walk" || before[0].mode === "take" ? walkOf(before[0]) : null;
-      approach = { at, name: null, metres: null, extra, first: before[0].text, reached: t("At the start of the ride."), walk };
+      approach = { at, name: null, metres: null, extra, first: stepText(before[0]), reached: t("At the start of the ride."), walk };
     }
   }
   // At the line's end: the plan's own steps to the first transit after it (dock, walk, into the station,
@@ -295,7 +334,7 @@ function transitTrip(route: RouteResponse, destination: LonLat | null): RideTrip
   const boardAt = steps.findIndex((s, i) => i > line && isTransitStep(s));
   const upTo = boardAt > line ? boardAt : steps.length - 1;
   const dock = lineStep.mode === "bikeshare" && lineStep.to ? t("Dock at {place}.", { place: lineStep.to }) : "";
-  const words = [dock, ...steps.slice(line + 1, upTo + 1).map((s) => withoutSpare(s.text))].filter(Boolean).join(" ");
+  const words = [dock, ...steps.slice(line + 1, upTo + 1).map((s) => withoutSpare(stepText(s)))].filter(Boolean).join(" ");
   const finish = words ? same(words) : null;
   const departure = plan.departure && plan.departure.step > line ? plan.departure : null;
   // After the transit: the next riding leg after it (where the followed walks and train end, lib/onward.ts), if it is
@@ -316,7 +355,7 @@ function transitTrip(route: RouteResponse, destination: LonLat | null): RideTrip
     const alight = off.coordinates.length > 0 ? off.coordinates[off.coordinates.length - 1] : null;
     const moreTransit = steps.some((s, i) => i > restAt && isTransitStep(s));
     rest = {
-      text: step.text,
+      text: stepText(step),
       alight,
       alightName: off.to,
       from: step.coordinates[0] ?? alight,

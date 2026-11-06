@@ -447,5 +447,11 @@ def inside_coverage(points: list) -> list:
     """The points inside the area routes are planned in (`settings.COVERAGE_BBOX`). A point
     past its edge (a roaming rider over the line) is left unasked: the check says the alerts
     and rain unchecked rather than refusing the points that are inside."""
+    return [points[i] for i in inside_indices(points)]
+
+
+def inside_indices(points: list) -> list[int]:
+    """Where in `points` the ones `inside_coverage` keeps are: a rain point found among them
+    is told by its place in the whole list, which is the list the page reads it against."""
     west, south, east, north = settings.COVERAGE_BBOX
-    return [p for p in points if west <= p[0] <= east and south <= p[1] <= north]
+    return [i for i, p in enumerate(points) if west <= p[0] <= east and south <= p[1] <= north]

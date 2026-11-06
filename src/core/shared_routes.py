@@ -34,6 +34,10 @@ for chat apps that fetch it: `core.share_preview`.
 
 A link an assistant app's plan made (core.connector) goes with its draft (`connector_draft`): a
 day, or less if the app is disconnected. Then it is "no longer kept", as any expired link is.
+
+However a row goes, its id stays behind (`core.models.SharedRouteGone`: the id and when it went,
+nothing else), so an old link never opens another route kept under its id later. Those are
+deleted after `GONE_KEPT`, longer than a link is kept unopened.
 """
 
 from __future__ import annotations
@@ -50,6 +54,8 @@ ID_RE = re.compile(r"[0-9a-f]{32}")
 MAX_BYTES = 2 * 1024 * 1024
 # Kept a year after it was last opened.
 KEEP = timedelta(days=365)
+# A gone link's id is not kept again for this long after it went: twice a link's keeping.
+GONE_KEPT = 2 * KEEP
 # An open writes its time at most once a day.
 TOUCH_EVERY = timedelta(days=1)
 DEFAULT_NAME = "Shared route"
@@ -73,12 +79,13 @@ REVOKED = "This link was turned off by its owner."
 
 
 def prune(now=None) -> int:
-    """Delete the expired rows (`expired`); how many. Run at every share and open
-    (`core.api`), and nightly by the backup task, so a quiet server drops them too."""
+    """Delete the expired rows (`expired`), each leaving its id (`SharedRouteGone`), and the ids
+    gone longer than `GONE_KEPT`; how many rows. Run at every share and open (`core.api`), and
+    nightly by the backup task, so a quiet server drops them too."""
     from django.db.models import Q
     from django.utils import timezone
 
-    from .models import ConnectorDraft, SharedRoute
+    from .models import ConnectorDraft, SharedRoute, SharedRouteGone
 
     now = now or timezone.now()
     deleted, _ = SharedRoute.objects.filter(
@@ -86,7 +93,15 @@ def prune(now=None) -> int:
         | Q(keep="until", delete_after__lt=timezone.localdate(now))
         | Q(connector_draft__isnull=False, created_at__lt=now - ConnectorDraft.KEPT)
     ).delete()
+    SharedRouteGone.objects.filter(gone_at__lt=now - GONE_KEPT).delete()
     return deleted
+
+
+def gone(route_id: str) -> bool:
+    """Whether a link's id was kept before and has gone: never kept again."""
+    from .models import SharedRouteGone
+
+    return SharedRouteGone.objects.filter(pk=route_id).exists()
 
 
 def expired(row, now) -> bool:

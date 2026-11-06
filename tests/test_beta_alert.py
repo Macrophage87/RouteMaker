@@ -190,6 +190,27 @@ def test_watch_posts_what_check_operations_reports(box: Box) -> None:
     ]
 
 
+def test_watch_reports_a_pc_backup_copy_that_has_stopped_then_its_return(box: Box) -> None:
+    box.hook()
+    box.run("watch")
+    assert box.posts() == []  # no PC copy set up: nothing said
+    mark = box.state / "pc-backup-pull"
+    mark.write_text("routemaker-20261101T070000Z.dump.age\n")
+    box.run("watch")
+    assert box.posts() == []  # fresh
+    old = mark.stat().st_mtime - 37 * 3600
+    os.utime(mark, (old, old))
+    box.run("watch")
+    box.run("watch")
+    posts = box.posts()
+    assert len(posts) == 1, posts  # once, not at every check
+    assert "the PC has not copied the beta's backups for over 36 h" in posts[0]
+    assert "routemaker-20261101T070000Z.dump.age" in posts[0]
+    mark.write_text("routemaker-20261103T070000Z.dump.age\n")
+    box.run("watch")
+    assert box.posts()[-1].startswith("RouteMaker beta: the PC is copying the beta's backups again")
+
+
 def test_a_single_failure_that_clears_is_never_posted(box: Box) -> None:
     box.hook()
     (box.tmp / "smoke-fails").write_text("FAIL  healthz: expected 200, got 502\n")

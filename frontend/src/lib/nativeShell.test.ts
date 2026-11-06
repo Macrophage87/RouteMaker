@@ -173,7 +173,8 @@ test("the native watch: Start adds a watcher with the riding notification; fixes
   fake.send("cb1", { latitude: 38.9, longitude: -77.03, accuracy: 6, speed: 5, bearing: 180, time: 1, altitude: null, altitudeAccuracy: null, simulated: false });
   fake.send("cb1", { latitude: 38.9, longitude: -77.03, accuracy: 6, speed: null, bearing: null, time: null });
   assert.deepEqual(fixes, [
-    { point: [-77.03, 38.9], accuracyM: 6, speedMs: 5, headingDeg: 180, at: 42 },
+    // The plugin's own `time` where it gives one (rideWatch.ts fixTime), else the time now.
+    { point: [-77.03, 38.9], accuracyM: 6, speedMs: 5, headingDeg: 180, at: 1 },
     { point: [-77.03, 38.9], accuracyM: 6, speedMs: null, headingDeg: null, at: 42 },
   ]);
   fake.send("cb1", undefined, { code: "NOT_AUTHORIZED", message: "Permission denied." });

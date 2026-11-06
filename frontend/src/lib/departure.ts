@@ -15,8 +15,8 @@
 import type { TimeSource, TransitDeparture } from "./api.ts";
 import { clockLocale, t } from "./i18n.ts";
 
-/** The region's own clock: a departure is at the station's time, whatever the phone's zone. */
-const ZONE = "America/New_York";
+/** The region's own clock: a departure is at the station's time, whatever the phone's zone (lib/arrival.ts arrivalClock too). */
+export const ZONE = "America/New_York";
 
 /**
  * The word after every transit time, so a rider knows a timetable from a live time (the owner,
@@ -100,7 +100,36 @@ export function clockOf(iso: string, locale: string | undefined = clockLocale())
   return format.format(at);
 }
 
-function vehicleName(vehicle: string): string {
+const WALL_CLOCKS = new Map<string, Intl.DateTimeFormat>();
+
+/**
+ * A time the API wrote in English words ("7:42 am", "12:05 pm": core.transit clock, where a step has no ISO time) on
+ * the phone's own clock, as clockOf shows one: "7:42 AM", "19:42". Anything else comes back as it was.
+ */
+export function wallClockOf(text: string, locale: string | undefined = clockLocale()): string {
+  const m = /^(\d{1,2}):(\d{2})\s*([ap])\.?m\.?$/i.exec(text.trim());
+  if (!m) return text;
+  const hour12 = Number(m[1]);
+  const minute = Number(m[2]);
+  if (hour12 < 1 || hour12 > 12 || minute > 59) return text;
+  const hour = (hour12 % 12) + (m[3].toLowerCase() === "p" ? 12 : 0);
+  const key = locale ?? "";
+  let format = WALL_CLOCKS.get(key);
+  if (!format) {
+    // The time as written, on no zone's clock: UTC in and out.
+    format = new Intl.DateTimeFormat(locale, { timeZone: "UTC", hour: "numeric", minute: "2-digit" });
+    WALL_CLOCKS.set(key, format);
+  }
+  return format.format(Date.UTC(2000, 0, 1, hour, minute));
+}
+
+/**
+ * The server's vehicle ("the MARC Penn Line", "bus B10", src/core/transitdata/systems.json "words") as the sentence
+ * names it: a train by its own name, a bus as "Bus B10" in the language in force.
+ */
+export function vehicleName(vehicle: string): string {
+  const bus = /^bus (.+)$/i.exec(vehicle);
+  if (bus) return t("Bus {name}", { name: bus[1] });
   const name = vehicle.replace(/^the /, "");
   return name.charAt(0).toUpperCase() + name.slice(1);
 }
