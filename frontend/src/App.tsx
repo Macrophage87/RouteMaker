@@ -1148,6 +1148,8 @@ export function App() {
     leads?: string | null;
     /** Said once the ride screen is up: Broadcast's link copied, where there was no share sheet. */
     note?: string;
+    /** Started from Start ride: away from the start at the first fix, the start is the first stop (RideMode startFirst). */
+    startFirst?: boolean;
     n: number;
   } | null>(null);
   // The timed rail check rests while on a bike unless the ride rides a train or bus (the owner, 2026-11-01: battery
@@ -3945,7 +3947,7 @@ export function App() {
     const whole = leg.trip ? { points: ridePoints, loop: rest ? false : routedLoop, preset: route.preset, wholeTrip: true } : { points: leg.points, loop: leg.loop, preset: leg.preset };
     const note = rideNote.current;
     rideNote.current = "";
-    setRideStart((before) => ({ route, ...leg, dials: rideDialsNow, fixed, roam: rest?.roam === true, whole: leg.trip ? whole : null, kept, passOn, follows, leads: ledLink, note, n: (before?.n ?? 0) + 1 }));
+    setRideStart((before) => ({ route, ...leg, dials: rideDialsNow, fixed, roam: rest?.roam === true, whole: leg.trip ? whole : null, startFirst: !rest, kept, passOn, follows, leads: ledLink, note, n: (before?.n ?? 0) + 1 }));
     if (kept) {
       // The destination's name kept too, so a Resume after a reload can name the ride (the UI review, 2026-10-28).
       const destination = leg.loop ? null : (namer.name(ridePoints[ridePoints.length - 1] ?? leg.points[leg.points.length - 1])?.name ?? null);
@@ -4801,7 +4803,7 @@ export function App() {
     tripStopsLeft.current = left.stopsLeft ?? null;
     tripCheck.current = checkTripOf(left.route, left.points);
     setResumeStats(null);
-    setRideStart((before) => ({ ...left, ...resumed, kept: true, n: (before?.n ?? 0) + 1 }));
+    setRideStart((before) => ({ ...left, ...resumed, kept: true, startFirst: false, n: (before?.n ?? 0) + 1 }));
     keepLeftRide(left, VIA_MARKS, Date.now());
     // On a broadcast, followed or led: the ride is on it again, its dots, alerts and leader with it (lib/rideResume.ts).
     const on = resumedBroadcast(left);
@@ -6935,6 +6937,7 @@ export function App() {
           preset={rideStart.preset}
           trip={rideStart.trip}
           resumedPast={rideStart.past ?? null}
+          startFirst={rideStart.startFirst === true}
           onRideRest={(riderAt) => rideRest(riderAt, true)}
           onTripCheck={tripCheck.current?.route === rideStart.route ? checkTrip : undefined}
           onNextLeg={tripStopsLeft.current ? nextLeg : undefined}
