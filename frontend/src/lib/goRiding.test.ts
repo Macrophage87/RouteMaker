@@ -76,7 +76,7 @@ test("6. an End ride button always in view, labelled End ride with its icon, one
   // the focus on Go's big button (Roam) once it shows.
   assert.match(finish, /clearPlan\(\);[\s\S]*?focusAfterRemove\.current = null;\s*if \(document\.activeElement instanceof HTMLElement && document\.activeElement\.closest\("\.go-search"\)\) document\.activeElement\.blur\(\);\s*window\.requestAnimationFrame\(\(\) => document\.querySelector<HTMLElement>\("\.go-bar-start"\)\?\.focus\(\)\);/);
   // Undo carries on from the ended ride's figures; a new Start begins from nought.
-  assert.match(app, /setResumeStats\(ended\.stats\);\s*setRideStart\(ended\.start\);/);
+  assert.match(app, /setResumeStats\(ended\.stats\);\s*\/\/ A trip past its line carries on with the walk or train it was following; else from its line\.\s*setRideStart\(\{ \.\.\.ended\.start, past: ended\.past \}\);/);
   assert.match(app, /setResumeStats\(null\);\s*setRideStart\(\(before\) =>/);
   assert.match(ride, /useRef<RideStats>\(resumeStats \? statsPause\(resumeStats\) : statsStart\(Date\.now\(\)\)\)/);
   // Large text always (the owner, 2026-10-20: "Just use large for everything"), its small print never under 16 pt.
@@ -91,7 +91,7 @@ test("6. an End ride button always in view, labelled End ride with its icon, one
   assert.doesNotMatch(app, /focusStartAfterRide/);
   assert.match(ride, /onFocus: \(\) => timer\.current\?\.focus\(true\)/);
   assert.match(app, /\{!riding && rideEnded && \(\s*<RideSummaryCard\s*key=\{rideEnded\.n\}[\s\S]*?onUndo=\{undoEndRide\}\s*onDone=\{finishRide\}/);
-  assert.match(app, /startRideGesture\(ridePrefs\);\s*setResumeStats\(ended\.stats\);\s*setRideStart\(ended\.start\);/);
+  assert.match(app, /startRideGesture\(ridePrefs\);\s*setResumeStats\(ended\.stats\);\s*\/\/ A trip past its line carries on with the walk or train it was following; else from its line\.\s*setRideStart\(\{ \.\.\.ended\.start, past: ended\.past \}\);/);
 });
 
 test("3. 311: one tap logs the pick (and sends it where the server has DC's key); no note in a ride (2026-10-21)", () => {
@@ -116,7 +116,7 @@ test("F1. Start unlocks the voice synchronously in the press, before the closure
   assert.ok(start.length > 100);
   // The handler itself is not async: nothing it does before the unlock can yield the gesture.
   assert.doesNotMatch(start, /const startRideNoted = async/);
-  assert.match(app, /const startRideChecked = \(\) => startRideNoted\(""\);/);
+  assert.match(app, /const startRideChecked = \(\) => sameRideFirst\(\(\) => startRideNoted\(""\), false, undefined, true\);/);
   const prime = start.indexOf("primeRideVoice(ridePrefs)");
   assert.ok(prime > 0, "Start unlocks the voice itself");
   assert.ok(prime < start.indexOf("checkThen("), "the unlock comes before the check");
@@ -140,6 +140,9 @@ test("Ride settings in reach: More at the end of the side buttons opens them jus
   assert.match(top, /\{!walking && !ride\.arrived && \(\s*<button type="button" className="secondary ride-road-closed" onClick=\{roadClosed\} aria-label=\{ROAD_CLOSED_NAME\} title=\{ROAD_CLOSED_NAME\}>/);
   // Road closed keeps its words at every size (the owner, 2026-10-20: "make everything have the big button").
   assert.match(top, /<span className="ride-top-label">\{ROAD_CLOSED_TEXT\}<\/span>/);
+  // Detour's menu has Go round too (the owner, 2026-11-05), for a rider who pressed Detour at a closure; it closes
+  // the menu and does what the top-row button does, which stays.
+  assert.match(ride, /className="secondary detour-road-closed"\s+onClick=\{\(\) => \{\s*setDetourOpen\(false\);[^]*?detourOpenRef\.current = false;\s*whereRef\.current\?\.focus\(\);\s*roadClosed\(\);\s*\}\}\s*>\s*<Icon name="barrier" size=\{20\} \/>\s*\{ROAD_CLOSED_NAME\}/);
   // No size query hides it (the Plan bar's own @container, styles.css, is the only one, and names no ride label).
   assert.doesNotMatch(css, /\.ride-top-label \{\s*position: absolute;/);
   assert.deepEqual([...css.matchAll(/@container[^{]*\{([^@]*)/g)].map((m) => /ride-/.test(m[1])), [false]);
@@ -161,7 +164,7 @@ test("Ride settings in reach: More at the end of the side buttons opens them jus
   assert.match(ride, /const unitsNow = useSyncExternalStore\(subscribeUnits, units\);/);
   assert.match(ride, /const cueShown = \{ \.\.\.cueWords, head: unitsFirst\(cueWords\.head\), rest: unitsFirst\(cueWords\.rest\) \};/);
   assert.match(ride, /const fitKey = `\$\{unitsNow\}\|/);
-  assert.match(source("../App.tsx"), /\} else backToRideOpener\(\);\s*(\/\/[^\n]*\n\s*)+if \(unitsReloadOwed\(\)\) window\.setTimeout\(\(\) => window\.location\.reload\(\), 300\);/);
+  assert.match(source("../App.tsx"), /\} else backToRideOpener\(\);\s*(\/\/[^\n]*\n\s*)+reloadIfUnitsOwed\(\);/);
   assert.match(source("../App.tsx"), /onPrefs=\{changeRidePrefs\}\s+saveSettingsNow=\{saveSettingsNow\}/);
   assert.match(source("../app/Sheets.tsx"), /<ThemeSetting idBase="settings" \/>[\s\S]*<UnitsSetting idBase="settings" saveNow=\{props\.saveSettingsNow\} \/>/);
   assert.match(dialog, /if \(event\.target === event\.currentTarget\) event\.currentTarget\.close\(\);/);
@@ -281,7 +284,7 @@ test("Broadcast from a ride (Stephen 2026-10-24: \"Let people broadcast from a r
   // The share sheet opens inside the press: nothing awaited before onBroadcast.
   assert.match(ride, /broadcastBusy\.current = true;\s*try \{\s*const said = await onBroadcast\(\);/);
   // App: Share ride's link (shareRoute(true)), the rider its leader; no new ride started.
-  const fromRide = app.slice(app.indexOf("const broadcastFromRide = async"), app.indexOf("// Broadcast held beside Start"));
+  const fromRide = app.slice(app.indexOf("const broadcastFromRideNow = async"), app.indexOf("// Broadcast held beside Start"));
   assert.match(fromRide, /await shareRoute\(true, broadcastNav\)/);
   assert.doesNotMatch(fromRide, /startRide/);
   // Only the plan's own route, never Ride the rest's or a detour from Roam; one following another's link passes theirs
