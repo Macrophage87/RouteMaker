@@ -1,7 +1,7 @@
 // The private-beta notice (lib/betaBanner.ts): off unless the build says VITE_BETA=1,
 // a "Beta" chip in the map's bottom-left corner that shows and hides a labelled region
 // (not a dialog), never trapping focus, linking the Discord for reports and, in small print,
-// the sign-up form, with a further report link only when one is configured.
+// the Android beta how-to-join page, with a further report link only when one is configured.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";

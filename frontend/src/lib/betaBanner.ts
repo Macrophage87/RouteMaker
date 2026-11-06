@@ -11,7 +11,7 @@
  * (replacing 382's "tell the person who gave you access"). A build given VITE_BETA_REPORT_URL
  * (ship-data.sh --report-url) still adds a "Report a problem" link to that address, unless it
  * is the Discord invite again. Below it, in small print, "Sign up to test here!" links the
- * public beta sign-up form (owner, 2026-10-25).
+ * Android beta's how-to-join page (owner, 2026-10-25; the page since 2026-11-06).
  *
  * The owner found the old banner in the planner obtrusive (2026-10-12), so it is a corner
  * chip now: a disclosure button ("Beta notice", aria-expanded) that shows and hides the note,

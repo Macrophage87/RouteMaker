@@ -1386,7 +1386,8 @@ button.secondary {
   justify-content: center;
   min-height: 56px;
   padding: 8px 20px;
-  margin: 4px 0 8px;
+  /* Room for the focus ring, which the scrolling body would clip at the sides. */
+  margin: 6px 6px 8px;
   border-radius: 8px;
   background: var(--accent);
   color: var(--accent-text);
