@@ -62,11 +62,23 @@ function sources(dir: string): string[] {
   });
 }
 
+/**
+ * A t() call with a plain string, in double or single quotes, the quote on the same line or the next (a long call
+ * broken across lines; the 2026-11-05 review found a phrase no catalog had that the one-line pattern missed).
+ */
+const MARKED = /\bt\(\s*(["'])((?:(?!\1)[^\\]|\\.)*)\1/g;
+
+/** The phrase a MARKED match holds, its escapes read. */
+function phraseOf(m: RegExpMatchArray): string {
+  const body = m[1] === '"' ? m[2] : m[2].replace(/\\'/g, "'").replace(/"/g, '\\"');
+  return JSON.parse(`"${body}"`) as string;
+}
+
 /** Every phrase the code passes to t() as it is written: t("...") with a plain string. */
 function markedPhrases(): Map<string, string> {
   const found = new Map<string, string>();
   for (const path of sources(SRC)) {
-    for (const m of readFileSync(path, "utf8").matchAll(/\bt\("((?:[^"\\]|\\.)*)"/g)) found.set(JSON.parse(`"${m[1]}"`), path);
+    for (const m of readFileSync(path, "utf8").matchAll(MARKED)) found.set(phraseOf(m), path);
   }
   return found;
 }
@@ -273,7 +285,7 @@ test("a phrase read back to its English, for a phone with no voice in the langua
 /** The phrases Ride's turn sentences are made of: every t("...") in lib/navigate.ts and lib/format.ts. */
 function turnPhrases(): string[] {
   return ["lib/navigate.ts", "lib/format.ts"].flatMap((name) =>
-    [...readFileSync(join(SRC, name), "utf8").matchAll(/\bt\("((?:[^"\\]|\\.)*)"/g)].map((m) => JSON.parse(`"${m[1]}"`) as string),
+    [...readFileSync(join(SRC, name), "utf8").matchAll(MARKED)].map((m) => phraseOf(m) as string),
   );
 }
 
@@ -335,6 +347,9 @@ const GO_RIDE_ALSO = [
   "lib/speechInput.ts",
   "lib/accountSettings.ts",
   "lib/homeMove.ts",
+  // A place shared into Go with no map point, and the Bikeshare docks layer's Closed (the 2026-11-05 review).
+  "app/sharedLaunch.ts",
+  "lib/bikeshareDocks.ts",
 ];
 
 function goRideFiles(): string[] {
@@ -364,8 +379,8 @@ function goRidePhrases(): Map<string, string> {
   const found = new Map<string, string>();
   for (const file of goRideFiles()) {
     const text = readFileSync(join(SRC, file), "utf8");
-    for (const m of text.matchAll(/\bt\("((?:[^"\\]|\\.)*)"/g)) found.set(JSON.parse(`"${m[1]}"`), file);
-    for (const m of text.matchAll(/\bt\(([A-Z][A-Z0-9_]*)[,)]/g)) {
+    for (const m of text.matchAll(MARKED)) found.set(phraseOf(m), file);
+    for (const m of text.matchAll(/\bt\(\s*([A-Z][A-Z0-9_]*)[,)]/g)) {
       const english = named.get(m[1]);
       if (english !== undefined) found.set(english, file);
     }

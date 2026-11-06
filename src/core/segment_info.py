@@ -292,6 +292,7 @@ OPTIONAL_COLUMNS = (
     "attr_sources",
     "stress_adjustment_id",
     "stress_computed_tier",
+    "stress_computed_half",
     "stress_adjustment_direction",
     "stress_adjustment_category",
     "stress_adjustment_note",
@@ -721,7 +722,8 @@ def stress_rows(row: dict) -> list[dict]:
             before = "Before the agency's rating"
         else:
             before = "Before the override"
-        rows.append(_row(before, tier_text(int(computed)), CLASSIFIER))
+        was_half = row.get("stress_computed_half") is True
+        rows.append(_row(before, tier_text(int(computed), was_half), CLASSIFIER))
     category = row.get("stress_adjustment_category")
     if category in ADJUSTMENT_CATEGORIES and source == OWNER:
         rows.append(_row("Owner's reason", ADJUSTMENT_CATEGORIES[category].capitalize(), OWNER))

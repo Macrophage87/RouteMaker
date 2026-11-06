@@ -8,10 +8,12 @@
 import type { TransitStep } from "./api.ts";
 import { haversineM } from "./geo.ts";
 import { t } from "./i18n.ts";
-import { ARRIVED_SAID, type RideEvent, type RideFix, type RideModel, type RideState, type Verbosity } from "./navigate.ts";
-import { onBoardLeg, onBoardStart, onBoardStep, AT_STOP_M, ROUGH_FIX_M, type OnBoardLeg, type OnBoardState } from "./onBoard.ts";
+import { ARRIVED_SAID, inSentence, type RideEvent, type RideFix, type RideModel, type RideState, type Verbosity } from "./navigate.ts";
+import { onBoardLeg, onBoardStart, onBoardStep, onBoardWhere, AT_STOP_M, ROUGH_FIX_M, type OnBoardLeg, type OnBoardState } from "./onBoard.ts";
 import { drawOf } from "./transit.ts";
-import { walkModel, walkStart, walkStep, type WalkPath } from "./walkCues.ts";
+import { nextWalkTurn, walkModel, walkStart, walkStep, walkTurnLine, type WalkPath } from "./walkCues.ts";
+import { spokenDistance } from "./format.ts";
+import { arrivalClock } from "./arrival.ts";
 
 /** A walk, with its planned seconds (null: unknown), or a train or bus. */
 export type OnwardPart = { kind: "walk"; model: RideModel; to: string | null; seconds: number | null } | { kind: "transit"; leg: OnBoardLeg };
@@ -36,7 +38,8 @@ export function walkPart(path: WalkPath, seconds: number | null = null): OnwardP
 /** A transit plan's steps after its line, as parts to follow, up to its next riding leg (Ride the rest's). */
 export function onwardOf(steps: readonly TransitStep[], after: number): OnwardPart[] {
   const parts: OnwardPart[] = [];
-  for (const step of steps.slice(after + 1)) {
+  for (let i = after + 1; i < steps.length; i += 1) {
+    const step = steps[i];
     const draw = drawOf(step);
     if (draw === "ride") break;
     if (step.mode === "walk" || step.mode === "take") {
@@ -45,7 +48,8 @@ export function onwardOf(steps: readonly TransitStep[], after: number): OnwardPa
       // A walk to a dock: the share bike's ride after it is Ride the rest's.
       if (step.mode === "take") break;
     } else if (draw === "transit") {
-      const leg = onBoardLeg(step);
+      // The trip's end from the stop to get off: every step after it, its wait too (as the plan's total adds them).
+      const leg = onBoardLeg(step, steps.slice(i + 1).reduce((sum, later) => sum + later.seconds + later.wait_s, 0));
       if (leg) parts.push({ kind: "transit", leg });
     }
   }
@@ -107,4 +111,26 @@ export function onwardStep(
   const out = onBoardStep(part.leg, state.board ?? onBoardStart(now), now, fix);
   if (!out.state.done) return { state: { ...state, board: out.state }, events: [], said: out.said };
   return { state: begin(parts, state.index + 1, now), events: [], said: out.said };
+}
+
+/**
+ * Where am I? past the line (Stephen, 2026-11-04: on the train it said "You have arrived at the end of the route"): the
+ * train or bus followed now (waiting: its line and the stop to get off; on board: the stops and time left), or the
+ * walk's next turn; null once nothing is followed (the line's own answer then stands).
+ */
+export function onwardWhere(parts: readonly OnwardPart[], state: OnwardState | null, nowMs: number = Date.now()): { shown: string[]; spoken: string } | null {
+  const current = state ?? (parts.length > 0 ? onwardStart(parts, nowMs) : null);
+  if (!current || !onwardActive(parts, current)) return null;
+  const part = parts[current.index];
+  if (part.kind === "transit") return onBoardWhere(part.leg, current.board ?? onBoardStart(nowMs), nowMs, arrivalClock);
+  const walk = current.walk ?? walkStart();
+  const line = walkTurnLine(part.model, walk);
+  const next = line ? nextWalkTurn(part.model, walk) : null;
+  if (!line || !next) {
+    if (!part.to) return null;
+    const to = t("Walk to {place}{distance}.", { place: part.to, distance: "" });
+    return { shown: [to], spoken: to };
+  }
+  // Said with the distance in one unit, in words ("300 feet"); the turn's own sentence ends it.
+  return { shown: [line], spoken: t("In {distance}, {cue}", { distance: spokenDistance(next.metres), cue: inSentence(next.cue, next.cue.text) }) };
 }

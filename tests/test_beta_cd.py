@@ -1244,19 +1244,34 @@ def test_rollback_copies_older_than_six_and_a_half_days_are_dropped_newer_and_li
     assert "drop database" not in beta.calls()
 
 
-def test_a_paused_or_broken_agent_drops_no_kept_database(beta: Beta) -> None:
-    """While the owner has the agent paused or BROKEN, a kept <db>_before_ copy may be the one
-    they restore from, so no pass drops it, however old."""
-    aged = f"routemaker_before_{_db_stamp(24 * 9)}"
+def test_a_paused_or_broken_agent_still_drops_old_kept_databases_but_the_newest(
+    beta: Beta,
+) -> None:
+    """While the owner has the agent paused or BROKEN, the newest kept <db>_before_ copy may be
+    the one they restore from, so it is spared and reported once it is past 6.5 days; every older
+    one past 6.5 days is still dropped, so the week the privacy page promises holds."""
+    oldest = f"routemaker_before_{_db_stamp(24 * 20)}"
+    older = f"routemaker_before_{_db_stamp(24 * 12)}"
+    newest = f"routemaker_before_{_db_stamp(24 * 9)}"
     for flag in ("PAUSED", "BROKEN"):
         (beta.cd / flag).write_text("2026-11-04T21:00:00Z held by hand\n")
         if beta.log.exists():
             beta.log.unlink()
-        beta.agent("run", STUB_DBS=aged)
-        assert "drop database" not in beta.calls()
+        done = beta.agent("run", STUB_DBS=f"{newest} {oldest} {older}")
+        dropped = re.findall(r'drop database if exists "([^"]+)"', beta.calls())
+        assert sorted(dropped) == sorted([oldest, older]), done.stdout
+        assert f"WARNING: the kept database {newest} is over 6.5 days old" in done.stdout
+        # A young newest copy is spared with no warning.
+        beta.log.unlink()
+        young = f"routemaker_before_{_db_stamp(2)}"
+        done = beta.agent("run", STUB_DBS=f"{newest} {young}")
+        dropped = re.findall(r'drop database if exists "([^"]+)"', beta.calls())
+        assert dropped == [newest], done.stdout
+        assert "WARNING: the kept database" not in done.stdout
         (beta.cd / flag).unlink()
-    beta.agent("run", STUB_DBS=aged)
-    assert f'drop database if exists "{aged}"' in beta.calls()
+    beta.log.unlink()
+    beta.agent("run", STUB_DBS=newest)
+    assert f'drop database if exists "{newest}"' in beta.calls()
 
 
 def test_mark_deployed_records_a_release_shipped_by_hand(beta: Beta) -> None:

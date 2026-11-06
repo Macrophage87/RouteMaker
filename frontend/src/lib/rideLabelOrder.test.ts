@@ -117,7 +117,7 @@ test("a home is the next layer up; the names only lifted are left out", () => {
   assert.equal(homes.get("trail-name"), "roads_oneway");
   assert.equal(homes.get("roads_labels_minor"), "water_label_ocean");
   assert.equal(homes.get("roads_labels_major"), "pois");
-  assert.deepEqual(RIDE_LABEL_LAYERS, ["trail-name", "roads_labels_minor", "roads_labels_major", "route-name"]);
+  assert.deepEqual(RIDE_LABEL_LAYERS, ["trail-name", "roads_labels_minor", "roads_labels_major", "route-name", "route-mile-dot", "route-mile-big", "route-mile-number"]);
   assert.equal(rideLabelsTarget(["a", "b"]), null);
 });
 

@@ -75,7 +75,7 @@ import {
   type RestartStop,
 } from "./lib/rideStops.ts";
 import { RestartStopsDialog } from "./RestartStopsDialog.tsx";
-import { keepLeftRide } from "./lib/rideResume.ts";
+import { keepLeftRide, keepLeftRidePast } from "./lib/rideResume.ts";
 import type { Dials } from "./lib/dials.ts";
 import { haversineM, type LonLat } from "./lib/geo.ts";
 import { placeLetter, type LetteredPlace } from "./lib/letteredPlaces.ts";
@@ -138,6 +138,8 @@ import {
   whereAmIShown,
   arrivedShown,
   snap,
+  heldProgressM,
+  voidsAutoReplan,
   CUE_SHEET_SHOWN,
   type Cue,
   type RideEvent,
@@ -167,7 +169,7 @@ import {
 } from "./lib/rideOutput.ts";
 import { ScreenSleepNote } from "./ScreenSleepNote.tsx";
 import { RAIL_INSET_PX, railLeastPx, useRailFit } from "./lib/railFit.ts";
-import { WAITING_FOR_GPS, readOnce, watchRide, type RideGeoEnv } from "./lib/rideWatch.ts";
+import { WAITING_FOR_GPS, handOver, readOnce, rideWatchOptions, watchRide, type RideGeoEnv } from "./lib/rideWatch.ts";
 import { PAUSE_CHECK_MS, PausedFixes, beatKeepsGps, heartbeatFix, movedFromPause, rideStayPausedSaid, stayStep, stayedLong, type Stay } from "./lib/ridePause.ts";
 import { askCompass } from "./lib/compassHeading.ts";
 import { rideGeoEnv, rideSpeech, rideWake, ridesHidden, showCue, speaksAloud } from "./lib/nativeShell.ts";
@@ -264,7 +266,8 @@ import {
   type RideTrip,
   walkLineTurns,
 } from "./lib/rideTrip.ts";
-import { onwardActive, onwardStart, onwardStep, type OnwardState } from "./lib/onward.ts";
+import { onwardActive, onwardStart, onwardStep, onwardWhere, type OnwardState } from "./lib/onward.ts";
+import { lowPowerOnBoard, onBoardPath, type OnBoardPath } from "./lib/onBoard.ts";
 import { BOARDING_MS, TRIP_CHECK_MS } from "./lib/tripCheck.ts";
 import { walkModel, walkTurnLine } from "./lib/walkCues.ts";
 import { BoardingCard, OnBoardCard } from "./OnBoardCard.tsx";
@@ -464,6 +467,8 @@ export interface RideView {
   lettered?: LetteredPlace[] | null;
   /** A lettered pin pressed: Detour opens on its row. */
   onLettered?: (index: number) => void;
+  /** The train or bus waited for or ridden past the line, its stops ahead (lib/onBoard.ts onBoardPath). */
+  transitPath?: OnBoardPath | null;
 }
 
 function arrowFor(
@@ -782,6 +787,7 @@ export function RideMode({
   geoEnv,
   keepLastRide = false,
   trip = null,
+  resumedPast = null,
   onRideRest,
   onTripCheck,
   onNextLeg,
@@ -856,6 +862,11 @@ export function RideMode({
    * rider reaches it (never "off route"), and the dock or the boarding said at the end. Null otherwise.
    */
   trip?: RideTrip | null;
+  /**
+   * A trip resumed past its line (lib/rideResume.ts, Stephen 2026-11-04: switching apps on the train ended the ride):
+   * the walk or train it was following, carried on from; the line itself is taken as ridden. Null: from the start.
+   */
+  resumedPast?: OnwardState | null;
   /** Ride the rest: plans the trip's last riding leg from `here` and starts it; else the words to say why not. */
   onRideRest?: (here: LonLat | null) => Promise<string | null>;
   /**
@@ -971,19 +982,26 @@ export function RideMode({
   const closedPending = useRef(false);
   const milesRef = useRef(trailMiles);
   milesRef.current = trailMiles;
-  const [ride, setRide] = useState<RideState>(startState);
+  // Resumed past the line: arrived at its end, the part after it followed on from where it was.
+  const [ride, setRide] = useState<RideState>(() => (resumedPast ? { ...startState(), arrived: true } : startState()));
   // A Bikeshare or transit plan's walk to its first dock (lib/rideTrip.ts): until the rider reaches the
   // line's start, the walk is said and shown, and no fix is taken as off route.
   const approach = trip?.approach ?? null;
-  const [walking, setWalking] = useState(approach !== null);
+  const [walking, setWalking] = useState(approach !== null && !resumedPast);
   // The walk, whether it has been said, and the last good fix (lib/rideTrip.ts tripStep); its `ride` is rideRef's.
-  const tripRef = useRef(tripRideStart(trip));
+  const tripRef = useRef(resumedPast ? { ...tripRideStart(trip, { ...startState(), arrived: true }), walking: false, walk: null } : tripRideStart(trip));
   // What follows the line once it ends (lib/onward.ts): walks turn by turn, transit stop by stop (2026-11-02).
   const onwardParts = useMemo(() => trip?.onward ?? [], [trip]);
-  const onwardRef = useRef<OnwardState | null>(null);
+  const onwardRef = useRef<OnwardState | null>(resumedPast);
   // A train is followed after the line and a ride comes after it: that ride starts by itself once off (restAuto, below).
   const restNextRef = useRef(false);
-  const [onward, setOnward] = useState<OnwardState | null>(null);
+  const [onward, setOnward] = useState<OnwardState | null>(resumedPast);
+  // Kept with the trip left going, so switching apps and back (a page reloaded) carries on from here (lib/rideResume.ts).
+  // Written when the part, the stop reached or the boarding changes, not at each timetable tick.
+  const pastKey = onward ? `${onward.index}|${onward.board?.at ?? ""}|${onward.board?.boardedAt ?? ""}|${onward.board?.done ?? ""}` : null;
+  useEffect(() => {
+    if (onwardRef.current) keepLeftRidePast(onwardRef.current);
+  }, [pastKey]);
   const rideRef = useRef(ride);
   const prefsRef = useRef(prefs);
   prefsRef.current = prefs;
@@ -1015,6 +1033,12 @@ export function RideMode({
   const lastFixAt = useRef(Date.now());
   // The last good fix and whether the weak-GPS note is up (lib/navigate.ts weighFix); a new watch starts afresh.
   const gpsWeak = useRef<GpsWeakness>({ goodAt: Date.now(), weak: false });
+  // On a train or bus past the line, or waiting for it (Stephen, 2026-11-04: "stop the GPS is weak notifications on
+  // metrorail"): there are no turn cues to pause, and the stops follow any rough fix or the timetable, so a weak or
+  // lost GPS is neither said nor shown.
+  const onTransitRef = useRef(false);
+  // On a train or bus until "Next stop" (lib/onBoard.ts lowPowerOnBoard): the watch's low-power stretch.
+  const lowPowerRef = useRef(false);
   // Weak GPS for long enough (cueSheetShown): the card shows the turns ahead as a list.
   const [cueSheetOn, setCueSheetOn] = useState(false);
   const cueSheetRef = useRef(false);
@@ -1032,6 +1056,8 @@ export function RideMode({
   const statsRef = useRef<RideStats>(resumeStats ? statsPause(resumeStats) : statsStart(Date.now()));
   // Each re-plan's ticket: "Keep the planned route" or a newer re-plan voids an older one's answer.
   const replanTicket = useRef(0);
+  // The ticket of the automatic re-plan under way (off route, not asked for), voided once back on the planned route.
+  const autoReplan = useRef<number | null>(null);
   // Where the last new route was asked from, until the rider is on its line (lib/navigate.ts replanHeld).
   const replannedFrom = useRef<LonLat | null>(null);
   const settingsId = useId();
@@ -1354,10 +1380,12 @@ export function RideMode({
       // skipped (Skip this stop, or a place chosen instead of it) is left out.
       // The same kept points for the way back below, so its stops keep their numbers in the new plan.
       // A restart part way (`done`, RestartStopsDialog): the stops the rider left unticked, behind or not.
-      const fromM = replanFromM(modelRef.current, current.progressM ?? 0, here);
+      // Not yet placed (held for the way the rider is going): from the first pass near here, never the start (heldProgressM).
+      const progressM = heldProgressM(modelRef.current, current, here);
+      const fromM = replanFromM(modelRef.current, progressM, here);
       const keptPoints = done
-        ? restartKept(modelRef.current, current.progressM ?? 0, plan.current.points, plan.current.loop, done)
-        : replanKept(modelRef.current, current.progressM ?? 0, plan.current.points, plan.current.loop, fromM).filter((i) => i !== skip);
+        ? restartKept(modelRef.current, progressM, plan.current.points, plan.current.loop, done)
+        : replanKept(modelRef.current, progressM, plan.current.points, plan.current.loop, fromM).filter((i) => i !== skip);
       const left = withoutStop(plan.current.points, keptPoints, here, skip ?? -1);
       // `let`: a re-route that leaves out the next via point (VIA_SKIP_EXTRA_S, below) rides the points without it.
       let points = via ? detourPoints(left, via) : left;
@@ -1373,6 +1401,7 @@ export function RideMode({
         return false;
       }
       const ticket = (replanTicket.current += 1);
+      autoReplan.current = !asked && !via && !done ? ticket : null;
       if (check) checking.current = true;
       // A held U-turn's check for a way ahead (UTURN_RECHECK_MS) is silent: nothing shown or said unless it finds one.
       if (!check) {
@@ -1424,7 +1453,7 @@ export function RideMode({
       // plan only where there is no way back. A way back is a short ask or three, not a plan to the end.
       const backFirst = rejoinsFirst(routeRef.current, { asked, detour: !!via, check, restart: !!done, skip: skip !== undefined });
       if (backFirst) {
-        const back = await wayBackRoute(routeRef.current, modelRef.current, current.progressM ?? 0, here, keptPoints, ask, voided, closed);
+        const back = await wayBackRoute(routeRef.current, modelRef.current, progressM, here, keptPoints, ask, voided, closed);
         if ("route" in back) {
           found = back.route;
           note = REPLAN_REJOIN_AHEAD;
@@ -1458,13 +1487,15 @@ export function RideMode({
         // pass. The no-signal timer runs on through it.
         if (!result.ok && !backFirst && !via && !check && startsWayBack(result.error.kind) && !voided()) {
           const kept = keptPoints;
-          const back = await wayBackRoute(routeRef.current, modelRef.current, current.progressM ?? 0, here, kept, ask, voided, closed);
+          const back = await wayBackRoute(routeRef.current, modelRef.current, progressM, here, kept, ask, voided, closed);
           if ("route" in back) found = back.route;
           else if (back.failed) failed = back.failed;
           note = REPLAN_REJOIN;
         }
       }
       window.clearTimeout(timer);
+      // Answered: no longer under way (a new route taken now is the one the rider then rides).
+      if (autoReplan.current === ticket) autoReplan.current = null;
       if (check) checking.current = false;
       else if (!released) gate.finish(found !== null);
       // Let go at the timeout and answered late with a route that is still taken (nothing newer since): the back-off
@@ -1670,8 +1701,8 @@ export function RideMode({
       // Only poor fixes for a while: the cues are paused, so the GPS note says so, once (review RIDE-3).
       const weighed = weighFix(gpsWeak.current, fix.accuracyM, lastFixAt.current);
       gpsWeak.current = { goodAt: weighed.goodAt, weak: weighed.weak };
-      if (weighed.sayNow) notify(GPS_WEAK_SAID);
-      setGps(weighed.weak ? GPS_WEAK_SAID : "");
+      if (weighed.sayNow && !onTransitRef.current) notify(GPS_WEAK_SAID);
+      setGps(weighed.weak && !onTransitRef.current ? GPS_WEAK_SAID : "");
       checkCueSheet(lastFixAt.current);
       // Arrived: how long the rider has stayed within STAY_M, for the pause at the destination (checkStay).
       stay.current = rideRef.current.arrived ? stayStep(stay.current, fix) : null;
@@ -1731,8 +1762,10 @@ export function RideMode({
           notify(restartSaid(named));
         }
       }
-      // Off this line but on the other one (the standard way, or the detour): followed there, not re-planned.
-      if (out.state.off && fix.accuracyM <= POOR_FIX_M) {
+      // Off this line but on the other one (the standard way, or the detour): followed there, not re-planned. Not when
+      // off for riding this line the wrong way (backAtM): the rider is still on it, and on the other line where they share
+      // a street, so the two would swap every block (2026-11-05 review).
+      if (out.state.off && out.state.backAtM === undefined && fix.accuracyM <= POOR_FIX_M) {
         const at = onOtherLine(otherModelRef.current, fix.point, fix.accuracyM, out.state.progressM ?? -Infinity);
         if (at !== null) {
           takeOther(at, fix);
@@ -1749,6 +1782,15 @@ export function RideMode({
       }
       // Back on the planned route: "Keep" has done its work; leaving it again re-plans as usual.
       if (out.events.some((e) => e.kind === "back-on-route") || (keepRef.current && !out.state.off)) setKeepPlanned(false);
+      // Back on it with an automatic re-plan still under way: its answer is dropped (voided, as Keep does), so a late
+      // new route from the off-route spot never replaces the one the rider is riding (2026-11-04 review). The rider's
+      // own asks (Re-plan from here, a detour, Road closed) stand.
+      if (voidsAutoReplan(out.state, autoReplan.current, replanTicket.current)) {
+        autoReplan.current = null;
+        replanTicket.current += 1;
+        setReplanning(false);
+        setReplanNote("");
+      }
       // Never from a rough fix (OFF_SURE_M): a re-plan from a Wi-Fi guess 300 m out would be wrong at once.
       // Not after "No route found ahead": that route stays up (Re-plan from here still asks again), checked quietly.
       // On the line again: the next automatic re-plan need not wait for the rider to move (REPLAN_MOVED_M).
@@ -1774,10 +1816,15 @@ export function RideMode({
   const stopWatch = useRef<(() => void) | null>(null);
   // Paused at the destination in the app, the watch runs on and its fixes are only held (lib/ridePause.ts PausedFixes).
   const pausedFixes = useRef(new PausedFixes()).current;
+  // Whether the running watch has the on-board options (lib/rideWatch.ts ON_BOARD_WATCH_OPTIONS), or null with none.
+  const watchOnBoard = useRef<boolean | null>(null);
+  // Started (or, running, swapped: the new watch before the old one stops, lib/rideWatch.ts handOver) with the options
+  // for where the rider is now: low power on a train or bus, high accuracy otherwise.
   const startWatch = useCallback(() => {
-    stopWatch.current?.();
     gpsWeak.current = { goodAt: Date.now(), weak: false };
-    stopWatch.current = watchRide(
+    const onBoard = lowPowerRef.current;
+    watchOnBoard.current = onBoard;
+    stopWatch.current = handOver(stopWatch.current, () => watchRide(
       env,
       (fix) => {
         // Paused: no line, map or cue work, only held for the 30 s check (the owner, 2026-11-01: battery audit).
@@ -1787,6 +1834,8 @@ export function RideMode({
       (reason) => {
         // Paused, a lone failure says nothing: the rider is not riding. A watch stopped for good still stops.
         if (pausedRef.current && reason !== "denied" && reason !== "insecure" && reason !== "unsupported") return;
+        // Underground on a train, no fix is expected: the timetable places it (lib/onBoard.ts), nothing is said.
+        if (onTransitRef.current && reason !== "denied" && reason !== "insecure" && reason !== "unsupported") return;
         if (reason === "timeout") {
           // Many phones report a lost signal as a timeout: said once no fix has come for GPS_LOST_MS.
           if (gpsSaid.current !== reason && Date.now() - lastFixAt.current >= GPS_LOST_MS) {
@@ -1806,10 +1855,13 @@ export function RideMode({
           if (reason === "denied" || reason === "insecure" || reason === "unsupported") {
             stopWatch.current?.();
             stopWatch.current = null;
+            watchOnBoard.current = null;
           }
         }
       },
-    );
+      undefined,
+      rideWatchOptions(onBoard),
+    ));
   }, [env, notify, pausedFixes]);
 
   useEffect(() => {
@@ -1948,6 +2000,12 @@ export function RideMode({
     [model, aheadKey, stopName],
   );
   const nextStop = ride.arrived ? null : (stops[0] ?? null);
+  // The train or bus's path on the map (Stephen, 2026-11-04: "if you can show the path too"): past the line, the one
+  // waited for or ridden now (the next one while walking to it), from the last stop reached to the stop to get off.
+  const pathIndex = ride.arrived ? (onward?.index ?? 0) : -1;
+  const pathPart = pathIndex < 0 ? null : (onwardParts.slice(pathIndex).find((p) => p.kind === "transit") ?? null);
+  const pathAt = pathPart && pathPart === onwardParts[pathIndex] && onward?.board?.boardedAt != null ? onward.board.at : 0;
+  const transitPath = useMemo<OnBoardPath | null>(() => (pathPart?.kind === "transit" ? onBoardPath(pathPart.leg, pathAt) : null), [pathPart, pathAt]);
   // Detour's places, lettered on the map as in its rows (Find food's pins, 2026-10-28): while the menu is open, and
   // after a row's Show on map until the menu next closes. They go with the list (a new search, a detour or Instead chosen).
   const detourLetters = useMemo(() => detourLettered(detourList), [detourList]);
@@ -1972,8 +2030,9 @@ export function RideMode({
       stops,
       lettered,
       onLettered,
+      transitPath,
     });
-  }, [route, other, fix, onView, vehicle, stops, lettered, onLettered]);
+  }, [route, other, fix, onView, vehicle, stops, lettered, onLettered, transitPath]);
 
   // The map along the route, kept for dead spots (lib/corridor.ts, plan section 6): fetched at Start ride
   // and again for a re-plan's new route (only the tiles the first did not cover), kept a day for the same route
@@ -2030,14 +2089,17 @@ export function RideMode({
   const askWhere = useCallback(() => {
     // Walking to the dock: the walk, from here.
     const walk = tripRef.current.walking && approach ? approachWords(approach, rideRef.current.fix?.point ?? null) : null;
-    const spoken = walk ? walk.spoken : whereAmI(modelRef.current, rideRef.current, false, milesRef.current, arrivingAt);
+    // Past the line, the part followed now (Stephen, 2026-11-04: "an erroneous you have arrived when pressing the map
+    // center button" on the train): the train or bus's stops and time left, or the walk's next turn.
+    const after = !walk && rideRef.current.arrived ? onwardWhere(onwardParts, onwardRef.current) : null;
+    const spoken = walk ? walk.spoken : after ? after.spoken : whereAmI(modelRef.current, rideRef.current, false, milesRef.current, arrivingAt);
     // Shown as two short lines (whereAmIShown), said whole.
-    showToast(walk ? walk.shown : whereAmIShown(modelRef.current, rideRef.current, milesRef.current, arrivingAt).join("\n"));
+    showToast(walk ? walk.shown : after ? after.shown.join("\n") : whereAmIShown(modelRef.current, rideRef.current, milesRef.current, arrivingAt).join("\n"));
     // On demand: through the chosen outputs; with neither chosen, through the polite region too, since
     // the rider asked (the answer is also on screen).
     announcer.current?.answer(spoken);
     if (prefsRef.current.output === "neither") setPolite((s) => ({ text: spoken, count: s.count + 1 }));
-  }, [approach, showToast, arrivingAt]);
+  }, [approach, showToast, arrivingAt, onwardParts]);
   // Where am I? and Re-centre are one button (the owner, 2026-10-20: "We can merge the where am I and the center on map
   // button functionality"): the map follows the rider again, and the answer is said and shown.
   const findMe = useCallback(() => {
@@ -2572,6 +2634,25 @@ export function RideMode({
   const onwardIndex = onward?.index ?? 0;
   const onwardDone = onwardParts.length > 0 && onwardIndex >= onwardParts.length;
   const onwardPart = ride.arrived ? (onwardParts[onwardIndex] ?? null) : null;
+  const onTransit = onwardPart?.kind === "transit";
+  onTransitRef.current = onTransit;
+  // A weak-GPS note from before the train goes on boarding (no fix may come underground to clear it); off the train,
+  // the weak-GPS clock starts afresh, so a walk with poor fixes after it is told so once, as any walk is.
+  useEffect(() => {
+    if (onTransit) setGps("");
+    else gpsWeak.current = { goodAt: Date.now(), weak: false };
+  }, [onTransit]);
+  // Boarding, the watch goes low power; at "Next stop", high accuracy again, so the GPS is warm for the walk or ride
+  // after (the new watch starts before the old one stops). The phone app keeps its one watch: its native watcher takes
+  // no accuracy option, and Android 14+ refuses a new location service with the screen locked. A paused or ended ride
+  // has none.
+  const lowPower = lowPowerOnBoard(onTransit, onward?.board);
+  lowPowerRef.current = lowPower;
+  useEffect(() => {
+    if (ridesHidden() || pausedRef.current || !stopWatch.current) return;
+    if (watchOnBoard.current === null || watchOnBoard.current === lowPower) return;
+    startWatch();
+  }, [lowPower, startWatch]);
   const onwardWalkLine = onwardPart?.kind === "walk" ? walkTurnLine(onwardPart.model, onward?.walk ?? null) : null;
   // The trip goes on past the line's end (Stephen, 2026-11-03: "the ride just ends when you reach the station. It
   // should start the transit phase"): the walk or the train after it, then the ride after the transit, which starts by
@@ -3242,7 +3323,7 @@ export function RideMode({
           </div>
         ) : (
           <>
-            <p className="cue-text">{gps || "Finding your place on the route."}</p>
+            <p className="cue-text">{gps || t("Finding your place on the route.")}</p>
             <IosLocationHelp notice={gps} />
           </>
         )}
@@ -3400,6 +3481,25 @@ export function RideMode({
                         {label}
                       </button>
                     ))}
+                    {/* The owner, 2026-11-05: a road-closed Go round inside Detour too, for a rider who pressed
+                        Detour at a closure (street signs read "ROAD CLOSED / DETOUR"); the top-row button stays. */}
+                    {!walking && !ride.arrived && (
+                      <button
+                        type="button"
+                        className="secondary detour-road-closed"
+                        onClick={() => {
+                          setDetourOpen(false);
+                          // Closed before roadClosed() speaks, so its words come as a toast, not into the hidden menu;
+                          // the pressed button goes with the menu, so the focus moves to Where am I?.
+                          detourOpenRef.current = false;
+                          whereRef.current?.focus();
+                          roadClosed();
+                        }}
+                      >
+                        <Icon name="barrier" size={20} />
+                        {ROAD_CLOSED_NAME}
+                      </button>
+                    )}
                   </div>
                 ) : (
                   <p className="detour-picked">
