@@ -363,6 +363,43 @@ def test_the_adjustment_reaches_the_row_only_as_far_as_it_may_be_shown(
         assert cursor.fetchone() == expected
 
 
+def test_the_level_an_adjustment_replaced_keeps_its_half_step(segment_schemas) -> None:
+    """A row of 2 on an agency's 2.5: the table says it replaced 2 and a half, and says
+    nothing of it where the adjustment is hidden."""
+    from routemaker.stress import StressAdjustment
+
+    _live, staging = segment_schemas
+
+    def lowered(visibility: str) -> StressResult:
+        return StressResult(
+            Stress.LTS2,
+            "override: stress adjustment a-half",
+            adjustment=StressAdjustment(
+                adjustment_id="a-half",
+                tier=Stress.LTS2,
+                computed_tier=Stress.LTS2,
+                computed_half=True,
+                category="other",
+                visibility=visibility,
+                annotation_status="approved",
+                public_note="Calm in practice",
+                display="map",
+            ),
+        )
+
+    rows = [
+        segment_row(1, 0, [(-77.0, 38.9), (-77.01, 38.91)], stress=lowered("public")),
+        segment_row(2, 0, [(-77.0, 38.9), (-77.01, 38.91)], stress=lowered("hidden")),
+    ]
+    write_segments(staging, rows)
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT osm_way_id, stress_computed_tier, stress_computed_half, "
+            f"stress_adjustment_direction FROM {staging}.segment ORDER BY osm_way_id"
+        )
+        assert cursor.fetchall() == [(1, 2, True, "down"), (2, None, None, None)]
+
+
 def test_a_note_without_an_adjustment_id_is_refused_by_the_table(segment_schemas) -> None:
     from django.db.utils import IntegrityError
 

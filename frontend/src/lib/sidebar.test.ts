@@ -657,7 +657,7 @@ test("Start, GPX, Link and More are one row under the route's figures (UI-CLEANU
   assert.match(app, /className="secondary icon-button route-more" aria-expanded=\{more\} aria-controls=\{moreId\}/);
   // The link is this page and encodePlan's fragment, which never carries the weight (313).
   // v0.9.0, "share the exact route": the link Share makes, naming the exact line shown (lib/sharedRoutes.ts).
-  assert.match(app, /const \{ link, kept \} = sharedLinkNow\(\);\s*const done = await copyText\(link, navigator\.clipboard, selectionCopy\);/);
+  assert.match(app, /const \{ link, kept \} = sharedLinkNow\(secret\);\s*const done = await copyText\(link, navigator\.clipboard, selectionCopy\);/);
   assert.equal(linkSaidFor(true), COPY_LINK_DONE);
   assert.equal(linkSaidFor(false), COPY_LINK_FAILED);
   assert.match(app, /if \(press === linkPresses\.current\) setLinkSaid\(linkSaidFor\(done\)\);/);

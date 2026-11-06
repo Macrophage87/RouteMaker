@@ -484,6 +484,10 @@ class StressAdjustment:
     # `tier` (1.5 to 4.5; never above Avoid). Stored as the lower level plus this flag,
     # so every reader of the integer tier keeps working.
     half: bool = False
+    # Whether the way stood half a level above `computed_tier` before the adjustment (an
+    # agency's 2.5, the service-road step's 1.5): `direction` compares the two steps, so a
+    # row of 1.5 on an alley already at 1.5 is `same`, and a row of 2 on a 2.5 road is `down`.
+    computed_half: bool = False
 
     @property
     def step(self) -> float:
@@ -491,10 +495,15 @@ class StressAdjustment:
         return int(self.tier) + (0.5 if self.half else 0.0)
 
     @property
+    def computed_step(self) -> float:
+        """The way's level before the adjustment, half step included."""
+        return int(self.computed_tier) + (0.5 if self.computed_half else 0.0)
+
+    @property
     def direction(self) -> str:
-        if self.step > self.computed_tier:
+        if self.step > self.computed_step:
             return ADJUSTMENT_UP
-        if self.step < self.computed_tier:
+        if self.step < self.computed_step:
             return ADJUSTMENT_DOWN
         return ADJUSTMENT_SAME
 

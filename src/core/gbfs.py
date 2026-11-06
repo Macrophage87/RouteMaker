@@ -446,10 +446,11 @@ def parse_zones(doc) -> Zones | None:
     for feature in features:
         if not isinstance(feature, dict):
             continue
-        geometry = feature.get("geometry") or {}
-        rules = tuple(
-            r for r in (feature.get("properties") or {}).get("rules", []) if isinstance(r, dict)
-        )
+        geometry = feature.get("geometry")
+        geometry = geometry if isinstance(geometry, dict) else {}
+        properties = feature.get("properties")
+        listed = properties.get("rules") if isinstance(properties, dict) else None
+        rules = tuple(r for r in listed if isinstance(r, dict)) if isinstance(listed, list) else ()
         coordinates = geometry.get("coordinates")
         if geometry.get("type") == "Polygon":
             shapes = [coordinates]
@@ -463,7 +464,10 @@ def parse_zones(doc) -> Zones | None:
             except (TypeError, ValueError):
                 continue
             polygons.append((rings, rules))
-    global_rules = tuple(r for r in collection.get("global_rules", []) if isinstance(r, dict))
+    listed = collection.get("global_rules")
+    global_rules = (
+        tuple(r for r in listed if isinstance(r, dict)) if isinstance(listed, list) else ()
+    )
     if not global_rules and isinstance(data.get("global_rules"), list):
         global_rules = tuple(r for r in data["global_rules"] if isinstance(r, dict))
     return Zones(tuple(polygons), global_rules)
@@ -815,7 +819,15 @@ class Gbfs:
             parser = _PARSERS.get(name)
             if parser is None:
                 continue
-            parsed = parser(doc)
+            try:
+                parsed = parser(doc)
+            except (TypeError, AttributeError, ValueError, KeyError) as error:
+                # A feed in a shape no parser expects is one that failed, as a fetch that fails
+                # is: the others are still read, and the failure is kept (api-2).
+                logger.warning(
+                    "bikeshare feed %s could not be read: %s", name, type(error).__name__
+                )
+                parsed = None
             if parsed is None:  # listed, but not the feed it should be
                 failed.add(name)
                 continue
