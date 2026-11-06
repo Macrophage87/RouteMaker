@@ -665,6 +665,13 @@ export function lineAlong(coordinates: readonly LonLat[]): Float64Array {
   return out;
 }
 
+/** The route's length in the description's metres: its last entry's end, else the API's total, else the line's (`lineM`). */
+export function routeLengthM(route: Pick<RouteResponse, "distance_m" | "description">, lineM: number): number {
+  const entries = route.description ?? [];
+  const lastTo = entries.length ? Math.max(...entries.map((e) => (Number.isFinite(e.to_m) ? e.to_m : 0))) : 0;
+  return lastTo > 0 ? lastTo : route.distance_m > 0 ? route.distance_m : lineM;
+}
+
 /**
  * The map from the description's metres to the line's (plan N0): piecewise linear between anchors,
  * the start (0, 0), each stop (its entry's metres, its vertex's), and the end (the route's length,
@@ -674,8 +681,7 @@ export function lineAlong(coordinates: readonly LonLat[]): Float64Array {
 export function measureMap(route: Pick<RouteResponse, "distance_m" | "leg_ends" | "description">, along: Float64Array): (m: number) => number {
   const lineM = along.length ? along[along.length - 1] : 0;
   const entries = route.description ?? [];
-  const lastTo = entries.length ? Math.max(...entries.map((e) => (Number.isFinite(e.to_m) ? e.to_m : 0))) : 0;
-  const routeM = lastTo > 0 ? lastTo : route.distance_m > 0 ? route.distance_m : lineM;
+  const routeM = routeLengthM(route, lineM);
   const anchors: [number, number][] = [[0, 0]];
   const ends = route.leg_ends ?? [];
   const vias = entries.filter((e) => e.kind === "via");
