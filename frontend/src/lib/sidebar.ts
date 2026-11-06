@@ -43,8 +43,9 @@ export const SHEET_TITLES: Record<Exclude<PanelView, "planner">, string> = {
   places: t("Places to see"),
   // Go's Edit route (edit-route redesign, Stephen 2026-10-18): Plan's points, from the route card.
   points: t("Edit route"),
-  // Reach (Stephen, 2026-11-04): where you can be in 15, 30, 45 and 60 minutes, from Plan's Find chips. Plan is English.
-  reach: "Reach",
+  // Reach (Stephen, 2026-11-04): where you can be in 15, 30, 45 and 60 minutes, from Plan's Find chips. Worded as
+  // Plan's other chips are (Spanish covers Plan too).
+  reach: t("Reach"),
 };
 
 /** The Files sheet's name on its buttons and its heading (the owner, 2026-10-18), short enough for the bar. */

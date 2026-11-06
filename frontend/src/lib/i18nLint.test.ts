@@ -144,13 +144,24 @@ function calleeName(callee: any): string | null {
   return null;
 }
 
-/** An argument's possible values: each branch of a `?:` (nested too), else the argument itself. */
+/**
+ * An argument's possible values: each branch of a `?:` (nested too), both sides of `||` and `??` (`a || "Home"` shows
+ * "Home"), the right of `&&`, else the argument itself.
+ */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function branchesOf(node: any): any[] {
   if (!node) return [];
   if (node.type === "ConditionalExpression") return [...branchesOf(node.consequent), ...branchesOf(node.alternate)];
+  if (node.type === "LogicalExpression") return node.operator === "&&" ? branchesOf(node.right) : [...branchesOf(node.left), ...branchesOf(node.right)];
   if (node.type === "ParenthesizedExpression") return branchesOf(node.expression);
   return [node];
+}
+
+/** A shown value and, where it is `a || "…"`, `a ?? "…"` or `a && "…"`, the words it falls back to (nested too). */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function fallbacksOf(node: any): any[] {
+  if (node?.type !== "LogicalExpression") return node ? [node] : [];
+  return node.operator === "&&" ? fallbacksOf(node.right) : [...fallbacksOf(node.left), ...fallbacksOf(node.right)];
 }
 
 /**
@@ -195,13 +206,17 @@ function untranslated(source: string, file: string, named: ((name: string) => st
     }
     if (node.type === "JSXText") add(node.start, node.value, "text");
     else if (node.type === "JSXExpressionContainer" && (parent?.type === "JSXElement" || parent?.type === "JSXFragment")) {
-      const text = stringOf(node.expression);
-      if (text !== null) add(node.start, text, "text");
+      for (const branch of fallbacksOf(node.expression)) {
+        const text = stringOf(branch);
+        if (text !== null) add(branch.start, text, "text");
+      }
       byName(node.expression, "text");
     } else if (node.type === "JSXAttribute" && node.name?.type === "JSXIdentifier" && PROPS.has(node.name.name)) {
       const value = node.value?.type === "JSXExpressionContainer" ? node.value.expression : node.value;
-      const text = stringOf(value);
-      if (text !== null) add(node.start, text, node.name.name);
+      for (const branch of fallbacksOf(value)) {
+        const text = stringOf(branch);
+        if (text !== null) add(branch === value ? node.start : branch.start, text, node.name.name);
+      }
       byName(value, node.name.name);
     } else if (node.type === "CallExpression" && SAYERS.has(calleeName(node.callee) ?? "")) {
       for (const branch of branchesOf(node.arguments?.[0])) {
@@ -248,6 +263,7 @@ test("the lint finds plain text, plain props, plain string children and plain sa
     "announce(ok ? t(\"Marked\") : `Plain said ${n}`);",
     "ride.current?.say(\"Plain member said\", true);",
     "setNotice(LINE);",
+    'const B = () => <p title={name ?? "Plain fallback title"}>{fix || "Plain fallback"} {shown && "Plain when"} {fix || t("Marked")}</p>;',
   ].join("\n");
   const found = untranslated(sample, "sample.tsx").map((f) => [f.line, f.where, f.text]);
   assert.deepEqual(found, [
@@ -257,6 +273,9 @@ test("the lint finds plain text, plain props, plain string children and plain sa
     [3, "text", "Plain child"],
     [7, "said", "Plain said ${…}"],
     [8, "said", "Plain member said"],
+    [10, "title", "Plain fallback title"],
+    [10, "text", "Plain fallback"],
+    [10, "text", "Plain when"],
   ]);
 });
 
@@ -288,4 +307,12 @@ test("in Go and Ride a constant shown or said by its name must be worded through
   ]);
   // Outside Go and Ride (no resolver) a name is not read.
   assert.deepEqual(untranslated(sample, "sample.tsx"), []);
+});
+
+test("Go and Ride's words that stand in for a missing name are translated too: Home, the point on the map, a closure (2026-11-05 review)", () => {
+  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  assert.match(app, /home\.label \|\| t\("Home"\)/);
+  assert.doesNotMatch(app, /home\.label \|\| "Home"/);
+  assert.match(app, /\?\? t\("the point on the map"\)/);
+  assert.match(app, /c\.road \?\? c\.title \?\? t\("a closure"\)/);
 });

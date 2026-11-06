@@ -366,6 +366,10 @@ class Pattern:
     runs: tuple[tuple[int, ...] | None, ...]  # per band, from the first stop, seconds
     # service index -> departures from the first stop, minutes * 2 + 1 where a bike may board
     trips: dict[int, tuple[int, ...]]
+    # The track (the feed's shapes.txt, rail only) through each stop, and each stop's index in it;
+    # empty where the feed has none (scripts/build_transit_schedule.py shape_cuts).
+    shape: tuple[tuple[float, float], ...] = ()
+    cuts: tuple[int, ...] = ()
 
     def runs_at(self, minute: float) -> tuple[int, ...]:
         """The run times of the band at `minute`, else the nearest band's."""
@@ -603,7 +607,14 @@ def parse(doc: dict) -> Schedule:
         if len(runs) != len(BANDS) or any(r is not None and len(r) != len(stops_of) for r in runs):
             raise Unavailable("a pattern's run times do not match its stops")
         trips = {int(k): tuple(int(d) for d in v) for k, v in p["trips"].items()}
-        patterns.append(Pattern(i, int(p["system"]), str(p["route"]), stops_of, runs, trips))
+        shape = tuple((float(x), float(y)) for x, y in p.get("shape") or ())
+        cuts = tuple(int(c) for c in p.get("cuts") or ())
+        # A track that does not fit its stops is left out (drawn stop to stop, as before).
+        if len(cuts) != len(stops_of) or any(not 0 <= c < len(shape) for c in cuts):
+            shape, cuts = (), ()
+        patterns.append(
+            Pattern(i, int(p["system"]), str(p["route"]), stops_of, runs, trips, shape, cuts)
+        )
     return Schedule(
         systems,
         stops,
@@ -1463,6 +1474,23 @@ def _position(stops: tuple[int, ...], path: tuple[int, ...]) -> int | None:
     return None
 
 
+def _track_of(schedule: Schedule, hop: Hop) -> tuple[tuple[float, float], ...]:
+    """The hop's line on the map (Stephen, 2026-11-04: "Can't you find the shape files for the
+    routes?"): its pattern's track from the stop boarded to the one left, or another serving
+    pattern's that runs the same stops; else its stops joined in order."""
+    for index in (hop.pattern, *hop.serving):
+        pattern = schedule.patterns[index]
+        if not pattern.cuts:
+            continue
+        pos = _position(pattern.stops, hop.path)
+        if pos is None:
+            continue
+        first, last = pattern.cuts[pos], pattern.cuts[pos + len(hop.path) - 1]
+        if last > first:
+            return pattern.shape[first : last + 1]
+    return tuple(tuple(schedule.stops[s].point) for s in hop.path)
+
+
 def _stops_of(
     schedule: Schedule, hop: Hop
 ) -> tuple[tuple[tuple[str, tuple[float, float], float], ...], str | None]:
@@ -1523,7 +1551,7 @@ def _transit_leg(
     return Leg(
         system.mode,
         hop.ride_s + (TRANSFER_S if change else 0.0),
-        tuple(schedule.stops[s].point for s in hop.path),
+        _track_of(schedule, hop),
         schedule.place(to),
         hop.routes,
         hop.wait_s,
