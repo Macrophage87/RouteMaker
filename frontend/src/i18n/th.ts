@@ -125,6 +125,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Finding your place on the route.": "กำลังหาตำแหน่งของคุณบนเส้นทาง",
   "Off the planned route.": "ออกนอกเส้นทางที่วางแผนไว้",
   "Off the planned route; finding a new way.": "ออกนอกเส้นทางที่วางแผนไว้ กำลังหาทางใหม่",
+  "Not near the start: going there first.": "ไม่ได้อยู่ใกล้จุดเริ่มต้น: ไปที่นั่นก่อน",
   "Back on the planned route.": "กลับมาบนเส้นทางที่วางแผนไว้แล้ว",
   "No route found ahead. Make a U-turn.": "ไม่พบเส้นทางข้างหน้า กลับรถ",
   "No signal: the planned route is still shown.": "ไม่มีสัญญาณ ยังแสดงเส้นทางที่วางแผนไว้",
