@@ -7205,7 +7205,7 @@ time (#976, #978), resuming a trip after switching apps (#979); the 2026-11-05 r
 after a change,
 Detour's Go round, Reach's own rate limits and costing per ride type, the MCP connector's `reach`
 and `compare_places` answered in process, closures checked as far as a plan reaches); the open data
-download (#982); 671 Baltimore City owner rows corrected (#975); and a key of its own for the PC's
+download (#982); mile markers on the route line (#987); 671 Baltimore City owner rows corrected (#975); and a key of its own for the PC's
 backup pull (#983).
 
 **What changes for the host.** Migration 0056 (`shared_route_gone`, home's own table, never
@@ -7271,7 +7271,8 @@ changed`), as at v0.19.0, though the column is optional: the beta ships by hand,
   back, press Resume: the trip carries on. In a ride, Detour's menu offers "Go round: road closed
   ahead". Copy a Group Ride link, change the plan and copy again: "Same ride or a new one?"; Same ride
   gives the first link, New ride a new one. Plan > Find > Reach
-  on Walk draws rings. Acknowledgements shows "Download our data".
+  on Walk draws rings. Acknowledgements shows "Download our data". A route over 5 miles shows a
+  dot each mile and a numbered dot at 5; with Units in kilometers, each km.
 - [ ] **Rollback.** The `pre-rel` api and pipeline images (`--force-recreate api worker rebuild`)
   and the v0.20.0 front end. Migration 0056 only adds a table: the v0.20.0 api ignores it, so the
   database stays migrated. A schedule rebuilt with tracks still works with the v0.20.0 api (it
