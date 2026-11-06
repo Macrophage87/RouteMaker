@@ -142,7 +142,7 @@ test("Ride settings in reach: More at the end of the side buttons opens them jus
   assert.match(top, /<span className="ride-top-label">\{ROAD_CLOSED_TEXT\}<\/span>/);
   // Detour's menu has Go round too (the owner, 2026-11-05), for a rider who pressed Detour at a closure; it closes
   // the menu and does what the top-row button does, which stays.
-  assert.match(ride, /className="secondary detour-road-closed"\s+onClick=\{\(\) => \{\s*setDetourOpen\(false\);\s*roadClosed\(\);\s*\}\}\s*>\s*<Icon name="barrier" size=\{20\} \/>\s*\{ROAD_CLOSED_NAME\}/);
+  assert.match(ride, /className="secondary detour-road-closed"\s+onClick=\{\(\) => \{\s*setDetourOpen\(false\);[^]*?detourOpenRef\.current = false;\s*whereRef\.current\?\.focus\(\);\s*roadClosed\(\);\s*\}\}\s*>\s*<Icon name="barrier" size=\{20\} \/>\s*\{ROAD_CLOSED_NAME\}/);
   // No size query hides it (the Plan bar's own @container, styles.css, is the only one, and names no ride label).
   assert.doesNotMatch(css, /\.ride-top-label \{\s*position: absolute;/);
   assert.deepEqual([...css.matchAll(/@container[^{]*\{([^@]*)/g)].map((m) => /ride-/.test(m[1])), [false]);

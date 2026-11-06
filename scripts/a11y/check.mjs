@@ -5242,10 +5242,10 @@ if (mine()) {
   await sleep(2100);
   const later = await p.eval("document.querySelector('.departure-label span')?.textContent ?? ''");
   check("transit (Go): an infrequent departure is said plainly: the MARC, when, from where, when you arrive and the spare, and the one after",
-    shown && /^MARC Penn Line \d{1,2}:\d{2} [ap]m scheduled from Union Station\. You arrive \d{1,2}:\d{2} [ap]m \(3 min spare\)\. Next after that: \d{1,2}:\d{2} [ap]m scheduled\.$/.test(first.text),
+    shown && /^MARC Penn Line \d{1,2}:\d{2} [AP]M scheduled from Union Station\. You arrive \d{1,2}:\d{2} [AP]M \(3 min spare\)\. Next after that: \d{1,2}:\d{2} [AP]M scheduled\.$/.test(first.text),
     JSON.stringify(first));
   check("transit (Go): cutting it close shows a mm:ss countdown and the spare, in the panel and on the map's label at the boarding stop, neither a live region",
-    /Cutting it close\. Departs in \d{2}:\d{2}, scheduled; time to spare \d{2}:\d{2}\./.test(first.timer) && /^MARC \d{1,2}:\d{2} [ap]m scheduled · in \d{2}:\d{2} · \d{2}:\d{2} spare$/.test(first.label) && first.labelHidden === "true" && !first.live && later !== first.label,
+    /Cutting it close\. Departs in \d{2}:\d{2}, scheduled; time to spare \d{2}:\d{2}\./.test(first.timer) && /^MARC \d{1,2}:\d{2} [AP]M scheduled · in \d{2}:\d{2} · \d{2}:\d{2} spare$/.test(first.label) && first.labelHidden === "true" && !first.live && later !== first.label,
     JSON.stringify({ first, later }));
   check("transit (Go): both systems' timetables are credited", /WMATA GTFS \(scheduled times\); MDOT MTA GTFS \(scheduled times\)/.test(first.credit), first.credit);
   await p.shot(`${SHOTS}/transit_departure.png`);
@@ -5452,7 +5452,7 @@ if (mine()) {
   const q = await bare({ width: 1280, height: 900, mobile: false });
   const wide = await q.eval(`({ mode: ${modeNow}, top: !!document.querySelector('nav.go-top'), chips: [...document.querySelectorAll('.map-chips .map-chip')].map((x) => x.textContent.trim()) })`);
   // Places to see joined Plan's map chips in 2b38bf1c ("Go: Repair and Sights behind More; Plan: Places to see").
-  check("go: a shared link opens in Go on a phone, and a wide screen opens in Plan, with Eat, Water and Places to see chips on the map (behind Find)", linked === "Go" && wide.mode === "Plan" && !wide.top && JSON.stringify(wide.chips) === JSON.stringify(["Find", "Eat", "Water", "Places to see"]), JSON.stringify({ linked, wide }));
+  check("go: a shared link opens in Go on a phone, and a wide screen opens in Plan, with Eat, Water, Places to see and Reach chips on the map (behind Find)", linked === "Go" && wide.mode === "Plan" && !wide.top && JSON.stringify(wide.chips) === JSON.stringify(["Find", "Eat", "Water", "Places to see", "Reach"]), JSON.stringify({ linked, wide }));
   // Folded behind Find (the owner, 2026-10-21: "It's more room"): Find opens the row, Escape folds it back to Find,
   // and a choice opens its sheet and folds the row.
   const fold = "(() => { const t = document.querySelector('.map-chips-toggle'); const r = document.getElementById(t.getAttribute('aria-controls')); return { expanded: t.getAttribute('aria-expanded'), hidden: r.hidden }; })()";

@@ -10524,7 +10524,8 @@ summary.closure-notices-heading {
 }
 .load-route-dialog .closure-choices button,
 .ride-settings-dialog .closure-choices button,
-.resume-ride-dialog .closure-choices button {
+.resume-ride-dialog .closure-choices button,
+.same-ride-dialog .closure-choices button {
   min-height: 44px;
 }
 

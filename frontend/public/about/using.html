@@ -1412,7 +1412,10 @@ locks its dot, its alerts and the leader's path with a key made from that secret
 server passes on sealed text it cannot read, and it refuses a position that is not sealed. Every ride link
 carries a secret, a Featured route post's Group or Mass Ride link and a link an AI assistant planned included;
 the server keeps the secret for those two, so it can read those rides. A link without a secret, such as an
-old one, gets a new one when opened, so it starts a ride of its own. The full method is on the <a href="/about/architecture.html#apps">architecture page</a>.</li>
+old one, gets a new one when opened, so it starts a ride of its own. Each Group or Mass Ride plan has its own
+secret, so changing the route makes a new ride with a new link. When a plan's link went out more than 12 hours ago,
+copying or sharing it again, Broadcast or Start ride first asks "Same ride or a new one?": Same ride keeps the link;
+New ride makes a new one, and those with the earlier link do not see the new ride. The full method is on the <a href="/about/architecture.html#apps">architecture page</a>.</li>
 <li>The server keeps dots, the leader's route and path, and alerts in memory only, for 2 minutes. A
 phone's random ride code and its alert counts are forgotten 2 minutes after it last checked in.</li>
 <li>Planning a Mass Ride: <a href="/about/mass-ride.html">Mass Ride</a>.</li>

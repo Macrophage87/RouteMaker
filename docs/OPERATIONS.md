@@ -80,7 +80,7 @@ Contents:
 - [Deploying v0.19.0](#deploying-v0190)
 - [Deploying v0.19.1](#deploying-v0191)
 - [Deploying v0.20.0](#deploying-v0200)
-- [Deploying v0.21.0 (draft)](#deploying-v0210-draft)
+- [Deploying v0.21.0](#deploying-v0210)
 - [Deploying a planner and front-end release: rollback points and verification](#deploying-a-planner-and-front-end-release-rollback-points-and-verification)
 - [Paths bicycles may not ride (NO-BIKE-PATHS)](#paths-bicycles-may-not-ride-no-bike-paths)
 - [Mountain-bike difficulty levels (456; claude/v0-4-0-mtb-levels)](#mountain-bike-difficulty-levels-456-claudev0-4-0-mtb-levels)
@@ -7197,42 +7197,84 @@ Dockerfile, so the beta ships by hand. At home, in order, with `</dev/null` on e
   restart back: a v0.19.1 api sends fewer vertices and no isochrone call. Loaded override rows stay;
   retire them with the loader if they must go.
 
-## Deploying v0.21.0 (draft)
+## Deploying v0.21.0
 
-A draft, kept while the release branch grows: "Prepare v0.21.0" completes it, with the version,
-`docs/releases/v0.21.0.md` and the full order of steps. So far it carries the transit-in-ride work
-that landed after v0.20.0 was prepared: time left on the train or bus (#976), rail lines along
-their tracks and each stop's time (#978), and resuming a transit trip (#979).
+Transit in a ride: the stops and time left on board, the line along its track and each stop's
+time (#976, #978), resuming a trip after switching apps (#979); the 2026-11-05 repo review's fixes
+(#980: Group and Mass Ride links keyed per plan with "Same ride or a new one?" after 12 hours,
+Detour's Go round, Reach's own rate limits and costing per ride type, the MCP connector's `reach`
+and `compare_places` answered in process, closures checked as far as a plan reaches); the open data
+download (#982); 671 Baltimore City owner rows corrected (#975); and a key of its own for the PC's
+backup pull (#983).
 
-**For the release notes** (`docs/releases/v0.21.0.md`, written at "Prepare v0.21.0"):
+**What changes for the host.** Migration 0056 (`shared_route_gone`, home's own table, never
+shipped: `ship-data.sh` leaves it out). `src/pipeline/schema.py` and `writers.py` add the segment
+column `stress_computed_half`, which the next map rebuild fills; the api reads it only where the
+live table has it (`core.segment_info`), so the release runs on the current map. Reach has rate
+limits of its own (`REACH`, `REACH_ISOCHRONES`, in code: no environment variable).
+`scripts/build_transit_schedule.py` stores each rail pattern's track from `shapes.txt`; an old
+schedule keeps working, drawn stop to stop. `scripts/beta/` (the agent, `alert.sh`'s PC-pull
+watch, `receive-data.sh`, `ship-data.sh`) and `scripts/pc/` (the backup pull reads
+`~/.config/routemaker/pull-beta-backups.env` and the pull-only alias of "A key that
+can only pull backups"). **No `valhalla/*.json`, compose, Caddyfile, nginx, Dockerfile,
+requirements, `lua/` or `mobile/` change, no tile `FORMAT_VERSION` change, no new environment
+variable or scheduled job, and no new outbound host for the stack** (the open data export, run by hand on
+the PC, reads Arlington's ArcGIS service; `--no-arlington` skips it). The routers need no restart. The beta agent's gate
+stops on `src/pipeline/schema.py` (`reason=src/pipeline/schema.py: the live table layout
+changed`), as at v0.19.0, though the column is optional: the beta ships by hand, with no map data
+(the transit schedule only). At home, in order, with `</dev/null` on every docker command:
 
-- On a train or bus: the stops and time left to your stop, each stop's time, when the trip ends,
-  and the line drawn on the map in its colour (rail along its track)
-- Where am I? on transit says the line and the stop to get off, or the stops and time left
-- A transit, Bikeshare, Walk or Run trip can be resumed after switching apps, on the train or
-  the walk where it was
-
-**What changes for the host** (so far): `scripts/build_transit_schedule.py` now stores each rail
-pattern's track from the feed's `shapes.txt` (the schedule's `shape` and `cuts`), and
-`src/core/transit.py` reads it. An old schedule keeps working, drawn stop to stop.
-
-- [ ] **The transit schedule, rebuilt with the new script** once the release is on the PC, so rail
-  lines follow their tracks ("Transit schedule", Build it on the home PC). The build's report says
-  "<system>: N of M patterns follow their track" for MARC, Light RailLink and the rest; 0 for a
-  system means its feed has no `shapes.txt`. Then the beta: ship the `transit` part alone
-  (BETA-RUNBOOK, "the bundle carries the transit ride types' schedule"). Without this step the
-  tracks are straight stop to stop until the next 45-day refresh.
-- [ ] **Migration 0056** (`shared_route_gone`) with the api, as any migration.
-- [ ] **The PC backup pull's two names**, once, before the next 04:00 run: the script no longer
-  carries this PC's folder or the beta's ssh alias. In WSL write
-  `~/.config/routemaker/pull-beta-backups.env` with `RM_BETA_SSH=<beta-ssh-alias>` and
-  `RM_BACKUP_DIR=/mnt/c/Users/<you>/Documents/RouteMaker/beta-backups` ("Off-box copies of beta
-  backups"). Until then each pull exits 1 saying so, and `alert.sh watch` reports it after 36 h.
+- [ ] **The tag.** Once `test` and `a11y` are green on `main`, the owner tags v0.21.0 (annotated) on
+  that commit, from the PC.
+- [ ] **Rollback points and images**, as "Deploying a planner and front-end release", with the
+  weekly rebuild paused or not due, and out of 07:00-07:30 UTC: tag the running api **and pipeline**
+  images `pre-rel-<short>`, fast-forward the checkout, then `docker compose build api rebuild` (the
+  pipeline image writes the new column at the next rebuild).
+- [ ] **The api.** `docker compose run --rm --no-deps migrate` (0056), then
+  `docker compose up -d --no-deps --no-build --force-recreate api worker`, and `rebuild` too once
+  no rebuild job is queued or running. No router restart, no pre-draw.
+- [ ] **The front end**, last.
+- [ ] **The PC backup pull.** Its scheduled task runs the script from `~/src/RouteMaker`, not from
+  the serving worktree, so fast-forward that checkout to the tag too, then run
+  `install-backup-pull-task.ps1` again ("Off-box copies of beta backups", Install) so the task takes
+  its v0.21.0 settings. `~/.config/routemaker/pull-beta-backups.env` and the pull-only key are in
+  place (the owner set both up on 2026-11-06). Without the file each pull exits 1 saying so, and
+  `alert.sh watch` reports it after 36 h. After the next 04:00 run, `pull-beta-backups.log` names
+  the pull-only alias and says `marked=yes`.
+- [ ] **The transit schedule**, rebuilt with the new script ("Transit schedule", Build it on the
+  home PC), so rail lines follow their tracks. The build's report says "<system>: N of M patterns
+  follow their track" for MARC, Light RailLink and the rest; a system with none is drawn straight
+  from stop to stop ("Transit schedule"). The beta takes the new schedule in its hand ship below.
+  Without this step the lines are drawn straight stop to stop until the next 45-day refresh.
+- [ ] **The open data download**, after the api is on v0.21.0 (the command ships in it): "The open
+  data download (after a map swap)", step 1 on the PC, then `agency-comparison.json` beside the docs
+  generator and the stress page regenerated; the upload to a `data-<date>` GitHub release waits for
+  the owner's go, and comes **before the beta deploy**, since the Acknowledgements page's "Download
+  our data" link points at it.
+- [ ] **The overrides: none until the owner confirms.**
+  `fixtures/overrides/2026-11-04-owner-baltimore-city-review.json` (671 rows, corrected in #975) is
+  loaded only after the owner confirms that file (stdin, dry run then `--confirm`), and before the
+  map rebuild that should carry it.
+- [ ] **Beta**, by hand as "Shipping an update later" (docs/BETA-RUNBOOK.md): pause the agent
+  (`pause --wait`), snapshot the database (`--label release`), copy `index.html`, check out the
+  tag, set `TAG=`, `check_beta_compose.py` ("beta compose: ok"), build the api image, migrate in the
+  migrate container (0056), start api and worker, the front end, `smoke-test.sh --local --trails`
+  then `--public`. No map data, no router restart, no pre-draw. The rebuilt transit schedule goes
+  in this ship, while the agent is paused: the `transit` part alone (BETA-RUNBOOK, "the bundle carries
+  the transit ride types' schedule"). The agent changed:
+  `mark-deployed v0.21.0`, then `scripts/beta/auto-release.sh install`, then `resume`.
 - [ ] **Spot checks.** A bike + transit ride on MARC or Metro: on board, the card shows the stops
   and minutes left and an arrival time, the stop list shows each stop's time, and the ride map
   draws the line in its colour along the track, with the stop to get off filled. Where am I? on the
   train gives the line and the stop to get off, never "arrived". Switch apps on the train, come
-  back, press Resume: the trip carries on with the stops and time left.
+  back, press Resume: the trip carries on. In a ride, Detour's menu offers "Go round: road closed
+  ahead". Share a Group Ride link, change the plan and share again: a new link. Plan > Find > Reach
+  on Walk draws rings. Acknowledgements shows "Download our data".
+- [ ] **Rollback.** The `pre-rel` api and pipeline images (`--force-recreate api worker rebuild`)
+  and the v0.20.0 front end. Migration 0056 only adds a table: the v0.20.0 api ignores it, so the
+  database stays migrated. A schedule rebuilt with tracks still works with the v0.20.0 api (it
+  ignores `shape` and `cuts`). On the beta: rollback A (the snapshot is there if needed), then
+  `auto-release.sh hold v0.21.0` so the agent does not deploy it again.
 
 ## Deploying a planner and front-end release: rollback points and verification
 
