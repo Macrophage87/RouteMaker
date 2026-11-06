@@ -10,7 +10,9 @@
 #   alert.sh watch                 one check: the local smoke tests and `check_operations`; a
 #                                  failure seen twice in a row is posted, and posted again only
 #                                  when it changes or once a day while it lasts; "working again"
-#                                  is posted when it clears. Skipped while a deploy pass runs.
+#                                  is posted when it clears. Also posts when the PC's copy of the
+#                                  backups ($RM_STATE/pc-backup-pull) is over 36 h old. Skipped
+#                                  while a deploy pass runs.
 #   alert.sh send KEY ID MESSAGE   post MESSAGE unless KEY last posted the same ID (within a day)
 #   alert.sh note MESSAGE          post MESSAGE (no repeat check)
 #   alert.sh clear KEY MESSAGE     KEY is fine: post MESSAGE if KEY had posted, and forget it
@@ -175,7 +177,24 @@ cmd_watch() {
 		out=$(printf '%s\n' "$out" | grep -v '^[[:space:]]*$' | head -n 12)
 		failing operations "$(same_id "$out")" "check_operations reports:"$'\n'"$out"
 	fi
+	watch_pc_pull
 	return 0
+}
+
+# The owner's PC copies the nightly dumps off this host (scripts/pc/pull-beta-backups.sh) and,
+# after each run that ends ok, writes the newest dump's name to $RM_STATE/pc-backup-pull. Once that
+# file is over PC_PULL_STALE_MIN old the copy has stopped: failing, or not running at all. No file
+# means the PC copy is not set up, and nothing is said.
+PC_PULL_STALE_MIN=2160
+watch_pc_pull() {
+	local mark="$RM_STATE/pc-backup-pull" last
+	[ -f "$mark" ] || return 0
+	last=$(head -n 1 "$mark" | tr -cd 'A-Za-z0-9._-')
+	if [ -n "$(find "$mark" -mmin +"$PC_PULL_STALE_MIN" 2>/dev/null)" ]; then
+		cmd_send pc-backup-pull "$last" "the PC has not copied the beta's backups for over $((PC_PULL_STALE_MIN / 60)) h (last copied: ${last:-unknown}, $(date -u -r "$mark" +%Y-%m-%dT%H:%MZ)). See pull-beta-backups.log on the PC and docs/OPERATIONS.md, \"Off-box copies of beta backups\"."
+	else
+		cmd_clear pc-backup-pull "the PC is copying the beta's backups again (newest ${last:-unknown})"
+	fi
 }
 
 # One value from the beta's .env: the last line naming the key, without quotes. Only that key is

@@ -124,7 +124,11 @@ class InProcessApi:
         self._secure = request.is_secure()
         self.user = user
 
-    def _request(self, method: str, path: str, body=None, headers=None, timeout=30):
+    def _request(self, method: str, path: str, body=None, headers=None, timeout=30, started=None):
+        """`started`: when the site's budget for this one request counts from; absent, from
+        when the /mcp request began."""
+        if started is None:
+            started = self._started
         factory = RequestFactory()
         address = rider_address(self.user)
         meta = {
@@ -143,8 +147,8 @@ class InProcessApi:
         request.user = self.user
         request.session = SessionBase()
         request._dont_enforce_csrf_checks = True
-        if self._started is not None:
-            request.routing_started = self._started
+        if started is not None:
+            request.routing_started = started
         match = resolve(urllib.parse.urlsplit(path).path)
         response = match.func(request, *match.args, **match.kwargs)
         try:
@@ -183,6 +187,26 @@ class InProcessApi:
 
     def geocode(self, query, near=None):
         return self._module.Api.geocode(self, query, near)
+
+    def reach(self, body):
+        return self._module.Api.reach(self, body)
+
+    def nearest(self, body):
+        """One matrix row (POST /api/nearest). compare_places asks for one or two a place, one
+        after another, so each has the nearest search's own budget from when it is asked,
+        not what is left of the /mcp request's, and still ends inside the call's budget."""
+        from . import nearest, routing
+
+        started = routing.clock()
+        if self._started is not None:
+            started = min(started, self._started + CALL_BUDGET_S - nearest.NEAREST_BUDGET_S)
+        status, payload, _ = self._request("POST", "/api/nearest", body, started=started)
+        if status != 200 or not isinstance(payload, dict):
+            message = payload.get("error") if isinstance(payload, dict) else payload
+            raise self._module.ToolError(
+                f"the riding times could not be found ({status}): {message}"
+            )
+        return payload
 
     def scenic_roads(self, near, miles, designation=""):
         return self._module.Api.scenic_roads(self, near, miles, designation)
