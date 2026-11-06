@@ -7329,7 +7329,8 @@ rebuild.**
 - [ ] **The tag.** Once `test` and `a11y` are green on `main`, the owner tags v0.21.2 (annotated) on
   that commit, from the PC.
 - [ ] **At home**, as "Deploying a planner and front-end release": fast-forward the checkout, then
-  the front end. The api image need not be rebuilt (only its version string changes).
+  the front end. The api image need not be rebuilt (only its version string changes); rebuild it
+  with `docker compose build api` and recreate `api worker` if the version shown should say 0.21.2.
 - [ ] **Beta**, by its agent, as at v0.21.1: once its deployed tag (`$RM_STATE/cd/deployed-tag`) is
   v0.21.0 or v0.21.1, the gate sees `frontend/`, `scripts/a11y/check.mjs`, `pyproject.toml` and
   `src/routemaker/__init__.py` (docs and `.md` files are inert), none of them a stop, and deploys.
