@@ -272,3 +272,29 @@ function joinSpans(
   });
   return out.length ? out : undefined;
 }
+
+/**
+ * A ride started away from its start (navigate.ts startsAway; Stephen, 2026-11-06: "If you start a route and aren't
+ * near the starting point, the starting point will be the first stop"): `leg`, planned on its own from the rider to the
+ * start, then the whole planned route as it is (joinRoutes at 0), so a route the rider chose, a file followed exactly
+ * or a group's shared line is ridden unchanged after it. The start is the new plan's point 1, a stop arrived at where
+ * the leg ends; the planned points follow it, one place on (`count`: the plan's points, a loop's end its start again).
+ */
+export function toStartRoute(leg: RouteResponse, planned: RouteResponse, count: number, loop: boolean): RouteResponse {
+  const kept = new Map<number, number>();
+  for (let i = 1; i < count + (loop ? 1 : 0); i += 1) kept.set(i, i + 1);
+  const joined = joinRoutes(leg, planned, 0, kept);
+  const legAlong = lineAlong(leg.geometry.coordinates);
+  const atM = legAlong.length ? legAlong[legAlong.length - 1] : 0;
+  let description = joined.description;
+  if (description) {
+    // (Its text is never empty: an entry with none is not read, routeDescription.ts usableEntries.)
+    // After the leg's own entries, which joinRoutes puts first (its via entries left out), before the planned route's.
+    const before = (leg.description ?? []).filter((e) => e.kind !== "via").length;
+    const start: DescriptionEntry = { kind: "via", from_m: atM, to_m: atM, from_mi: atM / METRES_PER_MILE, to_mi: atM / METRES_PER_MILE, street: null, tier: null, facility: null, turn: null, via: 1, text: t("Start") };
+    description = [...description.slice(0, before), start, ...description.slice(before)];
+  }
+  const sides = Array.isArray(joined.leg_arrival_sides) ? [...joined.leg_arrival_sides] : null;
+  if (sides) sides[0] = leg.arrival_side === "left" || leg.arrival_side === "right" ? leg.arrival_side : null;
+  return { ...joined, description, leg_arrival_sides: sides };
+}
