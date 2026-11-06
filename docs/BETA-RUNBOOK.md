@@ -398,7 +398,7 @@ Windows npm and installs Windows bindings, which `--build-frontend` refuses; ins
 node image instead (`scripts/beta/frontend-build.sh --print-image` names it), as the refusal shows.
 `--build-frontend` runs the front-end tests and builds it with the beta notice; `ship-data.sh` stops if
 neither it nor `--dist` is given. The notice always links the public Discord invite for reports and,
-in small print, the beta sign-up form ("Sign up to test here!"; owner, 2026-10-25). To add a further
+in small print, the Android beta's how-to-join page, `/about/android-beta.html` ("Sign up to test here!"; owner, 2026-10-25; the page since 2026-11-06). To add a further
 "Report a problem" link (OWNER-DECISIONS 382), the owner adds `--report-url https://...`; the Discord
 invite itself adds nothing. The link is built into the front end, so
 repeat the same `--report-url` on every later ship that carries the front end (data updates and

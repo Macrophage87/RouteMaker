@@ -4,7 +4,7 @@
 // the sign-up form, with a further report link only when one is configured.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
@@ -59,13 +59,14 @@ test("Escape or the chip again closes it, and the focus goes back to the chip", 
   assert.doesNotMatch(source, /sessionStorage|localStorage|getElementById/, "no dismissal to remember");
 });
 
-test("for reports it links the public Discord, and in small print the sign-up form (owner, 2026-10-25)", () => {
+test("for reports it links the public Discord, and in small print the how-to-join page (owner, 2026-10-25, 2026-11-06)", () => {
   assert.equal(
     BETA_BANNER_TEXT,
     "Beta: routes may still use some paths where bikes aren't allowed until the next map update. If anything looks wrong, tell us on",
   );
   assert.equal(BETA_DISCORD_URL, "https://discord.gg/Qwz6BEt6gc");
-  assert.equal(BETA_SIGNUP_URL, "https://forms.gle/dipMsGpheyF3oQA59");
+  assert.equal(BETA_SIGNUP_URL, "/about/android-beta.html");
+  assert.ok(existsSync(new URL("../../public/about/android-beta.html", import.meta.url)), "the page it links is published");
   assert.equal(BETA_SIGNUP_TEXT, "Sign up to test here!");
   const html = render({ enabled: true, initiallyOpen: true });
   const newTab = '<span class="visually-hidden"> (opens in a new tab)</span>';
