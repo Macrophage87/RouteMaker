@@ -1,6 +1,7 @@
 // Mile markers on the route (the owner, 2026-11-06: "Put a dot on the route track every mile (or km in the case of
 // metric) and every 5 miles put the mile number in a larger dot").
 import { test } from "node:test";
+import { readFileSync } from "node:fs";
 import assert from "node:assert/strict";
 import type { DescriptionEntry, RouteResponse } from "./api.ts";
 import {
@@ -10,6 +11,8 @@ import {
   ROUTE_MILE_DOT_LAYER_ID,
   ROUTE_MILE_NUMBER_LAYER_ID,
   applyMileSizes,
+  applyMileUnits,
+  bigRadius,
   markerMinZooms,
   markerSizes,
   routeMileFeatures,
@@ -81,8 +84,12 @@ test("larger in a ride and with the accessibility switch; the number always show
   const strong = markerSizes(false, true);
   assert.ok(ride.big > plan.big && ride.text > plan.text);
   assert.ok(strong.ring > plan.ring && strong.dot > plan.dot && strong.text > plan.text);
-  // The number fits its dot: its text no wider than the dot's diameter for two digits (~0.6 em each).
-  for (const s of [plan, ride, strong]) assert.ok(2 * 0.6 * s.text <= 2 * s.big, JSON.stringify(s));
+  // The number fits its dot: two digits (~0.6 em each) in the dot, three in the wider one bigRadius gives from 100.
+  for (const s of [plan, ride, strong]) {
+    assert.ok(2 * 0.6 * s.text <= 2 * s.big, JSON.stringify(s));
+    const wide = (bigRadius(s.big) as unknown[])[2] as number;
+    assert.ok(3 * 0.6 * s.text <= 2 * wide, JSON.stringify(s));
+  }
   const number = routeMileLayers("route-miles", false, false, "us")[2] as { layout: Record<string, unknown> };
   assert.equal(number.layout["text-allow-overlap"], true);
 });
@@ -96,11 +103,38 @@ test("applyMileSizes re-sizes the layers in place", () => {
   };
   applyMileSizes(map, true, false);
   assert.deepEqual(set.find(([id, name]) => id === ROUTE_MILE_NUMBER_LAYER_ID && name === "text-size")?.[2], markerSizes(true, false).text);
-  assert.deepEqual(set.find(([id, name]) => id === ROUTE_MILE_BIG_LAYER_ID && name === "circle-radius")?.[2], markerSizes(true, false).big);
+  assert.deepEqual(set.find(([id, name]) => id === ROUTE_MILE_BIG_LAYER_ID && name === "circle-radius")?.[2], bigRadius(markerSizes(true, false).big));
 });
 
 test("in a ride the markers go up over the street names, the number on top", () => {
   const at = (id: string) => RIDE_LABEL_LAYERS.indexOf(id);
   assert.ok(at(ROUTE_MILE_DOT_LAYER_ID) > at("route-name"));
   assert.ok(at(ROUTE_MILE_NUMBER_LAYER_ID) > at(ROUTE_MILE_BIG_LAYER_ID));
+});
+
+test("units switched during a ride move the markers to kilometres and their zooms with them", () => {
+  let data: { features: { properties: { n: number } }[] } | null = null;
+  const ranges: [string, number][] = [];
+  const map = {
+    getLayer: () => true,
+    getSource: () => ({ setData: (d: typeof data) => (data = d) }),
+    setLayerZoomRange: (id: string, min: number) => ranges.push([id, min]),
+  };
+  applyMileUnits(map, route(LINE_M), "metric");
+  assert.equal(data!.features.length, 22);
+  assert.deepEqual(ranges, [
+    [ROUTE_MILE_DOT_LAYER_ID, markerMinZooms("metric").dot],
+    [ROUTE_MILE_BIG_LAYER_ID, markerMinZooms("metric").big],
+    [ROUTE_MILE_NUMBER_LAYER_ID, markerMinZooms("metric").big],
+  ]);
+});
+
+test("MapView draws the markers over the route names, under the hazard marks, and keeps them current", () => {
+  const mapView = readFileSync(new URL("../MapView.tsx", import.meta.url), "utf8");
+  const at = (s: string) => mapView.indexOf(s);
+  assert.ok(at("routeNameLayer(ROUTE_NAME_SOURCE_ID") < at("routeMileLayers(ROUTE_MILES_SOURCE_ID") && at("routeMileLayers(ROUTE_MILES_SOURCE_ID") < at("routeHazardLayer()"));
+  assert.match(mapView, /ROUTE_MILES_SOURCE_ID\) as GeoJSONSource \| undefined\)\?\.setData\(routeMileFeatures\(stale \? null : route\)/);
+  assert.match(mapView, /setStressPalette\(map, callbacks\.current\.when\);\n\s+applyMileSizes\(map, Boolean\(callbacks\.current\.rideLabels\)\);/);
+  assert.match(mapView, /applyMileSizes\(map, ride\);/);
+  assert.match(mapView, /subscribeUnits\(\(\) => \{[\s\S]{0,200}applyMileUnits\(map,/);
 });

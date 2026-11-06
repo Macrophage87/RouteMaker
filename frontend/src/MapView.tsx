@@ -86,7 +86,8 @@ import { dragPreview, legOfSegment, nearestOnPath } from "./lib/lineEdit.ts";
 import { LineGesture } from "./lib/lineGesture.ts";
 import { PENN_COLOUR, RAIL_STATIONS, stationById } from "./lib/railData.ts";
 import { ROUTE_NAME_LAYER_ID, ROUTE_NAME_SOURCE_ID, routeNameField, routeNameFeatures, routeNameLayer } from "./lib/routeNames.ts";
-import { ROUTE_MILES_SOURCE_ID, applyMileSizes, routeMileFeatures, routeMileLayers } from "./lib/routeMiles.ts";
+import { ROUTE_MILES_SOURCE_ID, applyMileSizes, applyMileUnits, routeMileFeatures, routeMileLayers } from "./lib/routeMiles.ts";
+import { subscribeUnits } from "./lib/units.ts";
 import { addRailStations, setRailFlavour, LABEL_FONT, RAIL_LAYERS, RIDE_STATION_NAME_SIZE, ROUTE_BOTTOM_LAYER, STATION_NAME_SIZE, setRailVisibility, stationNamesTarget } from "./lib/railLayer.ts";
 import { setRideLabelOrder, type LabelHomes } from "./lib/rideLabelOrder.ts";
 import { RIDE_LABEL_SCALE, RIDE_SCALED_LABEL_LAYERS, scaledTextSize } from "./lib/rideLabelSize.ts";
@@ -2246,6 +2247,17 @@ export function MapView(props: Props) {
         setStressPalette(map, callbacks.current.when);
         applyMileSizes(map, Boolean(callbacks.current.rideLabels));
         setRouteSections(map, callbacks.current.route, callbacks.current.stale, callbacks.current.routeColour ?? undefined);
+      }),
+    [],
+  );
+
+  // Units switched during a ride (lib/units.ts, switchUnitsInRide): the mile markers go to kilometres, or back, at once.
+  useEffect(
+    () =>
+      subscribeUnits(() => {
+        const map = mapRef.current;
+        if (!map || !loaded.current) return;
+        applyMileUnits(map, callbacks.current.stale ? null : (callbacks.current.route ?? null));
       }),
     [],
   );

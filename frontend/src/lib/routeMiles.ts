@@ -12,7 +12,8 @@
  */
 import type { RouteResponse } from "./api.ts";
 import type { LonLat } from "./geo.ts";
-import { lineAlong, measureMap } from "./navigate.ts";
+import { lineAlong, measureMap, routeLengthM } from "./navigate.ts";
+import { pointAlong } from "./trackMatch.ts";
 import { units, type Units } from "./units.ts";
 import { MAP_LABEL_FONT } from "./mapGlyphs.ts";
 import { METRES_PER_MILE } from "./format.ts";
@@ -43,28 +44,6 @@ export const MILE_MARK = { fill: "#ffffff", ring: "#1c1a1b", text: "#1c1a1b" };
 
 type MileRoute = Pick<RouteResponse, "geometry" | "distance_m" | "leg_ends" | "description">;
 
-/** The point `m` metres along the line (`along` its vertices' metres). */
-function pointAt(coordinates: readonly LonLat[], along: ArrayLike<number>, m: number): LonLat {
-  let lo = 1;
-  let hi = along.length - 1;
-  while (lo < hi) {
-    const mid = (lo + hi) >> 1;
-    if (along[mid] < m) lo = mid + 1;
-    else hi = mid;
-  }
-  const span = along[lo] - along[lo - 1];
-  const t = span > 0 ? Math.min(Math.max((m - along[lo - 1]) / span, 0), 1) : 0;
-  const [a, b] = [coordinates[lo - 1], coordinates[lo]];
-  return [a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1])];
-}
-
-/** The route's length in its own metres: the description's end, else the API's total, else the line's. */
-function routeLength(route: MileRoute, lineM: number): number {
-  const entries = route.description ?? [];
-  const lastTo = entries.length ? Math.max(...entries.map((e) => (Number.isFinite(e.to_m) ? e.to_m : 0))) : 0;
-  return lastTo > 0 ? lastTo : route.distance_m > 0 ? route.distance_m : lineM;
-}
-
 /**
  * The markers' features: a point at every whole mile (kilometre) short of the finish, with its number `n` and
  * `big` on every fifth. None where the route is null or has no line.
@@ -78,11 +57,11 @@ export function routeMileFeatures(route: MileRoute | null | undefined, u: Units 
   if (!(lineM > 0)) return empty;
   const toLine = measureMap(route, along);
   const step = u === "metric" ? KM_M : MILE_M;
-  const total = routeLength(route, lineM);
+  const total = routeLengthM(route, lineM);
   const features: ReturnType<typeof feature>[] = [];
   // A marker right on the finish says nothing the finish flag does not.
   for (let n = 1; n * step < total - 1; n += 1) {
-    features.push(feature(pointAt(coordinates, along, Math.min(toLine(n * step), lineM)), n));
+    features.push(feature(pointAlong(coordinates, along, Math.min(toLine(n * step), lineM)), n));
   }
   return { type: "FeatureCollection" as const, features };
 }
@@ -93,6 +72,11 @@ function feature(at: LonLat, n: number) {
     properties: { n, big: n % MARKER_EVERY === 0 },
     geometry: { type: "Point" as const, coordinates: at },
   };
+}
+
+/** The big dot's radius: a little wider for a three-digit number (a long metric ride's 100 km and on). */
+export function bigRadius(big: number): unknown {
+  return ["case", [">=", ["get", "n"], 100], big + 3, big];
 }
 
 /** The dots' sizes (px): larger in a ride and with the accessibility switch. */
@@ -130,7 +114,7 @@ export function routeMileLayers(sourceId: string = ROUTE_MILES_SOURCE_ID, ride =
       minzoom: zoom.big,
       filter: ["get", "big"],
       paint: {
-        "circle-radius": size.big,
+        "circle-radius": bigRadius(size.big),
         "circle-color": MILE_MARK.fill,
         "circle-stroke-color": MILE_MARK.ring,
         "circle-stroke-width": size.ring,
@@ -155,6 +139,19 @@ export function routeMileLayers(sourceId: string = ROUTE_MILES_SOURCE_ID, ride =
   ];
 }
 
+/** Puts the markers in the units now in use (switched during a ride): the points and the zooms they show from. */
+export function applyMileUnits(
+  map: { getLayer(id: string): unknown; getSource(id: string): unknown; setLayerZoomRange(id: string, min: number, max: number): void },
+  route: MileRoute | null | undefined,
+  u: Units = units(),
+): void {
+  (map.getSource(ROUTE_MILES_SOURCE_ID) as { setData(data: unknown): void } | undefined)?.setData(routeMileFeatures(route, u));
+  const zoom = markerMinZooms(u);
+  for (const [id, min] of [[ROUTE_MILE_DOT_LAYER_ID, zoom.dot], [ROUTE_MILE_BIG_LAYER_ID, zoom.big], [ROUTE_MILE_NUMBER_LAYER_ID, zoom.big]] as const) {
+    if (map.getLayer(id)) map.setLayerZoomRange(id, min, 24);
+  }
+}
+
 /** Re-sizes the markers for a ride or the accessibility switch, on a map that has them. */
 export function applyMileSizes(
   map: { getLayer(id: string): unknown; setPaintProperty(id: string, name: string, value: unknown): void; setLayoutProperty(id: string, name: string, value: unknown): void },
@@ -167,7 +164,7 @@ export function applyMileSizes(
     map.setPaintProperty(ROUTE_MILE_DOT_LAYER_ID, "circle-stroke-width", size.ring);
   }
   if (map.getLayer(ROUTE_MILE_BIG_LAYER_ID)) {
-    map.setPaintProperty(ROUTE_MILE_BIG_LAYER_ID, "circle-radius", size.big);
+    map.setPaintProperty(ROUTE_MILE_BIG_LAYER_ID, "circle-radius", bigRadius(size.big));
     map.setPaintProperty(ROUTE_MILE_BIG_LAYER_ID, "circle-stroke-width", size.ring);
   }
   if (map.getLayer(ROUTE_MILE_NUMBER_LAYER_ID)) map.setLayoutProperty(ROUTE_MILE_NUMBER_LAYER_ID, "text-size", size.text);
