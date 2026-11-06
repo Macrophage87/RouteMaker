@@ -125,6 +125,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Finding your place on the route.": "Đang tìm vị trí của bạn trên tuyến đường.",
   "Off the planned route.": "Đã ra khỏi tuyến đường dự định.",
   "Off the planned route; finding a new way.": "Đã ra khỏi tuyến đường dự định; đang tìm đường mới.",
+  "Not near the start: going there first.": "Không ở gần điểm xuất phát: đi đến đó trước.",
   "Back on the planned route.": "Đã trở lại tuyến đường dự định.",
   "No route found ahead. Make a U-turn.": "Không tìm thấy tuyến đường phía trước. Quay đầu xe.",
   "No signal: the planned route is still shown.": "Không có tín hiệu: tuyến đường dự định vẫn được hiển thị.",

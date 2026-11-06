@@ -125,6 +125,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Finding your place on the route.": "N ap chèche kote ou ye sou wout la.",
   "Off the planned route.": "Ou soti nan wout ki te planifye a.",
   "Off the planned route; finding a new way.": "Ou soti nan wout ki te planifye a; n ap chèche yon nouvo chemen.",
+  "Not near the start: going there first.": "Ou pa toupre pwen depa a: n ap ale la anvan.",
   "Back on the planned route.": "Ou tounen sou wout ki te planifye a.",
   "No route found ahead. Make a U-turn.": "Nou pa jwenn wout devan. Fè demi-tou.",
   "No signal: the planned route is still shown.": "Pa gen siyal: wout ki te planifye a toujou parèt.",
