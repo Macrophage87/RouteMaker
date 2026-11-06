@@ -227,7 +227,7 @@ test("Ride mode: a re-plan that finds no route asks for the way back, not for a 
   const replan = ride.slice(ride.indexOf("const replan = useCallback("), ride.indexOf("// No good fix for a minute"));
   assert.match(replan, /confirmLong: true/);
   assert.match(replan, /if \(!result\.ok && !backFirst && !via && !check && startsWayBack\(result\.error\.kind\) && !voided\(\)\)/);
-  assert.match(replan, /await wayBackRoute\(routeRef\.current, modelRef\.current, current\.progressM \?\? 0, here, kept, ask, voided, closed\);/);
+  assert.match(replan, /await wayBackRoute\(routeRef\.current, modelRef\.current, progressM, here, kept, ask, voided, closed\);/);
   // The ride's closed roads go with every re-plan (v0.8.2).
   assert.match(replan, /blocked: blockedRef\.current/);
   // The no-signal timer runs until the way back settles.

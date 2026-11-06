@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { vehicleBadge, type VehicleMark } from "./lib/nextVehicle.ts";
+import { onBoardFeatures, type OnBoardPath } from "./lib/onBoard.ts";
 import { followZoom } from "./lib/idleRecentre.ts";
 import { followMoveNeeded, mapPixelRatio } from "./lib/followCamera.ts";
 import { createPortal } from "react-dom";
@@ -85,6 +86,8 @@ import { dragPreview, legOfSegment, nearestOnPath } from "./lib/lineEdit.ts";
 import { LineGesture } from "./lib/lineGesture.ts";
 import { PENN_COLOUR, RAIL_STATIONS, stationById } from "./lib/railData.ts";
 import { ROUTE_NAME_LAYER_ID, ROUTE_NAME_SOURCE_ID, routeNameField, routeNameFeatures, routeNameLayer } from "./lib/routeNames.ts";
+import { ROUTE_MILES_SOURCE_ID, applyMileSizes, applyMileUnits, routeMileFeatures, routeMileLayers } from "./lib/routeMiles.ts";
+import { subscribeUnits } from "./lib/units.ts";
 import { addRailStations, setRailFlavour, LABEL_FONT, RAIL_LAYERS, RIDE_STATION_NAME_SIZE, ROUTE_BOTTOM_LAYER, STATION_NAME_SIZE, setRailVisibility, stationNamesTarget } from "./lib/railLayer.ts";
 import { setRideLabelOrder, type LabelHomes } from "./lib/rideLabelOrder.ts";
 import { RIDE_LABEL_SCALE, RIDE_SCALED_LABEL_LAYERS, scaledTextSize } from "./lib/rideLabelSize.ts";
@@ -127,6 +130,7 @@ import {
   RIDE_LINE_WIDTH,
   TRANSIT_CASING,
   TRANSIT_CASING_WIDTH,
+  onBoardPaint,
   TRANSIT_COLOUR,
   TRANSIT_DASH,
   TRANSIT_LINE_WIDTH,
@@ -301,6 +305,12 @@ interface Props {
    * lib/nextVehicle.ts): a labelled mark, its kind's badge on it, unlike the rider's arrow. Null: none.
    */
   nextVehicle?: VehicleMark | null;
+  /**
+   * The train or bus's way while the rider waits for it and rides it (Stephen, 2026-11-04: "if you can show the path
+   * too"; lib/onBoard.ts onBoardPath): solid in the line's colour, a dot at each stop ahead, a ring at the stop to get
+   * off. Null: none.
+   */
+  transitPath?: OnBoardPath | null;
   /** Go outside a ride (the owner, 2026-10-17): the location found, drawn as the ride's still dot; no camera work, and the route is framed as ever. */
   youDot?: LonLat | null;
   follow?: boolean;
@@ -523,6 +533,8 @@ const WALK_IN_SOURCE = "walk-in";
 // attribution, shown while the trip is (OWNER-DECISIONS 301).
 const TRANSIT_SOURCE = "transit-trip";
 const TRANSIT_LAYERS = ["transit-casing", "transit-ride", "transit-walk", "transit-line"];
+// The train or bus the rider waits for or rides (lib/onBoard.ts onBoardPath), over the trip's dashed lines.
+const ONBOARD_SOURCE = "onboard-path";
 /** How far from the line's centre a mouse, or a finger, still grabs it. */
 const MOUSE_HIT_PX = 8;
 /** The line layer of Go's other routes to choose from, which a press is tested against (lib/routeChoice.ts). */
@@ -1501,6 +1513,9 @@ export function MapView(props: Props) {
       // The route's own street and path names, along its line (lib/routeNames.ts; the owner, 2026-10-25).
       map.addSource(ROUTE_NAME_SOURCE_ID, { type: "geojson", data: routeNameFeatures(callbacks.current.stale ? null : (callbacks.current.route ?? null)) as never });
       map.addLayer(routeNameLayer(ROUTE_NAME_SOURCE_ID, Boolean(callbacks.current.rideLabels)) as never);
+      // A dot every mile (kilometre in metric), the number in a larger one every fifth (lib/routeMiles.ts; the owner, 2026-11-06).
+      map.addSource(ROUTE_MILES_SOURCE_ID, { type: "geojson", data: routeMileFeatures(callbacks.current.stale ? null : (callbacks.current.route ?? null)) as never });
+      for (const layer of routeMileLayers(ROUTE_MILES_SOURCE_ID, Boolean(callbacks.current.rideLabels))) map.addLayer(layer as never);
       // The known hazards the route rides (v0.10.0, lib/routeHazards.ts): dark circles over the route only.
       if (!map.hasImage(ROUTE_HAZARD_ICON)) {
         const { pixelRatio: ratio, ...icon } = routeHazardIcon(iconPixelRatio());
@@ -1655,6 +1670,55 @@ export function MapView(props: Props) {
         paint: { "line-color": TRANSIT_COLOUR, "line-width": TRANSIT_LINE_WIDTH, "line-dasharray": TRANSIT_DASH },
       });
       syncTransit(map, callbacks.current.route);
+      map.addSource(ONBOARD_SOURCE, { type: "geojson", data: onBoardFeatures(null) });
+      map.addLayer({
+        id: "onboard-casing",
+        type: "line",
+        source: ONBOARD_SOURCE,
+        filter: ["==", ["geometry-type"], "LineString"],
+        layout: { "line-join": "round", "line-cap": "round" },
+        paint: { "line-color": onBoardPaint(openedFlavour === "dark").casing, "line-width": ONBOARD_LINE_WIDTH + 4 },
+      });
+      map.addLayer({
+        id: "onboard-line",
+        type: "line",
+        source: ONBOARD_SOURCE,
+        filter: ["==", ["geometry-type"], "LineString"],
+        layout: { "line-join": "round", "line-cap": "round" },
+        paint: { "line-color": ["get", "colour"], "line-width": ONBOARD_LINE_WIDTH },
+      });
+      map.addLayer({
+        id: "onboard-stops",
+        type: "circle",
+        source: ONBOARD_SOURCE,
+        filter: ["==", ["geometry-type"], "Point"],
+        paint: {
+          // Each stop a white dot ringed in the line's colour (dark on the light map, onBoardPaint); the stop to get off
+          // larger, filled with it.
+          "circle-radius": ["case", ["get", "off"], 8, 4.5],
+          "circle-color": ["case", ["get", "off"], ["get", "colour"], "#ffffff"],
+          "circle-stroke-color": onBoardPaint(openedFlavour === "dark").stopRing as never,
+          "circle-stroke-width": 3,
+        },
+      });
+      // A bus's stop to get off named on the line (a station's name is on the base map already).
+      map.addLayer({
+        id: "onboard-off-name",
+        type: "symbol",
+        source: ONBOARD_SOURCE,
+        filter: ["all", ["==", ["geometry-type"], "Point"], ["get", "off"], ["get", "bus"]],
+        layout: {
+          "text-field": ["get", "name"],
+          "text-font": [LABEL_FONT],
+          "text-size": RIDE_STATION_NAME_SIZE,
+          "text-anchor": "top",
+          "text-offset": [0, 0.9],
+          "text-max-width": 12,
+          "text-allow-overlap": true,
+        },
+        paint: { "text-color": "#111827", "text-halo-color": "#ffffff", "text-halo-width": 3 },
+      });
+      syncOnBoard(map, callbacks.current.transitPath ?? null);
       map.addSource(EDIT_SOURCE, { type: "geojson", data: editData(null, []) });
       map.addLayer({
         id: "route-edit-preview",
@@ -2166,6 +2230,10 @@ export function MapView(props: Props) {
     setRailFlavour(mapRef.current, RAIL_STATIONS, PENN_COLOUR, iconPixelRatio(), dark);
     // The group ride's two-minute rings (lib/rideDotsLayer.ts), drawn at the same pixel ratio as RideGroup adds them.
     setRideDotsFlavour(mapRef.current, iconPixelRatio(), dark);
+    // The train or bus path's casing and its stops' rings (lib/transit.ts onBoardPaint).
+    const onBoard = onBoardPaint(dark);
+    if (mapRef.current.getLayer("onboard-casing")) mapRef.current.setPaintProperty("onboard-casing", "line-color", onBoard.casing);
+    if (mapRef.current.getLayer("onboard-stops")) mapRef.current.setPaintProperty("onboard-stops", "circle-stroke-color", onBoard.stopRing as never);
   });
 
   // The accessibility switch (or the system's request for more contrast):
@@ -2177,7 +2245,19 @@ export function MapView(props: Props) {
         const map = mapRef.current;
         if (!map || !loaded.current) return;
         setStressPalette(map, callbacks.current.when);
+        applyMileSizes(map, Boolean(callbacks.current.rideLabels));
         setRouteSections(map, callbacks.current.route, callbacks.current.stale, callbacks.current.routeColour ?? undefined);
+      }),
+    [],
+  );
+
+  // Units switched during a ride (lib/units.ts, switchUnitsInRide): the mile markers go to kilometres, or back, at once.
+  useEffect(
+    () =>
+      subscribeUnits(() => {
+        const map = mapRef.current;
+        if (!map || !loaded.current) return;
+        applyMileUnits(map, callbacks.current.stale ? null : (callbacks.current.route ?? null));
       }),
     [],
   );
@@ -2484,6 +2564,13 @@ export function MapView(props: Props) {
       closureMarkers.current.push(new maplibregl.Marker({ element, anchor: "center" }).setLngLat(point).addTo(map));
     }
   }, [props.route, props.stale, props.permitsOn, areaClosures]);
+
+  // The train or bus's path (lib/onBoard.ts onBoardPath), redrawn as the stops go by.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loaded.current) return;
+    syncOnBoard(map, props.transitPath ?? null);
+  }, [props.transitPath]);
 
   // Where the next train or bus is (v0.9.0): a mark named in words ("Next bus: Bus 52 is 0.8 mi away (1.3 km), 3
   // stops back (Data: WMATA, live)"), not a button (it does nothing when pressed); moved in place at each answer.
@@ -2846,6 +2933,8 @@ export function MapView(props: Props) {
         map.setLayoutProperty(ROUTE_NAME_LAYER_ID, "text-size", ride ? ROAD_LABEL.rideSize : ROAD_LABEL.size);
         map.setLayoutProperty(ROUTE_NAME_LAYER_ID, "text-field", routeNameField(ride) as LabelField);
       }
+      // The mile markers, larger in a ride (lib/routeMiles.ts).
+      applyMileSizes(map, ride);
       // The trail names come with the stress overlay, after the base map's: keep listening until both are set.
       return ids.length > 0 && Boolean(map.getLayer(TRAIL_LABEL_LAYER_ID));
     };
@@ -3278,6 +3367,13 @@ function syncTransit(map: MapLibreMap, route: RouteResponse | null): void {
   }
 }
 
+/** The line under the train or bus's path: a little wider than the trip's dashed lines, so it reads as the one now. */
+const ONBOARD_LINE_WIDTH = 6;
+
+function syncOnBoard(map: MapLibreMap, path: OnBoardPath | null): void {
+  (map.getSource(ONBOARD_SOURCE) as GeoJSONSource | undefined)?.setData(onBoardFeatures(path) as never);
+}
+
 /** Station icons are drawn for the screen's pixel density, whole numbers only. */
 function iconPixelRatio(): number {
   return Math.min(3, Math.max(1, Math.ceil(window.devicePixelRatio || 1)));
@@ -3294,6 +3390,7 @@ function syncRoute(map: MapLibreMap, props: Props, fitted: { current: boolean })
   (map.getSource(ROUTE_HAZARD_SOURCE) as GeoJSONSource | undefined)?.setData(routeHazardFeatures(stale ? null : route) as never);
   (map.getSource(STEEP_GRADE_SOURCE) as GeoJSONSource | undefined)?.setData(steepGradeFeatures(stale ? null : route) as never);
   (map.getSource(ROUTE_NAME_SOURCE_ID) as GeoJSONSource | undefined)?.setData(routeNameFeatures(stale ? null : route) as never);
+  (map.getSource(ROUTE_MILES_SOURCE_ID) as GeoJSONSource | undefined)?.setData(routeMileFeatures(stale ? null : route) as never);
   // A ride's camera follows the rider; a re-planned route is not framed over it.
   if (!route || stale || route.geometry.coordinates.length < 2 || props.rider) return;
   const padding = props.framePadding();

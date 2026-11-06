@@ -372,10 +372,10 @@ test("a followed ride link without its key says so and asks for no dot", async (
   // Never passed on: Ride mode's Broadcast is not offered, Go's says the link is missing its key, and Roam's is not offered.
   assert.match(app, /const passesOn =\s*onShared !== null && !onShared\.own && !!onShared\.lead && SHARED_LINK !== null && onShared\.id === SHARED_ID && !followsWithoutKey\(\{ leading: false, secret: onShared\.secret \}\);/);
   assert.match(app, /const followedNoKey = \(\) => followedLink\(\) !== null && followsWithoutKey\(\{ leading: false, secret: sharedOpenNow\.current\?\.secret \}\);/);
-  for (const name of ["broadcastRide", "broadcastQr"]) {
+  for (const name of ["broadcastRideNow", "broadcastQrNow"]) {
     assert.match(app, new RegExp(String.raw`const ${name} = \(\) => \{\s*if \(followedNoKey\(\)\) \{\s*setBroadcastNote\(\(n\) => \(\{ text: BROADCAST_NO_KEY, count: n\.count \+ 1 \}\)\);\s*return;`), name);
   }
-  for (const name of ["broadcastFromRide", "broadcastQrFromRide"]) {
+  for (const name of ["broadcastFromRideNow", "broadcastQrFromRideNow"]) {
     assert.match(app, new RegExp(String.raw`const ${name} = async \(\): Promise<string> => \{\s*if \(followedNoKey\(\)\) return BROADCAST_NO_KEY;`), name);
   }
   assert.match(app, /const roamKeyless = followsWithoutKey\(roamBroadcast\);/);

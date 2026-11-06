@@ -277,6 +277,59 @@ class TestSharedRoutes:
         post(client, body())
         assert not SharedRoute.objects.filter(pk=fresh["id"]).exists()
 
+    def test_a_link_whose_route_has_gone_never_keeps_another_route_under_its_id(self) -> None:
+        client = Client()
+        sent = body()
+        assert post(client, sent).status_code == 201
+        SharedRoute.objects.filter(pk=sent["id"]).update(
+            last_opened_at=timezone.now() - timedelta(days=366)
+        )
+        assert client.get(f"{URL}/{sent['id']}", **addr()).status_code == 404
+        assert not SharedRoute.objects.filter(pk=sent["id"]).exists()
+        again = post(
+            client, {**sent, "name": "Another route", "line": [[-77.0, 38.9], [-77.01, 38.91]]}
+        )
+        assert again.status_code == 409 and again.json()["code"] == "taken"
+        assert client.get(f"{URL}/{sent['id']}", **addr()).status_code == 404
+        # What stays is the id and when it went, nothing of the route or its sharer.
+        from core.models import SharedRouteGone
+
+        assert [f.name for f in SharedRouteGone._meta.get_fields()] == ["id", "gone_at"]
+        assert SharedRouteGone.objects.filter(pk=sent["id"]).exists()
+
+    def test_a_link_that_went_with_its_assistant_draft_keeps_its_id_from_another_route(
+        self,
+    ) -> None:
+        from core import connector
+        from core.models import ConnectorDraft
+
+        user = User.objects.create(discord_user_id=next(_users))
+        draft = ConnectorDraft.objects.create(user=user, draft_id="d" + new_id(), data={})
+        sent = body()
+        assert post(Client(), sent).status_code == 201
+        SharedRoute.objects.filter(pk=sent["id"]).update(connector_draft=draft)
+        ConnectorDraft.objects.filter(pk=draft.pk).update(
+            created_at=timezone.now() - ConnectorDraft.KEPT - timedelta(minutes=1)
+        )
+        assert connector.drop_stale_drafts() == 1
+        assert not SharedRoute.objects.filter(pk=sent["id"]).exists()
+        assert post(Client(), {**sent, "name": "Another route"}).status_code == 409
+
+    def test_a_gone_link_s_id_is_itself_deleted_after_twice_a_link_s_keeping(self) -> None:
+        from core.models import SharedRouteGone
+
+        assert shared_routes.GONE_KEPT == 2 * shared_routes.KEEP
+        now = timezone.now()
+        old, recent = new_id(), new_id()
+        SharedRouteGone.objects.create(
+            id=old, gone_at=now - shared_routes.GONE_KEPT - timedelta(days=1)
+        )
+        SharedRouteGone.objects.create(id=recent, gone_at=now - shared_routes.KEEP)
+        shared_routes.prune(now)
+        assert list(SharedRouteGone.objects.values_list("id", flat=True)) == [recent]
+        # Its id is free again only then.
+        assert post(Client(), body(id=old)).status_code == 201
+
     def test_the_sharer_may_keep_it_permanently_or_until_a_date(self) -> None:
         """The owner, 2026-10-16: a year is the default; "keep permanently" and "delete after
         <date>" are the signed-in sharer's to pick."""
@@ -375,6 +428,13 @@ def test_the_table_is_never_shipped_to_the_beta_and_is_documented() -> None:
     assert "### Shared routes (v0.7.0)" in operations
     assert "| `shared_route` rows" in operations and "1 year after" in operations
     assert "0022_shared_route" in operations
+
+
+def test_retired_link_ids_are_never_shipped_to_the_beta_and_are_documented() -> None:
+    ship = (REPO / "scripts" / "beta" / "ship-data.sh").read_text()
+    assert "shared_route_gone" in ship.split("EXCLUDED_TABLE_DATA=(", 1)[1].split(")", 1)[0].split()
+    operations = (REPO / "docs" / "OPERATIONS.md").read_text()
+    assert "| `shared_route_gone` rows" in operations and "2 years" in operations
 
 
 def test_the_migration_follows_the_newest() -> None:

@@ -5,7 +5,21 @@ import assert from "node:assert/strict";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { READING_OPTIONS, WATCH_OPTIONS, readOnce, watchRide, watchUnavailable, type WatchApi, type WatchPosition } from "./rideWatch.ts";
+import {
+  FIX_TIME_BACK_MS,
+  ON_BOARD_WATCH_OPTIONS,
+  fixTime,
+  READING_OPTIONS,
+  WATCH_OPTIONS,
+  handOver,
+  readOnce,
+  rideWatchOptions,
+  watchRide,
+  watchUnavailable,
+  type WatchApi,
+  type WatchPosition,
+} from "./rideWatch.ts";
+import { ROUGH_FIX_M, STALE_MS } from "./onBoard.ts";
 import type { RideFix } from "./navigate.ts";
 
 function stubApi() {
@@ -148,4 +162,75 @@ test("privacy: Ride mode's screen writes no address, storage or log, and asks no
   assert.doesNotMatch(ride, /history\.|location\.hash|localStorage|sessionStorage|console\.|segment-info|\/api\/reverse|reverseGeocode|segmentInfo|sendBeacon/);
   // Its only request is the re-plan, through the planner's own requestRoute (a POST body).
   assert.deepEqual(ride.match(/\b(requestRoute|fetch)\(/g), ["requestRoute("]);
+});
+
+test("on a train or bus the watch is low power; off it, high accuracy again", () => {
+  assert.deepEqual(rideWatchOptions(false), WATCH_OPTIONS);
+  assert.deepEqual(rideWatchOptions(true), ON_BOARD_WATCH_OPTIONS);
+  assert.equal(ON_BOARD_WATCH_OPTIONS.enableHighAccuracy, false);
+  assert.equal(WATCH_OPTIONS.enableHighAccuracy, true);
+  // A fix this old still places the train: the timetable takes over only after STALE_MS with none.
+  assert.ok(ON_BOARD_WATCH_OPTIONS.maximumAge + ON_BOARD_WATCH_OPTIONS.timeout < STALE_MS);
+  assert.ok(ROUGH_FIX_M >= 500, "the on-board phase takes rough fixes");
+  const { api, options } = stubApi();
+  watchRide({ isSecureContext: true, geolocation: api }, () => undefined, () => undefined, undefined, rideWatchOptions(true));
+  assert.deepEqual(options(), ON_BOARD_WATCH_OPTIONS);
+});
+
+test("handOver: the new watch starts before the old one stops, so no fix is lost at the swap", () => {
+  const order: string[] = [];
+  const fixes: string[] = [];
+  let oldLive = true;
+  let newLive = false;
+  const stop = handOver(
+    () => {
+      order.push("stop old");
+      oldLive = false;
+    },
+    () => {
+      order.push("start new");
+      newLive = true;
+      // A fix arriving mid-swap still has a watch to come by.
+      if (oldLive || newLive) fixes.push("mid-swap fix");
+      return () => {
+        order.push("stop new");
+        newLive = false;
+      };
+    },
+  );
+  assert.deepEqual(order, ["start new", "stop old"]);
+  assert.deepEqual(fixes, ["mid-swap fix"]);
+  assert.ok(newLive && !oldLive);
+  stop();
+  assert.deepEqual(order, ["start new", "stop old", "stop new"]);
+  assert.equal(typeof handOver(null, () => () => undefined), "function", "a first watch has none to stop");
+});
+
+test("Ride mode swaps its watch on boarding and at the walk or ride after, and never in the phone app", () => {
+  const ride = code(readFileSync(fileURLToPath(new URL("../RideMode.tsx", import.meta.url)), "utf8"));
+  assert.match(ride, /stopWatch\.current = handOver\(stopWatch\.current, \(\) => watchRide\(/);
+  assert.match(ride, /rideWatchOptions\(onBoard\)/);
+  assert.match(ride, /const onBoard = lowPowerRef\.current;/);
+  assert.match(ride, /const lowPower = lowPowerOnBoard\(onTransit, onward\?\.board\);\s*lowPowerRef\.current = lowPower;/);
+  const guard = "if (ridesHidden() || pausedRef.current || !stopWatch.current) return;";
+  assert.ok(ride.includes(guard), "no swap in the phone app, nor with the ride paused or ended");
+  const swap = ride.slice(ride.indexOf(guard));
+  assert.match(swap.slice(0, 300), /watchOnBoard\.current === lowPower\) return;\s*startWatch\(\);\s*\}, \[lowPower, startWatch\]\)/);
+  // The old stop-then-start, which left a gap with no watch, is gone.
+  assert.doesNotMatch(ride, /stopWatch\.current\?\.\(\);\s*gpsWeak\.current = \{ goodAt: Date\.now\(\), weak: false \};\s*stopWatch\.current = watchRide\(/);
+});
+
+test("a fix keeps the position's own time, so a cached reading is never taken as new", () => {
+  assert.equal(fixTime(90_000, 100_000), 90_000);
+  assert.equal(fixTime(undefined, 100_000), 100_000);
+  assert.equal(fixTime(Number.NaN, 100_000), 100_000);
+  // A time ahead of the clock, or too far back to be this reading (a clock in another epoch): the time now.
+  assert.equal(fixTime(100_001, 100_000), 100_000);
+  assert.equal(fixTime(200_000 - FIX_TIME_BACK_MS - 1, 200_000), 200_000);
+  const { api, send } = stubApi();
+  const fixes: RideFix[] = [];
+  watchRide({ isSecureContext: true, geolocation: api }, (f) => fixes.push(f), () => assert.fail(), () => 100_000);
+  send({ coords: { latitude: 38.9, longitude: -77, accuracy: 300 }, timestamp: 75_000 });
+  send({ coords: { latitude: 38.9, longitude: -77, accuracy: 300 } });
+  assert.deepEqual(fixes.map((f) => f.at), [75_000, 100_000]);
 });

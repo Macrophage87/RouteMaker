@@ -3,7 +3,8 @@
     python3 tests/data/transit/make_fixture.py tests/data/transit
 
 One folder per system in src/core/transitdata/systems.json that the tests use. The station names
-and places are real (WMATA's from the map's rail data); the timetables are invented.
+and places are real (WMATA's from the map's rail data); the timetables are invented, and so is
+the Penn Line's track (marc/shapes.txt: a few bends between its stations).
 """
 
 import csv
@@ -53,19 +54,35 @@ class Feed:
     def __init__(self, folder):
         self.folder = folder
         self.trips, self.times, self.freqs = [], [], []
+        self.shapes = {}
 
-    def trip(self, route, service, trip, direction, stops_offsets, start):
-        self.trips.append([route, service, trip, direction])
+    def shape(self, shape_id, points):
+        """A track, as (lat, lon) points in order; trips name it with trip(..., shape=)."""
+        self.shapes[shape_id] = points
+
+    def trip(self, route, service, trip, direction, stops_offsets, start, shape=""):
+        self.trips.append([route, service, trip, direction, shape])
         for i, (stop, offset) in enumerate(stops_offsets):
             self.times.append([trip, hms(start + offset), hms(start + offset), stop, i + 1])
 
     def finish(self):
-        write(
-            self.folder,
-            "trips.txt",
-            ["route_id", "service_id", "trip_id", "direction_id"],
-            self.trips,
-        )
+        header = ["route_id", "service_id", "trip_id", "direction_id"]
+        trips = self.trips
+        if self.shapes:
+            header.append("shape_id")
+            rows = []
+            for shape_id, points in self.shapes.items():
+                for n, (lat, lon) in enumerate(points):
+                    rows.append([shape_id, f"{lat:.6f}", f"{lon:.6f}", n + 1])
+            write(
+                self.folder,
+                "shapes.txt",
+                ["shape_id", "shape_pt_lat", "shape_pt_lon", "shape_pt_sequence"],
+                rows,
+            )
+        else:
+            trips = [row[:4] for row in trips]
+        write(self.folder, "trips.txt", header, trips)
         write(self.folder, "stop_times.txt", STOP_TIMES_HEADER, self.times)
         if self.freqs:
             write(
@@ -226,6 +243,22 @@ write(
     [["PENN", "", "Penn Line", 2], ["CAMDEN", "", "Camden Line", 2]],
 )
 feed = Feed(marc)
+# The Penn Line's track, Baltimore to Washington, through its stations with bends between them.
+# Weekday trips follow it (PS southbound, PN the same points reversed); the weekend trips and the
+# Camden Line carry no shape_id, so they are drawn stop to stop.
+PENN_TRACK = [
+    (39.3075, -76.6157),
+    (39.26, -76.68),
+    (39.1923, -76.6942),
+    (39.1, -76.78),
+    (39.02, -76.83),
+    (38.9478, -76.8718),
+    (38.93, -76.95),
+    (38.91, -76.99),
+    (38.8971, -77.0063),
+]
+feed.shape("PS", PENN_TRACK)
+feed.shape("PN", list(reversed(PENN_TRACK)))
 PENN_SOUTH = [("PENN", 0), ("BWI", 720), ("NCARR", 1800), ("UNION_P", 2700)]
 PENN_NORTH = [(s, 2700 - o) for s, o in reversed(PENN_SOUTH)]
 # Weekdays: to Washington every 20 min 05:00-10:00, then hourly to 21:00; to Baltimore hourly
@@ -237,9 +270,9 @@ north = (
     + list(range(H(19), H(22) + 1, 3600))
 )
 for n, t in enumerate(south):
-    feed.trip("PENN", "WK", f"PS_{n}", 0, PENN_SOUTH, t)
+    feed.trip("PENN", "WK", f"PS_{n}", 0, PENN_SOUTH, t, shape="PS")
 for n, t in enumerate(north):
-    feed.trip("PENN", "WK", f"PN_{n}", 1, PENN_NORTH, t)
+    feed.trip("PENN", "WK", f"PN_{n}", 1, PENN_NORTH, t, shape="PN")
 for n, t in enumerate(range(H(7), H(21) + 1, 7200)):
     feed.trip("PENN", "WE", f"PWS_{n}", 0, PENN_SOUTH, t)
     feed.trip("PENN", "WE", f"PWN_{n}", 1, PENN_NORTH, t)
