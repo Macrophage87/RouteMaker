@@ -102,3 +102,30 @@ def test_the_internal_comparison_layers_are_cited_nowhere() -> None:
         assert not any(word in credit.lower() for word in NEVER), credit
     shown = SOURCES.read_text().split("## Used inside the project only")[0].lower()
     assert not any(word in shown for word in NEVER)
+
+
+def test_every_city_layer_the_baltimore_review_cites_has_a_source_record() -> None:
+    """The 2026-11-04 Baltimore City review's truck routes, restricted-hours routes, speed humps
+    and the city's planning LTS are recorded and credited under "Open Baltimore"."""
+    review = json.loads(
+        (
+            REPO / "fixtures" / "overrides" / "2026-11-04-owner-baltimore-city-review.json"
+        ).read_text()
+    )
+    cited = " ".join(
+        r.get("evidence", "") + " " + r.get("reason", "") for r in review["rows"]
+    ).lower()
+    text = SOURCES.read_text()
+    section = text[text.index("## Open Baltimore") :]
+    section = section[: section.index("\n## ", 1)].lower()
+    datasets = (REPO / "fixtures" / "datasets" / "README.md").read_text().lower()
+    for cue, record in (
+        ("truck route", "truck route"),
+        ("restricted-hours route", "restricted-hours route"),
+        ("speed hump", "speed hump"),
+        ("city planning lts", "planning lts"),
+    ):
+        assert cue in cited, cue
+        assert record in section, f"docs/SOURCES.md, Open Baltimore: no {record!r}"
+        assert record in datasets, f"fixtures/datasets/README.md: no {record!r}"
+    assert "baltimore-city-review.json" in section

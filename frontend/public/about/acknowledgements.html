@@ -212,6 +212,7 @@ The licence texts of the software bundled into the app are in
 <p><strong>On this page</strong></p>
 <ul>
 <li><a href="#data">Map and road data</a></li>
+<li><a href="#download">Download our data</a></li>
 <li><a href="#live">Live and transit data</a></li>
 <li><a href="#software">Open source software</a></li>
 <li><a href="#research">Research</a></li>
@@ -238,7 +239,7 @@ The licence texts of the software bundled into the app are in
 <tr><th scope="row"><a href="https://www.arcgis.com/home/item.html?id=fc3c7b650076475ba9a4b0232f6d8655">Maryland DOT State Highway Administration</a></th><td>Bicycle LTS 2022, traffic counts, traffic signals and flashing beacons, Scenic Byways, work zones</td><td>Maryland iMAP terms; work zones CC0</td></tr>
 <tr><th scope="row"><a href="https://www.virginiaroads.org/">Virginia DOT</a></th><td>Traffic counts; traffic signals (HMMS 2023 snapshot, for comparison only); work zones through SmarterRoads</td><td>Open; signals as provided, without guarantee; SmarterRoads use agreement</td></tr>
 <tr><th scope="row"><a href="https://www.alexandriava.gov/gis/open-data">City of Alexandria</a></th><td>Recorded speed limits; signalised intersections and HAWK signals (Smart Mobility Data)</td><td>CC0</td></tr>
-<tr><th scope="row"><a href="https://data.baltimorecity.gov/">Open Baltimore</a></th><td>Bike facilities in Baltimore</td><td>Open under City Code</td></tr>
+<tr><th scope="row"><a href="https://data.baltimorecity.gov/">Open Baltimore</a></th><td>Bike facilities, truck and rush-hour routes, speed humps and planning stress ratings in Baltimore</td><td>Open under City Code</td></tr>
 <tr><th scope="row"><a href="https://www.baltimorecity.gov/transportation/our-work/bike-baltimore/bike-and-scooter-parking">Baltimore City Department of Transportation</a></th><td>Bike racks in Baltimore (installed
 racks, scooter corrals with bike racks and its 2021 inventory of public racks)</td><td>Public domain (Baltimore City Code)</td></tr>
 <tr><th scope="row"><a href="https://www.usgs.gov/3d-elevation-program">USGS 3D Elevation Program</a></th><td>Elevation, climbs, the Hills slider, contour lines</td><td>U.S. public domain</td></tr>
@@ -249,6 +250,32 @@ racks, scooter corrals with bike racks and its 2021 inventory of public racks)</
 </table>
 </div>
 
+</div></details>
+<h2 id="download">Download our data</h2>
+<p>Every road's stress rating and why, the reviewed rating rows, the long trails and bike parking, free for GIS:
+<a href="https://github.com/Macrophage87/RouteMaker/releases?q=data-&amp;expanded=true">RouteMaker's data releases</a>
+(GeoPackage, CSV and GeoJSON).</p>
+<details class="more"><summary>More: Download our data</summary>
+<div class="more-body">
+<ul>
+<li>A new set comes with each map update. The GeoPackage opens in QGIS and ArcGIS Pro; each CSV opens in a spreadsheet
+(its first line is the licence, so skip one line); the GeoJSON files suit web maps (every layer but the roads, which
+are too large for it). The README in each download explains every field.</li>
+<li>Licence: <a href="https://opendatacommons.org/licenses/odbl/1-0/">ODbL 1.0</a>, as it is built on OpenStreetMap:
+credit the sources and share what you derive from it under the same licence.</li>
+<li>Every level is RouteMaker's own, reviewed across the whole map. Each road says how its level was set and
+whether each agency that rates it agrees (Maryland's State Highway Administration among them), and its Why note cites
+their figures where they differ.</li>
+<li>Linked rather than included as data, because we have no licence to pass them on:
+<a href="https://www.arcgis.com/home/item.html?id=77010abe7558425997b4fcdab02e2b64">Maryland's state traffic counts</a>,
+<a href="https://www.arcgis.com/home/item.html?id=fc3c7b650076475ba9a4b0232f6d8655">Maryland's stress ratings</a> and
+<a href="https://www.arcgis.com/home/item.html?id=dc571b56e48a4f4292986c97a119e88a">Maryland's scenic byways</a>, Arlington's
+<a href="https://services1.arcgis.com/JrtUzVcH8S2wnzVH/arcgis/rest/services/Bike_Comfort_Index/FeatureServer/0">Bike
+Comfort Index</a>, Capital Bikeshare's trip data
+(<a href="https://capitalbikeshare.com/data-license-agreement">its licence</a> forbids it), and live closures, which
+change by the hour.</li>
+<li>Nothing from rides, riders or accounts is in it.</li>
+</ul>
 </div></details>
 <h2 id="live">Live and transit data</h2>
 <p>Live closures, bikeshare, transit and park alerts come from the agencies that run them.</p>
@@ -374,7 +401,7 @@ panel's Why note says what the index calls it and why ours differs.</li>
 <p class="next">That is the last page. <a href="/about/how-it-works.html">Back to the overview</a></p>
 </main>
 <footer>
-  <p>Part of RouteMaker's documentation. It describes version 0.20.0. The code is
+  <p>Part of RouteMaker's documentation. It describes version 0.21.0. The code is
   open source under the MIT licence:
   <a href="https://github.com/Macrophage87/RouteMaker">github.com/Macrophage87/RouteMaker</a>.</p>
   <p><a href="/">Back to the map</a></p>

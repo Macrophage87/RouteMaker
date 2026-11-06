@@ -45,6 +45,183 @@ export function presetSecret(was: PresetId, now: PresetId, secret: string, own: 
   return { secret: make(), own: true };
 }
 
+/** A plan as the page's own ride secrets know it: its ride type and its points, in order. */
+export function ridePlanKey(preset: PresetId, points: readonly LonLat[]): string {
+  return `${preset}|${points.map((p) => `${p[0]},${p[1]}`).join(";")}`;
+}
+
+/**
+ * The page's own ride secrets, one for each plan (2026-11-05): each plan is its own ride, with its own id and key, so
+ * links copied for different plans in one tab are different rides. The same plan again (undo, or copied a second
+ * time) has the same secret, so it gives the same link. An empty plan (Clear) starts afresh: no earlier plan's secret
+ * comes back. A ride's end retires the secret it was ridden under, for every plan that had it.
+ */
+export interface PlanSecrets {
+  /** The secret for this plan: the one it had, else a new one. */
+  secretFor(plan: string, empty: boolean): string;
+  /** This plan has this secret (the page's own, as it is now). */
+  keep(plan: string, secret: string): void;
+  /** No plan keeps this secret any more: a new one in its place. */
+  renew(secret: string): string;
+  /** Every plan's secret forgotten. */
+  forget(): void;
+}
+
+export function planSecrets(make: () => string = newRideSecret, max = 32): PlanSecrets {
+  const byPlan = new Map<string, string>();
+  return {
+    secretFor(plan, empty) {
+      if (empty) {
+        byPlan.clear();
+        return make();
+      }
+      return byPlan.get(plan) ?? make();
+    },
+    keep(plan, secret) {
+      byPlan.delete(plan);
+      byPlan.set(plan, secret);
+      while (byPlan.size > max) byPlan.delete(byPlan.keys().next().value!);
+    },
+    renew(secret) {
+      for (const [plan, kept] of [...byPlan]) if (kept === secret) byPlan.delete(plan);
+      return make();
+    },
+    forget() {
+      byPlan.clear();
+    },
+  };
+}
+
+/** The page's own ride secrets in this tab (sessionStorage), as digests: a reload, a sign-in or a visit to another
+ * page brings the plan back with its secret, which is still the page's own, not a link's. */
+export const OWN_SECRETS_KEY = "routemaker.own-ride-secrets";
+
+/** A short digest of a secret (53 bits, not reversible to it): enough to tell the page's own from a link's. */
+function secretDigest(secret: string): string {
+  let h1 = 0xdeadbeef;
+  let h2 = 0x41c6ce57;
+  for (let i = 0; i < secret.length; i++) {
+    const c = secret.charCodeAt(i);
+    h1 = Math.imul(h1 ^ c, 2654435761);
+    h2 = Math.imul(h2 ^ c, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
+}
+
+function ownSecretList(store: Store | null): string[] {
+  try {
+    const raw = JSON.parse(store?.getItem(OWN_SECRETS_KEY) ?? "[]") as unknown;
+    return Array.isArray(raw) ? raw.filter((r): r is string => typeof r === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Mark a secret as the page's own in this tab. */
+export function markOwnSecret(secret: string, store: Store | null = session()): void {
+  const digest = secretDigest(secret);
+  const list = ownSecretList(store).filter((d) => d !== digest);
+  list.push(digest);
+  try {
+    store?.setItem(OWN_SECRETS_KEY, JSON.stringify(list.slice(-20)));
+  } catch {
+    // Not kept: after a reload the secret is taken as a link's.
+  }
+}
+
+/** Whether a secret the page opened with is one it made itself in this tab. */
+export function isOwnSecret(secret: string, store: Store | null = session()): boolean {
+  return ownSecretList(store).includes(secretDigest(secret));
+}
+
+/** When each of the page's own secrets first went out in a link (Copy link or Share), by digest, in this tab only:
+ * nothing of it is sent anywhere. Kept again when the organiser says a later copy is the same ride. */
+export const RIDE_SENT_KEY = "routemaker.own-ride-sent";
+/** A plan's link that went out longer ago than this is asked about before it goes out again or is ridden: the same ride,
+ * or a new one (2026-11-05). */
+export const SAME_RIDE_ASK_MS = 12 * 3600_000;
+export const SAME_RIDE_QUESTION = t("Same ride or a new one?");
+export const SAME_RIDE_LEAD = t("This ride's link went out more than 12 hours ago. A new ride gets a new link, so those with the earlier link do not see it.");
+/** The lead when the plan changed after its link went out (the owner, 2026-11-06: an edit keeps the ride only if asked). */
+export const SAME_RIDE_EDITED_LEAD = t("You changed the route after its link went out. A new ride gets a new link, so those with the earlier link do not see it.");
+export const SAME_RIDE = t("Same ride");
+export const NEW_RIDE = t("New ride");
+
+function sentTimes(store: Store | null): Record<string, number> {
+  try {
+    const raw = JSON.parse(store?.getItem(RIDE_SENT_KEY) ?? "{}") as unknown;
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+    return Object.fromEntries(Object.entries(raw).filter((e): e is [string, number] => typeof e[1] === "number"));
+  } catch {
+    return {};
+  }
+}
+
+/** A link with this secret went out now: kept unless one went out before (`again`: the organiser said it is the same ride). */
+export function markRideSent(secret: string, now: number, again = false, store: Store | null = session()): void {
+  const times = sentTimes(store);
+  // Never a number-like key, so the object keeps the order the times went in.
+  const digest = `d${secretDigest(secret)}`;
+  if (times[digest] !== undefined && !again) return;
+  delete times[digest];
+  times[digest] = now;
+  const kept = Object.entries(times).slice(-20);
+  try {
+    store?.setItem(RIDE_SENT_KEY, JSON.stringify(Object.fromEntries(kept)));
+  } catch {
+    // Not kept: the next copy is not asked about.
+  }
+}
+
+/**
+ * The leader a ride link (Share ride, Broadcast) goes out with: the one last sent for this route (`sent`), else the one
+ * this line was shared with (`leads`, by the line's id), else the prepared one, which has not gone out.
+ */
+export function rideLeadFor<L>(sent: { lead: L | null } | null, line: string | null, leads: ReadonlyMap<string, L>, prepared: L | null): L | null {
+  if (sent) return sent.lead;
+  return (line ? leads.get(line) : undefined) ?? prepared;
+}
+
+/**
+ * New ride ("Same ride or a new one?"): no line keeps the leader its ride links went out with (Roam's go with Roam), so
+ * the next ride link goes with the prepared leader, and the plan gets a new secret in place of `secret`; the new one.
+ */
+export function newRide<L>(leads: Map<string, L>, secrets: PlanSecrets, secret: string): string {
+  for (const id of [...leads.keys()]) if (!id.startsWith("roam|")) leads.delete(id);
+  return secrets.renew(secret);
+}
+
+/**
+ * The secret a ride started now rides under, as RideGroup reads it: the led line's (a Share ride or Broadcast this page
+ * sent or opened), else the plan's.
+ */
+export function rideSecretOf(open: { ride?: boolean; id?: string; lead?: string | null; secret?: string | null } | null, plan: string): string | null {
+  return open?.ride && open.id && open.lead ? (open.secret ?? null) : plan;
+}
+
+/** Whether a link with this secret went out from this tab at all. */
+export function wasRideSent(secret: string, store: Store | null = session()): boolean {
+  return sentTimes(store)[`d${secretDigest(secret)}`] !== undefined;
+}
+
+/**
+ * The secret a changed plan is asked about (the owner, 2026-11-06): the sent one of the plan it was changed from, kept
+ * through further changes until asked; none once cleared, or back on a plan whose own link went out.
+ */
+export function editedFromNext(edited: string | null, before: string, next: string, empty: boolean, sent: (secret: string) => boolean): string | null {
+  if (empty || sent(next)) return null;
+  if (next !== before && sent(before)) return edited ?? before;
+  return edited;
+}
+
+/** Whether a link with this secret went out longer ago than SAME_RIDE_ASK_MS: ask "Same ride or a new one?" first. */
+export function asksSameRide(secret: string, now: number, store: Store | null = session()): boolean {
+  const at = sentTimes(store)[`d${secretDigest(secret)}`];
+  return at !== undefined && now - at > SAME_RIDE_ASK_MS;
+}
+
 export function isRideLink(preset: PresetId, points: readonly LonLat[]): preset is RideLinkType {
   return isRideLinkType(preset) && points.length >= 2;
 }
