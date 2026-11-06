@@ -1576,6 +1576,8 @@ The amendments are in date order, then by OWNER-DECISIONS item number (the recor
 
   Superseded 2026-10-25 (owner: "For reports in that box, also give the discord. I'm not trying to gatekeep the discord."): the notice now ends "tell us on Discord." with the public invite linked, and a small-print "Sign up to test here!" links the beta sign-up form (`BETA_DISCORD_URL`, `BETA_SIGNUP_URL` in `betaBanner.ts`). A `--report-url` link still shows as "Report a problem" unless it is the Discord invite again.
 
+  Superseded 2026-11-06 (owner: "For sign up to test in Beta, send the webpage with instructions to the Google group" and "make both that and the link to documentation a button inside the popout so it's more apparent"): under the Discord line are two buttons, "Sign up to test here!" to the Android beta's how-to-join page `/about/android-beta.html`, and "Using RouteMaker" to the help guides (`BETA_SIGNUP_URL`, `BETA_GUIDES_TEXT` in `betaBanner.ts`).
+
 - 384, Owner 2026-10-05, the sidebar's open questions (312): "1 system, 2 settings, 3 off, 4. call it high contrast, 5 yes".
   1. Theme: follow the system's light or dark setting (as built).
   2. The fourth bottom-bar button is "Settings", not "About" (the bar has five buttons since 392/393, which put Plan first). It holds the sign-in note and the display options.
