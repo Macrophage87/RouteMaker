@@ -7201,7 +7201,8 @@ Dockerfile, so the beta ships by hand. At home, in order, with `</dev/null` on e
 
 Transit in a ride: the stops and time left on board, the line along its track and each stop's
 time (#976, #978), resuming a trip after switching apps (#979); the 2026-11-05 repo review's fixes
-(#980: Group and Mass Ride links keyed per plan with "Same ride or a new one?" after 12 hours,
+(#980: Group and Mass Ride links keyed per plan with "Same ride or a new one?" after 12 hours or
+after a change,
 Detour's Go round, Reach's own rate limits and costing per ride type, the MCP connector's `reach`
 and `compare_places` answered in process, closures checked as far as a plan reaches); the open data
 download (#982); 671 Baltimore City owner rows corrected (#975); and a key of its own for the PC's
@@ -7268,7 +7269,8 @@ changed`), as at v0.19.0, though the column is optional: the beta ships by hand,
   draws the line in its colour along the track, with the stop to get off filled. Where am I? on the
   train gives the line and the stop to get off, never "arrived". Switch apps on the train, come
   back, press Resume: the trip carries on. In a ride, Detour's menu offers "Go round: road closed
-  ahead". Share a Group Ride link, change the plan and share again: a new link. Plan > Find > Reach
+  ahead". Copy a Group Ride link, change the plan and copy again: "Same ride or a new one?"; Same ride
+  gives the first link, New ride a new one. Plan > Find > Reach
   on Walk draws rings. Acknowledgements shows "Download our data".
 - [ ] **Rollback.** The `pre-rel` api and pipeline images (`--force-recreate api worker rebuild`)
   and the v0.20.0 front end. Migration 0056 only adds a table: the v0.20.0 api ignores it, so the

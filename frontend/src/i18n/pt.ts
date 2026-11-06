@@ -2046,6 +2046,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   // ---- Same ride or a new one? (SameRideDialog, 2026-11-05) ----
   "Same ride or a new one?": "O mesmo pedal ou um novo?",
   "This ride's link went out more than 12 hours ago. A new ride gets a new link, so those with the earlier link do not see it.": "O link deste pedal foi enviado há mais de 12 horas. Um pedal novo tem um link novo, então quem tem o link anterior não o vê.",
+  "You changed the route after its link went out. A new ride gets a new link, so those with the earlier link do not see it.": "Você mudou a rota depois que o link foi enviado. Um pedal novo tem um link novo, então quem tem o link anterior não o vê.",
   "Same ride": "O mesmo pedal",
   "New ride": "Pedal novo",
 };

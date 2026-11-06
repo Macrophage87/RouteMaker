@@ -2046,6 +2046,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   // ---- Same ride or a new one? (SameRideDialog, 2026-11-05) ----
   "Same ride or a new one?": "Aynı sürüş mü, yeni bir sürüş mü?",
   "This ride's link went out more than 12 hours ago. A new ride gets a new link, so those with the earlier link do not see it.": "Bu sürüşün bağlantısı 12 saatten uzun süre önce gönderildi. Yeni bir sürüş yeni bir bağlantı alır, bu yüzden önceki bağlantıya sahip olanlar onu görmez.",
+  "You changed the route after its link went out. A new ride gets a new link, so those with the earlier link do not see it.": "Bağlantısı gönderildikten sonra rotayı değiştirdiniz. Yeni bir sürüş yeni bir bağlantı alır, bu yüzden önceki bağlantıya sahip olanlar onu görmez.",
   "Same ride": "Aynı sürüş",
   "New ride": "Yeni sürüş",
 };

@@ -66,7 +66,7 @@ test("the page gives each plan of its own its own secret, and Clear a new one, b
   assert.match(app, /const groupSecretOwn = useRef\(PLAN_SECRET_OWN\);/);
   assert.match(
     app,
-    /if \(riding\) return;\s*const empty = points\.length === 0;\s*if \(empty\) groupSecretOwn\.current = true;\s*if \(groupSecretOwn\.current\) setGroupSecret\(ownSecrets\.current!\.secretFor\(ridePlanKey\(preset, points\), empty\)\);\s*\/\/[^\n]*\n\s*\}, \[points\]\);/,
+    /if \(riding\) return;\s*const empty = points\.length === 0;\s*if \(empty\) groupSecretOwn\.current = true;\s*if \(empty\) editedFrom\.current = null;\s*if \(groupSecretOwn\.current\) \{\s*const next = ownSecrets\.current!\.secretFor\(ridePlanKey\(preset, points\), empty\);[^]*?editedFrom\.current = editedFromNext\(editedFrom\.current, groupSecret, next, empty, \(secret\) => wasRideSent\(secret\)\);\s*setGroupSecret\(next\);\s*\}\s*\/\/[^\n]*\n\s*\}, \[points\]\);/,
   );
   assert.match(app, /ownSecrets\.current!\.keep\(ridePlanKey\(preset, secretPlan\.current\), groupSecret\);\s*markOwnSecret\(groupSecret\);\s*\}, \[groupSecret, preset\]\);/);
   // A link opened in the tab: its own secret, and no plan before it keeps one.
