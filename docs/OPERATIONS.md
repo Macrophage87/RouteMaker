@@ -7215,13 +7215,14 @@ limits of its own (`REACH`, `REACH_ISOCHRONES`, in code: no environment variable
 `scripts/build_transit_schedule.py` stores each rail pattern's track from `shapes.txt`; an old
 schedule keeps working, drawn stop to stop. `scripts/beta/` (the agent, `alert.sh`'s PC-pull
 watch, `receive-data.sh`, `ship-data.sh`) and `scripts/pc/` (the backup pull reads
-`~/.config/routemaker/pull-beta-backups.env` and the `chubby-backup`-style alias of "A key that
+`~/.config/routemaker/pull-beta-backups.env` and the pull-only alias of "A key that
 can only pull backups"). **No `valhalla/*.json`, compose, Caddyfile, nginx, Dockerfile,
 requirements, `lua/` or `mobile/` change, no tile `FORMAT_VERSION` change, no new environment
-variable, outbound host or scheduled job.** The routers need no restart. The beta agent's gate
+variable or scheduled job, and no new outbound host for the stack** (the open data export, run by hand on
+the PC, reads Arlington's ArcGIS service; `--no-arlington` skips it). The routers need no restart. The beta agent's gate
 stops on `src/pipeline/schema.py` (`reason=src/pipeline/schema.py: the live table layout
-changed`), as at v0.19.0, though the column is optional: the beta ships by hand, without a data
-bundle. At home, in order, with `</dev/null` on every docker command:
+changed`), as at v0.19.0, though the column is optional: the beta ships by hand, with no map data
+(the transit schedule only). At home, in order, with `</dev/null` on every docker command:
 
 - [ ] **The tag.** Once `test` and `a11y` are green on `main`, the owner tags v0.21.0 (annotated) on
   that commit, from the PC.
@@ -7233,16 +7234,18 @@ bundle. At home, in order, with `</dev/null` on every docker command:
   `docker compose up -d --no-deps --no-build --force-recreate api worker`, and `rebuild` too once
   no rebuild job is queued or running. No router restart, no pre-draw.
 - [ ] **The front end**, last.
-- [ ] **The PC backup pull.** Nothing to do if `~/.config/routemaker/pull-beta-backups.env` and the
-  pull-only key are in place (the owner set both up on 2026-11-06): the next 04:00 pull, from the
-  v0.21.0 checkout, reads them. Without the file each pull exits 1 saying so, and `alert.sh watch`
-  reports it after 36 h. Check the first run's `pull-beta-backups.log`.
+- [ ] **The PC backup pull.** Its scheduled task runs the script from `~/src/RouteMaker`, not from
+  the serving worktree, so fast-forward that checkout to the tag too, then run
+  `install-backup-pull-task.ps1` again ("Off-box copies of beta backups", Install) so the task takes
+  its v0.21.0 settings. `~/.config/routemaker/pull-beta-backups.env` and the pull-only key are in
+  place (the owner set both up on 2026-11-06). Without the file each pull exits 1 saying so, and
+  `alert.sh watch` reports it after 36 h. After the next 04:00 run, `pull-beta-backups.log` names
+  the pull-only alias and says `marked=yes`.
 - [ ] **The transit schedule**, rebuilt with the new script ("Transit schedule", Build it on the
   home PC), so rail lines follow their tracks. The build's report says "<system>: N of M patterns
-  follow their track" for MARC, Light RailLink and the rest; 0 for a system means its feed has no
-  `shapes.txt`. Then the beta: ship the `transit` part alone (BETA-RUNBOOK, "the bundle carries the
-  transit ride types' schedule"). Without this step the lines are drawn straight stop to stop until
-  the next 45-day refresh.
+  follow their track" for MARC, Light RailLink and the rest; a system with none is drawn straight
+  from stop to stop ("Transit schedule"). The beta takes the new schedule in its hand ship below.
+  Without this step the lines are drawn straight stop to stop until the next 45-day refresh.
 - [ ] **The open data download**, after the api is on v0.21.0 (the command ships in it): "The open
   data download (after a map swap)", step 1 on the PC, then `agency-comparison.json` beside the docs
   generator and the stress page regenerated; the upload to a `data-<date>` GitHub release waits for
@@ -7256,7 +7259,9 @@ bundle. At home, in order, with `</dev/null` on every docker command:
   (`pause --wait`), snapshot the database (`--label release`), copy `index.html`, check out the
   tag, set `TAG=`, `check_beta_compose.py` ("beta compose: ok"), build the api image, migrate in the
   migrate container (0056), start api and worker, the front end, `smoke-test.sh --local --trails`
-  then `--public`. No data bundle, no router restart, no pre-draw. The agent changed:
+  then `--public`. No map data, no router restart, no pre-draw. The rebuilt transit schedule goes
+  in this ship, while the agent is paused: the `transit` part alone (BETA-RUNBOOK, "the bundle carries
+  the transit ride types' schedule"). The agent changed:
   `mark-deployed v0.21.0`, then `scripts/beta/auto-release.sh install`, then `resume`.
 - [ ] **Spot checks.** A bike + transit ride on MARC or Metro: on board, the card shows the stops
   and minutes left and an arrival time, the stop list shows each stop's time, and the ride map
@@ -7268,7 +7273,8 @@ bundle. At home, in order, with `</dev/null` on every docker command:
 - [ ] **Rollback.** The `pre-rel` api and pipeline images (`--force-recreate api worker rebuild`)
   and the v0.20.0 front end. Migration 0056 only adds a table: the v0.20.0 api ignores it, so the
   database stays migrated. A schedule rebuilt with tracks still works with the v0.20.0 api (it
-  ignores `shape` and `cuts`). On the beta: rollback A (the snapshot is there if needed).
+  ignores `shape` and `cuts`). On the beta: rollback A (the snapshot is there if needed), then
+  `auto-release.sh hold v0.21.0` so the agent does not deploy it again.
 
 ## Deploying a planner and front-end release: rollback points and verification
 

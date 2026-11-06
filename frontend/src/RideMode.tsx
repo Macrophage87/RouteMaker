@@ -3489,6 +3489,10 @@ export function RideMode({
                         className="secondary detour-road-closed"
                         onClick={() => {
                           setDetourOpen(false);
+                          // Closed before roadClosed() speaks, so its words come as a toast, not into the hidden menu;
+                          // the pressed button goes with the menu, so the focus moves to Where am I?.
+                          detourOpenRef.current = false;
+                          whereRef.current?.focus();
                           roadClosed();
                         }}
                       >

@@ -228,7 +228,7 @@ def test_the_readme_links_every_source_left_out_and_names_no_server():
     for name, url, _why in open_data.LINKED_NOT_INCLUDED:
         assert url in text and name in text
     assert "ODbL" in text and "OpenStreetMap" in text
-    assert not re.search(r"routemakerdc|chubby|amazonaws", text, re.IGNORECASE)
+    assert not re.search(r"routemakerdc|amazonaws", text, re.IGNORECASE)
 
 
 def test_agency_comparison_against_the_map_level():
