@@ -346,6 +346,35 @@ class TestSeekingClimbs:
         body = post(client, {**good_body("mountain-goat"), "hills": 100}).json()
         assert body["hills_seek"]["chosen"] == 1
 
+    def test_the_closures_are_looked_up_as_far_out_as_the_climb_search_can_go(
+        self, client, facility_segments, router, monkeypatch
+    ):
+        """Audit 2026-11-05: a climb search may go half again the direct way, past the closures'
+        own 5 km margin round the points on a long ride; they are looked up that far out."""
+        from core import workzones
+
+        reaches = []
+        real = workzones.plan_zones
+
+        def plan_zones(*args, **kwargs):
+            reaches.append(kwargs.get("reach_m", 0.0))
+            return real(*args, **kwargs)
+
+        monkeypatch.setattr(workzones, "plan_zones", plan_zones)
+        router(seeking_router([(2.2, HILLY)]))
+        points = good_body("mountain-goat")["points"]
+        post(client, {**good_body("mountain-goat"), "hills": 100})
+        assert reaches[0] == pytest.approx(routing.zones_reach_m(points, True, 100, None))
+        assert reaches[0] > 0
+        # 30 km apart at the top of the slider: about 10 km either side of the line.
+        a, b = [-77.2, 38.9], [-76.85, 38.9]
+        straight = routing.haversine(routing.Point(*a), routing.Point(*b))
+        reach = routing.zones_reach_m([a, b], True, 100, None)
+        assert reach == pytest.approx(straight * math.sqrt(1.95**2 - 1) / 2, rel=1e-2)
+        assert routing.zones_reach_m([a, b], False, 0, None) == 0.0
+        # A plan sized to a target: up to its ceiling.
+        assert routing.zones_reach_m([a, a], False, 0, 40_000) == pytest.approx(25_000)
+
     def test_the_extra_climb_is_over_the_direct_routes_own(self, client, facility_segments, router):
         """RT9: on a direct route that climbs too, what is reported is the
         difference, not the chosen route's whole climb."""

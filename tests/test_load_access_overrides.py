@@ -1017,6 +1017,81 @@ class TestRetire:
             load(write_file(tmp_path, [], [entry]), "--actor", str(admin.discord_user_id))
 
 
+def dated_file(tmp_path, name, decided, rows, retire=()) -> str:
+    path = tmp_path / name
+    path.write_text(
+        json.dumps({"version": 1, "decided": decided, "rows": rows, "retire": list(retire)})
+    )
+    return str(path)
+
+
+@pytest.mark.django_db
+class TestFilesLoadInAnyOrder:
+    """An older file loaded after the newer file that retires some of its rows: the rows
+    the newer one withdrew are left alone, the rest load, and nothing newer is undone."""
+
+    def files(self, tmp_path):
+        value = {**ADJUSTMENT, "tier": 3, "annotation_status": "approved"}
+        older_rows = [
+            {"kind": "stress", "osm_way_id": w, "value": value, "reason": "r", "evidence": "e"}
+            for w in (7, 8)
+        ]
+        newer_value = {**value, "tier": 4, "adjustment_id": "b-stretch"}
+        newer_rows = [
+            {
+                "kind": "stress",
+                "osm_way_id": 7,
+                "value": newer_value,
+                "reason": "r",
+                "evidence": "e",
+            }
+        ]
+        retire = [{"kind": "stress", "osm_way_id": 7, "value": value, "reason": "replaced"}]
+        older = dated_file(tmp_path, "older.json", "2026-11-01", older_rows)
+        newer = dated_file(tmp_path, "newer.json", "2026-11-04", newer_rows, retire)
+        return older, newer, newer_value
+
+    def test_the_older_file_loads_after_the_newer_one_without_undoing_it(
+        self, admin, tmp_path
+    ) -> None:
+        from core.models import Override
+
+        older, newer, newer_value = self.files(tmp_path)
+        actor = str(admin.discord_user_id)
+        load(newer, "--actor", actor, "--confirm")
+        dry = load(older, "--actor", actor)
+        assert "retired: way 7" in dry and "decided 2026-11-04" in dry
+        assert "create: way 8" in dry
+        load(older, "--actor", actor, "--confirm")
+        by_way = {o.osm_way_id: o.value for o in Override.objects.filter(approved=True)}
+        assert by_way[7] == newer_value and by_way[8]["tier"] == 3
+        assert Override.objects.count() == 2
+
+    def test_either_order_ends_the_same_and_a_second_run_of_both_is_a_no_op(
+        self, admin, tmp_path
+    ) -> None:
+        from core.models import Override
+
+        older, newer, newer_value = self.files(tmp_path)
+        actor = str(admin.discord_user_id)
+        load(older, "--actor", actor, "--confirm")
+        load(newer, "--actor", actor, "--confirm")
+        for path in (older, newer):
+            out = load(path, "--actor", actor, "--confirm")
+            assert "wrote 0 of" in out
+        by_way = {o.osm_way_id: o.value for o in Override.objects.filter(approved=True)}
+        assert by_way[7] == newer_value and Override.objects.count() == 2
+
+    def test_reloading_the_newer_file_writes_its_retirement_once(self, admin, tmp_path) -> None:
+        from core.models import AuditLogEntry
+
+        _older, newer, _ = self.files(tmp_path)
+        actor = str(admin.discord_user_id)
+        load(newer, "--actor", actor, "--confirm")
+        load(newer, "--actor", actor, "--confirm")
+        assert AuditLogEntry.objects.filter(action="retire").count() == 1
+
+
 class TestTheRetiringFiles:
     """The checked-in files that retire rows (OWNER-DECISIONS 432, 433)."""
 

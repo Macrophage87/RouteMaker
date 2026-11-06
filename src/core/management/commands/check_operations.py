@@ -24,6 +24,7 @@ costs one page rather than a recurring one.
 
 from __future__ import annotations
 
+import http.client
 import json
 import os
 import sys
@@ -73,7 +74,8 @@ def router_tileset_modified(url: str) -> int | None:
             url.rstrip("/") + "/status", timeout=ROUTER_STATUS_TIMEOUT_S
         ) as response:
             value = json.loads(response.read()).get("tileset_last_modified")
-    except (OSError, ValueError, AttributeError):
+    except (OSError, http.client.HTTPException, ValueError, AttributeError):
+        # Not answering, an answer cut off part way or a bad status line: left to the others.
         return None
     return int(value) if isinstance(value, int | float) and value > 0 else None
 

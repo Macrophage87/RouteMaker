@@ -8,9 +8,11 @@
 import { useEffect, useRef } from "react";
 import type { Place } from "../lib/geocode.ts";
 import { launchShare, readShared, withoutShare } from "../lib/sharedLocation.ts";
+import { t } from "../lib/i18n.ts";
 
 /** What a share with an address but no point says: where to go on from. */
-export const sharedQuerySaid = (query: string): string => `The shared place has no map point. Type “${query}” in Where to? to find it.`;
+export const sharedQuerySaid = (query: string): string =>
+  t("The shared place has no map point. Type “{query}” in Where to? to find it.", { query });
 
 export function useSharedLaunch(open: (place: Place) => void, say: (text: string) => void): void {
   const latest = useRef({ open, say });
