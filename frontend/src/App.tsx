@@ -1497,6 +1497,8 @@ export function App() {
   useEffect(() => {
     const was = presetBefore.current;
     presetBefore.current = preset;
+    // Another ride type is another ride: nothing carried over to ask about.
+    if (was !== preset) editedFrom.current = null;
     setGroupSecret((s) => {
       const next = presetSecret(was, preset, s, groupSecretOwn.current);
       groupSecretOwn.current = next.own;
@@ -1559,6 +1561,7 @@ export function App() {
       groupSecretOwn.current = linked === null;
       setGroupSecret(linked ?? newRideSecret());
       ownSecrets.current!.forget();
+      editedFrom.current = null;
       setConfirmedKm(null);
       // Another plan: undo does not reach back into the one before it.
       history.current.clear();
@@ -3799,6 +3802,7 @@ export function App() {
       }
       // A Group or Mass Ride secret this page made is made again: last ride's link reads nothing on the next. One from a link
       // opened here is the link's, the ride its sender leads.
+      editedFrom.current = null;
       if (groupSecretOwn.current) setGroupSecret((ridden) => ownSecrets.current!.renew(ridden));
       // The ride's dot answers too, for a ride page already gone with the ride (Plan): the next ride asks again.
       forgetAnsweredHere();

@@ -187,4 +187,8 @@ test("a Group Ride plan changed after its link went out is asked about, Same rid
   // Same ride: the changed plan goes out under the secret that went out; New ride: under its own new one.
   assert.match(app, /if \(ask\.edited\) \{\s*editedFrom\.current = null;\s*if \(!same\) return ask\.then\(groupSecret\);\s*\/\/[^\n]*\n\s*markRideSent\(ask\.secret, Date\.now\(\), true\);\s*setGroupSecret\(ask\.secret\);\s*return ask\.then\(ask\.secret\);/);
   assert.match(source("../SameRideDialog.tsx"), /<p id=\{leadId\}>\{lead\}<\/p>/);
+  // Another ride type, an opened link or saved route, or a ride's end: nothing carried over to ask about.
+  assert.match(app, /if \(was !== preset\) editedFrom\.current = null;/);
+  assert.match(app, /ownSecrets\.current!\.forget\(\);\s*editedFrom\.current = null;/);
+  assert.match(app, /editedFrom\.current = null;\s*if \(groupSecretOwn\.current\) setGroupSecret\(\(ridden\) => ownSecrets\.current!\.renew\(ridden\)\);/);
 });
