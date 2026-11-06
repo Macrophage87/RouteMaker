@@ -81,6 +81,7 @@ Contents:
 - [Deploying v0.19.1](#deploying-v0191)
 - [Deploying v0.20.0](#deploying-v0200)
 - [Deploying v0.21.0](#deploying-v0210)
+- [Deploying v0.21.1](#deploying-v0211)
 - [Deploying a planner and front-end release: rollback points and verification](#deploying-a-planner-and-front-end-release-rollback-points-and-verification)
 - [Paths bicycles may not ride (NO-BIKE-PATHS)](#paths-bicycles-may-not-ride-no-bike-paths)
 - [Mountain-bike difficulty levels (456; claude/v0-4-0-mtb-levels)](#mountain-bike-difficulty-levels-456-claudev0-4-0-mtb-levels)
