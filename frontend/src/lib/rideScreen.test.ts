@@ -162,7 +162,7 @@ test("the ride's settings: one line on the risk in view, the rest under About Ri
 test("Resume names the ride where it can, and its buttons are full-size targets", () => {
   assert.equal(resumeHeading("Union Station"), "Resume your ride to Union Station?");
   assert.equal(resumeHeading(null), RESUME_HEADING);
-  assert.match(css, /\.resume-ride-dialog \.closure-choices button \{\s*min-height: 44px;/);
+  assert.match(css, /\.resume-ride-dialog \.closure-choices button,\s*\.same-ride-dialog \.closure-choices button \{\s*min-height: 44px;/);
 });
 
 test("the rail starts below the ride group's bar where the bar is over it, so Send alert never covers its top button", () => {

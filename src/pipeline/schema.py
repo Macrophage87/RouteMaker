@@ -712,6 +712,12 @@ CREATE TABLE {schema}.segment (
     -- and nowhere else (the owner: "Only provide the warnings if the route
     -- goes over the road"); `map`: also on a click on the map.
     stress_adjustment_display   text CHECK (stress_adjustment_display IN ('route_only', 'map')),
+    -- Whether the way stood half a level above `stress_computed_tier` before the
+    -- adjustment (an agency's 2.5, the service-road step's 1.5), so the road panel's
+    -- "before" reads the level it replaced. Null where `stress_computed_tier` is. No
+    -- migration: the table is created whole on every rebuild, and the panel reads it
+    -- only where the live table has it (`core.segment_info`).
+    stress_computed_half        boolean,
     -- The tier on the agency's own count where same-street AADT smoothing
     -- lowered `stress_tier` (`pipeline.aadt_smoothing`, OWNER-DECISIONS 285,
     -- 303); null everywhere else. The junction model reads the greater of the
@@ -736,7 +742,8 @@ CREATE TABLE {schema}.segment (
     stress_ratings              jsonb,
     CONSTRAINT segment_adjustment_shown CHECK (
         stress_adjustment_id IS NOT NULL
-        OR (stress_computed_tier IS NULL AND stress_adjustment_direction IS NULL
+        OR (stress_computed_tier IS NULL AND stress_computed_half IS NULL
+            AND stress_adjustment_direction IS NULL
             AND stress_adjustment_category IS NULL AND stress_adjustment_note IS NULL
             AND stress_adjustment_display IS NULL)),
     -- Where each input the classifier read came from, on a way an agency's
