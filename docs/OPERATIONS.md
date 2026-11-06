@@ -7271,8 +7271,9 @@ changed`), as at v0.19.0, though the column is optional: the beta ships by hand,
   back, press Resume: the trip carries on. In a ride, Detour's menu offers "Go round: road closed
   ahead". Copy a Group Ride link, change the plan and copy again: "Same ride or a new one?"; Same ride
   gives the first link, New ride a new one. Plan > Find > Reach
-  on Walk draws rings. Acknowledgements shows "Download our data". A route over 5 miles shows a
-  dot each mile and a numbered dot at 5; with Units in kilometers, each km.
+  on Walk draws rings. Acknowledgements shows "Download our data". A route over 5 miles, zoomed in
+  to street level (zoom 11+), shows a white dot each mile and a larger numbered dot at 5; with Units
+  in kilometers, a dot each km (zoom 12+) and a 5 at 5 km.
 - [ ] **Rollback.** The `pre-rel` api and pipeline images (`--force-recreate api worker rebuild`)
   and the v0.20.0 front end. Migration 0056 only adds a table: the v0.20.0 api ignores it, so the
   database stays migrated. A schedule rebuilt with tracks still works with the v0.20.0 api (it
