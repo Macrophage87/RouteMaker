@@ -101,11 +101,12 @@ def ride_graph(preset_name: str, dials: routing.Dials) -> tuple[str, dict]:
     return variant, costing
 
 
-def ride_exclusions(points: list, dials: routing.Dials) -> list:
+def ride_exclusions(points: list, dials: routing.Dials, reach_m: float = 0.0) -> list:
     """What the ride's own route would be asked to leave out (`routing._plan`'s
     `exclude_polygons`): the roads the rider marked closed on this ride, and the closures
     to bicycles in force at the ride time near `points`, but those the rider routes through.
-    Shared with `core.nearest`."""
+    `reach_m`: how far from `points` the answer reaches, where that is past the closures' own
+    margin (Reach's rings, `rules.for_plan`). Shared with `core.nearest`."""
     when = dials.when or routing.default_when()
     blocked = work_zones.blocked_rings(dials.blocked)
     while blocked and routing._over_budget(blocked):
@@ -117,6 +118,7 @@ def ride_exclusions(points: list, dials: routing.Dials) -> list:
         bypass=dials.closure_bypass,
         reserve=work_zones.rules.budget_used(blocked),
         now_only=dials.closures_now,
+        reach_m=reach_m,
     )
     if zones is None:
         return list(blocked)
@@ -153,9 +155,10 @@ def ask_matrix(variant: str, payload: dict, deadline) -> dict:
     return _ask(variant, "sources_to_targets", payload, deadline)[0]
 
 
-def ask_isochrone(variant: str, payload: dict, deadline) -> dict:
-    """One isochrone call on the ride's graph (`_ask`); for `core.reach`'s rings."""
-    return _ask(variant, "isochrone", payload, deadline)[0]
+def ask_isochrone(variant: str, payload: dict, deadline) -> tuple[dict, str]:
+    """One isochrone call on the ride's graph (`_ask`), and the graph that answered it; for
+    `core.reach`'s rings."""
+    return _ask(variant, "isochrone", payload, deadline)
 
 
 def _pairs_chains(n: int) -> list[list[int]]:
