@@ -2904,29 +2904,32 @@ itself; anything else ends with exit 126. It always answers `rsync=0`, so the du
 a plain `sudo -n cat` read. If the pull's remote commands ever change, change the gate with them
 (`tests/test_beta_backup_pull_gate.py` runs the real pull through it) and install it again.
 
-Set it up once, in WSL on the PC (`Ubuntu-26.04`, your own user). The ordinary login installs
-the gate; the new key has no passphrase, since a scheduled run has no one to type it.
+Set it up once, in WSL on the PC (`Ubuntu-26.04`, your own user), after
+`~/.config/routemaker/pull-beta-backups.env` is written (above). The ordinary login installs the
+gate; the new key has no passphrase, since a scheduled run has no one to type it.
 
 ```sh
 cd ~/src/RouteMaker && git fetch origin release/v0.21.0
 ```
 
 ```sh
-ssh-keygen -t ed25519 -N '' -C rm-backup-pull -f ~/.ssh/rm_backup_pull
+[ -e ~/.ssh/rm_backup_pull ] || ssh-keygen -t ed25519 -N '' -C rm-backup-pull -f ~/.ssh/rm_backup_pull
 ```
 
 ```sh
-git show origin/release/v0.21.0:scripts/beta/backup-pull-gate.sh | ssh <beta-ssh-alias> 'cat > backup-pull-gate.sh'
+git show origin/release/v0.21.0:scripts/beta/backup-pull-gate.sh > /tmp/backup-pull-gate.sh && ssh <beta-ssh-alias> 'cat > backup-pull-gate.sh' < /tmp/backup-pull-gate.sh
 ```
 
 ```sh
 ssh <beta-ssh-alias> 'bash backup-pull-gate.sh --install && rm backup-pull-gate.sh' < ~/.ssh/rm_backup_pull.pub
 ```
 
-A host alias for the new key, copying the beta's address from the alias you already have:
+A host alias for the new key, copying the beta's address and known-hosts settings from the alias
+you already have. It goes at the top of `~/.ssh/config`, because ssh takes the first value it
+finds and a `Host *` block further down must not win:
 
 ```sh
-{ printf '\nHost <beta-ssh-alias>-backup\n'; ssh -G <beta-ssh-alias> | awk '$1~/^(hostname|user|port|proxyjump|hostkeyalias)$/ {print "  " $1 " " $2}'; printf '  IdentityFile ~/.ssh/rm_backup_pull\n  IdentitiesOnly yes\n'; } >> ~/.ssh/config
+{ printf 'Host <beta-ssh-alias>-backup\n'; ssh -G <beta-ssh-alias> | awk '$1~/^(hostname|user|port|proxyjump|proxycommand|hostkeyalias|userknownhostsfile)$/ {k=$1; $1=""; print "  " k $0}'; printf '  IdentityFile ~/.ssh/rm_backup_pull\n  IdentitiesOnly yes\n\n'; cat ~/.ssh/config 2>/dev/null; } > ~/.ssh/config.new && chmod 600 ~/.ssh/config.new && mv ~/.ssh/config.new ~/.ssh/config
 ```
 
 Check that it is refused anything else (`refused: this key may only pull backups`, exit 126),
@@ -2940,11 +2943,11 @@ ssh <beta-ssh-alias>-backup id; echo "exit $?"
 RM_BETA_SSH=<beta-ssh-alias>-backup bash <(git show origin/release/v0.21.0:scripts/pc/pull-beta-backups.sh)
 ```
 
-Then point the nightly pull at it. It reads the file from v0.21.0 on; until then the PC's
-checkout still pulls over the ordinary alias.
+Then point the nightly pull at it, and check that the file now shows the `-backup` alias. It
+reads the file from v0.21.0 on; until then the PC's checkout still pulls over the ordinary alias.
 
 ```sh
-sed -i 's/^RM_BETA_SSH=.*/RM_BETA_SSH=<beta-ssh-alias>-backup/' ~/.config/routemaker/pull-beta-backups.env
+sed -i 's/^RM_BETA_SSH=.*/RM_BETA_SSH=<beta-ssh-alias>-backup/' ~/.config/routemaker/pull-beta-backups.env && cat ~/.config/routemaker/pull-beta-backups.env
 ```
 
 To take the key back: delete its line (comment `rm-backup-pull`) from `~/.ssh/authorized_keys`

@@ -105,6 +105,7 @@ def test_the_real_pull_works_through_the_gate_and_copies_whole_dumps(beta) -> No
     [
         "",
         "id",
+        "sudo -n cat -- '{b}/routemaker-20260101T000000Z.dump.age'\nid",
         "bash -i",
         "sudo -n cat -- '/etc/shadow'",
         "sudo -n cat -- '{b}/../../etc/routemaker-20260101T000000Z.dump.age'",
@@ -164,3 +165,26 @@ def test_install_refuses_anything_but_one_public_key(beta) -> None:
     )
     assert out.returncode == 1
     assert not (beta["home"] / ".ssh" / "authorized_keys").exists()
+
+
+def test_with_no_command_at_all_it_is_refused(beta) -> None:
+    out = subprocess.run(
+        ["bash", str(beta["gate"])], env=beta["env"], capture_output=True, text=True, timeout=30
+    )
+    assert out.returncode == 126 and out.stdout == ""
+
+
+def test_install_will_not_leave_the_key_without_its_forced_command(beta) -> None:
+    key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlob0123456789abcdefABCDEF rm-backup-pull"
+    ssh_dir = beta["home"] / ".ssh"
+    ssh_dir.mkdir()
+    (ssh_dir / "authorized_keys").write_text(key + "\n")
+    out = subprocess.run(
+        ["bash", str(GATE), "--install"],
+        input=key + "\n",
+        env=beta["env"],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert out.returncode == 1 and "WITHOUT the forced command" in out.stderr

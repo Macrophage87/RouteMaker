@@ -39,8 +39,11 @@ install_gate() {
 	line="restrict,command=\"$gate\" $key"
 	local blob=${key#ssh-ed25519 }
 	blob=${blob%% *}
-	if [ -f "$auth" ] && grep -qF -- "$blob" "$auth"; then
-		echo "backup-pull-gate: that key is already in $auth; left as it is" >&2
+	if [ -f "$auth" ] && grep -qxF -- "$line" "$auth"; then
+		echo "backup-pull-gate: that key is already in $auth as a forced command; left as it is" >&2
+	elif [ -f "$auth" ] && grep -qF -- "$blob" "$auth"; then
+		echo "backup-pull-gate: that key is already in $auth WITHOUT the forced command; remove that line first" >&2
+		exit 1
 	else
 		printf '%s\n' "$line" >>"$auth"
 		echo "backup-pull-gate: installed $gate and added the key to $auth" >&2
