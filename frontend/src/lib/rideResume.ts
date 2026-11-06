@@ -13,6 +13,8 @@ import type { ViaMarks } from "./pointKinds.ts";
 import { t } from "./i18n.ts";
 import { secretFrom } from "./rideSeal.ts";
 import { leadKeyFrom, rideLinkFrom, sharedIdFrom } from "./sharedRoutes.ts";
+import type { OnwardState } from "./onward.ts";
+import type { StopsLeft } from "./tripStops.ts";
 
 export const RIDE_RESUME_KEY = "routemaker.ride-left";
 /** A ride left longer than this is not offered: a day's ride, not yesterday's. */
@@ -49,6 +51,24 @@ export interface LeftRide {
    * see the leader (Stephen 2026-10-30). Kept on this device only, never sent. Left out by a re-route, which keeps it.
    */
   leads?: string | null;
+  /**
+   * A Bikeshare or transit trip (Stephen 2026-11-04: on the train, "when switching off it terminated the route without
+   * offering a resume", switching apps): `route` and `points` are the whole trip's, its riding leg worked out again at
+   * Resume (lib/rideTrip.ts rideLegOf).
+   */
+  wholeTrip?: boolean;
+  /** Past the trip's line: the walk or train being followed (lib/onward.ts), so Resume carries on with it. */
+  past?: OnwardState | null;
+  /** A trip with stops: the stops after the trip ridden (lib/tripStops.ts), so Resume still offers "Start the next leg". */
+  stopsLeft?: StopsLeft | null;
+}
+
+/** Points kept with their kinds and names, which live on the pairs (lib/pointKinds.ts). */
+interface KeptPoints {
+  points: LonLat[];
+  vias: number[];
+  drawn: number[];
+  names: [number, string][];
 }
 
 interface Kept {
@@ -67,6 +87,9 @@ interface Kept {
   passOn?: string;
   follows?: boolean;
   leads?: string;
+  trip?: boolean;
+  past?: OnwardState;
+  stops?: KeptPoints & { preset: PresetId };
 }
 
 interface Store {
@@ -84,6 +107,30 @@ function local(): Store | null {
 }
 
 /** Kept at Start ride: the plan's points with their kinds and names, which live on the pairs (lib/pointKinds.ts). */
+function keptPoints(points: readonly LonLat[], marks: Pick<ViaMarks, "isVia" | "isDrawn" | "nameOf">): KeptPoints {
+  return {
+    points: points.map((p) => [p[0], p[1]]),
+    vias: points.flatMap((p, i) => (marks.isVia(p) ? [i] : [])),
+    drawn: points.flatMap((p, i) => (marks.isDrawn(p) ? [i] : [])),
+    names: points.flatMap((p, i): [number, string][] => {
+      const name = marks.nameOf(p);
+      return name ? [[i, name]] : [];
+    }),
+  };
+}
+
+/** Kept points marked again as they were. */
+function markedPoints(kept: Partial<KeptPoints>, marks: Pick<ViaMarks, "via" | "drawn" | "named">): LonLat[] {
+  const names = new Map(Array.isArray(kept.names) ? kept.names : []);
+  return (kept.points ?? []).map(([lon, lat], i): LonLat => {
+    let p: LonLat = [lon, lat];
+    p = marks.named(p, names.get(i));
+    if (kept.vias?.includes(i)) p = marks.via(p);
+    if (kept.drawn?.includes(i)) p = marks.drawn(p);
+    return p;
+  });
+}
+
 export function keepLeftRide(ride: LeftRide, marks: Pick<ViaMarks, "isVia" | "isDrawn" | "nameOf">, now: number, store: Store | null = local()): void {
   // A re-route kept mid-ride says no name: the one kept at Start goes on while the ride ends at the same place.
   const destination = ride.loop ? null : (ride.destination ?? keptDestination(ride.points[ride.points.length - 1], store));
@@ -96,13 +143,7 @@ export function keepLeftRide(ride: LeftRide, marks: Pick<ViaMarks, "isVia" | "is
     v: 1,
     at: now,
     route: ride.route,
-    points: ride.points.map((p) => [p[0], p[1]]),
-    vias: ride.points.flatMap((p, i) => (marks.isVia(p) ? [i] : [])),
-    drawn: ride.points.flatMap((p, i) => (marks.isDrawn(p) ? [i] : [])),
-    names: ride.points.flatMap((p, i): [number, string][] => {
-      const name = marks.nameOf(p);
-      return name ? [[i, name]] : [];
-    }),
+    ...keptPoints(ride.points, marks),
     loop: ride.loop,
     preset: ride.preset,
     dials: ride.dials,
@@ -111,6 +152,9 @@ export function keepLeftRide(ride: LeftRide, marks: Pick<ViaMarks, "isVia" | "is
     ...(passOn ? { passOn } : {}),
     ...(follows ? { follows } : {}),
     ...(leads ? { leads } : {}),
+    ...(ride.wholeTrip ? { trip: true } : {}),
+    ...(ride.wholeTrip && ride.past ? { past: ride.past } : {}),
+    ...(ride.stopsLeft && ride.stopsLeft.points.length > 0 ? { stops: { preset: ride.stopsLeft.preset, ...keptPoints(ride.stopsLeft.points, marks) } } : {}),
   };
   try {
     store?.setItem(RIDE_RESUME_KEY, JSON.stringify(kept));
@@ -165,6 +209,37 @@ export function keepLeftRideLeads(link: string, store: Store | null = local()): 
   }
 }
 
+/** A trip past its line: the part followed now kept with the trip left going, so Resume carries on from it. */
+export function keepLeftRidePast(past: OnwardState, store: Store | null = local()): void {
+  try {
+    const raw = store?.getItem(RIDE_RESUME_KEY);
+    if (!raw) return;
+    const was = JSON.parse(raw) as Kept;
+    if (!was.trip) return;
+    store?.setItem(RIDE_RESUME_KEY, JSON.stringify({ ...was, past }));
+  } catch {
+    // Full or blocked storage: Resume starts the trip's leg again instead.
+  }
+}
+
+/** The walk or train a trip left going was following, as last kept (End ride reads it, so Undo carries on from it). */
+export function leftRidePast(store: Store | null = local()): OnwardState | null {
+  try {
+    const raw = store?.getItem(RIDE_RESUME_KEY);
+    const was = raw ? (JSON.parse(raw) as Partial<Kept>) : null;
+    return was?.trip === true ? pastOf(was.past) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** A kept onward state as written by keepLeftRidePast; null for anything else. */
+function pastOf(value: unknown): OnwardState | null {
+  const past = value as Partial<OnwardState> | null;
+  if (!past || typeof past !== "object" || typeof past.index !== "number" || typeof past.since !== "number") return null;
+  return { index: past.index, since: past.since, walk: past.walk ?? null, board: past.board ?? null };
+}
+
 /**
  * The broadcast a resumed ride is on again (Stephen 2026-10-30: a follower's Yes reached nobody once her page had
  * reloaded mid-ride, as a phone does to a page left in the background, and Resume brought back the route alone): the
@@ -207,19 +282,15 @@ export function leftRide(marks: Pick<ViaMarks, "via" | "drawn" | "named">, now: 
     return null;
   }
   const fresh = kept?.v === 1 && typeof kept.at === "number" && now - kept.at >= 0 && now - kept.at <= RESUME_MAX_MS;
-  const shaped = fresh && Array.isArray(kept.points) && kept.points.length >= 2 && Array.isArray(kept.route?.geometry?.coordinates);
+  // A loop planned from its start alone (a run by distance, kept whole as a trip) has that one point.
+  const fewest = kept?.loop === true ? 1 : 2;
+  const shaped = fresh && Array.isArray(kept.points) && kept.points.length >= fewest && Array.isArray(kept.route?.geometry?.coordinates);
   if (!shaped) {
     forgetLeftRide(store);
     return null;
   }
-  const names = new Map(Array.isArray(kept.names) ? kept.names : []);
-  const points = kept.points.map(([lon, lat], i): LonLat => {
-    let p: LonLat = [lon, lat];
-    p = marks.named(p, names.get(i));
-    if (kept.vias?.includes(i)) p = marks.via(p);
-    if (kept.drawn?.includes(i)) p = marks.drawn(p);
-    return p;
-  });
+  const points = markedPoints(kept, marks);
+  const stops = kept.stops && Array.isArray(kept.stops.points) && kept.stops.points.length > 0 && typeof kept.stops.preset === "string" ? kept.stops : null;
   return {
     route: kept.route,
     points,
@@ -231,5 +302,7 @@ export function leftRide(marks: Pick<ViaMarks, "via" | "drawn" | "named">, now: 
     ...(typeof kept.passOn === "string" ? { passOn: kept.passOn } : {}),
     ...(kept.follows === true ? { follows: true } : {}),
     ...(typeof kept.leads === "string" ? { leads: kept.leads } : {}),
+    ...(kept.trip === true ? { wholeTrip: true, past: pastOf(kept.past) } : {}),
+    ...(stops ? { stopsLeft: { preset: stops.preset, points: markedPoints(stops, marks) } } : {}),
   };
 }

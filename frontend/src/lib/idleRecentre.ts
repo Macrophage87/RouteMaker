@@ -11,7 +11,8 @@
  * a map card (a stop, a place, a station, a closure, a climb), the road info, and the side menus (Detour, More, the
  * dock, 311, the riders, Alert), so the map then goes back to the rider. Kept open: a menu with words typed or being
  * typed (a Detour search, Alert's Other, its microphone listening), and anything asking (Alert's Send to everyone?, Already
- * done?, a stop's name, Resume), and a dialog with the focus in it (Ride settings, the join sheet). The group's question, asked as the ride starts, closes as its No (the 2026-10-28 audit,
+ * done?, a stop's name, Resume), a dialog with the focus in it (Ride settings, the join sheet), and a map card or
+ * side menu with a key's or a screen reader's focus in it (InputWay; a finger's tap focuses too, and still closes). The group's question, asked as the ride starts, closes as its No (the 2026-10-28 audit,
  * P6: it never stays over the ride's buttons). Accessibility mode closes nothing on its own: a screen
  * reader's reading touches nothing. A menu closed with the focus in it hands the focus to its toggle; a map card, to
  * the map.
@@ -78,11 +79,49 @@ export function typingIn(box: Element, active: Element | null): boolean {
   return false;
 }
 
+/** A focus move this long after a finger's touch is the touch's (a menu focusing its heading as it opens). */
+export const TOUCH_FOCUS_MS = 1000;
+
+/**
+ * How the focus got where it is: by a key or a screen reader's move (true), or by a finger (false). Not
+ * `:focus-visible`, which a browser may match on a heading a menu focuses by script as a tap opens it (iOS Safari), so
+ * a tapped menu would never close. A key pressed counts as a key; a focus move with no touch just before it, as a
+ * screen reader's; a touch, as a finger's, until the next key or untouched move.
+ */
+export class InputWay {
+  private keyed = false;
+  private touchedAt = -Infinity;
+  private readonly now: () => number;
+  constructor(now: () => number = () => Date.now()) {
+    this.now = now;
+  }
+  touch(): void {
+    this.keyed = false;
+    this.touchedAt = this.now();
+  }
+  key(): void {
+    this.keyed = true;
+  }
+  focus(): void {
+    if (this.now() - this.touchedAt > TOUCH_FOCUS_MS) this.keyed = true;
+  }
+  /** The focus is a key's or a screen reader's: what holds it is being read or used. */
+  keyFocus(): boolean {
+    return this.keyed;
+  }
+}
+
+/** The page's: kept by watchIdleRecentre, read by closeIdlePanels. */
+export const INPUT_WAY = new InputWay();
+
 /**
  * Close what a screen left alone closes (above): the map's cards, the road info and the ride's side menus, each by
  * its own close (its X, its toggle, the dialog's close), so each puts things back as a press would. Whether any closed.
  */
-export function closeIdlePanels(doc: Document): boolean {
+export function closeIdlePanels(doc: Document, keyFocus: () => boolean = () => INPUT_WAY.keyFocus()): boolean {
+  // A map card or side menu with a key's or a screen reader's focus in it is being read or used: it stays, as a
+  // dialog does. A finger's tap focuses too, and that one still lets it close.
+  const focusShown = (active: Element | null) => active !== null && keyFocus();
   let closed = false;
   const active = doc.activeElement;
   const lost = () => doc.activeElement === null || doc.activeElement === doc.body;
@@ -90,6 +129,7 @@ export function closeIdlePanels(doc: Document): boolean {
     const card = button.closest(".maplibregl-popup");
     if (!card || typingIn(card, active)) continue;
     const held = card.contains(active);
+    if (held && focusShown(active)) continue;
     button.click();
     closed = true;
     if (held && lost()) doc.querySelector<HTMLElement>(".maplibregl-canvas")?.focus({ preventScroll: true });
@@ -97,7 +137,8 @@ export function closeIdlePanels(doc: Document): boolean {
   for (const toggle of doc.querySelectorAll<HTMLElement>(`[${IDLE_CLOSE_ATTR}][aria-expanded="true"]`)) {
     const panel = doc.getElementById(toggle.getAttribute("aria-controls") ?? "");
     if (panel && typingIn(panel, active)) continue;
-    const held = panel?.contains(active) ?? false;
+    const held = (panel?.contains(active) ?? false) || toggle === active;
+    if (held && focusShown(active)) continue;
     toggle.click();
     closed = true;
     if (held) toggle.focus({ preventScroll: true });
@@ -128,15 +169,27 @@ export interface IdleRecentre {
 export const IDLE_CLOSE_SETTLE_MS = 100;
 
 /** Watch from now until the returned function is called (the ride or Roam over). */
-export function watchIdleRecentre(win: IdleWindow, watch: IdleRecentre, idleMs: number = IDLE_RECENTRE_MS): () => void {
+export function watchIdleRecentre(win: IdleWindow, watch: IdleRecentre, idleMs: number = IDLE_RECENTRE_MS, way: InputWay = INPUT_WAY): () => void {
   let timer: number | null = null;
+  // The focus a close moves (to a toggle, the map) is no one's input.
+  let closing = false;
   const arm = () => {
     if (timer !== null) win.clearTimeout(timer);
     timer = win.setTimeout(fire, idleMs);
   };
   const fire = () => {
     timer = null;
-    if (watch.closePanels?.()) {
+    closing = true;
+    let closed: boolean | undefined;
+    try {
+      closed = watch.closePanels?.();
+    } finally {
+      closing = false;
+    }
+    if (closed) {
+      // Closing a panel that held the focus moves the focus (to its toggle, the map, or back from a dialog), and that
+      // focusin armed a fresh 30 s: cleared, or it would be left running and close the next menu early.
+      if (timer !== null) win.clearTimeout(timer);
       timer = win.setTimeout(settle, IDLE_CLOSE_SETTLE_MS);
       return;
     }
@@ -151,10 +204,19 @@ export function watchIdleRecentre(win: IdleWindow, watch: IdleRecentre, idleMs: 
   };
   // Capture, so a touch the map or a button keeps to itself still counts; passive, so scrolling is never held.
   const options = { capture: true, passive: true };
+  const touched = () => way.touch();
+  const keyed = () => way.key();
+  const focused = () => !closing && way.focus();
   for (const type of IDLE_TOUCH_EVENTS) win.addEventListener(type, arm, options);
+  win.addEventListener("pointerdown", touched, options);
+  win.addEventListener("keydown", keyed, options);
+  win.addEventListener("focusin", focused, options);
   arm();
   return () => {
     for (const type of IDLE_TOUCH_EVENTS) win.removeEventListener(type, arm, options);
+    win.removeEventListener("pointerdown", touched, options);
+    win.removeEventListener("keydown", keyed, options);
+    win.removeEventListener("focusin", focused, options);
     if (timer !== null) win.clearTimeout(timer);
     timer = null;
   };

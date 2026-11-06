@@ -198,6 +198,19 @@ def test_bad_ride_ids_and_tokens_are_refused(clock, ride, token) -> None:
         rp.post_position(ride, token, SEALED_DOT, now=clock)
 
 
+@pytest.mark.django_db
+@pytest.mark.parametrize("token", [1, 1.5, True, ["a" * 32], {"t": ME}])
+def test_a_ride_token_that_is_not_text_is_answered_400_and_logs_nothing(
+    client, caplog, token
+) -> None:
+    with caplog.at_level("DEBUG"):
+        here = _post(client, RIDE, "here", {"token": token, "sealed": SEALED_DOT})
+        alert = _post(client, RIDE, "alerts", {"token": token, "sealed": SEALED_DOT})
+    assert here.status_code == 400 and here.json()["error"] == "The ride token is missing."
+    assert alert.status_code == 400
+    assert not [r for r in caplog.records if r.levelname in ("ERROR", "CRITICAL")]
+
+
 # ---- the store ----
 
 
