@@ -956,9 +956,14 @@ export function RideMode({
   // on from their own numbers (Stephen, 2026-11-06: "the starting point will be the first stop").
   const startStop = useRef<LonLat | null>(null);
   const stopNumbers = (points: readonly LonLat[]) => {
-    const numbers = plannedStopNumbers(points, firstPlan.current, VIA_MARKS.isVia);
     const first = startStop.current;
-    return first ? new Map([...numbers].map(([i, n]) => [i, points[i] === first ? 1 : n + 1] as const)) : numbers;
+    const at = first ? points.indexOf(first) : -1;
+    if (at < 0) return plannedStopNumbers(points, firstPlan.current, VIA_MARKS.isVia);
+    // Numbered without the start stop (so a loop's finish or a detour takes its usual next number), then one on.
+    const numbers = plannedStopNumbers(points.filter((_, i) => i !== at), firstPlan.current, VIA_MARKS.isVia);
+    const out = new Map<number, number>([[at, 1]]);
+    for (const [i, n] of numbers) out.set(i < at ? i : i + 1, n + 1);
+    return out;
   };
   const modelOf = (r: RouteResponse, points: readonly LonLat[]) => {
     // Walk and Walk + 🚆🚌 (2026-11-02): the line is a walk, its cues its turns (lib/walkCues.ts).
@@ -1599,7 +1604,9 @@ export function RideMode({
   const rideToStart = useCallback(
     async (here: LonLat): Promise<boolean> => {
       const start = plan.current.points[0];
-      if (ended.current || !start || !gate.begin(Date.now())) return false;
+      // Not through the re-plan gate: a failed ask here never holds back the first re-route, and Re-plan from here
+      // pressed meanwhile goes ahead (its newer ticket drops this answer). Automatic re-plans wait (toStartAsking).
+      if (ended.current || !start) return false;
       const ticket = (replanTicket.current += 1);
       setReplanning(true);
       setReplanNote("");
@@ -1608,7 +1615,6 @@ export function RideMode({
         new Promise<null>((done) => window.setTimeout(() => done(null), REPLAN_TIMEOUT_MS)),
       ]).catch(() => null);
       const found = result && result.ok ? result.route : null;
-      gate.finish(found !== null);
       if (ended.current || ticket !== replanTicket.current) return false;
       setReplanning(false);
       if (!found) return false;
@@ -1638,7 +1644,7 @@ export function RideMode({
     },
     // modelOf reads refs only.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [preset, gate, sayDetour, trip, keepLeft],
+    [preset, sayDetour, trip, keepLeft],
   );
 
   // The rider took the other line (lib/roadClosed.ts onOtherLine): it is the ride's route from here, the one left

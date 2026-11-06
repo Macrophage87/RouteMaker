@@ -7283,7 +7283,7 @@ changed`), as at v0.19.0, though the column is optional: the beta ships by hand,
 ## Deploying v0.21.1
 
 A patch: a ride started away from its start (more than 200 m, about 650 ft, and off the line) is
-routed to the start first, the start its stop 1, then on along the planned route unchanged (#PR).
+routed to the start first, the start its stop 1, then on along the planned route unchanged (#994).
 **Front end only** (`frontend/`), with the version in `pyproject.toml`, `src/routemaker/__init__.py`
 and `README.md`. **No migration, no `src/` code change, no `src/pipeline/`, `lua/`, compose,
 Caddyfile, nginx, Dockerfile or requirements change, no new environment variable, outbound host or

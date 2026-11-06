@@ -1402,7 +1402,7 @@ test("after a re-route the stops left keep the plan's numbers: the plan's stop 3
   const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
   assert.match(ride, /rideModel\(r, viaIndices\(points, VIA_MARKS\.isVia\), stopNames\([^)]*\), stopNumbers\(points\)\)/);
   // ...one on where the ride began away from its start, whose start is stop 1 (Stephen, 2026-11-06).
-  assert.match(ride, /const numbers = plannedStopNumbers\(points, firstPlan\.current, VIA_MARKS\.isVia\);/);
+  assert.match(ride, /if \(at < 0\) return plannedStopNumbers\(points, firstPlan\.current, VIA_MARKS\.isVia\);/);
 });
 
 test("after a re-route, with via points in the plan, stops keep the numbers counted among stops only", () => {
