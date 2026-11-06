@@ -52,6 +52,7 @@ Contents:
 - [Manual mode's heights need the routers restarted once (v0.9.1)](#manual-modes-heights-need-the-routers-restarted-once-v091)
 - [Best order needs the routers restarted once (OWNER-DECISIONS 449)](#best-order-needs-the-routers-restarted-once-owner-decisions-449)
 - [After a rebuild: restart the routers](#after-a-rebuild-restart-the-routers)
+- [The open data download (after a map swap)](#the-open-data-download-after-a-map-swap)
 - [Maryland traffic counts (MDOT SHA)](#maryland-traffic-counts-mdot-sha)
 - [DC closures (v0.7.0)](#dc-closures-v070)
 - [DDOT project advisories (v0.12.4)](#ddot-project-advisories-v0124)
@@ -2891,6 +2892,66 @@ tail -n 3 /mnt/c/Users/<you>/Documents/RouteMaker/beta-backups/pull-beta-backups
 or in PowerShell, `Get-ScheduledTaskInfo -TaskPath '\' -TaskName 'RouteMaker - Pull
 beta backups'` (`LastTaskResult` 0 is ok, 1 is a `FAILED` line in the log, 3 is a night the
 distro was not running, so nothing ran).
+
+### A key that can only pull backups
+
+The nightly pull can use a key of its own that the beta lets do nothing else: list the dumps,
+read one, and write the `pc-backup-pull` mark. `scripts/beta/backup-pull-gate.sh` is installed
+as that key's forced command (`restrict,command=...` in `~/.ssh/authorized_keys`), so every login
+with it runs the gate whatever it asked for, with no shell, pty or forwarding. The gate compares
+the asked-for command with the exact ones `pull-beta-backups.sh` sends and does that one thing
+itself; anything else ends with exit 126. It always answers `rsync=0`, so the dumps come over as
+a plain `sudo -n cat` read. If the pull's remote commands ever change, change the gate with them
+(`tests/test_beta_backup_pull_gate.py` runs the real pull through it) and install it again.
+
+Set it up once, in WSL on the PC (`Ubuntu-26.04`, your own user), after
+`~/.config/routemaker/pull-beta-backups.env` is written (above). The ordinary login installs the
+gate; the new key has no passphrase, since a scheduled run has no one to type it.
+
+```sh
+cd ~/src/RouteMaker && git fetch origin release/v0.21.0
+```
+
+```sh
+[ -e ~/.ssh/rm_backup_pull ] || ssh-keygen -t ed25519 -N '' -C rm-backup-pull -f ~/.ssh/rm_backup_pull
+```
+
+```sh
+git show origin/release/v0.21.0:scripts/beta/backup-pull-gate.sh > /tmp/backup-pull-gate.sh && ssh <beta-ssh-alias> 'cat > backup-pull-gate.sh' < /tmp/backup-pull-gate.sh
+```
+
+```sh
+ssh <beta-ssh-alias> 'bash backup-pull-gate.sh --install && rm backup-pull-gate.sh' < ~/.ssh/rm_backup_pull.pub
+```
+
+A host alias for the new key, copying the beta's address and known-hosts settings from the alias
+you already have. It goes at the top of `~/.ssh/config`, because ssh takes the first value it
+finds and a `Host *` block further down must not win:
+
+```sh
+{ printf 'Host <beta-ssh-alias>-backup\n'; ssh -G <beta-ssh-alias> | awk '$1~/^(hostname|user|port|proxyjump|proxycommand|hostkeyalias|userknownhostsfile)$/ {k=$1; $1=""; print "  " k $0}'; printf '  IdentityFile ~/.ssh/rm_backup_pull\n  IdentitiesOnly yes\n\n'; cat ~/.ssh/config 2>/dev/null; } > ~/.ssh/config.new && chmod 600 ~/.ssh/config.new && mv ~/.ssh/config.new ~/.ssh/config
+```
+
+Check that it is refused anything else (`refused: this key may only pull backups`, exit 126),
+then that a pull works through it (`ok: copied ...`):
+
+```sh
+ssh <beta-ssh-alias>-backup id; echo "exit $?"
+```
+
+```sh
+RM_BETA_SSH=<beta-ssh-alias>-backup bash <(git show origin/release/v0.21.0:scripts/pc/pull-beta-backups.sh)
+```
+
+Then point the nightly pull at it, and check that the file now shows the `-backup` alias. It
+reads the file from v0.21.0 on; until then the PC's checkout still pulls over the ordinary alias.
+
+```sh
+sed -i 's/^RM_BETA_SSH=.*/RM_BETA_SSH=<beta-ssh-alias>-backup/' ~/.config/routemaker/pull-beta-backups.env && cat ~/.config/routemaker/pull-beta-backups.env
+```
+
+To take the key back: delete its line (comment `rm-backup-pull`) from `~/.ssh/authorized_keys`
+on the beta.
 
 ### Test-restore once (on the PC, beta untouched)
 
