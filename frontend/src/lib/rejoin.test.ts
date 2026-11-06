@@ -225,11 +225,13 @@ test("the stoker's level hears that a way back was found, as it hears a new rout
 test("Ride mode: a re-plan that finds no route asks for the way back, not for a detour, and confirms a long ride", () => {
   const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
   const replan = ride.slice(ride.indexOf("const replan = useCallback("), ride.indexOf("// No good fix for a minute"));
-  assert.match(replan, /confirmLong: true/);
+  // Its one request (askRoute, shared with the way to a ride's start) confirms a long ride and leaves out closed roads.
+  const askRoute = ride.slice(ride.indexOf("const askRoute = "), ride.indexOf("const replan = useCallback("));
+  assert.match(askRoute, /confirmLong: true/);
+  assert.match(askRoute, /blocked: blockedRef\.current/);
+  assert.match(replan, /const ask = \(to: LonLat\[\]\) => askRoute\(to, heading, aheadOnly\);/);
   assert.match(replan, /if \(!result\.ok && !backFirst && !via && !check && startsWayBack\(result\.error\.kind\) && !voided\(\)\)/);
   assert.match(replan, /await wayBackRoute\(routeRef\.current, modelRef\.current, progressM, here, kept, ask, voided, closed\);/);
-  // The ride's closed roads go with every re-plan (v0.8.2).
-  assert.match(replan, /blocked: blockedRef\.current/);
   // The no-signal timer runs until the way back settles.
   assert.ok(replan.lastIndexOf("window.clearTimeout(timer);") > replan.lastIndexOf("await wayBackRoute("));
   assert.match(replan, /setReplanNote\(note\);\s*tell\(note\);/);
