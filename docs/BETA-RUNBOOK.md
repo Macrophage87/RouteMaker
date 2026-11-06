@@ -881,7 +881,10 @@ sudo scripts/beta/receive-data.sh --env-file .env restore-dump "$RM_DATA/backups
 sudo cp -p "$RM_DATA/backups/index.html.pre-release-<time>" "$RM_DATA/frontend/index.html.new" && sudo mv -T "$RM_DATA/frontend/index.html.new" "$RM_DATA/frontend/index.html"
 scripts/beta/beta-compose.sh up -d api worker                     # recreates them on the old image; migrate finds nothing to do
 scripts/beta/beta-compose.sh up -d photon valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend   # recreates only those whose image or command the release changed
-scripts/beta/beta-compose.sh restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend   # needed if the release changed valhalla/*.json or lua/: the routers read them only at start
+# needed if the release changed valhalla/*.json or lua/: the routers read them only at start. Every router that runs,
+# the trail ones (valhalla-offroad valhalla-mtb valhalla-paved) included; the [ -n ] guard keeps an empty list from restarting the stack
+routers=$(scripts/beta/beta-compose.sh --profile offroad ps --services --status running </dev/null | grep '^valhalla-')
+[ -n "$routers" ] && scripts/beta/beta-compose.sh --profile offroad restart $routers </dev/null
 ( umask 077; setsid nohup sh -c 'scripts/beta/beta-compose.sh exec -T worker ./manage.py predraw_stress_tiles ; echo "predraw exit $?"' < /dev/null > "${RM_STATE:?set RM_STATE (section 0)}/predraw.log" 2>&1 & )
 tail -n 3 "$RM_STATE/predraw.log"   # the step 8 pre-draw: poll for "predraw exit N" as step 8 says
 ```
@@ -1052,10 +1055,14 @@ anything can run `migrate` (rollback C restores that snapshot), and the app star
    then the migrations check and `collectstatic` from step 8 (`exec -T api ...`), the stress-tile pre-draw from
    step 8 if step 7 ran `db --update-data` (or the release changed what the tiles draw), and the smoke tests. Routers and
    Photon restart only if their image or command changed in the release (`beta-compose.sh up -d <name>` recreates
-   exactly the ones that did). The four routers also need a restart if `valhalla/*.json` or `lua/` changed, because
-   they read those files only at start and `up -d` sees nothing to recreate:
-   `scripts/beta/beta-compose.sh restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend`
-   (the same line as rollback A), with `valhalla-offroad valhalla-mtb` added once their tiles are on the host.
+   exactly the ones that did). Every router that runs (the four, and each trail router, `valhalla-offroad
+   valhalla-mtb valhalla-paved`, whose tiles are on the host) also needs a restart if `valhalla/*.json` or `lua/`
+   changed, because they read those files only at start and `up -d` sees nothing to recreate:
+   `routers=$(scripts/beta/beta-compose.sh --profile offroad ps --services --status running </dev/null | grep '^valhalla-')`
+   then `[ -n "$routers" ] && scripts/beta/beta-compose.sh --profile offroad restart $routers </dev/null`
+   (the same lines as rollback A and DEPLOYMENT.md, "A release that changes `valhalla/*.json`": `--profile offroad`
+   so the trail routers are listed, `--status running` so a stopped one is not started, and the `[ -n ]` guard
+   because a bare `restart` would restart the whole stack).
    Check with `git diff --stat <old sha>..<new sha> -- valhalla lua`.
    **v0.15.0 only:** postgis's command (its log settings) and memcached's network change, so recreate those two
    first, `scripts/beta/beta-compose.sh up -d postgis memcached`, wait until `beta-compose.sh ps` shows postgis
@@ -1369,10 +1376,13 @@ the units changed, or if the report says the copy failed.
 **Disk.** `status` shows the free space on Docker's root and `$RM_STATE`, the number of api
 images, the `<db>_before_<time>` databases restores left, and the `node_modules` copies.
 Each deploy prunes old api images, build cache and `node_modules` copies (step 6), and the agent
-keeps `RM_CD_KEEP` snapshots. Every pass (not a dry run, and also while paused) drops each
+keeps `RM_CD_KEEP` snapshots. Every pass (not a dry run; paused and BROKEN included) drops each
 `<db>_before_<time>` database more than 6½ days old, whether an automatic rollback or a restore by
 hand made it, as the privacy page promises for copies taken before an update; it reads the age from
-the UTC instant in the name and logs each one it drops in the pass's report. It drops nothing else:
+the UTC instant in the name and logs each one it drops in the pass's report. While the agent is
+paused or BROKEN it spares the newest one, which may be the copy you restore from: once that is over
+6½ days old each pass says so in its report and the alert channel is told once a day, until you
+drop it or resume. It drops nothing else:
 never the live database, `<db>_restore`, or a name that is not exactly `<db>_before_` and 14 digits.
 To be rid of one sooner, once a release has run well, `drop database "<db>_before_<time>"` in postgis. `receive-data.sh` keeps the
 newest 3 of each kind of its own safety dumps in `DATA_ROOT/backups` (`pre-update-*`,
@@ -1459,6 +1469,13 @@ What is posted, each as one short message starting "RouteMaker beta:":
   day while it lasts, and "working again" when it clears. No check runs while a deploy pass holds
   the agent's lock (a deploy stops the api on purpose). The weekly rebuild's waiting job is
   reported as paused, not stale (above), so it never posts.
+- **The PC's copy of the backups:** once the owner's PC pulls the nightly dumps
+  (docs/OPERATIONS.md, "Off-box copies of beta backups"), each run that ends ok writes
+  `~/routemaker-beta-state/pc-backup-pull`. The same check posts once that file is over 36 h old
+  (the pull failing, or not running at all), once a day while it lasts, and again when it is
+  fresh. No file, no check.
+- **A kept database:** while the agent is paused or BROKEN, a pass that spares the newest
+  `<db>_before_<time>` database past 6½ days says so once a day ("Disk", above).
 - **Releases:** the release agent posts each deploy, and a rollback, a failure, a hold, an
   interrupted pass, BROKEN, a setting error, checkout drift or a disk stall once per tag (again
   once a day while it lasts). A release that has waited over 30 minutes for the same reason (CI

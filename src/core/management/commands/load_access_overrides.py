@@ -63,6 +63,14 @@ refused as a conflict. One already gone is `absent`, so a second run is a no-op.
 A row whose value differs is left alone: only what the file names is withdrawn.
 A file may retire rows and load none.
 
+Files load in any order. Each retirement is kept in the audit log with the date the
+retiring file was `decided` - a deleted row's entry, or, where the row was not loaded
+yet, an entry of its own - and a row of a file decided before that date, with the
+retired kind, way and exact value, is reported as `retired` and left alone. So an older
+file loaded after the newer one that withdraws some of its rows (the 2026-11-01 Maryland
+review after the 2026-11-04 Baltimore City file) loads the rest, never undoes the newer
+decision, and a second run is still a no-op.
+
 The file may be read from standard input (`-`), because the api image carries
 `src/` and not `fixtures/`:
 
@@ -73,6 +81,7 @@ The file may be read from standard input (`-`), because the api image carries
 from __future__ import annotations
 
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -84,6 +93,52 @@ COMMAND = "load_access_overrides"
 # In every audit entry's detail: the attribution is a claim, not a sign-in.
 ACTOR_NOTE = "actor named on the command line (--actor), not authenticated"
 KINDS = frozenset({"access", "stress"})
+# A retirement's audit entry starts with this, then `<way> <value as JSON>; kind <kind>;
+# decided <YYYY-MM-DD>;` (`retirement_detail`), so a later load can find it (`retirements`).
+RETIRED_PREFIX = "retired; way "
+_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
+_RETIRED_TAIL = re.compile(r"; kind (\w+); decided (\d{4}-\d{2}-\d{2});")
+
+
+def decided_of(text: str) -> str | None:
+    """The file's `decided` date (YYYY-MM-DD), or None where it has none."""
+    decided = json.loads(text).get("decided")
+    return decided if isinstance(decided, str) and _DATE.fullmatch(decided) else None
+
+
+def value_key(kind: str, way_id: int, value: dict) -> tuple[str, int, str]:
+    return (kind, int(way_id), json.dumps(value, sort_keys=True))
+
+
+def retirement_detail(entry: dict, decided: str | None) -> str:
+    """The start of a retirement's audit detail: the row withdrawn, and when (`retirements`)."""
+    detail = f"{RETIRED_PREFIX}{entry['osm_way_id']} {json.dumps(entry['value'])}"
+    if decided is not None:
+        detail += f"; kind {entry['kind']}; decided {decided}"
+    return detail
+
+
+def retirements() -> dict[tuple[str, int, str], str]:
+    """{(kind, way, value): the latest date a file decided to retire it}, from the audit log."""
+    from core.models import AuditLogEntry
+
+    found: dict[tuple[str, int, str], str] = {}
+    decoder = json.JSONDecoder()
+    for detail in AuditLogEntry.objects.filter(
+        model="override", action__in=("delete", "retire"), detail__startswith=RETIRED_PREFIX
+    ).values_list("detail", flat=True):
+        way_text, _, rest = detail[len(RETIRED_PREFIX) :].partition(" ")
+        try:
+            value, end = decoder.raw_decode(rest)
+        except ValueError:
+            continue
+        tail = _RETIRED_TAIL.match(rest, end)
+        if not way_text.isdigit() or not isinstance(value, dict) or tail is None:
+            # An entry written before retirements were dated: it decides nothing here.
+            continue
+        key = value_key(tail.group(1), int(way_text), value)
+        found[key] = max(found.get(key, ""), tail.group(2))
+    return found
 
 
 def parse_file(text: str, label: str) -> list[dict]:
@@ -237,11 +292,18 @@ def resolve_actor(discord_user_id: int, *, attempt: bool):
     return user
 
 
-def plan(rows: list[dict], retiring: frozenset = frozenset()) -> list[tuple[str, dict, object]]:
+def plan(
+    rows: list[dict],
+    retiring: frozenset = frozenset(),
+    retired: dict | None = None,
+    decided: str | None = None,
+) -> list[tuple[str, dict, object]]:
     """(action, file row, existing row or None) per file row; refuses conflicts.
 
     Rows whose primary key is in `retiring` (the file withdraws them) are not
-    consulted. `create` - no matching row; `approve` - a matching unapproved row exists;
+    consulted. `retired` - a file decided after this one (`decided`) retired the row's
+    kind, way and exact value (`retirements`): left alone, with that date in place of the
+    existing row; `create` - no matching row; `approve` - a matching unapproved row exists;
     `present` - a matching approved row exists, nothing to do; `update` - a
     stress row approved with the same tier and other adjustment fields, which
     the file's replace (the tier is the decision; the fields explain it);
@@ -253,7 +315,12 @@ def plan(rows: list[dict], retiring: frozenset = frozenset()) -> list[tuple[str,
     from core.models import Override
 
     steps = []
+    retired = retired or {}
     for row in rows:
+        when = retired.get(value_key(row["kind"], row["osm_way_id"], row["value"]))
+        if decided is not None and when is not None and when > decided:
+            steps.append(("retired", row, when))
+            continue
         every = [
             o
             for o in Override.objects.filter(
@@ -346,6 +413,7 @@ class Command(BaseCommand):
             label, text = path, Path(path).read_text()
         rows = parse_file(text, label)
         retired = parse_retired(text, label)
+        decided = decided_of(text)
         if not rows and not retired:
             self.stdout.write(
                 f"{label} has no rows to load: its agency_blocks are read by the rebuild "
@@ -355,9 +423,16 @@ class Command(BaseCommand):
         actor = resolve_actor(options["actor"], attempt=options["confirm"])
         retire_steps = plan_retired(retired)
         retiring = frozenset(o.pk for action, _, o in retire_steps if action == "retire")
-        steps = plan(rows, retiring)
+        known = retirements()
+        steps = plan(rows, retiring, known, decided)
 
         for action, row, existing in [*retire_steps, *steps]:
+            if action == "retired":
+                self.stdout.write(
+                    f"retired: way {row['osm_way_id']} {row['value']} (retired by a later "
+                    f"file, decided {existing}; left alone)"
+                )
+                continue
             target = f" (override {existing.pk})" if existing else ""
             if action == "superseded":
                 successor = existing.superseded_by
@@ -377,6 +452,22 @@ class Command(BaseCommand):
         with transaction.atomic():
             for action, entry, existing in retire_steps:
                 if action != "retire":
+                    key = value_key(entry["kind"], entry["osm_way_id"], entry["value"])
+                    if decided is not None and known.get(key, "") < decided:
+                        # Not loaded yet: kept on record, so the older file that carries the
+                        # row leaves it alone whenever it is loaded (`retirements`).
+                        record(
+                            actor,
+                            "retire",
+                            "override",
+                            "",
+                            AuditLogEntry.Outcome.ALLOWED,
+                            detail=(
+                                f"{retirement_detail(entry, decided)}; not loaded, so an older "
+                                f"file's row is left alone; {entry['reason']}; {source}"
+                            ),
+                        )
+                        known[key] = decided
                     continue
                 pk = existing.pk
                 existing.delete()
@@ -386,13 +477,10 @@ class Command(BaseCommand):
                     "override",
                     pk,
                     AuditLogEntry.Outcome.ALLOWED,
-                    detail=(
-                        f"retired; way {entry['osm_way_id']} {json.dumps(entry['value'])}; "
-                        f"{entry['reason']}; {source}"
-                    ),
+                    detail=f"{retirement_detail(entry, decided)}; {entry['reason']}; {source}",
                 )
             for action, row, existing in steps:
-                if action in ("present", "superseded"):
+                if action in ("present", "superseded", "retired"):
                     continue
                 now = timezone.now()
                 if action == "update":
@@ -456,7 +544,9 @@ class Command(BaseCommand):
                     AuditLogEntry.Outcome.ALLOWED,
                     detail=f"approved; way {row['osm_way_id']}; {source}{replaced}",
                 )
-        written = sum(1 for action, _, _ in steps if action not in ("present", "superseded"))
+        written = sum(
+            1 for action, _, _ in steps if action not in ("present", "superseded", "retired")
+        )
         gone = sum(1 for action, _, _ in retire_steps if action == "retire")
         if retire_steps:
             self.stdout.write(f"retired {gone} rows")

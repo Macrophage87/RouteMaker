@@ -201,6 +201,19 @@ export const TRANSIT_COLOUR = "#5b21b6";
 export const TRANSIT_CASING = "#ffffff";
 export const TRANSIT_LINE_WIDTH = 4;
 export const TRANSIT_CASING_WIDTH = 8;
+
+/** The ride map's train or bus path on the light map: cased dark, as WMATA's pale lines (Yellow, Silver) are on light ground. */
+export const ONBOARD_CASING_LIGHT = "#1c1917";
+
+/**
+ * The on-board path's casing and its stops' rings for the map's flavour (MapView's onboard layers; the 2026-11-05
+ * review: Yellow on a white casing was 1.1:1 on the light map). On the light map both are dark, so any line colour
+ * is edged at 3:1 or more; on the dark map the white casing and the line-coloured rings stand out already.
+ */
+export function onBoardPaint(dark: boolean): { casing: string; stopRing: string | unknown[] } {
+  if (!dark) return { casing: ONBOARD_CASING_LIGHT, stopRing: ONBOARD_CASING_LIGHT };
+  return { casing: TRANSIT_CASING, stopRing: ["case", ["get", "off"], "#ffffff", ["get", "colour"]] };
+}
 /** In line widths: a long dash and a gap. */
 export const TRANSIT_DASH: [number, number] = [2.5, 1.5];
 export const RIDE_COLOUR = "#1d4ed8";
@@ -317,7 +330,8 @@ export function transitMarkers(plan: TransitPlan | null): TransitMarker[] {
   const out: TransitMarker[] = [];
   for (const step of plan?.steps ?? []) {
     if (drawOf(step) !== "transit" || step.coordinates.length < 2) continue;
-    const [lon, lat] = middle(step.coordinates);
+    // The middle stop where the step lists them (its line may be a track's many points), else the line's middle.
+    const [lon, lat] = step.stops && step.stops.length >= 2 ? middle(step.stops.map((stop) => stop.point)) : middle(step.coordinates);
     const lines = step.lines.join(" or ");
     const bus = step.mode === "bus";
     const badge = bus ? t("Bus") : (step.system ?? t("Train"));

@@ -290,7 +290,7 @@ test("App: Broadcast is a tap within Roam; the leader leads a ride with no route
   assert.match(app, /const broadcastRoam = async \(nav: ShareNavigator \| undefined = broadcastNav\): Promise<string> => \{[^]*?const done = await shareLink\(nav,/);
   const before = app.slice(app.indexOf("const broadcastRoam"), app.indexOf("const done = await shareLink(nav,"));
   assert.doesNotMatch(before, /await /);
-  assert.match(app, /if \(!roamingNow\.current\) return "";\s*const on = await rideOf\(lead\.secret\);\s*if \(on\) leadConsent\(on\.id, lead\.token\);\s*leads\.current\.set\(`roam\|\$\{id\}`, lead\);/);
+  assert.match(app, /if \(!roamingNow\.current\) \{\s*prepareLead\(\);\s*return "";\s*\}\s*const on = await rideOf\(lead\.secret\);\s*if \(on\) leadConsent\(on\.id, lead\.token\);\s*leads\.current\.set\(`roam\|\$\{id\}`, lead\);/);
   assert.match(app, /onBroadcast=\{roamKeyless \? null : \(\) => broadcastRoam\(\)\}/);
   assert.match(app, /const ROAM_FOLLOW = roamLinkFrom\(window\.location\.hash\);/);
   assert.match(app, /broadcast=\{\{ \.\.\.roamBroadcast, roam: true \}\}/);

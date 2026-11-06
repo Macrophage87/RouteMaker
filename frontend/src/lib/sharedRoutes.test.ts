@@ -171,7 +171,7 @@ test("the sheet carries the GPX file only where the browser says it can share it
 });
 
 test("App: Share keeps the exact line and attaches the file Download GPX saves; no new control", () => {
-  const exact = app.slice(app.indexOf("const shareExact = () => {"), app.indexOf("const shareRoute = async (ride = false, nav: ShareNavigator | undefined = shareNav): Promise<{ led: boolean; said: string }> => {"));
+  const exact = app.slice(app.indexOf("const shareExact = () => {"), app.indexOf("const shareRoute = async (ride = false, nav: ShareNavigator | undefined = shareNav, secret = groupSecret): Promise<{ led: boolean; said: string }> => {"));
   // The same verbatim file and the same route file as Download GPX (downloadRoute, GpxPanel's downloadGpx).
   assert.match(exact, /file: verbatimDownload\(verbatim, importEdited, imported\?\.name\)/);
   assert.match(app, /const file = verbatim \? verbatimDownload\(verbatim, importEdited, imported\?\.name\) : null;/);
@@ -185,12 +185,12 @@ test("App: Share keeps the exact line and attaches the file Download GPX saves; 
   assert.match(exact, /save: planSave\(name, shown, routedPoints, preset, dials\)/);
   // Only a settled route: while a re-plan is pending the link stays the inputs only.
   assert.match(exact, /if \(!shown \|\| stale \|\| routedPoints !== points\) return null;/);
-  const share = app.slice(app.indexOf("const shareRoute = async (ride = false, nav: ShareNavigator | undefined = shareNav): Promise<{ led: boolean; said: string }> => {"), app.indexOf("\n  };\n", app.indexOf("const shareRoute = async (ride = false, nav: ShareNavigator | undefined = shareNav): Promise<{ led: boolean; said: string }> => {")));
+  const share = app.slice(app.indexOf("const shareRoute = async (ride = false, nav: ShareNavigator | undefined = shareNav, secret = groupSecret): Promise<{ led: boolean; said: string }> => {"), app.indexOf("\n  };\n", app.indexOf("const shareRoute = async (ride = false, nav: ShareNavigator | undefined = shareNav, secret = groupSecret): Promise<{ led: boolean; said: string }> => {")));
   // A ride's link (Share live) goes without the file: phone Chrome may refuse the sheet over a GPX file (2026-10-31).
   assert.match(share, /const content = ride \? shareContent\(link, distanceM, presetSaid\(ownRide\?\.preset \?\? preset\)\) : withGpxFile\(nav, shareContent\(link, distanceM, presetSaid\(ownRide\?\.preset \?\? preset\)\), file\);/);
   // The link is made in sharedLinkNow, which Share as image's QR code uses too (lib/shareCard.ts).
-  assert.match(share, /const now = again \? null : sharedLinkNow\(\);\s*const kept = again \? Promise\.resolve\(true\) : now!\.kept;\s*const exact = again \? null : now!\.exact;/);
-  const linkNow = app.slice(app.indexOf("const sharedLinkNow = () => {"), app.indexOf("\n  };\n", app.indexOf("const sharedLinkNow = () => {")));
+  assert.match(share, /const now = again \? null : sharedLinkNow\(secret\);\s*const kept = again \? Promise\.resolve\(true\) : now!\.kept;\s*const exact = again \? null : now!\.exact;/);
+  const linkNow = app.slice(app.indexOf("const sharedLinkNow = (secret = groupSecret) => {"), app.indexOf("\n  };\n", app.indexOf("const sharedLinkNow = (secret = groupSecret) => {")));
   assert.match(linkNow, /kept = before\?\.kept \?\? storeShared\(origin, body!\.json\);/);
   assert.match(linkNow, /const body = before \? null : sharedBody\(id, exact\.save, keepChoice, previewImageOk\(exact\.save\.line, exact\.save\.inputs\.points, myGo\.home, me\.signed_in\)\);/);
   assert.match(share, /said = SHARED_INPUTS_ONLY;/);

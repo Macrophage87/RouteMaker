@@ -294,3 +294,20 @@ test("the notes say only the trip's own lines, and the times words once (P11)", 
     "MARC GTFS",
   ]);
 });
+
+test("the ride map's train or bus path is edged at 3:1 on the light map whatever the line's colour; the dark map keeps its white casing", async () => {
+  const { contrastRatio } = await import("../stressStyle.js");
+  const { onBoardPaint, TRANSIT_CASING } = await import("./transit.ts");
+  const light = onBoardPaint(false);
+  // The light map's earth, its white roads and its park green; WMATA's Yellow, Silver, Orange, Green and Blue.
+  for (const ground of ["#e2dfda", "#ffffff", "#f6f6f4"]) {
+    assert.ok(contrastRatio(light.casing, ground) >= 3, `casing on ${ground}`);
+    assert.ok(typeof light.stopRing === "string" && contrastRatio(light.stopRing, ground) >= 3, `stop ring on ${ground}`);
+  }
+  for (const line of ["#ffd100", "#919d9d", "#ed8b00", "#00b140", "#0078ae"]) assert.ok(contrastRatio(light.casing, line) >= 3, `casing beside ${line}`);
+  assert.equal(onBoardPaint(true).casing, TRANSIT_CASING);
+  const map = readFileSync(new URL("../MapView.tsx", import.meta.url), "utf8");
+  assert.match(map, /"line-color": onBoardPaint\(openedFlavour === "dark"\)\.casing/);
+  assert.match(map, /setPaintProperty\("onboard-casing", "line-color", onBoard\.casing\)/);
+  assert.match(map, /setPaintProperty\("onboard-stops", "circle-stroke-color", onBoard\.stopRing as never\)/);
+});
