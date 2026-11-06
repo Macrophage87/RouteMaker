@@ -67,8 +67,8 @@ test("the review's guards: a link turned off, another keeping or a ride ended is
   assert.match(app, /if \(rodeBefore\.current && !riding\) \{\s*rideLinkSent\.current = null;/);
   // Nor its lead or the page's Group Ride secret: the next ride is a new ride under a new token and secret.
   assert.match(app, /if \(!id\.startsWith\("roam\|"\)\) leads\.current\.delete\(id\);/);
-  assert.match(app, /if \(groupSecretOwn\.current\) setGroupSecret\(newRideSecret\(\)\);/);
-  assert.match(app, /setGroupSecret\(newRideSecret\(\)\);\s*\/\/[^\n]*\n\s*forgetAnsweredHere\(\);/);
+  assert.match(app, /if \(groupSecretOwn\.current\) setGroupSecret\(\(ridden\) => ownSecrets\.current!\.renew\(ridden\)\);/);
+  assert.match(app, /ownSecrets\.current!\.renew\(ridden\)\);\s*\/\/[^\n]*\n\s*forgetAnsweredHere\(\);/);
   assert.match(app, /if \(!riding && !computerOk\.current && askBeforeStart\(looksLikePhone\(\), tabSession\(\)\)\) \{\s*setComputerAsk\("qr"\);/);
   // Only a broadcast whose link this page opened is passed on; any other ride opened from a link has no Broadcast.
   assert.match(app, /const passesOn =\s*onShared !== null && !onShared\.own && !!onShared\.lead && SHARED_LINK !== null && onShared\.id === SHARED_ID && !followsWithoutKey\(/);
@@ -87,8 +87,8 @@ test("a resumed ride keeps Share live, its link made from the ride's own plan (S
   // their broadcast's link is kept with the ride and passed on, resumed or not, their leader still leading.
   // One without its key is never passed on, and no ride of the rider's own is made in its place: no Share live.
   assert.match(app, /const follows = !!opened && !opened\.own && !!opened\.lead;\s*const passOn = follows && !followedNoKey\(\) \? followedLink\(\) : null;/);
-  assert.match(app, /keepLeftRide\(\{ route, points: leg\.points, loop: leg\.loop, preset: leg\.preset, dials: rideDialsNow, fixed, destination, passOn, follows, leads: ledLink \}/);
+  assert.match(app, /keepLeftRide\(\{ route, \.\.\.whole, dials: rideDialsNow, fixed, destination, passOn, follows, leads: ledLink, stopsLeft: tripStopsLeft\.current \}/);
   assert.match(app, /passingOn=\{passesOn \|\| !!rideStart\.passOn\}/);
   // Resume keeps the ride kept, so the rail still offers it.
-  assert.match(app, /setRideStart\(\(before\) => \(\{ \.\.\.left, trip: null, kept: true, n: \(before\?\.n \?\? 0\) \+ 1 \}\)\);/);
+  assert.match(app, /setRideStart\(\(before\) => \(\{ \.\.\.left, \.\.\.resumed, kept: true, n: \(before\?\.n \?\? 0\) \+ 1 \}\)\);/);
 });

@@ -8,11 +8,13 @@ how several points combine, the calm layer, the places counted inside a ring and
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from test_route_api import FakeRouter, db  # noqa: F401  (db: the fixture the route tests use)
 
 from core import presets, reach, routing
+from routemaker import workzones as wz
 
 pytestmark = pytest.mark.usefixtures("weekday_clock")
 
@@ -78,6 +80,33 @@ def calls(fake: FakeRouter) -> list[dict]:
     return [payload for url, payload in fake.calls if url.endswith("/isochrone")]
 
 
+@pytest.fixture
+def fresh_zones():
+    from core import workzones
+
+    workzones.forget()
+    yield
+    workzones.forget()
+
+
+def store_zones(zones) -> None:
+    from core import workzones
+    from core.models import BikeshareFeedCache
+
+    BikeshareFeedCache.objects.create(
+        key=workzones.KEY,
+        payload={"feeds": {"md": {"read_at": datetime.now(UTC).isoformat(),
+                                  "zones": [z.to_json() for z in zones]}}},
+        fetched_at=datetime.now(UTC),
+    )  # fmt: skip
+
+
+def closed(zone_id, zone_line, on_foot=None) -> wz.Zone:
+    until = datetime.now(UTC) + timedelta(days=30)
+    return wz.Zone(zone_id, "md", wz.CLOSED, 0, tuple(zone_line), "Side Road", None, None, until,
+                   on_foot=on_foot)  # fmt: skip
+
+
 @pytest.mark.django_db
 @pytest.mark.usefixtures("no_places")
 class TestRings:
@@ -123,7 +152,7 @@ class TestRings:
 
     @pytest.mark.parametrize(
         "preset",
-        sorted(set(presets.PRESETS) - reach.NOT_YET - reach.ON_FOOT - {presets.BIKESHARE}),
+        sorted(set(presets.PRESETS) - reach.NOT_YET - reach.ON_FOOT),
     )
     def test_every_bike_ride_type_has_rings(self, client, router, preset) -> None:
         fake = router(FakeRouter({"isochrone": isochrone_answer}))
@@ -131,6 +160,22 @@ class TestRings:
         assert response.status_code == 200, response.content
         assert response.json()["preset"] == preset
         assert calls(fake)[0]["costing"] == "bicycle"
+
+    def test_the_old_avoid_gravel_box_rides_as_a_plan_with_it_does(self, client, router) -> None:
+        """A plan with the box ticked on a rider's own bike is planned as Road Bike; so are
+        its rings. Elsewhere the box is dropped, as a plan drops it."""
+        fake = router(FakeRouter({"isochrone": isochrone_answer}))
+        ticked = post(client, {"points": [HERE], "preset": "default", "avoid_gravel": True})
+        assert ticked.status_code == 200, ticked.content
+        assert ticked.json()["preset"] == presets.ROAD_BIKE
+        post(client, {"points": [HERE], "preset": presets.ROAD_BIKE})
+        as_box, as_road_bike = calls(fake)
+        assert as_box["costing_options"] == as_road_bike["costing_options"]
+        novice = post(client, {"points": [HERE], "preset": "novice", "avoid_gravel": True})
+        assert novice.status_code == 200 and novice.json()["preset"] == "novice"
+        post(client, {"points": [HERE], "preset": "novice"})
+        boxed, plain = calls(fake)[2:]
+        assert boxed["costing_options"] == plain["costing_options"]
 
     def test_walk_and_run_go_on_foot(self, client, router) -> None:
         fake = router(FakeRouter({"isochrone": isochrone_answer}))
@@ -141,10 +186,54 @@ class TestRings:
         assert run["costing_options"]["pedestrian"]["walking_speed"] == 12.0
         assert walk["costing_options"]["pedestrian"]["walking_speed"] < 6
 
-    def test_bikeshare_rides_as_a_plain_bike(self, client, router) -> None:
-        router(FakeRouter({"isochrone": isochrone_answer}))
+    def test_bikeshare_rides_the_share_bike_as_its_plan_does(self, client, router) -> None:
+        """Audit 2026-11-05: the classic's 13 km/h, Bikeshare's stress and the classic's hills,
+        not Default's bike."""
+        fake = router(FakeRouter({"isochrone": isochrone_answer}))
         body = post(client, {"points": [HERE], "preset": "bikeshare"}).json()
-        assert body["preset"] == "default"
+        assert body["preset"] == "bikeshare"
+        (payload,) = calls(fake)
+        bicycle = payload["costing_options"]["bicycle"]
+        assert bicycle["cycling_speed"] == presets.BIKESHARE_CLASSIC_SPEED_KMH
+        assert bicycle["use_roads"] == presets.use_roads_for(presets.BIKESHARE_STRESS)
+        classic = presets.BIKESHARE_BIKES[presets.BIKE_CLASSIC]
+        assert bicycle["use_hills"] == presets.use_hills_for(classic.hills)
+        assert body["stress_used"] == min(presets.BIKESHARE_STRESS, reach.CALM_STRESS)
+
+    def test_bikeshare_with_assist_rides_the_share_e_bike(self, client, router) -> None:
+        fake = router(FakeRouter({"isochrone": isochrone_answer}))
+        response = post(client, {"points": [HERE], "preset": "bikeshare", "assist": True})
+        assert response.status_code == 200, response.content
+        (payload,) = calls(fake)
+        bicycle = payload["costing_options"]["bicycle"]
+        assert bicycle["cycling_speed"] == presets.BIKESHARE_EBIKE_SPEED_KMH
+        ebike = presets.BIKESHARE_BIKES[presets.BIKE_EBIKE]
+        assert bicycle["use_hills"] == presets.use_hills_for(ebike.hills)
+
+    def test_a_run_ring_has_the_runs_own_settings(self, client, router) -> None:
+        from core import run_plan
+
+        fake = router(FakeRouter({"isochrone": isochrone_answer}))
+        post(client, {"points": [HERE], "preset": "run", "run_pace_kmh": 12.0, "hills": -50})
+        (payload,) = calls(fake)
+        pedestrian = payload["costing_options"]["pedestrian"]
+        assert pedestrian["use_tracks"] == run_plan.USE_TRACKS
+        assert pedestrian["use_living_streets"] == run_plan.USE_LIVING_STREETS
+        assert pedestrian["use_hills"] == presets.use_hills_for(-50)
+        night = post(client, {"points": [HERE], "preset": "run", "when": "night"}).json()
+        assert night["preset"] == "run"
+        assert calls(fake)[-1]["costing_options"]["pedestrian"]["use_lit"] == (
+            run_plan.USE_LIT_AFTER_DARK
+        )
+
+    def test_mountain_bike_rings_say_the_trail_level_is_not_held(self, client, router) -> None:
+        router(FakeRouter({"isochrone": isochrone_answer}))
+        mtb = post(client, {"points": [HERE], "preset": presets.MOUNTAIN_BIKE}).json()
+        assert mtb["trail_level_applied"] is False
+        assert (
+            post(client, {"points": [HERE], "preset": "default"}).json()["trail_level_applied"]
+            is None
+        )
 
     def test_the_transit_ride_types_have_no_rings_yet(self, client, router) -> None:
         fake = router(FakeRouter({"isochrone": isochrone_answer}))
@@ -173,6 +262,37 @@ class TestRings:
         router(FakeRouter({"isochrone": isochrone_answer}))
         response = post(client, {"points": [HERE], "preset": "mass-ride", "stress": 90})
         assert response.status_code in (400, 422)
+
+
+@pytest.mark.django_db
+@pytest.mark.usefixtures("no_places", "fresh_zones")
+class TestClosures:
+    def test_a_bike_ring_leaves_out_a_closure_as_far_as_it_reaches(self, client, router) -> None:
+        """Audit 2026-11-05: a 60 minute ring at 18 km/h reaches about 18 km; a closure 12 km
+        out (past the closures' own 5 km margin) is left out of it too."""
+        far = [(-77.055, 39.008), (-77.045, 39.008)]
+        store_zones([closed("md-far", far)])
+        fake = router(FakeRouter({"isochrone": isochrone_answer}))
+        post(client, {"points": [HERE], "preset": "default"})
+        (payload,) = calls(fake)
+        assert payload["exclude_polygons"] == [wz.polygon(closed("md-far", far))]
+        # A 15 minute ring reaches about 4.5 km: the closure is not looked for.
+        post(client, {"points": [HERE], "preset": "default", "minutes": [15]})
+        assert "exclude_polygons" not in calls(fake)[-1]
+
+    def test_walk_and_run_rings_go_round_a_closure_shut_on_foot(self, client, router) -> None:
+        """As a Walk or a Run plan does (`workzones.foot_zones`); a closure whose source does not
+        say it shuts the way on foot is not left out."""
+        shut = [(-77.0455, 38.9010), (-77.0445, 38.9010)]
+        unsaid = [(-77.0455, 38.8990), (-77.0445, 38.8990)]
+        store_zones([closed("md-shut", shut, True), closed("md-unsaid", unsaid, None)])
+        fake = router(FakeRouter({"isochrone": isochrone_answer}))
+        post(client, {"points": [HERE], "preset": "walk", "minutes": [15]})
+        post(client, {"points": [HERE], "preset": "run", "minutes": [15]})
+        walk, run = calls(fake)
+        ring = wz.polygon(closed("md-shut", shut, True))
+        assert walk["exclude_polygons"] == [ring]
+        assert run["exclude_polygons"] == [ring]
 
 
 @pytest.mark.django_db

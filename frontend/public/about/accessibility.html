@@ -624,12 +624,13 @@ and busy crossing included, and on a train or bus "Next stop" is said one stop b
 <li><strong>Graphs of the road ahead</strong> (More, during a ride) are pictures a screen reader skips. Each bubble
 says its graph's name and whether it is on, and a screen reader hears each graph's heading and one sentence instead,
 such as how much the next 2 mi [3.2 km] climbs and its steepest grade. Stress is a ribbon with each stretch's
-level written on it, so color is never the only cue, and its sentence says the main level and the worst ahead
+level written on it where there is room for the number (a very short stretch shows its color alone), and its sentence says the main level and the worst ahead
 ("Mostly LTS 2, up to LTS 3 in 0.4 miles."), then the next two trails or bike lanes ("Trail in 0.2 miles, for 1.1
 miles."). A graph with no room on the screen, as can happen with Large text, is still in that sentence, and the app
 says which ones it could not draw.</li>
 <li><strong>Where am I?</strong> says where you are at any time and centers the map on you again, and how far the next stop and the end are and when you should reach them: "1.2 miles
-to stop 2, arriving about 6:42 AM"; on a
+to stop 2, arriving about 6:42 AM". On a train or bus it says the line and the stop to get off, and on board the stops
+and time left ("3 stops left, about 6 minutes, arriving about 10:24 PM"); on a
 keyboard, press W or C while focus is in the ride panel. The to-go line under the turn is read in full: "To stop 2, 1.2 mi (1.9 km), about 8 min,
 arriving about 6:42 AM".</li>
 <li>Cues say when the route goes onto a <strong>service road</strong>, alley or parking aisle, and name
@@ -678,7 +679,8 @@ you are on keeps its name. The labels are drawn on the map only; <strong>Directi
 <li>During a ride or Roam, map cards, the road info and the side menus close after 30 seconds with no touch, wheel,
 key or focus move, and the map goes back to you. In accessibility mode nothing closes on its own, since a screen
 reader's reading touches nothing. A dialog with the focus in it, such as Ride settings or the join sheet, stays
-open (the group's "Show me as a dot?" question still closes, as its No). A menu that closes with the focus in it hands the focus to its button; a map card hands
+open, and so does a map card or side menu while it holds a keyboard's or screen reader's focus; one a finger tapped
+still closes. The group's "Show me as a dot?" question still closes, as its No. A menu that closes with the focus in it hands the focus to its button; a map card hands
 it to the map.</li>
 <li><strong>End ride</strong> is a slider, so it isn't ended by a stray tap; the arrow keys or End move
 it too.</li>
@@ -727,7 +729,7 @@ and screen reader names.</p>
 <p class="next">Next: <a href="/about/ride-types.html">Ride types</a></p>
 </main>
 <footer>
-  <p>Part of RouteMaker's documentation. It describes version 0.20.0. The code is
+  <p>Part of RouteMaker's documentation. It describes version 0.21.0. The code is
   open source under the MIT licence:
   <a href="https://github.com/Macrophage87/RouteMaker">github.com/Macrophage87/RouteMaker</a>.</p>
   <p><a href="/">Back to the map</a></p>
