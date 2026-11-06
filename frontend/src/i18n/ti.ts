@@ -125,6 +125,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Finding your place on the route.": "ኣብ መገዲ ዘለኹምዎ ቦታ ይድለ ኣሎ።",
   "Off the planned route.": "ካብ ዝተመደበ መገዲ ወጺእኩም።",
   "Off the planned route; finding a new way.": "ካብ ዝተመደበ መገዲ ወጺእኩም፤ ሓድሽ መገዲ ይድለ ኣሎ።",
+  "Not near the start: going there first.": "ኣብ ጥቓ መበገሲ የለኹምን፤ ቅድም ናብኡ ንኸይድ።",
   "Back on the planned route.": "ናብ ዝተመደበ መገዲ ተመሊስኩም።",
   "No route found ahead. Make a U-turn.": "ኣብ ቅድሚ መገዲ ኣይተረኽበን። ዙርዩ ተመለሱ።",
   "No signal: the planned route is still shown.": "ምልክት የለን፦ ዝተመደበ መገዲ ገና ይርአ ኣሎ።",

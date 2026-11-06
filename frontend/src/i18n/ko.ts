@@ -125,6 +125,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Finding your place on the route.": "경로에서 현재 위치를 찾는 중입니다.",
   "Off the planned route.": "계획한 경로를 벗어났습니다.",
   "Off the planned route; finding a new way.": "계획한 경로를 벗어났습니다. 새 길을 찾는 중입니다.",
+  "Not near the start: going there first.": "출발점 근처가 아닙니다. 먼저 출발점으로 갑니다.",
   "Back on the planned route.": "계획한 경로로 돌아왔습니다.",
   "No route found ahead. Make a U-turn.": "앞쪽으로 경로를 찾지 못했습니다. 유턴하세요.",
   "No signal: the planned route is still shown.": "신호 없음: 계획한 경로를 계속 표시합니다.",

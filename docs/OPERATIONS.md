@@ -7280,6 +7280,34 @@ changed`), as at v0.19.0, though the column is optional: the beta ships by hand,
   ignores `shape` and `cuts`). On the beta: rollback A (the snapshot is there if needed), then
   `auto-release.sh hold v0.21.0` so the agent does not deploy it again.
 
+## Deploying v0.21.1
+
+A patch: a ride started away from its start (more than 200 m, about 650 ft, and off the line) is
+routed to the start first, the start its stop 1, then on along the planned route unchanged (#PR).
+**Front end only** (`frontend/`), with the version in `pyproject.toml`, `src/routemaker/__init__.py`
+and `README.md`. **No migration, no `src/` code change, no `src/pipeline/`, `lua/`, compose,
+Caddyfile, nginx, Dockerfile or requirements change, no new environment variable, outbound host or
+scheduled job, no `mobile/` change and no map rebuild.**
+
+- [ ] **The tag.** Once `test` and `a11y` are green on `main`, the owner tags v0.21.1 (annotated) on
+  that commit, from the PC.
+- [ ] **At home**, as "Deploying a planner and front-end release": fast-forward the checkout, then
+  the front end. The api image need not be rebuilt (only its version string changes); rebuild it
+  with `docker compose build api` and recreate `api worker` if the version shown should say 0.21.1.
+- [ ] **Beta**, by its agent, once its deployed tag (`$RM_STATE/cd/deployed-tag`) is v0.21.0: the
+  gate sees `frontend/`, `pyproject.toml` and `src/routemaker/__init__.py` (docs and `.md` files are
+  inert), and deploys. While v0.21.0 is
+  not yet marked deployed, the diff from v0.20.0 still carries `src/pipeline/schema.py` and the agent
+  stops on v0.21.1 too: finish the v0.21.0 hand ship and `mark-deployed v0.21.0` first (then
+  `resume` if paused). Stuck: `git fetch --force --tags origin`, then
+  `scripts/beta/auto-release.sh retry v0.21.1`.
+- [ ] **Spot checks.** Plan a route whose start is a few blocks from where you stand, press Start
+  ride: "Not near the start: going there first." is said and shown, the line runs from you to the
+  start, then the planned route; the start shows as stop 1, "Stop 1, Start.", and the plan's stops
+  follow as 2, 3 and so on. Standing at the start, or on the route part way along, the ride starts
+  as before (part way, "Already done?" asks about the stops behind).
+- [ ] **Rollback.** The v0.21.0 front end. Nothing in the database, the api or the map changes.
+
 ## Deploying a planner and front-end release: rollback points and verification
 
 A release that changes the planner and the front end, with no migration and no graph, is deployed
