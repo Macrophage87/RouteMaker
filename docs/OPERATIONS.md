@@ -7285,7 +7285,8 @@ changed`), as at v0.19.0, though the column is optional: the beta ships by hand,
 
 A patch: a ride started away from its start (more than 200 m, about 650 ft, and off the line) asks
 "Go to the start" (the start its stop 1, then on along the planned route unchanged) or "Join from
-here" (re-planned onto the route ahead) (#994 and its follow-up).
+here" (re-planned onto the route ahead). Riding to the start, the planned route takes over
+anywhere within 200 m of it, so any entrance of a big place counts (#994 and its follow-up).
 **Front end only** (`frontend/`), with the version in `pyproject.toml`, `src/routemaker/__init__.py`
 and `README.md`. **No migration, no `src/` code change, no `src/pipeline/`, `lua/`, compose,
 Caddyfile, nginx, Dockerfile or requirements change, no new environment variable, outbound host or

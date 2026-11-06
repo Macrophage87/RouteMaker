@@ -128,7 +128,9 @@ test("RideMode asks for the way to the start once, at the first fix, before the 
   // It asks first (Stephen, 2026-11-06: "the option of going to the start or to reroute from there"), said as it opens,
   // and closes by itself once the rider has ridden RESTART_AUTO_M on: to the start if still away from it, else joined.
   assert.match(ride, /setStartAsk\(true\);\s*notify\(`\$\{START_ASK_HEADING\}\$\{fullStop\(\)\} \$\{START_ASK_LEAD\}`\);/);
-  assert.match(ride, /haversineM\(fix\.point, startAskedAt\) >= RESTART_AUTO_M\) \{\s*chooseStartRef\.current\(startsAway\(modelRef\.current, fix\), fix\.point\);/);
+  assert.match(ride, /haversineM\(fix\.point, startAskedAt\) >= RESTART_AUTO_M\) \{\s*const startAt = plan\.current\.points\[0\];\s*const toward = !!startAt && haversineM\(fix\.point, startAt\) < haversineM\(startAskedAt, startAt\);\s*chooseStartRef\.current\(toward && startsAway\(modelRef\.current, fix\), fix\.point\);/);
+  // Go to the start chosen and no way found: said, not silent.
+  assert.match(ride, /if \(!found\) \{\s*\/\/ The rider asked for it[^\n]*\n\s*const said = [^;]+;\s*setReplanNote\(said\);\s*sayDetour\(said\);\s*return false;/);
   // Join from here: the ride goes on as any ride off its line, with Already done? asked as usual.
   assert.match(ride, /if \(!start \|\| !here\) \{\s*toStartAsking\.current = false;\s*return;\s*\}/);
   const dialog = readFileSync(new URL("../StartFirstDialog.tsx", import.meta.url), "utf8");
@@ -139,6 +141,10 @@ test("RideMode asks for the way to the start once, at the first fix, before the 
   assert.match(ride, /toStartRoute\(found, routeRef\.current, was\.points\.length, was\.loop\)/);
   // The start is stop 1 and the plan's stops one on.
   assert.match(ride, /const out = new Map<number, number>\(\[\[at, 1\]\]\);\s*for \(const \[i, n\] of numbers\) out\.set\(i < at \? i : i \+ 1, n \+ 1\);/);
+  // Near the start on the way there (any entrance of a big place): the planned route again, from where the rider is.
+  assert.match(ride, /beforeStart\.current = \{ route: routeRef\.current, plan: was \};/);
+  assert.match(ride, /haversineM\(fix\.point, startWas\) <= START_NEAR_M\) \{\s*startReachedRef\.current\(\);/);
+  assert.match(ride, /plan\.current = back\.plan;[\s\S]{0,200}modelRef\.current = modelOf\(back\.route, back\.plan\.points\);/);
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
   // Only Start ride sets it: not Ride the rest, Roam's detour or Resume.
   assert.match(app, /startFirst: !rest, kept,/);
