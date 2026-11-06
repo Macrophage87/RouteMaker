@@ -125,6 +125,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Finding your place on the route.": "ルート上の現在地を確認しています。",
   "Off the planned route.": "予定のルートから外れました。",
   "Off the planned route; finding a new way.": "予定のルートから外れました。新しい道を探しています。",
+  "Not near the start: going there first.": "出発地点の近くではありません。まず出発地点へ向かいます。",
   "Back on the planned route.": "予定のルートに戻りました。",
   "No route found ahead. Make a U-turn.": "この先にルートが見つかりません。Uターンします。",
   "No signal: the planned route is still shown.": "信号なし：予定のルートを表示したままです。",

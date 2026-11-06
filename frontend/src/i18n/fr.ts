@@ -125,6 +125,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Finding your place on the route.": "Recherche de votre position sur l'itinéraire.",
   "Off the planned route.": "Hors de l'itinéraire prévu.",
   "Off the planned route; finding a new way.": "Hors de l'itinéraire prévu ; recherche d'un nouveau chemin.",
+  "Not near the start: going there first.": "Pas près du départ : on y va d'abord.",
   "Back on the planned route.": "De retour sur l'itinéraire prévu.",
   "No route found ahead. Make a U-turn.": "Aucun itinéraire trouvé devant. Faites demi-tour.",
   "No signal: the planned route is still shown.": "Pas de signal : l'itinéraire prévu reste affiché.",
