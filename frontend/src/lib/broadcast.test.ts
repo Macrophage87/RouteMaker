@@ -177,12 +177,12 @@ test("Share live (it was Broadcast) is one small button beside Start, in Plan an
   // sheet, the link is copied (broadcastNav).
   assert.match(app, /broadcastRide: \{ onPress: broadcastRide, onHold: broadcastQr, note: broadcastNote \},/);
   // The voice unlocked within the press; the ride starts only once the link was sent and its line kept.
-  const fn = app.slice(app.indexOf("const broadcastRide = () => {"), app.indexOf("\n  };\n", app.indexOf("const broadcastRide = () => {")));
+  const fn = app.slice(app.indexOf("const broadcastRideNow = () => {"), app.indexOf("\n  };\n", app.indexOf("const broadcastRideNow = () => {")));
   assert.match(fn, /\}\s*primeRideVoice\(ridePrefs\);[\s\S]*void shareRoute\(true, broadcastNav\)\.then\(\(\{ led, said \}\) => \{\s*if \(led\) \{[^}]*startRideNoted\(broadcastSaid\(""\)\);\s*\} else if \(said\) setBroadcastNote/);
   // What went wrong is shown and said beside the button.
   assert.match(panel, /<p className="hint broadcast-note" role="status">/);
   // The same line shared again goes with the same leader key; the ride starts with the sharer free to re-route.
-  assert.match(app, /const lead = again \? again\.lead : ride && kept \? \(\(sharedId \? leads\.current\.get\(sharedId\) : undefined\) \?\? leadPrep\.current\) : null;/);
+  assert.match(app, /const lead = ride && kept \? rideLeadFor\(again, sharedId, leads\.current, leadPrep\.current\) : null;/);
   assert.match(app, /const opened = sharedOpenNow\.current\?\.answer === asked \? sharedOpenNow\.current : null;/);
   // The sharer's key is made before the press, so no await comes before the share sheet.
   assert.match(app, /useEffect\(prepareLead, \[prepareLead\]\);/);
@@ -265,10 +265,10 @@ test("the ridden path goes without its first 650 ft (200 m): rides often start a
 
 test("on a computer Broadcast asks before the share sheet: Go back sends nothing, Start anyway shares then rides", () => {
   const app = read("../App.tsx");
-  const fn = app.slice(app.indexOf("const broadcastRide = () => {"), app.indexOf("\n  };\n", app.indexOf("const broadcastRide = () => {")));
+  const fn = app.slice(app.indexOf("const broadcastRideNow = () => {"), app.indexOf("\n  };\n", app.indexOf("const broadcastRideNow = () => {")));
   // The question comes first, before the voice and the share sheet (review S1); only a followed link without its
   // key is said before it (it is never passed on, so there is nothing to ask).
-  assert.match(fn, /^const broadcastRide = \(\) => \{\s*if \(followedNoKey\(\)\) \{[^\n]*\n[^\n]*\n\s*return;\s*\}\s*if \(!computerOk\.current && askBeforeStart\(looksLikePhone\(\), tabSession\(\)\)\) \{\s*setComputerAsk\("broadcast"\);\s*return;\s*\}/);
+  assert.match(fn, /^const broadcastRideNow = \(\) => \{\s*if \(followedNoKey\(\)\) \{[^\n]*\n[^\n]*\n\s*return;\s*\}\s*if \(!computerOk\.current && askBeforeStart\(looksLikePhone\(\), tabSession\(\)\)\) \{\s*setComputerAsk\("broadcast"\);\s*return;\s*\}/);
   assert.ok(fn.indexOf('setComputerAsk("broadcast")') < fn.indexOf("shareRoute(true, broadcastNav)"));
   const dialog = app.slice(app.indexOf("<StartOnComputerDialog"), app.indexOf("<ClosureDialog"));
   assert.match(dialog, /onBack=\{\(\) => setComputerAsk\(null\)\}/);
@@ -395,7 +395,7 @@ test("undoing End ride keeps leading the same shared ride", () => {
   const app = read("../App.tsx");
   // End ride keeps the ride's shared line and the link it went out with, beside the ride Undo rides again.
   const end = app.slice(app.indexOf("const endRide = useCallback("), app.indexOf("const undoEndRide = () => {"));
-  assert.match(end, /endedRide\.current = start \? \{ start, from, stats, shared: sharedOpenNow\.current, linkSent: rideLinkSent\.current \} : null;/);
+  assert.match(end, /endedRide\.current = start \? \{ start, from, stats, shared: sharedOpenNow\.current, linkSent: rideLinkSent\.current, past, stopsLeft \} : null;/);
   // Undo puts them back: the same leader key and secret, so those following still see the leader, and Share live
   // sends the same link again.
   const undo = app.slice(app.indexOf("const undoEndRide = () => {"), app.indexOf("\n  };\n", app.indexOf("const undoEndRide = () => {")));

@@ -3,6 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { clockOf } from "./departure.ts";
 import { FULL_M, GAP_S, HALT_CAP_S, LEAVE_M, START_M, arrivalClock, atPace, leaveNowArrival, leaveNowArriveMs, paceFactor, paceStart, paceStep, type PaceTrack } from "./arrival.ts";
 import { loadLanguage, setLanguageForTest } from "./i18n.ts";
 import { whenAt } from "./rideTime.ts";
@@ -107,10 +108,20 @@ test("the plan's own seconds for a stretch (a climb, a junction wait) are what t
 });
 
 test("the clock is the device's own: 12 hour in en-US, 24 hour in en-GB, rounded to the minute", () => {
-  const now = new Date(2026, 9, 26, 6, 30, 0).getTime();
+  // 6:30 AM in Washington (EDT).
+  const now = Date.UTC(2026, 9, 26, 10, 30, 0);
   // Newer ICU puts a narrow no-break space before AM.
   assert.equal(arrivalClock(now, 12 * 60 + 20, "en-US").replace(/\s/u, " "), "6:42 AM");
   assert.equal(arrivalClock(now + 12 * 3600_000, 12 * 60 + 40, "en-GB"), "18:43");
+});
+
+test("arrival times are on Washington's clock whatever the phone's zone, as a departure's are", () => {
+  // 5:12 PM in Washington (EST) is 4:12 PM in Chicago and 22:12 in UTC: the stop list and Next train agree on 5:12.
+  const departs = "2026-11-05T17:12:00-05:00";
+  const now = Date.parse(departs);
+  assert.equal(arrivalClock(now, 0, "en-US").replace(/\s/u, " "), clockOf(departs, "en-US").replace(/\s/u, " "));
+  assert.equal(arrivalClock(now, 0, "en-US").replace(/\s/u, " "), "5:12 PM");
+  assert.equal(arrivalClock(now, 19 * 60, "en-GB"), "17:31");
 });
 
 test("RideMode shows the arrival clock after each time to go and says it in Where am I?", () => {
@@ -125,7 +136,7 @@ test("RideMode shows the arrival clock after each time to go and says it in Wher
 });
 
 test("before a ride, the route's time ends with when it arrives leaving now, in English and Spanish", () => {
-  const arrive = new Date(2026, 9, 27, 8, 27, 0).getTime();
+  const arrive = Date.UTC(2026, 9, 27, 12, 27, 0);
   const words = leaveNowArrival(arrive, "en-US");
   assert.equal(words.shown.replace(/\s/gu, " "), "arrive 8:27 AM");
   assert.equal(words.said.replace(/\s/gu, " "), "arriving about 8:27 AM if you leave now");
@@ -135,7 +146,7 @@ test("before a ride, the route's time ends with when it arrives leaving now, in 
     assert.match(es.shown, /^llegada 8:27\s?a/u);
     assert.match(es.said, /^llegada estimada 8:27\s?a.* si sale ahora$/u);
     // One o'clock needs no "la"/"las" either (round-2 audit D22: "hacia las 1:05" was wrong).
-    const one = leaveNowArrival(new Date(2026, 9, 27, 13, 5, 0).getTime(), "es-US");
+    const one = leaveNowArrival(Date.UTC(2026, 9, 27, 17, 5, 0), "es-US");
     assert.match(one.said, /^llegada estimada 1:05\s?p.* si sale ahora$/u);
     assert.doesNotMatch(one.said, /\blas 1:/u);
   } finally {

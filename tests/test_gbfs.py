@@ -619,3 +619,45 @@ def test_a_listed_feed_that_is_not_zones_is_a_failed_feed_not_an_empty_one() -> 
 
     snap = gbfs.Gbfs(NotZones(), Clock(), wall=feed_wall).snapshot()
     assert snap.zones is None and "geofencing_zones" in snap.failed
+
+
+def test_zones_with_null_rules_are_zones_with_no_rules() -> None:
+    data = zones_doc(None)
+    data["data"]["geofencing_zones"]["global_rules"] = None
+    zones = gbfs.parse_zones(data)
+    assert zones is not None and zones.allows_ending(-77.010, 38.90)
+    data["data"]["geofencing_zones"]["features"][0]["properties"] = ["not", "a", "dict"]
+    assert gbfs.parse_zones(data) is not None
+
+
+def test_a_feed_no_parser_can_read_is_a_failed_feed_and_is_not_fetched_again_at_once(
+    monkeypatch,
+) -> None:
+    def odd(_doc):
+        raise TypeError("an unexpected shape")
+
+    monkeypatch.setitem(gbfs._PARSERS, "station_status", odd)
+    net, clock = FakeNetwork(), Clock()
+    cache = gbfs.Gbfs(net, clock, wall=feed_wall)
+    snap = cache.snapshot()
+    assert snap.status is None and "station_status" in snap.failed
+    assert len(snap.stations) == 27
+    asked = len(net.calls)
+    clock.now += 1
+    assert cache.snapshot() is snap and len(net.calls) == asked
+
+
+def test_a_station_list_no_parser_can_read_pauses_the_feeds(monkeypatch) -> None:
+    def odd(_doc):
+        raise AttributeError("an unexpected shape")
+
+    monkeypatch.setitem(gbfs._PARSERS, "station_information", odd)
+    net, clock = FakeNetwork(), Clock()
+    cache = gbfs.Gbfs(net, clock, wall=feed_wall)
+    with pytest.raises(gbfs.Unavailable):
+        cache.snapshot()
+    asked = len(net.calls)
+    clock.now += 1
+    with pytest.raises(gbfs.Unavailable):
+        cache.snapshot()
+    assert len(net.calls) == asked  # paused, not downloaded again

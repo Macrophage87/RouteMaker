@@ -914,6 +914,59 @@ def test_a_stress_rows_reason_never_reaches_the_tier() -> None:
     assert classified[7].adjustment.adjustment_id == "way-7"
 
 
+# --- Half steps beneath an owner's row ----------------------------------------------
+
+PUBLIC_ROW = {
+    "adjustment_id": "a-half",
+    "category": "other",
+    "visibility": "public",
+    "annotation_status": "approved",
+    "display": "map",
+    "public_note": "Alley or service road, so 1.5",
+}
+
+
+def _owner_row(tier: int, half: bool = False) -> Override:
+    return Override("stress", 1, {**PUBLIC_ROW, "tier": tier, **({"half": True} if half else {})})
+
+
+def test_a_row_at_the_half_step_the_way_already_had_is_the_same_not_a_raise() -> None:
+    """The service-road step puts an alley at 1.5; a row of 1.5 on it changes nothing, so
+    the road panel must not say "Before the override: LTS 1"."""
+    classified = {1: StressResult(Stress.LTS1, "service road", half=True)}
+    apply_stress(classified, [_owner_row(1, half=True)])
+    adjustment = classified[1].adjustment
+    assert adjustment.direction == "same"
+    assert (int(adjustment.computed_tier), adjustment.computed_half) == (1, True)
+
+
+def test_a_whole_row_below_an_agencys_half_step_is_a_lowering() -> None:
+    """An owner row of 2 on a way an agency rated 2.5 lowers it, and says from what."""
+    classified = {1: StressResult(Stress.LTS2, "agency rating", half=True)}
+    apply_stress(classified, [_owner_row(2)])
+    adjustment = classified[1].adjustment
+    assert adjustment.direction == "down"
+    assert adjustment.computed_step == 2.5
+
+
+def test_an_owner_row_keeps_the_formulas_half_step_for_the_panel() -> None:
+    """A rural expressway's formula is 4.5; an agency rated it 4 and the owner's row says
+    4.5. The panel's Formula line still reads 4.5."""
+    classified = {
+        1: StressResult(
+            Stress.LTS4,
+            "agency rating",
+            formula_tier=Stress.LTS4,
+            formula_rule="rural expressway",
+            formula_half=True,
+            agency_ratings=("mdot-sha",),
+        )
+    }
+    apply_stress(classified, [_owner_row(4, half=True)])
+    assert classified[1].formula_tier is Stress.LTS4
+    assert classified[1].formula_half is True
+
+
 # --- Car-free corrections (the owner, 2026-09-28: "Our own correction") ------
 
 BEACH_DRIVE_NW = (
