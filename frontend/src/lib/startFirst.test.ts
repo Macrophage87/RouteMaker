@@ -125,10 +125,30 @@ test("RideMode asks for the way to the start once, at the first fix, before the 
   // Not on a Bikeshare or transit trip (its walk to the dock), on foot, resumed or after Undo.
   assert.match(ride, /const startChecked = useRef\(!startFirst \|\| !!trip\?\.approach \|\| !!trip\?\.onFoot \|\| resumeStats !== null \|\| resumedPast !== null\)/);
   assert.match(ride, /if \(!startChecked\.current && rideRef\.current\.progressM === null && fix\.accuracyM <= POOR_FIX_M\) \{\s+startChecked\.current = true;\s+if \(startsAway\(modelRef\.current, fix\)\)/);
+  // It asks first (Stephen, 2026-11-06: "the option of going to the start or to reroute from there"), said as it opens,
+  // and closes by itself once the rider has ridden RESTART_AUTO_M on: to the start if still away from it, else joined.
+  assert.match(ride, /setStartAsk\(true\);\s*notify\(`\$\{START_ASK_HEADING\}\$\{fullStop\(\)\} \$\{START_ASK_LEAD\}`\);/);
+  assert.match(ride, /haversineM\(fix\.point, startAskedAt\) >= RESTART_AUTO_M\) \{\s*const startAt = plan\.current\.points\[0\];\s*const toward = !!startAt && haversineM\(fix\.point, startAt\) < haversineM\(startAskedAt, startAt\);\s*chooseStartRef\.current\(toward && startsAway\(modelRef\.current, fix\), fix\.point\);/);
+  // Go to the start chosen and no way found: said, not silent.
+  assert.match(ride, /if \(!found\) \{\s*\/\/ The rider asked for it[^\n]*\n\s*const said = [^;]+;\s*setReplanNote\(said\);\s*sayDetour\(said\);\s*return false;/);
+  // Join from here: the ride goes on as any ride off its line, with Already done? asked as usual.
+  assert.match(ride, /if \(!start \|\| !here\) \{\s*toStartAsking\.current = false;\s*return;\s*\}/);
+  const dialog = readFileSync(new URL("../StartFirstDialog.tsx", import.meta.url), "utf8");
+  // Go to the start takes the focus, and Escape is Go to the start.
+  assert.match(dialog, /startRef\.current\?\.focus\(\)/);
+  assert.match(dialog, /event\.preventDefault\(\);\s*onChoose\(true\);/);
   // The planned route itself is kept after the way there (a chosen route, a file, a group's line).
   assert.match(ride, /toStartRoute\(found, routeRef\.current, was\.points\.length, was\.loop\)/);
   // The start is stop 1 and the plan's stops one on.
   assert.match(ride, /const out = new Map<number, number>\(\[\[at, 1\]\]\);\s*for \(const \[i, n\] of numbers\) out\.set\(i < at \? i : i \+ 1, n \+ 1\);/);
+  // Near the start on the way there (any entrance of a big place): the planned route again, from where the rider is.
+  assert.match(ride, /beforeStart\.current = \{ route: routeRef\.current, plan: was, asked \};/);
+  assert.match(ride, /haversineM\(fix\.point, startWas\) <= START_NEAR_M\) \{\s*startReachedRef\.current\(\);/);
+  // Skipped, passed or a detour put before it: the way there is over, never restored later (a loop's finish).
+  assert.match(ride, /if \(startWas && startStop\.current && plan\.current\.points\[1\] !== startStop\.current\) beforeStart\.current = null;/);
+  // A re-plan under way is dropped, and Already done? asked as on any ride begun here.
+  assert.match(ride, /autoReplan\.current = null;\s*replanTicket\.current \+= 1;\s*setReplanning\(false\);[^\n]*\n[^\n]*\n\s*restartAsked\.current = back\.asked;/);
+  assert.match(ride, /plan\.current = back\.plan;[\s\S]{0,200}modelRef\.current = modelOf\(back\.route, back\.plan\.points\);/);
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
   // Only Start ride sets it: not Ride the rest, Roam's detour or Resume.
   assert.match(app, /startFirst: !rest, kept,/);

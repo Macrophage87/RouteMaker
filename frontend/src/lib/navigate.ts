@@ -1671,6 +1671,16 @@ export function startsAway(model: Pick<RideModel, "coordinates" | "along">, fix:
 
 /** Said when a ride starts away from its start: the way there comes first. */
 export const START_FIRST_SAID = t("Not near the start: going there first.");
+/** Back within START_NEAR_M of the start on the way there (any entrance of a big place): the planned route from here. */
+export const START_REACHED_SAID = t("At the start of the ride. Ride on.");
+/**
+ * The question asked then (Stephen, 2026-11-06: "they should be given the option of going to the start or to reroute
+ * from there, such as if they are already on the route"): StartFirstDialog's words, said as it opens.
+ */
+export const START_ASK_HEADING = t("Not near the start");
+export const START_ASK_LEAD = t("Go to the start first, or join the route from here?");
+export const START_ASK_START = t("Go to the start");
+export const START_ASK_JOIN = t("Join from here");
 
 /**
  * One fix into the ride: the new state and what to say. `replan` says whether a new way is looked for
