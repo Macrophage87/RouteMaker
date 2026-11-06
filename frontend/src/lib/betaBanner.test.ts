@@ -1,7 +1,7 @@
 // The private-beta notice (lib/betaBanner.ts): off unless the build says VITE_BETA=1,
 // a "Beta" chip in the map's bottom-left corner that shows and hides a labelled region
-// (not a dialog), never trapping focus, linking the Discord for reports and, in small print,
-// the Android beta how-to-join page, with a further report link only when one is configured.
+// (not a dialog), never trapping focus, linking the Discord for reports, then two
+// buttons to the Android beta how-to-join page and the help guides, with a further report link only when one is configured.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
@@ -11,6 +11,7 @@ import {
   BETA_BANNER_TEXT,
   BETA_DISCORD_URL,
   BETA_REPORT_LINK_TEXT,
+  BETA_GUIDES_TEXT,
   BETA_SIGNUP_TEXT,
   BETA_SIGNUP_URL,
   BetaChip,
@@ -76,14 +77,18 @@ test("for reports it links the public Discord, and in small print the how-to-joi
     ),
     html,
   );
+  // Sign up to test and the help guides, two buttons (Stephen 2026-11-06).
+  assert.equal(BETA_GUIDES_TEXT, "Using RouteMaker");
   assert.ok(
     html.includes(
-      `<p class="beta-chip-signup"><a href="${BETA_SIGNUP_URL}" target="_blank" rel="noopener noreferrer">Sign up to test here!${newTab}</a></p>`,
+      `<p class="beta-chip-actions"><a href="${BETA_SIGNUP_URL}" target="_blank" rel="noopener noreferrer">Sign up to test here!${newTab}</a><a href="/about/using.html" target="_blank" rel="noopener noreferrer">Using RouteMaker${newTab}</a></p>`,
     ),
     html,
   );
   const css = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
-  assert.match(css, /\.beta-chip-note \.beta-chip-signup \{[^}]*font-size: 0\.75rem;/, "small print, in rem");
+  const button = css.match(/\.beta-chip-note \.beta-chip-actions a \{[^}]*\}/)?.[0] ?? "";
+  for (const rule of ["min-height: 48px;", "background: var(--accent);", "color: var(--accent-text);", "text-decoration: none;"]) assert.ok(button.includes(rule), rule);
+  assert.doesNotMatch(css, /beta-chip-signup/, "no small print left");
 });
 
 test("the report link is an https address only; anything else gives no link", () => {
@@ -111,7 +116,7 @@ test("with no report link there is no Report a problem link; with one, it opens 
   for (const reportUrl of [undefined, null, BETA_DISCORD_URL]) {
     const html = render({ enabled: true, initiallyOpen: true, reportUrl });
     assert.doesNotMatch(html, /Report a problem/, String(reportUrl));
-    assert.equal(html.match(/<a /g)?.length, 2, "Discord and sign-up only");
+    assert.equal(html.match(/<a /g)?.length, 3, "Discord, sign-up and the help guides only");
   }
   const html = render({ enabled: true, initiallyOpen: true, reportUrl: "https://example.org/report" });
   assert.match(
@@ -119,7 +124,7 @@ test("with no report link there is no Report a problem link; with one, it opens 
     /<a href="https:\/\/example\.org\/report" target="_blank" rel="noopener noreferrer">Report a problem<span class="visually-hidden"> \(opens in a new tab\)<\/span><\/a>/,
   );
   assert.equal(BETA_REPORT_LINK_TEXT, "Report a problem");
-  assert.equal(html.match(/<a /g)?.length, 3);
+  assert.equal(html.match(/<a /g)?.length, 4);
 });
 
 test("App wires it to the build flags and nothing else, so the local site is unchanged; not in a ride nor in Roam (the audit's P13)", () => {
