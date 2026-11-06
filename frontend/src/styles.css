@@ -1377,6 +1377,25 @@ button.secondary {
   padding-left: 18px;
 }
 
+/* Help's one big button to the guides (Stephen 2026-11-06: "a big button to the help files ... as opposed to the
+   wall of text"): a ride-sized press, the app's accent in each theme. :root lifts it over the dark map's link
+   colour. */
+:root .maplibregl-ctrl-attrib .map-info a.map-info-guides {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 56px;
+  padding: 8px 20px;
+  margin: 4px 0 8px;
+  border-radius: 8px;
+  background: var(--accent);
+  color: var(--accent-text);
+  font-size: 20px;
+  font-weight: 700;
+  text-align: center;
+  text-decoration: none;
+}
+
 /* Collapsed to the "i" button (lib/junctionCard.ts collapseCredits, at the
    start, or by the rider): the OpenStreetMap credit still shows beside it, as
    text the "i" opens in full. Hidden from screen readers, which have the
