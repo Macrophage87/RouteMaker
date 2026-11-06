@@ -611,7 +611,8 @@ about half an hour before sunrise and after sunset in the DC area.
 On a screen at least 1200 px wide, the route's results (its totals, Start ride, GPX, Link and these folds)
 sit in their own card on the right of the map, and the planner on the left keeps the points, the ride type,
 its settings and the Route button. On the map, the route line carries the name of each street or path it follows, in Plan, Go and
-rides.</p>
+rides. A white dot marks every mile along it (every kilometer in metric), and every fifth is a larger dot with its
+number, counted as the turn list counts; the dots show as you zoom in, the numbered ones sooner.</p>
 <p><strong>Weather.</strong> In Go and Plan, the route's warnings include any National
 Weather Service alert in force along it while you would ride it, leaving now (a plan set for another time is
 not checked), each with an <strong>NWS notice</strong> link to the
@@ -746,7 +747,9 @@ taken at the pace the plan expects is not counted against you, fully by 3.1 mi [
 twice as fast or as slow. A stop counts as at most 90 seconds, so a long stop doesn't slow your estimate,
 and time off the route, paused or walking is left out.</li>
 <li><strong>Where am I?</strong> says where you are and centers the map on you again. It also says how far the next stop and the end are and when you should
-reach them: "1.2 miles to stop 2, arriving about 6:42 AM."
+reach them: "1.2 miles to stop 2, arriving about 6:42 AM." Waiting for a train or bus, it says the line and the stop
+to get off; on board, also the stops and time left ("3 stops left, about 6 minutes, arriving about 10:24 PM"). It
+never says you have arrived there.
 <strong>Large text</strong> makes the next turn as big as it fits.</li>
 <li><strong>Everyone</strong>, a two-people button above Locate, shows on a ride or in Roam whenever other
 riders' dots (Share live, Group Ride or Mass Ride) are on the map. A tap fits you and every dot on the map, and keeps
@@ -770,7 +773,8 @@ while watching a ride, and rides without Share live keep the riders count as a b
 a screen reader hears in words.</li>
 <li><strong>Detour</strong> has four buttons, <strong>Water</strong>, <strong>Restroom</strong>, <strong>Eat</strong> and
 <strong>Repair</strong> (repair stands and bike shops), each listing the three nearest by bike, and a
-<strong>Search</strong> box for anything else. What you type there, at least 3 letters, is matched against the
+<strong>Search</strong> box for anything else. Below them, <strong>Go round: road closed ahead</strong> does what Go
+round does, for when you pressed Detour at a closure's sign. What you type there, at least 3 letters, is matched against the
 Eat sheet's places to eat by cuisine or name ("pizza", "coffee"), and is also sent to the place search, as Where to? does,
 for any name, shop or address ("grocery", "bike shop"), with your position rounded to a grid about 0.6 mile [1 km]
 across. The matches from both are measured by bike together and the three nearest are listed. A word for one of the
@@ -836,11 +840,17 @@ removes it. If the app closes during a ride, opening it again within 12 hours of
 "Resume your ride to Union Station?": <strong>Resume ride</strong> which starts the ride again from where you are, or <strong>Not now</strong>, which
 forgets it; Escape only puts the question off until the app next opens. A resumed ride rejoins the shared ride it
 was on, followed or led, so dots and alerts carry on; a leader leads again only while the link and its key are the
-same. Opening the app from a leader's link skips the question and joins that ride. Roam, Ride the rest, a Roam detour and
-Bikeshare, transit, Walk or Run trips, or a ride with a walk to its start or from its end, cannot be resumed yet.</li>
+same. Opening the app from a leader's link skips the question and joins that ride. Roam and a Roam detour cannot be resumed.
+Ride the rest and Bikeshare, transit, Walk and Run trips resume whole, walks to the start or from the end included:
+on a train or the walk after it, the trip carries on from there.</li>
 <li><strong>Walks and transit.</strong> On a Walk, Run, Bikeshare or transit trip, walks and runs are said turn by turn, as rides
 are, and are never "off route". On a train or bus the screen lists the stops ahead and says "Next stop: Union Station.
-Get off there." one stop before yours (on a bus, to press the stop button), then "Get off here". With no location for
+Get off there." one stop before yours (on a bus, to press the stop button), then "Get off here". It also shows how many stops are left, the minutes to yours and each stop's clock time,
+counted from the stop where the app first sees you on board, and, with more of the trip after the train or bus,
+"Trip ends about 10:32 PM". The map draws the train or bus in its line's color (a Metro line's or MARC's Penn Line's
+own, otherwise the map's transit color), along the line's track where the timetable has one and straight from stop to
+stop otherwise, as for a bus, with a dot at each stop ahead and a larger filled one at yours. While you wait for it or
+ride it, no "GPS is weak" notes are given. With no location for
 a while, underground, it follows the timetable and says so. On Walk the button reads Start walk, and on Run, Start run.
 A Bikeshare + transit option that takes no bike (a walk, the train, a walk) is followed as Walk + transit is, and its
 button reads Start walk too. Reaching the station does not end the ride: the train, and any walk, are followed next,
@@ -861,8 +871,8 @@ with no touch, wheel, key or focus move and nothing open puts it back on you, fo
 I?</strong> does it at once). The same 30 seconds closes a map card (a stop, place, station, closure or climb), the
 road info and the side menus (Detour, More, the dock, 311, Riders, Send alert), and the map then goes back to you. Kept
 open: a menu you are typing or speaking in (a Detour search, Send alert while its box holds words or Speak listens) and anything asking you
-something (Send alert's Send to everyone?, Already done?, a stop's name, Resume your ride?), and a dialog with the focus in it, such as Ride settings or the join sheet.
-The group's "Show me as a dot?" question still closes, as its No. In
+something (Send alert's Send to everyone?, Already done?, a stop's name, Resume your ride?), a dialog with the focus in it, such as Ride settings or the join sheet, and a map card or side menu holding a
+keyboard's or screen reader's focus (one a finger tapped still closes). The group's "Show me as a dot?" question still closes, as its No. In
 accessibility mode nothing closes on its own. A map card's close button (X) is 44 px across.</li>
 <li><strong>Off the route</strong>, RouteMaker plans again from where you are, and <strong>Reroute</strong>
 and <strong>Keep going</strong> appear just under End ride and Go round, as big as they are. On a route you picked over the top-ranked
@@ -1062,12 +1072,15 @@ Water, Restroom and Metro lists has <strong>Show on map</strong>; on a phone it 
 lettered pins, which stay until another sheet opens. In Eat, Water, Repair and Places to see, each row's first
 button is a filled <strong>Ride here</strong>, then <strong>Show on map</strong>, which opens the place's card.</li>
 <li><strong>Reach</strong>, the last of Plan's Find buttons, draws rings on the map of where you can get to in 15, 30,
-45 and 60 minutes from the plan's points, by the plan's ride type and Ride settings (Walk and Run on foot; the
-transit ride types have no rings yet). Choose <strong>From the point</strong> or <strong>To the point</strong>, and
+45 and 60 minutes from the plan's points, by the plan's ride type and Ride settings (Walk and Run on foot; Bikeshare on the share bike, the classic at 8 mph
+[13 km/h] or the e-bike where you chose it; the transit ride types have no rings yet). At Calm and Calmest the rings
+are drawn at Low-stress, since they show where low-stress ways reach in the time, not a calm route's long detours.
+Mountain Bike's rings take trails of every level, and say so; a plan keeps to yours. A point off the ride type's map
+is left out, with a note. Choose <strong>From the point</strong> or <strong>To the point</strong>, and
 which rings to draw; at least one stays on. With up to five points, <strong>Any of them</strong> shows where at least
 one point reaches, <strong>All of them</strong> where every one does, such as a place to meet, and <strong>Side by
-side</strong> a set for each. On a bike ride type that can go calmer, <strong>Calm streets</strong> adds the same
-minutes at Low-stress as dashed rings, so the gap shows what busy roads add. <strong>Ring by ring</strong> lists each
+side</strong> a set for each, named as its marker is (Start, Stop 1, End). On a bike ride type that can go calmer, <strong>Low-stress streets</strong> adds the same
+minutes on Low-stress streets only as dashed rings, so the gap shows what busy roads add. <strong>Ring by ring</strong> lists each
 ring's area and the Metro stations, bike racks, places to eat and places to see inside it, and <strong>Share these
 rings</strong> copies a link that opens Plan on the same rings, with a note when a point is your Home. The rings are
 not stored or logged.</li>
@@ -1400,7 +1413,11 @@ locks its dot, its alerts and the leader's path with a key made from that secret
 server passes on sealed text it cannot read, and it refuses a position that is not sealed. Every ride link
 carries a secret, a Featured route post's Group or Mass Ride link and a link an AI assistant planned included;
 the server keeps the secret for those two, so it can read those rides. A link without a secret, such as an
-old one, gets a new one when opened, so it starts a ride of its own. The full method is on the <a href="/about/architecture.html#apps">architecture page</a>.</li>
+old one, gets a new one when opened, so it starts a ride of its own. Each Group or Mass Ride plan has its own
+secret. When you change a plan after its link went out, or its link went out more than 12 hours ago, copying or
+sharing it again, Broadcast or Start ride first asks "Same ride or a new one?": Same ride keeps the link that went
+out, so its riders see you on the changed route; New ride makes a new link, and those with the earlier link do not
+see the new ride. The full method is on the <a href="/about/architecture.html#apps">architecture page</a>.</li>
 <li>The server keeps dots, the leader's route and path, and alerts in memory only, for 2 minutes. A
 phone's random ride code and its alert counts are forgotten 2 minutes after it last checked in.</li>
 <li>Planning a Mass Ride: <a href="/about/mass-ride.html">Mass Ride</a>.</li>
@@ -1442,7 +1459,7 @@ from the app's next update.</li>
 <p class="next">Next: <a href="/about/accessibility.html">Accessibility</a></p>
 </main>
 <footer>
-  <p>Part of RouteMaker's documentation. It describes version 0.20.0. The code is
+  <p>Part of RouteMaker's documentation. It describes version 0.21.0. The code is
   open source under the MIT licence:
   <a href="https://github.com/Macrophage87/RouteMaker">github.com/Macrophage87/RouteMaker</a>.</p>
   <p><a href="/">Back to the map</a></p>
