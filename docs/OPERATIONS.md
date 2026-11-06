@@ -52,6 +52,7 @@ Contents:
 - [Manual mode's heights need the routers restarted once (v0.9.1)](#manual-modes-heights-need-the-routers-restarted-once-v091)
 - [Best order needs the routers restarted once (OWNER-DECISIONS 449)](#best-order-needs-the-routers-restarted-once-owner-decisions-449)
 - [After a rebuild: restart the routers](#after-a-rebuild-restart-the-routers)
+- [The open data download (after a map swap)](#the-open-data-download-after-a-map-swap)
 - [Maryland traffic counts (MDOT SHA)](#maryland-traffic-counts-mdot-sha)
 - [DC closures (v0.7.0)](#dc-closures-v070)
 - [DDOT project advisories (v0.12.4)](#ddot-project-advisories-v0124)
@@ -79,6 +80,7 @@ Contents:
 - [Deploying v0.19.0](#deploying-v0190)
 - [Deploying v0.19.1](#deploying-v0191)
 - [Deploying v0.20.0](#deploying-v0200)
+- [Deploying v0.21.0](#deploying-v0210)
 - [Deploying a planner and front-end release: rollback points and verification](#deploying-a-planner-and-front-end-release-rollback-points-and-verification)
 - [Paths bicycles may not ride (NO-BIKE-PATHS)](#paths-bicycles-may-not-ride-no-bike-paths)
 - [Mountain-bike difficulty levels (456; claude/v0-4-0-mtb-levels)](#mountain-bike-difficulty-levels-456-claudev0-4-0-mtb-levels)
@@ -288,6 +290,7 @@ declining every week with "grow the volume" as the only remedy.
 | `rate_limit_window` rows (keyed client addresses, and a keyed account id for Featured routes posts the connector refused for the admin's Home, `CONNECTOR_POST_HOME`) | 1 day idle, so at most about 30 hours | `core.ratelimit.purge_expired`, run by the six-hourly membership sweep |
 | `shared_route` rows (the exact lines Share links open) | 1 year after the link was last opened | `core.shared_routes.prune`, at every share and every open, and nightly by the backup task |
 | `shared_route` rows an assistant app's plan made (`connector_draft` set) | As long as their draft: 24 hours, or until the app is disconnected | Deleted with the draft (the foreign key cascades); `core.shared_routes.expired` refuses them past 24 hours even before that. Links made before v0.15.0 name no draft (migration 0051 cannot tell them from other links), so they keep their old date and expire within 8 days of being made |
+| `shared_route_gone` rows (the id and time of a shared link whose route was deleted, nothing else) | 2 years, so an old link's id is never reused for another route | Written whenever a `shared_route` row is deleted (pruned, cascaded or by hand); `core.shared_routes.prune` drops them after 2 years. A rollback past migration 0056 drops the table, and links pruned before v0.21.0 have no row |
 | `connector_draft` rows (an assistant app's unsaved routes, with their points) | 24 hours (`ConnectorDraft.KEPT`), and none once the app is disconnected, the rider signs out everywhere, or the account is banned or deleted | `core.connector.drop_stale_drafts`, at every new draft and by the five-minute degraded-guild sweep; deleting a `connector_grant` deletes its drafts. The GPX link (`/mcp/gpx/<draft id>.<keyed digest>`) works only while its draft is kept and its app connected |
 | `signed_out_send` rows (a device's salted daily hash and the road, for the signed-out suggestion limits) | 24 hours | `core.signed_out_suggestions.prune`, at every signed-out send, and nightly by the backup task |
 
@@ -2413,6 +2416,11 @@ metro-typical.json from each line's page (`https://www.wmata.com/ridertools/line
 - The zips and the built file are the agencies' data. Keep them on the host and never commit them
   (docs/SOURCES.md, "Transit timetables").
 - The web process reads the file again when it changes, so no restart is needed.
+- Rail lines follow their tracks (Stephen, 2026-11-04: "Can't you find the shape files for the
+  routes?"). The build reads each rail feed's `shapes.txt` and stores each pattern's track, cut at
+  its stops; the report says "<system>: N of M patterns follow their track". A feed with no
+  `shapes.txt`, a bus, or Metro on its typical timetable is drawn straight from stop to stop, as
+  before. A schedule built before this keeps working, with straight lines, until the next refresh.
 
 **Refresh at least every 45 days.** The file holds 45 days of service from the build date
 (`--date`, default yesterday in Washington, so tonight's trips after midnight are covered on
@@ -2606,7 +2614,8 @@ owner's key. The plain archive exists only in the pipes between `pg_dump`, `age`
   beside the restored one as `<db>_before_<UTC yyyymmddHHMMSS>`: a whole, plain copy, sign-ins
   and connections included. Every `auto-release.sh` pass on the beta drops each one more than
   6½ days old, by the instant in its name, and logs it; younger ones and the live database are
-  never touched.
+  never touched. While the agent is paused or BROKEN the newest one is spared (it may be the copy
+  being restored from), and once it is over 6½ days old the alert channel says so once a day.
 
 ### Setting up the key (the owner, once)
 
@@ -2819,31 +2828,40 @@ restore is the restore, not a second fault.
 
 **What:** every night the owner's PC copies the beta's encrypted dumps
 (`/data/routemaker/backups/routemaker-<UTC>.dump.age`, written at 07:00 UTC) into
-`C:\Users\steph\Documents\RouteMaker\beta-backups`, which the PC's own backup covers. Only
+`C:\Users\<you>\Documents\RouteMaker\beta-backups`, which the PC's own backup covers. Only
 `.dump.age` files travel, never the plain `pre-*.dump` ones; they are useless without your
-backup key file, which stays on the PC. The newest 7 are kept there, as on the beta, so deleted data leaves them within a week as the privacy page says.
+backup key file, which stays on the PC. Like the beta, it keeps at most the newest 7 and none
+over 6½ days old (by the time in the name), the newest one excepted, and it prunes on every run,
+a failed one too, so deleted data leaves them within a week as the privacy page says.
 
-**How:** `scripts/pc/pull-beta-backups.sh`, run in WSL. It runs only `find` and a copy on the
-beta, under `sudo -n` (the folder is 0700, owned by the containers' uid). It writes `<name>.part`,
+**How:** `scripts/pc/pull-beta-backups.sh`, run in WSL. On the beta it runs `find` and a copy
+under `sudo -n` (the folder is 0700, owned by the containers' uid), and, without sudo, writes one
+marker file (the time of the last good pull) in the state folder for `alert.sh watch`. It writes `<name>.part`,
 checks the size against the beta's, renames, prunes old copies in that folder only, and adds
 one line to `pull-beta-backups.log` there. It asks nothing and exits 1 with the reason when
 ssh, the copy or `sudo` fails, or when the newest dump is over 48 h old (the beta's backup
-stopped). `RM_BETA_SSH` (default `chubby`) and `RM_BACKUP_DIR` override the host and the folder.
+stopped). `RM_BETA_SSH` (the beta's ssh alias) and `RM_BACKUP_DIR` (the folder above) are required: set them in
+the environment or, once, in `~/.config/routemaker/pull-beta-backups.env` (one `KEY=value` per line,
+outside the repo, so this PC's names stay out of it).
+After a run that ends ok it writes the newest dump's name to
+`~/routemaker-beta-state/pc-backup-pull` on the beta (only if that folder exists). The beta's
+`alert.sh watch` posts in the owner's alert channel once that file is over 36 h old, so a pull
+that fails, or that stops running at all, is reported there (BETA-RUNBOOK, "Alerts").
 
 **Install, once.** In WSL, check that both work with no prompt (each prints nothing and
 exits 0):
 
 ```sh
-ssh -o BatchMode=yes chubby true
+ssh -o BatchMode=yes <beta-ssh-alias> true
 ```
 
 ```sh
-ssh -o BatchMode=yes chubby sudo -n true
+ssh -o BatchMode=yes <beta-ssh-alias> sudo -n true
 ```
 
 If the first fails, your ssh key needs a passphrase and a scheduled run has no agent to ask:
 give this job a key of its own without one, or load yours with `keychain` from `~/.profile`
-(it then works until WSL restarts). The script reports it as `ssh chubby did not connect
+(it then works until WSL restarts). The script reports it as `ssh <beta-ssh-alias> did not connect
 (exit 255)`. Then run it once by hand, and register the nightly task (current user, no admin;
 running it again just replaces the task):
 
@@ -2855,35 +2873,102 @@ running it again just replaces the task):
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$(wslpath -w ~/src/RouteMaker/scripts/pc/install-backup-pull-task.ps1)"
 ```
 
-The task (`RouteMaker - Pull beta backups`, in the Task Scheduler Library root) runs `wsl.exe -d Ubuntu-26.04 -- bash -lc
-"~/src/RouteMaker/scripts/pc/pull-beta-backups.sh"` daily at 04:00 New York time: 1 h after
-the dump in summer (07:00 UTC is 03:00 EDT), 2 h in winter (02:00 EST). If the PC is off or
-asleep then, it runs as soon as it can. It runs only while you are signed in to Windows.
+The task (`RouteMaker - Pull beta backups`, in the Task Scheduler Library root) runs
+`~/src/RouteMaker/scripts/pc/pull-beta-backups.sh` in `Ubuntu-26.04` daily at 04:00 New York
+time: 1 h after the dump in summer (07:00 UTC is 03:00 EDT), 2 h in winter (02:00 EST). If the
+PC is off or asleep then, it runs as soon as it can. It runs only while you are signed in to
+Windows, and only while that distro is already running: it checks with `wsl.exe -l --running`
+first and otherwise ends with result 3 and starts nothing, because booting the distro would
+start the home stack (`routemaker-boot.service`, [DEPLOYMENT.md](DEPLOYMENT.md), "Starting the
+stack after a reboot"). A PC whose distro stays down for 36 h shows up as a stale copy on the
+beta's alert channel.
 
 **Did it run?** The last lines of the log, `ok ... newest=routemaker-<yesterday>...`:
 
 ```sh
-tail -n 3 /mnt/c/Users/steph/Documents/RouteMaker/beta-backups/pull-beta-backups.log
+tail -n 3 /mnt/c/Users/<you>/Documents/RouteMaker/beta-backups/pull-beta-backups.log
 ```
 
 or in PowerShell, `Get-ScheduledTaskInfo -TaskPath '\' -TaskName 'RouteMaker - Pull
-beta backups'` (`LastTaskResult` 0 is ok, 1 is a `FAILED` line in the log).
+beta backups'` (`LastTaskResult` 0 is ok, 1 is a `FAILED` line in the log, 3 is a night the
+distro was not running, so nothing ran).
+
+### A key that can only pull backups
+
+The nightly pull can use a key of its own that the beta lets do nothing else: list the dumps,
+read one, and write the `pc-backup-pull` mark. `scripts/beta/backup-pull-gate.sh` is installed
+as that key's forced command (`restrict,command=...` in `~/.ssh/authorized_keys`), so every login
+with it runs the gate whatever it asked for, with no shell, pty or forwarding. The gate compares
+the asked-for command with the exact ones `pull-beta-backups.sh` sends and does that one thing
+itself; anything else ends with exit 126. It always answers `rsync=0`, so the dumps come over as
+a plain `sudo -n cat` read. If the pull's remote commands ever change, change the gate with them
+(`tests/test_beta_backup_pull_gate.py` runs the real pull through it) and install it again.
+
+Set it up once, in WSL on the PC (`Ubuntu-26.04`, your own user), after
+`~/.config/routemaker/pull-beta-backups.env` is written (above). The ordinary login installs the
+gate; the new key has no passphrase, since a scheduled run has no one to type it.
+
+```sh
+cd ~/src/RouteMaker && git fetch origin release/v0.21.0
+```
+
+```sh
+[ -e ~/.ssh/rm_backup_pull ] || ssh-keygen -t ed25519 -N '' -C rm-backup-pull -f ~/.ssh/rm_backup_pull
+```
+
+```sh
+git show origin/release/v0.21.0:scripts/beta/backup-pull-gate.sh > /tmp/backup-pull-gate.sh && ssh <beta-ssh-alias> 'cat > backup-pull-gate.sh' < /tmp/backup-pull-gate.sh
+```
+
+```sh
+ssh <beta-ssh-alias> 'bash backup-pull-gate.sh --install && rm backup-pull-gate.sh' < ~/.ssh/rm_backup_pull.pub
+```
+
+A host alias for the new key, copying the beta's address and known-hosts settings from the alias
+you already have. It goes at the top of `~/.ssh/config`, because ssh takes the first value it
+finds and a `Host *` block further down must not win:
+
+```sh
+{ printf 'Host <beta-ssh-alias>-backup\n'; ssh -G <beta-ssh-alias> | awk '$1~/^(hostname|user|port|proxyjump|proxycommand|hostkeyalias|userknownhostsfile)$/ {k=$1; $1=""; print "  " k $0}'; printf '  IdentityFile ~/.ssh/rm_backup_pull\n  IdentitiesOnly yes\n\n'; cat ~/.ssh/config 2>/dev/null; } > ~/.ssh/config.new && chmod 600 ~/.ssh/config.new && mv ~/.ssh/config.new ~/.ssh/config
+```
+
+Check that it is refused anything else (`refused: this key may only pull backups`, exit 126),
+then that a pull works through it (`ok: copied ...`):
+
+```sh
+ssh <beta-ssh-alias>-backup id; echo "exit $?"
+```
+
+```sh
+RM_BETA_SSH=<beta-ssh-alias>-backup bash <(git show origin/release/v0.21.0:scripts/pc/pull-beta-backups.sh)
+```
+
+Then point the nightly pull at it, and check that the file now shows the `-backup` alias. It
+reads the file from v0.21.0 on; until then the PC's checkout still pulls over the ordinary alias.
+
+```sh
+sed -i 's/^RM_BETA_SSH=.*/RM_BETA_SSH=<beta-ssh-alias>-backup/' ~/.config/routemaker/pull-beta-backups.env && cat ~/.config/routemaker/pull-beta-backups.env
+```
+
+To take the key back: delete its line (comment `rm-backup-pull`) from `~/.ssh/authorized_keys`
+on the beta.
 
 ### Test-restore once (on the PC, beta untouched)
 
 Proves the key still opens the dumps and that a dump restores. Docker on the PC; the plain
 archive exists only inside a throwaway container. Every few months, and after a key change.
 
-1. Start an empty PostGIS like the beta's, no ports published:
+1. Start an empty PostGIS, the same image as the stack's (`compose.yaml`, by digest), with no
+   network at all: the dump goes in through `docker exec`, so it needs none.
 
    ```sh
-   docker run -d --name rm-restore-test -e POSTGRES_PASSWORD=test postgis/postgis:16-3.4
+   docker run -d --name rm-restore-test --network none -e POSTGRES_PASSWORD=test docker.io/postgis/postgis:16-3.4@sha256:44126d872ac91993766c341e369c539e8196614321765d36a6f1bab0419a5fa5
    ```
 
 2. Decrypt the newest copy into it (age asks for the passphrase if your key file has one):
 
    ```sh
-   f=$(ls -1 /mnt/c/Users/steph/Documents/RouteMaker/beta-backups/routemaker-*.dump.age | tail -n 1); echo "$f"
+   f=$(ls -1 /mnt/c/Users/<you>/Documents/RouteMaker/beta-backups/routemaker-*.dump.age | tail -n 1); echo "$f"
    ```
 
    ```sh
@@ -2941,7 +3026,7 @@ have not lately.
    600 (the key never goes to the server):
 
    ```sh
-   age -d -i <your backup key file> /mnt/c/Users/steph/Documents/RouteMaker/beta-backups/routemaker-<instant>.dump.age | ssh chubby 'umask 077; cat > "$HOME/routemaker-beta-state/restore.dump"'
+   age -d -i <your backup key file> /mnt/c/Users/<you>/Documents/RouteMaker/beta-backups/routemaker-<instant>.dump.age | ssh <beta-ssh-alias> 'umask 077; cat > "$HOME/routemaker-beta-state/restore.dump"'
    ```
 
 3. **On the beta**, restore into the scratch database and swap (it takes a `pre-rollback`
@@ -5322,6 +5407,47 @@ bus road moved for another reason (an OSM edit since the last extract): check it
 history there. The ways also drop out of the car-free path
 count on the map (fewer `facility = 'path'` roads, outside the trail classes).
 
+## The open data download (after a map swap)
+
+The owner, 2026-11-05: "In our documentation is it possible to offer a link to download all of
+our data in common formats that could be readable by gis and the like?", then "GitHub Releases"
+for where the files live, and "For anything we don't hava license on, just link to it." The
+Acknowledgements page links to the repository's data releases ("Download our data").
+
+What is in it, and what stays out of its columns and is linked instead (Maryland's state
+layers, Arlington's Bike Comfort Index, Capital Bikeshare's trips, live closures; the owner:
+agency data is cited "In our why's"), is `routemaker.open_data`'s docstring; the README written with the files says the same to whoever downloads them.
+Nothing from rides, riders, accounts or logs is read (`core.open_data_export`).
+
+1. After the swap is done and the routers are restarted, on the PC, from the checkout (the api
+   image has GDAL, which adds the spatial index; the bike-parking file comes from the checkout):
+
+   ```sh
+   mkdir -p ~/routemaker-data/exports && sudo chown 10001:10001 ~/routemaker-data/exports
+   docker compose run --rm --no-deps \
+     -v ~/routemaker-data/exports:/data/exports \
+     -v "$PWD/frontend/src/amenity-data:/amenity:ro" \
+     api python manage.py export_open_data --out /data/exports --racks /amenity/bike-parking.json
+   ```
+
+   It reads the live table (about 1.4 million segments) and writes, for the day's date,
+   `routemaker-data-<date>/` (the GeoPackage, `csv/`, `geojson/`, README.md, LICENSE.md), three
+   zips (`-gpkg`, `-csv`, `-geojson`) and `-SHA256SUMS`. It writes nothing to the database.
+   It also reads Arlington's Bike Comfort Index from the county's ArcGIS service, for
+   `agency-comparison.json` only (miles in each bucket, no Arlington data in the files; its
+   comfort categories read as 1 to 4, the owner, 2026-11-05: "assuming that LTS1 is "most
+   comfortable" to LTS4 being "Not Recommended""). If the service is down it says so and
+   leaves Arlington out; `--no-arlington` skips it.
+2. Copy `agency-comparison.json` into the docs generator's folder, beside its `content.py`
+   (the copy the Methodology and architecture docs thread builds from), so the stress page's comparison charts carry the new numbers.
+3. Show the owner the README and the counts it printed. Uploading publishes the files: it waits
+   for the owner's go each time.
+4. With the go, make a release named and tagged `data-<date>` on
+   <https://github.com/Macrophage87/RouteMaker/releases/new> (target `main`, "Set as the latest
+   release" off, so an app release is never displaced), paste README.md's first two sections as
+   its notes, and attach the three zips and the SHA256SUMS file. Each zip must stay under
+   GitHub's 2 GiB limit per file.
+
 ## Maryland traffic counts (MDOT SHA)
 
 FOLLOWUP-MDOT-AADT (OWNER-DECISIONS 429; download approved for the v0.5.0 rebuild,
@@ -7041,8 +7167,8 @@ Dockerfile, so the beta ships by hand. At home, in order, with `</dev/null` on e
 - [ ] **Caddy**, after the fast-forward: `docker compose pull caddy`, validate the new Caddyfile against the new image ("Changing
   the Caddyfile on a running stack" in docs/DEPLOYMENT.md), then
   `docker compose up -d --no-deps --no-build --force-recreate caddy`.
-- [ ] **The routers, before the api.** Restart every router ("A release that changes
-  `valhalla/*.json`" in docs/DEPLOYMENT.md). The v0.19.1 api works with the new configs; the new api
+- [ ] **The routers, before the api.** Restart every router that runs, the `offroad` profile's
+  included ("A release that changes `valhalla/*.json`" in docs/DEPLOYMENT.md). The v0.19.1 api works with the new configs; the new api
   needs them (Reach answers nothing and a ride past several curved closures can read as no route).
 - [ ] **The api.** `docker compose up -d --no-deps --no-build --force-recreate api worker`, and
   `rebuild` too once no rebuild job is queued or running. No `migrate`. Then the tile pre-draw
@@ -7070,6 +7196,89 @@ Dockerfile, so the beta ships by hand. At home, in order, with `</dev/null` on e
   `Caddyfile`, then recreate `caddy`), then the pre-draw again (format 15). The routers need no
   restart back: a v0.19.1 api sends fewer vertices and no isochrone call. Loaded override rows stay;
   retire them with the loader if they must go.
+
+## Deploying v0.21.0
+
+Transit in a ride: the stops and time left on board, the line along its track and each stop's
+time (#976, #978), resuming a trip after switching apps (#979); the 2026-11-05 repo review's fixes
+(#980: Group and Mass Ride links keyed per plan with "Same ride or a new one?" after 12 hours or
+after a change,
+Detour's Go round, Reach's own rate limits and costing per ride type, the MCP connector's `reach`
+and `compare_places` answered in process, closures checked as far as a plan reaches); the open data
+download (#982); mile markers on the route line (#987); 671 Baltimore City owner rows corrected (#975); and a key of its own for the PC's
+backup pull (#983).
+
+**What changes for the host.** Migration 0056 (`shared_route_gone`, home's own table, never
+shipped: `ship-data.sh` leaves it out). `src/pipeline/schema.py` and `writers.py` add the segment
+column `stress_computed_half`, which the next map rebuild fills; the api reads it only where the
+live table has it (`core.segment_info`), so the release runs on the current map. Reach has rate
+limits of its own (`REACH`, `REACH_ISOCHRONES`, in code: no environment variable).
+`scripts/build_transit_schedule.py` stores each rail pattern's track from `shapes.txt`; an old
+schedule keeps working, drawn stop to stop. `scripts/beta/` (the agent, `alert.sh`'s PC-pull
+watch, `receive-data.sh`, `ship-data.sh`) and `scripts/pc/` (the backup pull reads
+`~/.config/routemaker/pull-beta-backups.env` and the pull-only alias of "A key that
+can only pull backups"). **No `valhalla/*.json`, compose, Caddyfile, nginx, Dockerfile,
+requirements, `lua/` or `mobile/` change, no tile `FORMAT_VERSION` change, no new environment
+variable or scheduled job, and no new outbound host for the stack** (the open data export, run by hand on
+the PC, reads Arlington's ArcGIS service; `--no-arlington` skips it). The routers need no restart. The beta agent's gate
+stops on `src/pipeline/schema.py` (`reason=src/pipeline/schema.py: the live table layout
+changed`), as at v0.19.0, though the column is optional: the beta ships by hand, with no map data
+(the transit schedule only). At home, in order, with `</dev/null` on every docker command:
+
+- [ ] **The tag.** Once `test` and `a11y` are green on `main`, the owner tags v0.21.0 (annotated) on
+  that commit, from the PC.
+- [ ] **Rollback points and images**, as "Deploying a planner and front-end release", with the
+  weekly rebuild paused or not due, and out of 07:00-07:30 UTC: tag the running api **and pipeline**
+  images `pre-rel-<short>`, fast-forward the checkout, then `docker compose build api rebuild` (the
+  pipeline image writes the new column at the next rebuild).
+- [ ] **The api.** `docker compose run --rm --no-deps migrate` (0056), then
+  `docker compose up -d --no-deps --no-build --force-recreate api worker`, and `rebuild` too once
+  no rebuild job is queued or running. No router restart, no pre-draw.
+- [ ] **The front end**, last.
+- [ ] **The PC backup pull.** Its scheduled task runs the script from `~/src/RouteMaker`, not from
+  the serving worktree, so fast-forward that checkout to the tag too, then run
+  `install-backup-pull-task.ps1` again ("Off-box copies of beta backups", Install) so the task takes
+  its v0.21.0 settings. `~/.config/routemaker/pull-beta-backups.env` and the pull-only key are in
+  place (the owner set both up on 2026-11-06). Without the file each pull exits 1 saying so, and
+  `alert.sh watch` reports it after 36 h. After the next 04:00 run, `pull-beta-backups.log` names
+  the pull-only alias and says `marked=yes`.
+- [ ] **The transit schedule**, rebuilt with the new script ("Transit schedule", Build it on the
+  home PC), so rail lines follow their tracks. The build's report says "<system>: N of M patterns
+  follow their track" for MARC, Light RailLink and the rest; a system with none is drawn straight
+  from stop to stop ("Transit schedule"). The beta takes the new schedule in its hand ship below.
+  Without this step the lines are drawn straight stop to stop until the next 45-day refresh.
+- [ ] **The open data download**, after the api is on v0.21.0 (the command ships in it): "The open
+  data download (after a map swap)", step 1 on the PC, then `agency-comparison.json` beside the docs
+  generator and the stress page regenerated; the upload to a `data-<date>` GitHub release waits for
+  the owner's go, and comes **before the beta deploy**, since the Acknowledgements page's "Download
+  our data" link points at it.
+- [ ] **The overrides: none until the owner confirms.**
+  `fixtures/overrides/2026-11-04-owner-baltimore-city-review.json` (671 rows, corrected in #975) is
+  loaded only after the owner confirms that file (stdin, dry run then `--confirm`), and before the
+  map rebuild that should carry it.
+- [ ] **Beta**, by hand as "Shipping an update later" (docs/BETA-RUNBOOK.md): pause the agent
+  (`pause --wait`), snapshot the database (`--label release`), copy `index.html`, check out the
+  tag, set `TAG=`, `check_beta_compose.py` ("beta compose: ok"), build the api image, migrate in the
+  migrate container (0056), start api and worker, the front end, `smoke-test.sh --local --trails`
+  then `--public`. No map data, no router restart, no pre-draw. The rebuilt transit schedule goes
+  in this ship, while the agent is paused: the `transit` part alone (BETA-RUNBOOK, "the bundle carries
+  the transit ride types' schedule"). The agent changed:
+  `mark-deployed v0.21.0`, then `scripts/beta/auto-release.sh install`, then `resume`.
+- [ ] **Spot checks.** A bike + transit ride on MARC or Metro: on board, the card shows the stops
+  and minutes left and an arrival time, the stop list shows each stop's time, and the ride map
+  draws the line in its colour along the track, with the stop to get off filled. Where am I? on the
+  train gives the line and the stop to get off, never "arrived". Switch apps on the train, come
+  back, press Resume: the trip carries on. In a ride, Detour's menu offers "Go round: road closed
+  ahead". Copy a Group Ride link, change the plan and copy again: "Same ride or a new one?"; Same ride
+  gives the first link, New ride a new one. Plan > Find > Reach
+  on Walk draws rings. Acknowledgements shows "Download our data". A route over 5 miles, zoomed in
+  to street level (zoom 11+), shows a white dot each mile and a larger numbered dot at 5; with Units
+  in kilometers, a dot each km (zoom 12+) and a 5 at 5 km.
+- [ ] **Rollback.** The `pre-rel` api and pipeline images (`--force-recreate api worker rebuild`)
+  and the v0.20.0 front end. Migration 0056 only adds a table: the v0.20.0 api ignores it, so the
+  database stays migrated. A schedule rebuilt with tracks still works with the v0.20.0 api (it
+  ignores `shape` and `cuts`). On the beta: rollback A (the snapshot is there if needed), then
+  `auto-release.sh hold v0.21.0` so the agent does not deploy it again.
 
 ## Deploying a planner and front-end release: rollback points and verification
 
