@@ -2552,6 +2552,7 @@ export const ES: Readonly<Record<string, string>> = {
   // ---- Same ride or a new one? (SameRideDialog, 2026-11-05) ----
   "Same ride or a new one?": "¿El mismo recorrido o uno nuevo?",
   "This ride's link went out more than 12 hours ago. A new ride gets a new link, so those with the earlier link do not see it.": "El enlace de este recorrido se envió hace más de 12 horas. Un recorrido nuevo tiene un enlace nuevo, así que quienes tienen el enlace anterior no lo ven.",
+  "You changed the route after its link went out. A new ride gets a new link, so those with the earlier link do not see it.": "Cambiaste la ruta después de enviar su enlace. Un recorrido nuevo tiene un enlace nuevo, así que quienes tienen el enlace anterior no lo ven.",
   "Same ride": "El mismo recorrido",
   "New ride": "Recorrido nuevo",
 };

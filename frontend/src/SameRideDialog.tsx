@@ -1,13 +1,14 @@
 /**
  * "Same ride or a new one?" (2026-11-05): asked once when the organiser copies or shares a Group or Mass Ride plan's
- * link, or starts its ride, and the plan's link went out more than 12 hours ago (lib/rideGroup.ts asksSameRide). Same
+ * link, or starts its ride, and the plan's link went out more than 12 hours ago (lib/rideGroup.ts asksSameRide), or the
+ * plan was changed after its link went out (`lead`: SAME_RIDE_EDITED_LEAD; the owner, 2026-11-06). Same
  * ride keeps the link's key; New ride makes a new ride id and key, then goes on. The platform's modal <dialog>: New
  * ride takes the focus, and Escape goes back with nothing sent or started; a browser without it shows it in the page.
  */
 import { useEffect, useId, useRef } from "react";
 import { NEW_RIDE, SAME_RIDE, SAME_RIDE_LEAD, SAME_RIDE_QUESTION } from "./lib/rideGroup.ts";
 
-export function SameRideDialog({ open, onSame, onNew, onCancel }: { open: boolean; onSame: () => void; onNew: () => void; onCancel: () => void }) {
+export function SameRideDialog({ open, onSame, onNew, onCancel, lead = SAME_RIDE_LEAD }: { open: boolean; onSame: () => void; onNew: () => void; onCancel: () => void; lead?: string }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const newRef = useRef<HTMLButtonElement>(null);
   const opener = useRef<Element | null>(null);
@@ -51,7 +52,7 @@ export function SameRideDialog({ open, onSame, onNew, onCancel }: { open: boolea
       {open && (
         <>
           <h2 id={headingId}>{SAME_RIDE_QUESTION}</h2>
-          <p id={leadId}>{SAME_RIDE_LEAD}</p>
+          <p id={leadId}>{lead}</p>
           <div className="closure-choices">
             <button type="button" ref={newRef} className="primary" onClick={onNew}>
               {NEW_RIDE}

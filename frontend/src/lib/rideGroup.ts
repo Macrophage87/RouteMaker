@@ -144,6 +144,8 @@ export const RIDE_SENT_KEY = "routemaker.own-ride-sent";
 export const SAME_RIDE_ASK_MS = 12 * 3600_000;
 export const SAME_RIDE_QUESTION = t("Same ride or a new one?");
 export const SAME_RIDE_LEAD = t("This ride's link went out more than 12 hours ago. A new ride gets a new link, so those with the earlier link do not see it.");
+/** The lead when the plan changed after its link went out (the owner, 2026-11-06: an edit keeps the ride only if asked). */
+export const SAME_RIDE_EDITED_LEAD = t("You changed the route after its link went out. A new ride gets a new link, so those with the earlier link do not see it.");
 export const SAME_RIDE = t("Same ride");
 export const NEW_RIDE = t("New ride");
 
@@ -197,6 +199,21 @@ export function newRide<L>(leads: Map<string, L>, secrets: PlanSecrets, secret: 
  */
 export function rideSecretOf(open: { ride?: boolean; id?: string; lead?: string | null; secret?: string | null } | null, plan: string): string | null {
   return open?.ride && open.id && open.lead ? (open.secret ?? null) : plan;
+}
+
+/** Whether a link with this secret went out from this tab at all. */
+export function wasRideSent(secret: string, store: Store | null = session()): boolean {
+  return sentTimes(store)[`d${secretDigest(secret)}`] !== undefined;
+}
+
+/**
+ * The secret a changed plan is asked about (the owner, 2026-11-06): the sent one of the plan it was changed from, kept
+ * through further changes until asked; none once cleared, or back on a plan whose own link went out.
+ */
+export function editedFromNext(edited: string | null, before: string, next: string, empty: boolean, sent: (secret: string) => boolean): string | null {
+  if (empty || sent(next)) return null;
+  if (next !== before && sent(before)) return edited ?? before;
+  return edited;
 }
 
 /** Whether a link with this secret went out longer ago than SAME_RIDE_ASK_MS: ask "Same ride or a new one?" first. */

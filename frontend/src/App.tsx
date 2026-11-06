@@ -344,7 +344,7 @@ import { KNOWN_OPERATORS, docksStatus, mergeOperators, operatorsToAsk, readOpera
 import { SaveRoute } from "./SaveRoute.tsx";
 import { firstWordAndRest, planLanguageAttributes } from "./lib/i18n.ts";
 import { SAVE_ROUTE } from "./lib/savedRoutes.ts";
-import { BROADCAST_FOLLOWING, BROADCAST_NO_KEY, consentFor, followsWithoutKey, asksSameRide, forgetAnsweredHere, isOwnSecret, isRideLink, isRideLinkType, markOwnSecret, markRideSent, newRide, planSecrets, presetSecret, rideLeadFor, ridePlanKey, rideSecretOf, leadConsent, leaderKey, newToken, opensIntoRide, rideOf, sharedAfterRide, type PlanSecrets, type RideLinkType } from "./lib/rideGroup.ts";
+import { SAME_RIDE_EDITED_LEAD, editedFromNext, wasRideSent, BROADCAST_FOLLOWING, BROADCAST_NO_KEY, consentFor, followsWithoutKey, asksSameRide, forgetAnsweredHere, isOwnSecret, isRideLink, isRideLinkType, markOwnSecret, markRideSent, newRide, planSecrets, presetSecret, rideLeadFor, ridePlanKey, rideSecretOf, leadConsent, leaderKey, newToken, opensIntoRide, rideOf, sharedAfterRide, type PlanSecrets, type RideLinkType } from "./lib/rideGroup.ts";
 import { newRideSecret, secretFrom, withSecret, withoutSecret } from "./lib/rideSeal.ts";
 
 // Before the map adds the stress source (MapView, after its first probe).
@@ -1491,6 +1491,8 @@ export function App() {
   ownSecrets.current ??= planSecrets();
   // The points the secret in force is for.
   const secretPlan = useRef(points);
+  // The sent secret of the plan this one was changed from, until asked "Same ride or a new one?" (sameRideFirst).
+  const editedFrom = useRef<string | null>(null);
   const presetBefore = useRef(preset);
   useEffect(() => {
     const was = presetBefore.current;
@@ -1509,7 +1511,14 @@ export function App() {
     if (riding) return;
     const empty = points.length === 0;
     if (empty) groupSecretOwn.current = true;
-    if (groupSecretOwn.current) setGroupSecret(ownSecrets.current!.secretFor(ridePlanKey(preset, points), empty));
+    if (empty) editedFrom.current = null;
+    if (groupSecretOwn.current) {
+      const next = ownSecrets.current!.secretFor(ridePlanKey(preset, points), empty);
+      // A plan whose link went out, changed: the next link or Start ride asks "Same ride or a new one?" (the owner,
+      // 2026-11-06), Same ride keeping the link that went out. Back to a plan whose own link went out, nothing is asked.
+      editedFrom.current = editedFromNext(editedFrom.current, groupSecret, next, empty, (secret) => wasRideSent(secret));
+      setGroupSecret(next);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- a change of points only; a change of type is above.
   }, [points]);
   // The page's own secret is kept for its plan, and marked as its own in this tab.
@@ -3574,7 +3583,8 @@ export function App() {
   // A ride link (Share ride, Broadcast; `ride`) is asked about by its leader's secret, the one it would go out with
   // (rideLeadNow): New ride drops every leader the ride links went out with too, so the next goes with a new one.
   // Start ride (`start`) is asked about by the secret the ride would go under: the led line's this page shared, else the plan's.
-  const [sameRideAsk, setSameRideAsk] = useState<{ then: (secret: string) => void; secret: string; cancel?: () => void } | null>(null);
+  // A plan changed after its link went out (`edited`, editedFrom) is asked about too, by the secret that went out.
+  const [sameRideAsk, setSameRideAsk] = useState<{ then: (secret: string) => void; secret: string; cancel?: () => void; edited?: boolean } | null>(null);
   const sameRideFirst = (go: (secret: string) => void, ride = false, cancel?: () => void, start = false) => {
     const now = Date.now();
     const lead = ride && followedInRide() === null ? rideLeadNow() : null;
@@ -3588,7 +3598,9 @@ export function App() {
         : !riding && isRideLink(preset, points) && groupSecretOwn.current && asksSameRide(groupSecret, now)
           ? groupSecret
           : null;
+    const edited = !asked && !ride && !led && !riding && isRideLink(preset, points) && groupSecretOwn.current && !wasRideSent(groupSecret) ? editedFrom.current : null;
     if (asked) setSameRideAsk({ then: go, secret: asked, cancel });
+    else if (edited) setSameRideAsk({ then: go, secret: edited, cancel, edited: true });
     else go(groupSecret);
   };
   // The same, for a press that answers what to say (the ride screen's Broadcast): "" when going back.
@@ -3599,6 +3611,14 @@ export function App() {
     setSameRideAsk(null);
     if (!ask) return;
     if (same === null) return ask.cancel?.();
+    if (ask.edited) {
+      editedFrom.current = null;
+      if (!same) return ask.then(groupSecret);
+      // Same ride: the changed plan goes out under the link that went out, kept for it from now on.
+      markRideSent(ask.secret, Date.now(), true);
+      setGroupSecret(ask.secret);
+      return ask.then(ask.secret);
+    }
     if (same) {
       markRideSent(ask.secret, Date.now(), true);
       return ask.then(groupSecret);
@@ -6679,7 +6699,7 @@ export function App() {
         onNotNow={dropLeft}
         onLater={() => setLeftAsk(null)}
       />
-      <SameRideDialog open={sameRideAsk !== null} onSame={() => answerSameRide(true)} onNew={() => answerSameRide(false)} onCancel={() => answerSameRide(null)} />
+      <SameRideDialog open={sameRideAsk !== null} lead={sameRideAsk?.edited ? SAME_RIDE_EDITED_LEAD : undefined} onSame={() => answerSameRide(true)} onNew={() => answerSameRide(false)} onCancel={() => answerSameRide(null)} />
       <StartOnComputerDialog
         open={computerAsk !== null}
         onBack={() => setComputerAsk(null)}
