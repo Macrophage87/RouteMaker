@@ -31,7 +31,11 @@ export const BETA_DISCORD_URL = "https://discord.gg/Qwz6BEt6gc";
 
 export const BETA_SIGNUP_TEXT = t("Sign up to test here!");
 
-export const BETA_SIGNUP_URL = "https://forms.gle/dipMsGpheyF3oQA59";
+/**
+ * The Android beta's how-to-join page (Stephen 2026-11-06: "For sign up to test in Beta, send the webpage with
+ * instructions to the Google group"): join the testers' Google Group, opt in on Play, install. Was the sign-up form.
+ */
+export const BETA_SIGNUP_URL = "/about/android-beta.html";
 
 export const BETA_REPORT_LINK_TEXT = t("Report a problem");
 
