@@ -93,6 +93,42 @@ def basemap_dir(root: Path) -> Path:
     return basemap
 
 
+# Caddy's word that the internal CA's certificate for `localhost` is made, and that making it
+# failed and is put off. The certificate takes milliseconds, but on a container's first start
+# Caddy's storage clean-up runs at the same moment and can remove the folder it is being saved in
+# ("deleting site folder because key is empty", then "saving assets: failed to create temp
+# file"), and Caddy tries again only a minute later.
+CERTIFICATE_OBTAINED = '"msg":"certificate obtained successfully"'
+OBTAIN_PUT_OFF = '"logger":"tls.obtain","msg":"will retry"'
+
+
+def wait_for_localhost_certificate(logs, restart, limit_s: float = 60.0) -> None:
+    """Wait for Caddy to log the certificate made, however long a busy machine takes. Where it
+    logs the attempt put off instead, the container is restarted (`restart`): the clean-up is
+    recorded in its storage and does not run again on the next start, so the certificate is made
+    then, without waiting out Caddy's minute."""
+    deadline = time.monotonic() + limit_s
+    put_off = 0
+    while True:
+        text = logs()
+        if CERTIFICATE_OBTAINED in text:
+            return
+        if text.count(OBTAIN_PUT_OFF) > put_off:
+            put_off = text.count(OBTAIN_PUT_OFF)
+            restart()
+        if time.monotonic() > deadline:
+            pytest.fail(f"caddy made no certificate for localhost in {limit_s:.0f} s: {text}")
+        time.sleep(0.2)
+
+
+def restart(name: str, logs) -> None:
+    done = subprocess.run(
+        ["docker", "restart", name], capture_output=True, text=True, stdin=subprocess.DEVNULL
+    )
+    if done.returncode != 0:
+        pytest.fail(f"caddy did not restart ({done.stderr.strip()}): {logs()}")
+
+
 @pytest.fixture(scope="module", params=["http", "https"])
 def edge(request, tmp_path_factory):
     scheme = request.param
@@ -121,6 +157,8 @@ def edge(request, tmp_path_factory):
             ],
             check=True, capture_output=True, stdin=subprocess.DEVNULL,
         )  # fmt: skip
+        if scheme == "https":
+            wait_for_localhost_certificate(logs, lambda: restart(name, logs))
         mapped = subprocess.run(
             ["docker", "port", name, f"{port_inside}/tcp"],
             capture_output=True, text=True, stdin=subprocess.DEVNULL,

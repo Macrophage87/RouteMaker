@@ -109,6 +109,13 @@ class Decision:
 # planner is both, so it is the one figure.
 ROUTING = Limit(scope="route", requests=60, window_s=60)
 
+# Reach (POST /api/reach): counted apart from ROUTING, so a rider trying Reach's settings never
+# spends the budget Go's plans and a ride's re-routes need; the routing slots are shared all
+# the same (ROUTING_IN_FLIGHT). REACH counts the requests, REACH_ISOCHRONES the router calls
+# they make, one each, as each is made (`take`); one answered from the cache costs nothing.
+REACH = Limit(scope="reach", requests=60, window_s=60)
+REACH_ISOCHRONES = Limit(scope="reach-isochrone", requests=60, window_s=60)
+
 # A superseded plan cancelled (POST /api/route/cancel, core.plan_cancel; routing audit S7,
 # the owner 2026-10-27): one per Go edit made while a full plan runs, never more than the
 # plans sent, so ROUTING's figure, counted apart so an edit does not spend it twice.
@@ -339,6 +346,50 @@ def hit(limit: Limit, client: str, cost: int = 1) -> Decision:
         hits, remaining = cursor.fetchone()
     if hits <= limit.requests:
         return Decision(allowed=True, retry_after_s=0)
+    return Decision(allowed=False, retry_after_s=min(limit.window_s, max(1, int(remaining))))
+
+
+_TAKE = """
+INSERT INTO rate_limit_window AS w (scope, client, window_start, hits)
+VALUES (
+    %(scope)s,
+    %(client)s,
+    to_timestamp(floor(extract(epoch FROM clock_timestamp()) / %(window)s) * %(window)s),
+    %(cost)s
+)
+ON CONFLICT (scope, client) DO UPDATE SET
+    hits = CASE WHEN w.window_start = EXCLUDED.window_start
+        THEN w.hits + %(cost)s ELSE %(cost)s END,
+    window_start = EXCLUDED.window_start
+WHERE (CASE WHEN w.window_start = EXCLUDED.window_start
+        THEN w.hits + %(cost)s ELSE %(cost)s END) <= %(requests)s
+RETURNING w.hits
+"""
+
+_LEFT_S = """
+SELECT ceil(extract(epoch FROM window_start + make_interval(secs => %(window)s)
+                           - clock_timestamp()))::integer
+FROM rate_limit_window WHERE scope = %(scope)s AND client = %(client)s
+"""
+
+
+def take(limit: Limit, client: str, cost: int = 1) -> Decision:
+    """Count `cost` against `limit` for `client` only where it fits: unlike `hit`, a refusal
+    counts nothing, so what was refused is never spent."""
+    params = {
+        "scope": limit.scope,
+        "client": client,
+        "window": limit.window_s,
+        "cost": cost,
+        "requests": limit.requests,
+    }
+    with connection.cursor() as cursor:
+        cursor.execute(_TAKE, params)
+        if cursor.fetchone() is not None:
+            return Decision(allowed=True, retry_after_s=0)
+        cursor.execute(_LEFT_S, params)
+        row = cursor.fetchone()
+    remaining = limit.window_s if row is None or row[0] is None else row[0]
     return Decision(allowed=False, retry_after_s=min(limit.window_s, max(1, int(remaining))))
 
 

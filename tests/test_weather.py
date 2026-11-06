@@ -338,6 +338,26 @@ def test_a_rider_roaming_past_the_edge_still_hears_the_alerts_inside(client, mon
 
 
 @pytest.mark.django_db
+def test_rain_ahead_of_a_rider_riding_back_in_is_placed_among_the_points_sent(
+    client, monkeypatch
+) -> None:
+    """The page reads the rain's index against the points it sent, past the edge or not."""
+    dry, wet_at_30_min = [0.0] * 8, [0.0, 0.0, 0.2, 0.0, 0.0, 0.0, 0.0, 0.0]
+    fake = Fake(rain=rain_doc([dry, wet_at_30_min]))
+    monkeypatch.setattr(weather, "_shared", weather.Weather(fetch=fake, clock=lambda: NOW))
+    r = client.post(
+        "/api/weather/check",
+        data=json.dumps(
+            {"points": [[-77.0, 40.5, 0], [-77.031, 38.901, 600], [-76.61, 39.29, 1800]]}
+        ),
+        content_type="application/json",
+        HTTP_X_FORWARDED_FOR="198.51.100.14",
+    )
+    assert r.status_code == 200
+    assert r.json()["rain"]["index"] == 2 and r.json()["rain"]["offset_s"] == 1800
+
+
+@pytest.mark.django_db
 def test_the_endpoint(client, monkeypatch) -> None:
     fake = Fake(
         alerts={"38.90,-77.03": [alert("Tornado Warning", "Extreme")]}, rain=rain_doc([[0.0] * 8])

@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import base64
 import bisect
+import dataclasses
 import itertools
 import json
 import math
@@ -652,6 +653,16 @@ def with_ride_key(fragment: str, key: str | None) -> str:
     return lead + "&".join(params)
 
 
+def without_ride_marks(fragment: str) -> str:
+    """The fragment without a ride's key, its ride mark or its leader (`k=`, `ride=`, `lead=`):
+    a route kept in My routes is a plan, and each ride opened from it is a new ride."""
+    lead = "#" if fragment.startswith("#") else ""
+    marks = ("k=", "ride=", "lead=")
+    return lead + "&".join(
+        p for p in fragment.lstrip("#").split("&") if p and not p.startswith(marks)
+    )
+
+
 def ride_key_for(preset: str, key: str | None) -> str | None:
     """A ride type's key: the one it had (`key`), else a new one; none for a ride type whose
     link is not a live ride."""
@@ -660,12 +671,42 @@ def ride_key_for(preset: str, key: str | None) -> str | None:
     return key if isinstance(key, str) and RIDE_KEY_RE.fullmatch(key) else new_ride_key()
 
 
-def plan_fragment(points, vias, preset: str, dials: dict, sent: dict) -> str:
+STOP_NAME_MAX = 40  # pointKinds.ts STOP_NAME_MAX
+
+
+def clean_stop_name(name) -> str | None:
+    """A stop's name as the page keeps it (pointKinds.ts `cleanStopName`): spaces squeezed,
+    trimmed, at most STOP_NAME_MAX characters; None when nothing is left."""
+    clean = re.sub(r"\s+", " ", str(name or "")).strip()[:STOP_NAME_MAX].strip()
+    return clean or None
+
+
+def link_stop_names(names, count: int, vias, loop: bool) -> dict[int, str]:
+    """The names a link carries for a plan of `count` points (pointKinds.ts `stopNames`): the
+    stops between the ends only, a loop's last point included, never a via point."""
+    out: dict[int, str] = {}
+    for i, name in sorted((names or {}).items()):
+        last = i == count - 1
+        middle = 0 < i < (count if loop else count - 1)
+        clean = clean_stop_name(name)
+        if clean and middle and (last or i not in vias):
+            out[i] = clean
+    return out
+
+
+def plan_fragment(points, vias, preset: str, dials: dict, sent: dict, names=None) -> str:
     """The page's own plan link fragment (frontend/src/lib/planHash.ts `encodePlan`): the
-    answer's `dials`, and what only the request carried (`sent`, the POST /api/route body)."""
+    answer's `dials`, what only the request carried (`sent`, the POST /api/route body: the
+    legs drawn in the app's manual mode among it) and the stops' own `names` by index."""
     parts = ["p=" + ";".join(f"{lon:.5f},{lat:.5f}" for lon, lat in points)]
     if vias:
         parts.append("via=" + ",".join(str(i) for i in vias))
+    drawn = sorted({i for i in sent.get("straight_legs") or [] if 0 <= i < len(points) - 1})
+    if drawn:
+        parts.append("line=" + ",".join(str(i) for i in drawn))
+    for i, name in link_stop_names(names, len(points), set(vias), bool(dials.get("loop"))).items():
+        # As URLSearchParams writes it, with the page's commas left bare.
+        parts.append(urllib.parse.urlencode({"sn": f"{i}:{name}"}).replace("%2C", ","))
     parts.append("preset=" + preset)
     parts.append("v=2")
     parts.append(f"stress={dials['stress']}")
@@ -792,6 +833,18 @@ def fragment_points(params: dict) -> list[tuple[float, float]]:
 PLAN_POINTS_RE = re.compile(r"(?:^|[#&?])[pq]=[^&]")
 
 
+# A link's fields that are not its plan: the ride's key, its ride mark and leader, the kept
+# route's id and the Reach view (rideSeal.ts, sharedRoutes.ts, App.tsx).
+NOT_THE_PLAN = ("k", "ride", "lead", "route", "reach")
+
+
+def plan_params(fragment: str) -> list[tuple[str, str]]:
+    """A link fragment's plan, field by field and in no order: the same plan however the app
+    added a ride's key, ride mark, leader or kept route id to its link."""
+    pairs = urllib.parse.parse_qsl(str(fragment or "").lstrip("#"), keep_blank_values=True)
+    return sorted((k, v) for k, v in pairs if k not in NOT_THE_PLAN)
+
+
 def has_plan_points(fragment: str) -> bool:
     """Whether a link's fragment carries stops in either form (`q=` or the older `p=`)."""
     return bool(PLAN_POINTS_RE.search(str(fragment or "")))
@@ -856,7 +909,56 @@ def parse_fragment(fragment: str) -> tuple[list, list[int], str, dict]:
             options["target_distance_m"] = int(float(one("targetmi")) * METRES_PER_MILE)
         except ValueError:
             pass
+    # The legs drawn in the app's manual mode (`line=0,2`, pointKinds.ts `decodeDrawn`), ridden
+    # as drawn (POST /api/route's `straight_legs`), and the stops' own names (`sn=2:Union
+    # Market`, `decodeStopNames`), carried to the next link.
+    drawn = {int(i) for i in (one("line") or "").split(",") if i.isdigit()}
+    options["straight_legs"] = sorted(i for i in drawn if i < len(points) - 1) or None
+    names: dict[int, str] = {}
+    for value in params.get("sn") or []:
+        at, _, name = value.partition(":")
+        clean = clean_stop_name(name)
+        if at.isdigit() and 0 < int(at) < len(points) and clean:
+            names[int(at)] = clean
+    options["stop_names"] = names or None
     return points, vias, preset, options
+
+
+# What a plan's options carry for its link only, never sent to POST /api/route.
+LINK_ONLY_OPTIONS = ("stop_names",)
+
+
+def marks_with_point_at(options: dict, at: int) -> dict:
+    """The options with a point put in at index `at` (a Metro station): the drawn legs and the
+    stops' names after it move up one; the drawn leg it splits is planned, not drawn."""
+    out = dict(options)
+    if options.get("straight_legs"):
+        legs = [i if i < at - 1 else i + 1 for i in options["straight_legs"] if i != at - 1]
+        out["straight_legs"] = legs or None
+    if options.get("stop_names"):
+        out["stop_names"] = {i if i < at else i + 1: n for i, n in options["stop_names"].items()}
+    return out
+
+
+def marks_revised(plan, built: list, whole: bool) -> tuple[list[int] | None, dict | None]:
+    """The drawn legs and stops' names of `plan` on the revised points (`built`: rows of [the
+    draft's index or None for a point added, point, via]). A leg stays drawn while its two
+    points stay side by side; a name stays with its point unless the point moved. None of
+    either when every point was given anew (`whole`)."""
+    if whole:
+        return None, None
+    at = {row[0]: k for k, row in enumerate(built) if row[0] is not None}
+    legs = sorted(
+        at[i]
+        for i in plan.sent.get("straight_legs") or []
+        if i in at and i + 1 in at and at[i + 1] == at[i] + 1
+    )
+    names = {
+        at[i]: name
+        for i, name in (plan.names or {}).items()
+        if i in at and tuple(built[at[i]][1]) == tuple(plan.points[i])
+    }
+    return legs or None, names or None
 
 
 def routes_dir() -> Path:
@@ -2222,6 +2324,22 @@ def pace_kmh(mph) -> float:
     return round(value * METRES_PER_MILE / 1000, 1)
 
 
+def run_pace_kmh(mph) -> float:
+    """A runner's pace, mph, as the site's `run_pace_kmh` (core/run_plan.py: 4 to 10 mph)."""
+    value = finite(mph)
+    if not 4 <= value <= 10:
+        raise ToolError("a run's pace_mph is 4 to 10")
+    return round(value * METRES_PER_MILE / 1000, 1)
+
+
+def pace_option(mph, preset: str) -> tuple[str, float]:
+    """The pace field the site reads for the ride type, and its value: Run's running pace, a
+    bike's riding speed (the site keeps Walk's and a share bike's own)."""
+    if preset == "run":
+        return "run_pace_kmh", run_pace_kmh(mph)
+    return "cycling_speed_kmh", pace_kmh(mph)
+
+
 def _cum_miles(line: list) -> list[float]:
     """Miles along the line at each of its points, by straight steps."""
     cum = [0.0]
@@ -2721,7 +2839,7 @@ class Draft:
     def fragment(self, dials: dict) -> str:
         """The draft's plan link fragment, with its ride key."""
         plan = self.plan
-        fragment = plan_fragment(plan.points, plan.vias, plan.preset, dials, plan.sent)
+        fragment = plan_fragment(plan.points, plan.vias, plan.preset, dials, plan.sent, plan.names)
         return with_ride_key(fragment, self.ride_key)
 
 
@@ -2733,6 +2851,8 @@ class Plan:
     answer: dict
     check: dict | None
     sent: dict
+    # The stops' own names by index (the link's `sn=`), carried from the link opened.
+    names: dict[int, str] = dataclasses.field(default_factory=dict)
 
     @property
     def line(self) -> list[list[float]]:
@@ -2750,7 +2870,13 @@ def request_body(points, vias, preset: str, options: dict) -> dict:
     }
     if vias:
         body["via_points"] = list(vias)
-    body.update({k: v for k, v in options.items() if v is not None and v is not False})
+    body.update(
+        {
+            k: v
+            for k, v in options.items()
+            if v is not None and v is not False and k not in LINK_ONLY_OPTIONS
+        }
+    )
     return body
 
 
@@ -2764,7 +2890,8 @@ def plan_once(api, stations, points, vias, preset, options, limit_mi) -> Plan:
     sent = request_body(points, vias, preset, options)
     answer = api.route(sent)
     check = metro_check(answer["geometry"]["coordinates"], limit_mi, stations) if limit_mi else None
-    return Plan(list(points), list(vias), preset, answer, check, sent)
+    names = dict(options.get("stop_names") or {})
+    return Plan(list(points), list(vias), preset, answer, check, sent, names)
 
 
 def leg_of(plan: Plan, at_mile: float) -> int:
@@ -2980,12 +3107,13 @@ RIDE_OPTIONS = {
     },
     "pace_mph": {
         "type": "number",
-        "minimum": 5,
+        "minimum": 4,
         "maximum": 31,
         "description": (
-            "The rider's own speed on the flat, mph (the app's Riding speed): times and arrival"
-            " are worked out at it, hills and junction waits still counted. Absent: the ride"
-            " type's own pace. Not on Mass Ride or a share bike."
+            "The rider's own speed on the flat, mph (the app's Riding speed), 5 to 31: times and"
+            " arrival are worked out at it, hills and junction waits still counted. On Run, the"
+            " running pace, 4 to 10. Absent: the ride type's own pace. Not on Mass Ride, a share"
+            " bike or Walk."
         ),
     },
     "carrying": {"type": "string", "enum": ["cargo", "people"], "description": "Cargo only."},
@@ -3142,6 +3270,44 @@ REACH_NOT_YET = frozenset({"bike-transit", "bikeshare-transit", "walk-transit"})
 REACH_ON_FOOT = frozenset({"walk", "run"})
 # The calm layer's setting (core/reach.py CALM_STRESS: Low-stress).
 CALM_STRESS = 80
+# Where each bike ride type's traffic slider starts (core/presets.py stress_start), and Cargo
+# Bike's by what it carries: the calm rule reads it when no stress is given.
+STRESS_START = {
+    "default": 70,
+    "trailmaxxing": 100,
+    "novice": 100,
+    "group-ride": 40,
+    "mass-ride": 0,
+    "mountain-goat": 40,
+    "mountain-bike": 80,
+    "gravel": 40,
+    "fast": 10,
+    "road-bike": 40,
+    "cargo": 70,
+    "ebike": 70,
+    "bikeshare": 80,
+    "rebalance": 80,
+}
+CARGO_STRESS_START = {"cargo": 70, "people": 80}
+# compare_places: one place needs a matrix row (or two, with the calm one) of the site's
+# nearest-place search, each held to its own budget; a place is not begun with less than this
+# left of the call's time, so none is answered in straight lines for want of it.
+COMPARE_PLACE_S = 12
+
+
+def calm_offered(preset: str, dials: dict) -> bool:
+    """Whether a calm figure says anything (core/reach.py calm_offered): a bike ride type that
+    is set below Low-stress, and whose slider is not locked (Mass Ride). A ride type at or past
+    Low-stress, from its start or the rider's stress, is its own calm."""
+    if preset in REACH_ON_FOOT or preset in REACH_NOT_YET or preset == "mass-ride":
+        return False
+    stress = dials.get("stress")
+    if stress is None:
+        if preset == "cargo":
+            stress = CARGO_STRESS_START.get(dials.get("carrying") or "cargo", STRESS_START["cargo"])
+        else:
+            stress = STRESS_START.get(preset, STRESS_START["default"])
+    return stress < CALM_STRESS
 
 
 PASSED_OPTIONS = (
@@ -3429,10 +3595,12 @@ TOOLS = [
             "Compare 2 to 6 places to start from (a home, a hotel, an office)"
             " against 1 to 3 places the rider goes, each with an optional minute limit: one row"
             " per place, with the riding minutes and miles to each destination at the rider's"
-            " traffic setting and at Low-stress (calm_minutes), and whether each limit is met,"
-            " best first. Times are the router's own on the ride type's graph (one matrix row"
-            " a place), not full routes: plan the chosen one with plan_route. Bike ride types"
-            " only. Each row has a reach link to its rings in the app."
+            " traffic setting and at Low-stress (calm_minutes; none where the setting is"
+            " already Low-stress or calmer), and whether each limit is met, best first. Times"
+            " are the router's own on the ride type's graph (one matrix row a place), not full"
+            " routes: plan the chosen one with plan_route. Bike ride types only. Each row has a"
+            " reach link to its rings in the app. Places left when time runs out are listed in"
+            " not_compared."
         ),
         "inputSchema": {
             "type": "object",
@@ -4187,7 +4355,7 @@ class Server:
             rows.sort(key=lambda r: r["miles"])
         return {"stations": rows, "source": "DC Open Data, Metro Stations Regional (CC BY 4.0)"}
 
-    def _options(self, args: dict) -> dict:
+    def _options(self, args: dict, preset: str | None = None) -> dict:
         options = {key: args.get(key) for key in PASSED_OPTIONS}
         options["loop"] = bool(args.get("loop"))
         if args.get("target_miles"):
@@ -4195,7 +4363,8 @@ class Server:
         if args.get("rider_weight_lb"):
             options["system_weight_kg"] = round(finite(args["rider_weight_lb"]) * KG_PER_LB)
         if args.get("pace_mph"):
-            options["cycling_speed_kmh"] = pace_kmh(args["pace_mph"])
+            field, kmh = pace_option(args["pace_mph"], preset or args.get("preset") or "default")
+            options[field] = kmh
         return options
 
     def _alternatives(self, first: Plan, options: dict, limit) -> list[dict]:
@@ -4391,6 +4560,8 @@ class Server:
         notes: list[str] = []
         call.report(0, rounds + 1, "planning the route")
         plan = first or self._plan(call, points, vias, preset, options, limit)
+        # The options of the plan kept so far: a station put in moves the drawn legs and names.
+        current = options
         for done in range(rounds if limit else 0):
             fix = with_metro_fix(plan, self.stations)
             if fix is None:
@@ -4400,13 +4571,23 @@ class Server:
                 break
             new_points, new_vias, station = fix
             call.report(done + 1, rounds + 1, f"replanning by way of {station}")
-            again = self._plan(call, new_points, new_vias, preset, options, limit)
+            at = next(
+                (
+                    i
+                    for i, (a, b) in enumerate(zip(new_points, plan.points, strict=False))
+                    if a != b
+                ),
+                len(plan.points),
+            )
+            shifted = marks_with_point_at(current, at)
+            again = self._plan(call, new_points, new_vias, preset, shifted, limit)
             notes.append(
                 f"added {station} as a via point: {plan.check['miles_over_limit']} -> "
                 f"{again.check['miles_over_limit']} mi over the limit"
             )
             if again.check["miles_over_limit"] <= plan.check["miles_over_limit"]:
                 plan = again
+                current = shifted
         pruned = without_spurs(plan) if trim_spurs else None
         if pruned is not None and call.time_for_another_plan():
             # A via point off the road through (a pier's end, a landmark beside a trail) is
@@ -4414,7 +4595,7 @@ class Server:
             # and short spurs"): it moves to where the spur leaves the road and is planned again.
             new_points, new_vias, moved = pruned
             call.report(rounds + 1, rounds + 2, "planning again without out-and-backs")
-            again = self._plan(call, new_points, new_vias, preset, options, limit)
+            again = self._plan(call, new_points, new_vias, preset, current, limit)
             if again.answer["distance_m"] < plan.answer["distance_m"] and (
                 again.check is None
                 or again.check["miles_over_limit"] <= plan.check["miles_over_limit"]
@@ -4482,7 +4663,8 @@ class Server:
         else:
             dials = self._dials(plan)
             fragment = draft.fragment(dials)
-            saved = self.api.save(kept_route(plan, name, fragment, dials))
+            # My routes keeps the plan, never the ride's key: each ride opened from it is new.
+            saved = self.api.save(kept_route(plan, name, without_ride_marks(fragment), dials))
             out["saved"] = {
                 "id": saved.get("id"),
                 "name": saved.get("name"),
@@ -4589,26 +4771,30 @@ class Server:
             fragment = match.group(1) if match else ""
         limit = args.get("max_miles_from_metro")
         answer = (shared or {}).get("answer")
-        kept_hash = str(((shared or {}).get("inputs") or {}).get("hash") or "").lstrip("#")
-        asked_hash = re.sub(r"&route=[^&]*", "", fragment).lstrip("#")
-        if has_points and asked_hash != kept_hash:
+        kept_hash = str(((shared or {}).get("inputs") or {}).get("hash") or "")
+        if has_points and plan_params(fragment) != plan_params(kept_hash):
             answer = None  # the rider changed the route in the app: plan what the link says now
         name = str((shared or {}).get("name") or "RouteMaker route")
         return self._open_kept(call, fragment, answer, name, limit)
 
-    def _open_kept(self, call: Call, fragment: str, answer, name: str, limit) -> dict:
+    def _open_kept(
+        self, call: Call, fragment: str, answer, name: str, limit, keep_key: bool = True
+    ) -> dict:
         """A draft of a kept route (shared or saved): its exact line where it is kept, else its
-        plan planned again."""
+        plan planned again. A link's ride keeps its key; one opened from My routes
+        (`keep_key` False) is a new ride, with a new key."""
         points, vias, preset, options = parse_fragment(fragment)
+        ride_key = ride_key_of(fragment) if keep_key else None
         if isinstance(answer, dict) and (answer.get("geometry") or {}).get("coordinates"):
             # The exact route that was kept: as it is, not planned again.
             line = answer["geometry"]["coordinates"]
             check = metro_check(line, limit, self.stations) if limit else None
             sent = request_body(points, vias, preset, options)
-            plan = Plan(list(points), list(vias), preset, answer, check, sent)
-            return self._draft(plan, options, limit, [], name, ride_key=ride_key_of(fragment))
+            names = dict(options.get("stop_names") or {})
+            plan = Plan(list(points), list(vias), preset, answer, check, sent, names)
+            return self._draft(plan, options, limit, [], name, ride_key=ride_key)
         plan, notes = self._plan_and_fix(call, points, vias, preset, options, limit, 0)
-        return self._draft(plan, options, limit, notes, name, ride_key=ride_key_of(fragment))
+        return self._draft(plan, options, limit, notes, name, ride_key=ride_key)
 
     # my_routes
     def my_routes(self, args: dict, call: Call) -> dict:
@@ -4657,8 +4843,14 @@ class Server:
             kept.get("answer"),
             str(kept.get("name") or "RouteMaker route"),
             args.get("max_miles_from_metro"),
+            keep_key=False,
         )
         out["opened_from"] = _saved_label(kept)
+        if parse_fragment(fragment)[2] in RIDE_LINK_TYPES:
+            out.setdefault("notes", []).append(
+                "a new ride, with its own ride key: links sent for an earlier ride on this route"
+                " do not show this one"
+            )
         return out
 
     # route_segments
@@ -4779,6 +4971,7 @@ class Server:
                 built.append(row)
             built.extend(added.get(row[0], []))
         reshaped = bool(args.get("points") or args.get("move_points") or removed or added)
+        drawn, names = marks_revised(plan, built, bool(args.get("points")))
         points = [row[1] for row in built]
         vias = {i for i, row in enumerate(built) if row[2]}
         if args.get("via_points") is not None:
@@ -4793,14 +4986,25 @@ class Server:
             # The followed line, the roads to avoid and the rider's pace are the rider's, not
             # the ride type's: they stay too.
             kept = ("loop", "when", "follow", "follow_exact", "blocked_lines", "cycling_speed_kmh")
+            if preset == "run":
+                # A riding speed is no running pace: the run starts at Run's own.
+                kept = kept[:-1]
             options = {k: v for k, v in options.items() if k in kept}
-        options.update({k: v for k, v in self._options(args).items() if k in args})
+        # The legs drawn in the app and the stops' names are the rider's: they stay, on the
+        # revised points, whatever the ride type.
+        options["straight_legs"] = drawn
+        options["stop_names"] = names
+        asked = self._options(args, preset)
+        options.update({k: v for k, v in asked.items() if k in args})
         if "target_miles" in args:
-            options["target_distance_m"] = self._options(args).get("target_distance_m")
+            options["target_distance_m"] = asked.get("target_distance_m")
         if "rider_weight_lb" in args:
-            options["system_weight_kg"] = self._options(args).get("system_weight_kg")
+            options["system_weight_kg"] = asked.get("system_weight_kg")
         if args.get("pace_mph"):
-            options["cycling_speed_kmh"] = pace_kmh(args["pace_mph"])
+            options.pop("cycling_speed_kmh", None)
+            options.pop("run_pace_kmh", None)
+            field, kmh = pace_option(args["pace_mph"], preset)
+            options[field] = kmh
         limit = args.get("max_miles_from_metro", draft.limit)
         early_notes: list[str] = []
         if reshaped and options.get("follow"):
@@ -4824,6 +5028,7 @@ class Server:
                 limit = None
             elif key == "pace_mph":
                 options.pop("cycling_speed_kmh", None)
+                options.pop("run_pace_kmh", None)
             elif key == "avoid":
                 options.pop("blocked_lines", None)
             else:
@@ -5117,11 +5322,9 @@ class Server:
         for key in ("stress", "hills", "when", "carrying", "assist", "trails_off"):
             if args.get(key) is not None:
                 body[key] = args[key]
-        if args.get("pace_mph"):
-            if preset == "run":
-                body["run_pace_kmh"] = round(finite(args["pace_mph"]) * METRES_PER_MILE / 1000, 1)
-            elif preset not in REACH_ON_FOOT:
-                body["cycling_speed_kmh"] = pace_kmh(args["pace_mph"])
+        if args.get("pace_mph") and preset != "walk":
+            field, kmh = pace_option(args["pace_mph"], preset)
+            body[field] = kmh
         return body
 
     def _reach_link(
@@ -5147,7 +5350,10 @@ class Server:
         ):
             if body.get(key) is not None:
                 parts.append(f"{field}={body[key]}")
-        if body.get("assist"):
+        if body.get("assist") and preset == "bikeshare":
+            # The app's Bikeshare takes the share e-bike as its bike choice, not an assist box.
+            parts.append("bike=ebike")
+        elif body.get("assist"):
             parts.append("assist=1")
         if body.get("trails_off"):
             parts.append("trailsoff=1")
@@ -5234,6 +5440,11 @@ class Server:
             }
         if answer.get("unplaced"):
             out["unplaced_points"] = answer["unplaced"]
+        if answer.get("trail_level_applied") is False:
+            out["trail_level"] = (
+                "the rings take mountain-bike trails of every level; a planned ride keeps to the"
+                " rider's level"
+            )
         if taken:
             out["points_taken_as"] = taken
         return out
@@ -5258,20 +5469,20 @@ class Server:
             for d in dests
         ]
         dials = self._reach_dials(args, preset)
+        # No calm figure where it says nothing: Mass Ride's slider is locked, and a ride type
+        # set at or past Low-stress (its start or the rider's stress) is its own calm.
+        offered = calm_offered(preset, dials)
         rows = []
+        not_compared = []
         for i, start in enumerate(starts):
             call.check()
+            if call.deadline is not None and time.monotonic() + COMPARE_PLACE_S > call.deadline:
+                not_compared = places[i:]
+                break
             body = {"points": [list(start), *[list(e) for e in ends]], "preset": preset, **dials}
             own = self.api.nearest(body)
             calm_body = {**body, "stress": CALM_STRESS}
-            stress = dials.get("stress")
-            # No calm figure where it says nothing: Mass Ride's slider is locked, and a slider
-            # already at or past Low-stress is its own calm (core.reach.calm_offered).
-            calm = (
-                None
-                if preset == "mass-ride" or (stress is not None and stress >= CALM_STRESS)
-                else self.api.nearest(calm_body)
-            )
+            calm = self.api.nearest(calm_body) if offered else None
             trips = []
             for j in range(len(ends)):
                 got = (own.get("places") or [{}] * len(ends))[j]
@@ -5302,13 +5513,19 @@ class Server:
                     "limits_met": met,
                     "total_minutes": round(total, 1),
                     "unreachable": unreachable,
-                    "reach_link": self._reach_link([start], preset, dials, "from", "any", True),
+                    "reach_link": self._reach_link([start], preset, dials, "from", "any", offered),
                 }
             )
         # A place with a trip the router could not make ranks below every place it could: its
         # total leaves that trip out and would otherwise look short.
         rows.sort(key=lambda r: (-r["limits_met"], r["unreachable"], r["total_minutes"]))
         out: dict = {"ride_type": preset, "places": rows}
+        if not_compared:
+            out["not_compared"] = not_compared
+            out["notes"] = [
+                f"ran out of time after {len(rows)} of {len(places)} places: the rest"
+                " (not_compared) were not measured; ask again with just those"
+            ]
         if taken:
             out["points_taken_as"] = taken
         return out

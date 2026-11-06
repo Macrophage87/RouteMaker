@@ -6,8 +6,13 @@ import { readFileSync } from "node:fs";
 import type { TransitStep } from "./api.ts";
 import type { LonLat } from "./geo.ts";
 import type { RideFix } from "./navigate.ts";
-import { STALE_MS, boardingGroups, laterDepartureText, lineBadge, liveForBoarding, liveNextText, nextDepartureText, onBoardLeg, onBoardRows, onBoardStart, onBoardStep, stopsLeftText, type OnBoardState } from "./onBoard.ts";
-import { onwardOf, onwardStart, onwardStep } from "./onward.ts";
+import { CARD_STOPS_AHEAD, STALE_MS, boardingGroups, moreStopsText, onBoardCardRows, onBoardWhere, lineColour, onBoardFeatures, onBoardPath, onBoardSecondsLeft, onBoardSecondsTo, laterDepartureText, lineBadge, liveForBoarding, liveNextText, lowPowerOnBoard, nextDepartureText, onBoardLeg, onBoardRows, onBoardStart, onBoardStep, stopsLeftText, type OnBoardState } from "./onBoard.ts";
+import { onwardOf, onwardStart, onwardStep, onwardWhere } from "./onward.ts";
+import { arrivalClock } from "./arrival.ts";
+import { englishOf, setCatalogForTest, setLanguageForTest } from "./i18n.ts";
+import { walkPart } from "./onward.ts";
+import { CATALOG as AM } from "../i18n/am.ts";
+import { CATALOG as JA } from "../i18n/ja.ts";
 
 const M_PER_DEG = 111_195;
 function north(m: number): LonLat {
@@ -137,6 +142,26 @@ test("no fix underground: the timetable, from the planned wait, places the train
   assert.equal(out2.state.done, true);
 });
 
+test("boarding first seen two stops on: the time left, each stop's time and the timetable count from the first stop's departure", () => {
+  const t0 = 1_000_000;
+  // The train left Takoma at t0; the first fix on board is at Brookland-CUA (240 s on), and none after it (a tunnel).
+  const seen = t0 + 240_000;
+  let s = onBoardStep(LEG, onBoardStart(t0 - 60_000), seen, fix(north(2400), 20, seen)).state;
+  assert.equal(s.at, 2);
+  assert.equal(s.boardedAt, t0);
+  // 6 min left there, and a minute on 5 (not held at 6 till the next stop).
+  assert.equal(onBoardSecondsLeft(LEG, s, seen), 360);
+  assert.equal(onBoardSecondsLeft(LEG, s, seen + 60_000), 300);
+  assert.equal(onBoardSecondsTo(LEG, s, seen + 60_000, 3), 60);
+  // No fix since: the timetable says the stop before the rider's on time, and the rider's at its time (600 s on).
+  const before = onBoardStep(LEG, s, t0 + 481_000);
+  assert.equal(before.state.at, 4);
+  assert.deepEqual(before.said, ["Next stop should be Union Station, by the timetable. Get off there."]);
+  s = before.state;
+  const off = onBoardStep(LEG, s, t0 + 601_000);
+  assert.deepEqual(off.said, ["Union Station should be about now, by the timetable. Get off there."]);
+});
+
 test("seen on the platform after the planned wait (a train missed): the timetable counts from then (review of #886)", () => {
   let s = onBoardStart(0);
   s = onBoardStep(LEG, s, 600_000, fix(north(20), 20, 600_000)).state;
@@ -183,18 +208,20 @@ test("waiting to board, the card's next departure: a timed one's minutes, a freq
   const timed = { departs: "6:27 pm", departs_at };
   assert.equal(nextDepartureText({ everyMin: null }, timed, at - 12 * 60_000), "12 min");
   assert.equal(nextDepartureText({ everyMin: null }, timed, at - 30_000), "1 min");
-  // An hour or more off: its time.
-  assert.equal(nextDepartureText({ everyMin: null }, timed, at - 75 * 60_000), "6:27 pm");
+  // An hour or more off: its time, on the phone's clock (never the API's English "6:27 pm").
+  const plain = (text: string | null) => text?.replace(/\s/gu, " ") ?? null;
+  assert.equal(plain(nextDepartureText({ everyMin: null }, timed, at - 75 * 60_000)), "6:27 PM");
   assert.equal(nextDepartureText({ everyMin: null }, timed, at + 1000), "Now");
   // Long past: the time alone, never "Now" for ever.
-  assert.equal(nextDepartureText({ everyMin: null }, timed, at + 5 * 60_000), "6:27 pm");
+  assert.equal(plain(nextDepartureText({ everyMin: null }, timed, at + 5 * 60_000)), "6:27 PM");
   assert.equal(nextDepartureText({ everyMin: 5 }, null, at), "every 5 min");
   // The plan's countdown is another step's: the step's own time.
-  assert.equal(nextDepartureText({ everyMin: null, departs: "7:42 am" }, null, at), "7:42 am");
+  assert.equal(plain(nextDepartureText({ everyMin: null, departs: "7:42 am" }, null, at)), "7:42 AM");
   assert.equal(nextDepartureText({ everyMin: null }, null, at), null);
   // The one after it, in case the rider can't make it.
   assert.equal(laterDepartureText({ next: "7:15 pm", next_at: "2026-11-03T19:15:00-05:00" }, at), "48 min");
   assert.equal(laterDepartureText({ next: null, next_at: null }, at), null);
+  assert.equal(plain(laterDepartureText({ next: "8:15 pm", next_at: null }, at)), "8:15 PM");
   assert.equal(laterDepartureText(null, at), null);
 });
 
@@ -299,4 +326,207 @@ test("live minutes count down from the reading's time, and a reading too old say
     [4],
   );
   assert.deepEqual(liveForBoarding(live, groups, stops, { asOf, nowMs: t0 + 4 * 60_000 }), []);
+});
+
+// Stephen, 2026-11-04: "When on transit, put the approximate time left to arrival. Also, if you can show the path too."
+test("time left on board: none while waiting; the timetable's run from the stop reached, held at the next stop when late", () => {
+  const t0 = 1_000_000;
+  // Waiting: no time left shown (the boarding card has the departure).
+  assert.equal(onBoardSecondsLeft(LEG, { at: 0, boardedAt: null }, t0), null);
+  // Just boarded at Takoma: the whole run, 10 min.
+  assert.equal(onBoardSecondsLeft(LEG, { at: 0, boardedAt: t0 }, t0), 600);
+  // A minute on: 9 min left.
+  assert.equal(onBoardSecondsLeft(LEG, { at: 0, boardedAt: t0 }, t0 + 60_000), 540);
+  // Five minutes on, still short of Fort Totten (a late train): held at Fort Totten's, 8 min.
+  assert.equal(onBoardSecondsLeft(LEG, { at: 0, boardedAt: t0 }, t0 + 300_000), 480);
+  // The fix says Rhode Island Ave already (an early train, a late boarding seen): from there, 4 min.
+  assert.equal(onBoardSecondsLeft(LEG, { at: 3, boardedAt: t0 }, t0 + 60_000), 240);
+  // At the stop to get off: none left.
+  assert.equal(onBoardSecondsLeft(LEG, { at: 5, boardedAt: t0 }, t0 + 900_000), 0);
+});
+
+test("the trip's end after the stop to get off: every later step's time and wait, from the plan", () => {
+  const exit: TransitStep = { ...STEP, mode: "exit", text: "Leave the station.", seconds: 90, wait_s: 0, lines: [], stops: null };
+  const ride: TransitStep = { ...STEP, mode: "ride", text: "Ride to the end.", seconds: 420, wait_s: 0, lines: [], stops: null, coordinates: [north(6000), north(7000)] };
+  const enter: TransitStep = { ...STEP, mode: "enter", text: "Into the station.", seconds: 60, wait_s: 0, lines: [], stops: null };
+  const parts = onwardOf([{ ...STEP, mode: "ride", route_line: true, coordinates: [] }, enter, STEP, exit, ride], 0);
+  const train = parts.find((p) => p.kind === "transit");
+  assert.ok(train && train.kind === "transit");
+  assert.equal(train.leg.afterS, 510);
+  // From onBoardLeg alone (no plan around it): not known.
+  assert.equal(LEG.afterS, null);
+});
+
+test("the path on the map: the stops ahead in the line's colour, the one to get off marked; a bus names it", () => {
+  const waiting = onBoardPath(LEG, 0)!;
+  assert.equal(waiting.coordinates.length, 6);
+  assert.equal(waiting.colour, lineColour(["Red Line"]));
+  assert.notEqual(waiting.colour, null);
+  assert.deepEqual(
+    waiting.stops.map((s) => s.off),
+    [false, false, false, false, false, true],
+  );
+  // Three stops on: only the rest drawn; at the stop before the last, still a line to it.
+  assert.equal(onBoardPath(LEG, 3)!.coordinates.length, 3);
+  assert.equal(onBoardPath(LEG, 5)!.coordinates.length, 2);
+  // A line with no colour of its own: the map's transit colour.
+  const bus = onBoardLeg({ ...STEP, mode: "bus", lines: ["B10"], towards: null })!;
+  const busPath = onBoardPath(bus, 0)!;
+  assert.equal(busPath.colour, null);
+  const features = onBoardFeatures(busPath).features as { geometry: { type: string }; properties: { colour: string; off?: boolean; bus?: boolean } }[];
+  assert.equal(features[0].geometry.type, "LineString");
+  assert.equal(features.length, 7);
+  assert.ok(features.every((f) => /^#/.test(f.properties.colour)));
+  assert.deepEqual(features.filter((f) => f.properties.off).length, 1);
+  assert.equal(onBoardFeatures(null).features.length, 0);
+});
+
+// Stephen, 2026-11-04: "It also has an erroneous you have arrived when pressing the map center button" (on the train).
+test("Where am I? on transit: the line and stop to get off while waiting; the stops and time left on board; never 'arrived'", () => {
+  const exit: TransitStep = { ...STEP, mode: "exit", text: "Leave the station.", seconds: 90, wait_s: 0, lines: [], stops: null };
+  const parts = onwardOf([{ ...STEP, mode: "ride", route_line: true, coordinates: [] }, STEP, exit], 0);
+  const t0 = 1_000_000;
+  const waiting = onwardWhere(parts, onwardStart(parts, t0), t0)!;
+  assert.deepEqual(waiting.shown, ["Red Line toward Shady Grove", "Get off at Union Station"]);
+  assert.ok(!/arrived/i.test(waiting.spoken));
+  const state = onwardStart(parts, t0);
+  const riding = { ...state, board: { ...state.board!, boardedAt: t0, at: 2 } };
+  const on = onwardWhere(parts, riding, t0 + 60_000)!;
+  assert.equal(on.shown[1].startsWith("3 stops left · 6 min"), true);
+  assert.equal(on.spoken.replace(/\s/gu, " "), `Red Line toward Shady Grove. Get off at Union Station. 3 stops left, about 6 minutes, arriving about ${arrivalClock(t0 + 60_000, 360).replace(/\s/gu, " ")}.`);
+  // Nothing followed any more: the line's own answer stands.
+  assert.equal(onwardWhere(parts, { ...state, index: parts.length }, t0), null);
+  assert.equal(onwardWhere([], null, t0), null);
+});
+
+test("the path follows the line's track where the API sent one, from the stop reached", () => {
+  // A track with a bend between each pair of stops: twice the stops, less one.
+  const track: LonLat[] = [];
+  NAMES.forEach((_, i) => {
+    track.push(north(i * 1200));
+    if (i < NAMES.length - 1) track.push([-76.995, 38.9 + (i * 1200 + 600) / M_PER_DEG]);
+  });
+  const leg = onBoardLeg({ ...STEP, coordinates: track })!;
+  assert.equal(leg.track?.length, 11);
+  const waiting = onBoardPath(leg, 0)!;
+  assert.equal(waiting.coordinates.length, 11);
+  // At Rhode Island Ave (stop 3): the track from there, its bends kept.
+  const on = onBoardPath(leg, 3)!;
+  assert.deepEqual(on.coordinates[0], north(3600));
+  assert.equal(on.coordinates.length, 5);
+  // Stops-only coordinates (an older schedule): no track, stop to stop.
+  assert.equal(LEG.track, null);
+});
+
+test("each stop ahead's time: its timetable time from where the train is; a passed one is 0; none while waiting", () => {
+  const t0 = 1_000_000;
+  assert.equal(onBoardSecondsTo(LEG, { at: 0, boardedAt: null }, t0, 3), null);
+  // A minute after boarding at Takoma: Brookland (stop 2, 4 min in) is 3 min off; Fort Totten 1 min.
+  assert.equal(onBoardSecondsTo(LEG, { at: 0, boardedAt: t0 }, t0 + 60_000, 2), 180);
+  assert.equal(onBoardSecondsTo(LEG, { at: 0, boardedAt: t0 }, t0 + 60_000, 1), 60);
+  // Past Brookland (the fix says stop 3): it is 0, Union Station 4 min.
+  assert.equal(onBoardSecondsTo(LEG, { at: 3, boardedAt: t0 }, t0 + 60_000, 2), 0);
+  assert.equal(onBoardSecondsTo(LEG, { at: 3, boardedAt: t0 }, t0 + 60_000, 5), onBoardSecondsLeft(LEG, { at: 3, boardedAt: t0 }, t0 + 60_000));
+});
+
+// Review 2026-11-05: Where am I? on the train in whole sentences, said in words, read back in English where the phone
+// has no voice for the language.
+test("Where am I? on transit is whole sentences: the time said in words, each language's full stop, read back in English", () => {
+  const clock = () => "18:24";
+  const waiting = onBoardWhere(LEG, { at: 0, boardedAt: null }, 0, clock);
+  assert.equal(waiting.spoken, "Red Line toward Shady Grove. Get off at Union Station.");
+  const on = onBoardWhere(LEG, { at: 0, boardedAt: 0 }, 0, clock);
+  assert.equal(on.spoken, "Red Line toward Shady Grove. Get off at Union Station. 5 stops left, about 10 minutes, arriving about 18:24.");
+  assert.doesNotMatch(on.spoken, /\bmin\b/);
+  // An hour and more in words too, never "1 h 05 min".
+  const long = { ...LEG, stops: LEG.stops.map((stop, i) => ({ ...stop, after_s: i * 780 })) };
+  assert.match(onBoardWhere(long, { at: 0, boardedAt: 0 }, 0, clock).spoken, /about 1 hour 5 minutes,/);
+  setCatalogForTest("am", AM);
+  setCatalogForTest("ja", JA);
+  try {
+    setLanguageForTest("am");
+    const am = onBoardWhere(LEG, { at: 0, boardedAt: 0 }, 0, clock).spoken;
+    assert.match(am, /።$/);
+    assert.equal(englishOf(am, "am"), on.spoken);
+    assert.equal(englishOf(onBoardWhere(LEG, { at: 0, boardedAt: null }, 0, clock).spoken, "am"), waiting.spoken);
+    // A line signed to the stop to get off: one sentence, read back too.
+    const toEnd = { ...LEG, toward: "Union Station" };
+    assert.equal(englishOf(onBoardWhere(toEnd, { at: 0, boardedAt: null }, 0, clock).spoken, "am"), "Red Line, get off at Union Station.");
+    setLanguageForTest("ja");
+    const ja = onBoardWhere(LEG, { at: 0, boardedAt: 0 }, 0, clock).spoken;
+    assert.match(ja, /。$/);
+    assert.doesNotMatch(ja, /\.$/);
+  } finally {
+    setLanguageForTest("en");
+  }
+});
+
+test("Where am I? on a walk says the distance in words, in one unit, and ends the turn's sentence once", () => {
+  const M = 111_195;
+  const KX = M * Math.cos((38.9 * Math.PI) / 180);
+  const at = (east: number, north: number): LonLat => [-77.0 + east / KX, 38.9 + north / M];
+  const walk = walkPart({ coordinates: [at(0, 0), at(0, 200), at(-200, 200)], turns: [{ movement: "left", street: "F St NE", point: at(0, 200) }], to: "Union Station" })!;
+  const state = { ...onwardStart([walk], 0), walk: { ...onwardStart([walk], 0).walk!, progressM: 120 } };
+  const where = onwardWhere([walk], state, 0)!;
+  assert.equal(where.shown[0], "In 260 ft (80 m), left onto F St NE.");
+  assert.equal(where.spoken, "In 250 feet, left onto F St NE.");
+});
+
+test("the on-board card: the next three stops, one row for the rest, then the stop to get off", () => {
+  const s: OnBoardState = { ...onBoardStart(0), boardedAt: 0, at: 0 };
+  const { rows, hidden } = onBoardCardRows(LEG, s);
+  assert.equal(CARD_STOPS_AHEAD, 3);
+  assert.deepEqual(rows.map((r) => [r.index, r.name]), [[1, "Fort Totten"], [2, "Brookland-CUA"], [3, "Rhode Island Ave"], [5, "Union Station"]]);
+  assert.equal(hidden, 1);
+  assert.equal(moreStopsText(hidden), "1 more stop");
+  assert.equal(moreStopsText(4), "4 more stops");
+  // Nearer the end, nothing is left out; at the stop before it, the stop to get off alone.
+  assert.deepEqual(onBoardCardRows(LEG, { ...s, at: 2 }).rows.map((r) => r.index), [3, 4, 5]);
+  assert.equal(onBoardCardRows(LEG, { ...s, at: 2 }).hidden, 0);
+  assert.deepEqual(onBoardCardRows(LEG, { ...s, at: 4 }).rows.map((r) => r.index), [5]);
+});
+
+test("the on-board card has no unlabelled arrival clock beside Trip ends, says the time in words, and reads live times only while shown", () => {
+  const card = readFileSync(new URL("../OnBoardCard.tsx", import.meta.url), "utf8");
+  const left = card.slice(card.indexOf('<p className="cue-then onboard-left">'), card.indexOf("</p>", card.indexOf('<p className="cue-then onboard-left">')));
+  assert.doesNotMatch(left, /arrivalClock|ride-arrive/);
+  assert.match(left, /formatDurationSpoken\(left\)/);
+  assert.match(card, /const \{ rows, hidden \} = onBoardCardRows\(leg, state\);/);
+  assert.match(card, /document\.visibilityState !== "hidden"/);
+  assert.match(card, /window\.setInterval\(readShown, TIMES_TTL_MS \+ 1_000\);\s*document\.addEventListener\("visibilitychange", readShown\);/);
+  assert.match(card, /document\.removeEventListener\("visibilitychange", readShown\);/);
+  const css = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
+  assert.match(css, /\.onboard-stops li \{[^}]*flex-wrap: nowrap;/);
+});
+
+test("a fix counts at its own time: a cached one repeated places nothing new, and the timetable still takes over", () => {
+  let s = onBoardStart(0);
+  // Boarded and placed at Fort Totten by a fix taken at 300 s.
+  s = onBoardStep(LEG, { ...s, boardedAt: 240_000 }, 300_000, fix(north(1200), 300, 300_000)).state;
+  assert.equal(s.at, 1);
+  assert.equal(s.fixAt, 300_000);
+  // The same reading given again later (a low-power watch's cache): it keeps its time, so it is not fresh...
+  s = onBoardStep(LEG, s, 300_000 + STALE_MS - 1000, fix(north(1200), 300, 300_000)).state;
+  assert.equal(s.fixAt, 300_000);
+  // ...and past STALE_MS the timetable moves the train on, though readings still come.
+  const later = 240_000 + 3 * 120_000 + 1000;
+  s = onBoardStep(LEG, s, later, fix(north(1200), 300, 300_000)).state;
+  assert.equal(s.at, 3, "by the timetable");
+  // A fix older than the last one used places nothing either.
+  const older = onBoardStep(LEG, { ...s, fixAt: 400_000 }, 410_000, fix(north(4800), 50, 390_000)).state;
+  assert.equal(older.at, 3);
+  assert.equal(older.fixAt, 400_000);
+});
+
+test("the watch is low power on a train or bus until 'Next stop', so the GPS is warm before getting off", () => {
+  assert.equal(lowPowerOnBoard(false, null), false);
+  assert.equal(lowPowerOnBoard(true, null), true, "arriving at the platform, before following starts");
+  const waiting = onBoardStart(0);
+  assert.equal(lowPowerOnBoard(true, waiting), true);
+  // At NoMa: "Next stop: Union Station" is said, and high accuracy comes back with it.
+  const near = onBoardStep(LEG, { ...waiting, boardedAt: 0, at: 3 }, 500_000, fix(north(4800), 50, 500_000));
+  assert.equal(near.state.saidNext, true);
+  assert.equal(lowPowerOnBoard(true, near.state), false);
+  assert.equal(lowPowerOnBoard(true, { saidNext: false, done: true }), false);
+  assert.equal(lowPowerOnBoard(false, waiting), false, "the walk after");
 });

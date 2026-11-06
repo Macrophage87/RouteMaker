@@ -1938,6 +1938,28 @@ SEEK_MAX_SPAN_M = 50_000
 # 43-47 s where the plain one answered in 33 s.
 AVOID_MAX_SPAN_M = 25_000
 
+# How much longer a way on the map is than its straight line, for how far from the rider's
+# points a climb search can go (`zones_reach_m`): run_plan's first guess too.
+ROUTED_PER_STRAIGHT = 1.3
+
+
+def zones_reach_m(points: list, climb_seek: bool, hills: int, target_m: float | None) -> float:
+    """How far from the straight lines through `points` the plan can go, for the closures it
+    looks up (audit 2026-11-05: a closure more than 5 km from the points was neither routed
+    round nor warned of): a climb search between two points up to `seek_distance_ratio` times
+    the direct way, a plan sized to the rider's target up to its ceiling. 0 otherwise (the
+    closures' own margin, `rules.BOX_MARGIN_M`)."""
+    reach = 0.0
+    if climb_seek and len(points) == 2:
+        straight = haversine(Point(*points[0]), Point(*points[1]))
+        allowed = presets.seek_distance_ratio(hills) * ROUTED_PER_STRAIGHT * straight
+        reach = work_zones.rules.detour_reach_m(points, allowed)
+    if target_m:
+        allowed = presets.target_ceiling_m(target_m)
+        reach = max(reach, work_zones.rules.detour_reach_m(points, allowed))
+    return reach
+
+
 # The most a request for alternatives may take before it is asked again
 # without them, inside what is left of the budget: the search for a better
 # climb or a gentler route is worth a few seconds, not the ride.
@@ -4639,6 +4661,7 @@ def _plan(
         bypass=dials.closure_bypass,
         reserve=work_zones.rules.budget_used(blocked),
         now_only=dials.closures_now,
+        reach_m=zones_reach_m(points, climb_seek, hills_dial, target_m),
     )
     if zones_plan is not None:
         zones_plan.blocked = blocked
