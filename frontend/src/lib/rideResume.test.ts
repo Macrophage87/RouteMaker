@@ -282,16 +282,21 @@ test("back within minutes of putting the page away, Resume carries on without as
   const kept = new Map<string, string>();
   const store = { getItem: (k: string) => kept.get(k) ?? null, setItem: (k: string, v: string) => void kept.set(k, v), removeItem: (k: string) => void kept.delete(k) };
   // Nothing kept: nothing to mark.
-  seeLeftRide(1000, store);
+  seeLeftRide(1000, null, store);
   assert.equal(kept.size, 0);
   kept.set(RIDE_RESUME_KEY, JSON.stringify({ v: 1, at: 0 }));
-  seeLeftRide(5000, store);
-  assert.equal(JSON.parse(kept.get(RIDE_RESUME_KEY)!).seen, 5000);
+  // The figures go with it (switching off "resets progress"), without the last fix and its line.
+  const stats = { startedAt: 1, distanceM: 4200, movingMs: 900_000, climbM: 30, stressM: {}, elevation: [], last: { point: [-77, 38.9] as [number, number], at: 2, accuracyM: 5, progressM: 10, model: null } };
+  seeLeftRide(5000, stats, store);
+  const written = JSON.parse(kept.get(RIDE_RESUME_KEY)!);
+  assert.equal(written.seen, 5000);
+  assert.equal(written.stats.distanceM, 4200);
+  assert.equal(written.stats.last, null);
   assert.equal(resumesQuietly({ seen: 5000 }, 5000 + RESUME_QUIET_MS), true);
   assert.equal(resumesQuietly({ seen: 5000 }, 5001 + RESUME_QUIET_MS), false);
   assert.equal(resumesQuietly({}, 5000), false);
   assert.equal(resumesQuietly({ seen: 9000 }, 5000), false);
   const ride = src("../RideMode.tsx");
-  assert.match(ride, /if \(document\.visibilityState === "hidden" && !ended\.current\) seeLeftRide\(Date\.now\(\)\);/);
-  assert.match(src("../App.tsx"), /const quiet = resumesQuietly\(left, Date\.now\(\)\);/);
+  assert.match(ride, /if \(document\.visibilityState === "hidden" && !ended\.current\) seeLeftRide\(Date\.now\(\), statsRef\.current\);/);
+  assert.match(src("../App.tsx"), /const quiet = resumesQuietly\(left, Date\.now\(\)\);\s*\/\/[^\n]*\n\s*setResumeStats\(quiet \? \(left\.stats \?\? null\) : null\);/);
 });

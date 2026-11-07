@@ -2291,7 +2291,7 @@ export function RideMode({
   useEffect(() => {
     if (!keepLeft) return undefined;
     const onAway = () => {
-      if (document.visibilityState === "hidden" && !ended.current) seeLeftRide(Date.now());
+      if (document.visibilityState === "hidden" && !ended.current) seeLeftRide(Date.now(), statsRef.current);
     };
     document.addEventListener("visibilitychange", onAway);
     window.addEventListener("pagehide", onAway);

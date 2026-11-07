@@ -4869,7 +4869,8 @@ export function App() {
     tripCheck.current = checkTripOf(left.route, left.points);
     // Back within minutes of the page being put away (a phone reloads a page in the background): no "Already done?".
     const quiet = resumesQuietly(left, Date.now());
-    setResumeStats(null);
+    // Its figures carry on too (distance, time, climb), not from 0.
+    setResumeStats(quiet ? (left.stats ?? null) : null);
     setRideStart((before) => ({ ...left, ...resumed, kept: true, startFirst: false, quiet, n: (before?.n ?? 0) + 1 }));
     keepLeftRide(left, VIA_MARKS, Date.now());
     // On a broadcast, followed or led: the ride is on it again, its dots, alerts and leader with it (lib/rideResume.ts).

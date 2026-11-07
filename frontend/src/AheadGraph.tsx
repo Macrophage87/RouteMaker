@@ -206,20 +206,27 @@ export function AheadGraph({ views, route, cues, youM, lengthM, ridersAlong = []
       count = fit(order.length, budget, turnsH + ribbonH);
       if (count < order.length) count = fit(order.length, budget - NOTE_PX * unit, turnsH + ribbonH);
     }
-    // Fewer fit than are on: slim strips instead (SLIM_H), where more of them fit than of the full graphs, the turns
-    // strip kept where it fits.
+    // Fewer fit than are on: slim strips instead (SLIM_H), where more of them fit than of the full graphs, under the
+    // turns strip.
     let slim = false;
+    // The turns drawn on the ribbon, not in a strip over it, where there is no room for the strip.
+    let onRibbon = false;
     if (count < order.length) {
       const slimFit = (stripH: number) => {
         for (let k = order.length; k >= 1; k -= 1) if (stripH + AXIS_H + k * (SLIM_H + GAP) <= budget + GRACE_PX * unit) return k;
         return 0;
       };
+      // The turns stay (Stephen 2026-11-07: "Where are the turns? those are gone now", "They are important"): in their
+      // strip, or, short of room for it, on the ribbon itself (onRibbon).
       const withTurns = slimFit(turnsH + ribbonH);
-      const without = withTurns ? withTurns : slimFit(ribbonH);
-      if (without > count) {
+      const riding = withTurns || !ribbon.length ? 0 : slimFit(ribbonH);
+      if (Math.max(withTurns, riding) > count) {
         slim = true;
-        if (!withTurns) turnsH = 0;
-        count = without;
+        count = Math.max(withTurns, riding);
+        if (!withTurns) {
+          turnsH = 0;
+          onRibbon = true;
+        }
       }
     }
     // Room for no graph under the turns strip: one graph without it (the turns are in the sentence), the rest named
@@ -255,6 +262,7 @@ export function AheadGraph({ views, route, cues, youM, lengthM, ridersAlong = []
       ).find(([turns, withLine]) => (withLine || line > 0) && budget + GRACE_PX * unit >= alone(turns) + (withLine ? line : 0));
       if (pick) {
         turnsH = pick[0];
+        onRibbon = turnsH === 0;
         note = order.length > 0 && pick[1];
       } else ribbonDrawn = false;
     }
@@ -279,6 +287,7 @@ export function AheadGraph({ views, route, cues, youM, lengthM, ridersAlong = []
     return {
       drawn,
       slim,
+      onRibbon: onRibbon && ribbonDrawn,
       unseen,
       unseenSaid,
       turnsH,
@@ -331,6 +340,8 @@ export function AheadGraph({ views, route, cues, youM, lengthM, ridersAlong = []
           </defs>
           {panels.turnsH > 0 && <Turns marks={drawnTurns} x={x} />}
           {panels.ribbon.length > 0 && <Ribbon bars={panels.ribbon} rails={panels.rails} x={x} top={panels.turnsH} turns={panels.turnsH > 0 ? drawnTurns : []} />}
+          {/* No room for the turns' strip: the turns on the ribbon, each on a halo of the panel. */}
+          {panels.onRibbon && <Turns marks={drawnTurns} x={x} cy={RIBBON_BLOCK / 2 - 1} halo />}
           {panels.drawn.map(({ view, panel, drawn }) => (
             <Fragment key={view}>
               {panels.slim ? (
@@ -390,8 +401,7 @@ const ARROWS: Record<NonNullable<TurnMark["movement"]>, { shaft: string; head: s
  * so it holds 3:1 on the panel; a flagged junction that is not a turn is the planner's own marker, an orange triangle
  * or a red diamond, and an Avoid stretch a magenta square.
  */
-function Turns({ marks, x }: { marks: readonly TurnMark[]; x: X }) {
-  const cy = TURNS_H / 2;
+function Turns({ marks, x, cy = TURNS_H / 2, scale = 1, halo = false }: { marks: readonly TurnMark[]; x: X; cy?: number; scale?: number; halo?: boolean }) {
   return (
     <g className="ride-ahead-turns">
       {marks.map((mark, i) => {
@@ -400,7 +410,9 @@ function Turns({ marks, x }: { marks: readonly TurnMark[]; x: X }) {
         if (mark.movement) {
           const arrow = ARROWS[mark.movement];
           return (
-            <g key={i} transform={`translate(${cx} ${cy}) scale(${arrow.flip ? -1 : 1} 1)`} className={colour ? `ride-ahead-arrow ride-ahead-arrow-${mark.severity}` : "ride-ahead-arrow"}>
+            <g key={i} transform={`translate(${cx} ${cy}) scale(${(arrow.flip ? -1 : 1) * scale} ${scale})`} className={colour ? `ride-ahead-arrow ride-ahead-arrow-${mark.severity}` : "ride-ahead-arrow"}>
+              {halo && <path d={arrow.shaft} className="ride-ahead-arrow-halo" />}
+              {halo && <path d={arrow.head} className="ride-ahead-arrow-halo" />}
               {colour && <path d={arrow.shaft} className="ride-ahead-arrow-edge" stroke={colour.stroke} />}
               {colour && <path d={arrow.head} className="ride-ahead-arrow-edge" stroke={colour.stroke} fill={colour.stroke} />}
               <path d={arrow.shaft} className="ride-ahead-arrow-shaft" style={colour ? { stroke: colour.fill } : undefined} />

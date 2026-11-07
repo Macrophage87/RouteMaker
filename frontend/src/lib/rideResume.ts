@@ -15,6 +15,7 @@ import { secretFrom } from "./rideSeal.ts";
 import { leadKeyFrom, rideLinkFrom, sharedIdFrom } from "./sharedRoutes.ts";
 import type { OnwardState } from "./onward.ts";
 import type { StopsLeft } from "./tripStops.ts";
+import type { RideStats } from "./rideStats.ts";
 
 export const RIDE_RESUME_KEY = "routemaker.ride-left";
 /** A ride left longer than this is not offered: a day's ride, not yesterday's. */
@@ -69,6 +70,8 @@ export interface LeftRide {
   stopsLeft?: StopsLeft | null;
   /** When the page was last put away mid-ride (seeLeftRide), if it was. */
   seen?: number | null;
+  /** The ride's figures then (distance, time, climb), so a quick Resume carries them on rather than starting at 0. */
+  stats?: RideStats | null;
 }
 
 /** Points kept with their kinds and names, which live on the pairs (lib/pointKinds.ts). */
@@ -99,6 +102,7 @@ interface Kept {
   past?: OnwardState;
   stops?: KeptPoints & { preset: PresetId };
   seen?: number;
+  stats?: RideStats;
 }
 
 interface Store {
@@ -314,15 +318,27 @@ export function leftRide(marks: Pick<ViaMarks, "via" | "drawn" | "named">, now: 
     ...(kept.trip === true ? { wholeTrip: true, past: pastOf(kept.past) } : {}),
     ...(stops ? { stopsLeft: { preset: stops.preset, points: markedPoints(stops, marks) } } : {}),
     ...(typeof kept.seen === "number" ? { seen: kept.seen } : {}),
+    ...(statsOf(kept.stats) ? { stats: kept.stats } : {}),
   };
 }
 
-/** The page put away mid-ride (another app, the screen off): when, on the kept ride, for a quiet Resume. */
-export function seeLeftRide(now: number, store: Store | null = local()): void {
+/** Kept figures that read as the ride's own (RideStats), else null. */
+function statsOf(value: unknown): RideStats | null {
+  const s = value as Partial<RideStats> | null;
+  return s && typeof s === "object" && typeof s.startedAt === "number" && typeof s.distanceM === "number" && typeof s.movingMs === "number" ? (s as RideStats) : null;
+}
+
+/**
+ * The page put away mid-ride (another app, the screen off): when, and the ride's figures then, on the kept ride, for a
+ * quiet Resume (Stephen 2026-11-07: switching off "resets progress"). Kept on this device only, as the ride is; the
+ * last fix and its line are left out (the next fix starts again, as after a pause).
+ */
+export function seeLeftRide(now: number, stats: RideStats | null = null, store: Store | null = local()): void {
   try {
     const raw = store?.getItem(RIDE_RESUME_KEY);
     if (!raw) return;
-    store?.setItem(RIDE_RESUME_KEY, JSON.stringify({ ...(JSON.parse(raw) as Kept), seen: now }));
+    const figures = stats ? { ...stats, last: null } : undefined;
+    store?.setItem(RIDE_RESUME_KEY, JSON.stringify({ ...(JSON.parse(raw) as Kept), seen: now, ...(figures ? { stats: figures } : {}) }));
   } catch {
     // Full or blocked storage: Resume asks which stops are done, as before.
   }
