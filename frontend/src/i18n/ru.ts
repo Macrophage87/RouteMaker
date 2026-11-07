@@ -1801,7 +1801,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Screen-reader detail: brief.": "Подробности для экранного диктора: кратко.",
   "Screen-reader detail: full.": "Подробности для экранного диктора: полностью.",
   "The {button} button is at the top of the planner.": "Кнопка {button} вверху планировщика.",
-  "Bikeshare and Rebalance Rides take a start and an end only: remove the stops.": "Велопрокат и Перебалансировка принимают только старт и финиш: уберите остановки.",
   "Route problem": "Проблема с маршрутом",
   "Route cleared. Undo brings it back.": "Маршрут удалён. «Отменить» вернёт его.",
   "Leave your ride to open this link?": "Выйти из поездки, чтобы открыть эту ссылку?",
@@ -2054,4 +2053,10 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "You changed the route after its link went out. A new ride gets a new link, so those with the earlier link do not see it.": "Вы изменили маршрут после того, как отправили ссылку. У новой поездки новая ссылка, поэтому те, у кого прежняя ссылка, её не видят.",
   "Same ride": "Та же поездка",
   "New ride": "Новая поездка",
+  "Walking": "Пешком",
+  "Total time, without stops": "Общее время, без остановок",
+  "To stop 1, not counting breaks": "До остановки 1, без учёта перерывов",
+  "Whole trip, not counting breaks": "Вся поездка, без учёта перерывов",
+  "The map shows the trip to stop 1. At each stop you return the bike, and the next trip is planned again from there, with the bikes and docks free then.": "На карте показана поездка до остановки 1. На каждой остановке вы сдаёте велосипед, и следующая поездка планируется заново оттуда, по свободным в тот момент велосипедам и докам.",
+  "From stop {n}": "От остановки {n}",
 };

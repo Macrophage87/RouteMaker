@@ -1801,7 +1801,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Screen-reader detail: brief.": "جزئیات صفحه‌خوان: کوتاه.",
   "Screen-reader detail: full.": "جزئیات صفحه‌خوان: کامل.",
   "The {button} button is at the top of the planner.": "دکمه {button} بالای برنامه‌ریز است.",
-  "Bikeshare and Rebalance Rides take a start and an end only: remove the stops.": "دوچرخه اشتراکی و سواری‌های جابه‌جایی فقط یک شروع و یک پایان می‌گیرند: توقف‌ها را حذف کنید.",
   "Route problem": "مشکل مسیر",
   "Route cleared. Undo brings it back.": "مسیر پاک شد. واگرد آن را برمی‌گرداند.",
   "Leave your ride to open this link?": "برای باز کردن این پیوند از سواری خارج می‌شوید؟",
@@ -2054,4 +2053,10 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "You changed the route after its link went out. A new ride gets a new link, so those with the earlier link do not see it.": "پس از فرستادن پیوند، مسیر را تغییر دادید. سواری تازه پیوند تازه می‌گیرد، پس کسانی که پیوند قبلی را دارند آن را نمی‌بینند.",
   "Same ride": "همان سواری",
   "New ride": "سواری تازه",
+  "Walking": "پیاده",
+  "Total time, without stops": "زمان کل، بدون توقف",
+  "To stop 1, not counting breaks": "تا توقف ۱، بدون احتساب استراحت‌ها",
+  "Whole trip, not counting breaks": "کل سفر، بدون احتساب استراحت‌ها",
+  "The map shows the trip to stop 1. At each stop you return the bike, and the next trip is planned again from there, with the bikes and docks free then.": "نقشه سفر تا توقف ۱ را نشان می‌دهد. در هر توقف دوچرخه را تحویل می‌دهید و سفر بعدی از همان‌جا دوباره برنامه‌ریزی می‌شود، با دوچرخه‌ها و جایگاه‌های آزاد در آن زمان.",
+  "From stop {n}": "از توقف {n}",
 };

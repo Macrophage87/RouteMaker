@@ -1801,7 +1801,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Screen-reader detail: brief.": "Detalhe para leitor de tela: breve.",
   "Screen-reader detail: full.": "Detalhe para leitor de tela: completo.",
   "The {button} button is at the top of the planner.": "O botão {button} fica no topo do planejador.",
-  "Bikeshare and Rebalance Rides take a start and an end only: remove the stops.": "Bicicleta compartilhada e Pedais de reequilíbrio aceitam só um início e um fim: remova as paradas.",
   "Route problem": "Problema na rota",
   "Route cleared. Undo brings it back.": "Rota apagada. Desfazer a traz de volta.",
   "Leave your ride to open this link?": "Sair do pedal para abrir este link?",
@@ -2054,4 +2053,10 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "You changed the route after its link went out. A new ride gets a new link, so those with the earlier link do not see it.": "Você mudou a rota depois que o link foi enviado. Um pedal novo tem um link novo, então quem tem o link anterior não o vê.",
   "Same ride": "O mesmo pedal",
   "New ride": "Pedal novo",
+  "Walking": "A pé",
+  "Total time, without stops": "Tempo total, sem paradas",
+  "To stop 1, not counting breaks": "Até a parada 1, sem contar pausas",
+  "Whole trip, not counting breaks": "Viagem inteira, sem contar pausas",
+  "The map shows the trip to stop 1. At each stop you return the bike, and the next trip is planned again from there, with the bikes and docks free then.": "O mapa mostra a viagem até a parada 1. Em cada parada você devolve a bicicleta, e a próxima viagem é planejada de novo a partir dali, com as bicicletas e vagas livres naquele momento.",
+  "From stop {n}": "Da parada {n}",
 };

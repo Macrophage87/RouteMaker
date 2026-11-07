@@ -1893,7 +1893,6 @@ export const ES: Readonly<Record<string, string>> = {
   "Dismiss": "Descartar",
   "Show": "Mostrar",
   "Gray areas are outside what RouteMaker covers.": "Las zonas grises están fuera de lo que cubre RouteMaker.",
-  "Bikeshare and Rebalance Rides take a start and an end only: remove the stops.": "La bicicleta compartida y los recorridos de redistribución toman solo un inicio y un final: quite las paradas.",
   "The route has as many points as it can take, so no stop can be added.": "La ruta tiene todos los puntos que admite, así que no se puede agregar una parada.",
   "Higher stress junction (triangle)": "Intersección de estrés alto (triángulo)",
   "Very high stress junction (diamond)": "Intersección de estrés muy alto (rombo)",
@@ -2560,4 +2559,10 @@ export const ES: Readonly<Record<string, string>> = {
   "You changed the route after its link went out. A new ride gets a new link, so those with the earlier link do not see it.": "Cambiaste la ruta después de enviar su enlace. Un recorrido nuevo tiene un enlace nuevo, así que quienes tienen el enlace anterior no lo ven.",
   "Same ride": "El mismo recorrido",
   "New ride": "Recorrido nuevo",
+  "Walking": "A pie",
+  "Total time, without stops": "Tiempo total, sin paradas",
+  "To stop 1, not counting breaks": "Hasta la parada 1, sin contar descansos",
+  "Whole trip, not counting breaks": "Todo el viaje, sin contar descansos",
+  "The map shows the trip to stop 1. At each stop you return the bike, and the next trip is planned again from there, with the bikes and docks free then.": "El mapa muestra el viaje hasta la parada 1. En cada parada devuelves la bicicleta, y el siguiente viaje se vuelve a planear desde allí, con las bicicletas y los anclajes libres en ese momento.",
+  "From stop {n}": "Desde la parada {n}",
 };

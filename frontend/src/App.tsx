@@ -2998,7 +2998,7 @@ export function App() {
   const goAddStopAt = (point: LonLat, name: string) => {
     const current = pointsRef.current;
     const ride = rideRef.current;
-    // Walk and the transit types take stops as trips of their own (lib/tripStops.ts); Bikeshare a start and an end.
+    // Walk, the transit types, Bikeshare and Rebalance Ride take stops as trips of their own (lib/tripStops.ts).
     if (current.length < 2 || (twoPointsOnly(ride.preset) && !stopsAsTrips(ride.preset))) {
       void goTo(point, name);
       return;
@@ -3257,7 +3257,8 @@ export function App() {
   // Best order moves stops only (v0.7.0): via points go with the stop they lead to.
   const orderShown = !isMassRide(preset) && stopsThatMove(stopsOnly(points, VIA_MARKS.isVia, loopVias).points, loopVias) >= 2;
   // Go with a route (v0.7.0, "Keep adding stops by search"): "Add a stop" and Best order in the route sheet, and a
-  // chip's place a stop; never during a ride, nor on Bikeshare (a start and an end only).
+  // chip's place a stop; never during a ride. A two-point ride type takes stops only where each stop starts a new trip
+  // (stopsAsTrips: Walk, the transit types, and Bikeshare and Rebalance Ride since v0.22.0).
   const goStops = mode === "go" && !riding && points.length >= 2 && (!twoPointsOnly(preset) || stopsAsTrips(preset)) && !isMassRide(preset);
   const reverseButton = useRef<HTMLButtonElement>(null);
   const orderFocused = useRef(false);
@@ -3915,7 +3916,7 @@ export function App() {
     // A trip with stops (lib/tripStops.ts, Stephen 2026-11-03): its first trip is ridden, to the first stop; the stops
     // left are kept for "Start the next leg" there. A trip check's change or Ride the rest keeps them; a new ride drops them.
     const askedPoints = rest?.points ?? routedPoints;
-    const left = asked.transit ? stopsLeftOf(asked, askedPoints, asked.transit.mode as PresetId) : null;
+    const left = asked.transit || asked.bikeshare ? stopsLeftOf(asked, askedPoints, (asked.transit?.mode ?? asked.preset) as PresetId) : null;
     if (left) tripStopsLeft.current = left;
     else if (!rest || rest.roam) tripStopsLeft.current = null;
     const route = left ? firstTripOf(asked) : asked;
@@ -4453,7 +4454,9 @@ export function App() {
     const n = rideNow.current.start?.n;
     const stillOn = () => ridingNow.current && rideNow.current.start?.n === n;
     const points = nextLegPoints(left, riderAt);
-    const result = await requestRoute(points, left.preset, { dials: { ...planDials, loop: false, closuresNow: true } });
+    // A chosen pick-up station is the start's, not this stop's (Bikeshare, v0.22.0); a chosen drop-off is still the end's.
+    const legDials = withStations(planDials, { dropoff: stationChoice.dropoff });
+    const result = await requestRoute(points, left.preset, { dials: { ...legDials, loop: false, closuresNow: true } });
     if (!stillOn()) return null;
     if (!result.ok) return `${result.error.title}. ${result.error.message}`;
     if (!rideableRoute(result.route)) return RIDE_TOO_LONG;

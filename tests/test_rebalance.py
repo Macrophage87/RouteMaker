@@ -304,7 +304,7 @@ class TestRebalanceApi:
             ({"bike": "ebike", "ending": "outside_dock"}, "Rebalance Ride ends at a station"),
             ({"assist": True}, "assist applies to the Cargo Bike"),
             ({"loop": True}, "does not plan loops"),
-            ({"points": [UNION, DUPONT, UNION]}, "take a start and an end"),
+            ({"points": [UNION, DUPONT, UNION, DUPONT, UNION, DUPONT]}, "at most 3 stops"),
         ],
     )
     def test_what_it_will_not_take(self, client, changes, message) -> None:

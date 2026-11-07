@@ -1801,7 +1801,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Screen-reader detail: brief.": "화면 낭독기 상세도: 간단히.",
   "Screen-reader detail: full.": "화면 낭독기 상세도: 자세히.",
   "The {button} button is at the top of the planner.": "{button} 버튼은 플래너 맨 위에 있습니다.",
-  "Bikeshare and Rebalance Rides take a start and an end only: remove the stops.": "공유자전거와 재배치 라이드는 출발지와 도착지만 받습니다. 경유지를 지우세요.",
   "Route problem": "경로 문제",
   "Route cleared. Undo brings it back.": "경로를 지웠습니다. 실행 취소로 되돌릴 수 있습니다.",
   "Leave your ride to open this link?": "라이드를 떠나 이 링크를 열까요?",
@@ -2054,4 +2053,10 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "You changed the route after its link went out. A new ride gets a new link, so those with the earlier link do not see it.": "링크를 보낸 뒤 경로를 바꾸었습니다. 새 라이드는 새 링크를 받으므로 이전 링크를 가진 사람에게는 보이지 않습니다.",
   "Same ride": "같은 라이드",
   "New ride": "새 라이드",
+  "Walking": "도보",
+  "Total time, without stops": "총 시간, 휴식 제외",
+  "To stop 1, not counting breaks": "경유지 1까지, 휴식 제외",
+  "Whole trip, not counting breaks": "전체 여정, 휴식 제외",
+  "The map shows the trip to stop 1. At each stop you return the bike, and the next trip is planned again from there, with the bikes and docks free then.": "지도에는 경유지 1까지의 여정이 표시됩니다. 각 경유지에서 자전거를 반납하고, 다음 여정은 그때 비어 있는 자전거와 거치대를 기준으로 그곳에서 다시 계획됩니다.",
+  "From stop {n}": "경유지 {n}부터",
 };

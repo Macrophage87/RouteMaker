@@ -167,12 +167,13 @@ export function withStations(dials: Dials, pins: Pins): Dials {
 }
 
 /**
- * The trip's other end, which a list is ranked toward: the destination for the pick-up list and
- * the start for the drop-off list; null until both are placed (the list is then by distance).
+ * The trip's other end, which a list is ranked toward: the destination (or first stop) for the pick-up list and
+ * the start (or last stop) for the drop-off list; null until both are placed (the list is then by distance).
  */
 export function listToward(action: StationAction, points: readonly LonLat[]): LonLat | null {
   if (points.length < 2) return null;
-  return action === "pickup" ? points[points.length - 1]! : points[0]!;
+  // With stops (v0.22.0), toward the trip's own other end: the first stop from the start, the last stop from the end.
+  return action === "pickup" ? points[1]! : points[points.length - 2]!;
 }
 
 /** Which points the lists are for: the start (pick-up) once placed, and the end (drop-off) once a second is. */

@@ -1801,7 +1801,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Screen-reader detail: brief.": "Detay pou lektè ekran: kout.",
   "Screen-reader detail: full.": "Detay pou lektè ekran: konplè.",
   "The {button} button is at the top of the planner.": "Bouton {button} la anlè planifikatè a.",
-  "Bikeshare and Rebalance Rides take a start and an end only: remove the stops.": "Bisiklèt pataje ak Woulib pou rebalanse pran yon depa ak yon fen sèlman: retire arè yo.",
   "Route problem": "Pwoblèm wout",
   "Route cleared. Undo brings it back.": "Wout la efase. Defèt fè l tounen.",
   "Leave your ride to open this link?": "Kite woulib ou pou louvri lyen sa a?",
@@ -2054,4 +2053,10 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "You changed the route after its link went out. A new ride gets a new link, so those with the earlier link do not see it.": "Ou chanje wout la apre lyen li te pati. Yon nouvo woulib gen yon nouvo lyen, kidonk moun ki gen ansyen lyen an pa wè l.",
   "Same ride": "Menm woulib la",
   "New ride": "Nouvo woulib",
+  "Walking": "A pye",
+  "Total time, without stops": "Tan total, san kanpe",
+  "To stop 1, not counting breaks": "Jiska arè 1, san konte poz",
+  "Whole trip, not counting breaks": "Tout vwayaj la, san konte poz",
+  "The map shows the trip to stop 1. At each stop you return the bike, and the next trip is planned again from there, with the bikes and docks free then.": "Kat la montre vwayaj la jiska arè 1. Nan chak arè ou remèt bisiklèt la, epi yo planifye pwochen vwayaj la ankò depi la, ak bisiklèt ak plas ki lib lè sa a.",
+  "From stop {n}": "Depi arè {n}",
 };
