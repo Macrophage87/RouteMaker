@@ -200,6 +200,14 @@ Post = tuple[str, tuple[Image, ...]]
 MAX_FILES = 10  # Discord's limit on attachments in one message
 
 
+def undated(text: str) -> str:
+    """A post's words without its live-date line, so a retry on another day still matches."""
+    lines = text.split("\n")
+    if len(lines) > 1 and lines[1].startswith("Live on beta "):
+        del lines[1]
+    return "\n".join(lines)
+
+
 def live_line(day: str) -> str:
     try:
         when = datetime.strptime(day, "%Y-%m-%d")
@@ -528,7 +536,7 @@ def already_posted(api: Discord, channel: str, version: str) -> list[tuple[str, 
             inside = content.startswith(title + "\n") or content == title
         if inside:
             names = tuple(a.get("filename", "") for a in m.get("attachments") or [])
-            out.append((content, names))
+            out.append((undated(content), names))
     return out
 
 
@@ -551,7 +559,7 @@ def cmd_changelog(
     done = already_posted(api, channel, version)
     todo = []
     for text, images in posts:
-        key = (text, tuple(path.name for path, _ in images))
+        key = (undated(text), tuple(path.name for path, _ in images))
         if key in done:
             done.remove(key)
         else:

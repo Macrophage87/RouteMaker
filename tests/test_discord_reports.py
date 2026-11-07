@@ -448,6 +448,14 @@ def test_changelog_is_one_post_with_the_date_and_every_picture(changelog_dir, mo
     again = FakeChannel(history)
     assert run(changelog_dir, again, *args) == 0
     assert again.posted() == []
+    # A retry on another day, or by hand without a date, still finds it.
+    later = FakeChannel(history)
+    assert (
+        run(changelog_dir, later, "changelog", "v0.22.0", str(notes), "--live-date", "2026-11-01")
+        == 0
+    )
+    assert run(changelog_dir, later, "changelog", "v0.22.0", str(notes)) == 0
+    assert later.posted() == []
 
 
 def test_long_notes_put_each_picture_where_it_sits(changelog_dir, monkeypatch) -> None:
