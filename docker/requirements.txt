@@ -16,7 +16,7 @@
 Django==5.2.17
 # The HTTP API: src/core/api.py is a NinjaAPI, served under /api/ (its docs
 # assets are collected into the Caddy-served volume).
-django-ninja==1.7.0
+django-ninja==1.7.1
 # GeoDjango's PostGIS backend. The binary wheel bundles its own libpq, so the
 # image needs no libpq for Django itself - it needs one for pg_dump.
 psycopg2-binary==2.9.13
