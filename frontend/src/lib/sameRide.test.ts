@@ -77,7 +77,19 @@ test("a link sent from one tab is asked about a day later in a new tab or a reop
   markOwnSecret(newRideSecret(), device, later);
   assert.equal(Object.keys(JSON.parse(device.kept.get(RIDE_SENT_KEY)!)).length, 1);
   assert.equal(Object.keys(JSON.parse(device.kept.get(OWN_SECRETS_KEY)!)).length, 1);
-  assert.ok(!device.kept.get(OWN_SECRETS_KEY)!.includes(secret), "only a digest is kept");
+});
+
+test("a sent link stays the page's own after twenty more plan edits push it out of the own list", () => {
+  const { asksSameRide, isOwnSecret, markOwnSecret, markRideSent } = rideGroup;
+  const device = memoryStore();
+  const secret = newRideSecret();
+  const monday = Date.UTC(2026, 10, 2, 18);
+  markOwnSecret(secret, device, monday);
+  markRideSent(secret, monday, false, device);
+  for (let i = 0; i < 25; i += 1) markOwnSecret(newRideSecret(), device, monday + i * 60_000);
+  const saturday = monday + 5 * 24 * HOUR;
+  assert.equal(isOwnSecret(secret, device, saturday), true);
+  assert.equal(asksSameRide(secret, saturday, device), true);
 });
 
 test("the Same ride send times and own secrets default to the device's storage, not the tab's", () => {

@@ -126,6 +126,8 @@ function timedDigests(store: Store | null, key: string, now: number): Record<str
   }
 }
 
+/** Read, changed and written again with no lock: two tabs writing at the same moment may lose one entry, which costs at
+ * most one question not asked. */
 function keepDigests(store: Store | null, key: string, times: Record<string, number>): void {
   try {
     store?.setItem(key, JSON.stringify(Object.fromEntries(Object.entries(times).slice(-OWN_RIDE_MAX))));
@@ -144,9 +146,10 @@ export function markOwnSecret(secret: string, store: Store | null = local(), now
   keepDigests(store, OWN_SECRETS_KEY, times);
 }
 
-/** Whether a secret the page opened with is one it made itself on this device. */
+/** Whether a secret the page opened with is one it made itself on this device. One whose link went out from here is
+ * (only the page's own are marked sent), so twenty plan edits since, which push it out of the own list, do not lose it. */
 export function isOwnSecret(secret: string, store: Store | null = local(), now: number = Date.now()): boolean {
-  return timedDigests(store, OWN_SECRETS_KEY, now)[`d${secretDigest(secret)}`] !== undefined;
+  return timedDigests(store, OWN_SECRETS_KEY, now)[`d${secretDigest(secret)}`] !== undefined || wasRideSent(secret, store, now);
 }
 
 /** When each of the page's own secrets first went out in a link (Copy link or Share), by digest, on this device

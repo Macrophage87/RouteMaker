@@ -1525,7 +1525,7 @@ export function App() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- a change of points only; a change of type is above.
   }, [points]);
-  // The page's own secret is kept for its plan, and marked as its own in this tab.
+  // The page's own secret is kept for its plan, and marked as its own on this device.
   useEffect(() => {
     if (!groupSecretOwn.current) return;
     ownSecrets.current!.keep(ridePlanKey(preset, secretPlan.current), groupSecret);
