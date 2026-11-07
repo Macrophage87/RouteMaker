@@ -277,7 +277,7 @@ test("Broadcast from a ride (Stephen 2026-10-24: \"Let people broadcast from a r
   // The button is made once (in the rail, or in More when the rail is short of room, v0.22.0).
   const rail = ride.slice(ride.indexOf("const broadcastButton = ("), ride.indexOf("{/* The bottom panel"));
   // A round side button as Roam's, on while this rider leads; not once arrived.
-  assert.match(rail, /const broadcastButton = \(\s*<button\s+type="button"\s+className=\{`ride-round broadcast-hold\$\{broadcasting \? " ride-round-on" : ""\}`\}\s+onClick=\{\(\) => void broadcast\(\)\}/);
+  assert.match(rail, /const broadcastButton = \(\s*<button\s+type="button"\s+className=\{`ride-round broadcast-hold\$\{broadcasting \? " ride-round-on" : ""\}`\}\s+onClick=\{broadcastInMore \? \(\) => fromMore\(\(\) => void broadcast\(\)\) : \(\) => void broadcast\(\)\}/);
   assert.match(rail, /\{onBroadcast && !ride\.arrived && !broadcastInMore && broadcastButton\}/);
   assert.match(rail, /<Icon name="broadcast" size=\{riders === null \? 24 : 20\} \/>/);
   // The count of riders, the leader included, is part of Broadcast (Stephen 2026-10-27), said in its name too.

@@ -3248,7 +3248,7 @@ export function RideMode({
       // least room: the same whether the panel and the graph show or not, so the answer does not flip as they come
       // and go (the review of #928).
       const sheetH = sheet ? sheet.offsetHeight : 0;
-      const room = Math.floor(middle.clientHeight + sheetH - sheetChrome.current - AHEAD_MARGIN_PX - railLeastPx(buttons) - RAIL_INSET_PX - clear);
+      const room = Math.floor(middle.clientHeight + sheetH - sheetChrome.current - AHEAD_MARGIN_PX - railLeastPx(buttons + railMoved) - RAIL_INSET_PX - clear);
       // Whether a graph can show on this screen is told from that room alone; a note in the panel (a weak GPS fix,
       // the weather) only takes its height from the graphs while it shows, quietly.
       const graph = shown ? figure.getBoundingClientRect().height + AHEAD_MARGIN_PX : 0;
@@ -3274,7 +3274,7 @@ export function RideMode({
       watch.disconnect();
       buttons.disconnect();
     };
-  }, [aheadWanted, sheetShown, textSize, aheadDrawn]);
+  }, [aheadWanted, sheetShown, textSize, aheadDrawn, railMoved]);
   // Measured again before it is painted when a note comes into the panel or goes (a weak GPS fix under trees), or the
   // rest button or the panel itself: the graphs' room changes at once, not a frame later from the ResizeObserver,
   // which drew them in three steps (the review of #928). Keyed on each note itself (a second note, or one swapped for
@@ -3325,12 +3325,16 @@ export function RideMode({
     }
   }, [ride.off, show311]);
 
-  // The rail's Text and Share live buttons: in the rail or, short of room, in More (railMoved above).
+  // The rail's Text and Share live buttons: in the rail or, short of room, in More (railMoved above), where a press
+  // closes More as its other press-once bubbles do. Moving one remounts it: a focus it held goes to More, not the page.
+  useEffect(() => {
+    if (document.activeElement === document.body || document.activeElement === null) settingsButton.current?.focus();
+  }, [textInMore, broadcastInMore]);
   const textButton = (
     <button
       type="button"
       className="ride-round ride-text-size"
-      onClick={cycleText}
+      onClick={textInMore ? () => fromMore(cycleText) : cycleText}
       aria-keyshortcuts="T"
       aria-pressed={textSize === "large"}
       aria-label={RIDE_TEXT_BUTTON}
@@ -3344,7 +3348,7 @@ export function RideMode({
     <button
       type="button"
       className={`ride-round broadcast-hold${broadcasting ? " ride-round-on" : ""}`}
-      onClick={() => void broadcast()}
+      onClick={broadcastInMore ? () => fromMore(() => void broadcast()) : () => void broadcast()}
       {...broadcastHold}
       aria-describedby={onBroadcastHold ? broadcastHoldId : undefined}
       aria-label={`${broadcasting ? t("{name}: on. Share the link again", { name: RIDE_BROADCAST_NAME }) : passingOn ? t("{name}: pass on the link to this ride", { name: RIDE_BROADCAST_NAME }) : t("{name}: share a link others follow you with", { name: RIDE_BROADCAST_NAME })}${riders === null ? "" : `. ${countText(riders)}`}`}

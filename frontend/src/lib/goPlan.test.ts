@@ -347,7 +347,7 @@ test("the 311 button shows anywhere on the route; its menu has the six problems 
 
 test("Large text: a side button and Settings' switch, one choice; it replaced Big text (the owner, 2026-10-20)", () => {
   // "It actually should have it's own button"; Big text went: "if you can fit the largest text in the half mode, then you're not gaining much".
-  assert.match(ride, /className="ride-round ride-text-size"\s+onClick=\{cycleText\}\s+aria-keyshortcuts="T"\s+aria-pressed=\{textSize === "large"\}\s+aria-label=\{RIDE_TEXT_BUTTON\}/);
+  assert.match(ride, /className="ride-round ride-text-size"\s+onClick=\{textInMore \? \(\) => fromMore\(cycleText\) : cycleText\}\s+aria-keyshortcuts="T"\s+aria-pressed=\{textSize === "large"\}\s+aria-label=\{RIDE_TEXT_BUTTON\}/);
   // The change is said, as Where am I? is.
   assert.match(ride, /announcer\.current\?\.answer\(said\);/);
   assert.doesNotMatch(ride, /BigTextField|ride-big/);

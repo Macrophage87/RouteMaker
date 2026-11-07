@@ -180,7 +180,7 @@ test("the rail starts below the ride group's bar where the bar is over it, so Se
   const src = readFileSync(new URL("./railFit.ts", import.meta.url), "utf8");
   assert.match(src, /const available = element\.clientHeight - clear;\s*const buttons = items\.length \+ movedNow\.current;\s*const fitNow = railFit\(available, buttons, large, iconsOnly\);/);
   // A card that grows (Large text) moves the bars by a property on the page: measured again (v0.22.0).
-  assert.match(src, /moved\?\.observe\(app!, \{ attributes: true, attributeFilter: \["style"\] \}\);/);
+  assert.match(src, /cardMoved\?\.observe\(app!, \{ attributes: true, attributeFilter: \["style"\] \}\);/);
   // Every group bar counts, and one that comes after the rail is measured too.
   assert.match(src, /document\.querySelectorAll\("\.ride-group-bar"\)/);
   assert.match(src, /barsChanged\?\.observe\(element\.closest\("\.app"\) \?\? document\.body, \{ childList: true, subtree: true \}\);/);

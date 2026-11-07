@@ -88,6 +88,8 @@ export function useRailFitMoves(rail: RefObject<HTMLElement | null>, iconsOnly: 
   const [moved, setMoved] = useState(0);
   const movedNow = useRef(0);
   useLayoutEffect(() => {
+    // Fewer can move now (Share live gone): no more counted as moved than can be.
+    movedNow.current = Math.min(movedNow.current, movable);
     const element = rail.current;
     if (!element) return;
     const resized = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => measure());
@@ -135,12 +137,12 @@ export function useRailFitMoves(rail: RefObject<HTMLElement | null>, iconsOnly: 
     // The bars sit under the ride's card by a property on the page (--ride-card-bottom), so a card that grows (Large
     // text) moves them without resizing them: measured again when that property is set (v0.22.0).
     const app = element.closest(".app");
-    const moved = typeof MutationObserver === "undefined" || !app ? null : new MutationObserver(measure);
-    moved?.observe(app!, { attributes: true, attributeFilter: ["style"] });
+    const cardMoved = typeof MutationObserver === "undefined" || !app ? null : new MutationObserver(measure);
+    cardMoved?.observe(app!, { attributes: true, attributeFilter: ["style"] });
     return () => {
       resized?.disconnect();
       changed?.disconnect();
-      moved?.disconnect();
+      cardMoved?.disconnect();
       barsChanged?.disconnect();
     };
   }, [rail, iconsOnly, movable]);
