@@ -75,3 +75,30 @@ def test_a_zoo_point_is_moved_to_the_racks_and_says_so() -> None:
     assert [m["index"] for m in moved] == [0]
     assert moved[0]["reason"] == "zoo_racks" and "racks" in moved[0]["note"]
     assert routing.move_zoo_points([[-77.03, 38.9]])[1] == []
+
+
+def test_trail_levels_are_the_rated_trails_ridden_measured_as_the_spans(monkeypatch) -> None:
+    # Stephen, 2026-11-07: "add mountain bike trail difficulty to the ribbon".
+    traits = {7: (True, 2, True), 8: (True, 2, True), 9: (True, 3, True), 10: (True, None, True)}
+    monkeypatch.setattr(routing.mtb, "way_traits", lambda ways: traits)
+    traits[11] = (False, None, True)  # an ordinary unpaved trail: no level
+    pieces = [piece(1, 100), piece(7, 40), piece(8, 60), piece(9, 50), piece(10, 80), piece(9, 20)]
+    pieces.append(piece(11, 50))
+    # An untraced stretch of 30 m between the legs counts toward the distance, as in the spans.
+    spans = routing.trail_level_spans([(0, 3), 30.0, (3, 6)], pieces)
+    assert spans == [
+        {"from_m": 100, "to_m": 200, "level": 2},
+        {"from_m": 230, "to_m": 280, "level": 3},
+        # The unrated trail (way 10) is level 0, coloured as the map's unrated trails.
+        {"from_m": 280, "to_m": 360, "level": 0},
+        {"from_m": 360, "to_m": 380, "level": 3},
+    ]
+
+
+def test_trail_levels_are_empty_where_they_cannot_be_read(monkeypatch) -> None:
+    def broken(ways):
+        raise RuntimeError("no table")
+
+    monkeypatch.setattr(routing.mtb, "way_traits", broken)
+    assert routing.trail_level_spans([(0, 1)], [piece(9, 40)]) == []
+    assert routing.trail_level_spans([], []) == []

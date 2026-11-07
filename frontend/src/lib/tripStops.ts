@@ -1,6 +1,6 @@
 /**
- * Stops on a Walk or transit trip (Stephen, 2026-11-02: "Add the stops in for all"; 2026-11-03: "Each stop starts a new
- * trip"). The API plans each leg between stops as a trip of its own, leaving the stop as the leg before arrives there,
+ * Stops on a Walk, transit or Bikeshare trip (Stephen, 2026-11-02: "Add the stops in for all";
+ * 2026-11-03: "Each stop starts a new trip"; Bikeshare in v0.22.0, the bike returned at each stop). The API plans each leg between stops as a trip of its own, leaving the stop as the leg before arrives there,
  * and answers them one after another (`stop_steps`). The ride follows one trip at a time: the first, to the first stop;
  * there, "Start the next leg" plans the rest again from where the rider is, leaving then, as a stop takes as long as
  * it takes.
@@ -8,7 +8,7 @@
 import type { RouteResponse, TransitPlan } from "./api.ts";
 import { t } from "./i18n.ts";
 import { MAX_POINTS, type LonLat } from "./geo.ts";
-import { isTransit, type PresetId } from "./presets.ts";
+import { isTransit, usesBikeshare, type PresetId } from "./presets.ts";
 
 /** The control at a stop, once the trip to it is done. */
 export const NEXT_LEG = t("Start the next leg");
@@ -16,22 +16,33 @@ export const NEXT_LEG = t("Start the next leg");
 /** A trip's key is its legs' keys joined (core/transit.py STOPS_KEY_SEP). */
 export const STOPS_KEY_SEP = "+";
 
-/** Whether a ride type takes stops as trips of their own: Walk and the transit types (Bikeshare not yet). */
+/**
+ * Whether a ride type takes stops as trips of their own: Walk, the transit types and Bikeshare. Not Rebalance Ride,
+ * which has no destination (Stephen, 2026-11-07): one trip from where the rider is, the next from the end screen.
+ */
 export function stopsAsTrips(preset: PresetId): boolean {
-  return isTransit(preset);
+  return isTransit(preset) || (usesBikeshare(preset) && preset !== "rebalance");
 }
 
 /** The most stops such a trip takes (core/api.py MAX_TRIP_STOPS): the server refuses a fourth. */
 export const MAX_TRIP_STOPS = 3;
 
-/** The most points a route of this ride type takes: a start, its stops and an end for trips of stops, else MAX_POINTS. */
+/**
+ * The most points a route of this ride type takes: the start alone on a Rebalance Ride, a start, its stops and an end
+ * for trips of stops, else MAX_POINTS.
+ */
 export function maxPointsFor(preset: PresetId): number {
+  if (preset === "rebalance") return 1;
   return stopsAsTrips(preset) ? MAX_TRIP_STOPS + 2 : MAX_POINTS;
 }
 
-/** Whether a route is a trip with stops. */
-export function hasStops(route: Pick<RouteResponse, "transit">): boolean {
-  return (route.transit?.stop_steps?.length ?? 0) > 0;
+/**
+ * Whether a route is a trip with stops. A Bikeshare trip whose later trips could not be planned now still has them
+ * (`later_note`): it is planned again at the stop.
+ */
+export function hasStops(route: Pick<RouteResponse, "transit" | "bikeshare">): boolean {
+  const share = route.bikeshare;
+  return (route.transit?.stop_steps?.length ?? 0) > 0 || (share?.later?.length ?? 0) > 0 || Boolean(share?.later_note);
 }
 
 /**
@@ -39,6 +50,9 @@ export function hasStops(route: Pick<RouteResponse, "transit">): boolean {
  * gives it alone), its own time. A trip with no stops is itself.
  */
 export function firstTripOf(route: RouteResponse): RouteResponse {
+  // A Bikeshare trip's body is its first trip already: only the later ones go.
+  const share = route.bikeshare;
+  if (share?.later?.length || share?.later_note) return { ...route, bikeshare: { ...share, later: [], later_note: null, trip_total_s: null } };
   const plan = route.transit;
   const end = plan?.stop_steps?.[0];
   if (!plan || end === undefined) return route;

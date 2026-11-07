@@ -1453,8 +1453,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "S3 a reading cut short is made of what was read",
         "src/core/junctions.py",
-        "                later.cancel()\n            raise ReadingCutShort(",
-        "                later.cancel()\n            continue\n            raise ReadingCutShort(",
+        "                    later.cancel()\n                raise ReadingCutShort(",
+        "                    later.cancel()\n                continue\n                raise ReadingCutShort(",
         ["tests/test_junctions.py"],
     ),
     (

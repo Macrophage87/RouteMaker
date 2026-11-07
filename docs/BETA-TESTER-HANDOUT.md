@@ -251,10 +251,15 @@ method" have the same groups. Typing "transit",
   way, on sidewalks, paths and crosswalks; "Start walk" follows it turn by turn. Walk + 🚆🚌 walks at
   each end with Metro, MARC, VRE, Light RailLink, Metro SubwayLink or a bus between, and offers
   walking the whole way where that is quickest or short.
-- Stops on Walk, Walk + 🚆🚌, Bike + 🚆🚌 and Bikeshare + 🚶🚆🚌 (up to 3): each stop starts a new trip.
+- Stops on Walk, Walk + 🚆🚌, Bike + 🚆🚌, Bikeshare + 🚶🚆🚌 and Bikeshare (up to 3): each stop starts a new trip.
   Each leg is planned as its own trip, leaving as the one before arrives. The ride follows one trip at
   a time. At each stop, "Start the next leg" plans the rest again from where you are, leaving then.
-  Bikeshare and Rebalance Ride still take a start and an end only.
+  On Bikeshare you return the bike at each stop, and the next trip's docks are chosen again there.
+- Rebalance Ride has no destination: it walks you from where you are to the nearest crowded
+  station. Once you are there, it lists up to 3 docks that need bikes right then, and rides you to
+  the one you pick, where the ride ends. The end screen shows the
+  day's trips, walking and riding (kept on your phone only), with "Do another trip" (planned from
+  where you docked) and "Finish session".
 - Avoid stairs on walks (Settings, Riding, and the ride settings of Walk and Walk + 🚆🚌) keeps the
   walks of Bikeshare, transit and Walk trips off flights of steps where a step-free way is near. It
   is off unless you turn it on. A walk beside your own bike always avoids steps. A station is still
