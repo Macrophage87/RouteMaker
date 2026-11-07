@@ -85,7 +85,9 @@ export function closuresOf(route: WithClosures | null | undefined, permits = fal
 // default. GET /api/closures/map answers the closures in force now in the map's view (core.workzones.area_rows):
 // asked after the map moves and every few minutes while the page is in front, so one past its end date leaves.
 
-export const AREA_MIN_ZOOM = 11;
+// From z12, past the opening view (OPENING_ZOOM, 11.2): the owner, 2026-11-07, of that view: "it very much looks
+// messsy". A route's own closures are drawn at every zoom all the same (closuresOf).
+export const AREA_MIN_ZOOM = 12;
 export const AREA_POLL_MS = 5 * 60_000;
 /** The largest view the server answers (core.workzones.AREA_MAX_*), a hair under. */
 export const AREA_MAX_LON = 0.399;
@@ -171,11 +173,11 @@ export function mergeClosures(route: readonly ClosureItem[], area: readonly Clos
  * Lake Frank's trail closure was ten barriers in a row: with no route, one marker per closure, on its middle piece,
  * and every piece still drawn red. A route's pieces keep a marker each, since each has its own "Route through anyway".
  * A DDOT project advisory's closure (v0.12.4) is one zone per line too ("ddot_advisory-<closure>-<line>"), and so
- * is a Purple Line update's (v0.13.0, "purple_line-<closure>-<line>"), and planned work's (v0.17.0, a ProTrack+
+ * is a Purple Line update's (v0.13.0, "purple_line-<closure>-<line>") and a Fairfax park alert's (v0.22.0, "fcpa-<closure>-<line>"), and planned work's (v0.17.0, a ProTrack+
  * project's or a WSSC water main's lines: "protrack-<id>-<line>", "wssc-<id>-<line>"), as is a closure from Maryland's
  * Road Closure Reporter (v0.17.0, "sha-<closure>-<n>").
  */
-const PIECE = /^((?:reviewer-\d+)|(?:(?:ddot_advisory|purple_line|protrack|wssc|sha)-[a-z0-9-]+))-(\d+)$/;
+const PIECE = /^((?:reviewer-\d+)|(?:(?:ddot_advisory|purple_line|fcpa|protrack|wssc|sha)-[a-z0-9-]+))-(\d+)$/;
 
 export function markerItems(items: readonly ClosureItem[]): ClosureItem[] {
   const groups = new Map<string, ClosureItem[]>();

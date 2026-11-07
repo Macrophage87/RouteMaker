@@ -121,18 +121,21 @@ function StationList({
   );
 }
 
-/** The lists for the start (pick-up) and, once there is one, the end (drop-off). */
+/** The lists for the start (pick-up) and, once there is one, the end (drop-off); a Rebalance Ride's pick-up alone. */
 export function NearbyStations({
   points,
   pins,
   onChoose,
+  startOnly = false,
 }: {
   points: readonly LonLat[];
   pins: Pins;
   onChoose: (action: StationAction, station: NearbyStation | null, point: LonLat) => void;
+  /** A Rebalance Ride, which has no end: its drop-off is chosen at the pick-up dock, from the counts then (lib/rebalanceDock.ts). */
+  startOnly?: boolean;
 }) {
   const pickup = listPoint("pickup", points);
-  const dropoff = listPoint("dropoff", points);
+  const dropoff = startOnly ? null : listPoint("dropoff", points);
   if (!pickup) return null;
   return (
     <div className="nearby-stations-group">

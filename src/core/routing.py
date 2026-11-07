@@ -2961,6 +2961,52 @@ def _has_walk_column(schema: str) -> bool:
     return segment_info.has_columns(schema, "walk_bike")
 
 
+def trail_level_spans(leg_runs: list, pieces: list[Piece]) -> list[dict]:
+    """The rated mountain-bike trails the route rides (Stephen, 2026-11-07: "add mountain bike
+    trail difficulty to the ribbon"): [{from_m, to_m, level}] in whole metres along the traced
+    pieces, as `stress_spans` are measured, `level` 1-4 (green, blue, black, red; the map's
+    `mtb_level`), or 0 on an unrated mountain-bike trail, neighbouring pieces of one level
+    joined. A table without the column, or a failed query, has none."""
+    if not pieces:
+        return []
+    try:
+        traits = mtb.way_traits([p.way_id for p in pieces])
+    except Exception:  # noqa: BLE001 - a route is answered without its trail levels
+        logger.warning("the trail levels could not be read", exc_info=True)
+        return []
+    # An unrated mountain-bike trail is level 0 (Stephen, 2026-11-07: "on unrated, give that a
+    # color too"); an ordinary path or road has none.
+    levels = {
+        way: (level if level in mtbmode.LEVELS else 0)
+        for way, (only, level, _trail) in traits.items()
+        if level in mtbmode.LEVELS or only
+    }
+    if not levels:
+        return []
+    spans: list[dict] = []
+    at = 0.0
+    for run in leg_runs:
+        if not isinstance(run, tuple):
+            at += float(run)
+            continue
+        for index in range(run[0], run[1]):
+            piece = pieces[index]
+            level = levels.get(piece.way_id)
+            start, at = at, at + piece.metres
+            if level is None:
+                continue
+            last = spans[-1] if spans else None
+            if last is not None and last["level"] == level and abs(last["to_m"] - start) < 0.5:
+                last["to_m"] = at
+            else:
+                spans.append({"from_m": start, "to_m": at, "level": level})
+    return [
+        {"from_m": round(s["from_m"]), "to_m": round(s["to_m"]), "level": s["level"]}
+        for s in spans
+        if round(s["to_m"]) > round(s["from_m"])
+    ]
+
+
 def walk_spans(leg_runs: list, pieces: list[Piece]) -> list[tuple[float, float]]:
     """The stretches of the route over a short `bicycle=dismount` connector that
     routing keeps (OWNER-DECISIONS 291(5)): (from, to) in metres along the traced
@@ -5364,6 +5410,7 @@ def _plan(
         if events is not None and refine_context.group:
             events = intersections.number_groups(events, stops_m)
         walks = [] if over_budget else walk_spans(leg_runs, pieces)
+        trail_levels = [] if over_budget else trail_level_spans(leg_runs, pieces)
         profiled_from = clock()
         mass_ride = preset_name == "mass-ride"
         profile = route_profile(
@@ -5675,6 +5722,9 @@ def _plan(
             "road_hazards": hazards_ridden,
             # The scenic designations it rides (v0.12.3): rustic roads, byways; [] where none.
             "scenic_roads": scenic_ridden,
+            # The rated mountain-bike trails it rides (2026-11-07), for the ride's stress
+            # ribbon; [] where none.
+            "trail_levels": trail_levels,
             # Steep grades either way past 5% and 8% (v0.12.5, `routemaker.steep_grades`), in
             # riding order, metres along the router's profile; null off a Mass Ride or Novice.
             "steep_grades": (
