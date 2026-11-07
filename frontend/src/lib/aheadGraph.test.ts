@@ -294,7 +294,7 @@ test("corker labels: short names, a row each where they would run into one anoth
 test("Ride gives the graphs only the room the side buttons leave, and their text grows with Large text", () => {
   const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
   assert.match(ride, /large=\{textSize === "large"\} maxPx=\{aheadMaxPx\}/);
-  assert.match(ride, /const room = Math\.floor\(middle\.clientHeight \+ sheetH - sheetChrome\.current - AHEAD_MARGIN_PX - railLeastPx\(buttons\) - RAIL_INSET_PX - clear\);/, "the same room whether the panel shows or not");
+  assert.match(ride, /const room = Math\.floor\(middle\.clientHeight \+ sheetH - sheetChrome\.current - AHEAD_MARGIN_PX - railLeastPx\(buttons \+ railMoved\) - RAIL_INSET_PX - clear\);/, "the same room whether the panel shows or not");
   assert.match(ride, /setAheadFits\(\(was\) => \(was \? room >= least - AHEAD_HYSTERESIS_PX : room >= least \+ AHEAD_HYSTERESIS_PX\)\);/, "a few px each way before it flips");
   assert.match(ride, /if \(!key \|\| noRoomSaid\.current\.has\(key\)\) return;/, "each set of graphs with no room said once a ride");
   const graph = readFileSync(new URL("../AheadGraph.tsx", import.meta.url), "utf8");
