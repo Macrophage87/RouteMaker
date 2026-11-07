@@ -34,6 +34,22 @@ def test_a_route_with_bears_validates_as_a_response():
         DescriptionEntryOut.model_validate(entry)
 
 
+def test_the_turn_off_a_way_beside_the_road_reaches_the_response():
+    """The owner, 2026-11-07: `across_from` is the response's, not dropped by the schema."""
+    from dataclasses import replace
+
+    cross_road = ((90.0, "road", "secondary", "both"), (270.0, "road", "secondary", "both"))
+    before = road("path beside West Basin Drive Southwest", 1, 400, 90, 90, "path", "cycleway")
+    bend = replace(road("", 1, 8, 0, 0, "path", "cycleway")[0], others=(), turn=-90.0)
+    across = replace(road("", 1, 12, 0, 0, "path", "cycleway")[0], others=cross_road, turn=0.0)
+    after = road("West Basin Drive SW Cycletrack", 1, 400, 90, 90, "protected", "cycleway")
+    after[0] = replace(after[0], others=(), turn=90.0)
+    entries = d.describe([flat(before, [bend, across], after)])
+    entry = next(e for e in entries if (e.get("turn") or {}).get("across"))
+    out = DescriptionEntryOut.model_validate(entry).model_dump()
+    assert out["turn"]["across_from"] == "left"
+
+
 def test_the_way_an_unnamed_path_leads_to_reaches_the_response():
     """D21: the `toward` field is the response's, not dropped by the schema."""
     legs = [

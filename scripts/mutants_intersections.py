@@ -650,8 +650,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "a failed batch ends the asking",
         J,
-        '            logger.info("intersection nodes unavailable for a batch: %s", error)\n            continue',
-        '            logger.info("intersection nodes unavailable for a batch: %s", error)\n            break',
+        "        if not answered:\n            continue",
+        "        if not answered:\n            break",
         JUNCTIONS,
     ),
     ("locate batch", J, "LOCATE_BATCH = 50", "LOCATE_BATCH = 500", JUNCTIONS),

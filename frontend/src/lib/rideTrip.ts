@@ -70,6 +70,8 @@ export interface RideRest {
 
 export interface RideTrip {
   approach: RideApproach | null;
+  /** A Rebalance Ride whose drop-off was chosen at its crowded dock (lib/rebalanceDock.ts): that dock's name. */
+  docked?: string | null;
   finish: TripWords | null;
   /** The departure the finish leads to (DepartureTimer), where the plan has one. */
   departure: TransitDeparture | null;
