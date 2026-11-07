@@ -2293,3 +2293,106 @@ def test_check_operations_reports_an_interrupted_swap(settings, tmp_path) -> Non
     assert exit_code.value.code == 1, printed
     assert "swap: a swap to build 20261027T080000Z" in printed
     assert "1 interrupted swap" in printed
+
+
+# --- Dead maintenance jobs close themselves -------------------------------------------------
+#
+# Beta, 2026-11-07: refresh_dc_closures jobs 16729, 16829 and 17281 sat `doing` from
+# 2026-10-19 on every alert. Their worker had been recreated mid-run; the task itself kept
+# running on later ticks. The worker heartbeat now closes such rows (core.runs).
+
+
+def set_queue(job_id: int, queue: str) -> None:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "UPDATE procrastinate_jobs SET queue_name = %s WHERE id = %s", [queue, job_id]
+        )
+
+
+@db
+def test_a_dead_dc_closures_job_is_closed_and_leaves_the_wedged_list() -> None:
+    from core.models import AuditLogEntry
+    from core.runs import close_orphaned_jobs, wedged_jobs
+
+    job_id = make_job("refresh_dc_closures", "doing", timedelta(days=19), worker="gone")
+    assert [entry["id"] for entry in wedged_jobs()] == [job_id], "before: the alert's row"
+
+    closed = close_orphaned_jobs()
+
+    assert [entry["id"] for entry in closed] == [job_id]
+    assert job_status(job_id) == "aborted", "finished, not failed and not requeued"
+    assert wedged_jobs() == []
+    entry = AuditLogEntry.objects.get(action="close_orphaned_job")
+    assert entry.actor is None and entry.object_id == str(job_id)
+
+
+@db
+@pytest.mark.parametrize("worker", ["stale", "just_past"])
+def test_a_job_whose_worker_stopped_beating_is_closed_too(worker) -> None:
+    from core.runs import close_orphaned_jobs
+
+    job_id = make_job("refresh_dc_closures", "doing", timedelta(minutes=3), worker=worker)
+    close_orphaned_jobs()
+    assert job_status(job_id) == "aborted"
+
+
+@db
+@pytest.mark.parametrize("worker", ["live", "inside"])
+def test_a_job_whose_worker_still_beats_is_never_closed(worker) -> None:
+    """Past its budget, but its worker is alive: a live thread, left on the wedged list."""
+    from core.runs import close_orphaned_jobs, wedged_jobs
+
+    job_id = make_job("refresh_dc_closures", "doing", timedelta(days=1), worker=worker)
+    assert close_orphaned_jobs() == []
+    assert job_status(job_id) == "doing"
+    assert [entry["id"] for entry in wedged_jobs()] == [job_id]
+
+
+@db
+def test_a_dead_backup_and_a_dead_rebuild_stay_for_the_operator() -> None:
+    """A killed backup is worth a requeue tonight (`unwedge_job`), and the rebuild queue
+    has its own checkpoints and single-flight checks: neither is closed here."""
+    from core.runs import close_orphaned_jobs
+
+    backup = make_job("nightly_backup", "doing", timedelta(hours=2), worker="gone")
+    rebuild = make_job("weekly_rebuild", "doing", timedelta(hours=3), worker="gone")
+    set_queue(rebuild, "rebuild")
+
+    assert close_orphaned_jobs() == []
+    assert job_status(backup) == "doing"
+    assert job_status(rebuild) == "doing"
+
+
+@db
+def test_the_worker_heartbeat_closes_dead_jobs_and_says_so() -> None:
+    from config.procrastinate import worker_heartbeat
+    from core.models import ScheduledRun
+
+    first = make_job("refresh_dc_closures", "doing", timedelta(days=19), worker="gone")
+    second = make_job("refresh_dc_closures", "doing", timedelta(days=18), worker="gone")
+
+    worker_heartbeat(timestamp=0)
+
+    assert job_status(first) == "aborted" and job_status(second) == "aborted"
+    run = ScheduledRun.objects.filter(task="worker_heartbeat").latest("started_at")
+    assert run.succeeded
+    assert f"closed dead jobs {first} refresh_dc_closures, {second} refresh_dc_closures" in (
+        run.detail
+    )
+
+
+@db
+def test_the_heartbeat_still_beats_when_closing_fails(monkeypatch) -> None:
+    """A failure closing rows must not read as a dead worker."""
+    import core.runs
+    from config.procrastinate import worker_heartbeat
+    from core.models import ScheduledRun
+
+    def broken(now=None):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(core.runs, "close_orphaned_jobs", broken)
+    worker_heartbeat(timestamp=0)
+
+    run = ScheduledRun.objects.filter(task="worker_heartbeat").latest("started_at")
+    assert run.succeeded and "closed" not in run.detail

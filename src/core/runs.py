@@ -696,6 +696,69 @@ def wedged_jobs(now=None) -> list[dict]:
     return wedged
 
 
+# Maintenance-queue tasks whose dead rows are left for the operator rather than closed by
+# `close_orphaned_jobs`: a killed backup is worth running again tonight rather than
+# tomorrow, which is `unwedge_job`'s requeue, not a close.
+KEEP_ORPHANED_FOR_OPERATOR = frozenset({"nightly_backup"})
+
+
+def close_orphaned_jobs(now=None) -> list[dict]:
+    """Finish, as `aborted`, the maintenance-queue jobs whose worker is gone.
+
+    The rows beta's alert listed for weeks (refresh_dc_closures jobs 16729, 16829,
+    17281, "started 2026-10-19"): a `docker compose up -d` that recreated `worker`
+    SIGKILLed it at the end of its 60-second grace while a refresh was running, and
+    nothing ever writes a terminal status for that job (Wedged jobs, docs/OPERATIONS.md).
+    The task itself was fine - the next tick ran it, and nothing on the stale list said
+    otherwise - but the dead row stayed `doing` and on every alert, with `unwedge_job`
+    as the only way off it, one id at a time.
+
+    Every task on this queue but the backup is periodic and its next tick is the retry,
+    so a dead run is closed rather than requeued: a requeue would run a tick that is
+    days old, and two dead rows of the same task would fight over its queueing lock.
+    Closed only when the worker is gone, by the test `wedged_jobs` and `unwedge_job`
+    apply; a job past its budget whose worker still beats is a live thread and is left
+    on the wedged list for a person. `aborted` rather than `failed`: the job did not
+    fail, its process was taken away, and the failed-job alert is for jobs that did.
+    """
+    from django.db import connection
+
+    from core.audit import record as audit
+    from core.models import AuditLogEntry
+
+    closed = []
+    for entry in wedged_jobs(now):
+        if (
+            not entry["worker_gone"]
+            or entry["queue"] != "maintenance"
+            or entry["task"] in KEEP_ORPHANED_FOR_OPERATOR
+        ):
+            continue
+        with connection.cursor() as cursor:
+            # Procrastinate's own finish (the worker's), guarded so a job a worker
+            # finished between the read above and here is not touched.
+            cursor.execute(
+                "SELECT procrastinate_finish_job_v1(id, 'aborted', false) "
+                "FROM procrastinate_jobs WHERE id = %s AND status = 'doing'",
+                [entry["id"]],
+            )
+            if cursor.fetchone() is None:
+                continue
+        audit(
+            None,
+            "close_orphaned_job",
+            "procrastinatejob",
+            entry["id"],
+            AuditLogEntry.Outcome.ALLOWED,
+            detail=(
+                f"job {entry['id']} ({entry['task']} on the {entry['queue']} queue) was doing "
+                f"with no live worker since {entry['started_at']} and is now aborted"
+            ),
+        )
+        closed.append(entry)
+    return closed
+
+
 def failed_job_count() -> int:
     """How many jobs are in a failed state, not how many are being shown.
 
