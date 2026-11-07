@@ -200,13 +200,16 @@ test("Copy link, Share, Share ride, Broadcast and Start ride ask first; New ride
   assert.match(app, /<SameRideDialog open=\{sameRideAsk !== null\} lead=\{sameRideAsk\?\.edited \? SAME_RIDE_EDITED_LEAD : undefined\} onSame=\{\(\) => answerSameRide\(true\)\} onNew=\{\(\) => answerSameRide\(false\)\} onCancel=\{\(\) => answerSameRide\(null\)\} \/>/);
 });
 
-test("the question is a modal dialog named by its heading: New ride takes the focus, Escape goes back, also without showModal", () => {
+test("the question is a modal dialog named by its heading: Same ride comes first and takes the focus, Escape goes back, also without showModal", () => {
   const dialog = source("../SameRideDialog.tsx");
   // Open or not by the attribute, which a browser without the modal dialog also sets.
   assert.match(dialog, /const shown = dialog\.hasAttribute\("open"\);\s*if \(open && !shown\) \{/);
   assert.match(dialog, /\} else if \(!open && shown\) \{/);
   assert.doesNotMatch(dialog, /dialog\.open\b/);
-  assert.match(dialog, /if \(typeof dialog\.showModal === "function"\) dialog\.showModal\(\);\s*else dialog\.setAttribute\("open", ""\);\s*newRef\.current\?\.focus\(\);/);
+  assert.match(dialog, /if \(typeof dialog\.showModal === "function"\) dialog\.showModal\(\);\s*else dialog\.setAttribute\("open", ""\);\s*sameRef\.current\?\.focus\(\);/);
+  // Same ride first and primary, so Enter or a habitual tap keeps the link that went out (v0.22.0 release review).
+  assert.match(dialog, /<button type="button" ref=\{sameRef\} className="primary" onClick=\{onSame\}>\s*\{SAME_RIDE\}\s*<\/button>\s*<button type="button" className="secondary" onClick=\{onNew\}>\s*\{NEW_RIDE\}/);
+  assert.doesNotMatch(dialog, /newRef/);
   assert.match(dialog, /if \(typeof dialog\.close === "function"\) dialog\.close\(\);\s*else dialog\.removeAttribute\("open"\);/);
   assert.match(dialog, /aria-labelledby=\{headingId\}\s*aria-describedby=\{leadId\}/);
   assert.match(dialog, /onCancel=\{\(event\) => \{\s*event\.preventDefault\(\);\s*onCancel\(\);\s*\}\}/);
