@@ -90,7 +90,7 @@ import { BetaChip, betaReportUrl, isBetaBuild } from "./lib/betaBanner.ts";
 import { MtbMapKey } from "./lib/stressLegend.ts";
 import { useHideBusyClimbs, useTrailClimbs } from "./lib/climbsLegend.ts";
 import { announceHow, candidateRoute, candidateRows } from "./lib/candidates.ts";
-import { canReverse, LOOP_ENDED_BY_SEARCH, loopStops, loopView, planStartDials, reversedPoints, runLoopFromStart, withLoop } from "./lib/loop.ts";
+import { canReverse, LOOP_ENDED_BY_SEARCH, loopStops, loopView, planStartDials, plansFromStart, reversedPoints, withLoop } from "./lib/loop.ts";
 import { FINDING_ORDER_SAID, STILL_FINDING_ORDER_SAID, applyAnswer, requestStopOrder, stopsThatMove } from "./lib/stopOrder.ts";
 import {
   VIA_MARKS,
@@ -123,6 +123,8 @@ import { shownNear } from "./lib/junctionSuggest.ts";
 import { CHECKING_CLOSURES, CLOSURE_SLOW_MS, START_NOTE_MS, RIDE_ENDED_FROM_HERE_NOTE, RIDE_ENDED_NO_FIX_NOTE, RIDE_ENDED_SAID, RideMode, primeRideVoice, startRideGesture, voiceTurnedOn, type EndedPlan, type RideView } from "./RideMode.tsx";
 import { Icon } from "./Icon.tsx";
 import { RideSummaryCard } from "./RideSummaryCard.tsx";
+import type { RebalanceDocked } from "./lib/rebalanceDock.ts";
+import { REBALANCE_ENDS_AT_DOCK, REBALANCE_NEXT_SAID, readDay, recordTrip, restoreDay, tripOf, type RebalanceDay } from "./lib/rebalanceDay.ts";
 import type { RideStats } from "./lib/rideStats.ts";
 import { readHeadingUp, readRidePrefs, readRideText, writeHeadingUp, writeRidePrefs, writeRideText, type RidePrefs, type RideTextSize } from "./lib/rideOutput.ts";
 import { activePins, chosenSaid, withStations, type NearbyStation, type Pins, type StationAction } from "./lib/stations.ts";
@@ -156,6 +158,7 @@ import {
   locate,
   locateSupport,
   maxPointsNotice,
+  REBALANCE_START_ONLY,
   locateGate,
   movedFromHere,
   placeFix,
@@ -1131,6 +1134,8 @@ export function App() {
     dials: Dials;
     preset: PresetId;
     trip: RideTrip | null;
+    /** Kept riding to a Rebalance Ride's chosen dock: the plan it came from (its walk and dock figures). */
+    planned?: RouteResponse;
     /** A trip resumed past its line: the walk or train it was following (lib/rideResume.ts LeftRide.past). */
     past?: OnwardState | null;
     /** A trip's whole points, loop and ride type, as kept for Resume (lib/rideResume.ts LeftRide.wholeTrip); null otherwise. */
@@ -1603,7 +1608,7 @@ export function App() {
   // the stations or a transit option chosen for the route shown (they re-plan it at once), and Undo back to the
   // drawn plan after a Clear (it is drawn again).
   const planFirst = mode === "plan" && !riding;
-  const [routeAsk, setRouteAsk] = useState(initialPlan.points.length >= 2 || runLoopFromStart(initialPlan.preset, initialPlan.points, initialPlan.dials) ? 1 : 0);
+  const [routeAsk, setRouteAsk] = useState(initialPlan.points.length >= 2 || plansFromStart(initialPlan.preset, initialPlan.points, initialPlan.dials) ? 1 : 0);
   const routedAsk = useRef(0);
   const asked = useRef<{ points: LonLat[]; preset: PresetId; routeKey: string; planKey: string; confirmedKm: number | null } | null>(null);
   const drawnRef = useRef<Drawn | null>(null);
@@ -1629,8 +1634,9 @@ export function App() {
   useEffect(() => {
     const now = sendNow.current;
     sendNow.current = false;
-    // A Run loop from its start alone, at its target distance (lib/presets.ts runs, core/run_plan.py target_loop).
-    if (points.length < 2 && !runLoopFromStart(preset, points, planDials)) {
+    // A Run loop from its start alone, at its target distance (lib/presets.ts runs, core/run_plan.py target_loop), and a
+    // Rebalance Ride, which has no destination (lib/loop.ts plansFromStart).
+    if (points.length < 2 && !plansFromStart(preset, points, planDials)) {
       scheduler.current?.clear();
       setRoute(null);
       setStatus({ kind: "idle" });
@@ -2715,7 +2721,8 @@ export function App() {
   useEffect(() => {
     const refresh = async () => {
       roughTries.current = 0;
-      if (document.visibilityState !== "visible" || modeRef.current !== "go" || pointsRef.current.length > 0) return;
+      // Also a Rebalance Ride planned from the location by itself (rebalanceFollows): it follows the fresh fix.
+      if (document.visibilityState !== "visible" || modeRef.current !== "go" || (pointsRef.current.length > 0 && !rebalanceFollows.current())) return;
       if (!goStartStale(goStartRef.current)) return;
       // Quiet: the rider did not ask, so nothing is said (a pick meanwhile says its own words).
       const result = await locateForGo(true);
@@ -2725,9 +2732,11 @@ export function App() {
         return;
       }
       if (!result.ok || !insideCoverage(result.fix.point)) return;
-      if (goStartRef.current.kind === "here" && pointsRef.current.length === 0) {
+      const follows = rebalanceFollows.current();
+      if (goStartRef.current.kind === "here" && (pointsRef.current.length === 0 || follows)) {
         setHere(result.fix);
         setGoStart(goHereStart(result.fix.point));
+        if (follows) rebalanceFrom.current(result.fix.point);
       }
     };
     const onVisible = () => void refresh();
@@ -2742,7 +2751,7 @@ export function App() {
   useEffect(() => {
     const tick = window.setInterval(() => {
       // Not in Roam or a ride (their own watch has the location), and one look-up at a time.
-      const inGo = () => modeRef.current === "go" && !onBikeNow.current && pointsRef.current.length === 0;
+      const inGo = () => modeRef.current === "go" && !onBikeNow.current && (pointsRef.current.length === 0 || rebalanceFollows.current());
       if (document.visibilityState !== "visible" || !inGo() || roughBusy.current) return;
       const was = goStartRef.current;
       const before = hereRef.current?.accuracyM ?? 0;
@@ -2758,6 +2767,7 @@ export function App() {
         if (goRough(result.fix.accuracyM) && result.fix.accuracyM >= before) return;
         setHere(result.fix);
         setGoStart(goHereStart(result.fix.point));
+        if (rebalanceFollows.current()) rebalanceFrom.current(result.fix.point);
         roughTries.current = goRoughTriesAfter(roughTries.current, result.fix.accuracyM);
         if (goRough(result.fix.accuracyM)) return;
         if (mapRef.current?.getBounds().contains(was.point)) flyToInView(result.fix.point, 15);
@@ -2792,7 +2802,8 @@ export function App() {
     setNotice(null);
     goPickedNow.current = true;
     goFocusRoute.current = !pressed;
-    commit([start, ...vias, dest], ride.dials.loop ? { ...ride, dials: { ...ride.dials, loop: false } } : undefined);
+    // A Rebalance Ride has no destination (2026-11-07): the start alone, should a destination wait for one.
+    commit(ride.preset === "rebalance" ? [start] : [start, ...vias, dest], ride.dials.loop ? { ...ride, dials: { ...ride.dials, loop: false } } : undefined);
     if (located) setFromHere((prior) => [...prior, start]);
     if (pressed) announce(goTapRoutedSaid(name, located, saysExtra(announceLevelNow.current)));
     else announceExtra(located ? t("Planning a route to {place} from your location.", { place: name }) : t("Planning a route to {place} from your start.", { place: name }));
@@ -2851,6 +2862,11 @@ export function App() {
   const goTo = async (dest: LonLat, name: string, pressed = false, vias: LonLat[] = []) => {
     cancelLocateNotice();
     setNotice(null);
+    // A Rebalance Ride has no destination (2026-11-07): a place searched or pressed is not one; said why.
+    if (rideRef.current.preset === "rebalance") {
+      setNotice(REBALANCE_START_ONLY);
+      return;
+    }
     if (!insideCoverage(dest)) {
       setNotice(OUTSIDE_NOTICE);
       return;
@@ -3259,7 +3275,7 @@ export function App() {
   const orderShown = !isMassRide(preset) && stopsThatMove(stopsOnly(points, VIA_MARKS.isVia, loopVias).points, loopVias) >= 2;
   // Go with a route (v0.7.0, "Keep adding stops by search"): "Add a stop" and Best order in the route sheet, and a
   // chip's place a stop; never during a ride. A two-point ride type takes stops only where each stop starts a new trip
-  // (stopsAsTrips: Walk, the transit types, and Bikeshare and Rebalance Ride since v0.22.0).
+  // (stopsAsTrips: Walk, the transit types, and Bikeshare since v0.22.0; Rebalance Ride has no destination).
   const goStops = mode === "go" && !riding && points.length >= 2 && (!twoPointsOnly(preset) || stopsAsTrips(preset)) && !isMassRide(preset);
   const reverseButton = useRef<HTMLButtonElement>(null);
   const orderFocused = useRef(false);
@@ -3432,6 +3448,19 @@ export function App() {
     // elevator with a bike, its nearest entrance on foot (railStations.ts, stationMoves). One edit with the ride
     // type, so Undo puts both back; the point keeps its kind (a via, a drawn leg) and its station's name, and is said.
     const current = pointsRef.current;
+    // A Rebalance Ride has no destination (Stephen, 2026-11-07): the start alone, the end and stops dropped as one edit with
+    // the ride type (Undo puts them back); in Go with no plan yet, the start is where the rider is.
+    const goAt = goStartRef.current;
+    const rebalanceFrom =
+      id !== "rebalance" ? null : current.length > 1 ? [current[0]] : current.length === 0 && mode === "go" && goAt.kind === "here" ? [goAt.point as LonLat] : null;
+    if (rebalanceFrom) {
+      if (current.length === 0) setFromHere((f) => [...f, rebalanceFrom[0]]);
+      commit(rebalanceFrom, { ...rideRef.current, preset: id, dials: next });
+      // The end and stops that went are said (Undo puts them back).
+      announce([loopSaid, current.length > 1 ? REBALANCE_START_ONLY : null].filter(Boolean).join(" "));
+      setStationPins({});
+      return;
+    }
     const onFoot = endsOnFoot(id);
     const moves = onFoot === endsOnFoot(rideRef.current.preset) ? [] : stationMoves(current, RAIL_STATIONS, onFoot);
     if (moves.length > 0) {
@@ -4694,10 +4723,18 @@ export function App() {
   // Undo's ride carries on from the ended ride's figures (RideMode's resumeStats); a new Start begins from nought.
   const [resumeStats, setResumeStats] = useState<RideStats | null>(null);
   // `destination`: the ride's end, not a loop's (its start), for the summary's Save to Favorites (Stephen 2026-10-26).
-  const [rideEnded, setRideEnded] = useState<{ n: number; stats: RideStats; at: number; note: string | null; destination: LonLat | null } | null>(null);
+  const [rideEnded, setRideEnded] = useState<{
+    n: number;
+    stats: RideStats;
+    at: number;
+    note: string | null;
+    destination: LonLat | null;
+    /** A Rebalance Ride (lib/rebalanceDay.ts): the day with this trip and before it, where the next one starts, the dock. */
+    rebalance?: { day: RebalanceDay; before: RebalanceDay; from: LonLat; dock: string } | null;
+  } | null>(null);
   const rideNow = useRef({ start: rideStart, mode });
   rideNow.current = { start: rideStart, mode };
-  const endRide = useCallback((after: EndedPlan, stats: RideStats) => {
+  const endRide = useCallback((after: EndedPlan, stats: RideStats, docked?: RebalanceDocked | null) => {
     const { start, mode: endedIn } = rideNow.current;
     // Past a trip's line, the walk or train followed (as kept for Resume), for Undo.
     const past = start?.whole ? leftRidePast() : null;
@@ -4722,19 +4759,32 @@ export function App() {
     // edit of the points (re-planned as any is; Undo of the plan takes it back). The start is the ride's own
     // last fix: no new location look-up.
     let from: LonLat[] | null = null;
-    if (endedIn !== "go" && after && after !== "no-fix" && after.points.length >= 2) {
+    // Not a Rebalance Ride, which has the start alone: Do another trip plans the next from where it ended.
+    if (endedIn !== "go" && after && after !== "no-fix" && after.points.length >= 2 && start?.route.preset !== "rebalance") {
       from = after.points;
       const ride = rideRef.current;
       commit(from, ride.dials.loop ? { ...ride, dials: { ...ride.dials, loop: false } } : undefined);
       setFromHere((f) => [...f, from![0]]);
     }
     const note = from ? RIDE_ENDED_FROM_HERE_NOTE : endedIn !== "go" && after === "no-fix" ? RIDE_ENDED_NO_FIX_NOTE : null;
-    endedRide.current = start ? { start, from, stats, shared: sharedOpenNow.current, linkSent: rideLinkSent.current, past, stopsLeft } : null;
+    // A Rebalance Ride's chosen dock (lib/rebalanceDock.ts): Keep riding carries on to it, not to the plan's walk again.
+    const kept = start && docked ? { ...start, planned: start.planned ?? start.route, route: docked.route, points: docked.points, trip: start.trip ? { ...start.trip, approach: null, docked: docked.name } : null } : start;
+    endedRide.current = kept ? { start: kept, from, stats, shared: sharedOpenNow.current, linkSent: rideLinkSent.current, past, stopsLeft } : null;
     setRiding(false);
     setRideStart(null);
     setRideView(null);
     const destination = start && !start.loop && start.points.length >= 2 ? start.points[start.points.length - 1] : null;
-    setRideEnded((was) => ({ n: (was?.n ?? 0) + 1, stats, at: Date.now(), note, destination }));
+    // A Rebalance Ride: counted in the day's totals as it ends (Keep riding takes it out again); the next one starts
+    // where the ride ended, else at the dock it rode to.
+    // By the route's own ride type: the ride's is the bike leg's (lib/rideTrip.ts rideLegOf).
+    const planRoute = start?.planned ?? start?.route;
+    const share = planRoute?.preset === "rebalance" ? (planRoute.bikeshare ?? null) : null;
+    const before = share ? readDay() : null;
+    const rebalance =
+      share && before
+        ? { day: recordTrip(tripOf(share, stats)), before, from: stats.last?.point ?? ([share.end.lon, share.end.lat] as LonLat), dock: docked?.name ?? share.end.name }
+        : null;
+    setRideEnded((was) => ({ n: (was?.n ?? 0) + 1, stats, at: Date.now(), note, destination, rebalance }));
     // Said by the page's region, always mounted; the focus goes to Done (RideSummaryCard), not back to Start (review F6).
     // Problems still to report to 311 are said too: the focus goes to Done, past the summary's line about them.
     const owed = openCount(report311Log().list());
@@ -4848,6 +4898,8 @@ export function App() {
   const undoEndRide = () => {
     const ended = endedRide.current;
     endedRide.current = null;
+    // Keep riding: the Rebalance Ride is not a trip yet.
+    if (rideEnded?.rebalance) restoreDay(rideEnded.rebalance.before);
     setRideEnded(null);
     if (!ended) return;
     // The plan End ride moved to where the rider was goes back, unless it has been edited since.
@@ -4875,6 +4927,8 @@ export function App() {
   // Done on the ride's summary: in Go, Go is left empty for the next trip rather than the same ride set up again
   // (the owner, 2026-10-20); in Plan the plan stays to adjust. The focus goes to Go's place search or Plan's Start ride.
   const finishRide = () => {
+    // Finish session on a Rebalance Ride: Go does not plan the next one by itself (the effect below).
+    if (rideEnded?.rebalance) rebalanceFinished.current = true;
     endedRide.current = null;
     setRideEnded(null);
     if (mode === "go" && pointsRef.current.length > 0) {
@@ -4890,6 +4944,48 @@ export function App() {
     // A moment later, once the cleared plan is in the address (the hash is written by an effect after this render).
     reloadIfUnitsOwed();
   };
+  // Do another trip, on a Rebalance Ride's summary (Stephen, 2026-11-07: "Instead of "go back" you start the next one"):
+  // the trip counted, and the next Rebalance Ride planned from where this one ended, to Start ride from there.
+  const anotherRebalance = () => {
+    const ended = rideEnded?.rebalance;
+    if (!ended) return;
+    endedRide.current = null;
+    setRideEnded(null);
+    setFromHere((f) => [...f, ended.from]);
+    commit([ended.from], { ...rideRef.current, preset: "rebalance" });
+    sendNow.current = true;
+    setRouteAsk((n) => n + 1);
+    // The summary goes: the focus to Start ride (Go's, else the plan's), as Done's goes, and the next trip said.
+    announce(REBALANCE_NEXT_SAID);
+    if (mode === "go") window.requestAnimationFrame(() => document.querySelector<HTMLElement>(".go-bar-start")?.focus());
+    else backToRideOpener();
+  };
+  // Go on a Rebalance Ride with no plan: planned from where the rider is as soon as that is known, as choosing the ride
+  // type does (choosePreset). Only as Go opens, the ride type is chosen or the location is found: never again after
+  // Finish session empties Go, which ends the session.
+  const goHereKind = goStart.kind;
+  const rebalanceFinished = useRef(false);
+  // A Go Rebalance Ride planned from the location by itself, before it is ridden: Go's look-ups again (a rough fix, the
+  // page back in view after a while) move its start, as they move Go's start before a destination.
+  const rebalanceFollows = useRef<() => boolean>(() => false);
+  rebalanceFollows.current = () =>
+    modeRef.current === "go" && rideRef.current.preset === "rebalance" && !onBikeNow.current && rideEnded === null && pointsRef.current.length === 1 && fromHere.includes(pointsRef.current[0]);
+  const rebalanceFrom = useRef<(point: LonLat) => void>(() => {});
+  rebalanceFrom.current = (point: LonLat) => {
+    setFromHere((f) => [...f, point]);
+    commit([point]);
+  };
+  useEffect(() => {
+    // Another ride type or mode starts the session afresh.
+    if (preset !== "rebalance" || mode !== "go") rebalanceFinished.current = false;
+  }, [preset, mode]);
+  useEffect(() => {
+    const goAt = goStartRef.current;
+    if (mode !== "go" || preset !== "rebalance" || riding || goAt.kind !== "here" || pointsRef.current.length > 0) return;
+    if (rebalanceFinished.current) return;
+    setFromHere((f) => [...f, goAt.point as LonLat]);
+    commit([goAt.point as LonLat]);
+  }, [mode, preset, goHereKind]); // eslint-disable-line react-hooks/exhaustive-deps -- only on those changes, as said above
   // Units switched during a ride or Roam (lib/units.ts switchUnitsInRide, or a late settings read): the reload owed
   // brings the rest of the page round (labels and figures made once at load) once the ride or Roam is over. A detour
   // ridden from Roam comes back to Roam, not here, so the reload waits for Roam's end (endRoam).
@@ -6142,7 +6238,7 @@ export function App() {
     setChangeDetails([]);
     clearAll();
   };
-  const fromStart = runLoopFromStart(preset, points, planDials);
+  const fromStart = plansFromStart(preset, points, planDials);
   const routeNow = routeButton({ points: points.length, drawn: drawn !== null, changed: planEdited, routeShown: shown !== null, loop: loopVias, fromStart });
   // Plan's bar at the top of the map (the owner, 2026-10-17: "In plan, make "Update route" a big button at the top of
   // the map ... Update route or start route. don't show if there's nothing to change. Also put the undo and clear there
@@ -6279,7 +6375,14 @@ export function App() {
   const stations =
     usesBikeshare(preset) && points.length > 0 ? (
       <Fold title={t("Choose a station")} icon="bikeshare" className="stations-fold">
-        <NearbyStations points={points} pins={stationChoice} onChoose={chooseStation} />
+        <NearbyStations
+          points={points}
+          pins={stationChoice}
+          onChoose={chooseStation}
+          // A Rebalance Ride has no destination: the drop-off list is near the dock it starts from (Stephen,
+          // 2026-11-07: "People should get around 3 options for start dock and end dock").
+          startOnly={preset === "rebalance"}
+        />
       </Fold>
     ) : null;
   // Discord sign-in from a Save form (the owner, 2026-10-21), where the server signs riders in: the plan is kept across it.
@@ -6334,10 +6437,17 @@ export function App() {
     // The route card (edit-route redesign, Stephen 2026-10-18): the start and the destination, and Edit route, which
     // opens Plan's points in a sheet; with a route and never during a ride.
     routeCard:
-      !riding && (points.length >= 2 || runLoopFromStart(preset, points, planDials)) ? (
+      !riding && (points.length >= 2 || plansFromStart(preset, points, planDials)) ? (
         <GoRouteCard
           start={fromHere.includes(points[0]) ? YOUR_LOCATION : goPlaceName(namer.name(points[0])?.name, points[0])}
-          destination={loopVias ? "Back to the start" : goPlaceName(namer.name(points[points.length - 1])?.name, points[points.length - 1])}
+          destination={
+            loopVias
+              ? "Back to the start"
+              : preset === "rebalance"
+                ? // No destination: the dock is chosen at the pick-up dock, from the counts then (lib/rebalanceDock.ts).
+                  REBALANCE_ENDS_AT_DOCK
+                : goPlaceName(namer.name(points[points.length - 1])?.name, points[points.length - 1])
+          }
           between={middleCountSaid(points, VIA_MARKS.isVia, loopVias)}
           onEdit={(opener) => openView("points", opener)}
         />
@@ -6955,7 +7065,8 @@ export function App() {
           endedAt={rideEnded.at}
           note={rideEnded.note}
           favorite={endedFavorite(rideEnded.destination)}
-          destination={rideEnded.destination ? (namer.name(rideEnded.destination)?.name ?? null) : null}
+          destination={rideEnded.rebalance ? rideEnded.rebalance.dock : rideEnded.destination ? (namer.name(rideEnded.destination)?.name ?? null) : null}
+          rebalance={rideEnded.rebalance ? { day: rideEnded.rebalance.day, onAnother: anotherRebalance } : null}
           onUndo={undoEndRide}
           onDone={finishRide}
           onReports={rideEndReports}

@@ -2929,9 +2929,16 @@ def request_body(points, vias, preset: str, options: dict) -> dict:
 def plan_once(api, stations, points, vias, preset, options, limit_mi) -> Plan:
     if preset not in PRESETS:
         raise ToolError(f"preset is one of {', '.join(PRESETS)}")
-    if not 2 <= len(points) <= MAX_POINTS:
+    if preset == "rebalance":
+        # A start alone (Stephen, 2026-11-07): it ends at the dock that needs bikes.
+        if len(points) != 1:
+            raise ToolError(
+                "rebalance plans from a start alone: it walks to the nearest crowded station and"
+                " rides to the nearest one that needs bikes"
+            )
+    elif not 2 <= len(points) <= MAX_POINTS:
         raise ToolError(f"a route has 2 to {MAX_POINTS} points")
-    if preset in TWO_POINT_PRESETS and len(points) != 2:
+    elif preset in TWO_POINT_PRESETS and len(points) != 2:
         raise ToolError(f"{preset} plans from a start and an end only")
     sent = request_body(points, vias, preset, options)
     answer = api.route(sent)
@@ -3109,8 +3116,10 @@ RIDE_OPTIONS = {
             " IMBA level. gravel: unpaved welcome. fast: direct, traffic tolerant. road-bike: a"
             " road bike, off gravel, dirt and winding trails where there is a paved way round,"
             " fewer turns. cargo: cargo"
-            " bike (carrying, assist). ebike: e-bike rules and pace. bikeshare and rebalance:"
-            " Capital Bikeshare dock to dock (two points). bike-transit and bikeshare-transit:"
+            " bike (carrying, assist). ebike: e-bike rules and pace. bikeshare: Capital"
+            " Bikeshare dock to dock (two points). rebalance: from the start alone (one point),"
+            " the nearest crowded station to the nearest one that needs bikes. bike-transit"
+            " and bikeshare-transit:"
             " bike plus Metro and bus (two points; depart_at, transit_option). walk: on foot,"
             " turn by turn (two points). walk-transit: on foot plus Metro and bus (two points;"
             " depart_at, transit_option). run: a run on foot, trails, paths and quiet streets"
@@ -3547,8 +3556,13 @@ TOOLS = [
                 "points": {
                     "type": "array",
                     "items": POINT_SCHEMA,
-                    "minItems": 2,
+                    # One: a Rebalance Ride's start alone (2026-11-07); other ride types take two.
+                    "minItems": 1,
                     "maxItems": MAX_POINTS,
+                    "description": (
+                        "Start first, then any stops, then the end."
+                        " rebalance takes the start alone."
+                    ),
                 },
                 "best_order": {
                     "type": "boolean",
@@ -3759,9 +3773,12 @@ TOOLS = [
                 "points": {
                     "type": "array",
                     "items": POINT_SCHEMA,
-                    "minItems": 2,
+                    "minItems": 1,
                     "maxItems": MAX_POINTS,
-                    "description": "Replace every point (via_points then index these).",
+                    "description": (
+                        "Replace every point (via_points then index these). rebalance takes the"
+                        " start alone."
+                    ),
                 },
                 "add_points": {
                     "type": "array",

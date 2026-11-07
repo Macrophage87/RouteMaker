@@ -240,7 +240,8 @@ class RouteIn(Schema):
         max_length=MAX_POINTS,
         description=(
             "[lon, lat] pairs, start first, each inside the coverage area: at least two, or a"
-            " start alone for a Run loop with `loop` and `target_distance_m`."
+            " start alone for a Run loop with `loop` and `target_distance_m`. Rebalance Ride"
+            " takes the start alone: it ends at the dock that needs bikes."
         ),
     )
     preset: PresetName
@@ -680,7 +681,19 @@ class RouteIn(Schema):
         self.avoid_gravel = self.preset == presets.ROAD_BIKE
         preset = presets.PRESETS[self.preset]
         run = self.preset == presets.RUN
-        if len(self.points) < 2 and not (run and self.loop and self.target_distance_m):
+        rebalance = self.preset == presets.REBALANCE
+        if rebalance and len(self.points) != 1:
+            # Stephen, 2026-11-07: "There's actually no real destination. You start where you
+            # are" (core/bikeshare.py, Rebalance Ride).
+            raise ValueError(
+                "Rebalance Ride takes a start only: it walks to the nearest crowded station and"
+                " rides to the nearest one that needs bikes, where the ride ends"
+            )
+        if (
+            len(self.points) < 2
+            and not (run and self.loop and self.target_distance_m)
+            and not rebalance
+        ):
             raise ValueError(
                 "points need at least 2 places, a start and a destination; a start alone plans only"
                 " a Run loop with loop and target_distance_m"
@@ -759,7 +772,7 @@ class RouteIn(Schema):
             raise ValueError("transit_option and depart_at apply to the transit ride types only")
         if self.preset in presets.BIKESHARE_PRESETS:
             # A start, stops and an end (Stephen, 2026-11-03: each stop starts a new trip; for
-            # Bikeshare and Rebalance Ride in v0.22.0): each leg is a trip of its own.
+            # Bikeshare in v0.22.0): each leg is a trip of its own. Rebalance Ride: a start alone.
             if len(self.points) > 2 + MAX_TRIP_STOPS or self.via_points:
                 raise ValueError(
                     f"Bikeshare plans take a start, at most {MAX_TRIP_STOPS} stops and an end,"
@@ -3696,7 +3709,11 @@ def route_neighbours(request, body: RouteIn):
     if span_m(routing.loop_points(body.points, loop)) > CONFIRM_SPAN_M:
         return Status(200, {"stress": stress, "options": []})
     # A trip with stops is planned trip by trip (`_bikeshare_body`): no options of the whole.
-    if body.preset in presets.BIKESHARE_PRESETS and len(body.points) > 2:
+    # A Rebalance Ride's docks are its own choice (the station lists), and a trip with stops
+    # is planned trip by trip (`_bikeshare_body`): no options of the whole.
+    if body.preset == presets.REBALANCE or (
+        body.preset == presets.BIKESHARE and len(body.points) > 2
+    ):
         return Status(200, {"stress": stress, "options": []})
     if body.preset == presets.BIKESHARE and not _same_docks(body):
         return Status(200, {"stress": stress, "options": []})
@@ -4088,6 +4105,20 @@ def _bikeshare_body(body: RouteIn, started: float | None) -> dict:
         ),
     )
 
+    if body.preset == presets.REBALANCE:
+        # A start alone: the ride ends at the dock that needs bikes (core/bikeshare.py).
+        return bikeshare.plan(
+            body.points[0],
+            None,
+            bike,
+            bikeshare.ENDING_DOCK,
+            snapshot,
+            services,
+            profile.speed_kmh,
+            pickup_station=body.pickup_station,
+            dropoff_station=body.dropoff_station,
+            rebalance=True,
+        )
     last = len(body.points) - 2
 
     def leg(number: int) -> dict:
@@ -4103,13 +4134,12 @@ def _bikeshare_body(body: RouteIn, started: float | None) -> dict:
             profile.speed_kmh,
             pickup_station=body.pickup_station if number == 0 else None,
             dropoff_station=body.dropoff_station if number == last else None,
-            rebalance=body.preset == presets.REBALANCE,
         )
 
     found = leg(0)
     if last == 0:
         return found
-    # Stops (Stephen, 2026-11-03: "Each stop starts a new trip"; Bikeshare and Rebalance Ride in
+    # Stops (Stephen, 2026-11-03: "Each stop starts a new trip"; Bikeshare in
     # v0.22.0): the rider returns the bike at each stop, and the trip from there is planned on its
     # own, inside the same budget. The body is the first trip's; the later ones are listed, and
     # planned again from the stop when the rider gets there (the bikes and docks free then).

@@ -205,9 +205,9 @@ test("the lists are in the Bikeshare panel only and a choice is forgotten with i
   // UI-CLEANUP: under Route, in a closed "Choose a station" fold (the approved mockup's control table).
   assert.match(
     app,
-    /usesBikeshare\(preset\) && points\.length > 0 \? \(\s*<Fold title=\{t\("Choose a station"\)\} icon="bikeshare" className="stations-fold">\s*<NearbyStations points=\{points\} pins=\{stationChoice\} onChoose=\{chooseStation\} \/>/,
+    /usesBikeshare\(preset\) && points\.length > 0 \? \(\s*<Fold title=\{t\("Choose a station"\)\} icon="bikeshare" className="stations-fold">\s*<NearbyStations\s+points=\{points\}\s+pins=\{stationChoice\}\s+onChoose=\{chooseStation\}/,
   );
-  assert.equal((app.match(/<NearbyStations /g) ?? []).length, 1, "in one place");
+  assert.equal((app.match(/<NearbyStations\s/g) ?? []).length, 1, "in one place");
   assert.match(app, /activePins\(preset, points, stationPins\)/);
   assert.match(app, /withStations\(withSpeed\(withWeight\(dials, weight\), ridingSpeed\), stationChoice\)/);
   assert.doesNotMatch(app, /encodePlan\([^)]*stationPins/, "never in the link");

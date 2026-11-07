@@ -62,7 +62,7 @@ test("a ride left too long ago, or unreadable, is not offered and is forgotten; 
 test("the page keeps the ride at Start, forgets it at End, and asks at load; nothing goes to the server", () => {
   const app = src("../App.tsx");
   assert.match(app, /if \(kept\) \{[\s\S]{0,500}?keepLeftRide\(\{ route, \.\.\.whole, dials: rideDialsNow, fixed, destination, passOn, follows, leads: ledLink, stopsLeft: tripStopsLeft\.current \}/);
-  assert.match(app, /const endRide = useCallback\(\(after: EndedPlan, stats: RideStats\) => \{\s*const \{ start, mode: endedIn \} = rideNow\.current;[\s\S]{0,200}?const past = start\?\.whole \? leftRidePast\(\) : null;\s*forgetLeftRide\(\);/);
+  assert.match(app, /const endRide = useCallback\(\(after: EndedPlan, stats: RideStats, docked\?: RebalanceDocked \| null\) => \{\s*const \{ start, mode: endedIn \} = rideNow\.current;[\s\S]{0,200}?const past = start\?\.whole \? leftRidePast\(\) : null;\s*forgetLeftRide\(\);/);
   assert.match(app, /const \[leftAsk, setLeftAsk\] = useState\(\(\) => \(SHARED_RIDE && SHARED_LEAD \? null : leftRide\(VIA_MARKS, Date\.now\(\)\)\)\);/);
   assert.match(app, /<ResumeRideDialog\s+open=\{leftAsk !== null && !riding && !roaming\}/);
   assert.doesNotMatch(src("./rideResume.ts"), /fetch\(|origin/);

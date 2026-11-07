@@ -808,8 +808,9 @@ export interface BikesharePlan {
   /** The plain source citation (OWNER-DECISIONS 301). */
   credit: string;
   /**
-   * A Rebalance Ride (`preset: "rebalance"`): from a crowded station (at least 3/4 full) to one that needs bikes
-   * (at most 1/4 full). False on plain Bikeshare; absent from an older server.
+   * A Rebalance Ride (`preset: "rebalance"`): from a crowded station (at least 3/4 full) near the start to the
+   * nearest one that needs bikes (at most 1/4 full), where it ends: no destination, no walk after (2026-11-07). False
+   * on plain Bikeshare; absent from an older server.
    */
   rebalance?: boolean;
   /**
@@ -1548,7 +1549,8 @@ export function routeRequestBody(points: readonly LonLat[], preset: PresetId, op
   // confirm_long only when the rider said yes to a long plan (LONG-RIDE
   // contract); the API asks anonymous riders first with a 409.
   return JSON.stringify({
-    points,
+    // A Rebalance Ride plans from its start alone (core/bikeshare.py): an end kept from another ride type is not sent.
+    points: preset === "rebalance" ? points.slice(0, 1) : points,
     preset,
     // A Mass Ride keeps Make it a loop for the next ride type but has no
     // loop (OWNER-DECISIONS 374), so the flag is not sent; the API's

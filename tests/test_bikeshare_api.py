@@ -85,6 +85,9 @@ def world(monkeypatch, segment_schemas):
 
 def body(bike: str | None = "classic", **extra) -> dict:
     out = {"points": [UNION, DUPONT], "preset": "bikeshare", **extra}
+    # Rebalance Ride takes the start alone (Stephen, 2026-11-07).
+    if out["preset"] == presets.REBALANCE and "points" not in extra:
+        out["points"] = [UNION]
     if bike is not None:
         out["bike"] = bike
     return out
