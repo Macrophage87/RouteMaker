@@ -942,9 +942,13 @@ def _junction_turn(runs: list[_Run], i: int) -> int | None:
             break
         # A named piece is the street turned onto: a short stretch of another (a jog's
         # middle, "Right onto X Trail, then left onto Y Trail") is a way ridden, said.
+        # One crosswalk, the one turned onto: a second crosses another road, said. An
+        # unnamed path past JOG_UNNAMED_MIN_M is a way ridden, as a named one is.
+        if k > i and _crosswalk(piece):
+            break
         if piece.metres >= JUNCTION_PIECE_M or not (
             _crosswalk(piece)
-            or not piece.names
+            or (not piece.names and piece.metres < JOG_UNNAMED_MIN_M)
             or (piece.path and _same_street(piece, runs[k + 1]))
         ):
             break

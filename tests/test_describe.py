@@ -3411,6 +3411,30 @@ class TestJunctionTurn:
         ]
         assert "X Trail" in [s for s, _m in self.said(d.describe(legs))]
 
+    def test_a_second_crosswalk_across_another_road_still_crosses(self):
+        # Right over A Street's side, left over B Road, right onto the path on B's far side.
+        legs = [
+            flat(
+                road("A Street", 2, 400, 0, 0),
+                forked(road("", 4, 20, 90, 90, "path", "pedestrian_crossing"), "right"),
+                forked(road("", 4, 20, 0, 0, "path", "pedestrian_crossing"), "left"),
+                forked(road("B Road path", 1, 900, 90, 90, "path", "cycleway"), "right"),
+            )
+        ]
+        crossing = event(430, "straight", kind="crossing", names=("b road",), flagged=False)
+        assert "B Road" in self.crossed(d.describe(legs, [crossing]))
+
+    def test_a_longer_unnamed_path_is_a_way_ridden_and_said(self):
+        legs = [
+            flat(
+                road("A Street", 2, 400, 0, 0),
+                forked(road("", 4, 20, 270, 270, "path", "pedestrian_crossing"), "left"),
+                forked(road("", 1, 50, 0, 0, "path", "cycleway"), "right"),
+                forked(road("Y Trail", 1, 900, 270, 270, "path", "cycleway"), "left"),
+            )
+        ]
+        assert len(self.said(d.describe(legs))) > 2
+
     def test_a_busy_piece_that_is_not_the_crosswalk_is_never_hidden(self):
         legs = [
             flat(
