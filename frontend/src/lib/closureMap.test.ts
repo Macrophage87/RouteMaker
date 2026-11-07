@@ -351,7 +351,10 @@ test("a reviewer's closure gets one marker on its middle piece with no route, an
   assert.equal(markerItems(lanes).length, 1);
   // So are a Purple Line update's (v0.13.0).
   const blocks = [0, 1].map((i) => item({ id: `purple_line-bonifant-west-${i}`, source: "purple_line", effect: "none", can_bypass: false }));
+  const parks = [0, 1].map((i) => item({ id: `fcpa-accotink-marina-bridge-${i}`, source: "fcpa", effect: "none", can_bypass: false }));
   assert.equal(markerItems(blocks).length, 1);
+  // And a Fairfax park alert's (v0.22.0).
+  assert.equal(markerItems(parks).length, 1);
   const onRoute = pieces.map((p) => ({ ...p, effect: "routed_round" as const, can_bypass: true }));
   assert.equal(markerItems(onRoute).length, 5);
 });

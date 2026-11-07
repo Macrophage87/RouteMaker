@@ -1556,6 +1556,14 @@ class DescriptionTurnOut(Schema):
             ' Saint Paul Street, then right onto ..."); absent elsewhere.'
         ),
     )
+    across_from: Literal["left", "right"] | None = Field(
+        default=None,
+        description=(
+            "With `across`: the turn the route makes off a way alongside that road to cross it"
+            ' (`describe._far_side_turns`; "Left across road then right"), so Ride draws the'
+            " road alongside; absent where it goes straight over."
+        ),
+    )
 
 
 class DescriptionCrossingOut(Schema):
@@ -2423,6 +2431,7 @@ class WorkZoneOut(Schema):
         "reviewer",
         "ddot_advisory",
         "purple_line",
+        "fcpa",
         "protrack",
         "dcwater",
         "wssc",
@@ -2455,6 +2464,7 @@ class ClosureOut(Schema):
         "reviewer",
         "ddot_advisory",
         "purple_line",
+        "fcpa",
         "protrack",
         "dcwater",
         "wssc",
