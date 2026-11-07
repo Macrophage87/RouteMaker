@@ -2066,4 +2066,5 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Finish session": "Encerrar a sessão",
   "The nearest dock that needs bikes": "A estação mais próxima que precisa de bicicletas",
   "A Rebalance Ride starts where you are and has no destination: it ends at the dock that needs bikes.": "Uma viagem de rebalanceamento começa onde você está e não tem destino: termina na estação que precisa de bicicletas.",
+  "Planning the next Rebalance Ride from where you docked.": "Planejando a próxima viagem de rebalanceamento de onde você deixou a bicicleta.",
 };

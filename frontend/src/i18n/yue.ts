@@ -2066,4 +2066,5 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Finish session": "結束今次",
   "The nearest dock that needs bikes": "最近需要單車嘅車位",
   "A Rebalance Ride starts where you are and has no destination: it ends at the dock that needs bikes.": "調車行程由你而家嘅位置開始，冇目的地：喺需要單車嘅車位結束。",
+  "Planning the next Rebalance Ride from where you docked.": "由你還車嘅地方規劃下一程調車。",
 };

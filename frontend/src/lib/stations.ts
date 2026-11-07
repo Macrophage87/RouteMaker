@@ -145,12 +145,16 @@ function samePoint(a: LonLat, b: LonLat | undefined): boolean {
   return b !== undefined && a[0] === b[0] && a[1] === b[1];
 }
 
-/** The pins that still hold: the start and end unmoved, on Bikeshare. */
+/**
+ * The pins that still hold: the start and end unmoved, on Bikeshare. A Rebalance Ride has the start alone (2026-11-07):
+ * both its pins are held to it.
+ */
 export function activePins(preset: PresetId, points: readonly LonLat[], pins: Pins): Pins {
   if (!usesBikeshare(preset)) return {};
   const active: Pins = {};
   if (pins.pickup && samePoint(pins.pickup.at, points[0])) active.pickup = pins.pickup;
-  if (pins.dropoff && points.length >= 2 && samePoint(pins.dropoff.at, points[points.length - 1])) {
+  const endAt = preset === "rebalance" ? 1 : 2;
+  if (pins.dropoff && points.length >= endAt && samePoint(pins.dropoff.at, points[points.length - 1])) {
     active.dropoff = pins.dropoff;
   }
   return active;

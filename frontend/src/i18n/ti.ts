@@ -2066,4 +2066,5 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Finish session": "ክፍለ ግዜ ወድእ",
   "The nearest dock that needs bikes": "ብሽክሌታት ዘድልዮ ዝቐረበ መቐመጢ",
   "A Rebalance Ride starts where you are and has no destination: it ends at the dock that needs bikes.": "ጉዕዞ ምምዕርራይ ካብ ዘለኹሞ ይጅምር፣ መዕለቢ ድማ የብሉን፦ ኣብቲ ብሽክሌታት ዘድልዮ መቐመጢ ይውዳእ።",
+  "Planning the next Rebalance Ride from where you docked.": "ካብቲ ብሽክለታ ዘቐመጥኩምሉ ቦታ ቀጻሊ ጉዕዞ ምምዕርራይ ይውጠን ኣሎ።",
 };

@@ -2066,4 +2066,5 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Finish session": "Kết thúc phiên",
   "The nearest dock that needs bikes": "Trạm gần nhất cần xe",
   "A Rebalance Ride starts where you are and has no destination: it ends at the dock that needs bikes.": "Chuyến cân bằng xe bắt đầu từ chỗ bạn đang đứng và không có điểm đến: kết thúc ở trạm cần xe.",
+  "Planning the next Rebalance Ride from where you docked.": "Đang lên kế hoạch chuyến cân bằng tiếp theo từ nơi bạn trả xe.",
 };

@@ -2066,4 +2066,5 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Finish session": "ክፍለ ጊዜውን ጨርስ",
   "The nearest dock that needs bikes": "ብስክሌት የሚያስፈልገው ቅርብ መቆሚያ",
   "A Rebalance Ride starts where you are and has no destination: it ends at the dock that needs bikes.": "የማመጣጠን ጉዞ ካሉበት ይጀምራል፣ መድረሻም የለውም፦ ብስክሌት በሚያስፈልገው መቆሚያ ያበቃል።",
+  "Planning the next Rebalance Ride from where you docked.": "ብስክሌቱን ካስቀመጡበት ቀጣዩን የማመጣጠን ጉዞ በማቀድ ላይ።",
 };

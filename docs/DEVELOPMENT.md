@@ -7892,11 +7892,15 @@ and there are no new settings; the ride type is not given the operator's program
 appears only in its description.
 
 - `POST /api/route` with `preset: "rebalance"` is a Bikeshare plan (`core.bikeshare.plan` with
-  `rebalance=True`; two points, `bike` as Bikeshare's, `pickup_station` / `dropoff_station` as
-  Bikeshare's) whose docks are the station lists' own: the 3 best crowded stations near the start
-  (at least 3/4 full, renting, with a bike of the chosen type) and the 3 best near the destination
-  that need bikes (at most 1/4 full, returning), each ranked by the direction rule above, with no
-  distance cap (`rebalance_starts`, `rebalance_ends`). The quickest pair is chosen as on Bikeshare.
+  `rebalance=True` and no destination; Stephen, 2026-11-07: "There's actually no real
+  destination. You start where you are, and then go to the nearest bikeshare dock that has extra
+  bikes and then to a bikeshare dock with less"). It takes **one point**, the start (two or more
+  are refused, 400); `bike`, `pickup_station` and `dropoff_station` as Bikeshare's. The start is
+  the crowded station (at least 3/4 full, renting, with a bike of the chosen type) of the 3
+  nearest the start with the quickest walk (`rebalance_starts`); the end the nearest of the 3
+  stations that need bikes (at most 1/4 full, returning) to that dock (`rebalance_ends`), with no
+  distance cap. The ride ends at the dock: no walk after it, no "walk the whole way" note, and the
+  options carry no "on your way" words. No stops, and no route options (`route/neighbours`).
 - Always a dock at each end: no free-floating e-bike, no ending outside a dock (`ending:
   "outside_dock"` is refused). With no availability feed, or no crowded station, or none that
   needs bikes, the answer is 422 `no_bikeshare` saying which.
@@ -7905,9 +7909,21 @@ appears only in its description.
 - The ride leg is Bikeshare's (`core.presets` `REBALANCE`): stress 80 with the stress-averse
   exposure, classic hills -60 at 13 km/h (8 mph), e-bike hills -20 at 20 km/h (12 mph) on the
   e-bike graph, descents costed past 4%.
-- Front end: `lib/presets.ts` (`usesBikeshare`), the station lists and route options as on
-  Bikeshare, in the Adventure group.
-- Tests: `tests/test_rebalance.py`, `frontend/src/lib/rebalance.test.ts`.
+- Front end: `lib/presets.ts` (`usesBikeshare`), in the Adventure group. `lib/loop.ts`
+  `plansFromStart` routes it from the start alone and `routeRequestBody` sends only the start;
+  `maxPointsFor` is 1 (a second point, or a Go search, says it has no destination), and choosing
+  it drops an end and stops in one undoable edit. Go plans it from the location as Go opens, the
+  ride type is chosen or the location is found, and moves that start with Go's later look-ups
+  until it is ridden. The station lists: pick-up near the start, drop-off near the plan's start
+  dock (both pins held to the start, `activePins`); Go's lettered options as on Bikeshare.
+- The ride ends by itself on arriving at the dock. Its summary (`RideSummaryCard`) shows "Today's
+  Rebalance Rides" (`lib/rebalanceDay.ts`: trips, walking as planned, riding as ridden, total
+  time; this device only, no place or time of day, from local midnight), counted as the ride ends
+  and taken out again by Keep riding; "Do another trip" (first, focused) plans the next from
+  where the ride ended, and "Finish session" is Done (Go then plans no next one by itself).
+- MCP: `plan_route` takes one point for `rebalance` (`minItems` 1).
+- Tests: `tests/test_rebalance.py`, `frontend/src/lib/rebalance.test.ts`,
+  `frontend/src/lib/rebalanceDay.test.ts`.
 
 ## Avoid-rated junctions (FOLLOWUP-ISECT-AVOID, OWNER-DECISIONS 307-310, 335)
 

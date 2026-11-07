@@ -832,7 +832,7 @@ def plan(
         )
     ends: list[tuple[float, Pick]] = []
     if rebalance:
-        # The end is chosen near the start found (`_rebalance_ends`), once its walk is known.
+        # The end is chosen near the start found (`rebalance_ends`), once its walk is known.
         pass
     elif not use_outside:
         if dropoff_station:
@@ -1176,7 +1176,9 @@ def _options(
     snapshot: gbfs.Snapshot,
     no_destination: bool = False,
 ) -> list[dict]:
-    """Up to `OPTION_COUNT` start-and-end pairs, quickest first (the first is the plan's own).
+    """Up to `OPTION_COUNT` start-and-end pairs, quickest first (the first is the plan's own); a
+    Rebalance Ride's in its own order, the nearest crowded station by the walk, then the nearest
+    that needs bikes to it.
     An option can be asked for again with its `pickup_station` and `dropoff_station` (and
     `ending`), so a free-floating e-bike, which has no id to ask for, is offered only when it
     is the plan's own start."""

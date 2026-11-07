@@ -1288,3 +1288,13 @@ def test_rebalance_plans_from_a_start_alone() -> None:
     assert sent[0]["points"] == [list(start)] and sent[0]["preset"] == "rebalance"
     with pytest.raises(mcp.ToolError, match="rebalance plans from a start alone"):
         mcp.plan_once(Api(), None, [start, (-77.0, 38.9)], [], "rebalance", {}, None)
+
+
+def test_plan_route_takes_a_rebalance_rides_start_alone(tools, stand_in) -> None:
+    """The schema lets one point through for rebalance, and the whole tool answers it."""
+    schema = next(t for t in rpc(tools, "tools/list")["result"]["tools"] if t["name"] == "plan_route")
+    assert schema["inputSchema"]["properties"]["points"]["minItems"] == 1
+    out = tools.call("plan_route", {"points": ["Union Market"], "preset": "rebalance"})
+    sent = StandIn.routes[-1]
+    assert sent["preset"] == "rebalance" and len(sent["points"]) == 1
+    assert out["link"].startswith(stand_in + "/s/")

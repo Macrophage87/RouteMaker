@@ -2572,4 +2572,5 @@ export const ES: Readonly<Record<string, string>> = {
   "Finish session": "Terminar la sesión",
   "The nearest dock that needs bikes": "El anclaje más cercano que necesita bicicletas",
   "A Rebalance Ride starts where you are and has no destination: it ends at the dock that needs bikes.": "Un recorrido de reequilibrio empieza donde estás y no tiene destino: termina en el anclaje que necesita bicicletas.",
+  "Planning the next Rebalance Ride from where you docked.": "Planificando el siguiente viaje de reequilibrio desde donde dejó la bici.",
 };

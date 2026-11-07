@@ -2066,4 +2066,5 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Finish session": "세션 끝내기",
   "The nearest dock that needs bikes": "자전거가 필요한 가장 가까운 거치대",
   "A Rebalance Ride starts where you are and has no destination: it ends at the dock that needs bikes.": "재배치 라이드는 지금 있는 곳에서 시작하며 목적지가 없습니다. 자전거가 필요한 거치대에서 끝납니다.",
+  "Planning the next Rebalance Ride from where you docked.": "자전거를 반납한 곳에서 다음 재배치 이동을 계획하는 중입니다.",
 };

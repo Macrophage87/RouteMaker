@@ -1,7 +1,7 @@
 import { strict as assert } from "node:assert";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { REBALANCE_DAY_KEY, dayRows, localDay, readDay, recordTrip, tripOf, withTrip } from "./rebalanceDay.ts";
+import { REBALANCE_DAY_KEY, dayRows, localDay, readDay, recordTrip, restoreDay, tripOf, withTrip } from "./rebalanceDay.ts";
 import { maxPointsNotice } from "./geolocation.ts";
 import { plansFromStart } from "./loop.ts";
 import { routeRequestBody } from "./api.ts";
@@ -52,14 +52,25 @@ test("a Rebalance Ride is planned from its start alone; an end is never sent", (
   assert.match(maxPointsNotice(1), /starts where you are and has no destination/);
 });
 
+test("Keep riding puts the day back, but not once it is another day", () => {
+  const store = memory();
+  const before = readDay(store, MORNING);
+  recordTrip(trip, store, MORNING);
+  restoreDay(before, store, MORNING + 60_000);
+  assert.equal(readDay(store, MORNING).trips, 0);
+  recordTrip(trip, store, MORNING);
+  restoreDay(before, store, MORNING + 86_400_000);
+  assert.equal(readDay(store, MORNING).trips, 1);
+});
+
 test("the ride's summary: Do another trip first and focused, then Finish session (Stephen, 2026-11-07)", () => {
   const card = readFileSync(new URL("../RideSummaryCard.tsx", import.meta.url), "utf8");
   assert.match(card, /<button ref=\{done\} type="button" onClick=\{rebalance\.onAnother\}>\s*\{DO_ANOTHER_TRIP\}\s*<\/button>\s*<button type="button" className="secondary" onClick=\{onDone\}>\s*\{FINISH_SESSION\}/);
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
-  // Counted once the rider is done with the summary, never on Keep riding.
-  assert.match(app, /const finishRide = \(\) => \{\s*if \(rideEnded\?\.rebalance\) recordTrip\(rideEnded\.rebalance\.trip\);/);
-  assert.match(app, /const rideEndReports = \(\) => \{\s*if \(rideEnded\?\.rebalance\) recordTrip\(rideEnded\.rebalance\.trip\);/);
-  assert.doesNotMatch(/const undoEndRide = \(\) => \{[\s\S]*?\n {2}\};/.exec(app)![0], /recordTrip/);
+  // Counted as the ride ends (whatever closes the summary after); Keep riding puts the day back.
+  assert.match(app, /day: recordTrip\(tripOf\(share, stats\)\), before,/);
+  assert.match(/const undoEndRide = \(\) => \{[\s\S]*?\n {2}\};/.exec(app)![0], /if \(rideEnded\?\.rebalance\) restoreDay\(rideEnded\.rebalance\.before\);/);
+  assert.doesNotMatch(/const finishRide = \(\) => \{[\s\S]*?\n {2}\};/.exec(app)![0], /recordTrip/);
 });
 
 test("a Rebalance Ride offers three docks to start from and three to end at, those near the start dock (2026-11-07)", () => {

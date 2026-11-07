@@ -3503,8 +3503,12 @@ TOOLS = [
                 "points": {
                     "type": "array",
                     "items": POINT_SCHEMA,
-                    "minItems": 2,
+                    # One: a Rebalance Ride's start alone (2026-11-07); every other ride type takes two.
+                    "minItems": 1,
                     "maxItems": MAX_POINTS,
+                    "description": (
+                        "Start first, then any stops, then the end. rebalance takes the start alone."
+                    ),
                 },
                 "best_order": {
                     "type": "boolean",
@@ -3715,9 +3719,12 @@ TOOLS = [
                 "points": {
                     "type": "array",
                     "items": POINT_SCHEMA,
-                    "minItems": 2,
+                    "minItems": 1,
                     "maxItems": MAX_POINTS,
-                    "description": "Replace every point (via_points then index these).",
+                    "description": (
+                        "Replace every point (via_points then index these). rebalance takes the"
+                        " start alone."
+                    ),
                 },
                 "add_points": {
                     "type": "array",

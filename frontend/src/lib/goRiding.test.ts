@@ -226,7 +226,7 @@ test("End ride in Plan keeps the plan and its routes; part way it starts where t
   assert.doesNotMatch(endRide, /setPoints\(|setAnswer\(|forgetDrawn\(|setChoice\(/);
   // Part way: one edit of the points (re-planned as any edit is), a loop turned off as its finish is now a point.
   // In Go nothing is set up again (the owner, 2026-10-20): only Plan's ride moves the plan's start.
-  assert.match(endRide, /if \(endedIn !== "go" && after && after !== "no-fix" && after\.points\.length >= 2\) \{/);
+  assert.match(endRide, /if \(endedIn !== "go" && after && after !== "no-fix" && after\.points\.length >= 2 && start\?\.route\.preset !== "rebalance"\) \{/);
   assert.match(endRide, /commit\(from, ride\.dials\.loop \? \{ \.\.\.ride, dials: \{ \.\.\.ride\.dials, loop: false \} \} : undefined\);/);
   // The ride's own fix (planAfterEnd), never a trip's riding leg; the ride's figures with it.
   assert.match(ride, /onEnd\(trip && !trip\.asPlanned \? null : planAfterEnd\(modelRef\.current, rideRef\.current, plan\.current\.points, plan\.current\.loop, Date\.now\(\)\), statsRef\.current\);/);

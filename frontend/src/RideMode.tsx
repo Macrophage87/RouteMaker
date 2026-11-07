@@ -2852,6 +2852,11 @@ export function RideMode({
   // A transit trip's only: a plain ride's walk on from where it ends (walkInTrip) is the end of the ride, as before.
   const goesOnPast = !!rest || onwardParts.some((p) => p.kind === "transit");
   const tripGoesOn = ride.arrived && goesOnPast && ((onwardParts.length > 0 && !onwardDone) || (onwardDone && restNext && !restFailed));
+  // A Rebalance Ride ends as the rider docks (Stephen, 2026-11-07: "When you dock, the ride ends, and you get a ride end
+  // screen"): arrived at the dock, the summary comes up by itself, with Do another trip and Keep riding should it be early.
+  useEffect(() => {
+    if (ride.arrived && !tripGoesOn && route.preset === "rebalance" && !ended.current) end();
+  }, [ride.arrived]); // eslint-disable-line react-hooks/exhaustive-deps -- once, on arriving
   // Off the train (and any walk after it) with a ride still to go: Ride the rest starts by itself, once (Stephen,
   // 2026-11-03: "It should let you switch between modes"). Its button stays for a second try (closures said, no route).
   const restAuto = useRef(false);
