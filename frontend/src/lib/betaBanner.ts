@@ -10,8 +10,8 @@
  * I'm not trying to gatekeep the discord." So the note links the public Discord invite
  * (replacing 382's "tell the person who gave you access"). A build given VITE_BETA_REPORT_URL
  * (ship-data.sh --report-url) still adds a "Report a problem" link to that address, unless it
- * is the Discord invite again. Below it, in small print, "Sign up to test here!" links the
- * public beta sign-up form (owner, 2026-10-25).
+ * is the Discord invite again. Below it are two buttons: "Sign up to test here!", the Android beta's how-to-join
+ * page (owner, 2026-10-25; the page and a button since 2026-11-06), and the help guides.
  *
  * The owner found the old banner in the planner obtrusive (2026-10-12), so it is a corner
  * chip now: a disclosure button ("Beta notice", aria-expanded) that shows and hides the note,
@@ -20,6 +20,7 @@
  * focus is (or stays) on the chip. Nothing to dismiss: a corner chip is small enough to leave.
  * Written with createElement, like CandidatePicker, so a test renders it.
  */
+import { GUIDES_PAGE } from "./mapInfo.ts";
 import { createElement as h, useId, useRef, useState, type ReactElement } from "react";
 import { t } from "./i18n.ts";
 
@@ -31,7 +32,14 @@ export const BETA_DISCORD_URL = "https://discord.gg/Qwz6BEt6gc";
 
 export const BETA_SIGNUP_TEXT = t("Sign up to test here!");
 
-export const BETA_SIGNUP_URL = "https://forms.gle/dipMsGpheyF3oQA59";
+/**
+ * The Android beta's how-to-join page (Stephen 2026-11-06: "For sign up to test in Beta, send the webpage with
+ * instructions to the Google group"): join the testers' Google Group, opt in on Play, install. Was the sign-up form.
+ */
+export const BETA_SIGNUP_URL = "/about/android-beta.html";
+
+/** The help guides' button beside it (lib/mapInfo.ts GUIDES_PAGE, the page Help's button opens too). */
+export const BETA_GUIDES_TEXT = t("Using RouteMaker");
 
 export const BETA_REPORT_LINK_TEXT = t("Report a problem");
 
@@ -114,7 +122,14 @@ export function BetaChip(props: Props): ReactElement | null {
       "section",
       { id: noteId, className: "beta-chip-note", "aria-label": BETA_NOTICE_NAME, hidden: !open },
       h("p", null, BETA_BANNER_TEXT, " ", link(BETA_DISCORD_URL, BETA_DISCORD_TEXT), ".", report ? " " : null, report),
-      h("p", { className: "beta-chip-signup" }, link(BETA_SIGNUP_URL, BETA_SIGNUP_TEXT)),
+      // Two buttons, so they stand out (Stephen 2026-11-06: "make both that and the link to documentation a button
+      // inside the popout so it's more apparent"): signing up to test, and the help guides.
+      h(
+        "p",
+        { className: "beta-chip-actions" },
+        link(BETA_SIGNUP_URL, BETA_SIGNUP_TEXT),
+        link(GUIDES_PAGE, BETA_GUIDES_TEXT),
+      ),
     ),
   );
 }
