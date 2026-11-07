@@ -124,6 +124,14 @@ LINK_USES = frozenset({"turn_channel", "ramp"})
 TRAIL_USES = (
     frozenset({"footway", "path", "cycleway", "pedestrian_crossing", "steps", "track"}) | PATH_USES
 )
+# The costings each node is asked with. `/locate` answers only the edges its costing may
+# use: asked as a bicycle alone it leaves out every road closed to bicycles, so the George
+# Washington Memorial Parkway (`bicycle=no`, 4 lanes at 45 mph) had no arm where Tulane Dr
+# crosses it at grade, and the crossing cost nothing (the owner: "Why
+# did the route have me go across a busy highway with no signal instead of continuing the
+# trail"). Asked as a car as well, the two answers merged (`_merged`): the bicycle's has the
+# rider's own path, the car's every road with traffic to cross, its signals and signs.
+LOCATE_COSTINGS = ("bicycle", "auto")
 # What `/locate` percent_along an edge reads at its two ends.
 AT_START, AT_END = 0.001, 0.999
 
@@ -823,35 +831,69 @@ def _ask(
         positions[start : start + LOCATE_BATCH] for start in range(0, len(positions), LOCATE_BATCH)
     ]
     asked = [
-        parallel.submit(
-            locate,
-            {
-                "locations": [
-                    {"lon": raws[p].lon, "lat": raws[p].lat, "radius": radius} for p in chunk
-                ],
-                "verbose": True,
-                "costing": "bicycle",
-            },
-        )
+        [
+            parallel.submit(
+                locate,
+                {
+                    "locations": [
+                        {"lon": raws[p].lon, "lat": raws[p].lat, "radius": radius} for p in chunk
+                    ],
+                    "verbose": True,
+                    "costing": costing,
+                },
+            )
+            for costing in LOCATE_COSTINGS
+        ]
         for chunk in chunks
     ]
-    for number, (chunk, future) in enumerate(zip(chunks, asked, strict=True)):
-        try:
-            answers = future.result()
-        except cut_short as error:
-            # The batches after it are not read: those still queued on the pool are not
-            # asked (audit R4; one already running ends at its own deadline).
-            for later in asked[number + 1 :]:
-                later.cancel()
-            raise ReadingCutShort(
-                f"{len(found)} of {len(positions)} junctions read before {error}"
-            ) from error
-        except Exception as error:  # noqa: BLE001 - one batch failing is not the route failing
-            logger.info("intersection nodes unavailable for a batch: %s", error)
+    for number, (chunk, futures) in enumerate(zip(chunks, asked, strict=True)):
+        answered: list[list] = []
+        for costing, future in zip(LOCATE_COSTINGS, futures, strict=True):
+            try:
+                answered.append(future.result())
+            except cut_short as error:
+                # The batches after it are not read: those still queued on the pool are not
+                # asked (audit R4; one already running ends at its own deadline).
+                for later in (f for batch in asked[number:] for f in batch):
+                    later.cancel()
+                raise ReadingCutShort(
+                    f"{len(found)} of {len(positions)} junctions read before {error}"
+                ) from error
+            except Exception as error:  # noqa: BLE001 - one batch failing is not the route failing
+                logger.info("intersection nodes unavailable for a %s batch: %s", costing, error)
+                if costing == LOCATE_COSTINGS[0]:
+                    # Without the rider's own edges nothing at the node can be read.
+                    for other in futures[1:]:
+                        other.cancel()
+                    answered = []
+                    break
+                answered.append([])
+        if not answered:
             continue
-        for position, answer in zip(chunk, answers, strict=False):
-            found[position] = answer or {}
+        for index, position in enumerate(chunk):
+            items = [(a[index] if index < len(a) else None) or {} for a in answered]
+            found[position] = _merged(items)
     return found
+
+
+def _merged(answers: Sequence[dict]) -> dict:
+    """One `/locate` answer for a point from its answers under each costing
+    (`LOCATE_COSTINGS`): the first's, with the edges and nodes only the others have."""
+    first = dict(answers[0])
+    for key, ident in (("edges", "edge_id"), ("nodes", "node_id")):
+        items = list(first.get(key) or [])
+        seen = {_value(i.get(ident)) for i in items if isinstance(i, dict)}
+        for other in answers[1:]:
+            for item in other.get(key) or []:
+                if not isinstance(item, dict):
+                    continue
+                value = _value(item.get(ident))
+                if value is not None and value in seen:
+                    continue
+                seen.add(value)
+                items.append(item)
+        first[key] = items
+    return first
 
 
 def control_of(node: Node | None, signals: bool = True) -> Control:

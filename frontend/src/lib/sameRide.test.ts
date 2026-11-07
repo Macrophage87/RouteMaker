@@ -51,6 +51,55 @@ test("the organiser saying Same ride is not asked again for 12 hours; only a dig
 });
 
 
+test("a link sent from one tab is asked about a day later in a new tab or a reopened app; forgotten after 30 days", () => {
+  // v0.22.0 (release review P2-1): the send times and the page's own secrets are kept on the device (localStorage),
+  // not in the tab that sent them, so the organiser reopening the plan from history on Saturday is still asked.
+  const { asksSameRide, isOwnSecret, markOwnSecret, markRideSent, wasRideSent, OWN_RIDE_KEEP_MS, OWN_SECRETS_KEY, RIDE_SENT_KEY } = rideGroup;
+  assert.equal(OWN_RIDE_KEEP_MS, 30 * 24 * HOUR);
+  const device = memoryStore();
+  const secret = newRideSecret();
+  const monday = Date.UTC(2026, 10, 2, 18);
+  // Monday, tab 1: the plan is the page's own and its link goes out.
+  markOwnSecret(secret, device, monday);
+  markRideSent(secret, monday, false, device);
+  // Saturday, a new tab on the same device: still the page's own, and asked before it goes out again.
+  const saturday = monday + 5 * 24 * HOUR;
+  assert.equal(isOwnSecret(secret, device, saturday), true);
+  assert.equal(wasRideSent(secret, device, saturday), true);
+  assert.equal(asksSameRide(secret, saturday, device), true);
+  // Next Monday's weekly ride is asked about too.
+  assert.equal(asksSameRide(secret, monday + 7 * 24 * HOUR, device), true);
+  // After 30 days without being marked again, nothing of it is kept, and the next write drops it.
+  const later = monday + OWN_RIDE_KEEP_MS + HOUR;
+  assert.equal(isOwnSecret(secret, device, later), false);
+  assert.equal(asksSameRide(secret, later, device), false);
+  markRideSent(newRideSecret(), later, false, device);
+  markOwnSecret(newRideSecret(), device, later);
+  assert.equal(Object.keys(JSON.parse(device.kept.get(RIDE_SENT_KEY)!)).length, 1);
+  assert.equal(Object.keys(JSON.parse(device.kept.get(OWN_SECRETS_KEY)!)).length, 1);
+});
+
+test("a sent link stays the page's own after twenty more plan edits push it out of the own list", () => {
+  const { asksSameRide, isOwnSecret, markOwnSecret, markRideSent } = rideGroup;
+  const device = memoryStore();
+  const secret = newRideSecret();
+  const monday = Date.UTC(2026, 10, 2, 18);
+  markOwnSecret(secret, device, monday);
+  markRideSent(secret, monday, false, device);
+  for (let i = 0; i < 25; i += 1) markOwnSecret(newRideSecret(), device, monday + i * 60_000);
+  const saturday = monday + 5 * 24 * HOUR;
+  assert.equal(isOwnSecret(secret, device, saturday), true);
+  assert.equal(asksSameRide(secret, saturday, device), true);
+});
+
+test("the Same ride send times and own secrets default to the device's storage, not the tab's", () => {
+  const src = source("./rideGroup.ts");
+  for (const fn of ["markOwnSecret", "isOwnSecret", "markRideSent", "wasRideSent", "asksSameRide"]) {
+    const sig = new RegExp(`export function ${fn}\\([^)]*store: Store \\| null = local\\(\\)`);
+    assert.match(src, sig, `${fn} reads localStorage by default`);
+  }
+});
+
 test("after New ride the next Share ride or Broadcast goes out with a new leader key and secret, and the plan with a new key", async () => {
   const { asksSameRide, markRideSent, newRide, planSecrets, rideLeadFor, ridePlanKey } = rideGroup;
   const { asRideLink, withSharedId } = await import("./sharedRoutes.ts");
@@ -151,13 +200,16 @@ test("Copy link, Share, Share ride, Broadcast and Start ride ask first; New ride
   assert.match(app, /<SameRideDialog open=\{sameRideAsk !== null\} lead=\{sameRideAsk\?\.edited \? SAME_RIDE_EDITED_LEAD : undefined\} onSame=\{\(\) => answerSameRide\(true\)\} onNew=\{\(\) => answerSameRide\(false\)\} onCancel=\{\(\) => answerSameRide\(null\)\} \/>/);
 });
 
-test("the question is a modal dialog named by its heading: New ride takes the focus, Escape goes back, also without showModal", () => {
+test("the question is a modal dialog named by its heading: Same ride comes first and takes the focus, Escape goes back, also without showModal", () => {
   const dialog = source("../SameRideDialog.tsx");
   // Open or not by the attribute, which a browser without the modal dialog also sets.
   assert.match(dialog, /const shown = dialog\.hasAttribute\("open"\);\s*if \(open && !shown\) \{/);
   assert.match(dialog, /\} else if \(!open && shown\) \{/);
   assert.doesNotMatch(dialog, /dialog\.open\b/);
-  assert.match(dialog, /if \(typeof dialog\.showModal === "function"\) dialog\.showModal\(\);\s*else dialog\.setAttribute\("open", ""\);\s*newRef\.current\?\.focus\(\);/);
+  assert.match(dialog, /if \(typeof dialog\.showModal === "function"\) dialog\.showModal\(\);\s*else dialog\.setAttribute\("open", ""\);\s*sameRef\.current\?\.focus\(\);/);
+  // Same ride first and primary, so Enter or a habitual tap keeps the link that went out (v0.22.0 release review).
+  assert.match(dialog, /<button type="button" ref=\{sameRef\} className="primary" onClick=\{onSame\}>\s*\{SAME_RIDE\}\s*<\/button>\s*<button type="button" className="secondary" onClick=\{onNew\}>\s*\{NEW_RIDE\}/);
+  assert.doesNotMatch(dialog, /newRef/);
   assert.match(dialog, /if \(typeof dialog\.close === "function"\) dialog\.close\(\);\s*else dialog\.removeAttribute\("open"\);/);
   assert.match(dialog, /aria-labelledby=\{headingId\}\s*aria-describedby=\{leadId\}/);
   assert.match(dialog, /onCancel=\{\(event\) => \{\s*event\.preventDefault\(\);\s*onCancel\(\);\s*\}\}/);

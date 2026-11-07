@@ -10,14 +10,14 @@
  * Everything here is pure: the window along the route, each graph's shapes in metres, and the words a screen reader
  * hears. AheadGraph.tsx draws them. Ride's languages apply to every phrase (lib/i18n.test.ts).
  */
-import type { RouteProfile, RouteResponse, StressSpan } from "./api.ts";
+import type { RouteProfile, RouteResponse, StressSpan, TrailLevelSpan } from "./api.ts";
 import { browserStore, type KeyValueStore } from "./accessMode.ts";
 import { metricFirst } from "./units.ts";
 import { FEET_PER_METRE, METRES_PER_MILE, formatAxisFeet, formatAxisMetres, formatClimb, spokenDistance } from "./format.ts";
 import { t } from "./i18n.ts";
 import { FLOW_BANDS, chartKind, corkersFor, flowBand, gradeBand, shortStreet as abbreviate, usableProfile } from "./profileChart.ts";
 import { spanClass, usableSpans } from "./routeColours.ts";
-import { FACILITIES, HIGH_STRESS_LANE_MIN_TIER, relativeLuminance } from "../stressStyle.js";
+import { FACILITIES, HIGH_STRESS_LANE_MIN_TIER, MTB_LEVELS, MTB_TRAIL, relativeLuminance } from "../stressStyle.js";
 
 export type AheadView = "stress" | "elevation" | "flow" | "corkers";
 
@@ -252,19 +252,115 @@ export function facilityStretches(
 
 /** The next two trails or bike lanes ahead, said: "Trail here, for 0.3 miles. Painted bike lane in 0.8 miles, for 500 feet." */
 export function facilitySentence(stretches: readonly FacilityStretch[], youM: number): string {
+  return facilitySentenceOf(
+    stretches.map((s) => ({ fromM: s.fromM, toM: s.toM, kind: FACILITY_WORDS[s.facility] })),
+    youM,
+  );
+}
+
+function facilitySentenceOf(stretches: readonly { fromM: number; toM: number; kind: string }[], youM: number): string {
   return stretches
     .filter((s) => s.toM > youM + 15)
     .slice(0, 2)
     .map((s) =>
       s.fromM <= youM + 15
-        ? t("{kind} here, for {distance}.", { kind: FACILITY_WORDS[s.facility], distance: spokenDistance(s.toM - youM) })
+        ? t("{kind} here, for {distance}.", { kind: s.kind, distance: spokenDistance(s.toM - youM) })
         : t("{kind} in {distance}, for {length}.", {
-            kind: FACILITY_WORDS[s.facility],
+            kind: s.kind,
             distance: spokenDistance(s.fromM - youM),
             length: spokenDistance(s.toM - s.fromM),
           }),
     )
     .join(" ");
+}
+
+// ---- Mountain-bike trail levels --------------------------------------------------------------------------------
+
+/**
+ * A mountain-bike trail along the window (Stephen 2026-11-07: "add mountain bike trail difficulty to the ribbon"; "Use
+ * the trail color in the ribbon and brown dots that look like rocks on the edges"; "on unrated, give that a color too"):
+ * the ribbon there in the map's trail colour (stressStyle.js MTB_LEVELS, MTB_TRAIL for unrated), and a rated level's
+ * sign on it, a green circle, a blue square, a black diamond, a red double diamond, so the shape says it as well.
+ */
+export interface TrailLevelMark {
+  fromM: number;
+  toM: number;
+  /** 1-4, or 0 on an unrated mountain-bike trail (the map's unrated colour, no sign). */
+  level: 0 | 1 | 2 | 3 | 4;
+  color: string;
+}
+
+/** What each level is called when said: "Blue trail (level 2) in 0.3 miles, for 0.4 miles." */
+export const TRAIL_LEVEL_WORDS: Record<TrailLevelMark["level"], string> = {
+  0: t("Unrated mountain bike trail"),
+  1: t("Green trail (level 1)"),
+  2: t("Blue trail (level 2)"),
+  3: t("Black trail (level 3)"),
+  4: t("Red trail (level 4)"),
+};
+
+/** The colour a level is drawn in, the map's: its level's, or the unrated trails' brown. */
+export function trailLevelColor(level: number): string | null {
+  if (level === 0) return MTB_TRAIL.color;
+  return (MTB_LEVELS.find((l: { level: number }) => l.level === level) as { color: string } | undefined)?.color ?? null;
+}
+
+/**
+ * The trail stretches with every Avoid section (tier 5) cut out of them, so the trail colour never covers Avoid's
+ * magenta and dash-dot (397: "magenta is not the only thing that says Avoid"), on the ribbon or the route line.
+ */
+export function trailsBesideAvoid(
+  trails: readonly TrailLevelSpan[],
+  spans: readonly Pick<StressSpan, "from_m" | "to_m" | "tier">[] | null | undefined,
+): TrailLevelSpan[] {
+  const avoid = (spans ?? []).filter((s) => s.tier === 5);
+  if (!avoid.length) return [...trails];
+  const out: TrailLevelSpan[] = [];
+  for (const trail of trails) {
+    let pieces = [{ ...trail }];
+    for (const a of avoid) {
+      pieces = pieces.flatMap((p) =>
+        a.to_m <= p.from_m || a.from_m >= p.to_m
+          ? [p]
+          : [
+              ...(a.from_m > p.from_m ? [{ ...p, to_m: a.from_m }] : []),
+              ...(a.to_m < p.to_m ? [{ ...p, from_m: a.to_m }] : []),
+            ],
+      );
+    }
+    out.push(...pieces);
+  }
+  return out;
+}
+
+export function trailLevelMarks(
+  trails: readonly TrailLevelSpan[],
+  w: Pick<AheadWindow, "fromM" | "toM">,
+  stress: readonly Pick<StressSpan, "from_m" | "to_m" | "tier">[] | null = null,
+): TrailLevelMark[] {
+  const out: TrailLevelMark[] = [];
+  for (const span of trailsBesideAvoid(trails, stress)) {
+    const level = span.level;
+    if (level !== 0 && level !== 1 && level !== 2 && level !== 3 && level !== 4) continue;
+    const fromM = Math.max(span.from_m, w.fromM);
+    const toM = Math.min(span.to_m, w.toM);
+    if (toM <= fromM) continue;
+    const last = out[out.length - 1];
+    if (last && last.level === level && last.toM >= fromM - 0.5) {
+      last.toM = toM;
+      continue;
+    }
+    out.push({ fromM, toM, level, color: trailLevelColor(level)! });
+  }
+  return out;
+}
+
+/** The next two trails ahead, said as the trails and lanes are: "Black trail (level 3) here, for 0.2 miles." */
+export function trailLevelSentence(marks: readonly TrailLevelMark[], youM: number): string {
+  return facilitySentenceOf(
+    marks.map((m) => ({ fromM: m.fromM, toM: m.toM, kind: TRAIL_LEVEL_WORDS[m.level] })),
+    youM,
+  );
 }
 
 // ---- Elevation ---------------------------------------------------------------------------------------------------
