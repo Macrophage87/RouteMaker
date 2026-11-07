@@ -19,6 +19,12 @@ import type { StopsLeft } from "./tripStops.ts";
 export const RIDE_RESUME_KEY = "routemaker.ride-left";
 /** A ride left longer than this is not offered: a day's ride, not yesterday's. */
 export const RESUME_MAX_MS = 12 * 60 * 60_000;
+/**
+ * Left this recently (the page put away to switch apps, then reloaded by the phone): Resume carries on as the ride was,
+ * without asking which stops are done (Stephen, 2026-11-07: it says the ride started part way along "even when just
+ * briefly switching off"). Longer away, the rider may have ridden on without it, so the question stays.
+ */
+export const RESUME_QUIET_MS = 10 * 60_000;
 
 export const RESUME_HEADING = t("Resume your ride?");
 /** The question with the ride named where its destination has a name (the UI review, 2026-10-28). */
@@ -61,6 +67,8 @@ export interface LeftRide {
   past?: OnwardState | null;
   /** A trip with stops: the stops after the trip ridden (lib/tripStops.ts), so Resume still offers "Start the next leg". */
   stopsLeft?: StopsLeft | null;
+  /** When the page was last put away mid-ride (seeLeftRide), if it was. */
+  seen?: number | null;
 }
 
 /** Points kept with their kinds and names, which live on the pairs (lib/pointKinds.ts). */
@@ -90,6 +98,7 @@ interface Kept {
   trip?: boolean;
   past?: OnwardState;
   stops?: KeptPoints & { preset: PresetId };
+  seen?: number;
 }
 
 interface Store {
@@ -304,5 +313,22 @@ export function leftRide(marks: Pick<ViaMarks, "via" | "drawn" | "named">, now: 
     ...(typeof kept.leads === "string" ? { leads: kept.leads } : {}),
     ...(kept.trip === true ? { wholeTrip: true, past: pastOf(kept.past) } : {}),
     ...(stops ? { stopsLeft: { preset: stops.preset, points: markedPoints(stops, marks) } } : {}),
+    ...(typeof kept.seen === "number" ? { seen: kept.seen } : {}),
   };
+}
+
+/** The page put away mid-ride (another app, the screen off): when, on the kept ride, for a quiet Resume. */
+export function seeLeftRide(now: number, store: Store | null = local()): void {
+  try {
+    const raw = store?.getItem(RIDE_RESUME_KEY);
+    if (!raw) return;
+    store?.setItem(RIDE_RESUME_KEY, JSON.stringify({ ...(JSON.parse(raw) as Kept), seen: now }));
+  } catch {
+    // Full or blocked storage: Resume asks which stops are done, as before.
+  }
+}
+
+/** Resumed within RESUME_QUIET_MS of the page being put away: the ride carries on without "Already done?". */
+export function resumesQuietly(left: Pick<LeftRide, "seen">, now: number): boolean {
+  return typeof left.seen === "number" && now - left.seen >= 0 && now - left.seen <= RESUME_QUIET_MS;
 }
