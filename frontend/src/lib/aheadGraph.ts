@@ -305,9 +305,41 @@ export function trailLevelColor(level: number): string | null {
   return (MTB_LEVELS.find((l: { level: number }) => l.level === level) as { color: string } | undefined)?.color ?? null;
 }
 
-export function trailLevelMarks(spans: readonly TrailLevelSpan[], w: Pick<AheadWindow, "fromM" | "toM">): TrailLevelMark[] {
+/**
+ * The trail stretches with every Avoid section (tier 5) cut out of them, so the trail colour never covers Avoid's
+ * magenta and dash-dot (397: "magenta is not the only thing that says Avoid"), on the ribbon or the route line.
+ */
+export function trailsBesideAvoid(
+  trails: readonly TrailLevelSpan[],
+  spans: readonly Pick<StressSpan, "from_m" | "to_m" | "tier">[] | null | undefined,
+): TrailLevelSpan[] {
+  const avoid = (spans ?? []).filter((s) => s.tier === 5);
+  if (!avoid.length) return [...trails];
+  const out: TrailLevelSpan[] = [];
+  for (const trail of trails) {
+    let pieces = [{ ...trail }];
+    for (const a of avoid) {
+      pieces = pieces.flatMap((p) =>
+        a.to_m <= p.from_m || a.from_m >= p.to_m
+          ? [p]
+          : [
+              ...(a.from_m > p.from_m ? [{ ...p, to_m: a.from_m }] : []),
+              ...(a.to_m < p.to_m ? [{ ...p, from_m: a.to_m }] : []),
+            ],
+      );
+    }
+    out.push(...pieces);
+  }
+  return out;
+}
+
+export function trailLevelMarks(
+  trails: readonly TrailLevelSpan[],
+  w: Pick<AheadWindow, "fromM" | "toM">,
+  stress: readonly Pick<StressSpan, "from_m" | "to_m" | "tier">[] | null = null,
+): TrailLevelMark[] {
   const out: TrailLevelMark[] = [];
-  for (const span of spans) {
+  for (const span of trailsBesideAvoid(trails, stress)) {
     const level = span.level;
     if (level !== 0 && level !== 1 && level !== 2 && level !== 3 && level !== 4) continue;
     const fromM = Math.max(span.from_m, w.fromM);

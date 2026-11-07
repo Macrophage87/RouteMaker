@@ -4853,6 +4853,12 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
     forced-color-adjust: none;
   }
 
+  /* The halo under turns on the ribbon and the bed under a trail's rocks: the page's own background. */
+  .ride-ahead-plot .ride-ahead-arrow-halo,
+  .ride-ahead-plot .ride-ahead-mtb-bed {
+    stroke: Canvas;
+  }
+
   .ride-ahead-plot text,
   .ride-ahead-plot .ride-ahead-you-word,
   .ride-ahead-axis text {

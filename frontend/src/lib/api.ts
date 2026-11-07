@@ -925,13 +925,14 @@ export interface SteepGradeSpan {
   text: string;
 }
 
-/** core.api RoadHazardSpanOut: a known hazard the route rides (v0.10.0; core/route_hazards.py). */
-/** A rated mountain-bike trail the route rides (2026-11-07), in metres along the route as `stress_spans`: 1 green, 2 blue, 3 black, 4 red. */
+/** core.api TrailLevelSpanOut: a mountain-bike trail the route rides (2026-11-07), in metres along the route as `stress_spans`: 1 green, 2 blue, 3 black, 4 red, 0 unrated. */
 export interface TrailLevelSpan {
   from_m: number;
   to_m: number;
   level: number;
 }
+
+/** core.api RoadHazardSpanOut: a known hazard the route rides (v0.10.0; core/route_hazards.py). */
 
 export interface RoadHazardSpan {
   from_m: number;

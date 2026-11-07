@@ -6,7 +6,7 @@
  */
 import type { RouteResponse } from "./api.ts";
 import { haversineM, type LonLat } from "./geo.ts";
-import { trailLevelColor } from "./aheadGraph.ts";
+import { trailLevelColor, trailsBesideAvoid } from "./aheadGraph.ts";
 import { ROUTE_LINE_WIDTH } from "./routeColours.ts";
 import { TRAIL_ROCK } from "./trailRocks.ts";
 
@@ -45,7 +45,7 @@ export function routeTrailFeatures(
     const b = coordinates[k + 1]!;
     return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f];
   };
-  for (const span of found) {
+  for (const span of trailsBesideAvoid(found, route.stress_spans)) {
     const color = trailLevelColor(span.level);
     if (!color) continue;
     const from = Math.max(0, span.from_m * scale);

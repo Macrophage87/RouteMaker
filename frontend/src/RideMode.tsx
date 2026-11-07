@@ -76,7 +76,7 @@ import {
 } from "./lib/rideStops.ts";
 import { RestartStopsDialog } from "./RestartStopsDialog.tsx";
 import { StartFirstDialog } from "./StartFirstDialog.tsx";
-import { keepLeftRide, keepLeftRidePast, seeLeftRide } from "./lib/rideResume.ts";
+import { keepLeftRide, keepLeftRidePast, seeLeftRide, unseeLeftRide } from "./lib/rideResume.ts";
 import type { Dials } from "./lib/dials.ts";
 import { haversineM, type LonLat } from "./lib/geo.ts";
 import { placeLetter, type LetteredPlace } from "./lib/letteredPlaces.ts";
@@ -2330,6 +2330,7 @@ export function RideMode({
     if (!keepLeft) return undefined;
     const onAway = () => {
       if (document.visibilityState === "hidden" && !ended.current) seeLeftRide(Date.now(), statsRef.current);
+      else if (document.visibilityState === "visible") unseeLeftRide();
     };
     document.addEventListener("visibilitychange", onAway);
     window.addEventListener("pagehide", onAway);

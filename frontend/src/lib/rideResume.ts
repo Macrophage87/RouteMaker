@@ -23,9 +23,11 @@ export const RESUME_MAX_MS = 12 * 60 * 60_000;
 /**
  * Left this recently (the page put away to switch apps, then reloaded by the phone): Resume carries on as the ride was,
  * without asking which stops are done (Stephen, 2026-11-07: it says the ride started part way along "even when just
- * briefly switching off"). Longer away, the rider may have ridden on without it, so the question stays.
+ * briefly switching off"), and after a stop as long as lunch (2026-11-07: "Can the interval increase to a longer
+ * interval than 10 minutes? What if you stop for Lunch?"). Longer away, the rider may have ridden on without it, so the
+ * question stays.
  */
-export const RESUME_QUIET_MS = 10 * 60_000;
+export const RESUME_QUIET_MS = 2 * 60 * 60_000;
 
 export const RESUME_HEADING = t("Resume your ride?");
 /** The question with the ride named where its destination has a name (the UI review, 2026-10-28). */
@@ -341,6 +343,18 @@ export function seeLeftRide(now: number, stats: RideStats | null = null, store: 
     store?.setItem(RIDE_RESUME_KEY, JSON.stringify({ ...(JSON.parse(raw) as Kept), seen: now, ...(figures ? { stats: figures } : {}) }));
   } catch {
     // Full or blocked storage: Resume asks which stops are done, as before.
+  }
+}
+
+/** Back on the page: the note of it put away is dropped, so a reload later (the figures by then older) asks as before. */
+export function unseeLeftRide(store: Store | null = local()): void {
+  try {
+    const raw = store?.getItem(RIDE_RESUME_KEY);
+    if (!raw) return;
+    const { seen: _seen, stats: _stats, ...kept } = JSON.parse(raw) as Kept;
+    store?.setItem(RIDE_RESUME_KEY, JSON.stringify(kept));
+  } catch {
+    // Full or blocked storage: nothing kept to drop.
   }
 }
 

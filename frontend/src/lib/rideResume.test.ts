@@ -300,3 +300,14 @@ test("back within minutes of putting the page away, Resume carries on without as
   assert.match(ride, /if \(document\.visibilityState === "hidden" && !ended\.current\) seeLeftRide\(Date\.now\(\), statsRef\.current\);/);
   assert.match(src("../App.tsx"), /const quiet = resumesQuietly\(left, Date\.now\(\)\);\s*\/\/[^\n]*\n\s*setResumeStats\(quiet \? \(left\.stats \?\? null\) : null\);/);
 });
+
+test("back on the page, the note of it put away is dropped, so a later reload does not resume on older figures (#1025 review)", async () => {
+  const { RIDE_RESUME_KEY, seeLeftRide, unseeLeftRide } = await import("./rideResume.ts");
+  const kept = new Map<string, string>();
+  const store = { getItem: (k: string) => kept.get(k) ?? null, setItem: (k: string, v: string) => void kept.set(k, v), removeItem: (k: string) => void kept.delete(k) };
+  kept.set(RIDE_RESUME_KEY, JSON.stringify({ v: 1, at: 0 }));
+  seeLeftRide(5000, { startedAt: 1, distanceM: 10, movingMs: 1, climbM: 0, stressM: {}, elevation: [], last: null }, store);
+  unseeLeftRide(store);
+  assert.deepEqual(JSON.parse(kept.get(RIDE_RESUME_KEY)!), { v: 1, at: 0 });
+  assert.match(src("../RideMode.tsx"), /else if \(document\.visibilityState === "visible"\) unseeLeftRide\(\);/);
+});

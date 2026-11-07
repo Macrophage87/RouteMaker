@@ -197,7 +197,7 @@ export function AheadGraph({ views, route, cues, youM, lengthM, ridersAlong = []
     const ribbon = views.includes("stress") && route.stress_spans ? stressBars(route.stress_spans, w) : [];
     const rails = ribbon.length && route.stress_spans ? facilityStretches(route.stress_spans, w) : [];
     // The mountain-bike trails, in their colour on the ribbon with a rated level's sign (Stephen 2026-11-07).
-    const trails = ribbon.length && route.trail_levels ? trailLevelMarks(route.trail_levels, w) : [];
+    const trails = ribbon.length && route.trail_levels ? trailLevelMarks(route.trail_levels, w, route.stress_spans) : [];
     const ribbonH = ribbon.length ? RIBBON_BLOCK + GAP : 0;
     const graphs = views.filter((view) => view !== "stress");
     const fit = (count: number, room: number, strip: number) => graphsThatFit(count, room, strip + AXIS_H - GAP, LABEL_H + GAP);

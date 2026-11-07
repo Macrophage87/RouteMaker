@@ -57,7 +57,7 @@ test("mountain-bike trails ride on the ribbon in the map's colours, a rated leve
   assert.match(trailLevelSentence(marks, 500), /^Blue trail \(level 2\) here, for /);
   assert.match(trailLevelSentence(marks, 2800), / Unrated mountain bike trail in .+, for .+\.$/);
   // Said with the ribbon; each rated level's sign drawn on it, clear of the turns where the stretch allows.
-  assert.match(graph, /const trails = ribbon\.length && route\.trail_levels \? trailLevelMarks\(route\.trail_levels, w\) : \[\];/);
+  assert.match(graph, /const trails = ribbon\.length && route\.trail_levels \? trailLevelMarks\(route\.trail_levels, w, route\.stress_spans\) : \[\];/);
   assert.match(graph, /facilitySentence\(rails, w\.youM\), trailLevelSentence\(trails, w\.youM\)\]/);
   assert.match(graph, /\{panels\.trails\.length > 0 && <TrailSigns marks=\{panels\.trails\} x=\{x\} cy=\{panels\.turnsH \+ RIBBON_BLOCK \/ 2\} turns=\{drawnTurns\} \/>\}/);
   assert.match(graph, /return spots\.find\(\(sx\) => room\(sx\) > TRAIL_SIGN \+ 6\) \?\? spots\.reduce\(\(a, b\) => \(room\(b\) > room\(a\) \? b : a\)\);/);
@@ -70,4 +70,19 @@ test("a trail stretch on the ribbon is its trail's colour, with brown rocks on i
   assert.match(graph, /<Ribbon bars=\{panels\.ribbon\} rails=\{panels\.rails\} trails=\{panels\.trails\} /);
   const css = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
   assert.match(css, /\.ride-ahead-plot \.ride-ahead-mtb-bed \{\s*stroke: var\(--bg\);/);
+});
+
+test("the trail colour never covers an Avoid section, on the ribbon or the route line (#1025 review)", async () => {
+  const { trailsBesideAvoid } = await import("./aheadGraph.ts");
+  const cut = trailsBesideAvoid([{ from_m: 0, to_m: 1000, level: 3 }], [
+    { from_m: 0, to_m: 300, tier: 2 },
+    { from_m: 300, to_m: 450, tier: 5 },
+    { from_m: 450, to_m: 1000, tier: 1 },
+  ]);
+  assert.deepEqual(cut, [
+    { from_m: 0, to_m: 300, level: 3 },
+    { from_m: 450, to_m: 1000, level: 3 },
+  ]);
+  const layers = readFileSync(new URL("./routeTrailLayers.ts", import.meta.url), "utf8");
+  assert.match(layers, /for \(const span of trailsBesideAvoid\(found, route\.stress_spans\)\)/);
 });
