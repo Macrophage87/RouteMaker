@@ -90,5 +90,5 @@ test("a resumed ride keeps Share live, its link made from the ride's own plan (S
   assert.match(app, /keepLeftRide\(\{ route, \.\.\.whole, dials: rideDialsNow, fixed, destination, passOn, follows, leads: ledLink, stopsLeft: tripStopsLeft\.current \}/);
   assert.match(app, /passingOn=\{passesOn \|\| !!rideStart\.passOn\}/);
   // Resume keeps the ride kept, so the rail still offers it.
-  assert.match(app, /setRideStart\(\(before\) => \(\{ \.\.\.left, \.\.\.resumed, kept: true, startFirst: false, n: \(before\?\.n \?\? 0\) \+ 1 \}\)\);/);
+  assert.match(app, /setRideStart\(\(before\) => \(\{ \.\.\.left, \.\.\.resumed, kept: true, startFirst: false, quiet, n: \(before\?\.n \?\? 0\) \+ 1 \}\)\);/);
 });

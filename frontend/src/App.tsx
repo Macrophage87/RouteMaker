@@ -329,7 +329,7 @@ import { joinActions, joinKey, joinLine, joinShown, joinTitle, keepJoinShown, sh
 import { canSendToGarmin, handGpx } from "./lib/sendToGarmin.ts";
 import { ResumeRideDialog } from "./ResumeRideDialog.tsx";
 import type { OnwardState } from "./lib/onward.ts";
-import { forgetLeftRide, keepLeftRide, keepLeftRideLeads, leftRide, leftRidePast, resumedBroadcast } from "./lib/rideResume.ts";
+import { forgetLeftRide, keepLeftRide, keepLeftRideLeads, leftRide, leftRidePast, resumedBroadcast, resumesQuietly } from "./lib/rideResume.ts";
 import { StopNameDialog, type StopNameAsk } from "./StopNameDialog.tsx";
 import { LoadRouteDialog } from "./LoadRouteDialog.tsx";
 import { LOAD_ROUTE, withGpxChoice, type GpxChoice } from "./lib/loadRoute.ts";
@@ -1134,6 +1134,8 @@ export function App() {
     dials: Dials;
     preset: PresetId;
     trip: RideTrip | null;
+    /** Resumed soon after the page was put away (lib/rideResume.ts resumesQuietly). */
+    quiet?: boolean;
     /** Kept riding to a Rebalance Ride's chosen dock: the plan it came from (its walk and dock figures). */
     planned?: RouteResponse;
     /** A trip resumed past its line: the walk or train it was following (lib/rideResume.ts LeftRide.past). */
@@ -4865,8 +4867,11 @@ export function App() {
     // The trip's check (till its first boarding) and its stops left, as Start had them.
     tripStopsLeft.current = left.stopsLeft ?? null;
     tripCheck.current = checkTripOf(left.route, left.points);
-    setResumeStats(null);
-    setRideStart((before) => ({ ...left, ...resumed, kept: true, startFirst: false, n: (before?.n ?? 0) + 1 }));
+    // Back within minutes of the page being put away (a phone reloads a page in the background): no "Already done?".
+    const quiet = resumesQuietly(left, Date.now());
+    // Its figures carry on too (distance, time, climb), not from 0.
+    setResumeStats(quiet ? (left.stats ?? null) : null);
+    setRideStart((before) => ({ ...left, ...resumed, kept: true, startFirst: false, quiet, n: (before?.n ?? 0) + 1 }));
     keepLeftRide(left, VIA_MARKS, Date.now());
     // On a broadcast, followed or led: the ride is on it again, its dots, alerts and leader with it (lib/rideResume.ts).
     const on = resumedBroadcast(left);
@@ -7082,6 +7087,7 @@ export function App() {
           trip={rideStart.trip}
           resumedPast={rideStart.past ?? null}
           startFirst={rideStart.startFirst === true}
+          resumedQuietly={rideStart.quiet === true}
           onRideRest={(riderAt) => rideRest(riderAt, true)}
           onTripCheck={tripCheck.current?.route === rideStart.route ? checkTrip : undefined}
           onNextLeg={tripStopsLeft.current ? nextLeg : undefined}
