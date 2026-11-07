@@ -2485,7 +2485,11 @@ def test_the_bot_posts_the_changelog_once_per_tag_in_place_of_the_webhook(beta: 
     done = beta.agent("run", **DEPLOY, **env)
     assert done.returncode == 0, done.stdout + done.stderr
     notes = beta.src / "docs" / "releases" / "v0.2.0.md"
-    assert f"--dir {beta.state / 'discord'} changelog v0.2.0 {notes}" in _reports(beta)
+    today = subprocess.run(
+        ["date", "+%F"], env={"TZ": "America/New_York"}, capture_output=True, text=True
+    ).stdout.strip()
+    want = f"--dir {beta.state / 'discord'} changelog v0.2.0 {notes} --live-date {today}"
+    assert want in _reports(beta)
     assert not any(line.startswith("release-notes|") for line in _alerts(beta))  # no webhook
     assert (beta.state / "alerts" / "release-posted").read_text() == "v0.2.0\n"
     beta.agent("run", **env)

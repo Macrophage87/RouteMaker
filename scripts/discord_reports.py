@@ -9,7 +9,8 @@ owner made, does three things and nothing else:
     python scripts/discord_reports.py fetch --out reports.md [--days 14]
     python scripts/discord_reports.py merged POST --version v0.11.0 [--dry-run]
     python scripts/discord_reports.py live v0.11.0 [--dry-run]
-    python scripts/discord_reports.py changelog v0.11.0 docs/releases/v0.11.0.md [--dry-run]
+    python scripts/discord_reports.py changelog v0.11.0 docs/releases/v0.11.0.md \\
+        [--live-date 2026-10-31] [--dry-run]
 
 `fetch` writes the forums' posts to a Markdown file for Claude to read: titles, tags, links
 and the messages' words, with no tester's name (a message is "tester", "owner" or "bot").
@@ -178,9 +179,13 @@ def changelog_channel(where: Path) -> str:
     return ids[0]
 
 
-def changelog_messages(version: str, notes: str, limit: int = MAX_CHARS) -> list[str]:
+def changelog_messages(
+    version: str, notes: str, limit: int = MAX_CHARS, live: str | None = None
+) -> list[str]:
     """The title, then the notes, cut at line ends into messages of at most `limit` characters."""
     lines = [CHANGELOG_TITLE.format(version=version)]
+    if live:
+        lines.append(live_line(live))
     if notes.strip():
         body = notes.splitlines()
         # The file's first line repeats the version ("**RouteMaker 0.22.0**"); the title has it.
@@ -190,31 +195,52 @@ def changelog_messages(version: str, notes: str, limit: int = MAX_CHARS) -> list
     return split_text(lines, limit)
 
 
-def changelog_posts(version: str, notes: str, base: Path | None) -> list[tuple[str, Path | None]]:
-    """The changelog's messages in order: text cut to fit, and each image line of the notes
-    (`![caption](file.png)`, a path inside the notes file's folder) as its own message, the
-    caption as its words. Every image is checked before anything is posted."""
-    posts: list[tuple[str, Path | None]] = []
+Image = tuple[Path, str]  # a picture and its caption
+Post = tuple[str, tuple[Image, ...]]
+MAX_FILES = 10  # Discord's limit on attachments in one message
+
+
+def live_line(day: str) -> str:
+    try:
+        when = datetime.strptime(day, "%Y-%m-%d")
+    except ValueError:
+        raise DiscordError(f"a live date is YYYY-MM-DD ({day!r})") from None
+    return f"Live on beta {when:%A, %B} {when.day}, {when.year}"
+
+
+def changelog_posts(
+    version: str, notes: str, base: Path | None, live: str | None = None
+) -> list[Post]:
+    """The changelog's messages in order. The notes' picture lines (`![caption](file.png)`, a
+    path inside the notes file's folder) are pulled out, every one checked before anything is
+    posted. When the words fit one message and there are at most 10 pictures, it is one post:
+    the title, the live date, the notes and every picture attached (the owner, 2026-11-07:
+    "One post each"). Otherwise the words are cut to fit and each picture is its own message,
+    its caption as its words, where it sits in the notes."""
     text: list[str] = []
-
-    def flush(first: bool) -> None:
-        chunk = changelog_messages(version, "\n".join(text)) if first else None
-        if first:
-            posts.extend((m, None) for m in chunk)
-        elif "\n".join(text).strip():
-            posts.extend((m, None) for m in split_text(text))
-        text.clear()
-
-    first = True
+    images: list[Image] = []
+    blocks: list[tuple[list[str], Image | None]] = []
     for line in notes.splitlines():
         match = IMAGE_RE.match(line)
         if not match:
             text.append(line)
             continue
-        flush(first)
-        first = False
-        posts.append((match.group(1).strip()[:MAX_CHARS], image_path(base, match.group(2))))
-    flush(first)
+        image = (image_path(base, match.group(2)), match.group(1).strip())
+        images.append(image)
+        blocks.append((text, image))
+        text = []
+    blocks.append((text, None))
+    words = changelog_messages(version, "\n".join(sum((b for b, _ in blocks), [])), live=live)
+    if len(words) == 1 and len(images) <= MAX_FILES:
+        return [(words[0], tuple(images))]
+    posts: list[Post] = []
+    for n, (lines, image) in enumerate(blocks):
+        if n == 0:
+            posts.extend((m, ()) for m in changelog_messages(version, "\n".join(lines), live=live))
+        elif "\n".join(lines).strip():
+            posts.extend((m, ()) for m in split_text(lines))
+        if image:
+            posts.append((image[1][:MAX_CHARS], (image,)))
     return posts
 
 
@@ -507,40 +533,49 @@ def already_posted(api: Discord, channel: str, version: str) -> list[tuple[str, 
 
 
 def cmd_changelog(
-    api: Discord, channel: str, version: str, notes_file: Path | None, dry_run: bool
+    api: Discord,
+    channel: str,
+    version: str,
+    notes_file: Path | None,
+    dry_run: bool,
+    live: str | None = None,
 ) -> int:
     semver(version)
     notes, base = "", None
     if notes_file is not None and notes_file.is_file():
         notes = notes_file.read_text(encoding="utf-8", errors="replace")
         base = notes_file.parent
-    posts = changelog_posts(version, notes, base)
+    posts = changelog_posts(version, notes, base, live)
     # A message the bot already posted for this version is skipped, so a pass that stopped
     # part-way posts only the rest and a repeated pass posts nothing.
     done = already_posted(api, channel, version)
     todo = []
-    for text, image in posts:
-        key = (text, (image.name,) if image else ())
+    for text, images in posts:
+        key = (text, tuple(path.name for path, _ in images))
         if key in done:
             done.remove(key)
         else:
-            todo.append((text, image))
+            todo.append((text, images))
     if not todo:
         print(f"{version}: the changelog already has it")
         return 0
-    for n, (text, image) in enumerate(todo):
+    for n, (text, images) in enumerate(todo):
         if dry_run:
+            names = ", ".join(path.name for path, _ in images)
             print(
-                f"would post in the changelog:\n{text}"
-                + (f"\n[image: {image.name}]" if image else "")
+                f"would post in the changelog:\n{text}" + (f"\n[images: {names}]" if names else "")
             )
             continue
         if n:
             time.sleep(1)
         body: dict = {"content": text, "allowed_mentions": NO_MENTIONS}
-        if image:
-            body["attachments"] = [{"id": 0, "filename": image.name, "description": text[:1024]}]
-            api.send("POST", f"/channels/{channel}/messages", body, files=[image])
+        if images:
+            body["attachments"] = [
+                {"id": i, "filename": path.name, "description": (caption or path.stem)[:1024]}
+                for i, (path, caption) in enumerate(images)
+            ]
+            files = [path for path, _ in images]
+            api.send("POST", f"/channels/{channel}/messages", body, files=files)
         else:
             api.send("POST", f"/channels/{channel}/messages", body)
     if not dry_run:
@@ -573,6 +608,7 @@ def main(argv: list[str] | None = None, api: Discord | None = None) -> int:
     changelog.add_argument("version")
     changelog.add_argument("notes", type=Path, nargs="?")
     changelog.add_argument("--dry-run", action="store_true")
+    changelog.add_argument("--live-date", metavar="YYYY-MM-DD", help="the day it went live")
     args = parser.parse_args(argv)
     try:
         if args.command == "changelog":
@@ -583,6 +619,7 @@ def main(argv: list[str] | None = None, api: Discord | None = None) -> int:
                 args.version,
                 args.notes,
                 args.dry_run,
+                args.live_date,
             )
         token, forum_ids = load_settings(args.dir)
         forums = Forums(api or Discord(token), forum_ids)

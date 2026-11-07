@@ -253,7 +253,8 @@ release_notes() { # alert
 	[ "$(gitc rev-parse HEAD 2>/dev/null)" = "$(deployed_sha)" ] || return 0
 	if [ -s "$discord/bot-token" ] && [ -s "$discord/changelog-channel" ] && [ -f "$script" ]; then
 		{
-			if timeout 120 "$py" "$script" --dir "$discord" changelog "$tag" "$RM_SRC/docs/releases/$tag.md"; then
+			if timeout 120 "$py" "$script" --dir "$discord" changelog "$tag" "$RM_SRC/docs/releases/$tag.md" \
+				--live-date "$(TZ=America/New_York date +%F)"; then
 				mkdir -p "$RM_STATE/alerts" && echo "$tag" >>"$RM_STATE/alerts/release-posted"
 				ok=1
 			else
