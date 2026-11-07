@@ -1377,6 +1377,26 @@ button.secondary {
   padding-left: 18px;
 }
 
+/* Help's one big button to the guides (Stephen 2026-11-06: "a big button to the help files ... as opposed to the
+   wall of text"): a ride-sized press, the app's accent in each theme. :root lifts it over the dark map's link
+   colour. */
+:root .maplibregl-ctrl-attrib .map-info a.map-info-guides {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 56px;
+  padding: 8px 20px;
+  /* Room for the focus ring, which the scrolling body would clip at the sides. */
+  margin: 6px 6px 8px;
+  border-radius: 8px;
+  background: var(--accent);
+  color: var(--accent-text);
+  font-size: 20px;
+  font-weight: 700;
+  text-align: center;
+  text-decoration: none;
+}
+
 /* Collapsed to the "i" button (lib/junctionCard.ts collapseCredits, at the
    start, or by the rider): the OpenStreetMap credit still shows beside it, as
    text the "i" opens in full. Hidden from screen readers, which have the
@@ -2993,17 +3013,28 @@ dialog.weight-dialog h2 {
   margin: 0;
 }
 
-/* The sign-up link, in small print under the note. */
-.beta-chip-note .beta-chip-signup {
-  margin-top: 6px;
-  font-size: 0.75rem;
+/* Sign up to test and the help guides: two buttons under the note (Stephen 2026-11-06: "a button ... so it's more
+   apparent"), side by side, each a finger's press, in the app's accent. */
+.beta-chip-note .beta-chip-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
 }
 
-/* Small print, but a target a finger can hit (WCAG 2.5.8's 24 px). */
-.beta-chip-note .beta-chip-signup a {
-  display: inline-block;
-  min-height: 24px;
-  line-height: 24px;
+.beta-chip-note .beta-chip-actions a {
+  flex: 1 1 8rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: var(--accent);
+  color: var(--accent-text);
+  font-weight: 700;
+  text-align: center;
+  text-decoration: none;
 }
 
 @media (max-width: 720px) {

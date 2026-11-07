@@ -2,45 +2,31 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { DOCS_LINKS, helpExpanded, infoLines, mapInfo, wrapCredits } from "./mapInfo.ts";
+import { GUIDES_PAGE, helpExpanded, mapInfo, wrapCredits } from "./mapInfo.ts";
 
 const src = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
 
-test("Help on a phone: where to start and what the colors mean, in a finger's words (P8)", () => {
-  const phone = mapInfo(true);
-  assert.ok(phone.startsWith("<p><strong>Where to?</strong> Search or tap a chip, then Start ride.</p>"));
-  assert.match(phone, /<p>Line colors: green calm <span aria-hidden="true">→<\/span><span class="visually-hidden">to<\/span> red busy\.<\/p>/);
-  assert.doesNotMatch(phone, /click/i, "no click on a phone");
+test("Help is one big button to the help guides, not a wall of text (Stephen 2026-11-06)", () => {
+  const html = mapInfo();
+  assert.ok(html.startsWith(`<p><a class="map-info-guides" href="/about/using.html">Using RouteMaker</a></p>`), html);
+  assert.equal(GUIDES_PAGE, "/about/using.html");
+  // No how-to lines or row of links shown; the guides' own menu leads to the other pages.
+  assert.doesNotMatch(html, /Where to\?|Line colors|More:/);
+  assert.equal([...html.matchAll(/<a /g)].length, 1);
+  const guides = readFileSync(new URL("../../public/about/using.html", import.meta.url), "utf8");
+  for (const page of ["how-it-works", "ride-types", "stress", "routing", "architecture"]) assert.match(guides, new RegExp(`<nav class="docs"[\\s\\S]*href="/about/${page}\\.html"`), page);
   // The accessibility mode pointer is kept for a screen reader, not shown.
-  assert.match(phone, /<p class="visually-hidden">For keyboard or screen reader use, turn on accessibility mode \(the first button on the page, or in Settings\)\.<\/p>/);
-  // The long text is in the documentation now, not here.
-  assert.doesNotMatch(phone, /LTS 1|planned-work permits|<li>/);
-});
-
-test("a computer keeps its click, and shows the accessibility mode pointer", () => {
-  const desk = mapInfo(false);
-  assert.ok(desk.startsWith(`<p><strong>Where to?</strong> ${infoLines(false).start}</p>`));
-  assert.match(infoLines(false).start, /click the map/);
-  assert.match(desk, /<p>For keyboard or screen reader use, turn on accessibility mode \(the first button on the page, or in Settings\)\.<\/p>/);
-  for (const html of [desk, mapInfo(true)]) {
-    // Two sentences at most in any paragraph shown (P8: no walls of text).
-    for (const para of html.split("</p>")) assert.ok((para.replace(/<[^>]+>/g, "").match(/[.?!](\s|$)/g) ?? []).length <= 2, para);
-  }
-});
-
-test("then a link to each documentation page", () => {
-  assert.deepEqual(DOCS_LINKS.map((l) => l.href), ["/about/using.html", "/about/how-it-works.html", "/about/ride-types.html", "/about/stress.html", "/about/routing.html", "/about/architecture.html"]);
-  for (const touch of [true, false]) {
-    for (const link of DOCS_LINKS) assert.ok(mapInfo(touch).includes(`<a href="${link.href}">${link.text}</a>`), link.href);
-  }
+  assert.match(html, /<p class="visually-hidden">For keyboard or screen reader use, turn on accessibility mode \(the first button on the page, or in Settings\)\.<\/p>/);
+  // A big press in the app's accent, over the dark map's link colour.
+  const css = src("../styles.css");
+  assert.match(css, /:root \.maplibregl-ctrl-attrib \.map-info a\.map-info-guides \{[^}]*min-height: 56px;[^}]*background: var\(--accent\);[^}]*color: var\(--accent-text\);[^}]*font-size: 20px;/);
 });
 
 test("plain markup: no handlers, no styles", () => {
-  for (const html of [mapInfo(true), mapInfo(false)]) {
-    const tags = [...html.matchAll(/<([a-z]+)/g)].map((m) => m[1]);
-    assert.ok(tags.every((t) => ["p", "strong", "span", "a"].includes(t)), tags.join());
-    assert.doesNotMatch(html, /\son[a-z]+=|style=/);
-  }
+  const html = mapInfo();
+  const tags = [...html.matchAll(/<([a-z]+)/g)].map((m) => m[1]);
+  assert.ok(tags.every((t) => ["p", "strong", "span", "a"].includes(t)), tags.join());
+  assert.doesNotMatch(html, /\son[a-z]+=|style=/);
 });
 
 // A stand-in for the few DOM parts wrapCredits uses: elements with a class, children and a parent.
@@ -86,11 +72,11 @@ test("the info panel goes over MapLibre's credits in one body, once, and the cre
   const inner = new Node("maplibregl-ctrl-attrib-inner");
   control.append(button, inner);
   const doc = { createElement: () => new Node() as unknown as HTMLDivElement };
-  assert.equal(wrapCredits(control as unknown as HTMLElement, doc, true), true);
+  assert.equal(wrapCredits(control as unknown as HTMLElement, doc), true);
   assert.deepEqual(control.children.map((c) => c.className), ["maplibregl-ctrl-attrib-button", "map-info-body"]);
   const body = control.children[1];
   assert.deepEqual(body.children.map((c) => c.className), ["map-info", "maplibregl-ctrl-attrib-inner"]);
-  assert.equal(body.children[0].innerHTML, mapInfo(true), "a phone's words where the pointer is a finger");
+  assert.equal(body.children[0].innerHTML, mapInfo());
   assert.equal(body.children[1], inner, "the same element MapLibre writes the credits into");
   assert.equal((button as unknown as { textContent: string }).textContent, "Help", "the i says what it opens");
   assert.equal(button.attributes["aria-expanded"], "false", "collapsed at the start, and says so");
