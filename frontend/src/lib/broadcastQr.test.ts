@@ -33,7 +33,7 @@ test("a hold (a press held, a right-click, the menu key) shows the code, and the
   assert.match(panel, /onClick=\{ride\.onBroadcast\} \{\.\.\.broadcastHold\}/);
   assert.match(panel, /\{BROADCAST_ABOUT\} \{BROADCAST_HOLD_HINT\}/);
   for (const page of [ride, roam]) {
-    assert.match(page, /onClick=\{\(\) => void broadcast\(\)\}\s*\{\.\.\.broadcastHold\}\s*aria-describedby=\{onBroadcastHold \? broadcastHoldId : undefined\}/);
+    assert.match(page, /onClick=\{(?:broadcastInMore \? \(\) => fromMore\(\(\) => void broadcast\(\)\) : )?\(\) => void broadcast\(\)\}\s*\{\.\.\.broadcastHold\}\s*aria-describedby=\{onBroadcastHold \? broadcastHoldId : undefined\}/);
     assert.match(page, /\{BROADCAST_HOLD_HINT\}/);
   }
   assert.match(app, /broadcastRide: \{ onPress: broadcastRide, onHold: broadcastQr, note: broadcastNote \}/);
@@ -90,5 +90,5 @@ test("a resumed ride keeps Share live, its link made from the ride's own plan (S
   assert.match(app, /keepLeftRide\(\{ route, \.\.\.whole, dials: rideDialsNow, fixed, destination, passOn, follows, leads: ledLink, stopsLeft: tripStopsLeft\.current \}/);
   assert.match(app, /passingOn=\{passesOn \|\| !!rideStart\.passOn\}/);
   // Resume keeps the ride kept, so the rail still offers it.
-  assert.match(app, /setRideStart\(\(before\) => \(\{ \.\.\.left, \.\.\.resumed, kept: true, startFirst: false, n: \(before\?\.n \?\? 0\) \+ 1 \}\)\);/);
+  assert.match(app, /setRideStart\(\(before\) => \(\{ \.\.\.left, \.\.\.resumed, kept: true, startFirst: false, quiet, n: \(before\?\.n \?\? 0\) \+ 1 \}\)\);/);
 });

@@ -743,15 +743,15 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "bike: the ride is planned between the points",
         AP,
-        "    return bikeshare.plan(" + NL + "        body.points[0],",
-        "    return bikeshare.plan(" + NL + "        body.points[1],",
+        "            body.points[number]," + NL + "            body.points[number + 1],",
+        "            body.points[number]," + NL + "            body.points[number],",
         API_T,
     ),
     (
         "request: any number of points",
         AP,
-        "        if self.preset in presets.BIKESHARE_PRESETS:\n            if len(self.points) != 2:",
-        "        if self.preset in presets.BIKESHARE_PRESETS:\n            if False:",
+        '            if len(self.points) > 2 + MAX_TRIP_STOPS or self.via_points:\n                raise ValueError(\n                    f"Bikeshare',
+        '            if False:\n                raise ValueError(\n                    f"Bikeshare',
         API_T,
     ),
     (

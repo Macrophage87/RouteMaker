@@ -918,7 +918,15 @@ def locator(variant: str, deadline: routing.Deadline, located: dict | None = Non
         if located is None:
             return ask(payload)
         keys = [
-            (variant, round(p["lon"], 6), round(p["lat"], 6), p.get("radius"))
+            # The costing too: a node is asked as a bicycle and as a car
+            # (`junctions.LOCATE_COSTINGS`), and the two answers differ.
+            (
+                variant,
+                payload.get("costing"),
+                round(p["lon"], 6),
+                round(p["lat"], 6),
+                p.get("radius"),
+            )
             for p in payload["locations"]
         ]
         unseen = [i for i, key in enumerate(keys) if key not in located]

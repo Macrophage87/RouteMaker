@@ -7,6 +7,7 @@ fixtures, through `core.gbfs.Gbfs`'s fetch). Nothing is fetched and nothing is s
 
 from __future__ import annotations
 
+import copy
 import re
 from pathlib import Path
 
@@ -85,6 +86,9 @@ def world(monkeypatch, segment_schemas):
 
 def body(bike: str | None = "classic", **extra) -> dict:
     out = {"points": [UNION, DUPONT], "preset": "bikeshare", **extra}
+    # Rebalance Ride takes the start alone (Stephen, 2026-11-07).
+    if out["preset"] == presets.REBALANCE and "points" not in extra:
+        out["points"] = [UNION]
     if bike is not None:
         out["bike"] = bike
     return out
@@ -123,7 +127,11 @@ class TestBikeshareAnswer:
             "notes",
             "options",
             "credit",
+            "later",
+            "trip_total_s",
+            "later_note",
         }
+        assert plan["later"] == [] and plan["trip_total_s"] is None and plan["later_note"] is None
         assert plan["start"]["name"] == "Columbus Circle / Union Station"
         assert plan["walk_start"]["geometry"]["type"] == "LineString"
         assert plan["steps"][0]["text"].endswith("take a classic bike (12 available).")
@@ -332,12 +340,124 @@ class TestBikeshareDegrades:
 
 
 @db
+class TestBikeshareStops:
+    """Stops on Bikeshare (Stephen, 2026-11-03: "Each stop starts a new trip"; v0.22.0): the
+    bike is returned at each stop, and each trip after it is planned on its own."""
+
+    def test_a_trip_with_a_stop_is_its_first_trip_and_lists_the_one_after(
+        self, client, world
+    ) -> None:
+        stop = [-77.0365, 38.8977]
+        data = post(client, body(points=[UNION, stop, DUPONT])).json()
+        first = post(client, body(points=[UNION, stop])).json()
+        plan = data["bikeshare"]
+        # The body is the first trip's: to the stop, its line and its walks.
+        assert data["geometry"] == first["geometry"]
+        assert plan["walk_end"] == first["bikeshare"]["walk_end"]
+        assert plan["total_s"] == first["bikeshare"]["total_s"]
+        # The trip after the stop, as planned on its own from there.
+        alone = post(client, body(points=[stop, DUPONT])).json()["bikeshare"]
+        [later] = plan["later"]
+        assert later["stop"] == 1
+        assert later["start"] == alone["start"] and later["end"] == alone["end"]
+        assert later["steps"] == alone["steps"] and later["total_s"] == alone["total_s"]
+        assert plan["trip_total_s"] == round(plan["total_s"] + alone["total_s"], 1)
+
+    def test_a_chosen_pick_up_is_the_starts_and_a_chosen_drop_off_the_ends(
+        self, client, world
+    ) -> None:
+        stop = [-77.0365, 38.8977]
+        start_pick = post(client, body()).json()["bikeshare"]["options"][-1]["pickup_station"]
+        end_drop = post(client, body(points=[stop, DUPONT])).json()["bikeshare"]["options"][-1][
+            "dropoff_station"
+        ]
+        asked = body(
+            points=[UNION, stop, DUPONT], pickup_station=start_pick, dropoff_station=end_drop
+        )
+        plan = post(client, asked).json()["bikeshare"]
+        assert plan["start"]["station_id"] == start_pick
+        assert plan["later"][0]["end"]["station_id"] == end_drop
+        # The first trip's own pairs are not offered for the whole trip.
+        assert plan["options"] == []
+
+    def test_a_later_trip_not_planned_now_never_refuses_the_first(
+        self, client, world, monkeypatch
+    ) -> None:
+        stop = [-77.0365, 38.8977]
+        planned = bikeshare.plan
+
+        def none_from_the_stop(start, end, *args, **kwargs):
+            if list(start) == stop:
+                raise bikeshare.NoBikeshare("no bike near there")
+            return planned(start, end, *args, **kwargs)
+
+        monkeypatch.setattr(bikeshare, "plan", none_from_the_stop)
+        response = post(client, body(points=[UNION, stop, DUPONT]))
+        assert response.status_code == 200, response.content
+        plan = response.json()["bikeshare"]
+        assert plan["later"] == []
+        assert plan["trip_total_s"] is None
+        assert "trip from stop 1 could not be planned just now" in plan["later_note"]
+
+    def test_the_way_round_an_avoid_junction_keeps_the_later_trips(
+        self, client, world, monkeypatch
+    ) -> None:
+        stop = [-77.0365, 38.8977]
+        planned = bikeshare.plan
+
+        def with_a_way_round(start, end, *args, **kwargs):
+            found = planned(start, end, *args, **kwargs)
+            if list(start) == UNION:
+                around = {
+                    **copy.deepcopy(found),
+                    "extra_distance_m": 120.0,
+                    "extra_duration_s": 30.0,
+                }
+                found["avoid_alternate"] = around
+            return found
+
+        monkeypatch.setattr(bikeshare, "plan", with_a_way_round)
+        data = post(client, body(points=[UNION, stop, DUPONT])).json()
+        plan, around = data["bikeshare"], data["avoid_alternate"]["bikeshare"]
+        assert len(plan["later"]) == 1
+        assert around["later"] == plan["later"] and around["later_note"] is None
+        assert around["options"] == []
+        assert around["trip_total_s"] == round(around["total_s"] + plan["later"][0]["total_s"], 1)
+
+    def test_a_trip_with_stops_has_no_route_options_of_the_whole(self, client, world) -> None:
+        stop = [-77.0365, 38.8977]
+        response = client.post(
+            "/api/route/neighbours",
+            data=body(points=[UNION, stop, DUPONT]),
+            content_type="application/json",
+        )
+        assert response.status_code == 200, response.content
+        assert response.json()["options"] == []
+
+
+@db
 class TestBikeshareValidation:
     @pytest.mark.parametrize(
         ("changes", "message"),
         [
             ({"points": [UNION]}, "at least 2"),
-            ({"points": [UNION, [-77.02, 38.9], DUPONT]}, "take a start and an end"),
+            (
+                {
+                    "points": [
+                        UNION,
+                        [-77.02, 38.9],
+                        [-77.03, 38.9],
+                        [-77.035, 38.9],
+                        [-77.04, 38.9],
+                        DUPONT,
+                    ]
+                },
+                "at most 3 stops",
+            ),
+            (
+                {"points": [UNION, [-77.02, 38.9], DUPONT], "via_points": [1]},
+                "none of them vias",
+            ),
             ({"bike": "tandem"}, "bike"),
             ({"ending": "anywhere"}, "ending"),
             (

@@ -40,6 +40,8 @@ test("the credits are short source names, exactly these, OpenStreetMap first (OW
       "AlertDC (HSEMA)",
       // v0.13.0: the Purple Line's construction updates, read by hand (routemaker.purple_line).
       "Purple Line construction update",
+      // v0.22.0: the Fairfax County Park Authority's Park Alerts, read by hand (routemaker.fcpa).
+      "Fairfax County Park Authority park alerts",
       // v0.17.0: Maryland's counties' and towns' closures, routed round (routemaker.md_closures).
       "Maryland Road Closure Reporter (MDOT SHA)",
     ],
