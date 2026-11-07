@@ -289,3 +289,15 @@ test("the way back joins past a road the rider marked closed, never on it (v0.8.
   // Closed to the end: nowhere to join.
   assert.deepEqual(rejoinTargets(model, 300, at(600, 200), model.lengthM), []);
 });
+
+test("joined: the mountain-bike trails move with the sections, the way back's then the planned route's past the join (#1025 review)", () => {
+  const plan = { ...planned(), trail_levels: [{ from_m: 100, to_m: 400, level: 1 }, { from_m: 200, to_m: 900, level: 2 }, { from_m: 1000, to_m: 1500, level: 3 }] };
+  const joined = joinRoutes({ ...leg(700), trail_levels: [{ from_m: 0, to_m: 100, level: 0 }] }, plan, 700, new Map());
+  const trails = joined.trail_levels ?? [];
+  // Behind the join: gone. Across it: from the join. Past it: shifted as the sections are.
+  assert.deepEqual(trails.map((t) => t.level), [0, 2, 3]);
+  close(trails[1]!.from_m, 300);
+  close(trails[1]!.to_m, 500);
+  close(trails[2]!.from_m, 600);
+  close(trails[2]!.to_m, 1100);
+});
