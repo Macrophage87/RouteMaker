@@ -7411,7 +7411,8 @@ by level on the ride ribbon and the route line, slim ride graphs and a quiet Res
 (#1025, #1034); a quieter opening view (#1016); Fairfax park trail closures (#1029: the watch and
 the file, which ships with no closure, each waiting for the owner's confirmation); Featured routes
 photos with where each was taken and the assistant's upload links (#1030); junction and ride cue
-fixes (#1026, #1027, #1028, #1036); the beta agent's release-notes post (#1039); and "Same ride or a new one?" in every tab (#1012, #1013), the
+fixes (#1026, #1027, #1028, #1036); the beta agent's release-notes post
+(#1039); and "Same ride or a new one?" in every tab (#1012, #1013), the
 ride rail on a small phone (#1015) and the ride graph tidy-ups (#1014).
 
 **What changes for the host.** Migrations 0057 (`saved_route.tags`, `archived_at`, `opened_at`,
@@ -7445,8 +7446,10 @@ At home, in order, with `</dev/null` on every docker command:
 - [ ] **Beta, by its agent**, once its deployed tag (`$RM_STATE/cd/deployed-tag`) is v0.21.0 or
   later: the gate says `deploy` with migrations; the agent snapshots the database first, migrates,
   builds the api and the front end and starts them in one pass. The agent itself changed (#1039: it
-  posts the live release's notes when a newer tag is held or waiting), so afterwards run
-  `scripts/beta/auto-release.sh install` once so the timer runs the new script. Stuck: `git fetch --force --tags
+  posts the live release's notes when a newer tag is held or waiting); after the deploy it puts its
+  own new files in `$RM_STATE/cd/bin` (the run log says "step: the release changed the agent"). Only
+  if the log says "WARNING: the agent's files could not all be reinstalled", run
+  `scripts/beta/auto-release.sh install` from the v0.22.0 checkout. Stuck: `git fetch --force --tags
   origin`, then `scripts/beta/auto-release.sh retry v0.22.0`.
 - [ ] **Beta, by hand, if it is still on v0.20.0** (v0.21.0's hand ship not yet done): the gate from
   v0.20.0 stops on `src/pipeline/schema.py`, as at v0.21.0. Ship v0.22.0 by hand once, in place of
