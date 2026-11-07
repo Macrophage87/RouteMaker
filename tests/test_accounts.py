@@ -9,6 +9,7 @@ account's route is not found, and both go with the account.
 from __future__ import annotations
 
 import json
+from datetime import timedelta
 from itertools import count
 from pathlib import Path
 
@@ -303,6 +304,129 @@ class TestRoutes:
         assert "200" in r.json()["error"]
         assert SavedRoute.objects.filter(user=user).count() == SavedRoute.MAX_PER_ACCOUNT
 
+    def test_a_full_account_makes_room_from_the_archive_longest_archived_first(self) -> None:
+        """The owner, 2026-11-07: "Archived routes are deleted first, longest time in archive
+        first." Before, a save at the cap was always refused."""
+        client, user, csrf = signed_in()
+        SavedRoute.objects.bulk_create(
+            SavedRoute(user=user, name=f"r{i}", line=LINE, distance_m=1.0, inputs={})
+            for i in range(SavedRoute.MAX_PER_ACCOUNT)
+        )
+        rows = list(SavedRoute.objects.filter(user=user).order_by("pk"))
+        now = timezone.now()
+        SavedRoute.objects.filter(pk=rows[5].pk).update(archived_at=now - timedelta(days=3))
+        SavedRoute.objects.filter(pk=rows[9].pk).update(archived_at=now - timedelta(days=30))
+        r = send(client, "post", "/api/me/routes", route_body(), csrf)
+        assert r.status_code == 201, r.json()
+        assert r.json()["made_room"] == {"id": rows[9].pk, "name": "r9"}
+        assert SavedRoute.objects.filter(user=user).count() == SavedRoute.MAX_PER_ACCOUNT
+        assert not SavedRoute.objects.filter(pk=rows[9].pk).exists()  # archived 30 days ago
+        assert SavedRoute.objects.filter(pk=rows[5].pk).exists()
+        # Nothing archived but the route just archived-for: refused as before, nothing deleted.
+        SavedRoute.objects.filter(pk=rows[5].pk).update(archived_at=None)
+        r = send(client, "post", "/api/me/routes", route_body(), csrf)
+        assert r.status_code == 409 and r.json()["code"] == "full"
+        assert "Archive or delete" in r.json()["error"]
+
+    def test_a_full_account_with_nothing_archived_proposes_the_route_unopened_longest(
+        self,
+    ) -> None:
+        """The owner, 2026-11-07: "at 200 routes, then propose deleting the route that has the
+        longest time since last open or creation"; it goes only once the rider agrees."""
+        client, user, csrf = signed_in()
+        SavedRoute.objects.bulk_create(
+            SavedRoute(user=user, name=f"r{i}", line=LINE, distance_m=1.0, inputs={})
+            for i in range(SavedRoute.MAX_PER_ACCOUNT)
+        )
+        rows = list(SavedRoute.objects.filter(user=user).order_by("pk"))
+        now = timezone.now()
+        # Every route opened lately but two: one never opened, saved 40 days ago, and one last
+        # opened 60 days ago, which is the longest.
+        SavedRoute.objects.filter(user=user).update(opened_at=now)
+        SavedRoute.objects.filter(pk=rows[3].pk).update(
+            opened_at=None, created_at=now - timedelta(days=40)
+        )
+        SavedRoute.objects.filter(pk=rows[7].pk).update(opened_at=now - timedelta(days=60))
+        r = send(client, "post", "/api/me/routes", route_body(), csrf)
+        assert r.status_code == 409 and r.json()["code"] == "full"
+        assert r.json()["propose"]["id"] == rows[7].pk
+        assert SavedRoute.objects.filter(user=user).count() == SavedRoute.MAX_PER_ACCOUNT
+        # Opening it makes the never-opened one the proposal.
+        assert client.get(f"/api/me/routes/{rows[7].pk}", **addr()).status_code == 200
+        assert SavedRoute.objects.get(pk=rows[7].pk).opened_at > now
+        r = send(client, "post", "/api/me/routes", route_body(), csrf)
+        assert r.json()["propose"]["id"] == rows[3].pk
+        assert r.json()["propose"]["opened_at"] is None
+        # Agreed: that route goes and this one is saved.
+        r = send(client, "post", "/api/me/routes", route_body(make_room=rows[3].pk), csrf)
+        assert r.status_code == 201
+        assert not SavedRoute.objects.filter(pk=rows[3].pk).exists()
+        # Another account's route makes no room.
+        other, _o, other_csrf = signed_in()
+        mine = SavedRoute.objects.filter(user=user).first().pk
+        send(other, "post", "/api/me/routes", route_body(make_room=mine), other_csrf)
+        assert SavedRoute.objects.filter(pk=mine).exists()
+
+    def test_tags_are_kept_tidy_and_changed_alone(self) -> None:
+        client, _user, csrf = signed_in()
+        body = route_body(tags=[" Gravel  loop ", "gravel loop", "", "Commute"])
+        r = send(client, "post", "/api/me/routes", body, csrf)
+        assert r.status_code == 201 and r.json()["tags"] == ["Gravel loop", "Commute"]
+        rid = r.json()["id"]
+        r = send(client, "patch", f"/api/me/routes/{rid}", {"tags": ["Trail"]}, csrf)
+        assert r.status_code == 200 and r.json()["tags"] == ["Trail"]
+        assert r.json()["name"] == "Lincoln Memorial to Logan Circle"
+        # Saved again without tags keeps them; with tags replaces them.
+        assert saved_again(client, csrf, rid, distance_m=1700.0).json()["tags"] == ["Trail"]
+        assert saved_again(client, csrf, rid, tags=["Loop"]).json()["tags"] == ["Loop"]
+
+    @pytest.mark.parametrize(
+        "tags", ["Loop", [1], ["x" * 31], [f"t{i}" for i in range(SavedRoute.TAGS_MAX + 1)]]
+    )
+    def test_bad_tags_are_refused(self, tags) -> None:
+        client, user, csrf = signed_in()
+        r = send(client, "post", "/api/me/routes", route_body(tags=tags), csrf)
+        assert r.status_code == 400 and r.json()["field"] == "tags"
+        assert not SavedRoute.objects.filter(user=user).exists()
+
+    def test_archive_and_restore(self) -> None:
+        client, _user, csrf = signed_in()
+        rid = send(client, "post", "/api/me/routes", route_body(), csrf).json()["id"]
+        r = send(client, "patch", f"/api/me/routes/{rid}", {"archived": True}, csrf)
+        assert r.status_code == 200 and r.json()["archived_at"]
+        listed = client.get("/api/me/routes", **addr()).json()["routes"]
+        assert listed[0]["archived_at"] == r.json()["archived_at"]
+        r = send(client, "patch", f"/api/me/routes/{rid}", {"archived": False}, csrf)
+        assert r.json()["archived_at"] is None
+        for bad in ({"archived": "yes"}, {}, {"colour": "red"}):
+            assert send(client, "patch", f"/api/me/routes/{rid}", bad, csrf).status_code == 400
+
+    def test_a_route_saved_to_replace_another_archives_it(self) -> None:
+        client, _user, csrf = signed_in()
+        old = send(client, "post", "/api/me/routes", route_body(), csrf).json()["id"]
+        r = send(client, "post", "/api/me/routes", route_body(name="New", replaces=old), csrf)
+        assert r.status_code == 201
+        row = SavedRoute.objects.get(pk=old)
+        assert row.archived_at is not None and row.replaced_by_id == r.json()["id"]
+        # Restored, it forgets what replaced it; another account's route is not one to replace.
+        send(client, "patch", f"/api/me/routes/{old}", {"archived": False}, csrf)
+        assert SavedRoute.objects.get(pk=old).replaced_by_id is None
+        other, _o, other_csrf = signed_in()
+        r = send(other, "post", "/api/me/routes", route_body(replaces=old), other_csrf)
+        assert r.status_code == 404 and SavedRoute.objects.get(pk=old).archived_at is None
+
+    def test_a_route_another_replaced_can_be_deleted_by_sql_alone(self) -> None:
+        """The release before knows nothing of replaced_by: its delete must not fail on it, so
+        the database sets it null too (0057), not only Django."""
+        from django.db import connection
+
+        client, _user, csrf = signed_in()
+        old = send(client, "post", "/api/me/routes", route_body(), csrf).json()["id"]
+        new = send(client, "post", "/api/me/routes", route_body(replaces=old), csrf).json()["id"]
+        with connection.cursor() as cursor:
+            cursor.execute("DELETE FROM saved_route WHERE id = %s", [new])
+        assert SavedRoute.objects.get(pk=old).replaced_by_id is None
+
     def test_rename_and_delete(self) -> None:
         client, user, csrf = signed_in()
         rid = send(client, "post", "/api/me/routes", route_body(), csrf).json()["id"]
@@ -470,6 +594,21 @@ class TestRouteVersions:
         # Three versions of the same size past a cap of two: the account's oldest, route a's, went.
         assert not SavedRouteVersion.objects.filter(route_id=a).exists()
         assert SavedRouteVersion.objects.filter(route_id=b).count() == 2
+
+    def test_an_archived_route_s_versions_go_first_past_the_byte_cap(self, monkeypatch) -> None:
+        """The owner, 2026-11-07: archived first, the longest archived first; then the oldest."""
+        client, _user, csrf = signed_in()
+        a = send(client, "post", "/api/me/routes", route_body(), csrf).json()["id"]
+        b = send(client, "post", "/api/me/routes", route_body(), csrf).json()["id"]
+        saved_again(client, csrf, a, distance_m=2000.0)
+        saved_again(client, csrf, b, distance_m=3000.0)
+        size = SavedRouteVersion.objects.get(route_id=a).size_bytes
+        monkeypatch.setattr(SavedRouteVersion, "MAX_BYTES_PER_ACCOUNT", size * 2)
+        send(client, "patch", f"/api/me/routes/{b}", {"archived": True}, csrf)
+        saved_again(client, csrf, a, distance_m=4000.0)
+        # Without the archive a's older version would have gone; b's, archived, went instead.
+        assert not SavedRouteVersion.objects.filter(route_id=b).exists()
+        assert SavedRouteVersion.objects.filter(route_id=a).count() == 2
 
     def test_versions_go_with_the_route(self) -> None:
         client, _user, csrf = signed_in()

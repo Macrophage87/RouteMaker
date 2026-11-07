@@ -91,6 +91,7 @@ import { subscribeUnits } from "./lib/units.ts";
 import { addRailStations, setRailFlavour, LABEL_FONT, RAIL_LAYERS, RIDE_STATION_NAME_SIZE, ROUTE_BOTTOM_LAYER, STATION_NAME_SIZE, setRailVisibility, stationNamesTarget } from "./lib/railLayer.ts";
 import { setRideLabelOrder, type LabelHomes } from "./lib/rideLabelOrder.ts";
 import { RIDE_LABEL_SCALE, RIDE_SCALED_LABEL_LAYERS, scaledTextSize } from "./lib/rideLabelSize.ts";
+import { ROUTE_TRAIL_SOURCE, routeTrailFeatures, routeTrailLayers } from "./lib/routeTrailLayers.ts";
 import { ROUTE_HAZARD_ICON, ROUTE_HAZARD_SOURCE, routeHazardFeatures, routeHazardIcon, routeHazardLayer, routeHazardRepeatLayer } from "./lib/routeHazards.ts";
 import { STEEP_GRADE_SOURCE, STEEP_ICONS, steepGradeFeatures, steepGradeIcon, steepGradeLayer, steepGradeRepeatLayer, steepIconName } from "./lib/steepGrades.ts";
 import type { RailVisibility, Station, StationBadges, StationRole } from "./lib/railStations.ts";
@@ -1510,6 +1511,10 @@ export function MapView(props: Props) {
         layout: { "line-join": "round", "line-cap": "butt" },
         paint: { "line-color": "#ffffff", "line-width": ROUTE_LINE_WIDTH + 1, "line-dasharray": [1.2, 1.2] },
       });
+      // Mountain-bike trails on the route in their trail's colour with rocks on the edges (lib/routeTrailLayers.ts;
+      // Stephen 2026-11-07: "makes it easy to tell you're on a mtb trail").
+      map.addSource(ROUTE_TRAIL_SOURCE, { type: "geojson", data: routeTrailFeatures(callbacks.current.stale ? null : (callbacks.current.route ?? null)) as never });
+      for (const layer of routeTrailLayers()) map.addLayer(layer as never);
       // The route's own street and path names, along its line (lib/routeNames.ts; the owner, 2026-10-25).
       map.addSource(ROUTE_NAME_SOURCE_ID, { type: "geojson", data: routeNameFeatures(callbacks.current.stale ? null : (callbacks.current.route ?? null)) as never });
       map.addLayer(routeNameLayer(ROUTE_NAME_SOURCE_ID, Boolean(callbacks.current.rideLabels)) as never);
@@ -2429,7 +2434,7 @@ export function MapView(props: Props) {
   const closureMarkers = useRef<Marker[]>([]);
   const closurePopup = useRef<Popup | null>(null);
   // The view's closures (v0.12.0): asked after the map settles and every few minutes while the page is in front, so a
-  // closure past its end date leaves the map; nothing is asked zoomed out past zoom 11.
+  // closure past its end date leaves the map; nothing is asked zoomed out below zoom 12 (AREA_MIN_ZOOM).
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -3388,6 +3393,7 @@ function syncRoute(map: MapLibreMap, props: Props, fitted: { current: boolean })
   setRouteSections(map, route, stale, props.routeColour ?? undefined);
   (map.getSource(ROUTE_DRAWN_SOURCE) as GeoJSONSource | undefined)?.setData(routeDrawnLines(stale ? null : route, props.points.length) as never);
   (map.getSource(ROUTE_HAZARD_SOURCE) as GeoJSONSource | undefined)?.setData(routeHazardFeatures(stale ? null : route) as never);
+  (map.getSource(ROUTE_TRAIL_SOURCE) as GeoJSONSource | undefined)?.setData(routeTrailFeatures(stale ? null : route) as never);
   (map.getSource(STEEP_GRADE_SOURCE) as GeoJSONSource | undefined)?.setData(steepGradeFeatures(stale ? null : route) as never);
   (map.getSource(ROUTE_NAME_SOURCE_ID) as GeoJSONSource | undefined)?.setData(routeNameFeatures(stale ? null : route) as never);
   (map.getSource(ROUTE_MILES_SOURCE_ID) as GeoJSONSource | undefined)?.setData(routeMileFeatures(stale ? null : route) as never);

@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { layers as protomapsLayers, namedFlavor } from "@protomaps/basemaps";
-import { BOUNDARY_LAYER_ID, BOUNDARY_LINE, HIGHWAY_LABEL_MIN_ZOOM, OTHER_LABEL, OTHER_LABEL_LAYER_IDS, PLACE_LABEL, PLACE_LABEL_LAYER_IDS, ROAD_LABEL, ROAD_LABEL_LAYER_IDS, placeLabelPaint, TRAIL_LABEL, TRAIL_LABEL_LAYER_ID, TRAIL_LABEL_MIN_ZOOM, TRAIL_NAME_TILE_LAYER, contrastRatio, rideRoadLabelField, rideTrailLabelField, roadLabelPaint, stressFilters, trailLabelLayers, trailLabelPaint, withClearRoadLabels } from "./stressStyle.js";
+import { BOUNDARY_LAYER_ID, BOUNDARY_LINE, HIGHWAY_LABEL_MIN_ZOOM, OPENING_MESH_MAX_ZOOM, OTHER_LABEL, SHIELD_MIN_ZOOM, openingViewKeeps, OTHER_LABEL_LAYER_IDS, PLACE_LABEL, PLACE_LABEL_LAYER_IDS, ROAD_LABEL, ROAD_LABEL_LAYER_IDS, placeLabelPaint, TRAIL_LABEL, TRAIL_LABEL_LAYER_ID, TRAIL_LABEL_MIN_ZOOM, TRAIL_NAME_TILE_LAYER, contrastRatio, rideRoadLabelField, rideTrailLabelField, roadLabelPaint, stressFilters, trailLabelLayers, trailLabelPaint, withClearRoadLabels } from "./stressStyle.js";
 import { setStressPalette } from "./lib/mapGlue.ts";
 
 type Layer = { id: string; type: string; layout?: Record<string, unknown>; paint?: Record<string, unknown> };
@@ -277,4 +277,55 @@ test("motorways: no name or route shield until HIGHWAY_LABEL_MIN_ZOOM; a major r
   const layers = after.filter((l) => ["roads_labels_major", "roads_shields"].includes(l.id));
   const style = { version: 8, glyphs: "https://x/{fontstack}/{range}.pbf", sources: { protomaps: { type: "vector", url: "https://x/t.json" } }, layers };
   assert.deepEqual(validateStyleMin(style as never), []);
+});
+
+// The owner, 2026-11-07, of the opening view (OPENING_ZOOM 11.2): "it very much looks messsy".
+test("opening view: no route shield before SHIELD_MIN_ZOOM", () => {
+  assert.equal(SHIELD_MIN_ZOOM, 13);
+  const shields = shipped(false).find((l) => l.id === "roads_shields") as Layer & { minzoom?: number };
+  assert.equal(shields.minzoom, SHIELD_MIN_ZOOM);
+  assert.equal(shipped(true).find((l) => l.id === "roads_shields")!.minzoom, SHIELD_MIN_ZOOM);
+});
+
+test("opening view: a busier bikeshare street with no path or protected lane waits for z12; the trails and named corridors stay", async () => {
+  const { featureFilter } = await import("@maplibre/maplibre-gl-style-spec");
+  assert.equal(OPENING_MESH_MAX_ZOOM, 12);
+  const keeps = featureFilter(openingViewKeeps as never, "keeps");
+  const line = (properties: Record<string, unknown>) => ({ type: 2, properties }) as never;
+  const mesh = line({ popular: 2, facility: "lane", tier: 3 });
+  assert.equal(keeps.filter({ zoom: 11 }, mesh), false);
+  assert.equal(keeps.filter({ zoom: 11 }, line({ popular: 2, tier: 2 })), false);
+  assert.equal(keeps.filter({ zoom: 12 }, mesh), true);
+  for (const kept of [
+    { popular: 2, facility: "path" },
+    { popular: 2, facility: "protected" },
+    { popular: 2, facility: "lane", trail_name: "15th Street" },
+    { popular: 3, facility: "lane" },
+    { popular: 1 },
+    { facility: "path" },
+    { popular: 2, tier: 1, car_free: "weekday_offpeak" },
+    { calm: true, tier: 1 },
+    { overview: 4, tier: 3 },
+  ]) assert.equal(keeps.filter({ zoom: 11 }, line(kept)), true, JSON.stringify(kept));
+  // Every stress line and rail layer carries it: a feature the layer draws at z12 is left out at z11.
+  const filters = stressFilters("weekday_offpeak") as Record<string, unknown[]>;
+  const cases: [string, Record<string, unknown>][] = [
+    ["stress-2", { popular: 2, facility: "lane", tier: 2 }],
+    ["stress-casing-2", { popular: 2, facility: "lane", tier: 2 }],
+    ["stress-3", { popular: 2, tier: 3 }],
+    ["stress-ring-3", { popular: 2, tier: 3 }],
+    ["stress-unpaved-2", { popular: 2, tier: 2, unpaved: true }],
+    ["facility-lane", { popular: 2, facility: "lane", tier: 2 }],
+    ["facility-lane-busy", { popular: 2, facility: "lane", tier: 3 }],
+  ];
+  for (const [id, properties] of cases) {
+    const f = featureFilter(filters[id] as never, id);
+    assert.equal(f.filter({ zoom: 12 }, line(properties)), true, `${id} at z12`);
+    assert.equal(f.filter({ zoom: 11 }, line(properties)), false, `${id} at z11`);
+  }
+  // A road closed to cars now draws as a path at z11 still.
+  const carFree = { popular: 2, facility: "lane", tier: 3, car_free: "weekday_offpeak" };
+  const path = featureFilter(filters["stress-1"] as never, "stress-1");
+  assert.equal(path.filter({ zoom: 12 }, line(carFree)), true);
+  assert.equal(path.filter({ zoom: 11 }, line(carFree)), true);
 });
