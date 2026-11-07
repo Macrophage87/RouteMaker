@@ -4055,9 +4055,17 @@ TOOLS = [
                     "description": (
                         "Photos the rider showed you, described: alt_text says what each shows"
                         " for people who cannot see it; section 0 puts it under About this ride,"
-                        " 1 and on under that highlighted section. No file is sent: each waits"
-                        " on the draft's page for the admin to add its photo. On replace, those"
-                        " still waiting are described again; photos already added stay."
+                        " 1 and on under that highlighted section. The answer's photo_uploads"
+                        " gives each one an upload_url: POST the photo's file there as the body,"
+                        " Content-Type image/jpeg, at most 2048 pixels a side and 900 KB (make"
+                        " it smaller first if you can), within 24 hours, once, while the post is"
+                        " still a draft. Keep its Exif:"
+                        " where it was taken is shown on the page (never at the rider's Home);"
+                        " when its Exif has no position and you know the spot (from the ride's"
+                        " track at the photo's time), add ?lat=..&lon=.. to the link."
+                        " Without a way to send files, leave it: the admin adds it on the"
+                        " draft's page. On replace, those still waiting are described again"
+                        " (with new links); photos already added stay."
                     ),
                 },
                 "replace": {
@@ -4873,8 +4881,9 @@ class Server:
         ]
         if out.get("photos_waiting"):
             out["notes"].append(
-                "each photo described waits for its file: the admin adds it on the draft's page"
-                " (For admins, Photos)"
+                "each photo described waits for its file: POST it to its upload_url (image/jpeg,"
+                " at most 2048 px a side and 900 KB, Exif kept for where it was taken), or the"
+                " admin adds it on the draft's page (For admins, Photos)"
             )
         return out
 

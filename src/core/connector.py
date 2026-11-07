@@ -360,6 +360,15 @@ class InProcessApi:
             "figures": dict(route_posts.figures(post)),
             "sections": post.sections.count(),
             "photos_waiting": post.photos.filter(image__isnull=True).count(),
+            # Each waiting photo's own link, for the assistant to send its file to.
+            "photo_uploads": [
+                {
+                    "alt_text": photo.alt_text,
+                    "section": photo.place,
+                    "upload_url": self.base + route_posts.photo_link_path(post, photo),
+                }
+                for photo in post.photos.filter(image__isnull=True).order_by("place", "position")
+            ],
         }
 
 

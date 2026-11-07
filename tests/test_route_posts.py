@@ -985,7 +985,9 @@ def test_the_admin_lists_a_posts_photos_to_describe_again_or_delete() -> None:
     RoutePostPhoto.objects.create(post=post, alt_text="Waiting one")
     shown = signed_in(admin).get(f"/{settings.ADMIN_PATH}core/routepost/{post.pk}/change/")
     assert shown.status_code == 200
-    assert b"Waiting for its file: add it on the post&#x27;s page." in shown.content
+    assert (
+        b"Waiting for its file: add it on the post&#x27;s page, or the assistant" in shown.content
+    )
 
 
 def _luminance(hex_colour: str) -> float:
@@ -1039,3 +1041,256 @@ def test_the_page_takes_the_apps_theme_class_and_agrees_with_the_apps_stylesheet
     app_dark = _vars(app_css[dark_at : app_css.index("}", dark_at)].replace(": ", ":"))
     assert _hex6(app_light["--bg"]) == _hex6(light["--bg"])
     assert _hex6(app_dark["--bg"]) == _hex6(dark["--bg"])
+
+
+# ---- Where a photo was taken (the owner, 2026-11-07: "Don't remove location data, as people
+# want to know where they are taken. It's no more sensitive than sharing the route") ----
+
+LINCOLN = (38.88929, -77.05018)
+
+
+def located_jpeg(lat: float, lon: float, *, little: bool = False) -> bytes:
+    """A phone's photo whose Exif says where it was taken, big- or little-endian, with the
+    degrees, minutes and seconds a camera writes."""
+    fmt = "<" if little else ">"
+
+    def dms(value: float) -> bytes:
+        value = abs(value)
+        d = int(value)
+        m = int((value - d) * 60)
+        s = round(((value - d) * 60 - m) * 60 * 1000)
+        return struct.pack(fmt + "6I", d, 1, m, 1, s, 1000)
+
+    def entry(tag, kind, many, value: bytes) -> bytes:
+        return struct.pack(fmt + "HHI", tag, kind, many) + value
+
+    gps_at, data_at = 26, 26 + 2 + 4 * 12 + 4
+    tiff = (
+        (b"II" if little else b"MM")
+        + struct.pack(fmt + "HI", 42, 8)
+        + struct.pack(fmt + "H", 1)
+        + entry(0x8825, 4, 1, struct.pack(fmt + "I", gps_at))
+        + bytes(4)
+        + struct.pack(fmt + "H", 4)
+        + entry(1, 2, 2, (b"N" if lat >= 0 else b"S") + bytes(3))
+        + entry(2, 5, 3, struct.pack(fmt + "I", data_at))
+        + entry(3, 2, 2, (b"E" if lon >= 0 else b"W") + bytes(3))
+        + entry(4, 5, 3, struct.pack(fmt + "I", data_at + 24))
+        + bytes(4)
+        + dms(lat)
+        + dms(lon)
+    )
+    raw = phone_jpeg()
+    return raw[:2] + segment(0xE1, b"Exif\x00\x00" + tiff) + raw[2:]
+
+
+def test_where_a_photo_was_taken_is_read_from_its_exif_either_byte_order() -> None:
+    for little in (False, True):
+        lat, lon = route_posts.exif_spot(located_jpeg(*LINCOLN, little=little))
+        assert (round(lat, 5), round(lon, 5)) == LINCOLN
+    assert route_posts.exif_spot(phone_jpeg()) is None
+    assert route_posts.exif_spot(PLAIN_JPEG) is None
+    # A phone that had no fix writes the GPS block with nothing in it (zero denominators).
+    empty = located_jpeg(*LINCOLN).replace(struct.pack(">I", 1000), struct.pack(">I", 0))
+    assert route_posts.exif_spot(empty) is None
+    for broken in (b"", b"\xff\xd8", located_jpeg(*LINCOLN)[:40], b"\x89PNG\r\n\x1a\n"):
+        assert route_posts.exif_spot(broken) is None
+
+
+def test_the_served_photo_carries_where_it_was_taken_and_nothing_else_from_the_camera() -> None:
+    cleaned = route_posts.clean_jpeg(located_jpeg(*LINCOLN))
+    assert route_posts.exif_spot(cleaned) is None
+    photo = RoutePostPhoto(lat=LINCOLN[0], lon=LINCOLN[1])
+    served = route_posts.with_spot(cleaned, photo)
+    assert route_posts.exif_spot(served) == pytest.approx(LINCOLN, abs=1e-6)
+    assert route_posts.jpeg_size(served) == (4, 3)
+    assert served.index(b"Exif") > served.index(b"JFIF")
+    assert route_posts.with_spot(cleaned, RoutePostPhoto()) == cleaned
+
+
+@db
+def test_a_photo_added_on_the_page_shows_where_it_was_taken_but_never_at_home() -> None:
+    admin = make_user(is_instance_admin=True)
+    make_post(admin)
+    _client, send = admin_client(admin)
+    sent = send(
+        {"photo": upload(), "alt_text": "The Memorial", "lat": "38.88929", "lon": "-77.05018"}
+    )
+    assert sent.status_code == 201
+    photo = RoutePostPhoto.objects.get()
+    assert (photo.lat, photo.lon) == LINCOLN
+    assert b"GPS" not in bytes(photo.image)
+    page = Client().get("/routes/mall-loop").content.decode()
+    assert (
+        f'<a class="taken" href="/#at=-77.05018,38.88929">{route_posts.TAKEN_HERE_LABEL}</a>'
+        in page
+    )
+    served = Client().get(sent.json()["url"]).content
+    assert route_posts.exif_spot(served) == pytest.approx(LINCOLN, abs=1e-6)
+    # The file's own Exif counts when the browser sent no spot.
+    assert send({"photo": upload(located_jpeg(*LINCOLN)), "alt_text": "Again"}).status_code == 201
+    assert RoutePostPhoto.objects.get(alt_text="Again").lat == LINCOLN[0]
+    # Nonsense is no spot.
+    for lat, lon in (("91", "0"), ("nan", "1"), ("0", "0"), ("x", "y")):
+        send({"photo": upload(), "alt_text": f"Odd {lat}", "lat": lat, "lon": lon})
+        assert RoutePostPhoto.objects.get(alt_text=f"Odd {lat}").lat is None
+    # At the author's Home, the photo is kept and where it was taken is not.
+    MyGo.objects.update_or_create(
+        user=admin, defaults={"home_lat": LINCOLN[0], "home_lon": LINCOLN[1]}
+    )
+    send({"photo": upload(located_jpeg(*LINCOLN)), "alt_text": "At home"})
+    home = RoutePostPhoto.objects.get(alt_text="At home")
+    assert home.key and home.lat is None and home.lon is None
+    served = Client().get(f"/routes/mall-loop/photos/{home.key}.jpg").content
+    assert route_posts.exif_spot(served) is None
+
+
+def described_draft(admin):
+    route = {"source": "plan", "line": LINE, "distance_m": 3218.7, "inputs": INPUTS}
+    route["answer"] = ANSWER
+    fields = {
+        "title": "A loop round the Mall",
+        "slug": "mall-loop",
+        "abstract": "Flat.",
+        "photos": [{"alt_text": "The Memorial"}, {"alt_text": "The Pool"}],
+    }
+    post, problem = route_posts.write_draft(admin, fields, route)
+    assert problem is None
+    return post
+
+
+@db
+def test_an_assistant_sends_a_described_photos_file_to_its_own_link_once() -> None:
+    admin = make_user(is_instance_admin=True)
+    post = described_draft(admin)
+    memorial, pool = post.photos.order_by("position")
+    link = route_posts.photo_link_path(post, memorial)
+    assert link.startswith("/routes/mall-loop/photos/send/")
+    send = lambda path, body, kind="image/jpeg": Client(enforce_csrf_checks=True).post(  # noqa: E731
+        path, body, content_type=kind
+    )
+    assert send(link, b"\x89PNG\r\n\x1a\n").status_code == 400
+    assert send(link, phone_jpeg(), "application/octet-stream").status_code == 400
+    too_wide = phone_jpeg(route_posts.PHOTO_MAX_EDGE + 1, 10)
+    assert send(link, too_wide).status_code == 400
+    made = send(link, located_jpeg(*LINCOLN))
+    assert made.status_code == 201 and made.json()["located"] is True
+    memorial.refresh_from_db()
+    assert memorial.key and (memorial.lat, memorial.lon) == LINCOLN
+    assert b"Exif" not in bytes(memorial.image)
+    # Once only, and only for its own photo and post.
+    assert send(link, phone_jpeg()).status_code == 409
+    other = make_post(admin, slug="other-loop")
+    assert send(link.replace("mall-loop", "other-loop"), phone_jpeg()).status_code == 404
+    forged = link[:-3] + ("aaa" if not link.endswith("aaa") else "bbb")
+    assert send(forged, phone_jpeg()).status_code == 404
+    assert other.photos.count() == 0
+    # A spot on the link counts when the file has none.
+    spotted = send(
+        route_posts.photo_link_path(post, pool) + "?lat=38.8893&lon=-77.0502", phone_jpeg()
+    )
+    assert spotted.status_code == 201
+    pool.refresh_from_db()
+    assert (pool.lat, pool.lon) == (38.8893, -77.0502)
+    rows = AuditLogEntry.objects.filter(action="route_post.photo", detail="upload link")
+    assert {r.outcome for r in rows} == {"refused", "allowed"}
+
+
+@db
+def test_an_upload_link_runs_out() -> None:
+    from unittest import mock
+
+    admin = make_user(is_instance_admin=True)
+    post = described_draft(admin)
+    link = route_posts.photo_link_path(post, post.photos.first())
+    later = timezone.now().timestamp() + route_posts.PHOTO_LINK_SECONDS + 60
+    with mock.patch("django.core.signing.time.time", return_value=later):
+        refused = Client().post(link, phone_jpeg(), content_type="image/jpeg")
+    assert refused.status_code == 404
+    assert post.photos.filter(image__isnull=False).count() == 0
+
+
+@db
+def test_signed_out_a_draft_and_a_missing_post_say_the_same_with_the_way_in() -> None:
+    admin = make_user(is_instance_admin=True)
+    make_post(admin, status=RoutePost.Status.DRAFT)
+    draft = Client().get("/routes/mall-loop")
+    missing = Client().get("/routes/no-such-post")
+    assert draft.status_code == missing.status_code == 404
+    for response, slug in ((draft, "mall-loop"), (missing, "no-such-post")):
+        body = response.content.decode()
+        assert route_posts.SIGN_IN_FOR_DRAFTS in body
+        assert f'href="/auth/login?next=%2Froutes%2F{slug}"' in body
+        assert response["Cache-Control"] == "no-store"
+    assert draft.content.decode().replace("mall-loop", "x") == missing.content.decode().replace(
+        "no-such-post", "x"
+    )
+    # Signed in, a rider who is not an admin is not told to sign in.
+    rider = signed_in(make_user()).get("/routes/mall-loop").content.decode()
+    assert route_posts.SIGN_IN_FOR_DRAFTS not in rider and route_posts.NOT_FOUND in rider
+    assert "mall-loop" in signed_in(admin).get("/routes/mall-loop").content.decode()
+
+
+@db
+def test_an_upload_link_fills_a_draft_only_never_a_published_post() -> None:
+    admin = make_user(is_instance_admin=True)
+    post = described_draft(admin)
+    link = route_posts.photo_link_path(post, post.photos.first())
+    RoutePost.objects.filter(pk=post.pk).update(status=RoutePost.Status.PUBLISHED)
+    assert Client().post(link, phone_jpeg(), content_type="image/jpeg").status_code == 404
+    assert post.photos.filter(image__isnull=False).count() == 0
+
+
+@db
+def test_a_link_for_a_photo_described_again_is_gone() -> None:
+    admin = make_user(is_instance_admin=True)
+    post = described_draft(admin)
+    link = route_posts.photo_link_path(post, post.photos.first())
+    post.photos.all().delete()
+    assert Client().post(link, phone_jpeg(), content_type="image/jpeg").status_code == 404
+
+
+@db
+def test_two_sends_at_once_fill_a_photo_once() -> None:
+    admin = make_user(is_instance_admin=True)
+    post = described_draft(admin)
+    first, second = (RoutePostPhoto.objects.get(pk=p.pk) for p in [post.photos.first()] * 2)
+    cleaned = route_posts.clean_jpeg(phone_jpeg())
+    empty = lambda: RoutePostPhoto.objects.filter(pk=first.pk, image__isnull=True)  # noqa: E731
+    route_posts._keep_photo(first, cleaned, (4, 3), LINCOLN, only_if=empty())
+    route_posts._keep_photo(second, cleaned, (4, 3), None, only_if=empty())
+    assert first.pk is not None and second.pk is None
+    assert RoutePostPhoto.objects.get(pk=first.pk).lat == LINCOLN[0]
+
+
+@db
+def test_an_upload_link_never_keeps_a_spot_at_the_authors_home() -> None:
+    admin = make_user(is_instance_admin=True)
+    MyGo.objects.update_or_create(
+        user=admin, defaults={"home_lat": LINCOLN[0], "home_lon": LINCOLN[1]}
+    )
+    post = described_draft(admin)
+    memorial, pool = post.photos.order_by("position")
+    send = lambda path, body: Client().post(path, body, content_type="image/jpeg")  # noqa: E731
+    by_exif = send(route_posts.photo_link_path(post, memorial), located_jpeg(*LINCOLN))
+    by_link = send(
+        route_posts.photo_link_path(post, pool) + f"?lat={LINCOLN[0]}&lon={LINCOLN[1]}",
+        phone_jpeg(),
+    )
+    assert by_exif.status_code == by_link.status_code == 201
+    assert by_exif.json()["located"] is False and by_link.json()["located"] is False
+    assert not post.photos.filter(lat__isnull=False).exists()
+
+
+@db
+def test_a_photo_at_the_senders_home_keeps_no_spot_even_on_anothers_post() -> None:
+    author = make_user(is_instance_admin=True)
+    make_post(author)
+    sender = make_user(is_instance_admin=True)
+    MyGo.objects.update_or_create(
+        user=sender, defaults={"home_lat": LINCOLN[0], "home_lon": LINCOLN[1]}
+    )
+    _client, send = admin_client(sender)
+    made = send({"photo": upload(located_jpeg(*LINCOLN)), "alt_text": "Near the sender's home"})
+    assert made.status_code == 201
+    assert RoutePostPhoto.objects.get().lat is None
