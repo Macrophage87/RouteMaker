@@ -97,8 +97,9 @@ test("icons only on the side buttons (Stephen 2026-10-29): off by default, kept 
   assert.equal(railFit(396, 6), "pill");
   assert.ok(ICON_GAP_PX >= GAP_PX);
   // Ride and Roam mark the rail; the words go from the screen only, each button keeps its aria-label.
+  assert.match(roam, /const railFit = useRailFit\(railRef, iconsOnly\);/);
+  assert.match(ride, /const \{ fit: railFit, moved: railMoved \} = useRailFitMoves\(railRef, iconsOnly, railMovable\);/);
   for (const mode of [ride, roam]) {
-    assert.match(mode, /const railFit = useRailFit\(railRef, iconsOnly\);/);
     assert.match(mode, /\$\{iconsOnly \? " ride-rail-icons" : ""\}/);
   }
   assert.match(css, /\.ride \.ride-rail-icons \.ride-word \{\s*display: none;\s*\}/);
@@ -177,8 +178,28 @@ test("the rail starts below the ride group's bar where the bar is over it, so Se
   assert.equal(barOverlap(rail, { top: 0, bottom: 0, left: 0, right: 0 }), 0);
   // The rail's room shrinks by the overlap, so a full column turns to pills rather than reaching under the bar.
   const src = readFileSync(new URL("./railFit.ts", import.meta.url), "utf8");
-  assert.match(src, /setFit\(railFit\(element\.clientHeight - clear, items\.length, large, iconsOnly\)\);/);
+  assert.match(src, /const available = element\.clientHeight - clear;\s*const buttons = items\.length \+ movedNow\.current;\s*const fitNow = railFit\(available, buttons, large, iconsOnly\);/);
+  // A card that grows (Large text) moves the bars by a property on the page: measured again (v0.22.0).
+  assert.match(src, /moved\?\.observe\(app!, \{ attributes: true, attributeFilter: \["style"\] \}\);/);
   // Every group bar counts, and one that comes after the rail is measured too.
   assert.match(src, /document\.querySelectorAll\("\.ride-group-bar"\)/);
   assert.match(src, /barsChanged\?\.observe\(element\.closest\("\.app"\) \?\? document\.body, \{ childList: true, subtree: true \}\);/);
+});
+
+test("short of room even for pills, Text then Share live move into More, so the rest keep 44 px (Stephen 2026-11-07)", async () => {
+  const { railMoves, railLeastPx } = await import("./railFit.ts");
+  // A Mass Ride with Large text at 360x640: 232 px under Send alert for six buttons (294 px as pills).
+  assert.equal(railLeastPx(6), 294);
+  assert.equal(railMoves(294, 6, 2), 0);
+  assert.equal(railMoves(232, 6, 2), 2);
+  assert.equal(railMoves(244, 6, 2), 1);
+  // Only Text can move (no Share live): one moves, even where the rest still do not fit.
+  assert.equal(railMoves(100, 6, 1), 1);
+  assert.equal(railMoves(100, 6, 0), 0);
+  const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
+  assert.match(ride, /const railMovable = onBroadcast && !ride\.arrived \? 2 : 1;/);
+  assert.match(ride, /\{!textInMore && textButton\}/);
+  assert.match(ride, /\{onBroadcast && !ride\.arrived && !broadcastInMore && broadcastButton\}/);
+  // In More, first, beside the button that opens it.
+  assert.match(ride, /className="ride-more-bubbles" role="group" aria-label=\{RIDE_MORE_NAME\} hidden=\{!moreOpen\}>\s*\{textInMore && textButton\}\s*\{onBroadcast && !ride\.arrived && broadcastInMore && broadcastButton\}/);
 });

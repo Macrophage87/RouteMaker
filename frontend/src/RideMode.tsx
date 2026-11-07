@@ -175,7 +175,7 @@ import {
   type Said,
 } from "./lib/rideOutput.ts";
 import { ScreenSleepNote } from "./ScreenSleepNote.tsx";
-import { RAIL_INSET_PX, railLeastPx, useRailFit } from "./lib/railFit.ts";
+import { RAIL_INSET_PX, railLeastPx, useRailFitMoves } from "./lib/railFit.ts";
 import { WAITING_FOR_GPS, handOver, readOnce, rideWatchOptions, watchRide, type RideGeoEnv } from "./lib/rideWatch.ts";
 import { PAUSE_CHECK_MS, PausedFixes, beatKeepsGps, heartbeatFix, movedFromPause, rideStayPausedSaid, stayStep, stayedLong, type Stay } from "./lib/ridePause.ts";
 import { askCompass } from "./lib/compassHeading.ts";
@@ -1095,7 +1095,12 @@ export function RideMode({
   const railRef = useRef<HTMLDivElement>(null);
   // Icons only (Settings > Display): read as the ride opens; the buttons' names are unchanged either way.
   const [iconsOnly] = useState(() => readRideIconsOnly());
-  const railFit = useRailFit(railRef, iconsOnly);
+  // Short of room even for pills (a Mass Ride with Large text on a small phone; Stephen 2026-11-07): Text, then Share
+  // live, move into More's bubbles (lib/railFit.ts railMoves), so the rest keep 44 px and stay clear of Send alert.
+  const railMovable = onBroadcast && !ride.arrived ? 2 : 1;
+  const { fit: railFit, moved: railMoved } = useRailFitMoves(railRef, iconsOnly, railMovable);
+  const textInMore = railMoved >= 1;
+  const broadcastInMore = railMoved >= 2;
   const [settingsOpen, setSettingsOpen] = useState(false);
   const settingsPanel = useRef<HTMLDialogElement>(null);
   const settingsTitle = useRef<HTMLHeadingElement>(null);
@@ -3320,6 +3325,41 @@ export function RideMode({
     }
   }, [ride.off, show311]);
 
+  // The rail's Text and Share live buttons: in the rail or, short of room, in More (railMoved above).
+  const textButton = (
+    <button
+      type="button"
+      className="ride-round ride-text-size"
+      onClick={cycleText}
+      aria-keyshortcuts="T"
+      aria-pressed={textSize === "large"}
+      aria-label={RIDE_TEXT_BUTTON}
+      title={RIDE_TEXT_BUTTON}
+    >
+      <Icon name="textsize" size={24} />
+      <span className="ride-word" aria-hidden="true">{t("Text")}</span>
+    </button>
+  );
+  const broadcastButton = (
+    <button
+      type="button"
+      className={`ride-round broadcast-hold${broadcasting ? " ride-round-on" : ""}`}
+      onClick={() => void broadcast()}
+      {...broadcastHold}
+      aria-describedby={onBroadcastHold ? broadcastHoldId : undefined}
+      aria-label={`${broadcasting ? t("{name}: on. Share the link again", { name: RIDE_BROADCAST_NAME }) : passingOn ? t("{name}: pass on the link to this ride", { name: RIDE_BROADCAST_NAME }) : t("{name}: share a link others follow you with", { name: RIDE_BROADCAST_NAME })}${riders === null ? "" : `. ${countText(riders)}`}`}
+      title={RIDE_BROADCAST_NAME}
+    >
+      <Icon name="broadcast" size={riders === null ? 24 : 20} />
+      {riders !== null && (
+        <span className="ride-round-count" aria-hidden="true">
+          <Icon name="user" size={12} />
+          {riders}
+        </span>
+      )}
+      <span className="ride-word" aria-hidden="true">{railWord("Share live")}</span>
+    </button>
+  );
   return (
     <section ref={sectionRef} className={`ride${textSize === "large" ? " ride-large" : ""}`} aria-labelledby="ride-heading">
       <LiveRegion said={polite} urgent={false} />
@@ -3576,40 +3616,10 @@ export function RideMode({
             <Icon name="locate" size={24} />
             <span className="ride-word" aria-hidden="true">{railWord("Locate")}</span>
           </button>
-          {/* Large text on and off (the owner, 2026-10-20), shown pressed while on. */}
-          <button
-            type="button"
-            className="ride-round ride-text-size"
-            onClick={cycleText}
-            aria-keyshortcuts="T"
-            aria-pressed={textSize === "large"}
-            aria-label={RIDE_TEXT_BUTTON}
-            title={RIDE_TEXT_BUTTON}
-          >
-            <Icon name="textsize" size={24} />
-            <span className="ride-word" aria-hidden="true">{t("Text")}</span>
-          </button>
+          {/* Large text on and off (the owner, 2026-10-20), shown pressed while on; in More when the rail is short. */}
+          {!textInMore && textButton}
           {/* Broadcast (Stephen 2026-10-24: "Let people broadcast from a ride"): as Roam's, shown on while this rider leads. */}
-          {onBroadcast && !ride.arrived && (
-            <button
-              type="button"
-              className={`ride-round broadcast-hold${broadcasting ? " ride-round-on" : ""}`}
-              onClick={() => void broadcast()}
-              {...broadcastHold}
-              aria-describedby={onBroadcastHold ? broadcastHoldId : undefined}
-              aria-label={`${broadcasting ? t("{name}: on. Share the link again", { name: RIDE_BROADCAST_NAME }) : passingOn ? t("{name}: pass on the link to this ride", { name: RIDE_BROADCAST_NAME }) : t("{name}: share a link others follow you with", { name: RIDE_BROADCAST_NAME })}${riders === null ? "" : `. ${countText(riders)}`}`}
-              title={RIDE_BROADCAST_NAME}
-            >
-              <Icon name="broadcast" size={riders === null ? 24 : 20} />
-              {riders !== null && (
-                <span className="ride-round-count" aria-hidden="true">
-                  <Icon name="user" size={12} />
-                  {riders}
-                </span>
-              )}
-              <span className="ride-word" aria-hidden="true">{railWord("Share live")}</span>
-            </button>
-          )}
+          {onBroadcast && !ride.arrived && !broadcastInMore && broadcastButton}
           {onBroadcast && onBroadcastHold && (
             <span id={broadcastHoldId} className="visually-hidden">
               {BROADCAST_HOLD_HINT}
@@ -3930,6 +3940,8 @@ export function RideMode({
               <span className="ride-word" aria-hidden="true">{RIDE_SETTINGS_TEXT}</span>
             </button>
             <div id={`${settingsId}-more`} className="ride-more-bubbles" role="group" aria-label={RIDE_MORE_NAME} hidden={!moreOpen}>
+              {textInMore && textButton}
+              {onBroadcast && !ride.arrived && broadcastInMore && broadcastButton}
               {!fixed &&
                 !ride.arrived &&
                 (["calmer", "flatter"] as const).map((which) => (
