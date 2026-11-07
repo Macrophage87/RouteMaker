@@ -2,6 +2,7 @@
  * What MapView does to the map, as functions of a small map interface, so a
  * test can run them against a stand-in (MapView itself needs WebGL).
  */
+import { ROUTE_TRAIL_LAYER_IDS } from "./routeTrailLayers.ts";
 import {
   DEFAULT_WHEN,
   FACILITIES,
@@ -477,6 +478,8 @@ export function setRouteSections(
   map.setPaintProperty(ROUTE_AVOID_LAYER_ID, "line-opacity", paint.sectionOpacity);
   for (const layer of routeHalfLayers()) map.setPaintProperty(layer.id, "line-opacity", paint.sectionOpacity);
   for (const layer of routeDashLayers()) map.setPaintProperty(layer.id, "line-opacity", paint.sectionOpacity);
+  // Mountain-bike trails' colour and rocks (lib/routeTrailLayers.ts), with the sections they stand over.
+  for (const id of ROUTE_TRAIL_LAYER_IDS) if (!map.getLayer || map.getLayer(id)) map.setPaintProperty(id, "line-opacity", paint.sectionOpacity);
   // The protected and painted lanes the route rides, marked in its white band (the owner, 2026-11-01), following the
   // "Show bike lanes on high-stress roads" switch as the map's rails do. Only on a route drawn in sections.
   const marks = sections && route ? routeLaneMarks(route.geometry.coordinates as LonLat[], route.stress_spans, highStressLanesOn()) : [];

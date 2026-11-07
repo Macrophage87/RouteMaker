@@ -4678,6 +4678,19 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
   fill: var(--text);
 }
 
+/* A turn drawn on the stress ribbon (no room for the turns' strip): a halo of the panel round it, so it reads on any colour. */
+/* Under a mountain-bike trail's rocks, the panel, so the trail rail's purple does not show between them. */
+.ride-ahead-plot .ride-ahead-mtb-bed {
+  stroke: var(--bg);
+}
+.ride-ahead-arrow-halo {
+  fill: none;
+  stroke: var(--bg);
+  stroke-width: 6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 /* The dark edge under an orange or red arrow, so it holds 3:1 on the panel in either theme. */
 .ride-ahead-arrow-edge {
   stroke-width: 5.5;
@@ -4731,6 +4744,11 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
 .ride-ahead-plot .ride-ahead-level {
   font-size: 14px;
   font-weight: 700;
+}
+
+/* A slim graph's mark in the margin (AheadGraph SlimMark): the text's colour. */
+.ride-ahead-plot .ride-ahead-slim-mark {
+  fill: currentColor;
 }
 
 .ride-ahead-plot .ride-ahead-ribbon-name {
@@ -4833,6 +4851,12 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
 @media (forced-colors: active) {
   .ride-ahead-plot {
     forced-color-adjust: none;
+  }
+
+  /* The halo under turns on the ribbon and the bed under a trail's rocks: the page's own background. */
+  .ride-ahead-plot .ride-ahead-arrow-halo,
+  .ride-ahead-plot .ride-ahead-mtb-bed {
+    stroke: Canvas;
   }
 
   .ride-ahead-plot text,
@@ -5288,7 +5312,54 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
 .ride-summary-actions {
   flex: none;
   display: flex;
+  /* A Rebalance Ride's Do another trip, Finish session and Keep riding wrap where they do not fit on one row. */
+  flex-wrap: wrap;
   gap: 12px;
+}
+
+/* A Rebalance Ride's day so far (lib/rebalanceDay.ts), under the ride's own line. */
+.ride-summary-day h3 {
+  margin: 8px 0 2px;
+  font-size: max(16pt, 1.375rem);
+}
+
+/* A Rebalance Ride at its crowded dock: where to dock (RebalanceDockCard). */
+.ride-dock-choice h3 {
+  margin: 0 0 4px;
+  font-size: max(16pt, 1.375rem);
+}
+
+.ride-dock-lede,
+.ride-dock-note {
+  margin: 0 0 8px;
+}
+
+.ride-dock-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ride-dock-list button {
+  width: 100%;
+  min-height: 56px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  text-align: start;
+}
+
+.ride-dock-name {
+  font-weight: 700;
+}
+
+.ride-dock-none {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .ride-summary-actions button {
@@ -10492,6 +10563,78 @@ summary.closure-notices-heading {
 .load-route-detail {
   font-size: 14px;
   color: var(--text-muted);
+}
+/* Organizing (the owner, 2026-11-07): the tag chips, each row's Archive or Restore, Undo and the Archived link. */
+.load-route-tags {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+.load-route-tag {
+  flex: none;
+  min-height: 44px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+}
+.load-route-tag[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--accent-text);
+  border-color: var(--accent);
+  font-weight: 700;
+}
+.load-route-list .load-route-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.load-route-item .load-route-row {
+  flex: 1;
+  min-width: 0;
+}
+.load-route-archive,
+.load-route-restore {
+  flex: none;
+  min-width: 44px;
+  min-height: 44px;
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.load-route-archive {
+  padding: 0;
+}
+.load-route-tag-mark {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 5px;
+  border: 1px solid var(--swatch-border);
+  border-radius: 4px;
+  font-size: 12px;
+}
+.load-route-undo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 8px 0 0;
+}
+.load-route-undo button {
+  min-height: 44px;
+  font-weight: 700;
+  color: inherit;
+  text-decoration: underline;
+}
+.load-route-archived {
+  display: block;
+  min-height: 44px;
+  margin-top: 8px;
+  text-decoration: underline;
 }
 
 /* Saved routes in Save & load: the name with More beside it, its line under; GPX, Rename, Versions and Delete behind More. */

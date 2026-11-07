@@ -3,7 +3,7 @@
 // can fail where a short ride back to the line does not: a long ride's plan runs out of time, or the rest
 // of the trip cannot be planned again. The way back is planned on its own, to a point on the line ahead,
 // and joined to the planned route from there, so the rest of the ride is the route already planned.
-import type { DescriptionEntry, ErrorKind, RouteResult, RouteResponse, StressSpan } from "./api.ts";
+import type { DescriptionEntry, ErrorKind, RouteResult, RouteResponse, StressSpan, TrailLevelSpan } from "./api.ts";
 import { haversineM, type LonLat } from "./geo.ts";
 import { ARRIVE_M, lineAlong, measureMap, pointAt, snap, wayWords, type RideModel } from "./navigate.ts";
 import { t } from "./i18n.ts";
@@ -197,6 +197,8 @@ export function joinRoutes(leg: RouteResponse, planned: RouteResponse, atM: numb
     description: leg.description && (planned.description || !tail.length) ? description : null,
     description_overview: null,
     stress_spans: spans,
+    // The trails as the sections are: the leg's, then the planned route's past the cut, in line metres.
+    trail_levels: joinTrails(leg, legM, planned, plannedM, cut, shift, tail.length > 0),
     profile: null,
     // The planned route's marks are fractions of its own line: spread evenly over the joined one instead.
     time_marks: null,
@@ -235,6 +237,35 @@ function atMetres(entry: DescriptionEntry, from: number, to: number): Descriptio
  * planned route's from the cut, each scaled to its line as the map scales them. Undefined, drawn in one colour,
  * where either has none to give.
  */
+/** The leg's trail stretches, then the planned route's past the cut, each in line metres (as joinSpans). */
+function joinTrails(
+  leg: RouteResponse,
+  legM: number,
+  planned: RouteResponse,
+  plannedM: number,
+  cut: number,
+  shift: number,
+  hasTail: boolean,
+): TrailLevelSpan[] | null {
+  const end = (r: RouteResponse) => {
+    const s = r.stress_spans ?? [];
+    return s.length ? s[s.length - 1].to_m : 0;
+  };
+  const out: TrailLevelSpan[] = [];
+  const legEnd = end(leg);
+  if (legEnd > 0) for (const t of leg.trail_levels ?? []) out.push({ ...t, from_m: (t.from_m * legM) / legEnd, to_m: (t.to_m * legM) / legEnd });
+  const plannedEnd = end(planned);
+  if (hasTail && plannedEnd > 0) {
+    const scale = plannedM / plannedEnd;
+    for (const t of planned.trail_levels ?? []) {
+      const to = t.to_m * scale;
+      if (to <= cut) continue;
+      out.push({ ...t, from_m: Math.max(t.from_m * scale, cut) - cut + shift, to_m: to - cut + shift });
+    }
+  }
+  return out;
+}
+
 function joinSpans(
   leg: RouteResponse,
   legM: number,

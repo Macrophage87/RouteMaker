@@ -407,10 +407,15 @@ settings<sup class="cite"><a href="#ref-1" aria-label="source 1">[1]</a></sup> t
 <p>Two ride types combine a bike with Metro, buses or trains: <strong>Own Bike + transit</strong> takes
 your bike on board, and <strong>Bikeshare + transit</strong> docks a shared bike before you board. Each plan rides
 to a station or stop and takes the train or bus the rest of the way.</p>
-<p>Walk, Walk + transit and both bike + transit ride types take up to 3 stops between the start and the end, and no
-via points. Each leg is planned as a trip of its own, leaving as you reach the stop before it. At a stop, once that leg
-is done, <strong>Start the next leg</strong> plans the rest again from where you are, leaving then. Bikeshare and
-Rebalance Ride still take only a start and an end.</p>
+<p>Walk, Walk + transit, both bike + transit ride types and Bikeshare take up to 3 stops between the
+start and the end, and no via points. Each leg is planned as a trip of its own, leaving as you reach the stop before it. At a stop, once that leg
+is done, <strong>Start the next leg</strong> plans the rest again from where you are, leaving then. On Bikeshare you
+return the bike at each stop. The map and the route are the trip to stop 1; the Bikeshare panel
+lists each later trip's steps under <strong>From stop 2</strong> and so on, planned again at that stop with the bikes and
+docks free then, and its totals read <strong>To stop 1, not counting breaks</strong> and <strong>Whole trip, not counting
+breaks</strong>. A later trip that can't be planned now is noted, to be planned at its stop. With stops there are no
+pick-up and drop-off choices and no route options. AI assistants still plan Bikeshare from a start and an end only.
+Rebalance Ride takes a start alone (below).</p>
 <figure id="fig-transit" class="has-narrow">
 <div class="fig-scroll fig-wide" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 920 160" role="img" aria-labelledby="fig-transit-t fig-transit-d" focusable="false" style="min-width:600px">
@@ -778,6 +783,14 @@ with e-bike counts.</p>
 <h3>Rebalance Ride</h3>
 <p>Moves a bikeshare bike from a crowded station to one that needs bikes. Rides like this can earn
 reward points (Bike Angels in the Capital Bikeshare app); the points show there, not in RouteMaker.</p>
+<p>It takes a start only, with no destination, stops or route options. The plan walks to the crowded dock (at least
+three quarters full) with the quickest walk among the 3 nearest, which are its 3 pick-up options, and the station list
+shows pick-up stations only. Its end is a guess: as you reach the dock, Ride holds and asks <strong>Where to dock?</strong>,
+with up to 3 docks that need bikes (at most a quarter full) from the live counts, nearest first. The ride goes to the one
+you pick and ends by itself there. With no list (no signal, or none needing bikes), <strong>Try again</strong> or ride to
+the plan's own dock. The end screen shows <strong>Today's Rebalance Rides</strong>: trips, walking, riding and total time
+since midnight, kept on this device only. <strong>Do another trip</strong> plans the next from where you are, and
+<strong>Finish session</strong> ends.</p>
 </div></details>
 <h2 id="adventure">Adventure ride types</h2>
 <p>For riding for its own sake: Fast for direct roads, Road Bike for pavement, Trailmaxxing for the calmest route, Gravel, Mountain Goat and Mountain Bike off the pavement.</p>
@@ -878,7 +891,7 @@ riding. Press a line or its row to ride it; your own setting stays as it was.</l
 <p class="next">Next: <a href="/about/stress.html">Stress ratings</a></p>
 </main>
 <footer>
-  <p>Part of RouteMaker's documentation. It describes version 0.21.2. The code is
+  <p>Part of RouteMaker's documentation. It describes version 0.22.0. The code is
   open source under the MIT licence:
   <a href="https://github.com/Macrophage87/RouteMaker">github.com/Macrophage87/RouteMaker</a>.</p>
   <p><a href="/">Back to the map</a></p>

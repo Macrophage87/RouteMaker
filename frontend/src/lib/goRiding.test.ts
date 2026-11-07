@@ -77,7 +77,7 @@ test("6. an End ride button always in view, labelled End ride with its icon, one
   assert.match(finish, /clearPlan\(\);[\s\S]*?focusAfterRemove\.current = null;\s*if \(document\.activeElement instanceof HTMLElement && document\.activeElement\.closest\("\.go-search"\)\) document\.activeElement\.blur\(\);\s*window\.requestAnimationFrame\(\(\) => document\.querySelector<HTMLElement>\("\.go-bar-start"\)\?\.focus\(\)\);/);
   // Undo carries on from the ended ride's figures; a new Start begins from nought.
   assert.match(app, /setResumeStats\(ended\.stats\);\s*\/\/ A trip past its line carries on with the walk or train it was following; else from its line\.\s*setRideStart\(\{ \.\.\.ended\.start, past: ended\.past \}\);/);
-  assert.match(app, /setResumeStats\(null\);\s*setRideStart\(\(before\) =>/);
+  assert.match(app, /setResumeStats\((?:null|quiet \? \(left\.stats \?\? null\) : null)\);\s*setRideStart\(\(before\) =>/);
   assert.match(ride, /useRef<RideStats>\(resumeStats \? statsPause\(resumeStats\) : statsStart\(Date\.now\(\)\)\)/);
   // Large text always (the owner, 2026-10-20: "Just use large for everything"), its small print never under 16 pt.
   assert.match(css, /\.ride-summary-figures dt,[^{]*\{\s*font-size: 16pt;/);
@@ -133,7 +133,7 @@ test("F1. Start unlocks the voice synchronously in the press, before the closure
 });
 
 test("Ride settings in reach: More at the end of the side buttons opens them just under the top row (the owner, 2026-10-18; More 2026-10-24)", () => {
-  const top = ride.slice(ride.indexOf("<div ref={topRef} className="), ride.indexOf("{ride.arrived ? (\n          <>"));
+  const top = ride.slice(ride.indexOf("<div ref={topRef} className="), ride.indexOf("{docking ? (\n          <RebalanceDockCard"));
   // The top row: End ride, then Road closed ahead (the owner, 2026-10-19: "switch end ride and road closed"); Settings is no longer there.
   assert.doesNotMatch(top, /RIDE_SETTINGS_TEXT/);
   assert.ok(top.indexOf("endName") > 0 && top.indexOf("endName") < top.indexOf("ROAD_CLOSED_NAME"));
@@ -226,10 +226,10 @@ test("End ride in Plan keeps the plan and its routes; part way it starts where t
   assert.doesNotMatch(endRide, /setPoints\(|setAnswer\(|forgetDrawn\(|setChoice\(/);
   // Part way: one edit of the points (re-planned as any edit is), a loop turned off as its finish is now a point.
   // In Go nothing is set up again (the owner, 2026-10-20): only Plan's ride moves the plan's start.
-  assert.match(endRide, /if \(endedIn !== "go" && after && after !== "no-fix" && after\.points\.length >= 2\) \{/);
+  assert.match(endRide, /if \(endedIn !== "go" && after && after !== "no-fix" && after\.points\.length >= 2 && start\?\.route\.preset !== "rebalance"\) \{/);
   assert.match(endRide, /commit\(from, ride\.dials\.loop \? \{ \.\.\.ride, dials: \{ \.\.\.ride\.dials, loop: false \} \} : undefined\);/);
   // The ride's own fix (planAfterEnd), never a trip's riding leg; the ride's figures with it.
-  assert.match(ride, /onEnd\(trip && !trip\.asPlanned \? null : planAfterEnd\(modelRef\.current, rideRef\.current, plan\.current\.points, plan\.current\.loop, Date\.now\(\)\), statsRef\.current\);/);
+  assert.match(ride, /onEnd\(trip && !trip\.asPlanned \? null : planAfterEnd\(modelRef\.current, rideRef\.current, plan\.current\.points, plan\.current\.loop, Date\.now\(\)\), statsRef\.current, dockChosen\.current \? \{ name: dockChosen\.current, route: routeRef\.current, points: plan\.current\.points \} : null\);/);
   assert.match(app, /if \(ended\.from && pointsRef\.current === ended\.from\) edits\.retract\(\);/);
 });
 
@@ -274,9 +274,11 @@ test("ride card: fewer words on screen, the whole of them for screen readers (th
 });
 
 test("Broadcast from a ride (Stephen 2026-10-24: \"Let people broadcast from a ride\"): a side button, Share ride's link, the ride going on", () => {
-  const rail = ride.slice(ride.indexOf("<div ref={railRef} className={`ride-rail"), ride.indexOf("{/* The bottom panel"));
+  // The button is made once (in the rail, or in More when the rail is short of room, v0.22.0).
+  const rail = ride.slice(ride.indexOf("const broadcastButton = ("), ride.indexOf("{/* The bottom panel"));
   // A round side button as Roam's, on while this rider leads; not once arrived.
-  assert.match(rail, /\{onBroadcast && !ride\.arrived && \(\s*<button\s+type="button"\s+className=\{`ride-round broadcast-hold\$\{broadcasting \? " ride-round-on" : ""\}`\}\s+onClick=\{\(\) => void broadcast\(\)\}/);
+  assert.match(rail, /const broadcastButton = \(\s*<button\s+type="button"\s+className=\{`ride-round broadcast-hold\$\{broadcasting \? " ride-round-on" : ""\}`\}\s+onClick=\{broadcastInMore \? \(\) => fromMore\(\(\) => void broadcast\(\)\) : \(\) => void broadcast\(\)\}/);
+  assert.match(rail, /\{onBroadcast && !ride\.arrived && !broadcastInMore && broadcastButton\}/);
   assert.match(rail, /<Icon name="broadcast" size=\{riders === null \? 24 : 20\} \/>/);
   // The count of riders, the leader included, is part of Broadcast (Stephen 2026-10-27), said in its name too.
   assert.match(rail, /\{riders !== null && \(\s*<span className="ride-round-count" aria-hidden="true">/);
