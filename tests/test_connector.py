@@ -12,6 +12,7 @@ import urllib.parse
 
 import pytest
 from django.test import Client
+from django.utils import timezone
 from test_accounts import addr, make_user, send, signed_in
 from test_mcp_server import encode_polyline, straight_answer
 from test_route_api import VERTICES, router, segments, standard_router
@@ -74,6 +75,8 @@ def allow(user=None, answer="allow"):
     assert page.status_code == 200, page.content
     # What the page's form sends besides the rider's answer.
     sent = {"reads_routes": "1"} if 'name="reads_routes" value="1"' in page.content.decode() else {}
+    if 'name="organizes_routes" value="1"' in page.content.decode():
+        sent["organizes_routes"] = "1"
     answered = browser.post(
         "/oauth/authorize",
         {**params, **sent, "answer": answer, "csrfmiddlewaretoken": csrf},
@@ -178,7 +181,8 @@ class TestSignIn:
         assert "Allow Claude to plan routes?" in text and "add routes to your My routes" in text
         # The owner, 2026-11-02 (my_routes): it may read My routes, never change them.
         assert "read your saved routes, when you ask it to plan from one" in text
-        assert "can't change or delete your saved routes" in text and "claude.ai" in text
+        assert "tag, archive or restore your saved routes, when you ask it to" in text
+        assert "can't rename, re-save or delete your saved routes" in text and "claude.ai" in text
         assert "frame-ancestors 'none'" in page["Content-Security-Policy"]
         assert "form-action 'self' https://claude.ai" in page["Content-Security-Policy"]
 
@@ -329,6 +333,90 @@ class TestConnector:
         assert SavedRoute.objects.filter(user=user).count() == 1
         assert not SavedRoute.objects.filter(user=other).exists()
 
+    def test_routes_are_tagged_archived_and_replaced_on_the_rider_s_word(self, planner) -> None:
+        """The owner, 2026-11-07: "add tags to the routes (especially from the MCP server) ...
+        let things be archived via the MCP, such as if a new route was suggested"."""
+        user, tokens, _ = tokens_for()
+        other, other_tokens, _ = tokens_for()
+        token = tokens["access_token"]
+        assert ConnectorGrant.objects.get(user=user).organizes_routes is True
+        planned = call(token, "plan_route", {"points": [[-77.03, 38.9], [-77.02, 38.91]]})
+        draft_id = planned["structuredContent"]["draft_id"]
+        first = call(
+            token, "save_route", {"draft_id": draft_id, "name": "Commute", "tags": ["Commute"]}
+        )
+        old_id = first["structuredContent"]["saved"]["id"]
+        assert first["structuredContent"]["saved"]["tags"] == ["Commute"]
+        added = call(
+            token, "organize_route", {"route_id": old_id, "add_tags": ["Trail", "commute"]}
+        )
+        assert added["structuredContent"]["route"]["tags"] == ["Commute", "Trail"]
+        listed = call(token, "my_routes", {"tag": "trail"})["structuredContent"]
+        assert [r["route_id"] for r in listed["routes"]] == [old_id]
+        assert listed["tags_in_use"] == ["Commute", "Trail"]
+        # A better route saved in its place archives the old one.
+        newer = call(
+            token, "save_route", {"draft_id": draft_id, "name": "Commute 2", "replaces": old_id}
+        )
+        assert not newer["isError"], newer
+        row = SavedRoute.objects.get(pk=old_id)
+        assert row.archived_at is not None
+        assert row.replaced_by_id == newer["structuredContent"]["saved"]["id"]
+        listed = call(token, "my_routes", {})["structuredContent"]
+        assert [r["name"] for r in listed["routes"]] == ["Commute 2"]
+        assert listed["archived_count"] == 1
+        archived = call(token, "my_routes", {"archived": True})["structuredContent"]["routes"]
+        assert [r["route_id"] for r in archived] == [old_id] and archived[0]["archived"]
+        restored = call(token, "organize_route", {"route_id": old_id, "archived": False})
+        assert not restored["isError"] and "archived" not in restored["structuredContent"]["route"]
+        # Never another rider's.
+        theirs = call(
+            other_tokens["access_token"], "organize_route", {"route_id": old_id, "archived": True}
+        )
+        assert theirs["isError"] and SavedRoute.objects.get(pk=old_id).archived_at is None
+        assert not SavedRoute.objects.filter(user=other).exists()
+        assert SavedRoute.objects.filter(user=user).count() == 2
+
+    def test_a_full_account_asks_the_assistant_to_offer_archiving_never_deletes(
+        self, planner
+    ) -> None:
+        user, tokens, _ = tokens_for()
+        token = tokens["access_token"]
+        SavedRoute.objects.bulk_create(
+            SavedRoute(user=user, name=f"r{i}", line=[[0, 0], [1, 1]], distance_m=1.0, inputs={})
+            for i in range(SavedRoute.MAX_PER_ACCOUNT)
+        )
+        planned = call(token, "plan_route", {"points": [[-77.03, 38.9], [-77.02, 38.91]]})
+        draft_id = planned["structuredContent"]["draft_id"]
+        out = call(token, "save_route", {"draft_id": draft_id, "name": "One more"})
+        text = out["content"][0]["text"]
+        assert out["isError"] and "organize_route" in text and "never opened" in text
+        assert SavedRoute.objects.filter(user=user).count() == SavedRoute.MAX_PER_ACCOUNT
+
+    def test_a_grant_given_before_organizing_cannot_tag_or_archive(self, planner) -> None:
+        """Its consent page said "It can't change or delete your saved routes": it stays so until
+        the rider connects again. Saving with tags is still adding."""
+        user, tokens, _ = tokens_for()
+        ConnectorGrant.objects.filter(user=user).update(organizes_routes=False)
+        token = tokens["access_token"]
+        planned = call(token, "plan_route", {"points": [[-77.03, 38.9], [-77.02, 38.91]]})
+        draft_id = planned["structuredContent"]["draft_id"]
+        saved = call(token, "save_route", {"draft_id": draft_id, "name": "A", "tags": ["x"]})
+        rid = saved["structuredContent"]["saved"]["id"]
+        out = call(token, "organize_route", {"route_id": rid, "archived": True})
+        assert out["isError"] and "connects again" in out["content"][0]["text"]
+        out = call(token, "save_route", {"draft_id": draft_id, "name": "B", "replaces": rid})
+        assert out["isError"] and SavedRoute.objects.filter(user=user).count() == 1
+        assert SavedRoute.objects.get(pk=rid).archived_at is None
+        # Nor does its save at a full account delete the archived route that makes room.
+        SavedRoute.objects.filter(pk=rid).update(archived_at=timezone.now())
+        SavedRoute.objects.bulk_create(
+            SavedRoute(user=user, name=f"r{i}", line=[[0, 0], [1, 1]], distance_m=1.0, inputs={})
+            for i in range(SavedRoute.MAX_PER_ACCOUNT - 1)
+        )
+        out = call(token, "save_route", {"draft_id": draft_id, "name": "C"})
+        assert out["isError"] and SavedRoute.objects.filter(pk=rid).exists()
+
     def test_ride_conditions_asks_the_site_s_own_weather_check(self, planner, monkeypatch) -> None:
         from core import weather
 
@@ -362,6 +450,7 @@ class TestConnector:
         )
         assert answered.status_code == 302
         assert ConnectorGrant.objects.get(user=user).reads_routes is False
+        assert ConnectorGrant.objects.get(user=user).organizes_routes is False
 
     def test_a_grant_given_before_my_routes_cannot_read_them(self, planner) -> None:
         """Its consent page said "It can't read your saved routes": it stays so until the rider
