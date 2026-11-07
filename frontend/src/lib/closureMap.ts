@@ -85,7 +85,9 @@ export function closuresOf(route: WithClosures | null | undefined, permits = fal
 // default. GET /api/closures/map answers the closures in force now in the map's view (core.workzones.area_rows):
 // asked after the map moves and every few minutes while the page is in front, so one past its end date leaves.
 
-export const AREA_MIN_ZOOM = 11;
+// From z12, past the opening view (OPENING_ZOOM, 11.2): the owner, 2026-11-07, of that view: "it very much looks
+// messsy". A route's own closures are drawn at every zoom all the same (closuresOf).
+export const AREA_MIN_ZOOM = 12;
 export const AREA_POLL_MS = 5 * 60_000;
 /** The largest view the server answers (core.workzones.AREA_MAX_*), a hair under. */
 export const AREA_MAX_LON = 0.399;

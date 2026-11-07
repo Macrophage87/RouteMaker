@@ -1018,6 +1018,14 @@ function laterMotorways(filter) {
   return ["all", expression, notMotorwayYet];
 }
 
+/**
+ * THE ROUTE NUMBERS. The owner, 2026-11-04: "they aren't really that important. They are mostly roads we won't use";
+ * and of the opening view, 2026-11-07: "it very much looks messsy". Every route shield, a US or state route's too,
+ * waits for SHIELD_MIN_ZOOM, a zoom past the opening view where the streets are drawn and a number can help find one.
+ * A motorway's still waits for HIGHWAY_LABEL_MIN_ZOOM.
+ */
+export const SHIELD_MIN_ZOOM = 13;
+
 export const OTHER_LABEL_LAYER_IDS = ["pois", "water_waterway_label", "water_label_ocean", "water_label_lakes", "earth_label_islands", "address_label", "roads_shields"];
 
 /** One of the base map's other label layers (OTHER_LABEL) as this app draws it, on the light map or the dark. */
@@ -1043,6 +1051,7 @@ function clearOtherLabel(layer, dark = false) {
     case "roads_shields":
       return {
         ...layer,
+        minzoom: Math.max(layer.minzoom ?? 0, SHIELD_MIN_ZOOM),
         filter: laterMotorways(layer.filter),
         layout: { ...layer.layout, "text-font": [L.font], "text-size": L.shield.size, "icon-size": L.shield.iconSize },
         paint: { ...layer.paint, "text-color": dark ? L.shield.darkColor : L.shield.color },
@@ -1837,6 +1846,23 @@ export function stressFilters(when = DEFAULT_WHEN, showHighLanes = highStressLan
   return Object.fromEntries(Object.entries(filters).map(([id, filter]) => [id, isMtbLayerId(id) ? filter : ["all", filter, massHides]]));
 }
 
+/**
+ * THE OPENING VIEW (the owner, 2026-11-07, of the map at OPENING_ZOOM over DC: "While it's great that there's a lot
+ * of bikeable roads in DC, it very much looks messsy"). Below OPENING_MESH_MAX_ZOOM a street of the z11 tiles' lower
+ * popular class (POPULAR_PRIORITY_MIN_CLASS, the busier bikeshare streets downtown) that is neither an off-road path
+ * nor a protected lane nor a named corridor waits for z12, where the city ladder draws it with the rest of the grid
+ * (CITY_LADDER.major). The trails, protected lanes, named corridors, the top popular class, the long calm roads and
+ * the trail connectors stay. Front end only: the z11 tiles still carry those streets.
+ */
+export const OPENING_MESH_MAX_ZOOM = 12;
+export const openingViewKeeps = [
+  "any",
+  [">=", ["zoom"], OPENING_MESH_MAX_ZOOM],
+  ["!=", ["to-number", ["get", "popular"], 0], POPULAR_PRIORITY_MIN_CLASS],
+  ["match", ["coalesce", ["get", "facility"], "none"], ["path", "protected"], true, false],
+  ["has", "trail_name"],
+];
+
 function stressFiltersOf(when, showHighLanes, routableMtb) {
   const filters = {};
   // Every routable filter is ["all", drawnAt(when), <the mountain-bike cut, unless routableMtb>, ...its own clauses].
@@ -1865,7 +1891,7 @@ function stressFiltersOf(when, showHighLanes, routableMtb) {
   // tiles name as `name`; the cut is the routable layers' all the same).
   filters[TRAIL_LABEL_LAYER_ID] = ["all", drawnAt(when), ...hidden, ["has", "trail_name"]];
   for (const tier of TIER_SHAPES) {
-    const filter = ["all", drawnAt(when), ...hidden, alleyDrawn, ["==", tierAt(when), tier.tier]];
+    const filter = ["all", drawnAt(when), ...hidden, alleyDrawn, openingViewKeeps, ["==", tierAt(when), tier.tier]];
     // LTS 1's line and edge leave the surface-unknown trails to their own layers.
     const own = tier.tier === 1 ? [...filter, ["!", surfaceUnknown]] : filter;
     filters[`stress-${tier.tier}`] = own;
@@ -1886,7 +1912,7 @@ function stressFiltersOf(when, showHighLanes, routableMtb) {
     }
   }
   for (const facility of FACILITIES) {
-    const filter = ["all", drawnAt(when), ...hidden, alleyDrawn, ["==", facilityAt(when), facility.facility]];
+    const filter = ["all", drawnAt(when), ...hidden, alleyDrawn, openingViewKeeps, ["==", facilityAt(when), facility.facility]];
     // An unpaved trail is not given a path's rails (OWNER-DECISIONS 290: the
     // Lake Accotink singletrack read as "protected bike paths"): it draws as its
     // tier's line and the unpaved mark. A missing "unpaved" is an unknown
