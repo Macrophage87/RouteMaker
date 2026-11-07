@@ -738,7 +738,15 @@ each time). After the swap:
 busy-class road meets the route, with a 3 ft (1 m) radius, and again, with a
 100 ft (30 m) radius, for each 50 of those whose control is not already a signal, to
 read the signals and stop signs OSM puts on the stop lines up the approaches
-(review r2; `core.junctions.APPROACH_RADIUS_M`): about 2 to 12 calls a plan.
+(review r2; `core.junctions.APPROACH_RADIUS_M`). Each batch is asked twice, as a
+bicycle and as a car (`core.junctions.LOCATE_COSTINGS`), and the two answers merged:
+`/locate` answers only the edges its costing may use, so asked as a bicycle alone it left
+out every road closed to bicycles, and an at-grade crossing of the George Washington
+Memorial Parkway (`bicycle=no`, 4 lanes at 45 mph, at Tulane Dr by the Mount Vernon
+Trail) cost nothing (the owner, 2026-11-07). If the car batch fails, the bicycle's answer
+is read alone, as before. The plan's `/locate` cache keys each answer by its costing too
+(`refine.locator`). About 4 to 24 calls a plan; the timings below were measured on bicycle
+answers, and a car answer near a motorway interchange is larger.
 Measured on the live router, a batch of 50 at 100 ft (30 m) took 0.1-0.3 s and
 2.6 MB, against 0.04-0.15 s and 0.5 MB at 3 ft (1 m). A plan with a red junction
 1,640 ft (500 m) or more from both ends asks the router for one more route (crossing
