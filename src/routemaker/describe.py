@@ -129,6 +129,11 @@ JOG_MIN_M = 15.0
 # walk_spans`), so one that starts at a turn can land a hair either side of the turn's
 # stretch (round-3 audit D32).
 WALK_TIE_M = 0.01
+# A turn made through a junction's crosswalk (`_junction_turn`): the pieces the route steps
+# over between the street it leaves and the one it turns onto, a crosswalk among them, each
+# shorter than JUNCTION_PIECE_M and together no longer than JUNCTION_SPAN_M.
+JUNCTION_PIECE_M = 60.0
+JUNCTION_SPAN_M = 90.0
 # An unnamed jog's middle (`_unnamed_jog`) is at least this long: a shorter path or
 # alley between two turns is a crosswalk or a corner cut, not a way ridden.
 JOG_UNNAMED_MIN_M = 30.0
@@ -894,6 +899,88 @@ def _connector(before: _Run | None, run: _Run, after: _Run | None) -> bool:
     return not (run.tier in NEVER_HIDDEN and _rank(after) < _rank(run))
 
 
+def _junction_turn(runs: list[_Run], i: int) -> int | None:
+    """Where the route makes one turn through a junction's crosswalk: the index of the
+    stretch it turns onto, with runs[i:] up to it the pieces stepped over, else None (the
+    owner, 2026-11-07, at Mount Vernon Memorial Highway and Richmond Highway: "This has to
+    be the worst described intersection ever. I just made a left turn", said as "Cross the
+    road", "Right onto Richmond Highway bike lane", "Left to stay on" it within 75 m). Only
+    off a road, by a full turn straight onto a crosswalk, to the side the whole move turns:
+    the crosswalk crosses the road the rider was on, as a turn made in the roadway does. Off
+    a path or a sidewalk, or a bear onto the crosswalk, the crossing is the rider's own and
+    still said (`_crossing`: "Cross Redland Road, then left onto the bike lane"; the Saint
+    Paul Street bike lane on the far side). The
+    pieces are crosswalks, unnamed ways or the path turned onto, each under
+    JUNCTION_PIECE_M and in all no more than JUNCTION_SPAN_M, on one traced leg, turned into
+    and turned out of, none a circle or a U-turn; across them the route turns a full left
+    or right short of a turnaround (past BEAR_MAX_DEG, under HAIRPIN_DEG), so a jog (back on
+    the heading it had) and a crossing that doubles back ("Cross West Basin Drive, then
+    left onto the path") are still said turn by turn. A piece of LTS 3 or worse that is not
+    the crosswalk is hidden only in a stretch at least as stressful (`NEVER_HIDDEN`); the
+    crosswalk's own junction is the turn's (`_fold_connector`). Read at the farthest stretch
+    the pieces reach."""
+    if i == 0 or i + 1 >= len(runs):
+        return None
+    before = runs[i - 1]
+    if before.untraced or _circle(before) or before.path or _crosswalk(before):
+        return None
+    # Straight from the road onto the crosswalk, a full turn: it crosses the road the rider
+    # was on (its other side), as a turn made in the roadway does. A sidewalk first, or a
+    # bear onto a crosswalk, crosses the road turned onto, a crossing to say (the Saint
+    # Paul Street bike lane on the far side).
+    if not _crosswalk(runs[i]):
+        return None
+    into = _turn_at(before, runs[i])
+    if into is None or abs(into) <= BEAR_MAX_DEG:
+        return None
+    found = None
+    span = 0.0
+    crosswalk = False
+    for k in range(i, len(runs) - 1):
+        piece = runs[k]
+        if piece.leg != before.leg or piece.untraced or _circle(piece) or _uturn(piece):
+            break
+        # A named piece is the street turned onto: a short stretch of another (a jog's
+        # middle, "Right onto X Trail, then left onto Y Trail") is a way ridden, said.
+        # One crosswalk, the one turned onto: a second crosses another road, said. An
+        # unnamed path past JOG_UNNAMED_MIN_M is a way ridden, as a named one is.
+        if k > i and _crosswalk(piece):
+            break
+        if piece.metres >= JUNCTION_PIECE_M or not (
+            _crosswalk(piece)
+            or (not piece.names and piece.metres < JOG_UNNAMED_MIN_M)
+            or (piece.path and _same_street(piece, runs[k + 1]))
+        ):
+            break
+        span += piece.metres
+        if span > JUNCTION_SPAN_M:
+            break
+        crosswalk = crosswalk or _crosswalk(piece)
+        after = runs[k + 1]
+        if after.leg != before.leg or after.untraced or _circle(after) or _uturn(after):
+            break
+        if not crosswalk:
+            continue
+        # The farthest stretch reached decides: one nearer that turns the right way, with
+        # more of the junction still to ride after it, is a crossing and a turn back.
+        turn = turn_between(before.last, after.first)
+        found = (
+            k + 1
+            if (
+                (_forks(after) or _movement_between(piece, after) in TURN_WORDS)
+                and not any(
+                    p.tier in NEVER_HIDDEN and not _crosswalk(p) and _rank(after) < _rank(p)
+                    for p in runs[i : k + 1]
+                )
+                and turn is not None
+                and BEAR_MAX_DEG < abs(turn) < HAIRPIN_DEG
+                and (turn > 0) == (into > 0)
+            )
+            else None
+        )
+    return found
+
+
 def _crosswalk(run: _Run) -> bool:
     """Whether `run` begins or ends on a crosswalk (CROSSING_USE)."""
     return any(atom is not None and atom.use == CROSSING_USE for atom in (run.first, run.last))
@@ -931,6 +1018,14 @@ def _absorb_tiny(runs: list[_Run]) -> list[_Run]:
             run = runs[i]
             before = runs[i - 1] if i > 0 else None
             after = runs[i + 1] if i + 1 < len(runs) else None
+            # A turn made through a junction's crosswalk is one move (`_junction_turn`).
+            onto = _junction_turn(runs, i)
+            if onto is not None:
+                for piece in runs[i:onto]:
+                    _fold_connector(before, piece, runs[onto])
+                del runs[i:onto]
+                changed = True
+                continue
             # A few metres between two turns is one move (`_connector`).
             if after is not None and _connector(before, run, after):
                 _fold_connector(before, run, after)
