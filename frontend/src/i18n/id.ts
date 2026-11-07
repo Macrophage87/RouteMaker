@@ -1801,7 +1801,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Screen-reader detail: brief.": "Detail pembaca layar: singkat.",
   "Screen-reader detail: full.": "Detail pembaca layar: lengkap.",
   "The {button} button is at the top of the planner.": "Tombol {button} ada di bagian atas perencana.",
-  "Bikeshare and Rebalance Rides take a start and an end only: remove the stops.": "Sepeda sewa dan Perjalanan Penyeimbang hanya memakai titik awal dan titik akhir: hapus perhentiannya.",
   "Route problem": "Masalah rute",
   "Route cleared. Undo brings it back.": "Rute dihapus. Urungkan mengembalikannya.",
   "Leave your ride to open this link?": "Tinggalkan perjalanan untuk membuka tautan ini?",

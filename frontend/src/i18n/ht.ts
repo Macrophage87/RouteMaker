@@ -1801,7 +1801,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Screen-reader detail: brief.": "Detay pou lektè ekran: kout.",
   "Screen-reader detail: full.": "Detay pou lektè ekran: konplè.",
   "The {button} button is at the top of the planner.": "Bouton {button} la anlè planifikatè a.",
-  "Bikeshare and Rebalance Rides take a start and an end only: remove the stops.": "Bisiklèt pataje ak Woulib pou rebalanse pran yon depa ak yon fen sèlman: retire arè yo.",
   "Route problem": "Pwoblèm wout",
   "Route cleared. Undo brings it back.": "Wout la efase. Defèt fè l tounen.",
   "Leave your ride to open this link?": "Kite woulib ou pou louvri lyen sa a?",

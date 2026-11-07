@@ -243,6 +243,10 @@ test("each list is ranked toward the trip's other end once there is one", () => 
   assert.equal(listToward("dropoff", [A]), null);
   assert.deepEqual(listToward("pickup", [A, B]), B, "the pick-up list looks toward the destination");
   assert.deepEqual(listToward("dropoff", [A, B]), A, "the drop-off list looks back to the start");
+  // With a stop (v0.22.0; each stop starts a new trip): toward the trip's own other end.
+  const S = [-77.02, 38.91] as [number, number];
+  assert.deepEqual(listToward("pickup", [A, S, B]), S, "the pick-up list looks toward the first stop");
+  assert.deepEqual(listToward("dropoff", [A, S, B]), S, "the drop-off list looks back to the last stop");
 });
 
 test("the lede and the status say the order: nearest first, or on your way first", () => {

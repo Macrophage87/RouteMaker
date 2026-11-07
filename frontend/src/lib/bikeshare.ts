@@ -192,11 +192,26 @@ export function bikeshareSaid(route: Pick<RouteResponse, "bikeshare">): string |
 
 /** The totals, as dt/dd rows: walking, riding, and both. */
 export function totals(plan: BikesharePlan): { label: string; value: string }[] {
-  return [
+  const rows = [
     { label: "Walking", value: `${formatDistance(plan.walk_m)}, ${formatDuration(plan.walk_s)}` },
     { label: "Riding", value: `${formatDistance(plan.ride_m)}, ${formatDuration(plan.ride_s)}` },
     { label: "Total time, without stops", value: formatDuration(plan.total_s) },
   ];
+  // A trip with stops (v0.22.0): the rows above are the first trip's, to stop 1; the whole trip's time after them.
+  if (plan.later?.length && plan.trip_total_s != null) {
+    rows[2] = { label: "To stop 1, without stops", value: formatDuration(plan.total_s) };
+    rows.push({ label: "Whole trip, without stops", value: formatDuration(plan.trip_total_s) });
+  }
+  return rows;
+}
+
+/** A trip with stops: the map draws the first trip, and each later one is planned again at its stop (v0.22.0). */
+export const LATER_TRIPS_NOTE =
+  "The map shows the trip to stop 1. At each stop you return the bike, and the next trip is planned again from there, with the bikes and docks free then.";
+
+/** The heading of a later trip's steps. */
+export function laterHeading(stop: number): string {
+  return `From stop ${stop}`;
 }
 
 export function availabilityLine(plan: BikesharePlan): string {

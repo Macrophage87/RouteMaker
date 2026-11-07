@@ -1801,7 +1801,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Screen-reader detail: brief.": "የስክሪን አንባቢ ዝርዝር፦ አጭር።",
   "Screen-reader detail: full.": "የስክሪን አንባቢ ዝርዝር፦ ሙሉ።",
   "The {button} button is at the top of the planner.": "የ{button} ቁልፍ በዕቅድ አውጪው አናት ላይ ነው።",
-  "Bikeshare and Rebalance Rides take a start and an end only: remove the stops.": "የጋራ ብስክሌት እና የማመጣጠን ጉዞዎች መነሻ እና መድረሻ ብቻ ይወስዳሉ፦ ማቆሚያዎቹን ያስወግዱ።",
   "Route problem": "የመንገድ ችግር",
   "Route cleared. Undo brings it back.": "መንገዱ ተጸድቷል። ቀልብስ መልሶ ያመጣዋል።",
   "Leave your ride to open this link?": "ይህን አገናኝ ለመክፈት ጉዞዎን ይተዋሉ?",

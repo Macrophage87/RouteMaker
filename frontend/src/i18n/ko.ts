@@ -1801,7 +1801,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Screen-reader detail: brief.": "화면 낭독기 상세도: 간단히.",
   "Screen-reader detail: full.": "화면 낭독기 상세도: 자세히.",
   "The {button} button is at the top of the planner.": "{button} 버튼은 플래너 맨 위에 있습니다.",
-  "Bikeshare and Rebalance Rides take a start and an end only: remove the stops.": "공유자전거와 재배치 라이드는 출발지와 도착지만 받습니다. 경유지를 지우세요.",
   "Route problem": "경로 문제",
   "Route cleared. Undo brings it back.": "경로를 지웠습니다. 실행 취소로 되돌릴 수 있습니다.",
   "Leave your ride to open this link?": "라이드를 떠나 이 링크를 열까요?",

@@ -1801,7 +1801,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Screen-reader detail: brief.": "Chi tiết cho trình đọc màn hình: ngắn.",
   "Screen-reader detail: full.": "Chi tiết cho trình đọc màn hình: đầy đủ.",
   "The {button} button is at the top of the planner.": "Nút {button} nằm ở đầu bộ lên lộ trình.",
-  "Bikeshare and Rebalance Rides take a start and an end only: remove the stops.": "Xe đạp chia sẻ và Chuyến cân bằng xe chỉ nhận một điểm xuất phát và một điểm cuối: hãy bỏ các điểm dừng.",
   "Route problem": "Vấn đề với lộ trình",
   "Route cleared. Undo brings it back.": "Đã xóa lộ trình. Hoàn tác sẽ đưa lại.",
   "Leave your ride to open this link?": "Rời chuyến đi để mở liên kết này?",

@@ -812,6 +812,27 @@ export interface BikesharePlan {
    * (at most 1/4 full). False on plain Bikeshare; absent from an older server.
    */
   rebalance?: boolean;
+  /**
+   * A trip with stops (v0.22.0; each stop starts a new trip): the trips after the first, one per stop. This plan, its
+   * line and its walks are the first trip's, to the first stop; each later one is planned again at its stop. Empty or
+   * absent: no stops.
+   */
+  later?: BikeshareLater[];
+  /** A trip with stops: every trip's walking and riding, without stops. Null or absent: none. */
+  trip_total_s?: number | null;
+}
+
+/** One trip after a stop (core.api.BikeshareLaterOut), as planned now. */
+export interface BikeshareLater {
+  /** The stop it starts from, counted from 1. */
+  stop: number;
+  start: BikeshareStop;
+  end: BikeshareStop;
+  ride_m: number;
+  walk_m: number;
+  total_s: number;
+  steps: { kind: "walk" | "ride"; text: string }[];
+  summary: string;
 }
 
 /** One end of a route option (core.api.BikeshareOptionEndOut). */

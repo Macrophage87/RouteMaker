@@ -758,10 +758,13 @@ class RouteIn(Schema):
         elif self.transit_option is not None or (self.depart_at is not None and not run):
             raise ValueError("transit_option and depart_at apply to the transit ride types only")
         if self.preset in presets.BIKESHARE_PRESETS:
-            if len(self.points) != 2:
+            # A start, stops and an end (Stephen, 2026-11-03: each stop starts a new trip; for
+            # Bikeshare and Rebalance Ride in v0.22.0): each leg is a trip of its own.
+            if len(self.points) > 2 + MAX_TRIP_STOPS or self.via_points:
                 raise ValueError(
-                    "Bikeshare plans take a start and an end: the walk, the ride between docks"
-                    " and the walk are planned from those two points"
+                    f"Bikeshare plans take a start, at most {MAX_TRIP_STOPS} stops and an end,"
+                    " none of them vias: each leg's walk, ride between docks and walk are planned"
+                    " from its two points"
                 )
             if self.loop:
                 raise ValueError("Bikeshare does not plan loops")
@@ -2085,6 +2088,20 @@ class BikeshareOptionOut(Schema):
     text: str = Field(description="The option in plain words, US units first, for reading aloud.")
 
 
+class BikeshareLaterOut(Schema):
+    """One trip after a stop in a Bikeshare or Rebalance Ride trip with stops: where it picks
+    up and returns the bike, its steps and its time, as planned now."""
+
+    stop: int = Field(description="The stop it starts from, counted from 1.")
+    start: BikeshareStopOut
+    end: BikeshareStopOut
+    ride_m: float
+    walk_m: float
+    total_s: float = Field(description="Walking and riding, without stops.")
+    steps: list[BikeshareStepOut]
+    summary: str = Field(description="The trip in plain words, US units first, for reading aloud.")
+
+
 class BikesharePlanOut(Schema):
     """The walks, docks, availability, fee and notes of a bikeshare plan
     (FOLLOWUP-BIKESHARE). The route body around it is the ride leg, dock to dock; the
@@ -2129,6 +2146,21 @@ class BikesharePlanOut(Schema):
         ),
     )
     credit: str = Field(description="The plain source citation (OWNER-DECISIONS 301).")
+    later: list[BikeshareLaterOut] = Field(
+        default_factory=list,
+        description=(
+            "A trip with stops (Bikeshare and Rebalance Ride, v0.22.0; each stop starts a new"
+            " trip): the trips after the first, one per stop, in order. This body, its line and"
+            " its other fields are the first trip's, to the first stop; each later trip is"
+            " planned again when the rider gets to its stop. Empty: no stops."
+        ),
+    )
+    trip_total_s: float | None = Field(
+        default=None,
+        description=(
+            "A trip with stops: every trip's walking and riding, without stops. Null: none."
+        ),
+    )
 
 
 class AvoidJunctionOut(Schema):
@@ -3654,7 +3686,8 @@ def route_neighbours(request, body: RouteIn):
     loop = routing.loop_wanted(body.points, body.loop, body.preset)
     if span_m(routing.loop_points(body.points, loop)) > CONFIRM_SPAN_M:
         return Status(200, {"stress": stress, "options": []})
-    if body.preset == presets.BIKESHARE and not _same_docks(body):
+    # A trip with stops is planned trip by trip (`_bikeshare_body`): no options of the whole.
+    if body.preset in presets.BIKESHARE_PRESETS and (len(body.points) > 2 or not _same_docks(body)):
         return Status(200, {"stress": stress, "options": []})
     direct, calmer = presets.stress_notches(body.preset, stress)
     wanted = [
@@ -4043,18 +4076,53 @@ def _bikeshare_body(body: RouteIn, started: float | None) -> dict:
             points, body.preset, long_ride=False, started=started, dials=dials
         ),
     )
-    return bikeshare.plan(
-        body.points[0],
-        body.points[1],
-        bike,
-        body.ending or bikeshare.ENDING_DOCK,
-        snapshot,
-        services,
-        profile.speed_kmh,
-        pickup_station=body.pickup_station,
-        dropoff_station=body.dropoff_station,
-        rebalance=body.preset == presets.REBALANCE,
-    )
+
+    last = len(body.points) - 2
+
+    def leg(number: int) -> dict:
+        # A chosen pick-up station is the start's, and a chosen drop-off station the end's (the
+        # page's station lists are for those two points).
+        return bikeshare.plan(
+            body.points[number],
+            body.points[number + 1],
+            bike,
+            body.ending or bikeshare.ENDING_DOCK,
+            snapshot,
+            services,
+            profile.speed_kmh,
+            pickup_station=body.pickup_station if number == 0 else None,
+            dropoff_station=body.dropoff_station if number == last else None,
+            rebalance=body.preset == presets.REBALANCE,
+        )
+
+    found = leg(0)
+    if last == 0:
+        return found
+    # Stops (Stephen, 2026-11-03: "Each stop starts a new trip"; Bikeshare and Rebalance Ride in
+    # v0.22.0): the rider returns the bike at each stop, and the trip from there is planned on its
+    # own, inside the same budget. The body is the first trip's; the later ones are listed, and
+    # planned again from the stop when the rider gets there (the bikes and docks free then).
+    later = []
+    for number in range(1, last + 1):
+        plan = leg(number)["bikeshare"]
+        later.append(
+            {
+                "stop": number,
+                "start": plan["start"],
+                "end": plan["end"],
+                "ride_m": plan["ride_m"],
+                "walk_m": plan["walk_m"],
+                "total_s": plan["total_s"],
+                "steps": plan["steps"],
+                "summary": plan["summary"],
+            }
+        )
+    share = found["bikeshare"]
+    # Pick-up and drop-off pairs are the first trip's alone: none offered for the whole trip.
+    share["options"] = []
+    share["later"] = later
+    share["trip_total_s"] = round(share["total_s"] + sum(trip["total_s"] for trip in later), 1)
+    return found
 
 
 # A transit plan's candidate legs are routed only this long after the request arrived; the rest

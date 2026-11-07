@@ -1801,7 +1801,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Screen-reader detail: brief.": "د سکرین لوستونکي جزئیات: لنډ.",
   "Screen-reader detail: full.": "د سکرین لوستونکي جزئیات: بشپړ.",
   "The {button} button is at the top of the planner.": "د {button} تڼۍ د پلانوونکي په سر کې ده.",
-  "Bikeshare and Rebalance Rides take a start and an end only: remove the stops.": "شریک بایسکل او د توازن سفرونه یوازې یو پیل او یو پای اخلي: تمځایونه لرې کړئ.",
   "Route problem": "د لارې ستونزه",
   "Route cleared. Undo brings it back.": "لار پاکه شوه. د بېرته تڼۍ یې بېرته راولي.",
   "Leave your ride to open this link?": "دا لینک پرانیستو لپاره خپل سفر پرېږدئ؟",

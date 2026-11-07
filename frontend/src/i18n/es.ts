@@ -1893,7 +1893,6 @@ export const ES: Readonly<Record<string, string>> = {
   "Dismiss": "Descartar",
   "Show": "Mostrar",
   "Gray areas are outside what RouteMaker covers.": "Las zonas grises están fuera de lo que cubre RouteMaker.",
-  "Bikeshare and Rebalance Rides take a start and an end only: remove the stops.": "La bicicleta compartida y los recorridos de redistribución toman solo un inicio y un final: quite las paradas.",
   "The route has as many points as it can take, so no stop can be added.": "La ruta tiene todos los puntos que admite, así que no se puede agregar una parada.",
   "Higher stress junction (triangle)": "Intersección de estrés alto (triángulo)",
   "Very high stress junction (diamond)": "Intersección de estrés muy alto (rombo)",

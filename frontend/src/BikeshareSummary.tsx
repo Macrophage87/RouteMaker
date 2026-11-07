@@ -17,6 +17,8 @@ import {
   endingChoices,
   endingLabel,
   hasEndingChoice,
+  LATER_TRIPS_NOTE,
+  laterHeading,
   linkParts,
   planHeading,
   totals,
@@ -62,6 +64,19 @@ export function BikeshareSummary({
           </li>
         ))}
       </ol>
+      {(plan.later ?? []).map((trip) => (
+        <section key={trip.stop} className="bikeshare-later" aria-labelledby={`${id}-later-${trip.stop}`}>
+          <h4 id={`${id}-later-${trip.stop}`}>{laterHeading(trip.stop)}</h4>
+          <ol className="bikeshare-steps">
+            {trip.steps.map((step, index) => (
+              <li key={index} className={`bikeshare-step bikeshare-${step.kind}`}>
+                {step.text}
+              </li>
+            ))}
+          </ol>
+        </section>
+      ))}
+      {(plan.later?.length ?? 0) > 0 && <p className="hint bikeshare-later-note">{LATER_TRIPS_NOTE}</p>}
       <dl className="stats bikeshare-totals">
         {totals(plan).map((row) => (
           <div key={row.label}>

@@ -1801,7 +1801,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Screen-reader detail: brief.": "รายละเอียดของโปรแกรมอ่านหน้าจอ: สั้น",
   "Screen-reader detail: full.": "รายละเอียดของโปรแกรมอ่านหน้าจอ: เต็ม",
   "The {button} button is at the top of the planner.": "ปุ่ม {button} อยู่ด้านบนของเครื่องมือวางแผน",
-  "Bikeshare and Rebalance Rides take a start and an end only: remove the stops.": "จักรยานสาธารณะและปั่นกระจายจักรยานใช้ได้แค่จุดเริ่มต้นและจุดหมาย: ลบจุดแวะออก",
   "Route problem": "ปัญหาเส้นทาง",
   "Route cleared. Undo brings it back.": "ล้างเส้นทางแล้ว ปุ่ม เลิกทำ จะนำกลับมา",
   "Leave your ride to open this link?": "ออกจากการปั่นเพื่อเปิดลิงก์นี้ไหม",

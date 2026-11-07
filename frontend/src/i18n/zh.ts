@@ -1801,7 +1801,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Screen-reader detail: brief.": "读屏详细程度：简短。",
   "Screen-reader detail: full.": "读屏详细程度：完整。",
   "The {button} button is at the top of the planner.": "{button}按钮在规划工具顶部。",
-  "Bikeshare and Rebalance Rides take a start and an end only: remove the stops.": "共享单车和调度骑行只能有起点和终点：请删除途经点。",
   "Route problem": "路线问题",
   "Route cleared. Undo brings it back.": "路线已清除。撤销可以恢复。",
   "Leave your ride to open this link?": "离开骑行去打开这个链接吗？",
