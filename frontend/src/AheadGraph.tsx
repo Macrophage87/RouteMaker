@@ -470,8 +470,7 @@ function Ribbon({
         const width = x(b.toM) - left;
         return (
           <g key={b.fromM}>
-            {/* A short stretch above LTS 3: the ribbon's full height (tall). */}
-            <rect className="ride-ahead-bar" x={left} y={tall(b) ? top : band} width={width} height={tall(b) ? RIBBON_BLOCK : RIBBON_H} fill={b.color} />
+            <rect className="ride-ahead-bar" x={left} y={band} width={width} height={RIBBON_H} fill={b.color} />
             {b.halfDash && (
               // A half step in the colour-blind-friendly palette: the next level's dash along its foot, as on the map.
               <g className="ride-ahead-half-dash">
@@ -515,8 +514,14 @@ function Ribbon({
         );
       })}
       {bars.filter(tall).map((b) => (
-        // Over the rails too, so a short busy stretch reads at a glance.
-        <rect key={`tall-${b.fromM}`} className="ride-ahead-bar" x={x(b.fromM)} y={top} width={x(b.toM) - x(b.fromM)} height={RIBBON_BLOCK} fill={b.color} />
+        // A short stretch above LTS 3: the ribbon's full height, over the rails too, so it reads at a glance; a half
+        // step keeps its dash on it.
+        <g key={`tall-${b.fromM}`}>
+          <rect className="ride-ahead-bar" x={x(b.fromM)} y={top} width={x(b.toM) - x(b.fromM)} height={RIBBON_BLOCK} fill={b.color} />
+          {b.halfDash && (
+            <line x1={x(b.fromM)} x2={x(b.toM)} y1={band + RIBBON_H / 2} y2={band + RIBBON_H / 2} stroke={b.halfDash} strokeWidth={3.5} strokeDasharray={halfDash(b.level).dash} />
+          )}
+        </g>
       ))}
       {turns.filter((mark) => mark.movement).map((mark, i) => (
         <line key={i} className="ride-ahead-ribbon-turn" x1={x(mark.m)} x2={x(mark.m)} y1={top} y2={top + RIBBON_BLOCK} />
