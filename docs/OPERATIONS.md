@@ -6425,6 +6425,19 @@ the same way the rebuild's blocks Tuesday's — and the task goes stale on its
 own window (26 hours for the backup, 12 for the membership sweep) with nothing
 else to say why. The repair below is the same command with the same argument.
 
+**Most of those clear themselves.** Every five minutes the worker heartbeat
+(`core.runs.close_orphaned_jobs`) finishes as `aborted` each maintenance-queue
+job that is `doing` with its worker row gone or silent for 5 minutes (wider
+than the 30-second test below, which only lists it), writes an audit row
+(`close_orphaned_job`) and names the ids on its run row. Those tasks are
+periodic, so the next tick is the retry (`draw_share_preview` is not; the
+link's first fetch draws its picture). It leaves two for you: a
+`nightly_backup` (requeue it with `unwedge_job` so tonight's backup is not
+lost) and anything on the rebuild queue. A job past its budget whose worker is
+still beating is never closed. Before v0.22.0 this did not exist, which is how
+three dead `refresh_dc_closures` rows from 2026-10-19 stayed on beta's alert
+for weeks while the closures themselves kept refreshing.
+
 The operations page and `manage.py check_operations` both name it — a job
 `doing` whose worker is gone (no worker row, or no heartbeat for over 30
 seconds: the same test `unwedge_job` applies, below) is reported as wedged at
