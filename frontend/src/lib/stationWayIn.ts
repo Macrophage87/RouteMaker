@@ -1,5 +1,5 @@
 /**
- * A Metro or MARC station's quickest way in with a bike (Stephen 2026-10-20, riding to Shady Grove from the west:
+ * A Metro or MARC station's quickest way in with a bike (the owner, at Shady Grove:
  * "Somehow it missed one of the metro entrances"). A point placed at a station starts at its way in nearest where
  * the rider comes from in a straight line (railStations.ts, bikeEntrance); where the station has more than one, the
  * router is asked how long each takes to ride to (POST /api/nearest, the ride's own graph and settings), and the

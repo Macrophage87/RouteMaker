@@ -1849,19 +1849,27 @@ class RoutePostSectionInline(admin.StackedInline):
 
 
 class RoutePostPhotoInline(admin.TabularInline):
-    """The post's photos: their words, place and order, and Delete. Photos are added on the
-    post's page, whose script makes each one smaller with nothing in it but the picture
-    (core.route_posts.photo_upload), so none is added here."""
+    """The post's photos: their words, place and order, where each was taken, and Delete. Photos
+    are added on the post's page, whose script makes each one smaller with nothing in it but the
+    picture and where it was taken (core.route_posts.photo_upload), or by an assistant's upload
+    link, so none is added here."""
 
     model = RoutePostPhoto
     extra = 0
-    fields = ("picture", "alt_text", "caption", "place", "position")
-    readonly_fields = ("picture",)
+    fields = ("picture", "alt_text", "caption", "place", "position", "taken")
+    readonly_fields = ("picture", "taken")
+
+    @admin.display(description="Where it was taken")
+    def taken(self, obj) -> str:
+        link = route_posts.spot_link(obj) if obj is not None else ""
+        if not link:
+            return "Not known"
+        return format_html('<a href="{}">{}, {}</a>', link, obj.lat, obj.lon)
 
     @admin.display(description="Photo")
     def picture(self, obj) -> str:
         if obj is None or not obj.key:
-            return "Waiting for its file: add it on the post's page."
+            return "Waiting for its file: add it on the post's page, or the assistant sends it."
         return format_html(
             '<img src="{}" alt="" width="120" style="height:auto">',
             route_posts.photo_path(obj.post, obj),
