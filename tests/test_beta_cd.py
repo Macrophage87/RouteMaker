@@ -2355,6 +2355,51 @@ def test_an_old_or_broken_alert_script_leaves_the_deploy_alone(beta: Beta) -> No
     assert "deployed: v0.3.0" in beta.status()
 
 
+def test_a_held_newer_tag_still_posts_the_deployed_releases_notes(beta: Beta) -> None:
+    # A release shipped by hand is usually followed by a tag the agent holds or waits on: the
+    # live release's notes must not wait for an up-to-date pass that never comes.
+    _alert_stub(beta)
+    _release_hook(beta)
+    beta.release("v0.2.0", {"src/core/a.py": "x = 2\n"}, annotated=False)
+    beta.agent("run", STUB_ALERTS=str(beta.tmp / "alerts.log"))
+    assert "held" in beta.status()
+    notes = beta.src / "docs" / "releases" / "v0.1.0.md"
+    sent = _alerts(beta)
+    assert f"release-notes|v0.1.0|{notes}|" in sent
+    assert not any(line.startswith("release-notes|v0.2.0|") for line in sent)
+
+
+def test_a_waiting_newer_tag_still_posts_the_deployed_releases_notes(beta: Beta) -> None:
+    _alert_stub(beta)
+    _release_hook(beta)
+    beta.release("v0.2.0", {"src/core/a.py": "x = 2\n"})
+    beta.green(status="in_progress", conclusion="")
+    beta.agent("run", STUB_ALERTS=str(beta.tmp / "alerts.log"))
+    assert "waiting" in beta.status()
+    assert any(line.startswith("release-notes|v0.1.0|") for line in _alerts(beta))
+
+
+def test_a_failed_newer_tag_still_posts_the_deployed_releases_notes(beta: Beta) -> None:
+    _alert_stub(beta)
+    _release_hook(beta)
+    beta.release("v0.2.0", {"src/core/a.py": "x = 2\n"})
+    (beta.cd / "failed").mkdir(exist_ok=True)
+    (beta.cd / "failed" / "v0.2.0").write_text("rolled back\n")
+    beta.agent("run", STUB_ALERTS=str(beta.tmp / "alerts.log"))
+    assert "failed" in beta.status()
+    sent = _alerts(beta)
+    assert any(line.startswith("release-notes|v0.1.0|") for line in sent)
+    assert not any(line.startswith("release-notes|v0.2.0|") for line in sent)
+
+
+def test_no_release_notes_while_paused(beta: Beta) -> None:
+    _alert_stub(beta)
+    _release_hook(beta)
+    beta.agent("pause", "shipping by hand")
+    beta.agent("run", STUB_ALERTS=str(beta.tmp / "alerts.log"))
+    assert not any(line.startswith("release-notes|") for line in _alerts(beta))
+
+
 def test_a_held_release_posts_no_release_notes(beta: Beta) -> None:
     _alert_stub(beta)
     _release_hook(beta)
@@ -2418,3 +2463,50 @@ def test_a_failing_report_post_is_reported_retried_and_never_fails_the_pass(beta
     beta.agent("run", **env)
     assert len(_reports(beta)) == 2
     assert _alerts(beta)[-1].startswith("clear|reports-live|")
+
+
+# --- the riders' changelog posted by the owner's bot (discord_reports.py changelog) ---
+
+
+def _changelog_channel(beta: Beta) -> None:
+    _bot_token(beta)
+    (beta.state / "discord" / "changelog-channel").write_text("123\n")
+
+
+def test_the_bot_posts_the_changelog_once_per_tag_in_place_of_the_webhook(beta: Beta) -> None:
+    _alert_stub(beta)
+    _release_hook(beta)
+    _changelog_channel(beta)
+    beta.release("v0.2.0", {"scripts/discord_reports.py": STUB_REPORTS})
+    env = {
+        "STUB_REPORTS": str(beta.tmp / "reports.log"),
+        "STUB_ALERTS": str(beta.tmp / "alerts.log"),
+    }
+    done = beta.agent("run", **DEPLOY, **env)
+    assert done.returncode == 0, done.stdout + done.stderr
+    notes = beta.src / "docs" / "releases" / "v0.2.0.md"
+    today = subprocess.run(
+        ["date", "+%F"], env={"TZ": "America/New_York"}, capture_output=True, text=True
+    ).stdout.strip()
+    want = f"--dir {beta.state / 'discord'} changelog v0.2.0 {notes} --live-date {today}"
+    assert want in _reports(beta)
+    assert not any(line.startswith("release-notes|") for line in _alerts(beta))  # no webhook
+    assert (beta.state / "alerts" / "release-posted").read_text() == "v0.2.0\n"
+    beta.agent("run", **env)
+    assert sum(" changelog " in line for line in _reports(beta)) == 1
+
+
+def test_a_failing_bot_changelog_is_reported_and_retried(beta: Beta) -> None:
+    _alert_stub(beta)
+    _changelog_channel(beta)
+    beta.release("v0.2.0", {"scripts/discord_reports.py": STUB_REPORTS})
+    env = {
+        "STUB_REPORTS": str(beta.tmp / "reports.log"),
+        "STUB_ALERTS": str(beta.tmp / "alerts.log"),
+    }
+    done = beta.agent("run", **DEPLOY, **env, STUB_REPORTS_RC="1")
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert any(line.startswith("send|release-notes|v0.2.0|") for line in _alerts(beta))
+    beta.agent("run", **env)
+    assert sum(" changelog " in line for line in _reports(beta)) == 2
+    assert any(line.startswith("clear|release-notes|") for line in _alerts(beta))

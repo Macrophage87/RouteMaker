@@ -18,8 +18,8 @@ organisations, `ORGS`), reads each one's dated entries
 list: the day, the project, the title, the advisory's link and the page's. Read each one; add
 a closure for what it closes to bicycles; add its link to `seen` either way. It first prints a
 `CHECK:` line for each hand-kept date due a look: a guessed last day (`end_estimated`) within
-30 days, a file (this one or the Purple Line's) not updated in 45 days, and the deer schedules'
-assumed season or last night coming up.
+30 days, a file (this one, the Purple Line's or Fairfax's park alerts') not updated in 45 days,
+and the deer schedules' assumed season or last night coming up.
 
     python scripts/ddot_advisories.py lines WAY [WAY ...]
 
@@ -44,7 +44,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from routemaker import ddot_advisories, deer_closures, purple_line  # noqa: E402
+from routemaker import ddot_advisories, deer_closures, fcpa, purple_line  # noqa: E402
 
 ARCGIS = "https://www.arcgis.com/sharing/rest"
 OSM_API = "https://api.openstreetmap.org/api/0.6"
@@ -108,6 +108,7 @@ def reminders(today: date) -> list[str]:
     return [
         *ddot_advisories.check_due(today),
         *purple_line.check_due(today),
+        *fcpa.check_due(today),
         *deer_closures.check_due(today),
     ]
 
