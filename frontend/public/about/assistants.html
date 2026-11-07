@@ -204,7 +204,7 @@ never strays more than 5 miles from Metro.</li>
 <li>The assistant plans through the same route request as the app, so the route is exactly what the app
 would plan.</li>
 <li>Every route is a draft with a link to open it in the app. Nothing is saved until you say so.</li>
-<li>For riders, the connection on the web can add routes to My routes and read them when you ask, but never change or delete them. Instance admins can also have it write draft Featured routes posts.</li>
+<li>For riders, the connection on the web can add routes to My routes, read them, and tag, archive or restore them when you ask, but never rename them or delete one of its own accord. Instance admins can also have it write draft Featured routes posts.</li>
 </ul>
 <p class="find"><strong>Looking for something else?</strong> How the planner works: <a href="/about/routing.html">Routing</a>. How the site is built: <a href="/about/architecture.html">Architecture</a>.</p>
 </div>
@@ -393,7 +393,7 @@ a route you can ask to keep the points where they are.</p>
 
 </div></details>
 <h2 id="tools">What an assistant can do</h2>
-<p>The assistant has sixteen tools, and instance admins get one more on the web. Only <code>save_route</code> adds to My routes, and only when you ask it to save; an admin's <code>draft_route_post</code> writes a draft post that only admins see.</p>
+<p>The assistant has seventeen tools, and instance admins get one more on the web. Only <code>save_route</code> adds to My routes and only <code>organize_route</code> tags, archives or restores a saved route, each only when you ask; an admin's <code>draft_route_post</code> writes a draft post that only admins see.</p>
 <details class="more"><summary>More: What an assistant can do</summary>
 <div class="more-body">
 
@@ -428,9 +428,10 @@ only.</td></tr>
 <tr><th scope="row"><code>revise_route</code></th><td>Changes a draft (add, move or remove points; another ride type or setting; roads to avoid, by name, by a stretch of miles or as a line) and plans it again as a new draft. The old one stays. Its answer gives each figure before and after (miles, minutes, climb, miles on stress level 3 and up and on 4 and up, unpaved miles, junctions and junction waits), so the assistant can tell whether a change helped.</td></tr>
 <tr><th scope="row"><code>route_segments</code></th><td>Reads a draft stretch by stretch: miles, road, stress level, bike facility, surface, average and steepest grade, climb, one-way and minutes, plus every higher- and very-high-stress junction with its reason, steep grades and hazards. A long ride is read a page at a time.</td></tr>
 <tr><th scope="row"><code>ride_conditions</code></th><td>Says whether it is light or dark at the start and the finish of a ride at a given time (by civil dawn and dusk, as the app's Dawn and Dusk), when you arrive, and, within 48 hours, the National Weather Service alerts along the route and where rain is first forecast, through the site's own weather check (points rounded, nothing kept).</td></tr>
-<tr><th scope="row"><code>my_routes</code></th><td>Through the connector on the web: lists your saved routes, or opens one by name ("my commute") as a draft to read or revise. It never changes My routes. A connection allowed before this tool existed cannot read them until you disconnect and connect again. On your own computer the site refuses it.</td></tr>
+<tr><th scope="row"><code>my_routes</code></th><td>Through the connector on the web: lists your saved routes with their tags (narrowed by a tag or by words in the name or tags, or the archived ones instead), or opens one by name ("my commute") as a draft to read or revise; opening one counts as opening it in the app. It never changes My routes. A connection allowed before this tool existed cannot read them until you disconnect and connect again. On your own computer the site refuses it.</td></tr>
 <tr><th scope="row"><code>open_link</code></th><td>Picks up a route from a RouteMaker link you paste: the app's address after you changed a route, a saved route opened in the app, or a shared route's link.</td></tr>
-<tr><th scope="row"><code>save_route</code></th><td>On the web, saves a draft to My routes; on your own computer, writes it as a GPX file. Only when you say so.</td></tr>
+<tr><th scope="row"><code>save_route</code></th><td>On the web, saves a draft to My routes, with tags if you give them, and, when it replaces a saved route you name, archives that one once the new one is saved; on your own computer, writes it as a GPX file. Only when you say so. When your account is full, the save deletes the route archived longest and the assistant tells you which; with none archived, it offers to archive the route you have gone longest without opening, and deletes nothing itself.</td></tr>
+<tr><th scope="row"><code>organize_route</code></th><td>Through the connector on the web: tags, archives or restores one of your saved routes. It never renames or deletes one. Only when you say so.</td></tr>
 <tr><th scope="row"><code>gpx_route</code></th><td>Gives a draft as a GPX track: a file on your computer, or a download link on the web.</td></tr>
 <tr><th scope="row"><code>draft_route_post</code></th><td>Instance admins only, on the web: writes a Featured routes post as a draft around a draft route or a line to follow, for an admin to publish (see <a href="#mcp-posts">below</a>).</td></tr>
 <tr><th scope="row"><code>plan_metro_loop</code></th><td>Builds a loop of about a target length, 5 to 200 mi [8 to 322 km], that stays within a set distance of a Metro station, 5 mi [8 km] unless you say otherwise.</td></tr>
@@ -510,10 +511,13 @@ keep their own starting setting. Mass Ride and the two-point ride types do not p
 
 </div></details>
 <h2 id="reach">What it can and cannot see</h2>
-<p>For riders, the connection on the web can add routes to My routes and read them, but never change
-or delete them. It can plan routes, add the ones you ask it to save, and read your saved routes when you
-ask it to plan from one; it cannot change anything else. A connection you allowed before it could read your
-routes cannot read them until you disconnect it and connect again. The server on your own computer
+<p>For riders, the connection on the web can add routes to My routes, read them, and tag, archive or
+restore them, but never rename them or delete one of its own accord. It can plan routes, add the ones you ask it
+to save, read your saved routes when you ask it to plan from one, and tag, archive or restore the ones you name;
+it cannot change anything else. A connection you allowed before it could read your
+routes cannot read them until you disconnect it and connect again. In the same way, one allowed before
+version 0.22.0 cannot tag, archive or replace your routes until you connect it again, and until then a save
+to a full account is refused rather than deleting an archived route. The server on your own computer
 cannot see My routes and saves nothing to the site at all.</p>
 <figure id="fig-mcp-reach" class="has-narrow">
 <div class="fig-scroll fig-wide" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
@@ -575,7 +579,7 @@ cannot see My routes and saves nothing to the site at all.</p>
 <text class="ts" x="160.0" y="541" text-anchor="middle">See anything about other riders</text>
 </svg>
 </div>
-<figcaption>For riders, the connection can add to My routes and read it, but never change it.</figcaption>
+<figcaption>For riders, the connection can add to My routes, read it, and tag or archive routes in it, but never rename or delete one of its own accord.</figcaption>
 </figure>
 <details class="more"><summary>More: What it can and cannot see</summary>
 <div class="more-body">
