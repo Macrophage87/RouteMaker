@@ -329,10 +329,12 @@ CHANGELOG = "300"
 class FakeChannel:
     def __init__(self, history=None) -> None:
         self.calls: list[tuple[str, str, dict | None]] = []
+        self.files: list[list[str]] = []
         self.history = history or []
 
-    def send(self, method, path, body=None):
+    def send(self, method, path, body=None, files=()):
         self.calls.append((method, path, body))
+        self.files.append([f.name for f in files])
         if path == "/users/@me":
             return {"id": BOT}
         if path.startswith(f"/channels/{CHANGELOG}/messages?"):
@@ -367,11 +369,11 @@ def test_changelog_posts_the_notes_as_the_bot_once(changelog_dir, monkeypatch) -
     assert post[1] == f"/channels/{CHANGELOG}/messages"
     assert post[2]["allowed_mentions"] == {"parse": []}
     # Already in the channel from the bot: nothing posted again.
-    again = FakeChannel([{"author": {"id": BOT}, "content": fake.posted()[0]}])
+    again = FakeChannel([{"id": "1", "author": {"id": BOT}, "content": fake.posted()[0]}])
     assert run(changelog_dir, again, "changelog", "v0.22.0", str(notes)) == 0
     assert again.posted() == []
     # The same title from someone else does not count.
-    other = FakeChannel([{"author": {"id": OWNER}, "content": fake.posted()[0]}])
+    other = FakeChannel([{"id": "1", "author": {"id": OWNER}, "content": fake.posted()[0]}])
     assert run(changelog_dir, other, "changelog", "v0.22.0", str(notes)) == 0
     assert len(other.posted()) == 1
 
@@ -399,7 +401,102 @@ def test_changelog_finishes_a_post_that_stopped_part_way(changelog_dir, monkeypa
     first = FakeChannel()
     run(changelog_dir, first, "changelog", "v0.2.0", str(notes))
     whole = first.posted()
-    done = [{"author": {"id": BOT}, "content": whole[0]}]
+    done = [{"id": "1", "author": {"id": BOT}, "content": whole[0]}]
     rest = FakeChannel(done)
     assert run(changelog_dir, rest, "changelog", "v0.2.0", str(notes)) == 0
     assert rest.posted() == whole[1:]
+
+
+PNG = b"\x89PNG\r\n\x1a\n" + b"0" * 32
+
+
+def _notes_with_images(where: Path) -> Path:
+    (where / "images" / "v0.22.0").mkdir(parents=True)
+    (where / "images" / "v0.22.0" / "tags.png").write_bytes(PNG)
+    notes = where / "v0.22.0.md"
+    notes.write_text(
+        "**RouteMaker 0.22.0**\n- Saved routes take tags\n"
+        "![Tags in My routes](images/v0.22.0/tags.png)\n- A quieter map\n"
+    )
+    return notes
+
+
+def test_changelog_posts_images_in_place_as_attachments(changelog_dir, monkeypatch) -> None:
+    monkeypatch.setattr(mod.time, "sleep", lambda s: None)
+    notes = _notes_with_images(changelog_dir)
+    fake = FakeChannel()
+    assert run(changelog_dir, fake, "changelog", "v0.22.0", str(notes)) == 0
+    assert fake.posted() == [
+        "**RouteMaker v0.22.0 is on beta**\n- Saved routes take tags",
+        "Tags in My routes",
+        "- A quieter map",
+    ]
+    posts = [(b, f) for (m, _p, b), f in zip(fake.calls, fake.files, strict=True) if m == "POST"]
+    assert [f for _b, f in posts] == [[], ["tags.png"], []]
+    assert posts[1][0]["attachments"] == [
+        {"id": 0, "filename": "tags.png", "description": "Tags in My routes"}
+    ]
+    # Posted already, image included: nothing again.
+    history = [
+        {
+            "id": str(n + 1),
+            "author": {"id": BOT},
+            "content": b["content"],
+            "attachments": [{"filename": x} for x in f],
+        }
+        for n, (b, f) in enumerate(posts)
+    ]
+    again = FakeChannel(history)
+    assert run(changelog_dir, again, "changelog", "v0.22.0", str(notes)) == 0
+    assert again.posted() == []
+    # Stopped after the first message: the image and the rest follow.
+    rest = FakeChannel(history[:1])
+    assert run(changelog_dir, rest, "changelog", "v0.22.0", str(notes)) == 0
+    assert rest.posted() == ["Tags in My routes", "- A quieter map"]
+
+
+def test_another_versions_messages_do_not_count_as_posted(changelog_dir, monkeypatch) -> None:
+    monkeypatch.setattr(mod.time, "sleep", lambda s: None)
+    notes = _notes_with_images(changelog_dir)
+    history = [
+        {"id": "1", "author": {"id": BOT}, "content": "**RouteMaker v0.21.0 is on beta**\n- x"},
+        {"id": "2", "author": {"id": BOT}, "content": "- A quieter map"},
+    ]
+    fake = FakeChannel(history)
+    assert run(changelog_dir, fake, "changelog", "v0.22.0", str(notes)) == 0
+    assert len(fake.posted()) == 3
+
+
+@pytest.mark.parametrize(
+    "line, error",
+    [
+        ("![x](../secret.png)", "inside"),
+        ("![x](images/missing.png)", "no such image"),
+        ("![x](images/v0.22.0/notes.txt)", "not an image"),
+    ],
+)
+def test_bad_images_stop_the_post_before_anything_is_sent(
+    changelog_dir, capsys, line, error
+) -> None:
+    rel = changelog_dir / "rel"
+    rel.mkdir()
+    notes = _notes_with_images(rel)
+    (rel / "images" / "v0.22.0" / "notes.txt").write_text("x")
+    (changelog_dir / "secret.png").write_bytes(PNG)
+    target = notes
+    target.write_text(notes.read_text() + line + "\n")
+    fake = FakeChannel()
+    assert run(changelog_dir, fake, "changelog", "v0.22.0", str(target)) == 2
+    assert error in capsys.readouterr().err
+    assert fake.posted() == []
+
+
+def test_multipart_carries_the_payload_and_the_file(tmp_path) -> None:
+    image = tmp_path / "a.png"
+    image.write_bytes(PNG)
+    data, kind = mod.multipart({"content": "hi"}, [image])
+    boundary = kind.split("boundary=", 1)[1]
+    assert kind.startswith("multipart/form-data; ")
+    assert b'name="payload_json"' in data and b'{"content": "hi"}' in data
+    assert b'name="files[0]"; filename="a.png"' in data and PNG in data
+    assert data.endswith(f"--{boundary}--\r\n".encode())

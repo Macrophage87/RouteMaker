@@ -2,8 +2,23 @@
 
 One file per release tag (`v0.9.1.md`), written for riders: what's new and what's fixed, in plain
 words, a few short lines, US units first with metric in brackets. When the beta deploys a tag, the
-release agent posts that tag's file to the read-only release channel (docs/BETA-RUNBOOK.md, "Alerts").
+release agent has the owner's bot post that tag's file, pictures included, to the read-only
+changelog channel (docs/BETA-RUNBOOK.md, "Alerts").
 No server addresses, keys or riders' data.
+
+**Pictures over words** (the owner, 2026-11-07: "People hate walls of text, so releases are
+better as diagrams and mockups"). Show the main changes with the release's mockups, as-built
+screenshots or diagrams, each on its own line where it belongs:
+
+```markdown
+- Saved routes take tags, and an Archive keeps old ones out of the way
+![Tags and the Archive in My routes](images/v0.22.0/route-tags.png)
+```
+
+The files go in `images/<tag>/` beside the notes: PNG, JPEG, GIF or WebP, under 10 MB each
+(smaller is kinder to phones; a few hundred KB is plenty). The bot posts each one as its own
+message with the caption as its words and its alt text, and GitHub shows them in place. The same
+rules as the words: no real ride, rider location, account or server address in a picture.
 
 ## The documentation check, every release
 
