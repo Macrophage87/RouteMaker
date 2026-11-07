@@ -745,7 +745,7 @@ bicycle and as a car (`core.junctions.LOCATE_COSTINGS`), and the two answers mer
 `/locate` answers only the edges its costing may use, so asked as a bicycle alone it left
 out every road closed to bicycles, and an at-grade crossing of the George Washington
 Memorial Parkway (`bicycle=no`, 4 lanes at 45 mph, at Tulane Dr by the Mount Vernon
-Trail) cost nothing (the owner, 2026-11-07). If the car batch fails, the bicycle's answer
+Trail) cost nothing (an owner report). If the car batch fails, the bicycle's answer
 is read alone, as before. The plan's `/locate` cache keys each answer by its costing too
 (`refine.locator`). About 4 to 24 calls a plan; the timings below were measured on bicycle
 answers, and a car answer near a motorway interchange is larger.
@@ -7405,9 +7405,11 @@ rebuild.**
 
 Saved routes' tags, Archive and last opened, with the connector's `organize_route` (#1021);
 Rebalance Ride from a start alone, the drop-off dock chosen at the pick-up and the day's totals
-(#1023); stops on Bikeshare and Rebalance Ride, each stop a new trip (#1019); mountain-bike trails
+(#1023); stops on Bikeshare Ride, each stop a new trip (#1019; Rebalance Ride, a start alone since
+#1023, takes none); mountain-bike trails
 by level on the ride ribbon and the route line, slim ride graphs and a quiet Resume within 2 hours
-(#1025, #1034); a quieter opening view (#1016); Fairfax park trail closures (#1029); Featured routes
+(#1025, #1034); a quieter opening view (#1016); Fairfax park trail closures (#1029: the watch and
+the file, which ships with no closure, each waiting for the owner's confirmation); Featured routes
 photos with where each was taken and the assistant's upload links (#1030); junction and ride cue
 fixes (#1026, #1027, #1028, #1036); and "Same ride or a new one?" in every tab (#1012, #1013), the
 ride rail on a small phone (#1015) and the ride graph tidy-ups (#1014).
@@ -7416,11 +7418,13 @@ ride rail on a small phone (#1015) and the ride graph tidy-ups (#1014).
 `replaced_by`; `connector_grant.organizes_routes`) and 0058 (`route_post_photo.lat`, `lon`): columns
 only, the ones that are not nullable with a database default, so the v0.21.x api keeps working on
 the migrated database. A new url, `routes/<slug>/photos/send/<token>` (the assistant's photo upload,
-signed, in `core.route_posts`). `src/core/geodata/fcpa-closures.json` and `routemaker.fcpa` (read by
+signed, in `core.route_posts`; on the beta it sits behind the site's password like every page, so
+an assistant's upload there is refused with 401: the links work on the public site). `src/core/geodata/fcpa-closures.json` and `routemaker.fcpa` (read by
 the api; `scripts/fcpa_alerts.py` is run by hand, "Fairfax park trail closures"). The api and the
-front end change together: the new front end sends Bikeshare and Rebalance plans with stops and a
-Rebalance plan with no destination, which the v0.21.x api refuses (422), so the front end goes up
-only after the api, as always. **No `src/pipeline/`, `lua/`, `valhalla/*.json`, compose, Caddyfile,
+front end change together: the new front end sends Bikeshare plans with stops and a
+Rebalance plan with no destination, which the v0.21.x api refuses (400), so the front end goes up
+only after the api, as always. The other way round is safe: a v0.21.x page still open, a link or a
+saved Rebalance plan with a destination is planned by the new api from its start alone. **No `src/pipeline/`, `lua/`, `valhalla/*.json`, compose, Caddyfile,
 nginx, Dockerfile, requirements or `mobile/` change, no tile `FORMAT_VERSION` change, no new
 environment variable, scheduled job or outbound host for the stack, and no map rebuild** (the trail
 levels come from the live map's `mtb_level`). The routers need no restart, and the pipeline image
@@ -7449,15 +7453,16 @@ At home, in order, with `</dev/null` on every docker command:
   the front end, `smoke-test.sh --local --trails` then `--public`), with the rebuilt transit
   schedule's `transit` part if it is ready. The agent changed since v0.20.0:
   `mark-deployed v0.22.0`, then `scripts/beta/auto-release.sh install`, then `resume`.
-- [ ] **Spot checks.** Load route: tag a saved route, Archive another; it leaves the list and comes
-  back from Archive. Rebalance Ride in Go plans from your location to the nearest crowded dock with no
+- [ ] **Spot checks.** Tag a saved route (Save, or My routes > More > Tags); in Load route, filter
+  by that tag, then Archive another: it leaves the list, Undo brings it back, and it is under
+  Archived. Rebalance Ride in Go plans from your location to the nearest crowded dock with no
   destination asked; at that dock the card offers up to 3 drop-off docks, and the end screen shows
   "Today's Rebalance Rides". A Bikeshare plan with one stop shows two trips. A ride on a
   mountain-bike trail (Patapsco, Rosaryville) colours the ribbon and the route line by the trail's
-  level. End a ride and press Resume within 2 hours: the same ride, its figures kept. Zoomed out
-  below 12, no route shields or area closures. Lake Accotink's Cross County Trail bridge is red on
-  the map while its alert runs. On a Featured route draft, an assistant's photo goes up by its link
-  and keeps its place on the map.
+  level. Mid-ride, switch to another app and come back within 2 hours, press Resume: the same ride
+  carries on, its figures kept, with no "Already done?". Zoomed out below 12, no route shields or
+  area closures. On the public site, on a Featured route draft, an assistant's photo goes up by its
+  link and keeps where it was taken ("Where it was taken" under it).
 - [ ] **Rollback.** The `pre-rel` api image (`--force-recreate api worker`) and the v0.21.2 front end.
   Migrations 0057 and 0058 only add columns with defaults or nulls: the v0.21.2 api ignores them,
   so the database stays migrated (tags and archive marks made meanwhile are kept, unseen). On the

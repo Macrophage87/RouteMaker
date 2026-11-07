@@ -311,7 +311,7 @@ export interface DescriptionEntry {
     across?: string | null;
     /**
      * With `across`: the turn made off a way alongside that road to cross it ("left" or "right"; the owner,
-     * 2026-11-07, at West Basin Drive: "Left across road then right"), drawn on the ride card.
+     * at West Basin Drive: "Left across road then right"), drawn on the ride card.
      */
     across_from?: "left" | "right" | null;
     /**

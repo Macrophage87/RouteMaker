@@ -89,13 +89,16 @@ export function LoadRouteDialog({ open, onClose, signedIn, signIn, preset, onGpx
   const changes = useRef(new Map<number, number>());
   const undoRef = useRef<HTMLButtonElement>(null);
   const listEnd = useRef<HTMLButtonElement>(null);
+  const archivedLinkRef = useRef<HTMLButtonElement>(null);
   // Where the focus goes once the pressed control has left: Undo after Archive, Back after Restore in Archived, and
   // the route's own Archive again after Undo.
-  const [refocus, setRefocus] = useState<"undo" | "back" | number | null>(null);
+  // Undo's own time running out while it has the focus sends it to the Archived link, never the page (review).
+  const [refocus, setRefocus] = useState<"undo" | "back" | "archived" | number | null>(null);
   useEffect(() => {
     if (refocus === null) return;
     if (refocus === "undo") undoRef.current?.focus();
     else if (refocus === "back") listEnd.current?.focus();
+    else if (refocus === "archived") archivedLinkRef.current?.focus();
     else dialogRef.current?.querySelector<HTMLElement>(`[data-route="${refocus}"] .load-route-archive`)?.focus();
     setRefocus(null);
   }, [refocus]);
@@ -171,7 +174,11 @@ export function LoadRouteDialog({ open, onClose, signedIn, signIn, preset, onGpx
     replaceSaved({ ...before, archived_at: archived ? new Date().toISOString() : null, replaced_by: archived ? before.replaced_by : null });
     window.clearTimeout(undoTimer.current);
     setUndo(archived ? { id: row.id, name: row.name } : null);
-    if (archived) undoTimer.current = window.setTimeout(() => setUndo(null), UNDO_MS);
+    if (archived)
+      undoTimer.current = window.setTimeout(() => {
+        if (undoRef.current && document.activeElement === undoRef.current) setRefocus("archived");
+        setUndo(null);
+      }, UNDO_MS);
     setSaid(archived ? "" : t("Restored {name}.", { name: row.name }));
     const turn = (changes.current.get(row.id) ?? 0) + 1;
     changes.current.set(row.id, turn);
@@ -358,7 +365,7 @@ export function LoadRouteDialog({ open, onClose, signedIn, signIn, preset, onGpx
             </ul>
           )}
           {!archivedView && archivedCount > 0 && (
-            <button type="button" className="link load-route-archived" onClick={() => setArchivedView(true)}>
+            <button type="button" className="link load-route-archived" ref={archivedLinkRef} onClick={() => setArchivedView(true)}>
               {archivedLink(archivedCount)}
             </button>
           )}

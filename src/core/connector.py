@@ -939,8 +939,8 @@ If you allow it, it can:</p>
 <li>tag, archive or restore your saved routes, when you ask it to (a full account makes room
 by deleting the route archived longest)</li>
 {posts}</ul>
-<p>It can't rename, re-save or delete your saved routes, sign in to the site as you, or change
-anything else.</p>
+<p>It can't rename or re-save your saved routes, delete one in any other way, sign in to the
+site as you, or change anything else.</p>
 <p>After you answer you'll go back to <strong>{host}</strong>.</p>
 <form method="post" action="/oauth/authorize">
 <input type="hidden" name="csrfmiddlewaretoken" value="{csrf}">

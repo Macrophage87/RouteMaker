@@ -7,6 +7,7 @@ fixtures, through `core.gbfs.Gbfs`'s fetch). Nothing is fetched and nothing is s
 
 from __future__ import annotations
 
+import copy
 import re
 from pathlib import Path
 
@@ -397,6 +398,31 @@ class TestBikeshareStops:
         assert plan["later"] == []
         assert plan["trip_total_s"] is None
         assert "trip from stop 1 could not be planned just now" in plan["later_note"]
+
+    def test_the_way_round_an_avoid_junction_keeps_the_later_trips(
+        self, client, world, monkeypatch
+    ) -> None:
+        stop = [-77.0365, 38.8977]
+        planned = bikeshare.plan
+
+        def with_a_way_round(start, end, *args, **kwargs):
+            found = planned(start, end, *args, **kwargs)
+            if list(start) == UNION:
+                around = {
+                    **copy.deepcopy(found),
+                    "extra_distance_m": 120.0,
+                    "extra_duration_s": 30.0,
+                }
+                found["avoid_alternate"] = around
+            return found
+
+        monkeypatch.setattr(bikeshare, "plan", with_a_way_round)
+        data = post(client, body(points=[UNION, stop, DUPONT])).json()
+        plan, around = data["bikeshare"], data["avoid_alternate"]["bikeshare"]
+        assert len(plan["later"]) == 1
+        assert around["later"] == plan["later"] and around["later_note"] is None
+        assert around["options"] == []
+        assert around["trip_total_s"] == round(around["total_s"] + plan["later"][0]["total_s"], 1)
 
     def test_a_trip_with_stops_has_no_route_options_of_the_whole(self, client, world) -> None:
         stop = [-77.0365, 38.8977]

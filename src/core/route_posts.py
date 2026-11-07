@@ -85,8 +85,9 @@ WAHOO_LABEL = "Send to Wahoo"
 THUMBNAIL_LABEL = "Use this map as the link picture"
 PHOTO_ADD_LABEL = "Add photo"
 PHOTO_NOTE = (
-    "Your browser makes each photo smaller and draws it again before sending it, so it keeps no "
-    "location, date or camera details. Change or remove photos in the admin."
+    "Your browser makes each photo smaller before sending it. Where it was taken is kept and shown "
+    "with it, except near your Home; its date and camera details are not. Change or remove photos "
+    "in the admin."
 )
 ABOUT_HEADING = "About this ride"
 

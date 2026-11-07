@@ -319,11 +319,19 @@ class TestRebalanceApi:
             ({"bike": "ebike", "ending": "outside_dock"}, "Rebalance Ride ends at a station"),
             ({"assist": True}, "assist applies to the Cargo Bike"),
             ({"loop": True}, "does not plan loops"),
-            ({"points": [UNION, DUPONT]}, "Rebalance Ride takes a start only"),
-            ({"points": [UNION, DUPONT, UNION]}, "Rebalance Ride takes a start only"),
         ],
     )
     def test_what_it_will_not_take(self, client, changes, message) -> None:
         response = post(client, {"points": [UNION], "preset": "rebalance", **changes})
         assert response.status_code == 400, response.content
         assert message in response.json()["error"]
+
+    @pytest.mark.parametrize("points", [[UNION, DUPONT], [UNION, DUPONT, UNION]])
+    def test_a_destination_from_an_older_page_is_dropped_and_it_plans_from_the_start(
+        self, client, points
+    ) -> None:
+        alone = post(client, {"points": [UNION], "preset": "rebalance"})
+        older = post(client, {"points": points, "preset": "rebalance"})
+        assert alone.status_code == 200, alone.content
+        assert older.status_code == 200, older.content
+        assert older.json()["bikeshare"] == alone.json()["bikeshare"]

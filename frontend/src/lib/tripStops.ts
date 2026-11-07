@@ -36,9 +36,13 @@ export function maxPointsFor(preset: PresetId): number {
   return stopsAsTrips(preset) ? MAX_TRIP_STOPS + 2 : MAX_POINTS;
 }
 
-/** Whether a route is a trip with stops. */
+/**
+ * Whether a route is a trip with stops. A Bikeshare trip whose later trips could not be planned now still has them
+ * (`later_note`): it is planned again at the stop.
+ */
 export function hasStops(route: Pick<RouteResponse, "transit" | "bikeshare">): boolean {
-  return (route.transit?.stop_steps?.length ?? 0) > 0 || (route.bikeshare?.later?.length ?? 0) > 0;
+  const share = route.bikeshare;
+  return (route.transit?.stop_steps?.length ?? 0) > 0 || (share?.later?.length ?? 0) > 0 || Boolean(share?.later_note);
 }
 
 /**
@@ -47,7 +51,8 @@ export function hasStops(route: Pick<RouteResponse, "transit" | "bikeshare">): b
  */
 export function firstTripOf(route: RouteResponse): RouteResponse {
   // A Bikeshare trip's body is its first trip already: only the later ones go.
-  if (route.bikeshare?.later?.length) return { ...route, bikeshare: { ...route.bikeshare, later: [], trip_total_s: null } };
+  const share = route.bikeshare;
+  if (share?.later?.length || share?.later_note) return { ...route, bikeshare: { ...share, later: [], later_note: null, trip_total_s: null } };
   const plan = route.transit;
   const end = plan?.stop_steps?.[0];
   if (!plan || end === undefined) return route;

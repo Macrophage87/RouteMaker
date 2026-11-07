@@ -52,6 +52,16 @@ test("a Bikeshare trip with stops is its first trip already: only the later ones
   assert.equal(firstTripOf(plain), plain);
 });
 
+test("a Bikeshare trip whose later trips could not be planned now keeps its stops, planned again at the stop", () => {
+  const note = "The trip from stop 1 is planned when you get there.";
+  const share = { transit: null, bikeshare: { total_s: 500, later: [], later_note: note, trip_total_s: null } } as unknown as RouteResponse;
+  assert.equal(hasStops(share), true);
+  assert.deepEqual(stopsLeftOf(share, [A, STOP, END], "bikeshare"), { preset: "bikeshare", points: [STOP, END] });
+  const first = firstTripOf(share);
+  assert.equal(hasStops(first), false);
+  assert.equal(first.bikeshare?.later_note, null);
+});
+
 test("the first trip is its steps to the first stop, its own key and its own time", () => {
   const steps = [step("walk", 300, 0), step("metro", 600, 120), step("walk", 200, 0, "stop 1"), step("walk", 400)];
   const joined = route(plan(steps, [3]));
