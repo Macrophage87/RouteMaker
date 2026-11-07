@@ -543,25 +543,63 @@ function CueShape({ shape, junction, exit, jog }: { shape: ReturnType<typeof arr
     bear_right: "M18 52 V30 L34 14 M22 14 H34 V26",
     uturn: "M32 52 V22 A10 10 0 0 0 12 22 V38 M4 30 L12 40 L20 30",
     straight: "M24 52 V10 M14 20 L24 10 L34 20",
-    // Across the road drawn between ROAD_EDGES, then the turn on its far side.
-    cross: "M24 52 V10 M14 20 L24 10 L34 20",
-    cross_left: "M32 52 V12 H10 M18 4 L10 12 L18 20",
-    cross_right: "M16 52 V12 H38 M30 4 L38 12 L30 20",
+    // Across the road (CrossRoad), then the turn along the path on its far side.
+    cross: "M24 52 V8 M15 17 L24 8 L33 17",
+    cross_left: "M30 52 V18 H8 M15 11 L8 18 L15 25",
+    cross_right: "M18 52 V18 H40 M33 11 L40 18 L33 25",
+    // Off a way alongside the road (AlongRoad), over it, then the turn on its far side: back along it, or on ahead.
+    along_left: "M38 52 V28 H7 M14 21 L7 28 L14 35",
+    along_left_left: "M38 52 V14 H9 V46 M3 40 L9 46 L15 40",
+    along_left_right: "M38 52 V32 H9 V8 M3 14 L9 8 L15 14",
+    along_right: "M10 52 V28 H41 M34 21 L41 28 L34 35",
+    along_right_right: "M10 52 V14 H39 V46 M45 40 L39 46 L33 40",
+    along_right_left: "M10 52 V32 H39 V8 M45 14 L39 8 L33 14",
     stop: "M14 10 V52 M14 12 H38 L32 20 L38 28 H14",
     end: "M14 10 V52 M14 12 H38 V28 H14 M26 12 V28 M14 20 H38",
     warn: "M24 8 L44 46 H4 Z M24 20 V32 M24 38 V40",
   };
   const across = shape === "cross" || shape === "cross_left" || shape === "cross_right";
+  const along = shape.startsWith("along_left") ? "left" : shape.startsWith("along_right") ? "right" : null;
   return (
     <svg className="cue-shape" viewBox="0 0 48 56" aria-hidden="true" focusable="false">
-      {across ? <path d={ROAD_EDGES} fill="none" stroke="currentColor" strokeWidth="1.5" /> : null}
+      {across ? <CrossRoad turn={shape !== "cross"} /> : null}
+      {along ? <AlongRoad side={along} /> : null}
       <path d={paths[shape]} fill="none" stroke="currentColor" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
 
-/** The road a "cross" arrow goes over: its two edges, thin, across the arrow's stem below the turn. */
-const ROAD_EDGES = "M4 26 H44 M4 40 H44";
+/**
+ * The road a "cross" arrow goes over, drawn so it reads as a road (the owner, 2026-11-07: two thin lines were
+ * "not descriptive enough"): a shaded band with its edges and a dashed centre line. With a turn after it, the
+ * path turned onto is dotted along the far side, so the arrow is seen joining it.
+ */
+function CrossRoad({ turn }: { turn: boolean }) {
+  return (
+    <g className="cue-cross-road">
+      <rect x="1" y="30" width="46" height="14" fill="currentColor" opacity="0.22" />
+      <path d="M1 30 H47 M1 44 H47" fill="none" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M1 37 H47" fill="none" stroke="currentColor" strokeWidth="1.5" strokeDasharray="4 3" />
+      {turn ? <path d="M1 18 H47" fill="none" stroke="currentColor" strokeWidth="2" strokeDasharray="0.1 4" strokeLinecap="round" /> : null}
+    </g>
+  );
+}
+
+/**
+ * The road an "along" arrow turns over: one running alongside the way the rider was on, on the side turned to (the
+ * owner, 2026-11-07, at West Basin Drive: "Left across road then right"), shaded with its edges and centre line as
+ * CrossRoad's.
+ */
+function AlongRoad({ side }: { side: "left" | "right" }) {
+  const x = side === "left" ? 16 : 18;
+  return (
+    <g className="cue-along-road">
+      <rect x={x} y="1" width="14" height="54" fill="currentColor" opacity="0.22" />
+      <path d={`M${x} 1 V55 M${x + 14} 1 V55`} fill="none" stroke="currentColor" strokeWidth="1.5" />
+      <path d={`M${x + 7} 1 V55`} fill="none" stroke="currentColor" strokeWidth="1.5" strokeDasharray="4 3" />
+    </g>
+  );
+}
 
 /**
  * End ride as a slide (the owner, 2026-10-19), so a bump while riding does not end it: a range from 0 to
