@@ -150,6 +150,33 @@ def _inside(lon: float, lat: float) -> bool:
     return west <= lon <= east and south <= lat <= north
 
 
+def clean_tags(tags) -> tuple[list[str] | None, str | None]:
+    """A saved route's tags as kept (core.models.SavedRoute.tags): each trimmed, with runs of
+    spaces made one, the same tag twice (by case) kept once as first written, empty ones dropped.
+    (tags, None), or (None, why) for a list that is not one."""
+    from .models import SavedRoute
+
+    if not isinstance(tags, list):
+        return None, "Send the tags as a list of words."
+    out: list[str] = []
+    seen: set[str] = set()
+    for tag in tags:
+        if not isinstance(tag, str):
+            return None, "Each tag is a word or a few."
+        tag = " ".join(tag.split())
+        if not tag:
+            continue
+        if len(tag) > SavedRoute.TAG_MAX:
+            return None, f"Keep each tag to {SavedRoute.TAG_MAX} characters."
+        if tag.casefold() in seen:
+            continue
+        seen.add(tag.casefold())
+        out.append(tag)
+    if len(out) > SavedRoute.TAGS_MAX:
+        return None, f"A route keeps at most {SavedRoute.TAGS_MAX} tags."
+    return out, None
+
+
 def line_problem(line) -> str | None:
     """Why a line cannot be kept, or None. A vertex is [lon, lat] or [lon, lat, elevation]."""
     if not isinstance(line, list) or len(line) < 2:

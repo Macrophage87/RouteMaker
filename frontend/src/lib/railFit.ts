@@ -11,7 +11,7 @@
  * The choice is plain arithmetic on the rail's height and its buttons, so it is tested without a DOM; useRailFit
  * measures and keeps it current (Ride mode and Roam).
  */
-import { useLayoutEffect, useState, type RefObject } from "react";
+import { useLayoutEffect, useRef, useState, type RefObject } from "react";
 
 /** "under": round buttons with their words under them (none with icons only); "pill": 44 px pills, the word beside the
  * icon (44 px circles with icons only). */
@@ -46,6 +46,17 @@ export function railLeastPx(buttons: number): number {
   return buttons <= 0 ? 0 : buttons * PILL_PX + (buttons - 1) * GAP_PX;
 }
 
+/**
+ * How many of the last-resort buttons move into More (v0.22.0; a Mass Ride with Large text at 360x640 had its top
+ * buttons squeezed to 28 px and Locate under Send alert; Stephen 2026-11-07: "Into More: Text, then Share live"): none
+ * while the rail's `buttons` (counting any moved already) fit as pills in `available` px, else the fewest of the
+ * `movable` that make the rest fit, or all of them where none does.
+ */
+export function railMoves(available: number, buttons: number, movable: number): number {
+  for (let moved = 0; moved < movable; moved++) if (railLeastPx(buttons - moved) <= available) return moved;
+  return Math.max(0, movable);
+}
+
 /** A box on the screen, as getBoundingClientRect gives it. */
 export interface Box {
   top: number;
@@ -67,8 +78,18 @@ export function barOverlap(rail: Box, bar: Box | null): number {
 
 /** The rail's fit, measured again as its height changes (Large text, the bottom panel) and as buttons come and go. */
 export function useRailFit(rail: RefObject<HTMLElement | null>, iconsOnly = false): RailFit {
+  return useRailFitMoves(rail, iconsOnly, 0).fit;
+}
+
+/** The rail's fit, and how many of its `movable` last-resort buttons are in More for want of room (railMoves): those
+ * are counted with the rail's own, so moving them does not bring them straight back. */
+export function useRailFitMoves(rail: RefObject<HTMLElement | null>, iconsOnly: boolean, movable: number): { fit: RailFit; moved: number } {
   const [fit, setFit] = useState<RailFit>("under");
+  const [moved, setMoved] = useState(0);
+  const movedNow = useRef(0);
   useLayoutEffect(() => {
+    // Fewer can move now (Share live gone): no more counted as moved than can be.
+    movedNow.current = Math.min(movedNow.current, movable);
     const element = rail.current;
     if (!element) return;
     const resized = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => measure());
@@ -90,7 +111,12 @@ export function useRailFit(rail: RefObject<HTMLElement | null>, iconsOnly = fals
         clear = Math.max(clear, barOverlap(box, bar.getBoundingClientRect()));
       }
       element.style.paddingTop = clear > 0 ? `${clear}px` : "";
-      setFit(railFit(element.clientHeight - clear, items.length, large, iconsOnly));
+      const available = element.clientHeight - clear;
+      const buttons = items.length + movedNow.current;
+      const fitNow = railFit(available, buttons, large, iconsOnly);
+      setFit(fitNow);
+      movedNow.current = fitNow === "pill" ? railMoves(available, buttons, movable) : 0;
+      setMoved(movedNow.current);
     };
     measure();
     resized?.observe(element);
@@ -108,11 +134,17 @@ export function useRailFit(rail: RefObject<HTMLElement | null>, iconsOnly = fals
     barsChanged?.observe(element.closest(".app") ?? document.body, { childList: true, subtree: true });
     const changed = typeof MutationObserver === "undefined" ? null : new MutationObserver(measure);
     changed?.observe(element, { childList: true });
+    // The bars sit under the ride's card by a property on the page (--ride-card-bottom), so a card that grows (Large
+    // text) moves them without resizing them: measured again when that property is set (v0.22.0).
+    const app = element.closest(".app");
+    const cardMoved = typeof MutationObserver === "undefined" || !app ? null : new MutationObserver(measure);
+    cardMoved?.observe(app!, { attributes: true, attributeFilter: ["style"] });
     return () => {
       resized?.disconnect();
       changed?.disconnect();
+      cardMoved?.disconnect();
       barsChanged?.disconnect();
     };
-  }, [rail, iconsOnly]);
-  return fit;
+  }, [rail, iconsOnly, movable]);
+  return { fit, moved };
 }
