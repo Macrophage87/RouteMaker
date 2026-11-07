@@ -142,7 +142,12 @@ def test_the_steps_say_crowded_and_needs_bikes_and_no_points() -> None:
     body, _, _ = rebalance(UNION)
     plan = body["bikeshare"]
     assert ", which is crowded, take a classic bike" in plan["steps"][0]["text"]
-    assert ", which needs bikes (" in plan["steps"][1]["text"]
+    # The drop-off is chosen at the pick-up dock (2026-11-07): the plan's is said as for now.
+    assert plan["steps"][1]["text"].startswith(
+        "Then choose where to dock, from the counts at the dock."
+    )
+    assert "nearest that needs bikes is " in plan["steps"][1]["text"]
+    assert plan["endings"][0]["text"].startswith("End at a dock that needs bikes, chosen at ")
     assert plan["summary"].startswith("Rebalance Ride, classic bike: about ")
     said = " ".join([plan["summary"], *plan["notes"]]).lower()
     assert "point" not in said and "angel" not in said
@@ -215,7 +220,7 @@ def test_chosen_stations_that_fit_are_taken_and_said() -> None:
     assert plan["start"]["station_id"] == start.station_id
     assert plan["end"]["station_id"] == end.station_id
     assert f"{start.name}, which is crowded" in plan["steps"][0]["text"]
-    assert f"{end.name}, which needs bikes" in plan["steps"][1]["text"]
+    assert f"needs bikes is {end.name}," in plan["steps"][1]["text"]
 
 
 def test_crowded_and_needy_stations_side_by_side_are_said_as_rebalance() -> None:

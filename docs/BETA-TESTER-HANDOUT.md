@@ -255,8 +255,9 @@ method" have the same groups. Typing "transit",
   Each leg is planned as its own trip, leaving as the one before arrives. The ride follows one trip at
   a time. At each stop, "Start the next leg" plans the rest again from where you are, leaving then.
   On Bikeshare you return the bike at each stop, and the next trip's docks are chosen again there.
-- Rebalance Ride has no destination: it plans from where you are to the nearest crowded station,
-  then rides to the nearest one that needs bikes, where the ride ends. The end screen shows the
+- Rebalance Ride has no destination: it walks you from where you are to the nearest crowded
+  station. Once you are there, it lists up to 3 docks that need bikes right then, and rides you to
+  the one you pick, where the ride ends. The end screen shows the
   day's trips, walking and riding (kept on your phone only), with "Do another trip" (planned from
   where you docked) and "Finish session".
 - Avoid stairs on walks (Settings, Riding, and the ride settings of Walk and Walk + 🚆🚌) keeps the

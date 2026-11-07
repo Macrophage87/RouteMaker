@@ -1292,7 +1292,8 @@ def test_rebalance_plans_from_a_start_alone() -> None:
 
 def test_plan_route_takes_a_rebalance_rides_start_alone(tools, stand_in) -> None:
     """The schema lets one point through for rebalance, and the whole tool answers it."""
-    schema = next(t for t in rpc(tools, "tools/list")["result"]["tools"] if t["name"] == "plan_route")
+    listed = rpc(tools, "tools/list")["result"]["tools"]
+    schema = next(t for t in listed if t["name"] == "plan_route")
     assert schema["inputSchema"]["properties"]["points"]["minItems"] == 1
     out = tools.call("plan_route", {"points": ["Union Market"], "preset": "rebalance"})
     sent = StandIn.routes[-1]

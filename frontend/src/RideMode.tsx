@@ -54,7 +54,7 @@ import {
   onOtherLine,
   withClosed,
 } from "./lib/roadClosed.ts";
-import { requestRoute, type ErrorKind, type RouteResponse } from "./lib/api.ts";
+import { requestRoute, requestStations, type ErrorKind, type RouteResponse } from "./lib/api.ts";
 import { VIA_MARKS, drawnLegs, plannedStopNumbers, stopNames, viaIndices, type RideStopMark } from "./lib/pointKinds.ts";
 import {
   SKIP_STOP,
@@ -285,6 +285,8 @@ import type { SeeEveryone } from "./app/useSeeEveryone.ts";
 import { SeeEveryoneButton } from "./SeeEveryoneButton.tsx";
 import { AheadGraph, aheadLeastPx } from "./AheadGraph.tsx";
 import { ContrastRow, ThemeSetting, UnitsSetting } from "./DisplaySettings.tsx";
+import { RebalanceDockCard, type DockAsk } from "./RebalanceDockCard.tsx";
+import { DOCK_FINDING, DOCK_NONE_NEEDS, DOCK_ROUTE_FAILED, dockChoices, dockChosenSaid, dockReachedSaid, dockRouting, type DockChoice } from "./lib/rebalanceDock.ts";
 import { AHEAD_NAME, AHEAD_WORD, aheadNoRoom, aheadOff, aheadOn, aheadViews, readAhead, writeAhead, RIDER_OFF_ROUTE_M, RIDERS_REACH_M, type AheadView } from "./lib/aheadGraph.ts";
 
 /** The bottom panel's padding and top edge (styles.css .ride-controls), and the graph's margin under it. */
@@ -793,7 +795,7 @@ export function RideMode({
   trailMiles = null,
   geoEnv,
   keepLastRide = false,
-  trip = null,
+  trip: plannedTrip = null,
   resumedPast = null,
   onRideRest,
   onTripCheck,
@@ -834,7 +836,8 @@ export function RideMode({
   /** A Detour row's Show on map: the map frames the place and the rider (following is off until Where am I? or 30 s idle). */
   onShowPlace?: (point: LonLat) => void;
   /** End ride: with the plan the ride leaves (part way, from here; lib/navigate.ts planAfterEnd) and the ride's figures. */
-  onEnd: (after: EndedPlan, stats: RideStats) => void;
+  /** `dock`: a Rebalance Ride's drop-off, chosen at the pick-up dock (lib/rebalanceDock.ts), where it was. */
+  onEnd: (after: EndedPlan, stats: RideStats, dock?: string | null) => void;
   /** Undo after End ride: the ended ride's figures, to carry on from. */
   resumeStats?: RideStats | null;
   /** The water layer's points, loaded if they are not yet (App's ensureWater); for the detours. */
@@ -932,6 +935,16 @@ export function RideMode({
    *  rider's arrow above it (MapView ridePanelH). */
   onSheetHeight?: (px: number) => void;
 }) {
+  // A Rebalance Ride (lib/rebalanceDock.ts): at the crowded dock it holds and asks where to dock, then rides there.
+  const rebalance = plannedRoute.preset === "rebalance";
+  const [trip, setTrip] = useState<RideTrip | null>(() =>
+    rebalance && plannedTrip?.approach?.name ? { ...plannedTrip, approach: { ...plannedTrip.approach, reached: dockReachedSaid(plannedTrip.approach.name) } } : plannedTrip,
+  );
+  const [docking, setDocking] = useState<DockAsk | null>(null);
+  const dockingRef = useRef<DockAsk | null>(null);
+  dockingRef.current = docking;
+  // The drop-off chosen there, for the summary.
+  const dockChosen = useRef<string | null>(null);
   const [route, setRoute] = useState(plannedRoute);
   const routeRef = useRef(route);
   // The rider's route has ridden a dirt trail on a ride type that skips them (the owner, 2026-10-21: "If someone
@@ -1892,6 +1905,13 @@ export function RideMode({
       else if (startWas && !toStartAsking.current && fix.accuracyM <= POOR_FIX_M && haversineM(fix.point, startWas) <= START_NEAR_M) {
         startReachedRef.current();
       }
+      // Choosing where to dock (a Rebalance Ride at its crowded dock): the marker only moves until a dock is chosen.
+      if (dockingRef.current) {
+        const held = { ...rideRef.current, fix, goodFix: fix.accuracyM <= POOR_FIX_M ? fix : rideRef.current.goodFix };
+        rideRef.current = held;
+        setRide(held);
+        return;
+      }
       if (toStartAsking.current) {
         const held = { ...rideRef.current, fix };
         rideRef.current = held;
@@ -1917,6 +1937,7 @@ export function RideMode({
       if (wasWalking && !stepped.state.walking) {
         setWalking(false);
         if (trip?.shareBike) setUndockAt(Date.now());
+        if (rebalance && approach) askDocksRef.current(approach.at);
       }
       stepDockRef.current(fix);
       const out = { state: stepped.state.ride, events: stepped.events };
@@ -2349,6 +2370,61 @@ export function RideMode({
       if (said && !ended.current) answer(said);
     });
   };
+  // A Rebalance Ride at its crowded dock: the docks that need bikes now, from there (lib/rebalanceDock.ts).
+  const askDocks = async (at: LonLat) => {
+    const planned = routeRef.current.bikeshare?.end ?? null;
+    const fallback = planned ? { name: planned.name, point: [planned.lon, planned.lat] as LonLat } : null;
+    const asking: DockAsk = { at, phase: "finding", choices: [], note: DOCK_FINDING, planned: fallback };
+    dockingRef.current = asking;
+    setDocking(asking);
+    const result = await requestStations(at, "dropoff");
+    if (ended.current || dockingRef.current?.at !== at) return;
+    const choices = result.ok ? dockChoices(result.answer.stations, at, approach?.name ?? null) : [];
+    const note = result.ok ? (choices.length ? "" : DOCK_NONE_NEEDS) : result.message;
+    const listed: DockAsk = { ...asking, phase: "list", choices, note };
+    dockingRef.current = listed;
+    setDocking(listed);
+    if (note) notify(note);
+  };
+  const askDocksRef = useRef(askDocks);
+  askDocksRef.current = askDocks;
+  // A dock chosen: the ride from the crowded dock to it, which ends there (the plan's own line where it is the planned one).
+  const chooseDock = async (choice: Pick<DockChoice, "name" | "point">, asPlanned = false) => {
+    const asking = dockingRef.current;
+    if (!asking || asking.phase === "routing") return;
+    const take = (found: RouteResponse | null, points: LonLat[]) => {
+      if (found) {
+        plan.current = { points, loop: false };
+        modelRef.current = modelOf(found, points);
+        setRoute(found);
+        otherRef.current = null;
+        setOther(null);
+      }
+      const dock = t("Dock at {place}.", { place: choice.name });
+      setTrip((was) => (was ? { ...was, finish: { shown: dock, spoken: dock } } : was));
+      dockChosen.current = choice.name;
+      const fresh = { ...startState(), fix: rideRef.current.fix, goodFix: rideRef.current.goodFix };
+      rideRef.current = fresh;
+      setRide(fresh);
+      // The time spent choosing is not riding.
+      statsRef.current = statsPause(statsRef.current);
+      dockingRef.current = null;
+      setDocking(null);
+      notify(dockChosenSaid(choice.name));
+    };
+    if (asPlanned) return take(null, plan.current.points);
+    const routing: DockAsk = { ...asking, phase: "routing", note: dockRouting(choice.name) };
+    dockingRef.current = routing;
+    setDocking(routing);
+    const points: LonLat[] = [asking.at, choice.point];
+    const result = await askRoute(points, null, false);
+    if (ended.current || dockingRef.current !== routing) return;
+    if (result.ok) return take(result.route, points);
+    const back: DockAsk = { ...asking, phase: "list", note: DOCK_ROUTE_FAILED };
+    dockingRef.current = back;
+    setDocking(back);
+    notify(DOCK_ROUTE_FAILED);
+  };
   const end = () => {
     ended.current = true;
     stopWatch.current?.();
@@ -2358,7 +2434,7 @@ export function RideMode({
     // Only "Ride ended." is said; the figures are on the summary (the owner, 2026-10-20: "Just put ride ended.").
     if (toVoice(prefsRef.current.output)) rideVoice.speak(RIDE_ENDED_SAID, true);
     // A Bikeshare or transit trip's riding leg is not the plan: the plan stays as it was.
-    onEnd(trip && !trip.asPlanned ? null : planAfterEnd(modelRef.current, rideRef.current, plan.current.points, plan.current.loop, Date.now()), statsRef.current);
+    onEnd(trip && !trip.asPlanned ? null : planAfterEnd(modelRef.current, rideRef.current, plan.current.points, plan.current.loop, Date.now()), statsRef.current, dockChosen.current);
   };
   // A toggle: pressed, no automatic re-plan (one in flight is voided) and the way back is said once;
   // pressed again, re-planning is back on.
@@ -2855,7 +2931,7 @@ export function RideMode({
   // A Rebalance Ride ends as the rider docks (Stephen, 2026-11-07: "When you dock, the ride ends, and you get a ride end
   // screen"): arrived at the dock, the summary comes up by itself, with Do another trip and Keep riding should it be early.
   useEffect(() => {
-    if (ride.arrived && !tripGoesOn && route.preset === "rebalance" && !ended.current) end();
+    if (ride.arrived && !tripGoesOn && rebalance && !ended.current) end();
   }, [ride.arrived]); // eslint-disable-line react-hooks/exhaustive-deps -- once, on arriving
   // Off the train (and any walk after it) with a ride still to go: Ride the rest starts by itself, once (Stephen,
   // 2026-11-03: "It should let you switch between modes"). Its button stays for a second try (closures said, no route).
@@ -3445,7 +3521,9 @@ export function RideMode({
             {light.shown.join(" · ")}
           </p>
         )}
-        {ride.arrived ? (
+        {docking ? (
+          <RebalanceDockCard ask={docking} onChoose={(choice) => void chooseDock(choice)} onPlanned={() => docking.planned && void chooseDock(docking.planned, true)} onRetry={() => void askDocks(docking.at)} />
+        ) : ride.arrived ? (
           <>
             {/* "Arrived: Union Station" (the UI review, 2026-10-28); Done, in the top row, opens the summary. */}
             {/* After the line (2026-11-02): a walk's next turn, or the train's stops once on board, in place of the boarding words. */}
@@ -3568,7 +3646,8 @@ export function RideMode({
             <IosLocationHelp notice={gps} />
           </>
         )}
-        {togo && !ride.arrived && (
+        {/* Choosing where to dock, the line drawn is only the plan's guess: no distance to its end. */}
+        {togo && !ride.arrived && !docking && (
           <dl className="ride-togo">
             {togo.stop && (
               <div>

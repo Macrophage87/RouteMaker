@@ -133,7 +133,7 @@ test("F1. Start unlocks the voice synchronously in the press, before the closure
 });
 
 test("Ride settings in reach: More at the end of the side buttons opens them just under the top row (the owner, 2026-10-18; More 2026-10-24)", () => {
-  const top = ride.slice(ride.indexOf("<div ref={topRef} className="), ride.indexOf("{ride.arrived ? (\n          <>"));
+  const top = ride.slice(ride.indexOf("<div ref={topRef} className="), ride.indexOf("{docking ? (\n          <RebalanceDockCard"));
   // The top row: End ride, then Road closed ahead (the owner, 2026-10-19: "switch end ride and road closed"); Settings is no longer there.
   assert.doesNotMatch(top, /RIDE_SETTINGS_TEXT/);
   assert.ok(top.indexOf("endName") > 0 && top.indexOf("endName") < top.indexOf("ROAD_CLOSED_NAME"));
@@ -229,7 +229,7 @@ test("End ride in Plan keeps the plan and its routes; part way it starts where t
   assert.match(endRide, /if \(endedIn !== "go" && after && after !== "no-fix" && after\.points\.length >= 2 && start\?\.route\.preset !== "rebalance"\) \{/);
   assert.match(endRide, /commit\(from, ride\.dials\.loop \? \{ \.\.\.ride, dials: \{ \.\.\.ride\.dials, loop: false \} \} : undefined\);/);
   // The ride's own fix (planAfterEnd), never a trip's riding leg; the ride's figures with it.
-  assert.match(ride, /onEnd\(trip && !trip\.asPlanned \? null : planAfterEnd\(modelRef\.current, rideRef\.current, plan\.current\.points, plan\.current\.loop, Date\.now\(\)\), statsRef\.current\);/);
+  assert.match(ride, /onEnd\(trip && !trip\.asPlanned \? null : planAfterEnd\(modelRef\.current, rideRef\.current, plan\.current\.points, plan\.current\.loop, Date\.now\(\)\), statsRef\.current, dockChosen\.current\);/);
   assert.match(app, /if \(ended\.from && pointsRef\.current === ended\.from\) edits\.retract\(\);/);
 });
 

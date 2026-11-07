@@ -272,7 +272,7 @@ test("the request sends the other end as toward, in the body, only when there is
 
 test("the component asks each list toward the other end and refetches when it moves", () => {
   assert.match(component, /toward=\{listToward\("pickup", points\)\}/);
-  assert.match(component, /toward=\{dropoffNear \? null : listToward\("dropoff", points\)\}/);
+  assert.match(component, /toward=\{listToward\("dropoff", points\)\}/);
   assert.match(component, /\[lon, lat, towardLon, towardLat, action, reload\]/);
   assert.match(component, /stationsLede\(action, directed\)/);
 });

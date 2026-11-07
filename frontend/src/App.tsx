@@ -3480,12 +3480,9 @@ export function App() {
     setStationPins({});
   };
   const chooseStation = (action: StationAction, station: NearbyStation | null, point: LonLat) => {
-    // A Rebalance Ride's drop-off list is near its start dock, not a point of the plan: its pin is held to the start
-    // (lib/stations.ts activePins).
-    const at = rideRef.current.preset === "rebalance" && pointsRef.current.length > 0 ? pointsRef.current[0] : point;
     setStationPins((pins) => ({
       ...pins,
-      [action]: station ? { id: station.station_id, name: station.name, at } : undefined,
+      [action]: station ? { id: station.station_id, name: station.name, at: point } : undefined,
     }));
     announce(chosenSaid(action, station));
   };
@@ -4724,7 +4721,7 @@ export function App() {
   } | null>(null);
   const rideNow = useRef({ start: rideStart, mode });
   rideNow.current = { start: rideStart, mode };
-  const endRide = useCallback((after: EndedPlan, stats: RideStats) => {
+  const endRide = useCallback((after: EndedPlan, stats: RideStats, dock?: string | null) => {
     const { start, mode: endedIn } = rideNow.current;
     // Past a trip's line, the walk or train followed (as kept for Resume), for Undo.
     const past = start?.whole ? leftRidePast() : null;
@@ -4769,7 +4766,7 @@ export function App() {
     const before = share ? readDay() : null;
     const rebalance =
       share && before
-        ? { day: recordTrip(tripOf(share, stats)), before, from: stats.last?.point ?? ([share.end.lon, share.end.lat] as LonLat), dock: share.end.name }
+        ? { day: recordTrip(tripOf(share, stats)), before, from: stats.last?.point ?? ([share.end.lon, share.end.lat] as LonLat), dock: dock ?? share.end.name }
         : null;
     setRideEnded((was) => ({ n: (was?.n ?? 0) + 1, stats, at: Date.now(), note, destination, rebalance }));
     // Said by the page's region, always mounted; the focus goes to Done (RideSummaryCard), not back to Start (review F6).
@@ -6368,7 +6365,7 @@ export function App() {
           onChoose={chooseStation}
           // A Rebalance Ride has no destination: the drop-off list is near the dock it starts from (Stephen,
           // 2026-11-07: "People should get around 3 options for start dock and end dock").
-          dropoffNear={preset === "rebalance" && shown?.bikeshare ? [shown.bikeshare.start.lon, shown.bikeshare.start.lat] : null}
+          startOnly={preset === "rebalance"}
         />
       </Fold>
     ) : null;
@@ -6431,8 +6428,8 @@ export function App() {
             loopVias
               ? "Back to the start"
               : preset === "rebalance"
-                ? // No destination: the dock the plan rides to, once planned (core/bikeshare.py).
-                  (shown?.bikeshare?.end.name ?? REBALANCE_ENDS_AT_DOCK)
+                ? // No destination: the dock is chosen at the pick-up dock, from the counts then (lib/rebalanceDock.ts).
+                  REBALANCE_ENDS_AT_DOCK
                 : goPlaceName(namer.name(points[points.length - 1])?.name, points[points.length - 1])
           }
           between={middleCountSaid(points, VIA_MARKS.isVia, loopVias)}

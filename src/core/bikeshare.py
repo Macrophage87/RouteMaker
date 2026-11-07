@@ -760,7 +760,16 @@ def _end_step(pick: Pick, ride_m: float, bike: str, rebalance: bool = False) -> 
         slots = t("availability unknown")
     else:
         slots = t("1 free slot") if st.docks == 1 else t("{n} free slots", n=st.docks)
-    needs = t(", which needs bikes") if rebalance else ""
+    if rebalance:
+        # The drop-off is chosen at the pick-up dock, from the counts then (frontend
+        # lib/rebalanceDock.ts): the plan's is the one that needs bikes now.
+        return t(
+            "Then choose where to dock, from the counts at the dock. "
+            "For now the nearest that needs bikes is {place}, {distance} away.",
+            place=pick.name,
+            distance=miles(ride_m),
+        )
+    needs = ""
     return t(
         "Ride {distance} to the dock at {place}{needs} ({slots}).",
         distance=miles(ride_m),
@@ -1041,7 +1050,7 @@ def plan(
                 f"End at the dock at {end.name}, then walk {miles(walk_end.distance_m)} to your "
                 "destination."
                 if not use_outside and walk_end
-                else f"End at the dock at {end.name}, which needs bikes."
+                else f"End at a dock that needs bikes, chosen at {start.name}; for now {end.name}."
                 if rebalance
                 else "End at the nearest dock with a free slot."
             ),

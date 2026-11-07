@@ -7904,8 +7904,9 @@ appears only in its description.
 - Always a dock at each end: no free-floating e-bike, no ending outside a dock (`ending:
   "outside_dock"` is refused). With no availability feed, or no crowded station, or none that
   needs bikes, the answer is 422 `no_bikeshare` saying which.
-- The steps say "which is crowded" and "which needs bikes"; the summary starts "Rebalance Ride";
-  `bikeshare.rebalance` is true.
+- The steps say "which is crowded", then "Then choose where to dock, from the counts at the dock.
+  For now the nearest that needs bikes is X": the plan's end is a guess, chosen again at the dock;
+  the summary starts "Rebalance Ride"; `bikeshare.rebalance` is true.
 - The ride leg is Bikeshare's (`core.presets` `REBALANCE`): stress 80 with the stress-averse
   exposure, classic hills -60 at 13 km/h (8 mph), e-bike hills -20 at 20 km/h (12 mph) on the
   e-bike graph, descents costed past 4%.
@@ -7914,8 +7915,17 @@ appears only in its description.
   `maxPointsFor` is 1 (a second point, or a Go search, says it has no destination), and choosing
   it drops an end and stops in one undoable edit. Go plans it from the location as Go opens, the
   ride type is chosen or the location is found, and moves that start with Go's later look-ups
-  until it is ridden. The station lists: pick-up near the start, drop-off near the plan's start
-  dock (both pins held to the start, `activePins`); Go's lettered options as on Bikeshare.
+  until it is ridden. The station list is pick-up only (`NearbyStations startOnly`; `activePins`
+  keeps the pick-up pin alone); Go's lettered options as on Bikeshare. The card's destination is
+  "The nearest dock that needs bikes".
+- The drop-off is chosen at the pick-up dock (Stephen, 2026-11-07: "When you start, find the
+  nearest full dock. When at that dock, then search for a destination", "Because in the interim,
+  bikes could be filled"): as the walk reaches the dock, Ride mode holds (fixes move the marker
+  only) and `RebalanceDockCard` stands in for the cue, from `POST /api/bikeshare/stations`
+  `dropoff` at the dock, live: up to 3 docks that need bikes, nearest first, never the pick-up
+  dock (`lib/rebalanceDock.ts`). The one chosen is ridden from the dock (one route request on the
+  ride's own ride type), its name the finish and the summary's; the time choosing is not ridden.
+  With no list (no signal, none needing bikes): Try again, or ride to the plan's own dock.
 - The ride ends by itself on arriving at the dock. Its summary (`RideSummaryCard`) shows "Today's
   Rebalance Rides" (`lib/rebalanceDay.ts`: trips, walking as planned, riding as ridden, total
   time; this device only, no place or time of day, from local midnight), counted as the ride ends
@@ -7923,7 +7933,7 @@ appears only in its description.
   where the ride ended, and "Finish session" is Done (Go then plans no next one by itself).
 - MCP: `plan_route` takes one point for `rebalance` (`minItems` 1).
 - Tests: `tests/test_rebalance.py`, `frontend/src/lib/rebalance.test.ts`,
-  `frontend/src/lib/rebalanceDay.test.ts`.
+  `frontend/src/lib/rebalanceDay.test.ts`, `frontend/src/lib/rebalanceDock.test.ts`.
 
 ## Avoid-rated junctions (FOLLOWUP-ISECT-AVOID, OWNER-DECISIONS 307-310, 335)
 
