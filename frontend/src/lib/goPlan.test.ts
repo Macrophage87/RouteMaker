@@ -220,7 +220,7 @@ test("Go's places are Home, Eat, Water and Restroom (Work only in Favorites); Ho
 
 test("Go's Where to? is the destination from the rider's location, in one edit, with the loop off; without a location it keeps the destination and asks for a start", () => {
   const routeGo = appFile.slice(appFile.indexOf("const routeGo = ("), appFile.indexOf("const routeGoRef"));
-  assert.match(routeGo, /commit\(\[start, \.\.\.vias, dest\], ride\.dials\.loop \? \{ \.\.\.ride, dials: \{ \.\.\.ride\.dials, loop: false \} \} : undefined\);/);
+  assert.match(routeGo, /commit\(ride\.preset === "rebalance" \? \[start\] : \[start, \.\.\.vias, dest\], ride\.dials\.loop \? \{ \.\.\.ride, dials: \{ \.\.\.ride\.dials, loop: false \} \} : undefined\);/);
   const goTo = appFile.slice(appFile.indexOf("const goTo = async"), appFile.indexOf("const goToPlace"));
   assert.match(goTo, /const action = goPickAction\(pointsRef\.current, goStartRef\.current\);/);
   // Never the destination alone (it would become the start), and never dropped while the location is found.
@@ -347,7 +347,7 @@ test("the 311 button shows anywhere on the route; its menu has the six problems 
 
 test("Large text: a side button and Settings' switch, one choice; it replaced Big text (the owner, 2026-10-20)", () => {
   // "It actually should have it's own button"; Big text went: "if you can fit the largest text in the half mode, then you're not gaining much".
-  assert.match(ride, /className="ride-round ride-text-size"\s+onClick=\{cycleText\}\s+aria-keyshortcuts="T"\s+aria-pressed=\{textSize === "large"\}\s+aria-label=\{RIDE_TEXT_BUTTON\}/);
+  assert.match(ride, /className="ride-round ride-text-size"\s+onClick=\{textInMore \? \(\) => fromMore\(cycleText\) : cycleText\}\s+aria-keyshortcuts="T"\s+aria-pressed=\{textSize === "large"\}\s+aria-label=\{RIDE_TEXT_BUTTON\}/);
   // The change is said, as Where am I? is.
   assert.match(ride, /announcer\.current\?\.answer\(said\);/);
   assert.doesNotMatch(ride, /BigTextField|ride-big/);
@@ -650,7 +650,7 @@ test("go start: a fix that stays rough is looked up again GO_ROUGH_TRIES times a
   // App asks these, and keeps the count they give.
   const rough = app.slice(app.indexOf("const roughTries"), app.indexOf("// A start typed into Go's start box"));
   assert.match(rough, /if \(was\.kind !== "here" \|\| !goRoughAgain\(was, before, roughTries\.current\)\) return;\s*roughTries\.current \+= 1;/);
-  assert.match(rough, /setGoStart\(goHereStart\(result\.fix\.point\)\);\s*roughTries\.current = goRoughTriesAfter\(roughTries\.current, result\.fix\.accuracyM\);/);
+  assert.match(rough, /setGoStart\(goHereStart\(result\.fix\.point\)\);\s*if \(rebalanceFollows\.current\(\)\) rebalanceFrom\.current\(result\.fix\.point\);\s*roughTries\.current = goRoughTriesAfter\(roughTries\.current, result\.fix\.accuracyM\);/);
   assert.match(rough, /const refresh = async \(\) => \{\s*roughTries\.current = 0;/, "the page back in view starts the count again");
 });
 
@@ -663,7 +663,7 @@ test("go start: Go looks a stale start up again when the page comes back into vi
   const rough = app.slice(app.indexOf("const roughTries"), app.indexOf("// A start typed into Go's start box"));
   assert.match(rough, /window\.setInterval\(\(\) => \{/);
   assert.match(rough, /return \(\) => window\.clearInterval\(tick\);/);
-  assert.match(rough, /const inGo = \(\) => modeRef\.current === "go" && !onBikeNow\.current && pointsRef\.current\.length === 0;/);
+  assert.match(rough, /const inGo = \(\) => modeRef\.current === "go" && !onBikeNow\.current && \(pointsRef\.current\.length === 0 \|\| rebalanceFollows\.current\(\)\);/);
   assert.match(rough, /if \(document\.visibilityState !== "visible" \|\| !inGo\(\) \|\| roughBusy\.current\) return;/);
   assert.match(rough, /if \(!inGo\(\) \|\| goStartRef\.current !== was\) return;/);
   assert.match(rough, /if \(goRough\(result\.fix\.accuracyM\) && result\.fix\.accuracyM >= before\) return;/);
