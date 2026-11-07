@@ -1412,6 +1412,9 @@ class _Turn:
     # The junction event where that road is crossed, said with the crossing; None where
     # there is none.
     across_event: object | None = None
+    # The turn the route makes off a way alongside that road to cross it ("left" or
+    # "right", `_far_side_turns`), drawn on the ride card; None where it goes straight on.
+    across_from: str | None = None
     # A turn onto an unnamed path that leads to a named one (`_toward`): that one's name,
     # said with the path ("Right onto the path to Rock Creek Trail"), the path itself
     # still unnamed ("path" on the map, in a report, in "Where am I?").
@@ -2034,10 +2037,14 @@ def _crossing(
     return None
 
 
-def _far_side_turns(atoms: list[Atom]) -> list[tuple[float, float, float, str]]:
+def _far_side_turns(atoms: list[Atom]) -> list[tuple[float, float, float, str, str | None]]:
     """Where a leg turns onto a path on the far side of a road it has just gone straight
     across (FAR_SIDE_M): (where the straight run to the turn begins, where the road is
-    crossed, where the route turns, "left" or "right"), in metres from the leg's start.
+    crossed, where the route turns, "left" or "right", and "left" or "right" where the
+    straight run begins with a turn past ALONG_TURN_DEG, else None), in metres from the
+    leg's start. That turn in is the route leaving a way alongside the road to cross it
+    (the owner, 2026-11-07, at West Basin Drive: "Left across road then right"), drawn so
+    on the ride card.
     The road is another way at a node of the route (`Atom.others`), a street a car may
     drive (FAR_SIDE_ROAD_USES), square to the route there (FAR_SIDE_SQUARE_DEG), off to
     the side turned to and running alongside the path turned onto
@@ -2056,7 +2063,7 @@ def _far_side_turns(atoms: list[Atom]) -> list[tuple[float, float, float, str]]:
             return atom.turn
         return turn_between(atoms[i - 1], atom) if i > 0 else None
 
-    found: list[tuple[float, float, float, str]] = []
+    found: list[tuple[float, float, float, str, str | None]] = []
     for j, atom in enumerate(atoms):
         if j == 0 or atom.others is None or atom.use not in PATH_USES or atom.roundabout:
             continue
@@ -2071,6 +2078,8 @@ def _far_side_turns(atoms: list[Atom]) -> list[tuple[float, float, float, str]]:
         last = atoms[j - 1].bearing
         crossed: float | None = None
         straight_from = at[j] - FAR_SIDE_M
+        # The bend the straight run begins with, clockwise positive.
+        into: float | None = None
         for k in range(j - 1, -1, -1):
             gap = at[j] - at[k]
             if gap > FAR_SIDE_M:
@@ -2080,12 +2089,14 @@ def _far_side_turns(atoms: list[Atom]) -> list[tuple[float, float, float, str]]:
             if last is not None and bearing is not None:
                 if abs(bearing - last) > FAR_SIDE_STRAIGHT_DEG:
                     straight_from = at[k + 1]
+                    into = _turn_deg(bearing, last)
                     break
             is_node = node.others is not None or node.turn is not None
             bent = bend(k) if is_node else None
             if bent is not None and abs(bent) > FAR_SIDE_STRAIGHT_DEG:
                 # The node bent at begins the straight run; it is not a part of it.
                 straight_from = at[k] + min(max(node.metres, 0.0), 1.0)
+                into = bent
                 break
             if (
                 crossed is not None
@@ -2116,6 +2127,11 @@ def _far_side_turns(atoms: list[Atom]) -> list[tuple[float, float, float, str]]:
                     crossed,
                     at[j],
                     "right" if turn > 0 else "left",
+                    None
+                    if into is None or not ALONG_TURN_DEG < abs(into) < HAIRPIN_DEG
+                    else "right"
+                    if into > 0
+                    else "left",
                 )
             )
     return found
@@ -2287,9 +2303,10 @@ def describe_both(
     runs: list[_Run] = []
     # The ways off circles, by the atom the way off begins with (`_circle_exits`).
     exits: dict[int, dict] = {}
-    # Turns onto a path across a road just crossed (`_far_side_turns`): (where the road
-    # is crossed, where the route turns, the side, the leg), in the pieces' measure.
-    far_side: list[tuple[float, float, float, str, int]] = []
+    # Turns onto a path across a road just crossed (`_far_side_turns`): (where the straight
+    # run begins, where the road is crossed, where the route turns, the side, the leg, the
+    # turn in off a way alongside or None), in the pieces' measure.
+    far_side: list[tuple[float, float, float, str, int, str | None]] = []
     leg_at = 0.0
     sections = _sections(legs, through)
     # The via points within a section: (its point's number, where, in the pieces' measure).
@@ -2328,8 +2345,8 @@ def describe_both(
         content, found = _circle_exits(content)
         exits.update(found)
         far_side.extend(
-            (leg_at + from_at, leg_at + cross_at, leg_at + turn_at, side, leg)
-            for from_at, cross_at, turn_at, side in _far_side_turns(content)
+            (leg_at + from_at, leg_at + cross_at, leg_at + turn_at, side, leg, into)
+            for from_at, cross_at, turn_at, side, into in _far_side_turns(content)
         )
         leg_start = leg_at
         leg_at += sum(atom.metres for atom in content if atom.metres > 0)
@@ -2476,7 +2493,7 @@ def describe_both(
         crossed_by[i] = (event, turn.shape)
         turn.cross = name
         turn.shape = None
-    for from_at, cross_at, turn_at, side, leg in far_side:
+    for from_at, cross_at, turn_at, side, leg, into in far_side:
         # The turn the stretch onto the path begins with: at the node turned at, or, where a
         # short piece across the road was folded into the path's stretch, where that begins:
         # never at or before a node the route bent at short of the road (`from_at`).
@@ -2501,6 +2518,7 @@ def describe_both(
         if turn.movement not in TURN_WORDS:
             turn.movement = side
         turn.across = _road_crossed(events, cross_at, runs[i])
+        turn.across_from = into
         turn.shape = None
         # The crossing's own junction is said with it ("Cross Saint Paul Street at a signal,
         # then right onto ...") rather than as an entry of its own; the turn's, if another,
@@ -2621,6 +2639,7 @@ def describe_both(
                         **({"exit": turn.exit} if turn.exit else {}),
                         **({"cross": turn.cross} if turn.cross else {}),
                         **({"across": turn.across} if turn.across else {}),
+                        **({"across_from": turn.across_from} if turn.across_from else {}),
                         **({"toward": turn.toward} if turn.toward else {}),
                     },
                     severity=severity,
@@ -2754,6 +2773,7 @@ def describe_both(
                         **({"exit": turn.exit} if turn.exit else {}),
                         **({"cross": turn.cross} if turn.cross else {}),
                         **({"across": turn.across} if turn.across else {}),
+                        **({"across_from": turn.across_from} if turn.across_from else {}),
                         **({"toward": turn.toward} if toward else {}),
                     },
                     severity=severity,

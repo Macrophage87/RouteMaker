@@ -2573,6 +2573,44 @@ test("crossArrow: a crossing between two turns turns the way the turn after it d
   assert.match(ride, /const across = crossArrow\(cue\);/);
 });
 
+test("cross arrow draws a road you can see (shaded band, dashed centre) and, before a turn, the path along its far side", () => {
+  const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
+  assert.match(ride, /<CrossRoad turn=\{shape !== "cross"\} \/>/);
+  assert.match(ride, /<rect x="1" y="30" width="46" height="14"/);
+  assert.match(ride, /strokeDasharray="4 3"/);
+  assert.doesNotMatch(ride, /ROAD_EDGES/);
+});
+
+test("along: off a way beside the road, left over it then right is drawn with the road alongside (the owner, 2026-11-07)", () => {
+  const model = rideModel(
+    straightRoute([
+      stretch(0, 900, "Path beside West Basin Drive Southwest.", { street: "path beside West Basin Drive Southwest" }),
+      stretch(900, 2200, "Cross West Basin Drive Southwest, then right onto West Basin Drive SW Cycletrack.", {
+        street: "West Basin Drive SW Cycletrack",
+        turn: { ...turning("right", "West Basin Drive SW Cycletrack"), across: "West Basin Drive Southwest", across_from: "left" },
+      }),
+    ]),
+  );
+  const [turn] = model.cues;
+  assert.equal(turn.acrossFrom, "left");
+  assert.equal(crossArrow(turn), "along_left_right");
+  // Without the turn in, straight over the road as before.
+  assert.equal(crossArrow({ ...turn, acrossFrom: undefined }), "cross_right");
+});
+
+test("crossArrow: a full turn onto a crossing draws the road alongside; a bear, square across it", () => {
+  assert.equal(crossArrow({ across: "West Basin Drive", acrossFrom: "left", movement: "left" }), "along_left_left");
+  assert.equal(crossArrow({ across: "X Road", acrossFrom: "right", movement: "bear_left" }), "along_right_left");
+  assert.equal(crossArrow({ cross: "the road", movement: "left", then: [{ movement: "right", street: null }] }), "along_left_right");
+  assert.equal(crossArrow({ cross: "the road", movement: "right" }), "along_right");
+  assert.equal(crossArrow({ cross: "Redland Road", movement: "bear_right", then: [{ movement: "left", street: null }] }), "cross_left");
+  const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
+  for (const shape of ["along_left", "along_left_left", "along_left_right", "along_right", "along_right_left", "along_right_right"]) {
+    assert.match(ride, new RegExp(`\\b${shape}: "M`));
+  }
+  assert.match(ride, /<AlongRoad side=\{along\} \/>/);
+});
+
 // ---- D14: non-turn cues in Ride's own words (the owner approved the wording, 2026-10-27) ----------------------
 
 test("D14: a straight change onto a busy road is 'Busy road on ...', its street's capitals kept, no LTS said", () => {
