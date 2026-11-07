@@ -240,7 +240,8 @@ class RouteIn(Schema):
         max_length=MAX_POINTS,
         description=(
             "[lon, lat] pairs, start first, each inside the coverage area: at least two, or a"
-            " start alone for a Run loop with `loop` and `target_distance_m`."
+            " start alone for a Run loop with `loop` and `target_distance_m`. Rebalance Ride"
+            " takes the start alone: it ends at the dock that needs bikes."
         ),
     )
     preset: PresetName
@@ -680,7 +681,18 @@ class RouteIn(Schema):
         self.avoid_gravel = self.preset == presets.ROAD_BIKE
         preset = presets.PRESETS[self.preset]
         run = self.preset == presets.RUN
-        if len(self.points) < 2 and not (run and self.loop and self.target_distance_m):
+        rebalance = self.preset == presets.REBALANCE
+        if rebalance and len(self.points) > 1:
+            # Stephen, 2026-11-07: "There's actually no real destination. You start where you
+            # are" (core/bikeshare.py, Rebalance Ride). A page, link or saved plan from before
+            # v0.22.0 still sends a start and a destination: it plans from the start alone,
+            # never refused.
+            self.points = self.points[:1]
+        if (
+            len(self.points) < 2
+            and not (run and self.loop and self.target_distance_m)
+            and not rebalance
+        ):
             raise ValueError(
                 "points need at least 2 places, a start and a destination; a start alone plans only"
                 " a Run loop with loop and target_distance_m"
@@ -758,10 +770,13 @@ class RouteIn(Schema):
         elif self.transit_option is not None or (self.depart_at is not None and not run):
             raise ValueError("transit_option and depart_at apply to the transit ride types only")
         if self.preset in presets.BIKESHARE_PRESETS:
-            if len(self.points) != 2:
+            # A start, stops and an end (Stephen, 2026-11-03: each stop starts a new trip; for
+            # Bikeshare in v0.22.0): each leg is a trip of its own. Rebalance Ride: a start alone.
+            if len(self.points) > 2 + MAX_TRIP_STOPS or self.via_points:
                 raise ValueError(
-                    "Bikeshare plans take a start and an end: the walk, the ride between docks"
-                    " and the walk are planned from those two points"
+                    f"Bikeshare plans take a start, at most {MAX_TRIP_STOPS} stops and an end,"
+                    " none of them vias: each leg's walk, ride between docks and walk are planned"
+                    " from its two points"
                 )
             if self.loop:
                 raise ValueError("Bikeshare does not plan loops")
@@ -1540,6 +1555,14 @@ class DescriptionTurnOut(Schema):
             ' Saint Paul Street, then right onto ..."); absent elsewhere.'
         ),
     )
+    across_from: Literal["left", "right"] | None = Field(
+        default=None,
+        description=(
+            "With `across`: the turn the route makes off a way alongside that road to cross it"
+            ' (`describe._far_side_turns`; "Left across road then right"), so Ride draws the'
+            " road alongside; absent where it goes straight over."
+        ),
+    )
 
 
 class DescriptionCrossingOut(Schema):
@@ -2085,6 +2108,20 @@ class BikeshareOptionOut(Schema):
     text: str = Field(description="The option in plain words, US units first, for reading aloud.")
 
 
+class BikeshareLaterOut(Schema):
+    """One trip after a stop in a Bikeshare or Rebalance Ride trip with stops: where it picks
+    up and returns the bike, its steps and its time, as planned now."""
+
+    stop: int = Field(description="The stop it starts from, counted from 1.")
+    start: BikeshareStopOut
+    end: BikeshareStopOut
+    ride_m: float
+    walk_m: float
+    total_s: float = Field(description="Walking and riding, without stops.")
+    steps: list[BikeshareStepOut]
+    summary: str = Field(description="The trip in plain words, US units first, for reading aloud.")
+
+
 class BikesharePlanOut(Schema):
     """The walks, docks, availability, fee and notes of a bikeshare plan
     (FOLLOWUP-BIKESHARE). The route body around it is the ride leg, dock to dock; the
@@ -2129,6 +2166,30 @@ class BikesharePlanOut(Schema):
         ),
     )
     credit: str = Field(description="The plain source citation (OWNER-DECISIONS 301).")
+    later: list[BikeshareLaterOut] = Field(
+        default_factory=list,
+        description=(
+            "A trip with stops (Bikeshare and Rebalance Ride, v0.22.0; each stop starts a new"
+            " trip): the trips after the first, one per stop, in order. This body, its line and"
+            " its other fields are the first trip's, to the first stop; each later trip is"
+            " planned again when the rider gets to its stop. Empty: no stops."
+        ),
+    )
+    trip_total_s: float | None = Field(
+        default=None,
+        description=(
+            "A trip with stops: every trip's walking and riding, without stops. Null: none, or"
+            " a later trip could not be planned now (`later_note`)."
+        ),
+    )
+    later_note: str | None = Field(
+        default=None,
+        description=(
+            "A trip with stops whose later trip could not be planned now (no bike or dock near"
+            " its stop, or no time left): which one, and that it is planned again at that stop."
+            " `later` then lists the trips before it. Null: every trip was planned."
+        ),
+    )
 
 
 class AvoidJunctionOut(Schema):
@@ -2191,6 +2252,17 @@ class RoadHazardSpanOut(Schema):
     kinds: list[Literal["cobbles", "rails"]]
     road: str
     text: str = Field(description="One plain sentence, US units first with the metric once.")
+
+
+class TrailLevelSpanOut(Schema):
+    """A rated mountain-bike trail the route rides (2026-11-07; `routing.trail_level_spans`), in
+    whole metres along the traced route as `stress_spans` are measured."""
+
+    from_m: int
+    to_m: int
+    level: int = Field(
+        description="1 green, 2 blue, 3 black, 4 red (the map's trail levels); 0 unrated."
+    )
 
 
 class SteepGradeOut(Schema):
@@ -2358,6 +2430,7 @@ class WorkZoneOut(Schema):
         "reviewer",
         "ddot_advisory",
         "purple_line",
+        "fcpa",
         "protrack",
         "dcwater",
         "wssc",
@@ -2390,6 +2463,7 @@ class ClosureOut(Schema):
         "reviewer",
         "ddot_advisory",
         "purple_line",
+        "fcpa",
         "protrack",
         "dcwater",
         "wssc",
@@ -2592,6 +2666,9 @@ class RouteBody(Schema):
     # The scenic designations it rides (v0.12.3; rustic roads, byways, the East Coast
     # Greenway, US Bicycle Routes), in riding order. Additive: empty where it rides none.
     scenic_roads: list[ScenicSpanOut] | None = None
+    # The rated mountain-bike trails it rides (2026-11-07), in riding order, for the ride's
+    # stress ribbon. Additive: empty where it rides none, null from an older answer.
+    trail_levels: list[TrailLevelSpanOut] | None = None
     # Steep grades either way (v0.12.5), in riding order, on a Mass Ride or a Novice and
     # Nervous ride. Additive: null on every other ride type, empty where there are none.
     steep_grades: list[SteepGradeOut] | None = None
@@ -3654,6 +3731,13 @@ def route_neighbours(request, body: RouteIn):
     loop = routing.loop_wanted(body.points, body.loop, body.preset)
     if span_m(routing.loop_points(body.points, loop)) > CONFIRM_SPAN_M:
         return Status(200, {"stress": stress, "options": []})
+    # A trip with stops is planned trip by trip (`_bikeshare_body`): no options of the whole.
+    # A Rebalance Ride's docks are its own choice (the station lists), and a trip with stops
+    # is planned trip by trip (`_bikeshare_body`): no options of the whole.
+    if body.preset == presets.REBALANCE or (
+        body.preset == presets.BIKESHARE and len(body.points) > 2
+    ):
+        return Status(200, {"stress": stress, "options": []})
     if body.preset == presets.BIKESHARE and not _same_docks(body):
         return Status(200, {"stress": stress, "options": []})
     direct, calmer = presets.stress_notches(body.preset, stress)
@@ -4043,18 +4127,96 @@ def _bikeshare_body(body: RouteIn, started: float | None) -> dict:
             points, body.preset, long_ride=False, started=started, dials=dials
         ),
     )
-    return bikeshare.plan(
-        body.points[0],
-        body.points[1],
-        bike,
-        body.ending or bikeshare.ENDING_DOCK,
-        snapshot,
-        services,
-        profile.speed_kmh,
-        pickup_station=body.pickup_station,
-        dropoff_station=body.dropoff_station,
-        rebalance=body.preset == presets.REBALANCE,
-    )
+
+    if body.preset == presets.REBALANCE:
+        # A start alone: the ride ends at the dock that needs bikes (core/bikeshare.py).
+        return bikeshare.plan(
+            body.points[0],
+            None,
+            bike,
+            bikeshare.ENDING_DOCK,
+            snapshot,
+            services,
+            profile.speed_kmh,
+            pickup_station=body.pickup_station,
+            dropoff_station=body.dropoff_station,
+            rebalance=True,
+        )
+    last = len(body.points) - 2
+
+    def leg(number: int) -> dict:
+        # A chosen pick-up station is the start's, and a chosen drop-off station the end's (the
+        # page's station lists are for those two points).
+        return bikeshare.plan(
+            body.points[number],
+            body.points[number + 1],
+            bike,
+            body.ending or bikeshare.ENDING_DOCK,
+            snapshot,
+            services,
+            profile.speed_kmh,
+            pickup_station=body.pickup_station if number == 0 else None,
+            dropoff_station=body.dropoff_station if number == last else None,
+        )
+
+    found = leg(0)
+    if last == 0:
+        return found
+    # Stops (Stephen, 2026-11-03: "Each stop starts a new trip"; Bikeshare in
+    # v0.22.0): the rider returns the bike at each stop, and the trip from there is planned on its
+    # own, inside the same budget. The body is the first trip's; the later ones are listed, and
+    # planned again from the stop when the rider gets there (the bikes and docks free then).
+    later = []
+    note = None
+    for number in range(1, last + 1):
+        # A later trip is a preview, planned again at its stop: one that cannot be planned now
+        # never refuses the trip whose first leg was found (the 2026-11-07 review).
+        try:
+            plan = leg(number)["bikeshare"]
+        except (
+            bikeshare.NoBikeshare,
+            routing.TooLong,
+            routing.NoRoute,
+            routing.RouterUnavailable,
+            routing.DeadlineExceeded,
+        ) as error:
+            logger.info(
+                "bikeshare stops: trip from stop %d not planned: %s", number, type(error).__name__
+            )
+            note = LATER_NOT_PLANNED.format(stop=number)
+            break
+        later.append(
+            {
+                "stop": number,
+                "start": plan["start"],
+                "end": plan["end"],
+                "ride_m": plan["ride_m"],
+                "walk_m": plan["walk_m"],
+                "total_s": plan["total_s"],
+                "steps": plan["steps"],
+                "summary": plan["summary"],
+            }
+        )
+    later_total = sum(trip["total_s"] for trip in later)
+    # The way round an Avoid-rated junction (core.bikeshare) is the first trip too: it carries
+    # the later trips as the plan does, so taking it keeps the stops.
+    around = (found.get("avoid_alternate") or {}).get("bikeshare")
+    for share in (found["bikeshare"], around):
+        if not share:
+            continue
+        # Pick-up and drop-off pairs are the first trip's alone: none offered for the whole trip.
+        share["options"] = []
+        share["later"] = later
+        share["later_note"] = note
+        share["trip_total_s"] = None if note else round(share["total_s"] + later_total, 1)
+    return found
+
+
+# Said when a trip after a stop could not be planned just now (`_bikeshare_body`).
+LATER_NOT_PLANNED = (
+    "The trip from stop {stop} could not be planned just now. It is planned again when you get"
+    " there, with the bikes and docks free then."
+)
 
 
 # A transit plan's candidate legs are routed only this long after the request arrived; the rest
@@ -7200,6 +7362,10 @@ def _route_summary(row) -> dict:
         # v0.7.0 closures (core.saved_route_alerts): the closures in force along the line, as
         # last checked; [] where none.
         "closure_alerts": list(row.closure_alerts or []),
+        "tags": list(row.tags or []),
+        "archived_at": row.archived_at.isoformat() if row.archived_at else None,
+        "opened_at": row.opened_at.isoformat() if row.opened_at else None,
+        "replaced_by": row.replaced_by_id,
     }
 
 
@@ -7258,9 +7424,10 @@ def saved_routes_add(request):
     return _add_saved_route(request)
 
 
-def _add_saved_route(request, versions: bool = True):
+def _add_saved_route(request, versions: bool = True, prune: bool = True):
     """POST /api/me/routes, and the site's MCP connector's save with `versions` False (it only
-    adds; core.connector)."""
+    adds; core.connector). `prune` False (a connector grant not allowed to organize My routes,
+    whose rider was told it deletes nothing): a full account is refused, the archive untouched."""
     from django.db import transaction
 
     from . import accounts
@@ -7302,6 +7469,21 @@ def _add_saved_route(request, versions: bool = True):
     gpx = body.get("gpx", "") or ""
     if not isinstance(gpx, str) or (gpx and source != SavedRoute.Source.GPX):
         return _stress_error(400, "Only an opened GPX file keeps its text.", field="gpx")
+    tags, problem = accounts.clean_tags(body.get("tags", []))
+    if problem:
+        return _stress_error(400, problem, field="tags")
+    # The route this one replaces (the MCP connector's save_route, on the rider's word): archived
+    # once this one is saved, and pointing at it.
+    replaces = body.get("replaces")
+    if replaces is not None and (not isinstance(replaces, int) or isinstance(replaces, bool)):
+        return _stress_error(400, "Not a saved route.", field="replaces")
+    # The route the rider agreed to delete to make room (the app's answer to a full account's
+    # proposal); only the site's own pages send it, never the MCP connector.
+    make_room = body.get("make_room")
+    if make_room is not None and (
+        not versions or not isinstance(make_room, int) or isinstance(make_room, bool)
+    ):
+        return _stress_error(400, "Not a saved route.", field="make_room")
     version_of = body.get("version_of")
     if version_of is not None and not versions:
         return _stress_error(400, "An assistant only adds routes.", field="version_of")
@@ -7310,6 +7492,8 @@ def _add_saved_route(request, versions: bool = True):
         # toward the account's cap).
         if not isinstance(version_of, int) or isinstance(version_of, bool):
             return _stress_error(400, "Not a saved route.", field="version_of")
+        if replaces is not None:
+            return _stress_error(400, "A new version replaces nothing.", field="replaces")
         content = {
             "source": source,
             "line": line,
@@ -7318,17 +7502,40 @@ def _add_saved_route(request, versions: bool = True):
             "answer": answer,
             "gpx": gpx,
         }
-        return _save_version(request, version_of, name.strip(), content)
+        return _save_version(
+            request, version_of, name.strip(), content, tags if "tags" in body else None
+        )
     with transaction.atomic():
         # Taken in turn per account, so two saves at once cannot both pass the cap.
         User.objects.select_for_update().filter(pk=request.user.pk).first()
-        if SavedRoute.objects.filter(user=request.user).count() >= SavedRoute.MAX_PER_ACCOUNT:
-            return _stress_error(
-                409,
-                f"You have {SavedRoute.MAX_PER_ACCOUNT} saved routes, the most an account keeps."
-                " Delete one in My routes to save this one.",
-                code="full",
+        old = None
+        if replaces is not None:
+            old = _locked_route(request, replaces)
+            if old is None:
+                return _stress_error(
+                    404, "The route it replaces is not in your account.", code="not_found"
+                )
+        mine = SavedRoute.objects.filter(user=request.user)
+        if mine.count() >= SavedRoute.MAX_PER_ACCOUNT:
+            # Room is made from the archive, the longest archived first (the owner, 2026-11-07).
+            oldest = (
+                mine.filter(archived_at__isnull=False)
+                .exclude(pk=replaces)
+                .order_by("archived_at", "pk")
+                .select_for_update()
+                .first()
+                if prune
+                else None
             )
+            if oldest is None and make_room is not None:
+                # The one the rider agreed to delete.
+                oldest = mine.exclude(pk=replaces).filter(pk=make_room).select_for_update().first()
+            if oldest is None:
+                return _full_account(mine.exclude(pk=replaces))
+            made_room = {"id": oldest.pk, "name": oldest.name}
+            oldest.delete()
+        else:
+            made_room = None
         row = SavedRoute.objects.create(
             user=request.user,
             name=name.strip(),
@@ -7338,11 +7545,49 @@ def _add_saved_route(request, versions: bool = True):
             inputs=inputs,
             answer=answer,
             gpx=gpx,
+            tags=tags,
         )
+        if old is not None:
+            from django.utils import timezone
+
+            old.archived_at = old.archived_at or timezone.now()
+            old.replaced_by = row
+            old.save(update_fields=["archived_at", "replaced_by", "updated_at"])
     from . import saved_route_alerts
 
     saved_route_alerts.check(row)
-    return _private(JsonResponse(_route_summary(row), status=201))
+    out = _route_summary(row)
+    if made_room:
+        out["made_room"] = made_room  # the route deleted for it, for the app to say
+    return _private(JsonResponse(out, status=201))
+
+
+def _full_account(rows):
+    """409 for a save past the cap with nothing archived, proposing the route longest unopened
+    (from its creation where never opened) for the rider to delete (the owner, 2026-11-07)."""
+    from django.db.models.functions import Coalesce
+
+    from .models import SavedRoute
+
+    body: dict = {
+        "error": f"You have {SavedRoute.MAX_PER_ACCOUNT} saved routes, the most an account keeps."
+        " Archive or delete one in Load route to save this one.",
+        "code": "full",
+    }
+    stale = (
+        rows.annotate(last=Coalesce("opened_at", "created_at"))
+        .order_by("last", "pk")
+        .only("pk", "name", "opened_at", "created_at")
+        .first()
+    )
+    if stale is not None:
+        body["propose"] = {
+            "id": stale.pk,
+            "name": stale.name,
+            "opened_at": stale.opened_at.isoformat() if stale.opened_at else None,
+            "created_at": stale.created_at.isoformat(),
+        }
+    return _private(JsonResponse(body, status=409))
 
 
 # The rider's Garmin connection (core.garmin_views; the owner, 2026-10-23): Settings shows it and
@@ -7639,8 +7884,13 @@ def _replace_content(row, content: dict) -> None:
     everything = SavedRouteVersion.objects.filter(route__user_id=row.user_id)
     total = sum(everything.values_list("size_bytes", flat=True))
     if total > SavedRouteVersion.MAX_BYTES_PER_ACCOUNT:
+        from django.db.models import F
+
         drop = []
-        for pk, size in everything.order_by("replaced_at", "pk").values_list("pk", "size_bytes"):
+        # Archived routes' versions first, the longest archived first (the owner, 2026-11-07:
+        # "Archived routes are deleted first, longest time in archive first"); then the oldest.
+        order = (F("route__archived_at").asc(nulls_last=True), "replaced_at", "pk")
+        for pk, size in everything.order_by(*order).values_list("pk", "size_bytes"):
             if total <= SavedRouteVersion.MAX_BYTES_PER_ACCOUNT:
                 break
             drop.append(pk)
@@ -7659,7 +7909,8 @@ def _locked_route(request, route_id: int):
     return SavedRoute.objects.select_for_update().filter(user=request.user, pk=route_id).first()
 
 
-def _save_version(request, route_id: int, name: str, content: dict):
+def _save_version(request, route_id: int, name: str, content: dict, tags=None):
+    """Saved again. `tags` given (a cleaned list) replaces the route's; None keeps them."""
     from django.db import transaction
 
     with transaction.atomic():
@@ -7669,9 +7920,15 @@ def _save_version(request, route_id: int, name: str, content: dict):
         changed = not _same_content(row, content)
         if changed:
             _replace_content(row, content)
+        fields = []
         if row.name != name:
             row.name = name
-            row.save(update_fields=["name", "updated_at"])
+            fields.append("name")
+        if tags is not None and tags != row.tags:
+            row.tags = tags
+            fields.append("tags")
+        if fields:
+            row.save(update_fields=[*fields, "updated_at"])
     if changed:
         from . import saved_route_alerts
 
@@ -7766,13 +8023,20 @@ def saved_route_restore(request, route_id: int, version_id: int):
     errors_as_json,
 )
 def saved_route_read(request, route_id: int):
+    from django.utils import timezone
+
+    from .models import SavedRoute
+
     row = _saved_route(request, route_id)
     if row is None:
         return _stress_error(404, "That saved route is not in your account.", code="not_found")
+    # Opened: when the rider last used it, for a full account's proposal (updated_at unchanged).
+    row.opened_at = timezone.now()
+    SavedRoute.objects.filter(pk=row.pk).update(opened_at=row.opened_at)
     return _private(JsonResponse(_route_full(row)))
 
 
-@api.patch("/me/routes/{route_id}", summary="Rename a saved route")
+@api.patch("/me/routes/{route_id}", summary="Rename, tag, archive or restore a saved route")
 @decorate_view(
     ratelimit.user_rate_limited(ratelimit.ACCOUNT_WRITES),
     csrf_protected,
@@ -7782,22 +8046,65 @@ def saved_route_read(request, route_id: int):
     errors_as_json,
 )
 def saved_route_rename(request, route_id: int):
+    return _change_saved_route(request, route_id)
+
+
+def _change_saved_route(request, route_id: int):
+    """PATCH /api/me/routes/{id}, and the site's MCP connector's organize_route (core.connector).
+    Body: any of {"name": text, "tags": [text, ...], "archived": true | false}; what is left
+    out stays as it is. Restoring an archived route forgets what replaced it."""
+    from django.db import transaction
+
     from . import accounts
 
     body, refusal = _json_body(request, MAX_BODY_BYTES)
     if refusal is not None:
         return refusal
-    name = body.get("name") if isinstance(body, dict) else None
-    if not isinstance(name, str) or not name.strip() or len(name.strip()) > accounts.NAME_MAX:
+    if not isinstance(body, dict) or not ({"name", "tags", "archived"} & body.keys()):
+        return _stress_error(400, "Send a name, tags or archived.")
+    name = body.get("name")
+    if "name" in body and (
+        not isinstance(name, str) or not name.strip() or len(name.strip()) > accounts.NAME_MAX
+    ):
         return _stress_error(
             400, f"Give the route a name of up to {accounts.NAME_MAX} characters.", field="name"
         )
-    row = _saved_route(request, route_id)
-    if row is None:
-        return _stress_error(404, "That saved route is not in your account.", code="not_found")
-    row.name = name.strip()
-    row.save(update_fields=["name", "updated_at"])
+    tags = None
+    if "tags" in body:
+        tags, problem = accounts.clean_tags(body["tags"])
+        if problem:
+            return _stress_error(400, problem, field="tags")
+    archived = body.get("archived")
+    if "archived" in body and not isinstance(archived, bool):
+        return _stress_error(400, "archived is true or false.", field="archived")
+    with transaction.atomic():
+        # Locked, so a save making room cannot delete it under this change.
+        row = _locked_route(request, route_id)
+        if row is None:
+            return _stress_error(404, "That saved route is not in your account.", code="not_found")
+        _apply_change(row, body, name, tags, archived)
     return _private(JsonResponse(_route_summary(row)))
+
+
+def _apply_change(row, body: dict, name, tags, archived) -> None:
+    from django.utils import timezone
+
+    fields = []
+    if "name" in body:
+        row.name = name.strip()
+        fields.append("name")
+    if tags is not None:
+        row.tags = tags
+        fields.append("tags")
+    if archived is True and row.archived_at is None:
+        row.archived_at = timezone.now()
+        fields.append("archived_at")
+    elif archived is False and row.archived_at is not None:
+        row.archived_at = None
+        row.replaced_by = None
+        fields += ["archived_at", "replaced_by"]
+    if fields:
+        row.save(update_fields=[*fields, "updated_at"])
 
 
 @api.delete("/me/routes/{route_id}", summary="Delete a saved route")
