@@ -3106,7 +3106,8 @@ class TestSeekWiring:
         asked = []
 
         def call(variant, endpoint, payload, deadline):
-            asked.extend((p["lon"], p["lat"]) for p in payload["locations"])
+            if payload["costing"] == "bicycle":
+                asked.extend((p["lon"], p["lat"]) for p in payload["locations"])
             return [{} for _ in payload["locations"]]
 
         def events_of(
@@ -3123,6 +3124,32 @@ class TestSeekWiring:
         assert refine.events_of_raws([shared, mine], ctx, deadline) == []
         assert refine.events_of_raws([theirs, shared], ctx, deadline) == []
         assert asked == [(shared.lon, shared.lat), (mine.lon, mine.lat), (theirs.lon, theirs.lat)]
+
+    def test_a_place_asked_as_a_bicycle_and_as_a_car_keeps_both_answers(self, monkeypatch) -> None:
+        """PR #1026 review: the plan's cache keyed a place by radius alone, so the car's
+        answer could stand in for the bicycle's (the rider's own trail edge lost) or the
+        bicycle's for the car's (the George Washington Parkway lost again)."""
+        asked = []
+        ids = {"bicycle": 1, "auto": 2}
+
+        def at(costing) -> dict:
+            # An answer that says which costing it was asked as (a node, its id the costing's).
+            return {"nodes": [{"lon": -77.0, "lat": 38.9, "node_id": ids[costing]}]}
+
+        def call(variant, endpoint, payload, deadline):
+            asked.append(payload["costing"])
+            return [at(payload["costing"]) for _ in payload["locations"]]
+
+        monkeypatch.setattr(routing, "_call", call)
+        ctx = context()
+        locate = refine.locator(
+            ctx.variant, routing.Deadline(routing.clock() + 30, 30), ctx.located
+        )
+        place = [{"lon": -77.0, "lat": 38.9, "radius": 1}]
+        for _ in range(2):
+            assert locate({"locations": place, "costing": "bicycle"}) == [at("bicycle")]
+            assert locate({"locations": place, "costing": "auto"}) == [at("auto")]
+        assert asked == ["bicycle", "auto"]
 
     def test_a_short_locate_answer_ends_where_the_router_ended_it(self, monkeypatch) -> None:
         monkeypatch.setattr(routing, "_call", lambda variant, endpoint, payload, deadline: [{}])
