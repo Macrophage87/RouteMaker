@@ -82,6 +82,7 @@ Contents:
 - [Deploying v0.20.0](#deploying-v0200)
 - [Deploying v0.21.0](#deploying-v0210)
 - [Deploying v0.21.1](#deploying-v0211)
+- [Deploying v0.21.2](#deploying-v0212)
 - [Deploying a planner and front-end release: rollback points and verification](#deploying-a-planner-and-front-end-release-rollback-points-and-verification)
 - [Paths bicycles may not ride (NO-BIKE-PATHS)](#paths-bicycles-may-not-ride-no-bike-paths)
 - [Mountain-bike difficulty levels (456; claude/v0-4-0-mtb-levels)](#mountain-bike-difficulty-levels-456-claudev0-4-0-mtb-levels)
@@ -7312,6 +7313,35 @@ scheduled job, no `mobile/` change and no map rebuild.**
   Unanswered, riding on 200 m closes it by itself. Standing at the start, or on the route part way along, the ride starts
   as before (part way, "Already done?" asks about the stops behind).
 - [ ] **Rollback.** The v0.21.0 front end. Nothing in the database, the api or the map changes.
+
+## Deploying v0.21.2
+
+A patch with what release/v0.22.0 held on 2026-11-06: Help opens one big "Using RouteMaker" button to
+the guides in place of its two lines (#1006); the beta notice's "Sign up to test here!" opens the
+Android beta's how-to-join page, `/about/android-beta.html`, and sits beside a "Using RouteMaker"
+button (#1006); the Stress ratings page compares our levels with four agencies' (#993, from the
+2026-11-06 open data export). **Front end and docs pages only** (`frontend/`, `scripts/a11y/check.mjs`),
+with the version in `pyproject.toml`, `src/routemaker/__init__.py` and `README.md`. **No migration, no
+`src/` code change, no `src/pipeline/`, `lua/`, compose, Caddyfile, nginx, Dockerfile or requirements
+change, no new environment variable, outbound host or scheduled job, no `mobile/` change and no map
+rebuild.**
+
+- [ ] **The tag.** Once `test` and `a11y` are green on `main`, the owner tags v0.21.2 (annotated) on
+  that commit, from the PC.
+- [ ] **At home**, as "Deploying a planner and front-end release": fast-forward the checkout, then
+  the front end. The api image need not be rebuilt (only its version string changes); rebuild it
+  with `docker compose build api` and recreate `api worker` if the version shown should say 0.21.2.
+- [ ] **Beta**, by its agent, as at v0.21.1: once its deployed tag (`$RM_STATE/cd/deployed-tag`) is
+  v0.21.0 or v0.21.1, the gate sees `frontend/`, `scripts/a11y/check.mjs`, `pyproject.toml` and
+  `src/routemaker/__init__.py` (docs and `.md` files are inert), none of them a stop, and deploys.
+  While v0.21.0 is not yet marked deployed the agent stops here too: finish the v0.21.0 hand ship and
+  `mark-deployed v0.21.0` first. Stuck: `git fetch --force --tags origin`, then
+  `scripts/beta/auto-release.sh retry v0.21.2`.
+- [ ] **Spot checks.** Press Help: one big "Using RouteMaker" button, then the version and the map's
+  credits; the button opens the Using page. On the beta, open the beta notice: two buttons, "Sign up
+  to test here!" (the Android beta page) and "Using RouteMaker". The Stress ratings page shows four
+  comparison charts under "How our ratings compare with each agency's".
+- [ ] **Rollback.** The v0.21.1 front end. Nothing in the database, the api or the map changes.
 
 ## Deploying a planner and front-end release: rollback points and verification
 
