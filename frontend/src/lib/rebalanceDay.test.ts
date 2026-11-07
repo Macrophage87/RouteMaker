@@ -61,3 +61,12 @@ test("the ride's summary: Do another trip first and focused, then Finish session
   assert.match(app, /const rideEndReports = \(\) => \{\s*if \(rideEnded\?\.rebalance\) recordTrip\(rideEnded\.rebalance\.trip\);/);
   assert.doesNotMatch(/const undoEndRide = \(\) => \{[\s\S]*?\n {2}\};/.exec(app)![0], /recordTrip/);
 });
+
+test("a Rebalance Ride offers three docks to start from and three to end at, those near the start dock (2026-11-07)", () => {
+  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  assert.match(app, /dropoffNear=\{preset === "rebalance" && shown\?\.bikeshare \? \[shown\.bikeshare\.start\.lon, shown\.bikeshare\.start\.lat\] : null\}/);
+  const lists = readFileSync(new URL("../NearbyStations.tsx", import.meta.url), "utf8");
+  assert.match(lists, /const dropoff = dropoffNear \?\? listPoint\("dropoff", points\);/);
+  const server = readFileSync(new URL("../../../src/core/bikeshare.py", import.meta.url), "utf8");
+  assert.match(server, /^NEARBY_COUNT = 3$/m);
+});

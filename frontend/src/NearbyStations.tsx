@@ -121,18 +121,21 @@ function StationList({
   );
 }
 
-/** The lists for the start (pick-up) and, once there is one, the end (drop-off). */
+/** The lists for the start (pick-up) and, once there is one, the end (drop-off); a Rebalance Ride's near its start dock. */
 export function NearbyStations({
   points,
   pins,
   onChoose,
+  dropoffNear = null,
 }: {
   points: readonly LonLat[];
   pins: Pins;
   onChoose: (action: StationAction, station: NearbyStation | null, point: LonLat) => void;
+  /** A Rebalance Ride, which has no end: the drop-off list is near the dock the plan starts from. */
+  dropoffNear?: LonLat | null;
 }) {
   const pickup = listPoint("pickup", points);
-  const dropoff = listPoint("dropoff", points);
+  const dropoff = dropoffNear ?? listPoint("dropoff", points);
   if (!pickup) return null;
   return (
     <div className="nearby-stations-group">
@@ -149,7 +152,7 @@ export function NearbyStations({
           key={`dropoff-${dropoff[0]},${dropoff[1]}`}
           action="dropoff"
           point={dropoff}
-          toward={listToward("dropoff", points)}
+          toward={dropoffNear ? null : listToward("dropoff", points)}
           chosenId={pins.dropoff?.id ?? null}
           onChoose={onChoose}
         />

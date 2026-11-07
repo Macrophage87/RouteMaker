@@ -6323,7 +6323,14 @@ export function App() {
   const stations =
     usesBikeshare(preset) && points.length > 0 ? (
       <Fold title={t("Choose a station")} icon="bikeshare" className="stations-fold">
-        <NearbyStations points={points} pins={stationChoice} onChoose={chooseStation} />
+        <NearbyStations
+          points={points}
+          pins={stationChoice}
+          onChoose={chooseStation}
+          // A Rebalance Ride has no destination: the drop-off list is near the dock it starts from (Stephen,
+          // 2026-11-07: "People should get around 3 options for start dock and end dock").
+          dropoffNear={preset === "rebalance" && shown?.bikeshare ? [shown.bikeshare.start.lon, shown.bikeshare.start.lat] : null}
+        />
       </Fold>
     ) : null;
   // Discord sign-in from a Save form (the owner, 2026-10-21), where the server signs riders in: the plan is kept across it.
