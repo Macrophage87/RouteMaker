@@ -198,12 +198,14 @@ def test_it_introduces_itself_and_lists_its_tools(tools) -> None:
         "ride_conditions",
         "my_routes",
         "save_route",
+        "organize_route",
         "gpx_route",
     ]
-    # Only save_route changes anything: the rest plan drafts.
+    # Only save_route and organize_route change anything (My routes, on the rider's word): the
+    # rest plan drafts.
     tools_listed = rpc(tools, "tools/list")["result"]["tools"]
     writers = [t["name"] for t in tools_listed if not t["annotations"]["readOnlyHint"]]
-    assert writers == ["save_route"]
+    assert writers == ["save_route", "organize_route"]
     assert rpc(tools, "nope")["error"]["code"] == -32601
     # An unknown tool is the caller's mistake in the request, not a tool's refusal.
     assert rpc(tools, "tools/call", {"name": "nope"})["error"]["code"] == -32602
@@ -474,7 +476,16 @@ def test_saving_on_the_rider_s_computer_writes_a_file_and_says_where_my_routes_i
     assert Path(out["gpx_file"]).parent == tmp_path and "saved" not in out
     assert "connector" in out["notes"][0]
     save = next(t for t in tools.tools() if t["name"] == "save_route")
-    assert set(save["inputSchema"]["properties"]) == {"draft_id", "name"}
+    assert set(save["inputSchema"]["properties"]) == {"draft_id", "name", "tags", "replaces"}
+    # Tags and archiving are My routes' alone, on the site's connector.
+    tagged = tools.call(
+        "save_route", {"draft_id": draft["draft_id"], "name": "Lunch", "tags": ["x"]}
+    )
+    assert "My routes only" in tagged["notes"][-1]
+    with pytest.raises(mcp.ToolError, match="own connector"):
+        tools.call("save_route", {"draft_id": draft["draft_id"], "name": "L", "replaces": 3})
+    with pytest.raises(mcp.ToolError, match="own connector"):
+        tools.call("organize_route", {"route_id": 3, "archived": True})
 
 
 def test_the_assistant_picks_the_ride_type_and_any_setting(tools) -> None:
@@ -1272,3 +1283,30 @@ def test_an_app_ride_link_opens_its_kept_route_as_shared(tools, monkeypatch, ext
     # A plan changed in the app is still planned again.
     tools.call("open_link", {"link": link.replace("stress=50", "stress=60")})
     assert len(StandIn.routes) == before + 1 and StandIn.routes[-1]["stress"] == 60
+
+
+def test_rebalance_plans_from_a_start_alone() -> None:
+    """Stephen, 2026-11-07: a Rebalance Ride has no destination; the start alone is sent."""
+    sent: list[dict] = []
+
+    class Api:
+        def route(self, body: dict) -> dict:
+            sent.append(body)
+            return {"geometry": {"coordinates": [[-77.0, 38.9], [-77.01, 38.9]]}}
+
+    start = (-77.03651, 38.89768)
+    mcp.plan_once(Api(), None, [start], [], "rebalance", {}, None)
+    assert sent[0]["points"] == [list(start)] and sent[0]["preset"] == "rebalance"
+    with pytest.raises(mcp.ToolError, match="rebalance plans from a start alone"):
+        mcp.plan_once(Api(), None, [start, (-77.0, 38.9)], [], "rebalance", {}, None)
+
+
+def test_plan_route_takes_a_rebalance_rides_start_alone(tools, stand_in) -> None:
+    """The schema lets one point through for rebalance, and the whole tool answers it."""
+    listed = rpc(tools, "tools/list")["result"]["tools"]
+    schema = next(t for t in listed if t["name"] == "plan_route")
+    assert schema["inputSchema"]["properties"]["points"]["minItems"] == 1
+    out = tools.call("plan_route", {"points": ["Union Market"], "preset": "rebalance"})
+    sent = StandIn.routes[-1]
+    assert sent["preset"] == "rebalance" and len(sent["points"]) == 1
+    assert out["link"].startswith(stand_in + "/s/")

@@ -2,15 +2,16 @@
  * "Same ride or a new one?" (2026-11-05): asked once when the organiser copies or shares a Group or Mass Ride plan's
  * link, or starts its ride, and the plan's link went out more than 12 hours ago (lib/rideGroup.ts asksSameRide), or the
  * plan was changed after its link went out (`lead`: SAME_RIDE_EDITED_LEAD; the owner, 2026-11-06). Same
- * ride keeps the link's key; New ride makes a new ride id and key, then goes on. The platform's modal <dialog>: New
- * ride takes the focus, and Escape goes back with nothing sent or started; a browser without it shows it in the page.
+ * ride keeps the link's key; New ride makes a new ride id and key, then goes on. The platform's modal <dialog>: Same
+ * ride comes first and takes the focus (v0.22.0, release review: Enter or a habitual tap must not cut off those with
+ * the earlier link), and Escape goes back with nothing sent or started; a browser without it shows it in the page.
  */
 import { useEffect, useId, useRef } from "react";
 import { NEW_RIDE, SAME_RIDE, SAME_RIDE_LEAD, SAME_RIDE_QUESTION } from "./lib/rideGroup.ts";
 
 export function SameRideDialog({ open, onSame, onNew, onCancel, lead = SAME_RIDE_LEAD }: { open: boolean; onSame: () => void; onNew: () => void; onCancel: () => void; lead?: string }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
-  const newRef = useRef<HTMLButtonElement>(null);
+  const sameRef = useRef<HTMLButtonElement>(null);
   const opener = useRef<Element | null>(null);
   const headingId = useId();
   const leadId = useId();
@@ -24,7 +25,7 @@ export function SameRideDialog({ open, onSame, onNew, onCancel, lead = SAME_RIDE
       // A browser without the modal dialog shows it open in the page, and Escape is read below.
       if (typeof dialog.showModal === "function") dialog.showModal();
       else dialog.setAttribute("open", "");
-      newRef.current?.focus();
+      sameRef.current?.focus();
     } else if (!open && shown) {
       if (typeof dialog.close === "function") dialog.close();
       else dialog.removeAttribute("open");
@@ -54,11 +55,11 @@ export function SameRideDialog({ open, onSame, onNew, onCancel, lead = SAME_RIDE
           <h2 id={headingId}>{SAME_RIDE_QUESTION}</h2>
           <p id={leadId}>{lead}</p>
           <div className="closure-choices">
-            <button type="button" ref={newRef} className="primary" onClick={onNew}>
-              {NEW_RIDE}
-            </button>
-            <button type="button" className="secondary" onClick={onSame}>
+            <button type="button" ref={sameRef} className="primary" onClick={onSame}>
               {SAME_RIDE}
+            </button>
+            <button type="button" className="secondary" onClick={onNew}>
+              {NEW_RIDE}
             </button>
           </div>
         </>
