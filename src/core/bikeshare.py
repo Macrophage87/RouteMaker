@@ -66,10 +66,14 @@ The plan
 
 Rebalance Ride (REBALANCE-RIDE; Stephen, 2026-10-12)
 ----------------------------------------------------
-The same plan with `rebalance=True`: the docks are the station lists' own (`nearby_stations`),
-so the start is a crowded station (at least 3/4 full, e-bikes counted) near the start that
-has a bike of the chosen type, and the end a station that needs bikes (at most 1/4 full) near
-the destination; the top `NEARBY_COUNT` of each by the direction rule, with no distance cap.
+The same plan with `rebalance=True` and no destination (Stephen, 2026-11-07: "There's
+actually no real destination. You start where you are, and then go to the nearest bikeshare
+dock that has extra bikes and then to a bikeshare dock with less ... walk to the dock, then ride
+to the next one"). The docks are the station lists' own (`nearby_stations`): the start is a
+crowded station (at least 3/4 full, e-bikes counted) near the rider that has a bike of the
+chosen type, the quickest walk of the top `NEARBY_COUNT`; the end is the nearest station that
+needs bikes (at most 1/4 full) to it. The ride ends at that dock, with no walk after it; the
+next Rebalance Ride is planned from there. No distance cap.
 There is no public feed of the operator's reward points, so fill (bikes / capacity) from the
 station status this module already reads stands in for them, and no points are shown. No
 free-floating e-bike (it is not at a crowded station) and no ending outside a dock.
@@ -505,10 +509,10 @@ def _fitting(
 
 
 def rebalance_starts(
-    origin: LonLat, dest: LonLat, bike: str, snapshot: gbfs.Snapshot
+    origin: LonLat, dest: LonLat | None, bike: str, snapshot: gbfs.Snapshot
 ) -> list[tuple[float, Pick]]:
     """Rebalance Ride's docks to start from: crowded stations near the start (the pick-up
-    list's), each with a bike of the chosen type, best first toward `dest`."""
+    list's), each with a bike of the chosen type, best first toward `dest` (None: nearest)."""
     if snapshot.status is None:
         return []
     found = _fitting(origin, PICKUP, snapshot, dest, also=lambda st: st.bikes_of(bike) > 0)
@@ -516,10 +520,11 @@ def rebalance_starts(
 
 
 def rebalance_ends(
-    dest: LonLat, origin: LonLat, snapshot: gbfs.Snapshot
+    dest: LonLat, origin: LonLat | None, snapshot: gbfs.Snapshot
 ) -> list[tuple[float, Pick]]:
-    """Rebalance Ride's docks to end at: stations that need bikes near the destination (the
-    drop-off list's), best first on the way in from `origin`."""
+    """Rebalance Ride's docks to end at: stations that need bikes near `dest` (the drop-off
+    list's; the dock the ride starts from, since 2026-11-07), best first on the way in from
+    `origin` (None: nearest)."""
     if snapshot.status is None:
         return []
     found = _fitting(dest, DROPOFF, snapshot, origin)
@@ -767,7 +772,7 @@ def _end_step(pick: Pick, ride_m: float, bike: str, rebalance: bool = False) -> 
 
 def plan(
     origin: LonLat,
-    dest: LonLat,
+    dest: LonLat | None,
     bike: str,
     ending: str,
     snapshot: gbfs.Snapshot,
@@ -781,7 +786,7 @@ def plan(
     walks, docks, availability, fee and notes under `bikeshare`. A chosen `pickup_station`
     or `dropoff_station` (a station id) is used for that end in place of the nearest docks.
     `rebalance`: Rebalance Ride, from a crowded station to one that needs bikes (the module's
-    docstring); always a dock at each end.
+    docstring); always a dock at each end. `dest` is None there: the ride ends at the dock.
 
     Raises NoBikeshare where there is no dock to start or end at, no way on foot, or
     nothing to ride; routing's own errors pass through from the ride.
@@ -792,9 +797,14 @@ def plan(
             "Station availability can't be read right now, so there is no telling which "
             "stations are crowded. Try Bikeshare, or try again shortly."
         )
-    offer = outside_offer(bike, snapshot, dest)
     if rebalance:
         ending = ENDING_DOCK
+        dest = None
+    offer = (
+        {"offered": False, "reason": None, "fee": None}
+        if dest is None
+        else outside_offer(bike, snapshot, dest)
+    )
     use_outside = ending == ENDING_OUTSIDE and offer["offered"]
     if ending == ENDING_OUTSIDE and not use_outside:
         notes.append(OUTSIDE_REASON_WORDS[offer["reason"]] + " The plan ends at a dock.")
@@ -806,7 +816,7 @@ def plan(
         if rebalance:
             rebalance_pinned_start(docks)
     elif rebalance:
-        docks, free = rebalance_starts(origin, dest, bike, snapshot), []
+        docks, free = rebalance_starts(origin, None, bike, snapshot), []
     else:
         docks, free, nearest_start = start_candidates(origin, bike, snapshot, notes, dest)
     kind_word = "e-bike" if bike == presets.BIKE_EBIKE else "classic bike"
@@ -821,18 +831,12 @@ def plan(
             "right now. Try the other bike type, or move the start."
         )
     ends: list[tuple[float, Pick]] = []
-    if not use_outside:
+    if rebalance:
+        # The end is chosen near the start found (`_rebalance_ends`), once its walk is known.
+        pass
+    elif not use_outside:
         if dropoff_station:
             ends = pinned_end(dest, dropoff_station, snapshot)
-            if rebalance:
-                rebalance_pinned_end(ends)
-        elif rebalance:
-            ends = rebalance_ends(dest, origin, snapshot)
-            if not ends:
-                raise NoBikeshare(
-                    "No station needs bikes right now (none is at most 1/4 full). Try plain "
-                    "Bikeshare."
-                )
         else:
             ends, nearest_end = end_candidates(dest, snapshot, notes, origin)
         if not ends:
@@ -846,7 +850,7 @@ def plan(
     from . import parallel
 
     start_picks = [pick for _, pick in [*docks, *free]]
-    end_picks = [] if use_outside else [pick for _, pick in ends]
+    end_picks = [] if use_outside or rebalance else [pick for _, pick in ends]
     start_walks = [parallel.submit(services.walk, origin, pick.point) for pick in start_picks]
     end_walks = [parallel.submit(services.walk, pick.point, dest) for pick in end_picks]
     starts: list[tuple[Pick, WalkLeg]] = []
@@ -859,7 +863,21 @@ def plan(
             future.cancel()
         raise NoBikeshare("There is no way on foot from the start to a dock that has a bike.")
     finishes: list[tuple[Pick, WalkLeg | None]] = []
-    if use_outside:
+    # Rebalance Ride: each start's own ends, the stations that need bikes nearest it, ridden
+    # to with no walk after (the module's docstring). Every other plan: the same ends for all.
+    ends_near: dict[int, list[tuple[Pick, WalkLeg | None]]] = {}
+    if rebalance:
+        pinned = pinned_end(origin, dropoff_station, snapshot) if dropoff_station else None
+        if pinned:
+            rebalance_pinned_end(pinned)
+        for index, (s_pick, _) in enumerate(starts):
+            near = pinned if pinned is not None else rebalance_ends(s_pick.point, None, snapshot)
+            ends_near[index] = [(pick, None) for _, pick in near]
+        if not any(ends_near.values()):
+            raise NoBikeshare(
+                "No station needs bikes right now (none is at most 1/4 full). Try plain Bikeshare."
+            )
+    elif use_outside:
         finishes.append((Pick("outside_dock", "your destination", dest[0], dest[1]), None))
     else:
         for pick, future in zip(end_picks, end_walks, strict=True):
@@ -868,23 +886,25 @@ def plan(
                 finishes.append((pick, leg))
         if not finishes:
             raise NoBikeshare(
-                "There is no way on foot from a station that needs bikes to the destination."
-                if rebalance
-                else "There is no way on foot from a dock with a free slot to the destination."
+                "There is no way on foot from a dock with a free slot to the destination."
             )
 
     # Every pair, quickest first: the real walks plus the estimated ride. Ties by the walks
     # plus the extra riding each end adds (straight lines). The docks walked were already
     # chosen by that rule; the time also credits a dock ahead for the riding it saves.
     pairs = []
-    for s_pick, s_walk in starts:
+    for index, (s_pick, s_walk) in enumerate(starts):
         s_extra = extra_riding_m(s_pick.point, origin, dest)
-        for e_pick, e_walk in finishes:
+        for e_pick, e_walk in ends_near[index] if rebalance else finishes:
             if s_pick.station_id is not None and s_pick.station_id == e_pick.station_id:
                 continue
             if _distance(s_pick.point, e_pick.point) < 50.0:
                 continue
-            e_extra = 0.0 if e_walk is None else extra_riding_m(e_pick.point, dest, origin)
+            e_extra = (
+                0.0
+                if e_walk is None or dest is None
+                else extra_riding_m(e_pick.point, dest, origin)
+            )
             cost = s_walk.distance_m + s_extra + (e_walk.distance_m if e_walk else 0.0) + e_extra
             total = (
                 s_walk.duration_s
@@ -902,7 +922,11 @@ def plan(
             "The nearest docks to the start and to the destination are the same, so there is "
             "nothing to ride. Walking is the way."
         )
-    pairs.sort(key=lambda p: (p[1], p[0]))
+    if rebalance:
+        # The nearest crowded station by the walk, then the nearest that needs bikes to it.
+        pairs.sort(key=lambda p: (p[3].duration_s, _distance(p[2].point, p[5].point)))
+    else:
+        pairs.sort(key=lambda p: (p[1], p[0]))
     _, _, start, walk_start, start_extra, end, walk_end, end_extra = pairs[0]
 
     # What was passed over, said once the choice is made.
@@ -943,7 +967,7 @@ def plan(
                 lead, extra_riding_m(near_pick.point, dest, origin), "ends at", end, end_extra
             )
         )
-    options = _options(pairs, bike, use_outside, snapshot)
+    options = _options(pairs, bike, use_outside, snapshot, no_destination=dest is None)
 
     ride = services.ride(start.point, end.point)
 
@@ -979,7 +1003,8 @@ def plan(
     )
 
     # Is the whole walk about as quick? One more pedestrian route says so.
-    direct = services.walk(origin, dest)
+    # Not on a Rebalance Ride, which has no destination to walk to.
+    direct = None if dest is None else services.walk(origin, dest)
     walk_note = _walk_note(direct, walk_s + ride_s)
     if walk_note:
         notes.append(walk_note)
@@ -1016,6 +1041,8 @@ def plan(
                 f"End at the dock at {end.name}, then walk {miles(walk_end.distance_m)} to your "
                 "destination."
                 if not use_outside and walk_end
+                else f"End at the dock at {end.name}, which needs bikes."
+                if rebalance
                 else "End at the nearest dock with a free slot."
             ),
         }
@@ -1129,9 +1156,12 @@ def _option_text(option: dict) -> str:
         first = f"Pick up an e-bike outside a dock, {miles(pickup['walk_m'])} walk"
     else:
         first = f"Pick up at {pickup['name']}, {miles(pickup['walk_m'])} walk"
-    first += f", {pickup['way_text']}."
+    # A Rebalance Ride has no destination to be on the way to, nor a walk after the ride.
+    first += f", {pickup['way_text']}." if pickup.get("way_text") else "."
     if dropoff["kind"] == "outside_dock":
         second = "Leave the e-bike at your destination, outside a dock."
+    elif not dropoff.get("way_text"):
+        second = f"Return at {dropoff['name']}."
     else:
         second = (
             f"Return at {dropoff['name']}, {miles(dropoff['walk_m'])} walk, {dropoff['way_text']}."
@@ -1139,7 +1169,13 @@ def _option_text(option: dict) -> str:
     return f"{first} {second} About {minutes(option['total_s'])} in all."
 
 
-def _options(pairs: list, bike: str, use_outside: bool, snapshot: gbfs.Snapshot) -> list[dict]:
+def _options(
+    pairs: list,
+    bike: str,
+    use_outside: bool,
+    snapshot: gbfs.Snapshot,
+    no_destination: bool = False,
+) -> list[dict]:
     """Up to `OPTION_COUNT` start-and-end pairs, quickest first (the first is the plan's own).
     An option can be asked for again with its `pickup_station` and `dropoff_station` (and
     `ending`), so a free-floating e-bike, which has no id to ask for, is offered only when it
@@ -1167,6 +1203,10 @@ def _options(pairs: list, bike: str, use_outside: bool, snapshot: gbfs.Snapshot)
                 1,
             ),
         }
+        if no_destination:
+            # Nothing to be on the way to (Rebalance Ride): no way words.
+            option["pickup"]["way_text"] = ""
+            option["dropoff"]["way_text"] = ""
         option["text"] = _option_text(option)
         out.append(option)
         if len(out) == OPTION_COUNT:

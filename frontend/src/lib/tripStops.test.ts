@@ -31,9 +31,10 @@ const STOP: LonLat = [-77.01, 38.9];
 const STOP2: LonLat = [-77.02, 38.9];
 const END: LonLat = [-77.03, 38.9];
 
-test("Walk, the transit types, Bikeshare and Rebalance Ride take stops as trips of their own; the riding types do not here", () => {
-  for (const preset of ["walk", "walk-transit", "bike-transit", "bikeshare-transit", "bikeshare", "rebalance"] as const) assert.equal(stopsAsTrips(preset), true);
-  for (const preset of ["default", "mass-ride"] as const) assert.equal(stopsAsTrips(preset), false);
+test("Walk, the transit types and Bikeshare take stops as trips of their own; the riding types and Rebalance Ride do not", () => {
+  for (const preset of ["walk", "walk-transit", "bike-transit", "bikeshare-transit", "bikeshare"] as const) assert.equal(stopsAsTrips(preset), true);
+  // Rebalance Ride has no destination (Stephen, 2026-11-07): the start alone.
+  for (const preset of ["default", "mass-ride", "rebalance"] as const) assert.equal(stopsAsTrips(preset), false);
 });
 
 test("a Bikeshare trip with stops is its first trip already: only the later ones go (v0.22.0)", () => {
@@ -126,5 +127,5 @@ test("a trip of stops takes the server's most stops; adding one more is refused 
   assert.equal(maxPointsFor("walk"), MAX_TRIP_STOPS + 2);
   assert.equal(maxPointsFor("default"), MAX_POINTS);
   assert.equal(maxPointsFor("bikeshare"), MAX_TRIP_STOPS + 2);
-  assert.equal(maxPointsFor("rebalance"), MAX_TRIP_STOPS + 2);
+  assert.equal(maxPointsFor("rebalance"), 1);
 });

@@ -5288,7 +5288,15 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
 .ride-summary-actions {
   flex: none;
   display: flex;
+  /* A Rebalance Ride's Do another trip, Finish session and Keep riding wrap where they do not fit on one row. */
+  flex-wrap: wrap;
   gap: 12px;
+}
+
+/* A Rebalance Ride's day so far (lib/rebalanceDay.ts), under the ride's own line. */
+.ride-summary-day h3 {
+  margin: 8px 0 2px;
+  font-size: max(16pt, 1.375rem);
 }
 
 .ride-summary-actions button {

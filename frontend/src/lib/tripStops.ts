@@ -1,6 +1,6 @@
 /**
- * Stops on a Walk, transit, Bikeshare or Rebalance Ride trip (Stephen, 2026-11-02: "Add the stops in for all";
- * 2026-11-03: "Each stop starts a new trip"; Bikeshare and Rebalance Ride in v0.22.0, the bike returned at each stop). The API plans each leg between stops as a trip of its own, leaving the stop as the leg before arrives there,
+ * Stops on a Walk, transit or Bikeshare trip (Stephen, 2026-11-02: "Add the stops in for all";
+ * 2026-11-03: "Each stop starts a new trip"; Bikeshare in v0.22.0, the bike returned at each stop). The API plans each leg between stops as a trip of its own, leaving the stop as the leg before arrives there,
  * and answers them one after another (`stop_steps`). The ride follows one trip at a time: the first, to the first stop;
  * there, "Start the next leg" plans the rest again from where the rider is, leaving then, as a stop takes as long as
  * it takes.
@@ -16,16 +16,23 @@ export const NEXT_LEG = t("Start the next leg");
 /** A trip's key is its legs' keys joined (core/transit.py STOPS_KEY_SEP). */
 export const STOPS_KEY_SEP = "+";
 
-/** Whether a ride type takes stops as trips of their own: Walk, the transit types, Bikeshare and Rebalance Ride. */
+/**
+ * Whether a ride type takes stops as trips of their own: Walk, the transit types and Bikeshare. Not Rebalance Ride,
+ * which has no destination (Stephen, 2026-11-07): one trip from where the rider is, the next from the end screen.
+ */
 export function stopsAsTrips(preset: PresetId): boolean {
-  return isTransit(preset) || usesBikeshare(preset);
+  return isTransit(preset) || (usesBikeshare(preset) && preset !== "rebalance");
 }
 
 /** The most stops such a trip takes (core/api.py MAX_TRIP_STOPS): the server refuses a fourth. */
 export const MAX_TRIP_STOPS = 3;
 
-/** The most points a route of this ride type takes: a start, its stops and an end for trips of stops, else MAX_POINTS. */
+/**
+ * The most points a route of this ride type takes: the start alone on a Rebalance Ride, a start, its stops and an end
+ * for trips of stops, else MAX_POINTS.
+ */
 export function maxPointsFor(preset: PresetId): number {
+  if (preset === "rebalance") return 1;
   return stopsAsTrips(preset) ? MAX_TRIP_STOPS + 2 : MAX_POINTS;
 }
 

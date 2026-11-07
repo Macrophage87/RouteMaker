@@ -2059,4 +2059,11 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Whole trip, not counting breaks": "পুরো যাত্রা, বিরতি বাদে",
   "The map shows the trip to stop 1. At each stop you return the bike, and the next trip is planned again from there, with the bikes and docks free then.": "মানচিত্রে স্টপ 1 পর্যন্ত যাত্রা দেখানো হয়েছে। প্রতিটি স্টপে আপনি সাইকেলটি ফেরত দেন, এবং পরের যাত্রা সেখান থেকে আবার পরিকল্পনা করা হয়, তখন খালি থাকা সাইকেল ও ডক অনুযায়ী।",
   "From stop {n}": "স্টপ {n} থেকে",
+  "Trips": "যাত্রা",
+  "Total time": "মোট সময়",
+  "Today's Rebalance Rides": "আজকের রিব্যালান্স যাত্রা",
+  "Do another trip": "আরেকটি যাত্রা করুন",
+  "Finish session": "সেশন শেষ করুন",
+  "The nearest dock that needs bikes": "সবচেয়ে কাছের যে ডকে সাইকেল দরকার",
+  "A Rebalance Ride starts where you are and has no destination: it ends at the dock that needs bikes.": "রিব্যালান্স যাত্রা আপনি যেখানে আছেন সেখান থেকে শুরু হয় এবং এর কোনো গন্তব্য নেই: যে ডকে সাইকেল দরকার সেখানে শেষ হয়।",
 };

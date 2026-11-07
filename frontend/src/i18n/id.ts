@@ -2059,4 +2059,11 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Whole trip, not counting breaks": "Seluruh perjalanan, tidak termasuk istirahat",
   "The map shows the trip to stop 1. At each stop you return the bike, and the next trip is planned again from there, with the bikes and docks free then.": "Peta menunjukkan perjalanan sampai perhentian 1. Di setiap perhentian Anda mengembalikan sepeda, dan perjalanan berikutnya direncanakan lagi dari sana, sesuai sepeda dan dok yang kosong saat itu.",
   "From stop {n}": "Dari perhentian {n}",
+  "Trips": "Perjalanan",
+  "Total time": "Total waktu",
+  "Today's Rebalance Rides": "Perjalanan penyeimbangan hari ini",
+  "Do another trip": "Lakukan perjalanan lagi",
+  "Finish session": "Selesaikan sesi",
+  "The nearest dock that needs bikes": "Dok terdekat yang membutuhkan sepeda",
+  "A Rebalance Ride starts where you are and has no destination: it ends at the dock that needs bikes.": "Perjalanan penyeimbangan dimulai dari tempat Anda berada dan tidak punya tujuan: berakhir di dok yang membutuhkan sepeda.",
 };

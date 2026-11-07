@@ -2059,4 +2059,11 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Whole trip, not counting breaks": "ምሉእ ጉዕዞ፣ ዕረፍቲ ከይተቖጽረ",
   "The map shows the trip to stop 1. At each stop you return the bike, and the next trip is planned again from there, with the bikes and docks free then.": "እቲ ካርታ ክሳብ መዕረፊ 1 ዘሎ ጉዕዞ የርኢ። ኣብ ነፍሲ ወከፍ መዕረፊ ነታ ብሽክሌታ ትመልሱ፣ እቲ ዝቕጽል ጉዕዞ ድማ ብናይ ሽዑ ነጻ ብሽክሌታታትን መቐመጢታትን ካብኡ ደጊሙ ይውጠን።",
   "From stop {n}": "ካብ መዕረፊ {n}",
+  "Trips": "ጉዕዞታት",
+  "Total time": "ጠቕላላ ግዜ",
+  "Today's Rebalance Rides": "ናይ ሎሚ ጉዕዞታት ምምዕርራይ",
+  "Do another trip": "ካልእ ጉዕዞ ግበር",
+  "Finish session": "ክፍለ ግዜ ወድእ",
+  "The nearest dock that needs bikes": "ብሽክሌታት ዘድልዮ ዝቐረበ መቐመጢ",
+  "A Rebalance Ride starts where you are and has no destination: it ends at the dock that needs bikes.": "ጉዕዞ ምምዕርራይ ካብ ዘለኹሞ ይጅምር፣ መዕለቢ ድማ የብሉን፦ ኣብቲ ብሽክሌታት ዘድልዮ መቐመጢ ይውዳእ።",
 };

@@ -2059,4 +2059,11 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Whole trip, not counting breaks": "全程，不含休息",
   "The map shows the trip to stop 1. At each stop you return the bike, and the next trip is planned again from there, with the bikes and docks free then.": "地图显示到第 1 个停靠点的行程。在每个停靠点你都要还车，下一段行程会根据当时空闲的单车和车位从那里重新规划。",
   "From stop {n}": "从第 {n} 个停靠点起",
+  "Trips": "行程",
+  "Total time": "总时间",
+  "Today's Rebalance Rides": "今天的调车行程",
+  "Do another trip": "再来一程",
+  "Finish session": "结束本次",
+  "The nearest dock that needs bikes": "最近需要单车的停车点",
+  "A Rebalance Ride starts where you are and has no destination: it ends at the dock that needs bikes.": "调车行程从你所在的位置开始，没有目的地：在需要单车的停车点结束。",
 };

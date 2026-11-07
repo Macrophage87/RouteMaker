@@ -2059,4 +2059,11 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Whole trip, not counting breaks": "Cả chuyến, không tính nghỉ",
   "The map shows the trip to stop 1. At each stop you return the bike, and the next trip is planned again from there, with the bikes and docks free then.": "Bản đồ hiển thị chuyến đi đến điểm dừng 1. Tại mỗi điểm dừng bạn trả xe, và chuyến tiếp theo được lên kế hoạch lại từ đó, theo xe và chỗ trả xe còn trống lúc ấy.",
   "From stop {n}": "Từ điểm dừng {n}",
+  "Trips": "Số chuyến",
+  "Total time": "Tổng thời gian",
+  "Today's Rebalance Rides": "Các chuyến cân bằng xe hôm nay",
+  "Do another trip": "Đi thêm một chuyến",
+  "Finish session": "Kết thúc phiên",
+  "The nearest dock that needs bikes": "Trạm gần nhất cần xe",
+  "A Rebalance Ride starts where you are and has no destination: it ends at the dock that needs bikes.": "Chuyến cân bằng xe bắt đầu từ chỗ bạn đang đứng và không có điểm đến: kết thúc ở trạm cần xe.",
 };

@@ -2059,4 +2059,11 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Whole trip, not counting breaks": "ሙሉ ጉዞ፣ እረፍትን ሳይጨምር",
   "The map shows the trip to stop 1. At each stop you return the bike, and the next trip is planned again from there, with the bikes and docks free then.": "ካርታው እስከ ማቆሚያ 1 ያለውን ጉዞ ያሳያል። በእያንዳንዱ ማቆሚያ ብስክሌቱን ትመልሳላችሁ፣ ቀጣዩ ጉዞም በዚያን ጊዜ ባሉት ነጻ ብስክሌቶችና መቆሚያዎች ከዚያ እንደገና ይታቀዳል።",
   "From stop {n}": "ከማቆሚያ {n}",
+  "Trips": "ጉዞዎች",
+  "Total time": "ጠቅላላ ጊዜ",
+  "Today's Rebalance Rides": "የዛሬ የማመጣጠን ጉዞዎች",
+  "Do another trip": "ሌላ ጉዞ አድርግ",
+  "Finish session": "ክፍለ ጊዜውን ጨርስ",
+  "The nearest dock that needs bikes": "ብስክሌት የሚያስፈልገው ቅርብ መቆሚያ",
+  "A Rebalance Ride starts where you are and has no destination: it ends at the dock that needs bikes.": "የማመጣጠን ጉዞ ካሉበት ይጀምራል፣ መድረሻም የለውም፦ ብስክሌት በሚያስፈልገው መቆሚያ ያበቃል።",
 };

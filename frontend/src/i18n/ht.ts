@@ -2059,4 +2059,11 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Whole trip, not counting breaks": "Tout vwayaj la, san konte poz",
   "The map shows the trip to stop 1. At each stop you return the bike, and the next trip is planned again from there, with the bikes and docks free then.": "Kat la montre vwayaj la jiska arè 1. Nan chak arè ou remèt bisiklèt la, epi yo planifye pwochen vwayaj la ankò depi la, ak bisiklèt ak plas ki lib lè sa a.",
   "From stop {n}": "Depi arè {n}",
+  "Trips": "Vwayaj",
+  "Total time": "Tan total",
+  "Today's Rebalance Rides": "Vwayaj rebalans jodi a",
+  "Do another trip": "Fè yon lòt vwayaj",
+  "Finish session": "Fini sesyon an",
+  "The nearest dock that needs bikes": "Plas ki pi pre a ki bezwen bisiklèt",
+  "A Rebalance Ride starts where you are and has no destination: it ends at the dock that needs bikes.": "Yon vwayaj rebalans kòmanse kote ou ye a epi li pa gen destinasyon: li fini nan plas ki bezwen bisiklèt la.",
 };

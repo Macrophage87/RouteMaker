@@ -2059,4 +2059,11 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Whole trip, not counting breaks": "全行程（休憩を除く）",
   "The map shows the trip to stop 1. At each stop you return the bike, and the next trip is planned again from there, with the bikes and docks free then.": "地図には立ち寄り地点1までの行程が表示されます。各立ち寄り地点で自転車を返却し、次の行程はその時点で空いている自転車とドックをもとに、そこから改めて計画されます。",
   "From stop {n}": "立ち寄り地点{n}から",
+  "Trips": "回数",
+  "Total time": "合計時間",
+  "Today's Rebalance Rides": "今日のリバランス・ライド",
+  "Do another trip": "次の移動をする",
+  "Finish session": "セッションを終える",
+  "The nearest dock that needs bikes": "自転車が必要な最寄りのドック",
+  "A Rebalance Ride starts where you are and has no destination: it ends at the dock that needs bikes.": "リバランス・ライドは今いる場所から始まり、目的地はありません。自転車が必要なドックで終わります。",
 };

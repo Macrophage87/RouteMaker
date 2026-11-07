@@ -1,6 +1,9 @@
 """Rebalance Ride (REBALANCE-RIDE; Stephen, 2026-10-12): a bikeshare plan from a crowded
-station near the start to one that needs bikes near the destination, chosen from the
-station status's fill (bikes / (bikes + free docks)), as the station lists choose them.
+station near the start to one that needs bikes, chosen from the station status's fill
+(bikes / (bikes + free docks)), as the station lists choose them. Since 2026-11-07 there is no
+destination ("You start where you are, and then go to the nearest bikeshare dock that has extra
+bikes and then to a bikeshare dock with less"): the ride ends at the dock that needs bikes
+nearest the one it starts from.
 
 The fake router and GBFS fixtures are test_bikeshare's. Near Union Station, Columbus Circle
 is 23% full (plain Bikeshare starts there) and 2nd & G St NE, 3rd & H St NE and 1st & K St NE
@@ -30,14 +33,12 @@ from core import bikeshare, presets
 from core.bikeshare import ENDING_DOCK, ENDING_OUTSIDE, NoBikeshare
 
 
-def rebalance(
-    origin, dest, bike="classic", snap=None, ending=ENDING_DOCK, no_walk_to=None, **kwargs
-):
+def rebalance(origin, bike="classic", snap=None, ending=ENDING_DOCK, no_walk_to=None, **kwargs):
     services = FakeServices(no_walk_to, ride_speed_kmh=presets.BIKESHARE_BIKES[bike].speed_kmh)
     snap = snap or snapshot()
     body = bikeshare.plan(
         origin,
-        dest,
+        None,
         bike,
         ending,
         snap,
@@ -56,13 +57,20 @@ def fill(snap, station_id: str) -> float:
 def test_it_picks_up_at_a_crowded_station_and_returns_to_one_that_needs_bikes() -> None:
     plain, _ = run(UNION, DUPONT)
     assert plain["bikeshare"]["start"]["name"] == COLUMBUS.name
-    body, _, snap = rebalance(UNION, DUPONT)
+    body, _, snap = rebalance(UNION)
     plan = body["bikeshare"]
     assert plan["rebalance"] is True
     assert plan["start"]["name"] != COLUMBUS.name
     assert fill(snap, plan["start"]["station_id"]) >= bikeshare.FULL_AT_LEAST
     assert fill(snap, plan["end"]["station_id"]) <= bikeshare.EMPTY_AT_MOST
-    assert plan["end"]["name"] == "18th & New Hampshire Ave NW"
+    # No destination: the end is the station that needs bikes nearest the start's dock, and
+    # the ride ends there, with no walk after it.
+    nearest = bikeshare.rebalance_ends([plan["start"]["lon"], plan["start"]["lat"]], None, snap)[0][
+        1
+    ]
+    assert plan["end"]["station_id"] == nearest.station_id
+    assert plan["walk_end"] is None
+    assert [step["kind"] for step in plan["steps"]] == ["walk", "ride"]
     # Every option is a rebalancing pair too.
     assert plan["options"]
     for option in plan["options"]:
@@ -131,7 +139,7 @@ def test_e_bikes_count_toward_the_fill_and_the_bike_type_must_be_there() -> None
 
 
 def test_the_steps_say_crowded_and_needs_bikes_and_no_points() -> None:
-    body, _, _ = rebalance(UNION, DUPONT)
+    body, _, _ = rebalance(UNION)
     plan = body["bikeshare"]
     assert ", which is crowded, take a classic bike" in plan["steps"][0]["text"]
     assert ", which needs bikes (" in plan["steps"][1]["text"]
@@ -141,7 +149,7 @@ def test_the_steps_say_crowded_and_needs_bikes_and_no_points() -> None:
 
 
 def test_it_always_ends_at_a_dock() -> None:
-    body, _, _ = rebalance(UNION, DUPONT, bike="ebike", ending=ENDING_OUTSIDE)
+    body, _, _ = rebalance(UNION, bike="ebike", ending=ENDING_OUTSIDE)
     plan = body["bikeshare"]
     assert plan["ending"] == ENDING_DOCK
     assert plan["start"]["kind"] == "dock"
@@ -154,11 +162,11 @@ def test_no_crowded_station_or_none_that_needs_bikes_is_said() -> None:
             snap = set_status(snap, station, bikes=5, ebikes=0)
             snap = set_status(snap, station, docks=5)
     with pytest.raises(NoBikeshare, match="No station has classic bikes to spare"):
-        rebalance(UNION, DUPONT, snap=snap)
+        rebalance(UNION, snap=snap)
     # Crowded starts, but nowhere that needs bikes.
     snap = set_status(snap, COLUMBUS, bikes=20, docks=1)
     with pytest.raises(NoBikeshare, match="No station needs bikes right now"):
-        rebalance(UNION, DUPONT, snap=snap)
+        rebalance(UNION, snap=snap)
 
 
 def test_a_chosen_start_must_be_crowded() -> None:
@@ -166,7 +174,7 @@ def test_a_chosen_start_must_be_crowded() -> None:
     snap = snapshot()
     assert fill(snap, COLUMBUS.station_id) < bikeshare.FULL_AT_LEAST
     with pytest.raises(NoBikeshare) as refusal:
-        rebalance(UNION, DUPONT, snap=snap, pickup_station=COLUMBUS.station_id)
+        rebalance(UNION, snap=snap, pickup_station=COLUMBUS.station_id)
     assert str(refusal.value).startswith(
         "Columbus Circle / Union Station isn't crowded right now (23% full), so it can't start "
         "a Rebalance Ride."
@@ -178,7 +186,7 @@ def test_a_chosen_end_must_need_bikes() -> None:
     snap = snapshot()
     assert fill(snap, TWENTIETH_Q.station_id) > bikeshare.EMPTY_AT_MOST
     with pytest.raises(NoBikeshare) as refusal:
-        rebalance(UNION, DUPONT, snap=snap, dropoff_station=TWENTIETH_Q.station_id)
+        rebalance(UNION, snap=snap, dropoff_station=TWENTIETH_Q.station_id)
     assert str(refusal.value).startswith(
         "20th & Q St NW doesn't need bikes right now (41% full), so it can't end a Rebalance Ride."
     )
@@ -188,11 +196,11 @@ def test_the_fill_is_rounded_so_a_near_miss_never_reads_as_a_fit() -> None:
     # 74.6% full is not crowded, and is said as 74%, not 75%.
     snap = set_status(snapshot(), COLUMBUS, bikes=373, ebikes=0, docks=127)
     with pytest.raises(NoBikeshare, match=r"\(74% full\)"):
-        rebalance(UNION, DUPONT, snap=snap, pickup_station=COLUMBUS.station_id)
+        rebalance(UNION, snap=snap, pickup_station=COLUMBUS.station_id)
     # 25.4% full does not need bikes, and is said as 26%.
     snap = set_status(snapshot(), TWENTIETH_Q, bikes=127, ebikes=0, docks=373)
     with pytest.raises(NoBikeshare, match=r"\(26% full\)"):
-        rebalance(UNION, DUPONT, snap=snap, dropoff_station=TWENTIETH_Q.station_id)
+        rebalance(UNION, snap=snap, dropoff_station=TWENTIETH_Q.station_id)
 
 
 def test_chosen_stations_that_fit_are_taken_and_said() -> None:
@@ -200,7 +208,7 @@ def test_chosen_stations_that_fit_are_taken_and_said() -> None:
     start = bikeshare.rebalance_starts(UNION, DUPONT, "classic", snap)[-1][1]
     end = bikeshare.rebalance_ends(DUPONT, UNION, snap)[-1][1]
     body, _, _ = rebalance(
-        UNION, DUPONT, snap=snap, pickup_station=start.station_id, dropoff_station=end.station_id
+        UNION, snap=snap, pickup_station=start.station_id, dropoff_station=end.station_id
     )
     plan = body["bikeshare"]
     assert plan["rebalance"] is True
@@ -224,24 +232,24 @@ def test_crowded_and_needy_stations_side_by_side_are_said_as_rebalance() -> None
     snap = set_status(snap, COLUMBUS, bikes=20, docks=1)
     snap = set_status(snap, beside, bikes=1, docks=19)
     with pytest.raises(NoBikeshare) as refusal:
-        rebalance(UNION, DUPONT, snap=snap)
+        rebalance(UNION, snap=snap)
     assert "no Rebalance Ride to make" in str(refusal.value)
     assert "Walking is the way" not in str(refusal.value)
 
 
-def test_no_way_on_foot_from_the_end_says_stations_that_need_bikes() -> None:
-    snap = snapshot()
-    ends = bikeshare.rebalance_ends(DUPONT, UNION, snap)
-    with pytest.raises(NoBikeshare) as refusal:
-        rebalance(UNION, DUPONT, snap=snap, no_walk_to={tuple(p.point) for _, p in ends})
-    assert str(refusal.value) == (
-        "There is no way on foot from a station that needs bikes to the destination."
-    )
+def test_the_nearest_crowded_station_by_the_walk_comes_first() -> None:
+    body, services, snap = rebalance(UNION)
+    plan = body["bikeshare"]
+    starts = bikeshare.rebalance_starts(UNION, None, "classic", snap)
+    walks = {p.station_id: services.walk(UNION, p.point).duration_s for _, p in starts}
+    assert walks[plan["start"]["station_id"]] == min(walks.values())
+    # Nothing to be on the way to: no way words in the options.
+    assert all("on your way" not in option["text"] for option in plan["options"])
 
 
 def test_without_availability_it_says_so() -> None:
     with pytest.raises(NoBikeshare, match="can't be read"):
-        rebalance(UNION, DUPONT, snap=replace(snapshot(), status=None))
+        rebalance(UNION, snap=replace(snapshot(), status=None))
 
 
 def test_the_programmes_name_is_nowhere_in_the_api() -> None:
@@ -270,21 +278,23 @@ def test_its_ride_leg_is_bikeshares() -> None:
 @pytest.mark.usefixtures("weekday_clock", "world")
 class TestRebalanceApi:
     def test_a_rebalance_ride_is_a_bikeshare_answer_from_crowded_to_low(self, client) -> None:
-        response = post(client, {"points": [UNION, DUPONT], "preset": "rebalance"})
+        response = post(client, {"points": [UNION], "preset": "rebalance"})
         assert response.status_code == 200, response.content
         data = response.json()
         assert data["preset"] == "rebalance"
         plan = data["bikeshare"]
         assert plan["rebalance"] is True and plan["ending"] == "dock"
         assert plan["start"]["name"] != COLUMBUS.name
-        assert plan["end"]["name"] == "18th & New Hampshire Ave NW"
+        # No destination: Columbus Circle, 23% full and near the crowded start, needs bikes.
+        assert plan["end"]["name"] == COLUMBUS.name
+        assert plan["walk_end"] is None
         assert plan["summary"].startswith("Rebalance Ride, classic bike")
 
     def test_a_chosen_station_that_is_not_crowded_is_a_422_in_words(self, client) -> None:
         response = post(
             client,
             {
-                "points": [UNION, DUPONT],
+                "points": [UNION],
                 "preset": "rebalance",
                 "pickup_station": COLUMBUS.station_id,
             },
@@ -294,7 +304,7 @@ class TestRebalanceApi:
         assert "isn't crowded right now (23% full)" in response.json()["error"]
 
     def test_it_takes_the_bike_choice_as_bikeshare_does(self, client) -> None:
-        response = post(client, {"points": [UNION, DUPONT], "preset": "rebalance", "bike": "ebike"})
+        response = post(client, {"points": [UNION], "preset": "rebalance", "bike": "ebike"})
         assert response.status_code == 200, response.content
         assert response.json()["bikeshare"]["bike"] == "ebike"
 
@@ -304,10 +314,11 @@ class TestRebalanceApi:
             ({"bike": "ebike", "ending": "outside_dock"}, "Rebalance Ride ends at a station"),
             ({"assist": True}, "assist applies to the Cargo Bike"),
             ({"loop": True}, "does not plan loops"),
-            ({"points": [UNION, DUPONT, UNION, DUPONT, UNION, DUPONT]}, "at most 3 stops"),
+            ({"points": [UNION, DUPONT]}, "Rebalance Ride takes a start only"),
+            ({"points": [UNION, DUPONT, UNION]}, "Rebalance Ride takes a start only"),
         ],
     )
     def test_what_it_will_not_take(self, client, changes, message) -> None:
-        response = post(client, {"points": [UNION, DUPONT], "preset": "rebalance", **changes})
+        response = post(client, {"points": [UNION], "preset": "rebalance", **changes})
         assert response.status_code == 400, response.content
         assert message in response.json()["error"]

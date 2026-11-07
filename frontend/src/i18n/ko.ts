@@ -2059,4 +2059,11 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Whole trip, not counting breaks": "전체 여정, 휴식 제외",
   "The map shows the trip to stop 1. At each stop you return the bike, and the next trip is planned again from there, with the bikes and docks free then.": "지도에는 경유지 1까지의 여정이 표시됩니다. 각 경유지에서 자전거를 반납하고, 다음 여정은 그때 비어 있는 자전거와 거치대를 기준으로 그곳에서 다시 계획됩니다.",
   "From stop {n}": "경유지 {n}부터",
+  "Trips": "이동 횟수",
+  "Total time": "총 시간",
+  "Today's Rebalance Rides": "오늘의 재배치 라이드",
+  "Do another trip": "한 번 더 이동",
+  "Finish session": "세션 끝내기",
+  "The nearest dock that needs bikes": "자전거가 필요한 가장 가까운 거치대",
+  "A Rebalance Ride starts where you are and has no destination: it ends at the dock that needs bikes.": "재배치 라이드는 지금 있는 곳에서 시작하며 목적지가 없습니다. 자전거가 필요한 거치대에서 끝납니다.",
 };

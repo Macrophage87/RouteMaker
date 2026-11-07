@@ -272,6 +272,9 @@ def post(client, body, content_type: str = "application/json", **extra):
 
 
 def good_body(preset: str = "default") -> dict:
+    # Rebalance Ride takes the start alone (Stephen, 2026-11-07).
+    if preset == "rebalance":
+        return {"points": [list(VERTICES[0])], "preset": preset}
     return {"points": [list(VERTICES[0]), list(VERTICES[-1])], "preset": preset}
 
 

@@ -2059,4 +2059,11 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Whole trip, not counting breaks": "کل سفر، بدون احتساب استراحت‌ها",
   "The map shows the trip to stop 1. At each stop you return the bike, and the next trip is planned again from there, with the bikes and docks free then.": "نقشه سفر تا توقف ۱ را نشان می‌دهد. در هر توقف دوچرخه را تحویل می‌دهید و سفر بعدی از همان‌جا دوباره برنامه‌ریزی می‌شود، با دوچرخه‌ها و جایگاه‌های آزاد در آن زمان.",
   "From stop {n}": "از توقف {n}",
+  "Trips": "سفرها",
+  "Total time": "زمان کل",
+  "Today's Rebalance Rides": "سفرهای جابه‌جایی امروز",
+  "Do another trip": "یک سفر دیگر",
+  "Finish session": "پایان جلسه",
+  "The nearest dock that needs bikes": "نزدیک‌ترین جایگاهی که دوچرخه لازم دارد",
+  "A Rebalance Ride starts where you are and has no destination: it ends at the dock that needs bikes.": "سفر جابه‌جایی از جایی که هستید شروع می‌شود و مقصدی ندارد: در جایگاهی که دوچرخه لازم دارد تمام می‌شود.",
 };
