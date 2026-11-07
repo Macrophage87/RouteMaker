@@ -320,7 +320,7 @@ test("as many graphs are drawn as fit the room readably, and the rest named", ()
 
 test("the graphs' room is measured before each paint, and with no room their sentence stays for screen readers (review of #928)", () => {
   const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
-  assert.match(ride, /useLayoutEffect\(\(\) => \{\s*measureAhead\.current\?\.\(\);\s*\}, \[notesShown, restOffered, sheetShown\]\);/, "a note that comes or goes changes the room in the same frame, and only then (v0.22.0)");
+  assert.match(ride, /useLayoutEffect\(\(\) => \{\s*measureAhead\.current\?\.\(\);\s*\}, \[gps, !!ride\.fix, paused, wakeNote, ride\.off && replanNote, corridorText, weatherShown, restOffered, sheetShown, show311\]\);/, "a note that comes or goes changes the room in the same frame, and only then (v0.22.0)");
   // The other riders are found whenever the graphs are on, so the no-room sentence names them too (v0.22.0).
   assert.match(ride, /const ridersAt = aheadWanted \? ride\.progressM : null;/);
   assert.match(ride, /ridersAt === null\s*\? \[\]\s*: riderDots\.flatMap/);

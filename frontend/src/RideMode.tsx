@@ -3272,11 +3272,12 @@ export function RideMode({
   }, [aheadWanted, sheetShown, textSize, aheadDrawn]);
   // Measured again before it is painted when a note comes into the panel or goes (a weak GPS fix under trees), or the
   // rest button or the panel itself: the graphs' room changes at once, not a frame later from the ResizeObserver,
-  // which drew them in three steps (the review of #928). Only on those changes, not at every fix (v0.22.0); a note's
-  // text growing a line is left to the ResizeObserver.
+  // which drew them in three steps (the review of #928). Keyed on each note itself (a second note, or one swapped for
+  // another, counts too) and 311 coming or going, not at every fix (v0.22.0); a note's text growing a line is left to
+  // the ResizeObserver.
   useLayoutEffect(() => {
     measureAhead.current?.();
-  }, [notesShown, restOffered, sheetShown]);
+  }, [gps, !!ride.fix, paused, wakeNote, ride.off && replanNote, corridorText, weatherShown, restOffered, sheetShown, show311]); // eslint-disable-line react-hooks/exhaustive-deps
   // No room for a graph, or for some of them: said once a ride for each set of graphs (lib/aheadGraph.ts
   // aheadNoRoom), never again at each fix (the review of #928).
   const noRoomSaid = useRef(new Set<string>());
