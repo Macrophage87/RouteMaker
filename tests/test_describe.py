@@ -3208,6 +3208,27 @@ class TestPhantomTurns:
                 ("Pennsylvania Avenue Southeast bike lane", "left"),
             ], lane_fork
 
+    def test_a_lead_in_says_the_turn_made_at_the_street_not_one_read_across_it(self):
+        # A left off the street onto a way that bends to meet an angled path: still "Left",
+        # not a bear from the headings across both (#1036 review).
+        bends = [
+            flat(
+                road("A Street", 1, 400, 0, 0),
+                forked(road("", 1, 25, 270, 320, "none", "service_road"), "left"),
+                road("B Trail", 1, 400, 320, 320, "path", "cycleway"),
+            )
+        ]
+        assert self.said(d.describe(bends))[1] == ("B Trail", "left")
+        # Bent back across the rider's heading, a left that ends up right of it: said as it was.
+        across = [
+            flat(
+                road("A Street", 1, 400, 0, 0),
+                forked(road("", 1, 25, 270, 20, "none", "service_road"), "left"),
+                road("B Trail", 1, 400, 20, 20, "path", "cycleway"),
+            )
+        ]
+        assert self.said(d.describe(across))[1] == ("service road", "left")
+
     def test_a_lead_in_of_30_m_or_more_is_a_way_ridden(self):
         legs = [
             flat(

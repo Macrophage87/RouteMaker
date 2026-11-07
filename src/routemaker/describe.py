@@ -924,15 +924,27 @@ def _lead_in(before: _Run | None, run: _Run, after: _Run | None) -> bool:
         or _same_street(before, after)
     ):
         return False
-    if not (_forks(run) or _movement_between(before, run) in TURN_WORDS):
+    into = _lead_in_move(before, run)
+    if into not in TURN_WORDS:
         return False
     out = after.first.fork if _forks(after) else _movement_between(run, after)
     if out != "straight":
         return False
+    # Across both, the route still turns, and to the side it turned off the street: a way
+    # that bends back across the rider's heading is said turn by turn.
     turn = turn_between(before.last, after.first)
     if turn is None or not SLIGHT_MIN_DEG <= abs(turn) < HAIRPIN_DEG:
         return False
+    if (turn > 0) != into.endswith("right"):
+        return False
     return not (run.tier in NEVER_HIDDEN and _rank(after) < _rank(run))
+
+
+def _lead_in_move(before: _Run, run: _Run) -> str | None:
+    """The move made off the street into a lead-in: its fork's, else the turn into it. Said
+    as the turn onto the way after (`_absorb_tiny`), as the rider makes it at the street, not
+    a bear read across a lead-in that bends to meet an angled sidepath (#1036 review)."""
+    return run.first.fork if _forks(run) else _movement_between(before, run)
 
 
 def _junction_turn(runs: list[_Run], i: int) -> int | None:
@@ -1064,10 +1076,12 @@ def _absorb_tiny(runs: list[_Run]) -> list[_Run]:
                 continue
             # A few metres between two turns is one move (`_connector`), and so is a short
             # unnamed lead-in onto a way carried on straight (`_lead_in`).
-            if after is not None and (
-                _connector(before, run, after) or _lead_in(before, run, after)
-            ):
+            lead_in = after is not None and _lead_in(before, run, after)
+            if after is not None and (lead_in or _connector(before, run, after)):
+                move = _lead_in_move(before, run) if lead_in else None
                 _fold_connector(before, run, after)
+                if move is not None and after.first is not None:
+                    after.first = replace(after.first, fork=move)
                 del runs[i]
                 changed = True
                 continue
