@@ -54,7 +54,7 @@ import {
   onOtherLine,
   withClosed,
 } from "./lib/roadClosed.ts";
-import { requestRoute, type ErrorKind, type RouteResponse } from "./lib/api.ts";
+import { requestRoute, requestStations, type ErrorKind, type RouteResponse } from "./lib/api.ts";
 import { VIA_MARKS, drawnLegs, plannedStopNumbers, stopNames, viaIndices, type RideStopMark } from "./lib/pointKinds.ts";
 import {
   SKIP_STOP,
@@ -76,7 +76,7 @@ import {
 } from "./lib/rideStops.ts";
 import { RestartStopsDialog } from "./RestartStopsDialog.tsx";
 import { StartFirstDialog } from "./StartFirstDialog.tsx";
-import { keepLeftRide, keepLeftRidePast } from "./lib/rideResume.ts";
+import { keepLeftRide, keepLeftRidePast, seeLeftRide, unseeLeftRide } from "./lib/rideResume.ts";
 import type { Dials } from "./lib/dials.ts";
 import { haversineM, type LonLat } from "./lib/geo.ts";
 import { placeLetter, type LetteredPlace } from "./lib/letteredPlaces.ts";
@@ -175,7 +175,7 @@ import {
   type Said,
 } from "./lib/rideOutput.ts";
 import { ScreenSleepNote } from "./ScreenSleepNote.tsx";
-import { RAIL_INSET_PX, railLeastPx, useRailFit } from "./lib/railFit.ts";
+import { RAIL_INSET_PX, railLeastPx, useRailFitMoves } from "./lib/railFit.ts";
 import { WAITING_FOR_GPS, handOver, readOnce, rideWatchOptions, watchRide, type RideGeoEnv } from "./lib/rideWatch.ts";
 import { PAUSE_CHECK_MS, PausedFixes, beatKeepsGps, heartbeatFix, movedFromPause, rideStayPausedSaid, stayStep, stayedLong, type Stay } from "./lib/ridePause.ts";
 import { askCompass } from "./lib/compassHeading.ts";
@@ -285,6 +285,8 @@ import type { SeeEveryone } from "./app/useSeeEveryone.ts";
 import { SeeEveryoneButton } from "./SeeEveryoneButton.tsx";
 import { AheadGraph, aheadLeastPx } from "./AheadGraph.tsx";
 import { ContrastRow, ThemeSetting, UnitsSetting } from "./DisplaySettings.tsx";
+import { RebalanceDockCard, type DockAsk } from "./RebalanceDockCard.tsx";
+import { DOCK_AWAY_M, DOCK_FINDING, DOCK_NONE_NEEDS, DOCK_ROUTE_FAILED, dockChoices, dockChosenSaid, dockReachedSaid, dockRouting, type DockChoice, type RebalanceDocked } from "./lib/rebalanceDock.ts";
 import { AHEAD_NAME, AHEAD_WORD, aheadNoRoom, aheadOff, aheadOn, aheadViews, readAhead, writeAhead, RIDER_OFF_ROUTE_M, RIDERS_REACH_M, type AheadView } from "./lib/aheadGraph.ts";
 
 /** The bottom panel's padding and top edge (styles.css .ride-controls), and the graph's margin under it. */
@@ -541,25 +543,63 @@ function CueShape({ shape, junction, exit, jog }: { shape: ReturnType<typeof arr
     bear_right: "M18 52 V30 L34 14 M22 14 H34 V26",
     uturn: "M32 52 V22 A10 10 0 0 0 12 22 V38 M4 30 L12 40 L20 30",
     straight: "M24 52 V10 M14 20 L24 10 L34 20",
-    // Across the road drawn between ROAD_EDGES, then the turn on its far side.
-    cross: "M24 52 V10 M14 20 L24 10 L34 20",
-    cross_left: "M32 52 V12 H10 M18 4 L10 12 L18 20",
-    cross_right: "M16 52 V12 H38 M30 4 L38 12 L30 20",
+    // Across the road (CrossRoad), then the turn along the path on its far side.
+    cross: "M24 52 V8 M15 17 L24 8 L33 17",
+    cross_left: "M30 52 V18 H8 M15 11 L8 18 L15 25",
+    cross_right: "M18 52 V18 H40 M33 11 L40 18 L33 25",
+    // Off a way alongside the road (AlongRoad), over it, then the turn on its far side: back along it, or on ahead.
+    along_left: "M38 52 V28 H7 M14 21 L7 28 L14 35",
+    along_left_left: "M38 52 V14 H9 V46 M3 40 L9 46 L15 40",
+    along_left_right: "M38 52 V32 H9 V8 M3 14 L9 8 L15 14",
+    along_right: "M10 52 V28 H41 M34 21 L41 28 L34 35",
+    along_right_right: "M10 52 V14 H39 V46 M45 40 L39 46 L33 40",
+    along_right_left: "M10 52 V32 H39 V8 M45 14 L39 8 L33 14",
     stop: "M14 10 V52 M14 12 H38 L32 20 L38 28 H14",
     end: "M14 10 V52 M14 12 H38 V28 H14 M26 12 V28 M14 20 H38",
     warn: "M24 8 L44 46 H4 Z M24 20 V32 M24 38 V40",
   };
   const across = shape === "cross" || shape === "cross_left" || shape === "cross_right";
+  const along = shape.startsWith("along_left") ? "left" : shape.startsWith("along_right") ? "right" : null;
   return (
     <svg className="cue-shape" viewBox="0 0 48 56" aria-hidden="true" focusable="false">
-      {across ? <path d={ROAD_EDGES} fill="none" stroke="currentColor" strokeWidth="1.5" /> : null}
+      {across ? <CrossRoad turn={shape !== "cross"} /> : null}
+      {along ? <AlongRoad side={along} /> : null}
       <path d={paths[shape]} fill="none" stroke="currentColor" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
 
-/** The road a "cross" arrow goes over: its two edges, thin, across the arrow's stem below the turn. */
-const ROAD_EDGES = "M4 26 H44 M4 40 H44";
+/**
+ * The road a "cross" arrow goes over, drawn so it reads as a road (the owner, 2026-11-07: two thin lines were
+ * "not descriptive enough"): a shaded band with its edges and a dashed centre line. With a turn after it, the
+ * path turned onto is dotted along the far side, so the arrow is seen joining it.
+ */
+function CrossRoad({ turn }: { turn: boolean }) {
+  return (
+    <g className="cue-cross-road">
+      <rect x="1" y="30" width="46" height="14" fill="currentColor" opacity="0.22" />
+      <path d="M1 30 H47 M1 44 H47" fill="none" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M1 37 H47" fill="none" stroke="currentColor" strokeWidth="1.5" strokeDasharray="4 3" />
+      {turn ? <path d="M1 18 H47" fill="none" stroke="currentColor" strokeWidth="2" strokeDasharray="0.1 4" strokeLinecap="round" /> : null}
+    </g>
+  );
+}
+
+/**
+ * The road an "along" arrow turns over: one running alongside the way the rider was on, on the side turned to (the
+ * owner, at West Basin Drive: "Left across road then right"), shaded with its edges and centre line as
+ * CrossRoad's.
+ */
+function AlongRoad({ side }: { side: "left" | "right" }) {
+  const x = side === "left" ? 16 : 18;
+  return (
+    <g className="cue-along-road">
+      <rect x={x} y="1" width="14" height="54" fill="currentColor" opacity="0.22" />
+      <path d={`M${x} 1 V55 M${x + 14} 1 V55`} fill="none" stroke="currentColor" strokeWidth="1.5" />
+      <path d={`M${x + 7} 1 V55`} fill="none" stroke="currentColor" strokeWidth="1.5" strokeDasharray="4 3" />
+    </g>
+  );
+}
 
 /**
  * End ride as a slide (the owner, 2026-10-19), so a bump while riding does not end it: a range from 0 to
@@ -793,7 +833,7 @@ export function RideMode({
   trailMiles = null,
   geoEnv,
   keepLastRide = false,
-  trip = null,
+  trip: plannedTrip = null,
   resumedPast = null,
   onRideRest,
   onTripCheck,
@@ -809,6 +849,7 @@ export function RideMode({
   keepLeft = false,
   startNote = "",
   startFirst = false,
+  resumedQuietly = false,
   riderDots = NO_DOTS,
   onSheetHeight,
 }: {
@@ -834,7 +875,11 @@ export function RideMode({
   /** A Detour row's Show on map: the map frames the place and the rider (following is off until Where am I? or 30 s idle). */
   onShowPlace?: (point: LonLat) => void;
   /** End ride: with the plan the ride leaves (part way, from here; lib/navigate.ts planAfterEnd) and the ride's figures. */
-  onEnd: (after: EndedPlan, stats: RideStats) => void;
+  /**
+   * `docked`: a Rebalance Ride's drop-off, chosen at the pick-up dock (lib/rebalanceDock.ts), with the ride to it as it
+   * stands, so Keep riding carries on to it.
+   */
+  onEnd: (after: EndedPlan, stats: RideStats, docked?: RebalanceDocked | null) => void;
   /** Undo after End ride: the ended ride's figures, to carry on from. */
   resumeStats?: RideStats | null;
   /** The water layer's points, loaded if they are not yet (App's ensureWater); for the detours. */
@@ -926,12 +971,25 @@ export function RideMode({
    * 2026-11-06). Not on a Bikeshare or transit trip, whose walk to the dock comes first already, nor on foot.
    */
   startFirst?: boolean;
+  /** Resumed within minutes of the page being put away (lib/rideResume.ts resumesQuietly): no "Already done?". */
+  resumedQuietly?: boolean;
   /** The other riders' dots on a shared ride: drawn on the graph of the road ahead, which reaches back to the last one. */
   riderDots?: readonly LonLat[];
   /** The bottom panel's height in CSS pixels (0 while it is hidden), at each change: the map's follow camera keeps the
    *  rider's arrow above it (MapView ridePanelH). */
   onSheetHeight?: (px: number) => void;
 }) {
+  // A Rebalance Ride (lib/rebalanceDock.ts): at the crowded dock it holds and asks where to dock, then rides there.
+  // Kept riding after the end (Keep riding), its route is the ride to the chosen dock, on the bike's own ride type.
+  const rebalance = plannedRoute.preset === "rebalance" || !!plannedTrip?.docked;
+  const [trip, setTrip] = useState<RideTrip | null>(() =>
+    rebalance && plannedTrip?.approach?.name ? { ...plannedTrip, approach: { ...plannedTrip.approach, reached: dockReachedSaid(plannedTrip.approach.name) } } : plannedTrip,
+  );
+  const [docking, setDocking] = useState<DockAsk | null>(null);
+  const dockingRef = useRef<DockAsk | null>(null);
+  dockingRef.current = docking;
+  // The drop-off chosen there, for the summary.
+  const dockChosen = useRef<string | null>(plannedTrip?.docked ?? null);
   const [route, setRoute] = useState(plannedRoute);
   const routeRef = useRef(route);
   // The rider's route has ridden a dirt trail on a ride type that skips them (the owner, 2026-10-21: "If someone
@@ -1095,7 +1153,12 @@ export function RideMode({
   const railRef = useRef<HTMLDivElement>(null);
   // Icons only (Settings > Display): read as the ride opens; the buttons' names are unchanged either way.
   const [iconsOnly] = useState(() => readRideIconsOnly());
-  const railFit = useRailFit(railRef, iconsOnly);
+  // Short of room even for pills (a Mass Ride with Large text on a small phone; Stephen 2026-11-07): Text, then Share
+  // live, move into More's bubbles (lib/railFit.ts railMoves), so the rest keep 44 px and stay clear of Send alert.
+  const railMovable = onBroadcast && !ride.arrived ? 2 : 1;
+  const { fit: railFit, moved: railMoved } = useRailFitMoves(railRef, iconsOnly, railMovable);
+  const textInMore = railMoved >= 1;
+  const broadcastInMore = railMoved >= 2;
   const [settingsOpen, setSettingsOpen] = useState(false);
   const settingsPanel = useRef<HTMLDialogElement>(null);
   const settingsTitle = useRef<HTMLHeadingElement>(null);
@@ -1808,7 +1871,8 @@ export function RideMode({
 
   // Restarting part way: asked at the first fix past a stop, never after Undo (it carries on) or on a trip's leg (its
   // walk to the dock comes first). The defaults ride on as the ride is; other picks plan again from here.
-  const restartAsked = useRef(resumeStats !== null || trip !== null);
+  // Resumed soon after the page was put away (resumedQuietly): the ride carries on, no "Already done?".
+  const restartAsked = useRef(resumeStats !== null || trip !== null || resumedQuietly);
   const [restart, setRestart] = useState<RestartStop[] | null>(null);
   // While it is asked, no re-route of its own: the stops it lists are the plan's as it stands (review of #444).
   const restartOpen = useRef(false);
@@ -1887,6 +1951,13 @@ export function RideMode({
       else if (startWas && !toStartAsking.current && fix.accuracyM <= POOR_FIX_M && haversineM(fix.point, startWas) <= START_NEAR_M) {
         startReachedRef.current();
       }
+      // Choosing where to dock (a Rebalance Ride at its crowded dock): the marker only moves until a dock is chosen.
+      if (dockingRef.current) {
+        const held = { ...rideRef.current, fix, goodFix: fix.accuracyM <= POOR_FIX_M ? fix : rideRef.current.goodFix };
+        rideRef.current = held;
+        setRide(held);
+        return;
+      }
       if (toStartAsking.current) {
         const held = { ...rideRef.current, fix };
         rideRef.current = held;
@@ -1912,6 +1983,8 @@ export function RideMode({
       if (wasWalking && !stepped.state.walking) {
         setWalking(false);
         if (trip?.shareBike) setUndockAt(Date.now());
+        // At the dock; or, a bike taken elsewhere and the line joined along it, from there.
+        if (rebalance && approach) askDocksRef.current(haversineM(fix.point, approach.at) > DOCK_AWAY_M ? fix.point : approach.at);
       }
       stepDockRef.current(fix);
       const out = { state: stepped.state.ride, events: stepped.events };
@@ -2251,6 +2324,21 @@ export function RideMode({
     document.addEventListener("visibilitychange", onHide);
     return () => document.removeEventListener("visibilitychange", onHide);
   }, []);
+  // Put away mid-ride (another app, the screen off): noted on the kept ride, so a reload soon after resumes it quietly
+  // (lib/rideResume.ts resumesQuietly).
+  useEffect(() => {
+    if (!keepLeft) return undefined;
+    const onAway = () => {
+      if (document.visibilityState === "hidden" && !ended.current) seeLeftRide(Date.now(), statsRef.current);
+      else if (document.visibilityState === "visible") unseeLeftRide();
+    };
+    document.addEventListener("visibilitychange", onAway);
+    window.addEventListener("pagehide", onAway);
+    return () => {
+      document.removeEventListener("visibilitychange", onAway);
+      window.removeEventListener("pagehide", onAway);
+    };
+  }, [keepLeft]);
   // Only a problem is shown (the bottom panel stays away while all is well); saved in full says nothing.
   const corridorText = corridorWorry(corridor);
 
@@ -2344,6 +2432,65 @@ export function RideMode({
       if (said && !ended.current) answer(said);
     });
   };
+  // A Rebalance Ride at its crowded dock: the docks that need bikes now, from there (lib/rebalanceDock.ts).
+  const askDocks = async (at: LonLat) => {
+    const planned = routeRef.current.bikeshare?.end ?? null;
+    const fallback = planned ? { name: planned.name, point: [planned.lon, planned.lat] as LonLat } : null;
+    const asking: DockAsk = { at, phase: "finding", choices: [], note: DOCK_FINDING, planned: fallback };
+    dockingRef.current = asking;
+    setDocking(asking);
+    const result = await requestStations(at, "dropoff");
+    if (ended.current || dockingRef.current?.at !== at) return;
+    const choices = result.ok ? dockChoices(result.answer.stations, at, approach?.name ?? null) : [];
+    const note = result.ok ? (choices.length ? "" : DOCK_NONE_NEEDS) : result.message;
+    const listed: DockAsk = { ...asking, phase: "list", choices, note };
+    dockingRef.current = listed;
+    setDocking(listed);
+    if (note) notify(note);
+  };
+  const askDocksRef = useRef(askDocks);
+  askDocksRef.current = askDocks;
+  // A dock chosen: the ride from the crowded dock to it, which ends there (the plan's own line where it is the planned one).
+  const chooseDock = async (choice: Pick<DockChoice, "name" | "point">, asPlanned = false) => {
+    const asking = dockingRef.current;
+    if (!asking || asking.phase === "routing") return;
+    const take = (found: RouteResponse | null, points: LonLat[]) => {
+      if (found) {
+        plan.current = { points, loop: false };
+        modelRef.current = modelOf(found, points);
+        setRoute(found);
+        otherRef.current = null;
+        setOther(null);
+      }
+      // A re-plan asked meanwhile (Detour, Road closed, Reroute) is for the planned dock: its answer is dropped.
+      replanTicket.current += 1;
+      const dock = t("Dock at {place}.", { place: choice.name });
+      setTrip((was) => (was ? { ...was, finish: { shown: dock, spoken: dock }, docked: choice.name } : was));
+      dockChosen.current = choice.name;
+      const fresh = { ...startState(), fix: rideRef.current.fix, goodFix: rideRef.current.goodFix };
+      rideRef.current = fresh;
+      setRide(fresh);
+      // The time spent choosing is not riding.
+      statsRef.current = statsPause(statsRef.current);
+      dockingRef.current = null;
+      setDocking(null);
+      notify(dockChosenSaid(choice.name));
+      // The card goes: the focus to the ride's heading, as at the start.
+      headingRef.current?.focus();
+    };
+    if (asPlanned) return take(null, plan.current.points);
+    const routing: DockAsk = { ...asking, phase: "routing", note: dockRouting(choice.name) };
+    dockingRef.current = routing;
+    setDocking(routing);
+    const points: LonLat[] = [asking.at, choice.point];
+    const result = await askRoute(points, null, false);
+    if (ended.current || dockingRef.current !== routing) return;
+    if (result.ok) return take(result.route, points);
+    const back: DockAsk = { ...asking, phase: "list", note: DOCK_ROUTE_FAILED };
+    dockingRef.current = back;
+    setDocking(back);
+    notify(DOCK_ROUTE_FAILED);
+  };
   const end = () => {
     ended.current = true;
     stopWatch.current?.();
@@ -2353,7 +2500,7 @@ export function RideMode({
     // Only "Ride ended." is said; the figures are on the summary (the owner, 2026-10-20: "Just put ride ended.").
     if (toVoice(prefsRef.current.output)) rideVoice.speak(RIDE_ENDED_SAID, true);
     // A Bikeshare or transit trip's riding leg is not the plan: the plan stays as it was.
-    onEnd(trip && !trip.asPlanned ? null : planAfterEnd(modelRef.current, rideRef.current, plan.current.points, plan.current.loop, Date.now()), statsRef.current);
+    onEnd(trip && !trip.asPlanned ? null : planAfterEnd(modelRef.current, rideRef.current, plan.current.points, plan.current.loop, Date.now()), statsRef.current, dockChosen.current ? { name: dockChosen.current, route: routeRef.current, points: plan.current.points } : null);
   };
   // A toggle: pressed, no automatic re-plan (one in flight is voided) and the way back is said once;
   // pressed again, re-planning is back on.
@@ -2847,6 +2994,11 @@ export function RideMode({
   // A transit trip's only: a plain ride's walk on from where it ends (walkInTrip) is the end of the ride, as before.
   const goesOnPast = !!rest || onwardParts.some((p) => p.kind === "transit");
   const tripGoesOn = ride.arrived && goesOnPast && ((onwardParts.length > 0 && !onwardDone) || (onwardDone && restNext && !restFailed));
+  // A Rebalance Ride ends as the rider docks (Stephen, 2026-11-07: "When you dock, the ride ends, and you get a ride end
+  // screen"): arrived at the dock, the summary comes up by itself, with Do another trip and Keep riding should it be early.
+  useEffect(() => {
+    if (ride.arrived && !tripGoesOn && rebalance && !ended.current) end();
+  }, [ride.arrived]); // eslint-disable-line react-hooks/exhaustive-deps -- once, on arriving
   // Off the train (and any walk after it) with a ride still to go: Ride the rest starts by itself, once (Stephen,
   // 2026-11-03: "It should let you switch between modes"). Its button stays for a second try (closures said, no route).
   const restAuto = useRef(false);
@@ -3172,17 +3324,20 @@ export function RideMode({
   // stays as it was, the bubbles still pressed for a larger screen, and the rider is told (the review of #928).
   const [aheadFits, setAheadFits] = useState(true);
   const aheadAt = aheadWanted && aheadFits ? ride.progressM : null;
+  // The other riders along the road ahead, whenever the graphs are on (v0.22.0): the sentence kept for a screen
+  // reader when no graph fits names them too, not only a drawn graph.
+  const ridersAt = aheadWanted ? ride.progressM : null;
   const ridersAlong = useMemo(
     () =>
-      aheadAt === null
+      ridersAt === null
         ? []
         : riderDots.flatMap((dot) => {
-            const on = snap(model, dot, aheadAt - RIDERS_REACH_M, aheadAt + RIDERS_REACH_M, 15, aheadAt);
+            const on = snap(model, dot, ridersAt - RIDERS_REACH_M, ridersAt + RIDERS_REACH_M, 15, ridersAt);
             return on && on.offM <= RIDER_OFF_ROUTE_M ? [on.alongM] : [];
           }),
     // Snapped again as the dots move, the route changes, or you move on 200 m (so a loop's other pass is not taken); not each fix.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [riderDots, model, aheadAt === null ? null : Math.round(aheadAt / 200)],
+    [riderDots, model, ridersAt === null ? null : Math.round(ridersAt / 200)],
   );
   const aheadShown = aheadAt !== null;
   // Off the train but no fresh fix there yet (under ground, or off at another stop): the button, for a press.
@@ -3240,7 +3395,7 @@ export function RideMode({
       // least room: the same whether the panel and the graph show or not, so the answer does not flip as they come
       // and go (the review of #928).
       const sheetH = sheet ? sheet.offsetHeight : 0;
-      const room = Math.floor(middle.clientHeight + sheetH - sheetChrome.current - AHEAD_MARGIN_PX - railLeastPx(buttons) - RAIL_INSET_PX - clear);
+      const room = Math.floor(middle.clientHeight + sheetH - sheetChrome.current - AHEAD_MARGIN_PX - railLeastPx(buttons + railMoved) - RAIL_INSET_PX - clear);
       // Whether a graph can show on this screen is told from that room alone; a note in the panel (a weak GPS fix,
       // the weather) only takes its height from the graphs while it shows, quietly.
       const graph = shown ? figure.getBoundingClientRect().height + AHEAD_MARGIN_PX : 0;
@@ -3266,13 +3421,15 @@ export function RideMode({
       watch.disconnect();
       buttons.disconnect();
     };
-  }, [aheadWanted, sheetShown, textSize, aheadDrawn]);
-  // Measured again at each render, before it is painted: a note that comes into the panel or goes (a weak GPS fix
-  // under trees) changes the graphs' room at once, not a frame later from the ResizeObserver, which drew them in
-  // three steps (the review of #928). Nothing is set where nothing changed, so it does not render again.
+  }, [aheadWanted, sheetShown, textSize, aheadDrawn, railMoved]);
+  // Measured again before it is painted when a note comes into the panel or goes (a weak GPS fix under trees), or the
+  // rest button or the panel itself: the graphs' room changes at once, not a frame later from the ResizeObserver,
+  // which drew them in three steps (the review of #928). Keyed on each note itself (a second note, or one swapped for
+  // another, counts too) and 311 coming or going, not at every fix (v0.22.0); a note's text growing a line is left to
+  // the ResizeObserver.
   useLayoutEffect(() => {
     measureAhead.current?.();
-  });
+  }, [gps, !!ride.fix, paused, wakeNote, ride.off && replanNote, corridorText, weatherShown, restOffered, sheetShown, show311]); // eslint-disable-line react-hooks/exhaustive-deps
   // No room for a graph, or for some of them: said once a ride for each set of graphs (lib/aheadGraph.ts
   // aheadNoRoom), never again at each fix (the review of #928).
   const noRoomSaid = useRef(new Set<string>());
@@ -3315,6 +3472,45 @@ export function RideMode({
     }
   }, [ride.off, show311]);
 
+  // The rail's Text and Share live buttons: in the rail or, short of room, in More (railMoved above), where a press
+  // closes More as its other press-once bubbles do. Moving one remounts it: a focus it held goes to More, not the page.
+  useEffect(() => {
+    if (document.activeElement === document.body || document.activeElement === null) settingsButton.current?.focus();
+  }, [textInMore, broadcastInMore]);
+  const textButton = (
+    <button
+      type="button"
+      className="ride-round ride-text-size"
+      onClick={textInMore ? () => fromMore(cycleText) : cycleText}
+      aria-keyshortcuts="T"
+      aria-pressed={textSize === "large"}
+      aria-label={RIDE_TEXT_BUTTON}
+      title={RIDE_TEXT_BUTTON}
+    >
+      <Icon name="textsize" size={24} />
+      <span className="ride-word" aria-hidden="true">{t("Text")}</span>
+    </button>
+  );
+  const broadcastButton = (
+    <button
+      type="button"
+      className={`ride-round broadcast-hold${broadcasting ? " ride-round-on" : ""}`}
+      onClick={broadcastInMore ? () => fromMore(() => void broadcast()) : () => void broadcast()}
+      {...broadcastHold}
+      aria-describedby={onBroadcastHold ? broadcastHoldId : undefined}
+      aria-label={`${broadcasting ? t("{name}: on. Share the link again", { name: RIDE_BROADCAST_NAME }) : passingOn ? t("{name}: pass on the link to this ride", { name: RIDE_BROADCAST_NAME }) : t("{name}: share a link others follow you with", { name: RIDE_BROADCAST_NAME })}${riders === null ? "" : `. ${countText(riders)}`}`}
+      title={RIDE_BROADCAST_NAME}
+    >
+      <Icon name="broadcast" size={riders === null ? 24 : 20} />
+      {riders !== null && (
+        <span className="ride-round-count" aria-hidden="true">
+          <Icon name="user" size={12} />
+          {riders}
+        </span>
+      )}
+      <span className="ride-word" aria-hidden="true">{railWord("Share live")}</span>
+    </button>
+  );
   return (
     <section ref={sectionRef} className={`ride${textSize === "large" ? " ride-large" : ""}`} aria-labelledby="ride-heading">
       <LiveRegion said={polite} urgent={false} />
@@ -3391,7 +3587,9 @@ export function RideMode({
             {light.shown.join(" · ")}
           </p>
         )}
-        {ride.arrived ? (
+        {docking ? (
+          <RebalanceDockCard ask={docking} onChoose={(choice) => void chooseDock(choice)} onPlanned={() => docking.planned && void chooseDock(docking.planned, true)} onRetry={() => void askDocks(docking.at)} />
+        ) : ride.arrived ? (
           <>
             {/* "Arrived: Union Station" (the UI review, 2026-10-28); Done, in the top row, opens the summary. */}
             {/* After the line (2026-11-02): a walk's next turn, or the train's stops once on board, in place of the boarding words. */}
@@ -3514,7 +3712,8 @@ export function RideMode({
             <IosLocationHelp notice={gps} />
           </>
         )}
-        {togo && !ride.arrived && (
+        {/* Choosing where to dock, the line drawn is only the plan's guess: no distance to its end. */}
+        {togo && !ride.arrived && !docking && (
           <dl className="ride-togo">
             {togo.stop && (
               <div>
@@ -3571,40 +3770,10 @@ export function RideMode({
             <Icon name="locate" size={24} />
             <span className="ride-word" aria-hidden="true">{railWord("Locate")}</span>
           </button>
-          {/* Large text on and off (the owner, 2026-10-20), shown pressed while on. */}
-          <button
-            type="button"
-            className="ride-round ride-text-size"
-            onClick={cycleText}
-            aria-keyshortcuts="T"
-            aria-pressed={textSize === "large"}
-            aria-label={RIDE_TEXT_BUTTON}
-            title={RIDE_TEXT_BUTTON}
-          >
-            <Icon name="textsize" size={24} />
-            <span className="ride-word" aria-hidden="true">{t("Text")}</span>
-          </button>
+          {/* Large text on and off (the owner, 2026-10-20), shown pressed while on; in More when the rail is short. */}
+          {!textInMore && textButton}
           {/* Broadcast (Stephen 2026-10-24: "Let people broadcast from a ride"): as Roam's, shown on while this rider leads. */}
-          {onBroadcast && !ride.arrived && (
-            <button
-              type="button"
-              className={`ride-round broadcast-hold${broadcasting ? " ride-round-on" : ""}`}
-              onClick={() => void broadcast()}
-              {...broadcastHold}
-              aria-describedby={onBroadcastHold ? broadcastHoldId : undefined}
-              aria-label={`${broadcasting ? t("{name}: on. Share the link again", { name: RIDE_BROADCAST_NAME }) : passingOn ? t("{name}: pass on the link to this ride", { name: RIDE_BROADCAST_NAME }) : t("{name}: share a link others follow you with", { name: RIDE_BROADCAST_NAME })}${riders === null ? "" : `. ${countText(riders)}`}`}
-              title={RIDE_BROADCAST_NAME}
-            >
-              <Icon name="broadcast" size={riders === null ? 24 : 20} />
-              {riders !== null && (
-                <span className="ride-round-count" aria-hidden="true">
-                  <Icon name="user" size={12} />
-                  {riders}
-                </span>
-              )}
-              <span className="ride-word" aria-hidden="true">{railWord("Share live")}</span>
-            </button>
-          )}
+          {onBroadcast && !ride.arrived && !broadcastInMore && broadcastButton}
           {onBroadcast && onBroadcastHold && (
             <span id={broadcastHoldId} className="visually-hidden">
               {BROADCAST_HOLD_HINT}
@@ -3925,6 +4094,8 @@ export function RideMode({
               <span className="ride-word" aria-hidden="true">{RIDE_SETTINGS_TEXT}</span>
             </button>
             <div id={`${settingsId}-more`} className="ride-more-bubbles" role="group" aria-label={RIDE_MORE_NAME} hidden={!moreOpen}>
+              {textInMore && textButton}
+              {onBroadcast && !ride.arrived && broadcastInMore && broadcastButton}
               {!fixed &&
                 !ride.arrived &&
                 (["calmer", "flatter"] as const).map((which) => (

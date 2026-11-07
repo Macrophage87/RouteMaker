@@ -816,6 +816,11 @@ class TestNodesAt:
             return [crossroads() for _ in payload["locations"]]
 
         found = junctions.nodes_at(raws, locate)
+        # Each batch is asked as a bicycle and as a car (`LOCATE_COSTINGS`), the same.
+        cars = [p for p in asked if p["costing"] == "auto"]
+        asked = [p for p in asked if p["costing"] == "bicycle"]
+        same = sorted(str((p["locations"], p["verbose"])) for p in cars)
+        assert same == sorted(str((p["locations"], p["verbose"])) for p in asked)
         # The node, then around each node with no signal for its approaches. A round's
         # batches are asked at once on the router pool (review speed-2), so in any order.
         rounds = [asked[:3], asked[3:]]
@@ -844,6 +849,7 @@ class TestNodesAt:
 
         raws = [raw(), raw(lon=LON + 0.001)]
         junctions.nodes_at(raws, locate)
+        asked = [a for a in asked if a["costing"] == "bicycle"]
         assert [[p["lon"] for p in a["locations"]] for a in asked] == [
             [LON, LON + 0.001],
             [LON + 0.001],
@@ -856,7 +862,8 @@ class TestNodesAt:
         up_the_arm = approach_around(north_at=10.0)
 
         def locate(payload: dict) -> list[dict]:
-            asked.append(payload["locations"][0]["radius"])
+            if payload["costing"] == "bicycle":
+                asked.append(payload["locations"][0]["radius"])
             return [up_the_arm]
 
         found = junctions.nodes_at([approach_raw()], locate)
@@ -907,6 +914,43 @@ class TestNodesAt:
         raws = [raw()] * 60
         found = junctions.nodes_at(raws, locate)
         assert sorted(found) == list(range(50, 60)), "the next batch is still asked"
+
+    def test_a_road_closed_to_bicycles_is_still_a_road_crossed(self) -> None:
+        """The owner: a route left the Mount Vernon Trail to cross
+        the George Washington Memorial Parkway (`bicycle=no`, 4 lanes at 45 mph) at Tulane
+        Dr with no signal. `/locate` asked as a bicycle leaves the Parkway out, so the
+        crossing had no road to price; asked as a car too, it has the Parkway's arms."""
+        whole = crossroads()
+        parkway = {20}
+
+        def locate(payload: dict) -> list[dict]:
+            if payload["costing"] == "bicycle":
+                # The bicycle's answer: the rider's street, never the Parkway.
+                edges = [e for e in whole["edges"] if e["edge_info"]["way_id"] not in parkway]
+            else:
+                # The car's: every road cars drive, the Parkway included.
+                edges = whole["edges"]
+            return [answer(edges, whole["nodes"]) for _ in payload["locations"]]
+
+        found = junctions.nodes_at([raw()], locate)
+        built = junctions.build_junctions([raw()], found, {(0, 20): Road(4, speed_mph=45.0)})
+        assert [r.tier for r in built[0].crossed] == [4]
+        assert junctions.crossing_sides(found[0], raw()) is not None
+
+    def test_bicycle_answer_alone_when_the_car_batch_fails(self) -> None:
+        def locate(payload: dict):
+            if payload["costing"] == "auto":
+                raise RuntimeError("down")
+            return [crossroads() for _ in payload["locations"]]
+
+        found = junctions.nodes_at([raw()], locate)
+        assert {a.way_id for a in found[0].arms} == {10, 20}
+
+    def test_merged_answers_keep_each_edge_once(self) -> None:
+        bicycle = crossroads()
+        merged = junctions._merged([bicycle, crossroads()])
+        assert len(merged["edges"]) == len(bicycle["edges"])
+        assert len(merged["nodes"]) == len(bicycle["nodes"])
 
     def test_no_junctions_no_call(self) -> None:
         def locate(payload: dict):
@@ -1644,18 +1688,20 @@ class TestAReadingTheClockCutsShort:
 
         def submit(fn, payload):
             future: Future = Future()
-            if len(futures) == 0:
+            # Each batch is asked as a bicycle and as a car: the first batch answers both,
+            # the second batch's bicycle ask is cut off, the rest are still queued.
+            if len(futures) < 2:
                 future.set_result([{} for _ in payload["locations"]])
-            elif len(futures) == 1:
+            elif len(futures) == 2:
                 future.set_exception(routing.DeadlineExceeded("no time left for locate"))
-            futures.append(future)  # the third is still queued
+            futures.append(future)
             return future
 
         monkeypatch.setattr(parallel, "submit", submit)
         raws = self.raws(junctions.LOCATE_BATCH * 2 + 3)
         with pytest.raises(junctions.ReadingCutShort):
             junctions._ask(raws, range(len(raws)), 10, lambda p: [], (routing.DeadlineExceeded,))
-        assert len(futures) == 3 and futures[2].cancelled()
+        assert len(futures) == 6 and all(f.cancelled() for f in futures[3:])
 
     def test_a_batch_the_router_will_not_answer_is_left_out_as_before(self) -> None:
         from core import junctions, routing
@@ -1694,9 +1740,9 @@ class TestAReadingTheClockCutsShort:
 
         raws = self.raws(junctions.LOCATE_BATCH * 2 + 3)
         got = junctions._ask(raws, range(len(raws)), 10, locate, (routing.DeadlineExceeded,))
-        assert len(calls) == 3
+        assert len(calls) == 3 * len(junctions.LOCATE_COSTINGS)
         assert sorted(got) == list(range(len(raws)))
-        assert all(got[i] == {"lon": raws[i].lon} for i in got)
+        assert all(got[i]["lon"] == raws[i].lon for i in got)
 
     def test_the_planners_reading_raises_and_is_not_remembered(self, monkeypatch) -> None:
         from core import junctions, refine, routing

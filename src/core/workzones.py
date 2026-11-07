@@ -369,7 +369,7 @@ def forget() -> None:
 
 
 def _load(now: datetime) -> Snapshot:
-    from routemaker import ddot_advisories, deer_closures, purple_line
+    from routemaker import ddot_advisories, deer_closures, fcpa, purple_line
 
     from . import closure_sources, reviewed_closures
     from .models import BikeshareFeedCache
@@ -440,6 +440,13 @@ def _load(now: datetime) -> Snapshot:
         read = purple_line.updated()
         status[purple_line.SOURCE] = STALE if ddot_advisories.stale(read, today) else CURRENT
         read_at[purple_line.SOURCE] = read
+    # The Fairfax County Park Authority's Park Alerts (v0.22.0; routemaker.fcpa), the same way.
+    parks = fcpa.zones(now)
+    if parks:
+        zones.extend(parks)
+        read = fcpa.updated()
+        status[fcpa.SOURCE] = STALE if ddot_advisories.stale(read, today) else CURRENT
+        read_at[fcpa.SOURCE] = read
     # The parks' deer-management closures (v0.12.3; routemaker.deer_closures): published
     # schedules, so notices made from the clock, with no feed to read.
     notices = [*notices, *deer_closures.notices(now)]
@@ -880,11 +887,11 @@ MAY_APPLY_NOTE = " No end time is given, so it may still apply on your ride day.
 def stale_note(source: str) -> str:
     """The stale label for a source: the work zones' twenty minutes, a DC source's own, or a
     hand-read file's days (`ddot_advisories.STALE_DAYS`)."""
-    from routemaker import ddot_advisories, purple_line
+    from routemaker import ddot_advisories, fcpa, purple_line
 
     from . import closure_sources
 
-    if source in (ddot_advisories.SOURCE, purple_line.SOURCE):
+    if source in (ddot_advisories.SOURCE, purple_line.SOURCE, fcpa.SOURCE):
         span = t("{n} days", n=ddot_advisories.STALE_DAYS)
         return t(" This source was last read more than {span} ago.", span=span)
     limit = closure_sources.STALE_AFTER_S.get(source)
@@ -946,6 +953,7 @@ NAMES = {
     "reviewer": "the closures RouteMaker's reviewers confirmed",
     "ddot_advisory": "DDOT's project advisories",
     "purple_line": "the Purple Line's construction updates",
+    "fcpa": "Fairfax County's park alerts",
 }
 
 # How near the route a closure in force is drawn on its map, metres (a closure further
