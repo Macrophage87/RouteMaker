@@ -39,9 +39,8 @@ export function RebalanceDockCard({
       </h3>
       {ask.choices.length > 0 && <p className="ride-dock-lede">{DOCK_CHOOSE_LEDE}</p>}
       {ask.note && (
-        <p className="ride-dock-note" role="status">
-          {ask.note}
-        </p>
+        // Said through the ride's own outputs as it changes (RideMode notify), so not a live region too.
+        <p className="ride-dock-note">{ask.note}</p>
       )}
       {ask.choices.length > 0 && (
         <ul className="ride-dock-list">

@@ -43,7 +43,8 @@ test("each choice says how far and how much room", () => {
 test("the ride holds at the crowded dock, asks the drop-off list there live, and rides to the one chosen", () => {
   const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
   // Reaching the dock asks; while asking, fixes move the marker only.
-  assert.match(ride, /if \(rebalance && approach\) askDocksRef\.current\(approach\.at\);/);
+  // From the dock; a bike taken at another and the line joined along it, from there.
+  assert.match(ride, /if \(rebalance && approach\) askDocksRef\.current\(haversineM\(fix\.point, approach\.at\) > DOCK_AWAY_M \? fix\.point : approach\.at\);/);
   assert.match(ride, /if \(dockingRef\.current\) \{\s*const held = /);
   assert.match(ride, /const result = await requestStations\(at, "dropoff"\);/);
   // The choice is ridden from the dock, its name the finish, the time choosing not counted.
@@ -51,9 +52,16 @@ test("the ride holds at the crowded dock, asks the drop-off list there live, and
   assert.match(ride, /statsRef\.current = statsPause\(statsRef\.current\);/);
   // The card stands in for the cue, and the chosen dock goes to the summary.
   assert.match(ride, /\{docking \? \(\s*<RebalanceDockCard /);
-  assert.match(ride, /statsRef\.current, dockChosen\.current\);/);
+  // A re-plan asked while choosing is dropped; the focus goes back to the ride's heading.
+  assert.match(ride, /replanTicket\.current \+= 1;\s*const dock = t\("Dock at \{place\}\.", \{ place: choice\.name \}\);/);
+  assert.match(ride, /notify\(dockChosenSaid\(choice\.name\)\);\s*\/\/[^\n]*\n\s*headingRef\.current\?\.focus\(\);/);
+  assert.match(ride, /statsRef\.current, dockChosen\.current \? \{ name: dockChosen\.current, route: routeRef\.current, points: plan\.current\.points \} : null\);/);
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
-  assert.match(app, /dock: dock \?\? share\.end\.name/);
+  assert.match(app, /dock: docked\?\.name \?\? share\.end\.name/);
+  // Keep riding carries on to the chosen dock, its plan kept for the day's figures.
+  assert.match(app, /const kept = start && docked \? \{ \.\.\.start, planned: start\.planned \?\? start\.route, route: docked\.route, points: docked\.points, trip: start\.trip \? \{ \.\.\.start\.trip, approach: null, docked: docked\.name \} : null \} : start;/);
+  assert.match(app, /const planRoute = start\?\.planned \?\? start\?\.route;/);
+  assert.match(ride, /const rebalance = plannedRoute\.preset === "rebalance" \|\| !!plannedTrip\?\.docked;/);
   // The card: the nearest first and primary; with none, Try again and the plan's own dock.
   const card = readFileSync(new URL("../RebalanceDockCard.tsx", import.meta.url), "utf8");
   assert.match(card, /className=\{i === 0 \? "primary" : "secondary"\}/);

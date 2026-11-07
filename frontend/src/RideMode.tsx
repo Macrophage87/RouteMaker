@@ -286,7 +286,7 @@ import { SeeEveryoneButton } from "./SeeEveryoneButton.tsx";
 import { AheadGraph, aheadLeastPx } from "./AheadGraph.tsx";
 import { ContrastRow, ThemeSetting, UnitsSetting } from "./DisplaySettings.tsx";
 import { RebalanceDockCard, type DockAsk } from "./RebalanceDockCard.tsx";
-import { DOCK_FINDING, DOCK_NONE_NEEDS, DOCK_ROUTE_FAILED, dockChoices, dockChosenSaid, dockReachedSaid, dockRouting, type DockChoice } from "./lib/rebalanceDock.ts";
+import { DOCK_AWAY_M, DOCK_FINDING, DOCK_NONE_NEEDS, DOCK_ROUTE_FAILED, dockChoices, dockChosenSaid, dockReachedSaid, dockRouting, type DockChoice, type RebalanceDocked } from "./lib/rebalanceDock.ts";
 import { AHEAD_NAME, AHEAD_WORD, aheadNoRoom, aheadOff, aheadOn, aheadViews, readAhead, writeAhead, RIDER_OFF_ROUTE_M, RIDERS_REACH_M, type AheadView } from "./lib/aheadGraph.ts";
 
 /** The bottom panel's padding and top edge (styles.css .ride-controls), and the graph's margin under it. */
@@ -836,8 +836,11 @@ export function RideMode({
   /** A Detour row's Show on map: the map frames the place and the rider (following is off until Where am I? or 30 s idle). */
   onShowPlace?: (point: LonLat) => void;
   /** End ride: with the plan the ride leaves (part way, from here; lib/navigate.ts planAfterEnd) and the ride's figures. */
-  /** `dock`: a Rebalance Ride's drop-off, chosen at the pick-up dock (lib/rebalanceDock.ts), where it was. */
-  onEnd: (after: EndedPlan, stats: RideStats, dock?: string | null) => void;
+  /**
+   * `docked`: a Rebalance Ride's drop-off, chosen at the pick-up dock (lib/rebalanceDock.ts), with the ride to it as it
+   * stands, so Keep riding carries on to it.
+   */
+  onEnd: (after: EndedPlan, stats: RideStats, docked?: RebalanceDocked | null) => void;
   /** Undo after End ride: the ended ride's figures, to carry on from. */
   resumeStats?: RideStats | null;
   /** The water layer's points, loaded if they are not yet (App's ensureWater); for the detours. */
@@ -936,7 +939,8 @@ export function RideMode({
   onSheetHeight?: (px: number) => void;
 }) {
   // A Rebalance Ride (lib/rebalanceDock.ts): at the crowded dock it holds and asks where to dock, then rides there.
-  const rebalance = plannedRoute.preset === "rebalance";
+  // Kept riding after the end (Keep riding), its route is the ride to the chosen dock, on the bike's own ride type.
+  const rebalance = plannedRoute.preset === "rebalance" || !!plannedTrip?.docked;
   const [trip, setTrip] = useState<RideTrip | null>(() =>
     rebalance && plannedTrip?.approach?.name ? { ...plannedTrip, approach: { ...plannedTrip.approach, reached: dockReachedSaid(plannedTrip.approach.name) } } : plannedTrip,
   );
@@ -944,7 +948,7 @@ export function RideMode({
   const dockingRef = useRef<DockAsk | null>(null);
   dockingRef.current = docking;
   // The drop-off chosen there, for the summary.
-  const dockChosen = useRef<string | null>(null);
+  const dockChosen = useRef<string | null>(plannedTrip?.docked ?? null);
   const [route, setRoute] = useState(plannedRoute);
   const routeRef = useRef(route);
   // The rider's route has ridden a dirt trail on a ride type that skips them (the owner, 2026-10-21: "If someone
@@ -1937,7 +1941,8 @@ export function RideMode({
       if (wasWalking && !stepped.state.walking) {
         setWalking(false);
         if (trip?.shareBike) setUndockAt(Date.now());
-        if (rebalance && approach) askDocksRef.current(approach.at);
+        // At the dock; or, a bike taken elsewhere and the line joined along it, from there.
+        if (rebalance && approach) askDocksRef.current(haversineM(fix.point, approach.at) > DOCK_AWAY_M ? fix.point : approach.at);
       }
       stepDockRef.current(fix);
       const out = { state: stepped.state.ride, events: stepped.events };
@@ -2400,8 +2405,10 @@ export function RideMode({
         otherRef.current = null;
         setOther(null);
       }
+      // A re-plan asked meanwhile (Detour, Road closed, Reroute) is for the planned dock: its answer is dropped.
+      replanTicket.current += 1;
       const dock = t("Dock at {place}.", { place: choice.name });
-      setTrip((was) => (was ? { ...was, finish: { shown: dock, spoken: dock } } : was));
+      setTrip((was) => (was ? { ...was, finish: { shown: dock, spoken: dock }, docked: choice.name } : was));
       dockChosen.current = choice.name;
       const fresh = { ...startState(), fix: rideRef.current.fix, goodFix: rideRef.current.goodFix };
       rideRef.current = fresh;
@@ -2411,6 +2418,8 @@ export function RideMode({
       dockingRef.current = null;
       setDocking(null);
       notify(dockChosenSaid(choice.name));
+      // The card goes: the focus to the ride's heading, as at the start.
+      headingRef.current?.focus();
     };
     if (asPlanned) return take(null, plan.current.points);
     const routing: DockAsk = { ...asking, phase: "routing", note: dockRouting(choice.name) };
@@ -2434,7 +2443,7 @@ export function RideMode({
     // Only "Ride ended." is said; the figures are on the summary (the owner, 2026-10-20: "Just put ride ended.").
     if (toVoice(prefsRef.current.output)) rideVoice.speak(RIDE_ENDED_SAID, true);
     // A Bikeshare or transit trip's riding leg is not the plan: the plan stays as it was.
-    onEnd(trip && !trip.asPlanned ? null : planAfterEnd(modelRef.current, rideRef.current, plan.current.points, plan.current.loop, Date.now()), statsRef.current, dockChosen.current);
+    onEnd(trip && !trip.asPlanned ? null : planAfterEnd(modelRef.current, rideRef.current, plan.current.points, plan.current.loop, Date.now()), statsRef.current, dockChosen.current ? { name: dockChosen.current, route: routeRef.current, points: plan.current.points } : null);
   };
   // A toggle: pressed, no automatic re-plan (one in flight is voided) and the way back is said once;
   // pressed again, re-planning is back on.

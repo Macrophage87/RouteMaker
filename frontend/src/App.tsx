@@ -123,6 +123,7 @@ import { shownNear } from "./lib/junctionSuggest.ts";
 import { CHECKING_CLOSURES, CLOSURE_SLOW_MS, START_NOTE_MS, RIDE_ENDED_FROM_HERE_NOTE, RIDE_ENDED_NO_FIX_NOTE, RIDE_ENDED_SAID, RideMode, primeRideVoice, startRideGesture, voiceTurnedOn, type EndedPlan, type RideView } from "./RideMode.tsx";
 import { Icon } from "./Icon.tsx";
 import { RideSummaryCard } from "./RideSummaryCard.tsx";
+import type { RebalanceDocked } from "./lib/rebalanceDock.ts";
 import { REBALANCE_ENDS_AT_DOCK, REBALANCE_NEXT_SAID, readDay, recordTrip, restoreDay, tripOf, type RebalanceDay } from "./lib/rebalanceDay.ts";
 import type { RideStats } from "./lib/rideStats.ts";
 import { readHeadingUp, readRidePrefs, readRideText, writeHeadingUp, writeRidePrefs, writeRideText, type RidePrefs, type RideTextSize } from "./lib/rideOutput.ts";
@@ -1132,6 +1133,8 @@ export function App() {
     dials: Dials;
     preset: PresetId;
     trip: RideTrip | null;
+    /** Kept riding to a Rebalance Ride's chosen dock: the plan it came from (its walk and dock figures). */
+    planned?: RouteResponse;
     /** A trip resumed past its line: the walk or train it was following (lib/rideResume.ts LeftRide.past). */
     past?: OnwardState | null;
     /** A trip's whole points, loop and ride type, as kept for Resume (lib/rideResume.ts LeftRide.wholeTrip); null otherwise. */
@@ -4721,7 +4724,7 @@ export function App() {
   } | null>(null);
   const rideNow = useRef({ start: rideStart, mode });
   rideNow.current = { start: rideStart, mode };
-  const endRide = useCallback((after: EndedPlan, stats: RideStats, dock?: string | null) => {
+  const endRide = useCallback((after: EndedPlan, stats: RideStats, docked?: RebalanceDocked | null) => {
     const { start, mode: endedIn } = rideNow.current;
     // Past a trip's line, the walk or train followed (as kept for Resume), for Undo.
     const past = start?.whole ? leftRidePast() : null;
@@ -4754,7 +4757,9 @@ export function App() {
       setFromHere((f) => [...f, from![0]]);
     }
     const note = from ? RIDE_ENDED_FROM_HERE_NOTE : endedIn !== "go" && after === "no-fix" ? RIDE_ENDED_NO_FIX_NOTE : null;
-    endedRide.current = start ? { start, from, stats, shared: sharedOpenNow.current, linkSent: rideLinkSent.current, past, stopsLeft } : null;
+    // A Rebalance Ride's chosen dock (lib/rebalanceDock.ts): Keep riding carries on to it, not to the plan's walk again.
+    const kept = start && docked ? { ...start, planned: start.planned ?? start.route, route: docked.route, points: docked.points, trip: start.trip ? { ...start.trip, approach: null, docked: docked.name } : null } : start;
+    endedRide.current = kept ? { start: kept, from, stats, shared: sharedOpenNow.current, linkSent: rideLinkSent.current, past, stopsLeft } : null;
     setRiding(false);
     setRideStart(null);
     setRideView(null);
@@ -4762,11 +4767,12 @@ export function App() {
     // A Rebalance Ride: counted in the day's totals as it ends (Keep riding takes it out again); the next one starts
     // where the ride ended, else at the dock it rode to.
     // By the route's own ride type: the ride's is the bike leg's (lib/rideTrip.ts rideLegOf).
-    const share = start?.route.preset === "rebalance" ? (start.route.bikeshare ?? null) : null;
+    const planRoute = start?.planned ?? start?.route;
+    const share = planRoute?.preset === "rebalance" ? (planRoute.bikeshare ?? null) : null;
     const before = share ? readDay() : null;
     const rebalance =
       share && before
-        ? { day: recordTrip(tripOf(share, stats)), before, from: stats.last?.point ?? ([share.end.lon, share.end.lat] as LonLat), dock: dock ?? share.end.name }
+        ? { day: recordTrip(tripOf(share, stats)), before, from: stats.last?.point ?? ([share.end.lon, share.end.lat] as LonLat), dock: docked?.name ?? share.end.name }
         : null;
     setRideEnded((was) => ({ n: (was?.n ?? 0) + 1, stats, at: Date.now(), note, destination, rebalance }));
     // Said by the page's region, always mounted; the focus goes to Done (RideSummaryCard), not back to Start (review F6).

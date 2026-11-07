@@ -15,6 +15,17 @@ import { haversineM, type LonLat } from "./geo.ts";
 import { formatStationDistance } from "./format.ts";
 import { t } from "./i18n.ts";
 import type { NearbyStation } from "./stations.ts";
+import type { RouteResponse } from "./api.ts";
+
+/** The walk ended this far from the planned dock (a bike taken at another, the line joined along it): asked from there. */
+export const DOCK_AWAY_M = 60;
+
+/** The dock chosen and the ride to it as it stands at the end, so Keep riding carries on to it. */
+export interface RebalanceDocked {
+  name: string;
+  route: RouteResponse;
+  points: LonLat[];
+}
 
 /** Up to this many docks to choose from. */
 export const DOCK_CHOICES = 3;
