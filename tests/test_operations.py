@@ -2327,13 +2327,30 @@ def test_a_dead_dc_closures_job_is_closed_and_leaves_the_wedged_list() -> None:
 
 
 @db
-@pytest.mark.parametrize("worker", ["stale", "just_past"])
-def test_a_job_whose_worker_stopped_beating_is_closed_too(worker) -> None:
-    from core.runs import close_orphaned_jobs
+def test_a_job_whose_worker_has_been_silent_five_minutes_is_closed_too() -> None:
+    from core.runs import ORPHAN_CLOSE_AFTER_S, close_orphaned_jobs
 
-    job_id = make_job("refresh_dc_closures", "doing", timedelta(minutes=3), worker=worker)
+    job_id = make_job("refresh_dc_closures", "doing", timedelta(minutes=10), worker="gone")
+    silent = register_worker(timezone.now() - timedelta(seconds=ORPHAN_CLOSE_AFTER_S + 10))
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "UPDATE procrastinate_jobs SET worker_id = %s WHERE id = %s", [silent, job_id]
+        )
     close_orphaned_jobs()
     assert job_status(job_id) == "aborted"
+
+
+@db
+@pytest.mark.parametrize("worker", ["stale", "just_past"])
+def test_a_worker_a_few_beats_behind_is_listed_but_not_closed(worker) -> None:
+    """Past the alert's 30 s but inside five minutes: a busy worker can miss three beats
+    while its job is alive, so a person decides (`unwedge_job`), not the heartbeat."""
+    from core.runs import close_orphaned_jobs, wedged_jobs
+
+    job_id = make_job("refresh_dc_closures", "doing", timedelta(minutes=3), worker=worker)
+    assert [entry["id"] for entry in wedged_jobs()] == [job_id]
+    assert close_orphaned_jobs() == []
+    assert job_status(job_id) == "doing"
 
 
 @db

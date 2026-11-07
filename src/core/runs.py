@@ -701,6 +701,10 @@ def wedged_jobs(now=None) -> list[dict]:
 # tomorrow, which is `unwedge_job`'s requeue, not a close.
 KEEP_ORPHANED_FOR_OPERATOR = frozenset({"nightly_backup"})
 
+# How long a worker must be silent before its jobs are closed automatically: one
+# heartbeat-cron interval, ten times the stalled-worker test the alert uses.
+ORPHAN_CLOSE_AFTER_S = 5 * 60
+
 
 def close_orphaned_jobs(now=None) -> list[dict]:
     """Finish, as `aborted`, the maintenance-queue jobs whose worker is gone.
@@ -713,19 +717,24 @@ def close_orphaned_jobs(now=None) -> list[dict]:
     otherwise - but the dead row stayed `doing` and on every alert, with `unwedge_job`
     as the only way off it, one id at a time.
 
-    Every task on this queue but the backup is periodic and its next tick is the retry,
-    so a dead run is closed rather than requeued: a requeue would run a tick that is
+    Every task on this queue but the backup is periodic and its next tick is the retry
+    (`draw_share_preview` is not, and the first fetch of the link draws its picture), so
+    a dead run is closed rather than requeued: a requeue would run a tick that is
     days old, and two dead rows of the same task would fight over its queueing lock.
-    Closed only when the worker is gone, by the test `wedged_jobs` and `unwedge_job`
-    apply; a job past its budget whose worker still beats is a live thread and is left
-    on the wedged list for a person. `aborted` rather than `failed`: the job did not
-    fail, its process was taken away, and the failed-job alert is for jobs that did.
+    Closed only when the worker row is missing or silent for `ORPHAN_CLOSE_AFTER_S`,
+    wider than the 30 s `wedged_jobs` and `unwedge_job` use: those only list a row for a
+    person, and a busy four-slot worker can miss three 10 s beats while its job is alive.
+    A job whose worker still beats is a live thread and is left on the wedged list.
+    `aborted` rather than `failed`: the job did not fail, its process was taken
+    away, and the failed-job alert is for jobs that did.
     """
     from django.db import connection
 
     from core.audit import record as audit
     from core.models import AuditLogEntry
 
+    now = now or timezone.now()
+    silent_since = now - timedelta(seconds=ORPHAN_CLOSE_AFTER_S)
     closed = []
     for entry in wedged_jobs(now):
         if (
@@ -734,16 +743,30 @@ def close_orphaned_jobs(now=None) -> list[dict]:
             or entry["task"] in KEEP_ORPHANED_FOR_OPERATOR
         ):
             continue
-        with connection.cursor() as cursor:
-            # Procrastinate's own finish (the worker's), guarded so a job a worker
-            # finished between the read above and here is not touched.
-            cursor.execute(
-                "SELECT procrastinate_finish_job_v1(id, 'aborted', false) "
-                "FROM procrastinate_jobs WHERE id = %s AND status = 'doing'",
-                [entry["id"]],
-            )
-            if cursor.fetchone() is None:
-                continue
+        # Procrastinate's own finish (the worker's), on a row locked first and checked
+        # again under the lock: still `doing`, worker row missing or silent long enough.
+        # A worker that finished it in the meantime makes the lock's recheck drop the row.
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT procrastinate_finish_job_v1(job.id, 'aborted', false)
+                    FROM (
+                        SELECT j.id FROM procrastinate_jobs j
+                        LEFT JOIN procrastinate_workers w ON w.id = j.worker_id
+                        WHERE j.id = %s AND j.status = 'doing'
+                          AND (w.id IS NULL OR w.last_heartbeat IS NULL
+                               OR w.last_heartbeat < %s)
+                        FOR UPDATE OF j
+                    ) job
+                    """,
+                    [entry["id"], silent_since],
+                )
+                if cursor.fetchone() is None:
+                    continue
+        except Exception:  # noqa: BLE001 - one row's race must not stop the others
+            logger.warning("could not close dead job %s; it stays on the wedged list", entry["id"])
+            continue
         audit(
             None,
             "close_orphaned_job",
