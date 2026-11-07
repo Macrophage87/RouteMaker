@@ -576,7 +576,7 @@ test("one deliberate press goes at once: Plan's Route, Try again, a transit pick
   // The flag is read and cleared at the top of the route effect, before any early return, so it never carries
   // over to a later edit.
   const effect = app.slice(app.indexOf("// Route when the plan changes (Go) or the Route button is pressed (Plan)."));
-  assert.match(effect, /^[^\n]*\n\s*useEffect\(\(\) => \{\s*const now = sendNow\.current;\s*sendNow\.current = false;\s*\/\/[^\n]*\n\s*if \(points\.length < 2 && !runLoopFromStart\(preset, points, planDials\)\) \{/);
+  assert.match(effect, /^[^\n]*\n\s*useEffect\(\(\) => \{\s*const now = sendNow\.current;\s*sendNow\.current = false;(?:\s*\/\/[^\n]*\n)+\s*if \(points\.length < 2 && !plansFromStart\(preset, points, planDials\)\) \{/);
   assert.match(effect, /\}, \{ now: now \|\| \(goPickedNow\.current && mode === "go"\) \}\);/);
   const press = app.slice(app.indexOf("const pressRoute = () => {"), app.indexOf("const cancelRouting"));
   assert.match(press, /sendNow\.current = true;\s*setRouteAsk\(\(n\) => n \+ 1\);/);
@@ -592,5 +592,8 @@ test("one deliberate press goes at once: Plan's Route, Try again, a transit pick
   assert.doesNotMatch(addStop, /now: true|sendNow/);
   const groupRide = app.slice(app.indexOf("onGroupRideNoTrails: () => {"), app.indexOf("routeCard:"));
   assert.match(groupRide, /sendNow\.current = true;\s*if \(planFirst\) setRouteAsk/);
-  assert.equal((app.match(/sendNow\.current = true;/g) ?? []).length, 4, "only Route, the transit pick, the plan kept offline once back online (P11) and Mass Ride's switch to Group Ride set it");
+  // Do another trip on a Rebalance Ride's summary (2026-11-07): one press, the next trip planned at once.
+  const another = app.slice(app.indexOf("const anotherRebalance = () => {"), app.indexOf("const goHereKind"));
+  assert.match(another, /sendNow\.current = true;\s*setRouteAsk\(\(n\) => n \+ 1\);/);
+  assert.equal((app.match(/sendNow\.current = true;/g) ?? []).length, 5, "only Route, the transit pick, the plan kept offline once back online (P11), Mass Ride's switch to Group Ride and Do another trip set it");
 });
