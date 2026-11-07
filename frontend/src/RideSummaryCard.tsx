@@ -16,6 +16,7 @@ import { METRES_PER_MILE, formatClimb, formatDistance, formatDuration } from "./
 import { t } from "./lib/i18n.ts";
 import { SAVE_SPOT_TEXT, SAVED_TO_FAVORITES } from "./lib/favoritePlaces.ts";
 import { OPEN_REPORTS, REPORTS_WHERE, openCount, outstandingSaid, useReport311Log } from "./lib/report311Log.ts";
+import { DO_ANOTHER_TRIP, FINISH_SESSION, REBALANCE_TODAY, dayRows, type RebalanceDay } from "./lib/rebalanceDay.ts";
 
 export const RIDE_SUMMARY_TITLE = t("Ride ended");
 /** The stress shares are shown once this much was ridden along the route. */
@@ -74,6 +75,7 @@ export function RideSummaryCard({
   onDone,
   onUndo,
   onReports,
+  rebalance = null,
 }: {
   stats: RideStats;
   endedAt: number;
@@ -90,6 +92,11 @@ export function RideSummaryCard({
   onUndo: () => void;
   /** Closes the summary, as Done does, and opens Reports at the 311 checklist. */
   onReports: () => void;
+  /**
+   * A Rebalance Ride (lib/rebalanceDay.ts; Stephen, 2026-11-07): the day's totals, this ride counted, and Do another
+   * trip first, which plans the next one from here; Done is Finish session.
+   */
+  rebalance?: { day: RebalanceDay; onAnother: () => void } | null;
 }) {
   const done = useRef<HTMLButtonElement>(null);
   const titleId = useId();
@@ -169,6 +176,19 @@ export function RideSummaryCard({
             </div>
           ))}
         </dl>
+        {rebalance && (
+          <section className="ride-summary-day" aria-labelledby={`${titleId}-day`}>
+            <h3 id={`${titleId}-day`}>{REBALANCE_TODAY}</h3>
+            <dl className="ride-summary-figures">
+              {dayRows(rebalance.day).map((row) => (
+                <div key={row.name}>
+                  <dt>{row.name}</dt>
+                  <dd>{row.value}</dd>
+                </div>
+              ))}
+            </dl>
+          </section>
+        )}
         {/* The chart and the stress behind Details (the UI review, 2026-10-28), the figures in view. */}
         {(segments.length > 0 || elevationDrawn(stats)) && (
           <details className="ride-summary-details">
@@ -200,9 +220,20 @@ export function RideSummaryCard({
         )}
       </div>
       <div className="ride-summary-actions">
-        <button ref={done} type="button" onClick={onDone}>
-          {t("Done")}
-        </button>
+        {rebalance ? (
+          <>
+            <button ref={done} type="button" onClick={rebalance.onAnother}>
+              {DO_ANOTHER_TRIP}
+            </button>
+            <button type="button" className="secondary" onClick={onDone}>
+              {FINISH_SESSION}
+            </button>
+          </>
+        ) : (
+          <button ref={done} type="button" onClick={onDone}>
+            {t("Done")}
+          </button>
+        )}
         {/* Undo, as a text link (the UI review, 2026-10-28): the same ride again, from its figures so far. */}
         <button type="button" className="link ride-summary-keep" onClick={onUndo}>
           {t("Keep riding")}

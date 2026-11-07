@@ -721,6 +721,8 @@ test("privacy: the location state reaches only the note, the hint and the circle
     /const name = fromHere\.includes\(current\[from\]\) \? YOUR_LOCATION : namer\.name\(current\[from\]\)\?\.name;/,
     // Go's route card (edit-route redesign): only whether the start is the location, shown as "Your location".
     /start=\{fromHere\.includes\(points\[0\]\) \? YOUR_LOCATION : goPlaceName\(namer\.name\(points\[0\]\)\?\.name, points\[0\]\)\}/,
+    // Go's Rebalance Ride (2026-11-07): only whether its one point is the location, so a fresher fix moves the start.
+    /pointsRef\.current\.length === 1 && fromHere\.includes\(pointsRef\.current\[0\]\);$/,
     // The note, handed to Plan's From and To boxes (Plan streamline, 2026-10-17).
     /locateNote=\{hereInPlan && here \? approximateHint\(here\.accuracyM\) : ""\}/,
     // The circle: also Go's dot's, before a destination (the owner, 2026-10-30), from the same fix.

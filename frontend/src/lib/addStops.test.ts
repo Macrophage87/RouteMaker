@@ -54,7 +54,7 @@ test("Go's route sheet keeps one 'Add a stop' field, under the route card, with 
   const panel = source("../app/RoutePanel.tsx");
   assert.match(panel, /\{!go\.peek && go\.routeCard\}\s*\{!go\.peek && go\.addStop\}/);
   assert.match(source("../App.tsx"), /addStop: goStops \? \(\s*<GoAddStop/);
-  assert.match(source("../App.tsx"), /routeCard:\s*!riding && \(points\.length >= 2 \|\| runLoopFromStart\(preset, points, planDials\)\) \? \(\s*<GoRouteCard/);
+  assert.match(source("../App.tsx"), /routeCard:\s*!riding && \(points\.length >= 2 \|\| plansFromStart\(preset, points, planDials\)\) \? \(\s*<GoRouteCard/);
   assert.match(source("../App.tsx"), /onEdit=\{\(opener\) => openView\("points", opener\)\}/);
   assert.match(go, /\{orderShown && \(\s*<button[^>]*onClick=\{onBestOrder\}/);
   const app = source("../App.tsx");
