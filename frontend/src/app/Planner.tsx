@@ -12,7 +12,7 @@ import type { RouteResponse } from "../lib/api.ts";
 import type { LonLat } from "../lib/geo.ts";
 import { maxPointsFor } from "../lib/tripStops.ts";
 import { YOUR_LOCATION } from "../lib/appMode.ts";
-import { usesBikeshare, type PresetId } from "../lib/presets.ts";
+import type { PresetId } from "../lib/presets.ts";
 import { accessibilityOn, paletteSetByAddress, setAccessibility } from "../stressStyle.js";
 import { DialsPanel } from "../DialsPanel.tsx";
 import { withLoop, type LoopView } from "../lib/loop.ts";
@@ -242,7 +242,6 @@ export function PointsSection(props: PointsSectionProps) {
           the map show it. In accessibility mode it shows, with its Map tools way in. */}
       {points.length === 1 && <p className={accessMode ? "hint" : "visually-hidden"}>{loneStartHint(preset, loopVias, accessMode)}</p>}
       {/* Only when there is something to fix: a stop between the start and the end (the 2026-10-29 review). */}
-      {usesBikeshare(preset) && points.length > 2 && <p className="hint">{t("Bikeshare and Rebalance Rides take a start and an end only: remove the stops.")}</p>}
       {/* Mass Ride planning covers DC only for now (OWNER-DECISIONS 418), in words beside the gray map. */}
       {isMassRide(preset) && <p className="hint mass-dc-only">{MASS_DC_ONLY}</p>}
       {federalPlanner}

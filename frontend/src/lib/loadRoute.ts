@@ -18,12 +18,29 @@ export const LOAD_CLOSE = t("Close");
 export const LOAD_NONE = t("No saved routes yet. Plan a route and press Save route.");
 export const LOAD_SIGN_IN = t("Sign in to see your saved routes");
 export const LOAD_FAILED = t("Your saved routes could not be read; try again shortly.");
-export const LOAD_SEARCH = t("Search your routes");
+export const LOAD_SEARCH = t("Search names and tags");
+export const LOAD_ALL = t("All");
+export const LOAD_ARCHIVE = t("Archive");
+export const LOAD_RESTORE = t("Restore");
+export const LOAD_UNDO = t("Undo");
+export const LOAD_ARCHIVED_TITLE = t("Archived routes");
+export const LOAD_BACK = t("Back");
+/** Above the archived list (the owner, 2026-11-07: "Archived routes are deleted first, longest time in archive
+ * first"). */
+export const LOAD_ARCHIVED_WHY = t("When your account is full, the route archived longest is deleted first.");
+/** "Archived (6)": the link under the list to the archived ones. */
+export function archivedLink(n: number): string {
+  return `${t("Archived")} (${n})`;
+}
+/** Said once a route is archived, with Undo beside it. */
+export function archivedSaid(name: string): string {
+  return t("Archived {name}.", { name });
+}
 /** The search box shows only once the list is longer than this: a short list is read at a glance. */
 export const SEARCH_FROM = 6;
 
 export type LoadRow =
-  | { kind: "saved"; key: string; name: string; detail: string; id: number }
+  | { kind: "saved"; key: string; name: string; detail: string; id: number; tags: string[]; archived: boolean; replacedBy: string | null }
   | { kind: "kept"; key: string; name: string; detail: string; kept: KeptRoute };
 
 /** "4.7 mi (7.6 km) · On this device": a kept route's line, shorter than the Save & load sheet's. */
@@ -31,12 +48,38 @@ export function keptLine(route: Pick<KeptRoute, "distanceM" | "lastRide">): stri
   return `${formatDistance(route.distanceM)} · ${route.lastRide ? "Last ride, on this device" : "On this device"}`;
 }
 
-/** The popup's rows: the saved routes as the server lists them (newest first), then the kept ones. */
-export function loadRows(saved: readonly SavedSummary[], kept: readonly KeptRoute[]): LoadRow[] {
-  return [
-    ...saved.map((r): LoadRow => ({ kind: "saved", key: `s${r.id}`, name: r.name, detail: rowDetails(r), id: r.id })),
-    ...kept.map((k): LoadRow => ({ kind: "kept", key: `k${k.id}`, name: k.title, detail: keptLine(k), kept: k })),
-  ];
+/** The popup's rows: the saved routes as the server lists them (newest first), then the kept ones. Archived routes
+ * are listed only with `archived` (and then only they, with no kept ones). */
+export function loadRows(saved: readonly SavedSummary[], kept: readonly KeptRoute[], archived = false): LoadRow[] {
+  const names = new Map(saved.map((r) => [r.id, r.name]));
+  const rows = saved
+    .filter((r) => Boolean(r.archived_at) === archived)
+    .map(
+      (r): LoadRow => ({
+        kind: "saved",
+        key: `s${r.id}`,
+        name: r.name,
+        detail: rowDetails(r),
+        id: r.id,
+        tags: r.tags ?? [],
+        archived: Boolean(r.archived_at),
+        replacedBy: (r.replaced_by != null && names.get(r.replaced_by)) || null,
+      }),
+    );
+  if (archived) return rows;
+  return [...rows, ...kept.map((k): LoadRow => ({ kind: "kept", key: `k${k.id}`, name: k.title, detail: keptLine(k), kept: k }))];
+}
+
+/** What the search box matches a row by: its name and its tags. */
+export function searchText(row: LoadRow): string {
+  return row.kind === "saved" ? [row.name, ...row.tags].join(" ") : row.name;
+}
+
+/** The rows with this tag (null: all of them). A kept route has no tags, so a tag leaves it out. */
+export function withTag(rows: readonly LoadRow[], tag: string | null): LoadRow[] {
+  if (tag === null) return [...rows];
+  const want = tag.toLocaleLowerCase();
+  return rows.filter((r) => r.kind === "saved" && r.tags.some((x) => x.toLocaleLowerCase() === want));
 }
 
 // ---- Open GPX file (the owner, 2026-10-22: "When opening gpx files, ask for ride type as well and if it should be

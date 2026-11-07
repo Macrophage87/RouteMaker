@@ -61,7 +61,7 @@ from . import account_deletion
 PATH = account_deletion.PRIVACY_PATH
 TITLE = "RouteMaker privacy policy"
 # Change with the text: the date a rider reads as when this page last said something new.
-LAST_UPDATED = ("2026-11-04", "November 4, 2026")
+LAST_UPDATED = ("2026-11-07", "November 7, 2026")
 # Unless the deployment sets PRIVACY_CONTACT (an e-mail address or a web address).
 CONTACT = "Questions, or a request about your data: ask the site's owner on Discord."
 CONTACT_LEAD = "Questions, or a request about your data: "
@@ -257,8 +257,10 @@ SECTIONS: list[tuple[str, str]] = [
         + _ul(
             [
                 "Saved routes: the line, its start, end and stops, ride type and settings, name "
-                "and date, and earlier versions. They are checked against new road closures so My "
-                "routes can warn you.",
+                "and date, your tags, whether it is archived, when you last opened it, and "
+                "earlier versions. When My routes is full, a new save deletes the route archived "
+                "longest ago. They are checked against new road closures so My routes can warn "
+                "you.",
                 "Settings: favorite ride types, ride type and dials, map layers, and your rider "
                 "and bike weight.",
                 "My Go: the view the app opens in, your ride type, and Home (one point and its "
@@ -399,9 +401,11 @@ SECTIONS: list[tuple[str, str]] = [
             "If you connect an AI assistant app, the routes it plans go to that app and its "
             "maker, under their own privacy policy. It can plan routes and add them to My routes, "
             "and read your saved routes when you ask it to plan from one (an app you connected "
-            "before it could do this cannot, until you connect it again); it cannot change or "
-            "delete them. When you ask about light and weather for a ride, it uses the same "
-            "weather check as Ride. Each route it plans gets a link that opens it, "
+            "before it could do this cannot, until you connect it again). If you allow it when "
+            "you connect, it can also tag, archive and restore your saved routes, and when My "
+            "routes is full, a route it saves replaces your longest-archived one; otherwise it "
+            "cannot change or delete them. When you ask about light and weather for a ride, it "
+            "uses the same weather check as Ride. Each route it plans gets a link that opens it, "
             "and a GPX download link if asked, which anyone with the link can open. Both work "
             "for a day. Disconnecting the app in Settings, or signing out everywhere, deletes its "
             "unsaved routes at once, and their links stop working."
