@@ -7464,10 +7464,12 @@ At home, in order, with `</dev/null` on every docker command:
   own new files in `$RM_STATE/cd/bin` (the run log says "step: the release changed the agent"). Only
   if the log says "WARNING: the agent's files could not all be reinstalled", run
   `scripts/beta/auto-release.sh install` from the v0.22.0 checkout. The riders' notes are now posted
-  by the owner's own bot (#1041): once, store the changelog channel's id in
-  `$RM_STATE/discord/changelog-channel` and run `auto-release.sh install` (BETA-RUNBOOK, "Release
-  notes for riders"; the owner's reviewed box). Until then the agent falls back to the old release
-  webhook. Stuck: `git fetch --force --tags
+  by the owner's own bot (#1041), with its token already in `$RM_STATE/discord/bot-token` ("Tester
+  reports"): once, store the changelog channel's id in `$RM_STATE/discord/changelog-channel` and run
+  `auto-release.sh install` (BETA-RUNBOOK, "Release notes for riders"). Until then the agent falls
+  back to the old release webhook while `$RM_STATE/release-webhook` is stored, and with neither
+  nothing is posted. The pass that deploys v0.22.0 runs the agent of before it, so v0.22.0's own notes
+  may still go by the webhook; the bot posts from the next pass on. Stuck: `git fetch --force --tags
   origin`, then `scripts/beta/auto-release.sh retry v0.22.0`.
 - [ ] **Beta, by hand, if it is still on v0.20.0** (v0.21.0's hand ship not yet done): the gate from
   v0.20.0 stops on `src/pipeline/schema.py`, as at v0.21.0. Ship v0.22.0 by hand once, in place of
@@ -7476,7 +7478,7 @@ At home, in order, with `</dev/null` on every docker command:
   the front end, `smoke-test.sh --local --trails` then `--public`), with the rebuilt transit
   schedule's `transit` part if it is ready. The agent changed since v0.20.0:
   `mark-deployed v0.22.0`, then `scripts/beta/auto-release.sh install`, then `resume`.
-- [ ] **Stuck jobs (#1043).** Within 10 minutes of the worker's restart, on the beta too, the old
+- [ ] **Stuck jobs (#1043).** Within 10 minutes of the worker's restart (on the beta too, once it runs v0.22.0), the old
   `refresh_dc_closures` rows from 2026-10-19 are closed as `aborted` (an audit row
   `close_orphaned_job` each) and the alert's stuck-job lines go. A `nightly_backup` or rebuild job
   is never closed this way ("Most of those clear themselves").
