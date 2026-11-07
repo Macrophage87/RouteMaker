@@ -2607,6 +2607,24 @@ class TestFarSideTurns:
     def test_too_far_past_the_road_is_the_plain_turn(self):
         assert "across" not in self.route(gap=60.0)[1]["turn"]
 
+    def test_off_a_path_alongside_the_road_the_turn_in_is_kept_for_the_arrow(self):
+        # The owner, 2026-11-07, at West Basin Drive: "Left across road then right". East on
+        # the path beside the road, left over it, right onto the far side's cycletrack.
+        before = road("path beside West Basin Drive Southwest", 1, 400, 90, 90, "path", "cycleway")
+        bend = replace(road("", 1, 8, 0, 0, "path", "cycleway")[0], others=(), turn=-90.0)
+        across = replace(
+            road("", 1, 12, 0, 0, "path", "cycleway")[0], others=self.CROSS_ROAD, turn=0.0
+        )
+        after = road("West Basin Drive SW Cycletrack", 1, 400, 90, 90, "protected", "cycleway")
+        after[0] = replace(after[0], others=(), turn=90.0)
+        entries = d.describe([flat(before, [bend, across], after)])
+        turn = [e["turn"] for e in entries if (e.get("turn") or {}).get("across")][0]
+        assert turn["movement"] == "right"
+        assert turn["across_from"] == "left"
+
+    def test_straight_over_the_road_has_no_turn_in(self):
+        assert "across_from" not in self.route()[1]["turn"]
+
     def test_a_road_not_alongside_the_path_is_no_crossing(self):
         # A road crossed at a slant, the path square off the route: not the path's road.
         slant = ((50.0, "road", "secondary", "both"), (230.0, "road", "secondary", "both"))
