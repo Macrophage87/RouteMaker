@@ -276,3 +276,22 @@ test("Undo after End ride past a trip's line rides on with the train or walk; Re
   assert.match(resume, /tripStopsLeft\.current = left\.stopsLeft \?\? null;\s*tripCheck\.current = checkTripOf\(left\.route, left\.points\);/);
   assert.match(app, /tripCheck\.current = checkTripOf\(route, ridePoints\);/);
 });
+
+test("back within minutes of putting the page away, Resume carries on without asking which stops are done (Stephen, 2026-11-07)", async () => {
+  const { RESUME_QUIET_MS, RIDE_RESUME_KEY, resumesQuietly, seeLeftRide } = await import("./rideResume.ts");
+  const kept = new Map<string, string>();
+  const store = { getItem: (k: string) => kept.get(k) ?? null, setItem: (k: string, v: string) => void kept.set(k, v), removeItem: (k: string) => void kept.delete(k) };
+  // Nothing kept: nothing to mark.
+  seeLeftRide(1000, store);
+  assert.equal(kept.size, 0);
+  kept.set(RIDE_RESUME_KEY, JSON.stringify({ v: 1, at: 0 }));
+  seeLeftRide(5000, store);
+  assert.equal(JSON.parse(kept.get(RIDE_RESUME_KEY)!).seen, 5000);
+  assert.equal(resumesQuietly({ seen: 5000 }, 5000 + RESUME_QUIET_MS), true);
+  assert.equal(resumesQuietly({ seen: 5000 }, 5001 + RESUME_QUIET_MS), false);
+  assert.equal(resumesQuietly({}, 5000), false);
+  assert.equal(resumesQuietly({ seen: 9000 }, 5000), false);
+  const ride = src("../RideMode.tsx");
+  assert.match(ride, /if \(document\.visibilityState === "hidden" && !ended\.current\) seeLeftRide\(Date\.now\(\)\);/);
+  assert.match(src("../App.tsx"), /const quiet = resumesQuietly\(left, Date\.now\(\)\);/);
+});

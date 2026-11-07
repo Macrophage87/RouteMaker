@@ -76,7 +76,7 @@ import {
 } from "./lib/rideStops.ts";
 import { RestartStopsDialog } from "./RestartStopsDialog.tsx";
 import { StartFirstDialog } from "./StartFirstDialog.tsx";
-import { keepLeftRide, keepLeftRidePast } from "./lib/rideResume.ts";
+import { keepLeftRide, keepLeftRidePast, seeLeftRide } from "./lib/rideResume.ts";
 import type { Dials } from "./lib/dials.ts";
 import { haversineM, type LonLat } from "./lib/geo.ts";
 import { placeLetter, type LetteredPlace } from "./lib/letteredPlaces.ts";
@@ -811,6 +811,7 @@ export function RideMode({
   keepLeft = false,
   startNote = "",
   startFirst = false,
+  resumedQuietly = false,
   riderDots = NO_DOTS,
   onSheetHeight,
 }: {
@@ -932,6 +933,8 @@ export function RideMode({
    * 2026-11-06). Not on a Bikeshare or transit trip, whose walk to the dock comes first already, nor on foot.
    */
   startFirst?: boolean;
+  /** Resumed within minutes of the page being put away (lib/rideResume.ts resumesQuietly): no "Already done?". */
+  resumedQuietly?: boolean;
   /** The other riders' dots on a shared ride: drawn on the graph of the road ahead, which reaches back to the last one. */
   riderDots?: readonly LonLat[];
   /** The bottom panel's height in CSS pixels (0 while it is hidden), at each change: the map's follow camera keeps the
@@ -1830,7 +1833,8 @@ export function RideMode({
 
   // Restarting part way: asked at the first fix past a stop, never after Undo (it carries on) or on a trip's leg (its
   // walk to the dock comes first). The defaults ride on as the ride is; other picks plan again from here.
-  const restartAsked = useRef(resumeStats !== null || trip !== null);
+  // Resumed soon after the page was put away (resumedQuietly): the ride carries on, no "Already done?".
+  const restartAsked = useRef(resumeStats !== null || trip !== null || resumedQuietly);
   const [restart, setRestart] = useState<RestartStop[] | null>(null);
   // While it is asked, no re-route of its own: the stops it lists are the plan's as it stands (review of #444).
   const restartOpen = useRef(false);
@@ -2282,6 +2286,20 @@ export function RideMode({
     document.addEventListener("visibilitychange", onHide);
     return () => document.removeEventListener("visibilitychange", onHide);
   }, []);
+  // Put away mid-ride (another app, the screen off): noted on the kept ride, so a reload soon after resumes it quietly
+  // (lib/rideResume.ts resumesQuietly).
+  useEffect(() => {
+    if (!keepLeft) return undefined;
+    const onAway = () => {
+      if (document.visibilityState === "hidden" && !ended.current) seeLeftRide(Date.now());
+    };
+    document.addEventListener("visibilitychange", onAway);
+    window.addEventListener("pagehide", onAway);
+    return () => {
+      document.removeEventListener("visibilitychange", onAway);
+      window.removeEventListener("pagehide", onAway);
+    };
+  }, [keepLeft]);
   // Only a problem is shown (the bottom panel stays away while all is well); saved in full says nothing.
   const corridorText = corridorWorry(corridor);
 
