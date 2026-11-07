@@ -9,6 +9,7 @@ owner made, does three things and nothing else:
     python scripts/discord_reports.py fetch --out reports.md [--days 14]
     python scripts/discord_reports.py merged POST --version v0.11.0 [--dry-run]
     python scripts/discord_reports.py live v0.11.0 [--dry-run]
+    python scripts/discord_reports.py changelog v0.11.0 docs/releases/v0.11.0.md [--dry-run]
 
 `fetch` writes the forums' posts to a Markdown file for Claude to read: titles, tags, links
 and the messages' words, with no tester's name (a message is "tester", "owner" or "bot").
@@ -22,10 +23,18 @@ time; anything else the bot says waits for his OK on the draft. Discord itself i
 record: the tag says where a post stands and the bot's own reply names the version, so the
 beta needs no list of posts.
 
+`changelog` (the owner, 2026-11-07: "I want a bot I have control over") posts a release's
+rider notes to the changelog channel as the bot, in place of the old release webhook: the
+title "RouteMaker vX.Y.Z is on beta", then the notes, split at line ends to fit. The bot reads
+its own recent messages in the channel first and skips a release it already posted, so a
+retried pass never posts twice. The beta's release agent runs it once per deployed tag.
+
 The settings live outside the repo, in --dir (default ~/.config/routemaker-discord):
 
-    bot-token   the bot's token, one line, mode 600; never printed or logged
-    forums      the forum channels' ids, one per line (# starts a comment)
+    bot-token          the bot's token, one line, mode 600; never printed or logged
+    forums             the forum channels' ids, one per line (# starts a comment)
+    changelog-channel  the changelog channel's id (only for `changelog`); the bot needs View
+                       Channel, Send Messages and Read Message History there
 
 The bot needs View Channels, Read Message History, Send Messages in Threads ("...in Threads
 and Posts" in a server's role settings) and Manage Threads (to set the status tags), and the
@@ -111,14 +120,60 @@ class Discord:
         return self.send("GET", path)
 
 
-def load_settings(where: Path) -> tuple[str, list[str]]:
+MAX_CHARS = 2000  # Discord's limit on one message
+CHANGELOG_TITLE = "**RouteMaker {version} is on beta**"
+
+
+def changelog_channel(where: Path) -> str:
+    path = where / "changelog-channel"
+    if not path.is_file():
+        raise DiscordError(f"no changelog channel: put its id in {path}")
+    lines = [line.split("#", 1)[0].strip() for line in path.read_text().splitlines()]
+    ids = [line for line in lines if line]
+    if len(ids) != 1 or not ids[0].isdigit():
+        raise DiscordError(f"{path}: expected one channel id")
+    return ids[0]
+
+
+def changelog_messages(version: str, notes: str, limit: int = MAX_CHARS) -> list[str]:
+    """The title, then the notes, cut at line ends into messages of at most `limit` characters."""
+    lines = [CHANGELOG_TITLE.format(version=version)]
+    if notes.strip():
+        body = notes.splitlines()
+        # The file's first line repeats the version ("**RouteMaker 0.22.0**"); the title has it.
+        if body and body[0].strip().strip("*").strip() == f"RouteMaker {version.lstrip('v')}":
+            body = body[1:]
+        lines += [line.rstrip() for line in body]
+    chunks: list[str] = []
+    cur: list[str] = []
+    size = 0
+    for line in lines:
+        for piece in [line[i : i + limit] for i in range(0, len(line), limit)] or [""]:
+            add = len(piece) + (1 if cur else 0)
+            if cur and size + add > limit:
+                chunks.append("\n".join(cur))
+                cur, size, add = [], 0, len(piece)
+            cur.append(piece)
+            size += add
+    chunks.append("\n".join(cur))
+    return [c.strip("\n") for c in chunks if c.strip()]
+
+
+def load_token(where: Path) -> str:
     token_file = where / "bot-token"
-    forums_file = where / "forums"
     if not token_file.is_file():
         raise DiscordError(f"no bot token: save it in {token_file} (mode 600)")
     if token_file.stat().st_mode & 0o077:
         raise DiscordError(f"{token_file} is readable by others: chmod 600 it")
     token = token_file.read_text().strip()
+    if not token:
+        raise DiscordError(f"{token_file} is empty")
+    return token
+
+
+def load_settings(where: Path) -> tuple[str, list[str]]:
+    forums_file = where / "forums"
+    token = load_token(where)
     if not forums_file.is_file():
         raise DiscordError(f"no forums listed: put their channel ids in {forums_file}")
     forums = []
@@ -337,6 +392,39 @@ def cmd_live(forums: Forums, version: str, dry_run: bool) -> int:
     return 1 if failed else 0
 
 
+def cmd_changelog(
+    api: Discord, channel: str, version: str, notes_file: Path | None, dry_run: bool
+) -> int:
+    semver(version)
+    notes = ""
+    if notes_file is not None and notes_file.is_file():
+        notes = notes_file.read_text(encoding="utf-8", errors="replace")
+    messages = changelog_messages(version, notes)
+    me = api.get("/users/@me")["id"]
+    title = messages[0].split("\n", 1)[0]
+    recent = api.get(f"/channels/{channel}/messages?limit=100") or []
+    if any(
+        m.get("author", {}).get("id") == me and (m.get("content") or "").startswith(title)
+        for m in recent
+    ):
+        print(f"{version}: the changelog already has it")
+        return 0
+    for n, text in enumerate(messages):
+        if dry_run:
+            print(f"would post in the changelog:\n{text}")
+            continue
+        if n:
+            time.sleep(1)
+        api.send(
+            "POST",
+            f"/channels/{channel}/messages",
+            {"content": text, "allowed_mentions": NO_MENTIONS},
+        )
+    if not dry_run:
+        print(f"{version}: posted to the changelog ({len(messages)} message(s))")
+    return 0
+
+
 def main(argv: list[str] | None = None, api: Discord | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument(
@@ -358,8 +446,21 @@ def main(argv: list[str] | None = None, api: Discord | None = None) -> int:
     live = sub.add_parser("live")
     live.add_argument("version")
     live.add_argument("--dry-run", action="store_true")
+    changelog = sub.add_parser("changelog")
+    changelog.add_argument("version")
+    changelog.add_argument("notes", type=Path, nargs="?")
+    changelog.add_argument("--dry-run", action="store_true")
     args = parser.parse_args(argv)
     try:
+        if args.command == "changelog":
+            token = load_token(args.dir)
+            return cmd_changelog(
+                api or Discord(token),
+                changelog_channel(args.dir),
+                args.version,
+                args.notes,
+                args.dry_run,
+            )
         token, forum_ids = load_settings(args.dir)
         forums = Forums(api or Discord(token), forum_ids)
         if args.command == "check":

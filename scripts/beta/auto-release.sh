@@ -192,6 +192,9 @@ finish() { # word message
 		# The last pass that did something about a release, kept past the idle passes after it.
 		case "$word" in deployed | rolled-back | failed | broken | held | interrupted) [ -z "$report" ] || cp "$report" "$cd_dir/last-release-report.txt" ;; esac
 		notify "$word" "$*"
+		# A held, waiting or failed newer tag leaves the deployed one live: its notes are still due.
+		# A release shipped by hand is nearly always followed by such a tag.
+		case "$word" in deployed | up-to-date | held | waiting | failed) release_notes "$cd_dir/bin/alert.sh" ;; esac
 		case "$word" in deployed | up-to-date) reports_live ;; esac
 	fi
 }
@@ -219,10 +222,6 @@ notify() { # word message
 			esac
 			;;
 	esac >>"$run_log" 2>&1 </dev/null
-	# A held, waiting or failed newer tag leaves the deployed one live: its notes are still due. A
-	# release shipped by hand is nearly always followed by such a tag, so only up-to-date passes
-	# would leave its notes unposted until the next deploy by the agent.
-	case "$word" in deployed | up-to-date | held | waiting | failed) release_notes "$alert" ;; esac
 	return 0
 }
 # A wait's identity: its words without their numbers, as alert.sh's repeat check reads them.
@@ -239,18 +238,36 @@ waited_long() { # message
 	if [ -z "$since" ]; then printf '%s %s\n' "$id" "$now" >"$cd_dir/waiting"; return 1; fi
 	[ $((now - since)) -ge $((wait_alert_min * 60)) ]
 }
-# The riders' channel (alert.sh release-notes): the live release's notes, docs/releases/<tag>.md
-# from its checkout, once per tag. Tried on every deploy, up-to-date, held, waiting or failed pass
-# (with the checkout at the deployed release) until posted, only when a release webhook is stored
-# and the installed alert.sh knows the command; a failure is reported once a day in the owner's
-# channel and never fails the pass.
+# The riders' changelog: the live release's notes, docs/releases/<tag>.md from its checkout, once
+# per tag. Posted by the owner's bot (scripts/discord_reports.py changelog) once he has stored a bot
+# token and $RM_STATE/discord/changelog-channel; otherwise by the old release webhook (alert.sh
+# release-notes) while one is stored. Tried on every deploy, up-to-date, held, waiting or failed
+# pass (with the checkout at the deployed release) until posted; a failure is reported once a day
+# in the owner's channel and never fails the pass.
 release_notes() { # alert
-	local tag
+	local tag discord="$RM_STATE/discord" script="$RM_SRC/scripts/discord_reports.py" ok
 	tag=$(deployed_tag)
-	is_semver "$tag" && [ -s "$RM_STATE/release-webhook" ] && grep -q 'release-notes)' "$1" || return 0
+	is_semver "$tag" || return 0
 	! grep -qxF "$tag" "$RM_STATE/alerts/release-posted" 2>/dev/null || return 0
 	# The notes are read from the checkout, so it must be at the deployed release.
 	[ "$(gitc rev-parse HEAD 2>/dev/null)" = "$(deployed_sha)" ] || return 0
+	if [ -s "$discord/bot-token" ] && [ -s "$discord/changelog-channel" ] && [ -f "$script" ]; then
+		{
+			if timeout 120 "$py" "$script" --dir "$discord" changelog "$tag" "$RM_SRC/docs/releases/$tag.md"; then
+				mkdir -p "$RM_STATE/alerts" && echo "$tag" >>"$RM_STATE/alerts/release-posted"
+				ok=1
+			else
+				ok=0
+			fi
+			[ ! -x "$1" ] || if [ "$ok" = 1 ]; then
+				"$1" clear release-notes "the release notes for $tag are posted"
+			else
+				"$1" send release-notes "$tag" "the release notes for $tag were not posted; tried again at the next pass"
+			fi
+		} >>"$run_log" 2>&1 </dev/null
+		return 0
+	fi
+	[ -s "$RM_STATE/release-webhook" ] && [ -x "$1" ] && grep -q 'release-notes)' "$1" || return 0
 	{
 		if "$1" release-notes "$tag" "$RM_SRC/docs/releases/$tag.md"; then
 			"$1" clear release-notes "the release notes for $tag are posted"
