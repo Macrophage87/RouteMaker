@@ -30,7 +30,7 @@ test("the turns are never dropped for the slim graphs: their strip kept, or the 
   assert.match(css, /\.ride-ahead-arrow-halo \{[^}]*stroke: var\(--bg\);/);
 });
 
-test("mountain-bike trails ride on the ribbon in the map's colours, a rated level's sign on them, and are said (Stephen, 2026-11-07)", async () => {
+test("mountain-bike trails ride on the ribbon in the map's colours and are said (Stephen, 2026-11-07)", async () => {
   const { trailLevelMarks, trailLevelSentence } = await import("./aheadGraph.ts");
   const w = { fromM: 0, toM: 3000 };
   const marks = trailLevelMarks(
@@ -56,11 +56,10 @@ test("mountain-bike trails ride on the ribbon in the map's colours, a rated leve
   assert.match(trailLevelSentence(marks, 0), /^Blue trail \(level 2\) in .+, for .+\. Black trail \(level 3\) in .+, for .+\.$/);
   assert.match(trailLevelSentence(marks, 500), /^Blue trail \(level 2\) here, for /);
   assert.match(trailLevelSentence(marks, 2800), / Unrated mountain bike trail in .+, for .+\.$/);
-  // Said with the ribbon; each rated level's sign drawn on it, clear of the turns where the stretch allows.
+  // Said with the ribbon; no sign drawn (Stephen 2026-11-07: "most trails are accessed as turns").
   assert.match(graph, /const trails = ribbon\.length && route\.trail_levels \? trailLevelMarks\(route\.trail_levels, w, route\.stress_spans\) : \[\];/);
   assert.match(graph, /facilitySentence\(rails, w\.youM\), trailLevelSentence\(trails, w\.youM\)\]/);
-  assert.match(graph, /\{panels\.trails\.length > 0 && <TrailSigns marks=\{panels\.trails\} x=\{x\} cy=\{panels\.turnsH \+ RIBBON_BLOCK \/ 2\} turns=\{drawnTurns\} \/>\}/);
-  assert.match(graph, /return spots\.find\(\(sx\) => room\(sx\) > TRAIL_SIGN \+ 6\) \?\? spots\.reduce\(\(a, b\) => \(room\(b\) > room\(a\) \? b : a\)\);/);
+  assert.doesNotMatch(graph, /TrailSigns/);
 });
 
 test("a trail stretch on the ribbon is its trail's colour, with brown rocks on its edges (Stephen, 2026-11-07)", () => {
@@ -85,4 +84,11 @@ test("the trail colour never covers an Avoid section, on the ribbon or the route
   ]);
   const layers = readFileSync(new URL("./routeTrailLayers.ts", import.meta.url), "utf8");
   assert.match(layers, /for \(const span of trailsBesideAvoid\(found, route\.stress_spans\)\)/);
+});
+
+test("a short stretch above LTS 3 is drawn the ribbon's full height, over the rails (Stephen, 2026-11-07)", () => {
+  // "Make short segments at higher LTS >3 use the full width of the band so it's more obvious", "just the short stretches".
+  assert.match(graph, /^const SHORT_BUSY_M = 161;$/m);
+  assert.match(graph, /const tall = \(b: StressBar\): boolean => b\.level !== null && b\.level > 3 && b\.toM - b\.fromM < SHORT_BUSY_M;/);
+  assert.match(graph, /\{bars\.filter\(tall\)\.map\(\(b\) => \([\s\S]*?height=\{RIBBON_BLOCK\}/);
 });
