@@ -959,7 +959,7 @@ export function placeLabelPaint(id, strong = accessibilityOn(), dark = darkMapOn
  * halo, so a park still reads green and a creek blue. Place names are the street names' 15 px; house numbers, one
  * on every house at zoom 18, 13 px so they do not crowd each other out; the base map's italics and letter spacing go.
  * The route numbers in their shields are 12 px (the base map's 8) with the shield drawn 1.5 times as large (1.2 for
- * its 0.8), so the number still fits it. The names, filters and zooms are the base map's own.
+ * its 0.8), so the number still fits it. The names, filters and zooms are the base map's own, but for the motorways (HIGHWAY_LABEL_MIN_ZOOM) and the shields (SHIELD_MIN_ZOOM).
  *
  * The route numbers are quiet: the owner, 2026-11-04, "In dark mode all the route numbers are hard to see" and "they
  * aren't really that important. They are mostly roads we won't use". So a mid grey, legible and no more: 7.6:1 on
@@ -1005,7 +1005,7 @@ export const OTHER_LABEL = {
  * bikes don't use highways. Only show when zoomed further in." A motorway (the base map's road kind "highway": OSM's
  * motorway and motorway_link, the interstates; a trunk road such as a parkway is a "major_road") is named, and its route shield drawn, only from HIGHWAY_LABEL_MIN_ZOOM,
  * the zoom every road is drawn solid at, where a rider can need it as a landmark beside a street. Every other road's
- * name and shield (a US or state route on a major or trunk road, which a rider may use) is as the base map has it.
+ * name (a US or state route on a major or trunk road, which a rider may use) is as the base map has it; its shield waits for SHIELD_MIN_ZOOM.
  */
 export const HIGHWAY_LABEL_MIN_ZOOM = 14;
 const notMotorwayYet = ["any", ["!=", ["get", "kind"], "highway"], [">=", ["zoom"], HIGHWAY_LABEL_MIN_ZOOM]];
@@ -1017,6 +1017,14 @@ function laterMotorways(filter) {
     : filter;
   return ["all", expression, notMotorwayYet];
 }
+
+/**
+ * THE ROUTE NUMBERS. The owner, 2026-11-04: "they aren't really that important. They are mostly roads we won't use";
+ * and of the opening view, 2026-11-07: "it very much looks messsy". Every route shield, a US or state route's too,
+ * waits for SHIELD_MIN_ZOOM, a zoom past the opening view where the streets are drawn and a number can help find one.
+ * A motorway's still waits for HIGHWAY_LABEL_MIN_ZOOM.
+ */
+export const SHIELD_MIN_ZOOM = 13;
 
 export const OTHER_LABEL_LAYER_IDS = ["pois", "water_waterway_label", "water_label_ocean", "water_label_lakes", "earth_label_islands", "address_label", "roads_shields"];
 
@@ -1043,6 +1051,7 @@ function clearOtherLabel(layer, dark = false) {
     case "roads_shields":
       return {
         ...layer,
+        minzoom: Math.max(layer.minzoom ?? 0, SHIELD_MIN_ZOOM),
         filter: laterMotorways(layer.filter),
         layout: { ...layer.layout, "text-font": [L.font], "text-size": L.shield.size, "icon-size": L.shield.iconSize },
         paint: { ...layer.paint, "text-color": dark ? L.shield.darkColor : L.shield.color },
@@ -1837,6 +1846,27 @@ export function stressFilters(when = DEFAULT_WHEN, showHighLanes = highStressLan
   return Object.fromEntries(Object.entries(filters).map(([id, filter]) => [id, isMtbLayerId(id) ? filter : ["all", filter, massHides]]));
 }
 
+/**
+ * THE OPENING VIEW (the owner, 2026-11-07, of the map at OPENING_ZOOM over DC: "While it's great that there's a lot
+ * of bikeable roads in DC, it very much looks messsy"). Below OPENING_MESH_MAX_ZOOM a street of the z11 tiles' lower
+ * popular class (POPULAR_PRIORITY_MIN_CLASS, the busier bikeshare streets downtown) that is neither an off-road path
+ * nor a protected lane nor a named corridor waits for z12, where the city ladder draws it with the rest of the grid
+ * (CITY_LADDER.major). Every way of another popular class (none, 1 or 3), an off-road path, a protected lane, a named
+ * corridor and a road closed to cars at set times stays; a calm road or trail connector that is also such a street
+ * waits with it. Front end only: the z11 tiles still carry those streets.
+ */
+export const OPENING_MESH_MAX_ZOOM = 12;
+export const openingViewKeeps = [
+  "any",
+  [">=", ["zoom"], OPENING_MESH_MAX_ZOOM],
+  ["!=", ["to-number", ["get", "popular"], 0], POPULAR_PRIORITY_MIN_CLASS],
+  ["match", ["coalesce", ["get", "facility"], "none"], ["path", "protected"], true, false],
+  ["has", "trail_name"],
+  // A road closed to cars at set times draws as a path in those times, as the city ladder keeps it (cityMajor).
+  ["has", "car_free"],
+  ["has", "car_free_only"],
+];
+
 function stressFiltersOf(when, showHighLanes, routableMtb) {
   const filters = {};
   // Every routable filter is ["all", drawnAt(when), <the mountain-bike cut, unless routableMtb>, ...its own clauses].
@@ -1865,7 +1895,7 @@ function stressFiltersOf(when, showHighLanes, routableMtb) {
   // tiles name as `name`; the cut is the routable layers' all the same).
   filters[TRAIL_LABEL_LAYER_ID] = ["all", drawnAt(when), ...hidden, ["has", "trail_name"]];
   for (const tier of TIER_SHAPES) {
-    const filter = ["all", drawnAt(when), ...hidden, alleyDrawn, ["==", tierAt(when), tier.tier]];
+    const filter = ["all", drawnAt(when), ...hidden, alleyDrawn, openingViewKeeps, ["==", tierAt(when), tier.tier]];
     // LTS 1's line and edge leave the surface-unknown trails to their own layers.
     const own = tier.tier === 1 ? [...filter, ["!", surfaceUnknown]] : filter;
     filters[`stress-${tier.tier}`] = own;
@@ -1886,7 +1916,7 @@ function stressFiltersOf(when, showHighLanes, routableMtb) {
     }
   }
   for (const facility of FACILITIES) {
-    const filter = ["all", drawnAt(when), ...hidden, alleyDrawn, ["==", facilityAt(when), facility.facility]];
+    const filter = ["all", drawnAt(when), ...hidden, alleyDrawn, openingViewKeeps, ["==", facilityAt(when), facility.facility]];
     // An unpaved trail is not given a path's rails (OWNER-DECISIONS 290: the
     // Lake Accotink singletrack read as "protected bike paths"): it draws as its
     // tier's line and the unpaved mark. A missing "unpaved" is an unknown

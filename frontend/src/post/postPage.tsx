@@ -13,7 +13,7 @@
  *   far past, so a long post never holds more than a few maps;
  * - for an instance admin, "Use this map as the link picture": the post's map drawn at 1200 by 630 with its credits,
  *   sent to the server as the link preview's picture, and Add photo, which draws a photo again smaller, with no
- *   location or camera details, and sends it (photos.ts).
+ *   date or camera details, and sends it with where it was taken (photos.ts).
  */
 import "maplibre-gl/dist/maplibre-gl.css";
 import "../styles.css";

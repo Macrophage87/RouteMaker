@@ -129,6 +129,11 @@ JOG_MIN_M = 15.0
 # walk_spans`), so one that starts at a turn can land a hair either side of the turn's
 # stretch (round-3 audit D32).
 WALK_TIE_M = 0.01
+# A turn made through a junction's crosswalk (`_junction_turn`): the pieces the route steps
+# over between the street it leaves and the one it turns onto, a crosswalk among them, each
+# shorter than JUNCTION_PIECE_M and together no longer than JUNCTION_SPAN_M.
+JUNCTION_PIECE_M = 60.0
+JUNCTION_SPAN_M = 90.0
 # An unnamed jog's middle (`_unnamed_jog`) is at least this long: a shorter path or
 # alley between two turns is a crosswalk or a corner cut, not a way ridden.
 JOG_UNNAMED_MIN_M = 30.0
@@ -894,6 +899,136 @@ def _connector(before: _Run | None, run: _Run, after: _Run | None) -> bool:
     return not (run.tier in NEVER_HIDDEN and _rank(after) < _rank(run))
 
 
+def _lead_in(before: _Run | None, run: _Run, after: _Run | None) -> bool:
+    """Whether `run` is a short unnamed lead-in to fold into the way after, its turn said as
+    the turn onto that way: a service way or path (not a crosswalk) under JOG_UNNAMED_MIN_M,
+    turned (or forked) into off one named street and carried on straight from onto another
+    (the owner, at 13th Street SE: "It's supposed to just be a left onto the
+    bike lane, but there's this weird turn onto a nonexistent service road", 16 m of an
+    unnamed service way before "Continue onto Pennsylvania Avenue Southeast bike lane").
+    Turned out of, it is `_connector`'s or `_unnamed_jog`'s; across the two, the route must
+    still turn (SLIGHT_MIN_DEG up to HAIRPIN_DEG), so a jog back onto the heading it had is
+    said turn by turn. Kept as `_connector` keeps one: a circle, a U-turn, untraced, and a
+    stretch of LTS 3 or worse the way after would hide (`NEVER_HIDDEN`)."""
+    if before is None or after is None or run.names or run.metres >= JOG_UNNAMED_MIN_M:
+        return False
+    if not (run.service or run.path) or _crosswalk(run) or not before.names or not after.names:
+        return False
+    if run.untraced or before.untraced or after.untraced or run.leg != after.leg:
+        return False
+    if (
+        _circle(run)
+        or _circle(after)
+        or _uturn(run)
+        or _uturn(after)
+        or _same_street(before, after)
+    ):
+        return False
+    into = _lead_in_move(before, run)
+    if into not in TURN_WORDS:
+        return False
+    out = after.first.fork if _forks(after) else _movement_between(run, after)
+    if out != "straight":
+        return False
+    # Across both, the route still turns, and to the side it turned off the street: a way
+    # that bends back across the rider's heading is said turn by turn.
+    turn = turn_between(before.last, after.first)
+    if turn is None or not SLIGHT_MIN_DEG <= abs(turn) < HAIRPIN_DEG:
+        return False
+    if (turn > 0) != into.endswith("right"):
+        return False
+    return not (run.tier in NEVER_HIDDEN and _rank(after) < _rank(run))
+
+
+def _lead_in_move(before: _Run, run: _Run) -> str | None:
+    """The move made off the street into a lead-in: its fork's, else the turn into it. Said
+    as the turn onto the way after (`_absorb_tiny`), as the rider makes it at the street, not
+    a bear read across a lead-in that bends to meet an angled sidepath (#1036 review)."""
+    return run.first.fork if _forks(run) else _movement_between(before, run)
+
+
+def _junction_turn(runs: list[_Run], i: int) -> int | None:
+    """Where the route makes one turn through a junction's crosswalk: the index of the
+    stretch it turns onto, with runs[i:] up to it the pieces stepped over, else None (the
+    owner, at Mount Vernon Memorial Highway and Richmond Highway: "This has to
+    be the worst described intersection ever. I just made a left turn", said as "Cross the
+    road", "Right onto Richmond Highway bike lane", "Left to stay on" it within 75 m). Only
+    off a road, by a full turn straight onto a crosswalk, to the side the whole move turns:
+    the crosswalk crosses the road the rider was on, as a turn made in the roadway does. Off
+    a path or a sidewalk, or a bear onto the crosswalk, the crossing is the rider's own and
+    still said (`_crossing`: "Cross Redland Road, then left onto the bike lane"; the Saint
+    Paul Street bike lane on the far side). The
+    pieces are crosswalks, unnamed ways or the path turned onto, each under
+    JUNCTION_PIECE_M and in all no more than JUNCTION_SPAN_M, on one traced leg, turned into
+    and turned out of, none a circle or a U-turn; across them the route turns a full left
+    or right short of a turnaround (past BEAR_MAX_DEG, under HAIRPIN_DEG), so a jog (back on
+    the heading it had) and a crossing that doubles back ("Cross West Basin Drive, then
+    left onto the path") are still said turn by turn. A piece of LTS 3 or worse that is not
+    the crosswalk is hidden only in a stretch at least as stressful (`NEVER_HIDDEN`); the
+    crosswalk's own junction is the turn's (`_fold_connector`). Read at the farthest stretch
+    the pieces reach."""
+    if i == 0 or i + 1 >= len(runs):
+        return None
+    before = runs[i - 1]
+    if before.untraced or _circle(before) or before.path or _crosswalk(before):
+        return None
+    # Straight from the road onto the crosswalk, a full turn: it crosses the road the rider
+    # was on (its other side), as a turn made in the roadway does. A sidewalk first, or a
+    # bear onto a crosswalk, crosses the road turned onto, a crossing to say (the Saint
+    # Paul Street bike lane on the far side).
+    if not _crosswalk(runs[i]):
+        return None
+    into = _turn_at(before, runs[i])
+    if into is None or abs(into) <= BEAR_MAX_DEG:
+        return None
+    found = None
+    span = 0.0
+    crosswalk = False
+    for k in range(i, len(runs) - 1):
+        piece = runs[k]
+        if piece.leg != before.leg or piece.untraced or _circle(piece) or _uturn(piece):
+            break
+        # A named piece is the street turned onto: a short stretch of another (a jog's
+        # middle, "Right onto X Trail, then left onto Y Trail") is a way ridden, said.
+        # One crosswalk, the one turned onto: a second crosses another road, said. An
+        # unnamed path past JOG_UNNAMED_MIN_M is a way ridden, as a named one is.
+        if k > i and _crosswalk(piece):
+            break
+        if piece.metres >= JUNCTION_PIECE_M or not (
+            _crosswalk(piece)
+            or (not piece.names and piece.metres < JOG_UNNAMED_MIN_M)
+            or (piece.path and _same_street(piece, runs[k + 1]))
+        ):
+            break
+        span += piece.metres
+        if span > JUNCTION_SPAN_M:
+            break
+        crosswalk = crosswalk or _crosswalk(piece)
+        after = runs[k + 1]
+        if after.leg != before.leg or after.untraced or _circle(after) or _uturn(after):
+            break
+        if not crosswalk:
+            continue
+        # The farthest stretch reached decides: one nearer that turns the right way, with
+        # more of the junction still to ride after it, is a crossing and a turn back.
+        turn = turn_between(before.last, after.first)
+        found = (
+            k + 1
+            if (
+                (_forks(after) or _movement_between(piece, after) in TURN_WORDS)
+                and not any(
+                    p.tier in NEVER_HIDDEN and not _crosswalk(p) and _rank(after) < _rank(p)
+                    for p in runs[i : k + 1]
+                )
+                and turn is not None
+                and BEAR_MAX_DEG < abs(turn) < HAIRPIN_DEG
+                and (turn > 0) == (into > 0)
+            )
+            else None
+        )
+    return found
+
+
 def _crosswalk(run: _Run) -> bool:
     """Whether `run` begins or ends on a crosswalk (CROSSING_USE)."""
     return any(atom is not None and atom.use == CROSSING_USE for atom in (run.first, run.last))
@@ -931,9 +1066,22 @@ def _absorb_tiny(runs: list[_Run]) -> list[_Run]:
             run = runs[i]
             before = runs[i - 1] if i > 0 else None
             after = runs[i + 1] if i + 1 < len(runs) else None
-            # A few metres between two turns is one move (`_connector`).
-            if after is not None and _connector(before, run, after):
+            # A turn made through a junction's crosswalk is one move (`_junction_turn`).
+            onto = _junction_turn(runs, i)
+            if onto is not None:
+                for piece in runs[i:onto]:
+                    _fold_connector(before, piece, runs[onto])
+                del runs[i:onto]
+                changed = True
+                continue
+            # A few metres between two turns is one move (`_connector`), and so is a short
+            # unnamed lead-in onto a way carried on straight (`_lead_in`).
+            lead_in = after is not None and _lead_in(before, run, after)
+            if after is not None and (lead_in or _connector(before, run, after)):
+                move = _lead_in_move(before, run) if lead_in else None
                 _fold_connector(before, run, after)
+                if move is not None and after.first is not None:
+                    after.first = replace(after.first, fork=move)
                 del runs[i]
                 changed = True
                 continue
@@ -1317,6 +1465,9 @@ class _Turn:
     # The junction event where that road is crossed, said with the crossing; None where
     # there is none.
     across_event: object | None = None
+    # The turn the route makes off a way alongside that road to cross it ("left" or
+    # "right", `_far_side_turns`), drawn on the ride card; None where it goes straight on.
+    across_from: str | None = None
     # A turn onto an unnamed path that leads to a named one (`_toward`): that one's name,
     # said with the path ("Right onto the path to Rock Creek Trail"), the path itself
     # still unnamed ("path" on the map, in a report, in "Where am I?").
@@ -1939,10 +2090,14 @@ def _crossing(
     return None
 
 
-def _far_side_turns(atoms: list[Atom]) -> list[tuple[float, float, float, str]]:
+def _far_side_turns(atoms: list[Atom]) -> list[tuple[float, float, float, str, str | None]]:
     """Where a leg turns onto a path on the far side of a road it has just gone straight
     across (FAR_SIDE_M): (where the straight run to the turn begins, where the road is
-    crossed, where the route turns, "left" or "right"), in metres from the leg's start.
+    crossed, where the route turns, "left" or "right", and "left" or "right" where the
+    straight run begins with a turn past ALONG_TURN_DEG, else None), in metres from the
+    leg's start. That turn in is the route leaving a way alongside the road to cross it
+    (the owner, at West Basin Drive: "Left across road then right"), drawn so
+    on the ride card.
     The road is another way at a node of the route (`Atom.others`), a street a car may
     drive (FAR_SIDE_ROAD_USES), square to the route there (FAR_SIDE_SQUARE_DEG), off to
     the side turned to and running alongside the path turned onto
@@ -1961,7 +2116,7 @@ def _far_side_turns(atoms: list[Atom]) -> list[tuple[float, float, float, str]]:
             return atom.turn
         return turn_between(atoms[i - 1], atom) if i > 0 else None
 
-    found: list[tuple[float, float, float, str]] = []
+    found: list[tuple[float, float, float, str, str | None]] = []
     for j, atom in enumerate(atoms):
         if j == 0 or atom.others is None or atom.use not in PATH_USES or atom.roundabout:
             continue
@@ -1976,6 +2131,8 @@ def _far_side_turns(atoms: list[Atom]) -> list[tuple[float, float, float, str]]:
         last = atoms[j - 1].bearing
         crossed: float | None = None
         straight_from = at[j] - FAR_SIDE_M
+        # The bend the straight run begins with, clockwise positive.
+        into: float | None = None
         for k in range(j - 1, -1, -1):
             gap = at[j] - at[k]
             if gap > FAR_SIDE_M:
@@ -1985,12 +2142,14 @@ def _far_side_turns(atoms: list[Atom]) -> list[tuple[float, float, float, str]]:
             if last is not None and bearing is not None:
                 if abs(bearing - last) > FAR_SIDE_STRAIGHT_DEG:
                     straight_from = at[k + 1]
+                    into = _turn_deg(bearing, last)
                     break
             is_node = node.others is not None or node.turn is not None
             bent = bend(k) if is_node else None
             if bent is not None and abs(bent) > FAR_SIDE_STRAIGHT_DEG:
                 # The node bent at begins the straight run; it is not a part of it.
                 straight_from = at[k] + min(max(node.metres, 0.0), 1.0)
+                into = bent
                 break
             if (
                 crossed is not None
@@ -2021,6 +2180,11 @@ def _far_side_turns(atoms: list[Atom]) -> list[tuple[float, float, float, str]]:
                     crossed,
                     at[j],
                     "right" if turn > 0 else "left",
+                    None
+                    if into is None or not ALONG_TURN_DEG < abs(into) < HAIRPIN_DEG
+                    else "right"
+                    if into > 0
+                    else "left",
                 )
             )
     return found
@@ -2192,9 +2356,10 @@ def describe_both(
     runs: list[_Run] = []
     # The ways off circles, by the atom the way off begins with (`_circle_exits`).
     exits: dict[int, dict] = {}
-    # Turns onto a path across a road just crossed (`_far_side_turns`): (where the road
-    # is crossed, where the route turns, the side, the leg), in the pieces' measure.
-    far_side: list[tuple[float, float, float, str, int]] = []
+    # Turns onto a path across a road just crossed (`_far_side_turns`): (where the straight
+    # run begins, where the road is crossed, where the route turns, the side, the leg, the
+    # turn in off a way alongside or None), in the pieces' measure.
+    far_side: list[tuple[float, float, float, str, int, str | None]] = []
     leg_at = 0.0
     sections = _sections(legs, through)
     # The via points within a section: (its point's number, where, in the pieces' measure).
@@ -2233,8 +2398,8 @@ def describe_both(
         content, found = _circle_exits(content)
         exits.update(found)
         far_side.extend(
-            (leg_at + from_at, leg_at + cross_at, leg_at + turn_at, side, leg)
-            for from_at, cross_at, turn_at, side in _far_side_turns(content)
+            (leg_at + from_at, leg_at + cross_at, leg_at + turn_at, side, leg, into)
+            for from_at, cross_at, turn_at, side, into in _far_side_turns(content)
         )
         leg_start = leg_at
         leg_at += sum(atom.metres for atom in content if atom.metres > 0)
@@ -2381,7 +2546,7 @@ def describe_both(
         crossed_by[i] = (event, turn.shape)
         turn.cross = name
         turn.shape = None
-    for from_at, cross_at, turn_at, side, leg in far_side:
+    for from_at, cross_at, turn_at, side, leg, into in far_side:
         # The turn the stretch onto the path begins with: at the node turned at, or, where a
         # short piece across the road was folded into the path's stretch, where that begins:
         # never at or before a node the route bent at short of the road (`from_at`).
@@ -2406,6 +2571,7 @@ def describe_both(
         if turn.movement not in TURN_WORDS:
             turn.movement = side
         turn.across = _road_crossed(events, cross_at, runs[i])
+        turn.across_from = into
         turn.shape = None
         # The crossing's own junction is said with it ("Cross Saint Paul Street at a signal,
         # then right onto ...") rather than as an entry of its own; the turn's, if another,
@@ -2526,6 +2692,7 @@ def describe_both(
                         **({"exit": turn.exit} if turn.exit else {}),
                         **({"cross": turn.cross} if turn.cross else {}),
                         **({"across": turn.across} if turn.across else {}),
+                        **({"across_from": turn.across_from} if turn.across_from else {}),
                         **({"toward": turn.toward} if turn.toward else {}),
                     },
                     severity=severity,
@@ -2659,6 +2826,7 @@ def describe_both(
                         **({"exit": turn.exit} if turn.exit else {}),
                         **({"cross": turn.cross} if turn.cross else {}),
                         **({"across": turn.across} if turn.across else {}),
+                        **({"across_from": turn.across_from} if turn.across_from else {}),
                         **({"toward": turn.toward} if toward else {}),
                     },
                     severity=severity,

@@ -159,7 +159,7 @@ test("Plan: bottom then top as the next stops before the destination", () => {
 test("App: Go plans from its start to the top through the bottom; Plan takes the edit; one undoable commit", () => {
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
   assert.match(app, /void goTo\(top, climbEndName\(climb, "the top"\), false, \[bottom\]\)/);
-  assert.match(app, /commit\(\[start, \.\.\.vias, dest\]/);
+  assert.match(app, /commit\(ride\.preset === "rebalance" \? \[start\] : \[start, \.\.\.vias, dest\]/);
   assert.match(app, /rideClimbEdit\(pointsRef\.current, \{ bottom, top \}, loopVias\)/);
   assert.match(app, /onRideClimb=\{onBike \? ignore : rideClimb\}/);
 });

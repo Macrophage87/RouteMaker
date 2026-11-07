@@ -146,6 +146,12 @@ def _no_ddot_advisories(monkeypatch):
     real_pl = purple_line.zones
     monkeypatch.setattr(purple_line, "zones", lambda now, closures=None: [])
     monkeypatch.setattr(purple_line, "real_zones", real_pl, raising=False)
+    # Fairfax's park alert closures (`routemaker.fcpa`, v0.22.0) likewise.
+    from routemaker import fcpa
+
+    real_fc = fcpa.zones
+    monkeypatch.setattr(fcpa, "zones", lambda now, closures=None: [])
+    monkeypatch.setattr(fcpa, "real_zones", real_fc, raising=False)
 
 
 @pytest.fixture(autouse=True)
