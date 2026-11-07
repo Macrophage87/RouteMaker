@@ -916,7 +916,7 @@ class TestNodesAt:
         assert sorted(found) == list(range(50, 60)), "the next batch is still asked"
 
     def test_a_road_closed_to_bicycles_is_still_a_road_crossed(self) -> None:
-        """The owner, 2026-11-07, on a ride: the route left the Mount Vernon Trail to cross
+        """The owner: a route left the Mount Vernon Trail to cross
         the George Washington Memorial Parkway (`bicycle=no`, 4 lanes at 45 mph) at Tulane
         Dr with no signal. `/locate` asked as a bicycle leaves the Parkway out, so the
         crossing had no road to price; asked as a car too, it has the Parkway's arms."""

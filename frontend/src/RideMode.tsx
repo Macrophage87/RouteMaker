@@ -587,7 +587,7 @@ function CrossRoad({ turn }: { turn: boolean }) {
 
 /**
  * The road an "along" arrow turns over: one running alongside the way the rider was on, on the side turned to (the
- * owner, 2026-11-07, at West Basin Drive: "Left across road then right"), shaded with its edges and centre line as
+ * owner, at West Basin Drive: "Left across road then right"), shaded with its edges and centre line as
  * CrossRoad's.
  */
 function AlongRoad({ side }: { side: "left" | "right" }) {

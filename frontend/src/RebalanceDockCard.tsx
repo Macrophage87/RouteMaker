@@ -32,8 +32,17 @@ export function RebalanceDockCard({
   // The focus to the question as it comes up, so a screen reader is there with it.
   useEffect(() => heading.current?.focus(), []);
   const busy = ask.phase !== "list";
+  // Once the list is in, the focus to its first dock, so a screen reader hears that the docks are ready; and back to
+  // the question when Try again has left (review). Never taken from a control the rider has moved to elsewhere.
+  const card = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (ask.phase !== "list") return;
+    const at = document.activeElement;
+    if (at && at !== document.body && at !== heading.current) return;
+    (card.current?.querySelector<HTMLElement>(".ride-dock-list button") ?? heading.current)?.focus();
+  }, [ask.phase, ask.at]);
   return (
-    <section className="ride-dock-choice" aria-labelledby="ride-dock-choice-heading" aria-busy={busy}>
+    <section className="ride-dock-choice" ref={card} aria-labelledby="ride-dock-choice-heading" aria-busy={busy}>
       <h3 id="ride-dock-choice-heading" ref={heading} tabIndex={-1}>
         {DOCK_CHOOSE_HEADING}
       </h3>

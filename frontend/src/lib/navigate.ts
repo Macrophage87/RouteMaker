@@ -1160,7 +1160,7 @@ export type CrossShape =
 export function crossArrow(cue: Pick<Cue, "cross" | "across" | "acrossFrom" | "then" | "movement">): CrossShape | null {
   const after = cue.cross ? cue.then?.[0]?.movement : cue.across ? cue.movement : undefined;
   const side = after === "left" || after === "bear_left" ? "left" : after === "right" || after === "bear_right" ? "right" : null;
-  // A full turn off a way alongside the road to cross it (the owner, 2026-11-07, at West Basin Drive: "Left across
+  // A full turn off a way alongside the road to cross it (the owner, at West Basin Drive: "Left across
   // road then right"): the road drawn alongside, the turn over it, then the turn after it on the far side.
   const from = cue.cross ? (cue.movement === "left" || cue.movement === "right" ? cue.movement : null) : cue.across ? cue.acrossFrom ?? null : null;
   if (from) return side ? `along_${from}_${side}` : `along_${from}`;

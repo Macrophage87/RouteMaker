@@ -127,7 +127,7 @@ TRAIL_USES = (
 # The costings each node is asked with. `/locate` answers only the edges its costing may
 # use: asked as a bicycle alone it leaves out every road closed to bicycles, so the George
 # Washington Memorial Parkway (`bicycle=no`, 4 lanes at 45 mph) had no arm where Tulane Dr
-# crosses it at grade, and the crossing cost nothing (the owner, 2026-11-07, on a ride: "Why
+# crosses it at grade, and the crossing cost nothing (the owner: "Why
 # did the route have me go across a busy highway with no signal instead of continuing the
 # trail"). Asked as a car as well, the two answers merged (`_merged`): the bicycle's has the
 # rider's own path, the car's every road with traffic to cross, its signals and signs.

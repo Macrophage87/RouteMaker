@@ -444,7 +444,7 @@ class TestTurns:
 
 
 class TestBearsAndJogs:
-    """The owner, 2026-10-16, riding east on Q Street NW in Shaw: "complex turns which
+    """The owner, on Q Street NW in Shaw: "complex turns which
     aren't announced". A change of street 20 to 60 degrees off straight is a bear; a
     jog (a short named street entered and left by turns) is never folded away, but a
     divided road, an offset crossing, a sidewalk cut, a slip lane and a circle are."""
@@ -1575,7 +1575,7 @@ def forked(atoms, movement):
 
 
 class TestForks:
-    """The owner, 2026-10-18, riding the Paint Branch Trail in College Park: "still
+    """The owner, on the Paint Branch Trail in College Park: "still
     missing some important turns, especially when it seems straight is the default".
     Where another rideable way at a node is as near straight ahead as the route's, the
     route's way is said, even along one trail or straight on."""
@@ -2274,7 +2274,7 @@ class TestLeaningForks:
 
 
 class TestCrossings:
-    """The owner, 2026-10-20, north on the Needwood Road bike lane at Redland Road: "It
+    """The owner, on the Needwood Road bike lane at Redland Road: "It
     should have told me to cross the street and turn left". A short path across a road
     between two turns is said as the crossing, not a bear to stay on the path."""
 
@@ -2520,7 +2520,7 @@ class TestCueCheckOnRealRoutes:
 
 
 class TestFarSideTurns:
-    """The owner, 2026-10-24, riding in Baltimore: "Sometimes the bike lane to turn on is on
+    """The owner, in Baltimore: "Sometimes the bike lane to turn on is on
     the other side of the road, make it clear both from the arrow and directions to cross
     the road then turn right". A turn onto a path that begins just across a road the route
     goes straight over is said with the crossing."""
@@ -2608,7 +2608,7 @@ class TestFarSideTurns:
         assert "across" not in self.route(gap=60.0)[1]["turn"]
 
     def test_off_a_path_alongside_the_road_the_turn_in_is_kept_for_the_arrow(self):
-        # The owner, 2026-11-07, at West Basin Drive: "Left across road then right". East on
+        # The owner, at West Basin Drive: "Left across road then right". On
         # the path beside the road, left over it, right onto the far side's cycletrack.
         before = road("path beside West Basin Drive Southwest", 1, 400, 90, 90, "path", "cycleway")
         bend = replace(road("", 1, 8, 0, 0, "path", "cycleway")[0], others=(), turn=-90.0)
@@ -3186,7 +3186,7 @@ class TestPhantomTurns:
         ]
 
     def test_a_short_unnamed_lead_in_onto_a_bike_lane_is_the_one_left(self):
-        # Stephen, 2026-11-07, north on 13th Street SE at Pennsylvania Avenue SE: "It's
+        # The owner, at 13th Street SE and Pennsylvania Avenue SE: "It's
         # supposed to just be a left onto the bike lane, but there's this weird turn onto a
         # nonexistent service road": 16 m of an unnamed service way begun at a fork (a
         # left), then "Continue onto Pennsylvania Avenue Southeast bike lane".
@@ -3378,7 +3378,7 @@ class TestPhantomTurns:
 
 
 class TestJunctionTurn:
-    """The owner, 2026-11-07, at Mount Vernon Memorial Highway and Richmond Highway: "This has
+    """The owner, at Mount Vernon Memorial Highway and Richmond Highway: "This has
     to be the worst described intersection ever. I just made a left turn". The route steps
     over a 26 m crosswalk and 50 m of the side path (across Richmond Highway) before the path
     turns west: one left, said as a crossing, a right and a left within 75 m."""

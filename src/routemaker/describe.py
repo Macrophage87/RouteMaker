@@ -903,7 +903,7 @@ def _lead_in(before: _Run | None, run: _Run, after: _Run | None) -> bool:
     """Whether `run` is a short unnamed lead-in to fold into the way after, its turn said as
     the turn onto that way: a service way or path (not a crosswalk) under JOG_UNNAMED_MIN_M,
     turned (or forked) into off one named street and carried on straight from onto another
-    (Stephen, 2026-11-07, north on 13th Street SE: "It's supposed to just be a left onto the
+    (the owner, at 13th Street SE: "It's supposed to just be a left onto the
     bike lane, but there's this weird turn onto a nonexistent service road", 16 m of an
     unnamed service way before "Continue onto Pennsylvania Avenue Southeast bike lane").
     Turned out of, it is `_connector`'s or `_unnamed_jog`'s; across the two, the route must
@@ -950,7 +950,7 @@ def _lead_in_move(before: _Run, run: _Run) -> str | None:
 def _junction_turn(runs: list[_Run], i: int) -> int | None:
     """Where the route makes one turn through a junction's crosswalk: the index of the
     stretch it turns onto, with runs[i:] up to it the pieces stepped over, else None (the
-    owner, 2026-11-07, at Mount Vernon Memorial Highway and Richmond Highway: "This has to
+    owner, at Mount Vernon Memorial Highway and Richmond Highway: "This has to
     be the worst described intersection ever. I just made a left turn", said as "Cross the
     road", "Right onto Richmond Highway bike lane", "Left to stay on" it within 75 m). Only
     off a road, by a full turn straight onto a crosswalk, to the side the whole move turns:
@@ -2096,7 +2096,7 @@ def _far_side_turns(atoms: list[Atom]) -> list[tuple[float, float, float, str, s
     crossed, where the route turns, "left" or "right", and "left" or "right" where the
     straight run begins with a turn past ALONG_TURN_DEG, else None), in metres from the
     leg's start. That turn in is the route leaving a way alongside the road to cross it
-    (the owner, 2026-11-07, at West Basin Drive: "Left across road then right"), drawn so
+    (the owner, at West Basin Drive: "Left across road then right"), drawn so
     on the ride card.
     The road is another way at a node of the route (`Atom.others`), a street a car may
     drive (FAR_SIDE_ROAD_USES), square to the route there (FAR_SIDE_SQUARE_DEG), off to

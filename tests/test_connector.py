@@ -182,7 +182,8 @@ class TestSignIn:
         # The owner, 2026-11-02 (my_routes): it may read My routes, never change them.
         assert "read your saved routes, when you ask it to plan from one" in text
         assert "tag, archive or restore your saved routes, when you ask it to" in text
-        assert "can't rename, re-save or delete your saved routes" in text and "claude.ai" in text
+        assert "can't rename or re-save your saved routes, delete one in any other way" in text
+        assert "claude.ai" in text
         assert "frame-ancestors 'none'" in page["Content-Security-Policy"]
         assert "form-action 'self' https://claude.ai" in page["Content-Security-Policy"]
 

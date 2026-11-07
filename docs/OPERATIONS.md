@@ -84,6 +84,7 @@ Contents:
 - [Deploying v0.21.0](#deploying-v0210)
 - [Deploying v0.21.1](#deploying-v0211)
 - [Deploying v0.21.2](#deploying-v0212)
+- [Deploying v0.22.0](#deploying-v0220)
 - [Deploying a planner and front-end release: rollback points and verification](#deploying-a-planner-and-front-end-release-rollback-points-and-verification)
 - [Paths bicycles may not ride (NO-BIKE-PATHS)](#paths-bicycles-may-not-ride-no-bike-paths)
 - [Mountain-bike difficulty levels (456; claude/v0-4-0-mtb-levels)](#mountain-bike-difficulty-levels-456-claudev0-4-0-mtb-levels)
@@ -744,7 +745,7 @@ bicycle and as a car (`core.junctions.LOCATE_COSTINGS`), and the two answers mer
 `/locate` answers only the edges its costing may use, so asked as a bicycle alone it left
 out every road closed to bicycles, and an at-grade crossing of the George Washington
 Memorial Parkway (`bicycle=no`, 4 lanes at 45 mph, at Tulane Dr by the Mount Vernon
-Trail) cost nothing (the owner, 2026-11-07). If the car batch fails, the bicycle's answer
+Trail) cost nothing (an owner report). If the car batch fails, the bicycle's answer
 is read alone, as before. The plan's `/locate` cache keys each answer by its costing too
 (`refine.locator`). About 4 to 24 calls a plan; the timings below were measured on bicycle
 answers, and a car answer near a motorway interchange is larger.
@@ -7336,7 +7337,7 @@ changed`), as at v0.19.0, though the column is optional: the beta ships by hand,
 - [ ] **Rollback.** The `pre-rel` api and pipeline images (`--force-recreate api worker rebuild`)
   and the v0.20.0 front end. Migration 0056 only adds a table: the v0.20.0 api ignores it, so the
   database stays migrated. A schedule rebuilt with tracks still works with the v0.20.0 api (it
-  ignores `shape` and `cuts`). On the beta: rollback A (the snapshot is there if needed), then
+  ignores `shape` and `cuts`). On the beta: rollback C (docs/BETA-RUNBOOK.md; the snapshot is there if needed), then
   `auto-release.sh hold v0.21.0` so the agent does not deploy it again.
 
 ## Deploying v0.21.1
@@ -7399,6 +7400,75 @@ rebuild.**
   to test here!" (the Android beta page) and "Using RouteMaker". The Stress ratings page shows four
   comparison charts under "How our ratings compare with each agency's".
 - [ ] **Rollback.** The v0.21.1 front end. Nothing in the database, the api or the map changes.
+
+## Deploying v0.22.0
+
+Saved routes' tags, Archive and last opened, with the connector's `organize_route` (#1021);
+Rebalance Ride from a start alone, the drop-off dock chosen at the pick-up and the day's totals
+(#1023); stops on Bikeshare Ride, each stop a new trip (#1019; Rebalance Ride, a start alone since
+#1023, takes none); mountain-bike trails
+by level on the ride ribbon and the route line, slim ride graphs and a quiet Resume within 2 hours
+(#1025, #1034); a quieter opening view (#1016); Fairfax park trail closures (#1029: the watch and
+the file, which ships with no closure, each waiting for the owner's confirmation); Featured routes
+photos with where each was taken and the assistant's upload links (#1030); junction and ride cue
+fixes (#1026, #1027, #1028, #1036); and "Same ride or a new one?" in every tab (#1012, #1013), the
+ride rail on a small phone (#1015) and the ride graph tidy-ups (#1014).
+
+**What changes for the host.** Migrations 0057 (`saved_route.tags`, `archived_at`, `opened_at`,
+`replaced_by`; `connector_grant.organizes_routes`) and 0058 (`route_post_photo.lat`, `lon`): columns
+only, the ones that are not nullable with a database default, so the v0.21.x api keeps working on
+the migrated database. A new url, `routes/<slug>/photos/send/<token>` (the assistant's photo upload,
+signed, in `core.route_posts`; on the beta it sits behind the site's password like every page, so
+an assistant's upload there is refused with 401: the links work on the public site). `src/core/geodata/fcpa-closures.json` and `routemaker.fcpa` (read by
+the api; `scripts/fcpa_alerts.py` is run by hand, "Fairfax park trail closures"). The api and the
+front end change together: the new front end sends Bikeshare plans with stops and a
+Rebalance plan with no destination, which the v0.21.x api refuses (400), so the front end goes up
+only after the api, as always. The other way round is safe: a v0.21.x page still open, a link or a
+saved Rebalance plan with a destination is planned by the new api from its start alone. **No `src/pipeline/`, `lua/`, `valhalla/*.json`, compose, Caddyfile,
+nginx, Dockerfile, requirements or `mobile/` change, no tile `FORMAT_VERSION` change, no new
+environment variable, scheduled job or outbound host for the stack, and no map rebuild** (the trail
+levels come from the live map's `mtb_level`). The routers need no restart, and the pipeline image
+need not be rebuilt. The beta agent's gate from v0.21.0 or later says `deploy`, with migrations.
+At home, in order, with `</dev/null` on every docker command:
+
+- [ ] **The tag.** Once `test` and `a11y` are green on `main`, the owner tags v0.22.0 (annotated) on
+  that commit, from the PC.
+- [ ] **Rollback points and images**, as "Deploying a planner and front-end release", out of
+  07:00-07:30 UTC: tag the running api image `pre-rel-<short>`, keep `index.html`, fast-forward the
+  checkout, then `docker compose build api`.
+- [ ] **The api.** `docker compose run --rm --no-deps migrate` (0057, 0058), then
+  `docker compose up -d --no-deps --no-build --force-recreate api worker`, with no job todo or
+  doing. No router restart, no pre-draw.
+- [ ] **The front end**, last.
+- [ ] **The connector.** A grant made before v0.22.0 has no `organize_route`; the owner reconnects
+  RouteMaker in the assistant (claude.ai, Settings, Connectors) to give it the new permission.
+- [ ] **Beta, by its agent**, once its deployed tag (`$RM_STATE/cd/deployed-tag`) is v0.21.0 or
+  later: the gate says `deploy` with migrations; the agent snapshots the database first, migrates,
+  builds the api and the front end and starts them in one pass. Stuck: `git fetch --force --tags
+  origin`, then `scripts/beta/auto-release.sh retry v0.22.0`.
+- [ ] **Beta, by hand, if it is still on v0.20.0** (v0.21.0's hand ship not yet done): the gate from
+  v0.20.0 stops on `src/pipeline/schema.py`, as at v0.21.0. Ship v0.22.0 by hand once, in place of
+  v0.21.0's, as "Deploying v0.21.0" says (pause, snapshot `--label release`, `index.html`, check out
+  the tag, `TAG=`, `check_beta_compose.py`, the api image, migrate (0056 to 0058), api and worker,
+  the front end, `smoke-test.sh --local --trails` then `--public`), with the rebuilt transit
+  schedule's `transit` part if it is ready. The agent changed since v0.20.0:
+  `mark-deployed v0.22.0`, then `scripts/beta/auto-release.sh install`, then `resume`.
+- [ ] **Spot checks.** Tag a saved route (Save, or My routes > More > Tags); in Load route, filter
+  by that tag, then Archive another: it leaves the list, Undo brings it back, and it is under
+  Archived. Rebalance Ride in Go plans from your location to the nearest crowded dock with no
+  destination asked; at that dock the card offers up to 3 drop-off docks, and the end screen shows
+  "Today's Rebalance Rides". A Bikeshare plan with one stop shows two trips. A ride on a
+  mountain-bike trail (Patapsco, Rosaryville) colours the ribbon and the route line by the trail's
+  level. Mid-ride, switch to another app and come back within 2 hours, press Resume: the same ride
+  carries on, its figures kept, with no "Already done?". Zoomed out below 12, no route shields or
+  area closures. On the public site, on a Featured route draft, an assistant's photo goes up by its
+  link and keeps where it was taken ("Where it was taken" under it).
+- [ ] **Rollback.** The `pre-rel` api image (`--force-recreate api worker`) and the v0.21.2 front end.
+  Migrations 0057 and 0058 only add columns with defaults or nulls: the v0.21.2 api ignores them,
+  so the database stays migrated (tags and archive marks made meanwhile are kept, unseen). On the
+  beta: the agent rolls back by itself on a failed pass; later, or after a hand ship, rollback C
+  (docs/BETA-RUNBOOK.md: the previous api image and front end; the `release` snapshot only if
+  needed), then `auto-release.sh hold v0.22.0` so the agent does not deploy it again.
 
 ## Deploying a planner and front-end release: rollback points and verification
 

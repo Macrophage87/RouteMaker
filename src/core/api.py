@@ -682,13 +682,12 @@ class RouteIn(Schema):
         preset = presets.PRESETS[self.preset]
         run = self.preset == presets.RUN
         rebalance = self.preset == presets.REBALANCE
-        if rebalance and len(self.points) != 1:
+        if rebalance and len(self.points) > 1:
             # Stephen, 2026-11-07: "There's actually no real destination. You start where you
-            # are" (core/bikeshare.py, Rebalance Ride).
-            raise ValueError(
-                "Rebalance Ride takes a start only: it walks to the nearest crowded station and"
-                " rides to the nearest one that needs bikes, where the ride ends"
-            )
+            # are" (core/bikeshare.py, Rebalance Ride). A page, link or saved plan from before
+            # v0.22.0 still sends a start and a destination: it plans from the start alone,
+            # never refused.
+            self.points = self.points[:1]
         if (
             len(self.points) < 2
             and not (run and self.loop and self.target_distance_m)
@@ -4198,14 +4197,18 @@ def _bikeshare_body(body: RouteIn, started: float | None) -> dict:
                 "summary": plan["summary"],
             }
         )
-    share = found["bikeshare"]
-    # Pick-up and drop-off pairs are the first trip's alone: none offered for the whole trip.
-    share["options"] = []
-    share["later"] = later
-    share["later_note"] = note
-    share["trip_total_s"] = (
-        None if note else round(share["total_s"] + sum(trip["total_s"] for trip in later), 1)
-    )
+    later_total = sum(trip["total_s"] for trip in later)
+    # The way round an Avoid-rated junction (core.bikeshare) is the first trip too: it carries
+    # the later trips as the plan does, so taking it keeps the stops.
+    around = (found.get("avoid_alternate") or {}).get("bikeshare")
+    for share in (found["bikeshare"], around):
+        if not share:
+            continue
+        # Pick-up and drop-off pairs are the first trip's alone: none offered for the whole trip.
+        share["options"] = []
+        share["later"] = later
+        share["later_note"] = note
+        share["trip_total_s"] = None if note else round(share["total_s"] + later_total, 1)
     return found
 
 
