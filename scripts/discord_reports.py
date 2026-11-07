@@ -25,7 +25,9 @@ beta needs no list of posts.
 
 `changelog` (the owner, 2026-11-07: "I want a bot I have control over") posts a release's
 rider notes to the changelog channel as the bot, in place of the old release webhook: the
-title "RouteMaker vX.Y.Z is on beta", then the notes, split at line ends to fit. The bot reads
+title "RouteMaker vX.Y.Z is on beta", then the notes, split at line ends to fit, and each image
+line of the notes (`![caption](images/v0.22.0/tags.png)`, a path inside docs/releases/) as its
+own message: the image attached, the caption as its words and its alt text. The bot reads
 its own recent messages in the channel first and posts only the messages not there yet, so a
 retried pass never posts twice and one that stopped part-way finishes. The beta's release
 agent runs it once per deployed tag.
@@ -35,7 +37,7 @@ The settings live outside the repo, in --dir (default ~/.config/routemaker-disco
     bot-token          the bot's token, one line, mode 600; never printed or logged
     forums             the forum channels' ids, one per line (# starts a comment)
     changelog-channel  the changelog channel's id (only for `changelog`); the bot needs View
-                       Channel, Send Messages and Read Message History there
+                       Channel, Send Messages, Attach Files and Read Message History there
 
 The bot needs View Channels, Read Message History, Send Messages in Threads ("...in Threads
 and Posts" in a server's role settings) and Manage Threads (to set the status tags), and the
@@ -85,20 +87,51 @@ def semver(tag: str) -> tuple[int, int, int]:
     return tuple(int(part) for part in match.groups())  # type: ignore[return-value]
 
 
+def multipart(payload: dict, files: list[Path]) -> tuple[bytes, str]:
+    """A message with attachments, as Discord takes it: payload_json, then files[n]."""
+    boundary = "routemaker" + os.urandom(12).hex()
+    parts = [
+        f'--{boundary}\r\nContent-Disposition: form-data; name="payload_json"\r\n'
+        f"Content-Type: application/json\r\n\r\n".encode()
+        + json.dumps(payload).encode()
+        + b"\r\n"
+    ]
+    for n, path in enumerate(files):
+        kind = IMAGE_TYPES[path.suffix.lower()]
+        parts.append(
+            f'--{boundary}\r\nContent-Disposition: form-data; name="files[{n}]"; '
+            f'filename="{path.name}"\r\nContent-Type: {kind}\r\n\r\n'.encode()
+            + path.read_bytes()
+            + b"\r\n"
+        )
+    parts.append(f"--{boundary}--\r\n".encode())
+    return b"".join(parts), f"multipart/form-data; boundary={boundary}"
+
+
 class Discord:
     """The few REST calls the script makes. `send` is the one seam the tests replace."""
 
     def __init__(self, token: str) -> None:
         self._token = token
 
-    def send(self, method: str, path: str, body: dict | None = None):
-        data = None if body is None else json.dumps(body).encode()
+    def send(
+        self,
+        method: str,
+        path: str,
+        body: dict | None = None,
+        files: tuple[Path, ...] | list[Path] = (),
+    ):
+        content_type = "application/json"
+        if files:
+            data, content_type = multipart(body or {}, files)
+        else:
+            data = None if body is None else json.dumps(body).encode()
         for _ in range(5):
             request = urllib.request.Request(API + path, data=data, method=method)
             request.add_header("Authorization", f"Bot {self._token}")
             request.add_header("User-Agent", USER_AGENT)
             if data is not None:
-                request.add_header("Content-Type", "application/json")
+                request.add_header("Content-Type", content_type)
             try:
                 with urllib.request.urlopen(request, timeout=20) as response:
                     raw = response.read()
@@ -122,6 +155,15 @@ class Discord:
 
 
 MAX_CHARS = 2000  # Discord's limit on one message
+MAX_IMAGE_BYTES = 10 * 1024 * 1024  # Discord's upload limit for a bot in a server with no boost
+IMAGE_TYPES = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".gif": "image/gif",
+    ".webp": "image/webp",
+}
+IMAGE_RE = re.compile(r"^\s*!\[([^\]]*)\]\(([^)\s]+)\)\s*$")
 CHANGELOG_TITLE = "**RouteMaker {version} is on beta**"
 
 
@@ -144,11 +186,62 @@ def changelog_messages(version: str, notes: str, limit: int = MAX_CHARS) -> list
         # The file's first line repeats the version ("**RouteMaker 0.22.0**"); the title has it.
         if body and body[0].strip().strip("*").strip() == f"RouteMaker {version.lstrip('v')}":
             body = body[1:]
-        lines += [line.rstrip() for line in body]
+        lines += body
+    return split_text(lines, limit)
+
+
+def changelog_posts(version: str, notes: str, base: Path | None) -> list[tuple[str, Path | None]]:
+    """The changelog's messages in order: text cut to fit, and each image line of the notes
+    (`![caption](file.png)`, a path inside the notes file's folder) as its own message, the
+    caption as its words. Every image is checked before anything is posted."""
+    posts: list[tuple[str, Path | None]] = []
+    text: list[str] = []
+
+    def flush(first: bool) -> None:
+        chunk = changelog_messages(version, "\n".join(text)) if first else None
+        if first:
+            posts.extend((m, None) for m in chunk)
+        elif "\n".join(text).strip():
+            posts.extend((m, None) for m in split_text(text))
+        text.clear()
+
+    first = True
+    for line in notes.splitlines():
+        match = IMAGE_RE.match(line)
+        if not match:
+            text.append(line)
+            continue
+        flush(first)
+        first = False
+        posts.append((match.group(1).strip()[:MAX_CHARS], image_path(base, match.group(2))))
+    flush(first)
+    return posts
+
+
+def image_path(base: Path | None, name: str) -> Path:
+    if base is None:
+        raise DiscordError(f"an image ({name}) needs the notes file's folder")
+    root = base.resolve()
+    path = (root / name).resolve()
+    if not path.is_relative_to(root):
+        raise DiscordError(f"{name}: an image must sit inside {root}")
+    if not re.fullmatch(r"[A-Za-z0-9._-]+", path.name):
+        raise DiscordError(f"{name}: name the file with letters, digits, '.', '_' or '-' only")
+    if path.suffix.lower() not in IMAGE_TYPES:
+        raise DiscordError(f"{name}: not an image Discord shows ({', '.join(IMAGE_TYPES)})")
+    if not path.is_file():
+        raise DiscordError(f"{name}: no such image")
+    if path.stat().st_size > MAX_IMAGE_BYTES:
+        raise DiscordError(f"{name}: over Discord's 10 MB limit")
+    return path
+
+
+def split_text(lines: list[str], limit: int = MAX_CHARS) -> list[str]:
+    """Lines cut at line ends into messages of at most `limit` characters."""
     chunks: list[str] = []
     cur: list[str] = []
     size = 0
-    for line in lines:
+    for line in (line.rstrip() for line in lines):
         for piece in [line[i : i + limit] for i in range(0, len(line), limit)] or [""]:
             add = len(piece) + (1 if cur else 0)
             if cur and size + add > limit:
@@ -393,37 +486,65 @@ def cmd_live(forums: Forums, version: str, dry_run: bool) -> int:
     return 1 if failed else 0
 
 
+def already_posted(api: Discord, channel: str, version: str) -> list[tuple[str, tuple]]:
+    """What the bot has posted for this version: its messages from this version's title on, up
+    to its next title (the newest 100 messages of the channel)."""
+    me = api.get("/users/@me")["id"]
+    recent = api.get(f"/channels/{channel}/messages?limit=100") or []
+    title = CHANGELOG_TITLE.format(version=version)
+    out: list[tuple[str, tuple]] = []
+    inside = False
+    for m in sorted(recent, key=lambda m: int(m["id"])):
+        if m.get("author", {}).get("id") != me:
+            continue
+        content = m.get("content") or ""
+        if content.startswith("**RouteMaker v") and " is on beta**" in content.split("\n", 1)[0]:
+            inside = content.startswith(title + "\n") or content == title
+        if inside:
+            names = tuple(a.get("filename", "") for a in m.get("attachments") or [])
+            out.append((content, names))
+    return out
+
+
 def cmd_changelog(
     api: Discord, channel: str, version: str, notes_file: Path | None, dry_run: bool
 ) -> int:
     semver(version)
-    notes = ""
+    notes, base = "", None
     if notes_file is not None and notes_file.is_file():
         notes = notes_file.read_text(encoding="utf-8", errors="replace")
-    messages = changelog_messages(version, notes)
-    me = api.get("/users/@me")["id"]
-    recent = api.get(f"/channels/{channel}/messages?limit=100") or []
-    # A message the bot already posted is skipped, so a pass that stopped part-way posts only
-    # the rest and a repeated pass posts nothing.
-    mine = {m.get("content") for m in recent if m.get("author", {}).get("id") == me}
-    todo = [text for text in messages if text not in mine]
+        base = notes_file.parent
+    posts = changelog_posts(version, notes, base)
+    # A message the bot already posted for this version is skipped, so a pass that stopped
+    # part-way posts only the rest and a repeated pass posts nothing.
+    done = already_posted(api, channel, version)
+    todo = []
+    for text, image in posts:
+        key = (text, (image.name,) if image else ())
+        if key in done:
+            done.remove(key)
+        else:
+            todo.append((text, image))
     if not todo:
         print(f"{version}: the changelog already has it")
         return 0
-    messages = todo
-    for n, text in enumerate(messages):
+    for n, (text, image) in enumerate(todo):
         if dry_run:
-            print(f"would post in the changelog:\n{text}")
+            print(
+                f"would post in the changelog:\n{text}"
+                + (f"\n[image: {image.name}]" if image else "")
+            )
             continue
         if n:
             time.sleep(1)
-        api.send(
-            "POST",
-            f"/channels/{channel}/messages",
-            {"content": text, "allowed_mentions": NO_MENTIONS},
-        )
+        body: dict = {"content": text, "allowed_mentions": NO_MENTIONS}
+        if image:
+            body["attachments"] = [{"id": 0, "filename": image.name, "description": text[:1024]}]
+            api.send("POST", f"/channels/{channel}/messages", body, files=[image])
+        else:
+            api.send("POST", f"/channels/{channel}/messages", body)
     if not dry_run:
-        print(f"{version}: posted to the changelog ({len(messages)} message(s))")
+        print(f"{version}: posted to the changelog ({len(todo)} message(s))")
     return 0
 
 
