@@ -321,3 +321,209 @@ def test_an_error_names_the_status_and_never_the_token(monkeypatch) -> None:
     with pytest.raises(mod.DiscordError) as caught:
         mod.Discord("secret-token").get("/channels/1")
     assert str(caught.value) == "GET /channels/1: HTTP 403"
+
+
+CHANGELOG = "300"
+
+
+class FakeChannel:
+    def __init__(self, history=None) -> None:
+        self.calls: list[tuple[str, str, dict | None]] = []
+        self.files: list[list[str]] = []
+        self.history = history or []
+
+    def send(self, method, path, body=None, files=()):
+        self.calls.append((method, path, body))
+        self.files.append([f.name for f in files])
+        if path == "/users/@me":
+            return {"id": BOT}
+        if path.startswith(f"/channels/{CHANGELOG}/messages?"):
+            return self.history
+        return {}
+
+    def get(self, path):
+        return self.send("GET", path)
+
+    def posted(self):
+        return [b["content"] for m, p, b in self.calls if m == "POST"]
+
+
+@pytest.fixture
+def changelog_dir(tmp_path: Path) -> Path:
+    (tmp_path / "bot-token").write_text("secret-token\n")
+    (tmp_path / "bot-token").chmod(0o600)
+    (tmp_path / "changelog-channel").write_text(f"# changelog\n{CHANGELOG}\n")
+    return tmp_path
+
+
+def test_changelog_posts_the_notes_as_the_bot_once(changelog_dir, monkeypatch) -> None:
+    monkeypatch.setattr(mod.time, "sleep", lambda s: None)
+    notes = changelog_dir / "v0.22.0.md"
+    notes.write_text("**RouteMaker 0.22.0**\n- Saved routes take tags\n- A quieter map\n")
+    fake = FakeChannel()
+    assert run(changelog_dir, fake, "changelog", "v0.22.0", str(notes)) == 0
+    assert fake.posted() == [
+        "**RouteMaker v0.22.0 is on beta**\n- Saved routes take tags\n- A quieter map"
+    ]
+    post = [c for c in fake.calls if c[0] == "POST"][0]
+    assert post[1] == f"/channels/{CHANGELOG}/messages"
+    assert post[2]["allowed_mentions"] == {"parse": []}
+    # Already in the channel from the bot: nothing posted again.
+    again = FakeChannel([{"id": "1", "author": {"id": BOT}, "content": fake.posted()[0]}])
+    assert run(changelog_dir, again, "changelog", "v0.22.0", str(notes)) == 0
+    assert again.posted() == []
+    # The same title from someone else does not count.
+    other = FakeChannel([{"id": "1", "author": {"id": OWNER}, "content": fake.posted()[0]}])
+    assert run(changelog_dir, other, "changelog", "v0.22.0", str(notes)) == 0
+    assert len(other.posted()) == 1
+
+
+def test_changelog_splits_long_notes_at_line_ends(changelog_dir, monkeypatch) -> None:
+    monkeypatch.setattr(mod.time, "sleep", lambda s: None)
+    notes = changelog_dir / "v0.2.0.md"
+    notes.write_text("\n".join(f"- line {n} " + "x" * 90 for n in range(40)) + "\n")
+    fake = FakeChannel()
+    assert run(changelog_dir, fake, "changelog", "v0.2.0", str(notes)) == 0
+    sent = fake.posted()
+    assert len(sent) > 1 and all(len(m) <= 2000 for m in sent)
+    assert "\n".join(sent).count("- line ") == 40
+
+
+def test_changelog_needs_its_channel(bot_dir, capsys) -> None:
+    assert run(bot_dir, FakeChannel(), "changelog", "v0.2.0") == 2
+    assert "changelog-channel" in capsys.readouterr().err
+
+
+def test_changelog_finishes_a_post_that_stopped_part_way(changelog_dir, monkeypatch) -> None:
+    monkeypatch.setattr(mod.time, "sleep", lambda s: None)
+    notes = changelog_dir / "v0.2.0.md"
+    notes.write_text("\n".join(f"- line {n} " + "x" * 90 for n in range(40)) + "\n")
+    first = FakeChannel()
+    run(changelog_dir, first, "changelog", "v0.2.0", str(notes))
+    whole = first.posted()
+    done = [{"id": "1", "author": {"id": BOT}, "content": whole[0]}]
+    rest = FakeChannel(done)
+    assert run(changelog_dir, rest, "changelog", "v0.2.0", str(notes)) == 0
+    assert rest.posted() == whole[1:]
+
+
+PNG = b"\x89PNG\r\n\x1a\n" + b"0" * 32
+
+
+def _notes_with_images(where: Path) -> Path:
+    (where / "images" / "v0.22.0").mkdir(parents=True)
+    (where / "images" / "v0.22.0" / "tags.png").write_bytes(PNG)
+    notes = where / "v0.22.0.md"
+    notes.write_text(
+        "**RouteMaker 0.22.0**\n- Saved routes take tags\n"
+        "![Tags in My routes](images/v0.22.0/tags.png)\n- A quieter map\n"
+    )
+    return notes
+
+
+def test_changelog_is_one_post_with_the_date_and_every_picture(changelog_dir, monkeypatch) -> None:
+    monkeypatch.setattr(mod.time, "sleep", lambda s: None)
+    notes = _notes_with_images(changelog_dir)
+    fake = FakeChannel()
+    args = ("changelog", "v0.22.0", str(notes), "--live-date", "2026-10-31")
+    assert run(changelog_dir, fake, *args) == 0
+    text = (
+        "**RouteMaker v0.22.0 is on beta**\nLive on beta Saturday, October 31, 2026\n"
+        "- Saved routes take tags\n- A quieter map"
+    )
+    assert fake.posted() == [text]
+    posts = [(b, f) for (m, _p, b), f in zip(fake.calls, fake.files, strict=True) if m == "POST"]
+    assert posts[0][1] == ["tags.png"]
+    assert posts[0][0]["attachments"] == [
+        {"id": 0, "filename": "tags.png", "description": "Tags in My routes"}
+    ]
+    history = [
+        {
+            "id": "1",
+            "author": {"id": BOT},
+            "content": text,
+            "attachments": [{"filename": "tags.png"}],
+        }
+    ]
+    again = FakeChannel(history)
+    assert run(changelog_dir, again, *args) == 0
+    assert again.posted() == []
+    # A retry on another day, or by hand without a date, still finds it.
+    later = FakeChannel(history)
+    assert (
+        run(changelog_dir, later, "changelog", "v0.22.0", str(notes), "--live-date", "2026-11-01")
+        == 0
+    )
+    assert run(changelog_dir, later, "changelog", "v0.22.0", str(notes)) == 0
+    assert later.posted() == []
+
+
+def test_long_notes_put_each_picture_where_it_sits(changelog_dir, monkeypatch) -> None:
+    monkeypatch.setattr(mod.time, "sleep", lambda s: None)
+    notes = _notes_with_images(changelog_dir)
+    long = "\n".join(f"- line {n} " + "x" * 90 for n in range(25))
+    notes.write_text(notes.read_text() + long + "\n")
+    fake = FakeChannel()
+    assert run(changelog_dir, fake, "changelog", "v0.22.0", str(notes)) == 0
+    sent = fake.posted()
+    assert sent[0] == "**RouteMaker v0.22.0 is on beta**\n- Saved routes take tags"
+    assert sent[1] == "Tags in My routes" and fake.files[sent.index(sent[1]) + 2] == ["tags.png"]
+    assert all(len(m) <= 2000 for m in sent) and len(sent) > 3
+    # Stopped after the first message: the rest follow, the first is not repeated.
+    rest = FakeChannel([{"id": "1", "author": {"id": BOT}, "content": sent[0]}])
+    assert run(changelog_dir, rest, "changelog", "v0.22.0", str(notes)) == 0
+    assert rest.posted() == sent[1:]
+
+
+def test_another_versions_messages_do_not_count_as_posted(changelog_dir, monkeypatch) -> None:
+    monkeypatch.setattr(mod.time, "sleep", lambda s: None)
+    notes = _notes_with_images(changelog_dir)
+    history = [
+        {"id": "1", "author": {"id": BOT}, "content": "**RouteMaker v0.21.0 is on beta**\n- x"},
+        {"id": "2", "author": {"id": BOT}, "content": "- A quieter map"},
+    ]
+    fake = FakeChannel(history)
+    assert run(changelog_dir, fake, "changelog", "v0.22.0", str(notes)) == 0
+    assert len(fake.posted()) == 1
+
+
+def test_a_bad_live_date_is_refused(changelog_dir, capsys) -> None:
+    args = ("changelog", "v0.2.0", "--live-date", "Oct 31")
+    assert run(changelog_dir, FakeChannel(), *args) == 2
+    assert "YYYY-MM-DD" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "line, error",
+    [
+        ("![x](../secret.png)", "inside"),
+        ("![x](images/missing.png)", "no such image"),
+        ("![x](images/v0.22.0/notes.txt)", "not an image"),
+        ("![x](images/v0.22.0/a%20b.png)", "letters, digits"),
+    ],
+)
+def test_bad_images_stop_the_post_before_anything_is_sent(
+    changelog_dir, capsys, line, error
+) -> None:
+    rel = changelog_dir / "rel"
+    rel.mkdir()
+    notes = _notes_with_images(rel)
+    (rel / "images" / "v0.22.0" / "notes.txt").write_text("x")
+    (changelog_dir / "secret.png").write_bytes(PNG)
+    target = notes
+    target.write_text(notes.read_text() + line + "\n")
+    fake = FakeChannel()
+    assert run(changelog_dir, fake, "changelog", "v0.22.0", str(target)) == 2
+    assert error in capsys.readouterr().err
+    assert fake.posted() == []
+
+
+def test_multipart_carries_the_payload_and_the_file(tmp_path) -> None:
+    image = tmp_path / "a.png"
+    image.write_bytes(PNG)
+    data, kind = mod.multipart({"content": "hi"}, [image])
+    boundary = kind.split("boundary=", 1)[1]
+    assert kind.startswith("multipart/form-data; ")
+    assert b'name="payload_json"' in data and b'{"content": "hi"}' in data
+    assert b'name="files[0]"; filename="a.png"' in data and PNG in data
+    assert data.endswith(f"--{boundary}--\r\n".encode())

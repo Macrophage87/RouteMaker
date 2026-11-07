@@ -2022,7 +2022,8 @@ class SavedRoute(models.Model):
     the date. A route from an opened GPX file is kept the same way, its own line verbatim.
     Reopening shows `line` (and, for a planned route, the saved answer) unchanged; nothing is
     re-planned unless the rider asks. Private to the account, never shared between accounts,
-    deleted with it, and at most `MAX_PER_ACCOUNT` per account.
+    deleted with it, and at most `MAX_PER_ACCOUNT` per account (archived ones included; at the
+    cap a save makes room by deleting the longest-archived).
     """
 
     MAX_PER_ACCOUNT = 200
@@ -2056,6 +2057,30 @@ class SavedRoute(models.Model):
     bbox_south = models.FloatField(null=True, blank=True)
     bbox_east = models.FloatField(null=True, blank=True)
     bbox_north = models.FloatField(null=True, blank=True)
+    # Tags (the owner, 2026-11-07: "add tags to the routes ... ways to find and organize them"):
+    # the rider's own words, at most TAGS_MAX of TAG_MAX characters each, set in Save, in My
+    # routes, or by the site's MCP connector on the rider's word; [] where none.
+    tags = models.JSONField(default=list, blank=True)
+    # Archived (the owner, 2026-11-07): left out of Load route's list, kept until the account
+    # needs the room. At the account's cap a new save deletes the longest-archived route first,
+    # and past the versions' byte cap archived routes' versions go first (the owner: "Archived
+    # routes are deleted first, longest time in archive first"). Null: not archived.
+    archived_at = models.DateTimeField(null=True, blank=True)
+    # The route that replaced this one when it was archived for it (the MCP connector's
+    # save_route with `replaces`); null otherwise, and when that route is deleted.
+    replaced_by = models.ForeignKey(
+        "self", null=True, blank=True, on_delete=models.SET_NULL, related_name="replaced"
+    )
+
+    # When the rider last opened it (read it whole: Load route, My routes, the MCP connector's
+    # my_routes); null until then. At the cap with nothing archived, the save proposes deleting
+    # the route longest unopened, counting from its creation where never opened (the owner,
+    # 2026-11-07: "at 200 routes, then propose deleting the route that has the longest time since
+    # last open or creation").
+    opened_at = models.DateTimeField(null=True, blank=True)
+
+    TAGS_MAX = 8
+    TAG_MAX = 30
 
     class Meta:
         db_table = "saved_route"
@@ -2488,9 +2513,10 @@ class ConnectorClient(models.Model):
 
 class ConnectorGrant(models.Model):
     """One rider's consent to one app: the short-lived code (only its SHA-256), then the tokens
-    the app trades it for (only their SHA-256s). It can only plan, add routes to My routes and
-    (where `reads_routes`) read them (and, for an instance admin, write draft posts): it signs
-    nobody in and changes no saved route. A ban or deletion ends every grant (User.save)."""
+    the app trades it for (only their SHA-256s). It can only plan, add routes to My routes,
+    (where `reads_routes`) read them and (where `organizes_routes`) tag, archive or restore them
+    (and, for an instance admin, write draft posts): it signs nobody in and renames, re-saves or
+    deletes no saved route. A ban or deletion ends every grant (User.save)."""
 
     user = models.ForeignKey("User", on_delete=models.CASCADE, related_name="connector_grants")
     client = models.ForeignKey(ConnectorClient, on_delete=models.CASCADE, related_name="grants")
@@ -2510,6 +2536,11 @@ class ConnectorGrant(models.Model):
     # connector's my_routes). The consent page says so from v0.18.0; a grant given before then
     # was told "It can't read your saved routes" and stays without it until connected again.
     reads_routes = models.BooleanField(default=False)
+    # Whether the rider allowed this app to tag, archive and restore their saved routes (the
+    # owner, 2026-11-07: "let things be archived via the MCP"; organize_route, and save_route's
+    # `replaces`). The consent page says so from v0.22.0; a grant given before then was told "It
+    # can't change or delete your saved routes" and stays without it until connected again.
+    organizes_routes = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     last_used_at = models.DateTimeField(null=True, blank=True)
 
@@ -2663,10 +2694,13 @@ class RoutePostPhoto(models.Model):
     that number, in `position` order.
 
     `image` is a JPEG kept with nothing but what draws it (route_posts.clean_jpeg): the admin's
-    browser makes it smaller and draws it again, and the server takes out any Exif, GPS, XMP or
-    comment left, so no photo says where or when it was taken. A photo an assistant described
-    with no file yet (route_posts.write_draft) has no `image` and is not shown until an admin adds
-    its file on the post's page."""
+    browser makes it smaller and draws it again, and the server takes out any Exif, XMP or comment
+    left, so no photo says when it was taken or on what. Where it was taken is kept apart, in
+    `lat` and `lon` (the owner, 2026-11-07: "Don't remove location data, as people want to know
+    where they are taken"), never inside the author's Home circle; the page links to the spot and
+    the served file carries it back as Exif GPS (route_posts.with_spot). A photo an assistant
+    described with no file yet (route_posts.write_draft) has no `image` and is not shown until its
+    file comes, from an admin on the post's page or from the assistant's upload link."""
 
     post = models.ForeignKey("RoutePost", on_delete=models.CASCADE, related_name="photos")
     place = models.PositiveSmallIntegerField(
@@ -2683,6 +2717,8 @@ class RoutePostPhoto(models.Model):
     key = models.CharField(max_length=16, blank=True, default="")
     width = models.PositiveIntegerField(null=True, blank=True)
     height = models.PositiveIntegerField(null=True, blank=True)
+    lat = models.FloatField("Taken at, latitude", null=True, blank=True)
+    lon = models.FloatField("Taken at, longitude", null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
