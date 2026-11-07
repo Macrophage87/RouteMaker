@@ -321,3 +321,85 @@ def test_an_error_names_the_status_and_never_the_token(monkeypatch) -> None:
     with pytest.raises(mod.DiscordError) as caught:
         mod.Discord("secret-token").get("/channels/1")
     assert str(caught.value) == "GET /channels/1: HTTP 403"
+
+
+CHANGELOG = "300"
+
+
+class FakeChannel:
+    def __init__(self, history=None) -> None:
+        self.calls: list[tuple[str, str, dict | None]] = []
+        self.history = history or []
+
+    def send(self, method, path, body=None):
+        self.calls.append((method, path, body))
+        if path == "/users/@me":
+            return {"id": BOT}
+        if path.startswith(f"/channels/{CHANGELOG}/messages?"):
+            return self.history
+        return {}
+
+    def get(self, path):
+        return self.send("GET", path)
+
+    def posted(self):
+        return [b["content"] for m, p, b in self.calls if m == "POST"]
+
+
+@pytest.fixture
+def changelog_dir(tmp_path: Path) -> Path:
+    (tmp_path / "bot-token").write_text("secret-token\n")
+    (tmp_path / "bot-token").chmod(0o600)
+    (tmp_path / "changelog-channel").write_text(f"# changelog\n{CHANGELOG}\n")
+    return tmp_path
+
+
+def test_changelog_posts_the_notes_as_the_bot_once(changelog_dir, monkeypatch) -> None:
+    monkeypatch.setattr(mod.time, "sleep", lambda s: None)
+    notes = changelog_dir / "v0.22.0.md"
+    notes.write_text("**RouteMaker 0.22.0**\n- Saved routes take tags\n- A quieter map\n")
+    fake = FakeChannel()
+    assert run(changelog_dir, fake, "changelog", "v0.22.0", str(notes)) == 0
+    assert fake.posted() == [
+        "**RouteMaker v0.22.0 is on beta**\n- Saved routes take tags\n- A quieter map"
+    ]
+    post = [c for c in fake.calls if c[0] == "POST"][0]
+    assert post[1] == f"/channels/{CHANGELOG}/messages"
+    assert post[2]["allowed_mentions"] == {"parse": []}
+    # Already in the channel from the bot: nothing posted again.
+    again = FakeChannel([{"author": {"id": BOT}, "content": fake.posted()[0]}])
+    assert run(changelog_dir, again, "changelog", "v0.22.0", str(notes)) == 0
+    assert again.posted() == []
+    # The same title from someone else does not count.
+    other = FakeChannel([{"author": {"id": OWNER}, "content": fake.posted()[0]}])
+    assert run(changelog_dir, other, "changelog", "v0.22.0", str(notes)) == 0
+    assert len(other.posted()) == 1
+
+
+def test_changelog_splits_long_notes_at_line_ends(changelog_dir, monkeypatch) -> None:
+    monkeypatch.setattr(mod.time, "sleep", lambda s: None)
+    notes = changelog_dir / "v0.2.0.md"
+    notes.write_text("\n".join(f"- line {n} " + "x" * 90 for n in range(40)) + "\n")
+    fake = FakeChannel()
+    assert run(changelog_dir, fake, "changelog", "v0.2.0", str(notes)) == 0
+    sent = fake.posted()
+    assert len(sent) > 1 and all(len(m) <= 2000 for m in sent)
+    assert "\n".join(sent).count("- line ") == 40
+
+
+def test_changelog_needs_its_channel(bot_dir, capsys) -> None:
+    assert run(bot_dir, FakeChannel(), "changelog", "v0.2.0") == 2
+    assert "changelog-channel" in capsys.readouterr().err
+
+
+def test_changelog_finishes_a_post_that_stopped_part_way(changelog_dir, monkeypatch) -> None:
+    monkeypatch.setattr(mod.time, "sleep", lambda s: None)
+    notes = changelog_dir / "v0.2.0.md"
+    notes.write_text("\n".join(f"- line {n} " + "x" * 90 for n in range(40)) + "\n")
+    first = FakeChannel()
+    run(changelog_dir, first, "changelog", "v0.2.0", str(notes))
+    whole = first.posted()
+    done = [{"author": {"id": BOT}, "content": whole[0]}]
+    rest = FakeChannel(done)
+    assert run(changelog_dir, rest, "changelog", "v0.2.0", str(notes)) == 0
+    assert rest.posted() == whole[1:]

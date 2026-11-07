@@ -2463,3 +2463,46 @@ def test_a_failing_report_post_is_reported_retried_and_never_fails_the_pass(beta
     beta.agent("run", **env)
     assert len(_reports(beta)) == 2
     assert _alerts(beta)[-1].startswith("clear|reports-live|")
+
+
+# --- the riders' changelog posted by the owner's bot (discord_reports.py changelog) ---
+
+
+def _changelog_channel(beta: Beta) -> None:
+    _bot_token(beta)
+    (beta.state / "discord" / "changelog-channel").write_text("123\n")
+
+
+def test_the_bot_posts_the_changelog_once_per_tag_in_place_of_the_webhook(beta: Beta) -> None:
+    _alert_stub(beta)
+    _release_hook(beta)
+    _changelog_channel(beta)
+    beta.release("v0.2.0", {"scripts/discord_reports.py": STUB_REPORTS})
+    env = {
+        "STUB_REPORTS": str(beta.tmp / "reports.log"),
+        "STUB_ALERTS": str(beta.tmp / "alerts.log"),
+    }
+    done = beta.agent("run", **DEPLOY, **env)
+    assert done.returncode == 0, done.stdout + done.stderr
+    notes = beta.src / "docs" / "releases" / "v0.2.0.md"
+    assert f"--dir {beta.state / 'discord'} changelog v0.2.0 {notes}" in _reports(beta)
+    assert not any(line.startswith("release-notes|") for line in _alerts(beta))  # no webhook
+    assert (beta.state / "alerts" / "release-posted").read_text() == "v0.2.0\n"
+    beta.agent("run", **env)
+    assert sum(" changelog " in line for line in _reports(beta)) == 1
+
+
+def test_a_failing_bot_changelog_is_reported_and_retried(beta: Beta) -> None:
+    _alert_stub(beta)
+    _changelog_channel(beta)
+    beta.release("v0.2.0", {"scripts/discord_reports.py": STUB_REPORTS})
+    env = {
+        "STUB_REPORTS": str(beta.tmp / "reports.log"),
+        "STUB_ALERTS": str(beta.tmp / "alerts.log"),
+    }
+    done = beta.agent("run", **DEPLOY, **env, STUB_REPORTS_RC="1")
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert any(line.startswith("send|release-notes|v0.2.0|") for line in _alerts(beta))
+    beta.agent("run", **env)
+    assert sum(" changelog " in line for line in _reports(beta)) == 2
+    assert any(line.startswith("clear|release-notes|") for line in _alerts(beta))
