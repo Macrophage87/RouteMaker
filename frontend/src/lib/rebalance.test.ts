@@ -93,7 +93,9 @@ test("the station lists (crowded to pick up, low to return) and the route option
   const start: [number, number] = [-77, 38.9];
   const end: [number, number] = [-77.04, 38.91];
   const pins = { pickup: { id: "a", name: "A", at: start }, dropoff: { id: "b", name: "B", at: end } };
-  assert.deepEqual(activePins("rebalance", [start, end], pins), pins);
+  // Its drop-off is chosen at the pick-up dock (lib/rebalanceDock.ts): the pick-up pin alone holds.
+  assert.deepEqual(activePins("rebalance", [start], pins), { pickup: pins.pickup });
+  assert.deepEqual(activePins("bikeshare", [start, end], pins), pins);
   const app = appSource();
   assert.match(app, /usesBikeshare\(preset\) && points\.length > 0 \? \(\s*<Fold title=\{t\("Choose a station"\)\}/);
   assert.match(app, /mode === "go" && usesBikeshare\(preset\) && shown/);

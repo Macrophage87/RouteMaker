@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import {
   ROUTE_THROUGH_LABEL,
   UNDO_BYPASS_LABEL,
+  AREA_MIN_ZOOM,
   areaClosuresAsk,
   areaClosuresPath,
   closuresKey,
@@ -262,6 +263,11 @@ test("Potential closures (v0.17.0): the layer's new name, planned work's own car
 test("the view's closures are asked for zoomed in only, cut to the server's largest view, permits only when on", () => {
   const view = { west: -77.2, south: 39.0, east: -77.0, north: 39.2 };
   assert.equal(areaClosuresPath(view, 10.9), null);
+  // Not at the opening view (OPENING_ZOOM 11.2; the owner, 2026-11-07: "it very much looks messsy"); from z12.
+  assert.equal(AREA_MIN_ZOOM, 12);
+  assert.equal(areaClosuresPath(view, 11.2), null);
+  assert.equal(areaClosuresPath(view, 11.99), null);
+  assert.notEqual(areaClosuresPath(view, 12), null);
   const small = { west: -77.11, south: 39.1, east: -77.09, north: 39.12 };
   // Padded to twice the view, so a nudge asks nothing more.
   assert.equal(areaClosuresPath(small, 14), `/api/closures/map?bbox=${encodeURIComponent("-77.12,39.09,-77.08,39.13")}`);
@@ -345,7 +351,10 @@ test("a reviewer's closure gets one marker on its middle piece with no route, an
   assert.equal(markerItems(lanes).length, 1);
   // So are a Purple Line update's (v0.13.0).
   const blocks = [0, 1].map((i) => item({ id: `purple_line-bonifant-west-${i}`, source: "purple_line", effect: "none", can_bypass: false }));
+  const parks = [0, 1].map((i) => item({ id: `fcpa-accotink-marina-bridge-${i}`, source: "fcpa", effect: "none", can_bypass: false }));
   assert.equal(markerItems(blocks).length, 1);
+  // And a Fairfax park alert's (v0.22.0).
+  assert.equal(markerItems(parks).length, 1);
   const onRoute = pieces.map((p) => ({ ...p, effect: "routed_round" as const, can_bypass: true }));
   assert.equal(markerItems(onRoute).length, 5);
 });
