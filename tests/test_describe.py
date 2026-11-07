@@ -3284,9 +3284,9 @@ class TestJunctionTurn:
     turns west: one left, said as a crossing, a right and a left within 75 m."""
 
     @staticmethod
-    def junction(last=238):
+    def junction(last=238, first="Mount Vernon Memorial Highway", kind="none", use="road"):
         return flat(
-            road("Mount Vernon Memorial Highway", 4, 400, 340, 340),
+            road(first, 4, 400, 340, 340, kind, use),
             forked(road("", 4, 26, 226, 226, "path", "pedestrian_crossing"), "left"),
             forked(
                 road("Richmond Highway bike lane", 1, 50, 276, 329, "path", "cycleway"), "right"
@@ -3300,28 +3300,46 @@ class TestJunctionTurn:
     def said(entries):
         return [(e["street"], (e["turn"] or {}).get("movement")) for e in entries]
 
+    @staticmethod
+    def crossed(entries):
+        return [e["turn"].get("cross") or e["turn"].get("across") for e in entries if e["turn"]]
+
     def test_a_left_made_through_the_crosswalk_is_one_left(self):
         entries = d.describe([self.junction()])
         assert self.said(entries)[1:] == [("Richmond Highway bike lane", "left")]
-        assert entries[1]["turn"].get("cross") is None
+        assert self.crossed(entries) == [None]
         assert "Left onto Richmond Highway bike lane" in entries[1]["text"]
 
-    def test_the_crosswalk_s_signal_is_the_turn_s(self):
-        signal = event(410, "left", severity="orange", names=("richmond highway bike lane",))
+    def test_a_junction_inside_the_turn_is_the_turn_s(self):
+        # The signal where the side path crosses Richmond Highway, mid-way through the turn.
+        signal = event(
+            450, "straight", severity="red", kind="crossing", names=("richmond highway",)
+        )
         entries = d.describe([self.junction()], [signal])
         assert [e["kind"] for e in entries] == ["stretch", "stretch"]
         assert entries[1]["turn"]["control"] == "signal"
+        assert entries[1]["severity"] == "red"
 
-    def test_back_on_the_heading_it_had_is_still_said_turn_by_turn(self):
-        # Across the road and on the way it was going (a jog): the crossing is said.
-        moves = [m for _s, m in self.said(d.describe([self.junction(last=345)]))[1:]]
-        assert len(moves) > 1
+    def test_back_on_the_heading_it_had_the_crossing_is_said(self):
+        # Across the road and on the way it was going (a jog).
+        entries = d.describe([self.junction(last=345)])
+        assert self.crossed(entries)[0] == "the road"
 
-    def test_doubling_back_after_the_crossing_is_still_said_turn_by_turn(self):
+    def test_doubling_back_after_the_crossing_the_crossing_is_said(self):
         # Left across the road and left again, back the way it came ("Cross West Basin Drive,
         # then left onto the path").
-        moves = [m for _s, m in self.said(d.describe([self.junction(last=170)]))[1:]]
-        assert len(moves) > 1
+        entries = d.describe([self.junction(last=170)])
+        assert self.crossed(entries)[0] == "the road"
+
+    def test_off_a_path_the_crossing_is_the_rider_s_own_and_said(self):
+        entries = d.describe(
+            [
+                self.junction(
+                    first="Mount Vernon Memorial Highway bike lane", kind="path", use="cycleway"
+                )
+            ]
+        )
+        assert self.crossed(entries)[0] == "the road"
 
     def test_without_a_crosswalk_the_turns_are_said(self):
         legs = [
@@ -3332,28 +3350,10 @@ class TestJunctionTurn:
                 forked(road("B Trail", 1, 900, 238, 238, "path", "cycleway"), "left"),
             )
         ]
-        moves = [m for _s, m in self.said(d.describe(legs))[1:]]
-        assert len(moves) > 1
+        assert [m for _s, m in self.said(d.describe(legs))[1:]] == ["left", "right", "left"]
 
-    def test_off_a_path_the_crossing_is_the_rider_s_own_and_still_said(self):
-        legs = [
-            flat(
-                road(
-                    "Mount Vernon Memorial Highway bike lane", 1, 400, 340, 340, "path", "cycleway"
-                ),
-                forked(road("", 4, 26, 226, 226, "path", "pedestrian_crossing"), "left"),
-                forked(
-                    road("Richmond Highway bike lane", 1, 50, 276, 329, "path", "cycleway"), "right"
-                ),
-                forked(
-                    road("Richmond Highway bike lane", 1, 900, 238, 238, "path", "cycleway"), "left"
-                ),
-            )
-        ]
-        entries = d.describe(legs)
-        assert entries[1]["turn"].get("cross") == "the road"
-
-    def test_a_longer_way_across_is_not_folded(self):
+    def test_a_longer_way_across_is_its_own_stretch(self):
+        # 120 m of the side path is more than a junction: its own turn at its end is said.
         legs = [
             flat(
                 road("Mount Vernon Memorial Highway", 4, 400, 340, 340),
@@ -3367,8 +3367,62 @@ class TestJunctionTurn:
                 ),
             )
         ]
-        moves = [m for _s, m in self.said(d.describe(legs))[1:]]
-        assert len(moves) > 1
+        assert [m for _s, m in self.said(d.describe(legs))[1:]] == ["left", "left"]
+
+    def test_a_sidewalk_then_a_crosswalk_to_the_far_side_still_crosses(self):
+        # Right onto the sidewalk, left over B Road, right onto the path on its far side:
+        # a turn in the roadway would not reach it.
+        legs = [
+            flat(
+                road("A Street", 2, 400, 0, 0),
+                forked(road("", 1, 20, 90, 90, "path", "sidewalk"), "right"),
+                forked(road("", 4, 20, 0, 0, "path", "pedestrian_crossing"), "left"),
+                forked(road("B Road path", 1, 900, 90, 90, "path", "cycleway"), "right"),
+            )
+        ]
+        crossing = event(425, "straight", kind="crossing", names=("b road",), flagged=False)
+        entries = d.describe(legs, [crossing])
+        assert "B Road" in self.crossed(entries)
+
+    def test_a_bear_onto_a_crosswalk_to_a_far_side_bike_lane_still_crosses(self):
+        legs = [
+            flat(
+                road("Guilford Avenue", 2, 400, 0, 0),
+                forked(road("", 3, 20, 30, 30, "path", "pedestrian_crossing"), "bear_right"),
+                forked(
+                    road("Saint Paul Street bike lane", 1, 900, 90, 90, "path", "cycleway"), "right"
+                ),
+            )
+        ]
+        crossing = event(
+            410, "straight", kind="crossing", names=("saint paul street",), flagged=False
+        )
+        entries = d.describe(legs, [crossing])
+        assert self.crossed(entries)[0] == "Saint Paul Street"
+
+    def test_a_short_stretch_of_another_trail_is_a_way_ridden_and_said(self):
+        legs = [
+            flat(
+                road("A Street", 2, 400, 0, 0),
+                forked(road("", 4, 20, 270, 270, "path", "pedestrian_crossing"), "left"),
+                forked(road("X Trail", 1, 50, 0, 0, "path", "cycleway"), "right"),
+                forked(road("Y Trail", 1, 900, 270, 270, "path", "cycleway"), "left"),
+            )
+        ]
+        assert "X Trail" in [s for s, _m in self.said(d.describe(legs))]
+
+    def test_a_busy_piece_that_is_not_the_crosswalk_is_never_hidden(self):
+        legs = [
+            flat(
+                road("Mount Vernon Memorial Highway", 4, 400, 340, 340),
+                forked(road("", 4, 26, 226, 226, "path", "pedestrian_crossing"), "left"),
+                forked(road("", 4, 30, 276, 329), "right"),
+                forked(
+                    road("Richmond Highway bike lane", 1, 900, 238, 238, "path", "cycleway"), "left"
+                ),
+            )
+        ]
+        assert len(self.said(d.describe(legs))) > 2
 
 
 def path(name, metres, heading, use="cycleway", tier=1):

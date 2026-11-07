@@ -905,23 +905,33 @@ def _junction_turn(runs: list[_Run], i: int) -> int | None:
     owner, 2026-11-07, at Mount Vernon Memorial Highway and Richmond Highway: "This has to
     be the worst described intersection ever. I just made a left turn", said as "Cross the
     road", "Right onto Richmond Highway bike lane", "Left to stay on" it within 75 m). Only
-    off a road: a rider in the roadway turns with the traffic, and the crosswalk is the way
-    round the corner on foot; off a path or a sidewalk the crossing is the rider's own and
-    still said (`_crossing`: "Cross Redland Road, then left onto the bike lane"). The
-    pieces are paths, crosswalks or unnamed ways, a crosswalk among them, each under
+    off a road, by a full turn straight onto a crosswalk, to the side the whole move turns:
+    the crosswalk crosses the road the rider was on, as a turn made in the roadway does. Off
+    a path or a sidewalk, or a bear onto the crosswalk, the crossing is the rider's own and
+    still said (`_crossing`: "Cross Redland Road, then left onto the bike lane"; the Saint
+    Paul Street bike lane on the far side). The
+    pieces are crosswalks, unnamed ways or the path turned onto, each under
     JUNCTION_PIECE_M and in all no more than JUNCTION_SPAN_M, on one traced leg, turned into
     and turned out of, none a circle or a U-turn; across them the route turns a full left
     or right short of a turnaround (past BEAR_MAX_DEG, under HAIRPIN_DEG), so a jog (back on
     the heading it had) and a crossing that doubles back ("Cross West Basin Drive, then
     left onto the path") are still said turn by turn. A piece of LTS 3 or worse that is not
     the crosswalk is hidden only in a stretch at least as stressful (`NEVER_HIDDEN`); the
-    crosswalk's own junction is the turn's (`_fold_connector`). The farthest such stretch."""
+    crosswalk's own junction is the turn's (`_fold_connector`). Read at the farthest stretch
+    the pieces reach."""
     if i == 0 or i + 1 >= len(runs):
         return None
     before = runs[i - 1]
     if before.untraced or _circle(before) or before.path or _crosswalk(before):
         return None
-    if _movement_between(before, runs[i]) not in TURN_WORDS and not _forks(runs[i]):
+    # Straight from the road onto the crosswalk, a full turn: it crosses the road the rider
+    # was on (its other side), as a turn made in the roadway does. A sidewalk first, or a
+    # bear onto a crosswalk, crosses the road turned onto, a crossing to say (the Saint
+    # Paul Street bike lane on the far side).
+    if not _crosswalk(runs[i]):
+        return None
+    into = _turn_at(before, runs[i])
+    if into is None or abs(into) <= BEAR_MAX_DEG:
         return None
     found = None
     span = 0.0
@@ -930,8 +940,12 @@ def _junction_turn(runs: list[_Run], i: int) -> int | None:
         piece = runs[k]
         if piece.leg != before.leg or piece.untraced or _circle(piece) or _uturn(piece):
             break
+        # A named piece is the street turned onto: a short stretch of another (a jog's
+        # middle, "Right onto X Trail, then left onto Y Trail") is a way ridden, said.
         if piece.metres >= JUNCTION_PIECE_M or not (
-            piece.path or _crosswalk(piece) or not piece.names
+            _crosswalk(piece)
+            or not piece.names
+            or (piece.path and _same_street(piece, runs[k + 1]))
         ):
             break
         span += piece.metres
@@ -943,16 +957,23 @@ def _junction_turn(runs: list[_Run], i: int) -> int | None:
             break
         if not crosswalk:
             continue
-        if not (_forks(after) or _movement_between(piece, after) in TURN_WORDS):
-            continue
-        if any(
-            p.tier in NEVER_HIDDEN and not _crosswalk(p) and _rank(after) < _rank(p)
-            for p in runs[i : k + 1]
-        ):
-            continue
+        # The farthest stretch reached decides: one nearer that turns the right way, with
+        # more of the junction still to ride after it, is a crossing and a turn back.
         turn = turn_between(before.last, after.first)
-        if turn is not None and BEAR_MAX_DEG < abs(turn) < HAIRPIN_DEG:
-            found = k + 1
+        found = (
+            k + 1
+            if (
+                (_forks(after) or _movement_between(piece, after) in TURN_WORDS)
+                and not any(
+                    p.tier in NEVER_HIDDEN and not _crosswalk(p) and _rank(after) < _rank(p)
+                    for p in runs[i : k + 1]
+                )
+                and turn is not None
+                and BEAR_MAX_DEG < abs(turn) < HAIRPIN_DEG
+                and (turn > 0) == (into > 0)
+            )
+            else None
+        )
     return found
 
 
