@@ -320,7 +320,10 @@ test("as many graphs are drawn as fit the room readably, and the rest named", ()
 
 test("the graphs' room is measured before each paint, and with no room their sentence stays for screen readers (review of #928)", () => {
   const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
-  assert.match(ride, /useLayoutEffect\(\(\) => \{\s*measureAhead\.current\?\.\(\);\s*\}\);/, "a note that comes or goes changes the room in the same frame");
+  assert.match(ride, /useLayoutEffect\(\(\) => \{\s*measureAhead\.current\?\.\(\);\s*\}, \[gps, !!ride\.fix, paused, wakeNote, ride\.off && replanNote, corridorText, weatherShown, restOffered, sheetShown, show311\]\);/, "a note that comes or goes changes the room in the same frame, and only then (v0.22.0)");
+  // The other riders are found whenever the graphs are on, so the no-room sentence names them too (v0.22.0).
+  assert.match(ride, /const ridersAt = aheadWanted \? ride\.progressM : null;/);
+  assert.match(ride, /ridersAt === null\s*\? \[\]\s*: riderDots\.flatMap/);
   assert.match(ride, /\{aheadWanted && !aheadFits && ride\.progressM !== null && \(\s*<AheadGraph [^>]*maxPx=\{0\} \/>/, "no room: the sentence alone");
   const graph = readFileSync(new URL("../AheadGraph.tsx", import.meta.url), "utf8");
   assert.match(graph, /className=\{panels\.any \? "ride-ahead" : "ride-ahead ride-ahead-unseen"\} role="group" aria-label=\{AHEAD_GROUP\}/);

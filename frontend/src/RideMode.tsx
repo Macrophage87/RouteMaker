@@ -3172,17 +3172,20 @@ export function RideMode({
   // stays as it was, the bubbles still pressed for a larger screen, and the rider is told (the review of #928).
   const [aheadFits, setAheadFits] = useState(true);
   const aheadAt = aheadWanted && aheadFits ? ride.progressM : null;
+  // The other riders along the road ahead, whenever the graphs are on (v0.22.0): the sentence kept for a screen
+  // reader when no graph fits names them too, not only a drawn graph.
+  const ridersAt = aheadWanted ? ride.progressM : null;
   const ridersAlong = useMemo(
     () =>
-      aheadAt === null
+      ridersAt === null
         ? []
         : riderDots.flatMap((dot) => {
-            const on = snap(model, dot, aheadAt - RIDERS_REACH_M, aheadAt + RIDERS_REACH_M, 15, aheadAt);
+            const on = snap(model, dot, ridersAt - RIDERS_REACH_M, ridersAt + RIDERS_REACH_M, 15, ridersAt);
             return on && on.offM <= RIDER_OFF_ROUTE_M ? [on.alongM] : [];
           }),
     // Snapped again as the dots move, the route changes, or you move on 200 m (so a loop's other pass is not taken); not each fix.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [riderDots, model, aheadAt === null ? null : Math.round(aheadAt / 200)],
+    [riderDots, model, ridersAt === null ? null : Math.round(ridersAt / 200)],
   );
   const aheadShown = aheadAt !== null;
   // Off the train but no fresh fix there yet (under ground, or off at another stop): the button, for a press.
@@ -3267,12 +3270,14 @@ export function RideMode({
       buttons.disconnect();
     };
   }, [aheadWanted, sheetShown, textSize, aheadDrawn]);
-  // Measured again at each render, before it is painted: a note that comes into the panel or goes (a weak GPS fix
-  // under trees) changes the graphs' room at once, not a frame later from the ResizeObserver, which drew them in
-  // three steps (the review of #928). Nothing is set where nothing changed, so it does not render again.
+  // Measured again before it is painted when a note comes into the panel or goes (a weak GPS fix under trees), or the
+  // rest button or the panel itself: the graphs' room changes at once, not a frame later from the ResizeObserver,
+  // which drew them in three steps (the review of #928). Keyed on each note itself (a second note, or one swapped for
+  // another, counts too) and 311 coming or going, not at every fix (v0.22.0); a note's text growing a line is left to
+  // the ResizeObserver.
   useLayoutEffect(() => {
     measureAhead.current?.();
-  });
+  }, [gps, !!ride.fix, paused, wakeNote, ride.off && replanNote, corridorText, weatherShown, restOffered, sheetShown, show311]); // eslint-disable-line react-hooks/exhaustive-deps
   // No room for a graph, or for some of them: said once a ride for each set of graphs (lib/aheadGraph.ts
   // aheadNoRoom), never again at each fix (the review of #928).
   const noRoomSaid = useRef(new Set<string>());
