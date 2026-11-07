@@ -899,6 +899,54 @@ def _connector(before: _Run | None, run: _Run, after: _Run | None) -> bool:
     return not (run.tier in NEVER_HIDDEN and _rank(after) < _rank(run))
 
 
+def _lead_in(before: _Run | None, run: _Run, after: _Run | None) -> bool:
+    """Whether `run` is a short unnamed lead-in to fold into the way after, its turn said as
+    the turn onto that way: a service way or path (not a crosswalk) under JOG_UNNAMED_MIN_M,
+    turned (or forked) into off one named street and carried on straight from onto another
+    (Stephen, 2026-11-07, north on 13th Street SE: "It's supposed to just be a left onto the
+    bike lane, but there's this weird turn onto a nonexistent service road", 16 m of an
+    unnamed service way before "Continue onto Pennsylvania Avenue Southeast bike lane").
+    Turned out of, it is `_connector`'s or `_unnamed_jog`'s; across the two, the route must
+    still turn (SLIGHT_MIN_DEG up to HAIRPIN_DEG), so a jog back onto the heading it had is
+    said turn by turn. Kept as `_connector` keeps one: a circle, a U-turn, untraced, and a
+    stretch of LTS 3 or worse the way after would hide (`NEVER_HIDDEN`)."""
+    if before is None or after is None or run.names or run.metres >= JOG_UNNAMED_MIN_M:
+        return False
+    if not (run.service or run.path) or _crosswalk(run) or not before.names or not after.names:
+        return False
+    if run.untraced or before.untraced or after.untraced or run.leg != after.leg:
+        return False
+    if (
+        _circle(run)
+        or _circle(after)
+        or _uturn(run)
+        or _uturn(after)
+        or _same_street(before, after)
+    ):
+        return False
+    into = _lead_in_move(before, run)
+    if into not in TURN_WORDS:
+        return False
+    out = after.first.fork if _forks(after) else _movement_between(run, after)
+    if out != "straight":
+        return False
+    # Across both, the route still turns, and to the side it turned off the street: a way
+    # that bends back across the rider's heading is said turn by turn.
+    turn = turn_between(before.last, after.first)
+    if turn is None or not SLIGHT_MIN_DEG <= abs(turn) < HAIRPIN_DEG:
+        return False
+    if (turn > 0) != into.endswith("right"):
+        return False
+    return not (run.tier in NEVER_HIDDEN and _rank(after) < _rank(run))
+
+
+def _lead_in_move(before: _Run, run: _Run) -> str | None:
+    """The move made off the street into a lead-in: its fork's, else the turn into it. Said
+    as the turn onto the way after (`_absorb_tiny`), as the rider makes it at the street, not
+    a bear read across a lead-in that bends to meet an angled sidepath (#1036 review)."""
+    return run.first.fork if _forks(run) else _movement_between(before, run)
+
+
 def _junction_turn(runs: list[_Run], i: int) -> int | None:
     """Where the route makes one turn through a junction's crosswalk: the index of the
     stretch it turns onto, with runs[i:] up to it the pieces stepped over, else None (the
@@ -1026,9 +1074,14 @@ def _absorb_tiny(runs: list[_Run]) -> list[_Run]:
                 del runs[i:onto]
                 changed = True
                 continue
-            # A few metres between two turns is one move (`_connector`).
-            if after is not None and _connector(before, run, after):
+            # A few metres between two turns is one move (`_connector`), and so is a short
+            # unnamed lead-in onto a way carried on straight (`_lead_in`).
+            lead_in = after is not None and _lead_in(before, run, after)
+            if after is not None and (lead_in or _connector(before, run, after)):
+                move = _lead_in_move(before, run) if lead_in else None
                 _fold_connector(before, run, after)
+                if move is not None and after.first is not None:
+                    after.first = replace(after.first, fork=move)
                 del runs[i]
                 changed = True
                 continue

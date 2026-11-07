@@ -3185,6 +3185,62 @@ class TestPhantomTurns:
             ("14th Street Southeast", "right"),
         ]
 
+    def test_a_short_unnamed_lead_in_onto_a_bike_lane_is_the_one_left(self):
+        # Stephen, 2026-11-07, north on 13th Street SE at Pennsylvania Avenue SE: "It's
+        # supposed to just be a left onto the bike lane, but there's this weird turn onto a
+        # nonexistent service road": 16 m of an unnamed service way begun at a fork (a
+        # left), then "Continue onto Pennsylvania Avenue Southeast bike lane".
+        for lane_fork in (None, "straight"):
+            lane = road(
+                "Pennsylvania Avenue Southeast bike lane", 1, 600, 280, 280, "path", "cycleway"
+            )
+            if lane_fork:
+                lane = forked(lane, lane_fork)
+            legs = [
+                flat(
+                    road("13th Street Southeast", 1, 70, 0, 0),
+                    forked(road("", 1, 16, 290, 285, "none", "service_road"), "left"),
+                    lane,
+                )
+            ]
+            assert self.said(d.describe(legs)) == [
+                ("13th Street Southeast", None),
+                ("Pennsylvania Avenue Southeast bike lane", "left"),
+            ], lane_fork
+
+    def test_a_lead_in_says_the_turn_made_at_the_street_not_one_read_across_it(self):
+        # A left off the street onto a way that bends to meet an angled path: still "Left",
+        # not a bear from the headings across both (#1036 review).
+        bends = [
+            flat(
+                road("A Street", 1, 400, 0, 0),
+                forked(road("", 1, 25, 270, 320, "none", "service_road"), "left"),
+                road("B Trail", 1, 400, 320, 320, "path", "cycleway"),
+            )
+        ]
+        assert self.said(d.describe(bends))[1] == ("B Trail", "left")
+        # Bent back across the rider's heading, a left that ends up right of it: said as it was.
+        across = [
+            flat(
+                road("A Street", 1, 400, 0, 0),
+                forked(road("", 1, 25, 270, 20, "none", "service_road"), "left"),
+                road("B Trail", 1, 400, 20, 20, "path", "cycleway"),
+            )
+        ]
+        assert self.said(d.describe(across))[1] == ("service road", "left")
+
+    def test_a_lead_in_of_30_m_or_more_is_a_way_ridden(self):
+        legs = [
+            flat(
+                road("13th Street Southeast", 1, 70, 0, 0),
+                forked(road("", 1, 40, 290, 285, "none", "service_road"), "left"),
+                road(
+                    "Pennsylvania Avenue Southeast bike lane", 1, 600, 280, 280, "path", "cycleway"
+                ),
+            )
+        ]
+        assert self.said(d.describe(legs))[1] == ("service road", "left")
+
     def test_a_turn_across_the_connector_keeps_its_side(self):
         # Right 6 m up a cross street, then right again onto the street beyond: one right.
         legs = [
