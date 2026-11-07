@@ -2303,8 +2303,9 @@ def describe_both(
     runs: list[_Run] = []
     # The ways off circles, by the atom the way off begins with (`_circle_exits`).
     exits: dict[int, dict] = {}
-    # Turns onto a path across a road just crossed (`_far_side_turns`): (where the road
-    # is crossed, where the route turns, the side, the leg), in the pieces' measure.
+    # Turns onto a path across a road just crossed (`_far_side_turns`): (where the straight
+    # run begins, where the road is crossed, where the route turns, the side, the leg, the
+    # turn in off a way alongside or None), in the pieces' measure.
     far_side: list[tuple[float, float, float, str, int, str | None]] = []
     leg_at = 0.0
     sections = _sections(legs, through)

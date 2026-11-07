@@ -2622,6 +2622,32 @@ class TestFarSideTurns:
         assert turn["movement"] == "right"
         assert turn["across_from"] == "left"
 
+    def test_off_a_path_alongside_on_the_left_the_turn_in_is_a_right(self):
+        # Mirrored: west on the path beside the road, right over it, left onto the far side.
+        before = road("path beside A Road", 1, 400, 270, 270, "path", "cycleway")
+        bend = replace(road("", 1, 8, 0, 0, "path", "cycleway")[0], others=(), turn=90.0)
+        across = replace(
+            road("", 1, 12, 0, 0, "path", "cycleway")[0], others=self.CROSS_ROAD, turn=0.0
+        )
+        after = road("A Road Cycletrack", 1, 400, 270, 270, "protected", "cycleway")
+        after[0] = replace(after[0], others=(), turn=-90.0)
+        entries = d.describe([flat(before, [bend, across], after)])
+        turn = [e["turn"] for e in entries if (e.get("turn") or {}).get("across")][0]
+        assert (turn["movement"], turn["across_from"]) == ("left", "right")
+
+    def test_a_slight_bend_onto_the_crossing_is_no_turn_in(self):
+        # 35 degrees off: past the straight run's limit, short of a turn off a way alongside.
+        before = road("path beside A Road", 1, 400, 35, 35, "path", "cycleway")
+        bend = replace(road("", 1, 8, 0, 0, "path", "cycleway")[0], others=(), turn=-35.0)
+        across = replace(
+            road("", 1, 12, 0, 0, "path", "cycleway")[0], others=self.CROSS_ROAD, turn=0.0
+        )
+        after = road("A Road Cycletrack", 1, 400, 90, 90, "protected", "cycleway")
+        after[0] = replace(after[0], others=(), turn=90.0)
+        entries = d.describe([flat(before, [bend, across], after)])
+        turns = [e["turn"] for e in entries if (e.get("turn") or {}).get("across")]
+        assert turns and "across_from" not in turns[0]
+
     def test_straight_over_the_road_has_no_turn_in(self):
         assert "across_from" not in self.route()[1]["turn"]
 
