@@ -115,8 +115,11 @@ def rider_address(user) -> str:
 class InProcessApi:
     """The module's `Api`, answered by the site's own views in this process, as the rider."""
 
-    def __init__(self, request, user):
+    def __init__(self, request, user, organizes: bool = False):
         module = mcp_module()
+        # Whether the grant may organize My routes (ConnectorGrant.organizes_routes): only then
+        # does a save at a full account make room by deleting the longest-archived route.
+        self.organizes = organizes
         self._module = module
         self.base = _origin(request)
         # When the /mcp request began: the site's plan budget counts from it, so the plan that
@@ -259,7 +262,7 @@ class InProcessApi:
         request.user = self.user
         view = errors_as_json(
             ratelimit.user_rate_limited(ratelimit.ACCOUNT_WRITES)(
-                lambda r: _add_saved_route(r, versions=False)
+                lambda r: _add_saved_route(r, versions=False, prune=self.organizes)
             )
         )
         response = view(request)
@@ -296,6 +299,8 @@ class InProcessApi:
         (the owner, 2026-11-07: "let things be archived via the MCP")."""
         from .api import _change_saved_route, errors_as_json
 
+        # Tags and archived alone: the consent page promises no renames.
+        change = {k: v for k, v in change.items() if k in ("tags", "archived")}
         factory = RequestFactory()
         address = rider_address(self.user)
         request = factory.patch(
@@ -528,7 +533,7 @@ def mcp_endpoint(request):
     ConnectorGrant.objects.filter(pk=grant.pk).update(last_used_at=timezone.now())
     user = grant.user
     server = module.Server(
-        lambda: InProcessApi(request, user),
+        lambda: InProcessApi(request, user, organizes=grant.organizes_routes),
         drafts=DatabaseDrafts(user, grant),
         files=False,
         gpx_link=lambda draft_id, name: gpx_link(request, user, grant, draft_id, name),

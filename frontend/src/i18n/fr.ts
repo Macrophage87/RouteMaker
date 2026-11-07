@@ -2074,4 +2074,5 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Delete it and save": "Le supprimer et enregistrer",
   "You have {max} saved routes. Delete \"{name}\" to save this one? You last opened it {date}.": "Vous avez {max} itinéraires enregistrés. Supprimer « {name} » pour enregistrer celui-ci ? Vous l’avez ouvert pour la dernière fois le {date}.",
   "You have {max} saved routes. Delete \"{name}\" to save this one? It was saved {date} and never opened.": "Vous avez {max} itinéraires enregistrés. Supprimer « {name} » pour enregistrer celui-ci ? Il a été enregistré le {date} et jamais ouvert.",
+  "Deleted \"{name}\", archived longest, to make room.": "« {name} », archivé depuis le plus longtemps, a été supprimé pour faire de la place.",
 };

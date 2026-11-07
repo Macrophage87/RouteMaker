@@ -2074,4 +2074,5 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Delete it and save": "Xóa và lưu",
   "You have {max} saved routes. Delete \"{name}\" to save this one? You last opened it {date}.": "Bạn có {max} tuyến đã lưu. Xóa \"{name}\" để lưu tuyến này? Lần cuối bạn mở nó là {date}.",
   "You have {max} saved routes. Delete \"{name}\" to save this one? It was saved {date} and never opened.": "Bạn có {max} tuyến đã lưu. Xóa \"{name}\" để lưu tuyến này? Tuyến được lưu {date} và chưa từng được mở.",
+  "Deleted \"{name}\", archived longest, to make room.": "Đã xóa \"{name}\", tuyến lưu trữ lâu nhất, để có chỗ trống.",
 };

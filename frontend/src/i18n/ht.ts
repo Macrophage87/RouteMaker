@@ -2074,4 +2074,5 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Delete it and save": "Efase l epi anrejistre",
   "You have {max} saved routes. Delete \"{name}\" to save this one? You last opened it {date}.": "Ou gen {max} wout anrejistre. Efase \"{name}\" pou anrejistre sa a? Dènye fwa ou te louvri l se {date}.",
   "You have {max} saved routes. Delete \"{name}\" to save this one? It was saved {date} and never opened.": "Ou gen {max} wout anrejistre. Efase \"{name}\" pou anrejistre sa a? Li te anrejistre {date} e li pa janm louvri.",
+  "Deleted \"{name}\", archived longest, to make room.": "Nou efase \"{name}\", ki te achive depi pi lontan, pou fè plas.",
 };

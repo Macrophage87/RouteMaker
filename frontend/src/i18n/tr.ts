@@ -2074,4 +2074,5 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Delete it and save": "Silip kaydet",
   "You have {max} saved routes. Delete \"{name}\" to save this one? You last opened it {date}.": "{max} kayıtlı rotanız var. Bunu kaydetmek için \"{name}\" silinsin mi? En son {date} tarihinde açtınız.",
   "You have {max} saved routes. Delete \"{name}\" to save this one? It was saved {date} and never opened.": "{max} kayıtlı rotanız var. Bunu kaydetmek için \"{name}\" silinsin mi? {date} tarihinde kaydedildi ve hiç açılmadı.",
+  "Deleted \"{name}\", archived longest, to make room.": "Yer açmak için en uzun süredir arşivde olan \"{name}\" silindi.",
 };

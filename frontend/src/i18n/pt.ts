@@ -2074,4 +2074,5 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Delete it and save": "Apagar e salvar",
   "You have {max} saved routes. Delete \"{name}\" to save this one? You last opened it {date}.": "Você tem {max} rotas salvas. Apagar \"{name}\" para salvar esta? Você a abriu pela última vez em {date}.",
   "You have {max} saved routes. Delete \"{name}\" to save this one? It was saved {date} and never opened.": "Você tem {max} rotas salvas. Apagar \"{name}\" para salvar esta? Ela foi salva em {date} e nunca foi aberta.",
+  "Deleted \"{name}\", archived longest, to make room.": "\"{name}\", arquivada há mais tempo, foi apagada para abrir espaço.",
 };

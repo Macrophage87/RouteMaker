@@ -2074,4 +2074,5 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Delete it and save": "মুছে সংরক্ষণ করুন",
   "You have {max} saved routes. Delete \"{name}\" to save this one? You last opened it {date}.": "আপনার {max}টি সংরক্ষিত পথ আছে। এটি সংরক্ষণ করতে \"{name}\" মুছবেন? আপনি শেষবার এটি খুলেছিলেন {date}।",
   "You have {max} saved routes. Delete \"{name}\" to save this one? It was saved {date} and never opened.": "আপনার {max}টি সংরক্ষিত পথ আছে। এটি সংরক্ষণ করতে \"{name}\" মুছবেন? এটি {date} সংরক্ষিত হয়েছিল এবং কখনো খোলা হয়নি।",
+  "Deleted \"{name}\", archived longest, to make room.": "জায়গা করতে সবচেয়ে বেশি দিন আর্কাইভে থাকা \"{name}\" মুছে ফেলা হয়েছে।",
 };

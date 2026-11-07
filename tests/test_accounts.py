@@ -318,6 +318,7 @@ class TestRoutes:
         SavedRoute.objects.filter(pk=rows[9].pk).update(archived_at=now - timedelta(days=30))
         r = send(client, "post", "/api/me/routes", route_body(), csrf)
         assert r.status_code == 201, r.json()
+        assert r.json()["made_room"] == {"id": rows[9].pk, "name": "r9"}
         assert SavedRoute.objects.filter(user=user).count() == SavedRoute.MAX_PER_ACCOUNT
         assert not SavedRoute.objects.filter(pk=rows[9].pk).exists()  # archived 30 days ago
         assert SavedRoute.objects.filter(pk=rows[5].pk).exists()
@@ -413,6 +414,18 @@ class TestRoutes:
         other, _o, other_csrf = signed_in()
         r = send(other, "post", "/api/me/routes", route_body(replaces=old), other_csrf)
         assert r.status_code == 404 and SavedRoute.objects.get(pk=old).archived_at is None
+
+    def test_a_route_another_replaced_can_be_deleted_by_sql_alone(self) -> None:
+        """The release before knows nothing of replaced_by: its delete must not fail on it, so
+        the database sets it null too (0057), not only Django."""
+        from django.db import connection
+
+        client, _user, csrf = signed_in()
+        old = send(client, "post", "/api/me/routes", route_body(), csrf).json()["id"]
+        new = send(client, "post", "/api/me/routes", route_body(replaces=old), csrf).json()["id"]
+        with connection.cursor() as cursor:
+            cursor.execute("DELETE FROM saved_route WHERE id = %s", [new])
+        assert SavedRoute.objects.get(pk=old).replaced_by_id is None
 
     def test_rename_and_delete(self) -> None:
         client, user, csrf = signed_in()

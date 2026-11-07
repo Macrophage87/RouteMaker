@@ -7262,9 +7262,10 @@ def saved_routes_add(request):
     return _add_saved_route(request)
 
 
-def _add_saved_route(request, versions: bool = True):
+def _add_saved_route(request, versions: bool = True, prune: bool = True):
     """POST /api/me/routes, and the site's MCP connector's save with `versions` False (it only
-    adds; core.connector)."""
+    adds; core.connector). `prune` False (a connector grant not allowed to organize My routes,
+    whose rider was told it deletes nothing): a full account is refused, the archive untouched."""
     from django.db import transaction
 
     from . import accounts
@@ -7359,14 +7360,20 @@ def _add_saved_route(request, versions: bool = True):
                 mine.filter(archived_at__isnull=False)
                 .exclude(pk=replaces)
                 .order_by("archived_at", "pk")
+                .select_for_update()
                 .first()
+                if prune
+                else None
             )
             if oldest is None and make_room is not None:
                 # The one the rider agreed to delete.
-                oldest = mine.exclude(pk=replaces).filter(pk=make_room).first()
+                oldest = mine.exclude(pk=replaces).filter(pk=make_room).select_for_update().first()
             if oldest is None:
                 return _full_account(mine.exclude(pk=replaces))
+            made_room = {"id": oldest.pk, "name": oldest.name}
             oldest.delete()
+        else:
+            made_room = None
         row = SavedRoute.objects.create(
             user=request.user,
             name=name.strip(),
@@ -7387,7 +7394,10 @@ def _add_saved_route(request, versions: bool = True):
     from . import saved_route_alerts
 
     saved_route_alerts.check(row)
-    return _private(JsonResponse(_route_summary(row), status=201))
+    out = _route_summary(row)
+    if made_room:
+        out["made_room"] = made_room  # the route deleted for it, for the app to say
+    return _private(JsonResponse(out, status=201))
 
 
 def _full_account(rows):
@@ -7881,7 +7891,7 @@ def _change_saved_route(request, route_id: int):
     """PATCH /api/me/routes/{id}, and the site's MCP connector's organize_route (core.connector).
     Body: any of {"name": text, "tags": [text, ...], "archived": true | false}; what is left
     out stays as it is. Restoring an archived route forgets what replaced it."""
-    from django.utils import timezone
+    from django.db import transaction
 
     from . import accounts
 
@@ -7890,7 +7900,6 @@ def _change_saved_route(request, route_id: int):
         return refusal
     if not isinstance(body, dict) or not ({"name", "tags", "archived"} & body.keys()):
         return _stress_error(400, "Send a name, tags or archived.")
-    fields = []
     name = body.get("name")
     if "name" in body and (
         not isinstance(name, str) or not name.strip() or len(name.strip()) > accounts.NAME_MAX
@@ -7906,9 +7915,19 @@ def _change_saved_route(request, route_id: int):
     archived = body.get("archived")
     if "archived" in body and not isinstance(archived, bool):
         return _stress_error(400, "archived is true or false.", field="archived")
-    row = _saved_route(request, route_id)
-    if row is None:
-        return _stress_error(404, "That saved route is not in your account.", code="not_found")
+    with transaction.atomic():
+        # Locked, so a save making room cannot delete it under this change.
+        row = _locked_route(request, route_id)
+        if row is None:
+            return _stress_error(404, "That saved route is not in your account.", code="not_found")
+        _apply_change(row, body, name, tags, archived)
+    return _private(JsonResponse(_route_summary(row)))
+
+
+def _apply_change(row, body: dict, name, tags, archived) -> None:
+    from django.utils import timezone
+
+    fields = []
     if "name" in body:
         row.name = name.strip()
         fields.append("name")
@@ -7924,7 +7943,6 @@ def _change_saved_route(request, route_id: int):
         fields += ["archived_at", "replaced_by"]
     if fields:
         row.save(update_fields=[*fields, "updated_at"])
-    return _private(JsonResponse(_route_summary(row)))
 
 
 @api.delete("/me/routes/{route_id}", summary="Delete a saved route")

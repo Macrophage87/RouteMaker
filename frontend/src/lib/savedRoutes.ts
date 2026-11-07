@@ -54,6 +54,8 @@ export interface SavedSummary {
   archived_at?: string | null;
   /** The saved route that replaced it when it was archived for it (an assistant's save), or null. */
   replaced_by?: number | null;
+  /** On a save at a full account: the archived route deleted to make room for it. */
+  made_room?: { id: number; name: string };
 }
 
 export interface SavedRoute extends SavedSummary {
@@ -230,6 +232,12 @@ export const MY_ROUTES = t("My routes");
 export const ACCOUNT_ROUTES = t("Saved to your account");
 export const SAVED_SAID = (name: string) => t('Saved "{name}" to My routes.', { name });
 export const SAVE_FAILED = t("The route was not saved; try again shortly.");
+/** Said after a save at a full account deleted the longest-archived route to make room. */
+export const MADE_ROOM_SAID = (name: string) => t('Deleted "{name}", archived longest, to make room.', { name });
+/** The line a save says: Saved, and what made room for it if anything did. */
+export function savedLine(name: string, route: Pick<SavedSummary, "made_room">): string {
+  return route.made_room ? `${SAVED_SAID(name)} ${MADE_ROOM_SAID(route.made_room.name)}` : SAVED_SAID(name);
+}
 export const NONE_SAVED = t("No saved routes yet. Plan a route and press Save route.");
 export const OPENED_SAID = (name: string) => t('Opened "{name}", as it was saved.', { name });
 export const VERSION_SAID = (name: string) => `Saved a new version of "${name}"; the one before it is in its versions.`;

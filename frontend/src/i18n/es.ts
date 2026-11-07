@@ -2586,4 +2586,6 @@ export const ES: Readonly<Record<string, string>> = {
   "Delete it and save": "Borrarla y guardar",
   "You have {max} saved routes. Delete \"{name}\" to save this one? You last opened it {date}.": "Tiene {max} rutas guardadas. ¿Borrar \"{name}\" para guardar esta? La abrió por última vez el {date}.",
   "You have {max} saved routes. Delete \"{name}\" to save this one? It was saved {date} and never opened.": "Tiene {max} rutas guardadas. ¿Borrar \"{name}\" para guardar esta? Se guardó el {date} y nunca se abrió.",
+  "Deleted \"{name}\", archived longest, to make room.": "Se borró \"{name}\", la archivada hace más tiempo, para hacer espacio.",
+  "A route keeps the first {n} tags.": "Una ruta guarda las primeras {n} etiquetas.",
 };

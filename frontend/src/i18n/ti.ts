@@ -2074,4 +2074,5 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Delete it and save": "ደምሲስካ ዓቅብ",
   "You have {max} saved routes. Delete \"{name}\" to save this one? You last opened it {date}.": "{max} ዝተዓቀቡ መገድታት ኣለዉኻ። እዚ ንምዕቃብ \"{name}\" ይደምሰስ ድዩ? ንመወዳእታ ግዜ ዝኸፈትካዮ {date} እዩ።",
   "You have {max} saved routes. Delete \"{name}\" to save this one? It was saved {date} and never opened.": "{max} ዝተዓቀቡ መገድታት ኣለዉኻ። እዚ ንምዕቃብ \"{name}\" ይደምሰስ ድዩ? {date} ተዓቂቡ ሓንቲ ግዜ እውን ኣይተኸፍተን።",
+  "Deleted \"{name}\", archived longest, to make room.": "ቦታ ንምፍጣር፣ ነዊሕ ግዜ ኣብ መዝገብ ዝጸንሐ \"{name}\" ተደምሲሱ።",
 };

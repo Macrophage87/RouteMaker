@@ -42,15 +42,16 @@ export function SaveRoute({ label, defaultName, onSave, chip = false, shown, bar
   const [tagText, setTagText] = useState("");
   const [offered, setOffered] = useState<string[]>([]);
   const tagsId = useId();
-  // The account's tags, read as the form opens (Plan's alone).
+  // The account's tags, read once as the form opens (Plan's alone; the props are made anew each render).
+  const wantsTags = Boolean(defaultTags && onSave);
   useEffect(() => {
-    if (!asking || !defaultTags || !onSave) return;
+    if (!asking || !wantsTags) return;
     let live = true;
     void listRoutes(window.location.origin).then((all) => live && all && setOffered(tagsInUse(all)));
     return () => {
       live = false;
     };
-  }, [asking, defaultTags, onSave]);
+  }, [asking, wantsTags]);
   const [busy, setBusy] = useState(false);
   const [said, setSaid] = useState({ text: "", count: 0 });
   const openerRef = useRef<HTMLButtonElement>(null);
@@ -146,6 +147,7 @@ export function SaveRoute({ label, defaultName, onSave, chip = false, shown, bar
                   )}
                   <p className="hint" id={`${tagsId}-hint`}>
                     {t("Commas between tags. Change them later in Save & load.")}
+                    {tagText.split(",").filter((x) => x.trim()).length > TAGS_MAX && ` ${t("A route keeps the first {n} tags.", { n: String(TAGS_MAX) })}`}
                   </p>
                 </>
               )}

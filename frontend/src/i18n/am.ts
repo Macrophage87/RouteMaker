@@ -2074,4 +2074,5 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Delete it and save": "ሰርዘህ አስቀምጥ",
   "You have {max} saved routes. Delete \"{name}\" to save this one? You last opened it {date}.": "{max} የተቀመጡ መንገዶች አሉዎት። ይህን ለማስቀመጥ \"{name}\" ይሰረዝ? ለመጨረሻ ጊዜ የከፈቱት {date} ነው።",
   "You have {max} saved routes. Delete \"{name}\" to save this one? It was saved {date} and never opened.": "{max} የተቀመጡ መንገዶች አሉዎት። ይህን ለማስቀመጥ \"{name}\" ይሰረዝ? {date} ተቀምጦ አንድም ጊዜ አልተከፈተም።",
+  "Deleted \"{name}\", archived longest, to make room.": "ቦታ ለመፍጠር ረጅም ጊዜ በማህደር የቆየው \"{name}\" ተሰርዟል።",
 };

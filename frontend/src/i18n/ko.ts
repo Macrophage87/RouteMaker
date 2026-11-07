@@ -2074,4 +2074,5 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Delete it and save": "삭제하고 저장",
   "You have {max} saved routes. Delete \"{name}\" to save this one? You last opened it {date}.": "저장한 경로가 {max}개입니다. 이 경로를 저장하려면 \"{name}\"을(를) 삭제할까요? 마지막으로 연 날짜는 {date}입니다.",
   "You have {max} saved routes. Delete \"{name}\" to save this one? It was saved {date} and never opened.": "저장한 경로가 {max}개입니다. 이 경로를 저장하려면 \"{name}\"을(를) 삭제할까요? {date}에 저장했고 한 번도 열지 않았습니다.",
+  "Deleted \"{name}\", archived longest, to make room.": "공간을 만들기 위해 가장 오래 보관된 \"{name}\"을(를) 삭제했습니다.",
 };

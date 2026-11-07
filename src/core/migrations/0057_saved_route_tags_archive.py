@@ -54,4 +54,23 @@ class Migration(migrations.Migration):
                 to="core.savedroute",
             ),
         ),
+        # SET_NULL in the database too: the release before knows nothing of replaced_by, so a
+        # route it deletes that another route's replaced_by names must not fail the delete.
+        migrations.RunSQL(
+            """
+            DO $$
+            DECLARE fk text;
+            BEGIN
+              SELECT conname INTO fk FROM pg_constraint
+              WHERE conrelid = 'saved_route'::regclass AND contype = 'f'
+                AND conkey = ARRAY[(SELECT attnum FROM pg_attribute
+                  WHERE attrelid = 'saved_route'::regclass AND attname = 'replaced_by_id')];
+              EXECUTE format('ALTER TABLE saved_route DROP CONSTRAINT %I', fk);
+              EXECUTE format('ALTER TABLE saved_route ADD CONSTRAINT %I FOREIGN KEY'
+                ' (replaced_by_id) REFERENCES saved_route (id) ON DELETE SET NULL'
+                ' DEFERRABLE INITIALLY DEFERRED', fk);
+            END $$;
+            """,
+            migrations.RunSQL.noop,
+        ),
     ]

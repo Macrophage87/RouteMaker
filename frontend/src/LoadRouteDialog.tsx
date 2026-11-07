@@ -84,6 +84,21 @@ export function LoadRouteDialog({ open, onClose, signedIn, signIn, preset, onGpx
   const [archivedView, setArchivedView] = useState(false);
   const [undo, setUndo] = useState<{ id: number; name: string } | null>(null);
   const undoTimer = useRef<number | undefined>(undefined);
+  // Each route's latest change: an older answer arriving after a newer one (Undo pressed before Archive's came back)
+  // is ignored.
+  const changes = useRef(new Map<number, number>());
+  const undoRef = useRef<HTMLButtonElement>(null);
+  const listEnd = useRef<HTMLButtonElement>(null);
+  // Where the focus goes once the pressed control has left: Undo after Archive, Back after Restore in Archived, and
+  // the route's own Archive again after Undo.
+  const [refocus, setRefocus] = useState<"undo" | "back" | number | null>(null);
+  useEffect(() => {
+    if (refocus === null) return;
+    if (refocus === "undo") undoRef.current?.focus();
+    else if (refocus === "back") listEnd.current?.focus();
+    else dialogRef.current?.querySelector<HTMLElement>(`[data-route="${refocus}"] .load-route-archive`)?.focus();
+    setRefocus(null);
+  }, [refocus]);
   // Open GPX file asks first (the owner, 2026-10-22): the ride type, and snapped to roads or exactly as drawn.
   const [gpx, setGpx] = useState<GpxChoice | null>(null);
   const gpxFirst = useRef<HTMLSelectElement>(null);
@@ -158,7 +173,11 @@ export function LoadRouteDialog({ open, onClose, signedIn, signIn, preset, onGpx
     setUndo(archived ? { id: row.id, name: row.name } : null);
     if (archived) undoTimer.current = window.setTimeout(() => setUndo(null), UNDO_MS);
     setSaid(archived ? "" : t("Restored {name}.", { name: row.name }));
+    const turn = (changes.current.get(row.id) ?? 0) + 1;
+    changes.current.set(row.id, turn);
+    setRefocus(archived ? "undo" : archivedView ? "back" : row.id);
     void changeRoute(window.location.origin, row.id, { archived }).then((now) => {
+      if (changes.current.get(row.id) !== turn) return;
       if (now) replaceSaved(now);
       else {
         replaceSaved(before);
@@ -301,7 +320,7 @@ export function LoadRouteDialog({ open, onClose, signedIn, signIn, preset, onGpx
             {undo && !archivedView && (
               <p className="notice load-route-undo">
                 <span>{archivedSaid(undo.name)}</span>
-                <button type="button" className="link" onClick={undoArchive}>
+                <button type="button" className="link" ref={undoRef} onClick={undoArchive}>
                   {LOAD_UNDO}
                 </button>
               </p>
@@ -310,7 +329,7 @@ export function LoadRouteDialog({ open, onClose, signedIn, signIn, preset, onGpx
           {shown.length > 0 && (
             <ul role="list" className="load-route-list" aria-labelledby={headingId}>
               {shown.map((row) => (
-                <li key={row.key} className="load-route-item">
+                <li key={row.key} className="load-route-item" data-route={row.kind === "saved" ? row.id : undefined}>
                   <button type="button" className="load-route-row" onClick={() => pick(row)}>
                     <span className="load-route-name">{row.name}</span>
                     <span className="load-route-detail">
@@ -348,6 +367,7 @@ export function LoadRouteDialog({ open, onClose, signedIn, signIn, preset, onGpx
               <button
                 type="button"
                 className="secondary"
+                ref={listEnd}
                 onClick={() => {
                   setArchivedView(false);
                   setFilter("");

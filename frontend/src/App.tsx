@@ -307,7 +307,7 @@ import { fetchMe, NO_ME, type Me } from "./lib/stressEditor.ts";
 import { reloadFavorites, useFavoriteRides } from "./lib/favoriteRides.ts";
 import { ACCOUNT_SETTINGS_USED, applyToDevice, deviceSettings, fetchSettings, planFromSetting, retryUntil, sameSettings, saveSettings, saveUnitsUnsynced, SAVE_SETTLE_MS, setUnitsPending, signInLate, unitsPending, type SettingsDoc } from "./lib/accountSettings.ts";
 import { HOME_KEPT, HOME_MOVED, answerHomeOffer, deviceHome, homeOffer, type HomeOffer } from "./lib/homeMove.ts";
-import { FULL_HEADING, OPENED_SAID, SAVED_SAID, SAVE_FAILED, UNCHANGED_SAID, UPDATE_ROUTE, VERSION_SAID, defaultRouteName, differenceLine, differsTooMuch, gpxSave, afterDelete, afterRename, planSave, saveAsVersion, saveRoute, savedAnswer, versionOf, type OpenSaved, type RoomProposal, type SaveBody, type SavedRoute } from "./lib/savedRoutes.ts";
+import { FULL_HEADING, OPENED_SAID, SAVE_FAILED, UNCHANGED_SAID, UPDATE_ROUTE, VERSION_SAID, defaultRouteName, differenceLine, differsTooMuch, gpxSave, afterDelete, afterRename, planSave, saveAsVersion, saveRoute, savedAnswer, savedLine, versionOf, type OpenSaved, type RoomProposal, type SaveBody, type SavedRoute } from "./lib/savedRoutes.ts";
 import { checkClosures, closedStretches, reroutedSaid, spliceDetours, type Closure, type CheckFor } from "./lib/closureCheck.ts";
 import { ROUTE_WEATHER_MS, weatherPoints } from "./lib/weather.ts";
 import { useWeather } from "./useWeather.ts";
@@ -4083,7 +4083,7 @@ export function App() {
     setMyRoutesVersion((v) => v + 1);
     if (mode === "plan") openSavedRoute.current = { id: outcome.route.id, name: outcome.route.name, tags: outcome.route.tags ?? tags };
     // No `versioned`: a plain save (or the route was gone, and this one is new).
-    if (outcome.versioned === undefined) return SAVED_SAID(name);
+    if (outcome.versioned === undefined) return savedLine(name, outcome.route);
     return outcome.versioned === false ? UNCHANGED_SAID(outcome.route.name, body.source) : VERSION_SAID(outcome.route.name);
   };
   const saveProps = me.signed_in
@@ -6731,7 +6731,7 @@ export function App() {
             setMyRoutesVersion((v) => v + 1);
             if (openSavedRoute.current?.id === asked.propose.id) openSavedRoute.current = null;
             if (mode === "plan") openSavedRoute.current = { id: outcome.route.id, name: outcome.route.name, tags: outcome.route.tags };
-            announce(SAVED_SAID(asked.name));
+            announce(savedLine(asked.name, outcome.route));
           });
         }}
       />

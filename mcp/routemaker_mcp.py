@@ -4784,6 +4784,11 @@ class Server:
                 out["saved"]["tags"] = saved["tags"]
             if replaces is not None:
                 out["saved"]["archived"] = replaces
+            if isinstance(saved.get("made_room"), dict):
+                notes.append(
+                    f'the account was full: "{saved["made_room"].get("name")}", archived'
+                    " longest, was deleted to make room; tell the rider"
+                )
             if plan.check is not None and not plan.check["ok"]:
                 notes.append(
                     f"saved although {plan.check['miles_over_limit']} mi of it is more than"

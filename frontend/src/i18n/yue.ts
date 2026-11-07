@@ -2074,4 +2074,5 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Delete it and save": "刪除並儲存",
   "You have {max} saved routes. Delete \"{name}\" to save this one? You last opened it {date}.": "你有{max}條已儲存嘅路線。刪除「{name}」嚟儲存呢條？你上次喺{date}打開過佢。",
   "You have {max} saved routes. Delete \"{name}\" to save this one? It was saved {date} and never opened.": "你有{max}條已儲存嘅路線。刪除「{name}」嚟儲存呢條？佢喺{date}儲存，從未打開過。",
+  "Deleted \"{name}\", archived longest, to make room.": "為咗騰出位，已刪除封存得最耐嘅「{name}」。",
 };

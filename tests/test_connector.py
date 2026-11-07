@@ -12,6 +12,7 @@ import urllib.parse
 
 import pytest
 from django.test import Client
+from django.utils import timezone
 from test_accounts import addr, make_user, send, signed_in
 from test_mcp_server import encode_polyline, straight_answer
 from test_route_api import VERTICES, router, segments, standard_router
@@ -407,6 +408,14 @@ class TestConnector:
         out = call(token, "save_route", {"draft_id": draft_id, "name": "B", "replaces": rid})
         assert out["isError"] and SavedRoute.objects.filter(user=user).count() == 1
         assert SavedRoute.objects.get(pk=rid).archived_at is None
+        # Nor does its save at a full account delete the archived route that makes room.
+        SavedRoute.objects.filter(pk=rid).update(archived_at=timezone.now())
+        SavedRoute.objects.bulk_create(
+            SavedRoute(user=user, name=f"r{i}", line=[[0, 0], [1, 1]], distance_m=1.0, inputs={})
+            for i in range(SavedRoute.MAX_PER_ACCOUNT - 1)
+        )
+        out = call(token, "save_route", {"draft_id": draft_id, "name": "C"})
+        assert out["isError"] and SavedRoute.objects.filter(pk=rid).exists()
 
     def test_ride_conditions_asks_the_site_s_own_weather_check(self, planner, monkeypatch) -> None:
         from core import weather
