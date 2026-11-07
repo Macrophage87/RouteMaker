@@ -7425,7 +7425,8 @@ by level on the ride ribbon and the route line, slim ride graphs and a quiet Res
 the file, which ships with no closure, each waiting for the owner's confirmation); Featured routes
 photos with where each was taken and the assistant's upload links (#1030); junction and ride cue
 fixes (#1026, #1027, #1028, #1036); the beta agent's release-notes post
-(#1039); and "Same ride or a new one?" in every tab (#1012, #1013), the
+(#1039) and the riders' notes posted by the owner's bot with their pictures (#1041, #1042); the
+worker closing maintenance jobs whose worker died mid-run (#1043); and "Same ride or a new one?" in every tab (#1012, #1013), the
 ride rail on a small phone (#1015) and the ride graph tidy-ups (#1014).
 
 **What changes for the host.** Migrations 0057 (`saved_route.tags`, `archived_at`, `opened_at`,
@@ -7462,7 +7463,11 @@ At home, in order, with `</dev/null` on every docker command:
   posts the live release's notes when a newer tag is held or waiting); after the deploy it puts its
   own new files in `$RM_STATE/cd/bin` (the run log says "step: the release changed the agent"). Only
   if the log says "WARNING: the agent's files could not all be reinstalled", run
-  `scripts/beta/auto-release.sh install` from the v0.22.0 checkout. Stuck: `git fetch --force --tags
+  `scripts/beta/auto-release.sh install` from the v0.22.0 checkout. The riders' notes are now posted
+  by the owner's own bot (#1041): once, store the changelog channel's id in
+  `$RM_STATE/discord/changelog-channel` and run `auto-release.sh install` (BETA-RUNBOOK, "Release
+  notes for riders"; the owner's reviewed box). Until then the agent falls back to the old release
+  webhook. Stuck: `git fetch --force --tags
   origin`, then `scripts/beta/auto-release.sh retry v0.22.0`.
 - [ ] **Beta, by hand, if it is still on v0.20.0** (v0.21.0's hand ship not yet done): the gate from
   v0.20.0 stops on `src/pipeline/schema.py`, as at v0.21.0. Ship v0.22.0 by hand once, in place of
@@ -7471,6 +7476,10 @@ At home, in order, with `</dev/null` on every docker command:
   the front end, `smoke-test.sh --local --trails` then `--public`), with the rebuilt transit
   schedule's `transit` part if it is ready. The agent changed since v0.20.0:
   `mark-deployed v0.22.0`, then `scripts/beta/auto-release.sh install`, then `resume`.
+- [ ] **Stuck jobs (#1043).** Within 10 minutes of the worker's restart, on the beta too, the old
+  `refresh_dc_closures` rows from 2026-10-19 are closed as `aborted` (an audit row
+  `close_orphaned_job` each) and the alert's stuck-job lines go. A `nightly_backup` or rebuild job
+  is never closed this way ("Most of those clear themselves").
 - [ ] **Spot checks.** Tag a saved route (Save, or My routes > More > Tags); in Load route, filter
   by that tag, then Archive another: it leaves the list, Undo brings it back, and it is under
   Archived. Rebalance Ride in Go plans from your location to the nearest crowded dock with no

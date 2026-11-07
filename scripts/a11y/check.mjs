@@ -5787,6 +5787,8 @@ if (mine()) {
     await small.s("Emulation.setGeolocationOverride", { latitude: lat, longitude: lon, accuracy: 5 });
     await sleep(450);
   }
+  // A graph with no room is told once it has held 3 s (AheadGraph NO_ROOM_HOLD_MS, #1025), not as the ride starts.
+  await sleep(3500);
   const noRoom = await small.eval("window.__said.filter((t) => t.includes('No room on this screen'))");
   // Traffic stress is a ribbon now (Stephen 2026-11-04), so Elevation may fit under it, or be named in the line under it;
   // only where neither is on screen is it said, and then once.
