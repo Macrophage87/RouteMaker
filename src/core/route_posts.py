@@ -52,11 +52,13 @@ import re
 import secrets
 from datetime import date
 from html import escape
+from urllib.parse import urlencode
 
 from django.http import HttpResponse
 from django.middleware.csrf import get_token
 from django.utils import timezone
 from django.utils.html import json_script
+from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods, require_safe
 
 from . import ratelimit, share_preview, shared_routes
@@ -68,6 +70,10 @@ NONE_YET = "No featured routes yet."
 OUT_OF_SEASON = "Out of season"
 WITHDRAWN = "This post was withdrawn."
 NOT_FOUND = "There is no featured route at this address."
+# Signed out, a draft and a missing post answer alike (no draft's address is confirmed), with the
+# way in for an admin (the owner, 2026-11-07, opening a draft's link in a signed-out tab).
+SIGN_IN_FOR_DRAFTS = "Drafts show only to admins who are signed in."
+SIGN_IN_LABEL = "Sign in"
 DRAFT_NOTE = "Draft: only admins can see this page."
 UNLISTED_NOTE = "Unlisted: only people with the link can find this page."
 NO_SCRIPT_SEND = "Send to Garmin and Send to Wahoo need JavaScript. Download GPX works without it."
@@ -354,6 +360,15 @@ PHOTO_MAX_BYTES = 900 * 1024
 PHOTO_TYPE = "image/jpeg"
 ALT_MAX, CAPTION_MAX = 300, 200
 PHOTO_KEY_RE = re.compile(r"[0-9a-f]{16}")
+# Where a photo was taken is kept and shown (the owner, 2026-11-07: "Don't remove location data,
+# as people want to know where they are taken. It's no more sensitive than sharing the route"),
+# except inside the author's Home circle, as the route itself.
+TAKEN_HERE_LABEL = "Where it was taken"
+SPOT_PLACES = 5
+# An assistant sends a described photo's file to its own link (the owner, 2026-11-07: "Add photos
+# from an LLM"): signed for that one photo, good for PHOTO_LINK_SECONDS, used once.
+PHOTO_LINK_SALT = "core.route_posts.photo-link"
+PHOTO_LINK_SECONDS = 24 * 3600
 
 
 def _text(fields: dict, key: str, limit: int, *, required: bool = False, default: str = ""):
@@ -427,6 +442,17 @@ def _photos(raw, sections: int) -> tuple[list[dict], str | None]:
             return [], f"photo {n}: section is 0 (About this ride) or 1 to {sections}."
         out.append({"alt_text": alt, "caption": caption, "place": place})
     return out, None
+
+
+def photo_link_token(photo) -> str:
+    """The signed part of a described photo's upload link (photo_link_upload)."""
+    from django.core import signing
+
+    return signing.dumps([photo.post_id, photo.pk], salt=PHOTO_LINK_SALT)
+
+
+def photo_link_path(post, photo) -> str:
+    return f"/routes/{post.slug}/photos/send/{photo_link_token(photo)}"
 
 
 def write_draft(author, fields: dict, route: dict):
@@ -903,8 +929,20 @@ def photo_path(post, photo) -> str:
     return f"/routes/{post.slug}/photos/{photo.key}.jpg"
 
 
+def spot_link(photo) -> str:
+    """The map at the spot the photo was taken (the app's `#at=lon,lat`), or ""."""
+    if photo.lat is None or photo.lon is None:
+        return ""
+    return f"/#at={photo.lon:.{SPOT_PLACES}f},{photo.lat:.{SPOT_PLACES}f}"
+
+
 def _figure(post, photo) -> str:
-    caption = f"<figcaption>{escape(photo.caption)}</figcaption>" if photo.caption else ""
+    words = escape(photo.caption)
+    spot = spot_link(photo)
+    if spot:
+        taken = f'<a class="taken" href="{escape(spot)}">{TAKEN_HERE_LABEL}</a>'
+        words = f"{words} · {taken}" if words else taken
+    caption = f"<figcaption>{words}</figcaption>" if words else ""
     return (
         f'<figure class="photo"><img src="{escape(photo_path(post, photo))}" '
         f'alt="{escape(photo.alt_text)}" width="{photo.width}" height="{photo.height}" '
@@ -1116,7 +1154,16 @@ def page(request, slug: str):
     if post is not None and post.status == RoutePost.Status.WITHDRAWN:
         return _plain(410, WITHDRAWN)
     if post is None or not visible(post, request):
-        return _plain(404, NOT_FOUND)
+        if getattr(getattr(request, "user", None), "is_authenticated", False):
+            return _plain(404, NOT_FOUND)
+        sign_in = escape(f"/auth/login?{urlencode({'next': f'/routes/{slug}'})}")
+        body = (
+            f"<h1>{escape(INDEX_TITLE)}</h1><p>{escape(NOT_FOUND)}</p>"
+            f'<p>{escape(SIGN_IN_FOR_DRAFTS)} <a href="{sign_in}">{SIGN_IN_LABEL}</a></p>'
+        )
+        response = _respond(_frame(INDEX_TITLE, body), 404, cache="no-store")
+        response["X-Robots-Tag"] = "noindex"
+        return response
     # A draft is an admin's own view: never kept by a cache.
     cache = "no-store" if post.status == RoutePost.Status.DRAFT or is_admin(request) else "no-cache"
     response = _respond(post_html(request, post), cache=cache)
@@ -1303,6 +1350,154 @@ def clean_jpeg(data: bytes) -> bytes | None:
     return None
 
 
+def _tiff_value(tiff: bytes, order: str, at: int, size: int) -> int | None:
+    if at < 0 or at + size > len(tiff):
+        return None
+    return int.from_bytes(tiff[at : at + size], "big" if order == "MM" else "little")
+
+
+def _tiff_ifd(tiff: bytes, order: str, at: int) -> dict[int, tuple[int, int, int]]:
+    """One IFD's entries: tag -> (type, count, offset of the value or of where it is kept)."""
+    count = _tiff_value(tiff, order, at, 2)
+    out: dict[int, tuple[int, int, int]] = {}
+    for n in range(min(count or 0, 256)):
+        entry = at + 2 + 12 * n
+        tag, kind = _tiff_value(tiff, order, entry, 2), _tiff_value(tiff, order, entry + 2, 2)
+        many = _tiff_value(tiff, order, entry + 4, 4)
+        if tag is None or kind is None or many is None:
+            break
+        size = {1: 1, 2: 1, 3: 2, 4: 4, 5: 8}.get(kind, 0) * many
+        where = entry + 8 if size <= 4 else _tiff_value(tiff, order, entry + 8, 4)
+        if where is not None:
+            out[tag] = (kind, many, where)
+    return out
+
+
+def _degrees(tiff: bytes, order: str, entry) -> float | None:
+    """A GPS latitude or longitude: three RATIONALs, degrees, minutes and seconds."""
+    if entry is None or entry[0] != 5 or entry[1] != 3:
+        return None
+    total = 0.0
+    for n, scale in enumerate((1, 60, 3600)):
+        top = _tiff_value(tiff, order, entry[2] + 8 * n, 4)
+        bottom = _tiff_value(tiff, order, entry[2] + 8 * n + 4, 4)
+        if top is None or not bottom:
+            return None
+        total += top / bottom / scale
+    return total
+
+
+def exif_spot(data: bytes) -> tuple[float, float] | None:
+    """Where a JPEG says it was taken, (lat, lon), from its Exif GPS; else None."""
+    if not data.startswith(b"\xff\xd8"):
+        return None
+    i = 2
+    while i + 4 <= len(data) and data[i] == 0xFF and data[i + 1] not in (0xDA, 0xD9):
+        end = i + 2 + int.from_bytes(data[i + 2 : i + 4], "big")
+        payload = data[i + 4 : end]
+        if data[i + 1] == 0xE1 and payload[:6] == b"Exif\x00\x00":
+            tiff = payload[6:]
+            order = tiff[:2].decode("latin-1")
+            if order not in ("II", "MM") or _tiff_value(tiff, order, 2, 2) != 42:
+                return None
+            first = _tiff_value(tiff, order, 4, 4)
+            gps = _tiff_ifd(tiff, order, first or 0).get(0x8825)
+            if gps is None:
+                return None
+            pointer = _tiff_value(tiff, order, gps[2], 4)
+            fields = _tiff_ifd(tiff, order, pointer or 0)
+            lat, lon = _degrees(tiff, order, fields.get(2)), _degrees(tiff, order, fields.get(4))
+            if lat is None or lon is None:
+                return None
+            refs = [fields.get(tag) for tag in (1, 3)]
+            if refs[0] and tiff[refs[0][2] : refs[0][2] + 1] == b"S":
+                lat = -lat
+            if refs[1] and tiff[refs[1][2] : refs[1][2] + 1] == b"W":
+                lon = -lon
+            return lat, lon
+        i = end
+    return None
+
+
+def gps_segment(lat: float, lon: float) -> bytes:
+    """An Exif APP1 with nothing but where the photo was taken: degrees as one RATIONAL each (to
+    1e-7), minutes and seconds 0, as readers sum them."""
+
+    def rationals(value: float) -> bytes:
+        return (
+            int(round(abs(value) * 10**7)).to_bytes(4, "big")
+            + (10**7).to_bytes(4, "big")
+            + (b"\x00\x00\x00\x00\x00\x00\x00\x01" * 2)
+        )
+
+    def entry(tag: int, kind: int, many: int, value: bytes) -> bytes:
+        return tag.to_bytes(2, "big") + kind.to_bytes(2, "big") + many.to_bytes(4, "big") + value
+
+    gps_at = 8 + 2 + 12 + 4
+    data_at = gps_at + 2 + 5 * 12 + 4
+    tiff = (
+        b"MM\x00\x2a"
+        + (8).to_bytes(4, "big")
+        + (1).to_bytes(2, "big")
+        + entry(0x8825, 4, 1, gps_at.to_bytes(4, "big"))
+        + bytes(4)
+        + (5).to_bytes(2, "big")
+        + entry(0, 1, 4, b"\x02\x02\x00\x00")
+        + entry(1, 2, 2, (b"N" if lat >= 0 else b"S") + b"\x00\x00\x00")
+        + entry(2, 5, 3, data_at.to_bytes(4, "big"))
+        + entry(3, 2, 2, (b"E" if lon >= 0 else b"W") + b"\x00\x00\x00")
+        + entry(4, 5, 3, (data_at + 24).to_bytes(4, "big"))
+        + bytes(4)
+        + rationals(lat)
+        + rationals(lon)
+    )
+    return segment_bytes(0xE1, b"Exif\x00\x00" + tiff)
+
+
+def segment_bytes(marker: int, payload: bytes) -> bytes:
+    return bytes((0xFF, marker)) + (len(payload) + 2).to_bytes(2, "big") + payload
+
+
+def with_spot(image: bytes, photo) -> bytes:
+    """The kept photo as served: with where it was taken written back into it, as Exif GPS, after
+    JFIF's header when it has one."""
+    if photo.lat is None or photo.lon is None or not image.startswith(b"\xff\xd8"):
+        return image
+    at = 2
+    if image[2:4] == b"\xff\xe0":
+        at = 4 + int.from_bytes(image[4:6], "big")
+    return image[:at] + gps_segment(photo.lat, photo.lon) + image[at:]
+
+
+def photo_spot(lat, lon, *people) -> tuple[float, float] | None:
+    """Where a photo was taken, as kept: a real spot, rounded to SPOT_PLACES, and never inside the
+    Home circle of any of `people` (the post's author, who sent it)."""
+    try:
+        lat, lon = float(lat), float(lon)
+    except (TypeError, ValueError):
+        return None
+    if not (math.isfinite(lat) and math.isfinite(lon) and -90 <= lat <= 90 and -180 <= lon <= 180):
+        return None
+    if lat == 0 and lon == 0:
+        return None
+    for person in people:
+        zone = author_zone(person)
+        if zone is not None and share_preview.at_home([[lon, lat]], [], zone):
+            return None
+    return round(lat, SPOT_PLACES), round(lon, SPOT_PLACES)
+
+
+def _keep_photo(photo, cleaned: bytes, size, spot) -> None:
+    photo.image, photo.key = cleaned, hashlib.sha256(cleaned).hexdigest()[:16]
+    photo.width, photo.height = size
+    photo.lat, photo.lon = spot if spot else (None, None)
+    if spot:
+        # The address changes with the spot too, so a cache never serves the photo without it.
+        tag = f"{spot[0]},{spot[1]}".encode()
+        photo.key = hashlib.sha256(cleaned + tag).hexdigest()[:16]
+    photo.save()
+
+
 @require_http_methods(["POST"])
 @ratelimit.rate_limited(ratelimit.SHARE_PREVIEWS)
 def photo_upload(request, slug: str):
@@ -1358,9 +1553,13 @@ def photo_upload(request, slug: str):
             alt_text=alt,
             caption=caption,
         )
-    photo.image, photo.key = cleaned, hashlib.sha256(cleaned).hexdigest()[:16]
-    photo.width, photo.height = size
-    photo.save()
+    # The browser draws the photo again, which leaves its Exif behind: it reads where the photo
+    # was taken from the file first and sends it alongside (post/photos.ts).
+    lat, lon = request.POST.get("lat"), request.POST.get("lon")
+    spot = (photo_spot(lat, lon, post.author, request.user) if lat and lon else None) or photo_spot(
+        *(exif_spot(data) or (None, None)), post.author, request.user
+    )
+    _keep_photo(photo, cleaned, size, spot)
     record(request.user, "route_post.photo", "RoutePost", post.pk, "allowed", photo.key)
     response = HttpResponse(
         json.dumps({"key": photo.key, "url": photo_path(post, photo)}),
@@ -1381,9 +1580,66 @@ def photo(request, slug: str, key: str):
     found = post.photos.filter(key=key, image__isnull=False).first()
     if found is None:
         return HttpResponse(status=404)
-    response = HttpResponse(bytes(found.image), content_type=PHOTO_TYPE)
+    response = HttpResponse(with_spot(bytes(found.image), found), content_type=PHOTO_TYPE)
     # The address changes with the picture, so a shown post's photo may be kept; a draft's not.
     shown = post.status in ("published", "unlisted")
     response["Cache-Control"] = "public, max-age=3600" if shown else "private, no-store"
     response["X-Content-Type-Options"] = "nosniff"
+    return response
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+@ratelimit.rate_limited(ratelimit.SHARE_PREVIEWS)
+def photo_link_upload(request, slug: str, token: str):
+    """POST /routes/<slug>/photos/send/<token>: the file of a photo an assistant described, sent
+    by the assistant to the link draft_route_post answered (photo_link_path). The body is the
+    JPEG itself (image/jpeg, at most PHOTO_MAX_EDGE a side and PHOTO_MAX_BYTES): the signed link,
+    not a session, is what lets it in, so it is CSRF-exempt; it fills that one waiting photo
+    once, within PHOTO_LINK_SECONDS. Where the photo was taken is read from its Exif GPS, else
+    from the link's `lat` and `lon`."""
+    from django.core import signing
+
+    from .audit import record
+
+    try:
+        post_pk, photo_pk = signing.loads(token, salt=PHOTO_LINK_SALT, max_age=PHOTO_LINK_SECONDS)
+    except (signing.BadSignature, TypeError, ValueError):
+        return HttpResponse(status=404)
+    post = _post(slug)
+    if post is None or post.pk != post_pk or post.status == "withdrawn":
+        return HttpResponse(status=404)
+    photo = post.photos.filter(pk=photo_pk, image__isnull=True).first()
+    if photo is None:
+        return HttpResponse(
+            "That photo already has its file.", status=409, content_type="text/plain"
+        )
+    data = request.body
+    cleaned = (
+        clean_jpeg(data)
+        if request.content_type == PHOTO_TYPE and 0 < len(data) <= PHOTO_MAX_BYTES
+        else None
+    )
+    size = jpeg_size(cleaned) if cleaned else None
+    if size is None or not all(0 < side <= PHOTO_MAX_EDGE for side in size):
+        record(post.author, "route_post.photo", "RoutePost", post.pk, "refused", "upload link")
+        return HttpResponse(
+            f"Send the photo as image/jpeg, at most {PHOTO_MAX_EDGE} pixels a side and"
+            f" {PHOTO_MAX_BYTES // 1024} KB.",
+            status=400,
+            content_type="text/plain",
+        )
+    # Its Exif says where it was taken; else the link's ?lat=&lon=, when the assistant knows
+    # (from the ride's own track, say: phones often leave the GPS block empty).
+    spot = photo_spot(*(exif_spot(data) or (None, None)), post.author) or photo_spot(
+        request.GET.get("lat"), request.GET.get("lon"), post.author
+    )
+    _keep_photo(photo, cleaned, size, spot)
+    record(post.author, "route_post.photo", "RoutePost", post.pk, "allowed", "upload link")
+    response = HttpResponse(
+        json.dumps({"url": photo_path(post, photo), "located": spot is not None}),
+        status=201,
+        content_type="application/json",
+    )
+    response["Cache-Control"] = "no-store"
     return response

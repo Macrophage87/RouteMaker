@@ -616,6 +616,25 @@ class TestRoutePostDrafts:
         # Nothing went to the admin's My routes.
         assert not SavedRoute.objects.filter(user=user).exists()
 
+    def test_each_described_photo_comes_with_a_link_to_send_its_file_to(self, planner) -> None:
+        """The owner, 2026-11-07: "Add photos from an LLM"."""
+        _user, token = self.admin_token()
+        planned = call(token, "plan_route", {"points": self.POINTS})
+        photos = [{"alt_text": "The trail in fall", "section": 1}]
+        out = call(
+            token,
+            "draft_route_post",
+            {**self.POST, "photos": photos, "draft_id": planned["structuredContent"]["draft_id"]},
+        )
+        assert not out["isError"], out
+        answer = out["structuredContent"]
+        assert answer["photos_waiting"] == 1
+        [link] = answer["photo_uploads"]
+        assert link["alt_text"] == "The trail in fall" and link["section"] == 1
+        prefix = "http://testserver/routes/rock-creek-to-the-river/photos/send/"
+        assert link["upload_url"].startswith(prefix)
+        assert any("upload_url" in note for note in answer["notes"])
+
     def test_sending_the_slug_again_rewrites_the_draft_until_it_is_published(self, planner) -> None:
         _user, token = self.admin_token()
         draft_id = call(token, "plan_route", {"points": self.POINTS})["structuredContent"][

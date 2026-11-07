@@ -2694,10 +2694,13 @@ class RoutePostPhoto(models.Model):
     that number, in `position` order.
 
     `image` is a JPEG kept with nothing but what draws it (route_posts.clean_jpeg): the admin's
-    browser makes it smaller and draws it again, and the server takes out any Exif, GPS, XMP or
-    comment left, so no photo says where or when it was taken. A photo an assistant described
-    with no file yet (route_posts.write_draft) has no `image` and is not shown until an admin adds
-    its file on the post's page."""
+    browser makes it smaller and draws it again, and the server takes out any Exif, XMP or comment
+    left, so no photo says when it was taken or on what. Where it was taken is kept apart, in
+    `lat` and `lon` (the owner, 2026-11-07: "Don't remove location data, as people want to know
+    where they are taken"), never inside the author's Home circle; the page links to the spot and
+    the served file carries it back as Exif GPS (route_posts.with_spot). A photo an assistant
+    described with no file yet (route_posts.write_draft) has no `image` and is not shown until its
+    file comes, from an admin on the post's page or from the assistant's upload link."""
 
     post = models.ForeignKey("RoutePost", on_delete=models.CASCADE, related_name="photos")
     place = models.PositiveSmallIntegerField(
@@ -2714,6 +2717,8 @@ class RoutePostPhoto(models.Model):
     key = models.CharField(max_length=16, blank=True, default="")
     width = models.PositiveIntegerField(null=True, blank=True)
     height = models.PositiveIntegerField(null=True, blank=True)
+    lat = models.FloatField("Taken at, latitude", null=True, blank=True)
+    lon = models.FloatField("Taken at, longitude", null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
