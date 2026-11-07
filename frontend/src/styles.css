@@ -4733,6 +4733,11 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
   font-weight: 700;
 }
 
+/* A slim graph's mark in the margin (AheadGraph SlimMark): the text's colour. */
+.ride-ahead-plot .ride-ahead-slim-mark {
+  fill: currentColor;
+}
+
 .ride-ahead-plot .ride-ahead-ribbon-name {
   font-size: 12px;
   font-weight: 700;

@@ -16,6 +16,7 @@ import type { RouteResponse } from "./lib/api.ts";
 import {
   AHEAD_GROUP,
   AHEAD_HEADING,
+  AHEAD_WORD,
   AHEAD_NO_CORKERS,
   AHEAD_YOU,
   aheadWindow,
@@ -65,6 +66,8 @@ const W = 320;
 const NOTE_PX = 22;
 /** How far short of the least room one graph is still drawn: Ride mode's hysteresis (RideMode AHEAD_HYSTERESIS_PX). */
 const GRACE_PX = 6;
+/** How long the graphs on must lack room before the rider is told (onNoRoom). */
+const NO_ROOM_HOLD_MS = 3000;
 /** The most the drawing is enlarged for larger text. */
 const ZOOM_MAX = 1.6;
 /** The strip of turns at the top. */
@@ -74,7 +77,9 @@ const TURNS_H = 26;
  * the other graphs (Stephen 2026-11-04: "You can't have both elevation and traffic stress. Maybe just make the traffic
  * stress a color ribbon with the turns on it").
  */
-const RIBBON_H = 18;
+// Thin, with no level numbers on it (Stephen 2026-11-07: "we can make the traffic stress thinner by removing the
+// numbers"): the colours, the half steps' dashes and the rails show it, and the sentence says each level.
+const RIBBON_H = 8;
 /**
  * The trails and bike lanes along the ribbon's top and bottom edges, as the map's rails flank the route (Stephen
  * 2026-11-04: "put the bike lane or pbl markings on the top and bottom. Purple for trail"): each rail's width.
@@ -97,6 +102,12 @@ const RIBBON_BLOCK = RAIL_H + RAIL_GAP + RIBBON_H + RAIL_GAP + RAIL_H;
 const RAIL_DASH: Record<FacilityStretch["facility"], string | undefined> = { path: undefined, protected: "5 3", lane: "2 3" };
 /** Each graph: its name, then its plot. */
 const LABEL_H = 14;
+/**
+ * Where the graphs do not fit at their least, each is drawn slim instead, a short strip with a
+ * mark for its name in the left margin and no height axis (Stephen 2026-11-07, of "No room on this screen for:
+ * Elevation" on his phone: "Simplify the maps to make room"). Its heights are still said.
+ */
+const SLIM_H = 20;
 const GAP = 4;
 const AXIS_H = 22;
 /** Room on the left for the y axis's labels ("450 ft"). */
@@ -195,6 +206,22 @@ export function AheadGraph({ views, route, cues, youM, lengthM, ridersAlong = []
       count = fit(order.length, budget, turnsH + ribbonH);
       if (count < order.length) count = fit(order.length, budget - NOTE_PX * unit, turnsH + ribbonH);
     }
+    // Fewer fit than are on: slim strips instead (SLIM_H), where more of them fit than of the full graphs, the turns
+    // strip kept where it fits.
+    let slim = false;
+    if (count < order.length) {
+      const slimFit = (stripH: number) => {
+        for (let k = order.length; k >= 1; k -= 1) if (stripH + AXIS_H + k * (SLIM_H + GAP) <= budget + GRACE_PX * unit) return k;
+        return 0;
+      };
+      const withTurns = slimFit(turnsH + ribbonH);
+      const without = withTurns ? withTurns : slimFit(ribbonH);
+      if (without > count) {
+        slim = true;
+        if (!withTurns) turnsH = 0;
+        count = without;
+      }
+    }
     // Room for no graph under the turns strip: one graph without it (the turns are in the sentence), the rest named
     // in a line under it, or where there is no room for that either, told (onNoRoom).
     let note = count < order.length;
@@ -233,12 +260,13 @@ export function AheadGraph({ views, route, cues, youM, lengthM, ridersAlong = []
     }
     const shown = order.slice(0, count);
     const strip = turnsH + (ribbonDrawn ? ribbonH : 0);
-    const fixed = strip + AXIS_H + shown.length * (LABEL_H + GAP) - GAP + (note ? NOTE_PX * unit : 0);
-    const h = plotHeight(shown.length, budget, fixed);
+    const named = slim ? 0 : LABEL_H;
+    const fixed = strip + AXIS_H + shown.length * (named + GAP) - GAP + (note ? NOTE_PX * unit : 0);
+    const h = slim ? SLIM_H : plotHeight(shown.length, budget, fixed);
     const drawn: { view: AheadView; panel: Panel; drawn: Drawn }[] = [];
     let at = strip;
     for (const view of shown) {
-      const panel = { top: at + LABEL_H, h };
+      const panel = { top: at + named, h };
       const one = draw(view, route, w, x, panel, width);
       if (!one) continue;
       drawn.push({ view, panel, drawn: one });
@@ -250,6 +278,7 @@ export function AheadGraph({ views, route, cues, youM, lengthM, ridersAlong = []
     const ribbonSaid = ribbon.length ? [`${AHEAD_HEADING.stress}: ${stressSentence(ribbon, w.youM)}`, facilitySentence(rails, w.youM)].filter(Boolean).join(" ") : "";
     return {
       drawn,
+      slim,
       unseen,
       unseenSaid,
       turnsH,
@@ -266,8 +295,12 @@ export function AheadGraph({ views, route, cues, youM, lengthM, ridersAlong = []
   }, [views, route, w, width, budget, unit, units()]); // eslint-disable-line react-hooks/exhaustive-deps
   const { base } = panels;
   const untold = !panels.note && panels.any ? panels.unseen.join(",") : "";
+  // Told once it has held a few seconds: not for the moment a note in the panel (finding your place, a weak fix) takes
+  // the room as the ride starts, after which the graphs fit (2026-11-07).
   useEffect(() => {
-    if (untold) onNoRoom?.(untold.split(",") as AheadView[]);
+    if (!untold) return undefined;
+    const timer = window.setTimeout(() => onNoRoom?.(untold.split(",") as AheadView[]), NO_ROOM_HOLD_MS);
+    return () => window.clearTimeout(timer);
   }, [untold]); // eslint-disable-line react-hooks/exhaustive-deps
   const H = base + AXIS_H;
   if (!panels.any && !panels.unseenSaid.length && !panels.ribbonSaid) return <figure ref={figureRef} className="ride-ahead" hidden />;
@@ -300,11 +333,16 @@ export function AheadGraph({ views, route, cues, youM, lengthM, ridersAlong = []
           {panels.ribbon.length > 0 && <Ribbon bars={panels.ribbon} rails={panels.rails} x={x} top={panels.turnsH} turns={panels.turnsH > 0 ? drawnTurns : []} />}
           {panels.drawn.map(({ view, panel, drawn }) => (
             <Fragment key={view}>
-              <text className="ride-ahead-name" x={LEFT} y={panel.top - 3}>
-                {AHEAD_HEADING[view]}
-              </text>
+              {panels.slim ? (
+                // Slim: its mark in the margin, as the ribbon's LTS, and no height axis (the heights are in the sentence).
+                <SlimMark view={view} panel={panel} />
+              ) : (
+                <text className="ride-ahead-name" x={LEFT} y={panel.top - 3}>
+                  {AHEAD_HEADING[view]}
+                </text>
+              )}
               {drawn.body(`${id}-steep`, `${id}-climb`)}
-              <YAxis ticks={drawn.yTicks} panel={panel} />
+              {!panels.slim && <YAxis ticks={drawn.yTicks} panel={panel} />}
             </Fragment>
           ))}
           <Axis w={w} x={x} base={base} top={panels.strip} width={width} />
@@ -317,6 +355,20 @@ export function AheadGraph({ views, route, cues, youM, lengthM, ridersAlong = []
         </p>
       )}
     </figure>
+  );
+}
+
+/** A slim graph's mark in the left margin: a hill for elevation, else the graph's short word. */
+function SlimMark({ view, panel }: { view: AheadView; panel: Panel }) {
+  const mid = panel.top + panel.h / 2;
+  if (view === "elevation") {
+    // Two peaks, the larger in front: no words, so no language to fit in the margin.
+    return <path className="ride-ahead-slim-mark" d={`M${LEFT - 30} ${mid + 7}L${LEFT - 21} ${mid - 7}L${LEFT - 12} ${mid + 7}ZM${LEFT - 18} ${mid + 7}L${LEFT - 12} ${mid - 2}L${LEFT - 6} ${mid + 7}Z`} />;
+  }
+  return (
+    <text className="ride-ahead-ribbon-name" x={LEFT - 6} y={mid + 5} textAnchor="end">
+      {AHEAD_WORD[view]}
+    </text>
   );
 }
 
@@ -367,8 +419,8 @@ function Turns({ marks, x }: { marks: readonly TurnMark[]; x: X }) {
 }
 
 /**
- * Traffic stress as a ribbon: each stretch in its stress colour, its level on it where it fits (so colour is never the
- * only cue), "LTS" in the gutter, and a line through it at each turn above, tying the turn to the stretch it leads onto.
+ * Traffic stress as a ribbon: each stretch in its stress colour (a half step with the next level's dash; the levels
+ * are in the sentence), "LTS" in the gutter, and a line through it at each turn above, tying the turn to the stretch it leads onto.
  * Along its top and bottom edges, each trail or bike lane as the map draws its rails beside the route (trail solid
  * purple, protected lane in posts, painted in dots); the sentence says them too.
  */
@@ -377,7 +429,7 @@ function Ribbon({ bars, rails, x, top, turns }: { bars: readonly StressBar[]; ra
   const railYs = [top + RAIL_H / 2, band + RIBBON_H + RAIL_GAP + RAIL_H / 2];
   return (
     <g className="ride-ahead-ribbon">
-      <text className="ride-ahead-ribbon-name" x={LEFT - 6} y={band + RIBBON_H / 2 + 5} textAnchor="end">
+      <text className="ride-ahead-ribbon-name" x={LEFT - 6} y={band + RIBBON_H / 2 + 4} textAnchor="end">
         LTS
       </text>
       {bars.map((b) => {
@@ -392,16 +444,10 @@ function Ribbon({ bars, rails, x, top, turns }: { bars: readonly StressBar[]; ra
                 {b.halfOutline && (
                   // The outline a pixel round each dash, its ends too (as the map's scaledDash), so 4.5's dash keeps
                   // its rim on LTS 4's red.
-                  <line x1={left} x2={left + width} y1={band + RIBBON_H - 3} y2={band + RIBBON_H - 3} stroke={b.halfOutline} strokeWidth={5.5} strokeDasharray={halfDash(b.level).outline} strokeDashoffset={1} />
+                  <line x1={left} x2={left + width} y1={band + RIBBON_H / 2} y2={band + RIBBON_H / 2} stroke={b.halfOutline} strokeWidth={5.5} strokeDasharray={halfDash(b.level).outline} strokeDashoffset={1} />
                 )}
-                <line x1={left} x2={left + width} y1={band + RIBBON_H - 3} y2={band + RIBBON_H - 3} stroke={b.halfDash} strokeWidth={3.5} strokeDasharray={halfDash(b.level).dash} />
+                <line x1={left} x2={left + width} y1={band + RIBBON_H / 2} y2={band + RIBBON_H / 2} stroke={b.halfDash} strokeWidth={3.5} strokeDasharray={halfDash(b.level).dash} />
               </g>
-            )}
-            {width >= b.label.length * 8 + 6 && (
-              // Lifted a little over a half step's dash, so the dash runs under the number.
-              <text className="ride-ahead-level" x={left + width / 2} y={band + RIBBON_H / 2 + (b.halfDash ? 3 : 5)} textAnchor="middle" style={{ fill: b.ink }}>
-                {b.label}
-              </text>
             )}
           </g>
         );
