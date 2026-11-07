@@ -381,7 +381,7 @@ test("a restart's re-plan keeps the unticked stops, behind or not, and only the 
 
 test("the ride asks once, at its first place on the line, never after Undo or on a trip's leg; picks re-plan from here", () => {
   const rideSrc = src("../RideMode.tsx");
-  assert.match(rideSrc, /const restartAsked = useRef\(resumeStats !== null \|\| trip !== null\);/);
+  assert.match(rideSrc, /const restartAsked = useRef\(resumeStats !== null \|\| trip !== null \|\| resumedQuietly\);/);
   assert.match(rideSrc, /if \(!restartAsked\.current && out\.state\.progressM !== null\) \{\s*restartAsked\.current = true;/);
   assert.match(rideSrc, /if \(!stops \|\| restartUnchanged\(stops, done\)\) return;/);
   assert.match(rideSrc, /void replan\(here, undefined, true, back, false, undefined, done\);/);

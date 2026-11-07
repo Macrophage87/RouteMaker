@@ -342,7 +342,7 @@ Remove, so More leaves out Change home, and <strong>Move up</strong> and <strong
 after Work (Home and Work stay first); the new order is kept with your account. Favorites are kept with your account only, never on the device or in a log, and are deleted with it;
 riding to one puts it in that plan's link, as any destination is. <strong>Load route</strong> opens the same popup as Plan's <strong>Load route</strong>
 (<strong>Sign in with Discord</strong> first when you are signed out, <strong>Open GPX file</strong>, then your
-saved routes and the routes kept on this device); one tap opens a route in Go, ready for <strong>Start ride</strong>.
+saved routes, with the same search, tag chips and Archive, and the routes kept on this device); one tap opens a route in Go, ready for <strong>Start ride</strong>.
 In Go a file always keeps to streets and paths bikes may ride: <strong>Exactly as drawn</strong> applies in Plan
 only.</li>
 <li><strong>The route card</strong> shows the start, the stops and via points between, counted apart ("1 stop · 3 via points"), and the destination; Edit
@@ -406,13 +406,16 @@ season, a row of figures (distance, climbing, descent, riding time and ride type
 RouteMaker</strong>, <strong>Download GPX</strong>, <strong>Send to Garmin</strong> and <strong>Send to
 Wahoo</strong>, Plan's elevation and traffic stress charts, then <strong>About this ride</strong>, <strong>Who it's
 for</strong> and <strong>Highlights</strong>; a highlight whose stretch the post marks has a small map of it. The route is a copy kept as it was when the post was written, so a
-map update or an edit of the saved route does not change it. Only the site's admins write them. A link to a post
+map update or an edit of the saved route does not change it. Only the site's admins write them, and a draft's link shows only to admins who are signed in: signed out, it
+says there is no post there and offers <strong>Sign in</strong>. A link to a post
 shows its map as the picture once an admin has set it, and the route's line on a map of the streets around it until then. A post can carry up to 20 photos, under About this ride or under a highlight, each
 with alt text and sometimes a caption. An admin adds them on the post's page, under <strong>For
 admins</strong>, <strong>Photos</strong>: alt text saying what the photo shows is required, the caption is
 optional, and <strong>Where</strong> picks the section. The browser makes the photo smaller and saves it
-again as a JPEG, so its location, date and camera details don't go with it; the site removes anything
-that's left. If the browser can't open a photo (some phone formats), save it as a JPEG or PNG first. To
+again as a JPEG, so its date and camera details don't go with it; the site removes anything that's left.
+Where it was taken is kept: the caption gets a <strong>Where it was taken</strong> link to that spot on the map, and
+the photo's file carries it too, except inside the author's or the sender's Home circle, where the spot is dropped and the photo
+stays. An AI assistant can also send a draft's photos itself. If the browser can't open a photo (some phone formats), save it as a JPEG or PNG first. To
 change a photo's alt text, caption, section or order, or to delete it, use the admin. A photo keeps its
 highlight's number, so after removing or reordering highlights check where each photo sits; one numbered
 past the last highlight shows under About this ride.</li>
@@ -526,7 +529,7 @@ see the map.</p>
 <text class="ts" x="160.0" y="494.5" text-anchor="middle">every change to the points</text>
 </svg>
 </div>
-<figcaption>Up to 25 points (a start, up to 3 stops and an end on Walk and the transit ride types). Points can also be added by tapping the map.</figcaption>
+<figcaption>Up to 25 points (a start, up to 3 stops and an end on Walk, the transit ride types and Bikeshare; a start alone on Rebalance Ride). Points can also be added by tapping the map.</figcaption>
 </figure>
 <details class="more"><summary>More: Plan</summary>
 <div class="more-body">
@@ -541,8 +544,8 @@ has short editing tips: taps and press-and-hold on a phone, the keys on a comput
 <strong>Route</strong> button's place) sets your start where you are.</li>
 <li>Type places into <strong>From</strong>, <strong>To</strong> and <strong>Add a stop</strong>, or tap
 the map: in Plan, the first tap or search is the start (on a loop, the start and finish), then the end; what later
-taps add is below. Up to 25 points in all; on Walk, Walk + transit and both bike + transit types, a start, up to 3
-stops and an end, with no via points, and on Bikeshare and Rebalance Ride a start and an end. Each shows its street or neighborhood under its name.</li>
+taps add is below. Up to 25 points in all; on Walk, Walk + transit, both bike + transit types and Bikeshare, a start, up
+to 3 stops and an end, with no via points, and on Rebalance Ride a start alone. Each shows its street or neighborhood under its name.</li>
 <li>Once there is a start and an end, a tap or click on the map adds a <strong>via point</strong> (in a loop, a tap adds a stop), a small
 hollow ring that only shapes the route: it has no number and is never a cue on the ride.
 <strong>Ctrl+click</strong> (Cmd+click on a Mac), or <strong>Add as stop</strong> in the road panel, adds a
@@ -718,7 +721,9 @@ ride; where the browser can't, a line says "Screen may sleep: keep it on.", with
 <li>The round buttons down the right edge each have a word under it: <strong>Everyone</strong> (first, while other riders' dots are on the map),
 <strong>Locate</strong> (Where am I?), <strong>Text</strong> (Large text), <strong>Share live</strong>, <strong>Detour</strong>,
 <strong>Dock</strong> on a bikeshare ride, <strong>311</strong> and <strong>More</strong>. Where the words don't fit, as with Large text on,
-each becomes a pill with its word beside the icon. A screen reader hears each by its full name.</li>
+each becomes a pill with its word beside the icon. Where even the pills don't fit, as on a Mass Ride with Large
+text on a small phone, <strong>Text</strong> and then <strong>Share live</strong> move into More, and come back when
+there is room. A screen reader hears each by its full name.</li>
 <li>At an unusual junction, such as a five-way or a left onto a service road, the turn card draws the
 junction instead of a plain arrow. Your way is solid with its arrowhead, the other roads are dashed,
 and a service road's main road is drawn where it lies: behind the turn when you cross it first, ahead
@@ -790,6 +795,7 @@ round."</li>
 <li><strong>311</strong> logs a problem where you are, for reporting later; see
 <a href="#suggest">below</a>.</li>
 <li><strong>More</strong> opens a column of round buttons above it, each with a word under it.
+Text or Share live, when moved there for want of room, come first, and pressing one closes the column.
 <strong>Less traffic</strong> (Calmer, a car with a down arrow) and <strong>Fewer hills</strong> (Flatter, a
 mountain with a down arrow) plan again from where you are, with the
 way ahead first. Less traffic moves the ride's traffic slider one step toward Calmest, Fewer hills its hills slider
@@ -803,12 +809,16 @@ the column. Then comes one bubble for each graph of the next 2 mi [3.2 km] the r
 and <strong>Elevation</strong>, with <strong>Flow</strong> and <strong>Corkers</strong> first on a Mass Ride. Each
 turns its graph on or off and says so; More stays open, and the graphs change once it closes. While you are on the route, the graphs that are on stack at the top of the bottom panel on
 one distance axis, with a strip marking turns and busy junctions; on a shared ride they reach back to the last rider,
-each rider a dot. Stress is not a graph but a thin ribbon under the turns, in the map's stress colors with each
-stretch's level written on it and half steps dashed as on the map, so it fits beside Elevation. Along its top and
+each rider a dot. Stress is not a graph but a thin ribbon under the turns, in the map's stress colors, with no
+numbers and half steps dashed as on the map, so it fits beside Elevation. On a mountain-bike trail it takes the trail's
+map color (green, blue, black or red, and brown unrated) with brown stones along both edges. An Avoid stretch keeps its
+magenta, and a stretch above LTS 3 shorter than 0.1 mi [160 m] is drawn the ribbon's full height, over the lane and
+trail markings, so it stands out. Along its top and
 bottom edges run the map's rails: solid purple for a trail, posts for a protected bike lane and dots for a painted
 one (a painted lane on an LTS 4 road is left off, as on the map). Off unless you turn them on, and kept on this device. On a short screen or with Large text
-there may not be room for every graph that is on: only the first ones in More's order are drawn, or none, and a line
-names the rest, or, with no room for that line either, the app says "No room on this screen for: Elevation." once.
+there may not be room for every graph that is on: the graphs are then drawn as slim strips, each with a mark for its
+name and no height axis, and where even the turns' strip has no room the turns are drawn on the ribbon itself. Where
+the slim strips still do not fit, only the first ones in More's order are drawn, or none, and a line names the rest, or, with no room for that line either, the app says "No room on this screen for: Elevation." once.
 With no room for a graph beside the ribbon, the ribbon is drawn alone, and with no room even for that it is said
 instead. <strong>Topo lines</strong> (the contour icon), just before the gear, is always there. It
 turns the map's contour lines on or off, the same switch as Topo lines in Layers, Trails and terrain, and says "Topo lines on."
@@ -847,12 +857,14 @@ on a Roam detour.</li>
 start again part way along or resume a ride, it lists the route's stops with the ones behind you ticked ("Ticked stops
 are skipped. Untick one to go back to it."). <strong>Continue</strong> rides the rest. Untick a stop and the ride plans
 a way back to it; tick one ahead to skip it. Escape is Continue with the ticks as they are. It is not asked after Keep riding
-on the ride summary or on a Bikeshare or transit leg.</li>
+on the ride summary, on a Bikeshare or transit leg, or on a ride resumed within 2 hours of the app being put away.</li>
 <li><strong>Resume your ride?</strong> Start ride keeps the ride's route and stops on this device only, never on the
-server: no track, times or distances, only what was planned. Each new plan during the ride replaces it, and End ride
+server: no track, only what was planned and, once the app is put away mid-ride, the ride's distance, time and climb so far. Each new plan during the ride replaces it, and End ride
 removes it. If the app closes during a ride, opening it again within 12 hours of the route's last change asks, for example,
 "Resume your ride to Union Station?": <strong>Resume ride</strong> which starts the ride again from where you are, or <strong>Not now</strong>, which
-forgets it; Escape only puts the question off until the app next opens. A resumed ride rejoins the shared ride it
+forgets it; Escape only puts the question off until the app next opens. Back within 2 hours of switching away or
+turning the screen off, as for lunch, Resume ride carries on without asking which stops are done, and keeps the ride's
+distance, time and climb. A resumed ride rejoins the shared ride it
 was on, followed or led, so dots and alerts carry on; a leader leads again only while the link and its key are the
 same. Opening the app from a leader's link skips the question and joins that ride. Roam and a Roam detour cannot be resumed.
 Ride the rest and Bikeshare, transit, Walk and Run trips resume whole, walks to the start or from the end included:
@@ -1025,7 +1037,8 @@ ratings</a>. At zoom 11 and further out, the stress map draws only the long trai
 the Capital Crescent, the Metropolitan Branch Trail and the W&amp;OD, and roads closed to cars at set
 times. They show from the map's widest zoom, drawn above its main roads. The
 busiest bike corridors and long calm streets show there too, the long trails are named from zoom 10,
-and the well-known corridors at zoom 10 and 11. From zoom 12 the other paths and roads join them, with busy roads drawn faint until zoom 14 (one with its bike way mapped beside it waits for zoom 15 and stays faint).
+and the well-known corridors at zoom 10 and 11. A busier bikeshare street that is not a path, a protected lane,
+a named corridor or a road closed to cars at set times waits for zoom 12, so the opening view stays clear. From zoom 12 the other paths and roads join them, with busy roads drawn faint until zoom 14 (one with its bike way mapped beside it waits for zoom 15 and stays faint).
 In a city the map builds up as a road map does for cars. Off-road paths, protected lanes, the busier
 <a href="/about/stress.html#popular">popular bike corridors</a> and long calm streets come first, at zoom 12.
 Painted lanes and the other corridors follow at zoom 13. Every other street, sidewalk and busy road waits for
@@ -1063,7 +1076,7 @@ on.</li>
 <a href="/about/trails.html">Mountain Bike, Mountain Goat and Gravel</a>.</li>
 <li>In Plan, also <strong>Scenic</strong> and <strong>Potential closures</strong>, both off by default. Neither
 changes the route.</li>
-<li><strong>Closures</strong> in force now show on the map from zoom 11 even with no route (a route's own
+<li><strong>Closures</strong> in force now show on the map from zoom 12 even with no route (a route's own
 closures show at any zoom): red where a road or path is closed, orange where a bike lane is blocked or construction can be ridden past. Each leaves the map
 once it ends. DDOT's permits and planned work by DDOT, DC Water and WSSC Water show only with
 Potential closures on, as a dashed line marked by a barrier on a dashed ring with a question mark. More:
@@ -1194,17 +1207,25 @@ OSM</strong> to fix the map itself.</li>
 <h3>Keep</h3>
 <ul>
 <li><strong>Save route</strong> (signed in) puts the route in <strong>My routes</strong>, up to 200,
-each with a <strong>More</strong> button that opens its GPX, Rename, Versions (in Plan) and Delete. A search box finds a route by name. In Plan, once the route is up to date and you've picked it (when there is more than one line
+each with a <strong>More</strong> button that opens its GPX, Rename, Versions and Tags (both in Plan) and Delete. A row
+shows its tags, and Archived if it is. A search box finds a route by its name or tags. In Plan, once the route is up to date and you've picked it (when there is more than one line
 to choose from), the big button at the top of the map, where <strong>Update route</strong> sits, becomes <strong>Save route</strong>, with <strong>Start ride</strong>
 beside it (on a phone they read Save and Start). That Save also has <strong>Download GPX</strong>, and not
 signed in it offers <strong>Sign in with Discord</strong> (where available; your plan is kept) or
-Download GPX. A route someone sent you by link can be saved the same way. Any change to the plan brings
+Download GPX. A route someone sent you by link can be saved the same way. Plan's Save form has an optional
+<strong>Tags</strong> field (commas between tags; up to 8 a route, of up to 30 characters each), which offers the tags you
+already use. Each saved route records when it was last opened. At 200 routes a save first deletes the route archived
+longest and says which; with none archived, it asks whether to delete the route you have gone longest without opening
+(counted from when it was saved, if never opened), with Cancel first. Any change to the plan brings
 Update route back. With nothing planned yet, that button is <strong>Load route</strong>, which
 opens a short list. Not signed in, <strong>Sign in with Discord</strong> comes first (where
 available). Then <strong>Open GPX file</strong> asks the ride type and whether to <strong>Snap to roads</strong>
 (streets and paths bikes may ride; the default) or keep it <strong>Exactly as drawn</strong> (even where bikes may not ride), then
 <strong>Choose file</strong>. Below are your saved routes, then the routes kept on this device; one tap opens one.
-A search box appears once there are more than six.</li>
+A search box over names and tags appears once there are more than six, and a row of tag chips (All, then each tag in
+use) filters the list in one tap. Each saved route has <strong>Archive</strong>, which takes it out of the list, with
+<strong>Undo</strong> for 8 seconds; <strong>Archived (n)</strong> under the list opens the archived ones, each with
+<strong>Restore</strong>.</li>
 <li><strong>Keep for offline</strong> keeps a planned route on this device, up to 10, so it opens
 without signal, in the installed app or a browser tab. The last ride is kept too.</li>
 <li>Before a route is exported or kept, RouteMaker warns if it goes through a closure.</li>
@@ -1473,7 +1494,7 @@ from the app's next update.</li>
 <p class="next">Next: <a href="/about/accessibility.html">Accessibility</a></p>
 </main>
 <footer>
-  <p>Part of RouteMaker's documentation. It describes version 0.21.2. The code is
+  <p>Part of RouteMaker's documentation. It describes version 0.22.0. The code is
   open source under the MIT licence:
   <a href="https://github.com/Macrophage87/RouteMaker">github.com/Macrophage87/RouteMaker</a>.</p>
   <p><a href="/">Back to the map</a></p>

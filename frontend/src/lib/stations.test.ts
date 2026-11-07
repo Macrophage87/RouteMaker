@@ -205,9 +205,9 @@ test("the lists are in the Bikeshare panel only and a choice is forgotten with i
   // UI-CLEANUP: under Route, in a closed "Choose a station" fold (the approved mockup's control table).
   assert.match(
     app,
-    /usesBikeshare\(preset\) && points\.length > 0 \? \(\s*<Fold title=\{t\("Choose a station"\)\} icon="bikeshare" className="stations-fold">\s*<NearbyStations points=\{points\} pins=\{stationChoice\} onChoose=\{chooseStation\} \/>/,
+    /usesBikeshare\(preset\) && points\.length > 0 \? \(\s*<Fold title=\{t\("Choose a station"\)\} icon="bikeshare" className="stations-fold">\s*<NearbyStations\s+points=\{points\}\s+pins=\{stationChoice\}\s+onChoose=\{chooseStation\}/,
   );
-  assert.equal((app.match(/<NearbyStations /g) ?? []).length, 1, "in one place");
+  assert.equal((app.match(/<NearbyStations\s/g) ?? []).length, 1, "in one place");
   assert.match(app, /activePins\(preset, points, stationPins\)/);
   assert.match(app, /withStations\(withSpeed\(withWeight\(dials, weight\), ridingSpeed\), stationChoice\)/);
   assert.doesNotMatch(app, /encodePlan\([^)]*stationPins/, "never in the link");
@@ -243,6 +243,10 @@ test("each list is ranked toward the trip's other end once there is one", () => 
   assert.equal(listToward("dropoff", [A]), null);
   assert.deepEqual(listToward("pickup", [A, B]), B, "the pick-up list looks toward the destination");
   assert.deepEqual(listToward("dropoff", [A, B]), A, "the drop-off list looks back to the start");
+  // With a stop (v0.22.0; each stop starts a new trip): toward the trip's own other end.
+  const S = [-77.02, 38.91] as [number, number];
+  assert.deepEqual(listToward("pickup", [A, S, B]), S, "the pick-up list looks toward the first stop");
+  assert.deepEqual(listToward("dropoff", [A, S, B]), S, "the drop-off list looks back to the last stop");
 });
 
 test("the lede and the status say the order: nearest first, or on your way first", () => {

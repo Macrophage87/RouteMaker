@@ -351,6 +351,8 @@ export interface Cue {
   cross?: string;
   /** A turn onto a path just across a road (describe._far_side_turns): the road, said first ("Cross Saint Paul Street, then right onto ..."), drawn across it. */
   across?: string;
+  /** With `across`: the turn off a way alongside that road to cross it (the API's turn.across_from), drawn so. */
+  acrossFrom?: "left" | "right";
   /**
    * A turn onto an unnamed path that leads to a named one (describe._toward, round-2 D21): that one's name, said with
    * the path ("Right onto the path to Rock Creek Trail."). `street` stays "path", so the map, a report and "Where am
@@ -1023,6 +1025,9 @@ export function rideModel(route: RouteResponse, vias: readonly number[] = [], na
         ...(kind === "turn" && entry.turn?.shape && !entry.turn.cross ? { junction: entry.turn.shape } : {}),
         ...(kind === "turn" && entry.turn?.cross ? { cross: entry.turn.cross } : {}),
         ...(kind === "turn" && entry.turn?.across && !entry.turn.cross ? { across: entry.turn.across } : {}),
+        ...(kind === "turn" && entry.turn?.across && !entry.turn.cross && entry.turn.across_from
+          ? { acrossFrom: entry.turn.across_from }
+          : {}),
         ...(kind === "turn" && entry.turn?.exit ? { exit: entry.turn.exit } : {}),
         ...(kind === "turn" && toward(entry) ? { toward: toward(entry) as string } : {}),
         ...(kind === "turn" && entry.turn?.stay === true && !entry.turn.cross && !entry.turn.across ? { stay: true } : {}),
@@ -1141,10 +1146,25 @@ export function crossWords(road: string): string {
  * turn after it, or a turn onto a path just across a road (acrossWords). A crossing on its own is "cross", straight
  * over the road; null for any other cue.
  */
-export function crossArrow(cue: Pick<Cue, "cross" | "across" | "then" | "movement">): "cross" | "cross_left" | "cross_right" | null {
+export type CrossShape =
+  | "cross"
+  | "cross_left"
+  | "cross_right"
+  | "along_left"
+  | "along_left_left"
+  | "along_left_right"
+  | "along_right"
+  | "along_right_left"
+  | "along_right_right";
+
+export function crossArrow(cue: Pick<Cue, "cross" | "across" | "acrossFrom" | "then" | "movement">): CrossShape | null {
   const after = cue.cross ? cue.then?.[0]?.movement : cue.across ? cue.movement : undefined;
-  if (after === "left" || after === "bear_left") return "cross_left";
-  if (after === "right" || after === "bear_right") return "cross_right";
+  const side = after === "left" || after === "bear_left" ? "left" : after === "right" || after === "bear_right" ? "right" : null;
+  // A full turn off a way alongside the road to cross it (the owner, at West Basin Drive: "Left across
+  // road then right"): the road drawn alongside, the turn over it, then the turn after it on the far side.
+  const from = cue.cross ? (cue.movement === "left" || cue.movement === "right" ? cue.movement : null) : cue.across ? cue.acrossFrom ?? null : null;
+  if (from) return side ? `along_${from}_${side}` : `along_${from}`;
+  if (side) return `cross_${side}`;
   return cue.cross ? "cross" : null;
 }
 

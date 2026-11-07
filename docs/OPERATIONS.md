@@ -57,6 +57,7 @@ Contents:
 - [DC closures (v0.7.0)](#dc-closures-v070)
 - [DDOT project advisories (v0.12.4)](#ddot-project-advisories-v0124)
 - [Purple Line construction closures (v0.13.0)](#purple-line-construction-closures-v0130)
+- [Fairfax park trail closures (v0.22.0)](#fairfax-park-trail-closures-v0220)
 - [Deer-management closures (v0.12.3)](#deer-management-closures-v0123)
 - [DC pavement condition (DC-PCI)](#dc-pavement-condition-dc-pci)
 - [Agency traffic signals (signals.json)](#agency-traffic-signals-signalsjson)
@@ -83,6 +84,7 @@ Contents:
 - [Deploying v0.21.0](#deploying-v0210)
 - [Deploying v0.21.1](#deploying-v0211)
 - [Deploying v0.21.2](#deploying-v0212)
+- [Deploying v0.22.0](#deploying-v0220)
 - [Deploying a planner and front-end release: rollback points and verification](#deploying-a-planner-and-front-end-release-rollback-points-and-verification)
 - [Paths bicycles may not ride (NO-BIKE-PATHS)](#paths-bicycles-may-not-ride-no-bike-paths)
 - [Mountain-bike difficulty levels (456; claude/v0-4-0-mtb-levels)](#mountain-bike-difficulty-levels-456-claudev0-4-0-mtb-levels)
@@ -738,7 +740,15 @@ each time). After the swap:
 busy-class road meets the route, with a 3 ft (1 m) radius, and again, with a
 100 ft (30 m) radius, for each 50 of those whose control is not already a signal, to
 read the signals and stop signs OSM puts on the stop lines up the approaches
-(review r2; `core.junctions.APPROACH_RADIUS_M`): about 2 to 12 calls a plan.
+(review r2; `core.junctions.APPROACH_RADIUS_M`). Each batch is asked twice, as a
+bicycle and as a car (`core.junctions.LOCATE_COSTINGS`), and the two answers merged:
+`/locate` answers only the edges its costing may use, so asked as a bicycle alone it left
+out every road closed to bicycles, and an at-grade crossing of the George Washington
+Memorial Parkway (`bicycle=no`, 4 lanes at 45 mph, at Tulane Dr by the Mount Vernon
+Trail) cost nothing (an owner report). If the car batch fails, the bicycle's answer
+is read alone, as before. The plan's `/locate` cache keys each answer by its costing too
+(`refine.locator`). About 4 to 24 calls a plan; the timings below were measured on bicycle
+answers, and a car answer near a motorway interchange is larger.
 Measured on the live router, a batch of 50 at 100 ft (30 m) took 0.1-0.3 s and
 2.6 MB, against 0.04-0.15 s and 0.5 MB at 3 ft (1 m). A plan with a red junction
 1,640 ft (500 m) or more from both ends asks the router for one more route (crossing
@@ -4213,14 +4223,22 @@ at `/routes/` and from Go's More > Featured routes. Instance admins write them:
    section **From mile** and **To mile** (along the route from its start, as the app's charts
    count them) and the page draws a small map of just that stretch under its heading; leave both
    blank for none.
-3. Save as **Draft** first and press **View on site**: the page shows only to instance admins.
+3. Save as **Draft** first and press **View on site**: the page shows only to instance admins
+   who are signed in (signed out, it says there is no post there and offers **Sign in**).
    Press **Use this map as the link picture** under the post; the browser draws the map at
    1200 x 630 with its credits and sends it, and chat apps then show the map. Until then they show
    the shared route's preview picture: the line over the server's plainer drawing of the base map.
    Photos (v0.12.4): on the same page, **For admins > Photos** adds up to 20, each with alt text
    (required), a caption (optional) and **Where** (About this ride or one highlight). The browser
-   shrinks each and saves it again as a JPEG, so its Exif (location, date, camera) does not go with
-   it, and the server strips anything left. A photo the browser can't open (some phone formats,
+   shrinks each and saves it again as a JPEG, so its Exif (date, camera) does not go with it, and
+   the server strips anything left. Where it was taken is kept (v0.22.0; the owner: "people want
+   to know where they are taken"): the browser reads it from the file first and sends it alongside,
+   the caption gets a **Where it was taken** link to that spot on the map, and the served file
+   carries it as Exif GPS. A spot inside the author's Home circle is dropped (the photo stays). A
+   phone with location tagging off writes an empty GPS block, so its photos have no spot. An
+   assistant on the site's connector (draft_route_post) gets an upload link per described photo
+   and can send the file itself while the post is a draft (image/jpeg, at most 2048 px a side and
+   900 KB, 24 hours, once; `?lat=&lon=` when the file has no spot). A photo the browser can't open (some phone formats,
    such as HEIC) must be saved as a JPEG or PNG first. Change alt text, caption, section or order,
    or delete a photo, in the admin. A photo's Where is a highlight's number, so after deleting or
    reordering highlights check each photo's place; one numbered past the last highlight shows under
@@ -5616,7 +5634,7 @@ out.
 1. `python scripts/ddot_advisories.py watch --days 45` lists the dated advisories on every
    DDOT advisories page changed in that time whose link is not yet in the file's `seen`.
    It first prints a `CHECK:` line for each hand-kept date due a look: a guessed last day
-   (`"end_estimated": true`) within 30 days, this file or the Purple Line's not updated in 45
+   (`"end_estimated": true`) within 30 days, this file, the Purple Line's or Fairfax's park alerts' not updated in 45
    days, and the deer schedules' assumed season (14 days ahead) or last night (30 days ahead).
 2. Read each one (the link is the release, PDF or Word). For a closure, add an entry:
    `id`, `project`, `page` (the advisories page, which the card links), `advisory` (the
@@ -5675,6 +5693,46 @@ The notices give no end for the block, so its last day is 2027-03-31, the Purple
 2027 opening (`end_estimated`, so the watch reminds from March 1): check it in March, and sooner if the Dixon junction's notice (through October
 2026) is not renewed. The strip the router excludes also takes the block's own sidewalks and crossings (3 to 5
 m off the centre line) inside the work zone.
+
+## Fairfax park trail closures (v0.22.0)
+
+The Fairfax County Park Authority posts its trail and bridge closures (the Cross County Trail
+included) only as words on its Park Alerts page, <https://www.fairfaxcounty.gov/parks/park-alerts>:
+one list item a park, with no map, and nothing on the parks' own pages. Virginia's WZDx feed is
+VDOT's roads. A closed bridge by the Lake Accotink marina on the Cross County Trail was missed
+this way (the owner: "There's a closure on the cross county trail. See where this is posted and
+how it was missed"), and the owner chose (2026-11-07) "Watch Park Alerts, you confirm". So these are read by hand into
+`src/core/geodata/fcpa-closures.json` (`routemaker.fcpa`), in the same shape as the DDOT
+advisories file: source `fcpa` ("Fairfax County Park Authority park alert"), routed round, red on
+the map, whole days, gone after the last day.
+
+**Each week (or when the owner reports a missed closure):**
+
+1. `python scripts/fcpa_alerts.py watch` prints the page's items not yet in the file's `seen`
+   list, the ones naming a trail, bridge or path in full, then the rest one line each (read
+   those too: a closure may not use those words); and a `CHECK:` line for a guessed last day
+   within 30 days or the file not updated in 45 days (`scripts/ddot_advisories.py watch` prints
+   these as well).
+2. For each trail item that closes a way a bicycle uses (a trail, a bridge on one), find the
+   OpenStreetMap ways from the alert's words and its linked map, and draft an entry: `id`,
+   `project` (the park), `page` (the Park Alerts page), `advisory` (the alert's own map or
+   project page where it links one, else the page), `posted` (the alert's date on the page),
+   `road` (as a rider would name it: "Cross County Trail bridge by the Lake Accotink marina"),
+   `on_foot` (true: the park closes it to everyone), `reason`, `first_day`, `last_day`, `ways`
+   (kept for reference; the router reads `lines`) and `lines`
+   (`python scripts/ddot_advisories.py lines WAY ...`). "Until further notice" has
+   no end: give the last day a month on and `"end_estimated": true`, so the watch asks again.
+   Work that leaves the trail open ("follow all posted signage") stays out.
+3. Show the owner each draft (the alert's words, the ways on a map) and enter only what the
+   owner confirms. Evidence is the Park Authority's words and what a rider saw, never another map.
+4. `python scripts/fcpa_alerts.py watch --mark` adds every item now on the page to `seen` and
+   sets `updated` to today. An item whose words change is listed again.
+5. Ship the file in the next release, as for the other hand-read files.
+
+The first watch listed 12 trail items, among them the Lake Accotink marina bridge
+(closed for repairs, "reopen by Friday, Nov. 13"), the Cross County Trail under the Dulles Toll
+Road ("until Fall 2026"), the Pimmit Run sewer work and several bridges closed until further
+notice; none was entered before the owner's review.
 
 ## Deer-management closures (v0.12.3)
 
@@ -6366,6 +6424,19 @@ those carries a queueing lock, so the wedged row blocks that task's next tick
 the same way the rebuild's blocks Tuesday's — and the task goes stale on its
 own window (26 hours for the backup, 12 for the membership sweep) with nothing
 else to say why. The repair below is the same command with the same argument.
+
+**Most of those clear themselves.** Every five minutes the worker heartbeat
+(`core.runs.close_orphaned_jobs`) finishes as `aborted` each maintenance-queue
+job that is `doing` with its worker row gone or silent for 5 minutes (wider
+than the 30-second test below, which only lists it), writes an audit row
+(`close_orphaned_job`) and names the ids on its run row. Those tasks are
+periodic, so the next tick is the retry (`draw_share_preview` is not; the
+link's first fetch draws its picture). It leaves two for you: a
+`nightly_backup` (requeue it with `unwedge_job` so tonight's backup is not
+lost) and anything on the rebuild queue. A job past its budget whose worker is
+still beating is never closed. Before v0.22.0 this did not exist, which is how
+three dead `refresh_dc_closures` rows from 2026-10-19 stayed on beta's alert
+for weeks while the closures themselves kept refreshing.
 
 The operations page and `manage.py check_operations` both name it — a job
 `doing` whose worker is gone (no worker row, or no heartbeat for over 30
@@ -7279,7 +7350,7 @@ changed`), as at v0.19.0, though the column is optional: the beta ships by hand,
 - [ ] **Rollback.** The `pre-rel` api and pipeline images (`--force-recreate api worker rebuild`)
   and the v0.20.0 front end. Migration 0056 only adds a table: the v0.20.0 api ignores it, so the
   database stays migrated. A schedule rebuilt with tracks still works with the v0.20.0 api (it
-  ignores `shape` and `cuts`). On the beta: rollback A (the snapshot is there if needed), then
+  ignores `shape` and `cuts`). On the beta: rollback C (docs/BETA-RUNBOOK.md; the snapshot is there if needed), then
   `auto-release.sh hold v0.21.0` so the agent does not deploy it again.
 
 ## Deploying v0.21.1
@@ -7342,6 +7413,91 @@ rebuild.**
   to test here!" (the Android beta page) and "Using RouteMaker". The Stress ratings page shows four
   comparison charts under "How our ratings compare with each agency's".
 - [ ] **Rollback.** The v0.21.1 front end. Nothing in the database, the api or the map changes.
+
+## Deploying v0.22.0
+
+Saved routes' tags, Archive and last opened, with the connector's `organize_route` (#1021);
+Rebalance Ride from a start alone, the drop-off dock chosen at the pick-up and the day's totals
+(#1023); stops on Bikeshare Ride, each stop a new trip (#1019; Rebalance Ride, a start alone since
+#1023, takes none); mountain-bike trails
+by level on the ride ribbon and the route line, slim ride graphs and a quiet Resume within 2 hours
+(#1025, #1034); a quieter opening view (#1016); Fairfax park trail closures (#1029: the watch and
+the file, which ships with no closure, each waiting for the owner's confirmation); Featured routes
+photos with where each was taken and the assistant's upload links (#1030); junction and ride cue
+fixes (#1026, #1027, #1028, #1036); the beta agent's release-notes post
+(#1039) and the riders' notes posted by the owner's bot with their pictures (#1041, #1042); the
+worker closing maintenance jobs whose worker died mid-run (#1043); and "Same ride or a new one?" in every tab (#1012, #1013), the
+ride rail on a small phone (#1015) and the ride graph tidy-ups (#1014).
+
+**What changes for the host.** Migrations 0057 (`saved_route.tags`, `archived_at`, `opened_at`,
+`replaced_by`; `connector_grant.organizes_routes`) and 0058 (`route_post_photo.lat`, `lon`): columns
+only, the ones that are not nullable with a database default, so the v0.21.x api keeps working on
+the migrated database. A new url, `routes/<slug>/photos/send/<token>` (the assistant's photo upload,
+signed, in `core.route_posts`; on the beta it sits behind the site's password like every page, so
+an assistant's upload there is refused with 401: the links work on the public site). `src/core/geodata/fcpa-closures.json` and `routemaker.fcpa` (read by
+the api; `scripts/fcpa_alerts.py` is run by hand, "Fairfax park trail closures"). The api and the
+front end change together: the new front end sends Bikeshare plans with stops and a
+Rebalance plan with no destination, which the v0.21.x api refuses (400), so the front end goes up
+only after the api, as always. The other way round is safe: a v0.21.x page still open, a link or a
+saved Rebalance plan with a destination is planned by the new api from its start alone. **No `src/pipeline/`, `lua/`, `valhalla/*.json`, compose, Caddyfile,
+nginx, Dockerfile, requirements or `mobile/` change, no tile `FORMAT_VERSION` change, no new
+environment variable, scheduled job or outbound host for the stack, and no map rebuild** (the trail
+levels come from the live map's `mtb_level`). The routers need no restart, and the pipeline image
+need not be rebuilt. The beta agent's gate from v0.21.0 or later says `deploy`, with migrations.
+At home, in order, with `</dev/null` on every docker command:
+
+- [ ] **The tag.** Once `test` and `a11y` are green on `main`, the owner tags v0.22.0 (annotated) on
+  that commit, from the PC.
+- [ ] **Rollback points and images**, as "Deploying a planner and front-end release", out of
+  07:00-07:30 UTC: tag the running api image `pre-rel-<short>`, keep `index.html`, fast-forward the
+  checkout, then `docker compose build api`.
+- [ ] **The api.** `docker compose run --rm --no-deps migrate` (0057, 0058), then
+  `docker compose up -d --no-deps --no-build --force-recreate api worker`, with no job todo or
+  doing. No router restart, no pre-draw.
+- [ ] **The front end**, last.
+- [ ] **The connector.** A grant made before v0.22.0 has no `organize_route`; the owner reconnects
+  RouteMaker in the assistant (claude.ai, Settings, Connectors) to give it the new permission.
+- [ ] **Beta, by its agent**, once its deployed tag (`$RM_STATE/cd/deployed-tag`) is v0.21.0 or
+  later: the gate says `deploy` with migrations; the agent snapshots the database first, migrates,
+  builds the api and the front end and starts them in one pass. The agent itself changed (#1039: it
+  posts the live release's notes when a newer tag is held or waiting); after the deploy it puts its
+  own new files in `$RM_STATE/cd/bin` (the run log says "step: the release changed the agent"). Only
+  if the log says "WARNING: the agent's files could not all be reinstalled", run
+  `scripts/beta/auto-release.sh install` from the v0.22.0 checkout. The riders' notes are now posted
+  by the owner's own bot (#1041), with its token already in `$RM_STATE/discord/bot-token` ("Tester
+  reports"): once, store the changelog channel's id in `$RM_STATE/discord/changelog-channel` and run
+  `auto-release.sh install` (BETA-RUNBOOK, "Release notes for riders"). Until then the agent falls
+  back to the old release webhook while `$RM_STATE/release-webhook` is stored, and with neither
+  nothing is posted. The pass that deploys v0.22.0 runs the agent of before it, so v0.22.0's own notes
+  may still go by the webhook; the bot posts from the next pass on. Stuck: `git fetch --force --tags
+  origin`, then `scripts/beta/auto-release.sh retry v0.22.0`.
+- [ ] **Beta, by hand, if it is still on v0.20.0** (v0.21.0's hand ship not yet done): the gate from
+  v0.20.0 stops on `src/pipeline/schema.py`, as at v0.21.0. Ship v0.22.0 by hand once, in place of
+  v0.21.0's, as "Deploying v0.21.0" says (pause, snapshot `--label release`, `index.html`, check out
+  the tag, `TAG=`, `check_beta_compose.py`, the api image, migrate (0056 to 0058), api and worker,
+  the front end, `smoke-test.sh --local --trails` then `--public`), with the rebuilt transit
+  schedule's `transit` part if it is ready. The agent changed since v0.20.0:
+  `mark-deployed v0.22.0`, then `scripts/beta/auto-release.sh install`, then `resume`.
+- [ ] **Stuck jobs (#1043).** Within 10 minutes of the worker's restart (on the beta too, once it runs v0.22.0), the old
+  `refresh_dc_closures` rows from 2026-10-19 are closed as `aborted` (an audit row
+  `close_orphaned_job` each) and the alert's stuck-job lines go. A `nightly_backup` or rebuild job
+  is never closed this way ("Most of those clear themselves").
+- [ ] **Spot checks.** Tag a saved route (Save, or My routes > More > Tags); in Load route, filter
+  by that tag, then Archive another: it leaves the list, Undo brings it back, and it is under
+  Archived. Rebalance Ride in Go plans from your location to the nearest crowded dock with no
+  destination asked; at that dock the card offers up to 3 drop-off docks, and the end screen shows
+  "Today's Rebalance Rides". A Bikeshare plan with one stop shows two trips. A ride on a
+  mountain-bike trail (Patapsco, Rosaryville) colours the ribbon and the route line by the trail's
+  level. Mid-ride, switch to another app and come back within 2 hours, press Resume: the same ride
+  carries on, its figures kept, with no "Already done?". Zoomed out below 12, no route shields or
+  area closures. On the public site, on a Featured route draft, an assistant's photo goes up by its
+  link and keeps where it was taken ("Where it was taken" under it).
+- [ ] **Rollback.** The `pre-rel` api image (`--force-recreate api worker`) and the v0.21.2 front end.
+  Migrations 0057 and 0058 only add columns with defaults or nulls: the v0.21.2 api ignores them,
+  so the database stays migrated (tags and archive marks made meanwhile are kept, unseen). On the
+  beta: the agent rolls back by itself on a failed pass; later, or after a hand ship, rollback C
+  (docs/BETA-RUNBOOK.md: the previous api image and front end; the `release` snapshot only if
+  needed), then `auto-release.sh hold v0.22.0` so the agent does not deploy it again.
 
 ## Deploying a planner and front-end release: rollback points and verification
 
