@@ -92,6 +92,8 @@ CONTRACT_KEYS = {
     "road_hazards",
     # Additive, v0.12.3: the rustic roads, byways and named bike routes it rides.
     "scenic_roads",
+    # The rated and unrated mountain-bike trails it rides (2026-11-07), for the ribbon and line.
+    "trail_levels",
     "steep_grades",
     "calm_search",
     "detour",
@@ -272,6 +274,9 @@ def post(client, body, content_type: str = "application/json", **extra):
 
 
 def good_body(preset: str = "default") -> dict:
+    # Rebalance Ride takes the start alone (Stephen, 2026-11-07).
+    if preset == "rebalance":
+        return {"points": [list(VERTICES[0])], "preset": preset}
     return {"points": [list(VERTICES[0]), list(VERTICES[-1])], "preset": preset}
 
 

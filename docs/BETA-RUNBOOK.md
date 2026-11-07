@@ -1372,7 +1372,9 @@ usual way forward.
 the agent copies them from the deployed checkout into `$RM_STATE/cd/bin`, so the next pass runs
 them. The systemd units are written only by `install`: rerun
 `"$RM_SRC/scripts/beta/auto-release.sh" install` (it keeps the state) when a release's notes say
-the units changed, or if the report says the copy failed.
+the units changed, or if the report says the copy failed. A release shipped by hand is not deployed
+by the agent, so `mark-deployed` leaves the old copies in `$RM_STATE/cd/bin`: when such a release
+changes the agent's files, rerun `install` after `mark-deployed`.
 
 **Disk.** `status` shows the free space on Docker's root and `$RM_STATE`, the number of api
 images, the `<db>_before_<time>` databases restores left, and the `node_modules` copies.
@@ -1500,27 +1502,37 @@ cd "$RM_SRC"
 "$RM_SRC/scripts/beta/auto-release.sh" install  # once, so the agent's installed copy posts its results too
 ```
 
-**Release notes for riders (a second, read-only channel).** The live release's notes,
-`docs/releases/<tag>.md` from its checkout (docs/releases/README.md), go to a second webhook: the
-title "RouteMaker vX.Y.Z is on beta", then the notes, split at line ends to fit. The agent tries on
-each deploy and each up-to-date pass until they are posted, once per tag
-(`$RM_STATE/alerts/release-posted`; a pass that stops part-way resumes at the next message). A
-deploy first refreshes the installed `alert.sh` from the deployed checkout, so the release that
-brings this posts its own notes. A tag without a notes file posts the title alone; a failure is
-reported once a day in the alerts channel and never fails a pass. By hand:
-`alert.sh release-notes vX.Y.Z "$RM_SRC/docs/releases/vX.Y.Z.md"`.
-In Discord: a text channel whose `@everyone` permissions allow View Channel and Read Message
-History and deny Send Messages and Create Threads (a webhook still posts there), then its own
-webhook. On the server:
+**Release notes for riders (the read-only changelog channel).** The live release's notes,
+`docs/releases/<tag>.md` from its checkout (docs/releases/README.md), are posted by the owner's
+own bot (the owner, 2026-11-07: "I want a bot I have control over"), with
+`scripts/discord_reports.py changelog`: the title "RouteMaker vX.Y.Z is on beta", then the notes,
+split at line ends to fit, with each picture in the notes (docs/releases/README.md)
+attached as its own message. The old webhook fallback cannot attach pictures: it posts their
+lines as plain text. The agent tries on each deploy, and on each pass that finds it up to
+date or a newer tag held, failed or waiting (the usual state after a release shipped by hand),
+until they are posted, once per tag (`$RM_STATE/alerts/release-posted`; the bot also skips any
+message it already posted in the channel, so a pass that stopped part-way posts only the rest).
+A failure is reported once a day in the alerts channel and never fails a pass. By hand:
+`"${RM_PY:-python3}" "$RM_SRC/scripts/discord_reports.py" --dir "$RM_STATE/discord" changelog vX.Y.Z "$RM_SRC/docs/releases/vX.Y.Z.md"`
+(add `--dry-run` to see the messages first).
+
+In Discord: the changelog channel's `@everyone` permissions allow View Channel and Read Message
+History and deny Send Messages and Create Threads; the bot's role is allowed View Channel, Send
+Messages, Attach Files and Read Message History there. Copy the channel's id (Developer Mode, right-click the
+channel, Copy Channel ID). On the server, with the bot token already in `$RM_STATE/discord/bot-token`
+("Tester reports"):
 
 ```sh
 . "$HOME/routemaker-beta-state/vars.sh"
 cd "$RM_SRC"
-"$RM_SRC/scripts/beta/alert.sh" set-release-webhook   # skip if $RM_STATE/release-webhook is already stored (it is); paste, Enter, Ctrl-D; mode 600
-"$RM_SRC/scripts/beta/alert.sh" release-test          # one test message in the release channel
+mkdir -p "$RM_STATE/discord"; printf '%s\n' 'CHANNEL_ID' >"$RM_STATE/discord/changelog-channel"   # the copied id in place of CHANNEL_ID
+"$RM_SRC/scripts/beta/auto-release.sh" install                         # once, so the agent's copy has this
 ```
 
-Without `release-webhook` nothing is posted there, and the alerts channel is unchanged.
+Without `changelog-channel` the agent falls back to the old release webhook
+(`alert.sh release-notes`, `$RM_STATE/release-webhook`) while one is stored; with neither, nothing
+is posted there, and the alerts channel is unchanged. Once the bot posts, the old webhook can be
+deleted in Discord and `$RM_STATE/release-webhook` removed.
 
 Day to day: `journalctl --user -u routemaker-beta-alert --since today` shows each check;
 `ls "$RM_STATE/alerts"` shows what is currently posted (a `.strike` file is a failure seen once).

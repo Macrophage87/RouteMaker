@@ -23,7 +23,8 @@ export interface KeptOptions {
  * on a Rebalance Ride, nor Rebalance's on Bikeshare (review of PR #110).
  */
 export function optionsKey(points: readonly LonLat[], preset: string): string {
-  if (points.length < 2) return "";
+  // A Rebalance Ride has the start alone (2026-11-07): its trip is its start.
+  if (points.length < (preset === "rebalance" ? 1 : 2)) return "";
   const a = points[0];
   const b = points[points.length - 1];
   return `${preset}:${a[0]},${a[1]}>${b[0]},${b[1]}`;
@@ -63,7 +64,8 @@ export function pickedOption(options: readonly BikeshareOption[], plan: Bikeshar
  */
 export function optionPins(option: BikeshareOption, points: readonly LonLat[]): Pins {
   const pins: Pins = {};
-  if (points.length < 2) return pins;
+  // One point is a Rebalance Ride's start alone (lib/stations.ts activePins holds both pins to it).
+  if (points.length < 1) return pins;
   if (option.pickup_station) pins.pickup = { id: option.pickup_station, name: option.pickup.name, at: points[0] };
   if (option.dropoff_station) pins.dropoff = { id: option.dropoff_station, name: option.dropoff.name, at: points[points.length - 1] };
   return pins;

@@ -263,7 +263,13 @@ ES: dict[str, str] = {
     ),
     "1 free slot": "1 espacio libre",
     "{n} free slots": "{n} espacios libres",
-    ", which needs bikes": ", que necesita bicicletas",
+    (
+        "Then choose where to dock, from the counts at the dock. "
+        "For now the nearest that needs bikes is {place}, {distance} away."
+    ): (
+        "Luego elija dónde anclar, según los datos del anclaje. "
+        "Por ahora, el más cercano que necesita bicicletas es {place}, a {distance}."
+    ),
     "Ride {distance} to the dock at {place}{needs} ({slots}).": (
         "Vaya en bicicleta {distance} hasta la estación {place}{needs} ({slots})."
     ),
