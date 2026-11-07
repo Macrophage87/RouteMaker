@@ -863,6 +863,8 @@ def _ask(
                 logger.info("intersection nodes unavailable for a %s batch: %s", costing, error)
                 if costing == LOCATE_COSTINGS[0]:
                     # Without the rider's own edges nothing at the node can be read.
+                    for other in futures[1:]:
+                        other.cancel()
                     answered = []
                     break
                 answered.append([])
