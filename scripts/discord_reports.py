@@ -114,7 +114,13 @@ class Discord:
     def __init__(self, token: str) -> None:
         self._token = token
 
-    def send(self, method: str, path: str, body: dict | None = None, files: list[Path] = ()):
+    def send(
+        self,
+        method: str,
+        path: str,
+        body: dict | None = None,
+        files: tuple[Path, ...] | list[Path] = (),
+    ):
         content_type = "application/json"
         if files:
             data, content_type = multipart(body or {}, files)
@@ -219,6 +225,8 @@ def image_path(base: Path | None, name: str) -> Path:
     path = (root / name).resolve()
     if not path.is_relative_to(root):
         raise DiscordError(f"{name}: an image must sit inside {root}")
+    if not re.fullmatch(r"[A-Za-z0-9._-]+", path.name):
+        raise DiscordError(f"{name}: name the file with letters, digits, '.', '_' or '-' only")
     if path.suffix.lower() not in IMAGE_TYPES:
         raise DiscordError(f"{name}: not an image Discord shows ({', '.join(IMAGE_TYPES)})")
     if not path.is_file():

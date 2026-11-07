@@ -15,7 +15,8 @@ screenshots or diagrams, each on its own line where it belongs:
 ![Tags and the Archive in My routes](images/v0.22.0/route-tags.png)
 ```
 
-The files go in `images/<tag>/` beside the notes: PNG, JPEG, GIF or WebP, under 10 MB each
+The files go in `images/<tag>/` beside the notes, named with letters, digits, `.`, `_` and `-`
+only: PNG, JPEG, GIF or WebP, under 10 MB each
 (smaller is kinder to phones; a few hundred KB is plenty). The bot posts each one as its own
 message with the caption as its words and its alt text, and GitHub shows them in place. The same
 rules as the words: no real ride, rider location, account or server address in a picture.

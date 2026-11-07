@@ -473,6 +473,7 @@ def test_another_versions_messages_do_not_count_as_posted(changelog_dir, monkeyp
         ("![x](../secret.png)", "inside"),
         ("![x](images/missing.png)", "no such image"),
         ("![x](images/v0.22.0/notes.txt)", "not an image"),
+        ("![x](images/v0.22.0/a%20b.png)", "letters, digits"),
     ],
 )
 def test_bad_images_stop_the_post_before_anything_is_sent(
