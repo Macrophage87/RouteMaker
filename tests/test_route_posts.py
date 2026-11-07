@@ -1229,3 +1229,68 @@ def test_signed_out_a_draft_and_a_missing_post_say_the_same_with_the_way_in() ->
     rider = signed_in(make_user()).get("/routes/mall-loop").content.decode()
     assert route_posts.SIGN_IN_FOR_DRAFTS not in rider and route_posts.NOT_FOUND in rider
     assert "mall-loop" in signed_in(admin).get("/routes/mall-loop").content.decode()
+
+
+@db
+def test_an_upload_link_fills_a_draft_only_never_a_published_post() -> None:
+    admin = make_user(is_instance_admin=True)
+    post = described_draft(admin)
+    link = route_posts.photo_link_path(post, post.photos.first())
+    RoutePost.objects.filter(pk=post.pk).update(status=RoutePost.Status.PUBLISHED)
+    assert Client().post(link, phone_jpeg(), content_type="image/jpeg").status_code == 404
+    assert post.photos.filter(image__isnull=False).count() == 0
+
+
+@db
+def test_a_link_for_a_photo_described_again_is_gone() -> None:
+    admin = make_user(is_instance_admin=True)
+    post = described_draft(admin)
+    link = route_posts.photo_link_path(post, post.photos.first())
+    post.photos.all().delete()
+    assert Client().post(link, phone_jpeg(), content_type="image/jpeg").status_code == 404
+
+
+@db
+def test_two_sends_at_once_fill_a_photo_once() -> None:
+    admin = make_user(is_instance_admin=True)
+    post = described_draft(admin)
+    first, second = (RoutePostPhoto.objects.get(pk=p.pk) for p in [post.photos.first()] * 2)
+    cleaned = route_posts.clean_jpeg(phone_jpeg())
+    empty = lambda: RoutePostPhoto.objects.filter(pk=first.pk, image__isnull=True)  # noqa: E731
+    route_posts._keep_photo(first, cleaned, (4, 3), LINCOLN, only_if=empty())
+    route_posts._keep_photo(second, cleaned, (4, 3), None, only_if=empty())
+    assert first.pk is not None and second.pk is None
+    assert RoutePostPhoto.objects.get(pk=first.pk).lat == LINCOLN[0]
+
+
+@db
+def test_an_upload_link_never_keeps_a_spot_at_the_authors_home() -> None:
+    admin = make_user(is_instance_admin=True)
+    MyGo.objects.update_or_create(
+        user=admin, defaults={"home_lat": LINCOLN[0], "home_lon": LINCOLN[1]}
+    )
+    post = described_draft(admin)
+    memorial, pool = post.photos.order_by("position")
+    send = lambda path, body: Client().post(path, body, content_type="image/jpeg")  # noqa: E731
+    by_exif = send(route_posts.photo_link_path(post, memorial), located_jpeg(*LINCOLN))
+    by_link = send(
+        route_posts.photo_link_path(post, pool) + f"?lat={LINCOLN[0]}&lon={LINCOLN[1]}",
+        phone_jpeg(),
+    )
+    assert by_exif.status_code == by_link.status_code == 201
+    assert by_exif.json()["located"] is False and by_link.json()["located"] is False
+    assert not post.photos.filter(lat__isnull=False).exists()
+
+
+@db
+def test_a_photo_at_the_senders_home_keeps_no_spot_even_on_anothers_post() -> None:
+    author = make_user(is_instance_admin=True)
+    make_post(author)
+    sender = make_user(is_instance_admin=True)
+    MyGo.objects.update_or_create(
+        user=sender, defaults={"home_lat": LINCOLN[0], "home_lon": LINCOLN[1]}
+    )
+    _client, send = admin_client(sender)
+    made = send({"photo": upload(located_jpeg(*LINCOLN)), "alt_text": "Near the sender's home"})
+    assert made.status_code == 201
+    assert RoutePostPhoto.objects.get().lat is None

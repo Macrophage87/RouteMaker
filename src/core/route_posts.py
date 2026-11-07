@@ -1401,11 +1401,11 @@ def exif_spot(data: bytes) -> tuple[float, float] | None:
             if order not in ("II", "MM") or _tiff_value(tiff, order, 2, 2) != 42:
                 return None
             first = _tiff_value(tiff, order, 4, 4)
-            gps = _tiff_ifd(tiff, order, first or 0).get(0x8825)
-            if gps is None:
+            gps = _tiff_ifd(tiff, order, first).get(0x8825) if first else None
+            pointer = _tiff_value(tiff, order, gps[2], 4) if gps else None
+            if not pointer:
                 return None
-            pointer = _tiff_value(tiff, order, gps[2], 4)
-            fields = _tiff_ifd(tiff, order, pointer or 0)
+            fields = _tiff_ifd(tiff, order, pointer)
             lat, lon = _degrees(tiff, order, fields.get(2)), _degrees(tiff, order, fields.get(4))
             if lat is None or lon is None:
                 return None
@@ -1487,7 +1487,9 @@ def photo_spot(lat, lon, *people) -> tuple[float, float] | None:
     return round(lat, SPOT_PLACES), round(lon, SPOT_PLACES)
 
 
-def _keep_photo(photo, cleaned: bytes, size, spot) -> None:
+def _keep_photo(photo, cleaned: bytes, size, spot, *, only_if=None) -> None:
+    """Give the photo its file and spot. With `only_if` (a query for the photo), only when it
+    still matches, as one UPDATE; else `photo.pk` is set to None to say it was not."""
     photo.image, photo.key = cleaned, hashlib.sha256(cleaned).hexdigest()[:16]
     photo.width, photo.height = size
     photo.lat, photo.lon = spot if spot else (None, None)
@@ -1495,7 +1497,12 @@ def _keep_photo(photo, cleaned: bytes, size, spot) -> None:
         # The address changes with the spot too, so a cache never serves the photo without it.
         tag = f"{spot[0]},{spot[1]}".encode()
         photo.key = hashlib.sha256(cleaned + tag).hexdigest()[:16]
-    photo.save()
+    if only_if is None:
+        photo.save()
+        return
+    fields = ("image", "key", "width", "height", "lat", "lon")
+    if not only_if.update(**{f: getattr(photo, f) for f in fields}):
+        photo.pk = None
 
 
 @require_http_methods(["POST"])
@@ -1601,16 +1608,20 @@ def photo_link_upload(request, slug: str, token: str):
     from django.core import signing
 
     from .audit import record
+    from .models import RoutePostPhoto
 
     try:
         post_pk, photo_pk = signing.loads(token, salt=PHOTO_LINK_SALT, max_age=PHOTO_LINK_SECONDS)
     except (signing.BadSignature, TypeError, ValueError):
         return HttpResponse(status=404)
     post = _post(slug)
-    if post is None or post.pk != post_pk or post.status == "withdrawn":
+    # A draft only: what an assistant sends is seen by an admin before anyone else.
+    if post is None or post.pk != post_pk or post.status != "draft":
         return HttpResponse(status=404)
-    photo = post.photos.filter(pk=photo_pk, image__isnull=True).first()
+    photo = post.photos.filter(pk=photo_pk).first()
     if photo is None:
+        return HttpResponse(status=404)
+    if photo.image is not None:
         return HttpResponse(
             "That photo already has its file.", status=409, content_type="text/plain"
         )
@@ -1634,7 +1645,13 @@ def photo_link_upload(request, slug: str, token: str):
     spot = photo_spot(*(exif_spot(data) or (None, None)), post.author) or photo_spot(
         request.GET.get("lat"), request.GET.get("lon"), post.author
     )
-    _keep_photo(photo, cleaned, size, spot)
+    # Used once, even by two sends at the same moment: only one fills the still-empty photo.
+    filled = RoutePostPhoto.objects.filter(pk=photo.pk, image__isnull=True)
+    _keep_photo(photo, cleaned, size, spot, only_if=filled)
+    if photo.pk is None:
+        return HttpResponse(
+            "That photo already has its file.", status=409, content_type="text/plain"
+        )
     record(post.author, "route_post.photo", "RoutePost", post.pk, "allowed", "upload link")
     response = HttpResponse(
         json.dumps({"url": photo_path(post, photo), "located": spot is not None}),

@@ -4236,8 +4236,8 @@ at `/routes/` and from Go's More > Featured routes. Instance admins write them:
    carries it as Exif GPS. A spot inside the author's Home circle is dropped (the photo stays). A
    phone with location tagging off writes an empty GPS block, so its photos have no spot. An
    assistant on the site's connector (draft_route_post) gets an upload link per described photo
-   and can send the file itself (image/jpeg, at most 2048 px a side and 900 KB, 24 hours, once;
-   `?lat=&lon=` when the file has no spot). A photo the browser can't open (some phone formats,
+   and can send the file itself while the post is a draft (image/jpeg, at most 2048 px a side and
+   900 KB, 24 hours, once; `?lat=&lon=` when the file has no spot). A photo the browser can't open (some phone formats,
    such as HEIC) must be saved as a JPEG or PNG first. Change alt text, caption, section or order,
    or delete a photo, in the admin. A photo's Where is a highlight's number, so after deleting or
    reordering highlights check each photo's place; one numbered past the last highlight shows under

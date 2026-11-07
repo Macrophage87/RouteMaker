@@ -35,3 +35,12 @@ test("a file without a readable position gives none", () => {
   assert.equal(exifSpot(bytes(LOCATED).slice(0, 40)), null);
   assert.equal(exifSpot(new ArrayBuffer(0)), null);
 });
+
+// A camera's way, little-endian with degrees, minutes and seconds, south and east (tests/test_route_posts.py located_jpeg).
+const CAMERA = "/9j/4QCIRXhpZgAASUkqAAgAAAABACWIBAABAAAAGgAAAAAAAAAEAAEAAgACAAAAUwAAAAIABQADAAAAUAAAAAMAAgACAAAARQAAAAQABQADAAAAaAAAAAAAAAAhAAAAAQAAADMAAAABAAAAWF8AAOgDAACXAAAAAQAAAAwAAAABAAAAKNcAAOgDAAD/4AAQSkZJRgABAQAAAQABAAD/4QAxRXhpZgAAR1BTTGF0aXR1ZGUgMzguODk3NyBHUFNMb25naXR1ZGUgLTc3LjAzNjX/4QA6aHR0cDovL25zLmFkb2JlLmNvbS94YXAvMS4wLwA8eDp4bXBtZXRhPkRhdGVUaW1lT3JpZ2luYWz/4gAcSUNDX1BST0ZJTEUAIGlQaG9uZSBjYW1lcmH//gAOU2hvdCBhdCBob21l/9sAQwAAAQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyAhIiMkJSYnKCkqKywtLi8wMTIzNDU2Nzg5Ojs8PT4//8AACwgAAwAEAQERAP/aAAgBAQAAPwAS/wA0/9BW/9lQSwMEIGEgaGlkZGVuIGFyY2hpdmU=";
+
+test("a camera's little-endian degrees, minutes and seconds are read too", () => {
+  const spot = exifSpot(bytes(CAMERA));
+  assert.ok(spot);
+  assert.ok(Math.abs(spot[0] + 33.85678) < 1e-5 && Math.abs(spot[1] - 151.2153) < 1e-5);
+});
