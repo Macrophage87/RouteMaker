@@ -33,7 +33,7 @@ test("a hold (a press held, a right-click, the menu key) shows the code, and the
   assert.match(panel, /onClick=\{ride\.onBroadcast\} \{\.\.\.broadcastHold\}/);
   assert.match(panel, /\{BROADCAST_ABOUT\} \{BROADCAST_HOLD_HINT\}/);
   for (const page of [ride, roam]) {
-    assert.match(page, /onClick=\{\(\) => void broadcast\(\)\}\s*\{\.\.\.broadcastHold\}\s*aria-describedby=\{onBroadcastHold \? broadcastHoldId : undefined\}/);
+    assert.match(page, /onClick=\{(?:broadcastInMore \? \(\) => fromMore\(\(\) => void broadcast\(\)\) : )?\(\) => void broadcast\(\)\}\s*\{\.\.\.broadcastHold\}\s*aria-describedby=\{onBroadcastHold \? broadcastHoldId : undefined\}/);
     assert.match(page, /\{BROADCAST_HOLD_HINT\}/);
   }
   assert.match(app, /broadcastRide: \{ onPress: broadcastRide, onHold: broadcastQr, note: broadcastNote \}/);

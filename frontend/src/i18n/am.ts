@@ -1801,7 +1801,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Screen-reader detail: brief.": "የስክሪን አንባቢ ዝርዝር፦ አጭር።",
   "Screen-reader detail: full.": "የስክሪን አንባቢ ዝርዝር፦ ሙሉ።",
   "The {button} button is at the top of the planner.": "የ{button} ቁልፍ በዕቅድ አውጪው አናት ላይ ነው።",
-  "Bikeshare and Rebalance Rides take a start and an end only: remove the stops.": "የጋራ ብስክሌት እና የማመጣጠን ጉዞዎች መነሻ እና መድረሻ ብቻ ይወስዳሉ፦ ማቆሚያዎቹን ያስወግዱ።",
   "Route problem": "የመንገድ ችግር",
   "Route cleared. Undo brings it back.": "መንገዱ ተጸድቷል። ቀልብስ መልሶ ያመጣዋል።",
   "Leave your ride to open this link?": "ይህን አገናኝ ለመክፈት ጉዞዎን ይተዋሉ?",
@@ -2075,4 +2074,10 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "You have {max} saved routes. Delete \"{name}\" to save this one? You last opened it {date}.": "{max} የተቀመጡ መንገዶች አሉዎት። ይህን ለማስቀመጥ \"{name}\" ይሰረዝ? ለመጨረሻ ጊዜ የከፈቱት {date} ነው።",
   "You have {max} saved routes. Delete \"{name}\" to save this one? It was saved {date} and never opened.": "{max} የተቀመጡ መንገዶች አሉዎት። ይህን ለማስቀመጥ \"{name}\" ይሰረዝ? {date} ተቀምጦ አንድም ጊዜ አልተከፈተም።",
   "Deleted \"{name}\", archived longest, to make room.": "ቦታ ለመፍጠር ረጅም ጊዜ በማህደር የቆየው \"{name}\" ተሰርዟል።",
+  "Walking": "በእግር",
+  "Total time, without stops": "ጠቅላላ ጊዜ፣ ያለ ፋታ",
+  "To stop 1, not counting breaks": "እስከ ማቆሚያ 1፣ እረፍትን ሳይጨምር",
+  "Whole trip, not counting breaks": "ሙሉ ጉዞ፣ እረፍትን ሳይጨምር",
+  "The map shows the trip to stop 1. At each stop you return the bike, and the next trip is planned again from there, with the bikes and docks free then.": "ካርታው እስከ ማቆሚያ 1 ያለውን ጉዞ ያሳያል። በእያንዳንዱ ማቆሚያ ብስክሌቱን ትመልሳላችሁ፣ ቀጣዩ ጉዞም በዚያን ጊዜ ባሉት ነጻ ብስክሌቶችና መቆሚያዎች ከዚያ እንደገና ይታቀዳል።",
+  "From stop {n}": "ከማቆሚያ {n}",
 };

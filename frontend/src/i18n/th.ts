@@ -1801,7 +1801,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Screen-reader detail: brief.": "รายละเอียดของโปรแกรมอ่านหน้าจอ: สั้น",
   "Screen-reader detail: full.": "รายละเอียดของโปรแกรมอ่านหน้าจอ: เต็ม",
   "The {button} button is at the top of the planner.": "ปุ่ม {button} อยู่ด้านบนของเครื่องมือวางแผน",
-  "Bikeshare and Rebalance Rides take a start and an end only: remove the stops.": "จักรยานสาธารณะและปั่นกระจายจักรยานใช้ได้แค่จุดเริ่มต้นและจุดหมาย: ลบจุดแวะออก",
   "Route problem": "ปัญหาเส้นทาง",
   "Route cleared. Undo brings it back.": "ล้างเส้นทางแล้ว ปุ่ม เลิกทำ จะนำกลับมา",
   "Leave your ride to open this link?": "ออกจากการปั่นเพื่อเปิดลิงก์นี้ไหม",
@@ -2075,4 +2074,10 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "You have {max} saved routes. Delete \"{name}\" to save this one? You last opened it {date}.": "คุณมีเส้นทางที่บันทึกไว้ {max} เส้นทาง ลบ \"{name}\" เพื่อบันทึกเส้นทางนี้ไหม คุณเปิดครั้งล่าสุดเมื่อ {date}",
   "You have {max} saved routes. Delete \"{name}\" to save this one? It was saved {date} and never opened.": "คุณมีเส้นทางที่บันทึกไว้ {max} เส้นทาง ลบ \"{name}\" เพื่อบันทึกเส้นทางนี้ไหม บันทึกไว้เมื่อ {date} และยังไม่เคยเปิด",
   "Deleted \"{name}\", archived longest, to make room.": "ลบ \"{name}\" ที่เก็บถาวรไว้นานที่สุดเพื่อเพิ่มพื้นที่แล้ว",
+  "Walking": "เดิน",
+  "Total time, without stops": "เวลารวม ไม่รวมการหยุด",
+  "To stop 1, not counting breaks": "ถึงจุดแวะ 1 ไม่รวมการพัก",
+  "Whole trip, not counting breaks": "ทั้งเส้นทาง ไม่รวมการพัก",
+  "The map shows the trip to stop 1. At each stop you return the bike, and the next trip is planned again from there, with the bikes and docks free then.": "แผนที่แสดงเส้นทางถึงจุดแวะ 1 ที่แต่ละจุดแวะคุณคืนจักรยาน และเส้นทางถัดไปจะวางแผนใหม่จากที่นั่น ตามจักรยานและช่องจอดที่ว่างในตอนนั้น",
+  "From stop {n}": "จากจุดแวะ {n}",
 };

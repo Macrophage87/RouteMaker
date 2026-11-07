@@ -1801,7 +1801,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Screen-reader detail: brief.": "ዝርዝር ናይ ስክሪን ኣንባቢ፦ ሓጺር።",
   "Screen-reader detail: full.": "ዝርዝር ናይ ስክሪን ኣንባቢ፦ ምሉእ።",
   "The {button} button is at the top of the planner.": "መጠወቕ {button} ኣብ ላዕሊ መደብ መውጽኢ ኣሎ።",
-  "Bikeshare and Rebalance Rides take a start and an end only: remove the stops.": "ናይ ሓባር ብሽክለታን ጉዕዞታት ምምጥጣንን መበገሲን መወዳእታን ጥራይ ይወስዱ፦ መዕረፊታት ኣውጽእ።",
   "Route problem": "ጸገም መንገዲ",
   "Route cleared. Undo brings it back.": "መንገዲ ጸሪዩ። ምልሰት ይመልሶ።",
   "Leave your ride to open this link?": "ነዚ መላግቦ ንምኽፋት ካብ ጉዕዞኻ ክትወጽእ?",
@@ -2075,4 +2074,10 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "You have {max} saved routes. Delete \"{name}\" to save this one? You last opened it {date}.": "{max} ዝተዓቀቡ መገድታት ኣለዉኻ። እዚ ንምዕቃብ \"{name}\" ይደምሰስ ድዩ? ንመወዳእታ ግዜ ዝኸፈትካዮ {date} እዩ።",
   "You have {max} saved routes. Delete \"{name}\" to save this one? It was saved {date} and never opened.": "{max} ዝተዓቀቡ መገድታት ኣለዉኻ። እዚ ንምዕቃብ \"{name}\" ይደምሰስ ድዩ? {date} ተዓቂቡ ሓንቲ ግዜ እውን ኣይተኸፍተን።",
   "Deleted \"{name}\", archived longest, to make room.": "ቦታ ንምፍጣር፣ ነዊሕ ግዜ ኣብ መዝገብ ዝጸንሐ \"{name}\" ተደምሲሱ።",
+  "Walking": "ብእግሪ",
+  "Total time, without stops": "ጠቕላላ ግዜ፣ ብዘይ ዕረፍቲ",
+  "To stop 1, not counting breaks": "ክሳብ መዕረፊ 1፣ ዕረፍቲ ከይተቖጽረ",
+  "Whole trip, not counting breaks": "ምሉእ ጉዕዞ፣ ዕረፍቲ ከይተቖጽረ",
+  "The map shows the trip to stop 1. At each stop you return the bike, and the next trip is planned again from there, with the bikes and docks free then.": "እቲ ካርታ ክሳብ መዕረፊ 1 ዘሎ ጉዕዞ የርኢ። ኣብ ነፍሲ ወከፍ መዕረፊ ነታ ብሽክሌታ ትመልሱ፣ እቲ ዝቕጽል ጉዕዞ ድማ ብናይ ሽዑ ነጻ ብሽክሌታታትን መቐመጢታትን ካብኡ ደጊሙ ይውጠን።",
+  "From stop {n}": "ካብ መዕረፊ {n}",
 };

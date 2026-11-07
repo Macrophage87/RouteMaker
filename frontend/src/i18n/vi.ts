@@ -1801,7 +1801,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Screen-reader detail: brief.": "Chi tiết cho trình đọc màn hình: ngắn.",
   "Screen-reader detail: full.": "Chi tiết cho trình đọc màn hình: đầy đủ.",
   "The {button} button is at the top of the planner.": "Nút {button} nằm ở đầu bộ lên lộ trình.",
-  "Bikeshare and Rebalance Rides take a start and an end only: remove the stops.": "Xe đạp chia sẻ và Chuyến cân bằng xe chỉ nhận một điểm xuất phát và một điểm cuối: hãy bỏ các điểm dừng.",
   "Route problem": "Vấn đề với lộ trình",
   "Route cleared. Undo brings it back.": "Đã xóa lộ trình. Hoàn tác sẽ đưa lại.",
   "Leave your ride to open this link?": "Rời chuyến đi để mở liên kết này?",
@@ -2075,4 +2074,10 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "You have {max} saved routes. Delete \"{name}\" to save this one? You last opened it {date}.": "Bạn có {max} tuyến đã lưu. Xóa \"{name}\" để lưu tuyến này? Lần cuối bạn mở nó là {date}.",
   "You have {max} saved routes. Delete \"{name}\" to save this one? It was saved {date} and never opened.": "Bạn có {max} tuyến đã lưu. Xóa \"{name}\" để lưu tuyến này? Tuyến được lưu {date} và chưa từng được mở.",
   "Deleted \"{name}\", archived longest, to make room.": "Đã xóa \"{name}\", tuyến lưu trữ lâu nhất, để có chỗ trống.",
+  "Walking": "Đi bộ",
+  "Total time, without stops": "Tổng thời gian, không tính nghỉ",
+  "To stop 1, not counting breaks": "Đến điểm dừng 1, không tính nghỉ",
+  "Whole trip, not counting breaks": "Cả chuyến, không tính nghỉ",
+  "The map shows the trip to stop 1. At each stop you return the bike, and the next trip is planned again from there, with the bikes and docks free then.": "Bản đồ hiển thị chuyến đi đến điểm dừng 1. Tại mỗi điểm dừng bạn trả xe, và chuyến tiếp theo được lên kế hoạch lại từ đó, theo xe và chỗ trả xe còn trống lúc ấy.",
+  "From stop {n}": "Từ điểm dừng {n}",
 };

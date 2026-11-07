@@ -1801,7 +1801,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Screen-reader detail: brief.": "Détail pour lecteur d'écran : bref.",
   "Screen-reader detail: full.": "Détail pour lecteur d'écran : complet.",
   "The {button} button is at the top of the planner.": "Le bouton {button} est en haut du planificateur.",
-  "Bikeshare and Rebalance Rides take a start and an end only: remove the stops.": "Vélo partagé et Sortie de rééquilibrage ne prennent qu'un départ et une arrivée : retirez les arrêts.",
   "Route problem": "Problème d'itinéraire",
   "Route cleared. Undo brings it back.": "Itinéraire effacé. Annuler le rétablit.",
   "Leave your ride to open this link?": "Quitter votre sortie pour ouvrir ce lien ?",
@@ -2075,4 +2074,10 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "You have {max} saved routes. Delete \"{name}\" to save this one? You last opened it {date}.": "Vous avez {max} itinéraires enregistrés. Supprimer « {name} » pour enregistrer celui-ci ? Vous l’avez ouvert pour la dernière fois le {date}.",
   "You have {max} saved routes. Delete \"{name}\" to save this one? It was saved {date} and never opened.": "Vous avez {max} itinéraires enregistrés. Supprimer « {name} » pour enregistrer celui-ci ? Il a été enregistré le {date} et jamais ouvert.",
   "Deleted \"{name}\", archived longest, to make room.": "« {name} », archivé depuis le plus longtemps, a été supprimé pour faire de la place.",
+  "Walking": "À pied",
+  "Total time, without stops": "Temps total, sans arrêts",
+  "To stop 1, not counting breaks": "Jusqu'à l'arrêt 1, sans compter les pauses",
+  "Whole trip, not counting breaks": "Trajet entier, sans compter les pauses",
+  "The map shows the trip to stop 1. At each stop you return the bike, and the next trip is planned again from there, with the bikes and docks free then.": "La carte montre le trajet jusqu'à l'arrêt 1. À chaque arrêt, vous rendez le vélo, et le trajet suivant est replanifié à partir de là, avec les vélos et les bornes libres à ce moment-là.",
+  "From stop {n}": "Depuis l'arrêt {n}",
 };

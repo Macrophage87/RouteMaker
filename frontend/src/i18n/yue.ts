@@ -1801,7 +1801,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Screen-reader detail: brief.": "讀屏詳細程度：簡短。",
   "Screen-reader detail: full.": "讀屏詳細程度：完整。",
   "The {button} button is at the top of the planner.": "{button}掣喺規劃工具最頂。",
-  "Bikeshare and Rebalance Rides take a start and an end only: remove the stops.": "共享單車同調配踩車只可以有起點同終點：請刪走中途站。",
   "Route problem": "路線問題",
   "Route cleared. Undo brings it back.": "路線已清除。撳復原可以攞返。",
   "Leave your ride to open this link?": "離開今次踩車去開呢條連結？",
@@ -2075,4 +2074,10 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "You have {max} saved routes. Delete \"{name}\" to save this one? You last opened it {date}.": "你有{max}條已儲存嘅路線。刪除「{name}」嚟儲存呢條？你上次喺{date}打開過佢。",
   "You have {max} saved routes. Delete \"{name}\" to save this one? It was saved {date} and never opened.": "你有{max}條已儲存嘅路線。刪除「{name}」嚟儲存呢條？佢喺{date}儲存，從未打開過。",
   "Deleted \"{name}\", archived longest, to make room.": "為咗騰出位，已刪除封存得最耐嘅「{name}」。",
+  "Walking": "步行",
+  "Total time, without stops": "總時間，唔計停",
+  "To stop 1, not counting breaks": "去到第 1 個停站，唔計休息",
+  "Whole trip, not counting breaks": "成個行程，唔計休息",
+  "The map shows the trip to stop 1. At each stop you return the bike, and the next trip is planned again from there, with the bikes and docks free then.": "地圖顯示去到第 1 個停站嘅行程。每個停站你都要還車，下一段行程會由嗰度按嗰陣有嘅單車同車位重新規劃。",
+  "From stop {n}": "由第 {n} 個停站起",
 };

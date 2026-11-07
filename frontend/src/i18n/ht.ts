@@ -1801,7 +1801,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Screen-reader detail: brief.": "Detay pou lektè ekran: kout.",
   "Screen-reader detail: full.": "Detay pou lektè ekran: konplè.",
   "The {button} button is at the top of the planner.": "Bouton {button} la anlè planifikatè a.",
-  "Bikeshare and Rebalance Rides take a start and an end only: remove the stops.": "Bisiklèt pataje ak Woulib pou rebalanse pran yon depa ak yon fen sèlman: retire arè yo.",
   "Route problem": "Pwoblèm wout",
   "Route cleared. Undo brings it back.": "Wout la efase. Defèt fè l tounen.",
   "Leave your ride to open this link?": "Kite woulib ou pou louvri lyen sa a?",
@@ -2075,4 +2074,10 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "You have {max} saved routes. Delete \"{name}\" to save this one? You last opened it {date}.": "Ou gen {max} wout anrejistre. Efase \"{name}\" pou anrejistre sa a? Dènye fwa ou te louvri l se {date}.",
   "You have {max} saved routes. Delete \"{name}\" to save this one? It was saved {date} and never opened.": "Ou gen {max} wout anrejistre. Efase \"{name}\" pou anrejistre sa a? Li te anrejistre {date} e li pa janm louvri.",
   "Deleted \"{name}\", archived longest, to make room.": "Nou efase \"{name}\", ki te achive depi pi lontan, pou fè plas.",
+  "Walking": "A pye",
+  "Total time, without stops": "Tan total, san kanpe",
+  "To stop 1, not counting breaks": "Jiska arè 1, san konte poz",
+  "Whole trip, not counting breaks": "Tout vwayaj la, san konte poz",
+  "The map shows the trip to stop 1. At each stop you return the bike, and the next trip is planned again from there, with the bikes and docks free then.": "Kat la montre vwayaj la jiska arè 1. Nan chak arè ou remèt bisiklèt la, epi yo planifye pwochen vwayaj la ankò depi la, ak bisiklèt ak plas ki lib lè sa a.",
+  "From stop {n}": "Depi arè {n}",
 };

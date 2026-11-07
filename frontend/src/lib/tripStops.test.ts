@@ -31,9 +31,24 @@ const STOP: LonLat = [-77.01, 38.9];
 const STOP2: LonLat = [-77.02, 38.9];
 const END: LonLat = [-77.03, 38.9];
 
-test("Walk and the transit types take stops as trips of their own; Bikeshare and the riding types do not here", () => {
-  for (const preset of ["walk", "walk-transit", "bike-transit", "bikeshare-transit"] as const) assert.equal(stopsAsTrips(preset), true);
-  for (const preset of ["bikeshare", "rebalance", "default"] as const) assert.equal(stopsAsTrips(preset), false);
+test("Walk, the transit types, Bikeshare and Rebalance Ride take stops as trips of their own; the riding types do not here", () => {
+  for (const preset of ["walk", "walk-transit", "bike-transit", "bikeshare-transit", "bikeshare", "rebalance"] as const) assert.equal(stopsAsTrips(preset), true);
+  for (const preset of ["default", "mass-ride"] as const) assert.equal(stopsAsTrips(preset), false);
+});
+
+test("a Bikeshare trip with stops is its first trip already: only the later ones go (v0.22.0)", () => {
+  const later = [{ stop: 1, start: {}, end: {}, ride_m: 900, walk_m: 200, total_s: 600, steps: [], summary: "" }];
+  const share = { geometry: { coordinates: [[0, 0], [1, 1]] }, transit: null, bikeshare: { total_s: 500, later, trip_total_s: 1100 } } as unknown as RouteResponse;
+  assert.equal(hasStops(share), true);
+  const first = firstTripOf(share);
+  assert.equal(hasStops(first), false);
+  assert.equal(first.geometry, share.geometry);
+  assert.equal(first.bikeshare?.total_s, 500);
+  assert.equal(first.bikeshare?.trip_total_s, null);
+  assert.deepEqual(stopsLeftOf(share, [A, STOP, END], "bikeshare"), { preset: "bikeshare", points: [STOP, END] });
+  // No stops: itself.
+  const plain = { ...share, bikeshare: { total_s: 500, later: [] } } as unknown as RouteResponse;
+  assert.equal(firstTripOf(plain), plain);
 });
 
 test("the first trip is its steps to the first stop, its own key and its own time", () => {
@@ -64,7 +79,7 @@ test("the stops left are the first stop on to the end; the next leg leaves from 
   assert.deepEqual(nextLegPoints(left!, null), [STOP, STOP2, END]);
   // A trip with no stops, or a ride type that does not take them: none.
   assert.equal(stopsLeftOf(route(plan([step("walk", 300)], [])), [A, END], "walk"), null);
-  assert.equal(stopsLeftOf(joined, [A, STOP, END], "bikeshare"), null);
+  assert.equal(stopsLeftOf(joined, [A, STOP, END], "default"), null);
 });
 
 // The wiring (App.tsx, RideMode.tsx), read as source.
@@ -72,7 +87,7 @@ const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
 const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
 
 test("a ride on a trip with stops rides its first trip, to the first stop, and keeps the stops left", () => {
-  assert.match(app, /const left = asked\.transit \? stopsLeftOf\(asked, askedPoints, asked\.transit\.mode as PresetId\) : null;/);
+  assert.match(app, /const left = asked\.transit \|\| asked\.bikeshare \? stopsLeftOf\(asked, askedPoints, \(asked\.transit\?\.mode \?\? asked\.preset\) as PresetId\) : null;/);
   assert.match(app, /const route = left \? firstTripOf\(asked\) : asked;\s*const ridePoints = left \? askedPoints\.slice\(0, 2\) : askedPoints;/);
   // A trip check's change or Ride the rest keeps them; a new ride (or Roam's detour) drops them.
   assert.match(app, /if \(left\) tripStopsLeft\.current = left;\s*else if \(!rest \|\| rest\.roam\) tripStopsLeft\.current = null;/);
@@ -82,13 +97,15 @@ test("at the stop, one press plans the rest from where the rider is and rides it
   assert.equal(NEXT_LEG, "Start the next leg");
   assert.match(app, /onNextLeg=\{tripStopsLeft\.current \? nextLeg : undefined\}/);
   assert.match(app, /const points = nextLegPoints\(left, riderAt\);/);
+  // Bikeshare: the start's chosen pick-up is not the stop's; the end's chosen drop-off stays (v0.22.0).
+  assert.match(app, /const legDials = withStations\(planDials, \{ dropoff: stationChoice\.dropoff \}\);\s*const result = await requestRoute\(points, left\.preset, \{ dials: \{ \.\.\.legDials, loop: false, closuresNow: true \} \}\);/);
   assert.match(app, /tripStopsLeft\.current = null;\s*beginRide\(ridePrefs, false, \{ route: result\.route, points \}\);/);
   // Shown once the trip to the stop is done: arrived, and every walk and train after the line followed.
   // Not beside the ride after a train (Ride the rest's, started by itself), still to go to the stop.
   assert.match(ride, /\{onNextLeg && !rest && \(onwardParts\.length === 0 \|\| onwardDone\) && \(/);
 });
 
-test("Go's Add a stop takes stops on Walk and the transit types, not Bikeshare", () => {
+test("Go's Add a stop takes stops on Walk, the transit types, Bikeshare and Rebalance Ride", () => {
   assert.match(app, /if \(current\.length < 2 \|\| \(twoPointsOnly\(ride\.preset\) && !stopsAsTrips\(ride\.preset\)\)\) \{/);
   assert.match(app, /\(!twoPointsOnly\(preset\) \|\| stopsAsTrips\(preset\)\) && !isMassRide\(preset\)/);
 });
@@ -108,5 +125,6 @@ test("a trip of stops takes the server's most stops; adding one more is refused 
   assert.equal(Number(/^MAX_TRIP_STOPS = (\d+)$/m.exec(api)?.[1]), MAX_TRIP_STOPS);
   assert.equal(maxPointsFor("walk"), MAX_TRIP_STOPS + 2);
   assert.equal(maxPointsFor("default"), MAX_POINTS);
-  assert.equal(maxPointsFor("bikeshare"), MAX_POINTS);
+  assert.equal(maxPointsFor("bikeshare"), MAX_TRIP_STOPS + 2);
+  assert.equal(maxPointsFor("rebalance"), MAX_TRIP_STOPS + 2);
 });

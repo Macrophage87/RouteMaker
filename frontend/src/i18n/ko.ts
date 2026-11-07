@@ -1801,7 +1801,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Screen-reader detail: brief.": "화면 낭독기 상세도: 간단히.",
   "Screen-reader detail: full.": "화면 낭독기 상세도: 자세히.",
   "The {button} button is at the top of the planner.": "{button} 버튼은 플래너 맨 위에 있습니다.",
-  "Bikeshare and Rebalance Rides take a start and an end only: remove the stops.": "공유자전거와 재배치 라이드는 출발지와 도착지만 받습니다. 경유지를 지우세요.",
   "Route problem": "경로 문제",
   "Route cleared. Undo brings it back.": "경로를 지웠습니다. 실행 취소로 되돌릴 수 있습니다.",
   "Leave your ride to open this link?": "라이드를 떠나 이 링크를 열까요?",
@@ -2075,4 +2074,10 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "You have {max} saved routes. Delete \"{name}\" to save this one? You last opened it {date}.": "저장한 경로가 {max}개입니다. 이 경로를 저장하려면 \"{name}\"을(를) 삭제할까요? 마지막으로 연 날짜는 {date}입니다.",
   "You have {max} saved routes. Delete \"{name}\" to save this one? It was saved {date} and never opened.": "저장한 경로가 {max}개입니다. 이 경로를 저장하려면 \"{name}\"을(를) 삭제할까요? {date}에 저장했고 한 번도 열지 않았습니다.",
   "Deleted \"{name}\", archived longest, to make room.": "공간을 만들기 위해 가장 오래 보관된 \"{name}\"을(를) 삭제했습니다.",
+  "Walking": "도보",
+  "Total time, without stops": "총 시간, 휴식 제외",
+  "To stop 1, not counting breaks": "경유지 1까지, 휴식 제외",
+  "Whole trip, not counting breaks": "전체 여정, 휴식 제외",
+  "The map shows the trip to stop 1. At each stop you return the bike, and the next trip is planned again from there, with the bikes and docks free then.": "지도에는 경유지 1까지의 여정이 표시됩니다. 각 경유지에서 자전거를 반납하고, 다음 여정은 그때 비어 있는 자전거와 거치대를 기준으로 그곳에서 다시 계획됩니다.",
+  "From stop {n}": "경유지 {n}부터",
 };

@@ -1801,7 +1801,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Screen-reader detail: brief.": "Ekran okuyucu ayrıntısı: kısa.",
   "Screen-reader detail: full.": "Ekran okuyucu ayrıntısı: tam.",
   "The {button} button is at the top of the planner.": "{button} düğmesi planlayıcının en üstünde.",
-  "Bikeshare and Rebalance Rides take a start and an end only: remove the stops.": "Paylaşımlı bisiklet ve Dengeleme Sürüşleri yalnızca bir başlangıç ve bir bitiş alır: durakları kaldırın.",
   "Route problem": "Rota sorunu",
   "Route cleared. Undo brings it back.": "Rota temizlendi. Geri al onu geri getirir.",
   "Leave your ride to open this link?": "Bu bağlantıyı açmak için sürüşten çıkılsın mı?",
@@ -2075,4 +2074,10 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "You have {max} saved routes. Delete \"{name}\" to save this one? You last opened it {date}.": "{max} kayıtlı rotanız var. Bunu kaydetmek için \"{name}\" silinsin mi? En son {date} tarihinde açtınız.",
   "You have {max} saved routes. Delete \"{name}\" to save this one? It was saved {date} and never opened.": "{max} kayıtlı rotanız var. Bunu kaydetmek için \"{name}\" silinsin mi? {date} tarihinde kaydedildi ve hiç açılmadı.",
   "Deleted \"{name}\", archived longest, to make room.": "Yer açmak için en uzun süredir arşivde olan \"{name}\" silindi.",
+  "Walking": "Yürüyüş",
+  "Total time, without stops": "Toplam süre, molasız",
+  "To stop 1, not counting breaks": "1. durağa kadar, molalar hariç",
+  "Whole trip, not counting breaks": "Tüm yolculuk, molalar hariç",
+  "The map shows the trip to stop 1. At each stop you return the bike, and the next trip is planned again from there, with the bikes and docks free then.": "Harita 1. durağa kadarki yolculuğu gösterir. Her durakta bisikleti bırakırsınız ve sonraki yolculuk, o anda boş olan bisiklet ve istasyonlara göre oradan yeniden planlanır.",
+  "From stop {n}": "{n}. duraktan",
 };

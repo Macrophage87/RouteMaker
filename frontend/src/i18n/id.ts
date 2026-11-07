@@ -1801,7 +1801,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Screen-reader detail: brief.": "Detail pembaca layar: singkat.",
   "Screen-reader detail: full.": "Detail pembaca layar: lengkap.",
   "The {button} button is at the top of the planner.": "Tombol {button} ada di bagian atas perencana.",
-  "Bikeshare and Rebalance Rides take a start and an end only: remove the stops.": "Sepeda sewa dan Perjalanan Penyeimbang hanya memakai titik awal dan titik akhir: hapus perhentiannya.",
   "Route problem": "Masalah rute",
   "Route cleared. Undo brings it back.": "Rute dihapus. Urungkan mengembalikannya.",
   "Leave your ride to open this link?": "Tinggalkan perjalanan untuk membuka tautan ini?",
@@ -2075,4 +2074,10 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "You have {max} saved routes. Delete \"{name}\" to save this one? You last opened it {date}.": "Anda punya {max} rute tersimpan. Hapus \"{name}\" untuk menyimpan yang ini? Terakhir Anda buka {date}.",
   "You have {max} saved routes. Delete \"{name}\" to save this one? It was saved {date} and never opened.": "Anda punya {max} rute tersimpan. Hapus \"{name}\" untuk menyimpan yang ini? Disimpan {date} dan belum pernah dibuka.",
   "Deleted \"{name}\", archived longest, to make room.": "\"{name}\", yang paling lama diarsipkan, dihapus untuk memberi ruang.",
+  "Walking": "Berjalan kaki",
+  "Total time, without stops": "Total waktu, tanpa berhenti",
+  "To stop 1, not counting breaks": "Sampai perhentian 1, tidak termasuk istirahat",
+  "Whole trip, not counting breaks": "Seluruh perjalanan, tidak termasuk istirahat",
+  "The map shows the trip to stop 1. At each stop you return the bike, and the next trip is planned again from there, with the bikes and docks free then.": "Peta menunjukkan perjalanan sampai perhentian 1. Di setiap perhentian Anda mengembalikan sepeda, dan perjalanan berikutnya direncanakan lagi dari sana, sesuai sepeda dan dok yang kosong saat itu.",
+  "From stop {n}": "Dari perhentian {n}",
 };

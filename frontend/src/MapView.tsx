@@ -2429,7 +2429,7 @@ export function MapView(props: Props) {
   const closureMarkers = useRef<Marker[]>([]);
   const closurePopup = useRef<Popup | null>(null);
   // The view's closures (v0.12.0): asked after the map settles and every few minutes while the page is in front, so a
-  // closure past its end date leaves the map; nothing is asked zoomed out past zoom 11.
+  // closure past its end date leaves the map; nothing is asked zoomed out below zoom 12 (AREA_MIN_ZOOM).
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;

@@ -1801,7 +1801,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Screen-reader detail: brief.": "स्क्रीन रीडर का विवरण: संक्षिप्त।",
   "Screen-reader detail: full.": "स्क्रीन रीडर का विवरण: पूरा।",
   "The {button} button is at the top of the planner.": "{button} बटन योजनाकार में सबसे ऊपर है।",
-  "Bikeshare and Rebalance Rides take a start and an end only: remove the stops.": "बाइकशेयर और संतुलन सवारी में सिर्फ़ शुरुआत और मंज़िल होती है: पड़ाव हटाएँ।",
   "Route problem": "रास्ते की समस्या",
   "Route cleared. Undo brings it back.": "रास्ता हटाया गया। पूर्ववत करें से वापस आ जाएगा।",
   "Leave your ride to open this link?": "यह लिंक खोलने के लिए सवारी छोड़ें?",
@@ -2075,4 +2074,10 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "You have {max} saved routes. Delete \"{name}\" to save this one? You last opened it {date}.": "आपके {max} सहेजे गए रास्ते हैं। इसे सहेजने के लिए \"{name}\" हटाएँ? आपने इसे आख़िरी बार {date} को खोला था।",
   "You have {max} saved routes. Delete \"{name}\" to save this one? It was saved {date} and never opened.": "आपके {max} सहेजे गए रास्ते हैं। इसे सहेजने के लिए \"{name}\" हटाएँ? इसे {date} को सहेजा गया था और कभी खोला नहीं गया।",
   "Deleted \"{name}\", archived longest, to make room.": "जगह बनाने के लिए सबसे लंबे समय से संग्रहित \"{name}\" हटाया गया।",
+  "Walking": "पैदल",
+  "Total time, without stops": "कुल समय, बिना रुके",
+  "To stop 1, not counting breaks": "स्टॉप 1 तक, विराम छोड़कर",
+  "Whole trip, not counting breaks": "पूरी यात्रा, विराम छोड़कर",
+  "The map shows the trip to stop 1. At each stop you return the bike, and the next trip is planned again from there, with the bikes and docks free then.": "नक्शा स्टॉप 1 तक की यात्रा दिखाता है। हर स्टॉप पर आप साइकिल लौटाते हैं, और अगली यात्रा वहाँ से फिर से तय की जाती है, उस समय खाली साइकिलों और डॉक के हिसाब से।",
+  "From stop {n}": "स्टॉप {n} से",
 };
