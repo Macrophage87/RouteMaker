@@ -921,6 +921,13 @@ export interface SteepGradeSpan {
 }
 
 /** core.api RoadHazardSpanOut: a known hazard the route rides (v0.10.0; core/route_hazards.py). */
+/** A rated mountain-bike trail the route rides (2026-11-07), in metres along the route as `stress_spans`: 1 green, 2 blue, 3 black, 4 red. */
+export interface TrailLevelSpan {
+  from_m: number;
+  to_m: number;
+  level: number;
+}
+
 export interface RoadHazardSpan {
   from_m: number;
   to_m: number;
@@ -1004,6 +1011,8 @@ export interface RouteResponse {
   mass_hazards?: MassHazardSpan[] | null;
   /** The known hazards it rides (v0.10.0: cobblestones, rails in the road), in riding order; empty or absent where none. */
   road_hazards?: RoadHazardSpan[] | null;
+  /** The rated mountain-bike trails it rides (2026-11-07), for the ride's stress ribbon; empty or absent where none. */
+  trail_levels?: TrailLevelSpan[] | null;
   /** Steep grades either way (v0.12.5), Mass Ride and Novice and Nervous only; null on other ride types or an older API. */
   steep_grades?: SteepGradeSpan[] | null;
   /** The Avoid-rated junctions it passes, in route order (307); empty or absent where none. */

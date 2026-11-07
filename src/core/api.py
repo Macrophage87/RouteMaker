@@ -2247,6 +2247,17 @@ class RoadHazardSpanOut(Schema):
     text: str = Field(description="One plain sentence, US units first with the metric once.")
 
 
+class TrailLevelSpanOut(Schema):
+    """A rated mountain-bike trail the route rides (2026-11-07; `routing.trail_level_spans`), in
+    whole metres along the traced route as `stress_spans` are measured."""
+
+    from_m: int
+    to_m: int
+    level: int = Field(
+        description="1 green, 2 blue, 3 black, 4 red (the map's trail levels); 0 unrated."
+    )
+
+
 class SteepGradeOut(Schema):
     """A steep stretch on a Mass Ride or a Novice and Nervous ride (v0.12.5;
     `routemaker.steep_grades`): past 5% either way ("steep", an orange marker) or 8% ("very_steep",
@@ -2646,6 +2657,9 @@ class RouteBody(Schema):
     # The scenic designations it rides (v0.12.3; rustic roads, byways, the East Coast
     # Greenway, US Bicycle Routes), in riding order. Additive: empty where it rides none.
     scenic_roads: list[ScenicSpanOut] | None = None
+    # The rated mountain-bike trails it rides (2026-11-07), in riding order, for the ride's
+    # stress ribbon. Additive: empty where it rides none, null from an older answer.
+    trail_levels: list[TrailLevelSpanOut] | None = None
     # Steep grades either way (v0.12.5), in riding order, on a Mass Ride or a Novice and
     # Nervous ride. Additive: null on every other ride type, empty where there are none.
     steep_grades: list[SteepGradeOut] | None = None

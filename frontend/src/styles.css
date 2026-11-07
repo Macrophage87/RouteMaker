@@ -4679,6 +4679,10 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
 }
 
 /* A turn drawn on the stress ribbon (no room for the turns' strip): a halo of the panel round it, so it reads on any colour. */
+/* Under a mountain-bike trail's rocks, the panel, so the trail rail's purple does not show between them. */
+.ride-ahead-plot .ride-ahead-mtb-bed {
+  stroke: var(--bg);
+}
 .ride-ahead-arrow-halo {
   fill: none;
   stroke: var(--bg);

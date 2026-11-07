@@ -42,6 +42,9 @@ import {
   stressSentence,
   facilityStretches,
   facilitySentence,
+  trailLevelMarks,
+  trailLevelSentence,
+  type TrailLevelMark,
   type FacilityStretch,
   type StressBar,
   spreadMarks,
@@ -57,6 +60,7 @@ import { ROUTE_AVOID_MAGENTA } from "./lib/avoidColour.ts";
 import { GRADE_BAND_FILL } from "./lib/profileChart.ts";
 import { ACCESS_MODE_CLASS } from "./lib/accessMode.ts";
 import { units } from "./lib/units.ts";
+import { TRAIL_ROCK } from "./lib/trailRocks.ts";
 
 /** The drawing's width, in viewBox units (about pixels on a phone), at the usual text size; larger text draws the same
  *  in a narrower box, so every word and mark grows with it (the v0.19.0 release review: the graph's text stayed 11 to
@@ -116,7 +120,7 @@ const RIGHT = 8;
 
 interface Props {
   views: readonly AheadView[];
-  route: Pick<RouteResponse, "profile" | "stress_spans">;
+  route: Pick<RouteResponse, "profile" | "stress_spans" | "trail_levels">;
   /** The ride's cues, for the turns strip. */
   cues: readonly Pick<Cue, "kind" | "atM" | "movement" | "severity" | "joined" | "cross" | "source">[];
   /** You, metres along the route. */
@@ -192,6 +196,8 @@ export function AheadGraph({ views, route, cues, youM, lengthM, ridersAlong = []
     // room under it. Its rails' room is kept whether or not one is in sight, so nothing under it jumps as one comes and goes.
     const ribbon = views.includes("stress") && route.stress_spans ? stressBars(route.stress_spans, w) : [];
     const rails = ribbon.length && route.stress_spans ? facilityStretches(route.stress_spans, w) : [];
+    // The mountain-bike trails, in their colour on the ribbon with a rated level's sign (Stephen 2026-11-07).
+    const trails = ribbon.length && route.trail_levels ? trailLevelMarks(route.trail_levels, w) : [];
     const ribbonH = ribbon.length ? RIBBON_BLOCK + GAP : 0;
     const graphs = views.filter((view) => view !== "stress");
     const fit = (count: number, room: number, strip: number) => graphsThatFit(count, room, strip + AXIS_H - GAP, LABEL_H + GAP);
@@ -283,7 +289,7 @@ export function AheadGraph({ views, route, cues, youM, lengthM, ridersAlong = []
     const unseen = order.slice(count);
     const unseenSaid = unseen.map((view) => `${AHEAD_HEADING[view]}: ${draw(view, route, w, x, { top: 0, h: PLOT_MIN }, width)!.sentence}`);
     const any = drawn.length > 0 || ribbonDrawn;
-    const ribbonSaid = ribbon.length ? [`${AHEAD_HEADING.stress}: ${stressSentence(ribbon, w.youM)}`, facilitySentence(rails, w.youM)].filter(Boolean).join(" ") : "";
+    const ribbonSaid = ribbon.length ? [`${AHEAD_HEADING.stress}: ${stressSentence(ribbon, w.youM)}`, facilitySentence(rails, w.youM), trailLevelSentence(trails, w.youM)].filter(Boolean).join(" ") : "";
     return {
       drawn,
       slim,
@@ -294,6 +300,7 @@ export function AheadGraph({ views, route, cues, youM, lengthM, ridersAlong = []
       strip,
       ribbon: ribbonDrawn ? ribbon : [],
       rails,
+      trails: ribbonDrawn ? trails : [],
       ribbonSaid,
       any,
       note: note && unseen.length > 0 && any,
@@ -339,9 +346,10 @@ export function AheadGraph({ views, route, cues, youM, lengthM, ridersAlong = []
             </pattern>
           </defs>
           {panels.turnsH > 0 && <Turns marks={drawnTurns} x={x} />}
-          {panels.ribbon.length > 0 && <Ribbon bars={panels.ribbon} rails={panels.rails} x={x} top={panels.turnsH} turns={panels.turnsH > 0 ? drawnTurns : []} />}
+          {panels.ribbon.length > 0 && <Ribbon bars={panels.ribbon} rails={panels.rails} trails={panels.trails} x={x} top={panels.turnsH} turns={panels.turnsH > 0 ? drawnTurns : []} />}
           {/* No room for the turns' strip: the turns on the ribbon, each on a halo of the panel. */}
           {panels.onRibbon && <Turns marks={drawnTurns} x={x} cy={RIBBON_BLOCK / 2 - 1} halo />}
+          {panels.trails.length > 0 && <TrailSigns marks={panels.trails} x={x} cy={panels.turnsH + RIBBON_BLOCK / 2} turns={drawnTurns} />}
           {panels.drawn.map(({ view, panel, drawn }) => (
             <Fragment key={view}>
               {panels.slim ? (
@@ -436,7 +444,21 @@ function Turns({ marks, x, cy = TURNS_H / 2, scale = 1, halo = false }: { marks:
  * Along its top and bottom edges, each trail or bike lane as the map draws its rails beside the route (trail solid
  * purple, protected lane in posts, painted in dots); the sentence says them too.
  */
-function Ribbon({ bars, rails, x, top, turns }: { bars: readonly StressBar[]; rails: readonly FacilityStretch[]; x: X; top: number; turns: readonly TurnMark[] }) {
+function Ribbon({
+  bars,
+  rails,
+  trails,
+  x,
+  top,
+  turns,
+}: {
+  bars: readonly StressBar[];
+  rails: readonly FacilityStretch[];
+  trails: readonly TrailLevelMark[];
+  x: X;
+  top: number;
+  turns: readonly TurnMark[];
+}) {
   const band = top + RAIL_H + RAIL_GAP;
   const railYs = [top + RAIL_H / 2, band + RIBBON_H + RAIL_GAP + RAIL_H / 2];
   return (
@@ -473,8 +495,83 @@ function Ribbon({ bars, rails, x, top, turns }: { bars: readonly StressBar[]; ra
           </g>
         )),
       )}
+      {trails.map((trail) => {
+        // A mountain-bike trail in its level's colour, not its stress (Stephen 2026-11-07: "Use the trail color in the
+        // ribbon and brown dots that look like rocks on the edges"), the rocks over the trail's rails.
+        const left = x(trail.fromM);
+        const width = x(trail.toM) - left;
+        return (
+          <g key={`trail-${trail.fromM}`} className="ride-ahead-mtb">
+            <rect x={left} y={band} width={width} height={RIBBON_H} fill={trail.color} />
+            {railYs.map((y) => (
+              <g key={y}>
+                <line className="ride-ahead-mtb-bed" x1={left} x2={left + width} y1={y} y2={y} strokeWidth={RAIL_H + 1.5} />
+                {rocks(left, width).map((rock, i) => (
+                  <ellipse key={i} cx={rock.cx} cy={y + rock.dy} rx={rock.rx} ry={rock.ry} fill={ROCK} stroke={ROCK_EDGE} strokeWidth={0.75} />
+                ))}
+              </g>
+            ))}
+          </g>
+        );
+      })}
       {turns.filter((mark) => mark.movement).map((mark, i) => (
         <line key={i} className="ride-ahead-ribbon-turn" x1={x(mark.m)} x2={x(mark.m)} y1={top} y2={top + RIBBON_BLOCK} />
+      ))}
+    </g>
+  );
+}
+
+/** The rocks on a mountain-bike trail's edges: a brown stone and its darker rim (lib/trailRocks.ts, as on the map). */
+const ROCK = TRAIL_ROCK.fill;
+const ROCK_EDGE = TRAIL_ROCK.edge;
+/** Stones along a stretch, about every 5 units, each a little different in size and set so they read as rocks, not a dotted line. */
+function rocks(left: number, width: number): { cx: number; dy: number; rx: number; ry: number }[] {
+  const out = [];
+  const count = Math.max(1, Math.floor(width / 5));
+  const step = width / count;
+  for (let i = 0; i < count; i++) {
+    const k = i % 3;
+    out.push({ cx: left + step * (i + 0.5), dy: k === 1 ? -0.4 : k === 2 ? 0.4 : 0, rx: [2.1, 1.6, 1.9][k]!, ry: [1.6, 1.3, 1.8][k]! });
+  }
+  return out;
+}
+
+/** A level's sign, centred on 0,0 and about TRAIL_SIGN across: circle, square, diamond, double diamond; none unrated. */
+const TRAIL_SIGN = 13;
+function trailSignPaths(level: TrailLevelMark["level"]): string[] {
+  if (level === 0) return [];
+  const r = TRAIL_SIGN / 2;
+  const diamond = (dx: number) => `M${dx} ${-r - 0.5}L${dx + r} 0L${dx} ${r + 0.5}L${dx - r} 0Z`;
+  if (level === 1) return [`M${-r} 0a${r} ${r} 0 1 0 ${2 * r} 0a${r} ${r} 0 1 0 ${-2 * r} 0Z`];
+  if (level === 2) return [`M${-r + 0.5} ${-r + 0.5}h${2 * r - 1}v${2 * r - 1}h${-(2 * r - 1)}Z`];
+  if (level === 3) return [diamond(0)];
+  return [diamond(-r + 1), diamond(r - 1)];
+}
+
+/**
+ * Each rated mountain-bike trail on the ribbon (Stephen 2026-11-07: "add mountain bike trail difficulty to the ribbon"):
+ * its level's sign, in the map's trail colour on a white edge. The shape says the level as well as the colour; the
+ * sentence says it in words.
+ */
+function TrailSigns({ marks, x, cy, turns }: { marks: readonly TrailLevelMark[]; x: X; cy: number; turns: readonly TurnMark[] }) {
+  // Clear of the turns' marks where the stretch allows: its middle, else as near it as is clear.
+  const turnXs = turns.map((mark) => x(mark.m));
+  const at = (mark: TrailLevelMark) => {
+    const left = x(mark.fromM);
+    const width = x(mark.toM) - left;
+    const spots = [0.5, 0.35, 0.65, 0.2, 0.8, 0.05, 0.95].map((f) => left + f * width);
+    const room = (sx: number) => Math.min(Infinity, ...turnXs.map((tx) => Math.abs(tx - sx)));
+    // The first spot clear of them all, else the one farthest from any.
+    return spots.find((sx) => room(sx) > TRAIL_SIGN + 6) ?? spots.reduce((a, b) => (room(b) > room(a) ? b : a));
+  };
+  return (
+    <g className="ride-ahead-trail-signs">
+      {marks.filter((mark) => mark.level > 0).map((mark) => (
+        <g key={mark.fromM} className="ride-ahead-trail-sign" transform={`translate(${at(mark)} ${cy})`}>
+          {trailSignPaths(mark.level).map((d, i) => (
+            <path key={i} d={d} fill={mark.color} stroke="#ffffff" strokeWidth={1.5} strokeLinejoin="round" />
+          ))}
+        </g>
       ))}
     </g>
   );
