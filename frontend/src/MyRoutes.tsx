@@ -2,7 +2,8 @@
  * My routes (v0.7.0 plan, item 3): a signed-in rider's saved routes, in Plan's Settings and Go's Menu. Each row
  * opens the route as it was saved, renames it, exports it as GPX, or deletes it (after a second press). The
  * list is read when the section is shown and again after each change. In Plan a row also lists the route's
- * versions (Versions, like Rename, opens under the row) and restores one as the latest, which opens it.
+ * versions (Versions, like Rename, opens under the row) and restores one as the latest, which opens it, and its tags
+ * are changed under More > Tags (the owner, 2026-11-07). A row shows its tags, and Archived if it is.
  *
  * In Plan, the rider's shared links follow (lib/sharedRoutes.ts): each is its link, with New link (a new link for
  * the same route, the old one turned off, copied where the browser allows) and Turn off (after a second press, as
@@ -16,6 +17,8 @@ import {
   MAX_SAVED,
   NAME_MAX,
   NONE_SAVED,
+  changeRoute,
+  parseTags,
   RESTORED_SAID,
   RESTORE_FAILED,
   countLine,
@@ -57,11 +60,17 @@ export interface MyRoutesProps {
   filter?: string;
 }
 
+/** What the search matches a saved route by: its name and its tags. */
+const routeWords = (r: SavedSummary) => [r.name, ...(r.tags ?? [])].join(" ");
+
 export function MyRoutes({ version, onOpen, onExport, announce, versions = false, sharedLinks = false, onSharedChange = () => {}, onRenamed = () => {}, onDeleted = () => {}, filter = "" }: MyRoutesProps) {
   const headingId = useId();
   const [routes, setRoutes] = useState<SavedSummary[] | null>(null);
   const [failed, setFailed] = useState(false);
   const [renaming, setRenaming] = useState<number | null>(null);
+  // The row whose tags are being changed (Plan's More > Tags), and the field's words.
+  const [tagging, setTagging] = useState<number | null>(null);
+  const [tagText, setTagText] = useState("");
   const [name, setName] = useState("");
   const [deleting, setDeleting] = useState<number | null>(null);
   // The row whose GPX, Rename, Versions and Delete are shown: one More per row keeps the list to names (the owner,
@@ -120,10 +129,10 @@ export function MyRoutes({ version, onOpen, onExport, announce, versions = false
         <>
           <p className="hint">{countLine(routes.length, MAX_SAVED)}</p>
           <p className="hint" role="status">
-            {matchSaid(matching(routes, filter, (r) => r.name).length, routes.length, filter)}
+            {matchSaid(matching(routes, filter, routeWords).length, routes.length, filter)}
           </p>
           <ul role="list" className="my-routes-list">
-            {matching(routes, filter, (r) => r.name).map((r) => (
+            {matching(routes, filter, routeWords).map((r) => (
               <li key={r.id} className="my-route">
                 {renaming === r.id ? (
                   <form
@@ -149,6 +158,29 @@ export function MyRoutes({ version, onOpen, onExport, announce, versions = false
                       {t("Cancel")}
                     </button>
                   </form>
+                ) : tagging === r.id ? (
+                  <form
+                    className="my-route-rename"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      const tags = parseTags(tagText);
+                      void changeRoute(window.location.origin, r.id, { tags }).then((now) => {
+                        announce(now ? t("Tags saved for \"{name}\".", { name: r.name }) : t("The tags were not changed; try again shortly."));
+                        setTagging(null);
+                        setReload((n) => n + 1);
+                      });
+                    }}
+                  >
+                    <label>
+                      {t("Tags")}
+                      <input type="text" value={tagText} onChange={(e) => setTagText(e.target.value)} autoFocus autoComplete="off" />
+                    </label>
+                    <p className="hint">{t("Commas between tags.")}</p>
+                    <button type="submit">{t("Save")}</button>
+                    <button type="button" className="secondary" onClick={() => setTagging(null)}>
+                      {t("Cancel")}
+                    </button>
+                  </form>
                 ) : (
                   <>
                     <button
@@ -163,6 +195,12 @@ export function MyRoutes({ version, onOpen, onExport, announce, versions = false
                       {rowDetails(r)}
                       {/* A closure in force on the saved line (v0.7.0 closures): one line, read with the route's name. */}
                       {alertLine(r.closure_alerts) && <span className="my-route-closure"> {alertLine(r.closure_alerts)}</span>}
+                      {r.archived_at && <span> · {t("Archived")}</span>}
+                      {(r.tags ?? []).map((x) => (
+                        <span key={x} className="load-route-tag-mark">
+                          {x}
+                        </span>
+                      ))}
                     </span>
                     <button
                       type="button"
@@ -194,6 +232,19 @@ export function MyRoutes({ version, onOpen, onExport, announce, versions = false
                       >
                         {t("Rename")}
                       </button>
+                      {versions && (
+                        <button
+                          type="button"
+                          className="secondary"
+                          aria-label={t("Tags for {name}", { name: r.name })}
+                          onClick={() => {
+                            setTagText((r.tags ?? []).length ? `${(r.tags ?? []).join(", ")}, ` : "");
+                            setTagging(r.id);
+                          }}
+                        >
+                          {t("Tags")}
+                        </button>
+                      )}
                       {versions && (
                         <button
                           type="button"

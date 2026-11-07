@@ -85,6 +85,8 @@ export const ICON_PATHS = {
   "draw": "<circle cx=\"5\" cy=\"19\" r=\"2\"/><circle cx=\"19\" cy=\"5\" r=\"2\"/><path d=\"M6.5 17.5 17.5 6.5\"/>",
   "undo": "<path d=\"M9 14 4 9l5-5\"/><path d=\"M4 9h10.5a5.5 5.5 0 0 1 0 11H11\"/>",
   "redo": "<path d=\"m15 14 5-5-5-5\"/><path d=\"M20 9H9.5a5.5 5.5 0 0 0 0 11H13\"/>",
+  // Load route's Archive (the owner, 2026-11-07): a box with its lid.
+  "archive": "<path d=\"M3 4h18v4H3z\"/><path d=\"M5 8v12h14V8M10 12h4\"/>",
   "trash": "<path d=\"M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6\"/>",
   "grip": "<circle cx=\"9\" cy=\"6\" r=\"1.4\" fill=\"currentColor\"/><circle cx=\"15\" cy=\"6\" r=\"1.4\" fill=\"currentColor\"/><circle cx=\"9\" cy=\"12\" r=\"1.4\" fill=\"currentColor\"/><circle cx=\"15\" cy=\"12\" r=\"1.4\" fill=\"currentColor\"/><circle cx=\"9\" cy=\"18\" r=\"1.4\" fill=\"currentColor\"/><circle cx=\"15\" cy=\"18\" r=\"1.4\" fill=\"currentColor\"/>",
   "camera": "<path d=\"M4 7h3l2-3h6l2 3h3v13H4z\"/><circle cx=\"12\" cy=\"13\" r=\"3.5\"/>",

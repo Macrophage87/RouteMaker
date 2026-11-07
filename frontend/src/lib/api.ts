@@ -310,6 +310,11 @@ export interface DescriptionEntry {
      */
     across?: string | null;
     /**
+     * With `across`: the turn made off a way alongside that road to cross it ("left" or "right"; the owner,
+     * at West Basin Drive: "Left across road then right"), drawn on the ride card.
+     */
+    across_from?: "left" | "right" | null;
+    /**
      * A turn onto an unnamed path that leads to a named one (describe._toward, round-2 D21): that one's name, said with
      * the path ("Right onto the path to Rock Creek Trail"). `onto` stays "path". Null elsewhere; absent from older APIs.
      */
@@ -808,10 +813,34 @@ export interface BikesharePlan {
   /** The plain source citation (OWNER-DECISIONS 301). */
   credit: string;
   /**
-   * A Rebalance Ride (`preset: "rebalance"`): from a crowded station (at least 3/4 full) to one that needs bikes
-   * (at most 1/4 full). False on plain Bikeshare; absent from an older server.
+   * A Rebalance Ride (`preset: "rebalance"`): from a crowded station (at least 3/4 full) near the start to the
+   * nearest one that needs bikes (at most 1/4 full), where it ends: no destination, no walk after (2026-11-07). False
+   * on plain Bikeshare; absent from an older server.
    */
   rebalance?: boolean;
+  /**
+   * A trip with stops (v0.22.0; each stop starts a new trip): the trips after the first, one per stop. This plan, its
+   * line and its walks are the first trip's, to the first stop; each later one is planned again at its stop. Empty or
+   * absent: no stops.
+   */
+  later?: BikeshareLater[];
+  /** A trip with stops: every trip's walking and riding, without stops. Null or absent: none. */
+  trip_total_s?: number | null;
+  /** A trip with stops whose later trip could not be planned now: which one, planned again at that stop. Null: none. */
+  later_note?: string | null;
+}
+
+/** One trip after a stop (core.api.BikeshareLaterOut), as planned now. */
+export interface BikeshareLater {
+  /** The stop it starts from, counted from 1. */
+  stop: number;
+  start: BikeshareStop;
+  end: BikeshareStop;
+  ride_m: number;
+  walk_m: number;
+  total_s: number;
+  steps: { kind: "walk" | "ride"; text: string }[];
+  summary: string;
 }
 
 /** One end of a route option (core.api.BikeshareOptionEndOut). */
@@ -896,7 +925,15 @@ export interface SteepGradeSpan {
   text: string;
 }
 
+/** core.api TrailLevelSpanOut: a mountain-bike trail the route rides (2026-11-07), in metres along the route as `stress_spans`: 1 green, 2 blue, 3 black, 4 red, 0 unrated. */
+export interface TrailLevelSpan {
+  from_m: number;
+  to_m: number;
+  level: number;
+}
+
 /** core.api RoadHazardSpanOut: a known hazard the route rides (v0.10.0; core/route_hazards.py). */
+
 export interface RoadHazardSpan {
   from_m: number;
   to_m: number;
@@ -980,6 +1017,8 @@ export interface RouteResponse {
   mass_hazards?: MassHazardSpan[] | null;
   /** The known hazards it rides (v0.10.0: cobblestones, rails in the road), in riding order; empty or absent where none. */
   road_hazards?: RoadHazardSpan[] | null;
+  /** The rated mountain-bike trails it rides (2026-11-07), for the ride's stress ribbon; empty or absent where none. */
+  trail_levels?: TrailLevelSpan[] | null;
   /** Steep grades either way (v0.12.5), Mass Ride and Novice and Nervous only; null on other ride types or an older API. */
   steep_grades?: SteepGradeSpan[] | null;
   /** The Avoid-rated junctions it passes, in route order (307); empty or absent where none. */
@@ -1525,7 +1564,8 @@ export function routeRequestBody(points: readonly LonLat[], preset: PresetId, op
   // confirm_long only when the rider said yes to a long plan (LONG-RIDE
   // contract); the API asks anonymous riders first with a 409.
   return JSON.stringify({
-    points,
+    // A Rebalance Ride plans from its start alone (core/bikeshare.py): an end kept from another ride type is not sent.
+    points: preset === "rebalance" ? points.slice(0, 1) : points,
     preset,
     // A Mass Ride keeps Make it a loop for the next ride type but has no
     // loop (OWNER-DECISIONS 374), so the flag is not sent; the API's
