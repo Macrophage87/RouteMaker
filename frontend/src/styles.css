@@ -10540,6 +10540,78 @@ summary.closure-notices-heading {
   font-size: 14px;
   color: var(--text-muted);
 }
+/* Organizing (the owner, 2026-11-07): the tag chips, each row's Archive or Restore, Undo and the Archived link. */
+.load-route-tags {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+.load-route-tag {
+  flex: none;
+  min-height: 44px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+}
+.load-route-tag[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--accent-text);
+  border-color: var(--accent);
+  font-weight: 700;
+}
+.load-route-list .load-route-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.load-route-item .load-route-row {
+  flex: 1;
+  min-width: 0;
+}
+.load-route-archive,
+.load-route-restore {
+  flex: none;
+  min-width: 44px;
+  min-height: 44px;
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.load-route-archive {
+  padding: 0;
+}
+.load-route-tag-mark {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 5px;
+  border: 1px solid var(--swatch-border);
+  border-radius: 4px;
+  font-size: 12px;
+}
+.load-route-undo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 8px 0 0;
+}
+.load-route-undo button {
+  min-height: 44px;
+  font-weight: 700;
+  color: inherit;
+  text-decoration: underline;
+}
+.load-route-archived {
+  display: block;
+  min-height: 44px;
+  margin-top: 8px;
+  text-decoration: underline;
+}
 
 /* Saved routes in Save & load: the name with More beside it, its line under; GPX, Rename, Versions and Delete behind More. */
 .my-route-open {

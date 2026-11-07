@@ -198,12 +198,14 @@ def test_it_introduces_itself_and_lists_its_tools(tools) -> None:
         "ride_conditions",
         "my_routes",
         "save_route",
+        "organize_route",
         "gpx_route",
     ]
-    # Only save_route changes anything: the rest plan drafts.
+    # Only save_route and organize_route change anything (My routes, on the rider's word): the
+    # rest plan drafts.
     tools_listed = rpc(tools, "tools/list")["result"]["tools"]
     writers = [t["name"] for t in tools_listed if not t["annotations"]["readOnlyHint"]]
-    assert writers == ["save_route"]
+    assert writers == ["save_route", "organize_route"]
     assert rpc(tools, "nope")["error"]["code"] == -32601
     # An unknown tool is the caller's mistake in the request, not a tool's refusal.
     assert rpc(tools, "tools/call", {"name": "nope"})["error"]["code"] == -32602
@@ -474,7 +476,16 @@ def test_saving_on_the_rider_s_computer_writes_a_file_and_says_where_my_routes_i
     assert Path(out["gpx_file"]).parent == tmp_path and "saved" not in out
     assert "connector" in out["notes"][0]
     save = next(t for t in tools.tools() if t["name"] == "save_route")
-    assert set(save["inputSchema"]["properties"]) == {"draft_id", "name"}
+    assert set(save["inputSchema"]["properties"]) == {"draft_id", "name", "tags", "replaces"}
+    # Tags and archiving are My routes' alone, on the site's connector.
+    tagged = tools.call(
+        "save_route", {"draft_id": draft["draft_id"], "name": "Lunch", "tags": ["x"]}
+    )
+    assert "My routes only" in tagged["notes"][-1]
+    with pytest.raises(mcp.ToolError, match="own connector"):
+        tools.call("save_route", {"draft_id": draft["draft_id"], "name": "L", "replaces": 3})
+    with pytest.raises(mcp.ToolError, match="own connector"):
+        tools.call("organize_route", {"route_id": 3, "archived": True})
 
 
 def test_the_assistant_picks_the_ride_type_and_any_setting(tools) -> None:
