@@ -5788,7 +5788,8 @@ if (mine()) {
   const noRoom = await small.eval("window.__said.filter((t) => t.includes('No room on this screen'))");
   // Traffic stress is a ribbon now (Stephen 2026-11-04), so Elevation may fit under it, or be named in the line under it;
   // only where neither is on screen is it said, and then once.
-  const elevationShown = await small.eval("[...document.querySelectorAll('.ride-ahead-name, .ride-ahead-room')].some((e) => e.textContent.includes('Elevation'))");
+  // Slim graphs (#1025) carry no name: Elevation drawn slim is its hill mark in the margin (AheadGraph SlimMark).
+  const elevationShown = await small.eval("!!document.querySelector('path.ride-ahead-slim-mark') || [...document.querySelectorAll('.ride-ahead-name, .ride-ahead-room')].some((e) => e.textContent.includes('Elevation'))");
   check("ride graphs at 360x640 with two on: Elevation drawn or named under the ribbon, or said once with no room, not again at each GPS fix",
     elevationShown ? noRoom.length === 0 : noRoom.length === 1 && noRoom[0] === "No room on this screen for: Elevation.", JSON.stringify({ elevationShown, noRoom }));
   const room = await small.eval(`(() => {
