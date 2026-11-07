@@ -5625,7 +5625,7 @@ out.
 1. `python scripts/ddot_advisories.py watch --days 45` lists the dated advisories on every
    DDOT advisories page changed in that time whose link is not yet in the file's `seen`.
    It first prints a `CHECK:` line for each hand-kept date due a look: a guessed last day
-   (`"end_estimated": true`) within 30 days, this file or the Purple Line's not updated in 45
+   (`"end_estimated": true`) within 30 days, this file, the Purple Line's or Fairfax's park alerts' not updated in 45
    days, and the deer schedules' assumed season (14 days ahead) or last night (30 days ahead).
 2. Read each one (the link is the release, PDF or Word). For a closure, add an entry:
    `id`, `project`, `page` (the advisories page, which the card links), `advisory` (the
@@ -5690,9 +5690,9 @@ m off the centre line) inside the work zone.
 The Fairfax County Park Authority posts its trail and bridge closures (the Cross County Trail
 included) only as words on its Park Alerts page, <https://www.fairfaxcounty.gov/parks/park-alerts>:
 one list item a park, with no map, and nothing on the parks' own pages. Virginia's WZDx feed is
-VDOT's roads. The owner, 2026-11-07, met the closed bridge by the Lake Accotink marina on the
-Cross County Trail ("There's a closure on the cross county trail. See where this is posted and
-how it was missed"), and chose "Watch Park Alerts, you confirm". So these are read by hand into
+VDOT's roads. A closed bridge by the Lake Accotink marina on the Cross County Trail was missed
+this way (the owner: "There's a closure on the cross county trail. See where this is posted and
+how it was missed"), and the owner chose (2026-11-07) "Watch Park Alerts, you confirm". So these are read by hand into
 `src/core/geodata/fcpa-closures.json` (`routemaker.fcpa`), in the same shape as the DDOT
 advisories file: source `fcpa` ("Fairfax County Park Authority park alert"), routed round, red on
 the map, whole days, gone after the last day.
@@ -5700,24 +5700,27 @@ the map, whole days, gone after the last day.
 **Each week (or when the owner reports a missed closure):**
 
 1. `python scripts/fcpa_alerts.py watch` prints the page's items not yet in the file's `seen`
-   list, the ones naming a trail, bridge or path in full, then a count of the rest; and a
-   `CHECK:` line for a guessed last day within 30 days or the file not updated in 45 days.
+   list, the ones naming a trail, bridge or path in full, then the rest one line each (read
+   those too: a closure may not use those words); and a `CHECK:` line for a guessed last day
+   within 30 days or the file not updated in 45 days (`scripts/ddot_advisories.py watch` prints
+   these as well).
 2. For each trail item that closes a way a bicycle uses (a trail, a bridge on one), find the
    OpenStreetMap ways from the alert's words and its linked map, and draft an entry: `id`,
    `project` (the park), `page` (the Park Alerts page), `advisory` (the alert's own map or
    project page where it links one, else the page), `posted` (the alert's date on the page),
    `road` (as a rider would name it: "Cross County Trail bridge by the Lake Accotink marina"),
    `on_foot` (true: the park closes it to everyone), `reason`, `first_day`, `last_day`, `ways`
-   and `lines` (`python scripts/ddot_advisories.py lines WAY ...`). "Until further notice" has
+   (kept for reference; the router reads `lines`) and `lines`
+   (`python scripts/ddot_advisories.py lines WAY ...`). "Until further notice" has
    no end: give the last day a month on and `"end_estimated": true`, so the watch asks again.
-   Lane-free work that leaves the trail open ("follow all posted signage") stays out.
+   Work that leaves the trail open ("follow all posted signage") stays out.
 3. Show the owner each draft (the alert's words, the ways on a map) and enter only what the
    owner confirms. Evidence is the Park Authority's words and what a rider saw, never another map.
 4. `python scripts/fcpa_alerts.py watch --mark` adds every item now on the page to `seen` and
    sets `updated` to today. An item whose words change is listed again.
 5. Ship the file in the next release, as for the other hand-read files.
 
-The first watch (2026-11-07) listed 12 trail items, among them the Lake Accotink marina bridge
+The first watch listed 12 trail items, among them the Lake Accotink marina bridge
 (closed for repairs, "reopen by Friday, Nov. 13"), the Cross County Trail under the Dulles Toll
 Road ("until Fall 2026"), the Pimmit Run sewer work and several bridges closed until further
 notice; none was entered before the owner's review.

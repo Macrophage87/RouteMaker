@@ -1,5 +1,5 @@
 """Closures from the Fairfax County Park Authority's Park Alerts (v0.22.0, `routemaker.fcpa`): the
-owner, 2026-11-07, "There's a closure on the cross county trail. See where this is posted and how
+owner, "There's a closure on the cross county trail. See where this is posted and how
 it was missed." Read by hand into a file once the owner confirms, routed round, gone after their
 last day; `scripts/fcpa_alerts.py watch` lists the page's items not yet read."""
 
@@ -105,6 +105,22 @@ class TestTheAlerts:
         (fresh,) = fcpa.unseen(after, {i.key for i in before})
         assert fresh.park == "Lake Accotink Park" and "Nov. 20" in fresh.text
 
+    def test_a_footbridge_or_the_cct_is_a_trail_item(self) -> None:
+        for words in ("The footbridge is closed.", "The CCT ford is out.", "Walkway closed."):
+            assert fcpa.Item("A Park", words, "k").trail, words
+        assert not fcpa.Item("A Park", "The restrooms are closed.", "k").trail
+
+    def test_a_paragraph_a_plain_bold_name_and_a_second_alert_are_read(self) -> None:
+        page = (
+            '<div class="field--name-body"><p><b>Hidden Oaks:</b> The footbridge is closed.</p>'
+            "</div></article>"
+            '<div class="field--name-body"><ul><li><strong>Wakefield Park:</strong> The trail'
+            " by the creek is closed.</li></ul></div></article>"
+        )
+        items = fcpa.alert_items(page)
+        assert [i.park for i in items] == ["Hidden Oaks", "Wakefield Park"]
+        assert items[0].text == "Hidden Oaks: The footbridge is closed."
+
     def test_a_page_with_no_alert_body_has_no_items(self) -> None:
         assert fcpa.alert_items("<html><ul><li>Parks</li></ul></html>") == []
 
@@ -115,7 +131,7 @@ class TestZones:
         assert real(local(2026, 11, 14, 0, 0)) == []
 
     def test_routed_round_and_told_as_a_closure_from_the_park_alerts(self) -> None:
-        now = local(2026, 11, 7, 11, 40)
+        now = local(2026, 11, 10, 9, 0)
         (zone,) = real(now)
         assert zone.zone_id == "fcpa-accotink-marina-bridge-0"
         assert zone.kind == wz.CLOSED and zone.source == fcpa.SOURCE and zone.on_foot is True
@@ -125,7 +141,7 @@ class TestZones:
         assert wz.source_text(zone) == "Fairfax County Park Authority park alert, Nov 6"
 
     def test_a_route_over_it_runs_along_it(self) -> None:
-        passages = wz.along(RIDDEN, real(local(2026, 11, 7, 11, 40)))
+        passages = wz.along(RIDDEN, real(local(2026, 11, 10, 9, 0)))
         assert [p.zone.zone_id for p in passages] == ["fcpa-accotink-marina-bridge-0"]
 
 
@@ -133,7 +149,7 @@ class TestZones:
 def test_the_snapshot_holds_them_and_names_the_source(monkeypatch) -> None:
     from core import workzones
 
-    now = local(2026, 11, 7, 11, 40)
+    now = local(2026, 11, 10, 9, 0)
     monkeypatch.setattr(fcpa, "zones", lambda when, closures=None: real(when))
     workzones.forget()
     try:

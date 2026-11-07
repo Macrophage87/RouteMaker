@@ -9,11 +9,11 @@ in `src/core/geodata/fcpa-closures.json` only after the owner confirms it.
     python scripts/fcpa_alerts.py watch [--mark]
 
 reads the page and prints the items not yet in the file's `seen` list: the ones that name a
-trail, a bridge or a path first, in full, then a count of the rest. It first prints a `CHECK:`
-line for each hand-kept date due a look (`fcpa.check_due`). With `--mark`, once the new items are
-read (and any confirmed closure entered), it adds every item now on the page to `seen` and sets
-`updated` to today, so the next watch lists only what changed. An item whose words change is
-listed again.
+trail, a bridge or a path first, in full, then the rest one line each, so every new item is
+seen. It first prints a `CHECK:` line for each hand-kept date due a look (`fcpa.check_due`).
+With `--mark`, once the new items are read (and any confirmed closure entered), it adds every
+item now on the page to `seen` and sets `updated` to today, so the next watch lists only what
+changed. An item whose words change is listed again.
 
 The lines for a closure come from `python scripts/ddot_advisories.py lines WAY ...`. Only the
 public page is read (no sign-in). docs/OPERATIONS.md, "Fairfax park trail closures".
@@ -55,6 +55,10 @@ def watch(mark: bool) -> int:
     trail = [i for i in fresh if i.trail]
     for item in trail:
         print(f"{item.key} | {item.park or '(no park named)'}\n    {item.text}")
+    if len(fresh) > len(trail):
+        print("Other new items (no trail, bridge or path named):")
+    for item in fresh[len(trail) :]:
+        print(f"{item.key} | {item.park or '(no park named)'} | {item.text[:80]}")
     print(
         f"{len(trail)} new trail items, {len(fresh) - len(trail)} other new items, "
         f"{len(items)} on the page",
