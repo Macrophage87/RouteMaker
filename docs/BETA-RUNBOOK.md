@@ -1372,7 +1372,9 @@ usual way forward.
 the agent copies them from the deployed checkout into `$RM_STATE/cd/bin`, so the next pass runs
 them. The systemd units are written only by `install`: rerun
 `"$RM_SRC/scripts/beta/auto-release.sh" install` (it keeps the state) when a release's notes say
-the units changed, or if the report says the copy failed.
+the units changed, or if the report says the copy failed. A release shipped by hand is not deployed
+by the agent, so `mark-deployed` leaves the old copies in `$RM_STATE/cd/bin`: when such a release
+changes the agent's files, rerun `install` after `mark-deployed`.
 
 **Disk.** `status` shows the free space on Docker's root and `$RM_STATE`, the number of api
 images, the `<db>_before_<time>` databases restores left, and the `node_modules` copies.
@@ -1503,7 +1505,8 @@ cd "$RM_SRC"
 **Release notes for riders (a second, read-only channel).** The live release's notes,
 `docs/releases/<tag>.md` from its checkout (docs/releases/README.md), go to a second webhook: the
 title "RouteMaker vX.Y.Z is on beta", then the notes, split at line ends to fit. The agent tries on
-each deploy and each up-to-date pass until they are posted, once per tag
+each deploy, and on each pass that finds it up to date or a newer tag held, failed or waiting
+(the usual state after a release shipped by hand), until they are posted, once per tag
 (`$RM_STATE/alerts/release-posted`; a pass that stops part-way resumes at the next message). A
 deploy first refreshes the installed `alert.sh` from the deployed checkout, so the release that
 brings this posts its own notes. A tag without a notes file posts the title alone; a failure is
