@@ -62,7 +62,7 @@ test("a ride left too long ago, or unreadable, is not offered and is forgotten; 
 test("the page keeps the ride at Start, forgets it at End, and asks at load; nothing goes to the server", () => {
   const app = src("../App.tsx");
   assert.match(app, /if \(kept\) \{[\s\S]{0,500}?keepLeftRide\(\{ route, \.\.\.whole, dials: rideDialsNow, fixed, destination, passOn, follows, leads: ledLink, stopsLeft: tripStopsLeft\.current \}/);
-  assert.match(app, /const endRide = useCallback\(\(after: EndedPlan, stats: RideStats\) => \{\s*const \{ start, mode: endedIn \} = rideNow\.current;[\s\S]{0,200}?const past = start\?\.whole \? leftRidePast\(\) : null;\s*forgetLeftRide\(\);/);
+  assert.match(app, /const endRide = useCallback\(\(after: EndedPlan, stats: RideStats, docked\?: RebalanceDocked \| null\) => \{\s*const \{ start, mode: endedIn \} = rideNow\.current;[\s\S]{0,200}?const past = start\?\.whole \? leftRidePast\(\) : null;\s*forgetLeftRide\(\);/);
   assert.match(app, /const \[leftAsk, setLeftAsk\] = useState\(\(\) => \(SHARED_RIDE && SHARED_LEAD \? null : leftRide\(VIA_MARKS, Date\.now\(\)\)\)\);/);
   assert.match(app, /<ResumeRideDialog\s+open=\{leftAsk !== null && !riding && !roaming\}/);
   assert.doesNotMatch(src("./rideResume.ts"), /fetch\(|origin/);
@@ -275,4 +275,39 @@ test("Undo after End ride past a trip's line rides on with the train or walk; Re
   const resume = app.slice(app.indexOf("const resumeLeft = () => {"), app.indexOf("const dropLeft = () => {"));
   assert.match(resume, /tripStopsLeft\.current = left\.stopsLeft \?\? null;\s*tripCheck\.current = checkTripOf\(left\.route, left\.points\);/);
   assert.match(app, /tripCheck\.current = checkTripOf\(route, ridePoints\);/);
+});
+
+test("back within minutes of putting the page away, Resume carries on without asking which stops are done (Stephen, 2026-11-07)", async () => {
+  const { RESUME_QUIET_MS, RIDE_RESUME_KEY, resumesQuietly, seeLeftRide } = await import("./rideResume.ts");
+  const kept = new Map<string, string>();
+  const store = { getItem: (k: string) => kept.get(k) ?? null, setItem: (k: string, v: string) => void kept.set(k, v), removeItem: (k: string) => void kept.delete(k) };
+  // Nothing kept: nothing to mark.
+  seeLeftRide(1000, null, store);
+  assert.equal(kept.size, 0);
+  kept.set(RIDE_RESUME_KEY, JSON.stringify({ v: 1, at: 0 }));
+  // The figures go with it (switching off "resets progress"), without the last fix and its line.
+  const stats = { startedAt: 1, distanceM: 4200, movingMs: 900_000, climbM: 30, stressM: {}, elevation: [], last: { point: [-77, 38.9] as [number, number], at: 2, accuracyM: 5, progressM: 10, model: null } };
+  seeLeftRide(5000, stats, store);
+  const written = JSON.parse(kept.get(RIDE_RESUME_KEY)!);
+  assert.equal(written.seen, 5000);
+  assert.equal(written.stats.distanceM, 4200);
+  assert.equal(written.stats.last, null);
+  assert.equal(resumesQuietly({ seen: 5000 }, 5000 + RESUME_QUIET_MS), true);
+  assert.equal(resumesQuietly({ seen: 5000 }, 5001 + RESUME_QUIET_MS), false);
+  assert.equal(resumesQuietly({}, 5000), false);
+  assert.equal(resumesQuietly({ seen: 9000 }, 5000), false);
+  const ride = src("../RideMode.tsx");
+  assert.match(ride, /if \(document\.visibilityState === "hidden" && !ended\.current\) seeLeftRide\(Date\.now\(\), statsRef\.current\);/);
+  assert.match(src("../App.tsx"), /const quiet = resumesQuietly\(left, Date\.now\(\)\);\s*\/\/[^\n]*\n\s*setResumeStats\(quiet \? \(left\.stats \?\? null\) : null\);/);
+});
+
+test("back on the page, the note of it put away is dropped, so a later reload does not resume on older figures (#1025 review)", async () => {
+  const { RIDE_RESUME_KEY, seeLeftRide, unseeLeftRide } = await import("./rideResume.ts");
+  const kept = new Map<string, string>();
+  const store = { getItem: (k: string) => kept.get(k) ?? null, setItem: (k: string, v: string) => void kept.set(k, v), removeItem: (k: string) => void kept.delete(k) };
+  kept.set(RIDE_RESUME_KEY, JSON.stringify({ v: 1, at: 0 }));
+  seeLeftRide(5000, { startedAt: 1, distanceM: 10, movingMs: 1, climbM: 0, stressM: {}, elevation: [], last: null }, store);
+  unseeLeftRide(store);
+  assert.deepEqual(JSON.parse(kept.get(RIDE_RESUME_KEY)!), { v: 1, at: 0 });
+  assert.match(src("../RideMode.tsx"), /else if \(document\.visibilityState === "visible"\) unseeLeftRide\(\);/);
 });

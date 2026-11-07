@@ -72,6 +72,8 @@ export function tripRoute(route: RouteResponse): TripRoute {
     descent_m: pieces.reduce((sum, p) => sum + p.descent, 0),
     profile: joinedProfile(pieces, ridePieces),
     stress_spans: joinedSpans(pieces, ridePieces) ?? route.stress_spans,
+    // The trails are in the first ride's metres, not the joined trip's: none drawn rather than in the wrong place.
+    trail_levels: null,
     ridePieces,
   };
 }

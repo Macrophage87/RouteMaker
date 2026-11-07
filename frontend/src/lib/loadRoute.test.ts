@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import { readFileSync } from "node:fs";
 import assert from "node:assert/strict";
-import { LOAD_ROUTE, gpxRideTypes, gpxStartRide, keptLine, loadRows, withGpxChoice } from "./loadRoute.ts";
+import { LOAD_ROUTE, archivedLink, gpxRideTypes, gpxStartRide, keptLine, loadRows, searchText, withGpxChoice, withTag } from "./loadRoute.ts";
+import { matching } from "./routeSearch.ts";
 import type { KeptRoute } from "./offlineRoutes.ts";
 import type { SavedSummary } from "./savedRoutes.ts";
 
@@ -49,7 +50,29 @@ test("Go: Load route sits behind More and opens Load route's popup, one name for
   // The one popup with one title, from Plan's bar and Go's chip alike, and a route picked in it opens there (openSaved, openKept).
   assert.match(app, /open=\{loadOpen === "plan" \? barLoad : loadOpen === "go" && mode === "go" && !riding\}\s*onClose=/);
   assert.match(app, /<Icon name="file" size=\{20\} \/>\s*\{LOAD_ROUTE\}/);
-  assert.match(readFileSync(new URL("../LoadRouteDialog.tsx", import.meta.url), "utf8"), /<h2 id=\{headingId\}>\{LOAD_ROUTE\}<\/h2>/);
+  assert.match(readFileSync(new URL("../LoadRouteDialog.tsx", import.meta.url), "utf8"), /<h2 id=\{headingId\}>\{archivedView \? LOAD_ARCHIVED_TITLE : LOAD_ROUTE\}<\/h2>/);
   assert.equal(LOAD_ROUTE, "Load route");
   assert.doesNotMatch(go + app, /Saved routes/);
+});
+
+// ---- Tags and archive (the owner, 2026-11-07: "Put an 'archive' button on the view") ----
+
+test("Load route lists the routes not archived, and Archived lists the archived alone, with what replaced one", () => {
+  const base = { source: "plan" as const, distance_m: 1609, preset: "default", created_at: "2026-11-01T12:00:00Z", updated_at: "2026-11-01T12:00:00Z" };
+  const rows3 = [
+    { ...base, id: 2, name: "Commute 2", tags: ["Commute"] },
+    { ...base, id: 1, name: "Commute", tags: ["Commute", "Trail"], archived_at: "2026-11-06T12:00:00Z", replaced_by: 2 },
+    { ...base, id: 3, name: "Loop", tags: ["Loop"] },
+  ];
+  const live = loadRows(rows3, [kept]);
+  assert.deepEqual(live.map((r) => r.name), ["Commute 2", "Loop", "Union Station loop"]);
+  const archived = loadRows(rows3, [kept], true);
+  assert.deepEqual(archived.map((r) => r.name), ["Commute"]);
+  assert.ok(archived[0].kind === "saved" && archived[0].archived && archived[0].replacedBy === "Commute 2");
+  // A tag chip keeps that tag's routes (not the kept ones, which have none); the search finds tags too.
+  assert.deepEqual(withTag(live, "commute").map((r) => r.name), ["Commute 2"]);
+  assert.equal(withTag(live, null).length, 3);
+  assert.deepEqual(matching(live, "loop", searchText).map((r) => r.name), ["Loop", "Union Station loop"]);
+  assert.deepEqual(matching(live, "commute", searchText).map((r) => r.name), ["Commute 2"]);
+  assert.equal(archivedLink(6), "Archived (6)");
 });

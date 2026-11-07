@@ -79,4 +79,9 @@ urlpatterns = [
     path("routes/<slug:slug>/thumbnail", route_posts.thumbnail_upload, name="route-post-picture"),
     path("routes/<slug:slug>/photos", route_posts.photo_upload, name="route-post-photos"),
     path("routes/<slug:slug>/photos/<str:key>.jpg", route_posts.photo, name="route-post-photo"),
+    path(
+        "routes/<slug:slug>/photos/send/<str:token>",
+        route_posts.photo_link_upload,
+        name="route-post-photo-link",
+    ),
 ]

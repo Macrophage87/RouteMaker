@@ -141,6 +141,15 @@ export function loopNote(route: Pick<RouteResponse, "loop">): string | null {
 }
 
 /**
+ * Whether a plan is routed from its start alone: a Run loop from its start (runLoopFromStart), or a Rebalance Ride, which
+ * has no destination (Stephen, 2026-11-07: "You start where you are, and then go to the nearest bikeshare dock that has
+ * extra bikes and then to a bikeshare dock with less").
+ */
+export function plansFromStart(preset: PresetId, points: readonly LonLat[], dials: Pick<Dials, "loop" | "targetDistanceM">): boolean {
+  return (preset === "rebalance" && points.length >= 1) || runLoopFromStart(preset, points, dials);
+}
+
+/**
  * Whether a Run is planned from its start alone (Run, 2026-11-02): Make it a loop on and a target distance set, so
  * the API finds a loop about that long from the start (core/run_plan.py target_loop).
  */
