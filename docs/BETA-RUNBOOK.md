@@ -1372,7 +1372,9 @@ usual way forward.
 the agent copies them from the deployed checkout into `$RM_STATE/cd/bin`, so the next pass runs
 them. The systemd units are written only by `install`: rerun
 `"$RM_SRC/scripts/beta/auto-release.sh" install` (it keeps the state) when a release's notes say
-the units changed, or if the report says the copy failed.
+the units changed, or if the report says the copy failed. A release shipped by hand is not deployed
+by the agent, so `mark-deployed` leaves the old copies in `$RM_STATE/cd/bin`: when such a release
+changes the agent's files, rerun `install` after `mark-deployed`.
 
 **Disk.** `status` shows the free space on Docker's root and `$RM_STATE`, the number of api
 images, the `<db>_before_<time>` databases restores left, and the `node_modules` copies.

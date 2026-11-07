@@ -2379,6 +2379,19 @@ def test_a_waiting_newer_tag_still_posts_the_deployed_releases_notes(beta: Beta)
     assert any(line.startswith("release-notes|v0.1.0|") for line in _alerts(beta))
 
 
+def test_a_failed_newer_tag_still_posts_the_deployed_releases_notes(beta: Beta) -> None:
+    _alert_stub(beta)
+    _release_hook(beta)
+    beta.release("v0.2.0", {"src/core/a.py": "x = 2\n"})
+    (beta.cd / "failed").mkdir(exist_ok=True)
+    (beta.cd / "failed" / "v0.2.0").write_text("rolled back\n")
+    beta.agent("run", STUB_ALERTS=str(beta.tmp / "alerts.log"))
+    assert "failed" in beta.status()
+    sent = _alerts(beta)
+    assert any(line.startswith("release-notes|v0.1.0|") for line in sent)
+    assert not any(line.startswith("release-notes|v0.2.0|") for line in sent)
+
+
 def test_no_release_notes_while_paused(beta: Beta) -> None:
     _alert_stub(beta)
     _release_hook(beta)
