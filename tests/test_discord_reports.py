@@ -421,38 +421,58 @@ def _notes_with_images(where: Path) -> Path:
     return notes
 
 
-def test_changelog_posts_images_in_place_as_attachments(changelog_dir, monkeypatch) -> None:
+def test_changelog_is_one_post_with_the_date_and_every_picture(changelog_dir, monkeypatch) -> None:
     monkeypatch.setattr(mod.time, "sleep", lambda s: None)
     notes = _notes_with_images(changelog_dir)
     fake = FakeChannel()
-    assert run(changelog_dir, fake, "changelog", "v0.22.0", str(notes)) == 0
-    assert fake.posted() == [
-        "**RouteMaker v0.22.0 is on beta**\n- Saved routes take tags",
-        "Tags in My routes",
-        "- A quieter map",
-    ]
+    args = ("changelog", "v0.22.0", str(notes), "--live-date", "2026-10-31")
+    assert run(changelog_dir, fake, *args) == 0
+    text = (
+        "**RouteMaker v0.22.0 is on beta**\nLive on beta Saturday, October 31, 2026\n"
+        "- Saved routes take tags\n- A quieter map"
+    )
+    assert fake.posted() == [text]
     posts = [(b, f) for (m, _p, b), f in zip(fake.calls, fake.files, strict=True) if m == "POST"]
-    assert [f for _b, f in posts] == [[], ["tags.png"], []]
-    assert posts[1][0]["attachments"] == [
+    assert posts[0][1] == ["tags.png"]
+    assert posts[0][0]["attachments"] == [
         {"id": 0, "filename": "tags.png", "description": "Tags in My routes"}
     ]
-    # Posted already, image included: nothing again.
     history = [
         {
-            "id": str(n + 1),
+            "id": "1",
             "author": {"id": BOT},
-            "content": b["content"],
-            "attachments": [{"filename": x} for x in f],
+            "content": text,
+            "attachments": [{"filename": "tags.png"}],
         }
-        for n, (b, f) in enumerate(posts)
     ]
     again = FakeChannel(history)
-    assert run(changelog_dir, again, "changelog", "v0.22.0", str(notes)) == 0
+    assert run(changelog_dir, again, *args) == 0
     assert again.posted() == []
-    # Stopped after the first message: the image and the rest follow.
-    rest = FakeChannel(history[:1])
+    # A retry on another day, or by hand without a date, still finds it.
+    later = FakeChannel(history)
+    assert (
+        run(changelog_dir, later, "changelog", "v0.22.0", str(notes), "--live-date", "2026-11-01")
+        == 0
+    )
+    assert run(changelog_dir, later, "changelog", "v0.22.0", str(notes)) == 0
+    assert later.posted() == []
+
+
+def test_long_notes_put_each_picture_where_it_sits(changelog_dir, monkeypatch) -> None:
+    monkeypatch.setattr(mod.time, "sleep", lambda s: None)
+    notes = _notes_with_images(changelog_dir)
+    long = "\n".join(f"- line {n} " + "x" * 90 for n in range(25))
+    notes.write_text(notes.read_text() + long + "\n")
+    fake = FakeChannel()
+    assert run(changelog_dir, fake, "changelog", "v0.22.0", str(notes)) == 0
+    sent = fake.posted()
+    assert sent[0] == "**RouteMaker v0.22.0 is on beta**\n- Saved routes take tags"
+    assert sent[1] == "Tags in My routes" and fake.files[sent.index(sent[1]) + 2] == ["tags.png"]
+    assert all(len(m) <= 2000 for m in sent) and len(sent) > 3
+    # Stopped after the first message: the rest follow, the first is not repeated.
+    rest = FakeChannel([{"id": "1", "author": {"id": BOT}, "content": sent[0]}])
     assert run(changelog_dir, rest, "changelog", "v0.22.0", str(notes)) == 0
-    assert rest.posted() == ["Tags in My routes", "- A quieter map"]
+    assert rest.posted() == sent[1:]
 
 
 def test_another_versions_messages_do_not_count_as_posted(changelog_dir, monkeypatch) -> None:
@@ -464,7 +484,13 @@ def test_another_versions_messages_do_not_count_as_posted(changelog_dir, monkeyp
     ]
     fake = FakeChannel(history)
     assert run(changelog_dir, fake, "changelog", "v0.22.0", str(notes)) == 0
-    assert len(fake.posted()) == 3
+    assert len(fake.posted()) == 1
+
+
+def test_a_bad_live_date_is_refused(changelog_dir, capsys) -> None:
+    args = ("changelog", "v0.2.0", "--live-date", "Oct 31")
+    assert run(changelog_dir, FakeChannel(), *args) == 2
+    assert "YYYY-MM-DD" in capsys.readouterr().err
 
 
 @pytest.mark.parametrize(
