@@ -77,7 +77,7 @@ test("6. an End ride button always in view, labelled End ride with its icon, one
   assert.match(finish, /clearPlan\(\);[\s\S]*?focusAfterRemove\.current = null;\s*if \(document\.activeElement instanceof HTMLElement && document\.activeElement\.closest\("\.go-search"\)\) document\.activeElement\.blur\(\);\s*window\.requestAnimationFrame\(\(\) => document\.querySelector<HTMLElement>\("\.go-bar-start"\)\?\.focus\(\)\);/);
   // Undo carries on from the ended ride's figures; a new Start begins from nought.
   assert.match(app, /setResumeStats\(ended\.stats\);\s*\/\/ A trip past its line carries on with the walk or train it was following; else from its line\.\s*setRideStart\(\{ \.\.\.ended\.start, past: ended\.past \}\);/);
-  assert.match(app, /setResumeStats\(null\);\s*setRideStart\(\(before\) =>/);
+  assert.match(app, /setResumeStats\((?:null|quiet \? \(left\.stats \?\? null\) : null)\);\s*setRideStart\(\(before\) =>/);
   assert.match(ride, /useRef<RideStats>\(resumeStats \? statsPause\(resumeStats\) : statsStart\(Date\.now\(\)\)\)/);
   // Large text always (the owner, 2026-10-20: "Just use large for everything"), its small print never under 16 pt.
   assert.match(css, /\.ride-summary-figures dt,[^{]*\{\s*font-size: 16pt;/);
