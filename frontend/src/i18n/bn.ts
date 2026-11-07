@@ -2053,4 +2053,10 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "You changed the route after its link went out. A new ride gets a new link, so those with the earlier link do not see it.": "লিংক পাঠানোর পরে আপনি পথটি বদলেছেন। নতুন সফর নতুন লিংক পায়, তাই আগের লিংক যাদের কাছে আছে তারা এটি দেখতে পান না।",
   "Same ride": "একই সফর",
   "New ride": "নতুন সফর",
+  "Walking": "হাঁটা",
+  "Total time, without stops": "মোট সময়, না থেমে",
+  "To stop 1, not counting breaks": "স্টপ 1 পর্যন্ত, বিরতি বাদে",
+  "Whole trip, not counting breaks": "পুরো যাত্রা, বিরতি বাদে",
+  "The map shows the trip to stop 1. At each stop you return the bike, and the next trip is planned again from there, with the bikes and docks free then.": "মানচিত্রে স্টপ 1 পর্যন্ত যাত্রা দেখানো হয়েছে। প্রতিটি স্টপে আপনি সাইকেলটি ফেরত দেন, এবং পরের যাত্রা সেখান থেকে আবার পরিকল্পনা করা হয়, তখন খালি থাকা সাইকেল ও ডক অনুযায়ী।",
+  "From stop {n}": "স্টপ {n} থেকে",
 };

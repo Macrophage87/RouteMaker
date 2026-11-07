@@ -820,6 +820,8 @@ export interface BikesharePlan {
   later?: BikeshareLater[];
   /** A trip with stops: every trip's walking and riding, without stops. Null or absent: none. */
   trip_total_s?: number | null;
+  /** A trip with stops whose later trip could not be planned now: which one, planned again at that stop. Null: none. */
+  later_note?: string | null;
 }
 
 /** One trip after a stop (core.api.BikeshareLaterOut), as planned now. */

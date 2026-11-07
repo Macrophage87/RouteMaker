@@ -2053,4 +2053,10 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "You changed the route after its link went out. A new ride gets a new link, so those with the earlier link do not see it.": "غيّرت المسار بعد إرسال رابطه. الرحلة الجديدة لها رابط جديد، فلا يراها من لديهم الرابط السابق.",
   "Same ride": "الرحلة نفسها",
   "New ride": "رحلة جديدة",
+  "Walking": "مشيًا",
+  "Total time, without stops": "الوقت الإجمالي، بدون توقفات",
+  "To stop 1, not counting breaks": "حتى المحطة 1، دون احتساب الاستراحات",
+  "Whole trip, not counting breaks": "الرحلة كلها، دون احتساب الاستراحات",
+  "The map shows the trip to stop 1. At each stop you return the bike, and the next trip is planned again from there, with the bikes and docks free then.": "تعرض الخريطة الرحلة حتى المحطة 1. في كل محطة تعيد الدراجة، ويُخطَّط للرحلة التالية من جديد من هناك، بحسب الدراجات والمراسي المتاحة وقتها.",
+  "From stop {n}": "من المحطة {n}",
 };

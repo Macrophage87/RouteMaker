@@ -2053,4 +2053,10 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "You changed the route after its link went out. A new ride gets a new link, so those with the earlier link do not see it.": "你在发出链接后更改了路线。新的骑行有新的链接，所以持有之前链接的人看不到它。",
   "Same ride": "同一次骑行",
   "New ride": "新的骑行",
+  "Walking": "步行",
+  "Total time, without stops": "总时间，不含停留",
+  "To stop 1, not counting breaks": "到第 1 个停靠点，不含休息",
+  "Whole trip, not counting breaks": "全程，不含休息",
+  "The map shows the trip to stop 1. At each stop you return the bike, and the next trip is planned again from there, with the bikes and docks free then.": "地图显示到第 1 个停靠点的行程。在每个停靠点你都要还车，下一段行程会根据当时空闲的单车和车位从那里重新规划。",
+  "From stop {n}": "从第 {n} 个停靠点起",
 };

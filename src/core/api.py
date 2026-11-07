@@ -2158,7 +2158,16 @@ class BikesharePlanOut(Schema):
     trip_total_s: float | None = Field(
         default=None,
         description=(
-            "A trip with stops: every trip's walking and riding, without stops. Null: none."
+            "A trip with stops: every trip's walking and riding, without stops. Null: none, or"
+            " a later trip could not be planned now (`later_note`)."
+        ),
+    )
+    later_note: str | None = Field(
+        default=None,
+        description=(
+            "A trip with stops whose later trip could not be planned now (no bike or dock near"
+            " its stop, or no time left): which one, and that it is planned again at that stop."
+            " `later` then lists the trips before it. Null: every trip was planned."
         ),
     )
 
@@ -3687,7 +3696,9 @@ def route_neighbours(request, body: RouteIn):
     if span_m(routing.loop_points(body.points, loop)) > CONFIRM_SPAN_M:
         return Status(200, {"stress": stress, "options": []})
     # A trip with stops is planned trip by trip (`_bikeshare_body`): no options of the whole.
-    if body.preset in presets.BIKESHARE_PRESETS and (len(body.points) > 2 or not _same_docks(body)):
+    if body.preset in presets.BIKESHARE_PRESETS and len(body.points) > 2:
+        return Status(200, {"stress": stress, "options": []})
+    if body.preset == presets.BIKESHARE and not _same_docks(body):
         return Status(200, {"stress": stress, "options": []})
     direct, calmer = presets.stress_notches(body.preset, stress)
     wanted = [
@@ -4103,8 +4114,24 @@ def _bikeshare_body(body: RouteIn, started: float | None) -> dict:
     # own, inside the same budget. The body is the first trip's; the later ones are listed, and
     # planned again from the stop when the rider gets there (the bikes and docks free then).
     later = []
+    note = None
     for number in range(1, last + 1):
-        plan = leg(number)["bikeshare"]
+        # A later trip is a preview, planned again at its stop: one that cannot be planned now
+        # never refuses the trip whose first leg was found (the 2026-11-07 review).
+        try:
+            plan = leg(number)["bikeshare"]
+        except (
+            bikeshare.NoBikeshare,
+            routing.TooLong,
+            routing.NoRoute,
+            routing.RouterUnavailable,
+            routing.DeadlineExceeded,
+        ) as error:
+            logger.info(
+                "bikeshare stops: trip from stop %d not planned: %s", number, type(error).__name__
+            )
+            note = LATER_NOT_PLANNED.format(stop=number)
+            break
         later.append(
             {
                 "stop": number,
@@ -4121,8 +4148,18 @@ def _bikeshare_body(body: RouteIn, started: float | None) -> dict:
     # Pick-up and drop-off pairs are the first trip's alone: none offered for the whole trip.
     share["options"] = []
     share["later"] = later
-    share["trip_total_s"] = round(share["total_s"] + sum(trip["total_s"] for trip in later), 1)
+    share["later_note"] = note
+    share["trip_total_s"] = (
+        None if note else round(share["total_s"] + sum(trip["total_s"] for trip in later), 1)
+    )
     return found
+
+
+# Said when a trip after a stop could not be planned just now (`_bikeshare_body`).
+LATER_NOT_PLANNED = (
+    "The trip from stop {stop} could not be planned just now. It is planned again when you get"
+    " there, with the bikes and docks free then."
+)
 
 
 # A transit plan's candidate legs are routed only this long after the request arrived; the rest

@@ -2053,4 +2053,10 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "You changed the route after its link went out. A new ride gets a new link, so those with the earlier link do not see it.": "Anda mengubah rute setelah tautannya dikirim. Perjalanan baru mendapat tautan baru, jadi yang memegang tautan sebelumnya tidak melihatnya.",
   "Same ride": "Perjalanan yang sama",
   "New ride": "Perjalanan baru",
+  "Walking": "Berjalan kaki",
+  "Total time, without stops": "Total waktu, tanpa berhenti",
+  "To stop 1, not counting breaks": "Sampai perhentian 1, tidak termasuk istirahat",
+  "Whole trip, not counting breaks": "Seluruh perjalanan, tidak termasuk istirahat",
+  "The map shows the trip to stop 1. At each stop you return the bike, and the next trip is planned again from there, with the bikes and docks free then.": "Peta menunjukkan perjalanan sampai perhentian 1. Di setiap perhentian Anda mengembalikan sepeda, dan perjalanan berikutnya direncanakan lagi dari sana, sesuai sepeda dan dok yang kosong saat itu.",
+  "From stop {n}": "Dari perhentian {n}",
 };

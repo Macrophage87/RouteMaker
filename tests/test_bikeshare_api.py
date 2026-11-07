@@ -125,8 +125,9 @@ class TestBikeshareAnswer:
             "credit",
             "later",
             "trip_total_s",
+            "later_note",
         }
-        assert plan["later"] == [] and plan["trip_total_s"] is None
+        assert plan["later"] == [] and plan["trip_total_s"] is None and plan["later_note"] is None
         assert plan["start"]["name"] == "Columbus Circle / Union Station"
         assert plan["walk_start"]["geometry"]["type"] == "LineString"
         assert plan["steps"][0]["text"].endswith("take a classic bike (12 available).")
@@ -374,6 +375,25 @@ class TestBikeshareStops:
         assert plan["later"][0]["end"]["station_id"] == end_drop
         # The first trip's own pairs are not offered for the whole trip.
         assert plan["options"] == []
+
+    def test_a_later_trip_not_planned_now_never_refuses_the_first(
+        self, client, world, monkeypatch
+    ) -> None:
+        stop = [-77.0365, 38.8977]
+        planned = bikeshare.plan
+
+        def none_from_the_stop(start, end, *args, **kwargs):
+            if list(start) == stop:
+                raise bikeshare.NoBikeshare("no bike near there")
+            return planned(start, end, *args, **kwargs)
+
+        monkeypatch.setattr(bikeshare, "plan", none_from_the_stop)
+        response = post(client, body(points=[UNION, stop, DUPONT]))
+        assert response.status_code == 200, response.content
+        plan = response.json()["bikeshare"]
+        assert plan["later"] == []
+        assert plan["trip_total_s"] is None
+        assert "trip from stop 1 could not be planned just now" in plan["later_note"]
 
     def test_a_trip_with_stops_has_no_route_options_of_the_whole(self, client, world) -> None:
         stop = [-77.0365, 38.8977]

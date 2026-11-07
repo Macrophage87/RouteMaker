@@ -2053,4 +2053,10 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "You changed the route after its link went out. A new ride gets a new link, so those with the earlier link do not see it.": "Вы изменили маршрут после того, как отправили ссылку. У новой поездки новая ссылка, поэтому те, у кого прежняя ссылка, её не видят.",
   "Same ride": "Та же поездка",
   "New ride": "Новая поездка",
+  "Walking": "Пешком",
+  "Total time, without stops": "Общее время, без остановок",
+  "To stop 1, not counting breaks": "До остановки 1, без учёта перерывов",
+  "Whole trip, not counting breaks": "Вся поездка, без учёта перерывов",
+  "The map shows the trip to stop 1. At each stop you return the bike, and the next trip is planned again from there, with the bikes and docks free then.": "На карте показана поездка до остановки 1. На каждой остановке вы сдаёте велосипед, и следующая поездка планируется заново оттуда, по свободным в тот момент велосипедам и докам.",
+  "From stop {n}": "От остановки {n}",
 };

@@ -2053,4 +2053,10 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "You changed the route after its link went out. A new ride gets a new link, so those with the earlier link do not see it.": "Vous avez modifié l'itinéraire après l'envoi de son lien. Une nouvelle sortie a un nouveau lien : ceux qui ont l'ancien lien ne la voient pas.",
   "Same ride": "La même sortie",
   "New ride": "Nouvelle sortie",
+  "Walking": "À pied",
+  "Total time, without stops": "Temps total, sans arrêts",
+  "To stop 1, not counting breaks": "Jusqu'à l'arrêt 1, sans compter les pauses",
+  "Whole trip, not counting breaks": "Trajet entier, sans compter les pauses",
+  "The map shows the trip to stop 1. At each stop you return the bike, and the next trip is planned again from there, with the bikes and docks free then.": "La carte montre le trajet jusqu'à l'arrêt 1. À chaque arrêt, vous rendez le vélo, et le trajet suivant est replanifié à partir de là, avec les vélos et les bornes libres à ce moment-là.",
+  "From stop {n}": "Depuis l'arrêt {n}",
 };

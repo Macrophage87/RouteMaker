@@ -2053,4 +2053,10 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "You changed the route after its link went out. A new ride gets a new link, so those with the earlier link do not see it.": "تاسو د لینک له لېږلو وروسته لار بدله کړه. نوی سفر نوی لینک لري، نو هغوی چې پخوانی لینک لري دا نه ویني.",
   "Same ride": "هماغه سفر",
   "New ride": "نوی سفر",
+  "Walking": "پلی",
+  "Total time, without stops": "ټول وخت، بې تمې",
+  "To stop 1, not counting breaks": "تر تمځای ۱ پورې، د دمو پرته",
+  "Whole trip, not counting breaks": "ټول سفر، د دمو پرته",
+  "The map shows the trip to stop 1. At each stop you return the bike, and the next trip is planned again from there, with the bikes and docks free then.": "نقشه تر تمځای ۱ پورې سفر ښيي. په هر تمځای کې بایسکل بېرته ورکوئ، او بل سفر له هماغه ځایه بیا پلان کېږي، هغه وخت د خالي بایسکلونو او ځایونو له مخې.",
+  "From stop {n}": "له تمځای {n} څخه",
 };

@@ -17,8 +17,8 @@ import {
   endingChoices,
   endingLabel,
   hasEndingChoice,
-  LATER_TRIPS_NOTE,
   laterHeading,
+  laterTripsNote,
   linkParts,
   planHeading,
   totals,
@@ -76,7 +76,8 @@ export function BikeshareSummary({
           </ol>
         </section>
       ))}
-      {(plan.later?.length ?? 0) > 0 && <p className="hint bikeshare-later-note">{LATER_TRIPS_NOTE}</p>}
+      {((plan.later?.length ?? 0) > 0 || plan.later_note) && <p className="hint bikeshare-later-note">{laterTripsNote()}</p>}
+      {plan.later_note && <p className="hint bikeshare-later-note">{plan.later_note}</p>}
       <dl className="stats bikeshare-totals">
         {totals(plan).map((row) => (
           <div key={row.label}>

@@ -3257,7 +3257,8 @@ export function App() {
   // Best order moves stops only (v0.7.0): via points go with the stop they lead to.
   const orderShown = !isMassRide(preset) && stopsThatMove(stopsOnly(points, VIA_MARKS.isVia, loopVias).points, loopVias) >= 2;
   // Go with a route (v0.7.0, "Keep adding stops by search"): "Add a stop" and Best order in the route sheet, and a
-  // chip's place a stop; never during a ride, nor on Bikeshare (a start and an end only).
+  // chip's place a stop; never during a ride. A two-point ride type takes stops only where each stop starts a new trip
+  // (stopsAsTrips: Walk, the transit types, and Bikeshare and Rebalance Ride since v0.22.0).
   const goStops = mode === "go" && !riding && points.length >= 2 && (!twoPointsOnly(preset) || stopsAsTrips(preset)) && !isMassRide(preset);
   const reverseButton = useRef<HTMLButtonElement>(null);
   const orderFocused = useRef(false);
