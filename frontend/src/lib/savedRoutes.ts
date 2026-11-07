@@ -48,6 +48,12 @@ export interface SavedSummary {
   updated_at: string;
   /** The closures in force along the line, as the server last checked (v0.7.0 closures); absent from an older server. */
   closure_alerts?: ClosureAlert[];
+  /** The rider's tags (the owner, 2026-11-07); absent from an older server. */
+  tags?: string[];
+  /** When it was archived, or null; absent from an older server. */
+  archived_at?: string | null;
+  /** The saved route that replaced it when it was archived for it (an assistant's save), or null. */
+  replaced_by?: number | null;
 }
 
 export interface SavedRoute extends SavedSummary {
@@ -67,6 +73,86 @@ export interface SaveBody {
   gpx?: string;
   /** Saved again: a new latest version of this saved route, the one before it kept in its versions. */
   version_of?: number;
+  /** The rider's tags (core.accounts.clean_tags); left out, a new version keeps the route's. */
+  tags?: string[];
+  /** A full account: the saved route the rider agreed to delete to make room (FULL_ASK). */
+  make_room?: number;
+}
+
+/** A full account's proposal (core.api _full_account): the route unopened longest, from its creation where never
+ * opened (the owner, 2026-11-07: "at 200 routes, then propose deleting the route that has the longest time since last
+ * open or creation"). */
+export interface RoomProposal {
+  id: number;
+  name: string;
+  opened_at: string | null;
+  created_at: string;
+}
+
+export const FULL_HEADING = t("Your account is full");
+export const FULL_DELETE = t("Delete it and save");
+/** The question: which route would go, and when it was last opened (or saved, never opened). */
+export function fullAsk(p: RoomProposal, max = MAX_SAVED): string {
+  return p.opened_at
+    ? t("You have {max} saved routes. Delete \"{name}\" to save this one? You last opened it {date}.", { max: String(max), name: p.name, date: dateText(p.opened_at) })
+    : t("You have {max} saved routes. Delete \"{name}\" to save this one? It was saved {date} and never opened.", { max: String(max), name: p.name, date: dateText(p.created_at) });
+}
+
+/** core.models.SavedRoute.TAGS_MAX and TAG_MAX. */
+export const TAGS_MAX = 8;
+export const TAG_MAX = 30;
+
+/** Tags as typed ("Loop, trail ,loop"): split at commas, trimmed, the same tag twice kept once as first written (as
+ * core.accounts.clean_tags keeps them), each cut to TAG_MAX, at most TAGS_MAX. */
+export function parseTags(text: string): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of text.split(",")) {
+    const tag = raw.split(/\s+/).filter(Boolean).join(" ").slice(0, TAG_MAX);
+    if (!tag || seen.has(tag.toLocaleLowerCase())) continue;
+    seen.add(tag.toLocaleLowerCase());
+    out.push(tag);
+  }
+  return out.slice(0, TAGS_MAX);
+}
+
+/** The tags in use on these routes, most used first (then A to Z), each once whatever its case. */
+export function tagsInUse(routes: readonly Pick<SavedSummary, "tags">[]): string[] {
+  const count = new Map<string, { tag: string; n: number }>();
+  for (const r of routes)
+    for (const tag of r.tags ?? []) {
+      const key = tag.toLocaleLowerCase();
+      const had = count.get(key);
+      if (had) had.n += 1;
+      else count.set(key, { tag, n: 1 });
+    }
+  return [...count.values()].sort((a, b) => b.n - a.n || a.tag.localeCompare(b.tag)).map((c) => c.tag);
+}
+
+/** The account's tags not yet in the field that begin with what is being typed after the last comma; at most six. */
+export function tagHints(offered: readonly string[], text: string): string[] {
+  const parts = text.split(",");
+  const part = (parts.pop() ?? "").trim().toLocaleLowerCase();
+  const done = new Set(parseTags(parts.join(",")).map((x) => x.toLocaleLowerCase()));
+  return offered
+    .filter((x) => {
+      const low = x.toLocaleLowerCase();
+      return !done.has(low) && low !== part && low.startsWith(part);
+    })
+    .slice(0, 6);
+}
+
+/** The field with this hint taken in place of the part being typed, and a comma after it for the next. */
+export function takeHint(text: string, hint: string): string {
+  const parts = text.split(",");
+  parts[parts.length - 1] = ` ${hint}`;
+  return `${parts.join(",").replace(/^\s+/, "")}, `;
+}
+
+/** Whether a route carries this tag, whatever its case. */
+export function hasTag(route: Pick<SavedSummary, "tags">, tag: string): boolean {
+  const want = tag.toLocaleLowerCase();
+  return (route.tags ?? []).some((t) => t.toLocaleLowerCase() === want);
 }
 
 /** The name a save offers (the plan: "defaults to 'Start to End'"). */
@@ -171,6 +257,8 @@ export const VERSIONS_MAX = 20;
 export interface OpenSaved {
   id: number;
   name: string;
+  /** Its tags, offered again when it is saved again in Plan. */
+  tags?: string[];
 }
 
 /**
@@ -216,14 +304,20 @@ function headers(cookie: string, json = true): Record<string, string> {
 
 const docCookie = () => (typeof document === "undefined" ? "" : document.cookie);
 
-export type SaveOutcome = { ok: true; route: SavedSummary; versioned?: boolean } | { ok: false; full: boolean; notFound?: true; message: string };
+export type SaveOutcome = { ok: true; route: SavedSummary; versioned?: boolean } | { ok: false; full: boolean; notFound?: true; message: string; propose?: RoomProposal };
 
 export async function saveRoute(origin: string, body: SaveBody, post: Fetch = fetch, cookie = docCookie()): Promise<SaveOutcome> {
   try {
     const response = await post(`${origin}/api/me/routes`, { method: "POST", credentials: "same-origin", headers: headers(cookie), body: JSON.stringify(body) });
-    const answer = (await response.json().catch(() => ({}))) as { error?: string; code?: string; versioned?: boolean } & SavedSummary;
+    const answer = (await response.json().catch(() => ({}))) as { error?: string; code?: string; versioned?: boolean; propose?: RoomProposal } & SavedSummary;
     if (response.ok) return { ok: true, route: answer, ...(typeof answer.versioned === "boolean" ? { versioned: answer.versioned } : {}) };
-    return { ok: false, full: answer.code === "full", ...(answer.code === "not_found" ? { notFound: true } : {}), message: answer.error || SAVE_FAILED };
+    return {
+      ok: false,
+      full: answer.code === "full",
+      ...(answer.code === "not_found" ? { notFound: true } : {}),
+      ...(answer.code === "full" && answer.propose && typeof answer.propose.id === "number" ? { propose: answer.propose } : {}),
+      message: answer.error || SAVE_FAILED,
+    };
   } catch {
     return { ok: false, full: false, message: SAVE_FAILED };
   }
@@ -243,7 +337,7 @@ export async function saveAsVersion(origin: string, body: SaveBody, of: number |
 
 /** What My routes' rename or delete leaves of the saved route on screen. */
 export function afterRename(open: OpenSaved | null, id: number, name: string): OpenSaved | null {
-  return open && open.id === id ? { id, name: name.trim().slice(0, NAME_MAX) } : open;
+  return open && open.id === id ? { ...open, name: name.trim().slice(0, NAME_MAX) } : open;
 }
 export function afterDelete(open: OpenSaved | null, id: number): OpenSaved | null {
   return open && open.id === id ? null : open;
@@ -275,6 +369,16 @@ export async function renameRoute(origin: string, id: number, name: string, send
     return response.ok;
   } catch {
     return false;
+  }
+}
+
+/** Change a saved route's tags, or archive (true) or restore (false) it; resolves to the route as it now is, or null. */
+export async function changeRoute(origin: string, id: number, change: { tags?: string[]; archived?: boolean }, send: Fetch = fetch, cookie = docCookie()): Promise<SavedSummary | null> {
+  try {
+    const response = await send(`${origin}/api/me/routes/${id}`, { method: "PATCH", credentials: "same-origin", headers: headers(cookie), body: JSON.stringify(change) });
+    return response.ok ? ((await response.json()) as SavedSummary) : null;
+  } catch {
+    return null;
   }
 }
 

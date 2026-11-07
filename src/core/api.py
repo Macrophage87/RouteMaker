@@ -7200,6 +7200,10 @@ def _route_summary(row) -> dict:
         # v0.7.0 closures (core.saved_route_alerts): the closures in force along the line, as
         # last checked; [] where none.
         "closure_alerts": list(row.closure_alerts or []),
+        "tags": list(row.tags or []),
+        "archived_at": row.archived_at.isoformat() if row.archived_at else None,
+        "opened_at": row.opened_at.isoformat() if row.opened_at else None,
+        "replaced_by": row.replaced_by_id,
     }
 
 
@@ -7302,6 +7306,21 @@ def _add_saved_route(request, versions: bool = True):
     gpx = body.get("gpx", "") or ""
     if not isinstance(gpx, str) or (gpx and source != SavedRoute.Source.GPX):
         return _stress_error(400, "Only an opened GPX file keeps its text.", field="gpx")
+    tags, problem = accounts.clean_tags(body.get("tags", []))
+    if problem:
+        return _stress_error(400, problem, field="tags")
+    # The route this one replaces (the MCP connector's save_route, on the rider's word): archived
+    # once this one is saved, and pointing at it.
+    replaces = body.get("replaces")
+    if replaces is not None and (not isinstance(replaces, int) or isinstance(replaces, bool)):
+        return _stress_error(400, "Not a saved route.", field="replaces")
+    # The route the rider agreed to delete to make room (the app's answer to a full account's
+    # proposal); only the site's own pages send it, never the MCP connector.
+    make_room = body.get("make_room")
+    if make_room is not None and (
+        not versions or not isinstance(make_room, int) or isinstance(make_room, bool)
+    ):
+        return _stress_error(400, "Not a saved route.", field="make_room")
     version_of = body.get("version_of")
     if version_of is not None and not versions:
         return _stress_error(400, "An assistant only adds routes.", field="version_of")
@@ -7310,6 +7329,8 @@ def _add_saved_route(request, versions: bool = True):
         # toward the account's cap).
         if not isinstance(version_of, int) or isinstance(version_of, bool):
             return _stress_error(400, "Not a saved route.", field="version_of")
+        if replaces is not None:
+            return _stress_error(400, "A new version replaces nothing.", field="replaces")
         content = {
             "source": source,
             "line": line,
@@ -7318,17 +7339,34 @@ def _add_saved_route(request, versions: bool = True):
             "answer": answer,
             "gpx": gpx,
         }
-        return _save_version(request, version_of, name.strip(), content)
+        return _save_version(
+            request, version_of, name.strip(), content, tags if "tags" in body else None
+        )
     with transaction.atomic():
         # Taken in turn per account, so two saves at once cannot both pass the cap.
         User.objects.select_for_update().filter(pk=request.user.pk).first()
-        if SavedRoute.objects.filter(user=request.user).count() >= SavedRoute.MAX_PER_ACCOUNT:
-            return _stress_error(
-                409,
-                f"You have {SavedRoute.MAX_PER_ACCOUNT} saved routes, the most an account keeps."
-                " Delete one in My routes to save this one.",
-                code="full",
+        old = None
+        if replaces is not None:
+            old = _locked_route(request, replaces)
+            if old is None:
+                return _stress_error(
+                    404, "The route it replaces is not in your account.", code="not_found"
+                )
+        mine = SavedRoute.objects.filter(user=request.user)
+        if mine.count() >= SavedRoute.MAX_PER_ACCOUNT:
+            # Room is made from the archive, the longest archived first (the owner, 2026-11-07).
+            oldest = (
+                mine.filter(archived_at__isnull=False)
+                .exclude(pk=replaces)
+                .order_by("archived_at", "pk")
+                .first()
             )
+            if oldest is None and make_room is not None:
+                # The one the rider agreed to delete.
+                oldest = mine.exclude(pk=replaces).filter(pk=make_room).first()
+            if oldest is None:
+                return _full_account(mine.exclude(pk=replaces))
+            oldest.delete()
         row = SavedRoute.objects.create(
             user=request.user,
             name=name.strip(),
@@ -7338,11 +7376,46 @@ def _add_saved_route(request, versions: bool = True):
             inputs=inputs,
             answer=answer,
             gpx=gpx,
+            tags=tags,
         )
+        if old is not None:
+            from django.utils import timezone
+
+            old.archived_at = old.archived_at or timezone.now()
+            old.replaced_by = row
+            old.save(update_fields=["archived_at", "replaced_by", "updated_at"])
     from . import saved_route_alerts
 
     saved_route_alerts.check(row)
     return _private(JsonResponse(_route_summary(row), status=201))
+
+
+def _full_account(rows):
+    """409 for a save past the cap with nothing archived, proposing the route longest unopened
+    (from its creation where never opened) for the rider to delete (the owner, 2026-11-07)."""
+    from django.db.models.functions import Coalesce
+
+    from .models import SavedRoute
+
+    body: dict = {
+        "error": f"You have {SavedRoute.MAX_PER_ACCOUNT} saved routes, the most an account keeps."
+        " Archive or delete one in Load route to save this one.",
+        "code": "full",
+    }
+    stale = (
+        rows.annotate(last=Coalesce("opened_at", "created_at"))
+        .order_by("last", "pk")
+        .only("pk", "name", "opened_at", "created_at")
+        .first()
+    )
+    if stale is not None:
+        body["propose"] = {
+            "id": stale.pk,
+            "name": stale.name,
+            "opened_at": stale.opened_at.isoformat() if stale.opened_at else None,
+            "created_at": stale.created_at.isoformat(),
+        }
+    return _private(JsonResponse(body, status=409))
 
 
 # The rider's Garmin connection (core.garmin_views; the owner, 2026-10-23): Settings shows it and
@@ -7639,8 +7712,13 @@ def _replace_content(row, content: dict) -> None:
     everything = SavedRouteVersion.objects.filter(route__user_id=row.user_id)
     total = sum(everything.values_list("size_bytes", flat=True))
     if total > SavedRouteVersion.MAX_BYTES_PER_ACCOUNT:
+        from django.db.models import F
+
         drop = []
-        for pk, size in everything.order_by("replaced_at", "pk").values_list("pk", "size_bytes"):
+        # Archived routes' versions first, the longest archived first (the owner, 2026-11-07:
+        # "Archived routes are deleted first, longest time in archive first"); then the oldest.
+        order = (F("route__archived_at").asc(nulls_last=True), "replaced_at", "pk")
+        for pk, size in everything.order_by(*order).values_list("pk", "size_bytes"):
             if total <= SavedRouteVersion.MAX_BYTES_PER_ACCOUNT:
                 break
             drop.append(pk)
@@ -7659,7 +7737,8 @@ def _locked_route(request, route_id: int):
     return SavedRoute.objects.select_for_update().filter(user=request.user, pk=route_id).first()
 
 
-def _save_version(request, route_id: int, name: str, content: dict):
+def _save_version(request, route_id: int, name: str, content: dict, tags=None):
+    """Saved again. `tags` given (a cleaned list) replaces the route's; None keeps them."""
     from django.db import transaction
 
     with transaction.atomic():
@@ -7669,9 +7748,15 @@ def _save_version(request, route_id: int, name: str, content: dict):
         changed = not _same_content(row, content)
         if changed:
             _replace_content(row, content)
+        fields = []
         if row.name != name:
             row.name = name
-            row.save(update_fields=["name", "updated_at"])
+            fields.append("name")
+        if tags is not None and tags != row.tags:
+            row.tags = tags
+            fields.append("tags")
+        if fields:
+            row.save(update_fields=[*fields, "updated_at"])
     if changed:
         from . import saved_route_alerts
 
@@ -7766,13 +7851,20 @@ def saved_route_restore(request, route_id: int, version_id: int):
     errors_as_json,
 )
 def saved_route_read(request, route_id: int):
+    from django.utils import timezone
+
+    from .models import SavedRoute
+
     row = _saved_route(request, route_id)
     if row is None:
         return _stress_error(404, "That saved route is not in your account.", code="not_found")
+    # Opened: when the rider last used it, for a full account's proposal (updated_at unchanged).
+    row.opened_at = timezone.now()
+    SavedRoute.objects.filter(pk=row.pk).update(opened_at=row.opened_at)
     return _private(JsonResponse(_route_full(row)))
 
 
-@api.patch("/me/routes/{route_id}", summary="Rename a saved route")
+@api.patch("/me/routes/{route_id}", summary="Rename, tag, archive or restore a saved route")
 @decorate_view(
     ratelimit.user_rate_limited(ratelimit.ACCOUNT_WRITES),
     csrf_protected,
@@ -7782,21 +7874,56 @@ def saved_route_read(request, route_id: int):
     errors_as_json,
 )
 def saved_route_rename(request, route_id: int):
+    return _change_saved_route(request, route_id)
+
+
+def _change_saved_route(request, route_id: int):
+    """PATCH /api/me/routes/{id}, and the site's MCP connector's organize_route (core.connector).
+    Body: any of {"name": text, "tags": [text, ...], "archived": true | false}; what is left
+    out stays as it is. Restoring an archived route forgets what replaced it."""
+    from django.utils import timezone
+
     from . import accounts
 
     body, refusal = _json_body(request, MAX_BODY_BYTES)
     if refusal is not None:
         return refusal
-    name = body.get("name") if isinstance(body, dict) else None
-    if not isinstance(name, str) or not name.strip() or len(name.strip()) > accounts.NAME_MAX:
+    if not isinstance(body, dict) or not ({"name", "tags", "archived"} & body.keys()):
+        return _stress_error(400, "Send a name, tags or archived.")
+    fields = []
+    name = body.get("name")
+    if "name" in body and (
+        not isinstance(name, str) or not name.strip() or len(name.strip()) > accounts.NAME_MAX
+    ):
         return _stress_error(
             400, f"Give the route a name of up to {accounts.NAME_MAX} characters.", field="name"
         )
+    tags = None
+    if "tags" in body:
+        tags, problem = accounts.clean_tags(body["tags"])
+        if problem:
+            return _stress_error(400, problem, field="tags")
+    archived = body.get("archived")
+    if "archived" in body and not isinstance(archived, bool):
+        return _stress_error(400, "archived is true or false.", field="archived")
     row = _saved_route(request, route_id)
     if row is None:
         return _stress_error(404, "That saved route is not in your account.", code="not_found")
-    row.name = name.strip()
-    row.save(update_fields=["name", "updated_at"])
+    if "name" in body:
+        row.name = name.strip()
+        fields.append("name")
+    if tags is not None:
+        row.tags = tags
+        fields.append("tags")
+    if archived is True and row.archived_at is None:
+        row.archived_at = timezone.now()
+        fields.append("archived_at")
+    elif archived is False and row.archived_at is not None:
+        row.archived_at = None
+        row.replaced_by = None
+        fields += ["archived_at", "replaced_by"]
+    if fields:
+        row.save(update_fields=[*fields, "updated_at"])
     return _private(JsonResponse(_route_summary(row)))
 
 

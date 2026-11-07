@@ -1,12 +1,13 @@
 /**
  * Save route (v0.7.0 plan, "Discord sign-in on, with saved settings and routes", item 3): beside Share, signed
- * in only. It asks for a name only (offered as "Start to End") and says what happened politely.
+ * in only. It asks for a name (offered as "Start to End") and says what happened politely. In Plan it asks for tags
+ * too, optional (the owner, 2026-11-07): the account's tags are offered as they are typed.
  */
 import { useEffect, useId, useRef, useState, type MouseEvent } from "react";
 import { DiscordLogo } from "./DiscordLogo.tsx";
 import { Icon } from "./Icon.tsx";
 import { firstWordAndRest, t } from "./lib/i18n.ts";
-import { NAME_MAX, SAVE_ROUTE } from "./lib/savedRoutes.ts";
+import { NAME_MAX, SAVE_ROUTE, TAGS_MAX, listRoutes, parseTags, tagHints, tagsInUse, takeHint } from "./lib/savedRoutes.ts";
 
 /** How long the bar's "Saved" line stays on the map. */
 export const SAID_ON_MAP_MS = 6000;
@@ -15,8 +16,11 @@ export interface SaveRouteProps {
   label: string;
   /** The name offered: "Start to End" from the plan's place names. */
   defaultName: () => string;
-  /** Saves under the name; resolves to the line to say. Null signed out (the map bar's form only). */
-  onSave: ((name: string) => Promise<string>) | null;
+  /** Saves under the name (and the tags, where asked); resolves to the line to say. Null signed out (the map bar's
+   * form only). */
+  onSave: ((name: string, tags?: string[]) => Promise<string>) | null;
+  /** Plan's: asks for tags too, offering these first (the route's own, saved again). Absent (Go), no tags field. */
+  defaultTags?: () => string[];
   /** Go's chip, or Plan's plain button in More. */
   chip?: boolean;
   /** Shorter words shown in place of the label, which stays the button's name. */
@@ -32,9 +36,21 @@ export interface SaveRouteProps {
   signIn?: ((event: MouseEvent<HTMLAnchorElement>) => void) | null;
 }
 
-export function SaveRoute({ label, defaultName, onSave, chip = false, shown, bar = false, onGpx, signIn }: SaveRouteProps) {
+export function SaveRoute({ label, defaultName, onSave, chip = false, shown, bar = false, onGpx, signIn, defaultTags }: SaveRouteProps) {
   const [asking, setAsking] = useState(false);
   const [name, setName] = useState("");
+  const [tagText, setTagText] = useState("");
+  const [offered, setOffered] = useState<string[]>([]);
+  const tagsId = useId();
+  // The account's tags, read as the form opens (Plan's alone).
+  useEffect(() => {
+    if (!asking || !defaultTags || !onSave) return;
+    let live = true;
+    void listRoutes(window.location.origin).then((all) => live && all && setOffered(tagsInUse(all)));
+    return () => {
+      live = false;
+    };
+  }, [asking, defaultTags, onSave]);
   const [busy, setBusy] = useState(false);
   const [said, setSaid] = useState({ text: "", count: 0 });
   const openerRef = useRef<HTMLButtonElement>(null);
@@ -64,7 +80,11 @@ export function SaveRoute({ label, defaultName, onSave, chip = false, shown, bar
         aria-controls={formId}
         aria-label={shown || bar ? label : undefined}
         onClick={() => {
-          if (!asking) setName(defaultName());
+          if (!asking) {
+            setName(defaultName());
+            const first = defaultTags?.() ?? [];
+            setTagText(first.length ? `${first.join(", ")}, ` : "");
+          }
           setAsking(!asking);
         }}
       >
@@ -90,7 +110,7 @@ export function SaveRoute({ label, defaultName, onSave, chip = false, shown, bar
             const chosen = name.trim() || defaultName();
             if (busy || !onSave) return;
             setBusy(true);
-            void onSave(chosen).then((text) => {
+            void onSave(chosen, defaultTags ? parseTags(tagText) : undefined).then((text) => {
               setBusy(false);
               setSaid((s) => ({ text, count: s.count + 1 }));
               close();
@@ -109,6 +129,26 @@ export function SaveRoute({ label, defaultName, onSave, chip = false, shown, bar
                 {t("Name")}
                 <input type="text" value={name} maxLength={NAME_MAX} onChange={(e) => setName(e.target.value)} autoFocus />
               </label>
+              {defaultTags && (
+                <>
+                  <label>
+                    {t("Tags (optional)")}
+                    <input type="text" value={tagText} onChange={(e) => setTagText(e.target.value)} aria-describedby={`${tagsId}-hint`} autoComplete="off" />
+                  </label>
+                  {tagHints(offered, tagText).length > 0 && parseTags(tagText).length < TAGS_MAX && (
+                    <div className="load-route-tags save-route-tag-hints" role="group" aria-label={t("Your tags")}>
+                      {tagHints(offered, tagText).map((x) => (
+                        <button key={x} type="button" className="load-route-tag" onClick={() => setTagText(takeHint(tagText, x))}>
+                          {x}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <p className="hint" id={`${tagsId}-hint`}>
+                    {t("Commas between tags. Change them later in Save & load.")}
+                  </p>
+                </>
+              )}
               <button type="submit" aria-disabled={busy}>
                 {t("Save")}
               </button>

@@ -488,6 +488,20 @@ class Api:
             raise ToolError(f"My routes could not be read ({status}): {message}")
         return payload.get("routes") or []
 
+    def change_route(self, route_id: int, change: dict) -> dict:
+        """PATCH /api/me/routes/{id}: tag, archive or restore one of the rider's saved routes.
+        Only RouteMaker's own connector is signed in; here the site refuses it."""
+        status, payload, _ = self._request("PATCH", f"/api/me/routes/{int(route_id)}", change)
+        if status in (401, 403):
+            raise ToolError(
+                "My routes is organized only through RouteMaker's own connector, signed in"
+                " (Settings > Connectors in the assistant app), or in the app's Load route"
+            )
+        if status != 200 or not isinstance(payload, dict):
+            message = payload.get("error") if isinstance(payload, dict) else payload
+            raise ToolError(f"that saved route was not changed ({status}): {message}")
+        return payload
+
     def saved_route(self, route_id: int) -> dict:
         """GET /api/me/routes/{id}: one of the rider's saved routes, with its line and answer."""
         status, payload, _ = self._request("GET", f"/api/me/routes/{int(route_id)}")
@@ -2820,7 +2834,39 @@ def _saved_label(row: dict) -> dict:
     }
     if row.get("closure_alerts"):
         out["closures_on_it"] = len(row["closure_alerts"])
+    if row.get("tags"):
+        out["tags"] = list(row["tags"])
+    if row.get("archived_at"):
+        out["archived"] = str(row["archived_at"])[:10]
     return out
+
+
+def _tags_arg(value) -> list[str]:
+    """Tags as given: each trimmed, runs of spaces made one, the same one twice (by case) once."""
+    if value is None:
+        return []
+    if not isinstance(value, list) or not all(isinstance(x, str) for x in value):
+        raise ToolError("tags: a list of words")
+    out: list[str] = []
+    for tag in value:
+        tag = " ".join(tag.split())
+        if tag and tag.casefold() not in {x.casefold() for x in out}:
+            if len(tag) > 30:
+                raise ToolError("keep each tag to 30 characters")
+            out.append(tag)
+    if len(out) > 8:
+        raise ToolError("a route keeps at most 8 tags")
+    return out
+
+
+def _tags_in_use(rows) -> list[str]:
+    """The tags on these saved routes, most used first, then A to Z."""
+    count: dict[str, list] = {}
+    for row in rows:
+        for tag in row.get("tags") or []:
+            entry = count.setdefault(str(tag).casefold(), [str(tag), 0])
+            entry[1] += 1
+    return [t for t, _ in sorted(count.values(), key=lambda e: (-e[1], e[0].casefold()))]
 
 
 @dataclass
@@ -3328,6 +3374,13 @@ PASSED_OPTIONS = (
 )
 
 
+# A saved route's tags (core.models.SavedRoute.TAGS_MAX and TAG_MAX), the rider's own words.
+TAGS_SCHEMA = {
+    "type": "array",
+    "items": {"type": "string", "minLength": 1, "maxLength": 30},
+    "maxItems": 8,
+}
+
 TOOLS = [
     {
         "name": "find_place",
@@ -3834,15 +3887,28 @@ TOOLS = [
         "name": "my_routes",
         "description": (
             "The rider's saved routes (My routes), on RouteMaker's own connector: with no"
-            " arguments, their names, miles and ride types; with route_id or name, open one as"
-            ' a draft to revise or read ("my commute"), as open_link opens a link. Reads'
-            " only: My routes is never changed here (save_route adds, on the rider's word)."
+            " route_id or name, their names, miles, ride types and tags (archived ones only"
+            " with archived: true; tag and search narrow the list); with route_id or name,"
+            ' open one as a draft to revise or read ("my commute"), as open_link opens a link.'
+            " Reads only: save_route adds and organize_route tags or archives, on the rider's"
+            " word."
         ),
         "inputSchema": {
             "type": "object",
             "properties": {
                 "route_id": {"type": "integer"},
                 "name": {"type": "string", "minLength": 1, "maxLength": 120},
+                "tag": {"type": "string", "minLength": 1, "maxLength": 30},
+                "search": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 120,
+                    "description": "Words each route's name or tags must hold.",
+                },
+                "archived": {
+                    "type": "boolean",
+                    "description": "true: list the archived routes instead. Default false.",
+                },
                 "max_miles_from_metro": RIDE_OPTIONS["max_miles_from_metro"],
             },
         },
@@ -3852,16 +3918,42 @@ TOOLS = [
         "name": "save_route",
         "description": (
             "Keep a draft once the rider has said to, under a name: on the site's own connector,"
-            " in their My routes; on the rider's own computer, as a GPX file. Only on the"
-            " rider's word."
+            " in their My routes, with tags if given; on the rider's own computer, as a GPX"
+            " file. replaces (a route_id from my_routes) archives that saved route once this"
+            " one is saved, for a new route that supersedes it: only when the rider agrees."
+            " Only on the rider's word."
         ),
         "inputSchema": {
             "type": "object",
             "properties": {
                 "draft_id": {"type": "string"},
                 "name": {"type": "string", "minLength": 1, "maxLength": 120},
+                "tags": TAGS_SCHEMA,
+                "replaces": {"type": "integer"},
             },
             "required": ["draft_id", "name"],
+        },
+        "annotations": {"readOnlyHint": False, "destructiveHint": False, "openWorldHint": False},
+    },
+    {
+        "name": "organize_route",
+        "description": (
+            "Tag, archive or restore one of the rider's saved routes (a route_id from"
+            " my_routes), on RouteMaker's own connector. tags replaces its tags; add_tags and"
+            " remove_tags change them; archived true archives it (left out of Load route, and"
+            " the first to go when the account is full: the longest archived first), false"
+            " restores it. Never renames or deletes. Only on the rider's word."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "route_id": {"type": "integer"},
+                "tags": TAGS_SCHEMA,
+                "add_tags": TAGS_SCHEMA,
+                "remove_tags": TAGS_SCHEMA,
+                "archived": {"type": "boolean"},
+            },
+            "required": ["route_id"],
         },
         "annotations": {"readOnlyHint": False, "destructiveHint": False, "openWorldHint": False},
     },
@@ -4147,6 +4239,7 @@ class Server:
         posts: bool = False,
         icons: list[dict] | None = None,
         routes_read: bool = True,
+        routes_organize: bool = True,
     ):
         self._api_factory = api_factory
         self._api: Api | None = None
@@ -4168,6 +4261,9 @@ class Server:
         # on a consent page that said so (core.connector). On a rider's own computer the site
         # refuses the read itself (no sign-in).
         self.routes_read = routes_read
+        # Whether organize_route (and save_route's `replaces`) may tag and archive them: on the
+        # site, a grant whose consent page said so (from v0.22.0).
+        self.routes_organize = routes_organize
 
     def tools(self) -> list[dict]:
         """The tools, as tools/list gives them: without the post tool unless posts may be
@@ -4645,6 +4741,13 @@ class Server:
         name = str(args["name"]).strip()[:120]
         if not name:
             raise ToolError("give the route a name")
+        tags = _tags_arg(args.get("tags"))
+        replaces = args.get("replaces")
+        if replaces is not None:
+            if self.files:
+                raise ToolError("replaces is for My routes, on RouteMaker's own connector")
+            self._check_organize()
+            replaces = int(replaces)
         plan = draft.plan
         out: dict = {"draft_id": args["draft_id"], "name": name}
         notes: list[str] = []
@@ -4660,16 +4763,27 @@ class Server:
                 "to keep it in My routes, open the link and press Save in the app, or use"
                 " RouteMaker's own connector (mcp/README.md)"
             )
+            if tags:
+                notes.append("tags are kept in My routes only: add them there")
         else:
             dials = self._dials(plan)
             fragment = draft.fragment(dials)
             # My routes keeps the plan, never the ride's key: each ride opened from it is new.
-            saved = self.api.save(kept_route(plan, name, without_ride_marks(fragment), dials))
+            body = kept_route(plan, name, without_ride_marks(fragment), dials)
+            if tags:
+                body["tags"] = tags
+            if replaces is not None:
+                body["replaces"] = replaces
+            saved = self.api.save(body)
             out["saved"] = {
                 "id": saved.get("id"),
                 "name": saved.get("name"),
                 "where": "My routes on the site",
             }
+            if saved.get("tags"):
+                out["saved"]["tags"] = saved["tags"]
+            if replaces is not None:
+                out["saved"]["archived"] = replaces
             if plan.check is not None and not plan.check["ok"]:
                 notes.append(
                     f"saved although {plan.check['miles_over_limit']} mi of it is more than"
@@ -4805,14 +4919,40 @@ class Server:
                 " assistants) and connects again. Meanwhile, paste the route's link into open_link"
             )
         rows = self.api.saved_routes()
-        listed = [_saved_label(r) for r in rows]
         wanted_id = args.get("route_id")
         wanted_name = str(args.get("name") or "").strip()
         if wanted_id is None and not wanted_name:
-            return {
-                "routes": listed,
-                "note": "open one as a draft with route_id or name; nothing here changes My routes",
+            archived = bool(args.get("archived"))
+            shown = [r for r in rows if bool(r.get("archived_at")) == archived]
+            tag = " ".join(str(args.get("tag") or "").split()).casefold()
+            if tag:
+                shown = [
+                    r for r in shown if tag in {str(x).casefold() for x in r.get("tags") or []}
+                ]
+            words = str(args.get("search") or "").casefold().split()
+            if words:
+                shown = [
+                    r
+                    for r in shown
+                    if all(
+                        w
+                        in " ".join(
+                            [str(r.get("name") or ""), *map(str, r.get("tags") or [])]
+                        ).casefold()
+                        for w in words
+                    )
+                ]
+            out = {
+                "routes": [_saved_label(r) for r in shown],
+                "note": (
+                    "open one as a draft with route_id or name; tag or archive one with"
+                    " organize_route on the rider's word; nothing here changes My routes"
+                ),
             }
+            if not archived:
+                out["archived_count"] = sum(1 for r in rows if r.get("archived_at"))
+                out["tags_in_use"] = _tags_in_use(r for r in rows if not r.get("archived_at"))
+            return out
         if wanted_id is not None:
             match = [r for r in rows if str(r.get("id")) == str(wanted_id)]
         else:
@@ -4850,6 +4990,59 @@ class Server:
             out.setdefault("notes", []).append(
                 "a new ride, with its own ride key: links sent for an earlier ride on this route"
                 " do not show this one"
+            )
+        return out
+
+    def _check_organize(self) -> None:
+        if not self.routes_read or not self.routes_organize:
+            raise ToolError(
+                "this connection was allowed before RouteMaker's connector could tag and archive"
+                " saved routes; to let it, the rider disconnects it (RouteMaker Settings >"
+                " Account > AI assistants) and connects again. Meanwhile, use Load route in the"
+                " app"
+            )
+
+    # organize_route
+    def organize_route(self, args: dict, call: Call) -> dict:
+        if self.files:
+            raise ToolError(
+                "My routes is organized only through RouteMaker's own connector, or in the"
+                " app's Load route"
+            )
+        self._check_organize()
+        route_id = int(args["route_id"])
+        given = {k for k in ("tags", "add_tags", "remove_tags", "archived") if k in args}
+        if not given:
+            raise ToolError("say what to change: tags, add_tags, remove_tags or archived")
+        if "tags" in args and ({"add_tags", "remove_tags"} & given):
+            raise ToolError("give tags (all of them) or add_tags/remove_tags, not both")
+        change: dict = {}
+        if "archived" in args:
+            if not isinstance(args["archived"], bool):
+                raise ToolError("archived is true or false")
+            change["archived"] = args["archived"]
+        if "tags" in args:
+            change["tags"] = _tags_arg(args["tags"])
+        elif {"add_tags", "remove_tags"} & given:
+            rows = self.api.saved_routes()
+            row = next((r for r in rows if str(r.get("id")) == str(route_id)), None)
+            if row is None:
+                raise ToolError("no saved route by that id")
+            gone = {x.casefold() for x in _tags_arg(args.get("remove_tags"))}
+            tags = [x for x in row.get("tags") or [] if x.casefold() not in gone]
+            have = {x.casefold() for x in tags}
+            for x in _tags_arg(args.get("add_tags")):
+                if x.casefold() not in have:
+                    tags.append(x)
+                    have.add(x.casefold())
+            change["tags"] = tags
+        call.check()
+        now = self.api.change_route(route_id, change)
+        out = {"route": _saved_label(now)}
+        if change.get("archived"):
+            out["note"] = (
+                "archived: left out of Load route (Archived lists it, with Restore); when the"
+                " account is full, the longest archived goes first"
             )
         return out
 
@@ -5549,6 +5742,7 @@ class Server:
             "route_segments": self.route_segments,
             "ride_conditions": self.ride_conditions,
             "my_routes": self.my_routes,
+            "organize_route": self.organize_route,
             "reach": self.reach,
             "compare_places": self.compare_places,
         }.get(name)

@@ -307,7 +307,7 @@ import { fetchMe, NO_ME, type Me } from "./lib/stressEditor.ts";
 import { reloadFavorites, useFavoriteRides } from "./lib/favoriteRides.ts";
 import { ACCOUNT_SETTINGS_USED, applyToDevice, deviceSettings, fetchSettings, planFromSetting, retryUntil, sameSettings, saveSettings, saveUnitsUnsynced, SAVE_SETTLE_MS, setUnitsPending, signInLate, unitsPending, type SettingsDoc } from "./lib/accountSettings.ts";
 import { HOME_KEPT, HOME_MOVED, answerHomeOffer, deviceHome, homeOffer, type HomeOffer } from "./lib/homeMove.ts";
-import { OPENED_SAID, SAVED_SAID, SAVE_FAILED, UNCHANGED_SAID, UPDATE_ROUTE, VERSION_SAID, defaultRouteName, differenceLine, differsTooMuch, gpxSave, afterDelete, afterRename, planSave, saveAsVersion, savedAnswer, versionOf, type OpenSaved, type SavedRoute } from "./lib/savedRoutes.ts";
+import { FULL_HEADING, OPENED_SAID, SAVED_SAID, SAVE_FAILED, UNCHANGED_SAID, UPDATE_ROUTE, VERSION_SAID, defaultRouteName, differenceLine, differsTooMuch, gpxSave, afterDelete, afterRename, planSave, saveAsVersion, saveRoute, savedAnswer, versionOf, type OpenSaved, type RoomProposal, type SaveBody, type SavedRoute } from "./lib/savedRoutes.ts";
 import { checkClosures, closedStretches, reroutedSaid, spliceDetours, type Closure, type CheckFor } from "./lib/closureCheck.ts";
 import { ROUTE_WEATHER_MS, weatherPoints } from "./lib/weather.ts";
 import { useWeather } from "./useWeather.ts";
@@ -318,6 +318,7 @@ import type { DeviceProfileId } from "./lib/deviceProfiles.ts";
 import { LEAD_PARAM, RIDE_PARAM, SHARED_GONE, SHARED_INPUTS_ONLY, SHARED_OPENED, SHARED_PATH, SHARED_REVOKED, SHARED_REVOKED_ERROR, SHARE_KEEP_DEFAULT, SHARE_RIDE_WAIT, BROADCAST_NO_LEAD, BROADCAST_RIDE_FAILED, BROADCAST_RIDE_NO_LEAD, BROADCAST_SHARE_FAILED, asRideLink, leadKeyFrom, gpxShareFile, keepFields, newSharedId, previewImageOk, readShared, rideLinkFrom, sharedBody, sharedIdFrom, storeShared, withSharedId, type ShareKeep } from "./lib/sharedRoutes.ts";
 import { ClosureDialog, type ClosureAsk } from "./ClosureDialog.tsx";
 import { StartOnComputerDialog } from "./StartOnComputerDialog.tsx";
+import { FullAccountDialog } from "./FullAccountDialog.tsx";
 import { SameRideDialog } from "./SameRideDialog.tsx";
 import { BroadcastQrDialog } from "./BroadcastQrDialog.tsx";
 import { BroadcastJoinDialog, type JoinAsk } from "./BroadcastJoinDialog.tsx";
@@ -4060,7 +4061,9 @@ export function App() {
   // The saved route on screen (opened from My routes, or saved last): in Plan, saved again under its own name it
   // is a new version of that route (lib/savedRoutes.ts versionOf). A new file, a shared route or Clear forget it.
   const openSavedRoute = useRef<OpenSaved | null>(null);
-  const saveCurrent = async (name: string): Promise<string> => {
+  // A full account's question (FullAccountDialog): the save waiting on it, sent again with make_room on Delete.
+  const [roomAsk, setRoomAsk] = useState<{ propose: RoomProposal; body: SaveBody; name: string } | null>(null);
+  const saveCurrent = async (name: string, tags?: string[]): Promise<string> => {
     const verbatim = imported?.verbatim;
     const body =
       verbatim && !importEdited
@@ -4070,10 +4073,15 @@ export function App() {
           : null;
     if (!body) return SAVE_FAILED;
     const of = versionOf(openSavedRoute.current, name, mode === "plan");
-    const outcome = await saveAsVersion(origin, body, of);
+    const sent = tags ? { ...body, tags } : body;
+    const outcome = await saveAsVersion(origin, sent, of);
+    if (!outcome.ok && outcome.propose) {
+      setRoomAsk({ propose: outcome.propose, body: sent, name });
+      return FULL_HEADING;
+    }
     if (!outcome.ok) return outcome.message || SAVE_FAILED;
     setMyRoutesVersion((v) => v + 1);
-    if (mode === "plan") openSavedRoute.current = { id: outcome.route.id, name: outcome.route.name };
+    if (mode === "plan") openSavedRoute.current = { id: outcome.route.id, name: outcome.route.name, tags: outcome.route.tags ?? tags };
     // No `versioned`: a plain save (or the route was gone, and this one is new).
     if (outcome.versioned === undefined) return SAVED_SAID(name);
     return outcome.versioned === false ? UNCHANGED_SAID(outcome.route.name, body.source) : VERSION_SAID(outcome.route.name);
@@ -4084,6 +4092,8 @@ export function App() {
           (mode === "plan" ? openSavedRoute.current?.name : undefined) ??
           defaultRouteName(fileNamed(routedPoints[0]), routedPoints.length > 1 ? fileNamed(routedPoints[routedPoints.length - 1]) : null),
         onSave: saveCurrent,
+        // Plan's Save asks for tags too (the owner, 2026-11-07); Go's Save stays a name alone.
+        ...(mode === "plan" ? { defaultTags: () => openSavedRoute.current?.tags ?? [] } : {}),
       }
     : null;
 
@@ -4541,14 +4551,14 @@ export function App() {
     if (!imported) void checkThen("open", route.geometry.coordinates, false, () => {}, undefined, undefined, walksLine(route));
   }, [route]);
   // My routes: open as saved (the line unchanged), or export.
-  const openSaved = (saved: Pick<SavedRoute, "name" | "source" | "distance_m" | "line" | "inputs" | "answer" | "gpx"> & { id?: number | string }, said = OPENED_SAID(saved.name), check = true) => {
+  const openSaved = (saved: Pick<SavedRoute, "name" | "source" | "distance_m" | "line" | "inputs" | "answer" | "gpx" | "tags"> & { id?: number | string }, said = OPENED_SAID(saved.name), check = true) => {
     // A choice from Load route's popup is for a file picked there, not a saved route.
     gpxChoice.current = null;
     showPlanner(true);
     setSharedNote(null);
     setSavedNote(null);
     // A saved route's own id (a shared route's is a string, and is not one of the rider's).
-    const own: OpenSaved | null = typeof saved.id === "number" ? { id: saved.id, name: saved.name } : null;
+    const own: OpenSaved | null = typeof saved.id === "number" ? { id: saved.id, name: saved.name, tags: saved.tags ?? [] } : null;
     openSavedRoute.current = own;
     if (saved.source === "gpx" && saved.gpx) {
       // Kept with the route shown for it (v0.9.0, "share the exact route"): the file opens on the plan it was kept
@@ -6706,6 +6716,25 @@ export function App() {
         onLater={() => setLeftAsk(null)}
       />
       <SameRideDialog open={sameRideAsk !== null} lead={sameRideAsk?.edited ? SAME_RIDE_EDITED_LEAD : undefined} onSame={() => answerSameRide(true)} onNew={() => answerSameRide(false)} onCancel={() => answerSameRide(null)} />
+      <FullAccountDialog
+        propose={roomAsk?.propose ?? null}
+        onCancel={() => setRoomAsk(null)}
+        onDelete={() => {
+          const asked = roomAsk;
+          setRoomAsk(null);
+          if (!asked) return;
+          void saveRoute(origin, { ...asked.body, make_room: asked.propose.id }).then((outcome) => {
+            if (!outcome.ok) {
+              announce(outcome.message || SAVE_FAILED);
+              return;
+            }
+            setMyRoutesVersion((v) => v + 1);
+            if (openSavedRoute.current?.id === asked.propose.id) openSavedRoute.current = null;
+            if (mode === "plan") openSavedRoute.current = { id: outcome.route.id, name: outcome.route.name, tags: outcome.route.tags };
+            announce(SAVED_SAID(asked.name));
+          });
+        }}
+      />
       <StartOnComputerDialog
         open={computerAsk !== null}
         onBack={() => setComputerAsk(null)}
@@ -6820,6 +6849,7 @@ export function App() {
             <SaveRoute
               defaultName={saveProps?.defaultName ?? (() => "")}
               onSave={saveProps?.onSave ?? null}
+              defaultTags={saveProps?.defaultTags}
               label={SAVE_ROUTE}
               bar
               onGpx={downloadRoute}

@@ -20,7 +20,9 @@ Sign-in is OAuth 2.1 with PKCE, which is what an assistant app speaks: the app r
 and allows it on a page of this site, and trades the code for tokens at /oauth/token. Only
 SHA-256 digests of the code and the tokens are kept. A grant can plan, add routes to My routes
 and, where the rider allowed it (`ConnectorGrant.reads_routes`, from v0.18.0), read them to plan
-from (my_routes): it signs nobody in to the site and changes no saved route. An instance
+from (my_routes) and, on the rider's word, tag, archive or restore them (organize_route, and
+save_route's `replaces`; the owner, 2026-11-07). It signs nobody in to the site, and renames,
+re-saves or deletes no saved route. An instance
 admin's grant can also write Featured routes posts as drafts (draft_route_post,
 core.route_posts.write_draft; the owner, 2026-10-25: "Enable a mechanism for me to have the blog
 posts sent directly from claude"); publishing stays theirs, in the admin.
@@ -268,8 +270,58 @@ class InProcessApi:
         if response.status_code in (200, 201) and isinstance(payload, dict):
             return payload
         message = payload.get("error") if isinstance(payload, dict) else payload
+        propose = payload.get("propose") if isinstance(payload, dict) else None
+        if isinstance(propose, dict):
+            # A full account (the owner, 2026-11-07): the assistant may not delete, so it offers
+            # to archive the route longest unopened, which the next save then makes room from.
+            last = str(propose.get("opened_at") or "")[:10]
+            since = (
+                f"last opened {last}"
+                if last
+                else f"never opened, saved {propose['created_at'][:10]}"
+            )
+            message = (
+                f'{message} The route unopened longest is "{propose["name"]}" (route_id'
+                f" {propose['id']}, {since}): ask the rider whether to archive it with"
+                " organize_route (a full account deletes the longest archived first), then save"
+                " again"
+            )
         raise self._module.ToolError(
             f"the site did not save it ({response.status_code}): {message}"
+        )
+
+    def change_route(self, route_id: int, change: dict) -> dict:
+        """Tag, archive or restore one of the rider's saved routes (organize_route, and
+        save_route's `replaces`), through My routes' own checks, as the rider's Load route does
+        (the owner, 2026-11-07: "let things be archived via the MCP")."""
+        from .api import _change_saved_route, errors_as_json
+
+        factory = RequestFactory()
+        address = rider_address(self.user)
+        request = factory.patch(
+            f"/api/me/routes/{int(route_id)}",
+            data=json.dumps(change),
+            content_type="application/json",
+            HTTP_HOST=self._host,
+            REMOTE_ADDR=address,
+            HTTP_X_FORWARDED_FOR=address,
+        )
+        request.user = self.user
+        view = errors_as_json(
+            ratelimit.user_rate_limited(ratelimit.ACCOUNT_WRITES)(
+                lambda r: _change_saved_route(r, int(route_id))
+            )
+        )
+        response = view(request)
+        try:
+            payload = json.loads(response.content or b"null")
+        except ValueError:
+            payload = None
+        if response.status_code == 200 and isinstance(payload, dict):
+            return payload
+        message = payload.get("error") if isinstance(payload, dict) else payload
+        raise self._module.ToolError(
+            f"the site did not change it ({response.status_code}): {message}"
         )
 
     def draft_post(self, fields: dict, route: dict) -> dict:
@@ -483,6 +535,7 @@ def mcp_endpoint(request):
         posts=bool(getattr(user, "is_instance_admin", False)),
         icons=server_icons(request),
         routes_read=grant.reads_routes,
+        routes_organize=grant.organizes_routes,
     )
     msg_id = message.get("id") if isinstance(message, dict) else None
     if msg_id is not None and (isinstance(msg_id, bool) or not isinstance(msg_id, (str, int))):
@@ -842,6 +895,8 @@ def authorize(request):
             # Only a page that said it may read My routes sends this: one served before v0.18.0
             # and answered after it said "It can't read your saved routes".
             reads_routes=request.POST.get("reads_routes") == "1",
+            # Likewise: only a page from v0.22.0 on said it may tag and archive them.
+            organizes_routes=request.POST.get("organizes_routes") == "1",
         )
         return _redirect_with(
             redirect_uri, code=code, state=params.get("state"), iss=_origin(request)
@@ -867,13 +922,16 @@ If you allow it, it can:</p>
 <li>plan routes with RouteMaker's routing, each with a link to it that lasts a day</li>
 <li>add routes to your My routes, when you ask it to</li>
 <li>read your saved routes, when you ask it to plan from one</li>
+<li>tag, archive or restore your saved routes, when you ask it to (a full account makes room
+by deleting the route archived longest)</li>
 {posts}</ul>
-<p>It can't change or delete your saved routes, sign in to the site as you, or change anything
-else.</p>
+<p>It can't rename, re-save or delete your saved routes, sign in to the site as you, or change
+anything else.</p>
 <p>After you answer you'll go back to <strong>{host}</strong>.</p>
 <form method="post" action="/oauth/authorize">
 <input type="hidden" name="csrfmiddlewaretoken" value="{csrf}">
 <input type="hidden" name="reads_routes" value="1">
+<input type="hidden" name="organizes_routes" value="1">
 {hidden}
 <div class="actions">
 <button type="submit" name="answer" value="allow" class="allow">Allow</button>

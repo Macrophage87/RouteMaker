@@ -11,6 +11,12 @@ import { readGpx } from "./gpxImport.ts";
 import { trackGpx, verbatimDownload, verbatimFileName } from "./gpxVerbatim.ts";
 import {
   MAX_SAVED,
+  fullAsk,
+  hasTag,
+  parseTags,
+  tagHints,
+  tagsInUse,
+  takeHint,
   defaultRouteName,
   differenceLine,
   differsTooMuch,
@@ -328,4 +334,37 @@ test("F15. Go's route chips stay one row at 390 px: Save shown short, no icons, 
   const css = read("../styles.css");
   // Save's form and its line take lines of their own under the row.
   assert.match(css, /\.go-chips \.save-route-form,\s*\.go-chips \.save-route-said \{\s*flex: 1 0 100%;/);
+});
+
+// ---- Tags (the owner, 2026-11-07: "add tags to the routes ... ways to find and organize them") ----
+
+test("tags as typed: split at commas, tidied, the same one twice once as first written, at most eight", () => {
+  assert.deepEqual(parseTags(" Gravel  loop, trail,, gravel LOOP ,Commute, "), ["Gravel loop", "trail", "Commute"]);
+  assert.deepEqual(parseTags(""), []);
+  assert.equal(parseTags("a,b,c,d,e,f,g,h,i,j").length, 8);
+  assert.equal(parseTags("x".repeat(40))[0].length, 30);
+});
+
+test("the tags in use: most used first, then A to Z, each once whatever its case", () => {
+  const routes = [{ tags: ["Trail", "Loop"] }, { tags: ["commute"] }, { tags: ["Commute", "trail"] }, {}];
+  assert.deepEqual(tagsInUse(routes), ["commute", "Trail", "Loop"]);
+  assert.ok(hasTag({ tags: ["Gravel"] }, "gravel") && !hasTag({}, "gravel"));
+});
+
+test("Save's tag hints: the account's tags that begin with what is typed, none already in the field", () => {
+  const offered = ["Trail", "Trail run", "Loop", "Commute"];
+  assert.deepEqual(tagHints(offered, "Loop, Tr"), ["Trail", "Trail run"]);
+  assert.deepEqual(tagHints(offered, "Trail, "), ["Trail run", "Loop", "Commute"]);
+  assert.deepEqual(tagHints(offered, "Trail"), ["Trail run"]);
+  assert.equal(takeHint("Loop, Tr", "Trail"), "Loop, Trail, ");
+  assert.equal(takeHint("", "Loop"), "Loop, ");
+});
+
+test("a full account names the route unopened longest and asks before deleting it (the owner, 2026-11-07)", async () => {
+  const propose = { id: 9, name: "Old loop", opened_at: "2026-09-02T12:00:00Z", created_at: "2026-08-01T12:00:00Z" };
+  assert.match(fullAsk(propose), /^You have 200 saved routes\. Delete "Old loop" to save this one\? You last opened it Sep 2, 2026\.$/);
+  assert.match(fullAsk({ ...propose, opened_at: null }), /It was saved Aug 1, 2026 and never opened\.$/);
+  const full = async () => new Response(JSON.stringify({ error: "You have 200 saved routes", code: "full", propose }), { status: 409 });
+  const outcome = await saveRoute("", { name: "x", source: "plan", line: [], distance_m: 1, inputs: { hash: "", points: [], preset: "default", dials: {} } }, full, "t");
+  assert.ok(!outcome.ok && outcome.full && outcome.propose?.id === 9);
 });
