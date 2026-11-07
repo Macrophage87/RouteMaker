@@ -3311,7 +3311,9 @@ if (mine()) {
     await p.eval(`document.querySelector('${sizeButton}').click(); true`);
     await sleep(500);
     const ax = await axNode(p, sizeButton);
-    return p.eval(`(() => { const card = document.querySelector('.ride .cue-card').getBoundingClientRect(); const d = document.querySelector('.ride .cue-distance'); return { name: ${JSON.stringify(ax?.name ?? null)}, pressed: document.querySelector('${sizeButton}').getAttribute('aria-pressed'), map: getComputedStyle(document.querySelector('.map')).display, card: Math.round(card.height / innerHeight * 100), distancePx: d ? parseFloat(getComputedStyle(d).fontSize) : null, kept: localStorage.getItem('routemaker.ride.bigText'), heard: window.__heard.slice(-1)[0] }; })()`);
+    // Large text on a 320 px phone moves Text into More when the rail is short (#1015): there, behind More's closed
+    // bubbles, it is out of the accessibility tree, so its own name is read.
+    return p.eval(`(() => { const card = document.querySelector('.ride .cue-card').getBoundingClientRect(); const d = document.querySelector('.ride .cue-distance'); const b = document.querySelector('${sizeButton}'); return { name: ${JSON.stringify(ax?.name ?? null)} ?? (b.closest('.ride-more-bubbles') ? b.getAttribute('aria-label') : null), inMore: !!b.closest('.ride-more-bubbles'), pressed: document.querySelector('${sizeButton}').getAttribute('aria-pressed'), map: getComputedStyle(document.querySelector('.map')).display, card: Math.round(card.height / innerHeight * 100), distancePx: d ? parseFloat(getComputedStyle(d).fontSize) : null, kept: localStorage.getItem('routemaker.ride.bigText'), heard: window.__heard.slice(-1)[0] }; })()`);
   };
   const large = await sized();
   await p.shot(`${SHOTS}/ride_large_320.png`);
