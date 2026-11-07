@@ -959,7 +959,7 @@ export function placeLabelPaint(id, strong = accessibilityOn(), dark = darkMapOn
  * halo, so a park still reads green and a creek blue. Place names are the street names' 15 px; house numbers, one
  * on every house at zoom 18, 13 px so they do not crowd each other out; the base map's italics and letter spacing go.
  * The route numbers in their shields are 12 px (the base map's 8) with the shield drawn 1.5 times as large (1.2 for
- * its 0.8), so the number still fits it. The names, filters and zooms are the base map's own.
+ * its 0.8), so the number still fits it. The names, filters and zooms are the base map's own, but for the motorways (HIGHWAY_LABEL_MIN_ZOOM) and the shields (SHIELD_MIN_ZOOM).
  *
  * The route numbers are quiet: the owner, 2026-11-04, "In dark mode all the route numbers are hard to see" and "they
  * aren't really that important. They are mostly roads we won't use". So a mid grey, legible and no more: 7.6:1 on
@@ -1005,7 +1005,7 @@ export const OTHER_LABEL = {
  * bikes don't use highways. Only show when zoomed further in." A motorway (the base map's road kind "highway": OSM's
  * motorway and motorway_link, the interstates; a trunk road such as a parkway is a "major_road") is named, and its route shield drawn, only from HIGHWAY_LABEL_MIN_ZOOM,
  * the zoom every road is drawn solid at, where a rider can need it as a landmark beside a street. Every other road's
- * name and shield (a US or state route on a major or trunk road, which a rider may use) is as the base map has it.
+ * name (a US or state route on a major or trunk road, which a rider may use) is as the base map has it; its shield waits for SHIELD_MIN_ZOOM.
  */
 export const HIGHWAY_LABEL_MIN_ZOOM = 14;
 const notMotorwayYet = ["any", ["!=", ["get", "kind"], "highway"], [">=", ["zoom"], HIGHWAY_LABEL_MIN_ZOOM]];
@@ -1851,8 +1851,9 @@ export function stressFilters(when = DEFAULT_WHEN, showHighLanes = highStressLan
  * of bikeable roads in DC, it very much looks messsy"). Below OPENING_MESH_MAX_ZOOM a street of the z11 tiles' lower
  * popular class (POPULAR_PRIORITY_MIN_CLASS, the busier bikeshare streets downtown) that is neither an off-road path
  * nor a protected lane nor a named corridor waits for z12, where the city ladder draws it with the rest of the grid
- * (CITY_LADDER.major). The trails, protected lanes, named corridors, the top popular class, the long calm roads and
- * the trail connectors stay. Front end only: the z11 tiles still carry those streets.
+ * (CITY_LADDER.major). Every way of another popular class (none, 1 or 3), an off-road path, a protected lane, a named
+ * corridor and a road closed to cars at set times stays; a calm road or trail connector that is also such a street
+ * waits with it. Front end only: the z11 tiles still carry those streets.
  */
 export const OPENING_MESH_MAX_ZOOM = 12;
 export const openingViewKeeps = [
@@ -1861,6 +1862,9 @@ export const openingViewKeeps = [
   ["!=", ["to-number", ["get", "popular"], 0], POPULAR_PRIORITY_MIN_CLASS],
   ["match", ["coalesce", ["get", "facility"], "none"], ["path", "protected"], true, false],
   ["has", "trail_name"],
+  // A road closed to cars at set times draws as a path in those times, as the city ladder keeps it (cityMajor).
+  ["has", "car_free"],
+  ["has", "car_free_only"],
 ];
 
 function stressFiltersOf(when, showHighLanes, routableMtb) {

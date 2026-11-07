@@ -303,13 +303,29 @@ test("opening view: a busier bikeshare street with no path or protected lane wai
     { popular: 3, facility: "lane" },
     { popular: 1 },
     { facility: "path" },
+    { popular: 2, tier: 1, car_free: "weekday_offpeak" },
     { calm: true, tier: 1 },
     { overview: 4, tier: 3 },
   ]) assert.equal(keeps.filter({ zoom: 11 }, line(kept)), true, JSON.stringify(kept));
-  // Every stress line and rail layer carries it; the mountain-bike layers and the trail names do not need it.
+  // Every stress line and rail layer carries it: a feature the layer draws at z12 is left out at z11.
   const filters = stressFilters("weekday_offpeak") as Record<string, unknown[]>;
-  for (const id of ["stress-1", "stress-casing-3", "stress-ring-3", "stress-unpaved-2", "facility-lane", "facility-lane-busy", "facility-path"]) {
+  const cases: [string, Record<string, unknown>][] = [
+    ["stress-2", { popular: 2, facility: "lane", tier: 2 }],
+    ["stress-casing-2", { popular: 2, facility: "lane", tier: 2 }],
+    ["stress-3", { popular: 2, tier: 3 }],
+    ["stress-ring-3", { popular: 2, tier: 3 }],
+    ["stress-unpaved-2", { popular: 2, tier: 2, unpaved: true }],
+    ["facility-lane", { popular: 2, facility: "lane", tier: 2 }],
+    ["facility-lane-busy", { popular: 2, facility: "lane", tier: 3 }],
+  ];
+  for (const [id, properties] of cases) {
     const f = featureFilter(filters[id] as never, id);
-    assert.equal(f.filter({ zoom: 11 }, line({ popular: 2, facility: "lane", tier: 2 })), false, id);
+    assert.equal(f.filter({ zoom: 12 }, line(properties)), true, `${id} at z12`);
+    assert.equal(f.filter({ zoom: 11 }, line(properties)), false, `${id} at z11`);
   }
+  // A road closed to cars now draws as a path at z11 still.
+  const carFree = { popular: 2, facility: "lane", tier: 3, car_free: "weekday_offpeak" };
+  const path = featureFilter(filters["stress-1"] as never, "stress-1");
+  assert.equal(path.filter({ zoom: 12 }, line(carFree)), true);
+  assert.equal(path.filter({ zoom: 11 }, line(carFree)), true);
 });
