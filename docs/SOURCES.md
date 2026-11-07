@@ -672,6 +672,18 @@ sample pages (`tests/data/closures`), and docs/OPERATIONS.md, "DC closures", has
 - The facts of a notice (which block, which days) are used with a link to the page; no notice
   text is republished.
 
+### Fairfax County Park Authority park alerts (v0.22.0)
+
+- Credit: `Fairfax County Park Authority park alerts`
+- Page: <https://www.fairfaxcounty.gov/parks/park-alerts> ("Park Alerts: Park Status Notices",
+  Fairfax County Park Authority), one item a park, in words. New items are listed by
+  `scripts/fcpa_alerts.py watch`; a trail or bridge closure is read by a person and, once the
+  owner confirms it, kept as dates, a reason and links in `src/core/geodata/fcpa-closures.json`,
+  its lines OpenStreetMap's (ODbL).
+- Use: closures routed round, whole days, gone after the last day (`routemaker.fcpa`).
+- The facts of an alert (which trail or bridge, which days) are used with a link to the page; no
+  alert text is republished.
+
 ### DDOT occupancy permits (TOPS)
 
 - Credit: `Road closures: DDOT (TOPS permits), CC BY 4.0`

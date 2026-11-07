@@ -3311,7 +3311,9 @@ if (mine()) {
     await p.eval(`document.querySelector('${sizeButton}').click(); true`);
     await sleep(500);
     const ax = await axNode(p, sizeButton);
-    return p.eval(`(() => { const card = document.querySelector('.ride .cue-card').getBoundingClientRect(); const d = document.querySelector('.ride .cue-distance'); return { name: ${JSON.stringify(ax?.name ?? null)}, pressed: document.querySelector('${sizeButton}').getAttribute('aria-pressed'), map: getComputedStyle(document.querySelector('.map')).display, card: Math.round(card.height / innerHeight * 100), distancePx: d ? parseFloat(getComputedStyle(d).fontSize) : null, kept: localStorage.getItem('routemaker.ride.bigText'), heard: window.__heard.slice(-1)[0] }; })()`);
+    // Large text on a 320 px phone moves Text into More when the rail is short (#1015): there, behind More's closed
+    // bubbles, it is out of the accessibility tree, so its own name is read.
+    return p.eval(`(() => { const card = document.querySelector('.ride .cue-card').getBoundingClientRect(); const d = document.querySelector('.ride .cue-distance'); const b = document.querySelector('${sizeButton}'); return { name: ${JSON.stringify(ax?.name ?? null)} ?? (b.closest('.ride-more-bubbles') ? b.getAttribute('aria-label') : null), inMore: !!b.closest('.ride-more-bubbles'), pressed: document.querySelector('${sizeButton}').getAttribute('aria-pressed'), map: getComputedStyle(document.querySelector('.map')).display, card: Math.round(card.height / innerHeight * 100), distancePx: d ? parseFloat(getComputedStyle(d).fontSize) : null, kept: localStorage.getItem('routemaker.ride.bigText'), heard: window.__heard.slice(-1)[0] }; })()`);
   };
   const large = await sized();
   await p.shot(`${SHOTS}/ride_large_320.png`);
@@ -5785,10 +5787,13 @@ if (mine()) {
     await small.s("Emulation.setGeolocationOverride", { latitude: lat, longitude: lon, accuracy: 5 });
     await sleep(450);
   }
+  // A graph with no room is told once it has held 3 s (AheadGraph NO_ROOM_HOLD_MS, #1025), not as the ride starts.
+  await sleep(3500);
   const noRoom = await small.eval("window.__said.filter((t) => t.includes('No room on this screen'))");
   // Traffic stress is a ribbon now (Stephen 2026-11-04), so Elevation may fit under it, or be named in the line under it;
   // only where neither is on screen is it said, and then once.
-  const elevationShown = await small.eval("[...document.querySelectorAll('.ride-ahead-name, .ride-ahead-room')].some((e) => e.textContent.includes('Elevation'))");
+  // Slim graphs (#1025) carry no name: Elevation drawn slim is its hill mark in the margin (AheadGraph SlimMark).
+  const elevationShown = await small.eval("!!document.querySelector('path.ride-ahead-slim-mark') || [...document.querySelectorAll('.ride-ahead-name, .ride-ahead-room')].some((e) => e.textContent.includes('Elevation'))");
   check("ride graphs at 360x640 with two on: Elevation drawn or named under the ribbon, or said once with no room, not again at each GPS fix",
     elevationShown ? noRoom.length === 0 : noRoom.length === 1 && noRoom[0] === "No room on this screen for: Elevation.", JSON.stringify({ elevationShown, noRoom }));
   const room = await small.eval(`(() => {

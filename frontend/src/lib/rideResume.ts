@@ -15,10 +15,19 @@ import { secretFrom } from "./rideSeal.ts";
 import { leadKeyFrom, rideLinkFrom, sharedIdFrom } from "./sharedRoutes.ts";
 import type { OnwardState } from "./onward.ts";
 import type { StopsLeft } from "./tripStops.ts";
+import type { RideStats } from "./rideStats.ts";
 
 export const RIDE_RESUME_KEY = "routemaker.ride-left";
 /** A ride left longer than this is not offered: a day's ride, not yesterday's. */
 export const RESUME_MAX_MS = 12 * 60 * 60_000;
+/**
+ * Left this recently (the page put away to switch apps, then reloaded by the phone): Resume carries on as the ride was,
+ * without asking which stops are done (Stephen, 2026-11-07: it says the ride started part way along "even when just
+ * briefly switching off"), and after a stop as long as lunch (2026-11-07: "Can the interval increase to a longer
+ * interval than 10 minutes? What if you stop for Lunch?"). Longer away, the rider may have ridden on without it, so the
+ * question stays.
+ */
+export const RESUME_QUIET_MS = 2 * 60 * 60_000;
 
 export const RESUME_HEADING = t("Resume your ride?");
 /** The question with the ride named where its destination has a name (the UI review, 2026-10-28). */
@@ -61,6 +70,10 @@ export interface LeftRide {
   past?: OnwardState | null;
   /** A trip with stops: the stops after the trip ridden (lib/tripStops.ts), so Resume still offers "Start the next leg". */
   stopsLeft?: StopsLeft | null;
+  /** When the page was last put away mid-ride (seeLeftRide), if it was. */
+  seen?: number | null;
+  /** The ride's figures then (distance, time, climb), so a quick Resume carries them on rather than starting at 0. */
+  stats?: RideStats | null;
 }
 
 /** Points kept with their kinds and names, which live on the pairs (lib/pointKinds.ts). */
@@ -90,6 +103,8 @@ interface Kept {
   trip?: boolean;
   past?: OnwardState;
   stops?: KeptPoints & { preset: PresetId };
+  seen?: number;
+  stats?: RideStats;
 }
 
 interface Store {
@@ -304,5 +319,46 @@ export function leftRide(marks: Pick<ViaMarks, "via" | "drawn" | "named">, now: 
     ...(typeof kept.leads === "string" ? { leads: kept.leads } : {}),
     ...(kept.trip === true ? { wholeTrip: true, past: pastOf(kept.past) } : {}),
     ...(stops ? { stopsLeft: { preset: stops.preset, points: markedPoints(stops, marks) } } : {}),
+    ...(typeof kept.seen === "number" ? { seen: kept.seen } : {}),
+    ...(statsOf(kept.stats) ? { stats: kept.stats } : {}),
   };
+}
+
+/** Kept figures that read as the ride's own (RideStats), else null. */
+function statsOf(value: unknown): RideStats | null {
+  const s = value as Partial<RideStats> | null;
+  return s && typeof s === "object" && typeof s.startedAt === "number" && typeof s.distanceM === "number" && typeof s.movingMs === "number" ? (s as RideStats) : null;
+}
+
+/**
+ * The page put away mid-ride (another app, the screen off): when, and the ride's figures then, on the kept ride, for a
+ * quiet Resume (Stephen 2026-11-07: switching off "resets progress"). Kept on this device only, as the ride is; the
+ * last fix and its line are left out (the next fix starts again, as after a pause).
+ */
+export function seeLeftRide(now: number, stats: RideStats | null = null, store: Store | null = local()): void {
+  try {
+    const raw = store?.getItem(RIDE_RESUME_KEY);
+    if (!raw) return;
+    const figures = stats ? { ...stats, last: null } : undefined;
+    store?.setItem(RIDE_RESUME_KEY, JSON.stringify({ ...(JSON.parse(raw) as Kept), seen: now, ...(figures ? { stats: figures } : {}) }));
+  } catch {
+    // Full or blocked storage: Resume asks which stops are done, as before.
+  }
+}
+
+/** Back on the page: the note of it put away is dropped, so a reload later (the figures by then older) asks as before. */
+export function unseeLeftRide(store: Store | null = local()): void {
+  try {
+    const raw = store?.getItem(RIDE_RESUME_KEY);
+    if (!raw) return;
+    const { seen: _seen, stats: _stats, ...kept } = JSON.parse(raw) as Kept;
+    store?.setItem(RIDE_RESUME_KEY, JSON.stringify(kept));
+  } catch {
+    // Full or blocked storage: nothing kept to drop.
+  }
+}
+
+/** Resumed within RESUME_QUIET_MS of the page being put away: the ride carries on without "Already done?". */
+export function resumesQuietly(left: Pick<LeftRide, "seen">, now: number): boolean {
+  return typeof left.seen === "number" && now - left.seen >= 0 && now - left.seen <= RESUME_QUIET_MS;
 }

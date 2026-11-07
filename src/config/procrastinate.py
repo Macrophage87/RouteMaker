@@ -1062,10 +1062,24 @@ def worker_heartbeat(timestamp: int) -> None:
     tick is the retry, and a retry schedule would hold the queueing lock across
     several ticks of the bound it exists to keep.
     """
-    from core.runs import record
+    import logging
+
+    from core.runs import close_orphaned_jobs, record
 
     with record("worker_heartbeat") as run:
+        # Rows a SIGKILLed worker left `doing` (a recreate mid-run): closed here, so
+        # they leave the wedged-job alert by themselves (core.runs.close_orphaned_jobs).
+        # Never at the heartbeat's cost: a failure here must not read as a dead worker.
+        try:
+            closed = close_orphaned_jobs()
+        except Exception:  # noqa: BLE001 - logged; the rows stay on the wedged list
+            logging.getLogger(__name__).exception("closing dead jobs failed")
+            closed = []
         run.detail = f"worker alive, pid {os.getpid()}"
+        if closed:
+            run.detail += "; closed dead jobs " + ", ".join(
+                f"{entry['id']} {entry['task']}" for entry in closed
+            )
         run.save(update_fields=["detail"])
 
 
