@@ -390,3 +390,16 @@ def test_changelog_splits_long_notes_at_line_ends(changelog_dir, monkeypatch) ->
 def test_changelog_needs_its_channel(bot_dir, capsys) -> None:
     assert run(bot_dir, FakeChannel(), "changelog", "v0.2.0") == 2
     assert "changelog-channel" in capsys.readouterr().err
+
+
+def test_changelog_finishes_a_post_that_stopped_part_way(changelog_dir, monkeypatch) -> None:
+    monkeypatch.setattr(mod.time, "sleep", lambda s: None)
+    notes = changelog_dir / "v0.2.0.md"
+    notes.write_text("\n".join(f"- line {n} " + "x" * 90 for n in range(40)) + "\n")
+    first = FakeChannel()
+    run(changelog_dir, first, "changelog", "v0.2.0", str(notes))
+    whole = first.posted()
+    done = [{"author": {"id": BOT}, "content": whole[0]}]
+    rest = FakeChannel(done)
+    assert run(changelog_dir, rest, "changelog", "v0.2.0", str(notes)) == 0
+    assert rest.posted() == whole[1:]

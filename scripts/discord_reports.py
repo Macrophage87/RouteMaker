@@ -26,8 +26,9 @@ beta needs no list of posts.
 `changelog` (the owner, 2026-11-07: "I want a bot I have control over") posts a release's
 rider notes to the changelog channel as the bot, in place of the old release webhook: the
 title "RouteMaker vX.Y.Z is on beta", then the notes, split at line ends to fit. The bot reads
-its own recent messages in the channel first and skips a release it already posted, so a
-retried pass never posts twice. The beta's release agent runs it once per deployed tag.
+its own recent messages in the channel first and posts only the messages not there yet, so a
+retried pass never posts twice and one that stopped part-way finishes. The beta's release
+agent runs it once per deployed tag.
 
 The settings live outside the repo, in --dir (default ~/.config/routemaker-discord):
 
@@ -401,14 +402,15 @@ def cmd_changelog(
         notes = notes_file.read_text(encoding="utf-8", errors="replace")
     messages = changelog_messages(version, notes)
     me = api.get("/users/@me")["id"]
-    title = messages[0].split("\n", 1)[0]
     recent = api.get(f"/channels/{channel}/messages?limit=100") or []
-    if any(
-        m.get("author", {}).get("id") == me and (m.get("content") or "").startswith(title)
-        for m in recent
-    ):
+    # A message the bot already posted is skipped, so a pass that stopped part-way posts only
+    # the rest and a repeated pass posts nothing.
+    mine = {m.get("content") for m in recent if m.get("author", {}).get("id") == me}
+    todo = [text for text in messages if text not in mine]
+    if not todo:
         print(f"{version}: the changelog already has it")
         return 0
+    messages = todo
     for n, text in enumerate(messages):
         if dry_run:
             print(f"would post in the changelog:\n{text}")

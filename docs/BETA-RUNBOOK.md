@@ -1508,9 +1508,9 @@ own bot (the owner, 2026-11-07: "I want a bot I have control over"), with
 `scripts/discord_reports.py changelog`: the title "RouteMaker vX.Y.Z is on beta", then the notes,
 split at line ends to fit. The agent tries on each deploy, and on each pass that finds it up to
 date or a newer tag held, failed or waiting (the usual state after a release shipped by hand),
-until they are posted, once per tag (`$RM_STATE/alerts/release-posted`; the bot also skips a tag
-it already posted in the channel). A failure is reported once a day in the alerts channel and
-never fails a pass. By hand:
+until they are posted, once per tag (`$RM_STATE/alerts/release-posted`; the bot also skips any
+message it already posted in the channel, so a pass that stopped part-way posts only the rest).
+A failure is reported once a day in the alerts channel and never fails a pass. By hand:
 `"${RM_PY:-python3}" "$RM_SRC/scripts/discord_reports.py" --dir "$RM_STATE/discord" changelog vX.Y.Z "$RM_SRC/docs/releases/vX.Y.Z.md"`
 (add `--dry-run` to see the messages first).
 
@@ -1523,7 +1523,7 @@ channel, Copy Channel ID). On the server, with the bot token already in `$RM_STA
 ```sh
 . "$HOME/routemaker-beta-state/vars.sh"
 cd "$RM_SRC"
-printf '%s\n' 'CHANNEL_ID' >"$RM_STATE/discord/changelog-channel"   # the copied id in place of CHANNEL_ID
+mkdir -p "$RM_STATE/discord"; printf '%s\n' 'CHANNEL_ID' >"$RM_STATE/discord/changelog-channel"   # the copied id in place of CHANNEL_ID
 "$RM_SRC/scripts/beta/auto-release.sh" install                         # once, so the agent's copy has this
 ```
 
