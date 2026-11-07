@@ -92,9 +92,14 @@ export function planSecrets(make: () => string = newRideSecret, max = 32): PlanS
   };
 }
 
-/** The page's own ride secrets in this tab (sessionStorage), as digests: a reload, a sign-in or a visit to another
- * page brings the plan back with its secret, which is still the page's own, not a link's. */
+/** The page's own ride secrets on this device (localStorage, v0.22.0; was this tab's sessionStorage), as digests with
+ * when each was last marked: a reload, a new tab, a closed installed app, a sign-in or a visit to another page brings
+ * the plan back with its secret, which is still the page's own, not a link's. Nothing of it is sent anywhere. */
 export const OWN_SECRETS_KEY = "routemaker.own-ride-secrets";
+/** The page's own secrets and their send times are forgotten this long after they were last marked (v0.22.0): long
+ * enough that a weekly ride's link sent again is still asked about. */
+export const OWN_RIDE_KEEP_MS = 30 * 24 * 3600_000;
+const OWN_RIDE_MAX = 20;
 
 /** A short digest of a secret (53 bits, not reversible to it): enough to tell the page's own from a link's. */
 function secretDigest(secret: string): string {
@@ -110,34 +115,43 @@ function secretDigest(secret: string): string {
   return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
 }
 
-function ownSecretList(store: Store | null): string[] {
+/** A digest-to-time map kept under `key`, without entries older than OWN_RIDE_KEEP_MS at `now`. */
+function timedDigests(store: Store | null, key: string, now: number): Record<string, number> {
   try {
-    const raw = JSON.parse(store?.getItem(OWN_SECRETS_KEY) ?? "[]") as unknown;
-    return Array.isArray(raw) ? raw.filter((r): r is string => typeof r === "string") : [];
+    const raw = JSON.parse(store?.getItem(key) ?? "{}") as unknown;
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+    return Object.fromEntries(Object.entries(raw).filter((e): e is [string, number] => typeof e[1] === "number" && now - e[1] <= OWN_RIDE_KEEP_MS));
   } catch {
-    return [];
+    return {};
   }
 }
 
-/** Mark a secret as the page's own in this tab. */
-export function markOwnSecret(secret: string, store: Store | null = session()): void {
-  const digest = secretDigest(secret);
-  const list = ownSecretList(store).filter((d) => d !== digest);
-  list.push(digest);
+function keepDigests(store: Store | null, key: string, times: Record<string, number>): void {
   try {
-    store?.setItem(OWN_SECRETS_KEY, JSON.stringify(list.slice(-20)));
+    store?.setItem(key, JSON.stringify(Object.fromEntries(Object.entries(times).slice(-OWN_RIDE_MAX))));
   } catch {
-    // Not kept: after a reload the secret is taken as a link's.
+    // Not kept: the secret is taken as a link's after a reload, and the next copy is not asked about.
   }
 }
 
-/** Whether a secret the page opened with is one it made itself in this tab. */
-export function isOwnSecret(secret: string, store: Store | null = session()): boolean {
-  return ownSecretList(store).includes(secretDigest(secret));
+/** Mark a secret as the page's own on this device. */
+export function markOwnSecret(secret: string, store: Store | null = local(), now: number = Date.now()): void {
+  const times = timedDigests(store, OWN_SECRETS_KEY, now);
+  // Never a number-like key, so the object keeps the order the digests went in.
+  const digest = `d${secretDigest(secret)}`;
+  delete times[digest];
+  times[digest] = now;
+  keepDigests(store, OWN_SECRETS_KEY, times);
 }
 
-/** When each of the page's own secrets first went out in a link (Copy link or Share), by digest, in this tab only:
- * nothing of it is sent anywhere. Kept again when the organiser says a later copy is the same ride. */
+/** Whether a secret the page opened with is one it made itself on this device. */
+export function isOwnSecret(secret: string, store: Store | null = local(), now: number = Date.now()): boolean {
+  return timedDigests(store, OWN_SECRETS_KEY, now)[`d${secretDigest(secret)}`] !== undefined;
+}
+
+/** When each of the page's own secrets first went out in a link (Copy link or Share), by digest, on this device
+ * (localStorage, v0.22.0: every tab and a closed installed app see it; forgotten after OWN_RIDE_KEEP_MS): nothing of it
+ * is sent anywhere. Kept again when the organiser says a later copy is the same ride. */
 export const RIDE_SENT_KEY = "routemaker.own-ride-sent";
 /** A plan's link that went out longer ago than this is asked about before it goes out again or is ridden: the same ride,
  * or a new one (2026-11-05). */
@@ -149,30 +163,14 @@ export const SAME_RIDE_EDITED_LEAD = t("You changed the route after its link wen
 export const SAME_RIDE = t("Same ride");
 export const NEW_RIDE = t("New ride");
 
-function sentTimes(store: Store | null): Record<string, number> {
-  try {
-    const raw = JSON.parse(store?.getItem(RIDE_SENT_KEY) ?? "{}") as unknown;
-    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
-    return Object.fromEntries(Object.entries(raw).filter((e): e is [string, number] => typeof e[1] === "number"));
-  } catch {
-    return {};
-  }
-}
-
 /** A link with this secret went out now: kept unless one went out before (`again`: the organiser said it is the same ride). */
-export function markRideSent(secret: string, now: number, again = false, store: Store | null = session()): void {
-  const times = sentTimes(store);
-  // Never a number-like key, so the object keeps the order the times went in.
+export function markRideSent(secret: string, now: number, again = false, store: Store | null = local()): void {
+  const times = timedDigests(store, RIDE_SENT_KEY, now);
   const digest = `d${secretDigest(secret)}`;
   if (times[digest] !== undefined && !again) return;
   delete times[digest];
   times[digest] = now;
-  const kept = Object.entries(times).slice(-20);
-  try {
-    store?.setItem(RIDE_SENT_KEY, JSON.stringify(Object.fromEntries(kept)));
-  } catch {
-    // Not kept: the next copy is not asked about.
-  }
+  keepDigests(store, RIDE_SENT_KEY, times);
 }
 
 /**
@@ -201,9 +199,9 @@ export function rideSecretOf(open: { ride?: boolean; id?: string; lead?: string 
   return open?.ride && open.id && open.lead ? (open.secret ?? null) : plan;
 }
 
-/** Whether a link with this secret went out from this tab at all. */
-export function wasRideSent(secret: string, store: Store | null = session()): boolean {
-  return sentTimes(store)[`d${secretDigest(secret)}`] !== undefined;
+/** Whether a link with this secret went out from this device at all. */
+export function wasRideSent(secret: string, store: Store | null = local(), now: number = Date.now()): boolean {
+  return timedDigests(store, RIDE_SENT_KEY, now)[`d${secretDigest(secret)}`] !== undefined;
 }
 
 /**
@@ -217,8 +215,8 @@ export function editedFromNext(edited: string | null, before: string, next: stri
 }
 
 /** Whether a link with this secret went out longer ago than SAME_RIDE_ASK_MS: ask "Same ride or a new one?" first. */
-export function asksSameRide(secret: string, now: number, store: Store | null = session()): boolean {
-  const at = sentTimes(store)[`d${secretDigest(secret)}`];
+export function asksSameRide(secret: string, now: number, store: Store | null = local()): boolean {
+  const at = timedDigests(store, RIDE_SENT_KEY, now)[`d${secretDigest(secret)}`];
   return at !== undefined && now - at > SAME_RIDE_ASK_MS;
 }
 

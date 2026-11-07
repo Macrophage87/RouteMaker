@@ -441,7 +441,7 @@ const ROAM_FOLLOW = roamLinkFrom(window.location.hash);
 // A Group Ride plan link's secret (lib/rideSeal.ts), read once here likewise: not a broadcast's.
 // From the plan as opened, so one kept over a sign-in keeps its secret too.
 const PLAN_SECRET = SHARED_RIDE || ROAM_FOLLOW ? null : secretFrom(OPENED_HASH);
-// Whether the page made that secret itself in this tab (before a reload, a sign-in or a visit to another page), not a link.
+// Whether the page made that secret itself on this device (before a reload, in another tab, a sign-in or a visit to another page), not a link.
 const PLAN_SECRET_OWN = PLAN_SECRET === null || isOwnSecret(PLAN_SECRET);
 /** The opened link to pass on: its path, the query's own parameters (the line, ride and leader), and its fragment;
  * nothing a messaging app added on the way (its tracking parameters). */
@@ -1486,7 +1486,7 @@ export function App() {
   const ownHashOpen = useRef(false);
   const [groupSecret, setGroupSecret] = useState<string>(() => PLAN_SECRET ?? newRideSecret());
   // Whether this page made the secret (not one from a link opened here): made again when a ride ends. One the page made
-  // in this tab is still its own after a reload, a sign-in or a visit to another page (lib/rideGroup.ts isOwnSecret).
+  // on this device is still its own after a reload, in another tab, a sign-in or a visit to another page (lib/rideGroup.ts isOwnSecret).
   const groupSecretOwn = useRef(PLAN_SECRET_OWN);
   // The page's own secret for each plan (lib/rideGroup.ts planSecrets): each plan is its own ride.
   const ownSecrets = useRef<PlanSecrets | null>(null);
