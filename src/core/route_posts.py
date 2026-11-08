@@ -755,9 +755,13 @@ STYLE = (
     ".admin button{font:inherit;padding:.5rem 1rem;min-height:44px;border-radius:6px;"
     "border:2px solid var(--accent);background:var(--bg);color:var(--accent);cursor:pointer}"
     ".cards{list-style:none;padding:0;margin:0;display:grid;gap:1rem}"
-    ".card a{display:grid;grid-template-columns:8rem 1fr;gap:.75rem;text-decoration:none;"
-    "color:inherit;padding:.5rem;border:1px solid var(--rule);border-radius:8px}"
-    ".card img{width:8rem;aspect-ratio:1200/630;object-fit:cover;border-radius:6px}"
+    # The list's cards (index): the map on top, full width, the words below.
+    ".card a{display:block;overflow:hidden;text-decoration:none;color:inherit;"
+    "border:1px solid var(--rule);border-radius:8px}"
+    ".card img{display:block;width:100%;height:auto;aspect-ratio:1200/630;object-fit:cover;"
+    "object-position:top;background:var(--card)}"
+    f".card img.banded{{aspect-ratio:1200/{share_preview.MAP_H}}}"
+    ".card a>div{padding:.6rem .85rem .75rem}"
     ".card h2{margin:0;font-size:1.1rem;color:var(--accent)}.card p{margin:.2rem 0}"
     "details summary{cursor:pointer;font-weight:700;margin:2rem 0 1rem}"
     ".visually-hidden{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);"
@@ -1118,10 +1122,15 @@ def index(request):
             if post.season_label and in_season(post, today)
             else ""
         )
+        # The map on top, full width. The route's preview picture (no admin-made map yet) ends in a
+        # band of words the card already says below, so only its map part shows; its credit sits at
+        # the map's foot and stays in view.
+        banded = not post.thumbnail_key
+        shape = ' class="banded"' if banded else ""
         return (
             f'<li class="card"><a href="/routes/{escape(post.slug)}">'
-            f'<img src="{escape(image_path(post))}" alt="" loading="lazy" '
-            f'width="{THUMBNAIL_WIDTH}" height="{THUMBNAIL_HEIGHT}">'
+            f'<img src="{escape(image_path(post))}" alt="" loading="lazy"'
+            f'{shape} width="{THUMBNAIL_WIDTH}" height="{THUMBNAIL_HEIGHT}">'
             f"<div><h2>{escape(post.title)}</h2><p>{badge}{escape(summary_line(post))}</p>"
             f"<p>{escape(ride_name(post))}</p></div></a></li>"
         )
