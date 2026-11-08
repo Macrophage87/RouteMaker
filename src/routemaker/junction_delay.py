@@ -63,7 +63,20 @@ Alexandria and Arlington (the caller's `suburban`):
 - any other signal, a secondary road crossed and riding along the big road through its own
   signals included, SUBURBAN_SIGNAL_S (the owner, later the same day: "I don't think there
   are many 15 second suburban signals. Never really encountered one. 30 is probably more
-  realistic. Cities do have quicker signal changes."). The cities keep SIGNAL_DELAY_S.
+  realistic. Cities do have quicker signal changes.").
+
+In the cities the wait comes from the busiest road at the signal, the one the rider rides
+along included ("Use the values from real data"): CITY_BIG_SIGNAL_S at a big road,
+CITY_SECONDARY_SIGNAL_S at a secondary one, and CITY_SIGNAL_S at any other.
+
+Those are the waits at a red. Counting every pass through a signal in a year of the owner's
+rides (653 rides, about 9,000 passes; "sometimes the light is green"), the rider stopped at
+29% of the cities' big-road signals, 16% of their others, and 24 to 43% of the suburbs', so
+the wait a ride meets on average is far below the red's. He chose (2026-11-08, "Averages for
+time, reds for choice"): the time shown is the average per pass, with the cities' by the
+ride-time setting (`when`: "Early morning might actually have shorter times"), CITY_PASS_S
+and SUBURBAN_PASS_S; the ranking keeps the waits at a red, a suburban one doubled, as the
+"pain" of a long light.
 
 The time shown is those seconds. When routes are ranked a suburban signal's wait counts
 SUBURBAN_SIGNAL_WEIGHT times ("I'd probably double A, with a 2x penalty but keep those
@@ -93,25 +106,47 @@ from .trace_junctions import NOT_A_ROAD_USES, PATH_USES, RawJunction
 # stop every 530 ft against one every 2,800 ft (see the docstring) is 7.6 s a stop, rounded.
 STOP_DELAY_S = 8.0
 # A signal: the average wait for a rider arriving at random, red squared over twice the
-# cycle (Webster's uniform delay with no queue), at a 100 s cycle with 50 s of red is
+# cycle (Webster's uniform delay with no queue), at a 100 s cycle with 50 s of red, is
 # 12.5 s, and the half of arrivals that meet red also lose a stop (half of STOP_DELAY_S):
-# about 16.5 s, rounded down to 15 because many of the region's signals run shorter cycles
-# on the side street a rider crosses from. Inferred, not measured.
+# about 16.5 s, rounded down to 15. The junction model's own price; the wait at a signal is
+# `signal_wait`'s.
 SIGNAL_DELAY_S = 15.0
-# A signal outside the major cities (see the docstring; the owner's rides, 2026-11, and his
-# choices of 2026-11-08): crossing or turning onto a big road (trunk or primary, or 4+ lanes,
-# or 40 mph+), and every other suburban signal, riding along the big road included ("I don't
-# think there are many 15 second suburban signals. Never really encountered one. 30 is
-# probably more realistic. Cities do have quicker signal changes.").
+# The wait at a red in DC, Baltimore City, Alexandria or Arlington, as the ranking counts it,
+# by the busiest road there (see the docstring; the owner's city rides, 2026-11): a big road
+# (trunk or primary, or 4+ lanes, or 40 mph+), a secondary road, and any other.
+CITY_BIG_SIGNAL_S = 30.0
+CITY_SECONDARY_SIGNAL_S = 15.0
+CITY_SIGNAL_S = 20.0
+# The time shown at a signal: the average per pass in a year of the owner's rides (653 rides,
+# green passes included, the stops over 4 minutes left out as breaks), plus STOP_DELAY_S for
+# the share of passes that stopped, rounded, as (big, secondary, other). The cities' by the
+# ride-time setting (`routemaker.ridetime`; night from the passes before 7 AM, weekday
+# off-peak from midday's), None where the setting is not known (every pass); the suburbs'
+# did not run shorter early, so one set.
+CITY_PASS_S = {
+    None: (12.0, 5.0, 4.0),
+    "night": (9.0, 4.0, 2.0),
+    "weekday_rush": (15.0, 6.0, 6.0),
+    "weekday_offpeak": (14.0, 6.0, 4.0),
+    "weekend": (11.0, 4.0, 4.0),
+}
+SUBURBAN_PASS_S = (24.0, 15.0, 10.0)
+# The wait at a red outside the major cities, as the ranking counts it before the suburban
+# weight (see the docstring; the owner's rides, 2026-11, and his choices of 2026-11-08):
+# crossing or turning onto a big road (trunk or primary, or 4+ lanes, or 40 mph+), and every
+# other suburban signal, riding along the big road included ("I don't think there are many
+# 15 second suburban signals. Never really encountered one. 30 is probably more realistic.
+# Cities do have quicker signal changes.").
 SUBURBAN_BIG_SIGNAL_S = 45.0
 SUBURBAN_SIGNAL_S = 30.0
-# How many times a suburban signal's wait counts when routes are ranked (the time shown is
-# the wait itself): the owner's "pain" factor at busy roads. A city's signal counts once.
+# How many times a suburban red's wait counts when routes are ranked: the owner's "pain"
+# factor at busy roads. A city's red counts once.
 SUBURBAN_SIGNAL_WEIGHT = 2.0
 # The most a wait counts in the ranking, the ride type's wait weight and the suburban weight
-# (or a button's two minutes) stacked, as a multiple of the wait shown: Road Bike's 3x on a
-# suburban signal's 2x would be 6x (the owner, 2026-11-08: "Maybe go to 5. People prefer free
-# flow on road bikes."). A city signal stays at Road Bike's 3x.
+# (or a button's two minutes) stacked, as a multiple of the wait at a red (a signal's) or of
+# the wait shown (any other): Road Bike's 3x on a suburban signal's 2x would be 6x (the
+# owner, 2026-11-08: "Maybe go to 5. People prefer free flow on road bikes."). A city signal
+# stays at Road Bike's 3x.
 MAX_STACKED_WEIGHT = 5.0
 # A crossing read as needing a beg button (see the docstring), as the ranking counts it: two
 # minutes of waiting, held below a stop sign across the same road (`signal_wait`).
@@ -247,6 +282,8 @@ class SignalWait:
     seconds: float
     ranked_s: float
     button: bool = False
+    # The wait at a red, which MAX_STACKED_WEIGHT is a multiple of.
+    red_s: float | None = None
 
 
 # Valhalla's `use` of the ways a rider on a crossing or a path is on (`buttons`).
@@ -297,6 +334,7 @@ def signal_wait(
     big: bool = False,
     tagged_button: bool = False,
     stop_extra_s: float | None = None,
+    when: str | None = None,
 ) -> SignalWait:
     """The wait at one signal (see the module docstring). `suburban`: it lies outside the
     District, Baltimore City, Alexandria and Arlington; `big`: the junction model reads a
@@ -304,20 +342,26 @@ def signal_wait(
     (`intersections.big_signal_points`); `tagged_button`: the map tags a way the rider
     arrives or leaves on `button_operated=yes`; `stop_extra_s`: what the junction model
     charges the ranking for a stop sign there over the signal, as seconds of waiting
-    (None: not known, and the button crossing is not held below it)."""
+    (None: not known, and the button crossing is not held below it); `when`: the ride-time
+    setting (`routemaker.ridetime`), which the cities' time shown is read by."""
     crossed = signal_crossed_rank(junction)
     # Crossing or turning onto a big road, or onto a secondary one: the crossings a beg
     # button is read at, where the rider comes from a path or a minor road.
     onto_big = crossed is not None and (crossed <= BIG_SIGNAL_MAX_RANK or big)
     onto_busy = onto_big or crossed == SECONDARY_SIGNAL_RANK
-    seconds = SIGNAL_DELAY_S
+    busiest = _busiest(junction, crossed, big)
     if suburban:
-        seconds = SUBURBAN_BIG_SIGNAL_S if onto_big else SUBURBAN_SIGNAL_S
-    ranked = seconds * SUBURBAN_SIGNAL_WEIGHT if suburban else seconds
+        red = SUBURBAN_BIG_SIGNAL_S if onto_big else SUBURBAN_SIGNAL_S
+        seconds = SUBURBAN_PASS_S[busiest]
+        ranked = red * SUBURBAN_SIGNAL_WEIGHT
+    else:
+        red = (CITY_BIG_SIGNAL_S, CITY_SECONDARY_SIGNAL_S, CITY_SIGNAL_S)[busiest]
+        seconds = CITY_PASS_S.get(when, CITY_PASS_S[None])[busiest]
+        ranked = red
     inferred = suburban and onto_busy and _own_rank(junction) >= BUTTON_MIN_OWN_RANK
     on_crossing = junction.in_use in _CROSSING_USES or junction.out_use in _CROSSING_USES
     if not (inferred or (tagged_button and on_crossing)):
-        return SignalWait(seconds, ranked)
+        return SignalWait(seconds, ranked, red_s=red)
     pressed = BUTTON_RANKED_S
     if stop_extra_s is not None:
         # A stop sign across the same road: its give-way wait, plus the junction model's
@@ -325,7 +369,16 @@ def signal_wait(
         stop = _stop(crossed if crossed is not None else _NO_RANK, False)
         pressed = min(pressed, stop + stop_extra_s - BUTTON_BELOW_STOP_S)
     # Never below the signal's own wait as ranked: a button does not make a light quicker.
-    return SignalWait(seconds, max(pressed, ranked), True)
+    return SignalWait(seconds, max(pressed, ranked), True, red)
+
+
+def _busiest(junction: RawJunction, crossed: int | None, big: bool) -> int:
+    """The busiest road at a signal, the rider's own included, as the passes were counted
+    by it: 0 big, 1 secondary, 2 any other."""
+    busiest = _own_rank(junction) if crossed is None else min(crossed, _own_rank(junction))
+    if big or busiest <= BIG_SIGNAL_MAX_RANK:
+        return 0
+    return 1 if busiest == SECONDARY_SIGNAL_RANK else 2
 
 
 @dataclass(frozen=True)
@@ -340,6 +393,8 @@ class Wait:
     seconds: float
     ranked_s: float
     button: bool = False
+    # A signal's wait at a red (`SignalWait.red_s`); None: the wait shown is the base.
+    red_s: float | None = None
 
 
 def waits(
@@ -351,6 +406,7 @@ def waits(
     big: Collection[tuple[float, float]] = (),
     buttons: Collection[int] = (),
     stop_extra_s: Mapping[tuple[float, float], float] | None = None,
+    when: str | None = None,
 ) -> list[Wait]:
     """Each run's wait: each junction's `delay_at`, the costing junctions within MERGE_M of
     the first of a run counted once, at the dearest or, where one of them is a signal, at
@@ -363,7 +419,8 @@ def waits(
     route's events), a signal there as on the node; `big`: those it reads a big road at
     (`intersections.big_signal_points`); `buttons`: the OSM ways the map tags
     `button_operated=yes`; `stop_extra_s`: by signal point, what a stop sign there would
-    cost the ranking over the signal, as seconds of waiting (`intersections.stop_extra_ft`).
+    cost the ranking over the signal, as seconds of waiting (`intersections.stop_extra_ft`);
+    `when`: the ride-time setting the cities' signal times are read by (`signal_wait`).
     The ride's arrival times place each wait where it is (`routemaker.time_marks`)."""
     out: list[Wait] = []
     run: Wait | None = None
@@ -387,6 +444,7 @@ def waits(
                 tagged_button=bool(buttons)
                 and (junction.in_way in buttons or junction.out_way in buttons),
                 stop_extra_s=(stop_extra_s or {}).get(here),
+                when=when,
             )
         if run is not None and junction.m - run.m <= MERGE_M:
             if signal is not None and (
@@ -400,6 +458,7 @@ def waits(
                     seconds=run_signal.seconds,
                     ranked_s=run_signal.ranked_s,
                     button=run.button or run_signal.button,
+                    red_s=run_signal.red_s,
                 )
             elif cost > run.seconds:
                 run = replace(run, seconds=cost, ranked_s=cost)
@@ -408,7 +467,9 @@ def waits(
             out.append(run)
         run_signal = signal
         if signal is not None:
-            run = Wait(junction.m, *here, signal.seconds, signal.ranked_s, signal.button)
+            run = Wait(
+                junction.m, *here, signal.seconds, signal.ranked_s, signal.button, signal.red_s
+            )
         else:
             run = Wait(junction.m, *here, cost, cost)
     if run is not None:
@@ -443,7 +504,8 @@ def ranked_s(found: Iterable[Wait], wait_weight: float = 1.0) -> float:
     """The waits as the ranking counts them (`Wait.ranked_s`): a suburban signal's
     SUBURBAN_SIGNAL_WEIGHT times, a button crossing's at BUTTON_RANKED_S. With a ride type's
     `wait_weight` (`presets.wait_weight_for`: Road Bike's 3), each wait times it, the two
-    stacked never past MAX_STACKED_WEIGHT times the wait shown, nor below the wait as ranked
+    stacked never past MAX_STACKED_WEIGHT times the wait at a red (a signal's; any other
+    wait's shown), nor below the wait as ranked
     at 1x; the sum is given back divided by `wait_weight`, as `refine.Analysis.score`
     multiplies it by that again."""
     if wait_weight <= 0:
@@ -452,6 +514,7 @@ def ranked_s(found: Iterable[Wait], wait_weight: float = 1.0) -> float:
     for w in found:
         weighted = wait_weight * w.ranked_s
         if wait_weight > 1.0:
-            weighted = min(weighted, max(MAX_STACKED_WEIGHT * w.seconds, w.ranked_s))
+            base = w.seconds if w.red_s is None else w.red_s
+            weighted = min(weighted, max(MAX_STACKED_WEIGHT * base, w.ranked_s))
         total += weighted
     return float(total / wait_weight)

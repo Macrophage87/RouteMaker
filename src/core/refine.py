@@ -1116,7 +1116,7 @@ def analyse(
     # The junctions' waits, the junction model's signals, big roads and stop-sign prices
     # included (hunt J5; the owner, 2026-11-08), each read once for the time and the rank.
     found_waits = routing.junction_waits(
-        raws, ctx.beacons, events, stop_wait_s_per_ft(ctx), ctx.button_ways
+        raws, ctx.beacons, events, stop_wait_s_per_ft(ctx), ctx.button_ways, ctx.when
     )
     result = Analysis(
         length_m=float((trip.get("summary") or {}).get("length", 0.0)) * 1000.0,

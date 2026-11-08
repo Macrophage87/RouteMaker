@@ -1,10 +1,10 @@
-"""The major cities whose traffic signals keep the city's short wait (`routemaker.junction_delay`).
+"""The major cities whose traffic signals take the cities' shorter waits (`routemaker.junction_delay`).
 
 The owner, 2026-11-08: "along stroads that you'd find in many of the suburbs, the light cycles
 are a lot longer than what you'd find in DC", and of the longer suburban waits, "Not really
 needed for DC" "or the major cities". The cities are the District, Baltimore City, the City of
-Alexandria and Arlington County: a signal in any of them keeps the 15 s wait and is not
-weighted up in the ranking; a signal anywhere else is timed as a suburban one.
+Alexandria and Arlington County: a signal in any of them takes the cities' shorter waits and
+is not weighted up in the ranking; a signal anywhere else is timed as a suburban one.
 
 The District is OpenStreetMap's boundary (`core.mass_tiles.inside_dc`, border roads inside).
 The other three are the US Census Bureau's 2023 cartographic boundary file of counties

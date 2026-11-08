@@ -4008,7 +4008,7 @@ the router's `node.traffic_signal` and `edge.traffic_signal` flags):
 
 | At the junction | Delay | Why |
 |---|---|---|
-| A traffic signal on the node or within 30 m (100 ft) up the rider's approach, or a junction the intersection model reads as signalised (a signal up any road's arms, from `/locate`: `intersections.signal_points`; hunt J5, 2026-11-08: a signalised trail crossing with its signal on the road's stop lines had been a 30 s give-way) | 15 s (outside the major cities 30 or 45 s: below) | the average wait for a random arrival at a 100 s cycle with 50 s of red (Webster's uniform delay), plus half a stop; inferred |
+| A traffic signal on the node or within 30 m (100 ft) up the rider's approach, or a junction the intersection model reads as signalised (a signal up any road's arms, from `/locate`: `intersections.signal_points`; hunt J5, 2026-11-08: a signalised trail crossing with its signal on the road's stop lines had been a 30 s give-way) | by the busiest road there and the ride-time setting (below) | the owner's rides: a year of them, every pass through a signal counted |
 | The rider gives way to a neighbourhood street (unclassified or residential): crossing one as busy as their own, turning onto one where their own street does not go on ahead, or crossing or leaving a path | 8 s | one stop at a steady effort: Fajans and Curry, ["Why Bicyclists Hate Stop Signs"](https://www.accessmagazine.org/spring-2001/bicyclists-hate-stop-signs), ACCESS 18 (2001), 14.2 against 10.9 mph |
 | The same in the District, where the road given way to is unclassified or residential | 4 s | DC lets a rider take a stop sign as a yield (the owner: "bikes aren't required to stop at stop signs if there's no cross traffic"); a slow-and-roll, inferred |
 | The rider gives way to a busier road that does not stop: tertiary, secondary, primary or busier | 12, 20, 30 s | the wait for a gap (the owner: "a stop sign against a busy street without one probably costs more"); one value per class through the day, from the Highway Capacity Manual's two-way-stop levels of service (HCM 6th ed., Exhibit 20-2: A up to 10 s, B 10-15, C 15-25, D 25-35); inferred |
@@ -4041,20 +4041,45 @@ about 45 to 55 s. Outside the District, Baltimore City, Alexandria and Arlington
 Bureau's county boundaries, docs/SOURCES.md) a signal's wait is
 (`junction_delay.signal_wait`):
 
-| At the signal, outside the cities | Time shown | Ranked |
+| At the signal, outside the cities | Wait at a red | Ranked |
 |---|---|---|
 | Crossing or turning onto a trunk or primary road, or one the junction model reads with 4+ lanes in all or at 40 mph+ (`intersections.big_signal_points`, the map's speed or the statutory default) | 45 s | 90 s |
 | Any other signal: a secondary road crossed, riding along the big road through its own signals included (the owner: "I don't think there are many 15 second suburban signals. Never really encountered one. 30 is probably more realistic. Cities do have quicker signal changes.") | 30 s | 60 s |
-| A big or secondary road crossed or turned onto from a path, sidepath, trail or minor road (unclassified, residential, service), or a signal whose crossing or path the map tags `button_operated=yes` (anywhere) | as above (15 s in a city) | 120 s, held below a stop sign across the same road |
+| A big or secondary road crossed or turned onto from a path, sidepath, trail or minor road (unclassified, residential, service), or a signal whose crossing or path the map tags `button_operated=yes` (anywhere) | as above (in a city, as below) | 120 s, held below a stop sign across the same road |
 
-In the cities every signal stays 15 s shown and ranked ("Not really needed for DC" "or the
-major cities"). The ranking counts a suburban wait twice ("I'd probably double A, with a 2x
+In the cities a red is 30 s at a big road, 15 s at a secondary one and 20 s at any other, by
+the busiest road there, the rider's own included, ranked once ("Not really needed for DC"
+"or the major cities"; "Use the values from real data").
+
+**Time shown: the average pass (the owner, 2026-11-08).** Those are waits at a red, and "sometimes
+the light is green". In a year of the owner's rides (653 rides; every pass within 20 m of a
+signal or a cluster of signals within 30 m, the stopped time within 40 m of it, the 50
+stops over 4 minutes left out as breaks), the rider stopped at 29% of 4,797 passes through
+the cities' big-road signals, 16% of 2,798 at secondary ones and 16% of 724 at others, and at
+43% of 489, 36% of 116 and 24% of 113 in the suburbs. He chose "Averages for time, reds for
+choice": the time shown is the average stopped time per pass, plus a stop's 8 s for the share
+that stopped (`junction_delay.CITY_PASS_S`, `SUBURBAN_PASS_S`), and the ranking keeps the
+waits at a red above. The cities' run by the ride-time setting ("Early morning might actually
+have shorter times"); the suburbs' did not run shorter early:
+
+| Time shown (big / secondary / other road) | Cities | Suburbs |
+|---|---|---|
+| Night (from the passes before 7 AM) | 9 / 4 / 2 s | 24 / 15 / 10 s |
+| Weekday rush | 15 / 6 / 6 s | 24 / 15 / 10 s |
+| Weekday off-peak (from midday's) | 14 / 6 / 4 s | 24 / 15 / 10 s |
+| Weekend | 11 / 4 / 4 s | 24 / 15 / 10 s |
+| Setting not known | 12 / 5 / 4 s | 24 / 15 / 10 s |
+
+A pass counts riding along a road through its green as well as crossing it, so a crossing's
+own wait runs somewhat above these.
+
+The ranking counts a suburban red's wait twice ("I'd probably double A, with a 2x
 penalty but keep those numbers. There's a 'pain' factor to waiting at busy roads"):
 `refine.Analysis.junction_ranked_s`, which `score` and `delay_m` read in place of
 `junction_delay_s`. Road Bike's 3x wait weight multiplies it, the two stacked never past 5x
-the wait shown (`junction_delay.MAX_STACKED_WEIGHT`; the owner, 2026-11-08: "Maybe go to 5.
+the wait at a red (`junction_delay.MAX_STACKED_WEIGHT`; the owner, 2026-11-08: "Maybe go to 5.
 People prefer free flow on road bikes."): a suburban big crossing ranks 225 s on Road Bike, not
-270 s, a city signal stays at 3x (45 s), and a button crossing is held at 5x too (and still
+270 s, a city big-road signal stays at 3x (90 s), and a button crossing is held at 5x too (and still
 below its stop sign). A crossing read as
 needing its beg button ("something like a 2 minute wait, still not as bad as a stop sign
 across the same road"; "If there are cars waiting, then it wouldn't, but we should penalize

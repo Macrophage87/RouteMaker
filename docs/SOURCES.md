@@ -540,7 +540,7 @@ No credit: nothing from these is used.
   simplified to 0.0001 degrees with the topology kept and snapped to 1e-5 degrees, in
   `src/core/geodata/city-boundaries.geojson` (6,379 bytes, sha256
   `fe0264c2fde80c178bb6003e8203043f24d0d7c83260a4e097b5423e5a72c30b`): the major cities whose
-  signals keep the city's 15 s wait (`core.city_limits`, `routemaker.junction_delay`; the
+  signals take the cities' shorter waits (`core.city_limits`, `routemaker.junction_delay`; the
   owner, 2026-11-08). Retrieved 2026-11-08: `cb_2023_us_county_500k.zip`, 11,630,077 bytes,
   sha256 `99d6597b1fc7767deef62e01d28d8b5dcbd578e151855f7dc0d173cbf5bf0868`, from
   <https://www2.census.gov/geo/tiger/GENZ2023/shp/>. The District is OpenStreetMap's boundary

@@ -1716,7 +1716,7 @@ def busy_and_waits(
     # Timed without the junction model's signal points (hunt J5): these candidate rides
     # have no /locate events, so a signal is read from the trace alone. The time is the
     # waits shown, a suburban signal's longer wait included (2026-11-08).
-    found = junction_waits(junctions, beacons)
+    found = junction_waits(junctions, beacons, when=when)
     return stress["3"] + stress["4"] + stress["5"], float(sum(w.seconds for w in found))
 
 
@@ -3292,13 +3292,15 @@ def junction_waits(
     events=None,
     stop_s_per_ft: float | None = None,
     button_cache: dict | None = None,
+    when: str | None = None,
 ) -> list[junction_delay.Wait]:
     """A route's junction waits (`routemaker.junction_delay.waits`), read as `plan` and the
     calm search read them: stop signs taken as yields in the District, the beacons, and the
     junction model's signals, big roads and (with `stop_s_per_ft`, the ranking's seconds of
     waiting a foot of the junction model's cost is worth) its stop-sign prices, where there
     are `events`; suburban signals by `suburban_signal`, the map's beg buttons by
-    `button_ways` (`button_cache`: its answers kept for the plan)."""
+    `button_ways` (`button_cache`: its answers kept for the plan); a signal's time shown by
+    the ride-time setting `when` (None: not known)."""
     junctions = list(junctions)
     signals = intersections.signal_points(events)
     stop_extra = None
@@ -3316,6 +3318,7 @@ def junction_waits(
         big=intersections.big_signal_points(events),
         buttons=button_ways(junctions, signals, button_cache),
         stop_extra_s=stop_extra,
+        when=when,
     )
 
 
@@ -6045,7 +6048,7 @@ def _plan(
         # (`routemaker.junction_delay`): part of the time shown.
         # Outside the major cities a signal across a big road waits longer, and one read as
         # needing its beg button is marked for Ride (the owner, 2026-11-08).
-        found_waits = junction_waits(raw_junctions, beacons, events)
+        found_waits = junction_waits(raw_junctions, beacons, events, when=when)
         waits = [(w.m, w.seconds) for w in found_waits]
         delay = float(sum(wait for _m, wait in waits))
         route_m = round(float(summary.get("length", 0.0)) * 1000.0, 1)
