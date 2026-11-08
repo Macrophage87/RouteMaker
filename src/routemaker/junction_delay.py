@@ -93,10 +93,12 @@ across the same road"; "If there are cars waiting, then it wouldn't, but we shou
 those"), held below what giving way at a stop sign across the same road costs the ranking
 (`stop_extra_s`, from the junction model); its time shown stays the signal's measured wait,
 and the answer marks it ("Light may need a button press"), at the button signal's own node.
-On Road Bike's weight it counts ROAD_BIKE_BUTTON_S, held below half that stop sign (the
-owner: "Call that 10 minutes on a road bike in pain level. ... Just make sure it's less than
-half a stop sign against an uncontrolled busy road"). Any signal ranks below the stop sign
-across the same road (`signal_wait`, `ranked_s`).
+On Road Bike's weight it counts ROAD_BIKE_BUTTON_S, held below two-thirds of that stop sign
+(the owner: "Call that 10 minutes on a road bike in pain level. ... Just make sure it's less
+than half a stop sign against an uncontrolled busy road", then, told half a stop sign could
+fall under a plain signal, "make it 2/3 of one"); the order stays a plain signal, then the
+button, then that stop sign. Above a wait weight of 1 (Road Bike, Tandem) any signal ranks
+below the stop sign across the same road (Claude's default, `ranked_s`).
 """
 
 from __future__ import annotations
@@ -165,6 +167,11 @@ BUTTON_BELOW_STOP_S = 1.0
 # stop sign against an uncontrolled busy road." Run shares Road Bike's wait weight, and so
 # this.
 ROAD_BIKE_BUTTON_S = 600.0
+# The share of the stop sign across the same road, at that weight, a Road Bike button is
+# held below (the owner, 2026-11-08, told half a stop sign could fall under a plain signal:
+# "make it 2/3 of one"). Where that share is no dearer than the plain light, the light is
+# held 2 s below it and the button 1 s below it (`ranked_s`).
+ROAD_BIKE_BUTTON_STOP_SHARE = 2.0 / 3.0
 # The classes a suburban signal's big-road wait is for, and the secondary road a beg button is
 # also read at (ranks).
 BIG_SIGNAL_MAX_RANK = 2
@@ -310,6 +317,10 @@ class SignalWait:
     stop_s: float | None = None
     # The signal's own ranked wait, as if it needed no button (`ranked_s` on Road Bike).
     signal_ranked_s: float | None = None
+    # A light a button is read at for some rider (a suburban crossing of a big or secondary
+    # road, or a rider on a crossing or a path), where a plain light ranks below the button
+    # on Road Bike (`_signal`).
+    button_light: bool = False
 
 
 # Valhalla's `use` of the ways a rider on a crossing or a path is on (`buttons`).
@@ -375,11 +386,8 @@ def signal_wait(
     more (`intersections.own_big_signal_points`), which counts in the busiest road the time
     is read by, never in the suburban big-road red (which is for crossing or joining one).
 
-    Where the rider crosses or turns onto a road and the stop sign across it is priced, a
-    signal ranks 1 s below that stop sign at most (the 2026-11-08 hunt, J2-4: on Road Bike,
-    and at the traffic-tolerant end of the slider, the suburban 2x had sent riders across
-    busy roads at stop signs a block from the light, against the owner's order: a signal,
-    then a button, then a stop sign across the same road)."""
+    The ranked wait here is at 1x: a suburban signal keeps its 2x even above the stop sign
+    across the same road. Above 1x `ranked_s` holds it below that stop sign (hunt J2-4)."""
     crossed = signal_crossed_rank(junction)
     # Crossing or turning onto a big road, or onto a secondary one: the crossings a beg
     # button is read at, where the rider comes from a path or a minor road.
@@ -399,17 +407,16 @@ def signal_wait(
         # A stop sign across the same road: its give-way wait, plus the junction model's
         # price for it over the signal's, both as the ranking counts them.
         stop = _stop(crossed if crossed is not None else _NO_RANK, False) + stop_extra_s
-        if crossed is not None:
-            ranked = min(ranked, max(stop - BUTTON_BELOW_STOP_S, 0.0))
     inferred = suburban and onto_busy and _own_rank(junction) >= BUTTON_MIN_OWN_RANK
     on_crossing = junction.in_use in _CROSSING_USES or junction.out_use in _CROSSING_USES
+    button_light = (suburban and onto_busy) or on_crossing
     if not (inferred or (tagged_button and on_crossing)):
-        return SignalWait(seconds, ranked, red_s=red, stop_s=stop, signal_ranked_s=ranked)
+        return SignalWait(seconds, ranked, False, red, stop, ranked, button_light)
     pressed = BUTTON_RANKED_S
     if stop is not None:
         pressed = min(pressed, stop - BUTTON_BELOW_STOP_S)
     # Never below the signal's own wait as ranked: a button does not make a light quicker.
-    return SignalWait(seconds, max(pressed, ranked), True, red, stop, ranked)
+    return SignalWait(seconds, max(pressed, ranked), True, red, stop, ranked, True)
 
 
 def _busiest(junction: RawJunction, crossed: int | None, big: bool) -> int:
@@ -440,6 +447,8 @@ class Wait:
     # (`SignalWait.stop_s`, `signal_ranked_s`), for `ranked_s`.
     stop_s: float | None = None
     signal_ranked_s: float | None = None
+    # The run's signal is a light a button is read at for some rider (`SignalWait`).
+    button_light: bool = False
     # Where along the route, and at which node, the run's button signal is (metres, lon,
     # lat): `m`, `lon` and `lat` are the run's first junction, which can be a stop line or
     # the other carriageway short of it (the signal review of 2026-11-08). None: no button.
@@ -487,6 +496,7 @@ def waits(
             red_s=signal.red_s,
             stop_s=signal.stop_s,
             signal_ranked_s=signal.signal_ranked_s,
+            button_light=signal.button_light,
         )
 
     for junction in sorted(junctions, key=lambda j: j.m):
@@ -575,12 +585,15 @@ def ranked_s(found: Iterable[Wait], wait_weight: float = 1.0) -> float:
     SUBURBAN_SIGNAL_WEIGHT times, a button crossing's at BUTTON_RANKED_S. With a ride type's
     `wait_weight` (`presets.wait_weight_for`: Road Bike's 3), each wait times it, the two
     stacked never past MAX_STACKED_WEIGHT times the wait at a red (a signal's; any other
-    wait's shown), nor below the wait as ranked
-    at 1x, and a signal never past the stop sign across the same road at that weight
-    (`Wait.stop_s`, less BUTTON_BELOW_STOP_S). On Road Bike's weight a button crossing
-    counts ROAD_BIKE_BUTTON_S, held below half that stop sign (`_road_bike_button`). The
-    sum is given back divided by `wait_weight`, as `refine.Analysis.score` multiplies it by
-    that again."""
+    wait's shown), nor below the wait as ranked at 1x. Above 1x a signal never ranks past
+    the stop sign across the same road at that weight (`Wait.stop_s`, less
+    BUTTON_BELOW_STOP_S; the 2026-11-08 hunt, J2-4: on Road Bike, and at the
+    traffic-tolerant end of the slider, the suburban 2x had sent riders across busy roads at
+    stop signs a block from the light). That cap is Claude's default, not the owner's; at
+    1x a suburban signal keeps its 2x. On Road Bike's weight a button crossing counts
+    ROAD_BIKE_BUTTON_S, held below two-thirds of that stop sign, and a plain signal ranks
+    below the button there (`_road_bike_button`). The sum is given back divided by
+    `wait_weight`, as `refine.Analysis.score` multiplies it by that again."""
     if wait_weight <= 0:
         return 0.0
     total = 0.0
@@ -588,7 +601,7 @@ def ranked_s(found: Iterable[Wait], wait_weight: float = 1.0) -> float:
         if wait_weight > 1.0 and w.button:
             total += _road_bike_button(w, wait_weight)
             continue
-        total += _weighted(w, w.ranked_s, wait_weight)
+        total += _signal(w, w.ranked_s, wait_weight)
     return float(total / wait_weight)
 
 
@@ -600,7 +613,30 @@ def _weighted(w: Wait, ranked: float, wait_weight: float) -> float:
         base = w.seconds if w.red_s is None else w.red_s
         weighted = min(weighted, max(MAX_STACKED_WEIGHT * base, ranked))
         if w.stop_s is not None:
-            weighted = min(weighted, max(wait_weight * w.stop_s - BUTTON_BELOW_STOP_S, ranked))
+            # Claude's default (hunt J2-4), not the owner's: above 1x a signal ranks 1 s
+            # below the stop sign across the same road at most, over its 1x floor too.
+            weighted = min(weighted, max(wait_weight * w.stop_s - BUTTON_BELOW_STOP_S, 0.0))
+    return weighted
+
+
+def _button_hold(w: Wait, wait_weight: float) -> float | None:
+    """ROAD_BIKE_BUTTON_STOP_SHARE of the stop sign across the same road at `wait_weight`,
+    as weighted seconds; None where that stop sign is not priced."""
+    if w.stop_s is None:
+        return None
+    return ROAD_BIKE_BUTTON_STOP_SHARE * wait_weight * w.stop_s
+
+
+def _signal(w: Wait, ranked: float, wait_weight: float) -> float:
+    """A plain signal (or any other wait) ranked at `ranked` (at 1x), at `wait_weight`:
+    `_weighted`, and above 1x at a light a button is read at for some rider
+    (`Wait.button_light`), where two-thirds of the stop sign across the same road is no
+    more than 1 s above the light, the light held 2 s below it, so that a button there
+    (`_road_bike_button`, 1 s below it) still ranks above the same light with no button."""
+    weighted = _weighted(w, ranked, wait_weight)
+    hold = _button_hold(w, wait_weight) if wait_weight > 1.0 and w.button_light else None
+    if hold is not None and weighted > hold - 2.0 * BUTTON_BELOW_STOP_S:
+        weighted = max(hold - 2.0 * BUTTON_BELOW_STOP_S, 0.0)
     return weighted
 
 
@@ -608,12 +644,15 @@ def _road_bike_button(w: Wait, wait_weight: float) -> float:
     """A button crossing at Road Bike's wait weight, as weighted seconds of waiting: the
     owner, 2026-11-08: "Call that 10 minutes on a road bike in pain level. Most people are
     clipped in and riding on the road so it would really suck. Just make sure it's less than
-    half a stop sign against an uncontrolled busy road." So ROAD_BIKE_BUTTON_S, never below
-    the same light with no button, and held BUTTON_BELOW_STOP_S below half the stop sign
-    across the same road at that weight where it is priced (that hold wins over the floor:
-    it is the owner's)."""
+    half a stop sign against an uncontrolled busy road", then, told half a stop sign could
+    fall under a plain signal, "make it 2/3 of one". So ROAD_BIKE_BUTTON_S, at least 1 s
+    above the same light with no button (`_signal`), and held BUTTON_BELOW_STOP_S below
+    two-thirds of the stop sign across the same road at that weight where it is priced (that
+    hold wins over the floor: it is the owner's; the light is held 2 s below it there)."""
     plain = w.signal_ranked_s if w.signal_ranked_s is not None else w.ranked_s
-    weighted = max(ROAD_BIKE_BUTTON_S, _weighted(w, plain, wait_weight))
-    if w.stop_s is not None:
-        weighted = min(weighted, max(wait_weight * w.stop_s / 2.0 - BUTTON_BELOW_STOP_S, 0.0))
+    light = _signal(w, plain, wait_weight)
+    weighted = max(ROAD_BIKE_BUTTON_S, light + BUTTON_BELOW_STOP_S)
+    hold = _button_hold(w, wait_weight)
+    if hold is not None:
+        weighted = min(weighted, max(hold - BUTTON_BELOW_STOP_S, 0.0))
     return weighted

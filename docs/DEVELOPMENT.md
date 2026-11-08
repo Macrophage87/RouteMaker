@@ -4012,7 +4012,7 @@ the router's `node.traffic_signal` and `edge.traffic_signal` flags):
 
 | At the junction | Delay | Why |
 |---|---|---|
-| A traffic signal on the node or within 30 m (100 ft) up the rider's approach, short of an earlier junction with a road and not nearer one (hunt J2-1, 2026-11-08: the other direction's stop line just past a signal, mapped with no direction, had made a side street 40 m on a second signal), its other arms a service road's or a trail's included (J2-5: a stroad's signalised shopping-centre entrance had cost nothing), or a junction the intersection model reads as signalised (a signal up any road's arms, from `/locate`: `intersections.signal_points`; hunt J5, 2026-11-08: a signalised trail crossing with its signal on the road's stop lines had been a 30 s give-way) | by the busiest road there and the ride-time setting (below) | the owner's rides: a year of them, every pass through a signal counted |
+| A traffic signal on the node or within 30 m (100 ft) up the rider's approach, short of an earlier junction with a road and not nearer one (hunt J2-1, 2026-11-08: the other direction's stop line just past a signal, mapped with no direction, had made a side street 40 m on a second signal), its other arms a service road's or a trail's included (J2-5: a stroad's signalised shopping-centre entrance had cost nothing; a mid-block signalised footway crossing, a pedestrian light, likewise stops a rider on the road and is priced as a signal by the rider's own road), or a junction the intersection model reads as signalised (a signal up any road's arms, from `/locate`: `intersections.signal_points`; hunt J5, 2026-11-08: a signalised trail crossing with its signal on the road's stop lines had been a 30 s give-way) | by the busiest road there and the ride-time setting (below) | the owner's rides: a year of them, every pass through a signal counted |
 | The rider gives way to a neighbourhood street (unclassified or residential): crossing one as busy as their own, turning onto one where their own street does not go on ahead, or crossing or leaving a path | 8 s | one stop at a steady effort: Fajans and Curry, ["Why Bicyclists Hate Stop Signs"](https://www.accessmagazine.org/spring-2001/bicyclists-hate-stop-signs), ACCESS 18 (2001), 14.2 against 10.9 mph |
 | The same in the District, where the road given way to is unclassified or residential | 4 s | DC lets a rider take a stop sign as a yield (the owner: "bikes aren't required to stop at stop signs if there's no cross traffic"); a slow-and-roll, inferred |
 | The rider gives way to a busier road that does not stop: tertiary, secondary, primary or busier | 12, 20, 30 s | the wait for a gap (the owner: "a stop sign against a busy street without one probably costs more"); one value per class through the day, from the Highway Capacity Manual's two-way-stop levels of service (HCM 6th ed., Exhibit 20-2: A up to 10 s, B 10-15, C 15-25, D 25-35); inferred |
@@ -4088,19 +4088,26 @@ penalty but keep those numbers. There's a 'pain' factor to waiting at busy roads
 `junction_delay_s`. Road Bike's 3x wait weight multiplies it, the two stacked never past 5x
 the wait at a red (`junction_delay.MAX_STACKED_WEIGHT`; the owner, 2026-11-08: "Maybe go to 5.
 People prefer free flow on road bikes."): a suburban big crossing ranks 225 s on Road Bike, not
-270 s, and a city big-road signal stays at 3x (90 s). Where the rider crosses or turns onto a
-road and the stop sign across it is priced, a signal ranks 1 s below that stop sign at most,
-at any weight (hunt J2-4: on Road Bike, and at the traffic-tolerant end of the slider, the
-suburban 2x had ranked the light above a stop sign a block away across the same road). On
-Road Bike's weight (and Run's, which shares it) a button crossing counts
-`junction_delay.ROAD_BIKE_BUTTON_S`, 600 s weighted, in place of the 5x cap, held 1 s below half
-that stop sign at the same weight where it is priced (the owner, 2026-11-08: "Call that 10
-minutes on a road bike in pain level. Most people are clipped in and riding on the road so it
-would really suck. Just make sure it's less than half a stop sign against an uncontrolled busy
-road."). The stop sign's price there is its give-way wait and the junction model's price over
-the signal; the score's red charge (`refine.RED_DETOUR_S`) is not in it, so at the default
-slider and 25 km/h half the stop sign across an LTS 4 road is about 224 s and holds the 600 s
-there. A crossing read as
+270 s, and a city big-road signal stays at 3x (90 s). Above a wait weight of 1 (Road Bike,
+Tandem), where the stop sign across the same road is priced, a signal ranks 1 s below that
+stop sign at most at that weight (hunt J2-4: on Road Bike, and at the traffic-tolerant end of
+the slider, the suburban 2x had ranked the light above a stop sign a block away across the
+same road). That cap is Claude's default, not the owner's; at 1x a suburban signal keeps its
+2x even above the stop sign (before, a suburban signal across a secondary dropped from 60 s to
+19 s at 1x). On Road Bike's weight (and Run's, which shares it) a button crossing counts
+`junction_delay.ROAD_BIKE_BUTTON_S`, 600 s weighted, in place of the 5x cap, held 1 s below
+two-thirds of that stop sign at the same weight where it is priced
+(`ROAD_BIKE_BUTTON_STOP_SHARE`; the owner, 2026-11-08: "Call that 10 minutes on a road bike in
+pain level. Most people are clipped in and riding on the road so it would really suck. Just
+make sure it's less than half a stop sign against an uncontrolled busy road.", then, told half
+a stop sign could fall under a plain signal, "make it 2/3 of one"). The order stays a plain
+signal, then the button, then the stop sign: where two-thirds of the stop sign is not above a
+plain light at which a button is read for some rider (a suburban crossing of a big or
+secondary road, or a rider on a crossing or a path), the light ranks 2 s below it and the
+button 1 s below it. The stop sign's price there is its give-way wait and the junction model's
+price over the signal; the score's red charge (`refine.RED_DETOUR_S`) is not in it, so at the
+default slider and 25 km/h two-thirds of the stop sign across an LTS 4 road is about 299 s and
+holds the 600 s there. A crossing read as
 needing its beg button ("something like a 2 minute wait, still not as bad as a stop sign
 across the same road"; "If there are cars waiting, then it wouldn't, but we should penalize
 those") ranks as `BUTTON_RANKED_S` 120 s of waiting, held 1 s below the give-way wait plus
