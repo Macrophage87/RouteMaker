@@ -4188,8 +4188,11 @@ def test_a_rebuild_flags_a_dc_way_osm_edited_after_the_record_and_keeps_the_reco
     """Hunt D6; the owner, 2026-11-08: "If there's a newer OSM rating, then on a rebuild
     it should flag it and I can make the call." Way 100, posted 35 mph in OSM and last
     edited after the record's date, keeps the block's 20 mph and is listed for the owner,
-    with its edit date only; the same way edited before it is not."""
-    from pipeline import discrepancies
+    with its edit date only and a fingerprinted stress row; the same way edited before it
+    is not. Once the owner's stress row for it is approved, the list (written after the
+    approved rows are read) has it as decided, not open."""
+    from core.models import Override as Row
+    from pipeline import dc_osm_newer
     from routemaker import agency_roads
 
     _all_in_the_district(monkeypatch)
@@ -4198,7 +4201,12 @@ def test_a_rebuild_flags_a_dc_way_osm_edited_after_the_record_and_keeps_the_reco
     before = datetime.datetime(2026, 9, 1, 15, 30, tzinfo=datetime.UTC)
     assert before.date() < agency_roads.DC_RECORD_AS_OF < after.date()
     listed = {}
-    for edited in (after, before):
+    for case, edited in (("after", after), ("before", before), ("decided", after)):
+        if case == "decided":
+            Row.objects.create(
+                kind="stress", osm_way_id=100, reason="r", evidence="e", approved=True,
+                value=json.loads(listed["after"][0]["take_osm_override"])["value"],
+            )  # fmt: skip
         extract = install_source_extract(
             _scratch_dir(),
             build=build_one_road_extract,
@@ -4211,18 +4219,24 @@ def test_a_rebuild_flags_a_dc_way_osm_edited_after_the_record_and_keeps_the_reco
             context, _ = run_pipeline(extract, extract.parent, roadway=[block], skip=NOT_SWAPPED)
         assert context.class_tags_by_way[100]["maxspeed"] == "20 mph"
         reports = context.work_dir / "reports"
-        with (reports / discrepancies.NEWER_CSV_NAME).open() as handle:
-            listed[edited] = list(csv.DictReader(handle))
-    [flag] = listed[after]
-    assert (flag["osm_way_id"], flag["street"], flag["osm_edited"]) == (
+        with (reports / dc_osm_newer.CSV_NAME).open() as handle:
+            listed[case] = list(csv.DictReader(handle))
+    [flag] = listed["after"]
+    assert (flag["status"], flag["osm_way_id"], flag["street"], flag["osm_edited"]) == (
+        dc_osm_newer.OPEN,
         "100",
         "Test Road",
         "2026-11-01",
     )
     assert (flag["dc_applies"], flag["osm_says"]) == ("20 mph", "35 mph")
-    assert json.loads(flag["override"])["osm_way_id"] == 100
-    assert listed[before] == []
-    assert "DC ways OSM edited after the record (2026-10-01) that disagree with it" in caplog.text
+    suggested = json.loads(flag["take_osm_override"])
+    assert suggested["osm_way_id"] == 100 and suggested["fingerprint"]["name"] == "Test Road"
+    assert listed["before"] == []
+    [decided] = listed["decided"]
+    assert decided["status"] == dc_osm_newer.TOOK_OSM
+    assert "way-100-osm-newer" in decided["decided"]
+    assert "for the owner's call: 1 open, 0 decided" in caplog.text
+    assert "for the owner's call: 0 open, 1 decided" in caplog.text
 
 
 def _report_rows(context) -> list[dict]:
