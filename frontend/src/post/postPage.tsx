@@ -24,7 +24,7 @@ import "./post.css";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import * as maplibregl from "maplibre-gl";
-import type { GeoJSONSource, Map as MapLibreMap } from "maplibre-gl";
+import type { GeoJSONSource, Map as MapLibreMap, PositionAnchor } from "maplibre-gl";
 import maplibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 import { Protocol } from "pmtiles";
 import { layers as protomapsLayers, namedFlavor } from "@protomaps/basemaps";
@@ -186,6 +186,30 @@ function photoMark(map: MapLibreMap, data: PostData, photo: PostPhoto, root: HTM
   new maplibregl.Marker({ element: root }).setLngLat([photo.lon, photo.lat]).addTo(map);
 }
 
+/** Clear of a thumbnail's middle, in pixels, so a pop-out opens next to the thumbnail, not over it. */
+const POPOUT_GAP_PX = 24;
+
+/**
+ * Where a photo's pop-out hangs from: its thumbnail, beside the route, pushed out by POPOUT_GAP_PX on whichever side
+ * MapLibre anchors it to keep it in the frame, so the pop-out never covers the thumbnail or the spot.
+ */
+function fromThumb(pin: HTMLElement): Record<PositionAnchor, [number, number]> {
+  const dx = Number(pin.dataset.dx) || 0;
+  const dy = Number(pin.dataset.dy) || 0;
+  const g = POPOUT_GAP_PX;
+  return {
+    center: [dx, dy],
+    top: [dx, dy + g],
+    bottom: [dx, dy - g],
+    left: [dx + g, dy],
+    right: [dx - g, dy],
+    "top-left": [dx + g, dy + g],
+    "top-right": [dx - g, dy + g],
+    "bottom-left": [dx + g, dy - g],
+    "bottom-right": [dx - g, dy - g],
+  };
+}
+
 /**
  * Each photo on the route's map: a dot on the route with its thumbnail beside it, together a button that opens a
  * pop-out of the photo with its caption, from the thumbnail. The button opens it itself (not the marker's own toggle,
@@ -229,10 +253,11 @@ function addPhotoPopouts(map: MapLibreMap, data: PostData, photos: readonly Post
         popup.remove();
         return;
       }
-      // From the thumbnail, beside the route, so the pop-out leaves the route in view too.
-      const dx = Number(pin.dataset.dx) || 0;
-      const dy = Number(pin.dataset.dy) || 0;
-      popup.setOffset([dx, dy + (dy <= 0 ? -24 : 24)]).setLngLat([photo.lon, photo.lat]).addTo(map);
+      popup.setOffset(fromThumb(pin)).setLngLat([photo.lon, photo.lat]).addTo(map);
+    });
+    // The thumbnail can change sides as the map moves (photoMark's own moveend runs first): the pop-out follows it.
+    map.on("moveend", () => {
+      if (popup.isOpen()) popup.setOffset(fromThumb(pin));
     });
   }
 }
