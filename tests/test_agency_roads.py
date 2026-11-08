@@ -2309,7 +2309,7 @@ def test_osm_s_contraflow_lane_is_kept_over_an_unflagged_with_flow_reading() -> 
     assert A.overlay(osm, flagged).tags["cycleway:left"] == "opposite_lane"
 
 
-def _one_parking_lane_way(beside: tuple[str, ...]) -> A.WayFacts:
+def _one_parking_lane_way(beside: tuple[str, ...], contraflow: bool = False) -> A.WayFacts:
     block = facts(
         bike={"ib": A.BIKE_LANE},
         way="one",
@@ -2321,7 +2321,7 @@ def _one_parking_lane_way(beside: tuple[str, ...]) -> A.WayFacts:
         parking_width_ft=8.0,
         bike_beside_parking=beside,
     )
-    return A.aggregate([("a", block, True)])
+    return A.aggregate([("a", replace(block, contraflow=contraflow), True)])
 
 
 def test_one_parking_lane_goes_beside_the_lane_only_where_the_record_says_so() -> None:
@@ -2342,6 +2342,13 @@ def test_one_parking_lane_goes_beside_the_lane_only_where_the_record_says_so() -
     beside = _one_parking_lane_way(("ib",))
     tags = A.overlay(osm, beside).tags
     assert (tags["parking:right"], tags["parking:left"]) == ("parallel", "no")
+    # A contraflow-only way: the record's one painted lane is on the left, and
+    # beside the parking, so the parking goes on the left with it.
+    contraflow = _one_parking_lane_way(("ib",), contraflow=True)
+    tags = A.overlay(osm, contraflow).tags
+    assert tags["cycleway:left"] == "opposite_lane"
+    assert "cycleway:right" not in tags
+    assert (tags["parking:left"], tags["parking:right"]) == ("parallel", "no")
 
 
 def test_osm_side_ranks_read_each_side_by_its_precedence() -> None:

@@ -1269,3 +1269,59 @@ def test_a_late_failure_takes_upstreams_entry_points_down_too() -> None:
     cleared = source.index("ways_proc, nodes_proc, rels_proc = nil, nil, nil")
     defined = source.index("function ways_proc")
     assert remap < upstream < cleared < defined
+
+
+def _lanes(tags: dict[str, str]) -> tuple[str, str]:
+    return _transformed(tags, "cycle_lane_right"), _transformed(tags, "cycle_lane_left")
+
+
+@pytest.mark.parametrize(
+    ("side", "value", "facility", "lane"),
+    [
+        ("right", "track", "protected", "3"),
+        ("left", "track", "protected", "3"),
+        ("right", "lane", "lane", "1"),
+        ("left", "buffered_lane", "protected", "3"),
+    ],
+)
+def test_a_two_way_side_on_a_two_way_road_prices_both_directions(
+    side, value, facility, lane
+) -> None:
+    """Hunt 3, stress 1: the classifier lets `cycleway:<side>:oneway=no` on a
+    two-way road serve both directions; upstream prices each direction from its
+    own side, so the remap copies the side's written value to the other side."""
+    tags = {
+        "highway": "secondary",
+        "maxspeed": "30 mph",
+        f"cycleway:{side}": value,
+        f"cycleway:{side}:oneway": "no",
+        "rm:facility": facility,
+    }
+    assert _lanes(tags) == (lane, lane)
+    # Without `:oneway=no` the other direction is still priced as no lane.
+    one_way_lane = {k: v for k, v in tags.items() if not k.endswith(":oneway")}
+    right, left = _lanes(one_way_lane)
+    assert (left if side == "right" else right) == "0"
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        {"cycleway:left": "no"},  # the other side's own key speaks
+        {"oneway": "yes"},  # a one-way: contraflow access, not this copy
+        {"bicycle": "no"},  # lanes_may_move is false
+    ],
+)
+def test_a_two_way_side_is_not_copied_where_it_may_not_be(extra) -> None:
+    tags = {
+        "highway": "secondary",
+        "cycleway:right": "track",
+        "cycleway:right:oneway": "no",
+        "rm:facility": "protected",
+        **extra,
+    }
+    if "oneway" in extra:
+        # Upstream's own pricing of a one-way is left as it was.
+        assert _transformed(tags, "cycle_lane_right") == "3"
+        return
+    assert _transformed(tags, "cycle_lane_left") == "0"

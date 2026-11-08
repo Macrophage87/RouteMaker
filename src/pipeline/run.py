@@ -2957,8 +2957,10 @@ def build_handlers(
         (OWNER-DECISIONS 191), from the overlay this rebuild classified with:
         `<DATA_ROOT>/rebuild/reports/dc-osm-discrepancies.md` and `.csv`. A
         report, not a stage's output: it never fails the rebuild. The tier with
-        OSM's tags alone is the classifier's on the way's own tags with the count
-        a count layer gave it (not a block's), as `data_before_after.py` has it."""
+        OSM's tags alone is `osm_tags_tier` on the way's own tags (a curated lane
+        applied), with the count a count layer gave it (not a block's): the
+        classifier, then the rural floor and service-road step, then the way's
+        agency ratings, as its real tier goes (hunt 3, stress 3)."""
         reference = context.require_reference()
         try:
             # Each block's own key and street (DC's BLOCKKEY, ROUTENAME), for the
