@@ -1747,7 +1747,12 @@ class RoutingServices:
         cap = min(left, self._per_call_s)
         deadline = routing.Deadline(now + cap, cap)
         payload = {
-            "locations": [{"lon": p[0], "lat": p[1], "type": "break"} for p in (a, b)],
+            # Neither end in the tunnel under a DC circle park, as a ride's stops
+            # (`routing.circle_park_filter`; the second 2026-11-08 hunt, P7).
+            "locations": [
+                {"lon": p[0], "lat": p[1], "type": "break", **routing.circle_park_filter(*p[:2])}
+                for p in (a, b)
+            ],
             "costing": costing,
             "costing_options": options,
             "directions_type": "none",

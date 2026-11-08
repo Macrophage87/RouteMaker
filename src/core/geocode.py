@@ -112,9 +112,13 @@ AREA_VALUES = {
     "boundary": frozenset({"protected_area", "national_park"}),
     "amenity": frozenset({"university", "college", "school", "hospital"}),
 }
+# tourism=information is not among them: it is a notice board, a trail map or a
+# guidepost as often as a visitor centre (information=office, which Photon does not
+# give), and "Great Falls Park Trail Map", a board on an inner hiking trail, was taken
+# as the park's way in ahead of its visitor centre (the second 2026-11-08 hunt, P2).
+# A visitor or nature centre still counts by its name (ARRIVAL_WORDS).
 ARRIVAL_TAGS = frozenset(
     {
-        ("tourism", "information"),
         ("amenity", "parking"),
         ("amenity", "bicycle_parking"),
         ("amenity", "ranger_station"),
@@ -258,6 +262,13 @@ STREET_TYPES = {
     "sq": "Square",
     "ter": "Terrace",
 }
+# "Mt" and "Ft" begin a name as often as they sit inside one ("Mt Vernon Trail", "Ft
+# Washington Park", "Ft Hunt Rd", "Mt Rainier"), and OSM spells them out ("Mount Vernon
+# Trail", "Fort Hunt Road"); Photon has no synonym list here, so "Mt Airy" or "Ft Totten"
+# could rank a business named "Mt ..." first (the second 2026-11-08 hunt, P9). Each is
+# spelled out anywhere, after a house number too ("4500 Ft Hunt Rd"), except as the last
+# word after a number, where it is a length ("10 ft").
+NAME_PREFIXES = {"mt": "Mount", "ft": "Fort"}
 DIRECTIONS = {"n": "North", "s": "South", "e": "East", "w": "West"}
 QUADRANTS = {"ne": "Northeast", "nw": "Northwest", "se": "Southeast", "sw": "Southwest"}
 
@@ -282,7 +293,8 @@ def expand_abbreviations(query: str) -> str:
     direction is expanded before a name ("N Glebe Rd") or after a street type
     ("Maple Ave E"), and never before a street type, since "E St" is E Street.
     NE, NW, SE and SW are the District's quadrants wherever they come after a
-    word.
+    word. "Mt" and "Ft" are Mount and Fort anywhere but last after a number
+    (NAME_PREFIXES).
     """
     tokens = query.split()
     out = []
@@ -296,7 +308,10 @@ def expand_abbreviations(query: str) -> str:
         after = tokens[i + 1] if i + 1 < len(tokens) else None
         prev_word, next_word = _word(before), _word(after)
         spelled = None
-        if word in STREET_TYPES and i > 0:
+        if word in NAME_PREFIXES:
+            if after is not None or before is None or not before[0].isdigit():
+                spelled = NAME_PREFIXES[word]
+        elif word in STREET_TYPES and i > 0:
             if word != "st":
                 spelled = STREET_TYPES[word]
             elif (
@@ -399,19 +414,21 @@ def search(
                 "lang": lang,
             },
         )
-        return results(answer, reverse=False)[:limit]
+        return results(answer, reverse=False, near=(lon, lat))[:limit]
     params: dict = {
         "q": expand_abbreviations(q),
         "limit": min(limit + OVERFETCH, PHOTON_MAX_RESULTS),
         "lang": lang,
         "bbox": _bbox_param(),
     }
+    near = None
     if lat is not None and lon is not None:
         params["lat"] = lat
         params["lon"] = lon
         params["zoom"] = BIAS_ZOOM
         params["location_bias_scale"] = BIAS_SCALE
-    return results(_get("/api", params), reverse=False)[:limit]
+        near = (lon, lat)
+    return results(_get("/api", params), reverse=False, near=near)[:limit]
 
 
 # --- names for points ---------------------------------------------------------------
@@ -668,8 +685,9 @@ def describe(properties: dict, *, reverse: bool) -> tuple[str, str]:
     return name, ", ".join([name, *_area(properties, name)]) if name else ""
 
 
-def results(answer: dict, *, reverse: bool) -> list[dict]:
-    """Photon's GeoJSON as the API's list: in the box, named, one row per place."""
+def results(answer: dict, *, reverse: bool, near: tuple[float, float] | None = None) -> list[dict]:
+    """Photon's GeoJSON as the API's list: in the box, named, one row per place. An area
+    goes to its way in nearest `near` (lon, lat) where one is given (`_go_in`)."""
     out: list[dict] = []
     extents: list = []
     for feature in answer.get("features", []):
@@ -704,7 +722,7 @@ def results(answer: dict, *, reverse: bool) -> list[dict]:
         out.append(row)
     if not reverse:
         for row, extent in zip(out, extents, strict=True):
-            _go_in(row, extent, out)
+            _go_in(row, extent, out, near)
     return out
 
 
@@ -759,16 +777,37 @@ def _inside(row: dict, area: dict, extent) -> bool:
     return haversine(here, Point(lon, lat)) <= EXTENT_SLACK_M
 
 
-def _go_in(area: dict, extent, rows: list[dict]) -> None:
-    """Move an area's row to the first way in of it among `rows` (see AREA_KEYS)."""
+def named_for(own: str, name: str) -> bool:
+    """Whether a row named `own` is named for the area `name`: it starts with the area's
+    whole name and goes on after a word's end ("Rock Creek Park Gate", "Rock Creek Park -
+    Picnic Grove 1"). "Rock Creek Parkway Parking" is the parkway's lot, not the park's: it
+    was taken as Rock Creek Park's way in (the second 2026-11-08 hunt, P3)."""
+    own, name = own.casefold(), name.casefold()
+    return len(own) > len(name) and own.startswith(name) and not own[len(name)].isalnum()
+
+
+def _go_in(area: dict, extent, rows: list[dict], near: tuple[float, float] | None = None) -> None:
+    """Move an area's row to a way in of it among `rows` (see AREA_KEYS): the one nearest
+    `near` (the search's bias point, where the rider is or the map is looking) when given,
+    else Photon's first. A long park (Rock Creek, Patapsco Valley, the C&O Canal) has ways
+    in miles apart, and Photon's first can be the lot at the far end (the second 2026-11-08
+    hunt, P4)."""
     if not is_area(area):
         return
-    name = area["name"].casefold()
-    for row in rows:
-        if row is area or is_area(row) or row["way_in"]:
-            continue
-        own = row["name"].casefold()
-        if own != name and own.startswith(name) and is_arrival(row) and _inside(row, area, extent):
-            area["way_in"] = row["name"]
-            area["lon"], area["lat"] = row["lon"], row["lat"]
-            return
+    found = [
+        row
+        for row in rows
+        if row is not area
+        and not is_area(row)
+        and not row["way_in"]
+        and named_for(row["name"], area["name"])
+        and is_arrival(row)
+        and _inside(row, area, extent)
+    ]
+    if not found:
+        return
+    if near is not None:
+        here = Point(*near)
+        found.sort(key=lambda row: haversine(here, Point(row["lon"], row["lat"])))
+    area["way_in"] = found[0]["name"]
+    area["lon"], area["lat"] = found[0]["lon"], found[0]["lat"]

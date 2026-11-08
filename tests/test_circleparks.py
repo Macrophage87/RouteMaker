@@ -108,6 +108,64 @@ class TestOpenWays:
         assert signed.tags["bicycle"] == "no"
 
 
+class TestEveryMatchOfAPoint:
+    """The second 2026-11-08 hunt (P6, P7): only the plan's own /route kept a point in a circle
+    off the tunnel below. Best order's matrix, Reach's rings, the nearest places and the walks
+    to a dock, a station or a stop matched it to the underpass (before: no `search_filter`)."""
+
+    TUNNEL_OFF = {"exclude_tunnel": True}
+
+    def test_best_order_and_nearest_keep_off_the_underpass(self, monkeypatch) -> None:
+        from core import nearest, routing, stoporder
+
+        seen = []
+        monkeypatch.setattr(
+            stoporder, "ask_matrix", lambda variant, payload, deadline: seen.append(payload) or {}
+        )
+        monkeypatch.setattr(
+            stoporder,
+            "_ask",
+            lambda variant, endpoint, payload, deadline: seen.append(payload) or ({}, variant),
+        )
+        deadline = routing.Deadline(routing.clock() + 30, 10)
+        stoporder._matrix("standard", [DUPONT, OUTSIDE], {}, deadline)
+        assert seen[0]["sources"][0]["search_filter"] == self.TUNNEL_OFF
+        assert "search_filter" not in seen[0]["sources"][1]
+        stoporder._leg_costs("standard", [list(DUPONT), list(OUTSIDE)], {}, "weekend", deadline)
+        assert seen[1]["locations"][0]["search_filter"] == self.TUNNEL_OFF
+        nearest._row("standard", list(DUPONT), [list(LOGAN)], {}, deadline)
+        assert seen[2]["sources"][0]["search_filter"] == self.TUNNEL_OFF
+        assert seen[2]["targets"][0]["search_filter"] == self.TUNNEL_OFF
+
+    def test_reach_grows_from_the_park_not_the_underpass(self) -> None:
+        from core import reach
+
+        payload = reach._payload("bicycle", {}, list(DUPONT), [10], False, [])
+        assert payload["locations"][0]["search_filter"] == self.TUNNEL_OFF
+
+    def test_a_walk_to_or_from_a_circle_keeps_off_the_underpass(self, monkeypatch) -> None:
+        from core import bikeshare, presets, routing, transit
+
+        seen = []
+
+        def call(variant, endpoint, payload, deadline):
+            seen.append(payload)
+            raise routing.RouterRefused(400, 442, "no path")
+
+        monkeypatch.setattr(routing, "_call", call)
+        deadline = routing.Deadline(routing.clock() + 30, 10)
+        routing.walk_leg(list(DUPONT), list(OUTSIDE), deadline)
+        bikeshare.RoutingServices(deadline, None).walk(DUPONT, OUTSIDE)
+        transit.RoutingServices(routing.clock() + 30, presets.BIKE_TRANSIT).walk(OUTSIDE, DUPONT)
+        assert len(seen) == 3
+        assert seen[0]["locations"][0]["search_filter"] == self.TUNNEL_OFF
+        assert seen[1]["locations"][0]["search_filter"] == self.TUNNEL_OFF
+        assert seen[2]["locations"][1]["search_filter"] == self.TUNNEL_OFF
+        assert all(
+            "search_filter" not in s["locations"][i] for s, i in zip(seen, (1, 1, 0), strict=True)
+        )
+
+
 class TestTripPoints:
     def test_a_point_inside_a_circle_is_kept_off_the_underpass(self) -> None:
         from core.routing import circle_park_filter

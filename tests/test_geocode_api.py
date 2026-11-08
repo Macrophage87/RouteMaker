@@ -1117,6 +1117,13 @@ class TestAbbreviations:
             ("Old Dominion Dr", "Old Dominion Drive"),
             ("S Four Mile Run Dr", "South Four Mile Run Drive"),
             ("Lee Hwy W", "Lee Highway West"),
+            # The second 2026-11-08 hunt (P9): "Mt" and "Ft" were sent as typed.
+            ("Mt Vernon Trail", "Mount Vernon Trail"),
+            ("Ft Washington Park", "Fort Washington Park"),
+            ("Ft. Hunt Rd", "Fort Hunt Road"),
+            ("4500 Ft Hunt Rd", "4500 Fort Hunt Road"),
+            ("Mt Rainier", "Mount Rainier"),
+            ("Mt St Mary's", "Mount St Mary's"),
         ],
     )
     def test_abbreviations_are_spelled_out(self, typed, sent) -> None:
@@ -1132,6 +1139,7 @@ class TestAbbreviations:
             "W&OD Trail",
             "S",
             "NW",
+            "10 ft",  # a length, not a fort
         ],
     )
     def test_what_is_not_an_abbreviation_is_left(self, kept) -> None:
@@ -1303,6 +1311,80 @@ class TestAreas:
             reverse=False,
         )
         assert [r["name"] for r in rows] == ["Great Falls Park", "Great Falls Park Visitor Center"]
+
+    def test_a_trail_map_board_is_not_a_way_in_the_visitor_center_is(self) -> None:
+        """The second 2026-11-08 hunt (P2): tourism=information is a board or guidepost as
+        often as a visitor centre, and "Great Falls Park Trail Map", listed first, was taken
+        as the park's way in (before: way_in 'Great Falls Park Trail Map')."""
+        park = feature(
+            -77.251843,
+            38.990455,
+            osm_key="boundary",
+            osm_value="protected_area",
+            extent=[-77.27, 39.01, -77.23, 38.97],
+            **GREAT_FALLS,
+        )
+        board = feature(
+            -77.255,
+            38.985,
+            name="Great Falls Park Trail Map",
+            osm_type="N",
+            osm_key="tourism",
+            osm_value="information",
+        )
+        centre = feature(
+            -77.2461,
+            38.9985,
+            name="Great Falls Park Visitor Center",
+            osm_type="N",
+            osm_key="tourism",
+            osm_value="information",
+        )
+        row = geocode.results(answer(park, board, centre), reverse=False)[0]
+        assert row["way_in"] == "Great Falls Park Visitor Center"
+        assert (row["lon"], row["lat"]) == (-77.2461, 38.9985)
+
+    def test_a_way_in_is_named_for_the_area_by_whole_words(self) -> None:
+        """P3: "Rock Creek Parkway Parking" is the parkway's lot, and was taken as Rock Creek
+        Park's way in (before: way_in 'Rock Creek Parkway Parking')."""
+        park = feature(
+            -77.05,
+            38.96,
+            name="Rock Creek Park",
+            osm_type="R",
+            osm_key="boundary",
+            osm_value="national_park",
+            extent=[-77.07, 38.99, -77.03, 38.91],
+        )
+        lot = dict(osm_type="W", osm_key="amenity", osm_value="parking")
+        parkway = feature(-77.055, 38.93, name="Rock Creek Parkway Parking", **lot)
+        (row, _) = geocode.results(answer(park, parkway), reverse=False)
+        assert row["way_in"] is None and row["lon"] == -77.05
+        own = feature(-77.04, 38.95, name="Rock Creek Park - Picnic Grove Parking", **lot)
+        (row, _) = geocode.results(answer(park, own), reverse=False)
+        assert row["way_in"] == "Rock Creek Park - Picnic Grove Parking"
+        assert geocode.named_for("Rock Creek Park Gate", "Rock Creek Park")
+        assert not geocode.named_for("Rock Creek Parks", "Rock Creek Park")
+
+    def test_a_long_area_goes_to_the_way_in_nearest_the_search_s_bias(self) -> None:
+        """P4: with a bias point the way in nearest it is taken, not Photon's first, which can
+        be the lot at the far end of a long park (before: the north lot, from the south)."""
+        park = feature(
+            -77.05,
+            38.96,
+            name="Rock Creek Park",
+            osm_type="R",
+            osm_key="boundary",
+            osm_value="national_park",
+            extent=[-77.07, 38.99, -77.03, 38.91],
+        )
+        lot = dict(osm_type="W", osm_key="amenity", osm_value="parking")
+        north = feature(-77.05, 38.985, name="Rock Creek Park North Parking", **lot)
+        south = feature(-77.05, 38.915, name="Rock Creek Park South Parking", **lot)
+        rows = answer(park, north, south)
+        assert geocode.results(rows, reverse=False)[0]["way_in"] == "Rock Creek Park North Parking"
+        biased = geocode.results(rows, reverse=False, near=(-77.05, 38.90))[0]
+        assert biased["way_in"] == "Rock Creek Park South Parking"
 
     def test_the_same_name_on_another_kind_of_place_metres_away_stays_two_rows(self) -> None:
         park = feature(-77.0400, 38.9000, name="Meridian Hill", osm_key="leisure")
