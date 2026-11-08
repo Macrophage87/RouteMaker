@@ -5131,7 +5131,7 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
   font-weight: 700;
 }
 
-/* Done with MTB (lib/mtbDone.ts): just under Go round, at its end of the row, as big as it is. */
+/* End mountain biking (lib/mtbDone.ts): just under Go round, at its end of the row, as big as it is. */
 .ride-mtb-done-row {
   display: flex;
   justify-content: flex-end;

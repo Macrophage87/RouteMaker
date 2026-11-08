@@ -1,4 +1,4 @@
-"""Ride's "Done with MTB" (the owner, 2026-11-08: "a button under the trail closure for 'i
+"""Ride's "End mountain biking" (the owner, 2026-11-08: "a button under the trail closure for 'i
 don't want to mountain bike anymore' ... that will route you off mtb trails and onto something
 easier"): a ride's re-plan with `mtb_done` leaves the Mountain Bike and off-road graphs for the
 standard one, with Easy MTB trails off and no dirt trail ridden."""

@@ -1784,8 +1784,8 @@ class Dials:
     # With `ride_replan`: the rider marked a dirt trail closed earlier this ride (an answer's
     # `dirt_closed`), so no dirt trail is ridden, whatever `blocked` still holds.
     dirt_closed: bool = False
-    # With `ride_replan`: the rider pressed Ride's "Done with MTB" (the owner, 2026-11-08: "route
-    # you off mtb trails and onto something easier"). The ride leaves the Mountain Bike and
+    # With `ride_replan`: the rider pressed Ride's "End mountain biking" (the owner, 2026-11-08:
+    # "route you off mtb trails and onto something easier"). The ride leaves the Mountain Bike and
     # off-road graphs for the standard one (`presets.variant_for_ride`), "Easy MTB trails" goes
     # off, and no dirt trail is ridden, as after `dirt_closed`.
     mtb_done: bool = False
@@ -4803,7 +4803,7 @@ def weekend_closure_near(
 def _easy_asked(preset_name: str, dials: Dials) -> bool:
     """Whether a plan rides "Easy MTB trails" (`core.easy_mtb`): asked, on a ride type that
     offers it, and neither trails off (which wins, `presets.variant_for_ride`) nor after Ride's
-    "Done with MTB" (`Dials.mtb_done`)."""
+    "End mountain biking" (`Dials.mtb_done`)."""
     return (
         bool(dials.easy_mtb)
         and preset_name in easy_mtb.PRESETS
@@ -5346,7 +5346,7 @@ def _plan(
     assist = bool(dials.assist) and preset.assist_speed_kmh is not None
     trails_off = bool(dials.trails_off)
     # "Easy MTB trails" (`core.easy_mtb`): on the ride types that offer it, and not with trails
-    # off, which wins (`presets.variant_for_ride`), nor after Ride's "Done with MTB".
+    # off, which wins (`presets.variant_for_ride`), nor after Ride's "End mountain biking".
     easy_asked = _easy_asked(preset_name, dials)
     variant = dials.graph or presets.variant_for_ride(
         preset_name, when, assist, trails_off, easy_asked, dials.mtb_done
@@ -6002,7 +6002,7 @@ def _plan(
             # offered beside a route they were not weighed against (as the Avoid pass).
             refine_context.candidates = refine_context.candidates[:1]
     elif preset_name == mtb.PRESET and not trails_off and not dials.mtb_done and not fixed:
-        # Trails off and "Done with MTB" are the rider's own choice; this is the router not
+        # Trails off and "End mountain biking" are the rider's own choice; this is the router not
         # being there.
         mtb_info = {
             "max_level": mtbmode.clamp_level(dials.mtb_level),

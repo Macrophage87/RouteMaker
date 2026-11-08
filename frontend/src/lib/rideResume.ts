@@ -44,7 +44,7 @@ export const RESUME_NOT_NOW = t("Not now");
  * round 2, R2-4 and R2-5): the ride is a loop (its re-plans' points begin at the rider, so they no longer show it), the
  * stretches marked Road closed, a dirt trail ridden, a dirt trail marked closed. Before, each began again empty, so a
  * page reloaded in the background re-planned over a road the rider had marked closed, a loop's way home became the way
- * out again, and a ride that had ridden dirt stopped re-planning on it. Done with MTB pressed too (lib/mtbDone.ts).
+ * out again, and a ride that had ridden dirt stopped re-planning on it. End mountain biking pressed too (lib/mtbDone.ts).
  */
 export interface RideReplans {
   loopRide?: boolean;

@@ -1,5 +1,5 @@
 /**
- * Ride's "Done with MTB" (the owner, 2026-11-08: "On MTB trails ... make a button under the trail closure for 'i don't
+ * Ride's "End mountain biking" (the owner, 2026-11-08: "On MTB trails ... make a button under the trail closure for 'i don't
  * want to mountain bike anymore', but make it concise. Basically that will route you off mtb trails and onto something
  * easier").
  *
@@ -15,9 +15,9 @@ import type { RouteResponse } from "./api.ts";
 import { t } from "./i18n.ts";
 
 /** Its shown words, short for the 20 languages Ride is in. */
-export const MTB_DONE_TEXT = t("Done with MTB");
+export const MTB_DONE_TEXT = t("End mountain biking");
 /** Its name for screen readers and its tooltip: the shown words first (WCAG 2.5.3), then what it does. */
-export const MTB_DONE_NAME = t("Done with MTB: route off mountain-bike trails");
+export const MTB_DONE_NAME = t("End mountain biking: route off mountain-bike trails");
 /** Said on the press, while the easier way is looked for. */
 export const MTB_DONE_FINDING = t("Finding a way off the mountain-bike trails.");
 /** Said where the ride has no fix yet to plan from: the button stays, to press again. */

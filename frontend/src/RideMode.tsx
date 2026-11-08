@@ -1035,11 +1035,11 @@ export function RideMode({
   // Road closed on a dirt trail (the owner, 2026-10-21: "assume that means bad riding conditions until it's opted
   // back in"): no re-plan of the ride rides one, even once that stretch has dropped out of the ones sent.
   const dirtClosed = useRef(replans?.dirtClosed === true);
-  // Done with MTB pressed (lib/mtbDone.ts; the owner, 2026-11-08): every re-plan of the rest of the ride keeps off
+  // End mountain biking pressed (lib/mtbDone.ts; the owner, 2026-11-08): every re-plan of the rest of the ride keeps off
   // mountain-bike trails, and the button goes.
   const mtbDone = useRef(replans?.mtbDone === true);
   const [mtbDonePressed, setMtbDonePressed] = useState(mtbDone.current);
-  // Done with MTB pressed while a re-plan was under way: that one is voided and this one made once it settles, with
+  // End mountain biking pressed while a re-plan was under way: that one is voided and this one made once it settles, with
   // the rider's heading (unlike Road closed's, turning round is not the point).
   const mtbDonePending = useRef(false);
   routeRef.current = route;
@@ -1665,13 +1665,13 @@ export function RideMode({
       // dropped (the press voided it) and the ride is planned again from where the rider is now.
       if (!check && closedPending.current && !ended.current) {
         closedPending.current = false;
-        // A Done with MTB press waiting too is in this one (askRoute sends mtbDone).
+        // A End mountain biking press waiting too is in this one (askRoute sends mtbDone).
         mtbDonePending.current = false;
         gate.online();
         void replanRef.current(rideRef.current.goodFix?.point ?? here, undefined, true, true);
         return false;
       }
-      // Done with MTB pressed meanwhile (mtbDonePress): this answer may ride the trails, so it is dropped too.
+      // End mountain biking pressed meanwhile (mtbDonePress): this answer may ride the trails, so it is dropped too.
       if (!check && mtbDonePending.current && !ended.current) {
         mtbDonePending.current = false;
         closedPending.current = false;
@@ -2604,7 +2604,7 @@ export function RideMode({
       return;
     }
     replanTicket.current += 1;
-    // Keep wins over a Road closed or Done with MTB press still waiting on a re-plan (Done with MTB still holds for
+    // Keep wins over a Road closed or End mountain biking press still waiting on a re-plan (End mountain biking still holds for
     // every later re-plan).
     closedPending.current = false;
     mtbDonePending.current = false;
@@ -2644,7 +2644,7 @@ export function RideMode({
     gate.online();
     void replan(fix.point, undefined, true, true);
   };
-  // Done with MTB (lib/mtbDone.ts): one press, under Go round. The ride planned again from here off the mountain-bike
+  // End mountain biking (lib/mtbDone.ts): one press, under Go round. The ride planned again from here off the mountain-bike
   // trails, as every re-plan after it is; a re-plan under way is voided and this one made once it settles.
   const mtbDonePress = () => {
     const state = rideRef.current;
@@ -3679,7 +3679,7 @@ export function RideMode({
             )}
           </div>
         </div>
-        {/* Done with MTB (lib/mtbDone.ts; the owner, 2026-11-08: "a button under the trail closure"), while a
+        {/* End mountain biking (lib/mtbDone.ts; the owner, 2026-11-08: "a button under the trail closure"), while a
             mountain-bike trail is ahead and until pressed. */}
         {!walking && !ride.arrived && !mtbDonePressed && !trip && !fixedRef.current && mtbTrailAhead(route, ride.off ? null : ride.progressM) && (
           <div className="ride-mtb-done-row">

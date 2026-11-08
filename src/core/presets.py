@@ -1280,7 +1280,7 @@ def variant_for_ride(
     paved graph has a weekend twin (`Variant.PAVED_WEEKEND`; the owner,
     2026-11-08, "New weekend graph"), which a weekend Road Bike ride takes.
 
-    `mtb_done`: a ride's re-plan after Ride's "Done with MTB" (the owner, 2026-11-08: "a
+    `mtb_done`: a ride's re-plan after Ride's "End mountain biking" (the owner, 2026-11-08: "a
     button under the trail closure for 'i don't want to mountain bike anymore' ... that
     will route you off mtb trails and onto something easier"). A ride that would take the
     Mountain Bike or off-road graph, where the mountain-bike trails are open, takes the

@@ -688,7 +688,7 @@ class TestStrayRings:
 
 @db
 class TestDoneWithMtb:
-    """Ride's "Done with MTB" (tests/test_mtb_done.py): the re-plans after it."""
+    """Ride's "End mountain biking" (tests/test_mtb_done.py): the re-plans after it."""
 
     def test_a_gravel_re_plan_after_the_press_is_planned_on_the_standard_graph(
         self, client, segments, router

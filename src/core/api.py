@@ -469,7 +469,7 @@ class RouteIn(Schema):
     mtb_done: StrictBool = Field(
         default=False,
         description=(
-            'With `ride_replan`: the rider pressed Ride\'s "Done with MTB" this ride (the'
+            'With `ride_replan`: the rider pressed Ride\'s "End mountain biking" this ride (the'
             ' owner, 2026-11-08: "route you off mtb trails and onto something easier"):'
             " this re-plan leaves the Mountain Bike and off-road graphs for the standard one,"
             " with Easy MTB trails off and no dirt trail ridden."

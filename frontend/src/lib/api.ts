@@ -1569,7 +1569,7 @@ export interface RouteRequestOptions {
   aheadOnly?: boolean;
   /** With `rideReplan`: the rider marked a dirt trail closed this ride, so the re-plan rides none (`dirt_closed`). */
   dirtClosed?: boolean;
-  /** With `rideReplan`: the rider pressed Done with MTB this ride (lib/mtbDone.ts), so the re-plan keeps off mountain-bike trails (`mtb_done`). */
+  /** With `rideReplan`: the rider pressed End mountain biking this ride (lib/mtbDone.ts), so the re-plan keeps off mountain-bike trails (`mtb_done`). */
   mtbDone?: boolean;
   /** Settings' Avoid stairs (lib/avoidStairs.ts); unset, as this device keeps it. Sent on Bikeshare and transit only. */
   avoidStairs?: boolean;

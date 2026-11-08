@@ -1,4 +1,4 @@
-// Ride's Done with MTB (lib/mtbDone.ts; the owner, 2026-11-08): shown while a mountain-bike trail is ahead, and every
+// Ride's End mountain biking (lib/mtbDone.ts; the owner, 2026-11-08): shown while a mountain-bike trail is ahead, and every
 // re-plan after the press sends mtb_done, kept with the ride for a Resume.
 import { test } from "node:test";
 import assert from "node:assert/strict";
