@@ -7722,7 +7722,11 @@ docs/OPERATIONS.md, "Transit schedule". The design note is plans/v0.6.0-transit-
   every gap is 15 min or less, the wait is half the mean gap. Otherwise (a near pair before a long
   gap included) the plan takes the next departure, names it and the one after, and returns it as
   `transit.departure`. A routed first ride that misses it moves to the next catchable departure
-  (and names the one after that); with none within the hour the option is dropped.
+  (and names the one after that); with none within the hour the option is dropped. Where
+  several routes run between two stops, the ride is what boarding the first to come gives (their
+  rides weighted by their departures), and a quicker route alone (a limited beside a local, more
+  than 2 min quicker) is a choice of its own, frequent or waited for: the quickest door to door is
+  planned (`transit._hop`; it was half the merged headway with the quickest route's ride, hunt M3).
 - **Metro's typical timetable.** Until WMATA's rail GTFS is built (it needs a WMATA key), Metro
   runs on `src/core/transitdata/metro-typical.json` (`transit.with_typical_metro`), added when the
   schedule is loaded, or alone when no schedule is installed. It holds the opening hours per day

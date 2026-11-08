@@ -1124,6 +1124,51 @@ def _branch_schedule(first: int = 13 * 60) -> transit.Schedule:
     return transit.Schedule([system], stops, patterns, ["1" * days], date(2026, 9, 28), days)
 
 
+def _two_bus_routes(*routes: tuple[str, float, int]) -> transit.Schedule:
+    """Bus routes from stop A to stop B, each (route, ride minutes, first departure minute),
+    every 12 minutes all day."""
+    bus = transit.System(
+        0, "wmata-bus", "Metrobus", transit.BUS, "bus {route}", "", False, "all", "", ""
+    )
+    a = transit.Stop(0, "A", (-77.03, 38.90), (-77.03, 38.90), True, ((-77.03, 38.90),), 0, False)
+    b = transit.Stop(1, "B", (-77.03, 38.95), (-77.03, 38.95), True, ((-77.03, 38.95),), 0, False)
+    patterns = [
+        transit.Pattern(
+            index,
+            0,
+            route,
+            (0, 1),
+            tuple((0, ride * 60) for _band in transit.BANDS),
+            {0: tuple(m * 2 + 1 for m in range(first, 24 * 60, 12))},
+        )
+        for index, (route, ride, first) in enumerate(routes)
+    ]
+    return transit.Schedule([bus], [a, b], patterns, ["1" * 10], date(2026, 11, 1), 10)
+
+
+def _hop_a_to_b(schedule: transit.Schedule) -> transit.Hop:
+    moment = transit.moment_of(datetime(2026, 11, 4, 12, 0, tzinfo=ZONE))
+    return transit._Day(schedule, moment, bike=False).reach(0, moment.minute)[1]
+
+
+def test_a_frequent_stop_times_the_bus_a_rider_would_take_not_the_quickest_routes_ride():
+    """Hunt M3: a local (S2, 30 min) and a limited (S9, 12 min) every 12 min each, 6 min apart,
+    were merged into "every 6 min" with the S9's ride: 3 + 12 = 15 min, quicker than either bus.
+    Waiting for the S9 is the quickest strategy (6 + 12 = 18 min); boarding whichever comes
+    first is about 3 + 21."""
+    both = _hop_a_to_b(_two_bus_routes(("S2", 30, 6 * 60), ("S9", 12, 6 * 60 + 6)))
+    assert both.routes == ("S9",) and both.every == 12.0
+    assert (both.wait_s / 60, both.ride_s / 60) == (6.0, 12.0)
+    # Where the local is no slower, a rider boards the first to come: one service, every 6 min.
+    alike = _hop_a_to_b(_two_bus_routes(("S2", 13, 6 * 60), ("S9", 12, 6 * 60 + 6)))
+    assert alike.routes == ("S2", "S9") and alike.every == 6.0
+    assert alike.wait_s / 60 == 3.0 and alike.ride_s / 60 == pytest.approx(12.5)
+    # A route only a little quicker: boarding the first to come (3 + 14, the rides' mean) beats
+    # waiting for the S9 (6 + 12).
+    close = _hop_a_to_b(_two_bus_routes(("S2", 16, 6 * 60), ("S9", 12, 6 * 60 + 6)))
+    assert close.routes == ("S2", "S9") and close.total_s / 60 == pytest.approx(3 + 14)
+
+
 def test_a_short_turn_heads_the_way_its_route_does_and_each_departure_takes_its_own_run_times():
     branch = _branch_schedule()
     bravo = list(branch.stops[1].point)

@@ -1421,9 +1421,61 @@ def typical_first(minute: float, times) -> float | None:
     return seen[0] if seen[0] - minute > every else None
 
 
+# Patterns to one stop whose rides differ by at most this are one service for the wait (the
+# lines sharing Metro's tracks, a bus route's branches); past it a quicker one is a strategy of its
+# own (`_hop`).
+SAME_RIDE_S = 120.0
+
+
+def _ride_groups(entries) -> list[list]:
+    """The entries by ride time, quickest first, as the prefixes a rider might board: the
+    quickest group alone, then it and the next, and so on (rides within `SAME_RIDE_S` of the one
+    before stay together)."""
+    ordered = sorted(entries, key=lambda e: (e[1], e[2].index))
+    groups: list[list] = []
+    for entry in ordered:
+        if groups and entry[1] - groups[-1][-1][1] <= SAME_RIDE_S:
+            groups[-1].append(entry)
+        else:
+            groups.append([entry])
+    return [[e for group in groups[: n + 1] for e in group] for n in range(len(groups))]
+
+
+def _expected_ride(entries, times) -> float:
+    """The ride a rider boarding the first of `entries` to come can expect: each one's ride
+    weighted by its share of the next departures seen (`times`, distinct)."""
+    seen = _distinct(times)[:DEPARTURES_SEEN]
+    until = seen[-1] + 0.25 if seen else math.inf
+    weights = [sum(1 for t in deps if t <= until) for deps, *_rest in entries]
+    total = sum(weights)
+    if not total:
+        return min(e[1] for e in entries)
+    return sum(w * e[1] for w, e in zip(weights, entries, strict=True)) / total
+
+
 def _hop(minute: float, entries, typical: bool = False) -> Hop:
-    """The ride to one stop from the patterns that go there: the earliest arrival taken. On
-    Metro's typical timetable the wait is always `typical_wait_min`, never a departure."""
+    """The ride to one stop from the patterns that go there, the quickest door to door taken.
+    On Metro's typical timetable the wait is always `typical_wait_min`, never a departure.
+
+    A frequent service's wait is half the headway of every pattern it merges, so its ride is
+    what boarding the first to come gives: their rides weighted by their departures. It was the
+    quickest pattern's ride, so a local and a limited route on the same stops (S2 every 12 min
+    with a 30 min ride, S9 every 12 with 12) came out at a 3 min wait and a 12 min ride, quicker
+    than either bus (hunt M3). Each quicker set of patterns alone (`_ride_groups`) is a
+    strategy too, frequent or waited for at its next departure, and the quickest is taken:
+    waiting for the S9 (6 + 12 min) beats boarding the first bus (3 + about 21)."""
+    best = None
+    for group in _ride_groups(entries):
+        times = sorted(t for deps, *_rest in group for t in deps)
+        every = headway(times)
+        if typical or every <= FREQUENT_MIN:
+            wait = typical_wait_min(minute, times)[0] if typical else every / 2.0
+            cost = wait + _expected_ride(group, times) / 60.0
+        else:
+            cost = min(e[0][0] + e[1] / 60.0 for e in group) - minute
+        if best is None or cost < best[0] - 1e-9:
+            best = (cost, group)
+    entries = best[1]
     times = sorted(t for deps, *_rest in entries for t in deps)
     first = min(entries, key=lambda e: (e[0][0] + e[1] / 60.0, e[2].index))
     deps, ride, pattern, pos, later = first
@@ -1431,7 +1483,7 @@ def _hop(minute: float, entries, typical: bool = False) -> Hop:
     every = headway(times)
     if typical or every <= FREQUENT_MIN:
         routes = tuple(sorted({e[2].route for e in entries}))
-        ride = min(e[1] for e in entries)
+        ride = _expected_ride(entries, times)
         wait, gap = typical_wait_min(minute, times) if typical else (every / 2.0, every)
         first = typical_first(minute, times) if typical else None
         return Hop(
