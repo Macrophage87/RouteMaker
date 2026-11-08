@@ -3354,8 +3354,8 @@ def loop_points_from(
 
 POINT_SCHEMA = {
     "description": (
-        'A point: [lon, lat], {"lon": .., "lat": ..}, a Metro station\'s name ("Shady Grove"),'
-        " or a place or address to search for."
+        'A point: [lon, lat], {"lon": .., "lat": ..}, a Metro station said with "Metro" or'
+        ' "station" ("Shady Grove Metro"), or a place or address to search for.'
     ),
     "anyOf": [
         {"type": "array", "items": {"type": "number"}, "minItems": 2, "maxItems": 2},
@@ -4589,6 +4589,10 @@ class Server:
                 "lon_lat": [r["lon"], r["lat"]],
                 "kind": r.get("kind"),
             }
+            # An area moved to the way in its search found (core.geocode): say so, so the
+            # assistant can tell the rider the route goes to the boat launch, not the middle.
+            if r.get("way_in"):
+                row["way_in"] = r["way_in"]
             if near:
                 row["miles_from_near"] = round(haversine_mi(near, (r["lon"], r["lat"])), 1)
             rows.append(row)
