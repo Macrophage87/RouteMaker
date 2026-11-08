@@ -7520,8 +7520,8 @@ assistant still sending `?lat=&lon=` gets its photo kept with no spot (`located:
 - [ ] **At home**, as "Deploying a planner and front-end release": rollback point (tag the running api
   image `pre-rel-<short>`, keep `index.html`), fast-forward the checkout, `docker compose build api`,
   then `docker compose up -d --no-deps --no-build --force-recreate api worker` with no job todo or
-  doing, then the front end. No migration, no router restart. The connector (`mcp/`) is rebuilt and
-  restarted as its own section says, if it runs at home.
+  doing, then the front end. No migration, no router restart. The connector's text (`mcp/`) is
+  copied into the api image, so the api rebuild ships it; nothing else to restart.
 - [ ] **Beta, by its agent**, once its deployed tag (`$RM_STATE/cd/deployed-tag`) is v0.22.0: the gate
   sees `frontend/`, `src/core/`, `mcp/` and the version files, none of them a stop, and deploys the api
   and the front end in one pass, with no migration. Stuck: `git fetch --force --tags origin`, then
