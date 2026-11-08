@@ -3054,6 +3054,10 @@ def build_handlers(
         read and re-matched, so a way the owner has set with a stress row, or kept DC's
         value on (`fixtures/dc_osm_kept.json`), is listed as decided and not asked about
         again. A report, not the stage's output: it never fails the rebuild."""
+        # Last rebuild's list is removed first, so a rebuild that writes none leaves no stale
+        # list to be read as current (review, 2026-11-08).
+        for name in (dc_osm_newer.MD_NAME, dc_osm_newer.CSV_NAME):
+            (context.work_dir / DISCREPANCY_REPORT_DIR / name).unlink(missing_ok=True)
         reported = context.dc_report_rows
         if not reported:
             return

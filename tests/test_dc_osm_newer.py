@@ -97,10 +97,25 @@ def test_a_newer_osm_edit_that_disagrees_is_flagged_and_dc_still_applies() -> No
     }
 
 
-def test_an_osm_edit_no_newer_than_the_record_is_not_flagged() -> None:
-    for edited in (A.DC_RECORD_AS_OF, date(2025, 6, 1), None):
+def test_an_osm_edit_older_than_the_record_is_not_flagged() -> None:
+    for edited in (date(2026, 9, 30), date(2025, 6, 1), None):
         _, built = _overlaid(DIET, edited, **RECORD)
         assert N.newer_osm([built], A.DC_RECORD_AS_OF) == []
+
+
+def test_an_osm_edit_on_the_records_own_day_is_flagged() -> None:
+    """Before the review it was left out; it may have come after the record was taken."""
+    _, built = _overlaid(DIET, A.DC_RECORD_AS_OF, **RECORD)
+    assert [f["way"] for f in N.newer_osm([built], A.DC_RECORD_AS_OF)] == [built["way"]]
+
+
+def test_a_kept_date_in_the_future_is_refused(tmp_path) -> None:
+    path = tmp_path / "kept.json"
+    path.write_text(
+        '{"version": 1, "kept": [{"osm_way_id": 5, "osm_edited": "2999-01-01", "reason": "x"}]}'
+    )
+    with pytest.raises(N.KeptRefused, match="future"):
+        N.load_kept(path)
 
 
 def test_a_newer_osm_edit_that_agrees_with_the_record_is_not_flagged() -> None:

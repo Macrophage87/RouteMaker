@@ -117,6 +117,9 @@ def load_kept(path: Path | str | None = None) -> dict[int, Kept]:
             edited = date.fromisoformat(entry.get("osm_edited"))
         except (TypeError, ValueError) as error:
             raise KeptRefused(f"{where}: osm_edited must be the YYYY-MM-DD date listed") from error
+        if edited > date.today():
+            # A mistyped date ahead would hide the way until OSM edits it past that day.
+            raise KeptRefused(f"{where}: osm_edited {edited.isoformat()} is in the future")
         reason = entry.get("reason")
         if not isinstance(reason, str) or not reason.strip():
             raise KeptRefused(f"{where}: reason is required")
@@ -232,7 +235,9 @@ def newer_osm(
     flagged = []
     for r in rows:
         edited = r.get("edited")
-        if not edited or date.fromisoformat(edited) <= as_of:
+        # An edit on the record's own day may have come after it was retrieved: listed, as
+        # a list for the owner's call errs towards asking (review, 2026-11-08).
+        if not edited or date.fromisoformat(edited) < as_of:
             continue
         osm, after, sources = r["osm"], r["after"], r["sources"]
         kinds: list[str] = []
