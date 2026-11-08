@@ -748,6 +748,8 @@ class TestCacheParts:
             {"red_crossings": {"decision": "kept", "limited": "time"}},
             {"red_crossings": {"decision": "kept", "limited": "unread"}},
             {"red_crossings": {"decision": "kept", "limited": "error"}},
+            # Hunt 2, P2-3: a loop whose ways back ran out of time.
+            {"loop": {"fallback": "time", "tried": 0}},
         ],
     )
     def test_an_answer_a_pass_stopped_for_time_is_not_kept(self, part) -> None:
@@ -761,6 +763,7 @@ class TestCacheParts:
             "dodges": {"limited": "checks"},
             "hills_seek": {"limited": None, "climb_seek": {"limited": "no_climbs"}},
             "avoid_search": {"decision": "avoided"},
+            "loop": {"fallback": "out_and_back", "tried": 4},
         }
         assert route_cache.keepable(body, "standard", 0)
 

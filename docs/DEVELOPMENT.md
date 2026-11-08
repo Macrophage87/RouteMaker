@@ -2939,7 +2939,11 @@ found the way by the Plyers Mill Rd signal, 0.3 mi (0.5 km) longer with 0.2 mi
 (0.3 km) more LTS 3 and no red junction, which the guard refused for its LTS 3 alone.
 A metre of a red junction's cost is a metre of LTS 3 and, at the standard weights,
 half a metre of LTS 4 (weight 2; 8 on a stress-averse ride), so one 4,500 ft (1,372 m)
-red crossing still never buys 0.6 mi (1 km) of LTS 4. It stops after two rounds that do not improve it, when no route is left (every way
+red crossing still never buys 0.6 mi (1 km) of LTS 4. The trail seek's guard is the
+same (hunt 2, P2-5): each leg's candidate and a plan with stops' whole trip count the
+red and Avoid junctions on both sides (a leg against its own reading's junctions), so a
+trail corridor round a red crossing is no longer dropped as "busier" for the LTS 3 on
+its way in. It stops after two rounds that do not improve it, when no route is left (every way
 out excluded: asked again once with only the LTS 4 stretches), when a round
 cannot be started with five seconds left, and never excludes within 500 m of the
 route's ends or of a via point (a trailhead's only way out is often the one busy
@@ -6008,12 +6012,15 @@ it gave 58.0 mi, 0.24 mi and 7.2 mi, which is the router again, leg by leg, with
   The whole route's junctions are read once at the end. If what is put together is not as calm as
   the router's own route (LTS 4 and Avoid, then LTS 3, by the tolerances below) or nothing
   changed, the router's own route is answered (`calm_search.long.answered`: `legs` or `router`).
-  So is it where the legs put together ride back over their own way more than the router's own
-  route does, by more than 165 ft (50 m) (`refine.joined_retrace_m`, `calm_search.long.retraced`;
-  hunt V4, 2026-11-08): a cut is a plain stop to the router and each leg is searched alone, so
-  one leg could reach the cut along its edge from the far end and the next leave back that way,
-  a U-turn at a place that is no stop, which each leg's own retrace check cannot see. The
-  stretches either side of a cut count as one leg.
+  So is it where the legs put together ride back over their own way across a cut more than the
+  legs' own first routes put together do, by more than 165 ft (50 m) (`refine.joined_retrace_m`,
+  `calm_search.long.retraced`; hunt V4, 2026-11-08): a cut is a plain stop to the router and each
+  leg is searched alone, so one leg could reach the cut along its edge from the far end and the
+  next leave back that way, a U-turn at a place that is no stop, which each leg's own retrace
+  check cannot see. The stretches either side of a cut count as one leg. The baseline was the
+  router's whole route until hunt 2 (P2-6): it has no cut, so a U-turn the legs' own first routes
+  already made at a cut (a cut on a one-way edge, or a snap) threw away every leg's gain. One
+  U-turn the search did make still reverts all the legs, not only the two beside it.
 - **Time.** The plan has the long ride's budget, 50 s in all (`LONG_PLAN_BUDGET_S`, 47 s for the
   router and its traces once the 3 s answer reserve is taken), under gunicorn's 60 s timeout: the
   owner's own figure for a long ride (2026-09-26), kept rather than a new one. An ordinary plan
@@ -6071,7 +6078,13 @@ it gave 58.0 mi, 0.24 mi and 7.2 mi, which is the router again, leg by leg, with
   `refine.better` (so it must be calmer and worth its miles past the target); the one kept is the
   search's first route, and its costing the search's costing (`calm_search.fitted_at` says the
   position where it is a rung). Union Station to Penn at 50 mi: the calm route is 57.7 mi; routes of
-  54.5, 48.1 and 40.4 mi exist at use_roads 0.5, 0.7 and 1.0.
+  54.5, 48.1 and 40.4 mi exist at use_roads 0.5, 0.7 and 1.0. A rung the router refuses (a 442 at
+  Default's costing with closures in the request, say) is that rung's answer and the next is asked
+  (hunt 2, P2-2: it stopped the whole ladder, and the plan said "no route within your target").
+  A ladder left unfinished for want of time (under `FIT_MIN_S`, 12 s, left before a rung, or a
+  rung's call timing out) does not claim that none fits: the least stressful route found is
+  chosen as below, but the search runs on it as on any plan, `no_fit` is false, and the skipped
+  rung counts as a failed call so the answer is not kept in the answer cache.
 - **If no route fits the target** (267, "Least-stress route, flagged (Recommended)"): the least
   stressful route found within the ceiling, in the 258-262 order (`refine.calmer`, the shorter on a
   tie), is answered with `calm_search.fits: false`, `calm_search.no_fit: true`,
@@ -6256,7 +6269,13 @@ most), and the least stressful of the ways back that share at most 30% of their 
 (matched by way) is kept (at the top of the slider by `better`, with the diminishing returns on the
 whole loop's distance); if none does the one that shares least is kept, so the overlap is preferred away, not forced, and a loop may still use one bridge. If
 the way back is the way out whatever is excluded (90% or more), the router's own route is kept and
-`loop.fallback` says `out_and_back`. `loop` reports `overlap_pct`, `shared_m`, `return_m`, the points
+`loop.fallback` says `out_and_back`. Where the time ran out before every way back was asked and
+none was found (`LOOP_BUDGET_S` starting with too little left after a hill seek or the target
+fitting, or a slow router), `fallback` is `time` instead, the skip counts as a failed call and
+`route_cache.keepable` refuses it, so it is not kept as an out-and-back for the day (hunt 2, P2-3).
+The router's own way back is ranked with the asked ones by the same rule (hunt 2, P2-4): before,
+it was kept only where every asked way back shared at least as much, so one that came back by a
+different calm street (20%) lost to an asked one sharing 8% over a kilometre of LTS 4. `loop` reports `overlap_pct`, `shared_m`, `return_m`, the points
 excluded and the routes asked. The search that follows keeps the way back different: a candidate that
 shares more than the loop does (or 30%, if the loop shares less) is refused. A loop past 19 mi (30 km)
 of straight line in all is not searched (`limited: "span"`; `refine_long` would ask each leg of the
@@ -6646,6 +6665,13 @@ pass did not run (the crossing search covered the route, a loop, a first route, 
 a Mass Ride) and on the routes to choose from. An answer whose pass stopped at `time`, `unread` or
 `error` is not kept by the answer cache (`route_cache.keepable`), nor is one whose trail seek
 (`calm_search.seek.limited`) stopped at `time`, `table`, `error` or `unread`.
+The pass leaves a red within 500 m of the rider's own stops and ends, never of a long calm plan's
+cuts (hunt 2, P2-1, `red_crossings.stops_m`): `refine_long` answers its cut legs joined, so each
+cut is a leg boundary of the answer, and a red a few hundred metres from one (the cut placed on
+the calm trail just past the arterial it crosses) was dropped here as "near a stop" while the leg
+searches could not exclude it either, being at their legs' ends. The cuts are read off
+`calm_search.long.stops`. The way round is still asked within the red's own cut leg, so a red
+right at a cut may find none.
 
 ### Reproduction (item 273)
 

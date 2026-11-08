@@ -1085,6 +1085,27 @@ class TestTheLongSearch:
         assert trip is whole and info["long"]["answered"] == "router"
         assert info["long"]["retraced"] is True
 
+    def test_a_u_turn_the_legs_own_routes_already_make_does_not_undo_the_search(
+        self, monkeypatch
+    ) -> None:
+        """Hunt 2, P2-6: the cut between legs 0 and 1 is reached from the far end of its edge
+        by the legs' own first routes already (leg 1's first leaves it back over leg 0's last
+        500 m: a cut on a one-way edge, say), and leg 1's calmer route leaves it the same way,
+        no worse. Before, that U-turn was held against the router's whole route, which has no
+        cut, and the search's gain was thrown away with the router's route answered (the hunt
+        V4 test above is the U-turn the search made, still refused)."""
+        world = legs_world(monkeypatch, {1: [("L1c", 13.5, None)], 2: []})
+        tail = world.readings["L0"].pieces[-5:]
+        u_turn = [(50.0 + 100.0 * k, p.lon, p.lat, 100.0) for k, p in enumerate(reversed(tail))]
+        # Each leg's own edges after the U-turn, so the search still finds its busy stretch.
+        for name in ("L1", "L1c"):
+            own = [m for m in refine._marks(world.readings[name]) if m[0] > 500.0]
+            world.readings[name].marks = u_turn + own
+        whole = whole_trip()
+        trip, info = refine.refine_long(whole, long_context(ceiling_m=45_000.0))
+        assert info["long"]["answered"] == "legs" and not info["long"].get("retraced")
+        assert [leg["shape"] for leg in trip["legs"]] == ["L0", "L1c", "L2"]
+
     def test_the_figures_are_the_wholes_before_and_the_legs_after(self, monkeypatch) -> None:
         legs_world(monkeypatch, {1: [("L1c", 13.5, None)], 2: []})
         _trip, info = refine.refine_long(whole_trip(), long_context(ceiling_m=45_000.0))

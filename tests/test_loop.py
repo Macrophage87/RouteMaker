@@ -366,6 +366,47 @@ class TestMakingALoop:
         trip, info = refine.make_loop(trip0, loop_context())
         assert trip is trip0 and info["fallback"] in ("time", "out_and_back")
 
+    def test_a_loop_with_no_time_for_its_ways_back_says_time_not_out_and_back(
+        self, monkeypatch
+    ) -> None:
+        """Hunt 2, P2-3: LOOP_BUDGET_S starts with too little left (a hill seek or the
+        target fitting before it). Before, the router's own route was labelled
+        `out_and_back` and nothing stopped it being cached; now it says `time` and counts as
+        a check skipped for the budget."""
+        world = LoopWorld(monkeypatch, readings(R1=list(range(101, 141))), [("R1", 4.2)] * 4)
+        monkeypatch.setattr(refine, "LOOP_BUDGET_S", 0.0)
+        skipped: list = []
+        monkeypatch.setattr(routing, "_skipped_for_time", lambda: skipped.append(1))
+        trip0 = two_leg_trip()
+        trip, info = refine.make_loop(trip0, loop_context())
+        assert trip is trip0 and world.requests == [] and info["tried"] == 0
+        assert info["fallback"] == "time" and skipped == [1]
+
+    def test_the_routers_own_calm_way_back_is_ranked_with_the_asked_ones(self, monkeypatch) -> None:
+        """Hunt 2, P2-4: the router's own way back shares 20% (under LOOP_OVERLAP_OK) and is
+        calm; the asked one shares 10% but rides 2 km of LTS 3. Both share little enough, so
+        the least stress decides: before, the asked one was taken only for sharing less."""
+        ways = list(range(101, 141))
+        own = loop_read(OUT, [1] * 8 + ways[8:])
+        busy = loop_read(OUT, [1] * 4 + ways[4:], "1" * 60 + "3" * 20)
+        busy.exposure_m = 2000.0
+        LoopWorld(
+            monkeypatch,
+            {
+                ("out", "same"): own,
+                ("out",): loop_read(OUT, []),
+                ("out", "A"): busy,
+            },
+            [("A", 4.0)] * 4,
+        )
+        for maxcalm in (True, False):
+            ctx = loop_context()
+            ctx.maxcalm = maxcalm
+            trip0 = two_leg_trip()
+            trip, info = refine.make_loop(trip0, ctx)
+            assert trip is trip0, maxcalm
+            assert info["fallback"] is None and info["overlap_pct"] == 20.0
+
     def test_a_way_back_that_shares_more_than_the_routers_own_is_not_taken(
         self, monkeypatch
     ) -> None:
@@ -491,7 +532,9 @@ class TestWaysBackTogether:
         trip0 = two_leg_trip()
         ctx = loop_context()
         trip, info = refine.make_loop(trip0, ctx)
-        assert trip is trip0 and info["tried"] == 0 and info["fallback"] == "out_and_back"
+        # Hunt 2, P2-3: no way back was read, so the loop says `time`, not "out_and_back"
+        # (it said "out_and_back" before, and was kept in the cache for the day).
+        assert trip is trip0 and info["tried"] == 0 and info["fallback"] == "time"
         assert len(asked) == 4 and asked[3].cancelled(), "the one still queued is never sent"
         assert not any(isinstance(v, Future) for v in ctx.traces.values())
         wait(asked, timeout=5)

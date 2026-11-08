@@ -4179,7 +4179,7 @@ def _fit_target(
     avoid_gravel: bool,
     variant: str,
     deadline: Deadline,
-) -> tuple[tuple | None, list[tuple]]:
+) -> tuple[tuple | None, list[tuple], bool]:
     """The first route for a rider's target distance (OWNER-DECISIONS 256, 271): the
     router's own route if it is within it, else the calmest route the router gives
     that is, from its own costing at the traffic positions of FIT_STRESS_LADDER and
@@ -4187,16 +4187,22 @@ def _fit_target(
     the request and costings to search with, and the traffic position it was found at
     (None: the ride's own). Returns the route that fits (None where none does) and
     every route found past the target, the router's own first (`_past_target`
-    chooses among them: the target is soft)."""
+    chooses among them: the target is soft), and whether the ladder was left unfinished
+    for want of time (hunt 2, P2-2): then that none fits is not known, and the plan is
+    not told "no route within your target"."""
     length = _trip_length_m(trip)
     own = (trip, request, costing, trace_costing, None)
     if target_m is None or length <= target_m:
-        return own, []
+        return own, [], False
     past = [own]
 
     def ask(position: int):
         """The route at a traffic position: (length m, the tuple), or None where there
-        is none, and False where there is no time or the router refused."""
+        is none or the router refused it, and False where there is no time.
+
+        A refusal is the router's answer for that costing (a 442 at Default's with
+        closures in the request, say), not the time running out: the next rung is still
+        asked (hunt 2, P2-2; it stopped the whole ladder before)."""
         options = _same_pace(
             presets.costing(preset_name, position, hills_dial, assist=assist),
             request,
@@ -4208,7 +4214,9 @@ def _fit_target(
             answer = _call(
                 variant, "route", asked, Deadline(deadline.at, min(deadline.per_call_s, 30))
             )
-        except (DeadlineExceeded, RouterUnavailable, RouterRefused):
+        except RouterRefused:
+            return None
+        except (DeadlineExceeded, RouterUnavailable):
             return False
         found = answer.get("trip") or {}
         if not found.get("legs"):
@@ -4218,10 +4226,14 @@ def _fit_target(
     over = presets.STRESS_TODAYS_TOP  # the calmest position that is not the router's own
     for rung in FIT_STRESS_LADDER:
         if deadline.at - clock() < FIT_MIN_S:
-            return None, past
+            # No router call failed, so without this the plan answered past its target
+            # was kept in the answer cache for the day (hunt 2, P2-2).
+            _skipped_for_time()
+            return None, past, True
         got = ask(rung)
         if got is False:
-            return None, past
+            # The failed call is counted by `_call`: not kept in the cache.
+            return None, past, True
         if got is None:
             continue
         found_m, answer = got
@@ -4246,8 +4258,8 @@ def _fit_target(
             else:
                 over = middle
                 past.append(probe_answer)
-        return best, past
-    return None, past
+        return best, past, False
+    return None, past, False
 
 
 def _past_target(fit: tuple | None, past: list[tuple], ceiling_m: float, ctx) -> tuple:
@@ -5420,7 +5432,7 @@ def _plan(
         refine_limited = "follow" if following else "drawn"
     ceiling = None
     fitted_at = None
-    fit, past = None, []
+    fit, past, fit_unfinished = None, [], False
     # The rider's target distance and the ceiling hold on a loop past the search's span too
     # (the 2026-11-08 hunt, R1): a loop's span counts the way out and the way back, so a
     # Trailmaxxing or Novice loop about 15 km (9.3 mi) out lost its target with its search.
@@ -5428,7 +5440,7 @@ def _plan(
     # destination that sets its length.
     fitting = refine_limited is None or (bool(loop) and refine_limited == "span")
     if maxcalm and fitting:
-        fit, past = _fit_target(
+        fit, past, fit_unfinished = _fit_target(
             trip, request, costing, trace_costing, target_m, preset_name, hills_dial, assist,
             avoid_gravel, variant, deadline,
         )  # fmt: skip
@@ -5521,10 +5533,12 @@ def _plan(
     # A plan the rider has replaced (`core.plan_cancel`) starts no search.
     check_cancel()
     if refine_limited is None:
-        if past and fit is None:
+        if past and fit is None and not fit_unfinished:
             # No route fits the target (OWNER-DECISIONS 267): the least stressful one
             # found is the answer, flagged with how far over it is, and nothing is
-            # searched.
+            # searched. Not where the ladder ran out of time (hunt 2, P2-2): that none
+            # fits is then not known, and the search runs as on any plan, on the least
+            # stressful route found and within the ceiling, with what time is left.
             refined = {
                 "rate": refine_context.rate,
                 "rounds": 0,
@@ -5544,7 +5558,7 @@ def _plan(
             "excluded": 0,
             "limited": refine_limited,
         }
-        if past and fit is None:
+        if past and fit is None and not fit_unfinished:
             # A loop past the span fitted to its target (R1) where no route fits it.
             refined["no_fit"] = True
     if early_alternates is not None:

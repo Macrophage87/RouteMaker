@@ -1986,6 +1986,7 @@ def _seek(best, best_trip, first_exposure, ctx: Context, info: dict, original=No
         if count == 1:
             leg_trip, incumbent, reference = trip, best, first_exposure
             reference_lts4 = list(ctx.first_lts4)
+            reference_junctions = ctx.first_avoid_m + ctx.first_red_m
         else:
             # The leg's own route, read with its junctions, on an allowance of
             # its own (combined correctness review, SF1): the reading is what
@@ -2012,6 +2013,9 @@ def _seek(best, best_trip, first_exposure, ctx: Context, info: dict, original=No
             if incumbent is None:
                 continue
             reference = first_legs[k] if first_legs else incumbent.rated_exposure_m
+            # The leg's red and Avoid junctions as it stands (P2-5): the router's first
+            # route is not read leg by leg for its junctions.
+            reference_junctions = incumbent.avoid_junction_m + incumbent.red_m
             reference_lts4 = (
                 [ctx.first_lts4[k]]
                 if len(ctx.first_lts4) == count
@@ -2038,6 +2042,7 @@ def _seek(best, best_trip, first_exposure, ctx: Context, info: dict, original=No
             room,
             rest_m,
             pooled=count == 1,
+            reference_junctions_m=reference_junctions,
         )
         if got is not None:
             seek["taken"] = taken = True
@@ -2066,7 +2071,9 @@ def _seek(best, best_trip, first_exposure, ctx: Context, info: dict, original=No
         # Traffic wins for the whole trip too (OWNER-DECISIONS 61, 188: "2% +
         # 164 ft" for the plan): each leg's allowance is its own, so n legs
         # could otherwise add n x 50 m between them (review r1).
-        if read.rated_exposure_m > _allowance(first_exposure):
+        # With the red and Avoid junctions on both sides, as `_busier` (hunt 2, P2-5): a
+        # leg taken round a red crossing is not "busier" for the LTS 3 it takes on.
+        if _busier(read, first_exposure, ctx):
             seek["taken"] = False
             # Its own key as well, so that a "time" from a later leg does not
             # hide it (review r2).
@@ -2122,6 +2129,7 @@ def _seek_leg(
     room_m: float | None = None,
     rest_m: float = 0.0,
     pooled: bool = True,
+    reference_junctions_m: float = 0.0,
 ):
     """The seek on one leg: (reading, trip) of the leg if a candidate was kept,
     else None. `reference` is the leg's exposure as the router first gave it
@@ -2133,7 +2141,9 @@ def _seek_leg(
     `pooled`: whether the candidates read are kept in `Context.options` for the
     routes to choose from. Only where the leg is the whole trip: on a plan with
     more than one leg (a loop, stops) a leg's candidate is one leg of the trip, and
-    is never offered as a whole route (combined correctness review, B1)."""
+    is never offered as a whole route (combined correctness review, B1).
+    `reference_junctions_m`: the reference's Avoid-junction and red-junction metres,
+    added to its side of the guard as `_busier` adds them (hunt 2, P2-5)."""
     start, end = ctx.points[k][:2], ctx.points[k + 1][:2]
     span = haversine(Point(*start), Point(*end))
     shape = [
@@ -2267,7 +2277,15 @@ def _seek_leg(
             if read.events is None:
                 tried["outcome"] = "unread"
                 continue
-            busier = read.rated_exposure_m > _allowance(reference)
+            # The Traffic-wins guard in `_busier`'s form (hunt 2, P2-5): each pass through
+            # an Avoid-rated junction and each red junction counted at its cost on both
+            # sides. On the exposure alone, a trail corridor round an unsignalised red
+            # crossing to a signal, with 150 m more LTS 3 on the way in, was "busier" here
+            # and dropped, though the search takes the same route (the Kensington fix).
+            busier = (
+                read.rated_exposure_m + read.avoid_junction_m + read.red_m
+                > _allowance(reference) + reference_junctions_m
+            )
             tried["lts4_m"] = round(read.lts4_m)
             tried["lts3_m"] = round(read.lts3_m)
             if not ctx.maxcalm:
@@ -2727,7 +2745,8 @@ def make_loop(trip: dict, ctx: Context) -> tuple[dict, dict]:
 
     Returns (trip, info) with `info`: `overlap_pct` and `shared_m` of the trip
     returned, `return_m`, `excluded` (how many points), `tried` (routes asked for) and
-    `fallback` (None, or "out_and_back", or why nothing was tried)."""
+    `fallback` (None, or "out_and_back", or why nothing was tried, or "time" where the
+    ways back were not all asked for want of time and none was found)."""
     info: dict = {
         "overlap_pct": None,
         "shared_m": None,
@@ -2773,6 +2792,29 @@ def make_loop(trip: dict, ctx: Context) -> tuple[dict, dict]:
         points.append((lon, lat))
     stop_at = min(routing.clock() + LOOP_BUDGET_S, ctx.deadline.at - REFINE_TRACE_RESERVE_S)
     best: tuple[tuple, dict, Analysis, int, float] | None = None
+    # The router's own way back competes with the asked ones under `_loop_before` (hunt 2,
+    # P2-4): it was kept before only where every asked way back shared at least as much of
+    # the way out, never ranked, so one that already came back by a different calm street
+    # (20%, under LOOP_OVERLAP_OK) lost to an asked one sharing 8% over a kilometre of LTS 4,
+    # both in the "shares little enough" class where the least stress is to decide. It is
+    # read with its junctions, as the asked loops are; where they could not be read it is
+    # not ranked and the old rule (kept unless one shares less) stands.
+    seeded = first.events is not None
+    if seeded:
+        share_first = overlap_share(first)
+        best = (
+            (
+                share_first > LOOP_OVERLAP_OK,
+                first.key(ctx) if share_first <= LOOP_OVERLAP_OK else share_first,
+            ),
+            trip,
+            first,
+            0,
+            share_first,
+        )
+    # Whether the asks stopped for the time (hunt 2, P2-3): a loop none of whose ways back
+    # was read is not an out-and-back, and is not kept in the answer cache.
+    cut_short = False
     asks: list[list[tuple[float, float]]] = []
     seen: set[frozenset] = set()
     for step in LOOP_THINNING:
@@ -2795,6 +2837,7 @@ def make_loop(trip: dict, ctx: Context) -> tuple[dict, dict]:
             ready = future is not None and future.done()
             left = stop_at - routing.clock()
             if left <= 0 or (not ready and left < REFINE_ROUND_MIN_S):
+                cut_short = True
                 break
             info["tried"] += 1
             # The way back alone is read for its route only, without its junctions (audit
@@ -2807,6 +2850,7 @@ def make_loop(trip: dict, ctx: Context) -> tuple[dict, dict]:
                 with_events=False,
             )  # fmt: skip
             if read == "time":
+                cut_short = True
                 break
             if read is None:
                 continue
@@ -2836,10 +2880,19 @@ def make_loop(trip: dict, ctx: Context) -> tuple[dict, dict]:
         for future in asking or ():
             future.cancel()
     if best is None or best[4] >= LOOP_OUT_AND_BACK:
-        info["fallback"] = "out_and_back"
+        # Hunt 2, P2-3: where the asks stopped for the time, the way back was not found
+        # rather than not there. "out_and_back" says the way back is the way out whatever is
+        # excluded; this says `time`, counted as a check skipped for the budget so the answer
+        # is not kept for the rest of the day (`route_cache.keepable` also reads it).
+        info["fallback"] = "time" if cut_short else "out_and_back"
+        if cut_short:
+            routing._skipped_for_time()
         return trip, info
     _ranked, joined, whole, excluded, share = best
-    if share >= overlap_share(first) and overlap_share(first) < LOOP_OUT_AND_BACK:
+    if joined is trip:
+        # The router's own way back ranked first (P2-4): `info` already reads it.
+        return trip, info
+    if not seeded and share >= overlap_share(first) and overlap_share(first) < LOOP_OUT_AND_BACK:
         # Nothing the router gave shares less than its own route's way back did.
         return trip, info
     shared, back = return_overlap(whole)
@@ -3630,10 +3683,16 @@ def refine_long(trip: dict, ctx: Context) -> tuple[dict, dict]:
     )
     lts4 += traded
     # Nor where the legs put together ride back over their own way, across a cut, more
-    # than the router's own route does (`joined_retrace_m`; hunt V4): a U-turn at a place
-    # the rider never chose. The same slack as every candidate's (`doubles_back`).
-    retraced = changed and joined_retrace_m(finals, [leg["user"] for leg in legs]) > (
-        retrace_m(whole) + RETRACE_SLACK_M
+    # than the legs' own first routes put together do (`joined_retrace_m`; hunt V4): a
+    # U-turn at a place the rider never chose. The same slack as every candidate's
+    # (`doubles_back`). Against the legs' firsts, like for like (hunt 2, P2-6): against the
+    # router's whole route, which has no cut and so can have no such U-turn, a cut where
+    # two legs nobody changed each reach the cut from the far end of its edge (a cut on a
+    # one-way or dual carriageway, or a snap) sent every leg's gain back to the router's
+    # route.
+    users = [leg["user"] for leg in legs]
+    retraced = changed and joined_retrace_m(finals, users) > (
+        joined_retrace_m(reads, users) + RETRACE_SLACK_M
     )
     if retraced:
         long["retraced"] = True

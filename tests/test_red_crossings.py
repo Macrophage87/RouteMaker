@@ -209,6 +209,48 @@ def test_a_loop_has_its_reds_ridden_round_and_keeps_its_way_back(monkeypatch):
     assert detoured({"legs": [trip["legs"][0]]})
 
 
+def long_calm_cut_plan():
+    """A 40 km plan with no stops as `refine_long` answers it: two cut legs joined, the cut
+    at 20.5 km (the search's own break, on the calm trail), a red 300 m before it."""
+    near_cut = event(20_200.0, cost_ft=3300.0)
+    cut_read = dataclasses.replace(THROUGH_READ, events=[near_cut], via_m=[20_500.0])
+    legs = [east(0.0, 20_500.0), east(20_500.0, 40_000.0)]
+    trip = {
+        "legs": [
+            {
+                "shape": dedodge.encode_polyline6(cut),
+                "summary": {"length": 20.0, "time": 2000.0, "cost": 0.0},
+            }
+            for cut in legs
+        ],
+        "summary": {"length": 40.0, "time": 4000.0, "cost": 0.0},
+    }
+    return trip, cut_read
+
+
+def test_a_red_near_a_long_plans_cut_is_asked_round(monkeypatch):
+    """Hunt 2, P2-1: the red is within ENDPOINT_CLEARANCE_M of a cut, not of a stop the
+    rider placed. The leg searches cannot exclude it (it is at a leg's end), and before,
+    this pass dropped it too ("reds": 0, nothing asked); the plan answered it."""
+    trip, cut_read = long_calm_cut_plan()
+    router = Router(monkeypatch, readings(through_read=cut_read), window_answer())
+    refined = {"long": {"legs": 2, "stops": [2]}}
+    out, info = red_crossings.settle(trip, context(), searched=False, refined=refined)
+    assert info["reds"] == 1 and len(router.asked) >= 1
+    assert info["decision"] == "avoided" and detoured(out)
+
+
+def test_a_red_near_a_stop_the_rider_placed_is_still_left(monkeypatch):
+    # The same boundary as a stop of the rider's own (two legs of one each): left, as before.
+    trip, cut_read = long_calm_cut_plan()
+    router = Router(monkeypatch, readings(through_read=cut_read), window_answer())
+    refined = {"long": {"legs": 2, "stops": [1, 1]}}
+    _out, info = red_crossings.settle(trip, context(), searched=False, refined=refined)
+    assert info["reds"] == 0 and router.asked == []
+    _out, info = red_crossings.settle(trip, context(), searched=False)
+    assert info["reds"] == 0 and router.asked == []
+
+
 def test_a_loops_way_round_onto_its_way_out_is_refused(monkeypatch):
     out_and_back = trip_of_line(THROUGH, 40.0, legs=2)
     ctx = context()
