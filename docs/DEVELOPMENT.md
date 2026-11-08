@@ -4962,9 +4962,12 @@ Plan (`frontend/src/lib/dials.ts` `offersEasyMtb`, `EASY_MTB_PRESETS`; `dialsPan
 `EASY_MTB_*`; `DialsPanel.tsx`). It travels as the other dials do: `easymtb=1` in a plan link
 (`planHash.ts`), `easyMtb` in a saved route's dials, `easy_mtb` on `POST /api/route`
 (`core.api.RouteIn`, a strict boolean, refused on any other ride type), on Best order and the
-nearest-places search, and on the MCP's `plan_route` and `revise_route` (mcp/README.md).
+nearest-places search, on the MCP's `plan_route` and `revise_route` (mcp/README.md), and in a
+GPX export's dials comment as `easymtb=1` (`gpx.ts` `dialsComment`, read back by `gpxPlan.ts`
+on the ride types that offer it, so the file reopens on the MTB trails it rode).
 Reach does not take it (`lib/reach.ts`). Changing between Default and Trailmaxxing keeps it
-(`rideTypeDialog.choose`); `fitDials` drops it elsewhere. Keep to roads wins: with trails off the
+(`rideTypeDialog.choose`, and the MCP's `revise_route`, which also keeps Keep to roads on any
+ride type); `fitDials` drops it elsewhere. Keep to roads wins: with trails off the
 switch shows off, says why, and the ride takes the no-trail graph.
 
 With it on, `presets.variant_for_ride(..., easy_mtb=True)` gives the off-road graph

@@ -72,9 +72,11 @@ station's ("Navy Yard", "Vienna", "Rockville") is searched, and is the station o
 search finds it there; "Mount Vernon", "Arlington" and road names such as "Braddock Road" are the
 places the search finds. A park, refuge or campus found by the search goes to a way in the same
 search found (its visitor centre, entrance, parking, trailhead or boat launch, named for it by
-whole words; the one nearest the route's other points), in `find_place` as in `plan_route`, and
-the answer's
-`points_taken_as` lists the other points of the same place the search found as `nearby_matches`.
+whole words; the one nearest the route's other points), in `find_place` as in `plan_route`. A
+station `find_place` finds is shown at its bike way in (`lon_lat` and `bike_entrance`, nearest
+`near`), where `plan_route` goes, not its platform point. In `compare_places` each place is taken
+by the destinations (a station's way in nearest the first, a name searched near them), not by the
+other places. And the answer's `points_taken_as` lists the other points of the same place the search found as `nearby_matches`.
 
 ## Use it in Claude on the web and on your phone
 
