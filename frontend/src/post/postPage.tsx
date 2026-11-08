@@ -137,17 +137,30 @@ function addRoute(map: MapLibreMap, data: PostData): void {
   });
 }
 
-/** A photo's round thumbnail on the route's map: a button that opens a pop-out of the photo with its caption. */
+/** A thumbnail of a photo for a map marker: loaded only when it shows, never in the way of the page. */
+function thumbnail(photo: PostPhoto): HTMLImageElement {
+  const thumb = document.createElement("img");
+  thumb.src = photo.url;
+  thumb.alt = "";
+  thumb.loading = "lazy";
+  thumb.decoding = "async";
+  return thumb;
+}
+
+/**
+ * A photo's round thumbnail on the route's map: a button that opens a pop-out of the photo with its caption. The
+ * button opens it itself (not the marker's own toggle, which a keyboard press opens and its click closes again);
+ * Escape or the close button shuts it and hands focus back to the pin.
+ */
 function addPhotoPopouts(map: MapLibreMap, photos: readonly PostPhoto[]): void {
   for (const photo of photos) {
     const pin = document.createElement("button");
     pin.type = "button";
     pin.className = "photo-pin";
     pin.setAttribute("aria-label", pinLabel(photo));
-    const thumb = document.createElement("img");
-    thumb.src = photo.url;
-    thumb.alt = "";
-    pin.append(thumb);
+    pin.setAttribute("aria-haspopup", "dialog");
+    pin.setAttribute("aria-expanded", "false");
+    pin.append(thumbnail(photo));
     const card = document.createElement("figure");
     card.className = "photo-popout";
     const big = document.createElement("img");
@@ -160,7 +173,20 @@ function addPhotoPopouts(map: MapLibreMap, photos: readonly PostPhoto[]): void {
       card.append(words);
     }
     const popup = new maplibregl.Popup({ offset: 22, maxWidth: "280px", focusAfterOpen: true }).setDOMContent(card);
-    new maplibregl.Marker({ element: pin }).setLngLat([photo.lon, photo.lat]).setPopup(popup).addTo(map);
+    card.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") popup.remove();
+    });
+    popup.on("open", () => pin.setAttribute("aria-expanded", "true"));
+    popup.on("close", () => {
+      pin.setAttribute("aria-expanded", "false");
+      pin.focus();
+    });
+    pin.addEventListener("click", (event) => {
+      event.stopPropagation();
+      if (popup.isOpen()) popup.remove();
+      else popup.setLngLat([photo.lon, photo.lat]).addTo(map);
+    });
+    new maplibregl.Marker({ element: pin }).setLngLat([photo.lon, photo.lat]).addTo(map);
   }
 }
 
@@ -171,10 +197,7 @@ function addPhotoPointers(map: MapLibreMap, photos: readonly PostPhoto[]): void 
     tag.className = "photo-pointer";
     tag.setAttribute("role", "img");
     tag.setAttribute("aria-label", pinLabel(photo));
-    const thumb = document.createElement("img");
-    thumb.src = photo.url;
-    thumb.alt = "";
-    tag.append(thumb);
+    tag.append(thumbnail(photo));
     new maplibregl.Marker({ element: tag, anchor: "bottom" }).setLngLat([photo.lon, photo.lat]).addTo(map);
   }
 }
@@ -255,7 +278,9 @@ function showMinimap(host: HTMLElement, data: PostData, stretch: number[][]): ()
     const ends = { type: "FeatureCollection" as const, features: [stretch[0], stretch[stretch.length - 1]].map((p, i) => ({ type: "Feature" as const, properties: { kind: i ? "finish" : "start" }, geometry: { type: "Point" as const, coordinates: [p[0], p[1]] } })) };
     map.addSource("post-stretch-ends", { type: "geojson", data: ends });
     map.addLayer({ id: "post-stretch-ends", type: "circle", source: "post-stretch-ends", paint: { "circle-radius": 6, "circle-color": ["match", ["get", "kind"], "start", START_COLOUR, FINISH_COLOUR], "circle-stroke-color": "#ffffff", "circle-stroke-width": 2 } });
-    addPhotoPointers(map, photosNear(stretch, photoPins(data.photos)));
+    // Only those the fitted map shows, so none sits clipped at its edge.
+    const shown = map.getBounds();
+    addPhotoPointers(map, photosNear(stretch, photoPins(data.photos)).filter((photo) => shown.contains([photo.lon, photo.lat])));
   });
   return () => {
     map.remove();

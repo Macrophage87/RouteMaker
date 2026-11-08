@@ -4278,10 +4278,11 @@ at `/routes/` and from Go's More > Featured routes. Instance admins write them:
    the server strips anything left. Where it was taken is kept (v0.22.0; the owner: "people want
    to know where they are taken"): the browser reads it from the file first and sends it alongside,
    the caption gets a **Where it was taken** link to that spot on the map, and the served file
-   carries it as Exif GPS. Each photo with a spot is also a round thumbnail on the post's route
-   map that opens a pop-out of the photo, and a small thumbnail pointing to the spot on any
-   highlight map it falls in (v0.23.0). A spot inside the author's Home circle is dropped (the photo stays). A
-   phone with location tagging off writes an empty GPS block, so its photos have no spot. An
+   carries it as Exif GPS. A spot inside the author's Home circle is dropped (the photo stays).
+   Each photo with a spot is also a round thumbnail on the post's route map that opens a pop-out
+   of the photo, and a small thumbnail pointing to the spot on any highlight map it falls in
+   (v0.23.0). A phone with location tagging off writes an empty GPS block, so its photos have no
+   spot. An
    assistant on the site's connector (draft_route_post) gets an upload link per described photo
    and can send the file itself while the post is a draft (image/jpeg, at most 2048 px a side and
    900 KB, 24 hours, once; headers `X-Photo-Lat` and `X-Photo-Lon` when the file has no spot,

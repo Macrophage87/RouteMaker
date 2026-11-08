@@ -1174,6 +1174,9 @@ def test_a_photo_added_on_the_page_shows_where_it_was_taken_but_never_at_home() 
     assert home.key and home.lat is None and home.lon is None
     served = Client().get(f"/routes/mall-loop/photos/{home.key}.jpg").content
     assert route_posts.exif_spot(served) is None
+    page = Client().get("/routes/mall-loop").content.decode()
+    data = json.loads(re.search(r'id="post-data"[^>]*>(.*?)</script>', page).group(1))
+    assert f"/routes/mall-loop/photos/{home.key}.jpg" not in {p["url"] for p in data["photos"]}
 
 
 def described_draft(admin):
