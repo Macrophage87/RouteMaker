@@ -4230,6 +4230,16 @@ the failure this produced.
   same-rules-everywhere decision it covers VDOT's and DDOT's counts too, so the
   two halves of one divided road in Virginia or DC no longer rate apart.
 
+  Since hunt D3 (2026-11-08) `conflate` ranks a count line's candidates by the
+  share of the way near the line leaving out its run past the line's ends
+  (`_ranked_share`), then by how close they run, so a short frontage or side
+  street lying wholly beside an arterial's count no longer wins it and leaves the
+  arterial uncounted, and an arterial split into pieces keeps the line from a
+  longer street beside it; the share a candidate must reach is still the whole
+  way's; and a service road or a track takes no
+  count line (`name_required`, the block matcher's `NAME_REQUIRED_HIGHWAYS`),
+  since a count line carries no street name for it to agree with.
+
   One `--volume-source` flag sets two things, through `SOURCE_TIERS`. `source`
   is the **precedence tier** — `locality`, `state`, `osm` — and it is the only
   vocabulary `conflation.conflate` ranks on. `agency` is the **publisher** —
@@ -6874,8 +6884,12 @@ over every highway way and the `landuse=military` / `military=*` areas of the so
 
 - **Inside** is the share of a way's length inside the areas, at least `INSIDE_FRACTION` (0.5),
   by `_Shapes` (shapely: the outer rings less the inner ones; overlapping areas are unioned so no
-  stretch counts twice; a stretch along the boundary is not inside). The cemetery, parking and
-  park rules still count vertices (`_inside`).
+  stretch counts twice; a stretch along the boundary is not inside). The cemetery rule uses the
+  same test since hunt A3 (2026-11-08), and leaves out a public road the outline takes in (a
+  numbered road, or a residential-to-trunk street no access key restricts that runs at least
+  `CEMETERY_LEAVES_M` out of the outline or, wholly inside, is a named street of tertiary class
+  or above; a residential, living-street or unclassified drive wholly inside stays held, 98); the parking and park
+  rules still count vertices (`_inside`).
 - **Open inside a base**, and nothing else (437): a way an approved access override wrote a
   bicycle key on (`RebuildContext.bicycle_override_ways`, from `overrides.apply_access`), a
   numbered public road (`public_route`), the Pentagon's listed ways inside its reservation

@@ -1004,7 +1004,9 @@ def events_of_raws(raws, ctx: Context, deadline: routing.Deadline) -> list | Non
     try:
         return junctions.events_of(
             raws,
-            ctx.when,
+            # A road closed to cars at the ride's time is car-free here only on the graph
+            # that routes it as a path, as `routing.classify` reads it (hunt X1).
+            routing.car_free_reading(ctx.when, ctx.variant),
             ctx.with_facility,
             locator(ctx.variant, deadline, ctx.located),
             ctx.group,
@@ -2126,7 +2128,10 @@ def _seek_leg(
             guide,
             band,
             ctx.with_facility,
-            ctx.when,
+            # A road closed to cars is a corridor only on the graph that routes it as a
+            # path (`routing.car_free_reading`, hunt X1): elsewhere the router prices it as
+            # the road with cars, and a seek offering it would chase a calm it cannot ride.
+            routing.car_free_reading(ctx.when, ctx.variant),
             ctx.avoid_gravel,
             timeout_s=min(trailseek.TABLE_TIMEOUT_S, left),
             # Only Road Bike asks to avoid gravel now (api.RouteIn), and its graph prices

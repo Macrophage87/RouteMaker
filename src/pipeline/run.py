@@ -1801,6 +1801,23 @@ def assert_works_closures(
     return checked
 
 
+def assert_zoo_rule(context: RebuildContext) -> None:
+    """The Zoo rule (OWNER-DECISIONS 291(4); `routemaker.zoo`) still fits the extract:
+    each of its seven hand-listed spur ways is there, a piece of the Rock Creek Trail
+    inside the Zoo's outline is open, and so are at least the fixture's floor of trail
+    ways there (`zoo.check`). Like the
+    military and secured rules' checks, an upstream renumber or retag fails the rebuild
+    rather than silently ending a route to the Zoo short of the racks or cutting the
+    trail on every graph (hunt A5, 2026-11-08). Nothing is checked on an extract with
+    no way inside the Zoo (a test's)."""
+    problems = zoo.check(
+        ((way.osm_id, way.tags, way.coordinates) for way in context.ways),
+        getattr(context, "no_bicycle", None) or {},
+    )
+    if problems:
+        raise ValidationFailed("the Zoo rule no longer fits the extract: " + "; ".join(problems))
+
+
 def assert_owner_stretches(context: RebuildContext, rows: Sequence) -> list:
     """Each owner-rated stretch (`REBUILD_SENTINEL_STRETCHES`; OWNER-DECISIONS 432) came
     out at the owner's tier. Off with no rows; skipped, with a warning, with no agency
@@ -2491,7 +2508,15 @@ def build_handlers(
         entries = [
             (way.osm_id, way.coordinates, variants.is_trail_class(way.tags)) for way in context.ways
         ]
-        result = conflation.conflate(entries, reference.volume_features)
+        # A service road or a track takes no count line: the lines carry no street name
+        # for it to agree with, and the block matcher's rule is that such a way takes an
+        # agency's line only where the names agree (hunt D3, 2026-11-08).
+        nameless = {
+            way.osm_id
+            for way in context.ways
+            if way.tags.get("highway") in agency_roads.NAME_REQUIRED_HIGHWAYS
+        }
+        result = conflation.conflate(entries, reference.volume_features, name_required=nameless)
         context.aadt_by_way = dict(result.matched)
         # A count reaches both carriageways of a divided road (FOLLOWUP-MDOT-AADT,
         # OWNER-DECISIONS 429; `share_with_carriageways`): MD 185 north of Chevy
@@ -2654,6 +2679,33 @@ def build_handlers(
         # lane the map is missing, for the classifier and the facility class only.
         lanes = bike_lanes.load()
         laned: set[int] = set()
+
+        def follow_splits(kind: str, values: dict, folder) -> dict:
+            # A row with a stored fingerprint follows an OSM split onto the new piece and
+            # is not spread by a merge (`rematch.resolve_keyed`; hunt D1, 2026-11-08); one
+            # without applies by id, as before.
+            prints = {
+                way_id: fp
+                for (_kind, way_id), fp in rematch.load_fingerprints(folder, kind).items()
+            }
+            if not prints:
+                return values
+            ways_by_id = {way.osm_id: way for way in context.ways}
+            followed, report = rematch.resolve_keyed(kind, values, prints, ways_by_id)
+            for entry in report.entries:
+                if entry.old_way_id in prints and entry.outcome != rematch.OUTCOME_COVERED:
+                    logger.warning(
+                        "curated %s on way %s: %s %s %s",
+                        kind,
+                        entry.old_way_id,
+                        entry.outcome,
+                        list(entry.new_way_ids) or "",
+                        entry.reason,
+                    )
+            return followed
+
+        speeds = follow_splits("speed", speeds, speed_corrections.SPEED_DIR)
+        lanes = follow_splits("bike_lane", lanes, bike_lanes.BIKE_LANES_DIR)
         # The agency's street layer, over the way's own tags: a posted speed,
         # lanes, one-way, bike lane and parking it records take precedence (in
         # the District over OSM's own tagging too, OWNER-DECISIONS 190), and the
@@ -4358,6 +4410,7 @@ def build_handlers(
                 _setting("REBUILD_SENTINEL_WORKS_CLOSED_RANGE"),
                 _setting("REBUILD_SENTINEL_WORKS_MIN_IN_RANGE"),
             )
+            failures.check(assert_zoo_rule, context)
             staging_checks(failures)
         except Exception as error:
             if not isinstance(error, ValidationFailed):

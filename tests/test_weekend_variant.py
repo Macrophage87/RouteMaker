@@ -44,3 +44,18 @@ def test_the_weekend_graph_is_the_standard_graphs_twin():
     )
     barred = inject(Variant.WEEKEND, {"highway": "primary"}, 7, frozenset(), frozenset({7}))
     assert barred["bicycle"] == "no", "a mass-ride-only roadway is barred on it as on standard"
+
+
+def test_the_route_reads_a_closure_only_where_the_graph_opens_it():
+    # Hunt X1 (2026-11-08): the route's colours, breakdown and ranking read a timed closure as
+    # a path in the plan's ride time on every graph; now only where the routed graph prices it
+    # so (`core.routing.car_free_reading`), as `facility_derived` does for the weekend graph.
+    from core.routing import NO_CAR_FREE_TIME, car_free_reading
+
+    assert car_free_reading("weekend", "weekend") == "weekend"
+    for graph in ("standard", "ebike", "paved", "offroad", "mtb", "no-trail"):
+        assert car_free_reading("weekend", graph) == NO_CAR_FREE_TIME
+    for when in ("weekday_rush", "weekday_offpeak", "night"):
+        assert car_free_reading(when, "weekend") == NO_CAR_FREE_TIME
+        assert car_free_reading(when, "standard") == NO_CAR_FREE_TIME
+    assert car_free_reading("weekend", None) == "weekend", "outside a plan, as before"

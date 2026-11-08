@@ -717,9 +717,15 @@ each time). After the swap:
 3. A night ride in town halves its junction costs. Plan the same urban route with
    `when` `weekday_offpeak` and `night`: the night answer's red and orange
    junctions are the same or fewer, and none is added. The same route in a rural
-   area changes by x0.85 only. Night also opens the ways whose timed closure
-   covers it (`car_free_when`), so if the night route takes a different line,
-   compare the junctions on the stretch the two routes share.
+   area changes by x0.85 only. No graph opens a night closure (`car_free_when`
+   `night`): only the weekend graph prices a closure, a weekend one, as a path, and
+   since hunt X1 (2026-11-08) the route's colours, breakdown and ranking, its
+   junction events and costs, and the trail seek's corridors read a closure as a
+   path only on that graph at the weekend (`routing.car_free_reading`),
+   so the night route is priced and shown on the road with cars. The map's tiles
+   still draw it as a path in its ride time (OWNER-DECISIONS 67). If the night
+   route takes a different line, compare the junctions on the stretch the two
+   routes share.
 4. `car_free_when` gains `night` (469c): compare the counts with the previous
    build, as the paragraph above says:
 
@@ -1572,7 +1578,11 @@ the same whatever the style decides):
     (`amenity=parking`, `parking=surface` or `multi-storey`; "Also, no need to
     stripe through all the parking lots.", 99). All of these by place are
     `pipeline.restricted_areas`: a way counts as inside when half its vertices
-    are, so a trail or street that only borders the area stays. On the dials
+    are (a cemetery: half its length, and a numbered road, a public street that
+    runs on out of the outline or a named tertiary-or-above street is never
+    inside, while a residential-class drive wholly inside stays the cemetery's
+    own (98); hunt A3, 2026-11-08), so a trail or street
+    that only borders the area stays. On the dials
     box extract: 86 cemeteries (1,466 ways, 93 mi), 12,067 lots (17,749 ways,
     762 mi before named ways inside lots were kept).
 
@@ -5363,7 +5373,20 @@ failure to write one is a warning in the log and never fails the rebuild.
   count it unmatched), plus `drifted` rows whose way is present but no longer
   looks like the one the row was written for. The log line is "override
   re-match: N rows, ...". A row typed into the admin has no fingerprint and can
-  only fail.
+  only fail. Since hunt D1 (2026-11-08) a present way is also judged by length
+  (`rematch.drift`): OSM keeps one id when it splits or merges a way, so a way
+  much shorter than the stored line (a split) takes the row onto the new pieces
+  along the rest of its line too (`rematched`, or `drifted` on its own piece where
+  they cannot be found), and a way much longer (a merge) does not take the row at
+  all (`failed`: re-point it), except an access row that closes the way to
+  bicycles (330) and a stress row at LTS 4 or Avoid, which warn of the road
+  rather than vouch for it. The curated speed limits (`fixtures/speed/`) and bike lanes
+  (`fixtures/bike_lanes/`) follow the same rules for each row that stores a
+  fingerprint; fill them with `scripts/analysis/backfill_override_fingerprints.py
+  --pbf <extract> --overrides fixtures/speed --write` (and `fixtures/bike_lanes`)
+  against the current extract, then rebuild. Until then those rows apply by id.
+  The lane overrides (`fixtures/lane_overrides/`) are keyed by the agency block's
+  street name, not an OSM id, and need nothing.
 - `aadt-smoothing.csv` (285, 296, 303): one line per traffic count the street's
   median replaced: the agency's count, the median the link was classified on,
   the window (ways and length), whether a volume gate lay between them, and the
@@ -6028,6 +6051,21 @@ the three approved layers (`agency_lts.AGENCIES`): Montgomery County Planning's 
 LTS (`moco-bicycle-lts`), DDOT's 2020 LTS (`ddot-lts-2020`) and MDOT SHA's statewide LTS
 (`mdot-lts`). Fairfax's layer is not approved and Arlington's is Review-only
 (`internal-only/review/`), so neither goes in.
+
+Where one agency has several records along one OSM way (they break at junctions and lane
+changes), the way takes the worst level among the records covering at least 100 m
+(`agency_ratings.WORST_STRETCH_MIN_M`) or half of it, the merge's worst-stretch reading;
+an MDOT SHA ban closes the way only when it is the record the way lies along most. Until
+hunt D5 (2026-11-08) the way took the record it lay along most, so 600 m at LTS 2 and 400 m
+at LTS 4 read LTS 2.
+
+An agency's level never replaces the formula's own "legal but avoid" (`agency_lts.
+keeps_formula_avoid`; hunt D2, 2026-11-08): a `bicycle=use_sidepath` road with its side path
+mapped and a motorway open to bicycles stay Avoid whatever the level, and an urban expressway
+stays Avoid against an agency's plain level; only an owner's reading of a level (`read_as`,
+MDOT SHA's `rural-expressway` 4.5) sets an expressway's. The rating is still recorded for the
+road panel. Before, any level below 5 replaced it, and the router took the roadway instead
+of the side path.
 
 On 2026-10-17 the file was found never to have been installed on the build host: the
 v0.8.0 build and the live map carried no agency rating anywhere, and the rebuild had only
@@ -7826,7 +7864,13 @@ carries `tiles-paved.tar`, and a result from before this graph is refused by `im
 NW entrance to the bike racks (OSM node 9827008403), seven whole ways, written
 destination-only (`rm:destination_only`; `bicycle=destination` and
 `access=destination`). A trip point inside the Zoo is moved to the racks and the
-answer's `moved_points` says so.
+answer's `moved_points` says so. Inside the outline a cycleway or path signed for
+bicycles stays open, and so does a trail-class way named Rock Creek Trail or Zoo Loop
+Trail that its own tags do not bar bicycles from (hunt A5, 2026-11-08). VALIDATE_SEGMENTS
+fails the rebuild (`assert_zoo_rule`, `zoo.check`) when a spur way is missing from the
+extract, no Rock Creek Trail piece inside the Zoo is open, or fewer than
+`open_trail_floor` (4) trail ways there are open: refresh `fixtures/zoo/zoo-access.json`
+from the current OSM ways rather than letting the trail close at the Zoo.
 
 **A stop or the end on a road not open to the public.** Such roads stay routable as a
 destination (the owner, 2026-10-29). Where a leg finishes on a way whose

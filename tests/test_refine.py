@@ -1940,6 +1940,9 @@ class TestTrailSeek:
     def test_the_table_is_read_for_the_straight_line_and_the_route(self, monkeypatch) -> None:
         ctx = self.seek_context()
         ctx.avoid_gravel = True
+        # On the weekend graph, which routes a weekend closure as a path (hunt X1: on the
+        # standard graph this context had before, the table now reads no closure; below).
+        ctx.variant = "weekend"
         self.run(monkeypatch, {}, [NO_ROUTE], ctx)
         ((schema, guide, width, has_facility, when, avoid_unpaved),) = self.asked
         assert (schema, has_facility, when, avoid_unpaved) == ("live", True, "weekend", True)
@@ -2242,6 +2245,22 @@ class TestTrailSeek:
         ctx = self.seek_context(deadline_s=refine.REFINE_TRACE_RESERVE_S + 2.2)
         self.run(monkeypatch, {}, [NO_ROUTE], ctx)
         assert self.table_kw["timeout_s"] == pytest.approx(2.2, abs=0.1)
+
+    @pytest.mark.parametrize(
+        "variant,when,read",
+        [("standard", "weekend", ""), ("weekend", "weekend", "weekend"), ("weekend", "night", "")],
+    )
+    def test_the_table_reads_a_closure_only_where_the_graph_opens_it(
+        self, monkeypatch, variant, when, read
+    ) -> None:
+        # Hunt X1 review: the seek read the table's roads closed to cars in the ride's time
+        # on every graph (before: the ride's time, "weekend", here on the standard graph too),
+        # so it offered a corridor the standard graph prices as the road with cars. It reads
+        # them as `routing.classify` does now (`routing.car_free_reading`).
+        ctx = self.seek_context()
+        ctx.variant, ctx.when = variant, when
+        self.run(monkeypatch, {}, [NO_ROUTE], ctx)
+        assert [asked[4] for asked in self.asked] == [read]
 
     def test_a_table_read_past_its_timeout_ends_the_seek_for_time(self, monkeypatch) -> None:
         self.segments = trailseek.SeekOutOfTime("slow")
@@ -4018,3 +4037,26 @@ class TestRedJunctions:
         world = World(monkeypatch, shapes, [trip_of(f"a{n}", 4.1) for n in range(1, 6)] * 3)
         refine.refine(trip_of("o", 4.0), context(rate=10.0))
         assert len(world.requests) > refine.REFINE_PATIENCE
+
+
+@pytest.mark.parametrize(
+    "variant,when,read",
+    [("standard", "weekend", ""), ("weekend", "weekend", "weekend"), ("weekend", "night", "")],
+)
+def test_the_junctions_read_a_closure_only_where_the_graph_opens_it(
+    monkeypatch, variant, when, read
+) -> None:
+    # Hunt X1 review: a junction's roads were read car-free (tier 1, no traffic) in the
+    # ride's time on every graph (before: "weekend" here on the standard graph too), so the
+    # junction events and their costs counted on a car-free road the router priced as the
+    # road with cars. They read it as `routing.classify` does now.
+    from core import junctions
+
+    seen: list = []
+    monkeypatch.setattr(
+        junctions, "events_of", lambda raws, when, *args, **kw: seen.append(when) or []
+    )
+    ctx = context()
+    ctx.variant, ctx.when = variant, when
+    assert refine.events_of_raws([], ctx, ctx.deadline) == []
+    assert seen == [read]
