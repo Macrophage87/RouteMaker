@@ -982,9 +982,14 @@ export function RideMode({
   // A Rebalance Ride (lib/rebalanceDock.ts): at the crowded dock it holds and asks where to dock, then rides there.
   // Kept riding after the end (Keep riding), its route is the ride to the chosen dock, on the bike's own ride type.
   const rebalance = plannedRoute.preset === "rebalance" || !!plannedTrip?.docked;
-  const [trip, setTrip] = useState<RideTrip | null>(() =>
-    rebalance && plannedTrip?.approach?.name ? { ...plannedTrip, approach: { ...plannedTrip.approach, reached: dockReachedSaid(plannedTrip.approach.name) } } : plannedTrip,
-  );
+  // On to a dock chosen before (Keep riding, Resume): the finish names that dock, as when it was chosen (chooseDock).
+  const [trip, setTrip] = useState<RideTrip | null>(() => {
+    if (plannedTrip?.docked) {
+      const dock = t("Dock at {place}.", { place: plannedTrip.docked });
+      return { ...plannedTrip, finish: { shown: dock, spoken: dock } };
+    }
+    return rebalance && plannedTrip?.approach?.name ? { ...plannedTrip, approach: { ...plannedTrip.approach, reached: dockReachedSaid(plannedTrip.approach.name) } } : plannedTrip;
+  });
   const [docking, setDocking] = useState<DockAsk | null>(null);
   const dockingRef = useRef<DockAsk | null>(null);
   dockingRef.current = docking;

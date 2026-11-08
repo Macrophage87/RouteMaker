@@ -341,6 +341,7 @@ test("a Rebalance Ride's chosen drop-off is kept with the trip, so Resume rides 
   assert.equal(leftRide(marks, 0, store)?.wholeTrip, true);
   // The page: kept as the dock is chosen; Resume and Undo ride on to it, as Keep riding does.
   const ride = src("../RideMode.tsx");
+  assert.match(ride, /if \(plannedTrip\?\.docked\) \{\s*const dock = t\("Dock at \{place\}\.", \{ place: plannedTrip\.docked \}\);\s*return \{ \.\.\.plannedTrip, finish: \{ shown: dock, spoken: dock \} \};/);
   assert.match(ride, /if \(keepLeft\) keepLeftRideDocked\(\{ name: choice\.name, route: found \?\? routeRef\.current, points \}\);/);
   const app = src("../App.tsx");
   const resume = app.slice(app.indexOf("const resumeLeft = () => {"), app.indexOf("const dropLeft = () => {"));
