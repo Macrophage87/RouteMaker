@@ -21,7 +21,8 @@ here (singletrack, cbd_sidewalk and zoo live in their own modules):
 - `natural_surface`: a `path` on a natural surface, no bicycle tag, no exemption.
 - `park_path`: a plain `highway=path` (no bicycle, surface, smoothness signal)
   inside a park or protected-area polygon (291(1)); kept elsewhere.
-- `mtb`: the mountain-bike class below.
+- `mtb`: the mountain-bike class below, and a path on a `route=mtb` loop that the
+  hiking-route or park-path rule would otherwise close (hunt A2).
 - `dismount`: a `bicycle=dismount` connector that is not short (291(5)).
 
 Never touched: cycleways, sidewalks, crossings, steps, and ways upstream's
@@ -175,6 +176,9 @@ class WayRoutes:
 
     hiking: bool = False
     bicycle_networks: frozenset[str] = field(default_factory=frozenset)
+    # in a `route=mtb` relation (`pipeline.route_relations`): no bicycle route, but the
+    # mountain-bike class where the hiking-route or park-path rule would close the way
+    mtb: bool = False
 
     @property
     def bicycle_route(self) -> bool:
@@ -333,7 +337,13 @@ def verdict(
     if tags.get("trail_visibility") in POOR_VISIBILITY and not hard:
         return TRAIL_VISIBILITY
     if routes.hiking and not routes.bicycle_route and not hard:
-        return HIKING_ROUTE
+        if not routes.mtb:
+            return HIKING_ROUTE
+        # On a mountain-bike loop too, the hiking route is the mountain-bike class instead,
+        # unless a natural surface closes it everywhere (hunt A2, 2026-11-08).
+        if is_natural_surface(tags) and not has_exemption(tags, routes):
+            return NATURAL_SURFACE
+        return MTB
     if has_exemption(tags, routes):
         return None
     if is_natural_surface(tags):
@@ -346,7 +356,8 @@ def verdict(
         and tags.get("tracktype") is None
         and width_m(tags) is None
     ):
-        return PARK_PATH
+        # A plain path on a mountain-bike loop in a park: the mountain-bike class (A2).
+        return MTB if routes.mtb else PARK_PATH
     return None
 
 

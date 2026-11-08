@@ -1013,6 +1013,49 @@ def test_every_way_inside_a_cemetery_is_found_but_a_signed_trail_and_a_trail_bes
     assert areas.cemetery_ways(ways, []) == set()
 
 
+def test_a_cemetery_holds_a_way_by_its_length_inside_and_never_a_public_road():
+    # Hunt A3 (2026-11-08): the cemetery rule counted vertices, so a street sharing the
+    # outline's nodes on the south or west edge was "inside", and so was a long two-node
+    # way with one end just inside; each became destination-only and left the map. It
+    # now measures length inside, as the military rule does (OWNER-DECISIONS 437), and a
+    # public road the outline takes in stays out of it.
+    from pipeline import restricted_areas as areas
+
+    cemetery = _box(-77.0, 38.9, -76.99, 38.91)
+    drive = {"highway": "service"}
+    ways = [
+        # Along the south and west edges, on the outline's own nodes: before, inside.
+        (1, drive, [(-77.0, 38.9), (-76.995, 38.9), (-76.99, 38.9)]),
+        (2, drive, [(-77.0, 38.9), (-77.0, 38.905), (-77.0, 38.91)]),
+        # 6 km long, one end 400 m inside: before, inside (one of two vertices).
+        (3, drive, [(-76.995, 38.905), (-76.95, 38.95)]),
+        # Well inside: still inside.
+        (4, drive, [(-76.998, 38.902), (-76.992, 38.908)]),
+        # Public roads across the middle: a numbered road and a residential street.
+        (5, {"highway": "secondary", "ref": "MD 410"}, [(-77.001, 38.905), (-76.989, 38.905)]),
+        (6, {"highway": "residential", "name": "Elm St"}, [(-76.995, 38.899), (-76.995, 38.911)]),
+        # A residential-class drive the cemetery keeps private is its own.
+        (
+            7,
+            {"highway": "residential", "access": "private"},
+            [(-76.998, 38.908), (-76.992, 38.908)],
+        ),
+        # Review of hunt A3: a drive tagged residential, named or not, wholly inside the
+        # outline is the cemetery's own (OWNER-DECISIONS 98; before this review: let out
+        # by class alone). A named street of tertiary class or above stays a public street.
+        (
+            8,
+            {"highway": "residential", "name": "Memorial Dr"},
+            [(-76.998, 38.903), (-76.992, 38.903)],
+        ),
+        (9, {"highway": "unclassified"}, [(-76.998, 38.904), (-76.992, 38.904)]),
+        (10, {"highway": "tertiary", "name": "Oak Ave"}, [(-76.998, 38.906), (-76.992, 38.906)]),
+        # A residential street just poking past the outline (under CEMETERY_LEAVES_M) is held.
+        (11, {"highway": "residential"}, [(-76.9955, 38.89995), (-76.9955, 38.909)]),
+    ]
+    assert areas.cemetery_ways(ways, [cemetery]) == {4, 7, 8, 9, 11}
+
+
 def test_a_parking_lots_own_ways_are_found_and_the_street_past_it_is_not():
     """ "Also, no need to stripe through all the parking lots." (OWNER-DECISIONS 99)"""
     from pipeline import restricted_areas as areas

@@ -169,3 +169,41 @@ def test_more_exemptions_and_rules_pinned():
     assert v({"sac_scale": "hiking", "surface": "concrete:plates"}) is None
     assert v({"bicycle": "yes", "surface": "asphalt", "smoothness": "bad"}) is None
     assert v({"bicycle": "yes", "surface": "gravel", "smoothness": "very_bad"}) is None
+
+
+def _relation_routes(**tags) -> WayRoutes:
+    from pipeline.route_relations import is_mtb_route, route_kinds
+
+    relation = {"type": "route", **tags}
+    hiking, network = route_kinds(relation)
+    return WayRoutes(
+        hiking=hiking,
+        bicycle_networks=frozenset(() if network is None else (network,)),
+        mtb=is_mtb_route(relation),
+    )
+
+
+def test_a_mountain_bike_relation_makes_the_mountain_bike_class_not_a_bicycle_route():
+    # Hunt A2 (2026-11-08): a `route=mtb` relation counted as a bicycle route, so an
+    # unrated plain path on an MTB loop inside a park escaped the park-path and
+    # hiking-route closures (before: both None, open on every standard graph). The first
+    # fix made the relation give nothing, which closed those loops on every graph and took
+    # rated singletrack on them off the mountain-bike layer (review of the B branch). Now
+    # the relation puts the way in the mountain-bike class where those rules would close
+    # it: closed on the standard graphs, ridden by the off-road and Mountain Bike graphs.
+    mtb = _relation_routes(route="mtb", network="lcn")
+    assert not mtb.bicycle_route and mtb.mtb
+    assert v({}, mtb, in_park=True) == "mtb"
+    assert v({}, _relation_routes(route="hiking;mtb")) == "mtb"
+    # The hiking half still counts without the MTB half; a natural surface still closes
+    # an unrated hiking path everywhere, on a loop or not; and outside a park, off any
+    # hiking route, a plain path on a loop is left as it was.
+    assert v({}, _relation_routes(route="hiking")) == "hiking_route"
+    assert v({"surface": "dirt"}, _relation_routes(route="hiking;mtb")) == "natural_surface"
+    assert v({}, mtb) is None
+    # A bicycle route still lifts them, and a `bicycle;mtb` route counts by its bicycle
+    # half (a national route that is also an MTB route stays national).
+    assert v({}, _relation_routes(route="bicycle", network="lcn"), in_park=True) is None
+    both = _relation_routes(route="bicycle;mtb", network="ncn")
+    assert v({}, both, in_park=True) is None
+    assert both.keeping_route

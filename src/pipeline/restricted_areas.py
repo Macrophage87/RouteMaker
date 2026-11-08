@@ -43,7 +43,9 @@ area assembly (multipolygon relations and closed ways alike):
   don't want to encourage a cemetary cut through as it's disrespectful." (98).
   Every road and path inside one is left off the map, and routed only to or
   from a point inside it (destination-only, through `rm:cemetery`); a trail
-  signed for bicycles (`bicycle=designated`) keeps its place.
+  signed for bicycles (`bicycle=designated`) keeps its place, and so does a
+  public road the outline takes in (a numbered road, or a residential-to-trunk
+  street no access key restricts; hunt A3, 2026-11-08).
 - `parking` - `amenity=parking`, or `parking=surface` or `multi-storey`. The
   owner: "Also, no need to stripe through all the parking lots." (99). The
   unnamed service roads, footways and paths inside a lot are left off the map;
@@ -95,8 +97,9 @@ in the rebuild's `track-closures.csv`.
 
 A way is inside when at least INSIDE_FRACTION of its vertices fall in one of
 the kind's areas, outside that area's holes (an island mapped inside a hole is
-inside again; `_in_area`); for the military rule, at least
-INSIDE_FRACTION of its length (`_Shapes`, OWNER-DECISIONS 437). So a road or a trail that only
+inside again; `_in_area`); for the military, cemetery and later rules, at least
+INSIDE_FRACTION of its length (`_Shapes`, OWNER-DECISIONS 437; the cemetery rule
+since hunt A3, 2026-11-08). So a road or a trail that only
 borders an area - the Mount Vernon Trail by Arlington National Cemetery and
 the Pentagon, a street past a parking lot - is not inside it.
 """
@@ -619,9 +622,59 @@ def roads_inside(ways, areas: Sequence[Area]) -> set[int]:
     return ways_inside(ways, areas, _road)
 
 
+# How much of a public-class street must lie outside a cemetery for it to be a street the
+# outline takes in rather than one of the cemetery's own drives (`_cemetery_public_road`).
+CEMETERY_LEAVES_M = 10.0
+# The public classes a cemetery's own drives are mapped at too: a street of one of them that the
+# outline wholly takes in is a drive, named or not; one of any other public class, named, is not.
+CEMETERY_DRIVE_HIGHWAY = frozenset({"residential", "living_street", "unclassified"})
+
+
+def _cemetery_public_road(tags, inside_share: float, length_m: float) -> bool:
+    """A public road a cemetery's outline takes in: a numbered public road
+    (`public_route`), or a public-class street (`GOLF_STREET_HIGHWAY`: residential
+    up to trunk) that no access key keeps to some (`WORKS_CLOSING_ACCESS`) and that
+    either leaves the outline (`CEMETERY_LEAVES_M` of it outside) or is a named street
+    of tertiary class or above. A cemetery's own drives stay inside (OWNER-DECISIONS
+    98): mapped as service roads (Arlington's Eisenhower Drive), with
+    `access=private`/`destination`, or as residential streets wholly inside the
+    outline (review of hunt A3: the first fix let those out by class alone)."""
+    if public_route(tags):
+        return True
+    if tags.get("highway") not in GOLF_STREET_HIGHWAY or any(
+        tags.get(key) in WORKS_CLOSING_ACCESS for key in ACCESS_KEYS
+    ):
+        return False
+    if (1.0 - inside_share) * length_m >= CEMETERY_LEAVES_M:
+        return True
+    return bool(tags.get("name")) and tags.get("highway") not in CEMETERY_DRIVE_HIGHWAY
+
+
 def cemetery_ways(ways, areas: Sequence[Area]) -> set[int]:
-    """Every road and path inside a cemetery, a trail signed for bicycles aside."""
-    return ways_inside(ways, areas, _not_a_signed_trail)
+    """Every road and path inside a cemetery, a trail signed for bicycles and a
+    public road aside (`_cemetery_public_road`).
+
+    Inside is at least INSIDE_FRACTION of the way's *length* (`_Shapes`), the
+    military rule's test (OWNER-DECISIONS 437), not of its vertices. Counting
+    vertices made a public street whose nodes OSM shares with a cemetery's outline
+    (an outline glued to the curb) inside on some edges, and a long two-node way
+    with one end just inside it inside whatever its length; each became
+    destination-only for routing (`rm:cemetery`) and was left off the map (hunt
+    A3, 2026-11-08). A stretch along the outline is not inside."""
+    rows = [
+        (osm_id, tags, coords)
+        for osm_id, tags, coords in ways
+        if tags.get("highway") is not None and coords and _not_a_signed_trail(tags)
+    ]
+    if not areas or not rows:
+        return set()
+    shapes = _Shapes(areas)
+    held = set()
+    for osm_id, tags, coords in rows:
+        share = shapes.share(coords)[0]
+        if share >= INSIDE_FRACTION and not _cemetery_public_road(tags, share, _length_m(coords)):
+            held.add(osm_id)
+    return held
 
 
 def parking_ways(ways, areas: Sequence[Area]) -> set[int]:

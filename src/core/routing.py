@@ -1191,6 +1191,38 @@ _piece_memo: contextvars.ContextVar[dict | None] = contextvars.ContextVar(
 PIECE_MEMO_PIECES = 80_000
 
 
+# The graph this plan was routed on, once the router has answered (`_plan`): a road closed
+# to motor traffic at set times (`segment.car_free_when`) reads as a path at tier 1 only on
+# a graph that prices it so, and only in the ride time it does (`car_free_reading`). Set and
+# cleared by `plan` as `_stress_memo` is; None outside a plan, or before the router answers.
+_routed_graph: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "routed_graph", default=None
+)
+# A ride time no closure is in: what `classify` reads a closure against where the graph the
+# plan was routed on does not open it.
+NO_CAR_FREE_TIME = ""
+
+
+def car_free_reading(when: str, graph: str | None) -> str:
+    """The ride time a plan routed on `graph` reads timed closures in: `when` where the graph
+    prices a closure in that ride time as a path, `NO_CAR_FREE_TIME` elsewhere, and `when`
+    where no graph is known (outside a plan).
+
+    Only the weekend graph opens a timed closure, and only one for the weekend
+    (`pipeline.run.facility_derived`). Until hunt X1 (2026-11-08) the route's colours,
+    breakdown, description and the planner's own ranking read every closure in the plan's
+    ride time on every graph, so on E-bike, Road Bike, Gravel, Mountain Bike, "Keep to
+    roads", a weekday or night closure, or a weekend ride whose weekend router was down, the
+    route was shown and ranked on a car-free path the router had priced as the road with
+    cars. The map's own tiles still draw such a road as a path in its ride times (the owner,
+    OWNER-DECISIONS 67)."""
+    if graph is None:
+        return when
+    if graph == Variant.WEEKEND.value and when == ridetime.WEEKEND:
+        return when
+    return NO_CAR_FREE_TIME
+
+
 def _stress_key(schema: str, when: str, pieces: list[Piece]) -> tuple:
     digest = hashlib.blake2b(digest_size=16)
     digest.update(array("q", [p.way_id for p in pieces]).tobytes())
@@ -1210,6 +1242,8 @@ def classify(pieces: list[Piece], when: str, roadway_only: bool = False) -> list
     given classes of its own."""
     if not pieces:
         return Classes()
+    # A timed closure is read only where the routed graph opens it (`car_free_reading`).
+    when = car_free_reading(when, _routed_graph.get())
     # The schema name comes from settings and is validated the way every DDL
     # that names it is; an identifier cannot be a query parameter.
     schema = validate_schema_name(settings.SEGMENT_SCHEMA_LIVE)
@@ -4523,9 +4557,11 @@ def plan(
     # And its readings of each trace (audit S19), the same way.
     readings: dict = {}
     _reading_memo.set(readings)
+    graph_token = _routed_graph.set(None)
     try:
         return _plan_rounds(points, preset_name, long_ride, started, dials, quick, candidates)
     finally:
+        _routed_graph.reset(graph_token)
         memo.clear()
         pieces_read.clear()
         readings.clear()
@@ -5039,6 +5075,9 @@ def _plan(
         )
 
     timing.mark("route")
+    # The graph that answered, the weekend twin's fallback included: what the route's
+    # readings of timed closures follow (`car_free_reading`, hunt X1).
+    _routed_graph.set(variant)
     delays = None
     if zones_plan is not None and not fixed:
         answer = work_zones.settle_penalties(

@@ -10,6 +10,13 @@ from routemaker.zoo import spur_ways
 # Inside the Zoo outline and outside it.
 ZOO = (-77.0495, 38.9290)
 ELSEWHERE = (-77.20, 38.80)
+# A park and a point inside it.
+PARK = (-77.5, 39.5)
+PARK_AREA = (
+    (-77.6, 39.4, -77.4, 39.6),
+    [[(-77.6, 39.4), (-77.4, 39.4), (-77.4, 39.6), (-77.6, 39.6)]],
+    [],
+)
 
 
 def way(osm_id, tags, origin=ELSEWHERE, nodes=None, length_deg=0.0005):
@@ -58,6 +65,32 @@ def test_hiking_routes_and_national_bicycle_routes_come_from_the_relations():
         11: WayRoutes(bicycle_networks=frozenset({"ncn"})),
     }
     assert run(ways, routes).reasons == {10: "hiking_route"}
+
+
+def test_a_mountain_bike_loop_is_the_mountain_bike_class_and_its_rated_trails_stay_drawn():
+    # Review of hunt A2 (2026-11-08): with the MTB relation read as nothing, rated
+    # singletrack on a hiking-and-MTB loop or in a park lost the mountain-bike layer and
+    # the Mountain Bike and off-road graphs (before: not drawn, closed there), and an
+    # unrated plain path on a loop in a park closed on every graph as a park path.
+    from pipeline.variants import Variant
+
+    loop = WayRoutes(mtb=True)
+    hiking_loop = WayRoutes(hiking=True, mtb=True)
+    ways = [
+        way(40, {"highway": "path", "surface": "dirt", "mtb:scale": "1"}),
+        way(41, {"highway": "path", "mtb:scale": "1"}, PARK),
+        way(42, {"highway": "path"}, PARK),
+    ]
+    result = run(ways, {40: hiking_loop, 41: loop, 42: loop}, [PARK_AREA])
+    assert result.reasons == {40: "singletrack", 41: "singletrack", 42: "mtb"}
+    assert result.drawn_singletrack == {40, 41}
+    assert result.mtb_only() == {40, 41, 42}
+    keep = (result.drawn_singletrack, set(), result.offroad_singletrack)
+    for osm_id in (40, 41, 42):
+        reason = result.reasons[osm_id]
+        assert tc.graph_reason(Variant.STANDARD, reason, osm_id, *keep) is not None
+        assert tc.graph_reason(Variant.MTB, reason, osm_id, *keep) is None
+        assert tc.graph_reason(Variant.OFFROAD, reason, osm_id, *keep) is None
 
 
 def test_the_zoo_is_closed_except_its_spur_the_streets_and_the_cycleway():
