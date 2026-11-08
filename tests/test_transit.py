@@ -2879,6 +2879,11 @@ def test_a_steps_trains_and_headway_survive_the_answers_schema() -> None:
     train = {"line": "Orange Line", "toward": "Vienna/Fairfax-GMU", "end": [-77.27, 38.88]}
     out = LiveTrainOut.model_validate({**train, "minutes": [3], "when": "3 min"}).model_dump()
     assert out["end"] == [-77.27, 38.88]
+    # The platform track survives too (Stephen, 2026-11-08: the card's way of telling a train's way).
+    out = LiveTrainOut.model_validate(
+        {**train, "track": "K04:2", "minutes": [3], "when": "3 min"}
+    ).model_dump()
+    assert out["track"] == "K04:2"
 
 
 def test_vehicle_words_never_say_the_system_twice():

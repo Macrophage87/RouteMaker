@@ -5251,6 +5251,13 @@ class LiveTrainOut(Schema):
     end: list[float] | None = Field(
         default=None, description="WMATA's [lon, lat] for that last stop; null with no code."
     )
+    track: str | None = Field(
+        default=None,
+        description=(
+            'The platform track the trains leave from, "B01:1" (WMATA\'s station code and Group):'
+            " trains on one track go one way. Null where WMATA gave no group."
+        ),
+    )
     minutes: list[int] = Field(description="Minutes until the next trains that way (0: arriving).")
     when: str = Field(description='"3 min, 11 min"; "arriving", "boarding".')
 

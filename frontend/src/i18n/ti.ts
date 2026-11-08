@@ -52,6 +52,9 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Cross at the crosswalk.": "ብመሳገሪ እግረኛ ስገሩ።",
   "Busy road, no signal.": "ብዙሕ ትራፊክ ዘለዎ መገዲ፣ መብራህቲ ትራፊክ የለን።",
   "Slip lane: watch for turning cars.": "መጠውዪ መስመር፦ ንዝጥውዩ መካይን ተጠንቀቑ።",
+  // Off a train, which way out of the station (lib/stationExit.ts; draft, needs a native check).
+  "Take the exit at {street} and {cross}.": "ብ{street}ን {cross}ን ዘሎ መውጽኢ ተጠቐሙ።",
+  "Take the exit on {street}.": "ብ{street} ዘሎ መውጽኢ ተጠቐሙ።",
   "Cross {road}, then {turn}": "{road} ስገሩ፣ ድሕሪኡ {turn}",
   "{way} to {trail}": "ናብ {trail} ዝወስድ {way}",
   "Cross {road} now.": "ሕጂ {road} ስገሩ።",

@@ -698,7 +698,7 @@ export interface StationLineTime {
 export interface StationLive {
   station: string;
   /** The next trains by line and way: minutes (0 arriving), and in words ("3 min, 11 min"; "arriving"). */
-  trains: { line: string; toward: string; end?: [number, number] | null; minutes: number[]; when: string }[];
+  trains: { line: string; toward: string; end?: [number, number] | null; track?: string | null; minutes: number[]; when: string }[];
   /** "Elevator out at Gallery Place: carry your bike on the stairs." */
   elevators: { words: string; where: string }[];
   /** WMATA's rail incidents on the station's lines. */

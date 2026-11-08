@@ -42,6 +42,12 @@ export interface WalkPath {
 
 /** A turn further than this from the walk's line is not on it (an older API's straight line): not said. */
 const ON_LINE_M = 25;
+/**
+ * A turn this near the walk's start is not said (Stephen, 2026-11-08: leaving the station, "In 0 ft (0 m), left."): the
+ * router's first bend off the point it starts from, often a station's entrance, which a walker is already through.
+ * Our default.
+ */
+export const START_TURN_M = 15;
 
 /**
  * The walk as a line to follow: its turns as cues, in order along it, and its end (`endText`: its words where the
@@ -55,7 +61,7 @@ export function walkModel(path: WalkPath, endText = ""): RideModel | null {
   const cues: Cue[] = [];
   for (const turn of path.turns) {
     const found = snap({ coordinates, along }, turn.point);
-    if (!found || found.offM > ON_LINE_M || found.alongM <= 0 || found.alongM >= lengthM) continue;
+    if (!found || found.offM > ON_LINE_M || found.alongM < START_TURN_M || found.alongM >= lengthM) continue;
     const crossing = turn.movement === "cross";
     cues.push({
       index: cues.length,
@@ -73,7 +79,7 @@ export function walkModel(path: WalkPath, endText = ""): RideModel | null {
   cues.sort((a, b) => a.atM - b.atM);
   cues.forEach((cue, index) => (cue.index = index));
   cues.push({ index: cues.length, kind: "end", atM: lengthM, text: endText, movement: null, street: null, severity: null, tier: null, stop: null });
-  return { coordinates, along, lengthM, cues, stretches: [], paceMs: null };
+  return { coordinates, along, lengthM, cues, stretches: [], paceMs: null, onFoot: true };
 }
 
 /** The turns a walk's step lists (the trip's steps, "3 turns"): each in the rider's language. */

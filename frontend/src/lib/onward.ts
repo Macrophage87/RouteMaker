@@ -6,7 +6,7 @@
  * leg after the transit is Ride the rest's, as before, so the list stops there.
  */
 import type { TransitStep } from "./api.ts";
-import { haversineM } from "./geo.ts";
+import { haversineM, type LonLat } from "./geo.ts";
 import { t } from "./i18n.ts";
 import { ARRIVED_SAID, inSentence, type RideEvent, type RideFix, type RideModel, type RideState, type Verbosity } from "./navigate.ts";
 import { onBoardLeg, onBoardStart, onBoardStep, onBoardWhere, AT_STOP_M, ROUGH_FIX_M, type OnBoardLeg, type OnBoardState } from "./onBoard.ts";
@@ -133,4 +133,30 @@ export function onwardWhere(parts: readonly OnwardPart[], state: OnwardState | n
   }
   // Said with the distance in one unit, in words ("300 feet"); the turn's own sentence ends it.
   return { shown: [line], spoken: t("In {distance}, {cue}", { distance: spokenDistance(next.metres), cue: inSentence(next.cue, next.cue.text) }) };
+}
+
+/** A last good fix this near a station the trip boards at counts as going down into it. Our default. */
+export const STATION_QUIET_M = 250;
+
+/**
+ * Whether the GPS is expected to be weak or lost here, so no note says so (Stephen, 2026-11-04: "stop the GPS is weak
+ * notifications on metrorail"; 2026-11-08: "It keeps mentioning weak GPS signal but that's expected underground"):
+ * waiting for or riding a train or bus; walking out of a station after one until the first good fix up top; and
+ * walking (or riding the line) down into one, once the last good fix was within STATION_QUIET_M of it.
+ */
+export function gpsQuietHere(
+  parts: readonly OnwardPart[],
+  state: OnwardState | null,
+  line: { arrived: boolean; end: LonLat | null },
+  lastGood: LonLat | null,
+): boolean {
+  const near = (point: LonLat | null | undefined) => !!point && !!lastGood && haversineM(lastGood, point) <= STATION_QUIET_M;
+  if (!line.arrived) return parts[0]?.kind === "transit" && near(line.end);
+  const index = state?.index ?? 0;
+  const part = parts[index];
+  if (!part) return false;
+  if (part.kind === "transit") return true;
+  if (parts[index - 1]?.kind === "transit" && !state?.walk?.goodFix) return true;
+  const following = parts[index + 1];
+  return following?.kind === "transit" && near(following.leg.stops[0]?.point ?? part.model.coordinates[part.model.coordinates.length - 1]);
 }

@@ -424,6 +424,8 @@ export interface LiveTrain {
   toward: string;
   /** WMATA's place for the train's last station; null where WMATA gave no code. */
   end?: LonLat | null;
+  /** The platform track it leaves from ("B01:1", core.transit_live.station): one way per track. Absent from an older API. */
+  track?: string | null;
   minutes: number[];
 }
 
@@ -475,12 +477,23 @@ export function liveForBoarding(
       ends.set(colour(line), set);
     }
   }
-  const takes = (train: LiveTrain): boolean => {
-    const lineEnds = ends.get(colour(train.line));
-    if (!lineEnds) return false;
-    if (train.end && board && last.point) return goesTo(train.end, board, last.point);
+  // A train signed to one of the ride's own ends (or the stop to get off) goes the ride's way.
+  const named = (train: LiveTrain): boolean => {
     const end = nameKey(train.toward);
-    return lineEnds.has(end) || end === off;
+    return !!ends.get(colour(train.line))?.has(end) || end === off;
+  };
+  // The tracks those trains leave from (Stephen, 2026-11-08: at Gallery Place a Red Line train to Glenmont showed as
+  // "After that" for a ride to Tenleytown; on a U-shaped line where a train ends cannot tell its way, its track can).
+  const ours = new Set(live.filter((train) => train.track && named(train)).map((train) => train.track as string));
+  const takes = (train: LiveTrain): boolean => {
+    if (!ends.has(colour(train.line))) return false;
+    if (train.track && ours.size > 0) {
+      if (!ours.has(train.track)) return false;
+      // The ride's way: all but one that turns back short of the stop to get off.
+      return named(train) || !train.end || !board || !last.point || haversineM(board, train.end) >= haversineM(board, last.point) - SHORT_TURN_SLACK_M;
+    }
+    if (train.end && board && last.point) return goesTo(train.end, board, last.point);
+    return named(train);
   };
   return live
     .filter(takes)

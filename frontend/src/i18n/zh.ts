@@ -52,6 +52,9 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Cross at the crosswalk.": "从人行横道过马路。",
   "Busy road, no signal.": "车流繁忙的道路，没有信号灯。",
   "Slip lane: watch for turning cars.": "转弯车道：注意转弯的车辆。",
+  // Off a train, which way out of the station (lib/stationExit.ts; draft, needs a native check).
+  "Take the exit at {street} and {cross}.": "请走{street}和{cross}的出口。",
+  "Take the exit on {street}.": "请走{street}的出口。",
   "Cross {road}, then {turn}": "穿过{road}，然后{turn}",
   "{way} to {trail}": "通往{trail}的{way}",
   "Cross {road} now.": "现在穿过{road}。",

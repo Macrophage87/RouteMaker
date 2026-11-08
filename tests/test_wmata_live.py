@@ -105,6 +105,19 @@ def test_a_station_cards_trains_say_where_they_end() -> None:
     assert ends["Vienna/Fairfax-GMU"] == [vienna.lon, vienna.lat]
 
 
+def test_a_station_cards_trains_say_which_track_they_leave_from() -> None:
+    # Stephen, 2026-11-08: the Red Line is a U, so where a train ends cannot tell its way;
+    # WMATA's Group (the platform track) can. Trains on one track keep one entry per track.
+    live = snapshot()
+    card = transit_live.station([-76.995334, 38.884124], live)
+    assert card is not None
+    tracks = {t["toward"]: t["track"] for t in card["trains"]}
+    station_trains = live.trains_at(live.station_near([-76.995334, 38.884124]))
+    for train in station_trains:
+        if train.minutes is not None and train.destination and train.group:
+            assert tracks[train.destination] == f"{train.station}:{train.group}"
+
+
 def test_a_line_is_the_same_line_by_its_colour() -> None:
     assert wmata_live.same_line("Red Line", "RED")
     assert wmata_live.same_line("Metrorail Orange Line", "Orange Line")

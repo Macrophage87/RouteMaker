@@ -283,10 +283,12 @@ import {
   type RideTrip,
   walkLineTurns,
 } from "./lib/rideTrip.ts";
-import { onwardActive, onwardStart, onwardStep, onwardWhere, type OnwardState } from "./lib/onward.ts";
+import { gpsQuietHere, onwardActive, onwardStart, onwardStep, onwardWhere, type OnwardState } from "./lib/onward.ts";
 import { lowPowerOnBoard, onBoardPath, type OnBoardPath } from "./lib/onBoard.ts";
 import { BOARDING_MS, TRIP_CHECK_MS } from "./lib/tripCheck.ts";
-import { walkModel, walkTurnLine } from "./lib/walkCues.ts";
+import { nextWalkTurn, walkModel, walkTurnLine } from "./lib/walkCues.ts";
+import { METRO_EXITS } from "./lib/railData.ts";
+import { exitAt } from "./lib/stationExit.ts";
 import { BoardingCard, OnBoardCard } from "./OnBoardCard.tsx";
 import { fullStop, t } from "./lib/i18n.ts";
 import { railWord } from "./lib/railWords.ts";
@@ -502,6 +504,9 @@ export interface RideView {
   transitPath?: OnBoardPath | null;
 }
 
+/** Off a train, the exit is shown until the walk is this far along (lib/stationExit.ts). Our default. */
+const EXIT_SHOWN_M = 30;
+
 function arrowFor(
   cue: Cue | null,
 ): "left" | "right" | "bear_left" | "bear_right" | "uturn" | "straight" | "stop" | "end" | "warn" | NonNullable<ReturnType<typeof crossArrow>> {
@@ -589,6 +594,36 @@ function CueShape({ shape, junction, exit, jog }: { shape: ReturnType<typeof arr
       {along ? <AlongRoad side={along} /> : null}
       <path d={paths[shape]} fill="none" stroke="currentColor" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
+  );
+}
+
+/**
+ * A walk's next turn as a ride's is shown (Stephen, 2026-11-08: "Walk isn't using the arrows like with the bike"): the
+ * turn's arrow (a crossing's over the road), the distance large and the words under it; the whole sentence for screen
+ * readers. Nothing before a fix or past the last turn.
+ */
+function WalkTurnCard({ model, state, weak }: { model: RideModel; state: RideState | null; weak: boolean }) {
+  const next = state ? nextWalkTurn(model, state) : null;
+  if (!next || !state) return null;
+  const { cue, metres } = next;
+  const distance = formatDistance(metres);
+  const metricAt = distance.indexOf(" (");
+  return (
+    <div className="cue-next">
+      <CueShape shape={cue.movement ? arrowFor(cue) : "cross"} />
+      <div>
+        <p className={weak ? "cue-distance cue-distance-weak" : "cue-distance"} aria-hidden="true">
+          <span dir="auto">
+            {metricAt < 0 ? distance : distance.slice(0, metricAt)}
+            {metricAt >= 0 && <span className="cue-distance-metric"> {distance.slice(metricAt + 1)}</span>}
+          </span>
+        </p>
+        <p className="cue-text">
+          <span aria-hidden="true">{withoutFullStop(cue.text)}</span>
+          <span className="visually-hidden">{walkTurnLine(model, state)}</span>
+        </p>
+      </div>
+    </div>
   );
 }
 
@@ -1170,9 +1205,9 @@ export function RideMode({
   // The last good fix and whether the weak-GPS note is up (lib/navigate.ts weighFix); a new watch starts afresh.
   const gpsWeak = useRef<GpsWeakness>({ goodAt: Date.now(), weak: false });
   // On a train or bus past the line, or waiting for it (Stephen, 2026-11-04: "stop the GPS is weak notifications on
-  // metrorail"): there are no turn cues to pause, and the stops follow any rough fix or the timetable, so a weak or
-  // lost GPS is neither said nor shown.
-  const onTransitRef = useRef(false);
+  // metrorail"), or in the station on the way to or from it (2026-11-08; lib/onward.ts gpsQuietHere): the stops follow
+  // any rough fix or the timetable, and the exit is said, so a weak or lost GPS is neither said nor shown.
+  const gpsQuietRef = useRef(false);
   // On a train or bus until "Next stop" (lib/onBoard.ts lowPowerOnBoard): the watch's low-power stretch.
   const lowPowerRef = useRef(false);
   // Weak GPS for long enough (cueSheetShown): the card shows the turns ahead as a list.
@@ -1959,6 +1994,12 @@ export function RideMode({
   // Where it was asked: ridden RESTART_AUTO_M from there unanswered, it goes on with the stops as marked.
   const restartAt = useRef<LonLat | null>(null);
   // One fix (or, on transit, the clock alone) into what follows the line: started at the first one after arriving.
+  // Which exit each walk after a train leaves the station by (Stephen, 2026-11-08: "the cue should mention which exit
+  // to use"), from DC's entrances near the walk's start (lib/stationExit.ts); null where none is known.
+  const onwardExits = useMemo(
+    () => onwardParts.map((part, i) => (part.kind === "walk" && onwardParts[i - 1]?.kind === "transit" ? exitAt(METRO_EXITS, part.model.coordinates[0]) : null)),
+    [onwardParts],
+  );
   const followOnward = useCallback(
     (fix: RideFix | null) => {
       const now = Date.now();
@@ -1973,8 +2014,11 @@ export function RideMode({
       // The next stop and the stop to get off are said as notes are, whatever the voice level: they are the trip's.
       // With the ride after them about to start by itself, the last walk's end is no arrival (the release review).
       for (const line of out.said) if (!(restNextRef.current && line === t(ARRIVED_SAID))) notify(line);
+      // Off the train, the way out of the station, once.
+      const exit = out.state.index !== state.index ? onwardExits[out.state.index] : null;
+      if (exit) notify(exit);
     },
-    [onwardParts, say, notify],
+    [onwardParts, onwardExits, say, notify],
   );
   const onFix = useCallback(
     // `beat`: the app's heartbeat (lib/ridePause.ts heartbeatFix), the last fix again with the time now while a stopped
@@ -1999,8 +2043,8 @@ export function RideMode({
       // Only poor fixes for a while: the cues are paused, so the GPS note says so, once (review RIDE-3).
       const weighed = weighFix(gpsWeak.current, fix.accuracyM, lastFixAt.current);
       gpsWeak.current = { goodAt: weighed.goodAt, weak: weighed.weak };
-      if (weighed.sayNow && !onTransitRef.current) notify(GPS_WEAK_SAID);
-      setGps(weighed.weak && !onTransitRef.current ? GPS_WEAK_SAID : "");
+      if (weighed.sayNow && !gpsQuietRef.current) notify(GPS_WEAK_SAID);
+      setGps(weighed.weak && !gpsQuietRef.current ? GPS_WEAK_SAID : "");
       checkCueSheet(lastFixAt.current);
       // Arrived: how long the rider has stayed within STAY_M, for the pause at the destination (checkStay).
       stay.current = rideRef.current.arrived ? stayStep(stay.current, fix) : null;
@@ -2181,7 +2225,7 @@ export function RideMode({
         // Paused, a lone failure says nothing: the rider is not riding. A watch stopped for good still stops.
         if (pausedRef.current && reason !== "denied" && reason !== "insecure" && reason !== "unsupported") return;
         // Underground on a train, no fix is expected: the timetable places it (lib/onBoard.ts), nothing is said.
-        if (onTransitRef.current && reason !== "denied" && reason !== "insecure" && reason !== "unsupported") return;
+        if (gpsQuietRef.current && reason !== "denied" && reason !== "insecure" && reason !== "unsupported") return;
         if (reason === "timeout") {
           // Many phones report a lost signal as a timeout: said once no fix has come for GPS_LOST_MS.
           if (gpsSaid.current !== reason && Date.now() - lastFixAt.current >= GPS_LOST_MS) {
@@ -3086,13 +3130,21 @@ export function RideMode({
   const onwardDone = onwardParts.length > 0 && onwardIndex >= onwardParts.length;
   const onwardPart = ride.arrived ? (onwardParts[onwardIndex] ?? null) : null;
   const onTransit = onwardPart?.kind === "transit";
-  onTransitRef.current = onTransit;
-  // A weak-GPS note from before the train goes on boarding (no fix may come underground to clear it); off the train,
-  // the weak-GPS clock starts afresh, so a walk with poor fixes after it is told so once, as any walk is.
+  // Where the GPS is expected to be weak (lib/onward.ts gpsQuietHere): on transit, and in a station on the way to or
+  // from it (Stephen, 2026-11-08: "It keeps mentioning weak GPS signal but that's expected underground").
+  const gpsQuiet = gpsQuietHere(
+    onwardParts,
+    onward,
+    { arrived: ride.arrived, end: model.coordinates[model.coordinates.length - 1] ?? null },
+    tripRef.current.lastGood?.point ?? null,
+  );
+  gpsQuietRef.current = gpsQuiet;
+  // A weak-GPS note from before the station goes as it is entered (no fix may come underground to clear it); up top
+  // again, the weak-GPS clock starts afresh, so a walk with poor fixes after it is told so once, as any walk is.
   useEffect(() => {
-    if (onTransit) setGps("");
+    if (gpsQuiet) setGps("");
     else gpsWeak.current = { goodAt: Date.now(), weak: false };
-  }, [onTransit]);
+  }, [gpsQuiet]);
   // Boarding, the watch goes low power; at "Next stop", high accuracy again, so the GPS is warm for the walk or ride
   // after (the new watch starts before the old one stops). The phone app keeps its one watch: its native watcher takes
   // no accuracy option, and Android 14+ refuses a new location service with the screen locked. A paused or ended ride
@@ -3105,6 +3157,9 @@ export function RideMode({
     startWatch();
   }, [lowPower, startWatch]);
   const onwardWalkLine = onwardPart?.kind === "walk" ? walkTurnLine(onwardPart.model, onward?.walk ?? null) : null;
+  // Off a train, the exit to take until the walk is under way (EXIT_SHOWN_M along it, or no place on it yet).
+  const onwardExit = onwardPart?.kind === "walk" ? (onwardExits[onwardIndex] ?? null) : null;
+  const exitShown = !!onwardExit && ((onward?.walk?.progressM ?? null) === null || (onward?.walk?.progressM ?? 0) < EXIT_SHOWN_M);
   // The trip goes on past the line's end (Stephen, 2026-11-03: "the ride just ends when you reach the station. It
   // should start the transit phase"): the walk or the train after it, then the ride after the transit, which starts by
   // itself (Ride the rest, below). Till then the ride is not over: End ride stays a slide, and no Done.
@@ -3731,7 +3786,12 @@ export function RideMode({
                   // Everything after the line done: arrived, never the line's end words again.
                   <p className="cue-text">{onwardDone ? (tripGoesOn && rest ? rest.text : arrivedShown(destinationName)) : (trip?.finish?.shown ?? arrivedShown(destinationName))}</p>
                 )}
-                {onwardWalkLine && <p className={onwardIndex > 0 ? "cue-text" : "cue-then"}>{onwardWalkLine}</p>}
+                {/* Off a train, the exit first; then the walk's turns, each with its arrow as a ride's. */}
+                {exitShown ? (
+                  <p className="cue-text">{onwardExit}</p>
+                ) : (
+                  onwardWalkLine && onwardPart?.kind === "walk" && <WalkTurnCard model={onwardPart.model} state={onward?.walk ?? null} weak={!!gps} />
+                )}
                 {/* The boarding's departure, its countdown and milestones as in the trip's panel (said through the ride's outputs). */}
                 {/* Its milestones said; on screen only a close or missed departure's notice (the card has its time). */}
                 {trip?.departure && toBoard && <DepartureTimer departure={trip.departure} announce={notify} noticeOnly={!!boardingLeg && !!boardingDeparture} />}
@@ -3761,10 +3821,10 @@ export function RideMode({
             )}
           </>
         ) : walking && approach ? (
-          approachTurn ? (
+          approachTurn && approach.walk ? (
             <>
               {/* The walk turn by turn (2026-11-02): its next turn first, where it goes under it. */}
-              <p className="cue-text">{approachTurn}</p>
+              <WalkTurnCard model={approach.walk} state={tripRef.current.walk ?? null} weak={!!gps} />
               <p className="cue-then">{approachWords(approach, ride.fix?.point ?? null).shown}</p>
             </>
           ) : (

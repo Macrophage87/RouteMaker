@@ -173,6 +173,15 @@ export const NOW_S = 2;
 /** The stoker's one warning ahead: about 15-20 s, never closer than 300 ft. */
 export const STOKER_S = 17;
 export const STOKER_MIN_M = 90;
+/**
+ * On foot (Stephen, 2026-11-08: walking's "turn left now seems timed for bike speeds, not walking speeds"): the same
+ * three cues, closer in. At about 3 mph (1.4 m/s) the first is about 45 s out (200 ft), the second about 15 s (65 ft) and
+ * "now" a few steps before the corner (20 ft), where the bike's floors (500, 150 and 50 ft) are made for 10-15 mph.
+ * Our defaults, not measured on walks.
+ */
+export const WALK_ADVANCE_MIN_M = 60;
+export const WALK_PREPARE_MIN_M = 20;
+export const WALK_NOW_M = 6;
 /** A cue passed by more than this before it was said is dropped, not said late. */
 export const PASSED_M = 10;
 /** Arrival at a stop or the end: within this of it along the line (and the fix close to it). */
@@ -419,6 +428,8 @@ export interface RideModel {
    * points. Never a cue: a via point is not announced; the re-plan drops the ones passed.
    */
   passes?: { point: number; atM: number }[];
+  /** A walk's line (lib/walkCues.ts walkModel): its turns are said at walking distances (WALK_ADVANCE_MIN_M...). */
+  onFoot?: boolean;
 }
 
 /**
@@ -1582,16 +1593,16 @@ export function cueSpoken(cue: Cue, phase: Phase, distanceM: number, first = pha
  * The phases a cue is said at, at a level, farthest first, with their thresholds at a speed. A jog's later turn
  * has "now" only, which `step` says once the rider is past the turn before.
  */
-export function phasesFor(level: Verbosity, cue: Cue, speedMs: number): { phase: Phase; withinM: number }[] {
+export function phasesFor(level: Verbosity, cue: Cue, speedMs: number, onFoot = false): { phase: Phase; withinM: number }[] {
   if (!says(level, cue)) return [];
   const v = Math.max(speedMs, MIN_SPEED_MS);
-  const advance = Math.max(ADVANCE_MIN_M, ADVANCE_S * v);
+  const advance = Math.max(onFoot ? WALK_ADVANCE_MIN_M : ADVANCE_MIN_M, ADVANCE_S * v);
   // A destination across a busy road (D26): said early too, at every level that says more than arrival.
   if (cue.kind === "end" && cue.farSide && level !== "quiet") return [{ phase: "advance", withinM: advance }, { phase: "arrive", withinM: ARRIVE_M }];
   if (cue.kind === "stop" || cue.kind === "end") return [{ phase: "arrive", withinM: ARRIVE_M }];
-  const prepare = Math.max(PREPARE_MIN_M, PREPARE_S * v);
+  const prepare = Math.max(onFoot ? WALK_PREPARE_MIN_M : PREPARE_MIN_M, PREPARE_S * v);
   const ahead = Math.max(STOKER_MIN_M, STOKER_S * v);
-  const now = Math.max(NOW_M, NOW_S * v);
+  const now = Math.max(onFoot ? WALK_NOW_M : NOW_M, NOW_S * v);
   if (cue.joined) return [{ phase: "now", withinM: now }];
   if (level === "stoker") {
     // One warning ahead, and "now" at a turn (plan Q6: the stoker braces for the lean).
@@ -1865,7 +1876,7 @@ export function step(
   const progress = next.progressM;
   const said: Record<number, Phase[]> = { ...state.said };
   for (const cue of model.cues) {
-    const phases = phasesFor(level, cue, next.speedMs);
+    const phases = phasesFor(level, cue, next.speedMs, model.onFoot);
     const done = said[cue.index] ?? [];
     if (phases.every((p) => done.includes(p.phase))) continue;
     const distance = cue.atM - progress;

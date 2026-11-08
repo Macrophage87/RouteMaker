@@ -54,6 +54,9 @@ export const ES: Readonly<Record<string, string>> = {
   "Cross at the crosswalk.": "Cruce por el paso de peatones.",
   "Busy road, no signal.": "Calle con mucho tráfico, sin semáforo.",
   "Slip lane: watch for turning cars.": "Carril de giro: atención a los autos que giran.",
+  // Off a train, which way out of the station (lib/stationExit.ts; draft, needs a native check).
+  "Take the exit at {street} and {cross}.": "Tome la salida de {street} y {cross}.",
+  "Take the exit on {street}.": "Tome la salida de {street}.",
   "Cross {road}, then {turn}": "Cruce {road}, luego {turn}",
   // An unnamed path said with the named one it leads to (navigate.ts pathWords, describe._toward).
   "{way} to {trail}": "{way} que lleva a {trail}",
