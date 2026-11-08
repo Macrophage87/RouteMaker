@@ -6012,6 +6012,11 @@ def _plan(
         refine_context.request = request
         refine_context.costing = trace_costing
         refine_context.quiet_cost = refine.quiet_cost_per_m(trace_costing)
+    # The route the plan's own `request` answers, as the level rounds of `mtb.settle` and
+    # `easy_mtb.settle` re-ask it: a route the passes below put in its place (a loop's way
+    # back, the fewer repeats, the calm search) is held to `refine.level_round_kept` there,
+    # so a round does not swap it back for the router's own (the third routing hunt, C3-1).
+    asked_trip = trip
     loop_info = None
     if loop:
         # The way back by a different way, before the search, which then keeps it so.
@@ -6096,6 +6101,7 @@ def _plan(
             # The trails above the rider's level it steered off, which every later way
             # round keeps out (P1).
             level_excludes=refine_context.level_excludes,
+            keeps=None if trip is asked_trip else refine.level_round_keeps(trip, refine_context),
         )  # fmt: skip
         if trip is not searched_trip:
             mtb_replaced = True
@@ -6123,6 +6129,7 @@ def _plan(
         trip, easy_info = easy_mtb.settle(
             trip, request, variant, trace_costing, deadline, traces, points,
             level_excludes=refine_context.level_excludes,
+            keeps=None if trip is asked_trip else refine.level_round_keeps(trip, refine_context),
         )  # fmt: skip
         if trip is not searched_trip:
             mtb_replaced = True

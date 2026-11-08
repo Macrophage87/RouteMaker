@@ -2846,6 +2846,37 @@ class TestEasyMtbTrails:
         assert post(client, {**good_body(name), "easy_mtb": True}).status_code == 400
         assert fake.calls == []
 
+    @pytest.mark.parametrize("searched", [False, True])
+    def test_a_searched_route_holds_the_rounds_to_the_guard(
+        self, searched, client, facility_segments, router, monkeypatch
+    ):
+        # The third routing hunt, C3-1: the rounds re-ask the plan's own request, so a route
+        # the search (or a loop's way back, or the fit) put in its place is held to
+        # `refine.level_round_keeps`; the router's own route is not.
+        from core import easy_mtb
+
+        router(standard_router())
+        ran = []
+        real_refine = refine.refine
+
+        def search(trip, ctx):
+            ran.append(True)
+            found, refined = real_refine(trip, ctx)
+            return (dict(found) if searched else found), refined
+
+        monkeypatch.setattr(refine, "refine", search)
+        seen = []
+        real_settle = easy_mtb.settle
+
+        def settle(*args, keeps=None, **kwargs):
+            seen.append(keeps)
+            return real_settle(*args, keeps=keeps, **kwargs)
+
+        monkeypatch.setattr(easy_mtb, "settle", settle)
+        post(client, {**good_body("default"), "when": "weekday_offpeak", "easy_mtb": True})
+        assert ran and len(seen) == 1
+        assert (seen[0] is not None) is searched
+
     def test_trails_off_wins(self, client, facility_segments, router):
         router(standard_router())
         body = post(client, {**good_body("default"), "easy_mtb": True, "trails_off": True}).json()

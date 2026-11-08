@@ -169,6 +169,7 @@ def settle(
     points: list,
     preferred_level: int | None = None,
     level_excludes: list | None = None,
+    keeps=None,
 ) -> tuple[dict, dict]:
     """The route a Mountain Bike plan answers, and what the answer says of it (`mtb`).
 
@@ -176,7 +177,13 @@ def settle(
     with (the trails above the rider's level its rounds steered off) are added to it, so
     the passes after this one ask any way round of theirs with them (the red pass, the
     Avoid-junction pass: `refine.Context.level_excludes`) and do not put the rider back on
-    a trail above their level (the 2026-11-08 hunt, P1)."""
+    a trail above their level (the 2026-11-08 hunt, P1).
+
+    `keeps`: where given (`refine.level_round_keeps`, `trip` being the calm search's route,
+    a loop's way back or the target fit, not the plan's own request answered), whether a
+    level round's route may replace `trip` where `trip` was chosen; the rounds re-ask the
+    plan's request (the third routing hunt, C3-1). A router alternative chosen is the
+    plan's request answered, so its rounds are not held to it."""
     from . import routing
 
     level = mtbmode.clamp_level(max_level)
@@ -214,6 +221,7 @@ def settle(
     info["candidates"] = len(readings)
     chosen = mtbmode.best([r[0] for r in readings])
     best_trip, best = kept[chosen], readings[chosen]
+    guard = keeps if best_trip is trip else None
     excludes: list[tuple[float, float]] = []
     base = {k: v for k, v in request.items() if k not in ("alternates", "exclude_locations")}
     # The route the next round's points come from: the last one the router gave, so each
@@ -246,7 +254,7 @@ def settle(
         if found is None:
             break
         current = found
-        if mtbmode.better(found[0], best[0]):
+        if mtbmode.better(found[0], best[0]) and (guard is None or guard(again)):
             best_trip, best = again, found
             best_excludes = list(excludes)
     if level_excludes is not None:

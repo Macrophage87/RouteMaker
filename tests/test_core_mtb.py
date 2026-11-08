@@ -204,3 +204,37 @@ def test_no_level_exclusions_are_handed_on_where_no_round_was_taken(readings) ->
         level_excludes=handed,
     )  # fmt: skip
     assert handed == []
+
+
+def test_a_searched_route_chosen_is_held_to_the_guard(readings, monkeypatch) -> None:
+    # The third routing hunt, C3-1: where the route chosen is the calm search's (a loop's
+    # way back, a via detour), a level round, which re-asks the plan's own request, replaces
+    # it only where `keeps` says so.
+    searched = trip("searched", [road(200), single(800, level=4), road(200)])
+    monkeypatch.setattr(
+        routing, "_route", lambda *a: ({"trip": trip("round", [road(1500)])}, False)
+    )
+    chosen, info = mtb.settle(
+        [searched], searched, {"locations": []}, "mtb", {}, "weekend", None, {}, 2, FAR_POINTS,
+        keeps=lambda t: False,
+    )  # fmt: skip
+    assert chosen is searched and info["over_level_m"] == 800.0
+    chosen, _info = mtb.settle(
+        [searched], searched, {"locations": []}, "mtb", {}, "weekend", None, {}, 2, FAR_POINTS,
+        keeps=lambda t: True,
+    )  # fmt: skip
+    assert chosen["name"] == "round"
+
+
+def test_a_router_alternative_chosen_is_not_held_to_the_guard(readings, monkeypatch) -> None:
+    # The router's alternative is the plan's own request answered: its rounds are as before.
+    searched = trip("searched", [road(200), single(800, level=4), road(200)])
+    alternative = trip("alternative", [road(200), single(300, level=3), road(200)])
+    monkeypatch.setattr(
+        routing, "_route", lambda *a: ({"trip": trip("round", [road(1500)])}, False)
+    )
+    chosen, _info = mtb.settle(
+        [searched, alternative], searched, {"locations": []}, "mtb", {}, "weekend", None, {}, 2,
+        FAR_POINTS, keeps=lambda t: pytest.fail("not asked"),
+    )  # fmt: skip
+    assert chosen["name"] == "round"

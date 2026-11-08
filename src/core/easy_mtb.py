@@ -148,12 +148,18 @@ def settle(
     traces: dict,
     points: list,
     level_excludes: list | None = None,
+    keeps=None,
 ) -> tuple[dict, dict]:
     """The route an Easy MTB trails plan answers, and what the answer says of it (`easy_mtb`).
 
     `level_excludes`, where given, has the exclusions the answered route was asked with added
     to it, so the passes after this one (the red pass, the Avoid-junction pass) keep the
-    harder trails out as Mountain Bike's do (`refine.Context.level_excludes`)."""
+    harder trails out as Mountain Bike's do (`refine.Context.level_excludes`).
+
+    `keeps`, where given (`refine.level_round_keeps`: `trip` is not the plan's own request
+    answered, but the calm search's, a loop's way back or the target fit), says whether a
+    round's route may replace it; the rounds re-ask the plan's request, so on harder metres
+    alone they threw that work away (the third routing hunt, C3-1)."""
     from . import routing
 
     info: dict = {"max_level": EASY_MAX_LEVEL, "rounds": 0, "harder_m": None, "limited": None}
@@ -194,7 +200,7 @@ def settle(
         if found is None:
             break
         current = found
-        if found[0] < best[0]:
+        if found[0] < best[0] and (keeps is None or keeps(again)):
             best_trip, best = again, found
             best_excludes = list(excludes)
     if level_excludes is not None:
