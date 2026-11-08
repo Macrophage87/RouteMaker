@@ -2,7 +2,7 @@
 # Smoke test for the beta: health, a route, place search and reverse lookup, a stress tile,
 # and (public mode) the gate: robots.txt, basic auth, noindex, the base map's same-origin rule
 # and byte ranges, and Django's static files.
-# Read-only: it only sends GET and POST /api/route (one short ride, three with --trails), saving nothing.
+# Read-only: it only sends GET and POST /api/route (one short ride, five with --trails), saving nothing.
 #
 #   scripts/beta/smoke-test.sh --local [--port 8087] [--host NAME]
 #       Straight to the api on 127.0.0.1, before nginx is involved. No credentials. The Host
@@ -18,9 +18,10 @@
 #       The same for a beta with no site password (the owner removed it, 2026-10-22): no
 #       credentials, and the front end and the api must answer without them instead of 401.
 #   --trails
-#       Also plan a short Mountain Bike ride and a Gravel one and check each came back on its own
-#       graph (`variant` mtb / offroad), not the standard one: for a beta whose trail routers run
-#       (their tiles are on the host). Without it those two checks are skipped, and say so.
+#       Also plan a short Mountain Bike ride, a Gravel one, a Road Bike one and a weekend Road Bike
+#       one and check each came back on its own graph (`variant` mtb / offroad / paved /
+#       paved-weekend), not the standard one: for a beta whose trail routers run (their tiles are on
+#       the host). Without it those checks are skipped, and say so.
 #   --no-401-page
 #       With --public, after the runbook's step 10 recovery (render-nginx.sh --no-401-page): skip
 #       the check of the sign-in page's text, which nginx's own 401 page does not carry.
@@ -167,8 +168,13 @@ if [ "$trails" = 1 ]; then
 			-X POST -H 'Content-Type: application/json' -H 'Accept: application/json' \
 			-d "{\"points\":[[-77.13100,39.15256],[-77.13587,39.16116]],\"preset\":\"${trail%%:*}\"}" "$base/api/route"
 	done
+	# Road Bike's weekend graph (the owner, 2026-11-08, "New weekend graph"): the weekend ride
+	# time; on the paved graph instead, valhalla-paved-weekend is down or its row is missing.
+	check_body "a weekend road-bike route is planned on the paved-weekend graph" '"variant": ?"paved-weekend"' \
+		-X POST -H 'Content-Type: application/json' -H 'Accept: application/json' \
+		-d '{"points":[[-77.13100,39.15256],[-77.13587,39.16116]],"preset":"road-bike","when":"weekend"}' "$base/api/route"
 else
-	printf 'SKIP  %s\n' "the Mountain Bike, Gravel and Road Bike graphs (give --trails where the trail routers run)"
+	printf 'SKIP  %s\n' "the Mountain Bike, Gravel, Road Bike and weekend Road Bike graphs (give --trails where the trail routers run)"
 fi
 check_body "place search finds Union Station" 'Union' "$base/api/geocode?q=union%20station&limit=5&lat=38.9&lon=-77.03"
 check_status "a place name for a point (reverse)" 200 "$base/api/reverse?lat=38.8895&lon=-77.0353"

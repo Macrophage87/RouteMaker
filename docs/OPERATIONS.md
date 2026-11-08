@@ -4804,7 +4804,7 @@ the first host to run it is the first test of it.
 
    ```sh
    docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend
-   docker compose --profile offroad restart valhalla-offroad valhalla-mtb valhalla-paved   # only where the off-road routers run
+   docker compose --profile offroad restart valhalla-offroad valhalla-mtb valhalla-paved valhalla-paved-weekend   # only where the off-road routers run
    ```
 
 After that the weekly schedule carries it: Tuesdays 08:00 UTC, with the alert
@@ -5038,7 +5038,8 @@ for a minute (`WEEKEND_FAILURE_TTL_S`), so between the deploy and
 cost 2.5 s - one weekend ride a minute pays for the failure and the others go
 straight to the standard graph, with one WARNING a minute in the api's log.
 `docker compose restart ... valhalla-weekend` exits 0 and does nothing for a
-service with no container yet: `up -d valhalla-weekend` is what starts it.
+service with no container yet: `up -d valhalla-weekend` is what starts it. Road Bike has a weekend twin of its own
+(`valhalla-paved-weekend`, "Road Bike's weekend graph" below), which falls back to the paved graph.
 
 The first rebuild that builds four graphs is the first that has a weekend
 build at all, so `rollback_rebuild` after it goes back on the other three and
@@ -5325,7 +5326,7 @@ are restarted:
 
 ```sh
 docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend
-docker compose --profile offroad restart valhalla-offroad valhalla-mtb valhalla-paved   # only where the off-road routers run
+docker compose --profile offroad restart valhalla-offroad valhalla-mtb valhalla-paved valhalla-paved-weekend   # only where the off-road routers run
 ```
 
 Nothing in the rebuild does this. On the beta a host-side hook does it
@@ -6658,7 +6659,7 @@ changes nothing — and `--confirm` is what performs it.
 docker compose exec -T rebuild ./manage.py rollback_rebuild            # what would happen
 docker compose exec -T rebuild ./manage.py rollback_rebuild --confirm  # do it
 docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend
-docker compose --profile offroad restart valhalla-offroad valhalla-mtb valhalla-paved   # only where the off-road routers run
+docker compose --profile offroad restart valhalla-offroad valhalla-mtb valhalla-paved valhalla-paved-weekend   # only where the off-road routers run
 docker compose up -d --no-deps --no-build --force-recreate api worker
 docker compose exec -T api python manage.py predraw_stress_tiles
 ```
@@ -6854,7 +6855,7 @@ tiles):
    disagree means that variant is not back yet.
 5. **Restart the routers** if any of them restarted while the links were
    wrong — it will have loaded the build that failed to swap:
-   `docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend`, and, where the off-road router runs, `docker compose --profile offroad restart valhalla-offroad valhalla-mtb valhalla-paved`
+   `docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend`, and, where the off-road router runs, `docker compose --profile offroad restart valhalla-offroad valhalla-mtb valhalla-paved valhalla-paved-weekend`
    (see "After a rebuild: restart the routers"). Harmless if none did.
 6. **Leave `staging` alone.** It is the failed build's output and the next
    rebuild's first stage drops it.
@@ -7672,6 +7673,67 @@ assistant still sending `?lat=&lon=` gets its photo kept with no spot (`located:
 - [ ] **Android.** The app's link list adds `/tandem`; it opens in the app only from the next
   Android build.
 
+### Road Bike's weekend graph (ships with the next map rebuild)
+
+The owner, 2026-11-08: "Road bikes absolutely use those parkways on the weekends. It's probably
+their most common destination."; "New weekend graph" (the graph and its costs: "Road Bike's
+weekend graph", in "Paths bicycles may not ride (NO-BIKE-PATHS)" below). An eighth graph and router, so it ships with
+the next map rebuild, built at a commit that has it: until then a weekend Road Bike ride plans on
+the paved graph as before. `src/pipeline/`, `valhalla/` and both compose files changed, so the
+beta agent stops on the tag and the beta deploy is by hand, with the data bundle. No migration,
+no new environment variable to set (`VALHALLA_PAVED_WEEKEND_URL` has its default), no new
+outbound host or scheduled job. With `</dev/null` on every docker command:
+
+- [ ] **The data directory**, at home and on the PC: `sudo sh scripts/prepare_data_root.sh
+  --env-file ./.env` (it adds `tiles/paved-weekend` and `tiles/paved-weekend/current`, owned
+  10001). Never name `valhalla-paved-weekend` in an `up` before its first build: Docker would make
+  the directory as root, which the rebuild cannot write.
+- [ ] **The default routers' new limit.** compose.yaml lowers `valhalla-standard`,
+  `valhalla-no-trail`, `valhalla-ebike` and `valhalla-weekend` from 2G to 1856M: after the
+  checkout moves, `python3 scripts/check_compose_limits.py compose.yaml` (swap-time peak 32.0G),
+  then `docker compose up -d --no-deps --no-build valhalla-standard valhalla-no-trail
+  valhalla-ebike valhalla-weekend` recreates them on the new limit.
+- [ ] **The map**, at the tagged commit: the cloud box (`--beta-bundle` for the beta) or
+  `run_rebuild_now`. Eight graphs: about 20-25 minutes longer than seven, one extract more, about
+  1.1 GB more per kept build; the cloud result's `tiles-paved-weekend.tar` (a result without it is
+  refused). Then swap.
+- [ ] **The routers**, at home and on the PC. Restart the four. Where the `offroad` profile runs,
+  start the new one once: `docker compose --profile offroad up -d --no-deps --no-build
+  valhalla-paved-weekend` (it needs about 0.75 GB spare: check memory inside WSL on the PC first);
+  until it has a container, a `restart` that names it restarts none of the others on the line.
+  Then `docker compose --profile offroad restart valhalla-offroad valhalla-mtb valhalla-paved
+  valhalla-paved-weekend` and `docker compose exec -T api ./manage.py sync_upstreams`. Where it is
+  not started, a weekend Road Bike ride plans on the paved graph and says the parkways were lost.
+- [ ] **The boot unit**, where it is installed: `scripts/boot/start-stack.sh` now starts a fourth
+  trail router, so its unit's `TimeoutStartSec` went from 6000 to 6300 s (the worst case is 6005 s):
+  `scripts/boot/install-boot-unit.sh install` again from the new checkout.
+- [ ] **Beta**, "A new release sha" with the data bundle (docs/BETA-RUNBOOK.md):
+  - The memory check first: `free -m` "available" plus the resident memory of this project's
+    running containers at least 8806 MiB (the 8406 MiB startup peak with both Road Bike routers
+    plus 0.39 GiB). Under it, ship as below but leave `valhalla-paved-weekend` stopped; the agent
+    does the same check and leaves it stopped with a warning.
+  - Check out the tag, set `TAG=`, `"${RM_PY:-python3}" scripts/check_beta_compose.py --env-file
+    .env` ("beta compose: ok", 7.96 GiB resident).
+  - Data: `receive-data.sh verify`, `db --update-data --stage-only`, `sudo ... files` (installs
+    `tiles/paved-weekend`), `sudo ... db --update-data` (not during the 07:00 UTC backup).
+  - Restart the four routers one at a time; then
+    `scripts/beta/beta-compose.sh up -d --force-recreate valhalla-offroad valhalla-mtb valhalla-paved valhalla-paved-weekend`
+    (leave out `valhalla-paved-weekend` if memory was short); `sync_upstreams`.
+  - `smoke-test.sh --local --trails` (now checks a weekend `road-bike` ride on the
+    `paved-weekend` graph), then `--public`.
+  - The agent and router hook changed: `scripts/beta/auto-release.sh install` and, where
+    installed, `scripts/beta/restart-routers.sh install`, from the new checkout, after
+    `mark-deployed`; then `resume`.
+- [ ] **Spot checks.** A Road Bike route at the weekend ride time answers `"variant":
+  "paved-weekend"` and rides Beach Drive or Sligo Creek Parkway where they are the calm way; the
+  same trip on a weekday answers `"paved"` and keeps off them where the traffic says so.
+- [ ] **Rollback.** After the first rebuild with it, `rollback_rebuild` withdraws `paved-weekend`
+  (its first build) and stops `valhalla-paved-weekend`; weekend Road Bike rides then plan on the
+  paved graph. Rolling the code back to a release without it: first
+  `docker compose --profile offroad stop valhalla-paved-weekend` (on the beta
+  `scripts/beta/beta-compose.sh stop valhalla-paved-weekend`): the older compose files have no
+  such service and their budgets do not count it.
+
 ## Deploying a planner and front-end release: rollback points and verification
 
 A release that changes the planner and the front end, with no migration and no graph, is deployed
@@ -7861,7 +7923,7 @@ command above after the swap, and `restart` it after later rebuilds as the other
 A `restart` that names `valhalla-offroad` where it has no container fails ("no such
 service", with or without `--profile offroad`) and restarts none of the other
 routers on the same line, so the four-router restart never names it. Restart it on
-its own line, `docker compose --profile offroad restart valhalla-offroad valhalla-mtb valhalla-paved`, and only
+its own line, `docker compose --profile offroad restart valhalla-offroad valhalla-mtb valhalla-paved valhalla-paved-weekend`, and only
 where it runs.
 
 **The Mountain Bike graph** (docs/MTB-TOPO-PLAN.md, slice 6). A sixth graph, `tiles/mtb`
@@ -7872,8 +7934,8 @@ the off-road graph with rated singletrack opened where nothing but its rating cl
 promotes it with the other five; nothing else is to run. Its router, `valhalla-mtb`, is behind
 the same compose profile as `valhalla-offroad` and is started and restarted with it:
 
-    docker compose --profile offroad up -d --no-deps --no-build valhalla-offroad valhalla-mtb valhalla-paved
-    docker compose --profile offroad restart valhalla-offroad valhalla-mtb valhalla-paved   # after a later swap
+    docker compose --profile offroad up -d --no-deps --no-build valhalla-offroad valhalla-mtb valhalla-paved valhalla-paved-weekend
+    docker compose --profile offroad restart valhalla-offroad valhalla-mtb valhalla-paved valhalla-paved-weekend   # after a later swap
 
 Start both or neither: the printed restart names both, and a `restart` naming a service with no
 container restarts none of the others on the line. One worker in 768M each (the 1536M
@@ -7923,6 +7985,36 @@ what the Mountain Bike graph added: one more tile build (about 20-25 minutes), o
 the size of the source, and about 1.1 GB per kept build directory. The cloud box's result
 carries `tiles-paved.tar`, and a result from before this graph is refused by `import-result.sh`
 (it asks for every graph's tar).
+
+**Road Bike's weekend graph** (the owner, 2026-11-08: "Road bikes absolutely use those parkways
+on the weekends. It's probably their most common destination."; on the card "How should Road
+Bike get the weekend parkways?", "New weekend graph"). An eighth graph, `tiles/paved-weekend`
+(`Variant.PAVED_WEEKEND`, `valhalla/valhalla-paved-weekend.json`): the paved graph with the
+weekend graph's car-free reading, so Beach Drive, Sligo Creek Parkway, Little Falls Parkway and
+the other roads closed to cars for the weekend are tier-1 paths for a weekend Road Bike ride.
+Every rebuild builds and promotes it with the other seven. Its router, `valhalla-paved-weekend`,
+is behind the `offroad` profile with the three above, started and restarted with them (the lines
+above name all four), one worker in 768M at home and 320M on the beta. While it is not running,
+or before the first rebuild that builds `tiles/paved-weekend`, a weekend Road Bike ride is
+planned on the paved graph (`variant` `paved`; `core.routing.twin_fallback`), and the page says
+the parkways count as roads with cars; with `valhalla-paved` down too, on the standard graph, with
+the usual Road Bike warning. What it costs, as the owner accepted it:
+
+- one more tile build, about 20-25 minutes longer per rebuild (the weekend graph's figure,
+  above), one more extract the size of the source, and about 1.1 GB per kept build directory
+  (2.2 GB with `previous`); the rebuild's memory peak is unchanged (one graph at a time);
+- on the 32 GB check (`scripts/check_compose_limits.py`) its 768M resident and 768M more at the
+  swap (1.5G at the swap-time peak), which fits only with `valhalla-standard`,
+  `valhalla-no-trail`, `valhalla-ebike` and `valhalla-weekend` lowered from 2G to 1856M each:
+  the peak stays at 32.0G and the resident total at 29.8G; two workers at the check's 700 MB
+  still fit in 1856M, and the beta runs the same routers at 640M;
+- on the beta (`scripts/check_beta_compose.py`) the resident ceiling from 7.66 to 7.96 GiB
+  (8150 MiB = 7.96 GiB) and the startup margin from 0.7 to 0.39 GiB (the 8406 MiB peak leaves
+  0.391 GiB of the 8.6), and the agent's memory threshold for starting Road Bike's routers,
+  `RM_CD_PAVED_MIN_MIB`, from 8803 to 8806 MiB (the 8406 MiB peak plus 0.39 GiB).
+
+The cloud box's result carries `tiles-paved-weekend.tar`, a result without it is refused by
+`import-result.sh`, and the box's beta bundle needs all eight graphs at one build.
 
 **The Zoo.** `fixtures/zoo/` holds the polygon and the spur: the Harvard Street
 NW entrance to the bike racks (OSM node 9827008403), seven whole ways, written

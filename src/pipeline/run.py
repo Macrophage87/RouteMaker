@@ -2038,15 +2038,16 @@ def facility_derived(
       facility makes a street cheaper for it (the owner, 2026-09-27: "Mass
       rides don't need to consider these. Even protected bike lanes aren't
       used.").
-    - Weekend: a road closed to motor traffic for the whole weekend
-      (`ridetime.closed_settings`) is on this graph what a road closed for good
-      is on every graph - an off-road path, at the lowest tier, so the stress
+    - Weekend, and Road Bike's weekend twin (`variants.WEEKEND_GRAPHS`; the owner,
+      2026-11-08, "New weekend graph"): a road closed to motor traffic for the whole
+      weekend (`ridetime.closed_settings`) is on these graphs what a road closed for
+      good is on every graph - an off-road path, at the lowest tier, so the stress
       penalty does not land on it either. Every other way as on the standard.
-    - Standard and e-bike: the way's class.
+    - Standard, e-bike, off-road, mountain-bike and paved: the way's class.
     """
     if variant is variants.Variant.NO_TRAIL:
         return {"facility_neutral": True}
-    if variant is variants.Variant.WEEKEND and ridetime.WEEKEND in car_free_by_way.get(way_id, ()):
+    if variant in variants.WEEKEND_GRAPHS and ridetime.WEEKEND in car_free_by_way.get(way_id, ()):
         return {"facility": facility.Facility.PATH.value, "stress_tier": 1}
     if way_id in facility_by_way:
         return {"facility": facility_by_way[way_id]}
@@ -3901,9 +3902,10 @@ def build_handlers(
                     derived["hazard"] = True
                     hazard_ways += 1
                 # The road-bike graph prices gravel, fine gravel and compacted as gravel
-                # (`variants.Variant.PAVED`, `routemaker_remap.ROUGH_UNPAVED`); every other
-                # graph prices gravel as packed gravel.
-                if variant is variants.Variant.PAVED and way.tags.get("surface") in (
+                # (`variants.PAVED_GRAPHS`, its weekend twin too;
+                # `routemaker_remap.ROUGH_UNPAVED`); every other graph prices gravel as
+                # packed gravel.
+                if variant in variants.PAVED_GRAPHS and way.tags.get("surface") in (
                     "gravel",
                     "fine_gravel",
                     "compacted",
@@ -3913,7 +3915,7 @@ def build_handlers(
                 # 2026-11-02: road bikes "stay away from trails with lots of direction
                 # changes ... For instance Sligo Creek Trail").
                 if (
-                    variant is variants.Variant.PAVED
+                    variant in variants.PAVED_GRAPHS
                     and variants.is_trail_class(way.tags)
                     and winding.is_winding(way.coordinates)
                 ):

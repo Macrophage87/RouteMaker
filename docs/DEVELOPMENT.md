@@ -1687,7 +1687,9 @@ curl -s -X POST http://localhost:8000/api/route -H 'Content-Type: application/js
   preset whose graph is the standard one routes on the weekend graph
   (`Variant.WEEKEND`), where roads closed to cars at the weekend are off-road
   paths; if that router does not answer, the standard graph answers instead
-  and `variant` says so. E-bike, Cargo with assist and Mass Ride keep their own
+  and `variant` says so. A weekend Road Bike ride routes on Road Bike's own
+  weekend graph (`Variant.PAVED_WEEKEND`, below), and falls back to the paved
+  graph, not the standard one. E-bike, Cargo with assist and Mass Ride keep their own
   graphs at the weekend.
 - Dirt trails on a ride type that skips them (`core.trail_touch`, v0.11.0; the
   owner, 2026-10-21). A stop, via or end within 15 m (50 ft) of a dirt trail
@@ -2194,6 +2196,28 @@ unless named; PLAN.md quotes the owner's words):
   stop signs, gaps in traffic: `routemaker.junction_delay`) weigh three times their seconds (the
   owner, 2026-11-02: "make non-cycling time, such as waiting at lights carry an additional
   penalty (3x)"; `presets.WAIT_WEIGHTS`); the time shown is still the real wait.
+- *Road Bike at the weekend* (the owner, 2026-11-08: "Road bikes absolutely use those parkways
+  on the weekends. It's probably their most common destination."; on the card "How should Road
+  Bike get the weekend parkways?", "New weekend graph"): an eighth graph, `Variant.PAVED_WEEKEND`
+  (`valhalla/valhalla-paved-weekend.json`, router `valhalla-paved-weekend`), the paved graph
+  (`variants.PAVED_GRAPHS`: `rm:rough_unpaved`, `rm:winding`) with the weekend graph's car-free
+  reading (`variants.WEEKEND_GRAPHS`, `run.facility_derived`): Beach Drive, Sligo Creek Parkway,
+  Little Falls Parkway and the other roads closed to cars for the weekend are tier-1 paths on it.
+  `presets.variant_for_ride` sends Road Bike there at the `weekend` ride time only ("Keep to
+  roads" still takes the no-trail graph); `routing.car_free_reading` reads the closures as paths
+  on it as on the weekend graph. It is a twin (`routing.TWIN_VARIANTS`) whose fallback is the paved
+  graph (`routing.twin_fallback`): while its router is down, or before a build of it is promoted,
+  a weekend Road Bike ride is planned on `paved` (and on `standard` if that is not served either),
+  and the page says the parkways count as roads with cars (`frontend/src/lib/roadBike.ts`,
+  `roadBikeNotice`, from the answer's `variant` and `dials.when`). Its router is behind the
+  `offroad` profile with the other trail routers, at 768M (320M on the beta). The cost the owner
+  accepted: the beta's resident ceiling 7.66 to 7.96 GiB and its startup margin 0.7 to 0.39 GiB
+  (`scripts/check_beta_compose.py`), and on the 32 GB check (`scripts/check_compose_limits.py`)
+  768M more resident and 1.5G more at the swap, which fits only with the four default routers
+  lowered from 2G to 1856M each (two workers at the check's 700 MB still fit; the beta runs them
+  at 640M); a rebuild about 20-25 minutes longer, one more extract and about 1.1 GB more per kept
+  build. Tests: `tests/test_weekend_variant.py`, `tests/test_route_dials.py` (`TestRoadBike`),
+  `tests/test_presets.py`.
 
 Measured over the region's source extract (2026-09-30, the current head's
 rules; 98,411 road miles, proposed, construction, platform and corridor ways
@@ -4821,7 +4845,7 @@ replacing the symlink, keeps `previous` for rollback, and repoints the
 `valhalla_service` does not reload tiles, so after a promotion the serving
 containers are restarted to load the new extract (`docker compose restart
 valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend`, and, where the
-off-road router runs, `docker compose --profile offroad restart valhalla-offroad valhalla-mtb valhalla-paved`:
+off-road router runs, `docker compose --profile offroad restart valhalla-offroad valhalla-mtb valhalla-paved valhalla-paved-weekend`:
 a `restart` naming a service with no container fails and restarts none of the rest); starting them against the
 new build before stopping the old ones is the blue/green arrangement the plan
 describes and phase 1 does not implement. `pipeline.promotion.rollback` undoes

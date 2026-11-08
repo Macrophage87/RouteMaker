@@ -2629,7 +2629,9 @@ class LightButtonOut(Schema):
 
 class RouteBody(Schema):
     preset: PresetName
-    variant: Literal["standard", "no-trail", "ebike", "weekend", "offroad", "mtb", "paved"]
+    variant: Literal[
+        "standard", "no-trail", "ebike", "weekend", "offroad", "mtb", "paved", "paved-weekend"
+    ]
     # A ride type that does not plan on dirt trails rides one here, as a point on one, or a
     # ride's re-plan, opened it (`core.trail_touch`). A ride sends `dirt_ridden` after one.
     dirt_trails: bool = False

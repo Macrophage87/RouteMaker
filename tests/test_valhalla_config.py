@@ -34,6 +34,7 @@ def test_there_is_a_config_per_tile_variant() -> None:
         "valhalla-offroad",
         "valhalla-mtb",
         "valhalla-paved",
+        "valhalla-paved-weekend",
     }
 
 
@@ -79,7 +80,7 @@ def test_each_variant_names_its_own_tile_directory() -> None:
 
     for key in ("tile_dir", "tile_extract", "admin", "timezone"):
         values = {variant: c["mjolnir"][key] for variant, c in configs.items()}
-        assert len(set(values.values())) == len(values) == 7, f"{key} is shared: {values}"
+        assert len(set(values.values())) == len(values) == 8, f"{key} is shared: {values}"
         for variant, value in values.items():
             assert value.startswith(f"/data/tiles/{variant}/current/"), (
                 f"{variant}: {key} = {value} is not under its own variant's directory"
@@ -172,7 +173,7 @@ def test_worker_counts_come_from_the_command_line_not_the_config(config: dict) -
     repo = Path(__file__).resolve().parents[1]
     compose_text = (repo / "compose.yaml").read_text()
     commands = re.findall(r'command: \["valhalla_service", "([^"]+)", "(\d+)"\]', compose_text)
-    assert len(commands) == 7, "each variant needs a command; the image has no CMD of its own"
+    assert len(commands) == 8, "each variant needs a command; the image has no CMD of its own"
     # The two routers behind the compose profile `offroad` (off-road and Mountain Bike) share
     # the 1536M the off-road router had alone, one worker each, to keep the swap-time peak at
     # the 32G check (docs/MTB-TOPO-PLAN.md, slice 6); every router a plain `up -d` runs keeps two.
@@ -180,6 +181,7 @@ def test_worker_counts_come_from_the_command_line_not_the_config(config: dict) -
         "/conf/valhalla-offroad.json",
         "/conf/valhalla-mtb.json",
         "/conf/valhalla-paved.json",
+        "/conf/valhalla-paved-weekend.json",
     }
     for config_path, workers in commands:
         assert config_path.startswith("/conf/valhalla-")
@@ -206,7 +208,7 @@ def test_every_variant_service_is_given_a_command() -> None:
     # Comments are dropped first: the file explains this by naming the variable.
     settings = "\n".join(line for line in compose.splitlines() if not line.lstrip().startswith("#"))
     assert "VALHALLA_CONFIG" not in settings, "the image reads no such variable"
-    assert settings.count('"valhalla_service"') == 7
+    assert settings.count('"valhalla_service"') == 8
 
 
 def test_graph_lua_name_points_at_a_file_this_repository_ships(config: dict) -> None:

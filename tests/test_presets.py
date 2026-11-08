@@ -445,7 +445,10 @@ def test_default_starts_at_the_owners_ninety() -> None:
     assert presets.PRESETS["default"].costing_options["use_roads"] == 0.1
 
 
-def test_the_weekend_graph_only_twins_the_standard_graph() -> None:
+def test_the_weekend_graphs_twin_only_the_standard_and_paved_graphs() -> None:
+    """The standard graph's weekend twin, and Road Bike's (the owner, 2026-11-08, "New weekend
+    graph"); every other graph keeps its weekend rides."""
+    twins = {"standard": "weekend", "paved": "paved-weekend"}
     for name, preset in presets.PRESETS.items():
         weekend = presets.variant_for_ride(name, "weekend")
         weekday = presets.variant_for_ride(name, "weekday_rush")
@@ -456,7 +459,7 @@ def test_the_weekend_graph_only_twins_the_standard_graph() -> None:
             assert weekend in settings.VALHALLA_UPSTREAMS
             continue
         assert weekday == preset.variant
-        assert weekend == ("weekend" if preset.variant == "standard" else preset.variant)
+        assert weekend == twins.get(preset.variant, preset.variant)
         assert weekend in settings.VALHALLA_UPSTREAMS
 
 
@@ -584,9 +587,16 @@ def test_road_bike_rides_a_road_bicycle_on_its_own_graph_with_fewer_turns() -> N
     assert bicycle["maneuver_penalty"] == presets.HIGH_MANEUVER_PENALTY_S
     assert bicycle["maneuver_penalty"] > options("default")["maneuver_penalty"]
     assert road.stress == presets.ROAD_BIKE_STRESS == 40
-    # No weekend twin: the weekend keeps it on its own graph; trails off is the no-trail graph.
-    assert presets.variant_for_ride(presets.ROAD_BIKE, "weekend") == Variant.PAVED.value
+    # Its weekend twin at the weekend (the owner, 2026-11-08: "Road bikes absolutely use those
+    # parkways on the weekends."; "New weekend graph"), its own graph at every other ride time;
+    # trails off is the no-trail graph, at the weekend too.
+    assert presets.variant_for_ride(presets.ROAD_BIKE, "weekend") == Variant.PAVED_WEEKEND.value
+    for when in ("weekday_rush", "weekday_offpeak", "night"):
+        assert presets.variant_for_ride(presets.ROAD_BIKE, when) == Variant.PAVED.value
     assert presets.variant_for_ride(presets.ROAD_BIKE, "weekday_offpeak", trails_off=True) == (
+        Variant.NO_TRAIL.value
+    )
+    assert presets.variant_for_ride(presets.ROAD_BIKE, "weekend", trails_off=True) == (
         Variant.NO_TRAIL.value
     )
 

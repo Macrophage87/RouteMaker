@@ -199,7 +199,7 @@ if [ "$beta" = 1 ]; then
 	# new build, whenever their tiles are here. A restart alone never starts one that is not running,
 	# and without them the api plans those rides on the standard graph (`mtb.limited` no_mtb_graph).
 	trail=()
-	for variant in offroad mtb paved; do
+	for variant in offroad mtb paved paved-weekend; do
 		[ -L "$data_root/tiles/$variant/current" ] && trail+=("valhalla-$variant")
 	done
 	if [ "${#trail[@]}" -gt 0 ]; then
@@ -262,7 +262,7 @@ if [ "$swap" = 1 ]; then
 	import_cmd --confirm ${extra[@]+"${extra[@]}"}
 	note "restarting the routers so they serve the new graphs"
 	compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend
-	for router in valhalla-offroad valhalla-mtb valhalla-paved; do
+	for router in valhalla-offroad valhalla-mtb valhalla-paved valhalla-paved-weekend; do
 		if [ -n "$(compose --profile offroad ps -q "$router" 2>/dev/null)" ]; then
 			compose --profile offroad restart "$router"
 		else
@@ -316,7 +316,7 @@ if [ "$installed" = 0 ]; then
 	[ "$(psql_ "SELECT to_regnamespace('staging') IS NULL")" = t ] ||
 		die "a staging schema already exists here (left by a rebuild that did not swap, or an install that stopped). If you are sure nothing needs it: docker compose exec -T postgis psql -U $pguser -d $pgdb -c 'DROP SCHEMA staging CASCADE', then run this again"
 	need=0
-	for variant in standard no-trail ebike weekend offroad mtb paved; do
+	for variant in standard no-trail ebike weekend offroad mtb paved paved-weekend; do
 		[ -f "$stage/tiles-$variant.tar" ] || die "the result has no tiles-$variant.tar"
 		for link in current previous; do
 			[ "$($SUDO readlink "$data_root/tiles/$variant/$link" 2>/dev/null)" != "$build" ] ||
@@ -352,7 +352,7 @@ fi
 # --- 4. install --------------------------------------------------------------------------
 if [ "$installed" = 0 ]; then
 	note "unpacking the graphs under $data_root/tiles"
-	for variant in standard no-trail ebike weekend offroad mtb paved; do
+	for variant in standard no-trail ebike weekend offroad mtb paved paved-weekend; do
 		# Neither link names it (checked above), so a directory here is an unpack that stopped.
 		$SUDO rm -rf "${data_root:?}/tiles/$variant/$build"
 		$SUDO tar -C "$data_root/tiles" --numeric-owner -xf "$stage/tiles-$variant.tar"

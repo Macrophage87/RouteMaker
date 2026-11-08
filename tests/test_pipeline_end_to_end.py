@@ -597,13 +597,14 @@ def stored_map_class(context) -> dict[int, str]:
         return dict(cursor.fetchall())
 
 
-def test_a_road_closed_every_weekend_is_a_path_on_the_weekend_graph_only(
+def test_a_road_closed_every_weekend_is_a_path_on_the_weekend_graphs_only(
     tmp_path, segment_schemas, states
 ) -> None:
     """Through the rebuild, from the map's own conditional tag: the segment
-    table records the closure, and the weekend extract - only it - carries
-    the road as a tier-1 path (mutation review r1, P1, P4 and W4: each cut the
-    closure off with the suite green)."""
+    table records the closure, and the weekend extracts - the standard graph's
+    weekend twin and Road Bike's (the owner, 2026-11-08, "New weekend graph") -
+    alone carry the road as a tier-1 path (mutation review r1, P1, P4 and W4:
+    each cut the closure off with the suite green)."""
     from pipeline.extract import read_ways
 
     context, stored = run_dials_extract(tmp_path)
@@ -615,7 +616,7 @@ def test_a_road_closed_every_weekend_is_a_path_on_the_weekend_graph_only(
         tags = {w.osm_id: w.tags for w in read_ways(context.variant_pbf(variant))}[
             WEEKEND_CLOSED_ID
         ]
-        if variant is Variant.WEEKEND:
+        if variant in (Variant.WEEKEND, Variant.PAVED_WEEKEND):
             assert (tags.get("rm:facility"), tags.get("rm:stress_tier")) == ("path", "1")
         else:
             assert tags.get("rm:stress_tier") == str(tier), variant.value
@@ -5299,14 +5300,15 @@ def test_only_the_road_bike_graph_prices_gravel_as_gravel_and_marks_winding_trai
     """The owner, 2026-11-02 (Road Bike): its graph alone carries `rm:rough_unpaved` on a
     gravel, fine gravel or compacted way (the owner: road bikes "can't handle gravel or
     dirt") and `rm:winding` on a trail that bends like Sligo Creek Trail; a paved trail
-    that runs straight carries neither, and no other graph carries either tag."""
+    that runs straight carries neither, and no other graph carries either tag. Its weekend
+    twin carries both (the owner, 2026-11-08, "New weekend graph")."""
     from pipeline.extract import read_ways
 
     clipped = install_source_extract(_scratch_dir(), build=build_road_bike_extract)
     context, _ = run_pipeline(clipped, clipped.parent, skip=NOT_SWAPPED)
     for variant in Variant:
         tags = {w.osm_id: w.tags for w in read_ways(context.variant_pbf(variant))}
-        road_bike = variant is Variant.PAVED
+        road_bike = variant in (Variant.PAVED, Variant.PAVED_WEEKEND)
         for gravel in (300, 700, 800):
             way = tags.get(gravel, {})
             assert (way.get("rm:rough_unpaved") == "yes") is road_bike, (variant, gravel)
