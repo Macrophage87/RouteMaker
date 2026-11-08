@@ -4863,7 +4863,14 @@ export function App() {
     // A trip's riding leg worked out again from the whole trip; past its line, the walk or train followed carries on.
     const leg = left.wholeTrip ? rideLegOf(left.route, left.points, left.loop) : null;
     const whole = { points: left.points, loop: left.loop, preset: left.preset, wholeTrip: true };
-    const resumed = leg ? { points: leg.points, loop: leg.loop, preset: leg.preset, trip: leg.trip, past: left.past ?? null, whole } : { trip: null, past: null, whole: null };
+    // A Rebalance Ride's drop-off chosen before the reload: on to it, as Keep riding does (endRide), not the walk again.
+    const docked = leg && left.docked ? left.docked : null;
+    const resumed =
+      leg && docked
+        ? { route: docked.route, points: docked.points, loop: false, preset: leg.preset, trip: leg.trip ? { ...leg.trip, approach: null, docked: docked.name } : null, planned: left.route, past: null, whole }
+        : leg
+          ? { points: leg.points, loop: leg.loop, preset: leg.preset, trip: leg.trip, past: left.past ?? null, whole }
+          : { trip: null, past: null, whole: null };
     // The trip's check (till its first boarding) and its stops left, as Start had them.
     tripStopsLeft.current = left.stopsLeft ?? null;
     tripCheck.current = checkTripOf(left.route, left.points);
@@ -4924,7 +4931,11 @@ export function App() {
       if (ended.linkSent.id && ended.linkSent.lead) leads.current.set(ended.linkSent.id, ended.linkSent.lead);
     }
     // A trip is kept whole again, as at its start (End ride forgot it), so switching apps after Undo still resumes.
-    if (ended.start.kept) keepLeftRide({ ...(ended.start.whole ? { ...ended.start, ...ended.start.whole } : ended.start), past: ended.past, stopsLeft: ended.stopsLeft }, VIA_MARKS, Date.now());
+    // Kept riding to a Rebalance Ride's chosen dock: the plan kept whole as at Start, with the dock and its ride.
+    const start = ended.start;
+    const docked = start.planned && start.trip?.docked ? { name: start.trip.docked, route: start.route, points: start.points } : null;
+    const whole = start.whole ? { ...start, ...start.whole, ...(docked ? { route: start.planned!, docked } : {}) } : start;
+    if (start.kept) keepLeftRide({ ...whole, past: ended.past, stopsLeft: ended.stopsLeft }, VIA_MARKS, Date.now());
     setFollow(true);
     setRideView(null);
     setRiding(true);

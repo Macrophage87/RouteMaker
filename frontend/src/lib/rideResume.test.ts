@@ -81,7 +81,7 @@ test("each new route of the ride is kept in its place, and the question holds th
   assert.match(app, /keepLeft=\{rideStart\.kept === true\}/);
   // Undo keeps it whole again with what End ride read of it (the walk or train followed, the stops left), never the
   // progress an earlier Resume started from.
-  assert.match(app, /if \(ended\.start\.kept\) keepLeftRide\(\{ \.\.\.\(ended\.start\.whole \? \{ \.\.\.ended\.start, \.\.\.ended\.start\.whole \} : ended\.start\), past: ended\.past, stopsLeft: ended\.stopsLeft \}, VIA_MARKS, Date\.now\(\)\);/);
+  assert.match(app, /const whole = start\.whole \? \{ \.\.\.start, \.\.\.start\.whole, \.\.\.\(docked \? \{ route: start\.planned!, docked \} : \{\}\) \} : start;\s*if \(start\.kept\) keepLeftRide\(\{ \.\.\.whole, past: ended\.past, stopsLeft: ended\.stopsLeft \}, VIA_MARKS, Date\.now\(\)\);/);
 });
 
 test("the ride's destination is kept with it, through its re-routes, to name it in the question (the UI review, 2026-10-28)", () => {
@@ -310,4 +310,41 @@ test("back on the page, the note of it put away is dropped, so a later reload do
   unseeLeftRide(store);
   assert.deepEqual(JSON.parse(kept.get(RIDE_RESUME_KEY)!), { v: 1, at: 0 });
   assert.match(src("../RideMode.tsx"), /else if \(document\.visibilityState === "visible"\) unseeLeftRide\(\);/);
+});
+
+test("a Rebalance Ride's chosen drop-off is kept with the trip, so Resume rides on to it rather than walking back (v0.22.0 review)", async () => {
+  const { keepLeftRideDocked } = await import("./rideResume.ts");
+  const store = memory();
+  const marks = new ViaMarks();
+  const points: LonLat[] = [[-77, 38.9], [-77.01, 38.9]];
+  const toDock = { geometry: { type: "LineString", coordinates: [[-77.01, 38.9], [-77.02, 38.91]] }, distance_m: 1400 } as unknown as RouteResponse;
+  const docked = { name: "14th & V St NW", route: toDock, points: [[-77.01, 38.9], [-77.02, 38.91]] as LonLat[] };
+  // Nothing kept, or a plain ride: nothing to add it to.
+  keepLeftRideDocked(docked, store);
+  assert.equal(store.getItem(RIDE_RESUME_KEY), null);
+  keepLeftRide({ route, points, loop: false, preset: "standard", dials, fixed: false }, marks, 0, store);
+  keepLeftRideDocked(docked, store);
+  assert.equal(leftRide(marks, 0, store)?.docked, undefined);
+  // A trip: kept, and kept again at Resume.
+  keepLeftRide({ route, points, loop: false, preset: "rebalance", dials, fixed: false, wholeTrip: true }, marks, 0, store);
+  assert.equal(leftRide(marks, 0, store)?.docked, undefined);
+  keepLeftRideDocked(docked, store);
+  assert.deepEqual(leftRide(marks, 0, store)?.docked, docked);
+  keepLeftRide(leftRide(marks, 0, store)!, marks, 0, store);
+  assert.deepEqual(leftRide(marks, 0, store)?.docked, docked);
+  // A new ride kept at Start has none; an unreadable one is dropped, the trip still offered.
+  keepLeftRide({ route, points, loop: false, preset: "rebalance", dials, fixed: false, wholeTrip: true }, marks, 0, store);
+  assert.equal(leftRide(marks, 0, store)?.docked, undefined);
+  const raw = JSON.parse(store.getItem(RIDE_RESUME_KEY)!);
+  store.setItem(RIDE_RESUME_KEY, JSON.stringify({ ...raw, docked: { name: "x", points: [[1, 2]] } }));
+  assert.equal(leftRide(marks, 0, store)?.docked, undefined);
+  assert.equal(leftRide(marks, 0, store)?.wholeTrip, true);
+  // The page: kept as the dock is chosen; Resume and Undo ride on to it, as Keep riding does.
+  const ride = src("../RideMode.tsx");
+  assert.match(ride, /if \(keepLeft\) keepLeftRideDocked\(\{ name: choice\.name, route: found \?\? routeRef\.current, points \}\);/);
+  const app = src("../App.tsx");
+  const resume = app.slice(app.indexOf("const resumeLeft = () => {"), app.indexOf("const dropLeft = () => {"));
+  assert.match(resume, /trip: leg\.trip \? \{ \.\.\.leg\.trip, approach: null, docked: docked\.name \} : null, planned: left\.route/);
+  const undo = app.slice(app.indexOf("const undoEndRide = () => {"), app.indexOf("const finishRide = () => {"));
+  assert.match(undo, /route: start\.planned!, docked/);
 });

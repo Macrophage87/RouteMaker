@@ -76,7 +76,7 @@ import {
 } from "./lib/rideStops.ts";
 import { RestartStopsDialog } from "./RestartStopsDialog.tsx";
 import { StartFirstDialog } from "./StartFirstDialog.tsx";
-import { keepLeftRide, keepLeftRidePast, seeLeftRide, unseeLeftRide } from "./lib/rideResume.ts";
+import { keepLeftRide, keepLeftRideDocked, keepLeftRidePast, seeLeftRide, unseeLeftRide } from "./lib/rideResume.ts";
 import type { Dials } from "./lib/dials.ts";
 import { haversineM, type LonLat } from "./lib/geo.ts";
 import { placeLetter, type LetteredPlace } from "./lib/letteredPlaces.ts";
@@ -2467,6 +2467,8 @@ export function RideMode({
       const dock = t("Dock at {place}.", { place: choice.name });
       setTrip((was) => (was ? { ...was, finish: { shown: dock, spoken: dock }, docked: choice.name } : was));
       dockChosen.current = choice.name;
+      // Kept with the trip left going, so a reload rides on to this dock (lib/rideResume.ts).
+      if (keepLeft) keepLeftRideDocked({ name: choice.name, route: found ?? routeRef.current, points });
       const fresh = { ...startState(), fix: rideRef.current.fix, goodFix: rideRef.current.goodFix };
       rideRef.current = fresh;
       setRide(fresh);
