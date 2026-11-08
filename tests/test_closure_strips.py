@@ -76,6 +76,15 @@ class TestNearAPointPlaced:
         assert max(lat for _, lat in south) < start[1] - 45 * M_LAT
         assert min(lat for _, lat in north) > start[1] + 45 * M_LAT
 
+    def test_a_closure_by_a_destination_or_via_is_warned_of_whole(self) -> None:
+        """Review of K3: at a stop the rest of the strip would still meet the stop's edge, so
+        only the start leaves the part by it in."""
+        line = ((-77.03, 38.9500), (-77.03, 38.9530))
+        zone = closed("z", line)
+        dest = (-77.03, 38.9500 + 150 * M_LAT)
+        plan = wz.for_plan([zone], AT, [(-77.05, 38.95), dest], {"md": "current"})
+        assert plan.exclude == [] and [z.zone_id for z in plan.unexcluded] == ["z"]
+
 
 def road_lon(metres: float, lon0: float = -77.03, lat: float = 38.90) -> float:
     return lon0 + metres / (111_195 * math.cos(math.radians(lat)))
@@ -155,7 +164,9 @@ def two_closures():
     from core import workzones as core_zones
 
     dest = (-77.00, 38.95)
-    by_dest = closed("by-dest", ((-77.00, 38.9502), (-77.00, 38.9530)))
+    # About 220 ft (67 m) up the destination's own edge: past `NEAR_POINT_M`, so it is left
+    # out, and its strip still meets that edge (hunt K2's case).
+    by_dest = closed("by-dest", ((-77.00, 38.9506), (-77.00, 38.9530)))
     far = closed("far", ((-77.05, 38.9300), (-77.05, 38.9330)))
     points = [(-77.05, 38.95), dest]
     plan = wz.for_plan([by_dest, far], AT, points, {"md": "current"})
@@ -313,6 +324,30 @@ class TestGoRound:
         answer = routing.plan_onward([list(self.START), [-77.02, 38.91]], "standard", dials=dials)
         (said,) = [e for e in answer["description"] if e["kind"] == "workzone"]
         assert said["severity"] == "red" and "marked closed" in said["text"]
+
+    def test_a_sidepath_beside_the_marked_road_is_not_through_it(self, monkeypatch) -> None:
+        """Review of K1: a route 10 m (33 ft) off a marked road is not riding it."""
+        from core import routing
+
+        lon = -77.03 + 10 / (111_195 * math.cos(math.radians(38.90)))
+        beside = self.body([(lon, 38.90), (lon, 38.90 + 400 * M_LAT)])
+        monkeypatch.setattr(routing, "_plan_onward", lambda *a, **k: beside)
+        monkeypatch.setattr(routing, "plan", lambda *a, **k: pytest.fail("planned again"))
+        dials = routing.Dials(blocked=(self.MARKED,), ride_replan=True)
+        answer = routing.plan_onward([list(self.START), [-77.02, 38.91]], "standard", dials=dials)
+        assert answer is beside and answer["description"] == []
+
+    def test_a_far_longer_way_the_other_way_is_not_kept(self, monkeypatch) -> None:
+        from core import routing
+
+        ahead = self.body([self.START, (-77.03, 38.90 + 400 * M_LAT)])
+        back = {**self.body([self.START, (-77.03, 38.90 - 400 * M_LAT)]), "distance_m": 9_000.0}
+        monkeypatch.setattr(routing, "_plan_onward", lambda *a, **k: ahead)
+        monkeypatch.setattr(routing, "plan", lambda *a, **k: back)
+        dials = routing.Dials(blocked=(self.MARKED,), ride_replan=True)
+        answer = routing.plan_onward([list(self.START), [-77.02, 38.91]], "standard", dials=dials)
+        assert answer is ahead
+        assert any(e["kind"] == "workzone" for e in answer["description"])
 
     def test_a_route_clear_of_the_marked_road_is_left_alone(self, monkeypatch) -> None:
         from core import routing

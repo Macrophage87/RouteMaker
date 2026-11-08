@@ -142,10 +142,10 @@ PERIMETER_BUDGET_M = MAX_PERIMETER_M * 0.99
 # widened by as much, so it still covers the whole road.
 MAX_LINE_POINTS = 12
 THIN_M = HALF_WIDTH_M / 2
-# The part of a closure within this distance of a point the rider placed is not excluded (the
-# router could not start or stop there); the rest of it is (hunt K3, 2026-11-08: a 1 mi trail
-# closure whose end was 130 ft from the start was ridden whole). A closure wholly that near is
-# warned of instead.
+# The part of a closure within this distance of the start is not excluded (the router could
+# not start there); the rest of it is (hunt K3, 2026-11-08: a 1 mi trail
+# closure whose end was 130 ft from the start was ridden whole). A closure wholly that near, or
+# that near a destination or via (whose edge the router can never arrive on), is warned of.
 NEAR_POINT_M = 50.0
 # Where a way crosses a closure's strip mid-zone (a cross street, a trail on a bridge over the
 # closed road or in a tunnel under it), the strip is cut for this far either side of the
@@ -564,7 +564,8 @@ def polygon(zone: Zone) -> list[list[float]] | None:
 def line_ring(line: Sequence[Sequence[float]], trim_m: float = 0.0) -> list[list[float]] | None:
     """`polygon`'s strip round any line of [lon, lat] pairs, `trim_m` cut from each end:
     a closed ring, or None for a line under 1 m. A road a rider marked closed (v0.8.2,
-    `blocked_lines`) is left out whole, untrimmed. The strip is `HALF_WIDTH_M` either side,
+    `blocked_lines`) is trimmed as a closure is and cut where a way crosses it (`line_rings`,
+    `core.workzones.blocked_rings`; hunt K4/Q2). The strip is `HALF_WIDTH_M` either side,
     wider where the line had to be thinned more than `THIN_M` to fit (`_thin`), and mitred
     at each bend so a turn does not narrow it."""
     lat0 = line[0][1]
@@ -891,9 +892,11 @@ class Passage:
     to_m: float
 
 
-def along(coordinates: Sequence[Sequence[float]], zones: Iterable[Zone]) -> list[Passage]:
+def along(
+    coordinates: Sequence[Sequence[float]], zones: Iterable[Zone], near_m: float = ALONG_M
+) -> list[Passage]:
     """The zones the route's line (lon, lat pairs, in order) runs along, in route
-    order: at least `ALONG_SHARE` of the zone's trimmed line within `ALONG_M` of it.
+    order: at least `ALONG_SHARE` of the zone's trimmed line within `near_m` (`ALONG_M`) of it.
     A street the route only crosses is not along it."""
     if len(coordinates) < 2:
         return []
@@ -923,7 +926,7 @@ def along(coordinates: Sequence[Sequence[float]], zones: Iterable[Zone]) -> list
         # Only the route's segments near the zone are measured against.
         zx = [x for x, _ in points]
         zy = [y for _, y in points]
-        near_box = (min(zx) - ALONG_M, min(zy) - ALONG_M, max(zx) + ALONG_M, max(zy) + ALONG_M)
+        near_box = (min(zx) - near_m, min(zy) - near_m, max(zx) + near_m, max(zy) + near_m)
         if grid is None:
             grid = RouteGrid(coordinates)
         west, south = _lonlat(near_box[0], near_box[1], lat0)
@@ -959,7 +962,7 @@ def along(coordinates: Sequence[Sequence[float]], zones: Iterable[Zone]) -> list
                         )
                     )
                     best, at = d, cumulative[i] + t * seg
-            if best <= ALONG_M:
+            if best <= near_m:
                 near.append(at)
         if near and len(near) >= ALONG_SHARE * len(samples):
             found.append(Passage(zone, min(near), max(near)))
@@ -1298,6 +1301,12 @@ def fit_polygons(
     return rings, fitted, left
 
 
+def _zone_xy(zone: Zone) -> list[tuple[float, float]]:
+    """The zone's line on the plane at its first point's latitude."""
+    lat0 = zone.line[0][1]
+    return [_xy(lon, lat, lat0) for lon, lat in zone.line]
+
+
 def _stops_distance(zone: Zone, stops: Sequence[Sequence[float]]) -> float:
     """Metres from the zone's nearest point to the line through `stops` (one point or more)."""
     lat0 = stops[0][1]
@@ -1354,10 +1363,11 @@ def for_plan(
     """What a plan through `points` (lon, lat) at ride time `at` does with the zones.
 
     A closure is left out as its strips (`zone_rings`): the part within `NEAR_POINT_M` of
-    one of `points` stays in, so the router can start or stop there, and the rest is left out
-    (hunt K3, 2026-11-08); one wholly that near is warned of instead. `crossings(closures)`
-    gives, by zone id, the metres along each closure's line where a way crosses it
-    (`crossing_cuts`), where the strip is cut (`core.workzones.crossings`; none without it).
+    the start stays in, so the router can start there, and the rest is left out (hunt K3,
+    2026-11-08); one wholly that near, or near a destination or via, is warned of instead.
+    `crossings(closures)` gives, by zone id, the metres along each closure's line where a way
+    crosses it (`crossing_cuts`), where the strip is cut (`core.workzones.crossings`; none
+    without it).
 
     The zones looked at lie within `BOX_MARGIN_M` of the box round `points`, or within
     `reach_m` where the plan can go further from them than that (a loop sized to a target,
@@ -1411,8 +1421,19 @@ def for_plan(
     cuts = crossings(closures) if crossings is not None and closures else {}
     pieces: dict[str, list[list[list[float]]]] = {}
     fitting = []
+    stops = [list(p) for p in points[1:]]
     for zone in closures:
-        rings = zone_rings(zone, points, cuts.get(zone.zone_id, ()))
+        # Only the start leaves the part by it in (the router may start on a left-out edge).
+        # At a destination or via the rest of the strip would still meet the stop's edge, which
+        # the router can never arrive on (Valhalla 3.9.1 `AvoidAsDestinationEdge`), so a closure
+        # by one is warned of whole, as before (review of hunt K3, 2026-11-08).
+        if stops and any(
+            _distance_to_line(_xy(p[0], p[1], zone.line[0][1]), _zone_xy(zone)) <= NEAR_POINT_M
+            for p in stops
+        ):
+            plan.unexcluded.append(zone)
+            continue
+        rings = zone_rings(zone, points[:1], cuts.get(zone.zone_id, ()))
         if rings:
             pieces[zone.zone_id] = rings
             fitting.append(zone)

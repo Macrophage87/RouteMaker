@@ -8850,9 +8850,10 @@ that table. The planner reads it at most once a minute a process. Nothing needs 
   whole and both ways, with no bridge or layer test, so the strip is cut 12 m [40 ft] either side
   of each way of the live map that crosses it mid-zone (a cross street, a road or trail on a
   bridge over it or in a tunnel under it; `core.workzones.crossings`, cached an hour a line). The
-  part of a closure within 50 m [165 ft] of a point the rider placed is left in, so the router can
-  start or stop there; the rest is left out, and only a closure wholly that near is warned of
-  instead. The roads a rider marks closed (`blocked_lines`) are trimmed and cut the same way.
+  part of a closure within 50 m [165 ft] of the start is left in, so the router can start
+  there; the rest is left out. A closure wholly that near, or that near a destination or via, is
+  warned of instead. The roads a rider marks closed (`blocked_lines`, on a ride, a run, a walk or
+  a transit trip's walks) are trimmed and cut the same way.
   Where more closures are in force than the router takes (50,000 m [31 mi] of perimeter and
   1,000 vertices in all; the perimeter measured as Valhalla measures it and packed to 99% of
   that), those nearest the line through the rider's points in order are kept and the rest are

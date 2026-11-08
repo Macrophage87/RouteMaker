@@ -2151,7 +2151,9 @@ class TestApi:
         router(standard_router())
         response = post_transit(client, [CAPITOL_HILL, DOWNTOWN], preset, blocked_lines=[marked])
         assert response.status_code == 200, response.content
-        ring, blocked = wz.polygon(shut_on_foot("md-shut", shut)), wz.line_ring(marked)
+        # The rider's road trimmed 20 m at each end as a closure is (hunt K4/Q2, 2026-11-08).
+        ring = wz.polygon(shut_on_foot("md-shut", shut))
+        blocked = wz.line_ring(marked, wz.TRIM_M)
         for options in seen:
             assert options["walk_exclude"] == [ring, blocked]
             assert options["walk_keep"] == [blocked]

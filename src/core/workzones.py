@@ -1575,9 +1575,15 @@ def with_work_zones(body: dict, plan: rules.PlanZones | None, now: datetime | No
 BLOCKED_TEXT = "The road you marked closed is on this route: no way round it was found."
 
 
+# How near a marked road the route's line must run to ride it: the strip's own half width, not
+# `rules.ALONG_M`, so a sidepath or a parallel street 20 to 50 ft off it is not taken for it
+# (review of hunt K1, 2026-11-08).
+BLOCKED_NEAR_M = rules.HALF_WIDTH_M
+
+
 def through_blocked(coordinates, lines) -> list[rules.Passage]:
     """The roads the rider marked closed (`blocked_lines`) that the route's line runs along
-    (`rules.along`), in route order."""
+    (`rules.along`, within `BLOCKED_NEAR_M`), in route order."""
     if len(coordinates) < 2 or not lines:
         return []
     marked = [
@@ -1595,7 +1601,7 @@ def through_blocked(coordinates, lines) -> list[rules.Passage]:
         for i, line in enumerate(lines)
         if len(line) >= 2
     ]
-    return rules.along(coordinates, marked)
+    return rules.along(coordinates, marked, BLOCKED_NEAR_M)
 
 
 def warn_blocked(body: dict, passages) -> dict:

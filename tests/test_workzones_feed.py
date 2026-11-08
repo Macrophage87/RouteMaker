@@ -338,7 +338,15 @@ def test_a_plan_leaves_out_a_closure_and_goes_round_a_penalty_zone_worth_it(
 def test_no_way_round_a_closure_plans_through_it_with_a_red_warning(client, monkeypatch) -> None:
     """Where the router finds no route round a zone closed to bicycles, the plan goes
     through it, warned of in red, rather than answering no route."""
-    from test_route_api import VERTICES, FakeRouter, good_body, post, route_answer, trace_answer
+    from test_route_api import (
+        VERTICES,
+        FakeRouter,
+        encode_polyline6,
+        good_body,
+        post,
+        route_answer,
+        trace_answer,
+    )
 
     from core import routing
 
@@ -355,8 +363,15 @@ def test_no_way_round_a_closure_plans_through_it_with_a_red_warning(client, monk
             "route": [routing.RouterRefused(400, 442, "No path could be found for input")]
             + [route_answer([(VERTICES, 2.2, [10.0] * 5)])] * 20,
             "trace_attributes": trace_answer(VERTICES, [(101, 0, 4, 2.2)]),
+            # The destination's edge, which runs along the closure (hunt K2/Q3): the closure
+            # meeting it is the one let in (`routing._stop_rings`).
+            "locate": [
+                {"edges": [{"edge_info": {"shape": encode_polyline6(
+                    [(-77.039, 38.9), (-77.036, 38.9)]
+                )}}]}
+            ],
         }
-    )
+    )  # fmt: skip
     sent: list[dict] = []
 
     def transport(url, payload, timeout):
@@ -368,6 +383,9 @@ def test_no_way_round_a_closure_plans_through_it_with_a_red_warning(client, monk
     assert response.status_code == 200, response.content
     routes = [p for p in sent if p["url"].endswith("/route")]
     assert "exclude_polygons" in routes[0] and "exclude_polygons" not in routes[1]
+    # The stops' edges were read before any closure was let in.
+    (located,) = [p for p in sent if p["url"].endswith("/locate")]
+    assert located["verbose"] is True and len(located["locations"]) == 1
     body = response.json()
     (zone,) = body["work_zones"]["on_route"]
     assert zone["kind"] == "closed" and zone["warning"]

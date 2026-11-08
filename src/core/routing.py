@@ -6092,6 +6092,10 @@ def sets_off_back(answer: dict, heading: float) -> bool:
 # from 100 ft to 600 ft ahead of the rider (frontend/src/lib/roadClosed.ts), and the snap and
 # the trim take a little more.
 BLOCKED_START_M = 250.0
+# The route planned the other way is kept only where it is at most this many times the route
+# through the marked road, or this much longer, whichever allows more (2 mi, 3.2 km).
+BLOCKED_DETOUR_RATIO = 2.0
+BLOCKED_DETOUR_SLACK_M = 3_200.0
 
 
 def plan_onward(
@@ -6144,8 +6148,25 @@ def plan_onward(
                 )
             else:
                 line = (other.get("geometry") or {}).get("coordinates") or []
-                if not work_zones.through_blocked(line, dials.blocked):
+                # Kept only where it really keeps off the marked road (checked at the wider
+                # `rules.ALONG_M`, so a route a few metres beside it does not pass) and is not
+                # far longer than the route through it (review of hunt K1, 2026-11-08).
+                first_m = float(answered.get("distance_m") or 0.0)
+                other_m = float(other.get("distance_m") or 0.0)
+                off_it = not work_zones.rules.along(
+                    line,
+                    [
+                        work_zones.rules.Zone(f"blocked-{i}", "rider", "closed", 0.0,
+                                              tuple(map(tuple, b)), None, None, None, None)
+                        for i, b in enumerate(dials.blocked)
+                        if len(b) >= 2
+                    ],
+                )  # fmt: skip
+                if off_it and other_m <= max(
+                    BLOCKED_DETOUR_RATIO * first_m, first_m + BLOCKED_DETOUR_SLACK_M
+                ):
                     return other
+                logger.info("a marked road ahead: the way the other way is not kept")
     logger.info("the route runs along %d road(s) the rider marked closed", len(through))
     return work_zones.warn_blocked(answered, through)
 
