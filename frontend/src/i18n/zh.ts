@@ -454,6 +454,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Done with MTB": "不骑山地了",
   "Done with MTB: route off mountain-bike trails": "不骑山地了：避开山地车小径",
   "Finding a way off the mountain-bike trails.": "正在寻找避开山地车小径的路线。",
+  "Not sure where you are yet. Try again once moving.": "还不确定你的位置。行进中再试一次。",
   "Road closed. Finding a way round.": "道路封闭。正在寻找绕行路线。",
   "Not sure which road is closed yet. Try again once moving.": "还不确定哪条路封闭。动起来后再试。",
   "On the standard route through the marked closure.": "在标准路线上，穿过已标注的封路段。",

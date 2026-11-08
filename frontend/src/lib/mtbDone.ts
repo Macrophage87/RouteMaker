@@ -20,6 +20,8 @@ export const MTB_DONE_TEXT = t("Done with MTB");
 export const MTB_DONE_NAME = t("Done with MTB: route off mountain-bike trails");
 /** Said on the press, while the easier way is looked for. */
 export const MTB_DONE_FINDING = t("Finding a way off the mountain-bike trails.");
+/** Said where the ride has no fix yet to plan from: the button stays, to press again. */
+export const MTB_DONE_NO_PLACE = t("Not sure where you are yet. Try again once moving.");
 
 /**
  * Whether the button shows: a mountain-bike trail on the route at or past `progressM` (metres along the route, as the

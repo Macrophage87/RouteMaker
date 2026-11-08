@@ -724,3 +724,17 @@ class TestDoneWithMtb:
         router(plain_router())
         body = {**good_body("gravel"), "when": "weekday_offpeak", "mtb_done": True}
         assert post(client, body).json()["variant"] == "offroad"
+
+    @pytest.mark.parametrize("when", ["weekday_offpeak", "weekend"])
+    def test_a_mountain_bike_re_plan_after_the_press_keeps_off_the_mtb_graph(
+        self, client, segments, router, when
+    ) -> None:
+        fake = router(plain_router())
+        body = {**good_body("mountain-bike"), "when": when, "ride_replan": True, "mtb_done": True}
+        response = post(client, body)
+        assert response.status_code == 200, response.content
+        answer = response.json()
+        graph = "weekend" if when == "weekend" else "standard"
+        assert answer["variant"] == graph
+        assert answer.get("mtb") is None
+        assert {graph_of(url) for url, _ in routes(fake)} == {graph}

@@ -40,5 +40,8 @@ test("Ride shows it under Go round, re-plans with it, and keeps it", () => {
   assert.match(ride, /const mtbDone = useRef\(replans\?\.mtbDone === true\);/);
   assert.match(ride, /dirtClosed: dirtClosed\.current, mtbDone: mtbDone\.current \}\);/);
   assert.match(ride, /className="secondary ride-mtb-done"/);
+  // Not on a trip's leg, whose next leg would lose it; with no fix, nothing is set and the button stays.
+  assert.match(ride, /!mtbDonePressed && !trip && !fixedRef\.current && mtbTrailAhead\(/);
+  assert.match(ride, /if \(!fix\) \{\n\s*sayDetour\(MTB_DONE_NO_PLACE\);\n\s*return;\n\s*\}\n\s*mtbDone\.current = true;/);
   assert.doesNotMatch(ride, /rideReplans\(loopRide, blockedRef\.current, (dirtRidden\.current|true), dirtClosed\.current\)/);
 });

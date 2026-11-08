@@ -454,6 +454,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Done with MTB": "MTB በቃ",
   "Done with MTB: route off mountain-bike trails": "MTB በቃ: ከተራራ ብስክሌት ዱካዎች ውጭ መንገድ",
   "Finding a way off the mountain-bike trails.": "ከተራራ ብስክሌት ዱካዎች ውጭ መንገድ በመፈለግ ላይ።",
+  "Not sure where you are yet. Try again once moving.": "የት እንዳሉ ገና አልታወቀም። እየተንቀሳቀሱ እንደገና ይሞክሩ።",
   "Road closed. Finding a way round.": "መንገዱ ዝግ ነው። ማለፊያ በመፈለግ ላይ።",
   "Not sure which road is closed yet. Try again once moving.": "የትኛው መንገድ እንደተዘጋ ገና አልታወቀም። ሲንቀሳቀሱ እንደገና ይሞክሩ።",
   "On the standard route through the marked closure.": "በምልክት በተደረገበት መዘጋት በኩል በመደበኛው መንገድ ላይ።",

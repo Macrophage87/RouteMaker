@@ -454,6 +454,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Done with MTB": "Fini ak MTB",
   "Done with MTB: route off mountain-bike trails": "Fini ak MTB: wout ki evite chemen bisiklèt mòn",
   "Finding a way off the mountain-bike trails.": "N ap chèche yon wout ki evite chemen bisiklèt mòn.",
+  "Not sure where you are yet. Try again once moving.": "Nou poko konnen ki kote ou ye. Eseye ankò pandan w ap woule.",
   "Road closed. Finding a way round.": "Wout fèmen. N ap chèche yon detou.",
   "Not sure which road is closed yet. Try again once moving.": "Nou poko konnen ki wout ki fèmen. Eseye ankò lè w ap deplase.",
   "On the standard route through the marked closure.": "Sou wout nòmal la, atravè fèmti ki make a.",

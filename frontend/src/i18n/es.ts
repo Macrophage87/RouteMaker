@@ -478,6 +478,7 @@ export const ES: Readonly<Record<string, string>> = {
   "Done with MTB": "Basta de MTB",
   "Done with MTB: route off mountain-bike trails": "Basta de MTB: ruta fuera de los senderos de bicicleta de montaña",
   "Finding a way off the mountain-bike trails.": "Buscando una ruta fuera de los senderos de bicicleta de montaña.",
+  "Not sure where you are yet. Try again once moving.": "Aún no sabemos dónde está. Inténtelo de nuevo en marcha.",
   // The side buttons' words and More's (RideMode, RoamMode; the UI review, 2026-10-28): short, under round buttons.
   Text: "Texto",
   "Share live": "En vivo",
