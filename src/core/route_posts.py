@@ -913,6 +913,19 @@ def page_data(request, post, sections=None) -> dict:
         "points": share_preview.route_points(route),
         # The line of each stretch, in the order of the page's minimaps (post_html).
         "sections": [stretch for _, stretch in sections or [] if stretch],
+        # The photos that know where they were taken, for the maps (post/photoPins.ts).
+        "photos": [
+            {
+                "url": photo_path(post, photo),
+                "lon": photo.lon,
+                "lat": photo.lat,
+                "alt": photo.alt_text,
+                "caption": photo.caption,
+            }
+            for photo in post.photos.filter(
+                image__isnull=False, lat__isnull=False, lon__isnull=False
+            ).defer("image")
+        ],
         "admin": is_admin(request),
     }
     if data["admin"]:

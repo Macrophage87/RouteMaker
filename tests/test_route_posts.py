@@ -1145,6 +1145,17 @@ def test_a_photo_added_on_the_page_shows_where_it_was_taken_but_never_at_home() 
         f'<a class="taken" href="/#at=-77.05018,38.88929">{route_posts.TAKEN_HERE_LABEL}</a>'
         in page
     )
+    # The maps get it too, as a pop-out on the route's map and a pointer on a section's.
+    data = json.loads(re.search(r'id="post-data"[^>]*>(.*?)</script>', page).group(1))
+    assert data["photos"] == [
+        {
+            "url": sent.json()["url"],
+            "lon": LINCOLN[1],
+            "lat": LINCOLN[0],
+            "alt": "The Memorial",
+            "caption": "",
+        }
+    ]
     served = Client().get(sent.json()["url"]).content
     assert route_posts.exif_spot(served) == pytest.approx(LINCOLN, abs=1e-6)
     # The file's own Exif counts when the browser sent no spot.
