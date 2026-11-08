@@ -342,6 +342,12 @@ def test_the_link_is_the_page_s_own_fragment() -> None:
             {"bike": "ebike", "ending": "outside_dock"},
         ),
         ("bike-transit", {"stress": 70, "hills": 0}, {"novice_legs": True}, {"noviceLegs": True}),
+        (
+            "trailmaxxing",
+            {"stress": 100, "hills": 0, "easy_mtb": True},
+            {"easy_mtb": True},
+            {"easyMtb": True},
+        ),
     ],
 )
 def test_the_page_reads_the_link_as_the_plan_it_was(tmp_path, preset, dials, sent, expected):
@@ -373,6 +379,23 @@ def test_the_page_reads_the_link_as_the_plan_it_was(tmp_path, preset, dials, sen
 
 
 # --- Planning against the stand-in ----------------------------------------------------------
+
+
+def test_easy_mtb_trails_is_passed_read_from_a_link_and_said(tools, stand_in) -> None:
+    """The owner, 2026-11-08: "Make sure the MCP can use that too"."""
+    tools.call("plan_route", {"points": ["Union Market", "Takoma"], "easy_mtb": True})
+    assert StandIn.routes[-1]["easy_mtb"] is True
+    tools.call("plan_route", {"points": ["Union Market", "Takoma"]})
+    assert "easy_mtb" not in StandIn.routes[-1]
+    link = "#p=-77.03651,38.89768;-77.00911,38.88990&preset=trailmaxxing&v=2&easymtb=1"
+    assert mcp.parse_fragment(link)[3]["easy_mtb"] is True
+    # On a ride type that does not offer it, the page drops it, and so does the connector.
+    assert mcp.parse_fragment(link.replace("trailmaxxing", "fast"))[3]["easy_mtb"] is False
+    assert mcp.easy_mtb_said({"harder_m": 0.0, "limited": None}) is None
+    assert "rated 2 or harder" in mcp.easy_mtb_said({"harder_m": 800.0, "limited": "no_way_round"})
+    assert "off-road router" in mcp.easy_mtb_said({"harder_m": None, "limited": "no_offroad_graph"})
+    said = mcp.summary({"distance_m": 1000, "easy_mtb": {"harder_m": 800.0}})
+    assert said["easy_mtb"].startswith("0.5 mi")
 
 
 def test_plan_route_answers_a_draft_and_keeps_nothing(tools, stand_in, tmp_path) -> None:

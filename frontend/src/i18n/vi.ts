@@ -2111,4 +2111,14 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "At {place}. Take a bike, then choose where to dock.": "Bạn đang ở {place}. Lấy một xe, rồi chọn nơi trả xe.",
   "No way there was found. Choose another dock.": "Không tìm thấy đường đến đó. Hãy chọn trạm khác.",
   "The stops stay in this order, to keep your via points on their way.": "Các điểm dừng giữ nguyên thứ tự này, để các điểm đi qua của bạn vẫn nằm trên đường của chúng.",
+  // ---- Easy MTB trails (lib/dialsPanel.ts, lib/easyMtb.ts; the owner, 2026-11-08) ----
+  "Easy MTB trails": "Đường mòn MTB dễ",
+  "Also rides mountain-bike trails rated easy or not rated, mostly grass and dirt.": "Cũng đi đường mòn xe đạp địa hình được xếp loại dễ hoặc chưa xếp loại, phần lớn là cỏ và đất.",
+  "Not used while Keep to roads is on.": "Không dùng khi Chỉ đường phố đang bật.",
+  "easy MTB trails": "đường mòn MTB dễ",
+  "Plans on the off-road map, as Gravel does, so mountain-bike trails rated 0 or 1 on either scale, or not rated at all, may be ridden. Trails rated 2 or harder are left out wherever there is a way round; if one is still used, the route says so. Traffic stress is weighed as usual. Dirt can be muddy after rain.": "Lập kế hoạch trên bản đồ địa hình, như Gravel, nên có thể đi đường mòn xe đạp địa hình xếp loại 0 hoặc 1 trên thang nào cũng được, hoặc hoàn toàn chưa xếp loại. Đường mòn loại 2 hoặc khó hơn được bỏ qua ở bất cứ đâu có đường khác; nếu vẫn phải dùng một đoạn, tuyến đường sẽ cho biết. Mức căng thẳng giao thông vẫn được tính như thường lệ. Đất có thể lầy lội sau mưa.",
+  "This route uses {distance} of mountain-bike trail rated 2 or harder: no way round was found.": "Tuyến đường này đi {distance} trên đường mòn xe đạp địa hình loại 2 hoặc khó hơn: không tìm thấy đường khác.",
+  "Uses a harder MTB trail.": "Đi một đường mòn MTB khó hơn.",
+  "The off-road map isn't available, so this route keeps to the usual trails.": "Bản đồ địa hình hiện không có, nên tuyến đường này đi theo các đường mòn thông thường.",
+  "Off-road map unavailable: usual trails.": "Không có bản đồ địa hình: đường mòn thông thường.",
 };

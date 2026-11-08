@@ -319,6 +319,18 @@ class RouteIn(Schema):
             " always rides this way, whatever is sent."
         ),
     )
+    easy_mtb: StrictBool = Field(
+        default=False,
+        description=(
+            'Default and Trailmaxxing only: the "Easy MTB trails" switch (core.easy_mtb). Plan'
+            " on the off-road graph as Gravel does, so mountain-bike trails rated 0 or 1 on"
+            " `mtb:scale` or `mtb:scale:imba`, and unrated ones (grass and dirt), may be ridden,"
+            " and steer off the trails rated 2 or harder; where the route still rides one,"
+            " `easy_mtb.harder_m` says how much. Where the off-road router is not being served"
+            " the ride is planned on the standard graph, as Gravel's is, and"
+            " `easy_mtb.limited` is `no_offroad_graph`. Off by default; trails off wins."
+        ),
+    )
     system_weight_kg: StrictInt | None = Field(
         default=None,
         description=(
@@ -747,6 +759,8 @@ class RouteIn(Schema):
             raise ValueError("mtb_level applies to the Mountain Bike ride type only")
         if self.mtb_preferred is not None and self.preset != presets.MOUNTAIN_BIKE:
             raise ValueError("mtb_preferred applies to the Mountain Bike ride type only")
+        if self.easy_mtb and self.preset not in presets.EASY_MTB_PRESETS:
+            raise ValueError("easy_mtb applies to the Default and Trailmaxxing ride types only")
         if self.carrying is not None and preset.carrying is None:
             raise ValueError("carrying applies to the Cargo Bike ride type only")
         if self.carrying is not None and self.carrying not in preset.carrying:
@@ -1007,6 +1021,9 @@ class DialsOut(Schema):
     assist: bool
     avoid_gravel: bool = False
     trails_off: bool = False
+    easy_mtb: bool = Field(
+        default=False, description="Whether the ride was planned with Easy MTB trails on."
+    )
     target_distance_m: int | None = Field(
         default=None,
         description="The rider's target distance the route was planned towards, if set.",
@@ -2416,6 +2433,26 @@ class MtbOut(Schema):
     )
 
 
+class EasyMtbOut(Schema):
+    """An Easy MTB trails plan's reading of its route (`core.easy_mtb`)."""
+
+    max_level: int = Field(description="The hardest trail level counted easy (1).")
+    rounds: int = Field(default=0, description="Rounds of excluding harder trails.")
+    harder_m: float | None = Field(
+        default=None,
+        description="Metres on mountain-bike trails rated 2 or harder; 0 when held off.",
+    )
+    limited: Literal["time", "untraced", "no_way_round", "no_offroad_graph"] | None = Field(
+        default=None,
+        description=(
+            "Why the harder trails could not all be held off: `time`, `untraced`,"
+            " `no_way_round` (no route without one was found), `no_offroad_graph` (the"
+            " off-road router is not being served, so the route keeps to the standard graph"
+            " and its usual trails)."
+        ),
+    )
+
+
 class WorkZoneOut(Schema):
     """A live work zone the route runs along (FOLLOWUP-WORKZONES)."""
 
@@ -2715,6 +2752,8 @@ class RouteBody(Schema):
     # The Mountain Bike ride type's reading of the route (slice 6). Additive: null on every
     # other ride type.
     mtb: MtbOut | None = None
+    # The Easy MTB trails switch's reading (2026-11-08). Additive: null with it off.
+    easy_mtb: EasyMtbOut | None = None
     # Live work zones (FOLLOWUP-WORKZONES, 341-349). Additive: null where work zones are
     # not running (no refresh stored yet).
     work_zones: WorkZonesOut | None = None
@@ -5430,6 +5469,7 @@ def _bike_dials(body: RouteIn) -> routing.Dials:
         assist=body.assist,
         avoid_gravel=body.avoid_gravel,
         trails_off=body.trails_off,
+        easy_mtb=body.easy_mtb,
         target_distance_m=body.target_distance_m,
         system_weight_kg=body.system_weight_kg,
         cycling_speed_kmh=presets.rider_speed(body.preset, body.cycling_speed_kmh),
@@ -5522,6 +5562,7 @@ def _planned(body: RouteIn, dials, started: float | None, long_ride: bool, long_
             when,
             bool(body.assist) and preset.assist_speed_kmh is not None,
             bool(body.trails_off),
+            bool(body.easy_mtb),
         )
         if own_variant in routing.TWIN_VARIANTS and not routing._is_promoted(own_variant):
             # Planned on the standard graph by design where no weekend or off-road build is
@@ -5658,6 +5699,7 @@ def stop_order(request, body: RouteIn, response: HttpResponse):
         assist=body.assist,
         avoid_gravel=body.avoid_gravel,
         trails_off=body.trails_off,
+        easy_mtb=body.easy_mtb,
         mtb_level=body.mtb_level,
         mtb_preferred=body.mtb_preferred,
         loop=body.loop,
@@ -5823,6 +5865,7 @@ def nearest_places(request, body: NearestIn, response: HttpResponse):
         assist=body.assist,
         avoid_gravel=body.avoid_gravel,
         trails_off=body.trails_off,
+        easy_mtb=body.easy_mtb,
         mtb_level=body.mtb_level,
         mtb_preferred=body.mtb_preferred,
     )

@@ -2111,4 +2111,14 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "At {place}. Take a bike, then choose where to dock.": "{place} istasyonundasınız. Bir bisiklet alın, sonra nereye bırakacağınızı seçin.",
   "No way there was found. Choose another dock.": "Oraya yol bulunamadı. Başka bir istasyon seçin.",
   "The stops stay in this order, to keep your via points on their way.": "Ara noktalarınız kendi yollarında kalsın diye duraklar bu sırada kalıyor.",
+  // ---- Easy MTB trails (lib/dialsPanel.ts, lib/easyMtb.ts; the owner, 2026-11-08) ----
+  "Easy MTB trails": "Kolay MTB patikaları",
+  "Also rides mountain-bike trails rated easy or not rated, mostly grass and dirt.": "Kolay derecelendirilmiş ya da derecesiz dağ bisikleti patikalarını da kullanır; çoğu çim ve topraktır.",
+  "Not used while Keep to roads is on.": "Yalnızca yollar açıkken kullanılmaz.",
+  "easy MTB trails": "kolay MTB patikaları",
+  "Plans on the off-road map, as Gravel does, so mountain-bike trails rated 0 or 1 on either scale, or not rated at all, may be ridden. Trails rated 2 or harder are left out wherever there is a way round; if one is still used, the route says so. Traffic stress is weighed as usual. Dirt can be muddy after rain.": "Gravel gibi arazi haritasında planlar; bu yüzden iki ölçekten herhangi birinde 0 ya da 1 derecelendirilmiş veya hiç derecelendirilmemiş dağ bisikleti patikaları kullanılabilir. 2 ya da daha zor derecelendirilmiş patikalar, başka bir yol olan her yerde dışarıda bırakılır; yine de biri kullanılırsa rota bunu söyler. Trafik stresi her zamanki gibi tartılır. Toprak yağmurdan sonra çamurlu olabilir.",
+  "This route uses {distance} of mountain-bike trail rated 2 or harder: no way round was found.": "Bu rota 2 ya da daha zor derecelendirilmiş dağ bisikleti patikasında {distance} kullanıyor: başka yol bulunamadı.",
+  "Uses a harder MTB trail.": "Daha zor bir MTB patikası kullanır.",
+  "The off-road map isn't available, so this route keeps to the usual trails.": "Arazi haritası kullanılamıyor, bu yüzden bu rota olağan patikalarda kalıyor.",
+  "Off-road map unavailable: usual trails.": "Arazi haritası yok: olağan patikalar.",
 };

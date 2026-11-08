@@ -2111,4 +2111,14 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "At {place}. Take a bike, then choose where to dock.": "Вы у {place}. Возьмите велосипед, затем выберите, где его оставить.",
   "No way there was found. Choose another dock.": "Путь туда не найден. Выберите другую станцию.",
   "The stops stay in this order, to keep your via points on their way.": "Остановки остаются в этом порядке, чтобы промежуточные точки остались на своём участке.",
+  // ---- Easy MTB trails (lib/dialsPanel.ts, lib/easyMtb.ts; the owner, 2026-11-08) ----
+  "Easy MTB trails": "Лёгкие МТБ-трассы",
+  "Also rides mountain-bike trails rated easy or not rated, mostly grass and dirt.": "Также ведёт по трассам для горных велосипедов лёгкого уровня или без оценки, чаще всего по траве и грунту.",
+  "Not used while Keep to roads is on.": "Не используется, пока включено «Только дороги».",
+  "easy MTB trails": "лёгкие МТБ-трассы",
+  "Plans on the off-road map, as Gravel does, so mountain-bike trails rated 0 or 1 on either scale, or not rated at all, may be ridden. Trails rated 2 or harder are left out wherever there is a way round; if one is still used, the route says so. Traffic stress is weighed as usual. Dirt can be muddy after rain.": "Планирует по внедорожной карте, как Gravel, поэтому маршрут может идти по трассам для горных велосипедов с оценкой 0 или 1 по любой из двух шкал или вовсе без оценки. Трассы с оценкой 2 и сложнее обходятся везде, где есть другой путь; если одна всё же используется, маршрут об этом скажет. Нагрузка от трафика учитывается как обычно. После дождя грунт может быть грязным.",
+  "This route uses {distance} of mountain-bike trail rated 2 or harder: no way round was found.": "Этот маршрут проходит {distance} по трассе для горных велосипедов с оценкой 2 или сложнее: другого пути не нашлось.",
+  "Uses a harder MTB trail.": "Идёт по более сложной МТБ-трассе.",
+  "The off-road map isn't available, so this route keeps to the usual trails.": "Внедорожная карта недоступна, поэтому маршрут идёт по обычным тропам.",
+  "Off-road map unavailable: usual trails.": "Нет внедорожной карты: обычные тропы.",
 };

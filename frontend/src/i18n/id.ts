@@ -2111,4 +2111,14 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "At {place}. Take a bike, then choose where to dock.": "Di {place}. Ambil sepeda, lalu pilih di mana menaruhnya.",
   "No way there was found. Choose another dock.": "Tidak ditemukan jalan ke sana. Pilih dok lain.",
   "The stops stay in this order, to keep your via points on their way.": "Perhentian tetap dalam urutan ini, agar titik lewat Anda tetap di jalurnya.",
+  // ---- Easy MTB trails (lib/dialsPanel.ts, lib/easyMtb.ts; the owner, 2026-11-08) ----
+  "Easy MTB trails": "Jalur MTB mudah",
+  "Also rides mountain-bike trails rated easy or not rated, mostly grass and dirt.": "Juga melewati jalur sepeda gunung berperingkat mudah atau tanpa peringkat, kebanyakan rumput dan tanah.",
+  "Not used while Keep to roads is on.": "Tidak dipakai selama Hanya jalan raya aktif.",
+  "easy MTB trails": "jalur MTB mudah",
+  "Plans on the off-road map, as Gravel does, so mountain-bike trails rated 0 or 1 on either scale, or not rated at all, may be ridden. Trails rated 2 or harder are left out wherever there is a way round; if one is still used, the route says so. Traffic stress is weighed as usual. Dirt can be muddy after rain.": "Merencanakan di peta off-road, seperti Gravel, sehingga jalur sepeda gunung berperingkat 0 atau 1 pada skala mana pun, atau tanpa peringkat sama sekali, boleh dilalui. Jalur berperingkat 2 atau lebih sulit dihindari di mana pun ada jalan lain; jika masih ada yang dipakai, rute akan memberi tahu. Tekanan lalu lintas ditimbang seperti biasa. Tanah bisa berlumpur setelah hujan.",
+  "This route uses {distance} of mountain-bike trail rated 2 or harder: no way round was found.": "Rute ini melewati {distance} jalur sepeda gunung berperingkat 2 atau lebih sulit: tidak ditemukan jalan lain.",
+  "Uses a harder MTB trail.": "Melewati jalur MTB yang lebih sulit.",
+  "The off-road map isn't available, so this route keeps to the usual trails.": "Peta off-road tidak tersedia, jadi rute ini tetap di jalur yang biasa.",
+  "Off-road map unavailable: usual trails.": "Peta off-road tidak ada: jalur biasa.",
 };

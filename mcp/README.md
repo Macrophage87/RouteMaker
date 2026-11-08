@@ -41,7 +41,15 @@ century".
 The assistant picks the ride type and settings that fit what you ask: every ride type the app
 has (bikeshare and bike plus transit included) and every setting (traffic stress, hills, ride
 time, trails, target distance, rider weight, riding speed, cargo load and assist, trail
-levels, the bikeshare bike and ending, departure time).
+levels, Easy MTB trails, the bikeshare bike and ending, departure time).
+
+`easy_mtb` (Default and Trailmaxxing only, off unless asked) is the app's "Easy MTB trails"
+switch: the route may also ride mountain-bike trails rated 0 or 1 on `mtb:scale` or
+`mtb:scale:imba`, or unrated (mostly grass and dirt), on the off-road graph as Gravel does, and
+is steered off trails rated 2 or harder. The summary's `easy_mtb` says where the route still
+rides a harder one (no way round was found), or that the off-road router was not running and
+the route kept to the usual trails. It travels in the link (`easymtb=1`) and a saved route;
+`open_link` reads it back, and drops it on a ride type that does not offer it, as the app does.
 
 Every planned route is a draft: it comes back with a link, kept for a day, that opens that
 exact route in the app, like a link from the app's Share, so the map, Start ride and the app's own GPX are the

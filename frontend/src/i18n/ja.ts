@@ -2111,4 +2111,14 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "At {place}. Take a bike, then choose where to dock.": "{place}に着きました。自転車を借りてから、返却先を選んでください。",
   "No way there was found. Choose another dock.": "そこまでの道が見つかりませんでした。別のポートを選んでください。",
   "The stops stay in this order, to keep your via points on their way.": "経由地がそのルート上に残るよう、立ち寄り先はこの順番のままです。",
+  // ---- Easy MTB trails (lib/dialsPanel.ts, lib/easyMtb.ts; the owner, 2026-11-08) ----
+  "Easy MTB trails": "初級MTBトレイル",
+  "Also rides mountain-bike trails rated easy or not rated, mostly grass and dirt.": "初級の評価、または評価のないマウンテンバイクトレイル(主に草地と土)も通ります。",
+  "Not used while Keep to roads is on.": "「車道のみ」がオンの間は使われません。",
+  "easy MTB trails": "初級MTBトレイル",
+  "Plans on the off-road map, as Gravel does, so mountain-bike trails rated 0 or 1 on either scale, or not rated at all, may be ridden. Trails rated 2 or harder are left out wherever there is a way round; if one is still used, the route says so. Traffic stress is weighed as usual. Dirt can be muddy after rain.": "Gravelと同じくオフロード地図で計画するため、どちらの尺度でも0か1の評価、またはまったく評価のないマウンテンバイクトレイルを通ることがあります。評価2以上の難しいトレイルは、迂回路があればどこでも避けます。それでも通る場合はルートがそう伝えます。交通ストレスはいつも通り考慮します。雨の後は土がぬかるんでいることがあります。",
+  "This route uses {distance} of mountain-bike trail rated 2 or harder: no way round was found.": "このルートは評価2以上のマウンテンバイクトレイルを{distance}通ります。迂回路は見つかりませんでした。",
+  "Uses a harder MTB trail.": "難しいMTBトレイルを通ります。",
+  "The off-road map isn't available, so this route keeps to the usual trails.": "オフロード地図が使えないため、このルートはいつものトレイルを通ります。",
+  "Off-road map unavailable: usual trails.": "オフロード地図なし:いつものトレイル。",
 };

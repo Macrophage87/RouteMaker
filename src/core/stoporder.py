@@ -89,7 +89,9 @@ def ride_graph(preset_name: str, dials: routing.Dials) -> tuple[str, dict]:
     hills = preset.hills if dials.hills is None else dials.hills
     when = dials.when or routing.default_when()
     assist = bool(dials.assist) and preset.assist_speed_kmh is not None
-    variant = presets.variant_for_ride(preset_name, when, assist, bool(dials.trails_off))
+    variant = presets.variant_for_ride(
+        preset_name, when, assist, bool(dials.trails_off), bool(dials.easy_mtb)
+    )
     if variant in routing.TWIN_VARIANTS and (
         routing._twin_down(variant) or not routing._is_promoted(variant)
     ):

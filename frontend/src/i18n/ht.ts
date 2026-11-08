@@ -2111,4 +2111,14 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "At {place}. Take a bike, then choose where to dock.": "Ou nan {place}. Pran yon bisiklèt, epi chwazi ki kote pou depoze l.",
   "No way there was found. Choose another dock.": "Pa t jwenn chemen pou ale la. Chwazi yon lòt estasyon.",
   "The stops stay in this order, to keep your via points on their way.": "Arè yo rete nan lòd sa a, pou pwen pasaj ou yo rete sou wout yo.",
+  // ---- Easy MTB trails (lib/dialsPanel.ts, lib/easyMtb.ts; the owner, 2026-11-08) ----
+  "Easy MTB trails": "Chemen MTB fasil",
+  "Also rides mountain-bike trails rated easy or not rated, mostly grass and dirt.": "Li pran chemen bisiklèt mòn ki make fasil oswa ki pa make tou, sitou zèb ak tè.",
+  "Not used while Keep to roads is on.": "Li pa sèvi pandan Wout sèlman limen.",
+  "easy MTB trails": "chemen MTB fasil",
+  "Plans on the off-road map, as Gravel does, so mountain-bike trails rated 0 or 1 on either scale, or not rated at all, may be ridden. Trails rated 2 or harder are left out wherever there is a way round; if one is still used, the route says so. Traffic stress is weighed as usual. Dirt can be muddy after rain.": "Li planifye sou kat tout-teren an, menm jan ak Gravel, kidonk li ka pran chemen bisiklèt mòn ki make 0 oswa 1 sou nenpòt nan de echèl yo, oswa ki pa make ditou. Chemen ki make 2 oswa pi difisil yo rete deyò toutkote gen yon lòt chemen; si youn toujou sèvi, wout la di sa. Estrès sikilasyon an toujou konte menm jan an. Tè a ka plen labou apre lapli.",
+  "This route uses {distance} of mountain-bike trail rated 2 or harder: no way round was found.": "Wout sa a pran {distance} chemen bisiklèt mòn ki make 2 oswa pi difisil: yo pa jwenn okenn lòt chemen.",
+  "Uses a harder MTB trail.": "Li pran yon chemen MTB pi difisil.",
+  "The off-road map isn't available, so this route keeps to the usual trails.": "Kat tout-teren an pa disponib, kidonk wout sa a rete sou chemen abityèl yo.",
+  "Off-road map unavailable: usual trails.": "Pa gen kat tout-teren: chemen abityèl.",
 };

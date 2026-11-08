@@ -559,5 +559,7 @@ def keepable(body: dict, own_variant: str, failures: int) -> bool:
         (body.get("dodges") or {}).get("limited"),
         ((body.get("hills_seek") or {}).get("climb_seek") or {}).get("limited"),
         (body.get("avoid_search") or {}).get("alternate"),
+        # Easy MTB trails' rounds off the harder trails (`core.easy_mtb`).
+        (body.get("easy_mtb") or {}).get("limited"),
     )
     return "time" not in stopped

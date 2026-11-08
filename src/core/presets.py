@@ -1232,9 +1232,16 @@ def carrying_of(name: str, carrying: str | None = None) -> str | None:
 # The off-road graph has no weekend twin, so these rides stay on it at the
 # weekend.
 OFFROAD_PRESETS = frozenset({"gravel", "mountain-goat"})
+# The ride types that offer "Easy MTB trails" (the owner, 2026-11-08: "allow trailmaxxing to use
+# MTB trails too, some are definitely fine for that", "But it's opt in there too", "And
+# default"; "Steer on Gravel's graph"): with it on they ride the off-road graph as Gravel does,
+# and `core.easy_mtb` steers them off the trails rated 2 or harder. Off by default.
+EASY_MTB_PRESETS = frozenset({"default", "trailmaxxing"})
 
 
-def variant_for_ride(name: str, when: str, assist: bool = False, trails_off: bool = False) -> str:
+def variant_for_ride(
+    name: str, when: str, assist: bool = False, trails_off: bool = False, easy_mtb: bool = False
+) -> str:
     """The graph a ride routes on.
 
     A ride with trails off (the rider's "Keep to roads, not trails" switch,
@@ -1257,14 +1264,17 @@ def variant_for_ride(name: str, when: str, assist: bool = False, trails_off: boo
     standard graph takes its weekend twin, where roads closed to cars at the
     weekend are off-road paths (`Variant.WEEKEND`); the e-bike and no-trail
     graphs have no weekend twin, so their weekend rides stay on them. Mountain
-    Bike takes its own graph (`Variant.MTB`), at the weekend too.
+    Bike takes its own graph (`Variant.MTB`), at the weekend too. Default and
+    Trailmaxxing with "Easy MTB trails" on (`EASY_MTB_PRESETS`) take the off-road
+    graph as Gravel does, at the weekend too; trails off wins over it.
     """
     preset = PRESETS[name]
     if trails_off:
         return Variant.NO_TRAIL.value
     if assist and preset.assist_speed_kmh is not None:
         return Variant.EBIKE.value
-    if name in OFFROAD_PRESETS and preset.variant == Variant.STANDARD.value:
+    easy = easy_mtb and name in EASY_MTB_PRESETS
+    if (name in OFFROAD_PRESETS or easy) and preset.variant == Variant.STANDARD.value:
         return Variant.OFFROAD.value
     if preset.variant == Variant.STANDARD.value and when == WEEKEND:
         return Variant.WEEKEND.value
