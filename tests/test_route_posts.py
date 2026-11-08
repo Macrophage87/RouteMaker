@@ -27,7 +27,7 @@ from django.core.exceptions import ValidationError
 from django.test import Client
 from django.utils import timezone
 
-from core import route_posts
+from core import route_posts, share_preview
 from core.models import (
     AuditLogEntry,
     MyGo,
@@ -418,6 +418,26 @@ def test_the_list_puts_posts_in_season_first_and_the_rest_in_a_fold(monkeypatch)
     assert body.index("/routes/lights") > fold
     assert "/routes/hidden" not in body
     assert '<span class="badge">Cherry blossoms</span>' in body
+
+
+@db
+def test_list_cards_show_the_map_on_top_without_the_preview_pictures_word_band() -> None:
+    author = make_user(is_instance_admin=True)
+    make_post(author, slug="preview")
+    drawn = make_post(author, slug="drawn")
+    RoutePost.objects.filter(pk=drawn.pk).update(thumbnail=b"jpeg", thumbnail_key="k")
+    body = Client().get("/routes/").content.decode()
+    cards = {slug: body[body.index(f'href="/routes/{slug}"') :] for slug in ("preview", "drawn")}
+    # The map comes first in each card, before its title.
+    for card in cards.values():
+        assert card.index("<img") < card.index("<h2>")
+    # The route's preview picture shows only its map part (its band repeats the card's words) ...
+    banded = cards["preview"][: cards["preview"].index(">", cards["preview"].index("<img"))]
+    assert 'class="banded"' in banded
+    assert f".card img.banded{{aspect-ratio:1200/{share_preview.MAP_H}}}" in body
+    # ... while an admin's drawn map (no band) shows whole.
+    whole = cards["drawn"][: cards["drawn"].index(">", cards["drawn"].index("<img"))]
+    assert "banded" not in whole
 
 
 @db
