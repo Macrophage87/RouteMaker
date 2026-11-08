@@ -2103,4 +2103,5 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Ride to {place}, as planned": "ከም ዝተወጠኖ ናብ {place} ዘውሩ",
   "At {place}. Take a bike, then choose where to dock.": "ኣብ {place} ኣለኹም። ብሽክለታ ውሰዱ፣ ድሕሪኡ ኣበይ ከም እተቐምጡ ምረጹ።",
   "No way there was found. Choose another dock.": "ናብኡ መገዲ ኣይተረኽበን። ካልእ መዕቆቢ ምረጹ።",
+  "The stops stay in this order, to keep your via points on their way.": "መሕለፊ ነጥብታትኩም ኣብ መገዶም ምእንቲ ክጸንሑ፡ መዕረፊታት በዚ ስርዓት ይጸንሑ።",
 };

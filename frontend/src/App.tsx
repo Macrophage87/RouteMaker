@@ -304,7 +304,7 @@ import { nativeBridge, nativeShareNavigator } from "./lib/nativeShell.ts";
 import { AVOID_STAIRS_EVENT, readAvoidStairs } from "./lib/avoidStairs.ts";
 import { firstTripOf, maxPointsFor, nextLegPoints, stopsAsTrips, stopsLeftOf, type StopsLeft } from "./lib/tripStops.ts";
 import { TRIP_GONE_SAID, checkedTripOf, lateSaid, switchSaid, tripChecked, tripVerdict, type CheckedTrip } from "./lib/tripCheck.ts";
-import { REST_ANYWAY_MS, RIDE_REST_FINDING, fixedRide, restClosedSaid, restRequest, rideLegOf, rideTripOf, rideable as rideableRoute, walksLine, type RideTrip } from "./lib/rideTrip.ts";
+import { REST_ANYWAY_MS, RIDE_REST_FINDING, fixedRide, legDials, restClosedSaid, restRequest, rideLegOf, shareBikeOf, rideTripOf, rideable as rideableRoute, walksLine, type RideTrip } from "./lib/rideTrip.ts";
 import { RIDE_TOO_LONG } from "./lib/navigate.ts";
 import { fetchMe, NO_ME, type Me } from "./lib/stressEditor.ts";
 import { reloadFavorites, useFavoriteRides } from "./lib/favoriteRides.ts";
@@ -4466,7 +4466,9 @@ export function App() {
     if (!rest) return null;
     const asked = restRequest(rest, riderAt);
     if (!asked) return NO_FIX_YET;
-    const result = await requestRoute(asked.points, asked.preset, { dials: { ...planDials, loop: false, closuresNow: true }, routeOnly: true });
+    // On the rest's own ride type: the plan's transit and share-bike fields go (rideTrip.ts legDials), as a re-plan's do.
+    const restDials = legDials({ ...planDials, loop: false, closuresNow: true }, asked.preset, shown ? shareBikeOf(shown, planDials) : null);
+    const result = await requestRoute(asked.points, asked.preset, { dials: restDials, routeOnly: true });
     if (!stillOn()) return null;
     if (!result.ok) return `${result.error.title}. ${result.error.message}`;
     if (!rideableRoute(result.route)) return RIDE_TOO_LONG;

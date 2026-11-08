@@ -121,6 +121,8 @@ import {
   nextAction,
   planAfterEnd,
   replanKept,
+  loopShapePoint,
+  endsOnStart,
   replanHeld,
   replanFromM,
   skippableVia,
@@ -264,6 +266,9 @@ import {
   RIDE_REST_FINDING,
   RIDE_REST_HINT,
   approachWords,
+  legDials,
+  shareBikeOf,
+  rodeDirt,
   restAutoReady,
   restFrom,
   restNear,
@@ -376,6 +381,10 @@ export const RIDE_BROADCAST_NAME = t("Share live");
 export const RIDERS_NAME = t("Riders");
 /** What End ride leaves behind (lib/navigate.ts planAfterEnd): the plan from here, or as it was. */
 export type EndedPlan = ReturnType<typeof planAfterEnd>;
+/** The plan End ride leaves, without the ride's own via points (a loop's shape point, VIA_MARKS.shape): only the rider's. */
+export function withoutShapes(ended: EndedPlan): EndedPlan {
+  return ended && typeof ended === "object" ? { points: ended.points.filter((p) => !VIA_MARKS.isShape(p)) } : ended;
+}
 /** How long the 311 line ("Logged for 311: Pothole.") stays (review F4); held the same way. */
 export const SAID_311_MS = 8_000;
 /** Said when a 311 pick has no place on the route yet. */
@@ -997,9 +1006,12 @@ export function RideMode({
   const dockChosen = useRef<string | null>(plannedTrip?.docked ?? null);
   const [route, setRoute] = useState(plannedRoute);
   const routeRef = useRef(route);
-  // The rider's route has ridden a dirt trail on a ride type that skips them (the owner, 2026-10-21: "If someone
-  // goes onto a dirt trail, any reroutes should include dirt"): every re-plan of the ride may ride any dirt trail.
-  const dirtRidden = useRef(Boolean(plannedRoute.dirt_trails));
+  // The rider has ridden a dirt trail on a ride type that skips them (the owner, 2026-10-21: "If someone goes onto a
+  // dirt trail, any reroutes should include dirt"): every re-plan of the ride may ride any dirt trail. Set from what
+  // the rider rode (rideTrip.ts rodeDirt, at each fix), never from the route alone: a plan or re-plan whose route uses
+  // a dirt trail (`dirt_trails`, a stop on one) opened every dirt trail to every later re-plan before the rider had
+  // touched one (the hunt, 2026-11-08, V5). A stop, via or end on a trail is still ridden through (core/trail_touch.py).
+  const dirtRidden = useRef(false);
   // Road closed on a dirt trail (the owner, 2026-10-21: "assume that means bad riding conditions until it's opted
   // back in"): no re-plan of the ride rides one, even once that stretch has dropped out of the ones sent.
   const dirtClosed = useRef(false);
@@ -1007,6 +1019,12 @@ export function RideMode({
   // The dials every re-plan and detour of this ride asks with: the plan's at first, then a step calmer or flatter
   // for each Calmer or Flatter press that found a route (lib/rideEase.ts); Plan's own sliders are left as they were.
   const dialsRef = useRef(dials);
+  // The share bike a Bikeshare or transit leg is ridden on, or null on the rider's own: its pace and weight go with
+  // every request of the ride on the leg's plain ride type (rideTrip.ts legDials).
+  const legBike = useRef(shareBikeOf(plannedRoute, dials)).current;
+  // The ride is a loop (Make it a loop, or points that end on the start), and stays one through its re-plans, whose
+  // points end on the start but begin at the rider (lib/navigate.ts loopShapePoint; lib/rejoin.ts rejoinsFirst).
+  const loopRide = useRef(plannedLoop || endsOnStart(plannedPoints)).current;
   // A Calmer or Flatter press under way: its re-plan's ticket, the route before it, and how it came out.
   const easing = useRef<{ which: Ease; ticket: number; before: RouteResponse; outcome: "pending" | "found" | "rejoin" } | null>(null);
   // What a re-plan builds on: the plan's points at first, then the last re-plan's (never a loop: its end is sent).
@@ -1458,9 +1476,10 @@ export function RideMode({
     announcer.current?.answer(text);
     if (prefsRef.current.output === "neither") setPolite((s) => ({ text, count: s.count + 1 }));
   }, [showToast]);
-  // A ride's one route request (a re-plan, a detour, the way to the start): the route alone, at the ride's own dials.
+  // A ride's one route request (a re-plan, a detour, the way to the start): the route alone, at the ride's own dials,
+  // as the leg's ride type takes them (a Bikeshare or transit leg's plain one: rideTrip.ts legDials).
   const askRoute = (to: LonLat[], heading: number | null, aheadOnly: boolean) =>
-    requestRoute(to, preset, { dials: { ...dialsRef.current, loop: false }, vias: viaIndices(to, VIA_MARKS.isVia), straight: drawnLegs(to), routeOnly: true, confirmLong: true, blocked: blockedRef.current, heading, aheadOnly, rideReplan: true, dirtRidden: dirtRidden.current, dirtClosed: dirtClosed.current });
+    requestRoute(to, preset, { dials: legDials({ ...dialsRef.current, loop: false }, preset, legBike), vias: viaIndices(to, VIA_MARKS.isVia), straight: drawnLegs(to), routeOnly: true, confirmLong: true, blocked: blockedRef.current, heading, aheadOnly, rideReplan: true, dirtRidden: dirtRidden.current, dirtClosed: dirtClosed.current });
   // The re-plan (plan section 4): one POST /api/route from here through the stops not yet passed to the end.
   // With `via`, a detour: from here to that place first, then on through what was left (the nearest water
   // or restroom, below). A detour's place becomes a stop of the new route, so it is cued and arrived at.
@@ -1484,7 +1503,12 @@ export function RideMode({
       const keptPoints = done
         ? restartKept(modelRef.current, progressM, plan.current.points, plan.current.loop, done)
         : replanKept(modelRef.current, progressM, plan.current.points, plan.current.loop, fromM).filter((i) => i !== skip);
-      const left = withoutStop(plan.current.points, keptPoints, here, skip ?? -1);
+      const keptLeft = withoutStop(plan.current.points, keptPoints, here, skip ?? -1);
+      // A loop's way home keeps to the loop (lib/navigate.ts loopShapePoint): through the middle of what was planned for
+      // it, a via point, so the re-plan to the start is not the way out again. Only the end left ahead, and not for a
+      // detour or a restart; left out again as a via point is, where it costs more than VIA_SKIP_EXTRA_S (below).
+      const shape = loopRide && !via && !done && keptPoints.length === 1 ? loopShapePoint(modelRef.current, fromM) : null;
+      const left = shape ? [keptLeft[0], VIA_MARKS.shape([shape.point[0], shape.point[1]]), ...keptLeft.slice(1)] : keptLeft;
       // `let`: a re-route that leaves out the next via point (VIA_SKIP_EXTRA_S, below) rides the points without it.
       let points = via ? detourPoints(left, via) : left;
       if (!points) {
@@ -1547,12 +1571,15 @@ export function RideMode({
       // Off a route the rider chose over the first, the way back to it ahead first (routing audit D15; the owner,
       // 2026-10-27: "stops need to be made and via points should be followed as the default unless there's an
       // overriding reason to change"), so a new plan does not pull them back toward the route they turned down; a new
-      // plan only where there is no way back. A way back is a short ask or three, not a plan to the end.
-      const backFirst = rejoinsFirst(routeRef.current, { asked, detour: !!via, check, restart: !!done, skip: skip !== undefined });
+      // plan only where there is no way back. A way back is a short ask or three, not a plan to the end. On a loop too, so
+      // the rest of the loop stays the loop (the hunt, 2026-11-08, V1).
+      const backFirst = rejoinsFirst(routeRef.current, { asked, detour: !!via, check, restart: !!done, skip: skip !== undefined }, loopRide);
       if (backFirst) {
         const back = await wayBackRoute(routeRef.current, modelRef.current, progressM, here, keptPoints, ask, voided, closed);
         if ("route" in back) {
           found = back.route;
+          // The planned route ahead, so its kept points without a loop's shape point (its stops numbered as joined).
+          points = keptLeft;
           note = REPLAN_REJOIN_AHEAD;
         } else failed = back.failed;
       }
@@ -1569,14 +1596,18 @@ export function RideMode({
         // (replanFromM), it is planned once more without it. Not for a detour, a held U-turn's check, a restart, or a
         // Calmer or Flatter press (its route is slower by choice). The second ask is made only when that trips.
         const eased = easing.current?.ticket === ticket;
-        const next = result.ok && !via && !check && !done && !eased ? skippableVia(modelRef.current, keptPoints) : null;
+        // A loop's shape point (above) is the next via point there, and goes as one does, unsaid: the rider placed none.
+        const next = result.ok && !via && !check && !done && !eased ? (shape ?? skippableVia(modelRef.current, keptPoints)) : null;
         if (result.ok && next && viaSkipWorth(modelRef.current, fromM, next.atM, modelOf(result.route, points), 1) && !voided()) {
+          const dropped = points[1];
           const without = points.filter((_, i) => i !== 1);
           const again = await ask(without);
           if (again.ok) {
             found = again.route;
             points = without;
-            skippedVia = true;
+            // Said only for a via point the rider placed: a loop's shape point, this one's or one kept from an earlier
+            // re-route (VIA_MARKS.shape), goes unsaid.
+            skippedVia = !VIA_MARKS.isShape(dropped);
           }
         }
         // No new route to the end: the way back to the planned route, which goes on from there (lib/rejoin.ts;
@@ -1585,8 +1616,10 @@ export function RideMode({
         if (!result.ok && !backFirst && !via && !check && startsWayBack(result.error.kind) && !voided()) {
           const kept = keptPoints;
           const back = await wayBackRoute(routeRef.current, modelRef.current, progressM, here, kept, ask, voided, closed);
-          if ("route" in back) found = back.route;
-          else if (back.failed) failed = back.failed;
+          if ("route" in back) {
+            found = back.route;
+            points = keptLeft;
+          } else if (back.failed) failed = back.failed;
           note = REPLAN_REJOIN;
         }
       }
@@ -1640,7 +1673,7 @@ export function RideMode({
       }
       const model = modelOf(found, points);
       modelRef.current = model;
-      if (found.dirt_trails) dirtRidden.current = true;
+      // A route that rides a dirt trail is not the rider on one: that is set as they ride it (onFix, rodeDirt).
       if (found.dirt_closed) dirtClosed.current = true;
       setRoute(found);
       // The ride as it now stands is what a page closed mid-ride resumes (lib/rideResume.ts); never a trip's leg.
@@ -1659,7 +1692,7 @@ export function RideMode({
       tell(note);
       return true;
     },
-    [preset, gate, sayDetour, trip, keepLeft],
+    [preset, gate, sayDetour, trip, keepLeft, loopRide],
   );
   const replanRef = useRef(replan);
   replanRef.current = replan;
@@ -1692,8 +1725,10 @@ export function RideMode({
       const ticket = (replanTicket.current += 1);
       setReplanning(true);
       setReplanNote("");
+      // A moving rider's heading goes with it, as a re-route's does: the way to the start sets off ahead unless turning
+      // round saves half a mile (the hunt, 2026-11-08, V6: it was asked with none, so it could turn a rider round).
       const result = await Promise.race([
-        askRoute([here, start], null, false),
+        askRoute([here, start], rideRef.current.goodFix?.headingDeg ?? null, false),
         new Promise<null>((done) => window.setTimeout(() => done(null), REPLAN_TIMEOUT_MS)),
       ]).catch(() => null);
       const found = result && result.ok ? result.route : null;
@@ -1718,7 +1753,6 @@ export function RideMode({
       announcer.current?.drop();
       const model = modelOf(joined, points);
       modelRef.current = model;
-      if (found.dirt_trails) dirtRidden.current = true;
       setRoute(joined);
       if (!trip && keepLeft) keepLeftRide({ route: joined, points, loop: false, preset, dials: dialsRef.current, fixed: fixedRef.current }, VIA_MARKS, Date.now());
       otherRef.current = null;
@@ -1993,6 +2027,9 @@ export function RideMode({
       }
       stepDockRef.current(fix);
       const out = { state: stepped.state.ride, events: stepped.events };
+      // On a dirt trail the route rides, ridden along it: every later re-plan may ride dirt (rodeDirt).
+      const wasAtM = rideRef.current.off ? null : rideRef.current.progressM;
+      if (!dirtRidden.current && !out.state.off && rodeDirt(routeRef.current, modelRef.current.lengthM, wasAtM, out.state.progressM)) dirtRidden.current = true;
       rideRef.current = out.state;
       setRide(out.state);
       // Arrived at the line's end: the walk or the transit after it, followed from here (lib/onward.ts).
@@ -2509,7 +2546,7 @@ export function RideMode({
     // Only "Ride ended." is said; the figures are on the summary (the owner, 2026-10-20: "Just put ride ended.").
     if (toVoice(prefsRef.current.output)) rideVoice.speak(RIDE_ENDED_SAID, true);
     // A Bikeshare or transit trip's riding leg is not the plan: the plan stays as it was.
-    onEnd(trip && !trip.asPlanned ? null : planAfterEnd(modelRef.current, rideRef.current, plan.current.points, plan.current.loop, Date.now()), statsRef.current, dockChosen.current ? { name: dockChosen.current, route: routeRef.current, points: plan.current.points } : null);
+    onEnd(trip && !trip.asPlanned ? null : withoutShapes(planAfterEnd(modelRef.current, rideRef.current, plan.current.points, plan.current.loop, Date.now())), statsRef.current, dockChosen.current ? { name: dockChosen.current, route: routeRef.current, points: plan.current.points } : null);
   };
   // A toggle: pressed, no automatic re-plan (one in flight is voided) and the way back is said once;
   // pressed again, re-planning is back on.
@@ -2543,8 +2580,7 @@ export function RideMode({
       sayDetour(ROAD_CLOSED_NO_PLACE);
       return;
     }
-    blockedRef.current = withClosed(blockedRef.current, stretch.line);
-    blockedUntil.current = stretch.untilM === null ? null : { model: modelRef.current, untilM: stretch.untilM };
+    blockedRef.current = withClosed(blockedRef.current, stretch.line);    blockedUntil.current = stretch.untilM === null ? null : { model: modelRef.current, untilM: stretch.untilM };
     otherRef.current = null;
     setOther(null);
     setKeepPlanned(false);
@@ -2739,7 +2775,7 @@ export function RideMode({
           food,
           repair,
           geocode,
-          request: (from, places) => requestNearest(from, places, preset, { ...dialsRef.current, loop: false }),
+          request: (from, places) => requestNearest(from, places, preset, legDials({ ...dialsRef.current, loop: false }, preset, legBike)),
         },
         ask,
       );
@@ -2866,7 +2902,7 @@ export function RideMode({
           end,
           remainingM: left.end.metres,
           docks: fetchDocks,
-          request: (from, places) => requestNearest(from, places, preset, { ...dialsRef.current, loop: false }),
+          request: (from, places) => requestNearest(from, places, preset, legDials({ ...dialsRef.current, loop: false }, preset, legBike)),
         },
         way,
       );

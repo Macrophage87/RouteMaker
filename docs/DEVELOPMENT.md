@@ -1698,8 +1698,10 @@ curl -s -X POST http://localhost:8000/api/route -H 'Content-Type: application/js
   happens up to 3 times, and then the plan is made on the ride type's own graph.
   Green singletrack is always left out. A ride's re-plans send `ride_replan`.
   When the rider is on a dirt trail, or `dirt_ridden` is sent, any dirt trail
-  may be ridden. The answer's `dirt_trails` says the route rides one, and Ride
-  then sends `dirt_ridden` for the rest of the ride. A `blocked_lines` stretch with
+  may be ridden. The answer's `dirt_trails` says the route rides one; Ride sends
+  `dirt_ridden` for the rest of the ride once the rider has ridden 30 m (100 ft) into
+  one of the route's trail stretches (`trail_levels`; `rideTrip.ts` `rodeDirt`), never
+  for the route alone (2026-11-08 hunt, V5). A `blocked_lines` stretch with
   two of its quarter, half and three-quarter points within 15 m of a dirt trail (Road
   closed pressed on one; a road crossing a trail has one at most) means bad conditions:
   that re-plan rides no dirt trail (`trail_touch.closed_on_dirt`), its answer's
@@ -3013,7 +3015,10 @@ Round 1's review found four more things the search now does:
   `time`, `untraceable`, `span`, `long_ride` and `seeking` in plain words under
   the route ("The calmer-route search ran out of time, so there may be a
   calmer route than this one."; `frontend/src/lib/summary.ts`,
-  `calmSearchNote`).
+  `calmSearchNote`). At 80 or below (the crossing search only), Plan says
+  `time`, `untraceable`, `no_route`, `span`, `long_ride` and `split` in one short
+  English line ("The search for a way round busy crossings ran out of time.");
+  Go says nothing there (2026-11-08 hunt, S6).
 
 **Time, alternates and limits** (live router, 2026-10-01): a calm round is a
 `/route` (0.5 to 1.5 s), a `/trace_attributes` (0.1 to 0.3 s), the stress and road
@@ -6113,6 +6118,13 @@ has is refused (`refine.loop_refused`). At the top of the slider the target fitt
 ceiling run on a loop past the span too, as on one within it. The dodge pass and the
 Avoid-junction swap still leave a loop's route as made (266).
 
+**A loop in Ride** (2026-11-08 hunt, V1): a re-plan runs from the rider to the start, which the API
+does not plan as a loop, so an automatic re-route on a loop tries the way back to the loop ahead first
+(`lib/rejoin.ts` `rejoinsFirst`, as on a chosen route). With only the start left ahead, the plan to it
+goes through the middle of the planned way home (`navigate.ts` `loopShapePoint`, a mile or more left),
+a via point the ride made itself (`ViaMarks.shape`): never said when left out, kept as the ride's own
+through Resume, and left out of the plan End ride leaves.
+
 **Make it a loop by the search (OWNER-DECISIONS 388, 389).** The checkbox is in the Points
 section, under the search and above the points list (`App.tsx`, `.loop-toggle`, a 44 px row),
 not behind the Ride line's Edit; it is outside the part that hides while the points are
@@ -6185,6 +6197,10 @@ best order: Stop 1 is now Eastern Market (was Stop 2), Stop 2 is now Union Marke
 other stop stays where it was. About 12 min less riding, 1.0 mi (1.6 km) shorter. Undo puts the old
 order back." An order already best, an answer by straight line, a refusal and a ride changed meanwhile
 each say so there.
+Each via point stays on the leg it shapes, the other way round where the new order rides that leg
+backwards (`pointKinds.ts` `withViasOnLegs`). The order is costed without the via points, so an order that
+splits such a leg is not taken: "The stops stay in this order, to keep your via points on their way."
+(2026-11-08 hunt, V3). A stop dragged in the points list still takes its leading via points along (`withVias`).
 
 On the server, `core.stoporder.order` asks the ride's own router (the graph and costing `/route`
 would use, `presets.variant_for_ride` and `presets.costing`; a test plans the same bodies through

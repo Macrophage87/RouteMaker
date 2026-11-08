@@ -2103,4 +2103,5 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Ride to {place}, as planned": "ปั่นไป {place} ตามแผน",
   "At {place}. Take a bike, then choose where to dock.": "อยู่ที่ {place} แล้ว หยิบจักรยาน แล้วเลือกที่จะคืน",
   "No way there was found. Choose another dock.": "ไม่พบเส้นทางไปที่นั่น เลือกจุดจอดอื่น",
+  "The stops stay in this order, to keep your via points on their way.": "จุดแวะยังคงอยู่ในลำดับนี้ เพื่อให้จุดผ่านของคุณอยู่บนเส้นทางเดิม",
 };
