@@ -1969,6 +1969,14 @@ model's forces (`routemaker.effort`, Martin et al. 1998: rolling resistance 0.00
   owner: "2.5 mph is probably fast"): 1.9 mph (3.1 km/h) at 6%, 1.7 mph (2.7 km/h) at
   10%, 1.4 mph (2.2 km/h) at 15%. It costs its time plus 4 s of penalty a second pushed
   (`WALK_PENALTY`), so a route that needs pushing loses to almost any ridable one.
+- **Electric assist** (since 2026-11-08, hunt finding E2). On the E-bike ride type and a ride
+  with electric assist (a share e-bike, Cargo Bike's assist toggle; `routing.assist_watts_for`)
+  the climb is timed at the rider's power plus 250 W from the motor (`hill_cost.ASSIST_W`, an
+  EU pedelec's continuous rating), never slower than without it and never faster than the flat
+  speed. Before, the climb was timed at the rider's power alone against the motor's faster flat
+  speed, so 0.6 mi (1 km) at 6% cost the E-bike ride type 0.59 mi (957 m) of flat against a
+  plain bike's 0.49 mi (783 m); now it costs 89 ft (27 m). The steepness penalty is still the
+  slider's alone, so Cargo Bike's assisted ride keeps its hill-averse start.
 
 The penalty is for choosing routes only: no time shown to riders includes it. Descents
 add nothing here; riding the brakes is still priced from the ride type's brake grade
@@ -6948,7 +6956,13 @@ leg had any elevation), built by `core.routing.route_profile`:
   `i` is at the leg's start plus `i x 30`, never past the leg's end; the first sample of
   the next leg is at the same distance, so a joint is two samples at one place. A leg the
   router gave no elevation for is a gap, a null height at its start and end, so no grade,
-  climb or line is read across it. The legs' starts are the sums of the legs' summary
+  climb or line is read across it. Bridges and tunnels are already level in these samples:
+  3DEP is bare earth (a bridge's ground is the valley under it), but Valhalla 3.9.1 samples a
+  bridge or tunnel edge at its two ends only, clamps its grade to 3% and interpolates the
+  route's `elevation` across each run of them (`mjolnir/elevationbuilder.cc`,
+  `tyr/serializers.h`; checked in its source for hunt findings E1 and E4, 2026-11-08). The
+  Climbs layer, which reads the tiles itself, levels them on its own
+  (`climb_layer.level_structures`). The legs' starts are the sums of the legs' summary
   lengths, which is the router's length, not the traced pieces' (`stress_spans` use the
   traced pieces; the two differ by metres).
 - `grade_pct` is the rise over the window of two samples either side (`routemaker.profile`

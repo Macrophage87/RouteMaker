@@ -337,6 +337,9 @@ class Context:
     # The rider's total system weight in kilograms (item 264), which the effort
     # reads (`routemaker.effort`).
     mass_kg: float = effort.MASS_KG
+    # An electric assist's watts up a climb (`routing.HillPrice.assist_w`), which shorten the
+    # climbing time the hills price charges (`hill_cost.hill_cost_m`); 0 without one.
+    assist_w: float = 0.0
     analyses: dict = field(default_factory=dict)
     # The router's `/locate` answers already had in this plan, by (graph, lon, lat,
     # radius) (`locator`): the candidates are mostly detours of one route and share
@@ -1112,6 +1115,7 @@ def analyse(
             ctx.mass_kg,
             flat_speed_ms(ctx.costing),
             ctx.hills,
+            ctx.assist_w,
         )
         + (
             steep_grades.penalty_s(routing.grade_profile(trip)) * flat_speed_ms(ctx.costing)

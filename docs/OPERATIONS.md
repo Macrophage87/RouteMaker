@@ -1947,7 +1947,13 @@ asks for every tile again under `?rev=<generation>` (the server ignores the para
 own ranking (all read the live table at route time). **What waits for the next rebuild:**
 Valhalla's edge costs (the Lua transform runs at graph build), the z12-13 ride layer
 (`calm_run_m`) and the zoomed-out trail runs, and the Mass Ride capacity layers. The panel says
-so after a save.
+so after a save, and, since 2026-11-08 (hunt finding X3), the road panel's Traffic stress section
+says it to anyone who opens the road while the edit waits: a "Routing" row, "Routes fully use this
+level after the next weekly data update" (`stress_edits.routing_pending`: an edit made after the
+live table's rebuild read the overrides, not undone back to the built level). Until then the router
+can still offer a route over a road just raised, or round one just lowered; the map, the route's
+colours and the ranking keep the edited level, so a road just rated Avoid is never drawn calm on a
+route that rides it, and the ranking prefers any route the router offers round it.
 
 **Undo.** `POST /api/stress-edits/{id}/undo` puts the edit's `before` state back and reinstates
 the superseded row, for any instance admin, for 30 minutes (`stress_edits.UNDO_WINDOW`), and only
@@ -8161,6 +8167,14 @@ own extract, `/data/extracts/source.osm.pbf`, which the `rebuild` container moun
 
 and deploy the front end as usual. `tests/test_climb_layer.py::test_bundled_file_is_well_formed`
 and `climbs.test.ts` check the committed file.
+
+**Bridges and tunnels** (since 2026-11-08, hunt finding E3). The tiles are bare earth, so the
+ground under a high bridge is the valley floor, and the file of 2026-10-12 may have climbs whose
+foot is on a bridge deck (two Cat 5s start 130-220 m from the Duke Ellington and Taft bridges).
+`build_climbs` now reads every way the extract tags `bridge=*` or `tunnel=*` (not `no`) and reads
+the ground straight across it (`climb_layer.level_structures`); its names line adds "B bridges and
+tunnels". The committed file changes only when it is written again: run it after the next
+promotion and commit the new file.
 
 **Names (the owner, 2026-10-19: "have them named, by a combination of road names and mountain
 names (if named)").** Each climb is named at build time from the extract (`pipeline.climb_names`):

@@ -22,6 +22,10 @@ What it reads:
   and never written.
 - **The ground**: the same 3DEP one-arcsecond HGT tiles the routers read
   (`<DATA_ROOT>/elevation/N38/N38W077.hgt`; `pipeline.elevation`), bilinear between posts.
+  The tiles are bare earth, so on a bridge or in a tunnel (the extract's `bridge=*` and
+  `tunnel=*`, `climb_names.read_extract`) the ground is read straight across from end to end
+  (`level_structures`, `routemaker.structures`; since 2026-11-08, hunt finding E3: before it a
+  high bridge's valley read as the foot of a climb starting on its deck).
 
 How:
 
@@ -81,7 +85,7 @@ from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
 
-from routemaker import climb_categories, climb_exclusions
+from routemaker import climb_categories, climb_exclusions, structures
 from routemaker.climb_categories import Climb
 from routemaker.facility import SHARED_PREFIXES, sidepath_street
 
@@ -194,6 +198,9 @@ class SegmentLine:
     trail: bool = False
     mtb: bool = False
     tier: int | None = None
+    # A bridge or a tunnel (OSM `bridge=*` or `tunnel=*`, read from the extract by
+    # `climb_names.read_extract`): its ground is read straight across (`level_structures`).
+    structure: bool = False
 
 
 @dataclass(slots=True)
@@ -352,6 +359,29 @@ def sample(stroke: Stroke, ground: HgtElevation, step: float = SAMPLE_STEP_M) ->
     return out
 
 
+def level_structures(
+    samples: list[Sample], stroke: Stroke, segments: Sequence[SegmentLine]
+) -> list[Sample]:
+    """The samples with the ground on the stroke's bridges and tunnels read straight across,
+    in place (`routemaker.structures`; hunt finding E3, 2026-11-08): the tiles are bare earth,
+    so a bridge's samples read the valley floor under its deck, and a climb was found starting
+    mid-deck. A structure's span is its edges' along the stroke, end to end."""
+    coords = stroke.coords
+    spans: list[tuple[float, float]] = []
+    walked = 0.0
+    for i in range(len(coords) - 1):
+        length = _metres(coords[i], coords[i + 1])
+        if segments[stroke.parts[stroke.edge_part[i]][0]].structure:
+            spans.append((walked, walked + length))
+        walked += length
+    if not spans:
+        return samples
+    levelled = structures.level([s.along_m for s in samples], [s.elevation for s in samples], spans)
+    for s, height in zip(samples, levelled, strict=True):
+        s.elevation = height
+    return samples
+
+
 def _pieces(samples: Sequence[Sample]) -> Iterator[list[Sample]]:
     piece: list[Sample] = []
     for s in samples:
@@ -506,7 +536,7 @@ def climbs_on_stroke(
     stroke: Stroke, segments: Sequence[SegmentLine], ground: HgtElevation
 ) -> list[Found]:
     """The categorised climbs along one stroke, both ways, that a rider may ride."""
-    samples = sample(stroke, ground)
+    samples = level_structures(sample(stroke, ground), stroke, segments)
     if len(samples) < 2:
         return []
     total = samples[-1].along_m
@@ -587,6 +617,12 @@ def with_names(segments: Sequence[SegmentLine], ways: dict[int, str]) -> list[Se
     """The segments with each way's OSM name or ref (`climb_names.read_extract`) in front of
     the rebuild's own name for it."""
     return [replace(s, name=ways[s.key[0]]) if s.key[0] in ways else s for s in segments]
+
+
+def with_structures(segments: Sequence[SegmentLine], ways: set[int]) -> list[SegmentLine]:
+    """The segments with the ways the extract tags as a bridge or a tunnel
+    (`climb_names.Gazetteer.structures`) marked as one."""
+    return [replace(s, structure=True) if s.key[0] in ways else s for s in segments]
 
 
 def document(found: Sequence[Found], built: datetime | None = None) -> dict:
