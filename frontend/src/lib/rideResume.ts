@@ -16,6 +16,7 @@ import { leadKeyFrom, rideLinkFrom, sharedIdFrom } from "./sharedRoutes.ts";
 import type { OnwardState } from "./onward.ts";
 import type { StopsLeft } from "./tripStops.ts";
 import type { RideStats } from "./rideStats.ts";
+import type { RebalanceDocked } from "./rebalanceDock.ts";
 
 export const RIDE_RESUME_KEY = "routemaker.ride-left";
 /** A ride left longer than this is not offered: a day's ride, not yesterday's. */
@@ -74,6 +75,11 @@ export interface LeftRide {
   seen?: number | null;
   /** The ride's figures then (distance, time, climb), so a quick Resume carries them on rather than starting at 0. */
   stats?: RideStats | null;
+  /**
+   * A Rebalance Ride's drop-off, chosen at the pick-up dock (lib/rebalanceDock.ts), and the ride to it: Resume rides on
+   * to it rather than walking back to the crowded dock (the v0.22.0 review: the choice was lost on a reload).
+   */
+  docked?: RebalanceDocked | null;
 }
 
 /** Points kept with their kinds and names, which live on the pairs (lib/pointKinds.ts). */
@@ -105,6 +111,7 @@ interface Kept {
   stops?: KeptPoints & { preset: PresetId };
   seen?: number;
   stats?: RideStats;
+  docked?: RebalanceDocked;
 }
 
 interface Store {
@@ -170,6 +177,7 @@ export function keepLeftRide(ride: LeftRide, marks: Pick<ViaMarks, "isVia" | "is
     ...(ride.wholeTrip ? { trip: true } : {}),
     ...(ride.wholeTrip && ride.past ? { past: ride.past } : {}),
     ...(ride.stopsLeft && ride.stopsLeft.points.length > 0 ? { stops: { preset: ride.stopsLeft.preset, ...keptPoints(ride.stopsLeft.points, marks) } } : {}),
+    ...(ride.wholeTrip && ride.docked ? { docked: plainDocked(ride.docked) } : {}),
   };
   try {
     store?.setItem(RIDE_RESUME_KEY, JSON.stringify(kept));
@@ -221,6 +229,31 @@ export function keepLeftRideLeads(link: string, store: Store | null = local()): 
     store?.setItem(RIDE_RESUME_KEY, JSON.stringify({ ...was, leads: link }));
   } catch {
     // Full or blocked storage: the ride goes on, only resumed without its broadcast.
+  }
+}
+
+/** The dock and its ride as plain data: its two points without their marks. */
+function plainDocked(docked: RebalanceDocked): RebalanceDocked {
+  return { name: docked.name, route: docked.route, points: docked.points.map((p): LonLat => [p[0], p[1]]) };
+}
+
+/** A kept dock as written by keepLeftRideDocked; null for anything else. */
+function dockedOf(value: unknown): RebalanceDocked | null {
+  const d = value as Partial<RebalanceDocked> | null;
+  const shaped = !!d && typeof d === "object" && typeof d.name === "string" && Array.isArray(d.points) && d.points.length >= 2 && Array.isArray(d.route?.geometry?.coordinates);
+  return shaped ? { name: d.name!, route: d.route!, points: d.points!.map((p): LonLat => [p[0], p[1]]) } : null;
+}
+
+/** A Rebalance Ride's drop-off chosen at the pick-up dock: kept with the trip left going, so Resume rides on to it. */
+export function keepLeftRideDocked(docked: RebalanceDocked, store: Store | null = local()): void {
+  try {
+    const raw = store?.getItem(RIDE_RESUME_KEY);
+    if (!raw) return;
+    const was = JSON.parse(raw) as Kept;
+    if (!was.trip) return;
+    store?.setItem(RIDE_RESUME_KEY, JSON.stringify({ ...was, docked: plainDocked(docked) }));
+  } catch {
+    // Full or blocked storage: Resume walks to the crowded dock and asks again, as before.
   }
 }
 
@@ -305,6 +338,7 @@ export function leftRide(marks: Pick<ViaMarks, "via" | "drawn" | "named">, now: 
     return null;
   }
   const points = markedPoints(kept, marks);
+  const docked = kept.trip === true ? dockedOf(kept.docked) : null;
   const stops = kept.stops && Array.isArray(kept.stops.points) && kept.stops.points.length > 0 && typeof kept.stops.preset === "string" ? kept.stops : null;
   return {
     route: kept.route,
@@ -321,6 +355,7 @@ export function leftRide(marks: Pick<ViaMarks, "via" | "drawn" | "named">, now: 
     ...(stops ? { stopsLeft: { preset: stops.preset, points: markedPoints(stops, marks) } } : {}),
     ...(typeof kept.seen === "number" ? { seen: kept.seen } : {}),
     ...(statsOf(kept.stats) ? { stats: kept.stats } : {}),
+    ...(docked ? { docked } : {}),
   };
 }
 
