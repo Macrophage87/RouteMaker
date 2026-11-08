@@ -289,9 +289,12 @@ gravel;dirt.</li>
 <li><strong>Junctions.</strong> Each junction adds its wait: 4 seconds at a District stop sign
 ridden as a yield, 8 at other stops, 15 at a signal and 12 to 30 waiting for a gap in a busier road
 (<a href="#junctions">Junctions</a>). When Road Bike chooses between routes, these waits count three times
-over, because a road rider loses their pace at every stop; the time shown is still the real wait.</li>
+over, because a road rider loses their pace at every stop, and on Tandem twice, because both riders stop and
+start together; the time shown is still the real wait.</li>
 <li><strong>Gates.</strong> The engine adds a wait at a gate whose access isn't marked<sup class="cite"><a href="#ref-1" aria-label="source 1">[1]</a></sup>:
-30 seconds, 2 minutes on Group Ride and Road Bike, and 5 minutes on Cargo Bike and the bikeshare ride types.</li>
+30 seconds on every ride type. On Cargo Bike and Tandem a gate, cycle barrier or narrow bollard counts about
+15 minutes when choosing a route, though only the 30 seconds shows in the time, so their routes keep out of them
+where there is another way.</li>
 <li><strong>Walking.</strong> Where a way is marked walk your bike, the engine times it at walking
 pace, 3.1 mph [5 km/h]<sup class="cite"><a href="#ref-2" aria-label="source 2">[2]</a></sup>. Where Novice and Nervous suggests walking on the sidewalk past a
 busy road, that stretch is timed at walking pace.</li>
@@ -313,7 +316,7 @@ wider roads of the same level cost more.</p>
 <div class="fig-scroll fig-wide" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 800 410" role="img" aria-labelledby="fig-costs-t fig-costs-d" focusable="false" style="min-width:576px">
 <title id="fig-costs-t">What a mile of busy road costs, by ride type</title>
-<desc id="fig-costs-d">Range bars of calm miles per mile at each ride type&#x27;s starting slider. Mass Ride: LTS 3 and LTS 4 both 1. Fast: LTS 3 1.22 to 1.36, LTS 4 2.11 to 2.34. Group Ride, Gravel and Mountain Goat: 1.93 to 2.85 and 5.38 to 6.25. Road Bike: the same. Default, E-bike and Cargo Bike carrying cargo: 2.88 to 5.79 and 12.85 to 15.83. Cargo Bike with passengers: 3.16 to 6.84 and 15.61 to 19.42. Trailmaxxing with no target distance: 6 and 11.</desc>
+<desc id="fig-costs-d">Range bars of calm miles per mile at each ride type&#x27;s starting slider. Mass Ride: LTS 3 and LTS 4 both 1. Fast: LTS 3 1.22 to 1.36, LTS 4 2.11 to 2.34. Group Ride, Gravel and Mountain Goat: 1.93 to 2.85 and 5.38 to 6.25. Road Bike: the same. Default, E-bike and Cargo Bike carrying cargo: 2.88 to 5.79 and 12.85 to 15.83. Cargo Bike with passengers and Tandem: 3.16 to 6.84 and 15.61 to 19.42. Trailmaxxing with no target distance: 6 and 11.</desc>
 <defs><marker id="ah-costs" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
 <line class="grid" x1="280.0" y1="8" x2="280.0" y2="364"/>
 <text class="ts" x="280.0" y="380" text-anchor="middle">0</text>
@@ -350,7 +353,7 @@ wider roads of the same level cost more.</p>
 <text class="ts" x="392.22" y="229" text-anchor="start">LTS 3: 2.88 to 5.79</text>
 <rect x="511.3" y="238" width="53.6" height="14" fill="#e3261c" stroke="#1c1917" stroke-width="0.8"/>
 <text class="ts" x="572.94" y="249" text-anchor="start">LTS 4: 12.85 to 15.83</text>
-<text class="t" x="270" y="286" text-anchor="end">Cargo with passengers</text>
+<text class="t" x="270" y="286" text-anchor="end">Cargo with passengers, Tandem</text>
 <rect x="336.9" y="268" width="66.2" height="14" fill="#f3c81a" stroke="#1c1917" stroke-width="0.8"/>
 <text class="ts" x="411.12" y="279" text-anchor="start">LTS 3: 3.16 to 6.84</text>
 <rect x="561.0" y="288" width="68.6" height="14" fill="#e3261c" stroke="#1c1917" stroke-width="0.8"/>
@@ -366,7 +369,7 @@ wider roads of the same level cost more.</p>
 <div class="fig-narrow">
 <svg viewBox="0 0 320 620" role="img" aria-labelledby="fig-costs-n-t fig-costs-n-d" focusable="false">
 <title id="fig-costs-n-t">What a mile of busy road costs, by ride type</title>
-<desc id="fig-costs-n-d">Range bars of calm miles per mile at each ride type&#x27;s starting slider. Mass Ride: LTS 3 and LTS 4 both 1. Fast: LTS 3 1.22 to 1.36, LTS 4 2.11 to 2.34. Group Ride, Gravel and Mountain Goat: 1.93 to 2.85 and 5.38 to 6.25. Road Bike: the same. Default, E-bike and Cargo Bike carrying cargo: 2.88 to 5.79 and 12.85 to 15.83. Cargo Bike with passengers: 3.16 to 6.84 and 15.61 to 19.42. Trailmaxxing with no target distance: 6 and 11.</desc>
+<desc id="fig-costs-n-d">Range bars of calm miles per mile at each ride type&#x27;s starting slider. Mass Ride: LTS 3 and LTS 4 both 1. Fast: LTS 3 1.22 to 1.36, LTS 4 2.11 to 2.34. Group Ride, Gravel and Mountain Goat: 1.93 to 2.85 and 5.38 to 6.25. Road Bike: the same. Default, E-bike and Cargo Bike carrying cargo: 2.88 to 5.79 and 12.85 to 15.83. Cargo Bike with passengers and Tandem: 3.16 to 6.84 and 15.61 to 19.42. Trailmaxxing with no target distance: 6 and 11.</desc>
 <defs><marker id="ah-costs-n" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
 <line class="grid" x1="12.0" y1="8" x2="12.0" y2="540"/>
 <text class="ts" x="12.0" y="560" text-anchor="middle">0</text>
@@ -403,7 +406,7 @@ wider roads of the same level cost more.</p>
 <text class="ts" x="103.376" y="351" text-anchor="start">LTS 3: 2.88 to 5.79</text>
 <rect x="197.0" y="360" width="42.9" height="16" fill="#e3261c" stroke="#1c1917" stroke-width="0.8"/>
 <text class="ts" x="189.04" y="373" text-anchor="end">LTS 4: 12.85 to 15.83</text>
-<text class="t" x="10" y="406" text-anchor="start">Cargo with passengers</text>
+<text class="t" x="10" y="406" text-anchor="start">Cargo with passengers, Tandem</text>
 <rect x="57.5" y="414" width="53.0" height="16" fill="#f3c81a" stroke="#1c1917" stroke-width="0.8"/>
 <text class="ts" x="118.49600000000001" y="427" text-anchor="start">LTS 3: 3.16 to 6.84</text>
 <rect x="236.8" y="436" width="54.9" height="16" fill="#e3261c" stroke="#1c1917" stroke-width="0.8"/>
@@ -561,7 +564,7 @@ way round is as bad. Not on Mass Ride, and not on paths. See
 price of more busy road.</li>
 <li><strong>Hills</strong>, by the Hills slider (see <a href="#hills">Hills</a>), and <strong>surface</strong>, by the ride type: rough DC
 pavement<sup class="cite"><a href="#ref-4" aria-label="source 4">[4]</a></sup> costs a little more, and each ride type has its own view of gravel and trails.</li>
-<li><strong>Turns</strong>: each change of street costs time, 5 seconds on most ride types and 30 on Group Ride, Mass Ride, Fast and Road Bike.</li>
+<li><strong>Turns</strong>: each change of street costs time, 5 seconds on most ride types and 30 on Group Ride, Mass Ride, Fast, Road Bike and Tandem.</li>
 <li><strong>Stops and signals</strong>: the time a rider loses at each junction they give way at or wait
 at, counted as that much quiet riding: see <a href="#junction-time">Time lost at junctions</a>.</li>
 <li><strong>Closures</strong>: see <a href="#closures">Closures</a>.</li>
@@ -892,7 +895,7 @@ route is charged for counts its climbing as the flat riding it is worth.</p>
 <tbody>
 <tr><th scope="row">3%</th><td>Cargo Bike</td></tr>
 <tr><th scope="row">4%</th><td>Mass Ride, Bikeshare, Bikeshare + transit, Novice and Nervous, Rebalance Ride</td></tr>
-<tr><th scope="row">5%</th><td>Group Ride</td></tr>
+<tr><th scope="row">5%</th><td>Group Ride, Tandem</td></tr>
 <tr><th scope="row">6%</th><td>Default, Own Bike + transit, Trailmaxxing, Gravel, E-bike</td></tr>
 <tr><th scope="row">Never</th><td>Fast, Road Bike, Mountain Bike, Mountain Goat</td></tr>
 </tbody>
@@ -933,7 +936,7 @@ is kept. Every ride type starts the slider somewhere, and you can move it:</p>
 <tbody>
 <tr><th scope="row">1%</th><td>Mass Ride</td></tr>
 <tr><th scope="row">4%</th><td>Bikeshare (classic bike), Bikeshare + transit, Cargo Bike, Novice and Nervous, Rebalance Ride</td></tr>
-<tr><th scope="row">5%</th><td>Group Ride</td></tr>
+<tr><th scope="row">5%</th><td>Group Ride, Tandem</td></tr>
 <tr><th scope="row">7%</th><td>Bikeshare (e-bike)</td></tr>
 <tr><th scope="row">8%, the middle</th><td>Default, Own Bike + transit, Trailmaxxing, Gravel, Road Bike</td></tr>
 <tr><th scope="row">11%</th><td>Fast</td></tr>
