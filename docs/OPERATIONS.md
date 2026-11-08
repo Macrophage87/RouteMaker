@@ -754,7 +754,12 @@ Measured on the live router, a batch of 50 at 100 ft (30 m) took 0.1-0.3 s and
 2.6 MB, against 0.04-0.15 s and 0.5 MB at 3 ft (1 m). A plan with a red junction
 1,640 ft (500 m) or more from both ends asks the router for one more route (crossing
 avoidance, `core.refine`: only red junctions, from 0.59 calm mi [0.94 km; 3,100 ft],
-are worth a second route), one `/trace_attributes` for it and its `/locate`s, and one
+are worth a second route), one `/trace_attributes` for it and its `/locate`s. A plan
+the crossing search did not cover (legs adding up past 19 mi [30 km], a long Trailmaxxing
+plan searched leg by leg, a search cut short) asks the same once after it, for the route
+with every red junction excluded, taken where it has fewer reds, is no busier and is
+better by the search's own rule (`core.red_crossings`; an owner report of the GW Parkway
+at Tulane Dr on a long Mount Vernon ride). And one
 more route for the detour warning when the route is at least twice the straight line, or above
 Default when it is longer than the allowance. Above 80 on the stress slider a
 plan can make about 20 router calls (5 rounds of a route, a trace and `/locate`s,
@@ -7912,6 +7917,18 @@ at most 500 ft (150 m) long; they get `rm:aisle_link` and the remap routes them 
 service roads, as it does aisles tagged `bicycle=yes` (PR #197). Driveways are left out:
 most private ones carry no access tag. The rebuild log's facility line counts them
 ("parking aisles routed as links where a trail ends").
+
+**Ways private to cars alone (with the next map update).** Valhalla reads `private` from
+`motor_vehicle` and `motorcar` as well as `access` and `vehicle`, and makes the way
+destination-only for every mode, bicycles included: a 600 s penalty to enter. The Mount
+Vernon Trail runs 260 ft (80 m) at Belle Haven Marina on a service road tagged
+`motor_vehicle=private` + `bicycle=yes` (way 984055921), so routes left the trail there to
+cross the George Washington Parkway at grade at Tulane Drive, with no signal, and came back
+by side streets (the owner, 2026-11-08). Where a way's own `bicycle` tag grants it (yes,
+designated, permissive) and its `access` and `vehicle` leave it open, the remap writes the
+private motor key `no` (`M.private_to_motors_only`): still closed to cars in the graph, no
+longer destination-only for the bicycle. `access=private`, `vehicle=private`, a way with no
+bicycle tag, a cemetery's ways and the Zoo's spur keep the flag.
 
 **Short links the trail rules close (v0.14.0, with the next map update).** Every link rule
 above reads footways or parking aisles, so a short `highway=path` the trail rules close

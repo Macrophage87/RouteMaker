@@ -5161,6 +5161,29 @@ def _plan(
             "limited": "no_mtb_graph",
         }
     mtb_trip = trip
+    # A red (very high stress) crossing still on the answer where the crossing search did not
+    # run over the whole route (a plan past REFINE_MAX_SPAN_M, a long Trailmaxxing plan
+    # searched leg by leg, a search cut short): the way round, asked for once and taken where
+    # it is better (`core.red_crossings`); before the dodge pass, which weighs its way round
+    # as any other. The owner, 2026-11-08, of the GW Parkway at grade at Tulane Dr on a Mount
+    # Vernon ride: "It's taking people onto dangerous intersections."
+    red_info = None
+    if not loop and not quick and not fixed:
+        from . import red_crossings
+
+        whole_searched = (
+            refined is not None
+            and not long_calm
+            and (refined.get("rounds") or 0) > 0
+            and not refined.get("limited")
+        )
+        red_trip = trip
+        trip, red_info = red_crossings.settle(trip, refine_context, whole_searched, refined)
+        if trip is not red_trip:
+            # The routes to choose from were near-ties of the route it replaced.
+            refine_context.candidates = refine_context.candidates[:1]
+        if red_info is not None:
+            logger.info("red crossings: %s", red_info)
     # No weaving through side streets beside a busier road unless it buys a
     # meaningful length of calm (OWNER-DECISIONS 272, 273): the main road's stretch
     # replaces such a dodge. A loop's way back is kept as it was made, not to share

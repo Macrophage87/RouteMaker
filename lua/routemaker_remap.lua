@@ -528,6 +528,40 @@ function M.bicycle_link_service(tags)
   return true
 end
 
+-- A way open to bicycles by its own tag whose motor traffic alone is private: the Mount
+-- Vernon Trail runs 260 ft at Belle Haven Marina on a service road tagged
+-- `motor_vehicle=private` + `bicycle=yes` (way 984055921). Upstream's parser
+-- (lua/vendor/graph_upstream.lua, `kv["private"]`) reads `private` from `motor_vehicle`
+-- and `motorcar` as well as `access` and `vehicle`, and its flag is the edge's
+-- destination-only, which bicycle costing charges 600 s (`destination_only_penalty`) to
+-- enter, whatever the bicycle tag says. So that link cost as much as 2 mi of trail, and
+-- routes left the trail to cross the George Washington Parkway at grade at Tulane Dr (no
+-- signal) and come back by side streets (owner report, 2026-11-08: "Why wouldn't we just
+-- stay on the mount vernon trail? It's totally fine there."). On such a way the motor key
+-- is written `no`: still closed to cars in the graph, a narrowing for them and never a
+-- widening for anyone, and no longer destination-only for the bicycle the way admits.
+-- Only where the way's own `access` and `vehicle` leave it open (those are a bicycle's
+-- restriction too, and keep upstream's flag).
+M.MOTOR_KEYS = { "motor_vehicle", "motorcar" }
+
+function M.private_to_motors_only(tags)
+  if not M.BICYCLE_LINK_GRANTS[tags.bicycle] then
+    return {}
+  end
+  for _, key in ipairs({ "access", "vehicle" }) do
+    if tags[key] ~= nil and not M.PERMISSIVE_ACCESS[tags[key]] then
+      return {}
+    end
+  end
+  local keys = {}
+  for _, key in ipairs(M.MOTOR_KEYS) do
+    if M.UPSTREAM_PRIVATE_ACCESS[tags[key]] then
+      keys[#keys + 1] = key
+    end
+  end
+  return keys
+end
+
 --- A parking aisle the rebuild names a trail's link (`rm:aisle_link`), whose own
 -- `access` and `vehicle` leave it open.
 function M.aisle_link(tags, derived)
@@ -946,6 +980,15 @@ function M.remap_way(tags, derived)
       out.access = M.CEMETERY_ACCESS
     end
     out.bicycle = "destination"
+  end
+
+  -- A bicycle's way private to motor traffic alone is not destination-only for the bicycle
+  -- (M.private_to_motors_only). Not where the remap itself closed it or made it
+  -- destination-only above (a cemetery, the Zoo's spur).
+  if out.bicycle ~= "no" and out.access == nil then
+    for _, key in ipairs(M.private_to_motors_only(tags)) do
+      out[key] = "no"
+    end
   end
 
   -- A footway into a rail station (`rm:walk_link`, routemaker.station_links; the owner,
