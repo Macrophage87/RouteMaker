@@ -519,6 +519,30 @@ class TestTheQuery:
         )
         assert self.north_of(got) == [100, 200]
 
+    def test_avoiding_winding_keeps_a_bending_car_free_road(self, table) -> None:
+        # T3-5: the paved graphs price only a trail-class way's bends, so a parkway closed
+        # to cars that follows a creek is a corridor still.
+        from django.db import connection
+
+        zigzag = ", ".join(
+            f"{START[0] + 0.02 + i * 0.0005} {START[1] + (1100 + (15 if i % 2 else -15)) / KY}"
+            for i in range(21)
+        )
+        with connection.cursor() as cursor:
+            self.add(
+                cursor,
+                table,
+                12,
+                f"LINESTRING({zigzag})",
+                facility="none",
+                tier=4,
+                car_free="{weekend}",
+            )
+        got = ts.corridor_segments(
+            table, self.guide(), 1500.0, True, "weekend", True, avoid_winding=True
+        )
+        assert 1085 in self.north_of(got)
+
     def test_without_the_facility_column_the_trail_rule_says(self, table) -> None:
         got = ts.corridor_segments(table, self.guide(), 1500.0, False, "weekday_offpeak")
         # Only the ways whose recorded rule is a path's.

@@ -1223,14 +1223,18 @@ end
 -- (`M.strip_ratings_if_closed`), so on a closed way the rating was never what
 -- decided access, and on an open one it grants nothing new. `sac_scale` is left
 -- alone: upstream reads it for no bicycle (only in its ferry-and-rail branch),
--- and it sets the surface only where no `surface` tag does. `mtb:scale:uphill`
--- and `mtb:description` stay as they are.
+-- and it sets the surface only where no `surface` tag does. `mtb:scale:uphill` comes
+-- off too: the parser sets the surface from it where no `mtb:scale` is (below 2 as
+-- gravel; see `M.SURFACE_RATING_KEYS`), so with only `mtb:scale` taken off a paved trail
+-- rated on both was priced as gravel (terrain hunt 3, T3-6). `mtb:scale:imba` sets no
+-- surface (as `M.SURFACE_RATING_KEYS` reads the parser) and comes off only as before.
+-- `mtb:description` stays as it is.
 M.PAVED_SURFACES = { asphalt = true, concrete = true, paved = true,
   paving_stones = true, chipseal = true, wood = true, boardwalk = true,
   cobblestone = true, unhewn_cobblestone = true, metal = true, metal_grid = true,
   brick = true, bricks = true, sett = true, tartan = true, rubber = true }
 M.PAVED_PREFIXES = { "concrete:", "paving_stones:", "asphalt:" }
-M.PAVED_RATING_KEYS = { "mtb:scale", "mtb:scale:imba" }
+M.PAVED_RATING_KEYS = { "mtb:scale", "mtb:scale:imba", "mtb:scale:uphill" }
 
 function M.is_paved(tags)
   local surface = tags.surface or ""

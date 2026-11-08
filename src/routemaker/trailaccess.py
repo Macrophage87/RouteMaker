@@ -322,6 +322,12 @@ def verdict(
     if not upstream_open(tags) or _kept_by_class(tags):
         return None
     bicycle = tags.get("bicycle")
+    if bicycle == "dismount":
+        # The dismount rule decides it (`dismount_reasons`: walk a short one, close a long
+        # one), never the mountain-bike class: a dirt trail signed "dismount" was opened, and
+        # ridden, on the off-road and Mountain Bike graphs (terrain hunt 3, T3-1). Unclear
+        # bicycle access is closed (the owner's rule).
+        return None
     if bicycle is not None and bicycle not in PRIVATE_BICYCLE:
         return MTB if is_mtb_class(tags, routes) else None
     if tags.get("access") in PRIVATE_ACCESS or bicycle in PRIVATE_BICYCLE:

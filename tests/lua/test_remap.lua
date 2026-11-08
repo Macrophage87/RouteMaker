@@ -1403,11 +1403,14 @@ check("gravel is not paved", not M.is_paved({ surface = "gravel" }))
 check("gravel rated 0 is priced as packed gravel, not by its rating",
   M.remap_way({ highway = "path", surface = "gravel", ["mtb:scale"] = "0" },
     { is_trail_class = true })["mtb:scale"] == M.REMOVE)
-check("mtb:scale:uphill and mtb:description stay",
+-- Terrain hunt 3, T3-6: on a paved way `mtb:scale:uphill` comes off with `mtb:scale`, or the
+-- parser reads it, with no `mtb:scale` left, as the gravel class. Until then this pinned it on.
+check("a paved way's mtb:scale:uphill comes off, mtb:description stays",
   (function()
-    local o = M.remap_way({ highway = "path", surface = "asphalt", ["mtb:scale:uphill"] = "1",
-      ["mtb:description"] = "x" }, { is_trail_class = true })
-    return o["mtb:scale:uphill"] == nil and o["mtb:description"] == nil
+    local o = M.remap_way({ highway = "path", surface = "asphalt", ["mtb:scale"] = "0",
+      ["mtb:scale:uphill"] = "1", ["mtb:description"] = "x" }, { is_trail_class = true })
+    return o["mtb:scale"] == M.REMOVE and o["mtb:scale:uphill"] == M.REMOVE
+      and o["mtb:description"] == nil
   end)())
 check("a closed paved singletrack-rated way stays closed",
   (function()

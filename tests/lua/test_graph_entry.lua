@@ -438,6 +438,8 @@ do
   local _, unrated_out = transform_way(paved)
   local _, rated_out = transform_way(rated(paved))
   check("a paved one-way trail: loses mtb:scale", rated_out["mtb:scale"] == nil)
+  -- Or the parser sets its surface from the uphill rating, as gravel (terrain hunt 3, T3-6).
+  check("a paved one-way trail: loses mtb:scale:uphill", rated_out["mtb:scale:uphill"] == nil)
   check("a paved one-way trail: keeps mtb:description", rated_out["mtb:description"] == "roots")
   check("a paved one-way trail: with the same access as unrated",
     rated_out.bike_forward == unrated_out.bike_forward and rated_out.bike_backward == unrated_out.bike_backward)
