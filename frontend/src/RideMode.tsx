@@ -76,7 +76,7 @@ import {
 } from "./lib/rideStops.ts";
 import { RestartStopsDialog } from "./RestartStopsDialog.tsx";
 import { StartFirstDialog } from "./StartFirstDialog.tsx";
-import { keepLeftRide, keepLeftRidePast, seeLeftRide, unseeLeftRide } from "./lib/rideResume.ts";
+import { keepLeftRide, keepLeftRideDocked, keepLeftRidePast, seeLeftRide, unseeLeftRide } from "./lib/rideResume.ts";
 import type { Dials } from "./lib/dials.ts";
 import { haversineM, type LonLat } from "./lib/geo.ts";
 import { placeLetter, type LetteredPlace } from "./lib/letteredPlaces.ts";
@@ -982,9 +982,14 @@ export function RideMode({
   // A Rebalance Ride (lib/rebalanceDock.ts): at the crowded dock it holds and asks where to dock, then rides there.
   // Kept riding after the end (Keep riding), its route is the ride to the chosen dock, on the bike's own ride type.
   const rebalance = plannedRoute.preset === "rebalance" || !!plannedTrip?.docked;
-  const [trip, setTrip] = useState<RideTrip | null>(() =>
-    rebalance && plannedTrip?.approach?.name ? { ...plannedTrip, approach: { ...plannedTrip.approach, reached: dockReachedSaid(plannedTrip.approach.name) } } : plannedTrip,
-  );
+  // On to a dock chosen before (Keep riding, Resume): the finish names that dock, as when it was chosen (chooseDock).
+  const [trip, setTrip] = useState<RideTrip | null>(() => {
+    if (plannedTrip?.docked) {
+      const dock = t("Dock at {place}.", { place: plannedTrip.docked });
+      return { ...plannedTrip, finish: { shown: dock, spoken: dock } };
+    }
+    return rebalance && plannedTrip?.approach?.name ? { ...plannedTrip, approach: { ...plannedTrip.approach, reached: dockReachedSaid(plannedTrip.approach.name) } } : plannedTrip;
+  });
   const [docking, setDocking] = useState<DockAsk | null>(null);
   const dockingRef = useRef<DockAsk | null>(null);
   dockingRef.current = docking;
@@ -2467,6 +2472,8 @@ export function RideMode({
       const dock = t("Dock at {place}.", { place: choice.name });
       setTrip((was) => (was ? { ...was, finish: { shown: dock, spoken: dock }, docked: choice.name } : was));
       dockChosen.current = choice.name;
+      // Kept with the trip left going, so a reload rides on to this dock (lib/rideResume.ts).
+      if (keepLeft) keepLeftRideDocked({ name: choice.name, route: found ?? routeRef.current, points });
       const fresh = { ...startState(), fix: rideRef.current.fix, goodFix: rideRef.current.goodFix };
       rideRef.current = fresh;
       setRide(fresh);
