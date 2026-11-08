@@ -9130,6 +9130,24 @@ On the server, `tests/test_lang.py` checks the Spanish list against every phrase
 phrase they name each catalog that still lacks it. Changing the English of a phrase orphans
 every translation of it, so change all the catalogs in the same commit.
 
+**Plain English in Go and Ride.** The owner, 2026-11-08, asked for the text in Ride and Go to be
+as simple as possible, so that fewer translation errors creep in. Write Go and Ride's English in
+short, plain words, one idea to a sentence (a full stop, not a semicolon or a colon, between two
+ideas), with no idioms ("carry on", "ride off", "Ride on.", "hand on", "went without"), and keep
+the spoken cues as short as they can be. The first pass (2026-11-08) reworded 20 phrases: the
+pauses' "Press Resume to continue" and "It starts again when you move", "You are at the start of
+the ride.", "Continuing with the stops as marked.", the off-route and failed re-plan cues
+("Off the planned route. Finding a new way.", "No new route found. Go back to the planned
+route."), the weak-GPS list, the screen-on notes ("Set your phone to keep it on for this ride."),
+Detour here's help, the leader's line and Share live's no-leader lines, My Go's failed save and
+Start ride on a computer. Two rewordings also dropped an explanation, and that is Claude's
+default, not the owner's ruling: `WAKE_LOST` no longer says why the screen may turn off ("the
+browser stopped keeping it on"), and `CUE_SHEET_SAID` no longer says the list starts with the
+next turn ("next turn first"). Put either back if riders miss it. `frontend/src/lib/plainCopy.test.ts` pins each before and after and
+checks every catalog has the new English and none keeps the old. The avoid-rated junction's
+plea ("Riding through it is a really bad idea. Please reconsider your route.") is the owner's
+own words (2026-10-10) and stays as he wrote it.
+
 **Drafts and native speakers.** Every catalog but English is a machine draft that a native
 speaker has not checked yet, and each file's header says so. To hand one over, send the
 reviewer the catalog file. The keys are the English and must not change, and the values are

@@ -92,7 +92,7 @@ export function weighFix(before: GpsWeakness, accuracyM: number, now: number): G
  * review RIDE-3), since the turn-by-turn card cannot know where the rider is.
  */
 export const CUE_SHEET_MIN_MS = 60_000;
-export const CUE_SHEET_SAID = t("GPS is still weak: the turns ahead are shown as a list, next turn first.");
+export const CUE_SHEET_SAID = t("GPS is still weak. The next turns are shown in a list.");
 /** The list's length: the turns of a dead spot, not the whole ride. */
 export const CUE_SHEET_ROWS = 10;
 
@@ -1611,7 +1611,7 @@ export function phasesFor(level: Verbosity, cue: Cue, speedMs: number): { phase:
 }
 
 /** The sentences for leaving and rejoining the route (plan section 3: said once, gently). */
-export const OFF_ROUTE_SAID = t("Off the planned route; finding a new way.");
+export const OFF_ROUTE_SAID = t("Off the planned route. Finding a new way.");
 export const OFF_ROUTE_KEPT_SAID = t("Off the planned route.");
 export const BACK_ON_ROUTE_SAID = t("Back on the planned route.");
 
@@ -1717,7 +1717,7 @@ export function startsAway(model: Pick<RideModel, "coordinates" | "along">, fix:
 /** Said when a ride starts away from its start: the way there comes first. */
 export const START_FIRST_SAID = t("Not near the start: going there first.");
 /** Back within START_NEAR_M of the start on the way there (any entrance of a big place): the planned route from here. */
-export const START_REACHED_SAID = t("At the start of the ride. Ride on.");
+export const START_REACHED_SAID = t("You are at the start of the ride.");
 /**
  * The question asked then (Stephen, 2026-11-06: "they should be given the option of going to the start or to reroute
  * from there, such as if they are already on the route"): StartFirstDialog's words, said as it opens.
@@ -2708,9 +2708,9 @@ export function withUTurn(model: RideModel): RideModel {
   return { ...model, cues: [uturn, ...model.cues.map((cue) => ({ ...cue, index: cue.index + 1 }))] };
 }
 export const REPLAN_NO_SIGNAL = t("No signal: the planned route is still shown.");
-export const REPLAN_FAILED = t("No new route was found; the planned route is still shown.");
+export const REPLAN_FAILED = t("No new route found. The planned route is still shown.");
 /** No new route to the end, but one back to the planned route (lib/rejoin.ts), which goes on from there. */
-export const REPLAN_REJOIN = t("No new route was found; follow the way back to the planned route.");
+export const REPLAN_REJOIN = t("No new route found. Go back to the planned route.");
 /**
  * A re-route on a route the rider chose over the first that rejoins it ahead, tried before a new plan (routing audit D15,
  * lib/rejoin.ts rejoinsFirst). Not REPLAN_REJOIN: here no new route was looked for, and none failed.

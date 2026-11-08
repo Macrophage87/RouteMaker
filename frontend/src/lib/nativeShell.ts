@@ -15,7 +15,7 @@
  * - the voice (`SpeechEnv`, lib/rideOutput.ts): @capacitor-community/text-to-speech, which speaks with
  *   the screen locked where Web Speech stops.
  * - the screen wake lock (`WakeEnv`): the browser's lock still asked, but a ride no longer needs the
- *   screen on, so a WebView without the lock is not told "Keep your screen on yourself".
+ *   screen on, so a WebView without the lock is not told "Set your phone to keep it on".
  *
  * On Android a second, silent notification shows the latest cue while a ride's watch runs (`showCue`).
  *
@@ -398,7 +398,7 @@ function heldWithoutLock(): WakeLockSentinelLike {
   };
 }
 
-/** The browser's lock, asked first (it keeps the map lit while the rider looks); never "keep it on yourself". */
+/** The browser's lock, asked first (it keeps the map lit while the rider looks); never "Set your phone to keep it on". */
 export function nativeWake(browser: WakeEnv): WakeEnv {
   const request = browser.request;
   return {
@@ -465,7 +465,7 @@ export function rideSpeech(found: Shell | null = shell): SpeechEnv {
   return found?.speaks ? nativeSpeech(found.bridge) : browserSpeech();
 }
 
-/** Ride mode's screen wake lock: the browser's, and in the shell never a "keep it on yourself". */
+/** Ride mode's screen wake lock: the browser's, and in the shell never a "Set your phone to keep it on". */
 export function rideWake(found: Shell | null = shell): WakeEnv {
   return found?.locates ? nativeWake(browserWake()) : browserWake();
 }
