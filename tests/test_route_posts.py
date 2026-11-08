@@ -27,7 +27,7 @@ from django.core.exceptions import ValidationError
 from django.test import Client
 from django.utils import timezone
 
-from core import route_posts
+from core import route_posts, share_preview
 from core.models import (
     AuditLogEntry,
     MyGo,
@@ -418,6 +418,26 @@ def test_the_list_puts_posts_in_season_first_and_the_rest_in_a_fold(monkeypatch)
     assert body.index("/routes/lights") > fold
     assert "/routes/hidden" not in body
     assert '<span class="badge">Cherry blossoms</span>' in body
+
+
+@db
+def test_list_cards_show_the_map_on_top_without_the_preview_pictures_word_band() -> None:
+    author = make_user(is_instance_admin=True)
+    make_post(author, slug="preview")
+    drawn = make_post(author, slug="drawn")
+    RoutePost.objects.filter(pk=drawn.pk).update(thumbnail=b"jpeg", thumbnail_key="k")
+    body = Client().get("/routes/").content.decode()
+    cards = {slug: body[body.index(f'href="/routes/{slug}"') :] for slug in ("preview", "drawn")}
+    # The map comes first in each card, before its title.
+    for card in cards.values():
+        assert card.index("<img") < card.index("<h2>")
+    # The route's preview picture shows only its map part (its band repeats the card's words) ...
+    banded = cards["preview"][: cards["preview"].index(">", cards["preview"].index("<img"))]
+    assert 'class="banded"' in banded
+    assert f".card img.banded{{aspect-ratio:1200/{share_preview.MAP_H}}}" in body
+    # ... while an admin's drawn map (no band) shows whole.
+    whole = cards["drawn"][: cards["drawn"].index(">", cards["drawn"].index("<img"))]
+    assert "banded" not in whole
 
 
 @db
@@ -1125,6 +1145,17 @@ def test_a_photo_added_on_the_page_shows_where_it_was_taken_but_never_at_home() 
         f'<a class="taken" href="/#at=-77.05018,38.88929">{route_posts.TAKEN_HERE_LABEL}</a>'
         in page
     )
+    # The maps get it too, as a pop-out on the route's map and a pointer on a section's.
+    data = json.loads(re.search(r'id="post-data"[^>]*>(.*?)</script>', page).group(1))
+    assert data["photos"] == [
+        {
+            "url": sent.json()["url"],
+            "lon": LINCOLN[1],
+            "lat": LINCOLN[0],
+            "alt": "The Memorial",
+            "caption": "",
+        }
+    ]
     served = Client().get(sent.json()["url"]).content
     assert route_posts.exif_spot(served) == pytest.approx(LINCOLN, abs=1e-6)
     # The file's own Exif counts when the browser sent no spot.
@@ -1143,6 +1174,9 @@ def test_a_photo_added_on_the_page_shows_where_it_was_taken_but_never_at_home() 
     assert home.key and home.lat is None and home.lon is None
     served = Client().get(f"/routes/mall-loop/photos/{home.key}.jpg").content
     assert route_posts.exif_spot(served) is None
+    page = Client().get("/routes/mall-loop").content.decode()
+    data = json.loads(re.search(r'id="post-data"[^>]*>(.*?)</script>', page).group(1))
+    assert f"/routes/mall-loop/photos/{home.key}.jpg" not in {p["url"] for p in data["photos"]}
 
 
 def described_draft(admin):
