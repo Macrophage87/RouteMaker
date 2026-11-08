@@ -173,6 +173,70 @@ def test_rounds_stop_at_the_limit_with_the_least_harder_trail(readings, monkeypa
     assert info["limited"] == "no_way_round"
 
 
+def test_a_searched_route_is_not_swapped_for_a_busier_round(readings, monkeypatch) -> None:
+    # The third routing hunt, C3-1: the rounds re-ask the plan's own request, so where the
+    # route is the calm search's (a via detour, a loop's way back, the target fit), a round's
+    # route on harder metres alone threw that work away. Held to `keeps` it is not taken.
+    searched = trip("calm loop", [road(200), hard(400), road(200)])
+    monkeypatch.setattr(
+        routing, "_route", lambda *a: ({"trip": trip("router's own", [road(900)])}, False)
+    )
+    offered = []
+
+    def keeps(again):
+        offered.append(again["name"])
+        return False
+
+    excludes: list = []
+    chosen, info = easy_mtb.settle(
+        searched, {"locations": []}, "offroad", {}, None, {}, FAR_POINTS, excludes, keeps=keeps
+    )
+    assert chosen is searched
+    assert info["harder_m"] == 400.0 and info["limited"] == "no_way_round"
+    assert offered and set(offered) == {"router's own"}
+    # Nothing it was not answered with is handed to the passes after it.
+    assert excludes == []
+
+
+def test_a_round_the_guard_keeps_replaces_the_searched_route(readings, monkeypatch) -> None:
+    searched = trip("calm loop", [road(200), hard(400), road(200)])
+    monkeypatch.setattr(routing, "_route", lambda *a: ({"trip": trip("round", [road(900)])}, False))
+    chosen, info = easy_mtb.settle(
+        searched, {"locations": []}, "offroad", {}, None, {}, FAR_POINTS, keeps=lambda t: True
+    )
+    assert chosen["name"] == "round" and info["limited"] is None
+
+
+def test_the_level_round_guard_refuses_busier_longer_or_a_loop_merged(monkeypatch) -> None:
+    from test_refine import analysis, context
+
+    from core import refine
+
+    ctx = context(ceiling_m=4000.0)
+    searched = analysis("searched", tiers="1" * 30 + "3" * 2)
+    assert refine.level_round_kept(analysis("calm", tiers="1" * 32), searched, ctx)
+    # Busier past the Traffic-wins allowance.
+    assert not refine.level_round_kept(analysis("busy", tiers="1" * 20 + "4" * 12), searched, ctx)
+    # Past the ceiling where the searched route was not.
+    assert not refine.level_round_kept(analysis("long", tiers="1" * 45), searched, ctx)
+    # A loop's way back on its way out.
+    ctx.loop_overlap = 0.1
+    monkeypatch.setattr(refine, "overlap_share", lambda read: 0.9)
+    assert not refine.level_round_kept(analysis("back", tiers="1" * 32), searched, ctx)
+
+
+def test_the_level_round_guard_refuses_a_route_it_cannot_read(monkeypatch) -> None:
+    from test_refine import context
+
+    from core import refine
+
+    def unread(trip, ctx, deadline, with_events=True):
+        raise routing.DeadlineExceeded("late")
+
+    monkeypatch.setattr(refine, "analyse", unread)
+    assert refine.level_round_keeps({"legs": []}, context())({"legs": []}) is False
+
+
 def test_an_untraced_route_is_said(readings) -> None:
     first = trip("x", [], untraced=True)
     chosen, info = settle(first)

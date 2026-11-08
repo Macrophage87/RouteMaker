@@ -2735,6 +2735,46 @@ def loop_refused(read: Analysis, ctx: Context) -> bool:
     return overlap_share(read) > max(ctx.loop_overlap, LOOP_OVERLAP_OK) + 0.005
 
 
+def level_round_kept(read: Analysis, searched: Analysis, ctx: Context) -> bool:
+    """Whether a route a trail-level round asked for (`mtb.settle`, `easy_mtb.settle`:
+    the plan's own request again, with points on the harder trails excluded) may replace a
+    route the plan's own request did not answer: the calm search's via detour, a loop's way
+    back (`make_loop`), the target fit, the stops' fewer repeats (the third routing hunt,
+    C3-1). The round's answer is the router's own route on the plan's request, so taken on
+    harder metres alone it threw that work away: the busier direct route came back, a loop
+    went back to the router's out-and-back. It is taken where it is no busier by the
+    Traffic-wins guard (each Avoid-rated and red junction counted at its cost, as
+    `red_crossings.takes`), not past the ceiling where the searched route was not, and on a
+    loop no more of the way back on the way out than the loop has (`loop_refused`).
+    Otherwise the searched route stays with its harder trail, which the answer says
+    (`no_way_round`)."""
+    if (
+        read.rated_exposure_m + read.avoid_junction_m + read.red_m
+        > _allowance(searched.rated_exposure_m) + searched.avoid_junction_m + searched.red_m
+    ):
+        return False
+    if too_long(read.length_m, ctx) and not too_long(searched.length_m, ctx):
+        return False
+    return not loop_refused(read, ctx)
+
+
+def level_round_keeps(searched: dict, ctx: Context):
+    """`level_round_kept` as the level rounds call it: a function of the round's trip,
+    which reads both routes (remembered per plan) within the late deadline. A route that
+    cannot be read in time is not taken."""
+    deadline = late_deadline(ctx)
+
+    def keeps(again: dict) -> bool:
+        try:
+            whole = analyse(searched, ctx, deadline)
+            read = analyse(again, ctx, deadline) if whole is not None else None
+        except (routing.DeadlineExceeded, routing.RouterUnavailable):
+            return False
+        return read is not None and level_round_kept(read, whole, ctx)
+
+    return keeps
+
+
 def make_loop(trip: dict, ctx: Context) -> tuple[dict, dict]:
     """The plan's way back by a different way (OWNER-DECISIONS 266): the last leg of
     `trip` asked for again with points along the way out excluded, from all of them

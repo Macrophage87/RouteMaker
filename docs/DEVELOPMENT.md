@@ -4984,7 +4984,15 @@ after the calm search (beside Mountain Bike's own pass in `routing.plan`), where
 rides one, points on it (`mtb.exclusion_points`, never within 300 m of a stop) are excluded and
 the router asked again, up to `mtb.LEVEL_ROUNDS` rounds, the route with the least harder trail
 kept; the exclusions go to `refine.Context.level_excludes`, so the red-crossing and
-Avoid-junction passes keep them out. A route a later pass changed, and every route offered
+Avoid-junction passes keep them out. The rounds re-ask the plan's own request, so where the
+route is not that request's own answer (the calm search's via detour, a loop's way back from
+`refine.make_loop`, the target fit, the stops' fewer repeats), a round's route replaces it only
+where `refine.level_round_kept` allows: no busier by the Traffic-wins guard, not past the
+ceiling where the route was not, and on a loop no more of the way back on the way out.
+Otherwise the searched route stays and `limited` is `no_way_round` (the third routing hunt,
+C3-1: taken on harder metres alone, the busier direct route or the router's out-and-back came
+back). `mtb.settle` holds its rounds to the same guard where it chose the searched route.
+A route a later pass changed, and every route offered
 beside it (candidates, the way round an Avoid junction, the way through a closure), is read
 again (`easy_mtb.reread`). The answer's `easy_mtb` (`EasyMtbOut`: `max_level` 1, `rounds`,
 `harder_m`, `limited`) is null with the switch off; `dials.easy_mtb` says it was planned with.
