@@ -355,7 +355,7 @@ test("restarting part way lists every stop, the ones behind ticked; none behind 
 
 test("Already done? left unanswered closes with the stops as marked once the rider has ridden 200 m on, and says so", () => {
   assert.equal(RESTART_AUTO_M, 200);
-  assert.equal(RESTART_AUTO_SAID, "Riding on with the stops as marked.");
+  assert.equal(RESTART_AUTO_SAID, "Continuing with the stops as marked.");
   const ride = src("../RideMode.tsx");
   assert.match(ride, /restartOpen\.current = true;\s*restartAt\.current = fix\.point;\s*setRestart\(named\);/);
   // Checked before re-routing is weighed on the same fix, so re-routing runs again at once.

@@ -441,7 +441,7 @@ function useHoldTimer(ms: number, onDone: () => void) {
 }
 /** Hidden this long, the watch stops (privacy and battery) and the ride offers Resume (plan section 5). */
 export const HIDDEN_STOP_MS = 10 * 60_000;
-export const PAUSED_SAID = t("Ride paused while the page was in the background. Press Resume to carry on.");
+export const PAUSED_SAID = t("Ride paused while the page was in the background. Press Resume to continue.");
 /** A re-plan that has not answered in this long is said as no signal (a hung connection); its answer still counts. */
 export const REPLAN_TIMEOUT_MS = 25_000;
 /** No fix for this long and a failure from the watch: the rider is told (once) that GPS is lost. */

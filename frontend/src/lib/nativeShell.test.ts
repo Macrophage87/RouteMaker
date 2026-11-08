@@ -107,7 +107,7 @@ test("in a browser every environment is the browser's own, and nothing native is
   for (const output of Object.keys(OUTPUT_LABELS) as CueOutput[]) {
     for (const hidden of [false, true]) assert.equal(speaksAloud(output, hidden), toVoice(output), `${output}, hidden ${hidden}`);
   }
-  // A browser's wake lock still says "keep it on yourself" when it cannot hold.
+  // A browser's wake lock still says "Set your phone to keep it on" when it cannot hold.
   assert.equal(new ScreenWake(rideWake(null)).noteFor(false), WAKE_UNAVAILABLE);
 });
 
@@ -455,7 +455,7 @@ test("screen readers: 'my screen reader' is spoken by the native voice only whil
 
 // ---- In the shell: the wake lock ---------------------------------------------------------------------------
 
-test("the shell's wake lock: the browser's when it has one; never 'keep it on yourself' without", async () => {
+test("the shell's wake lock: the browser's when it has one; never 'Set your phone to keep it on' without", async () => {
   const none = new ScreenWake(nativeWake({ request: undefined }));
   assert.equal(await none.hold(), true);
   assert.equal(none.noteFor(true), "");

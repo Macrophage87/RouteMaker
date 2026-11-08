@@ -63,11 +63,11 @@ export const RIDE_PARAM = "ride";
 /** What each Share button does, said by the info beside them (the owner: "Make that clear in a tooltip"). */
 export const SHARE_ROUTE_ABOUT = t("Share route: others can look it over, change it or ride it on their own.");
 /** Broadcast's link went without the leader's key (the page could not make it): nothing starts. */
-export const BROADCAST_NO_LEAD = t("The link went without you as its leader, so the ride did not start. Press Start to ride.");
+export const BROADCAST_NO_LEAD = t("The link was shared without you as its leader. The ride did not start. Press Start to ride.");
 /** Broadcast's own line when the share sheet failed: Copy link would not start a broadcast, and Go has none on screen. */
 export const BROADCAST_SHARE_FAILED = t("Could not open the share sheet, so the ride did not start.");
 /** Broadcast pressed during a ride (Stephen 2026-10-24: "Let people broadcast from a ride"): the ride goes on either way. */
-export const BROADCAST_RIDE_NO_LEAD = t("The link went without you as its leader. Press Share live to try again.");
+export const BROADCAST_RIDE_NO_LEAD = t("The link was shared without you as its leader. Press Share live to try again.");
 export const BROADCAST_RIDE_FAILED = t("Could not open the share sheet. Press Share live to try again.");
 export const SHARE_RIDE_WAIT = t("Share ride needs the route ready. Try again once it shows.");
 export const SHARE_RIDE_ABOUT =

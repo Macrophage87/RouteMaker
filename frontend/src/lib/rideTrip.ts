@@ -391,7 +391,7 @@ function walkInTrip(route: RouteResponse): RideTrip | null {
           metres: walks.start.distance_m,
           extra: "",
           first: "",
-          reached: t("At the start of the ride. Ride on."),
+          reached: t("You are at the start of the ride."),
           walk: walkModel({ coordinates: walks.start.geometry.coordinates, turns: walks.start.turns ?? [], to: null }),
         }
       : null;

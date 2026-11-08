@@ -439,7 +439,7 @@ test("ScreenWake: refused after a release says the screen may now turn off; neve
   assert.equal(requests, 1 + WAKE_REASKS, "not asked a fourth time");
   assert.deepEqual(told.at(-1), false);
   assert.equal(wake.noteFor(false), WAKE_LOST);
-  assert.match(WAKE_LOST, /may now turn off/);
+  assert.match(WAKE_LOST, /may turn off now/);
   assert.equal(WAKE_REASKS, 3);
   // Shown again later, a refusal is still told as let go, not as a browser that cannot.
   refuse = true;

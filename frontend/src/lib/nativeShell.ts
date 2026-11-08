@@ -15,7 +15,7 @@
  * - the voice (`SpeechEnv`, lib/rideOutput.ts): @capacitor-community/text-to-speech, which speaks with
  *   the screen locked where Web Speech stops.
  * - the screen wake lock (`WakeEnv`): the browser's lock still asked, but a ride no longer needs the
- *   screen on, so a WebView without the lock is not told "Keep your screen on yourself".
+ *   screen on, so a WebView without the lock is not told "Set your phone to keep it on".
  *
  * On Android a second, silent notification shows the latest cue while a ride's watch runs (`showCue`).
  *
