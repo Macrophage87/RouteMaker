@@ -918,7 +918,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Pavement and few turns, at road-bike pace.": "ዝተነጽፈ መገዲን ውሑድ ምዕጻፍን፡ ብፍጥነት ናይ መገዲ ብሽክለታ።",
   "Tandem": "ታንደም",
   "A long bike for a pair of riders: no narrow barriers, fewer turns and gentler hills. Times at a tandem's pace.": "ንኽልተ ሰባት ዝኸውን ብሽክለታ፦ ጸቢብ ዕንቅፋት የለን፡ ውሑድ ምዕጻፍን ልኡም ዓቐብን። ግዜ ብፍጥነት ታንደም ይቖጽር።",
-  "Two riders: no narrow barriers, fewer turns.": "ክልተ ተሳፈርቲ፦ ጸቢብ ዕንቅፋት የለን፡ ውሑድ ምዕጻፍ።",
+  "Two riders: no narrow barriers, fewer turns.": "ክልተ ብሽክለተኛታት፦ ጸቢብ ዕንቅፋት የለን፡ ውሑድ ምዕጻፍ።",
   "Cargo Bike": "ብሽክለታ ጽዕነት",
   "A long, heavy bike, carrying cargo or with passengers (people or pets): gentle grades, no narrow barriers, times at a cargo bike's pace. With electric assist, e-bike rules and a little more speed, but hills still count.": "ጽዕነት ወይ ተሳፈርቲ (ሰባት ወይ እንስሳ ገዛ) ዝጾር ነዊሕ ከቢድ ብሽክለታ፦ ልስሉስ ዓቐባት፣ ጸቢብ መዓጸዊ የለን፣ ብፍጥነት ብሽክለታ ጽዕነት። ምስ ኤሌክትሪካዊ ሓገዝ፣ ሕግታት ኤሌክትሪካዊ ብሽክለታን ቁሩብ ተወሳኺ ፍጥነትን፣ ግን ዓቐባት ገና ይቑጸሩ።",
   "Gentle hills and no narrow barriers.": "ልስሉስ ዓቐባትን ጸቢብ መዓጸዊ ዘይብሉን።",

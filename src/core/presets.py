@@ -779,8 +779,18 @@ ROAD_BIKE_SURFACES = 0.9
 #   drag); the rider's own speed (`rider_speed`) still wins.
 # - Waits: a junction stop weighs twice its time in the ranking (`WAIT_WEIGHTS`), less than
 #   Road Bike's 3x: both riders unclip, wait and restart in step. The time shown is the real wait.
-# - Traffic: Default's start (70); two adults ride it, the captain in control.
+# - Traffic: Cargo with passengers' start (80) and the not-in-control exposure weights: the
+#   stoker does not steer, and a rider who is not in control of the ride is stress-averse
+#   (OWNER-DECISIONS 221 and 241: "even adults wouldn't enjoy more stressful roads if they
+#   aren't in control of the ride"; PLAN, FOLLOWUP-TANDEM).
+#
+# Not built here: the stoker's reading layout and share option (OWNER-DECISIONS 319-321), and
+# 345's finer split, where a tandem slows for a cycle barrier or bollard and is kept only from
+# stiles, turnstiles, kissing gates and gaps under 1.0 m. The graph makes all of those one kind
+# of gate (`remap_node`), so costing cannot tell them apart; the owner's 2026-11-08 ruling puts
+# the large charge on all of them for Tandem until a rebuild can split them.
 TANDEM = "tandem"
+TANDEM_STRESS = CARGO_CARRYING_STRESS[CARRYING_PEOPLE]
 TANDEM_HILLS = -40
 TANDEM_PLANNING_SPEED_KMH = 21.0
 TANDEM_WAIT_WEIGHT = 2.0
@@ -1185,7 +1195,8 @@ PRESETS: MappingProxyType = MappingProxyType(
                 TANDEM,
                 Variant.STANDARD,
                 # See "Tandem" above.
-                stress=DEFAULT_STRESS,
+                stress=TANDEM_STRESS,
+                exposure=EXPOSURE_NOT_IN_CONTROL,
                 hills=TANDEM_HILLS,
                 bicycle_type="Hybrid",
                 avoid_bad_surfaces=CARGO_SURFACE_AVOIDANCE,

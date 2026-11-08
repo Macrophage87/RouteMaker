@@ -86,6 +86,7 @@ Contents:
 - [Deploying v0.21.2](#deploying-v0212)
 - [Deploying v0.22.0](#deploying-v0220)
 - [Deploying v0.22.1](#deploying-v0221)
+- [Deploying v0.23.0](#deploying-v0230)
 - [Deploying a planner and front-end release: rollback points and verification](#deploying-a-planner-and-front-end-release-rollback-points-and-verification)
 - [Paths bicycles may not ride (NO-BIKE-PATHS)](#paths-bicycles-may-not-ride-no-bike-paths)
 - [Mountain-bike difficulty levels (456; claude/v0-4-0-mtb-levels)](#mountain-bike-difficulty-levels-456-claudev0-4-0-mtb-levels)
@@ -7610,6 +7611,15 @@ assistant still sending `?lat=&lon=` gets its photo kept with no spot (`located:
 - [ ] **Rollback.** The `pre-rel` api image (`--force-recreate api worker`) and the v0.22.0 front end.
   Nothing in the database or the map changes. On the beta: the agent rolls back by itself on a failed
   pass; later, rollback C, then `auto-release.sh hold v0.22.1`.
+
+## Deploying v0.23.0
+
+- [ ] **Caddy.** The Caddyfile adds `/tandem` (the Tandem ride type): validate it in a throwaway
+  container and recreate caddy alone ("Applying a Caddyfile change"). On beta the nginx template
+  adds it too: re-render it with the release. Check: `curl -sI https://<site>/tandem` is a 302 to
+  `/#preset=tandem`. Tandem is costing only: no graph, no map rebuild.
+- [ ] **Android.** The app's link list adds `/tandem`; it opens in the app only from the next
+  Android build.
 
 ## Deploying a planner and front-end release: rollback points and verification
 

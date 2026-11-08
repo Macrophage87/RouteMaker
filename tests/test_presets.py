@@ -177,7 +177,10 @@ def test_tandem_keeps_out_of_narrow_gaps_turns_less_and_climbs_gently() -> None:
     assert tandem["avoid_bad_surfaces"] > options("default")["avoid_bad_surfaces"]
     # Faster on the flat than Default's hybrid: two riders, one bike's drag.
     assert tandem["cycling_speed"] > presets.VALHALLA_DEFAULT_SPEED_KMH["Hybrid"]
-    assert presets.stress_start(presets.TANDEM) == presets.DEFAULT_STRESS
+    # The stoker is not in control (OWNER-DECISIONS 221, 241): Cargo with passengers' start
+    # and exposure.
+    assert presets.stress_start(presets.TANDEM) == presets.stress_start("cargo", "people") == 80
+    assert presets.exposure_for(presets.TANDEM) == presets.EXPOSURE_NOT_IN_CONTROL
     assert presets.wait_weight_for(presets.TANDEM) == 2.0
     assert presets.wait_weight_for(presets.TANDEM) < presets.wait_weight_for(presets.ROAD_BIKE)
     assert presets.variant_for_ride(presets.TANDEM, "weekday_offpeak") == Variant.STANDARD.value

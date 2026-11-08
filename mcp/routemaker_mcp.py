@@ -3612,7 +3612,7 @@ STRESS_START = {
     "fast": 10,
     "road-bike": 40,
     "cargo": 70,
-    "tandem": 70,
+    "tandem": 80,
     "ebike": 70,
     "bikeshare": 80,
     "rebalance": 80,

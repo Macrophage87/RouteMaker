@@ -918,7 +918,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Pavement and few turns, at road-bike pace.": "የተነጠፈ መንገድ እና ጥቂት መታጠፊያ፣ በመንገድ ብስክሌት ፍጥነት።",
   "Tandem": "ታንደም",
   "A long bike for a pair of riders: no narrow barriers, fewer turns and gentler hills. Times at a tandem's pace.": "ለሁለት ሰዎች የሆነ ብስክሌት፦ ጠባብ እንቅፋቶች የሉም፣ ጥቂት መታጠፊያዎች እና ቀላል ዳገቶች። ጊዜውን በታንደም ፍጥነት ያሰላል።",
-  "Two riders: no narrow barriers, fewer turns.": "ሁለት ተሳፋሪዎች፦ ጠባብ እንቅፋቶች የሉም፣ ጥቂት መታጠፊያዎች።",
+  "Two riders: no narrow barriers, fewer turns.": "ሁለት ብስክሌተኞች፦ ጠባብ እንቅፋቶች የሉም፣ ጥቂት መታጠፊያዎች።",
   "Cargo Bike": "የጭነት ብስክሌት",
   "A long, heavy bike, carrying cargo or with passengers (people or pets): gentle grades, no narrow barriers, times at a cargo bike's pace. With electric assist, e-bike rules and a little more speed, but hills still count.": "ጭነት ወይም ተሳፋሪዎችን (ሰዎች ወይም የቤት እንስሳት) የሚይዝ ረጅም ከባድ ብስክሌት፦ ቀስ ያሉ ዳገቶች፣ ጠባብ መከላከያ የለም፣ በጭነት ብስክሌት ፍጥነት። ከኤሌክትሪክ እገዛ ጋር፣ የኤሌክትሪክ ብስክሌት ሕጎች እና ትንሽ ተጨማሪ ፍጥነት፣ ግን ዳገቶች አሁንም ይቆጠራሉ።",
   "Gentle hills and no narrow barriers.": "ቀስ ያሉ ዳገቶች እና ጠባብ መከላከያ የለም።",
