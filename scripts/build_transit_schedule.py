@@ -20,8 +20,10 @@ What is kept, and nothing else (core.transit's docstring has the method):
   `--date` it runs, read from calendar.txt and calendar_dates.txt as the feed publishes them, so a
   holiday timetable, a weekend with no service and a planned shutdown published as a service
   change are all exact. Past the window a plan says the timetable needs refreshing. Each
-  system also keeps its feed's own last day of service (`last_day`): a feed that ends inside the
-  window is reported, and past that day core.transit leaves the system out rather than closed.
+  system also keeps its feed's own last day of regular service (`last_day`, `last_service_day`:
+  not the latest date of any service, which a lone holiday or special date after the end would
+  be): a feed that ends inside the window is reported, with any service after it, and past that
+  day core.transit leaves the system out rather than closed.
 - **stops:** WMATA's Metro stations are the map's 98 (each platform matched to the nearest within
   `MATCH_M`), each with its bike entrance as the map picks it (DC's elevator, else
   OpenStreetMap's, else an entrance; `bike` says whether it is an elevator). Other rail systems'
@@ -197,40 +199,111 @@ def _seconds(value: str | None) -> int | None:
     return int(h) * 3600 + int(m) * 60 + int(s)
 
 
-def service_calendar(feed, start: date, days: int = DAYS) -> dict[str, str]:
-    """Each service id that runs in the window: a string of `days` 0s and 1s from `start`."""
+def _calendar(feed) -> tuple[list[dict], dict[str, list[tuple[str, str]]]]:
+    """calendar.txt's rows, and calendar_dates.txt's (service id, exception type) by date."""
     calendar = list(_rows(feed, "calendar.txt"))
     exceptions: dict[str, list[tuple[str, str]]] = {}
     for row in _rows(feed, "calendar_dates.txt"):
         exceptions.setdefault(row["date"], []).append((row["service_id"], row["exception_type"]))
+    return calendar, exceptions
+
+
+def _active(calendar, exceptions, day: date) -> set[str]:
+    """The service ids that run on `day`, calendar.txt's with calendar_dates.txt's changes."""
+    key = day.strftime("%Y%m%d")
+    active = {
+        row["service_id"]
+        for row in calendar
+        if row["start_date"] <= key <= row["end_date"] and row[WEEKDAYS[day.weekday()]] == "1"
+    }
+    for service, exception in exceptions.get(key, []):
+        if exception == "1":
+            active.add(service)
+        elif exception == "2":
+            active.discard(service)
+    return active
+
+
+def service_calendar(feed, start: date, days: int = DAYS) -> dict[str, str]:
+    """Each service id that runs in the window: a string of `days` 0s and 1s from `start`."""
+    calendar, exceptions = _calendar(feed)
     ids = {row["service_id"] for row in calendar}
     ids |= {sid for rows in exceptions.values() for sid, _e in rows}
     bits = {sid: ["0"] * days for sid in ids}
     for offset in range(days):
-        day = start + timedelta(days=offset)
-        key = day.strftime("%Y%m%d")
-        active = {
-            row["service_id"]
-            for row in calendar
-            if row["start_date"] <= key <= row["end_date"] and row[WEEKDAYS[day.weekday()]] == "1"
-        }
-        for service, exception in exceptions.get(key, []):
-            if exception == "1":
-                active.add(service)
-            elif exception == "2":
-                active.discard(service)
-        for service in active:
+        for service in _active(calendar, exceptions, start + timedelta(days=offset)):
             bits[service][offset] = "1"
     return {sid: "".join(b) for sid, b in sorted(bits.items()) if "1" in b}
 
 
-def last_service_day(feed) -> date | None:
-    """The feed's own last day of service: the latest calendar.txt end date, or a later day
-    calendar_dates.txt adds service on. None for a feed with no calendar at all."""
-    ends = [row["end_date"] for row in _rows(feed, "calendar.txt")]
-    added = _rows(feed, "calendar_dates.txt")
-    ends += [row["date"] for row in added if row["exception_type"] == "1"]
-    return datetime.strptime(max(ends), "%Y%m%d").date() if ends else None
+# A feed's regular service, for its last day (`last_service_day`): a day is a service day when it
+# runs at least `REGULAR_DAY_SHARE` of a usual day's trips, and the regular timetable runs to
+# the last service day whose week (it and the six days before) holds at least
+# `REGULAR_WEEK_SHARE` of a usual week's service days.
+REGULAR_DAY_SHARE = 0.25
+REGULAR_WEEK_SHARE = 0.5
+
+
+def daily_trips(feed) -> dict[date, int]:
+    """The trips that run each day of the feed's whole span, from calendar.txt and
+    calendar_dates.txt, by trips.txt's service ids (a feed with no trips.txt counts each service
+    once). Days with none are left out."""
+    calendar, exceptions = _calendar(feed)
+    trips: dict[str, int] = {}
+    for row in _rows(feed, "trips.txt"):
+        trips[row["service_id"]] = trips.get(row["service_id"], 0) + 1
+    keys = [row["start_date"] for row in calendar] + [row["end_date"] for row in calendar]
+    keys += [key for key, rows in exceptions.items() if any(e == "1" for _s, e in rows)]
+    if not keys:
+        return {}
+    first = datetime.strptime(min(keys), "%Y%m%d").date()
+    last = datetime.strptime(max(keys), "%Y%m%d").date()
+    daily: dict[date, int] = {}
+    day = first
+    while day <= last:
+        active = _active(calendar, exceptions, day)
+        count = sum(trips.get(sid, 0) for sid in active) if trips else len(active)
+        if count:
+            daily[day] = count
+        day += timedelta(days=1)
+    return daily
+
+
+def last_service_day(feed, daily: dict[date, int] | None = None) -> date | None:
+    """The last day of the feed's regular service. None for a feed with no service at all.
+
+    Not the latest date of any service: that was `max()` over calendar.txt's end dates and every
+    date calendar_dates.txt adds, so one late date (MARC's Thanksgiving `WE,20261126,1` after a
+    timetable ending 2026-10-20, a special-event service, one service id with a far end date)
+    hid the real end. Inside the window the regular services' bits then went to 0, and the
+    system stayed "covered" with no trips: every station struck through as "no MARC service
+    today" on an ordinary weekday, and the freshness alert quiet (hunt M1). Here a day counts
+    only if it runs a fair share of a usual day's trips (`REGULAR_DAY_SHARE`) inside a week of
+    regular service (`REGULAR_WEEK_SHARE`), so a lone holiday or a few special trips after the
+    end are not the end. `stray_service_days` lists what runs after it, for the build's warning.
+    """
+    daily = daily_trips(feed) if daily is None else daily
+    if not daily:
+        return None
+    # A usual day's trips: the day the median trip runs on, not the median day, which a long
+    # tail of a few special trips a day would make (one day of 2 trips is as many days as one of
+    # 40, but not as many trips).
+    counts = sorted(daily.values())
+    half, running = sum(counts) / 2, 0
+    typical = next(count for count in counts if (running := running + count) >= half)
+    busy = sorted(day for day, count in daily.items() if count >= REGULAR_DAY_SHARE * typical)
+    busy_set = set(busy)
+
+    def week(day: date) -> int:
+        return sum(day - timedelta(days=back) in busy_set for back in range(7))
+
+    usual = statistics.median(week(day) for day in busy)
+    return next(day for day in reversed(busy) if week(day) >= REGULAR_WEEK_SHARE * usual)
+
+
+def stray_service_days(daily: dict[date, int], last_day: date | None) -> list[date]:
+    """The days with service after the regular timetable's last day: left out of plans."""
+    return sorted(day for day in daily if last_day is not None and day > last_day)
 
 
 def line_name(long: str) -> str:
@@ -660,12 +733,20 @@ def build(
                 report.append(f"{config['id']}: no service in the {DAYS} days from {start}")
             # Past it the system is "not covered", not closed (core.transit.load leaves it out
             # and says so), and the freshness alert counts down to the earliest such end.
-            last_day = last_service_day(feed)
+            daily = daily_trips(feed)
+            last_day = last_service_day(feed, daily)
             window_end = start + timedelta(days=DAYS - 1)
             if last_day is not None and last_day < window_end:
+                stray = stray_service_days(daily, last_day)
                 report.append(
                     f"{config['id']}: its timetable ends {last_day}, before the window's last day"
                     f" ({window_end}); it is left out of plans after that: fetch a newer feed"
+                    + (
+                        f" (service on {len(stray)} later day(s), the last {stray[-1]}, such as a"
+                        " holiday or special date, is left out with it)"
+                        if stray
+                        else ""
+                    )
                 )
             first_service = len(services)
             index = {sid: first_service + i for i, sid in enumerate(calendar)}

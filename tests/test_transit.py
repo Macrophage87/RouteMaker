@@ -1736,13 +1736,71 @@ def test_an_expired_schedule_keeps_metro_on_its_typical_timetable(tmp_path) -> N
 
 
 def _feeds_with_marc_ending(tmp_path, end: str) -> dict:
-    """The fixture's feeds with MARC's timetable ending on `end` (YYYYMMDD)."""
+    """The fixture's feeds with MARC's timetable ending on `end` (YYYYMMDD).
+
+    Its calendar_dates.txt is kept, Thanksgiving's `WE,20261126,1` (weekend service added on a
+    date after the end) and all. This used to empty it, which hid that one late added date made
+    the feed's last day 2026-11-26, so MARC was struck through as "no service today" from
+    2026-10-21 with the operator's alert quiet (hunt M1)."""
     marc = tmp_path / "marc"
     shutil.copytree(DATA / "marc", marc)
     calendar = marc / "calendar.txt"
     calendar.write_text(calendar.read_text().replace("20271231", end))
-    (marc / "calendar_dates.txt").write_text("service_id,date,exception_type\n")
+    assert "WE,20261126,1" in (marc / "calendar_dates.txt").read_text()
     return {**FEEDS, "marc": marc}
+
+
+def _feed_folder(tmp_path, name: str, calendar: list[str], dates: list[str], trips: list[str]):
+    folder = tmp_path / name
+    folder.mkdir()
+    head = "service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date"
+    (folder / "calendar.txt").write_text("\n".join([head, *calendar]) + "\n")
+    (folder / "calendar_dates.txt").write_text(
+        "\n".join(["service_id,date,exception_type", *dates]) + "\n"
+    )
+    (folder / "trips.txt").write_text("\n".join(["route_id,service_id,trip_id", *trips]) + "\n")
+    return folder
+
+
+def test_a_late_added_date_or_special_service_does_not_hide_the_end_of_regular_service(
+    tmp_path,
+) -> None:
+    """Hunt M1: the last day was the max() of every end date and added date, so one late date
+    hid an ended timetable. Now it is the end of regular service."""
+    trips = [f"R,WK,wk{i}" for i in range(40)] + [f"R,WE,we{i}" for i in range(12)]
+    # The regular services end 2026-10-20; Thanksgiving adds weekend service on 2026-11-26.
+    holiday = _feed_folder(
+        tmp_path,
+        "holiday",
+        ["WK,1,1,1,1,1,0,0,20260101,20261020", "WE,0,0,0,0,0,1,1,20260101,20261020"],
+        ["WE,20261126,1"],
+        trips,
+    )
+    with build.open_feed(holiday) as feed:
+        assert build.last_service_day(feed) == date(2026, 10, 20)  # it was 2026-11-26
+        assert build.stray_service_days(build.daily_trips(feed), date(2026, 10, 20)) == [
+            date(2026, 11, 26)
+        ]
+    # One special service id with two trips and a far end date is not the timetable's end.
+    special = _feed_folder(
+        tmp_path,
+        "special",
+        ["WK,1,1,1,1,1,0,0,20260101,20261020", "EV,1,1,1,1,1,1,1,20260101,20270630"],
+        [],
+        [*trips[:40], "R,EV,ev0", "R,EV,ev1"],
+    )
+    with build.open_feed(special) as feed:
+        assert build.last_service_day(feed) == date(2026, 10, 20)  # it was 2027-06-30
+    # Back-to-back timetables, the next one published in the same feed: the end is the next's.
+    next_one = _feed_folder(
+        tmp_path,
+        "next",
+        ["WK,1,1,1,1,1,0,0,20260101,20261020", "WK2,1,1,1,1,1,0,0,20261021,20270331"],
+        ["WK2,20261126,2"],
+        [*trips[:40], *(f"R,WK2,n{i}" for i in range(30))],
+    )
+    with build.open_feed(next_one) as feed:
+        assert build.last_service_day(feed) == date(2027, 3, 31)
 
 
 def test_a_system_whose_feed_ends_inside_the_window_is_left_out_after_it_not_closed(
@@ -1754,7 +1812,9 @@ def test_a_system_whose_feed_ends_inside_the_window_is_left_out_after_it_not_clo
     doc, report = build.build(_feeds_with_marc_ending(tmp_path, "20261020"), date(2026, 9, 28))
     marc = next(s for s in doc["systems"] if s["id"] == "marc")
     assert marc["last_day"] == "2026-10-20"
-    assert any(line.startswith("marc: its timetable ends 2026-10-20") for line in report)
+    ends = [line for line in report if line.startswith("marc: its timetable ends 2026-10-20")]
+    # And the build still says what runs after the end, left out with it.
+    assert len(ends) == 1 and "the last 2026-11-26" in ends[0]
     assert all(s["last_day"] == "2027-12-31" for s in doc["systems"] if s["id"] != "marc")
     path = tmp_path / "transit-schedule.json"
     path.write_text(json.dumps(doc))

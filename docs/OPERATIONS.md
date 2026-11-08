@@ -2464,9 +2464,12 @@ on ..."; exit 1) and the admin operations page shows the same line under "Transi
 unreadable file alerts too; no file installed does not. Three weeks leaves room for a refresh by
 hand when the end falls on a holiday week.
 
-**A feed that ends inside the window.** The file records each system's own last day of service
-(`last_day`), and the build warns "<system>: its timetable ends ..., before the window's last
-day". After that day the system is left out of plans and of the map's closed stations (it is not
+**A feed that ends inside the window.** The file records each system's own last day of regular
+service (`last_day`): the last day that runs at least a quarter of a usual day's trips inside a
+week of regular service, so a lone holiday or special date added after the timetable's end, or
+one special service with a far end date, is not taken for the end (it was, hunt M1). The build
+warns "<system>: its timetable ends ..., before the window's last day", and names any service
+on later days, which is left out with it. After that day the system is left out of plans and of the map's closed stations (it is not
 covered, not closed), with the note "MARC is not planned for this date: its installed timetable
 ends ..."; Metro's WMATA GTFS gives way to its typical timetable. The 21-day alert counts down to
 the earliest such end ("transit: MARC's timetable runs out on ..."): fetch a newer feed and build
