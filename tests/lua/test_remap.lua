@@ -694,10 +694,14 @@ for label, tags in pairs({
 end
 -- Nor one whose road class refuses it: untagged, these are closed to a bicycle
 -- by upstream's highway table, and `use_sidepath` would open them.
+-- A pedestrian street and a bridleway are written `bicycle=no` in so many words, so the
+-- country access defaults cannot open them (M.COUNTRY_OPENED_HIGHWAY, hunt Q4, 2026-11-08):
+-- a closing write, never the penalty's opening one.
 for _, class in ipairs({ "motorway", "motorway_link", "footway", "pedestrian", "bridleway",
                          "busway", "bus_guideway", "corridor", "elevator", "platform" }) do
+  local bicycle = M.remap_way({ highway = class }, pen).bicycle
   check("the penalty never opens an untagged highway=" .. class,
-    M.remap_way({ highway = class }, pen).bicycle == nil)
+    bicycle == nil or (M.COUNTRY_OPENED_HIGHWAY[class] and bicycle == "no"))
 end
 for class in pairs(M.MOTOR_ONLY_HIGHWAY) do
   check("no motor-only class admits a bicycle by default (" .. class .. ")",
@@ -1011,8 +1015,20 @@ do
       end
     end
   end
-  check("with no bicycle tag the motor key stays",
-    M.remap_way({ highway = "service", motor_vehicle = "private" }, {}).motor_vehicle == nil)
+  -- Until the owner's rule of 2026-11-08 ("Destination only should also include a stop"),
+  -- these pinned the marina fix's narrow reach: with no bicycle tag, or beside a private
+  -- `access` or `vehicle`, or `access=no`, the motor key stayed and the way stayed
+  -- destination-only. Now only a way a bicycle turns into to stop keeps it (hunt H1, T4).
+  check("on a service road with no bicycle tag the motor key comes off",
+    M.remap_way({ highway = "service", motor_vehicle = "private" }, {}).motor_vehicle == "no")
+  check("and on a path and a cycleway",
+    M.remap_way({ highway = "path", motor_vehicle = "private" }, {}).motor_vehicle == "no"
+      and M.remap_way({ highway = "cycleway", motorcar = "private" }, {}).motorcar == "no")
+  check("but not on a driveway with no bicycle tag (a private drive is a stop)",
+    M.remap_way({ highway = "service", service = "driveway", motor_vehicle = "private" }, {})
+      .motor_vehicle == nil)
+  check("nor on a residential street, 'local traffic only'",
+    M.remap_way({ highway = "residential", motor_vehicle = "destination" }, {}).motor_vehicle == nil)
   check("with bicycle=destination the motor key stays",
     M.remap_way({ highway = "service", bicycle = "destination", motor_vehicle = "private" }, {}).motor_vehicle
       == nil)
@@ -1023,8 +1039,29 @@ do
     local tags = { highway = "service", bicycle = "yes", motor_vehicle = "private" }
     local key, value = next(restriction)
     tags[key] = value
-    check("with " .. key .. "=" .. value .. " the motor key stays", M.remap_way(tags, {}).motor_vehicle == nil)
+    local out = M.remap_way(tags, {})
+    check("with " .. key .. "=" .. value .. " the motor key comes off", out.motor_vehicle == "no")
+    if not (key == "access" and value == "no") then
+      check("and " .. key .. "=" .. value .. " is written no, for every vehicle", out[key] == "no")
+    end
   end
+  check("access=private on a bike-open service road keeps pedestrians, as foot=private",
+    M.remap_way({ highway = "service", access = "private", bicycle = "yes" }, {}).foot == "private")
+  check("and a foot key already there stands",
+    M.remap_way({ highway = "service", access = "private", bicycle = "yes", foot = "no" }, {}).foot == nil)
+  check("a lot's aisle private with bicycle=yes keeps its access (a stop)",
+    M.remap_way({ highway = "service", service = "parking_aisle", access = "private", bicycle = "yes" }, {})
+      .access == nil)
+  check("a private street with bicycle=yes keeps its access (a gated complex)",
+    M.remap_way({ highway = "residential", access = "private", bicycle = "yes" }, {}).access == nil)
+  check("but a road signed for bicycles does not: the WB&A Trail on Bragers Road",
+    M.remap_way({ highway = "unclassified", access = "private", motor_vehicle = "private",
+      bicycle = "designated", foot = "designated" }, {}).access == "no")
+  check("access=no with no bicycle grant is left closed",
+    M.remap_way({ highway = "path", access = "no", motor_vehicle = "private" }, {}).motor_vehicle == nil)
+  check("a closed singletrack keeps its tags",
+    M.remap_way({ highway = "path", motor_vehicle = "private" }, { no_bicycle = "singletrack" })
+      .motor_vehicle == nil)
   check("a cemetery's way stays destination-only",
     M.remap_way({ highway = "service", bicycle = "yes", motor_vehicle = "private" }, { cemetery = true })
       .motor_vehicle == nil)
@@ -1359,9 +1396,13 @@ check("a dirt trail keeps its rating",
 check("and so does a trail with no surface tag",
   M.remap_way({ highway = "path", ["mtb:scale"] = "1" },
     { is_trail_class = true })["mtb:scale"] == nil)
-check("gravel is not paved",
+check("gravel is not paved", not M.is_paved({ surface = "gravel" }))
+-- An easy rating on gravel comes off all the same, so the way is priced as packed gravel and
+-- not as the dirt or gravel class the rating would set (M.strip_easy_gravel_ratings, hunt T6
+-- and A4, 2026-11-08). Until then this check pinned the rating staying on.
+check("gravel rated 0 is priced as packed gravel, not by its rating",
   M.remap_way({ highway = "path", surface = "gravel", ["mtb:scale"] = "0" },
-    { is_trail_class = true })["mtb:scale"] == nil)
+    { is_trail_class = true })["mtb:scale"] == M.REMOVE)
 check("mtb:scale:uphill and mtb:description stay",
   (function()
     local o = M.remap_way({ highway = "path", surface = "asphalt", ["mtb:scale:uphill"] = "1",

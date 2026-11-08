@@ -158,15 +158,20 @@ check("but carries no cycleway write", private_out.cycleway == nil, private_out.
 check("and is marked private by upstream", private_out.private == "true", private_out.private)
 
 -- OWNER-DECISIONS 130, the Capitol drives. As mapped (access=private,
--- bicycle=yes, motor_vehicle=no) upstream still marks the way private -
+-- bicycle=yes, motor_vehicle=no) upstream marks the way private -
 -- destination-only - whatever the bicycle key says, since it reads the flag
 -- from access and motor_vehicle alone. The approved override's
--- access=permissive clears it; motor_vehicle=no keeps cars off.
+-- access=permissive clears it; motor_vehicle=no keeps cars off. Since the
+-- owner's rule of 2026-11-08 (destination-only is for a stop) the remap clears
+-- it on any service road a bicycle is granted and passes along
+-- (M.private_access_passed_through), so the drive as mapped is no longer
+-- destination-only either; until then this check pinned that it was.
 local capitol = { highway = "service", access = "private", bicycle = "yes",
   motor_vehicle = "no", ["rm:stress_tier"] = "1", ["rm:facility"] = "path" }
 local _, capitol_out = transform_way(capitol)
-check("a Capitol drive as mapped is destination-only despite bicycle=yes",
-  capitol_out.private == "true" and capitol_out.bike_forward == "true", capitol_out.private)
+check("a Capitol drive as mapped is no longer destination-only, with bicycle=yes",
+  capitol_out.private == "false" and capitol_out.bike_forward == "true", capitol_out.private)
+check("and is still closed to cars", capitol_out.auto_forward == "false", capitol_out.auto_forward)
 local opened = {}
 for k, v in pairs(capitol) do opened[k] = v end
 opened.access = "permissive"
@@ -217,8 +222,11 @@ local cases = {
   { "a designated footway trail", { highway = "footway", bicycle = "designated" }, "path", 1, 2 },
   { "a cycleway, off-road or protected", { highway = "cycleway" }, "protected", 3, 3 },
   { "a cycleway open to walkers", { highway = "cycleway", foot = "yes" }, "path", 2, 2 },
+  -- A signed sidepath reaches upstream as a footway, not a sidewalk (M.priced_as_sidepath,
+  -- hunt T5, 2026-11-08): priced as a shared path (1), where it had no cycle lane at all (0)
+  -- and a sidewalk's road pricing. The write reads the way's own tags, so both columns move.
   { "a signed sidepath", { highway = "footway", footway = "sidewalk", bicycle = "designated" },
-    "protected", 0, 0 },
+    "protected", 1, 1 },
   { "a painted lane", { highway = "tertiary", cycleway = "lane" }, "lane", 2, 1 },
   { "a sharrow", { highway = "residential", cycleway = "shared_lane" }, "none", 1, 0 },
   { "a protected lane on the roadway", { highway = "primary", cycleway = "track" }, "protected", 3, 3 },
@@ -705,6 +713,50 @@ check("a cycle barrier tagged vehicle=no was never what held the dial off",
   vehicle_barrier.tagged_access == 0, vehicle_barrier.tagged_access)
 check("and its refusal survives", not bike_allowed(vehicle_barrier))
 
+;(function()
+-- Barriers a bicycle is lifted over or squeezed through are gates (hunt T7, 2026-11-08):
+-- before, a kissing gate was upstream's bollard and a stile or turnstile a plain node, and a
+-- cargo bike passed all three at no cost. Each now pays the ride type's gate dial.
+for _, kind in ipairs({ "kissing_gate", "stile", "turnstile" }) do
+  local before_bike = bike_allowed(transform_node({ barrier = "bollard" }))
+  local hard = transform_node({ barrier = kind })
+  check("a " .. kind .. " is a gate", hard.gate == "true", hard.gate)
+  check("a " .. kind .. " arms the gate dial (tagged_access 0)", hard.tagged_access == 0,
+    hard.tagged_access)
+  check("a " .. kind .. " stays open to a bicycle", bike_allowed(hard) and before_bike)
+end
+
+-- A gate or bollard a bicycle passes is not flagged private for being private to cars
+-- (hunt H2, T3, C3, 2026-11-08): the two gates on car-free Beach Drive NW (nodes 971094676
+-- and 13314069319) cost every ride 480 s. Before: private=true.
+local beach = transform_node({ barrier = "gate", bicycle = "yes", foot = "yes", motor_vehicle = "private" })
+check("the Beach Drive NW gate is not private for a bicycle", beach.private == "false", beach.private)
+check("and is still open to a bicycle", bike_allowed(beach))
+check("and closed to cars", math.floor(tonumber(beach.access_mask)) % 2 == 0, beach.access_mask)
+for _, tags in ipairs({
+  { barrier = "gate", motor_vehicle = "private" },
+  { barrier = "swing_gate", bicycle = "permissive", foot = "permissive", motor_vehicle = "private" },
+  { barrier = "gate", motor_vehicle = "destination" },
+  { barrier = "bollard", motor_vehicle = "private" },
+  { barrier = "lift_gate", access = "private", bicycle = "yes", foot = "yes" },
+  { barrier = "bollard", access = "private", bicycle = "yes" },
+}) do
+  local out = transform_node(tags)
+  local label = tags.barrier .. (tags.access and (" access=" .. tags.access) or "")
+    .. (tags.motor_vehicle and (" motor_vehicle=" .. tags.motor_vehicle) or "")
+  check("a bike-open " .. label .. " is not private", out.private == "false", out.private)
+  check("and a bicycle still passes the " .. label, bike_allowed(out))
+end
+local private_lift = transform_node({ barrier = "lift_gate", access = "private", bicycle = "yes" })
+check("a private lift gate with bicycle=yes stays open on foot", math.floor(tonumber(private_lift.access_mask) / 2) % 2 == 1,
+  private_lift.access_mask)
+local private_gate = transform_node({ barrier = "gate", access = "private" })
+check("a gate private to everyone stays private", private_gate.private == "true", private_gate.private)
+local refused = transform_node({ barrier = "gate", bicycle = "no", motor_vehicle = "private" })
+check("a gate that refuses a bicycle is left as it is", refused.private == "true"
+  and not bike_allowed(refused), refused.private)
+end)()
+
 -- ---------------------------------------------------------------------------
 -- A violation is loud and leaves the element where it was.
 --
@@ -868,13 +920,44 @@ local _, marina = transform_way({ highway = "service", name = "Mount Vernon Trai
 check("the Mount Vernon Trail's marina road is not destination-only", marina.private == "false",
   marina.private)
 check("and is open to bicycles both ways", marina.bike_forward == "true" and marina.bike_backward == "true")
+-- The owner, 2026-11-08: "Destination only should also include a stop". A service road a
+-- bicycle passes along is no longer destination-only for it, with no bicycle tag (its class
+-- opens it) or beside a private `access` its own bicycle tag outranks. Until then these two
+-- checks pinned that both stayed destination-only (hunt H1, T4).
 local _, car_private = transform_way({ highway = "service", motor_vehicle = "private" })
-check("a road private to cars with no bicycle tag stays destination-only", car_private.private == "true",
-  car_private.private)
+check("a service road private to cars with no bicycle tag is not destination-only",
+  car_private.private == "false" and car_private.bike_forward == "true", car_private.private)
+check("and is still closed to cars", car_private.auto_forward == "false", car_private.auto_forward)
 local _, all_private = transform_way({ highway = "service", access = "private", bicycle = "yes",
   motor_vehicle = "private" })
-check("access=private stays destination-only whatever the bicycle tag", all_private.private == "true",
-  all_private.private)
+check("access=private with bicycle=yes on a service road is not destination-only",
+  all_private.private == "false" and all_private.bike_forward == "true", all_private.private)
+check("and is closed to cars", all_private.auto_forward == "false", all_private.auto_forward)
+check("and open on foot", all_private.pedestrian_forward == "true", all_private.pedestrian_forward)
+local _, drive_private = transform_way({ highway = "service", service = "driveway",
+  motor_vehicle = "private" })
+check("a private driveway stays destination-only (a stop)", drive_private.private == "true",
+  drive_private.private)
+local _, lot_private = transform_way({ highway = "service", service = "parking_aisle",
+  access = "customers", bicycle = "yes" })
+check("a business's lot stays destination-only (a stop)", lot_private.private == "true",
+  lot_private.private)
+local _, gated = transform_way({ highway = "residential", access = "private", bicycle = "yes" })
+check("a gated complex's street stays destination-only (a stop)", gated.private == "true",
+  gated.private)
+local _, gated_trail = transform_way({ highway = "path", access = "no", bicycle = "yes", foot = "yes",
+  motor_vehicle = "private" })
+check("a gated trail, access=no + bicycle=yes + motor_vehicle=private, is not destination-only",
+  gated_trail.private == "false" and gated_trail.bike_forward == "true", gated_trail.private)
+local _, bragers = transform_way({ highway = "unclassified", name = "Bragers Road", access = "private",
+  motor_vehicle = "private", bicycle = "designated", foot = "designated", ["rm:stress_tier"] = "2" })
+check("the WB&A Trail on Bragers Road is not destination-only", bragers.private == "false"
+  and bragers.bike_forward == "true", bragers.private)
+check("and Bragers Road is closed to cars", bragers.auto_forward == "false", bragers.auto_forward)
+local _, pentagon = transform_way({ highway = "footway", footway = "sidewalk", access = "private",
+  bicycle = "yes", foot = "yes" })
+check("the Pentagon sidewalk, access=private + bicycle=yes, is not destination-only",
+  pentagon.private == "false" and pentagon.bike_forward == "true", pentagon.private)
 end
 local _, plain_aisle = transform_way({ highway = "service", service = "parking_aisle" })
 check("an aisle that says nothing of bicycles stays an aisle", tonumber(plain_aisle.use) == 6,
@@ -1204,6 +1287,147 @@ local _, illegal_bridge = transform_way({ highway = "primary", bridge = "yes", b
 check("an illegal bridge's conditional grant opens neither direction",
   illegal_bridge.bike_forward == "false" and illegal_bridge.bike_backward == "false",
   tostring(illegal_bridge.bike_forward) .. "/" .. tostring(illegal_bridge.bike_backward))
+
+-- ---------------------------------------------------------------------------
+-- Hunt of 2026-11-08: tag shapes the graph read against the map (lua/routemaker_remap.lua).
+-- ---------------------------------------------------------------------------
+
+-- T2: a contraflow lane mapped the District's way stays open after the sharrow beside it is
+-- taken off (before: bike_backward false), and with-flow lanes on both sides no longer open
+-- the way against the traffic (before: bike_backward true).
+;(function()
+  local dc = { highway = "residential", oneway = "yes", ["cycleway:left"] = "lane",
+    ["cycleway:left:oneway"] = "-1", ["cycleway:right"] = "shared_lane", ["rm:facility"] = "lane",
+    ["rm:stress_tier"] = "2" }
+  local _, dc_out = transform_way(dc)
+  check("a DC contraflow lane is open against the traffic after the sharrow comes off",
+    dc_out.bike_backward == "true" and dc_out.bike_forward == "true", dc_out.bike_backward)
+  check("and its sharrow is gone", dc_out["cycleway:right"] == nil, dc_out["cycleway:right"])
+  local _, one_side = transform_way({ highway = "residential", oneway = "yes",
+    ["cycleway:left"] = "lane", ["cycleway:left:oneway"] = "-1", ["rm:facility"] = "lane" })
+  check("a contraflow lane alone opens the reverse", one_side.bike_backward == "true",
+    one_side.bike_backward)
+  local _, reversed = transform_way({ highway = "residential", oneway = "-1",
+    ["cycleway:right"] = "lane", ["cycleway:right:oneway"] = "yes", ["rm:facility"] = "lane" })
+  check("on oneway=-1 a lane with the way's nodes is the contraflow one",
+    reversed.bike_forward == "true" and reversed.bike_backward == "true",
+    tostring(reversed.bike_forward) .. "/" .. tostring(reversed.bike_backward))
+  local _, no_trail = transform_way({ highway = "residential", oneway = "yes",
+    ["oneway:bicycle"] = "yes", ["cycleway:left"] = "lane", ["cycleway:left:oneway"] = "-1",
+    ["rm:facility_neutral"] = "yes" })
+  check("the no-trail graph's oneway:bicycle=yes keeps it closed", no_trail.bike_backward == "false",
+    no_trail.bike_backward)
+  local _, with_flow = transform_way({ highway = "secondary", oneway = "yes",
+    ["cycleway:left"] = "lane", ["cycleway:left:oneway"] = "yes", ["cycleway:right"] = "lane",
+    ["rm:facility"] = "lane", ["rm:stress_tier"] = "2" })
+  check("with-flow lanes on both sides do not open the way against the traffic",
+    with_flow.bike_backward == "false" and with_flow.bike_forward == "true", with_flow.bike_backward)
+  -- A two-way cycle track on one side of a one-way rides both ways (review of e96cce84: the
+  -- with-flow rule closed its reverse).
+  local _, two_way_track = transform_way({ highway = "secondary", oneway = "yes",
+    ["cycleway:left"] = "track", ["cycleway:left:oneway"] = "no", ["cycleway:right"] = "lane",
+    ["rm:facility"] = "lane", ["rm:stress_tier"] = "2" })
+  check("a two-way cycle track on a one-way stays open against the traffic",
+    two_way_track.bike_backward == "true" and two_way_track.bike_forward == "true",
+    two_way_track.bike_backward)
+  local _, two_way_alone = transform_way({ highway = "residential", oneway = "yes",
+    ["cycleway:left"] = "track", ["cycleway:left:oneway"] = "no", ["rm:facility"] = "protected" })
+  check("and so does one alone on its side", two_way_alone.bike_backward == "true",
+    two_way_alone.bike_backward)
+  local _, two_way_no_trail = transform_way({ highway = "residential", oneway = "yes",
+    ["oneway:bicycle"] = "yes", ["cycleway:left"] = "track", ["cycleway:left:oneway"] = "no",
+    ["rm:facility_neutral"] = "yes" })
+  check("but not on the no-trail graph", two_way_no_trail.bike_backward == "false",
+    two_way_no_trail.bike_backward)
+  local _, both = transform_way({ highway = "residential", oneway = "yes", ["cycleway:both"] = "lane",
+    ["rm:facility"] = "lane" })
+  check("nor does cycleway:both=lane on a one-way", both.bike_backward == "false", both.bike_backward)
+  local _, two_way = transform_way({ highway = "residential", ["cycleway:both"] = "lane",
+    ["rm:facility"] = "lane" })
+  check("a two-way street with lanes both sides stays two-way",
+    two_way.bike_backward == "true" and two_way.bike_forward == "true")
+  for _, oneway in ipairs({ "1", "true", "-1" }) do
+    local _, waived = transform_way({ highway = "residential", oneway = oneway, ["oneway:bicycle"] = "no" })
+    check("oneway=" .. oneway .. " + oneway:bicycle=no opens both directions",
+      waived.bike_forward == "true" and waived.bike_backward == "true",
+      tostring(waived.bike_forward) .. "/" .. tostring(waived.bike_backward))
+  end
+  local _, closed = transform_way({ highway = "residential", oneway = "1", ["oneway:bicycle"] = "no",
+    bicycle = "no" })
+  check("oneway:bicycle=no never opens a way a bicycle may not ride",
+    closed.bike_forward == "false" and closed.bike_backward == "false")
+end)()
+
+-- C1: a directional speed limit no longer undoes the graded LTS 4 speed (before: forward_speed
+-- 56, backward_speed 48), nor 3.5's (before: 64).
+;(function()
+  local _, graded = transform_way({ highway = "primary", ["maxspeed:forward"] = "35 mph",
+    ["maxspeed:backward"] = "30 mph", lanes = "4", ["rm:stress_tier"] = "4" })
+  check("an LTS 4 road keeps its graded speed in both directions",
+    tonumber(graded.forward_speed) == 140 and tonumber(graded.backward_speed) == 140,
+    tostring(graded.forward_speed) .. "/" .. tostring(graded.backward_speed))
+  local _, half = transform_way({ highway = "secondary", ["maxspeed:forward"] = "40 mph",
+    ["rm:stress_tier"] = "3", ["rm:stress_half"] = "yes" })
+  check("a 3.5 road keeps its half-step speed", tonumber(half.forward_speed) == 90, half.forward_speed)
+  local _, fast = transform_way({ highway = "trunk", ["maxspeed:forward"] = "60 mph",
+    ["rm:stress_tier"] = "3", ["rm:stress_half"] = "yes" })
+  check("a faster directional speed is kept", tonumber(fast.forward_speed) == 97, fast.forward_speed)
+end)()
+
+-- T5: a signed sidepath mapped as a sidewalk is a footway in the graph (before: use 24, the
+-- sidewalk, priced as a road), and so is a named trail's sidewalk stretch; a plain sidewalk
+-- stays a sidewalk.
+;(function()
+  local _, sidepath = transform_way({ highway = "footway", footway = "sidewalk", bicycle = "designated",
+    ["rm:facility"] = "protected" })
+  check("a signed sidepath is a footway in the graph", tonumber(sidepath.use) == 25, sidepath.use)
+  check("priced as a path", tonumber(sidepath.cycle_lane_right) >= 1, sidepath.cycle_lane_right)
+  local _, riverwalk = transform_way({ highway = "footway", footway = "sidewalk", bicycle = "yes",
+    name = "Anacostia Riverwalk Trail", ["rm:facility"] = "path" })
+  check("a named trail's sidewalk stretch is a footway", tonumber(riverwalk.use) == 25, riverwalk.use)
+  local _, segregated = transform_way({ highway = "footway", footway = "sidewalk", bicycle = "yes",
+    segregated = "yes" })
+  check("a tagged sidepath is a segregated footway", tonumber(segregated.use) == 25
+    and tonumber(segregated.cycle_lane_right) == 2, segregated.cycle_lane_right)
+  local _, plain = transform_way({ highway = "footway", footway = "sidewalk", bicycle = "yes" })
+  check("a sidewalk a bicycle may merely use stays a sidewalk", tonumber(plain.use) == 24, plain.use)
+end)()
+
+-- T8: a driveway a bicycle may not ride stays closed (before: upstream reopened it).
+;(function()
+  local _, driveway = transform_way({ highway = "service", service = "driveway", bicycle = "no" })
+  check("a driveway tagged bicycle=no is closed both ways",
+    driveway.bike_forward == "false" and driveway.bike_backward == "false",
+    tostring(driveway.bike_forward) .. "/" .. tostring(driveway.bike_backward))
+  local _, open_drive = transform_way({ highway = "service", service = "driveway" })
+  check("an untagged driveway stays open", open_drive.bike_forward == "true")
+end)()
+
+-- Q4: a pedestrian street and a bridleway carry an explicit bicycle=no, so the country access
+-- table cannot open them (before: no bicycle key, no bike_tag).
+;(function()
+  for _, tags in ipairs({ { highway = "pedestrian" }, { highway = "bridleway" },
+      { highway = "bridleway", access = "no" } }) do
+    local _, out = transform_way(tags)
+    check("an untagged " .. tags.highway .. " is closed by a bicycle tag",
+      out.bicycle == "no" and out.bike_forward == "false", out.bicycle)
+  end
+  local _, beach_drive = transform_way({ highway = "pedestrian", bicycle = "yes", motor_vehicle = "no" })
+  check("a pedestrian street open to bicycles stays open", beach_drive.bike_forward == "true")
+end)()
+
+-- T6, A4: an easy rating on gravel no longer sets the surface (before: mtb:scale reached the
+-- parser, which prices 0 as dirt and 1 as gravel).
+;(function()
+  local _, rated = transform_way({ highway = "path", surface = "fine_gravel", bicycle = "designated",
+    ["mtb:scale"] = "1" })
+  check("a designated gravel trail rated 1 reaches the parser as packed gravel",
+    rated["mtb:scale"] == nil and rated.surface == "compacted", rated["mtb:scale"])
+  local _, hard = transform_way({ highway = "path", surface = "gravel", ["mtb:scale"] = "3" })
+  check("a hard rating on gravel stays", hard["mtb:scale"] == "3", hard["mtb:scale"])
+  local _, dirt = transform_way({ highway = "path", surface = "dirt", ["mtb:scale"] = "1" })
+  check("a rating on dirt stays", dirt["mtb:scale"] == "1", dirt["mtb:scale"])
+end)()
 
 io.write(string.format("%d checks, %d failures\n", checks, failures))
 os.exit(failures == 0 and 0 or 1)

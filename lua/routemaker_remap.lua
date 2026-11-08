@@ -544,13 +544,62 @@ end
 -- restriction too, and keep upstream's flag).
 M.MOTOR_KEYS = { "motor_vehicle", "motorcar" }
 
+-- Wider since the owner's rule of 2026-11-08 on what destination-only is for: "Destination
+-- only should also include a stop, basically somewhere that there's a specific decision to
+-- enter." Valhalla's charge stays where a bicycle enters to stop there - a business's lot, a
+-- private drive, a gated complex's streets - and comes off the ways a bicycle passes along:
+-- trails, sidewalks, and paths and service roads its tags leave open to it (the hunt of
+-- 2026-11-08, H1 and T4: the sidewalk at the Pentagon reservation, way 345398651,
+-- `access=private` + `bicycle=yes`; the service road between 17th St and Colorado Ave NW, way
+-- 83423506, `access=private` + `bicycle=permissive`; the WB&A Trail's stretch of Bragers Road,
+-- way 11507607, `access=private` + `bicycle=designated`; the gated Rock Creek park road, way
+-- 274709114, `motor_vehicle=private` and no bicycle tag). Each such way cost a bicycle 600 s
+-- to enter, as the marina did. So, besides the marina's case:
+--
+-- - A motor key that is private comes off (written `no`) wherever a bicycle is granted by its
+--   own tag, whatever `access` or `vehicle` say, unless that is itself a private value on a way
+--   a bicycle turns into to stop (below): `access=no` + `bicycle=yes` + `motor_vehicle=private`,
+--   the usual gated trail, keeps cars out and is no longer destination-only. Only narrows.
+-- - On a way a bicycle passes along (`M.passes_through`: `M.PASS_THROUGH_HIGHWAY`, or a way
+--   signed `bicycle=designated`; never a lot's aisle, a driveway or a drive-through), a private `access` or `vehicle` is written `no` where a bicycle is
+--   granted by its own tag: OSM's more specific key speaks for the bicycle, and `no` keeps
+--   every other vehicle off (see `M.private_access_passed_through` for pedestrians).
+-- - On a path, cycleway or (not a lot's, a drive's or a drive-through's) service road with no
+--   bicycle tag at all, open to bicycles by its class and its own `access`, a private motor key
+--   comes off too: OSM restricts motor traffic there and nothing else, which is what
+--   `routemaker.stress` already reads (tests/test_motor_restriction.py). A street
+--   (`motor_vehicle=destination` on a residential road, "local traffic only") keeps it: there
+--   the owner's "stop" reading is the mapper's too.
+M.PASS_THROUGH_HIGHWAY = {
+  path = true, cycleway = true, footway = true, bridleway = true, pedestrian = true,
+  track = true, service = true,
+}
+M.OPEN_BY_CLASS_PASS_THROUGH = { path = true, cycleway = true, service = true }
+
+--- Whether a bicycle passes along this way rather than entering it to stop: a trail, a
+-- sidewalk or a service road, or any way signed for bicycles (`bicycle=designated`, as the
+-- WB&A Trail's stretch of Bragers Road is), but never a lot's aisle, a driveway or a
+-- drive-through.
+function M.passes_through(tags)
+  return (M.PASS_THROUGH_HIGHWAY[tags.highway] == true or tags.bicycle == "designated")
+    and not M.BICYCLE_LINK_SERVICES[tags.service or ""]
+end
+
 function M.private_to_motors_only(tags)
-  if not M.BICYCLE_LINK_GRANTS[tags.bicycle] then
-    return {}
+  local granted = M.BICYCLE_LINK_GRANTS[tags.bicycle]
+  if not granted then
+    -- No bicycle tag: only on a pass-through class open to bicycles by default.
+    if tags.bicycle ~= nil or not M.OPEN_BY_CLASS_PASS_THROUGH[tags.highway]
+      or not M.passes_through(tags) then
+      return {}
+    end
   end
   for _, key in ipairs({ "access", "vehicle" }) do
-    if tags[key] ~= nil and not M.PERMISSIVE_ACCESS[tags[key]] then
-      return {}
+    local value = tags[key]
+    if value ~= nil and not M.PERMISSIVE_ACCESS[value] then
+      if not granted then return {} end
+      -- A private `access` or `vehicle` keeps the flag where a bicycle enters to stop.
+      if M.UPSTREAM_PRIVATE_ACCESS[value] and not M.passes_through(tags) then return {} end
     end
   end
   local keys = {}
@@ -560,6 +609,43 @@ function M.private_to_motors_only(tags)
     end
   end
   return keys
+end
+
+--- The `access` and `vehicle` keys whose private value comes off a way a bicycle passes
+-- along and is granted by its own tag (see above), written `no`.
+function M.private_access_passed_through(tags)
+  if not M.BICYCLE_LINK_GRANTS[tags.bicycle] or not M.passes_through(tags) then
+    return {}
+  end
+  local keys = {}
+  for _, key in ipairs(M.WAY_ACCESS_KEYS) do
+    if M.UPSTREAM_PRIVATE_ACCESS[tags[key]] then
+      keys[#keys + 1] = key
+    end
+  end
+  return keys
+end
+
+--- Writes what clears a bicycle's way, or a barrier node a bicycle passes, of upstream's
+-- `private` flag (the two functions above), into `out`. A private `access` written `no`
+-- would also close the way or node to pedestrians where no `foot` key speaks, so `foot`
+-- is given the value `access` had: still open on foot, as upstream read it, and no longer
+-- flagged (the flag is the edge's, one for every mode, so it cannot be cleared for
+-- bicycles alone). Returns whether it wrote anything.
+function M.clear_private_for_bicycle(tags, out)
+  local wrote = false
+  for _, key in ipairs(M.private_access_passed_through(tags)) do
+    if key == "access" and tags.foot == nil and out.foot == nil then
+      out.foot = tags.access
+    end
+    out[key] = "no"
+    wrote = true
+  end
+  for _, key in ipairs(M.private_to_motors_only(tags)) do
+    out[key] = "no"
+    wrote = true
+  end
+  return wrote
 end
 
 --- A parking aisle the rebuild names a trail's link (`rm:aisle_link`), whose own
@@ -982,13 +1068,12 @@ function M.remap_way(tags, derived)
     out.bicycle = "destination"
   end
 
-  -- A bicycle's way private to motor traffic alone is not destination-only for the bicycle
-  -- (M.private_to_motors_only). Not where the remap itself closed it or made it
+  -- A bicycle's way private to motor traffic alone, or a way a bicycle passes along that its
+  -- own tag grants it, is not destination-only for the bicycle (M.private_to_motors_only,
+  -- M.private_access_passed_through). Not where the remap itself closed it or made it
   -- destination-only above (a cemetery, the Zoo's spur).
-  if out.bicycle ~= "no" and out.access == nil then
-    for _, key in ipairs(M.private_to_motors_only(tags)) do
-      out[key] = "no"
-    end
+  if out.bicycle ~= "no" and out.access == nil and not derived.no_bicycle then
+    M.clear_private_for_bicycle(tags, out)
   end
 
   -- A footway into a rail station (`rm:walk_link`, routemaker.station_links; the owner,
@@ -1061,8 +1146,45 @@ function M.remap_way(tags, derived)
     end
   end
 
-  -- A paved way is not a mountain-bike trail (`M.strip_paved_ratings`).
+  -- A paved way is not a mountain-bike trail (`M.strip_paved_ratings`), and an easy rating
+  -- on gravel does not make it rougher gravel (`M.strip_easy_gravel_ratings`).
   M.strip_paved_ratings(tags, out)
+  M.strip_easy_gravel_ratings(tags, out)
+
+  -- A signed sidepath mapped as a sidewalk is priced as the path it is
+  -- (`M.priced_as_sidepath`): `footway=sidewalk` comes off.
+  if M.priced_as_sidepath(tags) and out.bicycle ~= "no" and not derived.no_bicycle then
+    out.footway = M.REMOVE
+  end
+
+  -- The directional speeds, so they cannot undo a practical speed written above
+  -- (`M.directional_speeds`).
+  for key, value in pairs(M.directional_speeds(tags, out)) do
+    out[key] = value
+  end
+
+  -- A driveway a bicycle may not ride stays closed (hunt T8, 2026-11-08). Upstream sets every
+  -- mode open on `service=driveway` with no `access` ("service=driveway means all are
+  -- routable"), after it has read the bicycle tag, so `bicycle=no` there, OSM's own or one
+  -- this remap wrote, was reopened. Both directional keys are what upstream applies after
+  -- that line (`M.close_both_directions`). Only narrows.
+  if tags.highway == "service" and tags.service == "driveway" and tags.access == nil
+    and out.access == nil and (out.bicycle or tags.bicycle) == "no" then
+    M.close_both_directions(out)
+  end
+
+  -- A pedestrian street or a bridleway that no bicycle key speaks for is closed to bicycles
+  -- in so many words (`M.COUNTRY_OPENED_HIGHWAY`).
+  if M.COUNTRY_OPENED_HIGHWAY[tags.highway] and out.bicycle == nil
+    and not M.speaks_of_bicycle(tags) then
+    out.bicycle = "no"
+  end
+
+  -- A one-way's direction against the traffic, as its cycle lanes say (`M.contraflow_reverse`).
+  if not derived.no_bicycle then
+    local reverse = M.contraflow_reverse(tags, out)
+    if reverse ~= nil then out["bicycle:backward"] = reverse end
+  end
 
   -- Last, so no line above can grant a direction back: the conditional-access
   -- resolution writes `bicycle:forward` / `:backward` from OSM's own
@@ -1185,6 +1307,222 @@ function M.strip_paved_ratings(tags, out)
     end
   end
   return any
+end
+
+-- An easy rating on gravel comes off before the tile build (hunt T6 and A4, 2026-11-08).
+--
+-- The parser sets the edge's surface from `mtb:scale` whatever `surface` says
+-- (pbfgraphparser.cc at 3.9.1: 0 as dirt, 1 as gravel, 2 and up as path), and from
+-- `mtb:scale:uphill` where no `mtb:scale` is (below 2 as gravel). So a crushed-stone trail
+-- rated `mtb:scale=0` ("easy") was priced as dirt, and one rated 1 as the gravel class the
+-- owner's "All gravel everywhere" (2026-11-01, `M.PACKED_GRAVEL`) priced out of the graph.
+-- On a gravel, fine-gravel or compacted way (`M.ROUGH_UNPAVED`, the packed-gravel class and
+-- what is written as it) whose ratings are all 0 or 1, the surface-setting ratings come off
+-- and the way is priced as packed gravel. A harder rating (2 and up) is technical ground
+-- whatever the surface, and stays. Access is as in `M.strip_paved_ratings`: the parser's
+-- grant from a rating is never what decides an open way, and `M.strip_ratings_if_closed`
+-- already takes ratings off a closed one. `mtb:scale:imba` sets no surface and is left.
+M.SURFACE_RATING_KEYS = { "mtb:scale", "mtb:scale:uphill" }
+M.EASY_RATING_MAX = 1
+
+local function rating_grade(value)
+  if type(value) ~= "string" then return nil end
+  return tonumber(value:match("^%s*(%d+)"))
+end
+
+--- Write REMOVE for each surface-setting rating on a gravel way rated 0 or 1; returns whether any.
+function M.strip_easy_gravel_ratings(tags, out)
+  if not M.ROUGH_UNPAVED[tags.surface or ""] then return false end
+  local present = {}
+  for _, key in ipairs(M.SURFACE_RATING_KEYS) do
+    if tags[key] ~= nil then
+      local grade = rating_grade(tags[key])
+      if grade == nil or grade > M.EASY_RATING_MAX then return false end
+      present[#present + 1] = key
+    end
+  end
+  for _, key in ipairs(present) do out[key] = M.REMOVE end
+  return #present > 0
+end
+
+-- A signed sidepath, or a trail's stretch, mapped as a sidewalk (hunt T5, 2026-11-08).
+--
+-- Upstream gives `highway=footway` + `footway=sidewalk` the sidewalk use (24), and
+-- Valhalla's bicycle costing prices a sidewalk as a road (sif/bicyclecost.cc at 3.9.1: only
+-- cycleway, footway and path uses get the path factors), with no cycle lane, the service
+-- class's factor and a 25 km/h class speed: about 2.24 times its time at Default, against
+-- 1.88 for a residential street beside it. So the graph took a parallel street over the
+-- Veirs Mill and Kemp Mill sidepaths, which `routemaker.facility` rates protected
+-- (`bicycle=designated`, OWNER-DECISIONS 66), and over the Anacostia Riverwalk Trail's
+-- sidewalk stretches, which the map keeps as the trail's (a named way open to bicycles), as
+-- it keeps the sidepaths mapped with `segregated` (OWNER-DECISIONS 115). On those ways the
+-- `footway` value comes off, and upstream types them as the footway they are (use 25),
+-- priced as a shared path, or a segregated one where `segregated=yes` says so. Upstream
+-- reads `footway` for the use and nothing else, so no access moves. A sidewalk a bicycle may
+-- merely use, and one ridden as a last resort (`rm:sidewalk`, no bicycle tag), keep the
+-- sidewalk's price.
+M.SIDEPATH_GRANTS = { yes = true, designated = true, permissive = true, official = true }
+
+function M.priced_as_sidepath(tags)
+  if tags.highway ~= "footway" or tags.footway ~= "sidewalk" then return false end
+  if tags.bicycle == "designated" then return true end
+  return M.SIDEPATH_GRANTS[tags.bicycle] == true and (tags.name ~= nil or tags.segregated ~= nil)
+end
+
+-- The directional speeds where this remap writes a practical speed (hunt C1, 2026-11-08).
+--
+-- Upstream turns `maxspeed:practical` into the way's speed but still hands on
+-- `maxspeed:forward` and `:backward`, and Valhalla's graph builder then gives each direction
+-- its tagged speed over the way's (graphbuilder.cc at 3.9.1, `forward_tagged_speed`), copying
+-- one tagged direction onto the other of a two-way. So on an LTS 4 road whose speed limit is
+-- tagged by direction (a limit that changes along the road, a school zone) the graded speed of
+-- 140 (and 3.5's 90) never reached the edge, and the road cost about half its graded price,
+-- below the owner's "LTS 4 at least twice LTS 3". Each directional speed below the practical
+-- one is written as it; a higher one stays, as the half step keeps a road's own higher speed.
+-- A bicycle's time comes from its own speed, so only cost moves.
+function M.directional_speeds(tags, out)
+  local writes = {}
+  local practical = out["maxspeed:practical"]
+  local kph = M.speed_kph(practical)
+  if kph == nil then return writes end
+  for _, key in ipairs({ "maxspeed:forward", "maxspeed:backward" }) do
+    local own = M.speed_kph(tags[key])
+    if own ~= nil and own < kph then writes[key] = practical end
+  end
+  return writes
+end
+
+-- The classes Valhalla's country defaults would open to bicycles (hunt Q4, 2026-11-08).
+--
+-- Upstream closes `highway=pedestrian` and `highway=bridleway` to a bicycle by class, and
+-- RouteMaker's rules read them so (`routemaker.trailaccess.upstream_open`). But the tile
+-- build applies the country access table (`apply_country_overrides`, with the admin
+-- database), whose United States row opens both to bicycles wherever no bicycle tag was read
+-- (mjolnir/adminconstants.h and countryaccess.cc at 3.9.1), `access=no` included. Whether it
+-- fires depends on the admin database holding the country, which the tile-build test turns
+-- off. So where no bicycle key speaks (`M.speaks_of_bicycle`), `bicycle=no` is written: what
+-- upstream's transform reads already, now a tag the country table does not override. Path and
+-- cycleway are open by class in both, and footway and track have no US row.
+M.COUNTRY_OPENED_HIGHWAY = { pedestrian = true, bridleway = true }
+M.BICYCLE_SPEAKING_KEYS = { bicycle_road = true, cyclestreet = true, vehicle = true, sac_scale = true }
+
+--- Whether any key on the way speaks of a bicycle as upstream reads it: a `bicycle*` or
+-- `cycleway*` key, `vehicle*`, `bicycle_road`, `cyclestreet`, or a `sac_scale` (hiking opens).
+function M.speaks_of_bicycle(tags)
+  for key in pairs(tags) do
+    if type(key) == "string" then
+      if M.BICYCLE_SPEAKING_KEYS[key] or key:sub(1, 7) == "bicycle" or key:sub(1, 8) == "cycleway"
+        or key:sub(1, 8) == "vehicle:" then
+        return true
+      end
+    end
+  end
+  return false
+end
+
+-- A one-way's direction against the traffic, from its cycle lanes (hunt T2, 2026-11-08).
+--
+-- Upstream opens both directions of a way with a lane-class facility on both sides (or on
+-- `cycleway:both`) and reads neither `oneway:bicycle` nor `cycleway:<side>:oneway` there; it
+-- reads `oneway:bicycle=no` only beside `oneway=yes`. `routemaker.tags` (`cycleway_sides`,
+-- what the map draws) reads a side's own `:oneway`. They disagreed three ways:
+--
+-- - The District's contraflow lane (`oneway=yes`, `cycleway:left=lane`,
+--   `cycleway:left:oneway=-1`, a sharrow on the right) was open against the traffic only
+--   through the sharrow, and `M.apply_facility` takes sharrows off every ordinary street, so
+--   the graph closed the lane the map draws. A side whose own `:oneway` runs against the
+--   traffic now opens the reverse (`bicycle:backward=yes`), where `oneway:bicycle` says
+--   nothing.
+-- - `oneway=1`, `true` or `-1`, or a roundabout, with `oneway:bicycle=no` (or `false`, `0`)
+--   got no contraflow; the remap (`M.speaks_for_reverse`) and the map read it as contraflow.
+--   It is written as `bicycle:backward=yes` too, which upstream reads on every spelling.
+-- - A two-way lane or track on one side (`cycleway:<side>:oneway=no`, `M.side_two_way`) opens
+--   the reverse the same way.
+-- - Lanes on both sides that both run with the traffic (`cycleway:both=lane`, or a left lane
+--   tagged or left `:oneway=yes`) were opened against it on every graph but the no-trail one
+--   (`pipeline.variants.close_lanes_on_both_sides`). Where nothing on the way speaks for the
+--   reverse, it is closed (`bicycle:backward=none`, the value the no-trail graph writes, which
+--   upstream reads as false without mistaking it for a second direction). Only narrows.
+--
+-- `forward` and `backward` are relative to the one-way's direction in upstream's reading,
+-- `oneway=-1` included, so `backward` is the reverse on every one-way. Never where a
+-- directional key, `vehicle:backward` or a backward conditional already speaks, nor where a
+-- bicycle may not ride the way at all; and the no-trail graph's `oneway:bicycle=yes`
+-- (`pipeline.variants.close_contraflow`) keeps a contraflow lane closed there.
+M.LANE_CLASS_VALUES = {
+  shared_lane = true, share_busway = true, shared = true, track = true,
+  opposite_track = true, lane = true, opposite_lane = true, buffered_lane = true,
+}
+M.FORWARD_ONEWAY = { yes = true, ["true"] = true, ["1"] = true }
+M.WAIVED_ONEWAY_BICYCLE = { no = true, ["false"] = true, ["0"] = true }
+
+--- Whether one side's facility runs against a one-way's traffic by its own `:oneway`, read
+-- at the key its value came from, as `routemaker.tags._against_traffic` reads it.
+function M.side_against_traffic(tags, side)
+  if not M.is_motor_oneway(tags) then return false end
+  for _, key in ipairs(M.CYCLEWAY_SIDE_KEYS[side]) do
+    local value = tags[key]
+    if value ~= nil and value ~= "" then
+      if not M.LANE_CLASS_VALUES[value] then return false end
+      local own = tags[key .. ":oneway"]
+      if own == "-1" then return tags.oneway ~= "-1" end
+      if M.FORWARD_ONEWAY[own] then return tags.oneway == "-1" end
+      return false
+    end
+  end
+  return false
+end
+
+--- Whether one side's facility is a two-way lane or track on a one-way (`cycleway:<side>:oneway=no`,
+-- read at the key its value came from): a bicycle may ride it both ways, so it speaks for the
+-- reverse as a contraflow lane does. Kept apart from `M.side_against_traffic`, which reads only
+-- `-1` and the forward values, as `routemaker.tags._against_traffic` (the map) does.
+function M.side_two_way(tags, side)
+  if not M.is_motor_oneway(tags) then return false end
+  for _, key in ipairs(M.CYCLEWAY_SIDE_KEYS[side]) do
+    local value = tags[key]
+    if value ~= nil and value ~= "" then
+      return M.LANE_CLASS_VALUES[value] == true and tags[key .. ":oneway"] == "no"
+    end
+  end
+  return false
+end
+
+local function written(tags, out, key)
+  local value = out[key]
+  if value == M.REMOVE then return nil end
+  if value ~= nil then return value end
+  return tags[key]
+end
+
+--- The `bicycle:backward` a one-way's cycle lanes call for (see above): "yes", "none" or nil.
+function M.contraflow_reverse(tags, out)
+  if not M.is_motor_oneway(tags) then return nil end
+  for _, key in ipairs({ "bicycle:backward", "vehicle:backward", "bicycle:backward:conditional" }) do
+    if tags[key] ~= nil or out[key] ~= nil then return nil end
+  end
+  local waived = tags["oneway:bicycle"]
+  local against = M.side_against_traffic(tags, "left") or M.side_against_traffic(tags, "right")
+    or M.side_two_way(tags, "left") or M.side_two_way(tags, "right")
+  local opens = (M.WAIVED_ONEWAY_BICYCLE[waived] and not (tags.oneway == "yes" and waived == "no"))
+    or (waived == nil and against)
+  if opens then
+    local bicycle = out.bicycle or tags.bicycle
+    if bicycle == nil then
+      if not (M.BICYCLE_BY_DEFAULT_HIGHWAY[tags.highway] and M.access_is_unrestricted(tags)) then
+        return nil
+      end
+    elseif not (M.REVERSE_GRANT[bicycle] or bicycle == M.STRESS_PENALTY_BICYCLE) then
+      return nil
+    end
+    return "yes"
+  end
+  if against or M.speaks_for_reverse(tags) then return nil end
+  local both = M.LANE_CLASS_VALUES[written(tags, out, "cycleway:both") or ""]
+    or (M.LANE_CLASS_VALUES[written(tags, out, "cycleway:left") or ""]
+      and M.LANE_CLASS_VALUES[written(tags, out, "cycleway:right") or ""])
+  if both then return M.CLOSED_REVERSE_BICYCLE end
+  return nil
 end
 
 -- From 3.7.0 Valhalla's parser types a node tagged `amenity=parking` as a
@@ -1486,6 +1824,11 @@ function M.speaks_for_reverse(tags)
     local value = tags[key]
     if value ~= nil and value:sub(1, #"opposite") == "opposite" then return true end
   end
+  -- A lane whose own `:oneway` runs against the traffic (`M.contraflow_reverse`).
+  if M.side_against_traffic(tags, "left") or M.side_against_traffic(tags, "right")
+    or M.side_two_way(tags, "left") or M.side_two_way(tags, "right") then
+    return true
+  end
   return false
 end
 
@@ -1607,6 +1950,35 @@ function M.parse_width_m(value)
   return metres and tonumber(metres) or nil
 end
 
+-- The barriers a bicycle is lifted over or squeezed through, made gates (see `remap_node`).
+M.HARD_BARRIERS = { kissing_gate = true, stile = true, turnstile = true }
+
+--- At a barrier node a bicycle may pass, write what clears upstream's `private` flag (see
+-- `remap_node`): a private `motor_vehicle` as `no`, and a private `access` as `no` where the
+-- node's own `bicycle` tag grants a bicycle (with `foot` given `access`'s old value where no
+-- `foot` key speaks, so a pedestrian keeps the way). Not where a bicycle is refused or is
+-- private itself (`access=private` and no grant). Only narrows. Returns whether it wrote.
+function M.clear_private_at_node(tags, out)
+  local granted = M.BICYCLE_LINK_GRANTS[tags.bicycle]
+  if tags.bicycle ~= nil and not granted then return false end
+  if not granted then
+    for _, key in ipairs(M.WAY_ACCESS_KEYS) do
+      if tags[key] ~= nil and not M.PERMISSIVE_ACCESS[tags[key]] then return false end
+    end
+  end
+  local wrote = false
+  if M.UPSTREAM_PRIVATE_ACCESS[tags.access] then
+    if tags.foot == nil then out.foot = tags.access end
+    out.access = "no"
+    wrote = true
+  end
+  if M.UPSTREAM_PRIVATE_ACCESS[tags.motor_vehicle] then
+    out.motor_vehicle = "no"
+    wrote = true
+  end
+  return wrote
+end
+
 --- Remap one node's tags.
 function M.remap_node(tags)
   local out = {}
@@ -1669,8 +2041,21 @@ function M.remap_node(tags)
   -- rather than street decoration. A metre and a half is a loaded cargo bike or
   -- a trailer with room to spare; wider than that and there is nothing to
   -- charge for, so the node stays a bollard and keeps upstream's own reading.
+  --
+  -- What a gate costs is the ride type's (core.presets): the owner, 2026-11-08, "was intended
+  -- just for Tandem, and possibly cargo too. Basically, bollards aren't huge deterrents in most
+  -- cases." So every ride type but Cargo pays Valhalla's 30 s here and no penalty, and Cargo
+  -- keeps its large one.
+  --
+  -- The barriers a bicycle is lifted over or squeezed through (`M.HARD_BARRIERS`: a kissing
+  -- gate, a stile, a turnstile) are gates too (hunt T7, 2026-11-08). Upstream types a kissing
+  -- gate as a bollard and leaves a bicycle through it free, and does not read a stile or a
+  -- turnstile at all, so a cargo bike was routed through all three at no cost; PLAN item 345
+  -- names them as the barriers a tandem cannot pass. As gates they cost every ride type the
+  -- same small slow-down as a cycle barrier, and Cargo its large charge. Access is unchanged
+  -- for a bicycle: a gate, like the plain node a stile was, leaves every mode its own tags.
   local barrier = tags.barrier
-  if barrier == "cycle_barrier" then
+  if barrier == "cycle_barrier" or M.HARD_BARRIERS[barrier] then
     out.barrier = "gate"
     clear_access_that_holds_off_gate_cost(out)
   elseif barrier == "bollard" and tags.maxwidth then
@@ -1679,6 +2064,21 @@ function M.remap_node(tags)
       out.barrier = "gate"
       clear_access_that_holds_off_gate_cost(out)
     end
+  end
+
+  -- A gate or bollard a bicycle passes that is private to motor traffic alone, or private
+  -- with a bicycle granted by its own tag: Valhalla charges every costing
+  -- `gate_cost + private_access_penalty` (450 s) at a gate or bollard flagged private
+  -- (sif/dynamiccost.h, base_transition_cost), and upstream's `nodes_proc` reads the flag from
+  -- `access` and `motor_vehicle` whatever `bicycle` says. So the two gates across car-free
+  -- Beach Drive NW at about 38.9443 N (nodes 971094676 and 13314069319, `bicycle=yes`,
+  -- `foot=yes`, `motor_vehicle=private`) cost every ride along it 480 s (hunt H2, T3, C3,
+  -- 2026-11-08). The node twin of the marina's way (`M.private_to_motors_only`): the motor key
+  -- is written `no`, a private `access` beside a bicycle grant is written `no` with `foot`
+  -- kept, and the node stays closed to cars. A node the lines above made a gate has had its
+  -- motor keys cleared already.
+  if barrier ~= nil and out.barrier == nil then
+    M.clear_private_at_node(tags, out)
   end
 
   if M.derives_signal(tags) then

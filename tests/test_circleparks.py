@@ -44,7 +44,13 @@ class TestOpens:
     def test_an_untagged_walkway_inside_opens(self) -> None:
         assert circleparks.opens(WALKWAY, line(*DUPONT))
         assert circleparks.opens({"highway": "path", "surface": "paving_stones"}, line(*LOGAN))
-        assert circleparks.opens({"highway": "pedestrian", "area": "yes"}, line(*DUPONT))
+        assert circleparks.opens({"highway": "pedestrian"}, line(*DUPONT))
+
+    def test_a_plaza_mapped_only_as_an_area_is_left_as_mapped(self) -> None:
+        """The hunt of 2026-11-08 (Q5): `pedestrian_areas` is off, so Valhalla never
+        builds the area and opening it was inert. Until then the check above asserted
+        `{"highway": "pedestrian", "area": "yes"}` opened."""
+        assert not circleparks.opens({"highway": "pedestrian", "area": "yes"}, line(*DUPONT))
 
     def test_outside_a_circle_nothing_changes(self) -> None:
         assert not circleparks.opens(WALKWAY, line(*OUTSIDE))

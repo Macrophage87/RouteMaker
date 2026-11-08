@@ -19,7 +19,8 @@ they start, and the other dials stay the preset's own:
 - **Group Ride**: "L1: standard variant, trails allowed" (its trails toggle ships on; the
   "Keep to roads, not trails" switch, offered on every ride type, turns it off:
   `variant_for_ride`); "L2: Cross,
-  mid use_roads, high maneuver_penalty, high gate_cost". Cross rather than
+  mid use_roads, high maneuver_penalty, high gate_cost" (the high gate cost is gone: the
+  owner, 2026-11-08, a gate's large charge is for Tandem and Cargo only). Cross rather than
   Hybrid so that the rural references' gravel is cheap rather than merely
   permitted (PLAN, Presets).
 - **Mass Ride**: "L1: no-trail variant"; "L2: use_roads at max, use_hills near
@@ -34,9 +35,9 @@ they start, and the other dials stay the preset's own:
 The plan names no numbers for "high". The figures here are the first
 calibration, stated so that they can be argued with: Valhalla's own bicycle
 defaults are 5 s per maneuver and 30 s per gate, and "high" is taken as a
-maneuver priced at half a minute and a gate at two, which is enough to buy a
-few hundred metres of extra distance to avoid a turn or a gate on a city route
-without letting either dominate a rural one. The reference-route invariants in
+maneuver priced at half a minute, which is enough to buy a few hundred metres
+of extra distance to avoid a turn on a city route without letting it dominate a
+rural one. Gates are priced below (`GATE_COST_S`). The reference-route invariants in
 the Quality bar are what retune them.
 
 Every dial is stated on every preset ("Every dial exists on every preset"), so
@@ -65,6 +66,21 @@ from routemaker.ridetime import WEEKEND
 VALHALLA_MANEUVER_PENALTY_S = 5
 VALHALLA_GATE_COST_S = 30
 VALHALLA_GATE_PENALTY_S = 300
+VALHALLA_PRIVATE_ACCESS_PENALTY_S = 450
+
+# What a gate costs every ride type but Cargo: Valhalla's 30 s, as time and as cost, and no
+# penalty on top. The owner, 2026-11-08, of the large gate penalty: it "was intended just for
+# Tandem, and possibly cargo too. Basically, bollards aren't huge deterrents in most cases."
+# (and 2026-10-04, PLAN item 336: "Flag them and maybe 30 seconds. 10 minutes would keep people
+# off traffic free roads"). Until then every preset sent Valhalla's default penalty of 300 s,
+# so each cycle barrier and narrow bollard the transform makes a gate (lua/routemaker_remap.lua,
+# `remap_node`) and each untagged park or trail gate cost 330 s, about half a mile of side
+# streets at Default, and routes left traffic-free trails to avoid furniture that takes seconds
+# to pass (hunt T1, H3). Group Ride and Road Bike had 120 s, for the same reason no longer.
+# Valhalla charges it only at a gate that carries no access tags (sif/dynamiccost.h), and the
+# transform also makes kissing gates, stiles and turnstiles gates, so they cost this too.
+GATE_COST_S = VALHALLA_GATE_COST_S
+GATE_PENALTY_S = 0
 
 MID = 0.5
 
@@ -94,13 +110,18 @@ DEFAULT_STRESS = 70
 # - Speed: 14 km/h (8.7 mph), a loaded cargo bike's cruising pace unassisted,
 #   against Hybrid's 18; it only changes the times shown and the time-based
 #   cost, not which ways are allowed.
-# - Narrow gaps: the transform already turns cycle barriers, and bollards
-#   whose tagged gap is under 1.5 m, into gates (`NARROW_GAP_M`,
-#   lua/routemaker_remap.lua), so a gate cost of five minutes and a penalty of
-#   ten keep a cargo route out of them unless there is no other way. Steps are
-#   already priced out for every bicycle by Valhalla (1 km/h and its steps
-#   factor), and stiles and kissing gates are barriers upstream closes to
-#   bicycles.
+# - Narrow gaps: the transform already turns cycle barriers, bollards
+#   whose tagged gap is under 1.5 m, kissing gates, stiles and turnstiles into
+#   gates (`NARROW_GAP_M`, `HARD_BARRIERS`, lua/routemaker_remap.lua), so a gate
+#   charge of fifteen minutes keeps a cargo route out of them unless there is no
+#   other way (the owner, 2026-11-08: the large gate penalty is for Tandem "and
+#   possibly cargo too"; every other ride type pays `GATE_COST_S`). Valhalla
+#   adds `gate_cost` to the route's time as well as its cost and `gate_penalty`
+#   to the cost alone, so the charge is a 30 s slow-down plus a penalty: the
+#   five minutes of `gate_cost` it was until 2026-11-08 put five minutes per
+#   barrier on Cargo's arrival times (hunt C4). Steps are already priced out for
+#   every bicycle by Valhalla (1 km/h and its steps factor). Upstream does not
+#   close stiles and kissing gates to bicycles, as this comment said until then.
 # - Surface: rough and unpaved weigh more (0.6, still below the 1.0 at which the
 #   hard exclusion arms, so a gravel link is dear rather than impossible).
 # - Stress: carrying cargo starts where Default does (the owner, 2026-09-28:
@@ -125,8 +146,8 @@ CARRYING_PEOPLE = "people"
 CARGO_CARRYING_STRESS = {CARRYING_CARGO: DEFAULT_STRESS, CARRYING_PEOPLE: 80}
 CARGO_HILLS = -60
 CARGO_PLANNING_SPEED_KMH = 14.0
-CARGO_GATE_COST_S = 300
-CARGO_GATE_PENALTY_S = 600
+CARGO_GATE_COST_S = VALHALLA_GATE_COST_S
+CARGO_GATE_PENALTY_S = 870
 CARGO_SURFACE_AVOIDANCE = 0.6
 CARGO_ASSIST_PLANNING_SPEED_KMH = 18.0
 
@@ -150,7 +171,6 @@ EBIKE_HILLS = 50
 # 2026-10-23: "More for fast, less for cargo").
 FAST_HILLS = 40
 HIGH_MANEUVER_PENALTY_S = 30
-HIGH_GATE_COST_S = 120
 
 # The mass ride speed band's default planning speed, 6 mph, in Valhalla's km/h.
 MASS_RIDE_PLANNING_SPEED_KMH = round(6 * 1.609344, 1)
@@ -186,7 +206,18 @@ AVOID_JUNCTION_PENALTY_S = AVOID_ENTRY_PENALTY_S
 # Valhalla's own default, and well below the 1.0 at which the surface exclusion
 # arms, so surface is a cost multiplier rather than a gate on all three.
 _SURFACE_AVOIDANCE = 0.25
+# `use_living_streets`, as Valhalla's bicycle costing reads it (hunt C5, 2026-11-08): only as
+# an entry charge, 500 s x (1 - 2 x the value) each time a route turns onto a living street,
+# and nothing at 0.5 or above (sif/dynamiccost.cc at 3.9.1). Bicycle costing prices a living
+# street's length from `use_roads` alone (0.2 + 0.8 x use_roads as its roadway stress,
+# sif/bicyclecost.cc), so a stress-averse ride type already prefers one, and a value above 0.5
+# adds nothing to that: Trailmaxxing's and Novice's 1.0 ride as Default's 0.5 do.
 _LIVING_STREETS = MID
+# Fast's and Road Bike's mild dislike of a shared street ("a shared street is slow for a road
+# bike"): 50 s of cost each time a route enters one, about 1,150 ft (350 m) of riding at Road
+# Bike's 15.5 mph. Their 0.2 was 300 s, about 1.3 mi (2 km) of detour for each entry, which is
+# not the mild dislike it was meant as.
+FAST_LIVING_STREETS = 0.45
 
 
 # --- The two sliders ------------------------------------------------------
@@ -712,10 +743,12 @@ MTB_HILLS = 50
 #   (about three times a paved road): there is no road-bike twin of that graph.
 # - Valhalla's Road bicycle at its own pace, 15.5 mph (25 km/h), where Default's hybrid rides
 #   11.2 mph; the rider's own speed (`rider_speed`) still wins.
-# - Fewer turns: Group Ride's and Fast's maneuver penalty (`HIGH_MANEUVER_PENALTY_S`), and
-#   Group Ride's gate cost (a road bike slows hard for a gate or bollard).
+# - Fewer turns: Group Ride's and Fast's maneuver penalty (`HIGH_MANEUVER_PENALTY_S`). It had
+#   Group Ride's higher gate cost too ("a road bike slows hard for a gate or bollard") until the
+#   owner's 2026-11-08 ruling that only Tandem and Cargo pay a large one (`GATE_COST_S`).
 # - Traffic and hills: stress 40, "Balanced" (Group Ride's and Gravel's start), and Default's
-#   hills; living streets as Fast (0.2): a shared street is slow for a road bike.
+#   hills; living streets as Fast (`FAST_LIVING_STREETS`): a shared street is slow for a road
+#   bike.
 ROAD_BIKE = "road-bike"
 ROAD_BIKE_STRESS = 40
 ROAD_BIKE_SURFACES = 0.9
@@ -778,6 +811,11 @@ def _preset(
                 "use_roads": use_roads_for(stress),
                 "use_hills": use_hills_for(hills),
                 "alley_penalty": AVOID_ENTRY_PENALTY_S,
+                # Valhalla's own 450 s at a gate or bollard flagged private, stated so no
+                # preset leaves it to the release's default. The transform clears the flag
+                # where a bicycle passes the barrier (`remap_node`), so what pays it is a
+                # barrier private to a bicycle too.
+                "private_access_penalty": VALHALLA_PRIVATE_ACCESS_PENALTY_S,
                 **_NO_STATE_CROSSING_PENALTY,
             }
         ),
@@ -809,8 +847,8 @@ PRESETS: MappingProxyType = MappingProxyType(
                 avoid_bad_surfaces=_SURFACE_AVOIDANCE,
                 use_living_streets=_LIVING_STREETS,
                 maneuver_penalty=VALHALLA_MANEUVER_PENALTY_S,
-                gate_cost=VALHALLA_GATE_COST_S,
-                gate_penalty=VALHALLA_GATE_PENALTY_S,
+                gate_cost=GATE_COST_S,
+                gate_penalty=GATE_PENALTY_S,
             ),
             _preset(
                 "trailmaxxing",
@@ -833,10 +871,12 @@ PRESETS: MappingProxyType = MappingProxyType(
                 exposure=EXPOSURE_NOT_IN_CONTROL,
                 bicycle_type="Cross",
                 avoid_bad_surfaces=LOW_SURFACE_AVOIDANCE,
+                # "Living streets on": its use_roads of 0 already prices one lowest; above
+                # 0.5 this dial adds nothing in bicycle costing (`_LIVING_STREETS`).
                 use_living_streets=1.0,
                 maneuver_penalty=VALHALLA_MANEUVER_PENALTY_S,
-                gate_cost=VALHALLA_GATE_COST_S,
-                gate_penalty=VALHALLA_GATE_PENALTY_S,
+                gate_cost=GATE_COST_S,
+                gate_penalty=GATE_PENALTY_S,
             ),
             _preset(
                 "group-ride",
@@ -849,8 +889,8 @@ PRESETS: MappingProxyType = MappingProxyType(
                 avoid_bad_surfaces=_SURFACE_AVOIDANCE,
                 use_living_streets=_LIVING_STREETS,
                 maneuver_penalty=HIGH_MANEUVER_PENALTY_S,
-                gate_cost=HIGH_GATE_COST_S,
-                gate_penalty=VALHALLA_GATE_PENALTY_S,
+                gate_cost=GATE_COST_S,
+                gate_penalty=GATE_PENALTY_S,
             ),
             _preset(
                 "mass-ride",
@@ -866,8 +906,8 @@ PRESETS: MappingProxyType = MappingProxyType(
                 avoid_bad_surfaces=_SURFACE_AVOIDANCE,
                 use_living_streets=_LIVING_STREETS,
                 maneuver_penalty=HIGH_MANEUVER_PENALTY_S,
-                gate_cost=VALHALLA_GATE_COST_S,
-                gate_penalty=VALHALLA_GATE_PENALTY_S,
+                gate_cost=GATE_COST_S,
+                gate_penalty=GATE_PENALTY_S,
                 cycling_speed=MASS_RIDE_PLANNING_SPEED_KMH,
             ),
             _preset(
@@ -885,8 +925,8 @@ PRESETS: MappingProxyType = MappingProxyType(
                 avoid_bad_surfaces=LOW_SURFACE_AVOIDANCE,
                 use_living_streets=_LIVING_STREETS,
                 maneuver_penalty=VALHALLA_MANEUVER_PENALTY_S,
-                gate_cost=VALHALLA_GATE_COST_S,
-                gate_penalty=VALHALLA_GATE_PENALTY_S,
+                gate_cost=GATE_COST_S,
+                gate_penalty=GATE_PENALTY_S,
             ),
             _preset(
                 "gravel",
@@ -899,8 +939,8 @@ PRESETS: MappingProxyType = MappingProxyType(
                 avoid_bad_surfaces=0.0,
                 use_living_streets=_LIVING_STREETS,
                 maneuver_penalty=VALHALLA_MANEUVER_PENALTY_S,
-                gate_cost=VALHALLA_GATE_COST_S,
-                gate_penalty=VALHALLA_GATE_PENALTY_S,
+                gate_cost=GATE_COST_S,
+                gate_penalty=GATE_PENALTY_S,
             ),
             _preset(
                 "fast",
@@ -918,10 +958,10 @@ PRESETS: MappingProxyType = MappingProxyType(
                 hills=FAST_HILLS,
                 bicycle_type="Hybrid",
                 avoid_bad_surfaces=HIGH_SURFACE_AVOIDANCE,
-                use_living_streets=0.2,
+                use_living_streets=FAST_LIVING_STREETS,
                 maneuver_penalty=HIGH_MANEUVER_PENALTY_S,
-                gate_cost=VALHALLA_GATE_COST_S,
-                gate_penalty=VALHALLA_GATE_PENALTY_S,
+                gate_cost=GATE_COST_S,
+                gate_penalty=GATE_PENALTY_S,
             ),
             _preset(
                 "cargo",
@@ -955,8 +995,8 @@ PRESETS: MappingProxyType = MappingProxyType(
                 avoid_bad_surfaces=_SURFACE_AVOIDANCE,
                 use_living_streets=_LIVING_STREETS,
                 maneuver_penalty=VALHALLA_MANEUVER_PENALTY_S,
-                gate_cost=VALHALLA_GATE_COST_S,
-                gate_penalty=VALHALLA_GATE_PENALTY_S,
+                gate_cost=GATE_COST_S,
+                gate_penalty=GATE_PENALTY_S,
                 cycling_speed=EBIKE_PLANNING_SPEED_KMH,
             ),
             _preset(
@@ -971,8 +1011,8 @@ PRESETS: MappingProxyType = MappingProxyType(
                 avoid_bad_surfaces=CARGO_SURFACE_AVOIDANCE,
                 use_living_streets=_LIVING_STREETS,
                 maneuver_penalty=VALHALLA_MANEUVER_PENALTY_S,
-                gate_cost=CARGO_GATE_COST_S,
-                gate_penalty=CARGO_GATE_PENALTY_S,
+                gate_cost=GATE_COST_S,
+                gate_penalty=GATE_PENALTY_S,
                 cycling_speed=BIKESHARE_CLASSIC_SPEED_KMH,
             ),
             _preset(
@@ -987,8 +1027,8 @@ PRESETS: MappingProxyType = MappingProxyType(
                 avoid_bad_surfaces=CARGO_SURFACE_AVOIDANCE,
                 use_living_streets=_LIVING_STREETS,
                 maneuver_penalty=VALHALLA_MANEUVER_PENALTY_S,
-                gate_cost=CARGO_GATE_COST_S,
-                gate_penalty=CARGO_GATE_PENALTY_S,
+                gate_cost=GATE_COST_S,
+                gate_penalty=GATE_PENALTY_S,
                 cycling_speed=BIKESHARE_CLASSIC_SPEED_KMH,
             ),
             _preset(
@@ -1001,8 +1041,8 @@ PRESETS: MappingProxyType = MappingProxyType(
                 avoid_bad_surfaces=_SURFACE_AVOIDANCE,
                 use_living_streets=_LIVING_STREETS,
                 maneuver_penalty=VALHALLA_MANEUVER_PENALTY_S,
-                gate_cost=VALHALLA_GATE_COST_S,
-                gate_penalty=VALHALLA_GATE_PENALTY_S,
+                gate_cost=GATE_COST_S,
+                gate_penalty=GATE_PENALTY_S,
             ),
             _preset(
                 BIKESHARE_TRANSIT,
@@ -1015,8 +1055,8 @@ PRESETS: MappingProxyType = MappingProxyType(
                 avoid_bad_surfaces=CARGO_SURFACE_AVOIDANCE,
                 use_living_streets=_LIVING_STREETS,
                 maneuver_penalty=VALHALLA_MANEUVER_PENALTY_S,
-                gate_cost=CARGO_GATE_COST_S,
-                gate_penalty=CARGO_GATE_PENALTY_S,
+                gate_cost=GATE_COST_S,
+                gate_penalty=GATE_PENALTY_S,
                 cycling_speed=BIKESHARE_CLASSIC_SPEED_KMH,
             ),
             _preset(
@@ -1030,8 +1070,8 @@ PRESETS: MappingProxyType = MappingProxyType(
                 avoid_bad_surfaces=CARGO_SURFACE_AVOIDANCE,
                 use_living_streets=_LIVING_STREETS,
                 maneuver_penalty=VALHALLA_MANEUVER_PENALTY_S,
-                gate_cost=CARGO_GATE_COST_S,
-                gate_penalty=CARGO_GATE_PENALTY_S,
+                gate_cost=GATE_COST_S,
+                gate_penalty=GATE_PENALTY_S,
                 cycling_speed=BIKESHARE_CLASSIC_SPEED_KMH,
             ),
             _preset(
@@ -1045,8 +1085,8 @@ PRESETS: MappingProxyType = MappingProxyType(
                 avoid_bad_surfaces=CARGO_SURFACE_AVOIDANCE,
                 use_living_streets=_LIVING_STREETS,
                 maneuver_penalty=VALHALLA_MANEUVER_PENALTY_S,
-                gate_cost=CARGO_GATE_COST_S,
-                gate_penalty=CARGO_GATE_PENALTY_S,
+                gate_cost=GATE_COST_S,
+                gate_penalty=GATE_PENALTY_S,
                 cycling_speed=BIKESHARE_CLASSIC_SPEED_KMH,
             ),
             _preset(
@@ -1061,8 +1101,8 @@ PRESETS: MappingProxyType = MappingProxyType(
                 avoid_bad_surfaces=CARGO_SURFACE_AVOIDANCE,
                 use_living_streets=_LIVING_STREETS,
                 maneuver_penalty=VALHALLA_MANEUVER_PENALTY_S,
-                gate_cost=CARGO_GATE_COST_S,
-                gate_penalty=CARGO_GATE_PENALTY_S,
+                gate_cost=GATE_COST_S,
+                gate_penalty=GATE_PENALTY_S,
                 cycling_speed=BIKESHARE_CLASSIC_SPEED_KMH,
             ),
             _preset(
@@ -1075,8 +1115,8 @@ PRESETS: MappingProxyType = MappingProxyType(
                 avoid_bad_surfaces=0.0,
                 use_living_streets=_LIVING_STREETS,
                 maneuver_penalty=VALHALLA_MANEUVER_PENALTY_S,
-                gate_cost=VALHALLA_GATE_COST_S,
-                gate_penalty=VALHALLA_GATE_PENALTY_S,
+                gate_cost=GATE_COST_S,
+                gate_penalty=GATE_PENALTY_S,
             ),
             _preset(
                 ROAD_BIKE,
@@ -1086,10 +1126,10 @@ PRESETS: MappingProxyType = MappingProxyType(
                 hills=0,
                 bicycle_type="Road",
                 avoid_bad_surfaces=ROAD_BIKE_SURFACES,
-                use_living_streets=0.2,
+                use_living_streets=FAST_LIVING_STREETS,
                 maneuver_penalty=HIGH_MANEUVER_PENALTY_S,
-                gate_cost=HIGH_GATE_COST_S,
-                gate_penalty=VALHALLA_GATE_PENALTY_S,
+                gate_cost=GATE_COST_S,
+                gate_penalty=GATE_PENALTY_S,
             ),
             _preset(
                 NOVICE,
@@ -1103,8 +1143,8 @@ PRESETS: MappingProxyType = MappingProxyType(
                 avoid_bad_surfaces=_SURFACE_AVOIDANCE,
                 use_living_streets=1.0,
                 maneuver_penalty=VALHALLA_MANEUVER_PENALTY_S,
-                gate_cost=VALHALLA_GATE_COST_S,
-                gate_penalty=VALHALLA_GATE_PENALTY_S,
+                gate_cost=GATE_COST_S,
+                gate_penalty=GATE_PENALTY_S,
                 cycling_speed=NOVICE_PLANNING_SPEED_KMH,
             ),
         )
