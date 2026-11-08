@@ -140,6 +140,11 @@ COPY --chown=root:root frontend/src/climb-data/climbs.json ./frontend/src/climb-
 # mcp/, as a rider's own computer does, with the Metro stations it measures routes against.
 COPY --chown=root:root mcp/routemaker_mcp.py ./mcp/routemaker_mcp.py
 COPY --chown=root:root frontend/src/rail-data/metro-stations.geojson ./frontend/src/rail-data/metro-stations.geojson
+# And the stations' entrances and elevators beside it, so a route to or through a station goes to
+# its bike entrance as the map's does, not to the platform point (issue #39; mcp/routemaker_mcp.py
+# station_entrances). Without them the connector routes to the station points, as before.
+COPY --chown=root:root frontend/src/rail-data/metro-entrances.geojson ./frontend/src/rail-data/metro-entrances.geojson
+COPY --chown=root:root frontend/src/rail-data/metro-osm-elevators.geojson ./frontend/src/rail-data/metro-osm-elevators.geojson
 # Reach (src/core/reach.py, Stephen 2026-11-04) counts the places inside each ring: bike racks,
 # places to eat and places to see, the files the page's own layers read (and the Metro stations above).
 COPY --chown=root:root frontend/src/amenity-data/bike-parking.json ./frontend/src/amenity-data/bike-parking.json

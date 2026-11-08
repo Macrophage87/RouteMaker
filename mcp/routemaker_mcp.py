@@ -189,27 +189,97 @@ class Station:
     lines: str
     lon: float
     lat: float
+    # Where a ride with a bike goes in (`station_entrances`); None where no way in is known.
+    entrance: tuple[float, float] | None = None
 
     @property
     def point(self) -> tuple[float, float]:
+        """DC GIS's station point: what straight-line distances to the station are measured
+        from (the Metro check, the nearest station). It is the platform's middle, up to 190 m
+        from any way in and some in a freeway median (Vienna, Dunn Loring, Innovation Center),
+        so a route never goes to it: a route goes to `way_in`."""
         return (self.lon, self.lat)
+
+    @property
+    def way_in(self) -> tuple[float, float]:
+        """The point a route to or through the station goes to: its bike entrance where one is
+        known, as the map and the transit planner take it, else the station point."""
+        return self.entrance if self.entrance is not None else self.point
 
 
 def default_stations_path() -> Path:
     return Path(__file__).resolve().parents[1] / "frontend/src/rail-data/metro-stations.geojson"
 
 
+# DC's entrance points are all well within this of their station; one farther off is not
+# trusted (frontend/src/lib/railStations.ts ENTRANCE_REACH_M).
+ENTRANCE_REACH_M = 600.0
+
+
+def _features(path: Path) -> list[dict]:
+    try:
+        return json.loads(path.read_text(encoding="utf-8")).get("features", [])
+    except FileNotFoundError:
+        return []
+
+
+def station_entrances(stations_path: Path, rows: list[dict]) -> dict:
+    """{GIS_ID: (lon, lat)}: each station's bike entrance, by the rule the map and the transit
+    planner use (railStations.ts `bikeWaysIn` and `bikeEntrance`,
+    scripts/build_transit_schedule.py `metro_stations`): DC's elevators first (the owner,
+    2026-09-27: the elevator is where a bike gets in), else OpenStreetMap's elevators, else
+    the other entrances; of those, the one nearest the station's own point. Read from
+    metro-entrances.geojson and metro-osm-elevators.geojson beside the station file. A station
+    with none is left out, and a station file with neither beside it gives none at all, so a
+    route goes to the station point as it did before (issue #39)."""
+    here = stations_path.parent
+    found = {
+        r["gis_id"]: {"point": r["point"], "elevators": [], "osm": [], "entrances": []}
+        for r in rows
+    }
+    for f in _features(here / "metro-entrances.geojson"):
+        point = tuple(f["geometry"]["coordinates"][:2])
+        near = min(found.values(), key=lambda s: haversine_mi(point, s["point"]), default=None)
+        if near is None or haversine_mi(point, near["point"]) * METRES_PER_MILE > ENTRANCE_REACH_M:
+            continue
+        description = str(f.get("properties", {}).get("DESCRIPTION", ""))
+        near["elevators" if "elevator" in description.lower() else "entrances"].append(point)
+    for f in _features(here / "metro-osm-elevators.geojson"):
+        station = found.get(f.get("properties", {}).get("station_gis_id"))
+        if station is not None:
+            station["osm"].append(tuple(f["geometry"]["coordinates"][:2]))
+    out = {}
+    for gis_id, s in found.items():
+        for kind in ("elevators", "osm", "entrances"):
+            if s[kind]:
+                best = min(s[kind], key=lambda p, s=s: haversine_mi(p, s["point"]))
+                out[gis_id] = (round(best[0], 6), round(best[1], 6))
+                break
+    return out
+
+
 def load_stations(path: str | os.PathLike | None = None) -> list[Station]:
     path = Path(path or os.environ.get("ROUTEMAKER_METRO_STATIONS") or default_stations_path())
     data = json.loads(path.read_text(encoding="utf-8"))
-    stations = []
+    rows = []
     for feature in data.get("features", []):
         lon, lat = feature["geometry"]["coordinates"][:2]
         props = feature.get("properties", {})
-        stations.append(Station(props.get("NAME", "?"), props.get("LINE", ""), lon, lat))
-    if not stations:
+        rows.append(
+            {
+                "gis_id": props.get("GIS_ID"),
+                "name": props.get("NAME", "?"),
+                "lines": props.get("LINE", ""),
+                "point": (lon, lat),
+            }
+        )
+    if not rows:
         raise ToolError(f"no Metro stations in {path}")
-    return stations
+    entrances = station_entrances(path, rows)
+    return [
+        Station(r["name"], r["lines"], *r["point"], entrance=entrances.get(r["gis_id"]))
+        for r in rows
+    ]
 
 
 def nearest_station(point: tuple[float, float], stations: list[Station]) -> tuple[Station, float]:
@@ -530,20 +600,18 @@ def _station_words(text: str) -> str:
     return " ".join(SHORT_WORDS.get(w, w) for w in words)
 
 
-def find_station(text: str, stations: list[Station]) -> Station | None:
-    """The one Metro station `text` names: its whole name, its first part ("Navy Yard" for
-    Navy Yard-Ballpark; later parts such as "Adams Morgan" are neighbourhoods, left to place
-    search), or the start of it ("Ronald Reagan"), with or without "Metro" or "station" after
-    it. None when nothing or more than one station fits ("Farragut"), so the text goes to place
-    search."""
-    said = _station_words(text)
-    asked = {said, re.sub(r"( metro| station| metro station)+$", "", said).strip()}
-    asked.discard("")
-    for test in (
-        lambda s: _station_words(s.name) in asked,
-        lambda s: _station_words(re.split(r"[-/]", s.name)[0]) in asked,
-        lambda s: any(_station_words(s.name).startswith(a + " ") for a in asked),
-    ):
+_SAID_STATION = re.compile(r"( metro| station| metro station)+$")
+# The last words of a road's name (after SHORT_WORDS): a station named for its road (Braddock
+# Road, King St-Old Town, Minnesota Ave) is taken for the station only when "Metro" or
+# "station" is said, since the road itself is what a rider more often means.
+ROAD_WORDS = frozenset(
+    {"road", "rd", "st", "ave", "boulevard", "blvd", "pike", "parkway", "pkwy", "highway"}
+    | {"hwy", "drive", "dr", "lane", "ln", "way"}
+)
+
+
+def _one(stations: list[Station], tests) -> Station | None:
+    for test in tests:
         fits = [s for s in stations if test(s)]
         if len(fits) == 1:
             return fits[0]
@@ -552,8 +620,167 @@ def find_station(text: str, stations: list[Station]) -> Station | None:
     return None
 
 
+def find_station(text: str, stations: list[Station]) -> Station | None:
+    """The one Metro station `text` names for certain, so it is taken without a place search:
+    said with "Metro" or "station" after it (its whole name, its first part, or the start of
+    it: "Navy Yard Metro", "Ronald Reagan station"), or its whole name where that can be
+    nothing else: a name of several parts said in full ("Navy Yard-Ballpark") or one ending in
+    Station or Airport ("Union Station"). None otherwise, and when more than one station fits
+    ("Farragut Metro"), so the text goes to place search (`station_said`).
+
+    Before the 2026-11-08 hunt (G2) a bare first part or start was taken too, so "Mount Vernon"
+    went to Mt Vernon Sq, 12.7 mi from the estate, and "Arlington", "Reston", "Vienna" and
+    "Braddock Road" to stations rather than the town or the road."""
+    said = _station_words(text)
+    bare = _SAID_STATION.sub("", said).strip()
+    if bare and bare != said:
+        return _one(
+            stations,
+            (
+                lambda s: _station_words(s.name) == bare,
+                lambda s: _station_words(re.split(r"[-/]", s.name)[0]) == bare,
+                lambda s: _station_words(s.name).startswith(bare + " "),
+            ),
+        )
+    return _one(
+        stations,
+        (
+            lambda s: (
+                _station_words(s.name) == said
+                and (
+                    re.search(r"[-/]", s.name) is not None
+                    or said.split()[-1] in ("station", "airport")
+                )
+            ),
+        ),
+    )
+
+
+def station_said(text: str, stations: list[Station]) -> Station | None:
+    """The station a bare name may mean (its whole name or its first part: "Navy Yard",
+    "Gallery Place", "Rockville"), which a place search must confirm (`as_point`); never a
+    name that ends in a road's word, nor the mere start of a name ("Mount Vernon" is not Mt
+    Vernon Sq, nor "Arlington" Arlington Cemetery). Later parts such as "Adams Morgan" are
+    neighbourhoods, left to place search."""
+    said = _SAID_STATION.sub("", _station_words(text)).strip()
+    if not said or said.split()[-1] in ROAD_WORDS:
+        return None
+    return _one(
+        stations,
+        (
+            lambda s: _station_words(s.name) == said,
+            lambda s: _station_words(re.split(r"[-/]", s.name)[0]) == said,
+            # The start of a name only from three words ("Mount Vernon Square" for Mt Vernon
+            # Sq 7th St-Convention Center): two ("Mount Vernon") or one ("Arlington") are as
+            # often a place of their own.
+            lambda s: len(said.split()) >= 3 and _station_words(s.name).startswith(said + " "),
+        ),
+    )
+
+
+# A place search's first match this close to a station a bare name may mean (`station_said`)
+# confirms it: the search found the station, or a neighbourhood the station stands in. Farther,
+# the name meant the town, the museum or the road (Vienna, Rockville, Smithsonian).
+STATION_CONFIRM_MI = 0.25
+# A place search match tagged as a rail station this close to a Metro station is that station
+# (railStations.ts STATION_MATCH_M, 300 m).
+STATION_MATCH_MI = 300 / METRES_PER_MILE
+
+
+def is_rail_station(row: dict) -> bool:
+    """A place search row that is a station (railStations.ts `stationForPlace`'s test)."""
+    return row.get("osm_key") in ("railway", "public_transport") and row.get("osm_value") in (
+        "station",
+        "halt",
+    )
+
+
 # Matches of one place search farther apart than this are different places.
 SAME_PLACE_MI = 5.0
+
+# An area's way in, as the site's search takes it (src/core/geocode.py AREA_TAGS,
+# ARRIVAL_TAGS and ARRIVAL_WORDS, the 2026-11-08 hunt G1 and G5): a park, refuge, campus or
+# battlefield is one point at its middle in the search, which the router snaps to whatever
+# road is nearest, often a busy one or a dead end, when a calm gate was a few hundred metres
+# off. The site's search moves such a match to a way in it found (and says so in `way_in`);
+# this takes one from the same search where the site did not (an older site).
+AREA_KEYS = frozenset({"leisure", "boundary", "landuse", "historic", "natural", "tourism"})
+AREA_AMENITIES = frozenset({"university", "college", "school", "hospital"})
+ARRIVAL_TAGS = frozenset(
+    {
+        ("tourism", "information"),
+        ("amenity", "parking"),
+        ("amenity", "bicycle_parking"),
+        ("amenity", "ranger_station"),
+        ("highway", "trailhead"),
+        ("leisure", "slipway"),
+        ("barrier", "gate"),
+        ("entrance", "main"),
+        ("entrance", "yes"),
+    }
+)
+ARRIVAL_WORDS = re.compile(
+    r"\b(visitor('?s)? (center|centre)|nature (center|centre)|entrance|gate|parking|trailhead"
+    r"|boat (launch|ramp))\b",
+    re.IGNORECASE,
+)
+AREA_WAY_IN_MI = 3.0
+
+
+def is_area(row: dict) -> bool:
+    """A search match that is an area kept as its middle: a way or relation that is a park, a
+    reserve, a campus, a battlefield (not a road, a town or a building's point)."""
+    if row.get("way_in") or row.get("osm_type") not in ("W", "R"):
+        return False
+    key = row.get("osm_key")
+    if key == "amenity":
+        return row.get("osm_value") in AREA_AMENITIES
+    if key == "boundary":
+        return row.get("osm_value") in ("protected_area", "national_park")
+    return key in AREA_KEYS
+
+
+def is_arrival(row: dict) -> bool:
+    """A match that is where a visit starts: a visitor centre, an entrance or gate, parking,
+    a trailhead or a boat launch."""
+    return (row.get("osm_key"), row.get("osm_value")) in ARRIVAL_TAGS or bool(
+        ARRIVAL_WORDS.search(str(row.get("name") or ""))
+    )
+
+
+def way_in_of(chosen: dict, found: list[dict]) -> dict:
+    """`chosen`, or where an area is gone into: the first match of the same search named for
+    it ("Occoquan Regional Park Boat Launch", "Great Falls Park Visitor Center") that is a way
+    in (`is_arrival`) within AREA_WAY_IN_MI. The row comes back with the area's name and its
+    `way_in` said, so the label still names what the rider asked for."""
+    if not is_area(chosen):
+        return chosen
+    name = str(chosen.get("name") or "").casefold()
+    here = (chosen["lon"], chosen["lat"])
+    for r in found:
+        if r is chosen or is_area(r) or not name:
+            continue
+        own = str(r.get("name") or "").casefold()
+        if own.startswith(name) and own != name and is_arrival(r):
+            if haversine_mi(here, (r["lon"], r["lat"])) <= AREA_WAY_IN_MI:
+                return {**chosen, "lon": r["lon"], "lat": r["lat"], "way_in": r.get("name")}
+    return chosen
+
+
+def nearby_points(chosen: dict, found: list[dict], most: int = 4) -> list[dict]:
+    """The other matches of one place search near the one taken, under other names (a boat
+    launch, a visitor centre, a second gate): pick_place takes one, and the assistant is told
+    of these so it can offer them (the 2026-11-08 hunt G5: matches within SAME_PLACE_MI were
+    one place and the rest were never said)."""
+    here = (chosen["lon"], chosen["lat"])
+    names = {str(chosen.get("name") or "").casefold(), str(chosen.get("way_in") or "").casefold()}
+    out = []
+    for r in found:
+        if str(r.get("name") or "").casefold() in names:
+            continue
+        if haversine_mi(here, (r["lon"], r["lat"])) <= SAME_PLACE_MI:
+            out.append(r)
+    return out[:most]
 
 
 def pick_place(text: str, found: list[dict], neighbours: list[tuple[float, float]]) -> tuple:
@@ -566,12 +793,12 @@ def pick_place(text: str, found: list[dict], neighbours: list[tuple[float, float
         raise ToolError(f"no place found for {text!r}")
     first = (found[0]["lon"], found[0]["lat"])
     if all(haversine_mi(first, (r["lon"], r["lat"])) <= SAME_PLACE_MI for r in found):
-        return found[0], []
+        return way_in_of(found[0], found), []
 
     if not neighbours:
         # Nothing to go by (the first of the route's names): the search's own first match,
         # with the others said.
-        return found[0], [
+        return way_in_of(found[0], found), [
             r for r in found if haversine_mi(first, (r["lon"], r["lat"])) > SAME_PLACE_MI
         ]
 
@@ -584,7 +811,7 @@ def pick_place(text: str, found: list[dict], neighbours: list[tuple[float, float
         chosen = near[0]
         here = (chosen["lon"], chosen["lat"])
         others = [r for r in found if haversine_mi(here, (r["lon"], r["lat"])) > SAME_PLACE_MI]
-        return chosen, others
+        return way_in_of(chosen, found), others
     listed = "; ".join(
         f"{r['label']} [{r['lon']:.5f}, {r['lat']:.5f}]"
         + f", {away(r):.0f} mi from the route's other points"
@@ -603,11 +830,18 @@ def as_point(
     stations: list[Station],
     neighbours: list[tuple[float, float]] | None = None,
     others: list | None = None,
+    nearby: list | None = None,
 ) -> tuple[tuple[float, float], str]:
     """A point from [lon, lat], {"lon", "lat"}, a Metro station's name or a place to search
     for, with a label saying what it was taken as. A place name is searched near the route's
     other points (`neighbours`), and taken as `pick_place` says; the other places it could have
-    been go in `others`."""
+    been go in `others`, and the other points of the same place the search found (an
+    entrance, a boat launch) in `nearby`.
+
+    A station is gone to at its bike entrance (`Station.way_in`, issue #39), as the map and
+    the transit planner go. A bare name that may be a station (`station_said`: "Navy Yard",
+    "Vienna") is the station only where the place search finds it there; otherwise it is the
+    place the search found (the town of Vienna, not the station in the I-66 median)."""
     if isinstance(value, dict) and "lon" in value and "lat" in value:
         value = [value["lon"], value["lat"]]
     if isinstance(value, (list, tuple)) and len(value) == 2:
@@ -625,16 +859,35 @@ def as_point(
         text = value.strip()
         station = find_station(text, stations)
         if station is not None:
-            return station.point, f"{station.name} Metro"
+            return station.way_in, f"{station.name} Metro"
+        maybe = station_said(text, stations)
         if api is None:
+            if maybe is not None:
+                return maybe.way_in, f"{maybe.name} Metro"
             raise ToolError(f"cannot search for {text!r} without the site")
         neighbours = list(neighbours or [])
         near = neighbours[0] if neighbours else None
         found = [r for r in api.geocode(text, near) if inside_coverage((r["lon"], r["lat"]))]
+        if maybe is not None and (
+            not found
+            or haversine_mi((found[0]["lon"], found[0]["lat"]), maybe.point) <= STATION_CONFIRM_MI
+        ):
+            return maybe.way_in, f"{maybe.name} Metro"
         chosen, elsewhere = pick_place(text, found, neighbours)
         if others is not None:
             others.extend(elsewhere)
-        return (round(chosen["lon"], 5), round(chosen["lat"], 5)), chosen["label"]
+        if is_rail_station(chosen):
+            # The search found a Metro station (by another of its names): its bike entrance,
+            # as the map puts a searched station (railStations.ts `stationForPlace`).
+            at, miles = nearest_station((chosen["lon"], chosen["lat"]), stations)
+            if miles <= STATION_MATCH_MI:
+                return at.way_in, f"{at.name} Metro"
+        if nearby is not None:
+            nearby.extend(nearby_points(chosen, found))
+        label = chosen["label"]
+        if chosen.get("way_in"):
+            label = f"{label}, at {chosen['way_in']}"
+        return (round(chosen["lon"], 5), round(chosen["lat"], 5)), label
     raise ToolError(f"not a point: {value!r}")
 
 
@@ -2971,15 +3224,21 @@ def leg_of(plan: Plan, at_mile: float) -> int:
 
 def with_metro_fix(plan: Plan, stations: list[Station]) -> tuple[list, list[int], str] | None:
     """The points with the Metro station nearest the worst stretch added as a via point in the
-    leg that strays, or None where that station is already a point (nothing left to try)."""
+    leg that strays, or None where that station is already a point (nothing left to try). The
+    via is the station's bike entrance (`Station.way_in`, issue #39): its platform point can sit
+    in a freeway median (Vienna, Dunn Loring), and a through via there drags the route onto
+    whatever edge is nearest it and back."""
     if plan.check is None or plan.check["ok"] or len(plan.points) >= MAX_POINTS:
         return None
     worst = max(plan.check["stretches_over_limit"], key=lambda s: s["max_mi"])
     station, _ = nearest_station(tuple(worst["at"]), stations)
-    if any(haversine_mi(station.point, p) < 0.05 for p in plan.points):
+    if any(
+        min(haversine_mi(station.point, p), haversine_mi(station.way_in, p)) < 0.05
+        for p in plan.points
+    ):
         return None
     leg = leg_of(plan, (worst["from_mi"] + worst["to_mi"]) / 2)
-    points = [*plan.points[: leg + 1], station.point, *plan.points[leg + 1 :]]
+    points = [*plan.points[: leg + 1], station.way_in, *plan.points[leg + 1 :]]
     vias = sorted({*(i if i <= leg else i + 1 for i in plan.vias), leg + 1})
     return points, vias, station.name
 
@@ -3064,9 +3323,12 @@ def ring_waypoints(
             continue
         b, d, s = min(here, key=score)
         out = min(reach, max(0.0, radius_mi - d))
-        point = destination(s.point, b, out) if out > 0.05 else (round(s.lon, 5), round(s.lat, 5))
+        # A waypoint at the station itself is its bike entrance (`Station.way_in`, issue #39),
+        # not the platform point, which can be in a freeway median.
+        at_station = tuple(round(c, 5) for c in s.way_in)
+        point = destination(s.point, b, out) if out > 0.05 else at_station
         if not inside_coverage(point):
-            point = (round(s.lon, 5), round(s.lat, 5))
+            point = at_station
         if all(haversine_mi(point, other) >= MIN_GAP_MI for other in chosen):
             chosen.append(point)
     return sorted(set(chosen), key=lambda p: bearing_deg(centre, p))
@@ -3412,7 +3674,8 @@ TOOLS = [
         "name": "metro_stations",
         "description": (
             "List Metrorail stations (all 98, or those within a distance of a point), with lines,"
-            " [lon, lat], and straight-line miles and compass bearing from the point."
+            " [lon, lat], the [lon, lat] of its bike entrance (route to that, not the station"
+            " point), and straight-line miles and compass bearing from the point."
         ),
         "inputSchema": {
             "type": "object",
@@ -4469,7 +4732,13 @@ class Server:
             near, _ = as_point(args["near"], self.api, self.stations)
         rows = []
         for s in self.stations:
-            row = {"name": s.name, "lines": s.lines, "lon_lat": [s.lon, s.lat]}
+            row = {
+                "name": s.name,
+                "lines": s.lines,
+                "lon_lat": [s.lon, s.lat],
+                # Where a route goes (issue #39): the platform point can be in a freeway median.
+                "bike_entrance": list(s.way_in),
+            }
             if near:
                 row["miles"] = round(haversine_mi(near, s.point), 1)
                 row["bearing"] = round(bearing_deg(near, s.point))
@@ -4568,9 +4837,16 @@ class Server:
         """as_point, noting what a named point was taken as so the answer can say, and the
         other places the name could have meant."""
         others: list[dict] = []
-        point, label = as_point(value, self.api, self.stations, neighbours, others)
+        nearby: list[dict] = []
+        point, label = as_point(value, self.api, self.stations, neighbours, others, nearby)
         if isinstance(value, str):
             row = {"asked": value, "taken_as": label, "at": list(point)}
+            if nearby:
+                # Other points of the same place (an entrance, a boat launch, a visitor centre):
+                # said so the rider can be offered the one they mean (the 2026-11-08 hunt G5).
+                row["nearby_matches"] = [
+                    {"label": r["label"], "lon_lat": [r["lon"], r["lat"]]} for r in nearby
+                ]
             if others:
                 row["also_matches"] = [
                     {"label": r["label"], "lon_lat": [r["lon"], r["lat"]]} for r in others[:4]
@@ -4584,8 +4860,9 @@ class Server:
         return point
 
     def _points(self, values: list, taken: list[dict]) -> list[tuple[float, float]]:
-        """Every point, [lon, lat] and station names first, then each place name searched near
-        the points already found, those beside it in the list first."""
+        """Every point, [lon, lat] and station names first (`find_station`: one said as a
+        station; a bare name that may be one is searched like any other), then each place name
+        searched near the points already found, those beside it in the list first."""
         found: list = [None] * len(values)
         named = []
         for i, value in enumerate(values):

@@ -11,7 +11,7 @@ parameters named below - the query, an optional location bias, a result count
 and a language this index was imported with - and every search is fenced to
 `settings.COVERAGE_BBOX` by Photon's own `bbox` parameter, with each result
 checked against the box again on the way out. What comes back is a small list
-of `{name, label, lon, lat, kind, osm_type, osm_id, osm_key, osm_value}`, never
+of `{name, label, lon, lat, kind, osm_type, osm_id, osm_key, osm_value, way_in}`, never
 Photon's own GeoJSON, so nothing Photon adds to its answer reaches a visitor by
 accident.
 
@@ -88,6 +88,52 @@ BIAS_SCALE = 0.2
 # station's twin nodes. The same name on another kind of place - a park and
 # its notice board - stays a row of its own.
 SAME_PLACE_M = 300
+# ...unless the two rows are at the very same point: one park mapped twice, as
+# leisure=park and as boundary=protected_area or national_park, has the same
+# name at identical coordinates, and as two rows it pushed the useful row below
+# it ("Great Falls Park" twice, then its Visitor Center third; the 2026-11-08
+# hunt, G6). A notice board in a park is a separate node metres away.
+SAME_POINT_M = 2
+
+# An area found by a search - a park, a refuge, a campus, a battlefield - is one
+# point at its middle (Photon keeps a way or relation at its centroid), which the
+# router snaps to whatever road edge is nearest, whatever its stress and even a
+# dead end, when a calm gate was a few hundred metres away (the 2026-11-08 hunt,
+# G1: "Occoquan Regional Park" rode the busy road and back; "Patuxent Research
+# Refuge" is the middle of many square miles). Such a result is moved to a way in
+# the same search found inside it: a row named for the area ("Occoquan Regional
+# Park Boat Launch", "Great Falls Park Visitor Center") that is a visitor centre,
+# an entrance or gate, parking, a trailhead or a boat launch, inside the area's
+# extent. The row keeps the area's name and label, and says what it went to in
+# `way_in`. An area with none found stays at its middle (a calm-edge snap needs
+# the router's stress for each edge near it, which this module does not have).
+AREA_KEYS = frozenset({"leisure", "landuse", "historic", "natural", "tourism"})
+AREA_VALUES = {
+    "boundary": frozenset({"protected_area", "national_park"}),
+    "amenity": frozenset({"university", "college", "school", "hospital"}),
+}
+ARRIVAL_TAGS = frozenset(
+    {
+        ("tourism", "information"),
+        ("amenity", "parking"),
+        ("amenity", "bicycle_parking"),
+        ("amenity", "ranger_station"),
+        ("highway", "trailhead"),
+        ("leisure", "slipway"),
+        ("barrier", "gate"),
+        ("entrance", "main"),
+        ("entrance", "yes"),
+    }
+)
+ARRIVAL_WORDS = re.compile(
+    r"\b(visitor('?s)? (center|centre)|nature (center|centre)|entrance|gate|parking|trailhead"
+    r"|boat (launch|ramp))\b",
+    re.IGNORECASE,
+)
+# A way in this far outside the extent Photon gives still counts (a gate on the
+# boundary, an extent rounded inwards); with no extent, this far from the middle.
+EXTENT_SLACK_M = 50
+NO_EXTENT_REACH_M = 1500
 
 # How far from the point Photon may look for a place to say it is near, in km.
 REVERSE_RADIUS_KM = 0.25
@@ -625,6 +671,7 @@ def describe(properties: dict, *, reverse: bool) -> tuple[str, str]:
 def results(answer: dict, *, reverse: bool) -> list[dict]:
     """Photon's GeoJSON as the API's list: in the box, named, one row per place."""
     out: list[dict] = []
+    extents: list = []
     for feature in answer.get("features", []):
         if not isinstance(feature, dict):
             continue
@@ -638,27 +685,90 @@ def results(answer: dict, *, reverse: bool) -> list[dict]:
         if not name:
             continue
         osm = _osm(properties)
-        # Only one name, one kind of tag and 300 m make a row a repeat: two
-        # Starbucks 417 m apart share a label and are two places (round-1
-        # review), so a label alone folds nothing.
+        # Only one name, one kind of tag and 300 m (or one name at one point,
+        # SAME_POINT_M) make a row a repeat: two Starbucks 417 m apart share a
+        # label and are two places (round-1 review), so a label alone folds
+        # nothing.
         if any(_same_place(row, name, osm, point) for row in out):
             continue
-        out.append(
-            {
-                "name": name,
-                "label": label,
-                "lon": round(point[0], 6),
-                "lat": round(point[1], 6),
-                "kind": _text(properties, "type") or "other",
-                **osm,
-            }
-        )
+        row = {
+            "name": name,
+            "label": label,
+            "lon": round(point[0], 6),
+            "lat": round(point[1], 6),
+            "kind": _text(properties, "type") or "other",
+            **osm,
+            "way_in": None,
+        }
+        extents.append(_extent(properties))
+        out.append(row)
+    if not reverse:
+        for row, extent in zip(out, extents, strict=True):
+            _go_in(row, extent, out)
     return out
 
 
 def _same_place(row: dict, name: str, osm: dict, point: tuple[float, float]) -> bool:
-    return (
-        row["name"].casefold() == name.casefold()
-        and row["osm_key"] == osm["osm_key"]
-        and haversine(Point(row["lon"], row["lat"]), Point(*point)) <= SAME_PLACE_M
+    if row["name"].casefold() != name.casefold():
+        return False
+    apart = haversine(Point(row["lon"], row["lat"]), Point(*point))
+    return apart <= SAME_POINT_M or (row["osm_key"] == osm["osm_key"] and apart <= SAME_PLACE_M)
+
+
+def _extent(properties: dict) -> tuple[float, float, float, float] | None:
+    """Photon's `extent` for a way or relation, as (west, south, east, north), or None.
+    Photon gives it as [min lon, max lat, max lon, min lat]."""
+    extent = properties.get("extent")
+    if not isinstance(extent, list) or len(extent) != 4:
+        return None
+    try:
+        west, north, east, south = (float(v) for v in extent)
+    except (TypeError, ValueError):
+        return None
+    if not (west <= east and south <= north):
+        return None
+    return west, south, east, north
+
+
+def is_area(row: dict) -> bool:
+    """A result that is an area kept as its middle: a way or relation that is a park, a
+    reserve, a campus or a battlefield - not a road, a town or a building."""
+    if row["osm_type"] not in ("W", "R"):
+        return False
+    key = row["osm_key"]
+    if key in AREA_VALUES:
+        return row["osm_value"] in AREA_VALUES[key]
+    return key in AREA_KEYS
+
+
+def is_arrival(row: dict) -> bool:
+    """A result that is where a visit starts: a visitor centre, an entrance or gate, parking,
+    a trailhead or a boat launch."""
+    return (row["osm_key"], row["osm_value"]) in ARRIVAL_TAGS or bool(
+        ARRIVAL_WORDS.search(row["name"])
     )
+
+
+def _inside(row: dict, area: dict, extent) -> bool:
+    here = Point(row["lon"], row["lat"])
+    if extent is None:
+        return haversine(here, Point(area["lon"], area["lat"])) <= NO_EXTENT_REACH_M
+    west, south, east, north = extent
+    lon = min(max(row["lon"], west), east)
+    lat = min(max(row["lat"], south), north)
+    return haversine(here, Point(lon, lat)) <= EXTENT_SLACK_M
+
+
+def _go_in(area: dict, extent, rows: list[dict]) -> None:
+    """Move an area's row to the first way in of it among `rows` (see AREA_KEYS)."""
+    if not is_area(area):
+        return
+    name = area["name"].casefold()
+    for row in rows:
+        if row is area or is_area(row) or row["way_in"]:
+            continue
+        own = row["name"].casefold()
+        if own != name and own.startswith(name) and is_arrival(row) and _inside(row, area, extent):
+            area["way_in"] = row["name"]
+            area["lon"], area["lat"] = row["lon"], row["lat"]
+            return
