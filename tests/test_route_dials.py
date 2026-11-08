@@ -455,6 +455,97 @@ def test_choose_climb_prefers_the_first_on_a_tie():
     assert routing.choose_climb(trips, 1.5) == 0
 
 
+def _climb(line, busy: bool, climb_id: str = "c"):
+    from core import hillseek
+
+    length = sum(
+        routing.haversine(routing.Point(*a), routing.Point(*b))
+        for a, b in zip(line, line[1:], strict=False)
+    )
+    return hillseek.Climb(
+        id=climb_id,
+        category="4",
+        length_m=length,
+        gain_m=60.0,
+        grade_pct=5.0,
+        line=tuple(line),
+        busy=busy,
+    )
+
+
+# Two ways from VERTICES[0] to VERTICES[-1]: one up a climb on a street 1,000 ft (333 m)
+# north, one up a climb on a street 1,000 ft south.
+_N = [
+    VERTICES[0],
+    (VERTICES[1][0], VERTICES[0][1] + 0.003),
+    (VERTICES[3][0], VERTICES[0][1] + 0.003),
+    VERTICES[-1],
+]
+_S = [
+    VERTICES[0],
+    (VERTICES[1][0], VERTICES[0][1] - 0.003),
+    (VERTICES[3][0], VERTICES[0][1] - 0.003),
+    VERTICES[-1],
+]
+
+
+class TestChooseClimb:
+    """The owner, 2026-11-08 (hunts P3, V7): "Skip busy climbs if there's a better calm one,
+    yes, unless intentionally chosen", and no doubling back to climb."""
+
+    def trips(self, north_climb: float, south_climb: float) -> list[dict]:
+        return [
+            _trip(VERTICES, 3.0, FLAT),
+            _trip(_N, 3.4, [10.0, 10.0 + north_climb, 10.0 + north_climb, 10.0]),
+            _trip(_S, 3.4, [10.0, 10.0 + south_climb, 10.0 + south_climb, 10.0]),
+        ]
+
+    def climbs(self, north_busy=True, south_busy=False):
+        return [
+            _climb(_N[1:3], north_busy, "north"),
+            _climb(_S[1:3], south_busy, "south"),
+        ]
+
+    def test_with_no_climbs_read_the_most_climbing_is_kept_as_before(self):
+        assert routing.choose_climb(self.trips(100.0, 90.0), 1.5) == 1
+
+    def test_a_busy_climb_gives_way_to_a_calm_one_that_climbs_about_as_well(self):
+        # Before: the busy north climb, 100 m against 90 m.
+        assert routing.choose_climb(self.trips(100.0, 90.0), 1.5, self.climbs(), []) == 2
+
+    def test_a_calm_one_that_climbs_much_less_does_not_replace_it(self):
+        assert routing.choose_climb(self.trips(100.0, 40.0), 1.5, self.climbs(), []) == 1
+
+    def test_a_busy_climb_the_rider_chose_stays(self):
+        # The plan's end on the north climb's top: "unless intentionally chosen".
+        points = [list(VERTICES[0]), list(_N[2])]
+        assert routing.choose_climb(self.trips(100.0, 90.0), 1.5, self.climbs(), points) == 1
+
+    def test_a_start_at_a_busy_climbs_foot_does_not_choose_it(self):
+        """Review of C2: the start on the north climb's foot turned the guard off. The start
+        is not a choice ("its start is not enough"), so the calm south climb is kept."""
+        foot = list(_N[1])
+        points = [foot, list(VERTICES[-1])]
+        assert routing.choose_climb(self.trips(100.0, 90.0), 1.5, self.climbs(), points) == 2
+        # Nor the start again at a round trip's end.
+        back = [foot, list(VERTICES[-1]), [foot[0] + 0.00001, foot[1]]]
+        assert routing.choose_climb(self.trips(100.0, 90.0), 1.5, self.climbs(), back) == 2
+
+    def test_two_busy_climbs_keep_the_most_climbing(self):
+        climbs = self.climbs(north_busy=True, south_busy=True)
+        assert routing.choose_climb(self.trips(100.0, 90.0), 1.5, climbs, []) == 1
+
+    def test_a_route_that_doubles_back_to_climb_is_not_chosen(self):
+        """Hunt V7: a through point off the climb's line made a route up, down and up again,
+        which climbs most; it rode 0.5 mi of the line three times."""
+        trips = [
+            _trip(VERTICES, 4.0, FLAT),
+            _trip(THROUGH_THE_CLIMB, 5.5, HILLY),
+            _trip(_N, 4.4, [10.0, 30.0, 30.0, 10.0]),
+        ]
+        assert routing.choose_climb(trips, 1.5) == 2
+
+
 @pytest.mark.parametrize("hills", [1, 50, 100])
 def test_the_distance_budget_grows_with_the_slider(hills):
     assert presets.seek_distance_ratio(hills) > presets.seek_distance_ratio(hills - 1)
@@ -465,8 +556,25 @@ def test_the_distance_budget_grows_with_the_slider(hills):
 # The hill seek's climb (FOLLOWUP-HILL-SEEK, 205): up from VERTICES[3] west to
 # VERTICES[1], so the direct route along VERTICES rides it down, not up.
 UPHILL_WEST = [VERTICES[3], VERTICES[2], VERTICES[1]]
-# The route through it: east to its foot, up it west, and on east to the end.
+# A route through it: east to its foot, up it west, and on east to the end, back over the
+# climb (it rides 0.5 mi of it three times). Before the owner's 2026-11-08 rule it was the
+# route chosen; it doubles back to climb, and is not now (hunt V7).
 THROUGH_THE_CLIMB = [VERTICES[0], VERTICES[3], VERTICES[2], VERTICES[1], VERTICES[4]]
+# The route through it by streets either side: east along a street 1,000 ft (333 m) north
+# to above its foot, down to it, up it west, then south and east along a street 1,000 ft
+# south to the end. It rides nothing twice.
+_NORTH, _SOUTH = VERTICES[0][1] + 0.003, VERTICES[0][1] - 0.003
+ROUND_THE_CLIMB = [
+    VERTICES[0],
+    (VERTICES[0][0], _NORTH),
+    (VERTICES[3][0], _NORTH),
+    VERTICES[3],
+    VERTICES[2],
+    VERTICES[1],
+    (VERTICES[1][0], _SOUTH),
+    (VERTICES[4][0], _SOUTH),
+    VERTICES[4],
+]
 
 
 class HillSeekRouter(FakeRouter):
@@ -521,15 +629,27 @@ class TestHillSeek:
         monkeypatch.setattr(hillseek, "CLIMBS_FILE", path)
         return path
 
-    def seeking(self) -> HillSeekRouter:
+    def seeking(self, through=ROUND_THE_CLIMB) -> HillSeekRouter:
         # A direct route long enough that the climb is inside the budget at 100 (1.5x).
         return HillSeekRouter(
             {
                 "route": {"trip": _trip(VERTICES, 4.0, FLAT)},
                 "trace_attributes": trace_answer(VERTICES, [(101, 0, 4, 2.0)]),
             },
-            {"trip": _trip(THROUGH_THE_CLIMB, 5.5, HILLY)},
+            {"trip": _trip(through, 5.5, HILLY)},
         )
+
+    def test_a_route_that_doubles_back_to_climb_is_not_chosen(
+        self, client, facility_segments, router, climbs_file
+    ):
+        """Hunt V7 (the owner, 2026-11-08): the route that climbs most by riding the climb
+        against its way and back again is found and not kept."""
+        router(self.seeking(THROUGH_THE_CLIMB))
+        body = post(client, {**good_body("mountain-goat"), "hills": 100}).json()
+        seek = body["hills_seek"]
+        assert seek["climb_seek"]["found"] == 1 and seek["candidates"] == 2
+        assert seek["chosen"] == 0
+        assert seek["climbs"] == []
 
     def test_the_route_through_the_climb_is_chosen_and_named(
         self, client, facility_segments, router, climbs_file
@@ -1567,7 +1687,9 @@ class TestTrafficWinsOverHills:
                 if payload["costing"] == "pedestrian":
                     raise routing.RouterRefused(400, 442, "no walk-in in this test")
                 use_hills = payload["costing_options"]["bicycle"]["use_hills"]
-                calls.append((use_hills, "alternates" in payload, timeout))
+                calls.append(
+                    (use_hills, "alternates" in payload, timeout, "exclude_locations" in payload)
+                )
                 if use_hills == 1.0:
                     if middle_fails:
                         raise routing.RouterUnavailable("timed out")
@@ -1587,10 +1709,40 @@ class TestTrafficWinsOverHills:
         body = post(client, {**good_body(), "hills": -60}).json()
         assert body["hills_avoid"]["kept_middle"] is True
         assert body["distance_m"] == pytest.approx(2200.0), "the middle's route"
-        middle_call = [c for c in calls if c[0] == 1.0]
+        # The middle's own ask: the plan's request at the middle, no alternatives and nothing
+        # excluded (the calm search's asks after it are at the middle too: hunt P4, below).
+        middle_call = [c for c in calls if c[0] == 1.0 and not c[1] and not c[3]]
         assert len(middle_call) == 1
         assert middle_call[0][1] is False, "one /route, without alternatives"
         assert middle_call[0][2] <= routing.ALTERNATES_TIMEOUT_S
+
+    def test_with_the_middle_kept_the_search_asks_at_the_middle_too(
+        self, client, facility_segments, router
+    ):
+        """Hunt P4: the search's candidates were routed at the plan's hill-avoiding
+        `use_hills` and scored as if routed at the middle's (the trace costing's), so each
+        paid the router's climb charge the route kept did not. Every ask after the middle's
+        is at the middle's now; before it, only the plan's own ask was at 0.4."""
+        transport, calls = self.router_with(202, 101)
+        router(transport)
+        # At 90 the calm search runs (rate above 0) and ranks the router's alternatives,
+        # which it now asks for itself.
+        body = post(client, {**good_body(), "hills": -60, "stress": 90}).json()
+        assert body["hills_avoid"]["kept_middle"] is True
+        first_middle = next(i for i, c in enumerate(calls) if c[0] == 1.0 and not c[1] and not c[3])
+        later = calls[first_middle + 1 :]
+        assert later, "the search asked the router for something"
+        assert {c[0] for c in later} == {1.0}
+
+    def test_with_the_avoiding_route_kept_the_search_asks_as_the_plan_did(
+        self, client, facility_segments, router
+    ):
+        transport, calls = self.router_with(101, 202)
+        router(transport)
+        body = post(client, {**good_body(), "hills": -60, "stress": 90}).json()
+        assert body["hills_avoid"]["kept_middle"] is False
+        searched = [c for c in calls if c[1] or c[3]]
+        assert all(c[0] != 1.0 for c in searched)
 
     def test_a_calmer_hill_avoiding_route_is_kept(self, client, facility_segments, router):
         transport, _calls = self.router_with(101, 202)

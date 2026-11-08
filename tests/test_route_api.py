@@ -112,6 +112,8 @@ CONTRACT_KEYS = {
     "mtb",
     # Additive, FOLLOWUP-DEDODGE (OWNER-DECISIONS 272): side-street dodges found and removed.
     "dodges",
+    # Additive, the red-crossing pass (hunt S5, 2026-11-08): null where it did not run.
+    "red_crossings",
     # Additive, FOLLOWUP-BIKESHARE (OWNER-DECISIONS 243-245): null except on a Bikeshare plan.
     "bikeshare",
     # Additive, FOLLOWUP-ISECT-AVOID (OWNER-DECISIONS 307-310, 335): the Avoid-rated

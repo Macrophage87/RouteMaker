@@ -421,10 +421,13 @@ class RouteIn(Schema):
         default=False,
         description=(
             "A ride's re-plan: the first point is the rider. On a ride type that does not plan"
-            " on dirt trails, a dirt trail there opens them all to this plan (the owner,"
-            ' 2026-10-21: "If someone goes onto a dirt trail, any reroutes should include'
-            ' dirt"). Elsewhere a dirt trail under a stop, via or end is ridden, with the'
-            " trails joined to it, but one under the start alone is not."
+            " on dirt trails, a dirt trail there that runs the way the rider is going"
+            ' (`heading`) opens them all to this plan (the owner, 2026-10-21: "If someone goes'
+            ' onto a dirt trail, any reroutes should include dirt"); one there with no'
+            " `heading`, or one the rider's heading crosses, opens that trail and those joined"
+            " to it at most. Elsewhere a dirt trail under a stop, via or end is ridden, with"
+            " the trails joined to it, but one under the start alone is not. The rider's"
+            " target distance is not used: the re-plan is the rest of the ride."
         ),
     )
     dirt_ridden: StrictBool = Field(
@@ -565,7 +568,9 @@ class RouteIn(Schema):
             " `calm_search.over_target_m` says how far over it the route is. Where no route"
             " is that short, the least stressful one found is answered, flagged. Absent: no"
             " target; the ceiling is 1.6 times the router's own route (at least a mile more),"
-            " and each extra mile must buy enough stress."
+            " and each extra mile must buy enough stress. Ignored on a ride's re-plan"
+            " (`ride_replan`), which plans the rest of the ride as if there were none: the"
+            " target is the whole ride's."
         ),
     )
 
@@ -1322,6 +1327,14 @@ class LongSearchOut(Schema):
     skipped: int
     stops: list[int]
     answered: str | None = None
+    retraced: bool = Field(
+        default=False,
+        description=(
+            "True where the legs put together rode back over their own way across a cut more"
+            " than the router's own route does (a U-turn at no stop), so the router's own route"
+            " was answered."
+        ),
+    )
     per_leg: list[dict] = Field(
         default_factory=list,
         description=(
@@ -2634,6 +2647,16 @@ class RouteBody(Schema):
     # on a loop, which keeps its way back as made, and on each of the routes to choose
     # from, which are answered as the search found them.
     dodges: DodgesOut | None = None
+    red_crossings: RedCrossingsOut | None = Field(
+        default=None,
+        description=(
+            "What the red-crossing pass did (`core.red_crossings`): where the crossing search"
+            " did not run over the whole route, the way round a red junction still on it, asked"
+            " for once. Null where the pass did not run (the search covered the route, a loop,"
+            " a first route, a followed or drawn line, a Mass Ride) and on the routes to choose"
+            " from."
+        ),
+    )
     # The route in words, stretch by stretch (OWNER-DECISIONS 220). Additive:
     # absent or null where it could not be built.
     description: list[DescriptionEntryOut] | None = None
@@ -2730,6 +2753,27 @@ class DodgeOut(Schema):
     turns_saved: int | None = Field(description="Turns the main road saves over the dodge.")
     extra_m: float | None = Field(
         description="Metres the dodge adds over the main road (negative: it is shorter)."
+    )
+
+
+class RedCrossingsOut(Schema):
+    """The red-crossing pass (`core.red_crossings.settle`, the owner, 2026-11-08: "It's
+    taking people onto dangerous intersections.")."""
+
+    reds: int | None = Field(
+        description="The red junctions on the route it read; null where it could not read it."
+    )
+    decision: Literal["kept", "avoided"] = Field(
+        description="`avoided`: the way round was taken; `kept`: the route stands."
+    )
+    limited: str | None = Field(
+        description=(
+            "Why it stopped short: `time`, `unread` (the route or the way round could not be"
+            " read), `no_route` (the router has no way round) or `error`; null where it ran."
+        )
+    )
+    reds_after: int | None = Field(
+        description="The red junctions on the way round; null where none was read."
     )
 
 
@@ -4384,7 +4428,11 @@ def _run_body(body: RouteIn, started: float | None) -> dict:
     # given, else at the ride-time dial's moment.
     when = _ride_when(body, at)
     zones_at = at if body.depart_at is not None else work_zones.ride_moment(when)
-    target_m = float(body.target_distance_m) if body.target_distance_m else None
+    # Not on a ride's re-plan: the target is the whole run's, and the re-plan the rest of it
+    # (hunt V2, as `routing._plan`), which would otherwise share all of it among the legs left.
+    target_m = (
+        float(body.target_distance_m) if body.target_distance_m and not body.ride_replan else None
+    )
     zones, exclude = work_zones.foot_zones(
         body.points,
         when,
@@ -5340,6 +5388,7 @@ def _bike_dials(body: RouteIn) -> routing.Dials:
         follow_exact=body.follow_exact,
         straight=tuple(body.straight_legs),
         heading=body.heading,
+        fix_heading=body.heading,
         ride_replan=body.ride_replan,
         dirt_ridden=body.ride_replan and body.dirt_ridden,
         ahead_only=body.ahead_only,

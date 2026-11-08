@@ -595,7 +595,8 @@ band, grep `route timing` from the api's log.
   from before a deploy are never given after it. Without it, each api worker
   keeps up to 128 answers in its own memory, so a hit happens only when the
   same worker serves the repeat. The key holds
-  the whole request, rounded to about 10 m, with every dial. It also holds the
+  the whole request, its points rounded to about 1 m (a stop or a trail opt-in
+  reads the exact point), with every dial. It also holds the
   stress edits' generation, a digest of the closures snapshot, the approved
   junction ratings and hazards, and the ride time's rush and weekend state.
   The keep also ends at the next closure start or end and at local midnight.

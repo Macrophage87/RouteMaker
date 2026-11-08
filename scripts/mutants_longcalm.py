@@ -530,7 +530,7 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "legs: the whole is answered however it compares",
         RF,
-        "    if not changed or worse or too_long(length, ctx):",
+        "    if not changed or worse or retraced or too_long(length, ctx):",
         "    if not changed:",
         LC,
     ),

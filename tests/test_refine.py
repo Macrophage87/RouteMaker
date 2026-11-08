@@ -340,7 +340,22 @@ class TestCrossingAvoidance:
     def test_a_later_crossing_round_that_fails_says_nothing(self, monkeypatch) -> None:
         """The first round's route is the answer, as it was with one round, and is cached:
         a second round the router does not answer leaves `limited` unset (review of PR
-        #421)."""
+        #421). With no red left on it: the first round's route here has an orange crossing
+        (2,000 ft) where it had a red. A red still on it is said whatever stopped the round
+        (hunt S, low note, 2026-11-08), as the time branch already said it (the PC's check,
+        2026-10-23): `TestRedJunctions`, and the red case below."""
+        shapes = {
+            "o": analysis("o", events=[event(1500.0, 3300.0), event(2500.0, 3300.0)]),
+            "a1": analysis("a1", cost_s=3900.0, events=[event(2700.0, 2000.0)]),
+        }
+        World(monkeypatch, shapes, [trip_of("a1", 4.1), routing.RouterUnavailable("gone")])
+        kept, info = refine.refine(trip_of("o", 4.0), context())
+        assert kept["legs"][0]["shape"] == "a1"
+        assert info["limited"] is None and info["rounds"] == 1
+
+    def test_a_later_crossing_round_that_fails_with_a_red_left_is_said(self, monkeypatch) -> None:
+        """Before 2026-11-08 this was the case above: `limited` unset with a red still on the
+        route, so the plan counted as searched whole and the red pass was skipped."""
         shapes = {
             "o": analysis("o", events=[event(1500.0, 3300.0), event(2500.0, 3300.0)]),
             "a1": analysis("a1", cost_s=3900.0, events=[event(2700.0, 3300.0)]),
@@ -348,7 +363,7 @@ class TestCrossingAvoidance:
         World(monkeypatch, shapes, [trip_of("a1", 4.1), routing.RouterUnavailable("gone")])
         kept, info = refine.refine(trip_of("o", 4.0), context())
         assert kept["legs"][0]["shape"] == "a1"
-        assert info["limited"] is None and info["rounds"] == 1
+        assert info["limited"] == "time" and info["rounds"] == 1
 
     def test_crossing_avoidance_alone_is_at_most_five_rounds(self, monkeypatch) -> None:
         shapes = {"o": analysis("o", events=[event(1500.0, 3300.0)])}
@@ -1730,6 +1745,27 @@ class TestRetrace:
         read = doubling_back("a", spur=8)
         read.via_m = [1800.0]
         assert refine.retrace_m(read) == 0.0
+
+    def test_across_a_long_plans_cut_the_way_back_is_counted(self) -> None:
+        """Hunt V4: leg 0 ends over the half-edge to a cut and leg 1 starts back over the
+        same half-edge. Each leg alone rides nothing twice; put together, as the plan's one
+        leg, they ride its 250 m twice."""
+        to_cut = analysis("a", "1" * 4)
+        to_cut.marks = [(100.0, -77.0, 38.9, 200.0), (325.0, -77.002, 38.9, 250.0)]
+        from_cut = analysis("b", "1" * 4)
+        from_cut.marks = [(125.0, -77.002, 38.90001, 250.0), (400.0, -77.0, 38.901, 300.0)]
+        assert refine.retrace_m(to_cut) == refine.retrace_m(from_cut) == 0.0
+        assert refine.joined_retrace_m([to_cut, from_cut], [0, 0]) == pytest.approx(250.0)
+        # Where the cut is a point of the rider's own (a stop), it is theirs to turn at.
+        assert refine.joined_retrace_m([to_cut, from_cut], [0, 1]) == 0.0
+
+    def test_a_cut_ridden_through_is_no_retrace(self) -> None:
+        # The other half of the cut's edge: the route goes on, not back.
+        to_cut = analysis("a", "1" * 4)
+        to_cut.marks = [(100.0, -77.0, 38.9, 200.0), (325.0, -77.002, 38.9, 250.0)]
+        on = analysis("b", "1" * 4)
+        on.marks = [(125.0, -77.0045, 38.9, 250.0), (400.0, -77.007, 38.9, 300.0)]
+        assert refine.joined_retrace_m([to_cut, on], [0, 0]) == 0.0
 
     def test_tolerances_are_tight_from_both_sides(self) -> None:
         # Lengths 15% apart are different edges; a way 3 m off is another way.
@@ -3929,6 +3965,27 @@ class TestRedJunctions:
         kept, info = refine.refine(trip_of("o", 4.0), ctx)
         assert kept["legs"][0]["shape"] == "a" and info["rounds"] == 1
         assert info["limited"] == "time"
+
+    def test_a_later_round_the_router_refuses_is_said_while_a_red_is_left(
+        self, monkeypatch
+    ) -> None:
+        """Hunt S, low note: at rate 0 a later round that failed (every attempt refused)
+        left `limited` unset with a red still on the best route, so the plan counted as
+        searched whole and the red pass was skipped. Only the time branch said it."""
+        shapes = {"o": self.two_reds(), "a": analysis("a", events=[event(2700.0, 3300.0)])}
+        refused = routing.RouterRefused(400, 442, "no path")
+        world = World(monkeypatch, shapes, [trip_of("a", 4.1)] + [refused] * 10)
+        kept, info = refine.refine(trip_of("o", 4.0), context())
+        assert kept["legs"][0]["shape"] == "a" and info["rounds"] == 1
+        assert len(world.requests) > 1
+        assert info["limited"] == "no_route"
+
+    def test_a_later_round_refused_with_no_red_left_says_nothing(self, monkeypatch) -> None:
+        shapes = {"o": self.two_reds(), "a": analysis("a", events=[])}
+        refused = routing.RouterRefused(400, 442, "no path")
+        World(monkeypatch, shapes, [trip_of("a", 4.1)] + [refused] * 10)
+        kept, info = refine.refine(trip_of("o", 4.0), context())
+        assert kept["legs"][0]["shape"] == "a" and info["limited"] is None
 
     def test_no_red_left_says_nothing_of_the_rounds_not_run(self, monkeypatch) -> None:
         shapes = {"o": self.two_reds(), "a": analysis("a", events=[])}

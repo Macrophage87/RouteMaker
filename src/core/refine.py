@@ -1788,7 +1788,44 @@ def retrace_m(analysis: Analysis) -> float:
     the rider placed down a dead end is theirs to ride out to and back from."""
     marks = _marks(analysis)
     legs = analysis.mark_legs if len(analysis.mark_legs) == len(marks) else None
-    bounds = leg_bounds(analysis)
+    return _retrace_of(marks, legs, leg_bounds(analysis))
+
+
+# How far either side of a long plan's cut the joined legs are looked at for riding back
+# over their own way (`joined_retrace_m`).
+CUT_REACH_M = 2_000.0
+
+
+def joined_retrace_m(reads: list[Analysis], users: list[int]) -> float:
+    """The metres a long plan's legs put together (`refine_long`) ride back over their own
+    way across a cut, each of `reads` the reading of one cut leg and `users[j]` the plan's own
+    leg it is part of. The cuts (`long_legs`) are not the rider's points, so the stretch
+    either side of one is one leg; but each cut leg is searched on its own and a cut is a
+    plain `break`, so leg j's route may reach the cut along its edge from the far end and leg
+    j + 1's leave it back that way: an out-and-back at a place that is no stop, which each
+    leg's own `retrace_m` cannot see (hunt V4). Counted as `retrace_m` counts, on the last
+    CUT_REACH_M of the one and the first of the other, less what each of those rides twice
+    on its own (its own leg's guard's)."""
+    total = 0.0
+    for j in range(len(reads) - 1):
+        if users[j] != users[j + 1]:
+            # A point of the rider's own: theirs to turn at.
+            continue
+        before, after = _marks(reads[j]), _marks(reads[j + 1])
+        end = max((m[0] for m in before), default=0.0)
+        tail = [m for m in before if m[0] >= end - CUT_REACH_M]
+        head = [m for m in after if m[0] <= CUT_REACH_M]
+        both = _retrace_of(tail + head, [0] * (len(tail) + len(head)), [])
+        total += max(
+            0.0,
+            both - _retrace_of(tail, [0] * len(tail), []) - _retrace_of(head, [0] * len(head), []),
+        )
+    return total
+
+
+def _retrace_of(marks: list, legs: list | None, bounds: list) -> float:
+    """`retrace_m` on edge middles (`_marks`), each on the leg `legs` gives it, or by its
+    metres along against `bounds` (`leg_bounds`) where there is no such list."""
     cell = RETRACE_MATCH_M
     seen: dict[tuple[int, int, int], list[tuple[float, float, float]]] = {}
     total = 0.0
@@ -2385,8 +2422,11 @@ def _search(trip, best, first_exposure, stop_at, ctx: Context, info: dict):
         # A crossing-only search past its first round is an answer as good as it was
         # with that round alone (before CROSSING_ONLY_ROUNDS was more than one): a later
         # round that cannot run or fails leaves `limited` unset, so the answer is cached
-        # and says nothing.
-        said = ctx.rate > 0 or number == 0
+        # and says nothing. Not with a red still on the best route: there the round that
+        # failed is said whatever stopped it (hunt S, low note: only the time branch did),
+        # so the plan does not count as searched whole and the red pass still runs
+        # (`core.red_crossings`).
+        said = ctx.rate > 0 or number == 0 or red_count(best) > 0
         new = crossing_targets(current, ctx)
         if ctx.rate > 0:
             # LTS 4 and Avoid first, if the route has any; then everything busy.
@@ -2409,7 +2449,7 @@ def _search(trip, best, first_exposure, stop_at, ctx: Context, info: dict):
             # route, is said too, so the answer is not kept as if it were the search's
             # whole (the PC's check, 2026-10-23: a cold first plan stopped after two rounds
             # with both Kensington reds).
-            if said or red_count(best):
+            if said:
                 info["limited"] = "time"
             break
         round_deadline = routing.Deadline(
@@ -3555,7 +3595,15 @@ def refine_long(trip: dict, ctx: Context) -> tuple[dict, dict]:
         top > whole_top - MAXCALM_STEPS[0] and lts3 > whole.lts3_m + MAXCALM_STEPS[1]
     )
     lts4 += traded
-    if not changed or worse or too_long(length, ctx):
+    # Nor where the legs put together ride back over their own way, across a cut, more
+    # than the router's own route does (`joined_retrace_m`; hunt V4): a U-turn at a place
+    # the rider never chose. The same slack as every candidate's (`doubles_back`).
+    retraced = changed and joined_retrace_m(finals, [leg["user"] for leg in legs]) > (
+        retrace_m(whole) + RETRACE_SLACK_M
+    )
+    if retraced:
+        long["retraced"] = True
+    if not changed or worse or retraced or too_long(length, ctx):
         long["answered"] = "router"
         info["lts4_m_after"] = info["lts4_m_before"]
         info["lts3_m_after"] = info["lts3_m_before"]

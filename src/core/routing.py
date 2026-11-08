@@ -71,7 +71,7 @@ import time
 import urllib.error
 import urllib.request
 from array import array
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Sequence
 from concurrent.futures import FIRST_EXCEPTION, Future
 from concurrent.futures import wait as wait_futures
 from contextlib import contextmanager
@@ -1777,6 +1777,10 @@ class Dials:
     # north), so the route sets off that way rather than turning round (`plan_onward`); None:
     # either way.
     heading: float | None = None
+    # The same heading, as the request gave it, kept where `plan_onward` plans without
+    # `heading` first: what the dirt-trail rule reads of a ride's re-plan (is the rider going
+    # along the trail at the fix, `trail_touch.followed`), whichever of its plans this is.
+    fix_heading: float | None = None
     # A re-route after the rider has ridden on past two U-turns (the owner, 2026-10-20: "give two
     # reroutes and on the third time assume that the user wants to stay on that path"): the route
     # that sets off ahead is taken whatever turning round would save (`plan_onward`).
@@ -2014,9 +2018,19 @@ TWIN_VARIANTS = (
 )
 # The graphs whose rides take a dirt trail the rider touched (`core.trail_touch`): the standard
 # graph and its weekend twin, which a Saturday or Sunday daytime ride plans on (a weekday holiday
-# is off-peak, on the standard graph: `routemaker.ridetime`). Both close the
-# dirt trails, and a touched ride is planned on the off-road graph instead.
-TRAIL_TOUCH_VARIANTS = frozenset({Variant.STANDARD.value, Variant.WEEKEND.value})
+# is off-peak, on the standard graph: `routemaker.ridetime`), and the e-bike graph (the E-bike
+# ride type, Cargo with assist, a share e-bike). Each closes the dirt trails
+# (`pipeline.trail_closures.graph_reason` lifts the mountain-bike class on the off-road and
+# Mountain Bike graphs only), and a touched ride is planned on the off-road graph instead, with
+# the ride type's own costing. The e-bike graph was left out until hunt R4 (2026-11-08): an
+# E-bike rider's stop on a Northwest Branch trail snapped to the nearest open way, and Ride
+# turned them off the trail they were on, the Lake Needwood complaint the owner fixed for
+# Default. The off-road graph has no `electric_bicycle=no` bar (`pipeline.variants`), which
+# the coverage had no way carrying when checked (docs/DEVELOPMENT.md, "Trails off", 463a).
+# Road Bike's paved graph stays out: a road bike is not taken onto dirt.
+TRAIL_TOUCH_VARIANTS = frozenset(
+    {Variant.STANDARD.value, Variant.WEEKEND.value, Variant.EBIKE.value}
+)
 
 
 def _weekend_down() -> bool:
@@ -2609,21 +2623,78 @@ def no_busier_than_middle(
     return middle, True
 
 
-def choose_climb(trips: list[dict], ratio: float) -> int:
+def choose_climb(
+    trips: list[dict],
+    ratio: float,
+    climbs: Sequence = (),
+    points: Sequence[Sequence[float]] = (),
+) -> int:
     """The index of the trip that climbs most within `ratio` of the first's length.
 
     The first trip is the router's own best route at the hills detent, so it is
     the direct route the budget is measured against, and it is what is kept
     when nothing else climbs more.
+
+    Two guards (the owner, 2026-11-08, hunts P3 and V7). A trip that rides back over its own
+    way more than the first does (`hillseek.retrace_m`, past `hillseek.RETRACE_SLACK_M`) is
+    not chosen: a through point that snapped off the climb's line made a route up, down and up
+    again, which climbs more and so was the one kept. And a trip that rides uphill a busy
+    climb of `climbs` (the Climbs file's `busy`: most of its roads LTS 3 or higher) gives way
+    to the calm trip that climbs most, where that climbs at least `hillseek.CALM_CLIMB_SHARE`
+    as much ("Skip busy climbs if there's a better calm one, yes, unless intentionally
+    chosen"): a climb a point of the plan (`points`) lies on was chosen, and stays; the start,
+    and the start again at a loop's or round trip's end, choose nothing.
     """
+    from . import hillseek
+
     direct = float((trips[0].get("summary") or {}).get("length", 0.0))
-    best, best_climb = 0, _climb_of(trips[0])
-    for index, trip in enumerate(trips[1:], start=1):
-        length = float((trip.get("summary") or {}).get("length", 0.0))
-        climb = _climb_of(trip)
-        if length <= direct * ratio and climb > best_climb:
-            best, best_climb = index, climb
-    return best
+    legs = [
+        [decode_polyline6(leg.get("shape", "")) for leg in trip.get("legs") or []] for trip in trips
+    ]
+    limit_m = hillseek.retrace_m(legs[0]) + hillseek.RETRACE_SLACK_M
+    eligible = [0] + [
+        index
+        for index, trip in enumerate(trips[1:], start=1)
+        if float((trip.get("summary") or {}).get("length", 0.0)) <= direct * ratio
+        and hillseek.retrace_m(legs[index]) <= limit_m
+    ]
+    climbed = {index: _climb_of(trips[index]) for index in eligible}
+
+    def most(indices: list[int]) -> int:
+        # The first on a tie: the router's own before the others.
+        best = indices[0]
+        for index in indices[1:]:
+            if climbed[index] > climbed[best]:
+                best = index
+        return best
+
+    best = most(eligible)
+    climbs = list(climbs)
+    if not climbs:
+        return best
+
+    def line(index: int) -> list[tuple[float, float]]:
+        out: list[tuple[float, float]] = []
+        for shape in legs[index]:
+            out.extend(shape[1:] if out else shape)
+        return out
+
+    # The points that can choose a climb: not the start (the owner, of dirt trails, 2026-10-21:
+    # a start is not chosen by standing on it, `core.trail_touch`), nor the start again at the
+    # end of a loop or a round trip. A ride from home at a busy climb's foot did not pick it.
+    choosing = list(points[1:])
+    if choosing and haversine(Point(*points[0][:2]), Point(*choosing[-1][:2])) <= LOOP_SAME_M:
+        choosing = choosing[:-1]
+    points = choosing
+    if not hillseek.rides_busy(line(best), climbs, points):
+        return best
+    calm = [
+        index
+        for index in eligible
+        if climbed[index] >= hillseek.CALM_CLIMB_SHARE * climbed[best]
+        and not hillseek.rides_busy(line(index), climbs, points)
+    ]
+    return most(calm) if calm else best
 
 
 def _trip_line(trip: dict) -> list[tuple[float, float]]:
@@ -4731,8 +4802,18 @@ def _plan(
     junction_ratings = route_cache.junction_ratings()
     # The flashing beacons the map has as signals (the owner's and MDOT SHA's), the same way.
     beacons = route_cache.beacons()
-    # The rider's target distance counts at the top of the slider only.
-    target_m = float(dials.target_distance_m) if dials.target_distance_m and maxcalm else None
+    # The rider's target distance counts at the top of the slider only, and never on a ride's
+    # re-plan (`ride_replan`): the target is the whole ride's, and the re-plan is the rest of
+    # it from where the rider is. Held to it, the rest could take up to 1.25 times the whole
+    # ride's target with its miles priced as cheap (`refine.distance_charge_m`), so a re-route
+    # 5 km from the end of a 40 km ride could go 12 km round for a little less LTS 3 (hunt
+    # V2). The rest of the ride is planned as a plan with no target is: the ceiling on what
+    # is left (`presets.default_ceiling_m`) and every extra mile worth its stress.
+    target_m = (
+        float(dials.target_distance_m)
+        if dials.target_distance_m and maxcalm and not dials.ride_replan
+        else None
+    )
     when = dials.when or default_when()
     assist = bool(dials.assist) and preset.assist_speed_kmh is not None
     trails_off = bool(dials.trails_off)
@@ -4747,8 +4828,8 @@ def _plan(
     # trail, any reroutes should include dirt"). A dirt trail the rider marked closed on this
     # ride says its conditions are bad: no dirt trail at all for the rest of the ride
     # (2026-10-21: "assume that means bad riding conditions until it's opted back in").
-    # A weekend ride on the standard graph's weekend twin, where dirt trails are
-    # closed just the same, follows the same rule (`TRAIL_TOUCH_VARIANTS`).
+    # A weekend ride on the standard graph's weekend twin, or an e-bike ride, where dirt
+    # trails are closed just the same, follows the same rule (`TRAIL_TOUCH_VARIANTS`).
     touched_trails: frozenset[int] = frozenset()
     per_point: tuple[frozenset[int], ...] = ()
     dirt_closed = False
@@ -4770,8 +4851,25 @@ def _plan(
             chosen = per_point if dials.ride_replan else per_point[1:]
             if not dials.ride_replan and len(points) > 1 and is_round_trip(points):
                 chosen = chosen[:-1]
+            # On a ride's re-plan the start is the rider's fix, and being within TOUCH_M of a
+            # dirt trail is not being on it (hunt V5): a re-route on a paved trail where a horse
+            # trail crosses or runs beside opened every dirt trail for the rest of the ride.
+            # With the rider's heading, the trail under the fix counts only where it runs the
+            # way the rider is going (`trail_touch.followed`), and then, the rider being on
+            # dirt, any dirt trail may be ridden ("If someone goes onto a dirt trail, any
+            # reroutes should include dirt"). Without one, the trail under the fix is opened
+            # with the trails joined to it, as a stop on it is, and no other.
+            on_dirt = False
+            fix_heading = dials.fix_heading if dials.fix_heading is not None else dials.heading
+            if dials.ride_replan and per_point and per_point[0]:
+                if fix_heading is None:
+                    start_trails = per_point[0]
+                else:
+                    start_trails = trail_touch.followed(points[0], fix_heading, per_point[0])
+                    on_dirt = bool(start_trails)
+                chosen = (start_trails, *chosen[1:])
             touched_trails = frozenset().union(*chosen)
-            any_dirt = dials.ride_replan and (dials.dirt_ridden or bool(per_point[0]))
+            any_dirt = dials.ride_replan and (dials.dirt_ridden or on_dirt)
             if touched_trails or any_dirt:
                 variant = Variant.OFFROAD.value
     # Bike lanes are "none" in the breakdown on a ride that takes the roadway (Mass
@@ -5080,7 +5178,19 @@ def _plan(
     elif fixed:
         chosen = 0
     elif climb_seek:
-        chosen = choose_climb(trips, presets.seek_distance_ratio(hills_dial))
+        # The climbs a route within the budget could ride, for the busy-climb guard: the
+        # seek's corridor where it ran, else the file's within the budget's reach.
+        ratio = presets.seek_distance_ratio(hills_dial)
+        from . import hillseek
+
+        climbs_near = (
+            sought.near
+            if sought is not None and sought.limited != "no_climbs"
+            else hillseek.candidates_for_naming(
+                hillseek.load() or (), points[0], points[-1], _trip_length_m(trips[0]) * ratio
+            )
+        )
+        chosen = choose_climb(trips, ratio, climbs_near, points)
     elif direct_tolerate or avoiding:
         # Never a busier route for it (`calmer_or_own`, "Traffic wins").
         chosen = calmer_or_own(
@@ -5125,6 +5235,16 @@ def _plan(
             # Traced with the costing it was routed with, which the check
             # already did: the trace is reused, not asked for again.
             trace_costing = middle_costing
+            # And the search's candidates routed with it too (hunt P4). The score takes the
+            # router's own climbing charge off at the trace costing's `use_hills`
+            # (`refine.use_hills_of`, `Analysis.router_climb_m`) and adds the rider's own
+            # climb price back (`hill_m`, at the rider's hills dial), so the router's charge
+            # cancels only where the route was asked for at that `use_hills`. Candidates asked
+            # for at the plan's hill-avoiding one (0.4 at -60) against the middle's route (1.0)
+            # each paid about 390 flat metres a 30 m climb the route they would replace did not,
+            # and the search and the red pass under-took calmer routes on exactly the plans
+            # that avoid hills. The rider's hill price still weighs every candidate.
+            request = {**request, "costing_options": middle_costing}
     # The calm detour and crossing avoidance (core.refine): the router's own
     # routes, searched for a better score. Only where it can run inside the
     # budget; `refined` says what it did, or why it did not.
@@ -5205,7 +5325,9 @@ def _plan(
         rank_alternates=(
             presets.calm_rate_for(stress_dial) > 0 or presets.wait_weight_for(preset_name) > 1
         ),
-        router_trips=plan_alternates(request, trips, timed_out, bool(past)),
+        # Not the plan's own alternatives where the middle's route was kept: they were asked
+        # at the hill-avoiding costing, and the search's are asked at the middle's (P4).
+        router_trips=plan_alternates(request, trips, timed_out, bool(past) or kept_middle),
         early_alternates=early_alternates,
         options=[] if offering and not long_calm else None,
         avoid=avoid_list,
@@ -5972,6 +6094,10 @@ def _plan(
     body["against_traffic"] = answer.get("against_traffic") if following else None
     body["follows_exactly"] = following and dials.follow_exact
     body["drawn_legs"] = sorted(dials.straight) if drawing else None
+    # What the red-crossing pass did (`core.red_crossings.settle`), in the answer and not
+    # only in the log (hunt S5): the answer cache reads its `limited` (`route_cache.keepable`)
+    # and a reader of the answer sees a pass cut short. Null where it did not run.
+    body["red_crossings"] = red_info
     timing.mark("answer")
 
     def _with_mtb(answered: dict, info: dict | None) -> dict:

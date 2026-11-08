@@ -12,7 +12,7 @@ rider's live position, which is kept no longer than that (the owner, 2026-10-22 
 - the whole request as validated (`RouteIn`: the points, the ride type and every dial,
   the closures routed through, the via points), less `quick`, which only says how much
   of the plan to wait for (a full answer kept answers a quick request too); the points
-  are rounded to 1e-4 degrees (about 10 m), the plan's "same points rounded to ~10 m";
+  are rounded to 1e-5 degrees (about 1 m; `POINT_PLACES`);
 - whether it was planned as a long ride, or a long calm plan;
 - the ride time: the setting asked for, or the one of the moment where none was (so a
   plan made just before the evening rush is not given once the rush starts), and the
@@ -32,7 +32,8 @@ rider's live position, which is kept no longer than that (the owner, 2026-10-22 
 an answer from another graph than the ride's own (a weekend or off-road router that was
 down: it is answered again once that router is back); and an answer the budget cut short
 (a router call that failed for want of time or an answer, `timing.Timings.failures`, or
-a search that stopped for time), so a retry can do better; nor a plan the rider cancelled
+a search that stopped for time, a trail seek whose table read was cut short, a red-crossing
+pass that could not finish), so a retry can do better; nor a plan the rider cancelled
 (`core.plan_cancel`), which is answered 409 and may have been cut short by the cancel.
 
 **Where it is kept.** Where `settings.CACHES` has a `routes` cache
@@ -73,9 +74,15 @@ logger = logging.getLogger(__name__)
 
 TTL_S = 2 * 60
 MAX_ENTRIES = 128
-# Points are compared at this many decimal places of a degree: 1e-4 is about 11 m of
-# latitude and 9 m of longitude here.
-POINT_PLACES = 4
+# Points are compared at this many decimal places of a degree: 1e-5 is about 1.1 m of
+# latitude and 0.9 m of longitude here. It was 1e-4 (the plan's "same points rounded to
+# ~10 m"), but the plan reads the exact points: a stop snaps within `routing.STOP_RADIUS_M`
+# (15 m) and a point on a dirt trail opens it within `trail_touch.TOUCH_M` (15 m), so a
+# marker dragged a few metres onto a trail, or across a divided road, rounded to the same
+# 10 m cell and was answered with the route from before for the keep's life (hunt P5: the
+# owner's "if you enter it or mark a waypoint in it, it will continue to route through"
+# silently ignored). A repeat of one request sends the same points, so it still hits.
+POINT_PLACES = 5
 
 FULL = "full"
 QUICK = "quick"
@@ -484,6 +491,12 @@ def key_for(
     return Key(digest, valid_s)
 
 
+# The trail seek's and the red-crossing pass's `limited` that say the answer was cut short
+# (not "nothing to do": a seek with no corridor, a way round that was busier, no way round).
+SEEK_CUT_SHORT = frozenset({"time", "table", "error", "unread"})
+RED_CUT_SHORT = frozenset({"time", "unread", "error"})
+
+
 def keepable(body: dict, own_variant: str, failures: int) -> bool:
     """Whether an answer may be kept: planned on the ride's own graph, and not cut short
     by the budget (a failed or skipped router call, or a search or pass that stopped for
@@ -494,6 +507,16 @@ def keepable(body: dict, own_variant: str, failures: int) -> bool:
         return False
     calm_search = body.get("calm_search") or {}
     if calm_search.get("limited") == "time":
+        return False
+    # The trail seek cut short (hunt S5): its table read past its own statement timeout
+    # (`time`, most likely on a cold database just after a deploy), the table not read
+    # (`table`), the corridor search failing (`error`), or the whole route not read
+    # (`unread`). No router call failed, so `failures` is 0, but the trail corridor was not
+    # offered: kept, every repeat got the answer without it until local midnight.
+    if (calm_search.get("seek") or {}).get("limited") in SEEK_CUT_SHORT:
+        return False
+    # The red-crossing pass cut short the same way: a red junction it may have gone round.
+    if (body.get("red_crossings") or {}).get("limited") in RED_CUT_SHORT:
         return False
     for field in ("hills_seek", "hills_avoid", "hills_tolerate"):
         if (body.get(field) or {}).get("limited") == "timed_out":

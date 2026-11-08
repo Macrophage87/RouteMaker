@@ -9,13 +9,17 @@ trail, any reroutes should include dirt."
 
 The mountain-bike class of dirt trail (`routemaker.trailaccess`, reason `mtb`) is closed on
 the standard graphs and open on the off-road graph Gravel and Mountain Goat ride. A plan on a
-standard-graph ride type whose stop, via or end lies on one (`touched`) is planned on the
-off-road graph instead, with the ride type's own costing. Its start is not enough: the rider
-did not choose the trail by standing on it. A ride's re-plan is different: there the start is
-the rider, and a rider on a dirt trail, or who has been on one this ride, opted in, so the
-re-plan may ride any dirt trail (`core.routing._plan`'s `any_dirt`). The dirt trail it is on is then
-ridden, and the trails joined to it along the way: a run of the route on dirt trails one after
-another counts as one run, kept when any of it is a trail touched. A run on a dirt trail no
+standard-graph ride type (the standard graph, its weekend twin, or the e-bike graph:
+`core.routing.TRAIL_TOUCH_VARIANTS`) whose stop, via or end lies on one (`touched`) is planned
+on the off-road graph instead, with the ride type's own costing. Its start is not enough: the
+rider did not choose the trail by standing on it. A ride's re-plan is different: there the
+start is the rider, and a rider on a dirt trail, or who has been on one this ride, opted in, so
+the re-plan may ride any dirt trail (`core.routing._plan`'s `any_dirt`). On it means riding
+along it: with the rider's heading, the trail under the fix must run that way (`followed`); a
+fix merely near one, or with no heading, opens that trail and the trails joined to it, as a stop
+does. The dirt trail it is on is then ridden, and the trails joined to it along the way: a run
+of the route on dirt trails one after another counts as one run, kept when any of it is a trail
+touched. A run on a dirt trail no
 point touches is one the plan found for itself, which the ride type does not do: it is left out
 (`stray_rings`) and the plan made again (`core.routing.plan`).
 
@@ -98,6 +102,66 @@ def touched(points: Sequence[Sequence[float]]) -> tuple[frozenset[int], ...]:
     for index, way in rows:
         found[int(index) - 1].add(int(way))
     return tuple(frozenset(ways) for ways in found)
+
+
+# A ride's re-plan from a fix near a dirt trail (`followed`): the rider is on it where it runs
+# within FOLLOW_DEG of the rider's heading, either way along it, over the FOLLOW_SPAN_M of it
+# either side of the nearest point. A trail that crosses the way the rider is going, or a path
+# beside the road that turns off it, is not one the rider is on (hunt V5).
+FOLLOW_DEG = 45.0
+FOLLOW_SPAN_M = 10.0
+
+
+def followed(point: Sequence[float], heading: float, ways: frozenset[int]) -> frozenset[int]:
+    """Which of the dirt trails `ways` (within TOUCH_M of `point`, [lon, lat]) run the way
+    `heading` (degrees clockwise from north) goes, or its reverse, at the point: the ones a
+    rider there with that heading is riding along, not across. A trail whose direction there
+    cannot be measured (a piece too short) counts as followed."""
+    if not ways:
+        return frozenset()
+    schema = validate_schema_name(settings.SEGMENT_SCHEMA_LIVE)
+    lon, lat = float(point[0]), float(point[1])
+    sql = f"""
+        WITH p AS (SELECT ST_SetSRID(ST_MakePoint(%s, %s), 4326) AS g)
+        SELECT s.osm_way_id, degrees(ST_Azimuth(
+            ST_LineInterpolatePoint(s.geometry, greatest(at.f - at.d, 0.0))::geography,
+            ST_LineInterpolatePoint(s.geometry, least(at.f + at.d, 1.0))::geography))
+        FROM p
+        JOIN {schema}.segment AS s
+          ON s.geometry && ST_Expand(p.g, %s)
+         AND s.osm_way_id = ANY(%s)
+         AND GeometryType(s.geometry) = 'LINESTRING'
+         AND ST_DWithin(s.geometry::geography, p.g::geography, %s)
+        CROSS JOIN LATERAL (
+            SELECT ST_LineLocatePoint(s.geometry, p.g) AS f,
+                   %s / greatest(ST_Length(s.geometry::geography), 1.0) AS d
+        ) AS at
+    """
+    with _cursor() as cursor:
+        cursor.execute(
+            sql,
+            [
+                lon,
+                lat,
+                TOUCH_DEG / math.cos(math.radians(abs(lat))),
+                sorted(int(w) for w in ways),
+                TOUCH_M,
+                FOLLOW_SPAN_M,
+            ],
+        )
+        rows = cursor.fetchall()
+    kept: set[int] = set()
+    for way, azimuth in rows:
+        if azimuth is None or along_heading(float(azimuth), heading):
+            kept.add(int(way))
+    return frozenset(kept)
+
+
+def along_heading(bearing: float, heading: float) -> bool:
+    """Whether a way running at `bearing` runs within FOLLOW_DEG of `heading` or of its
+    reverse (degrees)."""
+    off = abs((bearing - heading) % 180.0)
+    return min(off, 180.0 - off) <= FOLLOW_DEG
 
 
 # A stretch the rider marked closed is on a dirt trail where at least CLOSED_ON_POINTS of the

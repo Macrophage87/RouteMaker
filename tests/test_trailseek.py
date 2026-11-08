@@ -524,6 +524,35 @@ class TestTheQuery:
         # Only the ways whose recorded rule is a path's.
         assert self.north_of(got) == [100, 985]
 
+    def test_a_trail_the_rules_close_to_bicycles_is_not_a_corridor(self, table) -> None:
+        """Hunt A1: a closed way keeps its facility (`path`, LTS 1) on the table, so before
+        this the seek read a park footpath or a secured site's cycleway as a corridor the
+        router could never ride. An open reason (an owner override) is still a corridor."""
+        from django.db import connection
+
+        from core import segment_info
+
+        segment_info.forget_columns()
+        reasons = {1: "park_path", 2: "secured", 7: "override_open", 11: "a_reason_not_known"}
+        with connection.cursor() as cursor:
+            for way, reason in reasons.items():
+                cursor.execute(
+                    f"UPDATE {table}.segment SET bike_access_reason = %s WHERE osm_way_id = %s",
+                    [reason, way],
+                )
+        got = ts.corridor_segments(table, self.guide(), 1500.0, True, "weekday_offpeak")
+        # Left: 700 (reopened by an override). Gone: 100, 200 and the zigzag at 985.
+        assert self.north_of(got) == [700]
+        # The query without the column (an older table) reads as before.
+        sql, _params = ts.corridor_query(table, self.guide(), 1500.0, True, "weekday_offpeak")
+        assert "bike_access_reason" not in sql
+
+    def test_the_open_reasons_are_the_segment_panels(self) -> None:
+        assert "override_open" in ts.open_reasons()
+        assert "bicycle_use_sidepath" in ts.open_reasons()
+        assert "park_path" not in ts.open_reasons()
+        assert "mtb" not in ts.open_reasons()
+
     def test_the_vertices_come_back_as_lon_lat(self, table) -> None:
         got = ts.corridor_segments(table, self.guide(), 1500.0, True, "weekday_offpeak")
         assert got[0][0][0] == pytest.approx(START[0] + 0.02)
