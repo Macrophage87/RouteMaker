@@ -179,6 +179,80 @@ def test_an_osm_signal_at_the_side_street_is_the_side_streets() -> None:
     assert result.nodes == {1}
 
 
+GEORGIA = AVENUE | {"name": "Georgia Avenue"}
+
+
+def divided(*cross: Way) -> list[Way]:
+    """Georgia Ave's two carriageways 14 m apart (node 1 on the north one, 7 on the
+    south one), with `cross` the roads across them."""
+    return [
+        way(10, GEORGIA, {2: (-100, 7), 1: (0, 7), 3: (100, 7)}),
+        way(11, GEORGIA, {6: (100, -7), 7: (0, -7), 8: (-100, -7)}),
+        *cross,
+    ]
+
+
+def test_a_cross_street_renamed_across_the_divided_road_keeps_both_nodes() -> None:
+    """Review of the J3 fix, case 1: Oak St north of Georgia Ave is Elm St south of
+    it; both carriageway nodes are the signal's junction."""
+    ways = divided(
+        way(12, STREET | {"name": "Oak Street"}, {5: (0, 100), 1: (0, 7)}),
+        way(13, STREET | {"name": "Elm Street"}, {1: (0, 7), 7: (0, -7), 4: (0, -100)}),
+    )
+    assert agency_signals.match([signal(0, 2)], ways, {}).nodes == {1, 7}
+    # Renamed at the far carriageway itself.
+    ways = divided(
+        way(12, STREET | {"name": "Oak Street"}, {5: (0, 100), 1: (0, 7), 7: (0, -7)}),
+        way(13, STREET | {"name": "Elm Street"}, {7: (0, -7), 4: (0, -100)}),
+    )
+    assert agency_signals.match([signal(0, 2)], ways, {}).nodes == {1, 7}
+
+
+def test_a_t_on_a_divided_road_with_an_unnamed_crossover_keeps_both_nodes() -> None:
+    """Case 2: the far carriageway's node has the avenue alone named there."""
+    ways = divided(
+        way(12, STREET | {"name": "Oak Street"}, {5: (0, 100), 1: (0, 7)}),
+        way(14, {"highway": "tertiary"}, {1: (0, 7), 7: (0, -7)}),
+    )
+    assert agency_signals.match([signal(0, 2)], ways, {}).nodes == {1, 7}
+
+
+def test_an_entrance_nearer_the_point_than_the_junction_is_not_the_anchor() -> None:
+    """Case 3: the agency point 5 m from a plain entrance and 7 m from Oak St: the
+    junction with the most named roads is the signal's."""
+    ways = [
+        way(10, GEORGIA, {2: (-100, 0), 1: (0, 0), 6: (12, 0), 3: (100, 0)}),
+        way(11, STREET | {"name": "Oak Street"}, {4: (0, -100), 1: (0, 0), 5: (0, 100)}),
+        way(12, {"highway": "service"}, {6: (12, 0), 9: (12, -100)}),
+    ]
+    assert agency_signals.match([signal(7, 0)], ways, {}).nodes == {1}
+
+
+def test_an_osm_signal_on_the_far_carriageway_is_the_junctions() -> None:
+    """Case 4: OSM maps the signal at the far carriageway's node only, where the cross
+    street is renamed: the junction has it, and no second signal is added."""
+    ways = divided(
+        way(12, STREET | {"name": "Oak Street"}, {5: (0, 100), 1: (0, 7)}),
+        way(13, STREET | {"name": "Elm Street"}, {1: (0, 7), 7: (0, -7), 4: (0, -100)}),
+    )
+    result = agency_signals.match([signal(0, 3)], ways, {99: at(0, -7)})
+    assert result.nodes == set()
+    assert result.already_in_osm == {"ddot": 1}
+
+
+def test_a_side_street_off_the_cross_street_is_another_junction() -> None:
+    """Along the anchor's cross street, a node where a road of a new name joins is
+    another junction too."""
+    ways = [
+        way(10, GEORGIA, {2: (-100, 0), 1: (0, 0), 3: (100, 0)}),
+        way(
+            11, STREET | {"name": "Oak Street"}, {4: (0, -100), 1: (0, 0), 6: (0, 15), 5: (0, 100)}
+        ),
+        way(12, STREET | {"name": "Elm Street"}, {6: (0, 15), 9: (100, 15)}),
+    ]
+    assert agency_signals.match([signal(0, 2)], ways, {}).nodes == {1}
+
+
 def test_a_junction_beyond_reach_is_not_marked() -> None:
     result = agency_signals.match([signal(0, 40)], crossroads(), {})
     assert result.nodes == set()
