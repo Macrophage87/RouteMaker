@@ -501,7 +501,8 @@ function Ribbon({
         const width = x(trail.toM) - left;
         return (
           <g key={`trail-${trail.fromM}`} className="ride-ahead-mtb">
-            <rect x={left} y={band} width={width} height={RIBBON_H} fill={trail.color} />
+            {/* An edge, so a trail's colour (the black one most) still reads on the dark panel (styles.css). */}
+            <rect className="ride-ahead-mtb-fill" x={left} y={band} width={width} height={RIBBON_H} fill={trail.color} strokeWidth={1} />
             {railYs.map((y) => (
               <g key={y}>
                 <line className="ride-ahead-mtb-bed" x1={left} x2={left + width} y1={y} y2={y} strokeWidth={RAIL_H + 1.5} />
