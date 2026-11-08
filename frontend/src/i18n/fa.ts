@@ -67,6 +67,10 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Busy crossing, no signal.": "تقاطع شلوغ، چراغ راهنمایی ندارد.",
   "Busy crossing.": "تقاطع شلوغ.",
   "Busy junction.": "محل اتصال شلوغ.",
+  // A signal that may need a button press (the owner, 2026-11-08): the card's note and the words said.
+  // Drafted by Claude: FLAGGED for review by a native speaker.
+  "Light may need a button press": "شاید چراغ راهنمایی با فشار دکمه سبز شود",
+  "Button for the light.": "دکمهٔ چراغ.",
   "Busy junction at a signal.": "محل اتصال شلوغ، چراغ راهنمایی دارد.",
   "Busy junction at a stop sign.": "محل اتصال شلوغ، تابلوی ایست دارد.",
   "Busy junction, no signal.": "محل اتصال شلوغ، چراغ راهنمایی ندارد.",

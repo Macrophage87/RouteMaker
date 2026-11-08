@@ -67,6 +67,10 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Busy crossing, no signal.": "Carrefour très fréquenté, sans feu.",
   "Busy crossing.": "Carrefour très fréquenté.",
   "Busy junction.": "Intersection très fréquentée.",
+  // A signal that may need a button press (the owner, 2026-11-08): the card's note and the words said.
+  // Drafted by Claude: FLAGGED for review by a native speaker.
+  "Light may need a button press": "Le feu peut demander d'appuyer sur le bouton",
+  "Button for the light.": "Bouton pour le feu.",
   "Busy junction at a signal.": "Intersection très fréquentée, avec feu.",
   "Busy junction at a stop sign.": "Intersection très fréquentée, avec stop.",
   "Busy junction, no signal.": "Intersection très fréquentée, sans feu.",

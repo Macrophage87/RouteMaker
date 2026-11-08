@@ -366,6 +366,16 @@ export interface Cue {
   walkM?: number;
   /** A closure's source and until when (v0.8.2): shown in small print on the card, never said. */
   citation?: string;
+  /**
+   * The signal here may need a button press for a light change (the API's light_buttons; the owner, 2026-11-08): the
+   * card shows "Light may need a button press" and the first warning ends "Button for the light." (withButtons).
+   */
+  button?: boolean;
+  /**
+   * A button signal's own cue, where no turn or crossing is near it (withButtons): the note alone, said short; not a
+   * warning on the card, and never a row of a course or a cue sheet (course.ts routeCues).
+   */
+  buttonOnly?: boolean;
   /** The description entry's kind it came from (a course export keeps Avoid and work-zone hazards); absent on the end. */
   source?: DescriptionEntry["kind"];
   /**
@@ -1066,7 +1076,10 @@ export function rideModel(route: RouteResponse, vias: readonly number[] = [], na
   cues.length = 0;
   cues.push(...kept);
   cues.forEach((cue, i) => (cue.index = i));
+  // The signals that may need a button press (the API's light_buttons, in the description's metres).
+  withButtons(cues, (route.light_buttons ?? []).map((button) => toLine(button.at_m)));
   joinJogs(cues);
+  buttonsOnJogs(cues);
   const farSide = farSideAtEnd(route.arrival_side, entries);
   cues.push({ index: cues.length, kind: "end", atM: lengthM, text: endWords(route.arrival_side), movement: null, street: null, severity: null, tier: null, stop: null, ...(farSide ? { farSide } : {}) });
   const paceMs = route.distance_m > 0 && route.duration_s > 0 ? route.distance_m / route.duration_s : null;
@@ -1555,8 +1568,11 @@ export function cueSpoken(cue: Cue, phase: Phase, distanceM: number, first = pha
   // A jog's reminder about 10 s out is its turns without the streets, said at the advance cue and on the card, so the
   // urgent "now" does not cut off its last turns; in full when it is the first thing said for the cue.
   const text = phase === "prepare" && !first && cue.then?.length && cue.movement ? jogShortWords(cue) : cueWords(cue, true);
+  // A signal that may need its button: its own cue says the short words; another cue ends its first warning with them.
+  if (buttonOnly(cue)) return t("In {distance}, {cue}", { distance: spokenDistance(distanceM), cue: inSentence(cue, t(BUTTON_SAID)) });
   const said = t("In {distance}, {cue}", { distance: spokenDistance(distanceM), cue: inSentence(cue, text) });
-  return busy ? `${said} ${t("Busy junction.")}` : said;
+  const warned = busy ? `${said} ${t("Busy junction.")}` : said;
+  return cue.button && first ? `${warned} ${t(BUTTON_SAID)}` : warned;
 }
 
 /**
@@ -1977,6 +1993,55 @@ function ahead(model: RideModel, cue: Cue, progressM: number): boolean {
 /** A road a path crosses is not said on its own this near another cue that names it. */
 export const CROSSING_NEAR_CUE_M = 30;
 
+/**
+ * A signal that may need a button press for a light change (the owner, 2026-11-08: "Put something like a note: 'this
+ * intersection might require a button press for a light change.'", then "Try to make it concise, especially when
+ * spoken"): the card's words, and the words said at the end of the cue's first warning.
+ */
+export const BUTTON_SHOWN = "Light may need a button press";
+export const BUTTON_SAID = "Button for the light.";
+/** A button is noted on the turn, crossing or junction cue this near it; with none, it has a cue of its own. */
+export const BUTTON_NEAR_CUE_M = 40;
+
+/**
+ * Marks the cue at each button signal (`atM`, metres along the line): the nearest turn, crossing or junction cue
+ * within BUTTON_NEAR_CUE_M takes `button`; where there is none (a signal the route goes straight through with nothing
+ * else to say), a cue of its own says the note. The cues are put back in order along the line.
+ */
+export function withButtons(cues: Cue[], atM: readonly number[]): void {
+  if (!atM.length) return;
+  for (const at of atM) {
+    let best: Cue | null = null;
+    for (const cue of cues) {
+      if (cue.kind !== "turn" && cue.kind !== "crossing" && cue.kind !== "hazard") continue;
+      if (Math.abs(cue.atM - at) <= BUTTON_NEAR_CUE_M && (!best || Math.abs(cue.atM - at) < Math.abs(best.atM - at))) best = cue;
+    }
+    if (best) best.button = true;
+    else cues.push({ index: cues.length, kind: "hazard", atM: at, text: t(BUTTON_SHOWN), button: true, buttonOnly: true, movement: null, street: null, severity: null, tier: null, stop: null });
+  }
+  cues.sort((a, b) => a.atM - b.atM);
+  cues.forEach((cue, i) => (cue.index = i));
+}
+
+/** Whether a cue is a button signal's own (withButtons), its words the note alone: by its flag, never by its words, which
+ * are in the language the route was read in. */
+export function buttonOnly(cue: Pick<Partial<Cue>, "buttonOnly">): boolean {
+  return cue.buttonOnly === true;
+}
+
+/**
+ * A jog's later turn is said early only within its first turn's warning, and alone at "now": a button at one of them
+ * is noted on the jog's first turn, whose first warning says it (joinJogs has run).
+ */
+function buttonsOnJogs(cues: Cue[]): void {
+  cues.forEach((cue, i) => {
+    if (!cue.joined || !cue.button) return;
+    let head = i - 1;
+    while (head > 0 && cues[head].joined) head--;
+    if (head >= 0) cues[head].button = true;
+  });
+}
+
 /** A road a path crosses leads the card only this near (about when it is said); before that the next turn does. */
 export const CROSSING_SHOWN_M = 100;
 
@@ -2096,7 +2161,7 @@ export function routeJunctions(model: RideModel): RouteJunction[] {
     if (i > 0) add(s.fromM, model.stretches[i - 1].street, s.street);
   });
   for (const cue of model.cues) {
-    if (cue.kind === "hazard" && cue.movement === null) add(cue.atM, stretchAt(model, cue.atM)?.street ?? null, cue.street);
+    if (cue.kind === "hazard" && cue.movement === null && !cue.buttonOnly) add(cue.atM, stretchAt(model, cue.atM)?.street ?? null, cue.street);
   }
   return out.sort((a, b) => a.atM - b.atM);
 }

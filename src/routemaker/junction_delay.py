@@ -48,12 +48,43 @@ the dearest of them counts, or the signal's wait where one of them is a signal (
 road's second carriageway is not mapped with a signal of its own). Junctions that cost
 nothing (a driveway, a way split) neither start nor stretch such a run, so a street with a
 driveway every few metres still counts each of its stop signs.
+
+Signals outside the major cities (the owner, 2026-11-08: "along stroads that you'd find in
+many of the suburbs, the light cycles are a lot longer than what you'd find in DC"). In the
+owner's rides, 2026-11, the stopped time at a red was a median of 19 s at 4 signals on the
+District's and Baltimore's grids, 52 s at 21 suburban signals, and 66 s (mean 68 s) at the 16
+where the rider crossed a big suburban road (Telegraph Rd, Beulah St, Franconia-Springfield
+Pkwy, MD 216, Ammendale Rd); arrivals on green do not show, so the wait per arrival there is
+inferred at about 45 to 55 s. He chose (`signal_wait`), outside the District, Baltimore City,
+Alexandria and Arlington (the caller's `suburban`):
+
+- crossing or turning onto a trunk or primary road, or one the junction model reads with 4 or
+  more lanes or a speed of 40 mph or more (`big`), SUBURBAN_BIG_SIGNAL_S;
+- any other signal, a secondary road crossed and riding along the big road through its own
+  signals included, SUBURBAN_SIGNAL_S (the owner, later the same day: "I don't think there
+  are many 15 second suburban signals. Never really encountered one. 30 is probably more
+  realistic. Cities do have quicker signal changes."). The cities keep SIGNAL_DELAY_S.
+
+The time shown is those seconds. When routes are ranked a suburban signal's wait counts
+SUBURBAN_SIGNAL_WEIGHT times ("I'd probably double A, with a 2x penalty but keep those
+numbers. There's a 'pain' factor to waiting at busy roads"); a city's counts once.
+
+Beg buttons (the owner: "They aren't very common in DC, but they are definitely frustrating
+elsewhere"). A suburban signal where the rider crosses or turns onto a big or secondary road
+from a path, a sidepath, a trail or a minor road (unclassified, residential, service) is read
+as actuated, and so is any signal whose crossing the map tags `button_operated=yes` where the
+rider is on the crossing or the path (`buttons`, the ways' OSM ids). Such a crossing ranks as
+BUTTON_RANKED_S of waiting ("something like a 2 minute wait, still not as bad as a stop sign
+across the same road"; "If there are cars waiting, then it wouldn't, but we should penalize
+those"), held below what giving way at a stop sign across the same road costs the ranking
+(`stop_extra_s`, from the junction model); its time shown stays the signal's measured wait,
+and the answer marks it ("Light may need a button press").
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable, Collection, Iterable
-from dataclasses import replace
+from collections.abc import Callable, Collection, Iterable, Mapping
+from dataclasses import dataclass, replace
 
 from .intersections import Movement
 from .trace_junctions import NOT_A_ROAD_USES, PATH_USES, RawJunction
@@ -67,6 +98,33 @@ STOP_DELAY_S = 8.0
 # about 16.5 s, rounded down to 15 because many of the region's signals run shorter cycles
 # on the side street a rider crosses from. Inferred, not measured.
 SIGNAL_DELAY_S = 15.0
+# A signal outside the major cities (see the docstring; the owner's rides, 2026-11, and his
+# choices of 2026-11-08): crossing or turning onto a big road (trunk or primary, or 4+ lanes,
+# or 40 mph+), and every other suburban signal, riding along the big road included ("I don't
+# think there are many 15 second suburban signals. Never really encountered one. 30 is
+# probably more realistic. Cities do have quicker signal changes.").
+SUBURBAN_BIG_SIGNAL_S = 45.0
+SUBURBAN_SIGNAL_S = 30.0
+# How many times a suburban signal's wait counts when routes are ranked (the time shown is
+# the wait itself): the owner's "pain" factor at busy roads. A city's signal counts once.
+SUBURBAN_SIGNAL_WEIGHT = 2.0
+# The most a wait counts in the ranking, the ride type's wait weight and the suburban weight
+# (or a button's two minutes) stacked, as a multiple of the wait shown: Road Bike's 3x on a
+# suburban signal's 2x would be 6x (the owner, 2026-11-08: "Maybe go to 5. People prefer free
+# flow on road bikes."). A city signal stays at Road Bike's 3x.
+MAX_STACKED_WEIGHT = 5.0
+# A crossing read as needing a beg button (see the docstring), as the ranking counts it: two
+# minutes of waiting, held below a stop sign across the same road (`signal_wait`).
+BUTTON_RANKED_S = 120.0
+# How far below that stop sign's price a button crossing is held (seconds of waiting).
+BUTTON_BELOW_STOP_S = 1.0
+# The classes a suburban signal's big-road wait is for, and the secondary road a beg button is
+# also read at (ranks).
+BIG_SIGNAL_MAX_RANK = 2
+SECONDARY_SIGNAL_RANK = 3
+# A rider arriving on a road this quiet or quieter (unclassified, residential, a service road,
+# a path) at a suburban signal on a big or secondary road is read as needing its button.
+BUTTON_MIN_OWN_RANK = 5
 # Giving way to a road busier than a neighbourhood street, which does not stop for the
 # rider, by the busiest such road's rank (`ROAD_RANK`): the wait for a gap in its traffic
 # and the stop. The Highway Capacity Manual's levels of service for a two-way-stop
@@ -181,25 +239,135 @@ def _stop(busiest_rank: int, rolls: bool) -> float:
     return YIELD_DELAY_S if rolls and busiest_rank >= ROLL_MAX_BUSY_RANK else STOP_DELAY_S
 
 
-def delay_runs(
+@dataclass(frozen=True)
+class SignalWait:
+    """A signal's wait (`signal_wait`): the seconds shown, the seconds the ranking counts,
+    and whether the rider is read as needing to press its button."""
+
+    seconds: float
+    ranked_s: float
+    button: bool = False
+
+
+# Valhalla's `use` of the ways a rider on a crossing or a path is on (`buttons`).
+_CROSSING_USES = PATH_USES | {"pedestrian_crossing"}
+
+
+def _own_rank(junction: RawJunction) -> int:
+    """The rank of the way the rider arrives on: a path, a trail or a crossing ranks below
+    every road."""
+    if junction.in_use in _CROSSING_USES:
+        return _NO_RANK
+    return _rank(junction.in_class)
+
+
+def signal_crossed_rank(junction: RawJunction) -> int | None:
+    """The rank of the busiest road the rider crosses or turns onto at a signal, of the
+    roads as busy as their own or busier, their own road going on ahead left out; None
+    where they ride along the busier road (a side road joining, a turn off it onto a
+    quieter one) or meet no road."""
+    own = _own_rank(junction)
+    headed = len(junction.other_headings) == len(junction.others)
+    ranks: list[int] = []
+    for i, ((use, _one_way), cls) in enumerate(
+        zip(junction.others, junction.other_classes, strict=False)
+    ):
+        rank = _rank(cls)
+        if use in NOT_A_ROAD_USES or rank >= _NO_RANK or rank > own:
+            continue
+        heading = junction.other_headings[i] if headed else None
+        if rank == own and heading is not None and junction.in_heading is not None:
+            off = abs((heading - junction.in_heading + 180.0) % 360.0 - 180.0)
+            if off <= AHEAD_DEG:
+                # The rider's own road going on ahead.
+                continue
+        ranks.append(rank)
+    straight_on = junction.movement is Movement.STRAIGHT and (
+        junction.in_way == junction.out_way or junction.in_class == junction.out_class
+    )
+    out = _NO_RANK if junction.out_use in _CROSSING_USES else _rank(junction.out_class)
+    if not straight_on and out <= own and out < _NO_RANK:
+        ranks.append(out)
+    return min(ranks) if ranks else None
+
+
+def signal_wait(
+    junction: RawJunction,
+    suburban: bool = False,
+    big: bool = False,
+    tagged_button: bool = False,
+    stop_extra_s: float | None = None,
+) -> SignalWait:
+    """The wait at one signal (see the module docstring). `suburban`: it lies outside the
+    District, Baltimore City, Alexandria and Arlington; `big`: the junction model reads a
+    road crossed or joined there with 4 lanes or more or at 40 mph or more
+    (`intersections.big_signal_points`); `tagged_button`: the map tags a way the rider
+    arrives or leaves on `button_operated=yes`; `stop_extra_s`: what the junction model
+    charges the ranking for a stop sign there over the signal, as seconds of waiting
+    (None: not known, and the button crossing is not held below it)."""
+    crossed = signal_crossed_rank(junction)
+    # Crossing or turning onto a big road, or onto a secondary one: the crossings a beg
+    # button is read at, where the rider comes from a path or a minor road.
+    onto_big = crossed is not None and (crossed <= BIG_SIGNAL_MAX_RANK or big)
+    onto_busy = onto_big or crossed == SECONDARY_SIGNAL_RANK
+    seconds = SIGNAL_DELAY_S
+    if suburban:
+        seconds = SUBURBAN_BIG_SIGNAL_S if onto_big else SUBURBAN_SIGNAL_S
+    ranked = seconds * SUBURBAN_SIGNAL_WEIGHT if suburban else seconds
+    inferred = suburban and onto_busy and _own_rank(junction) >= BUTTON_MIN_OWN_RANK
+    on_crossing = junction.in_use in _CROSSING_USES or junction.out_use in _CROSSING_USES
+    if not (inferred or (tagged_button and on_crossing)):
+        return SignalWait(seconds, ranked)
+    pressed = BUTTON_RANKED_S
+    if stop_extra_s is not None:
+        # A stop sign across the same road: its give-way wait, plus the junction model's
+        # price for it over the signal's, both as the ranking counts them.
+        stop = _stop(crossed if crossed is not None else _NO_RANK, False)
+        pressed = min(pressed, stop + stop_extra_s - BUTTON_BELOW_STOP_S)
+    # Never below the signal's own wait as ranked: a button does not make a light quicker.
+    return SignalWait(seconds, max(pressed, ranked), True)
+
+
+@dataclass(frozen=True)
+class Wait:
+    """One run's wait (`waits`): where along the traced route it begins (metres) and its
+    node, the seconds shown and the seconds the ranking counts, and whether the rider is
+    read as needing to press a signal's button there."""
+
+    m: float
+    lon: float
+    lat: float
+    seconds: float
+    ranked_s: float
+    button: bool = False
+
+
+def waits(
     junctions: Iterable[RawJunction],
     rolls: Callable[[float, float], bool] | None = None,
     beacon: Callable[[float, float], bool] | None = None,
     signals: Collection[tuple[float, float]] = (),
-) -> list[tuple[float, float]]:
-    """Each run's wait as (metres along the traced route where it begins, seconds): each
-    junction's `delay_at`, the costing junctions within MERGE_M of the first of a run counted
-    once, at the dearest or, where one of them is a signal, at the signal's wait.
-    `rolls(lon, lat)` says where a stop sign may be taken as a yield, `beacon(lon, lat)`
-    where a mapped signal is a known flashing beacon (the junction model's beacon list);
-    None: nowhere. Each is asked only where its answer can change the cost. `signals`: the
-    points of the junctions the junction model reads as signalised
-    (`intersections.signal_points` of the route's events), a signal there as on the node.
+    suburban: Callable[[float, float], bool] | None = None,
+    big: Collection[tuple[float, float]] = (),
+    buttons: Collection[int] = (),
+    stop_extra_s: Mapping[tuple[float, float], float] | None = None,
+) -> list[Wait]:
+    """Each run's wait: each junction's `delay_at`, the costing junctions within MERGE_M of
+    the first of a run counted once, at the dearest or, where one of them is a signal, at
+    the signal's wait (`signal_wait`; the run's dearest signal as ranked). `rolls(lon, lat)`
+    says where a stop sign may be taken as a yield, `beacon(lon, lat)` where a mapped signal
+    is a known flashing beacon (the junction model's beacon list), `suburban(lon, lat)`
+    where a signal lies outside the major cities (`core.city_limits`); None: nowhere. Each
+    is asked only where its answer can change the cost. `signals`: the points of the
+    junctions the junction model reads as signalised (`intersections.signal_points` of the
+    route's events), a signal there as on the node; `big`: those it reads a big road at
+    (`intersections.big_signal_points`); `buttons`: the OSM ways the map tags
+    `button_operated=yes`; `stop_extra_s`: by signal point, what a stop sign there would
+    cost the ranking over the signal, as seconds of waiting (`intersections.stop_extra_ft`).
     The ride's arrival times place each wait where it is (`routemaker.time_marks`)."""
-    runs: list[tuple[float, float]] = []
-    run_start: float | None = None
-    run_cost = 0.0
-    run_signal = False
+    out: list[Wait] = []
+    run: Wait | None = None
+    run_signal: SignalWait | None = None
     for junction in sorted(junctions, key=lambda j: j.m):
         here = (junction.lon, junction.lat)
         if not junction.signal and here in signals:
@@ -210,17 +378,54 @@ def delay_runs(
             cost = delay_at(junction, True, is_beacon)
         if cost <= 0:
             continue
-        signal = junction.signal and not is_beacon
-        if run_start is not None and junction.m - run_start <= MERGE_M:
-            run_signal = run_signal or signal
-            run_cost = SIGNAL_DELAY_S if run_signal else max(run_cost, cost)
+        signal = None
+        if junction.signal and not is_beacon:
+            signal = signal_wait(
+                junction,
+                suburban=suburban is not None and suburban(*here),
+                big=here in big,
+                tagged_button=bool(buttons)
+                and (junction.in_way in buttons or junction.out_way in buttons),
+                stop_extra_s=(stop_extra_s or {}).get(here),
+            )
+        if run is not None and junction.m - run.m <= MERGE_M:
+            if signal is not None and (
+                run_signal is None
+                or (signal.ranked_s, signal.seconds) > (run_signal.ranked_s, run_signal.seconds)
+            ):
+                run_signal = signal
+            if run_signal is not None:
+                run = replace(
+                    run,
+                    seconds=run_signal.seconds,
+                    ranked_s=run_signal.ranked_s,
+                    button=run.button or run_signal.button,
+                )
+            elif cost > run.seconds:
+                run = replace(run, seconds=cost, ranked_s=cost)
+            continue
+        if run is not None:
+            out.append(run)
+        run_signal = signal
+        if signal is not None:
+            run = Wait(junction.m, *here, signal.seconds, signal.ranked_s, signal.button)
         else:
-            if run_start is not None:
-                runs.append((run_start, run_cost))
-            run_start, run_cost, run_signal = junction.m, cost, signal
-    if run_start is not None:
-        runs.append((run_start, run_cost))
-    return runs
+            run = Wait(junction.m, *here, cost, cost)
+    if run is not None:
+        out.append(run)
+    return out
+
+
+def delay_runs(
+    junctions: Iterable[RawJunction],
+    rolls: Callable[[float, float], bool] | None = None,
+    beacon: Callable[[float, float], bool] | None = None,
+    signals: Collection[tuple[float, float]] = (),
+    **reading,
+) -> list[tuple[float, float]]:
+    """Each run's wait as (metres along the traced route where it begins, seconds shown):
+    `waits`, whose other arguments `reading` passes on."""
+    return [(w.m, w.seconds) for w in waits(junctions, rolls, beacon, signals, **reading)]
 
 
 def delay_s(
@@ -228,6 +433,25 @@ def delay_s(
     rolls: Callable[[float, float], bool] | None = None,
     beacon: Callable[[float, float], bool] | None = None,
     signals: Collection[tuple[float, float]] = (),
+    **reading,
 ) -> float:
-    """The route's junction delay in seconds: the sum of its runs' waits (`delay_runs`)."""
-    return float(sum(cost for _m, cost in delay_runs(junctions, rolls, beacon, signals)))
+    """The route's junction delay in seconds shown: the sum of its runs' waits (`waits`)."""
+    return float(sum(w.seconds for w in waits(junctions, rolls, beacon, signals, **reading)))
+
+
+def ranked_s(found: Iterable[Wait], wait_weight: float = 1.0) -> float:
+    """The waits as the ranking counts them (`Wait.ranked_s`): a suburban signal's
+    SUBURBAN_SIGNAL_WEIGHT times, a button crossing's at BUTTON_RANKED_S. With a ride type's
+    `wait_weight` (`presets.wait_weight_for`: Road Bike's 3), each wait times it, the two
+    stacked never past MAX_STACKED_WEIGHT times the wait shown, nor below the wait as ranked
+    at 1x; the sum is given back divided by `wait_weight`, as `refine.Analysis.score`
+    multiplies it by that again."""
+    if wait_weight <= 0:
+        return 0.0
+    total = 0.0
+    for w in found:
+        weighted = wait_weight * w.ranked_s
+        if wait_weight > 1.0:
+            weighted = min(weighted, max(MAX_STACKED_WEIGHT * w.seconds, w.ranked_s))
+        total += weighted
+    return float(total / wait_weight)

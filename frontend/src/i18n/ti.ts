@@ -67,6 +67,10 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Busy crossing, no signal.": "ብዙሕ ትራፊክ ዘለዎ መስቀላ፣ መብራህቲ ትራፊክ የለን።",
   "Busy crossing.": "ብዙሕ ትራፊክ ዘለዎ መስቀላ።",
   "Busy junction.": "ብዙሕ ትራፊክ ዘለዎ መራኸቢ።",
+  // A signal that may need a button press (the owner, 2026-11-08): the card's note and the words said.
+  // Drafted by Claude: FLAGGED for review by a native speaker.
+  "Light may need a button press": "መብራህቲ ትራፊክ መጠወቒ ምጥዋቕ ከድልዮ ይኽእል",
+  "Button for the light.": "መጠወቒ መብራህቲ።",
   "Busy junction at a signal.": "ብዙሕ ትራፊክ ዘለዎ መራኸቢ፣ መብራህቲ ትራፊክ ኣሎ።",
   "Busy junction at a stop sign.": "ብዙሕ ትራፊክ ዘለዎ መራኸቢ፣ ምልክት ደው ምባል ኣሎ።",
   "Busy junction, no signal.": "ብዙሕ ትራፊክ ዘለዎ መራኸቢ፣ መብራህቲ ትራፊክ የለን።",

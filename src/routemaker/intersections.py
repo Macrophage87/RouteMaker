@@ -710,6 +710,16 @@ class Event:
     # signal's, where the trace shows none on the rider's own approach (hunt J5,
     # `routemaker.junction_delay`, `signal_points`).
     signals: tuple[tuple[float, float], ...] = field(default=(), compare=False)
+    # Of `signals`, the points where a road crossed or joined there has SIGNAL_BIG_LANES
+    # lanes or more in all or a speed of SIGNAL_BIG_MPH or more (`big_road`): outside the
+    # major cities the junction-delay model times such a signal as a big road's
+    # (`routemaker.junction_delay.SUBURBAN_BIG_SIGNAL_S`; the owner, 2026-11-08).
+    big_signals: tuple[tuple[float, float], ...] = field(default=(), compare=False)
+    # By point of `signals`, how many feet more the junction would cost with a stop sign on
+    # the rider's approach in place of its signal (`stop_extra_ft`): a crossing read as
+    # needing a beg button is held below a stop sign across the same road (the owner,
+    # 2026-11-08: "still not as bad as a stop sign across the same road").
+    stop_extra: tuple[tuple[tuple[float, float], float], ...] = field(default=(), compare=False)
 
 
 def _untimed(event: Event) -> float:
@@ -1492,6 +1502,8 @@ def merge_nearby(events: list[Event]) -> list[Event]:
                 time_band=band if abs(cost - untimed) >= 1.0 else None,
                 untimed_ft=untimed,
                 signals=tuple(dict.fromkeys(p for e in group for p in e.signals)),
+                big_signals=tuple(dict.fromkeys(p for e in group for p in e.big_signals)),
+                stop_extra=tuple(dict(pair for e in group for pair in e.stop_extra).items()),
             )
         )
         group.clear()
@@ -1731,18 +1743,50 @@ def assess_route(
     never across a stop (`stops`, where each leg ends). `when` is the ride time
     (`time_factor`, 468a)."""
     events = (
-        _with_signal(assess(junction, group, when), junction)
+        _with_signal(assess(junction, group, when), junction, group, when)
         for junction in share_controls(junctions)
     )
     merged = merge_nearby(sorted((e for e in events if e is not None), key=lambda e: e.m))
     return number_groups(merged, stops) if group else merged
 
 
-def _with_signal(event: Event | None, junction: Junction) -> Event | None:
-    """The event with its junction's point in `signals` where its control is a signal."""
+def _with_signal(
+    event: Event | None, junction: Junction, group: bool = False, when: str | None = None
+) -> Event | None:
+    """The event with its junction's point in `signals` where its control is a signal, in
+    `big_signals` where a road crossed or joined there is a big one (`big_road`), and its
+    stop sign's extra cost in `stop_extra` (`group`, `when`: as the event was assessed)."""
     if event is None or junction.control is not Control.SIGNAL:
         return event
-    return replace(event, signals=((junction.lon, junction.lat),))
+    here = (junction.lon, junction.lat)
+    joined = () if junction.continues else (junction.outgoing,)
+    big = any(big_road(road) for road in (*junction.crossed, *joined))
+    stopped = assess(replace(junction, control=Control.STOP), group, when)
+    extra = max((stopped.cost_ft if stopped is not None else 0.0) - event.cost_ft, 0.0)
+    return replace(
+        event,
+        signals=(here,),
+        big_signals=(here,) if big else (),
+        stop_extra=((here, extra),),
+    )
+
+
+# A road the junction-delay model times a suburban signal on as a big road's, whatever its
+# class (`routemaker.junction_delay.SUBURBAN_BIG_SIGNAL_S`; the owner, 2026-11-08: "a road
+# with 4+ lanes, or one at 40 mph+"): lanes in all, both directions, and mph.
+SIGNAL_BIG_LANES = 4
+SIGNAL_BIG_MPH = 40.0
+
+
+def big_road(road: Road) -> bool:
+    """Whether a road has SIGNAL_BIG_LANES lanes or more in all, or a speed of
+    SIGNAL_BIG_MPH or more: the map's, else its jurisdiction's statutory default (never the
+    45 mph stopgap, which is a guess)."""
+    lanes = _lanes_total(road)
+    if lanes is not None and lanes >= SIGNAL_BIG_LANES:
+        return True
+    speed = road.speed_mph if road.speed_mph is not None else road.default_speed_mph
+    return speed is not None and speed >= SIGNAL_BIG_MPH
 
 
 def signal_points(events: Sequence[Event] | None) -> frozenset[tuple[float, float]]:
@@ -1750,6 +1794,18 @@ def signal_points(events: Sequence[Event] | None) -> frozenset[tuple[float, floa
     for `routemaker.junction_delay`: the junction model reads a signal up each road's arms
     (`core.junctions`), which the route's trace does not carry (hunt J5)."""
     return frozenset(point for event in events or () for point in event.signals)
+
+
+def big_signal_points(events: Sequence[Event] | None) -> frozenset[tuple[float, float]]:
+    """The signalised points where a road crossed or joined is a big one (`Event.big_signals`),
+    for `routemaker.junction_delay`'s suburban wait."""
+    return frozenset(point for event in events or () for point in event.big_signals)
+
+
+def stop_extra_ft(events: Sequence[Event] | None) -> dict[tuple[float, float], float]:
+    """By signalised point, the feet more a stop sign there would cost (`Event.stop_extra`),
+    for holding a beg-button crossing below it (`routemaker.junction_delay.signal_wait`)."""
+    return {point: ft for event in events or () for point, ft in event.stop_extra}
 
 
 def penalty_m(events: list[Event]) -> float:

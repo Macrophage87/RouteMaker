@@ -70,6 +70,10 @@ export const ES: Readonly<Record<string, string>> = {
   "Busy crossing, no signal.": "Intersección con mucho tráfico, sin semáforo.",
   "Busy crossing.": "Intersección con mucho tráfico.",
   "Busy junction.": "Intersección con mucho tráfico.",
+  // A signal that may need a button press (the owner, 2026-11-08): the card's note and the words said.
+  // Drafted by Claude: FLAGGED for review by a native speaker.
+  "Light may need a button press": "Puede que el semáforo necesite que pulse el botón",
+  "Button for the light.": "Botón del semáforo.",
   // A flagged junction a stretch is entered at straight on (round-2 audit D25), its control as the crossings say it.
   "Busy junction at a signal.": "Intersección con mucho tráfico, con semáforo.",
   "Busy junction at a stop sign.": "Intersección con mucho tráfico, con señal de alto.",

@@ -534,6 +534,17 @@ No credit: nothing from these is used.
 - Publisher: U.S. Census Bureau (<https://www.census.gov/geographies/mapping-files/time-series/geo/tiger-line-file.html>).
 - Licence: U.S. public domain.
 - Records: docs/PLAYBOOK.md, "The three reference inputs".
+- Dataset: **2023 cartographic boundary file, counties, 1:500,000** (`cb_2023_us_county_500k`):
+  GEOIDs 24510, 51510 and 51013, the three major cities besides the District that
+  `core.city_limits` names (this page names no county's comparison layer, `tests/test_credits.py`),
+  simplified to 0.0001 degrees with the topology kept and snapped to 1e-5 degrees, in
+  `src/core/geodata/city-boundaries.geojson` (6,379 bytes, sha256
+  `fe0264c2fde80c178bb6003e8203043f24d0d7c83260a4e097b5423e5a72c30b`): the major cities whose
+  signals keep the city's 15 s wait (`core.city_limits`, `routemaker.junction_delay`; the
+  owner, 2026-11-08). Retrieved 2026-11-08: `cb_2023_us_county_500k.zip`, 11,630,077 bytes,
+  sha256 `99d6597b1fc7767deef62e01d28d8b5dcbd578e151855f7dc0d173cbf5bf0868`, from
+  <https://www2.census.gov/geo/tiger/GENZ2023/shp/>. The District is OpenStreetMap's boundary
+  (above).
 
 ## Photon
 

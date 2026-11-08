@@ -4008,7 +4008,7 @@ the router's `node.traffic_signal` and `edge.traffic_signal` flags):
 
 | At the junction | Delay | Why |
 |---|---|---|
-| A traffic signal on the node or within 30 m (100 ft) up the rider's approach, or a junction the intersection model reads as signalised (a signal up any road's arms, from `/locate`: `intersections.signal_points`; hunt J5, 2026-11-08: a signalised trail crossing with its signal on the road's stop lines had been a 30 s give-way) | 15 s | the average wait for a random arrival at a 100 s cycle with 50 s of red (Webster's uniform delay), plus half a stop; inferred |
+| A traffic signal on the node or within 30 m (100 ft) up the rider's approach, or a junction the intersection model reads as signalised (a signal up any road's arms, from `/locate`: `intersections.signal_points`; hunt J5, 2026-11-08: a signalised trail crossing with its signal on the road's stop lines had been a 30 s give-way) | 15 s (outside the major cities 30 or 45 s: below) | the average wait for a random arrival at a 100 s cycle with 50 s of red (Webster's uniform delay), plus half a stop; inferred |
 | The rider gives way to a neighbourhood street (unclassified or residential): crossing one as busy as their own, turning onto one where their own street does not go on ahead, or crossing or leaving a path | 8 s | one stop at a steady effort: Fajans and Curry, ["Why Bicyclists Hate Stop Signs"](https://www.accessmagazine.org/spring-2001/bicyclists-hate-stop-signs), ACCESS 18 (2001), 14.2 against 10.9 mph |
 | The same in the District, where the road given way to is unclassified or residential | 4 s | DC lets a rider take a stop sign as a yield (the owner: "bikes aren't required to stop at stop signs if there's no cross traffic"); a slow-and-roll, inferred |
 | The rider gives way to a busier road that does not stop: tertiary, secondary, primary or busier | 12, 20, 30 s | the wait for a gap (the owner: "a stop sign against a busy street without one probably costs more"); one value per class through the day, from the Highway Capacity Manual's two-way-stop levels of service (HCM 6th ed., Exhibit 20-2: A up to 10 s, B 10-15, C 15-25, D 25-35); inferred |
@@ -4029,6 +4029,48 @@ not stress: a junction's stress is still the intersection model's (section above
 two do not replace each other. Stop and yield signs reach the router only through
 `/locate`, so the model reads who gives way from the roads' classes, not from the signs; no
 map rebuild is needed.
+
+**Suburban signals and beg buttons (the owner, 2026-11-08).** "Along stroads that you'd find
+in many of the suburbs, the light cycles are a lot longer than what you'd find in DC." In the
+owner's rides, 2026-11, the stopped time at a red was a median of 19 s at 4 signals on the
+District's and Baltimore's grids, 52 s at 21 suburban signals and 66 s (mean 68 s) at the 16
+crossings of big suburban roads (Telegraph Rd, Beulah St, Franconia-Springfield Pkwy, MD 216,
+Ammendale Rd); arrivals on green do not show, so the wait per arrival there is inferred at
+about 45 to 55 s. Outside the District, Baltimore City, Alexandria and Arlington
+(`core.city_limits`: the District's OpenStreetMap boundary, the other three the Census
+Bureau's county boundaries, docs/SOURCES.md) a signal's wait is
+(`junction_delay.signal_wait`):
+
+| At the signal, outside the cities | Time shown | Ranked |
+|---|---|---|
+| Crossing or turning onto a trunk or primary road, or one the junction model reads with 4+ lanes in all or at 40 mph+ (`intersections.big_signal_points`, the map's speed or the statutory default) | 45 s | 90 s |
+| Any other signal: a secondary road crossed, riding along the big road through its own signals included (the owner: "I don't think there are many 15 second suburban signals. Never really encountered one. 30 is probably more realistic. Cities do have quicker signal changes.") | 30 s | 60 s |
+| A big or secondary road crossed or turned onto from a path, sidepath, trail or minor road (unclassified, residential, service), or a signal whose crossing or path the map tags `button_operated=yes` (anywhere) | as above (15 s in a city) | 120 s, held below a stop sign across the same road |
+
+In the cities every signal stays 15 s shown and ranked ("Not really needed for DC" "or the
+major cities"). The ranking counts a suburban wait twice ("I'd probably double A, with a 2x
+penalty but keep those numbers. There's a 'pain' factor to waiting at busy roads"):
+`refine.Analysis.junction_ranked_s`, which `score` and `delay_m` read in place of
+`junction_delay_s`. Road Bike's 3x wait weight multiplies it, the two stacked never past 5x
+the wait shown (`junction_delay.MAX_STACKED_WEIGHT`; the owner, 2026-11-08: "Maybe go to 5.
+People prefer free flow on road bikes."): a suburban big crossing ranks 225 s on Road Bike, not
+270 s, a city signal stays at 3x (45 s), and a button crossing is held at 5x too (and still
+below its stop sign). A crossing read as
+needing its beg button ("something like a 2 minute wait, still not as bad as a stop sign
+across the same road"; "If there are cars waiting, then it wouldn't, but we should penalize
+those") ranks as `BUTTON_RANKED_S` 120 s of waiting, held 1 s below the give-way wait plus
+what the junction model charges for a stop sign there over the signal
+(`intersections.stop_extra_ft`, priced in the ranking's units by `refine.stop_wait_s_per_ft`:
+the model's feet at `quiet_cost` x `weight` a metre, a wait at `QUIET_COST_FACTOR` x
+`wait_weight` a second), and never below the signal's own ranked wait. The answer lists such
+signals in `light_buttons` (in the description's metres), and Ride shows "Light may need a
+button press" on the turn or crossing there and ends its first warning with "Button for the
+light." (`navigate.ts` `withButtons`; a signal with no cue near gets a short cue of its own).
+The `button_operated` tag reaches the planner through `segment.button_operated`
+(`pipeline.signals.button_ways`: trail-class ways tagged so, or through a node tagged so), so
+that part needs a map rebuild; on a table built before the column only the inferred buttons
+count. Transit candidate rides (`routing.busy_and_waits`) take the longer waits in their time
+but rank on the waits shown.
 
 ## The worker
 
