@@ -54,6 +54,7 @@ import {
   onOtherLine,
   withClosed,
 } from "./lib/roadClosed.ts";
+import { MTB_DONE_FINDING, MTB_DONE_NAME, MTB_DONE_TEXT, mtbTrailAhead } from "./lib/mtbDone.ts";
 import { requestRoute, requestStations, type ErrorKind, type RouteResponse } from "./lib/api.ts";
 import { VIA_MARKS, drawnLegs, plannedStopNumbers, stopNames, viaIndices, type RideStopMark } from "./lib/pointKinds.ts";
 import {
@@ -1034,6 +1035,10 @@ export function RideMode({
   // Road closed on a dirt trail (the owner, 2026-10-21: "assume that means bad riding conditions until it's opted
   // back in"): no re-plan of the ride rides one, even once that stretch has dropped out of the ones sent.
   const dirtClosed = useRef(replans?.dirtClosed === true);
+  // Done with MTB pressed (lib/mtbDone.ts; the owner, 2026-11-08): every re-plan of the rest of the ride keeps off
+  // mountain-bike trails, and the button goes.
+  const mtbDone = useRef(replans?.mtbDone === true);
+  const [mtbDoneShown, setMtbDoneShown] = useState(mtbDone.current);
   routeRef.current = route;
   // The dials every re-plan and detour of this ride asks with: the plan's at first, then a step calmer or flatter
   // for each Calmer or Flatter press that found a route (lib/rideEase.ts); Plan's own sliders are left as they were.
@@ -1499,7 +1504,7 @@ export function RideMode({
   // A ride's one route request (a re-plan, a detour, the way to the start): the route alone, at the ride's own dials,
   // as the leg's ride type takes them (a Bikeshare or transit leg's plain one: rideTrip.ts legDials).
   const askRoute = (to: LonLat[], heading: number | null, aheadOnly: boolean) =>
-    requestRoute(to, preset, { dials: legDials({ ...dialsRef.current, loop: false }, preset, legBike), vias: viaIndices(to, VIA_MARKS.isVia), straight: drawnLegs(to), routeOnly: true, confirmLong: true, blocked: blockedRef.current, heading, aheadOnly, rideReplan: true, dirtRidden: dirtRidden.current, dirtClosed: dirtClosed.current });
+    requestRoute(to, preset, { dials: legDials({ ...dialsRef.current, loop: false }, preset, legBike), vias: viaIndices(to, VIA_MARKS.isVia), straight: drawnLegs(to), routeOnly: true, confirmLong: true, blocked: blockedRef.current, heading, aheadOnly, rideReplan: true, dirtRidden: dirtRidden.current, dirtClosed: dirtClosed.current, mtbDone: mtbDone.current });
   // The re-plan (plan section 4): one POST /api/route from here through the stops not yet passed to the end.
   // With `via`, a detour: from here to that place first, then on through what was left (the nearest water
   // or restroom, below). A detour's place becomes a stop of the new route, so it is cued and arrived at.
@@ -1699,7 +1704,7 @@ export function RideMode({
       if (found.dirt_closed) dirtClosed.current = true;
       setRoute(found);
       // The ride as it now stands is what a page closed mid-ride resumes (lib/rideResume.ts); never a trip's leg.
-      if (!trip && keepLeft) keepLeftRide({ route: found, points, loop: false, preset, dials: dialsRef.current, fixed: fixedRef.current, replans: rideReplans(loopRide, blockedRef.current, dirtRidden.current, dirtClosed.current) }, VIA_MARKS, Date.now());
+      if (!trip && keepLeft) keepLeftRide({ route: found, points, loop: false, preset, dials: dialsRef.current, fixed: fixedRef.current, replans: rideReplans(loopRide, blockedRef.current, dirtRidden.current, dirtClosed.current, mtbDone.current) }, VIA_MARKS, Date.now());
       // The new route's own standard way through a closure it goes round, if any (none past a road marked closed).
       const through = blockedRef.current.length ? null : (found.closure_through ?? null);
       otherRef.current = through;
@@ -1776,7 +1781,7 @@ export function RideMode({
       const model = modelOf(joined, points);
       modelRef.current = model;
       setRoute(joined);
-      if (!trip && keepLeft) keepLeftRide({ route: joined, points, loop: false, preset, dials: dialsRef.current, fixed: fixedRef.current, replans: rideReplans(loopRide, blockedRef.current, dirtRidden.current, dirtClosed.current) }, VIA_MARKS, Date.now());
+      if (!trip && keepLeft) keepLeftRide({ route: joined, points, loop: false, preset, dials: dialsRef.current, fixed: fixedRef.current, replans: rideReplans(loopRide, blockedRef.current, dirtRidden.current, dirtClosed.current, mtbDone.current) }, VIA_MARKS, Date.now());
       otherRef.current = null;
       setOther(null);
       onStandard.current = false;
@@ -2054,7 +2059,7 @@ export function RideMode({
       if (!dirtRidden.current && !out.state.off && rodeDirt(routeRef.current, modelRef.current.lengthM, wasAtM, out.state.progressM)) {
         dirtRidden.current = true;
         // Kept with the ride at once: a page reloaded before the next re-plan still re-plans on dirt (R2-5).
-        if (!trip && keepLeft) keepLeftRideReplans(rideReplans(loopRide, blockedRef.current, true, dirtClosed.current));
+        if (!trip && keepLeft) keepLeftRideReplans(rideReplans(loopRide, blockedRef.current, true, dirtClosed.current, mtbDone.current));
       }
       rideRef.current = out.state;
       setRide(out.state);
@@ -2575,7 +2580,7 @@ export function RideMode({
     // The ride as it stands, for Keep riding (R2-6): not on a trip, whose leg is worked out again from the whole trip.
     const riding: EndedRiding | null = trip
       ? null
-      : { route: routeRef.current, points: plan.current.points, loop: plan.current.loop, dials: dialsRef.current, replans: rideReplans(loopRide, blockedRef.current, dirtRidden.current, dirtClosed.current) };
+      : { route: routeRef.current, points: plan.current.points, loop: plan.current.loop, dials: dialsRef.current, replans: rideReplans(loopRide, blockedRef.current, dirtRidden.current, dirtClosed.current, mtbDone.current) };
     onEnd(trip && !trip.asPlanned ? null : withoutShapes(planAfterEnd(modelRef.current, rideRef.current, plan.current.points, plan.current.loop, Date.now())), statsRef.current, dockChosen.current ? { name: dockChosen.current, route: routeRef.current, points: plan.current.points } : null, riding);
   };
   // A toggle: pressed, no automatic re-plan (one in flight is voided) and the way back is said once;
@@ -2623,6 +2628,24 @@ export function RideMode({
     }
     gate.online();
     void replan(fix.point, undefined, true, true);
+  };
+  // Done with MTB (lib/mtbDone.ts): one press, under Go round. The ride planned again from here off the mountain-bike
+  // trails, as every re-plan after it is; a re-plan under way is voided and this one made once it settles.
+  const mtbDonePress = () => {
+    const state = rideRef.current;
+    const fix = state.goodFix ?? state.fix;
+    mtbDone.current = true;
+    setMtbDoneShown(true);
+    if (!trip && keepLeft) keepLeftRideReplans(rideReplans(loopRide, blockedRef.current, dirtRidden.current, dirtClosed.current, true));
+    sayDetour(MTB_DONE_FINDING);
+    if (!fix) return;
+    if (gate.busy) {
+      closedPending.current = true;
+      replanTicket.current += 1;
+      return;
+    }
+    gate.online();
+    void replan(fix.point, undefined, true);
   };
   const replanNow = () => {
     // The rider asked, so the press is answered, as Detour's is (review RIDE-5): through the rider's
@@ -3637,6 +3660,16 @@ export function RideMode({
             )}
           </div>
         </div>
+        {/* Done with MTB (lib/mtbDone.ts; the owner, 2026-11-08: "a button under the trail closure"), while a
+            mountain-bike trail is ahead and until pressed. */}
+        {!walking && !ride.arrived && !mtbDoneShown && !fixedRef.current && mtbTrailAhead(route, ride.off ? null : ride.progressM) && (
+          <div className="ride-mtb-done-row">
+            <button type="button" className="secondary ride-mtb-done" onClick={mtbDonePress} aria-label={MTB_DONE_NAME} title={MTB_DONE_NAME}>
+              <Icon name="routes" size={22} />
+              <span className="ride-top-label">{MTB_DONE_TEXT}</span>
+            </button>
+          </div>
+        )}
         {/* Off the route, Reroute and Keep going just under End ride and Go round, as big as they are (the owner,
             2026-10-28: "move the reroute and keep going buttons to the top and make them look like the rest"). */}
         {ride.off && (

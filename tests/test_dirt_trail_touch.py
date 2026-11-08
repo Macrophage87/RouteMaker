@@ -684,3 +684,43 @@ class TestStrayRings:
         pieces = self.pieces([1, 9, 3, 9, 2])
         assert len(trail_touch.stray_rings(pieces, ways, frozenset(), any_dirt=True)) == 1
         assert len(trail_touch.stray_rings(pieces, ways, frozenset())) == 3
+
+
+@db
+class TestDoneWithMtb:
+    """Ride's "Done with MTB" (tests/test_mtb_done.py): the re-plans after it."""
+
+    def test_a_gravel_re_plan_after_the_press_is_planned_on_the_standard_graph(
+        self, client, segments, router
+    ) -> None:
+        fake = router(plain_router())
+        body = {
+            **good_body("gravel"),
+            "when": "weekday_offpeak",
+            "ride_replan": True,
+            "mtb_done": True,
+        }
+        response = post(client, body)
+        assert response.status_code == 200, response.content
+        assert response.json()["variant"] == "standard"
+        assert {graph_of(url) for url, _ in routes(fake)} == {"standard"}
+
+    def test_a_stop_on_a_dirt_trail_no_longer_opens_them(self, client, segments, router) -> None:
+        add_trail(segments, TOUCHED, END_TRAIL)
+        fake = router(plain_router())
+        body = {
+            **good_body(),
+            "when": "weekday_offpeak",
+            "easy_mtb": True,
+            "ride_replan": True,
+            "mtb_done": True,
+        }
+        answer = post(client, body).json()
+        assert answer["variant"] == "standard" and answer["dirt_closed"] is True
+        assert answer["dials"]["easy_mtb"] is False
+        assert {graph_of(url) for url, _ in routes(fake)} == {"standard"}
+
+    def test_mtb_done_alone_is_not_a_ride(self, client, segments, router) -> None:
+        router(plain_router())
+        body = {**good_body("gravel"), "when": "weekday_offpeak", "mtb_done": True}
+        assert post(client, body).json()["variant"] == "offroad"

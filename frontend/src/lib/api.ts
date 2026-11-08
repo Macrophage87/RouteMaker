@@ -1569,6 +1569,8 @@ export interface RouteRequestOptions {
   aheadOnly?: boolean;
   /** With `rideReplan`: the rider marked a dirt trail closed this ride, so the re-plan rides none (`dirt_closed`). */
   dirtClosed?: boolean;
+  /** With `rideReplan`: the rider pressed Done with MTB this ride (lib/mtbDone.ts), so the re-plan keeps off mountain-bike trails (`mtb_done`). */
+  mtbDone?: boolean;
   /** Settings' Avoid stairs (lib/avoidStairs.ts); unset, as this device keeps it. Sent on Bikeshare and transit only. */
   avoidStairs?: boolean;
   /** Run's pace in mph (lib/runPace.ts); absent, the one kept on this device. */
@@ -1614,7 +1616,7 @@ export function routeRequestBody(points: readonly LonLat[], preset: PresetId, op
     ...(options.heading != null && Number.isFinite(options.heading) ? { heading: ((options.heading % 360) + 360) % 360, ...(options.aheadOnly ? { ahead_only: true } : {}) } : {}),
     // A ride's re-plan starts at the rider: a dirt trail there, or one ridden earlier, opens them all.
     ...(options.rideReplan
-      ? { ride_replan: true, ...(options.dirtRidden ? { dirt_ridden: true } : {}), ...(options.dirtClosed ? { dirt_closed: true } : {}) }
+      ? { ride_replan: true, ...(options.dirtRidden ? { dirt_ridden: true } : {}), ...(options.dirtClosed ? { dirt_closed: true } : {}), ...(options.mtbDone ? { mtb_done: true } : {}) }
       : {}),
     // Avoid stairs (Settings): the trip's walks keep off flights of steps. Only the ride types that walk on their own
     // send it; a walk beside the rider's own bike always keeps off them.

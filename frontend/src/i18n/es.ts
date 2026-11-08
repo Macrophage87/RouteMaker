@@ -475,6 +475,9 @@ export const ES: Readonly<Record<string, string>> = {
   "Trails and terrain": "Senderos y terreno",
   "Mountain-bike trails need the stress map, unavailable for now.": "Los senderos de bicicleta de montaña necesitan el mapa de estrés, que no está disponible por ahora.",
   "Go round": "Rodear",
+  "Done with MTB": "Basta de MTB",
+  "Done with MTB: route off mountain-bike trails": "Basta de MTB: ruta fuera de los senderos de bicicleta de montaña",
+  "Finding a way off the mountain-bike trails.": "Buscando una ruta fuera de los senderos de bicicleta de montaña.",
   // The side buttons' words and More's (RideMode, RoamMode; the UI review, 2026-10-28): short, under round buttons.
   Text: "Texto",
   "Share live": "En vivo",

@@ -5131,9 +5131,31 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
   font-weight: 700;
 }
 
+/* Done with MTB (lib/mtbDone.ts): just under Go round, at its end of the row, as big as it is. */
+.ride-mtb-done-row {
+  display: flex;
+  justify-content: flex-end;
+  margin: 0 0 6px;
+}
+
+.ride .ride-mtb-done {
+  min-height: 52px;
+  padding: 6px 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 1.2rem;
+  font-weight: 700;
+}
+
+.ride .ride-mtb-done > svg {
+  flex-shrink: 0;
+}
+
 /* On the narrowest phones (320 px) the two keep one line at a slightly smaller size; the slide's text stays clear of its thumb. */
 @media (max-width: 359px) {
-  .ride .ride-off-button {
+  .ride .ride-off-button,
+  .ride .ride-mtb-done {
     font-size: 1rem;
   }
 

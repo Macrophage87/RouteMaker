@@ -1784,6 +1784,11 @@ class Dials:
     # With `ride_replan`: the rider marked a dirt trail closed earlier this ride (an answer's
     # `dirt_closed`), so no dirt trail is ridden, whatever `blocked` still holds.
     dirt_closed: bool = False
+    # With `ride_replan`: the rider pressed Ride's "Done with MTB" (the owner, 2026-11-08: "route
+    # you off mtb trails and onto something easier"). The ride leaves the Mountain Bike and
+    # off-road graphs for the standard one (`presets.variant_for_ride`), "Easy MTB trails" goes
+    # off, and no dirt trail is ridden, as after `dirt_closed`.
+    mtb_done: bool = False
     # The dirt trails such a plan found for itself, each a short strip across it (a ring),
     # left out as `blocked` is. Set by `plan`.
     trail_strays: tuple[tuple[tuple[float, float], ...], ...] = ()
@@ -4795,6 +4800,18 @@ def weekend_closure_near(
         return True
 
 
+def _easy_asked(preset_name: str, dials: Dials) -> bool:
+    """Whether a plan rides "Easy MTB trails" (`core.easy_mtb`): asked, on a ride type that
+    offers it, and neither trails off (which wins, `presets.variant_for_ride`) nor after Ride's
+    "Done with MTB" (`Dials.mtb_done`)."""
+    return (
+        bool(dials.easy_mtb)
+        and preset_name in easy_mtb.PRESETS
+        and not dials.trails_off
+        and not dials.mtb_done
+    )
+
+
 def _weekend_too(preset_name: str, dials: Dials, points: list[list[float]]) -> bool:
     """Whether `plan` makes the weekend plan beside this ride's own (`presets.weekend_too`): not
     on the rider's own line (a followed file, drawn legs), and only near a weekend closure."""
@@ -4805,8 +4822,8 @@ def _weekend_too(preset_name: str, dials: Dials, points: list[list[float]]) -> b
     when = dials.when or default_when()
     assist = bool(dials.assist) and preset.assist_speed_kmh is not None
     trails_off = bool(dials.trails_off)
-    easy = bool(dials.easy_mtb) and preset_name in easy_mtb.PRESETS and not trails_off
-    if not presets.weekend_too(preset_name, when, assist, trails_off, easy):
+    easy = _easy_asked(preset_name, dials)
+    if not presets.weekend_too(preset_name, when, assist, trails_off, easy, dials.mtb_done):
         return False
     return weekend_closure_near(points)
 
@@ -4963,9 +4980,9 @@ def _own_fell_back(own: dict, preset_name: str, dials: Dials) -> bool:
     preset = presets.PRESETS[preset_name]
     assist = bool(dials.assist) and preset.assist_speed_kmh is not None
     trails_off = bool(dials.trails_off)
-    easy = bool(dials.easy_mtb) and preset_name in easy_mtb.PRESETS and not trails_off
+    easy = _easy_asked(preset_name, dials)
     graph = presets.variant_for_ride(
-        preset_name, dials.when or default_when(), assist, trails_off, easy
+        preset_name, dials.when or default_when(), assist, trails_off, easy, dials.mtb_done
     )
     if own.get("variant") == graph:
         return False
@@ -5329,10 +5346,10 @@ def _plan(
     assist = bool(dials.assist) and preset.assist_speed_kmh is not None
     trails_off = bool(dials.trails_off)
     # "Easy MTB trails" (`core.easy_mtb`): on the ride types that offer it, and not with trails
-    # off, which wins (`presets.variant_for_ride`).
-    easy_asked = bool(dials.easy_mtb) and preset_name in easy_mtb.PRESETS and not trails_off
+    # off, which wins (`presets.variant_for_ride`), nor after Ride's "Done with MTB".
+    easy_asked = _easy_asked(preset_name, dials)
     variant = dials.graph or presets.variant_for_ride(
-        preset_name, when, assist, trails_off, easy_asked
+        preset_name, when, assist, trails_off, easy_asked, dials.mtb_done
     )
     # The weekend plan `_plan_twice` makes beside the ride's own: on the weekend graph or not
     # at all, and its route read by the ride type's own rules there (`mtb.settle`,
@@ -5360,8 +5377,10 @@ def _plan(
         and dials.follow is None
         and not dials.straight
     ):
-        dirt_closed = dials.dirt_closed or (
-            bool(dials.blocked) and trail_touch.closed_on_dirt(dials.blocked)
+        dirt_closed = (
+            dials.dirt_closed
+            or dials.mtb_done
+            or (bool(dials.blocked) and trail_touch.closed_on_dirt(dials.blocked))
         )
         if not dirt_closed:
             per_point = dials.trail_touched
@@ -5982,9 +6001,9 @@ def _plan(
             # The routes to choose from were near-ties of the route it replaced: none are
             # offered beside a route they were not weighed against (as the Avoid pass).
             refine_context.candidates = refine_context.candidates[:1]
-    elif preset_name == mtb.PRESET and not trails_off and not fixed:
-        # Trails off is the rider's own choice, said by the answer's `dials`; this is the
-        # router not being there.
+    elif preset_name == mtb.PRESET and not trails_off and not dials.mtb_done and not fixed:
+        # Trails off and "Done with MTB" are the rider's own choice; this is the router not
+        # being there.
         mtb_info = {
             "max_level": mtbmode.clamp_level(dials.mtb_level),
             "preferred_level": mtbmode.preferred_level(dials.mtb_preferred, dials.mtb_level),

@@ -44,22 +44,24 @@ export const RESUME_NOT_NOW = t("Not now");
  * round 2, R2-4 and R2-5): the ride is a loop (its re-plans' points begin at the rider, so they no longer show it), the
  * stretches marked Road closed, a dirt trail ridden, a dirt trail marked closed. Before, each began again empty, so a
  * page reloaded in the background re-planned over a road the rider had marked closed, a loop's way home became the way
- * out again, and a ride that had ridden dirt stopped re-planning on it.
+ * out again, and a ride that had ridden dirt stopped re-planning on it. Done with MTB pressed too (lib/mtbDone.ts).
  */
 export interface RideReplans {
   loopRide?: boolean;
   blocked?: LonLat[][];
   dirtRidden?: boolean;
   dirtClosed?: boolean;
+  mtbDone?: boolean;
 }
 
 /** The ride's re-plan state as kept: only what is set, so a ride with none keeps nothing. */
-export function rideReplans(loopRide: boolean, blocked: readonly LonLat[][], dirtRidden: boolean, dirtClosed: boolean): RideReplans {
+export function rideReplans(loopRide: boolean, blocked: readonly LonLat[][], dirtRidden: boolean, dirtClosed: boolean, mtbDone = false): RideReplans {
   return {
     ...(loopRide ? { loopRide: true } : {}),
     ...(blocked.length ? { blocked: blocked.map((line) => line.map((p): LonLat => [p[0], p[1]])) } : {}),
     ...(dirtRidden ? { dirtRidden: true } : {}),
     ...(dirtClosed ? { dirtClosed: true } : {}),
+    ...(mtbDone ? { mtbDone: true } : {}),
   };
 }
 
@@ -69,7 +71,7 @@ function replansOf(value: unknown): RideReplans | null {
   if (!r || typeof r !== "object") return null;
   const isPoint = (p: unknown) => Array.isArray(p) && p.length >= 2 && typeof p[0] === "number" && typeof p[1] === "number";
   const blocked = Array.isArray(r.blocked) ? r.blocked.filter((line) => Array.isArray(line) && line.length >= 2 && line.every(isPoint)) : [];
-  const out = rideReplans(r.loopRide === true, blocked, r.dirtRidden === true, r.dirtClosed === true);
+  const out = rideReplans(r.loopRide === true, blocked, r.dirtRidden === true, r.dirtClosed === true, r.mtbDone === true);
   return Object.keys(out).length ? out : null;
 }
 
