@@ -7106,7 +7106,12 @@ def _graph_won(answered: dict, preset_name: str, dials: Dials) -> Dials:
     that did. The second plan is then made once, on that graph, not twice again in what the
     first left of the budget, where its weekend plan was the one most often dropped for time
     (hunt 3, P3-7). A first route from a fallback graph leaves the dials as they are."""
-    if dials.graph is not None or not _weekend_ride(preset_name, dials):
+    # A name `presets.PRESETS` does not hold (a caller's own, as `plan` takes) is planned once.
+    if (
+        dials.graph is not None
+        or preset_name not in presets.PRESETS
+        or not _weekend_ride(preset_name, dials)
+    ):
         return dials
     won = answered.get("variant")
     preset = presets.PRESETS[preset_name]
