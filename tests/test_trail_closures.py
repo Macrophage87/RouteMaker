@@ -80,13 +80,25 @@ def test_a_mountain_bike_loop_is_the_mountain_bike_class_and_its_rated_trails_st
         way(40, {"highway": "path", "surface": "dirt", "mtb:scale": "1"}),
         way(41, {"highway": "path", "mtb:scale": "1"}, PARK),
         way(42, {"highway": "path"}, PARK),
+        # Terrain hunt 2, T1 (the owner, 2026-11-08: "these are very easy trails that
+        # nobody bothers to rate"): an unrated dirt trail on a loop, which was
+        # `natural_surface`, closed on every graph, Mountain Bike's included.
+        way(43, {"highway": "path", "surface": "dirt"}),
+        way(44, {"highway": "path", "surface": "ground"}, PARK),
     ]
-    result = run(ways, {40: hiking_loop, 41: loop, 42: loop}, [PARK_AREA])
-    assert result.reasons == {40: "singletrack", 41: "singletrack", 42: "mtb"}
+    routes = {40: hiking_loop, 41: loop, 42: loop, 43: loop, 44: hiking_loop}
+    result = run(ways, routes, [PARK_AREA])
+    assert result.reasons == {
+        40: "singletrack",
+        41: "singletrack",
+        42: "mtb",
+        43: "mtb",
+        44: "mtb",
+    }
     assert result.drawn_singletrack == {40, 41}
-    assert result.mtb_only() == {40, 41, 42}
+    assert result.mtb_only() == {40, 41, 42, 43, 44}
     keep = (result.drawn_singletrack, set(), result.offroad_singletrack)
-    for osm_id in (40, 41, 42):
+    for osm_id in (40, 41, 42, 43, 44):
         reason = result.reasons[osm_id]
         assert tc.graph_reason(Variant.STANDARD, reason, osm_id, *keep) is not None
         assert tc.graph_reason(Variant.MTB, reason, osm_id, *keep) is None
