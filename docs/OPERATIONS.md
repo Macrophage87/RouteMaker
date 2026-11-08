@@ -87,6 +87,7 @@ Contents:
 - [Deploying v0.22.0](#deploying-v0220)
 - [Deploying v0.22.1](#deploying-v0221)
 - [Deploying v0.22.2](#deploying-v0222)
+- [Deploying v0.22.3](#deploying-v0223)
 - [Deploying a planner and front-end release: rollback points and verification](#deploying-a-planner-and-front-end-release-rollback-points-and-verification)
 - [Paths bicycles may not ride (NO-BIKE-PATHS)](#paths-bicycles-may-not-ride-no-bike-paths)
 - [Mountain-bike difficulty levels (456; claude/v0-4-0-mtb-levels)](#mountain-bike-difficulty-levels-456-claudev0-4-0-mtb-levels)
@@ -7566,6 +7567,36 @@ new environment variable, scheduled job or outbound host, and no map rebuild.**
 - [ ] **Rollback.** The `pre-rel` api image (`--force-recreate api worker`) and the v0.22.1 front end.
   Nothing in the database or the map changes. On the beta: the agent rolls back by itself on a failed
   pass; later, rollback C, then `auto-release.sh hold v0.22.2`.
+
+## Deploying v0.22.3
+
+A patch for the post page's photos (v0.22.2, #1067): on the beta the photo on a post's route map was
+a dark circle and its pop-out a blank box, because the map's rules for its own preview picture also
+hid and resized the photo pictures inside the live map. Those rules now reach only the map's own
+picture. Each photo is now a small dot on the route with a short line to its thumbnail, set beside the
+route so the trail stays visible, on the route map and on the highlight maps. **`src/core/route_posts.py`
+and the post page's script (`frontend/src/post/`)**, with the version in `pyproject.toml`,
+`src/routemaker/__init__.py`, `frontend/package.json`, `README.md`, and the docs pages rebuilt with
+`DOCS_RELEASE=0.22.3` (version stamps only). **No migration, no `src/pipeline/`, `lua/`,
+`valhalla/*.json`, compose, Caddyfile, nginx, Dockerfile, requirements, `mcp/` or `mobile/` change, no
+new environment variable, scheduled job or outbound host, and no map rebuild.**
+
+- [ ] **The tag.** Once `test` and `a11y` are green on `main`, the owner tags v0.22.3 (annotated) on
+  that commit, from the PC.
+- [ ] **At home**, as "Deploying a planner and front-end release": rollback point (tag the running api
+  image `pre-rel-<short>`, keep `index.html`), fast-forward the checkout, `docker compose build api`,
+  then `docker compose up -d --no-deps --no-build --force-recreate api worker` with no job todo or
+  doing, then the front end (the post page's script). No migration, no router restart.
+- [ ] **Beta, by its agent**, once its deployed tag (`$RM_STATE/cd/deployed-tag`) is v0.22.2: the gate
+  sees `src/core/`, `frontend/` and the version files, none of them a stop, and deploys in one pass.
+  Stuck: `git fetch --force --tags origin`, then `scripts/beta/auto-release.sh retry v0.22.3`.
+- [ ] **Spot checks.** On a post with located photos, each photo shows its picture (not a dark circle):
+  a dot on the route and the thumbnail beside it, clear of the line, on the route map and on any
+  highlight map it falls in. Tap the thumbnail: the pop-out shows the photo and caption beside the
+  route. Escape closes it and the focus returns to the thumbnail.
+- [ ] **Rollback.** The `pre-rel` api image (`--force-recreate api worker`) and the v0.22.2 front end.
+  Nothing in the database or the map changes. On the beta: the agent rolls back by itself on a failed
+  pass; later, rollback C, then `auto-release.sh hold v0.22.3`.
 
 ## Deploying a planner and front-end release: rollback points and verification
 
