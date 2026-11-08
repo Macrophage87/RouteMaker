@@ -2111,4 +2111,14 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "At {place}. Take a bike, then choose where to dock.": "في {place}. خذ دراجة، ثم اختر أين ترسيها.",
   "No way there was found. Choose another dock.": "لم يُعثر على طريق إلى هناك. اختر محطة أخرى.",
   "The stops stay in this order, to keep your via points on their way.": "تبقى المحطات بهذا الترتيب، لتبقى نقاط العبور على طريقها.",
+  // ---- Easy MTB trails (lib/dialsPanel.ts, lib/easyMtb.ts; the owner, 2026-11-08) ----
+  "Easy MTB trails": "مسارات دراجات جبلية سهلة",
+  "Also rides mountain-bike trails rated easy or not rated, mostly grass and dirt.": "يستخدم أيضًا مسارات الدراجات الجبلية المصنفة سهلة أو غير المصنفة، ومعظمها عشب وتراب.",
+  "Not used while Keep to roads is on.": "لا يُستخدم ما دام خيار طرق فقط مفعّلًا.",
+  "easy MTB trails": "مسارات دراجات جبلية سهلة",
+  "Plans on the off-road map, as Gravel does, so mountain-bike trails rated 0 or 1 on either scale, or not rated at all, may be ridden. Trails rated 2 or harder are left out wherever there is a way round; if one is still used, the route says so. Traffic stress is weighed as usual. Dirt can be muddy after rain.": "يخطط على خريطة الطرق الوعرة، كما يفعل Gravel، فيمكن ركوب مسارات الدراجات الجبلية المصنفة 0 أو 1 على أي من المقياسين، أو غير المصنفة إطلاقًا. تُستبعد المسارات المصنفة 2 أو أصعب حيثما وُجد طريق بديل؛ وإن بقي أحدها مستخدمًا يذكر المسار ذلك. يُقدَّر ضغط حركة المرور كالمعتاد. قد يكون التراب موحلًا بعد المطر.",
+  "This route uses {distance} of mountain-bike trail rated 2 or harder: no way round was found.": "يستخدم هذا المسار {distance} من مسار دراجات جبلية مصنف 2 أو أصعب: لم يُعثر على طريق بديل.",
+  "Uses a harder MTB trail.": "يستخدم مسار دراجات جبلية أصعب.",
+  "The off-road map isn't available, so this route keeps to the usual trails.": "خريطة الطرق الوعرة غير متاحة، لذا يبقى هذا المسار على الدروب المعتادة.",
+  "Off-road map unavailable: usual trails.": "خريطة الطرق الوعرة غير متاحة: الدروب المعتادة.",
 };

@@ -2111,4 +2111,14 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "At {place}. Take a bike, then choose where to dock.": "{place}에 도착했습니다. 자전거를 꺼낸 뒤 반납할 곳을 고르세요.",
   "No way there was found. Choose another dock.": "그곳까지 가는 길을 찾지 못했습니다. 다른 대여소를 고르세요.",
   "The stops stay in this order, to keep your via points on their way.": "통과 지점이 제 경로에 남도록 정류 지점은 이 순서 그대로입니다.",
+  // ---- Easy MTB trails (lib/dialsPanel.ts, lib/easyMtb.ts; the owner, 2026-11-08) ----
+  "Easy MTB trails": "쉬운 MTB 트레일",
+  "Also rides mountain-bike trails rated easy or not rated, mostly grass and dirt.": "쉬움 등급이거나 등급이 없는 산악자전거 트레일도 이용합니다. 대부분 풀밭과 흙길입니다.",
+  "Not used while Keep to roads is on.": "도로만 켜져 있는 동안에는 사용되지 않습니다.",
+  "easy MTB trails": "쉬운 MTB 트레일",
+  "Plans on the off-road map, as Gravel does, so mountain-bike trails rated 0 or 1 on either scale, or not rated at all, may be ridden. Trails rated 2 or harder are left out wherever there is a way round; if one is still used, the route says so. Traffic stress is weighed as usual. Dirt can be muddy after rain.": "Gravel처럼 오프로드 지도에서 계획하므로, 어느 척도로든 0 또는 1 등급이거나 등급이 전혀 없는 산악자전거 트레일을 달릴 수 있습니다. 2 등급 이상으로 어려운 트레일은 돌아갈 길이 있는 곳이면 어디서든 뺍니다. 그래도 하나가 쓰이면 경로에서 알려 드립니다. 교통 스트레스는 평소처럼 따집니다. 비가 온 뒤에는 흙길이 진창일 수 있습니다.",
+  "This route uses {distance} of mountain-bike trail rated 2 or harder: no way round was found.": "이 경로는 2 등급 이상으로 어려운 산악자전거 트레일을 {distance} 이용합니다. 돌아갈 길을 찾지 못했습니다.",
+  "Uses a harder MTB trail.": "더 어려운 MTB 트레일을 이용합니다.",
+  "The off-road map isn't available, so this route keeps to the usual trails.": "오프로드 지도를 쓸 수 없어 이 경로는 평소의 트레일을 이용합니다.",
+  "Off-road map unavailable: usual trails.": "오프로드 지도 없음: 평소 트레일.",
 };

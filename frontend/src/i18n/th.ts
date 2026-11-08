@@ -2111,4 +2111,14 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "At {place}. Take a bike, then choose where to dock.": "อยู่ที่ {place} แล้ว หยิบจักรยาน แล้วเลือกที่จะคืน",
   "No way there was found. Choose another dock.": "ไม่พบเส้นทางไปที่นั่น เลือกจุดจอดอื่น",
   "The stops stay in this order, to keep your via points on their way.": "จุดแวะยังคงอยู่ในลำดับนี้ เพื่อให้จุดผ่านของคุณอยู่บนเส้นทางเดิม",
+  // ---- Easy MTB trails (lib/dialsPanel.ts, lib/easyMtb.ts; the owner, 2026-11-08) ----
+  "Easy MTB trails": "เส้นทาง MTB ระดับง่าย",
+  "Also rides mountain-bike trails rated easy or not rated, mostly grass and dirt.": "ใช้เส้นทางจักรยานเสือภูเขาระดับง่ายหรือไม่มีระดับด้วย ส่วนใหญ่เป็นหญ้าและดิน",
+  "Not used while Keep to roads is on.": "ไม่ใช้ขณะเปิดถนนเท่านั้น",
+  "easy MTB trails": "เส้นทาง MTB ระดับง่าย",
+  "Plans on the off-road map, as Gravel does, so mountain-bike trails rated 0 or 1 on either scale, or not rated at all, may be ridden. Trails rated 2 or harder are left out wherever there is a way round; if one is still used, the route says so. Traffic stress is weighed as usual. Dirt can be muddy after rain.": "วางแผนบนแผนที่ออฟโรดแบบเดียวกับ Gravel จึงอาจใช้เส้นทางจักรยานเสือภูเขาระดับ 0 หรือ 1 ในมาตราใดก็ได้ หรือที่ไม่มีระดับเลย เส้นทางระดับ 2 หรือยากกว่าจะถูกเลี่ยงทุกที่ที่มีทางอื่น ถ้ายังต้องใช้ เส้นทางจะแจ้งให้ทราบ ความเครียดจากการจราจรยังคำนวณตามปกติ ดินอาจเป็นโคลนหลังฝนตก",
+  "This route uses {distance} of mountain-bike trail rated 2 or harder: no way round was found.": "เส้นทางนี้ใช้เส้นทางจักรยานเสือภูเขาระดับ 2 หรือยากกว่าเป็นระยะ {distance} ไม่พบทางอื่น",
+  "Uses a harder MTB trail.": "ใช้เส้นทาง MTB ที่ยากกว่า",
+  "The off-road map isn't available, so this route keeps to the usual trails.": "แผนที่ออฟโรดใช้ไม่ได้ เส้นทางนี้จึงใช้ทางเดิมตามปกติ",
+  "Off-road map unavailable: usual trails.": "ไม่มีแผนที่ออฟโรด: ทางตามปกติ",
 };

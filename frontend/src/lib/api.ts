@@ -984,6 +984,16 @@ export interface RunInfo {
   fits?: boolean | null;
 }
 
+/** An Easy MTB trails plan's reading of its route (core.api.EasyMtbOut). */
+export interface EasyMtbReading {
+  /** The hardest level counted easy (1). */
+  max_level: number;
+  rounds?: number;
+  /** Metres on mountain-bike trails rated 2 or harder; 0 where they were held off, null where not read. */
+  harder_m: number | null;
+  limited: "time" | "untraced" | "no_way_round" | "no_offroad_graph" | null;
+}
+
 export interface RouteResponse {
   /**
    * Live work zones and DC's closures (FOLLOWUP-WORKZONES; v0.7.0 "DC closures source"): the closures to draw on
@@ -1044,6 +1054,8 @@ export interface RouteResponse {
   run?: RunInfo | null;
   /** Mountain Bike only (docs/MTB-TOPO-PLAN.md, slice 6): the route's trail reading; null or absent elsewhere. */
   mtb?: MtbReading | null;
+  /** "Easy MTB trails" on Default and Trailmaxxing (core/easy_mtb.py): what it could not hold; null or absent with it off. */
+  easy_mtb?: EasyMtbReading | null;
   /** Side-street dodges found and what was done; null on a loop and on each candidate, absent from an older API. */
   dodges?: Dodges | null;
   /** The route's effort-equivalent distance in metres, where it was read (the top of the traffic slider). */
@@ -1124,6 +1136,7 @@ export interface RouteResponse {
     assist?: boolean;
     avoid_gravel?: boolean;
     trails_off?: boolean;
+    easy_mtb?: boolean;
     target_distance_m?: number | null;
     system_weight_kg?: number | null;
     loop?: boolean;

@@ -2111,4 +2111,14 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "At {place}. Take a bike, then choose where to dock.": "{place} ላይ ነዎት። ብስክሌት ይውሰዱ፣ ከዚያ የት እንደሚያቆሙ ይምረጡ።",
   "No way there was found. Choose another dock.": "ወደዚያ መንገድ አልተገኘም። ሌላ ጣቢያ ይምረጡ።",
   "The stops stay in this order, to keep your via points on their way.": "የመተላለፊያ ነጥቦችዎ በመንገዳቸው ላይ እንዲቆዩ፣ ማቆሚያዎቹ በዚህ ቅደም ተከተል ይቆያሉ።",
+  // ---- Easy MTB trails (lib/dialsPanel.ts, lib/easyMtb.ts; the owner, 2026-11-08) ----
+  "Easy MTB trails": "ቀላል የMTB ዱካዎች",
+  "Also rides mountain-bike trails rated easy or not rated, mostly grass and dirt.": "ቀላል ተብለው የተመዘገቡ ወይም ደረጃ ያልተሰጣቸው የተራራ ብስክሌት ዱካዎችንም ይጠቀማል፤ አብዛኛው ሣርና አፈር ነው።",
+  "Not used while Keep to roads is on.": "መንገዶች ብቻ ሲበራ ጥቅም ላይ አይውልም።",
+  "easy MTB trails": "ቀላል የMTB ዱካዎች",
+  "Plans on the off-road map, as Gravel does, so mountain-bike trails rated 0 or 1 on either scale, or not rated at all, may be ridden. Trails rated 2 or harder are left out wherever there is a way round; if one is still used, the route says so. Traffic stress is weighed as usual. Dirt can be muddy after rain.": "እንደ Gravel ከመንገድ ውጭ ባለው ካርታ ላይ ያቅዳል፤ ስለዚህ በማንኛውም ልኬት 0 ወይም 1 የተሰጣቸው ወይም ምንም ደረጃ ያልተሰጣቸው የተራራ ብስክሌት ዱካዎች ሊያገለግሉ ይችላሉ። 2 ወይም ከዚያ በላይ የከበዱ ዱካዎች ሌላ መንገድ ባለበት ሁሉ ይቀራሉ፤ አንዱ አሁንም ጥቅም ላይ ከዋለ መስመሩ ይናገራል። የትራፊክ ጫና እንደተለመደው ይመዘናል። ከዝናብ በኋላ አፈሩ ጭቃ ሊሆን ይችላል።",
+  "This route uses {distance} of mountain-bike trail rated 2 or harder: no way round was found.": "ይህ መስመር 2 ወይም ከዚያ በላይ የከበደ የተራራ ብስክሌት ዱካ {distance} ይጠቀማል፤ ሌላ መንገድ አልተገኘም።",
+  "Uses a harder MTB trail.": "የከበደ የMTB ዱካ ይጠቀማል።",
+  "The off-road map isn't available, so this route keeps to the usual trails.": "ከመንገድ ውጭ ያለው ካርታ አይገኝም፤ ስለዚህ ይህ መስመር በተለመዱት ዱካዎች ላይ ይቆያል።",
+  "Off-road map unavailable: usual trails.": "ከመንገድ ውጭ ካርታ የለም፦ የተለመዱ ዱካዎች።",
 };

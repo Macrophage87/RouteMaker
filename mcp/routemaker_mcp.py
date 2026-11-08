@@ -1042,6 +1042,8 @@ def plan_fragment(points, vias, preset: str, dials: dict, sent: dict, names=None
         parts.append("assist=1")
     if dials.get("trails_off"):
         parts.append("trailsoff=1")
+    if dials.get("easy_mtb"):
+        parts.append("easymtb=1")
     if sent.get("novice_legs"):
         parts.append("novice=1")
     if dials.get("target_distance_m"):
@@ -1072,6 +1074,8 @@ def page_dials(dials: dict, sent: dict) -> dict:
         "trailsOff": bool(dials.get("trails_off")),
         "loop": bool(dials.get("loop")),
     }
+    if dials.get("easy_mtb"):
+        kept["easyMtb"] = True
     optional = {
         "targetDistanceM": dials.get("target_distance_m"),
         "noviceLegs": sent.get("novice_legs"),
@@ -1218,6 +1222,8 @@ def parse_fragment(fragment: str) -> tuple[list, list[int], str, dict]:
         "carrying": one("carrying") if one("carrying") in ("cargo", "people") else None,
         "assist": one("assist") == "1",
         "trails_off": one("trailsoff") == "1",
+        # Default and Trailmaxxing only, as the page reads it (dials.ts fitDials).
+        "easy_mtb": one("easymtb") == "1" and preset in EASY_MTB_PRESETS,
         "novice_legs": one("novice") == "1",
         "loop": one("loop") == "1",
         "bike": one("bike") if one("bike") in ("classic", "ebike") else None,
@@ -1328,6 +1334,28 @@ def refusal(status: int, message) -> str:
     return f"the site refused the route ({status}): {message}"
 
 
+# The ride types that offer Easy MTB trails (core/presets.py EASY_MTB_PRESETS).
+EASY_MTB_PRESETS = frozenset({"default", "trailmaxxing"})
+
+
+def easy_mtb_said(info: object) -> str | None:
+    """What an Easy MTB trails answer says of its route (core/easy_mtb.py), or None."""
+    if not isinstance(info, dict):
+        return None
+    if info.get("limited") == "no_offroad_graph":
+        return (
+            "the off-road router is not running, so this route was planned on the standard map"
+            " and keeps to the usual trails, with no mountain-bike trails"
+        )
+    harder = info.get("harder_m") or 0.0
+    if harder > 1.0:
+        return (
+            f"{miles_text(harder)} on mountain-bike trails rated 2 or harder (no way round"
+            " was found)"
+        )
+    return None
+
+
 def summary(answer: dict) -> dict:
     """The answer in a few lines a model can reason about and repeat to a rider."""
     distance = answer.get("distance_m") or 0.0
@@ -1382,6 +1410,9 @@ def summary(answer: dict) -> dict:
             out["loop_way_back_shared"] = f"{pct:.0f}%"
     if answer.get("avoid_notice"):
         out["avoid_notice"] = answer["avoid_notice"]
+    easy = easy_mtb_said(answer.get("easy_mtb"))
+    if easy:
+        out["easy_mtb"] = easy
     if answer.get("moved_points"):
         out["moved_points"] = len(answer["moved_points"])
     share = answer.get("bikeshare")
@@ -3553,6 +3584,17 @@ RIDE_OPTIONS = {
         "default": False,
         "description": "Keep to roads: no paths or trails.",
     },
+    "easy_mtb": {
+        "type": "boolean",
+        "default": False,
+        "description": (
+            "default and trailmaxxing only: Easy MTB trails. Also ride mountain-bike trails"
+            " rated easy (mtb:scale or IMBA 0 or 1) or unrated (grass and dirt), on the"
+            " off-road graph as gravel does, steering off trails rated 2 or harder. The"
+            " summary's `easy_mtb` says where the route still rides a harder one, or where"
+            " the off-road router was not running and the usual trails were kept."
+        ),
+    },
     "max_miles_from_metro": {
         "type": "number",
         "exclusiveMinimum": 0,
@@ -3703,6 +3745,7 @@ PASSED_OPTIONS = (
     "carrying",
     "assist",
     "trails_off",
+    "easy_mtb",
     "mtb_level",
     "mtb_preferred",
     "ride_size",
@@ -4905,6 +4948,7 @@ class Server:
                 k: answered.get(k)
                 for k in (
                     "trails_off",
+                    "easy_mtb",
                     "target_distance_m",
                     "loop",
                     "carrying",

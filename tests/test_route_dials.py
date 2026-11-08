@@ -2654,6 +2654,87 @@ class TestTheOffroadGraph:
 
 
 @db
+class TestEasyMtbTrails:
+    """The owner, 2026-11-08: "allow trailmaxxing to use MTB trails too", opt in, "And
+    default"; "Steer on Gravel's graph". Off by default; on, the ride takes the off-road graph
+    and is steered off the trails rated 2 or harder (`core.easy_mtb`)."""
+
+    def test_off_by_default(self, client, facility_segments, router):
+        router(standard_router())
+        body = post(client, {**good_body("default"), "when": "weekday_offpeak"}).json()
+        assert body["variant"] == "standard"
+        assert body["dials"]["easy_mtb"] is False and body["easy_mtb"] is None
+
+    @pytest.mark.parametrize("name", ["default", "trailmaxxing"])
+    def test_on_it_rides_the_offroad_graph(self, name, client, facility_segments, router):
+        fake = router(standard_router())
+        body = post(client, {**good_body(name), "when": "weekday_offpeak", "easy_mtb": True}).json()
+        assert body["variant"] == "offroad"
+        assert body["dials"]["easy_mtb"] is True
+        base = settings.VALHALLA_UPSTREAMS["offroad"]
+        assert all(url.startswith(base + "/") for url, _ in fake.calls)
+        # Its own costing: the calm ranking and the stress rules are the ride type's.
+        own = presets.costing(name)["bicycle"]
+        assert sent_options(fake)["bicycle_type"] == own["bicycle_type"]
+        assert body["easy_mtb"] == {
+            "max_level": 1,
+            "rounds": 0,
+            "harder_m": 0.0,
+            "limited": None,
+        }
+
+    @pytest.mark.parametrize(
+        ("tags", "harder"), [('{"mtb:scale": "S2"}', True), ('{"mtb:scale": "1"}', False)]
+    )
+    def test_a_harder_trail_it_cannot_leave_is_said(
+        self, tags, harder, client, facility_segments, router
+    ):
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"UPDATE {facility_segments}.segment SET mtb_only = true, "
+                "is_trail_class = true, is_unpaved = true, trail_tags = %s::jsonb "
+                "WHERE osm_way_id = 101",
+                [tags],
+            )
+        router(standard_router())
+        body = post(client, {**good_body("default"), "easy_mtb": True}).json()
+        info = body["easy_mtb"]
+        if harder:
+            assert info["harder_m"] > 0 and info["limited"] == "no_way_round"
+        else:
+            assert info["harder_m"] == 0 and info["limited"] is None
+
+    @pytest.mark.parametrize("name", ["fast", "gravel", "mountain-bike"])
+    def test_other_ride_types_are_refused(self, name, client, facility_segments, router):
+        fake = router(standard_router())
+        assert post(client, {**good_body(name), "easy_mtb": True}).status_code == 400
+        assert fake.calls == []
+
+    def test_trails_off_wins(self, client, facility_segments, router):
+        router(standard_router())
+        body = post(client, {**good_body("default"), "easy_mtb": True, "trails_off": True}).json()
+        assert body["variant"] == "no-trail"
+        assert body["dials"]["easy_mtb"] is False and body["easy_mtb"] is None
+
+    def test_an_offroad_router_that_does_not_answer_falls_back_and_says_so(
+        self, client, facility_segments, router
+    ):
+        standard = standard_router()
+
+        def transport(url, payload, timeout):
+            if url.startswith(settings.VALHALLA_UPSTREAMS["offroad"]):
+                raise routing.RouterUnavailable("connection refused")
+            return standard(url, payload, timeout)
+
+        router(transport)
+        body = post(
+            client, {**good_body("trailmaxxing"), "when": "weekday_offpeak", "easy_mtb": True}
+        ).json()
+        assert body["variant"] == "standard"
+        assert body["easy_mtb"]["limited"] == "no_offroad_graph"
+
+
+@db
 class TestMountainBike:
     """docs/MTB-TOPO-PLAN.md, slice 6: the Mountain Bike ride type rides its own graph, holds
     the rider's hardest trail level on the router's routes, and says what it could not hold."""

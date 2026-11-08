@@ -2111,4 +2111,14 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "At {place}. Take a bike, then choose where to dock.": "Em {place}. Pegue uma bicicleta e escolha onde devolvê-la.",
   "No way there was found. Choose another dock.": "Nenhum caminho até lá foi encontrado. Escolha outra estação.",
   "The stops stay in this order, to keep your via points on their way.": "As paradas ficam nesta ordem, para manter seus pontos de passagem no caminho deles.",
+  // ---- Easy MTB trails (lib/dialsPanel.ts, lib/easyMtb.ts; the owner, 2026-11-08) ----
+  "Easy MTB trails": "Trilhas de MTB fáceis",
+  "Also rides mountain-bike trails rated easy or not rated, mostly grass and dirt.": "Também usa trilhas de mountain bike de nível fácil ou sem nível, quase sempre de grama e terra.",
+  "Not used while Keep to roads is on.": "Não é usado enquanto Só ruas estiver ativado.",
+  "easy MTB trails": "trilhas de MTB fáceis",
+  "Plans on the off-road map, as Gravel does, so mountain-bike trails rated 0 or 1 on either scale, or not rated at all, may be ridden. Trails rated 2 or harder are left out wherever there is a way round; if one is still used, the route says so. Traffic stress is weighed as usual. Dirt can be muddy after rain.": "Planeja no mapa off-road, como o Gravel, então trilhas de mountain bike de nível 0 ou 1 em qualquer escala, ou sem nível, podem ser usadas. Trilhas de nível 2 ou mais difíceis ficam de fora sempre que houver outro caminho; se uma ainda for usada, a rota avisa. O estresse do trânsito é pesado como de costume. A terra pode ficar enlameada depois da chuva.",
+  "This route uses {distance} of mountain-bike trail rated 2 or harder: no way round was found.": "Esta rota usa {distance} de trilha de mountain bike de nível 2 ou mais difícil: nenhum outro caminho foi encontrado.",
+  "Uses a harder MTB trail.": "Usa uma trilha de MTB mais difícil.",
+  "The off-road map isn't available, so this route keeps to the usual trails.": "O mapa off-road não está disponível, então esta rota fica nas trilhas de sempre.",
+  "Off-road map unavailable: usual trails.": "Sem mapa off-road: trilhas de sempre.",
 };

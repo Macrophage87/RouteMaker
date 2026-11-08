@@ -2618,4 +2618,14 @@ export const ES: Readonly<Record<string, string>> = {
   "At {place}. Take a bike, then choose where to dock.": "En {place}. Tome una bicicleta y luego elija dónde anclar.",
   "No way there was found. Choose another dock.": "No se encontró un camino hasta allí. Elija otro anclaje.",
   "The stops stay in this order, to keep your via points on their way.": "Las paradas se quedan en este orden, para que sus puntos de paso sigan en su camino.",
+  // ---- Easy MTB trails (lib/dialsPanel.ts, lib/easyMtb.ts; the owner, 2026-11-08) ----
+  "Easy MTB trails": "Senderos MTB fáciles",
+  "Also rides mountain-bike trails rated easy or not rated, mostly grass and dirt.": "También usa senderos de bicicleta de montaña de nivel fácil o sin nivel, casi siempre de pasto y tierra.",
+  "Not used while Keep to roads is on.": "No se usa mientras Solo calles esté activado.",
+  "easy MTB trails": "senderos MTB fáciles",
+  "Plans on the off-road map, as Gravel does, so mountain-bike trails rated 0 or 1 on either scale, or not rated at all, may be ridden. Trails rated 2 or harder are left out wherever there is a way round; if one is still used, the route says so. Traffic stress is weighed as usual. Dirt can be muddy after rain.": "Planifica en el mapa todoterreno, como Gravel, así que puede usar senderos de bicicleta de montaña de nivel 0 o 1 en cualquiera de las dos escalas, o sin nivel. Los senderos de nivel 2 o más difíciles se evitan siempre que haya otro camino; si aún se usa uno, la ruta lo indica. El estrés del tráfico se valora como siempre. La tierra puede estar embarrada después de la lluvia.",
+  "This route uses {distance} of mountain-bike trail rated 2 or harder: no way round was found.": "Esta ruta usa {distance} de sendero de bicicleta de montaña de nivel 2 o más difícil: no se encontró otro camino.",
+  "Uses a harder MTB trail.": "Usa un sendero MTB más difícil.",
+  "The off-road map isn't available, so this route keeps to the usual trails.": "El mapa todoterreno no está disponible, así que esta ruta se queda en los senderos habituales.",
+  "Off-road map unavailable: usual trails.": "Sin mapa todoterreno: senderos habituales.",
 };

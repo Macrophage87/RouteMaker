@@ -2111,4 +2111,14 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "At {place}. Take a bike, then choose where to dock.": "در {place} هستید. دوچرخه‌ای بردارید، سپس انتخاب کنید کجا بگذارید.",
   "No way there was found. Choose another dock.": "راهی به آنجا پیدا نشد. ایستگاه دیگری انتخاب کنید.",
   "The stops stay in this order, to keep your via points on their way.": "توقف‌ها به همین ترتیب می‌مانند تا نقاط گذر شما در مسیر خود بمانند.",
+  // ---- Easy MTB trails (lib/dialsPanel.ts, lib/easyMtb.ts; the owner, 2026-11-08) ----
+  "Easy MTB trails": "مسیرهای آسان دوچرخه کوهستان",
+  "Also rides mountain-bike trails rated easy or not rated, mostly grass and dirt.": "از مسیرهای دوچرخه کوهستان با درجه آسان یا بدون درجه هم می‌رود که بیشترشان چمن و خاک‌اند.",
+  "Not used while Keep to roads is on.": "تا وقتی فقط جاده روشن است به کار نمی‌رود.",
+  "easy MTB trails": "مسیرهای آسان دوچرخه کوهستان",
+  "Plans on the off-road map, as Gravel does, so mountain-bike trails rated 0 or 1 on either scale, or not rated at all, may be ridden. Trails rated 2 or harder are left out wherever there is a way round; if one is still used, the route says so. Traffic stress is weighed as usual. Dirt can be muddy after rain.": "مانند Gravel روی نقشه خارج از جاده برنامه‌ریزی می‌کند، پس مسیرهای دوچرخه کوهستان با درجه 0 یا 1 در هر یک از دو مقیاس، یا بدون هیچ درجه‌ای، ممکن است پیموده شوند. مسیرهای درجه 2 یا سخت‌تر هر جا راه دیگری باشد کنار گذاشته می‌شوند؛ اگر یکی هنوز به کار رود، مسیر آن را می‌گوید. فشار ترافیک مثل همیشه سنجیده می‌شود. خاک ممکن است پس از باران گِلی باشد.",
+  "This route uses {distance} of mountain-bike trail rated 2 or harder: no way round was found.": "این مسیر {distance} از مسیر دوچرخه کوهستان با درجه 2 یا سخت‌تر را می‌پیماید: راه دیگری پیدا نشد.",
+  "Uses a harder MTB trail.": "از یک مسیر سخت‌تر دوچرخه کوهستان می‌رود.",
+  "The off-road map isn't available, so this route keeps to the usual trails.": "نقشه خارج از جاده در دسترس نیست، پس این مسیر روی مسیرهای همیشگی می‌ماند.",
+  "Off-road map unavailable: usual trails.": "نقشه خارج از جاده نیست: مسیرهای همیشگی.",
 };

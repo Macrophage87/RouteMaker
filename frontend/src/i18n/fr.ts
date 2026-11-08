@@ -2111,4 +2111,14 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "At {place}. Take a bike, then choose where to dock.": "À {place}. Prenez un vélo, puis choisissez où le déposer.",
   "No way there was found. Choose another dock.": "Aucun chemin n'a été trouvé. Choisissez une autre station.",
   "The stops stay in this order, to keep your via points on their way.": "Les arrêts restent dans cet ordre, pour garder vos points de passage sur leur trajet.",
+  // ---- Easy MTB trails (lib/dialsPanel.ts, lib/easyMtb.ts; the owner, 2026-11-08) ----
+  "Easy MTB trails": "Sentiers VTT faciles",
+  "Also rides mountain-bike trails rated easy or not rated, mostly grass and dirt.": "Emprunte aussi les sentiers VTT classés faciles ou non classés, surtout en herbe et en terre.",
+  "Not used while Keep to roads is on.": "Inutilisé tant que Routes seulement est activé.",
+  "easy MTB trails": "sentiers VTT faciles",
+  "Plans on the off-road map, as Gravel does, so mountain-bike trails rated 0 or 1 on either scale, or not rated at all, may be ridden. Trails rated 2 or harder are left out wherever there is a way round; if one is still used, the route says so. Traffic stress is weighed as usual. Dirt can be muddy after rain.": "Planifie sur la carte tout-terrain, comme Gravel : les sentiers VTT classés 0 ou 1 sur l'une ou l'autre échelle, ou non classés, peuvent être empruntés. Les sentiers classés 2 ou plus difficiles sont évités partout où il existe un autre chemin ; si l'un d'eux reste emprunté, l'itinéraire le signale. Le stress du trafic est pesé comme d'habitude. La terre peut être boueuse après la pluie.",
+  "This route uses {distance} of mountain-bike trail rated 2 or harder: no way round was found.": "Cet itinéraire emprunte {distance} de sentier VTT classé 2 ou plus difficile : aucun autre chemin n'a été trouvé.",
+  "Uses a harder MTB trail.": "Emprunte un sentier VTT plus difficile.",
+  "The off-road map isn't available, so this route keeps to the usual trails.": "La carte tout-terrain n'est pas disponible, cet itinéraire reste donc sur les sentiers habituels.",
+  "Off-road map unavailable: usual trails.": "Carte tout-terrain indisponible : sentiers habituels.",
 };

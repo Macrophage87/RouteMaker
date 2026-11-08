@@ -4915,6 +4915,56 @@ fine". So the closure is built into one graph. A ride chooses its graph through
 request has `trails_off` (the "Keep to roads, not trails" switch, below). Group Ride with trails
 on is on the standard graph, which keeps contraflow.
 
+### Easy MTB trails (the owner, 2026-11-08)
+
+The owner: "allow trailmaxxing to use MTB trails too, some are definitely fine for that",
+"But it's opt in there too. Make sure the MCP can use that too", "And default"; asked for a new
+control, "yes"; the design, "Steer on Gravel's graph" (no new graph and no new router); which
+trails, "yes 0 1 and unknown are counted." and "Unknown is typically grass and dirt."
+
+One switch, "Easy MTB trails", off by default, on the Default and Trailmaxxing ride types in
+Plan (`frontend/src/lib/dials.ts` `offersEasyMtb`, `EASY_MTB_PRESETS`; `dialsPanel.ts`
+`EASY_MTB_*`; `DialsPanel.tsx`). It travels as the other dials do: `easymtb=1` in a plan link
+(`planHash.ts`), `easyMtb` in a saved route's dials, `easy_mtb` on `POST /api/route`
+(`core.api.RouteIn`, a strict boolean, refused on any other ride type), on Best order and the
+nearest-places search, and on the MCP's `plan_route` and `revise_route` (mcp/README.md).
+Reach does not take it (`lib/reach.ts`). Changing between Default and Trailmaxxing keeps it
+(`rideTypeDialog.choose`); `fitDials` drops it elsewhere. Keep to roads wins: with trails off the
+switch shows off, says why, and the ride takes the no-trail graph.
+
+With it on, `presets.variant_for_ride(..., easy_mtb=True)` gives the off-road graph
+(`Variant.OFFROAD`), as Gravel's, at the weekend too, with the ride type's own costing, so the
+calm search, Trailmaxxing's ranking and every stress rule hold as on any of its rides.
+(Taking the off-road graph at the weekend too is Claude's default, not the owner's call and
+not measured: with the switch on, the weekend graph's car-free roads such as Beach Drive are
+priced as ordinary roads, not paths.) That
+graph opens the mountain-bike class (`trailaccess.MTB`, unrated grass and dirt) and the drawn
+rated singletrack up to level 1 (`singletrack.OFFROAD_MAX_LEVEL`). Easy is rated 0 or 1 on
+`mtb:scale` or `mtb:scale:imba`, or not rated; rated 2 or harder stays the Mountain Bike ride
+type's. The graph can still carry a harder trail: a mountain-bike-class way whose rating the
+singletrack rule does not read (`S2`, `0-2`) is open there and has no `segment.mtb_level`
+(written on closed singletrack alone). `core.easy_mtb.level_of` reads such a way's level from
+its kept `mtb:scale` and `mtb:scale:imba` (`segment.trail_tags`, via
+`singletrack.mtb_level`), so no column was added and no rebuild is needed.
+
+`core.easy_mtb.settle` holds the harder trails off as `core.mtb` holds a rider's hardest level:
+after the calm search (beside Mountain Bike's own pass in `routing.plan`), where the route
+rides one, points on it (`mtb.exclusion_points`, never within 300 m of a stop) are excluded and
+the router asked again, up to `mtb.LEVEL_ROUNDS` rounds, the route with the least harder trail
+kept; the exclusions go to `refine.Context.level_excludes`, so the red-crossing and
+Avoid-junction passes keep them out. A route a later pass changed, and every route offered
+beside it (candidates, the way round an Avoid junction, the way through a closure), is read
+again (`easy_mtb.reread`). The answer's `easy_mtb` (`EasyMtbOut`: `max_level` 1, `rounds`,
+`harder_m`, `limited`) is null with the switch off; `dials.easy_mtb` says it was planned with.
+Where a harder trail is still ridden (`harder_m` over 1 m, `limited` `no_way_round`), Plan says
+so in one line (`lib/easyMtb.ts`, `easyMtbNote`, through `t()` in all 20 catalogs); the MCP's
+summary says it as `easy_mtb`. Where the off-road router is down or not promoted, the ride is
+planned on the standard graph as Gravel's is (the twin fallback), `limited` is
+`no_offroad_graph`, and Plan says the off-road map is not available and the route keeps to the
+usual trails. An answer whose rounds ran out of time is not kept in the answer cache
+(`route_cache.keepable`). Tests: tests/test_easy_mtb.py, `TestEasyMtbTrails` in
+tests/test_route_dials.py, tests/test_mcp_server.py, frontend/src/lib/easyMtb.test.ts.
+
 ### Trails off (OWNER-DECISIONS 463, 463a, 463b)
 
 The owner, 2026-10-09: "add it". A trails-off switch is offered on every ride

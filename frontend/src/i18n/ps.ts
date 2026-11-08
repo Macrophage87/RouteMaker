@@ -2111,4 +2111,14 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "At {place}. Take a bike, then choose where to dock.": "په {place} کې یاست. یو بایسکل واخلئ، بیا وټاکئ چې چېرته یې کېږدئ.",
   "No way there was found. Choose another dock.": "هلته لاره ونه موندل شوه. بل سټېشن وټاکئ.",
   "The stops stay in this order, to keep your via points on their way.": "تمځایونه په همدې ترتیب پاتې کېږي، څو ستاسو د تېرېدو ټکي په خپله لار پاتې شي.",
+  // ---- Easy MTB trails (lib/dialsPanel.ts, lib/easyMtb.ts; the owner, 2026-11-08) ----
+  "Easy MTB trails": "اسانې د MTB لارې",
+  "Also rides mountain-bike trails rated easy or not rated, mostly grass and dirt.": "د غرنۍ بایسکل هغه لارې هم کاروي چې اسانه درجه لري یا درجه نه لري، چې ډېرې یې واښه او خاوره دي.",
+  "Not used while Keep to roads is on.": "تر هغه چې یوازې سړکونه روښانه وي، نه کارول کېږي.",
+  "easy MTB trails": "اسانې د MTB لارې",
+  "Plans on the off-road map, as Gravel does, so mountain-bike trails rated 0 or 1 on either scale, or not rated at all, may be ridden. Trails rated 2 or harder are left out wherever there is a way round; if one is still used, the route says so. Traffic stress is weighed as usual. Dirt can be muddy after rain.": "د Gravel په څېر د سړک بهر نقشې پر سر پلان جوړوي، نو د غرنۍ بایسکل هغه لارې چې په هر یوه پیمانه 0 یا 1 درجه لري، یا هېڅ درجه نه لري، کېدای شي وکارول شي. هغه لارې چې 2 یا تر هغې سختې درجه لري، هر چېرته چې بله لار وي، پرېښودل کېږي؛ که بیا هم یوه وکارول شي، لاره یې وايي. د ترافیکو فشار د تل په څېر تلل کېږي. خاوره کېدای شي له باران وروسته خټه وي.",
+  "This route uses {distance} of mountain-bike trail rated 2 or harder: no way round was found.": "دا لاره د غرنۍ بایسکل د هغې لارې {distance} کاروي چې 2 یا تر هغې سخته درجه لري: بله لار ونه موندل شوه.",
+  "Uses a harder MTB trail.": "یوه سخته د MTB لار کاروي.",
+  "The off-road map isn't available, so this route keeps to the usual trails.": "د سړک بهر نقشه شتون نه لري، نو دا لاره په معمولو لارو پاتې کېږي.",
+  "Off-road map unavailable: usual trails.": "د سړک بهر نقشه نشته: معمولې لارې.",
 };

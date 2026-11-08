@@ -2111,4 +2111,14 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "At {place}. Take a bike, then choose where to dock.": "你在 {place}。取一辆车，然后选择在哪里还车。",
   "No way there was found. Choose another dock.": "没有找到去那里的路。请选择另一个站点。",
   "The stops stay in this order, to keep your via points on their way.": "各站保持此顺序，让您的经过点留在原来的路段上。",
+  // ---- Easy MTB trails (lib/dialsPanel.ts, lib/easyMtb.ts; the owner, 2026-11-08) ----
+  "Easy MTB trails": "简易MTB步道",
+  "Also rides mountain-bike trails rated easy or not rated, mostly grass and dirt.": "也会走评为简易或未评级的山地车步道，多为草地和土路。",
+  "Not used while Keep to roads is on.": "开启只走道路时不使用。",
+  "easy MTB trails": "简易MTB步道",
+  "Plans on the off-road map, as Gravel does, so mountain-bike trails rated 0 or 1 on either scale, or not rated at all, may be ridden. Trails rated 2 or harder are left out wherever there is a way round; if one is still used, the route says so. Traffic stress is weighed as usual. Dirt can be muddy after rain.": "像Gravel一样在越野地图上规划，因此可能会走任一等级体系评为0或1、或完全未评级的山地车步道。评为2级或更难的步道，只要有其他路就会避开；如果仍需使用，路线会说明。交通压力照常计算。雨后土路可能泥泞。",
+  "This route uses {distance} of mountain-bike trail rated 2 or harder: no way round was found.": "这条路线走了{distance}评为2级或更难的山地车步道：未找到其他路。",
+  "Uses a harder MTB trail.": "走了一段较难的MTB步道。",
+  "The off-road map isn't available, so this route keeps to the usual trails.": "越野地图不可用，因此这条路线走常规步道。",
+  "Off-road map unavailable: usual trails.": "无越野地图：常规步道。",
 };

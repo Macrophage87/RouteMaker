@@ -2111,4 +2111,14 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "At {place}. Take a bike, then choose where to dock.": "{place}-এ আছেন। একটি সাইকেল নিন, তারপর কোথায় ডক করবেন বেছে নিন।",
   "No way there was found. Choose another dock.": "সেখানে যাওয়ার পথ পাওয়া যায়নি। অন্য ডক বেছে নিন।",
   "The stops stay in this order, to keep your via points on their way.": "আপনার মধ্যবিন্দুগুলো তাদের পথে রাখতে, থামার জায়গাগুলো এই ক্রমেই থাকছে।",
+  // ---- Easy MTB trails (lib/dialsPanel.ts, lib/easyMtb.ts; the owner, 2026-11-08) ----
+  "Easy MTB trails": "সহজ MTB ট্রেইল",
+  "Also rides mountain-bike trails rated easy or not rated, mostly grass and dirt.": "সহজ মানের বা মানহীন মাউন্টেন-বাইক ট্রেইলেও চলে, যার বেশিরভাগ ঘাস আর মাটি।",
+  "Not used while Keep to roads is on.": "শুধু রাস্তা চালু থাকলে এটি ব্যবহার হয় না।",
+  "easy MTB trails": "সহজ MTB ট্রেইল",
+  "Plans on the off-road map, as Gravel does, so mountain-bike trails rated 0 or 1 on either scale, or not rated at all, may be ridden. Trails rated 2 or harder are left out wherever there is a way round; if one is still used, the route says so. Traffic stress is weighed as usual. Dirt can be muddy after rain.": "Gravel-এর মতো অফ-রোড মানচিত্রে পরিকল্পনা করে, তাই যেকোনো স্কেলে 0 বা 1 মানের, বা একেবারে মানহীন মাউন্টেন-বাইক ট্রেইলে চলা যেতে পারে। 2 বা তার চেয়ে কঠিন ট্রেইল যেখানে অন্য পথ আছে সেখানে বাদ দেওয়া হয়; তবুও একটি ব্যবহার হলে রুট তা জানায়। যানজটের চাপ বরাবরের মতোই বিবেচনা করা হয়। বৃষ্টির পরে মাটি কাদাময় হতে পারে।",
+  "This route uses {distance} of mountain-bike trail rated 2 or harder: no way round was found.": "এই রুট 2 বা তার চেয়ে কঠিন মানের মাউন্টেন-বাইক ট্রেইলের {distance} ব্যবহার করে: অন্য কোনো পথ পাওয়া যায়নি।",
+  "Uses a harder MTB trail.": "একটি কঠিন MTB ট্রেইল ব্যবহার করে।",
+  "The off-road map isn't available, so this route keeps to the usual trails.": "অফ-রোড মানচিত্র পাওয়া যাচ্ছে না, তাই এই রুট সাধারণ ট্রেইলেই থাকে।",
+  "Off-road map unavailable: usual trails.": "অফ-রোড মানচিত্র নেই: সাধারণ ট্রেইল।",
 };

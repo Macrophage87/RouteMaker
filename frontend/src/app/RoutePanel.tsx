@@ -26,6 +26,7 @@ import { candidateRows } from "../lib/candidates.ts";
 import { loopNote, loopNoteShort } from "../lib/loop.ts";
 import { mtbNotes } from "../lib/mtbMode.ts";
 import { ROAD_BIKE_NO_PAVED_MAP_SHORT, roadBikeNote } from "../lib/roadBike.ts";
+import { easyMtbNote } from "../lib/easyMtb.ts";
 import { FacilityBreakdown } from "../FacilityBreakdown.tsx";
 import { IntersectionList } from "../IntersectionList.tsx";
 import { AvoidNotice } from "../AvoidNotice.tsx";
@@ -628,6 +629,9 @@ function noteLines(route: RouteResponse, points: LonLat[], light: readonly Light
   const mtb = mtbNotes(route.mtb);
   for (const text of mtb.warnings) lines.push({ key: `mtb-${text}`, className: "notice mtb-warning", icon: "warn", text });
   if (mtb.notes.length > 0) lines.push({ key: "mtb-note", className: "hint mtb-note", icon: "mtb", text: mtb.notes.join(" ") });
+  // Easy MTB trails: a harder trail it could not leave, or the off-road map down (lib/easyMtb.ts).
+  const easy = easyMtbNote(route);
+  if (easy) lines.push({ key: "easy-mtb", className: "notice easy-mtb-warning", icon: "warn", text: easy.text, short: easy.short });
   // Road Bike planned on the standard map while its paved-only map is down (lib/roadBike.ts).
   const roadBike = roadBikeNote(route);
   if (roadBike) lines.push({ key: "road-bike", className: "notice road-bike-warning", icon: "warn", text: roadBike, short: ROAD_BIKE_NO_PAVED_MAP_SHORT });

@@ -133,6 +133,7 @@ from routemaker.measure import elevation_gain
 from . import (
     avoid_junctions,
     beside_roads,
+    easy_mtb,
     mass_hazards,
     mtb,
     novice_walks,
@@ -1757,6 +1758,9 @@ class Dials:
     # Mountain Bike only, the second pass: the trail level the rider prefers, 1-4, never above
     # `mtb_level` (`mtbmode.preferred_level`); None: level 2, or `mtb_level` where that is lower.
     mtb_preferred: int | None = None
+    # Default and Trailmaxxing only, "Easy MTB trails" (the owner, 2026-11-08): plan on the
+    # off-road graph as Gravel does and steer off the trails rated 2 or harder (`core.easy_mtb`).
+    easy_mtb: bool = False
     # v0.7.0 "Route through anyway": the closures this plan routes through (their ids).
     closure_bypass: tuple[str, ...] = ()
     # A dirt trail a point is on is ridden on a ride type that does not plan on them
@@ -4988,7 +4992,10 @@ def _plan(
     when = dials.when or default_when()
     assist = bool(dials.assist) and preset.assist_speed_kmh is not None
     trails_off = bool(dials.trails_off)
-    variant = presets.variant_for_ride(preset_name, when, assist, trails_off)
+    # "Easy MTB trails" (`core.easy_mtb`): on the ride types that offer it, and not with trails
+    # off, which wins (`presets.variant_for_ride`).
+    easy_asked = bool(dials.easy_mtb) and preset_name in easy_mtb.PRESETS and not trails_off
+    variant = presets.variant_for_ride(preset_name, when, assist, trails_off, easy_asked)
     # A dirt trail the rider put a stop, via or end on (the owner, 2026-10-20: "Don't plan on
     # the route, but if you enter it or mark a waypoint in it, it will continue to route
     # through"): planned on the off-road graph, where it is open, with this ride type's
@@ -5610,6 +5617,25 @@ def _plan(
             "limited": "no_mtb_graph",
         }
     mtb_trip = trip
+    # "Easy MTB trails" (the owner, 2026-11-08): the trails rated 2 or harder held off the route
+    # as Mountain Bike holds a rider's level (`core.easy_mtb.settle`), after the calm search
+    # chose it and before the passes after it, which keep the same trails out. Where the
+    # off-road router was not there the ride was planned on the standard graph, as Gravel's
+    # is, and the answer says so (`no_offroad_graph`).
+    easy_info = None
+    easy_held = easy_asked and variant == Variant.OFFROAD.value and not fixed
+    if easy_held:
+        searched_trip = trip
+        trip, easy_info = easy_mtb.settle(
+            trip, request, variant, trace_costing, deadline, traces, points,
+            level_excludes=refine_context.level_excludes,
+        )  # fmt: skip
+        if trip is not searched_trip:
+            mtb_replaced = True
+            refine_context.candidates = refine_context.candidates[:1]
+    elif easy_asked and not fixed:
+        easy_info = easy_mtb.no_graph()
+    easy_trip = trip
     # A red (very high stress) crossing still on the answer where the crossing search did not
     # run over the whole route (a plan past REFINE_MAX_SPAN_M, a long Trailmaxxing plan
     # searched leg by leg, a search cut short, a climb seek, a route Mountain Bike's choice
@@ -5698,6 +5724,10 @@ def _plan(
             if again["over_level_m"] > 1.0 and limited is None:
                 limited = "no_way_round"
             mtb_info.update({**again, "limited": limited})
+    if easy_held and easy_info is not None and trip is not easy_trip:
+        again = easy_mtb.reread(trip, variant, trace_costing, deadline, traces)
+        if again is not None:
+            easy_info.update({**again, "rounds": easy_info.get("rounds", 0)})
 
     # A long calm plan searched in legs of its own answers in the plan's legs: the
     # grouping of its search legs into the plan's, the answer's and its candidates'
@@ -6170,6 +6200,7 @@ def _plan(
                 "avoid_gravel": avoid_gravel,
                 # What was planned, not what was asked: Mass Ride is always trails-off.
                 "trails_off": trails_off or preset.variant == Variant.NO_TRAIL.value,
+                "easy_mtb": easy_asked,
                 "target_distance_m": int(target_m) if target_m else None,
                 "system_weight_kg": dials.system_weight_kg if maxcalm else None,
                 "loop": loop,
@@ -6283,10 +6314,12 @@ def _plan(
     body["red_crossings"] = red_info
     timing.mark("answer")
 
-    def _with_mtb(answered: dict, info: dict | None) -> dict:
+    def _with_mtb(answered: dict, info: dict | None, easy: dict | None = None) -> dict:
         """A Mountain Bike route's reading on its body, and its time at about 6 mph
-        (10 km/h) on singletrack (`mtbmode.duration_s`), the router's own time kept."""
+        (10 km/h) on singletrack (`mtbmode.duration_s`), the router's own time kept; and an
+        Easy MTB trails route's reading (`easy_mtb`)."""
         answered["mtb"] = info
+        answered["easy_mtb"] = easy
         if info and info.get("singletrack_m"):
             # The junction delay is added after the singletrack retiming, so the router's
             # own time stays the router's and the delay is not scaled with the trail.
@@ -6299,6 +6332,13 @@ def _plan(
             )
         return answered
 
+    def _offered_easy(offered: dict) -> dict | None:
+        """An Easy MTB trails reading of a route offered beside the answer: its own, so a
+        harder trail on it is said when it is shown."""
+        if not easy_held:
+            return easy_info
+        return easy_mtb.reread(offered, variant, trace_costing, deadline, traces)
+
     def _offered_mtb(offered: dict) -> dict | None:
         """The reading of a route offered beside the answer (a candidate, the way round an
         Avoid-rated junction): its own, so a harder trail on it is said when it is shown."""
@@ -6309,7 +6349,7 @@ def _plan(
             dials.mtb_preferred,
         )  # fmt: skip
 
-    _with_mtb(body, mtb_info)
+    _with_mtb(body, mtb_info, easy_info)
     body["avoid_search"] = avoid_info
     body["avoid_alternate"] = None
     if avoid_list:
@@ -6321,7 +6361,7 @@ def _plan(
         if deadline.at - clock() >= ALTERNATE_MIN_S:
             try:
                 around = work_zones.with_work_zones(_answer(avoid_trip, None, True), zones_plan)
-                _with_mtb(around, _offered_mtb(avoid_trip))
+                _with_mtb(around, _offered_mtb(avoid_trip), _offered_easy(avoid_trip))
                 around["walk_in"] = walk_in_for(around, body)
                 around["extra_distance_m"] = round(around["distance_m"] - body["distance_m"], 1)
                 around["extra_duration_s"] = round(around["duration_s"] - body["duration_s"], 1)
@@ -6341,7 +6381,7 @@ def _plan(
     if through is not None and deadline.at - clock() >= ALTERNATE_MIN_S:
         try:
             standard = work_zones.with_work_zones(_answer(through, None, True), zones_plan)
-            _with_mtb(standard, _offered_mtb(through))
+            _with_mtb(standard, _offered_mtb(through), _offered_easy(through))
             standard["extra_distance_m"] = round(standard["distance_m"] - body["distance_m"], 1)
             standard["extra_duration_s"] = round(standard["duration_s"] - body["duration_s"], 1)
             standard["closure_ids"] = sorted(zones_plan.affecting)
@@ -6367,7 +6407,7 @@ def _plan(
         try:
             refine.analyse(found, refine_context, deadline)
             candidate = work_zones.with_work_zones(_answer(found, None, True), zones_plan)
-            _with_mtb(candidate, _offered_mtb(found))
+            _with_mtb(candidate, _offered_mtb(found), _offered_easy(found))
             candidate["walk_in"] = walk_in_for(candidate, body)
             if maxcalm and target_m:
                 candidate["over_target_m"] = target_fields(

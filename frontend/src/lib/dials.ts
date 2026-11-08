@@ -38,6 +38,12 @@ export interface Dials {
    */
   trailsOff?: boolean;
   /**
+   * "Easy MTB trails" (the owner, 2026-11-08), Default and Trailmaxxing only (`offersEasyMtb`): also ride the
+   * mountain-bike trails rated 0 or 1, or unrated (grass and dirt), on the off-road graph as Gravel does, steering off
+   * those rated 2 or harder (core/easy_mtb.py). Absent is off. In the link and a saved route; dropped on other ride types.
+   */
+  easyMtb?: boolean;
+  /**
    * "Target distance" (OWNER-DECISIONS 256, 271), in metres: a soft goal. The planner
    * finds the least stressful route at or under it, and goes past it only where the
    * extra miles avoid enough stress, never past `TARGET_CEILING_RATIO` times it.
@@ -283,6 +289,19 @@ export function trailsOffLocked(preset: PresetId): boolean {
   return preset === "mass-ride";
 }
 
+/** The ride types that offer "Easy MTB trails" (core/presets.py EASY_MTB_PRESETS). */
+export const EASY_MTB_PRESETS: readonly PresetId[] = ["default", "trailmaxxing"];
+
+/** Whether the ride type offers "Easy MTB trails" (the owner, 2026-11-08: Trailmaxxing, "And default"). */
+export function offersEasyMtb(preset: PresetId): boolean {
+  return EASY_MTB_PRESETS.includes(preset);
+}
+
+/** Whether the ride is planned with "Easy MTB trails": on, on a ride type that offers it, and not trails off (which wins). */
+export function easyMtbOn(preset: PresetId, dials: Pick<Dials, "easyMtb" | "trailsOff">): boolean {
+  return offersEasyMtb(preset) && dials.easyMtb === true && !trailsAreOff(preset, dials);
+}
+
 /** Whether the ride is planned trails off: the rider's switch, or a ride type that always is. */
 export function trailsAreOff(preset: PresetId, dials: Pick<Dials, "trailsOff">): boolean {
   return trailsOffLocked(preset) || dials.trailsOff === true;
@@ -408,6 +427,7 @@ export function fitDials(preset: PresetId, dials: Partial<Dials>): Dials {
     // Only an e-bike can end outside a dock, and never on Rebalance Ride (it ends where a bike is needed).
     ...(start.bike === "ebike" && dials.ending === "outside_dock" && preset !== "rebalance" ? { ending: "outside_dock" as const } : {}),
     ...(dials.trailsOff === true ? { trailsOff: true } : {}),
+    ...(offersEasyMtb(preset) && dials.easyMtb === true ? { easyMtb: true } : {}),
     ...(fitTarget(dials.targetDistanceM) !== undefined ? { targetDistanceM: fitTarget(dials.targetDistanceM) } : {}),
     ...(dials.loop === true ? { loop: true } : {}),
     ...(isTransit(preset) && !onFoot(preset) && dials.noviceLegs === true ? { noviceLegs: true } : {}),
@@ -433,6 +453,8 @@ export function dialFields(dials: Dials): Record<string, string | number | boole
   if (dials.carrying) fields.carrying = dials.carrying;
   if (dials.assist) fields.assist = true;
   if (dials.trailsOff) fields.trails_off = true;
+  // "Easy MTB trails" (fitDials keeps it on Default and Trailmaxxing alone); absent is off.
+  if (dials.easyMtb) fields.easy_mtb = true;
   const target = fitTarget(dials.targetDistanceM);
   if (target !== undefined) fields.target_distance_m = target;
   const weight = fitWeight(dials.systemWeightKg);

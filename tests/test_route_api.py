@@ -112,6 +112,8 @@ CONTRACT_KEYS = {
     "loop",
     # Additive, docs/MTB-TOPO-PLAN.md slice 6: null except on a Mountain Bike plan.
     "mtb",
+    # Additive, Easy MTB trails (2026-11-08): null except with the switch on.
+    "easy_mtb",
     # Additive, FOLLOWUP-DEDODGE (OWNER-DECISIONS 272): side-street dodges found and removed.
     "dodges",
     # Additive, the red-crossing pass (hunt S5, 2026-11-08): null where it did not run.

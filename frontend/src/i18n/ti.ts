@@ -2111,4 +2111,14 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "At {place}. Take a bike, then choose where to dock.": "ኣብ {place} ኣለኹም። ብሽክለታ ውሰዱ፣ ድሕሪኡ ኣበይ ከም እተቐምጡ ምረጹ።",
   "No way there was found. Choose another dock.": "ናብኡ መገዲ ኣይተረኽበን። ካልእ መዕቆቢ ምረጹ።",
   "The stops stay in this order, to keep your via points on their way.": "መሕለፊ ነጥብታትኩም ኣብ መገዶም ምእንቲ ክጸንሑ፡ መዕረፊታት በዚ ስርዓት ይጸንሑ።",
+  // ---- Easy MTB trails (lib/dialsPanel.ts, lib/easyMtb.ts; the owner, 2026-11-08) ----
+  "Easy MTB trails": "ቀለልቲ ናይ MTB መንገድታት",
+  "Also rides mountain-bike trails rated easy or not rated, mostly grass and dirt.": "ቀሊል ዝተባህሉ ወይ ደረጃ ዘይብሎም ናይ ጎቦ ብሽክለታ መንገድታት እውን ይጥቀም፤ መብዛሕትኦም ሳዕሪን ሓመድን እዮም።",
+  "Not used while Keep to roads is on.": "ጽርግያታት ጥራይ ክሳብ ዝበርህ ኣይጥቀመሉን።",
+  "easy MTB trails": "ቀለልቲ ናይ MTB መንገድታት",
+  "Plans on the off-road map, as Gravel does, so mountain-bike trails rated 0 or 1 on either scale, or not rated at all, may be ridden. Trails rated 2 or harder are left out wherever there is a way round; if one is still used, the route says so. Traffic stress is weighed as usual. Dirt can be muddy after rain.": "ከም Gravel ኣብ ካርታ ካብ ጽርግያ ወጻኢ ይውጥን፤ ስለዚ ኣብ ዝኾነ መዐቀኒ 0 ወይ 1 ዝተዋህቦም ወይ ፈጺሙ ደረጃ ዘይብሎም ናይ ጎቦ ብሽክለታ መንገድታት ክጥቀመሎም ይኽእል። 2 ወይ ካብኡ ዝኸበዱ መንገድታት ካልእ መገዲ ኣብ ዘለዎ ኩሉ ይግደፉ፤ ሓደ ገና እንተ ተጠቐመ እቲ መስመር ይነግር። ጸቕጢ ትራፊክ ከም ልሙድ ይምዘን። ድሕሪ ዝናብ ሓመድ ጭቃ ክኸውን ይኽእል።",
+  "This route uses {distance} of mountain-bike trail rated 2 or harder: no way round was found.": "እዚ መስመር 2 ወይ ካብኡ ዝኸበደ ናይ ጎቦ ብሽክለታ መንገዲ {distance} ይጥቀም፤ ካልእ መገዲ ኣይተረኽበን።",
+  "Uses a harder MTB trail.": "ዝኸበደ ናይ MTB መንገዲ ይጥቀም።",
+  "The off-road map isn't available, so this route keeps to the usual trails.": "ካርታ ካብ ጽርግያ ወጻኢ ኣይርከብን፤ ስለዚ እዚ መስመር ኣብ ልሙዳት መንገድታት ይጸንሕ።",
+  "Off-road map unavailable: usual trails.": "ካርታ ካብ ጽርግያ ወጻኢ የለን፦ ልሙዳት መንገድታት።",
 };
