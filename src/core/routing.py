@@ -5171,6 +5171,29 @@ def _plan(
     if not loop and not quick and not fixed:
         trip, dodges = dedodge.apply(trip, refine_context)
         dedodge.settle(trip, refine_context, refined, dodges)
+    # A red (very high stress) crossing still on the answer where the crossing search did not
+    # run over the whole route (a plan past REFINE_MAX_SPAN_M, a long Trailmaxxing plan
+    # searched leg by leg, a search cut short): the way round, asked for once and taken where
+    # it is better (`core.red_crossings`). The owner, 2026-11-08, of the GW Parkway at grade at
+    # Tulane Dr on a Mount Vernon ride: "It's taking people onto dangerous intersections."
+    red_info = None
+    if not loop and not quick and not fixed:
+        from . import red_crossings
+
+        whole_searched = (
+            refined is not None
+            and not long_calm
+            and (refined.get("rounds") or 0) > 0
+            and not refined.get("limited")
+        )
+        red_trip = trip
+        trip, red_info = red_crossings.settle(trip, refine_context, whole_searched)
+        if trip is not red_trip:
+            dodges = None
+            # The routes to choose from were near-ties of the route it replaced.
+            refine_context.candidates = refine_context.candidates[:1]
+        if red_info is not None:
+            logger.info("red crossings: %s", red_info)
     # An Avoid-rated junction still on the answer (307-310, 335): the way round, taken
     # where it is worth 30 minutes a pass and the search did not already weigh it (on
     # Mass Ride and Group Ride, where it adds no LTS 4 and not too much distance; never
