@@ -6520,7 +6520,8 @@ A way back joined to the planned route (`lib/rejoin.ts` `joinRoutes`) carries th
 
 **A ride's re-plans are planned for now** (2026-11-08 hunt, round 3, R3-1): every request a ride makes on
 its leg (`lib/rideTrip.ts` `legDials`: off-route, Re-plan from here, Calmer and Flatter, detours, the
-nearest search, Ride the rest) sends no `when`, so the API works out the ride time itself
+nearest search, Ride the rest; and `rideNowDials` for "Start the next leg" at a stop, the transit trip's
+check and Roam's Detour) sends no `when`, so the API works out the ride time itself
 (`routing.default_when`), as `closures_now` does for closures. Before, a plan set to "Weekend" and ridden
 on a Tuesday re-planned on the weekend graph (the car-free parkways as paths, the weekend signal waits),
 and a "Weekday rush" plan ridden on Saturday kept Road Bike off the parkways. The plan's own dials keep

@@ -13,7 +13,7 @@ import { LOOP_SHAPE_MIN_M, endsOnStart, loopShapePoint, onHalfStep, rideModel, s
 import { isRoundTrip } from "./loop.ts";
 import { ViaMarks, VIA_MARKS, stopsOnly, withVias, withViasOnLegs } from "./pointKinds.ts";
 import { REJOIN_ONWARD_M, rejoinTargets, rejoinsFirst, wayBackRoute } from "./rejoin.ts";
-import { DIRT_RIDDEN_M, SHARE_BIKE, legDials, rodeDirt, shareBikeOf } from "./rideTrip.ts";
+import { DIRT_RIDDEN_M, SHARE_BIKE, legDials, rideNowDials, rodeDirt, shareBikeOf } from "./rideTrip.ts";
 import { VIA_LEGS_KEPT_SAID, applyAnswer, type StopOrder } from "./stopOrder.ts";
 import { keepLeftRide, leftRide } from "./rideResume.ts";
 
@@ -116,6 +116,23 @@ test("a ride's re-plan is planned for now, not at the plan's chosen time (hunt 3
   assert.equal(legDials({ ...plan, when: "weekday_rush" }, "default", null).when, null);
   // The plan's dials are never changed.
   assert.equal(plan.when, "weekend");
+});
+
+test("the next leg at a stop, the transit trip's check and Roam's Detour are planned for now too (hunt 3, R3-1)", () => {
+  const plan = { ...startDials("road-bike"), when: "weekend" as const, loop: true };
+  // Before: nextLeg, checkTrip and roamDetour (App.tsx) sent { ...planDials, loop: false, closuresNow: true }, the plan's "Weekend" with it.
+  const body = JSON.parse(routeRequestBody([at(0, 0), at(1000, 0)], "road-bike", { dials: rideNowDials(plan) }));
+  assert.equal(body.when, undefined, "the API works out the time of the ride");
+  const dials = rideNowDials(plan);
+  assert.equal(dials.loop, false);
+  assert.equal(dials.closuresNow, true);
+  assert.equal(plan.when, "weekend");
+  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  assert.ok(app.includes("{ dials: rideNowDials(legDials) }"), "nextLeg goes through rideNowDials");
+  assert.ok(app.includes("{ dials: { ...rideNowDials(planDials), transitOption: key } }"), "checkTrip goes through rideNowDials");
+  assert.ok(app.includes(": rideNowDials(planDials);"), "Roam's Detour goes through rideNowDials");
+  // The one ride request left that builds its own one-way dials goes through legDials, which drops `when` too.
+  assert.equal(app.split("loop: false, closuresNow: true").length - 1, 1, "no other ride request builds its own dials");
 });
 
 test("the share bike a leg is on: the plan's dial, the plan's answer, or Bikeshare + transit's classic bike", () => {
