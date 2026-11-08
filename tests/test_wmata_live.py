@@ -463,6 +463,12 @@ def test_a_closure_or_elevator_out_now_holds_only_for_a_trip_leaving_while_it_do
     chosen = transit.choose(later, metro_option(later).key)
     annotated = transit_live.annotate(transit.block(chosen, schedule), chosen, snapshot())
     assert not (annotated["live"] or {}).get("warnings")
+    # An elevator out now whose estimated return is already past still holds for a trip soon:
+    # an overdue estimate is no sign it is back (it was dropped, losing the rank and warning).
+    monkeypatch.setattr(transit_live, "_wall", lambda: at(2026, 10, 21, 7, 0).timestamp())
+    assert [s.name for s in transit_live.blocked_stations(snapshot(), later.moment)] == [
+        "Federal Triangle"
+    ]
     # No moment: the reading as it is.
     assert [s.name for s in transit_live.blocked_stations(snapshot())] == ["Federal Triangle"]
 

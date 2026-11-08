@@ -2008,7 +2008,8 @@ TWIN_VARIANTS = (
     Variant.PAVED.value,
 )
 # The graphs whose rides take a dirt trail the rider touched (`core.trail_touch`): the standard
-# graph and its weekend twin, which a Saturday, Sunday or holiday ride plans on. Both close the
+# graph and its weekend twin, which a Saturday or Sunday daytime ride plans on (a weekday holiday
+# is off-peak, on the standard graph: `routemaker.ridetime`). Both close the
 # dirt trails, and a touched ride is planned on the off-road graph instead.
 TRAIL_TOUCH_VARIANTS = frozenset({Variant.STANDARD.value, Variant.WEEKEND.value})
 
@@ -4641,7 +4642,7 @@ def _plan(
     # trail, any reroutes should include dirt"). A dirt trail the rider marked closed on this
     # ride says its conditions are bad: no dirt trail at all for the rest of the ride
     # (2026-10-21: "assume that means bad riding conditions until it's opted back in").
-    # A weekend or holiday ride on the standard graph's weekend twin, where dirt trails are
+    # A weekend ride on the standard graph's weekend twin, where dirt trails are
     # closed just the same, follows the same rule (`TRAIL_TOUCH_VARIANTS`).
     touched_trails: frozenset[int] = frozenset()
     per_point: tuple[frozenset[int], ...] = ()

@@ -88,7 +88,9 @@ export function whenAt(moment: Date): When {
   const wd = weekday(year, month, day);
   if (wd === 6 && minute >= SUNDAY_EVENING_START) return "weekday_offpeak";
   if (wd >= 5) return "weekend";
-  if (federalHolidays(year).has(iso(year, month, day))) return "weekday_offpeak";
+  // The next year's too: New Year's Day 2028, a Saturday, is observed on 2027-12-31.
+  const date = iso(year, month, day);
+  if (federalHolidays(year).has(date) || federalHolidays(year + 1).has(date)) return "weekday_offpeak";
   return RUSH_WINDOWS.some(([start, end]) => start <= minute && minute < end) ? "weekday_rush" : "weekday_offpeak";
 }
 

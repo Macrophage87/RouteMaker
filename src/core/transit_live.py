@@ -113,7 +113,9 @@ def holding(
 
     def holds(outage: wmata_live.Outage) -> bool:
         back = _back_at(outage)
-        return soon if back is None else leaves < back
+        # Out now and the trip soon: it holds, even with WMATA's estimate already past (an
+        # overdue return is no sign the elevator is back). Later, only until a return to come.
+        return soon or (back is not None and leaves < back)
 
     outages = tuple(o for o in live.outages if holds(o))
     incidents = live.incidents if soon else ()

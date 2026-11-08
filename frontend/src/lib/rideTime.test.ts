@@ -44,6 +44,9 @@ test("a weekday federal holiday is off-peak; one on a weekend stays the weekend"
   assert.equal(whenAt(new Date("2026-09-07T12:30:00Z")), "weekday_offpeak"); // Labor Day, 08:30
   assert.equal(whenAt(new Date("2026-07-03T16:00:00Z")), "weekday_offpeak"); // July 4th observed on the Friday
   assert.equal(whenAt(new Date("2026-07-04T16:00:00Z")), "weekend"); // July 4th itself, a Saturday
+  // New Year's Day 2028 is a Saturday, observed Friday 31 December 2027, as the API reads it.
+  assert.equal(whenAt(new Date("2027-12-31T13:30:00Z")), "weekday_offpeak"); // 08:30 EST
+  assert.equal(whenAt(new Date("2027-12-30T13:30:00Z")), "weekday_rush");
   assert.ok(federalHolidays(2027).has("2027-12-24"), "Christmas on a Saturday is observed the Friday before");
 });
 
