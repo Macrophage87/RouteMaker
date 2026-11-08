@@ -853,8 +853,29 @@ check("and is open both ways", link_aisle.bike_forward == "true" and link_aisle.
 check("and is not destination-only", link_aisle.private == "false", link_aisle.private)
 local _, motor_private = transform_way({ highway = "service", service = "parking_aisle", bicycle = "yes",
   motor_vehicle = "private" })
-check("a motor_vehicle=private aisle stays destination-only (upstream's flag)",
-  motor_private.private == "true", motor_private.private)
+-- Private to cars alone, a bicycle's way is not destination-only for the bicycle
+-- (M.private_to_motors_only; the owner, 2026-11-08). It was until then.
+check("a bike-open aisle private to cars alone is not destination-only",
+  motor_private.private == "false" and motor_private.bike_forward == "true", motor_private.private)
+check("and is still closed to cars", motor_private.auto_forward == "false", motor_private.auto_forward)
+do
+-- The Mount Vernon Trail at Belle Haven Marina (way 984055921): a service road
+-- `motor_vehicle=private` + `bicycle=yes`. Destination-only, it cost bicycles 600 s to
+-- enter, and routes left the trail to cross the GW Parkway at grade (owner report
+-- 2026-11-08).
+local _, marina = transform_way({ highway = "service", name = "Mount Vernon Trail", access = "yes",
+  bicycle = "yes", foot = "yes", motor_vehicle = "private", surface = "paved" })
+check("the Mount Vernon Trail's marina road is not destination-only", marina.private == "false",
+  marina.private)
+check("and is open to bicycles both ways", marina.bike_forward == "true" and marina.bike_backward == "true")
+local _, car_private = transform_way({ highway = "service", motor_vehicle = "private" })
+check("a road private to cars with no bicycle tag stays destination-only", car_private.private == "true",
+  car_private.private)
+local _, all_private = transform_way({ highway = "service", access = "private", bicycle = "yes",
+  motor_vehicle = "private" })
+check("access=private stays destination-only whatever the bicycle tag", all_private.private == "true",
+  all_private.private)
+end
 local _, plain_aisle = transform_way({ highway = "service", service = "parking_aisle" })
 check("an aisle that says nothing of bicycles stays an aisle", tonumber(plain_aisle.use) == 6,
   plain_aisle.use)

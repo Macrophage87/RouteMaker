@@ -995,6 +995,41 @@ end
 check("an aisle with access=yes is still a link",
   M.remap_way({ highway = "service", service = "parking_aisle", bicycle = "yes", access = "yes" }, {}).service
     == M.REMOVE)
+-- A bicycle's way private to motor traffic alone is not destination-only for the bicycle
+-- (M.private_to_motors_only): the Mount Vernon Trail's service road at Belle Haven Marina
+-- (way 984055921; owner report 2026-11-08).
+do
+  local marina = { highway = "service", name = "Mount Vernon Trail", access = "yes", bicycle = "yes",
+    foot = "yes", motor_vehicle = "private", surface = "paved" }
+  check("the Mount Vernon Trail's marina road is closed to cars, not private",
+    M.remap_way(marina, { stress_tier = 1 }).motor_vehicle == "no")
+  for _, grant in ipairs({ "yes", "designated", "permissive" }) do
+    for _, key in ipairs({ "motor_vehicle", "motorcar" }) do
+      for _, value in ipairs({ "private", "destination", "customers", "permit", "residents", "delivery" }) do
+        check(key .. "=" .. value .. " with bicycle=" .. grant .. " is no longer private",
+          M.remap_way({ highway = "service", bicycle = grant, [key] = value }, {})[key] == "no")
+      end
+    end
+  end
+  check("with no bicycle tag the motor key stays",
+    M.remap_way({ highway = "service", motor_vehicle = "private" }, {}).motor_vehicle == nil)
+  check("with bicycle=destination the motor key stays",
+    M.remap_way({ highway = "service", bicycle = "destination", motor_vehicle = "private" }, {}).motor_vehicle
+      == nil)
+  check("motor_vehicle=no is left as it is",
+    M.remap_way({ highway = "service", bicycle = "yes", motor_vehicle = "no" }, {}).motor_vehicle == nil)
+  for _, restriction in ipairs({ { access = "private" }, { access = "destination" }, { vehicle = "private" },
+      { access = "no" } }) do
+    local tags = { highway = "service", bicycle = "yes", motor_vehicle = "private" }
+    local key, value = next(restriction)
+    tags[key] = value
+    check("with " .. key .. "=" .. value .. " the motor key stays", M.remap_way(tags, {}).motor_vehicle == nil)
+  end
+  check("a cemetery's way stays destination-only",
+    M.remap_way({ highway = "service", bicycle = "yes", motor_vehicle = "private" }, { cemetery = true })
+      .motor_vehicle == nil)
+end
+
 -- A trail's link the rebuild names (`rm:aisle_link`, routemaker.aisle_links; Beach
 -- Drive at the Maryland line, owner report 2026-10-26) loses the use too.
 check("a parking aisle named a trail's link becomes a plain service road",
