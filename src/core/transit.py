@@ -355,6 +355,9 @@ class Stop:
     # Every elevator a bike could use here is out (core.transit_live.blocked_stations): a trip
     # taking its own bike in or out here is ranked this many seconds down (`ELEVATOR_OUT_S`).
     elevator_out_s: float = 0.0
+    # Every entrance a bike may use, `bike_entrance` (the map's) first; a bike leg takes the
+    # one on its rider's side (`_bike_entrance`). Empty: `bike_entrance` alone.
+    bike_entrances: tuple[tuple[float, float], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -591,6 +594,7 @@ def parse(doc: dict) -> Schedule:
             int(s["system"]),
             systems[int(s["system"])].mode != BUS,
             bool(s["bike"]),
+            bike_entrances=tuple(tuple(e) for e in s.get("bike_entrances") or ()),
         )
         for i, s in enumerate(doc["stops"])
     ]
@@ -825,6 +829,7 @@ def with_typical_metro(schedule: Schedule, path: Path = TYPICAL_PATH) -> Schedul
                 system.index,
                 True,
                 bool(row["bike"]),
+                bike_entrances=tuple(tuple(e) for e in row.get("bike_entrances") or ()),
             )
         )
     # One service per day type, running on its days of the window.
@@ -1265,6 +1270,19 @@ def _total(legs) -> float:
 def _nearest_entrance(stop: Stop, point) -> tuple[float, float]:
     candidates = stop.entrances or (stop.point,)
     return min(candidates, key=lambda e: _distance(point, e))
+
+
+def _bike_entrance(stop: Stop, point) -> tuple[float, float]:
+    """The entrance a bike uses at `stop` coming from or going to `point`: of its bike
+    entrances (its elevators, where it has them), the nearest `point`.
+
+    It was always the one nearest the station's centre: on the stations whose elevators stand
+    either side of a highway (Herndon and Reston on the Dulles Toll Road, Tysons and its
+    neighbours in Route 7's median, Friendship Heights either side of Wisconsin Avenue) a rider
+    from the far side was routed round to it, and a transfer left by whichever entrance was
+    nearest, stairs included (hunt M5)."""
+    candidates = stop.bike_entrances or (stop.bike_entrance,)
+    return min(candidates, key=lambda e: (_distance(point, e), candidates.index(e)))
 
 
 # --- Departures and reach ----------------------------------------------------------------
@@ -1909,7 +1927,7 @@ def _ride_to(
     pricing: Pricing = UNPRICED,
 ) -> _End:
     """Ride your own bike to a stop (and, a station, in by the elevator)."""
-    to = stop.bike_entrance
+    to = _bike_entrance(stop, start)
     routed = ride
     if ride is None:
         ride = Ride(ride_s(start, to, speed), (tuple(start), to))
@@ -1941,7 +1959,7 @@ def _ride_from(
     speed: float,
     pricing: Pricing = UNPRICED,
 ) -> _End:
-    start = stop.bike_entrance
+    start = _bike_entrance(stop, end)
     routed = ride
     if ride is None:
         ride = Ride(ride_s(start, end, speed), (start, tuple(end)))
@@ -2143,8 +2161,10 @@ def _transfer(day: _Day, a: Stop, b: Stop, speed: float) -> tuple[list[Leg], flo
     legs = []
     if a.rail:
         legs.append(_station_leg(EXIT, a) if bike else Leg(EXIT, ACCESS_WALK_S))
-    start = _nearest_entrance(a, b.point)
-    end = b.bike_entrance if bike else _nearest_entrance(b, start)
+    # With a bike, out by the elevator on the next station's side and in by its elevator on
+    # this one's (`_bike_entrance`); on foot, the nearest entrances.
+    start = _bike_entrance(a, b.point) if bike else _nearest_entrance(a, b.point)
+    end = _bike_entrance(b, start) if bike else _nearest_entrance(b, start)
     place = day.schedule.place(b)
     if bike:
         seconds = ride_s(start, end, speed)
@@ -2713,7 +2733,7 @@ def plan_bike(
                 schedule,
                 start,
                 s,
-                services.ride(start, list(s.bike_entrance)),
+                services.ride(start, list(_bike_entrance(s, start))),
                 speed_kmh,
                 day.pricing,
             )
@@ -2724,7 +2744,7 @@ def plan_bike(
                 schedule,
                 end,
                 s,
-                services.ride(list(s.bike_entrance), end),
+                services.ride(list(_bike_entrance(s, end)), end),
                 speed_kmh,
                 day.pricing,
             )

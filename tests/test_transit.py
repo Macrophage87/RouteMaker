@@ -1616,6 +1616,29 @@ def without_metro_gtfs(start: date = date(2026, 9, 28)) -> transit.Schedule:
     return transit.with_typical_metro(transit.parse(build.build(feeds, start)[0]))
 
 
+def test_an_own_bike_leg_takes_the_elevator_on_its_riders_side() -> None:
+    """Hunt M5: Herndon's street elevators stand either side of the Dulles Toll Road. Every bike
+    leg used the one nearest the station's centre (the north one), so a rider from the south was
+    routed round to the far side; a bike transfer left by any entrance, stairs included."""
+    schedule = without_metro_gtfs()
+    herndon = next(s for s in schedule.stops if s.name == "Herndon" and s.rail and s.elevator)
+    north_side = herndon.bike_entrance
+    south_side = min(herndon.bike_entrances, key=lambda e: e[1])
+    assert north_side[1] > 38.953 > 38.952 > south_side[1]
+    from_north, from_south = [-77.3850, 38.9600], [-77.3850, 38.9450]
+    to_station = transit._ride_to(schedule, from_south, herndon, None, 15.0)
+    assert to_station.legs[0].coordinates[-1] == south_side  # it was the north one
+    assert (
+        transit._ride_to(schedule, from_north, herndon, None, 15.0).legs[0].coordinates[-1]
+        == north_side
+    )
+    home = transit._ride_from(schedule, from_south, herndon, None, 15.0)
+    assert home.legs[-1].coordinates[0] == south_side
+    # A station with one elevator known keeps the map's.
+    one = next(s for s in schedule.stops if s.name == "Addison Road-Seat Pleasant" and s.rail)
+    assert transit._bike_entrance(one, from_south) == one.bike_entrance
+
+
 def test_the_typical_timetable_has_the_maps_stations_and_the_documented_run_times() -> None:
     # The map's 98 stations, each with the bike entrance the GTFS build would give it.
     assert TYPICAL["stations"] == build.metro_stations()

@@ -129,7 +129,7 @@ def metro_stations(data: Path = RAIL_DATA) -> list[dict]:
             station["osm_elevators"].append(f["geometry"]["coordinates"][:2])
     out = []
     for s in sorted(found, key=lambda s: s["name"]):
-        entrance, elevator = s["point"], False
+        entrance, elevator, others = s["point"], False, []
         for kind, is_elevator in (
             ("elevators", True),
             ("osm_elevators", True),
@@ -138,12 +138,18 @@ def metro_stations(data: Path = RAIL_DATA) -> list[dict]:
             if s[kind]:
                 entrance = min(s[kind], key=lambda p: distance_m(p, s["point"]))
                 elevator = is_elevator
+                others = [p for p in s[kind] if p != entrance]
                 break
         out.append(
             {
                 "name": s["name"],
                 "point": _round(s["point"]),
                 "bike_entrance": _round(entrance),
+                # Every entrance of the bike entrance's kind, the map's first: a bike leg rides
+                # to and from the one on the rider's side (core.transit `_bike_entrance`). The
+                # one nearest the station's centre can be across Route 7 or the Dulles Toll Road
+                # from the rider (hunt M5).
+                "bike_entrances": [_round(entrance)] + [_round(p) for p in others],
                 "bike": elevator,
                 "entrances": [
                     _round(p) for p in s["elevators"] + s["osm_elevators"] + s["entrances"]
