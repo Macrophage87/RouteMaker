@@ -267,7 +267,7 @@ export function calmNoteShort(stress: number, preset?: PresetId): string | undef
 
 /** The top of the traffic slider's (i): the order it weighs things in. */
 export const CALM_HOW =
-  t("First it avoids heavy-traffic roads (LTS 4) and very high stress junctions. Then it avoids busy roads (LTS 3) and higher stress junctions. Then it follows the Hills slider. Then it takes the shorter way. A quiet street counts the same as a trail, except on Trailmaxxing and Cargo with passengers, where low-stress streets (LTS 2) count a little extra. Novice and Nervous treats every road as one step busier and goes no further than {novice} times the usual route. Otherwise it goes no further than {target} times your target distance, or {usual} times the usual route when no target is set.", { novice: NOVICE_CEILING_RATIO, target: TARGET_CEILING_RATIO, usual: DEFAULT_CEILING_RATIO });
+  t("First it avoids heavy-traffic roads (LTS 4) and very high stress junctions. Then it avoids busy roads (LTS 3) and higher stress junctions. Then it follows the Hills slider. Then it takes the shorter way. A quiet street counts the same as a trail, except on Trailmaxxing, Cargo with passengers and Tandem, where low-stress streets (LTS 2) count a little extra. Novice and Nervous treats every road as one step busier and goes no further than {novice} times the usual route. Otherwise it goes no further than {target} times your target distance, or {usual} times the usual route when no target is set.", { novice: NOVICE_CEILING_RATIO, target: TARGET_CEILING_RATIO, usual: DEFAULT_CEILING_RATIO });
 
 export const MASS_RIDE_HILLS_NOTE =
   t("A mass ride does not look for climbs: at parade pace a climb drops riders below balance speed.");

@@ -3347,6 +3347,8 @@ class TestStressAverseWeights:
             ("walk-transit", None),
             # Run (#901) takes Walk's preset, never used to ride.
             ("run", None),
+            # Tandem (#1070): the stoker is not in control (items 221, 241).
+            ("tandem", None),
         ):
             exposure = presets.exposure_for(name, carrying)
             assert {k: exposure.weights[k] for k in "345"} == {"3": 1.0, "4": 8.0, "5": 16.0}, name
@@ -3365,6 +3367,7 @@ class TestStressAverseWeights:
                 # Walk, Walk + 🚆🚌 (#888) and Run (#901): pinned at 8 and 16 above.
                 *presets.ON_FOOT_PRESETS,
                 presets.RUN,
+                presets.TANDEM,
             ):
                 continue
             exposure = presets.exposure_for(name, presets.CARRYING_CARGO)
@@ -3454,7 +3457,11 @@ def lts2_reading(name: str, tiers: str, weight: float) -> refine.Analysis:
 
 class TestLts2Weight:
     def test_a_quarter_of_lts3_on_trailmaxxing_and_cargo_with_passengers(self) -> None:
-        for name, carrying in (("trailmaxxing", None), ("cargo", presets.CARRYING_PEOPLE)):
+        for name, carrying in (
+            ("trailmaxxing", None),
+            ("cargo", presets.CARRYING_PEOPLE),
+            ("tandem", None),
+        ):
             exposure = presets.exposure_for(name, carrying)
             assert exposure.lts2 == pytest.approx(exposure.lts3 / 4), name
             assert exposure.weights["2"] == 0.25, name
@@ -3466,6 +3473,8 @@ class TestLts2Weight:
             ("trailmaxxing", None),
             ("cargo", presets.CARRYING_PEOPLE),
             ("novice", None),
+            # Tandem (#1070): the stoker, as Cargo with passengers.
+            ("tandem", None),
         }
         for name in presets.PRESETS:
             for carrying in presets.PRESETS[name].carrying or (None,):
