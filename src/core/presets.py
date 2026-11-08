@@ -1245,7 +1245,12 @@ EASY_MTB_PRESETS = frozenset({"default", "trailmaxxing"})
 
 
 def variant_for_ride(
-    name: str, when: str, assist: bool = False, trails_off: bool = False, easy_mtb: bool = False
+    name: str,
+    when: str,
+    assist: bool = False,
+    trails_off: bool = False,
+    easy_mtb: bool = False,
+    mtb_done: bool = False,
 ) -> str:
     """The graph a ride routes on.
 
@@ -1275,6 +1280,12 @@ def variant_for_ride(
     paved graph has a weekend twin (`Variant.PAVED_WEEKEND`; the owner,
     2026-11-08, "New weekend graph"), which a weekend Road Bike ride takes.
 
+    `mtb_done`: a ride's re-plan after Ride's "End mountain biking" (the owner, 2026-11-08: "a
+    button under the trail closure for 'i don't want to mountain bike anymore' ... that
+    will route you off mtb trails and onto something easier"). A ride that would take the
+    Mountain Bike or off-road graph, where the mountain-bike trails are open, takes the
+    standard graph (its weekend twin at the weekend) instead, where they are closed.
+
     Those weekend rides on the off-road or Mountain Bike graph are also planned on the
     weekend graph (`weekend_too`; the owner, 2026-11-08: "We can do the plan twice."), and
     `routing.plan` keeps the better of the two by the ride type's own ranking, so a road
@@ -1289,7 +1300,10 @@ def variant_for_ride(
         return Variant.NO_TRAIL.value
     if assist and preset.assist_speed_kmh is not None:
         return Variant.EBIKE.value
-    easy = easy_mtb and name in EASY_MTB_PRESETS
+    easy = easy_mtb and name in EASY_MTB_PRESETS and not mtb_done
+    mtb_graph = preset.variant == Variant.MTB.value or name in OFFROAD_PRESETS
+    if mtb_done and mtb_graph:
+        return Variant.WEEKEND.value if when == WEEKEND else Variant.STANDARD.value
     if (name in OFFROAD_PRESETS or easy) and preset.variant == Variant.STANDARD.value:
         return Variant.OFFROAD.value
     if preset.variant == Variant.STANDARD.value and when == WEEKEND:
@@ -1306,7 +1320,12 @@ WEEKEND_TOO_VARIANTS = frozenset({Variant.OFFROAD.value, Variant.MTB.value})
 
 
 def weekend_too(
-    name: str, when: str, assist: bool = False, trails_off: bool = False, easy_mtb: bool = False
+    name: str,
+    when: str,
+    assist: bool = False,
+    trails_off: bool = False,
+    easy_mtb: bool = False,
+    mtb_done: bool = False,
 ) -> bool:
     """Whether a ride is planned on the weekend graph as well as on its own (`routing.plan`):
     a weekend Gravel, Mountain Goat, Mountain Bike, or Default or Trailmaxxing with "Easy MTB
@@ -1314,7 +1333,8 @@ def weekend_too(
     which takes the no-trail graph alone, nor on any other graph."""
     if when != WEEKEND:
         return False
-    return variant_for_ride(name, when, assist, trails_off, easy_mtb) in WEEKEND_TOO_VARIANTS
+    graph = variant_for_ride(name, when, assist, trails_off, easy_mtb, mtb_done)
+    return graph in WEEKEND_TOO_VARIANTS
 
 
 # Valhalla's default cycling speed by bicycle type (km/h; Road 15.5 mph,

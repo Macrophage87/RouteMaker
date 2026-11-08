@@ -70,7 +70,7 @@ test("the page keeps the ride at Start, forgets it at End, and asks at load; not
 
 test("each new route of the ride is kept in its place, and the question holds the ride's own re-routes", () => {
   const ride = src("../RideMode.tsx");
-  assert.match(ride, /if \(!trip && keepLeft\) keepLeftRide\(\{ route: found, points, loop: false, preset, dials: dialsRef\.current, fixed: fixedRef\.current, replans: rideReplans\(loopRide, blockedRef\.current, dirtRidden\.current, dirtClosed\.current\) \}, VIA_MARKS, Date\.now\(\)\);/);
+  assert.match(ride, /if \(!trip && keepLeft\) keepLeftRide\(\{ route: found, points, loop: false, preset, dials: dialsRef\.current, fixed: fixedRef\.current, replans: rideReplans\(loopRide, blockedRef\.current, dirtRidden\.current, dirtClosed\.current, mtbDone\.current\) \}, VIA_MARKS, Date\.now\(\)\);/);
   assert.match(ride, /const auto = !keepRef\.current && !fixedRef\.current && !restartOpen\.current;/);
   assert.match(ride, /!fixedRef\.current && !restartOpen\.current && !uturns\.current\.held && state\.goodFix && state\.goodFix\.accuracyM <= OFF_SURE_M && !replanHeld\(replannedFrom\.current, state\.goodFix\.point\)\) void replan/);
   const app = src("../App.tsx");

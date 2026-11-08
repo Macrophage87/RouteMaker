@@ -466,6 +466,15 @@ class RouteIn(Schema):
             ' in"): this re-plan rides no dirt trail on a ride type that skips them.'
         ),
     )
+    mtb_done: StrictBool = Field(
+        default=False,
+        description=(
+            'With `ride_replan`: the rider pressed Ride\'s "End mountain biking" this ride (the'
+            ' owner, 2026-11-08: "route you off mtb trails and onto something easier"):'
+            " this re-plan leaves the Mountain Bike and off-road graphs for the standard one,"
+            " with Easy MTB trails off and no dirt trail ridden."
+        ),
+    )
     loop: StrictBool = Field(
         default=False,
         description=(
@@ -5490,6 +5499,7 @@ def _bike_dials(body: RouteIn) -> routing.Dials:
         dirt_ridden=body.ride_replan and body.dirt_ridden,
         ahead_only=body.ahead_only,
         dirt_closed=body.ride_replan and body.dirt_closed,
+        mtb_done=body.ride_replan and body.mtb_done,
     )
 
 
@@ -5559,12 +5569,14 @@ def _planned(body: RouteIn, dials, started: float | None, long_ride: bool, long_
         )
     if key is not None:
         preset = presets.PRESETS[body.preset]
+        mtb_done = bool(body.ride_replan and body.mtb_done)
         own_variant = presets.variant_for_ride(
             body.preset,
             when,
             bool(body.assist) and preset.assist_speed_kmh is not None,
             bool(body.trails_off),
             bool(body.easy_mtb),
+            mtb_done,
         )
         if own_variant in routing.TWIN_VARIANTS and not routing._is_promoted(own_variant):
             # Planned on the standard graph by design where no weekend or off-road build is
@@ -5576,6 +5588,7 @@ def _planned(body: RouteIn, dials, started: float | None, long_ride: bool, long_
             bool(body.assist) and preset.assist_speed_kmh is not None,
             bool(body.trails_off),
             bool(body.easy_mtb),
+            mtb_done,
         )
         if answered.get("variant") == "weekend" and presets.weekend_too(*ride_dials):
             # The weekend plan beside the ride's own won (`routing._plan_twice`): its graph is

@@ -68,9 +68,12 @@ def _cursor():
     return plan_cursor()
 
 
-def touched(points: Sequence[Sequence[float]]) -> tuple[frozenset[int], ...]:
+def touched(
+    points: Sequence[Sequence[float]], reasons: Sequence[str] = (REASON,)
+) -> tuple[frozenset[int], ...]:
     """The dirt trails (their way ids) within TOUCH_M of each of `points` ([lon, lat]), in
-    their order."""
+    their order. `reasons`: the closures counted, the mountain-bike class alone unless asked
+    (Ride's "End mountain biking" asks for the rated singletrack too)."""
     none = tuple(frozenset() for _ in points)
     if not points:
         return none
@@ -89,13 +92,19 @@ def touched(points: Sequence[Sequence[float]]) -> tuple[frozenset[int], ...]:
         FROM p
         JOIN {schema}.segment AS s
           ON s.geometry && ST_Expand(p.g, %s)
-         AND s.bike_access_reason = %s
+         AND s.bike_access_reason = ANY(%s)
          AND ST_DWithin(s.geometry::geography, p.g::geography, %s)
     """
     with _cursor() as cursor:
         cursor.execute(
             sql,
-            [lons, lats, TOUCH_DEG / math.cos(math.radians(max(map(abs, lats)))), REASON, TOUCH_M],
+            [
+                lons,
+                lats,
+                TOUCH_DEG / math.cos(math.radians(max(map(abs, lats)))),
+                list(reasons),
+                TOUCH_M,
+            ],
         )
         rows = cursor.fetchall()
     found: list[set[int]] = [set() for _ in points]
@@ -283,13 +292,15 @@ def stray_rings(
     """A strip across each stray run of `pieces` (`core.routing.Piece`: way_id, lon and lat at
     its middle, metres, heading), to leave it out by: at the middle of its longest stretch on a
     dirt trail, along it. A run on dirt trails (REASON) is a stray where none of it is `kept`,
-    and never with `any_dirt`; a run on green singletrack always is."""
+    and never with `any_dirt`; a run on singletrack is too, but for the singletrack in `kept`
+    itself (Ride's "End mountain biking" from on one: that trail alone, never one joined to it,
+    so the way off takes no harder trail)."""
     ids = [p.way_id for p in pieces]
     metres = [p.metres for p in pieces]
     dirt = frozenset(w for w, reason in ways.items() if reason == REASON)
     singletrack = frozenset(ways) - dirt
     found = [] if any_dirt else strays(ids, metres, dirt, kept)
-    found += runs(ids, metres, singletrack)
+    found += runs(ids, metres, singletrack - kept)
     rings: list[list[list[float]]] = []
     for a, b in found:
         on_dirt = [p for p in pieces[a:b] if p.way_id in ways]
