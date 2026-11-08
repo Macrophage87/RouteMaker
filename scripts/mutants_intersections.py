@@ -1164,8 +1164,23 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "shared: no sharing",
         INTERSECTIONS,
-        "events = (assess(junction, group, when) for junction in share_controls(junctions))",
-        "events = (assess(junction, group, when) for junction in junctions)",
+        "        for junction in share_controls(junctions)\n    )",
+        "        for junction in junctions\n    )",
+        PURE,
+    ),
+    # Hunt J5 (2026-11-08): the junction model's signals reach the delay model.
+    (
+        "j5 signals: never carried",
+        INTERSECTIONS,
+        "    if event is None or junction.control is not Control.SIGNAL:\n        return event",
+        "    if True:\n        return event",
+        PURE,
+    ),
+    (
+        "j5 signals: a merge keeps the worst event's only",
+        INTERSECTIONS,
+        "                signals=tuple(dict.fromkeys(p for e in group for p in e.signals)),",
+        "",
         PURE,
     ),
     (

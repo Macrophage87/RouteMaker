@@ -18,8 +18,12 @@ every node where the rider crosses or joins a road, not only at the busy junctio
 junction model asks `/locate` about. Stop and yield signs reach the router only through
 `/locate`, so this model does not see them; it reads who gives way from the roads' classes:
 
-- a junction with a traffic signal on the node or the rider's approach (`RawJunction.signal`)
-  costs SIGNAL_DELAY_S;
+- a junction with a traffic signal on the node or the rider's approach (`RawJunction.signal`),
+  or one the junction model reads as signalised (`signals`: `core.junctions` reads a signal
+  up each road's arms from `/locate`, which the trace does not carry), costs
+  SIGNAL_DELAY_S. From the trace alone a signalised trail crossing whose signal is on the
+  road's stop lines or its centre node was a 30 s give-way, where the junction model priced
+  it as signalised (hunt J5, 2026-11-08);
 - one where the rider, going straight on, crosses a road as busy as their own or busier
   (an arm on each side), turns onto such a road where their own does not go on ahead, or
   crosses or comes out onto any road from a path, makes the rider give way: on the
@@ -48,7 +52,8 @@ driveway every few metres still counts each of its stop signs.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Collection, Iterable
+from dataclasses import replace
 
 from .intersections import Movement
 from .trace_junctions import NOT_A_ROAD_USES, PATH_USES, RawJunction
@@ -180,20 +185,25 @@ def delay_runs(
     junctions: Iterable[RawJunction],
     rolls: Callable[[float, float], bool] | None = None,
     beacon: Callable[[float, float], bool] | None = None,
+    signals: Collection[tuple[float, float]] = (),
 ) -> list[tuple[float, float]]:
     """Each run's wait as (metres along the traced route where it begins, seconds): each
     junction's `delay_at`, the costing junctions within MERGE_M of the first of a run counted
     once, at the dearest or, where one of them is a signal, at the signal's wait.
     `rolls(lon, lat)` says where a stop sign may be taken as a yield, `beacon(lon, lat)`
     where a mapped signal is a known flashing beacon (the junction model's beacon list);
-    None: nowhere. Each is asked only where its answer can change the cost. The ride's
-    arrival times place each wait where it is (`routemaker.time_marks`)."""
+    None: nowhere. Each is asked only where its answer can change the cost. `signals`: the
+    points of the junctions the junction model reads as signalised
+    (`intersections.signal_points` of the route's events), a signal there as on the node.
+    The ride's arrival times place each wait where it is (`routemaker.time_marks`)."""
     runs: list[tuple[float, float]] = []
     run_start: float | None = None
     run_cost = 0.0
     run_signal = False
     for junction in sorted(junctions, key=lambda j: j.m):
         here = (junction.lon, junction.lat)
+        if not junction.signal and here in signals:
+            junction = replace(junction, signal=True)
         is_beacon = junction.signal and beacon is not None and beacon(*here)
         cost = delay_at(junction, False, is_beacon)
         if cost == STOP_DELAY_S and rolls is not None and rolls(*here):
@@ -217,6 +227,7 @@ def delay_s(
     junctions: Iterable[RawJunction],
     rolls: Callable[[float, float], bool] | None = None,
     beacon: Callable[[float, float], bool] | None = None,
+    signals: Collection[tuple[float, float]] = (),
 ) -> float:
     """The route's junction delay in seconds: the sum of its runs' waits (`delay_runs`)."""
-    return float(sum(cost for _m, cost in delay_runs(junctions, rolls, beacon)))
+    return float(sum(cost for _m, cost in delay_runs(junctions, rolls, beacon, signals)))

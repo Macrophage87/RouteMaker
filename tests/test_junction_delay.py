@@ -206,6 +206,29 @@ class TestWholeRoute:
     def test_no_junctions_no_delay(self) -> None:
         assert d.delay_s([]) == 0
 
+    def test_a_signal_the_junction_model_reads_up_the_roads_arms_is_a_signal_wait(self) -> None:
+        """Hunt J5: a trail crossing an arterial at a junction whose signal is on the
+        road's stop lines, not on the rider's own approach. The trace shows no signal, and
+        it was a 30 s give-way where the junction model (`core.junctions`) priced it as
+        signalised; given the model's signals, it is the signal's wait."""
+        busy = (("road", "primary"), ("road", "primary"))
+        trail = junction(
+            *busy, in_use="cycleway", out_use="cycleway", in_class=None, out_class=None
+        )
+        assert d.delay_s([trail]) == d.GIVE_WAY_DELAY_S[2]
+        assert d.delay_s([trail], signals={(-77.0, 38.9)}) == d.SIGNAL_DELAY_S
+        assert d.delay_runs([trail], signals={(-77.0, 38.9)}) == [(100.0, d.SIGNAL_DELAY_S)]
+        # Another junction's signal is not this one's.
+        assert d.delay_s([trail], signals={(-77.001, 38.9)}) == d.GIVE_WAY_DELAY_S[2]
+
+    def test_a_known_beacon_is_still_a_stop_where_the_model_reads_a_signal(self) -> None:
+        busy = (("road", "primary"), ("road", "primary"))
+        here = [junction(*busy)]
+        assert (
+            d.delay_s(here, beacon=lambda lon, lat: True, signals={(-77.0, 38.9)})
+            == (d.GIVE_WAY_DELAY_S[2])
+        )
+
 
 def edge(way, begin, end, length_km, **fields):
     return {

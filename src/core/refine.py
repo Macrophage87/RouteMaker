@@ -1026,6 +1026,7 @@ def analyse(
     stress, _facility = routing.totals(zip(hilled, classes, strict=True))
     halves = half_metres(hilled, classes)
     weights = ctx.exposure.weights
+    events = events_of_raws(raws, ctx, deadline) if with_events else None
     result = Analysis(
         length_m=float((trip.get("summary") or {}).get("length", 0.0)) * 1000.0,
         cost_s=routing._router_cost(trip),
@@ -1034,7 +1035,7 @@ def analyse(
         climb_m=routing._climb_of(trip),
         pieces=pieces,
         classes=classes,
-        events=events_of_raws(raws, ctx, deadline) if with_events else None,
+        events=events,
         via_m=via_m,
         marks=marks,
         mark_legs=mark_legs,
@@ -1074,6 +1075,8 @@ def analyse(
             raws,
             routing.stop_as_yield,
             lambda lon, lat: model.beacon_at(lon, lat, ctx.beacons) is not None,
+            # The junction model's signals, up the roads' arms too (hunt J5).
+            model.signal_points(events),
         ),
     )
     if with_events:

@@ -680,6 +680,12 @@ class Event:
     beacon: bool = field(default=False, compare=False)
     # The crossed road is a half step above `crossed_tier` on the map (2.5, 3.5, 4.5).
     crossed_half: bool = field(default=False, compare=False)
+    # The points of the junction's nodes the model reads as signalised (its control
+    # SIGNAL, shared across the junction's nodes: `share_controls`), and of every node
+    # merged into it (`merge_nearby`): the junction-delay model times a wait there as a
+    # signal's, where the trace shows none on the rider's own approach (hunt J5,
+    # `routemaker.junction_delay`, `signal_points`).
+    signals: tuple[tuple[float, float], ...] = field(default=(), compare=False)
 
 
 def _untimed(event: Event) -> float:
@@ -1456,6 +1462,7 @@ def merge_nearby(events: list[Event]) -> list[Event]:
                 flagged=any(e.flagged for e in ones),
                 time_band=band if abs(cost - untimed) >= 1.0 else None,
                 untimed_ft=untimed,
+                signals=tuple(dict.fromkeys(p for e in group for p in e.signals)),
             )
         )
         group.clear()
@@ -1694,9 +1701,26 @@ def assess_route(
     the signalized crossings that run together are numbered (`number_groups`),
     never across a stop (`stops`, where each leg ends). `when` is the ride time
     (`time_factor`, 468a)."""
-    events = (assess(junction, group, when) for junction in share_controls(junctions))
+    events = (
+        _with_signal(assess(junction, group, when), junction)
+        for junction in share_controls(junctions)
+    )
     merged = merge_nearby(sorted((e for e in events if e is not None), key=lambda e: e.m))
     return number_groups(merged, stops) if group else merged
+
+
+def _with_signal(event: Event | None, junction: Junction) -> Event | None:
+    """The event with its junction's point in `signals` where its control is a signal."""
+    if event is None or junction.control is not Control.SIGNAL:
+        return event
+    return replace(event, signals=((junction.lon, junction.lat),))
+
+
+def signal_points(events: Sequence[Event] | None) -> frozenset[tuple[float, float]]:
+    """The points of every node the events' junctions are signalised at (`Event.signals`),
+    for `routemaker.junction_delay`: the junction model reads a signal up each road's arms
+    (`core.junctions`), which the route's trace does not carry (hunt J5)."""
+    return frozenset(point for event in events or () for point in event.signals)
 
 
 def penalty_m(events: list[Event]) -> float:

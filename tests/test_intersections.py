@@ -771,6 +771,25 @@ class TestRoute:
         assert events[0].cost_ft == pytest.approx(one.cost_ft * m.MEDIAN_REFUGE_FACTOR)
         assert events[0].cost_ft < one.cost_ft
 
+    def test_the_signalised_nodes_are_carried_for_the_junction_delay(self) -> None:
+        """Hunt J5: the delay model reads the junction model's signals by point
+        (`signal_points`), each node of a junction merged into one event kept."""
+        name = frozenset({"connecticut avenue northwest"})
+        north = Road(4, oneway=True, names=name, ways=frozenset({1}))
+        south = Road(4, oneway=True, names=name, ways=frozenset({2}))
+        events = m.assess_route(
+            [
+                junction(m=100.0, lon=-77.0, crossed=(north,), control=Control.SIGNAL),
+                junction(m=111.0, lon=-77.0001, crossed=(south,)),
+            ]
+        )
+        # The control is shared across the junction's nodes, so both are signalised.
+        assert len(events) == 1
+        assert m.signal_points(events) == {(-77.0, 38.9), (-77.0001, 38.9)}
+        unsignalised = m.assess_route([junction(m=100.0, crossed=(north,))])
+        assert m.signal_points(unsignalised) == frozenset()
+        assert m.signal_points(None) == frozenset()
+
     def test_different_roads_at_one_junction_add_half(self) -> None:
         a = Road(3, names=frozenset({"a street"}))
         b = Road(3, names=frozenset({"b street"}))

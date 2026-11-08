@@ -128,7 +128,8 @@ class RawJunction:
     back_edge_ids: tuple[int, ...] = ()
     # The router flags a traffic signal at the node, or on the rider's own approach within
     # APPROACH_M of it (`routemaker.junction_delay`). From the trace alone: a signal up a
-    # cross road only is not seen here (`core.junctions` reads those with `/locate`).
+    # cross road only is not seen here (`core.junctions` reads those with `/locate`, and
+    # the delay model takes its reading as `signals`: hunt J5).
     signal: bool = False
     # Each of `others`' headings away from the node (degrees), None where the router gave
     # none; empty for a junction built without them.
