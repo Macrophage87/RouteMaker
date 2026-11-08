@@ -1185,9 +1185,22 @@ def test_an_assistant_sends_a_described_photos_file_to_its_own_link_once() -> No
     forged = link[:-3] + ("aaa" if not link.endswith("aaa") else "bbb")
     assert send(forged, phone_jpeg()).status_code == 404
     assert other.photos.count() == 0
-    # A spot on the link counts when the file has none.
-    spotted = send(
-        route_posts.photo_link_path(post, pool) + "?lat=38.8893&lon=-77.0502", phone_jpeg()
+    # A spot in the query string is never read (the proxy logs it): the photo waits, unfilled.
+    path = route_posts.photo_link_path(post, pool)
+    queried = Client().post(
+        path + "?lat=38.8893&lon=-77.0502", phone_jpeg(), content_type="image/jpeg"
+    )
+    assert queried.status_code == 201 and queried.json()["located"] is False
+    pool.refresh_from_db()
+    assert pool.lat is None
+    pool.image = None
+    pool.save()
+    # A spot sent as headers counts when the file has none.
+    spotted = Client().post(
+        path,
+        phone_jpeg(),
+        content_type="image/jpeg",
+        headers={"X-Photo-Lat": "38.8893", "X-Photo-Lon": "-77.0502"},
     )
     assert spotted.status_code == 201
     pool.refresh_from_db()
@@ -1273,9 +1286,11 @@ def test_an_upload_link_never_keeps_a_spot_at_the_authors_home() -> None:
     memorial, pool = post.photos.order_by("position")
     send = lambda path, body: Client().post(path, body, content_type="image/jpeg")  # noqa: E731
     by_exif = send(route_posts.photo_link_path(post, memorial), located_jpeg(*LINCOLN))
-    by_link = send(
-        route_posts.photo_link_path(post, pool) + f"?lat={LINCOLN[0]}&lon={LINCOLN[1]}",
+    by_link = Client().post(
+        route_posts.photo_link_path(post, pool),
         phone_jpeg(),
+        content_type="image/jpeg",
+        headers={"X-Photo-Lat": str(LINCOLN[0]), "X-Photo-Lon": str(LINCOLN[1])},
     )
     assert by_exif.status_code == by_link.status_code == 201
     assert by_exif.json()["located"] is False and by_link.json()["located"] is False
