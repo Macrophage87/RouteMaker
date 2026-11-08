@@ -423,6 +423,11 @@ test("an app built before the audio turn speaks exactly as before, and a refused
   voice.speak("Left now", true);
   await flush();
   assert.equal(old.calls.some((c) => c.plugin === VOICE_FOCUS_PLUGIN), false);
+  const noProbe = fakeBridge();
+  const unsure = new Voice(rideSpeech(findShell({ Capacitor: { ...noProbe.bridge, isPluginAvailable: undefined } })));
+  unsure.speak("Right now", true);
+  await flush();
+  assert.equal(noProbe.calls.some((c) => c.plugin === VOICE_FOCUS_PLUGIN), false, "a bridge that cannot say is not assumed to have it");
   const refused = fakeBridge("android", ["BackgroundGeolocation", "TextToSpeech", "LocalNotifications", VOICE_FOCUS_PLUGIN]);
   refused.refuse((call) => call.plugin === VOICE_FOCUS_PLUGIN);
   const said = new Voice(rideSpeech(findShell({ Capacitor: refused.bridge })));

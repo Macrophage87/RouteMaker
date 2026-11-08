@@ -349,7 +349,8 @@ export function nativeSpeech(bridge: CapacitorBridge): SpeechEnv {
   let speaking = false;
   let turn = 0;
   // Music dips for each cue and comes back after it (VOICE_FOCUS_PLUGIN); an app without it speaks as before.
-  const ducks = has(bridge, VOICE_FOCUS_PLUGIN);
+  // Not assumed on a bridge that cannot say (as the share sheet): only newer builds ship it.
+  const ducks = typeof bridge.isPluginAvailable === "function" && has(bridge, VOICE_FOCUS_PLUGIN);
   const focus = (method: "duck" | "unduck") => {
     if (ducks) void bridge.nativePromise(VOICE_FOCUS_PLUGIN, method, {}).catch(() => undefined);
   };
