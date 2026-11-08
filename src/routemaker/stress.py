@@ -100,7 +100,12 @@ from enum import IntEnum
 
 from . import surfaces
 from .classes import MOTOR_ONLY_HIGHWAY, TRAIL_CLASS_HIGHWAY, trail_kind
-from .facility import USE_SIDEPATH, closed_to_motor_traffic, is_use_sidepath_road
+from .facility import (
+    USE_SIDEPATH,
+    closed_to_motor_traffic,
+    has_side_path_on_the_road,
+    is_use_sidepath_road,
+)
 from .geo import Point, haversine
 from .shape import sinuosity
 from .tags import (
@@ -117,6 +122,7 @@ from .tags import (
     parse_maxspeed_mph,
     parse_width_m,
     posted_maxspeed,
+    provision_sides,
     shoulder_width_m,
 )
 
@@ -1231,7 +1237,8 @@ def classify(
     `side_path` says a side path is mapped beside the way
     (`routemaker.facility.use_sidepath_paths`): a road tagged `bicycle=use_sidepath`
     with one is "legal but avoid" (`USE_SIDEPATH_RULE`; review RL-1, the owner,
-    2026-10-16). With none it is rated on its own merits.
+    2026-10-16). With none it is rated on its own merits, and so is one whose side
+    path is mapped on its own way (`facility.has_side_path_on_the_road`; hunt 2, S1).
 
     Outside an urban area (`urban` false) an expressway the "legal but avoid" rule
     would take is LTS 4.5 instead (`rural_expressway`; the owner, 2026-10-17)."""
@@ -1248,7 +1255,20 @@ def classify(
         winding,
     )
     reason = legal_but_avoid(tags, urban)
-    if reason is None and side_path and is_use_sidepath_road(tags):
+    # Not where the side path is mapped on the road's own way (a track or a
+    # bicycle-open sidewalk in its tags, `has_side_path_on_the_road`; hunt 2, S1,
+    # 2026-11-08). `use_sidepath_paths` counts such a road as having its side path,
+    # which is right for the panel's words, but the graph has one edge for road and
+    # path together, so Avoid there priced the very facility the rider is asked to
+    # use: `highway=primary` at 40 mph with `cycleway:both=track` came out Avoid
+    # where its Furth tier is LTS 1. The road keeps the tier its track or sidewalk
+    # earns (or does not earn) instead.
+    if (
+        reason is None
+        and side_path
+        and is_use_sidepath_road(tags)
+        and not has_side_path_on_the_road(tags)
+    ):
         reason = USE_SIDEPATH_RULE
     if reason is not None:
         rule = f"{reason} (Furth: {result.rule})"
@@ -1514,12 +1534,21 @@ def _classify(
         width = cycleway_width_m(tags)
         if width is None:
             assumed.append("cycleway width")
+        # The parking beside the lane scored, not anywhere on the road (hunt 2,
+        # S3, 2026-11-08): a one-way's left-side lane with `parking:left=no` and
+        # `parking:right=lane` is no door-zone lane, and read as one it was LTS 3
+        # at 30 mph where it is LTS 2. The sides are those that set the provision
+        # (`provision_sides`), so on a two-way street parking beside either lane
+        # counts, the worst side's rule.
+        lane_parking = has_parking_lane(tags, provision_sides(tags))
+        if lane_parking is None and "parking" not in assumed:
+            assumed.append("parking")
         # Furth's criterion beside parking is the lane plus the parking lane; the
         # decent-lane test below stays on the lane's own width.
         table_width = width
-        if width is not None and parking is True and parking_width_m:
+        if width is not None and lane_parking is True and parking_width_m:
             table_width = width + parking_width_m
-        tier, rule = _bike_lane_tier(speed_mph, scored_lanes, table_width, parking)
+        tier, rule = _bike_lane_tier(speed_mph, scored_lanes, table_width, lane_parking)
         floor = (
             multilane_floor(oneway, lanes) if painted_lane_multilane(tags, divided, lanes) else None
         )

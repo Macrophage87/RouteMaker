@@ -316,6 +316,33 @@ class TestTheReviewFixes:
         found, missing = facility.use_sidepath_paths([(1, {**ROAD, **extra}, line(38.90))])
         assert (found, missing) == ({1: None}, set())
 
+    @pytest.mark.parametrize(
+        "extra",
+        [
+            {"cycleway:both": "track"},
+            {"cycleway:right": "track"},
+            {"sidewalk:right:bicycle": "designated"},
+            {"sidewalk:both:bicycle": "yes"},
+        ],
+    )
+    def test_a_side_path_on_the_road_itself_is_never_priced_avoid(self, extra) -> None:
+        # Hunt 2, S1 (2026-11-08): the road is in `found` (above), and before this
+        # `classify(side_path=True)` made it Avoid, so the one edge carrying the
+        # track or sidewalk the rider is asked to use paid the Avoid price. It now
+        # keeps the Furth tier its own tags earn, the same as without `side_path`.
+        tags = {**ROAD, "highway": "primary", "maxspeed": "40 mph", **extra}
+        result = classify(tags, side_path=True)
+        assert result.tier is not Stress.AVOID
+        assert USE_SIDEPATH_RULE not in result.rule
+        assert result.tier is classify(tags).tier
+
+    def test_a_track_on_the_road_keeps_its_lts1(self) -> None:
+        tags = {**ROAD, "highway": "primary", "maxspeed": "40 mph", "cycleway:both": "track"}
+        # Before: Stress.AVOID, "legal but avoid: riders asked to use the side path".
+        assert classify(tags, side_path=True).tier is Stress.LTS1
+        # A road with its side path beside it, not on it, is still Avoid (RL-1).
+        assert classify(dict(ROAD), side_path=True).tier is Stress.AVOID
+
     def test_a_side_path_named_as_the_road_is_not_named(self) -> None:
         found, _missing = facility.use_sidepath_paths(
             [

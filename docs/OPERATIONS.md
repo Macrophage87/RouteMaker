@@ -1580,9 +1580,11 @@ the same whatever the style decides):
     stripe through all the parking lots.", 99). All of these by place are
     `pipeline.restricted_areas`: a way counts as inside when half its vertices
     are (a cemetery: half its length, and a numbered road, a public street that
-    runs on out of the outline or a named tertiary-or-above street is never
-    inside, while a residential-class drive wholly inside stays the cemetery's
-    own (98); hunt A3, 2026-11-08), so a trail or street
+    runs on out of the outline or a tertiary-or-above street, named or not, is
+    never inside, while a residential-class drive wholly inside stays the
+    cemetery's own, named or not (98); hunt A3, 2026-11-08; by the area, not the
+    name: the owner, 2026-11-08, "Some are named, focus more on the area than
+    street names. When in doubt leave it open."), so a trail or street
     that only borders the area stays. On the dials
     box extract: 86 cemeteries (1,466 ways, 93 mi), 12,067 lots (17,749 ways,
     762 mi before named ways inside lots were kept).

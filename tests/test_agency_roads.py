@@ -9,6 +9,7 @@ Baltimore's `speed` field standing in for a limit.
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 
 import pytest
 
@@ -2273,3 +2274,36 @@ def test_the_dc_parser_keeps_the_block_s_key() -> None:
     assert A.RoadFacts.from_json(facts.to_json()).block_key == "4f98"
     assert A.parse_dc_roadway_block({"ROUTENAME": "CANAL RD NW"}).block_key is None
     assert A.parse_dc_roadway_block({"BLOCKKEY": ""}).block_key is None
+
+
+def test_osm_s_contraflow_lane_is_kept_over_an_unflagged_with_flow_reading() -> None:
+    """Hunt 2, S4 (2026-11-08): on an unflagged one-way block the record's lone lane
+    is read as with-flow (review r2), and every OSM `cycleway*` key was deleted first,
+    so OSM's `cycleway:left=lane` + `cycleway:left:oneway=-1` became
+    `cycleway:right=lane` alone, a lane the with-flow rider does not have. OSM is now
+    kept and the report says so; a block with the flag still writes its lane."""
+
+    block = facts(bike={"ib": A.BIKE_LANE}, way="one", oneway_with=True, bike_width_ft=6.0)
+    way = A.aggregate([("a", block, True)])
+    osm = {
+        "highway": "residential",
+        "oneway": "yes",
+        "maxspeed": "30 mph",
+        "cycleway:left": "lane",
+        "cycleway:left:oneway": "-1",
+        "cycleway:right": "shared_lane",
+    }
+    result = A.overlay(osm, way)
+    # Before: {"cycleway:right": "lane", "cycleway:right:width": "1.829"}, LTS 2.
+    assert result.tags["cycleway:left"] == "lane"
+    assert result.tags["cycleway:left:oneway"] == "-1"
+    assert result.tags["cycleway:right"] == "shared_lane"
+    assert result.sources["bike"] == A.SOURCE_OSM
+    assert any("contraflow" in d for d in result.disagreements)
+    assert classify(result.tags).tier is Stress.LTS3
+    # OSM's with-flow lane (review r2's case) is still the record's to write.
+    with_flow = {"highway": "residential", "oneway": "yes", "cycleway:right": "lane"}
+    assert A.overlay(with_flow, way).sources["bike"] == A.DC_AGENCY
+    # And a flagged block writes its contraflow lane as before.
+    flagged = A.aggregate([("a", replace(block, contraflow=True), True)])
+    assert A.overlay(osm, flagged).tags["cycleway:left"] == "opposite_lane"
