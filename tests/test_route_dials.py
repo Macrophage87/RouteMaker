@@ -401,7 +401,7 @@ class TestSeekingClimbs:
         from pathlib import Path
 
         configs = sorted((Path(settings.BASE_DIR) / "valhalla").glob("valhalla-*.json"))
-        assert len(configs) == 7
+        assert len(configs) == 8
         for path in configs:
             limits = json.loads(path.read_text())["service_limits"]
             assert routing.SEEK_ALTERNATES == limits["max_alternates"], path.name
@@ -747,11 +747,9 @@ class TestTheWeekendGraph:
         settings.ROUTER_PARALLEL_CALLS = 1  # the weekend plan beside in turn, on this thread
         fake = router(standard_router())
         body = post(client, {**good_body(name), "when": "weekend"}).json()
-        expected = (
-            "weekend"
-            if presets.PRESETS[name].variant == "standard"
-            else presets.PRESETS[name].variant
-        )
+        # The standard graph's twin, and Road Bike's (the owner, 2026-11-08, "New weekend graph").
+        twins = {"standard": "weekend", "paved": "paved-weekend"}
+        expected = twins.get(presets.PRESETS[name].variant, presets.PRESETS[name].variant)
         if name in presets.OFFROAD_PRESETS:
             expected = "offroad"
         # Both graphs give the same route here: a tie keeps the ride's own.
@@ -2307,6 +2305,132 @@ class TestRoadBike:
         assert body["variant"] == "standard"
         base = settings.VALHALLA_UPSTREAMS["paved"]
         assert all(not url.startswith(base) for url, _ in fake.calls)
+
+    # Road Bike's weekend graph (the owner, 2026-11-08: "Road bikes absolutely use those
+    # parkways on the weekends. It's probably their most common destination."; "New weekend
+    # graph"): a weekend ride plans on it, and falls back to the paved graph, not the standard.
+
+    def test_a_weekend_road_bike_ride_plans_on_its_weekend_graph(
+        self, client, facility_segments, router
+    ):
+        fake = router(standard_router())
+        body = post(client, {**good_body("road-bike"), "when": "weekend"}).json()
+        assert body["variant"] == "paved-weekend"
+        base = settings.VALHALLA_UPSTREAMS["paved-weekend"]
+        assert fake.calls and all(url.startswith(base + "/") for url, _ in fake.calls)
+        weekday = post(client, {**good_body("road-bike"), "when": "weekday_offpeak"}).json()
+        assert weekday["variant"] == "paved"
+
+    def test_a_weekend_router_that_does_not_answer_falls_back_to_the_paved_graph(
+        self, client, facility_segments, router
+    ):
+        standard = standard_router()
+        weekend_calls = []
+        others = []
+
+        def transport(url, payload, timeout):
+            if url.startswith(settings.VALHALLA_UPSTREAMS["paved-weekend"]):
+                weekend_calls.append(url)
+                raise routing.RouterUnavailable("connection refused")
+            others.append(url)
+            return standard(url, payload, timeout)
+
+        router(transport)
+        body = post(client, {**good_body("road-bike"), "when": "weekend"}).json()
+        assert body["preset"] == "road-bike" and body["variant"] == "paved"
+        assert body["dials"]["when"] == "weekend", "what the page's notice reads"
+        assert len(weekend_calls) == 1
+        assert routing._paved_weekend_down() and not routing._paved_down()
+        paved = settings.VALHALLA_UPSTREAMS["paved"]
+        assert others and all(url.startswith(paved + "/") for url in others)
+        again = post(client, {**good_body("road-bike"), "when": "weekend"}).json()
+        assert again["variant"] == "paved"
+        assert len(weekend_calls) == 1, "remembered as down for a minute"
+
+    def test_a_weekend_map_not_yet_promoted_plans_on_the_paved_graph(
+        self, client, facility_segments, router, monkeypatch
+    ):
+        monkeypatch.setattr(routing, "_paved_weekend_is_promoted", lambda: False)
+        fake = router(standard_router())
+        body = post(client, {**good_body("road-bike"), "when": "weekend"}).json()
+        assert body["variant"] == "paved"
+        base = settings.VALHALLA_UPSTREAMS["paved-weekend"]
+        assert all(not url.startswith(base) for url, _ in fake.calls)
+
+    def test_with_both_road_bike_maps_not_served_it_plans_on_standard(
+        self, client, facility_segments, router, monkeypatch
+    ):
+        monkeypatch.setattr(routing, "_paved_weekend_is_promoted", lambda: False)
+        monkeypatch.setattr(routing, "_paved_is_promoted", lambda: False)
+        router(standard_router())
+        body = post(client, {**good_body("road-bike"), "when": "weekend"}).json()
+        assert body["variant"] == "standard"
+
+    def test_a_weekend_router_with_no_tiles_falls_back_to_the_paved_graph(
+        self, client, facility_segments, router
+    ):
+        """As the weekend graph's 171 (OPS review, 2026-09-28): asked of the paved graph, and
+        remembered as down only once that answers."""
+        standard = standard_router()
+
+        def transport(url, payload, timeout):
+            if url.startswith(settings.VALHALLA_UPSTREAMS["paved-weekend"]):
+                raise routing.RouterRefused(400, 171, "No suitable edges near location")
+            return standard(url, payload, timeout)
+
+        router(transport)
+        body = post(client, {**good_body("road-bike"), "when": "weekend"}).json()
+        assert body["variant"] == "paved"
+        assert routing._paved_weekend_down() and not routing._paved_down()
+
+    def test_both_road_bike_routers_down_falls_back_to_standard(
+        self, client, facility_segments, router
+    ):
+        standard = standard_router()
+
+        def transport(url, payload, timeout):
+            if url.startswith(
+                (
+                    settings.VALHALLA_UPSTREAMS["paved-weekend"],
+                    settings.VALHALLA_UPSTREAMS["paved"],
+                )
+            ):
+                raise routing.RouterUnavailable("connection refused")
+            return standard(url, payload, timeout)
+
+        router(transport)
+        body = post(client, {**good_body("road-bike"), "when": "weekend"}).json()
+        assert body["variant"] == "standard"
+        assert routing._paved_weekend_down() and routing._paved_down()
+        assert routing._weekend_failed_at is None
+
+    @pytest.mark.parametrize("paved_state", ["down", "unpromoted"])
+    def test_a_weekend_router_failing_mid_request_skips_a_paved_graph_not_served(
+        self, paved_state, client, facility_segments, router, monkeypatch
+    ):
+        """Review of "Road Bike's weekend graph": the fallback after the weekend router fails
+        passes over a paved graph already known down or not promoted, rather than asking it and
+        waiting out its timeout again."""
+        if paved_state == "down":
+            routing._mark_twin("paved", False)
+        else:
+            monkeypatch.setattr(routing, "_paved_is_promoted", lambda: False)
+        standard = standard_router()
+        paved_calls = []
+
+        def transport(url, payload, timeout):
+            if url.startswith(settings.VALHALLA_UPSTREAMS["paved-weekend"]):
+                raise routing.RouterUnavailable("timed out")
+            if url.startswith(settings.VALHALLA_UPSTREAMS["paved"] + "/"):
+                paved_calls.append(url)
+                raise routing.RouterUnavailable("timed out")
+            return standard(url, payload, timeout)
+
+        router(transport)
+        body = post(client, {**good_body("road-bike"), "when": "weekend"}).json()
+        assert body["variant"] == "standard"
+        assert paved_calls == []
+        assert routing._paved_weekend_down()
 
     def test_off_by_default_and_echoed(self, client, facility_segments, router):
         fake = router(standard_router())

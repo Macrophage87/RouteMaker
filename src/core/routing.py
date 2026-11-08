@@ -78,6 +78,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime
 from struct import pack
+from types import MappingProxyType
 
 from django.conf import settings
 from django.db import DatabaseError, connection, transaction
@@ -94,6 +95,7 @@ from pipeline.schema import (
     TRAIL_RUN_COLUMN,
     validate_schema_name,
 )
+from pipeline.variants import WEEKEND_GRAPHS as WEEKEND_VARIANTS
 from pipeline.variants import Variant
 from routemaker import avoid_junctions as avoid_rules
 from routemaker import (
@@ -1209,19 +1211,24 @@ def car_free_reading(when: str, graph: str | None) -> str:
     prices a closure in that ride time as a path, `NO_CAR_FREE_TIME` elsewhere, and `when`
     where no graph is known (outside a plan).
 
-    Only the weekend graph opens a timed closure, and only one for the weekend
-    (`pipeline.run.facility_derived`). Until hunt X1 (2026-11-08) the route's colours,
-    breakdown, description and the planner's own ranking read every closure in the plan's
-    ride time on every graph, so on E-bike, Road Bike, Gravel, Mountain Bike, "Keep to
-    roads", a weekday or night closure, or a weekend ride whose weekend router was down, the
-    route was shown and ranked on a car-free path the router had priced as the road with
-    cars. The map's own tiles still draw such a road as a path in its ride times (the owner,
-    OWNER-DECISIONS 67)."""
+    Only the weekend graphs open a timed closure, and only one for the weekend
+    (`pipeline.run.facility_derived`): the standard graph's weekend twin, and since the
+    owner's "New weekend graph" of 2026-11-08 Road Bike's (`Variant.PAVED_WEEKEND`). Until
+    hunt X1 (2026-11-08) the route's colours, breakdown, description and the planner's own
+    ranking read every closure in the plan's ride time on every graph, so on E-bike, Road Bike
+    (before its weekend graph), Gravel, Mountain Bike, "Keep to roads", a weekday or night
+    closure, or a weekend ride whose weekend router was down, the route was shown and ranked
+    on a car-free path the router had priced as the road with cars. The map's own tiles still
+    draw such a road as a path in its ride times (the owner, OWNER-DECISIONS 67)."""
     if graph is None:
         return when
-    if graph == Variant.WEEKEND.value and when == ridetime.WEEKEND:
+    if graph in WEEKEND_GRAPHS and when == ridetime.WEEKEND:
         return when
     return NO_CAR_FREE_TIME
+
+
+# The graphs `car_free_reading` opens weekend closures on (`pipeline.variants.WEEKEND_GRAPHS`).
+WEEKEND_GRAPHS = frozenset(v.value for v in WEEKEND_VARIANTS)
 
 
 def _stress_key(schema: str, when: str, pieces: list[Piece]) -> tuple:
@@ -2049,12 +2056,30 @@ _mtb_failed_at: float | None = None
 # same way: the ride is then planned on the standard graph, where gravel is packed gravel, and
 # the page warns the rider from the answer's `variant` (frontend/src/lib/roadBike.ts).
 _paved_failed_at: float | None = None
+# Road Bike's weekend router (`Variant.PAVED_WEEKEND`; the owner, 2026-11-08: "Road bikes
+# absolutely use those parkways on the weekends. It's probably their most common destination.",
+# "New weekend graph"), an eighth behind the same profile. It falls back to the paved graph, not
+# the standard one (`TWIN_FALLBACK`): a weekend Road Bike ride whose weekend router is down or
+# unpromoted keeps its paved pricing and loses only the car-free parkways, and if the paved
+# router is down too it goes on to the standard graph, where the page's Road Bike warning says
+# so (frontend/src/lib/roadBike.ts, which also says when the parkways were lost).
+_paved_weekend_failed_at: float | None = None
 TWIN_VARIANTS = (
     Variant.WEEKEND.value,
     Variant.OFFROAD.value,
     Variant.MTB.value,
     Variant.PAVED.value,
+    Variant.PAVED_WEEKEND.value,
 )
+# The graph a twin falls back to while it is not served; the standard graph where none is named.
+TWIN_FALLBACK = MappingProxyType({Variant.PAVED_WEEKEND.value: Variant.PAVED.value})
+
+
+def twin_fallback(variant: str) -> str:
+    """The graph a ride on twin `variant` is planned on while that twin is not served."""
+    return TWIN_FALLBACK.get(variant, Variant.STANDARD.value)
+
+
 # The graphs whose rides take a dirt trail the rider touched (`core.trail_touch`): the standard
 # graph and its weekend twin, which a Saturday or Sunday daytime ride plans on (a weekday holiday
 # is off-peak, on the standard graph: `routemaker.ridetime`), and the e-bike graph (the E-bike
@@ -2088,7 +2113,16 @@ def _paved_down() -> bool:
     return _paved_failed_at is not None and clock() - _paved_failed_at < WEEKEND_FAILURE_TTL_S
 
 
+def _paved_weekend_down() -> bool:
+    return (
+        _paved_weekend_failed_at is not None
+        and clock() - _paved_weekend_failed_at < WEEKEND_FAILURE_TTL_S
+    )
+
+
 def _twin_down(variant: str) -> bool:
+    if variant == Variant.PAVED_WEEKEND.value:
+        return _paved_weekend_down()
     if variant == Variant.PAVED.value:
         return _paved_down()
     if variant == Variant.MTB.value:
@@ -2121,7 +2155,13 @@ def _paved_is_promoted() -> bool:
     return _promoted_row(Variant.PAVED.value)
 
 
+def _paved_weekend_is_promoted() -> bool:
+    return _promoted_row(Variant.PAVED_WEEKEND.value)
+
+
 def _is_promoted(variant: str) -> bool:
+    if variant == Variant.PAVED_WEEKEND.value:
+        return _paved_weekend_is_promoted()
     if variant == Variant.PAVED.value:
         return _paved_is_promoted()
     if variant == Variant.MTB.value:
@@ -2131,14 +2171,26 @@ def _is_promoted(variant: str) -> bool:
     return _weekend_is_promoted()
 
 
+def _served_variant(variant: str) -> str:
+    """`variant`, or the first graph down its fallback chain (`twin_fallback`) that is not
+    known down and has a promoted build: the standard graph at the end."""
+    while variant in TWIN_VARIANTS and (_twin_down(variant) or not _is_promoted(variant)):
+        fallback = twin_fallback(variant)
+        logger.info("the %s graph is not being served; planning on the %s graph", variant, fallback)
+        variant = fallback
+    return variant
+
+
 def _mark_weekend(ok: bool) -> None:
     global _weekend_failed_at
     _weekend_failed_at = None if ok else clock()
 
 
 def _mark_twin(variant: str, ok: bool) -> None:
-    global _offroad_failed_at, _mtb_failed_at, _paved_failed_at
-    if variant == Variant.PAVED.value:
+    global _offroad_failed_at, _mtb_failed_at, _paved_failed_at, _paved_weekend_failed_at
+    if variant == Variant.PAVED_WEEKEND.value:
+        _paved_weekend_failed_at = None if ok else clock()
+    elif variant == Variant.PAVED.value:
         _paved_failed_at = None if ok else clock()
     elif variant == Variant.MTB.value:
         _mtb_failed_at = None if ok else clock()
@@ -5437,11 +5489,15 @@ def _plan(
     # plans ask for them, as the hills search does.
     if preset_name == mtb.PRESET and len(points) == 2 and not long_ride:
         request.setdefault("alternates", SEEK_ALTERNATES)
-    if variant in TWIN_VARIANTS and (_twin_down(variant) or not _is_promoted(variant)):
-        if weekend_beside:
-            raise RouterUnavailable("the weekend graph is not being served")
-        logger.info("the %s graph is not being served; planning on the standard graph", variant)
-        variant = Variant.STANDARD.value
+    # A twin not served falls back (`twin_fallback`), Road Bike's weekend twin to the paved
+    # graph and on to the standard one if that is not served either.
+    if (
+        weekend_beside
+        and variant in TWIN_VARIANTS
+        and (_twin_down(variant) or not _is_promoted(variant))
+    ):
+        raise RouterUnavailable("the weekend graph is not being served")
+    variant = _served_variant(variant)
     # The first router call: the plan's own request, or the trace of the followed line.
     if following:
         asked = follow.request_for(dials.follow, points, request)
@@ -5450,46 +5506,61 @@ def _plan(
     else:
         asked = request
     try:
-        try:
-            answer, timed_out = _route(variant, asked, deadline)
-            if variant in TWIN_VARIANTS:
-                _mark_twin(variant, True)
-        except RouterUnavailable:
-            # The weekend graph is a fourth router, and a deployment that has
-            # not built it yet - or one whose weekend router is down or hung -
-            # still answers a weekend ride, on the standard graph it is the
-            # twin of. The answer names the graph it came from, and the failure
-            # is remembered for WEEKEND_FAILURE_TTL_S.
-            if variant not in TWIN_VARIANTS:
-                raise
-            _mark_twin(variant, False)
-            if weekend_beside:
-                raise
-            logger.warning("the %s router did not answer; planning on the standard graph", variant)
-            variant = Variant.STANDARD.value
-            answer, timed_out = _route(variant, asked, deadline)
-        except RouterRefused as refusal:
-            # A weekend router with no tiles - started on an empty directory
-            # before the first weekend promotion, or after a rollback withdrew
-            # it - stays up and answers every ride 170/171, "no suitable
-            # edges" (OPS review, 2026-09-28). That is asked of the standard
-            # graph too, and only if the standard graph answers is the weekend
-            # one taken to be missing its tiles and remembered as down; a
-            # point the standard graph cannot place either is a real refusal
-            # and is reported as one.
-            if variant not in TWIN_VARIANTS or refusal.code not in NO_EDGE_CODES:
-                raise
-            answer, timed_out = _route(Variant.STANDARD.value, asked, deadline)
-            _mark_twin(variant, False)
-            if weekend_beside:
-                raise RouterUnavailable("the weekend router placed no edge") from refusal
+        # Twins that refused with no edge, remembered as down only once a graph they fall
+        # back to answers.
+        refused: list[tuple[str, int | None]] = []
+        while True:
+            try:
+                answer, timed_out = _route(variant, asked, deadline)
+                if variant in TWIN_VARIANTS:
+                    _mark_twin(variant, True)
+                break
+            except RouterUnavailable:
+                # The weekend graph is a fourth router, and a deployment that has
+                # not built it yet - or one whose weekend router is down or hung -
+                # still answers a weekend ride, on the graph it is the twin of
+                # (`twin_fallback`). The answer names the graph it came from, and the
+                # failure is remembered for WEEKEND_FAILURE_TTL_S.
+                if variant not in TWIN_VARIANTS:
+                    raise
+                _mark_twin(variant, False)
+                if weekend_beside:
+                    raise
+                fallback = twin_fallback(variant)
+                logger.warning(
+                    "the %s router did not answer; planning on the %s graph", variant, fallback
+                )
+                # A fallback already known down or not promoted is passed over, not asked
+                # and waited out again (Road Bike's weekend twin falls back to the paved one).
+                variant = _served_variant(fallback)
+            except RouterRefused as refusal:
+                # A weekend router with no tiles - started on an empty directory
+                # before the first weekend promotion, or after a rollback withdrew
+                # it - stays up and answers every ride 170/171, "no suitable
+                # edges" (OPS review, 2026-09-28). That is asked of the graph it falls
+                # back to too, and only if that graph answers is the weekend one taken
+                # to be missing its tiles and remembered as down; a point the standard
+                # graph cannot place either is a real refusal and is reported as one.
+                if variant not in TWIN_VARIANTS or refusal.code not in NO_EDGE_CODES:
+                    raise
+                if weekend_beside:
+                    # Beside the ride's own plan the weekend graph never falls back: it is
+                    # only taken as missing its tiles if the graph it is the twin of answers.
+                    _route(twin_fallback(variant), asked, deadline)
+                    _mark_twin(variant, False)
+                    raise RouterUnavailable("the weekend router placed no edge") from refusal
+                refused.append((variant, refusal.code))
+                variant = _served_variant(twin_fallback(variant))
+        for twin, code in refused:
+            _mark_twin(twin, False)
             logger.warning(
-                "the %s router placed no edge the standard graph could (code %s); "
-                "planning on the standard graph",
+                "the %s router placed no edge the %s graph could (code %s); "
+                "planning on the %s graph",
+                twin,
                 variant,
-                refusal.code,
+                code,
+                variant,
             )
-            variant = Variant.STANDARD.value
         if timed_out and not (calm_seek or calm_tolerate):
             seek_limited = "timed_out"
     except RouterRefused as refusal:

@@ -740,7 +740,11 @@ MTB_HILLS = 50
 #
 # - Its own graph (`Variant.PAVED`): gravel, fine gravel and compacted priced as gravel, which a
 #   road bicycle at `ROAD_BIKE_SURFACES` prices at about seventeen times a paved path, and a
-#   winding trail priced as an LTS 3 street (`routemaker.winding`).
+#   winding trail priced as an LTS 3 street (`routemaker.winding`). At the weekend ride time,
+#   that graph's weekend twin (`Variant.PAVED_WEEKEND`), where Beach Drive, Sligo Creek
+#   Parkway, Little Falls Parkway and the other roads closed to cars for the weekend are
+#   off-road paths. The owner, 2026-11-08: "Road bikes absolutely use those parkways on the
+#   weekends. It's probably their most common destination."; "New weekend graph".
 # - `avoid_bad_surfaces` 0.9, as the Avoid gravel box had it (OWNER-DECISIONS 91, 92, 111): steep
 #   without making a surface impassable, so a ride that starts or ends on gravel is still planned.
 #   With "Keep to roads" on, Road Bike rides the no-trail graph, where gravel is packed gravel
@@ -1267,7 +1271,9 @@ def variant_for_ride(
     graphs have no weekend twin, so their weekend rides stay on them. Mountain
     Bike takes its own graph (`Variant.MTB`), at the weekend too. Default and
     Trailmaxxing with "Easy MTB trails" on (`EASY_MTB_PRESETS`) take the off-road
-    graph as Gravel does, at the weekend too; trails off wins over it.
+    graph as Gravel does, at the weekend too; trails off wins over it. Road Bike's
+    paved graph has a weekend twin (`Variant.PAVED_WEEKEND`; the owner,
+    2026-11-08, "New weekend graph"), which a weekend Road Bike ride takes.
 
     Those weekend rides on the off-road or Mountain Bike graph are also planned on the
     weekend graph (`weekend_too`; the owner, 2026-11-08: "We can do the plan twice."), and
@@ -1288,6 +1294,8 @@ def variant_for_ride(
         return Variant.OFFROAD.value
     if preset.variant == Variant.STANDARD.value and when == WEEKEND:
         return Variant.WEEKEND.value
+    if preset.variant == Variant.PAVED.value and when == WEEKEND:
+        return Variant.PAVED_WEEKEND.value
     return preset.variant
 
 

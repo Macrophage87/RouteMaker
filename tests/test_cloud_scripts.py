@@ -25,7 +25,7 @@ BOX = REPO / "scripts" / "cloud" / "box-rebuild.sh"
 IMPORT = REPO / "scripts" / "cloud" / "import-result.sh"
 BUILD = "20261011T093012Z"
 COMMIT = "a" * 40
-VARIANTS = ("standard", "no-trail", "ebike", "weekend", "offroad", "mtb", "paved")
+VARIANTS = ("standard", "no-trail", "ebike", "weekend", "offroad", "mtb", "paved", "paved-weekend")
 
 pytestmark = pytest.mark.skipif(shutil.which("bash") is None, reason="needs bash")
 
@@ -1157,7 +1157,7 @@ ln -s "$FAKE_DIR/graph.tar" "$stage/tiles/standard/BUILD/tiles.tar"
 echo dump >"$stage/db/routemaker.dump"
 (cd "$stage" && sha256sum tiles/standard/BUILD/tiles.tar db/routemaker.dump >SHA256SUMS)
 graphs=""
-for v in standard no-trail ebike weekend offroad mtb paved; do
+for v in standard no-trail ebike weekend offroad mtb paved paved-weekend; do
   graphs="$graphs $v=${FAKE_SHIPPED:-BUILD}"
 done
 printf 'bundle_format=1\ntiles=%s\n' "${graphs# }" >"$stage/MANIFEST.txt"

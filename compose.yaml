@@ -250,6 +250,7 @@ services:
       VALHALLA_OFFROAD_URL: ${VALHALLA_OFFROAD_URL:-http://valhalla-offroad:8002}
       VALHALLA_MTB_URL: ${VALHALLA_MTB_URL:-http://valhalla-mtb:8002}
       VALHALLA_PAVED_URL: ${VALHALLA_PAVED_URL:-http://valhalla-paved:8002}
+      VALHALLA_PAVED_WEEKEND_URL: ${VALHALLA_PAVED_WEEKEND_URL:-http://valhalla-paved-weekend:8002}
       # The geocoder place search and place names are proxied to
       # (core.geocode); on this network only, like the routers.
       PHOTON_URL: ${PHOTON_URL:-http://photon:2322}
@@ -391,6 +392,7 @@ services:
       VALHALLA_OFFROAD_URL: ${VALHALLA_OFFROAD_URL:-http://valhalla-offroad:8002}
       VALHALLA_MTB_URL: ${VALHALLA_MTB_URL:-http://valhalla-mtb:8002}
       VALHALLA_PAVED_URL: ${VALHALLA_PAVED_URL:-http://valhalla-paved:8002}
+      VALHALLA_PAVED_WEEKEND_URL: ${VALHALLA_PAVED_WEEKEND_URL:-http://valhalla-paved-weekend:8002}
       PHOTON_URL: ${PHOTON_URL:-http://photon:2322}
     volumes:
       - ${DATA_ROOT}/backups:/data/backups
@@ -631,9 +633,13 @@ services:
       - ${DATA_ROOT}/elevation:/data/elevation:ro
       - ./valhalla:/conf:ro
       - ./lua:/conf/lua:ro
+    # 1856M, not 2G (the owner's "New weekend graph" of 2026-11-08): Road Bike's weekend router
+    # (valhalla-paved-weekend) adds 768M resident and 768M more at the swap, which the 32G check
+    # (scripts/check_compose_limits.py) has room for only with each of the four 192M lower. Two
+    # workers at the check's 700M each still fit; the beta runs these at 640M.
     deploy:
       resources:
-        limits: { memory: 2G, cpus: "2" }
+        limits: { memory: 1856M, cpus: "2" }
 
   valhalla-no-trail:
     <<: [*restart, *logging]
@@ -663,9 +669,13 @@ services:
       - ${DATA_ROOT}/elevation:/data/elevation:ro
       - ./valhalla:/conf:ro
       - ./lua:/conf/lua:ro
+    # 1856M, not 2G (the owner's "New weekend graph" of 2026-11-08): Road Bike's weekend router
+    # (valhalla-paved-weekend) adds 768M resident and 768M more at the swap, which the 32G check
+    # (scripts/check_compose_limits.py) has room for only with each of the four 192M lower. Two
+    # workers at the check's 700M each still fit; the beta runs these at 640M.
     deploy:
       resources:
-        limits: { memory: 2G, cpus: "2" }
+        limits: { memory: 1856M, cpus: "2" }
 
   valhalla-ebike:
     <<: [*restart, *logging]
@@ -695,9 +705,13 @@ services:
       - ${DATA_ROOT}/elevation:/data/elevation:ro
       - ./valhalla:/conf:ro
       - ./lua:/conf/lua:ro
+    # 1856M, not 2G (the owner's "New weekend graph" of 2026-11-08): Road Bike's weekend router
+    # (valhalla-paved-weekend) adds 768M resident and 768M more at the swap, which the 32G check
+    # (scripts/check_compose_limits.py) has room for only with each of the four 192M lower. Two
+    # workers at the check's 700M each still fit; the beta runs these at 640M.
     deploy:
       resources:
-        limits: { memory: 2G, cpus: "2" }
+        limits: { memory: 1856M, cpus: "2" }
 
   # No source, no `build:`, and therefore no image anywhere: `docker compose up`
   # stopped at a pull of routemaker/renderer:${TAG} from a registry that has
@@ -748,9 +762,13 @@ services:
       - ${DATA_ROOT}/elevation:/data/elevation:ro
       - ./valhalla:/conf:ro
       - ./lua:/conf/lua:ro
+    # 1856M, not 2G (the owner's "New weekend graph" of 2026-11-08): Road Bike's weekend router
+    # (valhalla-paved-weekend) adds 768M resident and 768M more at the swap, which the 32G check
+    # (scripts/check_compose_limits.py) has room for only with each of the four 192M lower. Two
+    # workers at the check's 700M each still fit; the beta runs these at 640M.
     deploy:
       resources:
-        limits: { memory: 2G, cpus: "2" }
+        limits: { memory: 1856M, cpus: "2" }
 
   # The standard graph with the mountain-bike class open
   # (pipeline.variants.Variant.OFFROAD; OWNER-DECISIONS 291(2)): the router
@@ -836,6 +854,7 @@ services:
   # `unbuilt` services (renderer, bot), which have no image and never run
   # (scripts/check_compose_limits.py). Start it with the other two:
   #   docker compose --profile offroad up -d valhalla-offroad valhalla-mtb valhalla-paved
+  # (and valhalla-paved-weekend, below, beside it).
   valhalla-paved:
     <<: [*restart, *logging]
     profiles: ["offroad"]
@@ -844,6 +863,32 @@ services:
     command: ["valhalla_service", "/conf/valhalla-paved.json", "1"]
     volumes:
       - ${DATA_ROOT}/tiles/paved:/data/tiles/paved:ro
+      - ${DATA_ROOT}/elevation:/data/elevation:ro
+      - ./valhalla:/conf:ro
+      - ./lua:/conf/lua:ro
+    deploy:
+      resources:
+        limits: { memory: 768M, cpus: "1" }
+
+  # Road Bike's weekend graph (pipeline.variants.Variant.PAVED_WEEKEND): the paved graph with the
+  # weekend graph's car-free reading, so Beach Drive, Sligo Creek Parkway, Little Falls Parkway and
+  # the other roads closed to cars for the weekend are off-road paths for a weekend Road Bike ride.
+  # The owner, 2026-11-08: "Road bikes absolutely use those parkways on the weekends. It's probably
+  # their most common destination."; on the card "How should Road Bike get the weekend parkways?",
+  # "New weekend graph". Behind the same profile as valhalla-paved and for the same reason; while
+  # it is not running the planner answers a weekend Road Bike ride on the paved graph
+  # (core.routing.twin_fallback) and the page says the parkways were lost. One worker in 768M, as
+  # valhalla-paved. The four routers above went from 2G to 1856M each to keep the swap-time peak
+  # at 32.0G with it (scripts/check_compose_limits.py). Start it with the other three:
+  #   docker compose --profile offroad up -d valhalla-offroad valhalla-mtb valhalla-paved valhalla-paved-weekend
+  valhalla-paved-weekend:
+    <<: [*restart, *logging]
+    profiles: ["offroad"]
+    image: ghcr.io/valhalla/valhalla:3.9.1@sha256:4fd114eb1d26b8fc2f43bcb3df234c1b63a0bf13c277405e5943d5361dc575de
+    # As valhalla-offroad: the config path and the worker count on argv.
+    command: ["valhalla_service", "/conf/valhalla-paved-weekend.json", "1"]
+    volumes:
+      - ${DATA_ROOT}/tiles/paved-weekend:/data/tiles/paved-weekend:ro
       - ${DATA_ROOT}/elevation:/data/elevation:ro
       - ./valhalla:/conf:ro
       - ./lua:/conf/lua:ro
@@ -965,6 +1010,7 @@ services:
       VALHALLA_OFFROAD_URL: ${VALHALLA_OFFROAD_URL:-http://valhalla-offroad:8002}
       VALHALLA_MTB_URL: ${VALHALLA_MTB_URL:-http://valhalla-mtb:8002}
       VALHALLA_PAVED_URL: ${VALHALLA_PAVED_URL:-http://valhalla-paved:8002}
+      VALHALLA_PAVED_WEEKEND_URL: ${VALHALLA_PAVED_WEEKEND_URL:-http://valhalla-paved-weekend:8002}
     # The five directories this service writes, each bound on its own, rather
     # than `${DATA_ROOT}:/data` - which is the same volume and also carries
     # `caddy/` (the ACME account key and the deployment's TLS private key),

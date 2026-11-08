@@ -249,7 +249,9 @@ DERIVED_SENTINEL_WAY_ID: int | None = 8795651
 
 # The weekend graph's own sentinel (`settings.REBUILD_SENTINEL_WEEKEND_EDGE`):
 # a road closed to cars at the weekend reads as a separated lane there and only
-# there, so a weekend graph derived like the standard one is refused.
+# there, so a weekend graph derived like the standard one is refused. Road Bike's
+# weekend graph (`Variant.PAVED_WEEKEND`) is read at the same edge, so one derived
+# like the paved graph is refused too.
 WEEKEND_SENTINEL_WAY_ID: int = 696971684
 WEEKEND_SENTINEL_EXPECTED = "separated"
 
@@ -2038,15 +2040,16 @@ def facility_derived(
       facility makes a street cheaper for it (the owner, 2026-09-27: "Mass
       rides don't need to consider these. Even protected bike lanes aren't
       used.").
-    - Weekend: a road closed to motor traffic for the whole weekend
-      (`ridetime.closed_settings`) is on this graph what a road closed for good
-      is on every graph - an off-road path, at the lowest tier, so the stress
+    - Weekend, and Road Bike's weekend twin (`variants.WEEKEND_GRAPHS`; the owner,
+      2026-11-08, "New weekend graph"): a road closed to motor traffic for the whole
+      weekend (`ridetime.closed_settings`) is on these graphs what a road closed for
+      good is on every graph - an off-road path, at the lowest tier, so the stress
       penalty does not land on it either. Every other way as on the standard.
-    - Standard and e-bike: the way's class.
+    - Standard, e-bike, off-road, mountain-bike and paved: the way's class.
     """
     if variant is variants.Variant.NO_TRAIL:
         return {"facility_neutral": True}
-    if variant is variants.Variant.WEEKEND and ridetime.WEEKEND in car_free_by_way.get(way_id, ()):
+    if variant in variants.WEEKEND_GRAPHS and ridetime.WEEKEND in car_free_by_way.get(way_id, ()):
         return {"facility": facility.Facility.PATH.value, "stress_tier": 1}
     if way_id in facility_by_way:
         return {"facility": facility_by_way[way_id]}
@@ -2060,6 +2063,7 @@ def build_handlers(
     sample_derived_tag: Callable[[], str | None] | None = None,
     state_at: Callable[[float, float], str | None] | None = None,
     sample_weekend_tag: Callable[[], str | None] | None = None,
+    sample_paved_weekend_tag: Callable[[], str | None] | None = None,
     load_overrides: Callable[[], list[overrides.Override]] | None = None,
     disk_usage: Callable | None = None,
     fetch_elevation: Callable[[elevation.TileName, Path], Path] | None = None,
@@ -2092,6 +2096,9 @@ def build_handlers(
     sample_grade = sample_grade or (lambda: _least_grade_across_variants(context, run))
     sample_derived_tag = sample_derived_tag or (lambda: _standard_cycle_lane(context, run))
     sample_weekend_tag = sample_weekend_tag or (lambda: _weekend_cycle_lane(context, run))
+    sample_paved_weekend_tag = sample_paved_weekend_tag or (
+        lambda: _weekend_cycle_lane(context, run, variants.Variant.PAVED_WEEKEND)
+    )
     sample_closures = sample_closures or (lambda: _closures_across_variants(context, closure_run))
 
     def classification_value(name: str):
@@ -3901,9 +3908,10 @@ def build_handlers(
                     derived["hazard"] = True
                     hazard_ways += 1
                 # The road-bike graph prices gravel, fine gravel and compacted as gravel
-                # (`variants.Variant.PAVED`, `routemaker_remap.ROUGH_UNPAVED`); every other
-                # graph prices gravel as packed gravel.
-                if variant is variants.Variant.PAVED and way.tags.get("surface") in (
+                # (`variants.PAVED_GRAPHS`, its weekend twin too;
+                # `routemaker_remap.ROUGH_UNPAVED`); every other graph prices gravel as
+                # packed gravel.
+                if variant in variants.PAVED_GRAPHS and way.tags.get("surface") in (
                     "gravel",
                     "fine_gravel",
                     "compacted",
@@ -3913,7 +3921,7 @@ def build_handlers(
                 # 2026-11-02: road bikes "stay away from trails with lots of direction
                 # changes ... For instance Sligo Creek Trail").
                 if (
-                    variant is variants.Variant.PAVED
+                    variant in variants.PAVED_GRAPHS
                     and variants.is_trail_class(way.tags)
                     and winding.is_winding(way.coordinates)
                 ):
@@ -4628,6 +4636,14 @@ def build_handlers(
                 "derived as the weekend twin, so a weekend ride on it would not prefer the "
                 "roads closed to cars"
             )
+        paved_weekend = sample_paved_weekend_tag()
+        if paved_weekend != WEEKEND_SENTINEL_EXPECTED:
+            raise ValidationFailed(
+                f"the paved-weekend graph reports {paved_weekend!r} on Sligo Creek Parkway (way "
+                f"{WEEKEND_SENTINEL_WAY_ID}), not {WEEKEND_SENTINEL_EXPECTED!r}: it was not "
+                "derived as the paved graph's weekend twin, so a weekend Road Bike ride on it "
+                "would take the parkways closed to cars as roads"
+            )
         assert_bicycle_closures_reached_the_tiles(sample_closures())
 
     def swap() -> None:
@@ -4778,10 +4794,12 @@ def _standard_cycle_lane(context: RebuildContext, run) -> str | None:
     )
 
 
-def _weekend_cycle_lane(context: RebuildContext, run) -> str | None:
-    config_path = context.build_configs.get(variants.Variant.WEEKEND)
+def _weekend_cycle_lane(
+    context: RebuildContext, run, variant: variants.Variant = variants.Variant.WEEKEND
+) -> str | None:
+    config_path = context.build_configs.get(variant)
     if config_path is None:
-        raise ValidationFailed("the weekend variant has no build config to read back")
+        raise ValidationFailed(f"the {variant.value} variant has no build config to read back")
     return _read_back(
         functools.partial(
             tiles.sample_cycle_lane,
