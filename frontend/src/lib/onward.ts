@@ -30,8 +30,8 @@ export const WALK_TIME_FACTOR = 1.5;
 export const WALK_SLACK_S = 180;
 
 /** A walk as a part to follow; null for one with no line. */
-export function walkPart(path: WalkPath, seconds: number | null = null): OnwardPart | null {
-  const model = walkModel(path);
+export function walkPart(path: WalkPath, seconds: number | null = null, fromStation = false): OnwardPart | null {
+  const model = walkModel(path, "", fromStation);
   return model ? { kind: "walk", model, to: path.to, seconds } : null;
 }
 
@@ -43,7 +43,9 @@ export function onwardOf(steps: readonly TransitStep[], after: number): OnwardPa
     const draw = drawOf(step);
     if (draw === "ride") break;
     if (step.mode === "walk" || step.mode === "take") {
-      const part = walkPart({ coordinates: step.coordinates, turns: step.turns ?? [], to: step.to }, step.seconds);
+      // Out of a station after a train: its exit is said in place of the first bend (lib/stationExit.ts).
+      const before = parts[parts.length - 1];
+      const part = walkPart({ coordinates: step.coordinates, turns: step.turns ?? [], to: step.to }, step.seconds, before?.kind === "transit" && !before.leg.bus);
       if (part) parts.push(part);
       // A walk to a dock: the share bike's ride after it is Ride the rest's.
       if (step.mode === "take") break;
@@ -137,6 +139,8 @@ export function onwardWhere(parts: readonly OnwardPart[], state: OnwardState | n
 
 /** A last good fix this near a station the trip boards at counts as going down into it. Our default. */
 export const STATION_QUIET_M = 250;
+/** Off a train, quiet this long at most while no good fix comes. Our default: time to climb out of a deep station. */
+export const STATION_QUIET_MS = 5 * 60_000;
 
 /**
  * Whether the GPS is expected to be weak or lost here, so no note says so (Stephen, 2026-11-04: "stop the GPS is weak
@@ -149,6 +153,7 @@ export function gpsQuietHere(
   state: OnwardState | null,
   line: { arrived: boolean; end: LonLat | null },
   lastGood: LonLat | null,
+  now: number = Date.now(),
 ): boolean {
   const near = (point: LonLat | null | undefined) => !!point && !!lastGood && haversineM(lastGood, point) <= STATION_QUIET_M;
   if (!line.arrived) return parts[0]?.kind === "transit" && near(line.end);
@@ -156,7 +161,9 @@ export function gpsQuietHere(
   const part = parts[index];
   if (!part) return false;
   if (part.kind === "transit") return true;
-  if (parts[index - 1]?.kind === "transit" && !state?.walk?.goodFix) return true;
+  // Out of the station: till the first good fix up top, for at most STATION_QUIET_MS (a walk with poor GPS all the way
+  // is told so, as any walk is).
+  if (parts[index - 1]?.kind === "transit" && !state?.walk?.goodFix && now - (state?.since ?? now) < STATION_QUIET_MS) return true;
   const following = parts[index + 1];
   return following?.kind === "transit" && near(following.leg.stops[0]?.point ?? part.model.coordinates[part.model.coordinates.length - 1]);
 }

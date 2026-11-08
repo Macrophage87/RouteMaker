@@ -12,7 +12,7 @@ test("a walk's next turn shows with its arrow, as a ride's: before the line and 
 });
 
 test("off a train, the exit is said once and shown till the walk is under way", () => {
-  assert.match(ride, /exitAt\(METRO_EXITS, part\.model\.coordinates\[0\]\)/);
+  assert.match(ride, /part\.kind === "walk" && isRailPart\(onwardParts\[i - 1\]\) \? exitAt\(METRO_EXITS, part\.model\.coordinates\[0\]\)/);
   assert.match(ride, /const exit = out\.state\.index !== state\.index \? onwardExits\[out\.state\.index\] : null;\s*if \(exit\) notify\(exit\);/);
-  assert.match(ride, /\{exitShown \? \(\s*<p className="cue-text">\{onwardExit\}<\/p>/);
+  assert.match(ride, /\{exitShown && <p className="cue-text">\{onwardExit\}<\/p>\}/);
 });

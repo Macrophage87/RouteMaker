@@ -43,9 +43,9 @@ export interface WalkPath {
 /** A turn further than this from the walk's line is not on it (an older API's straight line): not said. */
 const ON_LINE_M = 25;
 /**
- * A turn this near the walk's start is not said (Stephen, 2026-11-08: leaving the station, "In 0 ft (0 m), left."): the
- * router's first bend off the point it starts from, often a station's entrance, which a walker is already through.
- * Our default.
+ * On a walk out of a station after a train (`fromStation`), a turn this near its start is not said (Stephen,
+ * 2026-11-08: leaving the station, "In 0 ft (0 m), left."): the router's first bend off the entrance, which the exit's
+ * own words cover. Our default.
  */
 export const START_TURN_M = 15;
 
@@ -53,7 +53,7 @@ export const START_TURN_M = 15;
  * The walk as a line to follow: its turns as cues, in order along it, and its end (`endText`: its words where the
  * walk is the ride screen's own line, Walk's). Null for a walk with no line.
  */
-export function walkModel(path: WalkPath, endText = ""): RideModel | null {
+export function walkModel(path: WalkPath, endText = "", fromStation = false): RideModel | null {
   const coordinates = path.coordinates;
   if (coordinates.length < 2) return null;
   const along = lineAlong(coordinates);
@@ -61,7 +61,7 @@ export function walkModel(path: WalkPath, endText = ""): RideModel | null {
   const cues: Cue[] = [];
   for (const turn of path.turns) {
     const found = snap({ coordinates, along }, turn.point);
-    if (!found || found.offM > ON_LINE_M || found.alongM < START_TURN_M || found.alongM >= lengthM) continue;
+    if (!found || found.offM > ON_LINE_M || found.alongM <= 0 || (fromStation && found.alongM < START_TURN_M) || found.alongM >= lengthM) continue;
     const crossing = turn.movement === "cross";
     cues.push({
       index: cues.length,

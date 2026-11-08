@@ -431,6 +431,15 @@ export interface LiveTrain {
 
 /** A live reading this old says nothing (core.transit_live.LIVE_FRESH_S). */
 export const LIVE_FRESH_MS = 180_000;
+/** Each Metro line's two ends, as nameKey gives them (a WMATA sign starts with one: "viennafairfaxgmu"). */
+const METRO_ENDS: Record<string, string[]> = {
+  red: ["shadygrove", "glenmont"],
+  orange: ["vienna", "newcarrollton"],
+  silver: ["ashburn", "downtownlargo", "largo"],
+  blue: ["franconia", "downtownlargo", "largo"],
+  yellow: ["huntington", "mtvernon", "mountvernon"],
+  green: ["branchav", "greenbelt"],
+};
 /** A train's end station this much nearer the boarding than the rider's stop still counts as going there. */
 const SHORT_TURN_SLACK_M = 400;
 
@@ -477,20 +486,33 @@ export function liveForBoarding(
       ends.set(colour(line), set);
     }
   }
-  // A train signed to one of the ride's own ends (or the stop to get off) goes the ride's way.
+  // A train of the ride's lines signed to one of the ride's own ends (or the stop to get off) goes the ride's way.
   const named = (train: LiveTrain): boolean => {
+    const lineEnds = ends.get(colour(train.line));
     const end = nameKey(train.toward);
-    return !!ends.get(colour(train.line))?.has(end) || end === off;
+    return !!lineEnds && (lineEnds.has(end) || end === off);
   };
-  // The tracks those trains leave from (Stephen, 2026-11-08: at Gallery Place a Red Line train to Glenmont showed as
+  // Where the ride heads for one of its line's ends, a train signed to the line's other end goes the other way.
+  const other = (train: LiveTrain): boolean => {
+    const lineEnds = [...(ends.get(colour(train.line)) ?? [])];
+    const terms = METRO_ENDS[colour(train.line)] ?? [];
+    const mine = terms.filter((e) => lineEnds.some((m) => m.startsWith(e)));
+    if (mine.length === 0 || named(train)) return false;
+    const end = nameKey(train.toward);
+    return terms.some((e) => end.startsWith(e) && !mine.some((m) => m.startsWith(e) || e.startsWith(m)));
+  };
+  // The tracks each way leaves from (Stephen, 2026-11-08: at Gallery Place a Red Line train to Glenmont showed as
   // "After that" for a ride to Tenleytown; on a U-shaped line where a train ends cannot tell its way, its track can).
   const ours = new Set(live.filter((train) => train.track && named(train)).map((train) => train.track as string));
+  const theirs = new Set(live.filter((train) => train.track && other(train)).map((train) => train.track as string));
   const takes = (train: LiveTrain): boolean => {
     if (!ends.has(colour(train.line))) return false;
-    if (train.track && ours.size > 0) {
-      if (!ours.has(train.track)) return false;
-      // The ride's way: all but one that turns back short of the stop to get off.
-      return named(train) || !train.end || !board || !last.point || haversineM(board, train.end) >= haversineM(board, last.point) - SHORT_TURN_SLACK_M;
+    if (train.track && (ours.size > 0 || theirs.size > 0)) {
+      if (ours.size > 0 ? !ours.has(train.track) : theirs.has(train.track)) return false;
+      if (named(train)) return true;
+      // The ride's way, with a known end: all but one that turns back short of the stop to get off.
+      if (!train.end) return false;
+      return !board || !last.point || haversineM(board, train.end) >= haversineM(board, last.point) - SHORT_TURN_SLACK_M;
     }
     if (train.end && board && last.point) return goesTo(train.end, board, last.point);
     return named(train);

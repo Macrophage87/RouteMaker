@@ -55,6 +55,8 @@ export const CATALOG: Readonly<Record<string, string>> = {
   // Off a train, which way out of the station (lib/stationExit.ts; draft, needs a native check).
   "Take the exit at {street} and {cross}.": "د {street} او {cross} وتون وکاروئ.",
   "Take the exit on {street}.": "د {street} وتون وکاروئ.",
+  "Take the {side} exit at {street} and {cross}.": "د {street} او {cross} {side} وتون وکاروئ.",
+  "Take the {side} exit on {street}.": "د {street} {side} وتون وکاروئ.",
   "Cross {road}, then {turn}": "له {road} څخه تېر شئ، بیا {turn}",
   "{way} to {trail}": "{way} چې {trail} ته ځي",
   "Cross {road} now.": "اوس له {road} څخه تېر شئ.",

@@ -57,6 +57,8 @@ export const ES: Readonly<Record<string, string>> = {
   // Off a train, which way out of the station (lib/stationExit.ts; draft, needs a native check).
   "Take the exit at {street} and {cross}.": "Tome la salida de {street} y {cross}.",
   "Take the exit on {street}.": "Tome la salida de {street}.",
+  "Take the {side} exit at {street} and {cross}.": "Tome la salida {side} de {street} y {cross}.",
+  "Take the {side} exit on {street}.": "Tome la salida {side} de {street}.",
   "Cross {road}, then {turn}": "Cruce {road}, luego {turn}",
   // An unnamed path said with the named one it leads to (navigate.ts pathWords, describe._toward).
   "{way} to {trail}": "{way} que lleva a {trail}",

@@ -55,6 +55,8 @@ export const CATALOG: Readonly<Record<string, string>> = {
   // Off a train, which way out of the station (lib/stationExit.ts; draft, needs a native check).
   "Take the exit at {street} and {cross}.": "በ{street} እና {cross} ያለውን መውጫ ይጠቀሙ።",
   "Take the exit on {street}.": "በ{street} ያለውን መውጫ ይጠቀሙ።",
+  "Take the {side} exit at {street} and {cross}.": "በ{street} እና {cross} ያለውን የ{side} መውጫ ይጠቀሙ።",
+  "Take the {side} exit on {street}.": "በ{street} ያለውን የ{side} መውጫ ይጠቀሙ።",
   "Cross {road}, then {turn}": "{road}ን ያቋርጡ፣ ከዚያ {turn}",
   "{way} to {trail}": "ወደ {trail} የሚወስደው {way}",
   "Cross {road} now.": "አሁን {road}ን ያቋርጡ።",

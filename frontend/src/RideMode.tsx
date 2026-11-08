@@ -283,7 +283,7 @@ import {
   type RideTrip,
   walkLineTurns,
 } from "./lib/rideTrip.ts";
-import { gpsQuietHere, onwardActive, onwardStart, onwardStep, onwardWhere, type OnwardState } from "./lib/onward.ts";
+import { gpsQuietHere, onwardActive, type OnwardPart, onwardStart, onwardStep, onwardWhere, type OnwardState } from "./lib/onward.ts";
 import { lowPowerOnBoard, onBoardPath, type OnBoardPath } from "./lib/onBoard.ts";
 import { BOARDING_MS, TRIP_CHECK_MS } from "./lib/tripCheck.ts";
 import { nextWalkTurn, walkModel, walkTurnLine } from "./lib/walkCues.ts";
@@ -502,6 +502,11 @@ export interface RideView {
   onLettered?: (index: number) => void;
   /** The train or bus waited for or ridden past the line, its stops ahead (lib/onBoard.ts onBoardPath). */
   transitPath?: OnBoardPath | null;
+}
+
+/** A train's part (a bus stop has no exits to name). */
+function isRailPart(part: OnwardPart | undefined): boolean {
+  return part?.kind === "transit" && !part.leg.bus;
 }
 
 /** Off a train, the exit is shown until the walk is this far along (lib/stationExit.ts). Our default. */
@@ -1997,7 +2002,7 @@ export function RideMode({
   // Which exit each walk after a train leaves the station by (Stephen, 2026-11-08: "the cue should mention which exit
   // to use"), from DC's entrances near the walk's start (lib/stationExit.ts); null where none is known.
   const onwardExits = useMemo(
-    () => onwardParts.map((part, i) => (part.kind === "walk" && onwardParts[i - 1]?.kind === "transit" ? exitAt(METRO_EXITS, part.model.coordinates[0]) : null)),
+    () => onwardParts.map((part, i) => (part.kind === "walk" && isRailPart(onwardParts[i - 1]) ? exitAt(METRO_EXITS, part.model.coordinates[0]) : null)),
     [onwardParts],
   );
   const followOnward = useCallback(
@@ -3787,11 +3792,8 @@ export function RideMode({
                   <p className="cue-text">{onwardDone ? (tripGoesOn && rest ? rest.text : arrivedShown(destinationName)) : (trip?.finish?.shown ?? arrivedShown(destinationName))}</p>
                 )}
                 {/* Off a train, the exit first; then the walk's turns, each with its arrow as a ride's. */}
-                {exitShown ? (
-                  <p className="cue-text">{onwardExit}</p>
-                ) : (
-                  onwardWalkLine && onwardPart?.kind === "walk" && <WalkTurnCard model={onwardPart.model} state={onward?.walk ?? null} weak={!!gps} />
-                )}
+                {exitShown && <p className="cue-text">{onwardExit}</p>}
+                {onwardWalkLine && onwardPart?.kind === "walk" && <WalkTurnCard model={onwardPart.model} state={onward?.walk ?? null} weak={!!gps} />}
                 {/* The boarding's departure, its countdown and milestones as in the trip's panel (said through the ride's outputs). */}
                 {/* Its milestones said; on screen only a close or missed departure's notice (the card has its time). */}
                 {trip?.departure && toBoard && <DepartureTimer departure={trip.departure} announce={notify} noticeOnly={!!boardingLeg && !!boardingDeparture} />}

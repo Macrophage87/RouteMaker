@@ -45,24 +45,70 @@ function streetCase(words: string): string {
     .join(" ");
 }
 
-/**
- * DC's words for where an entrance comes up, as a sentence: at a corner, "Take the exit at {street} and {cross}.";
- * along a street, "Take the exit on {street}."; null for a place that names no street.
- */
-export function exitWords(to: string): string | null {
-  const text = to.replace(/\s+/g, " ").trim().replace(/\s*(?:\b(?:NORTH|SOUTH|EAST|WEST)\s+)?\b(?:INTERSECTION|ELEVATOR)$/i, "").trim();
-  const rest = text.replace(WHERE, "");
-  if (!STREET_WORD.test(rest)) return null;
-  const along = /^(.+?) BETWEEN .+$/i.exec(rest);
-  if (along) return t("Take the exit on {street}.", { street: streetCase(along[1]) });
-  const corner = /^(.+?) (?:AT (?:INTERSECTION WITH )?|AND )(.+)$/i.exec(rest);
-  if (corner && STREET_WORD.test(corner[1]) && STREET_WORD.test(corner[2])) {
-    return t("Take the exit at {street} and {cross}.", { street: streetCase(corner[1]), cross: streetCase(corner[2]) });
-  }
-  return t("Take the exit on {street}.", { street: streetCase(corner && STREET_WORD.test(corner[1]) ? corner[1] : rest) });
+/** The compass side DC gives an entrance ("NE CORNER OF", "WEST SIDE OF"), as a word in the rider's language. */
+function sideOf(text: string): string | null {
+  const found = /^(N|S|E|W|NE|NW|SE|SW|NORTH|SOUTH|EAST|WEST|NORTHEAST|NORTHWEST|SOUTHEAST|SOUTHWEST|NORTHEN|NORTHERN|SOUTHERN|EASTERN|WESTERN)\b/i.exec(text);
+  if (!found) return null;
+  const key = found[1].toUpperCase().replace(/ERN$|EN$/, "");
+  const words: Record<string, () => string> = {
+    N: () => t("north"),
+    NORTH: () => t("north"),
+    S: () => t("south"),
+    SOUTH: () => t("south"),
+    E: () => t("east"),
+    EAST: () => t("east"),
+    W: () => t("west"),
+    WEST: () => t("west"),
+    NE: () => t("northeast"),
+    NORTHEAST: () => t("northeast"),
+    NW: () => t("northwest"),
+    NORTHWEST: () => t("northwest"),
+    SE: () => t("southeast"),
+    SOUTHEAST: () => t("southeast"),
+    SW: () => t("southwest"),
+    SOUTHWEST: () => t("southwest"),
+  };
+  return words[key]?.() ?? null;
 }
 
-/** The exit a walk starting at `point` leaves by, in words: the nearest entrance within EXIT_NEAR_M; else null. */
+/**
+ * DC's words for where an entrance comes up, as a sentence: at a corner, "Take the exit at {street} and {cross}.";
+ * along a street, "Take the exit on {street}."; null for a place that names no street. `withSide`: the side DC gives
+ * too ("Take the east exit on Georgia Ave."), for a station whose exits would otherwise read alike.
+ */
+export function exitWords(to: string, withSide = false): string | null {
+  const text = to
+    .replace(/\s+/g, " ")
+    .trim()
+    // A building's name before the place ("RONALD REAGAN BUILDING - WEST SIDE OF 12TH STREET NW ..."); DC's typos.
+    .replace(/^[^-]*\bBUILDING - /i, "")
+    .replace(/\bANDG\b/i, "AND G")
+    .replace(/\s*(?:\b(?:NORTH|SOUTH|EAST|WEST)\s+)?\b(?:INTERSECTION|ELEVATOR)$/i, "")
+    .trim();
+  const rest = text.replace(WHERE, "");
+  if (!STREET_WORD.test(rest)) return null;
+  const side = withSide && rest !== text ? sideOf(text) : null;
+  const on = (street: string) =>
+    side ? t("Take the {side} exit on {street}.", { side, street: streetCase(street) }) : t("Take the exit on {street}.", { street: streetCase(street) });
+  const along = /^(.+?) BETWEEN .+$/i.exec(rest);
+  if (along) return on(along[1]);
+  const corner = /^(.+?) (?:AT (?:INTERSECTION WITH )?|AND )(.+)$/i.exec(rest);
+  if (corner && STREET_WORD.test(corner[1]) && STREET_WORD.test(corner[2])) {
+    const words = { street: streetCase(corner[1]), cross: streetCase(corner[2]) };
+    return side ? t("Take the {side} exit at {street} and {cross}.", { side, ...words }) : t("Take the exit at {street} and {cross}.", words);
+  }
+  // One side of an "and" names no street ("BUS BAY AND BUNKER HILL RD NE"): the street alone.
+  if (corner) return on(STREET_WORD.test(corner[1]) ? corner[1] : corner[2]);
+  return on(rest);
+}
+
+/** Entrances this near one another are one station's (for telling its exits apart). */
+const SAME_STATION_M = 400;
+
+/**
+ * The exit a walk starting at `point` leaves by, in words: the nearest entrance within EXIT_NEAR_M; else null. Where
+ * another of the station's entrances reads the same, the side DC gives is said too.
+ */
 export function exitAt(exits: readonly StationExit[], point: LonLat | null | undefined): string | null {
   if (!point) return null;
   let best: { m: number; exit: StationExit } | null = null;
@@ -70,7 +116,14 @@ export function exitAt(exits: readonly StationExit[], point: LonLat | null | und
     const m = haversineM(point, exit.point);
     if (m <= EXIT_NEAR_M && (!best || m < best.m)) best = { m, exit };
   }
-  return best ? exitWords(best.exit.to) : null;
+  if (!best) return null;
+  const chosen = best.exit;
+  const plain = exitWords(chosen.to);
+  if (plain === null) return null;
+  const alike = exits.some(
+    (other) => other.to !== chosen.to && haversineM(other.point, chosen.point) <= SAME_STATION_M && haversineM(other.point, chosen.point) > 5 && exitWords(other.to) === plain,
+  );
+  return alike ? (exitWords(chosen.to, true) ?? plain) : plain;
 }
 
 /** DC's entrances file as exits: each point with its `EXIT_TO_ST`; none where it does not parse. */

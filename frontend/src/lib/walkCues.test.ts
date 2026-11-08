@@ -127,10 +127,10 @@ test("on foot, the cues come at walking distances, not a bike's (Stephen, 2026-1
   assert.ok(before.now <= 6, JSON.stringify(heard));
 });
 
-test("a turn right at the walk's start is not said (Stephen, 2026-11-08: leaving the station, \"In 0 ft, left\")", () => {
-  const model = walkModel({ ...PATH, turns: [{ movement: "left" as const, street: null, point: at(0, 5) }, ...PATH.turns.slice(0, 2)] })!;
-  assert.deepEqual(
-    model.cues.filter((c) => c.kind === "turn").map((c) => Math.round(c.atM)),
-    [200, 400],
-  );
+test("out of a station, a turn right at the walk's start is not said (Stephen, 2026-11-08: \"In 0 ft, left\")", () => {
+  const path = { ...PATH, turns: [{ movement: "left" as const, street: null, point: at(0, 5) }, ...PATH.turns.slice(0, 2)] };
+  const turnsAt = (model: ReturnType<typeof walkModel>) => model!.cues.filter((c) => c.kind === "turn").map((c) => Math.round(c.atM));
+  assert.deepEqual(turnsAt(walkModel(path, "", true)), [200, 400]);
+  // Any other walk (Walk's own line, a re-plan from the corner) keeps it.
+  assert.deepEqual(turnsAt(walkModel(path)), [5, 200, 400]);
 });

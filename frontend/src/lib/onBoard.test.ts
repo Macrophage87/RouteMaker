@@ -557,6 +557,12 @@ test("on a U-shaped line, a live train's track tells its way, not where it ends 
     { line: "Red Line", toward: "Shady Grove", minutes: 0 },
     { line: "Red Line", toward: "Grosvenor", minutes: 5 },
   ]);
+  // No train to Shady Grove live: the Glenmont trains' track is the other way all the same; a train with no known end
+  // on the ride's track is not shown.
+  const noShady = live.filter((train) => train.toward !== "Shady Grove");
+  assert.deepEqual(liveForBoarding([...noShady, { line: "Red Line", toward: "Train", track: "B01:2", minutes: [1] }], groups, stops), [
+    { line: "Red Line", toward: "Grosvenor", minutes: 5 },
+  ]);
   // Before the fix: with no track, Glenmont's place passed for the ride's way.
   const untracked = live.map(({ track: _track, ...train }) => train);
   assert.ok(liveForBoarding(untracked, groups, stops).some((train) => train.toward === "Glenmont"));
@@ -573,7 +579,9 @@ test("weak GPS is not said in a station on the way to or from a train (Stephen, 
   const after: OnwardPart[] = [train, walkOut];
   assert.equal(gpsQuietHere(after, onwardStart(after, 0), line, null), true);
   const outState = { index: 1, since: 0, board: null, walk: { ...onwardStart([walkOut], 0).walk!, goodFix: null } };
-  assert.equal(gpsQuietHere(after, outState, line, station), true);
+  assert.equal(gpsQuietHere(after, outState, line, station, 60_000), true);
+  // No good fix all the way: quiet only so long, then a walk's weak GPS is told as any walk's.
+  assert.equal(gpsQuietHere(after, outState, line, station, 6 * 60_000), false);
   const up = { ...outState, walk: { ...outState.walk, goodFix: { point: away, accuracyM: 8, speedMs: 1.4, headingDeg: null, at: 1 } } };
   assert.equal(gpsQuietHere(after, up, line, away), false);
   // Walking in: only once the last good fix was near the station.

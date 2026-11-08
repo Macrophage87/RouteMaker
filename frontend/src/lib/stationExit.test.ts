@@ -15,6 +15,10 @@ test("DC's words for where an entrance comes up become a short sentence", () => 
   assert.equal(exitWords("NORTH SIDE OF DULLES TOLL ROAD NORTH ELEVATOR"), "Take the exit on Dulles Toll Road.");
   // No street named: nothing said.
   assert.equal(exitWords("AIRPORT PARKING GARAGE"), null);
+  // DC's odd entries: a building's name first, a typo, a bus bay.
+  assert.equal(exitWords("RONALD REAGAN BUILDING - WEST SIDE OF 12TH STREET NW BETWEEN PENNSYLVANIA AVENUE NW AND CONSTITUTION AVENUE NW"), "Take the exit on 12th Street NW.");
+  assert.equal(exitWords("SE CORNER OF 14TH STREET SE ANDG STREET SE"), "Take the exit at 14th Street SE and G Street SE.");
+  assert.equal(exitWords("BUS BAY AND BUNKER HILL RD NE"), "Take the exit on Bunker Hill Rd NE.");
 });
 
 test("the walk's start picks the entrance, and every shipped entrance parses", () => {
@@ -23,6 +27,13 @@ test("the walk's start picks the entrance, and every shipped entrance parses", (
   // Tenleytown-AU: the entrance on Wisconsin Avenue's west side, and the one at Albemarle Street.
   assert.equal(exitAt(exits, [-77.08017, 38.94832]), "Take the exit on Wisconsin Avenue NW.");
   assert.equal(exitAt(exits, [-77.07936, 38.94809]), "Take the exit at Albemarle Street NW and Wisconsin Avenue NW.");
+  // Two exits that would read alike say their side (Friendship Heights, both on Wisconsin Avenue NW).
+  const alike = [
+    { point: [-77.0, 38.9] as [number, number], to: "EAST SIDE OF WISCONSIN AVENUE NW BETWEEN A ST NW AND B ST NW" },
+    { point: [-77.001, 38.9] as [number, number], to: "WEST SIDE OF WISCONSIN AVENUE NW BETWEEN A ST NW AND B ST NW" },
+  ];
+  assert.equal(exitAt(alike, [-77.0, 38.9]), "Take the east exit on Wisconsin Avenue NW.");
+  assert.equal(exitAt(alike, [-77.001, 38.9]), "Take the west exit on Wisconsin Avenue NW.");
   // Far from any entrance (a bus stop's walk), or no point: none.
   assert.equal(exitAt(exits, [-77.0, 38.5]), null);
   assert.equal(exitAt(exits, null), null);
