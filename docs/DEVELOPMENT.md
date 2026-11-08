@@ -4934,7 +4934,10 @@ switch shows off, says why, and the ride takes the no-trail graph.
 
 With it on, `presets.variant_for_ride(..., easy_mtb=True)` gives the off-road graph
 (`Variant.OFFROAD`), as Gravel's, at the weekend too, with the ride type's own costing, so the
-calm search, Trailmaxxing's ranking and every stress rule hold as on any of its rides. That
+calm search, Trailmaxxing's ranking and every stress rule hold as on any of its rides.
+(Taking the off-road graph at the weekend too is Claude's default, not the owner's call and
+not measured: with the switch on, the weekend graph's car-free roads such as Beach Drive are
+priced as ordinary roads, not paths.) That
 graph opens the mountain-bike class (`trailaccess.MTB`, unrated grass and dirt) and the drawn
 rated singletrack up to level 1 (`singletrack.OFFROAD_MAX_LEVEL`). Easy is rated 0 or 1 on
 `mtb:scale` or `mtb:scale:imba`, or not rated; rated 2 or harder stays the Mountain Bike ride
