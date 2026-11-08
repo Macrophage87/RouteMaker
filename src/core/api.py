@@ -5578,10 +5578,13 @@ def _planned(body: RouteIn, dials, started: float | None, long_ride: bool, long_
             bool(body.easy_mtb),
             mtb_done,
         )
-        if own_variant in routing.TWIN_VARIANTS and not routing._is_promoted(own_variant):
-            # Planned on the standard graph by design where no weekend or off-road build is
-            # served; an answer from it while the twin is merely down is not kept.
-            own_variant = "standard"
+        while own_variant in routing.TWIN_VARIANTS and not routing._is_promoted(own_variant):
+            # Planned on the graph the twin falls back to by design where no build of it is
+            # promoted (`routing.twin_fallback`: Road Bike's weekend twin to the paved graph,
+            # every other twin to the standard one); an answer from it while the twin is merely
+            # down is not kept. Down the chain by promotion alone (hunt 3, P3-1: a weekend Road
+            # Bike answer on `paved` was never kept while paved-weekend was unpromoted).
+            own_variant = routing.twin_fallback(own_variant)
         ride_dials = (
             body.preset,
             when,
@@ -5771,15 +5774,28 @@ def match_track(request):
     body, refusal = _json_body(request, map_match.MAX_BYTES)
     if refusal is not None:
         return refusal
-    if not isinstance(body, dict) or set(body) - {"points", "preset", "trails_off", "assist"}:
+    if not isinstance(body, dict) or set(body) - {
+        "points",
+        "preset",
+        "trails_off",
+        "assist",
+        "easy_mtb",
+        "when",
+    }:
         return _error(400, "Send the track as an object with points and a ride type.")
     preset = body.get("preset", "default")
     if not isinstance(preset, str) or preset not in presets.PRESETS:
         return _error(400, "Not a ride type this planner offers.")
     trails_off = body.get("trails_off", False)
     assist = body.get("assist", False)
-    if not isinstance(trails_off, bool) or not isinstance(assist, bool):
-        return _error(400, "trails_off and assist are true or false.")
+    # "Easy MTB trails" and the ride time choose the graph as they do the route's (hunt 3, P3-3:
+    # an Easy MTB track snapped on a graph that closes its trails, a weekday ride on Saturday's).
+    easy = body.get("easy_mtb", False)
+    when = body.get("when")
+    if not all(isinstance(v, bool) for v in (trails_off, assist, easy)):
+        return _error(400, "trails_off, assist and easy_mtb are true or false.")
+    if when is not None and when not in ridetime.WHENS:
+        return _error(400, "Not a ride time this planner offers.")
     try:
         points = map_match.checked_points(body.get("points"))
     except map_match.TrackProblem as problem:
@@ -5791,6 +5807,8 @@ def match_track(request):
             getattr(request, "routing_started", None),
             trails_off=trails_off,
             assist=assist,
+            easy_mtb=easy,
+            when=when,
         )
     except routing.RouterRefused:
         return _error(
