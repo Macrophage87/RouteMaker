@@ -124,6 +124,7 @@ from .tags import (
     posted_maxspeed,
     provision_sides,
     shoulder_width_m,
+    side_buffered,
 )
 
 
@@ -796,12 +797,6 @@ FURTH_LANE_NO_CREDIT_MPH = 40.0
 DECENT_LANE_MIN_M = 1.5
 # From this many through lanes a direction a decent lane earns nothing.
 DECENT_LANE_MAX_LANES = 3
-BUFFER_KEYS = (
-    "cycleway:buffer",
-    "cycleway:both:buffer",
-    "cycleway:left:buffer",
-    "cycleway:right:buffer",
-)
 
 
 # A painted lane on a two-way street with this many through lanes each way or
@@ -843,10 +838,19 @@ def painted_lane_multilane(
 
 
 def lane_is_buffered(tags: dict[str, str], cycleways: set[str]) -> bool:
-    """A painted lane with a buffer: `buffered_lane`, or a buffer tag that is not "no"."""
-    if "buffered_lane" in cycleways:
-        return True
-    return any(tags.get(key) not in (None, "no", "none", "0") for key in BUFFER_KEYS)
+    """A painted lane with a buffer: `buffered_lane`, or a buffer tag that is not "no",
+    on the sides the provision is scored on (`provision_sides`).
+
+    On a two-way street every such side must have it, the worst side's rule; on a
+    one-way the one rider may use either. Read on any side (hunt 3, stress 6), a
+    buffer on the right made a 40 mph road's lanes "decent", LTS 3, though the
+    rider going the other way had a 1.2 m lane with none, LTS 4.
+    """
+    sides = provision_sides(tags)
+    if not sides:
+        return False
+    buffered = (side_buffered(tags, side) for side in sides)
+    return any(buffered) if is_oneway(tags) else all(buffered)
 
 
 def decent_lane(tags: dict[str, str], cycleways: set[str], width_m: float | None) -> bool:

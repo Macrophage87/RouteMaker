@@ -41,7 +41,7 @@ from routemaker.agency_roads import (
     osm_side_ranks,
     placeholder_problem,
 )
-from routemaker.tags import lanes_per_direction, parse_maxspeed_mph
+from routemaker.tags import cycleway_sides, is_oneway, lanes_per_direction, parse_maxspeed_mph
 
 MD_NAME = "dc-osm-newer-osm-edits.md"
 CSV_NAME = "dc-osm-newer-osm-edits.csv"
@@ -130,9 +130,26 @@ def load_kept(path: Path | str | None = None) -> dict[int, Kept]:
     return found
 
 
+# On a one-way the facility is compared by the direction it serves, not by the
+# side it is on.
+WITH_FLOW, AGAINST_FLOW = "with the traffic", "against the traffic"
+
+
 def _bike_sides(tags: Mapping[str, str]) -> dict[str, int]:
-    """The facility on each side of the way that has one ({side: rank})."""
-    return {side: rank for side, rank in osm_side_ranks(tags).items() if rank}
+    """The facility on each side of the way that has one ({side: rank}); on a
+    one-way, on each direction ({WITH_FLOW or AGAINST_FLOW: rank}). The record
+    writes a one-way's with-flow lane on the right (`agency_roads._facility_tags`),
+    so compared by side name, OSM's left-side lane on a one-way was listed against
+    DC's right-side one at every rebuild, though nothing differs (hunt 3, stress 4)."""
+    ranks = {side: rank for side, rank in osm_side_ranks(tags).items() if rank}
+    if not is_oneway(dict(tags)):
+        return ranks
+    sides = cycleway_sides(dict(tags))
+    by_flow: dict[str, int] = {}
+    for side, rank in ranks.items():
+        flow = AGAINST_FLOW if sides[side].contraflow else WITH_FLOW
+        by_flow[flow] = max(by_flow.get(flow, 0), rank)
+    return by_flow
 
 
 def _sides_text(ranks: Mapping[str, int]) -> str:

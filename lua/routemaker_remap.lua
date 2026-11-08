@@ -713,6 +713,8 @@ function M.remap_way(tags, derived)
   -- On the no-trail variant the neutral rewrite has already removed the
   -- value, so the split finds nothing to copy there.
   M.split_both(tags, out)
+  -- A two-way lane or track on one side of a two-way road prices both directions.
+  M.split_two_way_side(tags, out)
 
   -- From 3.6.0 upstream's parser prices `smoothness` as a surface where no
   -- `surface` or `tracktype` tag says (valhalla/valhalla#4949): excellent and
@@ -1481,6 +1483,8 @@ end
 -- read at the key its value came from): a bicycle may ride it both ways, so it speaks for the
 -- reverse as a contraflow lane does. Kept apart from `M.side_against_traffic`, which reads only
 -- `-1` and the forward values, as `routemaker.tags._against_traffic` (the map) does.
+-- On a two-way road the same tagging is priced, not opened: `M.split_two_way_side` copies the
+-- side's value to the other side, the parity of `routemaker.tags._directions` (hunt 3, stress 1).
 function M.side_two_way(tags, side)
   if not M.is_motor_oneway(tags) then return false end
   for _, key in ipairs(M.CYCLEWAY_SIDE_KEYS[side]) do
@@ -2480,6 +2484,46 @@ function M.split_both(tags, out)
   if both == M.REMOVE then return end
   for _, key in ipairs({ "cycleway:left", "cycleway:right" }) do
     if tags[key] == nil and out[key] == nil then out[key] = both end
+  end
+end
+
+--- Spell a two-way lane or track on one side of a two-way road out as both sides.
+--
+-- The two-way-road counterpart of `M.split_both` (hunt 3, stress 1). The
+-- classifier (`routemaker.tags._directions`) lets a side whose own
+-- `cycleway:<side>:oneway=no` makes it a two-way lane or track serve both
+-- directions of a two-way road, so `cycleway:right=track` +
+-- `cycleway:right:oneway=no` on a 30 mph road is LTS 1 and priced as a
+-- protected facility. Upstream prices each direction from its own side
+-- (`cycleway:right` forward, `cycleway:left` reverse) and never reads
+-- `cycleway:<side>:oneway=no` on a two-way road, so the reverse was priced as a
+-- road with no lane. Copying the side's value (after the facility rewrite) onto
+-- the other side's key, where no key speaks for that side, changes the price and
+-- nothing else: a two-way road is already open both ways. Read at the key the
+-- value came from, only a painted lane or a track, only where
+-- `lanes_may_move`, and never on a one-way (`M.side_two_way` handles that as
+-- contraflow access). Where the other side's own key is tagged (`no`, say),
+-- that key is left alone and upstream still prices that direction from it,
+-- narrower than the classifier, which takes the two-way side as well.
+M.OTHER_SIDE = { left = "right", right = "left" }
+
+function M.split_two_way_side(tags, out)
+  if not M.lanes_may_move(tags) or M.is_motor_oneway(tags) then return end
+  for _, side in ipairs({ "left", "right" }) do
+    local own = "cycleway:" .. side
+    local other = "cycleway:" .. M.OTHER_SIDE[side]
+    for _, key in ipairs(M.CYCLEWAY_SIDE_KEYS[side]) do
+      local value = tags[key]
+      if value ~= nil and value ~= "" then
+        if key == own and (M.LANE_VALUES[value] or M.TRACK_VALUES[value])
+          and tags[key .. ":oneway"] == "no"
+          and tags[other] == nil and out[other] == nil then
+          local now = written(tags, out, key)
+          if now ~= nil then out[other] = now end
+        end
+        break
+      end
+    end
   end
 end
 

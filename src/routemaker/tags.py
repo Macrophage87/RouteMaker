@@ -491,6 +491,9 @@ class CyclewaySide:
     # The side's own `cycleway:<side>:oneway` says it runs against the way's
     # traffic: the modern tagging of a contraflow lane (`cycleway_sides`).
     against_traffic: bool = False
+    # The side's own `cycleway:<side>:oneway=no`: a two-way lane or track on one
+    # side of the road, which a rider going either way may use (`_directions`).
+    two_way: bool = False
 
     @property
     def rank(self) -> int:
@@ -544,8 +547,11 @@ def cycleway_sides(tags: dict[str, str]) -> dict[str, CyclewaySide]:
         width = _first_width(tags, CYCLEWAY_SIDE_WIDTH_KEYS[side])
         if value is not None and _facility_rank(value) == 0:
             width = None
-        against = _against_traffic(tags, _first_key(tags, CYCLEWAY_SIDE_KEYS[side]))
-        sides[side] = CyclewaySide(value, width, against)
+        key = _first_key(tags, CYCLEWAY_SIDE_KEYS[side])
+        against = _against_traffic(tags, key)
+        # Read at the key the value came from, as `_against_traffic` reads it.
+        two_way = key is not None and tags.get(f"{key}:oneway") == "no"
+        sides[side] = CyclewaySide(value, width, against, two_way)
     return sides
 
 
@@ -580,10 +586,19 @@ def _directions(tags: dict[str, str], sides: dict[str, CyclewaySide]) -> list[li
     `oneway:bicycle=no`, which the older scheme left implied, and the modern
     `cycleway:left=lane` + `cycleway:left:oneway=-1`, each still took the union
     and came out a tier calmer than the first form.
+
+    A two-way facility on one side (`cycleway:right=track` +
+    `cycleway:right:oneway=no`, the usual tagging of a two-way protected track
+    along a two-way road) serves both directions (hunt 3, stress 1). Read as one
+    direction's, the other direction had nothing and the way was mixed traffic:
+    LTS 3 at 30 mph on a road the map draws a track along.
     """
     left, right = sides["left"], sides["right"]
     if not is_oneway(tags):
-        return [[left], [right]]
+        return [
+            [left] + ([right] if right.two_way else []),
+            [right] + ([left] if left.two_way else []),
+        ]
     return [[s for s in (left, right) if not s.contraflow]]
 
 
@@ -639,6 +654,23 @@ def _provision(directions: list[list[CyclewaySide]], pick) -> Provision:
         frozenset(s.value for sides, _ in used for s in sides if s.value is not None),
         pick(widths) if widths else None,
     )
+
+
+# A side's buffer, by the same precedence as its value: the side's own key, then
+# `:both`, then the bare key.
+CYCLEWAY_SIDE_BUFFER_KEYS = {
+    side: (f"cycleway:{side}:buffer", "cycleway:both:buffer", "cycleway:buffer") for side in SIDES
+}
+_NO_BUFFER = frozenset({"no", "none", "0"})
+
+
+def side_buffered(tags: dict[str, str], side: str) -> bool:
+    """Whether one side's lane has a buffer: its value is `buffered_lane`, or the
+    buffer key that speaks for the side says something other than no."""
+    if _first(tags, CYCLEWAY_SIDE_KEYS[side]) == "buffered_lane":
+        return True
+    buffer = _first(tags, CYCLEWAY_SIDE_BUFFER_KEYS[side])
+    return buffer is not None and buffer not in _NO_BUFFER
 
 
 def provision_sides(tags: dict[str, str]) -> tuple[str, ...]:

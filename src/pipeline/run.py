@@ -1868,6 +1868,44 @@ def assert_owner_stretches(context: RebuildContext, rows: Sequence) -> list:
     return read
 
 
+def agency_rated(result, ratings, tags: Mapping[str, str], *, urban: bool):
+    """`result` with the agencies' own `ratings` over it, then the owner's rural floor and
+    service-road step again, which rank above them (`apply_agency_ratings`)."""
+    mapped = facility.facility(dict(tags))
+    return service_road_step(
+        rural_floor(
+            agency_lts.apply(
+                result,
+                ratings,
+                facility_mapped=mapped is not facility.Facility.NONE,
+                painted_lane=mapped is facility.Facility.LANE,
+            ),
+            tags,
+            urban=urban,
+        ),
+        tags,
+    )
+
+
+def osm_tags_tier(result, tags: Mapping[str, str], ratings, *, urban: bool, owner_lane=False):
+    """The tier the rebuild would give a way on `tags`, from the classifier's `result` on
+    them: the curated lane's owner tier where `owner_lane` (no agency rating then, as
+    `apply_agency_ratings` skips such a way), the rural floor and service-road step, then
+    the way's agency `ratings`, the chain the way's real tier goes through.
+
+    For the DC-against-OSM reports' "tier OSM only" (hunt 3, stress 3): the bare formula
+    there was set beside a "tier with DC" that has DDOT's rating and the owner's steps in
+    it, so a way DDOT rates LTS 3 whose formula says LTS 2 was listed 3 against 2 and the
+    suggested stress row would have dropped DDOT's rating, though the OSM edit changed no
+    tier."""
+    if owner_lane:
+        result = bike_lanes.owner_tier(result, tags)
+    result = service_road_step(rural_floor(result, tags, urban=urban), tags)
+    if ratings and not owner_lane:
+        result = agency_rated(result, ratings, tags, urban=urban)
+    return result
+
+
 def _own_avoid_kept(stress) -> bool:
     """A way at Avoid that our own rules (the formula, before any agency's level or row) put
     at Avoid: an agency's 5 read as 4.5 does not lower it (`agency_lts.apply`,
@@ -2574,14 +2612,15 @@ def build_handlers(
             len(result.unmatched_features),
         )
 
-    def apply_agency_ratings(laned: set[int]) -> None:
+    def apply_agency_ratings(laned: set[int]) -> dict:
         """Agencies' own ratings over the classifier's tier, county over state
         (`routemaker.agency_lts`; the owner, 2026-10-13), then the owner's rural
-        floor again, which ranks above them. A curated lane's owner tier stands."""
+        floor again, which ranks above them. A curated lane's owner tier stands.
+        Returns each rated way's ratings, for the discrepancy report."""
         reference = context.require_reference()
         # A test's stand-in reference may predate the field.
         if not getattr(reference, "agency_lts_features", ()):
-            return
+            return {}
         entries = [
             (way.osm_id, way.coordinates, variants.is_trail_class(way.tags)) for way in context.ways
         ]
@@ -2600,23 +2639,11 @@ def build_handlers(
             # The tags the formula read (the District's street layer's lane included), so
             # the set-aside and the formula agree about what the road has.
             tags = context.class_tags_by_way.get(way_id, tags_of[way_id])
-            mapped = facility.facility(tags)
-            result = service_road_step(
-                rural_floor(
-                    agency_lts.apply(
-                        current,
-                        ratings,
-                        facility_mapped=mapped is not facility.Facility.NONE,
-                        painted_lane=mapped is facility.Facility.LANE,
-                    ),
-                    tags,
-                    urban=way_id in reference.urban_way_ids,
-                ),
-                tags,
-            )
+            result = agency_rated(current, ratings, tags, urban=way_id in reference.urban_way_ids)
             changed += result.tier != current.tier or result.half != current.half
             context.stress_by_way[way_id] = result
         logger.info("agency stress ratings: %d ways rated, %d changed tier", len(rated), changed)
+        return rated
 
     def classify_stress() -> None:
         reference = context.require_reference()
@@ -2827,7 +2854,7 @@ def build_handlers(
                 )
                 if facts.agency == agency_roads.DC_AGENCY and state_of.get(way.osm_id) == "DC":
                     reported.append((way, tags, match, overlaid))
-        apply_agency_ratings(laned)
+        ratings_of = apply_agency_ratings(laned)
         # The RL-3 roads with the agency's level beside the formula's, for the owner
         # (`agency_lts.PAINTED_LANE_REPORT_NAME`), read before the corridors and rows.
         painted_lane_rows = []
@@ -2862,7 +2889,9 @@ def build_handlers(
                 len(context.routing_tags_by_way),
             )
         if reported:
-            write_discrepancy_report(reported, speeds, divided_ways, separate_roads, state_of)
+            write_discrepancy_report(
+                reported, speeds, lanes, ratings_of, divided_ways, separate_roads, state_of
+            )
         # The owner's named corridors (OWNER-DECISIONS 286, 294-296), over the
         # classified tiers and under the override rows. A way's recorded bike
         # lane (the agency overlay) exempts it, as an OSM one does.
@@ -2921,13 +2950,17 @@ def build_handlers(
                 unused_lanes,
             )
 
-    def write_discrepancy_report(reported, speeds, divided_ways, separate_roads, state_of) -> None:
+    def write_discrepancy_report(
+        reported, speeds, lanes, ratings_of, divided_ways, separate_roads, state_of
+    ) -> None:
         """The DC-against-OSM discrepancy report for the owner, each rebuild
         (OWNER-DECISIONS 191), from the overlay this rebuild classified with:
         `<DATA_ROOT>/rebuild/reports/dc-osm-discrepancies.md` and `.csv`. A
         report, not a stage's output: it never fails the rebuild. The tier with
-        OSM's tags alone is the classifier's on the way's own tags with the count
-        a count layer gave it (not a block's), as `data_before_after.py` has it."""
+        OSM's tags alone is `osm_tags_tier` on the way's own tags (a curated lane
+        applied), with the count a count layer gave it (not a block's): the
+        classifier, then the rural floor and service-road step, then the way's
+        agency ratings, as its real tier goes (hunt 3, stress 3)."""
         reference = context.require_reference()
         try:
             # Each block's own key and street (DC's BLOCKKEY, ROUTENAME), for the
@@ -2943,16 +2976,27 @@ def build_handlers(
                 osm_tags, _ = speed_corrections.corrected(way.tags, speeds.get(way.osm_id))
                 if way.tags.get("highway") in discrepancies.NOT_ROADS:
                     continue
-                before = classify(
+                # Through the chain the way's real tier went through (`osm_tags_tier`), on
+                # OSM's tags: the curated lane, the owner's steps and the agency ratings.
+                osm_tags, lane_applied = bike_lanes.corrected(osm_tags, lanes.get(way.osm_id))
+                urban = way.osm_id in reference.urban_way_ids
+                before = osm_tags_tier(
+                    classify(
+                        osm_tags,
+                        aadt=counted.aadt if counted else None,
+                        aadt_source=counted.agency if counted else None,
+                        aadt_year=counted.year if counted else None,
+                        urban=urban,
+                        jurisdiction=state_of.get(way.osm_id),
+                        divided=way.osm_id in divided_ways,
+                        separate_facility=way.osm_id in separate_roads,
+                        winding=not urban and bends_slow_traffic(way.coordinates, osm_tags),
+                        side_path=way.osm_id in context.use_sidepath_paths,
+                    ),
                     osm_tags,
-                    aadt=counted.aadt if counted else None,
-                    aadt_source=counted.agency if counted else None,
-                    aadt_year=counted.year if counted else None,
-                    urban=way.osm_id in reference.urban_way_ids,
-                    jurisdiction=state_of.get(way.osm_id),
-                    divided=way.osm_id in divided_ways,
-                    separate_facility=way.osm_id in separate_roads,
-                    side_path=way.osm_id in context.use_sidepath_paths,
+                    ratings_of.get(way.osm_id, ()),
+                    urban=urban,
+                    owner_lane=lane_applied,
                 )
                 facts = context.road_facts_by_way[way.osm_id]
                 rows.append(

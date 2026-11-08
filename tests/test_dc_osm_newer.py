@@ -19,7 +19,7 @@ from pipeline import dc_osm_newer as N
 from pipeline import discrepancies
 from pipeline.overrides import Override, stress_value_problem
 from routemaker import agency_roads as A
-from routemaker.stress import classify
+from routemaker.stress import Stress, classify
 
 AFTER = A.DC_RECORD_AS_OF + timedelta(days=1)
 FINGERPRINT = {
@@ -231,3 +231,46 @@ def test_the_report_lists_open_and_decided_ways_apart(tmp_path) -> None:
     assert written[0]["dc_applies"] == "30 mph; 2 lanes a direction; no bike lane"
     assert json.loads(written[0]["take_osm_override"])["kind"] == "stress"
     assert json.loads(written[0]["keep_dc_entry"])["osm_way_id"] == 7
+
+
+def test_a_one_ways_lane_is_compared_by_direction_not_side() -> None:
+    """Hunt 3, stress 4: the record writes the with-flow lane on the right; OSM's
+    left-side lane on the same one-way is the same lane."""
+    osm_left = {"highway": "residential", "oneway": "yes", "cycleway:left": "lane"}
+    dc_right = {"highway": "residential", "oneway": "yes", "cycleway:right": "lane"}
+    assert N._bike_sides(osm_left) == N._bike_sides(dc_right) == {N.WITH_FLOW: 1}
+    contraflow = {**dc_right, "cycleway:left": "opposite_lane", "oneway:bicycle": "no"}
+    assert N._bike_sides(contraflow) == {N.WITH_FLOW: 1, N.AGAINST_FLOW: 1}
+    row = {
+        "way": 7,
+        "street": "Diet Street NW",
+        "edited": AFTER.isoformat(),
+        "osm": osm_left,
+        "after": dc_right,
+        "sources": {"bike": A.DC_AGENCY},
+        "tier0": 2,
+        "tier1": 2,
+    }
+    assert N.newer_osm([row], A.DC_RECORD_AS_OF) == []
+
+
+def test_a_one_sided_lane_is_one_side() -> None:
+    """Hunt 3, stress 4: `cycleway:right=no` speaks for the right over `cycleway=lane`."""
+    assert N._bike_sides({"cycleway": "lane", "cycleway:right": "no"}) == {"left": 1}
+
+
+def test_the_osm_only_tier_goes_through_the_ratings_and_steps_the_real_tier_does() -> None:
+    """Hunt 3, stress 3: "tier OSM only" was the bare formula beside a "tier with DC" with the
+    agency's rating and the owner's steps in it, so the suggested row dropped the rating."""
+    from pipeline.run import osm_tags_tier
+    from routemaker.agency_lts import AgencyRating
+
+    street = {"highway": "residential", "maxspeed": "25 mph", "lanes": "2"}
+    formula = classify(street, urban=True, jurisdiction="DC")
+    assert formula.tier is Stress.LTS2
+    rated = [AgencyRating("moco", 3)]
+    assert osm_tags_tier(formula, street, rated, urban=True).tier is Stress.LTS3
+    assert osm_tags_tier(formula, street, (), urban=True).tier is Stress.LTS2
+    alley = {"highway": "service", "service": "alley"}
+    stepped = osm_tags_tier(classify(alley, urban=True, jurisdiction="DC"), alley, (), urban=True)
+    assert (stepped.tier, stepped.half) == (Stress.LTS1, True)

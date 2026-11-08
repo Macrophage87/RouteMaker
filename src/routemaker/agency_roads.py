@@ -96,7 +96,7 @@ from pathlib import Path
 from typing import NamedTuple
 
 from .geo import Point, distance_to_line, haversine
-from .tags import ONEWAY_JUNCTIONS, cycleway_sides, is_oneway, posted_maxspeed
+from .tags import ONEWAY_JUNCTIONS, cycleway_sides, is_oneway, posted_maxspeed, side_buffered
 from .tags import lanes_per_direction as osm_lanes_per_direction
 
 METRES_PER_FOOT = 0.3048
@@ -1391,22 +1391,17 @@ def _osm_contraflow_dropped(
 
 
 def osm_side_ranks(tags: Mapping[str, str]) -> dict[str, int]:
-    """The facility rank OSM maps on each side of the way (`left`, `right`)."""
+    """The facility rank OSM maps on each side of the way (`left`, `right`), each
+    side read by the classifier's precedence (`tags.cycleway_sides`): read key by
+    key, `cycleway=lane` + `cycleway:right=no` was a lane on both sides (hunt 3,
+    stress 4), though the right side says it has none."""
     ranks: dict[str, int] = {}
-    for key, value in tags.items():
-        parsed = _cycleway_side(key)
-        if parsed is None or parsed[1]:
-            continue
-        if value in _TRACK_VALUES:
-            rank = BIKE_PROTECTED
-        elif value == "buffered_lane" or tags.get(f"{key}:buffer", "no") != "no":
-            rank = BIKE_BUFFERED if value in _PAINTED_VALUES else BIKE_NONE
-        elif value in _PAINTED_VALUES:
-            rank = BIKE_LANE
-        else:
-            continue
-        for side in ("left", "right") if parsed[0] in ("", "both") else (parsed[0],):
-            ranks[side] = max(ranks.get(side, BIKE_NONE), rank)
+    plain = dict(tags)
+    for side, found in cycleway_sides(plain).items():
+        if found.value in _TRACK_VALUES:
+            ranks[side] = BIKE_PROTECTED
+        elif found.value in _PAINTED_VALUES:
+            ranks[side] = BIKE_BUFFERED if side_buffered(plain, side) else BIKE_LANE
     return ranks
 
 
@@ -1863,8 +1858,24 @@ def overlay(
         if facts.parking_lanes == 0:
             out["parking:both"] = "no"
         elif facts.parking_lanes == 1:
-            out["parking:right"] = "parallel"
-            out["parking:left"] = "no"
+            # On the lane's side only where the record puts the lane beside the
+            # parking (DC's `BIKELANE_PARKINGLANE_ADJACENT`), otherwise on the side
+            # without a lane (hunt 3, stress 2). Always on the right, it was beside
+            # the with-flow lane the overlay writes there, and the classifier, which
+            # reads the parking on the lane's own side, rated a door-zone lane DC's
+            # own field says is not one: LTS 3 at 30 mph where OSM's tags give LTS 2.
+            # A way with a painted lane on both sides, or none (a track, whose
+            # rider is not in the door zone), keeps the right.
+            laned = {
+                s for s, rank in osm_side_ranks(out).items() if rank in (BIKE_LANE, BIKE_BUFFERED)
+            }
+            parked = "right"
+            if facts.lane_beside_parking and laned == {"left"}:
+                parked = "left"
+            elif not facts.lane_beside_parking and laned == {"right"}:
+                parked = "left"
+            out[f"parking:{parked}"] = "parallel"
+            out["parking:right" if parked == "left" else "parking:left"] = "no"
         else:
             out["parking:both"] = "parallel"
         sources["parking"] = agency

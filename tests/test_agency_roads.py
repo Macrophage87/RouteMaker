@@ -2307,3 +2307,58 @@ def test_osm_s_contraflow_lane_is_kept_over_an_unflagged_with_flow_reading() -> 
     # And a flagged block writes its contraflow lane as before.
     flagged = A.aggregate([("a", replace(block, contraflow=True), True)])
     assert A.overlay(osm, flagged).tags["cycleway:left"] == "opposite_lane"
+
+
+def _one_parking_lane_way(beside: tuple[str, ...], contraflow: bool = False) -> A.WayFacts:
+    block = facts(
+        bike={"ib": A.BIKE_LANE},
+        way="one",
+        oneway_with=True,
+        bike_width_ft=6.0,
+        speed_mph={"ib": 30},
+        lanes={"ib": 1},
+        parking_lanes=1,
+        parking_width_ft=8.0,
+        bike_beside_parking=beside,
+    )
+    return A.aggregate([("a", replace(block, contraflow=contraflow), True)])
+
+
+def test_one_parking_lane_goes_beside_the_lane_only_where_the_record_says_so() -> None:
+    """Hunt 3, stress 2: DC's `BIKELANE_PARKINGLANE_ADJACENT` empty puts the one
+    parking lane on the side without the lane, so the lane is no door-zone lane."""
+    osm = {
+        "highway": "residential",
+        "oneway": "yes",
+        "cycleway:left": "lane",
+        "parking:left": "no",
+        "parking:right": "lane",
+    }
+    apart = _one_parking_lane_way(())
+    tags = A.overlay(osm, apart).tags
+    assert tags["cycleway:right"] == "lane"
+    assert (tags["parking:left"], tags["parking:right"]) == ("parallel", "no")
+    assert classify(tags, parking_width_m=apart.parking_reach_m).tier is Stress.LTS2
+    beside = _one_parking_lane_way(("ib",))
+    tags = A.overlay(osm, beside).tags
+    assert (tags["parking:right"], tags["parking:left"]) == ("parallel", "no")
+    # A contraflow-only way: the record's one painted lane is on the left, and
+    # beside the parking, so the parking goes on the left with it.
+    contraflow = _one_parking_lane_way(("ib",), contraflow=True)
+    tags = A.overlay(osm, contraflow).tags
+    assert tags["cycleway:left"] == "opposite_lane"
+    assert "cycleway:right" not in tags
+    assert (tags["parking:left"], tags["parking:right"]) == ("parallel", "no")
+
+
+def test_osm_side_ranks_read_each_side_by_its_precedence() -> None:
+    """Hunt 3, stress 4: the side key says the right side has none."""
+    assert A.osm_side_ranks({"cycleway": "lane", "cycleway:right": "no"}) == {"left": A.BIKE_LANE}
+    assert A.osm_side_ranks({"cycleway:both": "lane", "cycleway:right:buffer": "yes"}) == {
+        "left": A.BIKE_LANE,
+        "right": A.BIKE_BUFFERED,
+    }
+    assert A.osm_side_ranks({"cycleway:left": "track", "cycleway:right": "buffered_lane"}) == {
+        "left": A.BIKE_PROTECTED,
+        "right": A.BIKE_BUFFERED,
+    }

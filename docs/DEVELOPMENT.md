@@ -2146,7 +2146,24 @@ unless named; PLAN.md quotes the owner's words):
 - *A decent painted lane.* At 40 mph a decent lane is LTS 3, a tier below
   mixed traffic (item 84), and not from three through lanes a direction, where
   Montgomery's Appendix D keeps LTS 4. Decent: buffered, or not tagged narrower
-  than 5 ft; an untagged width counts.
+  than 5 ft; an untagged width counts. The buffer is read on the sides the lane
+  is scored on (`provision_sides`; hunt 3, stress 6): on a two-way street every
+  such side must have one, on a one-way either; a buffer on the other side, or
+  on the right lane alone of a two-way street, was a decent lane at 40 mph for
+  the rider on the unbuffered one.
+- *A two-way facility on one side* (hunt 3, stress 1). On a two-way street each
+  side is one direction (`tags._directions`), except a side whose own
+  `cycleway:<side>:oneway=no` (read at the key its value came from) makes it a
+  two-way lane or track: it serves both directions. Read as one direction's, a
+  two-way protected track on one side of a 30 mph road was mixed traffic, LTS 3,
+  and `facility.facility` priced none, while the map drew the track. The graph
+  matches it (`routemaker_remap.split_two_way_side`, after `split_both`):
+  upstream prices each direction from its own side and never reads
+  `cycleway:<side>:oneway=no` on a two-way road, so the remap copies the side's
+  value, after the facility rewrite, onto the other side's key where no key
+  speaks for that side. Where the other side's own key is tagged (`no`, say)
+  it is left alone and upstream still prices that direction from it, narrower
+  than the classifier.
 - *A painted lane on a wide street* (review RL-3; the owner, 2026-10-16) is
   LTS 3 at least: on a two-way street with 2 or more through lanes each way,
   and on a one-way street with 3 or more (review 2026-10-29), the streets that
@@ -4631,8 +4648,14 @@ the narrow bin, until review r1. OSM's `cycleway:width` is the lane alone, so
 divided by its lanes, **narrowest** block) to the lane's for the bike-lane table,
 and only where DC records the lane beside a parking lane
 (`BIKELANE_PARKINGLANE_ADJACENT`, in every direction that has a painted lane;
-`WayFacts.parking_reach_m`). Elsewhere the lane is measured on its own, the
-narrower reading. Whether a lane is *decent* (the 40 mph credit) stays on the
+`WayFacts.parking_reach_m`). The same field places a block's one parking lane
+(hunt 3, stress 2): on the painted lane's side where DC records the two beside
+each other, on the side without a lane otherwise; a way with a painted lane on
+both sides, or none, keeps it on the right. Always on the right, it sat beside
+the with-flow lane the overlay writes there, and the classifier, which reads the
+parking on the lane's own side, rated a door-zone lane DC's field says is not
+one (LTS 3 at 30 mph where OSM's tags give LTS 2). Elsewhere the lane is
+measured on its own, the narrower reading. Whether a lane is *decent* (the 40 mph credit) stays on the
 lane's own width. The overlay writes the lane's width to the millimetre and the
 criterion is met within `stress.WIDTH_TOLERANCE_M` (half a centimetre): the
 combined correctness review found a 5 ft lane written as 1.52 m, which beside a
@@ -4725,7 +4748,18 @@ rows are read and re-matched, so a way with an approved stress row, or one in th
 owner's kept list (`fixtures/dc_osm_kept.json`, against the OSM edit date he saw), is
 listed as decided rather than open. Each row names the way, its street, what DC
 applies, what OSM says, the OSM edit date (the date only), both tiers (half steps
-kept), and two entries: to take OSM's value, for the posted speed alone an
+kept), and two entries. Both tiers go through the chain the way's real tier does
+(`run.osm_tags_tier`; hunt 3, stress 3): the curated lane, the rural floor and
+service-road step, and the way's agency ratings, so "tier OSM only" is what the
+way would be on OSM's tags, not the bare formula beside a DDOT-rated "tier with
+DC". Bike lanes are compared side by side on a two-way way and by direction
+(with or against the traffic) on a one-way, each side read by the classifier's
+precedence (`agency_roads.osm_side_ranks`): the record writes the with-flow lane
+on the right, and OSM's left-side lane on the same one-way was listed against it.
+The checked-in copy that `scripts/analysis/dc_osm_discrepancies.py` writes from
+`dcbal.tsv` still takes its own `tier0` (the bare classifier on OSM's tags), so
+its "tier OSM only" is not yet the rebuild report's; a follow-up.
+To take OSM's value, for the posted speed alone an
 `agency_blocks` entry per block withholding it (item 197, by BLOCKKEY and ROUTENAME),
 otherwise a hidden, fingerprinted stress row at the tier OSM's tags give (a floor where
 that is the higher), which holds the tier while the way's tags stay DC's; to keep DC's,
