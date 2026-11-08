@@ -1343,3 +1343,16 @@ def test_a_photo_at_the_senders_home_keeps_no_spot_even_on_anothers_post() -> No
     made = send({"photo": upload(located_jpeg(*LINCOLN)), "alt_text": "Near the sender's home"})
     assert made.status_code == 201
     assert RoutePostPhoto.objects.get().lat is None
+
+
+def test_map_picture_rules_leave_photo_markers_alone():
+    """The post map's sizing and hiding rules reach only its own preview picture.
+
+    A descendant `img` selector also matched the photo thumbnails and the pop-out picture
+    inside the live map, which then showed as a blank box (v0.22.2).
+    """
+    css = (Path(__file__).resolve().parents[1] / "frontend/src/post/post.css").read_text()
+    for rules in (route_posts.STYLE, css):
+        assert not re.search(r"\.post-map(\.map-ready)?\s+img\b", rules)
+    assert ".post-map>img" in route_posts.STYLE
+    assert re.search(r"\.post-map\.map-ready\s*>\s*img", css)
