@@ -5398,7 +5398,7 @@ was seen on the spot>`) as written. Each answer takes effect at the next rebuild
   it leaves the list.
 - **Take OSM's lanes or bike lane** (they cannot be withheld, and a lane override only
   adds lanes): the row's hidden stress row into a `fixtures/overrides/` file's `rows`,
-  then `manage.py load_access_overrides` (dry, then `--confirm`), as in "Access
+  then `load_access_overrides` (dry, then `--confirm`), as in "Access
   overrides decided outside the admin" (fixtures/overrides/README.md). **It holds the
   way's tier, not its tags:** the way is rated at the tier OSM's tags give (a half step
   kept; a floor, `at_least`, where OSM's tier is the higher), while its lanes and
