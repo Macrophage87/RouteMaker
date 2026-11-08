@@ -1605,7 +1605,8 @@ def photo_link_upload(request, slug: str, token: str):
     JPEG itself (image/jpeg, at most PHOTO_MAX_EDGE a side and PHOTO_MAX_BYTES): the signed link,
     not a session, is what lets it in, so it is CSRF-exempt; it fills that one waiting photo
     once, within PHOTO_LINK_SECONDS. Where the photo was taken is read from its Exif GPS, else
-    from the link's `lat` and `lon`."""
+    from the X-Photo-Lat and X-Photo-Lon headers (never the query string, which the proxy's
+    access log keeps, even for a spot photo_spot then drops inside the author's Home circle)."""
     from django.core import signing
 
     from .audit import record
@@ -1641,10 +1642,10 @@ def photo_link_upload(request, slug: str, token: str):
             status=400,
             content_type="text/plain",
         )
-    # Its Exif says where it was taken; else the link's ?lat=&lon=, when the assistant knows
-    # (from the ride's own track, say: phones often leave the GPS block empty).
+    # Its Exif says where it was taken; else the X-Photo-Lat and X-Photo-Lon headers, when the
+    # assistant knows (from the ride's own track, say: phones often leave the GPS block empty).
     spot = photo_spot(*(exif_spot(data) or (None, None)), post.author) or photo_spot(
-        request.GET.get("lat"), request.GET.get("lon"), post.author
+        request.headers.get("X-Photo-Lat"), request.headers.get("X-Photo-Lon"), post.author
     )
     # Used once, even by two sends at the same moment: only one fills the still-empty photo.
     filled = RoutePostPhoto.objects.filter(pk=photo.pk, image__isnull=True)
