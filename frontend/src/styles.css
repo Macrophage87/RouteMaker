@@ -10577,15 +10577,18 @@ summary.closure-notices-heading {
   color: var(--text-muted);
 }
 /* Organizing (the owner, 2026-11-07): the tag chips, each row's Archive or Restore, Undo and the Archived link. */
+/* The chips wrap onto more rows rather than scroll sideways, where later ones would sit off-screen with nothing to say
+   so (the v0.22.0 review: Large text at 320 px). */
 .load-route-tags {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
   margin-top: 10px;
-  overflow-x: auto;
-  padding-bottom: 2px;
 }
 .load-route-tag {
   flex: none;
+  max-width: 100%;
+  overflow-wrap: anywhere;
   min-height: 44px;
   padding: 6px 14px;
   border-radius: 999px;

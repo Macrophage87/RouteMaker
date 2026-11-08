@@ -286,7 +286,7 @@ import { SeeEveryoneButton } from "./SeeEveryoneButton.tsx";
 import { AheadGraph, aheadLeastPx } from "./AheadGraph.tsx";
 import { ContrastRow, ThemeSetting, UnitsSetting } from "./DisplaySettings.tsx";
 import { RebalanceDockCard, type DockAsk } from "./RebalanceDockCard.tsx";
-import { DOCK_AWAY_M, DOCK_FINDING, DOCK_NONE_NEEDS, DOCK_ROUTE_FAILED, dockChoices, dockChosenSaid, dockReachedSaid, dockRouting, type DockChoice, type RebalanceDocked } from "./lib/rebalanceDock.ts";
+import { DOCK_AWAY_M, DOCK_CHOOSE_LEDE, DOCK_FINDING, DOCK_NONE_NEEDS, DOCK_ROUTE_FAILED, dockChoices, dockChosenSaid, dockReachedSaid, dockRouting, type DockChoice, type RebalanceDocked } from "./lib/rebalanceDock.ts";
 import { AHEAD_NAME, AHEAD_WORD, aheadNoRoom, aheadOff, aheadOn, aheadViews, readAhead, writeAhead, RIDER_OFF_ROUTE_M, RIDERS_REACH_M, type AheadView } from "./lib/aheadGraph.ts";
 
 /** The bottom panel's padding and top edge (styles.css .ride-controls), and the graph's margin under it. */
@@ -2451,7 +2451,9 @@ export function RideMode({
     const listed: DockAsk = { ...asking, phase: "list", choices, note };
     dockingRef.current = listed;
     setDocking(listed);
-    if (note) notify(note);
+    // Said as the list arrives, so a rider waiting at the dock knows they can choose (the v0.22.0 review): the lede
+    // only, as the card puts the focus on the nearest dock's button, which says its name and room itself.
+    notify(note || (choices.length ? DOCK_CHOOSE_LEDE : ""));
   };
   const askDocksRef = useRef(askDocks);
   askDocksRef.current = askDocks;
