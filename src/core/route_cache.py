@@ -518,6 +518,11 @@ def keepable(body: dict, own_variant: str, failures: int) -> bool:
     # The red-crossing pass cut short the same way: a red junction it may have gone round.
     if (body.get("red_crossings") or {}).get("limited") in RED_CUT_SHORT:
         return False
+    # A loop whose ways back ran out of time (hunt 2, P2-3): the router's own route, often
+    # the way out ridden back, answered without the way back being found. `make_loop`
+    # counts it as a skipped check too; this holds where that count is not read.
+    if (body.get("loop") or {}).get("fallback") == "time":
+        return False
     for field in ("hills_seek", "hills_avoid", "hills_tolerate"):
         if (body.get(field) or {}).get("limited") == "timed_out":
             return False

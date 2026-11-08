@@ -2032,6 +2032,29 @@ class TestTrailSeek:
         assert info["seek"]["tried"][0]["outcome"] == "busier"
         assert info["seek"]["taken"] is False
 
+    def test_a_corridor_round_a_red_crossing_may_ride_more_lts3(self, monkeypatch) -> None:
+        """Hunt 2, P2-5: the router's route crosses an arterial unsignalised (a 4,500 ft red);
+        the trail corridor goes round it to a signal with 300 m more LTS 3 on the way in. The
+        search's guard (`_busier`) counts the red on both sides and would take it; the seek's
+        guard counted the exposure alone and called it "busier"."""
+        red = [event(1500.0, 4500.0)]
+        round_it = analysis("t", "1" * 10 + "3" * 13 + "1" * 22, cost_s=3500.0, shift=100)
+        assert round_it.rated_exposure_m > refine._allowance(self.orig().rated_exposure_m)
+        world = SeekWorld(monkeypatch, {"o": self.orig(events=red), "t": round_it}, [])
+
+        def call(variant, endpoint, payload, deadline):
+            # The exclusion search's rounds (the red's among them) find nothing; the seek's
+            # ask through the corridor finds the way round.
+            world.requests.append(payload)
+            if not asks_through(payload):
+                raise NO_ROUTE
+            return {"trip": trip_of("t", 4.5)}
+
+        monkeypatch.setattr(routing, "_call", call)
+        kept, info = refine.refine(trip_of("o", 4.0), self.seek_context())
+        tried = [t["outcome"] for t in info["seek"]["tried"]]
+        assert tried == ["taken"] and kept["legs"][0]["shape"] == "t", tried
+
     def test_a_route_busier_by_less_than_the_tolerance_is_not_busier(self, monkeypatch) -> None:
         # The router's own route has 1,000 m of exposure; the allowance is 2% and 50 m.
         limit = 1000.0 * (1 + refine.EXPOSURE_TOLERANCE) + refine.EXPOSURE_SLACK_M
@@ -2098,7 +2121,9 @@ class TestTrailSeek:
             "t", "1" * 40, cost_s=3900.0, shift=100, events=[event(1500.0, 60_000.0)]
         )
         _w, shape, info = self.run(monkeypatch, {"t": crossing}, [trip_of("t", 4.0)])
-        assert shape == "o" and info["seek"]["tried"][0]["outcome"] == "not_better"
+        # Hunt 2, P2-5: the guard now counts a red junction at its cost as `_busier` does,
+        # so the worse crossing is refused there ("busier"; "not_better" before).
+        assert shape == "o" and info["seek"]["tried"][0]["outcome"] == "busier"
 
     def test_no_route_through_the_points_keeps_the_route(self, monkeypatch) -> None:
         _w, shape, info = self.run(monkeypatch, {}, [NO_ROUTE])

@@ -2843,7 +2843,7 @@ class LoopOut(Schema):
         description=(
             "`out_and_back` where the way back is the way out whatever is avoided (one corridor:"
             " the router's own route is kept); `time`, `untraceable` or `points` where it could"
-            " not be tried."
+            " not be tried (`time` also where the time ran out before a way back was found)."
         ),
     )
 
