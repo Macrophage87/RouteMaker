@@ -1695,6 +1695,9 @@ class Dials:
     stress: int | None = None
     hills: int | None = None
     when: str | None = None
+    # The ride's own moment, where it has one (a transit trip's `depart_at`), for the closures
+    # its line is matched against; None: the dial's (`work_zones.ride_moment`). Hunt M2.
+    zones_at: datetime | None = None
     carrying: str | None = None
     assist: bool = False
     avoid_gravel: bool = False
@@ -4723,6 +4726,7 @@ def _plan(
         bypass=dials.closure_bypass,
         reserve=work_zones.rules.budget_used(blocked),
         now_only=dials.closures_now,
+        at=dials.zones_at,
         reach_m=zones_reach_m(points, climb_seek, hills_dial, target_m),
     )
     if zones_plan is not None:

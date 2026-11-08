@@ -36,7 +36,7 @@ from pathlib import Path
 import pytest
 from test_route_api import CONTRACT_KEYS, router, segments, standard_router
 
-from core import api, gbfs, presets, transit
+from core import api, gbfs, presets, routing, transit
 from routemaker.ridetime import ZONE
 
 # The API tests take these two of test_route_api's fixtures by name.
@@ -1861,6 +1861,66 @@ def test_a_metro_gtfs_that_ends_early_gives_way_to_the_typical_timetable(tmp_pat
     metro = [s for s in after.systems if s.id == "wmata-rail"]
     assert len(metro) == 1 and metro[0].typical
     assert after.note.startswith("Metro is not planned for this date")
+
+
+@pytest.mark.parametrize(
+    ("depart_at", "when"),
+    [
+        ("2026-10-03T10:00:00-04:00", "weekend"),  # Saturday 10 am, asked on a Wednesday
+        ("2026-10-06T08:00:00-04:00", "weekday_rush"),  # Tuesday 8 am
+    ],
+)
+def test_depart_at_sets_the_bike_legs_ride_time_too(
+    monkeypatch, settings, tmp_path, depart_at, when
+) -> None:
+    """Hunt M2: `depart_at` picked the timetable's day, but the candidates' junction waits and
+    busy roads, the walks' closures and the answer's line were planned for now (a Wednesday
+    noon here: weekday off-peak on the standard graph). They follow the departure now; a ride
+    time the rider set still wins."""
+    path = tmp_path / "transit-schedule.json"
+    path.write_text(built(date(2026, 9, 28))[0])
+    settings.TRANSIT_SCHEDULE_PATH = path
+    pinned = datetime(2026, 9, 30, 12, 0, tzinfo=ZONE)  # Wednesday midday
+    monkeypatch.setattr(routing.timezone, "now", lambda: pinned)
+    seen: dict = {}
+
+    def services(*_args, **kwargs):
+        seen.setdefault("services", kwargs.get("when"))
+        return Straight()
+
+    monkeypatch.setattr(transit, "RoutingServices", services)
+
+    def foot_zones(points, setting, **kwargs):
+        seen["foot"] = (setting, kwargs.get("at"))
+        return None, []
+
+    monkeypatch.setattr(api.work_zones, "foot_zones", foot_zones)
+
+    class Planned(Exception):
+        pass
+
+    def plan(points, preset, dials, *args, **kwargs):
+        seen["dials"] = (dials.when, dials.zones_at)
+        raise Planned
+
+    monkeypatch.setattr(routing, "plan", plan)
+    departs = datetime.fromisoformat(depart_at)
+    for asked, expected in ((None, when), ("weekday_offpeak", "weekday_offpeak")):
+        seen.clear()
+        body = api.RouteIn(
+            points=[CAPITOL_HILL, DOWNTOWN],
+            preset=presets.BIKE_TRANSIT,
+            depart_at=depart_at,
+            **({"when": asked} if asked else {}),
+        )
+        try:
+            api._transit_body(body, None)
+        except Planned:
+            pass
+        # Before: weekday_offpeak (now's) for all three, and the line's closures at the dial's.
+        assert seen["services"] == expected
+        assert seen["foot"] == (expected, departs)
+        assert seen["dials"] == (expected, departs)
 
 
 # --- POST /api/route and GET /api/transit/closures ----------------------------------------------

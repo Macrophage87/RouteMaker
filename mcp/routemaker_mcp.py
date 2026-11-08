@@ -3413,7 +3413,9 @@ RIDE_OPTIONS = {
     "when": {
         "type": "string",
         "enum": ["weekend", "weekday_rush", "weekday_offpeak", "night"],
-        "description": "When the ride is, for traffic. Absent: now.",
+        "description": (
+            "When the ride is, for traffic. Absent: depart_at's, where it is given, else now."
+        ),
     },
     "rider_weight_lb": {
         "type": "number",
@@ -3473,7 +3475,10 @@ RIDE_OPTIONS = {
     },
     "depart_at": {
         "type": "string",
-        "description": "Transit ride types only: ISO 8601 departure time. Absent: now.",
+        "description": (
+            "Transit ride types only: ISO 8601 departure time; the bike legs are planned for its"
+            " traffic and closures too, unless `when` says otherwise. Absent: now."
+        ),
     },
     "transit_option": {
         "type": "string",

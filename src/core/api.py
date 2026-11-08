@@ -286,7 +286,7 @@ class RouteIn(Schema):
         description=(
             "When the ride is: weekend, weekday_rush (Mon-Fri 07-10 and 16-19), weekday_offpeak"
             " or night (21-07 any day). Absent: the setting of the moment the plan is made, in"
-            " the region's time."
+            " the region's time, or of `depart_at` where a transit trip or a run gives one."
         ),
     )
     carrying: CarryingName | None = Field(
@@ -534,7 +534,9 @@ class RouteIn(Schema):
             "Transit ride types and Run only: when the trip starts, ISO 8601 (with an offset, or"
             " local time in Washington), within a year of now. Absent: now. Each system's own"
             " calendar for that day is used, holidays and published closures included; a run"
-            " after civil dusk or before civil dawn favours lit ways."
+            " after civil dusk or before civil dawn favours lit ways. Where `when` is absent,"
+            " the bike legs, junction waits and closures are planned at this moment's ride"
+            " time too (`routemaker.ridetime.when_at`)."
         ),
     )
     transit_option: str | None = Field(
@@ -4355,6 +4357,21 @@ def _run_answer(request, body: RouteIn):
         return Status(422, {"error": str(refusal)})
 
 
+def _ride_when(body: RouteIn, at: datetime) -> str:
+    """The ride-time setting a trip or run is planned at: the rider's, else that of its
+    departure where `depart_at` gives one, else the moment's.
+
+    A trip leaving Saturday 10:00 asked for on a Wednesday took Saturday's timetable but routed
+    its bike legs, junction waits and closures for Wednesday noon (the standard graph, weekday
+    junction factors, Beach Drive not car-free); and a Tuesday 8 am trip asked for on a Sunday
+    was priced as the weekend (hunt M2)."""
+    if body.when:
+        return body.when
+    if body.depart_at is not None:
+        return ridetime.when_at(at)
+    return routing.default_when()
+
+
 def _run_body(body: RouteIn, started: float | None) -> dict:
     """A run planned on foot (`core.run_plan`), answered as Walk's line is: the line, its time
     and length, and a `transit` block of one walk (mode "run") with its turns."""
@@ -4365,7 +4382,7 @@ def _run_body(body: RouteIn, started: float | None) -> dict:
         at = at.replace(tzinfo=ridetime.ZONE)
     # The closures in force at the run, matched as a ride's are: at its departure where one is
     # given, else at the ride-time dial's moment.
-    when = body.when or routing.default_when()
+    when = _ride_when(body, at)
     zones_at = at if body.depart_at is not None else work_zones.ride_moment(when)
     target_m = float(body.target_distance_m) if body.target_distance_m else None
     zones, exclude = work_zones.foot_zones(
@@ -4398,7 +4415,7 @@ def _run_body(body: RouteIn, started: float | None) -> dict:
         work_zones.drop_exclusions({}, zones)
         ask = dataclasses.replace(ask, exclude_polygons=tuple(zones.exclude))
         run = run_plan.plan(body.points, ask, run_plan.Router(until))
-    dials = routing.Dials(stress=body.stress, hills=body.hills, when=body.when)
+    dials = routing.Dials(stress=body.stress, hills=body.hills, when=when)
     answer = _unrouted_line(
         [list(p) for p in run.shape], presets.RUN, dials, run.seconds, run.metres
     )
@@ -4432,6 +4449,8 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
         when = when.replace(tzinfo=ridetime.ZONE)
     # The service day, not the calendar date: owl trips after midnight are the day before's.
     schedule = transit.load(settings.TRANSIT_SCHEDULE_PATH, transit.moment_of(when).service_day)
+    # The bike legs, junction waits and closures at the trip's own ride time (`_ride_when`).
+    ride_when = _ride_when(body, when)
     # The docks first, and the candidates' clock after them (TB-8): a slow feed read must not
     # spend the candidates' budget. Feeds that cannot be read are no docks, with a note, not a
     # refusal (TB-2): the trip walks at both ends.
@@ -4476,7 +4495,7 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
     # (`work_zones.foot_zones`).
     foot_zones, walk_exclude = work_zones.foot_zones(
         body.points,
-        body.when or routing.default_when(),
+        ride_when,
         at=when,
         blocked_lines=_blocked(body),
         bypass=body.closure_bypass,
@@ -4487,7 +4506,7 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
         candidates_until,
         leg_preset,
         costing=candidate_costing,
-        when=body.when or routing.default_when(),
+        when=ride_when,
         walk_exclude=walk_exclude,
         walk_keep=walk_keep,
     )
@@ -4531,7 +4550,9 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
     dials = routing.Dials(
         stress=body.stress,
         hills=body.hills,
-        when=body.when,
+        when=ride_when,
+        # The line's closures at the trip's departure where it gives one, as its walks' are.
+        zones_at=when if body.depart_at is not None else None,
         closure_bypass=tuple(body.closure_bypass),
         closures_now=body.closures_now,
         blocked=_blocked(body),
@@ -4582,7 +4603,7 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
                 routing.clock() + max(0.0, min(TRANSIT_CANDIDATES_S, left) / (len(later) - number)),
                 leg_preset,
                 costing=candidate_costing,
-                when=body.when or routing.default_when(),
+                when=ride_when,
                 walk_exclude=walk_exclude,
                 walk_keep=walk_keep,
             )
