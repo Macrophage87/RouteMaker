@@ -11,8 +11,8 @@
  * - a small map under each highlighted section that names its stretch (From mile, To mile in the admin): the whole
  *   route faint, the stretch drawn over it and filling the map, made as the reader scrolls near it and let go once
  *   far past, so a long post never holds more than a few maps;
- * - each photo that knows where it was taken as a round thumbnail on the route's map, opening a pop-out of the
- *   photo, and on each section map it falls in as a thumbnail pointing to the spot (photoPins.ts);
+ * - each photo that knows where it was taken as a dot on the route with its thumbnail beside the route, not over
+ *   it: on the route's map opening a pop-out of the photo, and on each section map it falls in (photoPins.ts);
  * - for an instance admin, "Use this map as the link picture": the post's map drawn at 1200 by 630 with its credits,
  *   sent to the server as the link preview's picture, and Add photo, which draws a photo again smaller, with no
  *   date or camera details, and sends it with where it was taken (photos.ts).
@@ -24,7 +24,7 @@ import "./post.css";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import * as maplibregl from "maplibre-gl";
-import type { GeoJSONSource, Map as MapLibreMap } from "maplibre-gl";
+import type { GeoJSONSource, Map as MapLibreMap, PositionAnchor } from "maplibre-gl";
 import maplibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 import { Protocol } from "pmtiles";
 import { layers as protomapsLayers, namedFlavor } from "@protomaps/basemaps";
@@ -44,7 +44,7 @@ import { readWahoo } from "../lib/wahooLink.ts";
 import { MINIMAP_LABEL, showMinimaps } from "./minimaps.ts";
 import { wireSends } from "./sends.ts";
 import { wirePhotos } from "./photos.ts";
-import { type PostPhoto, photoPins, photosNear, pinLabel } from "./photoPins.ts";
+import { type PostPhoto, besideOffset, photoPins, photosNear, pinLabel } from "./photoPins.ts";
 import { t } from "../lib/i18n.ts";
 
 /** What the server puts in the page (route_posts.page_data). */
@@ -147,20 +147,82 @@ function thumbnail(photo: PostPhoto): HTMLImageElement {
   return thumb;
 }
 
+/** How far a photo's thumbnail sits from its spot, in pixels, on the route's map and on a section map. */
+const BESIDE_PX = 44;
+const BESIDE_SMALL_PX = 34;
+
 /**
- * A photo's round thumbnail on the route's map: a button that opens a pop-out of the photo with its caption. The
- * button opens it itself (not the marker's own toggle, which a keyboard press opens and its click closes again);
- * Escape or the close button shuts it and hands focus back to the pin.
+ * A photo on a map as a small dot at its spot on the route, with its thumbnail beside the route (not over it) and a
+ * short line from the dot to it (photoPins.ts besideOffset). The thumbnail moves to the side nearer the map's middle
+ * as the map is moved, so it stays in the frame.
  */
-function addPhotoPopouts(map: MapLibreMap, photos: readonly PostPhoto[]): void {
+function photoMark(map: MapLibreMap, data: PostData, photo: PostPhoto, root: HTMLElement, distance: number): void {
+  root.classList.add("photo-mark");
+  const leader = document.createElement("span");
+  leader.className = "photo-leader";
+  const dot = document.createElement("span");
+  dot.className = "photo-dot";
+  const thumb = document.createElement("span");
+  thumb.className = "photo-thumb";
+  thumb.append(thumbnail(photo));
+  root.append(leader, dot, thumb);
+  const place = (): void => {
+    const spot = map.project([photo.lon, photo.lat]);
+    const line = data.line.map((p) => {
+      const at = map.project([p[0], p[1]]);
+      return [at.x, at.y] as const;
+    });
+    const canvas = map.getCanvas();
+    const middle = [canvas.clientWidth / 2, canvas.clientHeight / 2] as const;
+    const { dx, dy } = besideOffset([spot.x, spot.y], line, middle, distance);
+    thumb.style.transform = `translate(${dx}px, ${dy}px)`;
+    leader.style.width = `${distance}px`;
+    leader.style.transform = `rotate(${Math.atan2(dy, dx)}rad)`;
+    root.dataset.dx = String(dx);
+    root.dataset.dy = String(dy);
+  };
+  place();
+  map.on("moveend", place);
+  new maplibregl.Marker({ element: root }).setLngLat([photo.lon, photo.lat]).addTo(map);
+}
+
+/** Clear of a thumbnail's middle, in pixels, so a pop-out opens next to the thumbnail, not over it. */
+const POPOUT_GAP_PX = 24;
+
+/**
+ * Where a photo's pop-out hangs from: its thumbnail, beside the route, pushed out by POPOUT_GAP_PX on whichever side
+ * MapLibre anchors it to keep it in the frame, so the pop-out never covers the thumbnail or the spot.
+ */
+function fromThumb(pin: HTMLElement): Record<PositionAnchor, [number, number]> {
+  const dx = Number(pin.dataset.dx) || 0;
+  const dy = Number(pin.dataset.dy) || 0;
+  const g = POPOUT_GAP_PX;
+  return {
+    center: [dx, dy],
+    top: [dx, dy + g],
+    bottom: [dx, dy - g],
+    left: [dx + g, dy],
+    right: [dx - g, dy],
+    "top-left": [dx + g, dy + g],
+    "top-right": [dx - g, dy + g],
+    "bottom-left": [dx + g, dy - g],
+    "bottom-right": [dx - g, dy - g],
+  };
+}
+
+/**
+ * Each photo on the route's map: a dot on the route with its thumbnail beside it, together a button that opens a
+ * pop-out of the photo with its caption, from the thumbnail. The button opens it itself (not the marker's own toggle,
+ * which a keyboard press opens and its click closes again); Escape or the close button shuts it and hands focus back.
+ */
+function addPhotoPopouts(map: MapLibreMap, data: PostData, photos: readonly PostPhoto[]): void {
   for (const photo of photos) {
     const pin = document.createElement("button");
     pin.type = "button";
-    pin.className = "photo-pin";
     pin.setAttribute("aria-label", pinLabel(photo));
     pin.setAttribute("aria-haspopup", "dialog");
     pin.setAttribute("aria-expanded", "false");
-    pin.append(thumbnail(photo));
+    photoMark(map, data, photo, pin, BESIDE_PX);
     const card = document.createElement("figure");
     card.className = "photo-popout";
     const big = document.createElement("img");
@@ -172,33 +234,42 @@ function addPhotoPopouts(map: MapLibreMap, photos: readonly PostPhoto[]): void {
       words.textContent = photo.caption;
       card.append(words);
     }
-    const popup = new maplibregl.Popup({ offset: 22, maxWidth: "280px", focusAfterOpen: true }).setDOMContent(card);
-    card.addEventListener("keydown", (event) => {
+    const popup = new maplibregl.Popup({ maxWidth: "280px", focusAfterOpen: true }).setDOMContent(card);
+    // On the whole pop-out, so Escape works from its close button too (a sibling of the card).
+    const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") popup.remove();
+    };
+    popup.on("open", () => {
+      pin.setAttribute("aria-expanded", "true");
+      popup.getElement()?.addEventListener("keydown", onKey);
     });
-    popup.on("open", () => pin.setAttribute("aria-expanded", "true"));
     popup.on("close", () => {
       pin.setAttribute("aria-expanded", "false");
       pin.focus();
     });
     pin.addEventListener("click", (event) => {
       event.stopPropagation();
-      if (popup.isOpen()) popup.remove();
-      else popup.setLngLat([photo.lon, photo.lat]).addTo(map);
+      if (popup.isOpen()) {
+        popup.remove();
+        return;
+      }
+      popup.setOffset(fromThumb(pin)).setLngLat([photo.lon, photo.lat]).addTo(map);
     });
-    new maplibregl.Marker({ element: pin }).setLngLat([photo.lon, photo.lat]).addTo(map);
+    // The thumbnail can change sides as the map moves (photoMark's own moveend runs first): the pop-out follows it.
+    map.on("moveend", () => {
+      if (popup.isOpen()) popup.setOffset(fromThumb(pin));
+    });
   }
 }
 
-/** On a section map: a small thumbnail with a pointer below it to the spot each photo was taken. */
-function addPhotoPointers(map: MapLibreMap, photos: readonly PostPhoto[]): void {
+/** On a section map: each photo's dot on the route with a small thumbnail beside it. */
+function addPhotoPointers(map: MapLibreMap, data: PostData, photos: readonly PostPhoto[]): void {
   for (const photo of photos) {
     const tag = document.createElement("span");
-    tag.className = "photo-pointer";
+    tag.classList.add("photo-small");
     tag.setAttribute("role", "img");
     tag.setAttribute("aria-label", pinLabel(photo));
-    tag.append(thumbnail(photo));
-    new maplibregl.Marker({ element: tag, anchor: "bottom" }).setLngLat([photo.lon, photo.lat]).addTo(map);
+    photoMark(map, data, photo, tag, BESIDE_SMALL_PX);
   }
 }
 
@@ -224,7 +295,7 @@ function showMap(host: HTMLElement, data: PostData): MapLibreMap {
   map.getCanvas().setAttribute("aria-label", host.querySelector("img")?.alt ?? "Map of the route");
   map.on("load", () => {
     addRoute(map, data);
-    addPhotoPopouts(map, photoPins(data.photos));
+    addPhotoPopouts(map, data, photoPins(data.photos));
     map.addSource(SCRUB_SOURCE, { type: "geojson", data: { type: "FeatureCollection", features: [] } });
     map.addLayer({ id: SCRUB_SOURCE, type: "circle", source: SCRUB_SOURCE, paint: { "circle-radius": 7, "circle-color": "#ffffff", "circle-stroke-color": "#1f2933", "circle-stroke-width": 3 } });
     // The picture stays under the map until the map can stand in for it.
@@ -280,7 +351,7 @@ function showMinimap(host: HTMLElement, data: PostData, stretch: number[][]): ()
     map.addLayer({ id: "post-stretch-ends", type: "circle", source: "post-stretch-ends", paint: { "circle-radius": 6, "circle-color": ["match", ["get", "kind"], "start", START_COLOUR, FINISH_COLOUR], "circle-stroke-color": "#ffffff", "circle-stroke-width": 2 } });
     // Only those the fitted map shows, so none sits clipped at its edge.
     const shown = map.getBounds();
-    addPhotoPointers(map, photosNear(stretch, photoPins(data.photos)).filter((photo) => shown.contains([photo.lon, photo.lat])));
+    addPhotoPointers(map, data, photosNear(stretch, photoPins(data.photos)).filter((photo) => shown.contains([photo.lon, photo.lat])));
   });
   return () => {
     map.remove();
