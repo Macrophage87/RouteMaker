@@ -220,6 +220,11 @@ NO_EDGE_CODES = frozenset({170, 171})
 # reported as no route, and logged, because it means this module built a
 # request the router does not accept.
 REQUEST_LIMIT_CODES = frozenset(range(150, 160))
+# The closures' polygons past the router's limits (167: their perimeter, 176: their vertices).
+# The plan's own packing keeps under both (`routemaker.workzones.PERIMETER_BUDGET_M`), but where
+# the router refuses them anyway the plan is asked again with fewer closures, farthest first,
+# never answered no route for it (hunt Q1, 2026-11-08: such a refusal was a plain no route).
+EXCLUDE_LIMIT_CODES = frozenset({167, 176})
 
 
 class RouterUnavailable(Exception):
@@ -4507,8 +4512,93 @@ def _plan_round(*args, **kwargs) -> dict:
 
 
 def _over_budget(rings) -> bool:
-    perimeter, vertices = work_zones.rules.budget_used(rings)
-    return perimeter > work_zones.rules.MAX_PERIMETER_M or vertices > work_zones.rules.MAX_VERTICES
+    """Past the router's polygon limits as the closures are packed (`rules.over_budget`: the
+    router's own count, with a margin)."""
+    return work_zones.rules.over_budget(rings)
+
+
+# At most this many times a plan the router refused for its closures is asked again with fewer.
+CLOSURE_RETRIES = 4
+
+
+def _round_the_closures(variant, request, refusal, zones_plan, points, deadline, again_of):
+    """The router's answer to the plan's request after it refused it (`refusal`) for the
+    closures in it, each retry with fewer of them; NoRoute where none is left to take out.
+
+    - Past the router's polygon limits (`EXCLUDE_LIMIT_CODES`): the farther half of the
+      closures is taken out, and so on (`work_zones.drop_farthest`).
+    - No path (442, 443): first only the closures and other rings that meet the router's
+      edges at the destination and each via (`_stop_rings`), which it can never arrive on
+      while a ring meets them (hunt K2/Q3, 2026-11-08: a closure on the destination's edge
+      once let every closure on the trip back in). The roads the rider marked closed and the
+      dirt-trail strips are let go there too, never anywhere else. Then every closure: plan
+      through them, each one warned of in red, rather than answer no route (the rider can
+      walk through or choose; `work_zones.drop_exclusions`).
+
+    Every closure taken out is warned of on the route as one that could not be left out."""
+    at_stops_tried = False
+    for _ in range(CLOSURE_RETRIES):
+        code = refusal.code
+        closures = zones_plan is not None and bool(zones_plan.excluded)
+        if code in EXCLUDE_LIMIT_CODES and closures:
+            dropped = work_zones.drop_farthest(request, zones_plan, points)
+            logger.info(
+                "closures: the router refused their polygons (%s); %d taken out", code, len(dropped)
+            )
+        elif code in NO_PATH_CODES and not at_stops_tried and request.get("exclude_polygons"):
+            at_stops_tried = True
+            ids, rings = _stop_rings(variant, request, zones_plan, deadline)
+            gone = work_zones.drop_closures(request, zones_plan, ids) if ids else []
+            let_go = work_zones.drop_rings(request, zones_plan, rings)
+            if not gone and not let_go:
+                if not closures:
+                    raise NoRoute(str(refusal), no_path=True) from refusal
+                work_zones.drop_exclusions(request, zones_plan)  # nothing at the stops
+            else:
+                logger.info(
+                    "closures: %d at the stops taken out, %d rings let go", len(gone), let_go
+                )
+        elif code in NO_PATH_CODES and closures:
+            work_zones.drop_exclusions(request, zones_plan)
+        else:
+            raise NoRoute(str(refusal), no_path=code in NO_PATH_CODES) from refusal
+        try:
+            return _route(variant, again_of(request), deadline)
+        except RouterRefused as again:
+            refusal = again
+    raise NoRoute(str(refusal), no_path=refusal.code in NO_PATH_CODES) from refusal
+
+
+def _stop_rings(variant, request, zones_plan, deadline) -> tuple[list[str], list]:
+    """The closures and other rings in `request` that meet the router's candidate edges at the
+    destination and each via (`work_zones.at_stops`), the edges read with a verbose `/locate`
+    of those points as the route asks for them; none where the router cannot say."""
+    stops = request.get("locations", [])[1:]
+    if not stops:
+        return [], []
+    payload = {
+        "locations": [
+            {k: v for k, v in stop.items() if k in ("lon", "lat", "radius", "search_filter")}
+            for stop in stops
+        ],
+        "costing": request.get("costing", "bicycle"),
+        "costing_options": request.get("costing_options") or {},
+        "verbose": True,
+    }
+    try:
+        located = _call(variant, "locate", payload, deadline)
+    except PlanCancelled:
+        raise
+    except Exception as error:  # noqa: BLE001 - every closure is then let in, as before
+        logger.info("closures: the stops' edges could not be read (%s)", type(error).__name__)
+        return [], []
+    edges = []
+    for location in located if isinstance(located, list) else []:
+        for edge in (location or {}).get("edges") or []:
+            shape = ((edge or {}).get("edge_info") or {}).get("shape")
+            if isinstance(shape, str) and shape:
+                edges.append([list(p) for p in decode_polyline6(shape)])
+    return work_zones.at_stops(edges, zones_plan, request)
 
 
 def _ring_tuple(ring) -> tuple[tuple[float, float], ...]:
@@ -4823,19 +4913,17 @@ def _plan(
                 refusal.code,
                 refusal,
             )
-        closures_left_out = zones_plan is not None and len(zones_plan.exclude) > len(blocked)
-        if not (closures_left_out and refusal.code in NO_PATH_CODES):
-            raise NoRoute(str(refusal), no_path=refusal.code in NO_PATH_CODES) from refusal
-        # No way round the work zones closed to bicycles: plan through them, each one
-        # warned of in red, rather than answer no route (the rider can walk through or
-        # choose; `work_zones.drop_exclusions`).
-        work_zones.drop_exclusions(request, zones_plan)
-        try:
-            # The rider's drawn legs stay drawn (`_drawn`).
-            again = {**request, DRAWN_KEY: dials.straight} if drawing else request
-            answer, timed_out = _route(variant, again, deadline)
-        except RouterRefused as again:
-            raise NoRoute(str(again), no_path=again.code in NO_PATH_CODES) from again
+        # The rider's drawn legs stay drawn (`_drawn`).
+        straight = dials.straight
+        answer, timed_out = _round_the_closures(
+            variant,
+            request,
+            refusal,
+            zones_plan,
+            points,
+            deadline,
+            (lambda asked: {**asked, DRAWN_KEY: straight}) if drawing else (lambda asked: asked),
+        )
 
     timing.mark("route")
     delays = None
@@ -5999,7 +6087,105 @@ def sets_off_back(answer: dict, heading: float) -> bool:
     return bearing_delta(bearing(line[0], b), heading) >= UTURN_MIN_DEG
 
 
+# How far along the route a road the rider marked closed may start and still be taken for one
+# the route rides through from its first edge (`plan_onward`): Ride's "Go round" marks the road
+# from 100 ft to 600 ft ahead of the rider (frontend/src/lib/roadClosed.ts), and the snap and
+# the trim take a little more.
+BLOCKED_START_M = 250.0
+# The route planned the other way is kept only where it is at most this many times the route
+# through the marked road, or this much longer, whichever allows more (2 mi, 3.2 km).
+BLOCKED_DETOUR_RATIO = 2.0
+BLOCKED_DETOUR_SLACK_M = 3_200.0
+
+
 def plan_onward(
+    points: list[list[float]],
+    preset_name: str,
+    long_ride: bool = False,
+    started: float | None = None,
+    dials: Dials | None = None,
+    quick: bool = False,
+    candidates: bool = True,
+) -> dict:
+    """`_plan_onward`, checked against the roads the rider marked closed (`dials.blocked`;
+    hunt K1, 2026-11-08). The router lets a left-out edge be the route's first, so a re-plan
+    from a rider on a long edge with the marked stretch ahead on it rode straight through it.
+    A route that runs along a marked road it reaches within `BLOCKED_START_M` is planned again
+    setting off the other way (a heading opposite its own start, which leaves the rider's edge
+    by its other end); where that plan fails or runs along one too, the first route is kept and
+    says so in red (`work_zones.warn_blocked`), as one that runs along a marked road further on
+    does."""
+    dials = dials or Dials()
+    answered = _plan_onward(points, preset_name, long_ride, started, dials, quick, candidates)
+    if not dials.blocked:
+        return answered
+    coordinates = (answered.get("geometry") or {}).get("coordinates") or []
+    through = work_zones.through_blocked(coordinates, dials.blocked)
+    if not through:
+        return answered
+    if (
+        through[0].from_m <= BLOCKED_START_M
+        and dials.follow is None
+        and not loop_wanted(points, dials.loop, preset_name)
+        and len(coordinates) >= 2
+    ):
+        onward = _setting_off(coordinates)
+        if onward is not None:
+            timings = timing.current()
+            if timings is not None:
+                timings.note("blocked", "replanned the other way")
+            turned = dataclasses.replace(dials, heading=(onward + 180.0) % 360, ahead_only=False)
+            try:
+                other = plan(
+                    points, preset_name, long_ride=long_ride, started=started, dials=turned,
+                    quick=quick, candidates=candidates,
+                )  # fmt: skip
+            except PlanCancelled:
+                raise
+            except (NoRoute, TooLong, RouterUnavailable, DeadlineExceeded) as error:
+                logger.info(
+                    "a marked road ahead: no route the other way (%s)", type(error).__name__
+                )
+            else:
+                line = (other.get("geometry") or {}).get("coordinates") or []
+                # Kept only where it really keeps off the marked road (checked at the wider
+                # `rules.ALONG_M`, so a route a few metres beside it does not pass) and is not
+                # far longer than the route through it (review of hunt K1, 2026-11-08).
+                first_m = float(answered.get("distance_m") or 0.0)
+                other_m = float(other.get("distance_m") or 0.0)
+                off_it = not work_zones.rules.along(
+                    line,
+                    [
+                        work_zones.rules.Zone(f"blocked-{i}", "rider", "closed", 0.0,
+                                              tuple(map(tuple, b)), None, None, None, None)
+                        for i, b in enumerate(dials.blocked)
+                        if len(b) >= 2
+                    ],
+                )  # fmt: skip
+                if off_it and other_m <= max(
+                    BLOCKED_DETOUR_RATIO * first_m, first_m + BLOCKED_DETOUR_SLACK_M
+                ):
+                    return other
+                logger.info("a marked road ahead: the way the other way is not kept")
+    logger.info("the route runs along %d road(s) the rider marked closed", len(through))
+    return work_zones.warn_blocked(answered, through)
+
+
+def _setting_off(coordinates) -> float | None:
+    """The bearing the route's line sets off on, read `UTURN_READ_M` along it."""
+    line = [Point(lon, lat) for lon, lat in coordinates]
+    along = 0.0
+    b = line[0]
+    for a, b in zip(line, line[1:], strict=False):
+        along += haversine(a, b)
+        if along >= UTURN_READ_M:
+            break
+    if along < 1.0:
+        return None
+    return bearing(line[0], b)
+
+
+def _plan_onward(
     points: list[list[float]],
     preset_name: str,
     long_ride: bool = False,

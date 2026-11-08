@@ -565,6 +565,9 @@ class Segment:
     start: datetime | None
     end: datetime | None
     text: str  # the line as published
+    # The hours of each day it holds where the window is daily or nightly (`_window`,
+    # `workzones.Zone.daily`); None: the whole window.
+    daily: tuple[int, int, int, int] | None = None
 
 
 @dataclass
@@ -678,18 +681,34 @@ def _dates(text: str, year: int, posted: date | None = None) -> list[date]:
 
 
 def _times(text: str) -> list[tuple[int, int]]:
+    return [hm for hm, _span in _timed(text)]
+
+
+def _timed(text: str) -> list[tuple[tuple[int, int], tuple[int, int]]]:
+    """`_times`, each with where it stands in `text`."""
     out = []
     for match in _TIME.finditer(text):
         word = (match.group("word") or "").lower()
         if word:
-            out.append((12, 0) if word == "noon" else (0, 0))
+            out.append(((12, 0) if word == "noon" else (0, 0), match.span()))
             continue
         hour, minute = int(match.group("hour")), int(match.group("minute") or 0)
         if not (1 <= hour <= 12 and 0 <= minute < 60):
             continue
         pm = match.group("half").lower().startswith("p")
-        out.append(((hour % 12) + (12 if pm else 0), minute))
+        out.append((((hour % 12) + (12 if pm else 0), minute), match.span()))
     return out
+
+
+# A window said to hold each day or night of its days, not straight through them (hunt K6,
+# 2026-11-08: "from Sat Nov 14 through Sun Nov 22, 9 pm to 5 am nightly" was read as one closure
+# from the 14th at 9 pm to the 22nd at 5 am, and daytime rides were routed round an open street
+# all week).
+_DAILY = re.compile(
+    r"\b(?:nightly|daily|each (?:day|night|evening|morning)|every (?:day|night|evening|morning)"
+    r"|per (?:day|night))\b",
+    re.I,
+)
 
 
 def _at(day: date, hm: tuple[int, int]) -> datetime:
@@ -712,14 +731,33 @@ class _Context:
     end: datetime | None = None
     windowed: bool = False
     parking: bool = False
+    daily: tuple[int, int, int, int] | None = None
+
+
+def _daily_hours(text: str, timed, spans) -> bool:
+    """Whether the window in `text` holds each day of its days at its hours: it says so
+    ("nightly", "daily", "each night"), or it gives two days and two times apart from each
+    other ("Nov 14 through Nov 22, 9 pm to 5 am"), not each day with its own time ("Nov 14 at
+    9 pm through Nov 17 at 5 am", "9 pm Friday, Nov 14 to 5 am Monday, Nov 17")."""
+    if _DAILY.search(text):
+        return True
+    if len(timed) < 2 or len(spans) < 2:
+        return False
+    days = sorted(spans[:2])
+    times = sorted(span for _hm, span in timed[:2])
+    return days[1][1] <= times[0][0] or times[1][1] <= days[0][0]
 
 
 def _window(text: str, context: _Context, posted: date) -> bool:
-    """Read the dates and times in `text` into `context`; whether it held a time."""
+    """Read the dates and times in `text` into `context`; whether it held a time. A window
+    that holds each day at its hours (`_daily_hours`) runs from its first day at the first
+    time to its last day at the second (the morning after, for a nightly one), and keeps those
+    hours in `context.daily`."""
     days = _dates(text, posted.year, posted)
     if days:
         context.day = days[0]
-    times = _times(text)
+    timed = _timed(text)
+    times = [hm for hm, _span in timed]
     if not times:
         if days:
             context.windowed = False
@@ -729,12 +767,18 @@ def _window(text: str, context: _Context, posted: date) -> bool:
         return True
     start = _at(days[0] if days else context.day, times[0])
     end = None
+    daily = None
     if len(times) >= 2 and not _OPEN_END.search(text):
         end_day = days[1] if len(days) >= 2 else (days[0] if days else context.day)
+        spans = [m.span() for m in _DATE.finditer(text)]
+        if end_day > (days[0] if days else context.day) and _daily_hours(text, timed, spans):
+            daily = (*times[0], *times[1])
         end = _at(end_day, times[1])
-        if end <= start:
+        if end <= start or (daily is not None and times[1] <= times[0]):
+            # A window past midnight ends the morning after; a nightly one's last night too.
             end += timedelta(days=1)
     context.start, context.end, context.windowed = start, end, True
+    context.daily = daily
     return True
 
 
@@ -843,14 +887,15 @@ def read_lines(
         # A window at the end of the line itself ("..., 4:30 am to 1:30 pm") is its own.
         own = _Context(day=context.day)
         if _times(line) and _window(line, own, posted) and own.windowed:
-            start, end, windowed = own.start, own.end, True
+            start, end, windowed, daily = own.start, own.end, True, own.daily
         else:
             start, end, windowed = context.start, context.end, context.windowed
+            daily = context.daily
         if not windowed or start is None:
             unparsed.append(line)
             continue
         street, a, b = found
-        segments.append(Segment(street, a, b, start, end, line))
+        segments.append(Segment(street, a, b, start, end, line, daily))
         starts.append(start)
         ends.append(end)
     start = min(starts) if starts else None
@@ -1497,6 +1542,7 @@ def segment_zone(advisory: Advisory, index: int, segment: Segment, line) -> wz.Z
         description=advisory.title,
         start=segment.start,
         end=segment.end,
+        daily=segment.daily,
         reason=f"closed ({name})",
         title=f"{segment.street} closed, {segment.from_street} to {segment.to_street}",
         url=advisory.url,

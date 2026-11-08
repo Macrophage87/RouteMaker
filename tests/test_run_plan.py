@@ -738,7 +738,9 @@ class TestClosuresOnARun:
         )
         assert response.status_code == 200, response.content
         rings = next(p for a, p in asked if a == "route")["exclude_polygons"]
-        assert rings == [wz.polygon(closed("md-shut", north, True)), wz.line_ring(MARKED)]
+        # The runner's road trimmed 20 m at each end as a closure is (hunt K4/Q2, 2026-11-08).
+        marked = wz.line_ring(MARKED, wz.TRIM_M)
+        assert rings == [wz.polygon(closed("md-shut", north, True)), marked]
         # The closure whose source does not say it shuts the way on foot is run along, warned.
         zones = response.json()["work_zones"]
         [on_route] = zones["on_route"]
@@ -786,7 +788,8 @@ class TestClosuresOnARun:
         routes = [p for a, p in asked if a == "route"]
         assert len(routes[0]["exclude_polygons"]) == 2
         # Asked again with only the runner's own marked road left out.
-        assert routes[-1]["exclude_polygons"] == [wz.line_ring(MARKED)]
+        # Trimmed 20 m at each end as a closure is (hunt K4/Q2, 2026-11-08).
+        assert routes[-1]["exclude_polygons"] == [wz.line_ring(MARKED, wz.TRIM_M)]
         [on_route] = response.json()["work_zones"]["on_route"]
         assert on_route["id"] == "md-shut" and on_route["warning"] is True
 

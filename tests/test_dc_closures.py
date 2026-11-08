@@ -633,3 +633,58 @@ class TestRideTime:
             end=datetime(2027, 3, 1, 15, 0, tzinfo=UTC),
         )
         assert dc.notice_when_text(long, NOW, False) == "Sep 1 to Mar 1, 2027"
+
+
+class TestDailyWindows:
+    """Hunt K6 (2026-11-08): a week of nightly closures was read as one closure from the first
+    night to the last morning, and daytime rides were routed round an open street all week."""
+
+    POSTED = datetime(2026, 11, 10, 15, 0, tzinfo=UTC)
+
+    def zone(self, lines):
+        (segment,), *_ = dc.read_lines(lines, self.POSTED)
+        advisory = dc.Advisory("mpd-x", "mpd", "Traffic advisory", None, self.POSTED, [segment], [])
+        return segment, dc.segment_zone(advisory, 0, segment, [(-77.02, 38.90), (-77.02, 38.901)])
+
+    def at(self, day: int, hour: int) -> datetime:
+        from routemaker.ridetime import ZONE
+
+        return datetime(2026, 11, day, hour, 0, tzinfo=ZONE)
+
+    def test_a_nightly_window_holds_only_at_night(self) -> None:
+        segment, zone = self.zone(
+            [
+                "From Saturday, November 14 through Sunday, November 22, 9:00 pm to 5:00 am"
+                " nightly:",
+                "K Street NW from 7th Street NW to 9th Street NW",
+            ]
+        )
+        assert segment.daily == (21, 0, 5, 0)
+        assert not wz.active(zone, self.at(18, 12))  # Wednesday noon: open
+        assert wz.active(zone, self.at(18, 23)) and wz.active(zone, self.at(19, 4))
+        assert not wz.active(zone, self.at(14, 20))  # before the first night
+        assert wz.active(zone, self.at(23, 4))  # the last night, the morning after
+        assert not wz.active(zone, self.at(23, 6))
+        assert wz.when_text(zone, None, False) == "Closed 9 pm to 5 am each day, Nov 14 to Nov 22"
+        assert wz.Zone.from_json(zone.to_json()) == zone
+
+    def test_two_days_with_one_time_window_hold_each_day(self) -> None:
+        _segment, zone = self.zone(
+            [
+                "Saturday, November 14 and Sunday, November 15, 6 am to 8 pm",
+                "K Street NW from 7th Street NW to 9th Street NW",
+            ]
+        )
+        assert wz.active(zone, self.at(14, 12)) and wz.active(zone, self.at(15, 12))
+        assert not wz.active(zone, self.at(14, 23))  # overnight: open
+
+    def test_a_window_with_each_day_its_own_time_is_one_closure_through(self) -> None:
+        segment, zone = self.zone(
+            [
+                "From 9 pm Friday, November 13 to 5 am Monday, November 16:",
+                "K Street NW from 7th Street NW to 9th Street NW",
+            ]
+        )
+        assert segment.daily is None
+        assert wz.active(zone, self.at(14, 12))
+        assert segment.end == self.at(16, 5)

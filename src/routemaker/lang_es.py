@@ -159,6 +159,10 @@ ES: dict[str, str] = {
     "Source: {source}, until {date}.": "Fuente: {source}, hasta el {date}.",
     "The road ahead": "La calle más adelante",
     "{road} marked closed. Detour posted.": "Cierre en {road}. Desvío señalizado.",
+    # Hunt K1 (2026-11-08), a route through a road the rider marked closed. For native review.
+    "The road you marked closed is on this route: no way round it was found.": (
+        "La calle que marcó como cerrada está en esta ruta: no se encontró cómo rodearla."
+    ),
     " This feed was last read more than 20 minutes ago.": (
         " Esta fuente se leyó por última vez hace más de 20 minutos."
     ),
