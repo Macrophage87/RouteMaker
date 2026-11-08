@@ -1507,7 +1507,8 @@ cd "$RM_SRC"
 own bot (the owner, 2026-11-07: "I want a bot I have control over"), with
 `scripts/discord_reports.py changelog`: the title "RouteMaker vX.Y.Z is on beta", then the notes,
 split at line ends to fit, with each picture in the notes (docs/releases/README.md)
-attached as its own message. The old webhook fallback cannot attach pictures: it posts their
+attached as its own message, and last a link to the full notes in the release's merged pull
+request (one unauthenticated GitHub API call; the notes file at the tag if that fails). The old webhook fallback cannot attach pictures: it posts their
 lines as plain text. The agent tries on each deploy, and on each pass that finds it up to
 date or a newer tag held, failed or waiting (the usual state after a release shipped by hand),
 until they are posted, once per tag (`$RM_STATE/alerts/release-posted`; the bot also skips any
