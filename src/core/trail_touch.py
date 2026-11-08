@@ -286,8 +286,29 @@ def block_ring(lon: float, lat: float, bearing: float) -> list[list[float]]:
     return [*ring, ring[0]]
 
 
+def trail_levels(way_ids: Sequence[int]) -> dict[int, int]:
+    """Each way's mountain-bike level for the way off a trail (`stray_rings`' `exit_level`):
+    its rating, or 1 where unrated (the owner counts unrated trails easy, `core.easy_mtb`)."""
+    from . import mtb
+
+    return {
+        way: (level if level is not None else 1)
+        for way, (_only, level, _trail) in mtb.way_traits(way_ids).items()
+    }
+
+
+def exit_level(kept: frozenset[int]) -> int:
+    """The level of the trail under the rider (the hardest of `kept`), for `stray_rings`."""
+    levels = trail_levels(sorted(kept))
+    return max((levels.get(w, 1) for w in kept), default=1)
+
+
 def stray_rings(
-    pieces: Sequence, ways: dict[int, str], kept: frozenset[int], any_dirt: bool = False
+    pieces: Sequence,
+    ways: dict[int, str],
+    kept: frozenset[int],
+    any_dirt: bool = False,
+    exit_level: int | None = None,
 ) -> list[list[list[float]]]:
     """A strip across each stray run of `pieces` (`core.routing.Piece`: way_id, lon and lat at
     its middle, metres, heading), to leave it out by: at the middle of its longest stretch on a
@@ -299,14 +320,43 @@ def stray_rings(
     metres = [p.metres for p in pieces]
     dirt = frozenset(w for w, reason in ways.items() if reason == REASON)
     singletrack = frozenset(ways) - dirt
-    found = [] if any_dirt else strays(ids, metres, dirt, kept)
-    found += runs(ids, metres, singletrack - kept)
+    if exit_level is not None:
+        found = _exit_strays(ids, metres, frozenset(ways), kept, exit_level)
+    else:
+        found = [] if any_dirt else strays(ids, metres, dirt, kept)
+        found += runs(ids, metres, singletrack - kept)
     rings: list[list[list[float]]] = []
     for a, b in found:
         on_dirt = [p for p in pieces[a:b] if p.way_id in ways]
         longest = max(on_dirt, key=lambda p: (_bearing(p) is not None, p.metres))
         rings.append(block_ring(longest.lon, longest.lat, _bearing(longest) or 0.0))
     return rings
+
+
+def _exit_strays(
+    ids: Sequence[int],
+    metres: Sequence[float],
+    trails: frozenset[int],
+    kept: frozenset[int],
+    level: int,
+) -> list[tuple[int, int]]:
+    """Ride's "End mountain biking" from on a trail (the owner, 2026-11-08: "get people back to
+    a road or path ... through the easiest route possible", "It should find calmer or shorter
+    trails if available"): the run of trails from the one under the rider (`kept`) is ridden,
+    and on it any trail no harder than that one (`level`), so an easier or shorter way off is
+    taken; a harder trail on it is left out, and so is every run that does not start from
+    the rider's trail."""
+    found: list[tuple[int, int]] = []
+    levels = trail_levels([w for w in ids if w in trails])
+    for a, b in runs(ids, metres, trails):
+        if not any(w in kept for w in ids[a:b]):
+            found.append((a, b))
+            continue
+        harder = frozenset(
+            w for w in ids[a:b] if w in trails and w not in kept and levels.get(w, 1) > level
+        )
+        found += [(a + x, a + y) for x, y in runs(ids[a:b], metres[a:b], harder)]
+    return found
 
 
 def _bearing(piece) -> float | None:
