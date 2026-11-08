@@ -722,7 +722,7 @@ STYLE = (
     "color:var(--muted)}.figures dd{margin:0;font-weight:700}"
     ".post-map{margin:1rem 0;border-radius:8px;overflow:hidden;background:var(--card);"
     "aspect-ratio:1200/630;position:relative}"
-    ".post-map img{display:block;width:100%;height:100%;object-fit:cover}"
+    ".post-map>img{display:block;width:100%;height:100%;object-fit:cover}"
     ".post-map .map{position:absolute;inset:0}"
     ".post-actions{display:grid;grid-template-columns:repeat(4,1fr);gap:.5rem;margin:1rem 0}"
     "@media (max-width:30rem){.post-actions{grid-template-columns:repeat(2,1fr)}}"
