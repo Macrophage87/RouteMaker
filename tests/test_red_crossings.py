@@ -138,3 +138,32 @@ def test_no_time_left_asks_nothing(monkeypatch):
     ctx.deadline = routing.Deadline(routing.clock() + refine.REFINE_TRACE_RESERVE_S + 1, 30)
     trip, info = red_crossings.settle(trip_of("through", 4.0), ctx, searched=False)
     assert info["limited"] == "time" and router.asked == []
+
+
+def test_a_way_round_past_the_ceiling_is_refused_below_the_top(monkeypatch):
+    # The search's own rounds refuse a route past the ceiling at every rate: so does this.
+    ctx = context(ceiling_m=4100.0)
+    Router(
+        monkeypatch,
+        {
+            "through": analysis("through", events=[RED]),
+            "round": analysis("round", tiers="1" * 43, cost_s=4100.0),
+        },
+        trip_of("round", 4.3),
+    )
+    trip, info = red_crossings.settle(trip_of("through", 4.0), ctx, searched=False)
+    assert trip["legs"][0]["shape"] == "through" and info["decision"] == "kept"
+
+
+def test_a_swap_restates_the_searchs_figures(monkeypatch):
+    Router(
+        monkeypatch,
+        {
+            "through": analysis("through", events=[RED]),
+            "round": analysis("round", tiers="1" * 43, cost_s=4100.0),
+        },
+        trip_of("round", 4.3),
+    )
+    refined = {"extra_distance_m": 100.0, "exposure_after_m": 999.0, "lts4_m_after": 50.0}
+    red_crossings.settle(trip_of("through", 4.0), context(), searched=False, refined=refined)
+    assert refined == {"extra_distance_m": 400.0, "exposure_after_m": 0.0, "lts4_m_after": 0.0}

@@ -78,18 +78,39 @@ def takes(read: refine.Analysis, whole: refine.Analysis, ctx: refine.Context) ->
     )
     if busier:
         return False
-    if (
-        ctx.maxcalm
-        and refine.too_long(read.length_m, ctx)
-        and not refine.too_long(whole.length_m, ctx)
-    ):
+    # Past the ceiling the search's own rounds refuse, at every rate (`Context.ceiling_m`).
+    if refine.too_long(read.length_m, ctx) and not refine.too_long(whole.length_m, ctx):
         return False
     return refine.better(read, whole, ctx)
 
 
-def settle(trip: dict, ctx: refine.Context, searched: bool) -> tuple[dict, dict | None]:
-    """The answer's trip, and what was done (None: nothing to do). It does not raise for
-    the router or the clock; an unexpected failure leaves the trip as it was."""
+def restate(refined: dict | None, read: refine.Analysis, whole: refine.Analysis) -> None:
+    """The search's figures (`calm_search`) as the route now answered has them, as
+    `dedodge.settle` restates them after a dodge is taken out."""
+    if refined is None:
+        return
+    if refined.get("extra_distance_m") is not None:
+        refined["extra_distance_m"] = round(
+            refined["extra_distance_m"] + read.length_m - whole.length_m, 1
+        )
+    for name, value in (
+        ("exposure_after_m", read.exposure_m),
+        ("lts4_m_after", read.lts4_m),
+        ("lts3_m_after", read.lts3_m),
+        ("lts4_after_m", refine.rated_lts4_m(read)),
+        ("top_m_after", read.top_m),
+    ):
+        if name in refined:
+            refined[name] = round(value, 1)
+
+
+def settle(
+    trip: dict, ctx: refine.Context, searched: bool, refined: dict | None = None
+) -> tuple[dict, dict | None]:
+    """The answer's trip, and what was done (None: nothing to do); on a swap the search's
+    figures in `refined` are restated (`restate`). It does not raise for the router or the
+    clock; an unexpected failure leaves the trip as it was. Run before the dodge pass, so
+    a weave the way round takes on is taken out as any other (OWNER-DECISIONS 272, 273)."""
     if searched or ctx.group:
         return trip, None
     info: dict = {"reds": None, "decision": "kept", "limited": None, "reds_after": None}
@@ -123,9 +144,12 @@ def settle(trip: dict, ctx: refine.Context, searched: bool) -> tuple[dict, dict 
         info["reds_after"] = refine.red_count(read)
         if takes(read, whole, ctx):
             info["decision"] = "avoided"
+            restate(refined, read, whole)
             return around, info
     except (routing.DeadlineExceeded, routing.RouterUnavailable):
         info["limited"] = "time"
+    except routing.RouterRefused:
+        info["limited"] = "unread"
     except Exception:  # noqa: BLE001 - the route is answered as it was
         logger.warning("the red crossing pass failed", exc_info=True)
         info["limited"] = "error"
