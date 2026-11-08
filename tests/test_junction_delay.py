@@ -272,6 +272,59 @@ class TestSignalFromTheTrace:
         (found,) = t.junctions_of_trace(trace, SHAPE)
         assert not found.signal
 
+    def test_the_other_directions_stop_line_past_a_signal_is_not_the_next_junctions(
+        self,
+    ) -> None:
+        """Hunt J2-1: a signalised crossroads, 15 m past it the stop line for the other
+        direction (`highway=traffic_signals` with no direction, so the node flag), and 25 m
+        on a residential T: before, the T read the passed stop line as its own signal and
+        was timed as a second signal (15 s shown, 60 ranked); after, it costs nothing."""
+        crossroads = edge(1, 0, 2, 0.1, road_class="secondary")
+        crossroads["end_node"] = {
+            "traffic_signal": True,
+            "intersecting_edges": [
+                {"use": "road", "road_class": "primary", "begin_heading": 0},
+                {"use": "road", "road_class": "primary", "begin_heading": 180},
+            ],
+        }
+        stop_line = edge(1, 2, 3, 0.015, road_class="secondary")
+        stop_line["end_node"] = {"traffic_signal": True, "intersecting_edges": []}
+        to_t = edge(1, 3, 5, 0.025, road_class="secondary")
+        to_t["end_node"] = {
+            "intersecting_edges": [{"use": "road", "road_class": "residential", "begin_heading": 0}]
+        }
+        trace = {"edges": [crossroads, stop_line, to_t, edge(1, 5, 8, 0.1)]}
+        found = t.junctions_of_trace(trace, SHAPE)
+        assert [j.signal for j in found] == [True, False]
+        (only,) = d.waits(found, suburban=everywhere)
+        assert only.m == pytest.approx(100.0)
+
+    def test_a_signal_on_the_junction_behind_is_that_junctions(self) -> None:
+        """A driveway 20 m past a signalised crossroads (or the next junction) reads no
+        signal of its own from the crossroads' node: that junction's."""
+        crossroads = edge(1, 0, 2, 0.1)
+        crossroads["end_node"] = {
+            "traffic_signal": True,
+            "intersecting_edges": [{"use": "road", "road_class": "primary"}],
+        }
+        driveway = edge(1, 2, 3, 0.02)
+        driveway["end_node"] = {
+            "intersecting_edges": [{"use": "driveway", "road_class": "service_other"}]
+        }
+        trace = {"edges": [crossroads, driveway, edge(1, 3, 5, 0.1)]}
+        assert [j.signal for j in t.junctions_of_trace(trace, SHAPE)] == [True, False]
+
+    def test_the_riders_own_stop_line_nearer_this_junction_is_still_its_own(self) -> None:
+        """A stop line 12 m before the junction and 40 m past the last one: this one's."""
+        earlier = edge(1, 0, 2, 0.1)
+        earlier["end_node"] = {"intersecting_edges": [{"use": "road", "road_class": "residential"}]}
+        to_line = edge(1, 2, 3, 0.04)
+        to_line["end_node"] = {"traffic_signal": True, "intersecting_edges": []}
+        last = edge(1, 3, 4, 0.012)
+        last["end_node"] = {"intersecting_edges": [{"use": "road", "road_class": "primary"}]}
+        trace = {"edges": [earlier, to_line, last, edge(1, 4, 6, 0.1)]}
+        assert [j.signal for j in t.junctions_of_trace(trace, SHAPE)] == [False, True]
+
 
 # --- Signals outside the major cities, and beg buttons (the owner, 2026-11-08) -----------
 
@@ -552,8 +605,11 @@ class TestBegButtons:
         wait = d.signal_wait(crossing, suburban=True, stop_extra_s=80.0)
         stop_sign = d.GIVE_WAY_DELAY_S[d.ROAD_RANK["secondary"]] + 80.0
         assert wait.ranked_s == stop_sign - d.BUTTON_BELOW_STOP_S < d.BUTTON_RANKED_S
-        # Never below the signal's own ranked wait (a button does not make it quicker).
-        assert d.signal_wait(crossing, suburban=True, stop_extra_s=0.0).ranked_s == 60.0
+        # Never below the signal's own ranked wait (a button does not make it quicker); at
+        # 1x that wait keeps its suburban 2x, 60 s, above the 20 s stop sign (the J2-4 cap
+        # is for wait weights above 1: before this, 19 s at 1x).
+        free = d.signal_wait(crossing, suburban=True, stop_extra_s=0.0)
+        assert (free.ranked_s, free.signal_ranked_s) == (60.0, 60.0)
 
     def test_two_minutes_stays_below_the_junction_models_stop_sign_at_default(self) -> None:
         """In the ranking's own units: the junction model's feet for a stop sign across an
@@ -625,17 +681,90 @@ class TestRoadBikeStackedWeight:
         (run,) = d.waits([suburban_signal(*PRIMARY)])
         assert 3.0 * d.ranked_s([run], 3.0) == 3.0 * 30.0
 
-    def test_a_button_crossing_on_road_bike_is_held_at_5x_and_below_the_stop_sign(self) -> None:
+    def test_a_button_crossing_on_road_bike_ranks_ten_minutes_below_2_3_of_the_stop_sign(
+        self,
+    ) -> None:
+        """The owner, 2026-11-08: "Call that 10 minutes on a road bike in pain level. ...
+        Just make sure it's less than half a stop sign against an uncontrolled busy road",
+        then, told half a stop sign could fall under a plain signal, "make it 2/3 of one".
+        """
         crossing = suburban_signal(*PRIMARY)
         (run,) = d.waits([crossing], suburban=everywhere, stop_extra_s={(-77.0, 38.9): 400.0})
         assert run.button and run.ranked_s == 120.0
-        assert 3.0 * d.ranked_s([run], 3.0) == 5.0 * 45.0 < 3.0 * 120.0
-        # A stop sign there, at Road Bike's weight: its 30 s and the 400 s over the signal.
-        assert 3.0 * d.ranked_s([run], 3.0) < 3.0 * (30.0 + 400.0)
-        # Held below a cheaper stop sign too: the cap below it is kept under the 5x.
+        # Before: held at 5x the 45 s red, 225 s; after: ten minutes.
+        assert 3.0 * d.ranked_s([run], 3.0) == d.ROAD_BIKE_BUTTON_S == 600.0
+        # Less than 2/3 of the stop sign there at Road Bike's weight: its 30 s and the 400 s.
+        assert 3.0 * d.ranked_s([run], 3.0) < 3.0 * (30.0 + 400.0) * 2.0 / 3.0
+        # A cheaper stop sign (30 + 50 s, 240 s at 3x): held 1 s below its 2/3 (before, its
+        # half, 119 s).
         (cheap,) = d.waits([crossing], suburban=everywhere, stop_extra_s={(-77.0, 38.9): 50.0})
-        assert cheap.ranked_s == 90.0  # the signal's own 2x: 30 + 50 - 1 is below it
-        assert 3.0 * d.ranked_s([cheap], 3.0) == 225.0
+        assert 3.0 * d.ranked_s([cheap], 3.0) == pytest.approx(3.0 * 80.0 * 2.0 / 3.0 - 1.0)
+        # Not known: ten minutes.
+        (unpriced,) = d.waits([crossing], suburban=everywhere)
+        assert 3.0 * d.ranked_s([unpriced], 3.0) == 600.0
+        # Off Road Bike's weight, the two minutes stand.
+        assert d.ranked_s([run]) == 120.0
+
+    def test_a_plain_light_ranks_below_the_button_at_the_same_light_when_the_stop_is_cheap(
+        self,
+    ) -> None:
+        """The blocking review, 2026-11-08: with the stop sign across the road cheap, the
+        button's hold (then half the stop sign) ranked it below the same light with no
+        button. Now on Road Bike: the plain light, then the button, then 2/3 of the stop."""
+        tagged = {"in_use": "pedestrian_crossing", "out_use": "pedestrian_crossing"}
+        here = (-77.0, 38.9)
+        # A city light onto a primary from a crossing: a 30 s red, 90 s at 3x; the stop sign
+        # 30 s and 10 s more, 120 s at 3x, whose 2/3 is 80 s, below the plain light.
+        light = suburban_signal(*PRIMARY, in_way=77, **tagged)
+        (plain,) = d.waits([light], stop_extra_s={here: 10.0})
+        (button,) = d.waits([light], buttons={77}, stop_extra_s={here: 10.0})
+        assert (plain.button, button.button) == (False, True)
+        plain_s = 3.0 * d.ranked_s([plain], 3.0)
+        button_s = 3.0 * d.ranked_s([button], 3.0)
+        stop_s = 3.0 * (30.0 + 10.0)
+        # Before: the plain light 90 s and the button 59 s (1 s below half the stop sign).
+        assert plain_s == pytest.approx(stop_s * 2.0 / 3.0 - 2.0)
+        assert button_s == pytest.approx(stop_s * 2.0 / 3.0 - 1.0)
+        assert plain_s < button_s < stop_s * 2.0 / 3.0
+        # The same in the suburbs, the button read from a residential street.
+        street = suburban_signal(*PRIMARY)
+        tertiary = suburban_signal(*PRIMARY, in_class="tertiary", out_class="tertiary")
+        (pressed,) = d.waits([street], suburban=everywhere, stop_extra_s={here: 20.0})
+        (unpressed,) = d.waits([tertiary], suburban=everywhere, stop_extra_s={here: 20.0})
+        assert pressed.button and not unpressed.button
+        assert d.ranked_s([unpressed], 3.0) < d.ranked_s([pressed], 3.0) < 2.0 / 3.0 * 50.0
+
+    def test_a_suburban_signal_never_ranks_above_the_stop_sign_across_the_same_road(
+        self,
+    ) -> None:
+        """Hunt J2-4: on Road Bike (and at the traffic-tolerant end of the slider), the
+        suburban 2x put a signal above the stop sign a block away across the same road.
+        The cap is Claude's default, for wait weights above 1 only."""
+        tertiary_rider = {"in_class": "tertiary", "out_class": "tertiary"}
+        crossing = suburban_signal(("road", "tertiary"), ("road", "tertiary"), **tertiary_rider)
+        # A stop sign across the tertiary: 12 s and 5 s of the model's price over the signal,
+        # 51 s at 3x. No button is read at this light, so the stop sign alone holds it.
+        (run,) = d.waits([crossing], suburban=everywhere, stop_extra_s={(-77.0, 38.9): 5.0})
+        assert not run.button and not run.button_light
+        # Before: 3 x 60 = 180 s (150 s at the 5x cap), above the 51 s stop sign; after: 50 s.
+        assert 3.0 * d.ranked_s([run], 3.0) == 3.0 * 17.0 - 1.0
+        # At 1x the suburban 2x stands: 60 s (before this, 16 s).
+        assert d.ranked_s([run]) == 60.0
+        # Across a secondary, where a button is read for a rider from a side street, the
+        # plain light is held below 2/3 of the stop sign (20 + 13 s, 99 s at 3x): 64 s.
+        busy = suburban_signal(*SECONDARY, **tertiary_rider)
+        (run,) = d.waits([busy], suburban=everywhere, stop_extra_s={(-77.0, 38.9): 13.0})
+        assert not run.button and run.button_light
+        assert 3.0 * d.ranked_s([run], 3.0) == pytest.approx(99.0 * 2.0 / 3.0 - 2.0)
+        assert d.ranked_s([run]) == 60.0
+        # The time shown is the average pass, unchanged.
+        assert run.seconds == 15.0
+        # Riding along the road through its signal, no road crossed: nothing to compare.
+        along = suburban_signal(
+            ("road", "residential"), in_class="secondary", out_class="secondary"
+        )
+        (run,) = d.waits([along], suburban=everywhere, stop_extra_s={(-77.0, 38.9): 0.0})
+        assert run.ranked_s == 60.0
 
     def test_at_1x_nothing_is_capped(self) -> None:
         tagged = suburban_signal(
@@ -643,3 +772,86 @@ class TestRoadBikeStackedWeight:
         )
         (run,) = d.waits([tagged], buttons={77})
         assert d.ranked_s([run]) == 120.0
+
+
+def at(junction: t.RawJunction, m: float, lon: float) -> t.RawJunction:
+    """`junction` moved to `m` metres along the route, at `lon`."""
+    from dataclasses import replace
+
+    return replace(junction, m=m, lon=lon)
+
+
+class TestSignalRuns:
+    """The 2026-11-08 hunt (J2-2, J2-5) and the signal review of the same day."""
+
+    def test_a_divided_roads_two_signalised_carriageways_45_m_apart_are_one_wait(self) -> None:
+        crossing = junction(*PRIMARY)
+        near, far = at(crossing, 100.0, -77.0), at(crossing, 140.0, -76.9995)
+        points = {(-77.0, 38.9), (-76.9995, 38.9)}
+        found = d.waits([near, far], signals=points, suburban=everywhere, big=points)
+        # Before: two waits of 24 s shown and 120 ranked, two button cues; after: one.
+        assert [(w.seconds, w.ranked_s, w.button) for w in found] == [(24.0, 120.0, True)]
+        # Two signals farther apart than the junction model's one junction stay two.
+        apart = at(crossing, 150.0, -76.999)
+        both = {(-77.0, 38.9), (-76.999, 38.9)}
+        assert len(d.waits([near, apart], signals=both, suburban=everywhere)) == 2
+        # A give-way 40 m on from a signal is still a stop of its own.
+        give_way = at(junction(*PRIMARY), 140.0, -76.9995)
+        assert len(d.waits([at(suburban_signal(*PRIMARY), 100.0, -77.0), give_way])) == 2
+
+    def test_a_signal_at_a_service_road_or_trail_stops_the_rider_on_the_road(self) -> None:
+        """A suburban stroad's signal at a shopping-centre entrance, and one for a trail
+        crossing it: before, no wait (only service and path arms); after, a signal's."""
+        entrance = (("road", "service_other"), ("road", "service_other"))
+        trail = (("cycleway", "service_other"), ("cycleway", "service_other"))
+        for arms in (entrance, trail):
+            along = suburban_signal(*arms, in_class="primary", out_class="primary")
+            assert d.delay_at(along) == d.SIGNAL_DELAY_S
+            (run,) = d.waits([along], suburban=everywhere)
+            # The busiest road there is the rider's own primary: 24 s shown, a 30 s red.
+            assert (run.seconds, run.red_s, run.ranked_s) == (24.0, 30.0, 60.0)
+        # A mid-block signalised footway crossing (a pedestrian light) stops the rider on the
+        # road too (J2-5): priced as a signal by the rider's own road.
+        footway = (("footway", "service_other"), ("footway", "service_other"))
+        along = suburban_signal(*footway, in_class="primary", out_class="primary")
+        assert d.delay_at(along) == d.SIGNAL_DELAY_S
+        (run,) = d.waits([along], suburban=everywhere)
+        assert (run.seconds, run.red_s, run.ranked_s, run.button) == (24.0, 30.0, 60.0, False)
+        # A signal flag at a way split with nothing else at the node is still nothing.
+        assert d.delay_at(junction(signal=True, out_way=2)) == 0.0
+        # The same entrance without a signal costs the rider on the main road nothing.
+        assert d.delay_at(junction(*entrance, in_class="primary", out_class="primary")) == 0.0
+
+    def test_the_riders_own_big_road_counts_in_the_busiest_road_not_the_red(self) -> None:
+        """The signal review, 2026-11-08: riding along a 4-lane or 40 mph secondary through
+        its signal at a tertiary counted it as a secondary road."""
+        tertiary = (("road", "tertiary"), ("road", "tertiary"))
+        along = suburban_signal(*tertiary, in_class="secondary", out_class="secondary")
+        here = {(-77.0, 38.9)}
+        (city_before,) = d.waits([along])
+        (city_after,) = d.waits([along], own_big=here)
+        # In a city: before the secondary's 15 s red and 5 s shown; after the big road's.
+        assert (city_before.red_s, city_before.seconds) == (15.0, 5.0)
+        assert (city_after.red_s, city_after.seconds) == (30.0, 12.0)
+        # In the suburbs: the time shown by the big road; the red stays 30 s, not 45 s, as
+        # the rider does not cross or join a big road.
+        (suburb,) = d.waits([along], suburban=everywhere, own_big=here)
+        assert (suburb.seconds, suburb.red_s, suburb.ranked_s) == (24.0, 30.0, 60.0)
+        (plain,) = d.waits([along], suburban=everywhere)
+        assert plain.seconds == 15.0
+
+    def test_the_button_cue_is_at_the_button_signal_not_the_runs_first_junction(self) -> None:
+        """The signal review, 2026-11-08: a run that begins at a stop sign or a stop line
+        short of the button signal put Ride's "Light may need a button press" there."""
+        from core import routing
+
+        stop_first = at(junction(*SECONDARY), 90.0, -77.0002)
+        button = at(suburban_signal(*SECONDARY), 110.0, -77.0)
+        (run,) = d.waits([stop_first, button], suburban=everywhere)
+        assert run.button and (run.m, run.lon) == (90.0, -77.0002)
+        assert run.button_at == (110.0, -77.0, 38.9)
+        cue = routing.light_buttons([run], 1000.0, 1000.0)
+        # Before: at 90 m and the stop sign's node; after: the signal's.
+        assert cue == [{"at_m": 110.0, "lon": -77.0, "lat": 38.9}]
+        (plain,) = d.waits([stop_first, at(suburban_signal(*SECONDARY), 110.0, -77.0)])
+        assert routing.light_buttons([plain], 1000.0, 1000.0) == []

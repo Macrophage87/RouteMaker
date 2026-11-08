@@ -428,7 +428,13 @@ def marks_along(
 def _signal_at(edges: list[dict], index: int, to_metres: float) -> bool:
     """Whether the router flags a signal at the node `edges[index]` arrives at: on the node,
     on the in-edge, or on one of the rider's edges before it that ends within APPROACH_M of
-    the node along the route."""
+    the node along the route, short of an earlier junction with a road and not nearer one
+    (`_nearer_earlier_junction`). A signal on an earlier junction or behind it is that
+    junction's: most stop lines in the District and Maryland carry `highway=traffic_signals`
+    with no direction, so the flag on the stop line for the other direction, just past a
+    signalised junction the rider has crossed, read the same as their own stop line before
+    the next one (the 2026-11-08 hunt, J2-1: a residential T 40 m past a suburban signal was
+    timed as a second signal of its own, 15 s shown and 60 ranked, where it costs nothing)."""
     here = edges[index]
     if (here.get("end_node") or {}).get("traffic_signal") or here.get("traffic_signal"):
         return True
@@ -437,9 +443,43 @@ def _signal_at(edges: list[dict], index: int, to_metres: float) -> bool:
         if gone > APPROACH_M:
             return False
         edge = edges[back]
-        if edge.get("traffic_signal") or (edge.get("end_node") or {}).get("traffic_signal"):
+        if _meets_road(edge):
+            # An earlier junction: its signal, or one behind it, is its own.
+            return False
+        if (
+            edge.get("traffic_signal") or (edge.get("end_node") or {}).get("traffic_signal")
+        ) and not _nearer_earlier_junction(edges, back, gone, to_metres):
             return True
         gone += float(edge.get("length") or 0.0) * to_metres
+    return False
+
+
+# Valhalla's road classes a junction is read at (`_meets_road`); a path's "service_other",
+# a driveway's or a parking aisle's, is none.
+_ROAD_CLASSES = frozenset(
+    {"motorway", "trunk", "primary", "secondary", "tertiary", "unclassified", "residential"}
+)
+
+
+def _meets_road(edge: dict) -> bool:
+    """Whether a road (not a path, driveway or service road) meets the node `edge` arrives at."""
+    return any(
+        other.get("use") not in NOT_A_ROAD_USES and other.get("road_class") in _ROAD_CLASSES
+        for other in (edge.get("end_node") or {}).get("intersecting_edges") or []
+    )
+
+
+def _nearer_earlier_junction(edges: list[dict], back: int, gone: float, to_metres: float) -> bool:
+    """Whether the route behind the node `edges[back]` arrives at, `gone` metres back from
+    the junction asked about, reaches a junction with a road nearer to that node than
+    `gone`: a signal flagged there is that junction's."""
+    walked = float(edges[back].get("length") or 0.0) * to_metres
+    for earlier in range(back - 1, -1, -1):
+        if walked >= gone:
+            return False
+        if _meets_road(edges[earlier]):
+            return True
+        walked += float(edges[earlier].get("length") or 0.0) * to_metres
     return False
 
 

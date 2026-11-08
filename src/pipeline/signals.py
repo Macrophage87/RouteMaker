@@ -103,9 +103,9 @@ def node_tags(nodes: Iterable[int]) -> dict[int, dict[str, str]]:
 # "They aren't very common in DC, but they are definitely frustrating elsewhere." OSM tags a
 # signal a rider or walker must call with a push button `button_operated=yes`, on the
 # crossing node or on the crossing way. The router carries no such flag, so the rebuild
-# marks the trail-class ways (the crossing, the path or sidewalk) that say it themselves or
-# pass through a node that does (`segment.button_operated`), and the junction-delay model
-# reads a signal the route reaches on one as needing its button
+# marks the trail-class ways that say it themselves, the crossing ways through a node that
+# does, and the paths or sidewalks that end at one (`segment.button_operated`), and the
+# junction-delay model reads a signal the route reaches on one as needing its button
 # (`routemaker.junction_delay.signal_wait`, `core.routing.button_ways`). A road through
 # such a node is not marked: a rider on the road waits for the road's green.
 BUTTON_KEY = "button_operated"
@@ -118,11 +118,26 @@ def says_button(tags: Mapping[str, str]) -> bool:
 
 def button_ways(ways: Iterable, button_nodes: Collection[int] = ()) -> frozenset[int]:
     """The trail-class ways (`extract.Way`s: `osm_id`, `tags`, `node_ids`) that are tagged
-    `button_operated=yes` or pass through a node in `button_nodes`."""
+    `button_operated=yes`, that are a crossing way (`is_crossing_way`) through a node in
+    `button_nodes`, or that end at one (a sidepath or trail split at the crossing).
+
+    The column marks a whole way, so a long trail or sidepath that only passes through a
+    button node is not marked: a multi-km cycleway crossing one road at a tagged node read
+    every signal along it as a beg button, 2 km on included (the 2026-11-08 hunt, J2-3: a
+    District secondary signal ranked 120 s in place of 15 s, with "Light may need a button
+    press" where there is no button)."""
     nodes = frozenset(button_nodes)
+
+    def through_button(way) -> bool:
+        if not nodes or not way.node_ids:
+            return False
+        if is_crossing_way(way.tags):
+            return any(node in nodes for node in way.node_ids)
+        return way.node_ids[0] in nodes or way.node_ids[-1] in nodes
+
     return frozenset(
         way.osm_id
         for way in ways
         if way.tags.get("highway") in TRAIL_CLASS_HIGHWAY
-        and (says_button(way.tags) or any(node in nodes for node in way.node_ids))
+        and (says_button(way.tags) or through_button(way))
     )

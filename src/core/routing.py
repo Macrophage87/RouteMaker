@@ -3316,10 +3316,27 @@ def junction_waits(
         signals,
         suburban=suburban_signal,
         big=intersections.big_signal_points(events),
+        own_big=intersections.own_big_signal_points(events),
         buttons=button_ways(junctions, signals, button_cache),
         stop_extra_s=stop_extra,
         when=when,
     )
+
+
+def light_buttons(found_waits, route_m: float, traced_m: float) -> list[dict]:
+    """The signals read as needing their beg button (`junction_delay.signal_wait`), for
+    Ride, in the description's metres (the traced metres at the router's length): at the
+    button signal's own node (`Wait.button_at`), not the run's first junction, which can be
+    a stop line or the other carriageway up to 45 m short of it (the signal review of
+    2026-11-08)."""
+    scale = route_m / traced_m if traced_m > 0 else 1.0
+    out = []
+    for w in found_waits:
+        if not w.button:
+            continue
+        m, lon, lat = w.button_at if w.button_at is not None else (w.m, w.lon, w.lat)
+        out.append({"at_m": round(m * scale, 1), "lon": round(lon, 6), "lat": round(lat, 6)})
+    return out
 
 
 def _outside_dc(piece) -> bool:
@@ -6112,15 +6129,7 @@ def _plan(
             "junction_delay_s": round(delay, 1),
             # The signals read as needing their beg button (`junction_delay.signal_wait`), in
             # the description's metres (the traced metres at the router's length), for Ride.
-            "light_buttons": [
-                {
-                    "at_m": round(w.m * (route_m / traced_m if traced_m > 0 else 1.0), 1),
-                    "lon": round(w.lon, 6),
-                    "lat": round(w.lat, 6),
-                }
-                for w in found_waits
-                if w.button
-            ],
+            "light_buttons": light_buttons(found_waits, route_m, traced_m),
             # Where along the line that time falls, hills and junction waits in place, for a
             # ride's arrival times (`routemaker.time_marks`).
             "time_marks": time_marks.time_marks(router_at, waits, traced_m),
