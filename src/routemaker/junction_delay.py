@@ -403,10 +403,14 @@ def signal_wait(
         seconds = CITY_PASS_S.get(when, CITY_PASS_S[None])[busiest]
         ranked = red
     stop = None
-    if stop_extra_s is not None:
+    if stop_extra_s is not None and crossed is not None:
         # A stop sign across the same road: its give-way wait, plus the junction model's
-        # price for it over the signal's, both as the ranking counts them.
-        stop = _stop(crossed if crossed is not None else _NO_RANK, False) + stop_extra_s
+        # price for it over the signal's, both as the ranking counts them. Only where the
+        # rider crosses or joins a road: riding along the busier road (a turn off it, a side
+        # road joining) there is no stop sign across a road to hold the light below, and a
+        # plain stop plus the model's extra there had ranked a Road Bike light at a right
+        # turn off a suburban primary at about half of Default's (the 2026-11-08 hunt, J3-1).
+        stop = _stop(crossed, False) + stop_extra_s
     inferred = suburban and onto_busy and _own_rank(junction) >= BUTTON_MIN_OWN_RANK
     on_crossing = junction.in_use in _CROSSING_USES or junction.out_use in _CROSSING_USES
     button_light = (suburban and onto_busy) or on_crossing
@@ -487,6 +491,11 @@ def waits(
     out: list[Wait] = []
     run: Wait | None = None
     run_signal: SignalWait | None = None
+    # Where along the route the run's latest signal is (metres): SIGNAL_MERGE_M is measured
+    # from it, not from the run's first junction, which can be a costing junction short of
+    # the signal (the 2026-11-08 hunt, J3-3: a path coming out 15 m short of a divided
+    # road's first carriageway had split its two signals into two waits and two button cues).
+    run_signal_m = 0.0
 
     def signal_run(run: Wait, signal: SignalWait) -> Wait:
         return replace(
@@ -531,9 +540,11 @@ def waits(
             or (
                 signal is not None
                 and run_signal is not None
-                and junction.m - run.m <= SIGNAL_MERGE_M
+                and junction.m - run_signal_m <= SIGNAL_MERGE_M
             )
         ):
+            if signal is not None:
+                run_signal_m = junction.m
             if signal is not None and (
                 run_signal is None
                 or (signal.ranked_s, signal.seconds) > (run_signal.ranked_s, run_signal.seconds)
@@ -549,6 +560,7 @@ def waits(
         if run is not None:
             out.append(run)
         run_signal = signal
+        run_signal_m = junction.m
         run = Wait(junction.m, *here, cost, cost)
         if signal is not None:
             run = replace(signal_run(run, signal), button=signal.button, button_at=button_at)

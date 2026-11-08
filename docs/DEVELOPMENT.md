@@ -4053,7 +4053,9 @@ Junctions that cost something and lie within 35 m (115 ft) of the first of them 
 route are one stop at the dearest, or at the signal's wait where one is a signal (a divided
 road, a stop line and its junction); two signals within 45 m are one wait, the junction
 model's own reach for one junction (`intersections.MERGE_WITHIN_M`; hunt J2-2: a suburban
-divided road's two carriageways 40 m apart had been two waits and two button cues). Junctions that cost nothing (driveways, way splits)
+divided road's two carriageways 40 m apart had been two waits and two button cues), the 45 m
+counted from the run's latest signal, not its first junction (hunt J3-3: a path coming out 15 m
+short of the first carriageway had split them again). Junctions that cost nothing (driveways, way splits)
 neither start nor stretch the run, so a street with a driveway every few metres still counts
 each stop sign. A flashing beacon mapped as a signal (`core.flashing_signals`) is priced by
 who gives way, not as a signal. The answer's `duration_s` is the router's
@@ -4123,7 +4125,10 @@ People prefer free flow on road bikes."): a suburban big crossing ranks 225 s on
 Tandem), where the stop sign across the same road is priced, a signal ranks 1 s below that
 stop sign at most at that weight (hunt J2-4: on Road Bike, and at the traffic-tolerant end of
 the slider, the suburban 2x had ranked the light above a stop sign a block away across the
-same road). That cap is Claude's default, not the owner's; at 1x a suburban signal keeps its
+same road). That cap is Claude's default, not the owner's, and holds only where the rider
+crosses or joins a road: riding along the busier road (a turn off it, a side road joining)
+there is no stop sign across a road to compare (hunt J3-1: a Road Bike light at a right turn
+off a suburban primary had ranked at about half of Default's). At 1x a suburban signal keeps its
 2x even above the stop sign (before, a suburban signal across a secondary dropped from 60 s to
 19 s at 1x). On Road Bike's weight (and Run's, which shares it) a button crossing counts
 `junction_delay.ROAD_BIKE_BUTTON_S`, 600 s weighted, in place of the 5x cap, held 1 s below
@@ -4143,7 +4148,8 @@ needing its beg button ("something like a 2 minute wait, still not as bad as a s
 across the same road"; "If there are cars waiting, then it wouldn't, but we should penalize
 those") ranks as `BUTTON_RANKED_S` 120 s of waiting, held 1 s below the give-way wait plus
 what the junction model charges for a stop sign there over the signal
-(`intersections.stop_extra_ft`, priced in the ranking's units by `refine.stop_wait_s_per_ft`:
+(`intersections.stop_extra_ft`, from the model's own figures at a junction riders have rated,
+whose rating costs the same whatever the control, hunt J3-4; priced in the ranking's units by `refine.stop_wait_s_per_ft`:
 the model's feet at `quiet_cost` x `weight` a metre, a wait at `QUIET_COST_FACTOR` x
 `wait_weight` a second), and never below the signal's own ranked wait. The answer lists such
 signals in `light_buttons` (in the description's metres, at the button signal's own node, not

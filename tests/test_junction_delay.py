@@ -766,6 +766,28 @@ class TestRoadBikeStackedWeight:
         (run,) = d.waits([along], suburban=everywhere, stop_extra_s={(-77.0, 38.9): 0.0})
         assert run.ranked_s == 60.0
 
+    def test_riding_along_the_busier_road_has_no_stop_sign_to_hold_the_light_below(
+        self,
+    ) -> None:
+        """The 2026-11-08 hunt, J3-1: a right turn off a suburban primary onto a tertiary at
+        a signal crosses no road, yet the junction model's extra for a stop sign on the
+        rider's approach (2 s here) and a plain 8 s stop had held Road Bike's light at
+        3 x 10 - 1 = 29 weighted seconds, below Default's 60."""
+        turn = suburban_signal(
+            ("road", "primary"),
+            movement=Movement.RIGHT,
+            in_class="primary",
+            out_class="tertiary",
+            out_way=2,
+            headings=(90.0,),
+        )
+        assert d.signal_crossed_rank(turn) is None
+        (run,) = d.waits([turn], suburban=everywhere, stop_extra_s={(-77.0, 38.9): 2.0})
+        assert run.stop_s is None
+        # Road Bike's own rule: 3 x 60 held at 5 x the 30 s red, 150 (before: 29).
+        assert 3.0 * d.ranked_s([run], 3.0) == 150.0
+        assert d.ranked_s([run]) == 60.0
+
     def test_at_1x_nothing_is_capped(self) -> None:
         tagged = suburban_signal(
             *PRIMARY, in_use="pedestrian_crossing", out_use="pedestrian_crossing", in_way=77
@@ -798,6 +820,27 @@ class TestSignalRuns:
         # A give-way 40 m on from a signal is still a stop of its own.
         give_way = at(junction(*PRIMARY), 140.0, -76.9995)
         assert len(d.waits([at(suburban_signal(*PRIMARY), 100.0, -77.0), give_way])) == 2
+
+    def test_the_signal_merge_is_measured_from_the_runs_signal_not_its_first_junction(
+        self,
+    ) -> None:
+        """The 2026-11-08 hunt, J3-3: a path coming out onto a street 15 m short of a divided
+        road's first signalised carriageway, the second 40 m past the first, had made two
+        waits and two button cues: 45 m was measured from the path's junction."""
+        path_out = junction(
+            ("road", "residential"),
+            m=100.0,
+            in_use="cycleway",
+            in_class="service_other",
+            out_way=2,
+        )
+        crossing = junction(*PRIMARY, in_way=2, out_way=2, headings=(0.0, 180.0))
+        near, far = at(crossing, 115.0, -76.9999), at(crossing, 155.0, -76.9995)
+        points = {(-76.9999, 38.9), (-76.9995, 38.9)}
+        found = d.waits([path_out, near, far], signals=points, suburban=everywhere)
+        # Before: two waits of 24 s shown and 120 ranked, each with a button; after: one.
+        assert [(w.seconds, w.ranked_s, w.button) for w in found] == [(24.0, 120.0, True)]
+        assert found[0].m == 100.0
 
     def test_a_signal_at_a_service_road_or_trail_stops_the_rider_on_the_road(self) -> None:
         """A suburban stroad's signal at a shopping-centre entrance, and one for a trail

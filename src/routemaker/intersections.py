@@ -1772,8 +1772,18 @@ def _with_signal(
     big = any(big_road(road) for road in (*junction.crossed, *joined))
     own = (junction.incoming, junction.outgoing) if junction.continues else (junction.incoming,)
     own_big = any(big_road(road) for road in own)
-    stopped = assess(replace(junction, control=Control.STOP), group, when)
-    extra = max((stopped.cost_ft if stopped is not None else 0.0) - event.cost_ft, 0.0)
+    # Priced from the model's own figures: a riders' rating (`Junction.rating`) costs the
+    # same whatever the control, so read with it a rated signal's stop sign cost nothing
+    # over the signal, and rating a junction hard made its lights rank cheaper (the
+    # 2026-11-08 hunt, J3-4).
+    unrated = replace(junction, rating=None)
+    signalled = event if junction.rating is None else assess(unrated, group, when)
+    stopped = assess(replace(unrated, control=Control.STOP), group, when)
+    extra = max(
+        (stopped.cost_ft if stopped is not None else 0.0)
+        - (signalled.cost_ft if signalled is not None else 0.0),
+        0.0,
+    )
     return replace(
         event,
         signals=(here,),
