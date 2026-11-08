@@ -5371,6 +5371,8 @@ def _plan(
     # A weekend ride on the standard graph's weekend twin, or an e-bike ride, where dirt
     # trails are closed just the same, follows the same rule (`TRAIL_TOUCH_VARIANTS`).
     touched_trails: frozenset[int] = frozenset()
+    # "End mountain biking" from on a trail: that trail's level, the hardest the way off rides.
+    exit_at: int | None = None
     per_point: tuple[frozenset[int], ...] = ()
     dirt_closed = False
     any_dirt = False
@@ -5401,6 +5403,7 @@ def _plan(
                 )
             if exit_trails and not weekend_beside:
                 touched_trails = exit_trails
+                exit_at = trail_touch.exit_level(exit_trails)
                 per_point = (exit_trails, *(frozenset() for _ in points[1:]))
                 variant = Variant.MTB.value if preset_name == mtb.PRESET else Variant.OFFROAD.value
         if not dirt_closed:
@@ -5653,7 +5656,14 @@ def _plan(
         # 7:52 PM ET: "make the banked changes"). Its traces are the plan's, which the search
         # and the answer read again, so a route that does not stray is traced once as before.
         stray = _early_strays(
-            answer.get("trip") or {}, variant, costing, deadline, traces, touched_trails, any_dirt
+            answer.get("trip") or {},
+            variant,
+            costing,
+            deadline,
+            traces,
+            touched_trails,
+            any_dirt,
+            exit_at,
         )
         if stray:
             raise StrayTrails(tuple(stray), per_point)
@@ -6234,7 +6244,7 @@ def _plan(
         dirt_trails = False
         if (touched_trails or any_dirt) and variant in STRAY_GRAPHS:
             ways = trail_touch.off_road_ways([piece.way_id for piece in pieces])
-            stray = trail_touch.stray_rings(pieces, ways, touched_trails, any_dirt)
+            stray = trail_touch.stray_rings(pieces, ways, touched_trails, any_dirt, exit_at)
             if stray:
                 if alternate:
                     # A side route (a candidate, the way round a junction or through a
@@ -7090,6 +7100,7 @@ def _early_strays(
     traces: dict,
     touched_trails: frozenset[int],
     any_dirt: bool,
+    exit_at: int | None = None,
 ) -> list:
     """The strips across the stray dirt trails (`trail_touch.stray_rings`) of the router's own
     route `trip`, read as the answer reads them (`_plan`, audit S12 part 1); none where a leg
@@ -7111,7 +7122,7 @@ def _early_strays(
         if trace is not None:
             pieces.extend(pieces_of_trace(trace))
     ways = trail_touch.off_road_ways([piece.way_id for piece in pieces])
-    return trail_touch.stray_rings(pieces, ways, touched_trails, any_dirt)
+    return trail_touch.stray_rings(pieces, ways, touched_trails, any_dirt, exit_at)
 
 
 def quick_applies(preset_name: str, loop: bool, long_ride: bool, long_calm: bool) -> bool:

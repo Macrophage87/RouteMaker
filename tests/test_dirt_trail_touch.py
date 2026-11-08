@@ -688,6 +688,25 @@ class TestStrayRings:
         assert len(rings) == 1
         assert min(p[0] for p in rings[0]) > -77.0 + 0.0005
 
+    def test_end_mountain_biking_takes_an_easier_trail_off_and_leaves_a_harder_one(
+        self, monkeypatch
+    ) -> None:
+        """The owner, 2026-11-08: "It should find calmer or shorter trails if available." From
+        a blue trail (1): a green one joined to it (2) may be ridden, a black one (3) may not,
+        nor a trail the way off reaches by road (4)."""
+        levels = {1: 2, 2: 1, 3: 3, 4: 1}
+        monkeypatch.setattr(trail_touch, "trail_levels", lambda ids: {w: levels[w] for w in ids})
+        ways = {1: "singletrack", 2: "singletrack", 3: "singletrack", 4: "mtb"}
+        kept = frozenset({1})
+        assert trail_touch.stray_rings(self.pieces([1, 2]), ways, kept, exit_level=2) == []
+        assert len(trail_touch.stray_rings(self.pieces([1, 3]), ways, kept, exit_level=2)) == 1
+        assert len(trail_touch.stray_rings(self.pieces([1, 9, 4]), ways, kept, exit_level=2)) == 1
+        # A stray run before the kept one, and a harder trail after it: both left out, by place.
+        rings = trail_touch.stray_rings(self.pieces([4, 9, 1, 2, 3]), ways, kept, exit_level=2)
+        assert [round(min(p[0] for p in r), 4) for r in rings] == [-77.0, -76.9960]
+        monkeypatch.setattr(trail_touch, "trail_levels", lambda ids: {w: levels[w] for w in ids})
+        assert trail_touch.exit_level(frozenset({1, 2})) == 1
+
     def test_any_dirt_leaves_out_only_singletrack(self) -> None:
         ways = {1: "mtb", 3: "mtb", 2: "singletrack"}
         pieces = self.pieces([1, 9, 3, 9, 2])
