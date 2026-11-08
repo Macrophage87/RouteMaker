@@ -2503,7 +2503,10 @@ or `wmata budget: ...` (never the key, never a stop or route) when a call fails.
 query holds a place; the beta's nginx logs every `/api/` path's errors at `crit` only. To check
 it is working: plan Own Bike + 🚆🚌 to a trip with a Metrobus step; the step says "Live: bus ...". With no key, or WMATA not answering for
 about three minutes, everything is the timetable's and says "scheduled". An elevator out where a
-rider takes their bike is a warning on the plan and the station card, never an avoidance. To check
+rider takes their bike is a warning on the plan and the station card, never an avoidance. A
+closure or an elevator out read now counts for a trip leaving within two hours
+(`transit_live.LIVE_HOLDS_S`), and an outage with an estimated return also until that return: a
+trip planned for another day is not reshaped by today's incidents (hunt M4). To check
 it is working: open a Metro station's card on the map; its Metro lines say "live" and the card ends
 "Data: WMATA". The log says `wmata live: ...` (never the key) when a reading fails.
 

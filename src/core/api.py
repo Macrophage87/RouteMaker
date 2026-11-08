@@ -4538,7 +4538,8 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
             )
             # A station whose elevators are all out is ranked 15 min down for the bike, so the
             # next one over usually wins (Stephen, 2026-10-21).
-            blocked = transit_live.blocked_stations(live)
+            # Those out now, for a trip leaving while they are out (`transit_live.holding`).
+            blocked = transit_live.blocked_stations(live, transit.moment_of(at))
             bike_schedule = transit.with_elevators_out(
                 schedule,
                 [(station.lon, station.lat) for station in blocked],

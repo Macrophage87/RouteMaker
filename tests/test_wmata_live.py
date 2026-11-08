@@ -429,6 +429,44 @@ def test_own_bike_trips_through_a_closed_station_are_left_out(schedule) -> None:
     )
 
 
+def test_a_closure_or_elevator_out_now_holds_only_for_a_trip_leaving_while_it_does(
+    schedule, monkeypatch
+) -> None:
+    """Hunt M4: a reading's closures and elevator outages were applied to a trip for any day.
+    Now a closure holds for a trip leaving within `LIVE_HOLDS_S` of now, and an outage until
+    its estimated return (Federal Triangle's, in the fixture, 2026-10-17 23:59)."""
+    plan = plan_bike(schedule, CAPITOL_HILL, DOWNTOWN, at(2026, 9, 30, 8, 0))
+    metro = metro_option(plan)
+    closed = _with_incidents("Smithsonian station is closed.")
+    leaves = at(2026, 9, 30, 8, 0).timestamp()
+    # Asked an hour before: the closure and the elevator out both hold.
+    monkeypatch.setattr(transit_live, "_wall", lambda: leaves - 3600)
+    assert metro.key not in [o.key for o in transit_live.skip_closed(plan, closed).options]
+    assert [s.name for s in transit_live.blocked_stations(snapshot(), plan.moment)] == [
+        "Federal Triangle"
+    ]
+    # Asked three days before: the closure is not known to last; the elevator's return is after.
+    monkeypatch.setattr(transit_live, "_wall", lambda: leaves - 3 * 86400)
+    assert transit_live.skip_closed(plan, closed) is plan  # it was left out
+    assert [s.name for s in transit_live.blocked_stations(snapshot(), plan.moment)] == [
+        "Federal Triangle"
+    ]
+    through = transit.choose(plan, metro.key)
+    block = transit_live.annotate(transit.block(through, schedule), through, closed)
+    assert block["live"]["alerts"] == []  # it said the closure
+    assert block["live"]["warnings"] == [
+        "Elevator out at Federal Triangle: carry your bike on the stairs."
+    ]
+    # A trip after the elevator's estimated return: it is not ranked down nor warned of.
+    later = plan_bike(schedule, CAPITOL_HILL, DOWNTOWN, at(2026, 10, 21, 8, 0))
+    assert transit_live.blocked_stations(snapshot(), later.moment) == []  # it was blocked
+    chosen = transit.choose(later, metro_option(later).key)
+    annotated = transit_live.annotate(transit.block(chosen, schedule), chosen, snapshot())
+    assert not (annotated["live"] or {}).get("warnings")
+    # No moment: the reading as it is.
+    assert [s.name for s in transit_live.blocked_stations(snapshot())] == ["Federal Triangle"]
+
+
 def test_bikeshare_and_transit_keeps_its_trips_through_a_closed_station(schedule) -> None:
     """On foot the rider can take the shuttle; the step's WMATA alert says so."""
     plan = plan_bike(schedule, CAPITOL_HILL, DOWNTOWN, at(2026, 9, 30, 8, 0))
