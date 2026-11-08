@@ -666,6 +666,25 @@ class TestTheApi:
         ]
         assert pedestrian["use_lit"] == run_plan.USE_LIT_AFTER_DARK
 
+    def test_a_daytime_dial_set_after_dark_is_a_daylight_run(
+        self, client, fake_router, monkeypatch
+    ) -> None:
+        # Hunt 2, T5: at 10 pm on a Wednesday, with the dial on the weekend and no departure,
+        # the run is Saturday morning's (the moment its closures are matched at), so it is not
+        # dark. Before the fix it was read at now, 10 pm, and leaned to lit ways.
+        from django.utils import timezone
+
+        from core import workzones
+
+        now = datetime(2026, 11, 11, 22, 0, tzinfo=EASTERN).astimezone(UTC)
+        monkeypatch.setattr(timezone, "now", lambda: now)
+        monkeypatch.setattr(workzones, "_now", lambda: now)
+        response = post(
+            client, {"points": [list(START), list(END)], "preset": "run", "when": "weekend"}
+        )
+        assert response.status_code == 200, response.content
+        assert response.json()["run"]["dark"] is False
+
 
 # --- Closures on a run ---------------------------------------------------------------------------
 

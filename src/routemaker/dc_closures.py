@@ -776,7 +776,10 @@ def _window(text: str, context: _Context, posted: date) -> bool:
         end = _at(end_day, times[1])
         if end <= start or (daily is not None and times[1] <= times[0]):
             # A window past midnight ends the morning after; a nightly one's last night too.
-            end += timedelta(days=1)
+            # The day is added to the local date, not to the UTC moment: on a night the
+            # clocks change, 24 hours after "11 pm" is not "5 am" the next morning (hunt 2,
+            # T7: March's "11 pm to 5 am" ended at 6 am, November's at 4 am, an hour early).
+            end = _at(end_day + timedelta(days=1), times[1])
     context.start, context.end, context.windowed = start, end, True
     context.daily = daily
     return True
@@ -1398,9 +1401,12 @@ def _alert_end(sentence: str, published: datetime | None) -> datetime | None:
         return None
     local = _local(published)
     days = _dates(match.group(1), local.year, local.date())
-    end = _at(days[0] if days else local.date(), times[0])
+    day = days[0] if days else local.date()
+    end = _at(day, times[0])
     if end <= published:
-        end += timedelta(days=1)
+        # The next local day at that time, not 24 hours on, which is an hour off on the
+        # night the clocks change (hunt 2, T7).
+        end = _at(day + timedelta(days=1), times[0])
     return end
 
 

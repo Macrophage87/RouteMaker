@@ -843,3 +843,78 @@ def test_a_garage_elevator_to_the_mezzanine_and_a_street_to_platform_one_are_on_
     assert transit_live.blocked_stations(glenmont("Elevator between street and platform")) == []
     both = glenmont("Elevator between street and platform", to_mezzanine)
     assert [s.name for s in transit_live.blocked_stations(both)] == ["Glenmont"]
+
+
+# --- A holiday's Metro timetable from the live trains (hunt 2, T9) ---------------------------
+
+# Columbus Day 2026, a Monday federal holiday, at 5:30 am: open on the weekday timetable (5 am),
+# not yet on the Sunday one the typical file gives a holiday (6 am).
+HOLIDAY_EARLY = at(2026, 10, 12, 5, 30)
+
+
+def test_trains_before_the_sunday_opening_on_a_holiday_say_weekday_service() -> None:
+    """The owner, 2026-11-08: "We have a live API." Before, a holiday was always Sunday's."""
+    wall = HOLIDAY_EARLY.timestamp()
+    assert transit_live.holiday_day_type(live_at(wall), now=wall) == "monday-thursday"
+    # Once the Sunday timetable is open too, the trains cannot say which: the Sunday rule.
+    noon = at(2026, 10, 12, 12, 0).timestamp()
+    assert transit_live.holiday_day_type(live_at(noon), now=noon) is None
+    # Not a holiday, an old or stale reading, no trains in service, or none: nothing said.
+    tuesday = at(2026, 10, 13, 5, 30).timestamp()
+    assert transit_live.holiday_day_type(live_at(tuesday), now=tuesday) is None
+    assert transit_live.holiday_day_type(live_at(wall), now=wall + 600) is None
+    assert transit_live.holiday_day_type(live_at(wall, stale=True), now=wall) is None
+    assert transit_live.holiday_day_type(live_at(wall, trains=()), now=wall) is None
+    assert transit_live.holiday_day_type(None, now=wall) is None
+    # A train predicted only once the Sunday timetable opens says nothing either.
+    late = at(2026, 10, 12, 5, 50).timestamp()
+    from dataclasses import replace
+
+    reading = live_at(late)
+    later = tuple(replace(t, minutes=15, arriving=False, boarding=False) for t in reading.trains)
+    assert transit_live.holiday_day_type(replace(reading, trains=later), now=late) is None
+    # Nor does one predicted further out than `HOLIDAY_TRAIN_MIN` while only the weekday
+    # timetable is open: only a train arriving, boarding or about to is trusted.
+    ahead = tuple(replace(t, minutes=5, arriving=False, boarding=False) for t in reading.trains)
+    assert transit_live.holiday_day_type(replace(reading, trains=ahead), now=late) is None
+    near = tuple(replace(t, minutes=2, arriving=False, boarding=False) for t in reading.trains)
+    assert transit_live.holiday_day_type(replace(reading, trains=near), now=late) == (
+        "monday-thursday"
+    )
+
+
+def test_a_holiday_morning_with_trains_running_plans_metro_on_its_weekday_timetable() -> None:
+    typical = transit.typical_only(HOLIDAY_EARLY.date())
+    wall = HOLIDAY_EARLY.timestamp()
+    sunday = plan_bike(typical, CAPITOL_HILL, DOWNTOWN, HOLIDAY_EARLY)
+    weekday_schedule = transit_live.with_holiday_service(typical, live_at(wall), now=wall)
+    weekday = plan_bike(weekday_schedule, CAPITOL_HILL, DOWNTOWN, HOLIDAY_EARLY)
+    # Before: the first train is the Sunday timetable's, at 6 am or after; now the weekday's,
+    # running since 5 am, leaves well before.
+    first = transit_legs(metro_option(sunday))[0]
+    early = transit_legs(metro_option(weekday))[0]
+    assert "(first train 6:" in first.words()
+    assert "first train" not in early.words() and metro_option(weekday).total_s < (
+        metro_option(sunday).total_s
+    )
+    assert transit.typical_day_type(HOLIDAY_EARLY.date()) == "sunday"
+    notes = transit.block(transit.choose(weekday, metro_option(weekday).key), weekday_schedule)[
+        "notes"
+    ]
+    assert (
+        "Today is a federal holiday, but WMATA's live trains show Metro's weekday timetable"
+        " running." in notes
+    )
+    # The other days of the window keep their own day types; with no reading, all as before.
+    assert transit_live.with_holiday_service(typical, None, now=wall) is typical
+    offset = (HOLIDAY_EARLY.date() - typical.start).days
+    changed = [
+        i
+        for i, (a, b) in enumerate(zip(typical.services, weekday_schedule.services, strict=True))
+        if a != b
+    ]
+    assert len(changed) == 2 and all(
+        typical.services[i][:offset] == weekday_schedule.services[i][:offset]
+        and typical.services[i][offset + 1 :] == weekday_schedule.services[i][offset + 1 :]
+        for i in changed
+    )

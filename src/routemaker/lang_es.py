@@ -362,6 +362,10 @@ ES: dict[str, str] = {
         "Hoy es feriado federal: el Metro se planifica con su horario de {day}; los demás, con sus"
         " horarios de feriado."
     ),
+    "Today is a federal holiday, but WMATA's live trains show Metro's weekday timetable running.": (
+        "Hoy es feriado federal, pero los trenes en vivo de WMATA muestran que el Metro funciona"
+        " con su horario de día laborable."
+    ),
     "The trip chosen is no longer scheduled: the quickest is shown.": (
         "El viaje elegido ya no está programado: se muestra el más rápido."
     ),

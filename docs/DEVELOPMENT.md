@@ -8010,7 +8010,17 @@ docs/OPERATIONS.md, "Transit schedule". The design note is plans/v0.6.0-transit-
   `metro_stations()` by a test). Trains are laid out evenly, and a wait is always half the
   interval (or the time to the first or last train), so no Metro departure is named or counted
   down. Before the first train the step names it instead of the interval ("first train 5:00 am
-  scheduled"). A holiday runs the typical Sunday timetable, and the holiday note says so. An
+  scheduled"). A holiday runs the typical Sunday timetable, and the holiday note says so, unless
+  WMATA's live trains show the weekday one running (hunt 2, T9; the owner, 2026-11-08: "We have a
+  live API."). The rule is Claude's design, not WMATA's or the owner's: a fresh reading taken on
+  the holiday with a train in service arriving or boarding, or due within
+  `transit_live.HOLIDAY_TRAIN_MIN` (2 min), while only the weekday timetable is open (5 to 6 am,
+  or midnight to 2 am on a Friday) puts the rest of that service day on the weekday timetable,
+  and the note says so (`transit_live.holiday_day_type`, `transit.with_metro_day`); a train
+  predicted further out is not trusted. The live feed cannot say more:
+  once both timetables are open both run trains, so the day stays Sunday's, and a holiday
+  planned ahead or with no reading keeps the Sunday rule. A trip leaving now is timed on the
+  predicted trains either way. An
   installed schedule that has run out (or does not reach the date asked for) leaves Metro on its
   typical timetable alone, with a note; `check_operations` still asks for a rebuild. Its credit reads "WMATA, wmata.com (typical service)"; there is no separate note. A built
   schedule with WMATA's rail GTFS replaces it with no setting. Metrobus stays out until its GTFS is

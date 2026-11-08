@@ -4460,7 +4460,10 @@ def _run_body(body: RouteIn, started: float | None) -> dict:
     ask = run_plan.RunAsk(
         pace_kmh=run_plan.pace_of(body.run_pace_kmh),
         hills=0 if body.hills is None else body.hills,
-        dark=run_plan.is_dark(at, body.when),
+        # Dark at the run's moment, the one its closures are matched at: a run asked for at
+        # 10 pm with the dial on the weekend is Saturday morning's, not tonight's, as Reach
+        # already has it (`core.reach`, hunt 2, T5).
+        dark=run_plan.is_dark(zones_at, body.when),
         loop=body.loop,
         target_m=target_m,
         exclude_polygons=tuple(exclude),
@@ -4606,6 +4609,9 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
     # WMATA's live reading (core.wmata_live), if any: read before the search, which ranks a
     # station with no working elevator on the way 15 min down, and used after it (below).
     live = wmata_live.client.snapshot()
+    # On a federal holiday, typical Metro on the timetable WMATA's live trains show running,
+    # where they can say (hunt 2, T9: `transit_live.holiday_day_type`); Sunday's otherwise.
+    schedule = transit_live.with_holiday_service(schedule, live)
 
     def search(
         a: list[float], b: list[float], at: datetime, services=services, schedule=schedule
@@ -4699,8 +4705,9 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
                 walk_keep=walk_keep,
                 **rides_on,
             )
-            leg_schedule = transit.load(
-                settings.TRANSIT_SCHEDULE_PATH, transit.moment_of(at).service_day
+            leg_schedule = transit_live.with_holiday_service(
+                transit.load(settings.TRANSIT_SCHEDULE_PATH, transit.moment_of(at).service_day),
+                live,
             )
             leg = chosen(search(a, b, at, leg_services, leg_schedule), None)
             plans.append(leg)
