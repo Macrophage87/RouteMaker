@@ -49,6 +49,8 @@ CONTRACT_PRESETS = {
     "road-bike",
     # Run (Stephen, 2026-11-02): on foot, on Walk's map (core.run_plan).
     "run",
+    # Tandem (Stephen, 2026-11-08): a bicycle built for two.
+    "tandem",
 }
 
 # The factor dials Valhalla reads on a 0..1 scale; outside it the service
@@ -163,6 +165,37 @@ def test_cargo_is_hill_averse_slow_and_gate_shy() -> None:
     assert options("cargo")["bicycle_type"] == "Hybrid"
 
 
+def test_tandem_keeps_out_of_narrow_gaps_turns_less_and_climbs_gently() -> None:
+    """The owner, 2026-11-08: "Build a tandem ride type"; the large gate penalty "was intended
+    just for Tandem, and possibly cargo too". A long, heavy bike for two (core.presets,
+    "Tandem")."""
+    tandem = options(presets.TANDEM)
+    assert _gate_charge(presets.TANDEM) == _gate_charge("cargo") >= 600
+    assert tandem["gate_cost"] <= 30
+    assert tandem["maneuver_penalty"] == presets.HIGH_MANEUVER_PENALTY_S
+    assert tandem["use_hills"] < options("default")["use_hills"]
+    assert tandem["avoid_bad_surfaces"] > options("default")["avoid_bad_surfaces"]
+    # Faster on the flat than Default's hybrid: two riders, one bike's drag.
+    assert tandem["cycling_speed"] > presets.VALHALLA_DEFAULT_SPEED_KMH["Hybrid"]
+    # The stoker is not in control (OWNER-DECISIONS 221, 241): Cargo with passengers' start
+    # and exposure.
+    assert presets.stress_start(presets.TANDEM) == presets.stress_start("cargo", "people") == 80
+    assert presets.exposure_for(presets.TANDEM) == presets.EXPOSURE_NOT_IN_CONTROL
+    assert presets.wait_weight_for(presets.TANDEM) == 2.0
+    assert presets.wait_weight_for(presets.TANDEM) < presets.wait_weight_for(presets.ROAD_BIKE)
+    assert presets.variant_for_ride(presets.TANDEM, "weekday_offpeak") == Variant.STANDARD.value
+    assert presets.variant_for_ride(presets.TANDEM, "weekend") == Variant.WEEKEND.value
+    assert presets.rider_speed(presets.TANDEM, 30.0) == 30.0
+
+
+def test_tandem_plans_climbs_at_two_riders_weight_unless_the_rider_set_one() -> None:
+    from routemaker import effort
+
+    assert presets.system_weight_for(presets.TANDEM) == effort.TANDEM_MASS_KG
+    assert effort.TANDEM_MASS_KG > effort.PASSENGERS_MASS_KG > effort.MASS_KG
+    assert presets.system_weight_for(presets.TANDEM, chosen=150) == 150
+
+
 def test_carrying_cargo_is_default_and_people_the_top_of_the_slider() -> None:
     """The owner, 2026-09-28: "Same as Default, 90 (Recommended)" for carrying
     cargo; carrying people stays calmer, at the old top of the slider - 80 now
@@ -263,11 +296,12 @@ def test_group_ride_pays_a_small_gate_charge_like_default() -> None:
     assert _gate_charge("group-ride") == _gate_charge("default") == 30
 
 
-GATE_SHY = frozenset({"cargo"})
+# The owner, 2026-11-08: the large charge is "for Tandem, and possibly cargo too".
+GATE_SHY = frozenset({"cargo", presets.TANDEM})
 
 
 @pytest.mark.parametrize("name", sorted(presets.PRESETS))
-def test_only_cargo_pays_a_large_gate_charge(name: str) -> None:
+def test_only_cargo_and_tandem_pay_a_large_gate_charge(name: str) -> None:
     """Every other ride type pays a small slow-down at a gate, cycle barrier or narrow
     bollard: Valhalla's 30 s and no penalty. Before 2026-11-08: 330 s (420 s for Group Ride
     and Road Bike, 900 s for the share bikes, Walk and Run) (hunt T1, H3)."""
@@ -485,6 +519,9 @@ def test_every_ride_types_brake_grade_is_the_owners_approved_table() -> None:
         "fast": None,
         # Road Bike (2026-11-02): a road bike descends fast, as Fast's rider does.
         "road-bike": None,
+        # Tandem (2026-11-08): the implementation's proposal, a group's 5% (core.presets,
+        # "Tandem"): two riders' weight on one set of brakes.
+        "tandem": 0.05,
     }
     assert dict(presets.BRAKE_GRADES) == approved
     for name, preset in presets.PRESETS.items():

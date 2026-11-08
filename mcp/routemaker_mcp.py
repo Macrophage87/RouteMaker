@@ -97,6 +97,8 @@ PRESETS = (
     "fast",
     "road-bike",
     "cargo",
+    # Tandem (2026-11-08): a bicycle built for two (core/presets.py TANDEM).
+    "tandem",
     "ebike",
     "bikeshare",
     "rebalance",
@@ -3381,7 +3383,8 @@ RIDE_OPTIONS = {
             " IMBA level. gravel: unpaved welcome. fast: direct, traffic tolerant. road-bike: a"
             " road bike, off gravel, dirt and winding trails where there is a paved way round,"
             " fewer turns. cargo: cargo"
-            " bike (carrying, assist). ebike: e-bike rules and pace. bikeshare: Capital"
+            " bike (carrying, assist). tandem: a bicycle built for two, no narrow barriers,"
+            " fewer turns, gentler climbs. ebike: e-bike rules and pace. bikeshare: Capital"
             " Bikeshare dock to dock (two points). rebalance: from the start alone (one point),"
             " the nearest crowded station to the nearest one that needs bikes. bike-transit"
             " and bikeshare-transit:"
@@ -3609,6 +3612,7 @@ STRESS_START = {
     "fast": 10,
     "road-bike": 40,
     "cargo": 70,
+    "tandem": 80,
     "ebike": 70,
     "bikeshare": 80,
     "rebalance": 80,
