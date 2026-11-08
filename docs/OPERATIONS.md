@@ -5587,13 +5587,13 @@ row keyed `closures` (`src/core/closure_sources.py`):
 | Source | URL | Every | Stale after | Dropped after | Becomes |
 |---|---|---|---|---|---|
 | DDOT TOPS permits (`dc`, CC BY 4.0) | `maps2.dcgis.dc.gov/.../DDOT/TOPS/MapServer/1/query` | 1 h | 3 h | 26 h | Flagged only (a road *may* be closed): never routed around (Go, Plan, MCP), no warning or cue; shown only by Plan's Potential closures layer (off by default) |
-| MPD traffic advisories (`mpd`) | `mpdc.dc.gov/newsroom` | 15 min | 45 min | 6 h | Closures on the ways between the cross streets; the rest "Check before you go" text |
+| MPD traffic advisories (`mpd`) | `mpdc.dc.gov/newsroom` | 15 min | 45 min | 6 h | Closures on the ways between the cross streets; the rest "Check before you go" text. A window said to hold "nightly" or "daily", or two days with one pair of times ("Nov 14 through Nov 22, 9 pm to 5 am"), is routed round only in those hours of each day (`Zone.daily`) |
 | AlertDC (`alertdc`) | `trainingtrack.hsema.dc.gov/NRss/RssFeed/AlertDCList` (HTML list) | 15 min | 45 min | 3 h | As MPD; only traffic and road items are kept, every other item is dropped unread |
 | NPS alerts (`nps`) | `developer.nps.gov/api/v1/alerts` | 30 min | 90 min | 6 h | Park-level "Check before you go" notices (rocr, nama, gwmp, choh, anac), never closures |
 | DDOT ProTrack+ projects (`protrack`, CC BY 4.0) | `maps2.dcgis.dc.gov/.../DDOT/ProTrackPlusViews/MapServer/1/query` | 6 h | 24 h | 3 days | Potential closures, as DDOT's permits: "Under Construction" and not past the estimated completion; sidewalk, alley, streetlight, green infrastructure, tree, landscaping and signage work left out |
 | DC Water work zones (`dcwater`) | `geo.dcwater.com/.../Viewer/ActiveWorkZonesPublic/MapServer/0/query` | 6 h | 24 h | 3 days | Potential closures; each zone's middle placed on its block as a permit's is |
 | WSSC Water mains (`wssc`) | `gisportal.wsscwater.com/.../IYN/Water_Construction1/MapServer/0/query` | 6 h | 24 h | 3 days | Potential closures along the pipe, "Construction Started" only; the layer's contact names, phones and emails are never asked for |
-| Maryland Road Closure Reporter (`sha`, v0.17.0) | `mdgeodata.md.gov/.../SHA_RoadClosure/RoadClosureActive/MapServer/1/query` and `.../RoadClosurePlanned/MapServer/1/query` | 15 min | 45 min | 6 h | Maryland's counties' and towns' closures, routed round in their hours (`routemaker.md_closures`): "Closed" and "Emergency Vehicle Only Access" are closed; "Limited Public Access" with every lane closed is every lane closed, bicycles not mentioned (the WZDx penalty); a lane closed is a lane penalty. The reporting account (`Creator`) is never asked for |
+| Maryland Road Closure Reporter (`sha`, v0.17.0) | `mdgeodata.md.gov/.../SHA_RoadClosure/RoadClosureActive/MapServer/1/query` and `.../RoadClosurePlanned/MapServer/1/query` | 15 min | 45 min | 6 h | Maryland's counties' and towns' closures, routed round in their hours (`routemaker.md_closures`): "Closed" and "Emergency Vehicle Only Access" are closed; "Limited Public Access" with every lane closed is every lane closed, bicycles not mentioned (the WZDx penalty); a lane closed is a lane penalty. One on an Interstate ("I 695", "WB I 695") or a road the map bars is not kept, as the WZDx feeds' are not. The reporting account (`Creator`) is never asked for |
 
 NPS needs `NPS_API_KEY` in the worker's environment (sent as the `X-Api-Key` header);
 without it NPS is simply not read. The host needs egress to the four hosts, and (v0.17.0) to
@@ -8846,10 +8846,25 @@ that table. The planner reads it at most once a minute a process. Nothing needs 
   left out of every router request (`exclude_polygons`, a strip 6 m [20 ft] either side of the
   zone's line, trimmed 20 m [66 ft] at each end so cross streets stay open). The line is kept to
   within 3 m [10 ft] of the road in at most 12 points, so a curved road stays inside its strip; a
-  longer winding one gets a wider strip instead. Where more closures are in force than the
-  router takes (100 vertices in all), those nearest the line through the rider's points in
-  order are kept and the rest are warned of. The answer is checked against the closures it
-  went round: one it still runs along is warned of in red, not counted as routed round. Every other zone in
+  longer winding one gets a wider strip instead. The router leaves out every edge a strip meets,
+  whole and both ways, with no bridge or layer test, so the strip is cut 12 m [40 ft] either side
+  of each way of the live map that crosses it mid-zone (a cross street, a road or trail on a
+  bridge over it or in a tunnel under it; `core.workzones.crossings`, cached an hour a line). The
+  part of a closure within 50 m [165 ft] of a point the rider placed is left in, so the router can
+  start or stop there; the rest is left out, and only a closure wholly that near is warned of
+  instead. The roads a rider marks closed (`blocked_lines`) are trimmed and cut the same way.
+  Where more closures are in force than the router takes (50,000 m [31 mi] of perimeter and
+  1,000 vertices in all; the perimeter measured as Valhalla measures it and packed to 99% of
+  that), those nearest the line through the rider's points in order are kept and the rest are
+  warned of. The answer is checked against the closures it
+  went round: one it still runs along is warned of in red, not counted as routed round. Where the
+  router refuses the closures' polygons anyway (167, 176) the plan is asked again with the
+  farther half of them, and so on. Where it finds no path (442), the closures and the rider's
+  marked roads that meet its edges at the destination or a via (a verbose `/locate` of those
+  points) are let in first, and every closure only if that is not enough. A ride's re-plan that
+  still runs along a road the rider marked closed near its start (the router lets a left-out edge
+  be the first) is planned again setting off the other way, and says so in red where that fails.
+  Every other zone in
   force at the ride time that the route runs along costs its penalty: 60 s shoulder only, 120 s a
   lane closed, 180 s a flagger or alternating one-way, 600 s every lane closed with bicycles not
   mentioned (shown in red). The plan asks once for the route round those zones and keeps it where
@@ -8872,7 +8887,8 @@ that table. The planner reads it at most once a minute a process. Nothing needs 
   closures on roads bikes can't use"): one every road name of which is an Interstate ("I-97",
   never "I-70 Business"), dropped before it is placed; or one at least 60% of whose samples have,
   as their nearest road within 15 m [50 ft], one the live map bars (`map_class` barred), checked
-  in one query a refresh once it is on the road.
+  in one query a refresh once it is on the road. MDOT SHA's Road Closure Reporter (`sha`) is held
+  to the same two rules ("WB I 695" is an Interstate too).
 
 **After the release is deployed** (no rebuild needed):
 

@@ -126,6 +126,14 @@ HALF_WIDTH_M = 6.0
 # these to the configs.
 MAX_PERIMETER_M = 50_000.0
 MAX_VERTICES = 1000
+# The router measures that perimeter its own way (Valhalla 3.9.1, loki/polygon_search.cc
+# `edges_in_rings`: `PointLL::Distance`, haversine on a radius of 6,378,160.187 m), about 0.11%
+# longer than our own mean-radius plane, and refuses the whole request over it (error 167),
+# so a plan packed to the cap by our count was refused outright (hunt Q1, 2026-11-08: 24 of 50
+# busy plans). The rings are measured as the router measures them (`ring_perimeter_m`), and
+# packed only to `PERIMETER_BUDGET_M`, a small margin under the cap.
+VALHALLA_EARTH_M = 6_378_160.187
+PERIMETER_BUDGET_M = MAX_PERIMETER_M * 0.99
 # A polygon is at most this many vertices along each side. The line is thinned to within
 # `THIN_M` of the road, so a 6 m strip still covers a curved road with half its width to
 # spare (audit 2026-10-29: thinned to 5 points, a closed road on a long curve drifted 50 to
@@ -134,9 +142,23 @@ MAX_VERTICES = 1000
 # widened by as much, so it still covers the whole road.
 MAX_LINE_POINTS = 12
 THIN_M = HALF_WIDTH_M / 2
-# A closure within this distance of a point the rider placed is not excluded (the
-# router could not start or stop there); it is warned of instead.
+# The part of a closure within this distance of a point the rider placed is not excluded (the
+# router could not start or stop there); the rest of it is (hunt K3, 2026-11-08: a 1 mi trail
+# closure whose end was 130 ft from the start was ridden whole). A closure wholly that near is
+# warned of instead.
 NEAR_POINT_M = 50.0
+# Where a way crosses a closure's strip mid-zone (a cross street, a trail on a bridge over the
+# closed road or in a tunnel under it), the strip is cut for this far either side of the
+# crossing, so the router, which leaves out every edge that meets a strip whole, junction to
+# junction and both ways (Valhalla 3.9.1 `line_intersects_ring`, no layer test), keeps the
+# crossing way (hunt K4/Q2, 2026-11-08). The closed road's own edges still meet the pieces
+# either side. A way crossing at under `CROSS_MIN_DEG` runs along the road, not across it.
+# Valhalla's `exclude_levels` does not help: it reads the indoor `level` tag, not
+# `layer`/`bridge`/`tunnel`, so nothing on a road's edge says which layer it is on.
+CROSS_GAP_M = 2 * HALF_WIDTH_M
+CROSS_MIN_DEG = 35.0
+# A piece of a closure's strip shorter than this, left between two cuts, is not sent.
+MIN_PIECE_M = 4.0
 # How far beyond the box of the rider's points a closure may lie and still matter, at least:
 # a plan that can go further from them (a loop sized to a target, a climb search, Reach's
 # rings) widens it to its own reach (`for_plan`'s `reach_m`, `detour_reach_m`). The closures
@@ -171,9 +193,11 @@ PLACED_TOLERANCE_M = 4.0
 # open sample (`open_part`; the owner, 2026-10-26, of US 340's zone drawn along the freeway
 # past Frederick: "It's also showing construction now on highways not open to bikes"). The
 # samples are about `BARRED_STEP_M` apart, at least `BARRED_SAMPLES` and at most `BARRED_MOST`.
-# "I-97", "I 495", "Interstate 95", "I-97A", any dash; never "I-70 Business", a town street.
+# "I-97", "I 495", "Interstate 95", "I-97A", any dash, and a direction before it as MDOT SHA's
+# Road Closure Reporter writes one ("WB I 695"); never "I-70 Business", a town street.
 INTERSTATE = re.compile(
-    r"^\s*(i|ih|is|interstate)[\s\-\u2010-\u2015]*\d+[a-z]?\b(?!.*\bbus(iness)?\b)",
+    r"^\s*(?:(?:nb|sb|eb|wb|northbound|southbound|eastbound|westbound)\s+)?"
+    r"(i|ih|is|interstate)[\s\-\u2010-\u2015]*\d+[a-z]?\b(?!.*\bbus(iness)?\b)",
     re.IGNORECASE,
 )
 BARRED_NEAR_M = 15.0
@@ -216,6 +240,12 @@ class Zone:
     # (a kept walkway); None, the source does not say. A closure to traffic is not one to
     # people on foot unless its source says so.
     on_foot: bool | None = None
+    # The hours of each day it holds, in the region's time, where the source gives a daily or
+    # nightly window inside its days ("Nov 14 through Nov 22, 9 pm to 5 am nightly"): (start
+    # hour, minute, end hour, minute), an end at or before the start running past midnight.
+    # None: it holds the whole of its window (hunt K6, 2026-11-08: a week of nights was read
+    # as one week-long closure, and daytime rides went round an open street).
+    daily: tuple[int, int, int, int] | None = None
 
     @property
     def firm_end(self) -> bool:
@@ -243,6 +273,7 @@ class Zone:
             "approximate": self.approximate,
             "from_ends": self.from_ends,
             "on_foot": self.on_foot,
+            "daily": None if self.daily is None else list(self.daily),
         }
 
     @classmethod
@@ -266,7 +297,23 @@ class Zone:
             approximate=bool(row.get("approximate")),
             from_ends=bool(row.get("from_ends")),
             on_foot=_on_foot(row.get("on_foot")),
+            daily=_daily(row.get("daily")),
         )
+
+
+def _daily(value) -> tuple[int, int, int, int] | None:
+    """A stored `daily`: four whole numbers in range, else None."""
+    if not isinstance(value, (list, tuple)) or len(value) != 4:
+        return None
+    try:
+        hours = tuple(int(v) for v in value)
+    except (TypeError, ValueError):
+        return None
+    if not (
+        0 <= hours[0] < 24 and 0 <= hours[1] < 60 and 0 <= hours[2] < 24 and 0 <= hours[3] < 60
+    ):
+        return None
+    return hours  # type: ignore[return-value]
 
 
 def _on_foot(value) -> bool | None:
@@ -399,10 +446,20 @@ def parse_feed(document: Mapping, source: str) -> list[Zone]:
 
 def active(zone: Zone, at: datetime) -> bool:
     """Whether the ride at `at` falls inside the zone's window. A zone with no start
-    is in force now; one with no end has not been said to end."""
+    is in force now; one with no end has not been said to end. One with daily hours
+    (`Zone.daily`) holds only in those hours of each of its days, in the region's time."""
     if zone.start is not None and at < zone.start:
         return False
-    return not (zone.end is not None and at >= zone.end)
+    if zone.end is not None and at >= zone.end:
+        return False
+    if zone.daily is None:
+        return True
+    local = _local(at)
+    now_min = local.hour * 60 + local.minute
+    first, last = zone.daily[0] * 60 + zone.daily[1], zone.daily[2] * 60 + zone.daily[3]
+    if first < last:
+        return first <= now_min < last
+    return now_min >= first or now_min < last
 
 
 # --- Geometry on a local plane -------------------------------------------------
@@ -516,6 +573,11 @@ def line_ring(line: Sequence[Sequence[float]], trim_m: float = 0.0) -> list[list
         return None
     if trim_m > 0:
         points = _trim(points, trim_m)
+    return _strip(points, lat0)
+
+
+def _strip(points: list[tuple[float, float]], lat0: float) -> list[list[float]] | None:
+    """`line_ring`'s strip round a line already on the plane at `lat0` (and trimmed)."""
     points = [p for i, p in enumerate(points) if i == 0 or p != points[i - 1]]
     if len(points) < 2:
         return None
@@ -546,8 +608,227 @@ def line_ring(line: Sequence[Sequence[float]], trim_m: float = 0.0) -> list[list
 
 
 def ring_perimeter_m(ring: Sequence[Sequence[float]]) -> float:
-    lat0 = ring[0][1]
-    return _length([_xy(lon, lat, lat0) for lon, lat in ring])
+    """A ring's perimeter as the router counts it against its limit: haversine on Valhalla's
+    own Earth radius (`VALHALLA_EARTH_M`), segment by segment, as Valhalla 3.9.1's
+    `edges_in_rings` sums `PointLL::Distance`."""
+    total = 0.0
+    for (lon1, lat1), (lon2, lat2) in zip(ring, ring[1:], strict=False):
+        p1, p2 = math.radians(lat1), math.radians(lat2)
+        h = (
+            math.sin((p2 - p1) / 2) ** 2
+            + math.cos(p1) * math.cos(p2) * math.sin(math.radians(lon2 - lon1) / 2) ** 2
+        )
+        total += VALHALLA_EARTH_M * 2 * math.asin(math.sqrt(min(1.0, max(0.0, h))))
+    return total
+
+
+def fits_budget(used_m: float, used_vertices: int, ring: Sequence[Sequence[float]]) -> bool:
+    """Whether `ring` fits the router's polygon limits beside what is already used: its
+    perimeter within `PERIMETER_BUDGET_M` (the margin under the router's cap), its vertices
+    within `MAX_VERTICES`."""
+    return (
+        used_m + ring_perimeter_m(ring) <= PERIMETER_BUDGET_M
+        and used_vertices + len(ring) <= MAX_VERTICES
+    )
+
+
+def over_budget(rings: Sequence[Sequence[Sequence[float]]]) -> bool:
+    """Whether `rings` pass the router's polygon limits as this module packs them."""
+    perimeter, vertices = budget_used(rings)
+    return perimeter > PERIMETER_BUDGET_M or vertices > MAX_VERTICES
+
+
+def _spans_near(
+    line: list[tuple[float, float]], point: tuple[float, float], radius: float
+) -> list[tuple[float, float]]:
+    """The stretches of `line` (on the plane), as metres along it, within `radius` of `point`."""
+    out = []
+    run = 0.0
+    for a, b in zip(line, line[1:], strict=False):
+        seg = math.dist(a, b)
+        if seg == 0:
+            continue
+        dx, dy = (b[0] - a[0]) / seg, (b[1] - a[1]) / seg
+        # |a + t (b - a) - p| <= r, with t in metres along the segment.
+        px, py = point[0] - a[0], point[1] - a[1]
+        along = px * dx + py * dy
+        off2 = px * px + py * py - along * along
+        if off2 <= radius * radius:
+            half = math.sqrt(radius * radius - off2)
+            lo, hi = max(0.0, along - half), min(seg, along + half)
+            if lo <= hi:
+                out.append((run + lo, run + hi))
+        run += seg
+    return out
+
+
+def _subtract(
+    spans: list[tuple[float, float]], holes: Iterable[tuple[float, float]]
+) -> list[tuple[float, float]]:
+    """`spans` (metres along a line, in order) less `holes`."""
+    out = list(spans)
+    for lo, hi in holes:
+        cut = []
+        for a, b in out:
+            if hi <= a or lo >= b:
+                cut.append((a, b))
+                continue
+            if lo > a:
+                cut.append((a, lo))
+            if hi < b:
+                cut.append((hi, b))
+        out = cut
+    return out
+
+
+def line_rings(
+    line: Sequence[Sequence[float]],
+    trim_m: float = 0.0,
+    points: Sequence[Sequence[float]] = (),
+    crossings: Sequence[float] = (),
+) -> list[list[list[float]]]:
+    """The strips the router is to leave out for a closed line of [lon, lat] pairs: as
+    `line_ring` (`trim_m` cut from each end), less the stretches within `NEAR_POINT_M` of any
+    of `points` (the rider's), and cut `CROSS_GAP_M` either side of each of `crossings`
+    (metres along the line where a way crosses it: `crossing_cuts`). Empty where nothing is
+    left to leave out: a line under 1 m, or one wholly near the points. The crossing cuts never
+    leave a line with nothing to leave out; a piece under `MIN_PIECE_M` is not sent. With no
+    point near and no crossing, the one ring `line_ring` gives."""
+    if len(line) < 2:
+        return []
+    lat0 = line[0][1]
+    xy = [_xy(p[0], p[1], lat0) for p in line]
+    total = _length(xy)
+    if total < 1.0:
+        return []
+    cut = 0.0 if trim_m <= 0 else (trim_m if total > 3 * trim_m else total / 3)
+    span = [(cut, total - cut)]
+    near = [hole for p in points for hole in _spans_near(xy, _xy(p[0], p[1], lat0), NEAR_POINT_M)]
+    kept = [s for s in _subtract(span, near) if s[1] - s[0] >= MIN_PIECE_M]
+    if near and not kept:
+        return []
+    gaps = [(c - CROSS_GAP_M, c + CROSS_GAP_M) for c in crossings if cut < c < total - cut]
+    pieces = [s for s in _subtract(kept, gaps) if s[1] - s[0] >= MIN_PIECE_M] or kept
+    if pieces == span:
+        ring = line_ring(line, trim_m)
+        return [] if ring is None else [ring]
+    rings = []
+    for start, end in pieces:
+        ring = _strip(_between(xy, start, end), lat0)
+        if ring is not None:
+            rings.append(ring)
+    return rings
+
+
+def zone_rings(
+    zone: Zone, points: Sequence[Sequence[float]] = (), crossings: Sequence[float] = ()
+) -> list[list[list[float]]]:
+    """A closure's strips (`line_rings`): its line trimmed `TRIM_M` at both ends, less the
+    stretches near the rider's `points`, cut at its `crossings`."""
+    return line_rings(zone.line, TRIM_M, points, crossings)
+
+
+def crossing_cuts(
+    line: Sequence[Sequence[float]], parts: Iterable[Sequence[Sequence[float]]]
+) -> tuple[float, ...]:
+    """Metres along `line` ([lon, lat] pairs) where a way crosses it: `parts` are the map's
+    ways clipped to the line's strip (`core.workzones.crossings`), and one that runs across
+    the line at `CROSS_MIN_DEG` or more, a cross street or a bridge or tunnel over or under
+    it, crosses where its middle lies. A way running along the line (the closed road itself,
+    a sidepath beside it) does not. In order, those within a metre of another made one."""
+    if len(line) < 2:
+        return ()
+    lat0 = line[0][1]
+    xy = [_xy(p[0], p[1], lat0) for p in line]
+    cumulative = [0.0]
+    for a, b in zip(xy, xy[1:], strict=False):
+        cumulative.append(cumulative[-1] + math.dist(a, b))
+    found = []
+    for part in parts:
+        if len(part) < 2:
+            continue
+        pts = [_xy(p[0], p[1], lat0) for p in part]
+        first, last = pts[0], pts[-1]
+        length = math.dist(first, last)
+        if length < 1.0:
+            continue
+        middle = ((first[0] + last[0]) / 2, (first[1] + last[1]) / 2)
+        best, at, index = math.inf, 0.0, 0
+        for i, (a, b) in enumerate(zip(xy, xy[1:], strict=False)):
+            d = _to_segment(middle, a, b)
+            if d < best:
+                seg = math.dist(a, b)
+                t = 0.0
+                if seg > 0:
+                    t = (middle[0] - a[0]) * (b[0] - a[0]) + (middle[1] - a[1]) * (b[1] - a[1])
+                    t = max(0.0, min(1.0, t / seg**2))
+                best, at, index = d, cumulative[i] + t * seg, i
+        a, b = xy[index], xy[index + 1]
+        seg = math.dist(a, b)
+        if seg == 0:
+            continue
+        cos = abs(
+            ((last[0] - first[0]) * (b[0] - a[0]) + (last[1] - first[1]) * (b[1] - a[1]))
+            / (length * seg)
+        )
+        if math.degrees(math.acos(min(1.0, cos))) >= CROSS_MIN_DEG:
+            found.append(at)
+    out: list[float] = []
+    for at in sorted(found):
+        if not out or at - out[-1] > 1.0:
+            out.append(at)
+    return tuple(round(at, 1) for at in out)
+
+
+def _segments_cross(a, b, c, d) -> bool:
+    """Whether segment a-b meets segment c-d (touching counts)."""
+
+    def side(p, q, r) -> float:
+        return (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0])
+
+    def on(p, q, r) -> bool:
+        return min(p[0], q[0]) <= r[0] <= max(p[0], q[0]) and min(p[1], q[1]) <= r[1] <= max(
+            p[1], q[1]
+        )
+
+    d1, d2, d3, d4 = side(c, d, a), side(c, d, b), side(a, b, c), side(a, b, d)
+    if ((d1 > 0) != (d2 > 0)) and ((d3 > 0) != (d4 > 0)) and d1 and d2 and d3 and d4:
+        return True
+    return (
+        (d1 == 0 and on(c, d, a))
+        or (d2 == 0 and on(c, d, b))
+        or (d3 == 0 and on(a, b, c))
+        or (d4 == 0 and on(a, b, d))
+    )
+
+
+def _in_ring(point, ring) -> bool:
+    x, y = point[0], point[1]
+    inside = False
+    for (x1, y1), (x2, y2) in zip(ring, ring[1:], strict=False):
+        if (y1 > y) != (y2 > y) and x < x1 + (y - y1) * (x2 - x1) / (y2 - y1):
+            inside = not inside
+    return inside
+
+
+def line_meets_ring(line: Sequence[Sequence[float]], ring: Sequence[Sequence[float]]) -> bool:
+    """Whether the router leaves out an edge of shape `line` ([lon, lat] pairs) for `ring`:
+    any of its segments meets one of the ring's, or its first point is inside the ring
+    (Valhalla 3.9.1, loki/polygon_search.cc `line_intersects_ring`)."""
+    if len(line) < 2 or len(ring) < 4:
+        return False
+    lons = [p[0] for p in ring]
+    lats = [p[1] for p in ring]
+    west, east, south, north = min(lons), max(lons), min(lats), max(lats)
+    for a, b in zip(line, line[1:], strict=False):
+        if max(a[0], b[0]) < west or min(a[0], b[0]) > east:
+            continue
+        if max(a[1], b[1]) < south or min(a[1], b[1]) > north:
+            continue
+        for c, d in zip(ring, ring[1:], strict=False):
+            if _segments_cross(a, b, c, d):
+                return True
+    return _in_ring(line[0], ring)
 
 
 def _distance_to_line(point: tuple[float, float], line_xy: list[tuple[float, float]]) -> float:
@@ -907,6 +1188,22 @@ class PlanZones:
     blocked: list[list[list[float]]] = field(default_factory=list)
     # A plan on foot (Run, Walk, Walk + transit; `for_plan`'s `on_foot`).
     on_foot: bool = False
+    # Each excluded closure's rings, by its id, in `excluded`'s order: one strip, or several
+    # where the part near a rider's point is left in or a way crosses it (`zone_rings`).
+    # `exclude` starts with them, in that order. A closure missing here has one ring.
+    rings: dict[str, list[list[list[float]]]] = field(default_factory=dict)
+
+    def rings_of(self, zone: Zone) -> list[list[list[float]]]:
+        """The rings `exclude` holds for an excluded closure."""
+        found = self.rings.get(zone.zone_id)
+        if found is not None:
+            return found
+        ring = polygon(zone)
+        return [] if ring is None else [ring]
+
+    def closure_ring_count(self) -> int:
+        """How many of `exclude`'s first rings are the excluded closures'."""
+        return sum(len(self.rings.get(z.zone_id, [None])) for z in self.excluded)
 
     @property
     def any(self) -> bool:
@@ -968,33 +1265,35 @@ def _in_box(zone: Zone, box) -> bool:
     return any(box[0] <= lon <= box[2] and box[1] <= lat <= box[3] for lon, lat in zone.line)
 
 
-def _near_point(zone: Zone, points: Sequence[Sequence[float]]) -> bool:
-    lat0 = zone.line[0][1]
-    line = [_xy(lon, lat, lat0) for lon, lat in zone.line]
-    return any(_distance_to_line(_xy(p[0], p[1], lat0), line) <= NEAR_POINT_M for p in points)
-
-
-def fit_polygons(zones: Sequence[Zone], near, used_m: float = 0.0, used_vertices: int = 0):
+def fit_polygons(
+    zones: Sequence[Zone], near, used_m: float = 0.0, used_vertices: int = 0, rings_of=None
+):
     """The zones' polygons, nearest `near` first, as many as fit the router's limits beside
     what is already used. (polygons, fitted zones, left out). `near` is a (lon, lat) point,
     or the rider's points in order: a zone is then ranked by its distance from the line
     through them, so on a long ride the closures by the start and the end count as much as
     those in the middle (audit 2026-10-29: ranked from the points' average, a DC to
-    Baltimore ride left out the closures at both ends first)."""
+    Baltimore ride left out the closures at both ends first). `rings_of(zone)` gives a zone's
+    rings where it has several (`zone_rings`): all of them fit, or the zone is left out. The
+    budget is the router's own count with a margin (`PERIMETER_BUDGET_M`)."""
     stops = [near] if isinstance(near[0], (int, float)) else list(near)
     rings, fitted, left = [], [], []
     for zone in sorted(zones, key=lambda z: _stops_distance(z, stops)):
-        ring = polygon(zone)
-        if ring is None:
+        if rings_of is None:
+            ring = polygon(zone)
+            own = [] if ring is None else [ring]
+        else:
+            own = list(rings_of(zone))
+        if not own:
             left.append(zone)
             continue
-        perimeter = ring_perimeter_m(ring)
-        if used_m + perimeter > MAX_PERIMETER_M or used_vertices + len(ring) > MAX_VERTICES:
+        perimeter, vertices = budget_used(own)
+        if used_m + perimeter > PERIMETER_BUDGET_M or used_vertices + vertices > MAX_VERTICES:
             left.append(zone)
             continue
         used_m += perimeter
-        used_vertices += len(ring)
-        rings.append(ring)
+        used_vertices += vertices
+        rings.extend(own)
         fitted.append(zone)
     return rings, fitted, left
 
@@ -1050,8 +1349,15 @@ def for_plan(
     now_only: bool = False,
     on_foot: bool = False,
     reach_m: float = 0.0,
+    crossings=None,
 ) -> PlanZones:
     """What a plan through `points` (lon, lat) at ride time `at` does with the zones.
+
+    A closure is left out as its strips (`zone_rings`): the part within `NEAR_POINT_M` of
+    one of `points` stays in, so the router can start or stop there, and the rest is left out
+    (hunt K3, 2026-11-08); one wholly that near is warned of instead. `crossings(closures)`
+    gives, by zone id, the metres along each closure's line where a way crosses it
+    (`crossing_cuts`), where the strip is cut (`core.workzones.crossings`; none without it).
 
     The zones looked at lie within `BOX_MARGIN_M` of the box round `points`, or within
     `reach_m` where the plan can go further from them than that (a loop sized to a target,
@@ -1099,13 +1405,23 @@ def for_plan(
         if zone.kind == CLOSED and on_foot and zone.on_foot is not True:
             plan.passable.append(zone)
         elif zone.kind == CLOSED:
-            if _near_point(zone, points):
-                plan.unexcluded.append(zone)
-            else:
-                closures.append(zone)
+            closures.append(zone)
         else:
             plan.passable.append(zone)
-    plan.exclude, plan.excluded, left = fit_polygons(closures, points, *reserve)
+    cuts = crossings(closures) if crossings is not None and closures else {}
+    pieces: dict[str, list[list[list[float]]]] = {}
+    fitting = []
+    for zone in closures:
+        rings = zone_rings(zone, points, cuts.get(zone.zone_id, ()))
+        if rings:
+            pieces[zone.zone_id] = rings
+            fitting.append(zone)
+        else:
+            plan.unexcluded.append(zone)  # wholly by a point placed: warned of
+    plan.exclude, plan.excluded, left = fit_polygons(
+        fitting, points, *reserve, rings_of=lambda z: pieces[z.zone_id]
+    )
+    plan.rings = {z.zone_id: pieces[z.zone_id] for z in plan.excluded}
     plan.unexcluded.extend(left)
     return plan
 
@@ -1248,6 +1564,17 @@ def when_text(zone: Zone, now: datetime | None, future: bool, possible: bool = F
             # v0.17.0: planned work (`routemaker.planned_work`) may close it some day.
             verb = "Planned work may close it some day"
     start, end = zone.start, zone.end
+    if zone.daily is not None and start is not None and end is not None:
+        # Each day's hours, then the days (hunt K6): "Closed 9 pm to 5 am each day, Nov 14 to
+        # Nov 22".
+        from .ridetime import ZONE
+
+        first = datetime(2000, 1, 1, zone.daily[0], zone.daily[1], tzinfo=ZONE)
+        last = datetime(2000, 1, 1, zone.daily[2], zone.daily[3], tzinfo=ZONE)
+        hours = f"{clock_text(first)} to {clock_text(last)} each day"
+        # A nightly window's last night starts the day before its end.
+        final = end - timedelta(days=1) if last <= first else end
+        return f"{verb} {hours}, {date_text(start, now)} to {date_text(final, now)}"
     if end is None:
         lead = f"{verb} from {day_text(start, now)} {clock_text(start)}" if start else verb
         if zone.source == "reviewer":
@@ -1385,6 +1712,12 @@ __all__ = [
     "along",
     "budget_used",
     "classify",
+    "crossing_cuts",
+    "fits_budget",
+    "line_meets_ring",
+    "line_rings",
+    "over_budget",
+    "zone_rings",
     "fit_polygons",
     "for_plan",
     "citation",
