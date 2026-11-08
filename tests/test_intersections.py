@@ -811,6 +811,18 @@ class TestRoute:
         assert m.stop_extra_ft(stopped) == {}
         assert m.stop_extra_ft(None) == {}
 
+    def test_a_rated_signals_stop_sign_price_is_the_models_own(self) -> None:
+        """The 2026-11-08 hunt, J3-4: a rating costs the same whatever the control, so a
+        rated signal's stop sign had cost 0 ft over it, and its lights ranked cheaper."""
+        prim = Road(4, lanes=2, oneway=False, speed_mph=40.0, names=frozenset({"p"}))
+        across = junction(crossed=(prim,), control=Control.SIGNAL)
+        expected = m.stop_extra_ft(m.assess_route([across]))[(-77.0, 38.9)]
+        assert expected > 0.0
+        for rating in (2, 3, 4):
+            events = m.assess_route([replace(across, rating=rating)])
+            # Before: 0 ft at ratings 3 and 4.
+            assert m.stop_extra_ft(events)[(-77.0, 38.9)] == pytest.approx(expected)
+
     def test_the_riders_own_big_road_is_carried_apart_from_the_crossed_one(self) -> None:
         """The signal review, 2026-11-08: the junction-delay model's busiest road at a
         signal counts the rider's own 4-lane or 40 mph road (`own_big_signal_points`),
