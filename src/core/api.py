@@ -4460,7 +4460,10 @@ def _run_body(body: RouteIn, started: float | None) -> dict:
     ask = run_plan.RunAsk(
         pace_kmh=run_plan.pace_of(body.run_pace_kmh),
         hills=0 if body.hills is None else body.hills,
-        dark=run_plan.is_dark(at, body.when),
+        # Dark at the run's moment, the one its closures are matched at: a run asked for at
+        # 10 pm with the dial on the weekend is Saturday morning's, not tonight's, as Reach
+        # already has it (`core.reach`, hunt 2, T5).
+        dark=run_plan.is_dark(zones_at, body.when),
         loop=body.loop,
         target_m=target_m,
         exclude_polygons=tuple(exclude),
@@ -4518,6 +4521,7 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
     # spend the candidates' budget. Feeds that cannot be read are no docks, with a note, not a
     # refusal (TB-2): the trip walks at both ends.
     share_snapshot = share_note = None
+    share_later = False
     if body.preset == presets.BIKESHARE_TRANSIT:
         try:
             share_snapshot = gbfs.client.snapshot()
@@ -4525,6 +4529,15 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
             logger.warning("bikeshare feeds unavailable for a transit plan: %s", error)
             share_snapshot = gbfs.Snapshot(fetched_at=0.0, stations=[], status={})
             share_note = "Bikeshare docks can't be read right now: walking at both ends."
+        # A trip leaving later picks its docks by place, not by what is docked now
+        # (`transit.DOCKS_AHEAD_S`, hunt 2, T6).
+        share_later = (
+            body.depart_at is not None
+            and share_snapshot.status is not None
+            and (when - timezone.now()).total_seconds() > transit.DOCKS_AHEAD_S
+        )
+        if share_later:
+            share_snapshot = dataclasses.replace(share_snapshot, status=None)
     candidates_until = min(
         routing.clock() + TRANSIT_CANDIDATES_S,
         started + routing.PLAN_BUDGET_S - routing.ANSWER_RESERVE_S,
@@ -4606,17 +4619,22 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
     # WMATA's live reading (core.wmata_live), if any: read before the search, which ranks a
     # station with no working elevator on the way 15 min down, and used after it (below).
     live = wmata_live.client.snapshot()
+    # On a federal holiday, typical Metro on the timetable WMATA's live trains show running,
+    # where they can say (hunt 2, T9: `transit_live.holiday_day_type`); Sunday's otherwise.
+    schedule = transit_live.with_holiday_service(schedule, live)
 
     def search(
         a: list[float], b: list[float], at: datetime, services=services, schedule=schedule
     ) -> transit.Plan:
+        # A later leg's own service day's schedule too.
+        schedule = transit_live.with_holiday_service(schedule, live)
         if body.preset == presets.WALK:
             plan = transit.plan_walk(schedule, a, b, at, services)
         elif body.preset == presets.WALK_TRANSIT:
             plan = transit.plan_walk_transit(schedule, a, b, at, services)
         elif body.preset == presets.BIKESHARE_TRANSIT:
             plan = transit.plan_bikeshare(
-                schedule, a, b, at, services, share_snapshot, hop=body.novice_hop
+                schedule, a, b, at, services, share_snapshot, hop=body.novice_hop, later=share_later
             )
             if share_note is not None:
                 plan.notes.insert(0, share_note)

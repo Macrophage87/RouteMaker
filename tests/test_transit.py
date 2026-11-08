@@ -29,7 +29,7 @@ import shutil
 import subprocess
 import sys
 from dataclasses import replace
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from functools import lru_cache
 from pathlib import Path
 
@@ -2558,6 +2558,42 @@ class TestApi:
         assert trip["notes"][0] == "Bikeshare docks can't be read right now: walking at both ends."
         assert trip["steps"][0]["mode"] == trip["steps"][-1]["mode"] == "walk"
         assert deadlines[0] == 1005.0 + api.TRANSIT_CANDIDATES_S
+
+    def test_a_bikeshare_trip_for_later_picks_its_docks_by_place_not_by_tonights_counts(
+        self, client, segments, router, installed, monkeypatch
+    ) -> None:
+        """Hunt 2, T6: at 11 pm the docks by the start are empty and those downtown full. A
+        trip for tomorrow 8 am skipped them as now, so it lost its bikeshare ride; by the
+        morning they have been rebalanced. More than `DOCKS_AHEAD_S` ahead the docks are
+        picked by place and the note says the counts are not known."""
+        from core import gbfs
+
+        router(standard_router())
+        overnight = snapshot(
+            _dock("a", "8th & D St SE", -76.9945, 38.8836, 0, 10),
+            _dock("d", "14th & F St NW", -77.0310, 38.8968, 7, 0),
+        )
+        monkeypatch.setattr(gbfs.client, "snapshot", lambda: overnight)
+        tomorrow = (datetime.now(ZONE) + timedelta(days=1)).replace(
+            hour=8, minute=0, second=0, microsecond=0
+        )
+        later_words = (
+            "Bike and dock availability for a later trip is not known: the nearest docks are used."
+        )
+
+        def shared(**extra):
+            response = post_transit(
+                client, [CAPITOL_HILL, DOWNTOWN], presets.BIKESHARE_TRANSIT, **extra
+            )
+            assert response.status_code == 200, response.content
+            trip = response.json()["transit"]
+            modes = {leg["mode"] for o in trip["options"] for leg in o["legs"]}
+            return trip, transit.SHARE in modes
+
+        now_trip, now_shared = shared()
+        assert not now_shared and later_words not in now_trip["notes"]
+        later_trip, later_shared = shared(depart_at=tomorrow.isoformat())
+        assert later_shared and later_words in later_trip["notes"]
 
     def test_walk_answers_the_walk_with_its_turns_and_asks_no_bike_route(
         self, client, segments, router, installed, monkeypatch

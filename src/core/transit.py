@@ -434,6 +434,12 @@ class Schedule:
     # that does not reach the date (`load`), or the systems left out (`_without`). Each phrase
     # with its places, worded when read (`note`): the schedule is cached across requests.
     said: tuple[Callable[[], str], ...] = ()
+    # Metro's typical timetable's services, one per `TYPICAL_DAY_TYPES` (`with_typical_metro`);
+    # () where Metro runs on WMATA's own GTFS or is not in the schedule.
+    typical_services: tuple[int, ...] = ()
+    # A federal holiday whose typical-Metro day type WMATA's live trains said (the service
+    # day and the day type, `with_metro_day`); None: each holiday runs the file's `holiday`.
+    metro_day: tuple[date, str] | None = None
 
     def __post_init__(self) -> None:
         self.at_stop: dict[int, list[tuple[int, int]]] = {}
@@ -683,6 +689,8 @@ def _without(schedule: Schedule, ended: frozenset[str]) -> Schedule:
         schedule.start,
         schedule.days,
         {k: v for k, v in schedule.source.items() if k not in ended},
+        # The services are kept as they are, so typical Metro's stay at their indices.
+        typical_services=schedule.typical_services,
     )
     if METRO_SYSTEM in ended:
         trimmed = with_typical_metro(trimmed)
@@ -882,7 +890,27 @@ def with_typical_metro(schedule: Schedule, path: Path = TYPICAL_PATH) -> Schedul
         schedule.start,
         schedule.days,
         {**schedule.source, METRO_SYSTEM: {"file": path.name, "typical": True}},
+        typical_services=tuple(service_of[t] for t in TYPICAL_DAY_TYPES),
     )
+
+
+def with_metro_day(schedule: Schedule, day: date, day_type: str) -> Schedule:
+    """The schedule with Metro's typical timetable running `day_type` on the service day `day`
+    in place of the day type it was given (a federal holiday's `holiday`), said in its holiday
+    note (`holiday_words`). Unchanged where Metro is not on its typical timetable (WMATA's own
+    GTFS has its holidays day by day) or the day is outside the window."""
+    if (
+        not schedule.typical_services
+        or not schedule.covers(day)
+        or schedule.metro_day == (day, day_type)
+    ):
+        return schedule
+    offset = (day - schedule.start).days
+    services = list(schedule.services)
+    for kind, index in zip(TYPICAL_DAY_TYPES, schedule.typical_services, strict=True):
+        bit = "1" if kind == day_type else "0"
+        services[index] = services[index][:offset] + bit + services[index][offset + 1 :]
+    return replace(schedule, services=services, metro_day=(day, day_type))
 
 
 # Fewer days of timetable than this left: a warning in the log, an alert from
@@ -2847,6 +2875,13 @@ def walk_offered(start, end, walk_total_s: float, others: list[Option]) -> bool:
     return bool(others) and walk_total_s < min(o.total_s for o in others)
 
 
+# A Bikeshare + transit trip leaving more than this after now picks its docks by place alone:
+# the live counts say what is docked now, and a dock empty or full at 11 pm has been rebalanced
+# by a trip at 8 am (hunt 2, T6: such docks were skipped, so the trip walked further or lost its
+# option). 30 min is Claude's pick (not measured), for the owner to settle.
+DOCKS_AHEAD_S = 30 * 60.0
+
+
 def plan_bikeshare(
     schedule,
     start,
@@ -2855,17 +2890,27 @@ def plan_bikeshare(
     services: Services,
     snapshot,
     hop: list | None = None,
+    later: bool = False,
 ) -> Plan:
     """Bikeshare + 🚶🚆🚌: bikeshare the whole way, or each end on foot or by bikeshare,
     whichever is quicker (a bikeshare bike is docked before boarding), with up to two transit
     legs between; and walking the whole way where that is reasonable (`walk_offered`).
-    `hop`: Novice and Nervous's busy stretch, where it begins and ends (`HOP_NEAR_M`)."""
+    `hop`: Novice and Nervous's busy stretch, where it begins and ends (`HOP_NEAR_M`).
+    `later`: the counts were left out because the trip leaves after `DOCKS_AHEAD_S`, and the
+    note says so."""
     moments = moments_of(when)
     moment = moments[0]
     day = _Day(schedule, moment, bike=False)
     found: list[Option] = []
     notes = _window_note(schedule, moment)
-    if snapshot.status is None:
+    if snapshot.status is None and later:
+        notes.append(
+            t(
+                "Bike and dock availability for a later trip is not known: the nearest docks"
+                " are used."
+            )
+        )
+    elif snapshot.status is None:
         notes.append(
             t("Bike and dock availability is unknown right now: the nearest docks are used.")
         )
@@ -3293,9 +3338,13 @@ def option_legs(option: Option) -> list[dict]:
     return out
 
 
-def holiday_words(option: Option, schedule: Schedule | None) -> str:
+def holiday_words(
+    option: Option, schedule: Schedule | None, service_day: date | None = None
+) -> str:
     """The holiday note, true to the systems the option uses: Metro on its typical timetable
-    runs its Sunday one (the typical file's `holiday` day type), the others their own."""
+    runs its Sunday one (the typical file's `holiday` day type), or the weekday one WMATA's
+    live trains showed running on `service_day` (`Schedule.metro_day`), the others
+    their own."""
     typical = {s.name for s in schedule.systems if s.typical} if schedule is not None else set()
     used = {leg.system for leg in option.legs if leg.transit}
     if not used & typical:
@@ -3304,6 +3353,18 @@ def holiday_words(option: Option, schedule: Schedule | None) -> str:
             " it."
         )
     kind = _typical_doc()["holiday"]
+    said = schedule.metro_day if schedule is not None else None
+    if said is not None and said[0] == service_day and said[1] != kind:
+        if used <= typical:
+            return t(
+                "Today is a federal holiday, but WMATA's live trains show Metro on its weekday"
+                " hours: it is planned on its weekday timetable."
+            )
+        return t(
+            "Today is a federal holiday, but WMATA's live trains show Metro on its weekday"
+            " hours: it is planned on its weekday timetable; the others, their holiday"
+            " timetables."
+        )
     day = {"sunday": t("Sunday"), "saturday": t("Saturday")}.get(kind, kind.capitalize())
     if used <= typical:
         return t("Today is a federal holiday: Metro is planned on its {day} timetable.", day=day)
@@ -3453,7 +3514,7 @@ def block(plan: Plan, schedule: Schedule | None = None) -> dict:
     if band is not None:
         out["band"] = BANDS[band][2]
     if plan.when.holiday and option.scheduled:
-        out["notes"].append(holiday_words(option, schedule))
+        out["notes"].append(holiday_words(option, schedule, plan.when.service_day))
     transit = [o for o in plan.options if o.scheduled]
     if option.direct and transit:
         best = min(o.total_s for o in transit)

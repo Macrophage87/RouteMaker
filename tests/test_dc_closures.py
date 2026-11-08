@@ -6,13 +6,14 @@ proxy this was built behind."""
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 import pytest
 
 from routemaker import dc_closures as dc
 from routemaker import workzones as wz
+from routemaker.ridetime import ZONE
 
 DATA = Path(__file__).resolve().parent / "data" / "closures"
 NOW = datetime(2026, 10, 15, 19, 0, tzinfo=UTC)
@@ -688,3 +689,31 @@ class TestDailyWindows:
         assert segment.daily is None
         assert wz.active(zone, self.at(14, 12))
         assert segment.end == self.at(16, 5)
+
+
+class TestClockChangeNights:
+    """Hunt 2, T7: a window past midnight, and an AlertDC "until" before the time it was
+    posted, had a day added to the UTC moment, so on the nights the clocks change they ended
+    an hour off: March's "11 pm to 5 am" at 6 am, November's at 4 am, an hour before the
+    street reopened. Before the fix the first two asserts gave 06:00 and 04:00."""
+
+    def end(self, text: str, posted: date) -> datetime:
+        context = dc._Context()
+        dc._window(text, context, posted)
+        return context.end.astimezone(ZONE)
+
+    def test_a_window_past_midnight_ends_at_its_local_time_on_a_change_night(self) -> None:
+        spring = self.end("Saturday, March 7, 2026, 11 pm to 5 am", date(2026, 3, 1))
+        autumn = self.end("Saturday, October 31, 2026, 11 pm to 5 am", date(2026, 10, 25))
+        assert (spring.day, spring.hour) == (8, 5)
+        assert (autumn.day, autumn.hour) == (1, 5)
+
+    def test_a_nightly_window_ends_at_five_on_its_last_change_morning(self) -> None:
+        end = self.end("Fri Oct 30 through Sat Oct 31, 9 pm to 5 am nightly", date(2026, 10, 25))
+        assert (end.month, end.day, end.hour) == (11, 1, 5)
+
+    def test_an_alertdc_until_on_the_next_morning_across_the_change(self) -> None:
+        # Posted 11 pm EDT on Saturday, October 31; "until 5 am" is 5 am EST on Sunday.
+        posted = datetime(2026, 10, 31, 23, 0, tzinfo=ZONE)
+        end = dc._alert_end("K Street NW is closed until 5 am.", posted)
+        assert end.astimezone(ZONE).hour == 5 and end.astimezone(ZONE).day == 1

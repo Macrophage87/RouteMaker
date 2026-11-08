@@ -653,6 +653,34 @@ class TestCacheParts:
         key = route_cache.key_for({"points": [[0, 0]], "preset": "default"}, "night", "t", "")
         assert key is not None and 30 < key.valid_s <= 60
 
+    @pytest.mark.django_db
+    def test_kept_no_later_than_a_daily_closure_opens_or_closes(self, settings, monkeypatch):
+        """Hunt 2, T8: a daily 9 am to 3 pm closure, asked about at 8:59:30. Before, only its
+        start and end (weeks away) were moments, so the answer was kept the full time to live
+        (2 min), through 9:00; now 30 s, and at 2:59:30 pm 30 s too."""
+        from routemaker.ridetime import ZONE
+
+        settings.ROUTE_CACHE_TTL_S = route_cache.TTL_S
+        now = datetime(2026, 11, 10, 8, 59, 30, tzinfo=ZONE).astimezone(UTC)
+        zone = wz.Zone(
+            "z", "md", wz.CLOSED, 0, ((0, 0), (0, 1)), None, None,
+            now - timedelta(days=1), now + timedelta(days=30), daily=(9, 0, 15, 0),
+        )  # fmt: skip
+        found = workzones.Snapshot((zone,), {"md": "current"}, {"md": None})
+        monkeypatch.setattr(workzones, "snapshot", lambda now=None: found)
+        monkeypatch.setattr(route_cache, "_edits_part", lambda: [1, [], 0])
+        monkeypatch.setattr(route_cache, "_approved_part", lambda preset: [])
+        fields = {"points": [[0, 0]], "preset": "default"}
+        key = route_cache.key_for(fields, "night", "t", "", now=now)
+        assert key is not None and key.valid_s == pytest.approx(30)
+        later = now + timedelta(hours=6)
+        key = route_cache.key_for(fields, "night", "t", "", now=later)
+        assert key is not None and key.valid_s == pytest.approx(30)
+        # Past the day's last edge, the time to live again.
+        evening = now + timedelta(hours=8)
+        key = route_cache.key_for(fields, "night", "t", "", now=evening)
+        assert key is not None and key.valid_s == pytest.approx(route_cache.ttl_s())
+
     def test_the_request_part_leaves_quick_out_and_rounds_the_points(self) -> None:
         # Rounded to 1e-5 degrees (about 1 m): the same point sent again, give or take its
         # last float places, is the same key.

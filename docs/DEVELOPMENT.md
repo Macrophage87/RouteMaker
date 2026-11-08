@@ -8010,7 +8010,15 @@ docs/OPERATIONS.md, "Transit schedule". The design note is plans/v0.6.0-transit-
   `metro_stations()` by a test). Trains are laid out evenly, and a wait is always half the
   interval (or the time to the first or last train), so no Metro departure is named or counted
   down. Before the first train the step names it instead of the interval ("first train 5:00 am
-  scheduled"). A holiday runs the typical Sunday timetable, and the holiday note says so. An
+  scheduled"). A holiday runs the typical Sunday timetable, and the holiday note says so, unless
+  WMATA's live trains show the weekday one running (hunt 2, T9; the owner, 2026-11-08: "We have a
+  live API."): a fresh reading taken on the holiday with a train in service predicted while only
+  the weekday timetable is open (5 to 6 am, or midnight to 2 am on a Friday) puts the rest of
+  that service day on the weekday timetable, and the note says so
+  (`transit_live.holiday_day_type`, `transit.with_metro_day`). The live feed cannot say more:
+  once both timetables are open both run trains, so the day stays Sunday's, and a holiday
+  planned ahead or with no reading keeps the Sunday rule. A trip leaving now is timed on the
+  predicted trains either way. An
   installed schedule that has run out (or does not reach the date asked for) leaves Metro on its
   typical timetable alone, with a note; `check_operations` still asks for a rebuild. Its credit reads "WMATA, wmata.com (typical service)"; there is no separate note. A built
   schedule with WMATA's rail GTFS replaces it with no setting. Metrobus stays out until its GTFS is
@@ -8097,7 +8105,11 @@ availability, fee information and notes under `bikeshare` (`core.api.BikesharePl
   honours it) before trying again; only `https` on `ALLOWED_HOSTS`, redirects included; no history is
   kept (no earlier reading, no row per station or reading), nothing is republished or exported, and a
   request carries no user data (no cookie, no address, no body). A feed that fails is "unknown", never
-  "empty": no `station_status` means availability is unknown and the plan says so. `StationStatus`
+  "empty": no `station_status` means availability is unknown and the plan says so. A Bikeshare +
+  transit trip leaving more than `transit.DOCKS_AHEAD_S` (30 min; Claude's pick, not measured)
+  after now is planned as if `station_status` were unread: its docks are picked by place, since
+  tonight's empty or full docks are rebalanced by the morning, and its note says the counts for a
+  later trip are not known (hunt 2, T6). `StationStatus`
   keeps `num_bikes_disabled`, `num_docks_disabled`, `is_renting`, `is_returning` and `last_reported`;
   a station whose `last_reported` is more than `STATION_STALE_S` (30 min) before the reading
   (`Snapshot.as_of`) is unavailable everywhere (`Snapshot.reporting_stale`; a station with no

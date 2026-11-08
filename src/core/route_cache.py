@@ -325,12 +325,34 @@ def _edits_part() -> list:
     return [oid, sorted(columns), generation]
 
 
-_closures_memo: tuple[object, str, tuple] | None = None
+_closures_memo: tuple[object, str, tuple, tuple] | None = None
+
+
+def _daily_edges(zones, now: datetime) -> list[datetime]:
+    """The moments today (in the region's time) at which a closure with daily hours
+    (`Zone.daily`) opens or closes, inside its own window. Hunt 2, T8: only a zone's start and
+    end were moments, so a plan at 8:58 kept through a daily 9:00-15:00 closure from 9:00 until
+    its time to live ran out. Today's alone: a key is kept no later than midnight
+    (`key_for`)."""
+    from routemaker import ridetime
+
+    local = now.astimezone(ridetime.ZONE)
+    day = datetime(local.year, local.month, local.day, tzinfo=ridetime.ZONE)
+    edges = []
+    for zone in zones:
+        for hour, minute in (zone.daily[:2], zone.daily[2:]):
+            edge = (day + timedelta(hours=hour, minutes=minute)).astimezone(UTC)
+            if zone.start is not None and edge < zone.start:
+                continue
+            if zone.end is not None and edge >= zone.end:
+                continue
+            edges.append(edge)
+    return edges
 
 
 def _closures_part(now: datetime) -> tuple[str, datetime | None]:
     """A digest of the closures the planner reads, and the next moment after `now` at
-    which one of them starts or ends (None: none does)."""
+    which one of them starts or ends, or a daily one opens or closes (None: none does)."""
     global _closures_memo
     from routemaker import deer_closures
 
@@ -339,7 +361,7 @@ def _closures_part(now: datetime) -> tuple[str, datetime | None]:
     found = workzones.snapshot()
     memo = _closures_memo
     if memo is not None and memo[0] is found:
-        digest, moments = memo[1], memo[2]
+        digest, moments, daily = memo[1], memo[2], memo[3]
     else:
         rows = sorted(
             json.dumps(zone.to_json(), sort_keys=True, default=str) for zone in found.zones
@@ -363,8 +385,12 @@ def _closures_part(now: datetime) -> tuple[str, datetime | None]:
                 | deer_closures.moments(found.notices)
             )
         )
-        _closures_memo = (found, digest, moments)
-    upcoming = next((m for m in moments if m > now), None)
+        daily = tuple(zone for zone in found.zones if zone.daily is not None)
+        _closures_memo = (found, digest, moments, daily)
+    upcoming = min(
+        (m for m in (*moments, *_daily_edges(daily, now)) if m > now),
+        default=None,
+    )
     return digest, upcoming
 
 
