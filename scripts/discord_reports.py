@@ -280,6 +280,17 @@ def changelog_posts(
     return posts
 
 
+def with_full_notes(posts: list[Post], url: str) -> list[Post]:
+    """The link to the full notes at the end of the last message, or after it when that one is
+    full, so the link never changes how the notes and pictures are laid out."""
+    # <...> keeps Discord from adding a link preview under the pictures.
+    line = f"{FULL_NOTES}<{url}>"
+    text, images = posts[-1]
+    if len(text) + 1 + len(line) <= MAX_CHARS:
+        return [*posts[:-1], (f"{text}\n{line}", images)]
+    return [*posts, (line[:MAX_CHARS], ())]
+
+
 def image_path(base: Path | None, name: str) -> Path:
     if base is None:
         raise DiscordError(f"an image ({name}) needs the notes file's folder")
@@ -582,12 +593,11 @@ def cmd_changelog(
     if notes_file is not None and notes_file.is_file():
         notes = notes_file.read_text(encoding="utf-8", errors="replace")
         base = notes_file.parent
+    posts = changelog_posts(version, notes, base, live)
     if full_notes is None:
         full_notes = full_notes_url(version)
     if full_notes:
-        # <...> keeps Discord from adding a link preview under the pictures.
-        notes = notes.rstrip("\n") + f"\n{FULL_NOTES}<{full_notes}>\n"
-    posts = changelog_posts(version, notes, base, live)
+        posts = with_full_notes(posts, full_notes)
     # A message the bot already posted for this version is skipped, so a pass that stopped
     # part-way posts only the rest and a repeated pass posts nothing.
     done = already_posted(api, channel, version)

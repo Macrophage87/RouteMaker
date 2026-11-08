@@ -571,6 +571,25 @@ def test_the_post_links_to_the_full_notes_in_the_release_pr(changelog_dir, monke
     assert "Full release notes" not in bare.posted()[0]
 
 
+def test_the_link_never_changes_the_layout(changelog_dir, monkeypatch) -> None:
+    monkeypatch.setattr(mod.time, "sleep", lambda s: None)
+    notes = _notes_with_images(changelog_dir)
+    # Pad the words to just under one message: the link must not split the post.
+    text = notes.read_text()
+    title = len("**RouteMaker v0.22.0 is on beta**\n")
+    words = len("\n".join(x for x in text.splitlines() if not x.startswith("![")))
+    notes.write_text(text.rstrip("\n") + "\n- " + "x" * (1990 - title - words) + "\n")
+    bare = FakeChannel()
+    assert run(changelog_dir, bare, "changelog", "v0.22.0", str(notes)) == 0
+    assert len(bare.posted()) == 1
+    monkeypatch.setattr(mod, "full_notes_url", lambda version: PR_URL)
+    linked = FakeChannel()
+    assert run(changelog_dir, linked, "changelog", "v0.22.0", str(notes)) == 0
+    assert linked.posted() == [bare.posted()[0], f"Full release notes: <{PR_URL}>"]
+    files = [f for (m, _p, _b), f in zip(linked.calls, linked.files, strict=True) if m == "POST"]
+    assert files == [["tags.png"], []]
+
+
 class _Reply:
     def __init__(self, body: bytes) -> None:
         self.body = body
