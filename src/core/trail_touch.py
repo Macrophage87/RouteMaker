@@ -292,16 +292,15 @@ def stray_rings(
     """A strip across each stray run of `pieces` (`core.routing.Piece`: way_id, lon and lat at
     its middle, metres, heading), to leave it out by: at the middle of its longest stretch on a
     dirt trail, along it. A run on dirt trails (REASON) is a stray where none of it is `kept`,
-    and never with `any_dirt`; a run on singletrack is too, unless `kept` (Ride's "End
-    mountain biking" from on one)."""
+    and never with `any_dirt`; a run on singletrack is too, but for the singletrack in `kept`
+    itself (Ride's "End mountain biking" from on one: that trail alone, never one joined to it,
+    so the way off takes no harder trail)."""
     ids = [p.way_id for p in pieces]
     metres = [p.metres for p in pieces]
     dirt = frozenset(w for w, reason in ways.items() if reason == REASON)
     singletrack = frozenset(ways) - dirt
     found = [] if any_dirt else strays(ids, metres, dirt, kept)
-    found += [
-        (a, b) for a, b in runs(ids, metres, singletrack) if not any(w in kept for w in ids[a:b])
-    ]
+    found += runs(ids, metres, singletrack - kept)
     rings: list[list[list[float]]] = []
     for a, b in found:
         on_dirt = [p for p in pieces[a:b] if p.way_id in ways]

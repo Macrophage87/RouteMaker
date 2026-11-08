@@ -679,6 +679,15 @@ class TestStrayRings:
         assert "paved" not in routing.TRAIL_TOUCH_VARIANTS
         assert "no-trail" not in routing.TRAIL_TOUCH_VARIANTS
 
+    def test_end_mountain_biking_keeps_the_singletrack_under_the_rider_alone(self) -> None:
+        """From on singletrack (`kept`), that trail is ridden off; singletrack joined to it, a
+        harder trail perhaps, is still left out."""
+        ways = {1: "singletrack", 2: "singletrack"}
+        assert trail_touch.stray_rings(self.pieces([1]), ways, frozenset({1})) == []
+        rings = trail_touch.stray_rings(self.pieces([1, 2]), ways, frozenset({1}))
+        assert len(rings) == 1
+        assert min(p[0] for p in rings[0]) > -77.0 + 0.0005
+
     def test_any_dirt_leaves_out_only_singletrack(self) -> None:
         ways = {1: "mtb", 3: "mtb", 2: "singletrack"}
         pieces = self.pieces([1, 9, 3, 9, 2])
