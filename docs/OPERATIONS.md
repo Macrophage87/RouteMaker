@@ -86,6 +86,7 @@ Contents:
 - [Deploying v0.21.2](#deploying-v0212)
 - [Deploying v0.22.0](#deploying-v0220)
 - [Deploying v0.22.1](#deploying-v0221)
+- [Deploying v0.22.2](#deploying-v0222)
 - [Deploying a planner and front-end release: rollback points and verification](#deploying-a-planner-and-front-end-release-rollback-points-and-verification)
 - [Paths bicycles may not ride (NO-BIKE-PATHS)](#paths-bicycles-may-not-ride-no-bike-paths)
 - [Mountain-bike difficulty levels (456; claude/v0-4-0-mtb-levels)](#mountain-bike-difficulty-levels-456-claudev0-4-0-mtb-levels)
@@ -7533,6 +7534,31 @@ assistant still sending `?lat=&lon=` gets its photo kept with no spot (`located:
 - [ ] **Rollback.** The `pre-rel` api image (`--force-recreate api worker`) and the v0.22.0 front end.
   Nothing in the database or the map changes. On the beta: the agent rolls back by itself on a failed
   pass; later, rollback C, then `auto-release.sh hold v0.22.1`.
+
+## Deploying v0.22.2
+
+A patch for the Featured routes list (`/routes/`): each card shows the map on top, full width, with
+the words below, and the route's preview picture shows only its map part (its word band repeated the
+card's words) (#1052). **`src/core/route_posts.py` only**, with the version in `pyproject.toml`,
+`src/routemaker/__init__.py`, `frontend/package.json`, `README.md`, and the docs pages rebuilt with
+`DOCS_RELEASE=0.22.2` (version stamps only). **No migration, no `src/pipeline/`, `lua/`,
+`valhalla/*.json`, compose, Caddyfile, nginx, Dockerfile, requirements, `mcp/` or `mobile/` change, no
+new environment variable, scheduled job or outbound host, and no map rebuild.**
+
+- [ ] **The tag.** Once `test` and `a11y` are green on `main`, the owner tags v0.22.2 (annotated) on
+  that commit, from the PC.
+- [ ] **At home**, as "Deploying a planner and front-end release": rollback point (tag the running api
+  image `pre-rel-<short>`, keep `index.html`), fast-forward the checkout, `docker compose build api`,
+  then `docker compose up -d --no-deps --no-build --force-recreate api worker` with no job todo or
+  doing, then the front end (version stamps only). No migration, no router restart.
+- [ ] **Beta, by its agent**, once its deployed tag (`$RM_STATE/cd/deployed-tag`) is v0.22.1: the gate
+  sees `src/core/`, `frontend/` and the version files, none of them a stop, and deploys in one pass.
+  Stuck: `git fetch --force --tags origin`, then `scripts/beta/auto-release.sh retry v0.22.2`.
+- [ ] **Spot checks.** Open `/routes/` on a phone and a desktop: each card has the map on top, full
+  width, no white text strip at its foot, the base map credit visible, and the name and figures below.
+- [ ] **Rollback.** The `pre-rel` api image (`--force-recreate api worker`) and the v0.22.1 front end.
+  Nothing in the database or the map changes. On the beta: the agent rolls back by itself on a failed
+  pass; later, rollback C, then `auto-release.sh hold v0.22.2`.
 
 ## Deploying a planner and front-end release: rollback points and verification
 
