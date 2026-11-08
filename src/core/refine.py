@@ -175,6 +175,15 @@ REFINE_MIN_EVENT_FT = model.RED_MIN_FT
 CALM_POINTS_PER_ROUND = 60
 CROSSING_POINTS_PER_ROUND = 3
 MAX_EXCLUDES = 150
+# The radius (metres) round a red crossing's node within which the router excludes every
+# edge (`crossing_targets`, `core.red_crossings`). A crossing's point is the route's own
+# traced node, so every edge that meets there is within a metre of it (`junctions.
+# LOCATE_RADIUS_M`); the 15 m of an Avoid-rated junction (`avoid_junctions.MATCH_RADIUS_M`,
+# which an admin places by hand, near the node but not on it) also took out the sidepath
+# along the arterial, 8 to 14 m from its centreline, and a trail bridge or underpass beside
+# the junction: often the very way round the crossing (the 2026-11-08 hunt, J6). 3 m keeps
+# a metre or two of slack for a node a divided road's merge moved and spares both.
+CROSSING_EXCLUDE_RADIUS_M = 3
 # Samples along a busy stretch this far apart (metres): every edge of a street is
 # longer than half of it, so each gets one. Each is the middle of a traced edge,
 # interpolated half way along it (`trace_junctions.edge_midpoints`), never a
@@ -420,6 +429,16 @@ class Context:
     # A Mass Ride or a Novice and Nervous ride: steep grades either way are priced
     # (`routemaker.steep_grades`, the owner, 2026-10-26), in `Analysis.hill_m`.
     steep_grades: bool = False
+    # What the passes after the search must keep out of any way round they ask for, as
+    # `exclude_locations` entries: Mountain Bike's trails above the rider's hardest level
+    # (`core.mtb.settle`'s rounds, set by the plan), and the red crossings the red pass
+    # went round (`core.red_crossings`), so the Avoid-junction pass never brings one back
+    # (the 2026-11-08 hunt, P1 and P2).
+    level_excludes: list = field(default_factory=list)
+    red_excludes: list = field(default_factory=list)
+    # The Hills slider seeks climbs (Mountain Goat's climb seek, `routing.choose_climb`): a
+    # pass after it must not trade the climb it chose away (P1).
+    seek_climb: bool = False
 
 
 def shift_classes(classes: list, shift: int) -> list:
@@ -679,12 +698,38 @@ def charged_m(read: Analysis, ctx: Context) -> float:
     return read.length_m + read.hill_m
 
 
+def avoidance_severity(event) -> str | None:
+    """The severity the planner's avoidance passes read an event at: the map's colour, but a
+    trail crossing capped at orange because no signal is mapped (`max_severity`, item 185)
+    whose own cost is red-level (`intersections.RED_MIN_FT`) read as the red it costs. The
+    owner asked for the cap on the map only ("Trail crossings whose signal is not mapped cap
+    at orange and are labelled 'signal not mapped'"), and the model promises "The cost still
+    counts in full where a route is chosen" (`intersections.MARKED_CROSSING_MAX_SEVERITY`);
+    keyed on the colour, every red-only pass (the score's `RED_DETOUR_S`, the top figure,
+    `top_by_leg`, `core.red_crossings`) skipped an unsignalised trail crossing of a 45 mph
+    arterial that costs 1 to 2 calm miles (the 2026-11-08 hunt, J1). The colour the rider is
+    shown is unchanged."""
+    severity = event.severity
+    if (
+        severity == model.ORANGE
+        and getattr(event, "max_severity", None) == model.ORANGE
+        and model.severity_of(event.cost_ft) == model.RED
+    ):
+        return model.RED
+    return severity
+
+
 def junction_cost_m(events: list | None, severity: str, shift: int = 0) -> float:
-    """The summed cost of the events of one severity (read `shift` levels up), in metres."""
+    """The summed cost of the events of one severity (read `shift` levels up), in metres;
+    each at its `avoidance_severity`, so a capped trail crossing counts with the reds."""
     if not events:
         return 0.0
     return (
-        sum(e.cost_ft for e in events if presets.shifted_severity(e.severity, shift) == severity)
+        sum(
+            e.cost_ft
+            for e in events
+            if presets.shifted_severity(avoidance_severity(e), shift) == severity
+        )
         / model.FEET_PER_METRE
     )
 
@@ -862,8 +907,10 @@ RED_DETOUR_S = 600.0
 
 def red_count(read: Analysis) -> int:
     """The route's red junctions as the map draws them, never shifted: a ride that reads
-    every road a level up does not make its oranges impassable."""
-    return sum(1 for e in read.events or () if e.severity == model.RED)
+    every road a level up does not make its oranges impassable. A trail crossing drawn
+    orange only for want of a mapped signal, whose cost is red-level, counts
+    (`avoidance_severity`)."""
+    return sum(1 for e in read.events or () if avoidance_severity(e) == model.RED)
 
 
 def better(read: Analysis, best: Analysis, ctx: Context, rest_m: float = 0.0) -> bool:
@@ -990,7 +1037,7 @@ def analyse(
     mark_legs: list = []
     offset = 0.0
     via_m: list[float] = []
-    line: list = []
+    graded: list = []
     for number, leg in enumerate(legs):
         trace = routing._trace(ctx.variant, ctx.costing, leg.get("shape", ""), deadline, ctx.traces)
         if trace is None:
@@ -1003,7 +1050,7 @@ def analyse(
         leg_marks = trace_junctions.marks_along(read, offset)
         marks.extend(leg_marks)
         mark_legs.extend([number] * len(leg_marks))
-        line.extend(shape[1:] if line else shape)
+        graded.append((trace, shape))
         offset += sum(piece.metres for piece in made)
         if number < len(legs) - 1:
             via_m.append(offset)
@@ -1019,7 +1066,15 @@ def analyse(
     priced = hazard_priced(classes, kinds)
     hazard_read = priced is not classes
     classes = priced
-    avoid_passages = avoid_model.passages(line, ctx.avoid) if ctx.avoid else []
+    # Read from the traces, so a bridge over or a tunnel under a junction is no pass (J6).
+    avoid_passages = []
+    if ctx.avoid:
+        from .avoid_junctions import graded_line
+
+        graded_points, separated, nodes = graded_line(graded, raws)
+        avoid_passages = avoid_model.passages(
+            graded_points, ctx.avoid, separated=separated, nodes=nodes
+        )
     # The stress figures in hill-weighted metres (409): each piece's metres times its factor.
     hill = hill_of(trip, pieces, ctx)
     hilled = [_Metres(piece.metres * f) for piece, f in zip(pieces, hill, strict=True)]
@@ -1252,8 +1307,9 @@ def _exclusion(lon: float, lat: float, ctx: Context, radius: int | None = None) 
 def crossing_targets(analysis: Analysis, ctx: Context) -> list[Target]:
     """The Avoid-rated junctions the route passes, then the worst junctions: for each,
     the approach (a point on the edge the route arrives by) and the junction itself, every
-    edge within `avoid_junctions.MATCH_RADIUS_M` of it, so that the next round cannot
-    come at the same crossing by another street (review of PR #421)."""
+    edge within `CROSSING_EXCLUDE_RADIUS_M` of it, so that the next round cannot come at
+    the same crossing by another street (review of PR #421), while a sidepath or a bridge
+    a few metres off the node stays open (J6)."""
     avoid = avoid_targets(analysis, ctx)
     if ctx.group or not analysis.events:
         return avoid
@@ -1269,7 +1325,7 @@ def crossing_targets(analysis: Analysis, ctx: Context) -> list[Target]:
         for e in chosen
         for target in (
             Target(e.approach, 4),
-            Target((e.lon, e.lat), 4, int(avoid_model.MATCH_RADIUS_M)),
+            Target((e.lon, e.lat), 4, CROSSING_EXCLUDE_RADIUS_M),
         )
     ]
 
@@ -1617,7 +1673,7 @@ def top_by_leg(analysis: Analysis) -> list[float]:
     bounds = leg_bounds(analysis)
     out = lts4_by_leg(analysis)
     for event in analysis.events or ():
-        if presets.shifted_severity(event.severity, analysis.shift) != "red":
+        if presets.shifted_severity(avoidance_severity(event), analysis.shift) != "red":
             continue
         for k, (lo, hi) in enumerate(bounds):
             if lo <= event.m < hi or (k == len(bounds) - 1 and event.m >= hi):
@@ -2445,6 +2501,12 @@ def _search(trip, best, first_exposure, stop_at, ctx: Context, info: dict):
 # for the whole route's junctions, read once at the end.
 LONG_MIN_START_S = 12.0
 LONG_FINAL_RESERVE_S = REFINE_TRACE_RESERVE_S
+# And what the legs' searches leave, before that reserve, for the red-crossing pass that
+# follows (`core.red_crossings.settle`, which needs `red_crossings.MIN_START_S` and a
+# window's router call and reading or two): the legs shared out every second up to the
+# reserve, so the last leg searched could end exactly where the pass needed to start and
+# a leg whose only fault was a red crossing kept it (the 2026-11-08 hunt, S2). Seconds.
+LONG_RED_RESERVE_S = 8.0
 # A leg's share of its time that goes to the exclusion rounds; the rest is the
 # seek's.
 LONG_SEARCH_SHARE = 0.7
@@ -3395,10 +3457,12 @@ def refine_long(trip: dict, ctx: Context) -> tuple[dict, dict]:
         key=lambda j: (-(reads[j].lts4_m + reads[j].avoid_junction_m), -reads[j].lts3_m, j),
     )
     limited: str | None = None
+    # The legs' searches end before the red pass's own time (LONG_RED_RESERVE_S).
+    search_stop = hard_stop - LONG_RED_RESERVE_S
     for turn, j in enumerate(order):
         now = routing.clock()
         rest = sum(weights[i] for i in order[turn:])
-        share = (hard_stop - now) * weights[j] / rest
+        share = (search_stop - now) * weights[j] / rest
         if share < LONG_LEG_MIN_S:
             long["skipped"] += 1
             limited = "time"

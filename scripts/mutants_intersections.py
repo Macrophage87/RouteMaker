@@ -658,8 +658,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "neighbourhood junctions wanted",
         J,
-        "    return raw.possibly_busy and (",
-        "    return (",
+        "    return raw.possibly_busy and _decided(raw)",
+        "    return _decided(raw)",
         JUNCTIONS,
     ),
     (

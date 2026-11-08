@@ -74,8 +74,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "order: the junction kinds are swapped",
         RF,
-        "presets.shifted_severity(e.severity, shift) == severity)",
-        "presets.shifted_severity(e.severity, shift) != severity)",
+        "if presets.shifted_severity(avoidance_severity(e), shift) == severity",
+        "if presets.shifted_severity(avoidance_severity(e), shift) != severity",
         LC,
     ),
     (

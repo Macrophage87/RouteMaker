@@ -2881,6 +2881,20 @@ def plan_alternates(request: dict, trips: list, timed_out: bool, refitted: bool)
     return [] if timed_out else trips
 
 
+def searched_route(refined: dict | None, replaced: bool = False) -> bool:
+    """Whether the calm search weighed the route answered: it ran at least one round and was
+    not cut short (`calm_search.rounds`, `limited`), and nothing after it swapped in a route
+    it did not read (`replaced`: Mountain Bike's choice, `mtb.settle`, which can answer a
+    router alternative or a route of its level rounds; the 2026-11-08 hunt, S4). The red
+    pass and the Avoid-junction pass take a route not searched as theirs to weigh."""
+    return (
+        refined is not None
+        and not replaced
+        and (refined.get("rounds") or 0) > 0
+        and not refined.get("limited")
+    )
+
+
 def straight_span_m(points: list) -> float:
     """The sum of the straight-line distances between consecutive points."""
     return sum(haversine(Point(*a), Point(*b)) for a, b in zip(points, points[1:], strict=False))
@@ -5016,7 +5030,13 @@ def _plan(
     ceiling = None
     fitted_at = None
     fit, past = None, []
-    if maxcalm and refine_limited is None:
+    # The rider's target distance and the ceiling hold on a loop past the search's span too
+    # (the 2026-11-08 hunt, R1): a loop's span counts the way out and the way back, so a
+    # Trailmaxxing or Novice loop about 15 km (9.3 mi) out lost its target with its search.
+    # A one-way plan past the span is a long calm plan (searched leg by leg) or has a
+    # destination that sets its length.
+    fitting = refine_limited is None or (bool(loop) and refine_limited == "span")
+    if maxcalm and fitting:
         fit, past = _fit_target(
             trip, request, costing, trace_costing, target_m, preset_name, hills_dial, assist,
             avoid_gravel, variant, deadline,
@@ -5130,6 +5150,9 @@ def _plan(
             "excluded": 0,
             "limited": refine_limited,
         }
+        if past and fit is None:
+            # A loop past the span fitted to its target (R1) where no route fits it.
+            refined["no_fit"] = True
     if early_alternates is not None:
         # Not started yet where the search ended before it was wanted: not asked at all.
         early_alternates.future.cancel()
@@ -5142,6 +5165,11 @@ def _plan(
     # to weigh.
     mtb_info = None
     mtb_level_held = preset_name == mtb.PRESET and variant == Variant.MTB.value and not fixed
+    # Whether the route answered is still the one the search chose: Mountain Bike's choice
+    # may swap in a router alternative, or a route its level rounds asked for, that no
+    # crossing search has read, so the passes after it must not take it as searched (the
+    # 2026-11-08 hunt, S4).
+    mtb_replaced = False
     if mtb_level_held:
         searched_trip = trip
         trip, mtb_info = mtb.settle(
@@ -5149,8 +5177,12 @@ def _plan(
             [trip] if loop else trips, trip, request, variant, trace_costing, when,
             deadline, traces,
             dials.mtb_level, points, preferred_level=dials.mtb_preferred,
+            # The trails above the rider's level it steered off, which every later way
+            # round keeps out (P1).
+            level_excludes=refine_context.level_excludes,
         )  # fmt: skip
         if trip is not searched_trip:
+            mtb_replaced = True
             # The routes to choose from were near-ties of the route it replaced: none are
             # offered beside a route they were not weighed against (as the Avoid pass).
             refine_context.candidates = refine_context.candidates[:1]
@@ -5165,22 +5197,24 @@ def _plan(
     mtb_trip = trip
     # A red (very high stress) crossing still on the answer where the crossing search did not
     # run over the whole route (a plan past REFINE_MAX_SPAN_M, a long Trailmaxxing plan
-    # searched leg by leg, a search cut short): the way round, asked for once and taken where
-    # it is better (`core.red_crossings`); before the dodge pass, which weighs its way round
-    # as any other. The owner, 2026-11-08, of the GW Parkway at grade at Tulane Dr on a Mount
-    # Vernon ride: "It's taking people onto dangerous intersections."
+    # searched leg by leg, a search cut short, a climb seek, a route Mountain Bike's choice
+    # swapped in): each red asked round, the worst first, and taken where it is better
+    # (`core.red_crossings`); before the dodge pass, which weighs its way round as any other.
+    # The owner, 2026-11-08, of the GW Parkway at grade at Tulane Dr on a Mount Vernon ride:
+    # "It's taking people onto dangerous intersections." On a loop too (the 2026-11-08 hunt,
+    # R1 and H4: a loop past about 15 km out had no crossing search and no red pass at all):
+    # each red by its own stretch of the route, so the way back stays as `make_loop` made it
+    # (OWNER-DECISIONS 266).
     red_info = None
-    if not loop and not quick and not fixed:
+    refine_context.seek_climb = bool(climb_seek)
+    if not quick and not fixed:
         from . import red_crossings
 
-        whole_searched = (
-            refined is not None
-            and not long_calm
-            and (refined.get("rounds") or 0) > 0
-            and not refined.get("limited")
-        )
+        whole_searched = searched_route(refined, mtb_replaced) and not long_calm
         red_trip = trip
-        trip, red_info = red_crossings.settle(trip, refine_context, whole_searched, refined)
+        trip, red_info = red_crossings.settle(
+            trip, refine_context, whole_searched, refined, loop=bool(loop)
+        )
         if trip is not red_trip:
             # The routes to choose from were near-ties of the route it replaced.
             refine_context.candidates = refine_context.candidates[:1]
@@ -5203,9 +5237,7 @@ def _plan(
     # did: at least one round, not cut short.
     avoid_info, avoid_trip = None, None
     if avoid_list and not quick and not fixed:
-        searched = (
-            refined is not None and (refined.get("rounds") or 0) > 0 and not refined.get("limited")
-        )
+        searched = searched_route(refined, mtb_replaced)
         trip, avoid_info, avoid_trip = avoid_junctions.settle(
             trip,
             refine_context.request,
@@ -5292,6 +5324,9 @@ def _plan(
         # which no crossing lies before), which a Mass Ride's crossing group never
         # spans (OWNER-DECISIONS 247).
         stops_m: list[float] = []
+        # Each leg's trace and shape, for telling a route over or under an Avoid-rated
+        # junction from one through it (`avoid_junctions.graded_line`, J6).
+        graded_legs: list = []
         # Every leg's trace at once (v0.7.0 step 3), read in order below.
         prefetch_traces(variant, trace_costing, [trip], deadline, traces)
         for leg in legs:
@@ -5314,6 +5349,7 @@ def _plan(
                 # unknown, and once the budget is gone `_call` starts no more.
                 logger.info("the budget ran out tracing a leg on %s", variant)
                 trace = None
+            graded_legs.append((trace, shape))
             if trace is None:
                 untraced = float(leg.get("summary", {}).get("length", 0.0)) * 1000.0
                 stress["unknown"] += untraced
@@ -5475,8 +5511,20 @@ def _plan(
         described_full, described_overview = described if described else (None, None)
         # The Avoid-rated junctions it passes (307, 335), at their distance along the
         # route as the router measures it; each also an entry of the description.
-        avoid_found = avoid_rules.passages(coordinates, avoid_list) if avoid_list else []
-        line_m = avoid_rules.line_length_m(coordinates)
+        # Read from the traces: a bridge over or a tunnel under one is no pass (J6).
+        avoid_line, avoid_separated, avoid_nodes = (
+            avoid_junctions.graded_line(graded_legs, raw_junctions)
+            if avoid_list
+            else (coordinates, None, [])
+        )
+        avoid_found = (
+            avoid_rules.passages(
+                avoid_line, avoid_list, separated=avoid_separated, nodes=avoid_nodes
+            )
+            if avoid_list
+            else []
+        )
+        line_m = avoid_rules.line_length_m(avoid_line)
         length_m = float((trip.get("summary") or {}).get("length", 0.0)) * 1000.0
         avoid_scale = length_m / line_m if line_m > 0 and length_m > 0 else 1.0
         described_full = avoid_rules.with_entries(described_full, avoid_found, avoid_scale)

@@ -1638,6 +1638,75 @@ class TestWanted:
         assert junctions.wanted(raw())
 
 
+class TestReadByTier:
+    """The 2026-11-08 hunt, H5: a residential street the agencies' data rates LTS 3 or worse
+    is a busy road to cross, but the class gate never read its crossings."""
+
+    QUIET = {"other_classes": ("residential", "residential")}
+
+    def test_a_residential_junction_is_a_candidate_for_its_tier(self) -> None:
+        assert junctions.tier_candidate(raw(**self.QUIET))
+        # A busy class is read already; a node where nothing is decided is not a junction.
+        assert not junctions.tier_candidate(raw())
+        assert not junctions.tier_candidate(raw(others=(), other_classes=()))
+        assert not junctions.tier_candidate(
+            raw(in_class="service_other", out_class="service_other", other_classes=("track",))
+        )
+
+    def test_one_the_table_rates_busy_is_read(self, monkeypatch) -> None:
+        # Before: never asked of /locate, so it cost nothing and was never red. After: read.
+        asked: list = []
+        monkeypatch.setattr(junctions, "busy_by_tier", lambda points: {p[0] for p in points})
+        monkeypatch.setattr(junctions, "roads_by_way", lambda *a, **k: {})
+
+        def locate(payload: dict) -> list[dict]:
+            asked.extend(payload["locations"])
+            return [crossroads() for _ in payload["locations"]]
+
+        junctions.events_of([raw(**self.QUIET)], "weekend", False, locate)
+        assert asked, "the residential junction the table rates busy is read"
+
+    def test_one_the_table_rates_quiet_asks_nothing(self, monkeypatch) -> None:
+        seen: list = []
+
+        def busy_by_tier(points):
+            seen.extend(points)
+            return set()
+
+        monkeypatch.setattr(junctions, "busy_by_tier", busy_by_tier)
+        monkeypatch.setattr(junctions, "roads_by_way", lambda *a, **k: {})
+
+        def locate(payload: dict):
+            raise AssertionError("a quiet residential junction does not ask")
+
+        assert junctions.events_of([raw(**self.QUIET)], "weekend", False, locate) == []
+        assert seen == [(0, LON, LAT)]
+
+    def test_nothing_to_read_runs_no_query(self) -> None:
+        assert junctions.busy_by_tier([]) == set()
+
+    @db
+    def test_the_table_says_which_nodes_a_busy_residential_street_runs_through(
+        self, segment_schemas
+    ) -> None:
+        live, _staging = segment_schemas
+        with connection.cursor() as cursor:
+            for way, tier, trail, points in (
+                (70, 3, False, ((LON - 0.001, LAT), (LON + 0.001, LAT))),
+                (71, 2, False, ((LON - 0.001, LAT + 0.01), (LON + 0.001, LAT + 0.01))),
+                (72, 4, True, ((LON - 0.001, LAT + 0.02), (LON + 0.001, LAT + 0.02))),
+            ):
+                cursor.execute(
+                    f"INSERT INTO {live}.segment (osm_way_id, ordinal, geometry, stress_tier, "
+                    "stress_rule, is_trail_class) "
+                    "VALUES (%s, 0, ST_GeomFromText(%s, 4326), %s, 'test', %s)",
+                    [way, line(*points), tier, trail],
+                )
+        segment_info.forget_columns()
+        points = [(0, LON, LAT), (1, LON, LAT + 0.01), (2, LON, LAT + 0.02), (3, LON, LAT + 0.5)]
+        assert junctions.busy_by_tier(points) == {0}
+
+
 class TestEvents:
     """Review r1's examples, end to end through the router's answer."""
 
