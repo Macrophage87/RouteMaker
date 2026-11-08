@@ -1220,10 +1220,13 @@ function joinJogs(cues: Cue[]): void {
     const jog = [first];
     for (let k = i + 1; k < cues.length && jog.length < JOG_TURNS; k++) {
       const next = cues[k];
+      // A button signal's own note (withButtons, which runs first) between two turns is said on its own and does not
+      // part them: it broke the jog, so the later turn lost its "then right" and its "now" (the hunt, round 2, R2-3).
+      if (buttonOnly(next)) continue;
       // A crossing is never said as a turn after another: it leads its own cue, with the turn after it. A turn across a
       // road already says two things: the turn after it keeps its own cue.
       if (next.kind !== "turn" || !next.movement || next.cross || next.across) break;
-      if (next.atM - cues[k - 1].atM > JOG_M) break;
+      if (next.atM - jog[jog.length - 1].atM > JOG_M) break;
       jog.push(next);
     }
     if (jog.length < 2) continue;
@@ -2045,9 +2048,25 @@ function buttonsOnJogs(cues: Cue[]): void {
 /** A road a path crosses leads the card only this near (about when it is said); before that the next turn does. */
 export const CROSSING_SHOWN_M = 100;
 
-/** The next turn, new named way, flagged junction or walk: what the cue card leads with. */
+/**
+ * The next turn, new named way, flagged junction or walk: what the cue card leads with. A button signal's own note
+ * (withButtons) leads it on a stretch with nothing else near, but not where a turn or other lead cue comes within
+ * ADVANCE_MIN_M after it: there the card led with "Light may need a button press" and a straight arrow over the whole
+ * approach to the turn, which went unshown (the hunt, round 2, R2-2). The note is then the card's small line under
+ * that cue (`buttonBefore`), and still said on its own (`step`). ADVANCE_MIN_M, the shortest first warning, as the
+ * reach here is Claude's pick for this fix (not measured; the owner has not ruled on it).
+ */
 export function nextAction(model: RideModel, progressM: number): Cue | null {
-  return model.cues.find((c) => ahead(model, c, progressM) && (c.kind === "turn" || c.kind === "onto" || c.kind === "hazard" || (c.kind === "crossing" && c.atM - progressM <= CROSSING_SHOWN_M) || c.kind === "walk" || c.kind === "stop" || c.kind === "end")) ?? null;
+  const leads = (c: Cue) => ahead(model, c, progressM) && (c.kind === "turn" || c.kind === "onto" || c.kind === "hazard" || (c.kind === "crossing" && c.atM - progressM <= CROSSING_SHOWN_M) || c.kind === "walk" || c.kind === "stop" || c.kind === "end");
+  const first = model.cues.find(leads) ?? null;
+  if (!first || !buttonOnly(first)) return first;
+  const after = model.cues.find((c) => c.atM >= first.atM && !buttonOnly(c) && leads(c));
+  return after && after.atM - first.atM <= ADVANCE_MIN_M ? after : first;
+}
+
+/** A button signal's own note ahead of `cue`, which the card leads with in its place (nextAction): shown under it. */
+export function buttonBefore(model: RideModel, progressM: number, cue: Cue | null): boolean {
+  return !!cue && !buttonOnly(cue) && model.cues.some((c) => buttonOnly(c) && c.atM < cue.atM && ahead(model, c, progressM));
 }
 
 /** The stretch the rider is on: its street as the API names it, or null. */
@@ -2270,7 +2289,9 @@ export function whereAmI(
         : t("On {way}.", { way }),
   ];
   const progress = state.progressM;
-  const cue = model.cues.find((c) => ahead(model, c, progress) && (c.kind === "turn" || c.kind === "onto" || c.kind === "hazard" || c.kind === "walk"));
+  // Never a button signal's own note (withButtons): "Next" names the turn, and the note's words, a label with no full
+  // stop, ran the sentence on into the distance to the end (the hunt, round 2, R2-2).
+  const cue = model.cues.find((c) => ahead(model, c, progress) && !buttonOnly(c) && (c.kind === "turn" || c.kind === "onto" || c.kind === "hazard" || c.kind === "walk"));
   if (isStartUTurn(cue)) sentences.push(t("Next: {cue}", { cue: lowerFirst((cue as Cue).text) }));
   else if (cue) {
     sentences.push(t("Next, in {distance}: {cue}", { distance: dist(cue.atM - state.progressM), cue: inSentence(cue, cueWords(cue, !metric)) }));
@@ -2308,7 +2329,9 @@ export function whereAmIShown(
   const mile = named ? trailMileAt(miles, stretch!.street as string, pointAt(model, progress)) : null;
   const street = named ?? capital(wayRidden(stretch) ?? t("the route"));
   const lines = [mile ? `${street} · ${mileWords(mile)}` : street];
-  const cue = model.cues.find((c) => ahead(model, c, progress) && (c.kind === "turn" || c.kind === "onto" || c.kind === "hazard" || c.kind === "walk"));
+  // Never a button signal's own note (withButtons): "Next" names the turn, and the note's words, a label with no full
+  // stop, ran the sentence on into the distance to the end (the hunt, round 2, R2-2).
+  const cue = model.cues.find((c) => ahead(model, c, progress) && !buttonOnly(c) && (c.kind === "turn" || c.kind === "onto" || c.kind === "hazard" || c.kind === "walk"));
   const next: string[] = [];
   if (cue) {
     // A turn's street, else the named path it leads to, else a jog's next named street; any other cue its short words.
@@ -2390,6 +2413,16 @@ export function replanKept(model: RideModel, progressM: number, points: readonly
  */
 export function endsOnStart(points: readonly LonLat[]): boolean {
   return points.length >= 3 && haversineM(points[0], points[points.length - 1]) <= 50;
+}
+
+/**
+ * Whether a loop's re-route is sent through a shape point (`loopShapePoint`): only the end left ahead, not for a detour or
+ * a restart, and not where the end ends a leg drawn by hand (lib/pointKinds.ts: a leg is drawn by its end's mark). Put
+ * before such an end, the shape point made the drawn leg run from it, so half the rest of the loop was sent as one
+ * straight line across whatever lay between (the hunt, round 2, R2-8); the drawn leg is then ridden as drawn.
+ */
+export function shapesHome(ride: { loopRide: boolean; detour: boolean; restart: boolean; keptPoints: number; endDrawn: boolean }): boolean {
+  return ride.loopRide && !ride.detour && !ride.restart && ride.keptPoints === 1 && !ride.endDrawn;
 }
 
 /** A loop's way home this long or longer keeps its shape through a re-route (`loopShapePoint`); about a mile. */

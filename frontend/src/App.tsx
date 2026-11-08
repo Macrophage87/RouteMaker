@@ -120,7 +120,7 @@ import { MANUAL_BADGE, planLegEdit } from "./lib/planLegs.ts";
 import { insertedSaid, loopChangeSaid,reversedSaid, reverseUnavailableHint, stationSaid } from "./lib/pointText.ts";
 import { avoidNearSpot, shownRoute } from "./lib/avoidJunctions.ts";
 import { shownNear } from "./lib/junctionSuggest.ts";
-import { CHECKING_CLOSURES, CLOSURE_SLOW_MS, START_NOTE_MS, RIDE_ENDED_FROM_HERE_NOTE, RIDE_ENDED_NO_FIX_NOTE, RIDE_ENDED_SAID, RideMode, primeRideVoice, startRideGesture, voiceTurnedOn, type EndedPlan, type RideView } from "./RideMode.tsx";
+import { CHECKING_CLOSURES, CLOSURE_SLOW_MS, START_NOTE_MS, RIDE_ENDED_FROM_HERE_NOTE, RIDE_ENDED_NO_FIX_NOTE, RIDE_ENDED_SAID, RideMode, primeRideVoice, startRideGesture, voiceTurnedOn, type EndedPlan, type EndedRiding, type RideView } from "./RideMode.tsx";
 import { Icon } from "./Icon.tsx";
 import { RideSummaryCard } from "./RideSummaryCard.tsx";
 import type { RebalanceDocked } from "./lib/rebalanceDock.ts";
@@ -329,7 +329,7 @@ import { joinActions, joinKey, joinLine, joinShown, joinTitle, keepJoinShown, sh
 import { canSendToGarmin, handGpx } from "./lib/sendToGarmin.ts";
 import { ResumeRideDialog } from "./ResumeRideDialog.tsx";
 import type { OnwardState } from "./lib/onward.ts";
-import { forgetLeftRide, keepLeftRide, keepLeftRideLeads, leftRide, leftRidePast, resumedBroadcast, resumesQuietly } from "./lib/rideResume.ts";
+import { forgetLeftRide, keepLeftRide, keepLeftRideLeads, leftRide, leftRidePast, resumedBroadcast, resumesQuietly, type RideReplans } from "./lib/rideResume.ts";
 import { StopNameDialog, type StopNameAsk } from "./StopNameDialog.tsx";
 import { LoadRouteDialog } from "./LoadRouteDialog.tsx";
 import { LOAD_ROUTE, withGpxChoice, type GpxChoice } from "./lib/loadRoute.ts";
@@ -1158,6 +1158,8 @@ export function App() {
     note?: string;
     /** Started from Start ride: away from the start at the first fix, the start is the first stop (RideMode startFirst). */
     startFirst?: boolean;
+    /** Resumed or kept riding: what the ride's re-plans had learnt (lib/rideResume.ts RideReplans). */
+    replans?: RideReplans | null;
     n: number;
   } | null>(null);
   // The timed rail check rests while on a bike unless the ride rides a train or bus (the owner, 2026-11-01: battery
@@ -4738,7 +4740,7 @@ export function App() {
   } | null>(null);
   const rideNow = useRef({ start: rideStart, mode });
   rideNow.current = { start: rideStart, mode };
-  const endRide = useCallback((after: EndedPlan, stats: RideStats, docked?: RebalanceDocked | null) => {
+  const endRide = useCallback((after: EndedPlan, stats: RideStats, docked?: RebalanceDocked | null, riding?: EndedRiding | null) => {
     const { start, mode: endedIn } = rideNow.current;
     // Past a trip's line, the walk or train followed (as kept for Resume), for Undo.
     const past = start?.whole ? leftRidePast() : null;
@@ -4772,7 +4774,11 @@ export function App() {
     }
     const note = from ? RIDE_ENDED_FROM_HERE_NOTE : endedIn !== "go" && after === "no-fix" ? RIDE_ENDED_NO_FIX_NOTE : null;
     // A Rebalance Ride's chosen dock (lib/rebalanceDock.ts): Keep riding carries on to it, not to the plan's walk again.
-    const kept = start && docked ? { ...start, planned: start.planned ?? start.route, route: docked.route, points: docked.points, trip: start.trip ? { ...start.trip, approach: null, docked: docked.name } : null } : start;
+    // Else the ride as it stood (RideMode `riding`), its re-plans, dials and what they had learnt, not the route as it
+    // was at Start: Keep riding put the rider back on a route they had re-planned away from, off it at once (the hunt,
+    // round 2, R2-6). Not a trip (its leg is the whole trip's), nor a shared ride, whose line is the one shared.
+    const asRidden = start && riding && !docked && !start.trip && !start.whole && !sharedOpenNow.current ? { ...start, ...riding } : start;
+    const kept = start && docked ? { ...start, planned: start.planned ?? start.route, route: docked.route, points: docked.points, trip: start.trip ? { ...start.trip, approach: null, docked: docked.name } : null } : asRidden;
     endedRide.current = kept ? { start: kept, from, stats, shared: sharedOpenNow.current, linkSent: rideLinkSent.current, past, stopsLeft } : null;
     setRiding(false);
     setRideStart(null);
@@ -7101,6 +7107,7 @@ export function App() {
           resumedPast={rideStart.past ?? null}
           startFirst={rideStart.startFirst === true}
           resumedQuietly={rideStart.quiet === true}
+          replans={rideStart.replans ?? null}
           onRideRest={(riderAt) => rideRest(riderAt, true)}
           onTripCheck={tripCheck.current?.route === rideStart.route ? checkTrip : undefined}
           onNextLeg={tripStopsLeft.current ? nextLeg : undefined}

@@ -230,7 +230,7 @@ test("End ride in Plan keeps the plan and its routes; part way it starts where t
   assert.match(endRide, /commit\(from, ride\.dials\.loop \? \{ \.\.\.ride, dials: \{ \.\.\.ride\.dials, loop: false \} \} : undefined\);/);
   // The ride's own fix (planAfterEnd), never a trip's riding leg; the ride's figures with it.
   // Without a loop's shape point, which the rider never placed (withoutShapes; the hunt, 2026-11-08, V1).
-  assert.match(ride, /onEnd\(trip && !trip\.asPlanned \? null : withoutShapes\(planAfterEnd\(modelRef\.current, rideRef\.current, plan\.current\.points, plan\.current\.loop, Date\.now\(\)\)\), statsRef\.current, dockChosen\.current \? \{ name: dockChosen\.current, route: routeRef\.current, points: plan\.current\.points \} : null\);/);
+  assert.match(ride, /onEnd\(trip && !trip\.asPlanned \? null : withoutShapes\(planAfterEnd\(modelRef\.current, rideRef\.current, plan\.current\.points, plan\.current\.loop, Date\.now\(\)\)\), statsRef\.current, dockChosen\.current \? \{ name: dockChosen\.current, route: routeRef\.current, points: plan\.current\.points \} : null, riding\);/);
   assert.match(app, /if \(ended\.from && pointsRef\.current === ended\.from\) edits\.retract\(\);/);
 });
 

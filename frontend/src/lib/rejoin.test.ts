@@ -302,3 +302,31 @@ test("joined: the mountain-bike trails move with the sections, the way back's th
   close(trails[2]!.from_m, 600);
   close(trails[2]!.to_m, 1100);
 });
+
+// The hunt, round 2, R2-1: the planned route's button signal at its B Street turn (1,000 m), joined at 700 m after a
+// 300 m way back, is at 600 m of the joined line. Before, light_buttons came from the planned route unmoved (1,000 m),
+// so the note was said 400 m up B Street, where there is no signal, and the turn had none; the leg's own were lost.
+test("joined: the signals that may need a button move with the description, the way back's then the planned route's", () => {
+  const plan = { ...planned(), light_buttons: [{ at_m: 500, lon: 0, lat: 0 }, { at_m: 1000, lon: 1, lat: 1 }] };
+  const joined = joinRoutes({ ...leg(700), light_buttons: [{ at_m: 200, lon: 2, lat: 2 }] }, plan, 700, new Map());
+  const buttons = joined.light_buttons ?? [];
+  // Behind the join (500 m): gone. The leg's at its turn onto A Street, then B Street's at the joined line's turn.
+  assert.deepEqual(buttons.map((b) => b.lon), [2, 1]);
+  close(buttons[0].at_m, 200);
+  close(buttons[1].at_m, 600);
+  const turns = rideModel(joined).cues.filter((c) => c.kind === "turn");
+  assert.deepEqual(turns.map((c) => [c.street, c.button === true]), [["A Street", true], ["B Street", true]]);
+  // Joined at the end: the leg's only.
+  assert.deepEqual((joinRoutes(leg(700), plan, 2000, new Map()).light_buttons ?? []).length, 0);
+});
+
+// The hunt, round 2, R2-7: a way back planned along a dirt trail (on_dirt) has dirt_trails; the planned route has none.
+// Before, the joined route took the planned route's (unset), so riding the trail never set dirt_ridden (rodeDirt).
+test("joined: either part's dirt trail or dirt closed is the joined route's", () => {
+  assert.equal(joinRoutes({ ...leg(700), dirt_trails: true }, planned(), 700, new Map()).dirt_trails, true);
+  assert.equal(joinRoutes(leg(700), { ...planned(), dirt_trails: true }, 700, new Map()).dirt_trails, true);
+  assert.equal(joinRoutes({ ...leg(700), dirt_closed: true }, planned(), 700, new Map()).dirt_closed, true);
+  assert.equal(joinRoutes(leg(700), planned(), 700, new Map()).dirt_trails, false);
+  // Joined at the end: none of the planned route is ridden, so none of its dirt.
+  assert.equal(joinRoutes(leg(700), { ...planned(), dirt_trails: true }, 2000, new Map()).dirt_trails, false);
+});

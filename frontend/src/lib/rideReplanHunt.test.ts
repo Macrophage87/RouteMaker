@@ -9,7 +9,7 @@ import type { DescriptionEntry, RouteResponse, RouteResult, StressSpan } from ".
 import { routeRequestBody } from "./api.ts";
 import { dialFields, startDials } from "./dials.ts";
 import { haversineM, type LonLat } from "./geo.ts";
-import { LOOP_SHAPE_MIN_M, endsOnStart, loopShapePoint, onHalfStep, rideModel } from "./navigate.ts";
+import { LOOP_SHAPE_MIN_M, endsOnStart, loopShapePoint, onHalfStep, rideModel, shapesHome } from "./navigate.ts";
 import { isRoundTrip } from "./loop.ts";
 import { ViaMarks, VIA_MARKS, stopsOnly, withVias, withViasOnLegs } from "./pointKinds.ts";
 import { REJOIN_ONWARD_M, rejoinTargets, rejoinsFirst, wayBackRoute } from "./rejoin.ts";
@@ -146,9 +146,10 @@ test("a dirt trail counts as ridden once the rider is placed DIRT_RIDDEN_M into 
 
 test("Ride mode sets dirt ridden from the rider's own ride, never from a route's dirt_trails", () => {
   const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
-  assert.match(ride, /const dirtRidden = useRef\(false\);/);
+  // Not set at start but from a Resume's or Keep riding's kept state (the hunt, round 2, R2-5).
+  assert.match(ride, /const dirtRidden = useRef\(replans\?\.dirtRidden === true\);/);
   assert.doesNotMatch(ride, /dirt_trails\) dirtRidden\.current = true/);
-  assert.match(ride, /if \(!dirtRidden\.current && !out\.state\.off && rodeDirt\(routeRef\.current, modelRef\.current\.lengthM, wasAtM, out\.state\.progressM\)\) dirtRidden\.current = true;/);
+  assert.match(ride, /if \(!dirtRidden\.current && !out\.state\.off && rodeDirt\(routeRef\.current, modelRef\.current\.lengthM, wasAtM, out\.state\.progressM\)\) \{\s*dirtRidden\.current = true;/);
 });
 
 // ---- X4: half steps on the line's scale ------------------------------------------------------------------------------
@@ -224,8 +225,8 @@ test("on a loop, an automatic re-route rejoins the loop ahead first, and the pla
   assert.equal(rejoinsFirst({ rank: 1 }, none, true), true);
   assert.equal(rejoinsFirst({ rank: 1 }, { ...none, asked: true }, true), false, "the rider's own ask plans afresh");
   const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
-  assert.match(ride, /const loopRide = useRef\(plannedLoop \|\| endsOnStart\(plannedPoints\)\)\.current;/);
-  assert.match(ride, /const shape = loopRide && !via && !done && keptPoints\.length === 1 \? loopShapePoint\(modelRef\.current, fromM\) : null;/);
+  assert.match(ride, /const loopRide = useRef\(plannedLoop \|\| endsOnStart\(plannedPoints\) \|\| replans\?\.loopRide === true\)\.current;/);
+  assert.match(ride, /const shape = shapesHome\(\{ loopRide, detour: !!via, restart: !!done, keptPoints: keptPoints\.length, endDrawn \}\) \? loopShapePoint\(modelRef\.current, fromM\) : null;/);
   // Marked as the ride's own, not the rider's (review of this branch: it was a plain via, so a later re-route said
   // "Skipping via point" for it, and End ride left it in Plan).
   assert.match(ride, /const left = shape \? \[keptLeft\[0\], VIA_MARKS\.shape\(\[shape\.point\[0\], shape\.point\[1\]\]\), \.\.\.keptLeft\.slice\(1\)\] : keptLeft;/);
@@ -311,4 +312,18 @@ test("an order that splits a leg with via points is said and not taken", () => {
   const moved: StopOrder = { ...answer, order: [0, 3, 1, 2, 4] };
   const taken = applyAnswer({ points: whole, preset: "default", dials, loop: false, stops: wholeStops }, { points: whole, preset: "default", dials }, { ok: true, answer: moved }, names);
   assert.deepEqual(taken.commit, [start, c, a, m, b, end]);
+});
+
+// The hunt, round 2, R2-8: a loop whose last leg was drawn by hand (its end marked drawn). Before, the shape point was put
+// before that end, so the drawn leg ran from the shape point: half the rest of the loop sent as one straight line.
+test("a loop's way home takes no shape point where its end ends a drawn leg", () => {
+  const ride = { loopRide: true, detour: false, restart: false, keptPoints: 1, endDrawn: false };
+  assert.equal(shapesHome(ride), true);
+  assert.equal(shapesHome({ ...ride, endDrawn: true }), false);
+  assert.equal(shapesHome({ ...ride, loopRide: false }), false);
+  assert.equal(shapesHome({ ...ride, detour: true }), false);
+  assert.equal(shapesHome({ ...ride, restart: true }), false);
+  assert.equal(shapesHome({ ...ride, keptPoints: 2 }), false);
+  const src = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
+  assert.match(src, /const endDrawn = keptLeft\.length > 0 && VIA_MARKS\.isDrawn\(keptLeft\[keptLeft\.length - 1\]\);/);
 });
