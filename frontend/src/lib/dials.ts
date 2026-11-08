@@ -212,6 +212,8 @@ export const STARTS: Record<PresetId, Start> = {
   // Road Bike (Stephen, 2026-11-02): "Balanced" traffic, as Group Ride and Gravel (core.presets ROAD_BIKE_STRESS).
   "road-bike": { stress: 40, hills: 0, seek: true },
   cargo: { stress: 70, hills: -60, seek: true, carrying: { cargo: 70, people: 80 }, assist: true },
+  // Tandem (2026-11-08): Default's traffic, hills toward avoid (core.presets TANDEM_HILLS).
+  tandem: { stress: 70, hills: -40, seek: true },
   // Toward "fine with hills" (242): `core.presets.EBIKE_HILLS`.
   ebike: { stress: 70, hills: 50, seek: true },
   // The classic bike's start; the e-bike's hills start is BIKESHARE_BIKES.ebike.hills.

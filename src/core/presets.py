@@ -68,8 +68,8 @@ VALHALLA_GATE_COST_S = 30
 VALHALLA_GATE_PENALTY_S = 300
 VALHALLA_PRIVATE_ACCESS_PENALTY_S = 450
 
-# What a gate costs every ride type but Cargo: Valhalla's 30 s, as time and as cost, and no
-# penalty on top. The owner, 2026-11-08, of the large gate penalty: it "was intended just for
+# What a gate costs every ride type but Cargo and Tandem: Valhalla's 30 s, as time and as cost,
+# and no penalty on top. The owner, 2026-11-08, of the large gate penalty: it "was intended just for
 # Tandem, and possibly cargo too. Basically, bollards aren't huge deterrents in most cases."
 # (and 2026-10-04, PLAN item 336: "Flag them and maybe 30 seconds. 10 minutes would keep people
 # off traffic free roads"). Until then every preset sent Valhalla's default penalty of 300 s,
@@ -360,13 +360,15 @@ def system_weight_for(
 ) -> float:
     """The total system weight (kg) the effort model reads (OWNER-DECISIONS 264):
     the rider's, held to the model's range (338: the nearer limit, never refused),
-    else Cargo with passengers' own default, else the model's 90."""
+    else Cargo with passengers' or Tandem's own default, else the model's 90."""
     from routemaker import effort
 
     if chosen is not None:
         return effort.clamp_mass_kg(chosen)
     if carrying_of(preset_name, carrying) == CARRYING_PEOPLE:
         return effort.PASSENGERS_MASS_KG
+    if preset_name == TANDEM:
+        return effort.TANDEM_MASS_KG
     return effort.MASS_KG
 
 
@@ -599,6 +601,8 @@ BRAKE_GRADES = MappingProxyType(
         "fast": None,
         # A road bike descends fast and brakes late, as Fast's rider does.
         "road-bike": None,
+        # Tandem (2026-11-08): two riders on one set of brakes, as a group's 5%.
+        "tandem": 0.05,
     }
 )
 
@@ -752,6 +756,35 @@ MTB_HILLS = 50
 ROAD_BIKE = "road-bike"
 ROAD_BIKE_STRESS = 40
 ROAD_BIKE_SURFACES = 0.9
+
+# Tandem (the owner, 2026-11-08: "Build a tandem ride type"; of the large gate penalty, it "was
+# intended just for Tandem, and possibly cargo too"). A bicycle built for two: a long wheelbase
+# that turns wide and cannot thread a narrow gap, two riders' power on the flat but twice the
+# weight up a climb, and a stop that both riders must restart from together. Costing only, on
+# the standard graph (and its weekend twin): no new graph, no map rebuild and no new control.
+# The implementation's defaults, stated here so they can be argued with:
+#
+# - Gates, cycle barriers and narrow bollards: Cargo's charge (`CARGO_GATE_COST_S` plus
+#   `CARGO_GATE_PENALTY_S`, fifteen minutes of cost, 30 s of it time), so a tandem route keeps
+#   out of them unless there is no other way. Steps are priced out for every bicycle already.
+# - Turns: Group Ride's and Road Bike's maneuver penalty (`HIGH_MANEUVER_PENALTY_S`): a long
+#   bike swings wide at every corner, so fewer of them.
+# - Hills toward avoid (`TANDEM_HILLS`, -40): a tandem is quick on the flat and slow up a climb.
+#   Its system weight (`routemaker.effort.TANDEM_MASS_KG`, two riders and the bike) makes every
+#   climb dearer in the effort model too; a weight the rider set still wins.
+# - Descents: braking starts to cost past 5% (`BRAKE_GRADES`), as a group's: twice the weight
+#   on one set of brakes heats them on a long steep descent.
+# - Surfaces: Cargo's 0.6, a long heavy bike on loose gravel is hard to steer.
+# - Pace: 13 mph (21 km/h) on the flat, faster than Default's 11.2 mph (two riders, one bike's
+#   drag); the rider's own speed (`rider_speed`) still wins.
+# - Waits: a junction stop weighs twice its time in the ranking (`WAIT_WEIGHTS`), less than
+#   Road Bike's 3x: both riders unclip, wait and restart in step. The time shown is the real wait.
+# - Traffic: Default's start (70); two adults ride it, the captain in control.
+TANDEM = "tandem"
+TANDEM_HILLS = -40
+TANDEM_PLANNING_SPEED_KMH = 21.0
+TANDEM_WAIT_WEIGHT = 2.0
+
 # The ride types a ticked "Avoid gravel" box (retired with Road Bike's arrival) plans as Road
 # Bike: a rider's own bike, carrying nothing (`core.api.RouteIn`). Cargo, E-bike, a group, a
 # share bike, a transit trip and Mountain Bike keep their own ride and lose the box. So do
@@ -766,7 +799,8 @@ AVOID_GRAVEL_BECOMES = frozenset({"default", "fast", "gravel", "mountain-goat"})
 # their pace at every stop. The time shown stays the real wait; every other ride type, 1.
 # Run's is 3 too (2026-11-02): a runner stopped at a light loses their pace as a road rider does
 # (`core.run_plan.weigh`, its signalled crossings).
-WAIT_WEIGHTS = MappingProxyType({ROAD_BIKE: 3.0, RUN: 3.0})
+# Tandem's is 2 (2026-11-08, "Tandem" above): both riders restart in step.
+WAIT_WEIGHTS = MappingProxyType({ROAD_BIKE: 3.0, RUN: 3.0, TANDEM: TANDEM_WAIT_WEIGHT})
 
 
 def wait_weight_for(name: str) -> float:
@@ -1146,6 +1180,20 @@ PRESETS: MappingProxyType = MappingProxyType(
                 gate_cost=GATE_COST_S,
                 gate_penalty=GATE_PENALTY_S,
                 cycling_speed=NOVICE_PLANNING_SPEED_KMH,
+            ),
+            _preset(
+                TANDEM,
+                Variant.STANDARD,
+                # See "Tandem" above.
+                stress=DEFAULT_STRESS,
+                hills=TANDEM_HILLS,
+                bicycle_type="Hybrid",
+                avoid_bad_surfaces=CARGO_SURFACE_AVOIDANCE,
+                use_living_streets=_LIVING_STREETS,
+                maneuver_penalty=HIGH_MANEUVER_PENALTY_S,
+                gate_cost=CARGO_GATE_COST_S,
+                gate_penalty=CARGO_GATE_PENALTY_S,
+                cycling_speed=TANDEM_PLANNING_SPEED_KMH,
             ),
         )
     }

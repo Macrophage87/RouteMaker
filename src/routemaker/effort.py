@@ -48,6 +48,8 @@ MASS_KG = 90.0
 MASS_MIN_KG = 25
 MASS_MAX_KG = 700
 PASSENGERS_MASS_KG = 120.0
+# Tandem (2026-11-08): two adults of about 80 kg and a tandem of about 18 kg.
+TANDEM_MASS_KG = 178.0
 GRAVITY = 9.80665
 # Rolling resistance of a hybrid or cross tyre on mixed pavement, from the range
 # 0.004 (smooth road) to 0.012 (rough) the power-model literature gives.
