@@ -2129,4 +2129,9 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Uses a harder MTB trail.": "يستخدم مسار دراجات جبلية أصعب.",
   "The off-road map isn't available, so this route keeps to the usual trails.": "خريطة الطرق الوعرة غير متاحة، لذا يبقى هذا المسار على الدروب المعتادة.",
   "Off-road map unavailable: usual trails.": "خريطة الطرق الوعرة غير متاحة: الدروب المعتادة.",
+  // ---- Road Bike's map notices (lib/roadBike.ts; hunt 3, 2026-11-08), drafted for native review ----
+  "There is no road bike map right now, so this route may use gravel and trails.": "لا توجد خريطة لدراجة الطريق الآن، لذا قد يستخدم هذا المسار الحصى والدروب.",
+  "No road bike map: may use gravel.": "لا خريطة لدراجة الطريق: قد يستخدم الحصى.",
+  "There is no weekend road bike map right now, so this route counts parkways like Beach Drive as roads with cars.": "لا توجد خريطة عطلة نهاية الأسبوع لدراجة الطريق الآن، لذا يعدّ هذا المسار طرق المتنزهات مثل Beach Drive طرقًا فيها سيارات.",
+  "No weekend map: parkways may have cars.": "لا خريطة لعطلة نهاية الأسبوع: قد توجد سيارات على طرق المتنزهات.",
 };

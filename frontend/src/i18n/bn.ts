@@ -2129,4 +2129,9 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Uses a harder MTB trail.": "একটি কঠিন MTB ট্রেইল ব্যবহার করে।",
   "The off-road map isn't available, so this route keeps to the usual trails.": "অফ-রোড মানচিত্র পাওয়া যাচ্ছে না, তাই এই রুট সাধারণ ট্রেইলেই থাকে।",
   "Off-road map unavailable: usual trails.": "অফ-রোড মানচিত্র নেই: সাধারণ ট্রেইল।",
+  // ---- Road Bike's map notices (lib/roadBike.ts; hunt 3, 2026-11-08), drafted for native review ----
+  "There is no road bike map right now, so this route may use gravel and trails.": "এখন রোড বাইকের মানচিত্র নেই, তাই এই রুট নুড়িপথ ও ট্রেইল ব্যবহার করতে পারে।",
+  "No road bike map: may use gravel.": "রোড বাইকের মানচিত্র নেই: নুড়িপথ থাকতে পারে।",
+  "There is no weekend road bike map right now, so this route counts parkways like Beach Drive as roads with cars.": "এখন সপ্তাহান্তের রোড বাইকের মানচিত্র নেই, তাই এই রুট Beach Drive-এর মতো পার্কওয়েকে গাড়ি চলা রাস্তা ধরে।",
+  "No weekend map: parkways may have cars.": "সপ্তাহান্তের মানচিত্র নেই: পার্কওয়েতে গাড়ি থাকতে পারে।",
 };

@@ -2129,4 +2129,9 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Uses a harder MTB trail.": "Daha zor bir MTB patikası kullanır.",
   "The off-road map isn't available, so this route keeps to the usual trails.": "Arazi haritası kullanılamıyor, bu yüzden bu rota olağan patikalarda kalıyor.",
   "Off-road map unavailable: usual trails.": "Arazi haritası yok: olağan patikalar.",
+  // ---- Road Bike's map notices (lib/roadBike.ts; hunt 3, 2026-11-08), drafted for native review ----
+  "There is no road bike map right now, so this route may use gravel and trails.": "Şu an yol bisikleti haritası yok, bu yüzden bu rota çakıl ve patika kullanabilir.",
+  "No road bike map: may use gravel.": "Yol bisikleti haritası yok: çakıl olabilir.",
+  "There is no weekend road bike map right now, so this route counts parkways like Beach Drive as roads with cars.": "Şu an hafta sonu yol bisikleti haritası yok, bu yüzden bu rota Beach Drive gibi park yollarını arabalı yol sayıyor.",
+  "No weekend map: parkways may have cars.": "Hafta sonu haritası yok: park yollarında araba olabilir.",
 };

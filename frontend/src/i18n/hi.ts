@@ -2129,4 +2129,9 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Uses a harder MTB trail.": "एक कठिन MTB ट्रेल इस्तेमाल करता है।",
   "The off-road map isn't available, so this route keeps to the usual trails.": "ऑफ़-रोड नक्शा उपलब्ध नहीं है, इसलिए यह रूट सामान्य ट्रेल पर ही रहता है।",
   "Off-road map unavailable: usual trails.": "ऑफ़-रोड नक्शा नहीं: सामान्य ट्रेल।",
+  // ---- Road Bike's map notices (lib/roadBike.ts; hunt 3, 2026-11-08), drafted for native review ----
+  "There is no road bike map right now, so this route may use gravel and trails.": "अभी रोड बाइक का नक्शा नहीं है, इसलिए यह रूट बजरी और ट्रेल पर जा सकता है।",
+  "No road bike map: may use gravel.": "रोड बाइक का नक्शा नहीं: बजरी हो सकती है।",
+  "There is no weekend road bike map right now, so this route counts parkways like Beach Drive as roads with cars.": "अभी सप्ताहांत का रोड बाइक नक्शा नहीं है, इसलिए यह रूट Beach Drive जैसी पार्कवे को गाड़ियों वाली सड़क मानता है।",
+  "No weekend map: parkways may have cars.": "सप्ताहांत का नक्शा नहीं: पार्कवे पर गाड़ियाँ हो सकती हैं।",
 };

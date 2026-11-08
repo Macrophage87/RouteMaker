@@ -2129,4 +2129,9 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Uses a harder MTB trail.": "የከበደ የMTB ዱካ ይጠቀማል።",
   "The off-road map isn't available, so this route keeps to the usual trails.": "ከመንገድ ውጭ ያለው ካርታ አይገኝም፤ ስለዚህ ይህ መስመር በተለመዱት ዱካዎች ላይ ይቆያል።",
   "Off-road map unavailable: usual trails.": "ከመንገድ ውጭ ካርታ የለም፦ የተለመዱ ዱካዎች።",
+  // ---- Road Bike's map notices (lib/roadBike.ts; hunt 3, 2026-11-08), drafted for native review ----
+  "There is no road bike map right now, so this route may use gravel and trails.": "አሁን የመንገድ ብስክሌት ካርታ የለም፤ ስለዚህ ይህ መስመር ጠጠርና ዱካዎችን ሊጠቀም ይችላል።",
+  "No road bike map: may use gravel.": "የመንገድ ብስክሌት ካርታ የለም፦ ጠጠር ሊጠቀም ይችላል።",
+  "There is no weekend road bike map right now, so this route counts parkways like Beach Drive as roads with cars.": "አሁን የሳምንት መጨረሻ የመንገድ ብስክሌት ካርታ የለም፤ ስለዚህ ይህ መስመር እንደ Beach Drive ያሉ የፓርክ መንገዶችን መኪና ያለባቸው መንገዶች አድርጎ ይቆጥራል።",
+  "No weekend map: parkways may have cars.": "የሳምንት መጨረሻ ካርታ የለም፦ የፓርክ መንገዶች መኪና ሊኖራቸው ይችላል።",
 };

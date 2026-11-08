@@ -107,6 +107,17 @@ test("a transit leg's re-plan leaves out novice_legs and transit_option on its p
   assert.equal(legDials({ ...startDials("bikeshare"), loop: false }, "walk", "classic").ridingSpeedKmh, undefined);
 });
 
+test("a ride's re-plan is planned for now, not at the plan's chosen time (hunt 3, R3-1)", () => {
+  const plan = { ...startDials("road-bike"), when: "weekend" as const };
+  // Before: the plan's "Weekend" went with every re-plan, so a Tuesday ride re-planned on the weekend map.
+  assert.equal(dialFields(plan).when, "weekend");
+  const body = JSON.parse(routeRequestBody([at(0, 0), at(1000, 0)], "road-bike", { dials: legDials({ ...plan, loop: false }, "road-bike", null), rideReplan: true }));
+  assert.equal(body.when, undefined, "the API works out the time of the ride");
+  assert.equal(legDials({ ...plan, when: "weekday_rush" }, "default", null).when, null);
+  // The plan's dials are never changed.
+  assert.equal(plan.when, "weekend");
+});
+
 test("the share bike a leg is on: the plan's dial, the plan's answer, or Bikeshare + transit's classic bike", () => {
   const base = planned();
   assert.equal(shareBikeOf(base, { bike: "ebike" }), "ebike");

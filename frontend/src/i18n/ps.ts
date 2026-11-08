@@ -2129,4 +2129,9 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Uses a harder MTB trail.": "یوه سخته د MTB لار کاروي.",
   "The off-road map isn't available, so this route keeps to the usual trails.": "د سړک بهر نقشه شتون نه لري، نو دا لاره په معمولو لارو پاتې کېږي.",
   "Off-road map unavailable: usual trails.": "د سړک بهر نقشه نشته: معمولې لارې.",
+  // ---- Road Bike's map notices (lib/roadBike.ts; hunt 3, 2026-11-08), drafted for native review ----
+  "There is no road bike map right now, so this route may use gravel and trails.": "اوس د سړک بایسکل نقشه نشته، نو دا لاره ښايي جغل او لارې وکاروي.",
+  "No road bike map: may use gravel.": "د سړک بایسکل نقشه نشته: ښايي جغل وي.",
+  "There is no weekend road bike map right now, so this route counts parkways like Beach Drive as roads with cars.": "اوس د اونۍ پای لپاره د سړک بایسکل نقشه نشته، نو دا لاره د پارک سړکونه لکه Beach Drive د موټرو سړکونه ګڼي.",
+  "No weekend map: parkways may have cars.": "د اونۍ پای نقشه نشته: ښايي د پارک په سړکونو موټر وي.",
 };

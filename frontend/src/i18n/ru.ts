@@ -2129,4 +2129,9 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Uses a harder MTB trail.": "Идёт по более сложной МТБ-трассе.",
   "The off-road map isn't available, so this route keeps to the usual trails.": "Внедорожная карта недоступна, поэтому маршрут идёт по обычным тропам.",
   "Off-road map unavailable: usual trails.": "Нет внедорожной карты: обычные тропы.",
+  // ---- Road Bike's map notices (lib/roadBike.ts; hunt 3, 2026-11-08), drafted for native review ----
+  "There is no road bike map right now, so this route may use gravel and trails.": "Сейчас нет карты для шоссейного велосипеда, поэтому маршрут может идти по гравию и тропам.",
+  "No road bike map: may use gravel.": "Нет карты для шоссейника: возможен гравий.",
+  "There is no weekend road bike map right now, so this route counts parkways like Beach Drive as roads with cars.": "Сейчас нет карты выходных для шоссейного велосипеда, поэтому маршрут считает парковые дороги, такие как Beach Drive, дорогами с машинами.",
+  "No weekend map: parkways may have cars.": "Нет карты выходных: на парковых дорогах могут быть машины.",
 };

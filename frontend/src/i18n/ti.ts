@@ -2129,4 +2129,9 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Uses a harder MTB trail.": "ዝኸበደ ናይ MTB መንገዲ ይጥቀም።",
   "The off-road map isn't available, so this route keeps to the usual trails.": "ካርታ ካብ ጽርግያ ወጻኢ ኣይርከብን፤ ስለዚ እዚ መስመር ኣብ ልሙዳት መንገድታት ይጸንሕ።",
   "Off-road map unavailable: usual trails.": "ካርታ ካብ ጽርግያ ወጻኢ የለን፦ ልሙዳት መንገድታት።",
+  // ---- Road Bike's map notices (lib/roadBike.ts; hunt 3, 2026-11-08), drafted for native review ----
+  "There is no road bike map right now, so this route may use gravel and trails.": "ሕጂ ናይ ጽርግያ ብሽክለታ ካርታ የለን፤ ስለዚ እዚ መስመር ጠጠርን መንገድታትን ክጥቀም ይኽእል።",
+  "No road bike map: may use gravel.": "ናይ ጽርግያ ብሽክለታ ካርታ የለን፦ ጠጠር ክህሉ ይኽእል።",
+  "There is no weekend road bike map right now, so this route counts parkways like Beach Drive as roads with cars.": "ሕጂ ናይ ቀዳመ-ሰንበት ጽርግያ ብሽክለታ ካርታ የለን፤ ስለዚ እዚ መስመር ከም Beach Drive ዝኣመሰሉ ናይ ፓርክ ጽርግያታት ከም መኪና ዘለዎም ጽርግያታት ይቖጽሮም።",
+  "No weekend map: parkways may have cars.": "ናይ ቀዳመ-ሰንበት ካርታ የለን፦ ኣብ ናይ ፓርክ ጽርግያታት መኪና ክህሉ ይኽእል።",
 };

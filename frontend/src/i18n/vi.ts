@@ -2129,4 +2129,9 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Uses a harder MTB trail.": "Đi một đường mòn MTB khó hơn.",
   "The off-road map isn't available, so this route keeps to the usual trails.": "Bản đồ địa hình hiện không có, nên tuyến đường này đi theo các đường mòn thông thường.",
   "Off-road map unavailable: usual trails.": "Không có bản đồ địa hình: đường mòn thông thường.",
+  // ---- Road Bike's map notices (lib/roadBike.ts; hunt 3, 2026-11-08), drafted for native review ----
+  "There is no road bike map right now, so this route may use gravel and trails.": "Hiện không có bản đồ xe đạp đường trường, nên tuyến này có thể đi qua sỏi và đường mòn.",
+  "No road bike map: may use gravel.": "Không có bản đồ xe đạp đường trường: có thể có sỏi.",
+  "There is no weekend road bike map right now, so this route counts parkways like Beach Drive as roads with cars.": "Hiện không có bản đồ cuối tuần cho xe đạp đường trường, nên tuyến này coi các đường công viên như Beach Drive là đường có xe hơi.",
+  "No weekend map: parkways may have cars.": "Không có bản đồ cuối tuần: đường công viên có thể có xe hơi.",
 };

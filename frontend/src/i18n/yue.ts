@@ -2129,4 +2129,9 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Uses a harder MTB trail.": "行咗一段較難嘅MTB山徑。",
   "The off-road map isn't available, so this route keeps to the usual trails.": "越野地圖用唔到，所以呢條路線行返平時嘅徑。",
   "Off-road map unavailable: usual trails.": "冇越野地圖：行平時嘅徑。",
+  // ---- Road Bike's map notices (lib/roadBike.ts; hunt 3, 2026-11-08), drafted for native review ----
+  "There is no road bike map right now, so this route may use gravel and trails.": "而家冇公路單車地圖，所以呢條路線可能會行碎石路同山徑。",
+  "No road bike map: may use gravel.": "冇公路單車地圖：可能有碎石路。",
+  "There is no weekend road bike map right now, so this route counts parkways like Beach Drive as roads with cars.": "而家冇週末公路單車地圖，所以呢條路線當Beach Drive呢類公園路係有車行嘅路。",
+  "No weekend map: parkways may have cars.": "冇週末地圖：公園路可能有車。",
 };

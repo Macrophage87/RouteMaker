@@ -9,26 +9,37 @@
  * not trails" on rides the roads-only map by choice and is not told.
  */
 import type { RouteResponse } from "./api.ts";
+import { t } from "./i18n.ts";
 
-export const ROAD_BIKE_NO_PAVED_MAP =
-  "Road Bike's paved-only map isn't available, so this route may use packed gravel and winding trails.";
+// Said through t() in every catalog, as lib/easyMtb.ts's lines are, in plain words (hunt 3, 2026-11-08, R3-2: Go and
+// the spoken summary gave them in English in every language, and "Weekend map down" is jargon). The English is the
+// catalog key; the 45-character limit on the short lines is Claude's default, not measured.
+export const ROAD_BIKE_NO_PAVED_MAP = "There is no road bike map right now, so this route may use gravel and trails.";
 
 /** Plan shows note lines on one line; this is the one that fits, the whole line is behind it. */
-export const ROAD_BIKE_NO_PAVED_MAP_SHORT = "Road Bike map unavailable: may use gravel.";
+export const ROAD_BIKE_NO_PAVED_MAP_SHORT = "No road bike map: may use gravel.";
 
 export const ROAD_BIKE_NO_WEEKEND_MAP =
-  "Road Bike's weekend map isn't available, so this route treats car-free parkways such as Beach Drive as roads with cars.";
+  "There is no weekend road bike map right now, so this route counts parkways like Beach Drive as roads with cars.";
 
-export const ROAD_BIKE_NO_WEEKEND_MAP_SHORT = "Weekend map down: parkways may have cars.";
+export const ROAD_BIKE_NO_WEEKEND_MAP_SHORT = "No weekend map: parkways may have cars.";
 
 type Routed = Pick<RouteResponse, "preset" | "variant"> & { dials?: Pick<NonNullable<RouteResponse["dials"]>, "when"> };
 
 /** The warning for a Road Bike route a fallback map answered, with its one-line form, or null. */
 export function roadBikeNotice(route: Routed | null | undefined): { text: string; short: string } | null {
   if (!route || route.preset !== "road-bike") return null;
-  if (route.variant === "standard") return { text: ROAD_BIKE_NO_PAVED_MAP, short: ROAD_BIKE_NO_PAVED_MAP_SHORT };
+  if (route.variant === "standard") {
+    return {
+      text: t("There is no road bike map right now, so this route may use gravel and trails."),
+      short: t("No road bike map: may use gravel."),
+    };
+  }
   if (route.variant === "paved" && route.dials?.when === "weekend") {
-    return { text: ROAD_BIKE_NO_WEEKEND_MAP, short: ROAD_BIKE_NO_WEEKEND_MAP_SHORT };
+    return {
+      text: t("There is no weekend road bike map right now, so this route counts parkways like Beach Drive as roads with cars."),
+      short: t("No weekend map: parkways may have cars."),
+    };
   }
   return null;
 }

@@ -2129,4 +2129,9 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Uses a harder MTB trail.": "Emprunte un sentier VTT plus difficile.",
   "The off-road map isn't available, so this route keeps to the usual trails.": "La carte tout-terrain n'est pas disponible, cet itinéraire reste donc sur les sentiers habituels.",
   "Off-road map unavailable: usual trails.": "Carte tout-terrain indisponible : sentiers habituels.",
+  // ---- Road Bike's map notices (lib/roadBike.ts; hunt 3, 2026-11-08), drafted for native review ----
+  "There is no road bike map right now, so this route may use gravel and trails.": "Il n'y a pas de carte vélo de route pour l'instant, cet itinéraire peut donc passer sur du gravier et des sentiers.",
+  "No road bike map: may use gravel.": "Pas de carte vélo de route : gravier possible.",
+  "There is no weekend road bike map right now, so this route counts parkways like Beach Drive as roads with cars.": "Il n'y a pas de carte vélo de route du week-end pour l'instant, cet itinéraire compte donc les routes de parc comme Beach Drive comme des routes avec voitures.",
+  "No weekend map: parkways may have cars.": "Pas de carte du week-end : voitures possibles sur les routes de parc.",
 };
