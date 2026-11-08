@@ -701,6 +701,11 @@ class TestStrayRings:
         assert trail_touch.stray_rings(self.pieces([1, 2]), ways, kept, exit_level=2) == []
         assert len(trail_touch.stray_rings(self.pieces([1, 3]), ways, kept, exit_level=2)) == 1
         assert len(trail_touch.stray_rings(self.pieces([1, 9, 4]), ways, kept, exit_level=2)) == 1
+        # A stray run before the kept one, and a harder trail after it: both left out, by place.
+        rings = trail_touch.stray_rings(self.pieces([4, 9, 1, 2, 3]), ways, kept, exit_level=2)
+        assert [round(min(p[0] for p in r), 4) for r in rings] == [-77.0, -76.9960]
+        monkeypatch.setattr(trail_touch, "trail_levels", lambda ids: {w: levels[w] for w in ids})
+        assert trail_touch.exit_level(frozenset({1, 2})) == 1
 
     def test_any_dirt_leaves_out_only_singletrack(self) -> None:
         ways = {1: "mtb", 3: "mtb", 2: "singletrack"}

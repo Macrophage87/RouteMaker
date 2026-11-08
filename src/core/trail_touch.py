@@ -298,9 +298,10 @@ def trail_levels(way_ids: Sequence[int]) -> dict[int, int]:
 
 
 def exit_level(kept: frozenset[int]) -> int:
-    """The level of the trail under the rider (the hardest of `kept`), for `stray_rings`."""
+    """The level of the trail under the rider, for `stray_rings`: the easiest of `kept` (every
+    trail within TOUCH_M), so a green trail beside a black one does not open the black ones."""
     levels = trail_levels(sorted(kept))
-    return max((levels.get(w, 1) for w in kept), default=1)
+    return min((levels.get(w, 1) for w in kept), default=1)
 
 
 def stray_rings(
