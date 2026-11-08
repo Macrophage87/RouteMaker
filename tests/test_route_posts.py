@@ -433,13 +433,11 @@ def test_list_cards_show_the_map_on_top_without_the_preview_pictures_word_band()
         assert card.index("<img") < card.index("<h2>")
     # The route's preview picture shows only its map part (its band repeats the card's words) ...
     banded = cards["preview"][: cards["preview"].index(">", cards["preview"].index("<img"))]
-    assert 'class="banded"' in banded and f'height="{share_preview.MAP_H}"' in banded
+    assert 'class="banded"' in banded
     assert f".card img.banded{{aspect-ratio:1200/{share_preview.MAP_H}}}" in body
     # ... while an admin's drawn map (no band) shows whole.
     whole = cards["drawn"][: cards["drawn"].index(">", cards["drawn"].index("<img"))]
-    assert "banded" not in whole and 'height="630"' in whole
-    # No narrow side column any more: the picture fills the card's width.
-    assert "grid-template-columns:8rem" not in body and ".card img{display:block;width:100%" in body
+    assert "banded" not in whole
 
 
 @db

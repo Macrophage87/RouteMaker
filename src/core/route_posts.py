@@ -1126,12 +1126,11 @@ def index(request):
         # band of words the card already says below, so only its map part shows; its credit sits at
         # the map's foot and stays in view.
         banded = not post.thumbnail_key
-        height = share_preview.MAP_H if banded else THUMBNAIL_HEIGHT
         shape = ' class="banded"' if banded else ""
         return (
             f'<li class="card"><a href="/routes/{escape(post.slug)}">'
             f'<img src="{escape(image_path(post))}" alt="" loading="lazy"'
-            f'{shape} width="{THUMBNAIL_WIDTH}" height="{height}">'
+            f'{shape} width="{THUMBNAIL_WIDTH}" height="{THUMBNAIL_HEIGHT}">'
             f"<div><h2>{escape(post.title)}</h2><p>{badge}{escape(summary_line(post))}</p>"
             f"<p>{escape(ride_name(post))}</p></div></a></li>"
         )
