@@ -1175,6 +1175,18 @@ def test_find_place_shows_an_area_where_plan_route_would_go(tmp_path) -> None:
     assert rows[0]["lon_lat"] == [BOAT_LAUNCH["lon"], BOAT_LAUNCH["lat"]]
 
 
+def test_find_place_shows_a_station_at_the_way_in_plan_route_would_go(tmp_path) -> None:
+    """PL3-7: find_place gave a station's platform point (Herndon's is in the toll road median),
+    where plan_route goes to its bike way in nearest the route's other point."""
+    herndon = next(s for s in STATIONS if s.name == "Herndon")
+    found = _row("Herndon", herndon.lon, herndon.lat, osm_key="railway", osm_value="station")
+    server = mcp.Server(lambda: _Search([found]), STATIONS, out_dir=tmp_path)
+    row = server.find_place({"query": "Herndon station", "near": list(WORLDGATE)}, None)
+    row = row["results"][0]
+    want = mcp.as_point("Herndon station", _Search([found]), STATIONS, [WORLDGATE])[0]
+    assert row["lon_lat"] == row["bike_entrance"] == list(want) != [herndon.lon, herndon.lat]
+
+
 def test_an_area_the_site_already_moved_is_taken_as_it_is() -> None:
     moved = {**AREA, "lon": -77.25, "lat": 38.68, "way_in": "Occoquan Regional Park Gate"}
     assert mcp.pick_place("Occoquan Regional Park", [moved, BOAT_LAUNCH], [])[0] == moved
@@ -1467,6 +1479,20 @@ def test_a_ride_turned_into_a_run_or_back_keeps_no_pace_of_the_other_kind(tools)
     assert StandIn.routes[-1]["run_pace_kmh"] == 9.7
     tools.call("revise_route", {"draft_id": paced["draft_id"], "preset": "default"})
     assert "run_pace_kmh" not in StandIn.routes[-1]
+
+
+def test_a_new_ride_type_keeps_keep_to_roads_and_easy_mtb_trails(tools) -> None:
+    """As the app's rideTypeDialog.choose: Keep to roads stays on any ride type, and Easy MTB
+    trails stays between the ride types that offer it (Default, Trailmaxxing)."""
+    points = [[-77.03, 38.90], [-77.02, 38.91]]
+    off = tools.call("plan_route", {"points": points, "trails_off": True})
+    tools.call("revise_route", {"draft_id": off["draft_id"], "preset": "gravel"})
+    assert StandIn.routes[-1].get("trails_off") is True
+    easy = tools.call("plan_route", {"points": points, "easy_mtb": True})
+    moved = tools.call("revise_route", {"draft_id": easy["draft_id"], "preset": "trailmaxxing"})
+    assert StandIn.routes[-1].get("easy_mtb") is True
+    tools.call("revise_route", {"draft_id": moved["draft_id"], "preset": "gravel"})
+    assert not StandIn.routes[-1].get("easy_mtb")
 
 
 # --- The app's drawn legs and stop names (`line=`, `sn=`) and its ride links (2026-11-05) ------

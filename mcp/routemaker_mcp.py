@@ -4736,8 +4736,18 @@ class Server:
             # assistant can tell the rider the route goes to the boat launch, not the middle.
             if r.get("way_in"):
                 row["way_in"] = r["way_in"]
+            if is_rail_station(r):
+                # A Metro station found by the search is gone to at its bike way in, as
+                # plan_route takes it (`as_point`): its platform point can be in a freeway
+                # median (Vienna, Herndon; issue #39), and a lon_lat copied from it rode there
+                # (the third 2026-11-08 hunt, PL3-7).
+                at, miles = nearest_station((r["lon"], r["lat"]), self.stations)
+                if miles <= STATION_MATCH_MI:
+                    entrance = list(at.way_in_from(near))
+                    row["lon_lat"] = entrance
+                    row["bike_entrance"] = entrance
             if near:
-                row["miles_from_near"] = round(haversine_mi(near, (r["lon"], r["lat"])), 1)
+                row["miles_from_near"] = round(haversine_mi(near, tuple(row["lon_lat"])), 1)
             rows.append(row)
         return {"results": rows}
 
@@ -5669,10 +5679,14 @@ class Server:
             # ride (a loop, the ride time) and what this call sets.
             # The followed line, the roads to avoid and the rider's pace are the rider's, not
             # the ride type's: they stay too.
-            kept = ("loop", "when", "follow", "follow_exact", "blocked_lines", "cycling_speed_kmh")
-            if preset == "run":
+            # Keep to roads stays too, and Easy MTB trails between the ride types that offer
+            # it, as the app's rideTypeDialog.choose keeps trailsOff and easyMtb.
+            kept = ("loop", "when", "follow", "follow_exact", "blocked_lines", "trails_off")
+            if preset != "run":
                 # A riding speed is no running pace: the run starts at Run's own.
-                kept = kept[:-1]
+                kept = (*kept, "cycling_speed_kmh")
+            if preset in EASY_MTB_PRESETS:
+                kept = (*kept, "easy_mtb")
             options = {k: v for k, v in options.items() if k in kept}
         # The legs drawn in the app and the stops' names are the rider's: they stay, on the
         # revised points, whatever the ride type.
@@ -6145,9 +6159,15 @@ class Server:
         dests = args.get("destinations") or []
         if not 2 <= len(places) <= 6 or not 1 <= len(dests) <= 3:
             raise ToolError("places: 2 to 6; destinations: 1 to 3")
+        # The places are alternatives, not one route's points: each is taken by the
+        # destinations (a station at its way in nearest the first, a name searched near them),
+        # not by the other candidates, which can be across a freeway or a county away (the
+        # third 2026-11-08 hunt, PL3-8).
         taken: list[dict] = []
-        starts = self._points(list(places), taken)
         ends = self._points([d.get("place") if isinstance(d, dict) else d for d in dests], taken)
+        start_taken: list[dict] = []
+        starts = [self._point(p, start_taken, ends) for p in places]
+        taken = start_taken + taken
         limits = [
             finite(d["max_minutes"]) if isinstance(d, dict) and d.get("max_minutes") else None
             for d in dests
