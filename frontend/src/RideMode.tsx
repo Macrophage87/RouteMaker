@@ -76,7 +76,7 @@ import {
 } from "./lib/rideStops.ts";
 import { RestartStopsDialog } from "./RestartStopsDialog.tsx";
 import { StartFirstDialog } from "./StartFirstDialog.tsx";
-import { keepLeftRide, keepLeftRidePast, seeLeftRide, unseeLeftRide } from "./lib/rideResume.ts";
+import { keepLeftRide, keepLeftRideDocked, keepLeftRidePast, seeLeftRide, unseeLeftRide } from "./lib/rideResume.ts";
 import type { Dials } from "./lib/dials.ts";
 import { haversineM, type LonLat } from "./lib/geo.ts";
 import { placeLetter, type LetteredPlace } from "./lib/letteredPlaces.ts";
@@ -286,7 +286,7 @@ import { SeeEveryoneButton } from "./SeeEveryoneButton.tsx";
 import { AheadGraph, aheadLeastPx } from "./AheadGraph.tsx";
 import { ContrastRow, ThemeSetting, UnitsSetting } from "./DisplaySettings.tsx";
 import { RebalanceDockCard, type DockAsk } from "./RebalanceDockCard.tsx";
-import { DOCK_AWAY_M, DOCK_FINDING, DOCK_NONE_NEEDS, DOCK_ROUTE_FAILED, dockChoices, dockChosenSaid, dockReachedSaid, dockRouting, type DockChoice, type RebalanceDocked } from "./lib/rebalanceDock.ts";
+import { DOCK_AWAY_M, DOCK_CHOOSE_LEDE, DOCK_FINDING, DOCK_NONE_NEEDS, DOCK_ROUTE_FAILED, dockChoices, dockChosenSaid, dockReachedSaid, dockRouting, type DockChoice, type RebalanceDocked } from "./lib/rebalanceDock.ts";
 import { AHEAD_NAME, AHEAD_WORD, aheadNoRoom, aheadOff, aheadOn, aheadViews, readAhead, writeAhead, RIDER_OFF_ROUTE_M, RIDERS_REACH_M, type AheadView } from "./lib/aheadGraph.ts";
 
 /** The bottom panel's padding and top edge (styles.css .ride-controls), and the graph's margin under it. */
@@ -982,9 +982,14 @@ export function RideMode({
   // A Rebalance Ride (lib/rebalanceDock.ts): at the crowded dock it holds and asks where to dock, then rides there.
   // Kept riding after the end (Keep riding), its route is the ride to the chosen dock, on the bike's own ride type.
   const rebalance = plannedRoute.preset === "rebalance" || !!plannedTrip?.docked;
-  const [trip, setTrip] = useState<RideTrip | null>(() =>
-    rebalance && plannedTrip?.approach?.name ? { ...plannedTrip, approach: { ...plannedTrip.approach, reached: dockReachedSaid(plannedTrip.approach.name) } } : plannedTrip,
-  );
+  // On to a dock chosen before (Keep riding, Resume): the finish names that dock, as when it was chosen (chooseDock).
+  const [trip, setTrip] = useState<RideTrip | null>(() => {
+    if (plannedTrip?.docked) {
+      const dock = t("Dock at {place}.", { place: plannedTrip.docked });
+      return { ...plannedTrip, finish: { shown: dock, spoken: dock } };
+    }
+    return rebalance && plannedTrip?.approach?.name ? { ...plannedTrip, approach: { ...plannedTrip.approach, reached: dockReachedSaid(plannedTrip.approach.name) } } : plannedTrip;
+  });
   const [docking, setDocking] = useState<DockAsk | null>(null);
   const dockingRef = useRef<DockAsk | null>(null);
   dockingRef.current = docking;
@@ -2446,7 +2451,9 @@ export function RideMode({
     const listed: DockAsk = { ...asking, phase: "list", choices, note };
     dockingRef.current = listed;
     setDocking(listed);
-    if (note) notify(note);
+    // Said as the list arrives, so a rider waiting at the dock knows they can choose (the v0.22.0 review): the lede
+    // only, as the card puts the focus on the nearest dock's button, which says its name and room itself.
+    notify(note || (choices.length ? DOCK_CHOOSE_LEDE : ""));
   };
   const askDocksRef = useRef(askDocks);
   askDocksRef.current = askDocks;
@@ -2467,6 +2474,8 @@ export function RideMode({
       const dock = t("Dock at {place}.", { place: choice.name });
       setTrip((was) => (was ? { ...was, finish: { shown: dock, spoken: dock }, docked: choice.name } : was));
       dockChosen.current = choice.name;
+      // Kept with the trip left going, so a reload rides on to this dock (lib/rideResume.ts).
+      if (keepLeft) keepLeftRideDocked({ name: choice.name, route: found ?? routeRef.current, points });
       const fresh = { ...startState(), fix: rideRef.current.fix, goodFix: rideRef.current.goodFix };
       rideRef.current = fresh;
       setRide(fresh);
