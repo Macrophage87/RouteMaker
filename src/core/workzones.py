@@ -687,13 +687,15 @@ def foot_zones(
     bypass=(),
     now_only=False,
     reach_m: float = 0.0,
+    on_foot: bool = True,
 ) -> tuple[rules.PlanZones | None, list[list[list[float]]]]:
     """The closures a plan on foot (Run, Walk, Walk + transit) leaves out, as a ride's are
     (`routing.plan`): the roads the rider marked closed on this outing (`blocked_lines`) take
     the router's polygon budget first, and the closures that close the way on foot
     (`rules.for_plan`, `on_foot`) fit the rest; the others are warned of on the route. DDOT's
     permits are never routed round. (The zones, None where work zones are not running; the
-    rings for the router's `exclude_polygons`.)"""
+    rings for the router's `exclude_polygons`.) With `on_foot` False, the closures to bicycles
+    instead: a transit trip's candidate rides (`transit.RoutingServices`, hunt 2 C3)."""
     blocked = blocked_rings(blocked_lines)
     plan = plan_zones(
         points,
@@ -702,7 +704,7 @@ def foot_zones(
         reserve=rules.budget_used(blocked),
         now_only=now_only,
         at=at,
-        on_foot=True,
+        on_foot=on_foot,
         reach_m=reach_m,
     )
     if plan is None:

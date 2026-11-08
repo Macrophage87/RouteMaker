@@ -7943,6 +7943,17 @@ docs/OPERATIONS.md, "Transit schedule". The design note is plans/v0.6.0-transit-
   timeout or the router down), the leg is drawn straight with the plan's estimated time and a note
   says so, as a short leg is. The api logs each plan's seconds in the search, the candidates' router
   calls and the line, at info level.
+- **Bike legs priced as the line is** (hunt 2, 2026-11-08). The candidate rides, the later legs'
+  and the rides drawn for the map (`transit.drawn`) are asked with the line's pricing: the rider's
+  sliders and pace (the drawn rides were at the ride type's own 70 and 0), on the line's graph
+  (`presets.variant_for_ride`: the weekend twin, the no-trail graph with "Keep to roads" on; they
+  were always on the standard graph), round the closures to bicycles and the roads the rider
+  marked closed (`workzones.foot_zones` with `on_foot` off), then with only the marked roads left
+  out where there is no way round. Walks stay on the standard graph. Novice and Nervous's options
+  (`novice_legs`) price their legs at Novice's own sliders (the top of the traffic slider, hills
+  `NOVICE_HILLS`), whatever the request sends: the page and the MCP tool send the transit ride
+  type's starting dials (70 or 80, hills 0), which priced the "Novice" legs with Default's
+  traffic tolerance and no calm search.
 - **Clock times.** A departure's clock ("1:30 am") is the wall time of its service day's minute,
   so a daylight-saving night says the time the station clock shows.
 - **Blackout dates.** Own Bike + 🚆🚌 takes no bike on Metro on them ("Bikes aren't allowed on

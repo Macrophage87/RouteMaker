@@ -4535,6 +4535,13 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
     # Novice and Nervous's transit options (v0.7.0): the bike legs priced as that ride type
     # prices roads, one level up; a share bike keeps its own pace.
     leg_preset = presets.NOVICE if body.novice_legs else body.preset
+    # The legs at Novice's own traffic and hills sliders, not the ones the request carries: the
+    # page offers these options with the transit ride type's starting dials (Bike + transit's
+    # 70 and 0, Bikeshare + transit's 80), so the "Novice" legs were priced with Default's
+    # traffic tolerance, no calm search and flat-indifferent hills, and Bikeshare + transit's
+    # trip was chosen at Novice's own pricing but drawn and timed at 80 (hunt 2, C1).
+    leg_stress = presets.stress_start(presets.NOVICE) if body.novice_legs else body.stress
+    leg_hills = presets.PRESETS[presets.NOVICE].hills if body.novice_legs else body.hills
     leg_costing = None
     if body.novice_legs and body.preset == presets.BIKESHARE_TRANSIT:
         leg_costing = presets.costing(presets.NOVICE)
@@ -4544,10 +4551,10 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
         # The candidates priced at the rider's own traffic and hills sliders, as the answer's
         # line is (routing.plan): candidates timed at the ride type's own settings ranked one
         # trip quickest that came out slower once its line was routed at the rider's.
-        stress = body.stress
+        stress = leg_stress
         if stress is None:
             stress = presets.stress_start(leg_preset, body.carrying)
-        candidate_costing = presets.costing(leg_preset, stress, body.hills)
+        candidate_costing = presets.costing(leg_preset, stress, leg_hills)
     # The rider's own pace (Settings' Riding speed), so the trips are ranked as they are timed.
     own_speed = presets.rider_speed(body.preset, body.cycling_speed_kmh)
     if own_speed is not None:
@@ -4565,6 +4572,25 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
         now_only=body.closures_now,
     )
     walk_keep = foot_zones.blocked if foot_zones is not None else walk_exclude
+    # Every trip's rides on the graph and round the closures the answer's line takes
+    # (`routing.plan`, with the `dials` below): the ride time's graph, the no-trail one with
+    # "Keep to roads" on, and the closures to bicycles and the roads the rider marked closed
+    # left out (hunt 2, C3: on the standard graph through every closure, the trip ranked best
+    # could lose once its line was routed on the no-trail graph or round a closed bridge).
+    ride_variant, ride_exclude, ride_keep = "standard", [], []
+    if body.preset not in presets.ON_FOOT_PRESETS:
+        ride_variant = presets.variant_for_ride(leg_preset, ride_when, trails_off=body.trails_off)
+        ride_zones, ride_exclude = work_zones.foot_zones(
+            body.points,
+            ride_when,
+            at=when if body.depart_at is not None else None,
+            blocked_lines=_blocked(body),
+            bypass=body.closure_bypass,
+            now_only=body.closures_now,
+            on_foot=False,
+        )
+        ride_keep = ride_zones.blocked if ride_zones is not None else ride_exclude
+    rides_on = {"ride_variant": ride_variant, "ride_exclude": ride_exclude, "ride_keep": ride_keep}
     services = transit.RoutingServices(
         candidates_until,
         leg_preset,
@@ -4572,6 +4598,7 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
         when=ride_when,
         walk_exclude=walk_exclude,
         walk_keep=walk_keep,
+        **rides_on,
     )
     # With stops, the first leg is planned here as a trip of its own; the legs after it are
     # searched once it is timed (`with_later_legs`, below).
@@ -4612,8 +4639,8 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
 
     searched = routing.clock()
     dials = routing.Dials(
-        stress=body.stress,
-        hills=body.hills,
+        stress=leg_stress,
+        hills=leg_hills,
         when=ride_when,
         # The line's closures at the trip's departure where it gives one, as its walks' are.
         zones_at=when if body.depart_at is not None else None,
@@ -4670,6 +4697,7 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
                 when=ride_when,
                 walk_exclude=walk_exclude,
                 walk_keep=walk_keep,
+                **rides_on,
             )
             leg_schedule = transit.load(
                 settings.TRANSIT_SCHEDULE_PATH, transit.moment_of(at).service_day
@@ -4691,9 +4719,14 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
         leg_preset,
         max_calls=transit.MAX_DRAW_CALLS,
         per_call_s=transit.DRAW_CALL_S,
-        costing=leg_costing,
+        # Drawn at the candidates' pricing, the rider's sliders and pace (hunt 2, C4): at the
+        # ride type's own (Bike + transit's 70 and 0, whatever the rider set) a leg drawn here
+        # could show the LTS 3-4 roads the rider's settings left out, beside the candidates'
+        # times.
+        costing=candidate_costing,
         walk_exclude=walk_exclude,
         walk_keep=walk_keep,
+        **rides_on,
     )
 
     def answered(answer: dict, plan: transit.Plan, lines: dict[int, dict] | None = None) -> dict:
