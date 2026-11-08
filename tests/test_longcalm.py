@@ -1071,6 +1071,20 @@ class TestTheLongSearch:
         assert info["extra_distance_m"] == pytest.approx(13_300 + 13_500 + 13_300 - 40_000)
         assert info["lts4_m_before"] == 0.0 or info["lts3_m_before"] == 2500.0
 
+    def test_legs_that_turn_back_at_a_cut_answer_the_routers_own_route(self, monkeypatch) -> None:
+        """Hunt V4: leg 1's calmer route leaves the cut back over the last 500 m leg 0 rode
+        to it, a U-turn at a place that is no stop. Each leg alone rides nothing twice; put
+        together they do, so the router's own route is answered."""
+        world = legs_world(monkeypatch, {1: [("L1c", 13.5, None)], 2: []})
+        tail = world.readings["L0"].pieces[-5:]
+        world.readings["L1c"].marks = [
+            (50.0 + 100.0 * k, p.lon, p.lat, 100.0) for k, p in enumerate(reversed(tail))
+        ]
+        whole = whole_trip()
+        trip, info = refine.refine_long(whole, long_context(ceiling_m=45_000.0))
+        assert trip is whole and info["long"]["answered"] == "router"
+        assert info["long"]["retraced"] is True
+
     def test_the_figures_are_the_wholes_before_and_the_legs_after(self, monkeypatch) -> None:
         legs_world(monkeypatch, {1: [("L1c", 13.5, None)], 2: []})
         _trip, info = refine.refine_long(whole_trip(), long_context(ceiling_m=45_000.0))

@@ -415,17 +415,20 @@ class TestCache:
         assert cache_said(first).startswith('cache;desc="miss"')
         assert cache_said(again).startswith('cache;desc="hit"')
 
-    def test_points_within_about_ten_metres_are_the_same_request(
+    def test_points_within_about_a_metre_are_the_same_request(
         self, client, segments, router
     ) -> None:
+        # About 1 m, not 10 m as before (hunt P5): a stop and a trail opt-in read the exact
+        # point within 15 m, so a few metres is another request.
         fake = router(standard_router())
         post(client, good_body())
         asked = len(fake.calls)
         moved = good_body()
-        moved["points"][0] = [moved["points"][0][0] + 0.00002, moved["points"][0][1] - 0.00002]
+        moved["points"][0] = [moved["points"][0][0] + 0.000002, moved["points"][0][1] - 0.000002]
         assert cache_said(post(client, moved)).startswith('cache;desc="hit"')
         assert len(fake.calls) == asked
-        moved["points"][0] = [moved["points"][0][0] + 0.001, moved["points"][0][1]]
+        # 2 to 3 m off, which hit before.
+        moved["points"][0] = [moved["points"][0][0] + 0.00002, moved["points"][0][1] - 0.00002]
         assert cache_said(post(client, moved)).startswith('cache;desc="miss"')
 
     @pytest.mark.parametrize(
@@ -651,10 +654,28 @@ class TestCacheParts:
         assert key is not None and 30 < key.valid_s <= 60
 
     def test_the_request_part_leaves_quick_out_and_rounds_the_points(self) -> None:
-        a = route_cache.request_part({"points": [[-77.04001, 38.90001]], "quick": True})
-        b = route_cache.request_part({"points": [[-77.04002, 38.90002]], "quick": False})
+        # Rounded to 1e-5 degrees (about 1 m): the same point sent again, give or take its
+        # last float places, is the same key.
+        a = route_cache.request_part({"points": [[-77.040001, 38.900001]], "quick": True})
+        b = route_cache.request_part({"points": [[-77.040002, 38.900002]], "quick": False})
         assert a == b == {"points": [[-77.04, 38.9]]}
         assert json.dumps(a)
+
+    def test_a_point_moved_a_few_metres_is_another_key(self) -> None:
+        """Hunt P5: two points 11 m apart once rounded to one 1e-4 cell, though a stop snaps
+        and a dirt trail opens within 15 m of the exact point: a marker dragged onto a trail
+        got the route from before. They are two keys now."""
+        from core import trail_touch
+
+        a = route_cache.request_part({"points": [[-77.05004, 38.90004]]})
+        b = route_cache.request_part({"points": [[-77.04996, 38.89996]]})
+        assert a != b
+        # Under the trail opt-in's and a stop's reach, so either may touch what the other
+        # does not.
+        apart = routing.haversine(
+            routing.Point(-77.05004, 38.90004), routing.Point(-77.04996, 38.89996)
+        )
+        assert apart < min(trail_touch.TOUCH_M, routing.STOP_RADIUS_M)
 
     def test_off_at_zero(self, settings) -> None:
         settings.ROUTE_CACHE_TTL_S = 0
@@ -719,6 +740,14 @@ class TestCacheParts:
             {"dodges": {"limited": "time"}},
             {"hills_seek": {"limited": None, "climb_seek": {"limited": "time"}}},
             {"avoid_search": {"decision": "avoided", "alternate": "time"}},
+            # Hunt S5: the trail seek's table read cut short, and the red pass.
+            {"calm_search": {"limited": None, "seek": {"limited": "time"}}},
+            {"calm_search": {"limited": None, "seek": {"limited": "table"}}},
+            {"calm_search": {"limited": None, "seek": {"limited": "error"}}},
+            {"calm_search": {"limited": None, "seek": {"limited": "unread"}}},
+            {"red_crossings": {"decision": "kept", "limited": "time"}},
+            {"red_crossings": {"decision": "kept", "limited": "unread"}},
+            {"red_crossings": {"decision": "kept", "limited": "error"}},
         ],
     )
     def test_an_answer_a_pass_stopped_for_time_is_not_kept(self, part) -> None:
@@ -732,6 +761,18 @@ class TestCacheParts:
             "dodges": {"limited": "checks"},
             "hills_seek": {"limited": None, "climb_seek": {"limited": "no_climbs"}},
             "avoid_search": {"decision": "avoided"},
+        }
+        assert route_cache.keepable(body, "standard", 0)
+
+    @pytest.mark.parametrize("seek", ["span", "busier", "not_worth", "roadway_only", None])
+    @pytest.mark.parametrize("red", ["no_route", None])
+    def test_a_seek_or_red_pass_that_finished_is_kept(self, seek, red) -> None:
+        """A trail seek that found nothing worth it, or a red with no way round, is the
+        answer a retry would give again."""
+        body = {
+            "variant": "standard",
+            "calm_search": {"limited": None, "seek": {"limited": seek}},
+            "red_crossings": {"decision": "kept", "limited": red},
         }
         assert route_cache.keepable(body, "standard", 0)
 

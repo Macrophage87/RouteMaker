@@ -972,7 +972,14 @@ def _ask(
                     f"{len(found)} of {len(positions)} junctions read before {error}"
                 ) from error
             except Exception as error:  # noqa: BLE001 - one batch failing is not the route failing
-                logger.info("intersection nodes unavailable for a %s batch: %s", costing, error)
+                # A warning, not a note (hunt S, low note): up to a batch of junctions is
+                # then read without its node, so a red there may go unrated.
+                logger.warning(
+                    "intersection nodes unavailable for a %s batch of %d junctions: %s",
+                    costing,
+                    len(chunk),
+                    error,
+                )
                 if costing == LOCATE_COSTINGS[0]:
                     # Without the rider's own edges nothing at the node can be read.
                     for other in futures[1:]:

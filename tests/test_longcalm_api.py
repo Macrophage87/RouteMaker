@@ -223,6 +223,39 @@ class TestNoRouteWithinTheTarget:
         assert search["over_target_m"] == 0.0 and search["no_fit"] is False
         assert body["distance_m"] == pytest.approx(1900.0)
 
+    def test_a_ride_re_plan_plans_the_rest_without_the_whole_rides_target(
+        self, client, segments, router
+    ) -> None:
+        """Hunt V2: Ride sends the dials it planned with, the target among them, and the
+        re-plan from where the rider is took the whole ride's target as the limit for the
+        rest of it. On a re-plan there is no target: no fitting to it, and the default
+        ceiling on what is left."""
+        fake = FakeRouter(
+            {
+                "route": route_answer([(VERTICES, 2.2, [10.0, 20.0, 15.0, 30.0])]),
+                "trace_attributes": trace_answer(VERTICES, STANDARD_EDGES),
+            }
+        )
+        router(fake)
+        # The plan itself: the 2.2 km route is past the 1.2 km target, so it fits.
+        planned = post(client, top_body(target_distance_m=1_200)).json()["calm_search"]
+        assert planned["target_distance_set"] is True
+        fake.calls.clear()
+        body = post(client, top_body(target_distance_m=1_200, ride_replan=True)).json()
+        search = body["calm_search"]
+        assert search["target_distance_set"] is False and search["target_distance_m"] is None
+        assert search.get("fitted_at") is None and search["no_fit"] is None
+        assert search["ceiling_m"] == pytest.approx(
+            presets.default_ceiling_m(2200.0, "trailmaxxing"), abs=0.1
+        )
+        # No rung of the target fitting's ladder was asked for.
+        sent = [
+            p["costing_options"]["bicycle"]["use_roads"]
+            for _u, p in fake.calls
+            if "costing_options" in p
+        ]
+        assert set(sent) == {0.0}
+
     def test_a_route_within_the_limit_asks_no_second_route(self, client, segments, router) -> None:
         fake = router(standard_router())
         body = post(client, top_body(target_distance_m=10_000)).json()

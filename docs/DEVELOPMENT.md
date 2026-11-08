@@ -2056,9 +2056,26 @@ would be a circle and a route through a climb an out-and-back), and needs no reb
   short of the plan's budget (`TRACE_RESERVE_S`, the answer's traces); a call is not
   started with under 2 s left. A route the router has none for is skipped; a router
   that times out ends the seek (`climb_seek.limited` `time`).
-- **The choice** is the climb search's, unchanged: the routes found join the router's
-  own and `choose_climb` keeps the one that climbs most within the budget (the
-  router's own on a tie).
+- **The choice** is the climb search's: the routes found join the router's own and
+  `choose_climb` keeps the one that climbs most within the budget (the router's own on
+  a tie), with two guards (the owner, 2026-11-08: "Skip busy climbs if there's a better
+  calm one, yes, unless intentionally chosen"; hunts P3, V7):
+  - **No doubling back for climbing.** A route that rides back over its own way more
+    than the router's own does, by more than 165 ft (50 m) (`hillseek.retrace_m`: the
+    line every 33 ft (10 m), a point within 39 ft (12 m) of one at least 200 ft (60 m)
+    earlier on the same leg and running along it, either way; `RETRACE_SLACK_M`, the
+    calm search's slack), is not chosen. A through point that snapped beside the climb
+    made a route up, down and up again, which climbs most.
+  - **A busy climb gives way to a calm one.** Where the route that climbs most rides
+    uphill a climb the file marks busy (`b`: most of its roads LTS 3 or higher), the
+    calm route that climbs most is kept instead, if it climbs at least 80% as much
+    (`CALM_CLIMB_SHARE`). A climb the rider chose stays: one a point of the plan lies on,
+    within 165 ft (50 m) of its line (`hillseek.chosen`; the climb card's "Ride this
+    climb" puts its foot and top in the plan, and a climb searched for by name is a point
+    on it). The start never chooses one, nor the start again at a loop's or round trip's
+    end: a ride from home at a busy climb's foot did not pick it (the trail touch's rule,
+    "its start is not enough"). The climbs read are the seek's corridor, or the file's within the budget's
+    reach where the seek did not run.
 - **Naming.** The kept route's climbs are those it rides uphill by the front end's
   rule (`climbsAlongRoute`; `hillseek.ridden`): every point of the climb's line within
   165 ft (50 m) of the route, each further along than the last, and the stretch from
@@ -5832,6 +5849,12 @@ it gave 58.0 mi, 0.24 mi and 7.2 mi, which is the router again, leg by leg, with
   The whole route's junctions are read once at the end. If what is put together is not as calm as
   the router's own route (LTS 4 and Avoid, then LTS 3, by the tolerances below) or nothing
   changed, the router's own route is answered (`calm_search.long.answered`: `legs` or `router`).
+  So is it where the legs put together ride back over their own way more than the router's own
+  route does, by more than 165 ft (50 m) (`refine.joined_retrace_m`, `calm_search.long.retraced`;
+  hunt V4, 2026-11-08): a cut is a plain stop to the router and each leg is searched alone, so
+  one leg could reach the cut along its edge from the far end and the next leave back that way,
+  a U-turn at a place that is no stop, which each leg's own retrace check cannot see. The
+  stretches either side of a cut count as one leg.
 - **Time.** The plan has the long ride's budget, 50 s in all (`LONG_PLAN_BUDGET_S`, 47 s for the
   router and its traces once the 3 s answer reserve is taken), under gunicorn's 60 s timeout: the
   owner's own figure for a long ride (2026-09-26), kept rather than a new one. An ordinary plan
@@ -5871,6 +5894,12 @@ it gave 58.0 mi, 0.24 mi and 7.2 mi, which is the router again, leg by leg, with
   `DEFAULT_CEILING_RATIO`, `DEFAULT_CEILING_EXTRA_M`), and inside it every extra mile must buy
   stress at the default bar (268, `refine.WORTH_DEFAULT`). The router's own route is the reference
   rather than the straight line because that is what the rider sees as "the direct route".
+- **Not on a ride's re-plan** (`ride_replan`, Ride's off-route, Detour and Road closed): the target
+  is the whole ride's, and the re-plan is only the rest of it, so it is planned with no target (the
+  default ceiling on what is left, every extra mile at the default bar). Held to the whole ride's
+  target, a re-route 3 mi (5 km) from the end of a 25 mi (40 km) ride could take up to 31 mi
+  (50 km) for the rest, its miles priced as cheap (hunt V2, 2026-11-08). A Run's re-plan drops it
+  the same way (`api._run_body`).
 - The search minimises stress inside the ceiling (see "The order"). A candidate past the ceiling is
   never taken: it is not even read (its router answer's length is checked first), a round whose
   every exclusion set sends the route past it is asked again with each half of the targets, and a
@@ -6423,6 +6452,15 @@ why, the metres it avoided against what it had to, the turns the main road saves
 removal uncovered on a later pass over the leg. `limited: target_distance` is cleared where taking a dodge
 out made the route fit the target. The front end's type is `Dodges` in `frontend/src/lib/api.ts`
 (optional; nothing displays it).
+
+The answer's `red_crossings` (`RedCrossingsOut`, hunt S5, 2026-11-08) is what the red-crossing pass
+(`core.red_crossings.settle`) did, which before was only logged: `reds` (the red junctions on the route
+it read), `decision` (`avoided` where the way round was taken, else `kept`), `reds_after` (the reds on
+the way round) and `limited` (`time`, `unread`, `no_route` or `error`; null where it ran). Null where the
+pass did not run (the crossing search covered the route, a loop, a first route, a followed or drawn line,
+a Mass Ride) and on the routes to choose from. An answer whose pass stopped at `time`, `unread` or
+`error` is not kept by the answer cache (`route_cache.keepable`), nor is one whose trail seek
+(`calm_search.seek.limited`) stopped at `time`, `table`, `error` or `unread`.
 
 ### Reproduction (item 273)
 
