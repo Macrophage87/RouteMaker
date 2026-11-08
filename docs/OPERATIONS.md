@@ -85,6 +85,7 @@ Contents:
 - [Deploying v0.21.1](#deploying-v0211)
 - [Deploying v0.21.2](#deploying-v0212)
 - [Deploying v0.22.0](#deploying-v0220)
+- [Deploying v0.22.1](#deploying-v0221)
 - [Deploying a planner and front-end release: rollback points and verification](#deploying-a-planner-and-front-end-release-rollback-points-and-verification)
 - [Paths bicycles may not ride (NO-BIKE-PATHS)](#paths-bicycles-may-not-ride-no-bike-paths)
 - [Mountain-bike difficulty levels (456; claude/v0-4-0-mtb-levels)](#mountain-bike-difficulty-levels-456-claudev0-4-0-mtb-levels)
@@ -7499,6 +7500,39 @@ At home, in order, with `</dev/null` on every docker command:
   beta: the agent rolls back by itself on a failed pass; later, or after a hand ship, rollback C
   (docs/BETA-RUNBOOK.md: the previous api image and front end; the `release` snapshot only if
   needed), then `auto-release.sh hold v0.22.0` so the agent does not deploy it again.
+
+## Deploying v0.22.1
+
+A patch with the fixes the v0.22.0 review left for later: a Rebalance Ride's drop-off dock, chosen at
+the pick-up dock, is kept with the ride left going, so Resume (and Undo after End ride) rides on to it
+(#1047); mountain-bike trails on the dark ride panel's ribbon have a light edge (#1048); the drop-off
+list is said as it arrives, the Load route tag chips wrap, and the assistant's photo upload link takes
+the photo's spot from the `X-Photo-Lat` and `X-Photo-Lon` headers, never the query string (#1049).
+**Front end, `src/core/route_posts.py` (the upload link) and the connector's `draft_route_post` text
+(`mcp/`)**, with the version in `pyproject.toml`, `src/routemaker/__init__.py` and `README.md`, and the
+docs pages rebuilt with `DOCS_RELEASE=0.22.1`. **No migration, no `src/pipeline/`, `lua/`,
+`valhalla/*.json`, compose, Caddyfile, nginx, Dockerfile, requirements or `mobile/` change, no new
+environment variable, scheduled job or outbound host, and no map rebuild.** Either order is safe: an
+assistant still sending `?lat=&lon=` gets its photo kept with no spot (`located: false`).
+
+- [ ] **The tag.** Once `test` and `a11y` are green on `main`, the owner tags v0.22.1 (annotated) on
+  that commit, from the PC.
+- [ ] **At home**, as "Deploying a planner and front-end release": rollback point (tag the running api
+  image `pre-rel-<short>`, keep `index.html`), fast-forward the checkout, `docker compose build api`,
+  then `docker compose up -d --no-deps --no-build --force-recreate api worker` with no job todo or
+  doing, then the front end. No migration, no router restart. The connector (`mcp/`) is rebuilt and
+  restarted as its own section says, if it runs at home.
+- [ ] **Beta, by its agent**, once its deployed tag (`$RM_STATE/cd/deployed-tag`) is v0.22.0: the gate
+  sees `frontend/`, `src/core/`, `mcp/` and the version files, none of them a stop, and deploys the api
+  and the front end in one pass, with no migration. Stuck: `git fetch --force --tags origin`, then
+  `scripts/beta/auto-release.sh retry v0.22.1`.
+- [ ] **Spot checks.** Rebalance Ride: at the crowded dock, pick a drop-off, then reload the page and
+  press Resume: the ride goes on to that dock ("Dock at ..."), not back to the pick-up. In dark theme, a
+  ride over a mountain-bike trail shows a light edge round the trail on the ribbon. In Load route with
+  several tags and Large text on a phone, the tag chips wrap onto a second row.
+- [ ] **Rollback.** The `pre-rel` api image (`--force-recreate api worker`) and the v0.22.0 front end.
+  Nothing in the database or the map changes. On the beta: the agent rolls back by itself on a failed
+  pass; later, rollback C, then `auto-release.sh hold v0.22.1`.
 
 ## Deploying a planner and front-end release: rollback points and verification
 
