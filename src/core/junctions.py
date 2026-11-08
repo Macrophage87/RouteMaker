@@ -39,7 +39,9 @@ junction's (`_Approaches`), on a road's edge arriving there towards the
 junction, or the node's own flag where no edge there is flagged. The walk stops
 at a node a road of another name joins: that is another junction, and its
 signal is not this one's (review r3, B1: a driveway 16 m from Colesville Rd's
-signalized node, a left off 17th St SW 18 m past Constitution Ave). A rider
+signalized node, a left off 17th St SW 18 m past Constitution Ave), and nor is
+a signal on a crosswalk alone that such a junction is nearer than this one
+(hunt J2: K St's signalised crosswalk a few metres short of K St). A rider
 arriving on a path (`TRAIL_USES`) is let past one, since a trail crossing
 beside a road junction is crossed on its signal; one leaving a driveway or a
 parking aisle is not (gate 1, B1). The rider's own approach is read from the
@@ -580,6 +582,25 @@ class _Approaches:
             found.append(entry)
         return found
 
+    def crosswalk(self, arm: Arm, at: tuple[float, float]) -> bool:
+        """Whether `at` is a crosswalk on the arm's road and no more: a path or
+        crossing way (`TRAIL_USES`) meets it there, and no road but the arm's
+        own does. Its signal (OSM's `crossing=traffic_signals`, which the
+        transform makes a `highway=traffic_signals` node, a HAWK's among them)
+        is for the people crossing there, and is a road junction's only where
+        that junction is the one it lies beside (`signal`)."""
+        path = False
+        for entry in self.edges:
+            ends = self.ends(entry)
+            if ends is None or not (_close(*ends[0], *at) or _close(*ends[1], *at)):
+                continue
+            if _is_road(entry):
+                if not _of_road(arm, entry):
+                    return False
+            elif _use(entry) in TRAIL_USES:
+                path = True
+        return path
+
     def signal(self, arm: Arm, cluster: list) -> bool:
         """Whether a signal is on the arm within APPROACH_M of the node for
         traffic towards it: on a road edge travelling towards N that arrives at
@@ -587,19 +608,38 @@ class _Approaches:
         signal's node, as `traffic_signals:direction` has it), or that node's
         own flag where no edge there is flagged. A signal on an edge
         travelling away from N is the next junction's (review r3, B1). The
-        walk stops at another road's junction (`foreign`)."""
+        walk stops at another road's junction (`foreign`).
+
+        A signal on a crosswalk alone (`crosswalk`) is N's only where no other
+        road's junction up the arm lies nearer it than N does: K St's
+        signalised crosswalk 17 m up Main St, 8 m short of K St's own node, is
+        K St's, and a stop-controlled side street at N does not take it (hunt
+        J2, 2026-11-08: the guard of review r3, B1 was passed by the
+        crosswalk node a few metres short of the other junction's). The walk
+        reads the other junction's node even a little past APPROACH_M for
+        that, as far as the answer has its edges."""
         frontier = []
         for _w, _h, inbound, entry in cluster:
             ends = self.ends(entry)
             if ends is not None:
                 frontier.append(ends[0] if inbound else ends[1])
         seen: list[tuple[float, float]] = []
+        # Crosswalk signals met, and the other roads' junctions met.
+        crosswalks: list[tuple[float, float]] = []
+        others: list[tuple[float, float]] = []
         while frontier:
             at = frontier.pop()
-            if self._metres(at) > APPROACH_M or any(_close(*at, *s) for s in seen):
+            if any(_close(*at, *s) for s in seen):
+                continue
+            if self._metres(at) > APPROACH_M:
+                # Not walked on, but another junction there still owns a
+                # crosswalk nearer it than N.
+                if self.foreign(at):
+                    others.append(at)
                 continue
             seen.append(at)
             if self.foreign(at):
+                others.append(at)
                 continue
             arriving = []
             for entry in self.edges:
@@ -610,18 +650,23 @@ class _Approaches:
             flagged = [ends for entry, ends in arriving if _flag(entry, "traffic_signal")]
             # A road arriving here towards N with a signal: a signalized node,
             # on this road's stop line or at a junction a few metres up it.
-            if any(self._towards(ends) for ends in flagged):
-                return True
-            # The node's own flag, unless every edge flagged at it travels
+            # Or the node's own flag, unless every edge flagged at it travels
             # away from N (a signal facing the other way only).
-            if self.node_signal(at) and not flagged:
-                return True
+            if any(self._towards(ends) for ends in flagged) or (
+                self.node_signal(at) and not flagged
+            ):
+                if not self.crosswalk(arm, at):
+                    return True
+                crosswalks.append(at)
             for entry, ends in arriving:
                 # Further out along the arm's own road: an edge of it arriving
                 # here from farther away.
                 if _of_road(arm, entry) and self._towards(ends):
                     frontier.append(ends[0])
-        return False
+        return any(
+            not any(haversine(Point(*at), Point(*other)) < self._metres(at) for other in others)
+            for at in crosswalks
+        )
 
 
 def _edge_ends(entry: dict) -> tuple[tuple[float, float], tuple[float, float]] | None:
@@ -641,10 +686,14 @@ def _edge_ends(entry: dict) -> tuple[tuple[float, float], tuple[float, float]] |
     return points[-1], points[0]
 
 
+def _use(entry: dict) -> str | None:
+    """A `/locate` edge's Valhalla `use`."""
+    return ((entry.get("edge") or {}).get("classification") or {}).get("use")
+
+
 def _is_road(entry: dict) -> bool:
     """A `/locate` edge of a road (not a footway, path or crossing way)."""
-    use = ((entry.get("edge") or {}).get("classification") or {}).get("use")
-    return use not in NOT_A_ROAD_USES
+    return _use(entry) not in NOT_A_ROAD_USES
 
 
 def _of_road(arm: Arm, entry: dict) -> bool:
@@ -1086,6 +1135,7 @@ def build_junctions(
                 links=tuple(road(a, a.way_id, [a]) for a in links),
                 located=node is not None,
                 continues=continues,
+                ring_movement=raw.ring_movement,
             )
         )
     return junctions

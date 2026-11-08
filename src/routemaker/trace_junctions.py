@@ -128,11 +128,19 @@ class RawJunction:
     back_edge_ids: tuple[int, ...] = ()
     # The router flags a traffic signal at the node, or on the rider's own approach within
     # APPROACH_M of it (`routemaker.junction_delay`). From the trace alone: a signal up a
-    # cross road only is not seen here (`core.junctions` reads those with `/locate`).
+    # cross road only is not seen here (`core.junctions` reads those with `/locate`, and
+    # the delay model takes its reading as `signals`: hunt J5).
     signal: bool = False
     # Each of `others`' headings away from the node (degrees), None where the router gave
     # none; empty for a junction built without them.
     other_headings: tuple[float | None, ...] = ()
+    # Where the route enters a roundabout here (its in-edge is off the ring, its out-edge
+    # on it: the router's `edge.roundabout`, asked by `calm.TRACE_ATTRIBUTES`), the
+    # movement the ride round the ring makes, from the heading it arrives on to the
+    # heading of the first edge off it: a right at the first exit, straight on, or a left
+    # (a U-turn included) past the arms between (`intersections.ROUNDABOUT_FACTOR_ONTO`;
+    # hunt J4). None elsewhere, and where the route ends on the ring.
+    ring_movement: Movement | None = None
 
     @property
     def slip_lane(self) -> bool:
@@ -340,6 +348,7 @@ def read_edges(
                     back_edge_ids=_back_edge_ids(edges, index, to_metres),
                     signal=_signal_at(edges, index, to_metres),
                     other_headings=other_headings,
+                    ring_movement=_ring_movement(edges, index),
                 ),
             )
         )
@@ -403,6 +412,22 @@ def _signal_at(edges: list[dict], index: int, to_metres: float) -> bool:
             return True
         gone += float(edge.get("length") or 0.0) * to_metres
     return False
+
+
+def _ring_movement(edges: list[dict], index: int) -> Movement | None:
+    """The movement through the roundabout the route enters at the node `edges[index]`
+    arrives at (`RawJunction.ring_movement`), or None where it enters none there."""
+    if edges[index].get("roundabout") or not edges[index + 1].get("roundabout"):
+        return None
+    arrive = edges[index].get("end_heading")
+    for after in edges[index + 2 :]:
+        if after.get("roundabout"):
+            continue
+        leave = after.get("begin_heading")
+        if arrive is None or leave is None:
+            return None
+        return movement_of(float(arrive), float(leave))
+    return None
 
 
 def _back_edge_ids(edges: list[dict], index: int, to_metres: float) -> tuple[int, ...]:

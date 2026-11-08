@@ -333,6 +333,25 @@ def time_factor(
 # from a quieter one: the crossing cost above is for going straight across.
 MOVEMENT_FACTOR_ONTO = {"left": 1.5, "straight": 1.0, "right": 0.1}
 
+# A roundabout (hunt J4, 2026-11-08). Entering the ring is a right onto a one-way road
+# and riding round it meets each arm from one side only, so with the table above a 3/4
+# turn round a multi-lane LTS 4 ring cost a right turn's 0.1 (555 ft), where the same left
+# at a stop sign onto the road was 10,560 ft and red. Round the ring the rider gives way
+# to the ring's traffic at the entry and then holds a lane in it past every arm before
+# the exit, whose traffic enters and leaves across the rider's path. So the whole ride
+# round is priced once, at the entry, by the ring's road from the stopped side
+# (`crossing_ft`, whatever the rider's own road: traffic in the ring has the right of
+# way) times the factor for the movement it makes (`RawJunction.ring_movement`), by the
+# arms passed between entry and exit: the first exit (none passed) a right onto the road,
+# 0.1 as above; a left, or more (two or more passed), the whole crossing of the ring's
+# traffic, 1.0, not a left's 1.5, since its traffic comes from one side only; straight on
+# (one passed) half way between. Words and ride-time rules are those of the movement
+# onto the road ("Left turn onto", the gap wait of a left or straight on). A PROPOSAL,
+# inferred, not measured; nothing in the literature review prices a roundabout
+# (docs/stress/literature.md: "We have no roundabout rule yet"). A quiet ring (LTS 2 or
+# less by its traffic) still costs nothing.
+ROUNDABOUT_FACTOR_ONTO = {"right": 0.1, "straight": 0.55, "left": 1.0}
+
 # A left turn FROM a busy road (the rider on the free-flowing road turns across
 # its oncoming traffic): the Oregon vehicular-left table, LTS 3 at one lane to
 # cross and LTS 4 beyond. Zero where the road is one-way ("unless it's a
@@ -613,6 +632,10 @@ class Junction:
     # The map has a signal here, but it is a flashing beacon (`with_beacons`): priced
     # with no signal, and said so.
     beacon: bool = False
+    # The route enters a roundabout here, and the movement its ride round the ring makes
+    # (`trace_junctions.RawJunction.ring_movement`, `ROUNDABOUT_FACTOR_ONTO`); None
+    # elsewhere.
+    ring_movement: Movement | None = None
 
 
 @dataclass(frozen=True)
@@ -680,6 +703,12 @@ class Event:
     beacon: bool = field(default=False, compare=False)
     # The crossed road is a half step above `crossed_tier` on the map (2.5, 3.5, 4.5).
     crossed_half: bool = field(default=False, compare=False)
+    # The points of the junction's nodes the model reads as signalised (its control
+    # SIGNAL, shared across the junction's nodes: `share_controls`), and of every node
+    # merged into it (`merge_nearby`): the junction-delay model times a wait there as a
+    # signal's, where the trace shows none on the rider's own approach (hunt J5,
+    # `routemaker.junction_delay`, `signal_points`).
+    signals: tuple[tuple[float, float], ...] = field(default=(), compare=False)
 
 
 def _untimed(event: Event) -> float:
@@ -854,6 +883,11 @@ def cost_of(junction: Junction) -> tuple[float, str, Road | None]:
         factor = MOVEMENT_FACTOR_ONTO[j.movement.value]
         base = crossing_ft(j.outgoing, j.control, _rider(j.incoming), _read(j.incoming))
         take(min(base * factor, MAX_CROSSING_FT), f"{j.movement.value}_onto", j.outgoing)
+    if j.ring_movement is not None and j.outgoing.busy:
+        # Round a busy roundabout from its entry (`ROUNDABOUT_FACTOR_ONTO`).
+        value = crossing_ft(j.outgoing, j.control, None)
+        value *= ROUNDABOUT_FACTOR_ONTO[j.ring_movement.value]
+        take(min(value, MAX_CROSSING_FT), f"{j.ring_movement.value}_onto", j.outgoing)
     for road in (r for r in j.crossed if r.busy):
         if j.movement is Movement.STRAIGHT:
             value = crossing_ft(road, j.control, _rider(j.incoming), _read(j.incoming))
@@ -1456,6 +1490,7 @@ def merge_nearby(events: list[Event]) -> list[Event]:
                 flagged=any(e.flagged for e in ones),
                 time_band=band if abs(cost - untimed) >= 1.0 else None,
                 untimed_ft=untimed,
+                signals=tuple(dict.fromkeys(p for e in group for p in e.signals)),
             )
         )
         group.clear()
@@ -1694,9 +1729,26 @@ def assess_route(
     the signalized crossings that run together are numbered (`number_groups`),
     never across a stop (`stops`, where each leg ends). `when` is the ride time
     (`time_factor`, 468a)."""
-    events = (assess(junction, group, when) for junction in share_controls(junctions))
+    events = (
+        _with_signal(assess(junction, group, when), junction)
+        for junction in share_controls(junctions)
+    )
     merged = merge_nearby(sorted((e for e in events if e is not None), key=lambda e: e.m))
     return number_groups(merged, stops) if group else merged
+
+
+def _with_signal(event: Event | None, junction: Junction) -> Event | None:
+    """The event with its junction's point in `signals` where its control is a signal."""
+    if event is None or junction.control is not Control.SIGNAL:
+        return event
+    return replace(event, signals=((junction.lon, junction.lat),))
+
+
+def signal_points(events: Sequence[Event] | None) -> frozenset[tuple[float, float]]:
+    """The points of every node the events' junctions are signalised at (`Event.signals`),
+    for `routemaker.junction_delay`: the junction model reads a signal up each road's arms
+    (`core.junctions`), which the route's trace does not carry (hunt J5)."""
+    return frozenset(point for event in events or () for point in event.signals)
 
 
 def penalty_m(events: list[Event]) -> float:

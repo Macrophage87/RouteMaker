@@ -2523,7 +2523,13 @@ passes (`routemaker.trace_junctions`, from `/trace_attributes` with
    flagged. The walk stops at, and does not count, a node that a road of a
    name none of the junction's arms has joins: that is another junction
    (review r3, B1: of six driveways and side streets within 30 m of another
-   junction's signal, all six had taken it). A rider arriving on a path
+   junction's signal, all six had taken it). A signal on a crosswalk alone (a
+   path or crossing way meets the road there and no other road does: OSM's
+   `crossing=traffic_signals`, a HAWK's included) is the junction's only where
+   no such other junction up the arm is nearer it than the junction is (hunt
+   J2, 2026-11-08: K St's signalised crosswalk 17 m up Main St, 8 m short of
+   K St, had made a stop-controlled side street at Main St signalized). A
+   rider arriving on a path
    (footway, path, cycleway, crossing way, steps, track: `TRAIL_USES`) is let
    past such a node, since a trail crossing beside a road junction is crossed
    on that junction's signal. A rider leaving a driveway, a parking aisle or a
@@ -2586,6 +2592,7 @@ table, within its ranges, for the owner to move:
 | Merging across lanes to reach a left (item 167) | `MERGE_FT_PER_LANE`, `BOX_TURN_CAP_FT` | 250 ft a lane, capped at 500 ft | the review's two-stage box turn, 200-500 ft |
 | At a signal, the whole left off a busy road (item 186) | `BOX_TURN_CAP_FT` | at most 500 ft, oncoming lanes and merge together | "Cap at box turn": a left never costs more than the two-stage box turn (round 1: 910 ft for two lanes a direction on LTS 4) |
 | A right turn off a busy road | `RIGHT_FROM_BUSY_FT` | 15 ft | |
+| Round a busy roundabout, priced once at its entry by the ring's road from the stopped side (the ring's traffic has the right of way, whatever the rider's own road), by the movement from the approach to the exit (`RawJunction.ring_movement`, the router's `edge.roundabout`) | `ROUNDABOUT_FACTOR_ONTO` | x0.1 at the first exit (a right onto it), x0.55 straight on (one arm passed), x1.0 a left or a U-turn (two or more passed); worded and timed as the movement onto the road | hunt J4, 2026-11-08: every ride round a ring had been a right turn onto it, so a left round a two-lane LTS 4 ring cost 555 ft where the same left at a stop sign was 10,560 ft; a proposal, not in the literature |
 | A slip lane the route crosses (items 169, 195) | `SLIP_LANE_FT`, `SIGNALISED_SLIP_FACTOR`, `core.junctions.crossed_links` | 800 ft, x0.5 at a signal; none riding straight past it along the road | "at least an LTS 3 unsignalized crossing, about 800 ft"; 195: "Flag only when you cross it (Recommended)" |
 | LTS 1-2 meeting LTS 1-2, with a stop sign (item 171) | `NEIGHBOURHOOD_STOP_FT` | 10 ft, never flagged | the owner's account that DC lets bikes roll through when safe; not legal advice |
 | Cap | `MAX_CROSSING_FT` | 4,500 ft | |
@@ -3925,7 +3932,10 @@ The owner, 2026-10-03: "Actually, I like merging the runs, that sounds good." (2
   joins at the signal's node or the signal faces away from it (review r3, B1);
   it still does where the signal is on a stop line of its own road with no
   other road there and facing it, or where the other junction's road has no
-  name. That under-warns, only within 100 ft (30 m) of a signal. And the rule
+  name. A signalised crosswalk is the other junction's where that junction is
+  the nearer (hunt J2); a mid-block pedestrian signal or HAWK with no other
+  junction near it is still read as the side street's within 30 m, since
+  `/locate` does not tell it from a junction's own signalised crosswalk. That under-warns, only within 100 ft (30 m) of a signal. And the rule
   costs a signal where one junction is mapped as two named ones a few metres
   apart: Plyers Mill Rd across Metropolitan Ave reads the signal 16 m away at
   Concord St as Concord St's (orange, 1,200 ft, where it was 150).
@@ -3959,7 +3969,7 @@ the router's `node.traffic_signal` and `edge.traffic_signal` flags):
 
 | At the junction | Delay | Why |
 |---|---|---|
-| A traffic signal on the node or within 30 m (100 ft) up the rider's approach | 15 s | the average wait for a random arrival at a 100 s cycle with 50 s of red (Webster's uniform delay), plus half a stop; inferred |
+| A traffic signal on the node or within 30 m (100 ft) up the rider's approach, or a junction the intersection model reads as signalised (a signal up any road's arms, from `/locate`: `intersections.signal_points`; hunt J5, 2026-11-08: a signalised trail crossing with its signal on the road's stop lines had been a 30 s give-way) | 15 s | the average wait for a random arrival at a 100 s cycle with 50 s of red (Webster's uniform delay), plus half a stop; inferred |
 | The rider gives way to a neighbourhood street (unclassified or residential): crossing one as busy as their own, turning onto one where their own street does not go on ahead, or crossing or leaving a path | 8 s | one stop at a steady effort: Fajans and Curry, ["Why Bicyclists Hate Stop Signs"](https://www.accessmagazine.org/spring-2001/bicyclists-hate-stop-signs), ACCESS 18 (2001), 14.2 against 10.9 mph |
 | The same in the District, where the road given way to is unclassified or residential | 4 s | DC lets a rider take a stop sign as a yield (the owner: "bikes aren't required to stop at stop signs if there's no cross traffic"); a slow-and-roll, inferred |
 | The rider gives way to a busier road that does not stop: tertiary, secondary, primary or busier | 12, 20, 30 s | the wait for a gap (the owner: "a stop sign against a busy street without one probably costs more"); one value per class through the day, from the Highway Capacity Manual's two-way-stop levels of service (HCM 6th ed., Exhibit 20-2: A up to 10 s, B 10-15, C 15-25, D 25-35); inferred |
@@ -4595,9 +4605,14 @@ less.
   but never marked.
 - `INJECT_TAGS` matches them (`agency_signals.match`): a signal with an OSM signal within
   30 m whose nearest junction is the one the agency point marks is "in OSM"; otherwise
-  every road junction node within 20 m (three or more road arms; alleys, parking aisles
-  and driveways are not arms) is marked `rm:agency_signal=yes`, and a HAWK marks its
-  nearest crosswalk node. Only way nodes near a listed signal are indexed, and the
+  the road junction nodes within 20 m (three or more road arms; alleys, parking aisles
+  and driveways are not arms) that are one junction by name are marked
+  `rm:agency_signal=yes` (`one_junction`): anchored on the node with the most named
+  roads, the far carriageway of a divided road is kept (it shares the avenue's name,
+  whatever the cross street is called there), and on the anchor's own carriageway a
+  side street of another name or a plain entrance is another junction and keeps its
+  own sign (hunt J3/D4, 2026-11-08); where no road at the anchor is named, every node
+  in reach is marked as before. A HAWK marks its nearest crosswalk node. Only way nodes near a listed signal are indexed, and the
   extract's OSM signals are read in one more pass over its `highway` nodes.
 - The transform (`remap.derives_signal`) turns the mark into `highway=traffic_signals`
   over an `uncontrolled` or `unmarked` crossing and a stop or give-way sign on the node;

@@ -28,11 +28,18 @@ Matching, per signal:
   signal whose nearest junction is another junction, one the agency point does not
   reach, is that junction's (a diagonal avenue's junctions 20-30 m apart) and does
   not count.
-- Otherwise every road junction node within `JUNCTION_M` is marked: a node where
-  three or more road arms meet (two ways crossing, or one ending on another), not
-  counting alleys, parking aisles and driveways, so a junction that is only an
-  alley mouth beside the signal is not taken for it. A divided road's junction is
-  two to four nodes 10-15 m apart around the point, so all of them.
+- Otherwise the junction nodes within `JUNCTION_M` of the point that are of one
+  junction by their roads' names are marked (`one_junction`): a node where three or
+  more road arms meet (two ways crossing, or one ending on another), not counting
+  alleys, parking aisles and driveways, so a junction that is only an alley mouth
+  beside the signal is not taken for it. A divided road's junction is two to four
+  nodes 10-15 m apart around the point, so all of them, whatever the cross street is
+  called on the far side. On the junction's own carriageway a node where a road of
+  another name joins (an unsignalised side street 17 m along the avenue), or a plain
+  entrance, is another junction and keeps its own stop sign (hunt J3/D4, 2026-11-08:
+  every junction node within the radius had been marked). The installed rows carry
+  no road names, so the node with the most named roads stands for the agency's
+  junction; a side street on the far carriageway of a divided road is still taken.
 - A HAWK stands at a mid-block crosswalk, not a junction, so it marks the nearest
   node where a crossing way meets a road within `JUNCTION_M` instead.
 - No node in reach: the signal is counted as unmatched (beyond the extract, or
@@ -458,6 +465,100 @@ def junction_nodes(
     return {node: located[node] for node, count in arms.items() if count >= 3}
 
 
+def _way_name(tags: Mapping[str, str]) -> str:
+    return str(tags.get("name") or "").strip().lower()
+
+
+def junction_names(ways: Sequence, junctions: Mapping[int, object]) -> dict[int, frozenset[str]]:
+    """The names (`name`, lower-cased) of the road ways through each node in
+    `junctions`, as `_counts_as_junction_arm` counts its arms; an unnamed way adds
+    none."""
+    names: dict[int, set[str]] = defaultdict(set)
+    for way in ways:
+        if not _counts_as_junction_arm(way.tags):
+            continue
+        name = _way_name(way.tags)
+        if not name:
+            continue
+        for node in way.node_ids:
+            if node in junctions:
+                names[node].add(name)
+    return {node: frozenset(names.get(node, ())) for node in junctions}
+
+
+def named_links(ways: Sequence, located: Mapping[int, object]) -> dict[int, list[tuple[str, int]]]:
+    """Each located node's neighbours along a named road way, with the way's name:
+    for walking one carriageway of a road (`one_junction`). A divided road's two
+    carriageways meet only by the cross streets between them, so walking a name
+    from a node stays on its own carriageway."""
+    links: dict[int, list[tuple[str, int]]] = defaultdict(list)
+    for way in ways:
+        if not _counts_as_junction_arm(way.tags):
+            continue
+        name = _way_name(way.tags)
+        if not name:
+            continue
+        nodes = way.node_ids
+        for a, b in zip(nodes, nodes[1:], strict=False):
+            if a in located and b in located:
+                links[a].append((name, b))
+                links[b].append((name, a))
+    return links
+
+
+def _along(start: int, name: str, links: Mapping[int, list[tuple[str, int]]]) -> set[int]:
+    """The nodes reached from `start` along ways named `name`."""
+    seen = {start}
+    frontier = [start]
+    while frontier:
+        node = frontier.pop()
+        for link_name, other in links.get(node, ()):
+            if link_name == name and other not in seen:
+                seen.add(other)
+                frontier.append(other)
+    return seen
+
+
+def one_junction(
+    near: Sequence[tuple[float, int]],
+    names: Mapping[int, frozenset[str]],
+    links: Mapping[int, list[tuple[str, int]]] | None = None,
+) -> list[tuple[float, int]]:
+    """Of the junction nodes near an agency point (nearest first), those of the
+    agency's junction. It is anchored on the node with the most named roads (the
+    nearer of equals): a plain entrance a few metres nearer the point than the real
+    junction is not taken for it. A node on the anchor's own carriageway (reached
+    along a way of one of its names, `links`) is another junction where a road of a
+    new name meets it (a side street along the avenue) or no other road of the
+    anchor's does (an entrance); it is the same junction where it has the anchor's
+    cross street (that street's other carriageway). A node off the anchor's
+    carriageways (across a median) is the same junction where it shares a name with
+    the anchor: the avenue's other carriageway, whatever the cross street is called
+    there or where the crossover is unnamed. Where the anchor has no named road,
+    nothing tells them apart and every node is kept."""
+    if not near:
+        return []
+    anchor = max(near, key=lambda item: (len(names.get(item[1], ())), -item[0]))[1]
+    mine = names.get(anchor, frozenset())
+    if not mine:
+        return list(near)
+    links = links or {}
+    along = {name: _along(anchor, name, links) for name in mine}
+    kept = []
+    for distance, node in near:
+        here = names.get(node, frozenset())
+        if node != anchor:
+            carriageway = [name for name in mine if node in along[name]]
+            if carriageway:
+                others = mine - set(carriageway)
+                if here - mine or not here & others:
+                    continue
+            elif not here & mine:
+                continue
+        kept.append((distance, node))
+    return kept
+
+
 def crossing_nodes(
     ways: Sequence, located: Mapping[int, tuple[float, float]]
 ) -> dict[int, tuple[float, float]]:
@@ -540,14 +641,17 @@ def match(
     if not agency:
         return result
     located = near_nodes(ways, agency)
-    junctions = _Grid(junction_nodes(ways, located), JUNCTION_M)
+    junction_points = junction_nodes(ways, located)
+    junctions = _Grid(junction_points, JUNCTION_M)
+    names = junction_names(ways, junction_points)
+    links = named_links(ways, located)
     crossings = _Grid(crossing_nodes(ways, located), JUNCTION_M)
     osm = _Grid(osm_signals, OSM_SIGNAL_M)
     for signal in agency:
         if signal.kind == "hawk":
             near = crossings.within(signal.lon, signal.lat, JUNCTION_M)[:1]
         else:
-            near = junctions.within(signal.lon, signal.lat, JUNCTION_M)
+            near = one_junction(junctions.within(signal.lon, signal.lat, JUNCTION_M), names, links)
         marked = tuple(node for _distance, node in near)
         if any(
             _osm_signal_is_ours(osm.points[key], marked, junctions)

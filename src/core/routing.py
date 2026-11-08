@@ -1674,6 +1674,8 @@ def busy_and_waits(
     stress, _facility = breakdown(pieces_of_trace(trace), when)
     junctions = trace_junctions.junctions_of_trace(trace, decode_polyline6(shape), 0.0)
     beacons = active_beacons()
+    # Timed without the junction model's signal points (hunt J5): these candidate rides
+    # have no /locate events, so a signal is read from the trace alone.
     waits = junction_delay.delay_s(
         junctions,
         stop_as_yield,
@@ -5628,6 +5630,8 @@ def _plan(
             raw_junctions,
             stop_as_yield,
             lambda lon, lat: intersections.beacon_at(lon, lat, beacons) is not None,
+            # The junction model's signals, up the roads' arms too (hunt J5).
+            intersections.signal_points(events),
         )
         delay = float(sum(wait for _m, wait in waits))
         route_m = round(float(summary.get("length", 0.0)) * 1000.0, 1)
