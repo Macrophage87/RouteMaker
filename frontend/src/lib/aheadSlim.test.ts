@@ -64,7 +64,7 @@ test("mountain-bike trails ride on the ribbon in the map's colours and are said 
 
 test("a trail stretch on the ribbon is its trail's colour, with brown rocks on its edges (Stephen, 2026-11-07)", () => {
   // "Use the trail color in the ribbon and brown dots that look like rocks on the edges."
-  assert.match(graph, /<rect x=\{left\} y=\{band\} width=\{width\} height=\{RIBBON_H\} fill=\{trail\.color\} \/>/);
+  assert.match(graph, /<rect className="ride-ahead-mtb-fill" x=\{left\} y=\{band\} width=\{width\} height=\{RIBBON_H\} fill=\{trail\.color\} strokeWidth=\{1\} \/>/);
   assert.match(graph, /\{rocks\(left, width\)\.map\(\(rock, i\) => \(\s*<ellipse [^>]*fill=\{ROCK\} stroke=\{ROCK_EDGE\}/);
   assert.match(graph, /<Ribbon bars=\{panels\.ribbon\} rails=\{panels\.rails\} trails=\{panels\.trails\} /);
   const css = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
@@ -91,4 +91,20 @@ test("a short stretch above LTS 3 is drawn the ribbon's full height, over the ra
   assert.match(graph, /^const SHORT_BUSY_M = 161;$/m);
   assert.match(graph, /const tall = \(b: StressBar\): boolean => b\.level !== null && b\.level > 3 && b\.toM - b\.fromM < SHORT_BUSY_M;/);
   assert.match(graph, /\{bars\.filter\(tall\)\.map\(\(b\) => \([\s\S]*?height=\{RIBBON_BLOCK\}/);
+});
+
+test("a mountain-bike trail on the ribbon has a light edge on the dark panel, 3:1 or more against every trail colour (v0.22.0 review)", async () => {
+  const { MTB_LEVELS, MTB_TRAIL, contrastRatio } = await import("../stressStyle.js");
+  const css = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
+  assert.match(graph, /<rect className="ride-ahead-mtb-fill" x=\{left\} y=\{band\} width=\{width\} height=\{RIBBON_H\} fill=\{trail\.color\} strokeWidth=\{1\} \/>/);
+  assert.match(css, /\.ride-ahead-mtb-fill \{\s*stroke: transparent;\s*\}/);
+  assert.match(css, /:root\.theme-dark \.ride-ahead-mtb-fill \{\s*stroke: var\(--text-muted\);\s*\}/);
+  assert.match(css, /\.ride-ahead-rail-edge,\s*\.ride-ahead-mtb-fill \{\s*stroke: CanvasText;/);
+  const dark = css.slice(css.indexOf(":root.theme-dark {"));
+  const token = (name: string) => dark.match(new RegExp(`--${name}: (#[0-9a-f]{6})`))![1]!;
+  const edge = token("text-muted");
+  assert.ok(contrastRatio(edge, token("bg")) >= 3);
+  for (const color of [...MTB_LEVELS.map((l: { color: string }) => l.color), MTB_TRAIL.color]) {
+    assert.ok(contrastRatio(edge, color) >= 3, `${color}: ${contrastRatio(edge, color).toFixed(2)}:1`);
+  }
 });

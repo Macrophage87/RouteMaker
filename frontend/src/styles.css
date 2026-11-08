@@ -4769,6 +4769,17 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
   stroke: var(--text-muted);
 }
 
+/* A mountain-bike trail on the ribbon: no edge on the light panel, a light one on the dark panel, where the trail
+   colours are under 3:1 (black 1.05:1, unrated brown 2.53:1); --text-muted is 3:1 or more against each of them and
+   9.2:1 on --bg (the v0.22.0 review). */
+.ride-ahead-mtb-fill {
+  stroke: transparent;
+}
+
+:root.theme-dark .ride-ahead-mtb-fill {
+  stroke: var(--text-muted);
+}
+
 .ride-ahead-ground {
   fill: var(--bg-soft);
   stroke: none;
@@ -4902,7 +4913,8 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
     fill: CanvasText;
   }
 
-  .ride-ahead-rail-edge {
+  .ride-ahead-rail-edge,
+  .ride-ahead-mtb-fill {
     stroke: CanvasText;
   }
 
