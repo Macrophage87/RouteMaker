@@ -2228,8 +2228,14 @@ def grade_profile(trip: dict) -> list[tuple[float, float | None]]:
     offset = 0.0
     for leg in trip.get("legs") or []:
         heights = leg.get("elevation") or []
-        profile.extend((offset + i * ELEVATION_INTERVAL_M, h) for i, h in enumerate(heights))
-        offset += float((leg.get("summary") or {}).get("length", 0.0)) * 1000.0
+        length_m = float((leg.get("summary") or {}).get("length", 0.0)) * 1000.0
+        # The router's last sample is at the leg's end, not a whole interval on: clamp, as
+        # `routemaker.profile.sample_positions` does, or the leg's last window reads up to
+        # an interval too long and its grade too gentle (terrain hunt 3, T3-7).
+        profile.extend(
+            (offset + min(i * ELEVATION_INTERVAL_M, length_m), h) for i, h in enumerate(heights)
+        )
+        offset += length_m
         # A leg's samples do not join the next leg's: a gap between them.
         profile.append((offset, None))
     return profile

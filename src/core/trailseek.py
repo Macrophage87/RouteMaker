@@ -682,8 +682,8 @@ def corridor_segments(
     of the plan where that is less (`routing.plan_cursor`); one that runs past it raises
     SeekOutOfTime.
 
-    With `avoid_winding` (Road Bike) a segment that bends as a winding trail does
-    (`routemaker.winding`) is left out: the road-bike graph prices those ways as an LTS 3
+    With `avoid_winding` (Road Bike) a trail-class segment that bends as a winding trail
+    does (`routemaker.winding`) is left out: the road-bike graph prices those ways as an LTS 3
     street, and a seek that offered one would steer the plan back onto it."""
     if corridor_query(schema, guide, width_m, has_facility, when, avoid_unpaved) is None:
         return []
@@ -705,10 +705,14 @@ def corridor_segments(
         raise
     except routing.DeadlineExceeded as error:
         raise SeekOutOfTime("the trail table read ran out of time") from error
-    segments = [_parse_line(row[0]) for row in rows]
-    if avoid_winding:
-        segments = [s for s in segments if not winding.is_winding(s)]
-    return segments
+    # Only a trail-class way's bends are dropped, as only those the paved graphs price
+    # (`pipeline.run`, `variants.is_trail_class`): a car-free parkway or a cycle track that
+    # follows a creek is a corridor still (terrain hunt 3, T3-5).
+    return [
+        segment
+        for segment, trail in ((_parse_line(row[0]), row[1]) for row in rows)
+        if not (avoid_winding and trail and winding.is_winding(segment))
+    ]
 
 
 def corridor_query(
@@ -745,11 +749,11 @@ def corridor_query(
         params.append(open_reasons())
     # One index scan a strip (the lateral join), each segment once.
     sql = (
-        "SELECT ST_AsText(seg.geometry) FROM ("
-        "SELECT DISTINCT ON (seg.id) seg.geometry "
+        "SELECT ST_AsText(seg.geometry), seg.is_trail_class FROM ("
+        "SELECT DISTINCT ON (seg.id) seg.geometry, seg.is_trail_class "
         "FROM unnest(%s::float8[], %s::float8[], %s::float8[], %s::float8[]) "
         "AS box(west, south, east, north) "
-        f"CROSS JOIN LATERAL (SELECT s.id, s.geometry FROM {schema}.segment AS s "
+        f"CROSS JOIN LATERAL (SELECT s.id, s.geometry, s.is_trail_class FROM {schema}.segment AS s "
         "WHERE s.geometry && ST_MakeEnvelope(box.west, box.south, box.east, box.north, 4326) "
         f"AND {where}) AS seg"
         ") AS seg LIMIT %s"

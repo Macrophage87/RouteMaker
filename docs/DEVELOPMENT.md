@@ -2191,7 +2191,9 @@ unless named; PLAN.md quotes the owner's words):
 - *Road Bike* (the owner, 2026-11-02, replacing the Avoid gravel box of items 91 and 92): its own
   graph (`Variant.PAVED`), where gravel, fine gravel and compacted are Valhalla's `gravel` class
   and winding trails (`routemaker.winding`, 40 degrees of turning per 100 m or more) pay the LTS 3
-  stress penalty; a Road bicycle at `avoid_bad_surfaces` 0.9 prices gravel at about seventeen
+  stress penalty (trail class only, `variants.is_trail_class`; the trail seek drops the same
+  ways and no others, so a car-free parkway or a cycle track that bends stays a corridor:
+  `trailseek.corridor_segments`, T3-5); a Road bicycle at `avoid_bad_surfaces` 0.9 prices gravel at about seventeen
   times a paved path. Every other graph prices gravel as packed gravel (`compacted`, #877). A
   link or plan with the old box ticked plans as Road Bike on a rider's own bike
   (`presets.AVOID_GRAVEL_BECOMES`); elsewhere the box is dropped. When routes are ranked, its junction waits (signals,
@@ -7342,7 +7344,8 @@ and `brick` and `bricks` as `paved_rough`. The remap hands those four to the gra
 `paving_stones` (`M.GRAPH_SURFACE`), which it prices `paved`, before any reviewer surface
 penalty (which still wins). A paved way's mountain-bike rating comes off as before
 (`M.strip_paved_ratings`), now on a wooden deck too, which only ever removes the
-parser's access grant; a rated wooden feature is closed by `rm:no_bicycle=singletrack`.
+parser's access grant; `mtb:scale:uphill` comes off with it (terrain hunt 3, T3-6: with no
+`mtb:scale` left the parser sets the surface from the uphill rating, below 2 as gravel); a rated wooden feature is closed by `rm:no_bicycle=singletrack`.
 `scripts/check_tile_build_access.sh` reads each hard surface's price in a real tile.
 
 ## Roads closed or restricted to motor traffic (owner report 2026-10-06, the WB&A Trail)

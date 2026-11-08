@@ -1262,6 +1262,14 @@ def test_grade_profile_splits_legs():
     assert profile[5] == (90.0, 4.0)
 
 
+def test_grade_profile_puts_a_legs_last_sample_at_its_end():
+    # T3-7: a 100 m leg samples at 0, 30, 60, 90 and its end, not at 120 m.
+    trip = {"legs": [{"summary": {"length": 0.1}, "elevation": [0.0, 3.0, 6.0, 9.0, 10.0]}]}
+    profile = routing.grade_profile(trip)
+    assert profile[4] == (100.0, 10.0)
+    assert profile[5] == (100.0, None)
+
+
 def _price(hills=-100, use_hills=None, brake_grade=0.06):
     """The Default rider's `routing.HillPrice` at a hills slider position."""
     return routing.HillPrice(

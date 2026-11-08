@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pipeline import trail_closures as tc
 from pipeline.extract import Way
+from pipeline.variants import Variant
 from routemaker.trailaccess import WayRoutes
 from routemaker.zoo import spur_ways
 
@@ -143,6 +144,18 @@ def test_short_dismount_connectors_stay_flagged_and_long_ones_close():
     result = run([short, long_])
     assert result.walk_bike == {50}
     assert result.reasons == {51: "dismount"}
+
+
+def test_a_dismount_dirt_trail_is_never_the_mtb_class():
+    # T3-1: a bicycle tag made the way the mountain-bike class, opened on the MTB graphs.
+    dismount = {"highway": "path", "surface": "dirt", "bicycle": "dismount"}
+    short = way(52, dismount, length_deg=0.0005)  # about 40 m
+    long_ = way(53, dismount, nodes=[910, 911], length_deg=0.004)  # about 350 m
+    result = run([short, long_])
+    assert result.walk_bike == {52}
+    assert result.reasons == {53: "dismount"}
+    for variant in (Variant.OFFROAD, Variant.MTB):
+        assert tc.graph_reason(variant, "dismount", 53, set(), set()) == "dismount"
 
 
 def test_the_offroad_graph_keeps_only_the_mtb_class_open():
