@@ -5166,6 +5166,10 @@ The third routing hunt's owner calls, as Stephen decided them on 2026-11-08:
   (stress finding 5): "Make them LTS 4.5. They might be the only way there."
   (`stress.USE_SIDEPATH_ON_ROAD_RULE`; docs/stress/classification.md, row 11). Code change; the
   tier is written at the rebuild, so it reaches the map and the graph only after a map rebuild.
+- **A `use_sidepath` road with a painted bike lane on it**: "If it has a painted lane and requires
+  a sidepath then it's an OSM error" and "Bikes would be explicitly allowed". The road is rated
+  on its own merits, lane included, as if the `use_sidepath` tag were not there
+  (`stress.painted_lane_on_road`). Code change; needs the map rebuild.
 - **Sunday evening from 6 PM** (T3-5): "Let's just go at 6 on Sunday."
   (`ridetime.SUNDAY_EVENING_START`, and its copy in `frontend/src/lib/rideTime.ts`). Beach
   Drive's last closed hour, Sunday 18:00-19:00, is planned as open to cars. Code change.

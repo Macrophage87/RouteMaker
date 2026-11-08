@@ -103,6 +103,19 @@ class TestTheRating:
         assert result.tier is Stress.AVOID
         assert result.rule.startswith(USE_SIDEPATH_RULE)
 
+    @pytest.mark.parametrize("lane", ["cycleway:both", "cycleway:right", "cycleway"])
+    def test_a_painted_lane_on_the_road_is_rated_as_the_lane(self, lane) -> None:
+        """The owner, round 3, 2026-11-08: a painted lane with use_sidepath is an OSM error,
+        and "Bikes would be explicitly allowed": rated as the road without the tag."""
+        laned = {**ROAD, lane: "lane"}
+        plain = {k: v for k, v in laned.items() if k != "bicycle"}
+        result = classify(laned, side_path=True)
+        assert result.tier is not Stress.AVOID
+        assert (result.tier, result.half) == (classify(plain).tier, classify(plain).half)
+
+    def test_a_lane_marked_no_does_not_lift_it(self) -> None:
+        assert classify({**ROAD, "cycleway:both": "no"}, side_path=True).tier is Stress.AVOID
+
     def test_without_one_it_is_rated_on_its_own_merits(self) -> None:
         plain = {k: v for k, v in ROAD.items() if k != "bicycle"}
         result = classify(ROAD)

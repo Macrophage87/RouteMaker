@@ -112,6 +112,7 @@ from .tags import (
     PAINTED_CYCLEWAY,
     SEPARATED_CYCLEWAY,
     cycleway_provision,
+    cycleway_sides,
     cycleway_values,
     cycleway_width_m,
     has_parking_lane,
@@ -1112,6 +1113,13 @@ USE_SIDEPATH_RULE = "legal but avoid: riders asked to use the side path"
 USE_SIDEPATH_ON_ROAD_RULE = (
     "riders asked to use the side path, on the road as a sidewalk or a one-sided track"
 )
+
+
+def painted_lane_on_road(tags: dict[str, str]) -> bool:
+    """Whether either side of the road carries a painted bike lane (`PAINTED_CYCLEWAY`)."""
+    return any(side.value in PAINTED_CYCLEWAY for side in cycleway_sides(tags).values())
+
+
 # The provision rank of a separated track (`tags.cycleway_provision`, `SEPARATED_CYCLEWAY`).
 _TRACK_RANK = 2
 
@@ -1282,7 +1290,17 @@ def classify(
     # side of a two-way road, the road is LTS 4.5 (`USE_SIDEPATH_ON_ROAD_RULE`; the owner,
     # round 3, 2026-11-08: "Make them LTS 4.5. They might be the only way there."): before,
     # such a road was the bare Furth tier, LTS 4 at 40 mph, its sidewalk earning nothing.
-    use_sidepath = reason is None and side_path and is_use_sidepath_road(tags)
+    # A painted lane on the road beside `bicycle=use_sidepath` is a mapping error: the lane is
+    # there for bicycles, so they are explicitly allowed on the road. The owner, round 3,
+    # 2026-11-08: "If it has a painted lane and requires a sidepath then it's an OSM error"
+    # and "Bikes would be explicitly allowed". Such a road is rated on its own merits, its
+    # lane included, as if the use_sidepath tag were not there.
+    use_sidepath = (
+        reason is None
+        and side_path
+        and is_use_sidepath_road(tags)
+        and not painted_lane_on_road(tags)
+    )
     if use_sidepath and not has_side_path_on_the_road(tags):
         reason = USE_SIDEPATH_RULE
     if reason is not None:
