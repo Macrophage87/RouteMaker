@@ -633,24 +633,26 @@ def check(
 
 def table(compose: dict) -> str:
     services = compose.get("services", {})
-    rows = [f"{'service':<20}{'memory MiB':>12}{'cpus':>7}"]
+    # The first column fits the longest name (valhalla-paved-weekend is 22), so every row lines up.
+    w = max([len("resident total"), *map(len, services)]) + 2
+    rows = [f"{'service':<{w}}{'memory MiB':>12}{'cpus':>7}"]
     for name in sorted(services):
         lim = limits(services[name])
         if "memory" not in lim:
             continue
         note = "  (one-shot, not resident)" if name in ONE_SHOT else ""
         rows.append(
-            f"{name:<20}{mib(parse_bytes(lim['memory'])):>12.0f}"
+            f"{name:<{w}}{mib(parse_bytes(lim['memory'])):>12.0f}"
             f"{str(lim.get('cpus', '?')):>7}{note}"
         )
     total = resident_bytes(services)
     rows.append(
-        f"{'resident total':<20}{mib(total):>12.0f}   = {total / 1024**3:.2f} GiB "
+        f"{'resident total':<{w}}{mib(total):>12.0f}   = {total / 1024**3:.2f} GiB "
         f"of about {HOST_AVAILABLE_GB} GiB available"
     )
     peak = peak_bytes(services)
     rows.append(
-        f"{'startup peak':<20}{mib(peak):>12.0f}   = {peak / 1024**3:.2f} GiB "
+        f"{'startup peak':<{w}}{mib(peak):>12.0f}   = {peak / 1024**3:.2f} GiB "
         "(resident plus the largest one-shot)"
     )
     return "\n".join(rows)

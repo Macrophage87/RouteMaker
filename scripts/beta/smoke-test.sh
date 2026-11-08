@@ -18,10 +18,12 @@
 #       The same for a beta with no site password (the owner removed it, 2026-10-22): no
 #       credentials, and the front end and the api must answer without them instead of 401.
 #   --trails
-#       Also plan a short Mountain Bike ride, a Gravel one, a Road Bike one and a weekend Road Bike
-#       one and check each came back on its own graph (`variant` mtb / offroad / paved /
+#       Also plan a short Mountain Bike ride, a Gravel one, a weekday Road Bike one and a weekend
+#       Road Bike one and check each came back on its own graph (`variant` mtb / offroad / paved /
 #       paved-weekend), not the standard one: for a beta whose trail routers run (their tiles are on
-#       the host). Without it those checks are skipped, and say so.
+#       the host). Without it those checks are skipped, and say so. The weekend one is skipped, and
+#       says so, when this checkout's compose (beta-compose.sh ps; RM_SMOKE_COMPOSE stands in for it)
+#       shows valhalla-paved-weekend not running: a short host leaves it stopped (BETA-RUNBOOK.md).
 #   --no-401-page
 #       With --public, after the runbook's step 10 recovery (render-nginx.sh --no-401-page): skip
 #       the check of the sign-in page's text, which nginx's own 401 page does not carry.
@@ -163,16 +165,28 @@ check_body "a route comes back with a distance and a line" '"distance_m".*"geome
 # the standard graph instead, the trail router is down or its settings row is missing
 # (manage.py sync_upstreams).
 if [ "$trails" = 1 ]; then
+	# Road Bike at a weekday ride time: with no "when" it is the time of the request, which on
+	# a weekend daytime is the paved-weekend graph.
 	for trail in mountain-bike:mtb gravel:offroad road-bike:paved; do
+		when=""
+		[ "${trail%%:*}" = road-bike ] && when=',"when":"weekday_offpeak"'
 		check_body "a ${trail%%:*} route is planned on the ${trail#*:} graph" "\"variant\": ?\"${trail#*:}\"" \
 			-X POST -H 'Content-Type: application/json' -H 'Accept: application/json' \
-			-d "{\"points\":[[-77.13100,39.15256],[-77.13587,39.16116]],\"preset\":\"${trail%%:*}\"}" "$base/api/route"
+			-d "{\"points\":[[-77.13100,39.15256],[-77.13587,39.16116]],\"preset\":\"${trail%%:*}\"$when}" "$base/api/route"
 	done
 	# Road Bike's weekend graph (the owner, 2026-11-08, "New weekend graph"): the weekend ride
 	# time; on the paved graph instead, valhalla-paved-weekend is down or its row is missing.
-	check_body "a weekend road-bike route is planned on the paved-weekend graph" '"variant": ?"paved-weekend"' \
-		-X POST -H 'Content-Type: application/json' -H 'Accept: application/json' \
-		-d '{"points":[[-77.13100,39.15256],[-77.13587,39.16116]],"preset":"road-bike","when":"weekend"}' "$base/api/route"
+	# Skipped only when compose answers and shows it not running (a short host leaves it
+	# stopped); where compose cannot be asked (a --public run from elsewhere), it is checked.
+	here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+	if weekend_cid=$("${RM_SMOKE_COMPOSE:-$here/beta-compose.sh}" --profile offroad ps -q --status running valhalla-paved-weekend </dev/null 2>/dev/null) &&
+		[ -z "$weekend_cid" ]; then
+		printf 'SKIP  %s\n' "the weekend Road Bike graph (valhalla-paved-weekend is not running: a weekend Road Bike ride plans on the paved graph)"
+	else
+		check_body "a weekend road-bike route is planned on the paved-weekend graph" '"variant": ?"paved-weekend"' \
+			-X POST -H 'Content-Type: application/json' -H 'Accept: application/json' \
+			-d '{"points":[[-77.13100,39.15256],[-77.13587,39.16116]],"preset":"road-bike","when":"weekend"}' "$base/api/route"
+	fi
 else
 	printf 'SKIP  %s\n' "the Mountain Bike, Gravel, Road Bike and weekend Road Bike graphs (give --trails where the trail routers run)"
 fi

@@ -35,5 +35,5 @@ test("the short lines fit Plan's one-line notes and still name what is lost", ()
   assert.ok(ROAD_BIKE_NO_PAVED_MAP_SHORT.length <= 45);
   assert.match(ROAD_BIKE_NO_PAVED_MAP_SHORT, /gravel/);
   assert.ok(ROAD_BIKE_NO_WEEKEND_MAP_SHORT.length <= 45);
-  assert.match(ROAD_BIKE_NO_WEEKEND_MAP_SHORT, /parkways/);
+  assert.equal(ROAD_BIKE_NO_WEEKEND_MAP_SHORT, "Weekend map down: parkways may have cars.");
 });

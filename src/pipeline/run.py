@@ -249,7 +249,9 @@ DERIVED_SENTINEL_WAY_ID: int | None = 8795651
 
 # The weekend graph's own sentinel (`settings.REBUILD_SENTINEL_WEEKEND_EDGE`):
 # a road closed to cars at the weekend reads as a separated lane there and only
-# there, so a weekend graph derived like the standard one is refused.
+# there, so a weekend graph derived like the standard one is refused. Road Bike's
+# weekend graph (`Variant.PAVED_WEEKEND`) is read at the same edge, so one derived
+# like the paved graph is refused too.
 WEEKEND_SENTINEL_WAY_ID: int = 696971684
 WEEKEND_SENTINEL_EXPECTED = "separated"
 
@@ -2061,6 +2063,7 @@ def build_handlers(
     sample_derived_tag: Callable[[], str | None] | None = None,
     state_at: Callable[[float, float], str | None] | None = None,
     sample_weekend_tag: Callable[[], str | None] | None = None,
+    sample_paved_weekend_tag: Callable[[], str | None] | None = None,
     load_overrides: Callable[[], list[overrides.Override]] | None = None,
     disk_usage: Callable | None = None,
     fetch_elevation: Callable[[elevation.TileName, Path], Path] | None = None,
@@ -2093,6 +2096,9 @@ def build_handlers(
     sample_grade = sample_grade or (lambda: _least_grade_across_variants(context, run))
     sample_derived_tag = sample_derived_tag or (lambda: _standard_cycle_lane(context, run))
     sample_weekend_tag = sample_weekend_tag or (lambda: _weekend_cycle_lane(context, run))
+    sample_paved_weekend_tag = sample_paved_weekend_tag or (
+        lambda: _weekend_cycle_lane(context, run, variants.Variant.PAVED_WEEKEND)
+    )
     sample_closures = sample_closures or (lambda: _closures_across_variants(context, closure_run))
 
     def classification_value(name: str):
@@ -4630,6 +4636,14 @@ def build_handlers(
                 "derived as the weekend twin, so a weekend ride on it would not prefer the "
                 "roads closed to cars"
             )
+        paved_weekend = sample_paved_weekend_tag()
+        if paved_weekend != WEEKEND_SENTINEL_EXPECTED:
+            raise ValidationFailed(
+                f"the paved-weekend graph reports {paved_weekend!r} on Sligo Creek Parkway (way "
+                f"{WEEKEND_SENTINEL_WAY_ID}), not {WEEKEND_SENTINEL_EXPECTED!r}: it was not "
+                "derived as the paved graph's weekend twin, so a weekend Road Bike ride on it "
+                "would take the parkways closed to cars as roads"
+            )
         assert_bicycle_closures_reached_the_tiles(sample_closures())
 
     def swap() -> None:
@@ -4780,10 +4794,12 @@ def _standard_cycle_lane(context: RebuildContext, run) -> str | None:
     )
 
 
-def _weekend_cycle_lane(context: RebuildContext, run) -> str | None:
-    config_path = context.build_configs.get(variants.Variant.WEEKEND)
+def _weekend_cycle_lane(
+    context: RebuildContext, run, variant: variants.Variant = variants.Variant.WEEKEND
+) -> str | None:
+    config_path = context.build_configs.get(variant)
     if config_path is None:
-        raise ValidationFailed("the weekend variant has no build config to read back")
+        raise ValidationFailed(f"the {variant.value} variant has no build config to read back")
     return _read_back(
         functools.partial(
             tiles.sample_cycle_lane,

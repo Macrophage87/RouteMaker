@@ -3838,6 +3838,18 @@ def test_a_weekend_graph_derived_like_the_standard_one_is_refused(workspace, sta
     assert "Sligo Creek" in str(caught.value.cause)
 
 
+def test_a_paved_weekend_graph_derived_like_the_paved_one_is_refused(workspace, states) -> None:
+    """Review of "Road Bike's weekend graph": Road Bike's weekend graph reads the weekend
+    sentinel too, so one that came out a copy of the paved graph (the parkways roads with cars)
+    does not promote."""
+    source, root = workspace
+    with pytest.raises(RebuildFailed) as caught:
+        run_pipeline(source, root, binaries=FakeBinaries(paved_weekend_cycle_lane="none"))
+    assert caught.value.stage is Stage.VALIDATE_TILES
+    assert "paved-weekend graph" in str(caught.value.cause)
+    assert "Sligo Creek" in str(caught.value.cause)
+
+
 # --- Agency street blocks (DC Roadway Block, Baltimore centerline) ---------------
 
 

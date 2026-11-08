@@ -2171,6 +2171,16 @@ def _is_promoted(variant: str) -> bool:
     return _weekend_is_promoted()
 
 
+def _served_variant(variant: str) -> str:
+    """`variant`, or the first graph down its fallback chain (`twin_fallback`) that is not
+    known down and has a promoted build: the standard graph at the end."""
+    while variant in TWIN_VARIANTS and (_twin_down(variant) or not _is_promoted(variant)):
+        fallback = twin_fallback(variant)
+        logger.info("the %s graph is not being served; planning on the %s graph", variant, fallback)
+        variant = fallback
+    return variant
+
+
 def _mark_weekend(ok: bool) -> None:
     global _weekend_failed_at
     _weekend_failed_at = None if ok else clock()
@@ -5481,12 +5491,13 @@ def _plan(
         request.setdefault("alternates", SEEK_ALTERNATES)
     # A twin not served falls back (`twin_fallback`), Road Bike's weekend twin to the paved
     # graph and on to the standard one if that is not served either.
-    while variant in TWIN_VARIANTS and (_twin_down(variant) or not _is_promoted(variant)):
-        if weekend_beside:
-            raise RouterUnavailable("the weekend graph is not being served")
-        fallback = twin_fallback(variant)
-        logger.info("the %s graph is not being served; planning on the %s graph", variant, fallback)
-        variant = fallback
+    if (
+        weekend_beside
+        and variant in TWIN_VARIANTS
+        and (_twin_down(variant) or not _is_promoted(variant))
+    ):
+        raise RouterUnavailable("the weekend graph is not being served")
+    variant = _served_variant(variant)
     # The first router call: the plan's own request, or the trace of the followed line.
     if following:
         asked = follow.request_for(dials.follow, points, request)
@@ -5519,7 +5530,9 @@ def _plan(
                 logger.warning(
                     "the %s router did not answer; planning on the %s graph", variant, fallback
                 )
-                variant = fallback
+                # A fallback already known down or not promoted is passed over, not asked
+                # and waited out again (Road Bike's weekend twin falls back to the paved one).
+                variant = _served_variant(fallback)
             except RouterRefused as refusal:
                 # A weekend router with no tiles - started on an empty directory
                 # before the first weekend promotion, or after a rollback withdrew
@@ -5537,7 +5550,7 @@ def _plan(
                     _mark_twin(variant, False)
                     raise RouterUnavailable("the weekend router placed no edge") from refusal
                 refused.append((variant, refusal.code))
-                variant = twin_fallback(variant)
+                variant = _served_variant(twin_fallback(variant))
         for twin, code in refused:
             _mark_twin(twin, False)
             logger.warning(

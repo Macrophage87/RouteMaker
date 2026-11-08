@@ -19,7 +19,7 @@ export const ROAD_BIKE_NO_PAVED_MAP_SHORT = "Road Bike map unavailable: may use 
 export const ROAD_BIKE_NO_WEEKEND_MAP =
   "Road Bike's weekend map isn't available, so this route treats car-free parkways such as Beach Drive as roads with cars.";
 
-export const ROAD_BIKE_NO_WEEKEND_MAP_SHORT = "Weekend map unavailable: parkways as roads.";
+export const ROAD_BIKE_NO_WEEKEND_MAP_SHORT = "Weekend map down: parkways may have cars.";
 
 type Routed = Pick<RouteResponse, "preset" | "variant"> & { dials?: Pick<NonNullable<RouteResponse["dials"]>, "when"> };
 

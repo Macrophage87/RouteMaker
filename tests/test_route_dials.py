@@ -2404,6 +2404,34 @@ class TestRoadBike:
         assert routing._paved_weekend_down() and routing._paved_down()
         assert routing._weekend_failed_at is None
 
+    @pytest.mark.parametrize("paved_state", ["down", "unpromoted"])
+    def test_a_weekend_router_failing_mid_request_skips_a_paved_graph_not_served(
+        self, paved_state, client, facility_segments, router, monkeypatch
+    ):
+        """Review of "Road Bike's weekend graph": the fallback after the weekend router fails
+        passes over a paved graph already known down or not promoted, rather than asking it and
+        waiting out its timeout again."""
+        if paved_state == "down":
+            routing._mark_twin("paved", False)
+        else:
+            monkeypatch.setattr(routing, "_paved_is_promoted", lambda: False)
+        standard = standard_router()
+        paved_calls = []
+
+        def transport(url, payload, timeout):
+            if url.startswith(settings.VALHALLA_UPSTREAMS["paved-weekend"]):
+                raise routing.RouterUnavailable("timed out")
+            if url.startswith(settings.VALHALLA_UPSTREAMS["paved"] + "/"):
+                paved_calls.append(url)
+                raise routing.RouterUnavailable("timed out")
+            return standard(url, payload, timeout)
+
+        router(transport)
+        body = post(client, {**good_body("road-bike"), "when": "weekend"}).json()
+        assert body["variant"] == "standard"
+        assert paved_calls == []
+        assert routing._paved_weekend_down()
+
     def test_off_by_default_and_echoed(self, client, facility_segments, router):
         fake = router(standard_router())
         body = post(client, good_body("cargo")).json()

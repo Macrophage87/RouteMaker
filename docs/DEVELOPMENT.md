@@ -2213,10 +2213,10 @@ unless named; PLAN.md quotes the owner's words):
   `offroad` profile with the other trail routers, at 768M (320M on the beta). The cost the owner
   accepted: the beta's resident ceiling 7.66 to 7.96 GiB and its startup margin 0.7 to 0.39 GiB
   (`scripts/check_beta_compose.py`), and on the 32 GB check (`scripts/check_compose_limits.py`)
-  768M more resident and 1.5G more at the swap, which fits only with the four default routers
-  lowered from 2G to 1856M each (two workers at the check's 700 MB still fit; the beta runs them
-  at 640M); a rebuild about 20-25 minutes longer, one more extract and about 1.1 GB more per kept
-  build. Tests: `tests/test_weekend_variant.py`, `tests/test_route_dials.py` (`TestRoadBike`),
+  768M more resident and 1.5G more at the swap; a rebuild about 20-25 minutes longer, one more
+  extract and about 1.1 GB more per kept build. To fit the 32 GB check, the four default routers
+  go from 2G to 1856M each: Claude's default, not measured under load (idle resident memory only),
+  kept by the owner on 2026-11-08 ('Accept 1856M, unmeasured'). Tests: `tests/test_weekend_variant.py`, `tests/test_route_dials.py` (`TestRoadBike`),
   `tests/test_presets.py`.
 
 Measured over the region's source extract (2026-09-30, the current head's

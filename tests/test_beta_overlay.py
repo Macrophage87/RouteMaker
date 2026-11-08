@@ -2640,6 +2640,21 @@ def test_receive_files_installs_the_transit_schedule_beside_the_tiles(tmp_path: 
     assert "transit schedule installed" in done.stderr
 
 
+def test_the_render_table_lines_up_a_name_longer_than_twenty() -> None:
+    """Review of "Road Bike's weekend graph": valhalla-paved-weekend (22 characters) pushed its
+    row's numbers out of the memory column."""
+    compose = good()
+    compose["services"]["valhalla-paved-weekend"] = copy.deepcopy(
+        compose["services"]["valhalla-standard"]
+    )
+    rows = beta.table(compose).splitlines()
+    header = rows[0]
+    end = header.index("memory MiB") + len("memory MiB")
+    for row in rows[1:]:
+        assert row[end - 1].isdigit() and row[end] == " ", row
+    assert any(row.startswith("valhalla-paved-weekend ") for row in rows)
+
+
 def test_the_smoke_test_expects_206_for_the_base_maps_byte_range() -> None:
     text = (REPO / "scripts" / "beta" / "smoke-test.sh").read_text()
     line = next(x for x in text.splitlines() if "Range: bytes=" in x and "check_status" in x)
@@ -3225,6 +3240,55 @@ def test_the_local_smoke_test_reads_the_betas_name_from_env_or_refuses(tmp_path:
         "bash", script, "--local", "--port", "1", env={"RM_BETA_HOST": "", "RM_CD_HOST": "cd.test"}
     )
     assert "RM_BETA_HOST" not in override.stderr and "FAIL" in override.stdout
+
+
+@needs_sh
+def test_the_trails_smoke_test_pins_road_bikes_ride_time_and_skips_a_stopped_weekend_router(
+    tmp_path: Path,
+) -> None:
+    """Review of "Road Bike's weekend graph": the road-bike:paved check sends a weekday ride
+    time (with none, a weekend daytime plans on paved-weekend), and the weekend check is skipped,
+    and says so, when compose shows valhalla-paved-weekend not running."""
+    stubs = tmp_path / "bin"
+    stubs.mkdir()
+    sent = tmp_path / "sent"
+    # A curl that logs each -d body and answers with the variant that body's ride asks for.
+    curl = stubs / "curl"
+    curl.write_text(
+        "#!/usr/bin/env bash\n"
+        'body=""; while [ $# -gt 0 ]; do [ "$1" = -d ] && body=$2; shift; done\n'
+        f'[ -n "$body" ] && printf "%s\\n" "$body" >>"{sent}"\n'
+        'case "$body" in\n'
+        '  *weekend\\"*) echo \'{"variant": "paved-weekend"}\' ;;\n'
+        '  *road-bike*weekday_offpeak*) echo \'{"variant": "paved"}\' ;;\n'
+        "  *) echo ok ;;\n"
+        "esac\n"
+    )
+    curl.chmod(0o755)
+    compose = stubs / "compose"
+    compose.write_text('#!/bin/sh\nprintf "%s" "$RUNNING"\n')
+    compose.chmod(0o755)
+    env = {
+        "PATH": f"{stubs}:{os.environ['PATH']}",
+        "RM_SMOKE_COMPOSE": str(compose),
+        "RM_BETA_HOST": "beta.test",
+    }
+    script = "scripts/beta/smoke-test.sh"
+    stopped = run("bash", script, "--local", "--port", "1", "--trails", env={**env, "RUNNING": ""})
+    assert "PASS  a road-bike route is planned on the paved graph" in stopped.stdout
+    assert "SKIP  the weekend Road Bike graph (valhalla-paved-weekend is not running" in (
+        stopped.stdout
+    )
+    assert "weekend road-bike" not in stopped.stdout
+    bodies = sent.read_text().splitlines()
+    assert any('"preset":"road-bike","when":"weekday_offpeak"' in b for b in bodies), bodies
+    assert not any('"when":"weekend"' in b for b in bodies)
+    sent.unlink()
+    running = run(
+        "bash", script, "--local", "--port", "1", "--trails", env={**env, "RUNNING": "c1"}
+    )
+    assert "PASS  a weekend road-bike route is planned on the paved-weekend graph" in running.stdout
+    assert '"when":"weekend"' in sent.read_text()
 
 
 def test_the_v0_7_0_server_steps_start_with_the_betas_name() -> None:

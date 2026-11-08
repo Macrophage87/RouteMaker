@@ -7666,6 +7666,8 @@ assistant still sending `?lat=&lon=` gets its photo kept with no spot (`located:
 
 ## Deploying v0.23.0
 
+- [ ] **The tag** **(owner)**. Once `test` and `a11y` are green on `main`, the owner tags v0.23.0
+  (annotated) on that commit, from the PC.
 - [ ] **Caddy.** The Caddyfile adds `/tandem` (the Tandem ride type): validate it in a throwaway
   container and recreate caddy alone ("Applying a Caddyfile change"). On beta the nginx template
   adds it too: re-render it with the release. Check: `curl -sI https://<site>/tandem` is a 302 to
@@ -7684,11 +7686,11 @@ beta agent stops on the tag and the beta deploy is by hand, with the data bundle
 no new environment variable to set (`VALHALLA_PAVED_WEEKEND_URL` has its default), no new
 outbound host or scheduled job. With `</dev/null` on every docker command:
 
-- [ ] **The data directory**, at home and on the PC: `sudo sh scripts/prepare_data_root.sh
+- [ ] **The data directory** **(owner)**, at home and on the PC: `sudo sh scripts/prepare_data_root.sh
   --env-file ./.env` (it adds `tiles/paved-weekend` and `tiles/paved-weekend/current`, owned
   10001). Never name `valhalla-paved-weekend` in an `up` before its first build: Docker would make
   the directory as root, which the rebuild cannot write.
-- [ ] **The default routers' new limit.** compose.yaml lowers `valhalla-standard`,
+- [ ] **The default routers' new limit**, **(owner)** on the PC. compose.yaml lowers `valhalla-standard`,
   `valhalla-no-trail`, `valhalla-ebike` and `valhalla-weekend` from 2G to 1856M: after the
   checkout moves, `python3 scripts/check_compose_limits.py compose.yaml` (swap-time peak 32.0G),
   then `docker compose up -d --no-deps --no-build valhalla-standard valhalla-no-trail
@@ -7696,18 +7698,18 @@ outbound host or scheduled job. With `</dev/null` on every docker command:
 - [ ] **The map**, at the tagged commit: the cloud box (`--beta-bundle` for the beta) or
   `run_rebuild_now`. Eight graphs: about 20-25 minutes longer than seven, one extract more, about
   1.1 GB more per kept build; the cloud result's `tiles-paved-weekend.tar` (a result without it is
-  refused). Then swap.
-- [ ] **The routers**, at home and on the PC. Restart the four. Where the `offroad` profile runs,
+  refused). Then swap. **(owner)**: the rebuild and the swap.
+- [ ] **The routers**, at home and on the PC, **(owner)** on the PC. Restart the four. Where the `offroad` profile runs,
   start the new one once: `docker compose --profile offroad up -d --no-deps --no-build
   valhalla-paved-weekend` (it needs about 0.75 GB spare: check memory inside WSL on the PC first);
   until it has a container, a `restart` that names it restarts none of the others on the line.
   Then `docker compose --profile offroad restart valhalla-offroad valhalla-mtb valhalla-paved
   valhalla-paved-weekend` and `docker compose exec -T api ./manage.py sync_upstreams`. Where it is
   not started, a weekend Road Bike ride plans on the paved graph and says the parkways were lost.
-- [ ] **The boot unit**, where it is installed: `scripts/boot/start-stack.sh` now starts a fourth
+- [ ] **The boot unit** **(owner)**, where it is installed: `scripts/boot/start-stack.sh` now starts a fourth
   trail router, so its unit's `TimeoutStartSec` went from 6000 to 6300 s (the worst case is 6005 s):
   `scripts/boot/install-boot-unit.sh install` again from the new checkout.
-- [ ] **Beta**, "A new release sha" with the data bundle (docs/BETA-RUNBOOK.md):
+- [ ] **Beta** **(owner)**, by hand, "A new release sha" with the data bundle (docs/BETA-RUNBOOK.md):
   - The memory check first: `free -m` "available" plus the resident memory of this project's
     running containers at least 8806 MiB (the 8406 MiB startup peak with both Road Bike routers
     plus 0.39 GiB). Under it, ship as below but leave `valhalla-paved-weekend` stopped; the agent
@@ -7720,7 +7722,8 @@ outbound host or scheduled job. With `</dev/null` on every docker command:
     `scripts/beta/beta-compose.sh up -d --force-recreate valhalla-offroad valhalla-mtb valhalla-paved valhalla-paved-weekend`
     (leave out `valhalla-paved-weekend` if memory was short); `sync_upstreams`.
   - `smoke-test.sh --local --trails` (now checks a weekend `road-bike` ride on the
-    `paved-weekend` graph), then `--public`.
+    `paved-weekend` graph, and a weekday one on `paved`), then `--public`. The weekend check is
+    skipped, with a `SKIP` line, while `valhalla-paved-weekend` is stopped (memory short).
   - The agent and router hook changed: `scripts/beta/auto-release.sh install` and, where
     installed, `scripts/beta/restart-routers.sh install`, from the new checkout, after
     `mark-deployed`; then `resume`.
@@ -8004,14 +8007,16 @@ the usual Road Bike warning. What it costs, as the owner accepted it:
   above), one more extract the size of the source, and about 1.1 GB per kept build directory
   (2.2 GB with `previous`); the rebuild's memory peak is unchanged (one graph at a time);
 - on the 32 GB check (`scripts/check_compose_limits.py`) its 768M resident and 768M more at the
-  swap (1.5G at the swap-time peak), which fits only with `valhalla-standard`,
-  `valhalla-no-trail`, `valhalla-ebike` and `valhalla-weekend` lowered from 2G to 1856M each:
-  the peak stays at 32.0G and the resident total at 29.8G; two workers at the check's 700 MB
-  still fit in 1856M, and the beta runs the same routers at 640M;
+  swap (1.5G at the swap-time peak), about 1.5G more in production;
 - on the beta (`scripts/check_beta_compose.py`) the resident ceiling from 7.66 to 7.96 GiB
   (8150 MiB = 7.96 GiB) and the startup margin from 0.7 to 0.39 GiB (the 8406 MiB peak leaves
   0.391 GiB of the 8.6), and the agent's memory threshold for starting Road Bike's routers,
   `RM_CD_PAVED_MIN_MIB`, from 8803 to 8806 MiB (the 8406 MiB peak plus 0.39 GiB).
+
+To fit that 1.5G under the 32 GB check (peak 32.0G, resident 29.8G), `valhalla-standard`,
+`valhalla-no-trail`, `valhalla-ebike` and `valhalla-weekend` go from 2G to 1856M each: Claude's
+default, not measured under load (idle resident memory only), kept by the owner on 2026-11-08
+('Accept 1856M, unmeasured').
 
 The cloud box's result carries `tiles-paved-weekend.tar`, a result without it is refused by
 `import-result.sh`, and the box's beta bundle needs all eight graphs at one build.
