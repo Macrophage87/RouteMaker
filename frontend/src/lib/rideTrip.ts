@@ -21,7 +21,8 @@ import { bikeshareOf, dockCountWords } from "./bikeshare.ts";
 import { formatDistance, spokenDistance } from "./format.ts";
 import { haversineM, pathLengthM, type LonLat } from "./geo.ts";
 import { POOR_FIX_M, RIDE_MAX_M, START_M, WINDOW_AHEAD_M, offThreshold, snap, startState, step, type RideEvent, type RideFix, type RideModel, type RideState, type Verbosity } from "./navigate.ts";
-import type { PresetId } from "./presets.ts";
+import { isTransit, onFoot, usesBikeshare, type PresetId } from "./presets.ts";
+import { isBike, type Bike, type Dials } from "./dials.ts";
 import { ridesHidden } from "./nativeShell.ts";
 import { pointAlong } from "./lightTimes.ts";
 import { drawOf, transitOf } from "./transit.ts";
@@ -451,6 +452,96 @@ export function rideLegOf(
   // Bikeshare + transit's share bike is a classic one ("take a classic bike").
   const ebike = bikeshareOf(route)?.bike === "ebike";
   return { points: [line[0], line[line.length - 1]], loop: false, preset: ebike ? "ebike" : "default", trip };
+}
+
+/**
+ * A share bike's own pace and weight (core.presets BIKESHARE_BIKES): a heavy three-speed ridden without hurry at 13 km/h
+ * (8 mph), the e-bike at 20 km/h (12 mph). A leg re-planned on a plain ride type (`rideLegOf`) sends them as the rider's
+ * riding speed and system weight, so the share bike is still timed and weighed as itself.
+ */
+export const SHARE_BIKE: Readonly<Record<Bike, { speedKmh: number; weightKg: number }>> = {
+  classic: { speedKmh: 13, weightKg: 100 },
+  ebike: { speedKmh: 20, weightKg: 108 },
+};
+
+/**
+ * The share bike a ride's leg is on, or null on the rider's own bike: the plan's `bike` dial (Bikeshare, Rebalance
+ * Ride), else the plan's bikeshare answer's, else Bikeshare + transit's classic bike ("take a classic bike").
+ */
+export function shareBikeOf(route: Pick<RouteResponse, "preset" | "bikeshare" | "transit">, dials: Pick<Dials, "bike">): Bike | null {
+  if (isBike(dials.bike)) return dials.bike;
+  const planned = bikeshareOf(route)?.bike;
+  if (isBike(planned)) return planned;
+  return route.preset === "bikeshare-transit" || route.transit?.mode === "bikeshare-transit" ? "classic" : null;
+}
+
+/**
+ * The dials a ride's own request (a re-plan, a detour, the way to the start, Ride the rest) sends on the leg's ride type
+ * (`rideLegOf`), which is a plain one for a Bikeshare or transit plan's leg. The plan's fields that the API takes on its
+ * own ride types alone are left out, as Roam's detour leaves them out (App.tsx roamDetour): `bike`, `ending` and the
+ * stations on Bikeshare and Rebalance Ride only, `novice_legs` on the transit ride types with a bike only,
+ * `transit_option` on the transit ride types only (core/api.py RouteIn). The hunt (2026-11-08, R3): every re-route of a
+ * share-bike ride came back 422, as did a transit ride's after the Novice offer was taken. A share bike ridden on a plain
+ * ride type keeps its own pace and weight (`SHARE_BIKE`), which the API takes on any riding ride type as the rider's
+ * riding speed and system weight; its stress and hills are the plan's dials already. Its stress-averse exposure and its
+ * heavy-bike gate and surface costs are the Bikeshare ride type's own, which no request field carries, so the plain
+ * ride type's are used.
+ */
+export function legDials(dials: Dials, preset: PresetId, shareBike: Bike | null = null): Dials {
+  const share = usesBikeshare(preset);
+  const transit = isTransit(preset);
+  const novice = preset === "bike-transit" || preset === "bikeshare-transit";
+  const out: Dials = { ...dials };
+  if (!share) {
+    out.bike = undefined;
+    out.ending = undefined;
+    out.pickupStation = undefined;
+    out.dropoffStation = undefined;
+  }
+  if (!novice) {
+    out.noviceLegs = undefined;
+    out.noviceHop = undefined;
+  }
+  if (!transit) out.transitOption = undefined;
+  if (shareBike && !share && !transit && !onFoot(preset) && preset !== "run") {
+    out.ridingSpeedKmh = SHARE_BIKE[shareBike].speedKmh;
+    out.systemWeightKg = SHARE_BIKE[shareBike].weightKg;
+  }
+  return out;
+}
+
+/** How far into a dirt trail stretch of the route the rider is placed on the line before the trail counts as ridden. */
+export const DIRT_RIDDEN_M = 30;
+
+/**
+ * Whether the rider has now ridden a dirt trail (the owner, 2026-10-21: "If someone goes onto a dirt trail, any
+ * reroutes should include dirt"): the rider's place on the line moved from `fromM` to `toM` (line metres; null before
+ * the first) and reached DIRT_RIDDEN_M (or half the stretch, on a shorter one) into a stretch of `route` on a
+ * mountain-bike trail (`trail_levels`), on a route that rides a dirt trail its ride type skips (`dirt_trails`). The
+ * trail stretches are in traced metres, scaled to the line by the spans' own end as the map scales them
+ * (routeTrailLayers.ts). The route's `dirt_trails` alone is not enough (the hunt, 2026-11-08, V5): a plan with a stop
+ * on a trail, or a re-plan that rides one, had opened every dirt trail to the rest of the ride before the rider rode
+ * any. Off the line, nothing is ridden.
+ */
+export function rodeDirt(
+  route: Pick<RouteResponse, "dirt_trails" | "distance_m"> & Partial<Pick<RouteResponse, "trail_levels" | "stress_spans">>,
+  lineM: number,
+  fromM: number | null,
+  toM: number | null,
+): boolean {
+  if (!route.dirt_trails || toM === null || !(lineM > 0)) return false;
+  const spans = route.stress_spans ?? [];
+  const traced = spans.length ? spans[spans.length - 1].to_m : route.distance_m;
+  if (!(traced > 0)) return false;
+  const scale = lineM / traced;
+  const low = Math.min(fromM ?? toM, toM);
+  const high = Math.max(fromM ?? toM, toM);
+  return (route.trail_levels ?? []).some((trail) => {
+    const from = trail.from_m * scale;
+    const to = trail.to_m * scale;
+    const into = from + Math.min(DIRT_RIDDEN_M, (to - from) / 2);
+    return to > from && high >= into && low <= to;
+  });
 }
 
 /** A run loop from its start alone, as that start and the points a third and two thirds along the loop. */

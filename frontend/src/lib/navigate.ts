@@ -1071,9 +1071,15 @@ export function rideModel(route: RouteResponse, vias: readonly number[] = [], na
   cues.push({ index: cues.length, kind: "end", atM: lengthM, text: endWords(route.arrival_side), movement: null, street: null, severity: null, tier: null, stop: null, ...(farSide ? { farSide } : {}) });
   const paceMs = route.distance_m > 0 && route.duration_s > 0 ? route.distance_m / route.duration_s : null;
   const timeline = timelineOf(route.time_marks, lengthM, route.duration_s);
-  const halves = (route.stress_spans ?? [])
-    .filter((s) => s.half === true && s.tier !== null && s.tier < 5)
-    .map((s) => ({ fromM: toLine(s.from_m), toM: toLine(s.to_m), tier: s.tier as number }));
+  // The half steps on the line, the spans' traced metres scaled by their own end to the line, as the map and every other
+  // span reader scales them (routeColours.ts, rejoin.ts): not by the description's map, whose metres are the router's
+  // total, so a half step was said early or late by however much the two lengths differ (the hunt, 2026-11-08, X4).
+  const spans = route.stress_spans ?? [];
+  const spansEnd = spans.length ? spans[spans.length - 1].to_m : 0;
+  const spanScale = spansEnd > 0 ? lengthM / spansEnd : 0;
+  const halves = spans
+    .filter((s) => spanScale > 0 && s.half === true && s.tier !== null && s.tier < 5)
+    .map((s) => ({ fromM: s.from_m * spanScale, toM: s.to_m * spanScale, tier: s.tier as number }));
   return { coordinates, along, lengthM, cues, stretches, paceMs, ...(timeline ? { timeline } : {}), ...(vias.length ? { passes } : {}), ...(halves.length ? { halves } : {}) };
 }
 
@@ -2311,6 +2317,32 @@ export function replanKept(model: RideModel, progressM: number, points: readonly
   }
   left.push(loop ? 0 : points.length - 1);
   return left;
+}
+
+/**
+ * Whether a ride's points end where they start, a place between (lib/loop.ts isRoundTrip, within its LOOP_SAME_M of
+ * 50 m): the same test, here so that Ride mode need not load loop.ts and its Plan words.
+ */
+export function endsOnStart(points: readonly LonLat[]): boolean {
+  return points.length >= 3 && haversineM(points[0], points[points.length - 1]) <= 50;
+}
+
+/** A loop's way home this long or longer keeps its shape through a re-route (`loopShapePoint`); about a mile. */
+export const LOOP_SHAPE_MIN_M = 1600;
+
+/**
+ * Where a loop's re-route is sent through to keep it a loop (the hunt, 2026-11-08, V1): the point halfway along the
+ * planned line between `fromM` (the rider's place on it) and its end, the start. A loop's re-plan is planned from the
+ * rider to the start, which the API does not see as a loop (its first point is not its last), so neither the loop's
+ * search nor its check on the way out runs, and the router's best way home is usually the way out: the rest of the
+ * loop became an out-and-back. Sent as a via point (it shapes the route, no stop), and only where nothing else is left
+ * ahead but the end and the way home is LOOP_SHAPE_MIN_M or more. Null otherwise.
+ */
+export function loopShapePoint(model: Pick<RideModel, "coordinates" | "along" | "lengthM">, fromM: number): { atM: number; point: LonLat } | null {
+  const rest = model.lengthM - fromM;
+  if (!(rest >= LOOP_SHAPE_MIN_M)) return null;
+  const atM = fromM + rest / 2;
+  return { atM, point: pointAt(model, atM) };
 }
 
 /**

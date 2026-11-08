@@ -85,6 +85,8 @@ export interface LeftRide {
 /** Points kept with their kinds and names, which live on the pairs (lib/pointKinds.ts). */
 interface KeptPoints {
   points: LonLat[];
+  /** The ride's own via points among `vias` (ViaMarks.shape); absent where there are none. */
+  shapes?: number[];
   vias: number[];
   drawn: number[];
   names: [number, string][];
@@ -95,6 +97,7 @@ interface Kept {
   at: number;
   route: RouteResponse;
   points: LonLat[];
+  shapes?: number[];
   vias: number[];
   drawn: number[];
   names: [number, string][];
@@ -129,9 +132,12 @@ function local(): Store | null {
 }
 
 /** Kept at Start ride: the plan's points with their kinds and names, which live on the pairs (lib/pointKinds.ts). */
-function keptPoints(points: readonly LonLat[], marks: Pick<ViaMarks, "isVia" | "isDrawn" | "nameOf">): KeptPoints {
+function keptPoints(points: readonly LonLat[], marks: Pick<ViaMarks, "isVia" | "isDrawn" | "nameOf"> & Partial<Pick<ViaMarks, "isShape">>): KeptPoints {
+  // A ride's own via points (a loop's way home, ViaMarks.shape) stay the ride's own when it is resumed.
+  const shapes = marks.isShape ? points.flatMap((p, i) => (marks.isShape?.(p) ? [i] : [])) : [];
   return {
     points: points.map((p) => [p[0], p[1]]),
+    ...(shapes.length ? { shapes } : {}),
     vias: points.flatMap((p, i) => (marks.isVia(p) ? [i] : [])),
     drawn: points.flatMap((p, i) => (marks.isDrawn(p) ? [i] : [])),
     names: points.flatMap((p, i): [number, string][] => {
@@ -142,18 +148,19 @@ function keptPoints(points: readonly LonLat[], marks: Pick<ViaMarks, "isVia" | "
 }
 
 /** Kept points marked again as they were. */
-function markedPoints(kept: Partial<KeptPoints>, marks: Pick<ViaMarks, "via" | "drawn" | "named">): LonLat[] {
+function markedPoints(kept: Partial<KeptPoints>, marks: Pick<ViaMarks, "via" | "drawn" | "named"> & Partial<Pick<ViaMarks, "shape">>): LonLat[] {
   const names = new Map(Array.isArray(kept.names) ? kept.names : []);
   return (kept.points ?? []).map(([lon, lat], i): LonLat => {
     let p: LonLat = [lon, lat];
     p = marks.named(p, names.get(i));
-    if (kept.vias?.includes(i)) p = marks.via(p);
+    if (Array.isArray(kept.shapes) && kept.shapes.includes(i) && marks.shape) p = marks.shape(p);
+    else if (kept.vias?.includes(i)) p = marks.via(p);
     if (kept.drawn?.includes(i)) p = marks.drawn(p);
     return p;
   });
 }
 
-export function keepLeftRide(ride: LeftRide, marks: Pick<ViaMarks, "isVia" | "isDrawn" | "nameOf">, now: number, store: Store | null = local()): void {
+export function keepLeftRide(ride: LeftRide, marks: Pick<ViaMarks, "isVia" | "isDrawn" | "nameOf"> & Partial<Pick<ViaMarks, "isShape">>, now: number, store: Store | null = local()): void {
   // A re-route kept mid-ride says no name: the one kept at Start goes on while the ride ends at the same place.
   const destination = ride.loop ? null : (ride.destination ?? keptDestination(ride.points[ride.points.length - 1], store));
   const was = ride.passOn === undefined ? keptFollow(store) : null;
@@ -320,7 +327,7 @@ export function forgetLeftRide(store: Store | null = local()): void {
 }
 
 /** The ride left going, its points marked again as they were; null with none, or one too old or unreadable. */
-export function leftRide(marks: Pick<ViaMarks, "via" | "drawn" | "named">, now: number, store: Store | null = local()): LeftRide | null {
+export function leftRide(marks: Pick<ViaMarks, "via" | "drawn" | "named"> & Partial<Pick<ViaMarks, "shape">>, now: number, store: Store | null = local()): LeftRide | null {
   let kept: Kept;
   try {
     const raw = store?.getItem(RIDE_RESUME_KEY);

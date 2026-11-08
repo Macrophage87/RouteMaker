@@ -620,7 +620,7 @@ function noteLines(route: RouteResponse, points: LonLat[], light: readonly Light
   // Go has no Traffic slider to point to: its line is the short one ("2.3× as far, to skip 0.8 mi of busy roads.").
   const detour = goMode ? detourShort(route, points) : detourView(route, points);
   if (detour) lines.push({ key: "detour", className: `notice detour detour-${detour.level}`, icon: "warn", text: detour.text });
-  const calm = calmSearchNote(route);
+  const calm = calmSearchNote(route, goMode);
   if (calm) lines.push({ key: "calm", className: "hint calm-search", icon: "info", text: calm });
   const loop = loopNote(route);
   if (loop) lines.push({ key: "loop", className: "hint loop-note", icon: "loop", text: loop, short: loopNoteShort(route) });

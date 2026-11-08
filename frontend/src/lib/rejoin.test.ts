@@ -274,7 +274,8 @@ test("D15: Ride mode asks for the way back before the new plan on a chosen route
   const first = replan.indexOf("if (backFirst) {");
   assert.ok(first > 0);
   assert.ok(first < replan.indexOf("await ask(points)"), "the way back is asked before the plan to the end");
-  assert.match(replan, /rejoinsFirst\(routeRef\.current, \{ asked, detour: !!via, check, restart: !!done, skip: skip !== undefined \}\)/);
+  // A loop rejoins first too (the hunt, 2026-11-08, V1): its own flag, kept from the plan the ride began with.
+  assert.match(replan, /rejoinsFirst\(routeRef\.current, \{ asked, detour: !!via, check, restart: !!done, skip: skip !== undefined \}, loopRide\)/);
   assert.match(replan, /note = REPLAN_REJOIN_AHEAD;/);
   // No plan to the end after a way back refused for want of signal.
   assert.match(replan, /if \(!found && failed !== "network" && !voided\(\)\)/);

@@ -2103,4 +2103,5 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Ride to {place}, as planned": "योजना के अनुसार {place} तक जाएँ",
   "At {place}. Take a bike, then choose where to dock.": "आप {place} पर हैं। साइकिल लें, फिर चुनें कि कहाँ डॉक करना है।",
   "No way there was found. Choose another dock.": "वहाँ तक कोई रास्ता नहीं मिला। कोई दूसरा डॉक चुनें।",
+  "The stops stay in this order, to keep your via points on their way.": "आपके बीच के बिंदु अपने रास्ते पर रहें, इसलिए पड़ाव इसी क्रम में रहते हैं।",
 };

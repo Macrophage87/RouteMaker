@@ -2616,4 +2616,5 @@ export const ES: Readonly<Record<string, string>> = {
   "Ride to {place}, as planned": "Ir a {place}, como estaba previsto",
   "At {place}. Take a bike, then choose where to dock.": "En {place}. Tome una bicicleta y luego elija dónde anclar.",
   "No way there was found. Choose another dock.": "No se encontró un camino hasta allí. Elija otro anclaje.",
+  "The stops stay in this order, to keep your via points on their way.": "Las paradas se quedan en este orden, para que sus puntos de paso sigan en su camino.",
 };

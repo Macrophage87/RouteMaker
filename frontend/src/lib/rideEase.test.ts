@@ -72,7 +72,8 @@ test("the words: in the name and said, the symbol alone on screen", () => {
 test("ride: the buttons re-plan from here with the ride's own dials, kept only when a route was found", () => {
   // Every re-plan and detour asks with the ride's dials, not Plan's.
   assert.doesNotMatch(ride, /\{ \.\.\.dials, loop: false \}/);
-  assert.match(ride, /requestRoute\(to, preset, \{ dials: \{ \.\.\.dialsRef\.current, loop: false \}/);
+  // Fitted to the leg's ride type (rideTrip.ts legDials; the hunt's R3, 2026-11-08: a share bike's `bike` was refused).
+  assert.match(ride, /requestRoute\(to, preset, \{ dials: legDials\(\{ \.\.\.dialsRef\.current, loop: false \}, preset, legBike\)/);
   // The press: a step, then Re-plan from here's own path (the way ahead, the U-turn rules), undone if nothing came.
   assert.match(ride, /dialsRef\.current = next;[\s\S]{0,400}await replan\(here, undefined, true\);/);
   assert.match(ride, /if \(press\.outcome !== "found" && replanTicket\.current === press\.ticket && dialsRef\.current === next\) dialsRef\.current = was;/);
