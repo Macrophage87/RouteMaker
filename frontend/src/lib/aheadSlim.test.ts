@@ -102,9 +102,11 @@ test("a mountain-bike trail on the ribbon has a light edge on the dark panel, 3:
   assert.match(css, /\.ride-ahead-rail-edge,\s*\.ride-ahead-mtb-fill \{\s*stroke: CanvasText;/);
   const dark = css.slice(css.indexOf(":root.theme-dark {"));
   const token = (name: string) => dark.match(new RegExp(`--${name}: (#[0-9a-f]{6})`))![1]!;
-  const edge = token("text-muted");
-  assert.ok(contrastRatio(edge, token("bg")) >= 3);
-  for (const color of [...MTB_LEVELS.map((l: { color: string }) => l.color), MTB_TRAIL.color]) {
-    assert.ok(contrastRatio(edge, color) >= 3, `${color}: ${contrastRatio(edge, color).toFixed(2)}:1`);
+  // The dark panel's edge, and Accessibility mode's on it (:root.theme-dark.a11y).
+  const a11y = css.slice(css.indexOf(":root.theme-dark.a11y {")).match(/--text-muted: (#[0-9a-f]{6})/)![1]!;
+  for (const edge of [token("text-muted"), a11y]) {
+    for (const color of [...MTB_LEVELS.map((l: { color: string }) => l.color), MTB_TRAIL.color]) {
+      assert.ok(contrastRatio(edge, color) >= 3, `${edge} on ${color}: ${contrastRatio(edge, color).toFixed(2)}:1`);
+    }
   }
 });
