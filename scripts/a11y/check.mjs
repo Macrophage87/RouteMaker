@@ -3207,7 +3207,7 @@ if (mine()) {
   const first = bodies.length ? JSON.parse(bodies[0]).points[0] : null;
   const after = await p.eval("({ hash: location.hash, heard: window.__heard.slice() })");
   check("ride: off route for over 8 s is said once, assertively, and re-plans once from the rider's position",
-    p.routeRequests - before === 1 && first && Math.abs(first[0] - off[0]) < 0.0001 && Math.abs(first[1] - off[1]) < 0.0001 && after.heard.filter((t) => t === "!Off the planned route; finding a new way.").length === 1,
+    p.routeRequests - before === 1 && first && Math.abs(first[0] - off[0]) < 0.0001 && Math.abs(first[1] - off[1]) < 0.0001 && after.heard.filter((t) => t === "!Off the planned route. Finding a new way.").length === 1,
     JSON.stringify({ requests: p.routeRequests - before, first, heard: after.heard.slice(-4) }));
   check("ride: a re-plan never writes the address bar", after.hash === shownHash, after.hash);
   // Back on the line and riding on, so the ride is placed again for the checks below that read the card's distance:

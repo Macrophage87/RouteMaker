@@ -138,7 +138,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "No route found ahead. Make a U-turn.": "مخکې لاره ونه موندل شوه. بېرته وګرځئ.",
   "No signal: the planned route is still shown.": "سیګنال نشته: پلان شوې لاره لا هم ښودل کېږي.",
   "No new route found. The planned route is still shown.": "نوې لاره ونه موندل شوه. پلان شوې لاره لا هم ښودل کېږي.",
-  "No new route found. Ride back to the planned route.": "نوې لاره ونه موندل شوه. پلان شوې لارې ته بېرته لاړ شئ.",
+  "No new route found. Go back to the planned route.": "نوې لاره ونه موندل شوه. پلان شوې لارې ته بېرته لاړ شئ.",
   "New route found. It rejoins your route ahead.": "نوې لاره وموندل شوه. مخکې بیا ستاسو له لارې سره یو ځای کېږي.",
   "Skipping via point.": "منځنی ټکی پرېښودل کېږي.",
   "Finding a new way from here.": "له دې ځایه نوې لاره لټول کېږي.",

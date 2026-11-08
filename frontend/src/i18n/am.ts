@@ -138,7 +138,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "No route found ahead. Make a U-turn.": "ከፊት መንገድ አልተገኘም። ዞረው ይመለሱ።",
   "No signal: the planned route is still shown.": "ምልክት የለም፦ የታቀደው መንገድ አሁንም ይታያል።",
   "No new route found. The planned route is still shown.": "አዲስ መንገድ አልተገኘም። የታቀደው መንገድ አሁንም ይታያል።",
-  "No new route found. Ride back to the planned route.": "አዲስ መንገድ አልተገኘም። ወደ ታቀደው መንገድ ይመለሱ።",
+  "No new route found. Go back to the planned route.": "አዲስ መንገድ አልተገኘም። ወደ ታቀደው መንገድ ይመለሱ።",
   "New route found. It rejoins your route ahead.": "አዲስ መንገድ ተገኝቷል። ወደፊት ከመንገድዎ ጋር ይገናኛል።",
   "Skipping via point.": "መሸጋገሪያ ነጥቡ ታልፏል።",
   "Finding a new way from here.": "ከዚህ አዲስ መንገድ በመፈለግ ላይ።",

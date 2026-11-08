@@ -138,7 +138,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "No route found ahead. Make a U-turn.": "Không tìm thấy tuyến đường phía trước. Quay đầu xe.",
   "No signal: the planned route is still shown.": "Không có tín hiệu: tuyến đường dự định vẫn được hiển thị.",
   "No new route found. The planned route is still shown.": "Không tìm thấy tuyến đường mới. Tuyến đường dự định vẫn được hiển thị.",
-  "No new route found. Ride back to the planned route.": "Không tìm thấy tuyến đường mới. Hãy quay lại tuyến đường dự định.",
+  "No new route found. Go back to the planned route.": "Không tìm thấy tuyến đường mới. Hãy quay lại tuyến đường dự định.",
   "New route found. It rejoins your route ahead.": "Đã tìm thấy tuyến đường mới. Tuyến này nhập lại tuyến của bạn ở phía trước.",
   "Skipping via point.": "Bỏ qua điểm đi qua.",
   "Finding a new way from here.": "Đang tìm đường mới từ đây.",

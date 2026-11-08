@@ -138,7 +138,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "No route found ahead. Make a U-turn.": "Впереди маршрут не найден. Развернитесь.",
   "No signal: the planned route is still shown.": "Нет сигнала: запланированный маршрут по-прежнему показан.",
   "No new route found. The planned route is still shown.": "Новый маршрут не найден. Запланированный маршрут по-прежнему показан.",
-  "No new route found. Ride back to the planned route.": "Новый маршрут не найден. Вернитесь на запланированный маршрут.",
+  "No new route found. Go back to the planned route.": "Новый маршрут не найден. Вернитесь на запланированный маршрут.",
   "New route found. It rejoins your route ahead.": "Найден новый маршрут. Он соединяется с вашим маршрутом впереди.",
   "Skipping via point.": "Промежуточная точка пропущена.",
   "Finding a new way from here.": "Ищем новый путь отсюда.",

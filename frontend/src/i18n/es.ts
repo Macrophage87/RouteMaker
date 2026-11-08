@@ -154,7 +154,7 @@ export const ES: Readonly<Record<string, string>> = {
   "No route found ahead. Make a U-turn.": "No se encontró una ruta hacia adelante. Dé la vuelta en U.",
   "No signal: the planned route is still shown.": "Sin señal: se sigue mostrando la ruta planeada.",
   "No new route found. The planned route is still shown.": "No se encontró una ruta nueva. Se sigue mostrando la ruta planeada.",
-  "No new route found. Ride back to the planned route.": "No se encontró una ruta nueva. Regrese a la ruta planeada.",
+  "No new route found. Go back to the planned route.": "No se encontró una ruta nueva. Regrese a la ruta planeada.",
   "New route found. It rejoins your route ahead.": "Se encontró una ruta nueva. Vuelve a su ruta más adelante.",
   "Skipping via point.": "Se omite el punto de paso.",
   "Finding a new way from here.": "Buscando un camino nuevo desde aquí.",

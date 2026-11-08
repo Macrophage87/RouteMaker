@@ -138,7 +138,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "No route found ahead. Make a U-turn.": "앞쪽으로 경로를 찾지 못했습니다. 유턴하세요.",
   "No signal: the planned route is still shown.": "신호 없음: 계획한 경로를 계속 표시합니다.",
   "No new route found. The planned route is still shown.": "새 경로를 찾지 못했습니다. 계획한 경로를 계속 표시합니다.",
-  "No new route found. Ride back to the planned route.": "새 경로를 찾지 못했습니다. 계획한 경로로 돌아가세요.",
+  "No new route found. Go back to the planned route.": "새 경로를 찾지 못했습니다. 계획한 경로로 돌아가세요.",
   "New route found. It rejoins your route ahead.": "새 경로를 찾았습니다. 앞에서 원래 경로와 다시 만납니다.",
   "Skipping via point.": "경유지를 건너뜁니다.",
   "Finding a new way from here.": "여기서 새 길을 찾는 중입니다.",

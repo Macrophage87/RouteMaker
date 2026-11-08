@@ -138,7 +138,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "No route found ahead. Make a U-turn.": "前方找不到路線。請掉頭。",
   "No signal: the planned route is still shown.": "沒有訊號：仍顯示計劃路線。",
   "No new route found. The planned route is still shown.": "沒有找到新路線。仍顯示計劃路線。",
-  "No new route found. Ride back to the planned route.": "沒有找到新路線。請踩返去計劃路線。",
+  "No new route found. Go back to the planned route.": "沒有找到新路線。請返去計劃路線。",
   "New route found. It rejoins your route ahead.": "已找到新路線。它會在前方重新接回您的路線。",
   "Skipping via point.": "跳過途經點。",
   "Finding a new way from here.": "正在從這裡尋找新路。",

@@ -399,7 +399,7 @@ test("ScreenWake: a lock the browser lets go mid-ride is asked again, and whethe
   assert.equal(requests, before);
 });
 
-test("ScreenWake: refused after a release says the screen may now turn off; never held says the browser cannot (review RIDE-8)", async () => {
+test("ScreenWake: refused after a release says the screen may turn off now; never held says the browser cannot (review RIDE-8)", async () => {
   assert.equal(new ScreenWake({ request: undefined }).noteFor(false), WAKE_UNAVAILABLE);
   let refuse = false;
   let release = () => {};

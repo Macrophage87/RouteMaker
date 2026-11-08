@@ -2710,7 +2710,7 @@ export function withUTurn(model: RideModel): RideModel {
 export const REPLAN_NO_SIGNAL = t("No signal: the planned route is still shown.");
 export const REPLAN_FAILED = t("No new route found. The planned route is still shown.");
 /** No new route to the end, but one back to the planned route (lib/rejoin.ts), which goes on from there. */
-export const REPLAN_REJOIN = t("No new route found. Ride back to the planned route.");
+export const REPLAN_REJOIN = t("No new route found. Go back to the planned route.");
 /**
  * A re-route on a route the rider chose over the first that rejoins it ahead, tried before a new plan (routing audit D15,
  * lib/rejoin.ts rejoinsFirst). Not REPLAN_REJOIN: here no new route was looked for, and none failed.

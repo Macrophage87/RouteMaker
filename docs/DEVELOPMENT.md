@@ -9137,10 +9137,13 @@ ideas), with no idioms ("carry on", "ride off", "Ride on.", "hand on", "went wit
 the spoken cues as short as they can be. The first pass (2026-11-08) reworded 20 phrases: the
 pauses' "Press Resume to continue" and "It starts again when you move", "You are at the start of
 the ride.", "Continuing with the stops as marked.", the off-route and failed re-plan cues
-("Off the planned route. Finding a new way.", "No new route found. Ride back to the planned
+("Off the planned route. Finding a new way.", "No new route found. Go back to the planned
 route."), the weak-GPS list, the screen-on notes ("Set your phone to keep it on for this ride."),
 Detour here's help, the leader's line and Share live's no-leader lines, My Go's failed save and
-Start ride on a computer. `frontend/src/lib/plainCopy.test.ts` pins each before and after and
+Start ride on a computer. Two rewordings also dropped an explanation, and that is Claude's
+default, not the owner's ruling: `WAKE_LOST` no longer says why the screen may turn off ("the
+browser stopped keeping it on"), and `CUE_SHEET_SAID` no longer says the list starts with the
+next turn ("next turn first"). Put either back if riders miss it. `frontend/src/lib/plainCopy.test.ts` pins each before and after and
 checks every catalog has the new English and none keeps the old. The avoid-rated junction's
 plea ("Riding through it is a really bad idea. Please reconsider your route.") is the owner's
 own words (2026-10-10) and stays as he wrote it.

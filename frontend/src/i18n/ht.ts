@@ -138,7 +138,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "No route found ahead. Make a U-turn.": "Nou pa jwenn wout devan. Fè demi-tou.",
   "No signal: the planned route is still shown.": "Pa gen siyal: wout ki te planifye a toujou parèt.",
   "No new route found. The planned route is still shown.": "Nou pa jwenn nouvo wout. Wout ki te planifye a toujou parèt.",
-  "No new route found. Ride back to the planned route.": "Nou pa jwenn nouvo wout. Tounen sou wout ki te planifye a.",
+  "No new route found. Go back to the planned route.": "Nou pa jwenn nouvo wout. Tounen sou wout ki te planifye a.",
   "New route found. It rejoins your route ahead.": "Nou jwenn yon nouvo wout. Li rejwenn wout ou pi devan.",
   "Skipping via point.": "Nou sote pwen pasaj la.",
   "Finding a new way from here.": "N ap chèche yon nouvo chemen depi isit la.",

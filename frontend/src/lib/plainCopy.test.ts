@@ -28,7 +28,7 @@ const REWORDED: readonly (readonly [string, string, string])[] = [
   ["Riding on with the stops as marked.", "Continuing with the stops as marked.", RESTART_AUTO_SAID],
   ["Off the planned route; finding a new way.", "Off the planned route. Finding a new way.", OFF_ROUTE_SAID],
   ["No new route was found; the planned route is still shown.", "No new route found. The planned route is still shown.", REPLAN_FAILED],
-  ["No new route was found; follow the way back to the planned route.", "No new route found. Ride back to the planned route.", REPLAN_REJOIN],
+  ["No new route was found; follow the way back to the planned route.", "No new route found. Go back to the planned route.", REPLAN_REJOIN],
   ["GPS is still weak: the turns ahead are shown as a list, next turn first.", "GPS is still weak. The next turns are shown in a list.", CUE_SHEET_SAID],
   [
     "This browser cannot keep the screen on. Keep your screen on yourself for this ride.",
