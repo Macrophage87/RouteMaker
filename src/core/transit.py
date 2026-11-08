@@ -1672,8 +1672,8 @@ CANDIDATE_CALL_S = 5.0
 
 
 class RoutingServices:
-    """Valhalla's bicycle costing on the standard graph, with the ride type's own options:
-    one cheap call per leg, no trace (the answer's own line is `routing.plan`'s).
+    """Valhalla's bicycle costing on the ride's own graph (`ride_variant`), with the ride type's
+    own options: one cheap call per leg, no trace (the answer's own line is `routing.plan`'s).
 
     Never fatal: a refusal, a router that does not answer, a call past its cap or past the
     search's budget, or a call beyond `max_calls`, is None, and the leg is estimated from the
@@ -1690,6 +1690,9 @@ class RoutingServices:
         when: str | None = None,
         walk_exclude: list | None = None,
         walk_keep: list | None = None,
+        ride_variant: str = "standard",
+        ride_exclude: list | None = None,
+        ride_keep: list | None = None,
     ) -> None:
         self._until = until
         # A walk's way round closures (Walk, Walk + transit; `core.workzones.foot_zones`): the
@@ -1698,6 +1701,17 @@ class RoutingServices:
         # out, and the answer warns of the closures it walks through.
         self._walk_exclude = list(walk_exclude or [])
         self._walk_keep = list(walk_keep or [])
+        # A ride's graph and its way round the closures to bicycles, as the answer's own line
+        # has them (`routing.plan`): the ride time's graph (the weekend twin, the no-trail graph
+        # with "Keep to roads" on; `presets.variant_for_ride`), and the closures and the roads
+        # the rider marked closed left out, then only the marked roads where no ride goes round
+        # (hunt 2, C3). Ridden on the standard graph through every closure, a trip was timed on
+        # trails it would not ride and through a closed bridge, and ranked best, then lost once
+        # its line was routed round them. Walks stay on the standard graph, which alone has the
+        # pedestrian ways (`include_pedestrian`).
+        self._ride_variant = ride_variant
+        self._ride_exclude = list(ride_exclude or [])
+        self._ride_keep = list(ride_keep or [])
         # The ride time setting the busy roads are read at; None: rides are not traced.
         self._when = when
         self._preset = preset_name
@@ -1742,25 +1756,26 @@ class RoutingServices:
         if costing == "pedestrian":
             # A walk's turns come with it, for turn-by-turn on foot (2026-11-02).
             payload = walk_turns.directions(payload)
-            if self._walk_exclude:
-                payload["exclude_polygons"] = self._walk_exclude
+            variant, exclude, keep = "standard", self._walk_exclude, self._walk_keep
+        else:
+            variant, exclude, keep = self._ride_variant, self._ride_exclude, self._ride_keep
+        if exclude:
+            payload["exclude_polygons"] = exclude
         try:
             try:
-                answer = routing._call("standard", "route", payload, deadline)
+                answer = routing._call(variant, "route", payload, deadline)
             except routing.RouterRefused:
                 # Any refusal (no path, or a spot inside a closure strip, 170/171): try again
                 # without the closures, as a run does.
-                if "exclude_polygons" not in payload or len(self._walk_exclude) <= len(
-                    self._walk_keep
-                ):
+                if "exclude_polygons" not in payload or len(exclude) <= len(keep):
                     raise
-                # No walk round the closures: through them (warned of), as a ride goes.
+                # No way round the closures: through them (warned of), as a ride goes.
                 payload = {
                     key: value for key, value in payload.items() if key != "exclude_polygons"
                 }
-                if self._walk_keep:
-                    payload["exclude_polygons"] = self._walk_keep
-                answer = routing._call("standard", "route", payload, deadline)
+                if keep:
+                    payload["exclude_polygons"] = keep
+                answer = routing._call(variant, "route", payload, deadline)
         except (routing.RouterRefused, routing.RouterUnavailable, routing.DeadlineExceeded):
             return None
         finally:
@@ -1796,7 +1811,7 @@ class RoutingServices:
         traced_at = routing.clock()
         try:
             measured = routing.busy_and_waits(
-                "standard", options, legs[0].get("shape", ""), self._when, deadline
+                variant, options, legs[0].get("shape", ""), self._when, deadline
             )
         except (routing.RouterUnavailable, routing.DeadlineExceeded):
             measured = None

@@ -1498,10 +1498,54 @@ def test_a_walk_goes_round_closures_and_through_them_only_where_there_is_no_way_
     assert walked is not None and walked.seconds == 420.0
     assert asked[0] == [closure, marked]
     assert asked[1] == [marked]
-    # A ride is never asked round them here (a ride's line has its own closures).
+    # A ride is never asked round the walk's closures (it has its own, below).
     asked.clear()
     services.ride(CAPITOL_HILL, NEAR_CAPITOL_HILL)
     assert asked == [None]
+
+
+def test_a_candidate_ride_takes_the_rides_graph_and_goes_round_its_closures(monkeypatch) -> None:
+    """Hunt 2, C3: a trip's rides are asked on the ride's own graph (the weekend twin, the
+    no-trail graph) and round the closures to bicycles, then with only the rider's marked roads
+    left out where there is no way round; before, every ride went to the standard graph through
+    every closure. Walks stay on the standard graph."""
+    from core import routing
+
+    closure = [[-77.0, 38.9], [-77.0, 38.901], [-77.001, 38.901], [-77.0, 38.9]]
+    marked = [[-77.01, 38.9], [-77.01, 38.901], [-77.011, 38.901], [-77.01, 38.9]]
+    asked = []
+
+    def answer(graph, endpoint, payload, deadline):
+        asked.append((graph, payload["costing"], payload.get("exclude_polygons")))
+        if len(payload.get("exclude_polygons") or []) == 2:
+            raise routing.RouterRefused(400, 442, "No path could be found for input")
+        return {"trip": {"legs": [{"shape": "", "summary": {"time": 420.0, "length": 0.55}}]}}
+
+    monkeypatch.setattr(routing, "_call", answer)
+    monkeypatch.setattr(routing, "decode_polyline6", lambda _shape: [(-77.0, 38.9), (-77.01, 38.9)])
+    services = transit.RoutingServices(
+        routing.clock() + 30,
+        presets.BIKE_TRANSIT,
+        ride_variant="no-trail",
+        ride_exclude=[closure, marked],
+        ride_keep=[marked],
+    )
+    ridden = services.ride(CAPITOL_HILL, NEAR_CAPITOL_HILL)
+    assert ridden is not None and ridden.seconds == 420.0
+    assert asked == [
+        ("no-trail", "bicycle", [closure, marked]),
+        ("no-trail", "bicycle", [marked]),
+    ]
+    # A walk keeps to the standard graph and its own (here no) closures.
+    asked.clear()
+    services.walk(CAPITOL_HILL, NEAR_CAPITOL_HILL)
+    assert asked[0] == ("standard", "pedestrian", None)
+    # Left out, the ride is the standard graph's with nothing left out, as before.
+    asked.clear()
+    transit.RoutingServices(routing.clock() + 30, presets.BIKE_TRANSIT).ride(
+        CAPITOL_HILL, NEAR_CAPITOL_HILL
+    )
+    assert asked == [("standard", "bicycle", None)]
 
 
 class Bendy(Straight):
@@ -2157,6 +2201,10 @@ class TestApi:
         for options in seen:
             assert options["walk_exclude"] == [ring, blocked]
             assert options["walk_keep"] == [blocked]
+            # Hunt 2, C3: the trip's rides go round the closure (shut to bicycles too) and the
+            # marked road, as its line does; before, through both.
+            assert options["ride_exclude"] == [ring, blocked]
+            assert options["ride_keep"] == [blocked]
 
     def test_a_trip_asked_for_that_is_no_longer_running_is_said_gone(
         self, client, segments, router, installed
@@ -2257,6 +2305,91 @@ class TestApi:
             assert costing == presets.costing(presets.NOVICE, stress, None)
             novice = presets.costing(presets.NOVICE)["bicycle"].get("cycling_speed")
             assert line_speeds == {novice}
+
+    @pytest.mark.parametrize(
+        ("preset", "sent"), [(presets.BIKE_TRANSIT, 70), (presets.BIKESHARE_TRANSIT, 80)]
+    )
+    def test_novice_legs_are_priced_at_novices_own_sliders_not_the_ones_sent(
+        self, client, segments, router, installed, monkeypatch, preset, sent
+    ) -> None:
+        """Hunt 2, C1: the page (and the MCP tool) offers Novice's transit options with the
+        transit ride type's starting dials (70 or 80, hills 0). The legs were priced at them:
+        Bike + transit's candidates at use_roads 0.10 with no calm search and flat-indifferent
+        hills, and Bikeshare + transit's line at 80 beside candidates at Novice's own. Now both
+        are Novice's own (top of the slider, hills NOVICE_HILLS)."""
+        from core import gbfs
+
+        seen = []
+
+        def services(until, leg_preset, costing=None, **_options):
+            seen.append(costing)
+            return Straight()
+
+        monkeypatch.setattr(transit, "RoutingServices", services)
+        monkeypatch.setattr(gbfs.client, "snapshot", lambda: SHARE)
+        fake = router(standard_router())
+        response = post_transit(
+            client, [CAPITOL_HILL, DOWNTOWN], preset, novice_legs=True, stress=sent, hills=0
+        )
+        assert response.status_code == 200, response.content
+        novice_hills = presets.use_hills_for(presets.NOVICE_HILLS)
+        # Before: 0.10 and use_hills_for(0) on Bike + transit's candidates.
+        assert seen[0]["bicycle"]["use_roads"] == 0.0
+        assert seen[0]["bicycle"]["use_hills"] == novice_hills
+        # Before: the line asked at hills 0 (and stress 80 on Bikeshare + transit). The line's
+        # own first route request; the hill search's later asks are priced on their own.
+        line = [
+            p["costing_options"]["bicycle"]
+            for _u, p in fake.calls
+            if p["costing"] == "bicycle" and "elevation_interval" in p
+        ]
+        assert line and line[0]["use_hills"] == novice_hills
+
+    def test_the_trips_other_rides_are_drawn_at_the_riders_sliders(
+        self, client, segments, router, installed, monkeypatch
+    ) -> None:
+        """Hunt 2, C4: the rides drawn for the map (`transit.drawn`) are priced as the
+        candidates were, at the rider's sliders, not at the ride type's own 70 and 0."""
+        made = []
+
+        def services(until, leg_preset, costing=None, max_calls=None, **options):
+            made.append((max_calls, costing, options))
+            return Straight()
+
+        monkeypatch.setattr(transit, "RoutingServices", services)
+        router(standard_router())
+        response = post_transit(client, [CAPITOL_HILL, DOWNTOWN], stress=100, hills=-50)
+        assert response.status_code == 200, response.content
+        drawn = [c for m, c, _o in made if m == transit.MAX_DRAW_CALLS]
+        # Before: None, the ride type's own costing (`presets.costing(BIKE_TRANSIT)`).
+        assert drawn and drawn[0] is not None
+        assert drawn[0]["bicycle"]["use_roads"] == presets.use_roads_for(100)
+        assert drawn[0]["bicycle"]["use_hills"] == presets.use_hills_for(-50)
+
+    @pytest.mark.parametrize(
+        ("extra", "graph"),
+        [
+            ({"when": "weekend"}, "weekend"),
+            ({"when": "weekend", "trails_off": True}, "no-trail"),
+            ({"when": "weekday_offpeak"}, "standard"),
+        ],
+    )
+    def test_the_candidate_rides_take_the_rides_own_graph(
+        self, client, segments, router, installed, monkeypatch, extra, graph
+    ) -> None:
+        """Hunt 2, C3: the candidates (and the drawn rides) ride the graph the answer's line
+        does (`presets.variant_for_ride`); before, always the standard graph."""
+        made = []
+
+        def services(until, leg_preset, **options):
+            made.append(options)
+            return Straight()
+
+        monkeypatch.setattr(transit, "RoutingServices", services)
+        router(standard_router())
+        response = post_transit(client, [CAPITOL_HILL, DOWNTOWN], **extra)
+        assert response.status_code == 200, response.content
+        assert made and {o.get("ride_variant") for o in made} == {graph}
 
     def test_own_bike_and_transit_rides_at_the_riders_speed(
         self, client, segments, router, installed, monkeypatch
