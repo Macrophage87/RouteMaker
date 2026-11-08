@@ -1052,8 +1052,18 @@ def test_a_cemetery_holds_a_way_by_its_length_inside_and_never_a_public_road():
         (10, {"highway": "tertiary", "name": "Oak Ave"}, [(-76.998, 38.906), (-76.992, 38.906)]),
         # A residential street just poking past the outline (under CEMETERY_LEAVES_M) is held.
         (11, {"highway": "residential"}, [(-76.9955, 38.89995), (-76.9955, 38.909)]),
+        # The owner, 2026-11-08: "Some are named, focus more on the area than street
+        # names. When in doubt leave it open." The same tertiary street with no name is
+        # the doubt case and stays open (before: held, as the name was the test).
+        (12, {"highway": "tertiary"}, [(-76.998, 38.907), (-76.992, 38.907)]),
+        # And a name does not let a drive out: a named unclassified drive is held.
+        (
+            13,
+            {"highway": "unclassified", "name": "Grant Dr"},
+            [(-76.998, 38.9015), (-76.992, 38.9015)],
+        ),
     ]
-    assert areas.cemetery_ways(ways, [cemetery]) == {4, 7, 8, 9, 11}
+    assert areas.cemetery_ways(ways, [cemetery]) == {4, 7, 8, 9, 11, 13}
 
 
 def test_a_parking_lots_own_ways_are_found_and_the_street_past_it_is_not():

@@ -4429,6 +4429,11 @@ A flagged block whose traffic direction DC does not record (58 of the 110) puts
 its lone lane against the way's OSM one-way direction, which is what the flag
 says it is (review r3: Argonne Place, Champlain Street, T Street and 8th Street
 NW, 8 ways, had OSM's contraflow lane rewritten as a with-flow lane).
+The mirror case (hunt 2, S4, 2026-11-08; not measured against DC's data): where the
+block has no flag and OSM itself maps a contraflow facility (`cycleway:left=lane` +
+`cycleway:left:oneway=-1`, or an `opposite*` value), the record's lane is not written as
+a with-flow lane over it; OSM's cycleway keys stay and the report lists the disagreement
+(`agency_roads._osm_contraflow_dropped`).
 
 **Precedence.** Where matched, the agency's posted speed, lanes per direction
 (the larger direction plus any reversible lanes: Connecticut Avenue's are
@@ -7002,8 +7007,11 @@ over every highway way and the `landuse=military` / `military=*` areas of the so
   stretch counts twice; a stretch along the boundary is not inside). The cemetery rule uses the
   same test since hunt A3 (2026-11-08), and leaves out a public road the outline takes in (a
   numbered road, or a residential-to-trunk street no access key restricts that runs at least
-  `CEMETERY_LEAVES_M` out of the outline or, wholly inside, is a named street of tertiary class
-  or above; a residential, living-street or unclassified drive wholly inside stays held, 98); the parking and park
+  `CEMETERY_LEAVES_M` out of the outline or, wholly inside, is a street of tertiary class
+  or above, named or not; a residential, living-street or unclassified drive wholly inside stays
+  held, named or not, 98). By the area and the class, never the name: the owner, 2026-11-08,
+  "Some are named, focus more on the area than street names. When in doubt leave it open." (an
+  unnamed tertiary street wholly inside was held before); the parking and park
   rules still count vertices (`_inside`).
 - **Open inside a base**, and nothing else (437): a way an approved access override wrote a
   bicycle key on (`RebuildContext.bicycle_override_ways`, from `overrides.apply_access`), a

@@ -45,7 +45,9 @@ area assembly (multipolygon relations and closed ways alike):
   from a point inside it (destination-only, through `rm:cemetery`); a trail
   signed for bicycles (`bicycle=designated`) keeps its place, and so does a
   public road the outline takes in (a numbered road, or a residential-to-trunk
-  street no access key restricts; hunt A3, 2026-11-08).
+  street no access key restricts; hunt A3, 2026-11-08), judged by the area and the
+  class, never the street's name (the owner, 2026-11-08: "Some are named, focus
+  more on the area than street names. When in doubt leave it open.").
 - `parking` - `amenity=parking`, or `parking=surface` or `multi-storey`. The
   owner: "Also, no need to stripe through all the parking lots." (99). The
   unnamed service roads, footways and paths inside a lot are left off the map;
@@ -626,7 +628,7 @@ def roads_inside(ways, areas: Sequence[Area]) -> set[int]:
 # outline takes in rather than one of the cemetery's own drives (`_cemetery_public_road`).
 CEMETERY_LEAVES_M = 10.0
 # The public classes a cemetery's own drives are mapped at too: a street of one of them that the
-# outline wholly takes in is a drive, named or not; one of any other public class, named, is not.
+# outline wholly takes in is a drive, named or not; one of any other public class is not.
 CEMETERY_DRIVE_HIGHWAY = frozenset({"residential", "living_street", "unclassified"})
 
 
@@ -634,11 +636,19 @@ def _cemetery_public_road(tags, inside_share: float, length_m: float) -> bool:
     """A public road a cemetery's outline takes in: a numbered public road
     (`public_route`), or a public-class street (`GOLF_STREET_HIGHWAY`: residential
     up to trunk) that no access key keeps to some (`WORKS_CLOSING_ACCESS`) and that
-    either leaves the outline (`CEMETERY_LEAVES_M` of it outside) or is a named street
-    of tertiary class or above. A cemetery's own drives stay inside (OWNER-DECISIONS
-    98): mapped as service roads (Arlington's Eisenhower Drive), with
+    either leaves the outline (`CEMETERY_LEAVES_M` of it outside) or is of tertiary
+    class or above. A cemetery's own drives stay inside (OWNER-DECISIONS 98):
+    mapped as service roads (Arlington's Eisenhower Drive), with
     `access=private`/`destination`, or as residential streets wholly inside the
-    outline (review of hunt A3: the first fix let those out by class alone)."""
+    outline (review of hunt A3: the first fix let those out by class alone).
+
+    By the area and the class, never the name. The owner, 2026-11-08, of the
+    cemetery edge streets: "Some are named, focus more on the area than street
+    names. When in doubt leave it open." A drive is as often named as a street, so
+    a name proves nothing either way: a named residential drive wholly inside is
+    held, as before, and a tertiary-or-above street wholly inside, which the
+    mapper's class calls a through street, is the doubt case and stays open, named
+    or not (before: held where it had no name)."""
     if public_route(tags):
         return True
     if tags.get("highway") not in GOLF_STREET_HIGHWAY or any(
@@ -647,7 +657,7 @@ def _cemetery_public_road(tags, inside_share: float, length_m: float) -> bool:
         return False
     if (1.0 - inside_share) * length_m >= CEMETERY_LEAVES_M:
         return True
-    return bool(tags.get("name")) and tags.get("highway") not in CEMETERY_DRIVE_HIGHWAY
+    return tags.get("highway") not in CEMETERY_DRIVE_HIGHWAY
 
 
 def cemetery_ways(ways, areas: Sequence[Area]) -> set[int]:

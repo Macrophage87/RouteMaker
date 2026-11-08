@@ -96,7 +96,7 @@ from pathlib import Path
 from typing import NamedTuple
 
 from .geo import Point, distance_to_line, haversine
-from .tags import ONEWAY_JUNCTIONS, is_oneway, posted_maxspeed
+from .tags import ONEWAY_JUNCTIONS, cycleway_sides, is_oneway, posted_maxspeed
 from .tags import lanes_per_direction as osm_lanes_per_direction
 
 METRES_PER_FOOT = 0.3048
@@ -1367,6 +1367,29 @@ def osm_refuses_track(tags: Mapping[str, str]) -> bool:
     return tags.get("bicycle") in ("no", "use_sidepath") or "no" in _cycleway_values(tags)
 
 
+def _osm_contraflow_dropped(
+    tags: Mapping[str, str], facts: WayFacts, one_way: bool, written: Mapping[str, str]
+) -> bool:
+    """Whether writing the agency's facility would replace OSM's own contraflow
+    lane with a with-flow lane OSM does not map (hunt 2, S4, 2026-11-08).
+
+    On a one-way block DC does not flag `BIKELANE_CONTRAFLOW`, its one lane is read
+    as the with-flow lane, whatever its label (`_block_bike`; review r2, where OSM
+    mapped a with-flow lane). But where OSM maps a contraflow facility in so many
+    words (`cycleway:left=lane` + `cycleway:left:oneway=-1`, or an `opposite*`
+    value: `CyclewaySide.contraflow`) and the record has no flag to say which it
+    is, the record's lane is as likely that one: written, the with-flow rider was
+    scored on a painted lane OSM says is not on their side (LTS 2 where mixed
+    traffic is LTS 3 at 30 mph), and the map lost the contraflow lane. Not
+    measured against DC's data; the review r3 mirror case. OSM is kept and the
+    report says so."""
+    if not one_way or facts.contraflow or not written:
+        return False
+    if "oneway:bicycle" in written or any(v.startswith("opposite") for v in written.values()):
+        return False
+    return any(side.contraflow and side.rank > 0 for side in cycleway_sides(dict(tags)).values())
+
+
 def osm_side_ranks(tags: Mapping[str, str]) -> dict[str, int]:
     """The facility rank OSM maps on each side of the way (`left`, `right`)."""
     ranks: dict[str, int] = {}
@@ -1783,6 +1806,9 @@ def overlay(
         )
         if _TRACK_VALUES & set(written.values()) and osm_refuses_track(tags):
             written, refused = {}, True
+    contraflow_kept = _osm_contraflow_dropped(tags, facts, one_way, written)
+    if contraflow_kept:
+        written = {}
     has_osm_facility = bool(set(_FACILITY_VALUES) & _cycleway_values(tags))
     if allow_bike and has_facility and separate:
         sources["bike"] = SOURCE_OSM
@@ -1793,6 +1819,12 @@ def overlay(
         disagreements.append(
             "bike facility: agency protected lane, OSM says none on the road (bicycle or "
             "cycleway no, or use_sidepath); OSM kept"
+        )
+    elif contraflow_kept:
+        sources["bike"] = SOURCE_OSM
+        disagreements.append(
+            "bike facility: OSM maps a contraflow lane, the agency an unflagged lane read "
+            "as with-flow; OSM kept"
         )
     elif written:
         for key in [k for k in out if k.startswith(_CYCLEWAY_PREFIX)]:
