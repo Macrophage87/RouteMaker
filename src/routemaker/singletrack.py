@@ -75,16 +75,25 @@ OFFROAD_MAX_LEVEL = 1
 # before the parser reads it as a surface). A harder rating (2 and up) is still singletrack.
 PACKED_GRAVEL_SURFACES = frozenset({"gravel", "fine_gravel", "compacted"})
 EASY_GRAVEL_MAX = 1
+# The ratings read here: the two difficulty scales, and `mtb:scale:uphill`, which the Lua
+# rule reads too (lua/routemaker_remap.lua `M.SURFACE_RATING_KEYS`: the parser sets a
+# surface from it). Terrain hunt 2, T2: with the uphill rating left out here, a gravel
+# cycleway rated `mtb:scale=1` and `mtb:scale:uphill=2` was a gravel trail open on every
+# graph, while the Lua rule, seeing the uphill 2, kept `mtb:scale=1` for the parser, which
+# priced the trail as the gravel class "All gravel everywhere" (2026-11-01) had priced out.
+# Both rules now read the same keys: a harder rating (2 and up) on any of them is
+# technical ground, as the Lua comment has it, and the trail stays singletrack.
+EASY_GRAVEL_KEYS = (*SCALE_KEYS, "mtb:scale:uphill")
 
 
 def is_built_gravel_trail(tags: dict[str, str]) -> bool:
     """A cycleway, or a trail designated for bicycles, on gravel, fine gravel or compacted,
-    rated no harder than `EASY_GRAVEL_MAX` on either scale."""
+    rated no harder than `EASY_GRAVEL_MAX` on either scale and uphill (`EASY_GRAVEL_KEYS`)."""
     if tags.get("surface") not in PACKED_GRAVEL_SURFACES:
         return False
     if tags.get("highway") != "cycleway" and tags.get("bicycle") != "designated":
         return False
-    grades = [grade(tags.get(key)) for key in SCALE_KEYS if tags.get(key) is not None]
+    grades = [grade(tags.get(key)) for key in EASY_GRAVEL_KEYS if tags.get(key) is not None]
     return all(g is not None and g <= EASY_GRAVEL_MAX for g in grades)
 
 

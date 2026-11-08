@@ -20,7 +20,9 @@ the trail is a mountain biker's, not that it is open to the riders the standard
 graphs serve: counting it as a bicycle route lifted the park-path and hiking-route
 closures from unrated dirt loops (Schaeffer Farms, Rosaryville, Cabin John), so a
 commuter could be sent onto them (hunt A2, 2026-11-08). Membership is kept as its
-own fact (`WayRoutes.mtb`) instead: where those two rules would close the way,
+own fact (`WayRoutes.mtb`) instead: where those two rules, or the natural-surface rule
+(terrain hunt 2, T1; the owner, 2026-11-08: "these are very easy trails that nobody bothers
+to rate"), would close the way,
 `trailaccess.verdict` puts it in the mountain-bike class, closed on the standard
 graphs, open on the off-road and Mountain Bike graphs and drawn on the
 mountain-bike layer, as rated singletrack on such a loop stays drawn. The hiking
