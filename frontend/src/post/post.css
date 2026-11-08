@@ -15,7 +15,7 @@ body {
 }
 
 /* The picture stays under the map until the map has loaded, then goes: it is the map's stand-in. */
-.post-map.map-ready img {
+.post-map.map-ready > img {
   visibility: hidden;
 }
 
@@ -28,30 +28,83 @@ body {
   margin: 0;
 }
 
-/* A photo on the route's map: a round thumbnail that opens a pop-out of it (postPage.tsx addPhotoPopouts). */
-.photo-pin {
-  width: 44px;
-  height: 44px;
+/* A photo on a map: a dot at its spot on the route, its thumbnail beside the route and a short line between
+   (postPage.tsx photoMark). The marker itself has no size: its parts sit around the spot. */
+.photo-mark {
+  position: relative;
+  display: block;
+  width: 0;
+  height: 0;
   padding: 0;
-  border: 3px solid #ffffff;
-  border-radius: 50%;
-  overflow: hidden;
-  background: #1f2933;
-  box-shadow: 0 1px 4px rgb(0 0 0 / 45%);
+  border: 0;
+  background: none;
+  overflow: visible;
+}
+
+button.photo-mark {
   cursor: pointer;
 }
 
-.photo-pin:focus-visible {
-  outline: 3px solid #1d4ed8;
-  outline-offset: 2px;
+.photo-dot {
+  position: absolute;
+  left: -7px;
+  top: -7px;
+  width: 14px;
+  height: 14px;
+  box-sizing: border-box;
+  border: 3px solid #ffffff;
+  border-radius: 50%;
+  background: #1f2933;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 45%);
 }
 
-.photo-pin img,
-.photo-pointer img {
+.photo-leader {
+  position: absolute;
+  left: 0;
+  top: -1.5px;
+  height: 3px;
+  background: #ffffff;
+  transform-origin: 0 50%;
+  box-shadow: 0 0 2px rgb(0 0 0 / 45%);
+}
+
+.photo-thumb {
+  position: absolute;
+  left: -22px;
+  top: -22px;
+  width: 44px;
+  height: 44px;
+  box-sizing: border-box;
+  border: 3px solid #ffffff;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #1f2933;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 45%);
+}
+
+.photo-small .photo-thumb {
+  left: -20px;
+  top: -15px;
+  width: 40px;
+  height: 30px;
+  border-width: 2px;
+  border-radius: 4px;
+}
+
+.photo-thumb img {
   display: block;
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+button.photo-mark:focus-visible {
+  outline: none;
+}
+
+button.photo-mark:focus-visible .photo-thumb {
+  outline: 3px solid #1d4ed8;
+  outline-offset: 2px;
 }
 
 .photo-popout {
@@ -70,28 +123,4 @@ body {
   margin-top: 0.35rem;
   color: #1f2933;
   font-size: 0.9rem;
-}
-
-/* On a section map: a small thumbnail with a pointer under it to where the photo was taken. */
-.photo-pointer {
-  position: relative;
-  display: block;
-  width: 48px;
-  height: 36px;
-  margin-bottom: 8px;
-  border: 2px solid #ffffff;
-  border-radius: 4px;
-  background: #1f2933;
-  box-shadow: 0 1px 4px rgb(0 0 0 / 45%);
-}
-
-.photo-pointer::after {
-  content: "";
-  position: absolute;
-  left: 50%;
-  bottom: -9px;
-  transform: translateX(-50%);
-  border: 7px solid transparent;
-  border-top-color: #ffffff;
-  border-bottom: 0;
 }
