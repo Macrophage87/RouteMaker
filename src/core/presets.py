@@ -1196,7 +1196,7 @@ PRESETS: MappingProxyType = MappingProxyType(
                 Variant.STANDARD,
                 # See "Tandem" above.
                 stress=TANDEM_STRESS,
-                exposure=EXPOSURE_NOT_IN_CONTROL,
+                exposure=EXPOSURE_NOT_IN_CONTROL,  # the stoker (items 221, 241)
                 hills=TANDEM_HILLS,
                 bicycle_type="Hybrid",
                 avoid_bad_surfaces=CARGO_SURFACE_AVOIDANCE,
