@@ -460,6 +460,22 @@ def test_the_weekend_graph_only_twins_the_standard_graph() -> None:
         assert weekend in settings.VALHALLA_UPSTREAMS
 
 
+def test_the_rides_that_keep_the_mtb_class_plan_on_the_weekend_graph_too() -> None:
+    """The owner, 2026-11-08: "We can do the plan twice." (`routing._plan_twice`)."""
+    twice = {name for name in presets.PRESETS if presets.weekend_too(name, "weekend")}
+    assert twice == {"gravel", "mountain-goat", presets.MOUNTAIN_BIKE}
+    for name in presets.EASY_MTB_PRESETS:
+        assert presets.weekend_too(name, "weekend", easy_mtb=True)
+        assert not presets.weekend_too(name, "weekend")
+    for name in (*twice, *presets.EASY_MTB_PRESETS):
+        for when in ("weekday_rush", "weekday_offpeak", "night"):
+            assert not presets.weekend_too(name, when, easy_mtb=True)
+        # Trails off wins: the no-trail graph alone.
+        assert not presets.weekend_too(name, "weekend", trails_off=True, easy_mtb=True)
+        # The ride's own graph is still what `variant_for_ride` names.
+        assert presets.variant_for_ride(name, "weekend", easy_mtb=True) != "weekend"
+
+
 def test_cargo_assist_is_the_ebike_graph_at_any_time() -> None:
     for when in ("weekend", "weekday_rush", "weekday_offpeak"):
         assert presets.variant_for_ride("cargo", when, assist=True) == Variant.EBIKE.value

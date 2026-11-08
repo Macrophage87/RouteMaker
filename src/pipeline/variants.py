@@ -68,8 +68,8 @@ class Variant(Enum):
     # Weekend and E-bike included (291(3)); rated singletrack stays closed here
     # too (OWNER-DECISIONS 90, 91, 111). Only Gravel and Mountain Goat ride it, by
     # `core.presets.variant_for_ride`. It has no weekend twin: a weekend Gravel
-    # or Goat ride stays on it and reports its car-free closures in its
-    # breakdown only, as an e-bike ride does.
+    # or Goat ride is planned on it and, near a weekend closure, on the weekend
+    # graph as well, the better route kept (`core.routing._plan_twice`).
     OFFROAD = "offroad"
     # The Mountain Bike ride type's graph (docs/MTB-TOPO-PLAN.md, slice 6; OWNER-DECISIONS 90,
     # 111, 148, 454: "Mountain Goat and Mountain Bike are separate modes"). The off-road graph

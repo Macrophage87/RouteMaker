@@ -5568,6 +5568,17 @@ def _planned(body: RouteIn, dials, started: float | None, long_ride: bool, long_
             # Planned on the standard graph by design where no weekend or off-road build is
             # served; an answer from it while the twin is merely down is not kept.
             own_variant = "standard"
+        ride_dials = (
+            body.preset,
+            when,
+            bool(body.assist) and preset.assist_speed_kmh is not None,
+            bool(body.trails_off),
+            bool(body.easy_mtb),
+        )
+        if answered.get("variant") == "weekend" and presets.weekend_too(*ride_dials):
+            # The weekend plan beside the ride's own won (`routing._plan_twice`): its graph is
+            # one this ride plans on by design, so its answer is kept as the own graph's is.
+            own_variant = "weekend"
         failures = (timings.failures if timings is not None else 0) - failures_before
         # An answer whose plan ran into the answer's reserve may have skipped work for time.
         budget_s = routing.LONG_PLAN_BUDGET_S if long_ride or long_calm else routing.PLAN_BUDGET_S
