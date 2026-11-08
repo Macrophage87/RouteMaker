@@ -43,6 +43,11 @@ export interface CapacitorBridge {
 export const GEO_PLUGIN = "BackgroundGeolocation";
 export const SPEECH_PLUGIN = "TextToSpeech";
 export const NOTICE_PLUGIN = "LocalNotifications";
+/**
+ * The app's turn at the phone's audio (mobile/android/.../VoiceFocusPlugin.java): music dips under a cue, as under a
+ * navigation app's, instead of playing over it at full volume (Stephen 2026-11-08). Apps built before it have none.
+ */
+export const VOICE_FOCUS_PLUGIN = "RouteMakerVoiceFocus";
 /** The app's share sheet (mobile/android/.../SharePlugin.java): Android's WebView has no navigator.share. */
 export const SHARE_PLUGIN = "RouteMakerShare";
 
@@ -343,6 +348,12 @@ export function nativeWatchApi(bridge: CapacitorBridge, notice: CueNotice | null
 export function nativeSpeech(bridge: CapacitorBridge): SpeechEnv {
   let speaking = false;
   let turn = 0;
+  // Music dips for each cue and comes back after it (VOICE_FOCUS_PLUGIN); an app without it speaks as before.
+  // Not assumed on a bridge that cannot say (as the share sheet): only newer builds ship it.
+  const ducks = typeof bridge.isPluginAvailable === "function" && has(bridge, VOICE_FOCUS_PLUGIN);
+  const focus = (method: "duck" | "unduck") => {
+    if (ducks) void bridge.nativePromise(VOICE_FOCUS_PLUGIN, method, {}).catch(() => undefined);
+  };
   const synth: SpeechApi = {
     get speaking() {
       return speaking;
@@ -354,8 +365,10 @@ export function nativeSpeech(bridge: CapacitorBridge): SpeechEnv {
       const done = () => {
         if (mine !== turn) return;
         speaking = false;
+        focus("unduck");
         utterance.onend?.();
       };
+      focus("duck");
       bridge
         .nativePromise(SPEECH_PLUGIN, "speak", { text: utterance.text, lang: utterance.lang || "en-US", rate: 1, pitch: 1, volume: 1, queueStrategy: 0 })
         .then(done, done);
@@ -363,6 +376,7 @@ export function nativeSpeech(bridge: CapacitorBridge): SpeechEnv {
     cancel() {
       turn += 1;
       speaking = false;
+      focus("unduck");
       void bridge.nativePromise(SPEECH_PLUGIN, "stop", {}).catch(() => undefined);
     },
   };
