@@ -612,12 +612,12 @@ class TestBegButtons:
 
 class TestRoadBikeStackedWeight:
     """The owner, 2026-11-08: "Maybe go to 5. People prefer free flow on road bikes." Road
-    Bike's 3x wait weight on a suburban signal's 2x is held at 5x the wait shown."""
+    Bike's 3x wait weight on a suburban signal's 2x is held at 5x the wait at a red."""
 
     def test_a_suburban_signal_on_road_bike_ranks_at_5x_not_6x(self) -> None:
         crossing = suburban_signal(*PRIMARY, in_class="tertiary", out_class="tertiary")
         (run,) = d.waits([crossing], suburban=everywhere)
-        # Before the cap: 3 x 90 = 270 s (6x); after: 225 s (5x the 45 s shown).
+        # Before the cap: 3 x 90 = 270 s (6x); after: 225 s (5x the 45 s red).
         assert 3.0 * d.ranked_s([run], 3.0) == 5.0 * 45.0
         assert d.ranked_s([run]) == 90.0
 
