@@ -321,9 +321,12 @@ test("an expired link with no plan of its own (Stephen 2026-11-08: \"just taking
   assert.equal(await readShared("https://x.test", ID, gone), "gone");
   assert.equal(SHARED_EXPIRED, "This link has expired. Ask for a new one.");
   assert.equal(SHARED_EXPIRED_ERROR.title, "Link expired");
+  assert.equal(SHARED_UNREAD_ERROR.message, "Could not open this link. Try again later.");
   assert.ok(SHARED_EXPIRED_ERROR.noAutoResend && SHARED_UNREAD_ERROR.noAutoResend);
+  // A plan from its start alone (a Run loop, a Rebalance Ride) is a plan: it is planned again, never called expired.
+  assert.match(app, /const plansAnything = \(plan: ReturnType<typeof decodePlan>\) => plan\.points\.length >= 2 \|\| plansFromStart\(plan\.preset, plan\.points, plan\.dials\);/);
   const open = app.slice(app.indexOf("void readShared(origin, SHARED_ID)"), app.indexOf("sharedArrived();"));
-  assert.match(open, /\} else if \(decodePlan\(window\.location\.hash\)\.points\.length < 2\) \{[\s\S]*?const error = shared === "gone" \? SHARED_EXPIRED_ERROR : SHARED_UNREAD_ERROR;\s*setStatus\(\{ kind: "error", error \}\);\s*announce\(error\.message\);/);
+  assert.match(open, /\} else if \(!plansAnything\(decodePlan\(window\.location\.hash\)\)\) \{[\s\S]*?const error = shared === "gone" \? SHARED_EXPIRED_ERROR : SHARED_UNREAD_ERROR;\s*setStatus\(\{ kind: "error", error \}\);\s*announce\(error\.message\);/);
   // A link that carries its plan still plans it again, said in one line.
   assert.match(open, /\} else \{\s*setSharedNote\(SHARED_GONE\);/);
 });

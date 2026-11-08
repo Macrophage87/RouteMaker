@@ -285,10 +285,6 @@ function isRoute(value: unknown, id: string): value is SharedRoute {
 }
 
 /**
- * The shared line; "revoked" when its owner turned the link off (410: nothing is planned); or null when it is not
- * kept (or cannot be had in time): the link's inputs are planned instead.
- */
-/**
  * The shared line, "revoked" for a link turned off (410), "gone" for one no longer kept (404), or null when it could
  * not be read (offline, no answer in time, or an answer that is not a route).
  */

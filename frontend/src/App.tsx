@@ -4666,6 +4666,9 @@ export function App() {
   sharedOpenNow.current = sharedOpen;
   // The "planned again" line is about the plan the link named: a change to the plan clears it.
   useEffect(() => setSharedNote(null), [points, preset, dials]);
+  // Whether the link's own plan is one the page plans: two points or more, or a plan from its start alone (a Run loop,
+  // a Rebalance Ride; lib/loop.ts plansFromStart), as the routing effect reads it.
+  const plansAnything = (plan: ReturnType<typeof decodePlan>) => plan.points.length >= 2 || plansFromStart(plan.preset, plan.points, plan.dials);
   useEffect(() => {
     if (!SHARED_ID) return;
     let live = true;
@@ -4686,7 +4689,7 @@ export function App() {
         // only. In general many of these closures aren't always real").
         openSaved(shared, SHARED_OPENED(shared.name), !(SHARED_RIDE && SHARED_LEAD && shared.answer));
         if (shared.answer) setSharedOpen({ answer: unitsFirstDeep(shared.answer), ride: SHARED_RIDE, id: SHARED_ID, lead: SHARED_LEAD, secret: SHARED_SECRET, name: shared.name });
-      } else if (decodePlan(window.location.hash).points.length < 2) {
+      } else if (!plansAnything(decodePlan(window.location.hash))) {
         // Nothing to plan again (a link without its plan, as an assistant's link pasted short): said in the route's
         // place, never an empty Go.
         const error = shared === "gone" ? SHARED_EXPIRED_ERROR : SHARED_UNREAD_ERROR;
