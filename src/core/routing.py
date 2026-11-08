@@ -4699,6 +4699,9 @@ class _Ranking:
     ctx: object | None
     mtb: object | None
     harder_m: float | None
+    # The ride type whose ranking holds: a Mountain Bike ride, an Easy MTB trails ride.
+    mtb_ride: bool = False
+    easy_ride: bool = False
 
 
 # Where a plan made for `_plan_twice` leaves its final route's `_Ranking` ({"ranking": ...});
@@ -4767,9 +4770,15 @@ def _weekend_wins(weekend: _Ranking | None, own: _Ranking | None) -> bool:
 
     if weekend is None or own is None:
         return False
-    if weekend.mtb is not None and own.mtb is not None:
+    if weekend.mtb_ride or own.mtb_ride:
+        # Mountain Bike ranks by its trail rules alone: where either route cannot be read by
+        # them (its own graph down, a leg untraced), the ride's own stands.
+        if weekend.mtb is None or own.mtb is None:
+            return False
         return mtbmode.better(weekend.mtb, own.mtb)
-    if weekend.harder_m is not None and own.harder_m is not None:
+    if weekend.easy_ride or own.easy_ride:
+        if weekend.harder_m is None or own.harder_m is None:
+            return False
         if abs(weekend.harder_m - own.harder_m) > easy_mtb.TOLERANCE_M:
             return weekend.harder_m < own.harder_m
     if weekend.analysis is None or own.analysis is None or own.ctx is None:
@@ -4781,9 +4790,10 @@ def _weekend_wins(weekend: _Ranking | None, own: _Ranking | None) -> bool:
 class _WeekendPlan:
     body: dict | None = None
     ranking: _Ranking | None = None
-    # Given up for want of the weekend router or the time (not for the ride itself): the
-    # answer is then not kept in the answer cache (`_skipped_for_time`).
-    failed: bool = False
+    # The router calls the weekend plan failed or skipped (its own `timing.Timings`): where its
+    # body is answered with any, the answer is not kept in the answer cache
+    # (`_skipped_for_time`), as the ride's own plan's would not be.
+    failures: int = 0
 
 
 def _weekend_plan(
@@ -4791,22 +4801,21 @@ def _weekend_plan(
 ) -> _WeekendPlan:
     """The weekend plan beside a ride's own, on the router pool or after it. Never raises but
     for a cancel: whatever goes wrong, the ride's own plan is answered (the weekend router
-    down is today's behaviour). Without the request's timing recorder: a plan restarts its
-    recorder's phases, which are the ride's own plan's."""
-    token = timing.start(None)
+    down is today's behaviour). With a timing recorder of its own: a plan restarts its
+    recorder's phases, which are the ride's own plan's, and its failed calls are counted
+    apart, for `_plan_twice` to count only where its body is answered."""
+    recorder = timing.Timings()
+    token = timing.start(recorder)
     on_pool = parallel.inside()
     slot: dict = {}
     try:
         body = _plan_alone(points, preset_name, long_ride, started, dials, quick, candidates, slot)
-        return _WeekendPlan(body, slot.get("ranking"))
+        return _WeekendPlan(body, slot.get("ranking"), recorder.failures)
     except PlanCancelled:
         raise
-    except (_GraphLeft, NoRoute, TooLong) as error:
-        logger.info("no weekend plan beside the ride's own: %s", error)
-        return _WeekendPlan()
     except Exception as error:  # noqa: BLE001 - the ride's own plan is answered
-        logger.info("the weekend plan beside the ride's own was not made: %r", error)
-        return _WeekendPlan(failed=True)
+        logger.info("no weekend plan beside the ride's own: %r", error)
+        return _WeekendPlan()
     finally:
         timing.stop(token)
         if on_pool:
@@ -4857,20 +4866,58 @@ def _plan_twice(
         weekend = _weekend_plan(*args)
     else:
         try:
-            weekend = await_future(pending, max(0.0, started + LONG_PLAN_BUDGET_S - clock()))
+            weekend = await_future(pending, max(0.0, started + _ride_budget_s(*args[:5]) - clock()))
         except TimeoutError:
-            weekend = _WeekendPlan(failed=True)
-    if weekend.failed:
-        _skipped_for_time()
+            # Not done inside the ride's own budget: given up, the ride's own answered. It ends
+            # at its own deadline; its calls are its own, not the answer's.
+            pending.cancel()
+            weekend = _WeekendPlan()
     if own is None:
         if weekend.body is None:
             raise own_error
         logger.info("the weekend graph answered a ride its own graph did not (%s)", own_error)
+        if weekend.failures or not isinstance(own_error, (NoRoute, TooLong)):
+            # Its own graph's router or the time failed, not the ride: not kept.
+            _skipped_for_time()
         return weekend.body
     if weekend.body is not None and _weekend_wins(weekend.ranking, slot.get("ranking")):
         logger.info("the weekend plan's route ranks above the ride's own; answered")
+        if weekend.failures or _own_fell_back(own, preset_name, dials):
+            # A weekend route cut short, or one weighed against the standard graph's while the
+            # ride's own router is down: answered, never kept in the answer cache.
+            _skipped_for_time()
         return weekend.body
     return own
+
+
+def _ride_budget_s(points, preset_name, long_ride, _started, dials) -> float:
+    """The budget the ride's own plan runs in (`_plan`): the long ride's for a long ride or a
+    long calm plan, else the ordinary one."""
+    if long_ride:
+        return LONG_PLAN_BUDGET_S
+    stress = (
+        presets.stress_start(preset_name, dials.carrying) if dials.stress is None else dials.stress
+    )
+    loop = loop_wanted(points, dials.loop, preset_name)
+    long_calm = not loop and long_calm_for(
+        preset_name, loop_points(points, loop), stress, long_ride, trails_off=bool(dials.trails_off)
+    )
+    return LONG_PLAN_BUDGET_S if long_calm else PLAN_BUDGET_S
+
+
+def _own_fell_back(own: dict, preset_name: str, dials: Dials) -> bool:
+    """Whether the ride's own plan was answered off its own graph while that graph is promoted:
+    its router down, the twin fallback to the standard graph taken."""
+    preset = presets.PRESETS[preset_name]
+    assist = bool(dials.assist) and preset.assist_speed_kmh is not None
+    trails_off = bool(dials.trails_off)
+    easy = bool(dials.easy_mtb) and preset_name in easy_mtb.PRESETS and not trails_off
+    graph = presets.variant_for_ride(
+        preset_name, dials.when or default_when(), assist, trails_off, easy
+    )
+    if own.get("variant") == graph:
+        return False
+    return graph not in TWIN_VARIANTS or _is_promoted(graph)
 
 
 @_own_context
@@ -6700,6 +6747,8 @@ def _plan(
             ctx=refine_context,
             mtb=mtb_reading,
             harder_m=(easy_info or {}).get("harder_m") if easy_held else None,
+            mtb_ride=preset_name == mtb.PRESET,
+            easy_ride=easy_asked,
         )
     return body
 

@@ -3327,13 +3327,136 @@ class TestWeekendWins:
         on_road = mtbmode.read([road], 2, 2)
         # The car-free parkway, as calm as the trail, does not beat the trail Mountain Bike
         # prefers; the trail does beat it.
-        assert not routing._weekend_wins(self.ranking(mtb=on_road), self.ranking(mtb=on_trail))
-        assert routing._weekend_wins(self.ranking(mtb=on_trail), self.ranking(mtb=on_road))
+        bike = {"mtb_ride": True, "analysis": "a", "ctx": "c"}
+        assert not routing._weekend_wins(
+            self.ranking(mtb=on_road, **bike), self.ranking(mtb=on_trail, **bike)
+        )
+        assert routing._weekend_wins(
+            self.ranking(mtb=on_trail, **bike), self.ranking(mtb=on_road, **bike)
+        )
+        # Either route not read by the trail rules (its own graph down, a leg untraced): the
+        # ride's own stands, never the calm score in their place.
+        assert not routing._weekend_wins(self.ranking(mtb=on_trail, **bike), self.ranking(**bike))
+        assert not routing._weekend_wins(self.ranking(**bike), self.ranking(mtb=on_road, **bike))
 
     def test_easy_mtb_holds_the_harder_trails_off_first(self, monkeypatch):
         monkeypatch.setattr(refine, "better", lambda *a: pytest.fail("held off first"))
-        assert routing._weekend_wins(self.ranking(harder_m=0.0), self.ranking(harder_m=500.0))
-        assert not routing._weekend_wins(self.ranking(harder_m=500.0), self.ranking(harder_m=0.0))
+        easy = {"easy_ride": True, "analysis": "a", "ctx": "c"}
+        assert routing._weekend_wins(
+            self.ranking(harder_m=0.0, **easy), self.ranking(harder_m=500.0, **easy)
+        )
+        assert not routing._weekend_wins(
+            self.ranking(harder_m=500.0, **easy), self.ranking(harder_m=0.0, **easy)
+        )
+        # Either side's harder trail not read: the ride's own stands.
+        assert not routing._weekend_wins(self.ranking(harder_m=0.0, **easy), self.ranking(**easy))
+        assert not routing._weekend_wins(self.ranking(**easy), self.ranking(harder_m=0.0, **easy))
+
+    def test_an_easy_mtb_tie_on_harder_trail_goes_to_the_calm_score(self, monkeypatch):
+        monkeypatch.setattr(refine, "better", lambda a, b, ctx: a == "w")
+        easy = {"easy_ride": True, "ctx": "c"}
+        assert routing._weekend_wins(
+            self.ranking(harder_m=0.0, analysis="w", **easy),
+            self.ranking(harder_m=0.5, analysis="o", **easy),
+        )
+
+    @staticmethod
+    def _fake_plans(monkeypatch, weekend_failures=0, own_variant="offroad", hold=None):
+        """`_plan_alone` faked: the own plan answers `own_variant`, the weekend plan records
+        `weekend_failures` failed calls on the recorder it runs under."""
+        from core import timing
+
+        def plan_alone(points, preset, long_ride, started, dials, quick, candidates, slot=None):
+            if dials.graph == "weekend":
+                if hold is not None:
+                    hold.wait(5)
+                for _ in range(weekend_failures):
+                    timing.record_call(0.0, True)
+            if slot is not None:
+                slot["ranking"] = dials.graph or "own"
+            return {"variant": dials.graph or own_variant}
+
+        monkeypatch.setattr(routing, "_weekend_too", lambda *a: True)
+        monkeypatch.setattr(routing, "_plan_alone", plan_alone)
+
+    @staticmethod
+    def _planned(dials=None) -> tuple[dict, int]:
+        from core import timing
+
+        recorder = timing.Timings()
+        token = timing.start(recorder)
+        try:
+            body = routing.plan(
+                [[-77.05, 38.9], [-77.02, 38.9]],
+                "gravel",
+                dials=dials or routing.Dials(when="weekend"),
+            )
+        finally:
+            timing.stop(token)
+        return body, recorder.failures
+
+    @pytest.mark.parametrize("size", [1, 3])
+    @pytest.mark.parametrize("weekend_wins", [True, False])
+    def test_only_the_answered_plans_failures_keep_it_out_of_the_cache(
+        self, size, weekend_wins, settings, monkeypatch
+    ):
+        settings.ROUTER_PARALLEL_CALLS = size
+        self._fake_plans(monkeypatch, weekend_failures=2)
+        monkeypatch.setattr(routing, "_weekend_wins", lambda w, o: weekend_wins)
+        body, failures = self._planned()
+        if weekend_wins:
+            # A weekend route cut short: answered, not kept (`route_cache.keepable`).
+            assert body["variant"] == "weekend"
+            assert failures >= 1
+        else:
+            # The ride's own route won cleanly: the weekend plan's failures are not its own.
+            assert body["variant"] == "offroad"
+            assert failures == 0
+
+    def test_a_clean_weekend_winner_is_kept(self, settings, monkeypatch):
+        settings.ROUTER_PARALLEL_CALLS = 1
+        self._fake_plans(monkeypatch)
+        monkeypatch.setattr(routing, "_weekend_wins", lambda w, o: True)
+        body, failures = self._planned()
+        assert body["variant"] == "weekend"
+        assert failures == 0
+
+    def test_a_weekend_winner_over_the_own_routers_fallback_is_not_kept(
+        self, settings, monkeypatch
+    ):
+        """The off-road router down: the own plan fell back to the standard graph, and a
+        weekend route that beat it is answered but not kept while the outage lasts."""
+        settings.ROUTER_PARALLEL_CALLS = 1
+        self._fake_plans(monkeypatch, own_variant="standard")
+        monkeypatch.setattr(routing, "_weekend_wins", lambda w, o: True)
+        body, failures = self._planned()
+        assert body["variant"] == "weekend"
+        assert failures >= 1
+        # Where the off-road graph is not promoted, standard is the ride's graph by design.
+        monkeypatch.setattr(routing, "_offroad_is_promoted", lambda: False)
+        body, failures = self._planned()
+        assert body["variant"] == "weekend"
+        assert failures == 0
+
+    def test_a_weekend_plan_not_done_in_the_rides_budget_is_dropped(self, settings, monkeypatch):
+        import threading
+        import time
+
+        settings.ROUTER_PARALLEL_CALLS = 3
+        hold = threading.Event()
+        self._fake_plans(monkeypatch, hold=hold)
+        monkeypatch.setattr(routing, "_weekend_wins", lambda w, o: True)
+        monkeypatch.setattr(routing, "PLAN_BUDGET_S", 0.3)
+        monkeypatch.setattr(routing, "LONG_PLAN_BUDGET_S", 30)
+        began = time.monotonic()
+        try:
+            body, failures = self._planned()
+        finally:
+            hold.set()
+        # Waited for the ordinary ride's budget, not the long ride's.
+        assert time.monotonic() - began < 5
+        assert body["variant"] == "offroad"
+        assert failures == 0
 
     def test_otherwise_the_calm_searchs_comparison_in_the_rides_own_context(self, monkeypatch):
         asked = []
