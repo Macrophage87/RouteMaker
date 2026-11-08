@@ -6130,6 +6130,14 @@ class PlaceOut(Schema):
     osm_value: str | None = Field(
         default=None, description="That tag's value (station, bicycle, park, cycleway, ...)."
     )
+    way_in: str | None = Field(
+        default=None,
+        description=(
+            "Search: for an area (a park, refuge or campus), the name of the way in it was moved"
+            " to (its visitor centre, entrance, parking, trailhead or boat launch), which"
+            " lon and lat then are; null where the result is where it is."
+        ),
+    )
 
 
 class PlacesOut(Schema):

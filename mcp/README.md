@@ -52,7 +52,17 @@ the app.
 
 It plans through the site's own API (`POST /api/route`), so a route is exactly what the app would
 plan. It changes nothing on the site except adding the routes you ask it to save. Metro distances
-are straight-line, from DC Open Data's station file (CC BY 4.0) that the map also uses.
+are straight-line, from DC Open Data's station file (CC BY 4.0) that the map also uses. A route to
+or through a station goes to its bike entrance (its elevator where one is listed), as the map's
+and the transit planner's do, from the entrance files beside the station file.
+
+A name said with "Metro" or "station" ("Vienna Metro"), or a station's whole name that can be
+nothing else ("Union Station", "Navy Yard-Ballpark"), is that station. A bare name that is also a
+station's ("Navy Yard", "Vienna", "Rockville") is searched, and is the station only where the
+search finds it there; "Mount Vernon", "Arlington" and road names such as "Braddock Road" are the
+places the search finds. A park, refuge or campus found by the search goes to a way in the same
+search found (its visitor centre, entrance, parking, trailhead or boat launch), and the answer's
+`points_taken_as` lists the other points of the same place the search found as `nearby_matches`.
 
 ## Use it in Claude on the web and on your phone
 

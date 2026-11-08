@@ -30,7 +30,9 @@ db = pytest.mark.django_db(transaction=True)
 
 SEARCH = "/api/geocode"
 REVERSE = "/api/reverse"
+# `way_in` since the 2026-11-08 hunt (G1): the way in an area result was moved to, else null.
 PLACE_KEYS = {"name", "label", "lon", "lat", "kind", "osm_type", "osm_id", "osm_key", "osm_value"}
+PLACE_KEYS |= {"way_in"}
 
 INSIDE = (-77.0502, 38.8893)  # the Lincoln Memorial
 OUTSIDE = (-80.0, 40.44)  # Pittsburgh
@@ -1208,6 +1210,104 @@ class TestDescribe:
             "properties": {"name": "y"},
         }
         assert geocode.results(answer(bad, broken, "junk"), reverse=False) == []
+
+
+# The 2026-11-08 hunt's live rows (G1, G6), with the extents Photon gives a way or relation.
+OCCOQUAN = feature(
+    -77.24159,
+    38.684466,
+    name="Occoquan Regional Park",
+    type="other",
+    osm_type="R",
+    osm_key="leisure",
+    osm_value="park",
+    extent=[-77.262, 38.692, -77.228, 38.676],
+)
+OCCOQUAN_LAUNCH = feature(
+    -77.252775,
+    38.680617,
+    name="Occoquan Regional Park Boat Launch",
+    type="house",
+    osm_type="N",
+    osm_key="leisure",
+    osm_value="slipway",
+)
+GREAT_FALLS = dict(name="Great Falls Park", type="other", osm_type="R")
+
+
+class TestAreas:
+    def test_an_area_is_moved_to_the_way_in_its_search_found(self) -> None:
+        """G1: the park's middle went to the router, which snaps it to the nearest road; the
+        boat launch the same search found is where a ride goes in."""
+        park, launch = geocode.results(answer(OCCOQUAN, OCCOQUAN_LAUNCH), reverse=False)
+        assert park["name"] == "Occoquan Regional Park"
+        assert (park["lon"], park["lat"]) == (-77.252775, 38.680617)
+        assert park["way_in"] == "Occoquan Regional Park Boat Launch"
+        assert launch["way_in"] is None
+
+    def test_an_area_with_no_way_in_found_stays_at_its_middle(self) -> None:
+        (park,) = geocode.results(answer(OCCOQUAN), reverse=False)
+        assert (park["lon"], park["lat"]) == (-77.24159, 38.684466) and park["way_in"] is None
+
+    def test_a_way_in_outside_the_area_is_not_taken(self) -> None:
+        far = feature(-77.30, 38.70, **{**OCCOQUAN_LAUNCH["properties"]})
+        (park, _) = geocode.results(answer(OCCOQUAN, far), reverse=False)
+        assert park["way_in"] is None and park["lon"] == -77.24159
+
+    def test_a_place_named_for_the_area_that_is_not_a_way_in_is_not_taken(self) -> None:
+        overlook = feature(-77.25, 38.68, name="Occoquan Regional Park Overlook", osm_key="tourism")
+        (park, _) = geocode.results(answer(OCCOQUAN, overlook), reverse=False)
+        assert park["way_in"] is None
+
+    def test_a_town_or_a_road_is_never_moved(self) -> None:
+        town = feature(
+            -77.2653,
+            38.9012,
+            name="Vienna",
+            osm_type="R",
+            osm_key="boundary",
+            osm_value="administrative",
+            extent=[-77.29, 38.92, -77.24, 38.88],
+        )
+        lot = feature(-77.266, 38.90, name="Vienna Parking", osm_key="amenity", osm_value="parking")
+        (row, _) = geocode.results(answer(town, lot), reverse=False)
+        assert row["way_in"] is None and (row["lon"], row["lat"]) == (-77.2653, 38.9012)
+
+    def test_names_for_a_point_never_move(self) -> None:
+        park, _ = geocode.results(answer(OCCOQUAN, OCCOQUAN_LAUNCH), reverse=True)
+        assert park["way_in"] is None and park["lon"] == -77.24159
+
+    def test_one_area_mapped_twice_at_one_point_is_one_row(self) -> None:
+        """G6: "Great Falls Park" as leisure=park and as boundary=national_park came back twice
+        at identical coordinates, which pushed its Visitor Center down the list."""
+        rows = geocode.results(
+            answer(
+                feature(-77.251843, 38.990455, osm_key="leisure", osm_value="park", **GREAT_FALLS),
+                feature(
+                    -77.251843,
+                    38.990455,
+                    osm_key="boundary",
+                    osm_value="national_park",
+                    **GREAT_FALLS,
+                ),
+                feature(
+                    -77.2461,
+                    38.9985,
+                    name="Great Falls Park Visitor Center",
+                    type="house",
+                    osm_type="N",
+                    osm_key="tourism",
+                    osm_value="information",
+                ),
+            ),
+            reverse=False,
+        )
+        assert [r["name"] for r in rows] == ["Great Falls Park", "Great Falls Park Visitor Center"]
+
+    def test_the_same_name_on_another_kind_of_place_metres_away_stays_two_rows(self) -> None:
+        park = feature(-77.0400, 38.9000, name="Meridian Hill", osm_key="leisure")
+        stop = feature(-77.0400, 38.90005, name="Meridian Hill", osm_key="highway")
+        assert len(geocode.results(answer(park, stop), reverse=False)) == 2
 
 
 @db
