@@ -1605,8 +1605,9 @@ def photo_link_upload(request, slug: str, token: str):
     JPEG itself (image/jpeg, at most PHOTO_MAX_EDGE a side and PHOTO_MAX_BYTES): the signed link,
     not a session, is what lets it in, so it is CSRF-exempt; it fills that one waiting photo
     once, within PHOTO_LINK_SECONDS. Where the photo was taken is read from its Exif GPS, else
-    from the X-Photo-Lat and X-Photo-Lon headers (never the query string, which the proxy's
-    access log keeps, even for a spot photo_spot then drops inside the author's Home circle)."""
+    from the X-Photo-Lat and X-Photo-Lon headers, never the query string: a request line is what
+    access logs keep, so the spot (even one photo_spot then drops inside the author's Home
+    circle) stays out of any log the proxies may write, today's or a later one."""
     from django.core import signing
 
     from .audit import record

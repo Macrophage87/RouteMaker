@@ -4239,7 +4239,7 @@ at `/routes/` and from Go's More > Featured routes. Instance admins write them:
    assistant on the site's connector (draft_route_post) gets an upload link per described photo
    and can send the file itself while the post is a draft (image/jpeg, at most 2048 px a side and
    900 KB, 24 hours, once; headers `X-Photo-Lat` and `X-Photo-Lon` when the file has no spot,
-   never the link's query string, which the proxy logs). A photo the browser can't open (some phone formats,
+   never the link's query string, so no request line in any log can hold it). A photo the browser can't open (some phone formats,
    such as HEIC) must be saved as a JPEG or PNG first. Change alt text, caption, section or order,
    or delete a photo, in the admin. A photo's Where is a highlight's number, so after deleting or
    reordering highlights check each photo's place; one numbered past the last highlight shows under

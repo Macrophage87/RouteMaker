@@ -10587,6 +10587,8 @@ summary.closure-notices-heading {
 }
 .load-route-tag {
   flex: none;
+  max-width: 100%;
+  overflow-wrap: anywhere;
   min-height: 44px;
   padding: 6px 14px;
   border-radius: 999px;
