@@ -2523,7 +2523,13 @@ passes (`routemaker.trace_junctions`, from `/trace_attributes` with
    flagged. The walk stops at, and does not count, a node that a road of a
    name none of the junction's arms has joins: that is another junction
    (review r3, B1: of six driveways and side streets within 30 m of another
-   junction's signal, all six had taken it). A rider arriving on a path
+   junction's signal, all six had taken it). A signal on a crosswalk alone (a
+   path or crossing way meets the road there and no other road does: OSM's
+   `crossing=traffic_signals`, a HAWK's included) is the junction's only where
+   no such other junction up the arm is nearer it than the junction is (hunt
+   J2, 2026-11-08: K St's signalised crosswalk 17 m up Main St, 8 m short of
+   K St, had made a stop-controlled side street at Main St signalized). A
+   rider arriving on a path
    (footway, path, cycleway, crossing way, steps, track: `TRAIL_USES`) is let
    past such a node, since a trail crossing beside a road junction is crossed
    on that junction's signal. A rider leaving a driveway, a parking aisle or a
@@ -3925,7 +3931,10 @@ The owner, 2026-10-03: "Actually, I like merging the runs, that sounds good." (2
   joins at the signal's node or the signal faces away from it (review r3, B1);
   it still does where the signal is on a stop line of its own road with no
   other road there and facing it, or where the other junction's road has no
-  name. That under-warns, only within 100 ft (30 m) of a signal. And the rule
+  name. A signalised crosswalk is the other junction's where that junction is
+  the nearer (hunt J2); a mid-block pedestrian signal or HAWK with no other
+  junction near it is still read as the side street's within 30 m, since
+  `/locate` does not tell it from a junction's own signalised crosswalk. That under-warns, only within 100 ft (30 m) of a signal. And the rule
   costs a signal where one junction is mapped as two named ones a few metres
   apart: Plyers Mill Rd across Metropolitan Ave reads the signal 16 m away at
   Concord St as Concord St's (orange, 1,200 ft, where it was 150).

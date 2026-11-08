@@ -1038,15 +1038,15 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "approach: no distance limit",
         J,
-        "            if self._metres(at) > APPROACH_M or any(_close(*at, *s) for s in seen):",
-        "            if any(_close(*at, *s) for s in seen):",
+        "            if self._metres(at) > APPROACH_M:\n                # Not walked on",
+        "            if False:\n                # Not walked on",
         JUNCTIONS,
     ),
     (
         "approach: signal node not read",
         J,
-        "            if self.node_signal(at) and not flagged:\n                return True",
-        "            if False:\n                return True",
+        "                self.node_signal(at) and not flagged\n            ):",
+        "                False\n            ):",
         JUNCTIONS,
     ),
     (
@@ -1059,8 +1059,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "approach: flagged edge ignored",
         J,
-        "            if any(self._towards(ends) for ends in flagged):\n                return True",
-        "            if False:\n                return True",
+        "            if any(self._towards(ends) for ends in flagged) or (",
+        "            if False or (",
         JUNCTIONS,
     ),
     (
@@ -1319,8 +1319,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "r3 walk: other roads' junctions walked",
         J,
-        "            if self.foreign(at):\n                continue",
-        "            if False:\n                continue",
+        "            seen.append(at)\n            if self.foreign(at):",
+        "            seen.append(at)\n            if False:",
         JUNCTIONS,
     ),
     (
@@ -1389,15 +1389,52 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "r3 direction: a flag either way",
         J,
-        "            if any(self._towards(ends) for ends in flagged):",
-        "            if flagged:",
+        "            if any(self._towards(ends) for ends in flagged) or (",
+        "            if flagged or (",
         JUNCTIONS,
     ),
     (
         "r3 direction: node flag whatever the edges",
         J,
-        "            if self.node_signal(at) and not flagged:",
-        "            if self.node_signal(at):",
+        "                self.node_signal(at) and not flagged\n            ):",
+        "                self.node_signal(at)\n            ):",
+        JUNCTIONS,
+    ),
+    # Hunt J2 (2026-11-08): a crosswalk's signal is another junction's where
+    # that junction is the nearer.
+    (
+        "j2 crosswalk: read as any signal",
+        J,
+        "                if not self.crosswalk(arm, at):\n                    return True",
+        "                if True:\n                    return True",
+        JUNCTIONS,
+    ),
+    (
+        "j2 crosswalk: the nearer junction not compared",
+        J,
+        "            not any(haversine(Point(*at), Point(*other)) < self._metres(at) for other in others)",
+        "            not any(False for other in others)",
+        JUNCTIONS,
+    ),
+    (
+        "j2 crosswalk: a junction past 30 m not read",
+        J,
+        "                if self.foreign(at):\n                    others.append(at)\n                continue",
+        "                if False:\n                    others.append(at)\n                continue",
+        JUNCTIONS,
+    ),
+    (
+        "j2 crosswalk: another road there ignored",
+        J,
+        "                if not _of_road(arm, entry):\n                    return False",
+        "                if False:\n                    return False",
+        JUNCTIONS,
+    ),
+    (
+        "j2 crosswalk: no path needed",
+        J,
+        "            elif _use(entry) in TRAIL_USES:\n                path = True\n        return path",
+        "            elif _use(entry) in TRAIL_USES:\n                path = True\n        return True",
         JUNCTIONS,
     ),
     (

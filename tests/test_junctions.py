@@ -523,7 +523,95 @@ class TestApproaches:
         assert self.control(around) is Control.SIGNAL
 
     def test_a_signal_node_on_the_arm(self) -> None:
+        """A stop-line signal node on the arm, with nothing else there, is the
+        junction's. (This test used to stand for any signal node on the arm;
+        since hunt J2 a crosswalk's signal is the junction's only where no
+        other road's junction is nearer it: see the two tests below.)"""
         around = approach_around(north_at=12.0, flag=None, signal_node_at=12.0)
+        assert self.control(around) is Control.SIGNAL
+        # So is the junction's own signalised crosswalk there.
+        crosswalk = approach_around(north_at=12.0, flag=None, signal_node_at=12.0)
+        walk = edge(40, 99, 921, 1.0, 270.0, use="footway", car=False)
+        crosswalk["edges"].append(shaped(walk, (LON + 0.0002, north(12.0)[1]), north(12.0)))
+        assert self.control(crosswalk) is Control.SIGNAL
+
+    @staticmethod
+    def k_st_crosswalk(flag_edges: bool = False):
+        """Hunt J2: K St's signalised junction 25 m up Main St (its own signal
+        is K St's, review r3, B1) and K St's crosswalk across Main St at 17 m,
+        `crossing=traffic_signals` as every crosswalk at a signal is, which the
+        transform makes a signal node. With `flag_edges`, the router's flag on
+        Main St's edge arriving there towards N, as it sets it at a signal
+        node."""
+        around = approach_around(north_at=25.0, names=("K St",), way=77)
+        for e in around["edges"]:
+            if e["edge_id"]["value"] == 5:
+                shaped(e, (LON, LAT), north(17.0))
+            if e["edge_id"]["value"] == 6:
+                shaped(e, north(17.0), (LON, LAT))
+        mid = edge(41, 20, 950, 1.0, 180.0, names=["Main St"], signal=flag_edges)
+        around["edges"].append(shaped(mid, north(25.0), north(17.0)))
+        around["nodes"].append(node(951, signal=True, at=north(17.0)))
+        walk = edge(42, 98, 951, 1.0, 270.0, use="footway", car=False)
+        around["edges"].append(shaped(walk, (LON + 0.0002, north(17.0)[1]), north(17.0)))
+        return around
+
+    @pytest.mark.parametrize("flag_edges", [False, True])
+    def test_another_junctions_signalised_crosswalk_up_the_arm_is_its_own(self, flag_edges) -> None:
+        """Hunt J2: before, the crosswalk node 8 m short of K St's node was
+        read as this junction's signal, and the side street crossing Main St
+        at N was priced as signalised (600 ft, not red)."""
+        around = self.k_st_crosswalk(flag_edges)
+        assert self.control(around) is Control.NONE
+        # With K St farther off than N is from the crosswalk, it is N's.
+        far = self.k_st_crosswalk(flag_edges)
+        for e in far["edges"]:
+            if e["edge_id"]["value"] == 20:
+                shaped(e, north(70.0), north(40.0))
+            if e["edge_id"]["value"] == 41:
+                shaped(e, north(40.0), north(17.0))
+        assert self.control(far) is Control.SIGNAL
+
+    def test_another_junction_just_past_30_m_still_owns_its_crosswalk(self) -> None:
+        """The crosswalk at 25 m, K St's node at 33 m: K St's node is past the
+        walk's reach but in the answer, and nearer the crosswalk than N."""
+        around = self.k_st_crosswalk()
+        for e in around["edges"]:
+            value = e["edge_id"]["value"]
+            if value == 5:
+                shaped(e, (LON, LAT), north(25.0))
+            if value == 6:
+                shaped(e, north(25.0), (LON, LAT))
+            if value == 41:
+                shaped(e, north(33.0), north(25.0))
+            if value == 20:
+                shaped(e, north(63.0), north(33.0))
+            if value == 42:
+                shaped(e, (LON + 0.0002, north(25.0)[1]), north(25.0))
+        around["nodes"][-1]["lat"] = north(25.0)[1]
+        assert self.control(around) is Control.NONE
+
+    def test_a_signal_where_a_driveway_and_a_crosswalk_meet_is_not_a_crosswalks(self) -> None:
+        """A signalised entrance (an unnamed road joining at the signal node)
+        with its crosswalk is read as before: a signal of the arm's own, which
+        K St's junction farther up does not take."""
+        around = self.k_st_crosswalk()
+        drive = edge(43, 79, 951, 1.0, 90.0, use="service_road")
+        around["edges"].append(shaped(drive, (LON - 0.0003, north(17.0)[1]), north(17.0)))
+        assert self.control(around) is Control.SIGNAL
+        # Nor is a stop-line signal node with no crosswalk there.
+        stop_line = self.k_st_crosswalk()
+        stop_line["edges"] = [e for e in stop_line["edges"] if e["edge_id"]["value"] != 42]
+        assert self.control(stop_line) is Control.SIGNAL
+
+    def test_a_path_rider_still_takes_the_crosswalks_signal(self) -> None:
+        """A rider arriving on a path walks past another road's junction, and
+        crosses on its crosswalk's signal too."""
+        around = self.k_st_crosswalk()
+        for e in around["edges"]:
+            if e["edge_id"]["value"] in (1, 3):
+                e["edge"]["classification"]["use"] = "cycleway"
+                e["edge"]["access"]["car"] = False
         assert self.control(around) is Control.SIGNAL
 
     def test_a_signalised_junction_of_another_road_up_the_arm_is_its_own(self) -> None:
