@@ -6286,7 +6286,8 @@ def handle(server: Server, message, send=_send, calls: dict | None = None) -> di
                 "RouteMaker plans bike routes from DC to Baltimore, rated by traffic stress (LTS 1"
                 " calmest to 4, plus Avoid). Pick the ride type and settings that fit the ask."
                 " Give distances in miles first, km in brackets. Share the link so the rider can"
-                " open the route in the app; save to My routes only when asked."
+                " open the route in the app, whole with its # part: after a day only that part"
+                " can plan the route again. Save to My routes only when asked."
             ),
         }
     elif method == "ping":

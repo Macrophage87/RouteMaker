@@ -11,11 +11,14 @@ import { decodePlan, encodePlan } from "./planHash.ts";
 import { gpxSave, planSave } from "./savedRoutes.ts";
 import { shareContent, withGpxFile, type ShareNavigator } from "./share.ts";
 import {
+  SHARED_EXPIRED,
+  SHARED_EXPIRED_ERROR,
   SHARED_GONE,
   SHARED_INPUTS_ONLY,
   SHARED_MAX_BYTES,
   SHARED_OPENED,
   SHARED_REVOKED,
+  SHARED_UNREAD_ERROR,
   gpxShareFile,
   keepSaid,
   listSharedLinks,
@@ -137,7 +140,8 @@ test("reading: the line as kept, or null (not kept, another id, the wrong shape,
   const kept = { id: ID, name: "Ride", source: "plan", distance_m: 1, line: [[-77, 38.9], [-77.1, 38.8]], inputs: { hash: "#p=1", points: [], preset: "default", dials: {} }, answer: null, gpx: "" };
   const answer = (status: number, body: unknown) => (async () => new Response(JSON.stringify(body), { status })) as unknown as typeof fetch;
   assert.deepEqual(await readShared("https://x.test", ID, answer(200, kept)), kept);
-  assert.equal(await readShared("https://x.test", ID, answer(404, { error: "gone" })), null);
+  assert.equal(await readShared("https://x.test", ID, answer(404, { error: "gone" })), "gone");
+  assert.equal(await readShared("https://x.test", ID, answer(500, { error: "x" })), null);
   assert.equal(await readShared("https://x.test", ID, answer(200, { ...kept, id: "f".repeat(32) })), null);
   assert.equal(await readShared("https://x.test", ID, answer(200, { ...kept, line: [] })), null);
   const down = (async () => {
@@ -310,4 +314,16 @@ test("the owner's links: listed, turned off and replaced with the CSRF token, in
   assert.match(mine, /if \(ok\) onChange\(\);/);
   assert.match(mine, /return;\s*\}\s*onChange\(\);\s*const copied/);
   assert.match(mine, /aria-label=\{t\("New link for \{name\}", \{ name: l\.name \}\)\}/);
+});
+
+test("an expired link with no plan of its own (Stephen 2026-11-08: \"just taking me to go\"): said in the route's place", async () => {
+  const gone = (async () => new Response(JSON.stringify({ error: "That shared route is no longer kept; its link plans it again.", code: "not_found" }), { status: 404 })) as unknown as typeof fetch;
+  assert.equal(await readShared("https://x.test", ID, gone), "gone");
+  assert.equal(SHARED_EXPIRED, "This link has expired. Ask for a new one.");
+  assert.equal(SHARED_EXPIRED_ERROR.title, "Link expired");
+  assert.ok(SHARED_EXPIRED_ERROR.noAutoResend && SHARED_UNREAD_ERROR.noAutoResend);
+  const open = app.slice(app.indexOf("void readShared(origin, SHARED_ID)"), app.indexOf("sharedArrived();"));
+  assert.match(open, /\} else if \(decodePlan\(window\.location\.hash\)\.points\.length < 2\) \{[\s\S]*?const error = shared === "gone" \? SHARED_EXPIRED_ERROR : SHARED_UNREAD_ERROR;\s*setStatus\(\{ kind: "error", error \}\);\s*announce\(error\.message\);/);
+  // A link that carries its plan still plans it again, said in one line.
+  assert.match(open, /\} else \{\s*setSharedNote\(SHARED_GONE\);/);
 });
