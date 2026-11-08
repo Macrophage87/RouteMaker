@@ -27,3 +27,71 @@ body {
 .post-map .maplibregl-ctrl-bottom-right .maplibregl-ctrl {
   margin: 0;
 }
+
+/* A photo on the route's map: a round thumbnail that opens a pop-out of it (postPage.tsx addPhotoPopouts). */
+.photo-pin {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 3px solid #ffffff;
+  border-radius: 50%;
+  overflow: hidden;
+  background: #1f2933;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 45%);
+  cursor: pointer;
+}
+
+.photo-pin:focus-visible {
+  outline: 3px solid #1d4ed8;
+  outline-offset: 2px;
+}
+
+.photo-pin img,
+.photo-pointer img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.photo-popout {
+  margin: 0;
+}
+
+.photo-popout img {
+  display: block;
+  width: 100%;
+  max-width: 260px;
+  height: auto;
+  border-radius: 4px;
+}
+
+.photo-popout figcaption {
+  margin-top: 0.35rem;
+  color: #1f2933;
+  font-size: 0.9rem;
+}
+
+/* On a section map: a small thumbnail with a pointer under it to where the photo was taken. */
+.photo-pointer {
+  position: relative;
+  display: block;
+  width: 48px;
+  height: 36px;
+  margin-bottom: 8px;
+  border: 2px solid #ffffff;
+  border-radius: 4px;
+  background: #1f2933;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 45%);
+}
+
+.photo-pointer::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -9px;
+  transform: translateX(-50%);
+  border: 7px solid transparent;
+  border-top-color: #ffffff;
+  border-bottom: 0;
+}
