@@ -16,6 +16,7 @@ as the weekly task runs them.
 from __future__ import annotations
 
 import csv
+import datetime
 import json
 import logging
 import os
@@ -4181,6 +4182,49 @@ def _one_road(highway: str = "residential", name: str = "Test Road", **tags) -> 
     )
 
 
+def test_a_rebuild_flags_a_dc_way_osm_edited_after_the_record_and_keeps_the_record(
+    states, caplog, monkeypatch
+) -> None:
+    """Hunt D6; the owner, 2026-11-08: "If there's a newer OSM rating, then on a rebuild
+    it should flag it and I can make the call." Way 100, posted 35 mph in OSM and last
+    edited after the record's date, keeps the block's 20 mph and is listed for the owner,
+    with its edit date only; the same way edited before it is not."""
+    from pipeline import discrepancies
+    from routemaker import agency_roads
+
+    _all_in_the_district(monkeypatch)
+    block = street_block("dc-1", {"speed_mph": {"ob": 20}, "way": "both"})
+    after = datetime.datetime(2026, 11, 1, 15, 30, tzinfo=datetime.UTC)
+    before = datetime.datetime(2026, 9, 1, 15, 30, tzinfo=datetime.UTC)
+    assert before.date() < agency_roads.DC_RECORD_AS_OF < after.date()
+    listed = {}
+    for edited in (after, before):
+        extract = install_source_extract(
+            _scratch_dir(),
+            build=build_one_road_extract,
+            highway="residential",
+            name="Test Road",
+            extra={"maxspeed": "35 mph"},
+            edited=edited,
+        )
+        with caplog.at_level(logging.INFO, logger="pipeline.run"):
+            context, _ = run_pipeline(extract, extract.parent, roadway=[block], skip=NOT_SWAPPED)
+        assert context.class_tags_by_way[100]["maxspeed"] == "20 mph"
+        reports = context.work_dir / "reports"
+        with (reports / discrepancies.NEWER_CSV_NAME).open() as handle:
+            listed[edited] = list(csv.DictReader(handle))
+    [flag] = listed[after]
+    assert (flag["osm_way_id"], flag["street"], flag["osm_edited"]) == (
+        "100",
+        "Test Road",
+        "2026-11-01",
+    )
+    assert (flag["dc_applies"], flag["osm_says"]) == ("20 mph", "35 mph")
+    assert json.loads(flag["override"])["osm_way_id"] == 100
+    assert listed[before] == []
+    assert "DC ways OSM edited after the record (2026-10-01) that disagree with it" in caplog.text
+
+
 def _report_rows(context) -> list[dict]:
     with (context.work_dir / "reports" / "dc-osm-discrepancies.csv").open() as handle:
         return list(csv.DictReader(handle))
@@ -4307,10 +4351,16 @@ def test_a_discrepancy_report_that_fails_never_fails_the_rebuild(
 
 
 def build_one_road_extract(
-    path: Path, *, highway: str, name: str = "Frontage Road", extra: dict | None = None
+    path: Path,
+    *,
+    highway: str,
+    name: str = "Frontage Road",
+    extra: dict | None = None,
+    edited: datetime.datetime | None = None,
 ) -> None:
-    """The toy extract with way 100 of the class and name given. Everything else
-    is the toy's, because the rebuild refuses a region with no way in a state."""
+    """The toy extract with way 100 of the class and name given, last edited at
+    `edited` (no timestamp where None). Everything else is the toy's, because the
+    rebuild refuses a region with no way in a state."""
     Path(path).unlink(missing_ok=True)
     writer = osmium.SimpleWriter(str(path))
     try:
@@ -4327,7 +4377,8 @@ def build_one_road_extract(
                 osmium.osm.mutable.Node(id=node_id, location=(lon, lat), tags={}, version=1)
             )
         tags = {"highway": highway, **({"name": name} if name else {}), **(extra or {})}
-        writer.add_way(osmium.osm.mutable.Way(id=100, nodes=[1, 2], version=1, tags=tags))
+        stamp = {"timestamp": edited} if edited else {}
+        writer.add_way(osmium.osm.mutable.Way(id=100, nodes=[1, 2], version=1, tags=tags, **stamp))
         for way_id, way_nodes, way_tags in (
             (200, [3, 4], {"highway": "cycleway", "name": "Test Trail"}),
             (300, [5, 6], {"highway": "track", "surface": "gravel"}),

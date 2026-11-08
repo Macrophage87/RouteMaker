@@ -895,6 +895,29 @@ def test_a_district_record_of_no_facility_removes_osm_s_painted_lane() -> None:
     assert result.disagreements == ()
 
 
+def test_the_record_date_is_the_roadway_block_retrieval_date_in_sources() -> None:
+    """`DC_RECORD_AS_OF` is the installed record's retrieval date, the date a newer
+    OSM edit is flagged against for the owner (hunt D6, 2026-11-08); a reinstall
+    updates both."""
+    from pathlib import Path
+
+    sources = (Path(__file__).resolve().parents[1] / "docs" / "SOURCES.md").read_text()
+    entry = sources[sources.index("**Roadway Block**") :][:400]
+    assert f"retrieved {A.DC_RECORD_AS_OF.isoformat()}" in entry
+
+
+def test_the_district_record_wins_however_new_the_osm_edit() -> None:
+    """The owner, 2026-11-08: a newer OSM edit is flagged for his call, not taken: the
+    overlay reads no edit date, and the record's lanes, speed and row A stand."""
+    result = A.overlay(
+        {"highway": "secondary", "maxspeed": "25 mph", "lanes": "2", "cycleway:both": "lane"},
+        way_facts(lanes_per_direction=2, one_way=False, speed_mph=30),
+    )
+    assert result.tags["lanes:forward"] == result.tags["lanes:backward"] == "2"
+    assert result.tags["maxspeed"] == "30 mph" and "cycleway:both" not in result.tags
+    assert result.precedence == (A.ROW_NO_FACILITY,)
+
+
 def test_a_district_record_of_no_facility_keeps_a_track_and_says_so() -> None:
     result = A.overlay(
         {"highway": "primary", "cycleway:right": "track", "cycleway:left": "lane"}, way_facts()

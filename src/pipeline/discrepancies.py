@@ -14,17 +14,26 @@ Each rebuild writes the report (`pipeline.run`'s classification stage, `write_re
 `reports/data-comparison/` is written by `scripts/analysis/dc_osm_discrepancies.py` from
 `data_before_after.py`'s `dcbal.tsv`; both go through `items` and `write_report`, from rows of
 the one shape (`row`).
+
+The rebuild's report also lists, way by way, where OSM last edited a District way after the
+record's date (`routemaker.agency_roads.DC_RECORD_AS_OF`) and OSM's posted speed, lanes or bike
+tags disagree with what the record applied (`newer_osm`): the record still wins, and the owner
+makes the call (the owner, 2026-11-08: "We should build a flag in. If there's a newer OSM
+rating, then on a rebuild it should flag it and I can make the call."). Each row gives the
+override he would check in to take OSM's value.
 """
 
 from __future__ import annotations
 
 import csv
+import json
 import os
 from collections import Counter, defaultdict
 from collections.abc import Iterable, Iterator, Mapping
+from datetime import date
 from pathlib import Path
 
-from routemaker.agency_roads import OWNER_OVERRIDE, WayFacts, osm_side_ranks
+from routemaker.agency_roads import DC_AGENCY, OWNER_OVERRIDE, WayFacts, osm_side_ranks
 from routemaker.tags import is_oneway, lanes_per_direction, parse_maxspeed_mph
 
 MI = 1609.344
@@ -69,6 +78,27 @@ CSV_HEADER = (
     "tier_osm_only",
     "tier_with_dc",
 )
+# Beside it: the District ways OSM edited after the record, where OSM disagrees with what the
+# record applied (`newer_osm`), one row a way, with the override that would take OSM's value.
+NEWER_CSV_NAME = "dc-osm-newer-osm-edits.csv"
+NEWER_CSV_HEADER = (
+    "osm_way_id",
+    "osm_url",
+    "street",
+    "osm_edited",
+    "attributes",
+    "dc_applies",
+    "osm_says",
+    "tier_with_dc",
+    "tier_osm_only",
+    "take_osm_with",
+    "override",
+)
+# How a flagged row names what it compares (`newer_osm`).
+NEWER_SPEED, NEWER_LANES, NEWER_BIKE = "speed", "lanes", "bike facility"
+# The placeholders a suggested override leaves for the owner to fill.
+OWNER_REASON = "<the owner's words>"
+OWNER_EVIDENCE = "<what was seen on the spot>"
 
 
 def reported_tags(tags: Mapping[str, str]) -> dict[str, str]:
@@ -114,8 +144,12 @@ def row(
     after: Mapping[str, str],
     facts: Mapping,
     sources: Mapping[str, str],
+    osm_edited: date | None = None,
+    block_keys: Iterable[tuple[str, str]] = (),
 ) -> dict:
-    """One matched District way, as `items` reads it."""
+    """One matched District way, as `items` reads it. `osm_edited` is the day OSM last
+    edited the way (`Way.edited`, the whole way's), and `block_keys` its blocks' (DC's
+    BLOCKKEY, ROUTENAME), for `newer_osm`."""
     return {
         "way": int(way),
         "street": (name or "").replace("\t", " ") or "(unnamed)",
@@ -130,6 +164,8 @@ def row(
         "after": reported_tags(after),
         "facts": dict(facts),
         "sources": dict(sources),
+        "edited": osm_edited.isoformat() if osm_edited else None,
+        "block_keys": [list(pair) for pair in dict(block_keys).items()],
     }
 
 
@@ -291,6 +327,126 @@ def items(rows: Iterable[Mapping]) -> Iterator[dict]:
             }
 
 
+def _bike_sides(tags: Mapping[str, str]) -> dict[str, int]:
+    """The facility on each side of the way that has one ({side: rank})."""
+    return {side: rank for side, rank in osm_side_ranks(tags).items() if rank}
+
+
+def _lanes_text(lanes: int) -> str:
+    return f"{lanes} lane{'' if lanes == 1 else 's'} a direction"
+
+
+def _sides_text(ranks: Mapping[str, int]) -> str:
+    if not ranks:
+        return "no bike lane"
+    if set(ranks) == {"left", "right"} and ranks["left"] == ranks["right"]:
+        return f"{KINDS[ranks['left']]} both sides"
+    return ", ".join(f"{KINDS[rank]} ({side})" for side, rank in sorted(ranks.items()))
+
+
+def take_osm_override(r: Mapping, kinds: list[str]) -> tuple[str, str]:
+    """How the owner would take OSM's value on the way: (where it goes, the entry).
+
+    A posted speed alone is the owner's block correction (OWNER-DECISIONS 197): an
+    `agency_blocks` entry for each of the way's blocks withholding the record's speed,
+    so OSM's stands; the rebuild reads it from the image. Lanes and bike lanes have no
+    such entry (`agency_roads.WITHHOLDABLE` is the speed alone, and a lane override can
+    only add lanes), so the way's own stress row (fixtures/overrides/README.md, "Stress
+    rows") holds it at the tier OSM's tags give, loaded with `manage.py
+    load_access_overrides` (dry, then `--confirm`)."""
+    keys = r.get("block_keys") or []
+    if kinds == [NEWER_SPEED] and keys:
+        entries = [
+            {
+                "blockkey": key,
+                "routename": routename,
+                "withhold": ["speed"],
+                "reason": OWNER_REASON,
+                "evidence": OWNER_EVIDENCE,
+            }
+            for key, routename in keys
+        ]
+        return (
+            "agency_blocks in a fixtures/overrides/ file (the rebuild reads it, nothing to load)",
+            json.dumps(entries),
+        )
+    entry = {
+        "kind": "stress",
+        "osm_way_id": r["way"],
+        "value": {
+            "tier": r["tier0"],
+            "adjustment_id": f"way-{r['way']}-osm-newer",
+            "category": "other",
+            "visibility": "hidden",
+            "annotation_status": "approved",
+            "display": "route_only",
+        },
+        "reason": OWNER_REASON,
+        "evidence": OWNER_EVIDENCE,
+    }
+    return (
+        "rows in a fixtures/overrides/ file, loaded with manage.py load_access_overrides",
+        json.dumps(entry),
+    )
+
+
+def newer_osm(rows: Iterable[Mapping], as_of: date) -> list[dict]:
+    """The District ways OSM last edited after `as_of` (the record's date,
+    `agency_roads.DC_RECORD_AS_OF`) whose OSM posted speed, lanes per direction or
+    bike lanes disagree with what the record applied, one per way, for the owner's
+    call. The record still wins (OWNER-DECISIONS 190): OSM's date is the whole way's
+    last edit, not the tag's, so it is a question, not an answer (hunt D6; the owner,
+    2026-11-08: "If there's a newer OSM rating, then on a rebuild it should flag it and
+    I can make the call."). A value the record did not apply (an exception of 190, an
+    owner override) is OSM's already and not listed; nor is a value OSM does not carry."""
+    flagged = []
+    for r in rows:
+        edited = r.get("edited")
+        if not edited or date.fromisoformat(edited) <= as_of:
+            continue
+        osm, after, sources = r["osm"], r["after"], r["sources"]
+        kinds: list[str] = []
+        dc_says: list[str] = []
+        osm_says: list[str] = []
+        if sources.get("maxspeed") == DC_AGENCY:
+            mph = parse_maxspeed_mph(after.get("maxspeed"))
+            osm_mph = parse_maxspeed_mph(osm.get("maxspeed"))
+            if mph is not None and osm_mph is not None and round(mph) != round(osm_mph):
+                kinds.append(NEWER_SPEED)
+                dc_says.append(f"{mph:g} mph")
+                osm_says.append(f"{osm_mph:g} mph")
+        if sources.get("lanes") == DC_AGENCY:
+            lanes, osm_lanes = lanes_per_direction(after), lanes_per_direction(osm)
+            if lanes is not None and osm_lanes is not None and lanes != osm_lanes:
+                kinds.append(NEWER_LANES)
+                dc_says.append(_lanes_text(lanes))
+                osm_says.append(_lanes_text(osm_lanes))
+        if sources.get("bike") == DC_AGENCY:
+            bike, osm_bike = _bike_sides(after), _bike_sides(osm)
+            if bike != osm_bike:
+                kinds.append(NEWER_BIKE)
+                dc_says.append(_sides_text(bike))
+                osm_says.append(_sides_text(osm_bike))
+        if not kinds:
+            continue
+        where, entry = take_osm_override(r, kinds)
+        flagged.append(
+            {
+                "way": r["way"],
+                "street": r["street"],
+                "edited": edited,
+                "kinds": kinds,
+                "dc": "; ".join(dc_says),
+                "osm": "; ".join(osm_says),
+                "tier0": r["tier0"],
+                "tier1": r["tier1"],
+                "where": where,
+                "override": entry,
+            }
+        )
+    return sorted(flagged, key=lambda f: (f["street"], f["way"]))
+
+
 def link(way: int) -> str:
     return f"[{way}](https://www.openstreetmap.org/way/{way})"
 
@@ -330,9 +486,48 @@ def _listing(chosen: list[dict]) -> list[str]:
     return out
 
 
-def markdown(rows: list[Mapping], found: list[dict], source: str) -> str:
+def _newer_section(rows: list[Mapping], newer: list[dict], as_of: date) -> list[str]:
+    dated = sum(1 for r in rows if r.get("edited"))
+    out = [
+        "",
+        f"## OSM edited after the record: for the owner's call, every one, {len(newer):,}",
+        "",
+        f"District ways OSM last edited after {as_of.isoformat()}, the date of the installed "
+        "Roadway Block record (its retrieval date, docs/SOURCES.md), where OSM's posted speed, "
+        "lanes per direction or bike lanes disagree with what the record applied. The record still "
+        "wins (OWNER-DECISIONS 190): OSM's date is the whole way's last edit, not the tag's. The "
+        "owner, 2026-11-08: \"If there's a newer OSM rating, then on a rebuild it should flag it and "
+        "I can make the call.\" To take OSM's value, check in the entry in the last column, with the "
+        "owner's words as its reason and what was seen on the spot as its evidence; "
+        'docs/OPERATIONS.md, "The DC-against-OSM discrepancy report", has the steps. Every one is '
+        f"also a row of `{NEWER_CSV_NAME}`. {dated:,} of {len(rows):,} matched ways carry an OSM "
+        "edit date in this extract.",
+        "",
+    ]
+    if not newer:
+        return [*out, "None."]
+    out += [
+        "| street | OSM way | OSM edited | DC applies | OSM says | tier: with DC, OSM's tags | to take OSM's value |",
+        "| --- | --- | --- | --- | --- | --- | --- |",
+    ]
+    for f in newer:
+        out.append(
+            f"| {f['street']} | {link(f['way'])} | {f['edited']} | {f['dc']} | {f['osm']} | "
+            f"LTS {f['tier1']}, LTS {f['tier0']} | {f['where']}: `{f['override']}` |"
+        )
+    return out
+
+
+def markdown(
+    rows: list[Mapping],
+    found: list[dict],
+    source: str,
+    newer: list[dict] | None = None,
+    as_of: date | None = None,
+) -> str:
     """The report for the owner: the totals by type, the not-applied items
-    summarised by reason (every one is in the CSV), every owner override, and
+    summarised by reason (every one is in the CSV), every owner override, the
+    ways OSM edited after the record (`newer_osm`; the rebuild's report only), and
     the longest applied items of each type."""
     by_type = defaultdict(list)
     for item in found:
@@ -406,6 +601,8 @@ def markdown(rows: list[Mapping], found: list[dict], source: str) -> str:
         "",
     ]
     out += _listing(overrides) if overrides else ["None."]
+    if newer is not None and as_of is not None:
+        out += _newer_section(rows, newer, as_of)
     out.append("")
     for key, label in TYPES:
         group = sorted(
@@ -427,8 +624,16 @@ def _write(path: Path, write) -> None:
     os.replace(partial, path)
 
 
-def write_report(rows: list[Mapping], out_dir: Path, source: str) -> list[dict]:
-    """Write `MD_NAME` and `CSV_NAME` into `out_dir` from `row`s; the items found."""
+def write_report(
+    rows: list[Mapping],
+    out_dir: Path,
+    source: str,
+    newer: list[dict] | None = None,
+    as_of: date | None = None,
+) -> list[dict]:
+    """Write `MD_NAME` and `CSV_NAME` into `out_dir` from `row`s; the items found.
+    Given `newer` (`newer_osm` against `as_of`; the rebuild's), its section and
+    `NEWER_CSV_NAME` as well."""
     found = list(items(rows))
     for item in found:
         item["reason"] = (
@@ -439,7 +644,7 @@ def write_report(rows: list[Mapping], out_dir: Path, source: str) -> list[dict]:
             )
         )
     out_dir.mkdir(parents=True, exist_ok=True)
-    text = markdown(rows, found, source)
+    text = markdown(rows, found, source, newer, as_of)
     _write(out_dir / MD_NAME, lambda handle: handle.write(text))
 
     def table(handle) -> None:
@@ -465,6 +670,29 @@ def write_report(rows: list[Mapping], out_dir: Path, source: str) -> list[dict]:
             )
 
     _write(out_dir / CSV_NAME, table)
+    if newer is not None:
+
+        def flagged(handle) -> None:
+            writer = csv.writer(handle, lineterminator="\n")
+            writer.writerow(NEWER_CSV_HEADER)
+            for f in newer:
+                writer.writerow(
+                    [
+                        f["way"],
+                        f"https://www.openstreetmap.org/way/{f['way']}",
+                        f["street"],
+                        f["edited"],
+                        "; ".join(f["kinds"]),
+                        f["dc"],
+                        f["osm"],
+                        f["tier1"],
+                        f["tier0"],
+                        f["where"],
+                        f["override"],
+                    ]
+                )
+
+        _write(out_dir / NEWER_CSV_NAME, flagged)
     return found
 
 

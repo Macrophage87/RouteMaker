@@ -320,3 +320,156 @@ def test_the_rebuild_s_rows_are_the_script_s_rows(report) -> None:
         )
     )
     assert built == read
+
+
+# -- OSM edited after the record (hunt D6; the owner, 2026-11-08) ----------------------
+#
+# "We should build a flag in. If there's a newer OSM rating, then on a rebuild it should
+# flag it and I can make the call." The District's record still wins (OWNER-DECISIONS 190);
+# a way OSM last edited after the record's date that disagrees with it is listed.
+
+
+def _overlaid(tags: dict, edited, **facts_kwargs):
+    """The overlay the rebuild classifies with, and the report's row for it."""
+    from routemaker import agency_roads as A
+    from routemaker.stress import classify
+
+    facts = A.WayFacts(agency=A.DC_AGENCY, blocks=("dc-1-0",), **facts_kwargs)
+    result = A.overlay(tags, facts)
+    built = discrepancies.row(
+        way=7,
+        name=tags.get("name"),
+        highway=tags["highway"],
+        length_m=300.0,
+        blocks=facts.blocks,
+        tier0=int(classify(tags, urban=True, jurisdiction="DC").tier),
+        tier1=int(classify(result.tags, urban=True, jurisdiction="DC").tier),
+        disagreements=result.disagreements,
+        agreements=result.agreements,
+        osm=tags,
+        after=result.tags,
+        facts=discrepancies.facts_summary(facts),
+        sources=result.sources,
+        osm_edited=edited,
+        block_keys=[("4f98key", "DIET ST NW")],
+    )
+    return result, built
+
+
+DIET = {
+    "highway": "secondary",
+    "name": "Diet Street NW",
+    "maxspeed": "25 mph",
+    "lanes": "2",
+    "cycleway:both": "lane",
+}
+RECORD = {"lanes_per_direction": 2, "one_way": False, "speed_mph": 30}
+
+
+def test_a_newer_osm_edit_that_disagrees_is_flagged_and_dc_still_applies() -> None:
+    """A road diet OSM mapped after the record (4 lanes to 2 with painted lanes): the
+    record's 2 + 2 lanes, 30 mph and no lane are still what the classifier reads, and the
+    way is flagged with what each says and the stress row that would take OSM's tier."""
+    from datetime import timedelta
+
+    from pipeline.overrides import stress_value_problem
+    from routemaker import agency_roads as A
+
+    edited = A.DC_RECORD_AS_OF + timedelta(days=1)
+    result, built = _overlaid(DIET, edited, **RECORD)
+    assert result.tags["lanes:forward"] == result.tags["lanes:backward"] == "2"
+    assert result.tags["maxspeed"] == "30 mph" and "cycleway:both" not in result.tags
+    [flag] = discrepancies.newer_osm([built], A.DC_RECORD_AS_OF)
+    assert flag["way"] == 7 and flag["street"] == "Diet Street NW"
+    assert flag["edited"] == edited.isoformat()
+    assert flag["kinds"] == ["speed", "lanes", "bike facility"]
+    assert flag["dc"] == "30 mph; 2 lanes a direction; no bike lane"
+    assert flag["osm"] == "25 mph; 1 lane a direction; painted lane both sides"
+    entry = json.loads(flag["override"])
+    assert entry["kind"] == "stress" and entry["osm_way_id"] == 7
+    assert entry["value"]["tier"] == built["tier0"] < built["tier1"]
+    assert stress_value_problem(entry["value"]) is None
+    assert "load_access_overrides" in flag["where"]
+
+
+def test_an_osm_edit_no_newer_than_the_record_is_not_flagged() -> None:
+    from datetime import date
+
+    from routemaker import agency_roads as A
+
+    for edited in (A.DC_RECORD_AS_OF, date(2025, 6, 1), None):
+        _, built = _overlaid(DIET, edited, **RECORD)
+        assert discrepancies.newer_osm([built], A.DC_RECORD_AS_OF) == []
+
+
+def test_a_newer_osm_edit_that_agrees_with_the_record_is_not_flagged() -> None:
+    from datetime import timedelta
+
+    from routemaker import agency_roads as A
+
+    agreeing = {"highway": "secondary", "maxspeed": "30 mph", "lanes": "4"}
+    _, built = _overlaid(agreeing, A.DC_RECORD_AS_OF + timedelta(days=30), **RECORD)
+    assert discrepancies.newer_osm([built], A.DC_RECORD_AS_OF) == []
+
+
+def test_a_newer_osm_speed_alone_takes_the_owner_s_block_correction() -> None:
+    """The posted speed alone: the `agency_blocks` entry withholding the record's speed
+    (OWNER-DECISIONS 197), in the shape the override loader reads."""
+    from datetime import timedelta
+
+    from routemaker import agency_roads as A
+
+    tags = {"highway": "secondary", "name": "Diet Street NW", "maxspeed": "25 mph"}
+    _, built = _overlaid(tags, A.DC_RECORD_AS_OF + timedelta(days=1), speed_mph=30)
+    [flag] = discrepancies.newer_osm([built], A.DC_RECORD_AS_OF)
+    assert flag["kinds"] == ["speed"] and "agency_blocks" in flag["where"]
+    entries = json.loads(flag["override"])
+    assert entries == [
+        {
+            "blockkey": "4f98key",
+            "routename": "DIET ST NW",
+            "withhold": ["speed"],
+            "reason": discrepancies.OWNER_REASON,
+            "evidence": discrepancies.OWNER_EVIDENCE,
+        }
+    ]
+
+
+def test_a_suggested_block_correction_is_one_the_override_loader_reads(tmp_path) -> None:
+    from datetime import timedelta
+
+    from routemaker import agency_roads as A
+
+    tags = {"highway": "secondary", "name": "Diet Street NW", "maxspeed": "25 mph"}
+    _, built = _overlaid(tags, A.DC_RECORD_AS_OF + timedelta(days=1), speed_mph=30)
+    [flag] = discrepancies.newer_osm([built], A.DC_RECORD_AS_OF)
+    (tmp_path / "x.json").write_text(json.dumps({"agency_blocks": json.loads(flag["override"])}))
+    assert A.withheld_blocks(tmp_path)["4f98key"].facts == frozenset({"speed"})
+
+
+def test_the_rebuild_s_report_lists_the_flagged_ways_and_the_script_s_copy_does_not(
+    report, tmp_path
+) -> None:
+    from datetime import timedelta
+
+    from routemaker import agency_roads as A
+
+    _, built = _overlaid(DIET, A.DC_RECORD_AS_OF + timedelta(days=1), **RECORD)
+    newer = discrepancies.newer_osm([built], A.DC_RECORD_AS_OF)
+    rebuild = tmp_path / "rebuild"
+    discrepancies.write_report(
+        [built], rebuild, discrepancies.REBUILD_SOURCE, newer=newer, as_of=A.DC_RECORD_AS_OF
+    )
+    text = (rebuild / discrepancies.MD_NAME).read_text()
+    section = text.split("## OSM edited after the record: for the owner's call, every one, 1")[1]
+    assert "| Diet Street NW | [7](https://www.openstreetmap.org/way/7) | 2026-10-02 |" in section
+    assert "1 of 1 matched ways carry an OSM edit date" in section
+    with (rebuild / discrepancies.NEWER_CSV_NAME).open() as handle:
+        [written] = list(csv.DictReader(handle))
+    assert (written["osm_way_id"], written["osm_edited"]) == ("7", "2026-10-02")
+    assert written["dc_applies"] == "30 mph; 2 lanes a direction; no bike lane"
+    assert json.loads(written["override"])["kind"] == "stress"
+    copy = tmp_path / "copy"
+    discrepancies.write_report([built], copy, report.SOURCE)
+    assert "OSM edited after the record" not in (copy / discrepancies.MD_NAME).read_text()
+    assert not (copy / discrepancies.NEWER_CSV_NAME).exists()

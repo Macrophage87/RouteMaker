@@ -2918,6 +2918,13 @@ def build_handlers(
         a count layer gave it (not a block's), as `data_before_after.py` has it."""
         reference = context.require_reference()
         try:
+            # Each block's own key and street (DC's BLOCKKEY, ROUTENAME), for the
+            # owner's block correction a flagged way would take (`newer_osm`).
+            keys_of = {
+                block.feature_id: (block.facts.block_key, block.facts.name or "")
+                for block in reference.road_blocks
+                if block.facts.block_key
+            }
             rows = []
             for way, tags, match, overlaid in reported:
                 counted = match if match is not None and match.source != "inventory" else None
@@ -2951,15 +2958,32 @@ def build_handlers(
                         after=tags,
                         facts=discrepancies.facts_summary(facts),
                         sources={**overlaid.sources, "aadt": agency_roads.aadt_source(match)},
+                        osm_edited=way.edited.date() if way.edited else None,
+                        block_keys=[keys_of[b] for b in facts.blocks if b in keys_of],
                     )
                 )
             out_dir = context.work_dir / DISCREPANCY_REPORT_DIR
-            found = discrepancies.write_report(rows, out_dir, discrepancies.REBUILD_SOURCE)
+            # The ways OSM edited after the record that disagree with it: the record
+            # still wins, and the owner makes the call (the owner, 2026-11-08: "If
+            # there's a newer OSM rating, then on a rebuild it should flag it and I
+            # can make the call.").
+            as_of = agency_roads.DC_RECORD_AS_OF
+            newer = discrepancies.newer_osm(rows, as_of)
+            found = discrepancies.write_report(
+                rows, out_dir, discrepancies.REBUILD_SOURCE, newer=newer, as_of=as_of
+            )
             logger.info(
                 "DC-against-OSM discrepancy report: %d items on %d ways, written to %s",
                 len(found),
                 len(rows),
                 out_dir,
+            )
+            logger.info(
+                "DC ways OSM edited after the record (%s) that disagree with it, for the "
+                "owner's call: %d, in %s",
+                as_of.isoformat(),
+                len(newer),
+                discrepancies.NEWER_CSV_NAME,
             )
         except Exception:
             logger.warning("DC-against-OSM discrepancy report not written", exc_info=True)
