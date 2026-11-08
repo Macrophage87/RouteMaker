@@ -91,6 +91,7 @@ import re
 from collections import defaultdict
 from collections.abc import Collection, Iterable, Iterator, Mapping, Sequence
 from dataclasses import asdict, dataclass, field, replace
+from datetime import date
 from pathlib import Path
 from typing import NamedTuple
 
@@ -246,6 +247,23 @@ WITHHOLDABLE = frozenset({"speed"})
 OWNER_DIRECTIONS = frozenset({"OB", "IB", "BD"})
 # How the report names a value the owner withheld (dc-osm-discrepancies).
 OWNER_OVERRIDE = "owner override"
+# The reason and evidence a suggested override leaves for the owner to fill
+# (`pipeline.dc_osm_newer`). Every loader of an override refuses them as written,
+# so a suggestion copied in unfilled is caught before it is in force: this one
+# (`withheld_blocks`), `manage.py load_access_overrides`, and the kept list.
+REASON_PLACEHOLDER = "<the owner's words>"
+EVIDENCE_PLACEHOLDER = "<what was seen on the spot>"
+PLACEHOLDERS = frozenset({REASON_PLACEHOLDER, EVIDENCE_PLACEHOLDER})
+
+
+def placeholder_problem(field: str, text: object) -> str | None:
+    """Why `text` is still a suggestion's placeholder for `field`, or None."""
+    if isinstance(text, str) and text.strip() in PLACEHOLDERS:
+        return (
+            f"{field} is still the suggested placeholder {text.strip()!r}: write the owner's "
+            "own words (reason) and what was seen on the spot (evidence) before loading it"
+        )
+    return None
 
 
 class WithheldBlockRefused(ValueError):
@@ -319,6 +337,9 @@ def withheld_blocks(directory: str | Path | None = None) -> dict[str, WithheldBl
             for name in ("reason", "evidence"):
                 if not isinstance(entry.get(name), str) or not entry[name].strip():
                     raise WithheldBlockRefused(f"{where}: {name} is required")
+                problem = placeholder_problem(name, entry[name])
+                if problem:
+                    raise WithheldBlockRefused(f"{where}: {problem}")
             names[key] = routename
             held[key].update(facts)
             if direction is not None:
@@ -1231,6 +1252,20 @@ _TRACK_VALUES = frozenset({"track", "opposite_track"})
 # (OWNER-DECISIONS 190: "DC data takes priority over OSM. It's updated
 # regularly."). Baltimore's centerline fills gaps only (item 184).
 RECORD_WINS = frozenset({DC_AGENCY})
+
+# The newest the installed Roadway Block record can be: the day it was retrieved
+# (docs/SOURCES.md, the Roadway Block entry; `tests/test_agency_roads.py` holds the
+# two equal, so a reinstall updates both). The layer dates none of its blocks' lanes,
+# speeds or bike lanes (only its pavement fields are dated). The record still wins
+# (item 190) however new an OSM edit is: OSM's edit date is the whole way's last
+# edit, not the tag's, so a newer way is not a newer speed, lane count or bike lane
+# (hunt D6; a fix that let it win was held). Instead, a District way OSM last edited
+# after this date whose posted speed, lanes or bike tags disagree with what the
+# record applied is listed beside the rebuild's discrepancy report for the owner
+# to decide (`pipeline.dc_osm_newer`). The owner, 2026-11-08: "We should
+# build a flag in. If there's a newer OSM rating, then on a rebuild it should flag
+# it and I can make the call."
+DC_RECORD_AS_OF = date(2026, 10, 1)
 
 # The rows of OWNER-DECISIONS 190 (review r2's table) where the District's record
 # now overrides an OSM tag the round-1 rules kept; `Overlay.precedence` names them.

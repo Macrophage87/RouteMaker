@@ -83,6 +83,7 @@ from . import (
     borders,
     checkpoint,
     conflation,
+    dc_osm_newer,
     discrepancies,
     elevation,
     extract,
@@ -875,6 +876,10 @@ class RebuildContext:
     aadt_raw_by_way: dict[int, conflation.Match] = field(default_factory=dict)
     smoothing_report: aadt_smoothing.SmoothingReport | None = None
     corridor_report: corridors.CorridorReport | None = None
+    # The DC-against-OSM discrepancy report's rows (`discrepancies.row`), from the
+    # classification, for the list of ways OSM edited after the record that
+    # APPLY_OVERRIDES writes once the approved rows are known (`dc_osm_newer`).
+    dc_report_rows: list[dict] = field(default_factory=list)
     # The owner's facility class per way (`routemaker.facility`), and the ride
     # times in which a timed closure makes a road car-free. Computed once, after
     # the access overrides, by the first stage that needs them.
@@ -2918,6 +2923,13 @@ def build_handlers(
         a count layer gave it (not a block's), as `data_before_after.py` has it."""
         reference = context.require_reference()
         try:
+            # Each block's own key and street (DC's BLOCKKEY, ROUTENAME), for the
+            # owner's block correction a flagged way would take (`dc_osm_newer`).
+            keys_of = {
+                block.feature_id: (block.facts.block_key, block.facts.name or "")
+                for block in reference.road_blocks
+                if block.facts.block_key
+            }
             rows = []
             for way, tags, match, overlaid in reported:
                 counted = match if match is not None and match.source != "inventory" else None
@@ -2945,14 +2957,21 @@ def build_handlers(
                         blocks=facts.blocks,
                         tier0=int(before.tier),
                         tier1=int(context.stress_by_way[way.osm_id].tier),
+                        tier0_half=before.half,
+                        tier1_half=context.stress_by_way[way.osm_id].half,
                         disagreements=overlaid.disagreements,
                         agreements=overlaid.agreements,
                         osm=way.tags,
                         after=tags,
                         facts=discrepancies.facts_summary(facts),
                         sources={**overlaid.sources, "aadt": agency_roads.aadt_source(match)},
+                        osm_edited=way.edited.date() if way.edited else None,
+                        block_keys=[keys_of[b] for b in facts.blocks if b in keys_of],
                     )
                 )
+            # Kept for the ways OSM edited after the record, written once the approved
+            # override rows are read (`write_newer_osm_report`, APPLY_OVERRIDES).
+            context.dc_report_rows = rows
             out_dir = context.work_dir / DISCREPANCY_REPORT_DIR
             found = discrepancies.write_report(rows, out_dir, discrepancies.REBUILD_SOURCE)
             logger.info(
@@ -3026,6 +3045,65 @@ def build_handlers(
             },
             "override re-match",
         )
+
+    def write_newer_osm_report(rows) -> None:
+        """The District ways OSM edited after DC's record that disagree with what it
+        applied, for the owner's call (`pipeline.dc_osm_newer`; the owner, 2026-11-08:
+        "If there's a newer OSM rating, then on a rebuild it should flag it and I can
+        make the call."). DC's value still stands. Here, after the approved rows are
+        read and re-matched, so a way the owner has set with a stress row, or kept DC's
+        value on (`fixtures/dc_osm_kept.json`), is listed as decided and not asked about
+        again. A report, not the stage's output: it never fails the rebuild."""
+        # Last rebuild's list is removed first, so a rebuild that writes none leaves no stale
+        # list to be read as current (review, 2026-11-08).
+        for name in (dc_osm_newer.MD_NAME, dc_osm_newer.CSV_NAME):
+            (context.work_dir / DISCREPANCY_REPORT_DIR / name).unlink(missing_ok=True)
+        reported = context.dc_report_rows
+        if not reported:
+            return
+        try:
+            as_of = agency_roads.DC_RECORD_AS_OF
+            try:
+                kept = dc_osm_newer.load_kept()
+            except dc_osm_newer.KeptRefused:
+                logger.warning(
+                    "the kept list (fixtures/dc_osm_kept.json) was refused; every way is "
+                    "listed as open until it is corrected",
+                    exc_info=True,
+                )
+                kept = {}
+
+            def fingerprint_of(way_id: int) -> dict | None:
+                way = context.ways_by_id.get(way_id)
+                if way is None or len(way.coordinates) < 2:
+                    return None
+                return rematch.fingerprint_of(way.tags, way.coordinates)
+
+            flagged = dc_osm_newer.newer_osm(
+                reported,
+                as_of,
+                decided=dc_osm_newer.decided_ways(rows),
+                kept=kept,
+                fingerprint_of=fingerprint_of,
+            )
+            dc_osm_newer.write_report(
+                flagged,
+                context.work_dir / DISCREPANCY_REPORT_DIR,
+                matched=len(reported),
+                dated=sum(1 for r in reported if r.get("edited")),
+                as_of=as_of,
+            )
+            opened = sum(1 for f in flagged if f["status"] == dc_osm_newer.OPEN)
+            logger.info(
+                "DC ways OSM edited after the record (%s) that disagree with it, for the "
+                "owner's call: %d open, %d decided, in %s",
+                as_of.isoformat(),
+                opened,
+                len(flagged) - opened,
+                dc_osm_newer.MD_NAME,
+            )
+        except Exception:
+            logger.warning("DC ways OSM edited after the record: report not written", exc_info=True)
 
     def apply_overrides() -> None:
         """The audited corrections, applied where each kind belongs.
@@ -3109,6 +3187,7 @@ def build_handlers(
             # alert said anything an operator could act on.
             raise ValidationFailed(f"an approved override row was refused: {refused}") from refused
 
+        write_newer_osm_report(rows)
         context.reviewer_surface_by_way = surfaces
         missing = tuple(
             sorted({*access_missing, *stress_missing, *jurisdiction_missing, *surface_missing})

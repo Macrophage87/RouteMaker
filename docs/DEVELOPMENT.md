@@ -4628,6 +4628,30 @@ ways (about 13,600) and never fails a rebuild: an error is logged as a warning
 and the stage goes on. The copy in `reports/data-comparison/` is the same report
 written from `dcbal.tsv` by the script below.
 
+Beside it, the rebuild (not the checked-in copy: `dcbal.tsv` keeps no edit dates)
+writes `dc-osm-newer-osm-edits.md` and `.csv` (`pipeline.dc_osm_newer`; hunt D6). The
+owner, 2026-11-08: "We should build a flag in. If there's a newer OSM rating, then on a
+rebuild it should flag it and I can make the call." One row per District way OSM last
+edited (`Way.edited`) after the record's date, `agency_roads.DC_RECORD_AS_OF`
+(2026-10-01, the Roadway Block's retrieval date in docs/SOURCES.md; a test holds the
+two equal), where OSM's posted speed, lanes per direction or bike lanes disagree with
+what the record applied. The record still wins (item 190): OSM's timestamp is the whole
+way's last edit, not the tag's, so a fix that let a newer way win was held. A value the
+record did not apply (an item 190 exception, a speed the owner withheld) is OSM's
+already and is not listed. The classification stage keeps the report's rows
+(`RebuildContext.dc_report_rows`), and APPLY_OVERRIDES writes the list once the approved
+rows are read and re-matched, so a way with an approved stress row, or one in the
+owner's kept list (`fixtures/dc_osm_kept.json`, against the OSM edit date he saw), is
+listed as decided rather than open. Each row names the way, its street, what DC
+applies, what OSM says, the OSM edit date (the date only), both tiers (half steps
+kept), and two entries: to take OSM's value, for the posted speed alone an
+`agency_blocks` entry per block withholding it (item 197, by BLOCKKEY and ROUTENAME),
+otherwise a hidden, fingerprinted stress row at the tier OSM's tags give (a floor where
+that is the higher), which holds the tier while the way's tags stay DC's; to keep DC's,
+the kept-list entry. Their reason and evidence are placeholders, which
+`withheld_blocks`, `load_access_overrides` and `load_kept` refuse
+(`agency_roads.placeholder_problem`).
+
 **The comparison and match reports** are scripts, not stages:
 `scripts/analysis/data_before_after.py` (DC and Baltimore, with and without the
 layers, over the source extract, the rebuild's own steps; its output feeds

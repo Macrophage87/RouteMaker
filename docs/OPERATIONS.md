@@ -4882,6 +4882,7 @@ posted `maxspeed` on the way always wins.
 | `divided roads: N carriageways in N s` | about 46,000 on the region, under 30 s |
 | `curated speed limits not applied (posted, or no such way): [...]` | should not appear; a way listed was posted since or left the extract, and its row can go |
 | `owner's block correction not applied (fixtures/overrides agency_blocks): block <BLOCKKEY> (...) is not among the installed agency street blocks; ...` | should not appear; the owner's correction (OWNER-DECISIONS 197) is not applied and DC's value is read. A `roadway.json` installed before the street blocks kept DC's BLOCKKEY says this for every block: reinstall them (`--roadway-block`, above) and rebuild. A block DC has dropped or rekeyed, or one on another street, wants its entry in fixtures/overrides corrected |
+| `DC ways OSM edited after the record (2026-10-01) that disagree with it, for the owner's call: N open, M decided, in dc-osm-newer-osm-edits.md` | written in APPLY_OVERRIDES; the open ones are for the owner to review: DC's value is still applied on every one, and each row names the override that takes OSM's value and the entry that keeps DC's ("The DC-against-OSM discrepancy report", below) |
 | `facility classes: ...; N CBD sidewalks barred to bicycles, N singletrack ways avoided` | about 2,000 CBD sidewalks; singletrack in the hundreds |
 
 `manage.py check_weekday_trails` (acceptance A7) is **report-only**: it prints
@@ -5362,6 +5363,53 @@ in full, every item in the CSV. Nothing needs running; the rebuild log says
 replaces last week's. A failure to write it is a warning in the log and never
 fails the rebuild. Nothing in it is for importing into OSM (CC BY 4.0 against
 ODbL). docs/DEVELOPMENT.md, "Agency street layers", has what it lists.
+
+**To review each rebuild: OSM edited after the record.**
+`${DATA_ROOT}/rebuild/reports/dc-osm-newer-osm-edits.md` and `.csv`, beside the
+discrepancy report, list every District way OSM last edited after 2026-10-01 (the
+Roadway Block's retrieval date, `agency_roads.DC_RECORD_AS_OF`) where OSM's posted
+speed, lanes per direction or bike lanes disagree with what DC's record applied (the
+owner, 2026-11-08: "If there's a newer OSM rating, then on a rebuild it should flag it
+and I can make the call."; `pipeline.dc_osm_newer`). DC's value is still the one the
+map uses: OSM's date is the whole way's last edit, not the tag's. One row per way: the
+way id, street, what DC applies, what OSM says, the OSM edit date (date only), both
+tiers, the entry that takes OSM's value and the entry that keeps DC's. It is written in
+APPLY_OVERRIDES, after the approved override rows are read, so the list has two parts:
+**Open**, the ways still to decide, and **Decided**, the ways the owner has answered
+(below), which are not asked about again. The log line is "DC ways OSM edited after
+the record (2026-10-01) that disagree with it, for the owner's call: N open, M
+decided". The file also says how many matched ways carry an edit date; none means the
+extract had no timestamps and nothing could be compared.
+
+To answer a row, the owner's words go in as `reason` and what was seen on the spot as
+`evidence`, never Street View or another map; no GPS tracks, rider names or ride
+dates. Every loader refuses the suggested placeholders (`<the owner's words>`, `<what
+was seen on the spot>`) as written. Each answer takes effect at the next rebuild.
+
+- **Take OSM's posted speed** (the row's only disagreement): the row's
+  `agency_blocks` entry (DC's BLOCKKEY and ROUTENAME, `"withhold": ["speed"]`) into a
+  dated `fixtures/overrides/` file (fixtures/overrides/README.md; OWNER-DECISIONS
+  197's Canal Rd file is the model). The rebuild reads it from the image; nothing to
+  load. OSM's speed is then what the classifier reads, the way no longer disagrees, and
+  it leaves the list.
+- **Take OSM's lanes or bike lane** (they cannot be withheld, and a lane override only
+  adds lanes): the row's hidden stress row into a `fixtures/overrides/` file's `rows`,
+  then `manage.py load_access_overrides` (dry, then `--confirm`), as in "Access
+  overrides decided outside the admin" (fixtures/overrides/README.md). **It holds the
+  way's tier, not its tags:** the way is rated at the tier OSM's tags give (a half step
+  kept; a floor, `at_least`, where OSM's tier is the higher), while its lanes and
+  bike-lane tags stay DC's in the road panel and everywhere else they are read. The row
+  carries the way's fingerprint, so it follows the way if OSM splits it (decision 282).
+  Once approved the way is listed under Decided ("tier set by an owner row"); so is any
+  way that carries an approved stress row of any kind.
+- **Keep DC's value**: the row's `keep_dc_entry` (way id and the OSM edit date it
+  showed) into `fixtures/dc_osm_kept.json`'s `kept`, with the owner's reason. The
+  rebuild reads it from the image; nothing to load. The way is listed under Decided
+  ("kept DC's value") until OSM edits it again after that date, when it is open again
+  with a note that it was kept before. A malformed kept list is a warning in the log,
+  and every way is then listed as open.
+
+A row the owner leaves is open again next week.
 
 ### AADT smoothing, named corridors and the override re-match
 
