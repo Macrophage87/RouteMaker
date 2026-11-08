@@ -1403,6 +1403,12 @@ class TestBuild:
         )
         return made
 
+    def test_the_movement_round_a_roundabout_is_carried(self) -> None:
+        """Hunt J4: the trace's reading of a ride round a ring reaches the model."""
+        made = self.built(crossroads(), raw(ring_movement=Movement.LEFT))
+        assert made.ring_movement is Movement.LEFT
+        assert self.built(crossroads()).ring_movement is None
+
     def test_the_cross_road_with_its_names_and_both_ways(self) -> None:
         made = self.built(crossroads(**{"in": {"stop": True}}))
         assert made.incoming.tier == made.outgoing.tier == 2

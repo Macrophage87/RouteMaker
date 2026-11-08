@@ -1135,6 +1135,7 @@ def build_junctions(
                 links=tuple(road(a, a.way_id, [a]) for a in links),
                 located=node is not None,
                 continues=continues,
+                ring_movement=raw.ring_movement,
             )
         )
     return junctions
