@@ -2746,7 +2746,8 @@ def make_loop(trip: dict, ctx: Context) -> tuple[dict, dict]:
     Returns (trip, info) with `info`: `overlap_pct` and `shared_m` of the trip
     returned, `return_m`, `excluded` (how many points), `tried` (routes asked for) and
     `fallback` (None, or "out_and_back", or why nothing was tried, or "time" where the
-    ways back were not all asked for want of time and none was found)."""
+    ways back were not all asked for want of time and none was found or the router's own
+    was kept)."""
     info: dict = {
         "overlap_pct": None,
         "shared_m": None,
@@ -2889,11 +2890,21 @@ def make_loop(trip: dict, ctx: Context) -> tuple[dict, dict]:
             routing._skipped_for_time()
         return trip, info
     _ranked, joined, whole, excluded, share = best
-    if joined is trip:
-        # The router's own way back ranked first (P2-4): `info` already reads it.
-        return trip, info
-    if not seeded and share >= overlap_share(first) and overlap_share(first) < LOOP_OUT_AND_BACK:
-        # Nothing the router gave shares less than its own route's way back did.
+    # The router's own way back kept: it ranked first (P2-4), or, where its junctions could not
+    # be read, nothing the router gave shares less than it did. `info` already reads it.
+    own = joined is trip or (
+        not seeded and share >= overlap_share(first) and overlap_share(first) < LOOP_OUT_AND_BACK
+    )
+    if own:
+        if cut_short:
+            # Review of hunt 2 (P2-3 with P2-4): best starts as the router's own way back, so
+            # where the asks stopped for the time and it shares under LOOP_OUT_AND_BACK it was
+            # answered with `fallback` None, no skip counted, and kept for the day, though the
+            # ways back that might have beaten it were never read. It says `time` as the
+            # out-and-back does; its `overlap_pct` stays, and `routing.plan` still holds the
+            # search to it.
+            info["fallback"] = "time"
+            routing._skipped_for_time()
         return trip, info
     shared, back = return_overlap(whole)
     info.update(

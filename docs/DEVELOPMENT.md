@@ -6018,8 +6018,9 @@ it gave 58.0 mi, 0.24 mi and 7.2 mi, which is the router again, leg by leg, with
   leg is searched alone, so one leg could reach the cut along its edge from the far end and the
   next leave back that way, a U-turn at a place that is no stop, which each leg's own retrace
   check cannot see. The stretches either side of a cut count as one leg. The baseline was the
-  router's whole route until hunt 2 (P2-6): it has no cut, so a U-turn the legs' own first routes
-  already made at a cut (a cut on a one-way edge, or a snap) threw away every leg's gain. One
+  router's whole route until hunt 2 (P2-6, Claude's choice, not an owner decision): it has no cut,
+  so a U-turn the legs' own first routes already made at a cut (a cut on a one-way edge, or a snap)
+  threw away every leg's gain. One
   U-turn the search did make still reverts all the legs, not only the two beside it.
 - **Time.** The plan has the long ride's budget, 50 s in all (`LONG_PLAN_BUDGET_S`, 47 s for the
   router and its traces once the 3 s answer reserve is taken), under gunicorn's 60 s timeout: the
@@ -6273,6 +6274,10 @@ the way back is the way out whatever is excluded (90% or more), the router's own
 none was found (`LOOP_BUDGET_S` starting with too little left after a hill seek or the target
 fitting, or a slow router), `fallback` is `time` instead, the skip counts as a failed call and
 `route_cache.keepable` refuses it, so it is not kept as an out-and-back for the day (hunt 2, P2-3).
+So is a loop whose asks stopped for the time and whose way back is the router's own however much
+it shares (the review of hunt 2: the router's own way back is where the ranking starts, P2-4, so
+one sharing 50% with no time to ask any other was answered with no `fallback` and kept for the
+day); its `overlap_pct` stays, and the search after it is still held to that share.
 The router's own way back is ranked with the asked ones by the same rule (hunt 2, P2-4): before,
 it was kept only where every asked way back shared at least as much, so one that came back by a
 different calm street (20%) lost to an asked one sharing 8% over a kilometre of LTS 4. `loop` reports `overlap_pct`, `shared_m`, `return_m`, the points

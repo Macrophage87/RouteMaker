@@ -5522,8 +5522,15 @@ def _plan(
     if loop:
         # The way back by a different way, before the search, which then keeps it so.
         trip, loop_info = refine.make_loop(trip, refine_context)
-        if loop_info["fallback"] is None and loop_info["overlap_pct"] is not None:
-            refine_context.loop_overlap = loop_info["overlap_pct"] / 100.0
+        # A loop whose ways back ran out of time keeps the router's own way back, which the
+        # search is held to as well where it shares under LOOP_OUT_AND_BACK (review of hunt 2).
+        overlap = loop_info["overlap_pct"]
+        if (
+            overlap is not None
+            and loop_info["fallback"] in (None, "time")
+            and (loop_info["fallback"] is None or overlap < refine.LOOP_OUT_AND_BACK * 100.0)
+        ):
+            refine_context.loop_overlap = overlap / 100.0
     if len(trip.get("legs") or []) > 1 and not quick and not fixed:
         # A slight price on riding a way twice (the owner, 2026-10-18): each later leg that
         # repeats an earlier one's ways is asked for again (`refine.fewer_repeats`).

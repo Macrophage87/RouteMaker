@@ -15,7 +15,7 @@ from concurrent.futures import Future, wait
 import pytest
 from test_refine import BASE, context
 
-from core import presets, refine, routing
+from core import presets, refine, route_cache, routing
 
 # --- Readings of a loop ---------------------------------------------------------------
 
@@ -381,6 +381,24 @@ class TestMakingALoop:
         trip, info = refine.make_loop(trip0, loop_context())
         assert trip is trip0 and world.requests == [] and info["tried"] == 0
         assert info["fallback"] == "time" and skipped == [1]
+
+    def test_a_routers_own_way_back_kept_for_want_of_time_says_time(self, monkeypatch) -> None:
+        """Review of hunt 2 (P2-3 with P2-4): best starts as the router's own way back, so one
+        sharing 50% (between LOOP_OVERLAP_OK and LOOP_OUT_AND_BACK) with no time to ask any
+        other was answered with `fallback` None, no skip counted, and kept for the day."""
+        world = LoopWorld(monkeypatch, readings(R1=list(range(101, 141))), [("R1", 4.2)] * 4)
+        world.readings[("out", "same")] = loop_read(OUT, OUT[:20] + list(range(101, 121)))
+        monkeypatch.setattr(refine, "LOOP_BUDGET_S", 0.0)
+        skipped: list = []
+        monkeypatch.setattr(routing, "_skipped_for_time", lambda: skipped.append(1))
+        trip0 = two_leg_trip()
+        trip, info = refine.make_loop(trip0, loop_context())
+        assert trip is trip0 and world.requests == [] and info["tried"] == 0
+        assert info["overlap_pct"] == 50.0
+        assert info["fallback"] == "time" and skipped == [1]
+        assert not route_cache.keepable(
+            {"variant": "own", "loop": info}, own_variant="own", failures=0
+        )
 
     def test_the_routers_own_calm_way_back_is_ranked_with_the_asked_ones(self, monkeypatch) -> None:
         """Hunt 2, P2-4: the router's own way back shares 20% (under LOOP_OVERLAP_OK) and is

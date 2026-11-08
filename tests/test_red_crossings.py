@@ -251,6 +251,20 @@ def test_a_red_near_a_stop_the_rider_placed_is_still_left(monkeypatch):
     assert info["reds"] == 0 and router.asked == []
 
 
+def test_the_stops_are_the_answers_own_legs_where_its_leg_count_changed():
+    """Hunt 2, P2-1: `stops_m` maps the long plan's cuts onto the answer only where it has
+    the cut legs; where the answer's leg count is not theirs (the router's own route
+    answered, or another pass rejoined or split its legs) its boundaries are the rider's."""
+    refined = {"long": {"legs": 3, "stops": [2, 1]}}
+    cut = dataclasses.replace(THROUGH_READ, via_m=[8_000.0, 20_000.0])
+    assert red_crossings.stops_m(cut, refined) == [20_000.0]
+    for via in ([20_000.0], [5_000.0, 10_000.0, 20_000.0], []):
+        read = dataclasses.replace(THROUGH_READ, via_m=via)
+        assert red_crossings.stops_m(read, refined) == via, via
+    assert red_crossings.stops_m(cut, None) == [8_000.0, 20_000.0]
+    assert red_crossings.stops_m(cut, {"long": {"stops": []}}) == [8_000.0, 20_000.0]
+
+
 def test_a_loops_way_round_onto_its_way_out_is_refused(monkeypatch):
     out_and_back = trip_of_line(THROUGH, 40.0, legs=2)
     ctx = context()
