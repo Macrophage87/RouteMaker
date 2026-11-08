@@ -727,7 +727,18 @@ def stress_rows(row: dict) -> list[dict]:
     category = row.get("stress_adjustment_category")
     if category in ADJUSTMENT_CATEGORIES and source == OWNER:
         rows.append(_row("Owner's reason", ADJUSTMENT_CATEGORIES[category].capitalize(), OWNER))
+    if row.get("stress_pending") is True:
+        # A stress edit since the router's graph was built (`stress_edits.routing_pending`;
+        # hunt finding X3, 2026-11-08): the map and the ranking have it now, the router's own
+        # costs only from the next rebuild.
+        rows.append(_row("Routing", ROUTING_PENDING, None))
     return rows + rating_rows(row)
+
+
+# The panel's word while a stress edit waits for the next rebuild, as the editor says it
+# (frontend/src/lib/stressEditor.ts `AFTER_REBUILD`: "routes fully use it after the next
+# weekly data update").
+ROUTING_PENDING = "Routes fully use this level after the next weekly data update"
 
 
 def override_source(row: dict) -> str:
@@ -1524,5 +1535,6 @@ def segment_info(lat: float, lon: float, trail: bool = False) -> dict:
     from . import stress_edits
 
     row["reviewer_surface"] = stress_edits.surface_of(int(row["osm_way_id"]))
+    row["stress_pending"] = stress_edits.routing_pending(int(row["osm_way_id"]))
     router = router_facts(float(row["on_lat"]), float(row["on_lon"]), int(row["osm_way_id"]))
     return describe(row, router)

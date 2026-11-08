@@ -2155,6 +2155,19 @@ class HillPrice:
     # A Mass Ride's or a Novice and Nervous ride's price for steep grades either way
     # (`routemaker.steep_grades`, the owner, 2026-10-26).
     steep: bool = False
+    # An electric assist's watts up a climb (`hill_cost.ASSIST_W`; `assist_watts_for`), which
+    # shorten the climbing time the rider pays and leave the slider's steepness penalty alone
+    # (hunt finding E2, 2026-11-08); 0 on a bike without one.
+    assist_w: float = 0.0
+
+
+def assist_watts_for(preset_name: str, assist: bool) -> float:
+    """The motor's watts the hills price climbs at (`HillPrice.assist_w`): `hill_cost.ASSIST_W`
+    on the E-bike ride type and on a ride with electric assist (a share e-bike, Cargo Bike's
+    assist toggle), else 0. Before 2026-11-08 every ride climbed at the rider's own power, so
+    an e-bike's faster flat speed made its climbs dearer than a plain bike's (presets.py: "the
+    motor takes the climb")."""
+    return hill_cost.ASSIST_W if assist or preset_name == "ebike" else 0.0
 
 
 def rider_hill_s(trip: dict, price: HillPrice, quiet_cost: float) -> float:
@@ -2165,7 +2178,9 @@ def rider_hill_s(trip: dict, price: HillPrice, quiet_cost: float) -> float:
     avoid half's descent cost, and on a Mass Ride or a Novice and Nervous ride the steep
     grades' price (`routemaker.steep_grades`)."""
     profile = grade_profile(trip)
-    rider_m = hill_cost.hill_cost_m(profile, price.mass_kg, price.flat_ms, price.hills)
+    rider_m = hill_cost.hill_cost_m(
+        profile, price.mass_kg, price.flat_ms, price.hills, price.assist_w
+    )
     if price.steep:
         rider_m += steep_grades.penalty_s(profile) * price.flat_ms
     descents = sum(
@@ -5000,6 +5015,7 @@ def _plan(
         descent_weight=avoid_weight,
         brake_grade=preset.brake_grade,
         steep=steep_ride,
+        assist_w=assist_watts_for(preset_name, assist),
     )
     # The detour check's direct route depends on the request alone: where it will surely be
     # asked for, it starts now on the pool, beside the search, as the early alternatives do
@@ -5166,6 +5182,7 @@ def _plan(
         hill_coefficient=grade_stress.coefficient_for(hills_dial),
         brake_grade=preset.brake_grade,
         mass_kg=presets.system_weight_for(preset_name, dials.carrying, dials.system_weight_kg),
+        assist_w=hill_price.assist_w,
         quiet_cost=refine.quiet_cost_per_m(trace_costing),
         wide=refine.wide_search_for(presets.calm_rate_for(stress_dial)),
         seek=trailseek.seek_for(presets.calm_rate_for(stress_dial)),
@@ -5706,7 +5723,7 @@ def _plan(
             at = {
                 h: sum(
                     hill_cost.profile_cost_s(
-                        kept_profile, hill_price.mass_kg, hill_price.flat_ms, h
+                        kept_profile, hill_price.mass_kg, hill_price.flat_ms, h, hill_price.assist_w
                     )
                 )
                 for h in (0, hills_dial)

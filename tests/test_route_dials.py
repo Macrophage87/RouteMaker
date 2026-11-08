@@ -8,6 +8,7 @@ real, because the breakdown is a PostGIS join.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import math
 from datetime import UTC, datetime
@@ -2787,3 +2788,47 @@ class TestRiderSpeedOnAShareBike:
         router(standard_router())
         post(client, {**good_body(presets.BIKESHARE), "cycling_speed_kmh": 32.2})
         assert seen and all(d.cycling_speed_kmh is None for d in seen)
+
+
+# --- Electric assist and the hills price (hunt finding E2, 2026-11-08) ---------------------
+
+
+def test_an_e_bike_prices_a_climb_below_a_plain_bike():
+    """presets.py: "the motor takes the climb". Before 2026-11-08 the climb was timed at the
+    rider's own power and its time taken off at the e-bike's faster flat speed, so the E-bike
+    ride type priced 1 km at 6% at 957 m of flat against a plain bike's 783 m, and a share
+    e-bike at 2.5 times the classic's time. With the motor's watts (`hill_cost.ASSIST_W`)
+    beside the rider's, the time part shrinks, and the slider's penalty is unchanged."""
+    climb = [(float(i * 30), i * 30 * 0.06) for i in range(int(1000 / 30) + 1)]
+    plain = hill_cost.hill_cost_m(climb, 90.0, 16.0 / 3.6, 0)
+    unassisted = hill_cost.hill_cost_m(climb, 90.0, 24.0 / 3.6, presets.EBIKE_HILLS)
+    assisted = hill_cost.hill_cost_m(
+        climb, 90.0, 24.0 / 3.6, presets.EBIKE_HILLS, hill_cost.ASSIST_W
+    )
+    assert unassisted > plain  # the old price
+    assert assisted < plain / 4
+    classic_t, _ = hill_cost.profile_cost_s(climb, 100.0, 13.0 / 3.6, -60)
+    share_t, share_p = hill_cost.profile_cost_s(climb, 108.0, 20.0 / 3.6, -20, hill_cost.ASSIST_W)
+    assert share_t * 20.0 < classic_t * 13.0  # the time part, as metres of flat
+    assert share_p == hill_cost.profile_cost_s(climb, 108.0, 20.0 / 3.6, -20)[1]
+
+
+def test_assist_never_makes_a_climb_cost_more():
+    for grade in (0.02, 0.05, 0.08, 0.12, 0.18):
+        climb = [(float(i * 30), i * 30 * grade) for i in range(int(900 / 30) + 1)]
+        for hills in (-100, -20, 0, 50):
+            without = hill_cost.hill_cost_m(climb, 108.0, 20.0 / 3.6, hills)
+            assert hill_cost.hill_cost_m(climb, 108.0, 20.0 / 3.6, hills, 250.0) <= without
+
+
+def test_the_e_bike_ride_and_assisted_rides_price_climbs_with_the_motor():
+    assert routing.assist_watts_for("ebike", False) == hill_cost.ASSIST_W
+    assert routing.assist_watts_for("bikeshare", True) == hill_cost.ASSIST_W
+    assert routing.assist_watts_for("cargo", True) == hill_cost.ASSIST_W
+    assert routing.assist_watts_for("default", False) == 0.0
+    hilly = _trip(VERTICES, 2.0, ramp_profile([(2000, 0.06)]))
+    plain = routing.rider_hill_s(hilly, _price(0), QUIET_HYBRID)
+    assisted = routing.rider_hill_s(
+        hilly, dataclasses.replace(_price(0), assist_w=hill_cost.ASSIST_W), QUIET_HYBRID
+    )
+    assert assisted < plain
