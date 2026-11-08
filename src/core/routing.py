@@ -2100,6 +2100,9 @@ def twin_fallback(variant: str) -> str:
 TRAIL_TOUCH_VARIANTS = frozenset(
     {Variant.STANDARD.value, Variant.WEEKEND.value, Variant.EBIKE.value}
 )
+# The graphs a plan with trails opened (`trail_touch`) is made on, whose other trails are left
+# out as strays: the off-road graph, and Mountain Bike's after "End mountain biking" from a trail.
+STRAY_GRAPHS = frozenset({Variant.OFFROAD.value, Variant.MTB.value})
 
 
 def _weekend_down() -> bool:
@@ -5382,6 +5385,24 @@ def _plan(
             or dials.mtb_done
             or (bool(dials.blocked) and trail_touch.closed_on_dirt(dials.blocked))
         )
+        # "End mountain biking" pressed on a trail (the owner, 2026-11-08: "It still routes on
+        # trails if you're on one correct? It should get people back to a road or path (gravel
+        # or paved) through the easiest route possible"): the trail under the rider, the
+        # mountain-bike class or rated singletrack, is opened with the trails joined to it, on
+        # the graph that has it (Mountain Bike's for its own rides, else the off-road one), and
+        # no other trail; every other run on one is left out as a stray, as on any ride.
+        exit_trails: frozenset[int] = frozenset()
+        if dials.mtb_done and dials.ride_replan and points:
+            if dials.trail_touched is not None:
+                exit_trails = dials.trail_touched[0]
+            else:
+                (exit_trails,) = trail_touch.touched(
+                    points[:1], reasons=trail_touch.OFF_ROAD_REASONS
+                )
+            if exit_trails and not weekend_beside:
+                touched_trails = exit_trails
+                per_point = (exit_trails, *(frozenset() for _ in points[1:]))
+                variant = Variant.MTB.value if preset_name == mtb.PRESET else Variant.OFFROAD.value
         if not dirt_closed:
             per_point = dials.trail_touched
             if per_point is None:
@@ -5419,6 +5440,10 @@ def _plan(
     lanes_as_roadway = preset.variant == Variant.NO_TRAIL.value
     avoid_gravel = bool(dials.avoid_gravel)
     costing = presets.costing(preset_name, stress_dial, hills_dial, assist=assist)
+    if dials.mtb_done and preset_name == mtb.PRESET:
+        # After "End mountain biking", Mountain Bike's costing no longer seeks paths over roads
+        # (its `use_roads` 0): Default's, so a calm road is as welcome as a path.
+        costing["bicycle"]["use_roads"] = presets.use_roads_for(presets.stress_start("default"))
     if dials.cycling_speed_kmh is not None:
         costing["bicycle"]["cycling_speed"] = float(dials.cycling_speed_kmh)
     if following and dials.follow_exact:
@@ -5621,7 +5646,7 @@ def _plan(
     # This plan's traces, so a route the guards traced is not traced again; `plan`'s, where
     # it re-plans without stray dirt trails, so a later round does not trace them again.
     traces = {} if traces is None else traces
-    if (touched_trails or any_dirt) and variant == Variant.OFFROAD.value:
+    if (touched_trails or any_dirt) and variant in STRAY_GRAPHS:
         # The router's own route is checked for stray dirt trails at once, before the search
         # and anything started beside it, so a round that strays starts again without them
         # now instead of after the whole search (audit S12, part 1; the owner, 2026-10-27
@@ -5978,7 +6003,10 @@ def _plan(
     # And on the weekend plan beside the ride's own (`_plan_twice`), where the trails are closed
     # but the rules still rank the router's routes and say what the route rides.
     mtb_level_held = (
-        preset_name == mtb.PRESET and (variant == Variant.MTB.value or weekend_beside) and not fixed
+        preset_name == mtb.PRESET
+        and (variant == Variant.MTB.value or weekend_beside)
+        and not fixed
+        and not dials.mtb_done
     )
     # Whether the route answered is still the one the search chose: Mountain Bike's choice
     # may swap in a router alternative, or a route its level rounds asked for, that no
@@ -6204,7 +6232,7 @@ def _plan(
         # The router's seconds along the line, read before a long plan's legs are grouped.
         router_at = time_marks.router_marks(legs, coordinates, leg_ends)
         dirt_trails = False
-        if (touched_trails or any_dirt) and variant == Variant.OFFROAD.value:
+        if (touched_trails or any_dirt) and variant in STRAY_GRAPHS:
             ways = trail_touch.off_road_ways([piece.way_id for piece in pieces])
             stray = trail_touch.stray_rings(pieces, ways, touched_trails, any_dirt)
             if stray:

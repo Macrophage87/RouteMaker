@@ -738,3 +738,45 @@ class TestDoneWithMtb:
         assert answer["variant"] == graph
         assert answer.get("mtb") is None
         assert {graph_of(url) for url, _ in routes(fake)} == {graph}
+
+    @pytest.mark.parametrize(
+        ("preset", "reason", "graph"),
+        [
+            ("gravel", "mtb", "offroad"),
+            ("default", "mtb", "offroad"),
+            ("mountain-bike", "mtb", "mtb"),
+            ("mountain-bike", "singletrack", "mtb"),
+        ],
+    )
+    def test_from_on_a_trail_the_way_off_rides_that_trail(
+        self, client, segments, router, preset, reason, graph
+    ) -> None:
+        """The owner, 2026-11-08: "It still routes on trails if you're on one correct? It
+        should get people back to a road or path (gravel or paved) through the easiest route
+        possible"."""
+        add_trail(segments, TOUCHED, START_TRAIL, reason=reason)
+        fake = router(plain_router())
+        body = {
+            **good_body(preset),
+            "when": "weekday_offpeak",
+            "easy_mtb": preset == "default",
+            "ride_replan": True,
+            "mtb_done": True,
+        }
+        response = post(client, body)
+        assert response.status_code == 200, response.content
+        assert response.json()["variant"] == graph
+        assert response.json().get("mtb") is None
+        assert {graph_of(url) for url, _ in routes(fake)} == {graph}
+
+    def test_a_trail_at_a_stop_is_not_opened(self, client, segments, router) -> None:
+        add_trail(segments, TOUCHED, END_TRAIL)
+        fake = router(plain_router())
+        body = {
+            **good_body("gravel"),
+            "when": "weekday_offpeak",
+            "ride_replan": True,
+            "mtb_done": True,
+        }
+        assert post(client, body).json()["variant"] == "standard"
+        assert {graph_of(url) for url, _ in routes(fake)} == {"standard"}
