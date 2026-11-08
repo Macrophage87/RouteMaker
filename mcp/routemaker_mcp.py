@@ -1356,6 +1356,27 @@ def easy_mtb_said(info: object) -> str | None:
     return None
 
 
+def road_bike_said(answer: dict) -> str | None:
+    """What a Road Bike answer from a fallback map says of its route, as the page says it
+    (frontend/src/lib/roadBike.ts `roadBikeNotice`, from the answer's `variant` and ride time),
+    or None (hunt 3, PL3-10: the connector never said it)."""
+    if answer.get("preset") != "road-bike":
+        return None
+    variant = answer.get("variant")
+    if variant == "standard":
+        return (
+            "Road Bike's paved-only map isn't available, so this route may use packed gravel"
+            " and winding trails"
+        )
+    when = (answer.get("dials") or {}).get("when")
+    if variant == "paved" and when == "weekend":
+        return (
+            "Road Bike's weekend map isn't available, so this route treats car-free parkways"
+            " such as Beach Drive as roads with cars"
+        )
+    return None
+
+
 def summary(answer: dict) -> dict:
     """The answer in a few lines a model can reason about and repeat to a rider."""
     distance = answer.get("distance_m") or 0.0
@@ -1413,6 +1434,9 @@ def summary(answer: dict) -> dict:
     easy = easy_mtb_said(answer.get("easy_mtb"))
     if easy:
         out["easy_mtb"] = easy
+    road_bike = road_bike_said(answer)
+    if road_bike:
+        out["road_bike_map"] = road_bike
     if answer.get("moved_points"):
         out["moved_points"] = len(answer["moved_points"])
     share = answer.get("bikeshare")

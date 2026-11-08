@@ -1590,3 +1590,16 @@ def test_plan_route_takes_a_rebalance_rides_start_alone(tools, stand_in) -> None
     sent = StandIn.routes[-1]
     assert sent["preset"] == "rebalance" and len(sent["points"]) == 1
     assert out["link"].startswith(stand_in + "/s/")
+
+
+def test_the_summary_says_where_road_bike_fell_back_to_another_map() -> None:
+    """Hunt 3, PL3-10: as the page says it (frontend/src/lib/roadBike.ts)."""
+    weekend = {"distance_m": 1000, "preset": "road-bike", "dials": {"when": "weekend"}}
+    assert "Beach Drive" in mcp.summary({**weekend, "variant": "paved"})["road_bike_map"]
+    assert "packed gravel" in mcp.summary({**weekend, "variant": "standard"})["road_bike_map"]
+    for fine in (
+        {**weekend, "variant": "paved-weekend"},
+        {**weekend, "variant": "paved", "dials": {"when": "weekday_offpeak"}},
+        {**weekend, "variant": "standard", "preset": "default"},
+    ):
+        assert "road_bike_map" not in mcp.summary(fine)

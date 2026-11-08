@@ -80,8 +80,10 @@ def free_stops(points: list, loop: bool) -> int:
 def ride_graph(preset_name: str, dials: routing.Dials) -> tuple[str, dict]:
     """The router (variant) and costing the ride's own route would be asked on: the
     preset's and dials' stress, hills, time, assist, trails off and the rider's own speed,
-    with /route's choice of a twin graph that is down or not promoted left to the standard
-    one. Shared with `core.nearest`, whose riding distances are on the same graph."""
+    with /route's choice of a twin graph that is down or not promoted left to the graph it falls
+    back to (`routing._served_variant`: Road Bike's weekend twin to the paved graph, the others
+    to the standard one). Shared with `core.nearest`, whose riding distances are on the same
+    graph."""
     preset = presets.PRESETS[preset_name]
     stress = (
         presets.stress_start(preset_name, dials.carrying) if dials.stress is None else dials.stress
@@ -97,10 +99,9 @@ def ride_graph(preset_name: str, dials: routing.Dials) -> tuple[str, dict]:
         bool(dials.easy_mtb),
         dials.ride_replan and dials.mtb_done,
     )
-    if variant in routing.TWIN_VARIANTS and (
-        routing._twin_down(variant) or not routing._is_promoted(variant)
-    ):
-        variant = routing.Variant.STANDARD.value
+    # Down the fallback chain as the plan goes (hunt 3, P3-2: a weekend Road Bike ride's stops
+    # were ordered on the standard graph, where its route is planned on the paved one).
+    variant = routing._served_variant(variant)
     costing = presets.costing(preset_name, stress, hills, assist=assist)
     if dials.cycling_speed_kmh is not None:
         # As the plan times its route (`routing._plan`).
@@ -136,23 +137,25 @@ def _ask(variant: str, endpoint: str, payload: dict, deadline) -> tuple[dict, st
     """One router call, and the graph that answered it, with /route's handling of a
     twin graph (`routing.plan`): a weekend or off-road router gets at most
     `routing.WEEKEND_TIMEOUT_S`, and one that does not answer, or has no tiles
-    (170/171), leaves the standard graph to answer and is remembered as down.
+    (170/171), leaves the graph it falls back to answer (`routing.twin_fallback`, down the chain
+    to one served: Road Bike's weekend twin to the paved graph) and is remembered as down.
     Raises RouterUnavailable, RouterRefused or DeadlineExceeded."""
     if variant not in routing.TWIN_VARIANTS:
         return routing._call(variant, endpoint, payload, deadline), variant
-    standard = routing.Variant.STANDARD.value
     twin = routing.Deadline(deadline.at, min(deadline.per_call_s, routing.WEEKEND_TIMEOUT_S))
     try:
         answer = routing._call(variant, endpoint, payload, twin)
     except routing.RouterUnavailable:
         routing._mark_twin(variant, False)
-        return routing._call(standard, endpoint, payload, deadline), standard
+        fallback = routing._served_variant(routing.twin_fallback(variant))
+        return routing._call(fallback, endpoint, payload, deadline), fallback
     except routing.RouterRefused as refusal:
         if refusal.code not in routing.NO_EDGE_CODES:
             raise
-        answer = routing._call(standard, endpoint, payload, deadline)
+        fallback = routing._served_variant(routing.twin_fallback(variant))
+        answer = routing._call(fallback, endpoint, payload, deadline)
         routing._mark_twin(variant, False)
-        return answer, standard
+        return answer, fallback
     routing._mark_twin(variant, True)
     return answer, variant
 

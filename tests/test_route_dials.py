@@ -3623,3 +3623,188 @@ class TestWeekendWins:
         assert not routing._weekend_wins(None, self.ranking(analysis="o", ctx="c"))
         assert not routing._weekend_wins(self.ranking(analysis="w", ctx="c"), None)
         assert not routing._weekend_wins(self.ranking(), self.ranking(analysis="o", ctx="c"))
+
+
+@db
+class TestHunt3PlanTwice:
+    """Hunt 3 (planner): the answer cache for weekend Road Bike, and the weekend plan beside a
+    ride's own."""
+
+    def test_a_weekend_road_bike_answer_on_the_paved_graph_is_kept(
+        self, client, facility_segments, router, settings, monkeypatch
+    ):
+        """P3-1: while paved-weekend is not promoted the ride's graph is the paved one by
+        design, and its answer is kept as any other."""
+        from core import route_cache
+
+        settings.ROUTE_CACHE_TTL_S = route_cache.TTL_S
+        route_cache.clear()
+        monkeypatch.setattr(routing, "_paved_weekend_is_promoted", lambda: False)
+        router(standard_router())
+        body = post(client, {**good_body("road-bike"), "when": "weekend"}).json()
+        assert body["variant"] == "paved"
+        assert route_cache.size() == 1
+        route_cache.clear()
+
+    @staticmethod
+    def _planned(dials=None, points=None) -> tuple[dict, int]:
+        from core import timing
+
+        recorder = timing.Timings()
+        token = timing.start(recorder)
+        try:
+            body = routing.plan(
+                points or [[-77.05, 38.9], [-77.02, 38.9]],
+                "gravel",
+                dials=dials or routing.Dials(when="weekend"),
+            )
+        finally:
+            timing.stop(token)
+        return body, recorder.failures
+
+    @pytest.mark.parametrize("promoted", [True, False])
+    def test_a_standard_graph_fallback_takes_the_weekend_route(
+        self, promoted, settings, monkeypatch
+    ):
+        """P3-4: the own router down (or not promoted), its plan on the standard graph: the
+        weekend route, the same graph with the car-free roads open, is answered, though the
+        ranking could not read the fallback's trails; not kept while the router is down."""
+        settings.ROUTER_PARALLEL_CALLS = 1
+
+        def plan_alone(points, preset, long_ride, started, dials, quick, candidates, slot=None):
+            if slot is not None:
+                slot["ranking"] = dials.graph or "own"
+            return {"variant": dials.graph or "standard"}
+
+        monkeypatch.setattr(routing, "_weekend_too", lambda *a: True)
+        monkeypatch.setattr(routing, "_plan_alone", plan_alone)
+        monkeypatch.setattr(routing, "_weekend_wins", lambda w, o: False)
+        monkeypatch.setattr(routing, "_offroad_is_promoted", lambda: promoted)
+        body, failures = self._planned()
+        assert body["variant"] == "weekend"
+        assert (failures >= 1) is promoted
+
+    def test_a_pending_weekend_plan_is_cancelled_whatever_the_own_plan_raises(
+        self, settings, monkeypatch
+    ):
+        """P3-5."""
+        from concurrent.futures import Future
+
+        from core import parallel
+
+        settings.ROUTER_PARALLEL_CALLS = 3
+        pending = Future()
+        monkeypatch.setattr(parallel, "submit", lambda *a: pending)
+
+        def plan_alone(*a, **k):
+            raise KeyError("a programming error")
+
+        monkeypatch.setattr(routing, "_weekend_too", lambda *a: True)
+        monkeypatch.setattr(routing, "_plan_alone", plan_alone)
+        with pytest.raises(KeyError):
+            self._planned()
+        assert pending.cancelled()
+
+    def test_the_weekend_plan_is_waited_for_a_bounded_time_after_the_own(
+        self, settings, monkeypatch
+    ):
+        """P3-6: once the own route is ready, the weekend plan gets at most
+        WEEKEND_WAIT_AFTER_OWN_S (or the own plan's time) more, not the whole budget."""
+        import threading
+        import time
+
+        settings.ROUTER_PARALLEL_CALLS = 3
+        hold = threading.Event()
+
+        def plan_alone(points, preset, long_ride, started, dials, quick, candidates, slot=None):
+            if dials.graph == "weekend":
+                hold.wait(10)
+            if slot is not None:
+                slot["ranking"] = dials.graph or "own"
+            return {"variant": dials.graph or "offroad"}
+
+        monkeypatch.setattr(routing, "_weekend_too", lambda *a: True)
+        monkeypatch.setattr(routing, "_plan_alone", plan_alone)
+        monkeypatch.setattr(routing, "_weekend_wins", lambda w, o: True)
+        monkeypatch.setattr(routing, "PLAN_BUDGET_S", 30)
+        monkeypatch.setattr(routing, "WEEKEND_WAIT_AFTER_OWN_S", 0.3)
+        began = time.monotonic()
+        try:
+            body, failures = self._planned()
+        finally:
+            hold.set()
+        assert time.monotonic() - began < 5
+        assert body["variant"] == "offroad"
+        assert failures == 0
+
+    def test_a_closure_round_the_own_route_alone_still_plans_twice(
+        self, client, facility_segments, router, settings, monkeypatch
+    ):
+        """Hunt 3 (C3-6, T3-8): no closure round the points, one round the ride's own route
+        (a loop, a target ride): the weekend plan is made after it."""
+        settings.ROUTER_PARALLEL_CALLS = 1
+        seen = []
+
+        def near(points, *a):
+            seen.append(len(points))
+            # The rider's two points: none near; the route's line: one near.
+            return len(points) > 2
+
+        monkeypatch.setattr(routing, "weekend_closure_near", near)
+        fake = router(standard_router())
+        body = post(client, {**good_body("gravel"), "when": "weekend"}).json()
+        assert _bases(fake) == {"offroad", "weekend"}
+        assert body["variant"] in ("offroad", "weekend")
+        assert seen[0] == 2 and any(n > 2 for n in seen[1:])
+        # And none round the route either: planned once.
+        monkeypatch.setattr(routing, "weekend_closure_near", lambda *a: False)
+        fake = router(standard_router())
+        post(client, {**good_body("gravel"), "when": "weekend"})
+        assert _bases(fake) == {"offroad"}
+
+    @pytest.mark.parametrize(
+        ("points", "touched"),
+        [
+            # The start on a dirt trail.
+            ([VERTICES[0], VERTICES[-1]], (frozenset({7}), frozenset())),
+            # A loop's end, back at its start, on one.
+            ([VERTICES[0], VERTICES[-1], VERTICES[0]], (frozenset(), frozenset(), frozenset({7}))),
+        ],
+    )
+    def test_the_weekend_plan_is_given_up_where_the_start_is_on_a_dirt_trail(
+        self, points, touched, facility_segments, router
+    ):
+        """PL3-6: the ride's own graph opens the trail the rider starts on; the weekend graph
+        would snap the start to another way, so its plan is given up."""
+        fake = router(standard_router())
+        dials = routing.Dials(when="weekend", graph="weekend", trail_touched=touched)
+        with pytest.raises(routing._GraphLeft):
+            routing.plan([list(p) for p in points], "gravel", dials=dials)
+        assert not fake.calls
+
+    @pytest.mark.parametrize("won", ["weekend", "offroad"])
+    def test_a_re_plans_way_ahead_is_planned_on_the_graph_that_won(self, won, monkeypatch):
+        """P3-7: the second plan of a U-turn re-plan is made once, on the winner's graph."""
+        asked = []
+
+        def plan(points, preset, dials=None, **kw):
+            asked.append(dials.graph)
+            return {"variant": won, "distance_m": 1000.0}
+
+        monkeypatch.setattr(routing, "plan", plan)
+        monkeypatch.setattr(routing, "sets_off_back", lambda answer, heading: len(asked) == 1)
+        routing._plan_onward(
+            [[-77.05, 38.9], [-77.02, 38.9]],
+            "gravel",
+            dials=routing.Dials(when="weekend", heading=90.0, ride_replan=True),
+        )
+        assert asked == [None, won]
+        # A first route from a fallback graph leaves the second plan as it was.
+        asked.clear()
+        won = "standard"
+        routing._plan_onward(
+            [[-77.05, 38.9], [-77.02, 38.9]],
+            "gravel",
+            dials=routing.Dials(when="weekend", heading=90.0, ride_replan=True),
+        )
+        assert asked == [None, None]

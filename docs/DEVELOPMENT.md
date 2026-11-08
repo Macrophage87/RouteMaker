@@ -2209,7 +2209,10 @@ unless named; PLAN.md quotes the owner's words):
   graph (`routing.twin_fallback`): while its router is down, or before a build of it is promoted,
   a weekend Road Bike ride is planned on `paved` (and on `standard` if that is not served either),
   and the page says the parkways count as roads with cars (`frontend/src/lib/roadBike.ts`,
-  `roadBikeNotice`, from the answer's `variant` and `dials.when`). Its router is behind the
+  `roadBikeNotice`, from the answer's `variant` and `dials.when`; the MCP summary's
+  `road_bike_map` says the same). Such an answer is kept in the answer cache: the graph a twin
+  with no promoted build falls back to is the ride's graph by design (`api._planned`, down
+  `twin_fallback`'s chain), and Best order, nearest and reach use it too (`stoporder.ride_graph`). Its router is behind the
   `offroad` profile with the other trail routers, at 768M (320M on the beta). The cost the owner
   accepted: the beta's resident ceiling 7.66 to 7.96 GiB and its startup margin 0.7 to 0.39 GiB
   (`scripts/check_beta_compose.py`), and on the 32 GB check (`scripts/check_compose_limits.py`)
@@ -5007,19 +5010,29 @@ by `WEEKEND_CLOSURE_BUFFER_M` (3 km; Claude's default, not measured). The weeken
 from the standard one only on those ways, so a ride with none near gains nothing from it. The
 check is one `EXISTS` read of the live segment table through its ride-layer index
 (`RIDE_INDEX_PREDICATE` holds every timed closure); not the first route's corridor, as the
-weekend route can go somewhere else. Where the table cannot be read, both plans are made.
+weekend route can go somewhere else. Where the table cannot be read, both plans are made. Where
+no such way lies round the points, the ride's own route is planned first and the same check is
+made on its own box (hunt 3: a loop or a target ride can reach Beach Drive or Sligo Creek from
+points more than 3 km from them); only where one lies there is the route ranked and the weekend
+plan made, after it, in what is left of the budget.
 
 Each plan is a whole plan on its graph: the calm search, `mtb.settle` or `easy_mtb.settle` (run
 on the weekend plan too, so its answer reads the trail rules and never says `no_mtb_graph` or
 `no_offroad_graph`), the red crossings, the dodge and Avoid-junction passes and the rereads,
 with their own exclusions and closures. The weekend plan is `Dials.graph = "weekend"`: it never
 falls back to the standard graph, and is given up where its router is down or tileless, where a
-stop is on a dirt trail it closes (`core.trail_touch`), or where it finds no route. Each plan's
+point is on a dirt trail it closes (`core.trail_touch`: the start and a loop's end too, which the
+ride's own graph opens, where a single plan on the weekend graph leaves them out), or where it
+finds no route. Each plan's
 final route is read for the ranking (`_Ranking`), and `_weekend_wins` keeps the better by the
 ride type's own ranking, never by stress alone: Mountain Bike's trail rules (`mtbmode.better`,
 as `mtb.settle` picks); on Easy MTB trails, less harder trail first (as `easy_mtb.settle`
 keeps a route); then the calm search's comparison (`refine.better`), in the own plan's context.
-A tie, or a route that cannot be read, keeps the ride's own. The answer's `variant` is the
+A tie, or a route that cannot be read, keeps the ride's own. Where the ride's own plan fell back
+to the standard graph (its off-road or Mountain Bike router down or not promoted), the weekend
+route is answered outright: it is the standard graph's own weekend twin, and the fallback has no
+trail reading to rank by; while that router is down neither is kept in the answer cache (hunt 3).
+The answer's `variant` is the
 winner's graph; the answer cache keeps a weekend winner (`api._planned`, `route_cache.keepable`)
 and keys on the request as before. Where the weekend graph is not promoted the ride is planned
 on its own graph alone, silently; where its router is down, the same, but the answer is not
@@ -5028,11 +5041,20 @@ kept (`_skipped_for_time`), as a weekend ride's standard-graph fallback is not.
 The weekend plan runs on the router pool beside the ride's own (`core.parallel`), as a transit
 trip's later rides do, so the request waits about as long as the slower of the two; on the
 pool it makes its own calls in turn, and the pool has one thread fewer for the own plan while it
-runs. Where the pool is off (`ROUTER_PARALLEL_CALLS=1`) or the plan is itself on a pool thread,
-the weekend plan runs after the ride's own, in what is left of the same budget. No new graph or
+runs. Once the ride's own route is ready, the weekend plan is waited for at most as long again
+as the own plan took, or `WEEKEND_WAIT_AFTER_OWN_S` (10 s; Claude's default, not measured)
+where that is longer, and never past the plans' deadline (the budget less `ANSWER_RESERVE_S`),
+so a clean own route answered is still kept in the answer cache; one not done is given up, and
+one not yet started is cancelled however the own plan ends. Where the pool is off
+(`ROUTER_PARALLEL_CALLS=1`) or the plan is itself on a pool thread, the weekend plan runs after
+the ride's own, in what is left of the same budget. A ride's re-plan that plans a second time
+(the way ahead after a U-turn, the other way round a marked road) makes the second plan once, on
+the graph whose route won the first (`routing._graph_won`). No new graph or
 router, and no memory limit changed. The frontend reads `mtb.limited` and `easy_mtb.limited`,
 not `variant`, for its notices; Road Bike's `variant` check (`lib/roadBike.ts`) does not apply.
-Best order (`core.stoporder`) and map matching (`core.map_match`) still use the ride's own graph.
+Best order (`core.stoporder`) and map matching (`core.map_match`) still use the ride's own graph,
+down its fallback chain where it is not served (`routing._served_variant`); map matching takes
+the ride time and "Easy MTB trails" from the request (`/api/match` `when`, `easy_mtb`).
 Tests: `TestWeekendPlannedTwice`, `TestWeekendClosureNear` and `TestWeekendWins` in
 tests/test_route_dials.py; tests/test_presets.py.
 
