@@ -3755,6 +3755,21 @@ def build_handlers(
             "upper-case MPH, read as km/h by the router before): %d ways",
             sum(1 for way in context.ways if variants.with_speed_units(way.tags) is not way.tags),
         )
+        # The e-bike graph's one rule, which the weekend graph lacks: a weekend e-bike ride is
+        # planned on the weekend graph too (`presets.weekend_too`, the owner's round 3 "Yes",
+        # 2026-11-08), and its route is answered as it is only while no way in the coverage
+        # bars e-bikes (none on 2026-10-09). Logged so a rebuild says when that changes
+        # (docs/DEVELOPMENT.md, "Weekend e-bike rides").
+        ebike_barred = sum(
+            1
+            for way in context.ways
+            if variants.bars_electric_bicycle(routing_tags(way, variants.Variant.EBIKE))
+        )
+        (logger.warning if ebike_barred else logger.info)(
+            "ways barred to e-bikes (electric_bicycle=no), open to a weekend e-bike ride's "
+            "weekend plan: %d",
+            ebike_barred,
+        )
         rail_roads, listed_hazards = hazard_inputs()
         for variant in variants.Variant:
             hazard_ways = 0

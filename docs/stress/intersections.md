@@ -231,7 +231,7 @@ where a busy road meets there (`:572-576`).
   crossing gets the floor too (its colour stays capped at orange), and a divided road's
   median refuge still takes its x0.75 below it. Signals,
   all-way stops, cross traffic that stops, and LTS 3 roads keep x1.25. Other weekday hours, to 9 PM, are x1.0, and so are a weekday federal
-  holiday and Sunday 7-9 PM (the owner, 2026-11-08). Weekend daytime is x0.85. Night, 9 PM to 7 AM on every day of the week, weekend nights
+  holiday and Sunday 6-9 PM (the owner, 2026-11-08; from 6 PM in round 3: "Let's just go at 6 on Sunday."). Weekend daytime is x0.85. Night, 9 PM to 7 AM on every day of the week, weekend nights
   included, is x0.5 where the crossed road lies in a Census urban area and x0.85 where it
   does not (decisions 468a and 469c to 469e). A road whose urban flag is not known (a
   segment table built before that column) takes x0.85, the smaller reduction. A plan with

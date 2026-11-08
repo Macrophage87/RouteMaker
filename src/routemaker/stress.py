@@ -111,6 +111,7 @@ from .shape import sinuosity
 from .tags import (
     PAINTED_CYCLEWAY,
     SEPARATED_CYCLEWAY,
+    cycleway_provision,
     cycleway_values,
     cycleway_width_m,
     has_parking_lane,
@@ -1103,6 +1104,16 @@ def service_road_step(result: StressResult, tags: dict[str, str]) -> StressResul
 # "For the use-sidepath roads, make sure there's a sidepath marked." THIS TEXT IS READ BACK
 # by `core.segment_info.rule_words`.
 USE_SIDEPATH_RULE = "legal but avoid: riders asked to use the side path"
+# The rule on a `bicycle=use_sidepath` road whose only side path is on its own way and is a
+# sidewalk open to bicycles, or a track that serves one direction only (the hunt 3 stress
+# review, finding 5): LTS 4.5, not Avoid and not the bare LTS 4 its sidewalk earns no tier
+# over. The owner, round 3, 2026-11-08: "Make them LTS 4.5. They might be the only way
+# there." THIS TEXT IS READ BACK by `core.segment_info.rule_words`.
+USE_SIDEPATH_ON_ROAD_RULE = (
+    "riders asked to use the side path, on the road as a sidewalk or a one-sided track"
+)
+# The provision rank of a separated track (`tags.cycleway_provision`, `SEPARATED_CYCLEWAY`).
+_TRACK_RANK = 2
 
 
 # A motorway a bicycle may ride (review RL-6): rare here, and the road the
@@ -1265,18 +1276,21 @@ def classify(
     # which is right for the panel's words, but the graph has one edge for road and
     # path together, so Avoid there priced the very facility the rider is asked to
     # use: `highway=primary` at 40 mph with `cycleway:both=track` came out Avoid
-    # where its Furth tier is LTS 1. The road keeps the tier its track or sidewalk
-    # earns (or does not earn) instead.
-    if (
-        reason is None
-        and side_path
-        and is_use_sidepath_road(tags)
-        and not has_side_path_on_the_road(tags)
-    ):
+    # where its Furth tier is LTS 1. The road keeps the tier its track earns where the
+    # track serves both directions (`cycleway_provision`, the weakest direction, a track).
+    # Where the side path on the road is a sidewalk open to bicycles, or a track on one
+    # side of a two-way road, the road is LTS 4.5 (`USE_SIDEPATH_ON_ROAD_RULE`; the owner,
+    # round 3, 2026-11-08: "Make them LTS 4.5. They might be the only way there."): before,
+    # such a road was the bare Furth tier, LTS 4 at 40 mph, its sidewalk earning nothing.
+    use_sidepath = reason is None and side_path and is_use_sidepath_road(tags)
+    if use_sidepath and not has_side_path_on_the_road(tags):
         reason = USE_SIDEPATH_RULE
     if reason is not None:
         rule = f"{reason} (Furth: {result.rule})"
         return replace(result, tier=Stress.AVOID, half=False, rule=rule)
+    if use_sidepath and cycleway_provision(tags).rank < _TRACK_RANK:
+        rule = f"{USE_SIDEPATH_ON_ROAD_RULE} (Furth: {result.rule})"
+        return replace(result, tier=Stress.LTS4, half=True, rule=rule)
     rural = rural_expressway(tags, urban)
     if rural is not None:
         # LTS 4.5 (the owner, 2026-10-17): the rural floor never reaches it (LTS 1

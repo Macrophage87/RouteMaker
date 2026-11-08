@@ -97,8 +97,13 @@ On Road Bike's weight it counts ROAD_BIKE_BUTTON_S, held below two-thirds of tha
 (the owner: "Call that 10 minutes on a road bike in pain level. ... Just make sure it's less
 than half a stop sign against an uncontrolled busy road", then, told half a stop sign could
 fall under a plain signal, "make it 2/3 of one"); the order stays a plain signal, then the
-button, then that stop sign. Above a wait weight of 1 (Road Bike, Tandem) any signal ranks
-below the stop sign across the same road (Claude's default, `ranked_s`).
+button, then that stop sign. Tandem takes that price too, by the owner's decision, not by its
+2x wait weight (2026-11-08: "That should be at the 10x. It's really obnoxious to try to
+navigate to a button on a tandem."): the ride types are named
+(`presets.ROAD_BIKE_BUTTON_RIDES`, passed in as `road_bike_buttons`); any other ride type,
+whatever its wait weight, ranks a button by the usual stacked rule (at 2x, held at 5x the wait
+at a red). Above a wait weight of 1 (Road Bike, Tandem) any signal ranks below the stop sign
+across the same road (Claude's default, `ranked_s`).
 """
 
 from __future__ import annotations
@@ -165,7 +170,9 @@ BUTTON_BELOW_STOP_S = 1.0
 # 2026-11-08, "Call that 10 minutes on a road bike in pain level. Most people are clipped
 # in and riding on the road so it would really suck. Just make sure it's less than half a
 # stop sign against an uncontrolled busy road." Run shares Road Bike's wait weight, and so
-# this.
+# this. Tandem takes it too, at its own 2x (the owner, 2026-11-08: "That should be at the 10x.
+# It's really obnoxious to try to navigate to a button on a tandem."). Which ride types take it
+# is named (`presets.ROAD_BIKE_BUTTON_RIDES`), never read from the wait weight.
 ROAD_BIKE_BUTTON_S = 600.0
 # The share of the stop sign across the same road, at that weight, a Road Bike button is
 # held below (the owner, 2026-11-08, told half a stop sign could fall under a plain signal:
@@ -592,7 +599,9 @@ def delay_s(
     return float(sum(w.seconds for w in waits(junctions, rolls, beacon, signals, **reading)))
 
 
-def ranked_s(found: Iterable[Wait], wait_weight: float = 1.0) -> float:
+def ranked_s(
+    found: Iterable[Wait], wait_weight: float = 1.0, *, road_bike_buttons: bool = False
+) -> float:
     """The waits as the ranking counts them (`Wait.ranked_s`): a suburban signal's
     SUBURBAN_SIGNAL_WEIGHT times, a button crossing's at BUTTON_RANKED_S. With a ride type's
     `wait_weight` (`presets.wait_weight_for`: Road Bike's 3), each wait times it, the two
@@ -602,18 +611,22 @@ def ranked_s(found: Iterable[Wait], wait_weight: float = 1.0) -> float:
     BUTTON_BELOW_STOP_S; the 2026-11-08 hunt, J2-4: on Road Bike, and at the
     traffic-tolerant end of the slider, the suburban 2x had sent riders across busy roads at
     stop signs a block from the light). That cap is Claude's default, not the owner's; at
-    1x a suburban signal keeps its 2x. On Road Bike's weight a button crossing counts
-    ROAD_BIKE_BUTTON_S, held below two-thirds of that stop sign, and a plain signal ranks
-    below the button there (`_road_bike_button`). The sum is given back divided by
-    `wait_weight`, as `refine.Analysis.score` multiplies it by that again."""
+    1x a suburban signal keeps its 2x. With `road_bike_buttons` (the ride types
+    `presets.ROAD_BIKE_BUTTON_RIDES` names: Road Bike, Run and, by the owner's decision,
+    Tandem) and a wait weight above 1, a button crossing counts ROAD_BIKE_BUTTON_S, held below
+    two-thirds of that stop sign, and a plain signal ranks below the button there
+    (`_road_bike_button`). Without it a button crossing is weighted as any other wait (the
+    stacked rule). The sum is given back divided by `wait_weight`, as
+    `refine.Analysis.score` multiplies it by that again."""
     if wait_weight <= 0:
         return 0.0
+    road_bike = road_bike_buttons and wait_weight > 1.0
     total = 0.0
     for w in found:
-        if wait_weight > 1.0 and w.button:
+        if road_bike and w.button:
             total += _road_bike_button(w, wait_weight)
             continue
-        total += _signal(w, w.ranked_s, wait_weight)
+        total += _signal(w, w.ranked_s, wait_weight, road_bike)
     return float(total / wait_weight)
 
 
@@ -639,14 +652,17 @@ def _button_hold(w: Wait, wait_weight: float) -> float | None:
     return ROAD_BIKE_BUTTON_STOP_SHARE * wait_weight * w.stop_s
 
 
-def _signal(w: Wait, ranked: float, wait_weight: float) -> float:
+def _signal(w: Wait, ranked: float, wait_weight: float, road_bike: bool = True) -> float:
     """A plain signal (or any other wait) ranked at `ranked` (at 1x), at `wait_weight`:
     `_weighted`, and above 1x at a light a button is read at for some rider
     (`Wait.button_light`), where two-thirds of the stop sign across the same road is no
     more than 1 s above the light, the light held 2 s below it, so that a button there
-    (`_road_bike_button`, 1 s below it) still ranks above the same light with no button."""
+    (`_road_bike_button`, 1 s below it) still ranks above the same light with no button.
+    That hold is part of Road Bike's button rule (`road_bike`); without it, `_weighted` alone."""
     weighted = _weighted(w, ranked, wait_weight)
-    hold = _button_hold(w, wait_weight) if wait_weight > 1.0 and w.button_light else None
+    hold = (
+        _button_hold(w, wait_weight) if road_bike and wait_weight > 1.0 and w.button_light else None
+    )
     if hold is not None and weighted > hold - 2.0 * BUTTON_BELOW_STOP_S:
         weighted = max(hold - 2.0 * BUTTON_BELOW_STOP_S, 0.0)
     return weighted

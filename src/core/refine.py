@@ -355,6 +355,9 @@ class Context:
     # What a second of junction waiting costs against a second of riding when routes are
     # ranked (`presets.wait_weight_for`): 1, and 3 on Road Bike. The time shown is unchanged.
     wait_weight: float = 1.0
+    # Whether a beg button ranks at Road Bike's ten minutes (`presets.road_bike_buttons_for`:
+    # Road Bike, Run and Tandem, named, not read from `wait_weight`).
+    road_bike_buttons: bool = False
     # The map's beg-button answers already had in this plan, by OSM way (tagged or not;
     # `routing.button_ways`): the candidates share most of their crossings.
     button_ways: dict = field(default_factory=dict)
@@ -1166,7 +1169,9 @@ def analyse(
         junction_delay_s=sum(w.seconds for w in found_waits),
         # At the ride type's wait weight, stacked at most 5x the wait shown (Road Bike;
         # `junction_delay.MAX_STACKED_WEIGHT`), given back per unit of that weight.
-        junction_ranked_s=junction_delay.ranked_s(found_waits, ctx.wait_weight),
+        junction_ranked_s=junction_delay.ranked_s(
+            found_waits, ctx.wait_weight, road_bike_buttons=ctx.road_bike_buttons
+        ),
     )
     if with_events:
         ctx.analyses[key] = result

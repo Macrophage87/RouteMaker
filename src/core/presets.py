@@ -822,6 +822,21 @@ def wait_weight_for(name: str) -> float:
     return WAIT_WEIGHTS.get(name, 1.0)
 
 
+# The ride types whose beg-button crossings rank at Road Bike's ten minutes
+# (`junction_delay.ROAD_BIKE_BUTTON_S`, held below two-thirds of the stop sign across the same
+# road), named here rather than read from a wait weight above 1. Road Bike (the owner,
+# 2026-11-08: "Call that 10 minutes on a road bike in pain level") and Run, which shares its
+# weight; Tandem by the owner's decision (round 3, 2026-11-08: "That should be at the 10x. It's
+# really obnoxious to try to navigate to a button on a tandem."). Any other ride type, Cargo
+# included, ranks a button by the usual stacked rule at its own weight.
+ROAD_BIKE_BUTTON_RIDES = frozenset({ROAD_BIKE, RUN, TANDEM})
+
+
+def road_bike_buttons_for(name: str) -> bool:
+    """Whether a ride type ranks beg buttons at Road Bike's price (`ROAD_BIKE_BUTTON_RIDES`)."""
+    return name in ROAD_BIKE_BUTTON_RIDES
+
+
 BIKESHARE_BIKES = MappingProxyType(
     {
         BIKE_CLASSIC: BikeProfile(
@@ -1273,7 +1288,8 @@ def variant_for_ride(
     Goat take the off-road graph (`OFFROAD_PRESETS`). A weekend ride on the
     standard graph takes its weekend twin, where roads closed to cars at the
     weekend are off-road paths (`Variant.WEEKEND`); the e-bike and no-trail
-    graphs have no weekend twin, so their weekend rides stay on them. Mountain
+    graphs have no weekend twin, so their weekend rides stay on them (an e-bike
+    ride is planned on the weekend graph too: `weekend_too`). Mountain
     Bike takes its own graph (`Variant.MTB`), at the weekend too. Default and
     Trailmaxxing with "Easy MTB trails" on (`EASY_MTB_PRESETS`) take the off-road
     graph as Gravel does, at the weekend too; trails off wins over it. Road Bike's
@@ -1286,7 +1302,7 @@ def variant_for_ride(
     Mountain Bike or off-road graph, where the mountain-bike trails are open, takes the
     standard graph (its weekend twin at the weekend) instead, where they are closed.
 
-    Those weekend rides on the off-road or Mountain Bike graph are also planned on the
+    Those weekend rides on the off-road, Mountain Bike or e-bike graph are also planned on the
     weekend graph (`weekend_too`; the owner, 2026-11-08: "We can do the plan twice."), and
     `routing.plan` keeps the better of the two by the ride type's own ranking, so a road
     closed to cars at the weekend (Beach Drive) is not ridden as a road with cars. Only
@@ -1313,10 +1329,16 @@ def variant_for_ride(
     return preset.variant
 
 
-# The graphs whose weekend rides are planned on the weekend graph too (`weekend_too`): both
-# keep the mountain-bike class open, which the weekend graph closes, so neither can simply be
-# replaced by it.
-WEEKEND_TOO_VARIANTS = frozenset({Variant.OFFROAD.value, Variant.MTB.value})
+# The graphs whose weekend rides are planned on the weekend graph too (`weekend_too`). The
+# off-road and Mountain Bike graphs keep the mountain-bike class open, which the weekend graph
+# closes, so neither can simply be replaced by it. The e-bike graph (the E-bike ride type, Cargo
+# with assist, a share e-bike) has no weekend twin; asked whether weekend e-bike rides should
+# get the car-free parkways by planning twice, the owner said "Yes" (round 3, 2026-11-08).
+# The weekend graph lacks the e-bike graph's one rule, the bar on `electric_bicycle=no` ways
+# (`pipeline.variants.bars_electric_bicycle`); the coverage has no such way (counted
+# 2026-10-09, and each rebuild logs the count), so a weekend winner cannot ride one: see
+# docs/DEVELOPMENT.md, "Trails off" (463a) and "Weekend e-bike rides".
+WEEKEND_TOO_VARIANTS = frozenset({Variant.OFFROAD.value, Variant.MTB.value, Variant.EBIKE.value})
 
 
 def weekend_too(
@@ -1329,8 +1351,9 @@ def weekend_too(
 ) -> bool:
     """Whether a ride is planned on the weekend graph as well as on its own (`routing.plan`):
     a weekend Gravel, Mountain Goat, Mountain Bike, or Default or Trailmaxxing with "Easy MTB
-    trails" on (the owner, 2026-11-08: "We can do the plan twice."). Never with trails off,
-    which takes the no-trail graph alone, nor on any other graph."""
+    trails" on (the owner, 2026-11-08: "We can do the plan twice."), and a weekend ride on the
+    e-bike graph (E-bike, Cargo with assist, a share e-bike; round 3, 2026-11-08: "Yes").
+    Never with trails off, which takes the no-trail graph alone, nor on any other graph."""
     if when != WEEKEND:
         return False
     graph = variant_for_ride(name, when, assist, trails_off, easy_mtb, mtb_done)

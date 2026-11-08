@@ -5081,8 +5081,8 @@ def plan(
     ride type's own graph, which asks other questions and so would only hold them longer
     on the 512M worker.
 
-    A weekend ride on the off-road or Mountain Bike graph near a road closed to cars at the
-    weekend (round its points, or else round its own route) is planned on the weekend graph
+    A weekend ride on the off-road, Mountain Bike or e-bike graph near a road closed to cars at
+    the weekend (round its points, or else round its own route) is planned on the weekend graph
     too, and the better route kept (`_plan_twice`).
     """
     dials = dials or Dials()
@@ -5990,6 +5990,7 @@ def _plan(
         schema=validate_schema_name(settings.SEGMENT_SCHEMA_LIVE),
         avoid_gravel=avoid_gravel,
         wait_weight=presets.wait_weight_for(preset_name),
+        road_bike_buttons=presets.road_bike_buttons_for(preset_name),
         exposure=exposure,
         maxcalm=maxcalm,
         ceiling_m=ceiling,
@@ -6828,20 +6829,32 @@ def _plan(
     body["red_crossings"] = red_info
     timing.mark("answer")
 
-    def _with_mtb(answered: dict, info: dict | None, easy: dict | None = None) -> dict:
+    def _with_mtb(
+        answered: dict, info: dict | None, easy: dict | None = None, timed: dict | None = None
+    ) -> dict:
         """A Mountain Bike route's reading on its body, and its time at about 6 mph
         (10 km/h) on singletrack (`mtbmode.duration_s`), the router's own time kept; and an
-        Easy MTB trails route's reading (`easy_mtb`)."""
+        Easy MTB trails route's reading (`easy_mtb`), its time on the mountain-bike class at
+        the same pace where `timed`, its trip, is given (`easy_mtb.dirt_m`; the owner, round
+        3, 2026-11-08: "Yes", as Mountain Bike on the same trails: costing finding C3-7)."""
         answered["mtb"] = info
         answered["easy_mtb"] = easy
-        if info and info.get("singletrack_m"):
+        singletrack_m = info.get("singletrack_m") if info else None
+        if not singletrack_m and easy_held and easy is not None and timed is not None:
+            try:
+                singletrack_m = easy_mtb.dirt_m(timed, variant, trace_costing, deadline, traces)
+            except (DeadlineExceeded, RouterUnavailable, RouterRefused):
+                # Not read in time: the router's own time, as before.
+                singletrack_m = None
+        if singletrack_m:
             # The junction delay is added after the singletrack retiming, so the router's
             # own time stays the router's and the delay is not scaled with the trail.
             delay = answered.get("junction_delay_s") or 0.0
             router_s = answered["duration_s"] - delay
-            info["router_duration_s"] = round(router_s, 1)
+            if info and info.get("singletrack_m"):
+                info["router_duration_s"] = round(router_s, 1)
             answered["duration_s"] = round(
-                mtbmode.duration_s(router_s, answered["distance_m"], info["singletrack_m"]) + delay,
+                mtbmode.duration_s(router_s, answered["distance_m"], singletrack_m) + delay,
                 1,
             )
         return answered
@@ -6863,7 +6876,7 @@ def _plan(
             dials.mtb_preferred,
         )  # fmt: skip
 
-    _with_mtb(body, mtb_info, easy_info)
+    _with_mtb(body, mtb_info, easy_info, trip)
     body["avoid_search"] = avoid_info
     body["avoid_alternate"] = None
     if avoid_list:
@@ -6875,7 +6888,7 @@ def _plan(
         if deadline.at - clock() >= ALTERNATE_MIN_S:
             try:
                 around = work_zones.with_work_zones(_answer(avoid_trip, None, True), zones_plan)
-                _with_mtb(around, _offered_mtb(avoid_trip), _offered_easy(avoid_trip))
+                _with_mtb(around, _offered_mtb(avoid_trip), _offered_easy(avoid_trip), avoid_trip)
                 around["walk_in"] = walk_in_for(around, body)
                 around["extra_distance_m"] = round(around["distance_m"] - body["distance_m"], 1)
                 around["extra_duration_s"] = round(around["duration_s"] - body["duration_s"], 1)
@@ -6895,7 +6908,7 @@ def _plan(
     if through is not None and deadline.at - clock() >= ALTERNATE_MIN_S:
         try:
             standard = work_zones.with_work_zones(_answer(through, None, True), zones_plan)
-            _with_mtb(standard, _offered_mtb(through), _offered_easy(through))
+            _with_mtb(standard, _offered_mtb(through), _offered_easy(through), through)
             standard["extra_distance_m"] = round(standard["distance_m"] - body["distance_m"], 1)
             standard["extra_duration_s"] = round(standard["duration_s"] - body["duration_s"], 1)
             standard["closure_ids"] = sorted(zones_plan.affecting)
@@ -6921,7 +6934,7 @@ def _plan(
         try:
             refine.analyse(found, refine_context, deadline)
             candidate = work_zones.with_work_zones(_answer(found, None, True), zones_plan)
-            _with_mtb(candidate, _offered_mtb(found), _offered_easy(found))
+            _with_mtb(candidate, _offered_mtb(found), _offered_easy(found), found)
             candidate["walk_in"] = walk_in_for(candidate, body)
             if maxcalm and target_m:
                 candidate["over_target_m"] = target_fields(

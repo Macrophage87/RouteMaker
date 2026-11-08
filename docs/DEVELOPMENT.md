@@ -1601,8 +1601,10 @@ curl -s -X POST http://localhost:8000/api/route -H 'Content-Type: application/js
   Mass Ride refuses `hills > 0` (400).
 - `when`: `weekend`, `weekday_rush` (Mon-Fri 07:00-10:00 and 16:00-19:00,
   America/New_York), `weekday_offpeak` (a weekday federal holiday is off-peak all
-  day, and so is Sunday 19:00-21:00, after the weekend car-free windows end: the
-  owner, 2026-11-08; a holiday on a Saturday or Sunday stays `weekend`) or
+  day, and so is Sunday 18:00-21:00, after the weekend car-free windows end: the
+  owner, 2026-11-08, then from 18:00, when Sligo Creek Parkway opens to cars (round 3:
+  "Let's just go at 6 on Sunday."; Beach Drive's last closed hour, Sunday 18:00-19:00, is
+  then planned as open to cars, a per-road check needing a new instant or graph); a holiday on a Saturday or Sunday stays `weekend`) or
   `night` (21:00-07:00 on any day, OWNER-DECISIONS 469c; it routes on the
   standard graph, as a weekday does, so a weekend night does not count the
   weekend's daytime closures, such as Beach Drive, as paths); absent, the
@@ -4159,7 +4161,14 @@ two-thirds of that stop sign at the same weight where it is priced
 (`ROAD_BIKE_BUTTON_STOP_SHARE`; the owner, 2026-11-08: "Call that 10 minutes on a road bike in
 pain level. Most people are clipped in and riding on the road so it would really suck. Just
 make sure it's less than half a stop sign against an uncontrolled busy road.", then, told half
-a stop sign could fall under a plain signal, "make it 2/3 of one"). The order stays a plain
+a stop sign could fall under a plain signal, "make it 2/3 of one"). Tandem takes the same
+600 s at its own 2x, by the owner's decision (round 3, 2026-11-08: "That should be at the 10x.
+It's really obnoxious to try to navigate to a button on a tandem."), not because its weight is
+above 1: the ride types are named (`presets.ROAD_BIKE_BUTTON_RIDES`: Road Bike, Run, Tandem,
+passed to `junction_delay.ranked_s` as `road_bike_buttons`). Every other ride type ranks a
+button by the stacked rule at its own weight (Cargo and the rest are 1x: the two-minute button,
+`BUTTON_RANKED_S`); a ride type given a weight above 1 later would cap it at 5x the wait at a
+red, not ten minutes, unless it is added to that list. The order stays a plain
 signal, then the button, then the stop sign: where two-thirds of the stop sign is not above a
 plain light at which a button is read for some rider (a suburban crossing of a big or
 secondary road, or a rider on a crossing or a path), the light ranks 2 s below it and the
@@ -5045,7 +5054,13 @@ summary says it as `easy_mtb`. Where the off-road router is down or not promoted
 planned on the standard graph as Gravel's is (the twin fallback), `limited` is
 `no_offroad_graph`, and Plan says the off-road map is not available and the route keeps to the
 usual trails. An answer whose rounds ran out of time is not kept in the answer cache
-(`route_cache.keepable`). Tests: tests/test_easy_mtb.py, `TestEasyMtbTrails` in
+(`route_cache.keepable`). Its time shown counts the mountain-bike class it rides (every
+`segment.mtb_only` way, any level) at Mountain Bike's singletrack pace, about 6 mph (10 km/h,
+`mtbmode.SINGLETRACK_SPEED_KMH`, `mtbmode.duration_s`), as Mountain Bike times the same trails,
+and the router's time elsewhere (`easy_mtb.dirt_m`, read from the plan's own traces; the owner,
+round 3, 2026-11-08, asked whether Easy MTB trails should be timed at Mountain Bike's 6 mph:
+"Yes"). Before, the router timed them as a smooth path, the hybrid's pace. The ranking is
+unchanged: only the time shown. Tests: tests/test_easy_mtb.py, `TestEasyMtbTrails` in
 tests/test_route_dials.py, tests/test_mcp_server.py, frontend/src/lib/easyMtb.test.ts.
 
 ### Weekend rides planned twice (the owner, 2026-11-08)
@@ -5054,12 +5069,13 @@ A weekend ride on the standard graph takes its weekend twin, where roads closed 
 weekend (Beach Drive, Sligo Creek and Little Falls Parkways) are paths. Gravel, Mountain Goat,
 Mountain Bike, and Default or Trailmaxxing with "Easy MTB trails" on ride graphs that keep the
 mountain-bike class open (`Variant.OFFROAD`, `Variant.MTB`), which the weekend graph closes, so
-it cannot simply replace theirs, and on their own graphs those roads are roads with cars. The
+it cannot simply replace theirs, and on their own graphs those roads are roads with cars. Weekend
+e-bike rides plan twice too (below). The
 owner: "We can do the plan twice." And then: "In most cases, weekend closures aren't going to
 matter for MTB, is there a way to check?"
 
 `presets.weekend_too(name, when, assist, trails_off, easy_mtb)` names these rides (a weekend
-ride whose `variant_for_ride` is the off-road or Mountain Bike graph; never with trails off,
+ride whose `variant_for_ride` is the off-road, Mountain Bike or e-bike graph; never with trails off,
 which takes the no-trail graph alone, as before). `routing.plan` plans such a ride twice
 (`_plan_twice`) only where `routing.weekend_closure_near` finds a way whose
 `segment.car_free_when` holds `weekend` in the box round the ride's start, stops and end, padded
@@ -5114,6 +5130,63 @@ down its fallback chain where it is not served (`routing._served_variant`); map 
 the ride time and "Easy MTB trails" from the request (`/api/match` `when`, `easy_mtb`).
 Tests: `TestWeekendPlannedTwice`, `TestWeekendClosureNear` and `TestWeekendWins` in
 tests/test_route_dials.py; tests/test_presets.py.
+
+**Weekend e-bike rides (round 3, 2026-11-08).** Asked whether weekend E-bike, Cargo with assist
+and share e-bike rides should get the car-free parkways by planning twice, the owner said "Yes".
+The e-bike graph has no weekend twin, so it is in `presets.WEEKEND_TOO_VARIANTS` beside the
+off-road and Mountain Bike graphs: near a weekend closure such a ride is planned on the e-bike
+graph and on the weekend graph, at its assist pace on both, and the better kept by the calm
+search's comparison (`refine.better`, the ride type's own ranking; no trail rules apply).
+
+The weekend graph does not carry the e-bike graph's one rule, `bicycle=no` on ways tagged
+`electric_bicycle=no` (`pipeline.variants.bars_electric_bicycle`). A weekend winner could
+therefore ride a way barred to e-bikes only if the coverage held one, and it holds none: the
+2026-10-09 count found no way in the clipped extract with `electric_bicycle=no` (the 14 in the
+full extract are `highway=path` trails in western Virginia, outside the coverage; see "Trails
+off", 463a). The same holds already for a trails-off e-bike ride on the no-trail graph and an
+e-bike ride with a stop on a dirt trail on the off-road graph, neither of which has the bar.
+The rebuild now logs the count ("ways barred to e-bikes ..."), as a warning where it is above
+0; if it ever is, the weekend winner of an e-bike ride must be refused where it rides one of
+those ways (the segment table would need the tag: a schema change and a rebuild), or the bar
+carried into a weekend e-bike graph. Tests: tests/test_presets.py.
+
+### Round 3 owner decisions (2026-11-08)
+
+The third routing hunt's owner calls, as Stephen decided them on 2026-11-08:
+
+- **Tandem beg buttons** (C3-4, J3-2): "That should be at the 10x. It's really obnoxious to try
+  to navigate to a button on a tandem." Tandem keeps Road Bike's 600 s button price, now by name
+  (`presets.ROAD_BIKE_BUTTON_RIDES`), not by its wait weight above 1 ("Suburban signals and beg
+  buttons", above). Code change.
+- **Weekend e-bike rides** (C3-5): "Yes", planned twice ("Weekend e-bike rides", above). Code
+  change.
+- **Easy MTB dirt timing** (C3-7): "Yes", at Mountain Bike's 6 mph ("Easy MTB trails", above).
+  Code change.
+- **A `use_sidepath` road whose only side path is a bike-open sidewalk tag or a one-sided track**
+  (stress finding 5): "Make them LTS 4.5. They might be the only way there."
+  (`stress.USE_SIDEPATH_ON_ROAD_RULE`; docs/stress/classification.md, row 11). Code change; the
+  tier is written at the rebuild, so it reaches the map and the graph only after a map rebuild.
+- **Sunday evening from 6 PM** (T3-5): "Let's just go at 6 on Sunday."
+  (`ridetime.SUNDAY_EVENING_START`, and its copy in `frontend/src/lib/rideTime.ts`). Beach
+  Drive's last closed hour, Sunday 18:00-19:00, is planned as open to cars. Code change.
+- **Beach Drive on a weekday holiday** (T3-11): it stays open to cars ("there's a side trail
+  anyway"): a weekday federal holiday is off-peak on the standard graph, and Beach Drive's `PH`
+  hours are not read. No change.
+- **Wet-closed trails on the off-road graph** (terrain T3-2): "Don't bother with this
+  distinction. People often will plan in advance." Gravel, Mountain Goat and Easy MTB trails
+  keep riding the off-road graph with wet closures not applied; only the Mountain Bike graph
+  closes them (`mtbmode.closed_when_wet`). No change.
+- **Hard-to-see paths on MTB loops** (terrain T3-10): they stay closed on `route=mtb` loops
+  too ("If they are hard to find, they'd be frustrating"). No change.
+- **A weekend Default ride with a stop on a dirt trail** (time T3-10): "Plan twice." Not built
+  in this change: the weekend graph closes the touched trail at the build, so a weekend plan
+  cannot reach the stop, and snapping the stop to the nearest open way was refused in hunt 3,
+  PL3-6. Planning twice needs a plan whose legs come from two graphs (the legs that touch the
+  trail on the off-road graph, the others on the weekend graph) joined into one answer, a
+  follow-up.
+- **Re-plan notices** (R3-3): a Ride re-plan whose new route rides a harder MTB trail or loses
+  the weekend parkways is shown on screen (the trail colour, the map notes), not said out loud.
+  No change.
 
 ### Trails off (OWNER-DECISIONS 463, 463a, 463b)
 

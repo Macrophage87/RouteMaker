@@ -252,8 +252,10 @@ def test_when_at(moment, when):
         # 00:30 UTC on Monday 28 September is still Sunday evening, 20:30: off-peak,
         # after the weekend car-free windows end (the owner, 2026-11-08; hunt M6).
         (datetime(2026, 9, 28, 0, 30, tzinfo=UTC), "weekday_offpeak"),
-        # 22:30 UTC on Sunday 27 September is 18:30 there, still the weekend.
-        (datetime(2026, 9, 27, 22, 30, tzinfo=UTC), "weekend"),
+        # 21:30 UTC on Sunday 27 September is 17:30 there, still the weekend; 22:30, 18:30,
+        # is off-peak (the owner, round 3, 2026-11-08: "Let's just go at 6 on Sunday.").
+        (datetime(2026, 9, 27, 21, 30, tzinfo=UTC), "weekend"),
+        (datetime(2026, 9, 27, 22, 30, tzinfo=UTC), "weekday_offpeak"),
         # And in winter, five hours behind: 13:30 UTC on 12 January is 08:30.
         (datetime(2027, 1, 12, 13, 30, tzinfo=UTC), "weekday_rush"),
         (datetime(2027, 1, 12, 11, 30, tzinfo=UTC), "night"),  # 06:30
@@ -284,13 +286,19 @@ def test_a_holiday_is_weekday_offpeak_unless_it_falls_on_a_weekend():
 
 def test_sunday_evening_after_the_car_free_windows_is_offpeak():
     """Hunt M6. The weekend graph holds Beach Drive (`Su 00:00-19:00`) car-free, but cars
-    are back by Sunday evening. The owner, 2026-11-08: Sunday 7-9 PM plans as off-peak."""
-    sunday = datetime(2026, 11, 8, 18, 59, tzinfo=ridetime.ZONE)
+    are back by Sunday evening. The owner, 2026-11-08: Sunday 7-9 PM plans as off-peak.
+    Hunt 3, T3-5: Sligo Creek (`Su 00:00-18:00`) has cars back from 18:00; the owner, round
+    3, 2026-11-08: "Let's just go at 6 on Sunday." So Sunday evening starts at 18:00."""
+    assert ridetime.SUNDAY_EVENING_START == 18 * 60
+    sunday = datetime(2026, 11, 8, 17, 59, tzinfo=ridetime.ZONE)
     assert ridetime.when_at(sunday) == ridetime.WEEKEND
-    for hour, minute in ((19, 0), (19, 30), (20, 45)):
+    sligo = "no @ (Fr 09:00-24:00; Sa; Su 00:00-18:00)"
+    beach = "no @ (PH 07:00-19:00; Sa 07:00-24:00; Su 00:00-19:00)"
+    for hour, minute in ((18, 0), (18, 30), (19, 0), (19, 30), (20, 45)):
         moment = sunday.replace(hour=hour, minute=minute)
         assert ridetime.when_at(moment) == ridetime.WEEKDAY_OFFPEAK
-        beach = "no @ (PH 07:00-19:00; Sa 07:00-24:00; Su 00:00-19:00)"
+        assert ridetime.when_at(moment) not in ridetime.closed_settings(sligo)
+        # Beach Drive's last closed hour, 18:00-19:00, is planned as open to cars too.
         assert ridetime.when_at(moment) not in ridetime.closed_settings(beach)
     assert ridetime.when_at(sunday.replace(hour=21)) == ridetime.NIGHT
     # Saturday evening is still the weekend: the closures run to midnight.

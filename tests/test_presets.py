@@ -466,7 +466,9 @@ def test_the_weekend_graphs_twin_only_the_standard_and_paved_graphs() -> None:
 def test_the_rides_that_keep_the_mtb_class_plan_on_the_weekend_graph_too() -> None:
     """The owner, 2026-11-08: "We can do the plan twice." (`routing._plan_twice`)."""
     twice = {name for name in presets.PRESETS if presets.weekend_too(name, "weekend")}
-    assert twice == {"gravel", "mountain-goat", presets.MOUNTAIN_BIKE}
+    # E-bike too (round 3, 2026-11-08, "Yes"): the e-bike graph has no weekend twin.
+    assert twice == {"gravel", "mountain-goat", presets.MOUNTAIN_BIKE, "ebike"}
+    twice.discard("ebike")
     for name in presets.EASY_MTB_PRESETS:
         assert presets.weekend_too(name, "weekend", easy_mtb=True)
         assert not presets.weekend_too(name, "weekend")
@@ -477,6 +479,21 @@ def test_the_rides_that_keep_the_mtb_class_plan_on_the_weekend_graph_too() -> No
         assert not presets.weekend_too(name, "weekend", trails_off=True, easy_mtb=True)
         # The ride's own graph is still what `variant_for_ride` names.
         assert presets.variant_for_ride(name, "weekend", easy_mtb=True) != "weekend"
+
+
+def test_weekend_ebike_rides_plan_on_the_weekend_graph_too() -> None:
+    """The owner, round 3, 2026-11-08, asked whether weekend E-bike, Cargo with assist and
+    share e-bike rides should plan twice like the off-road rides: "Yes"."""
+    for name, assist in (("ebike", False), ("cargo", True), ("bikeshare", True)):
+        assert presets.variant_for_ride(name, "weekend", assist=assist) == Variant.EBIKE.value
+        assert presets.weekend_too(name, "weekend", assist=assist)
+        for when in ("weekday_rush", "weekday_offpeak", "night"):
+            assert not presets.weekend_too(name, when, assist=assist)
+        # Trails off wins: the no-trail graph alone.
+        assert not presets.weekend_too(name, "weekend", assist=assist, trails_off=True)
+    # Without assist, Cargo and a classic share bike take the standard graph's weekend twin.
+    assert not presets.weekend_too("cargo", "weekend")
+    assert not presets.weekend_too("bikeshare", "weekend")
 
 
 def test_cargo_assist_is_the_ebike_graph_at_any_time() -> None:

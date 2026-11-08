@@ -19,7 +19,13 @@ from pipeline.overrides import Override
 from pipeline.rebuild import Stage
 from pipeline.run import USE_SIDEPATH_REPORT_NAME, RebuildContext, build_handlers
 from routemaker import agency_lts, facility
-from routemaker.stress import USE_SIDEPATH_RULE, Stress, classify, motor_restriction
+from routemaker.stress import (
+    USE_SIDEPATH_ON_ROAD_RULE,
+    USE_SIDEPATH_RULE,
+    Stress,
+    classify,
+    motor_restriction,
+)
 
 ROAD = {
     "highway": "secondary",
@@ -328,13 +334,51 @@ class TestTheReviewFixes:
     def test_a_side_path_on_the_road_itself_is_never_priced_avoid(self, extra) -> None:
         # Hunt 2, S1 (2026-11-08): the road is in `found` (above), and before this
         # `classify(side_path=True)` made it Avoid, so the one edge carrying the
-        # track or sidewalk the rider is asked to use paid the Avoid price. It now
-        # keeps the Furth tier its own tags earn, the same as without `side_path`.
+        # track or sidewalk the rider is asked to use paid the Avoid price.
         tags = {**ROAD, "highway": "primary", "maxspeed": "40 mph", **extra}
         result = classify(tags, side_path=True)
         assert result.tier is not Stress.AVOID
         assert USE_SIDEPATH_RULE not in result.rule
-        assert result.tier is classify(tags).tier
+
+    @pytest.mark.parametrize(
+        "extra",
+        [
+            {"cycleway:right": "track"},
+            {"cycleway:left": "track"},
+            {"sidewalk:right:bicycle": "designated"},
+            {"sidewalk:both:bicycle": "yes"},
+            {"sidewalk:bicycle": "yes"},
+        ],
+    )
+    @pytest.mark.parametrize("speed", ["25 mph", "40 mph"])
+    def test_a_sidewalk_or_one_sided_track_on_the_road_is_lts_4_5(self, extra, speed) -> None:
+        """The hunt 3 stress review, finding 5: such a road was the bare Furth tier (LTS 4
+        at 40 mph), the sidewalk earning nothing. The owner, round 3, 2026-11-08: "Make them
+        LTS 4.5. They might be the only way there." Not Avoid, and not LTS 4."""
+        tags = {**ROAD, "highway": "primary", "maxspeed": speed, **extra}
+        result = classify(tags, side_path=True)
+        assert (result.tier, result.half) == (Stress.LTS4, True)
+        assert result.rule.startswith(USE_SIDEPATH_ON_ROAD_RULE)
+        # Without the side path found (`side_path` False), the road's own tier, as before.
+        assert not classify(tags).rule.startswith(USE_SIDEPATH_ON_ROAD_RULE)
+
+    def test_a_two_way_track_on_one_side_keeps_its_tier(self) -> None:
+        # `cycleway:right:oneway=no` serves both directions (`tags.cycleway_provision`).
+        tags = {
+            **ROAD,
+            "highway": "primary",
+            "maxspeed": "40 mph",
+            "cycleway:right": "track",
+            "cycleway:right:oneway": "no",
+        }
+        assert classify(tags, side_path=True).tier is Stress.LTS1
+
+    def test_the_lts_4_5_rule_reads_in_plain_words(self) -> None:
+        from core.segment_info import rule_words
+
+        tags = {**ROAD, "sidewalk:both:bicycle": "yes"}
+        words = rule_words(classify(tags, side_path=True).rule)
+        assert words.startswith("High stress: riders are asked to use the side path")
 
     def test_a_track_on_the_road_keeps_its_lts1(self) -> None:
         tags = {**ROAD, "highway": "primary", "maxspeed": "40 mph", "cycleway:both": "track"}
