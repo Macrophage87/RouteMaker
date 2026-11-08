@@ -355,6 +355,9 @@ class Stop:
     # Every elevator a bike could use here is out (core.transit_live.blocked_stations): a trip
     # taking its own bike in or out here is ranked this many seconds down (`ELEVATOR_OUT_S`).
     elevator_out_s: float = 0.0
+    # Every entrance a bike may use, `bike_entrance` (the map's) first; a bike leg takes the
+    # one on its rider's side (`_bike_entrance`). Empty: `bike_entrance` alone.
+    bike_entrances: tuple[tuple[float, float], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -591,6 +594,7 @@ def parse(doc: dict) -> Schedule:
             int(s["system"]),
             systems[int(s["system"])].mode != BUS,
             bool(s["bike"]),
+            bike_entrances=tuple(tuple(e) for e in s.get("bike_entrances") or ()),
         )
         for i, s in enumerate(doc["stops"])
     ]
@@ -825,6 +829,7 @@ def with_typical_metro(schedule: Schedule, path: Path = TYPICAL_PATH) -> Schedul
                 system.index,
                 True,
                 bool(row["bike"]),
+                bike_entrances=tuple(tuple(e) for e in row.get("bike_entrances") or ()),
             )
         )
     # One service per day type, running on its days of the window.
@@ -1267,6 +1272,19 @@ def _nearest_entrance(stop: Stop, point) -> tuple[float, float]:
     return min(candidates, key=lambda e: _distance(point, e))
 
 
+def _bike_entrance(stop: Stop, point) -> tuple[float, float]:
+    """The entrance a bike uses at `stop` coming from or going to `point`: of its bike
+    entrances (its elevators, where it has them), the nearest `point`.
+
+    It was always the one nearest the station's centre: on the stations whose elevators stand
+    either side of a highway (Herndon and Reston on the Dulles Toll Road, Tysons and its
+    neighbours in Route 7's median, Friendship Heights either side of Wisconsin Avenue) a rider
+    from the far side was routed round to it, and a transfer left by whichever entrance was
+    nearest, stairs included (hunt M5)."""
+    candidates = stop.bike_entrances or (stop.bike_entrance,)
+    return min(candidates, key=lambda e: (_distance(point, e), candidates.index(e)))
+
+
 # --- Departures and reach ----------------------------------------------------------------
 
 
@@ -1421,9 +1439,61 @@ def typical_first(minute: float, times) -> float | None:
     return seen[0] if seen[0] - minute > every else None
 
 
+# Patterns to one stop whose rides differ by at most this are one service for the wait (the
+# lines sharing Metro's tracks, a bus route's branches); past it a quicker one is a strategy of its
+# own (`_hop`).
+SAME_RIDE_S = 120.0
+
+
+def _ride_groups(entries) -> list[list]:
+    """The entries by ride time, quickest first, as the prefixes a rider might board: the
+    quickest group alone, then it and the next, and so on (rides within `SAME_RIDE_S` of the one
+    before stay together)."""
+    ordered = sorted(entries, key=lambda e: (e[1], e[2].index))
+    groups: list[list] = []
+    for entry in ordered:
+        if groups and entry[1] - groups[-1][-1][1] <= SAME_RIDE_S:
+            groups[-1].append(entry)
+        else:
+            groups.append([entry])
+    return [[e for group in groups[: n + 1] for e in group] for n in range(len(groups))]
+
+
+def _expected_ride(entries, times) -> float:
+    """The ride a rider boarding the first of `entries` to come can expect: each one's ride
+    weighted by its share of the next departures seen (`times`, distinct)."""
+    seen = _distinct(times)[:DEPARTURES_SEEN]
+    until = seen[-1] + 0.25 if seen else math.inf
+    weights = [sum(1 for t in deps if t <= until) for deps, *_rest in entries]
+    total = sum(weights)
+    if not total:
+        return min(e[1] for e in entries)
+    return sum(w * e[1] for w, e in zip(weights, entries, strict=True)) / total
+
+
 def _hop(minute: float, entries, typical: bool = False) -> Hop:
-    """The ride to one stop from the patterns that go there: the earliest arrival taken. On
-    Metro's typical timetable the wait is always `typical_wait_min`, never a departure."""
+    """The ride to one stop from the patterns that go there, the quickest door to door taken.
+    On Metro's typical timetable the wait is always `typical_wait_min`, never a departure.
+
+    A frequent service's wait is half the headway of every pattern it merges, so its ride is
+    what boarding the first to come gives: their rides weighted by their departures. It was the
+    quickest pattern's ride, so a local and a limited route on the same stops (S2 every 12 min
+    with a 30 min ride, S9 every 12 with 12) came out at a 3 min wait and a 12 min ride, quicker
+    than either bus (hunt M3). Each quicker set of patterns alone (`_ride_groups`) is a
+    strategy too, frequent or waited for at its next departure, and the quickest is taken:
+    waiting for the S9 (6 + 12 min) beats boarding the first bus (3 + about 21)."""
+    best = None
+    for group in _ride_groups(entries):
+        times = sorted(t for deps, *_rest in group for t in deps)
+        every = headway(times)
+        if typical or every <= FREQUENT_MIN:
+            wait = typical_wait_min(minute, times)[0] if typical else every / 2.0
+            cost = wait + _expected_ride(group, times) / 60.0
+        else:
+            cost = min(e[0][0] + e[1] / 60.0 for e in group) - minute
+        if best is None or cost < best[0] - 1e-9:
+            best = (cost, group)
+    entries = best[1]
     times = sorted(t for deps, *_rest in entries for t in deps)
     first = min(entries, key=lambda e: (e[0][0] + e[1] / 60.0, e[2].index))
     deps, ride, pattern, pos, later = first
@@ -1431,7 +1501,7 @@ def _hop(minute: float, entries, typical: bool = False) -> Hop:
     every = headway(times)
     if typical or every <= FREQUENT_MIN:
         routes = tuple(sorted({e[2].route for e in entries}))
-        ride = min(e[1] for e in entries)
+        ride = _expected_ride(entries, times)
         wait, gap = typical_wait_min(minute, times) if typical else (every / 2.0, every)
         first = typical_first(minute, times) if typical else None
         return Hop(
@@ -1857,7 +1927,7 @@ def _ride_to(
     pricing: Pricing = UNPRICED,
 ) -> _End:
     """Ride your own bike to a stop (and, a station, in by the elevator)."""
-    to = stop.bike_entrance
+    to = _bike_entrance(stop, start)
     routed = ride
     if ride is None:
         ride = Ride(ride_s(start, to, speed), (tuple(start), to))
@@ -1889,7 +1959,7 @@ def _ride_from(
     speed: float,
     pricing: Pricing = UNPRICED,
 ) -> _End:
-    start = stop.bike_entrance
+    start = _bike_entrance(stop, end)
     routed = ride
     if ride is None:
         ride = Ride(ride_s(start, end, speed), (start, tuple(end)))
@@ -2091,8 +2161,10 @@ def _transfer(day: _Day, a: Stop, b: Stop, speed: float) -> tuple[list[Leg], flo
     legs = []
     if a.rail:
         legs.append(_station_leg(EXIT, a) if bike else Leg(EXIT, ACCESS_WALK_S))
-    start = _nearest_entrance(a, b.point)
-    end = b.bike_entrance if bike else _nearest_entrance(b, start)
+    # With a bike, out by the elevator on the next station's side and in by its elevator on
+    # this one's (`_bike_entrance`); on foot, the nearest entrances.
+    start = _bike_entrance(a, b.point) if bike else _nearest_entrance(a, b.point)
+    end = _bike_entrance(b, start) if bike else _nearest_entrance(b, start)
     place = day.schedule.place(b)
     if bike:
         seconds = ride_s(start, end, speed)
@@ -2661,7 +2733,7 @@ def plan_bike(
                 schedule,
                 start,
                 s,
-                services.ride(start, list(s.bike_entrance)),
+                services.ride(start, list(_bike_entrance(s, start))),
                 speed_kmh,
                 day.pricing,
             )
@@ -2672,7 +2744,7 @@ def plan_bike(
                 schedule,
                 end,
                 s,
-                services.ride(list(s.bike_entrance), end),
+                services.ride(list(_bike_entrance(s, end)), end),
                 speed_kmh,
                 day.pricing,
             )

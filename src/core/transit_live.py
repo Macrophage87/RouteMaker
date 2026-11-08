@@ -82,9 +82,55 @@ def _blocked(station: wmata_live.Station, live: wmata_live.Snapshot) -> bool | N
     return len(out) >= max(1, street_elevators(station))
 
 
-def blocked_stations(live: wmata_live.Snapshot | None) -> list[wmata_live.Station]:
+# A station closure or elevator outage WMATA reports now holds for a trip leaving within this of
+# now; past it only an elevator outage with an estimated return still to come holds, until that
+# return. Before, a reading taken on a Tuesday dropped Saturday's trips through a station closed
+# by Tuesday's incident and ranked stations down for Tuesday's elevators out (hunt M4). Two hours
+# is a guess at how long an incident's closure lasts, for the owner to settle.
+LIVE_HOLDS_S = 2 * 3600.0
+
+
+def _back_at(outage: wmata_live.Outage) -> datetime | None:
+    """An outage's estimated return (WMATA's local time, "2026-10-17T23:59:59"), or None."""
+    try:
+        back = datetime.fromisoformat(outage.back or "")
+    except ValueError:
+        return None
+    return back.replace(tzinfo=transit.ZONE) if back.tzinfo is None else back
+
+
+def holding(
+    live: wmata_live.Snapshot | None, moment: transit.Moment | None, now: float | None = None
+) -> wmata_live.Snapshot | None:
+    """The reading with only the incidents and elevator outages that hold for a trip leaving at
+    `moment` (`LIVE_HOLDS_S`); all of it where `moment` is None."""
+    if live is None or moment is None:
+        return live
+    now = _wall() if now is None else now
+    ahead_s = (moment.minute - _minute(moment, now)) * 60.0
+    soon = ahead_s <= LIVE_HOLDS_S
+    leaves = datetime.fromtimestamp(now + ahead_s, UTC)
+
+    def holds(outage: wmata_live.Outage) -> bool:
+        back = _back_at(outage)
+        # Out now and the trip soon: it holds, even with WMATA's estimate already past (an
+        # overdue return is no sign the elevator is back). Later, only until a return to come.
+        return soon or (back is not None and leaves < back)
+
+    outages = tuple(o for o in live.outages if holds(o))
+    incidents = live.incidents if soon else ()
+    if outages == live.outages and incidents == live.incidents:
+        return live
+    return replace(live, outages=outages, incidents=incidents)
+
+
+def blocked_stations(
+    live: wmata_live.Snapshot | None, moment: transit.Moment | None = None
+) -> list[wmata_live.Station]:
     """The WMATA stations whose elevators out leave a bike no way through (`_blocked`), one
-    per station (its other platforms' codes left out)."""
+    per station (its other platforms' codes left out), for a trip leaving at `moment`
+    (`holding`; None: now)."""
+    live = holding(live, moment)
     if live is None:
         return []
     out: list[wmata_live.Station] = []
@@ -163,6 +209,8 @@ def skip_closed(plan: transit.Plan, live: wmata_live.Snapshot | None) -> transit
     affected" and "There is the option to ride through the closure as well": the direct ride is
     always an option, so a plan is never left empty. Bikeshare + 🚶🚆🚌 keeps its trips (a rider
     without a bike can take the shuttle); the step's WMATA alert says so."""
+    # A closure reported now, for a trip that leaves while it holds (`holding`).
+    live = holding(live, plan.moment)
     if live is None or plan.mode != presets.BIKE_TRANSIT or not plan.options:
         return plan
     kept = [o for o in plan.options if not closed_on(o, live)]
@@ -407,6 +455,8 @@ def annotate(
     alerts: list[str] = []
     if live is not None:
         option = plan.option
+        # The outages and incidents that hold when the trip leaves (`holding`).
+        live = holding(live, plan.moment)
         warnings = [wmata_live.elevator_words(name) for name in _outage_stations(option, live)]
         warnings += [
             wmata_live.spare_elevator_words(name)

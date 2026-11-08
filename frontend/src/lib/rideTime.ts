@@ -2,8 +2,12 @@
  * The ride time the map follows: the one chosen in the panel, or for "when I'm
  * planning" the setting of the moment, worked out as the API does
  * (routemaker.ridetime.when_at): night is 21:00 to 07:00 on any day, the
- * weekend is Saturday, Sunday and the US federal holidays, rush hours are
- * Monday to Friday 07:00-10:00 and 16:00-19:00, all in the region's time. The map reads it for the roads closed
+ * weekend is Saturday and Sunday to 19:00, rush hours are Monday to Friday
+ * 07:00-10:00 and 16:00-19:00, all in the region's time. A weekday federal
+ * holiday is off-peak all day and Sunday 19:00-21:00 is off-peak (the owner,
+ * 2026-11-08: "Holidays should use the weekday off-peak graph." "Unless it's a
+ * weekend."; Sunday evening, after the car-free windows end, plans as
+ * off-peak). The map reads it for the roads closed
  * to cars at set times (the owner, 2026-09-29: "Path on weekends only"),
  * which draw as off-road paths in the ride times they are closed in.
  */
@@ -16,6 +20,7 @@ const RUSH_WINDOWS: ReadonlyArray<[number, number]> = [
 ];
 const NIGHT_START = 21 * 60;
 const NIGHT_END = 7 * 60;
+const SUNDAY_EVENING_START = 19 * 60;
 
 /** A calendar date as "YYYY-MM-DD". */
 function iso(year: number, month: number, day: number): string {
@@ -80,7 +85,12 @@ export function whenAt(moment: Date): When {
   const [year, month, day] = [Number(parts.year), Number(parts.month), Number(parts.day)];
   const minute = Number(parts.hour) * 60 + Number(parts.minute);
   if (minute >= NIGHT_START || minute < NIGHT_END) return "night";
-  if (weekday(year, month, day) >= 5 || federalHolidays(year).has(iso(year, month, day))) return "weekend";
+  const wd = weekday(year, month, day);
+  if (wd === 6 && minute >= SUNDAY_EVENING_START) return "weekday_offpeak";
+  if (wd >= 5) return "weekend";
+  // The next year's too: New Year's Day 2028, a Saturday, is observed on 2027-12-31.
+  const date = iso(year, month, day);
+  if (federalHolidays(year).has(date) || federalHolidays(year + 1).has(date)) return "weekday_offpeak";
   return RUSH_WINDOWS.some(([start, end]) => start <= minute && minute < end) ? "weekday_rush" : "weekday_offpeak";
 }
 
