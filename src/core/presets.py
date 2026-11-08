@@ -1230,7 +1230,8 @@ def carrying_of(name: str, carrying: str | None = None) -> str | None:
 # The presets that ride the off-road graph, where the mountain-bike class is
 # open (OWNER-DECISIONS 291(2): "Closed for Default, open for Gravel/Goat").
 # The off-road graph has no weekend twin, so these rides stay on it at the
-# weekend.
+# weekend, and are planned on the weekend graph too near a weekend closure
+# (`weekend_too`).
 OFFROAD_PRESETS = frozenset({"gravel", "mountain-goat"})
 # The ride types that offer "Easy MTB trails" (the owner, 2026-11-08: "allow trailmaxxing to use
 # MTB trails too, some are definitely fine for that", "But it's opt in there too", "And
@@ -1267,6 +1268,15 @@ def variant_for_ride(
     Bike takes its own graph (`Variant.MTB`), at the weekend too. Default and
     Trailmaxxing with "Easy MTB trails" on (`EASY_MTB_PRESETS`) take the off-road
     graph as Gravel does, at the weekend too; trails off wins over it.
+
+    Those weekend rides on the off-road or Mountain Bike graph are also planned on the
+    weekend graph (`weekend_too`; the owner, 2026-11-08: "We can do the plan twice."), and
+    `routing.plan` keeps the better of the two by the ride type's own ranking, so a road
+    closed to cars at the weekend (Beach Drive) is not ridden as a road with cars. Only
+    where such a road is near the ride (the owner: "In most cases, weekend closures aren't
+    going to matter for MTB, is there a way to check?"; `routing.weekend_closure_near`).
+    This function still names the ride's own graph: the one it is planned on first, and
+    the one a weekend plan that cannot be made leaves it on.
     """
     preset = PRESETS[name]
     if trails_off:
@@ -1279,6 +1289,24 @@ def variant_for_ride(
     if preset.variant == Variant.STANDARD.value and when == WEEKEND:
         return Variant.WEEKEND.value
     return preset.variant
+
+
+# The graphs whose weekend rides are planned on the weekend graph too (`weekend_too`): both
+# keep the mountain-bike class open, which the weekend graph closes, so neither can simply be
+# replaced by it.
+WEEKEND_TOO_VARIANTS = frozenset({Variant.OFFROAD.value, Variant.MTB.value})
+
+
+def weekend_too(
+    name: str, when: str, assist: bool = False, trails_off: bool = False, easy_mtb: bool = False
+) -> bool:
+    """Whether a ride is planned on the weekend graph as well as on its own (`routing.plan`):
+    a weekend Gravel, Mountain Goat, Mountain Bike, or Default or Trailmaxxing with "Easy MTB
+    trails" on (the owner, 2026-11-08: "We can do the plan twice."). Never with trails off,
+    which takes the no-trail graph alone, nor on any other graph."""
+    if when != WEEKEND:
+        return False
+    return variant_for_ride(name, when, assist, trails_off, easy_mtb) in WEEKEND_TOO_VARIANTS
 
 
 # Valhalla's default cycling speed by bicycle type (km/h; Road 15.5 mph,

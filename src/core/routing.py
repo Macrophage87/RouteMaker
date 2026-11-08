@@ -1823,6 +1823,10 @@ class Dials:
     # Mass Ride's "Anticipated ride size" (PLAN items 128, 129), riders: the capacity a road
     # needs, which the route choice prices (`choose_by_capacity`); None: 500.
     ride_size: int | None = None
+    # The graph this plan is made on in place of `presets.variant_for_ride`'s; None: that one.
+    # Set by `plan` alone, for the weekend plan it makes beside a ride's own (`_plan_twice`):
+    # such a plan never falls back to another graph (it is given up instead).
+    graph: str | None = None
 
 
 def _same_pace(options: dict, request: dict) -> dict:
@@ -4661,6 +4665,214 @@ def circle_park_filter(lon: float, lat: float) -> dict:
     return {}
 
 
+# --- The weekend plan beside a ride's own (the owner, 2026-11-08: "We can do the plan twice.") ---
+#
+# A weekend Gravel, Mountain Goat, Mountain Bike or Easy MTB trails ride rides a graph that keeps
+# the mountain-bike class open (`presets.weekend_too`), which the weekend graph closes, so the
+# weekend graph cannot simply replace it; on its own graph a road closed to cars at the weekend
+# (Beach Drive) is a road with cars. Such a ride is planned on both, and the better route kept by
+# the ride type's own ranking (`_weekend_wins`). Only where a weekend car-free way is near the
+# ride (`weekend_closure_near`; the owner: "In most cases, weekend closures aren't going to matter
+# for MTB, is there a way to check?"): the weekend graph differs from the standard graph only on
+# those ways (`pipeline.variants`, `segment.car_free_when`).
+
+# How far round the box of the ride's start, stops and end a weekend car-free way still makes the
+# weekend plan worth asking for (metres). Not the first route's corridor: the weekend route can
+# go somewhere else. Claude's default, not measured.
+WEEKEND_CLOSURE_BUFFER_M = 3000.0
+# Metres a degree of latitude holds, for the buffer in degrees.
+_M_PER_DEG_LAT = 111_320.0
+
+
+class _GraphLeft(Exception):
+    """The weekend plan beside a ride's own could not be made on the weekend graph alone (a stop
+    on a dirt trail it closes, `core.trail_touch`): given up, the ride's own plan answered."""
+
+
+@dataclass(frozen=True)
+class _Ranking:
+    """What `_weekend_wins` weighs of one plan's final route: the calm search's reading of it
+    (`refine.Analysis`, with the plan's `refine.Context`), Mountain Bike's (`mtbmode.Reading`),
+    and the metres of trail rated 2 or harder on an Easy MTB trails ride (`easy_mtb`)."""
+
+    analysis: object | None
+    ctx: object | None
+    mtb: object | None
+    harder_m: float | None
+
+
+# Where a plan made for `_plan_twice` leaves its final route's `_Ranking` ({"ranking": ...});
+# None on every other plan.
+_ranking_slot: contextvars.ContextVar[dict | None] = contextvars.ContextVar(
+    "ranking_slot", default=None
+)
+
+
+def weekend_closure_near(
+    points: list[list[float]], buffer_m: float = WEEKEND_CLOSURE_BUFFER_M
+) -> bool:
+    """Whether a way closed to cars at the weekend (`segment.car_free_when` holds "weekend") lies
+    in the box round the ride's points, padded by `buffer_m`. One read of the live segment table,
+    through its ride-layer index (`pipeline.schema.RIDE_INDEX_PREDICATE` holds every timed
+    closure). True where it cannot be read: the weekend plan is then asked for all the same."""
+    if not points:
+        return False
+    lons = [float(p[0]) for p in points]
+    lats = [float(p[1]) for p in points]
+    pad_lat = buffer_m / _M_PER_DEG_LAT
+    widest = max(abs(lat) for lat in lats)
+    pad_lon = buffer_m / (_M_PER_DEG_LAT * max(math.cos(math.radians(widest)), 0.1))
+    box = (min(lons) - pad_lon, min(lats) - pad_lat, max(lons) + pad_lon, max(lats) + pad_lat)
+    try:
+        schema = validate_schema_name(settings.SEGMENT_SCHEMA_LIVE)
+        if not _has_facility_columns(schema):
+            return True
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"SELECT EXISTS (SELECT 1 FROM {schema}.segment WHERE "  # noqa: S608 - validated
+                "cardinality(car_free_when) > 0 AND %s = ANY(car_free_when) "
+                "AND geometry && ST_MakeEnvelope(%s, %s, %s, %s, 4326))",
+                [ridetime.WEEKEND, *box],
+            )
+            return bool(cursor.fetchone()[0])
+    except DatabaseError:
+        logger.warning("the weekend closures near a ride could not be read", exc_info=True)
+        return True
+
+
+def _weekend_too(preset_name: str, dials: Dials, points: list[list[float]]) -> bool:
+    """Whether `plan` makes the weekend plan beside this ride's own (`presets.weekend_too`): not
+    on the rider's own line (a followed file, drawn legs), and only near a weekend closure."""
+    following = dials.follow is not None and not dials.loop
+    if following or (bool(dials.straight) and not dials.loop):
+        return False
+    preset = presets.PRESETS[preset_name]
+    when = dials.when or default_when()
+    assist = bool(dials.assist) and preset.assist_speed_kmh is not None
+    trails_off = bool(dials.trails_off)
+    easy = bool(dials.easy_mtb) and preset_name in easy_mtb.PRESETS and not trails_off
+    if not presets.weekend_too(preset_name, when, assist, trails_off, easy):
+        return False
+    return weekend_closure_near(points)
+
+
+def _weekend_wins(weekend: _Ranking | None, own: _Ranking | None) -> bool:
+    """Whether the weekend plan's route replaces the ride's own, by the ride type's own ranking:
+    Mountain Bike's trail rules (`mtbmode.better`, as `mtb.settle` picks among routes); on Easy
+    MTB trails, fewer metres of harder trail first (as `easy_mtb.settle` keeps a route); then
+    the calm search's comparison (`refine.better`, as the search and the passes after it pick a
+    route), in the ride's own plan's context. Never on stress alone, and the ride's own on a tie
+    or where either cannot be read."""
+    from . import refine
+
+    if weekend is None or own is None:
+        return False
+    if weekend.mtb is not None and own.mtb is not None:
+        return mtbmode.better(weekend.mtb, own.mtb)
+    if weekend.harder_m is not None and own.harder_m is not None:
+        if abs(weekend.harder_m - own.harder_m) > easy_mtb.TOLERANCE_M:
+            return weekend.harder_m < own.harder_m
+    if weekend.analysis is None or own.analysis is None or own.ctx is None:
+        return False
+    return refine.better(weekend.analysis, own.analysis, own.ctx)
+
+
+@dataclass
+class _WeekendPlan:
+    body: dict | None = None
+    ranking: _Ranking | None = None
+    # Given up for want of the weekend router or the time (not for the ride itself): the
+    # answer is then not kept in the answer cache (`_skipped_for_time`).
+    failed: bool = False
+
+
+def _weekend_plan(
+    points, preset_name, long_ride, started, dials, quick, candidates
+) -> _WeekendPlan:
+    """The weekend plan beside a ride's own, on the router pool or after it. Never raises but
+    for a cancel: whatever goes wrong, the ride's own plan is answered (the weekend router
+    down is today's behaviour). Without the request's timing recorder: a plan restarts its
+    recorder's phases, which are the ride's own plan's."""
+    token = timing.start(None)
+    on_pool = parallel.inside()
+    slot: dict = {}
+    try:
+        body = _plan_alone(points, preset_name, long_ride, started, dials, quick, candidates, slot)
+        return _WeekendPlan(body, slot.get("ranking"))
+    except PlanCancelled:
+        raise
+    except (_GraphLeft, NoRoute, TooLong) as error:
+        logger.info("no weekend plan beside the ride's own: %s", error)
+        return _WeekendPlan()
+    except Exception as error:  # noqa: BLE001 - the ride's own plan is answered
+        logger.info("the weekend plan beside the ride's own was not made: %r", error)
+        return _WeekendPlan(failed=True)
+    finally:
+        timing.stop(token)
+        if on_pool:
+            # The pool thread's own database connection, closed as `api._leg_line` closes its.
+            from django.db import connections
+
+            connections.close_all()
+
+
+def _plan_twice(
+    points: list[list[float]],
+    preset_name: str,
+    long_ride: bool,
+    started: float,
+    dials: Dials,
+    quick: bool,
+    candidates: bool,
+) -> dict:
+    """A weekend ride planned on its own graph and on the weekend graph, the better route kept
+    (`_weekend_wins`); its `variant` says which graph won. Each is a whole plan on its graph (the
+    search, the red crossings, the Avoid junctions, `mtb.settle` or `easy_mtb.settle`, the
+    reread), so the route kept is answered as a single-graph plan answers it. The weekend plan
+    runs on the router pool beside the ride's own, as a transit trip's later rides do
+    (`core.parallel`); where the pool is off (or this is a pool thread) it runs after it, in
+    what is left of the budget. Where the weekend router is down or not promoted, the ride's
+    own plan alone, as before."""
+    if not _weekend_is_promoted():
+        return _plan_alone(points, preset_name, long_ride, started, dials, quick, candidates)
+    if _weekend_down():
+        # As a weekend ride whose router is down: answered, never kept in the answer cache.
+        _skipped_for_time()
+        return _plan_alone(points, preset_name, long_ride, started, dials, quick, candidates)
+    weekend_dials = dataclasses.replace(dials, graph=Variant.WEEKEND.value)
+    args = (points, preset_name, long_ride, started, weekend_dials, quick, candidates)
+    pending = parallel.submit(_weekend_plan, *args) if parallel.enabled() else None
+    slot: dict = {}
+    own_error: Exception | None = None
+    own = None
+    try:
+        own = _plan_alone(points, preset_name, long_ride, started, dials, quick, candidates, slot)
+    except PlanCancelled:
+        if pending is not None:
+            pending.cancel()
+        raise
+    except (NoRoute, TooLong, DeadlineExceeded, RouterUnavailable) as error:
+        own_error = error
+    if pending is None:
+        weekend = _weekend_plan(*args)
+    else:
+        try:
+            weekend = await_future(pending, max(0.0, started + LONG_PLAN_BUDGET_S - clock()))
+        except TimeoutError:
+            weekend = _WeekendPlan(failed=True)
+    if weekend.failed:
+        _skipped_for_time()
+    if own is None:
+        if weekend.body is None:
+            raise own_error
+        logger.info("the weekend graph answered a ride its own graph did not (%s)", own_error)
+        return weekend.body
+    if weekend.body is not None and _weekend_wins(weekend.ranking, slot.get("ranking")):
+        logger.info("the weekend plan's route ranks above the ride's own; answered")
+        return weekend.body
+    return own
+
+
 @_own_context
 def plan(
     points: list[list[float]],
@@ -4686,7 +4898,31 @@ def plan(
     nothing a different question answered. They are dropped before the final plan on the
     ride type's own graph, which asks other questions and so would only hold them longer
     on the 512M worker.
+
+    A weekend ride on the off-road or Mountain Bike graph near a road closed to cars at the
+    weekend is planned on the weekend graph too, and the better route kept (`_plan_twice`).
     """
+    dials = dials or Dials()
+    if started is None:
+        started = clock()
+    if dials.graph is None and _weekend_too(preset_name, dials, points):
+        return _plan_twice(points, preset_name, long_ride, started, dials, quick, candidates)
+    return _plan_alone(points, preset_name, long_ride, started, dials, quick, candidates)
+
+
+def _plan_alone(
+    points: list[list[float]],
+    preset_name: str,
+    long_ride: bool,
+    started: float | None,
+    dials: Dials | None,
+    quick: bool,
+    candidates: bool,
+    ranking: dict | None = None,
+) -> dict:
+    """`plan` on one graph. `ranking`, where given, is given the final route's ranking
+    (`_Ranking`, under "ranking") for `_plan_twice` to compare."""
+    ranking_token = _ranking_slot.set(ranking)
     # Its stress readings, for its own context only (audit S18), dropped as it ends: a pool
     # task still running after it holds a copy of the context, never the readings.
     memo: dict = {}
@@ -4700,6 +4936,7 @@ def plan(
     try:
         return _plan_rounds(points, preset_name, long_ride, started, dials, quick, candidates)
     finally:
+        _ranking_slot.reset(ranking_token)
         _routed_graph.reset(graph_token)
         memo.clear()
         pieces_read.clear()
@@ -4995,7 +5232,13 @@ def _plan(
     # "Easy MTB trails" (`core.easy_mtb`): on the ride types that offer it, and not with trails
     # off, which wins (`presets.variant_for_ride`).
     easy_asked = bool(dials.easy_mtb) and preset_name in easy_mtb.PRESETS and not trails_off
-    variant = presets.variant_for_ride(preset_name, when, assist, trails_off, easy_asked)
+    variant = dials.graph or presets.variant_for_ride(
+        preset_name, when, assist, trails_off, easy_asked
+    )
+    # The weekend plan `_plan_twice` makes beside the ride's own: on the weekend graph or not
+    # at all, and its route read by the ride type's own rules there (`mtb.settle`,
+    # `easy_mtb.settle`), as on the ride's own graph.
+    weekend_beside = dials.graph == Variant.WEEKEND.value
     # A dirt trail the rider put a stop, via or end on (the owner, 2026-10-20: "Don't plan on
     # the route, but if you enter it or mark a waypoint in it, it will continue to route
     # through"): planned on the off-road graph, where it is open, with this ride type's
@@ -5049,6 +5292,9 @@ def _plan(
             touched_trails = frozenset().union(*chosen)
             any_dirt = dials.ride_replan and (dials.dirt_ridden or on_dirt)
             if touched_trails or any_dirt:
+                if weekend_beside:
+                    # The ride's own graph opens the trail; the weekend graph never does.
+                    raise _GraphLeft("a point is on a dirt trail the weekend graph closes")
                 variant = Variant.OFFROAD.value
     # Bike lanes are "none" in the breakdown on a ride that takes the roadway (Mass
     # Ride, whose own graph is no-trail), not on every trails-off ride.
@@ -5145,6 +5391,8 @@ def _plan(
     if preset_name == mtb.PRESET and len(points) == 2 and not long_ride:
         request.setdefault("alternates", SEEK_ALTERNATES)
     if variant in TWIN_VARIANTS and (_twin_down(variant) or not _is_promoted(variant)):
+        if weekend_beside:
+            raise RouterUnavailable("the weekend graph is not being served")
         logger.info("the %s graph is not being served; planning on the standard graph", variant)
         variant = Variant.STANDARD.value
     # The first router call: the plan's own request, or the trace of the followed line.
@@ -5168,6 +5416,8 @@ def _plan(
             if variant not in TWIN_VARIANTS:
                 raise
             _mark_twin(variant, False)
+            if weekend_beside:
+                raise
             logger.warning("the %s router did not answer; planning on the standard graph", variant)
             variant = Variant.STANDARD.value
             answer, timed_out = _route(variant, asked, deadline)
@@ -5184,6 +5434,8 @@ def _plan(
                 raise
             answer, timed_out = _route(Variant.STANDARD.value, asked, deadline)
             _mark_twin(variant, False)
+            if weekend_beside:
+                raise RouterUnavailable("the weekend router placed no edge") from refusal
             logger.warning(
                 "the %s router placed no edge the standard graph could (code %s); "
                 "planning on the standard graph",
@@ -5586,7 +5838,11 @@ def _plan(
     # one the standard graph answered while the mountain-bike router was down, has no trails
     # to weigh.
     mtb_info = None
-    mtb_level_held = preset_name == mtb.PRESET and variant == Variant.MTB.value and not fixed
+    # And on the weekend plan beside the ride's own (`_plan_twice`), where the trails are closed
+    # but the rules still rank the router's routes and say what the route rides.
+    mtb_level_held = (
+        preset_name == mtb.PRESET and (variant == Variant.MTB.value or weekend_beside) and not fixed
+    )
     # Whether the route answered is still the one the search chose: Mountain Bike's choice
     # may swap in a router alternative, or a route its level rounds asked for, that no
     # crossing search has read, so the passes after it must not take it as searched (the
@@ -5623,7 +5879,7 @@ def _plan(
     # off-road router was not there the ride was planned on the standard graph, as Gravel's
     # is, and the answer says so (`no_offroad_graph`).
     easy_info = None
-    easy_held = easy_asked and variant == Variant.OFFROAD.value and not fixed
+    easy_held = easy_asked and (variant == Variant.OFFROAD.value or weekend_beside) and not fixed
     if easy_held:
         searched_trip = trip
         trip, easy_info = easy_mtb.settle(
@@ -6421,6 +6677,30 @@ def _plan(
     body["candidates"] = candidates or None
     body["rank"] = 1 if candidates else None
     timing.mark("more")
+    slot = _ranking_slot.get()
+    if slot is not None:
+        # The route answered, read for `_plan_twice` to weigh against the other graph's.
+        analysis = mtb_reading = None
+        try:
+            analysis = refine.analyse(trip, refine_context, deadline)
+        except (DeadlineExceeded, RouterUnavailable, RouterRefused, NoRoute):
+            pass
+        if mtb_level_held:
+            level = mtbmode.clamp_level(dials.mtb_level)
+            try:
+                found = mtb.reading_of(
+                    trip, variant, trace_costing, when, deadline, traces, level,
+                    preferred_level=mtbmode.preferred_level(dials.mtb_preferred, level),
+                )  # fmt: skip
+            except (DeadlineExceeded, RouterUnavailable, RouterRefused):
+                found = None
+            mtb_reading = None if found is None else found[0]
+        slot["ranking"] = _Ranking(
+            analysis=analysis,
+            ctx=refine_context,
+            mtb=mtb_reading,
+            harder_m=(easy_info or {}).get("harder_m") if easy_held else None,
+        )
     return body
 
 

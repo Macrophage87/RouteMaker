@@ -4935,9 +4935,8 @@ switch shows off, says why, and the ride takes the no-trail graph.
 With it on, `presets.variant_for_ride(..., easy_mtb=True)` gives the off-road graph
 (`Variant.OFFROAD`), as Gravel's, at the weekend too, with the ride type's own costing, so the
 calm search, Trailmaxxing's ranking and every stress rule hold as on any of its rides.
-(Taking the off-road graph at the weekend too is Claude's default, not the owner's call and
-not measured: with the switch on, the weekend graph's car-free roads such as Beach Drive are
-priced as ordinary roads, not paths.) That
+At the weekend it is planned on the weekend graph as well, near a road closed to cars at the
+weekend, and the better route kept ("Weekend rides planned twice", below). That
 graph opens the mountain-bike class (`trailaccess.MTB`, unrated grass and dirt) and the drawn
 rated singletrack up to level 1 (`singletrack.OFFROAD_MAX_LEVEL`). Easy is rated 0 or 1 on
 `mtb:scale` or `mtb:scale:imba`, or not rated; rated 2 or harder stays the Mountain Bike ride
@@ -4964,6 +4963,54 @@ planned on the standard graph as Gravel's is (the twin fallback), `limited` is
 usual trails. An answer whose rounds ran out of time is not kept in the answer cache
 (`route_cache.keepable`). Tests: tests/test_easy_mtb.py, `TestEasyMtbTrails` in
 tests/test_route_dials.py, tests/test_mcp_server.py, frontend/src/lib/easyMtb.test.ts.
+
+### Weekend rides planned twice (the owner, 2026-11-08)
+
+A weekend ride on the standard graph takes its weekend twin, where roads closed to cars at the
+weekend (Beach Drive, Sligo Creek and Little Falls Parkways) are paths. Gravel, Mountain Goat,
+Mountain Bike, and Default or Trailmaxxing with "Easy MTB trails" on ride graphs that keep the
+mountain-bike class open (`Variant.OFFROAD`, `Variant.MTB`), which the weekend graph closes, so
+it cannot simply replace theirs, and on their own graphs those roads are roads with cars. The
+owner: "We can do the plan twice." And then: "In most cases, weekend closures aren't going to
+matter for MTB, is there a way to check?"
+
+`presets.weekend_too(name, when, assist, trails_off, easy_mtb)` names these rides (a weekend
+ride whose `variant_for_ride` is the off-road or Mountain Bike graph; never with trails off,
+which takes the no-trail graph alone, as before). `routing.plan` plans such a ride twice
+(`_plan_twice`) only where `routing.weekend_closure_near` finds a way whose
+`segment.car_free_when` holds `weekend` in the box round the ride's start, stops and end, padded
+by `WEEKEND_CLOSURE_BUFFER_M` (3 km; Claude's default, not measured). The weekend graph differs
+from the standard one only on those ways, so a ride with none near gains nothing from it. The
+check is one `EXISTS` read of the live segment table through its ride-layer index
+(`RIDE_INDEX_PREDICATE` holds every timed closure); not the first route's corridor, as the
+weekend route can go somewhere else. Where the table cannot be read, both plans are made.
+
+Each plan is a whole plan on its graph: the calm search, `mtb.settle` or `easy_mtb.settle` (run
+on the weekend plan too, so its answer reads the trail rules and never says `no_mtb_graph` or
+`no_offroad_graph`), the red crossings, the dodge and Avoid-junction passes and the rereads,
+with their own exclusions and closures. The weekend plan is `Dials.graph = "weekend"`: it never
+falls back to the standard graph, and is given up where its router is down or tileless, where a
+stop is on a dirt trail it closes (`core.trail_touch`), or where it finds no route. Each plan's
+final route is read for the ranking (`_Ranking`), and `_weekend_wins` keeps the better by the
+ride type's own ranking, never by stress alone: Mountain Bike's trail rules (`mtbmode.better`,
+as `mtb.settle` picks); on Easy MTB trails, less harder trail first (as `easy_mtb.settle`
+keeps a route); then the calm search's comparison (`refine.better`), in the own plan's context.
+A tie, or a route that cannot be read, keeps the ride's own. The answer's `variant` is the
+winner's graph; the answer cache keeps a weekend winner (`api._planned`, `route_cache.keepable`)
+and keys on the request as before. Where the weekend graph is not promoted the ride is planned
+on its own graph alone, silently; where its router is down, the same, but the answer is not
+kept (`_skipped_for_time`), as a weekend ride's standard-graph fallback is not.
+
+The weekend plan runs on the router pool beside the ride's own (`core.parallel`), as a transit
+trip's later rides do, so the request waits about as long as the slower of the two; on the
+pool it makes its own calls in turn, and the pool has one thread fewer for the own plan while it
+runs. Where the pool is off (`ROUTER_PARALLEL_CALLS=1`) or the plan is itself on a pool thread,
+the weekend plan runs after the ride's own, in what is left of the same budget. No new graph or
+router, and no memory limit changed. The frontend reads `mtb.limited` and `easy_mtb.limited`,
+not `variant`, for its notices; Road Bike's `variant` check (`lib/roadBike.ts`) does not apply.
+Best order (`core.stoporder`) and map matching (`core.map_match`) still use the ride's own graph.
+Tests: `TestWeekendPlannedTwice`, `TestWeekendClosureNear` and `TestWeekendWins` in
+tests/test_route_dials.py; tests/test_presets.py.
 
 ### Trails off (OWNER-DECISIONS 463, 463a, 463b)
 
