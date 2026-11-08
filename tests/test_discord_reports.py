@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 from pathlib import Path
 
@@ -122,6 +123,15 @@ def bot_dir(tmp_path: Path) -> Path:
     (tmp_path / "bot-token").chmod(0o600)
     (tmp_path / "forums").write_text(f"# bug reports\n{BUGS}\n")
     return tmp_path
+
+
+REAL_FULL_NOTES_URL = mod.full_notes_url
+
+
+@pytest.fixture(autouse=True)
+def _no_github(monkeypatch) -> None:
+    """No test asks GitHub where a release's notes are; the link tests set their own answer."""
+    monkeypatch.setattr(mod, "full_notes_url", lambda version: "")
 
 
 def run(bot_dir: Path, fake: FakeDiscord, *args: str) -> int:
@@ -527,3 +537,76 @@ def test_multipart_carries_the_payload_and_the_file(tmp_path) -> None:
     assert b'name="payload_json"' in data and b'{"content": "hi"}' in data
     assert b'name="files[0]"; filename="a.png"' in data and PNG in data
     assert data.endswith(f"--{boundary}--\r\n".encode())
+
+
+PR_URL = "https://github.com/Macrophage87/RouteMaker/pull/1070"
+
+
+def test_the_post_links_to_the_full_notes_in_the_release_pr(changelog_dir, monkeypatch) -> None:
+    monkeypatch.setattr(mod.time, "sleep", lambda s: None)
+    monkeypatch.setattr(mod, "full_notes_url", lambda version: PR_URL)
+    notes = changelog_dir / "v0.22.0.md"
+    notes.write_text("**RouteMaker 0.22.0**\n- Saved routes take tags\n")
+    fake = FakeChannel()
+    assert run(changelog_dir, fake, "changelog", "v0.22.0", str(notes)) == 0
+    assert fake.posted() == [
+        "**RouteMaker v0.22.0 is on beta**\n- Saved routes take tags\n"
+        f"Full release notes: <{PR_URL}>"
+    ]
+    # A post made before the link existed (or with another link) still counts as posted.
+    for content in (
+        "**RouteMaker v0.22.0 is on beta**\n- Saved routes take tags",
+        fake.posted()[0],
+    ):
+        again = FakeChannel([{"id": "1", "author": {"id": BOT}, "content": content}])
+        assert run(changelog_dir, again, "changelog", "v0.22.0", str(notes)) == 0
+        assert again.posted() == []
+    # --full-notes overrides the lookup; '' leaves the link off.
+    other = FakeChannel()
+    args = ("changelog", "v0.22.0", str(notes), "--full-notes", "https://example.org/n")
+    assert run(changelog_dir, other, *args) == 0
+    assert other.posted()[0].endswith("Full release notes: <https://example.org/n>")
+    bare = FakeChannel()
+    assert run(changelog_dir, bare, "changelog", "v0.22.0", str(notes), "--full-notes", "") == 0
+    assert "Full release notes" not in bare.posted()[0]
+
+
+class _Reply:
+    def __init__(self, body: bytes) -> None:
+        self.body = body
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc) -> None:
+        return None
+
+    def read(self) -> bytes:
+        return self.body
+
+
+def test_the_full_notes_are_the_merged_release_pr_else_the_file_at_the_tag(monkeypatch) -> None:
+    fresh = mod
+    monkeypatch.setattr(mod, "full_notes_url", REAL_FULL_NOTES_URL)
+    asked = []
+    pulls = [
+        {"html_url": "https://github.com/Macrophage87/RouteMaker/pull/1", "merged_at": None},
+        {"html_url": PR_URL, "merged_at": "2026-11-08T12:00:00Z"},
+    ]
+
+    def answer(request, timeout):
+        asked.append(request.full_url)
+        return _Reply(json.dumps(pulls).encode())
+
+    monkeypatch.setattr(fresh.urllib.request, "urlopen", answer)
+    assert fresh.full_notes_url("v0.22.0") == PR_URL
+    assert "base=main" in asked[0] and "head=Macrophage87:release/v0.22.0" in asked[0]
+    at_tag = "https://github.com/Macrophage87/RouteMaker/blob/v0.22.0/docs/releases/v0.22.0.md"
+    pulls[:] = [pulls[0]]  # no merged release PR yet
+    assert fresh.full_notes_url("v0.22.0") == at_tag
+
+    def down(request, timeout):
+        raise fresh.urllib.error.URLError("offline")
+
+    monkeypatch.setattr(fresh.urllib.request, "urlopen", down)
+    assert fresh.full_notes_url("v0.22.0") == at_tag

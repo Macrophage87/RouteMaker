@@ -201,11 +201,39 @@ MAX_FILES = 10  # Discord's limit on attachments in one message
 
 
 def undated(text: str) -> str:
-    """A post's words without its live-date line, so a retry on another day still matches."""
+    """A post's words without its live-date and full-notes lines, so a retry on another day, or
+    after the release's pull request was found, still matches."""
     lines = text.split("\n")
     if len(lines) > 1 and lines[1].startswith("Live on beta "):
         del lines[1]
-    return "\n".join(lines)
+    return "\n".join(line for line in lines if not line.startswith(FULL_NOTES))
+
+
+FULL_NOTES = "Full release notes: "
+GITHUB_REPO = "Macrophage87/RouteMaker"
+
+
+def full_notes_url(version: str, repo: str = GITHUB_REPO) -> str:
+    """Where the full notes are (the owner, 2026-11-08: the release PRs carry the full release
+    notes, and the Discord post links to them): the merged pull request from release/<version>
+    into main, found with GitHub's public API; if it cannot be found, the notes file at the tag."""
+    fallback = f"https://github.com/{repo}/blob/{version}/docs/releases/{version}.md"
+    owner = repo.split("/", 1)[0]
+    path = (
+        f"https://api.github.com/repos/{repo}/pulls?state=closed&base=main"
+        f"&head={owner}:release/{version}&per_page=10"
+    )
+    request = urllib.request.Request(path, headers={"User-Agent": USER_AGENT})
+    try:
+        with urllib.request.urlopen(request, timeout=20) as response:
+            pulls = json.loads(response.read() or b"[]")
+    except (urllib.error.URLError, ValueError, OSError):
+        return fallback
+    for pull in pulls if isinstance(pulls, list) else []:
+        url = pull.get("html_url") or ""
+        if pull.get("merged_at") and url.startswith(f"https://github.com/{repo}/pull/"):
+            return url
+    return fallback
 
 
 def live_line(day: str) -> str:
@@ -547,12 +575,18 @@ def cmd_changelog(
     notes_file: Path | None,
     dry_run: bool,
     live: str | None = None,
+    full_notes: str | None = None,
 ) -> int:
     semver(version)
     notes, base = "", None
     if notes_file is not None and notes_file.is_file():
         notes = notes_file.read_text(encoding="utf-8", errors="replace")
         base = notes_file.parent
+    if full_notes is None:
+        full_notes = full_notes_url(version)
+    if full_notes:
+        # <...> keeps Discord from adding a link preview under the pictures.
+        notes = notes.rstrip("\n") + f"\n{FULL_NOTES}<{full_notes}>\n"
     posts = changelog_posts(version, notes, base, live)
     # A message the bot already posted for this version is skipped, so a pass that stopped
     # part-way posts only the rest and a repeated pass posts nothing.
@@ -617,6 +651,11 @@ def main(argv: list[str] | None = None, api: Discord | None = None) -> int:
     changelog.add_argument("notes", type=Path, nargs="?")
     changelog.add_argument("--dry-run", action="store_true")
     changelog.add_argument("--live-date", metavar="YYYY-MM-DD", help="the day it went live")
+    changelog.add_argument(
+        "--full-notes",
+        metavar="URL",
+        help="link to the full notes (default: the release's merged pull request; '' for none)",
+    )
     args = parser.parse_args(argv)
     try:
         if args.command == "changelog":
@@ -628,6 +667,7 @@ def main(argv: list[str] | None = None, api: Discord | None = None) -> int:
                 args.notes,
                 args.dry_run,
                 args.live_date,
+                args.full_notes,
             )
         token, forum_ids = load_settings(args.dir)
         forums = Forums(api or Discord(token), forum_ids)
