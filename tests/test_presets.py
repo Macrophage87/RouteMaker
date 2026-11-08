@@ -66,6 +66,7 @@ LAYER_2_DIALS = {
     "maneuver_penalty",
     "gate_cost",
     "gate_penalty",
+    "private_access_penalty",
     "country_crossing_cost",
     "country_crossing_penalty",
 }
@@ -153,7 +154,10 @@ def test_cargo_is_hill_averse_slow_and_gate_shy() -> None:
     use_hills"; the owner: "They tend not to be great on hills"."""
     assert options("cargo")["use_hills"] < options("default")["use_hills"]
     assert options("cargo")["use_hills"] <= 0.5
-    assert options("cargo")["gate_cost"] > options("group-ride")["gate_cost"]
+    # What a gate costs Cargo is `gate_cost + gate_penalty`: since 2026-11-08 most of it is
+    # penalty, which is cost alone, and `gate_cost`, which is also time, is a 30 s slow-down
+    # (hunt C4). Until then this compared `gate_cost` alone.
+    assert _gate_charge("cargo") > _gate_charge("group-ride")
     assert options("cargo")["cycling_speed"] < 18.0
     assert options("cargo")["avoid_bad_surfaces"] > options("default")["avoid_bad_surfaces"]
     assert options("cargo")["bicycle_type"] == "Hybrid"
@@ -247,8 +251,56 @@ def test_the_group_presets_raise_the_maneuver_penalty(name: str) -> None:
     assert options(name)["maneuver_penalty"] > options("default")["maneuver_penalty"]
 
 
-def test_group_ride_raises_the_gate_cost() -> None:
-    assert options("group-ride")["gate_cost"] > options("default")["gate_cost"]
+def _gate_charge(name: str) -> int:
+    """The cost Valhalla adds at an untagged gate (sif/dynamiccost.h: gate_cost + gate_penalty)."""
+    return options(name)["gate_cost"] + options(name)["gate_penalty"]
+
+
+def test_group_ride_pays_a_small_gate_charge_like_default() -> None:
+    """The owner, 2026-11-08: the large gate penalty "was intended just for Tandem, and
+    possibly cargo too. Basically, bollards aren't huge deterrents in most cases." Until then
+    this test pinned Group Ride's higher gate cost (120 s, and 420 s with the penalty)."""
+    assert _gate_charge("group-ride") == _gate_charge("default") == 30
+
+
+GATE_SHY = frozenset({"cargo"})
+
+
+@pytest.mark.parametrize("name", sorted(presets.PRESETS))
+def test_only_cargo_pays_a_large_gate_charge(name: str) -> None:
+    """Every other ride type pays a small slow-down at a gate, cycle barrier or narrow
+    bollard: Valhalla's 30 s and no penalty. Before 2026-11-08: 330 s (420 s for Group Ride
+    and Road Bike, 900 s for the share bikes, Walk and Run) (hunt T1, H3)."""
+    if name in GATE_SHY:
+        assert _gate_charge(name) >= 600
+    else:
+        assert _gate_charge(name) == presets.GATE_COST_S == 30
+        assert options(name)["gate_penalty"] == 0
+
+
+@pytest.mark.parametrize("name", sorted(presets.PRESETS))
+def test_a_gate_adds_no_more_than_half_a_minute_to_the_time(name: str) -> None:
+    """`gate_cost` is time as well as cost; `gate_penalty` is cost alone (sif/dynamiccost.h).
+    Cargo's gate cost of 300 s put five minutes per barrier on its arrival times and the
+    share bikes' legs to docks and stations (hunt C4, 2026-11-08)."""
+    assert options(name)["gate_cost"] <= 30
+
+
+def test_every_preset_states_the_private_barrier_penalty() -> None:
+    for name in presets.PRESETS:
+        assert options(name)["private_access_penalty"] == presets.VALHALLA_PRIVATE_ACCESS_PENALTY_S
+
+
+def _living_street_entry_s(value: float) -> float:
+    """Valhalla's living-street entry charge (sif/dynamiccost.cc at 3.9.1)."""
+    return 500 * (1 - 2 * value) if value < 0.5 else 0.0
+
+
+@pytest.mark.parametrize("name", ["fast", presets.ROAD_BIKE])
+def test_fast_and_road_bike_dislike_a_living_street_mildly(name: str) -> None:
+    """Their comment's "a shared street is slow for a road bike": about a minute of cost per
+    entry, not the 300 s their 0.2 charged (hunt C5, 2026-11-08)."""
+    assert 0 < _living_street_entry_s(options(name)["use_living_streets"]) <= 60
 
 
 def test_mass_ride_plans_inside_the_speed_band() -> None:
@@ -288,6 +340,8 @@ def test_trailmaxxing_is_more_stress_averse_than_default() -> None:
     living streets on, low surface avoidance"."""
     assert options("trailmaxxing")["use_roads"] < options("default")["use_roads"]
     assert options("trailmaxxing")["use_roads"] == 0.0
+    # Inert above 0.5 in bicycle costing (`presets._LIVING_STREETS`): what makes a living
+    # street cheap on Trailmaxxing is its use_roads of 0. Kept as PLAN's "living streets on".
     assert options("trailmaxxing")["use_living_streets"] > options("default")["use_living_streets"]
     assert options("trailmaxxing")["avoid_bad_surfaces"] < options("default")["avoid_bad_surfaces"]
 

@@ -64,6 +64,30 @@ def grade(value: str | None) -> int | None:
 OFFROAD_MAX_LEVEL = 1
 
 
+# A gravel trail built for bicycles, rated easy, is the gravel trail it is and not
+# singletrack (the hunt of 2026-11-08, A4): mappers put `mtb:scale=1` on crushed-stone
+# rail-trails, and the rule closed a bicycle-designated one (or a cycleway, which is one by
+# its class) on every graph but the off-road and Mountain Bike ones, though the MTB-class
+# rule spares the same trail (`routemaker.trailaccess`). The owner, OWNER-DECISIONS 91:
+# "Gravel is different. Most bikes can handle gravel, few would want to route through
+# singletrack", and 2026-11-01, "All gravel everywhere" is priced as packed gravel
+# (lua/routemaker_remap.lua `strip_easy_gravel_ratings` takes the same easy rating off
+# before the parser reads it as a surface). A harder rating (2 and up) is still singletrack.
+PACKED_GRAVEL_SURFACES = frozenset({"gravel", "fine_gravel", "compacted"})
+EASY_GRAVEL_MAX = 1
+
+
+def is_built_gravel_trail(tags: dict[str, str]) -> bool:
+    """A cycleway, or a trail designated for bicycles, on gravel, fine gravel or compacted,
+    rated no harder than `EASY_GRAVEL_MAX` on either scale."""
+    if tags.get("surface") not in PACKED_GRAVEL_SURFACES:
+        return False
+    if tags.get("highway") != "cycleway" and tags.get("bicycle") != "designated":
+        return False
+    grades = [grade(tags.get(key)) for key in SCALE_KEYS if tags.get(key) is not None]
+    return all(g is not None and g <= EASY_GRAVEL_MAX for g in grades)
+
+
 def is_singletrack(tags: dict[str, str]) -> bool:
     if tags.get("highway") not in TRAIL_CLASS_HIGHWAY:
         return False
@@ -71,6 +95,8 @@ def is_singletrack(tags: dict[str, str]) -> bool:
     # Northwest Branch, Muddy Branch, Gunpowder Falls and the Cross County
     # Trail carry an mtb:scale on asphalt (review r1).
     if is_paved(tags):
+        return False
+    if is_built_gravel_trail(tags):
         return False
     return any((g := grade(tags.get(key))) is not None and g >= 1 for key in SCALE_KEYS)
 

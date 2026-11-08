@@ -1643,7 +1643,9 @@ curl -s -X POST http://localhost:8000/api/route -H 'Content-Type: application/js
   owner's "Only tier-5 roads", 2026-09-27): OSM's own alleys become plain
   service roads in the graph (Valhalla's service penalty, 15 s, where an alley
   had 5 s), and destination-only and private ways keep Valhalla's own
-  `destination_only_penalty` (600 s, not sent). The access of a tier-5 way is
+  `destination_only_penalty` (600 s, not sent) where a bicycle enters to stop
+  (since 2026-11-08 a way a bicycle passes along, and its own tag opens, is not
+  destination-only: docs/OPERATIONS.md, "Destination-only is for a stop"). The access of a tier-5 way is
   untouched, so it stays routable when it is the only way.
   Measured on the DC box graph (PUBLIC-DIALS round 3, Valhalla `/locate`
   against the graph of 7a04862): all 9,322 destination-only or
@@ -2473,7 +2475,8 @@ parameters, or approach-edge penalties. Neither can price a movement:
 
 - Valhalla's per-node knobs are `gate_cost` and `gate_penalty` (gate nodes) and
   the country crossing costs (border control nodes), each a flat charge for
-  passing the node in any direction, and both already used (narrow gaps; state
+  passing the node in any direction, and both already used (narrow gaps and hard
+  barriers, a 30 s slow-down on every ride type but Cargo since 2026-11-08; state
   lines, sent as zero). A charge on every busy-road junction would be paid by
   the rider riding along the busy road as much as by the one crossing it, which
   is item 169's opposite.
@@ -4877,6 +4880,16 @@ direction on a one-way, measured through `lua/graph.lua` under LuaJIT
 | `vehicle:backward` | rewritten to `no` |
 | `bicycle:backward` (`yes`, `no` or any other value) | rewritten to `none` |
 | `bicycle:backward:conditional`, or `bicycle:conditional` on a one-way that grants contraflow, which `remap_conditional_access` turns into a direction | `bicycle:backward:conditional=no` |
+
+On every graph, since the hunt of 2026-11-08 (T2), the remap itself
+(`routemaker_remap.contraflow_reverse`) reads a one-way's lanes as the map does
+(`routemaker.tags.cycleway_sides`): a side whose own `:oneway` runs against the
+traffic opens the reverse (`bicycle:backward=yes`; the District's shape had been
+open only through its sharrow, which `apply_facility` removes on every ordinary
+street), so does `oneway:bicycle=no` beside a `oneway` that is not `yes`, which
+upstream ignored, and lanes on both sides that run with the traffic no longer
+open it (`bicycle:backward=none`). The no-trail graph's `oneway:bicycle=yes`
+keeps the first two from firing there.
 
 Three things are not obvious, and each is pinned by a test.
 

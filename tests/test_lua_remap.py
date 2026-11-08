@@ -419,6 +419,23 @@ CONTRAFLOW_FORMS = {
     },
 }
 
+# The forms whose lanes all run with the traffic: nothing on the way (no `opposite*`
+# value, no `oneway:bicycle`, no side `:oneway` against the traffic) says a bicycle
+# may ride against it. Upstream opened them both ways on every graph; since the
+# hunt of 2026-11-08 (T2) the remap closes the reverse on every graph
+# (`routemaker_remap.contraflow_reverse`), as `routemaker.tags.cycleway_sides`
+# and the map read them.
+WITH_FLOW_FORMS = frozenset(
+    {
+        "lane-each-side",
+        "lane-both",
+        "track-both",
+        "share-busway-each-side",
+        "buffered-lane-destination",
+        "left-lane-and-sharrow-without-oneway-bicycle",
+    }
+)
+
 # The directions of a one-way's geometry: `oneway=-1` runs against the way's
 # nodes, so the traffic goes backward and a contraflow rider forward.
 ONEWAYS = {"yes": ("bike_forward", "bike_backward"), "-1": ("bike_backward", "bike_forward")}
@@ -448,11 +465,15 @@ def test_the_no_trail_variant_gives_a_one_way_no_contraflow(form, oneway) -> Non
     for variant in (Variant.STANDARD, Variant.WEEKEND, Variant.EBIKE):
         assert inject(variant, dict(tags), 7) == tags, variant.value
     # The control: the standard graph does ride against the traffic on these
-    # tags. Upstream's own reading of `oneway=-1` with `oneway:bicycle=no` is
-    # the one exception (it grants nothing there), kept as a form because the
-    # closure must not make it worse.
+    # tags, but for the with-flow forms (`WITH_FLOW_FORMS`), which it now rides
+    # with the traffic only. Upstream's own reading of `oneway=-1` with
+    # `oneway:bicycle=no` grants nothing there; until the hunt of 2026-11-08 (T2)
+    # that was this control's one exception, and the remap now writes it as
+    # `bicycle:backward=yes`, which upstream reads on every spelling.
     standard = _flow_access(tags)
-    if (form, oneway) != ("oneway-bicycle-no", "-1"):
+    if form in WITH_FLOW_FORMS:
+        assert standard[1] == "false", (form, oneway, standard)
+    else:
         assert standard[1] == "true", (form, oneway, standard)
 
 
@@ -902,6 +923,55 @@ def test_the_remap_reads_each_side_as_the_classifier_does() -> None:
 # `pipeline.signals`); a marked crossing still left with no signal flag is counted
 # at `MARKED_CROSSING_FACTOR`. These two tests are the tripwire: if upstream starts
 # reading another signal tag, the derivation may double up or be redundant.
+
+
+def test_the_remap_reads_a_contraflow_lane_as_the_map_does() -> None:
+    """`contraflow_reverse` opens a one-way's reverse from a side whose own `:oneway` runs
+    against the traffic (hunt T2, 2026-11-08), and that has to be the side the map draws as
+    contraflow (`tags.cycleway_sides`, `CyclewaySide.contraflow`), over the grid of side
+    keys, lane values, the side's `:oneway` and the way's direction. And the lane classes it
+    reads as upstream's two-sided grant are `variants.LANE_CLASS_VALUES`."""
+    import itertools
+
+    from pipeline.variants import LANE_CLASS_VALUES
+    from routemaker.tags import cycleway_sides
+
+    cases = []
+    for key, value, own, oneway in itertools.product(
+        ("cycleway:left", "cycleway:right", "cycleway:both"),
+        ("lane", "track", "shared_lane"),
+        (None, "-1", "yes", "no"),
+        ("yes", "-1"),
+    ):
+        tags = {"highway": "residential", "oneway": oneway, key: value}
+        if own is not None:
+            tags[f"{key}:oneway"] = own
+        cases.append(tags)
+    lua_cases = ",\n".join(
+        "{" + ", ".join(f'["{k}"] = "{v}"' for k, v in case.items()) + "}" for case in cases
+    )
+    result = _lua_driver(
+        'package.path = "lua/?.lua;" .. package.path\n'
+        'local M = require("routemaker_remap")\n'
+        f"local cases = {{\n{lua_cases}\n}}\n"
+        "for _, tags in ipairs(cases) do\n"
+        '  io.stdout:write(tostring(M.side_against_traffic(tags, "left")), " ",\n'
+        '    tostring(M.side_against_traffic(tags, "right")), "\\n")\n'
+        "end\n"
+        "local names = {}\n"
+        "for name in pairs(M.LANE_CLASS_VALUES) do names[#names + 1] = name end\n"
+        "table.sort(names)\n"
+        'io.stdout:write(table.concat(names, " "), "\\n")\n'
+    )
+    assert result.returncode == 0, result.stderr
+    lines = result.stdout.splitlines()
+    for tags, line in zip(cases, lines, strict=False):
+        sides = cycleway_sides(tags)
+        expected = (
+            f"{str(sides['left'].contraflow).lower()} {str(sides['right'].contraflow).lower()}"
+        )
+        assert line == expected, tags
+    assert lines[-1].split() == sorted(LANE_CLASS_VALUES)
 
 
 def test_upstream_reads_signals_from_traffic_signals_nodes_only() -> None:

@@ -7958,8 +7958,71 @@ cross the George Washington Parkway at grade at Tulane Drive, with no signal, an
 by side streets (the owner, 2026-11-08). Where a way's own `bicycle` tag grants it (yes,
 designated, permissive) and its `access` and `vehicle` leave it open, the remap writes the
 private motor key `no` (`M.private_to_motors_only`): still closed to cars in the graph, no
-longer destination-only for the bicycle. `access=private`, `vehicle=private`, a way with no
-bicycle tag, a cemetery's ways and the Zoo's spur keep the flag.
+longer destination-only for the bicycle. A cemetery's ways and the Zoo's spur keep the flag.
+
+**Destination-only is for a stop (with the next map update).** The owner, 2026-11-08:
+"Destination only should also include a stop, basically somewhere that there's a specific
+decision to enter." Valhalla's 600 s charge now stays only where a bicycle enters a way to
+stop there - a business's lot, a private drive, a gated complex's streets - and comes off
+the ways a bicycle passes along (`M.passes_through`: paths, cycleways, footways and
+sidewalks, bridleways, pedestrian streets, tracks and service roads, and any way signed
+`bicycle=designated`; never a parking aisle, a driveway or a drive-through):
+
+- a private motor key comes off wherever the way's own `bicycle` tag grants a bicycle, beside
+  `access=no` too (the usual gated trail: `access=no`, `bicycle=yes`,
+  `motor_vehicle=private`);
+- on a pass-through way a private `access` or `vehicle` beside a bicycle grant is written
+  `no` (the sidewalk at the Pentagon reservation, way 345398651; the service road between
+  17th Street and Colorado Avenue NW, way 83423506; the WB&A Trail's stretch of Bragers Road,
+  way 11507607), and `foot` keeps what `access` gave a pedestrian;
+- a path, cycleway or service road with no bicycle tag that is private to motor traffic
+  alone (the gated Rock Creek park road, way 274709114) loses the flag too.
+
+A residential street tagged `motor_vehicle=destination` ("local traffic only"), a private
+street with `bicycle=yes`, a lot's aisle and a driveway keep it. The barrier nodes on those
+ways follow the same rule: a gate or bollard a bicycle passes that is private to cars, such
+as the two gates across car-free Beach Drive NW at about 38.9443 N (nodes 971094676 and
+13314069319), no longer charges Valhalla's private-barrier penalty (450 s plus the gate
+cost). Every preset now states that penalty (`private_access_penalty`, 450 s), which only a
+barrier private to bicycles too still pays.
+
+**Gates, barriers and the tag shapes the graph misread (hunt of 2026-11-08; presets at once,
+the rest with the next map update).**
+
+- Gates: the owner, 2026-11-08, the large gate penalty "was intended just for Tandem, and
+  possibly cargo too. Basically, bollards aren't huge deterrents in most cases." Every ride
+  type but Cargo now pays Valhalla's 30 s at a gate, a cycle barrier or a narrow bollard and
+  no penalty (`presets.GATE_COST_S`; it was 330 s, 420 s on Group Ride and Road Bike, and
+  900 s on the share bikes, Walk and Run). Cargo keeps its 15 minutes of cost, now as 30 s of
+  time and 870 s of penalty, so a barrier no longer adds five minutes to its arrival times.
+  Kissing gates, stiles and turnstiles are gates in the graph too
+  (`routemaker_remap.HARD_BARRIERS`), so Cargo avoids them and everyone else slows for them.
+  Preset change only for the costs; the barrier types need the map update.
+- Contraflow: a one-way's lane whose own `cycleway:<side>:oneway` runs against the traffic
+  (the District's `cycleway:left=lane` + `cycleway:left:oneway=-1`) opens the reverse even
+  after the sharrow beside it comes off, and `oneway=1`, `true`, `-1` or a roundabout with
+  `oneway:bicycle=no` gets its contraflow. Lanes on both sides that run with the traffic no
+  longer open a wrong-way direction on any graph (`routemaker_remap.contraflow_reverse`).
+- An LTS 4 or 3.5 road whose speed limit is tagged by direction (`maxspeed:forward` or
+  `:backward`) keeps its graded speed in both directions (`directional_speeds`).
+- A signed sidepath or a trail's stretch mapped as a sidewalk (`footway=sidewalk` with
+  `bicycle=designated`, or a named or `segregated` sidewalk open to bicycles) is priced as a
+  path, not as the road-priced sidewalk (`priced_as_sidepath`).
+- An easy mountain-bike rating (0 or 1) on gravel, fine gravel or compacted no longer sets the
+  edge's surface, so the way is priced as packed gravel (`strip_easy_gravel_ratings`), and a
+  cycleway or bicycle-designated trail on such a surface rated 1 is not closed as singletrack
+  (`singletrack.is_built_gravel_trail`).
+- A driveway tagged `bicycle=no` stays closed (upstream reopened every mode on an untagged
+  driveway). An untagged `highway=pedestrian` or `highway=bridleway` is written `bicycle=no`,
+  so Valhalla's US country access defaults cannot open it whatever the admin database holds.
+- The circle-park and Capitol-grounds rules no longer open a plaza mapped only as an area
+  (`highway=pedestrian` + `area=yes`), which Valhalla never builds.
+
+Not changed: steps with `ramp:bicycle=yes` still cost what steps do (Valhalla prices the steps
+use at 1 km/h, and the use comes from `highway`, which the remap may not rewrite); and the
+no-trail graph still has no LTS 4 or half-step grading, so a trails-off ride on any ride type
+prices LTS 4 as LTS 3 (the graph is Mass Ride's too, whose big roads the grading would price
+at use_roads 1.0; giving trails-off rides their graded graph needs a router of its own).
 
 **Short links the trail rules close (v0.14.0, with the next map update).** Every link rule
 above reads footways or parking aisles, so a short `highway=path` the trail rules close

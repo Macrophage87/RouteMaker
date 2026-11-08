@@ -100,3 +100,37 @@ def test_mtb_scale_words_say_which_scale_set_the_level(tags, words) -> None:
     """The owner, 2026-10-28: "say which rating type triggered the rating and if they are
     rated on both scales say that"."""
     assert mtb_scale_words(tags) == words
+
+
+@pytest.mark.parametrize(
+    "tags",
+    [
+        {
+            "highway": "cycleway",
+            "bicycle": "designated",
+            "surface": "fine_gravel",
+            "mtb:scale": "1",
+        },
+        {"highway": "path", "bicycle": "designated", "surface": "compacted", "mtb:scale": "1"},
+        {"highway": "cycleway", "surface": "gravel", "mtb:scale:imba": "1"},
+    ],
+)
+def test_an_easy_rating_on_a_built_gravel_trail_is_not_singletrack(tags) -> None:
+    """The hunt of 2026-11-08 (A4): a crushed-stone rail-trail rated 1 was closed as
+    singletrack on every standard graph. Before: is_singletrack True."""
+    assert not is_singletrack(tags)
+
+
+@pytest.mark.parametrize(
+    "tags",
+    [
+        # Harder than easy is still singletrack, gravel or not.
+        {"highway": "cycleway", "bicycle": "designated", "surface": "gravel", "mtb:scale": "2"},
+        # Not built for bicycles: a rated gravel footpath is still read by its rating.
+        {"highway": "path", "surface": "gravel", "mtb:scale": "1"},
+        # Dirt is not gravel.
+        {"highway": "path", "bicycle": "designated", "surface": "dirt", "mtb:scale": "1"},
+    ],
+)
+def test_the_gravel_exception_is_narrow(tags) -> None:
+    assert is_singletrack(tags)
