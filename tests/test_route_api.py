@@ -53,6 +53,8 @@ CONTRACT_KEYS = {
     "junction_delay_s",
     # Additive, the ride's arrival times (2026-10-26): where along the line the time falls.
     "time_marks",
+    # Additive, 2026-11-08: the signals that may need a button press, for Ride's note.
+    "light_buttons",
     "stress_m",
     "attribution",
     # Additive, PUBLIC-DIALS (tests/test_route_dials.py).

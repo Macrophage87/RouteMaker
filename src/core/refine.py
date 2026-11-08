@@ -355,6 +355,9 @@ class Context:
     # What a second of junction waiting costs against a second of riding when routes are
     # ranked (`presets.wait_weight_for`): 1, and 3 on Road Bike. The time shown is unchanged.
     wait_weight: float = 1.0
+    # The map's beg-button answers already had in this plan, by OSM way (tagged or not;
+    # `routing.button_ways`): the candidates share most of their crossings.
+    button_ways: dict = field(default_factory=dict)
     # The ways the exclusion search kept excluding for its best route, which the
     # seek keeps excluding (set by the search).
     kept_excludes: list = field(default_factory=list)
@@ -558,8 +561,19 @@ class Analysis:
     shift: int = 0
     # The seconds its junctions cost the rider, which the router's own time leaves out
     # (`routemaker.junction_delay`, the owner, 2026-10-20: "Both", the time shown and the
-    # route chosen): priced in `score` as that much quiet riding.
+    # route chosen): priced in `score` as that much quiet riding, at `junction_ranked_s`.
     junction_delay_s: float = 0.0
+    # The same waits as the ranking counts them (`junction_delay.Wait.ranked_s`): a suburban
+    # signal's twice, a crossing read as needing its beg button at two minutes below a stop
+    # sign's price (the owner, 2026-11-08: "a 2x penalty but keep those numbers"). None: the
+    # waits shown (an analysis made without the reading).
+    junction_ranked_s: float | None = None
+
+    @property
+    def ranked_delay_s(self) -> float:
+        """The junction waits the ranking counts (`junction_ranked_s`)."""
+        return self.junction_delay_s if self.junction_ranked_s is None else self.junction_ranked_s
+
     # Each piece's known hazard kinds, in the order of `pieces` (`route_hazards.kinds_of`), as
     # the reading priced them; the answer says them from here (audit S16). None: not read.
     hazard_kinds: list | None = None
@@ -611,7 +625,7 @@ class Analysis:
             self.cost_s
             + ctx.quiet_cost * extra
             + avoid_model.penalty_s(self.avoid_passages)
-            + QUIET_COST_FACTOR * ctx.wait_weight * self.junction_delay_s
+            + QUIET_COST_FACTOR * ctx.wait_weight * self.ranked_delay_s
             + QUIET_COST_FACTOR * RED_DETOUR_S * ctx.weight * red_count(self)
         )
 
@@ -685,7 +699,19 @@ def delay_m(read: Analysis, ctx: Context) -> float:
     (`Context.wait_weight`)."""
     if ctx.quiet_cost <= 0:
         return 0.0
-    return QUIET_COST_FACTOR * ctx.wait_weight * read.junction_delay_s / ctx.quiet_cost
+    return QUIET_COST_FACTOR * ctx.wait_weight * read.ranked_delay_s / ctx.quiet_cost
+
+
+def stop_wait_s_per_ft(ctx: Context) -> float | None:
+    """What a foot of the junction model's cost is worth in the ranking, as seconds of
+    junction waiting (`score`: the model's feet at `ctx.weight` and `quiet_cost` a metre, a
+    wait at QUIET_COST_FACTOR and `wait_weight` a second): a crossing read as needing its beg
+    button is held below a stop sign across the same road in these units
+    (`junction_delay.signal_wait`; the owner, 2026-11-08). None where neither prices."""
+    per_wait_s = QUIET_COST_FACTOR * ctx.wait_weight
+    if per_wait_s <= 0 or ctx.quiet_cost <= 0:
+        return None
+    return ctx.quiet_cost * ctx.weight / model.FEET_PER_METRE / per_wait_s
 
 
 def charged_m(read: Analysis, ctx: Context) -> float:
@@ -1087,6 +1113,11 @@ def analyse(
     halves = half_metres(hilled, classes)
     weights = ctx.exposure.weights
     events = events_of_raws(raws, ctx, deadline) if with_events else None
+    # The junctions' waits, the junction model's signals, big roads and stop-sign prices
+    # included (hunt J5; the owner, 2026-11-08), each read once for the time and the rank.
+    found_waits = routing.junction_waits(
+        raws, ctx.beacons, events, stop_wait_s_per_ft(ctx), ctx.button_ways, ctx.when
+    )
     result = Analysis(
         length_m=float((trip.get("summary") or {}).get("length", 0.0)) * 1000.0,
         cost_s=routing._router_cost(trip),
@@ -1132,13 +1163,10 @@ def analyse(
         hazard_kinds=kinds,
         scenic=getattr(real_classes, "scenic", None),
         adjustments=getattr(real_classes, "adjustments", None),
-        junction_delay_s=junction_delay.delay_s(
-            raws,
-            routing.stop_as_yield,
-            lambda lon, lat: model.beacon_at(lon, lat, ctx.beacons) is not None,
-            # The junction model's signals, up the roads' arms too (hunt J5).
-            model.signal_points(events),
-        ),
+        junction_delay_s=sum(w.seconds for w in found_waits),
+        # At the ride type's wait weight, stacked at most 5x the wait shown (Road Bike;
+        # `junction_delay.MAX_STACKED_WEIGHT`), given back per unit of that weight.
+        junction_ranked_s=junction_delay.ranked_s(found_waits, ctx.wait_weight),
     )
     if with_events:
         ctx.analyses[key] = result
@@ -3271,6 +3299,7 @@ def combine(reads: list[Analysis]) -> Analysis:
         ),
         shift=max((r.shift for r in reads), default=0),
         junction_delay_s=sum(r.junction_delay_s for r in reads),
+        junction_ranked_s=sum(r.ranked_delay_s for r in reads),
     )
 
 

@@ -67,6 +67,10 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Busy crossing, no signal.": "Kafou ki gen anpil machin, pa gen limyè.",
   "Busy crossing.": "Kafou ki gen anpil machin.",
   "Busy junction.": "Entèseksyon ki gen anpil machin.",
+  // A signal that may need a button press (the owner, 2026-11-08): the card's note and the words said.
+  // Drafted by Claude: FLAGGED for review by a native speaker.
+  "Light may need a button press": "Limyè a ka bezwen ou peze bouton an",
+  "Button for the light.": "Bouton pou limyè a.",
   "Busy junction at a signal.": "Entèseksyon ki gen anpil machin, gen limyè.",
   "Busy junction at a stop sign.": "Entèseksyon ki gen anpil machin, gen siy stòp.",
   "Busy junction, no signal.": "Entèseksyon ki gen anpil machin, pa gen limyè.",

@@ -833,6 +833,9 @@ class RebuildContext:
     # areas that stop at the coverage boundary.
     merged_pbf: Path | None = None
     ways: list[extract.Way] = field(default_factory=list)
+    # The ways' nodes tagged `button_operated=yes` (`extract.read_ways`), for
+    # `segment.button_operated`; empty where none were read.
+    button_nodes: set[int] = field(default_factory=set)
     ways_by_id: dict[int, extract.Way] = field(default_factory=dict)
     # The whole `Match`, not `(aadt, tier)`. The stage that reads this is the
     # last one that could record where a count came from, and the pair dropped
@@ -1063,6 +1066,7 @@ class RebuildContext:
 
         for name in (
             "ways",
+            "button_nodes",
             "ways_by_id",
             "aadt_by_way",
             "aadt_raw_by_way",
@@ -2341,7 +2345,10 @@ def build_handlers(
         writers.refuse_live_schema(context.staging_schema)
         reset_segment_schema(context.staging_schema)
 
-        context.ways = extract.read_ways(context.source_pbf)
+        # The ways' nodes tagged `button_operated=yes` are read in the same pass (the beg
+        # buttons, `pipeline.signals.button_ways`; the owner, 2026-11-08).
+        context.button_nodes = set()
+        context.ways = extract.read_ways(context.source_pbf, button_nodes=context.button_nodes)
         # The OSM route relations the ways are in, for the zoomed-out long trails
         # (OWNER-DECISIONS 375).
         routes = trail_routes.read_routes(context.source_pbf)
@@ -4116,6 +4123,11 @@ def build_handlers(
             [(way.osm_id, way.tags, way.coordinates) for way in context.ways]
         )
         logger.info("unnamed bike ways named for the street beside them: %d", len(sidepath_names))
+        # The crossings, paths and sidewalks whose signal is called with a push button
+        # (`button_operated=yes` on the way or a node of it; the owner, 2026-11-08), for the
+        # junction-delay model's beg buttons (`core.routing.button_ways`).
+        button_ways = signals.button_ways(context.ways, context.button_nodes)
+        logger.info("ways at a button-operated signal: %d", len(button_ways))
         # The scenic designations (v0.8.0), in words: written beside the tier, never read by
         # the classifier or the graph, so a scenic road keeps its stress and gets no bonus.
         scenic_text = scenic_layer.scenic_by_way(
@@ -4216,6 +4228,7 @@ def build_handlers(
                         if way.osm_id in context.mtb_only
                         else None,
                         walk_bike=way.osm_id in context.walk_bike,
+                        button_operated=way.osm_id in button_ways,
                         road_speed_mph=_smallint(getattr(stress, "speed_mph", None)),
                         road_default_speed_mph=_smallint(
                             getattr(stress, "default_speed_mph", None)

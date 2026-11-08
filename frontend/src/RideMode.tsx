@@ -158,6 +158,8 @@ import {
   type Verbosity,
   endWords,
   ARRIVED_SAID,
+  BUTTON_SHOWN,
+  buttonOnly,
 } from "./lib/navigate.ts";
 import { statsPause, statsStart, statsStep, type RideStats } from "./lib/rideStats.ts";
 import {
@@ -499,7 +501,8 @@ function arrowFor(
   const across = crossArrow(cue);
   if (across) return across;
   if (cue.movement) return cue.movement;
-  if (cue.kind === "hazard" || cue.kind === "walk") return "warn";
+  // A button signal's own note (lib/navigate.ts withButtons) is no warning: drawn straight on.
+  if ((cue.kind === "hazard" && !cue.buttonOnly) || cue.kind === "walk") return "warn";
   return "straight";
 }
 
@@ -3749,6 +3752,8 @@ export function RideMode({
                 {cueShown.rest}
               </p>
               {cue.citation && <p className="cue-citation">{cue.citation}</p>}
+              {/* A signal that may need its button (the owner, 2026-11-08), under the turn or crossing it is at. */}
+              {cue.button && !buttonOnly(cue) && <p className="cue-citation">{t(BUTTON_SHOWN)}</p>}
             </div>
           </div>
         ) : (

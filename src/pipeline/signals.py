@@ -29,7 +29,7 @@ A pedestrian hybrid beacon (HAWK) shows drivers a red and is mapped as
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Collection, Iterable, Mapping
 
 from routemaker.classes import MOTOR_ONLY_HIGHWAY, TRAIL_CLASS_HIGHWAY
 
@@ -96,3 +96,33 @@ def signal_nodes(ways: Iterable) -> frozenset[int]:
 def node_tags(nodes: Iterable[int]) -> dict[int, dict[str, str]]:
     """The extract's node tags for `signal_nodes`."""
     return {node: {NODE_TAG: "yes"} for node in nodes}
+
+
+# --- Beg buttons (the owner, 2026-11-08) ----------------------------------------------
+#
+# "They aren't very common in DC, but they are definitely frustrating elsewhere." OSM tags a
+# signal a rider or walker must call with a push button `button_operated=yes`, on the
+# crossing node or on the crossing way. The router carries no such flag, so the rebuild
+# marks the trail-class ways (the crossing, the path or sidewalk) that say it themselves or
+# pass through a node that does (`segment.button_operated`), and the junction-delay model
+# reads a signal the route reaches on one as needing its button
+# (`routemaker.junction_delay.signal_wait`, `core.routing.button_ways`). A road through
+# such a node is not marked: a rider on the road waits for the road's green.
+BUTTON_KEY = "button_operated"
+
+
+def says_button(tags: Mapping[str, str]) -> bool:
+    """Whether a node's or a way's tags say its signal is called with a push button."""
+    return tags.get(BUTTON_KEY) == "yes"
+
+
+def button_ways(ways: Iterable, button_nodes: Collection[int] = ()) -> frozenset[int]:
+    """The trail-class ways (`extract.Way`s: `osm_id`, `tags`, `node_ids`) that are tagged
+    `button_operated=yes` or pass through a node in `button_nodes`."""
+    nodes = frozenset(button_nodes)
+    return frozenset(
+        way.osm_id
+        for way in ways
+        if way.tags.get("highway") in TRAIL_CLASS_HIGHWAY
+        and (says_button(way.tags) or any(node in nodes for node in way.node_ids))
+    )

@@ -111,10 +111,15 @@ class TestTheRating:
         tags = {"highway": "unclassified", "motor_vehicle": "private", "bicycle": "use_sidepath"}
         assert motor_restriction(tags) == (Stress.LTS2, "motor_vehicle=private")
 
-    def test_an_agency_rating_outranks_it(self) -> None:
+    def test_an_agency_rating_does_not_lower_it(self) -> None:
+        # Until hunt D2 (2026-11-08) a plain MoCo 3 outranked the side path's Avoid and
+        # priced the roadway as an ordinary street, routing riders onto it instead of the
+        # path OSM tells them to use (the owner, 2026-10-16: Avoid where a side path is
+        # mapped). The agency's rating is still recorded beside the Avoid.
         rating = agency_lts.AgencyRating(agency="moco", level=3.0)
         result = agency_lts.apply(classify(ROAD, side_path=True), [rating])
-        assert result.tier is Stress.LTS3
+        assert result.tier is Stress.AVOID
+        assert [r.level for r in result.agency_ratings] == [3.0]
 
 
 class TestTheMapAndPanel:
@@ -341,12 +346,13 @@ class TestTheReviewFixes:
     def test_a_way_with_no_length_is_skipped(self, coords) -> None:
         assert facility.use_sidepath_paths([(1, dict(ROAD), coords)]) == ({}, set())
 
-    def test_an_agency_rating_says_its_own_why(self) -> None:
+    def test_the_side_path_why_stays_beside_an_agency_rating(self) -> None:
+        # Hunt D2 (2026-11-08): the side path's Avoid keeps its own why; before, a MoCo 3
+        # replaced it with "Rated LTS 3 by ..." and the road was priced as a street.
         rating = agency_lts.AgencyRating(agency="moco", level=3.0)
         result = agency_lts.apply(classify(ROAD, side_path=True), [rating])
         words = segment_info.rule_words(result.rule)
-        assert "side path" not in words
-        assert words.startswith("Rated LTS 3 by")
+        assert "side path" in words
 
 
 OWNER_STRESS = Path(__file__).parents[1] / "fixtures/overrides/2026-09-27-owner-stress.json"

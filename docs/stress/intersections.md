@@ -160,6 +160,14 @@ stopped crossing of an LTS 4 road about 0.52 to 2.00 calm mi [0.83 to 3.22 km; 2
 | A straight crossing at a mapped trail crossing with no signal mapped | the stopped-side cost times 0.5, and never drawn red (orange at most) | `:104`, `:110`, `:559-560`, `:746-747` |
 | A divided road, its two carriageways crossed as one crossing | the costlier carriageway's cost times 0.75 (credit for the median refuge) | `:123`, `:803-820` |
 
+These are stress costs. The time a signal holds the rider is the junction-delay model's
+(docs/DEVELOPMENT.md, "Junction delay"), which reads two things from here (the owner,
+2026-11-08): the signals whose crossed or joined road has 4+ lanes in all or a speed of
+40 mph or more (`big_road`, `big_signal_points`: outside the major cities such a signal is a
+45 s wait), and by signal what a stop sign on the rider's approach would cost over the signal
+(`stop_extra_ft`), which holds a crossing read as needing a beg button below a stop sign
+across the same road in the ranking. Neither changes a junction's cost or colour here.
+
 ## 5. Movements
 
 - **Onto a busy road** (`MOVEMENT_FACTOR_ONTO`, `:204`; applied at `:541-555`): the

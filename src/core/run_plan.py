@@ -61,7 +61,7 @@ TRAIL_WEIGHT = 0.7
 QUIET_WEIGHT = 0.85
 LONG_CREDIT = 0.1
 # What one signalled crossing is taken to cost a runner standing at it, before the weight
-# (`routemaker.junction_delay.SIGNAL_DELAY_S`, a ride's own).
+# (the runner's own figure; a ride's is `routemaker.junction_delay.signal_wait`'s).
 SIGNAL_WAIT_S = 15.0
 # Valhalla's `use_lit` after dark: 0.5 makes an unlit way cost twice its time.
 USE_LIT_AFTER_DARK = 0.5

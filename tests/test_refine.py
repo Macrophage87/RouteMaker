@@ -221,6 +221,38 @@ class TestJunctionDelay:
         one.junction_delay_s, two.junction_delay_s = 30.0, 45.0
         assert refine.combine([one, two]).junction_delay_s == 75.0
 
+    def test_a_suburban_signals_wait_ranks_at_twice_the_time_shown(self) -> None:
+        # The owner, 2026-11-08: "a 2x penalty but keep those numbers". Before: the score read
+        # the waits shown (45 s); after: the ranked waits (90 s), the time shown unchanged.
+        crossing = analysis("a")
+        crossing.junction_delay_s = 45.0
+        assert crossing.score(context()) == pytest.approx(4000.0 + refine.QUIET_COST_FACTOR * 45.0)
+        crossing.junction_ranked_s = 90.0
+        assert crossing.junction_delay_s == 45.0
+        assert crossing.score(context()) == pytest.approx(4000.0 + refine.QUIET_COST_FACTOR * 90.0)
+        top = context(maxcalm=True)
+        assert refine.delay_m(crossing, top) == pytest.approx(
+            refine.QUIET_COST_FACTOR * 90.0 / QUIET_COST
+        )
+
+    def test_legs_add_their_ranked_waits_a_leg_without_them_at_its_waits_shown(self) -> None:
+        one, two = analysis("a"), analysis("b")
+        one.junction_delay_s, one.junction_ranked_s = 45.0, 90.0
+        two.junction_delay_s = 15.0
+        both = refine.combine([one, two])
+        assert both.junction_delay_s == 60.0
+        assert both.junction_ranked_s == 105.0
+
+    def test_a_foot_of_junction_cost_is_worth_its_ranking_seconds_of_waiting(self) -> None:
+        # The junction model's feet count at quiet_cost x weight a metre, a second of waiting
+        # at QUIET_COST_FACTOR x wait_weight: a button crossing is held below a stop sign in
+        # these units (`junction_delay.signal_wait`).
+        ctx = context(weight=0.5, wait_weight=3.0)
+        per_ft = refine.stop_wait_s_per_ft(ctx)
+        assert per_ft == pytest.approx(
+            QUIET_COST * 0.5 / model.FEET_PER_METRE / (refine.QUIET_COST_FACTOR * 3.0)
+        )
+
 
 class TestCappedTrailCrossings:
     """The 2026-11-08 hunt, J1: an unsignalised trail crossing of an arterial is drawn orange

@@ -113,3 +113,33 @@ def test_node_tags_carry_the_mark_the_transform_reads() -> None:
     remap = (Path(__file__).resolve().parents[1] / "lua" / "routemaker_remap.lua").read_text()
     assert f'M.SIGNAL_MARK = "{signals.NODE_TAG}"' in remap
     assert signals.NODE_TAG.startswith("rm:")
+
+
+# --- Beg buttons (the owner, 2026-11-08): `segment.button_operated` --------------------
+
+
+def test_a_crossing_tagged_button_operated_is_marked() -> None:
+    crossing = way(2, {**SIGNALISED_CROSSING, "button_operated": "yes"}, [20, 11, 21])
+    ways = [way(1, ROAD, [10, 11, 12]), crossing]
+    assert signals.button_ways(ways) == {2}
+
+
+def test_the_paths_through_a_button_node_are_marked_and_the_road_is_not() -> None:
+    sidewalk = way(3, {"highway": "footway", "footway": "sidewalk"}, [30, 11])
+    plain = way(2, SIGNALISED_CROSSING, [20, 11, 21])
+    ways = [way(1, ROAD, [10, 11, 12]), plain, sidewalk]
+    # Before: nothing says the button.
+    assert signals.button_ways(ways) == frozenset()
+    # After: the crossing node says `button_operated=yes`.
+    assert signals.button_ways(ways, {11}) == {2, 3}
+
+
+@pytest.mark.parametrize(("value", "marked"), [("yes", True), ("no", False), ("", False)])
+def test_only_yes_says_a_button(value, marked) -> None:
+    assert signals.says_button({"button_operated": value}) is marked
+
+
+def test_the_segment_table_has_the_column_the_planner_reads() -> None:
+    from pipeline import schema
+
+    assert "button_operated boolean     NOT NULL DEFAULT false" in schema.SEGMENT_DDL

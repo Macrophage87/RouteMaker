@@ -67,6 +67,10 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Busy crossing, no signal.": "교통량 많은 교차로, 신호등 없음.",
   "Busy crossing.": "교통량 많은 교차로.",
   "Busy junction.": "교통량 많은 교차점.",
+  // A signal that may need a button press (the owner, 2026-11-08): the card's note and the words said.
+  // Drafted by Claude: FLAGGED for review by a native speaker.
+  "Light may need a button press": "신호등 버튼을 눌러야 할 수 있습니다",
+  "Button for the light.": "신호등 버튼.",
   "Busy junction at a signal.": "교통량 많은 교차점, 신호등 있음.",
   "Busy junction at a stop sign.": "교통량 많은 교차점, 정지 표지판 있음.",
   "Busy junction, no signal.": "교통량 많은 교차점, 신호등 없음.",

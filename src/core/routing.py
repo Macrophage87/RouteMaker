@@ -1714,13 +1714,10 @@ def busy_and_waits(
     junctions = trace_junctions.junctions_of_trace(trace, decode_polyline6(shape), 0.0)
     beacons = active_beacons()
     # Timed without the junction model's signal points (hunt J5): these candidate rides
-    # have no /locate events, so a signal is read from the trace alone.
-    waits = junction_delay.delay_s(
-        junctions,
-        stop_as_yield,
-        lambda lon, lat: intersections.beacon_at(lon, lat, beacons) is not None,
-    )
-    return stress["3"] + stress["4"] + stress["5"], float(waits)
+    # have no /locate events, so a signal is read from the trace alone. The time is the
+    # waits shown, a suburban signal's longer wait included (2026-11-08).
+    found = junction_waits(junctions, beacons, when=when)
+    return stress["3"] + stress["4"] + stress["5"], float(sum(w.seconds for w in found))
 
 
 @dataclass(frozen=True)
@@ -3219,6 +3216,110 @@ def stop_as_yield(lon: float, lat: float) -> bool:
     if not (west <= lon <= east and south <= lat <= north):
         return False
     return inside_dc(lon, lat, tolerance_m=0.0)
+
+
+def suburban_signal(lon: float, lat: float) -> bool:
+    """Whether a signal at this point is timed as a suburban one: outside the District,
+    Baltimore City, Alexandria and Arlington (`core.city_limits`, `routemaker.junction_delay`;
+    the owner, 2026-11-08: "Not really needed for DC" "or the major cities")."""
+    from .city_limits import in_major_city
+
+    return not in_major_city(lon, lat)
+
+
+def _has_button_column(schema: str) -> bool:
+    return segment_info.has_columns(schema, "button_operated")
+
+
+def button_ways(
+    junctions,
+    signals=frozenset(),
+    cache: dict | None = None,
+) -> frozenset[int]:
+    """The OSM ways the route arrives or leaves a signal on, of the crossings and paths, that
+    the map tags `button_operated=yes` (`segment.button_operated`, set at the rebuild by
+    `pipeline.signals.button_ways`): the junction-delay model reads a signal crossed from one
+    as needing its button (the owner, 2026-11-08). Only a signal (the trace's, or one of the
+    junction model's `signals` points) can become a button, so a route with no signal reached
+    on a crossing or a path asks nothing. `cache`: the ways already asked about in this plan
+    (way id -> tagged), shared by the calm search's candidates. A table built before the
+    column, or a failed query, has none; a plan out of time or cancelled stops here."""
+    uses = trace_junctions.PATH_USES | {trace_junctions.CROSSING_USE}
+    wanted = {
+        way
+        for j in junctions
+        if j.signal or (j.lon, j.lat) in signals
+        for way, use in ((j.in_way, j.in_use), (j.out_way, j.out_use))
+        if use in uses and way
+    }
+    if not wanted:
+        return frozenset()
+    known = cache if cache is not None else {}
+    ask = sorted(way for way in wanted if way not in known)
+    if ask:
+        found = _tagged_button_ways(ask)
+        if found is None:
+            return frozenset()
+        known.update({way: way in found for way in ask})
+    return frozenset(way for way in wanted if known.get(way))
+
+
+def _tagged_button_ways(ways: list[int]) -> frozenset[int] | None:
+    """Of `ways`, those `segment.button_operated` marks; empty on a table built before the
+    column, None where the read failed (not kept: the next candidate asks again)."""
+    schema = validate_schema_name(settings.SEGMENT_SCHEMA_LIVE)
+    try:
+        if not _has_button_column(schema):
+            return frozenset()
+        with plan_cursor() as cursor:
+            cursor.execute(
+                f"SELECT DISTINCT osm_way_id FROM {schema}.segment "
+                "WHERE osm_way_id = ANY(%s) AND button_operated",
+                [ways],
+            )
+            return frozenset(row[0] for row in cursor.fetchall())
+    except DeadlineExceeded:
+        # Out of time, or the plan cancelled (`PlanCancelled`): the plan stops, as at any read.
+        raise
+    except Exception:  # noqa: BLE001 - a route is timed without the map's beg buttons
+        logger.warning("the button-operated crossings could not be read", exc_info=True)
+        return None
+
+
+def junction_waits(
+    junctions,
+    beacons,
+    events=None,
+    stop_s_per_ft: float | None = None,
+    button_cache: dict | None = None,
+    when: str | None = None,
+) -> list[junction_delay.Wait]:
+    """A route's junction waits (`routemaker.junction_delay.waits`), read as `plan` and the
+    calm search read them: stop signs taken as yields in the District, the beacons, and the
+    junction model's signals, big roads and (with `stop_s_per_ft`, the ranking's seconds of
+    waiting a foot of the junction model's cost is worth) its stop-sign prices, where there
+    are `events`; suburban signals by `suburban_signal`, the map's beg buttons by
+    `button_ways` (`button_cache`: its answers kept for the plan); a signal's time shown by
+    the ride-time setting `when` (None: not known)."""
+    junctions = list(junctions)
+    signals = intersections.signal_points(events)
+    stop_extra = None
+    if events is not None and stop_s_per_ft is not None:
+        stop_extra = {
+            point: ft * stop_s_per_ft for point, ft in intersections.stop_extra_ft(events).items()
+        }
+    return junction_delay.waits(
+        junctions,
+        stop_as_yield,
+        lambda lon, lat: intersections.beacon_at(lon, lat, beacons) is not None,
+        # The junction model's signals, up the roads' arms too (hunt J5).
+        signals,
+        suburban=suburban_signal,
+        big=intersections.big_signal_points(events),
+        buttons=button_ways(junctions, signals, button_cache),
+        stop_extra_s=stop_extra,
+        when=when,
+    )
 
 
 def _outside_dc(piece) -> bool:
@@ -5945,13 +6046,10 @@ def _plan(
         )
         # The time its junctions cost the rider, which the router's own time leaves out
         # (`routemaker.junction_delay`): part of the time shown.
-        waits = junction_delay.delay_runs(
-            raw_junctions,
-            stop_as_yield,
-            lambda lon, lat: intersections.beacon_at(lon, lat, beacons) is not None,
-            # The junction model's signals, up the roads' arms too (hunt J5).
-            intersections.signal_points(events),
-        )
+        # Outside the major cities a signal across a big road waits longer, and one read as
+        # needing its beg button is marked for Ride (the owner, 2026-11-08).
+        found_waits = junction_waits(raw_junctions, beacons, events, when=when)
+        waits = [(w.m, w.seconds) for w in found_waits]
         delay = float(sum(wait for _m, wait in waits))
         route_m = round(float(summary.get("length", 0.0)) * 1000.0, 1)
         route_s = float(summary.get("time", 0.0))
@@ -6007,6 +6105,17 @@ def _plan(
             "distance_m": round(float(summary.get("length", 0.0)) * 1000.0, 1),
             "duration_s": round(route_s + delay + walk_change_s, 1),
             "junction_delay_s": round(delay, 1),
+            # The signals read as needing their beg button (`junction_delay.signal_wait`), in
+            # the description's metres (the traced metres at the router's length), for Ride.
+            "light_buttons": [
+                {
+                    "at_m": round(w.m * (route_m / traced_m if traced_m > 0 else 1.0), 1),
+                    "lon": round(w.lon, 6),
+                    "lat": round(w.lat, 6),
+                }
+                for w in found_waits
+                if w.button
+            ],
             # Where along the line that time falls, hills and junction waits in place, for a
             # ride's arrival times (`routemaker.time_marks`).
             "time_marks": time_marks.time_marks(router_at, waits, traced_m),

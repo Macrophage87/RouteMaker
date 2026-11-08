@@ -790,6 +790,42 @@ class TestRoute:
         assert m.signal_points(unsignalised) == frozenset()
         assert m.signal_points(None) == frozenset()
 
+    def test_a_signals_big_road_and_stop_sign_price_are_carried_for_the_delay(self) -> None:
+        """The owner, 2026-11-08: outside the cities a signal across a road of 4+ lanes or
+        40 mph+ waits as a big road's, and a beg-button crossing is held below a stop sign
+        across the same road (`big_signal_points`, `stop_extra_ft`)."""
+        wide = Road(3, lanes=2, oneway=False, names=frozenset({"beulah street"}))
+        narrow = Road(3, lanes=1, oneway=False, speed_mph=35.0, names=frozenset({"a street"}))
+        fast = Road(3, lanes=1, oneway=False, default_speed_mph=40.0)
+        for road, big in ((wide, True), (narrow, False), (fast, True)):
+            assert m.big_road(road) is big
+            events = m.assess_route([junction(crossed=(road,), control=Control.SIGNAL)])
+            assert (m.big_signal_points(events) == {(-77.0, 38.9)}) is big
+            stop = m.assess(junction(crossed=(road,), control=Control.STOP))
+            assert m.stop_extra_ft(events)[(-77.0, 38.9)] == pytest.approx(
+                stop.cost_ft - events[0].cost_ft
+            )
+        # A stop sign is no signal: nothing carried.
+        stopped = m.assess_route([junction(crossed=(wide,), control=Control.STOP)])
+        assert m.big_signal_points(stopped) == frozenset()
+        assert m.stop_extra_ft(stopped) == {}
+        assert m.stop_extra_ft(None) == {}
+
+    def test_a_divided_roads_merged_event_keeps_both_nodes_big_road_reading(self) -> None:
+        name = frozenset({"telegraph road"})
+        north = Road(4, oneway=True, lanes=2, names=name, ways=frozenset({1}))
+        south = Road(4, oneway=True, lanes=2, names=name, ways=frozenset({2}))
+        events = m.assess_route(
+            [
+                junction(m=100.0, lon=-77.0, crossed=(north,), control=Control.SIGNAL),
+                junction(m=111.0, lon=-77.0001, crossed=(south,)),
+            ]
+        )
+        assert len(events) == 1
+        # Each carriageway's two lanes one way are not four lanes on their own.
+        assert m.big_signal_points(events) == frozenset()
+        assert set(m.stop_extra_ft(events)) == {(-77.0, 38.9), (-77.0001, 38.9)}
+
     def test_different_roads_at_one_junction_add_half(self) -> None:
         a = Road(3, names=frozenset({"a street"}))
         b = Road(3, names=frozenset({"b street"}))

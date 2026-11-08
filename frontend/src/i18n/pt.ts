@@ -67,6 +67,10 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Busy crossing, no signal.": "Cruzamento movimentado, sem semáforo.",
   "Busy crossing.": "Cruzamento movimentado.",
   "Busy junction.": "Interseção movimentada.",
+  // A signal that may need a button press (the owner, 2026-11-08): the card's note and the words said.
+  // Drafted by Claude: FLAGGED for review by a native speaker.
+  "Light may need a button press": "O semáforo pode precisar que aperte o botão",
+  "Button for the light.": "Botão do semáforo.",
   "Busy junction at a signal.": "Interseção movimentada, com semáforo.",
   "Busy junction at a stop sign.": "Interseção movimentada, com placa de pare.",
   "Busy junction, no signal.": "Interseção movimentada, sem semáforo.",
