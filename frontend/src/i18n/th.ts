@@ -2129,4 +2129,9 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Uses a harder MTB trail.": "ใช้เส้นทาง MTB ที่ยากกว่า",
   "The off-road map isn't available, so this route keeps to the usual trails.": "แผนที่ออฟโรดใช้ไม่ได้ เส้นทางนี้จึงใช้ทางเดิมตามปกติ",
   "Off-road map unavailable: usual trails.": "ไม่มีแผนที่ออฟโรด: ทางตามปกติ",
+  // ---- Road Bike's map notices (lib/roadBike.ts; hunt 3, 2026-11-08), drafted for native review ----
+  "There is no road bike map right now, so this route may use gravel and trails.": "ตอนนี้ไม่มีแผนที่จักรยานถนน เส้นทางนี้จึงอาจใช้ทางกรวดและทางเดิน",
+  "No road bike map: may use gravel.": "ไม่มีแผนที่จักรยานถนน: อาจมีทางกรวด",
+  "There is no weekend road bike map right now, so this route counts parkways like Beach Drive as roads with cars.": "ตอนนี้ไม่มีแผนที่วันหยุดสุดสัปดาห์สำหรับจักรยานถนน เส้นทางนี้จึงถือว่าถนนในสวนอย่าง Beach Drive เป็นถนนที่มีรถ",
+  "No weekend map: parkways may have cars.": "ไม่มีแผนที่วันหยุด: ถนนในสวนอาจมีรถ",
 };

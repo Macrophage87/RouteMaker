@@ -2129,4 +2129,9 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Uses a harder MTB trail.": "더 어려운 MTB 트레일을 이용합니다.",
   "The off-road map isn't available, so this route keeps to the usual trails.": "오프로드 지도를 쓸 수 없어 이 경로는 평소의 트레일을 이용합니다.",
   "Off-road map unavailable: usual trails.": "오프로드 지도 없음: 평소 트레일.",
+  // ---- Road Bike's map notices (lib/roadBike.ts; hunt 3, 2026-11-08), drafted for native review ----
+  "There is no road bike map right now, so this route may use gravel and trails.": "지금은 로드바이크 지도가 없어 이 경로는 자갈길과 트레일을 지날 수 있습니다.",
+  "No road bike map: may use gravel.": "로드바이크 지도 없음: 자갈길 가능.",
+  "There is no weekend road bike map right now, so this route counts parkways like Beach Drive as roads with cars.": "지금은 주말 로드바이크 지도가 없어 이 경로는 Beach Drive 같은 공원도로를 차가 다니는 도로로 봅니다.",
+  "No weekend map: parkways may have cars.": "주말 지도 없음: 공원도로에 차가 있을 수 있음.",
 };

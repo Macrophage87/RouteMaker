@@ -2129,4 +2129,9 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Uses a harder MTB trail.": "Li pran yon chemen MTB pi difisil.",
   "The off-road map isn't available, so this route keeps to the usual trails.": "Kat tout-teren an pa disponib, kidonk wout sa a rete sou chemen abityèl yo.",
   "Off-road map unavailable: usual trails.": "Pa gen kat tout-teren: chemen abityèl.",
+  // ---- Road Bike's map notices (lib/roadBike.ts; hunt 3, 2026-11-08), drafted for native review ----
+  "There is no road bike map right now, so this route may use gravel and trails.": "Pa gen kat bisiklèt wout kounye a, kidonk wout sa a ka pase sou gravye ak chemen.",
+  "No road bike map: may use gravel.": "Pa gen kat bisiklèt wout: ka gen gravye.",
+  "There is no weekend road bike map right now, so this route counts parkways like Beach Drive as roads with cars.": "Pa gen kat bisiklèt wout pou wikenn kounye a, kidonk wout sa a konte pakwe tankou Beach Drive kòm wout ki gen machin.",
+  "No weekend map: parkways may have cars.": "Pa gen kat wikenn: ka gen machin sou pakwe yo.",
 };

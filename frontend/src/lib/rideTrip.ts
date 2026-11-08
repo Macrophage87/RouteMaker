@@ -476,6 +476,16 @@ export function shareBikeOf(route: Pick<RouteResponse, "preset" | "bikeshare" | 
 }
 
 /**
+ * The dials of a request a ride makes outside RideMode's leg (App.tsx `nextLeg`, "Start the next leg" at a stop, and
+ * `checkTrip`, the transit trip's check, and `roamDetour`, Roam's Detour): a one-way trip, closures as they are now, and no `when`, so the API works
+ * out the time of the ride itself, as `legDials` does (hunt 3, R3-1). Before, all three sent the plan's chosen time, so a
+ * trip with stops planned for "Weekend" and ridden on a Tuesday planned its next leg on the weekend map.
+ */
+export function rideNowDials(dials: Dials): Dials {
+  return { ...dials, loop: false, closuresNow: true, when: null };
+}
+
+/**
  * The dials a ride's own request (a re-plan, a detour, the way to the start, Ride the rest) sends on the leg's ride type
  * (`rideLegOf`), which is a plain one for a Bikeshare or transit plan's leg. The plan's fields that the API takes on its
  * own ride types alone are left out, as Roam's detour leaves them out (App.tsx roamDetour): `bike`, `ending` and the
@@ -486,12 +496,19 @@ export function shareBikeOf(route: Pick<RouteResponse, "preset" | "bikeshare" | 
  * riding speed and system weight; its stress and hills are the plan's dials already. Its stress-averse exposure and its
  * heavy-bike gate and surface costs are the Bikeshare ride type's own, which no request field carries, so the plain
  * ride type's are used.
+ *
+ * A ride's own request is planned for now: `when` goes back to null ("when I'm planning"), so the API works out the
+ * time of the ride itself (core/routing.py `default_when`), as `closuresNow` already does for closures. The hunt
+ * (2026-11-08, R3-1): a ride planned for "Weekend" and ridden on a Tuesday re-planned on the weekend map, the car-free
+ * parkways counted as paths while cars were on them, and the weekend signal waits; a ride planned for "Weekday rush"
+ * and ridden on Saturday kept Road Bike off them. A ride through a time change (Sunday evening, 21:00) re-plans at
+ * the time it then is.
  */
 export function legDials(dials: Dials, preset: PresetId, shareBike: Bike | null = null): Dials {
   const share = usesBikeshare(preset);
   const transit = isTransit(preset);
   const novice = preset === "bike-transit" || preset === "bikeshare-transit";
-  const out: Dials = { ...dials };
+  const out: Dials = { ...dials, when: null };
   if (!share) {
     out.bike = undefined;
     out.ending = undefined;

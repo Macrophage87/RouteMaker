@@ -304,7 +304,7 @@ import { nativeBridge, nativeShareNavigator } from "./lib/nativeShell.ts";
 import { AVOID_STAIRS_EVENT, readAvoidStairs } from "./lib/avoidStairs.ts";
 import { firstTripOf, maxPointsFor, nextLegPoints, stopsAsTrips, stopsLeftOf, type StopsLeft } from "./lib/tripStops.ts";
 import { TRIP_GONE_SAID, checkedTripOf, lateSaid, switchSaid, tripChecked, tripVerdict, type CheckedTrip } from "./lib/tripCheck.ts";
-import { REST_ANYWAY_MS, RIDE_REST_FINDING, fixedRide, legDials, restClosedSaid, restRequest, rideLegOf, shareBikeOf, rideTripOf, rideable as rideableRoute, walksLine, type RideTrip } from "./lib/rideTrip.ts";
+import { REST_ANYWAY_MS, RIDE_REST_FINDING, fixedRide, legDials, restClosedSaid, restRequest, rideLegOf, rideNowDials, shareBikeOf, rideTripOf, rideable as rideableRoute, walksLine, type RideTrip } from "./lib/rideTrip.ts";
 import { RIDE_TOO_LONG } from "./lib/navigate.ts";
 import { fetchMe, NO_ME, type Me } from "./lib/stressEditor.ts";
 import { reloadFavorites, useFavoriteRides } from "./lib/favoriteRides.ts";
@@ -4501,7 +4501,7 @@ export function App() {
     const points = nextLegPoints(left, riderAt);
     // A chosen pick-up station is the start's, not this stop's (Bikeshare, v0.22.0); a chosen drop-off is still the end's.
     const legDials = withStations(planDials, { dropoff: stationChoice.dropoff });
-    const result = await requestRoute(points, left.preset, { dials: { ...legDials, loop: false, closuresNow: true } });
+    const result = await requestRoute(points, left.preset, { dials: rideNowDials(legDials) });
     if (!stillOn()) return null;
     if (!result.ok) return `${result.error.title}. ${result.error.message}`;
     if (!rideableRoute(result.route)) return RIDE_TOO_LONG;
@@ -4518,7 +4518,7 @@ export function App() {
     const checking = tripCheck.current;
     const current = () => open() && ridingNow.current && rideNow.current.start?.route === checking?.route && tripCheck.current === checking;
     if (!checking || !current()) return null;
-    const ask = (key: string) => requestRoute([riderAt, checking.to], checking.preset, { dials: { ...planDials, loop: false, closuresNow: true, transitOption: key } });
+    const ask = (key: string) => requestRoute([riderAt, checking.to], checking.preset, { dials: { ...rideNowDials(planDials), transitOption: key } });
     const result = await ask(checking.trip.key);
     if (!current() || !result.ok || !result.route.transit) return null;
     const verdict = tripVerdict(checking.trip, result.route.transit, Date.now());
@@ -5117,8 +5117,8 @@ export function App() {
     // never a dock or a train to a water fountain.
     const plain = twoPointsOnly(preset);
     const detourDials: Dials = plain
-      ? { ...planDials, bike: undefined, ending: undefined, pickupStation: undefined, dropoffStation: undefined, loop: false, closuresNow: true }
-      : { ...planDials, loop: false, closuresNow: true };
+      ? rideNowDials({ ...planDials, bike: undefined, ending: undefined, pickupStation: undefined, dropoffStation: undefined })
+      : rideNowDials(planDials);
     const result = await requestRoute(asked, plain ? "default" : preset, { dials: detourDials, routeOnly: true });
     if (!roamingNow.current) return null;
     if (!result.ok) return `${result.error.title}. ${result.error.message}`;

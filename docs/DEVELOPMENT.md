@@ -2230,10 +2230,12 @@ unless named; PLAN.md quotes the owner's words):
   graph (`routing.twin_fallback`): while its router is down, or before a build of it is promoted,
   a weekend Road Bike ride is planned on `paved` (and on `standard` if that is not served either),
   and the page says the parkways count as roads with cars (`frontend/src/lib/roadBike.ts`,
-  `roadBikeNotice`, from the answer's `variant` and `dials.when`; the MCP summary's
-  `road_bike_map` says the same). Such an answer is kept in the answer cache: the graph a twin
-  with no promoted build falls back to is the ride's graph by design (`api._planned`, down
-  `twin_fallback`'s chain), and Best order, nearest and reach use it too (`stoporder.ride_graph`). Its router is behind the
+  `roadBikeNotice`, from the answer's `variant` and `dials.when`; in plain words through `t()`, in
+  every catalog, so Go and the spoken summary say it in the rider's language: hunt 3, R3-2; the
+  MCP summary's `road_bike_map` says the same). Such an answer is kept in the answer cache: the
+  graph a twin with no promoted build falls back to is the ride's graph by design (`api._planned`,
+  down `twin_fallback`'s chain), and Best order, nearest and reach use it too
+  (`stoporder.ride_graph`). Its router is behind the
   `offroad` profile with the other trail routers, at 768M (320M on the beta). The cost the owner
   accepted: the beta's resident ceiling 7.66 to 7.96 GiB and its startup margin 0.7 to 0.39 GiB
   (`scripts/check_beta_compose.py`), and on the 32 GB check (`scripts/check_compose_limits.py`)
@@ -6515,6 +6517,15 @@ Bikeshare or transit trip, a Rebalance Ride's chosen dock or a shared ride, whic
 A way back joined to the planned route (`lib/rejoin.ts` `joinRoutes`) carries the button signals
 (`light_buttons`) in line metres as the description is, and either part's `dirt_trails` and
 `dirt_closed` (R2-1, R2-7).
+
+**A ride's re-plans are planned for now** (2026-11-08 hunt, round 3, R3-1): every request a ride makes on
+its leg (`lib/rideTrip.ts` `legDials`: off-route, Re-plan from here, Calmer and Flatter, detours, the
+nearest search, Ride the rest; and `rideNowDials` for "Start the next leg" at a stop, the transit trip's
+check and Roam's Detour) sends no `when`, so the API works out the ride time itself
+(`routing.default_when`), as `closures_now` does for closures. Before, a plan set to "Weekend" and ridden
+on a Tuesday re-planned on the weekend graph (the car-free parkways as paths, the weekend signal waits),
+and a "Weekday rush" plan ridden on Saturday kept Road Bike off the parkways. The plan's own dials keep
+the time the rider chose.
 
 **Make it a loop by the search (OWNER-DECISIONS 388, 389).** The checkbox is in the Points
 section, under the search and above the points list (`App.tsx`, `.loop-toggle`, a 44 px row),

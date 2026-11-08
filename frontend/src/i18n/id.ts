@@ -2129,4 +2129,9 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Uses a harder MTB trail.": "Melewati jalur MTB yang lebih sulit.",
   "The off-road map isn't available, so this route keeps to the usual trails.": "Peta off-road tidak tersedia, jadi rute ini tetap di jalur yang biasa.",
   "Off-road map unavailable: usual trails.": "Peta off-road tidak ada: jalur biasa.",
+  // ---- Road Bike's map notices (lib/roadBike.ts; hunt 3, 2026-11-08), drafted for native review ----
+  "There is no road bike map right now, so this route may use gravel and trails.": "Saat ini tidak ada peta sepeda jalan raya, jadi rute ini mungkin melewati kerikil dan jalur tanah.",
+  "No road bike map: may use gravel.": "Tidak ada peta sepeda jalan raya: mungkin ada kerikil.",
+  "There is no weekend road bike map right now, so this route counts parkways like Beach Drive as roads with cars.": "Saat ini tidak ada peta akhir pekan untuk sepeda jalan raya, jadi rute ini menganggap jalan taman seperti Beach Drive sebagai jalan dengan mobil.",
+  "No weekend map: parkways may have cars.": "Tidak ada peta akhir pekan: mungkin ada mobil di jalan taman.",
 };
