@@ -873,6 +873,14 @@ def test_trains_before_the_sunday_opening_on_a_holiday_say_weekday_service() -> 
     reading = live_at(late)
     later = tuple(replace(t, minutes=15, arriving=False, boarding=False) for t in reading.trains)
     assert transit_live.holiday_day_type(replace(reading, trains=later), now=late) is None
+    # Nor does one predicted further out than `HOLIDAY_TRAIN_MIN` while only the weekday
+    # timetable is open: only a train arriving, boarding or about to is trusted.
+    ahead = tuple(replace(t, minutes=5, arriving=False, boarding=False) for t in reading.trains)
+    assert transit_live.holiday_day_type(replace(reading, trains=ahead), now=late) is None
+    near = tuple(replace(t, minutes=2, arriving=False, boarding=False) for t in reading.trains)
+    assert transit_live.holiday_day_type(replace(reading, trains=near), now=late) == (
+        "monday-thursday"
+    )
 
 
 def test_a_holiday_morning_with_trains_running_plans_metro_on_its_weekday_timetable() -> None:
@@ -894,8 +902,8 @@ def test_a_holiday_morning_with_trains_running_plans_metro_on_its_weekday_timeta
         "notes"
     ]
     assert (
-        "Today is a federal holiday, but WMATA's live trains show Metro on its weekday hours: it"
-        " is planned on its weekday timetable." in notes
+        "Today is a federal holiday, but WMATA's live trains show Metro's weekday timetable"
+        " running." in notes
     )
     # The other days of the window keep their own day types; with no reading, all as before.
     assert transit_live.with_holiday_service(typical, None, now=wall) is typical

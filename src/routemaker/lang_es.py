@@ -333,10 +333,6 @@ ES: dict[str, str] = {
     "Bike and dock availability is unknown right now: the nearest docks are used.": (
         "Ahora no se sabe cuántas bicicletas y espacios hay: se usan las estaciones más cercanas."
     ),
-    "Bike and dock availability for a later trip is not known: the nearest docks are used.": (
-        "No se sabe cuántas bicicletas y espacios habrá para un viaje más tarde: se usan las"
-        " estaciones más cercanas."
-    ),
     "You would miss the {time} {source} ({vehicle}) and no later one leaves within the hour:"
     " that trip is left out.": (
         "Perdería el de las {time} {source} ({vehicle}) y no sale otro en la próxima hora: ese"
@@ -366,16 +362,9 @@ ES: dict[str, str] = {
         "Hoy es feriado federal: el Metro se planifica con su horario de {day}; los demás, con sus"
         " horarios de feriado."
     ),
-    "Today is a federal holiday, but WMATA's live trains show Metro on its weekday hours: it is"
-    " planned on its weekday timetable.": (
-        "Hoy es feriado federal, pero los trenes en vivo de WMATA muestran el Metro en su horario"
-        " de día laborable: se planifica con su horario de día laborable."
-    ),
-    "Today is a federal holiday, but WMATA's live trains show Metro on its weekday hours: it is"
-    " planned on its weekday timetable; the others, their holiday timetables.": (
-        "Hoy es feriado federal, pero los trenes en vivo de WMATA muestran el Metro en su horario"
-        " de día laborable: se planifica con su horario de día laborable; los demás, con sus"
-        " horarios de feriado."
+    "Today is a federal holiday, but WMATA's live trains show Metro's weekday timetable running.": (
+        "Hoy es feriado federal, pero los trenes en vivo de WMATA muestran que el Metro funciona"
+        " con su horario de día laborable."
     ),
     "The trip chosen is no longer scheduled: the quickest is shown.": (
         "El viaje elegido ya no está programado: se muestra el más rápido."

@@ -2875,13 +2875,6 @@ def walk_offered(start, end, walk_total_s: float, others: list[Option]) -> bool:
     return bool(others) and walk_total_s < min(o.total_s for o in others)
 
 
-# A Bikeshare + transit trip leaving more than this after now picks its docks by place alone:
-# the live counts say what is docked now, and a dock empty or full at 11 pm has been rebalanced
-# by a trip at 8 am (hunt 2, T6: such docks were skipped, so the trip walked further or lost its
-# option). 30 min is Claude's pick (not measured), for the owner to settle.
-DOCKS_AHEAD_S = 30 * 60.0
-
-
 def plan_bikeshare(
     schedule,
     start,
@@ -2890,27 +2883,17 @@ def plan_bikeshare(
     services: Services,
     snapshot,
     hop: list | None = None,
-    later: bool = False,
 ) -> Plan:
     """Bikeshare + 🚶🚆🚌: bikeshare the whole way, or each end on foot or by bikeshare,
     whichever is quicker (a bikeshare bike is docked before boarding), with up to two transit
     legs between; and walking the whole way where that is reasonable (`walk_offered`).
-    `hop`: Novice and Nervous's busy stretch, where it begins and ends (`HOP_NEAR_M`).
-    `later`: the counts were left out because the trip leaves after `DOCKS_AHEAD_S`, and the
-    note says so."""
+    `hop`: Novice and Nervous's busy stretch, where it begins and ends (`HOP_NEAR_M`)."""
     moments = moments_of(when)
     moment = moments[0]
     day = _Day(schedule, moment, bike=False)
     found: list[Option] = []
     notes = _window_note(schedule, moment)
-    if snapshot.status is None and later:
-        notes.append(
-            t(
-                "Bike and dock availability for a later trip is not known: the nearest docks"
-                " are used."
-            )
-        )
-    elif snapshot.status is None:
+    if snapshot.status is None:
         notes.append(
             t("Bike and dock availability is unknown right now: the nearest docks are used.")
         )
@@ -3355,15 +3338,9 @@ def holiday_words(
     kind = _typical_doc()["holiday"]
     said = schedule.metro_day if schedule is not None else None
     if said is not None and said[0] == service_day and said[1] != kind:
-        if used <= typical:
-            return t(
-                "Today is a federal holiday, but WMATA's live trains show Metro on its weekday"
-                " hours: it is planned on its weekday timetable."
-            )
         return t(
-            "Today is a federal holiday, but WMATA's live trains show Metro on its weekday"
-            " hours: it is planned on its weekday timetable; the others, their holiday"
-            " timetables."
+            "Today is a federal holiday, but WMATA's live trains show Metro's weekday timetable"
+            " running."
         )
     day = {"sunday": t("Sunday"), "saturday": t("Saturday")}.get(kind, kind.capitalize())
     if used <= typical:

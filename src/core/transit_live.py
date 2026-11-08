@@ -87,7 +87,8 @@ def _blocked(station: wmata_live.Station, live: wmata_live.Snapshot) -> bool | N
 # return. Before, a reading taken on a Tuesday dropped Saturday's trips through a station closed
 # by Tuesday's incident and ranked stations down for Tuesday's elevators out (hunt M4). Two hours
 # is Claude's default, kept by the owner (not measured): a guess at how long an incident's
-# closure lasts.
+# closure lasts. The owner, 2026-11-08: "We can do 2 hrs for WMATA" and "It's not my call. I'm
+# staying with your default".
 LIVE_HOLDS_S = 2 * 3600.0
 
 
@@ -125,6 +126,11 @@ def holding(
     return replace(live, outages=outages, incidents=incidents)
 
 
+# A train predicted this many minutes out or fewer counts as in service for a holiday's day type
+# (`holiday_day_type`); Claude's pick, not measured.
+HOLIDAY_TRAIN_MIN = 2
+
+
 def holiday_day_type(live: wmata_live.Snapshot | None, now: float | None = None) -> str | None:
     """The typical timetable's day type WMATA's live trains show Metro running on a federal
     holiday, where they can say: the service day's own weekday type, when the reading (fresh,
@@ -135,13 +141,15 @@ def holiday_day_type(live: wmata_live.Snapshot | None, now: float | None = None)
     Hunt 2, T9: every federal holiday ran Metro's Sunday timetable, opening at 6 am. The review
     believed (not verified against WMATA) that some holidays, Columbus Day and Veterans Day,
     run weekday service, so an early trip on one was refused. The owner, 2026-11-08: "We have
-    a live API." WMATA's live data says only what runs now: trains predicted between the
-    weekday and the Sunday opening (5 to 6 am), or after Sunday's closing on a Friday
-    (midnight to 2 am), show the weekday timetable running, and the rest of that service day
-    is planned on it. Once both timetables are open, both run trains and the predictions do
-    not say which, so the holiday stays on Sunday's; a trip leaving now is timed on the
-    predicted trains anyway (`with_live_trains`). A holiday planned ahead of the day, or with
-    no reading, keeps the Sunday rule."""
+    a live API." The rule here is Claude's design, not WMATA's or the owner's: WMATA's live
+    data says only what runs now, so a train arriving or boarding (or due within
+    `HOLIDAY_TRAIN_MIN`) between the weekday and the Sunday opening (5 to 6 am), or after
+    Sunday's closing on a Friday (midnight to 2 am), is taken to show the weekday timetable
+    running, and the rest of that service day is planned on it. A train predicted further out
+    is not trusted: a prediction is not a train in service. Once both timetables are open,
+    both run trains and the predictions do not say which, so the holiday stays on Sunday's; a
+    trip leaving now is timed on the predicted trains anyway (`with_live_trains`). A holiday
+    planned ahead of the day, or with no reading, keeps the Sunday rule."""
     if live is None or live.stale or not live.trains:
         return None
     now = _wall() if now is None else now
@@ -164,12 +172,14 @@ def holiday_day_type(live: wmata_live.Snapshot | None, now: float | None = None)
         (w_open, w_close), (h_open, h_close) = hours(weekday), hours(holiday)
         return w_open <= minute < w_close and not h_open <= minute < h_close
 
-    # A train in passenger service ("" is WMATA's line for one that is not), predicted at a
-    # station ("ARR" and "BRD" are now) while only the weekday timetable is open.
+    # A train in passenger service ("" is WMATA's line for one that is not), arriving or
+    # boarding at a station ("ARR", "BRD") or due within `HOLIDAY_TRAIN_MIN`, while only the
+    # weekday timetable is open.
     for train in live.trains:
         if not train.line:
             continue
-        if train.minutes is None and not (train.arriving or train.boarding):
+        here = train.arriving or train.boarding
+        if not here and (train.minutes is None or train.minutes > HOLIDAY_TRAIN_MIN):
             continue
         minute = moment.minute + (train.minutes or 0)
         if only_weekday(minute):

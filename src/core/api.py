@@ -4521,7 +4521,6 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
     # spend the candidates' budget. Feeds that cannot be read are no docks, with a note, not a
     # refusal (TB-2): the trip walks at both ends.
     share_snapshot = share_note = None
-    share_later = False
     if body.preset == presets.BIKESHARE_TRANSIT:
         try:
             share_snapshot = gbfs.client.snapshot()
@@ -4529,15 +4528,6 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
             logger.warning("bikeshare feeds unavailable for a transit plan: %s", error)
             share_snapshot = gbfs.Snapshot(fetched_at=0.0, stations=[], status={})
             share_note = "Bikeshare docks can't be read right now: walking at both ends."
-        # A trip leaving later picks its docks by place, not by what is docked now
-        # (`transit.DOCKS_AHEAD_S`, hunt 2, T6).
-        share_later = (
-            body.depart_at is not None
-            and share_snapshot.status is not None
-            and (when - timezone.now()).total_seconds() > transit.DOCKS_AHEAD_S
-        )
-        if share_later:
-            share_snapshot = dataclasses.replace(share_snapshot, status=None)
     candidates_until = min(
         routing.clock() + TRANSIT_CANDIDATES_S,
         started + routing.PLAN_BUDGET_S - routing.ANSWER_RESERVE_S,
@@ -4626,15 +4616,13 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
     def search(
         a: list[float], b: list[float], at: datetime, services=services, schedule=schedule
     ) -> transit.Plan:
-        # A later leg's own service day's schedule too.
-        schedule = transit_live.with_holiday_service(schedule, live)
         if body.preset == presets.WALK:
             plan = transit.plan_walk(schedule, a, b, at, services)
         elif body.preset == presets.WALK_TRANSIT:
             plan = transit.plan_walk_transit(schedule, a, b, at, services)
         elif body.preset == presets.BIKESHARE_TRANSIT:
             plan = transit.plan_bikeshare(
-                schedule, a, b, at, services, share_snapshot, hop=body.novice_hop, later=share_later
+                schedule, a, b, at, services, share_snapshot, hop=body.novice_hop
             )
             if share_note is not None:
                 plan.notes.insert(0, share_note)
@@ -4717,8 +4705,9 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
                 walk_keep=walk_keep,
                 **rides_on,
             )
-            leg_schedule = transit.load(
-                settings.TRANSIT_SCHEDULE_PATH, transit.moment_of(at).service_day
+            leg_schedule = transit_live.with_holiday_service(
+                transit.load(settings.TRANSIT_SCHEDULE_PATH, transit.moment_of(at).service_day),
+                live,
             )
             leg = chosen(search(a, b, at, leg_services, leg_schedule), None)
             plans.append(leg)
