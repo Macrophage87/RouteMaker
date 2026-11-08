@@ -1600,7 +1600,9 @@ curl -s -X POST http://localhost:8000/api/route -H 'Content-Type: application/js
   says when it was not done.
   Mass Ride refuses `hills > 0` (400).
 - `when`: `weekend`, `weekday_rush` (Mon-Fri 07:00-10:00 and 16:00-19:00,
-  America/New_York; federal holidays count as weekend), `weekday_offpeak` or
+  America/New_York), `weekday_offpeak` (a weekday federal holiday is off-peak all
+  day, and so is Sunday 19:00-21:00, after the weekend car-free windows end: the
+  owner, 2026-11-08; a holiday on a Saturday or Sunday stays `weekend`) or
   `night` (21:00-07:00 on any day, OWNER-DECISIONS 469c; it routes on the
   standard graph, as a weekday does, so a weekend night does not count the
   weekend's daytime closures, such as Beach Drive, as paths); absent, the

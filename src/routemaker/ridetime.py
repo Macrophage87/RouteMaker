@@ -22,9 +22,21 @@ nothing finer. Three things read it:
 Night is 21:00 to 07:00 on any day, weekend nights included; it routes on the
 standard graph, as a weekday does, and a road counts as car-free at night only
 if its closure covers every night instant. Rush hours are Monday to Friday,
-07:00-10:00 and 16:00-19:00 in the region's time. A US federal holiday counts as
-the weekend, since the closures here that name holidays (`PH`) name them
-alongside Saturday and Sunday.
+07:00-10:00 and 16:00-19:00 in the region's time.
+
+A US federal holiday on a weekday is weekday off-peak all day, rush hours
+included; one on a Saturday or Sunday stays the weekend. The owner, 2026-11-08:
+"Holidays should use the weekday off-peak graph." "Unless it's a weekend." It
+used to count as the weekend, which planned Sligo Creek Parkway (whose closure,
+`no @ (Fr 09:00-24:00; Sa; Su 00:00-18:00)`, names no `PH`) as car-free on
+Columbus Day and Veterans Day while it is open to cars, and gave the holiday
+the weekend junction factor (hunt M6).
+
+Sunday from 19:00 to 21:00 is weekday off-peak too. The weekend graph's
+instants are Saturday 09:00 and 15:00 and Sunday 11:00, so it holds Beach
+Drive (`Su 00:00-19:00`) and Sligo Creek (`Su 00:00-18:00`) car-free, but cars
+are back on them by Sunday evening. The owner, 2026-11-08: Sunday 7-9 PM, after
+the weekend car-free windows end, plans as off-peak.
 """
 
 from __future__ import annotations
@@ -46,6 +58,9 @@ RUSH_WINDOWS = ((7 * 60, 10 * 60), (16 * 60, 19 * 60))
 # Night: from 21:00 to 07:00, every day (469c).
 NIGHT_START = 21 * 60
 NIGHT_END = 7 * 60
+# Sunday evening, after the weekend car-free windows end and before night:
+# planned as weekday off-peak (the owner, 2026-11-08; hunt M6).
+SUNDAY_EVENING_START = 19 * 60
 
 _DAYS = ("Mo", "Tu", "We", "Th", "Fr", "Sa", "Su")
 
@@ -110,13 +125,20 @@ def is_federal_holiday(day: date) -> bool:
 
 
 def when_at(moment: datetime) -> str:
-    """The setting a moment falls in, read in the region's time."""
+    """The setting a moment falls in, read in the region's time.
+
+    A weekday federal holiday is off-peak all day, and Sunday 19:00-21:00 is
+    off-peak (the module's docstring: the owner, 2026-11-08)."""
     local = moment.astimezone(ZONE)
     minute = local.hour * 60 + local.minute
     if minute >= NIGHT_START or minute < NIGHT_END:
         return NIGHT
-    if local.weekday() >= 5 or is_federal_holiday(local.date()):
+    if local.weekday() == 6 and minute >= SUNDAY_EVENING_START:
+        return WEEKDAY_OFFPEAK
+    if local.weekday() >= 5:
         return WEEKEND
+    if is_federal_holiday(local.date()):
+        return WEEKDAY_OFFPEAK
     if any(start <= minute < end for start, end in RUSH_WINDOWS):
         return WEEKDAY_RUSH
     return WEEKDAY_OFFPEAK

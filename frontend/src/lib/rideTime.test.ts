@@ -7,7 +7,7 @@ import { appSource } from "../testSupport/appSource.mjs";
 
 test("the weekend, rush hours and the rest, in the region's time", () => {
   assert.equal(whenAt(new Date("2026-10-03T13:00:00Z")), "weekend"); // Saturday 09:00 EDT
-  assert.equal(whenAt(new Date("2026-10-04T23:00:00Z")), "weekend"); // Sunday 19:00 EDT
+  assert.equal(whenAt(new Date("2026-10-04T22:59:00Z")), "weekend"); // Sunday 18:59 EDT
   assert.equal(whenAt(new Date("2026-09-28T12:30:00Z")), "weekday_rush"); // Monday 08:30 EDT
   assert.equal(whenAt(new Date("2026-09-28T11:00:00Z")), "weekday_rush"); // 07:00 EDT, the start
   assert.equal(whenAt(new Date("2026-09-28T14:00:00Z")), "weekday_offpeak"); // 10:00 EDT, the end
@@ -25,15 +25,25 @@ test("the weekend, rush hours and the rest, in the region's time", () => {
   assert.equal(whenAt(new Date("2026-12-07T13:30:00Z")), "weekday_rush");
 });
 
-test("a federal holiday is the weekend, as observed", () => {
+test("Sunday 19:00-21:00, after the car-free windows end, is off-peak", () => {
+  // It was the weekend, which held Beach Drive and Sligo Creek car-free with cars
+  // back on them (hunt M6; the owner, 2026-11-08).
+  assert.equal(whenAt(new Date("2026-10-04T23:00:00Z")), "weekday_offpeak"); // Sunday 19:00 EDT
+  assert.equal(whenAt(new Date("2026-10-05T00:45:00Z")), "weekday_offpeak"); // Sunday 20:45 EDT
+  assert.equal(whenAt(new Date("2026-10-04T00:45:00Z")), "weekend"); // Saturday 20:45 EDT
+});
+
+test("a weekday federal holiday is off-peak; one on a weekend stays the weekend", () => {
   const h2026 = federalHolidays(2026);
   for (const day of ["2026-01-01", "2026-01-19", "2026-02-16", "2026-05-25", "2026-06-19", "2026-07-03",
     "2026-09-07", "2026-10-12", "2026-11-11", "2026-11-26", "2026-12-25"]) {
     assert.ok(h2026.has(day), day);
   }
   assert.equal(h2026.size, 11);
-  assert.equal(whenAt(new Date("2026-09-07T12:30:00Z")), "weekend"); // Labor Day, 08:30
-  assert.equal(whenAt(new Date("2026-07-03T16:00:00Z")), "weekend"); // July 4th observed on the Friday
+  // "Holidays should use the weekday off-peak graph." "Unless it's a weekend." (the owner, 2026-11-08)
+  assert.equal(whenAt(new Date("2026-09-07T12:30:00Z")), "weekday_offpeak"); // Labor Day, 08:30
+  assert.equal(whenAt(new Date("2026-07-03T16:00:00Z")), "weekday_offpeak"); // July 4th observed on the Friday
+  assert.equal(whenAt(new Date("2026-07-04T16:00:00Z")), "weekend"); // July 4th itself, a Saturday
   assert.ok(federalHolidays(2027).has("2027-12-24"), "Christmas on a Saturday is observed the Friday before");
 });
 

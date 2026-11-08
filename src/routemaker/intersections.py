@@ -177,8 +177,8 @@ MAX_CROSSING_FT = 10560.0
 # Then reduced to about half to 7" (469c), "at least in the city" (469d), and
 # x0.85 outside it (469e). A busy-road junction's cost is times this by the
 # ride's setting (`routemaker.ridetime`): weekday rush (07-10, 16-19) x1.25,
-# weekday off-peak (to 9 PM) x1.0, weekend daytime (federal holidays included)
-# x0.85, and night (9 PM-7 AM, any day) x0.5 where the crossed road lies in a
+# weekday off-peak (to 9 PM, and weekday federal holidays and Sunday 7-9 PM, the
+# owner 2026-11-08) x1.0, weekend daytime x0.85, and night (9 PM-7 AM, any day) x0.5 where the crossed road lies in a
 # Census urban area and x0.85 where it does not. A road whose urban flag is not
 # known (a table built before `road_urban`) takes the rural x0.85, the smaller
 # reduction. Typical values, not a promise. Quiet-street stops are not scaled.
