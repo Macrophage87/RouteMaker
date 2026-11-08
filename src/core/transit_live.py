@@ -29,6 +29,7 @@ is the fallback, and it says "scheduled" as before.
 
 from __future__ import annotations
 
+import logging
 import math
 import time
 from dataclasses import replace
@@ -37,6 +38,8 @@ from datetime import UTC, datetime
 from routemaker.lang import t
 
 from . import presets, transit, wmata_bus, wmata_live, wmata_trains
+
+logger = logging.getLogger(__name__)
 
 # The ranking cost of an elevator out on the way (15 min; core.transit.ELEVATOR_OUT_S).
 ELEVATOR_OUT_S = transit.ELEVATOR_OUT_S
@@ -130,6 +133,59 @@ def holding(
 # (`holiday_day_type`); Claude's pick, not measured.
 HOLIDAY_TRAIN_MIN = 2
 
+# The weekday day type the live trains showed on a holiday, by service day (`holiday_day_type`):
+# kept so that the rest of that service day is planned on it once both timetables are open,
+# as the docstring says (hunt 3, T3-6: from 6 am it was read again from each fresh reading,
+# so the same holiday went back to Sunday's timetable and its note changed between two
+# requests a few minutes apart). Each process keeps its own, and the shared route cache's
+# memcached (`route_cache.SHARED`) one for every worker where there is one. Kept for
+# `HOLIDAY_SEEN_S`, a service day and some (Claude's default, not measured).
+_holiday_seen: dict = {}
+HOLIDAY_SEEN_S = 30 * 3600
+
+
+def _seen_name(day) -> str:
+    return f"holiday-day-type:{day.isoformat()}"
+
+
+def _seen_day_type(day, weekday: str) -> bool:
+    """Whether the live trains were seen running `weekday`'s timetable on service day `day`."""
+    if _holiday_seen.get(day) == weekday:
+        return True
+    from .route_cache import _shared
+
+    shared = _shared()
+    if shared is None:
+        return False
+    try:
+        # Any container on the network can write to memcached: only this exact value counts.
+        found = shared.get(_seen_name(day)) == weekday.encode()
+    except Exception:  # noqa: BLE001 - a cache that fails knows nothing: the trains are read
+        logger.info("the holiday day type could not be read from the shared cache", exc_info=True)
+        return False
+    if found:
+        _holiday_seen[day] = weekday
+    return found
+
+
+def _remember_day_type(day, weekday: str) -> None:
+    _holiday_seen.clear()  # one service day at a time
+    _holiday_seen[day] = weekday
+    from .route_cache import _shared
+
+    shared = _shared()
+    if shared is None:
+        return
+    try:
+        shared.set(_seen_name(day), weekday.encode(), HOLIDAY_SEEN_S)
+    except Exception:  # noqa: BLE001 - this process still keeps it
+        logger.info("the holiday day type could not be kept in the shared cache", exc_info=True)
+
+
+def forget_holiday_service() -> None:
+    """Forget the day types seen (the tests)."""
+    _holiday_seen.clear()
+
 
 def holiday_day_type(live: wmata_live.Snapshot | None, now: float | None = None) -> str | None:
     """The typical timetable's day type WMATA's live trains show Metro running on a federal
@@ -145,11 +201,12 @@ def holiday_day_type(live: wmata_live.Snapshot | None, now: float | None = None)
     data says only what runs now, so a train arriving or boarding (or due within
     `HOLIDAY_TRAIN_MIN`) between the weekday and the Sunday opening (5 to 6 am), or after
     Sunday's closing on a Friday (midnight to 2 am), is taken to show the weekday timetable
-    running, and the rest of that service day is planned on it. A train predicted further out
-    is not trusted: a prediction is not a train in service. Once both timetables are open,
-    both run trains and the predictions do not say which, so the holiday stays on Sunday's; a
-    trip leaving now is timed on the predicted trains anyway (`with_live_trains`). A holiday
-    planned ahead of the day, or with no reading, keeps the Sunday rule."""
+    running, and the rest of that service day is planned on it (`_holiday_seen`). A train
+    predicted further out is not trusted: a prediction is not a train in service. Once both
+    timetables are open, both run trains and the predictions do not say which, so a holiday
+    on which no train was seen in those hours stays on Sunday's; a trip leaving now is timed
+    on the predicted trains anyway (`with_live_trains`). A holiday planned ahead of the day,
+    or with no fresh reading, keeps the Sunday rule."""
     if live is None or live.stale or not live.trains:
         return None
     now = _wall() if now is None else now
@@ -163,6 +220,8 @@ def holiday_day_type(live: wmata_live.Snapshot | None, now: float | None = None)
     weekday = transit._WEEKDAY_TYPES[moment.service_day.weekday()]
     if weekday == holiday:
         return None
+    if _seen_day_type(moment.service_day, weekday):
+        return weekday
 
     def hours(kind: str) -> tuple[int, int]:
         opens, closes = (transit._clock_min(v, (0, 0)) for v in doc["hours"][kind])
@@ -183,6 +242,7 @@ def holiday_day_type(live: wmata_live.Snapshot | None, now: float | None = None)
             continue
         minute = moment.minute + (train.minutes or 0)
         if only_weekday(minute):
+            _remember_day_type(moment.service_day, weekday)
             return weekday
     return None
 

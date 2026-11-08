@@ -156,6 +156,26 @@ def representative_time(when: str, now: datetime) -> str:
     return candidate.strftime("%Y-%m-%dT%H:%M")
 
 
+def soonest_instant(when: str, now: datetime) -> datetime:
+    """The soonest of a setting's `INSTANTS` after `now`, in the region's time: the moment a
+    ride planned for that setting, not for now, is taken to start (`workzones.ride_moment`).
+
+    Hunt 3, T3-7: the closures were matched at `representative_time`, so on Saturday night
+    with the dial on Weekend (tomorrow) they were next Saturday 09:00's, six and a half days
+    out, though Sunday 11:00 is a weekend instant too. The router's `date_time` stays
+    `representative_time`."""
+    local = now.astimezone(ZONE)
+    found = []
+    for weekday, minute in INSTANTS[when]:
+        candidate = (local + timedelta(days=(weekday - local.weekday()) % 7)).replace(
+            hour=minute // 60, minute=minute % 60, second=0, microsecond=0
+        )
+        if candidate <= local:
+            candidate += timedelta(days=7)
+        found.append(candidate)
+    return min(found)
+
+
 # --- OSM conditions ------------------------------------------------------------
 
 _BRANCH = re.compile(r"([A-Za-z_]+)\s*@\s*\(([^)]*)\)")

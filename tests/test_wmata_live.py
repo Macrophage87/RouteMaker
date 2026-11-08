@@ -852,11 +852,21 @@ def test_a_garage_elevator_to_the_mezzanine_and_a_street_to_platform_one_are_on_
 HOLIDAY_EARLY = at(2026, 10, 12, 5, 30)
 
 
+@pytest.fixture(autouse=True)
+def _no_holiday_seen():
+    """No holiday's day type is kept from one test to the next (`transit_live._holiday_seen`)."""
+    transit_live.forget_holiday_service()
+    yield
+    transit_live.forget_holiday_service()
+
+
 def test_trains_before_the_sunday_opening_on_a_holiday_say_weekday_service() -> None:
     """The owner, 2026-11-08: "We have a live API." Before, a holiday was always Sunday's."""
     wall = HOLIDAY_EARLY.timestamp()
     assert transit_live.holiday_day_type(live_at(wall), now=wall) == "monday-thursday"
-    # Once the Sunday timetable is open too, the trains cannot say which: the Sunday rule.
+    # Once the Sunday timetable is open too, the trains cannot say which: the Sunday rule,
+    # where none was seen earlier that service day (below).
+    transit_live.forget_holiday_service()
     noon = at(2026, 10, 12, 12, 0).timestamp()
     assert transit_live.holiday_day_type(live_at(noon), now=noon) is None
     # Not a holiday, an old or stale reading, no trains in service, or none: nothing said.
@@ -871,6 +881,7 @@ def test_trains_before_the_sunday_opening_on_a_holiday_say_weekday_service() -> 
     from dataclasses import replace
 
     reading = live_at(late)
+    transit_live.forget_holiday_service()
     later = tuple(replace(t, minutes=15, arriving=False, boarding=False) for t in reading.trains)
     assert transit_live.holiday_day_type(replace(reading, trains=later), now=late) is None
     # Nor does one predicted further out than `HOLIDAY_TRAIN_MIN` while only the weekday
@@ -881,6 +892,19 @@ def test_trains_before_the_sunday_opening_on_a_holiday_say_weekday_service() -> 
     assert transit_live.holiday_day_type(replace(reading, trains=near), now=late) == (
         "monday-thursday"
     )
+
+
+def test_the_weekday_timetable_seen_on_a_holiday_holds_the_rest_of_its_service_day() -> None:
+    """Hunt 3, T3-6: seen running at 5:30, the weekday timetable is the holiday's at 6:30 and
+    noon too; before, each reading from 6 am went back to Sunday's. The next holiday is read
+    afresh."""
+    wall = HOLIDAY_EARLY.timestamp()
+    assert transit_live.holiday_day_type(live_at(wall), now=wall) == "monday-thursday"
+    for hour in (6, 12):
+        later = at(2026, 10, 12, hour, 30).timestamp()
+        assert transit_live.holiday_day_type(live_at(later), now=later) == "monday-thursday"
+    veterans = at(2026, 11, 11, 12, 0).timestamp()
+    assert transit_live.holiday_day_type(live_at(veterans), now=veterans) is None
 
 
 def test_a_holiday_morning_with_trains_running_plans_metro_on_its_weekday_timetable() -> None:

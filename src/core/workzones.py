@@ -480,15 +480,15 @@ REROUTE_MIN_S = 4.0
 def ride_moment(when: str, now: datetime | None = None) -> datetime:
     """The moment the plan's ride is taken to start, for the zones' windows: now, where
     the ride-time dial is on the setting of the moment (a ride planned to go now);
-    otherwise the dial's next representative instant, as the router is asked
-    (`routemaker.ridetime.representative_time`)."""
+    otherwise the soonest of the dial's instants (`routemaker.ridetime.soonest_instant`):
+    tomorrow's Sunday 11:00 for Weekend on a Saturday night, not next Saturday 09:00, which
+    the router is still asked (hunt 3, T3-7)."""
     from routemaker import ridetime
 
     now = now or _now()
     if ridetime.when_at(now) == when:
         return now
-    local = datetime.fromisoformat(ridetime.representative_time(when, now))
-    return local.replace(tzinfo=ridetime.ZONE).astimezone(UTC)
+    return ridetime.soonest_instant(when, now).astimezone(UTC)
 
 
 def plan_zones(

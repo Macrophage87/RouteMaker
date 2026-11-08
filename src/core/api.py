@@ -4632,7 +4632,12 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
     # could lose once its line was routed on the no-trail graph or round a closed bridge).
     ride_variant, ride_exclude, ride_keep = "standard", [], []
     if body.preset not in presets.ON_FOOT_PRESETS:
-        ride_variant = presets.variant_for_ride(leg_preset, ride_when, trails_off=body.trails_off)
+        # The graph served for it (`routing._served_variant`), as `routing.plan` falls back:
+        # with the weekend router down or not promoted, every candidate ride was refused and
+        # timed from the straight line, and the trips were ranked on those (hunt 3, T3-3).
+        ride_variant = routing._served_variant(
+            presets.variant_for_ride(leg_preset, ride_when, trails_off=body.trails_off)
+        )
         ride_zones, ride_exclude = work_zones.foot_zones(
             body.points,
             ride_when,
