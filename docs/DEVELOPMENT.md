@@ -4604,9 +4604,13 @@ less.
   but never marked.
 - `INJECT_TAGS` matches them (`agency_signals.match`): a signal with an OSM signal within
   30 m whose nearest junction is the one the agency point marks is "in OSM"; otherwise
-  every road junction node within 20 m (three or more road arms; alleys, parking aisles
-  and driveways are not arms) is marked `rm:agency_signal=yes`, and a HAWK marks its
-  nearest crosswalk node. Only way nodes near a listed signal are indexed, and the
+  the nearest road junction node within 20 m (three or more road arms; alleys, parking
+  aisles and driveways are not arms) is marked `rm:agency_signal=yes`, with every other
+  junction node within 20 m where only the nearest's named roads meet, as many of them
+  (up to two) as at the nearest (a divided road's other carriageway). A side street of
+  another name or a plain entrance inside the radius is another junction and keeps its
+  own sign (hunt J3/D4, 2026-11-08); where no road at the nearest is named, every node
+  in reach is marked as before. A HAWK marks its nearest crosswalk node. Only way nodes near a listed signal are indexed, and the
   extract's OSM signals are read in one more pass over its `highway` nodes.
 - The transform (`remap.derives_signal`) turns the mark into `highway=traffic_signals`
   over an `uncontrolled` or `unmarked` crossing and a stop or give-way sign on the node;
