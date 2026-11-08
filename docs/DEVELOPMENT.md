@@ -1610,7 +1610,9 @@ curl -s -X POST http://localhost:8000/api/route -H 'Content-Type: application/js
   begins (it was 21:00), so a closure ending at 21:00 now counts as off-peak
   car-free. It
   sets Valhalla's `date_time` (the next Saturday 09:00, Tuesday 08:00, Tuesday
-  12:00 or Tuesday 22:00), which is what the
+  12:00 or Tuesday 22:00; closures are matched at the soonest of the setting's
+  instants instead, `ridetime.soonest_instant`, so Weekend on a Saturday night is
+  Sunday 11:00, not a week out: hunt 3, T3-7), which is what the
   conditional restrictions Valhalla reads are evaluated against, and it decides
   whether a road closed to cars at set times counts as a path in `facility_m`
   and as tier 1 in `stress_m`. The closure is read from
@@ -8174,9 +8176,13 @@ docs/OPERATIONS.md, "Transit schedule". The design note is plans/v0.6.0-transit-
   `transit_live.HOLIDAY_TRAIN_MIN` (2 min), while only the weekday timetable is open (5 to 6 am,
   or midnight to 2 am on a Friday) puts the rest of that service day on the weekday timetable,
   and the note says so (`transit_live.holiday_day_type`, `transit.with_metro_day`); a train
-  predicted further out is not trusted. The live feed cannot say more:
-  once both timetables are open both run trains, so the day stays Sunday's, and a holiday
-  planned ahead or with no reading keeps the Sunday rule. A trip leaving now is timed on the
+  predicted further out is not trusted. What was seen is kept for that service day
+  (`transit_live._holiday_seen`, and the shared route cache's memcached where there is one,
+  for `HOLIDAY_SEEN_S`, 30 h: Claude's default, not measured), so a plan after 6 am stays on
+  the weekday timetable (hunt 3, T3-6: it went back to Sunday's at 6). The live feed cannot
+  say more: once both timetables are open both run trains, so a day on which no train was
+  seen before 6 am stays Sunday's, and a holiday planned ahead or with no fresh reading keeps
+  the Sunday rule. A trip leaving now is timed on the
   predicted trains either way. An
   installed schedule that has run out (or does not reach the date asked for) leaves Metro on its
   typical timetable alone, with a note; `check_operations` still asks for a rebuild. Its credit reads "WMATA, wmata.com (typical service)"; there is no separate note. A built
@@ -8203,7 +8209,10 @@ docs/OPERATIONS.md, "Transit schedule". The design note is plans/v0.6.0-transit-
   and the rides drawn for the map (`transit.drawn`) are asked with the line's pricing: the rider's
   sliders and pace (the drawn rides were at the ride type's own 70 and 0), on the line's graph
   (`presets.variant_for_ride`: the weekend twin, the no-trail graph with "Keep to roads" on; they
-  were always on the standard graph), round the closures to bicycles and the roads the rider
+  were always on the standard graph; the graph served for it, `routing._served_variant`, so with
+  the weekend router down or not promoted they fall back as the line does: hunt 3, T3-3; their
+  busy metres read the timed closures on that graph, `routing.car_free_reading`: hunt 3, T3-4),
+  round the closures to bicycles and the roads the rider
   marked closed (`workzones.foot_zones` with `on_foot` off), then with only the marked roads left
   out where there is no way round. Walks stay on the standard graph. Novice and Nervous's options
   (`novice_legs`) price their legs at Novice's own sliders (the top of the traffic slider, hills

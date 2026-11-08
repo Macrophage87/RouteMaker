@@ -2391,6 +2391,27 @@ class TestApi:
         assert response.status_code == 200, response.content
         assert made and {o.get("ride_variant") for o in made} == {graph}
 
+    def test_the_candidate_rides_fall_back_where_the_weekend_router_is_not_served(
+        self, client, segments, router, installed, monkeypatch
+    ) -> None:
+        """Hunt 3, T3-3: with the weekend graph not promoted (or down), the candidates ride
+        the graph the answer's line falls back to (`routing._served_variant`); before, each
+        asked the weekend router, was refused and was timed from the straight line."""
+        from core import routing
+
+        made = []
+
+        def services(until, leg_preset, **options):
+            made.append(options)
+            return Straight()
+
+        monkeypatch.setattr(transit, "RoutingServices", services)
+        monkeypatch.setattr(routing, "_is_promoted", lambda variant: variant != "weekend")
+        router(standard_router())
+        response = post_transit(client, [CAPITOL_HILL, DOWNTOWN], when="weekend")
+        assert response.status_code == 200, response.content
+        assert made and {o.get("ride_variant") for o in made} == {"standard"}
+
     def test_own_bike_and_transit_rides_at_the_riders_speed(
         self, client, segments, router, installed, monkeypatch
     ) -> None:
@@ -3019,3 +3040,30 @@ def test_regenerating_the_fixture_as_its_docstring_says_gives_the_committed_file
     assert Path("marc/shapes.txt") in made
     assert sorted(made) == sorted(committed)
     assert [k for k in committed if made[k] != committed[k]] == []
+
+
+def test_a_candidate_rides_busy_metres_read_closures_on_its_own_graph(monkeypatch) -> None:
+    """Hunt 3, T3-4: a candidate ride's busy metres (`routing.busy_and_waits`) read the timed
+    closures on the graph it was routed on (`routing.car_free_reading`), as a plan's do; before,
+    outside a plan no graph was set, so a weekend ride on the no-trail graph counted Beach Drive
+    and Sligo Creek as tier-1 paths."""
+    from core import flashing_signals, routing
+
+    graphs = []
+
+    def breakdown(pieces, when, roadway_only=False):
+        graphs.append(routing.car_free_reading(when, routing._routed_graph.get()))
+        return dict.fromkeys(routing.STRESS_KEYS, 0.0), {}
+
+    monkeypatch.setattr(routing, "trace_leg", lambda *a: {"edges": []})
+    monkeypatch.setattr(routing, "pieces_of_trace", lambda trace: [])
+    monkeypatch.setattr(routing, "breakdown", breakdown)
+    monkeypatch.setattr(routing, "decode_polyline6", lambda shape: [])
+    monkeypatch.setattr(routing.trace_junctions, "junctions_of_trace", lambda *a: [])
+    monkeypatch.setattr(flashing_signals, "active", lambda: [])
+    monkeypatch.setattr(routing, "junction_waits", lambda *a, **k: [])
+    for graph in ("no-trail", "weekend"):
+        assert routing.busy_and_waits(graph, {}, "", "weekend", routing.clock() + 5) == (0.0, 0.0)
+    # Before: ["weekend", "weekend"].
+    assert graphs == [routing.NO_CAR_FREE_TIME, "weekend"]
+    assert routing._routed_graph.get() is None

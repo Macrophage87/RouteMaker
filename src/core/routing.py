@@ -1718,7 +1718,14 @@ def busy_and_waits(
     trace = trace_leg(variant, costing, shape, deadline)
     if trace is None:
         return None
-    stress, _facility = breakdown(pieces_of_trace(trace), when)
+    # Read on the graph it was routed on (`car_free_reading`): outside a plan no graph is
+    # set, so a weekend ride on the no-trail graph ("Keep to roads") counted Beach Drive and
+    # Sligo Creek, roads with cars there, as tier-1 paths (hunt 3, T3-4; hunt X1 on a plan).
+    graph_token = _routed_graph.set(variant)
+    try:
+        stress, _facility = breakdown(pieces_of_trace(trace), when)
+    finally:
+        _routed_graph.reset(graph_token)
     junctions = trace_junctions.junctions_of_trace(trace, decode_polyline6(shape), 0.0)
     beacons = active_beacons()
     # Timed without the junction model's signal points (hunt J5): these candidate rides
