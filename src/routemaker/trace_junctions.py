@@ -38,14 +38,20 @@ TRACE_ATTRIBUTES = (
     # node, and on an edge that ends at a signalled node (a stop line short of the junction).
     "node.traffic_signal",
     "edge.traffic_signal",
+    # Whether the edge is a bridge or a tunnel: a route over or under an Avoid-rated
+    # junction does not pass through it (`separated_line`, the 2026-11-08 hunt, J6).
+    "edge.bridge",
+    "edge.tunnel",
 )
 
 # The road classes (Valhalla's, from OSM `highway`) on which a way can be LTS 3
 # or worse. A junction none of whose roads is one of these is a neighbourhood
 # junction and costs nothing, which spares the segment query most of a ride's
-# nodes. A residential street rated LTS 3 on its own speed or volume is missed
-# by this; the tier of the stretch still colours the route, only its crossings
-# go unflagged (docs/DEVELOPMENT.md, "Intersection costs").
+# nodes. A residential street rated LTS 3 on its own speed or volume is not of
+# these classes: `core.junctions.events_of` reads such a junction by its roads'
+# tier instead (`junctions.busy_by_tier`, one segment-table query a route; the
+# 2026-11-08 hunt, H5), so its crossings are priced too (docs/DEVELOPMENT.md,
+# "Intersection costs").
 BUSY_CLASSES = frozenset({"motorway", "trunk", "primary", "secondary", "tertiary", "unclassified"})
 
 # Valhalla's `use` values this model reads. A slip lane is Valhalla's name for a
@@ -222,6 +228,29 @@ def trace_shape(trace: dict, fallback: list[tuple[float, float]]) -> list[tuple[
     drifted onto the wrong nodes for 245 of 342 edges)."""
     encoded = trace.get("shape")
     return decode_polyline6(encoded) if encoded else fallback
+
+
+def separated_line(
+    trace: dict, fallback: list[tuple[float, float]]
+) -> tuple[list[tuple[float, float]], list[bool] | None]:
+    """The traced leg's line (`trace_shape`) and, for each of its segments, whether it lies
+    on a bridge or a tunnel edge (`edge.bridge`, `edge.tunnel`): what
+    `avoid_junctions.passages` reads to tell a route over or under a junction from one
+    through it (J6). None for the flags where the trace has no edges with shape indices
+    (an older router, a test double): every segment at grade, as before."""
+    line = trace_shape(trace, fallback)
+    edges = trace.get("edges") or []
+    if len(line) < 2 or not edges:
+        return line, None
+    flags = [False] * (len(line) - 1)
+    for edge in edges:
+        begin, end = edge.get("begin_shape_index"), edge.get("end_shape_index")
+        if begin is None or end is None:
+            return line, None
+        if edge.get("bridge") or edge.get("tunnel"):
+            for k in range(max(0, begin), min(end, len(flags))):
+                flags[k] = True
+    return line, flags
 
 
 def decode_polyline6(encoded: str) -> list[tuple[float, float]]:

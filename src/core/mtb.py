@@ -168,8 +168,15 @@ def settle(
     max_level: int | None,
     points: list,
     preferred_level: int | None = None,
+    level_excludes: list | None = None,
 ) -> tuple[dict, dict]:
-    """The route a Mountain Bike plan answers, and what the answer says of it (`mtb`)."""
+    """The route a Mountain Bike plan answers, and what the answer says of it (`mtb`).
+
+    `level_excludes`: where given, the `exclude_locations` the answered route was asked
+    with (the trails above the rider's level its rounds steered off) are added to it, so
+    the passes after this one ask any way round of theirs with them (the red pass, the
+    Avoid-junction pass: `refine.Context.level_excludes`) and do not put the rider back on
+    a trail above their level (the 2026-11-08 hunt, P1)."""
     from . import routing
 
     level = mtbmode.clamp_level(max_level)
@@ -212,6 +219,7 @@ def settle(
     # The route the next round's points come from: the last one the router gave, so each
     # round clears what the one before it found (the exclusions accumulate).
     current = best
+    best_excludes: list[tuple[float, float]] = []
     while current[0].over_level_m > 1.0 and info["rounds"] < LEVEL_ROUNDS:
         more = exclusion_points(current[1], current[2], level, points)
         if not more:
@@ -240,6 +248,9 @@ def settle(
         current = found
         if mtbmode.better(found[0], best[0]):
             best_trip, best = again, found
+            best_excludes = list(excludes)
+    if level_excludes is not None:
+        level_excludes.extend({"lon": x, "lat": y} for x, y in best_excludes)
     reading = best[0]
     info.update(figures(reading))
     if reading.over_level_m <= 1.0 and info["limited"] == "no_way_round":

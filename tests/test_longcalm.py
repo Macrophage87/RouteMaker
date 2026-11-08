@@ -1219,8 +1219,9 @@ class TestTheLongSearch:
         legs_world(monkeypatch, {1: [("L1c", 13.5, None)], 2: []})
         ctx = long_context(ceiling_m=45_000.0)
         # 13.5 s from the start, less the 6 s kept for the whole's junctions: 7.5 s (7 s
-        # before audit round 3, S31, which a last leg now needs a little more than).
-        ctx.deadline = routing.Deadline(routing.clock() + 13.5, 45)
+        # before audit round 3, S31, which a last leg now needs a little more than), and
+        # the red pass's own reserve after it (the 2026-11-08 hunt, S2).
+        ctx.deadline = routing.Deadline(routing.clock() + 13.5 + refine.LONG_RED_RESERVE_S, 45)
         trip, info = refine.refine_long(whole_trip(), ctx)
         # The worst leg's share is under a round; the last has the whole of what is left.
         assert info["limited"] == "time" and info["long"]["skipped"] == 1
@@ -1243,8 +1244,13 @@ class TestTheLongSearch:
         ctx = long_context(ceiling_m=45_000.0)
         # 13.7 s to share once the whole's junctions are kept back: L1's 1,800 of 3,800 is
         # 6.5 s, over the old gate of a round and a second (6 s), under a round of searching.
+        # And the red pass's own reserve (S2), which the legs' shares leave.
         ctx.deadline = routing.Deadline(
-            routing.clock() + refine.LONG_FINAL_RESERVE_S + 6.5 * 3800 / 1800, 45
+            routing.clock()
+            + refine.LONG_FINAL_RESERVE_S
+            + refine.LONG_RED_RESERVE_S
+            + 6.5 * 3800 / 1800,
+            45,
         )
         trip, info = refine.refine_long(whole_trip(), ctx)
         assert refine.LONG_LEG_MIN_S * refine.LONG_SEARCH_SHARE > refine.REFINE_ROUND_MIN_S
@@ -1267,8 +1273,10 @@ class TestTheLongSearch:
 
         monkeypatch.setattr(refine, "refine", spy)
         refine.refine_long(whole_trip(), long_context(ceiling_m=45_000.0))
-        # About 41 s to share (47 less 6), L1's 1,800 of 3,800: 19.4 s.
-        assert shares[0] == pytest.approx(41 * 1800 / 3800, abs=1.0)
+        # About 33 s to share (47 less 6, less the red pass's 8: the 2026-11-08 hunt, S2,
+        # where the legs took it all and the red pass had none), L1's 1,800 of 3,800: 15.6 s.
+        assert refine.LONG_RED_RESERVE_S == 8.0
+        assert shares[0] == pytest.approx(33 * 1800 / 3800, abs=1.0)
 
     def test_two_stops_are_cut_separately(self, monkeypatch) -> None:
         world = legs_world(monkeypatch)

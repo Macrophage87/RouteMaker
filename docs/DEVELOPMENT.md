@@ -2580,7 +2580,7 @@ table, within its ranges, for the owner to move:
 | At a traffic signal | `SIGNALISED_CROSSING_FT` | 150 ft (LTS 3), 300 ft (LTS 4, 5) | 100-200 ft, mostly delay (Broach signal 2.1-3.6% a mile) |
 | All-way stop | `ALL_WAY_STOP_FT` | 75 ft | 50-100 ft (Broach stop 0.5-0.9%; Arlington -1) |
 | On the free-flowing side, cross traffic controlled (item 169) | `PRIORITY_SIDE_FT` | 25 ft | 0-50 ft |
-| A trail crossing with no signal flag at it or within 30 m up the roads it crosses: a mapped crossing way, or a path, trail, cycletrack or sidewalk meeting the road at a node of its own | `MARKED_CROSSING_FACTOR`, `MARKED_CROSSING_MAX_SEVERITY` | x0.5, and never drawn red, worded "no signal mapped" as at any junction | item 185; from FOLLOWUP-SIGNAL-DERIVE a crossing node or crossing way tagged `crossing=traffic_signals` (or `crossing:signals=yes`) reaches the router's flag, so this is the crossing with no signal mapped on either. Round 1 said the Pennsylvania Ave and Virginia Ave cycletracks had no flag on the road's arms; that was wrong: the round-2 review found one within 30 m at 31 of 48 trail crossings, and those now read as signalized |
+| A trail crossing with no signal flag at it or within 30 m up the roads it crosses: a mapped crossing way, or a path, trail, cycletrack or sidewalk meeting the road at a node of its own | `MARKED_CROSSING_FACTOR`, `MARKED_CROSSING_MAX_SEVERITY` | x0.5, and never drawn red, worded "no signal mapped" as at any junction; the planner's avoidance passes (the score's red charge, the top figure, `top_by_leg`, the red pass) read one whose cost is red-level as the red it costs (`refine.avoidance_severity`, the 2026-11-08 hunt, J1) | item 185; from FOLLOWUP-SIGNAL-DERIVE a crossing node or crossing way tagged `crossing=traffic_signals` (or `crossing:signals=yes`) reaches the router's flag, so this is the crossing with no signal mapped on either. Round 1 said the Pennsylvania Ave and Virginia Ave cycletracks had no flag on the road's arms; that was wrong: the round-2 review found one within 30 m at 31 of 48 trail crossings, and those now read as signalized |
 | A divided road's two carriageways, crossed at one junction | `MEDIAN_REFUGE_FACTOR` | counted once, the costlier, x0.75; only two or more crossings, each of a one-way road of its own ways, with a name in common, never a turn or a slip lane with a crossing | items 185 and 196 ("x0.75 (Recommended)"); Mineta and Oregon read a refuge as a level lower (about x0.4 by the base costs), 0.75 keeps an unsignalized divided LTS 4 crossing red |
 | Straight on along the same road (its way, or a name in common) where its tier rises | `Junction.continues` | no "Joining" cost | review r2: S Stonestreet Ave and Nebel St (1,200 ft), West St in Annapolis (3,000 ft) were "Joining" the road the rider was already on |
 | Left onto a busy road (item 166) | `MOVEMENT_FACTOR_ONTO["left"]` | x1.5 of the crossing | Copenhagen 154 ft left against 62 ft right; the review: lefts 2-3 times rights |
@@ -3942,9 +3942,13 @@ The owner, 2026-10-03: "Actually, I like merging the runs, that sounds good." (2
 - A median refuge is credited where both carriageways carry the road's name
   (`MEDIAN_REFUGE_FACTOR`); an unnamed divided road's carriageways are two
   roads. Raised crossings, bike signals and queue boxes are not read.
-- A residential street that is LTS 3 on its own speed or volume is not looked
-  for at junctions (only tertiary and up are); its stretch still colours the
-  route.
+- A residential (or living) street that is LTS 3 on its own speed or volume is
+  not of the classes the junction reader looks at by class (tertiary and up), so
+  such a junction is read by tier instead: one segment-table query a route asks
+  which of those nodes a segment rated LTS 3 or worse (not a trail) runs within
+  about 2 m of (`core.junctions.busy_by_tier`, `TIER_READ_CLASSES`), and those are
+  read as any other (the 2026-11-08 hunt, H5; before, its crossings cost nothing
+  and were never red). A table that cannot be read leaves them out, as before.
 - Valhalla's `use_sidepath` price on LTS 3-4 ways applies by tier and not by
   junction density; the calm search is the only thing above it.
 - The live segment table has no speed, lanes or one-way until the first rebuild
@@ -6062,7 +6066,13 @@ way back without its exclusions); the way back is still made different. **A loop
 calm plan** (`routing.plan`: `long_calm` is false for a loop), so a long Trailmaxxing loop gets no
 calm search at all. The span is `straight_span_m` over the loop's points, the way back included, so
 a loop with a 9.5 mi out-leg is already past it, and its note ("over 19 mi in a straight line")
-counts both halves.
+counts both halves. Such a loop is not left with its red crossings (the 2026-11-08 hunt, R1, H4):
+the red pass (`core.red_crossings`) runs on every loop, asking each red round by its own stretch
+of the route (a window of its leg either side of it), never the plan's own request, so the way
+back `make_loop` made is kept and a way round that puts more of it on the way out than the loop
+has is refused (`refine.loop_refused`). At the top of the slider the target fitting and the
+ceiling run on a loop past the span too, as on one within it. The dodge pass and the
+Avoid-junction swap still leave a loop's route as made (266).
 
 **Make it a loop by the search (OWNER-DECISIONS 388, 389).** The checkbox is in the Points
 section, under the search and above the points list (`App.tsx`, `.loop-toggle`, a 44 px row),
@@ -7991,7 +8001,13 @@ empty, so its order against the others does not matter.
 `routemaker.avoid_junctions.passages`: the route's line (lon, lat) comes within `MATCH_RADIUS_M`
 (15 m, 49 ft) of the junction's point; the pass is placed where the line comes nearest, and a
 second pass counts once the line has gone `LEAVE_RADIUS_M` (30 m) away again (a loop through it
-pays twice). It reads the line, not the junction model's events: the model reads only junctions
+pays twice). Grade separation (the 2026-11-08 hunt, J6, C7): the line is read from the legs'
+traces (`core.avoid_junctions.graded_line`, `trace_junctions.separated_line`, from
+`edge.bridge` and `edge.tunnel`), and where every stretch of it within the radius is on a
+bridge or tunnel edge and no junction node of the route's own (a node where a road crosses it)
+is within the radius too, the route goes over or under the junction and it is no pass. A route
+through a junction on a bridge deck has its node there and still passes. A leg that cannot be
+traced is read at grade. It reads the line, not the junction model's events: the model reads only junctions
 where a road that can be busy is involved (`core.junctions.wanted`), and an Avoid rating is a
 person's judgement about a place whatever its roads.
 
@@ -8033,8 +8049,17 @@ restated as `routemaker.avoid_junctions.AVOID_JUNCTION_PENALTY_S` and held equal
   - `searched` is what the search did, not that it was asked: at least one round and not cut
     short (`calm_search.rounds > 0` and no `limited`). Where it searched, its own decision stands
     (it already weighed the penalty under its guards).
-  - Otherwise the way round replaces the answer where its router cost is less than the answer's
-    plus 1,800 s a pass.
+  - Otherwise the way round replaces the answer where the search's own reading prefers it
+    (`judged_takes`): no more red crossings (`refine.red_count`), no busier by the Traffic-wins
+    guard, and a lower `Analysis.score`, which prices the junctions' stress, `RED_DETOUR_S` a
+    red and the 1,800 s a pass. The router's cost alone, as before, priced no junction stress,
+    and the red pass's route is dearer in it by construction, so the way round brought back the
+    red the red pass had gone round (the 2026-11-08 hunt, S3, P2). Its request keeps out what
+    the passes before it did: the reds the red pass went round and Mountain Bike's trails above
+    the rider's level (`refine.Context.red_excludes`, `level_excludes`). Where either route
+    cannot be read the way round is offered, not taken. Where the route answered is one
+    Mountain Bike's choice swapped in after the search, the search is not counted as having
+    weighed it (S4).
   - On Mass Ride and Group Ride (307) it replaces it where it takes on no LTS 4 (or Avoid road)
     the answer did not have (`GROUP_LTS4_SLACK_M`, 1 m, for the traces' rounding) and is at most
     1 mi (1.6 km) (`GROUP_EXTRA_MAX_M`) or 25% (`GROUP_EXTRA_SHARE`) of the answer longer,

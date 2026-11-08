@@ -756,10 +756,22 @@ Measured on the live router, a batch of 50 at 100 ft (30 m) took 0.1-0.3 s and
 avoidance, `core.refine`: only red junctions, from 0.59 calm mi [0.94 km; 3,100 ft],
 are worth a second route), one `/trace_attributes` for it and its `/locate`s. A plan
 the crossing search did not cover (legs adding up past 19 mi [30 km], a long Trailmaxxing
-plan searched leg by leg, a search cut short) asks the same once after it, for the route
-with every red junction excluded, taken where it has fewer reds, is no busier and is
-better by the search's own rule (`core.red_crossings`; an owner report of the GW Parkway
-at Tulane Dr on a long Mount Vernon ride). And one
+plan searched leg by leg, a search cut short, a climb seek, a loop, a route Mountain Bike's
+choice swapped in) asks round each red after it (`core.red_crossings`; an owner report of
+the GW Parkway at Tulane Dr on a long Mount Vernon ride): a plain one-leg plan first asks
+once for the whole route with every red excluded, then each red still on it, the worst
+first, has the stretch of its leg from 1.2 mi (2 km) before it to as far after asked again
+with it excluded (3.1 mi [5 km] each way where that finds none), spliced in where it has
+fewer reds, is no busier, is better by the search's own rule, keeps a loop's way back off
+its way out and a climb seek's climb. A red with no way round is dropped and the next one
+tried (the 2026-11-08 hunt, S1, P1, R1). At most 6 `/route` calls, each with its reading;
+a long Trailmaxxing plan's leg searches leave it 8 s (`refine.LONG_RED_RESERVE_S`, S2).
+Every ask keeps the request's own exclusions, Mountain Bike's level exclusions and the reds
+already ridden round. A red is what the map draws red and a trail crossing drawn orange only
+because no signal is mapped whose cost is red-level (`refine.avoidance_severity`, J1). Each
+red's node is excluded with a 10 ft (3 m) radius (`refine.CROSSING_EXCLUDE_RADIUS_M`, the
+crossing search's too): every edge at the node, not the sidepath or bridge 25-45 ft (8-14 m)
+off it (J6). And one
 more route for the detour warning when the route is at least twice the straight line, or above
 Default when it is longer than the allowance. Above 80 on the stress slider a
 plan can make about 20 router calls (5 rounds of a route, a trace and `/locate`s,
@@ -2513,10 +2525,11 @@ the approved rows at request time (`core.avoid_junctions.approved`).
      turns through it, and one placed on the next junction's corner can catch the wrong one.
      **Never place it above or below another way**: within 49 ft (15 m) of a bridge, an
      overpass, an underpass or a tunnel, the router's exclusion takes out the other level's
-     edges too and the match counts a route on the other level as passing. Move the point
-     along the junction's own roads until no other level is within 49 ft (15 m), or leave that
-     junction unrated. The form cannot warn of this: the segment table has no bridge or tunnel
-     flag for roads.
+     edges too. (The match no longer counts a route on the other level as passing: a stretch
+     on a bridge or tunnel edge with no node of the route's own at the junction is no pass.)
+     Move the point along the junction's own roads until no other level is within 49 ft
+     (15 m), or leave that junction unrated. The form cannot warn of this: the segment table
+     has no bridge or tunnel flag for roads.
    - **Reason**: a few plain words, e.g. "no gap in fast traffic". Riders see it, in the
      notice, the list, the description and the marker's spoken name.
    - **Evidence**: what the rating rests on (rider reports, a visit, crash records). Not shown
@@ -2541,8 +2554,10 @@ minutes (1,800 cost seconds) for each pass, the same as entering an Avoid road (
 search scores it and excludes the junction in its first rounds, and every plan then asks the
 router once more for the way round (`exclude_locations` at the junction, a 49 ft (15 m) radius).
 
-- Where the search did not run a round, and the way round is cheaper than the route plus 30
-  minutes, it becomes the route.
+- Where the search did not run a round, the way round becomes the route where it has no more
+  red crossings, is no busier, and scores better by the search's own reading (the junctions'
+  stress, each red and the 30 minutes a pass); its ask keeps out the reds the red pass went
+  round.
 - On Mass Ride and Group Ride it becomes the route where it adds no LTS 4 and is at most 1 mi
   (1.6 km) or 25% of the route longer, whichever is more (307; this limit is a default the owner
   has yet to confirm).
@@ -6820,7 +6835,10 @@ the credit's extra reads (a join over the traced pieces) no longer apply.
   search then runs as for any plan up to 19 mi (30 km) of straight line in all, and not at all past it.
   A loop is never a long calm plan, and its straight line counts the way back too, so a Trailmaxxing
   loop with a 9.5 mi out-leg answers `limited: "span"` with no calm search. That is as built, not a
-  fault. A Mass Ride has no loop (the owner's choice, 298(4)).
+  fault. Such a loop still has its red crossings asked round, each by its own stretch so the way
+  back stays as made (`core.red_crossings`), and at the top of the slider its target distance and
+  ceiling still hold (`_fit_target`; the 2026-11-08 hunt, R1: before, a loop past the span lost
+  both). A Mass Ride has no loop (the owner's choice, 298(4)).
 - **Reading an answer.** `calm_search.long`: `legs`, `searched`, `skipped`, `stops` (legs per plan leg),
   `answered` (`legs` or `router`) and `per_leg` (each leg's length, LTS 4 and LTS 3 metres before and
   after, the cap it was searched under, the options it offered and why it stopped).

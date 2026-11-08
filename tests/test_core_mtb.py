@@ -173,3 +173,34 @@ def test_reread_carries_the_preference(readings) -> None:
     mixed = trip("mixed", [single(400, level=1), single(600, level=3)])
     info = mtb.reread(mixed, "mtb", {}, "weekend", None, {}, 3, 3)
     assert info["preferred_level"] == 3 and info["easier_m"] == 400.0 and info["harder_m"] == 0.0
+
+
+def test_the_answers_level_exclusions_are_handed_to_the_passes_after(readings, monkeypatch):
+    # Before (the 2026-11-08 hunt, P1): the exclusions that steered the route off a trail
+    # above the rider's level stayed inside `settle`, and the red pass's and the Avoid
+    # pass's ways round were asked without them. After: they are handed on.
+    hard = trip("hard", [road(200), single(800, level=4), road(200)])
+    asked = []
+
+    def route(variant, request, deadline):
+        asked.append(request)
+        return {"trip": trip("round", [road(1500), single(400)])}, False
+
+    monkeypatch.setattr(routing, "_route", route)
+    handed: list = []
+    chosen, _info = mtb.settle(
+        [hard], hard, {"locations": []}, "mtb", {}, "weekend", None, {}, 2, FAR_POINTS,
+        level_excludes=handed,
+    )  # fmt: skip
+    assert chosen["name"] == "round"
+    assert handed and handed == asked[0]["exclude_locations"]
+
+
+def test_no_level_exclusions_are_handed_on_where_no_round_was_taken(readings) -> None:
+    handed: list = []
+    easy = trip("easy", [single(1000)])
+    mtb.settle(
+        [easy], easy, {"locations": []}, "mtb", {}, "weekend", None, {}, 2, FAR_POINTS,
+        level_excludes=handed,
+    )  # fmt: skip
+    assert handed == []

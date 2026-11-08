@@ -182,11 +182,74 @@ def has_unsmoothed_tier(schema: str) -> bool:
     return segment_info.has_columns(schema, UNSMOOTHED_TIER_COLUMN)
 
 
+def _decided(raw: RawJunction) -> bool:
+    """Some other road meets the route at the junction, or the route changes road (a
+    crossing way, a turn)."""
+    return raw.has_cross_roads or raw.in_way != raw.out_way or raw.slip_lane
+
+
 def wanted(raw: RawJunction) -> bool:
     """Whether a junction can matter: some other road meets the route there, or
     the route changes road (a crossing way, a turn), and a road of a class that
     can be busy is among them."""
-    return raw.possibly_busy and (raw.has_cross_roads or raw.in_way != raw.out_way or raw.slip_lane)
+    return raw.possibly_busy and _decided(raw)
+
+
+# The road classes a junction is read for by its roads' tier, not their class
+# (`busy_by_tier`): a residential street DC's Roadway Block or MDOT's AADT rates LTS 3 or
+# worse on its own speed or volume is a busy road to cross, but the class gate
+# (`trace_junctions.BUSY_CLASSES`) never read its crossings, which cost nothing and were
+# never red (the 2026-11-08 hunt, H5; the gap the comment on BUSY_CLASSES owned).
+TIER_READ_CLASSES = frozenset({"residential", "living_street"})
+# The tier from which such a road makes its junction worth reading.
+TIER_READ_MIN = 3
+# How near the junction's node a segment of such a tier must run (degrees, about 2 m):
+# the node is on the road's centre line, a parallel road is metres off it.
+TIER_NEAR_DEG = 2.0e-5
+
+_BUSY_BY_TIER = """
+SELECT j.idx
+FROM unnest(%s::int[], %s::float8[], %s::float8[]) AS j(idx, lon, lat)
+WHERE EXISTS (
+    SELECT 1 FROM {schema}.segment AS s
+    WHERE ST_DWithin(s.geometry, ST_SetSRID(ST_MakePoint(j.lon, j.lat), 4326), %s)
+      AND s.stress_tier >= %s
+      AND NOT s.is_trail_class
+)
+"""
+
+
+def tier_candidate(raw: RawJunction) -> bool:
+    """A junction the class gate leaves out (`wanted`) where a road of a class in
+    TIER_READ_CLASSES meets: read where the segment table rates one of its roads busy."""
+    if raw.possibly_busy or not _decided(raw):
+        return False
+    return any(
+        cls in TIER_READ_CLASSES for cls in (raw.in_class, raw.out_class, *raw.other_classes)
+    )
+
+
+def busy_by_tier(points: Sequence[tuple[int, float, float]]) -> set[int]:
+    """Of (index, lon, lat), the indexes whose node a segment rated TIER_READ_MIN or worse
+    runs through (one query for the route). A table that cannot be read reads none: the
+    junctions are then left out, as before, and the plan answered all the same."""
+    if not points:
+        return set()
+    from django.db import DatabaseError
+
+    from .routing import plan_cursor
+
+    schema = validate_schema_name(settings.SEGMENT_SCHEMA_LIVE)
+    arrays = [list(column) for column in zip(*points, strict=True)]
+    try:
+        with plan_cursor() as cursor:
+            cursor.execute(
+                _BUSY_BY_TIER.format(schema=schema), [*arrays, TIER_NEAR_DEG, TIER_READ_MIN]
+            )
+            return {int(row[0]) for row in cursor.fetchall()}
+    except DatabaseError:
+        logger.warning("the junctions' tiers could not be read", exc_info=True)
+        return set()
 
 
 def _rated(raw: RawJunction, ratings: Sequence[Rating]) -> bool:
@@ -1161,7 +1224,18 @@ def events_of(
     there can be busy ("the road is fine, but the intersection can be especially
     dangerous"). `beacons`: the known flashing beacons at junctions the map has a
     signal at (`core.flashing_signals.active`), priced with no signal."""
-    raws = [raw for raw in raws if wanted(raw) or _rated(raw, ratings)]
+    by_tier = busy_by_tier(
+        [
+            (position, raw.lon, raw.lat)
+            for position, raw in enumerate(raws)
+            if tier_candidate(raw) and not _rated(raw, ratings)
+        ]
+    )
+    raws = [
+        raw
+        for position, raw in enumerate(raws)
+        if wanted(raw) or position in by_tier or _rated(raw, ratings)
+    ]
     beacons = beacons_near([(raw.lon, raw.lat) for raw in raws], beacons)
     nodes = nodes_at(raws, locate, cut_short, beacons)
     asked: dict[tuple[int, int], tuple[int, int, float, float]] = {}
