@@ -4095,6 +4095,11 @@ the model's feet at `quiet_cost` x `weight` a metre, a wait at `QUIET_COST_FACTO
 signals in `light_buttons` (in the description's metres), and Ride shows "Light may need a
 button press" on the turn or crossing there and ends its first warning with "Button for the
 light." (`navigate.ts` `withButtons`; a signal with no cue near gets a short cue of its own).
+That short cue leads the card only on a stretch with nothing else near: where a turn or other lead
+cue comes within `ADVANCE_MIN_M` (150 m) after it, the card leads with that cue and shows the note
+under it (`nextAction`, `buttonBefore`), and Where am I always names the next turn, never the note;
+a jog's two turns are joined across it (`joinJogs`; the 2026-11-08 hunt, round 2, R2-2 and R2-3).
+The 150 m reach is Claude's pick for that fix (not measured; the owner has not ruled on it).
 The `button_operated` tag reaches the planner through `segment.button_operated`
 (`pipeline.signals.button_ways`: trail-class ways tagged so, or through a node tagged so), so
 that part needs a map rebuild; on a table built before the column only the inferred buttons
@@ -6241,7 +6246,22 @@ does not plan as a loop, so an automatic re-route on a loop tries the way back t
 (`lib/rejoin.ts` `rejoinsFirst`, as on a chosen route). With only the start left ahead, the plan to it
 goes through the middle of the planned way home (`navigate.ts` `loopShapePoint`, a mile or more left),
 a via point the ride made itself (`ViaMarks.shape`): never said when left out, kept as the ride's own
-through Resume, and left out of the plan End ride leaves.
+through Resume, and left out of the plan End ride leaves. None is sent where the end ends a leg drawn by
+hand (`navigate.ts` `shapesHome`; a leg is drawn by its end's mark, so the drawn leg would have run
+straight from the shape point; the 2026-11-08 hunt, round 2, R2-8).
+
+**What a ride's re-plans learn is kept with it** (2026-11-08 hunt, round 2, R2-4 to R2-6): that it is a
+loop, the stretches marked Road closed, a dirt trail ridden and a dirt trail marked closed
+(`lib/rideResume.ts` `RideReplans`, kept with each re-route and, for dirt ridden, at the fix that rode
+it, `keepLeftRideReplans`). Resume and Keep riding start Ride mode from them (its `replans` prop), so a
+page reloaded in the background no longer re-plans over a road marked closed or turns a re-planned
+loop's way home into the way out (a re-plan's points begin at the rider, so `endsOnStart` no longer
+sees the loop). End ride hands App the ride as it stands (`onEnd`'s `riding`: its route, points, dials
+and that state), and Keep riding carries on with it rather than the route as it was at Start; not on a
+Bikeshare or transit trip, a Rebalance Ride's chosen dock or a shared ride, which keep their own.
+A way back joined to the planned route (`lib/rejoin.ts` `joinRoutes`) carries the button signals
+(`light_buttons`) in line metres as the description is, and either part's `dirt_trails` and
+`dirt_closed` (R2-1, R2-7).
 
 **Make it a loop by the search (OWNER-DECISIONS 388, 389).** The checkbox is in the Points
 section, under the search and above the points list (`App.tsx`, `.loop-toggle`, a 44 px row),

@@ -39,6 +39,40 @@ export const RESUME_LEAD = t("The app closed during a ride. Resume picks it up f
 export const RESUME_RIDE = t("Resume ride");
 export const RESUME_NOT_NOW = t("Not now");
 
+/**
+ * What the ride's re-plans have learnt, kept with it so a Resume or a Keep riding re-plans as the ride did (the hunt,
+ * round 2, R2-4 and R2-5): the ride is a loop (its re-plans' points begin at the rider, so they no longer show it), the
+ * stretches marked Road closed, a dirt trail ridden, a dirt trail marked closed. Before, each began again empty, so a
+ * page reloaded in the background re-planned over a road the rider had marked closed, a loop's way home became the way
+ * out again, and a ride that had ridden dirt stopped re-planning on it.
+ */
+export interface RideReplans {
+  loopRide?: boolean;
+  blocked?: LonLat[][];
+  dirtRidden?: boolean;
+  dirtClosed?: boolean;
+}
+
+/** The ride's re-plan state as kept: only what is set, so a ride with none keeps nothing. */
+export function rideReplans(loopRide: boolean, blocked: readonly LonLat[][], dirtRidden: boolean, dirtClosed: boolean): RideReplans {
+  return {
+    ...(loopRide ? { loopRide: true } : {}),
+    ...(blocked.length ? { blocked: blocked.map((line) => line.map((p): LonLat => [p[0], p[1]])) } : {}),
+    ...(dirtRidden ? { dirtRidden: true } : {}),
+    ...(dirtClosed ? { dirtClosed: true } : {}),
+  };
+}
+
+/** Kept re-plan state that reads as one (rideReplans), else null. */
+function replansOf(value: unknown): RideReplans | null {
+  const r = value as RideReplans | null;
+  if (!r || typeof r !== "object") return null;
+  const isPoint = (p: unknown) => Array.isArray(p) && p.length >= 2 && typeof p[0] === "number" && typeof p[1] === "number";
+  const blocked = Array.isArray(r.blocked) ? r.blocked.filter((line) => Array.isArray(line) && line.length >= 2 && line.every(isPoint)) : [];
+  const out = rideReplans(r.loopRide === true, blocked, r.dirtRidden === true, r.dirtClosed === true);
+  return Object.keys(out).length ? out : null;
+}
+
 export interface LeftRide {
   route: RouteResponse;
   points: LonLat[];
@@ -80,6 +114,8 @@ export interface LeftRide {
    * to it rather than walking back to the crowded dock (the v0.22.0 review: the choice was lost on a reload).
    */
   docked?: RebalanceDocked | null;
+  /** What the ride's re-plans have learnt (RideReplans), so Resume re-plans as the ride did. */
+  replans?: RideReplans | null;
 }
 
 /** Points kept with their kinds and names, which live on the pairs (lib/pointKinds.ts). */
@@ -115,6 +151,7 @@ interface Kept {
   seen?: number;
   stats?: RideStats;
   docked?: RebalanceDocked;
+  replans?: RideReplans;
 }
 
 interface Store {
@@ -185,6 +222,7 @@ export function keepLeftRide(ride: LeftRide, marks: Pick<ViaMarks, "isVia" | "is
     ...(ride.wholeTrip && ride.past ? { past: ride.past } : {}),
     ...(ride.stopsLeft && ride.stopsLeft.points.length > 0 ? { stops: { preset: ride.stopsLeft.preset, ...keptPoints(ride.stopsLeft.points, marks) } } : {}),
     ...(ride.wholeTrip && ride.docked ? { docked: plainDocked(ride.docked) } : {}),
+    ...(replansOf(ride.replans) ? { replans: replansOf(ride.replans)! } : {}),
   };
   try {
     store?.setItem(RIDE_RESUME_KEY, JSON.stringify(kept));
@@ -277,6 +315,19 @@ export function keepLeftRidePast(past: OnwardState, store: Store | null = local(
   }
 }
 
+/** What the ride's re-plans have learnt since it was last kept (a dirt trail ridden, at a fix): kept with it in place. */
+export function keepLeftRideReplans(replans: RideReplans, store: Store | null = local()): void {
+  try {
+    const raw = store?.getItem(RIDE_RESUME_KEY);
+    if (!raw) return;
+    const { replans: _was, ...kept } = JSON.parse(raw) as Kept;
+    const now = replansOf(replans);
+    store?.setItem(RIDE_RESUME_KEY, JSON.stringify(now ? { ...kept, replans: now } : kept));
+  } catch {
+    // Full or blocked storage: Resume re-plans without it, as before.
+  }
+}
+
 /** The walk or train a trip left going was following, as last kept (End ride reads it, so Undo carries on from it). */
 export function leftRidePast(store: Store | null = local()): OnwardState | null {
   try {
@@ -363,6 +414,7 @@ export function leftRide(marks: Pick<ViaMarks, "via" | "drawn" | "named"> & Part
     ...(typeof kept.seen === "number" ? { seen: kept.seen } : {}),
     ...(statsOf(kept.stats) ? { stats: kept.stats } : {}),
     ...(docked ? { docked } : {}),
+    ...(replansOf(kept.replans) ? { replans: replansOf(kept.replans) } : {}),
   };
 }
 
