@@ -52,6 +52,11 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Cross at the crosswalk.": "Traversez au passage piéton.",
   "Busy road, no signal.": "Rue très fréquentée, sans feu.",
   "Slip lane: watch for turning cars.": "Voie de virage : attention aux voitures qui tournent.",
+  // Off a train, which way out of the station (lib/stationExit.ts; draft, needs a native check).
+  "Take the exit at {street} and {cross}.": "Prenez la sortie {street} et {cross}.",
+  "Take the exit on {street}.": "Prenez la sortie {street}.",
+  "Take the {side} exit at {street} and {cross}.": "Prenez la sortie {side} {street} et {cross}.",
+  "Take the {side} exit on {street}.": "Prenez la sortie {side} {street}.",
   "Cross {road}, then {turn}": "Traversez {road}, puis {turn}",
   "{way} to {trail}": "{way} qui mène à {trail}",
   "Cross {road} now.": "Traversez {road} maintenant.",

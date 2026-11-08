@@ -628,13 +628,17 @@ def station(point, live: wmata_live.Snapshot | None) -> dict | None:
     found = live.station_near(point)
     if found is None:
         return None
-    groups: dict[tuple[str, str], list[wmata_live.Train]] = {}
+    # By line, end and track: WMATA's `Group` is the platform track, one per way at a platform
+    # (Stephen, 2026-11-08: at Gallery Place the "After that" train was a Red Line one to
+    # Glenmont, which the ride's card took for a Shady Grove one by where Glenmont lies).
+    groups: dict[tuple[str, str, str | None], list[wmata_live.Train]] = {}
     for train in live.trains_at(found):
         if train.minutes is None or not train.destination:
             continue
-        groups.setdefault((train.line, train.destination), []).append(train)
+        track = f"{train.station}:{train.group}" if train.group else None
+        groups.setdefault((train.line, train.destination, track), []).append(train)
     trains = []
-    for (line, toward), group in groups.items():
+    for (line, toward, track), group in groups.items():
         group.sort(key=lambda train: train.minutes)
         # Where the train ends, so a ride's boarding card can tell a train going its way, and far
         # enough, from WMATA's place rather than its name ("Vienna/Fairfax-GMU").
@@ -644,6 +648,7 @@ def station(point, live: wmata_live.Snapshot | None) -> dict | None:
                 "line": line,
                 "toward": toward,
                 "end": [end.lon, end.lat] if end else None,
+                "track": track,
                 "minutes": [train.minutes for train in group[:TRAINS_SHOWN]],
                 "when": _when(group),
             }

@@ -52,6 +52,11 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Cross at the crosswalk.": "횡단보도로 건너세요.",
   "Busy road, no signal.": "차가 많은 도로, 신호등 없음.",
   "Slip lane: watch for turning cars.": "회전 차로: 회전하는 차를 조심하세요.",
+  // Off a train, which way out of the station (lib/stationExit.ts; draft, needs a native check).
+  "Take the exit at {street} and {cross}.": "{street}와 {cross} 쪽 출구로 나가세요.",
+  "Take the exit on {street}.": "{street} 쪽 출구로 나가세요.",
+  "Take the {side} exit at {street} and {cross}.": "{street}와 {cross}의 {side}쪽 출구로 나가세요.",
+  "Take the {side} exit on {street}.": "{street}의 {side}쪽 출구로 나가세요.",
   "Cross {road}, then {turn}": "{road} 건너서 {turn}",
   "{way} to {trail}": "{trail} 방면 {way}",
   "Cross {road} now.": "지금 {road} 건너세요.",
