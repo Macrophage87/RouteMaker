@@ -143,3 +143,18 @@ def test_the_segment_table_has_the_column_the_planner_reads() -> None:
     from pipeline import schema
 
     assert "button_operated boolean     NOT NULL DEFAULT false" in schema.SEGMENT_DDL
+
+
+def test_a_long_trail_through_a_button_node_is_not_marked_its_whole_length() -> None:
+    """Hunt J2-3: a multi-km cycleway crossing one road at a node tagged
+    `button_operated=yes` marked the whole way, so every signal along it read as a beg
+    button. The crossing way through the node and a path ending there still are."""
+    trail = way(4, {"highway": "cycleway"}, [*range(100, 200), 11, *range(200, 300)])
+    crossing = way(2, SIGNALISED_CROSSING, [20, 11, 21])
+    sidewalk = way(3, {"highway": "footway", "footway": "sidewalk"}, [30, 11])
+    ways = [way(1, ROAD, [10, 11, 12]), trail, crossing, sidewalk]
+    # Before: {2, 3, 4}; after: the trail passing through is left out.
+    assert signals.button_ways(ways, {11}) == {2, 3}
+    # A trail tagged itself is still marked.
+    tagged = way(5, {"highway": "cycleway", "button_operated": "yes"}, [40, 41, 42])
+    assert signals.button_ways([tagged]) == {5}

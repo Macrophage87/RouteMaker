@@ -811,6 +811,20 @@ class TestRoute:
         assert m.stop_extra_ft(stopped) == {}
         assert m.stop_extra_ft(None) == {}
 
+    def test_the_riders_own_big_road_is_carried_apart_from_the_crossed_one(self) -> None:
+        """The signal review, 2026-11-08: the junction-delay model's busiest road at a
+        signal counts the rider's own 4-lane or 40 mph road (`own_big_signal_points`),
+        which before was not carried at all; the crossed road's reading stays its own."""
+        wide = Road(3, lanes=2, oneway=False, names=frozenset({"beulah street"}))
+        side = Road(3, lanes=1, oneway=False, names=frozenset({"a street"}))
+        along = junction(incoming=wide, outgoing=wide, crossed=(side,), control=Control.SIGNAL)
+        events = m.assess_route([replace(along, continues=True)])
+        assert m.own_big_signal_points(events) == {(-77.0, 38.9)}
+        assert m.big_signal_points(events) == frozenset()
+        across = junction(crossed=(wide,), control=Control.SIGNAL)
+        assert m.own_big_signal_points(m.assess_route([across])) == frozenset()
+        assert m.own_big_signal_points(None) == frozenset()
+
     def test_a_divided_roads_merged_event_keeps_both_nodes_big_road_reading(self) -> None:
         name = frozenset({"telegraph road"})
         north = Road(4, oneway=True, lanes=2, names=name, ways=frozenset({1}))

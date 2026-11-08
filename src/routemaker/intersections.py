@@ -715,6 +715,13 @@ class Event:
     # major cities the junction-delay model times such a signal as a big road's
     # (`routemaker.junction_delay.SUBURBAN_BIG_SIGNAL_S`; the owner, 2026-11-08).
     big_signals: tuple[tuple[float, float], ...] = field(default=(), compare=False)
+    # Of `signals`, the points where the rider's own road (the one they arrive on, and the
+    # one they leave on where it goes on) is a big one by the same reading: the
+    # junction-delay model times the signal by the busiest road there, the rider's own
+    # included, but the suburban 45 s red stays for crossing or joining a big road
+    # (`routemaker.junction_delay._busiest`; the signal review of 2026-11-08: a 4-lane or
+    # 40 mph secondary ridden along had counted as a secondary road).
+    own_big_signals: tuple[tuple[float, float], ...] = field(default=(), compare=False)
     # By point of `signals`, how many feet more the junction would cost with a stop sign on
     # the rider's approach in place of its signal (`stop_extra_ft`): a crossing read as
     # needing a beg button is held below a stop sign across the same road (the owner,
@@ -1503,6 +1510,7 @@ def merge_nearby(events: list[Event]) -> list[Event]:
                 untimed_ft=untimed,
                 signals=tuple(dict.fromkeys(p for e in group for p in e.signals)),
                 big_signals=tuple(dict.fromkeys(p for e in group for p in e.big_signals)),
+                own_big_signals=tuple(dict.fromkeys(p for e in group for p in e.own_big_signals)),
                 stop_extra=tuple(dict(pair for e in group for pair in e.stop_extra).items()),
             )
         )
@@ -1754,19 +1762,23 @@ def _with_signal(
     event: Event | None, junction: Junction, group: bool = False, when: str | None = None
 ) -> Event | None:
     """The event with its junction's point in `signals` where its control is a signal, in
-    `big_signals` where a road crossed or joined there is a big one (`big_road`), and its
-    stop sign's extra cost in `stop_extra` (`group`, `when`: as the event was assessed)."""
+    `big_signals` where a road crossed or joined there is a big one (`big_road`), in
+    `own_big_signals` where the rider's own road is, and its stop sign's extra cost in
+    `stop_extra` (`group`, `when`: as the event was assessed)."""
     if event is None or junction.control is not Control.SIGNAL:
         return event
     here = (junction.lon, junction.lat)
     joined = () if junction.continues else (junction.outgoing,)
     big = any(big_road(road) for road in (*junction.crossed, *joined))
+    own = (junction.incoming, junction.outgoing) if junction.continues else (junction.incoming,)
+    own_big = any(big_road(road) for road in own)
     stopped = assess(replace(junction, control=Control.STOP), group, when)
     extra = max((stopped.cost_ft if stopped is not None else 0.0) - event.cost_ft, 0.0)
     return replace(
         event,
         signals=(here,),
         big_signals=(here,) if big else (),
+        own_big_signals=(here,) if own_big else (),
         stop_extra=((here, extra),),
     )
 
@@ -1800,6 +1812,12 @@ def big_signal_points(events: Sequence[Event] | None) -> frozenset[tuple[float, 
     """The signalised points where a road crossed or joined is a big one (`Event.big_signals`),
     for `routemaker.junction_delay`'s suburban wait."""
     return frozenset(point for event in events or () for point in event.big_signals)
+
+
+def own_big_signal_points(events: Sequence[Event] | None) -> frozenset[tuple[float, float]]:
+    """The signalised points where the rider's own road is a big one
+    (`Event.own_big_signals`), for `routemaker.junction_delay`'s busiest road at a signal."""
+    return frozenset(point for event in events or () for point in event.own_big_signals)
 
 
 def stop_extra_ft(events: Sequence[Event] | None) -> dict[tuple[float, float], float]:
