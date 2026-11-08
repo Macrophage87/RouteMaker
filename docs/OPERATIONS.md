@@ -86,6 +86,7 @@ Contents:
 - [Deploying v0.21.2](#deploying-v0212)
 - [Deploying v0.22.0](#deploying-v0220)
 - [Deploying v0.22.1](#deploying-v0221)
+- [Deploying v0.22.2](#deploying-v0222)
 - [Deploying a planner and front-end release: rollback points and verification](#deploying-a-planner-and-front-end-release-rollback-points-and-verification)
 - [Paths bicycles may not ride (NO-BIKE-PATHS)](#paths-bicycles-may-not-ride-no-bike-paths)
 - [Mountain-bike difficulty levels (456; claude/v0-4-0-mtb-levels)](#mountain-bike-difficulty-levels-456-claudev0-4-0-mtb-levels)
@@ -4235,8 +4236,11 @@ at `/routes/` and from Go's More > Featured routes. Instance admins write them:
    the server strips anything left. Where it was taken is kept (v0.22.0; the owner: "people want
    to know where they are taken"): the browser reads it from the file first and sends it alongside,
    the caption gets a **Where it was taken** link to that spot on the map, and the served file
-   carries it as Exif GPS. A spot inside the author's Home circle is dropped (the photo stays). A
-   phone with location tagging off writes an empty GPS block, so its photos have no spot. An
+   carries it as Exif GPS. A spot inside the author's Home circle is dropped (the photo stays).
+   Each photo with a spot is also a round thumbnail on the post's route map that opens a pop-out
+   of the photo, and a small thumbnail pointing to the spot on any highlight map it falls in
+   (v0.22.2). A phone with location tagging off writes an empty GPS block, so its photos have no
+   spot. An
    assistant on the site's connector (draft_route_post) gets an upload link per described photo
    and can send the file itself while the post is a draft (image/jpeg, at most 2048 px a side and
    900 KB, 24 hours, once; headers `X-Photo-Lat` and `X-Photo-Lon` when the file has no spot,
@@ -7533,6 +7537,35 @@ assistant still sending `?lat=&lon=` gets its photo kept with no spot (`located:
 - [ ] **Rollback.** The `pre-rel` api image (`--force-recreate api worker`) and the v0.22.0 front end.
   Nothing in the database or the map changes. On the beta: the agent rolls back by itself on a failed
   pass; later, rollback C, then `auto-release.sh hold v0.22.1`.
+
+## Deploying v0.22.2
+
+A patch for Featured routes: each card on the list (`/routes/`) shows the map on top, full width,
+with the words below, and the route's preview picture shows only its map part (its word band repeated
+the card's words) (#1052); a post's photos with a spot are round thumbnails on its route map that open
+a pop-out, and small thumbnails on the highlight maps they fall in (#1067). **`src/core/route_posts.py`
+and the post page's script (`frontend/src/post/`)**, with the version in `pyproject.toml`,
+`src/routemaker/__init__.py`, `frontend/package.json`, `README.md`, and the docs pages rebuilt with
+`DOCS_RELEASE=0.22.2` (version stamps and one sentence in Using RouteMaker). **No migration, no `src/pipeline/`, `lua/`,
+`valhalla/*.json`, compose, Caddyfile, nginx, Dockerfile, requirements, `mcp/` or `mobile/` change, no
+new environment variable, scheduled job or outbound host, and no map rebuild.**
+
+- [ ] **The tag.** Once `test` and `a11y` are green on `main`, the owner tags v0.22.2 (annotated) on
+  that commit, from the PC.
+- [ ] **At home**, as "Deploying a planner and front-end release": rollback point (tag the running api
+  image `pre-rel-<short>`, keep `index.html`), fast-forward the checkout, `docker compose build api`,
+  then `docker compose up -d --no-deps --no-build --force-recreate api worker` with no job todo or
+  doing, then the front end (the post page's script). No migration, no router restart.
+- [ ] **Beta, by its agent**, once its deployed tag (`$RM_STATE/cd/deployed-tag`) is v0.22.1: the gate
+  sees `src/core/`, `frontend/` and the version files, none of them a stop, and deploys in one pass.
+  Stuck: `git fetch --force --tags origin`, then `scripts/beta/auto-release.sh retry v0.22.2`.
+- [ ] **Spot checks.** Open `/routes/` on a phone and a desktop: each card has the map on top, full
+  width, no white text strip at its foot, the base map credit visible, and the name and figures below.
+  On a post with located photos, each photo is a round thumbnail on the route map; Enter or a tap opens
+  the photo and caption, Escape closes it and the focus returns to the thumbnail.
+- [ ] **Rollback.** The `pre-rel` api image (`--force-recreate api worker`) and the v0.22.1 front end.
+  Nothing in the database or the map changes. On the beta: the agent rolls back by itself on a failed
+  pass; later, rollback C, then `auto-release.sh hold v0.22.2`.
 
 ## Deploying a planner and front-end release: rollback points and verification
 
