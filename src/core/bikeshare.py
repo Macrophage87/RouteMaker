@@ -1292,7 +1292,12 @@ class RoutingServices:
         if _distance(a, b) < 5.0:
             return WalkLeg([a, b], 0.0, 0.0)
         payload = {
-            "locations": [{"lon": p[0], "lat": p[1], "type": "break"} for p in (a, b)],
+            # Neither end in the tunnel under a DC circle park, as a ride's stops
+            # (`routing.circle_park_filter`; the second 2026-11-08 hunt, P7).
+            "locations": [
+                {"lon": p[0], "lat": p[1], "type": "break", **routing.circle_park_filter(*p[:2])}
+                for p in (a, b)
+            ],
             "costing": "pedestrian",
             "costing_options": {"pedestrian": {"walking_speed": WALK_SPEED_KMH}},
             "directions_type": "none",

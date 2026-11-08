@@ -227,8 +227,11 @@ def _leg_costs(
                         "lon": request_points[i][0],
                         "lat": request_points[i][1],
                         "type": "break",
-                        # Matched as the plan's own /route matches them.
+                        # Matched as the plan's own /route matches them, never to the
+                        # tunnel under a DC circle park (the second 2026-11-08 hunt, P6:
+                        # an order ranked by times to the underpass).
                         "radius": routing.STOP_RADIUS_M,
+                        **routing.circle_park_filter(*request_points[i][:2]),
                     }
                     for i in indices
                 ],
@@ -277,9 +280,16 @@ def _matrix(variant: str, request_points: list, costing: dict, deadline, exclude
     """The riding times (seconds) and distances (metres) between every pair, or
     None if the router would not give them. Only the variant and the router's
     error are logged, never the points."""
-    # Matched as the plan's own /route matches them.
+    # Matched as the plan's own /route matches them, the circle parks' tunnels left out too
+    # (`routing.circle_park_filter`; the second 2026-11-08 hunt, P6).
     locations = [
-        {"lon": lon, "lat": lat, "radius": routing.STOP_RADIUS_M} for lon, lat in request_points
+        {
+            "lon": lon,
+            "lat": lat,
+            "radius": routing.STOP_RADIUS_M,
+            **routing.circle_park_filter(lon, lat),
+        }
+        for lon, lat in request_points
     ]
     payload = {
         "sources": locations,

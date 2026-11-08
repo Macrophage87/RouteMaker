@@ -4420,7 +4420,12 @@ def walk_leg(
     # and a longer way round could fail the checks the router's own way passes.
     payload = walk_turns.directions(
         {
-            "locations": [{"lon": p[0], "lat": p[1], "type": "break"} for p in (a, b)],
+            # Neither end in the tunnel under a DC circle park, as a ride's stops (the second
+            # 2026-11-08 hunt, P7).
+            "locations": [
+                {"lon": p[0], "lat": p[1], "type": "break", **circle_park_filter(p[0], p[1])}
+                for p in (a, b)
+            ],
             "costing": "pedestrian",
             "costing_options": {"pedestrian": pedestrian},
             "units": "kilometers",
