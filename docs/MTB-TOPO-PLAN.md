@@ -40,7 +40,16 @@ ones already built).
   rating means mappers saw bicycles ride it; `pipeline.trail_closures.RATING_OPENS`), so the
   layer draws it and the Mountain Bike graph rides it. The off-road graph (Gravel, Mountain
   Goat) rides the drawn rated singletrack up to `routemaker.singletrack.OFFROAD_MAX_LEVEL`
-  (green, 1: the owner's "Up to Green (1)", 2026-10-19). Unrated dirt paths stay closed.
+  (green, 1: the owner's "Up to Green (1)", 2026-10-19). Unrated dirt paths stay closed,
+  except on a mapped mountain-bike route.
+- **Unrated dirt trails on a mapped MTB route** (the owner, 2026-11-08, asked whether an
+  unrated dirt trail on a `route=mtb` relation counts as open to bikes: "Yes, it's most likely
+  that these are very easy trails that nobody bothers to rate"; terrain hunt 2, T1). Such a way
+  is the mountain-bike class (`routemaker.trailaccess.verdict`, reason `mtb`), not
+  `natural_surface`: closed on the standard graphs, ridden by the off-road graph (Gravel,
+  Mountain Goat) and the Mountain Bike graph, and drawn grey (unrated) on the mountain-bike
+  layer. Before, a dirt surface closed it on every graph, Mountain Bike's included, while the
+  same way with no surface tag in a park was already the mountain-bike class. Needs a rebuild.
 
 ## Slices
 

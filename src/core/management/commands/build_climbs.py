@@ -67,9 +67,12 @@ class Command(BaseCommand):
         gazetteer = climb_names.read_extract(pbf, {s.key[0] for s in segments})
         self.stdout.write(
             f"climbs: names from {pbf}: {len(gazetteer.ways):,} ways, "
-            f"{len(gazetteer.landmarks):,} hills, {len(gazetteer.places):,} places"
+            f"{len(gazetteer.landmarks):,} hills, {len(gazetteer.places):,} places, "
+            f"{len(gazetteer.structures):,} bridges and tunnels"
         )
         segments = climb_layer.with_names(segments, gazetteer.ways)
+        # Bridges and tunnels read straight across (the tiles are bare earth).
+        segments = climb_layer.with_structures(segments, gazetteer.structures)
         ground = climb_layer.HgtElevation(elevation_dir)
         found = climb_layer.find_all(segments, ground)
         if ground.tiles_read == 0:

@@ -2,7 +2,7 @@
 import type { RouteProfile, RouteResponse } from "./api.ts";
 import { haversineM, type LonLat } from "./geo.ts";
 import { t } from "./i18n.ts";
-import { WHENS, carryingWords, hillsWords, seeksClimbs, stressWords, whenInSentence } from "./dials.ts";
+import { WHENS, carryingWords, hillsWords, offersEasyMtb, seeksClimbs, stressWords, whenInSentence } from "./dials.ts";
 import type { ExportDials, GpxExport } from "./gpx.ts";
 import { JOIN_GAP_M, type ImportNote, type ImportedPlan } from "./gpxPlan.ts";
 import { presetSaid, type PresetId } from "./presets.ts";
@@ -122,6 +122,8 @@ export function exportOf(route: ExportedRoute, points: readonly LonLat[], loop =
         carrying: route.dials.carrying,
         assist: route.dials.assist === true,
         ...(route.dials.trails_off === true && route.preset !== "mass-ride" ? { trailsOff: true } : {}),
+        // Easy MTB trails, as the link carries it (easymtb=1): without it the file reopens off the MTB trails.
+        ...(route.dials.easy_mtb === true && offersEasyMtb(route.preset as PresetId) ? { easyMtb: true } : {}),
       }
     : undefined;
   return {

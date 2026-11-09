@@ -48,8 +48,9 @@
 #      the compose gate runs, migrations run (only after the snapshot), the front end is installed
 #      (index.html last), the api and worker start, photon and the routers are recreated if a
 #      compose file changed, the routers restart if a valhalla/*.json changed (the routers: the
-#      four, and valhalla-offroad, valhalla-mtb and valhalla-paved once their tiles are on the host; a stopped
-#      valhalla-paved only with the memory for it, RM_CD_PAVED_MIN_MIB), /healthz is waited for,
+#      four, and valhalla-offroad, valhalla-mtb, valhalla-paved and valhalla-paved-weekend once their tiles
+#      are on the host; a stopped valhalla-paved or valhalla-paved-weekend only with the memory for it,
+#      RM_CD_PAVED_MIN_MIB), /healthz is waited for,
 #      `migrate --check` and collectstatic run in the api, and the local smoke tests run. The
 #      release is then recorded as deployed. Last,
 #      if a tile FORMAT_VERSION changed, the pre-draw runs and is waited for (OWNER-DECISIONS 436);
@@ -78,7 +79,8 @@
 #   RM_CD_WAIT_ALERT_MIN         minutes a release may wait (CI, node_modules, the node image, the
 #                                network) before the owner is alerted [30]
 #   RM_CD_PAVED_MIN_MIB          MiB of available memory plus what this project's running containers
-#                                hold, below which a stopped valhalla-paved is left stopped [8803]
+#                                hold, below which a stopped valhalla-paved or valhalla-paved-weekend
+#                                is left stopped [8806]
 #   RM_CD_HOST                   Host header for the local health check [RM_BETA_HOST from the
 #                                checkout's .env; one of the two is required]
 # DOCKER and CURL name the docker and curl binaries [docker, curl] (the tests use stubs).
@@ -91,7 +93,7 @@ ROUTERS="valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend"
 # The trail routers (Gravel and Mountain Goat's, Mountain Bike's; profile `offroad`, which naming
 # them turns on): run beside the four once their promoted build is on the host, never before, since
 # a bind with create_host_path: false stops the whole `up` without it (the owner, 2026-10-20).
-TRAIL_ROUTERS="valhalla-offroad valhalla-mtb valhalla-paved"
+TRAIL_ROUTERS="valhalla-offroad valhalla-mtb valhalla-paved valhalla-paved-weekend"
 SECRET_KEYS="PGPASSWORD DJANGO_SECRET_KEY KEY_ENCRYPTION_KEY DISCORD_CLIENT_SECRET DISCORD_BOT_TOKEN BOT_INTERNAL_SECRET"
 UNIT=routemaker-beta-cd
 
@@ -127,11 +129,14 @@ load_vars() {
 	[ -n "$health_host" ] || die "no host for the health check: set RM_BETA_HOST=<the beta's name> in $RM_SRC/.env (docs/BETA-RUNBOOK.md, section 0)"
 	docker_free_gib=${RM_CD_DOCKER_FREE_GIB:-3}
 	case "$docker_free_gib" in '' | *[!0-9]*) die "RM_CD_DOCKER_FREE_GIB must be a whole number of GiB" ;; esac
-	# Road Bike's router starts only where available memory plus what this project's running
-	# containers already hold reaches the startup peak (8086 MiB, every cap) plus a 0.7 GiB margin.
+	# Road Bike's routers start only where available memory plus what this project's running
+	# containers already hold reaches the startup peak (8406 MiB, every cap) plus the 0.39 GiB
+	# margin of check_beta_compose.py: 8806 MiB. It was 8086 MiB plus 0.7 GiB (8803) until Road
+	# Bike's weekend router came in (the owner, 2026-11-08, "New weekend graph", at a start-up
+	# margin of about 0.4 GiB).
 	# Counting `available` alone, with the stack up, counted postgis, photon and memcached twice
 	# and left it stopped on a host with room (2026-11-03: 5759 available + 3258 held = 9017).
-	paved_min_mib=${RM_CD_PAVED_MIN_MIB:-8803}
+	paved_min_mib=${RM_CD_PAVED_MIN_MIB:-8806}
 	case "$paved_min_mib" in '' | *[!0-9]*) die "RM_CD_PAVED_MIN_MIB must be a whole number of MiB" ;; esac
 	progress="$cd_dir/in-progress"
 	# The agent's own files: the installed copy, so a release cannot change the agent under a pass.
@@ -746,9 +751,14 @@ deploy() { # tag new-sha gate-file
 	local router room
 	read -ra all <<<"$(routers)"
 	for router in "${all[@]}"; do
-		if [ "$router" = valhalla-paved ] && [ -z "$(bc ps -q --status running valhalla-paved </dev/null 2>/dev/null)" ]; then
+		if { [ "$router" = valhalla-paved ] || [ "$router" = valhalla-paved-weekend ]; } &&
+			[ -z "$(bc ps -q --status running "$router" </dev/null 2>/dev/null)" ]; then
 			if ! { room="$(paved_room_mib)" && [ "$room" -ge "$paved_min_mib" ]; }; then
-				say "WARNING: valhalla-paved left stopped: ${room:-unknown} MiB of the $paved_min_mib it needs (available plus what this project's containers hold); Road Bike is planned on the standard graph"
+				if [ "$router" = valhalla-paved ]; then
+					say "WARNING: valhalla-paved left stopped: ${room:-unknown} MiB of the $paved_min_mib it needs (available plus what this project's containers hold); Road Bike is planned on the standard graph"
+				else
+					say "WARNING: valhalla-paved-weekend left stopped: ${room:-unknown} MiB of the $paved_min_mib it needs (available plus what this project's containers hold); a weekend Road Bike ride is planned on the paved graph"
+				fi
 				continue
 			fi
 		fi
@@ -764,7 +774,7 @@ deploy() { # tag new-sha gate-file
 	# `up -d` leaves a running one alone.
 	local -a trail=()
 	for router in "${running[@]}"; do
-		case "$router" in valhalla-offroad | valhalla-mtb | valhalla-paved) trail+=("$router") ;; esac
+		case "$router" in valhalla-offroad | valhalla-mtb | valhalla-paved | valhalla-paved-weekend) trail+=("$router") ;; esac
 	done
 	if [ "${#trail[@]}" -gt 0 ]; then
 		# Never a reason to roll a release back: without them those rides are planned on the

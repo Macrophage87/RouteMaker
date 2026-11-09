@@ -1361,6 +1361,20 @@ class TestKonterraDrive:
         assert here["heading"] == 12 and there["heading"] == 332
         assert len(payload["exclude_locations"]) == 7, "each of the dodge's seven edges"
 
+    def test_the_passes_before_it_keep_their_exclusions(self, monkeypatch) -> None:
+        # Before (the 2026-11-08 hunt, P1): the main road's stretch was asked without
+        # Mountain Bike's level exclusions or the reds the red pass went round. After: both
+        # go with it, before the dodge's own streets.
+        world = Konterra(monkeypatch)
+        ctx = ctx_for()
+        level = {"lon": -76.9, "lat": 39.07}
+        red = {"lon": -76.88, "lat": 39.08, "radius": refine.CROSSING_EXCLUDE_RADIUS_M}
+        ctx.level_excludes, ctx.red_excludes = [level], [red]
+        dedodge.apply(world.trip(), ctx)
+        (payload,) = world.calls
+        assert payload["exclude_locations"][:2] == [level, red]
+        assert len(payload["exclude_locations"]) == 9
+
     def test_with_lts4_on_konterra_the_dodge_is_kept(self, monkeypatch) -> None:
         """The same streets, but the road is LTS 4: the dodge avoids it."""
         direct = Konterra(monkeypatch).data["direct_trace"]
