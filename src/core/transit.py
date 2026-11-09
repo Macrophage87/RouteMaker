@@ -3089,7 +3089,7 @@ def plan_walk(schedule, start, end, when: datetime, services: Services) -> Plan:
 
 def with_ride(plan: Plan, seconds: float) -> Plan:
     """The plan with its chosen option's route line timed by the routed line (the answer's
-    own). A walk keeps its walking time (its line is the pedestrian router's, `drawn`'s)."""
+    own), a ride's or a walk's (`with_rides`)."""
     return with_rides(plan, {plan.option.ride: seconds})
 
 
@@ -3148,8 +3148,9 @@ def resorted(plan: Plan) -> Plan:
 
 
 # The most router calls `drawn` makes for one trip's lines, each one's cap, and the time they may
-# all take from when the trip is chosen: drawing changes no times, so it never holds an answer long
-# (review of #134: twelve 5 s calls could hold a ready answer for half a minute).
+# all take from when the trip is chosen: drawing changes only the walks' times (hunt 4, X4-1),
+# so it never holds an answer long (review of #134: twelve 5 s calls could hold a ready answer for
+# half a minute). A line that is a walk (`api._walked_line`) is walked from the same budget.
 MAX_DRAW_CALLS = 6
 DRAW_CALL_S = 1.5
 DRAW_BUDGET_S = 4.0
@@ -3161,10 +3162,13 @@ def drawn(plan: Plan, services: Services, skip: Iterable[int] = ()) -> Plan:
     own), routed for the map: a walk by Valhalla's pedestrian costing, a ride by the bike's, so
     each is drawn along the streets and paths. A walk is timed as walked too (hunt 4, X4-1: a
     walk across a channel was promised at its straight line's estimate), and the infrequent
-    departures' waits worked out again from it (`_retimed`); a ride keeps its time. A leg the
-    router does not route (or one of a few yards) keeps its straight line and time. `skip`
-    names legs (by index) already routed elsewhere: the later rides routed for their stress
-    colours."""
+    departures' waits worked out again from it (`_retimed`); a ride keeps its time. Where a
+    walk so timed can no longer catch its departure, the trip goes as `with_rides` drops one,
+    the best left chosen for the caller to plan (its key is another); a trip that is the only
+    one (a trip with stops, joined) keeps its walked times and says plainly that the departure
+    may be missed. A leg the router does not route (or one of a few yards) keeps its straight
+    line and time. `skip` names legs (by index) already routed elsewhere: the later rides
+    routed for their stress colours."""
     option = plan.option
     legs = list(option.legs)
     skipped = set(skip)
@@ -3194,25 +3198,37 @@ def drawn(plan: Plan, services: Services, skip: Iterable[int] = ()) -> Plan:
     if not changed:
         return plan
     notes: list[str] = []
+    options = list(plan.options)
     if timed:
-        # The waits again from the walks as walked. Where no departure seen can be caught
-        # now, the walks keep their walked times and the waits stay as planned: the trip is
-        # already the answer's, its line drawn (the walks to and from the nearest stations
-        # were walked in the search, so this is a later walk: a transfer, a dock's).
+        # The waits again from the walks as walked. Only the walks to and from the nearest
+        # stations are walked in the search: a walk to a bus stop or a farther station, a
+        # transfer, a dock's, or a later trip's with stops is first walked here, and those are
+        # the infrequent departures' legs (hunt 4, X4-1 review: a 15 min walk to an 8:06 bus
+        # from 8:00, said with no word).
         again, notes = _retimed(plan.when.minute, legs)
         if again is not None:
             legs = again
+        elif len(options) > 1 and not option.stops_at:
+            # No departure seen can be caught now: the trip goes, never totalled as caught,
+            # and the best left is chosen; the caller plans its line (`with_rides`).
+            del options[plan.chosen]
+            return replace(plan, options=options, chosen=0, notes=plan.notes + notes)
         else:
-            notes = []
-    options = list(plan.options)
+            # The only trip (one of a trip with stops, joined): it stays, its walks as walked
+            # and its waits as planned, and the departure that may be missed said plainly.
+            _, notes = _retimed(plan.when.minute, legs, kept=True)
     options[plan.chosen] = replace(option, legs=tuple(legs))
     return resorted(replace(plan, options=options, notes=plan.notes + notes))
 
 
-def _retimed(minute: float, legs: list[Leg]) -> tuple[list[Leg] | None, list[str]]:
+def _retimed(
+    minute: float, legs: list[Leg], kept: bool = False
+) -> tuple[list[Leg] | None, list[str]]:
     """The infrequent departures' waits again from when the rider now reaches each stop; one
     the rider would miss is said plainly and the next catchable one taken, with the one after
-    it (the owner, 2026-10-12). None when no departure seen can be caught."""
+    it (the owner, 2026-10-12). None when no departure seen can be caught; with `kept`, the trip
+    is kept all the same (`drawn`, the only trip), and the note says so rather than that it is
+    left out."""
     notes = []
     at = minute
     out = []
@@ -3237,6 +3253,18 @@ def _retimed(minute: float, legs: list[Leg]) -> tuple[list[Leg] | None, list[str
                     at += leg.total_s / 60.0
                     continue
                 if not catchable or catchable[0] - arrive > MAX_WAIT_MIN:
+                    if kept:
+                        notes.append(
+                            t(
+                                "As walked, you may miss the {time} {source} ({vehicle}), and"
+                                " no later one leaves within the hour: leave earlier, or plan"
+                                " another way.",
+                                time=clock(missed, leg.service_day),
+                                source=leg._source_said(),
+                                vehicle=leg._vehicle_said(),
+                            )
+                        )
+                        return None, notes
                     notes.append(
                         t(
                             "You would miss the {time} {source} ({vehicle}) and no later one"

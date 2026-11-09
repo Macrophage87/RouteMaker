@@ -8488,10 +8488,15 @@ docs/OPERATIONS.md, "Transit schedule". The design note is plans/v0.6.0-transit-
   Bike + 🚆🚌 rides to its own, so the stations are ranked on their walks as walked; the farther
   stations and the bus stops stay estimated (straight line times `DETOUR`, 1.3, at 3 mph). A
   walk that is the answer's line, or one walked for the map (`transit.drawn`), takes its walked
-  time too, and the infrequent departures' waits are worked out again from it. A line walk that
-  can no longer catch its departure drops the trip and the best left is walked instead
-  (`api._walked_line`, `transit.with_rides`); a later walk drawn for the map that would miss one
-  keeps its walked time with the waits as planned.
+  time too, and the infrequent departures' waits are worked out again from it. A walk, line or
+  drawn, that can no longer catch its departure drops the trip as `transit.with_rides` does, and
+  the best trip left is planned in its place: its line walked where it is a walk, routed where it
+  is a ride (`api._walked_line`, the `walked` and `best_left` steps of `_transit_body`,
+  `transit.drawn`), and drawn in turn. The walks to bus stops and the farther stations are only
+  walked here, and they are the infrequent departures' legs. A trip that is the only one (a trip
+  with stops, joined) cannot be dropped: it keeps its walks as walked and the waits as planned,
+  and says "As walked, you may miss the 8:06 am ..., and no later one leaves within the hour:
+  leave earlier, or plan another way."
   The answer's own line has the rest of the budget. If the router does not draw it in time (a
   timeout or the router down), the leg is drawn straight with the plan's estimated time and a note
   says so, as a short leg is. The api logs each plan's seconds in the search, the candidates' router
@@ -9781,10 +9786,16 @@ side:
   `STATION_CANDIDATES` stations are walked in the search; the line's walk and the walks drawn for
   the map take their walked times, and the waits are worked out again ("Walks timed as walked",
   Transit assist). `MAX_ROUTER_CALLS` is one more, for walking the whole way after those walks (Claude's
-  default, not measured).
+  default, not measured). Review: a walk that so missed its bus kept the trip, its walked time
+  beside the departure it could no longer catch and no word (a walk drawn for the map), or kept a
+  dropped trip where the best left had a ride for its line (the line's walk). Both now plan the
+  best trip left; the only trip of a trip with stops says the departure may be missed.
   Tests: tests/test_transit.py (`Barrier`, `test_walk_transit_ranks_stations_on_their_walks_as_walked`,
   `test_a_walk_drawn_for_the_map_is_timed_as_walked`,
-  `test_a_walk_transit_line_walked_after_the_search_is_timed_as_walked`). No map rebuild.
+  `test_a_walk_transit_line_walked_after_the_search_is_timed_as_walked`,
+  `test_a_walk_drawn_that_misses_its_departure_drops_the_trip`,
+  `test_a_walk_drawn_that_misses_the_only_trips_departure_says_so`,
+  `test_a_trip_whose_walk_misses_its_departure_is_replaced_by_the_best_left`). No map rebuild.
 - **X4-2: every ride of a transit trip in the connector's answer.** The answer's figures (miles,
   LTS, roads, busy stretches, junctions, route_segments) are the route line's, the trip's first
   ride, so the ride from the exit station was left out. The MCP's summary now carries

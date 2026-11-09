@@ -4416,49 +4416,48 @@ def _walk_closures(plan: transit.Plan, zones, skip: int | None) -> list:
 
 def _walked_line(
     plan: transit.Plan, preset_name: str, dials, services=None
-) -> tuple[dict, transit.Plan]:
+) -> tuple[dict | None, transit.Plan]:
     """The answer's line is a walk (walking the whole way, or a trip whose line is a walk): the
     walk itself, as the pedestrian router walked it (or straight where it did not), timed at
     walking pace; no bike route is asked. `services` walks a leg not yet walked by the router
     (one the search walked already keeps its line and time). Returns the line and the plan with
     that walk's turns on its step, for turn by turn on foot, and the walk timed as walked: the
     infrequent departures' waits are worked out again from it, and a trip that can no longer
-    catch one goes, the best left walked instead (`transit.with_rides`; hunt 4, X4-1: a 2.0 mi
-    walk kept its 0.6 mi straight line's 16 min, and the trip was promised in less time than
-    its first walk alone)."""
-    leg = plan.legs[plan.ride]
-    points = [list(p) for p in leg.coordinates]
-    metres = None
-    turns = leg.turns
-    seconds = leg.seconds
-    unwalked = services is not None and len(points) == 2
-    walked = services.walk(points[0], points[-1]) if unwalked else None
-    if walked is not None and len(walked.coordinates) >= 2:
-        points = [list(p) for p in walked.coordinates]
-        metres = walked.metres
-        turns = walked.turns
-        seconds = walked.seconds
-    elif not leg.estimated:
-        metres = sum(
-            haversine(Point(*a), Point(*b)) for a, b in zip(points, points[1:], strict=False)
-        )
-    if turns != leg.turns:
-        plan = _with_leg(plan, plan.ride, dataclasses.replace(leg, turns=turns))
-    if seconds != leg.seconds:
-        timed = transit.with_rides(plan, {plan.ride: seconds})
-        if timed.option.key == plan.option.key:
-            plan = timed
-        elif timed.option.walk or timed.legs[timed.ride].mode in (transit.WALK, transit.TAKE):
-            # Its departure can no longer be caught: the best trip left, its own line walked.
-            return _walked_line(timed, preset_name, dials, services)
-        else:
-            # The best left is a ride's line, which this walk cannot be: the trip stays, its
-            # walk at its walked time.
-            plan = _with_leg(
-                plan, plan.ride, dataclasses.replace(leg, turns=turns, seconds=seconds)
+    catch one goes (`transit.with_rides`; hunt 4, X4-1: a 2.0 mi walk kept its 0.6 mi straight
+    line's 16 min, and the trip was promised in less time than its first walk alone). The best
+    left is planned instead: its own line walked here where it is a walk; where it is a ride,
+    the line is None and the plan returned is that trip, for the caller to route its line (a
+    walk is never drawn as a ride's line, nor a dropped trip kept)."""
+    while True:
+        leg = plan.legs[plan.ride]
+        points = [list(p) for p in leg.coordinates]
+        metres = None
+        turns = leg.turns
+        seconds = leg.seconds
+        unwalked = services is not None and len(points) == 2
+        walked = services.walk(points[0], points[-1]) if unwalked else None
+        if walked is not None and len(walked.coordinates) >= 2:
+            points = [list(p) for p in walked.coordinates]
+            metres = walked.metres
+            turns = walked.turns
+            seconds = walked.seconds
+        elif not leg.estimated:
+            metres = sum(
+                haversine(Point(*a), Point(*b)) for a, b in zip(points, points[1:], strict=False)
             )
-    line = _unrouted_line(points, preset_name, dials, seconds, metres)
-    return line, plan
+        if turns != leg.turns:
+            plan = _with_leg(plan, plan.ride, dataclasses.replace(leg, turns=turns))
+        if seconds != leg.seconds:
+            timed = transit.with_rides(plan, {plan.ride: seconds})
+            if timed.option.key != plan.option.key:
+                # Its departure can no longer be caught, and the trip went: the best left.
+                plan = timed
+                if timed.option.walk or timed.legs[timed.ride].mode in (transit.WALK, transit.TAKE):
+                    continue  # its own line walked, the same way
+                return None, timed  # a ride's line: the caller routes it
+            plan = timed
+        line = _unrouted_line(points, preset_name, dials, seconds, metres)
+        return line, plan
 
 
 def _with_leg(plan: transit.Plan, index: int, leg: transit.Leg) -> transit.Plan:
@@ -4830,7 +4829,13 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
         plan = with_later_legs(plan)
         buses = _buses_for(plan, bus_ask)
         plan = transit_live.with_live_buses(plan, buses)
-        plan = transit.drawn(plan, draw, skip=lines)
+        again = transit.drawn(plan, draw, skip=lines)
+        if again.option.key != plan.option.key:
+            # A walk drawn for the map, timed as walked, can no longer catch its departure, and
+            # the trip went (transit.drawn; hunt 4, X4-1): the best left is planned, its own line
+            # routed or walked, and drawn in turn. Each pass drops one trip, so this ends.
+            return answered(*best_left(again))
+        plan = again
         block = _transit_block(plan, schedule, live, buses)
         answer["transit"] = _with_leg_lines(block, lines)
         # The trip's other walks: each closure along one said, and one a walk goes through (no
@@ -4844,32 +4849,6 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
             if text not in notes:
                 notes.append(text)
         return answer
-
-    if found.option.walk:
-        return answered(*_walked_line(found, body.preset, dials))
-    leg = found.legs[found.ride]
-    if body.preset in presets.ON_FOOT_PRESETS:
-        # Walk + 🚆🚌 never rides: its line is its first walk, walked (straight where a few yards).
-        far = transit.line_m(leg) >= transit.MIN_LINE_M
-        return answered(*_walked_line(found, body.preset, dials, draw if far else None))
-    # The line is the chosen option's first ride (or walk). Riding directly there, or a line that
-    # is a ride of a few yards (nothing the router could route), is drawn start to end instead, and
-    # the plan keeps its own times. A line that is a walk of a few yards is drawn straight.
-    short = transit.line_m(leg) < transit.MIN_LINE_M
-    whole = (found.option.direct and body.preset == presets.BIKE_TRANSIT) or (
-        short and leg.mode in (transit.RIDE, transit.SHARE)
-    )
-    retime = not whole or found.option.direct
-    if not whole and leg.mode in (transit.WALK, transit.TAKE):
-        # The line is a walk (Bikeshare + 🚶🚆🚌 with no ride worth a line): walked by the
-        # pedestrian router, never the bike's, and the plan keeps its walking times. A trip walked
-        # with no ride at all has its first walk as its line however short (drawn straight).
-        return answered(*_walked_line(found, body.preset, dials, None if short else draw))
-    if whole:
-        ride_from, ride_to = list(start), list(end)
-    else:
-        ride_from = list(leg.coordinates[0])
-        ride_to = list(leg.coordinates[-1])
 
     def line(points: list[list[float]]) -> dict | None:
         """The answer's line routed, or None when the router did not answer in time."""
@@ -4889,6 +4868,79 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
         # As a short leg is: drawn straight, the plan keeping its own (estimated) times.
         drawn = _unrouted_line(points, body.preset, dials, plan.legs[plan.ride].seconds)
         return drawn, dataclasses.replace(plan, notes=[*plan.notes, UNROUTED_NOTE])
+
+    def walked(plan: transit.Plan, services=None) -> tuple[dict, transit.Plan, dict[int, dict]]:
+        """The answer's line walked (`_walked_line`). Where the walk, timed as walked, can no
+        longer catch its departure and the best trip left has a ride for its line, that trip is
+        planned instead (`best_left`), never the dropped one kept (hunt 4, X4-1)."""
+        answer, plan = _walked_line(plan, body.preset, dials, services)
+        if answer is None:
+            return best_left(plan)
+        return answer, plan, {}
+
+    def best_left(timed: transit.Plan) -> tuple[dict, transit.Plan, dict[int, dict]]:
+        """The trip planned in place of the chosen one: its departure cannot be caught after
+        all and it was left out, or as routed it is no longer the best. Its own line is routed
+        (or drawn start to end, or walked), and its later rides routed for their colours. Their
+        times stay the plan's own: timing them again could drop this option too (a walked line
+        that does is replaced in turn, `walked`)."""
+        leg = timed.legs[timed.ride]
+        if timed.option.walk:
+            return walked(timed)
+        if body.preset in presets.ON_FOOT_PRESETS or (
+            leg.mode in (transit.WALK, transit.TAKE) and not timed.option.direct
+        ):
+            # As the first pass: a walk of a few yards (a trip with no ride, started at the
+            # stop) is drawn straight, never as a bike route over the transit.
+            far = transit.line_m(leg) >= transit.MIN_LINE_M
+            return walked(timed, draw if far else None)
+        again_whole = timed.option.direct and body.preset == presets.BIKE_TRANSIT
+        if again_whole:
+            points = [list(start), list(end)]
+        elif transit.line_m(leg) >= transit.MIN_LINE_M:
+            points = [list(leg.coordinates[0]), list(leg.coordinates[-1])]
+        else:
+            again_whole = True
+            points = [list(start), list(end)]
+        later = {} if again_whole else _later_rides(timed, leg_preset, started, dials)
+        try:
+            answer = line(points)
+            lines = _collected(later, started)
+        finally:
+            # A later ride not started yet is not asked; one still running past its wait is
+            # left to its own deadline, not waited for.
+            for pending in later.values():
+                if isinstance(pending, Future):
+                    pending.cancel()
+        if answer is None:
+            answer, timed = unrouted(points, timed)
+        return answer, timed, lines
+
+    if found.option.walk:
+        return answered(*walked(found))
+    leg = found.legs[found.ride]
+    if body.preset in presets.ON_FOOT_PRESETS:
+        # Walk + 🚆🚌 never rides: its line is its first walk, walked (straight where a few yards).
+        far = transit.line_m(leg) >= transit.MIN_LINE_M
+        return answered(*walked(found, draw if far else None))
+    # The line is the chosen option's first ride (or walk). Riding directly there, or a line that
+    # is a ride of a few yards (nothing the router could route), is drawn start to end instead, and
+    # the plan keeps its own times. A line that is a walk of a few yards is drawn straight.
+    short = transit.line_m(leg) < transit.MIN_LINE_M
+    whole = (found.option.direct and body.preset == presets.BIKE_TRANSIT) or (
+        short and leg.mode in (transit.RIDE, transit.SHARE)
+    )
+    retime = not whole or found.option.direct
+    if not whole and leg.mode in (transit.WALK, transit.TAKE):
+        # The line is a walk (Bikeshare + 🚶🚆🚌 with no ride worth a line): walked by the
+        # pedestrian router, never the bike's, and timed as walked (`_walked_line`). A trip walked
+        # with no ride at all has its first walk as its line however short (drawn straight).
+        return answered(*walked(found, None if short else draw))
+    if whole:
+        ride_from, ride_to = list(start), list(end)
+    else:
+        ride_from = list(leg.coordinates[0])
+        ride_to = list(leg.coordinates[-1])
 
     # Every later ride of the chosen option (the ride from the exit station to the destination,
     # the far end's bikeshare ride) is routed as the first is, with the same ride type and dials,
@@ -4923,35 +4975,8 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
         timed = transit.with_rides(found, routed, busy, keep=keep) if routed else found
         if timed.option.key != found.option.key:
             # The chosen trip's departure cannot be caught after all and it was left out, or
-            # as routed it is no longer the best: the best left is planned, its own line routed
-            # (or drawn start to end), and its later rides routed for their colours. Their
-            # times stay the plan's own: timing them again could drop this option too.
-            leg = timed.legs[timed.ride]
-            if timed.option.walk:
-                return answered(*_walked_line(timed, body.preset, dials))
-            if body.preset in presets.ON_FOOT_PRESETS:
-                far = transit.line_m(leg) >= transit.MIN_LINE_M
-                return answered(*_walked_line(timed, body.preset, dials, draw if far else None))
-            walked = leg.mode in (transit.WALK, transit.TAKE) and not timed.option.direct
-            if walked:
-                # As the first pass: a walk of a few yards (a trip with no ride, started at the
-                # stop) is drawn straight, never as a bike route over the transit.
-                far = transit.line_m(leg) >= transit.MIN_LINE_M
-                return answered(*_walked_line(timed, body.preset, dials, draw if far else None))
-            again_whole = timed.option.direct and body.preset == presets.BIKE_TRANSIT
-            if again_whole:
-                points = [list(start), list(end)]
-            elif transit.line_m(leg) >= transit.MIN_LINE_M:
-                points = [list(leg.coordinates[0]), list(leg.coordinates[-1])]
-            else:
-                again_whole = True
-                points = [list(start), list(end)]
-            later = {} if again_whole else _later_rides(timed, leg_preset, started, dials)
-            asked.append(later)
-            answer = line(points)
-            lines = _collected(later, started)
-            if answer is None:
-                answer, timed = unrouted(points, timed)
+            # as routed it is no longer the best: the best left is planned (`best_left`).
+            answer, timed, lines = best_left(timed)
         found = timed
     finally:
         # A later ride not started yet is not asked; one still running past its wait is left
@@ -4960,7 +4985,7 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
             for pending in later.values():
                 if isinstance(pending, Future):
                     pending.cancel()
-    answered(answer, found, lines)
+    answer = answered(answer, found, lines)
     logger.info(
         "transit plan %s: search %.1f s (candidates %.1f s, %d calls), line %.1f s",
         body.preset,

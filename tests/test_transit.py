@@ -1488,6 +1488,84 @@ def test_a_walk_drawn_for_the_map_is_timed_as_walked(schedule) -> None:
     assert drawn.option.total_s == pytest.approx(metro.option.total_s - last.seconds + expected)
 
 
+# A bus stop a few hundred yards from Capitol Hill, the stop it runs to, and a dock near each.
+STOP_A = (-76.9960, 38.8830)
+STOP_B = (-77.0250, 38.8955)
+DOCK_HILL = (-76.99305, 38.88302)
+
+
+def _missable(moment: transit.Moment, line: str, leaves: float = 6.0) -> transit.Option:
+    """A trip whose first walk (300 s, estimated) reaches a bus leaving `leaves` min after
+    `moment`, none after it: `line` "walk", its line that walk and a walk on to Downtown;
+    "share", a bikeshare ride from the stop it gets off at as its line (`drawn` walks the first
+    walk)."""
+    walk = transit.Leg(transit.WALK, 300.0, (tuple(CAPITOL_HILL), STOP_A), "Stop A", estimated=True)
+    bus = transit.Leg(
+        transit.BUS,
+        600.0,
+        to="Stop B",
+        system="Ride On",
+        lines=("X9",),
+        vehicle="bus X9",
+        depart=moment.minute + leaves,
+        later=(),
+        wait_s=(leaves - 5.0) * 60.0,
+        service_day=moment.service_day,
+    )
+    if line == "walk":
+        end = transit.Leg(transit.WALK, 200.0, (STOP_B, tuple(DOWNTOWN)))
+        return transit.Option(f"bus-walk-{leaves:g}", (walk, bus, end))
+    share = transit.Leg(transit.SHARE, 200.0, (STOP_B, tuple(DOWNTOWN)), estimated=True)
+    return transit.Option("bus-share", (walk, bus, share))
+
+
+def _shared(seconds: float = 1800.0) -> transit.Option:
+    """A bikeshare trip, its line the share ride, slower than `_missable`'s."""
+    return transit.Option(
+        "share",
+        (
+            transit.Leg(transit.WALK, 10.0, (tuple(CAPITOL_HILL), DOCK_HILL)),
+            transit.Leg(transit.SHARE, seconds, (DOCK_HILL, tuple(DOWNTOWN)), estimated=True),
+        ),
+    )
+
+
+class SlowWalks(Straight):
+    """A router whose walks are all 900 s (15 min): past a bus leaving 6 min after the start."""
+
+    def walk(self, a, b):
+        self.calls += 1
+        return transit.Ride(900.0, (tuple(a), (a[0], b[1]), tuple(b)), 1100.0)
+
+
+def test_a_walk_drawn_that_misses_its_departure_drops_the_trip() -> None:
+    """Hunt 4, X4-1 review: a walk drawn for the map, timed as walked (15 min), could no longer
+    catch the 8:06 bus, and the trip kept the bus, its old wait and no word."""
+    moment = transit.moments_of(at(2026, 9, 30, 8, 0))[0]
+    missable = _missable(moment, "share")
+    plan = transit.Plan(presets.BIKESHARE_TRANSIT, [missable, _shared()], moment, [])
+    assert plan.option.key == "bus-share" and plan.ride == 2
+    drawn = transit.drawn(plan, SlowWalks())
+    # The trip goes, as `with_rides` drops one; the best left is chosen for the caller to plan.
+    assert [o.key for o in drawn.options] == ["share"] and drawn.option.key == "share"
+    assert any("no later one leaves within the hour" in n for n in drawn.notes), drawn.notes
+
+
+def test_a_walk_drawn_that_misses_the_only_trips_departure_says_so() -> None:
+    """Hunt 4, X4-1 review: the only trip (a trip with stops, joined) cannot be dropped: it
+    keeps its walk as walked, and says plainly that its departure may be missed."""
+    moment = transit.moments_of(at(2026, 9, 30, 8, 0))[0]
+    plan = transit.Plan(presets.BIKESHARE_TRANSIT, [_missable(moment, "share")], moment, [])
+    drawn = transit.drawn(plan, SlowWalks())
+    assert drawn.option.key == "bus-share"
+    assert drawn.legs[0].seconds == 900.0
+    assert drawn.notes == [
+        f"As walked, you may miss the {transit.clock(moment.minute + 6, moment.service_day)}"
+        " scheduled (bus X9), and no later one leaves within the hour: leave earlier, or plan"
+        " another way."
+    ]
+
+
 def test_walk_transit_walks_a_short_trip_and_with_no_transit_walks_or_says_why(schedule) -> None:
     short = transit.plan_walk_transit(
         schedule, CAPITOL_HILL, NEAR_CAPITOL_HILL, at(2026, 9, 30, 12, 0), Straight()
@@ -2678,6 +2756,48 @@ class TestApi:
         assert first["seconds"] == pytest.approx(walked, abs=1)
         assert body["duration_s"] == pytest.approx(walked, abs=1)
         assert trip["total_s"] > first["seconds"]
+
+    @pytest.mark.parametrize("line", ["walk", "share", "later"])
+    def test_a_trip_whose_walk_misses_its_departure_is_replaced_by_the_best_left(
+        self, client, segments, router, installed, monkeypatch, line
+    ) -> None:
+        # Hunt 4, X4-1 review: a walk estimated at 5 min and walked at 15 could no longer catch
+        # the 8:06 bus. "walk": the walk is the line (`_walked_line`); the best left has a ride
+        # for its line, and the dropped trip was kept, its bus uncatchable and the note thrown
+        # away. "share": the walk is drawn for the map (`transit.drawn`), and the trip kept the
+        # bus, its old wait and no word. Either way the bikeshare trip left is planned. "later":
+        # the best left is a walk line too, to a bus 20 min on, walked and planned in turn.
+        router(standard_router())
+        monkeypatch.setattr(gbfs.client, "snapshot", lambda: NO_DOCKS)
+        monkeypatch.setattr(transit, "RoutingServices", lambda *_args, **_kwargs: SlowWalks())
+
+        def planned(_schedule, _a, _b, when, *_args, **_kwargs):
+            moment = transit.moments_of(when)[0]
+            first = _missable(moment, "walk" if line == "later" else line)
+            options = [first, _missable(moment, "walk", 20.0)] if line == "later" else [first]
+            options.append(_shared(4000.0 if line == "later" else 1800.0))
+            return transit.Plan(presets.BIKESHARE_TRANSIT, options, moment, [])
+
+        monkeypatch.setattr(transit, "plan_bikeshare", planned)
+        response = post_transit(
+            client,
+            [CAPITOL_HILL, DOWNTOWN],
+            presets.BIKESHARE_TRANSIT,
+            depart_at="2026-09-30T08:00:00-04:00",
+        )
+        assert response.status_code == 200, response.content
+        trip = response.json()["transit"]
+        assert any("no later one leaves within the hour" in n for n in trip["notes"])
+        if line == "later":
+            # The 8:20 bus, its walk as walked (15 min) and its wait from it (5 min).
+            assert trip["key"] == "bus-walk-20"
+            assert [o["key"] for o in trip["options"]] == ["bus-walk-20", "share"]
+            walk, bus = trip["steps"][:2]
+            assert walk["seconds"] == pytest.approx(900, abs=1) and bus["wait_s"] == 300
+            return
+        assert trip["key"] == "share"
+        assert [s["mode"] for s in trip["steps"]] == ["walk", "bikeshare"]
+        assert [o["key"] for o in trip["options"]] == ["share"]
 
     def test_bikeshare_feeds_down_walk_both_ends_with_a_note_not_a_503(
         self, client, segments, router, installed, monkeypatch
