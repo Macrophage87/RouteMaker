@@ -55,6 +55,7 @@ Contents:
 - [Share live: the leader's live ride (v0.12.0-v0.15.0)](#share-live-the-leaders-live-ride-v0120-v0150)
 - [Steep grades (v0.12.5)](#steep-grades-v0125)
 - [Phone app (v0.8.0)](#phone-app-v080)
+- [Routing hunt 4](#routing-hunt-4)
 
 <!-- /CONTENTS -->
 
@@ -5486,6 +5487,33 @@ them on 2026-11-09:
   every other gate, `lift_gate` and `swing_gate` are left as they were. Needs the map rebuild.
   Tests: tests/lua/test_remap.lua, tests/lua/test_graph_entry.lua.
 
+- **Run's lit ways after dark** (X4-3): kept for Run only. "Keep for run. It's much easier to
+  have a powerful light on a bike." Bike rides never weigh lighting. No change there.
+- **A run that ends after dark** (X4-3): Claude asked: "Should it count as after dark when the
+  finish will be dark? I'd say yes, using the estimated finish time." Stephen: "Sure." A run is
+  planned with Valhalla's `use_lit` (`run_plan.USE_LIT_AFTER_DARK`) when its start or its
+  estimated finish falls between civil dusk and civil dawn (`run_plan.is_dark_over`), or the
+  ride time is Night. Before, only the start was read, so a run leaving minutes before dusk
+  was planned with no lit preference however long it ran in the dark. Code change; no map
+  rebuild.
+  - The finish is estimated before planning (`run_plan.estimated_s`) at the run's pace on the
+    flat: for a loop from a start alone with a target, the target distance; otherwise the
+    straight lines between the points (and back to the start for a loop) times
+    `run_plan.ROUTED_PER_STRAIGHT` (1.3, the target loop's existing first guess), or the
+    target where stops and a target are both given and the target is longer. Using that
+    factor here, and the flat pace with no allowance for climbs or waits at lights, is
+    Claude's default, not measured.
+  - Where the estimate says the run ends in daylight but the planned run ends after dusk,
+    `api._run_body` plans it once more with `use_lit`, inside the same deadline, but only
+    where at least as much time is left as the first plan took. The lit plan is kept only
+    where it ran whole: no router call cut for time and no loop's tries stopped for time
+    (`run_plan.Router.short`). Otherwise, or where it finds nothing, times out or the router
+    is down, the first plan stands and the answer says `dark: false`. Only runs whose
+    estimate falls short across dusk pay for the second plan.
+  - Not changed: Reach's rings for Run (`core.reach._ride`) still judge darkness at the ring's
+    moment alone.
+  Tests: tests/test_run_plan.py.
+
 ### Trails off (OWNER-DECISIONS 463, 463a, 463b)
 
 The owner, 2026-10-09: "add it". A trails-off switch is offered on every ride
@@ -9955,4 +9983,4 @@ side:
   from the last leg, always the walk on from the dock, so "..., walk" for a trip ending with a
   share ride. A ride (own bike or share bike) after the last transit leg names the ending
   (`transit._ending`). Tests: tests/test_transit.py. No map rebuild.
-- X4-3 (darkness over a run's span) is the owner's call and is not changed here.
+- X4-3 (darkness over a run's span) is built under "Round 4 owner decisions (2026-11-09)".

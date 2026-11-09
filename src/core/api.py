@@ -558,7 +558,8 @@ class RouteIn(Schema):
             "Transit ride types and Run only: when the trip starts, ISO 8601 (with an offset, or"
             " local time in Washington), within a year of now. Absent: now. Each system's own"
             " calendar for that day is used, holidays and published closures included; a run"
-            " after civil dusk or before civil dawn favours lit ways. Where `when` is absent,"
+            " that starts or is estimated to finish after civil dusk or before civil dawn"
+            " favours lit ways. Where `when` is absent,"
             " the bike legs, junction waits and closures are planned at this moment's ride"
             " time too (`routemaker.ridetime.when_at`)."
         ),
@@ -2889,7 +2890,12 @@ class RunOut(Schema):
     """A Run's planning (`core.run_plan`)."""
 
     pace_kmh: float = Field(description="The pace on the flat it is timed at, km/h.")
-    dark: bool = Field(description="Planned after dark: lit ways favoured.")
+    dark: bool = Field(
+        description=(
+            "Planned after dark (its start or its estimated or planned finish between civil"
+            " dusk and civil dawn, or the Night ride time): lit ways favoured."
+        )
+    )
     trail_m: float = Field(description="Metres on trails, park paths and tracks.")
     signals: int = Field(description="Signalled crossings on the way, each a wait for the light.")
     target_distance_m: float | None = Field(
@@ -4559,18 +4565,25 @@ def _run_body(body: RouteIn, started: float | None) -> dict:
         now_only=body.closures_now,
         reach_m=run_plan.zones_reach_m(body.points, target_m),
     )
+    pace_kmh = run_plan.pace_of(body.run_pace_kmh)
     ask = run_plan.RunAsk(
-        pace_kmh=run_plan.pace_of(body.run_pace_kmh),
+        pace_kmh=pace_kmh,
         hills=0 if body.hills is None else body.hills,
-        # Dark at the run's moment, the one its closures are matched at: a run asked for at
+        # Dark from the run's moment, the one its closures are matched at: a run asked for at
         # 10 pm with the dial on the weekend is Saturday morning's, not tonight's, as Reach
-        # already has it (`core.reach`, hunt 2, T5).
-        dark=run_plan.is_dark(zones_at, body.when),
+        # already has it (`core.reach`, hunt 2, T5). Dark at the start or at the estimated
+        # finish (Stephen, 2026-11-09, hunt 4 X4-3).
+        dark=run_plan.is_dark_over(
+            zones_at,
+            run_plan.estimated_s(body.points, pace_kmh, body.loop, target_m),
+            body.when,
+        ),
         loop=body.loop,
         target_m=target_m,
         exclude_polygons=tuple(exclude),
     )
     until = run_plan.deadline_from(started)
+    first_started = routing.clock()
     try:
         run = run_plan.plan(body.points, ask, run_plan.Router(until))
     except (run_plan.RunTimedOut, run_plan.RouterDown):
@@ -4583,6 +4596,32 @@ def _run_body(body: RouteIn, started: float | None) -> dict:
         work_zones.drop_exclusions({}, zones)
         ask = dataclasses.replace(ask, exclude_polygons=tuple(zones.exclude))
         run = run_plan.plan(body.points, ask, run_plan.Router(until))
+    calls = run.calls
+    first_s = routing.clock() - first_started
+    if not ask.dark and run_plan.is_dark(zones_at + timedelta(seconds=run.seconds), body.when):
+        # The estimate said the run ends in daylight, the planned run ends after dusk: plan it
+        # once more with lit ways, inside the same deadline, only where as much time is left as
+        # the first plan took, and keep it only where it ran whole (no call cut, no loop's
+        # tries stopped for time); else the first plan stands.
+        lit = dataclasses.replace(ask, dark=True)
+        lit_router = run_plan.Router(until)
+        if lit_router.left() < first_s:
+            logger.info("a run ends after dusk: no time left to plan it again with lit ways")
+        else:
+            try:
+                relit = run_plan.plan(body.points, lit, lit_router)
+            except run_plan.NoRun as error:
+                relit = None
+                logger.info("a run's re-plan with lit ways found nothing: %s", error)
+            calls += lit_router.calls
+            kept = relit is not None and not lit_router.short
+            logger.info(
+                "a run ends after dusk: planned again with lit ways, %d router calls, %s",
+                lit_router.calls,
+                "kept" if kept else "the first plan kept",
+            )
+            if kept:
+                run, ask = relit, lit
     dials = routing.Dials(stress=body.stress, hills=body.hills, when=when)
     answer = _unrouted_line(
         [list(p) for p in run.shape], presets.RUN, dials, run.seconds, run.metres
@@ -4609,7 +4648,7 @@ def _run_body(body: RouteIn, started: float | None) -> dict:
             None if ask.target_m is None or len(body.points) == 1 else run.metres <= ask.target_m
         ),
     }
-    logger.info("run plan: %d router calls, %.1f s", run.calls, routing.clock() - started)
+    logger.info("run plan: %d router calls, %.1f s", calls, routing.clock() - started)
     return answer
 
 
