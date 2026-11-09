@@ -4583,6 +4583,7 @@ def _run_body(body: RouteIn, started: float | None) -> dict:
         exclude_polygons=tuple(exclude),
     )
     until = run_plan.deadline_from(started)
+    first_started = routing.clock()
     try:
         run = run_plan.plan(body.points, ask, run_plan.Router(until))
     except (run_plan.RunTimedOut, run_plan.RouterDown):
@@ -4595,15 +4596,32 @@ def _run_body(body: RouteIn, started: float | None) -> dict:
         work_zones.drop_exclusions({}, zones)
         ask = dataclasses.replace(ask, exclude_polygons=tuple(zones.exclude))
         run = run_plan.plan(body.points, ask, run_plan.Router(until))
+    calls = run.calls
+    first_s = routing.clock() - first_started
     if not ask.dark and run_plan.is_dark(zones_at + timedelta(seconds=run.seconds), body.when):
         # The estimate said the run ends in daylight, the planned run ends after dusk: plan it
-        # once more with lit ways, inside the same deadline, and keep the first where that
-        # finds nothing in time.
+        # once more with lit ways, inside the same deadline, only where as much time is left as
+        # the first plan took, and keep it only where it ran whole (no call cut, no loop's
+        # tries stopped for time); else the first plan stands.
         lit = dataclasses.replace(ask, dark=True)
-        try:
-            run, ask = run_plan.plan(body.points, lit, run_plan.Router(until)), lit
-        except run_plan.NoRun as error:
-            logger.info("a run's re-plan with lit ways found nothing: %s", error)
+        lit_router = run_plan.Router(until)
+        if lit_router.left() < first_s:
+            logger.info("a run ends after dusk: no time left to plan it again with lit ways")
+        else:
+            try:
+                relit = run_plan.plan(body.points, lit, lit_router)
+            except run_plan.NoRun as error:
+                relit = None
+                logger.info("a run's re-plan with lit ways found nothing: %s", error)
+            calls += lit_router.calls
+            kept = relit is not None and not lit_router.short
+            logger.info(
+                "a run ends after dusk: planned again with lit ways, %d router calls, %s",
+                lit_router.calls,
+                "kept" if kept else "the first plan kept",
+            )
+            if kept:
+                run, ask = relit, lit
     dials = routing.Dials(stress=body.stress, hills=body.hills, when=when)
     answer = _unrouted_line(
         [list(p) for p in run.shape], presets.RUN, dials, run.seconds, run.metres
@@ -4630,7 +4648,7 @@ def _run_body(body: RouteIn, started: float | None) -> dict:
             None if ask.target_m is None or len(body.points) == 1 else run.metres <= ask.target_m
         ),
     }
-    logger.info("run plan: %d router calls, %.1f s", run.calls, routing.clock() - started)
+    logger.info("run plan: %d router calls, %.1f s", calls, routing.clock() - started)
     return answer
 
 

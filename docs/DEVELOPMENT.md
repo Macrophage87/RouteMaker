@@ -5502,13 +5502,17 @@ The fourth routing hunt's owner calls, as Stephen decided them on 2026-11-09:
   - The finish is estimated before planning (`run_plan.estimated_s`) at the run's pace on the
     flat: for a loop from a start alone with a target, the target distance; otherwise the
     straight lines between the points (and back to the start for a loop) times
-    `run_plan.ROUTED_PER_STRAIGHT` (1.3, the target loop's existing first guess). Using that
+    `run_plan.ROUTED_PER_STRAIGHT` (1.3, the target loop's existing first guess), or the
+    target where stops and a target are both given and the target is longer. Using that
     factor here, and the flat pace with no allowance for climbs or waits at lights, is
     Claude's default, not measured.
   - Where the estimate says the run ends in daylight but the planned run ends after dusk,
-    `api._run_body` plans it once more with `use_lit`, inside the same deadline, and keeps the
-    first plan where that re-plan finds nothing in time. Only runs whose estimate falls short
-    across dusk pay for the second plan.
+    `api._run_body` plans it once more with `use_lit`, inside the same deadline, but only
+    where at least as much time is left as the first plan took. The lit plan is kept only
+    where it ran whole: no router call cut for time and no loop's tries stopped for time
+    (`run_plan.Router.short`). Otherwise, or where it finds nothing, times out or the router
+    is down, the first plan stands and the answer says `dark: false`. Only runs whose
+    estimate falls short across dusk pay for the second plan.
   - Not changed: Reach's rings for Run (`core.reach._ride`) still judge darkness at the ring's
     moment alone.
   Tests: tests/test_run_plan.py.

@@ -103,6 +103,8 @@ LOOP_CLEAR_M = 200.0
 SAME_WAY_M = 15.0
 SAMPLE_M = 20.0
 
+# Too little time left (seconds) to try another way back or another target loop.
+LOW_S = 2.0
 # The most one router call of a run may take, and all of a run's calls together.
 CALL_S = 6.0
 BUDGET_S = 30.0
@@ -201,7 +203,7 @@ def estimated_s(
     """How long a run through `points` is guessed to take before it is planned, to judge whether
     it ends after dark (`is_dark_over`): a loop from a start alone with a target, the target at
     the pace; otherwise the straight lines between the points (and back to the start for a
-    loop) times `ROUTED_PER_STRAIGHT`, at the pace.
+    loop) times `ROUTED_PER_STRAIGHT`, or the target where one is given and longer, at the pace.
 
     Using `ROUTED_PER_STRAIGHT` (the target loop's first guess) for this, and the flat pace with
     no allowance for climbs or waits at lights, is Claude's default, not measured. A run planned
@@ -213,7 +215,7 @@ def estimated_s(
     if loop:
         route.append(route[0])
     straight = sum(haversine(a, b) for a, b in zip(route, route[1:], strict=False))
-    return straight * ROUTED_PER_STRAIGHT / speed_ms
+    return max(straight * ROUTED_PER_STRAIGHT, float(target_m or 0.0)) / speed_ms
 
 
 def is_dark_over(at: datetime, seconds: float, when: str | None = None) -> bool:
@@ -310,11 +312,26 @@ class Router:
         self.calls = 0
         self.answered = 0
         self.timed_out = False
+        # Whether a loop stopped trying for want of time (`low`): a way back or a target loop
+        # with fewer tries than it would have had.
+        self.ran_short = False
         # Whether the last call that gave nothing gave it for want of time, not a refusal.
         self.last_late = False
 
     def left(self) -> float:
         return self.until - routing.clock()
+
+    def low(self) -> bool:
+        """Whether too little time is left to try another way (`LOW_S`); noted (`ran_short`)."""
+        if self.left() < LOW_S:
+            self.ran_short = True
+            return True
+        return False
+
+    @property
+    def short(self) -> bool:
+        """Whether the run was cut short by time: a call not made, or a loop's tries stopped."""
+        return self.timed_out or self.ran_short
 
     def ask(self, action: str, payload: dict):
         """The router's answer, or None where it refused, could not be reached or no time is left
@@ -554,7 +571,7 @@ def way_back(
             asks.append(chosen)
     best: tuple[tuple, Walked, int, float] | None = None
     for chosen in asks:
-        if router.left() < 2.0:
+        if router.low():
             info["fallback"] = info["fallback"] or "time"
             break
         info["tried"] += 1
@@ -658,7 +675,7 @@ def target_loop(router: Router, start, ask: RunAsk) -> tuple[Walked | None, dict
         found.append((rank, walked, bearing, side_m))
 
     for bearing in TARGET_BEARINGS:
-        if router.left() < 2.0:
+        if router.low():
             break
         tried(bearing, side_for())
     if not found:
@@ -666,7 +683,7 @@ def target_loop(router: Router, start, ask: RunAsk) -> tuple[Walked | None, dict
     found.sort(key=lambda f: f[0])
     for _ in range(TARGET_RESIZES):
         rank, _walked, bearing, _side = found[0]
-        if not rank[0] or router.left() < 2.0:
+        if not rank[0] or router.low():
             break
         # The nearest direction, sized from its latest run (its own ratio), a step at most
         # RESIZE_RANGE; never the same triangle twice (the router would answer it the same).

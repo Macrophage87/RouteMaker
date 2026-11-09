@@ -152,6 +152,9 @@ class TestDials:
         one_way = run_plan.estimated_s([START, END], pace)
         assert one_way == pytest.approx(span * run_plan.ROUTED_PER_STRAIGHT / 3.0)
         assert run_plan.estimated_s([START, END], pace, loop=True) == pytest.approx(2 * one_way)
+        # Stops and a target: the longer of the target and the straight-line guess.
+        assert run_plan.estimated_s([START, END], pace, False, 9000.0) == pytest.approx(3000.0)
+        assert run_plan.estimated_s([START, END], pace, False, 100.0) == pytest.approx(one_way)
 
 
 class TestWeigh:
@@ -785,6 +788,122 @@ class TestTheApi:
         routes = [p["costing_options"]["pedestrian"] for a, p in fake_router if a == "route"]
         assert "use_lit" not in routes[0]
         assert routes[-1]["use_lit"] == run_plan.USE_LIT_AFTER_DARK
+
+    @classmethod
+    def _crossing_dusk(cls, loop: bool = False) -> dict:
+        """A run at the fastest pace whose estimate ends before civil dusk and whose planned run
+        (the fake router's 600 s out, 700 s back) ends after it."""
+        pace = run_plan.RUN_PACE_MAX_KMH
+        estimate = run_plan.estimated_s([START, END], pace, loop)
+        planned = 1300.0 if loop else 600.0
+        assert estimate < planned - 60.0
+        at = cls._dusk_next_21_december() - timedelta(seconds=(estimate + planned) / 2)
+        return {
+            "points": [list(START), list(END)],
+            "preset": "run",
+            "loop": loop,
+            "run_pace_kmh": pace,
+            "depart_at": at.isoformat(),
+        }
+
+    @staticmethod
+    def _driven(monkeypatch, on_call):
+        """The clock driven by the test: `routing.clock` is the real one plus an offset that
+        `on_call(action, payload, lit, clock)` may move before each router call; `clock` has
+        `offset`, `now()` and the run's `routers`. Returns that clock."""
+        import time
+
+        class Clock:
+            offset = 0.0
+            routers: list = []
+            lit = False
+
+            def now(self) -> float:
+                return time.monotonic() + self.offset
+
+        clock = Clock()
+        clock.routers = []
+        monkeypatch.setattr(routing, "clock", clock.now)
+
+        class Recorded(run_plan.Router):
+            def __init__(self, until, call=None):
+                super().__init__(until, call)
+                clock.routers.append(self)
+
+        monkeypatch.setattr(run_plan, "Router", Recorded)
+        inner = routing._transport
+
+        def transport(url, payload, timeout):
+            action = url.rsplit("/", 1)[1]
+            if action == "route" and "use_lit" in payload["costing_options"]["pedestrian"]:
+                clock.lit = True
+            on_call(action, payload, clock.lit, clock)
+            return inner(url, payload, timeout)
+
+        monkeypatch.setattr(routing, "_transport", transport)
+        return clock
+
+    def test_a_lit_re_plan_cut_short_by_time_keeps_the_whole_first_plan(
+        self, client, fake_router, monkeypatch
+    ) -> None:
+        # Review of X4-3: the lit re-plan's first call leaves it 1 s, too little for a way back
+        # (`run_plan.LOW_S`): it falls back for want of time ("time", then out and back). The
+        # complete first loop must stand, not that.
+        def on_call(action, payload, lit, clock):
+            if lit and action == "route" and len(clock.routers) == 2:
+                clock.offset += clock.routers[-1].left() - 1.0
+
+        self._driven(monkeypatch, on_call)
+        response = post(client, self._crossing_dusk(loop=True))
+        assert response.status_code == 200, response.content
+        body = response.json()
+        assert body["loop"]["fallback"] is None
+        assert body["loop"]["excluded"] > 0
+        assert body["run"]["dark"] is False
+        assert any(
+            "use_lit" in p["costing_options"]["pedestrian"] for a, p in fake_router if a == "route"
+        )
+
+    def test_no_lit_re_plan_where_less_time_is_left_than_the_first_plan_took(
+        self, client, fake_router, monkeypatch
+    ) -> None:
+        # Each call of the first plan takes 10 s on the driven clock: it takes more than half
+        # the run's budget, so there is no time for a second and none is tried.
+        def on_call(action, payload, lit, clock):
+            if not lit:
+                clock.offset += 10.0
+
+        clock = self._driven(monkeypatch, on_call)
+        response = post(client, self._crossing_dusk())
+        assert response.status_code == 200, response.content
+        assert response.json()["run"]["dark"] is False
+        first = clock.routers[0]
+        assert first.left() < first.calls * 10.0
+        assert len(clock.routers) == 1 or clock.routers[1].calls == 0
+        assert not clock.lit
+
+    @pytest.mark.parametrize(
+        "failure",
+        [
+            routing.RouterRefused(400, 442, "no route"),
+            routing.DeadlineExceeded("late"),
+            routing.RouterUnavailable("down"),
+        ],
+        ids=["no-way", "timeout", "router-down"],
+    )
+    def test_a_lit_re_plan_that_fails_keeps_the_first_plan(
+        self, client, fake_router, monkeypatch, failure
+    ) -> None:
+        def on_call(action, payload, lit, clock):
+            if lit:
+                raise failure
+
+        self._driven(monkeypatch, on_call)
+        response = post(client, self._crossing_dusk())
+        assert response.status_code == 200, response.content
+        body = response.json()
+        assert body["run"]["dark"] is False
+        assert body["distance_m"] == pytest.approx(1700.0)
 
     def test_a_run_ending_well_before_dusk_is_not_after_dark(self, client, fake_router) -> None:
         at = self._dusk_next_21_december() - timedelta(hours=2)
