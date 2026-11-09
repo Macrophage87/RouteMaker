@@ -355,6 +355,9 @@ class Context:
     # What a second of junction waiting costs against a second of riding when routes are
     # ranked (`presets.wait_weight_for`): 1, and 3 on Road Bike. The time shown is unchanged.
     wait_weight: float = 1.0
+    # Whether a beg button ranks at Road Bike's ten minutes (`presets.road_bike_buttons_for`:
+    # Road Bike, Run and Tandem, named, not read from `wait_weight`).
+    road_bike_buttons: bool = False
     # The map's beg-button answers already had in this plan, by OSM way (tagged or not;
     # `routing.button_ways`): the candidates share most of their crossings.
     button_ways: dict = field(default_factory=dict)
@@ -1030,15 +1033,17 @@ def events_of_raws(raws, ctx: Context, deadline: routing.Deadline) -> list | Non
     try:
         return junctions.events_of(
             raws,
-            # A road closed to cars at the ride's time is car-free here only on the graph
-            # that routes it as a path, as `routing.classify` reads it (hunt X1).
-            routing.car_free_reading(ctx.when, ctx.variant),
+            ctx.when,
             ctx.with_facility,
             locator(ctx.variant, deadline, ctx.located),
             ctx.group,
             cut_short=(routing.DeadlineExceeded,),
             ratings=ctx.junction_ratings,
             beacons=ctx.beacons,
+            # A road closed to cars at the ride's time is car-free here only on the graph
+            # that routes it as a path, as `routing.classify` reads it (hunt X1). The ride
+            # time itself still prices the junctions (rush hour, night).
+            closure_when=routing.car_free_reading(ctx.when, ctx.variant),
         )
     except junctions.ReadingCutShort as error:
         raise routing.DeadlineExceeded(str(error)) from error
@@ -1166,7 +1171,9 @@ def analyse(
         junction_delay_s=sum(w.seconds for w in found_waits),
         # At the ride type's wait weight, stacked at most 5x the wait shown (Road Bike;
         # `junction_delay.MAX_STACKED_WEIGHT`), given back per unit of that weight.
-        junction_ranked_s=junction_delay.ranked_s(found_waits, ctx.wait_weight),
+        junction_ranked_s=junction_delay.ranked_s(
+            found_waits, ctx.wait_weight, road_bike_buttons=ctx.road_bike_buttons
+        ),
     )
     if with_events:
         ctx.analyses[key] = result

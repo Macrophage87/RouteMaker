@@ -49,6 +49,7 @@ from routemaker.stress import (
     FAST_MULTILANE_PREFIX,
     RURAL_EXPRESSWAY_PREFIX,
     SERVICE_ROAD_RULE,
+    USE_SIDEPATH_ON_ROAD_RULE,
     USE_SIDEPATH_RULE,
     VERY_BUSY_STREET_RULE,
 )
@@ -620,6 +621,10 @@ def _rule_words(rule: str) -> str:
         return "Owner-rated: a bike lane on a road this busy is LTS 4"
     if rule.startswith(USE_SIDEPATH_RULE):
         return "Avoid: riders are asked to use the side path"
+    if rule.startswith(USE_SIDEPATH_ON_ROAD_RULE):
+        # LTS 4.5 (the owner, round 3, 2026-11-08: "Make them LTS 4.5. They might be the only
+        # way there.").
+        return "High stress: riders are asked to use the side path, a sidewalk or one-way track"
     if rule.startswith(RURAL_EXPRESSWAY_PREFIX):
         # LTS 4.5, not Avoid (the owner, 2026-10-17: "there's often no way to avoid them").
         posted = _SPEED.search(rule)

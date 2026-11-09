@@ -3263,7 +3263,15 @@ class TestSeekWiring:
             return [{} for _ in payload["locations"]]
 
         def events_of(
-            raws, when, with_facility, locate, group, cut_short=(), ratings=None, beacons=()
+            raws,
+            when,
+            with_facility,
+            locate,
+            group,
+            cut_short=(),
+            ratings=None,
+            beacons=(),
+            closure_when=None,
         ):
             junctions._ask(raws, range(len(raws)), junctions.LOCATE_RADIUS_M, locate, cut_short)
             return []
@@ -4120,9 +4128,13 @@ def test_the_junctions_read_a_closure_only_where_the_graph_opens_it(
 
     seen: list = []
     monkeypatch.setattr(
-        junctions, "events_of", lambda raws, when, *args, **kw: seen.append(when) or []
+        junctions,
+        "events_of",
+        lambda raws, when, *args, **kw: seen.append((when, kw["closure_when"])) or [],
     )
     ctx = context()
     ctx.variant, ctx.when = variant, when
     assert refine.events_of_raws([], ctx, ctx.deadline) == []
-    assert seen == [read]
+    # The ride time still prices the junctions (hunt 3 follow-up: it was the closure
+    # reading's "" off the weekend graphs, so rush hour and night were lost).
+    assert seen == [(when, read)]

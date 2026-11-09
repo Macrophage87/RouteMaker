@@ -139,6 +139,19 @@ def reading_of(
     return harder_m(stretches), pieces, stretches
 
 
+def dirt_m(trip: dict, variant: str, costing: dict, deadline, traces) -> float | None:
+    """A route's metres on the mountain-bike class (`segment.mtb_only`, every level the
+    switch rides), which the answer times at Mountain Bike's singletrack pace
+    (`mtbmode.SINGLETRACK_SPEED_KMH`), as Mountain Bike times the same trails (the owner, round
+    3, 2026-11-08, asked whether Easy MTB trails should be timed at Mountain Bike's 6 mph:
+    "Yes"). Its traces are the plan's own, already made. None where a leg cannot be traced."""
+    pieces = mtb._pieces(trip, variant, costing, deadline, traces)
+    if pieces is None:
+        return None
+    traits = mtb.way_traits([p.way_id for p in pieces])
+    return float(sum(p.metres for p in pieces if traits.get(p.way_id, (False,))[0]))
+
+
 def settle(
     trip: dict,
     request: dict,

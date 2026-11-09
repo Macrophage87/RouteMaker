@@ -7,7 +7,7 @@ import { appSource } from "../testSupport/appSource.mjs";
 
 test("the weekend, rush hours and the rest, in the region's time", () => {
   assert.equal(whenAt(new Date("2026-10-03T13:00:00Z")), "weekend"); // Saturday 09:00 EDT
-  assert.equal(whenAt(new Date("2026-10-04T22:59:00Z")), "weekend"); // Sunday 18:59 EDT
+  assert.equal(whenAt(new Date("2026-10-04T21:59:00Z")), "weekend"); // Sunday 17:59 EDT
   assert.equal(whenAt(new Date("2026-09-28T12:30:00Z")), "weekday_rush"); // Monday 08:30 EDT
   assert.equal(whenAt(new Date("2026-09-28T11:00:00Z")), "weekday_rush"); // 07:00 EDT, the start
   assert.equal(whenAt(new Date("2026-09-28T14:00:00Z")), "weekday_offpeak"); // 10:00 EDT, the end
@@ -25,9 +25,12 @@ test("the weekend, rush hours and the rest, in the region's time", () => {
   assert.equal(whenAt(new Date("2026-12-07T13:30:00Z")), "weekday_rush");
 });
 
-test("Sunday 19:00-21:00, after the car-free windows end, is off-peak", () => {
+test("Sunday 18:00-21:00, after the car-free windows end, is off-peak", () => {
   // It was the weekend, which held Beach Drive and Sligo Creek car-free with cars
-  // back on them (hunt M6; the owner, 2026-11-08).
+  // back on them (hunt M6; the owner, 2026-11-08). From 18:00, when Sligo Creek opens to
+  // cars (round 3, 2026-11-08: "Let's just go at 6 on Sunday.").
+  assert.equal(whenAt(new Date("2026-10-04T22:00:00Z")), "weekday_offpeak"); // Sunday 18:00 EDT
+  assert.equal(whenAt(new Date("2026-10-04T22:30:00Z")), "weekday_offpeak"); // Sunday 18:30 EDT
   assert.equal(whenAt(new Date("2026-10-04T23:00:00Z")), "weekday_offpeak"); // Sunday 19:00 EDT
   assert.equal(whenAt(new Date("2026-10-05T00:45:00Z")), "weekday_offpeak"); // Sunday 20:45 EDT
   assert.equal(whenAt(new Date("2026-10-04T00:45:00Z")), "weekend"); // Saturday 20:45 EDT

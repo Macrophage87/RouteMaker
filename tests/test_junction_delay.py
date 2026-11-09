@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from core import presets
 from routemaker import junction_delay as d
 from routemaker import trace_junctions as t
 from routemaker.intersections import Beacon, Movement, beacon_at
@@ -666,6 +667,11 @@ class TestBegButtons:
         assert run.red_s == 45.0
 
 
+def rb(found, weight: float = 3.0) -> float:
+    """`d.ranked_s` with Road Bike's button rule (`presets.ROAD_BIKE_BUTTON_RIDES`)."""
+    return d.ranked_s(found, weight, road_bike_buttons=True)
+
+
 class TestRoadBikeStackedWeight:
     """The owner, 2026-11-08: "Maybe go to 5. People prefer free flow on road bikes." Road
     Bike's 3x wait weight on a suburban signal's 2x is held at 5x the wait at a red."""
@@ -692,16 +698,16 @@ class TestRoadBikeStackedWeight:
         (run,) = d.waits([crossing], suburban=everywhere, stop_extra_s={(-77.0, 38.9): 400.0})
         assert run.button and run.ranked_s == 120.0
         # Before: held at 5x the 45 s red, 225 s; after: ten minutes.
-        assert 3.0 * d.ranked_s([run], 3.0) == d.ROAD_BIKE_BUTTON_S == 600.0
+        assert 3.0 * rb([run]) == d.ROAD_BIKE_BUTTON_S == 600.0
         # Less than 2/3 of the stop sign there at Road Bike's weight: its 30 s and the 400 s.
-        assert 3.0 * d.ranked_s([run], 3.0) < 3.0 * (30.0 + 400.0) * 2.0 / 3.0
+        assert 3.0 * rb([run]) < 3.0 * (30.0 + 400.0) * 2.0 / 3.0
         # A cheaper stop sign (30 + 50 s, 240 s at 3x): held 1 s below its 2/3 (before, its
         # half, 119 s).
         (cheap,) = d.waits([crossing], suburban=everywhere, stop_extra_s={(-77.0, 38.9): 50.0})
-        assert 3.0 * d.ranked_s([cheap], 3.0) == pytest.approx(3.0 * 80.0 * 2.0 / 3.0 - 1.0)
+        assert 3.0 * rb([cheap]) == pytest.approx(3.0 * 80.0 * 2.0 / 3.0 - 1.0)
         # Not known: ten minutes.
         (unpriced,) = d.waits([crossing], suburban=everywhere)
-        assert 3.0 * d.ranked_s([unpriced], 3.0) == 600.0
+        assert 3.0 * rb([unpriced]) == 600.0
         # Off Road Bike's weight, the two minutes stand.
         assert d.ranked_s([run]) == 120.0
 
@@ -719,8 +725,8 @@ class TestRoadBikeStackedWeight:
         (plain,) = d.waits([light], stop_extra_s={here: 10.0})
         (button,) = d.waits([light], buttons={77}, stop_extra_s={here: 10.0})
         assert (plain.button, button.button) == (False, True)
-        plain_s = 3.0 * d.ranked_s([plain], 3.0)
-        button_s = 3.0 * d.ranked_s([button], 3.0)
+        plain_s = 3.0 * rb([plain])
+        button_s = 3.0 * rb([button])
         stop_s = 3.0 * (30.0 + 10.0)
         # Before: the plain light 90 s and the button 59 s (1 s below half the stop sign).
         assert plain_s == pytest.approx(stop_s * 2.0 / 3.0 - 2.0)
@@ -732,7 +738,7 @@ class TestRoadBikeStackedWeight:
         (pressed,) = d.waits([street], suburban=everywhere, stop_extra_s={here: 20.0})
         (unpressed,) = d.waits([tertiary], suburban=everywhere, stop_extra_s={here: 20.0})
         assert pressed.button and not unpressed.button
-        assert d.ranked_s([unpressed], 3.0) < d.ranked_s([pressed], 3.0) < 2.0 / 3.0 * 50.0
+        assert rb([unpressed]) < rb([pressed]) < 2.0 / 3.0 * 50.0
 
     def test_a_suburban_signal_never_ranks_above_the_stop_sign_across_the_same_road(
         self,
@@ -747,7 +753,7 @@ class TestRoadBikeStackedWeight:
         (run,) = d.waits([crossing], suburban=everywhere, stop_extra_s={(-77.0, 38.9): 5.0})
         assert not run.button and not run.button_light
         # Before: 3 x 60 = 180 s (150 s at the 5x cap), above the 51 s stop sign; after: 50 s.
-        assert 3.0 * d.ranked_s([run], 3.0) == 3.0 * 17.0 - 1.0
+        assert 3.0 * rb([run]) == 3.0 * 17.0 - 1.0
         # At 1x the suburban 2x stands: 60 s (before this, 16 s).
         assert d.ranked_s([run]) == 60.0
         # Across a secondary, where a button is read for a rider from a side street, the
@@ -755,7 +761,7 @@ class TestRoadBikeStackedWeight:
         busy = suburban_signal(*SECONDARY, **tertiary_rider)
         (run,) = d.waits([busy], suburban=everywhere, stop_extra_s={(-77.0, 38.9): 13.0})
         assert not run.button and run.button_light
-        assert 3.0 * d.ranked_s([run], 3.0) == pytest.approx(99.0 * 2.0 / 3.0 - 2.0)
+        assert 3.0 * rb([run]) == pytest.approx(99.0 * 2.0 / 3.0 - 2.0)
         assert d.ranked_s([run]) == 60.0
         # The time shown is the average pass, unchanged.
         assert run.seconds == 15.0
@@ -794,6 +800,43 @@ class TestRoadBikeStackedWeight:
         )
         (run,) = d.waits([tagged], buttons={77})
         assert d.ranked_s([run]) == 120.0
+
+
+def ride_ranked_s(found, name: str) -> float:
+    """`d.ranked_s` as the plan calls it for ride type `name`, in weighted seconds."""
+    weight = presets.wait_weight_for(name)
+    return weight * d.ranked_s(found, weight, road_bike_buttons=presets.road_bike_buttons_for(name))
+
+
+class TestButtonPriceByRideType:
+    """Which ride types price a beg button at Road Bike's ten minutes is named
+    (`presets.ROAD_BIKE_BUTTON_RIDES`), not read from a wait weight above 1."""
+
+    def button(self) -> d.Wait:
+        (run,) = d.waits([suburban_signal(*PRIMARY)], suburban=everywhere)
+        assert run.button and run.red_s == 45.0
+        return run
+
+    def test_road_bike_prices_a_button_at_ten_minutes(self) -> None:
+        assert presets.road_bike_buttons_for(presets.ROAD_BIKE)
+        assert ride_ranked_s([self.button()], presets.ROAD_BIKE) == d.ROAD_BIKE_BUTTON_S
+
+    def test_tandem_prices_a_button_at_ten_minutes_by_owner_decision(self) -> None:
+        """The owner, 2026-11-08: "That should be at the 10x. It's really obnoxious to try to
+        navigate to a button on a tandem." Tandem's own weight is 2x, not Road Bike's 3x."""
+        assert presets.wait_weight_for(presets.TANDEM) == 2.0
+        assert presets.road_bike_buttons_for(presets.TANDEM)
+        assert ride_ranked_s([self.button()], presets.TANDEM) == d.ROAD_BIKE_BUTTON_S
+
+    def test_other_ride_types_keep_the_stacked_rule(self) -> None:
+        run = self.button()
+        # Cargo (1x): the usual two-minute button, as before.
+        assert not presets.road_bike_buttons_for("cargo")
+        assert ride_ranked_s([run], "cargo") == d.BUTTON_RANKED_S == 120.0
+        # Any ride type above 1x not named: the stacked rule, 2 x 120 = 240 held at 5x the
+        # 45 s red, 225 s; not ten minutes.
+        assert 2.0 * d.ranked_s([run], 2.0) == d.MAX_STACKED_WEIGHT * 45.0 == 225.0
+        assert 2.0 * d.ranked_s([run], 2.0) < d.ROAD_BIKE_BUTTON_S
 
 
 def at(junction: t.RawJunction, m: float, lon: float) -> t.RawJunction:

@@ -936,7 +936,11 @@ class TestCargoAssist:
         assert body["dials"]["assist"] is True
         options = sent_options(fake)
         assert options["cycling_speed"] > presets.CARGO_PLANNING_SPEED_KMH
-        assert all(url.startswith(settings.VALHALLA_UPSTREAMS["ebike"]) for url, _ in fake.calls)
+        # On the e-bike graph, and on the weekend graph too near the fixture's weekend
+        # closure (the owner, round 3, 2026-11-08, of weekend e-bike rides: "Yes").
+        bases = {settings.VALHALLA_UPSTREAMS[v] for v in ("ebike", "weekend")}
+        assert all(any(url.startswith(base + "/") for base in bases) for url, _ in fake.calls)
+        assert any(url.startswith(settings.VALHALLA_UPSTREAMS["weekend"]) for url, _ in fake.calls)
 
     def test_assist_keeps_cargos_hill_averse_start(self, client, facility_segments, router):
         fake = router(standard_router())
@@ -2847,6 +2851,21 @@ class TestEasyMtbTrails:
             assert info["harder_m"] > 0 and info["limited"] == "no_way_round"
         else:
             assert info["harder_m"] == 0 and info["limited"] is None
+
+    def test_dirt_trails_are_timed_at_mountain_bike_pace(self, client, facility_segments, router):
+        """The owner, round 3, 2026-11-08, asked whether Easy MTB trails should be timed at
+        Mountain Bike's 6 mph, as Mountain Bike times the same trails: "Yes"."""
+        router(standard_router())
+        plain = post(client, {**good_body("default"), "easy_mtb": True}).json()
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"UPDATE {facility_segments}.segment SET mtb_only = true, "
+                "is_trail_class = true, is_unpaved = true WHERE osm_way_id = 101"
+            )
+        router(standard_router())
+        dirt = post(client, {**good_body("default"), "easy_mtb": True}).json()
+        assert dirt["distance_m"] == plain["distance_m"]
+        assert dirt["duration_s"] > plain["duration_s"]
 
     @pytest.mark.parametrize("name", ["fast", "gravel", "mountain-bike"])
     def test_other_ride_types_are_refused(self, name, client, facility_segments, router):

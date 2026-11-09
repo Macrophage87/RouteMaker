@@ -1754,6 +1754,41 @@ class TestEvents:
         assert event.cost_ft == model.SIGNALISED_CROSSING_FT[4] * model.time_factor("weekend")
 
     @db
+    def test_the_ride_time_prices_the_junction_when_closures_are_read_without_it(
+        self, grid
+    ) -> None:
+        """Hunt 3 follow-up: a plan off the weekend graphs reads closures in no ride time
+        (`routing.car_free_reading`), and that one value also timed the junction costs, so
+        rush hour (x1.25) and night (x0.5) were lost on every such plan."""
+        signalled = answer(crossroads()["edges"], [node(N, signal=True)])
+        (event,) = junctions.events_of(
+            [raw()], "weekday_rush", False, self.locate_with(signalled), closure_when=""
+        )
+        assert event.time_factor == model.time_factor("weekday_rush") == 1.25
+        assert event.cost_ft == model.SIGNALISED_CROSSING_FT[4] * 1.25
+
+    @db
+    def test_closures_are_read_in_the_closure_time_not_the_ride_time(
+        self, grid, monkeypatch
+    ) -> None:
+        """Hunt X1 kept: a weekend ride on the standard graph reads no closure (its router
+        prices the closed road with cars), while the ride time still prices the junction."""
+        read = []
+        real = junctions.roads_by_way
+
+        def spy(wanted, when, with_facility):
+            read.append(when)
+            return real(wanted, when, with_facility)
+
+        monkeypatch.setattr(junctions, "roads_by_way", spy)
+        signalled = answer(crossroads()["edges"], [node(N, signal=True)])
+        (event,) = junctions.events_of(
+            [raw()], "weekend", False, self.locate_with(signalled), closure_when=""
+        )
+        assert read == [""]
+        assert event.time_factor == model.time_factor("weekend")
+
+    @db
     def test_riding_along_the_arterial_past_a_merge_is_not_a_crossing(self, grid) -> None:
         """Review r1, B1: 16th St NW past an inbound-only merge (measured)."""
         merge = answer(
