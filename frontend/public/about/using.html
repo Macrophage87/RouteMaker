@@ -590,7 +590,10 @@ this device, and with your account when you are signed in; never in a shared lin
 <li><strong>When:</strong> <strong>Now</strong>, the default, which names the time it is, such as "Now
 (Weekday rush)"; or Weekend, Weekday rush, Weekday off-hours, or Night, 9 PM to 7 AM. Rush
 hour and night change how busy roads are taken to be; weekends open roads closed to cars at
-weekends.</li>
+weekends. Planning for now goes by the clock: a weekday federal holiday counts as Weekday off-hours, and so does
+Sunday from 6 PM, so roads closed to cars at weekends are planned with cars then.</li>
+<li><strong>Easy MTB trails</strong> (Default and Trailmaxxing, off at first) lets the route use mountain-bike
+trails rated Green and unrated ones: <a href="/about/trails.html#easy-mtb">Easy MTB trails</a>.</li>
 <li><strong>Cargo Bike</strong> asks what you carry: Carrying cargo, or Cargo with passengers.</li>
 <li><strong>Rider and bike weight</strong> (Settings, Riding) makes climbs cost what they cost you;
 it is kept private.</li>
@@ -741,6 +744,8 @@ curling up onto a bridge, is said on the side you actually turn.</li>
 three of them: "Right onto 6th Street, then immediately bear left onto Rhode Island Avenue". The turn card
 draws them as one arrow, except through a U-turn or a traffic circle (which keeps its ring) or where the turns
 wind back on themselves. Each turn still gets its own "now", said once you are past the turn before.</li>
+<li>At a light where you may need to press the crossing button, the turn card says "Light may need a button
+press", and the first warning ends "Button for the light."</li>
 <li><strong>To go</strong>: under the turn, a line gives the distance and time to the next stop, if
 there is one, and to the end, and the clock time you should get there, in the app's language, with your phone's own 12- or 24-hour
 clock when the phone is set to that language (6:42 AM or 18:42): "To stop 2: 1.2 mi (1.9 km), 8 min · 6:42 AM". A screen reader
@@ -794,6 +799,10 @@ lists has <strong>Instead of stop 2</strong> (with that stop's number) to go the
 hears the button as Detour with "or change stop 2" at the end; <strong>Skip this stop</strong> is in More.</li>
 <li><strong>Go round</strong> (a screen reader hears "Go round: road closed ahead") plans a way round from where you are: "Road closed. Finding a way
 round."</li>
+<li><strong>End mountain biking</strong> shows under Go round while a mountain-bike trail is on the route ahead,
+except on a fixed route. It plans the rest of the ride again off mountain-bike trails, with Easy MTB trails off:
+"Finding a way off the mountain-bike trails." If you are on a trail, the way off may ride that trail or an easier or
+shorter one joined to it, never a harder one. To ride the trails again, plan a new ride.</li>
 <li><strong>311</strong> logs a problem where you are, for reporting later; see
 <a href="#suggest">below</a>.</li>
 <li><strong>More</strong> opens a column of round buttons above it, each with a word under it.
@@ -846,8 +855,8 @@ than 650 ft [200 m] from the route's start and off the route line, it asks, alou
 the start first, or join the route from here?" <strong>Go to the start</strong> has the focus, and Escape picks it: "Not
 near the start: going there first." The start becomes stop 1, named Start, the plan's stops follow as 2, 3 and so on,
 and the route after the start is ridden as planned, whether a route you picked, a file followed exactly or a group's
-shared line. On the way there, once you are within 650 ft [200 m] of the start, it says "At the start of the ride. Ride
-on." and the planned route takes over from where you are, so a big start with many entrances, such as Union Station,
+shared line. On the way there, once you are within 650 ft [200 m] of the start, it says "You are at the start of the
+ride." and the planned route takes over from where you are, so a big start with many entrances, such as Union Station,
 needs no one spot reached. Skip this stop skips the start, and if no way there is found, it says so and the ride goes
 on as with Join from here. <strong>Join
 from here</strong> rides on as any ride off its line does: it plans a way onto the route ahead, and Already done? asks
@@ -1496,7 +1505,7 @@ from the app's next update.</li>
 <p class="next">Next: <a href="/about/accessibility.html">Accessibility</a></p>
 </main>
 <footer>
-  <p>Part of RouteMaker's documentation. It describes version 0.22.3. The code is
+  <p>Part of RouteMaker's documentation. It describes version 0.23.0. The code is
   open source under the MIT licence:
   <a href="https://github.com/Macrophage87/RouteMaker">github.com/Macrophage87/RouteMaker</a>.</p>
   <p><a href="/">Back to the map</a></p>

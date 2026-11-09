@@ -460,6 +460,48 @@ class TestInWords:
         assert hs.with_entries(description, []) is description
 
 
+class TestTheChoicesGuards:
+    """`retrace_m`, `chosen` and `rides_busy`, which `routing.choose_climb` reads (the owner,
+    2026-11-08: "Skip busy climbs if there's a better calm one, yes, unless intentionally
+    chosen"; hunts P3, V7)."""
+
+    def test_a_route_that_rides_nothing_twice_retraces_nothing(self) -> None:
+        assert hs.retrace_m([straight((0, 0), (5000, 0))]) == 0.0
+
+    def test_an_out_and_back_up_a_climb_is_counted(self) -> None:
+        # East 3 km, back west 1 km up the climb, then east again over it: 2 km again.
+        got = hs.retrace_m([straight((0, 0), (3000, 0), (2000, 0), (5000, 0))])
+        assert got == pytest.approx(2000.0, abs=80.0)
+
+    def test_a_road_crossed_twice_is_no_retrace(self) -> None:
+        # A loop that crosses its own way at right angles.
+        line = straight((0, 0), (2000, 0), (2000, 500), (1000, 500), (1000, -500), (3000, -500))
+        assert hs.retrace_m([line]) == 0.0
+
+    def test_back_the_way_a_stop_was_reached_is_its_own_leg(self) -> None:
+        out, back = straight((0, 0), (2000, 0)), straight((2000, 0), (0, 0))
+        assert hs.retrace_m([out, back]) == 0.0
+        assert hs.retrace_m([out + back[1:]]) > 1500.0
+
+    def test_a_point_on_its_line_or_at_its_end_chose_the_climb(self) -> None:
+        c = climb(at_m=3000.0, length_m=1000.0)
+        on = (START[0] + east(3500.0), START[1] + north(20.0))
+        assert hs.chosen(c, [START, on])
+        assert hs.chosen(c, [START, c.summit])
+        assert not hs.chosen(c, [START, END])
+        assert not hs.chosen(c, [])
+
+    def test_a_route_up_a_busy_climb_rides_busy_unless_it_was_chosen(self) -> None:
+        busy = climb(busy=True)
+        calm = climb(ident="b", busy=False)
+        route = straight((0, 0), (5000, 0))
+        assert hs.rides_busy(route, [busy], [START, END])
+        assert not hs.rides_busy(route, [calm], [START, END])
+        assert not hs.rides_busy(route, [busy], [START, busy.summit])
+        # Not ridden: a busy climb elsewhere says nothing.
+        assert not hs.rides_busy(straight((0, 0), (0, 3000)), [busy], [START, END])
+
+
 class Asker:
     """The router, stood in for: answers each call from `answers` (a trip, None for
     no route, or an exception), and records the points it was asked through."""

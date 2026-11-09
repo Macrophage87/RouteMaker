@@ -59,6 +59,16 @@ def contains(point: tuple[float, float], areas: list[Polygon] | None = None) -> 
     return in_polygons(point, areas if areas is not None else polygons())
 
 
+def is_pedestrian_area(tags: dict[str, str]) -> bool:
+    """A plaza mapped only as an area (`highway=pedestrian` + `area=yes`), which never
+    reaches the graph: Valhalla's parser drops it with `mjolnir.pedestrian_areas` off,
+    as every config has it, and the option would route only pedestrians across it
+    (reports/valhalla-3.9/README.md). Opening one to bicycles was inert (the hunt of
+    2026-11-08, Q5) and told the map a plaza was rideable that no route could use, so
+    it is left as mapped; the plaza's own linear walkways open as before."""
+    return tags.get("highway") == "pedestrian" and tags.get("area") == "yes"
+
+
 def unspoken(tags: dict[str, str]) -> bool:
     """Whether nothing on the way says anything about a bicycle on it, or closes it:
     no `bicycle` key of any kind (`bicycle:forward`, `bicycle:conditional`, ...), no
@@ -79,8 +89,9 @@ def opens(
     areas: list[Polygon] | None = None,
 ) -> bool:
     """Whether this way is a circle-park walkway this rule opens to bicycles: the
-    park's paths, plazas and the sidewalk round its edge, which is the park's own."""
-    if not coords or tags.get("highway") not in OPENED_HIGHWAY:
+    park's paths, linear plazas and the sidewalk round its edge, which is the park's
+    own; not a plaza mapped only as an area (`is_pedestrian_area`)."""
+    if not coords or tags.get("highway") not in OPENED_HIGHWAY or is_pedestrian_area(tags):
         return False
     if tags.get("footway") in LINK_FOOTWAY or tags.get("footway") == "access_aisle":
         return False

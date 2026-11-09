@@ -62,8 +62,10 @@ the Food file keeps them. A covered bridge (bridge=covered) is marked "cv" and
 named by its bridge:name where it has one (the way's own name is usually the
 road's): the Scenic layer (v0.8.0, frontend/src/lib/scenicLayer.ts) draws the
 covered bridges and the viewpoints from this file. Nodes, ways and
-multipolygon relations are read; a way or relation sits at its outer ring's
-mean. Coordinates are rounded to 5 decimals, about 3 ft (1 m).
+multipolygon relations are read; an area (a closed way or a relation) sits at
+the point deepest inside it, over all its outer rings with their holes
+(`representative_point`; the 2026-11-08 hunt, G4), and an open way halfway
+along it. Coordinates are rounded to 5 decimals, about 3 ft (1 m).
 
 Run from the repository root with the development venv (osmium is in
 requirements-dev.txt), with the rebuild's extract:
@@ -77,7 +79,9 @@ It writes frontend/src/amenity-data/places.json (frontend/src/amenity-data/READM
 from __future__ import annotations
 
 import argparse
+import heapq
 import json
+import math
 import sys
 from collections import Counter
 from dataclasses import dataclass
@@ -274,25 +278,30 @@ def read_extract(path: Path) -> tuple[list[Place], Counter]:
             if not wanted(w.tags):
                 return
             nodes = [nd for nd in w.nodes if nd.location.valid()]
-            if len(nodes) > 1 and nodes[0].ref == nodes[-1].ref:
+            closed = len(nodes) > 1 and nodes[0].ref == nodes[-1].ref
+            if closed:
                 nodes = nodes[:-1]
             if not nodes:
                 return
-            lon = sum(nd.location.lon for nd in nodes) / len(nodes)
-            lat = sum(nd.location.lat for nd in nodes) / len(nodes)
+            points = [(nd.location.lon, nd.location.lat) for nd in nodes]
+            if closed and len(points) >= 3:
+                lon, lat = representative_point([[points]])
+            else:
+                lon, lat = middle_of_line(points)
             elements.append(water.Element(f"w{w.id}", dict(w.tags), lon, lat))
 
         def area(self, a):
             t = a.tags
             try:
                 if not a.from_way() and wanted(t):
+                    polygons = []
                     for outer in a.outer_rings():
                         ring = [(n.lon, n.lat) for n in outer]
-                        pts = ring[:-1] or ring
-                        lon = sum(x for x, _ in pts) / len(pts)
-                        lat = sum(y for _, y in pts) / len(pts)
+                        holes = [[(n.lon, n.lat) for n in inner] for inner in a.inner_rings(outer)]
+                        polygons.append([ring[:-1] or ring, *(h[:-1] or h for h in holes)])
+                    if polygons:
+                        lon, lat = representative_point(polygons)
                         elements.append(water.Element(f"r{a.orig_id()}", dict(t), lon, lat))
-                        break
                     return
                 if not ("aeroway" in t or "landuse" in t or "military" in t or "amenity" in t):
                     return
@@ -312,6 +321,122 @@ def read_extract(path: Path) -> tuple[list[Place], Counter]:
     kept, left_out = water.leave_out_secured(elements, secured)
     found = [p for e in kept if (p := classify(e.osm, e.tags, e.lon, e.lat))]
     return merge_duplicates(found), left_out
+
+
+# --- Where an area sits -------------------------------------------------------------------
+#
+# A way or relation used to sit at its outer ring's vertex mean, and a relation at its
+# first outer ring's only. The mean is pulled towards densely noded edges (a shoreline), and
+# for a U or L shape it falls outside the area (the 2026-11-08 hunt, G4: a horseshoe garden
+# round a pond sat in the pond); a battlefield of many parcels sat in whichever came first.
+# "Places to see" adds the point as a through via (App.tsx addSightStop), which the router
+# snaps to the nearest edge, so a point outside the area routes to whatever lies beside it.
+# Now an area sits at its pole of inaccessibility (Mapbox's polylabel: the point inside it
+# farthest from its edges), over every outer ring with its holes, the largest such circle
+# winning: a point always inside the area, as deep in it as it goes.
+
+# How close to the best point polylabel stops, in degrees of latitude (about 1 m).
+POLE_PRECISION = 1e-5
+
+
+def _plane(rings, lat0: float):
+    """Rings in a local plane: lon scaled by cos(lat0), so distances are alike both ways."""
+    k = math.cos(math.radians(lat0))
+    return [[(x * k, y) for x, y in ring] for ring in rings], k
+
+
+def _ring_distance(x: float, y: float, rings) -> float:
+    """Signed distance from (x, y) to the polygon's edges: positive inside, negative out."""
+    inside = False
+    best = math.inf
+    for ring in rings:
+        n = len(ring)
+        for i in range(n):
+            ax, ay = ring[i]
+            bx, by = ring[(i + 1) % n]
+            if (ay > y) != (by > y) and x < (bx - ax) * (y - ay) / (by - ay) + ax:
+                inside = not inside
+            dx, dy = bx - ax, by - ay
+            t = 0.0 if dx == dy == 0 else ((x - ax) * dx + (y - ay) * dy) / (dx * dx + dy * dy)
+            t = min(max(t, 0.0), 1.0)
+            best = min(best, math.hypot(x - (ax + t * dx), y - (ay + t * dy)))
+    return best if inside else -best
+
+
+def pole_of(rings) -> tuple[float, float, float]:
+    """(lon, lat, depth): the point of a polygon (outer ring first, then its holes, each a
+    list of (lon, lat)) farthest inside it, and how far that is from its nearest edge in the
+    plane's degrees. Mapbox's polylabel, on a grid refined where it can still do better."""
+    outer = [p for p in rings[0]]
+    lat0 = sum(y for _, y in outer) / len(outer)
+    plane, k = _plane(rings, lat0)
+    xs = [x for x, _ in plane[0]]
+    ys = [y for _, y in plane[0]]
+    west, east, south, north = min(xs), max(xs), min(ys), max(ys)
+    size = min(east - west, north - south)
+    if size <= 0:
+        return outer[0][0], outer[0][1], 0.0
+
+    def cell(x, y, h):
+        d = _ring_distance(x, y, plane)
+        return (-(d + h * math.sqrt(2)), x, y, h, d)
+
+    queue = []
+    h = size / 2
+    x = west
+    while x < east:
+        y = south
+        while y < north:
+            heapq.heappush(queue, cell(x + h, y + h, h))
+            y += size
+        x += size
+    # The centroid of the outer ring's area, then the bounding box's middle, as first guesses.
+    area = cx = cy = 0.0
+    ring = plane[0]
+    for i in range(len(ring)):
+        ax, ay = ring[i]
+        bx, by = ring[(i + 1) % len(ring)]
+        f = ax * by - bx * ay
+        cx += (ax + bx) * f
+        cy += (ay + by) * f
+        area += f * 3
+    best = cell(cx / area, cy / area, 0) if area else cell(xs[0], ys[0], 0)
+    middle = cell((west + east) / 2, (south + north) / 2, 0)
+    if middle[4] > best[4]:
+        best = middle
+    for _ in range(20000):
+        if not queue:
+            break
+        c = heapq.heappop(queue)
+        if c[4] > best[4]:
+            best = c
+        if -c[0] - best[4] <= POLE_PRECISION:
+            continue
+        half = c[3] / 2
+        for dx in (-half, half):
+            for dy in (-half, half):
+                heapq.heappush(queue, cell(c[1] + dx, c[2] + dy, half))
+    return best[1] / k, best[2], best[4]
+
+
+def representative_point(polygons) -> tuple[float, float]:
+    """The place's point for an area of one or more polygons (each its outer ring, then its
+    holes): the deepest point of the polygon that holds the deepest one."""
+    poles = [pole_of(p) for p in polygons if p and len(p[0]) >= 3]
+    lon, lat, _ = max(poles, key=lambda p: p[2])
+    return lon, lat
+
+
+def middle_of_line(points) -> tuple[float, float]:
+    """The point halfway along an open way (a covered bridge on a road's way)."""
+    steps = [math.dist(a, b) for a, b in zip(points, points[1:], strict=False)]
+    half = sum(steps) / 2
+    for (a, b), step in zip(zip(points, points[1:], strict=False), steps, strict=True):
+        if step and half <= step:
+            t = half / step
+            return a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t
+        half -= step
+    return points[-1]
 
 
 def _sort_key(p: Place) -> tuple[str, int]:
