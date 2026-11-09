@@ -1080,8 +1080,8 @@ export interface RouteResponse {
   dirt_trails?: boolean;
   /** A ride marked a dirt trail closed (bad conditions): no dirt trail is ridden, and the ride's re-plans say so after. */
   dirt_closed?: boolean;
-  /** Trip points the planner moved: one inside the National Zoo goes to its bike racks. */
-  moved_points?: { index: number; asked: LonLat; routed: LonLat; reason: "zoo_racks"; note: string }[];
+  /** Trip points the planner moved: one inside the National Zoo goes to its bike racks; a Mass Ride's point on a street with rails in it goes to the nearest cross street (core/mass_rails.py). */
+  moved_points?: { index: number; asked: LonLat; routed: LonLat; reason: "zoo_racks" | "rail_street"; note: string }[];
   /**
    * Notes on a stop or the end (core.api.PointNoteOut; the owner, 2026-10-29): one on a road not open to the public,
    * which the route still goes to. Shown and said as the moved points are (lib/summary.ts movedPointsNote).

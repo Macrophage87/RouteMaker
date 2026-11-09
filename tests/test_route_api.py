@@ -118,6 +118,8 @@ CONTRACT_KEYS = {
     "dodges",
     # Additive, the red-crossing pass (hunt S5, 2026-11-08): null where it did not run.
     "red_crossings",
+    # Additive, hunt 4 P4-1 (2026-11-09): Group Ride's and Fast's winding-trail round.
+    "winding",
     # Additive, FOLLOWUP-BIKESHARE (OWNER-DECISIONS 243-245): null except on a Bikeshare plan.
     "bikeshare",
     # Additive, FOLLOWUP-ISECT-AVOID (OWNER-DECISIONS 307-310, 335): the Avoid-rated

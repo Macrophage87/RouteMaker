@@ -55,6 +55,7 @@ Contents:
 - [Share live: the leader's live ride (v0.12.0-v0.15.0)](#share-live-the-leaders-live-ride-v0120-v0150)
 - [Steep grades (v0.12.5)](#steep-grades-v0125)
 - [Phone app (v0.8.0)](#phone-app-v080)
+- [Routing hunt 4](#routing-hunt-4)
 
 <!-- /CONTENTS -->
 
@@ -1437,6 +1438,30 @@ Not priced yet: the signal waits, pavement and tight turns (PLAN's other reducti
 busy-road crossings (133-136). Not built: Avoid marks for Mass Ride alone (stretches marked Avoid
 for every ride type are priced, at the cap); flagging narrow roads on the map.
 
+### Mass Ride keeps off street-running rails (OWNER-DECISIONS 289; routing hunt 4, R4-1)
+
+The owner, 2026-10-03, amending 288: "Keep mass rides off H street". Item 288 prices a road with
+rails in it as LTS 4 for every ride type (`rm:hazard`, `routemaker.hazards`), which a Mass Ride,
+planning at stress 0, hardly feels. So on a Mass Ride `core.mass_rails` leaves the rail streets
+out of every request the plan makes (`routing._plan`): the map's segments with rails within
+3,000 m (1.9 mi) of the box of the ride's points (`RAILS_REACH_M`), merged into lines and sent
+as `exclude_polygons` strips, as a road the rider marked closed is (trimmed 20 m at each end and
+cut where a way crosses, `routemaker.workzones.line_rings`). Crossing the rails at a cross street
+stays allowed. A ride's re-plan keeps the stretch by the rider open so the rider can set off.
+Other ride types, Group Ride with trails off included, share the no-trail graph and keep 288's
+LTS 4 price, so nothing is closed in the graph and no map rebuild is needed.
+
+A Mass Ride's start, stop or end whose nearest road (within 200 m, `NEAREST_ROAD_M`) has rails is
+moved to the nearest cross street that meets the rails within 400 m (`CROSS_STREET_SEARCH_M`),
+30 m (100 ft) along it from the rails (`CROSS_STREET_OFFSET_M`), and the answer says so in
+`moved_points` (reason `rail_street`: "This point is on a street with streetcar rails in it,
+which a Mass Ride does not ride along. The route goes to the nearest cross street."). Plan shows
+and says it as it shows the Zoo's moved points. Where no route is found with the rails left out
+(the router finds no path), the ride is planned again with them open, and `road_hazards` names
+the rails it rides, as before. The reach, the search distances and the offset are Claude's
+defaults, not measured. Tests: tests/test_mass_rails.py, on H Street NE and Benning Road NE drawn
+after the hunt's trips.
+
 ### Mass Ride hazards (FOLLOWUP-MASSRIDE-MAP part 3, items 325-327)
 
 "Some stretches can be marked as a caution or warning where we've had problems. They go along side like
@@ -1612,9 +1637,11 @@ curl -s -X POST http://localhost:8000/api/route -H 'Content-Type: application/js
   begins (it was 21:00), so a closure ending at 21:00 now counts as off-peak
   car-free. It
   sets Valhalla's `date_time` (the next Saturday 09:00, Tuesday 08:00, Tuesday
-  12:00 or Tuesday 22:00; closures are matched at the soonest of the setting's
-  instants instead, `ridetime.soonest_instant`, so Weekend on a Saturday night is
-  Sunday 11:00, not a week out: hunt 3, T3-7), which is what the
+  12:00 or Tuesday 22:00; closures, notices and a run's darkness are matched at the
+  start of the setting's next window instead, `ridetime.soonest_start`, so on a Monday
+  afternoon rush is today 16:00 and night tonight 21:00, not next Tuesday: routing hunt 4,
+  C4-2; Weekend keeps the soonest of its instants, `ridetime.soonest_instant`, so Weekend
+  on a Saturday night is Sunday 11:00, not a week out: hunt 3, T3-7), which is what the
   conditional restrictions Valhalla reads are evaluated against, and it decides
   whether a road closed to cars at set times counts as a path in `facility_m`
   and as tier 1 in `stress_m`. The closure is read from
@@ -1963,7 +1990,8 @@ model's forces (`routemaker.effort`, Martin et al. 1998: rolling resistance 0.00
   by `1 + W'/t`, with W' = 70 s of FTP. The whole effort is scaled, so the endurance
   pace and LT1 move with it: the slider's own grade, held for the several minutes the
   slider's help asks about (up to about 7.5 minutes, where LT1 power over `1 + W'/t`
-  reaches the endurance pace), costs nothing past its time, and a little more on longer
+  reaches the endurance pace), costs no steepness penalty past its time (only the floor
+  below, "Steeper never costs less", can add to it), and a little more on longer
   climbs (about 49 s over 1.2 mi (2 km), 105 s over 1.9 mi (3 km)) (`hill_cost.W_PRIME_S`; the power-duration curve
   FTP x (1 + W'/t), Monod and Scherrer 1965, Skiba et al. 2012; cyclists' W' of 18 to
   23 kJ, Weigend et al. 2021, arXiv 2108.04510). The owner: "10% can be done for 100m
@@ -1979,6 +2007,14 @@ model's forces (`routemaker.effort`, Martin et al. 1998: rolling resistance 0.00
   owner: "2.5 mph is probably fast"): 1.9 mph (3.1 km/h) at 6%, 1.7 mph (2.7 km/h) at
   10%, 1.4 mph (2.2 km/h) at 15%. It costs its time plus 4 s of penalty a second pushed
   (`WALK_PENALTY`), so a route that needs pushing loses to almost any ridable one.
+- **Steeper never costs less** (since 2026-11-09, routing hunt 4, T4-1). For the same rise,
+  a steeper window costs at least what that rise costs at any gentler grade, in steps of
+  0.1%, on the same climb (`hill_cost._rise_floor`): the shortfall is added to the penalty.
+  The floor is worked out for the standard rider without assist, as the penalty is, so it is
+  the same at every weight; a push is floored the same way. Climbs are matched by their rise
+  rounded up in 1% steps (`hill_cost.RISE_BUCKET`, Claude's default, not measured), which only
+  ever raises the floor a little. A heavier rider's own climbing time per foot of rise can
+  still fall with the grade; that is time, not price.
 - **Electric assist** (since 2026-11-08, hunt finding E2). On the E-bike ride type and a ride
   with electric assist (a share e-bike, Cargo Bike's assist toggle; `routing.assist_watts_for`)
   the climb is timed at the rider's power plus 250 W from the motor (`hill_cost.ASSIST_W`, an
@@ -1991,10 +2027,12 @@ model's forces (`routemaker.effort`, Martin et al. 1998: rolling resistance 0.00
 The penalty is for choosing routes only: no time shown to riders includes it. Descents
 add nothing here; riding the brakes is still priced from the ride type's brake grade
 (the table above). At 198 lb (90 kg) and 11 mph (18 km/h), 0.6 mi (1 km) costs, in
-minutes of time plus penalty: at the detent (8%), 4.2 + 0 at 8%, 4.2 + 1.7 at 10% and
-4.2 + 5.2 at 12%; at Cargo's start, -60 (3.8%, shown as 4%), 4.2 + 0.2 at 4%, 4.2 + 6.0
-at 6% and, pushed, 19.2 + 90.2 at 10%; at Fast's start, 40 (10.8%, shown as 11%), 4.2 +
-0.6 at 12%. At 3% (-71), 1,000 ft (300 m) at 6% costs 1.2 + 1.0.
+minutes of time plus penalty: at the detent (8%), 4.2 + 0.7 at 8%, 4.2 + 1.9 at 10% and
+4.2 + 5.3 at 12%; at Cargo's start, -60 (3.8%, shown as 4%), 4.2 + 1.0 at 4%, 4.2 + 6.0
+at 6% and, pushed, 19.2 + 92.3 at 10%; at Fast's start, 40 (10.8%, shown as 11%), 4.2 +
+1.2 at 12%. At 3% (-71), 1,000 ft (300 m) at 6% costs 1.2 + 1.7. (Since routing hunt 4,
+T4-1, part of each penalty is the floor below: before it, 4.2 + 0 at 8% at the detent, 4.2 +
+0.2 at 4% at -60, 19.2 + 90.2 pushed at 10%, 4.2 + 0.6 at 12% at 40 and 1.2 + 1.0 at -71.)
 
 Where it is used. Valhalla's own climbing charge (the router's cost per metre climbed
 at the request's `use_hills`, the table above, read between its 1.0, 0.4 and 0.0 rows:
@@ -2403,7 +2441,7 @@ curl -s 'http://localhost:8000/api/reverse?lat=38.90133&lon=-77.260598'
 | | `GET /api/geocode` | `GET /api/reverse` |
 | --- | --- | --- |
 | Parameters | `q` (2-200 characters after white space is collapsed), optional `lat` and `lon` together (a bias, inside `COVERAGE_BBOX`), `limit` 1-10 (default 6), `lang` (`en` only, the imported language) | `lat`, `lon` (inside `COVERAGE_BBOX`), `lang` (`en`), optional `address=true` (Go's tapped-spot card) |
-| What reaches Photon | the query with US street abbreviations spelled out (`Blvd`, `St`, `Ave`, `Rd`, `Dr`, `Pkwy`, `Hwy`, `Ct`, `Ln`, `Pl`, `Sq`, `Ter`, `N`/`S`/`E`/`W`, `NE`/`NW`/`SE`/`SW`, and `Mt`/`Ft` as Mount and Fort; `geocode.expand_abbreviations` has the rules), the bias with its strength (`zoom` 14 and `location_bias_scale` 0.2, `geocode.BIAS_ZOOM` and `BIAS_SCALE`, so nearby places rank first; the page sends the rider's location when it already has one, else the map's centre), a count a few above `limit`, `lang`, and `bbox` = `COVERAGE_BBOX`; nothing else the request carries. When that finds nothing and the query names a place before its street address ("Satay Club Asian Restaurant, 4654 Wisconsin Ave NW", `geocode.address_part`), the address alone is asked once more, the same way | `lat`, `lon`, `lang`, `limit=1`, `radius=0.25` km; with `address=true`, first `layer=house`, `limit=1`, `radius=0.04` km |
+| What reaches Photon | the query with US street abbreviations spelled out (`Blvd`, `St`, `Ave`, `Rd`, `Dr`, `Pkwy`, `Hwy`, `Ct`, `Ln`, `Pl`, `Sq`, `Ter`, `N`/`S`/`E`/`W`, `NE`/`NW`/`SE`/`SW`, and `Mt`/`Ft` as Mount and Fort; `geocode.expand_abbreviations` has the rules), the bias with its strength (`zoom` 14 and `location_bias_scale` 0.2, `geocode.BIAS_ZOOM` and `BIAS_SCALE`, so nearby places rank first; the page sends the rider's location when it already has one, else the map's centre), a count a few above `limit`, `lang`, and `bbox` = `COVERAGE_BBOX`; nothing else the request carries. When that finds nothing and the query names a place before its street address ("Satay Club Asian Restaurant, 4654 Wisconsin Ave NW", `geocode.address_part`), the address alone is asked once more, the same way. When a biased search finds rows named with the typed name (the text before the first comma, not ending with a street word) as whole words but none named just that ("Leesburg Pike" and a clinic for "Leesburg, VA" from Ashburn), the query is asked once more without the bias, and that answer's towns, villages and neighbourhoods named just that go first (`geocode.crowded_out`, `PLACE_KINDS`; routing hunt 4, G4-1); if that second ask fails, the biased answer stands | `lat`, `lon`, `lang`, `limit=1`, `radius=0.25` km; with `address=true`, first `layer=house`, `limit=1`, `radius=0.04` km |
 | 200 | `{"results": [...], "attribution": [...]}`, at most `limit` results, each inside the box, rows with the same name and OSM key within 300 m folded into one, and rows with the same name at the same point (within 2 m, any OSM key: one park mapped as a park and as a protected area) too | the same shape, zero or one result |
 
 Each result is `{name, label, lon, lat, kind, osm_type, osm_id, osm_key,
@@ -2458,6 +2496,30 @@ deployment's geocoding slots are still busy after it, or at once when another
 request is already waiting; 502 when Photon (search) or both Photon and the router (names) do not
 answer in time; 500 for anything else. `tests/test_geocode_api.py` replaces
 Photon at `core.geocode._get` and the router at `core.geocode._locate`.
+
+**Routing hunt 4, G4-1: a town crowded out by its own name.** With the bias's
+strength above, "Leesburg, VA" searched from Ashburn Metro found a clinic 0.7 mi
+(1.1 km) away and three Leesburg Pikes, and the town 9 mi (14 km) away was not
+among the candidates Photon re-ranks; "Urbana, MD" from Baker Park found only
+Urbana Pike, and plan_route quietly rode 1 to 2.5 mi instead of about 9. Search
+now asks once more without the bias when a biased answer looks crowded out (a
+row named with the typed name, none named just it) and puts that answer's
+towns, villages and neighbourhoods named just it first, so the app's dropdown
+and the MCP's search both have the town. The MCP's `pick_place` ranks the
+matches within `NEAR_PLACE_MI` of the route's other points: a town named just
+the typed name, then any row named just it, then a row whose label names the
+town typed after the comma ("Old Town Fairfax, Fairfax VA" from Reston is Old
+Town Hall, Fairfax, not the former Wiehle Town Hall in Reston), then the
+search's order (`place_rank`). Which rows trigger the second ask, and the
+ranking's order, are Claude's defaults, not measured against the live index;
+`BIAS_ZOOM` and `BIAS_SCALE` are unchanged and still to be checked there. The
+second ask is one more Photon call, made one after the other, so such a search
+can take up to twice `PHOTON_TIMEOUT_S` while the client's slot is held. That
+set is wider than a crowded-out town: a bare name that is also a street's
+("Columbia" near Columbia Road NW, "Connecticut") is asked again too. A typed
+name that ends with a street word ("Wisconsin Ave", `STREET_WORDS`) is a street
+search and is not asked again. If the second ask fails, the biased answer is
+returned as it was, not a 502.
 
 **What a client should do.** Keep one geocoding request in flight for the
 page, search and names together - the per-client slot is shared, so a second
@@ -5194,6 +5256,264 @@ The third routing hunt's owner calls, as Stephen decided them on 2026-11-08:
   the weekend parkways is shown on screen (the trail colour, the map notes), not said out loud.
   No change.
 
+### Routing hunt 4
+
+- **Red junctions near an end or a stop** (J4-1). The crossing search (`refine.crossing_targets`)
+  and the red pass after it (`red_crossings.reds_of`) left every red junction within 0.31 mi
+  (500 m, `refine.ENDPOINT_CLEARANCE_M`) of the start, the end or a stop, often the arterial
+  crossing nearest the rider's home, even where the way round cost nothing; on a trip under
+  0.62 mi (1 km) no red was ever asked round. That clearance is for busy stretches (the router
+  must be able to leave and arrive); a red's exclusion takes out only the edges within 10 ft
+  (3 m) of its node. Now a red near an end is a target as any other. The cul-de-sac case (the
+  red is the only way out) is kept: the search marks such a red's targets `at_end`, asks a round
+  that finds no route with them again without them, and does not ask them again (`_search`'s
+  `no_way`); a round of only such reds that finds no route is skipped, not said cut short. The
+  red pass drops a red whose ask finds no route and tries the next, as it did; its window is
+  clipped at the leg's end (`stretch`). `red_crossings.stops_m` (hunt 2, P2-1) went with the
+  filter it fed. Review fix: in the red pass a red near an end is left out of the whole-plan
+  ask (step 1), where a cul-de-sac's only exit made the router find no route for every red
+  together, and is asked after the reds clear of the ends, by the narrow window only
+  (`red_crossings.queue`, `near_end`), so its asks do not spend the `MAX_ASKS` (6) the others
+  need. Tests: tests/test_refine.py, tests/test_red_crossings.py.
+
+- **Avoid hills chose a steep wall** (T4-1). On the avoid half of the hills slider a pushed
+  window cost its pushing time plus `WALK_PENALTY` a second, and pushing slows only a little
+  with the grade, so the same rise packed into a steeper, shorter pitch cost less: 300 ft
+  (91 m) of rise at full avoid cost 10,000 s at 5% and 4,800 s at 15%, and from Georgetown's
+  waterfront to Tenleytown hills -100 took a 15.7% lane where -70 took the 3-6% Glover Park
+  route. Smaller drops came from the 5 mph hold and W' (5% against 6% at -30, 6% against 8% at
+  the detent). Now the cost per foot of rise never falls as the grade rises (`hill_cost`'s
+  "Steeper never costs less", above); at full avoid every grade a rider would push costs what
+  the gentlest pushed one does. Test: `test_the_same_rise_never_costs_less_up_a_steeper_grade`
+  (every slider position, three flat speeds, 15 m (50 ft) and 300 ft (91 m) of rise). Planner
+  only, no map rebuild. The 1% LT1 grade at full avoid (`LT1_GRADE_MIN`) still makes nearly
+  every climb a push there; that is an owner call, not changed.
+
+### Routing hunt 4: time and closures (C4-1 to C4-3)
+
+- **A reviewer's closure is closed on foot too** (C4-1). Run, Walk and Walk + transit went
+  straight through Lake Frank's closed Lakeside Trail: a reviewer's closure carried no `on_foot`,
+  and a closure silent on people on foot is only warned of on foot (`rules.for_plan`).
+  `ReviewedClosure.on_foot` (migration 0060) is set from the entry's and the confirm's `on_foot`
+  (default true; false for a road closed to traffic whose sidewalk stays open), and
+  `reviewed_closures.zones_of` passes it on; a row with none (from before, Lake Frank's two
+  among them) reads as true. Defaulting every reviewer closure to closed on foot is Claude's
+  default, not measured: the closures entered there are mostly trails. The road panel's form has
+  no tick yet; the API takes `on_foot`. The MCP's `closure_warning` no longer says the router
+  found no way round a closure a run or walk was not routed round because its source is silent
+  on people on foot (`route_closures`, `ON_FOOT_UNSAID`). Tests:
+  `tests/test_reviewed_closures.py`, `tests/test_mcp_route_details.py`.
+- **A ride time that is not now is the start of its next window** (C4-2). The rush, off-peak
+  and night dials matched closures, notices and a run's darkness at next Tuesday's instants, so
+  on a Monday afternoon this evening's rush and tonight were never checked.
+  `ridetime.soonest_start` steps forward from now in quarter hours, up to 8 days, to the first
+  moment `when_at` gives the dial (both Claude's defaults, not measured; every boundary is on
+  the hour), so holidays and Sunday evening's off-peak count. `workzones.ride_moment` uses it
+  for every dial but Weekend, which keeps `soonest_instant` (hunt 3, T3-7). The router's
+  `date_time` (`representative_time`) and the car-free reading (`INSTANTS`) are unchanged.
+  Tests: `tests/test_workzones_feed.py`.
+- **District-wide notices only on routes in the District** (C4-3). MPD's and AlertDC's
+  "Check before you go" notices were tested against the District's bounding box, which takes
+  in Takoma Park, Silver Spring, Bethesda, Arlington and Alexandria. `dc_closures.in_district`
+  keeps the box as a first test and then reads the District's boundary
+  (`core/geodata/dc-boundary.geojson`, as `bike_bans.dc_polygons`). Tests:
+  `tests/test_dc_closures.py`.
+
+No map rebuild is needed for any of them.
+
+### Routing hunt 4: trails (M4-1 to M4-4)
+
+- **The connector says a Mountain Bike route's trail reading** (M4-1). The MCP's summary read
+  the answer's `easy_mtb` but never its `mtb`, so a trail above the rider's hardest level with
+  no way round, the mountain-bike map being down (`no_mtb_graph`), or a route with no trail at
+  all reached a connector user unsaid. `mtb_said` says what the page's `mtbNotes`
+  (`lib/mtbMode.ts`) says, warnings first, from 66 ft (20 m), as the summary's `mtb` lines and
+  on each alternative. Its figures go through `distance_text`, which mirrors the page's
+  `formatDistance`: below a tenth of a mile they are said in feet ("100 ft (32 m)" of LTS 4 at
+  Lake Frank), not as "0.0 mi". MCP only. Tests: tests/test_mcp_trails.py, tests/test_mcp_optimizing.py.
+- **A loop's way back shared is measured by stretch, not by way** (M4-2). `refine.return_overlap`,
+  `routing.loop_stats`, `refine.repeated_by_leg` and `_repeat_points` counted a piece as ridden
+  before wherever its OSM way was, so a trail mapped as one way for miles (Rosaryville's
+  Perimeter Trail, Schaeffer Farms' White Loop) counted in full once any part of it was ridden
+  out: 48% and 67% shared where at most 14% and 38% could repeat. A piece now counts only where
+  a piece ridden before is on the same way with its middle within 16 ft (5 m,
+  `routing.RIDDEN_MATCH_M`: Claude's default, not measured; pieces run between the trace's shape
+  vertices, so one stretch ridden either way has the same middle). `overlap_pct`, the loop's
+  ranking, the search's loop bar and the fewer-repeats pass all read it. Planner only, no
+  rebuild. Tests: tests/test_loop.py.
+- **Past the target distance is said** (M4-3). Trailmaxxing's target is a limit (OWNER-DECISIONS
+  257, 267, 271); the MCP's summary now says `over_target` ("2.8 mi (4.5 km) over the rider's
+  target of 3.0 mi (4.8 km)") from `calm_search.over_target_m`, or a candidate's own
+  `over_target_m`, as the page's `overTarget` does, and `target_miles` is described as the
+  longest the ride may be, not "a soft target distance". MCP only.
+- **Mountain-bike trails are trail, not ordinary street** (M4-4). The map gives a mountain-bike
+  trail no facility (`pipeline/run.py`: no path rail on a trail only a mountain bike rides), so
+  the MCP said such a ride was "ordinary street: 100%". It now reads the answer's
+  `trail_levels` (every mountain-bike trail, rated or not): their miles on a stretch with no
+  facility are "mountain-bike trail" in the summary's `facilities`, and `trail` in `roads` and
+  in `route_segments` (a segment at least half on one). The map's rule and the answer's
+  `facility_m` are unchanged; MCP only, no rebuild.
+
+### Routing hunt 4: places, vias and the connector (L4, 2026-11-09)
+
+Fixes in the MCP server (`mcp/routemaker_mcp.py`); none needs a map rebuild. Tests:
+tests/test_mcp_server.py, tests/test_mcp_optimizing.py, tests/test_mcp_route_details.py.
+
+- **An avoid on a followed line** (L4-1). The site's map matching never sees roads to avoid,
+  so a followed line was ridden through them while the answer said they were left out. An
+  alternative's draft (marked `follow_alternative`, never sent to the site) is now planned
+  through its points with the roads left out, and says so; an avoid on the rider's own
+  followed line is refused, in plan_route and in revise_route, with what to do instead. The
+  `alternatives` and `avoid` descriptions say so.
+- **A loop that strays on its way back** (L4-2). `with_metro_fix` put the station in as the
+  last point, which the site refuses as a via (400), and the whole call failed. Where the
+  closing leg strays, the ride is now a round trip in so many points (the station, then the
+  start again, the station a via). A fix round the site refuses keeps the plan already made,
+  with a note.
+- **More plans on the site's connector** (L4-4). `Call.time_for_another_plan` asked for a long
+  ride's whole 48 s budget before every plan, so on the connector (55 s a call) a Metro fix, a
+  spur trim or another `plan_metro_loop` attempt ran only if the first plan took under about
+  7 s. It now asks for one more plan as long as the longest timed in the call, times 1.5, plus
+  5 s, as `_best_order` already did (`PLAN_TIME_FACTOR`, `PLAN_TIME_SPARE_S`: Claude's
+  defaults, not measured), and 48 s only before a plan is timed. A spur trim skipped for time
+  is now said, with the via point to move; `OUT_OF_TIME` no longer promises that revise_route
+  will fix the stray.
+- **A stray whose nearest station is already a point** (L4-5). The fix now walks the
+  stretches over the limit worst first, and for each the `METRO_FIX_STATIONS` (3: Claude's
+  default, not measured) stations nearest it, passing over only a station that is already an
+  end of the leg that strays. Where none is left, the answer says so.
+- **The share budget spent** (L4-6). Where the exact route could not be kept, the link is a
+  plain plan link without the followed line or the roads avoided: the answer now says it
+  opens a new route without them, not "this exact route".
+- **A round-trip alleycat's checkpoint order** (L4-7). With the start given again as the
+  finish, both rows took the last point's number. Each row now takes the first point at its
+  place not yet used, so the start is stop 0.
+
+Not fixed here: L4-8 (short LTS 4 pieces named "path" at Metro ends), whose cause is not yet
+known and needs the map's segment table and the router to find; L4-3 waits on the owner.
+
+- **R4-1, Mass Ride rode the H Street / Benning Road NE streetcar rails** (OWNER-DECISIONS 289):
+  the rails were only priced at LTS 4 (288), which a Mass Ride at stress 0 hardly feels. A Mass
+  Ride now leaves the rail streets near it out of its requests, still crossing them at cross
+  streets, and moves a point on one to the nearest cross street with a note ("Mass Ride keeps
+  off street-running rails", above). Other ride types keep 288's price. No map rebuild.
+
+### Round 4 owner decisions (2026-11-09)
+
+The fourth routing hunt's owner calls (reports/routing-hunt-4/findings.md), as Stephen decided
+them on 2026-11-09:
+
+- **Rush hour's doubling** (J4-2), asked "Should only crossings and lefts get rush hour's
+  doubling?": "yes". `UNSIGNALISED_RUSH_FACTOR` (x2) now applies only to the kinds that wait for
+  a gap (`intersections.GAP_WAIT_KINDS`: crossing, left onto, straight onto, left across, left
+  from). A right turn onto an unsignalised LTS 4 road, riding along it, a slip lane and a right
+  turn off it keep rush hour's x1.25 (`intersections.time_factor`'s `kind`). Code change, no
+  rebuild. Tests: tests/test_intersections.py.
+- **MTB-trail pace on Gravel and Mountain Goat** (M4-5), asked "Should Gravel and Mountain Goat
+  use 6 mph on MTB trails?": "That really differs a lot by terrain, but use a reasonable default
+  for all." Their answers on the off-road graph now time the mountain-bike class
+  (`segment.mtb_only`) at Mountain Bike's singletrack pace, as Easy MTB's do
+  (`routing._with_mtb`, `offroad_dirt_timed`). The one pace for every terrain
+  (`mtbmode.SINGLETRACK_SPEED_KMH`, about 6 mph) is Claude's default, not measured: the owner
+  says it varies a lot by terrain. The time shown changes; the ranking does not. Code change, no
+  rebuild. Tests: tests/test_route_dials.py.
+- **Avoid a road by name** (L4-3). The owner asked "What do you mean avoid georgia avenue?
+  Usually a good idea, but be more specific." Claude explained it as matching only the road and
+  its own painted lane, with side paths and cycletracks mapped as their own ways kept unless the
+  rider names them; the owner: "We can keep that approach." The connector's `avoid` by `road`
+  (`mcp/routemaker_mcp.py` `_road_runs`) now skips stretches labelled "path beside X", "service
+  road beside X", "sidewalk beside X" and cycletracks named for the road ("X bike lane",
+  "X protected bike lane", "X Cycletrack", `SEPARATE_WAY_HEADS`, `SEPARATE_WAY_TAILS`) unless the
+  rider names that label in full, and does not bridge a run across one. The note names the
+  stretches each run matched ("Georgia Avenue miles 0.6 to 0.7 (matched: Georgia Avenue)"), and
+  a draft that rides only a way beside the road is refused with that way's name. Which labels
+  count as separate ways is Claude's default. Code change, no rebuild. Tests:
+  tests/test_mcp_optimizing.py.
+- **Winding trails for Group Ride and Fast** (P4-1), asked "Should Group Ride and Fast pay for
+  winding trails the way Road Bike does?": "yes"; and later, of the round 4 fixes, "Ok. Make
+  sure they are included." Road Bike pays through its own graphs (`rm:winding`, written only on
+  `variants.PAVED_GRAPHS`, priced as the LTS 3 stress penalty there). Group Ride and Fast plan on
+  the standard and weekend graphs, which Default, Trailmaxxing, Cargo and the others share, so a
+  price written into those graphs would charge every ride type on them; and their calm rate is 0
+  (stress 40 and 10, `presets.calm_rate_for`), so neither the calm search nor the trail seek's
+  `avoid_winding` runs for them. So it is built at plan time, with no rebuild
+  (`core.winding_round`, called from `routing._plan` after the calm search and the trail-level
+  rounds, before the red pass): the route's trail-class ways that wind
+  (`routemaker.winding.is_winding` on each way's whole line from the segment table, as
+  `pipeline.run` decides `rm:winding`) are summed; where they come to `WINDING_MIN_M` (400 m) or
+  more, the plan's own request is asked once more with points along them excluded, and each
+  route is scored as the search scores it (`refine.Analysis.score`) plus, per metre of winding
+  trail, what a metre of LTS 3 adds in the router's own cost at the request's `use_roads`
+  (`refine.lts3_added_m`). The new route is taken where it scores better and the level rounds'
+  guard keeps it (`refine.level_round_kept`: no busier, not past the ceiling, a loop's way back
+  kept apart); its exclusions then go with the later ways round. The answer says what it did
+  (`winding`: `winding_m`, `asked`, `taken`, `limited`), and a round cut short by time is not
+  kept in the answer cache. `WINDING_MIN_M`, the one round and the points excluded (40 m apart,
+  none within 300 m of the plan's points, at most 60) are Claude's defaults, not measured. It
+  does not run on a quick first route, a followed or drawn line, or trails off. Tests:
+  tests/test_winding_round.py, tests/test_route_dials.py `TestWindingTrails`.
+- **Rock Creek's night deer notice** (C4-4), asked "NPS posted that Rock Creek's night deer
+  closures started Nov 2. Should I add this season's night notice?": "No, it's switched to
+  temporary closures and not a general prohibition as in years past, fortunately." No change:
+  `deer_closures.ROCK_CREEK_SEASONS` keeps 2025-26 only, and NPS's own alerts feed item is still
+  shown as it is.
+- **Lit ways on a run that ends after dusk** (X4-3), asked "A run that starts before dusk and
+  finishes after it gets no preference for lit ways. Should it prefer them when the finish will
+  be dark?": "Most people polled say darkness has no effect on their riding. They have lights."
+  Asked then whether Run's lit preference should go too: "Keep for run. It's much easier to have
+  a powerful light on a bike."; and to judging a run by its estimated finish: "Sure." Built on
+  the hunt4/run-dark branch, not this one.
+- **Cargo's and Tandem's barrier charge** (R4-2), asked "Cargo and Tandem pay the 15-minute
+  narrow-barrier charge at ordinary trail gates, so they leave the Anacostia Riverwalk. Should
+  that charge apply only to gaps under 1.5 m, stiles and cycle barriers?": "Yes. Tandems
+  regularly use that trail." Stock Valhalla charges one `gate_cost` plus `gate_penalty` per
+  request at every gate node with no access tag (sif/dynamiccost.h, `base_transition_cost`), and
+  every ride type's request carries one pair; the transform makes the cycle barriers, narrow
+  bollards, kissing gates, stiles and turnstiles that Cargo and Tandem are meant to pay for that
+  same gate node. No other node type has a per-request charge a bicycle request reads
+  (`toll_booth_cost` is not read for bicycles, `disable_toll_booth_`; `country_crossing_cost` is
+  the state line's; a bollard costs nothing). So a plain gate can be told apart from a narrow
+  gap only by taking it out of the graph as a gate, and then every ride type loses the 30 s it
+  pays there (PLAN item 336(2), "Flag them and maybe 30 seconds. 10 minutes would keep people
+  off traffic free roads."), and nothing is left in the graph for 336(2)'s "Gate ahead" to
+  read. So the owner was asked again, on a decision card, "Can plain wide trail gates cost
+  nothing for every ride type?", and on 2026-11-09 chose "Free for everyone" ("Cargo and Tandem
+  stay on trails like the Riverwalk. Other ride types lose about 30 s per plain gate. Narrow
+  gaps keep the charge. Needs a map rebuild."). **Built:** a plain `barrier=gate` with no
+  restricting `access`, `vehicle`, `bicycle` or `foot`, no motor-vehicle key, no
+  `opening_hours`, no `locked` other than `no`, and no `maxwidth` under 1.5 m (an unreadable one
+  keeps the gate) loses its barrier tag in the transform (lua/routemaker_remap.lua
+  `wide_open_gate`), so Valhalla reads a plain node and no ride type pays a gate charge there;
+  every other gate, `lift_gate` and `swing_gate` are left as they were. Needs the map rebuild.
+  Tests: tests/lua/test_remap.lua, tests/lua/test_graph_entry.lua.
+
+- **Run's lit ways after dark** (X4-3): kept for Run only. "Keep for run. It's much easier to
+  have a powerful light on a bike." Bike rides never weigh lighting. No change there.
+- **A run that ends after dark** (X4-3): Claude asked: "Should it count as after dark when the
+  finish will be dark? I'd say yes, using the estimated finish time." Stephen: "Sure." A run is
+  planned with Valhalla's `use_lit` (`run_plan.USE_LIT_AFTER_DARK`) when its start or its
+  estimated finish falls between civil dusk and civil dawn (`run_plan.is_dark_over`), or the
+  ride time is Night. Before, only the start was read, so a run leaving minutes before dusk
+  was planned with no lit preference however long it ran in the dark. Code change; no map
+  rebuild.
+  - The finish is estimated before planning (`run_plan.estimated_s`) at the run's pace on the
+    flat: for a loop from a start alone with a target, the target distance; otherwise the
+    straight lines between the points (and back to the start for a loop) times
+    `run_plan.ROUTED_PER_STRAIGHT` (1.3, the target loop's existing first guess), or the
+    target where stops and a target are both given and the target is longer. Using that
+    factor here, and the flat pace with no allowance for climbs or waits at lights, is
+    Claude's default, not measured.
+  - Where the estimate says the run ends in daylight but the planned run ends after dusk,
+    `api._run_body` plans it once more with `use_lit`, inside the same deadline, but only
+    where at least as much time is left as the first plan took. The lit plan is kept only
+    where it ran whole: no router call cut for time and no loop's tries stopped for time
+    (`run_plan.Router.short`). Otherwise, or where it finds nothing, times out or the router
+    is down, the first plan stands and the answer says `dark: false`. Only runs whose
+    estimate falls short across dusk pay for the second plan.
+  - Not changed: Reach's rings for Run (`core.reach._ride`) still judge darkness at the ring's
+    moment alone.
+  Tests: tests/test_run_plan.py.
+
 ### Trails off (OWNER-DECISIONS 463, 463a, 463b)
 
 The owner, 2026-10-09: "add it". A trails-off switch is offered on every ride
@@ -6334,7 +6654,8 @@ it gave 58.0 mi, 0.24 mi and 7.2 mi, which is the router again, leg by leg, with
   and never past **1.25 times it** (`presets.TARGET_CEILING_RATIO`, the hard ceiling,
   `presets.target_ceiling_m`). The answer always says how far over it is
   (`calm_search.over_target_m`, and each candidate's `over_target_m`); the page says "X mi over your
-  target", miles first with km in brackets, in the summary and in the announcement.
+  target", miles first with km in brackets, in the summary and in the announcement, and the
+  MCP's summary says it as `over_target` (routing hunt 4, M4-3).
 - **With no target: the ceiling is 1.6 times the router's own route** (the use_roads 0 route
   Trailmaxxing plans without a search), and at least a mile more (`presets.default_ceiling_m`,
   `DEFAULT_CEILING_RATIO`, `DEFAULT_CEILING_EXTRA_M`), and inside it every extra mile must buy
@@ -6546,7 +6867,8 @@ is asked for through the start again; then the way back (the last leg) is asked 
 or a stop; up to 150), thinned to every second, fourth and eighth point if the router has no route or
 it is past the ceiling (the whole loop, not each half): every one is asked (four routes at
 most), and the least stressful of the ways back that share at most 30% of their road with the way out
-(matched by way) is kept (at the top of the slider by `better`, with the diminishing returns on the
+(matched by stretch, `routing.Ridden`: a piece on the same way with its middle within 16 ft (5 m,
+Claude's default, not measured) of one ridden out; routing hunt 4, M4-2) is kept (at the top of the slider by `better`, with the diminishing returns on the
 whole loop's distance); if none does the one that shares least is kept, so the overlap is preferred away, not forced, and a loop may still use one bridge. If
 the way back is the way out whatever is excluded (90% or more), the router's own route is kept and
 `loop.fallback` says `out_and_back`. Where the time ran out before every way back was asked and
@@ -6958,13 +7280,13 @@ pass did not run (the crossing search covered the route, a loop, a first route, 
 a Mass Ride) and on the routes to choose from. An answer whose pass stopped at `time`, `unread` or
 `error` is not kept by the answer cache (`route_cache.keepable`), nor is one whose trail seek
 (`calm_search.seek.limited`) stopped at `time`, `table`, `error` or `unread`.
-The pass leaves a red within 500 m of the rider's own stops and ends, never of a long calm plan's
-cuts (hunt 2, P2-1, `red_crossings.stops_m`): `refine_long` answers its cut legs joined, so each
-cut is a leg boundary of the answer, and a red a few hundred metres from one (the cut placed on
-the calm trail just past the arterial it crosses) was dropped here as "near a stop" while the leg
-searches could not exclude it either, being at their legs' ends. The cuts are read off
-`calm_search.long.stops`. The way round is still asked within the red's own cut leg, so a red
-right at a cut may find none.
+The pass asks round every red, those near the rider's own stops and ends and a long calm plan's
+cuts too (routing hunt 4, J4-1; before, it left a red within 500 m of a stop or an end, and hunt 2,
+P2-1, had taken the cuts out of those stops). The way round is asked within the red's own leg, so
+a red right at a stop, a cut or an end may find none, and is then left. A red within 500 m of a
+stop or an end is left out of the whole-plan ask and asked after the others, by the 1.2 mi (2 km)
+window only (`red_crossings.queue`): where it is a cul-de-sac's only exit it has no way round, and
+its asks would otherwise spend the pass's six before the reds clear of the ends were asked.
 
 ### Reproduction (item 273)
 
@@ -8329,8 +8651,23 @@ docs/OPERATIONS.md, "Transit schedule". The design note is plans/v0.6.0-transit-
   daylight-saving days are right. From 1 to 5 am both service days are searched (owl trips past
   27:00 included). Stops without times (not timepoints) are interpolated by the build.
 - **Router budget.** The direct ride is routed first. Candidate legs are capped at 5 s a call and
-  `MAX_ROUTER_CALLS`, and stop 12 s into the request (`api.TRANSIT_CANDIDATES_S`); a refusal, a
+  `MAX_ROUTER_CALLS` (eight: three stations each end, the direct ride and walking the whole way),
+  and stop 12 s into the request (`api.TRANSIT_CANDIDATES_S`); a refusal, a
   timeout or a router that is down estimates the leg from the straight line, never fails the plan.
+- **Walks timed as walked** (routing hunt 4, X4-1). Walk + 🚆🚌 and Bikeshare + 🚶🚆🚌 walk to and
+  from the nearest three stations at each end with the pedestrian router in the search, as Own
+  Bike + 🚆🚌 rides to its own, so the stations are ranked on their walks as walked; the farther
+  stations and the bus stops stay estimated (straight line times `DETOUR`, 1.3, at 3 mph). A
+  walk that is the answer's line, or one walked for the map (`transit.drawn`), takes its walked
+  time too, and the infrequent departures' waits are worked out again from it. A walk, line or
+  drawn, that can no longer catch its departure drops the trip as `transit.with_rides` does, and
+  the best trip left is planned in its place: its line walked where it is a walk, routed where it
+  is a ride (`api._walked_line`, the `walked` and `best_left` steps of `_transit_body`,
+  `transit.drawn`), and drawn in turn. The walks to bus stops and the farther stations are only
+  walked here, and they are the infrequent departures' legs. A trip that is the only one (a trip
+  with stops, joined) cannot be dropped: it keeps its walks as walked and the waits as planned,
+  and says "As walked, you may miss the 8:06 am ..., and no later one leaves within the hour:
+  leave earlier, or plan another way."
   The answer's own line has the rest of the budget. If the router does not draw it in time (a
   timeout or the router down), the leg is drawn straight with the plan's estimated time and a note
   says so, as a short leg is. The api logs each plan's seconds in the search, the candidates' router
@@ -9608,3 +9945,42 @@ side:
   order and silence, the voice's turn-taking, the wake lock, no Capacitor import) and
   `rideWatch.test.ts` (nativeShell.ts is the one other `watchPosition`, held to the same no-leak rule);
   `cd mobile && npm test` for the config, the manifest's permissions and the compatibility layer.
+
+## Routing hunt 4
+
+### Transit, bikeshare, walk and run (X4)
+
+- **X4-1: walks timed as walked.** Walk + 🚆🚌 and Bikeshare + 🚶🚆🚌 timed every walk by the
+  straight line times 1.3 and never corrected it once walked: a station across the Washington
+  Channel (0.6 mi straight, 2.0 mi on foot) was chosen over a nearer one on foot, and the trip
+  promised in less time than its first walk alone. The walks to and from the nearest
+  `STATION_CANDIDATES` stations are walked in the search; the line's walk and the walks drawn for
+  the map take their walked times, and the waits are worked out again ("Walks timed as walked",
+  Transit assist). `MAX_ROUTER_CALLS` is one more, for walking the whole way after those walks (Claude's
+  default, not measured). Review: a walk that so missed its bus kept the trip, its walked time
+  beside the departure it could no longer catch and no word (a walk drawn for the map), or kept a
+  dropped trip where the best left had a ride for its line (the line's walk). Both now plan the
+  best trip left; the only trip of a trip with stops says the departure may be missed.
+  Tests: tests/test_transit.py (`Barrier`, `test_walk_transit_ranks_stations_on_their_walks_as_walked`,
+  `test_a_walk_drawn_for_the_map_is_timed_as_walked`,
+  `test_a_walk_transit_line_walked_after_the_search_is_timed_as_walked`,
+  `test_a_walk_drawn_that_misses_its_departure_drops_the_trip`,
+  `test_a_walk_drawn_that_misses_the_only_trips_departure_says_so`,
+  `test_a_trip_whose_walk_misses_its_departure_is_replaced_by_the_best_left`). No map rebuild.
+- **X4-2: every ride of a transit trip in the connector's answer.** The answer's figures (miles,
+  LTS, roads, busy stretches, junctions, route_segments) are the route line's, the trip's first
+  ride, so the ride from the exit station was left out. The MCP's summary now carries
+  `transit.later_rides` (each later own-bike or bikeshare ride: from and to, minutes, miles, LTS
+  shares and busy stretches from its routed `stress_spans`; `routed: false` where the router did
+  not draw it), `transit.ridden_mi` and `transit.figures_cover`; route_segments says `covers`.
+  The later rides' road names are not in the answer, so none are listed. Tests:
+  tests/test_mcp_route_details.py. No map rebuild.
+- **X4-4: a Run loop's link keeps its loop.** `_run_body` puts `loop` and `target_distance_m` in
+  the answer's `dials`, as a ride's are, so the connector's link carries `loop=1` and `targetmi`
+  and a kept route's dials say `loop: true`; a Run loop's link opened, or re-planned, one way.
+  Tests: tests/test_run_plan.py. No map rebuild.
+- **X4-5: a trip ending on a bikeshare bike is labelled so.** The option label named the ending
+  from the last leg, always the walk on from the dock, so "..., walk" for a trip ending with a
+  share ride. A ride (own bike or share bike) after the last transit leg names the ending
+  (`transit._ending`). Tests: tests/test_transit.py. No map rebuild.
+- X4-3 (darkness over a run's span) is built under "Round 4 owner decisions (2026-11-09)".
