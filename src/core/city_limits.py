@@ -1,4 +1,5 @@
-"""The major cities whose traffic signals take the cities' shorter waits (`routemaker.junction_delay`).
+"""The major cities whose traffic signals take the cities' shorter waits
+(`routemaker.junction_delay`).
 
 The owner, 2026-11-08: "along stroads that you'd find in many of the suburbs, the light cycles
 are a lot longer than what you'd find in DC", and of the longer suburban waits, "Not really
