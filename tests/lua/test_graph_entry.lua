@@ -728,6 +728,17 @@ for _, kind in ipairs({ "kissing_gate", "stile", "turnstile" }) do
   check("a " .. kind .. " stays open to a bicycle", bike_allowed(hard) and before_bike)
 end
 
+-- Hunt 4 R4-2 (the owner, 2026-11-09: "Yes. Tandems regularly use that trail."): the bare
+-- Riverwalk gates reach the graph as plain nodes, open to everyone as before, so no ride
+-- type's gate charge applies; a narrow gate and a cycle barrier are still gates.
+local riverwalk = transform_node({ barrier = "gate" })
+check("a bare trail gate is not a gate in the graph", riverwalk.gate == "false", riverwalk.gate)
+check("and stays open to a bicycle and on foot", bike_allowed(riverwalk)
+  and math.floor(tonumber(riverwalk.access_mask) / 2) % 2 == 1, riverwalk.access_mask)
+local narrow_gate = transform_node({ barrier = "gate", maxwidth = "1.0" })
+check("a gate narrower than 1.5 m is still a gate", narrow_gate.gate == "true", narrow_gate.gate)
+check("and arms the gate dial", narrow_gate.tagged_access == 0, narrow_gate.tagged_access)
+
 -- A gate or bollard a bicycle passes is not flagged private for being private to cars
 -- (hunt H2, T3, C3, 2026-11-08): the two gates on car-free Beach Drive NW (nodes 971094676
 -- and 13314069319) cost every ride 480 s. Before: private=true.
@@ -1141,7 +1152,8 @@ check("a mapper's own bicycle=yes on it is upstream's to honour",
 -- From 3.7.0 the parser types an `amenity=parking` node as parking, which can
 -- overwrite a gate or a bollard type and drop its gate cost. The tag comes off
 -- a barrier; a plain parking node keeps it.
-local parking_gate = transform_node({ barrier = "gate", amenity = "parking" })
+-- A narrow gate: a wide, bare one is no longer a gate at all (hunt 4 R4-2, below).
+local parking_gate = transform_node({ barrier = "gate", maxwidth = "1.2", amenity = "parking" })
 check("a gate that is also tagged amenity=parking stays a gate",
   parking_gate.gate == "true" and parking_gate.amenity == nil, parking_gate.amenity)
 local parking_bollard = transform_node({ barrier = "bollard", amenity = "parking" })

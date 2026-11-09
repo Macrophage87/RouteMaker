@@ -3095,20 +3095,62 @@ def line_between(plan: Plan, a_mi: float, b_mi: float) -> list[list[float]]:
     return _thinned([at(a), *inside, at(b)], AVOID_LINE_POINTS)
 
 
-def _road_runs(plan: Plan, road: str) -> list[tuple[float, float]]:
+# Hunt 4 L4-3: avoiding a road by name left out the separated path beside it ("path beside
+# Georgia Avenue") and still rode the road. Asked "What do you mean avoid georgia avenue?
+# Usually a good idea, but be more specific", Claude put it as: match only the road and
+# its own painted lane, and keep sidepaths and cycletracks mapped as their own ways unless
+# the rider names them. The owner, 2026-11-09: "We can keep that approach." A way of its
+# own beside a road is labelled with one of these heads or tails (`describe.beside_words`,
+# `routing.sidepath_names_of`: "9th Street Northwest protected bike lane"); the road's own
+# painted lane is a stretch of the road, under the road's name.
+SEPARATE_WAY_HEADS = ("path beside ", "service road beside ", "sidewalk beside ")
+SEPARATE_WAY_TAILS = (" bike lane", " cycletrack", " cycle track", " sidepath", " side path")
+
+
+def _separate_way(label: str) -> bool:
+    """Whether a stretch's label (case-folded) names a way of its own beside a road: a side
+    path, a service road or sidewalk beside it, or a cycletrack named for it."""
+    return label.startswith(SEPARATE_WAY_HEADS) or label.endswith(SEPARATE_WAY_TAILS)
+
+
+def _road_runs(plan: Plan, road: str) -> list[tuple[float, float, list[str]]]:
     """The mile ranges of the draft that ride a road of that name (a few metres of another
-    street between two pieces is one run)."""
+    street between two pieces is one run), each with the stretch labels it matched. The road
+    itself and its own painted lane, never a side path, service road, sidewalk or cycletrack
+    mapped as a way of its own beside it unless the rider names that in full (L4-3; the
+    owner, 2026-11-09: "We can keep that approach"). A run is not bridged across one."""
     wanted = road.strip().casefold()
-    runs: list[list[float]] = []
+    runs: list[list] = []
+    broken = False
     for entry in _stretches(plan.answer):
-        street = _street(entry).casefold()
+        label = _street(entry)
+        street = label.casefold()
+        if _separate_way(street) and street != wanted:
+            broken = True
+            continue
         if not (street == wanted or (len(wanted) >= 4 and wanted in street)):
             continue
-        if runs and entry["from_mi"] - runs[-1][1] <= BRIDGE_MI:
+        if runs and not broken and entry["from_mi"] - runs[-1][1] <= BRIDGE_MI:
             runs[-1][1] = entry["to_mi"]
+            if label not in runs[-1][2]:
+                runs[-1][2].append(label)
         else:
-            runs.append([entry["from_mi"], entry["to_mi"]])
-    return [(a, b) for a, b in runs]
+            runs.append([entry["from_mi"], entry["to_mi"], [label]])
+        broken = False
+    return [(a, b, labels) for a, b, labels in runs]
+
+
+def _beside_only(plan: Plan, road: str) -> list[str]:
+    """The labels of the draft's separate ways beside a road of that name (for saying why
+    nothing was matched)."""
+    wanted = road.strip().casefold()
+    seen: list[str] = []
+    for entry in _stretches(plan.answer):
+        label = _street(entry)
+        street = label.casefold()
+        if len(wanted) >= 4 and _separate_way(street) and wanted in street and label not in seen:
+            seen.append(label)
+    return seen
 
 
 def avoid_lines(plan: Plan | None, asked) -> tuple[list[list[list[float]]], list[str]]:
@@ -3138,9 +3180,19 @@ def avoid_lines(plan: Plan | None, asked) -> tuple[list[list[list[float]]], list
                 " revise_route with avoid (or give avoid as a line here)"
             )
         if item.get("road"):
-            runs = _road_runs(plan, str(item["road"]))
-            if not runs:
+            named = _road_runs(plan, str(item["road"]))
+            if not named:
+                beside = _beside_only(plan, str(item["road"]))
+                if beside:
+                    raise ToolError(
+                        f"the draft does not ride {item['road']!r} itself, only "
+                        + ", ".join(repr(b) for b in beside)
+                        + ", a way of its own beside it: name that in full, or give a mile"
+                        " range, to leave it out"
+                    )
                 raise ToolError(f"the draft does not ride {item['road']!r}: check its roads")
+            runs = [(a, b) for a, b, _ in named]
+            matched = [", ".join(labels) for _, _, labels in named]
         elif item.get("from_mi") is not None and item.get("to_mi") is not None:
             a, b = finite(item["from_mi"]), finite(item["to_mi"])
             total = (plan.answer.get("distance_m") or 0.0) / METRES_PER_MILE
@@ -3151,12 +3203,16 @@ def avoid_lines(plan: Plan | None, asked) -> tuple[list[list[list[float]]], list
             runs = [(a, min(b, total))]
         else:
             raise ToolError("each avoid gives road, from_mi and to_mi, or line")
-        for a, b in runs:
+        for k, (a, b) in enumerate(runs):
             if b - a > 2.5 * AVOID_TRIM_MI:
                 a, b = a + AVOID_TRIM_MI, b - AVOID_TRIM_MI
             lines.append(line_between(plan, a, b))
             what = f"{item['road']} " if item.get("road") else ""
-            said.append(f"{what}miles {a:.1f} to {b:.1f}".strip())
+            words = f"{what}miles {a:.1f} to {b:.1f}".strip()
+            if item.get("road"):
+                # Which stretches the name matched (L4-3): the road and its painted lane.
+                words += f" (matched: {matched[k]})"
+            said.append(words)
     return lines, said
 
 

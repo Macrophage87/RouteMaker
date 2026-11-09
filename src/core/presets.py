@@ -78,7 +78,9 @@ VALHALLA_PRIVATE_ACCESS_PENALTY_S = 450
 # streets at Default, and routes left traffic-free trails to avoid furniture that takes seconds
 # to pass (hunt T1, H3). Group Ride and Road Bike had 120 s, for the same reason no longer.
 # Valhalla charges it only at a gate that carries no access tags (sif/dynamiccost.h), and the
-# transform also makes kissing gates, stiles and turnstiles gates, so they cost this too.
+# transform also makes kissing gates, stiles and turnstiles gates, so they cost this too. A
+# plain gate a bicycle passes freely and wide is no gate after the next rebuild (hunt 4 R4-2;
+# the owner, 2026-11-09), so no ride type pays the 30 s there any more.
 GATE_COST_S = VALHALLA_GATE_COST_S
 GATE_PENALTY_S = 0
 
@@ -115,7 +117,10 @@ DEFAULT_STRESS = 70
 #   gates (`NARROW_GAP_M`, `HARD_BARRIERS`, lua/routemaker_remap.lua), so a gate
 #   charge of fifteen minutes keeps a cargo route out of them unless there is no
 #   other way (the owner, 2026-11-08: the large gate penalty is for Tandem "and
-#   possibly cargo too"; every other ride type pays `GATE_COST_S`). Valhalla
+#   possibly cargo too"; every other ride type pays `GATE_COST_S`). A plain
+#   gate a bicycle passes freely and wide is no gate after the next rebuild, so it carries
+#   no charge (lua/routemaker_remap.lua `wide_open_gate`; hunt 4 R4-2, the owner,
+#   2026-11-09: "Yes. Tandems regularly use that trail."). Valhalla
 #   adds `gate_cost` to the route's time as well as its cost and `gate_penalty`
 #   to the cost alone, so the charge is a 30 s slow-down plus a penalty: the
 #   five minutes of `gate_cost` it was until 2026-11-08 put five minutes per
@@ -768,9 +773,13 @@ ROAD_BIKE_SURFACES = 0.9
 # the standard graph (and its weekend twin): no new graph, no map rebuild and no new control.
 # The implementation's defaults, stated here so they can be argued with:
 #
-# - Gates, cycle barriers and narrow bollards: Cargo's charge (`CARGO_GATE_COST_S` plus
-#   `CARGO_GATE_PENALTY_S`, fifteen minutes of cost, 30 s of it time), so a tandem route keeps
-#   out of them unless there is no other way. Steps are priced out for every bicycle already.
+# - Cycle barriers, narrow bollards and gates, kissing gates, stiles and turnstiles: Cargo's
+#   charge (`CARGO_GATE_COST_S` plus `CARGO_GATE_PENALTY_S`, fifteen minutes of cost, 30 s of
+#   it time), so a tandem route keeps out of them unless there is no other way. A plain gate a
+#   bicycle passes freely, at least 1.5 m wide or with no width given, is no gate in the graph
+#   after the next rebuild (`wide_open_gate`, hunt 4 R4-2; the owner, 2026-11-09, "Yes.
+#   Tandems regularly use that trail."), so neither Cargo nor Tandem pays it there. Steps are
+#   priced out for every bicycle already.
 # - Turns: Group Ride's and Road Bike's maneuver penalty (`HIGH_MANEUVER_PENALTY_S`): a long
 #   bike swings wide at every corner, so fewer of them.
 # - Hills toward avoid (`TANDEM_HILLS`, -40): a tandem is quick on the flat and slow up a climb.
@@ -792,7 +801,9 @@ ROAD_BIKE_SURFACES = 0.9
 # 345's finer split, where a tandem slows for a cycle barrier or bollard and is kept only from
 # stiles, turnstiles, kissing gates and gaps under 1.0 m. The graph makes all of those one kind
 # of gate (`remap_node`), so costing cannot tell them apart; the owner's 2026-11-08 ruling puts
-# the large charge on all of them for Tandem until a rebuild can split them.
+# the large charge on all of them for Tandem until a rebuild can split them. Plain wide gates are
+# split off already (above), in line with PLAN item 336(2): "10 minutes would keep people off
+# traffic free roads".
 TANDEM = "tandem"
 TANDEM_STRESS = CARGO_CARRYING_STRESS[CARRYING_PEOPLE]
 TANDEM_HILLS = -40
