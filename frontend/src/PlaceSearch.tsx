@@ -49,6 +49,9 @@ import { watchKeyboard } from "./lib/keyboardLift.ts";
 import { t } from "./lib/i18n.ts";
 import { nativeBridge } from "./lib/nativeShell.ts";
 import { SAVED_KINDS, type SavedHits } from "./lib/savedPlaceSearch.ts";
+import { foodRows, foodWords, withoutFoodRows } from "./lib/placeFood.ts";
+import type { FoodPlace } from "./lib/food.ts";
+import { sharedFood } from "./app/foodData.ts";
 import {
   lettersHeard,
   placeDictation,
@@ -221,6 +224,8 @@ export function PlaceSearch({
   const sharedTurn = useRef(0);
   // The last places picked in any search box, read again on focus so a pick in another box shows.
   const [recent, setRecent] = useState<Place[]>(() => readRecentPlaces());
+  // Find food's places, fetched the first time a food word is searched (app/foodData.ts, shared with the Eat sheet).
+  const [foodData, setFoodData] = useState<FoodPlace[] | null>(null);
   const runner = useRef<PlaceSearchRunner | null>(null);
   const biasRef = useRef(bias);
   biasRef.current = bias;
@@ -228,6 +233,7 @@ export function PlaceSearch({
     runner.current = new PlaceSearchRunner({
       send: searchSender(gate, () => biasRef.current()),
       onResult: (q, r) => {
+        if (foodWords(q) !== null) void sharedFood().then((data) => data && setFoodData(data));
         setResult(r);
         setAnswered(q);
         setActive(-1);
@@ -319,7 +325,9 @@ export function PlaceSearch({
   });
   // Nearest the start first (P2); Enter and Go's early start take the same first place the list shows.
   const start = origin?.();
-  const places = nearestFirst(found, start, answered);
+  // A word for food ("tacos", "pizza"): the places to eat that match it lead, nearest first (lib/placeFood.ts).
+  const food = answeredNow ? foodRows(answered, foodData, start ?? bias()) : [];
+  const places = withoutFoodRows(nearestFirst(found, start, answered), food);
   // "Your location" leads the list while the box is empty or says so; it is never the Enter default.
   const showHere = locate?.support.available === true && locationMatches(query);
   // A pick that adds a stop (Plan with a start and an end) offers the place as the destination too, on a row
@@ -331,7 +339,9 @@ export function PlaceSearch({
   // The empty box lists the last places picked (v0.6.1), under "Your location".
   const empty = query.trim() === "";
   const saved: Place[] = savedFor && !empty ? savedFor(query).places : [];
-  const offered: Place[] = [...sharedItems, ...(empty ? recent : [...saved, ...places])];
+  // Rows listed beside the search's own, for the count said: saved places and places to eat, less the found ones folded into them.
+  const extraRows = saved.length + food.length - (found.length - places.length);
+  const offered: Place[] = [...sharedItems, ...(empty ? recent : [...saved, ...food, ...places])];
   // What Enter with nothing highlighted takes: the first place offered for the words typed; an empty box
   // takes nothing (a recent place is picked only by choosing it).
   const enterPlaces: Place[] = empty ? [] : offered;
@@ -691,12 +701,12 @@ export function PlaceSearch({
         {(!single || planBox === "add") && full && ` ${t("The route has as many points as it can take, so no stop can be added.")}`}
       </p>
       <p className="visually-hidden" role="status" aria-live="polite">
-        {answeredNow ? searchStatusWithHere(searchStatus(result, answered, saved.length), expanded && showHere) : ""}
+        {answeredNow ? searchStatusWithHere(searchStatus(result, answered, extraRows), expanded && showHere) : ""}
       </p>
       {searching && <p className="hint">{t("Searching…")}</p>}
       {answeredNow && expanded && places.length > 0 && namesCityOutside(answered) && <p className="hint">{COVERS_LINE}</p>}
-      {answeredNow && result && (!result.ok || result.places.length + saved.length === 0) && (
-        <p className="hint">{searchStatus(result, answered, saved.length)}</p>
+      {answeredNow && result && (!result.ok || result.places.length + extraRows === 0) && (
+        <p className="hint">{searchStatus(result, answered, extraRows)}</p>
       )}
     </div>
   );
