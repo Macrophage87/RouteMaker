@@ -1963,7 +1963,8 @@ model's forces (`routemaker.effort`, Martin et al. 1998: rolling resistance 0.00
   by `1 + W'/t`, with W' = 70 s of FTP. The whole effort is scaled, so the endurance
   pace and LT1 move with it: the slider's own grade, held for the several minutes the
   slider's help asks about (up to about 7.5 minutes, where LT1 power over `1 + W'/t`
-  reaches the endurance pace), costs nothing past its time, and a little more on longer
+  reaches the endurance pace), costs no steepness penalty past its time (only the floor
+  below, "Steeper never costs less", can add to it), and a little more on longer
   climbs (about 49 s over 1.2 mi (2 km), 105 s over 1.9 mi (3 km)) (`hill_cost.W_PRIME_S`; the power-duration curve
   FTP x (1 + W'/t), Monod and Scherrer 1965, Skiba et al. 2012; cyclists' W' of 18 to
   23 kJ, Weigend et al. 2021, arXiv 2108.04510). The owner: "10% can be done for 100m
@@ -1979,6 +1980,14 @@ model's forces (`routemaker.effort`, Martin et al. 1998: rolling resistance 0.00
   owner: "2.5 mph is probably fast"): 1.9 mph (3.1 km/h) at 6%, 1.7 mph (2.7 km/h) at
   10%, 1.4 mph (2.2 km/h) at 15%. It costs its time plus 4 s of penalty a second pushed
   (`WALK_PENALTY`), so a route that needs pushing loses to almost any ridable one.
+- **Steeper never costs less** (since 2026-11-09, routing hunt 4, T4-1). For the same rise,
+  a steeper window costs at least what that rise costs at any gentler grade, in steps of
+  0.1%, on the same climb (`hill_cost._rise_floor`): the shortfall is added to the penalty.
+  The floor is worked out for the standard rider without assist, as the penalty is, so it is
+  the same at every weight; a push is floored the same way. Climbs are matched by their rise
+  rounded up in 1% steps (`hill_cost.RISE_BUCKET`, Claude's default, not measured), which only
+  ever raises the floor a little. A heavier rider's own climbing time per foot of rise can
+  still fall with the grade; that is time, not price.
 - **Electric assist** (since 2026-11-08, hunt finding E2). On the E-bike ride type and a ride
   with electric assist (a share e-bike, Cargo Bike's assist toggle; `routing.assist_watts_for`)
   the climb is timed at the rider's power plus 250 W from the motor (`hill_cost.ASSIST_W`, an
@@ -1991,10 +2000,12 @@ model's forces (`routemaker.effort`, Martin et al. 1998: rolling resistance 0.00
 The penalty is for choosing routes only: no time shown to riders includes it. Descents
 add nothing here; riding the brakes is still priced from the ride type's brake grade
 (the table above). At 198 lb (90 kg) and 11 mph (18 km/h), 0.6 mi (1 km) costs, in
-minutes of time plus penalty: at the detent (8%), 4.2 + 0 at 8%, 4.2 + 1.7 at 10% and
-4.2 + 5.2 at 12%; at Cargo's start, -60 (3.8%, shown as 4%), 4.2 + 0.2 at 4%, 4.2 + 6.0
-at 6% and, pushed, 19.2 + 90.2 at 10%; at Fast's start, 40 (10.8%, shown as 11%), 4.2 +
-0.6 at 12%. At 3% (-71), 1,000 ft (300 m) at 6% costs 1.2 + 1.0.
+minutes of time plus penalty: at the detent (8%), 4.2 + 0.7 at 8%, 4.2 + 1.9 at 10% and
+4.2 + 5.3 at 12%; at Cargo's start, -60 (3.8%, shown as 4%), 4.2 + 1.0 at 4%, 4.2 + 6.0
+at 6% and, pushed, 19.2 + 92.3 at 10%; at Fast's start, 40 (10.8%, shown as 11%), 4.2 +
+1.2 at 12%. At 3% (-71), 1,000 ft (300 m) at 6% costs 1.2 + 1.7. (Since routing hunt 4,
+T4-1, part of each penalty is the floor below: before it, 4.2 + 0 at 8% at the detent, 4.2 +
+0.2 at 4% at -60, 19.2 + 90.2 pushed at 10%, 4.2 + 0.6 at 12% at 40 and 1.2 + 1.0 at -71.)
 
 Where it is used. Valhalla's own climbing charge (the router's cost per metre climbed
 at the request's `use_hills`, the table above, read between its 1.0, 0.4 and 0.0 rows:
@@ -5213,6 +5224,19 @@ The third routing hunt's owner calls, as Stephen decided them on 2026-11-08:
   together, and is asked after the reds clear of the ends, by the narrow window only
   (`red_crossings.queue`, `near_end`), so its asks do not spend the `MAX_ASKS` (6) the others
   need. Tests: tests/test_refine.py, tests/test_red_crossings.py.
+
+- **Avoid hills chose a steep wall** (T4-1). On the avoid half of the hills slider a pushed
+  window cost its pushing time plus `WALK_PENALTY` a second, and pushing slows only a little
+  with the grade, so the same rise packed into a steeper, shorter pitch cost less: 300 ft
+  (91 m) of rise at full avoid cost 10,000 s at 5% and 4,800 s at 15%, and from Georgetown's
+  waterfront to Tenleytown hills -100 took a 15.7% lane where -70 took the 3-6% Glover Park
+  route. Smaller drops came from the 5 mph hold and W' (5% against 6% at -30, 6% against 8% at
+  the detent). Now the cost per foot of rise never falls as the grade rises (`hill_cost`'s
+  "Steeper never costs less", above); at full avoid every grade a rider would push costs what
+  the gentlest pushed one does. Test: `test_the_same_rise_never_costs_less_up_a_steeper_grade`
+  (every slider position, three flat speeds, 15 m (50 ft) and 300 ft (91 m) of rise). Planner
+  only, no map rebuild. The 1% LT1 grade at full avoid (`LT1_GRADE_MIN`) still makes nearly
+  every climb a push there; that is an owner call, not changed.
 
 ### Trails off (OWNER-DECISIONS 463, 463a, 463b)
 
