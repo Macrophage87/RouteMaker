@@ -110,10 +110,11 @@ export const REACH_RETRY_MAX_S = 10;
 export function reachBody(points: readonly LonLat[], preset: PresetId, dials: Dials, view: ReachView, runPaceKmh?: number): Record<string, unknown> {
   const sent = points.slice(0, REACH_MAX_POINTS);
   const fields = dialFields({ ...dials, systemWeightKg: undefined, targetDistanceM: undefined, loop: false });
-  // A ride's own fields the rings do not take: Mass Ride's size, Mountain Bike's levels, a share bike's docks.
+  // A ride's own fields the rings do not take: Mass Ride's size, Mountain Bike's levels, Easy MTB trails, a share
+  // bike's docks.
   // A share e-bike is Reach's `assist` on Bikeshare: its pace, hills and graph, as the plan rides it.
   const shareEbike = preset === "bikeshare" && fields.bike === "ebike";
-  for (const key of ["ride_size", "mtb_level", "mtb_preferred", "bike", "ending", "pickup_station", "dropoff_station", "transit_option", "novice_legs", "novice_hop"]) delete fields[key];
+  for (const key of ["ride_size", "mtb_level", "mtb_preferred", "easy_mtb", "bike", "ending", "pickup_station", "dropoff_station", "transit_option", "novice_legs", "novice_hop"]) delete fields[key];
   return {
     points: sent,
     preset,

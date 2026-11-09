@@ -729,5 +729,5 @@ test("Go's searches lean to the route's start and list places nearest it first, 
   // Plan's boxes sort by the first point.
   assert.match(src("../app/Planner.tsx"), /origin=\{\(\) => points\[0\]\}/);
   // The list is the sorted one, and Enter takes its first place.
-  assert.match(src("../PlaceSearch.tsx"), /const places = nearestFirst\(found, start, answered\);/);
+  assert.match(src("../PlaceSearch.tsx"), /const places = withoutFoodRows\(nearestFirst\(found, start, answered\), food\);/);
 });

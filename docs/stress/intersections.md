@@ -160,6 +160,14 @@ stopped crossing of an LTS 4 road about 0.52 to 2.00 calm mi [0.83 to 3.22 km; 2
 | A straight crossing at a mapped trail crossing with no signal mapped | the stopped-side cost times 0.5, and never drawn red (orange at most) | `:104`, `:110`, `:559-560`, `:746-747` |
 | A divided road, its two carriageways crossed as one crossing | the costlier carriageway's cost times 0.75 (credit for the median refuge) | `:123`, `:803-820` |
 
+These are stress costs. The time a signal holds the rider is the junction-delay model's
+(docs/DEVELOPMENT.md, "Junction delay"), which reads two things from here (the owner,
+2026-11-08): the signals whose crossed or joined road has 4+ lanes in all or a speed of
+40 mph or more (`big_road`, `big_signal_points`: outside the major cities such a signal is a
+45 s wait), and by signal what a stop sign on the rider's approach would cost over the signal
+(`stop_extra_ft`), which holds a crossing read as needing a beg button below a stop sign
+across the same road in the ranking. Neither changes a junction's cost or colour here.
+
 ## 5. Movements
 
 - **Onto a busy road** (`MOVEMENT_FACTOR_ONTO`, `:204`; applied at `:541-555`): the
@@ -222,8 +230,8 @@ where a busy road meets there (`:572-576`).
   wait 5 minutes at a busy crossing for an opening. There are rarely openings."). A trail
   crossing gets the floor too (its colour stays capped at orange), and a divided road's
   median refuge still takes its x0.75 below it. Signals,
-  all-way stops, cross traffic that stops, and LTS 3 roads keep x1.25. Other weekday hours, to 9 PM, are x1.0. Weekend daytime, federal holidays
-  included, is x0.85. Night, 9 PM to 7 AM on every day of the week, weekend nights
+  all-way stops, cross traffic that stops, and LTS 3 roads keep x1.25. Other weekday hours, to 9 PM, are x1.0, and so are a weekday federal
+  holiday and Sunday 6-9 PM (the owner, 2026-11-08; from 6 PM in round 3: "Let's just go at 6 on Sunday."). Weekend daytime is x0.85. Night, 9 PM to 7 AM on every day of the week, weekend nights
   included, is x0.5 where the crossed road lies in a Census urban area and x0.85 where it
   does not (decisions 468a and 469c to 469e). A road whose urban flag is not known (a
   segment table built before that column) takes x0.85, the smaller reduction. A plan with

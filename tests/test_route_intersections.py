@@ -471,9 +471,11 @@ class TestTheSearchInTheAnswer:
         assert "exclude_locations" not in routes[0]
         excluded, junction = routes[1]["exclude_locations"]
         assert excluded["lon"] < JUNCTION[0], "a point on the edge the route arrives by"
-        # And the junction itself, every edge within 15 m of it.
+        # And the junction itself, every edge within 3 m of it: every edge at the node, but
+        # not the sidepath or a bridge 8-14 m off it, which 15 m took out (the 2026-11-08
+        # hunt, J6).
         assert (junction["lon"], junction["lat"]) == pytest.approx(JUNCTION, abs=1e-4)
-        assert junction["radius"] == 15
+        assert junction["radius"] == 3
         assert body["calm_search"]["rate"] == 0.0
         assert body["calm_search"]["rounds"] == 1
 

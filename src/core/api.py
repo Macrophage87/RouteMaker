@@ -286,7 +286,7 @@ class RouteIn(Schema):
         description=(
             "When the ride is: weekend, weekday_rush (Mon-Fri 07-10 and 16-19), weekday_offpeak"
             " or night (21-07 any day). Absent: the setting of the moment the plan is made, in"
-            " the region's time."
+            " the region's time, or of `depart_at` where a transit trip or a run gives one."
         ),
     )
     carrying: CarryingName | None = Field(
@@ -317,6 +317,18 @@ class RouteIn(Schema):
             " paths, trails, footways or stairs, and the Key Bridge and Arlington Memorial"
             " Bridge roadways allowed. Any ride type, e-bike rides included. Mass Ride"
             " always rides this way, whatever is sent."
+        ),
+    )
+    easy_mtb: StrictBool = Field(
+        default=False,
+        description=(
+            'Default and Trailmaxxing only: the "Easy MTB trails" switch (core.easy_mtb). Plan'
+            " on the off-road graph as Gravel does, so mountain-bike trails rated 0 or 1 on"
+            " `mtb:scale` or `mtb:scale:imba`, and unrated ones (grass and dirt), may be ridden,"
+            " and steer off the trails rated 2 or harder; where the route still rides one,"
+            " `easy_mtb.harder_m` says how much. Where the off-road router is not being served"
+            " the ride is planned on the standard graph, as Gravel's is, and"
+            " `easy_mtb.limited` is `no_offroad_graph`. Off by default; trails off wins."
         ),
     )
     system_weight_kg: StrictInt | None = Field(
@@ -421,10 +433,13 @@ class RouteIn(Schema):
         default=False,
         description=(
             "A ride's re-plan: the first point is the rider. On a ride type that does not plan"
-            " on dirt trails, a dirt trail there opens them all to this plan (the owner,"
-            ' 2026-10-21: "If someone goes onto a dirt trail, any reroutes should include'
-            ' dirt"). Elsewhere a dirt trail under a stop, via or end is ridden, with the'
-            " trails joined to it, but one under the start alone is not."
+            " on dirt trails, a dirt trail there that runs the way the rider is going"
+            ' (`heading`) opens them all to this plan (the owner, 2026-10-21: "If someone goes'
+            ' onto a dirt trail, any reroutes should include dirt"); one there with no'
+            " `heading`, or one the rider's heading crosses, opens that trail and those joined"
+            " to it at most. Elsewhere a dirt trail under a stop, via or end is ridden, with"
+            " the trails joined to it, but one under the start alone is not. The rider's"
+            " target distance is not used: the re-plan is the rest of the ride."
         ),
     )
     dirt_ridden: StrictBool = Field(
@@ -449,6 +464,15 @@ class RouteIn(Schema):
             " answer's `dirt_closed`), which says its conditions are bad (the owner,"
             " 2026-10-21: \"assume that means bad riding conditions until it's opted back"
             ' in"): this re-plan rides no dirt trail on a ride type that skips them.'
+        ),
+    )
+    mtb_done: StrictBool = Field(
+        default=False,
+        description=(
+            'With `ride_replan`: the rider pressed Ride\'s "End mountain biking" this ride (the'
+            ' owner, 2026-11-08: "route you off mtb trails and onto something easier"):'
+            " this re-plan leaves the Mountain Bike and off-road graphs for the standard one,"
+            " with Easy MTB trails off and no dirt trail ridden."
         ),
     )
     loop: StrictBool = Field(
@@ -534,7 +558,9 @@ class RouteIn(Schema):
             "Transit ride types and Run only: when the trip starts, ISO 8601 (with an offset, or"
             " local time in Washington), within a year of now. Absent: now. Each system's own"
             " calendar for that day is used, holidays and published closures included; a run"
-            " after civil dusk or before civil dawn favours lit ways."
+            " after civil dusk or before civil dawn favours lit ways. Where `when` is absent,"
+            " the bike legs, junction waits and closures are planned at this moment's ride"
+            " time too (`routemaker.ridetime.when_at`)."
         ),
     )
     transit_option: str | None = Field(
@@ -563,7 +589,9 @@ class RouteIn(Schema):
             " `calm_search.over_target_m` says how far over it the route is. Where no route"
             " is that short, the least stressful one found is answered, flagged. Absent: no"
             " target; the ceiling is 1.6 times the router's own route (at least a mile more),"
-            " and each extra mile must buy enough stress."
+            " and each extra mile must buy enough stress. Ignored on a ride's re-plan"
+            " (`ride_replan`), which plans the rest of the ride as if there were none: the"
+            " target is the whole ride's."
         ),
     )
 
@@ -740,6 +768,8 @@ class RouteIn(Schema):
             raise ValueError("mtb_level applies to the Mountain Bike ride type only")
         if self.mtb_preferred is not None and self.preset != presets.MOUNTAIN_BIKE:
             raise ValueError("mtb_preferred applies to the Mountain Bike ride type only")
+        if self.easy_mtb and self.preset not in presets.EASY_MTB_PRESETS:
+            raise ValueError("easy_mtb applies to the Default and Trailmaxxing ride types only")
         if self.carrying is not None and preset.carrying is None:
             raise ValueError("carrying applies to the Cargo Bike ride type only")
         if self.carrying is not None and self.carrying not in preset.carrying:
@@ -1000,6 +1030,9 @@ class DialsOut(Schema):
     assist: bool
     avoid_gravel: bool = False
     trails_off: bool = False
+    easy_mtb: bool = Field(
+        default=False, description="Whether the ride was planned with Easy MTB trails on."
+    )
     target_distance_m: int | None = Field(
         default=None,
         description="The rider's target distance the route was planned towards, if set.",
@@ -1320,6 +1353,14 @@ class LongSearchOut(Schema):
     skipped: int
     stops: list[int]
     answered: str | None = None
+    retraced: bool = Field(
+        default=False,
+        description=(
+            "True where the legs put together rode back over their own way across a cut more"
+            " than the router's own route does (a U-turn at no stop), so the router's own route"
+            " was answered."
+        ),
+    )
     per_leg: list[dict] = Field(
         default_factory=list,
         description=(
@@ -2401,6 +2442,26 @@ class MtbOut(Schema):
     )
 
 
+class EasyMtbOut(Schema):
+    """An Easy MTB trails plan's reading of its route (`core.easy_mtb`)."""
+
+    max_level: int = Field(description="The hardest trail level counted easy (1).")
+    rounds: int = Field(default=0, description="Rounds of excluding harder trails.")
+    harder_m: float | None = Field(
+        default=None,
+        description="Metres on mountain-bike trails rated 2 or harder; 0 when held off.",
+    )
+    limited: Literal["time", "untraced", "no_way_round", "no_offroad_graph"] | None = Field(
+        default=None,
+        description=(
+            "Why the harder trails could not all be held off: `time`, `untraced`,"
+            " `no_way_round` (no route without one was found), `no_offroad_graph` (the"
+            " off-road router is not being served, so the route keeps to the standard graph"
+            " and its usual trails)."
+        ),
+    )
+
+
 class WorkZoneOut(Schema):
     """A live work zone the route runs along (FOLLOWUP-WORKZONES)."""
 
@@ -2565,9 +2626,21 @@ class WorkZonesOut(Schema):
     )
 
 
+class LightButtonOut(Schema):
+    """A signal the route crosses that is read as needing its beg button
+    (`routemaker.junction_delay.signal_wait`; the owner, 2026-11-08): where along the
+    route, in the description's metres (`DescriptionEntryOut.from_m`), and its node."""
+
+    at_m: float
+    lon: float
+    lat: float
+
+
 class RouteBody(Schema):
     preset: PresetName
-    variant: Literal["standard", "no-trail", "ebike", "weekend", "offroad", "mtb", "paved"]
+    variant: Literal[
+        "standard", "no-trail", "ebike", "weekend", "offroad", "mtb", "paved", "paved-weekend"
+    ]
     # A ride type that does not plan on dirt trails rides one here, as a point on one, or a
     # ride's re-plan, opened it (`core.trail_touch`). A ride sends `dirt_ridden` after one.
     dirt_trails: bool = False
@@ -2585,6 +2658,11 @@ class RouteBody(Schema):
     # and junction waits in place (`routemaker.time_marks`), for a ride's arrival times.
     # Null where the router gave no time; the front end then spreads the time evenly.
     time_marks: list[list[float]] | None = None
+    # The signals the route crosses that may need a button press for a light change (a
+    # suburban big or secondary road crossed from a path or a minor road, or a crossing the
+    # map tags `button_operated=yes`; the owner, 2026-11-08): Ride says "Light may need a
+    # button press" on the turn or crossing there. Empty where there are none. Additive.
+    light_buttons: list[LightButtonOut] = Field(default_factory=list)
     climb_m: float
     descent_m: float
     stress_m: StressOut
@@ -2632,6 +2710,16 @@ class RouteBody(Schema):
     # on a loop, which keeps its way back as made, and on each of the routes to choose
     # from, which are answered as the search found them.
     dodges: DodgesOut | None = None
+    red_crossings: RedCrossingsOut | None = Field(
+        default=None,
+        description=(
+            "What the red-crossing pass did (`core.red_crossings`): where the crossing search"
+            " did not run over the whole route, the way round a red junction still on it, asked"
+            " for once. Null where the pass did not run (the search covered the route, a loop,"
+            " a first route, a followed or drawn line, a Mass Ride) and on the routes to choose"
+            " from."
+        ),
+    )
     # The route in words, stretch by stretch (OWNER-DECISIONS 220). Additive:
     # absent or null where it could not be built.
     description: list[DescriptionEntryOut] | None = None
@@ -2675,6 +2763,8 @@ class RouteBody(Schema):
     # The Mountain Bike ride type's reading of the route (slice 6). Additive: null on every
     # other ride type.
     mtb: MtbOut | None = None
+    # The Easy MTB trails switch's reading (2026-11-08). Additive: null with it off.
+    easy_mtb: EasyMtbOut | None = None
     # Live work zones (FOLLOWUP-WORKZONES, 341-349). Additive: null where work zones are
     # not running (no refresh stored yet).
     work_zones: WorkZonesOut | None = None
@@ -2731,6 +2821,27 @@ class DodgeOut(Schema):
     )
 
 
+class RedCrossingsOut(Schema):
+    """The red-crossing pass (`core.red_crossings.settle`, the owner, 2026-11-08: "It's
+    taking people onto dangerous intersections.")."""
+
+    reds: int | None = Field(
+        description="The red junctions on the route it read; null where it could not read it."
+    )
+    decision: Literal["kept", "avoided"] = Field(
+        description="`avoided`: the way round was taken; `kept`: the route stands."
+    )
+    limited: str | None = Field(
+        description=(
+            "Why it stopped short: `time`, `unread` (the route or the way round could not be"
+            " read), `no_route` (the router has no way round) or `error`; null where it ran."
+        )
+    )
+    reds_after: int | None = Field(
+        description="The red junctions on the way round; null where none was read."
+    )
+
+
 class DodgesOut(Schema):
     """What the pass that takes out pointless side-street dodges did (`core.dedodge`,
     OWNER-DECISIONS 272). `limited` says why it stopped short: `time` or `checks`."""
@@ -2782,7 +2893,7 @@ class LoopOut(Schema):
         description=(
             "`out_and_back` where the way back is the way out whatever is avoided (one corridor:"
             " the router's own route is kept); `time`, `untraceable` or `points` where it could"
-            " not be tried."
+            " not be tried (`time` also where the time ran out before a way back was found)."
         ),
     )
 
@@ -4355,6 +4466,21 @@ def _run_answer(request, body: RouteIn):
         return Status(422, {"error": str(refusal)})
 
 
+def _ride_when(body: RouteIn, at: datetime) -> str:
+    """The ride-time setting a trip or run is planned at: the rider's, else that of its
+    departure where `depart_at` gives one, else the moment's.
+
+    A trip leaving Saturday 10:00 asked for on a Wednesday took Saturday's timetable but routed
+    its bike legs, junction waits and closures for Wednesday noon (the standard graph, weekday
+    junction factors, Beach Drive not car-free); and a Tuesday 8 am trip asked for on a Sunday
+    was priced as the weekend (hunt M2)."""
+    if body.when:
+        return body.when
+    if body.depart_at is not None:
+        return ridetime.when_at(at)
+    return routing.default_when()
+
+
 def _run_body(body: RouteIn, started: float | None) -> dict:
     """A run planned on foot (`core.run_plan`), answered as Walk's line is: the line, its time
     and length, and a `transit` block of one walk (mode "run") with its turns."""
@@ -4365,9 +4491,13 @@ def _run_body(body: RouteIn, started: float | None) -> dict:
         at = at.replace(tzinfo=ridetime.ZONE)
     # The closures in force at the run, matched as a ride's are: at its departure where one is
     # given, else at the ride-time dial's moment.
-    when = body.when or routing.default_when()
+    when = _ride_when(body, at)
     zones_at = at if body.depart_at is not None else work_zones.ride_moment(when)
-    target_m = float(body.target_distance_m) if body.target_distance_m else None
+    # Not on a ride's re-plan: the target is the whole run's, and the re-plan the rest of it
+    # (hunt V2, as `routing._plan`), which would otherwise share all of it among the legs left.
+    target_m = (
+        float(body.target_distance_m) if body.target_distance_m and not body.ride_replan else None
+    )
     zones, exclude = work_zones.foot_zones(
         body.points,
         when,
@@ -4380,7 +4510,10 @@ def _run_body(body: RouteIn, started: float | None) -> dict:
     ask = run_plan.RunAsk(
         pace_kmh=run_plan.pace_of(body.run_pace_kmh),
         hills=0 if body.hills is None else body.hills,
-        dark=run_plan.is_dark(at, body.when),
+        # Dark at the run's moment, the one its closures are matched at: a run asked for at
+        # 10 pm with the dial on the weekend is Saturday morning's, not tonight's, as Reach
+        # already has it (`core.reach`, hunt 2, T5).
+        dark=run_plan.is_dark(zones_at, body.when),
         loop=body.loop,
         target_m=target_m,
         exclude_polygons=tuple(exclude),
@@ -4398,7 +4531,7 @@ def _run_body(body: RouteIn, started: float | None) -> dict:
         work_zones.drop_exclusions({}, zones)
         ask = dataclasses.replace(ask, exclude_polygons=tuple(zones.exclude))
         run = run_plan.plan(body.points, ask, run_plan.Router(until))
-    dials = routing.Dials(stress=body.stress, hills=body.hills, when=body.when)
+    dials = routing.Dials(stress=body.stress, hills=body.hills, when=when)
     answer = _unrouted_line(
         [list(p) for p in run.shape], presets.RUN, dials, run.seconds, run.metres
     )
@@ -4432,6 +4565,8 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
         when = when.replace(tzinfo=ridetime.ZONE)
     # The service day, not the calendar date: owl trips after midnight are the day before's.
     schedule = transit.load(settings.TRANSIT_SCHEDULE_PATH, transit.moment_of(when).service_day)
+    # The bike legs, junction waits and closures at the trip's own ride time (`_ride_when`).
+    ride_when = _ride_when(body, when)
     # The docks first, and the candidates' clock after them (TB-8): a slow feed read must not
     # spend the candidates' budget. Feeds that cannot be read are no docks, with a note, not a
     # refusal (TB-2): the trip walks at both ends.
@@ -4453,6 +4588,13 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
     # Novice and Nervous's transit options (v0.7.0): the bike legs priced as that ride type
     # prices roads, one level up; a share bike keeps its own pace.
     leg_preset = presets.NOVICE if body.novice_legs else body.preset
+    # The legs at Novice's own traffic and hills sliders, not the ones the request carries: the
+    # page offers these options with the transit ride type's starting dials (Bike + transit's
+    # 70 and 0, Bikeshare + transit's 80), so the "Novice" legs were priced with Default's
+    # traffic tolerance, no calm search and flat-indifferent hills, and Bikeshare + transit's
+    # trip was chosen at Novice's own pricing but drawn and timed at 80 (hunt 2, C1).
+    leg_stress = presets.stress_start(presets.NOVICE) if body.novice_legs else body.stress
+    leg_hills = presets.PRESETS[presets.NOVICE].hills if body.novice_legs else body.hills
     leg_costing = None
     if body.novice_legs and body.preset == presets.BIKESHARE_TRANSIT:
         leg_costing = presets.costing(presets.NOVICE)
@@ -4462,10 +4604,10 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
         # The candidates priced at the rider's own traffic and hills sliders, as the answer's
         # line is (routing.plan): candidates timed at the ride type's own settings ranked one
         # trip quickest that came out slower once its line was routed at the rider's.
-        stress = body.stress
+        stress = leg_stress
         if stress is None:
             stress = presets.stress_start(leg_preset, body.carrying)
-        candidate_costing = presets.costing(leg_preset, stress, body.hills)
+        candidate_costing = presets.costing(leg_preset, stress, leg_hills)
     # The rider's own pace (Settings' Riding speed), so the trips are ranked as they are timed.
     own_speed = presets.rider_speed(body.preset, body.cycling_speed_kmh)
     if own_speed is not None:
@@ -4476,20 +4618,45 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
     # (`work_zones.foot_zones`).
     foot_zones, walk_exclude = work_zones.foot_zones(
         body.points,
-        body.when or routing.default_when(),
+        ride_when,
         at=when,
         blocked_lines=_blocked(body),
         bypass=body.closure_bypass,
         now_only=body.closures_now,
     )
     walk_keep = foot_zones.blocked if foot_zones is not None else walk_exclude
+    # Every trip's rides on the graph and round the closures the answer's line takes
+    # (`routing.plan`, with the `dials` below): the ride time's graph, the no-trail one with
+    # "Keep to roads" on, and the closures to bicycles and the roads the rider marked closed
+    # left out (hunt 2, C3: on the standard graph through every closure, the trip ranked best
+    # could lose once its line was routed on the no-trail graph or round a closed bridge).
+    ride_variant, ride_exclude, ride_keep = "standard", [], []
+    if body.preset not in presets.ON_FOOT_PRESETS:
+        # The graph served for it (`routing._served_variant`), as `routing.plan` falls back:
+        # with the weekend router down or not promoted, every candidate ride was refused and
+        # timed from the straight line, and the trips were ranked on those (hunt 3, T3-3).
+        ride_variant = routing._served_variant(
+            presets.variant_for_ride(leg_preset, ride_when, trails_off=body.trails_off)
+        )
+        ride_zones, ride_exclude = work_zones.foot_zones(
+            body.points,
+            ride_when,
+            at=when if body.depart_at is not None else None,
+            blocked_lines=_blocked(body),
+            bypass=body.closure_bypass,
+            now_only=body.closures_now,
+            on_foot=False,
+        )
+        ride_keep = ride_zones.blocked if ride_zones is not None else ride_exclude
+    rides_on = {"ride_variant": ride_variant, "ride_exclude": ride_exclude, "ride_keep": ride_keep}
     services = transit.RoutingServices(
         candidates_until,
         leg_preset,
         costing=candidate_costing,
-        when=body.when or routing.default_when(),
+        when=ride_when,
         walk_exclude=walk_exclude,
         walk_keep=walk_keep,
+        **rides_on,
     )
     # With stops, the first leg is planned here as a trip of its own; the legs after it are
     # searched once it is timed (`with_later_legs`, below).
@@ -4497,6 +4664,9 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
     # WMATA's live reading (core.wmata_live), if any: read before the search, which ranks a
     # station with no working elevator on the way 15 min down, and used after it (below).
     live = wmata_live.client.snapshot()
+    # On a federal holiday, typical Metro on the timetable WMATA's live trains show running,
+    # where they can say (hunt 2, T9: `transit_live.holiday_day_type`); Sunday's otherwise.
+    schedule = transit_live.with_holiday_service(schedule, live)
 
     def search(
         a: list[float], b: list[float], at: datetime, services=services, schedule=schedule
@@ -4519,7 +4689,8 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
             )
             # A station whose elevators are all out is ranked 15 min down for the bike, so the
             # next one over usually wins (Stephen, 2026-10-21).
-            blocked = transit_live.blocked_stations(live)
+            # Those out now, for a trip leaving while they are out (`transit_live.holding`).
+            blocked = transit_live.blocked_stations(live, transit.moment_of(at))
             bike_schedule = transit.with_elevators_out(
                 schedule,
                 [(station.lon, station.lat) for station in blocked],
@@ -4529,9 +4700,11 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
 
     searched = routing.clock()
     dials = routing.Dials(
-        stress=body.stress,
-        hills=body.hills,
-        when=body.when,
+        stress=leg_stress,
+        hills=leg_hills,
+        when=ride_when,
+        # The line's closures at the trip's departure where it gives one, as its walks' are.
+        zones_at=when if body.depart_at is not None else None,
         closure_bypass=tuple(body.closure_bypass),
         closures_now=body.closures_now,
         blocked=_blocked(body),
@@ -4582,12 +4755,14 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
                 routing.clock() + max(0.0, min(TRANSIT_CANDIDATES_S, left) / (len(later) - number)),
                 leg_preset,
                 costing=candidate_costing,
-                when=body.when or routing.default_when(),
+                when=ride_when,
                 walk_exclude=walk_exclude,
                 walk_keep=walk_keep,
+                **rides_on,
             )
-            leg_schedule = transit.load(
-                settings.TRANSIT_SCHEDULE_PATH, transit.moment_of(at).service_day
+            leg_schedule = transit_live.with_holiday_service(
+                transit.load(settings.TRANSIT_SCHEDULE_PATH, transit.moment_of(at).service_day),
+                live,
             )
             leg = chosen(search(a, b, at, leg_services, leg_schedule), None)
             plans.append(leg)
@@ -4606,9 +4781,14 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
         leg_preset,
         max_calls=transit.MAX_DRAW_CALLS,
         per_call_s=transit.DRAW_CALL_S,
-        costing=leg_costing,
+        # Drawn at the candidates' pricing, the rider's sliders and pace (hunt 2, C4): at the
+        # ride type's own (Bike + transit's 70 and 0, whatever the rider set) a leg drawn here
+        # could show the LTS 3-4 roads the rider's settings left out, beside the candidates'
+        # times.
+        costing=candidate_costing,
         walk_exclude=walk_exclude,
         walk_keep=walk_keep,
+        **rides_on,
     )
 
     def answered(answer: dict, plan: transit.Plan, lines: dict[int, dict] | None = None) -> dict:
@@ -5076,6 +5256,13 @@ class LiveTrainOut(Schema):
     end: list[float] | None = Field(
         default=None, description="WMATA's [lon, lat] for that last stop; null with no code."
     )
+    track: str | None = Field(
+        default=None,
+        description=(
+            'The platform track the trains leave from, "B01:1" (WMATA\'s station code and Group):'
+            " trains on one track go one way. Null where WMATA gave no group."
+        ),
+    )
     minutes: list[int] = Field(description="Minutes until the next trains that way (0: arriving).")
     when: str = Field(description='"3 min, 11 min"; "arriving", "boarding".')
 
@@ -5305,6 +5492,7 @@ def _bike_dials(body: RouteIn) -> routing.Dials:
         assist=body.assist,
         avoid_gravel=body.avoid_gravel,
         trails_off=body.trails_off,
+        easy_mtb=body.easy_mtb,
         target_distance_m=body.target_distance_m,
         system_weight_kg=body.system_weight_kg,
         cycling_speed_kmh=presets.rider_speed(body.preset, body.cycling_speed_kmh),
@@ -5318,10 +5506,12 @@ def _bike_dials(body: RouteIn) -> routing.Dials:
         follow_exact=body.follow_exact,
         straight=tuple(body.straight_legs),
         heading=body.heading,
+        fix_heading=body.heading,
         ride_replan=body.ride_replan,
         dirt_ridden=body.ride_replan and body.dirt_ridden,
         ahead_only=body.ahead_only,
         dirt_closed=body.ride_replan and body.dirt_closed,
+        mtb_done=body.ride_replan and body.mtb_done,
     )
 
 
@@ -5391,16 +5581,34 @@ def _planned(body: RouteIn, dials, started: float | None, long_ride: bool, long_
         )
     if key is not None:
         preset = presets.PRESETS[body.preset]
+        mtb_done = bool(body.ride_replan and body.mtb_done)
         own_variant = presets.variant_for_ride(
             body.preset,
             when,
             bool(body.assist) and preset.assist_speed_kmh is not None,
             bool(body.trails_off),
+            bool(body.easy_mtb),
+            mtb_done,
         )
-        if own_variant in routing.TWIN_VARIANTS and not routing._is_promoted(own_variant):
-            # Planned on the standard graph by design where no weekend or off-road build is
-            # served; an answer from it while the twin is merely down is not kept.
-            own_variant = "standard"
+        while own_variant in routing.TWIN_VARIANTS and not routing._is_promoted(own_variant):
+            # Planned on the graph the twin falls back to by design where no build of it is
+            # promoted (`routing.twin_fallback`: Road Bike's weekend twin to the paved graph,
+            # every other twin to the standard one); an answer from it while the twin is merely
+            # down is not kept. Down the chain by promotion alone (hunt 3, P3-1: a weekend Road
+            # Bike answer on `paved` was never kept while paved-weekend was unpromoted).
+            own_variant = routing.twin_fallback(own_variant)
+        ride_dials = (
+            body.preset,
+            when,
+            bool(body.assist) and preset.assist_speed_kmh is not None,
+            bool(body.trails_off),
+            bool(body.easy_mtb),
+            mtb_done,
+        )
+        if answered.get("variant") == "weekend" and presets.weekend_too(*ride_dials):
+            # The weekend plan beside the ride's own won (`routing._plan_twice`): its graph is
+            # one this ride plans on by design, so its answer is kept as the own graph's is.
+            own_variant = "weekend"
         failures = (timings.failures if timings is not None else 0) - failures_before
         # An answer whose plan ran into the answer's reserve may have skipped work for time.
         budget_s = routing.LONG_PLAN_BUDGET_S if long_ride or long_calm else routing.PLAN_BUDGET_S
@@ -5532,6 +5740,7 @@ def stop_order(request, body: RouteIn, response: HttpResponse):
         assist=body.assist,
         avoid_gravel=body.avoid_gravel,
         trails_off=body.trails_off,
+        easy_mtb=body.easy_mtb,
         mtb_level=body.mtb_level,
         mtb_preferred=body.mtb_preferred,
         loop=body.loop,
@@ -5577,15 +5786,28 @@ def match_track(request):
     body, refusal = _json_body(request, map_match.MAX_BYTES)
     if refusal is not None:
         return refusal
-    if not isinstance(body, dict) or set(body) - {"points", "preset", "trails_off", "assist"}:
+    if not isinstance(body, dict) or set(body) - {
+        "points",
+        "preset",
+        "trails_off",
+        "assist",
+        "easy_mtb",
+        "when",
+    }:
         return _error(400, "Send the track as an object with points and a ride type.")
     preset = body.get("preset", "default")
     if not isinstance(preset, str) or preset not in presets.PRESETS:
         return _error(400, "Not a ride type this planner offers.")
     trails_off = body.get("trails_off", False)
     assist = body.get("assist", False)
-    if not isinstance(trails_off, bool) or not isinstance(assist, bool):
-        return _error(400, "trails_off and assist are true or false.")
+    # "Easy MTB trails" and the ride time choose the graph as they do the route's (hunt 3, P3-3:
+    # an Easy MTB track snapped on a graph that closes its trails, a weekday ride on Saturday's).
+    easy = body.get("easy_mtb", False)
+    when = body.get("when")
+    if not all(isinstance(v, bool) for v in (trails_off, assist, easy)):
+        return _error(400, "trails_off, assist and easy_mtb are true or false.")
+    if when is not None and when not in ridetime.WHENS:
+        return _error(400, "Not a ride time this planner offers.")
     try:
         points = map_match.checked_points(body.get("points"))
     except map_match.TrackProblem as problem:
@@ -5597,6 +5819,8 @@ def match_track(request):
             getattr(request, "routing_started", None),
             trails_off=trails_off,
             assist=assist,
+            easy_mtb=easy,
+            when=when,
         )
     except routing.RouterRefused:
         return _error(
@@ -5697,6 +5921,7 @@ def nearest_places(request, body: NearestIn, response: HttpResponse):
         assist=body.assist,
         avoid_gravel=body.avoid_gravel,
         trails_off=body.trails_off,
+        easy_mtb=body.easy_mtb,
         mtb_level=body.mtb_level,
         mtb_preferred=body.mtb_preferred,
     )
@@ -6129,6 +6354,14 @@ class PlaceOut(Schema):
     )
     osm_value: str | None = Field(
         default=None, description="That tag's value (station, bicycle, park, cycleway, ...)."
+    )
+    way_in: str | None = Field(
+        default=None,
+        description=(
+            "Search: for an area (a park, refuge or campus), the name of the way in it was moved"
+            " to (its visitor centre, entrance, parking, trailhead or boat launch), which"
+            " lon and lat then are; null where the result is where it is."
+        ),
     )
 
 
