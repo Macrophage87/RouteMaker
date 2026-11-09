@@ -2646,4 +2646,10 @@ export const ES: Readonly<Record<string, string>> = {
   "No road bike map: may use gravel.": "Sin mapa de bici de carretera: puede usar grava.",
   "There is no weekend road bike map right now, so this route counts parkways like Beach Drive as roads with cars.": "Ahora no hay mapa de fin de semana para bicicleta de carretera, así que esta ruta trata las vías de parque como Beach Drive como calles con autos.",
   "No weekend map: parkways may have cars.": "Sin mapa de fin de semana: puede haber autos en las vías de parque.",
+  "Draft, last day": "Borrador, último día",
+  "Draft, {n} days left": "Borrador, quedan {n} días",
+  "Save {name} to My routes": "Guardar {name} en Mis rutas",
+  "Saving {name}…": "Guardando {name}…",
+  "That draft is gone.": "Ese borrador ya no está.",
+  "Deleted {name}.": "Se eliminó {name}.",
 };

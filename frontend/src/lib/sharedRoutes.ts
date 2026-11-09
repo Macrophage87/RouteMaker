@@ -168,7 +168,11 @@ export interface SharedBody extends Omit<SaveBody, "name"> {
 }
 
 /** What GET /api/shared-routes/{id} gives: what App's openSaved reads of a saved route. */
-export type SharedRoute = Pick<SavedRoute, "name" | "source" | "distance_m" | "line" | "inputs" | "answer" | "gpx"> & { id: string };
+export type SharedRoute = Pick<SavedRoute, "name" | "source" | "distance_m" | "line" | "inputs" | "answer" | "gpx"> & {
+  id: string;
+  /** An assistant's draft (lib/drafts.ts): when it goes; null or absent for any other link. */
+  draft_until?: string | null;
+};
 
 /** A new id: 16 random bytes as 32 hex characters. */
 export function newSharedId(fill: (bytes: Uint8Array<ArrayBuffer>) => void = (bytes) => void crypto.getRandomValues(bytes)): string {
