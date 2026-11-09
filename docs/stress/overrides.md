@@ -65,6 +65,25 @@ and the classifier rates the way from it (`fixtures/overrides/README.md`, "Block
 corrections"; `src/routemaker/agency_roads.py`, `withheld_blocks`, `resolve_withheld`;
 `run.py:1881-1894`).
 
+## Our own rating on every road (the owner, 2026-11-09)
+The owner: "I wanted us to make our own picks", and "We should always list our reasoning for
+roads. It should be done independently without looking at agency data. If it agrees, we state
+our reasoning and then that it agrees. If it disagrees we need to have more justification."
+
+- **Why rows on every road:** the 2026-11-01 review wrote a row only where its level differed
+  from the map's. Where it agreed with an agency (Montgomery Planning, MDOT SHA) no row was
+  written, so the agency still decided the road, and a later re-match of the agency's pieces
+  could change it (Peach Tree Rd went 2 to 4 in the v0.23.0 build). The 2026-11-09 review
+  writes a row for every road it rates, whether or not it agrees.
+- **Blind first:** reviewers rate each road from its own evidence (class, speed and whether it
+  is posted, lanes, count, shoulder, bike facility) without seeing any agency's level, our
+  formula's level or the map's. Rural roads follow the rural table in
+  [literature.md](literature.md) ("Oregon's rural segment table").
+- **Then compared:** where an agency or the formula differs, a skeptic tries to refute our
+  level, and a change needs a concrete fact. Agency ratings are evidence, not authority.
+- **The Why line** (`public_note`) gives our reasoning first, then "MDOT SHA agrees" or, where
+  we differ, the other rating and the facts that justify ours.
+
 ## Files, the loader and retire lists
 
 - Owner decisions made in conversation are checked in as versioned files in
