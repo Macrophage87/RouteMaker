@@ -762,7 +762,7 @@ is read alone, as before. The plan's `/locate` cache keys each answer by its cos
 answers, and a car answer near a motorway interchange is larger.
 Measured on the live router, a batch of 50 at 100 ft (30 m) took 0.1-0.3 s and
 2.6 MB, against 0.04-0.15 s and 0.5 MB at 3 ft (1 m). A plan with a red junction
-1,640 ft (500 m) or more from both ends asks the router for one more route (crossing
+anywhere on it (near its ends too since routing hunt 4, J4-1) asks the router for one more route (crossing
 avoidance, `core.refine`: only red junctions, from 0.59 calm mi [0.94 km; 3,100 ft],
 are worth a second route), one `/trace_attributes` for it and its `/locate`s. A plan
 the crossing search did not cover (legs adding up past 19 mi [30 km], a long Trailmaxxing
