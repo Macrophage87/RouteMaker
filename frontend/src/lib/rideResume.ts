@@ -39,6 +39,42 @@ export const RESUME_LEAD = t("The app closed during a ride. Resume picks it up f
 export const RESUME_RIDE = t("Resume ride");
 export const RESUME_NOT_NOW = t("Not now");
 
+/**
+ * What the ride's re-plans have learnt, kept with it so a Resume or a Keep riding re-plans as the ride did (the hunt,
+ * round 2, R2-4 and R2-5): the ride is a loop (its re-plans' points begin at the rider, so they no longer show it), the
+ * stretches marked Road closed, a dirt trail ridden, a dirt trail marked closed. Before, each began again empty, so a
+ * page reloaded in the background re-planned over a road the rider had marked closed, a loop's way home became the way
+ * out again, and a ride that had ridden dirt stopped re-planning on it. End mountain biking pressed too (lib/mtbDone.ts).
+ */
+export interface RideReplans {
+  loopRide?: boolean;
+  blocked?: LonLat[][];
+  dirtRidden?: boolean;
+  dirtClosed?: boolean;
+  mtbDone?: boolean;
+}
+
+/** The ride's re-plan state as kept: only what is set, so a ride with none keeps nothing. */
+export function rideReplans(loopRide: boolean, blocked: readonly LonLat[][], dirtRidden: boolean, dirtClosed: boolean, mtbDone = false): RideReplans {
+  return {
+    ...(loopRide ? { loopRide: true } : {}),
+    ...(blocked.length ? { blocked: blocked.map((line) => line.map((p): LonLat => [p[0], p[1]])) } : {}),
+    ...(dirtRidden ? { dirtRidden: true } : {}),
+    ...(dirtClosed ? { dirtClosed: true } : {}),
+    ...(mtbDone ? { mtbDone: true } : {}),
+  };
+}
+
+/** Kept re-plan state that reads as one (rideReplans), else null. */
+function replansOf(value: unknown): RideReplans | null {
+  const r = value as RideReplans | null;
+  if (!r || typeof r !== "object") return null;
+  const isPoint = (p: unknown) => Array.isArray(p) && p.length >= 2 && typeof p[0] === "number" && typeof p[1] === "number";
+  const blocked = Array.isArray(r.blocked) ? r.blocked.filter((line) => Array.isArray(line) && line.length >= 2 && line.every(isPoint)) : [];
+  const out = rideReplans(r.loopRide === true, blocked, r.dirtRidden === true, r.dirtClosed === true, r.mtbDone === true);
+  return Object.keys(out).length ? out : null;
+}
+
 export interface LeftRide {
   route: RouteResponse;
   points: LonLat[];
@@ -80,11 +116,15 @@ export interface LeftRide {
    * to it rather than walking back to the crowded dock (the v0.22.0 review: the choice was lost on a reload).
    */
   docked?: RebalanceDocked | null;
+  /** What the ride's re-plans have learnt (RideReplans), so Resume re-plans as the ride did. */
+  replans?: RideReplans | null;
 }
 
 /** Points kept with their kinds and names, which live on the pairs (lib/pointKinds.ts). */
 interface KeptPoints {
   points: LonLat[];
+  /** The ride's own via points among `vias` (ViaMarks.shape); absent where there are none. */
+  shapes?: number[];
   vias: number[];
   drawn: number[];
   names: [number, string][];
@@ -95,6 +135,7 @@ interface Kept {
   at: number;
   route: RouteResponse;
   points: LonLat[];
+  shapes?: number[];
   vias: number[];
   drawn: number[];
   names: [number, string][];
@@ -112,6 +153,7 @@ interface Kept {
   seen?: number;
   stats?: RideStats;
   docked?: RebalanceDocked;
+  replans?: RideReplans;
 }
 
 interface Store {
@@ -129,9 +171,12 @@ function local(): Store | null {
 }
 
 /** Kept at Start ride: the plan's points with their kinds and names, which live on the pairs (lib/pointKinds.ts). */
-function keptPoints(points: readonly LonLat[], marks: Pick<ViaMarks, "isVia" | "isDrawn" | "nameOf">): KeptPoints {
+function keptPoints(points: readonly LonLat[], marks: Pick<ViaMarks, "isVia" | "isDrawn" | "nameOf"> & Partial<Pick<ViaMarks, "isShape">>): KeptPoints {
+  // A ride's own via points (a loop's way home, ViaMarks.shape) stay the ride's own when it is resumed.
+  const shapes = marks.isShape ? points.flatMap((p, i) => (marks.isShape?.(p) ? [i] : [])) : [];
   return {
     points: points.map((p) => [p[0], p[1]]),
+    ...(shapes.length ? { shapes } : {}),
     vias: points.flatMap((p, i) => (marks.isVia(p) ? [i] : [])),
     drawn: points.flatMap((p, i) => (marks.isDrawn(p) ? [i] : [])),
     names: points.flatMap((p, i): [number, string][] => {
@@ -142,18 +187,19 @@ function keptPoints(points: readonly LonLat[], marks: Pick<ViaMarks, "isVia" | "
 }
 
 /** Kept points marked again as they were. */
-function markedPoints(kept: Partial<KeptPoints>, marks: Pick<ViaMarks, "via" | "drawn" | "named">): LonLat[] {
+function markedPoints(kept: Partial<KeptPoints>, marks: Pick<ViaMarks, "via" | "drawn" | "named"> & Partial<Pick<ViaMarks, "shape">>): LonLat[] {
   const names = new Map(Array.isArray(kept.names) ? kept.names : []);
   return (kept.points ?? []).map(([lon, lat], i): LonLat => {
     let p: LonLat = [lon, lat];
     p = marks.named(p, names.get(i));
-    if (kept.vias?.includes(i)) p = marks.via(p);
+    if (Array.isArray(kept.shapes) && kept.shapes.includes(i) && marks.shape) p = marks.shape(p);
+    else if (kept.vias?.includes(i)) p = marks.via(p);
     if (kept.drawn?.includes(i)) p = marks.drawn(p);
     return p;
   });
 }
 
-export function keepLeftRide(ride: LeftRide, marks: Pick<ViaMarks, "isVia" | "isDrawn" | "nameOf">, now: number, store: Store | null = local()): void {
+export function keepLeftRide(ride: LeftRide, marks: Pick<ViaMarks, "isVia" | "isDrawn" | "nameOf"> & Partial<Pick<ViaMarks, "isShape">>, now: number, store: Store | null = local()): void {
   // A re-route kept mid-ride says no name: the one kept at Start goes on while the ride ends at the same place.
   const destination = ride.loop ? null : (ride.destination ?? keptDestination(ride.points[ride.points.length - 1], store));
   const was = ride.passOn === undefined ? keptFollow(store) : null;
@@ -178,6 +224,7 @@ export function keepLeftRide(ride: LeftRide, marks: Pick<ViaMarks, "isVia" | "is
     ...(ride.wholeTrip && ride.past ? { past: ride.past } : {}),
     ...(ride.stopsLeft && ride.stopsLeft.points.length > 0 ? { stops: { preset: ride.stopsLeft.preset, ...keptPoints(ride.stopsLeft.points, marks) } } : {}),
     ...(ride.wholeTrip && ride.docked ? { docked: plainDocked(ride.docked) } : {}),
+    ...(replansOf(ride.replans) ? { replans: replansOf(ride.replans)! } : {}),
   };
   try {
     store?.setItem(RIDE_RESUME_KEY, JSON.stringify(kept));
@@ -270,6 +317,19 @@ export function keepLeftRidePast(past: OnwardState, store: Store | null = local(
   }
 }
 
+/** What the ride's re-plans have learnt since it was last kept (a dirt trail ridden, at a fix): kept with it in place. */
+export function keepLeftRideReplans(replans: RideReplans, store: Store | null = local()): void {
+  try {
+    const raw = store?.getItem(RIDE_RESUME_KEY);
+    if (!raw) return;
+    const { replans: _was, ...kept } = JSON.parse(raw) as Kept;
+    const now = replansOf(replans);
+    store?.setItem(RIDE_RESUME_KEY, JSON.stringify(now ? { ...kept, replans: now } : kept));
+  } catch {
+    // Full or blocked storage: Resume re-plans without it, as before.
+  }
+}
+
 /** The walk or train a trip left going was following, as last kept (End ride reads it, so Undo carries on from it). */
 export function leftRidePast(store: Store | null = local()): OnwardState | null {
   try {
@@ -320,7 +380,7 @@ export function forgetLeftRide(store: Store | null = local()): void {
 }
 
 /** The ride left going, its points marked again as they were; null with none, or one too old or unreadable. */
-export function leftRide(marks: Pick<ViaMarks, "via" | "drawn" | "named">, now: number, store: Store | null = local()): LeftRide | null {
+export function leftRide(marks: Pick<ViaMarks, "via" | "drawn" | "named"> & Partial<Pick<ViaMarks, "shape">>, now: number, store: Store | null = local()): LeftRide | null {
   let kept: Kept;
   try {
     const raw = store?.getItem(RIDE_RESUME_KEY);
@@ -356,6 +416,7 @@ export function leftRide(marks: Pick<ViaMarks, "via" | "drawn" | "named">, now: 
     ...(typeof kept.seen === "number" ? { seen: kept.seen } : {}),
     ...(statsOf(kept.stats) ? { stats: kept.stats } : {}),
     ...(docked ? { docked } : {}),
+    ...(replansOf(kept.replans) ? { replans: replansOf(kept.replans) } : {}),
   };
 }
 

@@ -158,7 +158,15 @@ def test_the_plan_hands_its_approved_ratings_to_the_junction_reading(monkeypatch
     seen = {}
 
     def events_of(
-        raws, when, with_facility, locate, group=False, cut_short=(), ratings=(), beacons=()
+        raws,
+        when,
+        with_facility,
+        locate,
+        group=False,
+        cut_short=(),
+        ratings=(),
+        beacons=(),
+        closure_when=None,
     ):
         seen["ratings"] = ratings
         return []

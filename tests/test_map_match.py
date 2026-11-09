@@ -455,3 +455,44 @@ def test_the_endpoint_untangles_on_the_ride_types_graph(client, router) -> None:
     asked = [(p["lon"], p["lat"]) for p in payload["locations"]]
     assert asked == [pytest.approx(ON_SOUTH[1]), pytest.approx(ON_WEST[0])]
     assert "edge.use" in fake.calls[0][1]["filters"]["attributes"]
+
+
+@pytest.mark.django_db
+class TestTheRidesGraph:
+    """Hunt 3, P3-3: a track is snapped on the graph the ride itself plans on."""
+
+    def test_an_unpromoted_road_bike_weekend_graph_is_not_asked(
+        self, client, router, monkeypatch
+    ) -> None:
+        monkeypatch.setattr(routing, "_paved_weekend_is_promoted", lambda: False)
+        fake = router(FakeRouter({"trace_attributes": lambda _payload: trace()}))
+        response = post(client, {"points": TRACK, "preset": "road-bike", "when": "weekend"})
+        assert response.status_code == 200
+        assert fake.calls[0][0].startswith(settings.VALHALLA_UPSTREAMS["paved"] + "/")
+
+    @pytest.mark.parametrize(
+        "failure",
+        [routing.RouterUnavailable("down"), routing.RouterRefused(400, 171, "no edges")],
+    )
+    def test_a_weekend_twin_failing_falls_back_to_the_paved_graph(
+        self, failure, client, router
+    ) -> None:
+        fake = router(FakeRouter({"trace_attributes": [failure, trace()]}))
+        response = post(client, {"points": TRACK, "preset": "road-bike", "when": "weekend"})
+        assert response.status_code == 200
+        urls = [url for url, _ in fake.calls]
+        assert urls[0].startswith(settings.VALHALLA_UPSTREAMS["paved-weekend"] + "/")
+        assert urls[1].startswith(settings.VALHALLA_UPSTREAMS["paved"] + "/")
+
+    def test_easy_mtb_trails_and_the_ride_time_choose_the_graph(self, client, router) -> None:
+        fake = router(FakeRouter({"trace_attributes": lambda _payload: trace()}))
+        body = {"points": TRACK, "preset": "default"}
+        assert post(client, {**body, "easy_mtb": True}).status_code == 200
+        assert fake.calls[-1][0].startswith(settings.VALHALLA_UPSTREAMS["offroad"] + "/")
+        assert post(client, {**body, "when": "weekend"}).status_code == 200
+        assert fake.calls[-1][0].startswith(settings.VALHALLA_UPSTREAMS["weekend"] + "/")
+        # Easy MTB trails only on the ride types that offer it.
+        assert post(client, {**body, "preset": "fast", "easy_mtb": True}).status_code == 200
+        assert fake.calls[-1][0].startswith(settings.VALHALLA_UPSTREAMS["standard"] + "/")
+        assert post(client, {**body, "when": "tuesday"}).status_code == 400
+        assert post(client, {**body, "easy_mtb": "yes"}).status_code == 400

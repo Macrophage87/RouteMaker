@@ -159,6 +159,9 @@ def _zone(zone_id: str, props: Mapping, line) -> wz.Zone:
         reason=why,
         title=f"{stretch}: {what.lower()}" + (f" ({place})" if place else ""),
         url=wz.SOURCE_LINKS[SHA],
+        # The road as the Reporter names it, so a closure on an Interstate ("I 695", "WB I
+        # 695") is known for one (`workzones.on_interstate`; hunt K5, 2026-11-08).
+        roads=(_tidy(props.get("RoadName")),) if _tidy(props.get("RoadName")) else (),
     )
 
 

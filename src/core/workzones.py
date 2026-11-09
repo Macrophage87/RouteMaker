@@ -480,15 +480,15 @@ REROUTE_MIN_S = 4.0
 def ride_moment(when: str, now: datetime | None = None) -> datetime:
     """The moment the plan's ride is taken to start, for the zones' windows: now, where
     the ride-time dial is on the setting of the moment (a ride planned to go now);
-    otherwise the dial's next representative instant, as the router is asked
-    (`routemaker.ridetime.representative_time`)."""
+    otherwise the soonest of the dial's instants (`routemaker.ridetime.soonest_instant`):
+    tomorrow's Sunday 11:00 for Weekend on a Saturday night, not next Saturday 09:00, which
+    the router is still asked (hunt 3, T3-7)."""
     from routemaker import ridetime
 
     now = now or _now()
     if ridetime.when_at(now) == when:
         return now
-    local = datetime.fromisoformat(ridetime.representative_time(when, now))
-    return local.replace(tzinfo=ridetime.ZONE).astimezone(UTC)
+    return ridetime.soonest_instant(when, now).astimezone(UTC)
 
 
 def plan_zones(
@@ -529,29 +529,153 @@ def plan_zones(
         now_only=now_only,
         on_foot=on_foot,
         reach_m=reach_m,
+        crossings=zone_crossings,
     )
     plan.notices = list(found.notices)
     return plan
 
 
+# --- Where the map's ways cross a closure (hunt K4/Q2, 2026-11-08) ---------------------------
+#
+# The router leaves out every edge that meets a closure's strip, whole and both ways, with no
+# test of bridge, tunnel or layer: a cross street met mid-closure lost its whole block, and a
+# trail passing under a closed road (or a road over a closed trail) lost its whole edge. Each
+# closure's line is checked against the map's ways (the live segment table) clipped to its
+# strip, and the strip is cut where one crosses it (`rules.crossing_cuts`, `rules.line_rings`).
+# Lines change seldom, so each line's cuts are kept for `CROSSINGS_TTL_S` (by the table they
+# came from), at most `CROSSINGS_MOST` of them. A table that cannot be read cuts nothing.
+
+CROSSINGS_TTL_S = 60 * 60.0
+CROSSINGS_MOST = 5_000
+# The map's classes a cut is made for: the ways a bicycle may ride (not a sidewalk, a hallway or
+# a motorway).
+CROSSING_CLASSES = ("road", "alley")
+_crossings_lock = threading.Lock()
+_crossings: dict[tuple, tuple[float, tuple[float, ...]]] = {}
+
+
+def crossings(lines, schema: str | None = None) -> list[tuple[float, ...]]:
+    """For each line of [lon, lat] pairs, the metres along it where a way of the map crosses
+    it (`rules.crossing_cuts`), in order; () for each where the table cannot be read."""
+    from django.conf import settings
+    from django.db import connection, transaction
+
+    from pipeline.schema import validate_schema_name
+
+    lines = [tuple((float(p[0]), float(p[1])) for p in line) for line in lines]
+    try:
+        schema = validate_schema_name(schema or settings.SEGMENT_SCHEMA_LIVE)
+    except (ValueError, AttributeError):
+        return [() for _ in lines]
+    clock = time.monotonic()
+    out: list[tuple[float, ...] | None] = []
+    wanted: list[int] = []
+    with _crossings_lock:
+        for index, line in enumerate(lines):
+            kept = _crossings.get((schema, line))
+            if kept is not None and clock - kept[0] < CROSSINGS_TTL_S:
+                out.append(kept[1])
+            else:
+                out.append(None)
+                if len(line) >= 2:
+                    wanted.append(index)
+    if wanted:
+        parts: dict[int, list] = {i: [] for i in wanted}
+        try:
+            with transaction.atomic(), connection.cursor() as cursor:
+                cursor.execute(
+                    f"""
+                    WITH z AS (
+                        SELECT i, ST_SetSRID(ST_GeomFromGeoJSON(g), 4326) AS line
+                        FROM unnest(%s::int[], %s::text[]) AS t(i, g)
+                    ), b AS (
+                        SELECT i, ST_Buffer(line::geography, %s)::geometry AS strip FROM z
+                    )
+                    SELECT b.i, ST_AsGeoJSON(ST_Intersection(s.geometry, b.strip), 7)
+                    FROM b JOIN {schema}.segment AS s
+                      ON s.geometry && b.strip AND ST_Intersects(s.geometry, b.strip)
+                    WHERE s.map_class = ANY(%s)
+                    """,
+                    [
+                        wanted,
+                        [
+                            json.dumps({"type": "LineString", "coordinates": lines[i]})
+                            for i in wanted
+                        ],
+                        rules.HALF_WIDTH_M,
+                        list(CROSSING_CLASSES),
+                    ],
+                )
+                rows = cursor.fetchall()
+        except Exception as error:  # noqa: BLE001 - a strip uncut is as it was before
+            logger.info(
+                "closures: the map's crossings could not be read (%s)", type(error).__name__
+            )
+            return [() if found is None else found for found in out]
+        for index, clipped in rows:
+            parts[index].extend(_line_parts(clipped))
+        with _crossings_lock:
+            if len(_crossings) + len(wanted) > CROSSINGS_MOST:
+                _crossings.clear()
+            for index in wanted:
+                cuts = rules.crossing_cuts(lines[index], parts[index])
+                _crossings[(schema, lines[index])] = (clock, cuts)
+                out[index] = cuts
+    return [() if found is None else found for found in out]
+
+
+def _line_parts(text) -> list[list]:
+    """The lines of a GeoJSON geometry (a LineString, a MultiLineString, or a collection of
+    them); none for a point."""
+    try:
+        geometry = json.loads(text) if isinstance(text, str) else text
+    except (TypeError, ValueError):
+        return []
+    if not isinstance(geometry, dict):
+        return []
+    kind = geometry.get("type")
+    if kind == "LineString":
+        return [geometry.get("coordinates") or []]
+    if kind == "MultiLineString":
+        return list(geometry.get("coordinates") or [])
+    if kind == "GeometryCollection":
+        return [part for g in geometry.get("geometries") or [] for part in _line_parts(g)]
+    return []
+
+
+def zone_crossings(zones) -> dict[str, tuple[float, ...]]:
+    """`crossings` of each zone's line, by its id (`rules.for_plan`'s `crossings`)."""
+    zones = list(zones)
+    return {
+        zone.zone_id: cuts
+        for zone, cuts in zip(zones, crossings([z.line for z in zones]), strict=True)
+        if cuts
+    }
+
+
 def blocked_rings(lines) -> list[list[list[float]]]:
     """The rings of the roads the rider marked closed (`blocked_lines`), as many of the
-    latest as fit the router's polygon limits, in the order given."""
+    latest as fit the router's polygon limits, in the order given. Each is trimmed
+    `rules.TRIM_M` at its ends and cut where a way crosses it, as a closure is (hunt K4/Q2,
+    2026-11-08: left out whole and untrimmed, a marked road took the cross streets at both
+    ends with it); a line's rings fit together or not at all."""
     rings: list[list[list[float]]] = []
     used_m, used_vertices = 0.0, 0
-    for line in reversed(lines):
-        ring = rules.line_ring(line)
-        if ring is None:
+    lines = list(lines)
+    cuts = crossings(lines) if lines else []
+    for line, cut in zip(reversed(lines), reversed(cuts), strict=True):
+        own = rules.line_rings(line, rules.TRIM_M, crossings=cut)
+        if not own:
             continue
-        perimeter = rules.ring_perimeter_m(ring)
+        perimeter, vertices = rules.budget_used(own)
         if (
-            used_m + perimeter > rules.MAX_PERIMETER_M
-            or used_vertices + len(ring) > rules.MAX_VERTICES
+            used_m + perimeter > rules.PERIMETER_BUDGET_M
+            or used_vertices + vertices > rules.MAX_VERTICES
         ):
             break
         used_m += perimeter
-        used_vertices += len(ring)
-        rings.append(ring)
+        used_vertices += vertices
+        rings.extend(own[::-1])
     return rings[::-1]
 
 
@@ -563,13 +687,15 @@ def foot_zones(
     bypass=(),
     now_only=False,
     reach_m: float = 0.0,
+    on_foot: bool = True,
 ) -> tuple[rules.PlanZones | None, list[list[list[float]]]]:
     """The closures a plan on foot (Run, Walk, Walk + transit) leaves out, as a ride's are
     (`routing.plan`): the roads the rider marked closed on this outing (`blocked_lines`) take
     the router's polygon budget first, and the closures that close the way on foot
     (`rules.for_plan`, `on_foot`) fit the rest; the others are warned of on the route. DDOT's
     permits are never routed round. (The zones, None where work zones are not running; the
-    rings for the router's `exclude_polygons`.)"""
+    rings for the router's `exclude_polygons`.) With `on_foot` False, the closures to bicycles
+    instead: a transit trip's candidate rides (`transit.RoutingServices`, hunt 2 C3)."""
     blocked = blocked_rings(blocked_lines)
     plan = plan_zones(
         points,
@@ -578,7 +704,7 @@ def foot_zones(
         reserve=rules.budget_used(blocked),
         now_only=now_only,
         at=at,
-        on_foot=True,
+        on_foot=on_foot,
         reach_m=reach_m,
     )
     if plan is None:
@@ -609,10 +735,91 @@ def drop_exclusions(request: dict, plan: rules.PlanZones) -> None:
     plan.unexcluded.extend(plan.excluded)
     plan.excluded = []
     plan.exclude = []
+    plan.rings = {}
     # The roads the rider marked closed on this ride stay out (v0.8.2, `blocked_lines`).
     if plan.blocked:
         request["exclude_polygons"] = list(plan.blocked)
         plan.exclude = list(plan.blocked)
+
+
+def drop_closures(request: dict, plan: rules.PlanZones, zone_ids) -> list[rules.Zone]:
+    """Take only the closures named by `zone_ids` out of the request (and the plan's
+    `exclude`), warned of on the route as `drop_exclusions` warns of them all; the other
+    closures, and the roads the rider marked closed, stay out. The closures taken out."""
+    ids = set(zone_ids)
+    dropped = [z for z in plan.excluded if z.zone_id in ids]
+    if not dropped:
+        return []
+    rest = plan.exclude[plan.closure_ring_count() :]
+    kept = [z for z in plan.excluded if z.zone_id not in ids]
+    exclude = [ring for zone in kept for ring in plan.rings_of(zone)]
+    plan.rings = {z.zone_id: plan.rings_of(z) for z in kept}
+    plan.excluded = kept
+    plan.unexcluded.extend(dropped)
+    plan.exclude = exclude + list(rest)
+    if plan.exclude:
+        request["exclude_polygons"] = list(plan.exclude)
+    else:
+        request.pop("exclude_polygons", None)
+    return dropped
+
+
+def drop_farthest(request: dict, plan: rules.PlanZones, points) -> list[rules.Zone]:
+    """Where the router refused the closures' polygons as past its limits (Valhalla's 167
+    and 176): the half of the excluded closures farthest from the rider's `points` taken out
+    (`drop_closures`), at least one. The closures taken out."""
+    if not plan.excluded:
+        return []
+    stops = [list(p) for p in points]
+    order = sorted(plan.excluded, key=lambda z: rules._stops_distance(z, stops))
+    count = max(1, len(order) // 2)
+    return drop_closures(request, plan, [z.zone_id for z in order[-count:]])
+
+
+def drop_rings(request: dict, plan: rules.PlanZones | None, rings) -> int:
+    """Take the given rings of the roads the rider marked closed (or the dirt-trail strips
+    beside them, `plan.blocked`) out of the request and the plan. How many were."""
+    gone = [list(map(list, ring)) for ring in rings]
+    if not gone:
+        return 0
+
+    def keep(ring) -> bool:
+        return [list(p) for p in ring] not in gone
+
+    before = list(request.get("exclude_polygons") or [])
+    after = [ring for ring in before if keep(ring)]
+    if plan is not None:
+        plan.blocked = [ring for ring in plan.blocked if keep(ring)]
+        plan.exclude = [ring for ring in plan.exclude if keep(ring)]
+    if after:
+        request["exclude_polygons"] = after
+    else:
+        request.pop("exclude_polygons", None)
+    return len(before) - len(after)
+
+
+def at_stops(edges, plan: rules.PlanZones | None, request: dict) -> tuple[list[str], list]:
+    """The closures, and the other rings of the request (the roads the rider marked closed,
+    the dirt-trail strips), that meet one of `edges`: the router's candidate edges at the
+    destination and each via ([lon, lat] shapes), which the router can never arrive on while
+    a ring meets them (Valhalla 3.9.1 marks a polygon-excluded edge `percent_along` 0, so
+    `AvoidAsDestinationEdge` always holds; hunt K2/Q3). (closure ids, rings)."""
+    edges = [e for e in edges if len(e) >= 2]
+    if not edges:
+        return [], []
+    ids = []
+    if plan is not None:
+        for zone in plan.excluded:
+            if any(rules.line_meets_ring(e, r) for r in plan.rings_of(zone) for e in edges):
+                ids.append(zone.zone_id)
+    # The closures' own rings come first in the request (`rules.PlanZones.exclude`).
+    skip = plan.closure_ring_count() if plan is not None else 0
+    others = [
+        ring
+        for ring in (request.get("exclude_polygons") or [])[skip:]
+        if any(rules.line_meets_ring(e, ring) for e in edges)
+    ]
+    return ids, others
 
 
 def settle_penalties(answer: dict, request: dict, plan: rules.PlanZones, reroute, time_left_s):
@@ -698,8 +905,14 @@ def measure_delays(
         return other if _legs(other) else None
 
     count = len(plan.excluded)
-    if count and len(rings) >= count:
-        free = ask(rings[count:])
+    # Each closure's rings, in `excluded`'s order at the start of `exclude` (one or more each:
+    # `rules.zone_rings`), and where each closure's own start.
+    offsets, owned = [], 0
+    for zone in plan.excluded:
+        offsets.append(owned)
+        owned += len(plan.rings.get(zone.zone_id, [None]))
+    if count and len(rings) >= owned:
+        free = ask(rings[owned:])
         if free is not None:
             passing = rules.along(_trip_line(free["trip"]), plan.excluded)
             ids = list(dict.fromkeys(p.zone.zone_id for p in passing))
@@ -713,7 +926,9 @@ def measure_delays(
             else:
                 for zone_id in ids:
                     index = next(i for i, z in enumerate(plan.excluded) if z.zone_id == zone_id)
-                    other = ask(rings[:index] + rings[index + 1 :])
+                    first = offsets[index]
+                    last = first + len(plan.rings.get(zone_id, [None]))
+                    other = ask(rings[:first] + rings[last:])
                     plan.delays[zone_id] = (
                         None if other is None else max(0.0, base - _trip_time(other["trip"]))
                     )
@@ -1346,6 +1561,68 @@ def with_work_zones(body: dict, plan: rules.PlanZones | None, now: datetime | No
         "closures": map_rows(coordinates, plan, passages, scale, now),
         "notices": [notice_row(n, now, plan.future) for n in notices],
     }
+    return body
+
+
+# --- A route through a road the rider marked closed (hunt K1, 2026-11-08) ------------------
+#
+# Valhalla lets a polygon-excluded edge be the route's first edge (3.9.1 marks it `percent_along`
+# 0, and `AvoidAsOriginEdge` skips it only from its very start), so Ride's "Go round", which
+# marks the road 100 to 600 ft ahead and re-plans from the rider, rode straight through the
+# stretch it had just marked wherever the rider's edge ran on past it (a rural road, a trail, a
+# bridge, a long block). The answer is checked against the marked lines (`routing.plan_onward`):
+# one that runs along one is planned again setting off the other way, and where that still runs
+# along it, the route says so.
+
+BLOCKED_TEXT = "The road you marked closed is on this route: no way round it was found."
+
+
+# How near a marked road the route's line must run to ride it: the strip's own half width, not
+# `rules.ALONG_M`, so a sidepath or a parallel street 20 to 50 ft off it is not taken for it
+# (review of hunt K1, 2026-11-08).
+BLOCKED_NEAR_M = rules.HALF_WIDTH_M
+
+
+def through_blocked(coordinates, lines) -> list[rules.Passage]:
+    """The roads the rider marked closed (`blocked_lines`) that the route's line runs along
+    (`rules.along`, within `BLOCKED_NEAR_M`), in route order."""
+    if len(coordinates) < 2 or not lines:
+        return []
+    marked = [
+        rules.Zone(
+            f"blocked-{i}",
+            "rider",
+            rules.CLOSED,
+            0.0,
+            tuple(map(tuple, line)),
+            None,
+            None,
+            None,
+            None,
+        )  # fmt: skip
+        for i, line in enumerate(lines)
+        if len(line) >= 2
+    ]
+    return rules.along(coordinates, marked, BLOCKED_NEAR_M)
+
+
+def warn_blocked(body: dict, passages) -> dict:
+    """The route's description with a red line where it runs along a road the rider marked
+    closed, for want of a way round it."""
+    from routemaker import avoid_junctions as geometry
+
+    coordinates = (body.get("geometry") or {}).get("coordinates") or []
+    line_m = geometry.line_length_m(coordinates)
+    scale = (body.get("distance_m") or 0.0) / line_m if line_m > 0 else 1.0
+    added = []
+    for passage in passages:
+        entry = _entry(None, scale, t(BLOCKED_TEXT), at_m=passage.from_m * scale)
+        entry["to_m"] = round(passage.to_m * scale)
+        entry["to_mi"] = round(passage.to_m * scale / 1609.344, 2)
+        entry["severity"] = "red"
+        added.append(entry)
+    for key in ("description", "description_overview"):
+        body[key] = _merge(body.get(key), added)
     return body
 
 

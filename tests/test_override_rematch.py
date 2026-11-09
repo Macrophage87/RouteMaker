@@ -386,6 +386,8 @@ def test_kinds_are_re_matched_independently() -> None:
 
 
 def test_a_present_way_that_no_longer_looks_like_its_fingerprint_is_reported_drifted() -> None:
+    # Since hunt D1 (2026-11-08) this holds only for a way redrawn at about its length, or
+    # renamed: a split or a merge under the same id is handled by the two tests below.
     row = replace(stress_row(1), fingerprint=fingerprint())
     drifted = by_id(way(1, line(500, 0, 90)))
     rows, report = rematch.resolve([row], drifted)
@@ -393,6 +395,90 @@ def test_a_present_way_that_no_longer_looks_like_its_fingerprint_is_reported_dri
     assert [e.outcome for e in report.entries] == ["drifted"]
     renamed = by_id(way(1, line(0, 0, 90), name="Belair Road"))
     assert rematch.resolve([row], renamed)[1].entries[0].outcome == "drifted"
+
+
+def test_a_split_that_keeps_the_id_reaches_the_new_piece_too() -> None:
+    # Hunt D1 (2026-11-08): OSM split a 400 m Avoid row's way, id 1 keeping 0-200 m and new
+    # id 2 taking 200-400 m. Before: reported drifted and applied to way 1 alone.
+    old = way(1, line(0, 0, 400))
+    row = replace(
+        stress_row(1, tier=5, adjustment="avoid-x"),
+        fingerprint=rematch.fingerprint_of(old.tags, old.coordinates),
+    )
+    ways = by_id(way(1, line(0, 0, 200)), way(2, line(0, 200, 200)))
+    assert rematch.drift(row.fingerprint, ways[1]) == rematch.DRIFT_SPLIT
+    rows, report = rematch.resolve([row], ways)
+    assert sorted(r.osm_way_id for r in rows) == [1, 2]
+    assert [(e.outcome, e.new_way_ids) for e in report.entries] == [("rematched", (1, 2))]
+    # Where the rest cannot be found (a different street now), the piece keeps it.
+    alone = by_id(way(1, line(0, 0, 200)), way(2, line(0, 200, 200), name="Other Road"))
+    rows, report = rematch.resolve([row], alone)
+    assert rows == [row] and report.entries[0].outcome == "drifted"
+
+
+def test_a_merge_that_keeps_the_id_does_not_spread_the_row() -> None:
+    # Hunt D1 (2026-11-08): a 100 m LTS 1 row whose id now covers a 900 m way. Before: the
+    # whole 900 m became LTS 1. Now the row is not applied and is reported failed.
+    old = way(1, line(0, 0, 100))
+    fp = rematch.fingerprint_of(old.tags, old.coordinates)
+    row = replace(stress_row(1, tier=1, adjustment="calm-x"), fingerprint=fp)
+    merged = by_id(way(1, line(0, 0, 900)))
+    assert rematch.drift(fp, merged[1]) == rematch.DRIFT_MERGED
+    rows, report = rematch.resolve([row], merged)
+    assert rows == [] and report.entries[0].outcome == "failed"
+    assert "merged" in report.entries[0].reason
+    # An access row closing the way to bicycles stays (err closed, OWNER-DECISIONS 330).
+    closing = Override("access", 1, {"bicycle": "no"}, fingerprint=fp)
+    rows, report = rematch.resolve([closing], merged)
+    assert rows == [closing] and report.entries[0].outcome == "drifted"
+
+
+@pytest.mark.parametrize(
+    "tier,half,kept",
+    [(4, False, True), (4, True, True), (5, False, True), (3, True, False), (2, False, False)],
+)
+def test_a_merge_keeps_an_owners_lts_4_or_avoid_row_and_drops_a_calmer_one(
+    tier, half, kept
+) -> None:
+    # Review of hunt D1: the first fix dropped every stress row on a merged way, so an
+    # owner's Avoid on a 100 m stretch vanished when OSM merged it into a 900 m way, and the
+    # stretch went back to its computed tier (before: failed, not applied, for every tier).
+    # A row at LTS 4 or Avoid warns of the road, as a closing access row does, and stays;
+    # only a calmer one, which vouches for road it was not written for, stops spreading.
+    old = way(1, line(0, 0, 100))
+    fp = rematch.fingerprint_of(old.tags, old.coordinates)
+    base = stress_row(1, tier=tier, adjustment="owner-x")
+    value = {**base.value, "half": True} if half else base.value
+    row = replace(base, value=value, fingerprint=fp)
+    rows, report = rematch.resolve([row], by_id(way(1, line(0, 0, 900))))
+    if kept:
+        assert rows == [row] and report.entries[0].outcome == "drifted"
+        assert "LTS 4 or Avoid" in report.entries[0].reason
+    else:
+        assert rows == [] and report.entries[0].outcome == "failed"
+
+
+def test_a_curated_table_keyed_by_way_id_follows_a_split_and_drops_a_merge() -> None:
+    # Hunt D1 (2026-11-08): the curated speed limits and bike lanes had no fingerprint and
+    # were joined on the id alone; with one stored (`load_fingerprints(folder, kind)`) they
+    # follow a split and are not spread by a merge. A row without one applies by id.
+    old = way(1, line(0, 0, 400))
+    fp = rematch.fingerprint_of(old.tags, old.coordinates)
+    ways = by_id(way(1, line(0, 0, 200)), way(2, line(0, 200, 200)), way(9, line(900, 0, 900)))
+    short = rematch.fingerprint_of(old.tags, line(900, 0, 100))
+    values, report = rematch.resolve_keyed(
+        "speed", {1: "25 mph", 9: "25 mph", 7: "25 mph"}, {1: fp, 9: short}, ways
+    )
+    assert values == {1: "25 mph", 2: "25 mph", 7: "25 mph"}
+    assert {e.outcome for e in report.entries} == {"rematched", "failed"}
+
+
+def test_a_folder_without_kinds_loads_its_fingerprints_under_one(tmp_path) -> None:
+    fp = fingerprint()
+    (tmp_path / "2026-01-01-speed.json").write_text(
+        json.dumps({"version": 1, "rows": [{"osm_way_id": 5, "fingerprint": fp}]})
+    )
+    assert rematch.load_fingerprints(tmp_path, "speed") == {("speed", 5): fp}
 
 
 def test_the_report_lists_every_missing_row_and_writes_markdown_and_csv() -> None:

@@ -83,7 +83,8 @@ def restart_hint(target) -> str:
     return (
         "The routers keep serving the build they started against, so finish the "
         f"rollback on the deploy host: docker compose restart {kept} && docker compose "
-        f"stop {stopped} (withdrawn: its rides are planned on the standard graph){tail}"
+        f"stop {stopped} (withdrawn: its rides are planned on the graph it falls back to, "
+        f"the standard one, or the paved one for Road Bike's weekend graph){tail}"
     )
 
 

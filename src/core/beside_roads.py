@@ -1,7 +1,11 @@
 """The major road an unnamed service road, path or sidewalk of a route runs beside (the
 owner, 2026-10-20, on a frontage road beside East-West Highway: "When going on a service
-road, especially next to a major road, say so"), and a service road mapped with that road's
-own name (the same frontage road: "Turn left onto East-West Highway").
+road, especially next to a major road, say so"), and a service road, path or sidewalk mapped
+with that road's own name (the same frontage road: "Turn left onto East-West Highway"; and,
+since 2026-11-08, hunt finding X2, a Montgomery County sidepath OSM names "Georgia Avenue":
+"Continue on Georgia Avenue" told a rider already on the road nothing of getting off it, and
+"Right onto Georgia Avenue" sent one onto the carriageway). Such a way is "path beside Georgia
+Avenue", "sidewalk beside ..." or "service road beside ..." in place of the road's name.
 
 Read at plan time from the router, so it needs no rebuild: for each such way of the route,
 Valhalla's `/locate` (auto costing, verbose; one request for all of them) at the middle of
@@ -13,9 +17,10 @@ ride's card, in its voice and in the directions.
 
 A path the rebuild already named for its street (`sidepath_names_of`: "9th Street
 Northwest protected bike lane", "path beside Kemp Mill Road") keeps that name, and a path
-or a service road with a name of its own keeps it. The router has BUDGET_S for all of a
-route's ways together (less when the plan is short of time); a way it does not answer in
-time, or answers with no such road, is just "service road" or "path".
+or a service road with a name of its own keeps it unless the major road beside it has that
+same name. The router has BUDGET_S for all of a route's ways together (less when the plan is
+short of time); a way it does not answer in time, or answers with no such road, is just
+"service road" or "path".
 """
 
 from __future__ import annotations
@@ -181,22 +186,26 @@ def names_of(pieces: list, named: dict[int, str] | None = None) -> dict[int, str
     road, by way id: its name for the description ("service road beside East-West
     Highway"), a `describe.BesideName`. And a service road mapped with the name of the
     major road it runs beside (the owner, 2026-10-20, on East-West Highway's frontage road,
-    told "Turn left onto East-West Highway"): named so too, in place of its own name, which
-    would otherwise make it one street with the highway. `named` are the ways already
-    named (`sidepath_names_of`), left alone. Empty where the router is silent."""
+    told "Turn left onto East-West Highway"), and a path or sidewalk mapped so (hunt finding
+    X2, 2026-11-08: a sidepath named "Georgia Avenue" was "Continue on Georgia Avenue"):
+    named so too, in place of its own name, which would otherwise make it one street with
+    the road. `named` are the ways already named (`sidepath_names_of`), left alone. Empty
+    where the router is silent."""
     named = named or {}
     runs: dict[int, list[int]] = {}
     for i, piece in enumerate(pieces):
         if not piece.way_id or piece.way_id in named:
             continue
-        if piece.names and describe.SERVICE_WORDS.get(piece.use) != "service road":
-            continue
+        # A named way of any kind `beside_words` names (a service road, a path, a sidewalk;
+        # never an alley or a parking aisle) is asked about too, and renamed only where the
+        # road beside it has one of its own names (`road_beside`'s `same_as`): a trail with a
+        # name of its own keeps it.
         if _wanted(piece.use):
             runs.setdefault(piece.way_id, []).append(i)
     ways = sorted(
         (w for w, idx in runs.items() if sum(pieces[i].metres for i in idx) >= MIN_RUN_M),
-        # The unnamed first: a named service road is renamed only where the road beside it
-        # has its name, which most do not.
+        # The unnamed first: a named service road or path is renamed only where the road
+        # beside it has its name, which most do not.
         key=lambda w: (bool(pieces[runs[w][0]].names), -sum(pieces[i].metres for i in runs[w])),
     )[:MAX_WAYS]
     roads: dict[int, str | None] = {}
