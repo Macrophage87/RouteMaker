@@ -5486,10 +5486,6 @@ them on 2026-11-09:
   every other gate, `lift_gate` and `swing_gate` are left as they were. Needs the map rebuild.
   Tests: tests/lua/test_remap.lua, tests/lua/test_graph_entry.lua.
 
-### Round 4 owner decisions (2026-11-09)
-
-The fourth routing hunt's owner calls, as Stephen decided them on 2026-11-09:
-
 - **Run's lit ways after dark** (X4-3): kept for Run only. "Keep for run. It's much easier to
   have a powerful light on a bike." Bike rides never weigh lighting. No change there.
 - **A run that ends after dark** (X4-3): Claude asked: "Should it count as after dark when the
@@ -9986,4 +9982,4 @@ side:
   from the last leg, always the walk on from the dock, so "..., walk" for a trip ending with a
   share ride. A ride (own bike or share bike) after the last transit leg names the ending
   (`transit._ending`). Tests: tests/test_transit.py. No map rebuild.
-- X4-3 (darkness over a run's span) is the owner's call and is not changed here.
+- X4-3 (darkness over a run's span) is built under "Round 4 owner decisions (2026-11-09)".
