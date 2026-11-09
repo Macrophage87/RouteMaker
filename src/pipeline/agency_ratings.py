@@ -17,8 +17,16 @@ that knowingly goes without; tests and other callers pass `required=False`.
 Each agency is matched on its own, with the street blocks' matching rules
 (`conflation.conflate_blocks`; a service or track way needs an agreeing name, a
 differently named record is vetoed), so a county's record and the state's record
-for one road do not compete for it: the way takes one level from each, the level
-of the record it lies along most, and `agency_lts.chosen` picks between them.
+for one road do not compete for it: the way takes one level from each and
+`agency_lts.chosen` picks between them. From one agency's records along a way the way
+takes the worst level of any record covering at least `WORST_STRETCH_MIN_M` of it (or
+half of it), the stress-averse reading the rest of the merge uses: the one tier a way
+carries is scored on its worst stretch (`agency_roads.WayFacts`; the highest count,
+`conflation._along_counts`). Until hunt D5 (2026-11-08) it took the record it lay along
+most, so a way 60% on a county's LTS 2 record and 40% on its LTS 4 one was LTS 2 for its
+whole length. A ban (`agency_lts.prohibiting`) is access, not a level: it is taken only
+from the record the way lies along most, as before, so a short slip onto a ramp's record
+does not close a whole road.
 """
 
 from __future__ import annotations
@@ -39,6 +47,7 @@ from routemaker.agency_lts import (
     AgencyRating,
     level_problem,
     prohibiting,
+    used_level,
 )
 from routemaker.avoid_junctions import line_length_m
 from routemaker.classes import TRAIL_CLASS_HIGHWAY
@@ -48,6 +57,12 @@ from . import conflation
 logger = logging.getLogger(__name__)
 
 FILE_NAME = "agency-lts.json"
+
+# The least of a way's length one agency record must cover for its level to be the
+# way's worst stretch (`worst_rating`): about a block. A shorter share, a record that
+# only clips the way past a junction, does not set the way's level unless it covers half
+# the way. `conflate_blocks` has already dropped a record under `MIN_BLOCK_PROBES`.
+WORST_STRETCH_MIN_M = 100.0
 
 
 class AgencyRatingsInvalid(ValueError):
@@ -151,6 +166,7 @@ def ratings_by_way(
     free = {
         way.osm_id for way in ways if way.tags.get("highway") in agency_roads.NAME_FREE_HIGHWAYS
     }
+    lengths = {way.osm_id: line_length_m(way.coordinates) for way in ways}
     by_agency: dict[str, list[conflation.RoadFeature]] = defaultdict(list)
     for feature in features:
         by_agency[ratings[feature.feature_id].agency].append(feature)
@@ -160,8 +176,7 @@ def ratings_by_way(
             entries, own, names, name_required=required, name_free=free
         )
         for way_id, shares in result.matched.items():
-            # The record the way lies along most (`conflate_blocks` orders them).
-            found[way_id].append(ratings[shares[0].feature_id])
+            found[way_id].append(worst_rating(shares, ratings, lengths.get(way_id, 0.0)))
         logger.info(
             "agency stress ratings: %s, %d of %d records matched, %d ways",
             agency,
@@ -170,6 +185,31 @@ def ratings_by_way(
             len(result.matched),
         )
     return {way_id: tuple(found_) for way_id, found_ in found.items()}
+
+
+def worst_rating(
+    shares: Sequence[conflation.BlockShare],
+    ratings: Mapping[str, AgencyRating],
+    way_length_m: float,
+) -> AgencyRating:
+    """One agency's rating for a way from the records it lies along (`shares`, most
+    covering first): the highest level the map uses (`agency_lts.used_level`) among the
+    records covering at least `WORST_STRETCH_MIN_M` or half of the way, the most covering
+    of equal ones. A ban is taken only from the most covering record."""
+    first = ratings[shares[0].feature_id]
+    if prohibiting((first,)) is not None:
+        return first
+    best, best_level = first, used_level(first)
+    for share in shares[1:]:
+        rating = ratings[share.feature_id]
+        if prohibiting((rating,)) is not None:
+            continue
+        if share.share * way_length_m < WORST_STRETCH_MIN_M and share.share < 0.5:
+            continue
+        level = used_level(rating)
+        if level > best_level:
+            best, best_level = rating, level
+    return best
 
 
 def prohibited_ways(rated: Mapping[int, Sequence[AgencyRating]]) -> set[int]:

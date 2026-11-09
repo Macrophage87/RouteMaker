@@ -523,7 +523,95 @@ class TestApproaches:
         assert self.control(around) is Control.SIGNAL
 
     def test_a_signal_node_on_the_arm(self) -> None:
+        """A stop-line signal node on the arm, with nothing else there, is the
+        junction's. (This test used to stand for any signal node on the arm;
+        since hunt J2 a crosswalk's signal is the junction's only where no
+        other road's junction is nearer it: see the two tests below.)"""
         around = approach_around(north_at=12.0, flag=None, signal_node_at=12.0)
+        assert self.control(around) is Control.SIGNAL
+        # So is the junction's own signalised crosswalk there.
+        crosswalk = approach_around(north_at=12.0, flag=None, signal_node_at=12.0)
+        walk = edge(40, 99, 921, 1.0, 270.0, use="footway", car=False)
+        crosswalk["edges"].append(shaped(walk, (LON + 0.0002, north(12.0)[1]), north(12.0)))
+        assert self.control(crosswalk) is Control.SIGNAL
+
+    @staticmethod
+    def k_st_crosswalk(flag_edges: bool = False):
+        """Hunt J2: K St's signalised junction 25 m up Main St (its own signal
+        is K St's, review r3, B1) and K St's crosswalk across Main St at 17 m,
+        `crossing=traffic_signals` as every crosswalk at a signal is, which the
+        transform makes a signal node. With `flag_edges`, the router's flag on
+        Main St's edge arriving there towards N, as it sets it at a signal
+        node."""
+        around = approach_around(north_at=25.0, names=("K St",), way=77)
+        for e in around["edges"]:
+            if e["edge_id"]["value"] == 5:
+                shaped(e, (LON, LAT), north(17.0))
+            if e["edge_id"]["value"] == 6:
+                shaped(e, north(17.0), (LON, LAT))
+        mid = edge(41, 20, 950, 1.0, 180.0, names=["Main St"], signal=flag_edges)
+        around["edges"].append(shaped(mid, north(25.0), north(17.0)))
+        around["nodes"].append(node(951, signal=True, at=north(17.0)))
+        walk = edge(42, 98, 951, 1.0, 270.0, use="footway", car=False)
+        around["edges"].append(shaped(walk, (LON + 0.0002, north(17.0)[1]), north(17.0)))
+        return around
+
+    @pytest.mark.parametrize("flag_edges", [False, True])
+    def test_another_junctions_signalised_crosswalk_up_the_arm_is_its_own(self, flag_edges) -> None:
+        """Hunt J2: before, the crosswalk node 8 m short of K St's node was
+        read as this junction's signal, and the side street crossing Main St
+        at N was priced as signalised (600 ft, not red)."""
+        around = self.k_st_crosswalk(flag_edges)
+        assert self.control(around) is Control.NONE
+        # With K St farther off than N is from the crosswalk, it is N's.
+        far = self.k_st_crosswalk(flag_edges)
+        for e in far["edges"]:
+            if e["edge_id"]["value"] == 20:
+                shaped(e, north(70.0), north(40.0))
+            if e["edge_id"]["value"] == 41:
+                shaped(e, north(40.0), north(17.0))
+        assert self.control(far) is Control.SIGNAL
+
+    def test_another_junction_just_past_30_m_still_owns_its_crosswalk(self) -> None:
+        """The crosswalk at 25 m, K St's node at 33 m: K St's node is past the
+        walk's reach but in the answer, and nearer the crosswalk than N."""
+        around = self.k_st_crosswalk()
+        for e in around["edges"]:
+            value = e["edge_id"]["value"]
+            if value == 5:
+                shaped(e, (LON, LAT), north(25.0))
+            if value == 6:
+                shaped(e, north(25.0), (LON, LAT))
+            if value == 41:
+                shaped(e, north(33.0), north(25.0))
+            if value == 20:
+                shaped(e, north(63.0), north(33.0))
+            if value == 42:
+                shaped(e, (LON + 0.0002, north(25.0)[1]), north(25.0))
+        around["nodes"][-1]["lat"] = north(25.0)[1]
+        assert self.control(around) is Control.NONE
+
+    def test_a_signal_where_a_driveway_and_a_crosswalk_meet_is_not_a_crosswalks(self) -> None:
+        """A signalised entrance (an unnamed road joining at the signal node)
+        with its crosswalk is read as before: a signal of the arm's own, which
+        K St's junction farther up does not take."""
+        around = self.k_st_crosswalk()
+        drive = edge(43, 79, 951, 1.0, 90.0, use="service_road")
+        around["edges"].append(shaped(drive, (LON - 0.0003, north(17.0)[1]), north(17.0)))
+        assert self.control(around) is Control.SIGNAL
+        # Nor is a stop-line signal node with no crosswalk there.
+        stop_line = self.k_st_crosswalk()
+        stop_line["edges"] = [e for e in stop_line["edges"] if e["edge_id"]["value"] != 42]
+        assert self.control(stop_line) is Control.SIGNAL
+
+    def test_a_path_rider_still_takes_the_crosswalks_signal(self) -> None:
+        """A rider arriving on a path walks past another road's junction, and
+        crosses on its crosswalk's signal too."""
+        around = self.k_st_crosswalk()
+        for e in around["edges"]:
+            if e["edge_id"]["value"] in (1, 3):
+                e["edge"]["classification"]["use"] = "cycleway"
+                e["edge"]["access"]["car"] = False
         assert self.control(around) is Control.SIGNAL
 
     def test_a_signalised_junction_of_another_road_up_the_arm_is_its_own(self) -> None:
@@ -1315,6 +1403,12 @@ class TestBuild:
         )
         return made
 
+    def test_the_movement_round_a_roundabout_is_carried(self) -> None:
+        """Hunt J4: the trace's reading of a ride round a ring reaches the model."""
+        made = self.built(crossroads(), raw(ring_movement=Movement.LEFT))
+        assert made.ring_movement is Movement.LEFT
+        assert self.built(crossroads()).ring_movement is None
+
     def test_the_cross_road_with_its_names_and_both_ways(self) -> None:
         made = self.built(crossroads(**{"in": {"stop": True}}))
         assert made.incoming.tier == made.outgoing.tier == 2
@@ -1544,6 +1638,75 @@ class TestWanted:
         assert junctions.wanted(raw())
 
 
+class TestReadByTier:
+    """The 2026-11-08 hunt, H5: a residential street the agencies' data rates LTS 3 or worse
+    is a busy road to cross, but the class gate never read its crossings."""
+
+    QUIET = {"other_classes": ("residential", "residential")}
+
+    def test_a_residential_junction_is_a_candidate_for_its_tier(self) -> None:
+        assert junctions.tier_candidate(raw(**self.QUIET))
+        # A busy class is read already; a node where nothing is decided is not a junction.
+        assert not junctions.tier_candidate(raw())
+        assert not junctions.tier_candidate(raw(others=(), other_classes=()))
+        assert not junctions.tier_candidate(
+            raw(in_class="service_other", out_class="service_other", other_classes=("track",))
+        )
+
+    def test_one_the_table_rates_busy_is_read(self, monkeypatch) -> None:
+        # Before: never asked of /locate, so it cost nothing and was never red. After: read.
+        asked: list = []
+        monkeypatch.setattr(junctions, "busy_by_tier", lambda points: {p[0] for p in points})
+        monkeypatch.setattr(junctions, "roads_by_way", lambda *a, **k: {})
+
+        def locate(payload: dict) -> list[dict]:
+            asked.extend(payload["locations"])
+            return [crossroads() for _ in payload["locations"]]
+
+        junctions.events_of([raw(**self.QUIET)], "weekend", False, locate)
+        assert asked, "the residential junction the table rates busy is read"
+
+    def test_one_the_table_rates_quiet_asks_nothing(self, monkeypatch) -> None:
+        seen: list = []
+
+        def busy_by_tier(points):
+            seen.extend(points)
+            return set()
+
+        monkeypatch.setattr(junctions, "busy_by_tier", busy_by_tier)
+        monkeypatch.setattr(junctions, "roads_by_way", lambda *a, **k: {})
+
+        def locate(payload: dict):
+            raise AssertionError("a quiet residential junction does not ask")
+
+        assert junctions.events_of([raw(**self.QUIET)], "weekend", False, locate) == []
+        assert seen == [(0, LON, LAT)]
+
+    def test_nothing_to_read_runs_no_query(self) -> None:
+        assert junctions.busy_by_tier([]) == set()
+
+    @db
+    def test_the_table_says_which_nodes_a_busy_residential_street_runs_through(
+        self, segment_schemas
+    ) -> None:
+        live, _staging = segment_schemas
+        with connection.cursor() as cursor:
+            for way, tier, trail, points in (
+                (70, 3, False, ((LON - 0.001, LAT), (LON + 0.001, LAT))),
+                (71, 2, False, ((LON - 0.001, LAT + 0.01), (LON + 0.001, LAT + 0.01))),
+                (72, 4, True, ((LON - 0.001, LAT + 0.02), (LON + 0.001, LAT + 0.02))),
+            ):
+                cursor.execute(
+                    f"INSERT INTO {live}.segment (osm_way_id, ordinal, geometry, stress_tier, "
+                    "stress_rule, is_trail_class) "
+                    "VALUES (%s, 0, ST_GeomFromText(%s, 4326), %s, 'test', %s)",
+                    [way, line(*points), tier, trail],
+                )
+        segment_info.forget_columns()
+        points = [(0, LON, LAT), (1, LON, LAT + 0.01), (2, LON, LAT + 0.02), (3, LON, LAT + 0.5)]
+        assert junctions.busy_by_tier(points) == {0}
+
+
 class TestEvents:
     """Review r1's examples, end to end through the router's answer."""
 
@@ -1589,6 +1752,41 @@ class TestEvents:
         # "weekend": 468a's x0.85 on the 600 ft signalised crossing.
         assert not event.flagged
         assert event.cost_ft == model.SIGNALISED_CROSSING_FT[4] * model.time_factor("weekend")
+
+    @db
+    def test_the_ride_time_prices_the_junction_when_closures_are_read_without_it(
+        self, grid
+    ) -> None:
+        """Hunt 3 follow-up: a plan off the weekend graphs reads closures in no ride time
+        (`routing.car_free_reading`), and that one value also timed the junction costs, so
+        rush hour (x1.25) and night (x0.5) were lost on every such plan."""
+        signalled = answer(crossroads()["edges"], [node(N, signal=True)])
+        (event,) = junctions.events_of(
+            [raw()], "weekday_rush", False, self.locate_with(signalled), closure_when=""
+        )
+        assert event.time_factor == model.time_factor("weekday_rush") == 1.25
+        assert event.cost_ft == model.SIGNALISED_CROSSING_FT[4] * 1.25
+
+    @db
+    def test_closures_are_read_in_the_closure_time_not_the_ride_time(
+        self, grid, monkeypatch
+    ) -> None:
+        """Hunt X1 kept: a weekend ride on the standard graph reads no closure (its router
+        prices the closed road with cars), while the ride time still prices the junction."""
+        read = []
+        real = junctions.roads_by_way
+
+        def spy(wanted, when, with_facility):
+            read.append(when)
+            return real(wanted, when, with_facility)
+
+        monkeypatch.setattr(junctions, "roads_by_way", spy)
+        signalled = answer(crossroads()["edges"], [node(N, signal=True)])
+        (event,) = junctions.events_of(
+            [raw()], "weekend", False, self.locate_with(signalled), closure_when=""
+        )
+        assert read == [""]
+        assert event.time_factor == model.time_factor("weekend")
 
     @db
     def test_riding_along_the_arterial_past_a_merge_is_not_a_crossing(self, grid) -> None:

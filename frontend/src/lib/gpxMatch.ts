@@ -10,6 +10,7 @@ import { FOLLOW_MAX_POINTS } from "./api.ts";
 import { formatDistance } from "./format.ts";
 import { MAX_POINTS, type LonLat } from "./geo.ts";
 import { IMPORT_START_POINTS, type ImportedPlan } from "./gpxPlan.ts";
+import type { When } from "./dials.ts";
 import type { PresetId } from "./presets.ts";
 import { cumulative, viaPoints } from "./trackMatch.ts";
 
@@ -48,6 +49,10 @@ export interface MatchRide {
   trailsOff?: boolean;
   /** Electric assist: the e-bike graph, on a ride type that offers it. */
   assist?: boolean;
+  /** "Easy MTB trails" on (dials.ts easyMtbOn): the off-road graph, where those trails are open. */
+  easyMtb?: boolean;
+  /** The ride time set, or null/absent for the time of the moment: a weekend time takes a weekend graph. */
+  when?: When | null;
 }
 
 export async function matchTrack(origin: string, line: readonly LonLat[], ride: MatchRide, post: Fetch = fetch): Promise<MatchOutcome> {
@@ -56,7 +61,14 @@ export async function matchTrack(origin: string, line: readonly LonLat[], ride: 
       method: "POST",
       credentials: "same-origin",
       headers: { Accept: "application/json", "Content-Type": "application/json" },
-      body: JSON.stringify({ points: thinForMatch(line), preset: ride.preset, trails_off: ride.trailsOff === true, assist: ride.assist === true }),
+      body: JSON.stringify({
+        points: thinForMatch(line),
+        preset: ride.preset,
+        trails_off: ride.trailsOff === true,
+        assist: ride.assist === true,
+        ...(ride.easyMtb === true ? { easy_mtb: true } : {}),
+        ...(ride.when ? { when: ride.when } : {}),
+      }),
     });
     const body = (await response.json().catch(() => ({}))) as { error?: string; line?: LonLat[]; matched_share?: number };
     if (response.status === 429) return { ok: false, message: "Too many requests from here just now; try again in a minute." };

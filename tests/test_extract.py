@@ -70,6 +70,36 @@ def test_a_whole_way_indexes_straight_through(tmp_path) -> None:
     assert way.located == [0, 1, 2]
 
 
+def test_the_ways_button_nodes_are_read_in_the_same_node_pass(tmp_path) -> None:
+    """The beg buttons (the owner, 2026-11-08): a way's node tagged `button_operated=yes`
+    is found by the node pass `read_ways` already makes; a node no kept way uses is not."""
+    source = tmp_path / "buttons.osm.pbf"
+    writer = osmium.SimpleWriter(str(source))
+    try:
+        for node_id, tags in (
+            (1, {}),
+            (2, {"button_operated": "yes"}),
+            (3, {}),
+            (9, {"button_operated": "yes"}),
+        ):
+            writer.add_node(
+                osmium.osm.mutable.Node(
+                    id=node_id, location=(-77.0 - node_id * 0.001, 38.9), tags=tags, version=1
+                )
+            )
+        writer.add_way(
+            osmium.osm.mutable.Way(id=100, nodes=[1, 2, 3], tags={"highway": "footway"}, version=1)
+        )
+    finally:
+        close_writer(writer)
+    # Without the set, as every caller but the rebuild reads it.
+    (way,) = read_ways(source)
+    assert way.located == [0, 1, 2]
+    found: set[int] = set()
+    read_ways(source, button_nodes=found)
+    assert found == {2}
+
+
 def test_located_points_refuses_lists_that_have_come_apart() -> None:
     """Built together by read_ways. A caller that sets one without the other is
     reintroducing the defect, and should hear about it here rather than in the

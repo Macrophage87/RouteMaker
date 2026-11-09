@@ -852,3 +852,34 @@ class TestTheRidesOwnSettings:
         last = ((-77.035, 38.90), (-77.035, 38.901))
         kept = stoporder.ride_exclusions(self.POINTS, routing.Dials(blocked=(first, last)))
         assert kept == workzones.blocked_rings((last,))
+
+
+class TestRoadBikesWeekendFallback:
+    """Hunt 3, P3-2: a weekend Road Bike ride whose weekend graph is not served orders its
+    stops on the graph its route is planned on, the paved one, not the standard graph."""
+
+    def test_an_unpromoted_weekend_graph_leaves_the_paved_one(self, monkeypatch) -> None:
+        monkeypatch.setattr(routing, "_paved_weekend_is_promoted", lambda: False)
+        monkeypatch.setattr(routing, "_paved_is_promoted", lambda: True)
+        variant, _ = stoporder.ride_graph("road-bike", routing.Dials(when="weekend"))
+        assert variant == "paved"
+        # And the standard graph where the paved one is not served either.
+        monkeypatch.setattr(routing, "_paved_is_promoted", lambda: False)
+        variant, _ = stoporder.ride_graph("road-bike", routing.Dials(when="weekend"))
+        assert variant == "standard"
+
+    def test_a_weekend_router_that_does_not_answer_leaves_the_paved_one(self, monkeypatch) -> None:
+        monkeypatch.setattr(routing, "_paved_is_promoted", lambda: True)
+        asked = []
+
+        def call(variant, endpoint, payload, deadline):
+            asked.append(variant)
+            if variant == "paved-weekend":
+                raise routing.RouterUnavailable("down")
+            return {"ok": True}
+
+        monkeypatch.setattr(routing, "_call", call)
+        deadline = routing.Deadline(routing.clock() + 10, 5)
+        _, graph = stoporder._ask("paved-weekend", "sources_to_targets", {}, deadline)
+        assert asked == ["paved-weekend", "paved"]
+        assert graph == "paved"

@@ -9,13 +9,17 @@ trail, any reroutes should include dirt."
 
 The mountain-bike class of dirt trail (`routemaker.trailaccess`, reason `mtb`) is closed on
 the standard graphs and open on the off-road graph Gravel and Mountain Goat ride. A plan on a
-standard-graph ride type whose stop, via or end lies on one (`touched`) is planned on the
-off-road graph instead, with the ride type's own costing. Its start is not enough: the rider
-did not choose the trail by standing on it. A ride's re-plan is different: there the start is
-the rider, and a rider on a dirt trail, or who has been on one this ride, opted in, so the
-re-plan may ride any dirt trail (`core.routing._plan`'s `any_dirt`). The dirt trail it is on is then
-ridden, and the trails joined to it along the way: a run of the route on dirt trails one after
-another counts as one run, kept when any of it is a trail touched. A run on a dirt trail no
+standard-graph ride type (the standard graph, its weekend twin, or the e-bike graph:
+`core.routing.TRAIL_TOUCH_VARIANTS`) whose stop, via or end lies on one (`touched`) is planned
+on the off-road graph instead, with the ride type's own costing. Its start is not enough: the
+rider did not choose the trail by standing on it. A ride's re-plan is different: there the
+start is the rider, and a rider on a dirt trail, or who has been on one this ride, opted in, so
+the re-plan may ride any dirt trail (`core.routing._plan`'s `any_dirt`). On it means riding
+along it: with the rider's heading, the trail under the fix must run that way (`followed`); a
+fix merely near one, or with no heading, opens that trail and the trails joined to it, as a stop
+does. The dirt trail it is on is then ridden, and the trails joined to it along the way: a run
+of the route on dirt trails one after another counts as one run, kept when any of it is a trail
+touched. A run on a dirt trail no
 point touches is one the plan found for itself, which the ride type does not do: it is left out
 (`stray_rings`) and the plan made again (`core.routing.plan`).
 
@@ -64,9 +68,12 @@ def _cursor():
     return plan_cursor()
 
 
-def touched(points: Sequence[Sequence[float]]) -> tuple[frozenset[int], ...]:
+def touched(
+    points: Sequence[Sequence[float]], reasons: Sequence[str] = (REASON,)
+) -> tuple[frozenset[int], ...]:
     """The dirt trails (their way ids) within TOUCH_M of each of `points` ([lon, lat]), in
-    their order."""
+    their order. `reasons`: the closures counted, the mountain-bike class alone unless asked
+    (Ride's "End mountain biking" asks for the rated singletrack too)."""
     none = tuple(frozenset() for _ in points)
     if not points:
         return none
@@ -85,19 +92,85 @@ def touched(points: Sequence[Sequence[float]]) -> tuple[frozenset[int], ...]:
         FROM p
         JOIN {schema}.segment AS s
           ON s.geometry && ST_Expand(p.g, %s)
-         AND s.bike_access_reason = %s
+         AND s.bike_access_reason = ANY(%s)
          AND ST_DWithin(s.geometry::geography, p.g::geography, %s)
     """
     with _cursor() as cursor:
         cursor.execute(
             sql,
-            [lons, lats, TOUCH_DEG / math.cos(math.radians(max(map(abs, lats)))), REASON, TOUCH_M],
+            [
+                lons,
+                lats,
+                TOUCH_DEG / math.cos(math.radians(max(map(abs, lats)))),
+                list(reasons),
+                TOUCH_M,
+            ],
         )
         rows = cursor.fetchall()
     found: list[set[int]] = [set() for _ in points]
     for index, way in rows:
         found[int(index) - 1].add(int(way))
     return tuple(frozenset(ways) for ways in found)
+
+
+# A ride's re-plan from a fix near a dirt trail (`followed`): the rider is on it where it runs
+# within FOLLOW_DEG of the rider's heading, either way along it, over the FOLLOW_SPAN_M of it
+# either side of the nearest point. A trail that crosses the way the rider is going, or a path
+# beside the road that turns off it, is not one the rider is on (hunt V5).
+FOLLOW_DEG = 45.0
+FOLLOW_SPAN_M = 10.0
+
+
+def followed(point: Sequence[float], heading: float, ways: frozenset[int]) -> frozenset[int]:
+    """Which of the dirt trails `ways` (within TOUCH_M of `point`, [lon, lat]) run the way
+    `heading` (degrees clockwise from north) goes, or its reverse, at the point: the ones a
+    rider there with that heading is riding along, not across. A trail whose direction there
+    cannot be measured (a piece too short) counts as followed."""
+    if not ways:
+        return frozenset()
+    schema = validate_schema_name(settings.SEGMENT_SCHEMA_LIVE)
+    lon, lat = float(point[0]), float(point[1])
+    sql = f"""
+        WITH p AS (SELECT ST_SetSRID(ST_MakePoint(%s, %s), 4326) AS g)
+        SELECT s.osm_way_id, degrees(ST_Azimuth(
+            ST_LineInterpolatePoint(s.geometry, greatest(at.f - at.d, 0.0))::geography,
+            ST_LineInterpolatePoint(s.geometry, least(at.f + at.d, 1.0))::geography))
+        FROM p
+        JOIN {schema}.segment AS s
+          ON s.geometry && ST_Expand(p.g, %s)
+         AND s.osm_way_id = ANY(%s)
+         AND GeometryType(s.geometry) = 'LINESTRING'
+         AND ST_DWithin(s.geometry::geography, p.g::geography, %s)
+        CROSS JOIN LATERAL (
+            SELECT ST_LineLocatePoint(s.geometry, p.g) AS f,
+                   %s / greatest(ST_Length(s.geometry::geography), 1.0) AS d
+        ) AS at
+    """
+    with _cursor() as cursor:
+        cursor.execute(
+            sql,
+            [
+                lon,
+                lat,
+                TOUCH_DEG / math.cos(math.radians(abs(lat))),
+                sorted(int(w) for w in ways),
+                TOUCH_M,
+                FOLLOW_SPAN_M,
+            ],
+        )
+        rows = cursor.fetchall()
+    kept: set[int] = set()
+    for way, azimuth in rows:
+        if azimuth is None or along_heading(float(azimuth), heading):
+            kept.add(int(way))
+    return frozenset(kept)
+
+
+def along_heading(bearing: float, heading: float) -> bool:
+    """Whether a way running at `bearing` runs within FOLLOW_DEG of `heading` or of its
+    reverse (degrees)."""
+    off = abs((bearing - heading) % 180.0)
+    return min(off, 180.0 - off) <= FOLLOW_DEG
 
 
 # A stretch the rider marked closed is on a dirt trail where at least CLOSED_ON_POINTS of the
@@ -213,25 +286,78 @@ def block_ring(lon: float, lat: float, bearing: float) -> list[list[float]]:
     return [*ring, ring[0]]
 
 
+def trail_levels(way_ids: Sequence[int]) -> dict[int, int]:
+    """Each way's mountain-bike level for the way off a trail (`stray_rings`' `exit_level`):
+    its rating, or 1 where unrated (the owner counts unrated trails easy, `core.easy_mtb`)."""
+    from . import mtb
+
+    return {
+        way: (level if level is not None else 1)
+        for way, (_only, level, _trail) in mtb.way_traits(way_ids).items()
+    }
+
+
+def exit_level(kept: frozenset[int]) -> int:
+    """The level of the trail under the rider, for `stray_rings`: the easiest of `kept` (every
+    trail within TOUCH_M), so a green trail beside a black one does not open the black ones."""
+    levels = trail_levels(sorted(kept))
+    return min((levels.get(w, 1) for w in kept), default=1)
+
+
 def stray_rings(
-    pieces: Sequence, ways: dict[int, str], kept: frozenset[int], any_dirt: bool = False
+    pieces: Sequence,
+    ways: dict[int, str],
+    kept: frozenset[int],
+    any_dirt: bool = False,
+    exit_level: int | None = None,
 ) -> list[list[list[float]]]:
     """A strip across each stray run of `pieces` (`core.routing.Piece`: way_id, lon and lat at
     its middle, metres, heading), to leave it out by: at the middle of its longest stretch on a
     dirt trail, along it. A run on dirt trails (REASON) is a stray where none of it is `kept`,
-    and never with `any_dirt`; a run on green singletrack always is."""
+    and never with `any_dirt`; a run on singletrack is too, but for the singletrack in `kept`
+    itself (Ride's "End mountain biking" from on one: that trail alone, never one joined to it,
+    so the way off takes no harder trail)."""
     ids = [p.way_id for p in pieces]
     metres = [p.metres for p in pieces]
     dirt = frozenset(w for w, reason in ways.items() if reason == REASON)
     singletrack = frozenset(ways) - dirt
-    found = [] if any_dirt else strays(ids, metres, dirt, kept)
-    found += runs(ids, metres, singletrack)
+    if exit_level is not None:
+        found = _exit_strays(ids, metres, frozenset(ways), kept, exit_level)
+    else:
+        found = [] if any_dirt else strays(ids, metres, dirt, kept)
+        found += runs(ids, metres, singletrack - kept)
     rings: list[list[list[float]]] = []
     for a, b in found:
         on_dirt = [p for p in pieces[a:b] if p.way_id in ways]
         longest = max(on_dirt, key=lambda p: (_bearing(p) is not None, p.metres))
         rings.append(block_ring(longest.lon, longest.lat, _bearing(longest) or 0.0))
     return rings
+
+
+def _exit_strays(
+    ids: Sequence[int],
+    metres: Sequence[float],
+    trails: frozenset[int],
+    kept: frozenset[int],
+    level: int,
+) -> list[tuple[int, int]]:
+    """Ride's "End mountain biking" from on a trail (the owner, 2026-11-08: "get people back to
+    a road or path ... through the easiest route possible", "It should find calmer or shorter
+    trails if available"): the run of trails from the one under the rider (`kept`) is ridden,
+    and on it any trail no harder than that one (`level`), so an easier or shorter way off is
+    taken; a harder trail on it is left out, and so is every run that does not start from
+    the rider's trail."""
+    found: list[tuple[int, int]] = []
+    levels = trail_levels([w for w in ids if w in trails])
+    for a, b in runs(ids, metres, trails):
+        if not any(w in kept for w in ids[a:b]):
+            found.append((a, b))
+            continue
+        harder = frozenset(
+            w for w in ids[a:b] if w in trails and w not in kept and levels.get(w, 1) > level
+        )
+        found += [(a + x, a + y) for x, y in runs(ids[a:b], metres[a:b], harder)]
+    return found
 
 
 def _bearing(piece) -> float | None:

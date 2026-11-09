@@ -30,7 +30,9 @@ db = pytest.mark.django_db(transaction=True)
 
 SEARCH = "/api/geocode"
 REVERSE = "/api/reverse"
+# `way_in` since the 2026-11-08 hunt (G1): the way in an area result was moved to, else null.
 PLACE_KEYS = {"name", "label", "lon", "lat", "kind", "osm_type", "osm_id", "osm_key", "osm_value"}
+PLACE_KEYS |= {"way_in"}
 
 INSIDE = (-77.0502, 38.8893)  # the Lincoln Memorial
 OUTSIDE = (-80.0, 40.44)  # Pittsburgh
@@ -355,6 +357,95 @@ class TestSearch:
         fake = photon(answer())
         get(client, SEARCH, q=typed)
         assert fake.calls[0][1]["q"] == sent
+
+    def test_a_listing_name_with_its_address_finds_the_place_at_the_address(
+        self, client, monkeypatch, router
+    ) -> None:
+        """Stephen 2026-11-09: a restaurant pasted as its listing names it found nothing,
+        since OSM's name is shorter than the listing's. The address alone is asked next,
+        and the place named in the query comes first among what is at it."""
+        satay = feature(
+            -77.0810725,
+            38.9508325,
+            name="Satay Club",
+            type="house",
+            osm_key="amenity",
+            osm_value="restaurant",
+            housenumber="4654",
+            street="Wisconsin Avenue Northwest",
+            city="Washington",
+        )
+        address = feature(
+            -77.0810,
+            38.9508,
+            type="house",
+            osm_key="place",
+            osm_value="house",
+            housenumber="4654",
+            street="Wisconsin Avenue Northwest",
+            city="Washington",
+        )
+        calls: list[str] = []
+
+        def fake(path: str, params: dict) -> dict:
+            calls.append(params["q"])
+            # Photon found nothing for the whole listing.
+            return answer() if len(calls) == 1 else answer(address, satay)
+
+        monkeypatch.setattr(geocode, "_get", fake)
+        q = "Satay Club Asian Restaurant & Sushi Bar, 4654 Wisconsin Ave NW, Washington, DC"
+        found = get(client, SEARCH, q=q).json()["results"]
+        assert calls == [
+            "Satay Club Asian Restaurant & Sushi Bar, 4654 Wisconsin Avenue Northwest,"
+            " Washington, DC",
+            "4654 Wisconsin Avenue Northwest, Washington, DC",
+        ]
+        assert [row["name"] for row in found] == ["Satay Club", "4654 Wisconsin Avenue Northwest"]
+
+    def test_a_search_that_finds_something_is_asked_once(self, client, photon) -> None:
+        fake = photon(answer(LINCOLN))
+        get(client, SEARCH, q="Lincoln Memorial, 2 Lincoln Memorial Circle NW")
+        assert len(fake.calls) == 1
+
+    @pytest.mark.parametrize(
+        "q",
+        [
+            "4654 Wisconsin Ave NW, Washington, DC",
+            "Route 1 Diner Bethesda",
+            "CVS 24 Hour Pharmacy",
+            "Union Station, Washington, DC",
+        ],
+    )
+    def test_with_no_name_before_an_address_nothing_found_is_asked_once(
+        self, client, photon, q
+    ) -> None:
+        fake = photon(answer())
+        assert get(client, SEARCH, q=q).json()["results"] == []
+        assert len(fake.calls) == 1
+
+    @pytest.mark.parametrize(
+        ("typed", "split"),
+        [
+            (
+                "Satay Club, 4654 Wisconsin Ave NW, Washington, DC",
+                ("Satay Club", "4654 Wisconsin Ave NW, Washington, DC"),
+            ),
+            ("Satay Club 4654 Wisconsin Ave NW", ("Satay Club", "4654 Wisconsin Ave NW")),
+            ("Pier 1 Imports, 1100A Wilson Blvd", ("Pier 1 Imports", "1100A Wilson Blvd")),
+            ("Bagels, 5 Old Georgetown Rd", ("Bagels", "5 Old Georgetown Rd")),
+            ("Route 1 Diner", None),
+            ("Route 1 Diner Bethesda", None),
+            ("Pier 1 Imports Arlington VA", None),
+            ("CVS 24 Hour Pharmacy", None),
+            ("Chipotle, 7th Street NW", None),
+            ("Bethesda, 20814", None),
+            ("Tysons Corner, 2nd floor", None),
+            ("4654 Wisconsin Ave NW", None),
+            ("Union Station, Washington, DC", None),
+        ],
+    )
+    def test_the_address_part_of_a_query(self, typed, split) -> None:
+        assert geocode.address_part(typed) == split
 
     def test_each_result_says_what_it_is_in_osm(self, client, photon) -> None:
         photon(
@@ -1115,6 +1206,13 @@ class TestAbbreviations:
             ("Old Dominion Dr", "Old Dominion Drive"),
             ("S Four Mile Run Dr", "South Four Mile Run Drive"),
             ("Lee Hwy W", "Lee Highway West"),
+            # The second 2026-11-08 hunt (P9): "Mt" and "Ft" were sent as typed.
+            ("Mt Vernon Trail", "Mount Vernon Trail"),
+            ("Ft Washington Park", "Fort Washington Park"),
+            ("Ft. Hunt Rd", "Fort Hunt Road"),
+            ("4500 Ft Hunt Rd", "4500 Fort Hunt Road"),
+            ("Mt Rainier", "Mount Rainier"),
+            ("Mt St Mary's", "Mount St Mary's"),
         ],
     )
     def test_abbreviations_are_spelled_out(self, typed, sent) -> None:
@@ -1130,6 +1228,7 @@ class TestAbbreviations:
             "W&OD Trail",
             "S",
             "NW",
+            "10 ft",  # a length, not a fort
         ],
     )
     def test_what_is_not_an_abbreviation_is_left(self, kept) -> None:
@@ -1208,6 +1307,178 @@ class TestDescribe:
             "properties": {"name": "y"},
         }
         assert geocode.results(answer(bad, broken, "junk"), reverse=False) == []
+
+
+# The 2026-11-08 hunt's live rows (G1, G6), with the extents Photon gives a way or relation.
+OCCOQUAN = feature(
+    -77.24159,
+    38.684466,
+    name="Occoquan Regional Park",
+    type="other",
+    osm_type="R",
+    osm_key="leisure",
+    osm_value="park",
+    extent=[-77.262, 38.692, -77.228, 38.676],
+)
+OCCOQUAN_LAUNCH = feature(
+    -77.252775,
+    38.680617,
+    name="Occoquan Regional Park Boat Launch",
+    type="house",
+    osm_type="N",
+    osm_key="leisure",
+    osm_value="slipway",
+)
+GREAT_FALLS = dict(name="Great Falls Park", type="other", osm_type="R")
+
+
+class TestAreas:
+    def test_an_area_is_moved_to_the_way_in_its_search_found(self) -> None:
+        """G1: the park's middle went to the router, which snaps it to the nearest road; the
+        boat launch the same search found is where a ride goes in."""
+        park, launch = geocode.results(answer(OCCOQUAN, OCCOQUAN_LAUNCH), reverse=False)
+        assert park["name"] == "Occoquan Regional Park"
+        assert (park["lon"], park["lat"]) == (-77.252775, 38.680617)
+        assert park["way_in"] == "Occoquan Regional Park Boat Launch"
+        assert launch["way_in"] is None
+
+    def test_an_area_with_no_way_in_found_stays_at_its_middle(self) -> None:
+        (park,) = geocode.results(answer(OCCOQUAN), reverse=False)
+        assert (park["lon"], park["lat"]) == (-77.24159, 38.684466) and park["way_in"] is None
+
+    def test_a_way_in_outside_the_area_is_not_taken(self) -> None:
+        far = feature(-77.30, 38.70, **{**OCCOQUAN_LAUNCH["properties"]})
+        (park, _) = geocode.results(answer(OCCOQUAN, far), reverse=False)
+        assert park["way_in"] is None and park["lon"] == -77.24159
+
+    def test_a_place_named_for_the_area_that_is_not_a_way_in_is_not_taken(self) -> None:
+        overlook = feature(-77.25, 38.68, name="Occoquan Regional Park Overlook", osm_key="tourism")
+        (park, _) = geocode.results(answer(OCCOQUAN, overlook), reverse=False)
+        assert park["way_in"] is None
+
+    def test_a_town_or_a_road_is_never_moved(self) -> None:
+        town = feature(
+            -77.2653,
+            38.9012,
+            name="Vienna",
+            osm_type="R",
+            osm_key="boundary",
+            osm_value="administrative",
+            extent=[-77.29, 38.92, -77.24, 38.88],
+        )
+        lot = feature(-77.266, 38.90, name="Vienna Parking", osm_key="amenity", osm_value="parking")
+        (row, _) = geocode.results(answer(town, lot), reverse=False)
+        assert row["way_in"] is None and (row["lon"], row["lat"]) == (-77.2653, 38.9012)
+
+    def test_names_for_a_point_never_move(self) -> None:
+        park, _ = geocode.results(answer(OCCOQUAN, OCCOQUAN_LAUNCH), reverse=True)
+        assert park["way_in"] is None and park["lon"] == -77.24159
+
+    def test_one_area_mapped_twice_at_one_point_is_one_row(self) -> None:
+        """G6: "Great Falls Park" as leisure=park and as boundary=national_park came back twice
+        at identical coordinates, which pushed its Visitor Center down the list."""
+        rows = geocode.results(
+            answer(
+                feature(-77.251843, 38.990455, osm_key="leisure", osm_value="park", **GREAT_FALLS),
+                feature(
+                    -77.251843,
+                    38.990455,
+                    osm_key="boundary",
+                    osm_value="national_park",
+                    **GREAT_FALLS,
+                ),
+                feature(
+                    -77.2461,
+                    38.9985,
+                    name="Great Falls Park Visitor Center",
+                    type="house",
+                    osm_type="N",
+                    osm_key="tourism",
+                    osm_value="information",
+                ),
+            ),
+            reverse=False,
+        )
+        assert [r["name"] for r in rows] == ["Great Falls Park", "Great Falls Park Visitor Center"]
+
+    def test_a_trail_map_board_is_not_a_way_in_the_visitor_center_is(self) -> None:
+        """The second 2026-11-08 hunt (P2): tourism=information is a board or guidepost as
+        often as a visitor centre, and "Great Falls Park Trail Map", listed first, was taken
+        as the park's way in (before: way_in 'Great Falls Park Trail Map')."""
+        park = feature(
+            -77.251843,
+            38.990455,
+            osm_key="boundary",
+            osm_value="protected_area",
+            extent=[-77.27, 39.01, -77.23, 38.97],
+            **GREAT_FALLS,
+        )
+        board = feature(
+            -77.255,
+            38.985,
+            name="Great Falls Park Trail Map",
+            osm_type="N",
+            osm_key="tourism",
+            osm_value="information",
+        )
+        centre = feature(
+            -77.2461,
+            38.9985,
+            name="Great Falls Park Visitor Center",
+            osm_type="N",
+            osm_key="tourism",
+            osm_value="information",
+        )
+        row = geocode.results(answer(park, board, centre), reverse=False)[0]
+        assert row["way_in"] == "Great Falls Park Visitor Center"
+        assert (row["lon"], row["lat"]) == (-77.2461, 38.9985)
+
+    def test_a_way_in_is_named_for_the_area_by_whole_words(self) -> None:
+        """P3: "Rock Creek Parkway Parking" is the parkway's lot, and was taken as Rock Creek
+        Park's way in (before: way_in 'Rock Creek Parkway Parking')."""
+        park = feature(
+            -77.05,
+            38.96,
+            name="Rock Creek Park",
+            osm_type="R",
+            osm_key="boundary",
+            osm_value="national_park",
+            extent=[-77.07, 38.99, -77.03, 38.91],
+        )
+        lot = dict(osm_type="W", osm_key="amenity", osm_value="parking")
+        parkway = feature(-77.055, 38.93, name="Rock Creek Parkway Parking", **lot)
+        (row, _) = geocode.results(answer(park, parkway), reverse=False)
+        assert row["way_in"] is None and row["lon"] == -77.05
+        own = feature(-77.04, 38.95, name="Rock Creek Park - Picnic Grove Parking", **lot)
+        (row, _) = geocode.results(answer(park, own), reverse=False)
+        assert row["way_in"] == "Rock Creek Park - Picnic Grove Parking"
+        assert geocode.named_for("Rock Creek Park Gate", "Rock Creek Park")
+        assert not geocode.named_for("Rock Creek Parks", "Rock Creek Park")
+
+    def test_a_long_area_goes_to_the_way_in_nearest_the_search_s_bias(self) -> None:
+        """P4: with a bias point the way in nearest it is taken, not Photon's first, which can
+        be the lot at the far end of a long park (before: the north lot, from the south)."""
+        park = feature(
+            -77.05,
+            38.96,
+            name="Rock Creek Park",
+            osm_type="R",
+            osm_key="boundary",
+            osm_value="national_park",
+            extent=[-77.07, 38.99, -77.03, 38.91],
+        )
+        lot = dict(osm_type="W", osm_key="amenity", osm_value="parking")
+        north = feature(-77.05, 38.985, name="Rock Creek Park North Parking", **lot)
+        south = feature(-77.05, 38.915, name="Rock Creek Park South Parking", **lot)
+        rows = answer(park, north, south)
+        assert geocode.results(rows, reverse=False)[0]["way_in"] == "Rock Creek Park North Parking"
+        biased = geocode.results(rows, reverse=False, near=(-77.05, 38.90))[0]
+        assert biased["way_in"] == "Rock Creek Park South Parking"
+
+    def test_the_same_name_on_another_kind_of_place_metres_away_stays_two_rows(self) -> None:
+        park = feature(-77.0400, 38.9000, name="Meridian Hill", osm_key="leisure")
+        stop = feature(-77.0400, 38.90005, name="Meridian Hill", osm_key="highway")
+        assert len(geocode.results(answer(park, stop), reverse=False)) == 2
 
 
 @db
