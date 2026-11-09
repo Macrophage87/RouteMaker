@@ -22,6 +22,7 @@ import csv
 import os
 from collections import Counter, defaultdict
 from collections.abc import Iterable, Iterator, Mapping
+from datetime import date
 from pathlib import Path
 
 from routemaker.agency_roads import OWNER_OVERRIDE, WayFacts, osm_side_ranks
@@ -50,7 +51,8 @@ REPORTED_KEYS = ("maxspeed", "lanes", "oneway", "cycleway", "parking")
 REBUILD_SOURCE = (
     "Written by the rebuild, from the overlay it classified with, to `<DATA_ROOT>/rebuild/reports/`; "
     "the copy in reports/data-comparison/ is written from `dcbal.tsv` by "
-    "`scripts/analysis/dc_osm_discrepancies.py`."
+    "`scripts/analysis/dc_osm_discrepancies.py`. The District ways OSM edited after the record "
+    "that disagree with it, for the owner's call, are in `dc-osm-newer-osm-edits.md` beside it."
 )
 MD_NAME = "dc-osm-discrepancies.md"
 CSV_NAME = "dc-osm-discrepancies.csv"
@@ -114,8 +116,15 @@ def row(
     after: Mapping[str, str],
     facts: Mapping,
     sources: Mapping[str, str],
+    osm_edited: date | None = None,
+    block_keys: Iterable[tuple[str, str]] = (),
+    tier0_half: bool = False,
+    tier1_half: bool = False,
 ) -> dict:
-    """One matched District way, as `items` reads it."""
+    """One matched District way, as `items` reads it. For the ways OSM edited after
+    the record (`pipeline.dc_osm_newer`): `osm_edited`, the day OSM last edited the way
+    (`Way.edited`, the whole way's); `block_keys`, its blocks' (DC's BLOCKKEY,
+    ROUTENAME); and whether each tier is a half step above it (`StressResult.half`)."""
     return {
         "way": int(way),
         "street": (name or "").replace("\t", " ") or "(unnamed)",
@@ -130,6 +139,10 @@ def row(
         "after": reported_tags(after),
         "facts": dict(facts),
         "sources": dict(sources),
+        "edited": osm_edited.isoformat() if osm_edited else None,
+        "block_keys": [list(pair) for pair in dict(block_keys).items()],
+        "tier0_half": bool(tier0_half),
+        "tier1_half": bool(tier1_half),
     }
 
 

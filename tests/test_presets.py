@@ -49,6 +49,8 @@ CONTRACT_PRESETS = {
     "road-bike",
     # Run (Stephen, 2026-11-02): on foot, on Walk's map (core.run_plan).
     "run",
+    # Tandem (Stephen, 2026-11-08): a bicycle built for two.
+    "tandem",
 }
 
 # The factor dials Valhalla reads on a 0..1 scale; outside it the service
@@ -66,6 +68,7 @@ LAYER_2_DIALS = {
     "maneuver_penalty",
     "gate_cost",
     "gate_penalty",
+    "private_access_penalty",
     "country_crossing_cost",
     "country_crossing_penalty",
 }
@@ -153,10 +156,44 @@ def test_cargo_is_hill_averse_slow_and_gate_shy() -> None:
     use_hills"; the owner: "They tend not to be great on hills"."""
     assert options("cargo")["use_hills"] < options("default")["use_hills"]
     assert options("cargo")["use_hills"] <= 0.5
-    assert options("cargo")["gate_cost"] > options("group-ride")["gate_cost"]
+    # What a gate costs Cargo is `gate_cost + gate_penalty`: since 2026-11-08 most of it is
+    # penalty, which is cost alone, and `gate_cost`, which is also time, is a 30 s slow-down
+    # (hunt C4). Until then this compared `gate_cost` alone.
+    assert _gate_charge("cargo") > _gate_charge("group-ride")
     assert options("cargo")["cycling_speed"] < 18.0
     assert options("cargo")["avoid_bad_surfaces"] > options("default")["avoid_bad_surfaces"]
     assert options("cargo")["bicycle_type"] == "Hybrid"
+
+
+def test_tandem_keeps_out_of_narrow_gaps_turns_less_and_climbs_gently() -> None:
+    """The owner, 2026-11-08: "Build a tandem ride type"; the large gate penalty "was intended
+    just for Tandem, and possibly cargo too". A long, heavy bike for two (core.presets,
+    "Tandem")."""
+    tandem = options(presets.TANDEM)
+    assert _gate_charge(presets.TANDEM) == _gate_charge("cargo") >= 600
+    assert tandem["gate_cost"] <= 30
+    assert tandem["maneuver_penalty"] == presets.HIGH_MANEUVER_PENALTY_S
+    assert tandem["use_hills"] < options("default")["use_hills"]
+    assert tandem["avoid_bad_surfaces"] > options("default")["avoid_bad_surfaces"]
+    # Faster on the flat than Default's hybrid: two riders, one bike's drag.
+    assert tandem["cycling_speed"] > presets.VALHALLA_DEFAULT_SPEED_KMH["Hybrid"]
+    # The stoker is not in control (OWNER-DECISIONS 221, 241): Cargo with passengers' start
+    # and exposure.
+    assert presets.stress_start(presets.TANDEM) == presets.stress_start("cargo", "people") == 80
+    assert presets.exposure_for(presets.TANDEM) == presets.EXPOSURE_NOT_IN_CONTROL
+    assert presets.wait_weight_for(presets.TANDEM) == 2.0
+    assert presets.wait_weight_for(presets.TANDEM) < presets.wait_weight_for(presets.ROAD_BIKE)
+    assert presets.variant_for_ride(presets.TANDEM, "weekday_offpeak") == Variant.STANDARD.value
+    assert presets.variant_for_ride(presets.TANDEM, "weekend") == Variant.WEEKEND.value
+    assert presets.rider_speed(presets.TANDEM, 30.0) == 30.0
+
+
+def test_tandem_plans_climbs_at_two_riders_weight_unless_the_rider_set_one() -> None:
+    from routemaker import effort
+
+    assert presets.system_weight_for(presets.TANDEM) == effort.TANDEM_MASS_KG
+    assert effort.TANDEM_MASS_KG > effort.PASSENGERS_MASS_KG > effort.MASS_KG
+    assert presets.system_weight_for(presets.TANDEM, chosen=150) == 150
 
 
 def test_carrying_cargo_is_default_and_people_the_top_of_the_slider() -> None:
@@ -247,8 +284,57 @@ def test_the_group_presets_raise_the_maneuver_penalty(name: str) -> None:
     assert options(name)["maneuver_penalty"] > options("default")["maneuver_penalty"]
 
 
-def test_group_ride_raises_the_gate_cost() -> None:
-    assert options("group-ride")["gate_cost"] > options("default")["gate_cost"]
+def _gate_charge(name: str) -> int:
+    """The cost Valhalla adds at an untagged gate (sif/dynamiccost.h: gate_cost + gate_penalty)."""
+    return options(name)["gate_cost"] + options(name)["gate_penalty"]
+
+
+def test_group_ride_pays_a_small_gate_charge_like_default() -> None:
+    """The owner, 2026-11-08: the large gate penalty "was intended just for Tandem, and
+    possibly cargo too. Basically, bollards aren't huge deterrents in most cases." Until then
+    this test pinned Group Ride's higher gate cost (120 s, and 420 s with the penalty)."""
+    assert _gate_charge("group-ride") == _gate_charge("default") == 30
+
+
+# The owner, 2026-11-08: the large charge is "for Tandem, and possibly cargo too".
+GATE_SHY = frozenset({"cargo", presets.TANDEM})
+
+
+@pytest.mark.parametrize("name", sorted(presets.PRESETS))
+def test_only_cargo_and_tandem_pay_a_large_gate_charge(name: str) -> None:
+    """Every other ride type pays a small slow-down at a gate, cycle barrier or narrow
+    bollard: Valhalla's 30 s and no penalty. Before 2026-11-08: 330 s (420 s for Group Ride
+    and Road Bike, 900 s for the share bikes, Walk and Run) (hunt T1, H3)."""
+    if name in GATE_SHY:
+        assert _gate_charge(name) >= 600
+    else:
+        assert _gate_charge(name) == presets.GATE_COST_S == 30
+        assert options(name)["gate_penalty"] == 0
+
+
+@pytest.mark.parametrize("name", sorted(presets.PRESETS))
+def test_a_gate_adds_no_more_than_half_a_minute_to_the_time(name: str) -> None:
+    """`gate_cost` is time as well as cost; `gate_penalty` is cost alone (sif/dynamiccost.h).
+    Cargo's gate cost of 300 s put five minutes per barrier on its arrival times and the
+    share bikes' legs to docks and stations (hunt C4, 2026-11-08)."""
+    assert options(name)["gate_cost"] <= 30
+
+
+def test_every_preset_states_the_private_barrier_penalty() -> None:
+    for name in presets.PRESETS:
+        assert options(name)["private_access_penalty"] == presets.VALHALLA_PRIVATE_ACCESS_PENALTY_S
+
+
+def _living_street_entry_s(value: float) -> float:
+    """Valhalla's living-street entry charge (sif/dynamiccost.cc at 3.9.1)."""
+    return 500 * (1 - 2 * value) if value < 0.5 else 0.0
+
+
+@pytest.mark.parametrize("name", ["fast", presets.ROAD_BIKE])
+def test_fast_and_road_bike_dislike_a_living_street_mildly(name: str) -> None:
+    """Their comment's "a shared street is slow for a road bike": about a minute of cost per
+    entry, not the 300 s their 0.2 charged (hunt C5, 2026-11-08)."""
+    assert 0 < _living_street_entry_s(options(name)["use_living_streets"]) <= 60
 
 
 def test_mass_ride_plans_inside_the_speed_band() -> None:
@@ -288,6 +374,8 @@ def test_trailmaxxing_is_more_stress_averse_than_default() -> None:
     living streets on, low surface avoidance"."""
     assert options("trailmaxxing")["use_roads"] < options("default")["use_roads"]
     assert options("trailmaxxing")["use_roads"] == 0.0
+    # Inert above 0.5 in bicycle costing (`presets._LIVING_STREETS`): what makes a living
+    # street cheap on Trailmaxxing is its use_roads of 0. Kept as PLAN's "living streets on".
     assert options("trailmaxxing")["use_living_streets"] > options("default")["use_living_streets"]
     assert options("trailmaxxing")["avoid_bad_surfaces"] < options("default")["avoid_bad_surfaces"]
 
@@ -357,7 +445,10 @@ def test_default_starts_at_the_owners_ninety() -> None:
     assert presets.PRESETS["default"].costing_options["use_roads"] == 0.1
 
 
-def test_the_weekend_graph_only_twins_the_standard_graph() -> None:
+def test_the_weekend_graphs_twin_only_the_standard_and_paved_graphs() -> None:
+    """The standard graph's weekend twin, and Road Bike's (the owner, 2026-11-08, "New weekend
+    graph"); every other graph keeps its weekend rides."""
+    twins = {"standard": "weekend", "paved": "paved-weekend"}
     for name, preset in presets.PRESETS.items():
         weekend = presets.variant_for_ride(name, "weekend")
         weekday = presets.variant_for_ride(name, "weekday_rush")
@@ -368,8 +459,41 @@ def test_the_weekend_graph_only_twins_the_standard_graph() -> None:
             assert weekend in settings.VALHALLA_UPSTREAMS
             continue
         assert weekday == preset.variant
-        assert weekend == ("weekend" if preset.variant == "standard" else preset.variant)
+        assert weekend == twins.get(preset.variant, preset.variant)
         assert weekend in settings.VALHALLA_UPSTREAMS
+
+
+def test_the_rides_that_keep_the_mtb_class_plan_on_the_weekend_graph_too() -> None:
+    """The owner, 2026-11-08: "We can do the plan twice." (`routing._plan_twice`)."""
+    twice = {name for name in presets.PRESETS if presets.weekend_too(name, "weekend")}
+    # E-bike too (round 3, 2026-11-08, "Yes"): the e-bike graph has no weekend twin.
+    assert twice == {"gravel", "mountain-goat", presets.MOUNTAIN_BIKE, "ebike"}
+    twice.discard("ebike")
+    for name in presets.EASY_MTB_PRESETS:
+        assert presets.weekend_too(name, "weekend", easy_mtb=True)
+        assert not presets.weekend_too(name, "weekend")
+    for name in (*twice, *presets.EASY_MTB_PRESETS):
+        for when in ("weekday_rush", "weekday_offpeak", "night"):
+            assert not presets.weekend_too(name, when, easy_mtb=True)
+        # Trails off wins: the no-trail graph alone.
+        assert not presets.weekend_too(name, "weekend", trails_off=True, easy_mtb=True)
+        # The ride's own graph is still what `variant_for_ride` names.
+        assert presets.variant_for_ride(name, "weekend", easy_mtb=True) != "weekend"
+
+
+def test_weekend_ebike_rides_plan_on_the_weekend_graph_too() -> None:
+    """The owner, round 3, 2026-11-08, asked whether weekend E-bike, Cargo with assist and
+    share e-bike rides should plan twice like the off-road rides: "Yes"."""
+    for name, assist in (("ebike", False), ("cargo", True), ("bikeshare", True)):
+        assert presets.variant_for_ride(name, "weekend", assist=assist) == Variant.EBIKE.value
+        assert presets.weekend_too(name, "weekend", assist=assist)
+        for when in ("weekday_rush", "weekday_offpeak", "night"):
+            assert not presets.weekend_too(name, when, assist=assist)
+        # Trails off wins: the no-trail graph alone.
+        assert not presets.weekend_too(name, "weekend", assist=assist, trails_off=True)
+    # Without assist, Cargo and a classic share bike take the standard graph's weekend twin.
+    assert not presets.weekend_too("cargo", "weekend")
+    assert not presets.weekend_too("bikeshare", "weekend")
 
 
 def test_cargo_assist_is_the_ebike_graph_at_any_time() -> None:
@@ -431,6 +555,9 @@ def test_every_ride_types_brake_grade_is_the_owners_approved_table() -> None:
         "fast": None,
         # Road Bike (2026-11-02): a road bike descends fast, as Fast's rider does.
         "road-bike": None,
+        # Tandem (2026-11-08): the implementation's proposal, a group's 5% (core.presets,
+        # "Tandem"): two riders' weight on one set of brakes.
+        "tandem": 0.05,
     }
     assert dict(presets.BRAKE_GRADES) == approved
     for name, preset in presets.PRESETS.items():
@@ -477,9 +604,16 @@ def test_road_bike_rides_a_road_bicycle_on_its_own_graph_with_fewer_turns() -> N
     assert bicycle["maneuver_penalty"] == presets.HIGH_MANEUVER_PENALTY_S
     assert bicycle["maneuver_penalty"] > options("default")["maneuver_penalty"]
     assert road.stress == presets.ROAD_BIKE_STRESS == 40
-    # No weekend twin: the weekend keeps it on its own graph; trails off is the no-trail graph.
-    assert presets.variant_for_ride(presets.ROAD_BIKE, "weekend") == Variant.PAVED.value
+    # Its weekend twin at the weekend (the owner, 2026-11-08: "Road bikes absolutely use those
+    # parkways on the weekends."; "New weekend graph"), its own graph at every other ride time;
+    # trails off is the no-trail graph, at the weekend too.
+    assert presets.variant_for_ride(presets.ROAD_BIKE, "weekend") == Variant.PAVED_WEEKEND.value
+    for when in ("weekday_rush", "weekday_offpeak", "night"):
+        assert presets.variant_for_ride(presets.ROAD_BIKE, when) == Variant.PAVED.value
     assert presets.variant_for_ride(presets.ROAD_BIKE, "weekday_offpeak", trails_off=True) == (
+        Variant.NO_TRAIL.value
+    )
+    assert presets.variant_for_ride(presets.ROAD_BIKE, "weekend", trails_off=True) == (
         Variant.NO_TRAIL.value
     )
 

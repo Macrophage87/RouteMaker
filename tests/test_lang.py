@@ -73,6 +73,7 @@ def built_keys() -> set[str]:
     }
     keys.add(route_hazards.road_of(None))
     keys |= {workzones.STALE_NOTE, workzones.BYPASS_NOTE, workzones.MAY_APPLY_NOTE}
+    keys.add(workzones.BLOCKED_TEXT)
     keys.add(workzones.rules.DISCLAIMER)
     keys |= set(route_hazards.SHORT_WORDS.values())
     keys |= {w.split(": ", 1)[1] for w in hazards.WORDS.values()}

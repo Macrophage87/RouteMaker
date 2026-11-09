@@ -84,6 +84,13 @@ test("a roads-only route says so and carries it in the file, but not on Mass Rid
   assert.doesNotMatch(mass.rideText, /roads only/);
 });
 
+test("an Easy MTB trails route carries it in the file, on the ride types that offer it", () => {
+  const dials = { stress: 70, hills: 0, when: "weekend" as const, carrying: null, easy_mtb: true };
+  assert.equal(exportOf({ ...ROUTE, preset: "trailmaxxing", dials }, []).dials?.easyMtb, true);
+  assert.equal(exportOf({ ...ROUTE, preset: "default", dials: { ...dials, easy_mtb: false } }, []).dials?.easyMtb, undefined);
+  assert.equal(exportOf({ ...ROUTE, preset: "gravel", dials }, []).dials?.easyMtb, undefined);
+});
+
 test("the fidelity notice warns exactly when either share is under the threshold", () => {
   const ok = fidelityNotice({ trackCovered: 0.97, routeOnTrack: 0.95, lengthRatio: 1 });
   assert.equal(ok.warn, false);

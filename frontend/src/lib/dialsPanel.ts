@@ -40,6 +40,7 @@ import {
   hillsWords,
   seeksClimbs,
   offersAssist,
+  offersEasyMtb,
   offersTargetDistance,
   startDials,
   trailsAreOff,
@@ -95,6 +96,8 @@ export interface PanelView {
   target: TargetView | null;
   /** The "Keep to roads, not trails" switch (OWNER-DECISIONS 463, 463b), on every ride type. */
   trailsOff: TrailsOffView;
+  /** The "Easy MTB trails" switch (the owner, 2026-11-08), on Default and Trailmaxxing; null on any other ride type. */
+  easyMtb: EasyMtbView | null;
   /** Where "Back to this ride type's settings" goes, or null when already there. */
   reset: Dials | null;
 }
@@ -127,6 +130,25 @@ export interface TrailsOffView {
   /** Read after "How this works", not shown, to tell its disclosure from the other dials' ones. */
   howAbout: string;
 }
+
+/** The "Easy MTB trails" switch: off by default; with Keep to roads on it is moot, and says so. */
+export interface EasyMtbView {
+  label: string;
+  checked: boolean;
+  /** Keep to roads is on, which wins: the switch stays in the Tab order, but a press changes nothing. */
+  locked: boolean;
+  hint: string;
+  how: string;
+  howAbout: string;
+}
+
+/** The owner, 2026-11-08: "allow trailmaxxing to use MTB trails too", opt in, "And default". API `easy_mtb`, link `easymtb`. */
+export const EASY_MTB_LABEL = t("Easy MTB trails");
+export const EASY_MTB_HINT = t("Also rides mountain-bike trails rated easy or not rated, mostly grass and dirt.");
+export const EASY_MTB_LOCKED_HINT = t("Not used while Keep to roads is on.");
+export const EASY_MTB_HOW_ABOUT = t("easy MTB trails");
+export const EASY_MTB_HOW =
+  t("Plans on the off-road map, as Gravel does, so mountain-bike trails rated 0 or 1 on either scale, or not rated at all, may be ridden. Trails rated 2 or harder are left out wherever there is a way round; if one is still used, the route says so. Traffic stress is weighed as usual. Dirt can be muddy after rain.");
 
 /** OWNER-DECISIONS 463b: checked is roads only. The link and API keep `trailsoff` / `trails_off`. */
 export const TRAILS_OFF_LABEL = t("Keep to roads, not trails");
@@ -267,7 +289,7 @@ export function calmNoteShort(stress: number, preset?: PresetId): string | undef
 
 /** The top of the traffic slider's (i): the order it weighs things in. */
 export const CALM_HOW =
-  t("First it avoids heavy-traffic roads (LTS 4) and very high stress junctions. Then it avoids busy roads (LTS 3) and higher stress junctions. Then it follows the Hills slider. Then it takes the shorter way. A quiet street counts the same as a trail, except on Trailmaxxing and Cargo with passengers, where low-stress streets (LTS 2) count a little extra. Novice and Nervous treats every road as one step busier and goes no further than {novice} times the usual route. Otherwise it goes no further than {target} times your target distance, or {usual} times the usual route when no target is set.", { novice: NOVICE_CEILING_RATIO, target: TARGET_CEILING_RATIO, usual: DEFAULT_CEILING_RATIO });
+  t("First it avoids heavy-traffic roads (LTS 4) and very high stress junctions. Then it avoids busy roads (LTS 3) and higher stress junctions. Then it follows the Hills slider. Then it takes the shorter way. A quiet street counts the same as a trail, except on Trailmaxxing, Cargo with passengers and Tandem, where low-stress streets (LTS 2) count a little extra. Novice and Nervous treats every road as one step busier and goes no further than {novice} times the usual route. Otherwise it goes no further than {target} times your target distance, or {usual} times the usual route when no target is set.", { novice: NOVICE_CEILING_RATIO, target: TARGET_CEILING_RATIO, usual: DEFAULT_CEILING_RATIO });
 
 export const MASS_RIDE_HILLS_NOTE =
   t("A mass ride does not look for climbs: at parade pace a climb drops riders below balance speed.");
@@ -319,6 +341,8 @@ export function panelView(preset: PresetId, dials: Dials, draft: Dials = dials):
   const start = {
     ...plain,
     ...(dials.trailsOff ? { trailsOff: true } : {}),
+    // The rider's own switch, as Keep to roads: going back to the ride type's settings keeps it.
+    ...(dials.easyMtb ? { easyMtb: true } : {}),
     ...(hiddenLoop ? { loop: true } : {}),
   };
   const moved =
@@ -380,6 +404,16 @@ export function panelView(preset: PresetId, dials: Dials, draft: Dials = dials):
       how: TRAILS_OFF_HOW,
       howAbout: TRAILS_OFF_HOW_ABOUT,
     },
+    easyMtb: offersEasyMtb(preset)
+      ? {
+          label: EASY_MTB_LABEL,
+          checked: dials.easyMtb === true && !trailsAreOff(preset, dials),
+          locked: trailsAreOff(preset, dials),
+          hint: trailsAreOff(preset, dials) ? EASY_MTB_LOCKED_HINT : EASY_MTB_HINT,
+          how: EASY_MTB_HOW,
+          howAbout: EASY_MTB_HOW_ABOUT,
+        }
+      : null,
     reset: moved ? start : null,
   };
 }

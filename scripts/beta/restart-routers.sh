@@ -31,7 +31,7 @@ export LC_ALL=C
 
 UNIT=routemaker-beta-routers
 ROUTERS="valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend"
-TRAIL_ROUTERS="valhalla-offroad valhalla-mtb valhalla-paved"
+TRAIL_ROUTERS="valhalla-offroad valhalla-mtb valhalla-paved valhalla-paved-weekend"
 
 die() { echo "restart-routers: $*" >&2; exit 2; }
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)

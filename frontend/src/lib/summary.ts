@@ -8,6 +8,7 @@ import { detour, pathLengthM, type LonLat } from "./geo.ts";
 import { LOOP_START_NAME, loopNote } from "./loop.ts";
 import { mtbSaid } from "./mtbMode.ts";
 import { roadBikeNote } from "./roadBike.ts";
+import { easyMtbNote } from "./easyMtb.ts";
 import { outsideDcNote } from "./dcBoundary.ts";
 import { hazardsSaid } from "./massHazards.ts";
 import { roadHazardsSaid } from "./routeHazards.ts";
@@ -116,12 +117,22 @@ function ratioText(ratio: number, level: DetourView["level"]): string {
  * Plain words for a calmer-route search the rider asked for (Traffic above
  * the old top of the slider) that did not run, or stopped before it was done
  * (the API's `calm_search.limited`, core.refine), or null where there is
- * nothing to say: it ran to its end, or was not asked for.
+ * nothing to say: it ran to its end, or was not asked for. `go`: Go's sheet, which has no crossing line below the top.
  */
 export function calmSearchNote(
   route: Pick<RouteResponse, "calm_search" | "dials" | "preset"> & Partial<Pick<RouteResponse, "distance_m">>,
+  go = false,
 ): string | null {
-  if (route.preset === "mass-ride" || (route.dials?.stress ?? 0) <= STRESS_TODAYS_TOP) return null;
+  if (route.preset === "mass-ride") return null;
+  if ((route.dials?.stress ?? 0) <= STRESS_TODAYS_TOP) {
+    // At or below the old top the search looks for a way round the busiest crossings only (core.refine
+    // CROSSING_ONLY_ROUNDS), and Plan tells the rider in one short line where it was skipped or cut short (the hunt,
+    // 2026-11-08, S6: nothing was said, so a red crossing drew no word that no way round had been looked for). Not in
+    // Go, which keeps its sheet short (no walls of text).
+    if (go) return null;
+    const limited = route.calm_search?.limited;
+    return (limited && CROSSING_SEARCH_LIMITS[limited]) || null;
+  }
   const search = route.calm_search;
   const target = search?.target_distance_m;
   const over = overTarget(route);
@@ -206,6 +217,21 @@ const CALM_SEARCH_LIMITS: Record<string, string> = {
   span: `The calmer-route search does not run on trips over ${formatRoughDistance(CALM_SEARCH_MAX_SPAN_M)} in a straight line, so this is the usual route for this ride type.`,
   long_ride: "The calmer-route search does not run on long rides, so this is the usual route for this ride type.",
   split: "The calmer-route search could not cut this long trip into legs, so this is the usual route for this ride type.",
+};
+
+/**
+ * Below the top of the slider (`calmSearchNote`): the crossing search's stops in one short line each (the owner hates
+ * walls of text). The hills seek (`seeking`) says nothing (OWNER-DECISIONS 298(3)), nor do the search's own ends.
+ * English, as the rest of this note is (CALM_SEARCH_LIMITS): not yet in the catalogs.
+ */
+const CROSSING_TOO_LONG = "The search for a way round busy crossings does not run on trips this long.";
+const CROSSING_SEARCH_LIMITS: Record<string, string> = {
+  time: "The search for a way round busy crossings ran out of time.",
+  untraceable: "The search for a way round busy crossings could not read this route.",
+  no_route: "No way round the busy crossings was found.",
+  span: CROSSING_TOO_LONG,
+  long_ride: CROSSING_TOO_LONG,
+  split: CROSSING_TOO_LONG,
 };
 
 function straightLineNotice(route: Pick<RouteResponse, "distance_m" | "preset">, points: readonly LonLat[]): string | null {
@@ -296,7 +322,7 @@ export function announceRoute(route: RouteResponse, points: readonly LonLat[] = 
     t("{distance}, {time} moving time, climb {climb}.", { distance: formatDistanceSpoken(route.distance_m), time: formatDurationSpoken(route.duration_s), climb: formatClimbSpoken(route.climb_m) });
   const others = !how.chosen && how.others ? othersSaid(how.others) : null;
   // A Mass Ride's rider-marked hazards (FOLLOWUP-MASSRIDE-MAP part 3, 325: "announced"), after the junctions.
-  return [figures, movedPointsNote(route, points.length), walkInNote(route), noviceWalksNote(route), outsideDcNote(route), detourSaid(route, points), redJunctionsSaid(route), hazardsSaid(route), roadHazardsSaid(route), steepGradesSaid(route), targetSaid(route), loopNote(route), mtbSaid(route.mtb), roadBikeNote(route), others]
+  return [figures, movedPointsNote(route, points.length), walkInNote(route), noviceWalksNote(route), outsideDcNote(route), detourSaid(route, points), redJunctionsSaid(route), hazardsSaid(route), roadHazardsSaid(route), steepGradesSaid(route), targetSaid(route), loopNote(route), mtbSaid(route.mtb), easyMtbNote(route)?.text ?? null, roadBikeNote(route), others]
     .filter(Boolean)
     .join(" ");
 }

@@ -20,8 +20,10 @@ walking time plus these charges is least:
   turning traffic comes fast round it and seldom looks.
 - Walking along a main road's carriageway with no sidewalk mapped: each second on it costs
   `ROADSIDE_FACTORS` more by how busy the road is (`roadside_level`), as much again on a
-  collector, three times more on a busy road. A neighbourhood street is not charged: its
-  sidewalks are seldom mapped on it, so "none mapped" would charge nearly every one.
+  collector, three times more on a busy road. The bike graph's stress marks in the lane
+  count (10, 11 and 15 "lanes") are read as the tiers they mark, not as lanes. A
+  neighbourhood street is not charged: its sidewalks are seldom mapped on it, so "none
+  mapped" would charge nearly every one.
 
 A signal is the router's flag on the crossing's own nodes and edges, which a signalled
 crosswalk carries (`highway=traffic_signals`, written onto `crossing=traffic_signals` nodes by
@@ -39,6 +41,7 @@ import logging
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 
+from routemaker import calm
 from routemaker.trace_junctions import CROSSING_USE, NOT_A_ROAD_USES, SLIP_LANE_USE
 
 logger = logging.getLogger(__name__)
@@ -110,13 +113,27 @@ ROADSIDE_FACTORS = {QUIET: 0.0, MEDIUM: 1.0, BUSY: 3.0, SEVERE: 3.0}
 BUSY_KPH = 48.0
 MEDIUM_KPH = 40.0
 BUSY_LANES = 2
+# The lane counts that are not lanes: the bike graph's stress marks, which the remap writes as
+# `lanes:forward`/`lanes:backward` to steer the bicycle costing (lua/routemaker_remap.lua
+# `GRADED_LANES`, `HALF_GRADED_LANES`, `HALF_LOW_LANES`; `routemaker.calm`), and which a walk's
+# trace of the same graph reads back as `edge.lane_count`. Read as lanes they made every
+# street rated 2.5 (10 "lanes"), 3.5 (11) or 4 (15) busy to walk along (hunt finding C6,
+# 2026-11-08): a 2.5 residential street with no sidewalk mapped, nearly every one, was charged
+# three times its walking time, and lost Run's quiet-street credit. Each now reads as the tier
+# it marks (`roadside_level`).
+GRADED_LANES = calm.GRADED_LANES
+HALF_GRADED_LANES = calm.HALF_GRADED_LANES
+HALF_LOW_LANES = calm.HALF_LOW_LANES
 
 # The crossings a walk says: at most this many (a walk is short).
 MAX_CROSSINGS = 20
 
 
 def roadside_level(edge: dict) -> int:
-    """How busy a carriageway is to walk along with no sidewalk."""
+    """How busy a carriageway is to walk along with no sidewalk: by its class, its posted
+    speed and its lanes a way. A stress mark in the lane count is read as the tier it marks,
+    never as lanes (`GRADED_LANES`): LTS 4 or Avoid (15) is busy, 3.5 (11) at least a
+    collector, and 2.5 (10) says nothing of its lanes, so its class and speed decide."""
     cls = str(edge.get("road_class") or "")
     if cls in SEVERE_CLASSES:
         return SEVERE
@@ -124,11 +141,18 @@ def roadside_level(edge: dict) -> int:
     speed = float(speed) if isinstance(speed, (int, float)) else 0.0
     lanes = edge.get("lane_count")
     lanes = int(lanes) if isinstance(lanes, (int, float)) else 1
+    floor = QUIET
+    if lanes >= GRADED_LANES:
+        return BUSY
+    if lanes == HALF_GRADED_LANES:
+        floor, lanes = MEDIUM, 1
+    elif lanes == HALF_LOW_LANES:
+        lanes = 1
     if cls in BUSY_CLASSES or speed >= BUSY_KPH or lanes >= BUSY_LANES:
         return BUSY
     if cls in MEDIUM_CLASSES or speed >= MEDIUM_KPH:
         return MEDIUM
-    return QUIET
+    return floor
 
 
 def crossing_level(classes: Sequence[str]) -> int:
