@@ -2594,6 +2594,15 @@ def _notice_row(row: dict) -> dict:
     return {k: v for k, v in out.items() if v}
 
 
+# The site's words for a closure a run or a walk rides through because its source does not
+# say people on foot are kept out (`routemaker.workzones.effect_text`).
+ON_FOOT_UNSAID = "the source does not say whether people on foot can pass"
+
+
+def _on_foot_unsaid(row: dict) -> bool:
+    return ON_FOOT_UNSAID in (row.get("says") or "")
+
+
 def route_closures(plan: Plan) -> dict:
     """The closures the site found on or round the route, one row per closure (a reviewer's
     closure comes as a row for each of its ways), and the points that sit on one."""
@@ -2678,7 +2687,18 @@ def route_closures(plan: Plan) -> dict:
                 " and plan again."
             )
         else:
-            words += " The router found no way round from these points: try others."
+            # A run or a walk is not routed round a closure to traffic whose source is silent
+            # on people on foot (the site's `for_plan`): the router never tried, so it is not
+            # said to have found no way round (routing hunt 4, C4-1).
+            silent = {k for _, _, k in spans if _on_foot_unsaid(rows[k])}
+            if any(k not in silent for _, _, k in spans):
+                words += " The router found no way round from these points: try others."
+            if silent:
+                names = "; ".join(rows[k]["what"] for k in sorted(silent, key=str))
+                words += (
+                    f" The source does not say people on foot may pass {names}, so this run or"
+                    " walk was not routed round it."
+                )
         out["closure_warning"] = words
     return out
 

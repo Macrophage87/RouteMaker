@@ -1612,9 +1612,11 @@ curl -s -X POST http://localhost:8000/api/route -H 'Content-Type: application/js
   begins (it was 21:00), so a closure ending at 21:00 now counts as off-peak
   car-free. It
   sets Valhalla's `date_time` (the next Saturday 09:00, Tuesday 08:00, Tuesday
-  12:00 or Tuesday 22:00; closures are matched at the soonest of the setting's
-  instants instead, `ridetime.soonest_instant`, so Weekend on a Saturday night is
-  Sunday 11:00, not a week out: hunt 3, T3-7), which is what the
+  12:00 or Tuesday 22:00; closures, notices and a run's darkness are matched at the
+  start of the setting's next window instead, `ridetime.soonest_start`, so on a Monday
+  afternoon rush is today 16:00 and night tonight 21:00, not next Tuesday: routing hunt 4,
+  C4-2; Weekend keeps the soonest of its instants, `ridetime.soonest_instant`, so Weekend
+  on a Saturday night is Sunday 11:00, not a week out: hunt 3, T3-7), which is what the
   conditional restrictions Valhalla reads are evaluated against, and it decides
   whether a road closed to cars at set times counts as a path in `facility_m`
   and as tier 1 in `stress_m`. The closure is read from
@@ -5237,6 +5239,38 @@ The third routing hunt's owner calls, as Stephen decided them on 2026-11-08:
   (every slider position, three flat speeds, 15 m (50 ft) and 300 ft (91 m) of rise). Planner
   only, no map rebuild. The 1% LT1 grade at full avoid (`LT1_GRADE_MIN`) still makes nearly
   every climb a push there; that is an owner call, not changed.
+
+### Routing hunt 4: time and closures (C4-1 to C4-3)
+
+- **A reviewer's closure is closed on foot too** (C4-1). Run, Walk and Walk + transit went
+  straight through Lake Frank's closed Lakeside Trail: a reviewer's closure carried no `on_foot`,
+  and a closure silent on people on foot is only warned of on foot (`rules.for_plan`).
+  `ReviewedClosure.on_foot` (migration 0060) is set from the entry's and the confirm's `on_foot`
+  (default true; false for a road closed to traffic whose sidewalk stays open), and
+  `reviewed_closures.zones_of` passes it on; a row with none (from before, Lake Frank's two
+  among them) reads as true. Defaulting every reviewer closure to closed on foot is Claude's
+  default, not measured: the closures entered there are mostly trails. The road panel's form has
+  no tick yet; the API takes `on_foot`. The MCP's `closure_warning` no longer says the router
+  found no way round a closure a run or walk was not routed round because its source is silent
+  on people on foot (`route_closures`, `ON_FOOT_UNSAID`). Tests:
+  `tests/test_reviewed_closures.py`, `tests/test_mcp_route_details.py`.
+- **A ride time that is not now is the start of its next window** (C4-2). The rush, off-peak
+  and night dials matched closures, notices and a run's darkness at next Tuesday's instants, so
+  on a Monday afternoon this evening's rush and tonight were never checked.
+  `ridetime.soonest_start` steps forward from now in quarter hours, up to 8 days, to the first
+  moment `when_at` gives the dial (both Claude's defaults, not measured; every boundary is on
+  the hour), so holidays and Sunday evening's off-peak count. `workzones.ride_moment` uses it
+  for every dial but Weekend, which keeps `soonest_instant` (hunt 3, T3-7). The router's
+  `date_time` (`representative_time`) and the car-free reading (`INSTANTS`) are unchanged.
+  Tests: `tests/test_workzones_feed.py`.
+- **District-wide notices only on routes in the District** (C4-3). MPD's and AlertDC's
+  "Check before you go" notices were tested against the District's bounding box, which takes
+  in Takoma Park, Silver Spring, Bethesda, Arlington and Alexandria. `dc_closures.in_district`
+  keeps the box as a first test and then reads the District's boundary
+  (`core/geodata/dc-boundary.geojson`, as `bike_bans.dc_polygons`). Tests:
+  `tests/test_dc_closures.py`.
+
+No map rebuild is needed for any of them.
 
 ### Trails off (OWNER-DECISIONS 463, 463a, 463b)
 
