@@ -1017,5 +1017,8 @@ test("a name with its address keeps the server's order, which puts the place at 
   assert.ok(hasStreetAddress("Satay Club 4654 Wisconsin Ave"));
   assert.ok(hasStreetAddress("1600 pennsylvania"));
   assert.ok(!hasStreetAddress("Route 1 Diner"));
+  for (const name of ["Route 1 Diner Bethesda", "Pier 1 Imports Arlington VA", "CVS 24 Hour Pharmacy", "Chipotle, 7th Street NW", "Tysons Corner, 2nd floor", "Bethesda, 20814"]) {
+    assert.ok(!hasStreetAddress(name), name);
+  }
   assert.ok(!hasStreetAddress("Union Station, Washington, DC"));
 });

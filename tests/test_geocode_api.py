@@ -409,7 +409,12 @@ class TestSearch:
 
     @pytest.mark.parametrize(
         "q",
-        ["4654 Wisconsin Ave NW, Washington, DC", "Route 1 Diner", "Union Station, Washington, DC"],
+        [
+            "4654 Wisconsin Ave NW, Washington, DC",
+            "Route 1 Diner Bethesda",
+            "CVS 24 Hour Pharmacy",
+            "Union Station, Washington, DC",
+        ],
     )
     def test_with_no_name_before_an_address_nothing_found_is_asked_once(
         self, client, photon, q
@@ -419,21 +424,28 @@ class TestSearch:
         assert len(fake.calls) == 1
 
     @pytest.mark.parametrize(
-        ("typed", "address"),
+        ("typed", "split"),
         [
             (
                 "Satay Club, 4654 Wisconsin Ave NW, Washington, DC",
-                "4654 Wisconsin Ave NW, Washington, DC",
+                ("Satay Club", "4654 Wisconsin Ave NW, Washington, DC"),
             ),
-            ("Satay Club 4654 Wisconsin Ave NW", "4654 Wisconsin Ave NW"),
-            ("Pier 1 Imports, 1100A Wilson Blvd", "1100A Wilson Blvd"),
+            ("Satay Club 4654 Wisconsin Ave NW", ("Satay Club", "4654 Wisconsin Ave NW")),
+            ("Pier 1 Imports, 1100A Wilson Blvd", ("Pier 1 Imports", "1100A Wilson Blvd")),
+            ("Bagels, 5 Old Georgetown Rd", ("Bagels", "5 Old Georgetown Rd")),
             ("Route 1 Diner", None),
+            ("Route 1 Diner Bethesda", None),
+            ("Pier 1 Imports Arlington VA", None),
+            ("CVS 24 Hour Pharmacy", None),
+            ("Chipotle, 7th Street NW", None),
+            ("Bethesda, 20814", None),
+            ("Tysons Corner, 2nd floor", None),
             ("4654 Wisconsin Ave NW", None),
             ("Union Station, Washington, DC", None),
         ],
     )
-    def test_the_address_part_of_a_query(self, typed, address) -> None:
-        assert geocode.address_part(typed) == address
+    def test_the_address_part_of_a_query(self, typed, split) -> None:
+        assert geocode.address_part(typed) == split
 
     def test_each_result_says_what_it_is_in_osm(self, client, photon) -> None:
         photon(
