@@ -7619,7 +7619,7 @@ def _saved_route(request, route_id: int):
     return SavedRoute.objects.filter(user=request.user, pk=route_id).first()
 
 
-@api.get("/me/routes", summary="The signed-in rider's saved routes, newest first")
+@api.get("/me/routes", summary="The signed-in rider's saved routes, last opened or made first")
 @decorate_view(
     signed_in_only,
     same_site_editor,
@@ -7627,12 +7627,17 @@ def _saved_route(request, route_id: int):
     errors_as_json,
 )
 def saved_routes_list(request):
+    from django.db.models.functions import Coalesce
     from django.middleware.csrf import get_token
 
     from .models import SavedRoute
 
     get_token(request)
-    rows = SavedRoute.objects.filter(user=request.user).order_by("-created_at", "-pk")
+    # The one last opened or made first (the owner, 2026-11-09: "make routes go in descending
+    # order from when they were last created or opened"); an open is never before its making.
+    rows = SavedRoute.objects.filter(user=request.user).order_by(
+        Coalesce("opened_at", "created_at").desc(), "-pk"
+    )
     return _private(
         JsonResponse(
             {
@@ -7717,6 +7722,17 @@ def _add_saved_route(request, versions: bool = True, prune: bool = True):
         not versions or not isinstance(make_room, int) or isinstance(make_room, bool)
     ):
         return _stress_error(400, "Not a saved route.", field="make_room")
+    # The assistant's draft this saves (Save in Load route, or at the end of a ride on it): no
+    # longer listed as a draft once saved. Only the site's own pages send it.
+    from_draft = body.get("from_draft")
+    if from_draft is not None and (
+        not versions or not isinstance(from_draft, str) or not _shared_id_ok(from_draft)
+    ):
+        return _stress_error(400, "Not one of your drafts.", field="from_draft")
+    if from_draft is not None and isinstance(inputs.get("hash"), str):
+        # A Group or Mass Ride draft's link carries its ride's key: My routes keeps the plan, never
+        # the key, so each ride opened from it is new (as the connector's own save_route does).
+        inputs = {**inputs, "hash": _without_ride_marks(inputs["hash"])}
     version_of = body.get("version_of")
     if version_of is not None and not versions:
         return _stress_error(400, "An assistant only adds routes.", field="version_of")
@@ -7786,6 +7802,8 @@ def _add_saved_route(request, versions: bool = True, prune: bool = True):
             old.archived_at = old.archived_at or timezone.now()
             old.replaced_by = row
             old.save(update_fields=["archived_at", "replaced_by", "updated_at"])
+        if from_draft is not None:
+            _draft_saved(request.user, from_draft)
     from . import saved_route_alerts
 
     saved_route_alerts.check(row)
@@ -7793,6 +7811,36 @@ def _add_saved_route(request, versions: bool = True, prune: bool = True):
     if made_room:
         out["made_room"] = made_room  # the route deleted for it, for the app to say
     return _private(JsonResponse(out, status=201))
+
+
+def _without_ride_marks(fragment: str) -> str:
+    """The plan's link fragment without a ride's key, mark or leader (`k=`, `ride=`, `lead=`;
+    mcp/routemaker_mcp.py without_ride_marks)."""
+    lead = "#" if fragment.startswith("#") else ""
+    marks = ("k=", "ride=", "lead=")
+    return lead + "&".join(
+        p for p in fragment.lstrip("#").split("&") if p and not p.startswith(marks)
+    )
+
+
+def _shared_id_ok(route_id: str) -> bool:
+    from . import shared_routes
+
+    return shared_routes.id_ok(route_id)
+
+
+def _draft_saved(user, route_id: str) -> None:
+    """The draft whose link is `route_id`, the rider's own, was saved: no longer listed."""
+    from .connector import mark_saved
+    from .models import SharedRoute
+
+    link = (
+        SharedRoute.objects.filter(pk=route_id, owner=user, connector_draft__isnull=False)
+        .select_related("connector_draft")
+        .first()
+    )
+    if link is not None:
+        mark_saved(link.connector_draft)
 
 
 def _full_account(rows):
@@ -8412,6 +8460,16 @@ def _shared_out(row) -> dict:
     }
 
 
+def _draft_until(row) -> str | None:
+    """An assistant's draft: when it goes (core.models.ConnectorDraft.KEPT), so the app can offer
+    its owner Save, as Load route does, at the end of a ride on it."""
+    from .models import ConnectorDraft
+
+    if row.connector_draft_id is None:
+        return None
+    return (row.created_at + ConnectorDraft.KEPT).isoformat()
+
+
 def _purge_shared(now) -> None:
     from . import shared_routes
 
@@ -8519,10 +8577,20 @@ def shared_route_read(request, route_id: str):
         response = _stress_error(410, shared_routes.REVOKED, code="revoked")
         response["Cache-Control"] = "no-store"
         return response
+    # The owner's own draft (an assistant's): Save is offered them, and each open puts it on top
+    # of Load route (the owner, 2026-11-09: "most recent on top").
+    own_draft = (
+        row.connector_draft_id is not None
+        and request.user.is_authenticated
+        and row.owner_id == request.user.pk
+    )
     # A year's keeping counts from the last open; written at most once a day.
-    if row.last_opened_at < now - shared_routes.TOUCH_EVERY:
+    if own_draft or row.last_opened_at < now - shared_routes.TOUCH_EVERY:
         SharedRoute.objects.filter(pk=row.pk).update(last_opened_at=now)
-    response = JsonResponse(_shared_out(row))
+    out = _shared_out(row)
+    if own_draft:
+        out["draft_until"] = _draft_until(row)
+    response = JsonResponse(out)
     response["Cache-Control"] = "no-store"
     return response
 
@@ -8576,15 +8644,95 @@ def my_shared_routes(request):
 
     get_token(request)
     now = timezone.now()
-    rows = SharedRoute.objects.filter(owner=request.user, revoked_at__isnull=True).order_by(
-        "-created_at", "pk"
-    )
+    # An assistant's drafts are listed in Load route instead (/me/drafts): one link a revision
+    # here was the clutter the owner did not want (2026-11-09).
+    rows = SharedRoute.objects.filter(
+        owner=request.user, revoked_at__isnull=True, connector_draft__isnull=True
+    ).order_by("-created_at", "pk")
     links = [
         _shared_summary(request, r)
         for r in rows.defer("line", "answer", "gpx", "preview_png")
         if not shared_routes.expired(r, now)
     ]
     return _private(JsonResponse({"links": links}))
+
+
+@api.get("/me/drafts", summary="The routes an assistant app drafted for you and you have not saved")
+@decorate_view(
+    signed_in_only,
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.ME),
+    errors_as_json,
+)
+def my_drafts(request):
+    """Listed in Load route beside the saved routes, each route's newest revision (the owner,
+    2026-11-09: "They should be listed just like saved routes, just ones that disappear"), with
+    when it goes. Opened by its link's id (GET /api/shared-routes/{id}); saved with POST
+    /api/me/routes and `from_draft`."""
+    from .connector import newest_drafts
+    from .models import ConnectorDraft, SharedRoute
+
+    drafts = newest_drafts(ConnectorDraft.objects.filter(user=request.user))
+    links = {
+        link.connector_draft_id: link
+        for link in SharedRoute.objects.filter(
+            owner=request.user,
+            revoked_at__isnull=True,
+            connector_draft_id__in=[d.pk for d in drafts],
+        )
+        .order_by("created_at")
+        .only(
+            "pk", "name", "source", "distance_m", "inputs", "last_opened_at", "connector_draft_id"
+        )
+    }
+    out = []
+    for draft in drafts:
+        link = links.get(draft.pk)
+        if link is None:  # its link was never kept: nothing to open
+            continue
+        out.append(
+            {
+                "id": link.pk,
+                "name": link.name,
+                "source": link.source,
+                "distance_m": link.distance_m,
+                "preset": (link.inputs or {}).get("preset", ""),
+                "created_at": draft.created_at.isoformat(),
+                # Its link's last open (written at most once a day), for the list's order.
+                "opened_at": max(link.last_opened_at, draft.created_at).isoformat(),
+                "expires_at": (draft.created_at + ConnectorDraft.KEPT).isoformat(),
+            }
+        )
+    return _private(JsonResponse({"drafts": out}))
+
+
+@api.delete("/me/drafts/{route_id}", summary="Delete one of your assistant drafts")
+@decorate_view(
+    ratelimit.user_rate_limited(ratelimit.ACCOUNT_WRITES),
+    csrf_protected,
+    signed_in_only,
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.STRESS_EDIT_CLIENT),
+    errors_as_json,
+)
+def my_draft_delete(request, route_id: str):
+    """Delete from Load route (the owner, 2026-11-09: "also add delete"): the draft whose link
+    this is, with every revision of its route and their links, at once. The assistant's chat
+    then finds no draft, as after a week."""
+    from .connector import delete_route_drafts
+    from .models import SharedRoute
+
+    link = (
+        SharedRoute.objects.filter(pk=route_id, owner=request.user, connector_draft__isnull=False)
+        .select_related("connector_draft")
+        .first()
+        if _shared_id_ok(route_id)
+        else None
+    )
+    if link is None:
+        return _stress_error(404, "That draft is not one of yours.", code="not_found")
+    delete_route_drafts(link.connector_draft)
+    return _private(JsonResponse({"deleted": True}))
 
 
 @api.post("/me/shared-routes/{route_id}/revoke", summary="Turn off one of your shared links")

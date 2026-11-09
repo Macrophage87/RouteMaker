@@ -2139,4 +2139,12 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "No road bike map: may use gravel.": "የመንገድ ብስክሌት ካርታ የለም፦ ጠጠር ሊጠቀም ይችላል።",
   "There is no weekend road bike map right now, so this route counts parkways like Beach Drive as roads with cars.": "አሁን የሳምንት መጨረሻ የመንገድ ብስክሌት ካርታ የለም፤ ስለዚህ ይህ መስመር እንደ Beach Drive ያሉ የፓርክ መንገዶችን መኪና ያለባቸው መንገዶች አድርጎ ይቆጥራል።",
   "No weekend map: parkways may have cars.": "የሳምንት መጨረሻ ካርታ የለም፦ የፓርክ መንገዶች መኪና ሊኖራቸው ይችላል።",
+  "Draft, last day": "ረቂቅ፣ የመጨረሻ ቀን",
+  "Draft, {n} days left": "ረቂቅ፣ {n} ቀናት ቀርተዋል",
+  "Save {name} to My routes": "{name}ን አስቀምጥ",
+  "Saving {name}…": "{name}ን በማስቀመጥ ላይ…",
+  "That draft is gone.": "ያ ረቂቅ የለም።",
+  "Delete": "ሰርዝ",
+  "Delete {name}": "{name}ን ሰርዝ",
+  "Deleted {name}.": "{name} ተሰርዟል።",
 };

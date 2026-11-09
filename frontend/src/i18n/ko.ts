@@ -2139,4 +2139,12 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "No road bike map: may use gravel.": "로드바이크 지도 없음: 자갈길 가능.",
   "There is no weekend road bike map right now, so this route counts parkways like Beach Drive as roads with cars.": "지금은 주말 로드바이크 지도가 없어 이 경로는 Beach Drive 같은 공원도로를 차가 다니는 도로로 봅니다.",
   "No weekend map: parkways may have cars.": "주말 지도 없음: 공원도로에 차가 있을 수 있음.",
+  "Draft, last day": "임시 경로, 마지막 날",
+  "Draft, {n} days left": "임시 경로, {n}일 남음",
+  "Save {name} to My routes": "{name}을(를) 내 경로에 저장",
+  "Saving {name}…": "{name} 저장 중…",
+  "That draft is gone.": "그 임시 경로는 없어졌습니다.",
+  "Delete": "삭제",
+  "Delete {name}": "{name} 삭제",
+  "Deleted {name}.": "{name}을(를) 삭제했습니다.",
 };

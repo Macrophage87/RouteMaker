@@ -2139,4 +2139,12 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "No road bike map: may use gravel.": "Нет карты для шоссейника: возможен гравий.",
   "There is no weekend road bike map right now, so this route counts parkways like Beach Drive as roads with cars.": "Сейчас нет карты выходных для шоссейного велосипеда, поэтому маршрут считает парковые дороги, такие как Beach Drive, дорогами с машинами.",
   "No weekend map: parkways may have cars.": "Нет карты выходных: на парковых дорогах могут быть машины.",
+  "Draft, last day": "Черновик, последний день",
+  "Draft, {n} days left": "Черновик, осталось дней: {n}",
+  "Save {name} to My routes": "Сохранить {name} в Мои маршруты",
+  "Saving {name}…": "Сохраняем {name}…",
+  "That draft is gone.": "Этого черновика больше нет.",
+  "Delete": "Удалить",
+  "Delete {name}": "Удалить {name}",
+  "Deleted {name}.": "{name} удалён.",
 };
