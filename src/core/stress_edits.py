@@ -23,6 +23,15 @@ What waits for the next rebuild: Valhalla's edge costs, the z12-13 ride layer an
 Mass Ride capacity layers. RouteMaker's own ranking, the road panel and route
 descriptions read the live table at route time and have it at once.
 
+So until the rebuild a route can still ride a road just raised (the router finds it as cheap as
+it was) or go round one just lowered: the ranking can only choose among the routes the router
+offers (hunt finding X3, 2026-11-08). The map, the route's colours and the ranking keep the
+edited level, so the rider is never shown a road an admin just rated Avoid in calm colours on
+a route that rides it, and the ranking still prefers a route the router offers round it. The
+road panel says the rest plainly while it waits (`routing_pending`, the panel's "Routing" row:
+"Routes fully use this level after the next weekly data update", the words the editor's own
+confirmation says, frontend/src/lib/stressEditor.ts `AFTER_REBUILD`).
+
 A rebuild or a rollback that was running when an admin edited would otherwise promote a
 table without the edit: `after_promotion` and `after_rollback` re-apply the edits made
 after the promoted table read its overrides.
@@ -925,6 +934,36 @@ def surface_of(way_id: int) -> dict | None:
     if key not in overrides.SURFACE_PENALTIES:
         return None if applied else {"surface": None, "words": "Taken off", "applied": False}
     return {"surface": key, "words": overrides.SURFACE_PENALTIES[key][1], "applied": applied}
+
+
+def _tier_of(state: dict, way_id: int) -> list:
+    """A way's (tier, half) on each of its rows in an edit's `before` or `after`."""
+    prefix = f"{int(way_id)}:"
+    return sorted(
+        (key, values.get(TIER_COLUMN), values.get(HALF_COLUMN) is True)
+        for key, values in (state or {}).items()
+        if key.startswith(prefix) and isinstance(values, dict)
+    )
+
+
+def routing_pending(way_id: int) -> bool:
+    """Whether the way's traffic stress was changed since the live table's rebuild read the
+    overrides (`LiveEditGeneration.overrides_read_at`), so the router's graph still prices it
+    at the level it was built with (the module docstring's "What waits for the next
+    rebuild"): the road panel says so. An edit undone since, back to the built level, waits
+    for nothing. Every edit counts where the table's rebuild never said when it read them."""
+    oid = live_oid(live_schema())
+    if oid is None:
+        return False
+    generation = LiveEditGeneration.objects.filter(table_oid=oid).first()
+    read_at = getattr(generation, "overrides_read_at", None)
+    edits = StressEdit.objects.filter(osm_way_ids__contains=[int(way_id)])
+    if read_at is not None:
+        edits = edits.filter(at__gt=read_at)
+    edits = list(edits.order_by("id"))
+    if not edits:
+        return False
+    return _tier_of(edits[0].before, way_id) != _tier_of(edits[-1].after, way_id)
 
 
 def can_undo(edit: StressEdit, now: datetime) -> bool:

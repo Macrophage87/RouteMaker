@@ -3207,7 +3207,7 @@ if (mine()) {
   const first = bodies.length ? JSON.parse(bodies[0]).points[0] : null;
   const after = await p.eval("({ hash: location.hash, heard: window.__heard.slice() })");
   check("ride: off route for over 8 s is said once, assertively, and re-plans once from the rider's position",
-    p.routeRequests - before === 1 && first && Math.abs(first[0] - off[0]) < 0.0001 && Math.abs(first[1] - off[1]) < 0.0001 && after.heard.filter((t) => t === "!Off the planned route; finding a new way.").length === 1,
+    p.routeRequests - before === 1 && first && Math.abs(first[0] - off[0]) < 0.0001 && Math.abs(first[1] - off[1]) < 0.0001 && after.heard.filter((t) => t === "!Off the planned route. Finding a new way.").length === 1,
     JSON.stringify({ requests: p.routeRequests - before, first, heard: after.heard.slice(-4) }));
   check("ride: a re-plan never writes the address bar", after.hash === shownHash, after.hash);
   // Back on the line and riding on, so the ride is placed again for the checks below that read the card's distance:
@@ -4468,8 +4468,8 @@ if (mine()) {
 // ---- 26. Riding with kids (FOLLOWUP-KIDS-PRESET, OWNER-DECISIONS 240 (B)): a ride type like any other, by keyboard and screen reader ----
 // Novice and Nervous takes its place since 9e50f609 (hills -60, the API's "novice"; an old "kids" link opens it): the
 // checks below are the same, for it.
-// Every ride type: 19 since Road Bike (#884), Walk and Walk + transit (#888) and Run (#901), in the dialog's
-// three groups (lib/rideTypeGroups.ts: Transportation 10, Adventure 7, Group 2).
+// Every ride type: 20 since Road Bike (#884), Walk and Walk + transit (#888), Run (#901) and Tandem (#1070), in the dialog's
+// three groups (lib/rideTypeGroups.ts: Transportation 10, Adventure 8, Group 2).
 if (mine()) {
   const p = await open({ route: S_KIDS, hash: hashFor("default", 70) });
   const kidsCard = "[...document.querySelectorAll('.ride-type-card > button:not(.ride-fav)')].find((b) => b.querySelector('strong')?.textContent === 'Novice and Nervous')";
@@ -4481,7 +4481,7 @@ if (mine()) {
       kids: !!k, pressed: k?.getAttribute('aria-pressed'), hint: k?.querySelector('.hint')?.textContent, said: k?.querySelector('.visually-hidden')?.textContent }; })()`);
   // Plan streamline (2026-10-17): each card shows its gist; the full sentence is said with it, and shown by What each does.
   check("kids: the ride-type dialog is modal and offers Novice and Nervous among every ride type, with its gist shown and its sentence said",
-    offered.open && offered.modal && offered.cards === 19 && offered.kids && offered.hint === "Busy streets avoided hard, for new riders." && /^For riders new to traffic: /.test(offered.said ?? ""), JSON.stringify(offered));
+    offered.open && offered.modal && offered.cards === 20 && offered.kids && offered.hint === "Busy streets avoided hard, for new riders." && /^For riders new to traffic: /.test(offered.said ?? ""), JSON.stringify(offered));
   check("kids: its card is a toggle button, not pressed while another ride type is in use", offered.pressed === "false", JSON.stringify(offered.pressed));
   await p.eval(`${kidsCard}.setAttribute('data-kids', ''); true`);
   const card = await axNode(p, "button[data-kids]");
@@ -5723,8 +5723,14 @@ if (mine()) {
     const [lon0, lat0] = coords[0];
     await p.s("Emulation.setGeolocationOverride", { latitude: lat0, longitude: lon0, accuracy: 5 });
     // A screen that stays on (no "Screen may sleep" note in the panel) and the theme by the emulated scheme.
+    // The page's clock at 16:00 UTC today (late morning in DC), still running: within about an hour of dawn or dusk the
+    // cue card gains a Dawn/Sunrise line (lib/lightTimes.ts LIGHT_WINDOW_MS), which took the graphs' room at 360x640
+    // on a run at 5 AM ET. The checks here are about room, not the hour.
     await p.s("Page.addScriptToEvaluateOnNewDocument", {
-      source: `Object.defineProperty(navigator, 'wakeLock', { configurable: true, value: { request: async () => ({ released: false, release: async () => {}, addEventListener() {} }) } });
+      source: `(() => { const Real = Date; const at = new Real(); at.setUTCHours(16, 0, 0, 0); const off = at.getTime() - Real.now();
+          class Clock extends Real { constructor(...a) { if (a.length) super(...a); else super(Real.now() + off); } static now() { return Real.now() + off; } }
+          globalThis.Date = Clock; })();
+        Object.defineProperty(navigator, 'wakeLock', { configurable: true, value: { request: async () => ({ released: false, release: async () => {}, addEventListener() {} }) } });
         try { sessionStorage.setItem('routemaker.tab-mode', 'plan'); localStorage.setItem('routemaker.theme', 'phone'); localStorage.setItem('routemaker.ride', '{"output":"text","verbosity":"full","chosen":true}'); } catch {}`,
     });
     await p.s("Page.navigate", { url: `${ORIGIN}/${mass ? hashFor("mass-ride", 0) : hashFor("default", 70)}` });
