@@ -166,7 +166,7 @@ def test_the_plan_hands_its_approved_ratings_to_the_junction_reading(monkeypatch
         cut_short=(),
         ratings=(),
         beacons=(),
-        car_free_when=None,
+        closure_when=None,
     ):
         seen["ratings"] = ratings
         return []

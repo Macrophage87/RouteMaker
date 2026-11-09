@@ -3271,7 +3271,7 @@ class TestSeekWiring:
             cut_short=(),
             ratings=None,
             beacons=(),
-            car_free_when=None,
+            closure_when=None,
         ):
             junctions._ask(raws, range(len(raws)), junctions.LOCATE_RADIUS_M, locate, cut_short)
             return []
@@ -4130,7 +4130,7 @@ def test_the_junctions_read_a_closure_only_where_the_graph_opens_it(
     monkeypatch.setattr(
         junctions,
         "events_of",
-        lambda raws, when, *args, **kw: seen.append((when, kw["car_free_when"])) or [],
+        lambda raws, when, *args, **kw: seen.append((when, kw["closure_when"])) or [],
     )
     ctx = context()
     ctx.variant, ctx.when = variant, when

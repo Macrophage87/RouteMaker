@@ -1043,7 +1043,7 @@ def events_of_raws(raws, ctx: Context, deadline: routing.Deadline) -> list | Non
             # A road closed to cars at the ride's time is car-free here only on the graph
             # that routes it as a path, as `routing.classify` reads it (hunt X1). The ride
             # time itself still prices the junctions (rush hour, night).
-            car_free_when=routing.car_free_reading(ctx.when, ctx.variant),
+            closure_when=routing.car_free_reading(ctx.when, ctx.variant),
         )
     except junctions.ReadingCutShort as error:
         raise routing.DeadlineExceeded(str(error)) from error

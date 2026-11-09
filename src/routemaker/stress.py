@@ -105,6 +105,7 @@ from .facility import (
     closed_to_motor_traffic,
     has_side_path_on_the_road,
     is_use_sidepath_road,
+    painted_lane_on_road,
 )
 from .geo import Point, haversine
 from .shape import sinuosity
@@ -112,7 +113,6 @@ from .tags import (
     PAINTED_CYCLEWAY,
     SEPARATED_CYCLEWAY,
     cycleway_provision,
-    cycleway_sides,
     cycleway_values,
     cycleway_width_m,
     has_parking_lane,
@@ -1113,11 +1113,6 @@ USE_SIDEPATH_RULE = "legal but avoid: riders asked to use the side path"
 USE_SIDEPATH_ON_ROAD_RULE = (
     "riders asked to use the side path, on the road as a sidewalk or a one-sided track"
 )
-
-
-def painted_lane_on_road(tags: dict[str, str]) -> bool:
-    """Whether either side of the road carries a painted bike lane (`PAINTED_CYCLEWAY`)."""
-    return any(side.value in PAINTED_CYCLEWAY for side in cycleway_sides(tags).values())
 
 
 # The provision rank of a separated track (`tags.cycleway_provision`, `SEPARATED_CYCLEWAY`).

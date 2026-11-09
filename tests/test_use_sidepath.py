@@ -116,6 +116,24 @@ class TestTheRating:
     def test_a_lane_marked_no_does_not_lift_it(self) -> None:
         assert classify({**ROAD, "cycleway:both": "no"}, side_path=True).tier is Stress.AVOID
 
+    def test_a_contraflow_lane_alone_does_not_lift_it(self) -> None:
+        # Claude's default reading (`facility.USE_SIDEPATH_ERROR_LANES`): with only a
+        # contraflow lane, riders going with traffic have no lane.
+        tags = {**ROAD, "oneway": "yes", "cycleway:left": "opposite_lane"}
+        assert classify(tags, side_path=True).tier is Stress.AVOID
+
+    def test_a_painted_lane_road_does_not_ask_riders_onto_the_side_path(self) -> None:
+        # Review of the round 3 PR: the rating took the lane, but the panel still said
+        # "riders are asked to use the side path" and the report listed the road.
+        laned = {**ROAD, "cycleway:both": "lane"}
+        assert facility.bike_access_reason(laned, side_path=True) is None
+        road = [(-77.0, 38.90), (-77.0, 38.904)]
+        path = [(-76.99985, 38.90), (-76.99985, 38.904)]
+        found, missing = facility.use_sidepath_paths(
+            [(1, laned, road), (2, {"highway": "path", "name": "Spine"}, path)]
+        )
+        assert (found, missing) == ({}, set())
+
     def test_without_one_it_is_rated_on_its_own_merits(self) -> None:
         plain = {k: v for k, v in ROAD.items() if k != "bicycle"}
         result = classify(ROAD)

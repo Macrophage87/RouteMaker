@@ -5055,7 +5055,7 @@ planned on the standard graph as Gravel's is (the twin fallback), `limited` is
 `no_offroad_graph`, and Plan says the off-road map is not available and the route keeps to the
 usual trails. An answer whose rounds ran out of time is not kept in the answer cache
 (`route_cache.keepable`). Its time shown counts the mountain-bike class it rides (every
-`segment.mtb_only` way, any level) at Mountain Bike's singletrack pace, about 6 mph (10 km/h,
+`segment.mtb_only` way, any level: Claude's default scope, not the owner's) at Mountain Bike's singletrack pace, about 6 mph (10 km/h,
 `mtbmode.SINGLETRACK_SPEED_KMH`, `mtbmode.duration_s`), as Mountain Bike times the same trails,
 and the router's time elsewhere (`easy_mtb.dirt_m`, read from the plan's own traces; the owner,
 round 3, 2026-11-08, asked whether Easy MTB trails should be timed at Mountain Bike's 6 mph:
@@ -5169,7 +5169,10 @@ The third routing hunt's owner calls, as Stephen decided them on 2026-11-08:
 - **A `use_sidepath` road with a painted bike lane on it**: "If it has a painted lane and requires
   a sidepath then it's an OSM error" and "Bikes would be explicitly allowed". The road is rated
   on its own merits, lane included, as if the `use_sidepath` tag were not there
-  (`stress.painted_lane_on_road`). Code change; needs the map rebuild.
+  (`facility.painted_lane_on_road`). The road panel no longer says riders are asked to use the
+  side path, and the road is left out of the use_sidepath report. Which lanes count is Claude's
+  default, not the owner's: a lane or buffered lane on either side, but not a contraflow-only
+  lane (`facility.USE_SIDEPATH_ERROR_LANES`). Code change; needs the map rebuild.
 - **Sunday evening from 6 PM** (T3-5): "Let's just go at 6 on Sunday."
   (`ridetime.SUNDAY_EVENING_START`, and its copy in `frontend/src/lib/rideTime.ts`). Beach
   Drive's last closed hour, Sunday 18:00-19:00, is planned as open to cars. Code change.
