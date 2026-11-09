@@ -53,9 +53,20 @@ def _row(
     """(seconds, metres) from `origin` to each place, None for a place the router
     could not reach; None for the whole row if the router gave no matrix."""
     payload = {
-        # The rider matched as a plan's start is (`routing.STOP_RADIUS_M`).
-        "sources": [{"lon": origin[0], "lat": origin[1], "radius": routing.STOP_RADIUS_M}],
-        "targets": [{"lon": lon, "lat": lat} for lon, lat in places],
+        # The rider matched as a plan's start is (`routing.STOP_RADIUS_M`), and neither end
+        # to the tunnel under a DC circle park (`routing.circle_park_filter`; the second
+        # 2026-11-08 hunt, P6).
+        "sources": [
+            {
+                "lon": origin[0],
+                "lat": origin[1],
+                "radius": routing.STOP_RADIUS_M,
+                **routing.circle_park_filter(origin[0], origin[1]),
+            }
+        ],
+        "targets": [
+            {"lon": lon, "lat": lat, **routing.circle_park_filter(lon, lat)} for lon, lat in places
+        ],
         "costing": "bicycle",
         "costing_options": costing,
         "units": "kilometers",

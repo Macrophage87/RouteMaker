@@ -3,7 +3,11 @@
 Known road hazards OpenStreetMap misses or may lose, read when the rebuild writes the segments
 and the route network (`src/routemaker/hazards.py`, `src/pipeline/hazard_layer.py`). A road on
 the list keeps its stress rating, but routes price it as LTS 4 (paths aren't priced); a route
-that still rides it marks it and names it, and the road panel's "Watch for" row says it.
+that still rides it marks it and names it, and the road panel's "Watch for" row says it. The
+graph prices a whole OSM way, so a `street` entry prices a way only where its stretch covers
+at least half of that way (`hazard_layer.PRICED_SHARE`; hunt X5, 2026-11-08): one listed block
+on a long multi-block way no longer prices all of it, and is marked where a route rides it.
+A `ways` entry prices each listed way whole.
 A broken file stops the rebuild (`HazardListRefused`); a street whose cross streets are not
 found in the extract is logged and left out, never guessed.
 

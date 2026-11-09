@@ -221,6 +221,75 @@ class TestJunctionDelay:
         one.junction_delay_s, two.junction_delay_s = 30.0, 45.0
         assert refine.combine([one, two]).junction_delay_s == 75.0
 
+    def test_a_suburban_signals_wait_ranks_at_twice_the_time_shown(self) -> None:
+        # The owner, 2026-11-08: "a 2x penalty but keep those numbers". Before: the score read
+        # the waits shown (45 s); after: the ranked waits (90 s), the time shown unchanged.
+        crossing = analysis("a")
+        crossing.junction_delay_s = 45.0
+        assert crossing.score(context()) == pytest.approx(4000.0 + refine.QUIET_COST_FACTOR * 45.0)
+        crossing.junction_ranked_s = 90.0
+        assert crossing.junction_delay_s == 45.0
+        assert crossing.score(context()) == pytest.approx(4000.0 + refine.QUIET_COST_FACTOR * 90.0)
+        top = context(maxcalm=True)
+        assert refine.delay_m(crossing, top) == pytest.approx(
+            refine.QUIET_COST_FACTOR * 90.0 / QUIET_COST
+        )
+
+    def test_legs_add_their_ranked_waits_a_leg_without_them_at_its_waits_shown(self) -> None:
+        one, two = analysis("a"), analysis("b")
+        one.junction_delay_s, one.junction_ranked_s = 45.0, 90.0
+        two.junction_delay_s = 15.0
+        both = refine.combine([one, two])
+        assert both.junction_delay_s == 60.0
+        assert both.junction_ranked_s == 105.0
+
+    def test_a_foot_of_junction_cost_is_worth_its_ranking_seconds_of_waiting(self) -> None:
+        # The junction model's feet count at quiet_cost x weight a metre, a second of waiting
+        # at QUIET_COST_FACTOR x wait_weight: a button crossing is held below a stop sign in
+        # these units (`junction_delay.signal_wait`).
+        ctx = context(weight=0.5, wait_weight=3.0)
+        per_ft = refine.stop_wait_s_per_ft(ctx)
+        assert per_ft == pytest.approx(
+            QUIET_COST * 0.5 / model.FEET_PER_METRE / (refine.QUIET_COST_FACTOR * 3.0)
+        )
+
+
+class TestCappedTrailCrossings:
+    """The 2026-11-08 hunt, J1: an unsignalised trail crossing of an arterial is drawn orange
+    (item 185, "cap at orange ... 'signal not mapped'"), but "The cost still counts in full
+    where a route is chosen": every pass that keys on red reads it at its cost."""
+
+    @staticmethod
+    def capped(m: float = 1500.0, cost_ft: float = 5280.0) -> Event:
+        return dataclasses.replace(
+            event(m, cost_ft), severity=model.ORANGE, max_severity=model.ORANGE
+        )
+
+    def test_a_capped_crossing_that_costs_a_red_counts_as_one(self) -> None:
+        # Before: red_count 0, red_m 0, its cost in the second figure with LTS 3.
+        read = analysis("t", events=[self.capped()])
+        assert refine.red_count(read) == 1
+        assert read.red_m == pytest.approx(5280.0 / model.FEET_PER_METRE)
+        assert read.orange_m == 0.0
+        assert read.top_m == pytest.approx(read.lts4_m + 5280.0 / model.FEET_PER_METRE)
+        assert refine.top_by_leg(read) == pytest.approx([5280.0 / model.FEET_PER_METRE])
+        # The colour the rider is shown is the map's.
+        assert read.events[0].severity == model.ORANGE
+
+    def test_an_orange_that_costs_an_orange_stays_orange(self) -> None:
+        cheap = self.capped(cost_ft=1500.0)
+        plain_orange = dataclasses.replace(event(1500.0, 3300.0), severity=model.ORANGE)
+        assert refine.avoidance_severity(cheap) == model.ORANGE
+        # Orange for another reason than the cap (a rider's rating): not the cap's to undo.
+        assert refine.avoidance_severity(plain_orange) == model.ORANGE
+        assert refine.red_count(analysis("t", events=[cheap, plain_orange])) == 0
+
+    def test_the_score_prices_it_as_a_red(self) -> None:
+        ctx = context()
+        capped = analysis("t", events=[self.capped()])
+        red = analysis("t", events=[event(1500.0, 5280.0)])
+        assert capped.score(ctx) == pytest.approx(red.score(ctx))
+
 
 class TestCrossingAvoidance:
     def test_the_worst_crossings_approaches_are_excluded_and_a_better_route_kept(
@@ -236,11 +305,12 @@ class TestCrossingAvoidance:
         assert info["rounds"] == 1 and info["limited"] is None
         # The two red events (3,100 ft and up since 2026-10-10; 2,900 from 468, 2,000
         # before); an orange one is not worth a second route.
-        # Each red junction's approach and the junction itself (every edge within 15 m).
+        # Each red junction's approach and the junction itself (every edge within 3 m:
+        # 15 m took out the sidepath beside the arterial and a bridge by the node, J6).
         assert len(world.requests[0]["exclude_locations"]) == 4
         assert world.excluded(0)[0] == pytest.approx((BASE[0] + 1500.0 * 1e-5, BASE[1] + 1e-5))
         assert world.excluded(0)[1] == pytest.approx((BASE[0] + 1500.0 * 1e-5, BASE[1]))
-        assert world.requests[0]["exclude_locations"][1]["radius"] == 15
+        assert world.requests[0]["exclude_locations"][1]["radius"] == 3
         assert "alternates" not in world.requests[0], "one route, not alternatives"
         assert world.requests[0]["elevation_interval"] == 30
         assert info["extra_distance_m"] == 0.0 or info["extra_distance_m"] == pytest.approx(0.0)
@@ -302,7 +372,22 @@ class TestCrossingAvoidance:
     def test_a_later_crossing_round_that_fails_says_nothing(self, monkeypatch) -> None:
         """The first round's route is the answer, as it was with one round, and is cached:
         a second round the router does not answer leaves `limited` unset (review of PR
-        #421)."""
+        #421). With no red left on it: the first round's route here has an orange crossing
+        (2,000 ft) where it had a red. A red still on it is said whatever stopped the round
+        (hunt S, low note, 2026-11-08), as the time branch already said it (the PC's check,
+        2026-10-23): `TestRedJunctions`, and the red case below."""
+        shapes = {
+            "o": analysis("o", events=[event(1500.0, 3300.0), event(2500.0, 3300.0)]),
+            "a1": analysis("a1", cost_s=3900.0, events=[event(2700.0, 2000.0)]),
+        }
+        World(monkeypatch, shapes, [trip_of("a1", 4.1), routing.RouterUnavailable("gone")])
+        kept, info = refine.refine(trip_of("o", 4.0), context())
+        assert kept["legs"][0]["shape"] == "a1"
+        assert info["limited"] is None and info["rounds"] == 1
+
+    def test_a_later_crossing_round_that_fails_with_a_red_left_is_said(self, monkeypatch) -> None:
+        """Before 2026-11-08 this was the case above: `limited` unset with a red still on the
+        route, so the plan counted as searched whole and the red pass was skipped."""
         shapes = {
             "o": analysis("o", events=[event(1500.0, 3300.0), event(2500.0, 3300.0)]),
             "a1": analysis("a1", cost_s=3900.0, events=[event(2700.0, 3300.0)]),
@@ -310,7 +395,7 @@ class TestCrossingAvoidance:
         World(monkeypatch, shapes, [trip_of("a1", 4.1), routing.RouterUnavailable("gone")])
         kept, info = refine.refine(trip_of("o", 4.0), context())
         assert kept["legs"][0]["shape"] == "a1"
-        assert info["limited"] is None and info["rounds"] == 1
+        assert info["limited"] == "time" and info["rounds"] == 1
 
     def test_crossing_avoidance_alone_is_at_most_five_rounds(self, monkeypatch) -> None:
         shapes = {"o": analysis("o", events=[event(1500.0, 3300.0)])}
@@ -329,7 +414,9 @@ class TestCrossingAvoidance:
         world = World(monkeypatch, {"o": original}, [])
         ctx = context()
         targets = refine.crossing_targets(original, ctx)
-        assert [t.radius for t in targets] == [None, 15]
+        # Every edge at the node (3 m), not the sidepath or a bridge 8-14 m off it (J6).
+        assert refine.CROSSING_EXCLUDE_RADIUS_M == 3
+        assert [t.radius for t in targets] == [None, refine.CROSSING_EXCLUDE_RADIUS_M]
         assert targets[1].point == pytest.approx((BASE[0] + 1500.0 * 1e-5, BASE[1]))
         assert world.requests == []
 
@@ -1691,6 +1778,27 @@ class TestRetrace:
         read.via_m = [1800.0]
         assert refine.retrace_m(read) == 0.0
 
+    def test_across_a_long_plans_cut_the_way_back_is_counted(self) -> None:
+        """Hunt V4: leg 0 ends over the half-edge to a cut and leg 1 starts back over the
+        same half-edge. Each leg alone rides nothing twice; put together, as the plan's one
+        leg, they ride its 250 m twice."""
+        to_cut = analysis("a", "1" * 4)
+        to_cut.marks = [(100.0, -77.0, 38.9, 200.0), (325.0, -77.002, 38.9, 250.0)]
+        from_cut = analysis("b", "1" * 4)
+        from_cut.marks = [(125.0, -77.002, 38.90001, 250.0), (400.0, -77.0, 38.901, 300.0)]
+        assert refine.retrace_m(to_cut) == refine.retrace_m(from_cut) == 0.0
+        assert refine.joined_retrace_m([to_cut, from_cut], [0, 0]) == pytest.approx(250.0)
+        # Where the cut is a point of the rider's own (a stop), it is theirs to turn at.
+        assert refine.joined_retrace_m([to_cut, from_cut], [0, 1]) == 0.0
+
+    def test_a_cut_ridden_through_is_no_retrace(self) -> None:
+        # The other half of the cut's edge: the route goes on, not back.
+        to_cut = analysis("a", "1" * 4)
+        to_cut.marks = [(100.0, -77.0, 38.9, 200.0), (325.0, -77.002, 38.9, 250.0)]
+        on = analysis("b", "1" * 4)
+        on.marks = [(125.0, -77.0045, 38.9, 250.0), (400.0, -77.007, 38.9, 300.0)]
+        assert refine.joined_retrace_m([to_cut, on], [0, 0]) == 0.0
+
     def test_tolerances_are_tight_from_both_sides(self) -> None:
         # Lengths 15% apart are different edges; a way 3 m off is another way.
         read = analysis("a", "1" * 4)
@@ -1864,6 +1972,9 @@ class TestTrailSeek:
     def test_the_table_is_read_for_the_straight_line_and_the_route(self, monkeypatch) -> None:
         ctx = self.seek_context()
         ctx.avoid_gravel = True
+        # On the weekend graph, which routes a weekend closure as a path (hunt X1: on the
+        # standard graph this context had before, the table now reads no closure; below).
+        ctx.variant = "weekend"
         self.run(monkeypatch, {}, [NO_ROUTE], ctx)
         ((schema, guide, width, has_facility, when, avoid_unpaved),) = self.asked
         assert (schema, has_facility, when, avoid_unpaved) == ("live", True, "weekend", True)
@@ -1920,6 +2031,29 @@ class TestTrailSeek:
         assert shape == "o"
         assert info["seek"]["tried"][0]["outcome"] == "busier"
         assert info["seek"]["taken"] is False
+
+    def test_a_corridor_round_a_red_crossing_may_ride_more_lts3(self, monkeypatch) -> None:
+        """Hunt 2, P2-5: the router's route crosses an arterial unsignalised (a 4,500 ft red);
+        the trail corridor goes round it to a signal with 300 m more LTS 3 on the way in. The
+        search's guard (`_busier`) counts the red on both sides and would take it; the seek's
+        guard counted the exposure alone and called it "busier"."""
+        red = [event(1500.0, 4500.0)]
+        round_it = analysis("t", "1" * 10 + "3" * 13 + "1" * 22, cost_s=3500.0, shift=100)
+        assert round_it.rated_exposure_m > refine._allowance(self.orig().rated_exposure_m)
+        world = SeekWorld(monkeypatch, {"o": self.orig(events=red), "t": round_it}, [])
+
+        def call(variant, endpoint, payload, deadline):
+            # The exclusion search's rounds (the red's among them) find nothing; the seek's
+            # ask through the corridor finds the way round.
+            world.requests.append(payload)
+            if not asks_through(payload):
+                raise NO_ROUTE
+            return {"trip": trip_of("t", 4.5)}
+
+        monkeypatch.setattr(routing, "_call", call)
+        kept, info = refine.refine(trip_of("o", 4.0), self.seek_context())
+        tried = [t["outcome"] for t in info["seek"]["tried"]]
+        assert tried == ["taken"] and kept["legs"][0]["shape"] == "t", tried
 
     def test_a_route_busier_by_less_than_the_tolerance_is_not_busier(self, monkeypatch) -> None:
         # The router's own route has 1,000 m of exposure; the allowance is 2% and 50 m.
@@ -1987,7 +2121,9 @@ class TestTrailSeek:
             "t", "1" * 40, cost_s=3900.0, shift=100, events=[event(1500.0, 60_000.0)]
         )
         _w, shape, info = self.run(monkeypatch, {"t": crossing}, [trip_of("t", 4.0)])
-        assert shape == "o" and info["seek"]["tried"][0]["outcome"] == "not_better"
+        # Hunt 2, P2-5: the guard now counts a red junction at its cost as `_busier` does,
+        # so the worse crossing is refused there ("busier"; "not_better" before).
+        assert shape == "o" and info["seek"]["tried"][0]["outcome"] == "busier"
 
     def test_no_route_through_the_points_keeps_the_route(self, monkeypatch) -> None:
         _w, shape, info = self.run(monkeypatch, {}, [NO_ROUTE])
@@ -2166,6 +2302,22 @@ class TestTrailSeek:
         ctx = self.seek_context(deadline_s=refine.REFINE_TRACE_RESERVE_S + 2.2)
         self.run(monkeypatch, {}, [NO_ROUTE], ctx)
         assert self.table_kw["timeout_s"] == pytest.approx(2.2, abs=0.1)
+
+    @pytest.mark.parametrize(
+        "variant,when,read",
+        [("standard", "weekend", ""), ("weekend", "weekend", "weekend"), ("weekend", "night", "")],
+    )
+    def test_the_table_reads_a_closure_only_where_the_graph_opens_it(
+        self, monkeypatch, variant, when, read
+    ) -> None:
+        # Hunt X1 review: the seek read the table's roads closed to cars in the ride's time
+        # on every graph (before: the ride's time, "weekend", here on the standard graph too),
+        # so it offered a corridor the standard graph prices as the road with cars. It reads
+        # them as `routing.classify` does now (`routing.car_free_reading`).
+        ctx = self.seek_context()
+        ctx.variant, ctx.when = variant, when
+        self.run(monkeypatch, {}, [NO_ROUTE], ctx)
+        assert [asked[4] for asked in self.asked] == [read]
 
     def test_a_table_read_past_its_timeout_ends_the_seek_for_time(self, monkeypatch) -> None:
         self.segments = trailseek.SeekOutOfTime("slow")
@@ -3111,7 +3263,15 @@ class TestSeekWiring:
             return [{} for _ in payload["locations"]]
 
         def events_of(
-            raws, when, with_facility, locate, group, cut_short=(), ratings=None, beacons=()
+            raws,
+            when,
+            with_facility,
+            locate,
+            group,
+            cut_short=(),
+            ratings=None,
+            beacons=(),
+            closure_when=None,
         ):
             junctions._ask(raws, range(len(raws)), junctions.LOCATE_RADIUS_M, locate, cut_short)
             return []
@@ -3220,6 +3380,8 @@ class TestStressAverseWeights:
             ("walk-transit", None),
             # Run (#901) takes Walk's preset, never used to ride.
             ("run", None),
+            # Tandem (#1070): the stoker is not in control (items 221, 241).
+            ("tandem", None),
         ):
             exposure = presets.exposure_for(name, carrying)
             assert {k: exposure.weights[k] for k in "345"} == {"3": 1.0, "4": 8.0, "5": 16.0}, name
@@ -3238,6 +3400,7 @@ class TestStressAverseWeights:
                 # Walk, Walk + 🚆🚌 (#888) and Run (#901): pinned at 8 and 16 above.
                 *presets.ON_FOOT_PRESETS,
                 presets.RUN,
+                presets.TANDEM,
             ):
                 continue
             exposure = presets.exposure_for(name, presets.CARRYING_CARGO)
@@ -3327,7 +3490,11 @@ def lts2_reading(name: str, tiers: str, weight: float) -> refine.Analysis:
 
 class TestLts2Weight:
     def test_a_quarter_of_lts3_on_trailmaxxing_and_cargo_with_passengers(self) -> None:
-        for name, carrying in (("trailmaxxing", None), ("cargo", presets.CARRYING_PEOPLE)):
+        for name, carrying in (
+            ("trailmaxxing", None),
+            ("cargo", presets.CARRYING_PEOPLE),
+            ("tandem", None),
+        ):
             exposure = presets.exposure_for(name, carrying)
             assert exposure.lts2 == pytest.approx(exposure.lts3 / 4), name
             assert exposure.weights["2"] == 0.25, name
@@ -3339,6 +3506,8 @@ class TestLts2Weight:
             ("trailmaxxing", None),
             ("cargo", presets.CARRYING_PEOPLE),
             ("novice", None),
+            # Tandem (#1070): the stoker, as Cargo with passengers.
+            ("tandem", None),
         }
         for name in presets.PRESETS:
             for carrying in presets.PRESETS[name].carrying or (None,):
@@ -3890,6 +4059,27 @@ class TestRedJunctions:
         assert kept["legs"][0]["shape"] == "a" and info["rounds"] == 1
         assert info["limited"] == "time"
 
+    def test_a_later_round_the_router_refuses_is_said_while_a_red_is_left(
+        self, monkeypatch
+    ) -> None:
+        """Hunt S, low note: at rate 0 a later round that failed (every attempt refused)
+        left `limited` unset with a red still on the best route, so the plan counted as
+        searched whole and the red pass was skipped. Only the time branch said it."""
+        shapes = {"o": self.two_reds(), "a": analysis("a", events=[event(2700.0, 3300.0)])}
+        refused = routing.RouterRefused(400, 442, "no path")
+        world = World(monkeypatch, shapes, [trip_of("a", 4.1)] + [refused] * 10)
+        kept, info = refine.refine(trip_of("o", 4.0), context())
+        assert kept["legs"][0]["shape"] == "a" and info["rounds"] == 1
+        assert len(world.requests) > 1
+        assert info["limited"] == "no_route"
+
+    def test_a_later_round_refused_with_no_red_left_says_nothing(self, monkeypatch) -> None:
+        shapes = {"o": self.two_reds(), "a": analysis("a", events=[])}
+        refused = routing.RouterRefused(400, 442, "no path")
+        World(monkeypatch, shapes, [trip_of("a", 4.1)] + [refused] * 10)
+        kept, info = refine.refine(trip_of("o", 4.0), context())
+        assert kept["legs"][0]["shape"] == "a" and info["limited"] is None
+
     def test_no_red_left_says_nothing_of_the_rounds_not_run(self, monkeypatch) -> None:
         shapes = {"o": self.two_reds(), "a": analysis("a", events=[])}
         world = World(monkeypatch, shapes, [trip_of("a", 4.1)])
@@ -3921,3 +4111,30 @@ class TestRedJunctions:
         world = World(monkeypatch, shapes, [trip_of(f"a{n}", 4.1) for n in range(1, 6)] * 3)
         refine.refine(trip_of("o", 4.0), context(rate=10.0))
         assert len(world.requests) > refine.REFINE_PATIENCE
+
+
+@pytest.mark.parametrize(
+    "variant,when,read",
+    [("standard", "weekend", ""), ("weekend", "weekend", "weekend"), ("weekend", "night", "")],
+)
+def test_the_junctions_read_a_closure_only_where_the_graph_opens_it(
+    monkeypatch, variant, when, read
+) -> None:
+    # Hunt X1 review: a junction's roads were read car-free (tier 1, no traffic) in the
+    # ride's time on every graph (before: "weekend" here on the standard graph too), so the
+    # junction events and their costs counted on a car-free road the router priced as the
+    # road with cars. They read it as `routing.classify` does now.
+    from core import junctions
+
+    seen: list = []
+    monkeypatch.setattr(
+        junctions,
+        "events_of",
+        lambda raws, when, *args, **kw: seen.append((when, kw["closure_when"])) or [],
+    )
+    ctx = context()
+    ctx.variant, ctx.when = variant, when
+    assert refine.events_of_raws([], ctx, ctx.deadline) == []
+    # The ride time still prices the junctions (hunt 3 follow-up: it was the closure
+    # reading's "" off the weekend graphs, so rush hour and night were lost).
+    assert seen == [(when, read)]

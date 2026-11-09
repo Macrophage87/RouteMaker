@@ -2,7 +2,8 @@
 
 The Zoo rule of OWNER-DECISIONS 278 and 291(4) (`src/routemaker/zoo.py`): the
 Zoo is closed to bicycles, except the public streets along its edge, the Rock
-Creek Trail and Zoo Loop Trail cycleways signed for bicycles, and a short
+Creek Trail and Zoo Loop Trail (a cycleway or path signed for bicycles, or a trail
+way carrying either name), and a short
 destination-only spur from the Harvard Street NW entrance to the bike racks.
 
 | File | What | Source | Licence |
@@ -19,6 +20,10 @@ them and not pass over them.
 
 The Smithsonian's visitor rules were not fetched. The closure is the owner's
 decision as stated; no user-facing text cites a policy source.
+
+The rebuild fails (`pipeline.run.assert_zoo_rule`) when a spur way is gone from the
+extract, no Rock Creek Trail piece inside the Zoo is open, or fewer than
+`open_trail_floor` trail ways inside it are open (hunt A5, 2026-11-08).
 
 To refresh after an OSM edit: re-run the way search around the entrance (the
 spur ways are listed with what each is), check the ids still exist, and keep the

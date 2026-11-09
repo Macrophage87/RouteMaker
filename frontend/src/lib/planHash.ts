@@ -106,6 +106,8 @@ export function encodePlan(
     if (dials.assist) params.set("assist", "1");
     // "Keep to roads, not trails" (OWNER-DECISIONS 463, 463b). Absent is trails on, except on Mass Ride, which is always off.
     if (dials.trailsOff) params.set("trailsoff", "1");
+    // "Easy MTB trails" (2026-11-08), Default and Trailmaxxing only; absent is off.
+    if (dials.easyMtb) params.set("easymtb", "1");
     // A novice rider's transit plan (v0.7.0): its bike legs as Novice and Nervous plans them.
     if (dials.noviceLegs) params.set("novice", "1");
     // The target distance in miles, to a tenth. Absent is none; an older link has none.
@@ -183,6 +185,7 @@ export function decodePlan(hash: string): Plan {
     carrying: isCarrying(carrying) ? carrying : null,
     assist: params.get("assist") === "1",
     trailsOff: params.get("trailsoff") === "1",
+    easyMtb: params.get("easymtb") === "1",
     noviceLegs: params.get("novice") === "1",
     ...(isBike(params.get("bike")) ? { bike: params.get("bike") as "classic" | "ebike" } : {}),
     ...(params.get("ending") === "outside" ? { ending: "outside_dock" as const } : {}),

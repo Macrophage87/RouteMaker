@@ -164,6 +164,9 @@ class Gazetteer:
     """The extract's names: each way's (by OSM id), the hills and the places."""
 
     ways: dict[int, str] = field(default_factory=dict)
+    # The wanted ways tagged as a bridge or a tunnel (`structures.is_structure_tags`), whose
+    # bare-earth ground the Climbs layer reads straight across (`climb_layer.with_structures`).
+    structures: set[int] = field(default_factory=set)
     landmarks: list[Landmark] = field(default_factory=list)
     places: list[Place] = field(default_factory=list)
     _landmark_grid: _Grid | None = None
@@ -199,15 +202,18 @@ def _densify(points: Sequence[LonLat]) -> list[LonLat]:
 
 def read_extract(pbf: Path | str, way_ids: Iterable[int]) -> Gazetteer:
     """The names the climbs need from the extract: those of `way_ids`, and every named hill
-    and place. Two passes over the file and no location index: the first reads the tagged
-    nodes and ways, the second only the nodes of the ridges drawn as ways."""
+    and place; and which of `way_ids` are bridges or tunnels (`Gazetteer.structures`). Two
+    passes over the file and no location index: the first reads the tagged nodes and ways,
+    the second only the nodes of the ridges drawn as ways."""
     import osmium
+
+    from routemaker.structures import is_structure_tags
 
     wanted = set(way_ids)
     out = Gazetteer()
     ridge_ways: list[tuple[str, str, list[int]]] = []
     processor = osmium.FileProcessor(str(pbf), osmium.osm.NODE | osmium.osm.WAY).with_filter(
-        osmium.filter.KeyFilter("name", "ref")
+        osmium.filter.KeyFilter("name", "ref", "bridge", "tunnel")
     )
     for obj in processor:
         tags = {tag.k: tag.v for tag in obj.tags}
@@ -216,6 +222,8 @@ def read_extract(pbf: Path | str, way_ids: Iterable[int]) -> Gazetteer:
                 name = way_name(tags)
                 if name:
                     out.ways[obj.id] = name
+                if is_structure_tags(tags):
+                    out.structures.add(obj.id)
             kind = landmark_kind(tags)
             if kind is not None:
                 ridge_ways.append((tags["name"].strip(), kind, [n.ref for n in obj.nodes]))

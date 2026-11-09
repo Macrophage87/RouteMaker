@@ -60,7 +60,11 @@ def opens(
 ) -> bool:
     """Whether this way is a walk of the Capitol grounds this rule opens to bicycles:
     its paths and plazas, not the sidewalks beside its streets."""
-    if not coords or tags.get("highway") not in circleparks.OPENED_HIGHWAY:
+    if (
+        not coords
+        or tags.get("highway") not in circleparks.OPENED_HIGHWAY
+        or circleparks.is_pedestrian_area(tags)
+    ):
         return False
     if tags.get("footway") in circleparks.LINK_FOOTWAY or tags.get("footway") in (
         "sidewalk",

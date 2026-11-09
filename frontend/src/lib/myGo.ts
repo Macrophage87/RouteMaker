@@ -150,7 +150,7 @@ export async function fetchMyGo(origin: string, get: Fetch = fetch): Promise<MyG
 
 export const MY_GO_SAVED = t("My Go saved to your account.");
 export const MY_GO_SAVED_DEVICE = t("My Go saved on this device.");
-export const MY_GO_NOT_SAVED = t("My Go was not saved to your account; try again shortly. It still applies here.");
+export const MY_GO_NOT_SAVED = t("My Go was not saved to your account. Try again soon. It still works on this device.");
 
 /** POST /api/me/go: the whole of My Go. Answers the saved My Go, or null if it was not saved. */
 export async function saveMyGo(origin: string, myGo: MyGo, post: Fetch = fetch, cookie = typeof document === "undefined" ? "" : document.cookie): Promise<MyGo | null> {
