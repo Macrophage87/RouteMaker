@@ -218,7 +218,6 @@ import {
   FOOD_PAGE,
   NO_FOOD_DATA,
   foodFoundSaid,
-  loadFood,
   foodMoreSaid,
   routeForDetour,
   type RouteForDetour,
@@ -230,11 +229,11 @@ import {
 } from "./lib/food.ts";
 import { FoodFinder, foodRowsShown } from "./lib/foodFinder.ts";
 import { GROCERY_HEADING, GROCERY_LOOKING, GROCERY_QUERY, GROCERY_UNAVAILABLE, groceryFoundSaid, groceryResults, isGroceryQuery, type GroceryFrom } from "./lib/grocery.ts";
-// food.json is a committed snapshot, as climbs.json, refreshed with scripts/build_food.py and committed;
+// food.json is loaded once for the page by app/foodData.ts.
+import { sharedFood } from "./app/foodData.ts";
 // places.json is a few bytes until scripts/build_places.py fills it. `no-inline`, as climbs.json: an
 // inlined data: URL is refused by the edge's connect-src 'self'. Its own hashed file under
 // /assets/ also lets the service worker leave it out of the precache (swCore.mjs LAZY_ASSET).
-import foodUrl from "./amenity-data/food.json?url&no-inline";
 import placesUrl from "./amenity-data/places.json?url&no-inline";
 // trail-miles.json too, until scripts/build_trail_miles.py fills it; precached (not LAZY_ASSET), as a ride's
 // 311 report and "Where am I?" read it in a dead spot.
@@ -5131,15 +5130,7 @@ export function App() {
   const roamingNow = useRef(roaming);
   roamingNow.current = roaming;
   // Find food's file, loaded once (shared with the Food sheet's search); a load that failed is asked again next time.
-  const ensureFood = useCallback(() => {
-    if (!foodLoad.current) {
-      foodLoad.current = loadFood(foodUrl).then((data) => {
-        if (!data) foodLoad.current = null;
-        return data;
-      });
-    }
-    return foodLoad.current;
-  }, []);
+  const ensureFood = useCallback(() => sharedFood(), []);
   // Open Reports on the summary, while 311 problems are still to report: closed as Done closes it, then Reports opens
   // with the focus on its heading. Back goes to Plan's Start ride, or Go's Menu (Go's plan is emptied, as Done empties
   // it, without the clear's move of the focus to Where to?).
@@ -5449,7 +5440,6 @@ export function App() {
   const [foodCount, setFoodCount] = useState(FOOD_PAGE);
   const [foodBusy, setFoodBusy] = useState(false);
   const [foodStatus, setFoodStatus] = useState("");
-  const foodLoad = useRef<Promise<FoodPlace[] | null> | null>(null);
   const foodTimer = useRef<number | undefined>(undefined);
   // Cleared and set again a moment later, so the same words twice are said twice (as sayNearest).
   const sayFood = (text: string) => {
@@ -5525,14 +5515,8 @@ export function App() {
       return;
     }
     setGrocery(null);
-    if (!foodLoad.current) {
-      foodLoad.current = loadFood(foodUrl).then((data) => {
-        if (!data) foodLoad.current = null;
-        return data;
-      });
-    }
     setFoodBusy(true);
-    const places = await foodLoad.current;
+    const places = await sharedFood();
     if (seq !== foodSeq.current) return;
     setFoodBusy(false);
     if (!places) {
