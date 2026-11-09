@@ -9,7 +9,7 @@ import type { LonLat } from "./geo.ts";
 import { ViaMarks, markerLabels, viaIndices, importedKinds, kindSaid } from "./pointKinds.ts";
 import { decodePlan, encodePlan } from "./planHash.ts";
 import { requestRoute } from "./api.ts";
-import { applyAnswer, type StopOrder } from "./stopOrder.ts";
+import { VIA_LEGS_KEPT_SAID, applyAnswer, type StopOrder } from "./stopOrder.ts";
 import { startDials } from "./dials.ts";
 import { planPointNames, writeGpx } from "./gpx.ts";
 import { pointRows } from "./geocode.ts";
@@ -58,7 +58,7 @@ test("the route request names the via points, never on a two-point ride type", a
   assert.equal("via_points" in bodies[2], false);
 });
 
-test("Best order is asked of the stops only, and each via point moves with the stop it leads to", () => {
+test("Best order is asked of the stops only, and keeps each via point on the leg it shapes", () => {
   const marks = new ViaMarks();
   const start = p(-77.0);
   const v = marks.via(p(-77.01));
@@ -76,8 +76,22 @@ test("Best order is asked of the stops only, and each via point moves with the s
     { ok: true, answer },
     names,
   );
-  assert.deepEqual(applied.commit, [start, b, v, a, end]);
-  assert.match(applied.say, /Stop 1|Stop 2/);
+  // This pinned [start, b, v, a, end]: v moved with a and was ridden from b, off the way the order was costed (the
+  // hunt, 2026-11-08, V3). The swap splits v's leg (start to a), so the order is not taken, and that is said.
+  assert.equal(applied.commit, undefined);
+  assert.equal(applied.say, VIA_LEGS_KEPT_SAID);
+  // An order that keeps v's leg whole is taken, v still between its two stops.
+  const c = p(-77.035);
+  const longer = [start, v, a, b, c, end];
+  const legs = { points: [start, a, b, c, end], leading: [[], [v], [], [], []] };
+  const kept = applyAnswer(
+    { points: longer, preset: "default", dials, loop: false, stops: legs },
+    { points: longer, preset: "default", dials },
+    { ok: true, answer: { ...answer, order: [0, 1, 3, 2, 4] } },
+    names,
+  );
+  assert.deepEqual(kept.commit, [start, v, a, c, b, end]);
+  assert.match(kept.say, /Stop 2|Stop 3/);
 });
 
 test("a GPX file names a via point 'Via point', numbers the stops among themselves, and reads it back", () => {

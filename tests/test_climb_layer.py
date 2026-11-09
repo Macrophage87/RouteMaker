@@ -172,6 +172,50 @@ class TestClimbsOnAStroke:
         assert cl.climbs_on_stroke(self.stroke(segments), segments, Nothing()) == []
 
 
+class Valley:
+    """Level ground at 60 m with a V-shaped valley 35 m deep between x=750 and x=1020 (the
+    bare earth under a high bridge), then a 1.2% rise for 1.2 km from its far end (14 m)."""
+
+    def at(self, lon: float, lat: float) -> float:
+        x = (lon + 77.0) * KX
+        mid, half = 885.0, 135.0
+        if abs(x - mid) < half:
+            return 60.0 - 35.0 * (1 - abs(x - mid) / half)
+        return 60.0 + 0.012 * max(0.0, min(x, 2220.0) - 1020.0)
+
+
+class TestBridges:
+    """Hunt finding E3 (2026-11-08): the tiles are bare earth, so a high bridge's valley read
+    as the foot of a Cat 5 climb starting mid-deck."""
+
+    def segments(self, structure):
+        return [
+            seg(1, (0, 0), (750, 0)),
+            seg(2, (750, 0), (1020, 0), structure=structure),
+            seg(3, (1020, 0), (3000, 0)),
+        ]
+
+    def test_a_bridge_is_read_straight_across(self):
+        before = self.segments(structure=False)
+        (stroke,) = cl.strokes(before)
+        assert cl.climbs_on_stroke(stroke, before, Valley())  # the phantom climb
+        after = self.segments(structure=True)
+        (stroke,) = cl.strokes(after)
+        assert cl.climbs_on_stroke(stroke, after, Valley()) == []
+
+    def test_the_samples_on_the_deck_lie_between_its_ends(self):
+        segments = self.segments(structure=True)
+        (stroke,) = cl.strokes(segments)
+        samples = cl.level_structures(cl.sample(stroke, Valley()), stroke, segments)
+        on_deck = [s.elevation for s in samples if 750 < s.along_m < 1020]
+        # (The far anchor is the first sample at or past the deck's end, a few cm up the rise.)
+        assert on_deck and all(h == pytest.approx(60.0, abs=0.5) for h in on_deck)
+
+    def test_the_extracts_bridges_mark_their_segments(self):
+        marked = cl.with_structures(self.segments(structure=False), {2})
+        assert [s.structure for s in marked] == [False, True, False]
+
+
 class TestHgt:
     def test_bilinear_between_posts_and_void_is_none(self, tmp_path):
         side = cl.HGT_1ARCSEC_SIDE

@@ -24,6 +24,7 @@ from test_admin_scoping import (  # noqa: F401
 )
 from test_bikeshare import DUPONT, UNION, FakeServices
 from test_bikeshare import run as run_bikeshare
+from test_refine import event as refine_event
 from test_route_api import LAT, VERTICES, post, route_answer
 
 from core import avoid_junctions, gbfs, presets, refine, routing
@@ -934,3 +935,97 @@ def test_a_bikeshare_way_round_asks_again_whether_walking_is_as_quick() -> None:
     assert out["notes"] == [block["notes"][0]]
     # No pedestrian route: no note either way.
     assert bikeshare.alternate_block(block, around, None)["notes"] == block["notes"]
+
+
+# --- The 2026-11-08 hunt: grade separation (J6, C7) and the red pass (S3, P2) ----------
+
+
+def test_a_bridge_over_the_junction_is_no_pass() -> None:
+    # Before: any line within 15 m paid 30 minutes and the "really bad idea" notice. After:
+    # a stretch on a bridge or tunnel edge, with no junction node of the route's own there,
+    # is over or under the junction, not through it.
+    over = [(lon, lat + 0.00009) for lon, lat in VERTICES]  # about 10 m north
+    assert len(model.passages(over, [junction()])) == 1
+    bridge = [k in (1, 2) for k in range(len(over) - 1)]
+    assert model.passages(over, [junction()], separated=bridge) == []
+    # A junction on the bridge deck: the route has a node of its own there, so it passes.
+    deck = [(JUNCTION[0], JUNCTION[1] + 0.00009)]
+    assert len(model.passages(over, [junction()], separated=bridge, nodes=deck)) == 1
+    # At grade where it comes within the radius: a pass, as before.
+    assert len(model.passages(over, [junction()], separated=[False] * 4)) == 1
+
+
+def test_the_traces_say_which_stretch_is_a_bridge() -> None:
+    from core.dedodge import encode_polyline6
+    from routemaker import trace_junctions
+
+    trace = {
+        "shape": encode_polyline6(VERTICES),
+        "edges": [
+            {"begin_shape_index": 0, "end_shape_index": 1},
+            {"begin_shape_index": 1, "end_shape_index": 3, "bridge": True},
+            {"begin_shape_index": 3, "end_shape_index": 4, "tunnel": False},
+        ],
+    }
+    line, flags = trace_junctions.separated_line(trace, [])
+    assert len(line) == len(VERTICES) and flags == [False, True, True, False]
+    assert "edge.bridge" in trace_junctions.TRACE_ATTRIBUTES
+    assert "edge.tunnel" in trace_junctions.TRACE_ATTRIBUTES
+    # A trace with no shape indices reads every stretch at grade.
+    assert trace_junctions.separated_line({"edges": [{}]}, list(VERTICES))[1] is None
+    _line, separated, _nodes = avoid_junctions.graded_line([(trace, list(VERTICES))])
+    assert separated == [False, True, True, False]
+
+
+def red_reading(reds: int, score_cost: float = 0.0) -> refine.Analysis:
+    events = [refine_event(1000.0 + 100 * k, cost_ft=3300.0) for k in range(reds)]
+    return refine.Analysis(
+        length_m=2000.0, cost_s=1000.0 + score_cost, exposure_m=0.0, climb_m=0.0,
+        pieces=[], classes=[], events=events,
+    )  # fmt: skip
+
+
+def test_the_way_round_an_avoid_junction_never_brings_back_a_red(around, monkeypatch) -> None:
+    # Before (S3, P2): where the search had not run, the swap was the router's cost alone,
+    # which prices no junction stress, and the request had none of the red pass's
+    # exclusions: the way round went back through the red the red pass had avoided. After:
+    # the red pass's exclusions go with the ask, and a way round with more reds is refused.
+    fake = around(AroundRouter(trip_of(DETOUR, 2.5, 100)))
+    readings = {2.2: red_reading(0), 2.5: red_reading(1)}
+    monkeypatch.setattr(
+        refine, "analyse", lambda trip, ctx, deadline, **k: readings[trip["summary"]["length"]]
+    )
+    ctx = plain_ctx()
+    ctx.traces = None  # passages read from the line alone here
+    red = {"lon": -77.02, "lat": 38.9, "radius": refine.CROSSING_EXCLUDE_RADIUS_M}
+    ctx.red_excludes = [red]
+    level = {"lon": -77.05, "lat": 38.91}
+    ctx.level_excludes = [level]
+    trip, info, offered = avoid_junctions.settle(
+        trip_of(VERTICES, 2.2, 500), {}, "standard", "default", far_deadline(),
+        [junction()], False, ctx=ctx,
+    )  # fmt: skip
+    assert trip["summary"]["length"] == 2.2 and info["decision"] == "kept"
+    assert offered["summary"]["length"] == 2.5
+    assert fake.calls[0]["exclude_locations"][:2] == [level, red]
+
+
+def test_the_way_round_is_judged_by_the_searchs_score_where_it_can_be_read(
+    around, monkeypatch
+) -> None:
+    # A way round as calm as the route, its 30 minutes saved: taken on the score, which
+    # prices the pass and the junctions' stress.
+    around(AroundRouter(trip_of(DETOUR, 2.5, 100)))
+    route = red_reading(0)
+    route.avoid_passages = [model.Passage(junction(), 1000.0)]
+    readings = {2.2: route, 2.5: red_reading(0, score_cost=600.0)}
+    monkeypatch.setattr(
+        refine, "analyse", lambda trip, ctx, deadline, **k: readings[trip["summary"]["length"]]
+    )
+    ctx = plain_ctx()
+    ctx.traces = None
+    trip, info, _offered = avoid_junctions.settle(
+        trip_of(VERTICES, 2.2, 500), {}, "standard", "default", far_deadline(),
+        [junction()], False, ctx=ctx,
+    )  # fmt: skip
+    assert trip["summary"]["length"] == 2.5 and info["decision"] == "avoided"

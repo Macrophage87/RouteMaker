@@ -495,7 +495,8 @@ test("Spanish: the walk, dock and hand-off lines are Spanish, the names as they 
     const walkIn = { preset: "commute", geometry: { type: "LineString", coordinates: [at(0, 0), at(500, 0)] }, walk_in: { start: walk(40), end: walk(90) } } as unknown as RouteResponse;
     const short = rideTripOf(walkIn, [at(0, -40), at(500, 90)])!;
     assert.equal(short.finish!.shown, "El recorrido termina aquí. Camine con su bicicleta 300 ft (90 m) hasta su destino.");
-    assert.equal(short.approach!.reached, "Ha llegado al inicio del recorrido. Siga en bicicleta.");
+    // Was "Ha llegado al inicio del recorrido. Siga en bicicleta." for "At the start of the ride. Ride on." (plainCopy.test.ts).
+    assert.equal(short.approach!.reached, "Está en el inicio del recorrido.");
     assert.equal(approachWords(short.approach!, null).spoken, "Camine hasta el inicio del recorrido, 130 pies.");
     // The API's Spanish boarding step (src/core/transit.py Leg.words) loses its arrival clause as the English does.
     assert.equal(

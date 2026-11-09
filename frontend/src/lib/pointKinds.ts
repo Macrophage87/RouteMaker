@@ -56,6 +56,19 @@ export class ViaMarks {
     return point;
   }
 
+  // A ride's own via points, none the rider placed (lib/navigate.ts loopShapePoint, a loop's way home): never said,
+  // and left out of the plan End ride leaves behind.
+  private readonly shapes = new WeakSet<LonLat>();
+
+  /** Whether this pair is a via point the ride made itself (`shape`), not one the rider placed. */
+  isShape = (point: LonLat): boolean => this.shapes.has(point);
+
+  /** Marks a pair just made as a via point the ride made itself, and gives it back. */
+  shape(point: LonLat): LonLat {
+    this.shapes.add(point);
+    return this.via(point);
+  }
+
   /** Marks a pair just made as the end of a drawn leg, and gives it back. */
   drawn(point: LonLat): LonLat {
     this.drawnTo.add(point);
@@ -247,7 +260,8 @@ export function kindSwitchedSaid(to: PointKind, place: string | undefined): stri
 
 /**
  * The stop-order request's points (Best order moves stops only): the start, the stops and the end, without the
- * via points. Each via point stays with the stop it leads to (the next stop or end after it) and moves with it.
+ * via points. A stop dragged to a new place takes the via points that lead to it along (`withVias`); Best order keeps
+ * each via point on the leg it shapes (`withViasOnLegs`).
  */
 export function stopsOnly(points: readonly LonLat[], isVia: (p: LonLat) => boolean, loop = false): { points: LonLat[]; leading: LonLat[][] } {
   const out: LonLat[] = [];
@@ -274,6 +288,44 @@ export function withVias(order: readonly number[], split: { points: readonly Lon
   // Via points that led back to a loop's start.
   if (split.leading.length > split.points.length) out.push(...split.leading[split.points.length]);
   return out;
+}
+
+/**
+ * Best order's new order with each via point kept on the leg it shapes (the hunt, 2026-11-08, V3): a via point between
+ * two stops stays between those two, the other way round where the new order rides that leg backwards. Null where the
+ * order splits a leg that has via points: the order is costed without them (core.stoporder), so a via point moved with
+ * the stop it led to (`withVias`) was ridden from whatever stop came before it now, out of the way the saving was
+ * worked out on. A loop's via points after its last stop shape the leg back to the start.
+ */
+export function withViasOnLegs(order: readonly number[], split: { points: readonly LonLat[]; leading: readonly LonLat[][] }): LonLat[] | null {
+  const n = split.points.length;
+  // Each leg with via points, by its two stops' indices ("a>b"): leg i - 1 to i, and a loop's last stop back to the start.
+  const legs = new Map<string, readonly LonLat[]>();
+  for (let i = 1; i < n; i += 1) if (split.leading[i]?.length) legs.set(`${i - 1}>${i}`, split.leading[i]);
+  const closing = split.leading.length > n ? (split.leading[n] ?? []) : [];
+  if (closing.length) legs.set(`${n - 1}>0`, closing);
+  const used = new Set<string>();
+  const between = (a: number, b: number): readonly LonLat[] => {
+    const ahead = legs.get(`${a}>${b}`);
+    if (ahead) {
+      used.add(`${a}>${b}`);
+      return ahead;
+    }
+    const back = legs.get(`${b}>${a}`);
+    if (back) {
+      used.add(`${b}>${a}`);
+      return [...back].reverse();
+    }
+    return [];
+  };
+  const out: LonLat[] = [];
+  order.forEach((i, k) => {
+    if (k > 0) out.push(...between(order[k - 1], i));
+    out.push(split.points[i]);
+  });
+  // A loop goes back to its start after its last stop.
+  if (split.leading.length > n && order.length) out.push(...between(order[order.length - 1], 0));
+  return used.size === legs.size ? out : null;
 }
 
 /** How many stops Best order may move once the via points are left out (Go and Plan show it from two). */

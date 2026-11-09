@@ -698,7 +698,7 @@ export interface StationLineTime {
 export interface StationLive {
   station: string;
   /** The next trains by line and way: minutes (0 arriving), and in words ("3 min, 11 min"; "arriving"). */
-  trains: { line: string; toward: string; end?: [number, number] | null; minutes: number[]; when: string }[];
+  trains: { line: string; toward: string; end?: [number, number] | null; track?: string | null; minutes: number[]; when: string }[];
   /** "Elevator out at Gallery Place: carry your bike on the stairs." */
   elevators: { words: string; where: string }[];
   /** WMATA's rail incidents on the station's lines. */
@@ -984,6 +984,16 @@ export interface RunInfo {
   fits?: boolean | null;
 }
 
+/** An Easy MTB trails plan's reading of its route (core.api.EasyMtbOut). */
+export interface EasyMtbReading {
+  /** The hardest level counted easy (1). */
+  max_level: number;
+  rounds?: number;
+  /** Metres on mountain-bike trails rated 2 or harder; 0 where they were held off, null where not read. */
+  harder_m: number | null;
+  limited: "time" | "untraced" | "no_way_round" | "no_offroad_graph" | null;
+}
+
 export interface RouteResponse {
   /**
    * Live work zones and DC's closures (FOLLOWUP-WORKZONES; v0.7.0 "DC closures source"): the closures to draw on
@@ -1044,6 +1054,8 @@ export interface RouteResponse {
   run?: RunInfo | null;
   /** Mountain Bike only (docs/MTB-TOPO-PLAN.md, slice 6): the route's trail reading; null or absent elsewhere. */
   mtb?: MtbReading | null;
+  /** "Easy MTB trails" on Default and Trailmaxxing (core/easy_mtb.py): what it could not hold; null or absent with it off. */
+  easy_mtb?: EasyMtbReading | null;
   /** Side-street dodges found and what was done; null on a loop and on each candidate, absent from an older API. */
   dodges?: Dodges | null;
   /** The route's effort-equivalent distance in metres, where it was read (the top of the traffic slider). */
@@ -1063,7 +1075,7 @@ export interface RouteResponse {
    */
   neighbour?: { kind: NeighbourKind; stress: number; line: string } | null;
   preset: PresetId;
-  variant: "standard" | "no-trail" | "ebike" | "weekend" | "offroad" | "mtb" | "paved";
+  variant: "standard" | "no-trail" | "ebike" | "weekend" | "offroad" | "mtb" | "paved" | "paved-weekend";
   /** A ride type that skips dirt trails rides one here (a point on one opened it, core/trail_touch.py). A ride then opens them all to its re-plans. */
   dirt_trails?: boolean;
   /** A ride marked a dirt trail closed (bad conditions): no dirt trail is ridden, and the ride's re-plans say so after. */
@@ -1088,6 +1100,12 @@ export interface RouteResponse {
    * (routemaker.time_marks), for a ride's arrival times (lib/navigate.ts secondsAt). Null or absent: spread evenly.
    */
   time_marks?: number[][] | null;
+  /**
+   * The signals the route crosses that may need a button press for a light change (core.api.LightButtonOut; the
+   * owner, 2026-11-08): where along the route, in the description's metres (`DescriptionEntry.from_m`), and the node.
+   * Ride notes it on the turn or crossing there (lib/navigate.ts withButtons). Absent from an older API.
+   */
+  light_buttons?: { at_m: number; lon: number; lat: number }[] | null;
   climb_m: number;
   descent_m: number;
   stress_m: StressMetres;
@@ -1118,6 +1136,7 @@ export interface RouteResponse {
     assist?: boolean;
     avoid_gravel?: boolean;
     trails_off?: boolean;
+    easy_mtb?: boolean;
     target_distance_m?: number | null;
     system_weight_kg?: number | null;
     loop?: boolean;
@@ -1550,6 +1569,8 @@ export interface RouteRequestOptions {
   aheadOnly?: boolean;
   /** With `rideReplan`: the rider marked a dirt trail closed this ride, so the re-plan rides none (`dirt_closed`). */
   dirtClosed?: boolean;
+  /** With `rideReplan`: the rider pressed End mountain biking this ride (lib/mtbDone.ts), so the re-plan keeps off mountain-bike trails (`mtb_done`). */
+  mtbDone?: boolean;
   /** Settings' Avoid stairs (lib/avoidStairs.ts); unset, as this device keeps it. Sent on Bikeshare and transit only. */
   avoidStairs?: boolean;
   /** Run's pace in mph (lib/runPace.ts); absent, the one kept on this device. */
@@ -1595,7 +1616,7 @@ export function routeRequestBody(points: readonly LonLat[], preset: PresetId, op
     ...(options.heading != null && Number.isFinite(options.heading) ? { heading: ((options.heading % 360) + 360) % 360, ...(options.aheadOnly ? { ahead_only: true } : {}) } : {}),
     // A ride's re-plan starts at the rider: a dirt trail there, or one ridden earlier, opens them all.
     ...(options.rideReplan
-      ? { ride_replan: true, ...(options.dirtRidden ? { dirt_ridden: true } : {}), ...(options.dirtClosed ? { dirt_closed: true } : {}) }
+      ? { ride_replan: true, ...(options.dirtRidden ? { dirt_ridden: true } : {}), ...(options.dirtClosed ? { dirt_closed: true } : {}), ...(options.mtbDone ? { mtb_done: true } : {}) }
       : {}),
     // Avoid stairs (Settings): the trip's walks keep off flights of steps. Only the ride types that walk on their own
     // send it; a walk beside the rider's own bike always keeps off them.
