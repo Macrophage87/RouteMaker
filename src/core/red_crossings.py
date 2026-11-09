@@ -1,7 +1,7 @@
 """A very high stress (red) crossing still on the answer, where no crossing search ran on
 the whole route: the way round, asked for and taken where it is better.
 
-The owner, 2026-11-08, of a Union Station to Mount Vernon ride that left the Mount Vernon
+The owner, of a planned route that left the Mount Vernon
 Trail at Belle Haven to cross the George Washington Parkway at grade at Tulane Dr, with no
 signal: "That's been the chief complaint about my routing tool and I thought it was fixed.
 It's taking people onto dangerous intersections." The crossing was priced and drawn red

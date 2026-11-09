@@ -52,7 +52,7 @@ driveway every few metres still counts each of its stop signs.
 
 Signals outside the major cities (the owner, 2026-11-08: "along stroads that you'd find in
 many of the suburbs, the light cycles are a lot longer than what you'd find in DC"). In the
-owner's rides, 2026-11, the stopped time at a red was a median of 19 s at 4 signals on the
+owner's rides, the stopped time at a red was a median of 19 s at 4 signals on the
 District's and Baltimore's grids, 52 s at 21 suburban signals, and 66 s (mean 68 s) at the 16
 where the rider crossed a big suburban road; arrivals on green do not show, so the wait per arrival there is
 inferred at about 45 to 55 s. He chose (`signal_wait`), outside the District, Baltimore City,
@@ -70,7 +70,7 @@ along included ("Use the values from real data"): CITY_BIG_SIGNAL_S at a big roa
 CITY_SECONDARY_SIGNAL_S at a secondary one, and CITY_SIGNAL_S at any other.
 
 Those are the waits at a red. Counting every pass through a signal in a year of the owner's
-rides (653 rides, about 9,000 passes; "sometimes the light is green"), the rider stopped at
+rides (about 9,000 passes; "sometimes the light is green"), the rider stopped at
 29% of the cities' big-road signals, 16% of their others, and 24 to 43% of the suburbs', so
 the wait a ride meets on average is far below the red's. He chose (2026-11-08, "Averages for
 time, reds for choice"): the time shown is the average per pass, with the cities' by the
@@ -128,8 +128,8 @@ SIGNAL_DELAY_S = 15.0
 CITY_BIG_SIGNAL_S = 30.0
 CITY_SECONDARY_SIGNAL_S = 15.0
 CITY_SIGNAL_S = 20.0
-# The time shown at a signal: the average per pass in a year of the owner's rides (653 rides,
-# green passes included, the stops over 4 minutes left out as breaks), plus STOP_DELAY_S for
+# The time shown at a signal: the average per pass in a year of the owner's rides
+# (green passes included, the stops over 4 minutes left out as breaks), plus STOP_DELAY_S for
 # the share of passes that stopped, rounded, as (big, secondary, other). The cities' by the
 # ride-time setting (`routemaker.ridetime`; night from the passes before 7 AM, weekday
 # off-peak from midday's), None where the setting is not known (every pass); the suburbs'
@@ -143,7 +143,7 @@ CITY_PASS_S = {
 }
 SUBURBAN_PASS_S = (24.0, 15.0, 10.0)
 # The wait at a red outside the major cities, as the ranking counts it before the suburban
-# weight (see the docstring; the owner's rides, 2026-11, and his choices of 2026-11-08):
+# weight (see the docstring; the owner's rides and his choices of 2026-11-08):
 # crossing or turning onto a big road (trunk or primary, or 4+ lanes, or 40 mph+), and every
 # other suburban signal, riding along the big road included ("I don't think there are many
 # 15 second suburban signals. Never really encountered one. 30 is probably more realistic.

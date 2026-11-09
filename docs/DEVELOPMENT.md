@@ -4096,7 +4096,7 @@ map rebuild is needed.
 
 **Suburban signals and beg buttons (the owner, 2026-11-08).** "Along stroads that you'd find
 in many of the suburbs, the light cycles are a lot longer than what you'd find in DC." In the
-owner's rides, 2026-11, the stopped time at a red was a median of 19 s at 4 signals on the
+owner's rides, the stopped time at a red was a median of 19 s at 4 signals on the
 District's and Baltimore's grids, 52 s at 21 suburban signals and 66 s (mean 68 s) at the 16
 crossings of big suburban roads; arrivals on green do not show, so the wait per arrival there is inferred at
 about 45 to 55 s. Outside the District, Baltimore City, Alexandria and Arlington

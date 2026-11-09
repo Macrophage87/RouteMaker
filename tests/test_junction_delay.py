@@ -342,7 +342,7 @@ def everywhere(_lon: float, _lat: float) -> bool:
 
 
 class TestSuburbanSignals:
-    """The owner's rides, 2026-11: a red at a big suburban crossing held the rider a median
+    """The owner's rides: a red at a big suburban crossing held the rider a median
     66 s (16 stops) against 19 s on the cities' grids (4). He chose 45 s across a big road,
     30 s at any other suburban signal (no 15 s signal outside the cities: "30 is probably
     more realistic"), and twice those in the ranking."""
