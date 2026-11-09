@@ -351,6 +351,57 @@ def test_an_alternative_says_its_own_mountain_bike_trail_reading(tools, api) -> 
     assert alt["mtb"][0].startswith("This route uses 0.3 mi (0.5 km) of trail harder than")
 
 
+def test_an_avoid_on_an_alternative_plans_through_its_points_round_it(tools, api) -> None:
+    """The round 4 hunt, L4-1: an avoid on an alternative's draft kept following its line, which
+    the site's map matching rides whatever is avoided, while the answer said the road was left
+    out. Now it plans through its points with the road left out, and says so."""
+    other = answer_for({"points": [east(0), east(4)]}, distance_m=4.4 * MI, duration_s=27 * 60)
+    api.candidates = [{**other, "rank": 2}]
+    alt = plan(tools, alternatives=True)["alternatives"]["routes"][0]
+    tools.call("revise_route", {"draft_id": alt["draft_id"], "pace_mph": 14})
+    assert api.routes[-1]["follow"] and "follow_alternative" not in api.routes[-1]
+    out = tools.call(
+        "revise_route", {"draft_id": alt["draft_id"], "avoid": [{"from_mi": 1.0, "to_mi": 1.5}]}
+    )
+    sent = api.routes[-1]
+    assert "follow" not in sent and sent["blocked_lines"]
+    assert any("no longer along the alternative's line" in n for n in out["notes"])
+
+
+def test_an_avoid_on_the_rider_s_own_line_is_refused(tools, api) -> None:
+    """The round 4 hunt, L4-1: a followed line is ridden as it is, so an avoid on it is refused
+    rather than answered as left out while the route still rides it."""
+    polyline = mcp.encode_polyline([east(0), east(2), east(4)])
+    line = [east(1), east(1.5)]
+    with pytest.raises(mcp.ToolError, match="cannot avoid a road"):
+        tools.call("plan_route", {"follow": {"polyline": polyline}, "avoid": [{"line": line}]})
+    out = tools.call("plan_route", {"follow": {"polyline": polyline}})
+    count = len(api.routes)
+    with pytest.raises(mcp.ToolError, match="cannot be avoided"):
+        tools.call(
+            "revise_route", {"draft_id": out["draft_id"], "avoid": [{"from_mi": 1, "to_mi": 2}]}
+        )
+    assert len(api.routes) == count
+
+
+def test_a_link_that_plans_again_without_the_followed_line_says_so(tools, api) -> None:
+    """The round 4 hunt, L4-6: when the share failed, the plain link plans a new route without
+    the followed line, yet the answer said the link opens this exact route."""
+
+    def refused(body):
+        raise mcp.ToolError("the exact route was not kept (429): Too many requests")
+
+    api.share = refused
+    polyline = mcp.encode_polyline([east(0), east(2), east(4)])
+    out = tools.call("plan_route", {"follow": {"polyline": polyline}})
+    assert not any("opens this exact route" in n for n in out["notes"])
+    assert any(
+        "plans a new route when opened, without the line followed" in n for n in out["notes"]
+    )
+    plain = plan(tools)
+    assert any("can differ a little" in n for n in plain["notes"])
+
+
 def test_the_summary_and_road_list_say_unpaved_miles_and_junction_waits(tools) -> None:
     out = plan(tools)
     assert out["summary"]["unpaved"].startswith("0.5 mi")

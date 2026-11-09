@@ -5305,6 +5305,44 @@ No map rebuild is needed for any of them.
   in `route_segments` (a segment at least half on one). The map's rule and the answer's
   `facility_m` are unchanged; MCP only, no rebuild.
 
+### Routing hunt 4: places, vias and the connector (L4, 2026-11-09)
+
+Fixes in the MCP server (`mcp/routemaker_mcp.py`); none needs a map rebuild. Tests:
+tests/test_mcp_server.py, tests/test_mcp_optimizing.py, tests/test_mcp_route_details.py.
+
+- **An avoid on a followed line** (L4-1). The site's map matching never sees roads to avoid,
+  so a followed line was ridden through them while the answer said they were left out. An
+  alternative's draft (marked `follow_alternative`, never sent to the site) is now planned
+  through its points with the roads left out, and says so; an avoid on the rider's own
+  followed line is refused, in plan_route and in revise_route, with what to do instead. The
+  `alternatives` and `avoid` descriptions say so.
+- **A loop that strays on its way back** (L4-2). `with_metro_fix` put the station in as the
+  last point, which the site refuses as a via (400), and the whole call failed. Where the
+  closing leg strays, the ride is now a round trip in so many points (the station, then the
+  start again, the station a via). A fix round the site refuses keeps the plan already made,
+  with a note.
+- **More plans on the site's connector** (L4-4). `Call.time_for_another_plan` asked for a long
+  ride's whole 48 s budget before every plan, so on the connector (55 s a call) a Metro fix, a
+  spur trim or another `plan_metro_loop` attempt ran only if the first plan took under about
+  7 s. It now asks for one more plan as long as the longest timed in the call, times 1.5, plus
+  5 s, as `_best_order` already did (`PLAN_TIME_FACTOR`, `PLAN_TIME_SPARE_S`: Claude's
+  defaults, not measured), and 48 s only before a plan is timed. A spur trim skipped for time
+  is now said, with the via point to move; `OUT_OF_TIME` no longer promises that revise_route
+  will fix the stray.
+- **A stray whose nearest station is already a point** (L4-5). The fix now walks the
+  stretches over the limit worst first, and for each the `METRO_FIX_STATIONS` (3: Claude's
+  default, not measured) stations nearest it, passing over only a station that is already an
+  end of the leg that strays. Where none is left, the answer says so.
+- **The share budget spent** (L4-6). Where the exact route could not be kept, the link is a
+  plain plan link without the followed line or the roads avoided: the answer now says it
+  opens a new route without them, not "this exact route".
+- **A round-trip alleycat's checkpoint order** (L4-7). With the start given again as the
+  finish, both rows took the last point's number. Each row now takes the first point at its
+  place not yet used, so the start is stop 0.
+
+Not fixed here: L4-8 (short LTS 4 pieces named "path" at Metro ends), whose cause is not yet
+known and needs the map's segment table and the router to find; L4-3 waits on the owner.
+
 ### Trails off (OWNER-DECISIONS 463, 463a, 463b)
 
 The owner, 2026-10-09: "add it". A trails-off switch is offered on every ride

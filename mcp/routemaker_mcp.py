@@ -68,9 +68,14 @@ DRAFT_NAME_SCHEMA = {
     ),
 }
 PLAN_BUDGET_S = 48  # the longest one plan can take: the site's long-plan budget, and a little
+# Another plan starts while one more as long as the longest timed so far, by this factor and
+# these seconds over, still fits before the call's deadline (as _best_order always has; the
+# round 4 hunt, L4-4). Claude's defaults, not measured: they are _best_order's.
+PLAN_TIME_FACTOR = 1.5
+PLAN_TIME_SPARE_S = 5
 OUT_OF_TIME = (
-    "stopped there to answer inside the site's time limit; revise_route on this draft can still"
-    " fix where it strays (fix_metro_rounds) or move its points"
+    "stopped there to answer inside the site's time limit; to fix where it strays, add the"
+    " station named in metro_check as a via point (revise_route add_points), or move its points"
 )
 COVERAGE_BBOX = (-78.05, 38.2, -76.02, 39.72)
 # A long ride's plan may take the site's whole long budget (core/routing.py LONG_PLAN_BUDGET_S,
@@ -1282,8 +1287,10 @@ def parse_fragment(fragment: str) -> tuple[list, list[int], str, dict]:
     return points, vias, preset, options
 
 
-# What a plan's options carry for its link only, never sent to POST /api/route.
-LINK_ONLY_OPTIONS = ("stop_names",)
+# What a plan's options carry for its link or for the MCP server only, never sent to POST
+# /api/route: the stops' names, and that a followed line is an alternative's, not the rider's
+# (the round 4 hunt, L4-1: an avoid plans such a draft through its points instead).
+LINK_ONLY_OPTIONS = ("stop_names", "follow_alternative")
 
 
 def marks_with_point_at(options: dict, at: int) -> dict:
@@ -3552,29 +3559,56 @@ def leg_of(plan: Plan, at_mile: float) -> int:
     return max(0, len(plan.points) - 2)
 
 
+# fix_metro_rounds tries, for each stretch over the limit (worst first), this many stations
+# nearest it. Claude's default, not measured (the round 4 hunt, L4-5).
+METRO_FIX_STATIONS = 3
+
+
+def _at_station(point, station: Station) -> bool:
+    """Whether the point is the station (its platform point or one of its ways in)."""
+    ways = (station.point, station.way_in, *station.ways_in)
+    return min(haversine_mi(w, point) for w in ways) < 0.05
+
+
 def with_metro_fix(plan: Plan, stations: list[Station]) -> tuple[list, list[int], str] | None:
-    """The points with the Metro station nearest the worst stretch added as a via point in the
-    leg that strays, or None where that station is already a point (nothing left to try). The
-    via is the station's bike entrance (`Station.way_in`, issue #39): its platform point can sit
-    in a freeway median (Vienna, Dunn Loring), and a through via there drags the route onto
-    whatever edge is nearest it and back."""
-    if plan.check is None or plan.check["ok"] or len(plan.points) >= MAX_POINTS:
+    """The points with a Metro station added as a via point in a leg that strays, or None where
+    there is nothing left to try. The stretches over the limit are taken worst first, and for
+    each the METRO_FIX_STATIONS stations nearest it, passing over a station that is already an
+    end of the leg that strays (the round 4 hunt, L4-5: before, the nearest station already a
+    point anywhere ended the fix). The via is the station's bike entrance (`Station.way_in`,
+    issue #39): its platform point can sit in a freeway median (Vienna, Dunn Loring), and a
+    through via there drags the route onto whatever edge is nearest it and back.
+
+    On a loop whose way back strays (the closing leg the site adds, `routing.loop_points`), the
+    ride is made a round trip in so many points: the station, then the start again (the round 4
+    hunt, L4-2: before, the station went in as the last point, which the site refuses as a
+    via)."""
+    if plan.check is None or plan.check["ok"]:
         return None
-    worst = max(plan.check["stretches_over_limit"], key=lambda s: s["max_mi"])
-    station, _ = nearest_station(tuple(worst["at"]), stations)
-    if any(
-        min(haversine_mi(w, p) for w in (station.point, station.way_in, *station.ways_in)) < 0.05
-        for p in plan.points
-    ):
-        return None
-    leg = leg_of(plan, (worst["from_mi"] + worst["to_mi"]) / 2)
-    # The way in nearest where the leg comes from, not one fixed elevator: at a Silver Line
-    # station in the toll road's median the other side's elevator can take the via across
-    # the freeway and back (the second 2026-11-08 hunt, P1, read from code).
-    via = station.way_in_from(tuple(plan.points[leg]))
-    points = [*plan.points[: leg + 1], via, *plan.points[leg + 1 :]]
-    vias = sorted({*(i if i <= leg else i + 1 for i in plan.vias), leg + 1})
-    return points, vias, station.name
+    count = len(plan.points)
+    for worst in sorted(plan.check["stretches_over_limit"], key=lambda s: -s["max_mi"]):
+        leg = leg_of(plan, (worst["from_mi"] + worst["to_mi"]) / 2)
+        closing = leg >= count - 1
+        if count + (2 if closing else 1) > MAX_POINTS:
+            continue
+        ends = (plan.points[leg], plan.points[0] if closing else plan.points[leg + 1])
+        here = tuple(worst["at"])
+        nearest = sorted(stations, key=lambda s: haversine_mi(here, s.point))
+        for station in nearest[:METRO_FIX_STATIONS]:
+            if any(_at_station(p, station) for p in ends):
+                continue
+            # The way in nearest where the leg comes from, not one fixed elevator: at a Silver
+            # Line station in the toll road's median the other side's elevator can take the
+            # via across the freeway and back (the second 2026-11-08 hunt, P1, read from code).
+            via = station.way_in_from(tuple(plan.points[leg]))
+            if closing:
+                points = [*plan.points, via, plan.points[0]]
+                vias = sorted({*plan.vias, count})
+            else:
+                points = [*plan.points[: leg + 1], via, *plan.points[leg + 1 :]]
+                vias = sorted({*(i if i <= leg else i + 1 for i in plan.vias), leg + 1})
+            return points, vias, station.name
+    return None
 
 
 # An out-and-back to a loop's waypoint (the router reaching a point off any road through, and
@@ -3900,7 +3934,9 @@ AVOID = {
         " rides (by name: every stretch of it), a mile range of the draft (from_mi, to_mi),"
         " or a line of [lon, lat] pairs. The route neither rides along nor crosses them, so"
         " give the stretch to avoid, not a whole long road. Kept as the draft is revised;"
-        f" {MAX_AVOID} at most. plan_route takes lines only (there is no draft yet)."
+        f" {MAX_AVOID} at most. plan_route takes lines only (there is no draft yet). Not with"
+        " a followed line (follow), which is ridden as it is; an alternative's draft plans"
+        " through its points instead."
     ),
 }
 
@@ -3913,7 +3949,8 @@ ALTERNATIVES = {
         " draft_id, its figures (miles, minutes, climb, LTS 3+ miles, unpaved miles,"
         " junctions), extra miles and minutes against the chosen route, and main roads, to"
         " compare, revise, read with route_segments or save. An alternative's draft keeps"
-        " its own line when revised (a new pace, a road to avoid) until its points change."
+        " its own line when revised (a new pace, another ride type) until its points change"
+        " or a road is avoided: then it plans through its points."
     ),
 }
 
@@ -4808,10 +4845,26 @@ class Call:
         # time.monotonic() by which the answer must be sent, or None: the site's own connector
         # (core.connector) answers inside one web request, which the server ends at 60 s.
         self.deadline = deadline
+        # The longest plan timed in this call (seconds), or None before the first.
+        self.longest_plan_s: float | None = None
+
+    def timed_plan(self, seconds: float) -> None:
+        """Note how long one plan took, for `time_for_another_plan`."""
+        self.longest_plan_s = max(seconds, self.longest_plan_s or 0.0)
 
     def time_for_another_plan(self) -> bool:
-        """Whether one more plan of a long ride still fits before the deadline."""
-        return self.deadline is None or time.monotonic() + PLAN_BUDGET_S < self.deadline
+        """Whether one more plan still fits before the deadline: one as long as the longest
+        timed in this call, with room over (PLAN_TIME_FACTOR, PLAN_TIME_SPARE_S), or a long
+        ride's whole budget (PLAN_BUDGET_S) before any plan was timed. Before the round 4 hunt
+        (L4-4) it was always the whole budget, so on the site's connector (a 55 s deadline) no
+        plan could follow one that took more than about 7 s."""
+        if self.deadline is None:
+            return True
+        if self.longest_plan_s is None:
+            needed = PLAN_BUDGET_S
+        else:
+            needed = PLAN_TIME_FACTOR * self.longest_plan_s + PLAN_TIME_SPARE_S
+        return time.monotonic() + needed < self.deadline
 
     def report(self, done, total, message) -> None:
         if self.progress:
@@ -5091,7 +5144,9 @@ class Server:
                 call.check()
                 if not call.time_for_another_plan():
                     break
+                began = time.monotonic()
                 climb["clear"] = self._climb_clear(climb, on_min, pace)
+                call.timed_plan(time.monotonic() - began)
                 checked += 1
         out = {
             "climbs": found,
@@ -5212,7 +5267,7 @@ class Server:
         """The other routes the site's search found for the first plan (`candidates`, ranked
         after it, at the same settings), each kept as a draft of its own to compare, revise,
         read by route_segments or save. Its draft follows its own line when planned again (a
-        new pace, an avoid), until its points are changed."""
+        new pace, another ride type), until its points are changed or a road is avoided."""
         out = []
         main_mi = (first.answer.get("distance_m") or 0.0) / METRES_PER_MILE
         main_min = (first.answer.get("duration_s") or 0.0) / 60
@@ -5222,6 +5277,7 @@ class Server:
                 continue
             alt_options = dict(options)
             alt_options["follow"] = encode_polyline(_thinned(line, ALTERNATIVE_FOLLOW_POINTS))
+            alt_options["follow_alternative"] = True
             alt_options.pop("follow_exact", None)
             sent = request_body(first.points, first.vias, first.preset, alt_options)
             check = metro_check(line, limit, self.stations) if limit else None
@@ -5265,7 +5321,11 @@ class Server:
 
     def _plan(self, call: Call, points, vias, preset, options, limit) -> Plan:
         call.check()
-        return plan_once(self.api, self.stations, points, vias, preset, options, limit)
+        began = time.monotonic()
+        try:
+            return plan_once(self.api, self.stations, points, vias, preset, options, limit)
+        finally:
+            call.timed_plan(time.monotonic() - began)
 
     def _dials(self, plan: Plan) -> dict:
         answered = plan.answer.get("dials") or {}
@@ -5376,17 +5436,6 @@ class Server:
         # The link opens this exact line in the app, as its Share does, so the map, Start ride
         # and the app's GPX are this route; the plan's inputs ride along for editing.
         link = f"{self.api.base}/{fragment}"
-        try:
-            route_id = secrets.token_hex(16)
-            self.api.share(
-                {"id": route_id, **kept_route(plan, name, fragment, dials), **draft_link_keep()}
-            )
-            self.drafts.shared(draft_id, route_id)
-            link = f"{self.api.base}/s/{route_id}{fragment}&route={route_id}"
-        except ToolError as error:
-            notes.append(
-                f"{error}; the link plans the route again when opened, so it can differ a little"
-            )
         # What the link does not carry (the second 2026-11-08 hunt, P10): roads avoided are the
         # ride's, as Ride's "Road closed", and a followed line is the request's. The app opens
         # this exact line, but its Update route, a stop moved or another ride type plans again
@@ -5399,12 +5448,34 @@ class Server:
             )
             if plan.sent.get(key)
         ]
-        if lost:
-            notes.append(
-                f"the link opens this exact route, but {' and '.join(lost)} are not in it: in the"
-                " app, Update route, moving a stop or changing the ride type plans again without"
-                " them. Tell the rider before they edit it there."
+        try:
+            route_id = secrets.token_hex(16)
+            self.api.share(
+                {"id": route_id, **kept_route(plan, name, fragment, dials), **draft_link_keep()}
             )
+            self.drafts.shared(draft_id, route_id)
+            link = f"{self.api.base}/s/{route_id}{fragment}&route={route_id}"
+        except ToolError as error:
+            if lost:
+                # The plain link plans without them: not this route at all, and never "this
+                # exact route" (the round 4 hunt, L4-6).
+                notes.append(
+                    f"{error}; the link plans a new route when opened, without"
+                    f" {' and '.join(lost)}, so it is not this route: tell the rider (gpx_route"
+                    " gives this one's line)"
+                )
+            else:
+                notes.append(
+                    f"{error}; the link plans the route again when opened, so it can differ a"
+                    " little"
+                )
+        else:
+            if lost:
+                notes.append(
+                    f"the link opens this exact route, but {' and '.join(lost)} are not in it:"
+                    " in the app, Update route, moving a stop or changing the ride type plans"
+                    " again without them. Tell the rider before they edit it there."
+                )
         out = {
             "draft_id": draft_id,
             "summary": summary(plan.answer),
@@ -5451,6 +5522,13 @@ class Server:
         for done in range(rounds if limit else 0):
             fix = with_metro_fix(plan, self.stations)
             if fix is None:
+                if not plan.check["ok"]:
+                    # Said, not given up in silence (the round 4 hunt, L4-5).
+                    notes.append(
+                        "fix_metro_rounds found no station left to add: the stations nearest"
+                        " each stretch over the limit are already ends of the leg that strays"
+                        f" (or the route has its {MAX_POINTS} points)"
+                    )
                 break
             if not call.time_for_another_plan():
                 notes.append(OUT_OF_TIME)
@@ -5466,7 +5544,15 @@ class Server:
                 len(plan.points),
             )
             shifted = marks_with_point_at(current, at)
-            again = self._plan(call, new_points, new_vias, preset, shifted, limit)
+            try:
+                again = self._plan(call, new_points, new_vias, preset, shifted, limit)
+            except Cancelled:
+                raise
+            except ToolError as error:
+                # The plan already made stands (the round 4 hunt, L4-2: before, the whole call
+                # failed and the good first plan was lost).
+                notes.append(f"adding {station} as a via point failed ({error}); kept the plan")
+                break
             notes.append(
                 f"added {station} as a via point: {plan.check['miles_over_limit']} -> "
                 f"{again.check['miles_over_limit']} mi over the limit"
@@ -5475,7 +5561,21 @@ class Server:
                 plan = again
                 current = shifted
         pruned = without_spurs(plan) if trim_spurs else None
-        if pruned is not None and call.time_for_another_plan():
+        if pruned is not None and not call.time_for_another_plan():
+            # Said, not skipped in silence (the round 4 hunt, L4-4).
+            which = [
+                str(i)
+                for i, (a, b) in enumerate(zip(plan.points, pruned[0], strict=True))
+                if a != b
+            ]
+            notes.append(
+                f"no time left to take out the out-and-back to via point"
+                f"{'s' if len(which) > 1 else ''} {', '.join(which)} (see"
+                " via_spurs): move it to where the spur leaves the road with revise_route"
+                " move_points"
+            )
+            pruned = None
+        if pruned is not None:
             # A via point off the road through (a pier's end, a landmark beside a trail) is
             # reached by an out-and-back (the owner, 2026-10-24: "Avoid pointless out and backs
             # and short spurs"): it moves to where the spur leaves the road and is planned again.
@@ -6016,7 +6116,15 @@ class Server:
             # the ride type's: they stay too.
             # Keep to roads stays too, and Easy MTB trails between the ride types that offer
             # it, as the app's rideTypeDialog.choose keeps trailsOff and easyMtb.
-            kept = ("loop", "when", "follow", "follow_exact", "blocked_lines", "trails_off")
+            kept = (
+                "loop",
+                "when",
+                "follow",
+                "follow_exact",
+                "follow_alternative",
+                "blocked_lines",
+                "trails_off",
+            )
             if preset != "run":
                 # A riding speed is no running pace: the run starts at Run's own.
                 kept = (*kept, "cycling_speed_kmh")
@@ -6044,7 +6152,27 @@ class Server:
             # A followed line has only its two ends: new points plan through them instead.
             options.pop("follow", None)
             options.pop("follow_exact", None)
+            options.pop("follow_alternative", None)
             early_notes.append("planned through its points now, no longer along the followed line")
+        if args.get("avoid") and options.get("follow"):
+            # A followed line is ridden as it is: the site's map matching never sees roads to
+            # avoid, so the answer said a road was left out while the route still rode it (the
+            # round 4 hunt, L4-1).
+            if not options.get("follow_alternative"):
+                raise ToolError(
+                    "this draft follows the rider's own line, which is ridden as it is: a road"
+                    " on it cannot be avoided. Draw the line round the road, or plan through"
+                    " points (revise_route points) and avoid it there"
+                )
+            # An alternative's line is only the site's other route: plan through its points
+            # round what is avoided.
+            options.pop("follow", None)
+            options.pop("follow_exact", None)
+            options.pop("follow_alternative", None)
+            early_notes.append(
+                "planned through its points now, no longer along the alternative's line, so the"
+                " route can go round what is avoided"
+            )
         if args.get("avoid"):
             lines, avoided = avoid_lines(plan, args["avoid"])
             kept = [*(options.get("blocked_lines") or []), *lines]
@@ -6130,6 +6258,13 @@ class Server:
         limit = args.get("max_miles_from_metro")
         avoided: list[str] = []
         if args.get("avoid"):
+            if follow is not None:
+                # The followed line is ridden as it is: the site's map matching never sees
+                # roads to avoid (the round 4 hunt, L4-1).
+                raise ToolError(
+                    "follow rides its own line as it is, so it cannot avoid a road on it: draw"
+                    " the line round the road, or give points instead of follow"
+                )
             lines, avoided = avoid_lines(None, args["avoid"])
             options["blocked_lines"] = lines[-MAX_AVOID:]
         intervals = _intervals_asked(args.get("intervals"))
@@ -6153,10 +6288,22 @@ class Server:
             notes.append("left out of the plan (not ridden along or across): " + "; ".join(avoided))
         if ordered:
             notes.insert(0, ordered["note"])
-            # Numbered as the draft's points are, after any Metro station put in.
-            at = {tuple(p): k for k, p in enumerate(plan.points)}
+            # Numbered as the draft's points are, after any Metro station put in: each row the
+            # first point at its place not yet taken, so a start given again as the finish is
+            # stop 0 first and the last stop after (the round 4 hunt, L4-7).
+            used: set[int] = set()
             for row in ordered["order"]:
-                row["stop"] = at.get(tuple(row["lon_lat"]), row["stop"])
+                k = next(
+                    (
+                        k
+                        for k, p in enumerate(plan.points)
+                        if k not in used and tuple(p) == tuple(row["lon_lat"])
+                    ),
+                    None,
+                )
+                if k is not None:
+                    used.add(k)
+                    row["stop"] = k
         out = self._draft(
             plan,
             options,
@@ -6321,6 +6468,13 @@ class Server:
                 continue
             fix = with_metro_fix(plan, self.stations)
             if fix is None:
+                if not plan.check["ok"]:
+                    # Said, not given up in silence (the round 4 hunt, L4-5).
+                    notes.append(
+                        "fix_metro_rounds found no station left to add: the stations nearest"
+                        " each stretch over the limit are already ends of the leg that strays"
+                        f" (or the route has its {MAX_POINTS} points)"
+                    )
                 break
             points, vias, station = fix
             notes.append(f"adding {station} where the loop strayed")

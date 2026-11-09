@@ -712,6 +712,25 @@ def test_plan_route_rides_the_checkpoints_in_the_quickest_order() -> None:
         server.call("plan_route", {"points": points, "best_order": True, "loop": True})
 
 
+def test_a_round_trip_s_start_is_stop_0_in_the_checkpoint_order() -> None:
+    """The round 4 hunt, L4-7: with the start given again as the finish, both rows were numbered
+    by the last point at that place, so the start read as the last stop."""
+    places = _Places()
+    points = [at(0.0), at(3.0), at(1.0), at(2.0), at(0.0)]
+
+    def route(body):
+        places.routes.append(body)
+        line = [list(p) for p in body["points"]]
+        return {"geometry": {"coordinates": line}, "distance_m": 6000.0, "duration_s": 1500.0}
+
+    places.route = route
+    server = mcp.Server(lambda: places, [], out_dir=Path("."))
+    out = server.call("plan_route", {"points": points, "best_order": True, "trim_spurs": False})
+    order = out["checkpoint_order"]
+    assert order[0]["stop"] == 0 and order[-1]["stop"] == 4
+    assert [row["stop"] for row in order] == [0, 1, 2, 3, 4]
+
+
 def test_a_failed_later_try_keeps_the_orders_already_planned() -> None:
     places = _Places()
     points = [at(0.0), at(3.0), at(1.0), at(2.0), at(4.0)]
