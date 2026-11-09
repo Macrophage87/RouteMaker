@@ -417,6 +417,13 @@ ES: dict[str, str] = {
         "Este punto final normalmente no está abierto al público; asegúrese de tener"
         " autorización para ir aquí."
     ),
+    # A Mass Ride's point on a street with rails in it (core.mass_rails.RAIL_STREET_NOTE,
+    # OWNER-DECISIONS 289). Drafted for a native speaker's review.
+    "This point is on a street with streetcar rails in it, which a Mass Ride does not ride "
+    "along. The route goes to the nearest cross street.": (
+        "Este punto está en una calle con rieles de tranvía, por la que un paseo masivo no"
+        " circula. La ruta va a la calle transversal más cercana."
+    ),
     "{first} and {last}": "{first} y {last}",
     "{station} is closed (WMATA): every trip here takes a bike through it.": (
         "{station} está cerrada (WMATA): todos los viajes aquí llevan la bicicleta por ella."

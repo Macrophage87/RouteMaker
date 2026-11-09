@@ -137,6 +137,7 @@ from . import (
     beside_roads,
     easy_mtb,
     mass_hazards,
+    mass_rails,
     mtb,
     novice_walks,
     parallel,
@@ -1799,6 +1800,9 @@ class Dials:
     # The dirt trails such a plan found for itself, each a short strip across it (a ring),
     # left out as `blocked` is. Set by `plan`.
     trail_strays: tuple[tuple[tuple[float, float], ...], ...] = ()
+    # A Mass Ride leaves the rail streets near it out of every request (`core.mass_rails`,
+    # OWNER-DECISIONS 289); False once no route was found without them. Set by `plan`.
+    mass_rails: bool = True
     # v0.9.1, Go and a ride: DDOT's permits, which say a road may be closed
     # (`routemaker.workzones.possible`), left off the answer. A plan flags them only.
     closures_now: bool = False
@@ -5149,6 +5153,10 @@ def plan(
     A weekend ride on the off-road, Mountain Bike or e-bike graph near a road closed to cars at
     the weekend (round its points, or else round its own route) is planned on the weekend graph
     too, and the better route kept (`_plan_twice`).
+
+    A Mass Ride leaves the rail streets near it out (`core.mass_rails`, OWNER-DECISIONS 289);
+    where that leaves no path, it is planned again with them open, and the route names the
+    rails it rides (`road_hazards`).
     """
     dials = dials or Dials()
     if started is None:
@@ -5159,6 +5167,14 @@ def plan(
             return _plan_twice(
                 points, preset_name, long_ride, started, dials, quick, candidates, near=near
             )
+    if preset_name == mass_rails.PRESET and dials.mass_rails:
+        try:
+            return _plan_alone(points, preset_name, long_ride, started, dials, quick, candidates)
+        except NoRoute as refused:
+            if not refused.no_path or not mass_rails.lines_near(points):
+                raise
+            logger.info("no Mass Ride route without the rail streets; planning with them open")
+            dials = dataclasses.replace(dials, mass_rails=False)
     return _plan_alone(points, preset_name, long_ride, started, dials, quick, candidates)
 
 
@@ -5423,6 +5439,18 @@ def _plan(
     # for beside it. Not on a loop, nor with a line to follow, which is the whole ride.
     drawing = bool(dials.straight) and not following and not dials.loop
     fixed = following or drawing
+    # A Mass Ride's start, stop or end on a street with rails in it goes to the nearest cross
+    # street, and says so (OWNER-DECISIONS 289, `core.mass_rails`). Not a ride's re-plan's
+    # start, which is the rider, nor a point already moved.
+    rail_lines: list = []
+    if preset_name == mass_rails.PRESET and not fixed:
+        skip = set(moved_indices) | ({0} if dials.ride_replan else set())
+        points, rail_moved = mass_rails.move_off_rails(points, skip=sorted(skip))
+        if rail_moved:
+            moved_points = sorted(moved_points + rail_moved, key=lambda m: m["index"])
+            moved_indices |= {m["index"] for m in rail_moved}
+        if dials.mass_rails:
+            rail_lines = mass_rails.lines_near(points)
     # A loop is planned through its start again (OWNER-DECISIONS 266); a followed line is
     # already the whole ride.
     loop = not fixed and loop_wanted(points, dials.loop, preset_name)
@@ -5636,6 +5664,11 @@ def _plan(
     # The strips across dirt trails a plan found for itself (`plan`) are always kept, a few
     # metres each: the rider's own fit beside them, the earliest let go first.
     strips = [[list(p) for p in ring] for ring in dials.trail_strays]
+    # A Mass Ride's rail streets (OWNER-DECISIONS 289, `core.mass_rails`): left out as the
+    # strips are, cut where a way crosses them so the rails are still crossed. A ride's
+    # re-plan keeps the stretch by the rider open, so the rider can set off.
+    if rail_lines:
+        strips += mass_rails.rings(rail_lines, keep_near=points[:1] if dials.ride_replan else ())
     blocked = work_zones.blocked_rings(dials.blocked)
     while blocked and _over_budget(strips + blocked):
         blocked = blocked[1:]

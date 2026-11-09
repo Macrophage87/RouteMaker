@@ -1754,12 +1754,14 @@ class DescriptionEntryOut(Schema):
 
 class MovedPointOut(Schema):
     """A trip point the planner moved (OWNER-DECISIONS 291(4)): one inside the
-    National Zoo goes to its bike racks, so a route to the Zoo ends there."""
+    National Zoo goes to its bike racks, so a route to the Zoo ends there. A Mass Ride's
+    point on a street with rails in it goes to the nearest cross street (289,
+    `core.mass_rails`)."""
 
     index: int = Field(description="The point's place in `points`, from 0.")
     asked: list[float] = Field(description="[lon, lat] as asked.")
     routed: list[float] = Field(description="[lon, lat] as routed.")
-    reason: Literal["zoo_racks"]
+    reason: Literal["zoo_racks", "rail_street"]
     note: str = Field(description="One plain sentence to show the rider.")
 
 
