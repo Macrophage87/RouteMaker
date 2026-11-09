@@ -7,7 +7,7 @@ import type { StorageLike } from "./signIn.ts";
 import { t } from "./i18n.ts";
 
 export const COMPUTER_HEADING = t("This looks like a computer");
-export const COMPUTER_LEAD = t("Start ride gives turn-by-turn directions as you ride, for a phone on your bike. On a computer it may not make sense.");
+export const COMPUTER_LEAD = t("Start ride gives turn-by-turn directions as you ride. It is made for a phone on your bike, not a computer.");
 export const COMPUTER_BACK = t("Go back");
 export const COMPUTER_ANYWAY = t("Start anyway");
 export const COMPUTER_OK_KEY = "routemaker.start-on-computer";

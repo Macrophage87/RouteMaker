@@ -112,6 +112,15 @@ test("an export's sliders and its points' names come back with its ride type", (
   assert.equal(roads.preset, "default");
   assert.deepEqual(roads.dials, { stress: 70, hills: 0, trailsOff: true });
   assert.equal(planFromGpx(parseGpx(text)).dials?.trailsOff, undefined, "absent is trails on");
+  // So does Easy MTB trails, on the ride types that offer it.
+  const easy = (preset: string) =>
+    planFromGpx(
+      parseGpx(
+        writeGpx({ name: "n", description: "d", attribution: [], preset, dials: { stress: 70, hills: 0, easyMtb: true }, planPoints: points, geometry: points }),
+      ),
+    ).dials;
+  assert.deepEqual(easy("trailmaxxing"), { stress: 70, hills: 0, easyMtb: true });
+  assert.equal(easy("gravel")?.easyMtb, undefined);
   // Nonsense in the comment is left out, not guessed.
   const odd = planFromGpx(
     file({

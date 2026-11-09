@@ -22,7 +22,8 @@
 #      that is the bind-race signature: stop postgis, ABORT LOUDLY, start nothing
 #      else;
 #   4. start caddy, the four routers, api, worker, rebuild, photon, in that order,
-#      then each trail router (valhalla-offroad, valhalla-mtb, valhalla-paved) whose promoted tiles
+#      then each trail router (valhalla-offroad, valhalla-mtb, valhalla-paved,
+#      valhalla-paved-weekend) whose promoted tiles
 #      ($DATA_ROOT/tiles/<variant>/current) are on this host,
 #      each with `up -d --no-deps` (plus --force-recreate when COLD);
 #   5. smoke-check route, geocode and a stress tile: all must return 200, and the
@@ -103,11 +104,11 @@ DB_CLIENTS=(api worker rebuild)
 # which naming them turns on): started after START_ORDER, each only once its promoted build
 # is on this host. Their binds are not in REQUIRED_DIRS, since a host without trail tiles
 # must still boot; without them those rides are planned on the standard graph.
-TRAIL_ROUTERS=(valhalla-offroad valhalla-mtb valhalla-paved)
+TRAIL_ROUTERS=(valhalla-offroad valhalla-mtb valhalla-paved valhalla-paved-weekend)
 # Services whose (re)create is slow (large tile sets, a big index): each of
 # their mutating compose calls gets SLOW_COMPOSE_TIMEOUT_S instead.
 SLOW_SERVICES=(valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend photon
-  valhalla-offroad valhalla-mtb valhalla-paved)
+  valhalla-offroad valhalla-mtb valhalla-paved valhalla-paved-weekend)
 
 DRY_RUN=0
 FORCE_ALL=0

@@ -71,13 +71,14 @@ import time
 import urllib.error
 import urllib.request
 from array import array
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Sequence
 from concurrent.futures import FIRST_EXCEPTION, Future
 from concurrent.futures import wait as wait_futures
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime
 from struct import pack
+from types import MappingProxyType
 
 from django.conf import settings
 from django.db import DatabaseError, connection, transaction
@@ -94,6 +95,7 @@ from pipeline.schema import (
     TRAIL_RUN_COLUMN,
     validate_schema_name,
 )
+from pipeline.variants import WEEKEND_GRAPHS as WEEKEND_VARIANTS
 from pipeline.variants import Variant
 from routemaker import avoid_junctions as avoid_rules
 from routemaker import (
@@ -133,6 +135,7 @@ from routemaker.measure import elevation_gain
 from . import (
     avoid_junctions,
     beside_roads,
+    easy_mtb,
     mass_hazards,
     mtb,
     novice_walks,
@@ -220,6 +223,11 @@ NO_EDGE_CODES = frozenset({170, 171})
 # reported as no route, and logged, because it means this module built a
 # request the router does not accept.
 REQUEST_LIMIT_CODES = frozenset(range(150, 160))
+# The closures' polygons past the router's limits (167: their perimeter, 176: their vertices).
+# The plan's own packing keeps under both (`routemaker.workzones.PERIMETER_BUDGET_M`), but where
+# the router refuses them anyway the plan is asked again with fewer closures, farthest first,
+# never answered no route for it (hunt Q1, 2026-11-08: such a refusal was a plain no route).
+EXCLUDE_LIMIT_CODES = frozenset({167, 176})
 
 
 class RouterUnavailable(Exception):
@@ -1186,6 +1194,43 @@ _piece_memo: contextvars.ContextVar[dict | None] = contextvars.ContextVar(
 PIECE_MEMO_PIECES = 80_000
 
 
+# The graph this plan was routed on, once the router has answered (`_plan`): a road closed
+# to motor traffic at set times (`segment.car_free_when`) reads as a path at tier 1 only on
+# a graph that prices it so, and only in the ride time it does (`car_free_reading`). Set and
+# cleared by `plan` as `_stress_memo` is; None outside a plan, or before the router answers.
+_routed_graph: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "routed_graph", default=None
+)
+# A ride time no closure is in: what `classify` reads a closure against where the graph the
+# plan was routed on does not open it.
+NO_CAR_FREE_TIME = ""
+
+
+def car_free_reading(when: str, graph: str | None) -> str:
+    """The ride time a plan routed on `graph` reads timed closures in: `when` where the graph
+    prices a closure in that ride time as a path, `NO_CAR_FREE_TIME` elsewhere, and `when`
+    where no graph is known (outside a plan).
+
+    Only the weekend graphs open a timed closure, and only one for the weekend
+    (`pipeline.run.facility_derived`): the standard graph's weekend twin, and since the
+    owner's "New weekend graph" of 2026-11-08 Road Bike's (`Variant.PAVED_WEEKEND`). Until
+    hunt X1 (2026-11-08) the route's colours, breakdown, description and the planner's own
+    ranking read every closure in the plan's ride time on every graph, so on E-bike, Road Bike
+    (before its weekend graph), Gravel, Mountain Bike, "Keep to roads", a weekday or night
+    closure, or a weekend ride whose weekend router was down, the route was shown and ranked
+    on a car-free path the router had priced as the road with cars. The map's own tiles still
+    draw such a road as a path in its ride times (the owner, OWNER-DECISIONS 67)."""
+    if graph is None:
+        return when
+    if graph in WEEKEND_GRAPHS and when == ridetime.WEEKEND:
+        return when
+    return NO_CAR_FREE_TIME
+
+
+# The graphs `car_free_reading` opens weekend closures on (`pipeline.variants.WEEKEND_GRAPHS`).
+WEEKEND_GRAPHS = frozenset(v.value for v in WEEKEND_VARIANTS)
+
+
 def _stress_key(schema: str, when: str, pieces: list[Piece]) -> tuple:
     digest = hashlib.blake2b(digest_size=16)
     digest.update(array("q", [p.way_id for p in pieces]).tobytes())
@@ -1205,6 +1250,8 @@ def classify(pieces: list[Piece], when: str, roadway_only: bool = False) -> list
     given classes of its own."""
     if not pieces:
         return Classes()
+    # A timed closure is read only where the routed graph opens it (`car_free_reading`).
+    when = car_free_reading(when, _routed_graph.get())
     # The schema name comes from settings and is validated the way every DDL
     # that names it is; an identifier cannot be a query parameter.
     schema = validate_schema_name(settings.SEGMENT_SCHEMA_LIVE)
@@ -1671,15 +1718,21 @@ def busy_and_waits(
     trace = trace_leg(variant, costing, shape, deadline)
     if trace is None:
         return None
-    stress, _facility = breakdown(pieces_of_trace(trace), when)
+    # Read on the graph it was routed on (`car_free_reading`): outside a plan no graph is
+    # set, so a weekend ride on the no-trail graph ("Keep to roads") counted Beach Drive and
+    # Sligo Creek, roads with cars there, as tier-1 paths (hunt 3, T3-4; hunt X1 on a plan).
+    graph_token = _routed_graph.set(variant)
+    try:
+        stress, _facility = breakdown(pieces_of_trace(trace), when)
+    finally:
+        _routed_graph.reset(graph_token)
     junctions = trace_junctions.junctions_of_trace(trace, decode_polyline6(shape), 0.0)
     beacons = active_beacons()
-    waits = junction_delay.delay_s(
-        junctions,
-        stop_as_yield,
-        lambda lon, lat: intersections.beacon_at(lon, lat, beacons) is not None,
-    )
-    return stress["3"] + stress["4"] + stress["5"], float(waits)
+    # Timed without the junction model's signal points (hunt J5): these candidate rides
+    # have no /locate events, so a signal is read from the trace alone. The time is the
+    # waits shown, a suburban signal's longer wait included (2026-11-08).
+    found = junction_waits(junctions, beacons, when=when)
+    return stress["3"] + stress["4"] + stress["5"], float(sum(w.seconds for w in found))
 
 
 @dataclass(frozen=True)
@@ -1693,6 +1746,9 @@ class Dials:
     stress: int | None = None
     hills: int | None = None
     when: str | None = None
+    # The ride's own moment, where it has one (a transit trip's `depart_at`), for the closures
+    # its line is matched against; None: the dial's (`work_zones.ride_moment`). Hunt M2.
+    zones_at: datetime | None = None
     carrying: str | None = None
     assist: bool = False
     avoid_gravel: bool = False
@@ -1716,6 +1772,9 @@ class Dials:
     # Mountain Bike only, the second pass: the trail level the rider prefers, 1-4, never above
     # `mtb_level` (`mtbmode.preferred_level`); None: level 2, or `mtb_level` where that is lower.
     mtb_preferred: int | None = None
+    # Default and Trailmaxxing only, "Easy MTB trails" (the owner, 2026-11-08): plan on the
+    # off-road graph as Gravel does and steer off the trails rated 2 or harder (`core.easy_mtb`).
+    easy_mtb: bool = False
     # v0.7.0 "Route through anyway": the closures this plan routes through (their ids).
     closure_bypass: tuple[str, ...] = ()
     # A dirt trail a point is on is ridden on a ride type that does not plan on them
@@ -1732,6 +1791,11 @@ class Dials:
     # With `ride_replan`: the rider marked a dirt trail closed earlier this ride (an answer's
     # `dirt_closed`), so no dirt trail is ridden, whatever `blocked` still holds.
     dirt_closed: bool = False
+    # With `ride_replan`: the rider pressed Ride's "End mountain biking" (the owner, 2026-11-08:
+    # "route you off mtb trails and onto something easier"). The ride leaves the Mountain Bike and
+    # off-road graphs for the standard one (`presets.variant_for_ride`), "Easy MTB trails" goes
+    # off, and no dirt trail is ridden, as after `dirt_closed`.
+    mtb_done: bool = False
     # The dirt trails such a plan found for itself, each a short strip across it (a ring),
     # left out as `blocked` is. Set by `plan`.
     trail_strays: tuple[tuple[tuple[float, float], ...], ...] = ()
@@ -1767,6 +1831,10 @@ class Dials:
     # north), so the route sets off that way rather than turning round (`plan_onward`); None:
     # either way.
     heading: float | None = None
+    # The same heading, as the request gave it, kept where `plan_onward` plans without
+    # `heading` first: what the dirt-trail rule reads of a ride's re-plan (is the rider going
+    # along the trail at the fix, `trail_touch.followed`), whichever of its plans this is.
+    fix_heading: float | None = None
     # A re-route after the rider has ridden on past two U-turns (the owner, 2026-10-20: "give two
     # reroutes and on the third time assume that the user wants to stay on that path"): the route
     # that sets off ahead is taken whatever turning round would save (`plan_onward`).
@@ -1774,6 +1842,10 @@ class Dials:
     # Mass Ride's "Anticipated ride size" (PLAN items 128, 129), riders: the capacity a road
     # needs, which the route choice prices (`choose_by_capacity`); None: 500.
     ride_size: int | None = None
+    # The graph this plan is made on in place of `presets.variant_for_ride`'s; None: that one.
+    # Set by `plan` alone, for the weekend plan it makes beside a ride's own (`_plan_twice`):
+    # such a plan never falls back to another graph (it is given up instead).
+    graph: str | None = None
 
 
 def _same_pace(options: dict, request: dict) -> dict:
@@ -1996,16 +2068,48 @@ _mtb_failed_at: float | None = None
 # same way: the ride is then planned on the standard graph, where gravel is packed gravel, and
 # the page warns the rider from the answer's `variant` (frontend/src/lib/roadBike.ts).
 _paved_failed_at: float | None = None
+# Road Bike's weekend router (`Variant.PAVED_WEEKEND`; the owner, 2026-11-08: "Road bikes
+# absolutely use those parkways on the weekends. It's probably their most common destination.",
+# "New weekend graph"), an eighth behind the same profile. It falls back to the paved graph, not
+# the standard one (`TWIN_FALLBACK`): a weekend Road Bike ride whose weekend router is down or
+# unpromoted keeps its paved pricing and loses only the car-free parkways, and if the paved
+# router is down too it goes on to the standard graph, where the page's Road Bike warning says
+# so (frontend/src/lib/roadBike.ts, which also says when the parkways were lost).
+_paved_weekend_failed_at: float | None = None
 TWIN_VARIANTS = (
     Variant.WEEKEND.value,
     Variant.OFFROAD.value,
     Variant.MTB.value,
     Variant.PAVED.value,
+    Variant.PAVED_WEEKEND.value,
 )
+# The graph a twin falls back to while it is not served; the standard graph where none is named.
+TWIN_FALLBACK = MappingProxyType({Variant.PAVED_WEEKEND.value: Variant.PAVED.value})
+
+
+def twin_fallback(variant: str) -> str:
+    """The graph a ride on twin `variant` is planned on while that twin is not served."""
+    return TWIN_FALLBACK.get(variant, Variant.STANDARD.value)
+
+
 # The graphs whose rides take a dirt trail the rider touched (`core.trail_touch`): the standard
-# graph and its weekend twin, which a Saturday, Sunday or holiday ride plans on. Both close the
-# dirt trails, and a touched ride is planned on the off-road graph instead.
-TRAIL_TOUCH_VARIANTS = frozenset({Variant.STANDARD.value, Variant.WEEKEND.value})
+# graph and its weekend twin, which a Saturday or Sunday daytime ride plans on (a weekday holiday
+# is off-peak, on the standard graph: `routemaker.ridetime`), and the e-bike graph (the E-bike
+# ride type, Cargo with assist, a share e-bike). Each closes the dirt trails
+# (`pipeline.trail_closures.graph_reason` lifts the mountain-bike class on the off-road and
+# Mountain Bike graphs only), and a touched ride is planned on the off-road graph instead, with
+# the ride type's own costing. The e-bike graph was left out until hunt R4 (2026-11-08): an
+# E-bike rider's stop on a Northwest Branch trail snapped to the nearest open way, and Ride
+# turned them off the trail they were on, the Lake Needwood complaint the owner fixed for
+# Default. The off-road graph has no `electric_bicycle=no` bar (`pipeline.variants`), which
+# the coverage had no way carrying when checked (docs/DEVELOPMENT.md, "Trails off", 463a).
+# Road Bike's paved graph stays out: a road bike is not taken onto dirt.
+TRAIL_TOUCH_VARIANTS = frozenset(
+    {Variant.STANDARD.value, Variant.WEEKEND.value, Variant.EBIKE.value}
+)
+# The graphs a plan with trails opened (`trail_touch`) is made on, whose other trails are left
+# out as strays: the off-road graph, and Mountain Bike's after "End mountain biking" from a trail.
+STRAY_GRAPHS = frozenset({Variant.OFFROAD.value, Variant.MTB.value})
 
 
 def _weekend_down() -> bool:
@@ -2024,7 +2128,16 @@ def _paved_down() -> bool:
     return _paved_failed_at is not None and clock() - _paved_failed_at < WEEKEND_FAILURE_TTL_S
 
 
+def _paved_weekend_down() -> bool:
+    return (
+        _paved_weekend_failed_at is not None
+        and clock() - _paved_weekend_failed_at < WEEKEND_FAILURE_TTL_S
+    )
+
+
 def _twin_down(variant: str) -> bool:
+    if variant == Variant.PAVED_WEEKEND.value:
+        return _paved_weekend_down()
     if variant == Variant.PAVED.value:
         return _paved_down()
     if variant == Variant.MTB.value:
@@ -2057,7 +2170,13 @@ def _paved_is_promoted() -> bool:
     return _promoted_row(Variant.PAVED.value)
 
 
+def _paved_weekend_is_promoted() -> bool:
+    return _promoted_row(Variant.PAVED_WEEKEND.value)
+
+
 def _is_promoted(variant: str) -> bool:
+    if variant == Variant.PAVED_WEEKEND.value:
+        return _paved_weekend_is_promoted()
     if variant == Variant.PAVED.value:
         return _paved_is_promoted()
     if variant == Variant.MTB.value:
@@ -2067,14 +2186,26 @@ def _is_promoted(variant: str) -> bool:
     return _weekend_is_promoted()
 
 
+def _served_variant(variant: str) -> str:
+    """`variant`, or the first graph down its fallback chain (`twin_fallback`) that is not
+    known down and has a promoted build: the standard graph at the end."""
+    while variant in TWIN_VARIANTS and (_twin_down(variant) or not _is_promoted(variant)):
+        fallback = twin_fallback(variant)
+        logger.info("the %s graph is not being served; planning on the %s graph", variant, fallback)
+        variant = fallback
+    return variant
+
+
 def _mark_weekend(ok: bool) -> None:
     global _weekend_failed_at
     _weekend_failed_at = None if ok else clock()
 
 
 def _mark_twin(variant: str, ok: bool) -> None:
-    global _offroad_failed_at, _mtb_failed_at, _paved_failed_at
-    if variant == Variant.PAVED.value:
+    global _offroad_failed_at, _mtb_failed_at, _paved_failed_at, _paved_weekend_failed_at
+    if variant == Variant.PAVED_WEEKEND.value:
+        _paved_weekend_failed_at = None if ok else clock()
+    elif variant == Variant.PAVED.value:
         _paved_failed_at = None if ok else clock()
     elif variant == Variant.MTB.value:
         _mtb_failed_at = None if ok else clock()
@@ -2097,8 +2228,14 @@ def grade_profile(trip: dict) -> list[tuple[float, float | None]]:
     offset = 0.0
     for leg in trip.get("legs") or []:
         heights = leg.get("elevation") or []
-        profile.extend((offset + i * ELEVATION_INTERVAL_M, h) for i, h in enumerate(heights))
-        offset += float((leg.get("summary") or {}).get("length", 0.0)) * 1000.0
+        length_m = float((leg.get("summary") or {}).get("length", 0.0)) * 1000.0
+        # The router's last sample is at the leg's end, not a whole interval on: clamp, as
+        # `routemaker.profile.sample_positions` does, or the leg's last window reads up to
+        # an interval too long and its grade too gentle (terrain hunt 3, T3-7).
+        profile.extend(
+            (offset + min(i * ELEVATION_INTERVAL_M, length_m), h) for i, h in enumerate(heights)
+        )
+        offset += length_m
         # A leg's samples do not join the next leg's: a gap between them.
         profile.append((offset, None))
     return profile
@@ -2144,6 +2281,19 @@ class HillPrice:
     # A Mass Ride's or a Novice and Nervous ride's price for steep grades either way
     # (`routemaker.steep_grades`, the owner, 2026-10-26).
     steep: bool = False
+    # An electric assist's watts up a climb (`hill_cost.ASSIST_W`; `assist_watts_for`), which
+    # shorten the climbing time the rider pays and leave the slider's steepness penalty alone
+    # (hunt finding E2, 2026-11-08); 0 on a bike without one.
+    assist_w: float = 0.0
+
+
+def assist_watts_for(preset_name: str, assist: bool) -> float:
+    """The motor's watts the hills price climbs at (`HillPrice.assist_w`): `hill_cost.ASSIST_W`
+    on the E-bike ride type and on a ride with electric assist (a share e-bike, Cargo Bike's
+    assist toggle), else 0. Before 2026-11-08 every ride climbed at the rider's own power, so
+    an e-bike's faster flat speed made its climbs dearer than a plain bike's (presets.py: "the
+    motor takes the climb")."""
+    return hill_cost.ASSIST_W if assist or preset_name == "ebike" else 0.0
 
 
 def rider_hill_s(trip: dict, price: HillPrice, quiet_cost: float) -> float:
@@ -2154,7 +2304,9 @@ def rider_hill_s(trip: dict, price: HillPrice, quiet_cost: float) -> float:
     avoid half's descent cost, and on a Mass Ride or a Novice and Nervous ride the steep
     grades' price (`routemaker.steep_grades`)."""
     profile = grade_profile(trip)
-    rider_m = hill_cost.hill_cost_m(profile, price.mass_kg, price.flat_ms, price.hills)
+    rider_m = hill_cost.hill_cost_m(
+        profile, price.mass_kg, price.flat_ms, price.hills, price.assist_w
+    )
     if price.steep:
         rider_m += steep_grades.penalty_s(profile) * price.flat_ms
     descents = sum(
@@ -2583,21 +2735,78 @@ def no_busier_than_middle(
     return middle, True
 
 
-def choose_climb(trips: list[dict], ratio: float) -> int:
+def choose_climb(
+    trips: list[dict],
+    ratio: float,
+    climbs: Sequence = (),
+    points: Sequence[Sequence[float]] = (),
+) -> int:
     """The index of the trip that climbs most within `ratio` of the first's length.
 
     The first trip is the router's own best route at the hills detent, so it is
     the direct route the budget is measured against, and it is what is kept
     when nothing else climbs more.
+
+    Two guards (the owner, 2026-11-08, hunts P3 and V7). A trip that rides back over its own
+    way more than the first does (`hillseek.retrace_m`, past `hillseek.RETRACE_SLACK_M`) is
+    not chosen: a through point that snapped off the climb's line made a route up, down and up
+    again, which climbs more and so was the one kept. And a trip that rides uphill a busy
+    climb of `climbs` (the Climbs file's `busy`: most of its roads LTS 3 or higher) gives way
+    to the calm trip that climbs most, where that climbs at least `hillseek.CALM_CLIMB_SHARE`
+    as much ("Skip busy climbs if there's a better calm one, yes, unless intentionally
+    chosen"): a climb a point of the plan (`points`) lies on was chosen, and stays; the start,
+    and the start again at a loop's or round trip's end, choose nothing.
     """
+    from . import hillseek
+
     direct = float((trips[0].get("summary") or {}).get("length", 0.0))
-    best, best_climb = 0, _climb_of(trips[0])
-    for index, trip in enumerate(trips[1:], start=1):
-        length = float((trip.get("summary") or {}).get("length", 0.0))
-        climb = _climb_of(trip)
-        if length <= direct * ratio and climb > best_climb:
-            best, best_climb = index, climb
-    return best
+    legs = [
+        [decode_polyline6(leg.get("shape", "")) for leg in trip.get("legs") or []] for trip in trips
+    ]
+    limit_m = hillseek.retrace_m(legs[0]) + hillseek.RETRACE_SLACK_M
+    eligible = [0] + [
+        index
+        for index, trip in enumerate(trips[1:], start=1)
+        if float((trip.get("summary") or {}).get("length", 0.0)) <= direct * ratio
+        and hillseek.retrace_m(legs[index]) <= limit_m
+    ]
+    climbed = {index: _climb_of(trips[index]) for index in eligible}
+
+    def most(indices: list[int]) -> int:
+        # The first on a tie: the router's own before the others.
+        best = indices[0]
+        for index in indices[1:]:
+            if climbed[index] > climbed[best]:
+                best = index
+        return best
+
+    best = most(eligible)
+    climbs = list(climbs)
+    if not climbs:
+        return best
+
+    def line(index: int) -> list[tuple[float, float]]:
+        out: list[tuple[float, float]] = []
+        for shape in legs[index]:
+            out.extend(shape[1:] if out else shape)
+        return out
+
+    # The points that can choose a climb: not the start (the owner, of dirt trails, 2026-10-21:
+    # a start is not chosen by standing on it, `core.trail_touch`), nor the start again at the
+    # end of a loop or a round trip. A ride from home at a busy climb's foot did not pick it.
+    choosing = list(points[1:])
+    if choosing and haversine(Point(*points[0][:2]), Point(*choosing[-1][:2])) <= LOOP_SAME_M:
+        choosing = choosing[:-1]
+    points = choosing
+    if not hillseek.rides_busy(line(best), climbs, points):
+        return best
+    calm = [
+        index
+        for index in eligible
+        if climbed[index] >= hillseek.CALM_CLIMB_SHARE * climbed[best]
+        and not hillseek.rides_busy(line(index), climbs, points)
+    ]
+    return most(calm) if calm else best
 
 
 def _trip_line(trip: dict) -> list[tuple[float, float]]:
@@ -2879,6 +3088,20 @@ def plan_alternates(request: dict, trips: list, timed_out: bool, refitted: bool)
     return [] if timed_out else trips
 
 
+def searched_route(refined: dict | None, replaced: bool = False) -> bool:
+    """Whether the calm search weighed the route answered: it ran at least one round and was
+    not cut short (`calm_search.rounds`, `limited`), and nothing after it swapped in a route
+    it did not read (`replaced`: Mountain Bike's choice, `mtb.settle`, which can answer a
+    router alternative or a route of its level rounds; the 2026-11-08 hunt, S4). The red
+    pass and the Avoid-junction pass take a route not searched as theirs to weigh."""
+    return (
+        refined is not None
+        and not replaced
+        and (refined.get("rounds") or 0) > 0
+        and not refined.get("limited")
+    )
+
+
 def straight_span_m(points: list) -> float:
     """The sum of the straight-line distances between consecutive points."""
     return sum(haversine(Point(*a), Point(*b)) for a, b in zip(points, points[1:], strict=False))
@@ -3074,6 +3297,127 @@ def stop_as_yield(lon: float, lat: float) -> bool:
     if not (west <= lon <= east and south <= lat <= north):
         return False
     return inside_dc(lon, lat, tolerance_m=0.0)
+
+
+def suburban_signal(lon: float, lat: float) -> bool:
+    """Whether a signal at this point is timed as a suburban one: outside the District,
+    Baltimore City, Alexandria and Arlington (`core.city_limits`, `routemaker.junction_delay`;
+    the owner, 2026-11-08: "Not really needed for DC" "or the major cities")."""
+    from .city_limits import in_major_city
+
+    return not in_major_city(lon, lat)
+
+
+def _has_button_column(schema: str) -> bool:
+    return segment_info.has_columns(schema, "button_operated")
+
+
+def button_ways(
+    junctions,
+    signals=frozenset(),
+    cache: dict | None = None,
+) -> frozenset[int]:
+    """The OSM ways the route arrives or leaves a signal on, of the crossings and paths, that
+    the map tags `button_operated=yes` (`segment.button_operated`, set at the rebuild by
+    `pipeline.signals.button_ways`): the junction-delay model reads a signal crossed from one
+    as needing its button (the owner, 2026-11-08). Only a signal (the trace's, or one of the
+    junction model's `signals` points) can become a button, so a route with no signal reached
+    on a crossing or a path asks nothing. `cache`: the ways already asked about in this plan
+    (way id -> tagged), shared by the calm search's candidates. A table built before the
+    column, or a failed query, has none; a plan out of time or cancelled stops here."""
+    uses = trace_junctions.PATH_USES | {trace_junctions.CROSSING_USE}
+    wanted = {
+        way
+        for j in junctions
+        if j.signal or (j.lon, j.lat) in signals
+        for way, use in ((j.in_way, j.in_use), (j.out_way, j.out_use))
+        if use in uses and way
+    }
+    if not wanted:
+        return frozenset()
+    known = cache if cache is not None else {}
+    ask = sorted(way for way in wanted if way not in known)
+    if ask:
+        found = _tagged_button_ways(ask)
+        if found is None:
+            return frozenset()
+        known.update({way: way in found for way in ask})
+    return frozenset(way for way in wanted if known.get(way))
+
+
+def _tagged_button_ways(ways: list[int]) -> frozenset[int] | None:
+    """Of `ways`, those `segment.button_operated` marks; empty on a table built before the
+    column, None where the read failed (not kept: the next candidate asks again)."""
+    schema = validate_schema_name(settings.SEGMENT_SCHEMA_LIVE)
+    try:
+        if not _has_button_column(schema):
+            return frozenset()
+        with plan_cursor() as cursor:
+            cursor.execute(
+                f"SELECT DISTINCT osm_way_id FROM {schema}.segment "
+                "WHERE osm_way_id = ANY(%s) AND button_operated",
+                [ways],
+            )
+            return frozenset(row[0] for row in cursor.fetchall())
+    except DeadlineExceeded:
+        # Out of time, or the plan cancelled (`PlanCancelled`): the plan stops, as at any read.
+        raise
+    except Exception:  # noqa: BLE001 - a route is timed without the map's beg buttons
+        logger.warning("the button-operated crossings could not be read", exc_info=True)
+        return None
+
+
+def junction_waits(
+    junctions,
+    beacons,
+    events=None,
+    stop_s_per_ft: float | None = None,
+    button_cache: dict | None = None,
+    when: str | None = None,
+) -> list[junction_delay.Wait]:
+    """A route's junction waits (`routemaker.junction_delay.waits`), read as `plan` and the
+    calm search read them: stop signs taken as yields in the District, the beacons, and the
+    junction model's signals, big roads and (with `stop_s_per_ft`, the ranking's seconds of
+    waiting a foot of the junction model's cost is worth) its stop-sign prices, where there
+    are `events`; suburban signals by `suburban_signal`, the map's beg buttons by
+    `button_ways` (`button_cache`: its answers kept for the plan); a signal's time shown by
+    the ride-time setting `when` (None: not known)."""
+    junctions = list(junctions)
+    signals = intersections.signal_points(events)
+    stop_extra = None
+    if events is not None and stop_s_per_ft is not None:
+        stop_extra = {
+            point: ft * stop_s_per_ft for point, ft in intersections.stop_extra_ft(events).items()
+        }
+    return junction_delay.waits(
+        junctions,
+        stop_as_yield,
+        lambda lon, lat: intersections.beacon_at(lon, lat, beacons) is not None,
+        # The junction model's signals, up the roads' arms too (hunt J5).
+        signals,
+        suburban=suburban_signal,
+        big=intersections.big_signal_points(events),
+        own_big=intersections.own_big_signal_points(events),
+        buttons=button_ways(junctions, signals, button_cache),
+        stop_extra_s=stop_extra,
+        when=when,
+    )
+
+
+def light_buttons(found_waits, route_m: float, traced_m: float) -> list[dict]:
+    """The signals read as needing their beg button (`junction_delay.signal_wait`), for
+    Ride, in the description's metres (the traced metres at the router's length): at the
+    button signal's own node (`Wait.button_at`), not the run's first junction, which can be
+    a stop line or the other carriageway up to 45 m short of it (the signal review of
+    2026-11-08)."""
+    scale = route_m / traced_m if traced_m > 0 else 1.0
+    out = []
+    for w in found_waits:
+        if not w.button:
+            continue
+        m, lon, lat = w.button_at if w.button_at is not None else (w.m, w.lon, w.lat)
+        out.append({"at_m": round(m * scale, 1), "lon": round(lon, 6), "lat": round(lat, 6)})
+    return out
 
 
 def _outside_dc(piece) -> bool:
@@ -3916,7 +4260,7 @@ def _fit_target(
     avoid_gravel: bool,
     variant: str,
     deadline: Deadline,
-) -> tuple[tuple | None, list[tuple]]:
+) -> tuple[tuple | None, list[tuple], bool]:
     """The first route for a rider's target distance (OWNER-DECISIONS 256, 271): the
     router's own route if it is within it, else the calmest route the router gives
     that is, from its own costing at the traffic positions of FIT_STRESS_LADDER and
@@ -3924,16 +4268,22 @@ def _fit_target(
     the request and costings to search with, and the traffic position it was found at
     (None: the ride's own). Returns the route that fits (None where none does) and
     every route found past the target, the router's own first (`_past_target`
-    chooses among them: the target is soft)."""
+    chooses among them: the target is soft), and whether the ladder was left unfinished
+    for want of time (hunt 2, P2-2): then that none fits is not known, and the plan is
+    not told "no route within your target"."""
     length = _trip_length_m(trip)
     own = (trip, request, costing, trace_costing, None)
     if target_m is None or length <= target_m:
-        return own, []
+        return own, [], False
     past = [own]
 
     def ask(position: int):
         """The route at a traffic position: (length m, the tuple), or None where there
-        is none, and False where there is no time or the router refused."""
+        is none or the router refused it, and False where there is no time.
+
+        A refusal is the router's answer for that costing (a 442 at Default's with
+        closures in the request, say), not the time running out: the next rung is still
+        asked (hunt 2, P2-2; it stopped the whole ladder before)."""
         options = _same_pace(
             presets.costing(preset_name, position, hills_dial, assist=assist),
             request,
@@ -3945,7 +4295,9 @@ def _fit_target(
             answer = _call(
                 variant, "route", asked, Deadline(deadline.at, min(deadline.per_call_s, 30))
             )
-        except (DeadlineExceeded, RouterUnavailable, RouterRefused):
+        except RouterRefused:
+            return None
+        except (DeadlineExceeded, RouterUnavailable):
             return False
         found = answer.get("trip") or {}
         if not found.get("legs"):
@@ -3955,10 +4307,14 @@ def _fit_target(
     over = presets.STRESS_TODAYS_TOP  # the calmest position that is not the router's own
     for rung in FIT_STRESS_LADDER:
         if deadline.at - clock() < FIT_MIN_S:
-            return None, past
+            # No router call failed, so without this the plan answered past its target
+            # was kept in the answer cache for the day (hunt 2, P2-2).
+            _skipped_for_time()
+            return None, past, True
         got = ask(rung)
         if got is False:
-            return None, past
+            # The failed call is counted by `_call`: not kept in the cache.
+            return None, past, True
         if got is None:
             continue
         found_m, answer = got
@@ -3983,8 +4339,8 @@ def _fit_target(
             else:
                 over = middle
                 past.append(probe_answer)
-        return best, past
-    return None, past
+        return best, past, False
+    return None, past, False
 
 
 def _past_target(fit: tuple | None, past: list[tuple], ceiling_m: float, ctx) -> tuple:
@@ -4174,7 +4530,12 @@ def walk_leg(
     # and a longer way round could fail the checks the router's own way passes.
     payload = walk_turns.directions(
         {
-            "locations": [{"lon": p[0], "lat": p[1], "type": "break"} for p in (a, b)],
+            # Neither end in the tunnel under a DC circle park, as a ride's stops (the second
+            # 2026-11-08 hunt, P7).
+            "locations": [
+                {"lon": p[0], "lat": p[1], "type": "break", **circle_park_filter(p[0], p[1])}
+                for p in (a, b)
+            ],
             "costing": "pedestrian",
             "costing_options": {"pedestrian": pedestrian},
             "units": "kilometers",
@@ -4377,6 +4738,342 @@ def circle_park_filter(lon: float, lat: float) -> dict:
     return {}
 
 
+# --- The weekend plan beside a ride's own (the owner, 2026-11-08: "We can do the plan twice.") ---
+#
+# A weekend Gravel, Mountain Goat, Mountain Bike or Easy MTB trails ride rides a graph that keeps
+# the mountain-bike class open (`presets.weekend_too`), which the weekend graph closes, so the
+# weekend graph cannot simply replace it; on its own graph a road closed to cars at the weekend
+# (Beach Drive) is a road with cars. Such a ride is planned on both, and the better route kept by
+# the ride type's own ranking (`_weekend_wins`). Only where a weekend car-free way is near the
+# ride (`weekend_closure_near`; the owner: "In most cases, weekend closures aren't going to matter
+# for MTB, is there a way to check?"): the weekend graph differs from the standard graph only on
+# those ways (`pipeline.variants`, `segment.car_free_when`).
+
+# How far round the box of the ride's start, stops and end a weekend car-free way still makes the
+# weekend plan worth asking for (metres). Not the first route's corridor: the weekend route can
+# go somewhere else. Claude's default, not measured.
+WEEKEND_CLOSURE_BUFFER_M = 3000.0
+
+# Once a weekend ride's own route is ready, how long the weekend plan beside it on the pool is
+# still waited for, at least (`_plan_twice`; as long again as the own plan took where that is
+# longer, never past the plans' deadline). Claude's default, not measured (hunt 3, P3-6): room
+# for a weekend plan a few calls behind the own one to finish, short of the answer's reserve,
+# so a clean own route is still kept in the answer cache.
+WEEKEND_WAIT_AFTER_OWN_S = 10.0
+# Metres a degree of latitude holds, for the buffer in degrees.
+_M_PER_DEG_LAT = 111_320.0
+
+
+class _GraphLeft(Exception):
+    """The weekend plan beside a ride's own could not be made on the weekend graph alone (a stop
+    on a dirt trail it closes, `core.trail_touch`): given up, the ride's own plan answered."""
+
+
+@dataclass(frozen=True)
+class _Ranking:
+    """What `_weekend_wins` weighs of one plan's final route: the calm search's reading of it
+    (`refine.Analysis`, with the plan's `refine.Context`), Mountain Bike's (`mtbmode.Reading`),
+    and the metres of trail rated 2 or harder on an Easy MTB trails ride (`easy_mtb`)."""
+
+    analysis: object | None
+    ctx: object | None
+    mtb: object | None
+    harder_m: float | None
+    # The ride type whose ranking holds: a Mountain Bike ride, an Easy MTB trails ride.
+    mtb_ride: bool = False
+    easy_ride: bool = False
+
+
+# Where a plan made for `_plan_twice` leaves its final route's `_Ranking` ({"ranking": ...});
+# None on every other plan.
+_ranking_slot: contextvars.ContextVar[dict | None] = contextvars.ContextVar(
+    "ranking_slot", default=None
+)
+
+
+def weekend_closure_near(
+    points: list[list[float]], buffer_m: float = WEEKEND_CLOSURE_BUFFER_M
+) -> bool:
+    """Whether a way closed to cars at the weekend (`segment.car_free_when` holds "weekend") lies
+    in the box round the ride's points, padded by `buffer_m`. One read of the live segment table,
+    through its ride-layer index (`pipeline.schema.RIDE_INDEX_PREDICATE` holds every timed
+    closure). True where it cannot be read: the weekend plan is then asked for all the same."""
+    if not points:
+        return False
+    lons = [float(p[0]) for p in points]
+    lats = [float(p[1]) for p in points]
+    pad_lat = buffer_m / _M_PER_DEG_LAT
+    widest = max(abs(lat) for lat in lats)
+    pad_lon = buffer_m / (_M_PER_DEG_LAT * max(math.cos(math.radians(widest)), 0.1))
+    box = (min(lons) - pad_lon, min(lats) - pad_lat, max(lons) + pad_lon, max(lats) + pad_lat)
+    try:
+        schema = validate_schema_name(settings.SEGMENT_SCHEMA_LIVE)
+        if not _has_facility_columns(schema):
+            return True
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"SELECT EXISTS (SELECT 1 FROM {schema}.segment WHERE "  # noqa: S608 - validated
+                "cardinality(car_free_when) > 0 AND %s = ANY(car_free_when) "
+                "AND geometry && ST_MakeEnvelope(%s, %s, %s, %s, 4326))",
+                [ridetime.WEEKEND, *box],
+            )
+            return bool(cursor.fetchone()[0])
+    except DatabaseError:
+        logger.warning("the weekend closures near a ride could not be read", exc_info=True)
+        return True
+
+
+def _easy_asked(preset_name: str, dials: Dials) -> bool:
+    """Whether a plan rides "Easy MTB trails" (`core.easy_mtb`): asked, on a ride type that
+    offers it, and neither trails off (which wins, `presets.variant_for_ride`) nor after Ride's
+    "End mountain biking" (`Dials.mtb_done`)."""
+    return (
+        bool(dials.easy_mtb)
+        and preset_name in easy_mtb.PRESETS
+        and not dials.trails_off
+        and not dials.mtb_done
+    )
+
+
+def _weekend_ride(preset_name: str, dials: Dials) -> bool:
+    """Whether this ride is one `plan` may plan twice (`presets.weekend_too`): not on the rider's
+    own line (a followed file, drawn legs). No read: the closure check is `_weekend_too`'s."""
+    following = dials.follow is not None and not dials.loop
+    if following or (bool(dials.straight) and not dials.loop):
+        return False
+    preset = presets.PRESETS[preset_name]
+    when = dials.when or default_when()
+    assist = bool(dials.assist) and preset.assist_speed_kmh is not None
+    trails_off = bool(dials.trails_off)
+    easy = _easy_asked(preset_name, dials)
+    return presets.weekend_too(preset_name, when, assist, trails_off, easy, dials.mtb_done)
+
+
+def _weekend_too(preset_name: str, dials: Dials, points: list[list[float]]) -> bool:
+    """Whether `plan` makes the weekend plan beside this ride's own from the start
+    (`_weekend_ride`): only near a weekend closure round the ride's points. A ride with none
+    near them is checked again round its own route (`_plan_twice`, `near=False`)."""
+    return _weekend_ride(preset_name, dials) and weekend_closure_near(points)
+
+
+def _weekend_wins(weekend: _Ranking | None, own: _Ranking | None) -> bool:
+    """Whether the weekend plan's route replaces the ride's own, by the ride type's own ranking:
+    Mountain Bike's trail rules (`mtbmode.better`, as `mtb.settle` picks among routes); on Easy
+    MTB trails, fewer metres of harder trail first (as `easy_mtb.settle` keeps a route); then
+    the calm search's comparison (`refine.better`, as the search and the passes after it pick a
+    route), in the ride's own plan's context. Never on stress alone, and the ride's own on a tie
+    or where either cannot be read."""
+    from . import refine
+
+    if weekend is None or own is None:
+        return False
+    if weekend.mtb_ride or own.mtb_ride:
+        # Mountain Bike ranks by its trail rules alone: where either route cannot be read by
+        # them (its own graph down, a leg untraced), the ride's own stands.
+        if weekend.mtb is None or own.mtb is None:
+            return False
+        return mtbmode.better(weekend.mtb, own.mtb)
+    if weekend.easy_ride or own.easy_ride:
+        if weekend.harder_m is None or own.harder_m is None:
+            return False
+        if abs(weekend.harder_m - own.harder_m) > easy_mtb.TOLERANCE_M:
+            return weekend.harder_m < own.harder_m
+    if weekend.analysis is None or own.analysis is None or own.ctx is None:
+        return False
+    return refine.better(weekend.analysis, own.analysis, own.ctx)
+
+
+@dataclass
+class _WeekendPlan:
+    body: dict | None = None
+    ranking: _Ranking | None = None
+    # The router calls the weekend plan failed or skipped (its own `timing.Timings`): where its
+    # body is answered with any, the answer is not kept in the answer cache
+    # (`_skipped_for_time`), as the ride's own plan's would not be.
+    failures: int = 0
+
+
+def _weekend_plan(
+    points, preset_name, long_ride, started, dials, quick, candidates
+) -> _WeekendPlan:
+    """The weekend plan beside a ride's own, on the router pool or after it. Never raises but
+    for a cancel: whatever goes wrong, the ride's own plan is answered (the weekend router
+    down is today's behaviour). With a timing recorder of its own: a plan restarts its
+    recorder's phases, which are the ride's own plan's, and its failed calls are counted
+    apart, for `_plan_twice` to count only where its body is answered."""
+    recorder = timing.Timings()
+    token = timing.start(recorder)
+    on_pool = parallel.inside()
+    slot: dict = {}
+    try:
+        body = _plan_alone(points, preset_name, long_ride, started, dials, quick, candidates, slot)
+        return _WeekendPlan(body, slot.get("ranking"), recorder.failures)
+    except PlanCancelled:
+        raise
+    except Exception as error:  # noqa: BLE001 - the ride's own plan is answered
+        logger.info("no weekend plan beside the ride's own: %r", error)
+        return _WeekendPlan()
+    finally:
+        timing.stop(token)
+        if on_pool:
+            # The pool thread's own database connection, closed as `api._leg_line` closes its.
+            from django.db import connections
+
+            connections.close_all()
+
+
+_GRAPH_DOWN = frozenset({"no_mtb_graph", "no_offroad_graph"})
+
+
+def _keep_graph_down_notice(own: dict, answer: dict) -> None:
+    """The weekend route answers a ride whose own router is down: the rider is still told that
+    its trails were not there (`mtb.limited` no_mtb_graph, `easy_mtb.limited` no_offroad_graph,
+    on the own plan's answer). The weekend plan's own reading ran on its graph and says nothing
+    of the router that is down (release review, 2026-11-09)."""
+    for key in ("mtb", "easy_mtb"):
+        info = own.get(key)
+        if isinstance(info, dict) and info.get("limited") in _GRAPH_DOWN:
+            mine = answer.get(key)
+            if isinstance(mine, dict):
+                answer[key] = {**mine, "limited": info["limited"]}
+            else:
+                answer[key] = dict(info)
+
+
+def _plan_twice(
+    points: list[list[float]],
+    preset_name: str,
+    long_ride: bool,
+    started: float,
+    dials: Dials,
+    quick: bool,
+    candidates: bool,
+    near: bool = True,
+) -> dict:
+    """A weekend ride planned on its own graph and on the weekend graph, the better route kept
+    (`_weekend_wins`); its `variant` says which graph won. Each is a whole plan on its graph (the
+    search, the red crossings, the Avoid junctions, `mtb.settle` or `easy_mtb.settle`, the
+    reread), so the route kept is answered as a single-graph plan answers it. The weekend plan
+    runs on the router pool beside the ride's own, as a transit trip's later rides do
+    (`core.parallel`); where the pool is off (or this is a pool thread) it runs after it, in
+    what is left of the budget. Where the weekend router is down or not promoted, the ride's
+    own plan alone, as before.
+
+    `near`: whether a weekend closure lies round the ride's points (`weekend_closure_near`).
+    Where none does, the ride's own route is planned first and the weekend plan made after it
+    only where one lies round that route (hunt 3: a loop or a target ride can reach Beach Drive
+    from points more than `WEEKEND_CLOSURE_BUFFER_M` from it)."""
+    if not _weekend_is_promoted():
+        return _plan_alone(points, preset_name, long_ride, started, dials, quick, candidates)
+    if _weekend_down():
+        if near:
+            # As a weekend ride whose router is down: answered, never kept in the answer cache.
+            _skipped_for_time()
+        return _plan_alone(points, preset_name, long_ride, started, dials, quick, candidates)
+    weekend_dials = dataclasses.replace(dials, graph=Variant.WEEKEND.value)
+    args = (points, preset_name, long_ride, started, weekend_dials, quick, candidates)
+    pending = parallel.submit(_weekend_plan, *args) if near and parallel.enabled() else None
+    # Away from any closure round the points, the own plan reads its route's box first and
+    # ranks its route only where a closure lies in it (`_plan`, "gate").
+    slot: dict = {} if near else {"gate": True}
+    own_error: Exception | None = None
+    own = None
+    try:
+        try:
+            own = _plan_alone(
+                points, preset_name, long_ride, started, dials, quick, candidates, slot
+            )
+        except (NoRoute, TooLong, DeadlineExceeded, RouterUnavailable) as error:
+            own_error = error
+        if not near and (own is None or "ranking" not in slot):
+            # No closure round its points or its route: the ride's own, as a single plan.
+            if own is None:
+                raise own_error
+            return own
+        if pending is None:
+            weekend = _weekend_plan(*args)
+        else:
+            # The plans' own deadline, and once the ride's own route is ready, at most as long
+            # again as it took, or WEEKEND_WAIT_AFTER_OWN_S where that is longer (hunt 3, P3-6:
+            # waiting into the answer's reserve kept a clean own route out of the cache).
+            ends = started + _ride_budget_s(*args[:5]) - ANSWER_RESERVE_S
+            if own is not None:
+                now = clock()
+                ends = min(ends, now + max(now - started, WEEKEND_WAIT_AFTER_OWN_S))
+            try:
+                weekend = await_future(pending, max(0.0, ends - clock()))
+            except TimeoutError:
+                # Not done in time: given up, the ride's own answered. It ends at its own
+                # deadline; its calls are its own, not the answer's.
+                pending.cancel()
+                weekend = _WeekendPlan()
+    except BaseException:
+        # A cancel, or anything else the own plan raised (hunt 3, P3-5): a weekend plan not yet
+        # started on the pool never starts, so it takes no pool thread or router slot after
+        # the answer.
+        if pending is not None:
+            pending.cancel()
+        raise
+    if own is None:
+        if weekend.body is None:
+            raise own_error
+        logger.info("the weekend graph answered a ride its own graph did not (%s)", own_error)
+        if weekend.failures or not isinstance(own_error, (NoRoute, TooLong)):
+            # Its own graph's router or the time failed, not the ride: not kept.
+            _skipped_for_time()
+        return weekend.body
+    if weekend.body is not None and own.get("variant") == Variant.STANDARD.value:
+        # The ride's own router down or not promoted: its own plan fell back to the standard
+        # graph, whose weekend twin is the weekend graph, the same ways with the car-free roads
+        # open. Its route is taken over the standard one outright: with no trail reading on the
+        # fallback (`harder_m`, `mtb` None) the ranking always kept the standard route, roads
+        # with cars and all (hunt 3, P3-4).
+        logger.info("the ride's own graph fell back to standard; the weekend route answered")
+        if weekend.failures or _own_fell_back(own, preset_name, dials):
+            # Cut short, or answered while the ride's own router is down: not kept.
+            _skipped_for_time()
+        _keep_graph_down_notice(own, weekend.body)
+        return weekend.body
+    if weekend.body is not None and _weekend_wins(weekend.ranking, slot.get("ranking")):
+        logger.info("the weekend plan's route ranks above the ride's own; answered")
+        if weekend.failures or _own_fell_back(own, preset_name, dials):
+            # A weekend route cut short, or one weighed against the standard graph's while the
+            # ride's own router is down: answered, never kept in the answer cache.
+            _skipped_for_time()
+        return weekend.body
+    return own
+
+
+def _ride_budget_s(points, preset_name, long_ride, _started, dials) -> float:
+    """The budget the ride's own plan runs in (`_plan`): the long ride's for a long ride or a
+    long calm plan, else the ordinary one."""
+    if long_ride:
+        return LONG_PLAN_BUDGET_S
+    stress = (
+        presets.stress_start(preset_name, dials.carrying) if dials.stress is None else dials.stress
+    )
+    loop = loop_wanted(points, dials.loop, preset_name)
+    long_calm = not loop and long_calm_for(
+        preset_name, loop_points(points, loop), stress, long_ride, trails_off=bool(dials.trails_off)
+    )
+    return LONG_PLAN_BUDGET_S if long_calm else PLAN_BUDGET_S
+
+
+def _own_fell_back(own: dict, preset_name: str, dials: Dials) -> bool:
+    """Whether the ride's own plan was answered off its own graph while that graph is promoted:
+    its router down, the twin fallback to the standard graph taken."""
+    preset = presets.PRESETS[preset_name]
+    assist = bool(dials.assist) and preset.assist_speed_kmh is not None
+    trails_off = bool(dials.trails_off)
+    easy = _easy_asked(preset_name, dials)
+    graph = presets.variant_for_ride(
+        preset_name, dials.when or default_when(), assist, trails_off, easy, dials.mtb_done
+    )
+    if own.get("variant") == graph:
+        return False
+    return graph not in TWIN_VARIANTS or _is_promoted(graph)
+
+
 @_own_context
 def plan(
     points: list[list[float]],
@@ -4402,7 +5099,36 @@ def plan(
     nothing a different question answered. They are dropped before the final plan on the
     ride type's own graph, which asks other questions and so would only hold them longer
     on the 512M worker.
+
+    A weekend ride on the off-road, Mountain Bike or e-bike graph near a road closed to cars at
+    the weekend (round its points, or else round its own route) is planned on the weekend graph
+    too, and the better route kept (`_plan_twice`).
     """
+    dials = dials or Dials()
+    if started is None:
+        started = clock()
+    if dials.graph is None:
+        near = _weekend_too(preset_name, dials, points)
+        if near or _weekend_ride(preset_name, dials):
+            return _plan_twice(
+                points, preset_name, long_ride, started, dials, quick, candidates, near=near
+            )
+    return _plan_alone(points, preset_name, long_ride, started, dials, quick, candidates)
+
+
+def _plan_alone(
+    points: list[list[float]],
+    preset_name: str,
+    long_ride: bool,
+    started: float | None,
+    dials: Dials | None,
+    quick: bool,
+    candidates: bool,
+    ranking: dict | None = None,
+) -> dict:
+    """`plan` on one graph. `ranking`, where given, is given the final route's ranking
+    (`_Ranking`, under "ranking") for `_plan_twice` to compare."""
+    ranking_token = _ranking_slot.set(ranking)
     # Its stress readings, for its own context only (audit S18), dropped as it ends: a pool
     # task still running after it holds a copy of the context, never the readings.
     memo: dict = {}
@@ -4412,9 +5138,12 @@ def plan(
     # And its readings of each trace (audit S19), the same way.
     readings: dict = {}
     _reading_memo.set(readings)
+    graph_token = _routed_graph.set(None)
     try:
         return _plan_rounds(points, preset_name, long_ride, started, dials, quick, candidates)
     finally:
+        _ranking_slot.reset(ranking_token)
+        _routed_graph.reset(graph_token)
         memo.clear()
         pieces_read.clear()
         readings.clear()
@@ -4487,8 +5216,93 @@ def _plan_round(*args, **kwargs) -> dict:
 
 
 def _over_budget(rings) -> bool:
-    perimeter, vertices = work_zones.rules.budget_used(rings)
-    return perimeter > work_zones.rules.MAX_PERIMETER_M or vertices > work_zones.rules.MAX_VERTICES
+    """Past the router's polygon limits as the closures are packed (`rules.over_budget`: the
+    router's own count, with a margin)."""
+    return work_zones.rules.over_budget(rings)
+
+
+# At most this many times a plan the router refused for its closures is asked again with fewer.
+CLOSURE_RETRIES = 4
+
+
+def _round_the_closures(variant, request, refusal, zones_plan, points, deadline, again_of):
+    """The router's answer to the plan's request after it refused it (`refusal`) for the
+    closures in it, each retry with fewer of them; NoRoute where none is left to take out.
+
+    - Past the router's polygon limits (`EXCLUDE_LIMIT_CODES`): the farther half of the
+      closures is taken out, and so on (`work_zones.drop_farthest`).
+    - No path (442, 443): first only the closures and other rings that meet the router's
+      edges at the destination and each via (`_stop_rings`), which it can never arrive on
+      while a ring meets them (hunt K2/Q3, 2026-11-08: a closure on the destination's edge
+      once let every closure on the trip back in). The roads the rider marked closed and the
+      dirt-trail strips are let go there too, never anywhere else. Then every closure: plan
+      through them, each one warned of in red, rather than answer no route (the rider can
+      walk through or choose; `work_zones.drop_exclusions`).
+
+    Every closure taken out is warned of on the route as one that could not be left out."""
+    at_stops_tried = False
+    for _ in range(CLOSURE_RETRIES):
+        code = refusal.code
+        closures = zones_plan is not None and bool(zones_plan.excluded)
+        if code in EXCLUDE_LIMIT_CODES and closures:
+            dropped = work_zones.drop_farthest(request, zones_plan, points)
+            logger.info(
+                "closures: the router refused their polygons (%s); %d taken out", code, len(dropped)
+            )
+        elif code in NO_PATH_CODES and not at_stops_tried and request.get("exclude_polygons"):
+            at_stops_tried = True
+            ids, rings = _stop_rings(variant, request, zones_plan, deadline)
+            gone = work_zones.drop_closures(request, zones_plan, ids) if ids else []
+            let_go = work_zones.drop_rings(request, zones_plan, rings)
+            if not gone and not let_go:
+                if not closures:
+                    raise NoRoute(str(refusal), no_path=True) from refusal
+                work_zones.drop_exclusions(request, zones_plan)  # nothing at the stops
+            else:
+                logger.info(
+                    "closures: %d at the stops taken out, %d rings let go", len(gone), let_go
+                )
+        elif code in NO_PATH_CODES and closures:
+            work_zones.drop_exclusions(request, zones_plan)
+        else:
+            raise NoRoute(str(refusal), no_path=code in NO_PATH_CODES) from refusal
+        try:
+            return _route(variant, again_of(request), deadline)
+        except RouterRefused as again:
+            refusal = again
+    raise NoRoute(str(refusal), no_path=refusal.code in NO_PATH_CODES) from refusal
+
+
+def _stop_rings(variant, request, zones_plan, deadline) -> tuple[list[str], list]:
+    """The closures and other rings in `request` that meet the router's candidate edges at the
+    destination and each via (`work_zones.at_stops`), the edges read with a verbose `/locate`
+    of those points as the route asks for them; none where the router cannot say."""
+    stops = request.get("locations", [])[1:]
+    if not stops:
+        return [], []
+    payload = {
+        "locations": [
+            {k: v for k, v in stop.items() if k in ("lon", "lat", "radius", "search_filter")}
+            for stop in stops
+        ],
+        "costing": request.get("costing", "bicycle"),
+        "costing_options": request.get("costing_options") or {},
+        "verbose": True,
+    }
+    try:
+        located = _call(variant, "locate", payload, deadline)
+    except PlanCancelled:
+        raise
+    except Exception as error:  # noqa: BLE001 - every closure is then let in, as before
+        logger.info("closures: the stops' edges could not be read (%s)", type(error).__name__)
+        return [], []
+    edges = []
+    for location in located if isinstance(located, list) else []:
+        for edge in (location or {}).get("edges") or []:
+            shape = ((edge or {}).get("edge_info") or {}).get("shape")
+            if isinstance(shape, str) and shape:
+                edges.append([list(p) for p in decode_polyline6(shape)])
+    return work_zones.at_stops(edges, zones_plan, request)
 
 
 def _ring_tuple(ring) -> tuple[tuple[float, float], ...]:
@@ -4606,12 +5420,31 @@ def _plan(
     junction_ratings = route_cache.junction_ratings()
     # The flashing beacons the map has as signals (the owner's and MDOT SHA's), the same way.
     beacons = route_cache.beacons()
-    # The rider's target distance counts at the top of the slider only.
-    target_m = float(dials.target_distance_m) if dials.target_distance_m and maxcalm else None
+    # The rider's target distance counts at the top of the slider only, and never on a ride's
+    # re-plan (`ride_replan`): the target is the whole ride's, and the re-plan is the rest of
+    # it from where the rider is. Held to it, the rest could take up to 1.25 times the whole
+    # ride's target with its miles priced as cheap (`refine.distance_charge_m`), so a re-route
+    # 5 km from the end of a 40 km ride could go 12 km round for a little less LTS 3 (hunt
+    # V2). The rest of the ride is planned as a plan with no target is: the ceiling on what
+    # is left (`presets.default_ceiling_m`) and every extra mile worth its stress.
+    target_m = (
+        float(dials.target_distance_m)
+        if dials.target_distance_m and maxcalm and not dials.ride_replan
+        else None
+    )
     when = dials.when or default_when()
     assist = bool(dials.assist) and preset.assist_speed_kmh is not None
     trails_off = bool(dials.trails_off)
-    variant = presets.variant_for_ride(preset_name, when, assist, trails_off)
+    # "Easy MTB trails" (`core.easy_mtb`): on the ride types that offer it, and not with trails
+    # off, which wins (`presets.variant_for_ride`), nor after Ride's "End mountain biking".
+    easy_asked = _easy_asked(preset_name, dials)
+    variant = dials.graph or presets.variant_for_ride(
+        preset_name, when, assist, trails_off, easy_asked, dials.mtb_done
+    )
+    # The weekend plan `_plan_twice` makes beside the ride's own: on the weekend graph or not
+    # at all, and its route read by the ride type's own rules there (`mtb.settle`,
+    # `easy_mtb.settle`), as on the ride's own graph.
+    weekend_beside = dials.graph == Variant.WEEKEND.value
     # A dirt trail the rider put a stop, via or end on (the owner, 2026-10-20: "Don't plan on
     # the route, but if you enter it or mark a waypoint in it, it will continue to route
     # through"): planned on the off-road graph, where it is open, with this ride type's
@@ -4622,9 +5455,11 @@ def _plan(
     # trail, any reroutes should include dirt"). A dirt trail the rider marked closed on this
     # ride says its conditions are bad: no dirt trail at all for the rest of the ride
     # (2026-10-21: "assume that means bad riding conditions until it's opted back in").
-    # A weekend or holiday ride on the standard graph's weekend twin, where dirt trails are
-    # closed just the same, follows the same rule (`TRAIL_TOUCH_VARIANTS`).
+    # A weekend ride on the standard graph's weekend twin, or an e-bike ride, where dirt
+    # trails are closed just the same, follows the same rule (`TRAIL_TOUCH_VARIANTS`).
     touched_trails: frozenset[int] = frozenset()
+    # "End mountain biking" from on a trail: that trail's level, the hardest the way off rides.
+    exit_at: int | None = None
     per_point: tuple[frozenset[int], ...] = ()
     dirt_closed = False
     any_dirt = False
@@ -4634,26 +5469,84 @@ def _plan(
         and dials.follow is None
         and not dials.straight
     ):
-        dirt_closed = dials.dirt_closed or (
-            bool(dials.blocked) and trail_touch.closed_on_dirt(dials.blocked)
+        dirt_closed = (
+            dials.dirt_closed
+            or dials.mtb_done
+            or (bool(dials.blocked) and trail_touch.closed_on_dirt(dials.blocked))
         )
+        # "End mountain biking" pressed on a trail (the owner, 2026-11-08: "It still routes on
+        # trails if you're on one correct? It should get people back to a road or path (gravel
+        # or paved) through the easiest route possible"): the trail under the rider, the
+        # mountain-bike class or rated singletrack, is opened with the trails joined to it, on
+        # the graph that has it (Mountain Bike's for its own rides, else the off-road one), and
+        # no other trail; every other run on one is left out as a stray, as on any ride.
+        exit_trails: frozenset[int] = frozenset()
+        if dials.mtb_done and dials.ride_replan and points:
+            if dials.trail_touched is not None:
+                exit_trails = dials.trail_touched[0]
+            else:
+                (exit_trails,) = trail_touch.touched(
+                    points[:1], reasons=trail_touch.OFF_ROAD_REASONS
+                )
+            if exit_trails and weekend_beside:
+                # The weekend graph closes that trail and would snap the rider's fix to the
+                # nearest open way, a route Ride then reads as off route (release review,
+                # 2026-11-09): the ride's own plan, which opens it, answers.
+                raise _GraphLeft("End mountain biking from a trail the weekend graph closes")
+            if exit_trails:
+                touched_trails = exit_trails
+                exit_at = trail_touch.exit_level(exit_trails)
+                per_point = (exit_trails, *(frozenset() for _ in points[1:]))
+                variant = Variant.MTB.value if preset_name == mtb.PRESET else Variant.OFFROAD.value
         if not dirt_closed:
             per_point = dials.trail_touched
             if per_point is None:
                 per_point = trail_touch.touched(points)
             # Not the start, nor the start again at the end of a loop or a round trip.
-            chosen = per_point if dials.ride_replan else per_point[1:]
-            if not dials.ride_replan and len(points) > 1 and is_round_trip(points):
+            # The weekend plan beside a ride's own (`weekend_beside`) tests every point: the
+            # ride's own graph opens the trail its start (or a loop's end) is on, where the
+            # weekend graph would snap it to the nearest open way instead (hunt 3, PL3-6).
+            chosen = per_point if dials.ride_replan or weekend_beside else per_point[1:]
+            if (
+                not dials.ride_replan
+                and not weekend_beside
+                and len(points) > 1
+                and is_round_trip(points)
+            ):
                 chosen = chosen[:-1]
+            # On a ride's re-plan the start is the rider's fix, and being within TOUCH_M of a
+            # dirt trail is not being on it (hunt V5): a re-route on a paved trail where a horse
+            # trail crosses or runs beside opened every dirt trail for the rest of the ride.
+            # With the rider's heading, the trail under the fix counts only where it runs the
+            # way the rider is going (`trail_touch.followed`), and then, the rider being on
+            # dirt, any dirt trail may be ridden ("If someone goes onto a dirt trail, any
+            # reroutes should include dirt"). Without one, the trail under the fix is opened
+            # with the trails joined to it, as a stop on it is, and no other.
+            on_dirt = False
+            fix_heading = dials.fix_heading if dials.fix_heading is not None else dials.heading
+            if dials.ride_replan and per_point and per_point[0]:
+                if fix_heading is None:
+                    start_trails = per_point[0]
+                else:
+                    start_trails = trail_touch.followed(points[0], fix_heading, per_point[0])
+                    on_dirt = bool(start_trails)
+                chosen = (start_trails, *chosen[1:])
             touched_trails = frozenset().union(*chosen)
-            any_dirt = dials.ride_replan and (dials.dirt_ridden or bool(per_point[0]))
+            any_dirt = dials.ride_replan and (dials.dirt_ridden or on_dirt)
             if touched_trails or any_dirt:
+                if weekend_beside:
+                    # The ride's own graph opens the trail; the weekend graph never does.
+                    raise _GraphLeft("a point is on a dirt trail the weekend graph closes")
                 variant = Variant.OFFROAD.value
     # Bike lanes are "none" in the breakdown on a ride that takes the roadway (Mass
     # Ride, whose own graph is no-trail), not on every trails-off ride.
     lanes_as_roadway = preset.variant == Variant.NO_TRAIL.value
     avoid_gravel = bool(dials.avoid_gravel)
     costing = presets.costing(preset_name, stress_dial, hills_dial, assist=assist)
+    if dials.mtb_done and preset_name == mtb.PRESET:
+        # After "End mountain biking", Mountain Bike's costing no longer seeks paths over roads
+        # (its `use_roads` 0): Default's, so a calm road is as welcome as a path.
+        costing["bicycle"]["use_roads"] = presets.use_roads_for(presets.stress_start("default"))
     if dials.cycling_speed_kmh is not None:
         costing["bicycle"]["cycling_speed"] = float(dials.cycling_speed_kmh)
     if following and dials.follow_exact:
@@ -4707,6 +5600,7 @@ def _plan(
         bypass=dials.closure_bypass,
         reserve=work_zones.rules.budget_used(blocked),
         now_only=dials.closures_now,
+        at=dials.zones_at,
         reach_m=zones_reach_m(points, climb_seek, hills_dial, target_m),
     )
     if zones_plan is not None:
@@ -4742,9 +5636,15 @@ def _plan(
     # plans ask for them, as the hills search does.
     if preset_name == mtb.PRESET and len(points) == 2 and not long_ride:
         request.setdefault("alternates", SEEK_ALTERNATES)
-    if variant in TWIN_VARIANTS and (_twin_down(variant) or not _is_promoted(variant)):
-        logger.info("the %s graph is not being served; planning on the standard graph", variant)
-        variant = Variant.STANDARD.value
+    # A twin not served falls back (`twin_fallback`), Road Bike's weekend twin to the paved
+    # graph and on to the standard one if that is not served either.
+    if (
+        weekend_beside
+        and variant in TWIN_VARIANTS
+        and (_twin_down(variant) or not _is_promoted(variant))
+    ):
+        raise RouterUnavailable("the weekend graph is not being served")
+    variant = _served_variant(variant)
     # The first router call: the plan's own request, or the trace of the followed line.
     if following:
         asked = follow.request_for(dials.follow, points, request)
@@ -4753,42 +5653,61 @@ def _plan(
     else:
         asked = request
     try:
-        try:
-            answer, timed_out = _route(variant, asked, deadline)
-            if variant in TWIN_VARIANTS:
-                _mark_twin(variant, True)
-        except RouterUnavailable:
-            # The weekend graph is a fourth router, and a deployment that has
-            # not built it yet - or one whose weekend router is down or hung -
-            # still answers a weekend ride, on the standard graph it is the
-            # twin of. The answer names the graph it came from, and the failure
-            # is remembered for WEEKEND_FAILURE_TTL_S.
-            if variant not in TWIN_VARIANTS:
-                raise
-            _mark_twin(variant, False)
-            logger.warning("the %s router did not answer; planning on the standard graph", variant)
-            variant = Variant.STANDARD.value
-            answer, timed_out = _route(variant, asked, deadline)
-        except RouterRefused as refusal:
-            # A weekend router with no tiles - started on an empty directory
-            # before the first weekend promotion, or after a rollback withdrew
-            # it - stays up and answers every ride 170/171, "no suitable
-            # edges" (OPS review, 2026-09-28). That is asked of the standard
-            # graph too, and only if the standard graph answers is the weekend
-            # one taken to be missing its tiles and remembered as down; a
-            # point the standard graph cannot place either is a real refusal
-            # and is reported as one.
-            if variant not in TWIN_VARIANTS or refusal.code not in NO_EDGE_CODES:
-                raise
-            answer, timed_out = _route(Variant.STANDARD.value, asked, deadline)
-            _mark_twin(variant, False)
+        # Twins that refused with no edge, remembered as down only once a graph they fall
+        # back to answers.
+        refused: list[tuple[str, int | None]] = []
+        while True:
+            try:
+                answer, timed_out = _route(variant, asked, deadline)
+                if variant in TWIN_VARIANTS:
+                    _mark_twin(variant, True)
+                break
+            except RouterUnavailable:
+                # The weekend graph is a fourth router, and a deployment that has
+                # not built it yet - or one whose weekend router is down or hung -
+                # still answers a weekend ride, on the graph it is the twin of
+                # (`twin_fallback`). The answer names the graph it came from, and the
+                # failure is remembered for WEEKEND_FAILURE_TTL_S.
+                if variant not in TWIN_VARIANTS:
+                    raise
+                _mark_twin(variant, False)
+                if weekend_beside:
+                    raise
+                fallback = twin_fallback(variant)
+                logger.warning(
+                    "the %s router did not answer; planning on the %s graph", variant, fallback
+                )
+                # A fallback already known down or not promoted is passed over, not asked
+                # and waited out again (Road Bike's weekend twin falls back to the paved one).
+                variant = _served_variant(fallback)
+            except RouterRefused as refusal:
+                # A weekend router with no tiles - started on an empty directory
+                # before the first weekend promotion, or after a rollback withdrew
+                # it - stays up and answers every ride 170/171, "no suitable
+                # edges" (OPS review, 2026-09-28). That is asked of the graph it falls
+                # back to too, and only if that graph answers is the weekend one taken
+                # to be missing its tiles and remembered as down; a point the standard
+                # graph cannot place either is a real refusal and is reported as one.
+                if variant not in TWIN_VARIANTS or refusal.code not in NO_EDGE_CODES:
+                    raise
+                if weekend_beside:
+                    # Beside the ride's own plan the weekend graph never falls back: it is
+                    # only taken as missing its tiles if the graph it is the twin of answers.
+                    _route(twin_fallback(variant), asked, deadline)
+                    _mark_twin(variant, False)
+                    raise RouterUnavailable("the weekend router placed no edge") from refusal
+                refused.append((variant, refusal.code))
+                variant = _served_variant(twin_fallback(variant))
+        for twin, code in refused:
+            _mark_twin(twin, False)
             logger.warning(
-                "the %s router placed no edge the standard graph could (code %s); "
-                "planning on the standard graph",
+                "the %s router placed no edge the %s graph could (code %s); "
+                "planning on the %s graph",
+                twin,
                 variant,
-                refusal.code,
+                code,
+                variant,
             )
-            variant = Variant.STANDARD.value
         if timed_out and not (calm_seek or calm_tolerate):
             seek_limited = "timed_out"
     except RouterRefused as refusal:
@@ -4802,21 +5721,22 @@ def _plan(
                 refusal.code,
                 refusal,
             )
-        closures_left_out = zones_plan is not None and len(zones_plan.exclude) > len(blocked)
-        if not (closures_left_out and refusal.code in NO_PATH_CODES):
-            raise NoRoute(str(refusal), no_path=refusal.code in NO_PATH_CODES) from refusal
-        # No way round the work zones closed to bicycles: plan through them, each one
-        # warned of in red, rather than answer no route (the rider can walk through or
-        # choose; `work_zones.drop_exclusions`).
-        work_zones.drop_exclusions(request, zones_plan)
-        try:
-            # The rider's drawn legs stay drawn (`_drawn`).
-            again = {**request, DRAWN_KEY: dials.straight} if drawing else request
-            answer, timed_out = _route(variant, again, deadline)
-        except RouterRefused as again:
-            raise NoRoute(str(again), no_path=again.code in NO_PATH_CODES) from again
+        # The rider's drawn legs stay drawn (`_drawn`).
+        straight = dials.straight
+        answer, timed_out = _round_the_closures(
+            variant,
+            request,
+            refusal,
+            zones_plan,
+            points,
+            deadline,
+            (lambda asked: {**asked, DRAWN_KEY: straight}) if drawing else (lambda asked: asked),
+        )
 
     timing.mark("route")
+    # The graph that answered, the weekend twin's fallback included: what the route's
+    # readings of timed closures follow (`car_free_reading`, hunt X1).
+    _routed_graph.set(variant)
     delays = None
     if zones_plan is not None and not fixed:
         answer = work_zones.settle_penalties(
@@ -4829,14 +5749,21 @@ def _plan(
     # This plan's traces, so a route the guards traced is not traced again; `plan`'s, where
     # it re-plans without stray dirt trails, so a later round does not trace them again.
     traces = {} if traces is None else traces
-    if (touched_trails or any_dirt) and variant == Variant.OFFROAD.value:
+    if (touched_trails or any_dirt) and variant in STRAY_GRAPHS:
         # The router's own route is checked for stray dirt trails at once, before the search
         # and anything started beside it, so a round that strays starts again without them
         # now instead of after the whole search (audit S12, part 1; the owner, 2026-10-27
         # 7:52 PM ET: "make the banked changes"). Its traces are the plan's, which the search
         # and the answer read again, so a route that does not stray is traced once as before.
         stray = _early_strays(
-            answer.get("trip") or {}, variant, costing, deadline, traces, touched_trails, any_dirt
+            answer.get("trip") or {},
+            variant,
+            costing,
+            deadline,
+            traces,
+            touched_trails,
+            any_dirt,
+            exit_at,
         )
         if stray:
             raise StrayTrails(tuple(stray), per_point)
@@ -4891,6 +5818,7 @@ def _plan(
         descent_weight=avoid_weight,
         brake_grade=preset.brake_grade,
         steep=steep_ride,
+        assist_w=assist_watts_for(preset_name, assist),
     )
     # The detour check's direct route depends on the request alone: where it will surely be
     # asked for, it starts now on the pool, beside the search, as the early alternatives do
@@ -4955,7 +5883,19 @@ def _plan(
     elif fixed:
         chosen = 0
     elif climb_seek:
-        chosen = choose_climb(trips, presets.seek_distance_ratio(hills_dial))
+        # The climbs a route within the budget could ride, for the busy-climb guard: the
+        # seek's corridor where it ran, else the file's within the budget's reach.
+        ratio = presets.seek_distance_ratio(hills_dial)
+        from . import hillseek
+
+        climbs_near = (
+            sought.near
+            if sought is not None and sought.limited != "no_climbs"
+            else hillseek.candidates_for_naming(
+                hillseek.load() or (), points[0], points[-1], _trip_length_m(trips[0]) * ratio
+            )
+        )
+        chosen = choose_climb(trips, ratio, climbs_near, points)
     elif direct_tolerate or avoiding:
         # Never a busier route for it (`calmer_or_own`, "Traffic wins").
         chosen = calmer_or_own(
@@ -5000,6 +5940,16 @@ def _plan(
             # Traced with the costing it was routed with, which the check
             # already did: the trace is reused, not asked for again.
             trace_costing = middle_costing
+            # And the search's candidates routed with it too (hunt P4). The score takes the
+            # router's own climbing charge off at the trace costing's `use_hills`
+            # (`refine.use_hills_of`, `Analysis.router_climb_m`) and adds the rider's own
+            # climb price back (`hill_m`, at the rider's hills dial), so the router's charge
+            # cancels only where the route was asked for at that `use_hills`. Candidates asked
+            # for at the plan's hill-avoiding one (0.4 at -60) against the middle's route (1.0)
+            # each paid about 390 flat metres a 30 m climb the route they would replace did not,
+            # and the search and the red pass under-took calmer routes on exactly the plans
+            # that avoid hills. The rider's hill price still weighs every candidate.
+            request = {**request, "costing_options": middle_costing}
     # The calm detour and crossing avoidance (core.refine): the router's own
     # routes, searched for a better score. Only where it can run inside the
     # budget; `refined` says what it did, or why it did not.
@@ -5013,9 +5963,15 @@ def _plan(
         refine_limited = "follow" if following else "drawn"
     ceiling = None
     fitted_at = None
-    fit, past = None, []
-    if maxcalm and refine_limited is None:
-        fit, past = _fit_target(
+    fit, past, fit_unfinished = None, [], False
+    # The rider's target distance and the ceiling hold on a loop past the search's span too
+    # (the 2026-11-08 hunt, R1): a loop's span counts the way out and the way back, so a
+    # Trailmaxxing or Novice loop about 15 km (9.3 mi) out lost its target with its search.
+    # A one-way plan past the span is a long calm plan (searched leg by leg) or has a
+    # destination that sets its length.
+    fitting = refine_limited is None or (bool(loop) and refine_limited == "span")
+    if maxcalm and fitting:
+        fit, past, fit_unfinished = _fit_target(
             trip, request, costing, trace_costing, target_m, preset_name, hills_dial, assist,
             avoid_gravel, variant, deadline,
         )  # fmt: skip
@@ -5051,12 +6007,14 @@ def _plan(
         hill_coefficient=grade_stress.coefficient_for(hills_dial),
         brake_grade=preset.brake_grade,
         mass_kg=presets.system_weight_for(preset_name, dials.carrying, dials.system_weight_kg),
+        assist_w=hill_price.assist_w,
         quiet_cost=refine.quiet_cost_per_m(trace_costing),
         wide=refine.wide_search_for(presets.calm_rate_for(stress_dial)),
         seek=trailseek.seek_for(presets.calm_rate_for(stress_dial)),
         schema=validate_schema_name(settings.SEGMENT_SCHEMA_LIVE),
         avoid_gravel=avoid_gravel,
         wait_weight=presets.wait_weight_for(preset_name),
+        road_bike_buttons=presets.road_bike_buttons_for(preset_name),
         exposure=exposure,
         maxcalm=maxcalm,
         ceiling_m=ceiling,
@@ -5073,7 +6031,9 @@ def _plan(
         rank_alternates=(
             presets.calm_rate_for(stress_dial) > 0 or presets.wait_weight_for(preset_name) > 1
         ),
-        router_trips=plan_alternates(request, trips, timed_out, bool(past)),
+        # Not the plan's own alternatives where the middle's route was kept: they were asked
+        # at the hill-avoiding costing, and the search's are asked at the middle's (P4).
+        router_trips=plan_alternates(request, trips, timed_out, bool(past) or kept_middle),
         early_alternates=early_alternates,
         options=[] if offering and not long_calm else None,
         avoid=avoid_list,
@@ -5090,12 +6050,24 @@ def _plan(
         refine_context.request = request
         refine_context.costing = trace_costing
         refine_context.quiet_cost = refine.quiet_cost_per_m(trace_costing)
+    # The route the plan's own `request` answers, as the level rounds of `mtb.settle` and
+    # `easy_mtb.settle` re-ask it: a route the passes below put in its place (a loop's way
+    # back, the fewer repeats, the calm search) is held to `refine.level_round_kept` there,
+    # so a round does not swap it back for the router's own (the third routing hunt, C3-1).
+    asked_trip = trip
     loop_info = None
     if loop:
         # The way back by a different way, before the search, which then keeps it so.
         trip, loop_info = refine.make_loop(trip, refine_context)
-        if loop_info["fallback"] is None and loop_info["overlap_pct"] is not None:
-            refine_context.loop_overlap = loop_info["overlap_pct"] / 100.0
+        # A loop whose ways back ran out of time keeps the router's own way back, which the
+        # search is held to as well where it shares under LOOP_OUT_AND_BACK (review of hunt 2).
+        overlap = loop_info["overlap_pct"]
+        if (
+            overlap is not None
+            and loop_info["fallback"] in (None, "time")
+            and (loop_info["fallback"] is None or overlap < refine.LOOP_OUT_AND_BACK * 100.0)
+        ):
+            refine_context.loop_overlap = overlap / 100.0
     if len(trip.get("legs") or []) > 1 and not quick and not fixed:
         # A slight price on riding a way twice (the owner, 2026-10-18): each later leg that
         # repeats an earlier one's ways is asked for again (`refine.fewer_repeats`).
@@ -5105,10 +6077,12 @@ def _plan(
     # A plan the rider has replaced (`core.plan_cancel`) starts no search.
     check_cancel()
     if refine_limited is None:
-        if past and fit is None:
+        if past and fit is None and not fit_unfinished:
             # No route fits the target (OWNER-DECISIONS 267): the least stressful one
             # found is the answer, flagged with how far over it is, and nothing is
-            # searched.
+            # searched. Not where the ladder ran out of time (hunt 2, P2-2): that none
+            # fits is then not known, and the search runs as on any plan, on the least
+            # stressful route found and within the ceiling, with what time is left.
             refined = {
                 "rate": refine_context.rate,
                 "rounds": 0,
@@ -5128,6 +6102,9 @@ def _plan(
             "excluded": 0,
             "limited": refine_limited,
         }
+        if past and fit is None and not fit_unfinished:
+            # A loop past the span fitted to its target (R1) where no route fits it.
+            refined["no_fit"] = True
     if early_alternates is not None:
         # Not started yet where the search ended before it was wanted: not asked at all.
         early_alternates.future.cancel()
@@ -5139,7 +6116,19 @@ def _plan(
     # one the standard graph answered while the mountain-bike router was down, has no trails
     # to weigh.
     mtb_info = None
-    mtb_level_held = preset_name == mtb.PRESET and variant == Variant.MTB.value and not fixed
+    # And on the weekend plan beside the ride's own (`_plan_twice`), where the trails are closed
+    # but the rules still rank the router's routes and say what the route rides.
+    mtb_level_held = (
+        preset_name == mtb.PRESET
+        and (variant == Variant.MTB.value or weekend_beside)
+        and not fixed
+        and not dials.mtb_done
+    )
+    # Whether the route answered is still the one the search chose: Mountain Bike's choice
+    # may swap in a router alternative, or a route its level rounds asked for, that no
+    # crossing search has read, so the passes after it must not take it as searched (the
+    # 2026-11-08 hunt, S4).
+    mtb_replaced = False
     if mtb_level_held:
         searched_trip = trip
         trip, mtb_info = mtb.settle(
@@ -5147,20 +6136,70 @@ def _plan(
             [trip] if loop else trips, trip, request, variant, trace_costing, when,
             deadline, traces,
             dials.mtb_level, points, preferred_level=dials.mtb_preferred,
+            # The trails above the rider's level it steered off, which every later way
+            # round keeps out (P1).
+            level_excludes=refine_context.level_excludes,
+            keeps=None if trip is asked_trip else refine.level_round_keeps(trip, refine_context),
         )  # fmt: skip
         if trip is not searched_trip:
+            mtb_replaced = True
             # The routes to choose from were near-ties of the route it replaced: none are
             # offered beside a route they were not weighed against (as the Avoid pass).
             refine_context.candidates = refine_context.candidates[:1]
-    elif preset_name == mtb.PRESET and not trails_off and not fixed:
-        # Trails off is the rider's own choice, said by the answer's `dials`; this is the
-        # router not being there.
+    elif preset_name == mtb.PRESET and not trails_off and not dials.mtb_done and not fixed:
+        # Trails off and "End mountain biking" are the rider's own choice; this is the router not
+        # being there.
         mtb_info = {
             "max_level": mtbmode.clamp_level(dials.mtb_level),
             "preferred_level": mtbmode.preferred_level(dials.mtb_preferred, dials.mtb_level),
             "limited": "no_mtb_graph",
         }
     mtb_trip = trip
+    # "Easy MTB trails" (the owner, 2026-11-08): the trails rated 2 or harder held off the route
+    # as Mountain Bike holds a rider's level (`core.easy_mtb.settle`), after the calm search
+    # chose it and before the passes after it, which keep the same trails out. Where the
+    # off-road router was not there the ride was planned on the standard graph, as Gravel's
+    # is, and the answer says so (`no_offroad_graph`).
+    easy_info = None
+    easy_held = easy_asked and (variant == Variant.OFFROAD.value or weekend_beside) and not fixed
+    if easy_held:
+        searched_trip = trip
+        trip, easy_info = easy_mtb.settle(
+            trip, request, variant, trace_costing, deadline, traces, points,
+            level_excludes=refine_context.level_excludes,
+            keeps=None if trip is asked_trip else refine.level_round_keeps(trip, refine_context),
+        )  # fmt: skip
+        if trip is not searched_trip:
+            mtb_replaced = True
+            refine_context.candidates = refine_context.candidates[:1]
+    elif easy_asked and not fixed:
+        easy_info = easy_mtb.no_graph()
+    easy_trip = trip
+    # A red (very high stress) crossing still on the answer where the crossing search did not
+    # run over the whole route (a plan past REFINE_MAX_SPAN_M, a long Trailmaxxing plan
+    # searched leg by leg, a search cut short, a climb seek, a route Mountain Bike's choice
+    # swapped in): each red asked round, the worst first, and taken where it is better
+    # (`core.red_crossings`); before the dodge pass, which weighs its way round as any other.
+    # The owner, 2026-11-08, of the GW Parkway at grade at Tulane Dr on a Mount Vernon ride:
+    # "It's taking people onto dangerous intersections." On a loop too (the 2026-11-08 hunt,
+    # R1 and H4: a loop past about 15 km out had no crossing search and no red pass at all):
+    # each red by its own stretch of the route, so the way back stays as `make_loop` made it
+    # (OWNER-DECISIONS 266).
+    red_info = None
+    refine_context.seek_climb = bool(climb_seek)
+    if not quick and not fixed:
+        from . import red_crossings
+
+        whole_searched = searched_route(refined, mtb_replaced) and not long_calm
+        red_trip = trip
+        trip, red_info = red_crossings.settle(
+            trip, refine_context, whole_searched, refined, loop=bool(loop)
+        )
+        if trip is not red_trip:
+            # The routes to choose from were near-ties of the route it replaced.
+            refine_context.candidates = refine_context.candidates[:1]
+        if red_info is not None:
+            logger.info("red crossings: %s", red_info)
     # No weaving through side streets beside a busier road unless it buys a
     # meaningful length of calm (OWNER-DECISIONS 272, 273): the main road's stretch
     # replaces such a dodge. A loop's way back is kept as it was made, not to share
@@ -5178,9 +6217,7 @@ def _plan(
     # did: at least one round, not cut short.
     avoid_info, avoid_trip = None, None
     if avoid_list and not quick and not fixed:
-        searched = (
-            refined is not None and (refined.get("rounds") or 0) > 0 and not refined.get("limited")
-        )
+        searched = searched_route(refined, mtb_replaced)
         trip, avoid_info, avoid_trip = avoid_junctions.settle(
             trip,
             refine_context.request,
@@ -5226,6 +6263,10 @@ def _plan(
             if again["over_level_m"] > 1.0 and limited is None:
                 limited = "no_way_round"
             mtb_info.update({**again, "limited": limited})
+    if easy_held and easy_info is not None and trip is not easy_trip:
+        again = easy_mtb.reread(trip, variant, trace_costing, deadline, traces)
+        if again is not None:
+            easy_info.update({**again, "rounds": easy_info.get("rounds", 0)})
 
     # A long calm plan searched in legs of its own answers in the plan's legs: the
     # grouping of its search legs into the plan's, the answer's and its candidates'
@@ -5267,6 +6308,9 @@ def _plan(
         # which no crossing lies before), which a Mass Ride's crossing group never
         # spans (OWNER-DECISIONS 247).
         stops_m: list[float] = []
+        # Each leg's trace and shape, for telling a route over or under an Avoid-rated
+        # junction from one through it (`avoid_junctions.graded_line`, J6).
+        graded_legs: list = []
         # Every leg's trace at once (v0.7.0 step 3), read in order below.
         prefetch_traces(variant, trace_costing, [trip], deadline, traces)
         for leg in legs:
@@ -5289,6 +6333,7 @@ def _plan(
                 # unknown, and once the budget is gone `_call` starts no more.
                 logger.info("the budget ran out tracing a leg on %s", variant)
                 trace = None
+            graded_legs.append((trace, shape))
             if trace is None:
                 untraced = float(leg.get("summary", {}).get("length", 0.0)) * 1000.0
                 stress["unknown"] += untraced
@@ -5305,9 +6350,9 @@ def _plan(
         # The router's seconds along the line, read before a long plan's legs are grouped.
         router_at = time_marks.router_marks(legs, coordinates, leg_ends)
         dirt_trails = False
-        if (touched_trails or any_dirt) and variant == Variant.OFFROAD.value:
+        if (touched_trails or any_dirt) and variant in STRAY_GRAPHS:
             ways = trail_touch.off_road_ways([piece.way_id for piece in pieces])
-            stray = trail_touch.stray_rings(pieces, ways, touched_trails, any_dirt)
+            stray = trail_touch.stray_rings(pieces, ways, touched_trails, any_dirt, exit_at)
             if stray:
                 if alternate:
                     # A side route (a candidate, the way round a junction or through a
@@ -5450,8 +6495,20 @@ def _plan(
         described_full, described_overview = described if described else (None, None)
         # The Avoid-rated junctions it passes (307, 335), at their distance along the
         # route as the router measures it; each also an entry of the description.
-        avoid_found = avoid_rules.passages(coordinates, avoid_list) if avoid_list else []
-        line_m = avoid_rules.line_length_m(coordinates)
+        # Read from the traces: a bridge over or a tunnel under one is no pass (J6).
+        avoid_line, avoid_separated, avoid_nodes = (
+            avoid_junctions.graded_line(graded_legs, raw_junctions)
+            if avoid_list
+            else (coordinates, None, [])
+        )
+        avoid_found = (
+            avoid_rules.passages(
+                avoid_line, avoid_list, separated=avoid_separated, nodes=avoid_nodes
+            )
+            if avoid_list
+            else []
+        )
+        line_m = avoid_rules.line_length_m(avoid_line)
         length_m = float((trip.get("summary") or {}).get("length", 0.0)) * 1000.0
         avoid_scale = length_m / line_m if line_m > 0 and length_m > 0 else 1.0
         described_full = avoid_rules.with_entries(described_full, avoid_found, avoid_scale)
@@ -5540,7 +6597,7 @@ def _plan(
             at = {
                 h: sum(
                     hill_cost.profile_cost_s(
-                        kept_profile, hill_price.mass_kg, hill_price.flat_ms, h
+                        kept_profile, hill_price.mass_kg, hill_price.flat_ms, h, hill_price.assist_w
                     )
                 )
                 for h in (0, hills_dial)
@@ -5601,11 +6658,10 @@ def _plan(
         )
         # The time its junctions cost the rider, which the router's own time leaves out
         # (`routemaker.junction_delay`): part of the time shown.
-        waits = junction_delay.delay_runs(
-            raw_junctions,
-            stop_as_yield,
-            lambda lon, lat: intersections.beacon_at(lon, lat, beacons) is not None,
-        )
+        # Outside the major cities a signal across a big road waits longer, and one read as
+        # needing its beg button is marked for Ride (the owner, 2026-11-08).
+        found_waits = junction_waits(raw_junctions, beacons, events, when=when)
+        waits = [(w.m, w.seconds) for w in found_waits]
         delay = float(sum(wait for _m, wait in waits))
         route_m = round(float(summary.get("length", 0.0)) * 1000.0, 1)
         route_s = float(summary.get("time", 0.0))
@@ -5661,6 +6717,9 @@ def _plan(
             "distance_m": round(float(summary.get("length", 0.0)) * 1000.0, 1),
             "duration_s": round(route_s + delay + walk_change_s, 1),
             "junction_delay_s": round(delay, 1),
+            # The signals read as needing their beg button (`junction_delay.signal_wait`), in
+            # the description's metres (the traced metres at the router's length), for Ride.
+            "light_buttons": light_buttons(found_waits, route_m, traced_m),
             # Where along the line that time falls, hills and junction waits in place, for a
             # ride's arrival times (`routemaker.time_marks`).
             "time_marks": time_marks.time_marks(router_at, waits, traced_m),
@@ -5680,6 +6739,7 @@ def _plan(
                 "avoid_gravel": avoid_gravel,
                 # What was planned, not what was asked: Mass Ride is always trails-off.
                 "trails_off": trails_off or preset.variant == Variant.NO_TRAIL.value,
+                "easy_mtb": easy_asked,
                 "target_distance_m": int(target_m) if target_m else None,
                 "system_weight_kg": dials.system_weight_kg if maxcalm else None,
                 "loop": loop,
@@ -5787,23 +6847,48 @@ def _plan(
     body["against_traffic"] = answer.get("against_traffic") if following else None
     body["follows_exactly"] = following and dials.follow_exact
     body["drawn_legs"] = sorted(dials.straight) if drawing else None
+    # What the red-crossing pass did (`core.red_crossings.settle`), in the answer and not
+    # only in the log (hunt S5): the answer cache reads its `limited` (`route_cache.keepable`)
+    # and a reader of the answer sees a pass cut short. Null where it did not run.
+    body["red_crossings"] = red_info
     timing.mark("answer")
 
-    def _with_mtb(answered: dict, info: dict | None) -> dict:
+    def _with_mtb(
+        answered: dict, info: dict | None, easy: dict | None = None, timed: dict | None = None
+    ) -> dict:
         """A Mountain Bike route's reading on its body, and its time at about 6 mph
-        (10 km/h) on singletrack (`mtbmode.duration_s`), the router's own time kept."""
+        (10 km/h) on singletrack (`mtbmode.duration_s`), the router's own time kept; and an
+        Easy MTB trails route's reading (`easy_mtb`), its time on the mountain-bike class at
+        the same pace where `timed`, its trip, is given (`easy_mtb.dirt_m`; the owner, round
+        3, 2026-11-08: "Yes", as Mountain Bike on the same trails: costing finding C3-7)."""
         answered["mtb"] = info
-        if info and info.get("singletrack_m"):
+        answered["easy_mtb"] = easy
+        singletrack_m = info.get("singletrack_m") if info else None
+        if not singletrack_m and easy_held and easy is not None and timed is not None:
+            try:
+                singletrack_m = easy_mtb.dirt_m(timed, variant, trace_costing, deadline, traces)
+            except (DeadlineExceeded, RouterUnavailable, RouterRefused):
+                # Not read in time: the router's own time, as before.
+                singletrack_m = None
+        if singletrack_m:
             # The junction delay is added after the singletrack retiming, so the router's
             # own time stays the router's and the delay is not scaled with the trail.
             delay = answered.get("junction_delay_s") or 0.0
             router_s = answered["duration_s"] - delay
-            info["router_duration_s"] = round(router_s, 1)
+            if info and info.get("singletrack_m"):
+                info["router_duration_s"] = round(router_s, 1)
             answered["duration_s"] = round(
-                mtbmode.duration_s(router_s, answered["distance_m"], info["singletrack_m"]) + delay,
+                mtbmode.duration_s(router_s, answered["distance_m"], singletrack_m) + delay,
                 1,
             )
         return answered
+
+    def _offered_easy(offered: dict) -> dict | None:
+        """An Easy MTB trails reading of a route offered beside the answer: its own, so a
+        harder trail on it is said when it is shown."""
+        if not easy_held:
+            return easy_info
+        return easy_mtb.reread(offered, variant, trace_costing, deadline, traces)
 
     def _offered_mtb(offered: dict) -> dict | None:
         """The reading of a route offered beside the answer (a candidate, the way round an
@@ -5815,7 +6900,7 @@ def _plan(
             dials.mtb_preferred,
         )  # fmt: skip
 
-    _with_mtb(body, mtb_info)
+    _with_mtb(body, mtb_info, easy_info, trip)
     body["avoid_search"] = avoid_info
     body["avoid_alternate"] = None
     if avoid_list:
@@ -5827,7 +6912,7 @@ def _plan(
         if deadline.at - clock() >= ALTERNATE_MIN_S:
             try:
                 around = work_zones.with_work_zones(_answer(avoid_trip, None, True), zones_plan)
-                _with_mtb(around, _offered_mtb(avoid_trip))
+                _with_mtb(around, _offered_mtb(avoid_trip), _offered_easy(avoid_trip), avoid_trip)
                 around["walk_in"] = walk_in_for(around, body)
                 around["extra_distance_m"] = round(around["distance_m"] - body["distance_m"], 1)
                 around["extra_duration_s"] = round(around["duration_s"] - body["duration_s"], 1)
@@ -5847,7 +6932,7 @@ def _plan(
     if through is not None and deadline.at - clock() >= ALTERNATE_MIN_S:
         try:
             standard = work_zones.with_work_zones(_answer(through, None, True), zones_plan)
-            _with_mtb(standard, _offered_mtb(through))
+            _with_mtb(standard, _offered_mtb(through), _offered_easy(through), through)
             standard["extra_distance_m"] = round(standard["distance_m"] - body["distance_m"], 1)
             standard["extra_duration_s"] = round(standard["duration_s"] - body["duration_s"], 1)
             standard["closure_ids"] = sorted(zones_plan.affecting)
@@ -5873,7 +6958,7 @@ def _plan(
         try:
             refine.analyse(found, refine_context, deadline)
             candidate = work_zones.with_work_zones(_answer(found, None, True), zones_plan)
-            _with_mtb(candidate, _offered_mtb(found))
+            _with_mtb(candidate, _offered_mtb(found), _offered_easy(found), found)
             candidate["walk_in"] = walk_in_for(candidate, body)
             if maxcalm and target_m:
                 candidate["over_target_m"] = target_fields(
@@ -5887,6 +6972,37 @@ def _plan(
     body["candidates"] = candidates or None
     body["rank"] = 1 if candidates else None
     timing.mark("more")
+    slot = _ranking_slot.get()
+    if slot is not None and slot.get("gate"):
+        # `_plan_twice` with no weekend closure round the ride's points: the route's own box
+        # is read, and the route ranked for the weekend plan only where one lies in it.
+        if not weekend_closure_near(body["geometry"]["coordinates"]):
+            slot = None
+    if slot is not None:
+        # The route answered, read for `_plan_twice` to weigh against the other graph's.
+        analysis = mtb_reading = None
+        try:
+            analysis = refine.analyse(trip, refine_context, deadline)
+        except (DeadlineExceeded, RouterUnavailable, RouterRefused, NoRoute):
+            pass
+        if mtb_level_held:
+            level = mtbmode.clamp_level(dials.mtb_level)
+            try:
+                found = mtb.reading_of(
+                    trip, variant, trace_costing, when, deadline, traces, level,
+                    preferred_level=mtbmode.preferred_level(dials.mtb_preferred, level),
+                )  # fmt: skip
+            except (DeadlineExceeded, RouterUnavailable, RouterRefused):
+                found = None
+            mtb_reading = None if found is None else found[0]
+        slot["ranking"] = _Ranking(
+            analysis=analysis,
+            ctx=refine_context,
+            mtb=mtb_reading,
+            harder_m=(easy_info or {}).get("harder_m") if easy_held else None,
+            mtb_ride=preset_name == mtb.PRESET,
+            easy_ride=easy_asked,
+        )
     return body
 
 
@@ -5919,7 +7035,136 @@ def sets_off_back(answer: dict, heading: float) -> bool:
     return bearing_delta(bearing(line[0], b), heading) >= UTURN_MIN_DEG
 
 
+# How far along the route a road the rider marked closed may start and still be taken for one
+# the route rides through from its first edge (`plan_onward`): Ride's "Go round" marks the road
+# from 100 ft to 600 ft ahead of the rider (frontend/src/lib/roadClosed.ts), and the snap and
+# the trim take a little more.
+BLOCKED_START_M = 250.0
+# The route planned the other way is kept only where it is at most this many times the route
+# through the marked road, or this much longer, whichever allows more (2 mi, 3.2 km).
+BLOCKED_DETOUR_RATIO = 2.0
+BLOCKED_DETOUR_SLACK_M = 3_200.0
+
+
 def plan_onward(
+    points: list[list[float]],
+    preset_name: str,
+    long_ride: bool = False,
+    started: float | None = None,
+    dials: Dials | None = None,
+    quick: bool = False,
+    candidates: bool = True,
+) -> dict:
+    """`_plan_onward`, checked against the roads the rider marked closed (`dials.blocked`;
+    hunt K1, 2026-11-08). The router lets a left-out edge be the route's first, so a re-plan
+    from a rider on a long edge with the marked stretch ahead on it rode straight through it.
+    A route that runs along a marked road it reaches within `BLOCKED_START_M` is planned again
+    setting off the other way (a heading opposite its own start, which leaves the rider's edge
+    by its other end); where that plan fails or runs along one too, the first route is kept and
+    says so in red (`work_zones.warn_blocked`), as one that runs along a marked road further on
+    does."""
+    dials = dials or Dials()
+    answered = _plan_onward(points, preset_name, long_ride, started, dials, quick, candidates)
+    if not dials.blocked:
+        return answered
+    coordinates = (answered.get("geometry") or {}).get("coordinates") or []
+    through = work_zones.through_blocked(coordinates, dials.blocked)
+    if not through:
+        return answered
+    if (
+        through[0].from_m <= BLOCKED_START_M
+        and dials.follow is None
+        and not loop_wanted(points, dials.loop, preset_name)
+        and len(coordinates) >= 2
+    ):
+        onward = _setting_off(coordinates)
+        if onward is not None:
+            timings = timing.current()
+            if timings is not None:
+                timings.note("blocked", "replanned the other way")
+            turned = dataclasses.replace(
+                _graph_won(answered, preset_name, dials),
+                heading=(onward + 180.0) % 360,
+                ahead_only=False,
+            )
+            try:
+                other = plan(
+                    points, preset_name, long_ride=long_ride, started=started, dials=turned,
+                    quick=quick, candidates=candidates,
+                )  # fmt: skip
+            except PlanCancelled:
+                raise
+            except (NoRoute, TooLong, RouterUnavailable, DeadlineExceeded, _GraphLeft) as error:
+                logger.info(
+                    "a marked road ahead: no route the other way (%s)", type(error).__name__
+                )
+            else:
+                line = (other.get("geometry") or {}).get("coordinates") or []
+                # Kept only where it really keeps off the marked road (checked at the wider
+                # `rules.ALONG_M`, so a route a few metres beside it does not pass) and is not
+                # far longer than the route through it (review of hunt K1, 2026-11-08).
+                first_m = float(answered.get("distance_m") or 0.0)
+                other_m = float(other.get("distance_m") or 0.0)
+                off_it = not work_zones.rules.along(
+                    line,
+                    [
+                        work_zones.rules.Zone(f"blocked-{i}", "rider", "closed", 0.0,
+                                              tuple(map(tuple, b)), None, None, None, None)
+                        for i, b in enumerate(dials.blocked)
+                        if len(b) >= 2
+                    ],
+                )  # fmt: skip
+                if off_it and other_m <= max(
+                    BLOCKED_DETOUR_RATIO * first_m, first_m + BLOCKED_DETOUR_SLACK_M
+                ):
+                    return other
+                logger.info("a marked road ahead: the way the other way is not kept")
+    logger.info("the route runs along %d road(s) the rider marked closed", len(through))
+    return work_zones.warn_blocked(answered, through)
+
+
+def _graph_won(answered: dict, preset_name: str, dials: Dials) -> Dials:
+    """`dials` for a second plan of the same ride (a re-plan's way ahead, or the other way round
+    a marked road), on the graph the first plan's route came from where `plan` planned it twice
+    or could have (`_weekend_ride`): the weekend graph where its route won, the ride's own where
+    that did. The second plan is then made once, on that graph, not twice again in what the
+    first left of the budget, where its weekend plan was the one most often dropped for time
+    (hunt 3, P3-7). A first route from a fallback graph leaves the dials as they are."""
+    # A name `presets.PRESETS` does not hold (a caller's own, as `plan` takes) is planned once.
+    if (
+        dials.graph is not None
+        or preset_name not in presets.PRESETS
+        or not _weekend_ride(preset_name, dials)
+    ):
+        return dials
+    won = answered.get("variant")
+    preset = presets.PRESETS[preset_name]
+    assist = bool(dials.assist) and preset.assist_speed_kmh is not None
+    trails_off = bool(dials.trails_off)
+    easy = _easy_asked(preset_name, dials)
+    own = presets.variant_for_ride(
+        preset_name, dials.when or default_when(), assist, trails_off, easy, dials.mtb_done
+    )
+    if won in (Variant.WEEKEND.value, own):
+        return dataclasses.replace(dials, graph=won)
+    return dials
+
+
+def _setting_off(coordinates) -> float | None:
+    """The bearing the route's line sets off on, read `UTURN_READ_M` along it."""
+    line = [Point(lon, lat) for lon, lat in coordinates]
+    along = 0.0
+    b = line[0]
+    for a, b in zip(line, line[1:], strict=False):
+        along += haversine(a, b)
+        if along >= UTURN_READ_M:
+            break
+    if along < 1.0:
+        return None
+    return bearing(line[0], b)
+
+
+def _plan_onward(
     points: list[list[float]],
     preset_name: str,
     long_ride: bool = False,
@@ -5956,11 +7201,11 @@ def plan_onward(
     if timings is not None:
         timings.note("uturn", "replanned")
     try:
-        ahead = plan(points, preset_name, dials=dials, **asked)
+        ahead = plan(points, preset_name, dials=_graph_won(answered, preset_name, dials), **asked)
     except PlanCancelled:
         # A DeadlineExceeded too, but the rider has moved on: no answer is kept (review of S7).
         raise
-    except (NoRoute, TooLong, RouterUnavailable, DeadlineExceeded) as error:
+    except (NoRoute, TooLong, RouterUnavailable, DeadlineExceeded, _GraphLeft) as error:
         logger.info("a re-route turns round: no route ahead (%s)", type(error).__name__)
         return answered
     saving = float(ahead["distance_m"]) - float(answered["distance_m"])
@@ -6011,6 +7256,7 @@ def _early_strays(
     traces: dict,
     touched_trails: frozenset[int],
     any_dirt: bool,
+    exit_at: int | None = None,
 ) -> list:
     """The strips across the stray dirt trails (`trail_touch.stray_rings`) of the router's own
     route `trip`, read as the answer reads them (`_plan`, audit S12 part 1); none where a leg
@@ -6032,7 +7278,7 @@ def _early_strays(
         if trace is not None:
             pieces.extend(pieces_of_trace(trace))
     ways = trail_touch.off_road_ways([piece.way_id for piece in pieces])
-    return trail_touch.stray_rings(pieces, ways, touched_trails, any_dirt)
+    return trail_touch.stray_rings(pieces, ways, touched_trails, any_dirt, exit_at)
 
 
 def quick_applies(preset_name: str, loop: bool, long_ride: bool, long_calm: bool) -> bool:

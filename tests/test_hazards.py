@@ -188,15 +188,25 @@ def test_the_tiles_do_not_carry_hazards():
     assert HAZARD_COLUMN not in stress_tiles.OPTIONAL_PROPERTIES.values()
 
 
-def test_the_graph_is_told_of_a_hazard_anywhere_on_the_way():
-    from pipeline import hazard_layer
+def test_the_graph_prices_a_way_for_a_hazard_covering_half_of_it():
+    # This pinned "a hazard anywhere on the way": one listed block (STREET[3] to [4], 87 m of
+    # the way's 870 m) priced the whole way LTS 4. Hunt X5 (2026-11-08): a way's graph tags are
+    # the whole way's, so a listed stretch prices it only when it covers half of it; a shorter
+    # one is marked where a route rides it, as the owner asked ("show it if it's routed on").
+    from pipeline import extract, hazard_layer
 
     street = _way(1, STREET, name="O Street Northwest")
     assert not hazard_layer.way_has_hazard(street, False, ())
     assert hazard_layer.way_has_hazard(street, True, ())
     assert hazard_layer.way_has_hazard(_way(2, STREET, surface="sett"), False, ())
-    stretch = hazard_layer.Stretch(STREET[3], STREET[4])
-    assert hazard_layer.way_has_hazard(street, False, [(stretch, (hazards.RAILS,))])
+    block = [(hazard_layer.Stretch(STREET[3], STREET[4]), (hazards.RAILS,))]
+    assert not hazard_layer.way_has_hazard(street, False, block)
+    assert any(
+        hazard_layer.piece_hazard({}, False, block, p) for _, p in extract.iter_segments(street)
+    )
+    half = [(hazard_layer.Stretch(STREET[2], STREET[7]), (hazards.COBBLES,))]
+    assert hazard_layer.way_has_hazard(street, False, half)
+    assert hazard_layer.way_has_hazard(street, False, [(None, (hazards.COBBLES,))])
     far = hazard_layer.Stretch((-76.0, 39.0), (-75.9, 39.0))
     assert not hazard_layer.way_has_hazard(street, False, [(far, (hazards.RAILS,))])
 

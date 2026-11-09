@@ -284,3 +284,19 @@ def test_compare_places_out_of_time_says_which_places_were_not_compared(tools, a
     assert [row["place"] for row in out["places"]] == [HERE]
     assert out["not_compared"] == [THERE]
     assert "ran out of time after 1 of 2 places" in out["notes"][0]
+
+
+def test_compare_places_takes_each_place_by_the_destinations_not_the_other_places(api) -> None:
+    """PL3-8: the places are alternatives. Herndon Metro was taken at the way in nearest the
+    other place (north of the Dulles Toll Road), and timed from there to a destination south of
+    it; it goes to the way in nearest the destination, as a route there would."""
+    stations = mcp.load_stations()
+    herndon = next(s for s in stations if s.name == "Herndon")
+    north, south = [-77.385, 38.97], [-77.3870, 38.9450]
+    tools = mcp.Server(lambda: api, stations=stations, out_dir=None)
+    out = tools.call(
+        "compare_places", {"places": ["Herndon Metro", north], "destinations": [south]}
+    )
+    start = api.nearest_asked[0]["points"][0]
+    assert tuple(start) == herndon.way_in_from(tuple(south)) and start[1] < 38.952
+    assert out["points_taken_as"][0]["asked"] == "Herndon Metro"
