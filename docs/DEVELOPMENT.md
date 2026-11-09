@@ -5208,7 +5208,11 @@ The third routing hunt's owner calls, as Stephen decided them on 2026-11-08:
   `no_way`); a round of only such reds that finds no route is skipped, not said cut short. The
   red pass drops a red whose ask finds no route and tries the next, as it did; its window is
   clipped at the leg's end (`stretch`). `red_crossings.stops_m` (hunt 2, P2-1) went with the
-  filter it fed. Tests: tests/test_refine.py, tests/test_red_crossings.py.
+  filter it fed. Review fix: in the red pass a red near an end is left out of the whole-plan
+  ask (step 1), where a cul-de-sac's only exit made the router find no route for every red
+  together, and is asked after the reds clear of the ends, by the narrow window only
+  (`red_crossings.queue`, `near_end`), so its asks do not spend the `MAX_ASKS` (6) the others
+  need. Tests: tests/test_refine.py, tests/test_red_crossings.py.
 
 ### Trails off (OWNER-DECISIONS 463, 463a, 463b)
 
@@ -6977,7 +6981,10 @@ a Mass Ride) and on the routes to choose from. An answer whose pass stopped at `
 The pass asks round every red, those near the rider's own stops and ends and a long calm plan's
 cuts too (routing hunt 4, J4-1; before, it left a red within 500 m of a stop or an end, and hunt 2,
 P2-1, had taken the cuts out of those stops). The way round is asked within the red's own leg, so
-a red right at a stop, a cut or an end may find none, and is then left.
+a red right at a stop, a cut or an end may find none, and is then left. A red within 500 m of a
+stop or an end is left out of the whole-plan ask and asked after the others, by the 1.2 mi (2 km)
+window only (`red_crossings.queue`): where it is a cul-de-sac's only exit it has no way round, and
+its asks would otherwise spend the pass's six before the reds clear of the ends were asked.
 
 ### Reproduction (item 273)
 

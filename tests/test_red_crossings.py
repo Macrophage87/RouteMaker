@@ -383,6 +383,49 @@ def test_a_red_at_a_cul_de_sacs_only_exit_is_dropped_and_the_next_tried(monkeypa
     assert info["decision"] == "avoided" and info["reds_after"] == 1 and detoured(out)
 
 
+def test_a_cul_de_sac_red_does_not_spend_the_asks_the_mid_route_reds_need(monkeypatch):
+    """J4-1 review: an unavoidable red 300 m from the start, the worst on the route, and five
+    mid-route reds. The whole-plan ask leaves the red near the start out, so it still clears
+    the five together, and the red near the start is asked after them by the narrow window
+    only. Before, the whole-plan ask excluded it too and found no route, and four of the six
+    asks went on it: every red was kept and the plan said cut short ("asks")."""
+    near = event(300.0, cost_ft=4500.0)
+    mids = [event(m) for m in (8_000.0, 14_000.0, 20_000.0, 26_000.0, 32_000.0)]
+
+    def read(trip):
+        points = [p for leg in trip["legs"] for p in routing.decode_polyline6(leg["shape"])]
+        north = [
+            (a[0], b[0])
+            for a, b in zip(points, points[1:], strict=False)
+            if min(a[1], b[1]) > BASE[1] + 1e-4
+        ]
+        left = [e for e in mids if not any(lo <= e.lon <= hi for lo, hi in north)]
+        tiers = "1" * (401 if north else 400)
+        return analysis("x", tiers=tiers, cost_s=4100.0 if north else 4000.0, events=[near, *left])
+
+    window = window_answer()
+
+    def answer(payload):
+        if any(p["lon"] == near.lon for p in payload["exclude_locations"]):
+            raise routing.RouterRefused(400, 442, "no path")
+        if payload["locations"][0].get("type") != "break":
+            # The whole plan: along the line past `near`, then round every mid-route red.
+            way = round_leg(THROUGH[2], THROUGH[-1], 40.1)["legs"][0]
+            points = [*THROUGH[:2], *routing.decode_polyline6(way["shape"])]
+            leg = {"shape": dedodge.encode_polyline6(points), "summary": {"length": 40.1}}
+            return {"legs": [leg], "summary": {"length": 40.1}}
+        return window(payload)
+
+    router = Router(monkeypatch, read, answer)
+    out, info = red_crossings.settle(plain_through(), context(), searched=False)
+    assert info["reds"] == 6 and info["decision"] == "avoided" and info["avoided"] == 5
+    assert info["reds_after"] == 1 and info["no_way_round"] == 1
+    assert info["limited"] is None and info["asks"] == 3 <= red_crossings.MAX_ASKS
+    whole = router.asked[0]["exclude_locations"]
+    assert len(whole) == 5 and all(p["lon"] != near.lon for p in whole)
+    assert detoured(out)
+
+
 def test_a_way_round_onto_a_busy_road_is_refused(monkeypatch):
     # The way round trades the crossing for 2 km of LTS 4: the Traffic-wins guard keeps it.
     busy = analysis("round", tiers="1" * 200 + "4" * 200, cost_s=4000.0)
