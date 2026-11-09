@@ -144,6 +144,7 @@ RIDE_NAMES = {
     "fast": "Fast",
     "road-bike": "Road Bike",
     "cargo": "Cargo Bike",
+    "tandem": "Tandem",
     "ebike": "E-bike",
     "bikeshare": "Bikeshare",
     "novice": "Novice and Nervous",

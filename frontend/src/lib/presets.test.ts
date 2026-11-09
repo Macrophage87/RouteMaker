@@ -16,6 +16,8 @@ test("the picker offers every ride type in PLAN's table", () => {
       "fast",
       "road-bike",
       "cargo",
+      // Tandem (Stephen, 2026-11-08): a long bike for a pair of riders.
+      "tandem",
       "ebike",
       "bikeshare",
       "novice",

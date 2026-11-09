@@ -54,6 +54,16 @@ export const SHARED_REVOKED = t("This link was turned off by its owner.");
 /** How the page shows it: as a plan's error, in the route's place (never sent again). */
 export const SHARED_REVOKED_ERROR: RouteError = { kind: "no-route", status: 410, title: t("Link turned off"), message: SHARED_REVOKED, noAutoResend: true };
 /**
+ * A link whose line is gone (expired, or an assistant's draft link after its day) and that carries no plan of its own
+ * to plan again, as a link pasted without its `#...` part (Stephen 2026-11-08: an old link "just taking me to go"):
+ * said plainly in the route's place, as a turned-off link is. The server keeps nothing of it to plan from.
+ */
+export const SHARED_EXPIRED = t("This link has expired. Ask for a new one.");
+export const SHARED_EXPIRED_ERROR: RouteError = { kind: "no-route", status: 404, title: t("Link expired"), message: SHARED_EXPIRED, noAutoResend: true };
+/** The same link, when its line could not be read (offline, or no answer in time): nothing to plan, so said. */
+export const SHARED_UNREAD = t("Could not open this link. Try again later.");
+export const SHARED_UNREAD_ERROR: RouteError = { kind: "no-route", status: 0, title: t("Link not opened"), message: SHARED_UNREAD, noAutoResend: true };
+/**
  * A link shared as a ride, not only a route (the owner, 2026-10-18: "There should be the option for sharing the route
  * or sharing a ride ... ride is the fixed one with optional location sharing ... route is so people can review or do
  * it themselves separately"): its fragment carries `ride=1` beside the line's id. Opened, the route is ridden as it
@@ -63,11 +73,11 @@ export const RIDE_PARAM = "ride";
 /** What each Share button does, said by the info beside them (the owner: "Make that clear in a tooltip"). */
 export const SHARE_ROUTE_ABOUT = t("Share route: others can look it over, change it or ride it on their own.");
 /** Broadcast's link went without the leader's key (the page could not make it): nothing starts. */
-export const BROADCAST_NO_LEAD = t("The link went without you as its leader, so the ride did not start. Press Start to ride.");
+export const BROADCAST_NO_LEAD = t("The link was shared without you as its leader. The ride did not start. Press Start to ride.");
 /** Broadcast's own line when the share sheet failed: Copy link would not start a broadcast, and Go has none on screen. */
 export const BROADCAST_SHARE_FAILED = t("Could not open the share sheet, so the ride did not start.");
 /** Broadcast pressed during a ride (Stephen 2026-10-24: "Let people broadcast from a ride"): the ride goes on either way. */
-export const BROADCAST_RIDE_NO_LEAD = t("The link went without you as its leader. Press Share live to try again.");
+export const BROADCAST_RIDE_NO_LEAD = t("The link was shared without you as its leader. Press Share live to try again.");
 export const BROADCAST_RIDE_FAILED = t("Could not open the share sheet. Press Share live to try again.");
 export const SHARE_RIDE_WAIT = t("Share ride needs the route ready. Try again once it shows.");
 export const SHARE_RIDE_ABOUT =
@@ -275,15 +285,16 @@ function isRoute(value: unknown, id: string): value is SharedRoute {
 }
 
 /**
- * The shared line; "revoked" when its owner turned the link off (410: nothing is planned); or null when it is not
- * kept (or cannot be had in time): the link's inputs are planned instead.
+ * The shared line, "revoked" for a link turned off (410), "gone" for one no longer kept (404), or null when it could
+ * not be read (offline, no answer in time, or an answer that is not a route).
  */
-export async function readShared(origin: string, id: string, get: Fetch = fetch, timeoutMs = SHARED_READ_TIMEOUT_MS): Promise<SharedRoute | "revoked" | null> {
+export async function readShared(origin: string, id: string, get: Fetch = fetch, timeoutMs = SHARED_READ_TIMEOUT_MS): Promise<SharedRoute | "revoked" | "gone" | null> {
   const abort = typeof AbortController === "undefined" ? null : new AbortController();
   const timer = abort ? setTimeout(() => abort.abort(), timeoutMs) : null;
   try {
     const response = await get(`${origin}/api/shared-routes/${id}`, { headers: { Accept: "application/json" }, credentials: "same-origin", signal: abort?.signal });
     if (response.status === 410) return "revoked";
+    if (response.status === 404) return "gone";
     if (!response.ok) return null;
     const body: unknown = await response.json();
     return isRoute(body, id) ? { ...body, gpx: typeof body.gpx === "string" ? body.gpx : "", answer: body.answer ?? null } : null;

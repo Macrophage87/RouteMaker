@@ -8,6 +8,7 @@ real, because the breakdown is a PostGIS join.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import math
 from datetime import UTC, datetime
@@ -400,7 +401,7 @@ class TestSeekingClimbs:
         from pathlib import Path
 
         configs = sorted((Path(settings.BASE_DIR) / "valhalla").glob("valhalla-*.json"))
-        assert len(configs) == 7
+        assert len(configs) == 8
         for path in configs:
             limits = json.loads(path.read_text())["service_limits"]
             assert routing.SEEK_ALTERNATES == limits["max_alternates"], path.name
@@ -454,6 +455,97 @@ def test_choose_climb_prefers_the_first_on_a_tie():
     assert routing.choose_climb(trips, 1.5) == 0
 
 
+def _climb(line, busy: bool, climb_id: str = "c"):
+    from core import hillseek
+
+    length = sum(
+        routing.haversine(routing.Point(*a), routing.Point(*b))
+        for a, b in zip(line, line[1:], strict=False)
+    )
+    return hillseek.Climb(
+        id=climb_id,
+        category="4",
+        length_m=length,
+        gain_m=60.0,
+        grade_pct=5.0,
+        line=tuple(line),
+        busy=busy,
+    )
+
+
+# Two ways from VERTICES[0] to VERTICES[-1]: one up a climb on a street 1,000 ft (333 m)
+# north, one up a climb on a street 1,000 ft south.
+_N = [
+    VERTICES[0],
+    (VERTICES[1][0], VERTICES[0][1] + 0.003),
+    (VERTICES[3][0], VERTICES[0][1] + 0.003),
+    VERTICES[-1],
+]
+_S = [
+    VERTICES[0],
+    (VERTICES[1][0], VERTICES[0][1] - 0.003),
+    (VERTICES[3][0], VERTICES[0][1] - 0.003),
+    VERTICES[-1],
+]
+
+
+class TestChooseClimb:
+    """The owner, 2026-11-08 (hunts P3, V7): "Skip busy climbs if there's a better calm one,
+    yes, unless intentionally chosen", and no doubling back to climb."""
+
+    def trips(self, north_climb: float, south_climb: float) -> list[dict]:
+        return [
+            _trip(VERTICES, 3.0, FLAT),
+            _trip(_N, 3.4, [10.0, 10.0 + north_climb, 10.0 + north_climb, 10.0]),
+            _trip(_S, 3.4, [10.0, 10.0 + south_climb, 10.0 + south_climb, 10.0]),
+        ]
+
+    def climbs(self, north_busy=True, south_busy=False):
+        return [
+            _climb(_N[1:3], north_busy, "north"),
+            _climb(_S[1:3], south_busy, "south"),
+        ]
+
+    def test_with_no_climbs_read_the_most_climbing_is_kept_as_before(self):
+        assert routing.choose_climb(self.trips(100.0, 90.0), 1.5) == 1
+
+    def test_a_busy_climb_gives_way_to_a_calm_one_that_climbs_about_as_well(self):
+        # Before: the busy north climb, 100 m against 90 m.
+        assert routing.choose_climb(self.trips(100.0, 90.0), 1.5, self.climbs(), []) == 2
+
+    def test_a_calm_one_that_climbs_much_less_does_not_replace_it(self):
+        assert routing.choose_climb(self.trips(100.0, 40.0), 1.5, self.climbs(), []) == 1
+
+    def test_a_busy_climb_the_rider_chose_stays(self):
+        # The plan's end on the north climb's top: "unless intentionally chosen".
+        points = [list(VERTICES[0]), list(_N[2])]
+        assert routing.choose_climb(self.trips(100.0, 90.0), 1.5, self.climbs(), points) == 1
+
+    def test_a_start_at_a_busy_climbs_foot_does_not_choose_it(self):
+        """Review of C2: the start on the north climb's foot turned the guard off. The start
+        is not a choice ("its start is not enough"), so the calm south climb is kept."""
+        foot = list(_N[1])
+        points = [foot, list(VERTICES[-1])]
+        assert routing.choose_climb(self.trips(100.0, 90.0), 1.5, self.climbs(), points) == 2
+        # Nor the start again at a round trip's end.
+        back = [foot, list(VERTICES[-1]), [foot[0] + 0.00001, foot[1]]]
+        assert routing.choose_climb(self.trips(100.0, 90.0), 1.5, self.climbs(), back) == 2
+
+    def test_two_busy_climbs_keep_the_most_climbing(self):
+        climbs = self.climbs(north_busy=True, south_busy=True)
+        assert routing.choose_climb(self.trips(100.0, 90.0), 1.5, climbs, []) == 1
+
+    def test_a_route_that_doubles_back_to_climb_is_not_chosen(self):
+        """Hunt V7: a through point off the climb's line made a route up, down and up again,
+        which climbs most; it rode 0.5 mi of the line three times."""
+        trips = [
+            _trip(VERTICES, 4.0, FLAT),
+            _trip(THROUGH_THE_CLIMB, 5.5, HILLY),
+            _trip(_N, 4.4, [10.0, 30.0, 30.0, 10.0]),
+        ]
+        assert routing.choose_climb(trips, 1.5) == 2
+
+
 @pytest.mark.parametrize("hills", [1, 50, 100])
 def test_the_distance_budget_grows_with_the_slider(hills):
     assert presets.seek_distance_ratio(hills) > presets.seek_distance_ratio(hills - 1)
@@ -464,8 +556,25 @@ def test_the_distance_budget_grows_with_the_slider(hills):
 # The hill seek's climb (FOLLOWUP-HILL-SEEK, 205): up from VERTICES[3] west to
 # VERTICES[1], so the direct route along VERTICES rides it down, not up.
 UPHILL_WEST = [VERTICES[3], VERTICES[2], VERTICES[1]]
-# The route through it: east to its foot, up it west, and on east to the end.
+# A route through it: east to its foot, up it west, and on east to the end, back over the
+# climb (it rides 0.5 mi of it three times). Before the owner's 2026-11-08 rule it was the
+# route chosen; it doubles back to climb, and is not now (hunt V7).
 THROUGH_THE_CLIMB = [VERTICES[0], VERTICES[3], VERTICES[2], VERTICES[1], VERTICES[4]]
+# The route through it by streets either side: east along a street 1,000 ft (333 m) north
+# to above its foot, down to it, up it west, then south and east along a street 1,000 ft
+# south to the end. It rides nothing twice.
+_NORTH, _SOUTH = VERTICES[0][1] + 0.003, VERTICES[0][1] - 0.003
+ROUND_THE_CLIMB = [
+    VERTICES[0],
+    (VERTICES[0][0], _NORTH),
+    (VERTICES[3][0], _NORTH),
+    VERTICES[3],
+    VERTICES[2],
+    VERTICES[1],
+    (VERTICES[1][0], _SOUTH),
+    (VERTICES[4][0], _SOUTH),
+    VERTICES[4],
+]
 
 
 class HillSeekRouter(FakeRouter):
@@ -520,15 +629,27 @@ class TestHillSeek:
         monkeypatch.setattr(hillseek, "CLIMBS_FILE", path)
         return path
 
-    def seeking(self) -> HillSeekRouter:
+    def seeking(self, through=ROUND_THE_CLIMB) -> HillSeekRouter:
         # A direct route long enough that the climb is inside the budget at 100 (1.5x).
         return HillSeekRouter(
             {
                 "route": {"trip": _trip(VERTICES, 4.0, FLAT)},
                 "trace_attributes": trace_answer(VERTICES, [(101, 0, 4, 2.0)]),
             },
-            {"trip": _trip(THROUGH_THE_CLIMB, 5.5, HILLY)},
+            {"trip": _trip(through, 5.5, HILLY)},
         )
+
+    def test_a_route_that_doubles_back_to_climb_is_not_chosen(
+        self, client, facility_segments, router, climbs_file
+    ):
+        """Hunt V7 (the owner, 2026-11-08): the route that climbs most by riding the climb
+        against its way and back again is found and not kept."""
+        router(self.seeking(THROUGH_THE_CLIMB))
+        body = post(client, {**good_body("mountain-goat"), "hills": 100}).json()
+        seek = body["hills_seek"]
+        assert seek["climb_seek"]["found"] == 1 and seek["candidates"] == 2
+        assert seek["chosen"] == 0
+        assert seek["climbs"] == []
 
     def test_the_route_through_the_climb_is_chosen_and_named(
         self, client, facility_segments, router, climbs_file
@@ -621,20 +742,27 @@ class TestTheWeekendGraph:
         ),
     )
     def test_a_weekend_ride_on_the_standard_graph_takes_its_twin(
-        self, name, client, facility_segments, router
+        self, name, client, facility_segments, router, settings
     ):
+        settings.ROUTER_PARALLEL_CALLS = 1  # the weekend plan beside in turn, on this thread
         fake = router(standard_router())
         body = post(client, {**good_body(name), "when": "weekend"}).json()
-        expected = (
-            "weekend"
-            if presets.PRESETS[name].variant == "standard"
-            else presets.PRESETS[name].variant
-        )
+        # The standard graph's twin, and Road Bike's (the owner, 2026-11-08, "New weekend graph").
+        twins = {"standard": "weekend", "paved": "paved-weekend"}
+        expected = twins.get(presets.PRESETS[name].variant, presets.PRESETS[name].variant)
         if name in presets.OFFROAD_PRESETS:
             expected = "offroad"
+        # Both graphs give the same route here: a tie keeps the ride's own.
         assert body["variant"] == expected
-        base = settings.VALHALLA_UPSTREAMS[expected]
-        assert all(url.startswith(base + "/") for url, _ in fake.calls)
+        bases = {settings.VALHALLA_UPSTREAMS[expected]}
+        if presets.weekend_too(name, "weekend"):
+            # Gravel, Mountain Goat and Mountain Bike plan on the weekend graph too, as the
+            # fixture's weekend closure (way 202) is in reach (`routing._plan_twice`).
+            bases.add(settings.VALHALLA_UPSTREAMS["weekend"])
+            assert any(
+                url.startswith(settings.VALHALLA_UPSTREAMS["weekend"]) for url, _ in fake.calls
+            )
+        assert all(any(url.startswith(base + "/") for base in bases) for url, _ in fake.calls)
 
     @pytest.mark.parametrize("when", ["weekday_rush", "weekday_offpeak"])
     def test_a_weekday_ride_stays_on_the_standard_graph(
@@ -808,7 +936,11 @@ class TestCargoAssist:
         assert body["dials"]["assist"] is True
         options = sent_options(fake)
         assert options["cycling_speed"] > presets.CARGO_PLANNING_SPEED_KMH
-        assert all(url.startswith(settings.VALHALLA_UPSTREAMS["ebike"]) for url, _ in fake.calls)
+        # On the e-bike graph, and on the weekend graph too near the fixture's weekend
+        # closure (the owner, round 3, 2026-11-08, of weekend e-bike rides: "Yes").
+        bases = {settings.VALHALLA_UPSTREAMS[v] for v in ("ebike", "weekend")}
+        assert all(any(url.startswith(base + "/") for base in bases) for url, _ in fake.calls)
+        assert any(url.startswith(settings.VALHALLA_UPSTREAMS["weekend"]) for url, _ in fake.calls)
 
     def test_assist_keeps_cargos_hill_averse_start(self, client, facility_segments, router):
         fake = router(standard_router())
@@ -1132,6 +1264,14 @@ def test_grade_profile_splits_legs():
     assert profile[:4] == [(0.0, 1.0), (30.0, 2.0), (60.0, 3.0), (90.0, 4.0)]
     assert profile[4][1] is None
     assert profile[5] == (90.0, 4.0)
+
+
+def test_grade_profile_puts_a_legs_last_sample_at_its_end():
+    # T3-7: a 100 m leg samples at 0, 30, 60, 90 and its end, not at 120 m.
+    trip = {"legs": [{"summary": {"length": 0.1}, "elevation": [0.0, 3.0, 6.0, 9.0, 10.0]}]}
+    profile = routing.grade_profile(trip)
+    assert profile[4] == (100.0, 10.0)
+    assert profile[5] == (100.0, None)
 
 
 def _price(hills=-100, use_hills=None, brake_grade=0.06):
@@ -1566,7 +1706,9 @@ class TestTrafficWinsOverHills:
                 if payload["costing"] == "pedestrian":
                     raise routing.RouterRefused(400, 442, "no walk-in in this test")
                 use_hills = payload["costing_options"]["bicycle"]["use_hills"]
-                calls.append((use_hills, "alternates" in payload, timeout))
+                calls.append(
+                    (use_hills, "alternates" in payload, timeout, "exclude_locations" in payload)
+                )
                 if use_hills == 1.0:
                     if middle_fails:
                         raise routing.RouterUnavailable("timed out")
@@ -1586,10 +1728,40 @@ class TestTrafficWinsOverHills:
         body = post(client, {**good_body(), "hills": -60}).json()
         assert body["hills_avoid"]["kept_middle"] is True
         assert body["distance_m"] == pytest.approx(2200.0), "the middle's route"
-        middle_call = [c for c in calls if c[0] == 1.0]
+        # The middle's own ask: the plan's request at the middle, no alternatives and nothing
+        # excluded (the calm search's asks after it are at the middle too: hunt P4, below).
+        middle_call = [c for c in calls if c[0] == 1.0 and not c[1] and not c[3]]
         assert len(middle_call) == 1
         assert middle_call[0][1] is False, "one /route, without alternatives"
         assert middle_call[0][2] <= routing.ALTERNATES_TIMEOUT_S
+
+    def test_with_the_middle_kept_the_search_asks_at_the_middle_too(
+        self, client, facility_segments, router
+    ):
+        """Hunt P4: the search's candidates were routed at the plan's hill-avoiding
+        `use_hills` and scored as if routed at the middle's (the trace costing's), so each
+        paid the router's climb charge the route kept did not. Every ask after the middle's
+        is at the middle's now; before it, only the plan's own ask was at 0.4."""
+        transport, calls = self.router_with(202, 101)
+        router(transport)
+        # At 90 the calm search runs (rate above 0) and ranks the router's alternatives,
+        # which it now asks for itself.
+        body = post(client, {**good_body(), "hills": -60, "stress": 90}).json()
+        assert body["hills_avoid"]["kept_middle"] is True
+        first_middle = next(i for i, c in enumerate(calls) if c[0] == 1.0 and not c[1] and not c[3])
+        later = calls[first_middle + 1 :]
+        assert later, "the search asked the router for something"
+        assert {c[0] for c in later} == {1.0}
+
+    def test_with_the_avoiding_route_kept_the_search_asks_as_the_plan_did(
+        self, client, facility_segments, router
+    ):
+        transport, calls = self.router_with(101, 202)
+        router(transport)
+        body = post(client, {**good_body(), "hills": -60, "stress": 90}).json()
+        assert body["hills_avoid"]["kept_middle"] is False
+        searched = [c for c in calls if c[1] or c[3]]
+        assert all(c[0] != 1.0 for c in searched)
 
     def test_a_calmer_hill_avoiding_route_is_kept(self, client, facility_segments, router):
         transport, _calls = self.router_with(101, 202)
@@ -2146,6 +2318,132 @@ class TestRoadBike:
         base = settings.VALHALLA_UPSTREAMS["paved"]
         assert all(not url.startswith(base) for url, _ in fake.calls)
 
+    # Road Bike's weekend graph (the owner, 2026-11-08: "Road bikes absolutely use those
+    # parkways on the weekends. It's probably their most common destination."; "New weekend
+    # graph"): a weekend ride plans on it, and falls back to the paved graph, not the standard.
+
+    def test_a_weekend_road_bike_ride_plans_on_its_weekend_graph(
+        self, client, facility_segments, router
+    ):
+        fake = router(standard_router())
+        body = post(client, {**good_body("road-bike"), "when": "weekend"}).json()
+        assert body["variant"] == "paved-weekend"
+        base = settings.VALHALLA_UPSTREAMS["paved-weekend"]
+        assert fake.calls and all(url.startswith(base + "/") for url, _ in fake.calls)
+        weekday = post(client, {**good_body("road-bike"), "when": "weekday_offpeak"}).json()
+        assert weekday["variant"] == "paved"
+
+    def test_a_weekend_router_that_does_not_answer_falls_back_to_the_paved_graph(
+        self, client, facility_segments, router
+    ):
+        standard = standard_router()
+        weekend_calls = []
+        others = []
+
+        def transport(url, payload, timeout):
+            if url.startswith(settings.VALHALLA_UPSTREAMS["paved-weekend"]):
+                weekend_calls.append(url)
+                raise routing.RouterUnavailable("connection refused")
+            others.append(url)
+            return standard(url, payload, timeout)
+
+        router(transport)
+        body = post(client, {**good_body("road-bike"), "when": "weekend"}).json()
+        assert body["preset"] == "road-bike" and body["variant"] == "paved"
+        assert body["dials"]["when"] == "weekend", "what the page's notice reads"
+        assert len(weekend_calls) == 1
+        assert routing._paved_weekend_down() and not routing._paved_down()
+        paved = settings.VALHALLA_UPSTREAMS["paved"]
+        assert others and all(url.startswith(paved + "/") for url in others)
+        again = post(client, {**good_body("road-bike"), "when": "weekend"}).json()
+        assert again["variant"] == "paved"
+        assert len(weekend_calls) == 1, "remembered as down for a minute"
+
+    def test_a_weekend_map_not_yet_promoted_plans_on_the_paved_graph(
+        self, client, facility_segments, router, monkeypatch
+    ):
+        monkeypatch.setattr(routing, "_paved_weekend_is_promoted", lambda: False)
+        fake = router(standard_router())
+        body = post(client, {**good_body("road-bike"), "when": "weekend"}).json()
+        assert body["variant"] == "paved"
+        base = settings.VALHALLA_UPSTREAMS["paved-weekend"]
+        assert all(not url.startswith(base) for url, _ in fake.calls)
+
+    def test_with_both_road_bike_maps_not_served_it_plans_on_standard(
+        self, client, facility_segments, router, monkeypatch
+    ):
+        monkeypatch.setattr(routing, "_paved_weekend_is_promoted", lambda: False)
+        monkeypatch.setattr(routing, "_paved_is_promoted", lambda: False)
+        router(standard_router())
+        body = post(client, {**good_body("road-bike"), "when": "weekend"}).json()
+        assert body["variant"] == "standard"
+
+    def test_a_weekend_router_with_no_tiles_falls_back_to_the_paved_graph(
+        self, client, facility_segments, router
+    ):
+        """As the weekend graph's 171 (OPS review, 2026-09-28): asked of the paved graph, and
+        remembered as down only once that answers."""
+        standard = standard_router()
+
+        def transport(url, payload, timeout):
+            if url.startswith(settings.VALHALLA_UPSTREAMS["paved-weekend"]):
+                raise routing.RouterRefused(400, 171, "No suitable edges near location")
+            return standard(url, payload, timeout)
+
+        router(transport)
+        body = post(client, {**good_body("road-bike"), "when": "weekend"}).json()
+        assert body["variant"] == "paved"
+        assert routing._paved_weekend_down() and not routing._paved_down()
+
+    def test_both_road_bike_routers_down_falls_back_to_standard(
+        self, client, facility_segments, router
+    ):
+        standard = standard_router()
+
+        def transport(url, payload, timeout):
+            if url.startswith(
+                (
+                    settings.VALHALLA_UPSTREAMS["paved-weekend"],
+                    settings.VALHALLA_UPSTREAMS["paved"],
+                )
+            ):
+                raise routing.RouterUnavailable("connection refused")
+            return standard(url, payload, timeout)
+
+        router(transport)
+        body = post(client, {**good_body("road-bike"), "when": "weekend"}).json()
+        assert body["variant"] == "standard"
+        assert routing._paved_weekend_down() and routing._paved_down()
+        assert routing._weekend_failed_at is None
+
+    @pytest.mark.parametrize("paved_state", ["down", "unpromoted"])
+    def test_a_weekend_router_failing_mid_request_skips_a_paved_graph_not_served(
+        self, paved_state, client, facility_segments, router, monkeypatch
+    ):
+        """Review of "Road Bike's weekend graph": the fallback after the weekend router fails
+        passes over a paved graph already known down or not promoted, rather than asking it and
+        waiting out its timeout again."""
+        if paved_state == "down":
+            routing._mark_twin("paved", False)
+        else:
+            monkeypatch.setattr(routing, "_paved_is_promoted", lambda: False)
+        standard = standard_router()
+        paved_calls = []
+
+        def transport(url, payload, timeout):
+            if url.startswith(settings.VALHALLA_UPSTREAMS["paved-weekend"]):
+                raise routing.RouterUnavailable("timed out")
+            if url.startswith(settings.VALHALLA_UPSTREAMS["paved"] + "/"):
+                paved_calls.append(url)
+                raise routing.RouterUnavailable("timed out")
+            return standard(url, payload, timeout)
+
+        router(transport)
+        body = post(client, {**good_body("road-bike"), "when": "weekend"}).json()
+        assert body["variant"] == "standard"
+        assert paved_calls == []
+        assert routing._paved_weekend_down()
+
     def test_off_by_default_and_echoed(self, client, facility_segments, router):
         fake = router(standard_router())
         body = post(client, good_body("cargo")).json()
@@ -2460,8 +2758,11 @@ class TestTheOffroadGraph:
     @pytest.mark.parametrize("name", ["gravel", "mountain-goat"])
     @pytest.mark.parametrize("when", ["weekday_offpeak", "weekend"])
     def test_these_rides_take_the_offroad_graph_at_any_time(
-        self, name, when, client, facility_segments, router
+        self, name, when, client, facility_segments, router, monkeypatch
     ):
+        # Far from any weekend closure: the off-road graph alone, at the weekend too (a ride
+        # near one is planned on the weekend graph as well: `TestWeekendPlannedTwice`).
+        monkeypatch.setattr(routing, "weekend_closure_near", lambda points: False)
         fake = router(standard_router())
         body = post(client, {**good_body(name), "when": when}).json()
         assert body["variant"] == "offroad"
@@ -2501,11 +2802,142 @@ class TestTheOffroadGraph:
 
 
 @db
+class TestEasyMtbTrails:
+    """The owner, 2026-11-08: "allow trailmaxxing to use MTB trails too", opt in, "And
+    default"; "Steer on Gravel's graph". Off by default; on, the ride takes the off-road graph
+    and is steered off the trails rated 2 or harder (`core.easy_mtb`)."""
+
+    def test_off_by_default(self, client, facility_segments, router):
+        router(standard_router())
+        body = post(client, {**good_body("default"), "when": "weekday_offpeak"}).json()
+        assert body["variant"] == "standard"
+        assert body["dials"]["easy_mtb"] is False and body["easy_mtb"] is None
+
+    @pytest.mark.parametrize("name", ["default", "trailmaxxing"])
+    def test_on_it_rides_the_offroad_graph(self, name, client, facility_segments, router):
+        fake = router(standard_router())
+        body = post(client, {**good_body(name), "when": "weekday_offpeak", "easy_mtb": True}).json()
+        assert body["variant"] == "offroad"
+        assert body["dials"]["easy_mtb"] is True
+        base = settings.VALHALLA_UPSTREAMS["offroad"]
+        assert all(url.startswith(base + "/") for url, _ in fake.calls)
+        # Its own costing: the calm ranking and the stress rules are the ride type's.
+        own = presets.costing(name)["bicycle"]
+        assert sent_options(fake)["bicycle_type"] == own["bicycle_type"]
+        assert body["easy_mtb"] == {
+            "max_level": 1,
+            "rounds": 0,
+            "harder_m": 0.0,
+            "limited": None,
+        }
+
+    @pytest.mark.parametrize(
+        ("tags", "harder"), [('{"mtb:scale": "S2"}', True), ('{"mtb:scale": "1"}', False)]
+    )
+    def test_a_harder_trail_it_cannot_leave_is_said(
+        self, tags, harder, client, facility_segments, router
+    ):
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"UPDATE {facility_segments}.segment SET mtb_only = true, "
+                "is_trail_class = true, is_unpaved = true, trail_tags = %s::jsonb "
+                "WHERE osm_way_id = 101",
+                [tags],
+            )
+        router(standard_router())
+        body = post(client, {**good_body("default"), "easy_mtb": True}).json()
+        info = body["easy_mtb"]
+        if harder:
+            assert info["harder_m"] > 0 and info["limited"] == "no_way_round"
+        else:
+            assert info["harder_m"] == 0 and info["limited"] is None
+
+    def test_dirt_trails_are_timed_at_mountain_bike_pace(self, client, facility_segments, router):
+        """The owner, round 3, 2026-11-08, asked whether Easy MTB trails should be timed at
+        Mountain Bike's 6 mph, as Mountain Bike times the same trails: "Yes"."""
+        router(standard_router())
+        plain = post(client, {**good_body("default"), "easy_mtb": True}).json()
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"UPDATE {facility_segments}.segment SET mtb_only = true, "
+                "is_trail_class = true, is_unpaved = true WHERE osm_way_id = 101"
+            )
+        router(standard_router())
+        dirt = post(client, {**good_body("default"), "easy_mtb": True}).json()
+        assert dirt["distance_m"] == plain["distance_m"]
+        assert dirt["duration_s"] > plain["duration_s"]
+
+    @pytest.mark.parametrize("name", ["fast", "gravel", "mountain-bike"])
+    def test_other_ride_types_are_refused(self, name, client, facility_segments, router):
+        fake = router(standard_router())
+        assert post(client, {**good_body(name), "easy_mtb": True}).status_code == 400
+        assert fake.calls == []
+
+    @pytest.mark.parametrize("searched", [False, True])
+    def test_a_searched_route_holds_the_rounds_to_the_guard(
+        self, searched, client, facility_segments, router, monkeypatch
+    ):
+        # The third routing hunt, C3-1: the rounds re-ask the plan's own request, so a route
+        # the search (or a loop's way back, or the fit) put in its place is held to
+        # `refine.level_round_keeps`; the router's own route is not.
+        from core import easy_mtb
+
+        router(standard_router())
+        ran = []
+        real_refine = refine.refine
+
+        def search(trip, ctx):
+            ran.append(True)
+            found, refined = real_refine(trip, ctx)
+            return (dict(found) if searched else found), refined
+
+        monkeypatch.setattr(refine, "refine", search)
+        seen = []
+        real_settle = easy_mtb.settle
+
+        def settle(*args, keeps=None, **kwargs):
+            seen.append(keeps)
+            return real_settle(*args, keeps=keeps, **kwargs)
+
+        monkeypatch.setattr(easy_mtb, "settle", settle)
+        post(client, {**good_body("default"), "when": "weekday_offpeak", "easy_mtb": True})
+        assert ran and len(seen) == 1
+        assert (seen[0] is not None) is searched
+
+    def test_trails_off_wins(self, client, facility_segments, router):
+        router(standard_router())
+        body = post(client, {**good_body("default"), "easy_mtb": True, "trails_off": True}).json()
+        assert body["variant"] == "no-trail"
+        assert body["dials"]["easy_mtb"] is False and body["easy_mtb"] is None
+
+    def test_an_offroad_router_that_does_not_answer_falls_back_and_says_so(
+        self, client, facility_segments, router
+    ):
+        standard = standard_router()
+
+        def transport(url, payload, timeout):
+            if url.startswith(settings.VALHALLA_UPSTREAMS["offroad"]):
+                raise routing.RouterUnavailable("connection refused")
+            return standard(url, payload, timeout)
+
+        router(transport)
+        body = post(
+            client, {**good_body("trailmaxxing"), "when": "weekday_offpeak", "easy_mtb": True}
+        ).json()
+        assert body["variant"] == "standard"
+        assert body["easy_mtb"]["limited"] == "no_offroad_graph"
+
+
+@db
 class TestMountainBike:
     """docs/MTB-TOPO-PLAN.md, slice 6: the Mountain Bike ride type rides its own graph, holds
     the rider's hardest trail level on the router's routes, and says what it could not hold."""
 
-    def test_it_rides_its_own_graph_and_reads_the_route(self, client, facility_segments, router):
+    def test_it_rides_its_own_graph_and_reads_the_route(
+        self, client, facility_segments, router, monkeypatch
+    ):
+        # No weekend closure in reach: its own graph alone (`TestWeekendPlannedTwice`).
+        monkeypatch.setattr(routing, "weekend_closure_near", lambda points: False)
         fake = router(standard_router())
         body = post(client, {**good_body("mountain-bike"), "when": "weekend"}).json()
         assert body["variant"] == "mtb"
@@ -2787,3 +3219,681 @@ class TestRiderSpeedOnAShareBike:
         router(standard_router())
         post(client, {**good_body(presets.BIKESHARE), "cycling_speed_kmh": 32.2})
         assert seen and all(d.cycling_speed_kmh is None for d in seen)
+
+
+# --- Electric assist and the hills price (hunt finding E2, 2026-11-08) ---------------------
+
+
+def test_an_e_bike_prices_a_climb_below_a_plain_bike():
+    """presets.py: "the motor takes the climb". Before 2026-11-08 the climb was timed at the
+    rider's own power and its time taken off at the e-bike's faster flat speed, so the E-bike
+    ride type priced 1 km at 6% at 957 m of flat against a plain bike's 783 m, and a share
+    e-bike at 2.5 times the classic's time. With the motor's watts (`hill_cost.ASSIST_W`)
+    beside the rider's, the time part shrinks, and the slider's penalty is unchanged."""
+    climb = [(float(i * 30), i * 30 * 0.06) for i in range(int(1000 / 30) + 1)]
+    plain = hill_cost.hill_cost_m(climb, 90.0, 16.0 / 3.6, 0)
+    unassisted = hill_cost.hill_cost_m(climb, 90.0, 24.0 / 3.6, presets.EBIKE_HILLS)
+    assisted = hill_cost.hill_cost_m(
+        climb, 90.0, 24.0 / 3.6, presets.EBIKE_HILLS, hill_cost.ASSIST_W
+    )
+    assert unassisted > plain  # the old price
+    assert assisted < plain / 4
+    classic_t, _ = hill_cost.profile_cost_s(climb, 100.0, 13.0 / 3.6, -60)
+    share_t, share_p = hill_cost.profile_cost_s(climb, 108.0, 20.0 / 3.6, -20, hill_cost.ASSIST_W)
+    assert share_t * 20.0 < classic_t * 13.0  # the time part, as metres of flat
+    assert share_p == hill_cost.profile_cost_s(climb, 108.0, 20.0 / 3.6, -20)[1]
+
+
+def test_assist_never_makes_a_climb_cost_more():
+    for grade in (0.02, 0.05, 0.08, 0.12, 0.18):
+        climb = [(float(i * 30), i * 30 * grade) for i in range(int(900 / 30) + 1)]
+        for hills in (-100, -20, 0, 50):
+            without = hill_cost.hill_cost_m(climb, 108.0, 20.0 / 3.6, hills)
+            assert hill_cost.hill_cost_m(climb, 108.0, 20.0 / 3.6, hills, 250.0) <= without
+
+
+def test_the_e_bike_ride_and_assisted_rides_price_climbs_with_the_motor():
+    assert routing.assist_watts_for("ebike", False) == hill_cost.ASSIST_W
+    assert routing.assist_watts_for("bikeshare", True) == hill_cost.ASSIST_W
+    assert routing.assist_watts_for("cargo", True) == hill_cost.ASSIST_W
+    assert routing.assist_watts_for("default", False) == 0.0
+    hilly = _trip(VERTICES, 2.0, ramp_profile([(2000, 0.06)]))
+    plain = routing.rider_hill_s(hilly, _price(0), QUIET_HYBRID)
+    assisted = routing.rider_hill_s(
+        hilly, dataclasses.replace(_price(0), assist_w=hill_cost.ASSIST_W), QUIET_HYBRID
+    )
+    assert assisted < plain
+
+
+# --- the weekend plan beside a ride's own (the owner, 2026-11-08: "We can do the plan twice.") ---
+
+
+def _bases(fake) -> set[str]:
+    """The graphs a fake router was asked on, by name."""
+    by_url = {url: name for name, url in settings.VALHALLA_UPSTREAMS.items()}
+    return {by_url[url.rsplit("/", 1)[0]] for url, _ in fake.calls}
+
+
+def _route_calls(fake, graph: str) -> int:
+    base = settings.VALHALLA_UPSTREAMS[graph]
+    return sum(1 for url, _ in fake.calls if url == base + "/route")
+
+
+WEEKEND_TWICE = [
+    ("gravel", {}, "offroad"),
+    ("mountain-goat", {}, "offroad"),
+    ("mountain-bike", {}, "mtb"),
+    ("default", {"easy_mtb": True}, "offroad"),
+    ("trailmaxxing", {"easy_mtb": True}, "offroad"),
+]
+
+
+@db
+class TestWeekendPlannedTwice:
+    """A weekend Gravel, Mountain Goat, Mountain Bike or Easy MTB trails ride near a road closed
+    to cars at the weekend is planned on its own graph and on the weekend graph, and the better
+    route kept by the ride type's own ranking (`routing._plan_twice`)."""
+
+    @pytest.fixture(autouse=True)
+    def _in_turn(self, settings):
+        # The weekend plan after the ride's own, on this thread: a pool thread has its own
+        # database connection, which does not see a test's rows.
+        settings.ROUTER_PARALLEL_CALLS = 1
+
+    @pytest.mark.parametrize(("name", "extra", "own"), WEEKEND_TWICE)
+    @pytest.mark.parametrize("weekend_better", [False, True])
+    def test_both_graphs_are_asked_and_the_better_by_ranking_kept(
+        self, name, extra, own, weekend_better, client, facility_segments, router, monkeypatch
+    ):
+        weighed = []
+
+        def wins(weekend, ours):
+            weighed.append((weekend, ours))
+            return weekend_better
+
+        monkeypatch.setattr(routing, "_weekend_wins", wins)
+        fake = router(standard_router())
+        body = post(client, {**good_body(name), "when": "weekend", **extra}).json()
+        assert _bases(fake) == {own, "weekend"}
+        assert _route_calls(fake, own) >= 1
+        assert _route_calls(fake, "weekend") >= 1
+        # The answer's graph is the winner's.
+        assert body["variant"] == ("weekend" if weekend_better else own)
+        # Each plan's final route was read for the ranking: the calm search's reading, and
+        # Mountain Bike's own on a Mountain Bike ride, the harder trail on Easy MTB trails.
+        [(weekend, ours)] = weighed
+        for ranking in (weekend, ours):
+            assert ranking is not None
+            assert ranking.analysis is not None
+            assert (ranking.mtb is not None) is (name == "mountain-bike")
+            assert (ranking.harder_m is not None) is bool(extra.get("easy_mtb"))
+        if weekend_better and name == "mountain-bike":
+            # Read by its trail rules on the weekend graph too, never "no mountain-bike graph".
+            assert body["mtb"]["limited"] != "no_mtb_graph"
+        if weekend_better and extra.get("easy_mtb"):
+            assert body["easy_mtb"]["limited"] != "no_offroad_graph"
+
+    def test_with_the_real_ranking_a_tie_keeps_the_rides_own(
+        self, client, facility_segments, router
+    ):
+        fake = router(standard_router())
+        body = post(client, {**good_body("gravel"), "when": "weekend"}).json()
+        assert _bases(fake) == {"offroad", "weekend"}
+        assert body["variant"] == "offroad"
+
+    @pytest.mark.parametrize(("name", "extra", "own"), WEEKEND_TWICE)
+    @pytest.mark.parametrize("when", ["weekday_offpeak", "weekday_rush", "night"])
+    def test_a_weekday_ride_asks_its_own_graph_once(
+        self, name, extra, own, when, client, facility_segments, router
+    ):
+        fake = router(standard_router())
+        body = post(client, {**good_body(name), "when": when, **extra}).json()
+        # One plan: on its own graph alone (Trailmaxxing's calm search asks it more than once).
+        assert _bases(fake) == {own}
+        assert body["variant"] == own
+
+    @pytest.mark.parametrize("name", ["gravel", "mountain-goat", "mountain-bike", "default"])
+    def test_trails_off_asks_only_the_no_trail_graph(self, name, client, facility_segments, router):
+        fake = router(standard_router())
+        body = post(client, {**good_body(name), "when": "weekend", "trails_off": True}).json()
+        assert _bases(fake) == {"no-trail"}
+        assert body["variant"] == "no-trail"
+
+    def test_a_weekend_ride_far_from_any_car_free_way_asks_once(
+        self, client, facility_segments, router
+    ):
+        with connection.cursor() as cursor:
+            cursor.execute(f"UPDATE {facility_segments}.segment SET car_free_when = '{{}}'")
+        fake = router(standard_router())
+        body = post(client, {**good_body("mountain-bike"), "when": "weekend"}).json()
+        assert _bases(fake) == {"mtb"}
+        assert _route_calls(fake, "mtb") == 1
+        assert body["variant"] == "mtb"
+
+    @pytest.mark.parametrize("failure", ["down", "no_tiles"])
+    def test_a_weekend_router_that_fails_leaves_the_rides_own_graph(
+        self, failure, client, facility_segments, router
+    ):
+        standard = standard_router()
+        weekend_calls = []
+
+        def transport(url, payload, timeout):
+            if url.startswith(settings.VALHALLA_UPSTREAMS["weekend"]):
+                weekend_calls.append(url)
+                if failure == "down":
+                    raise routing.RouterUnavailable("connection refused")
+                raise routing.RouterRefused(400, 171, "No suitable edges near location")
+            return standard(url, payload, timeout)
+
+        router(transport)
+        response = post(client, {**good_body("gravel"), "when": "weekend"})
+        assert response.status_code == 200
+        assert response.json()["variant"] == "offroad"
+        assert weekend_calls
+        assert routing._weekend_down()
+        # Remembered as down: the next weekend ride is not planned on it at all.
+        weekend_calls.clear()
+        again = post(client, {**good_body("gravel"), "when": "weekend"}).json()
+        assert again["variant"] == "offroad"
+        assert not weekend_calls
+
+    def test_a_weekend_graph_not_promoted_is_not_asked(
+        self, client, facility_segments, router, monkeypatch
+    ):
+        monkeypatch.setattr(routing, "_weekend_is_promoted", lambda: False)
+        fake = router(standard_router())
+        body = post(client, {**good_body("mountain-bike"), "when": "weekend"}).json()
+        assert _bases(fake) == {"mtb"}
+        assert body["variant"] == "mtb"
+
+    def test_a_weekend_winner_is_kept_in_the_answer_cache(self) -> None:
+        from core import route_cache
+
+        assert presets.weekend_too("gravel", "weekend")
+        assert route_cache.keepable({"variant": "weekend"}, "weekend", 0)
+
+    def test_an_answer_made_while_the_weekend_router_is_down_is_not_kept(
+        self, facility_segments, router
+    ):
+        from core import timing
+
+        routing._weekend_failed_at = routing.clock()
+        recorder = timing.Timings()
+        token = timing.start(recorder)
+        try:
+            router(standard_router())
+            body = routing.plan(
+                [list(VERTICES[0]), list(VERTICES[-1])],
+                "gravel",
+                dials=routing.Dials(when="weekend"),
+            )
+        finally:
+            timing.stop(token)
+        assert body["variant"] == "offroad"
+        assert recorder.failures >= 1, "counted as skipped, so the answer is not kept"
+
+
+@db
+class TestWeekendClosureNear:
+    """Whether a road closed to cars at the weekend is in reach of the ride's points (the
+    owner, 2026-11-08: "In most cases, weekend closures aren't going to matter for MTB, is
+    there a way to check?")."""
+
+    # Beach Drive NW in Rock Creek Park, about where it runs past Peirce Mill.
+    BEACH_DRIVE = [(-77.0520, 38.9400), (-77.0505, 38.9440)]
+
+    @pytest.fixture
+    def beach_drive(self, segment_schemas):
+        live, _staging = segment_schemas
+        wkt = "LINESTRING(" + ", ".join(f"{lon} {lat}" for lon, lat in self.BEACH_DRIVE) + ")"
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"INSERT INTO {live}.segment (osm_way_id, ordinal, geometry, stress_tier, "
+                "stress_rule, facility, car_free_when) "
+                "VALUES (435217294, 0, ST_GeomFromText(%s, 4326), 2, 'test', 'none', "
+                "ARRAY['weekend'])",
+                [wkt],
+            )
+        return live
+
+    def test_a_ride_near_beach_drive_is(self, beach_drive):
+        # Tenleytown to Mount Pleasant, across the park.
+        assert routing.weekend_closure_near([[-77.0790, 38.9480], [-77.0370, 38.9300]])
+        # Both ends west of the park, within the buffer of it.
+        assert routing.weekend_closure_near([[-77.0700, 38.9420], [-77.0720, 38.9500]])
+
+    def test_a_ride_far_from_it_is_not(self, beach_drive):
+        # Baltimore's Inner Harbor to Patterson Park.
+        assert not routing.weekend_closure_near([[-76.6100, 39.2860], [-76.5800, 39.2900]])
+        # Bethesda, past the buffer from the park.
+        assert not routing.weekend_closure_near([[-77.1300, 38.9800], [-77.1200, 38.9900]])
+
+    def test_a_road_closed_only_at_other_times_does_not_count(self, beach_drive):
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"UPDATE {beach_drive}.segment SET car_free_when = ARRAY['weekday_rush']"
+            )
+        assert not routing.weekend_closure_near([[-77.0790, 38.9480], [-77.0370, 38.9300]])
+
+    def test_a_ride_near_beach_drive_asks_both_graphs_and_one_far_asks_once(
+        self, beach_drive, client, router, settings
+    ):
+        settings.ROUTER_PARALLEL_CALLS = 1
+        rock_creek = {"points": [[-77.0700, 38.9420], [-77.0720, 38.9500]], "when": "weekend"}
+        # (The fake's route lies away from these points, so the walks in to it are asked of
+        # the standard graph: `walk_in`.)
+        fake = router(standard_router())
+        post(client, {**rock_creek, "preset": "mountain-bike"})
+        assert _bases(fake) - {"standard"} == {"mtb", "weekend"}
+        bethesda = {"points": [[-77.1300, 38.9800], [-77.1200, 38.9900]], "when": "weekend"}
+        fake = router(standard_router())
+        post(client, {**bethesda, "preset": "mountain-bike"})
+        assert _bases(fake) - {"standard"} == {"mtb"}
+
+
+class TestWeekendWins:
+    """The comparison is the ride type's own ranking, never stress alone."""
+
+    @staticmethod
+    def ranking(**fields):
+        base = {"analysis": None, "ctx": None, "mtb": None, "harder_m": None}
+        return routing._Ranking(**{**base, **fields})
+
+    def test_mountain_bike_ranks_by_its_trail_rules(self, monkeypatch):
+        from routemaker import mtbmode
+
+        monkeypatch.setattr(refine, "better", lambda *a: pytest.fail("not the calm score"))
+        trail = mtbmode.Stretch(2000.0, 1, True, True, 1)
+        road = mtbmode.Stretch(2000.0, 1, False, False, None)
+        on_trail = mtbmode.read([trail], 2, 2)
+        on_road = mtbmode.read([road], 2, 2)
+        # The car-free parkway, as calm as the trail, does not beat the trail Mountain Bike
+        # prefers; the trail does beat it.
+        bike = {"mtb_ride": True, "analysis": "a", "ctx": "c"}
+        assert not routing._weekend_wins(
+            self.ranking(mtb=on_road, **bike), self.ranking(mtb=on_trail, **bike)
+        )
+        assert routing._weekend_wins(
+            self.ranking(mtb=on_trail, **bike), self.ranking(mtb=on_road, **bike)
+        )
+        # Either route not read by the trail rules (its own graph down, a leg untraced): the
+        # ride's own stands, never the calm score in their place.
+        assert not routing._weekend_wins(self.ranking(mtb=on_trail, **bike), self.ranking(**bike))
+        assert not routing._weekend_wins(self.ranking(**bike), self.ranking(mtb=on_road, **bike))
+
+    def test_easy_mtb_holds_the_harder_trails_off_first(self, monkeypatch):
+        monkeypatch.setattr(refine, "better", lambda *a: pytest.fail("held off first"))
+        easy = {"easy_ride": True, "analysis": "a", "ctx": "c"}
+        assert routing._weekend_wins(
+            self.ranking(harder_m=0.0, **easy), self.ranking(harder_m=500.0, **easy)
+        )
+        assert not routing._weekend_wins(
+            self.ranking(harder_m=500.0, **easy), self.ranking(harder_m=0.0, **easy)
+        )
+        # Either side's harder trail not read: the ride's own stands.
+        assert not routing._weekend_wins(self.ranking(harder_m=0.0, **easy), self.ranking(**easy))
+        assert not routing._weekend_wins(self.ranking(**easy), self.ranking(harder_m=0.0, **easy))
+
+    def test_an_easy_mtb_tie_on_harder_trail_goes_to_the_calm_score(self, monkeypatch):
+        monkeypatch.setattr(refine, "better", lambda a, b, ctx: a == "w")
+        easy = {"easy_ride": True, "ctx": "c"}
+        assert routing._weekend_wins(
+            self.ranking(harder_m=0.0, analysis="w", **easy),
+            self.ranking(harder_m=0.5, analysis="o", **easy),
+        )
+
+    @staticmethod
+    def _fake_plans(
+        monkeypatch, weekend_failures=0, own_variant="offroad", hold=None, own_extra=None
+    ):
+        """`_plan_alone` faked: the own plan answers `own_variant`, the weekend plan records
+        `weekend_failures` failed calls on the recorder it runs under."""
+        from core import timing
+
+        def plan_alone(points, preset, long_ride, started, dials, quick, candidates, slot=None):
+            if dials.graph == "weekend":
+                if hold is not None:
+                    hold.wait(5)
+                for _ in range(weekend_failures):
+                    timing.record_call(0.0, True)
+            if slot is not None:
+                slot["ranking"] = dials.graph or "own"
+            if dials.graph:
+                return {"variant": dials.graph, "mtb": None, "easy_mtb": {"limited": None}}
+            return {"variant": own_variant, **(own_extra or {})}
+
+        monkeypatch.setattr(routing, "_weekend_too", lambda *a: True)
+        monkeypatch.setattr(routing, "_plan_alone", plan_alone)
+
+    @staticmethod
+    def _planned(dials=None) -> tuple[dict, int]:
+        from core import timing
+
+        recorder = timing.Timings()
+        token = timing.start(recorder)
+        try:
+            body = routing.plan(
+                [[-77.05, 38.9], [-77.02, 38.9]],
+                "gravel",
+                dials=dials or routing.Dials(when="weekend"),
+            )
+        finally:
+            timing.stop(token)
+        return body, recorder.failures
+
+    @pytest.mark.parametrize("size", [1, 3])
+    @pytest.mark.parametrize("weekend_wins", [True, False])
+    def test_only_the_answered_plans_failures_keep_it_out_of_the_cache(
+        self, size, weekend_wins, settings, monkeypatch
+    ):
+        settings.ROUTER_PARALLEL_CALLS = size
+        self._fake_plans(monkeypatch, weekend_failures=2)
+        monkeypatch.setattr(routing, "_weekend_wins", lambda w, o: weekend_wins)
+        body, failures = self._planned()
+        if weekend_wins:
+            # A weekend route cut short: answered, not kept (`route_cache.keepable`).
+            assert body["variant"] == "weekend"
+            assert failures >= 1
+        else:
+            # The ride's own route won cleanly: the weekend plan's failures are not its own.
+            assert body["variant"] == "offroad"
+            assert failures == 0
+
+    def test_a_clean_weekend_winner_is_kept(self, settings, monkeypatch):
+        settings.ROUTER_PARALLEL_CALLS = 1
+        self._fake_plans(monkeypatch)
+        monkeypatch.setattr(routing, "_weekend_wins", lambda w, o: True)
+        body, failures = self._planned()
+        assert body["variant"] == "weekend"
+        assert failures == 0
+
+    def test_a_weekend_winner_over_the_own_routers_fallback_is_not_kept(
+        self, settings, monkeypatch
+    ):
+        """The off-road router down: the own plan fell back to the standard graph, and a
+        weekend route that beat it is answered but not kept while the outage lasts."""
+        settings.ROUTER_PARALLEL_CALLS = 1
+        self._fake_plans(monkeypatch, own_variant="standard")
+        monkeypatch.setattr(routing, "_weekend_wins", lambda w, o: True)
+        body, failures = self._planned()
+        assert body["variant"] == "weekend"
+        assert failures >= 1
+        # Where the off-road graph is not promoted, standard is the ride's graph by design.
+        monkeypatch.setattr(routing, "_offroad_is_promoted", lambda: False)
+        body, failures = self._planned()
+        assert body["variant"] == "weekend"
+        assert failures == 0
+
+    def test_a_weekend_route_over_a_down_router_still_says_the_trails_were_not_there(
+        self, settings, monkeypatch
+    ):
+        """The ride's own router down, its plan on the standard graph: the weekend route is
+        answered, and the rider is still told the trails' graph was not there (release
+        review, 2026-11-09: a Saturday Mountain Bike ride had no trails and no notice)."""
+        settings.ROUTER_PARALLEL_CALLS = 1
+        own_extra = {
+            "mtb": {"max_level": 3, "limited": "no_mtb_graph"},
+            "easy_mtb": {"max_level": 1, "limited": "no_offroad_graph"},
+        }
+        self._fake_plans(monkeypatch, own_variant="standard", own_extra=own_extra)
+        body, _ = self._planned()
+        assert body["variant"] == "weekend"
+        # No reading of its own on the weekend answer: the own plan's whole, max_level and all.
+        assert body["mtb"] == {"max_level": 3, "limited": "no_mtb_graph"}
+        assert body["easy_mtb"] == {"limited": "no_offroad_graph"}
+
+    def test_a_weekend_route_over_the_standard_graph_by_design_adds_no_notice(
+        self, settings, monkeypatch
+    ):
+        settings.ROUTER_PARALLEL_CALLS = 1
+        self._fake_plans(monkeypatch, own_variant="standard", own_extra={"mtb": None})
+        body, _ = self._planned()
+        assert body["variant"] == "weekend"
+        assert body["mtb"] is None and body["easy_mtb"] == {"limited": None}
+
+    def test_a_weekend_plan_not_done_in_the_rides_budget_is_dropped(self, settings, monkeypatch):
+        import threading
+        import time
+
+        settings.ROUTER_PARALLEL_CALLS = 3
+        hold = threading.Event()
+        self._fake_plans(monkeypatch, hold=hold)
+        monkeypatch.setattr(routing, "_weekend_wins", lambda w, o: True)
+        monkeypatch.setattr(routing, "PLAN_BUDGET_S", 0.3)
+        monkeypatch.setattr(routing, "LONG_PLAN_BUDGET_S", 30)
+        began = time.monotonic()
+        try:
+            body, failures = self._planned()
+        finally:
+            hold.set()
+        # Waited for the ordinary ride's budget, not the long ride's.
+        assert time.monotonic() - began < 5
+        assert body["variant"] == "offroad"
+        assert failures == 0
+
+    def test_otherwise_the_calm_searchs_comparison_in_the_rides_own_context(self, monkeypatch):
+        asked = []
+
+        def better(a, b, ctx):
+            asked.append((a, b, ctx))
+            return True
+
+        monkeypatch.setattr(refine, "better", better)
+        weekend = self.ranking(analysis="w", ctx="weekend ctx", harder_m=0.5)
+        own = self.ranking(analysis="o", ctx="own ctx", harder_m=0.0)
+        assert routing._weekend_wins(weekend, own)
+        assert asked == [("w", "o", "own ctx")]
+
+    @pytest.mark.parametrize("size", [1, 3])
+    def test_with_the_pool_on_the_weekend_plan_runs_on_it_beside_the_rides_own(
+        self, size, settings, monkeypatch
+    ):
+        from core import parallel
+
+        settings.ROUTER_PARALLEL_CALLS = size
+        ran = []
+
+        def plan_alone(points, preset, long_ride, started, dials, quick, candidates, slot=None):
+            ran.append((dials.graph, parallel.inside()))
+            if slot is not None:
+                slot["ranking"] = dials.graph or "own"
+            return {"variant": dials.graph or "offroad"}
+
+        monkeypatch.setattr(routing, "_weekend_too", lambda *a: True)
+        monkeypatch.setattr(routing, "_plan_alone", plan_alone)
+        monkeypatch.setattr(routing, "_weekend_wins", lambda w, o: (w, o) == ("weekend", "own"))
+        body = routing.plan([[-77.05, 38.9], [-77.02, 38.9]], "gravel")
+        assert body["variant"] == "weekend"
+        assert sorted(ran, key=str) == sorted([(None, False), ("weekend", size > 1)], key=str), (
+            "on the pool where it is on, else after the ride's own on this thread"
+        )
+
+    def test_a_route_that_cannot_be_read_keeps_the_rides_own(self):
+        assert not routing._weekend_wins(None, self.ranking(analysis="o", ctx="c"))
+        assert not routing._weekend_wins(self.ranking(analysis="w", ctx="c"), None)
+        assert not routing._weekend_wins(self.ranking(), self.ranking(analysis="o", ctx="c"))
+
+
+@db
+class TestHunt3PlanTwice:
+    """Hunt 3 (planner): the answer cache for weekend Road Bike, and the weekend plan beside a
+    ride's own."""
+
+    def test_a_weekend_road_bike_answer_on_the_paved_graph_is_kept(
+        self, client, facility_segments, router, settings, monkeypatch
+    ):
+        """P3-1: while paved-weekend is not promoted the ride's graph is the paved one by
+        design, and its answer is kept as any other."""
+        from core import route_cache
+
+        settings.ROUTE_CACHE_TTL_S = route_cache.TTL_S
+        route_cache.clear()
+        monkeypatch.setattr(routing, "_paved_weekend_is_promoted", lambda: False)
+        router(standard_router())
+        body = post(client, {**good_body("road-bike"), "when": "weekend"}).json()
+        assert body["variant"] == "paved"
+        assert route_cache.size() == 1
+        route_cache.clear()
+
+    @staticmethod
+    def _planned(dials=None, points=None) -> tuple[dict, int]:
+        from core import timing
+
+        recorder = timing.Timings()
+        token = timing.start(recorder)
+        try:
+            body = routing.plan(
+                points or [[-77.05, 38.9], [-77.02, 38.9]],
+                "gravel",
+                dials=dials or routing.Dials(when="weekend"),
+            )
+        finally:
+            timing.stop(token)
+        return body, recorder.failures
+
+    @pytest.mark.parametrize("promoted", [True, False])
+    def test_a_standard_graph_fallback_takes_the_weekend_route(
+        self, promoted, settings, monkeypatch
+    ):
+        """P3-4: the own router down (or not promoted), its plan on the standard graph: the
+        weekend route, the same graph with the car-free roads open, is answered, though the
+        ranking could not read the fallback's trails; not kept while the router is down."""
+        settings.ROUTER_PARALLEL_CALLS = 1
+
+        def plan_alone(points, preset, long_ride, started, dials, quick, candidates, slot=None):
+            if slot is not None:
+                slot["ranking"] = dials.graph or "own"
+            return {"variant": dials.graph or "standard"}
+
+        monkeypatch.setattr(routing, "_weekend_too", lambda *a: True)
+        monkeypatch.setattr(routing, "_plan_alone", plan_alone)
+        monkeypatch.setattr(routing, "_weekend_wins", lambda w, o: False)
+        monkeypatch.setattr(routing, "_offroad_is_promoted", lambda: promoted)
+        body, failures = self._planned()
+        assert body["variant"] == "weekend"
+        assert (failures >= 1) is promoted
+
+    def test_a_pending_weekend_plan_is_cancelled_whatever_the_own_plan_raises(
+        self, settings, monkeypatch
+    ):
+        """P3-5."""
+        from concurrent.futures import Future
+
+        from core import parallel
+
+        settings.ROUTER_PARALLEL_CALLS = 3
+        pending = Future()
+        monkeypatch.setattr(parallel, "submit", lambda *a: pending)
+
+        def plan_alone(*a, **k):
+            raise KeyError("a programming error")
+
+        monkeypatch.setattr(routing, "_weekend_too", lambda *a: True)
+        monkeypatch.setattr(routing, "_plan_alone", plan_alone)
+        with pytest.raises(KeyError):
+            self._planned()
+        assert pending.cancelled()
+
+    def test_the_weekend_plan_is_waited_for_a_bounded_time_after_the_own(
+        self, settings, monkeypatch
+    ):
+        """P3-6: once the own route is ready, the weekend plan gets at most
+        WEEKEND_WAIT_AFTER_OWN_S (or the own plan's time) more, not the whole budget."""
+        import threading
+        import time
+
+        settings.ROUTER_PARALLEL_CALLS = 3
+        hold = threading.Event()
+
+        def plan_alone(points, preset, long_ride, started, dials, quick, candidates, slot=None):
+            if dials.graph == "weekend":
+                hold.wait(10)
+            if slot is not None:
+                slot["ranking"] = dials.graph or "own"
+            return {"variant": dials.graph or "offroad"}
+
+        monkeypatch.setattr(routing, "_weekend_too", lambda *a: True)
+        monkeypatch.setattr(routing, "_plan_alone", plan_alone)
+        monkeypatch.setattr(routing, "_weekend_wins", lambda w, o: True)
+        monkeypatch.setattr(routing, "PLAN_BUDGET_S", 30)
+        monkeypatch.setattr(routing, "WEEKEND_WAIT_AFTER_OWN_S", 0.3)
+        began = time.monotonic()
+        try:
+            body, failures = self._planned()
+        finally:
+            hold.set()
+        assert time.monotonic() - began < 5
+        assert body["variant"] == "offroad"
+        assert failures == 0
+
+    def test_a_closure_round_the_own_route_alone_still_plans_twice(
+        self, client, facility_segments, router, settings, monkeypatch
+    ):
+        """Hunt 3 (C3-6, T3-8): no closure round the points, one round the ride's own route
+        (a loop, a target ride): the weekend plan is made after it."""
+        settings.ROUTER_PARALLEL_CALLS = 1
+        seen = []
+
+        def near(points, *a):
+            seen.append(len(points))
+            # The rider's two points: none near; the route's line: one near.
+            return len(points) > 2
+
+        monkeypatch.setattr(routing, "weekend_closure_near", near)
+        fake = router(standard_router())
+        body = post(client, {**good_body("gravel"), "when": "weekend"}).json()
+        assert _bases(fake) == {"offroad", "weekend"}
+        assert body["variant"] in ("offroad", "weekend")
+        assert seen[0] == 2 and any(n > 2 for n in seen[1:])
+        # And none round the route either: planned once.
+        monkeypatch.setattr(routing, "weekend_closure_near", lambda *a: False)
+        fake = router(standard_router())
+        post(client, {**good_body("gravel"), "when": "weekend"})
+        assert _bases(fake) == {"offroad"}
+
+    @pytest.mark.parametrize(
+        ("points", "touched"),
+        [
+            # The start on a dirt trail.
+            ([VERTICES[0], VERTICES[-1]], (frozenset({7}), frozenset())),
+            # A loop's end, back at its start, on one.
+            ([VERTICES[0], VERTICES[-1], VERTICES[0]], (frozenset(), frozenset(), frozenset({7}))),
+        ],
+    )
+    def test_the_weekend_plan_is_given_up_where_the_start_is_on_a_dirt_trail(
+        self, points, touched, facility_segments, router
+    ):
+        """PL3-6: the ride's own graph opens the trail the rider starts on; the weekend graph
+        would snap the start to another way, so its plan is given up."""
+        fake = router(standard_router())
+        dials = routing.Dials(when="weekend", graph="weekend", trail_touched=touched)
+        with pytest.raises(routing._GraphLeft):
+            routing.plan([list(p) for p in points], "gravel", dials=dials)
+        assert not fake.calls
+
+    @pytest.mark.parametrize("won", ["weekend", "offroad"])
+    def test_a_re_plans_way_ahead_is_planned_on_the_graph_that_won(self, won, monkeypatch):
+        """P3-7: the second plan of a U-turn re-plan is made once, on the winner's graph."""
+        asked = []
+
+        def plan(points, preset, dials=None, **kw):
+            asked.append(dials.graph)
+            return {"variant": won, "distance_m": 1000.0}
+
+        monkeypatch.setattr(routing, "plan", plan)
+        monkeypatch.setattr(routing, "sets_off_back", lambda answer, heading: len(asked) == 1)
+        routing._plan_onward(
+            [[-77.05, 38.9], [-77.02, 38.9]],
+            "gravel",
+            dials=routing.Dials(when="weekend", heading=90.0, ride_replan=True),
+        )
+        assert asked == [None, won]
+        # A first route from a fallback graph leaves the second plan as it was.
+        asked.clear()
+        won = "standard"
+        routing._plan_onward(
+            [[-77.05, 38.9], [-77.02, 38.9]],
+            "gravel",
+            dials=routing.Dials(when="weekend", heading=90.0, ride_replan=True),
+        )
+        assert asked == [None, None]

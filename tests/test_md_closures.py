@@ -225,3 +225,28 @@ class TestReader:
             fetch = Fetch({"RoadClosureActive": good, "RoadClosurePlanned": bad})
             with pytest.raises(FeedError):
                 cs.read_sha(fetch, None, None, NOW, lambda s: None)
+
+
+class TestRoadsBicyclesMayNotUse:
+    """Hunt K5 (2026-11-08): the Reporter's closures skipped the Interstate and barred-road
+    filters the WZDx feeds have, so the Key Bridge's I-695 pieces used up a plan's polygon
+    budget and a real closure nearby was left out."""
+
+    def test_an_interstate_closure_is_not_kept(self) -> None:
+        from core import closure_sources as cs
+
+        records = [
+            record(1, RoadName="I 695"),
+            record(2, RoadName="WB I 695", RC_GUID="{B0000000-0000-0000-0000-000000000002}"),
+            record(3, RC_GUID="{C0000000-0000-0000-0000-000000000003}"),
+        ]
+        empty = json.dumps(layer()).encode()
+        fetch = Fetch({"RoadClosureActive": json.dumps(layer(*records)).encode(),
+                       "RoadClosurePlanned": empty})  # fmt: skip
+        zones, _ = cs.read_sha(fetch, None, None, NOW, lambda s: None)
+        assert [z.roads for z in zones] == [("DRIVE RD",)]
+
+    def test_the_map_s_barred_roads_are_checked_at_refresh(self) -> None:
+        from core import closure_sources as cs
+
+        assert md.SHA in cs.BARRED_CHECKED

@@ -39,7 +39,9 @@ junction's (`_Approaches`), on a road's edge arriving there towards the
 junction, or the node's own flag where no edge there is flagged. The walk stops
 at a node a road of another name joins: that is another junction, and its
 signal is not this one's (review r3, B1: a driveway 16 m from Colesville Rd's
-signalized node, a left off 17th St SW 18 m past Constitution Ave). A rider
+signalized node, a left off 17th St SW 18 m past Constitution Ave), and nor is
+a signal on a crosswalk alone that such a junction is nearer than this one
+(hunt J2: K St's signalised crosswalk a few metres short of K St). A rider
 arriving on a path (`TRAIL_USES`) is let past one, since a trail crossing
 beside a road junction is crossed on its signal; one leaving a driveway or a
 parking aisle is not (gate 1, B1). The rider's own approach is read from the
@@ -180,11 +182,74 @@ def has_unsmoothed_tier(schema: str) -> bool:
     return segment_info.has_columns(schema, UNSMOOTHED_TIER_COLUMN)
 
 
+def _decided(raw: RawJunction) -> bool:
+    """Some other road meets the route at the junction, or the route changes road (a
+    crossing way, a turn)."""
+    return raw.has_cross_roads or raw.in_way != raw.out_way or raw.slip_lane
+
+
 def wanted(raw: RawJunction) -> bool:
     """Whether a junction can matter: some other road meets the route there, or
     the route changes road (a crossing way, a turn), and a road of a class that
     can be busy is among them."""
-    return raw.possibly_busy and (raw.has_cross_roads or raw.in_way != raw.out_way or raw.slip_lane)
+    return raw.possibly_busy and _decided(raw)
+
+
+# The road classes a junction is read for by its roads' tier, not their class
+# (`busy_by_tier`): a residential street DC's Roadway Block or MDOT's AADT rates LTS 3 or
+# worse on its own speed or volume is a busy road to cross, but the class gate
+# (`trace_junctions.BUSY_CLASSES`) never read its crossings, which cost nothing and were
+# never red (the 2026-11-08 hunt, H5; the gap the comment on BUSY_CLASSES owned).
+TIER_READ_CLASSES = frozenset({"residential", "living_street"})
+# The tier from which such a road makes its junction worth reading.
+TIER_READ_MIN = 3
+# How near the junction's node a segment of such a tier must run (degrees, about 2 m):
+# the node is on the road's centre line, a parallel road is metres off it.
+TIER_NEAR_DEG = 2.0e-5
+
+_BUSY_BY_TIER = """
+SELECT j.idx
+FROM unnest(%s::int[], %s::float8[], %s::float8[]) AS j(idx, lon, lat)
+WHERE EXISTS (
+    SELECT 1 FROM {schema}.segment AS s
+    WHERE ST_DWithin(s.geometry, ST_SetSRID(ST_MakePoint(j.lon, j.lat), 4326), %s)
+      AND s.stress_tier >= %s
+      AND NOT s.is_trail_class
+)
+"""
+
+
+def tier_candidate(raw: RawJunction) -> bool:
+    """A junction the class gate leaves out (`wanted`) where a road of a class in
+    TIER_READ_CLASSES meets: read where the segment table rates one of its roads busy."""
+    if raw.possibly_busy or not _decided(raw):
+        return False
+    return any(
+        cls in TIER_READ_CLASSES for cls in (raw.in_class, raw.out_class, *raw.other_classes)
+    )
+
+
+def busy_by_tier(points: Sequence[tuple[int, float, float]]) -> set[int]:
+    """Of (index, lon, lat), the indexes whose node a segment rated TIER_READ_MIN or worse
+    runs through (one query for the route). A table that cannot be read reads none: the
+    junctions are then left out, as before, and the plan answered all the same."""
+    if not points:
+        return set()
+    from django.db import DatabaseError
+
+    from .routing import plan_cursor
+
+    schema = validate_schema_name(settings.SEGMENT_SCHEMA_LIVE)
+    arrays = [list(column) for column in zip(*points, strict=True)]
+    try:
+        with plan_cursor() as cursor:
+            cursor.execute(
+                _BUSY_BY_TIER.format(schema=schema), [*arrays, TIER_NEAR_DEG, TIER_READ_MIN]
+            )
+            return {int(row[0]) for row in cursor.fetchall()}
+    except DatabaseError:
+        logger.warning("the junctions' tiers could not be read", exc_info=True)
+        return set()
 
 
 def _rated(raw: RawJunction, ratings: Sequence[Rating]) -> bool:
@@ -580,6 +645,25 @@ class _Approaches:
             found.append(entry)
         return found
 
+    def crosswalk(self, arm: Arm, at: tuple[float, float]) -> bool:
+        """Whether `at` is a crosswalk on the arm's road and no more: a path or
+        crossing way (`TRAIL_USES`) meets it there, and no road but the arm's
+        own does. Its signal (OSM's `crossing=traffic_signals`, which the
+        transform makes a `highway=traffic_signals` node, a HAWK's among them)
+        is for the people crossing there, and is a road junction's only where
+        that junction is the one it lies beside (`signal`)."""
+        path = False
+        for entry in self.edges:
+            ends = self.ends(entry)
+            if ends is None or not (_close(*ends[0], *at) or _close(*ends[1], *at)):
+                continue
+            if _is_road(entry):
+                if not _of_road(arm, entry):
+                    return False
+            elif _use(entry) in TRAIL_USES:
+                path = True
+        return path
+
     def signal(self, arm: Arm, cluster: list) -> bool:
         """Whether a signal is on the arm within APPROACH_M of the node for
         traffic towards it: on a road edge travelling towards N that arrives at
@@ -587,19 +671,38 @@ class _Approaches:
         signal's node, as `traffic_signals:direction` has it), or that node's
         own flag where no edge there is flagged. A signal on an edge
         travelling away from N is the next junction's (review r3, B1). The
-        walk stops at another road's junction (`foreign`)."""
+        walk stops at another road's junction (`foreign`).
+
+        A signal on a crosswalk alone (`crosswalk`) is N's only where no other
+        road's junction up the arm lies nearer it than N does: K St's
+        signalised crosswalk 17 m up Main St, 8 m short of K St's own node, is
+        K St's, and a stop-controlled side street at N does not take it (hunt
+        J2, 2026-11-08: the guard of review r3, B1 was passed by the
+        crosswalk node a few metres short of the other junction's). The walk
+        reads the other junction's node even a little past APPROACH_M for
+        that, as far as the answer has its edges."""
         frontier = []
         for _w, _h, inbound, entry in cluster:
             ends = self.ends(entry)
             if ends is not None:
                 frontier.append(ends[0] if inbound else ends[1])
         seen: list[tuple[float, float]] = []
+        # Crosswalk signals met, and the other roads' junctions met.
+        crosswalks: list[tuple[float, float]] = []
+        others: list[tuple[float, float]] = []
         while frontier:
             at = frontier.pop()
-            if self._metres(at) > APPROACH_M or any(_close(*at, *s) for s in seen):
+            if any(_close(*at, *s) for s in seen):
+                continue
+            if self._metres(at) > APPROACH_M:
+                # Not walked on, but another junction there still owns a
+                # crosswalk nearer it than N.
+                if self.foreign(at):
+                    others.append(at)
                 continue
             seen.append(at)
             if self.foreign(at):
+                others.append(at)
                 continue
             arriving = []
             for entry in self.edges:
@@ -610,18 +713,23 @@ class _Approaches:
             flagged = [ends for entry, ends in arriving if _flag(entry, "traffic_signal")]
             # A road arriving here towards N with a signal: a signalized node,
             # on this road's stop line or at a junction a few metres up it.
-            if any(self._towards(ends) for ends in flagged):
-                return True
-            # The node's own flag, unless every edge flagged at it travels
+            # Or the node's own flag, unless every edge flagged at it travels
             # away from N (a signal facing the other way only).
-            if self.node_signal(at) and not flagged:
-                return True
+            if any(self._towards(ends) for ends in flagged) or (
+                self.node_signal(at) and not flagged
+            ):
+                if not self.crosswalk(arm, at):
+                    return True
+                crosswalks.append(at)
             for entry, ends in arriving:
                 # Further out along the arm's own road: an edge of it arriving
                 # here from farther away.
                 if _of_road(arm, entry) and self._towards(ends):
                     frontier.append(ends[0])
-        return False
+        return any(
+            not any(haversine(Point(*at), Point(*other)) < self._metres(at) for other in others)
+            for at in crosswalks
+        )
 
 
 def _edge_ends(entry: dict) -> tuple[tuple[float, float], tuple[float, float]] | None:
@@ -641,10 +749,14 @@ def _edge_ends(entry: dict) -> tuple[tuple[float, float], tuple[float, float]] |
     return points[-1], points[0]
 
 
+def _use(entry: dict) -> str | None:
+    """A `/locate` edge's Valhalla `use`."""
+    return ((entry.get("edge") or {}).get("classification") or {}).get("use")
+
+
 def _is_road(entry: dict) -> bool:
     """A `/locate` edge of a road (not a footway, path or crossing way)."""
-    use = ((entry.get("edge") or {}).get("classification") or {}).get("use")
-    return use not in NOT_A_ROAD_USES
+    return _use(entry) not in NOT_A_ROAD_USES
 
 
 def _of_road(arm: Arm, entry: dict) -> bool:
@@ -860,7 +972,14 @@ def _ask(
                     f"{len(found)} of {len(positions)} junctions read before {error}"
                 ) from error
             except Exception as error:  # noqa: BLE001 - one batch failing is not the route failing
-                logger.info("intersection nodes unavailable for a %s batch: %s", costing, error)
+                # A warning, not a note (hunt S, low note): up to a batch of junctions is
+                # then read without its node, so a red there may go unrated.
+                logger.warning(
+                    "intersection nodes unavailable for a %s batch of %d junctions: %s",
+                    costing,
+                    len(chunk),
+                    error,
+                )
                 if costing == LOCATE_COSTINGS[0]:
                     # Without the rider's own edges nothing at the node can be read.
                     for other in futures[1:]:
@@ -1086,6 +1205,7 @@ def build_junctions(
                 links=tuple(road(a, a.way_id, [a]) for a in links),
                 located=node is not None,
                 continues=continues,
+                ring_movement=raw.ring_movement,
             )
         )
     return junctions
@@ -1100,6 +1220,7 @@ def events_of(
     cut_short: tuple[type[BaseException], ...] = (),
     ratings: Sequence[Rating] = (),
     beacons: Sequence[Beacon] = (),
+    closure_when: str | None = None,
 ) -> list[Event]:
     """The route's junction events, in route order: the router says what meets
     at each junction and who has the right of way, the segment table how busy
@@ -1110,8 +1231,23 @@ def events_of(
     set a junction's cost and colour; a rated junction is read even where no road
     there can be busy ("the road is fine, but the intersection can be especially
     dangerous"). `beacons`: the known flashing beacons at junctions the map has a
-    signal at (`core.flashing_signals.active`), priced with no signal."""
-    raws = [raw for raw in raws if wanted(raw) or _rated(raw, ratings)]
+    signal at (`core.flashing_signals.active`), priced with no signal.
+    `closure_when`: the ride time timed closures are read in (`routing.car_free_reading`),
+    `when` where not given. `when` itself always times the junction costs (rush hour, night,
+    weekend). Hunt X1 (2026-11-08, unreleased) briefly passed one value for both, so off the
+    weekend graphs a plan's junctions were priced with no ride time."""
+    by_tier = busy_by_tier(
+        [
+            (position, raw.lon, raw.lat)
+            for position, raw in enumerate(raws)
+            if tier_candidate(raw) and not _rated(raw, ratings)
+        ]
+    )
+    raws = [
+        raw
+        for position, raw in enumerate(raws)
+        if wanted(raw) or position in by_tier or _rated(raw, ratings)
+    ]
     beacons = beacons_near([(raw.lon, raw.lat) for raw in raws], beacons)
     nodes = nodes_at(raws, locate, cut_short, beacons)
     asked: dict[tuple[int, int], tuple[int, int, float, float]] = {}
@@ -1123,7 +1259,8 @@ def events_of(
         for way in ways:
             if way:
                 asked[(position, way)] = (position, way, raw.lon, raw.lat)
-    roads = roads_by_way(list(asked.values()), when, with_facility)
+    closures = when if closure_when is None else closure_when
+    roads = roads_by_way(list(asked.values()), closures, with_facility)
     built = build_junctions(raws, nodes, roads)
     if beacons:
         signs = [control_of(nodes.get(position), signals=False) for position in range(len(raws))]

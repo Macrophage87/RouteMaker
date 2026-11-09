@@ -1576,7 +1576,7 @@ def test_road_bike_s_router_starts_where_available_plus_held_memory_reaches_the_
     beta: Beta,
 ) -> None:
     beta.release("v0.2.0", {"src/core/a.py": "x = 2\n"})
-    done = beta.agent("run", **_paved_host(beta, 5738))  # 5738 + 3065 = 8803
+    done = beta.agent("run", **_paved_host(beta, 5741))  # 5741 + 3065 = 8806
     assert done.returncode == 0, done.stdout + done.stderr
     assert "up -d valhalla-paved" in beta.calls().splitlines()
     assert "left stopped" not in done.stdout
@@ -1588,11 +1588,46 @@ def test_a_host_short_of_memory_leaves_road_bike_s_router_stopped_and_still_depl
     """2026-11-03: the agent started valhalla-paved with no memory check; the deploy now leaves
     it stopped with a warning where available plus held memory is under the threshold."""
     beta.release("v0.2.0", {"src/core/a.py": "x = 2\n"})
-    done = beta.agent("run", **_paved_host(beta, 5737))  # 8802
+    done = beta.agent("run", **_paved_host(beta, 5740))  # 8805
     assert done.returncode == 0, done.stdout + done.stderr
     assert "deployed: v0.2.0" in beta.status()
-    assert "valhalla-paved left stopped: 8802 MiB of the 8803" in done.stdout
+    assert "valhalla-paved left stopped: 8805 MiB of the 8806" in done.stdout
     assert not _paved_started(beta.calls())
+
+
+def _paved_weekend_tiles(beta: Beta) -> None:
+    (beta.data / "tiles" / "paved-weekend" / "b1").mkdir(parents=True)
+    (beta.data / "tiles" / "paved-weekend" / "current").symlink_to("b1")
+
+
+def _paved_weekend_started(calls: str) -> bool:
+    return any(
+        "valhalla-paved-weekend" in line and line.startswith(("up -d", "restart "))
+        for line in calls.splitlines()
+    )
+
+
+def test_road_bike_s_weekend_router_starts_with_its_tiles_and_the_memory(beta: Beta) -> None:
+    """The owner, 2026-11-08, "New weekend graph": valhalla-paved-weekend is a trail router,
+    started once its tiles are on the host, and measured against the same threshold (the
+    startup peak with it, 8406 MiB, plus the 0.39 GiB margin: 8806 MiB)."""
+    beta.release("v0.2.0", {"src/core/a.py": "x = 2\n"})
+    _paved_weekend_tiles(beta)
+    done = beta.agent("run", **_paved_host(beta, 5741))
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "up -d valhalla-paved valhalla-paved-weekend" in beta.calls().splitlines()
+    assert "left stopped" not in done.stdout
+
+
+def test_a_host_short_of_memory_leaves_road_bike_s_weekend_router_stopped(beta: Beta) -> None:
+    beta.release("v0.2.0", {"src/core/a.py": "x = 2\n"})
+    _paved_weekend_tiles(beta)
+    done = beta.agent("run", **_paved_host(beta, 5740))
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "deployed: v0.2.0" in beta.status()
+    assert "valhalla-paved-weekend left stopped: 8805 MiB of the 8806" in done.stdout
+    assert "a weekend Road Bike ride is planned on the paved graph" in done.stdout
+    assert not _paved_weekend_started(beta.calls())
 
 
 def test_a_failed_memory_reading_leaves_road_bike_s_router_stopped(beta: Beta) -> None:

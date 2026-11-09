@@ -108,3 +108,29 @@ test("a crossing is a cue on the walk's line, drawn straight on and said in its 
   assert.match(cueSpoken(crossing, "advance", 150), /^In .+, cross G St NE at the signal\.$/);
   assert.deepEqual(walkTurnTexts([{ movement: "cross", street: null, point: at(0, 0), control: "crosswalk", busy: false, slip: false }]), ["Cross at the crosswalk."]);
 });
+
+test("on foot, the cues come at walking distances, not a bike's (Stephen, 2026-11-08)", () => {
+  const model = walkModel(PATH)!;
+  assert.equal(model.onFoot, true);
+  // Each fix 5 m on at walking pace: where each of the first turn's three cues is said, in metres before it.
+  let state = walkStart();
+  const heard: { phase: string; before: number }[] = [];
+  for (let north = 0; north <= 200; north += 5) {
+    const out = walkStep(model, state, fix(at(0, north)), "full");
+    state = out.state;
+    for (const e of out.events) if (e.cue && Math.round(e.cue.atM) === 200 && e.phase) heard.push({ phase: e.phase, before: 200 - north });
+  }
+  const before = Object.fromEntries(heard.map((h) => [h.phase, h.before]));
+  // A bike's floors are 150, 45 and 15 m; on foot 60, 20 and 6 m.
+  assert.ok(before.advance <= 60 && before.advance > 45, JSON.stringify(heard));
+  assert.ok(before.prepare <= 20 && before.prepare > 10, JSON.stringify(heard));
+  assert.ok(before.now <= 6, JSON.stringify(heard));
+});
+
+test("out of a station, a turn right at the walk's start is not said (Stephen, 2026-11-08: \"In 0 ft, left\")", () => {
+  const path = { ...PATH, turns: [{ movement: "left" as const, street: null, point: at(0, 5) }, ...PATH.turns.slice(0, 2)] };
+  const turnsAt = (model: ReturnType<typeof walkModel>) => model!.cues.filter((c) => c.kind === "turn").map((c) => Math.round(c.atM));
+  assert.deepEqual(turnsAt(walkModel(path, "", true)), [200, 400]);
+  // Any other walk (Walk's own line, a re-plan from the corner) keeps it.
+  assert.deepEqual(turnsAt(walkModel(path)), [5, 200, 400]);
+});
