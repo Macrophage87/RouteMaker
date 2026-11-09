@@ -108,19 +108,20 @@ test("the cost table: one short-named region, a short caption, and LTS 1 and 2 s
   assert.ok(regions.includes('<div class="table-wrap" tabindex="0" role="region" aria-label="Cost table, scrolls sideways">'), regions.join(" | "));
   for (const r of regions) assert.match(r, /^<div class="table-wrap" tabindex="0" role="region" aria-label="[^"]{3,90}">$/);
   assert.match(page, /<caption>Calm miles per mile, at each ride type's starting slider<\/caption>/);
-  assert.match(text, /Their level adds nothing at LTS 1 or 2, except on Trailmaxxing, Cargo with passengers and Novice and Nervous, where low-stress streets \(LTS 2\) count a little extra\. A quiet street counts as 1\./);
+  assert.match(text, /Their level adds nothing at LTS 1 or 2, except on Trailmaxxing, Cargo with passengers, Tandem and Novice and Nervous, where low-stress streets \(LTS 2\) count a little extra\. A quiet street counts as 1\./);
   assert.match(text, /Traffic-free paths and protected bike lanes count for less, and painted bike lanes a little less \(except on Mass Ride\)/);
   assert.doesNotMatch(text, /always count as about 1/);
   // The LTS 4 hold is one combined figure against the router's first route (the spec re-check's R2).
   assert.match(text, /more LTS 4, Avoid and very high stress crossings, counted together, than the router's own first route/);
   assert.doesNotMatch(page, /<th scope="col">LTS 1 and 2<\/th>/);
-  // FOLLOWUP-LTS2-WEIGHT (OWNER-DECISIONS 240 (A)): the quarter weight, in plain words.
-  assert.match(text, /On Trailmaxxing and Cargo Bike with passengers, a mile of LTS 2 also costs a quarter of what a mile of LTS 3 adds, so those routes lean toward LTS 1 streets\. Like LTS 3's extra cost, it fades to nothing at the slider's busiest end\./);
+  // FOLLOWUP-LTS2-WEIGHT (OWNER-DECISIONS 240 (A)): the quarter weight, in plain words. Tandem (#1070) has
+  // the not-in-control weights too.
+  assert.match(text, /On Trailmaxxing, Cargo Bike with passengers and Tandem, a mile of LTS 2 also costs a quarter of what a mile of LTS 3 adds, so those routes lean toward LTS 1 streets\. Like LTS 3's extra cost, it fades to nothing at the slider's busiest end\./);
   // FOLLOWUP-KIDS-PRESET (240 (B)): every place ride types are listed names it.
   // Riding with kids became Novice and Nervous (v0.7.0), which reads every road one level busier.
   assert.match(page, /<tr><th scope="row">Trailmaxxing, Novice and Nervous<\/th><td>6<\/td>/);
   assert.match(text, /Novice and Nervous reads every road and junction one level busier than it is/);
-  assert.match(text, /Trailmaxxing, Cargo Bike with passengers and Novice and Nervous never pick a route/);
+  assert.match(text, /Trailmaxxing, Cargo Bike with passengers, Tandem and Novice and Nervous never pick a route/);
   assert.doesNotMatch(text, /Riding with kids/);
 });
 

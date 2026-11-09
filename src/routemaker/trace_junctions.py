@@ -38,14 +38,20 @@ TRACE_ATTRIBUTES = (
     # node, and on an edge that ends at a signalled node (a stop line short of the junction).
     "node.traffic_signal",
     "edge.traffic_signal",
+    # Whether the edge is a bridge or a tunnel: a route over or under an Avoid-rated
+    # junction does not pass through it (`separated_line`, the 2026-11-08 hunt, J6).
+    "edge.bridge",
+    "edge.tunnel",
 )
 
 # The road classes (Valhalla's, from OSM `highway`) on which a way can be LTS 3
 # or worse. A junction none of whose roads is one of these is a neighbourhood
 # junction and costs nothing, which spares the segment query most of a ride's
-# nodes. A residential street rated LTS 3 on its own speed or volume is missed
-# by this; the tier of the stretch still colours the route, only its crossings
-# go unflagged (docs/DEVELOPMENT.md, "Intersection costs").
+# nodes. A residential street rated LTS 3 on its own speed or volume is not of
+# these classes: `core.junctions.events_of` reads such a junction by its roads'
+# tier instead (`junctions.busy_by_tier`, one segment-table query a route; the
+# 2026-11-08 hunt, H5), so its crossings are priced too (docs/DEVELOPMENT.md,
+# "Intersection costs").
 BUSY_CLASSES = frozenset({"motorway", "trunk", "primary", "secondary", "tertiary", "unclassified"})
 
 # Valhalla's `use` values this model reads. A slip lane is Valhalla's name for a
@@ -128,11 +134,19 @@ class RawJunction:
     back_edge_ids: tuple[int, ...] = ()
     # The router flags a traffic signal at the node, or on the rider's own approach within
     # APPROACH_M of it (`routemaker.junction_delay`). From the trace alone: a signal up a
-    # cross road only is not seen here (`core.junctions` reads those with `/locate`).
+    # cross road only is not seen here (`core.junctions` reads those with `/locate`, and
+    # the delay model takes its reading as `signals`: hunt J5).
     signal: bool = False
     # Each of `others`' headings away from the node (degrees), None where the router gave
     # none; empty for a junction built without them.
     other_headings: tuple[float | None, ...] = ()
+    # Where the route enters a roundabout here (its in-edge is off the ring, its out-edge
+    # on it: the router's `edge.roundabout`, asked by `calm.TRACE_ATTRIBUTES`), the
+    # movement the ride round the ring makes, from the heading it arrives on to the
+    # heading of the first edge off it: a right at the first exit, straight on, or a left
+    # (a U-turn included) past the arms between (`intersections.ROUNDABOUT_FACTOR_ONTO`;
+    # hunt J4). None elsewhere, and where the route ends on the ring.
+    ring_movement: Movement | None = None
 
     @property
     def slip_lane(self) -> bool:
@@ -214,6 +228,29 @@ def trace_shape(trace: dict, fallback: list[tuple[float, float]]) -> list[tuple[
     drifted onto the wrong nodes for 245 of 342 edges)."""
     encoded = trace.get("shape")
     return decode_polyline6(encoded) if encoded else fallback
+
+
+def separated_line(
+    trace: dict, fallback: list[tuple[float, float]]
+) -> tuple[list[tuple[float, float]], list[bool] | None]:
+    """The traced leg's line (`trace_shape`) and, for each of its segments, whether it lies
+    on a bridge or a tunnel edge (`edge.bridge`, `edge.tunnel`): what
+    `avoid_junctions.passages` reads to tell a route over or under a junction from one
+    through it (J6). None for the flags where the trace has no edges with shape indices
+    (an older router, a test double): every segment at grade, as before."""
+    line = trace_shape(trace, fallback)
+    edges = trace.get("edges") or []
+    if len(line) < 2 or not edges:
+        return line, None
+    flags = [False] * (len(line) - 1)
+    for edge in edges:
+        begin, end = edge.get("begin_shape_index"), edge.get("end_shape_index")
+        if begin is None or end is None:
+            return line, None
+        if edge.get("bridge") or edge.get("tunnel"):
+            for k in range(max(0, begin), min(end, len(flags))):
+                flags[k] = True
+    return line, flags
 
 
 def decode_polyline6(encoded: str) -> list[tuple[float, float]]:
@@ -340,6 +377,7 @@ def read_edges(
                     back_edge_ids=_back_edge_ids(edges, index, to_metres),
                     signal=_signal_at(edges, index, to_metres),
                     other_headings=other_headings,
+                    ring_movement=_ring_movement(edges, index),
                 ),
             )
         )
@@ -390,7 +428,13 @@ def marks_along(
 def _signal_at(edges: list[dict], index: int, to_metres: float) -> bool:
     """Whether the router flags a signal at the node `edges[index]` arrives at: on the node,
     on the in-edge, or on one of the rider's edges before it that ends within APPROACH_M of
-    the node along the route."""
+    the node along the route, short of an earlier junction with a road and not nearer one
+    (`_nearer_earlier_junction`). A signal on an earlier junction or behind it is that
+    junction's: most stop lines in the District and Maryland carry `highway=traffic_signals`
+    with no direction, so the flag on the stop line for the other direction, just past a
+    signalised junction the rider has crossed, read the same as their own stop line before
+    the next one (the 2026-11-08 hunt, J2-1: a residential T 40 m past a suburban signal was
+    timed as a second signal of its own, 15 s shown and 60 ranked, where it costs nothing)."""
     here = edges[index]
     if (here.get("end_node") or {}).get("traffic_signal") or here.get("traffic_signal"):
         return True
@@ -399,10 +443,60 @@ def _signal_at(edges: list[dict], index: int, to_metres: float) -> bool:
         if gone > APPROACH_M:
             return False
         edge = edges[back]
-        if edge.get("traffic_signal") or (edge.get("end_node") or {}).get("traffic_signal"):
+        if _meets_road(edge):
+            # An earlier junction: its signal, or one behind it, is its own.
+            return False
+        if (
+            edge.get("traffic_signal") or (edge.get("end_node") or {}).get("traffic_signal")
+        ) and not _nearer_earlier_junction(edges, back, gone, to_metres):
             return True
         gone += float(edge.get("length") or 0.0) * to_metres
     return False
+
+
+# Valhalla's road classes a junction is read at (`_meets_road`); a path's "service_other",
+# a driveway's or a parking aisle's, is none.
+_ROAD_CLASSES = frozenset(
+    {"motorway", "trunk", "primary", "secondary", "tertiary", "unclassified", "residential"}
+)
+
+
+def _meets_road(edge: dict) -> bool:
+    """Whether a road (not a path, driveway or service road) meets the node `edge` arrives at."""
+    return any(
+        other.get("use") not in NOT_A_ROAD_USES and other.get("road_class") in _ROAD_CLASSES
+        for other in (edge.get("end_node") or {}).get("intersecting_edges") or []
+    )
+
+
+def _nearer_earlier_junction(edges: list[dict], back: int, gone: float, to_metres: float) -> bool:
+    """Whether the route behind the node `edges[back]` arrives at, `gone` metres back from
+    the junction asked about, reaches a junction with a road nearer to that node than
+    `gone`: a signal flagged there is that junction's."""
+    walked = float(edges[back].get("length") or 0.0) * to_metres
+    for earlier in range(back - 1, -1, -1):
+        if walked >= gone:
+            return False
+        if _meets_road(edges[earlier]):
+            return True
+        walked += float(edges[earlier].get("length") or 0.0) * to_metres
+    return False
+
+
+def _ring_movement(edges: list[dict], index: int) -> Movement | None:
+    """The movement through the roundabout the route enters at the node `edges[index]`
+    arrives at (`RawJunction.ring_movement`), or None where it enters none there."""
+    if edges[index].get("roundabout") or not edges[index + 1].get("roundabout"):
+        return None
+    arrive = edges[index].get("end_heading")
+    for after in edges[index + 2 :]:
+        if after.get("roundabout"):
+            continue
+        leave = after.get("begin_heading")
+        if arrive is None or leave is None:
+            return None
+        return movement_of(float(arrive), float(leave))
+    return None
 
 
 def _back_edge_ids(edges: list[dict], index: int, to_metres: float) -> tuple[int, ...]:

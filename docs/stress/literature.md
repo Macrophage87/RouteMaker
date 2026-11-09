@@ -67,7 +67,9 @@ level even at low volume, because rural drivers do not expect bicycles.
   costs would be about x0.4. RouteMaker multiplies the cost by 0.75 instead, a milder
   credit chosen by the owner (decision 196) so that an unsignalized crossing of a divided
   LTS 4 road stays red. Oregon scores a two-stage left as two crossings; RouteMaker caps a
-  left at a signal at the price of a two-stage box turn. We have no roundabout rule yet.
+  left at a signal at the price of a two-stage box turn. Oregon's roundabout guidance is not
+  followed: RouteMaker prices a ride round a busy ring as a crossing of the ring's traffic
+  scaled by the arms passed, a proposal of its own (`ROUNDABOUT_FACTOR_ONTO`, 2026-11-08).
 - **An open question:** our cost for a left off an LTS 3 road, 0.11 calm mi [0.18 km], is
   below the range for crossing an LTS 3 road from a stop. The reasoning is that the rider
   already holds a lane and crosses one oncoming lane, but the code marks this value as a

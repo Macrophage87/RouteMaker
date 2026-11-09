@@ -1361,3 +1361,44 @@ class TestSurfacePenalty:
         member = sign_in(Client(enforce_csrf_checks=False), make_user(admin=False))
         assert post(member, SURFACE, body_).status_code == 403
         assert not Override.objects.filter(kind="surface").exists()
+
+
+# --- Waiting for the rebuild (hunt finding X3, 2026-11-08) ------------------------------------
+
+
+def test_the_panel_says_when_routes_wait_for_the_rebuild() -> None:
+    """The map and the ranking have an edit at once, the router's own costs only from the next
+    rebuild: the road panel says so while it waits (before 2026-11-08 only the editor's own
+    confirmation did, and nobody who opened the panel later saw it)."""
+    row = {"stress_tier": 4, "stress_half": False, "stress_rule": RULE}
+    assert "Routing" not in {r["label"] for r in segment_info.stress_rows(row)}
+    rows = {r["label"]: r for r in segment_info.stress_rows({**row, "stress_pending": True})}
+    assert rows["Routing"]["value"] == segment_info.ROUTING_PENDING
+    assert "after the next weekly data update" in segment_info.ROUTING_PENDING
+
+
+@db
+class TestRoutingPending:
+    def read_at(self, schema, when) -> None:
+        LiveEditGeneration.objects.update_or_create(
+            table_oid=stress_edits.live_oid(schema), defaults={"overrides_read_at": when}
+        )
+
+    def test_an_edit_after_the_rebuild_read_the_overrides_waits_for_the_next(self, live) -> None:
+        self.read_at(live, timezone.now() - timedelta(minutes=5))
+        assert not stress_edits.routing_pending(WAY)
+        edit(live, make_user(), 4)
+        assert stress_edits.routing_pending(WAY)
+        assert not stress_edits.routing_pending(OTHER_WAY)
+
+    def test_an_edit_the_rebuild_read_waits_for_nothing(self, live) -> None:
+        edit(live, make_user(), 4)
+        self.read_at(live, timezone.now() + timedelta(seconds=1))
+        assert not stress_edits.routing_pending(WAY)
+
+    def test_an_edit_undone_back_to_the_built_level_waits_for_nothing(self, live) -> None:
+        self.read_at(live, timezone.now() - timedelta(minutes=5))
+        admin = make_user()
+        done = edit(live, admin, 4)
+        stress_edits.undo(admin, done.edit.pk)
+        assert not stress_edits.routing_pending(WAY)

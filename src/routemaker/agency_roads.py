@@ -91,11 +91,12 @@ import re
 from collections import defaultdict
 from collections.abc import Collection, Iterable, Iterator, Mapping, Sequence
 from dataclasses import asdict, dataclass, field, replace
+from datetime import date
 from pathlib import Path
 from typing import NamedTuple
 
 from .geo import Point, distance_to_line, haversine
-from .tags import ONEWAY_JUNCTIONS, is_oneway, posted_maxspeed
+from .tags import ONEWAY_JUNCTIONS, cycleway_sides, is_oneway, posted_maxspeed, side_buffered
 from .tags import lanes_per_direction as osm_lanes_per_direction
 
 METRES_PER_FOOT = 0.3048
@@ -246,6 +247,23 @@ WITHHOLDABLE = frozenset({"speed"})
 OWNER_DIRECTIONS = frozenset({"OB", "IB", "BD"})
 # How the report names a value the owner withheld (dc-osm-discrepancies).
 OWNER_OVERRIDE = "owner override"
+# The reason and evidence a suggested override leaves for the owner to fill
+# (`pipeline.dc_osm_newer`). Every loader of an override refuses them as written,
+# so a suggestion copied in unfilled is caught before it is in force: this one
+# (`withheld_blocks`), `manage.py load_access_overrides`, and the kept list.
+REASON_PLACEHOLDER = "<the owner's words>"
+EVIDENCE_PLACEHOLDER = "<what was seen on the spot>"
+PLACEHOLDERS = frozenset({REASON_PLACEHOLDER, EVIDENCE_PLACEHOLDER})
+
+
+def placeholder_problem(field: str, text: object) -> str | None:
+    """Why `text` is still a suggestion's placeholder for `field`, or None."""
+    if isinstance(text, str) and text.strip() in PLACEHOLDERS:
+        return (
+            f"{field} is still the suggested placeholder {text.strip()!r}: write the owner's "
+            "own words (reason) and what was seen on the spot (evidence) before loading it"
+        )
+    return None
 
 
 class WithheldBlockRefused(ValueError):
@@ -319,6 +337,9 @@ def withheld_blocks(directory: str | Path | None = None) -> dict[str, WithheldBl
             for name in ("reason", "evidence"):
                 if not isinstance(entry.get(name), str) or not entry[name].strip():
                     raise WithheldBlockRefused(f"{where}: {name} is required")
+                problem = placeholder_problem(name, entry[name])
+                if problem:
+                    raise WithheldBlockRefused(f"{where}: {problem}")
             names[key] = routename
             held[key].update(facts)
             if direction is not None:
@@ -1232,6 +1253,20 @@ _TRACK_VALUES = frozenset({"track", "opposite_track"})
 # regularly."). Baltimore's centerline fills gaps only (item 184).
 RECORD_WINS = frozenset({DC_AGENCY})
 
+# The newest the installed Roadway Block record can be: the day it was retrieved
+# (docs/SOURCES.md, the Roadway Block entry; `tests/test_agency_roads.py` holds the
+# two equal, so a reinstall updates both). The layer dates none of its blocks' lanes,
+# speeds or bike lanes (only its pavement fields are dated). The record still wins
+# (item 190) however new an OSM edit is: OSM's edit date is the whole way's last
+# edit, not the tag's, so a newer way is not a newer speed, lane count or bike lane
+# (hunt D6; a fix that let it win was held). Instead, a District way OSM last edited
+# after this date whose posted speed, lanes or bike tags disagree with what the
+# record applied is listed beside the rebuild's discrepancy report for the owner
+# to decide (`pipeline.dc_osm_newer`). The owner, 2026-11-08: "We should
+# build a flag in. If there's a newer OSM rating, then on a rebuild it should flag
+# it and I can make the call."
+DC_RECORD_AS_OF = date(2026, 10, 1)
+
 # The rows of OWNER-DECISIONS 190 (review r2's table) where the District's record
 # now overrides an OSM tag the round-1 rules kept; `Overlay.precedence` names them.
 ROW_NO_FACILITY = "A"  # no facility recorded: OSM's painted lane removed
@@ -1332,23 +1367,41 @@ def osm_refuses_track(tags: Mapping[str, str]) -> bool:
     return tags.get("bicycle") in ("no", "use_sidepath") or "no" in _cycleway_values(tags)
 
 
+def _osm_contraflow_dropped(
+    tags: Mapping[str, str], facts: WayFacts, one_way: bool, written: Mapping[str, str]
+) -> bool:
+    """Whether writing the agency's facility would replace OSM's own contraflow
+    lane with a with-flow lane OSM does not map (hunt 2, S4, 2026-11-08).
+
+    On a one-way block DC does not flag `BIKELANE_CONTRAFLOW`, its one lane is read
+    as the with-flow lane, whatever its label (`_block_bike`; review r2, where OSM
+    mapped a with-flow lane). But where OSM maps a contraflow facility in so many
+    words (`cycleway:left=lane` + `cycleway:left:oneway=-1`, or an `opposite*`
+    value: `CyclewaySide.contraflow`) and the record has no flag to say which it
+    is, the record's lane is as likely that one: written, the with-flow rider was
+    scored on a painted lane OSM says is not on their side (LTS 2 where mixed
+    traffic is LTS 3 at 30 mph), and the map lost the contraflow lane. Not
+    measured against DC's data; the review r3 mirror case. OSM is kept and the
+    report says so."""
+    if not one_way or facts.contraflow or not written:
+        return False
+    if "oneway:bicycle" in written or any(v.startswith("opposite") for v in written.values()):
+        return False
+    return any(side.contraflow and side.rank > 0 for side in cycleway_sides(dict(tags)).values())
+
+
 def osm_side_ranks(tags: Mapping[str, str]) -> dict[str, int]:
-    """The facility rank OSM maps on each side of the way (`left`, `right`)."""
+    """The facility rank OSM maps on each side of the way (`left`, `right`), each
+    side read by the classifier's precedence (`tags.cycleway_sides`): read key by
+    key, `cycleway=lane` + `cycleway:right=no` was a lane on both sides (hunt 3,
+    stress 4), though the right side says it has none."""
     ranks: dict[str, int] = {}
-    for key, value in tags.items():
-        parsed = _cycleway_side(key)
-        if parsed is None or parsed[1]:
-            continue
-        if value in _TRACK_VALUES:
-            rank = BIKE_PROTECTED
-        elif value == "buffered_lane" or tags.get(f"{key}:buffer", "no") != "no":
-            rank = BIKE_BUFFERED if value in _PAINTED_VALUES else BIKE_NONE
-        elif value in _PAINTED_VALUES:
-            rank = BIKE_LANE
-        else:
-            continue
-        for side in ("left", "right") if parsed[0] in ("", "both") else (parsed[0],):
-            ranks[side] = max(ranks.get(side, BIKE_NONE), rank)
+    plain = dict(tags)
+    for side, found in cycleway_sides(plain).items():
+        if found.value in _TRACK_VALUES:
+            ranks[side] = BIKE_PROTECTED
+        elif found.value in _PAINTED_VALUES:
+            ranks[side] = BIKE_BUFFERED if side_buffered(plain, side) else BIKE_LANE
     return ranks
 
 
@@ -1748,6 +1801,9 @@ def overlay(
         )
         if _TRACK_VALUES & set(written.values()) and osm_refuses_track(tags):
             written, refused = {}, True
+    contraflow_kept = _osm_contraflow_dropped(tags, facts, one_way, written)
+    if contraflow_kept:
+        written = {}
     has_osm_facility = bool(set(_FACILITY_VALUES) & _cycleway_values(tags))
     if allow_bike and has_facility and separate:
         sources["bike"] = SOURCE_OSM
@@ -1758,6 +1814,12 @@ def overlay(
         disagreements.append(
             "bike facility: agency protected lane, OSM says none on the road (bicycle or "
             "cycleway no, or use_sidepath); OSM kept"
+        )
+    elif contraflow_kept:
+        sources["bike"] = SOURCE_OSM
+        disagreements.append(
+            "bike facility: OSM maps a contraflow lane, the agency an unflagged lane read "
+            "as with-flow; OSM kept"
         )
     elif written:
         for key in [k for k in out if k.startswith(_CYCLEWAY_PREFIX)]:
@@ -1796,8 +1858,24 @@ def overlay(
         if facts.parking_lanes == 0:
             out["parking:both"] = "no"
         elif facts.parking_lanes == 1:
-            out["parking:right"] = "parallel"
-            out["parking:left"] = "no"
+            # On the lane's side only where the record puts the lane beside the
+            # parking (DC's `BIKELANE_PARKINGLANE_ADJACENT`), otherwise on the side
+            # without a lane (hunt 3, stress 2). Always on the right, it was beside
+            # the with-flow lane the overlay writes there, and the classifier, which
+            # reads the parking on the lane's own side, rated a door-zone lane DC's
+            # own field says is not one: LTS 3 at 30 mph where OSM's tags give LTS 2.
+            # A way with a painted lane on both sides, or none (a track, whose
+            # rider is not in the door zone), keeps the right.
+            laned = {
+                s for s, rank in osm_side_ranks(out).items() if rank in (BIKE_LANE, BIKE_BUFFERED)
+            }
+            parked = "right"
+            if facts.lane_beside_parking and laned == {"left"}:
+                parked = "left"
+            elif not facts.lane_beside_parking and laned == {"right"}:
+                parked = "left"
+            out[f"parking:{parked}"] = "parallel"
+            out["parking:right" if parked == "left" else "parking:left"] = "no"
         else:
             out["parking:both"] = "parallel"
         sources["parking"] = agency

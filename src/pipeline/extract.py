@@ -152,25 +152,37 @@ class WayCollector(osmium.SimpleHandler):
 
 
 class NodeLocator(osmium.SimpleHandler):
-    """Second pass: the coordinates of the nodes the first pass asked for."""
+    """Second pass: the coordinates of the nodes the first pass asked for, and which of
+    them are tagged `button_operated=yes` (`pipeline.signals.button_ways`)."""
 
     def __init__(self, wanted: set[int]) -> None:
         super().__init__()
         self._wanted = wanted
         self.locations: dict[int, tuple[float, float]] = {}
+        self.buttons: set[int] = set()
 
     def node(self, n) -> None:  # noqa: N802 - osmium's callback name
         if n.id in self._wanted:
             self.locations[n.id] = (n.location.lon, n.location.lat)
+            if n.tags.get("button_operated") == "yes":
+                self.buttons.add(n.id)
 
 
-def read_ways(path: str | Path, keep: Callable[[dict[str, str]], bool] | None = None) -> list[Way]:
-    """Every way the filter keeps, with its node coordinates attached."""
+def read_ways(
+    path: str | Path,
+    keep: Callable[[dict[str, str]], bool] | None = None,
+    button_nodes: set[int] | None = None,
+) -> list[Way]:
+    """Every way the filter keeps, with its node coordinates attached. `button_nodes`, where
+    given, gains the ways' nodes tagged `button_operated=yes`, read in the same node pass
+    (the beg buttons, `pipeline.signals.button_ways`; the owner, 2026-11-08)."""
     collector = WayCollector(keep)
     collector.apply_file(str(path))
 
     locator = NodeLocator(collector.wanted_nodes)
     locator.apply_file(str(path))
+    if button_nodes is not None:
+        button_nodes.update(locator.buttons)
 
     for way in collector.ways:
         located = [

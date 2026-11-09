@@ -13,7 +13,9 @@ opens the live site in a WebView and gives Ride mode three native things while a
   **"Riding with RouteMaker"** notification. End ride (or leaving Ride mode) removes the watcher, which
   stops the service and its notification.
 - **Spoken cues with the screen locked.** `@capacitor-community/text-to-speech` (the phone's own
-  text-to-speech engine) in place of Web Speech.
+  text-to-speech engine) in place of Web Speech. Before each cue `VoiceFocusPlugin.java`
+  ("RouteMakerVoiceFocus") asks Android for a short audio turn, as navigation apps do: music dips under the
+  cue (a spoken podcast pauses) and comes back just after it, instead of playing over it at full volume.
 - **The latest cue on the notification shade** (v0.8.0 site only). `@capacitor/local-notifications`
   shows a second, silent "Latest cue" notification, replaced as each cue is said, cleared at End ride.
 

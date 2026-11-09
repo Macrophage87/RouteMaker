@@ -45,6 +45,11 @@ class TestOpens:
         assert capitolgrounds.opens({"highway": "path"}, line(*UPPER_SENATE_PARK))
         assert capitolgrounds.opens({"highway": "pedestrian"}, line(*UNION_SQUARE))
 
+    def test_a_plaza_mapped_only_as_an_area_is_left_as_mapped(self) -> None:
+        """Valhalla never builds it (`circleparks.is_pedestrian_area`; hunt Q5, 2026-11-08)."""
+        plaza = {"highway": "pedestrian", "area": "yes"}
+        assert not capitolgrounds.opens(plaza, line(*UNION_SQUARE))
+
     def test_off_the_grounds_nothing_changes(self) -> None:
         assert not capitolgrounds.opens(WALK, line(*OUTSIDE))
         assert not capitolgrounds.opens(WALK, line(*COLUMBUS_PLAZA))
