@@ -4850,7 +4850,9 @@ if (mine()) {
     plan.mode === "Plan" && plan.bar.length === 5 && !plan.top && plan.tab === "plan" && !plan.said.some((t) => t.startsWith("Plan: the full planner")) && plan.assertive === 0, JSON.stringify(plan));
   await p.s("Page.reload", {});
   await p.waitFor("!!document.querySelector('.mode-switch')", 40000);
-  await sleep(800);
+  // A switch with a pressed button laid out, not a fixed wait: after a reload the phone sheet's handle row can take
+  // longer than 800 ms (main's CI on v0.23.0 read null there).
+  await p.waitFor(`${modeNow} !== null`, 10000);
   const kept = await p.eval(modeNow);
   // Plan's switch is in the phone sheet's handle row since P10: wait for it to be laid out after the reload.
   await p.waitFor("[...document.querySelectorAll('.mode-switch .mode-button')].some((x) => x.textContent === 'Go' && x.getClientRects().length)", 10000);
