@@ -107,6 +107,8 @@
 	redir @preset-road-bike /#preset=road-bike 302
 	@preset-cargo path /cargo /cargo/
 	redir @preset-cargo /#preset=cargo 302
+	@preset-tandem path /tandem /tandem/
+	redir @preset-tandem /#preset=tandem 302
 	@preset-ebike path /ebike /ebike/
 	redir @preset-ebike /#preset=ebike 302
 	@preset-bikeshare path /bikeshare /bikeshare/

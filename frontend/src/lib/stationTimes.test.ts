@@ -177,3 +177,19 @@ test("with no live reading, or Metro hidden, the card is the timetable's", () =>
   assert.deepEqual(liveRows(null), []);
   assert.deepEqual(stationCardRows(null, { metro: true, marc: true }), []);
 });
+
+test("one end from both tracks reads as one row's end (2026-11-08: live trains now come by track)", () => {
+  const rows = liveRows({
+    station: "Shady Grove",
+    trains: [
+      { line: "Red Line", toward: "Glenmont", track: "A15:1", minutes: [3], when: "3 min" },
+      { line: "Red Line", toward: "Glenmont", track: "A15:2", minutes: [9], when: "9 min" },
+    ],
+    elevators: [],
+    alerts: [],
+    credit: "Data: WMATA",
+    as_of: "2026-11-08T18:00:00",
+  });
+  assert.equal(rows[0].shown.match(/to Glenmont/g)?.length, 1);
+  assert.match(rows[0].shown, /to Glenmont 3 min, 9 min/);
+});

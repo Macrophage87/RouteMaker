@@ -491,8 +491,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "request: the dodge is not excluded",
         DD,
-        '    request["exclude_locations"] = [{"lon": lon, "lat": lat} for lon, lat in excludes]',
-        '    request["exclude_locations"] = []',
+        '        {"lon": lon, "lat": lat} for lon, lat in excludes\n    ]',
+        '        {"lon": lon, "lat": lat} for lon, lat in excludes[:0]\n    ]',
         TD,
     ),
     (

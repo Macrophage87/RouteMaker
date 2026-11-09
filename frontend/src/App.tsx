@@ -120,7 +120,7 @@ import { MANUAL_BADGE, planLegEdit } from "./lib/planLegs.ts";
 import { insertedSaid, loopChangeSaid,reversedSaid, reverseUnavailableHint, stationSaid } from "./lib/pointText.ts";
 import { avoidNearSpot, shownRoute } from "./lib/avoidJunctions.ts";
 import { shownNear } from "./lib/junctionSuggest.ts";
-import { CHECKING_CLOSURES, CLOSURE_SLOW_MS, START_NOTE_MS, RIDE_ENDED_FROM_HERE_NOTE, RIDE_ENDED_NO_FIX_NOTE, RIDE_ENDED_SAID, RideMode, primeRideVoice, startRideGesture, voiceTurnedOn, type EndedPlan, type RideView } from "./RideMode.tsx";
+import { CHECKING_CLOSURES, CLOSURE_SLOW_MS, START_NOTE_MS, RIDE_ENDED_FROM_HERE_NOTE, RIDE_ENDED_NO_FIX_NOTE, RIDE_ENDED_SAID, RideMode, primeRideVoice, startRideGesture, voiceTurnedOn, type EndedPlan, type EndedRiding, type RideView } from "./RideMode.tsx";
 import { Icon } from "./Icon.tsx";
 import { RideSummaryCard } from "./RideSummaryCard.tsx";
 import type { RebalanceDocked } from "./lib/rebalanceDock.ts";
@@ -129,7 +129,7 @@ import type { RideStats } from "./lib/rideStats.ts";
 import { readHeadingUp, readRidePrefs, readRideText, writeHeadingUp, writeRidePrefs, writeRideText, type RidePrefs, type RideTextSize } from "./lib/rideOutput.ts";
 import { activePins, chosenSaid, withStations, type NearbyStation, type Pins, type StationAction } from "./lib/stations.ts";
 import { bikeshareOf } from "./lib/bikeshare.ts";
-import { carries, hillsWords, seeksClimbs, startDials, stressMax, stressWords, trailsAreOff, type Dials } from "./lib/dials.ts";
+import { carries, easyMtbOn, hillsWords, seeksClimbs, startDials, stressMax, stressWords, trailsAreOff, type Dials } from "./lib/dials.ts";
 import { WeightStore, defaultSplit, withWeight, type StoredWeight } from "./lib/weight.ts";
 import { readSpeed, withSpeed, writeSpeed } from "./lib/ridingSpeed.ts";
 import { stationEdit, stationMoves, stationPlaceLabel, stationPlaceName, type RailVisibility, type Station, type StationRole } from "./lib/railStations.ts";
@@ -218,7 +218,6 @@ import {
   FOOD_PAGE,
   NO_FOOD_DATA,
   foodFoundSaid,
-  loadFood,
   foodMoreSaid,
   routeForDetour,
   type RouteForDetour,
@@ -230,11 +229,11 @@ import {
 } from "./lib/food.ts";
 import { FoodFinder, foodRowsShown } from "./lib/foodFinder.ts";
 import { GROCERY_HEADING, GROCERY_LOOKING, GROCERY_QUERY, GROCERY_UNAVAILABLE, groceryFoundSaid, groceryResults, isGroceryQuery, type GroceryFrom } from "./lib/grocery.ts";
-// food.json is a committed snapshot, as climbs.json, refreshed with scripts/build_food.py and committed;
+// food.json is loaded once for the page by app/foodData.ts.
+import { sharedFood } from "./app/foodData.ts";
 // places.json is a few bytes until scripts/build_places.py fills it. `no-inline`, as climbs.json: an
 // inlined data: URL is refused by the edge's connect-src 'self'. Its own hashed file under
 // /assets/ also lets the service worker leave it out of the precache (swCore.mjs LAZY_ASSET).
-import foodUrl from "./amenity-data/food.json?url&no-inline";
 import placesUrl from "./amenity-data/places.json?url&no-inline";
 // trail-miles.json too, until scripts/build_trail_miles.py fills it; precached (not LAZY_ASSET), as a ride's
 // 311 report and "Where am I?" read it in a dead spot.
@@ -304,7 +303,7 @@ import { nativeBridge, nativeShareNavigator } from "./lib/nativeShell.ts";
 import { AVOID_STAIRS_EVENT, readAvoidStairs } from "./lib/avoidStairs.ts";
 import { firstTripOf, maxPointsFor, nextLegPoints, stopsAsTrips, stopsLeftOf, type StopsLeft } from "./lib/tripStops.ts";
 import { TRIP_GONE_SAID, checkedTripOf, lateSaid, switchSaid, tripChecked, tripVerdict, type CheckedTrip } from "./lib/tripCheck.ts";
-import { REST_ANYWAY_MS, RIDE_REST_FINDING, fixedRide, restClosedSaid, restRequest, rideLegOf, rideTripOf, rideable as rideableRoute, walksLine, type RideTrip } from "./lib/rideTrip.ts";
+import { REST_ANYWAY_MS, RIDE_REST_FINDING, fixedRide, legDials, restClosedSaid, restRequest, rideLegOf, rideNowDials, shareBikeOf, rideTripOf, rideable as rideableRoute, walksLine, type RideTrip } from "./lib/rideTrip.ts";
 import { RIDE_TOO_LONG } from "./lib/navigate.ts";
 import { fetchMe, NO_ME, type Me } from "./lib/stressEditor.ts";
 import { reloadFavorites, useFavoriteRides } from "./lib/favoriteRides.ts";
@@ -318,7 +317,7 @@ import { downloadText, trackGpx, verbatimDownload, verbatimFileName } from "./li
 import { readGpx } from "./lib/gpxImport.ts";
 import { GPX_SAID_OPENED, GPX_SAID_ROUTE, GPX_SAID_TRACK, downloadCourse, downloadGpx, routeGpxFile, sendCourseToGarmin, sendCourseToWahoo, type FileFormat, type Said } from "./GpxPanel.tsx";
 import type { DeviceProfileId } from "./lib/deviceProfiles.ts";
-import { LEAD_PARAM, RIDE_PARAM, SHARED_GONE, SHARED_INPUTS_ONLY, SHARED_OPENED, SHARED_PATH, SHARED_REVOKED, SHARED_REVOKED_ERROR, SHARE_KEEP_DEFAULT, SHARE_RIDE_WAIT, BROADCAST_NO_LEAD, BROADCAST_RIDE_FAILED, BROADCAST_RIDE_NO_LEAD, BROADCAST_SHARE_FAILED, asRideLink, leadKeyFrom, gpxShareFile, keepFields, newSharedId, previewImageOk, readShared, rideLinkFrom, sharedBody, sharedIdFrom, storeShared, withSharedId, type ShareKeep } from "./lib/sharedRoutes.ts";
+import { LEAD_PARAM, RIDE_PARAM, SHARED_GONE, SHARED_INPUTS_ONLY, SHARED_OPENED, SHARED_PATH, SHARED_REVOKED, SHARED_REVOKED_ERROR, SHARED_EXPIRED_ERROR, SHARED_UNREAD_ERROR, SHARE_KEEP_DEFAULT, SHARE_RIDE_WAIT, BROADCAST_NO_LEAD, BROADCAST_RIDE_FAILED, BROADCAST_RIDE_NO_LEAD, BROADCAST_SHARE_FAILED, asRideLink, leadKeyFrom, gpxShareFile, keepFields, newSharedId, previewImageOk, readShared, rideLinkFrom, sharedBody, sharedIdFrom, storeShared, withSharedId, type ShareKeep } from "./lib/sharedRoutes.ts";
 import { ClosureDialog, type ClosureAsk } from "./ClosureDialog.tsx";
 import { StartOnComputerDialog } from "./StartOnComputerDialog.tsx";
 import { FullAccountDialog } from "./FullAccountDialog.tsx";
@@ -329,7 +328,7 @@ import { joinActions, joinKey, joinLine, joinShown, joinTitle, keepJoinShown, sh
 import { canSendToGarmin, handGpx } from "./lib/sendToGarmin.ts";
 import { ResumeRideDialog } from "./ResumeRideDialog.tsx";
 import type { OnwardState } from "./lib/onward.ts";
-import { forgetLeftRide, keepLeftRide, keepLeftRideLeads, leftRide, leftRidePast, resumedBroadcast, resumesQuietly } from "./lib/rideResume.ts";
+import { forgetLeftRide, keepLeftRide, keepLeftRideLeads, leftRide, leftRidePast, resumedBroadcast, resumesQuietly, type RideReplans } from "./lib/rideResume.ts";
 import { StopNameDialog, type StopNameAsk } from "./StopNameDialog.tsx";
 import { LoadRouteDialog } from "./LoadRouteDialog.tsx";
 import { LOAD_ROUTE, withGpxChoice, type GpxChoice } from "./lib/loadRoute.ts";
@@ -1158,6 +1157,8 @@ export function App() {
     note?: string;
     /** Started from Start ride: away from the start at the first fix, the start is the first stop (RideMode startFirst). */
     startFirst?: boolean;
+    /** Resumed or kept riding: what the ride's re-plans had learnt (lib/rideResume.ts RideReplans). */
+    replans?: RideReplans | null;
     n: number;
   } | null>(null);
   // The timed rail check rests while on a bike unless the ride rides a train or bus (the owner, 2026-11-01: battery
@@ -4466,7 +4467,9 @@ export function App() {
     if (!rest) return null;
     const asked = restRequest(rest, riderAt);
     if (!asked) return NO_FIX_YET;
-    const result = await requestRoute(asked.points, asked.preset, { dials: { ...planDials, loop: false, closuresNow: true }, routeOnly: true });
+    // On the rest's own ride type: the plan's transit and share-bike fields go (rideTrip.ts legDials), as a re-plan's do.
+    const restDials = legDials({ ...planDials, loop: false, closuresNow: true }, asked.preset, shown ? shareBikeOf(shown, planDials) : null);
+    const result = await requestRoute(asked.points, asked.preset, { dials: restDials, routeOnly: true });
     if (!stillOn()) return null;
     if (!result.ok) return `${result.error.title}. ${result.error.message}`;
     if (!rideableRoute(result.route)) return RIDE_TOO_LONG;
@@ -4497,7 +4500,7 @@ export function App() {
     const points = nextLegPoints(left, riderAt);
     // A chosen pick-up station is the start's, not this stop's (Bikeshare, v0.22.0); a chosen drop-off is still the end's.
     const legDials = withStations(planDials, { dropoff: stationChoice.dropoff });
-    const result = await requestRoute(points, left.preset, { dials: { ...legDials, loop: false, closuresNow: true } });
+    const result = await requestRoute(points, left.preset, { dials: rideNowDials(legDials) });
     if (!stillOn()) return null;
     if (!result.ok) return `${result.error.title}. ${result.error.message}`;
     if (!rideableRoute(result.route)) return RIDE_TOO_LONG;
@@ -4514,7 +4517,7 @@ export function App() {
     const checking = tripCheck.current;
     const current = () => open() && ridingNow.current && rideNow.current.start?.route === checking?.route && tripCheck.current === checking;
     if (!checking || !current()) return null;
-    const ask = (key: string) => requestRoute([riderAt, checking.to], checking.preset, { dials: { ...planDials, loop: false, closuresNow: true, transitOption: key } });
+    const ask = (key: string) => requestRoute([riderAt, checking.to], checking.preset, { dials: { ...rideNowDials(planDials), transitOption: key } });
     const result = await ask(checking.trip.key);
     if (!current() || !result.ok || !result.route.transit) return null;
     const verdict = tripVerdict(checking.trip, result.route.transit, Date.now());
@@ -4662,6 +4665,9 @@ export function App() {
   sharedOpenNow.current = sharedOpen;
   // The "planned again" line is about the plan the link named: a change to the plan clears it.
   useEffect(() => setSharedNote(null), [points, preset, dials]);
+  // Whether the link's own plan is one the page plans: two points or more, or a plan from its start alone (a Run loop,
+  // a Rebalance Ride; lib/loop.ts plansFromStart), as the routing effect reads it.
+  const plansAnything = (plan: ReturnType<typeof decodePlan>) => plan.points.length >= 2 || plansFromStart(plan.preset, plan.points, plan.dials);
   useEffect(() => {
     if (!SHARED_ID) return;
     let live = true;
@@ -4675,13 +4681,19 @@ export function App() {
           setStatus({ kind: "error", error: SHARED_REVOKED_ERROR });
           announce(SHARED_REVOKED);
         }
-      } else if (shared) {
+      } else if (shared && shared !== "gone") {
         // The open's own check stands for the link's first-answer check.
         checkFirstAnswer.current = false;
         // A broadcast's follower is not asked about closures (Stephen 2026-10-26: "The closure part should be leader
         // only. In general many of these closures aren't always real").
         openSaved(shared, SHARED_OPENED(shared.name), !(SHARED_RIDE && SHARED_LEAD && shared.answer));
         if (shared.answer) setSharedOpen({ answer: unitsFirstDeep(shared.answer), ride: SHARED_RIDE, id: SHARED_ID, lead: SHARED_LEAD, secret: SHARED_SECRET, name: shared.name });
+      } else if (!plansAnything(decodePlan(window.location.hash))) {
+        // Nothing to plan again (a link without its plan, as an assistant's link pasted short): said in the route's
+        // place, never an empty Go.
+        const error = shared === "gone" ? SHARED_EXPIRED_ERROR : SHARED_UNREAD_ERROR;
+        setStatus({ kind: "error", error });
+        announce(error.message);
       } else {
         setSharedNote(SHARED_GONE);
         announce(SHARED_GONE);
@@ -4736,7 +4748,7 @@ export function App() {
   } | null>(null);
   const rideNow = useRef({ start: rideStart, mode });
   rideNow.current = { start: rideStart, mode };
-  const endRide = useCallback((after: EndedPlan, stats: RideStats, docked?: RebalanceDocked | null) => {
+  const endRide = useCallback((after: EndedPlan, stats: RideStats, docked?: RebalanceDocked | null, riding?: EndedRiding | null) => {
     const { start, mode: endedIn } = rideNow.current;
     // Past a trip's line, the walk or train followed (as kept for Resume), for Undo.
     const past = start?.whole ? leftRidePast() : null;
@@ -4770,7 +4782,11 @@ export function App() {
     }
     const note = from ? RIDE_ENDED_FROM_HERE_NOTE : endedIn !== "go" && after === "no-fix" ? RIDE_ENDED_NO_FIX_NOTE : null;
     // A Rebalance Ride's chosen dock (lib/rebalanceDock.ts): Keep riding carries on to it, not to the plan's walk again.
-    const kept = start && docked ? { ...start, planned: start.planned ?? start.route, route: docked.route, points: docked.points, trip: start.trip ? { ...start.trip, approach: null, docked: docked.name } : null } : start;
+    // Else the ride as it stood (RideMode `riding`), its re-plans, dials and what they had learnt, not the route as it
+    // was at Start: Keep riding put the rider back on a route they had re-planned away from, off it at once (the hunt,
+    // round 2, R2-6). Not a trip (its leg is the whole trip's), nor a shared ride, whose line is the one shared.
+    const asRidden = start && riding && !docked && !start.trip && !start.whole && !sharedOpenNow.current ? { ...start, ...riding } : start;
+    const kept = start && docked ? { ...start, planned: start.planned ?? start.route, route: docked.route, points: docked.points, trip: start.trip ? { ...start.trip, approach: null, docked: docked.name } : null } : asRidden;
     endedRide.current = kept ? { start: kept, from, stats, shared: sharedOpenNow.current, linkSent: rideLinkSent.current, past, stopsLeft } : null;
     setRiding(false);
     setRideStart(null);
@@ -5100,8 +5116,8 @@ export function App() {
     // never a dock or a train to a water fountain.
     const plain = twoPointsOnly(preset);
     const detourDials: Dials = plain
-      ? { ...planDials, bike: undefined, ending: undefined, pickupStation: undefined, dropoffStation: undefined, loop: false, closuresNow: true }
-      : { ...planDials, loop: false, closuresNow: true };
+      ? rideNowDials({ ...planDials, bike: undefined, ending: undefined, pickupStation: undefined, dropoffStation: undefined })
+      : rideNowDials(planDials);
     const result = await requestRoute(asked, plain ? "default" : preset, { dials: detourDials, routeOnly: true });
     if (!roamingNow.current) return null;
     if (!result.ok) return `${result.error.title}. ${result.error.message}`;
@@ -5114,15 +5130,7 @@ export function App() {
   const roamingNow = useRef(roaming);
   roamingNow.current = roaming;
   // Find food's file, loaded once (shared with the Food sheet's search); a load that failed is asked again next time.
-  const ensureFood = useCallback(() => {
-    if (!foodLoad.current) {
-      foodLoad.current = loadFood(foodUrl).then((data) => {
-        if (!data) foodLoad.current = null;
-        return data;
-      });
-    }
-    return foodLoad.current;
-  }, []);
+  const ensureFood = useCallback(() => sharedFood(), []);
   // Open Reports on the summary, while 311 problems are still to report: closed as Done closes it, then Reports opens
   // with the focus on its heading. Back goes to Plan's Start ride, or Go's Menu (Go's plan is emptied, as Done empties
   // it, without the clear's move of the focus to Where to?).
@@ -5432,7 +5440,6 @@ export function App() {
   const [foodCount, setFoodCount] = useState(FOOD_PAGE);
   const [foodBusy, setFoodBusy] = useState(false);
   const [foodStatus, setFoodStatus] = useState("");
-  const foodLoad = useRef<Promise<FoodPlace[] | null> | null>(null);
   const foodTimer = useRef<number | undefined>(undefined);
   // Cleared and set again a moment later, so the same words twice are said twice (as sayNearest).
   const sayFood = (text: string) => {
@@ -5508,14 +5515,8 @@ export function App() {
       return;
     }
     setGrocery(null);
-    if (!foodLoad.current) {
-      foodLoad.current = loadFood(foodUrl).then((data) => {
-        if (!data) foodLoad.current = null;
-        return data;
-      });
-    }
     setFoodBusy(true);
-    const places = await foodLoad.current;
+    const places = await sharedFood();
     if (seq !== foodSeq.current) return;
     setFoodBusy(false);
     if (!places) {
@@ -7099,6 +7100,7 @@ export function App() {
           resumedPast={rideStart.past ?? null}
           startFirst={rideStart.startFirst === true}
           resumedQuietly={rideStart.quiet === true}
+          replans={rideStart.replans ?? null}
           onRideRest={(riderAt) => rideRest(riderAt, true)}
           onTripCheck={tripCheck.current?.route === rideStart.route ? checkTrip : undefined}
           onNextLeg={tripStopsLeft.current ? nextLeg : undefined}
@@ -7355,7 +7357,7 @@ export function App() {
                 // Snapping an opened track (lib/gpxMatch.ts) opens the plan along the snapped line: one edit, like the file.
                 ...(mode === "go" ? {} : {
                   match: {
-                    preset, trailsOff: trailsAreOff(preset, dials), assist: dials.assist === true, onMatched: openImported,
+                    preset, trailsOff: trailsAreOff(preset, dials), assist: dials.assist === true, easyMtb: easyMtbOn(preset, dials), when: dials.when ?? null, onMatched: openImported,
                     ...(importBase.current && !importEdited ? { exact: importBase.current.exact === true, onExact: setFollowExact } : {}),
                   },
                 }),

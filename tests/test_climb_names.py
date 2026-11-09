@@ -255,10 +255,16 @@ def test_read_extract(tmp_path):
         writer.add_way(
             Way(id=13, nodes=[5, 6], tags={"natural": "ridge", "name": "Catoctin Mountain"})
         )
+        # An unnamed bridge and a tunnel the Climbs layer reads straight across (hunt finding
+        # E3), and a way tagged bridge=no, which is none.
+        writer.add_way(Way(id=14, nodes=[1, 2], tags={"highway": "footway", "bridge": "yes"}))
+        writer.add_way(Way(id=15, nodes=[1, 2], tags={"highway": "cycleway", "tunnel": "yes"}))
+        writer.add_way(Way(id=16, nodes=[1, 2], tags={"highway": "residential", "bridge": "no"}))
     finally:
         close_writer(writer)
-    found = names.read_extract(path, {10, 11, 99})
+    found = names.read_extract(path, {10, 11, 14, 15, 16, 99})
     assert found.ways == {10: "Foxville Road", 11: "US 15"}
+    assert found.structures == {14, 15}
     assert [p.name for p in found.places] == ["Thurmont"]
     by_name = {lm.name: lm for lm in found.landmarks}
     assert set(by_name) == {"High Knob", "Catoctin Mountain"}

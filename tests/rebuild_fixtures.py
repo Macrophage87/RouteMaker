@@ -1015,6 +1015,8 @@ class FakeBinaries:
         cycle_lane: str | None = "shared",
         # And the weekend graph's own sentinel (WEEKEND_SENTINEL_EXPECTED).
         weekend_cycle_lane: str | None = "separated",
+        # And Road Bike's weekend graph, read at the same edge.
+        paved_weekend_cycle_lane: str | None = "separated",
         log: str = LUA_LOADED_LOG,
         hgt_side: int = HGT_1ARCSEC_SIDE,
         violations: str = "",
@@ -1031,6 +1033,7 @@ class FakeBinaries:
         self.grade = grade
         self.cycle_lane = cycle_lane
         self.weekend_cycle_lane = weekend_cycle_lane
+        self.paved_weekend_cycle_lane = paved_weekend_cycle_lane
         self.log = log
         self.hgt_side = hgt_side
         # What the transform wrote to stderr during the parse. Valhalla's own
@@ -1141,8 +1144,13 @@ class FakeBinaries:
                 edge["max_upward_grade"] = self.grade
             if "edge.cycle_lane" in wanted and weekend:
                 edge["way_id"] = WEEKEND_SENTINEL_WAY_ID
-                if self.weekend_cycle_lane is not None:
-                    edge["cycle_lane"] = self.weekend_cycle_lane
+                lane = (
+                    self.paved_weekend_cycle_lane
+                    if "paved-weekend" in Path(_config).as_posix()
+                    else self.weekend_cycle_lane
+                )
+                if lane is not None:
+                    edge["cycle_lane"] = lane
             elif "edge.cycle_lane" in wanted and self.cycle_lane is not None:
                 edge["cycle_lane"] = self.cycle_lane
             # Response on stdout, log on stderr, which is the only arrangement
