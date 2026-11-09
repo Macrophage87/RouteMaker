@@ -5194,6 +5194,22 @@ The third routing hunt's owner calls, as Stephen decided them on 2026-11-08:
   the weekend parkways is shown on screen (the trail colour, the map notes), not said out loud.
   No change.
 
+### Routing hunt 4
+
+- **Red junctions near an end or a stop** (J4-1). The crossing search (`refine.crossing_targets`)
+  and the red pass after it (`red_crossings.reds_of`) left every red junction within 0.31 mi
+  (500 m, `refine.ENDPOINT_CLEARANCE_M`) of the start, the end or a stop, often the arterial
+  crossing nearest the rider's home, even where the way round cost nothing; on a trip under
+  0.62 mi (1 km) no red was ever asked round. That clearance is for busy stretches (the router
+  must be able to leave and arrive); a red's exclusion takes out only the edges within 10 ft
+  (3 m) of its node. Now a red near an end is a target as any other. The cul-de-sac case (the
+  red is the only way out) is kept: the search marks such a red's targets `at_end`, asks a round
+  that finds no route with them again without them, and does not ask them again (`_search`'s
+  `no_way`); a round of only such reds that finds no route is skipped, not said cut short. The
+  red pass drops a red whose ask finds no route and tries the next, as it did; its window is
+  clipped at the leg's end (`stretch`). `red_crossings.stops_m` (hunt 2, P2-1) went with the
+  filter it fed. Tests: tests/test_refine.py, tests/test_red_crossings.py.
+
 ### Trails off (OWNER-DECISIONS 463, 463a, 463b)
 
 The owner, 2026-10-09: "add it". A trails-off switch is offered on every ride
@@ -6958,13 +6974,10 @@ pass did not run (the crossing search covered the route, a loop, a first route, 
 a Mass Ride) and on the routes to choose from. An answer whose pass stopped at `time`, `unread` or
 `error` is not kept by the answer cache (`route_cache.keepable`), nor is one whose trail seek
 (`calm_search.seek.limited`) stopped at `time`, `table`, `error` or `unread`.
-The pass leaves a red within 500 m of the rider's own stops and ends, never of a long calm plan's
-cuts (hunt 2, P2-1, `red_crossings.stops_m`): `refine_long` answers its cut legs joined, so each
-cut is a leg boundary of the answer, and a red a few hundred metres from one (the cut placed on
-the calm trail just past the arterial it crosses) was dropped here as "near a stop" while the leg
-searches could not exclude it either, being at their legs' ends. The cuts are read off
-`calm_search.long.stops`. The way round is still asked within the red's own cut leg, so a red
-right at a cut may find none.
+The pass asks round every red, those near the rider's own stops and ends and a long calm plan's
+cuts too (routing hunt 4, J4-1; before, it left a red within 500 m of a stop or an end, and hunt 2,
+P2-1, had taken the cuts out of those stops). The way round is asked within the red's own leg, so
+a red right at a stop, a cut or an end may find none, and is then left.
 
 ### Reproduction (item 273)
 

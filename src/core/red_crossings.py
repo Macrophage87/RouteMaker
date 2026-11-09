@@ -16,8 +16,8 @@ It's taking people onto dangerous intersections." The crossing was priced and dr
 
 So after the search, on every plan where it did not run over the whole route with at
 least one round (`searched` false), the answer is read (`refine.analyse`, which the answer
-then reuses), and each red crossing clear of its ends and stops
-(`refine.ENDPOINT_CLEARANCE_M`) is asked round, the worst first (`reds_of`). A red is
+then reuses), and each red crossing is asked round, the worst first (`reds_of`), those
+near its ends and stops too (routing hunt 4, J4-1). A red is
 what the map draws red, and a trail crossing drawn orange only because no signal is mapped
 whose cost is red-level (`refine.avoidance_severity`, the 2026-11-08 hunt, J1).
 
@@ -92,37 +92,15 @@ SNAP_M = 15.0
 CLIMB_KEPT = 0.9
 
 
-def stops_m(read: refine.Analysis, refined: dict | None) -> list[float]:
-    """The metres along `read` of the rider's own stops: its leg boundaries, less the cuts a
-    long calm plan's search made (hunt 2, P2-1). `refine_long` answers its cut legs joined,
-    so every cut is a leg boundary of the answer, and a red within ENDPOINT_CLEARANCE_M of
-    one was never asked round: the leg searches cannot exclude it (it is at a leg's end),
-    and this pass dropped it as "near a stop". The cut is the search's own break, put where
-    a leg has most room from busy road (`legsplit.split_points`), often on the calm trail a
-    few hundred metres past the arterial it crosses. `refined["long"]["stops"]` says how
-    many legs each of the rider's legs was cut into; where the answer does not have that
-    many legs (the router's own route answered) its boundaries are the rider's."""
-    counts = ((refined or {}).get("long") or {}).get("stops") or []
-    if not counts or sum(counts) - 1 != len(read.via_m) or len(counts) - 1 == len(read.via_m):
-        return list(read.via_m)
-    out, at = [], 0
-    for count in counts[:-1]:
-        at += count
-        out.append(read.via_m[at - 1])
-    return out
-
-
-def reds_of(read: refine.Analysis, stops: list[float] | None = None) -> list:
-    """The route's red crossings clear of its ends and stops, the worst first: as the map
-    draws them, and the capped trail crossings that cost as much (`refine.avoidance_severity`).
-    `stops`: the metres of the rider's own stops (`stops_m`; the leg boundaries if None)."""
-    via = read.via_m if stops is None else stops
-    found = [
-        e
-        for e in read.events or ()
-        if refine.avoidance_severity(e) == model.RED
-        and refine._clear_of_ends(e.m, read.length_m, via)
-    ]
+def reds_of(read: refine.Analysis) -> list:
+    """The route's red crossings, the worst first: as the map draws them, and the capped
+    trail crossings that cost as much (`refine.avoidance_severity`). One near the start, the
+    end or a stop is asked round as any other (routing hunt 4, J4-1: within
+    `refine.ENDPOINT_CLEARANCE_M` of them it was left, often the arterial crossing nearest
+    the rider's home, even where the way round cost nothing); its exclusion takes out only
+    the edges at its node, and one with no way round (the only exit from a cul-de-sac) is
+    dropped when its ask finds no route."""
+    found = [e for e in read.events or () if refine.avoidance_severity(e) == model.RED]
     return sorted(found, key=lambda e: -e.cost_ft)
 
 
@@ -413,7 +391,7 @@ def settle(
         if whole is None or whole.events is None:
             info["limited"] = "unread"
             return trip, info
-        reds = reds_of(whole, stops_m(whole, refined))
+        reds = reds_of(whole)
         info["reds"] = len(reds)
         if not reds:
             return trip, info
@@ -429,7 +407,7 @@ def settle(
         # round is dropped and the next tried.
         tried: set = set()
         while True:
-            left = [e for e in reds_of(whole, stops_m(whole, refined)) if _key(e) not in tried]
+            left = [e for e in reds_of(whole) if _key(e) not in tried]
             if not left:
                 break
             red = left[0]
