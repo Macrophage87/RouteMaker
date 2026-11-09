@@ -10373,6 +10373,7 @@ class ReviewedClosureIn(Schema):
         default=None, description="The last day, YYYY-MM-DD; none: until a reviewer ends it."
     )
     url: str = Field(default="", max_length=500, description="The source's link, optional.")
+    # default=True (closed on foot unless the reviewer says not): Claude's default, not measured.
     on_foot: bool = Field(
         default=True,
         description="Closed to people on foot too (Run and Walk route round it); false for a"
@@ -10389,6 +10390,7 @@ class ClosureConfirmIn(Schema):
     start: str | None = None
     end: str | None = None
     url: str = Field(default="", max_length=500)
+    # default=True (closed on foot unless the reviewer says not): Claude's default, not measured.
     on_foot: bool = Field(
         default=True,
         description="Closed to people on foot too (Run and Walk route round it); false for a"

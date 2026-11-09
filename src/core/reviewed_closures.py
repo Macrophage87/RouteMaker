@@ -13,7 +13,8 @@ found fenced off - a reviewer enters here, or confirms from a rider's report:
   link. The ways' lines are kept as the segment table has them then (`ReviewedClosure.lines`).
   It is closed to people on foot too unless the reviewer says the sidewalk stays open
   (`on_foot` false; routing hunt 4, C4-1): the closures entered here are mostly trails, where
-  there is no traffic but the people on them.
+  there is no traffic but the people on them. Closed on foot by default (`_make`, `create`,
+  `confirm_report` and a null row in `zones_of`) is Claude's default, not measured.
 - **Reports.** A rider reports a closure through the existing short Suggest form, its "Closed"
   reason (`signed_out_suggestions.REASONS`): a `StressSuggestion` of kind `closure`, listed here
   for a reviewer (`open_reports`), never with the levels. Confirming makes the closure from the
@@ -214,6 +215,8 @@ def _check(user) -> None:
 def _make(
     user, way_ids, line, reason, start, end, url, report=None, on_foot=True
 ) -> ReviewedClosure:
+    # on_foot=True: closed on foot unless the reviewer says otherwise - Claude's default, not
+    # measured (C4-1). `create` and `confirm_report` pass the same default on.
     reason = clean_reason(reason)
     url = clean_url(url)
     begins, ends = window(start, end)
@@ -357,6 +360,7 @@ def zones_of(closure: ReviewedClosure) -> list[rules.Zone]:
     """The closure's Zones. Closed to people on foot too unless the reviewer said the sidewalk
     stays open: a row with no say (null) is one from before C4-1, closed on foot."""
     road = closure.road or None
+    # Null reads as closed on foot: Claude's default, not measured (C4-1).
     on_foot = closure.on_foot is not False
     title = f"{road}: closed" if road else "Closed"
     out = []

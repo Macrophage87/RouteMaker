@@ -2327,6 +2327,8 @@ class ReviewedClosure(models.Model):
     # Closed to people on foot too (routing hunt 4, C4-1): Run, Walk and Walk + transit route
     # round it. False: a road closed to traffic whose sidewalk stays open. Null (a row from
     # before, or one the release before wrote) reads as true (`reviewed_closures.zones_of`).
+    # Closed on foot by default (true here, in the API and for null rows) is Claude's default,
+    # not measured: the closures entered so far are mostly trails, so the cautious reading.
     on_foot = models.BooleanField(null=True, blank=True)
 
     class Meta:
