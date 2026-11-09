@@ -249,10 +249,11 @@ test("a re-route that left out its via point says so first, and the stoker still
 
 test("Ride mode asks again without the via point only when that trips, and not for a detour, a check, a restart or Calmer", () => {
   const replan = src("../RideMode.tsx").slice(src("../RideMode.tsx").indexOf("const replan = useCallback("));
-  assert.match(replan, /const next = result\.ok && !via && !check && !done && !eased \? skippableVia\(modelRef\.current, keptPoints\) : null;/);
+  // A loop's shape point (navigate.ts loopShapePoint; the hunt, 2026-11-08, V1) goes first, as the next via point there.
+  assert.match(replan, /const next = result\.ok && !via && !check && !done && !eased \? \(shape \?\? skippableVia\(modelRef\.current, keptPoints\)\) : null;/);
   assert.match(
     replan,
-    /if \(result\.ok && next && viaSkipWorth\(modelRef\.current, fromM, next\.atM, modelOf\(result\.route, points\), 1\) && !voided\(\)\) \{\s*const without = points\.filter\(\(_, i\) => i !== 1\);\s*const again = await ask\(without\);/,
+    /if \(result\.ok && next && viaSkipWorth\(modelRef\.current, fromM, next\.atM, modelOf\(result\.route, points\), 1\) && !voided\(\)\) \{\s*const dropped = points\[1\];\s*const without = points\.filter\(\(_, i\) => i !== 1\);\s*const again = await ask\(without\);/,
   );
   assert.match(replan, /if \(skippedVia\) note = viaSkippedNote\(note\);/);
 });
@@ -354,7 +355,7 @@ test("restarting part way lists every stop, the ones behind ticked; none behind 
 
 test("Already done? left unanswered closes with the stops as marked once the rider has ridden 200 m on, and says so", () => {
   assert.equal(RESTART_AUTO_M, 200);
-  assert.equal(RESTART_AUTO_SAID, "Riding on with the stops as marked.");
+  assert.equal(RESTART_AUTO_SAID, "Continuing with the stops as marked.");
   const ride = src("../RideMode.tsx");
   assert.match(ride, /restartOpen\.current = true;\s*restartAt\.current = fix\.point;\s*setRestart\(named\);/);
   // Checked before re-routing is weighed on the same fix, so re-routing runs again at once.

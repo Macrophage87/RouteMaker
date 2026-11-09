@@ -291,6 +291,9 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, ridingSpeed 
   // Each row's (i) opens and closes on its own, as Settings' rows do.
   const [whenInfo, setWhenInfo] = useState(false);
   const [trailsOffInfo, setTrailsOffInfo] = useState(false);
+  const easyMtbHintId = useId();
+  const easyMtbInfoId = useId();
+  const [easyMtbInfo, setEasyMtbInfo] = useState(false);
   // What lowering the hardest trail level did to the preferred one, said politely (never a silent clamp),
   // with the ride type and levels it was said of: a change from outside the panel (a link, a ride type, a
   // reset) clears it, so it never speaks of levels no longer shown.
@@ -556,6 +559,34 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, ridingSpeed 
           </p>
           <DialInfo id={trailsOffInfoId} open={trailsOffInfo}>
             <Bullets text={view.trailsOff.how} />
+          </DialInfo>
+        </div>
+      )}
+      {/* Easy MTB trails (the owner, 2026-11-08): Default and Trailmaxxing only, off by default. */}
+      {view.easyMtb && (
+        <div className="dial easy-mtb">
+          <div className="dial-head">
+            <label className="toggle">
+              {/* aria-disabled while Keep to roads is on, which wins: in the Tab order with its reason said. */}
+              <input
+                type="checkbox"
+                checked={view.easyMtb.checked}
+                aria-disabled={view.easyMtb.locked || undefined}
+                aria-describedby={easyMtbHintId}
+                onChange={(event) => {
+                  if (view.easyMtb?.locked) return;
+                  onCommit({ ...dials, easyMtb: event.target.checked });
+                }}
+              />
+              {view.easyMtb.label}
+            </label>
+            <InfoButton open={easyMtbInfo} onToggle={() => setEasyMtbInfo(!easyMtbInfo)} controls={easyMtbInfoId} about={view.easyMtb.howAbout} />
+          </div>
+          <p className="hint" id={easyMtbHintId}>
+            {view.easyMtb.hint}
+          </p>
+          <DialInfo id={easyMtbInfoId} open={easyMtbInfo}>
+            <Bullets text={view.easyMtb.how} />
           </DialInfo>
         </div>
       )}

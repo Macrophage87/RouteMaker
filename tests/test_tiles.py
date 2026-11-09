@@ -125,11 +125,12 @@ def test_the_gate_sizes_a_second_set_from_the_served_one(tmp_path) -> None:
         fraction=0.8,
         disk_usage=usage(100 * GIB, 10 * GIB),
     )
-    # Seven variant extracts (the weekend twin, the off-road, Mountain Bike and Road Bike graphs
-    # among them) and scratch: eight times the source (OPS review, 2026-09-28; slice 6; Road
+    # Eight variant extracts (the weekend twin, the off-road, Mountain Bike and Road Bike graphs
+    # and Road Bike's weekend twin among them) and scratch: nine times the source (OPS review,
+    # 2026-09-28; slice 6; Road Bike's weekend graph, 2026-11-08; Road
     # Bike, 2026-11-02).
-    assert gate.required == served + 8 * GIB
-    assert gate.fraction_after == pytest.approx((10 * GIB + served + 8 * GIB) / (100 * GIB))
+    assert gate.required == served + 9 * GIB
+    assert gate.fraction_after == pytest.approx((10 * GIB + served + 9 * GIB) / (100 * GIB))
 
 
 def test_the_floor_applies_until_a_first_set_has_been_measured(tmp_path) -> None:
@@ -185,27 +186,27 @@ def test_a_build_landing_exactly_on_the_gate_is_allowed(tmp_path) -> None:
     alert fires when it finishes".
 
     Chosen so the arithmetic is exact rather than nearly so: a 100 GiB volume
-    10 GiB used, and a required 70 GiB (eight times an 8.75 GiB source), is 80
+    8 GiB used, and a required 72 GiB (nine times an 8 GiB source), is 80
     percent after, in floating point as well as on paper.
     """
     at_the_gate = tiles.check_disk_gate(
         tmp_path,
-        source_bytes=70 * GIB // 8,
+        source_bytes=8 * GIB,
         minimum_free=0,
         fraction=0.8,
-        disk_usage=usage(100 * GIB, 10 * GIB),
+        disk_usage=usage(100 * GIB, 8 * GIB),
     )
-    assert at_the_gate.required == 70 * GIB
+    assert at_the_gate.required == 72 * GIB
     assert at_the_gate.fraction_after == 0.8, "the case is the boundary, not near it"
 
     # And a byte past it is past it.
     with pytest.raises(tiles.DiskGateRefused):
         tiles.check_disk_gate(
             tmp_path,
-            source_bytes=70 * GIB // 8,
+            source_bytes=8 * GIB,
             minimum_free=0,
             fraction=0.8,
-            disk_usage=usage(100 * GIB, 10 * GIB + 1),
+            disk_usage=usage(100 * GIB, 8 * GIB + 1),
         )
 
 
@@ -619,6 +620,7 @@ def test_the_write_probe_reports_a_variant_directory_that_is_not_there(tmp_path)
         Variant.OFFROAD,
         Variant.MTB,
         Variant.PAVED,
+        Variant.PAVED_WEEKEND,
     ):
         (tmp_path / variant.value).mkdir()
     problems = tiles.unwritable_link_dirs(tmp_path)

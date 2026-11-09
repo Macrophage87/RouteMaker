@@ -29,6 +29,7 @@
                 <data android:pathPrefix="/fast" />
                 <data android:pathPrefix="/road-bike" />
                 <data android:pathPrefix="/cargo" />
+                <data android:pathPrefix="/tandem" />
                 <data android:pathPrefix="/ebike" />
                 <data android:pathPrefix="/bikeshare" />
                 <data android:pathPrefix="/novice" />

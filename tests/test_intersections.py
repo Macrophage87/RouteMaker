@@ -771,6 +771,87 @@ class TestRoute:
         assert events[0].cost_ft == pytest.approx(one.cost_ft * m.MEDIAN_REFUGE_FACTOR)
         assert events[0].cost_ft < one.cost_ft
 
+    def test_the_signalised_nodes_are_carried_for_the_junction_delay(self) -> None:
+        """Hunt J5: the delay model reads the junction model's signals by point
+        (`signal_points`), each node of a junction merged into one event kept."""
+        name = frozenset({"connecticut avenue northwest"})
+        north = Road(4, oneway=True, names=name, ways=frozenset({1}))
+        south = Road(4, oneway=True, names=name, ways=frozenset({2}))
+        events = m.assess_route(
+            [
+                junction(m=100.0, lon=-77.0, crossed=(north,), control=Control.SIGNAL),
+                junction(m=111.0, lon=-77.0001, crossed=(south,)),
+            ]
+        )
+        # The control is shared across the junction's nodes, so both are signalised.
+        assert len(events) == 1
+        assert m.signal_points(events) == {(-77.0, 38.9), (-77.0001, 38.9)}
+        unsignalised = m.assess_route([junction(m=100.0, crossed=(north,))])
+        assert m.signal_points(unsignalised) == frozenset()
+        assert m.signal_points(None) == frozenset()
+
+    def test_a_signals_big_road_and_stop_sign_price_are_carried_for_the_delay(self) -> None:
+        """The owner, 2026-11-08: outside the cities a signal across a road of 4+ lanes or
+        40 mph+ waits as a big road's, and a beg-button crossing is held below a stop sign
+        across the same road (`big_signal_points`, `stop_extra_ft`)."""
+        wide = Road(3, lanes=2, oneway=False, names=frozenset({"beulah street"}))
+        narrow = Road(3, lanes=1, oneway=False, speed_mph=35.0, names=frozenset({"a street"}))
+        fast = Road(3, lanes=1, oneway=False, default_speed_mph=40.0)
+        for road, big in ((wide, True), (narrow, False), (fast, True)):
+            assert m.big_road(road) is big
+            events = m.assess_route([junction(crossed=(road,), control=Control.SIGNAL)])
+            assert (m.big_signal_points(events) == {(-77.0, 38.9)}) is big
+            stop = m.assess(junction(crossed=(road,), control=Control.STOP))
+            assert m.stop_extra_ft(events)[(-77.0, 38.9)] == pytest.approx(
+                stop.cost_ft - events[0].cost_ft
+            )
+        # A stop sign is no signal: nothing carried.
+        stopped = m.assess_route([junction(crossed=(wide,), control=Control.STOP)])
+        assert m.big_signal_points(stopped) == frozenset()
+        assert m.stop_extra_ft(stopped) == {}
+        assert m.stop_extra_ft(None) == {}
+
+    def test_a_rated_signals_stop_sign_price_is_the_models_own(self) -> None:
+        """The 2026-11-08 hunt, J3-4: a rating costs the same whatever the control, so a
+        rated signal's stop sign had cost 0 ft over it, and its lights ranked cheaper."""
+        prim = Road(4, lanes=2, oneway=False, speed_mph=40.0, names=frozenset({"p"}))
+        across = junction(crossed=(prim,), control=Control.SIGNAL)
+        expected = m.stop_extra_ft(m.assess_route([across]))[(-77.0, 38.9)]
+        assert expected > 0.0
+        for rating in (2, 3, 4):
+            events = m.assess_route([replace(across, rating=rating)])
+            # Before: 0 ft at ratings 3 and 4.
+            assert m.stop_extra_ft(events)[(-77.0, 38.9)] == pytest.approx(expected)
+
+    def test_the_riders_own_big_road_is_carried_apart_from_the_crossed_one(self) -> None:
+        """The signal review, 2026-11-08: the junction-delay model's busiest road at a
+        signal counts the rider's own 4-lane or 40 mph road (`own_big_signal_points`),
+        which before was not carried at all; the crossed road's reading stays its own."""
+        wide = Road(3, lanes=2, oneway=False, names=frozenset({"beulah street"}))
+        side = Road(3, lanes=1, oneway=False, names=frozenset({"a street"}))
+        along = junction(incoming=wide, outgoing=wide, crossed=(side,), control=Control.SIGNAL)
+        events = m.assess_route([replace(along, continues=True)])
+        assert m.own_big_signal_points(events) == {(-77.0, 38.9)}
+        assert m.big_signal_points(events) == frozenset()
+        across = junction(crossed=(wide,), control=Control.SIGNAL)
+        assert m.own_big_signal_points(m.assess_route([across])) == frozenset()
+        assert m.own_big_signal_points(None) == frozenset()
+
+    def test_a_divided_roads_merged_event_keeps_both_nodes_big_road_reading(self) -> None:
+        name = frozenset({"telegraph road"})
+        north = Road(4, oneway=True, lanes=2, names=name, ways=frozenset({1}))
+        south = Road(4, oneway=True, lanes=2, names=name, ways=frozenset({2}))
+        events = m.assess_route(
+            [
+                junction(m=100.0, lon=-77.0, crossed=(north,), control=Control.SIGNAL),
+                junction(m=111.0, lon=-77.0001, crossed=(south,)),
+            ]
+        )
+        assert len(events) == 1
+        # Each carriageway's two lanes one way are not four lanes on their own.
+        assert m.big_signal_points(events) == frozenset()
+        assert set(m.stop_extra_ft(events)) == {(-77.0, 38.9), (-77.0001, 38.9)}
+
     def test_different_roads_at_one_junction_add_half(self) -> None:
         a = Road(3, names=frozenset({"a street"}))
         b = Road(3, names=frozenset({"b street"}))
@@ -1464,6 +1545,77 @@ class TestRoundabouts:
         one = m.assess(junction(crossed=(near,)))
         assert len(events) == 1
         assert events[0].cost_ft == pytest.approx(one.cost_ft * m.MEDIAN_REFUGE_FACTOR)
+
+    # Hunt J4: a two-lane-a-direction LTS 4 ring, unposted at the District's 30 mph
+    # default, entered from a quiet street at a yield sign.
+    BUSY_RING = Road(
+        4, default_speed_mph=30, lanes=2, oneway=True, aadt=35_000, names=frozenset({"circle"})
+    )
+
+    def through(self, movement, ring=BUSY_RING, control=Control.STOP, when=None):
+        """The events of a ride round `ring`: the entry (a right onto it), a node passed
+        and the exit (a right off it)."""
+        exit_road = Road(2, names=frozenset({"oak st"}))
+        return m.assess_route(
+            [
+                junction(
+                    m=100.0,
+                    movement=Movement.RIGHT,
+                    outgoing=ring,
+                    control=control,
+                    ring_movement=movement,
+                ),
+                junction(m=120.0, incoming=ring, outgoing=ring, continues=True),
+                junction(m=140.0, movement=Movement.RIGHT, incoming=ring, outgoing=exit_road),
+            ],
+            when=when,
+        )
+
+    def test_a_three_quarter_turn_round_a_busy_ring_costs_its_crossing(self) -> None:
+        """Before, every ride round a ring was a right turn onto it (0.1 of the crossing,
+        555 ft) and a right off it, whatever the exit; a left round Chevy Chase Circle
+        cost about 5% of the same left at a stop sign."""
+        crossing = m.crossing_ft(self.BUSY_RING, Control.STOP, None)
+        (left,) = self.through(Movement.LEFT)
+        assert left.kind == "left_onto"
+        assert left.severity == m.RED
+        assert left.cost_ft == pytest.approx(crossing + m.RIGHT_FROM_BUSY_FT * m.MERGED_SHARE)
+        (ahead,) = self.through(Movement.STRAIGHT)
+        (right,) = self.through(Movement.RIGHT)
+        assert right.cost_ft < ahead.cost_ft < left.cost_ft
+        assert ahead.kind == "straight_onto" and right.kind == "right_onto"
+        # The first exit is the right turn onto the ring it always was.
+        plain = m.assess_route(
+            [junction(m=100.0, movement=Movement.RIGHT, outgoing=self.BUSY_RING,
+                      control=Control.STOP)]
+        )  # fmt: skip
+        assert right.cost_ft == pytest.approx(plain[0].cost_ft + m.RIGHT_FROM_BUSY_FT / 2)
+
+    def test_the_ring_has_the_right_of_way_over_a_busier_approach(self) -> None:
+        """An arterial's rider entering the ring still gives way to its traffic."""
+        arterial = Road(4, speed_mph=40, lanes=2, names=frozenset({"main st"}))
+        ring = Road(3, speed_mph=25, lanes=1, oneway=True, names=frozenset({"circle"}))
+        entry = junction(
+            movement=Movement.RIGHT,
+            incoming=arterial,
+            outgoing=ring,
+            ring_movement=Movement.LEFT,
+        )
+        crossing = m.crossing_ft(ring, Control.NONE, None)
+        assert crossing > m.PRIORITY_SIDE_FT
+        assert m.assess(entry).cost_ft == pytest.approx(crossing)
+
+    def test_a_signalised_ring_and_a_quiet_one(self) -> None:
+        (signal,) = self.through(Movement.LEFT, control=Control.SIGNAL)
+        assert signal.cost_ft < m.ORANGE_MIN_FT
+        quiet = Road(2, speed_mph=15, lanes=1, oneway=True, names=frozenset({"circle"}))
+        assert self.through(Movement.LEFT, ring=quiet) == []
+
+    def test_a_left_round_a_busy_ring_at_rush_hour_waits_for_a_gap(self) -> None:
+        (left,) = self.through(Movement.LEFT, when=ridetime.WEEKDAY_RUSH)
+        assert left.cost_ft >= m.UNSIGNALISED_RUSH_MIN_FT
+        (right,) = self.through(Movement.RIGHT, when=ridetime.WEEKDAY_RUSH)
+        assert right.cost_ft < m.UNSIGNALISED_RUSH_MIN_FT
 
     def test_a_ring_tagged_two_way_is_priced_two_way(self) -> None:
         """Kenton Court 1536402606, `junction=roundabout` with `oneway=no`: the

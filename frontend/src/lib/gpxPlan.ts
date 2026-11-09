@@ -23,7 +23,7 @@ export const REFINE_GOAL = 0.97;
 import { COVERAGE_BBOX, MAX_POINTS, haversineM, insideCoverage, type LonLat } from "./geo.ts";
 import { PLAN_TYPE_PREFIX, parseDialsComment, type GpxFile, type GpxRoute } from "./gpx.ts";
 import { DEFAULT_PRESET, resolvePreset, type PresetId } from "./presets.ts";
-import { isCarrying, isWhen, type Dials } from "./dials.ts";
+import { isCarrying, isWhen, offersEasyMtb, type Dials } from "./dials.ts";
 import { cumulative, dedupe, fidelity, placesAlong, refineVias, significantIndexes, viaPoints, type Fidelity } from "./trackMatch.ts";
 
 /** Most vertices the reference line keeps for drawing and measuring. */
@@ -304,6 +304,9 @@ function rideOf(route: GpxRoute | undefined, notes: ImportNote[]): Pick<Imported
   if (fields.loop === "1") dials.loop = true;
   // "Keep to roads, not trails" (OWNER-DECISIONS 463): without it the plan would reopen on trails.
   if (fields.trailsoff === "1") dials.trailsOff = true;
+  // "Easy MTB trails", on the ride types that offer it, as a link's easymtb=1: without it the plan
+  // would reopen off the MTB trails it rode.
+  if (fields.easymtb === "1" && offersEasyMtb(id)) dials.easyMtb = true;
   return { preset: id, dials };
 }
 

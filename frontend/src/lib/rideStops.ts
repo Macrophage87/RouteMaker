@@ -72,7 +72,7 @@ export const RESTART_CONTINUE = "Continue";
  * review).
  */
 export const RESTART_AUTO_M = 200;
-export const RESTART_AUTO_SAID = t("Riding on with the stops as marked.");
+export const RESTART_AUTO_SAID = t("Continuing with the stops as marked.");
 
 /** Said as the question shows. */
 export function restartSaid(stops: readonly RestartStop[]): string {

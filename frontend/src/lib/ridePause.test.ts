@@ -102,10 +102,10 @@ test("heartbeat: none 60 s after a slow rider's last real fix, so a lost GPS is 
 });
 
 test("stay-put pause words: only the app promises riding off carries on; a browser asks for Resume", () => {
-  assert.equal(rideStayPausedSaid(true), "Ride paused at your destination to save battery. It carries on when you ride off, or press Resume.");
-  assert.equal(rideStayPausedSaid(false), "Ride paused at your destination to save battery. Press Resume to carry on.");
-  assert.equal(roamStayPausedSaid(true), "Roam paused to save battery. It carries on when you ride off, or press Resume.");
-  assert.equal(roamStayPausedSaid(false), "Roam paused to save battery. Press Resume to carry on.");
+  assert.equal(rideStayPausedSaid(true), "Ride paused at your destination to save battery. It starts again when you move, or press Resume.");
+  assert.equal(rideStayPausedSaid(false), "Ride paused at your destination to save battery. Press Resume to continue.");
+  assert.equal(roamStayPausedSaid(true), "Roam paused to save battery. It starts again when you move, or press Resume.");
+  assert.equal(roamStayPausedSaid(false), "Roam paused to save battery. Press Resume to continue.");
   assert.equal(ROAM_RESUMED_SAID, "Roam resumed.");
 });
 

@@ -29,6 +29,10 @@ SWAP_DUPLICATE_SERVICES = (
     "valhalla-offroad",
     "valhalla-mtb",
     "valhalla-paved",
+    # Road Bike's weekend router (the owner, 2026-11-08: "New weekend graph"). Its 768M, resident
+    # and again at the swap (1.5G at the peak), fit only with valhalla-standard, -no-trail, -ebike
+    # and -weekend each lowered from 2G to 1856M (compose.yaml): the peak stays at 32.0G.
+    "valhalla-paved-weekend",
 )
 # Services with no image to run (compose profile `unbuilt`: the renderer and the bot, whose
 # sources are not in this repository). They are still checked for limits and ports, but

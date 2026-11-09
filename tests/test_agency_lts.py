@@ -138,6 +138,63 @@ def test_the_rebuild_matches_each_agency_on_its_own(tmp_path):
     assert agency_lts.chosen(found[42]).agency == "moco"
 
 
+def test_a_way_takes_the_worst_level_of_one_agencys_records_along_it():
+    # Hunt D5 (2026-11-08): a 1 km way 600 m on a county record at LTS 2 and 400 m on one at
+    # LTS 4 took the record it lay along most (before: LTS 2, below the formula's 3). It now
+    # takes the worst stretch, as the rest of the merge reads blocks and counts.
+    from pipeline import agency_ratings, conflation
+    from routemaker import agency_roads
+
+    def stretch(start, end):
+        return [(-77.10 + i * 0.0001, 39.10) for i in range(start, end + 1)]
+
+    whole = stretch(0, 116)  # about 1 km at 8.6 m a step
+    features = [
+        conflation.RoadFeature(
+            fid, stretch(a, b), agency_roads.RoadFacts(agency="moco", name="Big Road")
+        )
+        for fid, a, b in (("moco-a", 0, 70), ("moco-b", 70, 116))
+    ]
+    ratings = {"moco-a": AgencyRating("moco", 2), "moco-b": AgencyRating("moco", 4)}
+    way = _way(1, whole, name="Big Road")
+    found = agency_ratings.ratings_by_way([way], [(1, whole, False)], features, ratings)
+    assert found[1] == (AgencyRating("moco", 4),)
+    result = agency_lts.apply(StressResult(Stress.LTS3, "formula", ()), found[1])
+    assert result.tier is Stress.LTS4
+
+
+def test_the_worst_level_needs_a_stretch_and_a_ban_needs_the_most_of_the_way():
+    from pipeline import agency_ratings
+    from pipeline.conflation import BlockShare
+
+    ratings = {
+        "a": AgencyRating("mdot-sha", 2),
+        "b": AgencyRating("mdot-sha", 4),
+        "ban": AgencyRating("mdot-sha", 5),
+    }
+    # 60 m of a 1 km way (a record clipped past a junction) does not set the level...
+    clipped = (BlockShare("a", 0.94, True), BlockShare("b", 0.06, True))
+    assert agency_ratings.worst_rating(clipped, ratings, 1000.0).level == 2
+    # ...150 m does, and so does half of a short way.
+    assert (
+        agency_ratings.worst_rating(
+            (BlockShare("a", 0.85, True), BlockShare("b", 0.15, True)), ratings, 1000.0
+        ).level
+        == 4
+    )
+    assert (
+        agency_ratings.worst_rating(
+            (BlockShare("a", 0.5, True), BlockShare("b", 0.5, True)), ratings, 80.0
+        ).level
+        == 4
+    )
+    # A ban on part of the way is not taken; on most of it, it is (as before).
+    part = (BlockShare("a", 0.6, True), BlockShare("ban", 0.4, True))
+    assert agency_ratings.worst_rating(part, ratings, 1000.0).level == 2
+    most = (BlockShare("ban", 0.6, True), BlockShare("a", 0.4, True))
+    assert agency_ratings.worst_rating(most, ratings, 1000.0).level == 5
+
+
 def test_an_internal_only_agency_is_refused(tmp_path):
     import json
 

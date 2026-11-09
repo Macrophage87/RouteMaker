@@ -138,11 +138,41 @@ class TestThePlan:
             "md-wz-flagger",
         }  # the lane closure's window is over at AT
 
-    def test_a_closure_by_a_placed_point_is_warned_of_not_excluded(self) -> None:
+    def test_only_the_part_of_a_closure_by_a_placed_point_is_left_in(self) -> None:
+        """Hunt K3 (2026-11-08): the whole closure used to be warned of, not excluded, where any
+        part of it lay within 50 m of a point, so a long closure by the start was ridden whole.
+        Now only the part within `NEAR_POINT_M` of the point stays in (this test pinned the old
+        all-or-nothing reading, and is changed for the new one): the rest either side of the
+        start is left out, as two strips."""
         start_inside = [(-77.0300, 38.9515), (-77.0300, 38.9700)]
         plan = wz.for_plan(zones().values(), AT, start_inside, {"md": "current"})
-        assert plan.exclude == []
-        assert [z.zone_id for z in plan.unexcluded] == ["md-wz-closed-bikes"]
+        assert [z.zone_id for z in plan.excluded] == ["md-wz-closed-bikes"]
+        assert plan.unexcluded == []
+        south, north = plan.exclude
+        assert plan.rings["md-wz-closed-bikes"] == [south, north]
+        # 50 m (about 0.00045 degrees) either side of the start stays in.
+        assert max(lat for _, lat in south) < 38.9515 - 0.0004
+        assert min(lat for _, lat in north) > 38.9515 + 0.0004
+        # The zone's own ends are still trimmed 20 m.
+        assert 38.9501 < min(lat for _, lat in south) and max(lat for _, lat in north) < 38.9529
+
+    def test_a_closure_wholly_by_a_placed_point_is_warned_of_not_excluded(self) -> None:
+        short = wz.Zone("short", "md", wz.CLOSED, 0, ((-77.03, 38.9500), (-77.03, 38.9506)),
+                        "Road", None, None, None)  # fmt: skip
+        plan = wz.for_plan([short], AT, [(-77.0300, 38.9503), (-77.03, 38.97)], {"md": "current"})
+        assert plan.exclude == [] and [z.zone_id for z in plan.unexcluded] == ["short"]
+
+    def test_a_long_closure_with_its_end_by_the_start_is_left_out_beyond_it(self) -> None:
+        """Hunt K3's case: a 1 mi (1.6 km) trail closure whose south end is about 130 ft (40 m)
+        from the start. Before, it was not routed round at all ('rings 0')."""
+        trail = wz.Zone("t", "reviewer", wz.CLOSED, 0, ((-77.03, 38.9500), (-77.03, 38.9644)),
+                        "Trail", None, None, None)  # fmt: skip
+        plan = wz.for_plan([trail], AT, [(-77.03, 38.94964), (-77.00, 38.96)], {"md": "current"})
+        assert [z.zone_id for z in plan.excluded] == ["t"]
+        (ring,) = plan.exclude
+        lats = [lat for _, lat in ring]
+        # Left out from about 50 m past the start to 20 m short of the far end.
+        assert 38.94964 + 0.00044 < min(lats) < 38.9504 and 38.9640 < max(lats) < 38.9643
 
     def test_a_closure_far_from_the_ride_is_not_sent(self) -> None:
         plan = wz.for_plan(
@@ -229,16 +259,19 @@ class TestThePlan:
         assert (closed.on_foot, kept.on_foot, unsaid.on_foot) == (True, False, None)
 
     def test_the_routers_limits_are_kept(self) -> None:
+        # 100 closures of about 330 m: more than the budget holds. (This test had 40, which fit,
+        # and found some left out only because two were by a point placed: since hunt K3 such a
+        # closure is left out beyond the point, so it now needs more than fit.)
         many = [
             wz.Zone(f"md-{n}", "md", wz.CLOSED, 0, line, None, None, None, None)
-            for n in range(40)
-            for line in [((-77.0 + n * 0.001, 38.9), (-77.0 + n * 0.001, 38.903))]
+            for n in range(100)
+            for line in [((-77.0 + n * 0.0004, 38.9), (-77.0 + n * 0.0004, 38.903))]
         ]
         plan = wz.for_plan(many, AT, [(-77.0, 38.9), (-76.96, 38.903)], {"md": "current"})
         perimeter, vertices = wz.budget_used(plan.exclude)
-        assert vertices <= wz.MAX_VERTICES and perimeter <= wz.MAX_PERIMETER_M
+        assert vertices <= wz.MAX_VERTICES and perimeter <= wz.PERIMETER_BUDGET_M
         assert plan.excluded and plan.unexcluded
-        assert len(plan.excluded) + len(plan.unexcluded) == 40
+        assert len(plan.excluded) + len(plan.unexcluded) == 100
 
 
 def _arc(radius_m: float, length_m: float, step_m: float = 10.0) -> list[tuple[float, float]]:
