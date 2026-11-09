@@ -54,9 +54,9 @@ Signals outside the major cities (the owner, 2026-11-08: "along stroads that you
 many of the suburbs, the light cycles are a lot longer than what you'd find in DC"). In the
 owner's rides, the stopped time at a red was a median of 19 s at 4 signals on the
 District's and Baltimore's grids, 52 s at 21 suburban signals, and 66 s (mean 68 s) at the 16
-where the rider crossed a big suburban road; arrivals on green do not show, so the wait per arrival there is
-inferred at about 45 to 55 s. He chose (`signal_wait`), outside the District, Baltimore City,
-Alexandria and Arlington (the caller's `suburban`):
+where the rider crossed a big suburban road; arrivals on green do not show, so the wait per
+arrival there is inferred at about 45 to 55 s. He chose (`signal_wait`), outside the District,
+Baltimore City, Alexandria and Arlington (the caller's `suburban`):
 
 - crossing or turning onto a trunk or primary road, or one the junction model reads with 4 or
   more lanes or a speed of 40 mph or more (`big`), SUBURBAN_BIG_SIGNAL_S;

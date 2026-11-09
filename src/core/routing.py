@@ -4934,7 +4934,10 @@ def _keep_graph_down_notice(own: dict, answer: dict) -> None:
         info = own.get(key)
         if isinstance(info, dict) and info.get("limited") in _GRAPH_DOWN:
             mine = answer.get(key)
-            answer[key] = {**mine, "limited": info["limited"]} if isinstance(mine, dict) else dict(info)
+            if isinstance(mine, dict):
+                answer[key] = {**mine, "limited": info["limited"]}
+            else:
+                answer[key] = dict(info)
 
 
 def _plan_twice(
