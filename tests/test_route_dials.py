@@ -3543,7 +3543,9 @@ class TestWeekendWins:
         )
 
     @staticmethod
-    def _fake_plans(monkeypatch, weekend_failures=0, own_variant="offroad", hold=None):
+    def _fake_plans(
+        monkeypatch, weekend_failures=0, own_variant="offroad", hold=None, own_extra=None
+    ):
         """`_plan_alone` faked: the own plan answers `own_variant`, the weekend plan records
         `weekend_failures` failed calls on the recorder it runs under."""
         from core import timing
@@ -3556,7 +3558,9 @@ class TestWeekendWins:
                     timing.record_call(0.0, True)
             if slot is not None:
                 slot["ranking"] = dials.graph or "own"
-            return {"variant": dials.graph or own_variant}
+            if dials.graph:
+                return {"variant": dials.graph, "mtb": None, "easy_mtb": {"limited": None}}
+            return {"variant": own_variant, **(own_extra or {})}
 
         monkeypatch.setattr(routing, "_weekend_too", lambda *a: True)
         monkeypatch.setattr(routing, "_plan_alone", plan_alone)
@@ -3619,6 +3623,32 @@ class TestWeekendWins:
         body, failures = self._planned()
         assert body["variant"] == "weekend"
         assert failures == 0
+
+    def test_a_weekend_route_over_a_down_router_still_says_the_trails_were_not_there(
+        self, settings, monkeypatch
+    ):
+        """The ride's own router down, its plan on the standard graph: the weekend route is
+        answered, and the rider is still told the trails' graph was not there (release
+        review, 2026-11-09: a Saturday Mountain Bike ride had no trails and no notice)."""
+        settings.ROUTER_PARALLEL_CALLS = 1
+        own_extra = {
+            "mtb": {"max_level": 3, "limited": "no_mtb_graph"},
+            "easy_mtb": {"max_level": 1, "limited": "no_offroad_graph"},
+        }
+        self._fake_plans(monkeypatch, own_variant="standard", own_extra=own_extra)
+        body, _ = self._planned()
+        assert body["variant"] == "weekend"
+        assert body["mtb"] == {"limited": "no_mtb_graph"}
+        assert body["easy_mtb"] == {"limited": "no_offroad_graph"}
+
+    def test_a_weekend_route_over_the_standard_graph_by_design_adds_no_notice(
+        self, settings, monkeypatch
+    ):
+        settings.ROUTER_PARALLEL_CALLS = 1
+        self._fake_plans(monkeypatch, own_variant="standard", own_extra={"mtb": None})
+        body, _ = self._planned()
+        assert body["variant"] == "weekend"
+        assert body["mtb"] is None and body["easy_mtb"] == {"limited": None}
 
     def test_a_weekend_plan_not_done_in_the_rides_budget_is_dropped(self, settings, monkeypatch):
         import threading

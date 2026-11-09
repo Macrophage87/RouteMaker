@@ -797,6 +797,20 @@ class TestDoneWithMtb:
         assert response.json().get("mtb") is None
         assert {graph_of(url) for url, _ in routes(fake)} == {graph}
 
+    def test_a_weekend_e_bike_from_on_a_trail_is_not_snapped_off_it(
+        self, client, segments, router
+    ) -> None:
+        """A guard (release review, 2026-11-09): after the press on a trail, no weekend-graph
+        plan, which would snap the rider's fix to the nearest open way, answers an e-bike ride;
+        the ride's own plan rides the trail off (`routing._GraphLeft` on `weekend_beside`)."""
+        add_trail(segments, TOUCHED, START_TRAIL, reason="mtb")
+        fake = router(plain_router())
+        body = {**good_body("ebike"), "when": "weekend", "ride_replan": True, "mtb_done": True}
+        response = post(client, body)
+        assert response.status_code == 200, response.content
+        assert response.json()["variant"] == "offroad"
+        assert "weekend" not in {graph_of(url) for url, _ in routes(fake)}
+
     def test_a_trail_at_a_stop_is_not_opened(self, client, segments, router) -> None:
         add_trail(segments, TOUCHED, END_TRAIL)
         fake = router(plain_router())
