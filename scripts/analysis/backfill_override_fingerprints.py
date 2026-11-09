@@ -31,6 +31,7 @@ REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "src"))
 
 from pipeline import rematch  # noqa: E402
+from pipeline.overrides import file_rows  # noqa: E402
 
 OVERRIDES = REPO / "fixtures" / "overrides"
 
@@ -84,7 +85,7 @@ def main() -> int:
 
     files = sorted(Path(args.overrides).glob("2026-*.json"))
     documents = {path: json.loads(path.read_text()) for path in files}
-    ids = {row["osm_way_id"] for document in documents.values() for row in document.get("rows", [])}
+    ids = {row["osm_way_id"] for document in documents.values() for row in file_rows(document)}
     current = read_pbf(args.pbf, ids) if args.pbf else read_jsonl(args.ways_jsonl, ids)
     missing = sorted(ids - set(current))
     previous = read_jsonl(args.previous_ways, set(missing)) if args.previous_ways else {}
@@ -93,7 +94,7 @@ def main() -> int:
     still_missing: list[tuple[str, int]] = []
     for path, document in documents.items():
         changed = False
-        for row in document.get("rows", []):
+        for row in [*document.get("rows", []), *group_rows(document)]:
             if "fingerprint" in row:
                 unchanged += 1
                 continue
@@ -102,6 +103,11 @@ def main() -> int:
                 still_missing.append((path.name, row["osm_way_id"]))
                 continue
             row["fingerprint"] = rematch.fingerprint_of(*record)
+            if "group" in row:
+                # A compact group (`file_rows`) keeps its fingerprints by way id.
+                row["group"].setdefault("fingerprints", {})[str(row["osm_way_id"])] = row[
+                    "fingerprint"
+                ]
             added += 1
             changed = True
         if changed and args.write:
@@ -118,6 +124,19 @@ def main() -> int:
     for name, way in still_missing:
         print(f"  no geometry for way {way} ({name})")
     return 0
+
+
+def group_rows(document: dict) -> list[dict]:
+    """One stand-in row per way of each of the file's `groups`, pointing back at its group."""
+    rows = []
+    for group in document.get("groups", []):
+        prints = group.get("fingerprints", {})
+        for way_id in group["ways"]:
+            row = {"osm_way_id": way_id, "group": group}
+            if str(way_id) in prints:
+                row["fingerprint"] = prints[str(way_id)]
+            rows.append(row)
+    return rows
 
 
 if __name__ == "__main__":

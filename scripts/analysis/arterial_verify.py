@@ -120,7 +120,7 @@ def tier_rows(by_tier) -> list:
 def live_rows(ref: str, fingerprints):
     """The override rows of the fixtures as of `ref`, standing for what the live
     database was loaded from (not a read of it)."""
-    from pipeline.overrides import Override
+    from pipeline.overrides import Override, file_rows
 
     names = subprocess.run(
         ["git", "-C", str(REPO), "ls-tree", "--name-only", ref, "fixtures/overrides/"],
@@ -138,7 +138,7 @@ def live_rows(ref: str, fingerprints):
             capture_output=True,
             text=True,
         ).stdout
-        for row in json.loads(text).get("rows", []):
+        for row in file_rows(json.loads(text)):
             rows.append(
                 Override(
                     kind=row["kind"],
@@ -152,11 +152,11 @@ def live_rows(ref: str, fingerprints):
 
 
 def tree_rows(fingerprints):
-    from pipeline.overrides import Override
+    from pipeline.overrides import Override, file_rows
 
     rows = []
     for path in sorted((REPO / "fixtures" / "overrides").glob("2026-*.json")):
-        for row in json.loads(path.read_text()).get("rows", []):
+        for row in file_rows(json.loads(path.read_text())):
             rows.append(
                 Override(
                     kind=row["kind"],

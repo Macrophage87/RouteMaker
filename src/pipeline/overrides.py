@@ -294,6 +294,35 @@ def stress_adjustment(
     )
 
 
+GROUP_FIELDS = ("kind", "value", "reason", "evidence")
+
+
+def file_rows(document: object) -> list[dict]:
+    """An override file's rows: its `rows`, then one row per way of each of its `groups`.
+
+    A group is the compact form of rows that differ only in their way (the 2026-11-09
+    own-picks files, ~180,000 ways): `kind`, `value`, `reason` and `evidence` once, its
+    `ways`, and an optional `fingerprints` map of way id (as text) to fingerprint. Written
+    out one row per way, those files would not fit the repository. Malformed entries are
+    passed through as they are, for `load_access_overrides.parse_file` to refuse.
+    """
+    if not isinstance(document, dict):
+        return []
+    rows = list(document.get("rows") or [])
+    for group in document.get("groups") or []:
+        if not isinstance(group, dict) or not isinstance(group.get("ways"), list):
+            rows.append(group)
+            continue
+        prints = group.get("fingerprints") or {}
+        for way_id in group["ways"]:
+            row = {field: group.get(field) for field in GROUP_FIELDS}
+            row["osm_way_id"] = way_id
+            if isinstance(prints, dict) and str(way_id) in prints:
+                row["fingerprint"] = prints[str(way_id)]
+            rows.append(row)
+    return rows
+
+
 def step_of(value: dict) -> float:
     """A stress row's level as a number (1 to 5, half steps included)."""
     return int(value["tier"]) + (0.5 if value.get("half") is True else 0.0)
