@@ -557,10 +557,21 @@ export function capacityTile() {
 }
 
 export async function axNode(page, selector) {
-  const { root } = await page.s("DOM.getDocument", { depth: 0 });
-  const { nodeId } = await page.s("DOM.querySelector", { nodeId: root.nodeId, selector });
-  if (!nodeId) return null;
-  const { nodes } = await page.s("Accessibility.getPartialAXTree", { nodeId, fetchRelatives: false });
+  // React can swap the node between the two calls (a re-render after a click), and CDP then answers "Could not find
+  // node with given id": look it up again, up to three times, rather than stop the whole suite.
+  let nodes;
+  for (let attempt = 1; ; attempt++) {
+    const { root } = await page.s("DOM.getDocument", { depth: 0 });
+    const { nodeId } = await page.s("DOM.querySelector", { nodeId: root.nodeId, selector });
+    if (!nodeId) return null;
+    try {
+      ({ nodes } = await page.s("Accessibility.getPartialAXTree", { nodeId, fetchRelatives: false }));
+      break;
+    } catch (e) {
+      if (attempt >= 3 || !/Could not find node with given id/.test(e.message)) throw e;
+      await sleep(100);
+    }
+  }
   const n = nodes[0];
   const prop = (name) => n.properties?.find((q) => q.name === name)?.value?.value;
   return {
