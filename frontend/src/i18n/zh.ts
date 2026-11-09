@@ -2144,4 +2144,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Save {name} to My routes": "将{name}保存到我的路线",
   "Saving {name}…": "正在保存{name}…",
   "That draft is gone.": "该草稿已不存在。",
+  "Delete": "删除",
+  "Delete {name}": "删除{name}",
+  "Deleted {name}.": "已删除{name}。",
 };

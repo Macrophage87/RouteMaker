@@ -2144,4 +2144,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Save {name} to My routes": "{name} ዓቅብ",
   "Saving {name}…": "{name} ይዕቀብ ኣሎ…",
   "That draft is gone.": "እቲ ንድፊ የለን።",
+  "Delete": "ሰርዝ",
+  "Delete {name}": "{name} ሰርዝ",
+  "Deleted {name}.": "{name} ተሰሪዙ።",
 };

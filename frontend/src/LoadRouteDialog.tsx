@@ -55,7 +55,7 @@ import { sortKept, type KeptRoute } from "./lib/offlineRoutes.ts";
 import { matchSaid, matching } from "./lib/routeSearch.ts";
 import type { PresetId } from "./lib/presets.ts";
 import { SAVED_SAID, SAVE_SHORT, changeRoute, listRoutes, readRoute, tagsInUse, type SavedRoute, type SavedSummary } from "./lib/savedRoutes.ts";
-import { draftSaveLabel, listDrafts, saveDraft, type DraftSummary } from "./lib/drafts.ts";
+import { DRAFT_DELETE, deleteDraft, draftDeleteLabel, draftDeletedSaid, draftSaveLabel, listDrafts, saveDraft, type DraftSummary } from "./lib/drafts.ts";
 import { readShared, type SharedRoute } from "./lib/sharedRoutes.ts";
 import { t } from "./lib/i18n.ts";
 
@@ -88,6 +88,23 @@ export function LoadRouteDialog({ open, onClose, signedIn, signIn, preset, onGpx
   const [drafts, setDrafts] = useState<DraftSummary[]>([]);
   // The draft whose Save is under way: pressed once.
   const [saving, setSaving] = useState<string | null>(null);
+  // A draft just deleted: hidden at once, deleted on the server once Undo's time is up or the popup closes.
+  const [gone, setGone] = useState<DraftSummary | null>(null);
+  const goneRef = useRef<DraftSummary | null>(null);
+  const goneTimer = useRef<number | undefined>(undefined);
+  const goneUndo = useRef<HTMLButtonElement>(null);
+  const flushGone = () => {
+    window.clearTimeout(goneTimer.current);
+    const draft = goneRef.current;
+    goneRef.current = null;
+    setGone(null);
+    if (draft) void deleteDraft(window.location.origin, draft.id);
+  };
+  // Closed (or gone from the page) with Undo still offered: the delete goes through.
+  useEffect(() => {
+    if (!open) flushGone();
+  }, [open]);
+  useEffect(() => () => flushGone(), []);
   const [failed, setFailed] = useState(false);
   const [kept, setKept] = useState<KeptRoute[]>([]);
   const [filter, setFilter] = useState("");
@@ -106,10 +123,12 @@ export function LoadRouteDialog({ open, onClose, signedIn, signIn, preset, onGpx
   // Where the focus goes once the pressed control has left: Undo after Archive, Back after Restore in Archived, and
   // the route's own Archive again after Undo.
   // Undo's own time running out while it has the focus sends it to the Archived link, never the page (review).
-  const [refocus, setRefocus] = useState<"undo" | "back" | "archived" | number | null>(null);
+  const [refocus, setRefocus] = useState<"undo" | "back" | "archived" | "goneUndo" | `d${string}` | number | null>(null);
   useEffect(() => {
     if (refocus === null) return;
     if (refocus === "undo") undoRef.current?.focus();
+    else if (refocus === "goneUndo") goneUndo.current?.focus();
+    else if (typeof refocus === "string" && refocus.startsWith("d")) dialogRef.current?.querySelector<HTMLElement>(`[data-route="${refocus.slice(1)}"] .load-route-row`)?.focus();
     else if (refocus === "back") listEnd.current?.focus();
     else if (refocus === "archived") archivedLinkRef.current?.focus();
     else dialogRef.current?.querySelector<HTMLElement>(`[data-route="${refocus}"] .load-route-archive`)?.focus();
@@ -215,6 +234,31 @@ export function LoadRouteDialog({ open, onClose, signedIn, signIn, preset, onGpx
     const row = rows.find((r) => r.kind === "saved" && r.id === undo?.id) ?? loadRows(saved ?? [], [], true).find((r) => r.kind === "saved" && r.id === undo?.id);
     if (row?.kind === "saved") setArchived(row, false);
     setUndo(null);
+  };
+  const deleteOne = (row: Extract<LoadRow, { kind: "draft" }>) => {
+    const draft = drafts.find((d) => d.id === row.id);
+    if (!draft) return;
+    flushGone();
+    setDrafts((all) => all.filter((d) => d.id !== row.id));
+    goneRef.current = draft;
+    setGone(draft);
+    setSaid("");
+    goneTimer.current = window.setTimeout(() => {
+      // Undo leaving with the focus on it: to Close, never the page.
+      if (goneUndo.current && document.activeElement === goneUndo.current) dialogRef.current?.querySelector<HTMLElement>(".closure-choices button")?.focus();
+      flushGone();
+    }, UNDO_MS);
+    setRefocus("goneUndo");
+  };
+  const undoDelete = () => {
+    window.clearTimeout(goneTimer.current);
+    const draft = goneRef.current;
+    goneRef.current = null;
+    setGone(null);
+    if (draft) {
+      setDrafts((all) => [...all, draft]);
+      setRefocus(`d${draft.id}`);
+    }
   };
   const saveOne = (row: Extract<LoadRow, { kind: "draft" }>) => {
     if (saving) return;
@@ -372,6 +416,14 @@ export function LoadRouteDialog({ open, onClose, signedIn, signIn, preset, onGpx
             {signedIn && saved !== null && !failed && !archivedView && rows.length === 0 && archivedCount === 0 && <p className="hint">{LOAD_NONE}</p>}
             {filter && <p className="hint">{matchSaid(shown.length, rows.length, filter)}</p>}
             {said && <p className="hint">{said}</p>}
+            {gone && !archivedView && (
+              <p className="notice load-route-undo">
+                <span>{draftDeletedSaid(gone.name)}</span>
+                <button type="button" className="link" ref={goneUndo} onClick={undoDelete}>
+                  {LOAD_UNDO}
+                </button>
+              </p>
+            )}
             {undo && !archivedView && (
               <p className="notice load-route-undo">
                 <span>{archivedSaid(undo.name)}</span>
@@ -399,9 +451,14 @@ export function LoadRouteDialog({ open, onClose, signedIn, signIn, preset, onGpx
                     </span>
                   </button>
                   {row.kind === "draft" && (
-                    <button type="button" className="secondary load-route-save" aria-label={draftSaveLabel(row.name)} disabled={saving === row.id} onClick={() => saveOne(row)}>
-                      {SAVE_SHORT}
-                    </button>
+                    <>
+                      <button type="button" className="secondary load-route-save" aria-label={draftSaveLabel(row.name)} title={SAVE_SHORT} disabled={saving === row.id} onClick={() => saveOne(row)}>
+                        <Icon name="save" size={22} />
+                      </button>
+                      <button type="button" className="secondary load-route-delete" aria-label={draftDeleteLabel(row.name)} title={DRAFT_DELETE} onClick={() => deleteOne(row)}>
+                        <Icon name="trash" size={22} />
+                      </button>
+                    </>
                   )}
                   {row.kind === "saved" &&
                     (row.archived ? (

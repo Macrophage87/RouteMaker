@@ -2144,4 +2144,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Save {name} to My routes": "Enregistrer {name} dans Mes itinéraires",
   "Saving {name}…": "Enregistrement de {name}…",
   "That draft is gone.": "Ce brouillon n'existe plus.",
+  "Delete": "Supprimer",
+  "Delete {name}": "Supprimer {name}",
+  "Deleted {name}.": "{name} supprimé.",
 };

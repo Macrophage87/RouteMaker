@@ -8706,6 +8706,35 @@ def my_drafts(request):
     return _private(JsonResponse({"drafts": out}))
 
 
+@api.delete("/me/drafts/{route_id}", summary="Delete one of your assistant drafts")
+@decorate_view(
+    ratelimit.user_rate_limited(ratelimit.ACCOUNT_WRITES),
+    csrf_protected,
+    signed_in_only,
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.STRESS_EDIT_CLIENT),
+    errors_as_json,
+)
+def my_draft_delete(request, route_id: str):
+    """Delete from Load route (the owner, 2026-11-09: "also add delete"): the draft whose link
+    this is, with every revision of its route and their links, at once. The assistant's chat
+    then finds no draft, as after a week."""
+    from .connector import delete_route_drafts
+    from .models import SharedRoute
+
+    link = (
+        SharedRoute.objects.filter(pk=route_id, owner=request.user, connector_draft__isnull=False)
+        .select_related("connector_draft")
+        .first()
+        if _shared_id_ok(route_id)
+        else None
+    )
+    if link is None:
+        return _stress_error(404, "That draft is not one of yours.", code="not_found")
+    delete_route_drafts(link.connector_draft)
+    return _private(JsonResponse({"deleted": True}))
+
+
 @api.post("/me/shared-routes/{route_id}/revoke", summary="Turn off one of your shared links")
 @decorate_view(
     ratelimit.user_rate_limited(ratelimit.ACCOUNT_WRITES),

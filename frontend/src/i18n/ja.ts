@@ -2144,4 +2144,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Save {name} to My routes": "{name}をマイルートに保存",
   "Saving {name}…": "{name}を保存中…",
   "That draft is gone.": "その下書きはもうありません。",
+  "Delete": "削除",
+  "Delete {name}": "{name}を削除",
+  "Deleted {name}.": "{name}を削除しました。",
 };

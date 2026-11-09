@@ -1356,6 +1356,25 @@ class TestDraftsListed:
         on_top = max(listed, key=lambda d: d["opened_at"])
         assert on_top["name"] == "First"
 
+    def test_deleting_a_draft_drops_every_revision_and_link(self, planner) -> None:
+        user, tokens, _ = tokens_for()
+        token = tokens["access_token"]
+        first = self.plan(token)
+        revised = call(token, "revise_route", {"draft_id": first["draft_id"]})["structuredContent"]
+        other = self.plan(token, "Bakery")
+        browser, _user, csrf = signed_in(user)
+        stranger, _other, stranger_csrf = signed_in()
+        path = f"/api/me/drafts/{self.route_id(revised)}"
+        assert send(stranger, "delete", path, {}, stranger_csrf).status_code == 404
+        assert send(browser, "delete", path, {}, csrf).status_code == 200
+        listed = browser.get("/api/me/drafts", **addr()).json()["drafts"]
+        assert [d["id"] for d in listed] == [self.route_id(other)]
+        for gone in (first, revised):
+            link = f"/api/shared-routes/{self.route_id(gone)}"
+            assert Client().get(link, **addr()).status_code == 404
+        late = call(token, "save_route", {"draft_id": revised["draft_id"], "name": "x"})
+        assert late["isError"]
+
     def test_save_route_stops_listing_the_draft(self, planner) -> None:
         _user, tokens, _ = tokens_for()
         token = tokens["access_token"]

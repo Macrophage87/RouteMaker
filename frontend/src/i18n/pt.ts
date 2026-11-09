@@ -2144,4 +2144,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Save {name} to My routes": "Salvar {name} em Minhas rotas",
   "Saving {name}…": "Salvando {name}…",
   "That draft is gone.": "Esse rascunho não existe mais.",
+  "Delete": "Excluir",
+  "Delete {name}": "Excluir {name}",
+  "Deleted {name}.": "{name} excluído.",
 };

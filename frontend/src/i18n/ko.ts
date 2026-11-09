@@ -2144,4 +2144,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Save {name} to My routes": "{name}을(를) 내 경로에 저장",
   "Saving {name}…": "{name} 저장 중…",
   "That draft is gone.": "그 임시 경로는 없어졌습니다.",
+  "Delete": "삭제",
+  "Delete {name}": "{name} 삭제",
+  "Deleted {name}.": "{name}을(를) 삭제했습니다.",
 };

@@ -518,6 +518,13 @@ def mark_saved(row) -> None:
     ).update(saved_at=timezone.now())
 
 
+def delete_route_drafts(row) -> None:
+    """Delete this draft and every other revision of its route, the account's own, with their
+    links (SharedRoute.connector_draft cascades)."""
+    root = row.root or row.draft_id
+    ConnectorDraft.objects.filter(Q(root=root) | Q(draft_id=root), user_id=row.user_id).delete()
+
+
 def _drafts_deleted(by_model: dict) -> int:
     return by_model.get(ConnectorDraft._meta.label, 0)
 

@@ -2651,4 +2651,5 @@ export const ES: Readonly<Record<string, string>> = {
   "Save {name} to My routes": "Guardar {name} en Mis rutas",
   "Saving {name}…": "Guardando {name}…",
   "That draft is gone.": "Ese borrador ya no está.",
+  "Deleted {name}.": "Se eliminó {name}.",
 };

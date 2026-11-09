@@ -10,6 +10,7 @@
 import { formatDistance } from "./format.ts";
 import { t } from "./i18n.ts";
 import { readShared } from "./sharedRoutes.ts";
+import { csrfFromCookie } from "./stressEditor.ts";
 import { saveRoute, type SaveOutcome, type SavedSource } from "./savedRoutes.ts";
 
 /** One draft as GET /api/me/drafts lists it. */
@@ -46,6 +47,10 @@ export function draftDetails(draft: Pick<DraftSummary, "distance_m" | "expires_a
 
 /** Save's aria-label on a draft's row. */
 export const draftSaveLabel = (name: string) => t("Save {name} to My routes", { name });
+/** Delete's (the owner, 2026-11-09: "Use the save icon, and also add delete"), with Undo for a few seconds. */
+export const DRAFT_DELETE = t("Delete");
+export const draftDeleteLabel = (name: string) => t("Delete {name}", { name });
+export const draftDeletedSaid = (name: string) => t("Deleted {name}.", { name });
 
 type Fetch = typeof fetch;
 
@@ -57,6 +62,17 @@ export async function listDrafts(origin: string, get: Fetch = fetch): Promise<Dr
     return Array.isArray(body.drafts) ? body.drafts : null;
   } catch {
     return null;
+  }
+}
+
+/** Delete the draft whose link is `id`, every revision of its route with it; whether it is gone. */
+export async function deleteDraft(origin: string, id: string, send: Fetch = fetch, cookie = typeof document === "undefined" ? "" : document.cookie): Promise<boolean> {
+  try {
+    const token = csrfFromCookie(cookie);
+    const response = await send(`${origin}/api/me/drafts/${id}`, { method: "DELETE", credentials: "same-origin", headers: { Accept: "application/json", ...(token ? { "X-CSRFToken": token } : {}) } });
+    return response.ok || response.status === 404;
+  } catch {
+    return false;
   }
 }
 

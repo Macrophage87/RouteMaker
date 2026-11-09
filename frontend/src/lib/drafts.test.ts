@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { daysLeft, draftLeft, saveDraft } from "./drafts.ts";
+import { daysLeft, deleteDraft, draftLeft, saveDraft } from "./drafts.ts";
 
 test("a draft says how long it has left in whole days", () => {
   const now = Date.parse("2026-11-09T12:00:00Z");
@@ -27,4 +27,17 @@ test("Save keeps the draft exactly as drafted and names it, so it is no longer l
   assert.deepEqual(sent, { name: "Sandwich loop", source: "plan", line: shared.line, distance_m: 8047, inputs: shared.inputs, answer: null, from_draft: id });
   const gone = (async () => new Response("{}", { status: 404 })) as typeof fetch;
   assert.equal(await saveDraft("https://x", id, gone, post), null);
+});
+
+test("Delete removes the draft on the server; one already gone counts as deleted", async () => {
+  const id = "c".repeat(32);
+  let asked = "";
+  const send = (async (url: string, init: RequestInit) => {
+    asked = `${init.method} ${url}`;
+    return new Response("{}", { status: 200 });
+  }) as typeof fetch;
+  assert.equal(await deleteDraft("https://x", id, send, "csrftoken=t"), true);
+  assert.equal(asked, `DELETE https://x/api/me/drafts/${id}`);
+  assert.equal(await deleteDraft("https://x", id, (async () => new Response("{}", { status: 404 })) as typeof fetch, ""), true);
+  assert.equal(await deleteDraft("https://x", id, (async () => new Response("{}", { status: 500 })) as typeof fetch, ""), false);
 });

@@ -10635,6 +10635,7 @@ summary.closure-notices-heading {
 }
 .load-route-archive,
 .load-route-save,
+.load-route-delete,
 .load-route-restore {
   flex: none;
   min-width: 44px;
@@ -10644,7 +10645,9 @@ summary.closure-notices-heading {
   align-items: center;
   justify-content: center;
 }
-.load-route-archive {
+.load-route-archive,
+.load-route-save,
+.load-route-delete {
   padding: 0;
 }
 .load-route-tag-mark {
