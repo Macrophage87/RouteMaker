@@ -84,6 +84,29 @@ our reasoning and then that it agrees. If it disagrees we need to have more just
 - **The Why line** (`public_note`) gives our reasoning first, then "MDOT SHA agrees" or, where
   we differ, the other rating and the facts that justify ours.
 
+### Roads with no traffic count (the owner, 2026-11-09)
+"For all uncounted streets don't apply a uniform standard. Search for what's on that road ... If
+there's only sparse houses, or even less, then rate it low ... If there are major destinations on
+this road or it's near one, then rate it higher." And: "Put the evidence in the 'why'."
+
+- **Residential and minor streets** (about 140,000 ways): homes per square mile from the 2020
+  Census blocks within half a mile, and jobs per square mile from Census LODES 2023 (jobs stand
+  in for destinations). The Why line quotes both numbers. Our defaults, not yet measured:
+  sparse is under 150 homes and under 200 jobs per square mile; mainly homes is under 1,500
+  jobs; destinations is 5,000 jobs or more, which raises a street half a level (to 2 from below 2).
+- **Below 2 is still our earlier criteria** (the owner: "allow LTS1 to be defined by our earlier
+  criteria ... keep to our current city formula for anything less than 2"). A street below 2 on
+  the map keeps that level unless destinations raise it. Sparse houses never take a street below 2,
+  and rural streets keep the floor of 2.
+- **Pieces of an artery** tagged as minor roads ("Sometimes major arteries are in areas with sparse
+  houses", the owner, on New Design Road): a piece within 1,000 m of a collector or main road of the
+  same name is rated half a level below that road (our default).
+- **Collectors and main roads with no count** keep the level their class and speed give. Census
+  destinations can raise them half a level. The 504 of half a mile or more in sparse areas,
+  where a lower level was in question, were web-searched, and skeptics checked every lowered one
+  ("If an unrated road barely registers on most web traffic, it likely means traffic is too low to
+  bother with. However send skeptical reviewers of that claim"). The skeptics changed 50, almost all upward.
+
 ## Files, the loader and retire lists
 
 - Owner decisions made in conversation are checked in as versioned files in

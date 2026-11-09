@@ -47,6 +47,7 @@ it waited would make the review meaningless.
 
 from __future__ import annotations
 
+import json
 import re
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
@@ -321,6 +322,17 @@ def file_rows(document: object) -> list[dict]:
                 row["fingerprint"] = prints[str(way_id)]
             rows.append(row)
     return rows
+
+
+def groups_text(document: dict) -> str:
+    """A file with `groups` as text: its other keys at indent 1, then one group per line.
+    The own-picks files are written this way (about a third the size of indent 1 throughout),
+    and `backfill_override_fingerprints.py` writes them back the same way."""
+    head = {k: v for k, v in document.items() if k != "groups"}
+    lines = [json.dumps(g, separators=(",", ":")) for g in document.get("groups", [])]
+    return (
+        json.dumps(head, indent=1)[:-2] + ',\n "groups": [\n  ' + ",\n  ".join(lines) + "\n ]\n}\n"
+    )
 
 
 def step_of(value: dict) -> float:

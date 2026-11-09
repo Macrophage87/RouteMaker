@@ -31,7 +31,7 @@ REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "src"))
 
 from pipeline import rematch  # noqa: E402
-from pipeline.overrides import file_rows  # noqa: E402
+from pipeline.overrides import file_rows, groups_text  # noqa: E402
 
 OVERRIDES = REPO / "fixtures" / "overrides"
 
@@ -112,6 +112,11 @@ def main() -> int:
             changed = True
         if changed and args.write:
             raw = path.read_text()
+            if "groups" in document:
+                if groups_text(json.loads(raw)) != raw:
+                    raise SystemExit(f"{path.name}: would not round-trip as a groups file")
+                path.write_text(groups_text(document))
+                continue
             width = indent_of(raw)
             if json.dumps(json.loads(raw), indent=width) + "\n" != raw:
                 raise SystemExit(f"{path.name}: would not round-trip at indent {width}")
