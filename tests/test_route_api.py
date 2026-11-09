@@ -53,6 +53,8 @@ CONTRACT_KEYS = {
     "junction_delay_s",
     # Additive, the ride's arrival times (2026-10-26): where along the line the time falls.
     "time_marks",
+    # Additive, 2026-11-08: the signals that may need a button press, for Ride's note.
+    "light_buttons",
     "stress_m",
     "attribution",
     # Additive, PUBLIC-DIALS (tests/test_route_dials.py).
@@ -110,8 +112,12 @@ CONTRACT_KEYS = {
     "loop",
     # Additive, docs/MTB-TOPO-PLAN.md slice 6: null except on a Mountain Bike plan.
     "mtb",
+    # Additive, Easy MTB trails (2026-11-08): null except with the switch on.
+    "easy_mtb",
     # Additive, FOLLOWUP-DEDODGE (OWNER-DECISIONS 272): side-street dodges found and removed.
     "dodges",
+    # Additive, the red-crossing pass (hunt S5, 2026-11-08): null where it did not run.
+    "red_crossings",
     # Additive, FOLLOWUP-BIKESHARE (OWNER-DECISIONS 243-245): null except on a Bikeshare plan.
     "bikeshare",
     # Additive, FOLLOWUP-ISECT-AVOID (OWNER-DECISIONS 307-310, 335): the Avoid-rated
@@ -3184,6 +3190,23 @@ class TestScenicAndAdjustmentsInTheStressQuery:
         ]
         # The long text is kept once, not once a piece.
         assert classes.adjustments[0] is classes.adjustments[4]
+
+    def test_a_timed_closure_reads_as_a_path_only_on_the_graph_that_opens_it(
+        self, segments
+    ) -> None:
+        # Hunt X1 (2026-11-08): the route read a weekend closure as a tier 1 path on every
+        # graph, though only the weekend graph prices it so. Before: "1" on E-bike too.
+        self.marked(segments)
+        token = routing._routed_graph.set("ebike")
+        try:
+            assert routing.classify(self.PIECES[:1], "weekend")[0][0] == "3"
+            routing._routed_graph.set("weekend")
+            assert routing.classify(self.PIECES[:1], "weekend")[0][0] == "1"
+            # The weekend router down: the plan fell back to the standard graph.
+            routing._routed_graph.set("standard")
+            assert routing.classify(self.PIECES[:1], "weekend")[0][0] == "3"
+        finally:
+            routing._routed_graph.reset(token)
 
     def test_a_table_without_the_columns_reads_none_and_still_classifies(self, segments) -> None:
         with connection.cursor() as cursor:

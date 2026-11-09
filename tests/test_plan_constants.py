@@ -278,11 +278,14 @@ def test_default_min_crossing_matches_plan() -> None:
 # 256 MB, migrate 256 MB ..."
 
 PLAN_MEMORY_LIMITS = {
-    "valhalla-standard": "2G",
-    "valhalla-no-trail": "2G",
-    "valhalla-ebike": "2G",
-    # "each Valhalla 2 GB": the weekend graph's router too (owner, 2026-09-27).
-    "valhalla-weekend": "2G",
+    # "each Valhalla 2 GB" until Road Bike's weekend router (the owner, 2026-11-08, "New weekend
+    # graph"): the four default routers at 1856M each keep the swap-time peak at 32.0G with it
+    # (scripts/check_compose_limits.py; PLAN.md says so).
+    "valhalla-standard": "1856M",
+    "valhalla-no-trail": "1856M",
+    "valhalla-ebike": "1856M",
+    # The weekend graph's router too (owner, 2026-09-27).
+    "valhalla-weekend": "1856M",
     # The off-road graph for Gravel and Mountain Goat (OWNER-DECISIONS 291(2)) and the
     # Mountain Bike graph (docs/MTB-TOPO-PLAN.md, slice 6): one worker each inside 768M,
     # the 1536M the off-road router had alone, which keeps the swap-time peak at 32.0G.
@@ -291,6 +294,8 @@ PLAN_MEMORY_LIMITS = {
     # The Road Bike graph (2026-11-02), one worker in 768M too; the check holds at 32.0G because
     # it no longer counts the `unbuilt` services (scripts/check_compose_limits.py).
     "valhalla-paved": "768M",
+    # Road Bike's weekend graph (2026-11-08, "New weekend graph"), one worker in 768M.
+    "valhalla-paved-weekend": "768M",
     "photon": "3G",
     "postgis": "4G",
     "rebuild": "8G",

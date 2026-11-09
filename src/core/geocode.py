@@ -11,7 +11,7 @@ parameters named below - the query, an optional location bias, a result count
 and a language this index was imported with - and every search is fenced to
 `settings.COVERAGE_BBOX` by Photon's own `bbox` parameter, with each result
 checked against the box again on the way out. What comes back is a small list
-of `{name, label, lon, lat, kind, osm_type, osm_id, osm_key, osm_value}`, never
+of `{name, label, lon, lat, kind, osm_type, osm_id, osm_key, osm_value, way_in}`, never
 Photon's own GeoJSON, so nothing Photon adds to its answer reaches a visitor by
 accident.
 
@@ -88,6 +88,56 @@ BIAS_SCALE = 0.2
 # station's twin nodes. The same name on another kind of place - a park and
 # its notice board - stays a row of its own.
 SAME_PLACE_M = 300
+# ...unless the two rows are at the very same point: one park mapped twice, as
+# leisure=park and as boundary=protected_area or national_park, has the same
+# name at identical coordinates, and as two rows it pushed the useful row below
+# it ("Great Falls Park" twice, then its Visitor Center third; the 2026-11-08
+# hunt, G6). A notice board in a park is a separate node metres away.
+SAME_POINT_M = 2
+
+# An area found by a search - a park, a refuge, a campus, a battlefield - is one
+# point at its middle (Photon keeps a way or relation at its centroid), which the
+# router snaps to whatever road edge is nearest, whatever its stress and even a
+# dead end, when a calm gate was a few hundred metres away (the 2026-11-08 hunt,
+# G1: "Occoquan Regional Park" rode the busy road and back; "Patuxent Research
+# Refuge" is the middle of many square miles). Such a result is moved to a way in
+# the same search found inside it: a row named for the area ("Occoquan Regional
+# Park Boat Launch", "Great Falls Park Visitor Center") that is a visitor centre,
+# an entrance or gate, parking, a trailhead or a boat launch, inside the area's
+# extent. The row keeps the area's name and label, and says what it went to in
+# `way_in`. An area with none found stays at its middle (a calm-edge snap needs
+# the router's stress for each edge near it, which this module does not have).
+AREA_KEYS = frozenset({"leisure", "landuse", "historic", "natural", "tourism"})
+AREA_VALUES = {
+    "boundary": frozenset({"protected_area", "national_park"}),
+    "amenity": frozenset({"university", "college", "school", "hospital"}),
+}
+# tourism=information is not among them: it is a notice board, a trail map or a
+# guidepost as often as a visitor centre (information=office, which Photon does not
+# give), and "Great Falls Park Trail Map", a board on an inner hiking trail, was taken
+# as the park's way in ahead of its visitor centre (the second 2026-11-08 hunt, P2).
+# A visitor or nature centre still counts by its name (ARRIVAL_WORDS).
+ARRIVAL_TAGS = frozenset(
+    {
+        ("amenity", "parking"),
+        ("amenity", "bicycle_parking"),
+        ("amenity", "ranger_station"),
+        ("highway", "trailhead"),
+        ("leisure", "slipway"),
+        ("barrier", "gate"),
+        ("entrance", "main"),
+        ("entrance", "yes"),
+    }
+)
+ARRIVAL_WORDS = re.compile(
+    r"\b(visitor('?s)? (center|centre)|nature (center|centre)|entrance|gate|parking|trailhead"
+    r"|boat (launch|ramp))\b",
+    re.IGNORECASE,
+)
+# A way in this far outside the extent Photon gives still counts (a gate on the
+# boundary, an extent rounded inwards); with no extent, this far from the middle.
+EXTENT_SLACK_M = 50
+NO_EXTENT_REACH_M = 1500
 
 # How far from the point Photon may look for a place to say it is near, in km.
 REVERSE_RADIUS_KM = 0.25
@@ -212,6 +262,13 @@ STREET_TYPES = {
     "sq": "Square",
     "ter": "Terrace",
 }
+# "Mt" and "Ft" begin a name as often as they sit inside one ("Mt Vernon Trail", "Ft
+# Washington Park", "Ft Hunt Rd", "Mt Rainier"), and OSM spells them out ("Mount Vernon
+# Trail", "Fort Hunt Road"); Photon has no synonym list here, so "Mt Airy" or "Ft Totten"
+# could rank a business named "Mt ..." first (the second 2026-11-08 hunt, P9). Each is
+# spelled out anywhere, after a house number too ("4500 Ft Hunt Rd"), except as the last
+# word after a number, where it is a length ("10 ft").
+NAME_PREFIXES = {"mt": "Mount", "ft": "Fort"}
 DIRECTIONS = {"n": "North", "s": "South", "e": "East", "w": "West"}
 QUADRANTS = {"ne": "Northeast", "nw": "Northwest", "se": "Southeast", "sw": "Southwest"}
 
@@ -236,7 +293,8 @@ def expand_abbreviations(query: str) -> str:
     direction is expanded before a name ("N Glebe Rd") or after a street type
     ("Maple Ave E"), and never before a street type, since "E St" is E Street.
     NE, NW, SE and SW are the District's quadrants wherever they come after a
-    word.
+    word. "Mt" and "Ft" are Mount and Fort anywhere but last after a number
+    (NAME_PREFIXES).
     """
     tokens = query.split()
     out = []
@@ -250,7 +308,10 @@ def expand_abbreviations(query: str) -> str:
         after = tokens[i + 1] if i + 1 < len(tokens) else None
         prev_word, next_word = _word(before), _word(after)
         spelled = None
-        if word in STREET_TYPES and i > 0:
+        if word in NAME_PREFIXES:
+            if after is not None or before is None or not before[0].isdigit():
+                spelled = NAME_PREFIXES[word]
+        elif word in STREET_TYPES and i > 0:
             if word != "st":
                 spelled = STREET_TYPES[word]
             elif (
@@ -353,19 +414,76 @@ def search(
                 "lang": lang,
             },
         )
-        return results(answer, reverse=False)[:limit]
+        return results(answer, reverse=False, near=(lon, lat))[:limit]
     params: dict = {
         "q": expand_abbreviations(q),
         "limit": min(limit + OVERFETCH, PHOTON_MAX_RESULTS),
         "lang": lang,
         "bbox": _bbox_param(),
     }
+    near = None
     if lat is not None and lon is not None:
         params["lat"] = lat
         params["lon"] = lon
         params["zoom"] = BIAS_ZOOM
         params["location_bias_scale"] = BIAS_SCALE
-    return results(_get("/api", params), reverse=False)[:limit]
+        near = (lon, lat)
+    found = results(_get("/api", params), reverse=False, near=near)
+    split = address_part(q)
+    if not found and split is not None:
+        # One more question, the address alone; the place at it is found by its number.
+        typed, address = split
+        found = results(
+            _get("/api", {**params, "q": expand_abbreviations(address)}),
+            reverse=False,
+            near=near,
+        )
+        found.sort(key=lambda row: not _named_in(row["name"], typed))
+    return found[:limit]
+
+
+# A house number: digits, perhaps a letter ("4654", "1100A"), perhaps a comma after.
+_HOUSE_NUMBER = re.compile(r"^\d+[A-Za-z]?,?$")
+# Words that end a street's name, abbreviated or not: an address has one within a few words
+# of its number ("4654 Wisconsin Ave"), where "Route 1 Diner" or "CVS 24 Hour Pharmacy" does not.
+STREET_WORDS = (
+    frozenset(STREET_TYPES)
+    | {t.casefold() for t in STREET_TYPES.values()}
+    | {"circle", "cir", "way", "pike", "alley", "trail", "row", "walk", "plaza", "crescent"}
+)
+# How many words after the number a street word may come ("4654 Old Georgetown Rd" is 3).
+STREET_WORD_REACH = 4
+
+
+def address_part(q: str) -> tuple[str, str] | None:
+    """A query that names a place and then its street address, as (name, address), or None.
+
+    Riders paste a business as a listing writes it: "Satay Club Asian Restaurant & Sushi
+    Bar, 4654 Wisconsin Ave NW, Washington, DC". OSM calls it "Satay Club", and Photon,
+    which wants nearly every word typed to be in a place's name or address, found nothing
+    (Stephen 2026-11-09). The address alone finds the building, and the place at it. The
+    address begins at the first house number after the first word that a street word
+    (STREET_WORDS) follows within STREET_WORD_REACH words, before any comma. A query that
+    begins with its number is an address already, and gets None. The frontend's
+    `hasStreetAddress` (frontend/src/lib/geocode.ts) is the same rule.
+    """
+    words = q.split()
+    for i in range(1, len(words) - 1):
+        if not _HOUSE_NUMBER.match(words[i]) or words[i].endswith(","):
+            continue
+        for word in words[i + 1 : i + 1 + STREET_WORD_REACH]:
+            if word.rstrip(".,").casefold() in STREET_WORDS:
+                return " ".join(words[:i]).rstrip(","), " ".join(words[i:])
+            if word.endswith(","):
+                break
+    return None
+
+
+def _named_in(name: str, typed: str) -> bool:
+    """Whether every word of three or more letters in `name` is among the words `typed`."""
+    typed_words = set(re.findall(r"\w+", typed.casefold()))
+    own = [w for w in re.findall(r"\w+", name.casefold()) if len(w) >= 3 and not w.isdigit()]
+    return bool(own) and all(w in typed_words for w in own)
 
 
 # --- names for points ---------------------------------------------------------------
@@ -622,9 +740,11 @@ def describe(properties: dict, *, reverse: bool) -> tuple[str, str]:
     return name, ", ".join([name, *_area(properties, name)]) if name else ""
 
 
-def results(answer: dict, *, reverse: bool) -> list[dict]:
-    """Photon's GeoJSON as the API's list: in the box, named, one row per place."""
+def results(answer: dict, *, reverse: bool, near: tuple[float, float] | None = None) -> list[dict]:
+    """Photon's GeoJSON as the API's list: in the box, named, one row per place. An area
+    goes to its way in nearest `near` (lon, lat) where one is given (`_go_in`)."""
     out: list[dict] = []
+    extents: list = []
     for feature in answer.get("features", []):
         if not isinstance(feature, dict):
             continue
@@ -638,27 +758,111 @@ def results(answer: dict, *, reverse: bool) -> list[dict]:
         if not name:
             continue
         osm = _osm(properties)
-        # Only one name, one kind of tag and 300 m make a row a repeat: two
-        # Starbucks 417 m apart share a label and are two places (round-1
-        # review), so a label alone folds nothing.
+        # Only one name, one kind of tag and 300 m (or one name at one point,
+        # SAME_POINT_M) make a row a repeat: two Starbucks 417 m apart share a
+        # label and are two places (round-1 review), so a label alone folds
+        # nothing.
         if any(_same_place(row, name, osm, point) for row in out):
             continue
-        out.append(
-            {
-                "name": name,
-                "label": label,
-                "lon": round(point[0], 6),
-                "lat": round(point[1], 6),
-                "kind": _text(properties, "type") or "other",
-                **osm,
-            }
-        )
+        row = {
+            "name": name,
+            "label": label,
+            "lon": round(point[0], 6),
+            "lat": round(point[1], 6),
+            "kind": _text(properties, "type") or "other",
+            **osm,
+            "way_in": None,
+        }
+        extents.append(_extent(properties))
+        out.append(row)
+    if not reverse:
+        for row, extent in zip(out, extents, strict=True):
+            _go_in(row, extent, out, near)
     return out
 
 
 def _same_place(row: dict, name: str, osm: dict, point: tuple[float, float]) -> bool:
-    return (
-        row["name"].casefold() == name.casefold()
-        and row["osm_key"] == osm["osm_key"]
-        and haversine(Point(row["lon"], row["lat"]), Point(*point)) <= SAME_PLACE_M
+    if row["name"].casefold() != name.casefold():
+        return False
+    apart = haversine(Point(row["lon"], row["lat"]), Point(*point))
+    return apart <= SAME_POINT_M or (row["osm_key"] == osm["osm_key"] and apart <= SAME_PLACE_M)
+
+
+def _extent(properties: dict) -> tuple[float, float, float, float] | None:
+    """Photon's `extent` for a way or relation, as (west, south, east, north), or None.
+    Photon gives it as [min lon, max lat, max lon, min lat]."""
+    extent = properties.get("extent")
+    if not isinstance(extent, list) or len(extent) != 4:
+        return None
+    try:
+        west, north, east, south = (float(v) for v in extent)
+    except (TypeError, ValueError):
+        return None
+    if not (west <= east and south <= north):
+        return None
+    return west, south, east, north
+
+
+def is_area(row: dict) -> bool:
+    """A result that is an area kept as its middle: a way or relation that is a park, a
+    reserve, a campus or a battlefield - not a road, a town or a building."""
+    if row["osm_type"] not in ("W", "R"):
+        return False
+    key = row["osm_key"]
+    if key in AREA_VALUES:
+        return row["osm_value"] in AREA_VALUES[key]
+    return key in AREA_KEYS
+
+
+def is_arrival(row: dict) -> bool:
+    """A result that is where a visit starts: a visitor centre, an entrance or gate, parking,
+    a trailhead or a boat launch."""
+    return (row["osm_key"], row["osm_value"]) in ARRIVAL_TAGS or bool(
+        ARRIVAL_WORDS.search(row["name"])
     )
+
+
+def _inside(row: dict, area: dict, extent) -> bool:
+    here = Point(row["lon"], row["lat"])
+    if extent is None:
+        return haversine(here, Point(area["lon"], area["lat"])) <= NO_EXTENT_REACH_M
+    west, south, east, north = extent
+    lon = min(max(row["lon"], west), east)
+    lat = min(max(row["lat"], south), north)
+    return haversine(here, Point(lon, lat)) <= EXTENT_SLACK_M
+
+
+def named_for(own: str, name: str) -> bool:
+    """Whether a row named `own` is named for the area `name`: it starts with the area's
+    whole name and goes on after a word's end ("Rock Creek Park Gate", "Rock Creek Park -
+    Picnic Grove 1"). "Rock Creek Parkway Parking" is the parkway's lot, not the park's: it
+    was taken as Rock Creek Park's way in (the second 2026-11-08 hunt, P3)."""
+    own, name = own.casefold(), name.casefold()
+    return len(own) > len(name) and own.startswith(name) and not own[len(name)].isalnum()
+
+
+def _go_in(area: dict, extent, rows: list[dict], near: tuple[float, float] | None = None) -> None:
+    """Move an area's row to a way in of it among `rows` (see AREA_KEYS): the one nearest
+    `near` (the search's bias point, where the rider is or the map is looking) when given,
+    else Photon's first. A long park (Rock Creek, Patapsco Valley, the C&O Canal) has ways
+    in miles apart, and Photon's first can be the lot at the far end (the second 2026-11-08
+    hunt, P4)."""
+    if not is_area(area):
+        return
+    found = [
+        row
+        for row in rows
+        if row is not area
+        and not is_area(row)
+        and not row["way_in"]
+        and named_for(row["name"], area["name"])
+        and is_arrival(row)
+        and _inside(row, area, extent)
+    ]
+    if not found:
+        return
+    if near is not None:
+        here = Point(*near)
+        found.sort(key=lambda row: haversine(here, Point(row["lon"], row["lat"])))
+    area["way_in"] = found[0]["name"]
+    area["lon"], area["lat"] = found[0]["lon"], found[0]["lat"]

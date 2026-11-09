@@ -7,7 +7,7 @@ import type { TransitStep } from "./api.ts";
 import type { LonLat } from "./geo.ts";
 import type { RideFix } from "./navigate.ts";
 import { CARD_STOPS_AHEAD, STALE_MS, boardingGroups, moreStopsText, onBoardCardRows, onBoardWhere, lineColour, onBoardFeatures, onBoardPath, onBoardSecondsLeft, onBoardSecondsTo, laterDepartureText, lineBadge, liveForBoarding, liveNextText, lowPowerOnBoard, nextDepartureText, onBoardLeg, onBoardRows, onBoardStart, onBoardStep, stopsLeftText, type OnBoardState } from "./onBoard.ts";
-import { onwardOf, onwardStart, onwardStep, onwardWhere } from "./onward.ts";
+import { gpsQuietHere, onwardOf, onwardStart, onwardStep, onwardWhere, type OnwardPart } from "./onward.ts";
 import { arrivalClock } from "./arrival.ts";
 import { englishOf, setCatalogForTest, setLanguageForTest } from "./i18n.ts";
 import { walkPart } from "./onward.ts";
@@ -529,4 +529,68 @@ test("the watch is low power on a train or bus until 'Next stop', so the GPS is 
   assert.equal(lowPowerOnBoard(true, near.state), false);
   assert.equal(lowPowerOnBoard(true, { saidNext: false, done: true }), false);
   assert.equal(lowPowerOnBoard(false, waiting), false, "the walk after");
+});
+
+test("on a U-shaped line, a live train's track tells its way, not where it ends (Stephen, 2026-11-08)", () => {
+  // Gallery Place to Tenleytown on the Red Line toward Shady Grove: Glenmont lies nearer Tenleytown than Gallery
+  // Place does, so by where it ends a Glenmont train looked like it went the ride's way.
+  const groups = [{ lines: ["Red Line"], toward: "Shady Grove" }];
+  const gallery: [number, number] = [-77.0219, 38.8983];
+  const tenley: [number, number] = [-77.0795, 38.9479];
+  const stops = [
+    { name: "Gallery Pl-Chinatown", point: gallery },
+    { name: "Tenleytown-AU", point: tenley },
+  ];
+  const glenmont: [number, number] = [-77.0535, 39.0617];
+  const shady: [number, number] = [-77.1652, 39.1199];
+  const grosvenor: [number, number] = [-77.1038, 39.0294];
+  const farragut: [number, number] = [-77.0397, 38.9036];
+  const live = [
+    { line: "Red Line", toward: "Shady Grove", end: shady, track: "B01:2", minutes: [0] },
+    { line: "Red Line", toward: "Glenmont", end: glenmont, track: "B01:1", minutes: [0, 6] },
+    // The ride's way, signed short of the end but past the stop to get off: it makes the ride.
+    { line: "Red Line", toward: "Grosvenor", end: grosvenor, track: "B01:2", minutes: [5] },
+    // The ride's way, but turning back before Tenleytown: skipped.
+    { line: "Red Line", toward: "Farragut North", end: farragut, track: "B01:2", minutes: [2] },
+  ];
+  assert.deepEqual(liveForBoarding(live, groups, stops), [
+    { line: "Red Line", toward: "Shady Grove", minutes: 0 },
+    { line: "Red Line", toward: "Grosvenor", minutes: 5 },
+  ]);
+  // No train to Shady Grove live: the Glenmont trains' track is the other way all the same; a train with no known end
+  // on the ride's track is not shown.
+  const noShady = live.filter((train) => train.toward !== "Shady Grove");
+  assert.deepEqual(liveForBoarding([...noShady, { line: "Red Line", toward: "Train", track: "B01:2", minutes: [1] }], groups, stops), [
+    { line: "Red Line", toward: "Grosvenor", minutes: 5 },
+  ]);
+  // Before the fix: with no track, Glenmont's place passed for the ride's way.
+  const untracked = live.map(({ track: _track, ...train }) => train);
+  assert.ok(liveForBoarding(untracked, groups, stops).some((train) => train.toward === "Glenmont"));
+});
+
+test("weak GPS is not said in a station on the way to or from a train (Stephen, 2026-11-08)", () => {
+  const station: LonLat = [-77.0795, 38.9479];
+  const away: LonLat = [-77.0795, 38.96];
+  const train = { kind: "transit" as const, leg: { ...LEG, stops: [{ ...LEG.stops[0], point: station }, ...LEG.stops.slice(1)] } };
+  const walkOut = walkPart({ coordinates: [station, away], turns: [], to: null })!;
+  const walkIn = walkPart({ coordinates: [away, station], turns: [], to: null })!;
+  const line = { arrived: true, end: null };
+  // On the train, and off it until the walk's first good fix up top.
+  const after: OnwardPart[] = [train, walkOut];
+  assert.equal(gpsQuietHere(after, onwardStart(after, 0), line, null), true);
+  const outState = { index: 1, since: 0, board: null, walk: { ...onwardStart([walkOut], 0).walk!, goodFix: null } };
+  assert.equal(gpsQuietHere(after, outState, line, station, 60_000), true);
+  // No good fix all the way: quiet only so long, then a walk's weak GPS is told as any walk's.
+  assert.equal(gpsQuietHere(after, outState, line, station, 6 * 60_000), false);
+  const up = { ...outState, walk: { ...outState.walk, goodFix: { point: away, accuracyM: 8, speedMs: 1.4, headingDeg: null, at: 1 } } };
+  assert.equal(gpsQuietHere(after, up, line, away), false);
+  // Walking in: only once the last good fix was near the station.
+  const before: OnwardPart[] = [walkIn, train];
+  assert.equal(gpsQuietHere(before, onwardStart(before, 0), line, away), false);
+  assert.equal(gpsQuietHere(before, onwardStart(before, 0), line, [-77.0795, 38.949]), true);
+  // Riding (or walking) the line to the station itself.
+  assert.equal(gpsQuietHere([train], null, { arrived: false, end: station }, [-77.0795, 38.949]), true);
+  assert.equal(gpsQuietHere([train], null, { arrived: false, end: station }, away), false);
+  // No transit at all: never.
+  assert.equal(gpsQuietHere([walkOut], onwardStart([walkOut], 0), line, station), false);
 });

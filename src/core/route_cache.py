@@ -12,7 +12,7 @@ rider's live position, which is kept no longer than that (the owner, 2026-10-22 
 - the whole request as validated (`RouteIn`: the points, the ride type and every dial,
   the closures routed through, the via points), less `quick`, which only says how much
   of the plan to wait for (a full answer kept answers a quick request too); the points
-  are rounded to 1e-4 degrees (about 10 m), the plan's "same points rounded to ~10 m";
+  are rounded to 1e-5 degrees (about 1 m; `POINT_PLACES`);
 - whether it was planned as a long ride, or a long calm plan;
 - the ride time: the setting asked for, or the one of the moment where none was (so a
   plan made just before the evening rush is not given once the rush starts), and the
@@ -32,7 +32,8 @@ rider's live position, which is kept no longer than that (the owner, 2026-10-22 
 an answer from another graph than the ride's own (a weekend or off-road router that was
 down: it is answered again once that router is back); and an answer the budget cut short
 (a router call that failed for want of time or an answer, `timing.Timings.failures`, or
-a search that stopped for time), so a retry can do better; nor a plan the rider cancelled
+a search that stopped for time, a trail seek whose table read was cut short, a red-crossing
+pass that could not finish), so a retry can do better; nor a plan the rider cancelled
 (`core.plan_cancel`), which is answered 409 and may have been cut short by the cancel.
 
 **Where it is kept.** Where `settings.CACHES` has a `routes` cache
@@ -73,9 +74,15 @@ logger = logging.getLogger(__name__)
 
 TTL_S = 2 * 60
 MAX_ENTRIES = 128
-# Points are compared at this many decimal places of a degree: 1e-4 is about 11 m of
-# latitude and 9 m of longitude here.
-POINT_PLACES = 4
+# Points are compared at this many decimal places of a degree: 1e-5 is about 1.1 m of
+# latitude and 0.9 m of longitude here. It was 1e-4 (the plan's "same points rounded to
+# ~10 m"), but the plan reads the exact points: a stop snaps within `routing.STOP_RADIUS_M`
+# (15 m) and a point on a dirt trail opens it within `trail_touch.TOUCH_M` (15 m), so a
+# marker dragged a few metres onto a trail, or across a divided road, rounded to the same
+# 10 m cell and was answered with the route from before for the keep's life (hunt P5: the
+# owner's "if you enter it or mark a waypoint in it, it will continue to route through"
+# silently ignored). A repeat of one request sends the same points, so it still hits.
+POINT_PLACES = 5
 
 FULL = "full"
 QUICK = "quick"
@@ -318,12 +325,34 @@ def _edits_part() -> list:
     return [oid, sorted(columns), generation]
 
 
-_closures_memo: tuple[object, str, tuple] | None = None
+_closures_memo: tuple[object, str, tuple, tuple] | None = None
+
+
+def _daily_edges(zones, now: datetime) -> list[datetime]:
+    """The moments today (in the region's time) at which a closure with daily hours
+    (`Zone.daily`) opens or closes, inside its own window. Hunt 2, T8: only a zone's start and
+    end were moments, so a plan at 8:58 kept through a daily 9:00-15:00 closure from 9:00 until
+    its time to live ran out. Today's alone: a key is kept no later than midnight
+    (`key_for`)."""
+    from routemaker import ridetime
+
+    local = now.astimezone(ridetime.ZONE)
+    day = datetime(local.year, local.month, local.day, tzinfo=ridetime.ZONE)
+    edges = []
+    for zone in zones:
+        for hour, minute in (zone.daily[:2], zone.daily[2:]):
+            edge = (day + timedelta(hours=hour, minutes=minute)).astimezone(UTC)
+            if zone.start is not None and edge < zone.start:
+                continue
+            if zone.end is not None and edge >= zone.end:
+                continue
+            edges.append(edge)
+    return edges
 
 
 def _closures_part(now: datetime) -> tuple[str, datetime | None]:
     """A digest of the closures the planner reads, and the next moment after `now` at
-    which one of them starts or ends (None: none does)."""
+    which one of them starts or ends, or a daily one opens or closes (None: none does)."""
     global _closures_memo
     from routemaker import deer_closures
 
@@ -332,7 +361,7 @@ def _closures_part(now: datetime) -> tuple[str, datetime | None]:
     found = workzones.snapshot()
     memo = _closures_memo
     if memo is not None and memo[0] is found:
-        digest, moments = memo[1], memo[2]
+        digest, moments, daily = memo[1], memo[2], memo[3]
     else:
         rows = sorted(
             json.dumps(zone.to_json(), sort_keys=True, default=str) for zone in found.zones
@@ -356,8 +385,12 @@ def _closures_part(now: datetime) -> tuple[str, datetime | None]:
                 | deer_closures.moments(found.notices)
             )
         )
-        _closures_memo = (found, digest, moments)
-    upcoming = next((m for m in moments if m > now), None)
+        daily = tuple(zone for zone in found.zones if zone.daily is not None)
+        _closures_memo = (found, digest, moments, daily)
+    upcoming = min(
+        (m for m in (*moments, *_daily_edges(daily, now)) if m > now),
+        default=None,
+    )
     return digest, upcoming
 
 
@@ -484,6 +517,12 @@ def key_for(
     return Key(digest, valid_s)
 
 
+# The trail seek's and the red-crossing pass's `limited` that say the answer was cut short
+# (not "nothing to do": a seek with no corridor, a way round that was busier, no way round).
+SEEK_CUT_SHORT = frozenset({"time", "table", "error", "unread"})
+RED_CUT_SHORT = frozenset({"time", "unread", "error"})
+
+
 def keepable(body: dict, own_variant: str, failures: int) -> bool:
     """Whether an answer may be kept: planned on the ride's own graph, and not cut short
     by the budget (a failed or skipped router call, or a search or pass that stopped for
@@ -495,6 +534,21 @@ def keepable(body: dict, own_variant: str, failures: int) -> bool:
     calm_search = body.get("calm_search") or {}
     if calm_search.get("limited") == "time":
         return False
+    # The trail seek cut short (hunt S5): its table read past its own statement timeout
+    # (`time`, most likely on a cold database just after a deploy), the table not read
+    # (`table`), the corridor search failing (`error`), or the whole route not read
+    # (`unread`). No router call failed, so `failures` is 0, but the trail corridor was not
+    # offered: kept, every repeat got the answer without it until local midnight.
+    if (calm_search.get("seek") or {}).get("limited") in SEEK_CUT_SHORT:
+        return False
+    # The red-crossing pass cut short the same way: a red junction it may have gone round.
+    if (body.get("red_crossings") or {}).get("limited") in RED_CUT_SHORT:
+        return False
+    # A loop whose ways back ran out of time (hunt 2, P2-3): the router's own route, often
+    # the way out ridden back, answered without the way back being found. `make_loop`
+    # counts it as a skipped check too; this holds where that count is not read.
+    if (body.get("loop") or {}).get("fallback") == "time":
+        return False
     for field in ("hills_seek", "hills_avoid", "hills_tolerate"):
         if (body.get(field) or {}).get("limited") == "timed_out":
             return False
@@ -505,5 +559,7 @@ def keepable(body: dict, own_variant: str, failures: int) -> bool:
         (body.get("dodges") or {}).get("limited"),
         ((body.get("hills_seek") or {}).get("climb_seek") or {}).get("limited"),
         (body.get("avoid_search") or {}).get("alternate"),
+        # Easy MTB trails' rounds off the harder trails (`core.easy_mtb`).
+        (body.get("easy_mtb") or {}).get("limited"),
     )
     return "time" not in stopped

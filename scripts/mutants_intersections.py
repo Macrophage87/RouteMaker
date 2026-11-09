@@ -658,8 +658,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "neighbourhood junctions wanted",
         J,
-        "    return raw.possibly_busy and (",
-        "    return (",
+        "    return raw.possibly_busy and _decided(raw)",
+        "    return _decided(raw)",
         JUNCTIONS,
     ),
     (
@@ -1038,15 +1038,15 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "approach: no distance limit",
         J,
-        "            if self._metres(at) > APPROACH_M or any(_close(*at, *s) for s in seen):",
-        "            if any(_close(*at, *s) for s in seen):",
+        "            if self._metres(at) > APPROACH_M:\n                # Not walked on",
+        "            if False:\n                # Not walked on",
         JUNCTIONS,
     ),
     (
         "approach: signal node not read",
         J,
-        "            if self.node_signal(at) and not flagged:\n                return True",
-        "            if False:\n                return True",
+        "                self.node_signal(at) and not flagged\n            ):",
+        "                False\n            ):",
         JUNCTIONS,
     ),
     (
@@ -1059,8 +1059,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "approach: flagged edge ignored",
         J,
-        "            if any(self._towards(ends) for ends in flagged):\n                return True",
-        "            if False:\n                return True",
+        "            if any(self._towards(ends) for ends in flagged) or (",
+        "            if False or (",
         JUNCTIONS,
     ),
     (
@@ -1164,9 +1164,67 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "shared: no sharing",
         INTERSECTIONS,
-        "events = (assess(junction, group, when) for junction in share_controls(junctions))",
-        "events = (assess(junction, group, when) for junction in junctions)",
+        "        for junction in share_controls(junctions)\n    )",
+        "        for junction in junctions\n    )",
         PURE,
+    ),
+    # Hunt J5 (2026-11-08): the junction model's signals reach the delay model.
+    (
+        "j5 signals: never carried",
+        INTERSECTIONS,
+        "    if event is None or junction.control is not Control.SIGNAL:\n        return event",
+        "    if True:\n        return event",
+        PURE,
+    ),
+    (
+        "j5 signals: a merge keeps the worst event's only",
+        INTERSECTIONS,
+        "                signals=tuple(dict.fromkeys(p for e in group for p in e.signals)),",
+        "",
+        PURE,
+    ),
+    # Hunt J4 (2026-11-08): a ride round a roundabout, priced at its entry.
+    (
+        "j4 ring: not priced",
+        INTERSECTIONS,
+        "    if j.ring_movement is not None and j.outgoing.busy:",
+        "    if False:",
+        PURE,
+    ),
+    (
+        "j4 ring: the rider's road keeps priority",
+        INTERSECTIONS,
+        "        value = crossing_ft(j.outgoing, j.control, None)",
+        "        value = crossing_ft(j.outgoing, j.control, _rider(j.incoming), _read(j.incoming))",
+        PURE,
+    ),
+    (
+        "j4 ring: a left at the table's 1.5",
+        INTERSECTIONS,
+        'ROUNDABOUT_FACTOR_ONTO = {"right": 0.1, "straight": 0.55, "left": 1.0}',
+        'ROUNDABOUT_FACTOR_ONTO = {"right": 0.1, "straight": 0.55, "left": 1.5}',
+        PURE,
+    ),
+    (
+        "j4 ring: straight on as a right",
+        INTERSECTIONS,
+        'ROUNDABOUT_FACTOR_ONTO = {"right": 0.1, "straight": 0.55, "left": 1.0}',
+        'ROUNDABOUT_FACTOR_ONTO = {"right": 0.1, "straight": 0.1, "left": 1.0}',
+        PURE,
+    ),
+    (
+        "j4 ring: the movement not read from the trace",
+        T,
+        "                    ring_movement=_ring_movement(edges, index),",
+        "",
+        TRACE,
+    ),
+    (
+        "j4 ring: the exit read from the first ring edge",
+        T,
+        '        if after.get("roundabout"):\n            continue',
+        "        if False:\n            continue",
+        TRACE,
     ),
     (
         "shared: stop signs shared",
@@ -1319,8 +1377,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "r3 walk: other roads' junctions walked",
         J,
-        "            if self.foreign(at):\n                continue",
-        "            if False:\n                continue",
+        "            seen.append(at)\n            if self.foreign(at):",
+        "            seen.append(at)\n            if False:",
         JUNCTIONS,
     ),
     (
@@ -1389,15 +1447,52 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "r3 direction: a flag either way",
         J,
-        "            if any(self._towards(ends) for ends in flagged):",
-        "            if flagged:",
+        "            if any(self._towards(ends) for ends in flagged) or (",
+        "            if flagged or (",
         JUNCTIONS,
     ),
     (
         "r3 direction: node flag whatever the edges",
         J,
-        "            if self.node_signal(at) and not flagged:",
-        "            if self.node_signal(at):",
+        "                self.node_signal(at) and not flagged\n            ):",
+        "                self.node_signal(at)\n            ):",
+        JUNCTIONS,
+    ),
+    # Hunt J2 (2026-11-08): a crosswalk's signal is another junction's where
+    # that junction is the nearer.
+    (
+        "j2 crosswalk: read as any signal",
+        J,
+        "                if not self.crosswalk(arm, at):\n                    return True",
+        "                if True:\n                    return True",
+        JUNCTIONS,
+    ),
+    (
+        "j2 crosswalk: the nearer junction not compared",
+        J,
+        "            not any(haversine(Point(*at), Point(*other)) < self._metres(at) for other in others)",
+        "            not any(False for other in others)",
+        JUNCTIONS,
+    ),
+    (
+        "j2 crosswalk: a junction past 30 m not read",
+        J,
+        "                if self.foreign(at):\n                    others.append(at)\n                continue",
+        "                if False:\n                    others.append(at)\n                continue",
+        JUNCTIONS,
+    ),
+    (
+        "j2 crosswalk: another road there ignored",
+        J,
+        "                if not _of_road(arm, entry):\n                    return False",
+        "                if False:\n                    return False",
+        JUNCTIONS,
+    ),
+    (
+        "j2 crosswalk: no path needed",
+        J,
+        "            elif _use(entry) in TRAIL_USES:\n                path = True\n        return path",
+        "            elif _use(entry) in TRAIL_USES:\n                path = True\n        return True",
         JUNCTIONS,
     ),
     (

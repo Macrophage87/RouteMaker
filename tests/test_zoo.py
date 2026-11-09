@@ -32,6 +32,79 @@ def test_public_streets_and_the_signed_cycleway_stay_open():
     assert zoo.closed_way(4, {"highway": "cycleway"}, line(*INSIDE))
 
 
+def test_a_retagged_rock_creek_trail_piece_stays_open():
+    # Hunt A5 (2026-11-08): the rule kept only `highway=cycleway` + `bicycle=designated|yes`,
+    # so an OSM retag of a Rock Creek Trail piece along the Zoo's edge to a designated path
+    # or a bare named cycleway closed it (before: True) and cut the trail on every graph.
+    for tags in (
+        {"highway": "path", "bicycle": "designated", "foot": "designated", "segregated": "no"},
+        {"highway": "path", "bicycle": "yes"},
+        {"highway": "cycleway", "name": "Rock Creek Trail"},
+        {"highway": "footway", "name": "Rock Creek Trail"},
+        {"highway": "path", "name": "Zoo Loop Trail"},
+    ):
+        assert not zoo.closed_way(5, tags, line(*INSIDE)), tags
+    # The Zoo's own named walks, and a through trail its own tags bar bicycles from, close.
+    assert zoo.closed_way(5, {"highway": "footway", "name": "Asia Trail"}, line(*INSIDE))
+    barred = {"highway": "footway", "name": "Rock Creek Trail", "bicycle": "no"}
+    assert zoo.closed_way(5, barred, line(*INSIDE))
+
+
+def _zoo_extract(trail_tags=None, drop_spur=()):
+    """The spur ways, four open trail ways (the floor) and a closed walk, all inside the Zoo."""
+    lon, lat = INSIDE
+    ways = [
+        (way_id, {"highway": "footway"}, line(lon, lat))
+        for way_id in sorted(zoo.spur_ways() - set(drop_spur))
+    ]
+    signed = {"highway": "cycleway", "bicycle": "designated"}
+    ways.append((1, trail_tags or {**signed, "name": "Rock Creek Trail"}, line(lon, lat)))
+    for way_id in (2, 3, 4):
+        ways.append((way_id, {**signed, "name": "Zoo Loop Trail"}, line(lon, lat)))
+    ways.append((6, {"highway": "footway", "name": "Asia Trail"}, line(lon, lat)))
+    no_bicycle = {
+        way_id: zoo.NO_BICYCLE
+        for way_id, tags, coords in ways
+        if zoo.closed_way(way_id, tags, coords)
+    }
+    return ways, no_bicycle
+
+
+def test_the_rebuild_checks_the_zoo_rule_still_fits_the_extract():
+    # Hunt A5 (2026-11-08): seven hand-listed spur ids and a tag test had no rebuild check,
+    # unlike the military and secured rules; now `pipeline.run.assert_zoo_rule` fails on these.
+    assert zoo.check(*_zoo_extract()) == []
+    # A renumbered spur way.
+    problems = zoo.check(*_zoo_extract(drop_spur=(183192886,)))
+    assert len(problems) == 1 and "183192886" in problems[0]
+    # The Rock Creek Trail piece retagged past the rule (no name, no bicycle tag): closed,
+    # so no piece of the trail is open and the open trail ways fall below the floor.
+    problems = zoo.check(*_zoo_extract(trail_tags={"highway": "path", "foot": "designated"}))
+    assert any("Rock Creek Trail" in p for p in problems)
+    assert any("floor" in p for p in problems)
+    # An extract with nothing inside the Zoo (a test's, or another region's) is not checked.
+    assert zoo.check([(1, {"highway": "footway"}, line(*OUTSIDE))], {}) == []
+
+
+def test_assert_zoo_rule_fails_the_rebuild():
+    from types import SimpleNamespace
+
+    import pytest
+
+    from pipeline import run
+    from pipeline.extract import Way
+
+    ways, no_bicycle = _zoo_extract(drop_spur=(183192886,))
+    context = SimpleNamespace(
+        ways=[
+            Way(osm_id=i, tags=t, node_ids=list(range(len(c))), coordinates=c) for i, t, c in ways
+        ],
+        no_bicycle=no_bicycle,
+    )
+    with pytest.raises(run.ValidationFailed, match="Zoo spur"):
+        run.assert_zoo_rule(context)
+
+
 def test_the_spur_is_not_closed_and_is_named_by_id():
     spur = zoo.spur_ways()
     assert {50524918, 183192886, 1244165507} <= spur

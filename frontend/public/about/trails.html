@@ -230,8 +230,8 @@ hardest level you choose, and links them with calm roads.</li>
 <li><strong>Mountain Goat</strong> is for climbing. It looks for categorized climbs near your line.</li>
 <li><strong>Gravel</strong> is for mixed surfaces. Unpaved roads and paths cost nothing extra, so they
 compete with pavement.</li>
-<li>Gravel and Mountain Goat may also ride unrated trails and the easiest rated ones (Green). Other
-ride types never plan onto a trail, and most route to a point you put on an unrated dirt trail.</li>
+<li>Gravel and Mountain Goat may also ride unrated trails and the easiest rated ones (Green). So do Default and
+Trailmaxxing with <a href="#easy-mtb">Easy MTB trails</a> on. Other ride types never plan onto a trail, and most route to a point you put on an unrated dirt trail.</li>
 <li>Tap a trail for its surface, an elevation profile and who can ride it. Tap a climb's marker for its
 profile.</li>
 </ul>
@@ -277,6 +277,8 @@ compared. A mile at your preferred level counts as 0.4, and one level away as 0.
 <li><strong>Wet trails:</strong> a trail mapped as closed when wet<sup class="cite"><a href="#ref-5" aria-label="source 5">[5]</a></sup> is never used. RouteMaker
 cannot know today's ground, so the trail panel links to MORE's trail conditions<sup class="cite"><a href="#ref-6" aria-label="source 6">[6]</a></sup>.</li>
 <li>One-way trails are ridden one way only.</li>
+<li><strong>End mountain biking</strong>, under Go round during a ride, plans the rest of the ride off mountain-bike
+trails. From on a trail, the way off may ride it or an easier or shorter trail joined to it, never a harder one.</li>
 </ul>
 <p>In Mountain Bike, trails up to your hardest level are drawn as lines to ride. Harder ones keep
 their level's look.</p>
@@ -504,9 +506,9 @@ bikes are allowed is closed. The panel shows both, where mapped<sup class="cite"
 <h3>Who may ride each level</h3>
 <figure id="fig-access" class="has-narrow">
 <div class="fig-scroll fig-wide" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
-<svg viewBox="0 0 834 332" role="img" aria-labelledby="fig-access-t fig-access-d" focusable="false" style="min-width:600px">
+<svg viewBox="0 0 834 390" role="img" aria-labelledby="fig-access-t fig-access-d" focusable="false" style="min-width:600px">
 <title id="fig-access-t">Which mountain-bike trails each ride type may use</title>
-<desc id="fig-access-d">A grid of ride types against trail ratings. Mountain Bike: unrated trails yes, counted as level 2; level 1 Green yes; level 2 Blue yes, the default limit; level 3 Black only if you allow level 3; level 4 Red only if you allow level 4. Gravel and Mountain Goat: unrated yes, Green yes, Blue, Black and Red no. Every other ride type: an unrated trail only to reach a point on it, or once you are riding one or your route uses one (not E-bike, Road Bike, Mass Ride, electric assist or weekends), and no rated trail. Trails closed to bikes, or where access is unclear, are closed to every ride type.</desc>
+<desc id="fig-access-d">A grid of ride types against trail ratings. Mountain Bike: unrated trails yes, counted as level 2; level 1 Green yes; level 2 Blue yes, the default limit; level 3 Black only if you allow level 3; level 4 Red only if you allow level 4. Gravel and Mountain Goat: unrated yes, Green yes, Blue, Black and Red no. Default and Trailmaxxing with Easy MTB trails on: unrated yes, Green yes, Blue, Black and Red no. Every other ride type: an unrated trail only to reach a point on it, or once you are riding one or your route uses one (not E-bike, Road Bike, Mass Ride, electric assist or weekends), and no rated trail. Trails closed to bikes, or where access is unclear, are closed to every ride type.</desc>
 <defs><marker id="ah-access" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
 <text class="tb" x="248.0" y="22" text-anchor="middle">Unrated</text>
 <line x1="210" y1="44" x2="286" y2="44" stroke="#ffffff" stroke-width="7" stroke-linecap="butt"/><line x1="210" y1="44" x2="286" y2="44" stroke="#5f6368" stroke-width="3.5" stroke-dasharray="6 3"/><rect x="210" y="40.5" width="76" height="7" fill="none" stroke="#1c1917" stroke-width="0.6"/>
@@ -563,12 +565,11 @@ bikes are allowed is closed. The panel shows both, where mapped<sup class="cite"
 <text class="tb" x="664.0" y="219.5" text-anchor="middle">No</text>
 <rect class="bx" x="720" y="190" width="96" height="50" rx="6"/>
 <text class="tb" x="768.0" y="219.5" text-anchor="middle">No</text>
-<text class="tb" x="188" y="278.0" text-anchor="end">Every other ride type</text>
+<text class="tb" x="188" y="278.0" text-anchor="end">Easy MTB trails on</text>
 <rect class="bxa" x="200" y="248" width="96" height="50" rx="6"/>
-<text class="tb" x="248.0" y="269.5" text-anchor="middle">To a point</text>
-<text class="ts" x="248.0" y="285.5" text-anchor="middle">on it</text>
-<rect class="bx" x="304" y="248" width="96" height="50" rx="6"/>
-<text class="tb" x="352.0" y="277.5" text-anchor="middle">No</text>
+<text class="tb" x="248.0" y="277.5" text-anchor="middle">Yes</text>
+<rect class="bxa" x="304" y="248" width="96" height="50" rx="6"/>
+<text class="tb" x="352.0" y="277.5" text-anchor="middle">Yes</text>
 <rect class="bx" x="408" y="248" width="96" height="50" rx="6"/>
 <text class="tb" x="456.0" y="277.5" text-anchor="middle">No</text>
 <rect class="bx" x="512" y="248" width="96" height="50" rx="6"/>
@@ -577,13 +578,27 @@ bikes are allowed is closed. The panel shows both, where mapped<sup class="cite"
 <text class="tb" x="664.0" y="277.5" text-anchor="middle">No</text>
 <rect class="bx" x="720" y="248" width="96" height="50" rx="6"/>
 <text class="tb" x="768.0" y="277.5" text-anchor="middle">No</text>
-<text class="ts" x="508" y="320" text-anchor="middle">Unrated and Green trails: open to all three off-road ride types. Blue, Black, Red: Mountain Bike only.</text>
+<text class="tb" x="188" y="336.0" text-anchor="end">Every other ride type</text>
+<rect class="bxa" x="200" y="306" width="96" height="50" rx="6"/>
+<text class="tb" x="248.0" y="327.5" text-anchor="middle">To a point</text>
+<text class="ts" x="248.0" y="343.5" text-anchor="middle">on it</text>
+<rect class="bx" x="304" y="306" width="96" height="50" rx="6"/>
+<text class="tb" x="352.0" y="335.5" text-anchor="middle">No</text>
+<rect class="bx" x="408" y="306" width="96" height="50" rx="6"/>
+<text class="tb" x="456.0" y="335.5" text-anchor="middle">No</text>
+<rect class="bx" x="512" y="306" width="96" height="50" rx="6"/>
+<text class="tb" x="560.0" y="335.5" text-anchor="middle">No</text>
+<rect class="bx" x="616" y="306" width="96" height="50" rx="6"/>
+<text class="tb" x="664.0" y="335.5" text-anchor="middle">No</text>
+<rect class="bx" x="720" y="306" width="96" height="50" rx="6"/>
+<text class="tb" x="768.0" y="335.5" text-anchor="middle">No</text>
+<text class="ts" x="508" y="378" text-anchor="middle">Unrated and Green trails: open to the off-road ride types and Easy MTB trails. Blue, Black, Red: Mountain Bike only.</text>
 </svg>
 </div>
 <div class="fig-narrow">
-<svg viewBox="0 0 320 1078" role="img" aria-labelledby="fig-access-n-t fig-access-n-d" focusable="false">
+<svg viewBox="0 0 320 1350" role="img" aria-labelledby="fig-access-n-t fig-access-n-d" focusable="false">
 <title id="fig-access-n-t">Which mountain-bike trails each ride type may use</title>
-<desc id="fig-access-n-d">A grid of ride types against trail ratings. Mountain Bike: unrated trails yes, counted as level 2; level 1 Green yes; level 2 Blue yes, the default limit; level 3 Black only if you allow level 3; level 4 Red only if you allow level 4. Gravel and Mountain Goat: unrated yes, Green yes, Blue, Black and Red no. Every other ride type: an unrated trail only to reach a point on it, or once you are riding one or your route uses one (not E-bike, Road Bike, Mass Ride, electric assist or weekends), and no rated trail. Trails closed to bikes, or where access is unclear, are closed to every ride type.</desc>
+<desc id="fig-access-n-d">A grid of ride types against trail ratings. Mountain Bike: unrated trails yes, counted as level 2; level 1 Green yes; level 2 Blue yes, the default limit; level 3 Black only if you allow level 3; level 4 Red only if you allow level 4. Gravel and Mountain Goat: unrated yes, Green yes, Blue, Black and Red no. Default and Trailmaxxing with Easy MTB trails on: unrated yes, Green yes, Blue, Black and Red no. Every other ride type: an unrated trail only to reach a point on it, or once you are riding one or your route uses one (not E-bike, Road Bike, Mass Ride, electric assist or weekends), and no rated trail. Trails closed to bikes, or where access is unclear, are closed to every ride type.</desc>
 <defs><marker id="ah-access-n" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
 <text class="tb" x="10" y="20" text-anchor="start">Mountain Bike</text>
 <line x1="12" y1="58.0" x2="52" y2="58.0" stroke="#ffffff" stroke-width="7" stroke-linecap="butt"/><line x1="12" y1="58.0" x2="52" y2="58.0" stroke="#5f6368" stroke-width="3.5" stroke-dasharray="6 3"/><rect x="12" y="54.5" width="40" height="7" fill="none" stroke="#1c1917" stroke-width="0.6"/>
@@ -664,13 +679,38 @@ bikes are allowed is closed. The panel shows both, where mapped<sup class="cite"
 <text class="ts" x="12" y="894.0" text-anchor="start">or unclear access</text>
 <rect class="bx" x="170" y="858" width="140" height="42" rx="6"/>
 <text class="tb" x="240.0" y="884.5" text-anchor="middle">No</text>
-<text class="tb" x="10" y="940" text-anchor="start">Every other ride type</text>
-<rect class="bxa" x="10" y="950" width="300" height="54" rx="6"/>
-<text class="tb" x="160.0" y="972.5" text-anchor="middle">Unrated: to a point on it</text>
-<text class="ts" x="160.0" y="992.5" text-anchor="middle">Rated: no, at every level</text>
-<text class="ts" x="10" y="1030" text-anchor="start">Unrated and Green trails: open to all</text>
-<text class="ts" x="10" y="1049" text-anchor="start">three off-road ride types. Blue, Black,</text>
-<text class="ts" x="10" y="1068" text-anchor="start">Red: Mountain Bike only.</text>
+<text class="tb" x="10" y="940" text-anchor="start">Easy MTB trails on</text>
+<line x1="12" y1="965.0" x2="52" y2="965.0" stroke="#ffffff" stroke-width="7" stroke-linecap="butt"/><line x1="12" y1="965.0" x2="52" y2="965.0" stroke="#5f6368" stroke-width="3.5" stroke-dasharray="6 3"/><rect x="12" y="961.5" width="40" height="7" fill="none" stroke="#1c1917" stroke-width="0.6"/>
+<text class="t" x="62" y="970.0" text-anchor="start">Unrated</text>
+<rect class="bxa" x="170" y="950" width="140" height="30" rx="6"/>
+<text class="tb" x="240.0" y="970.5" text-anchor="middle">Yes</text>
+<line x1="12" y1="1001.0" x2="52" y2="1001.0" stroke="#ffffff" stroke-width="7" stroke-linecap="butt"/><line x1="12" y1="1001.0" x2="52" y2="1001.0" stroke="#28702c" stroke-width="3.5" stroke-dasharray="18 4.5"/><rect x="12" y="997.5" width="40" height="7" fill="none" stroke="#1c1917" stroke-width="0.6"/>
+<text class="t" x="62" y="1006.0" text-anchor="start">1 Green</text>
+<rect class="bxa" x="170" y="986" width="140" height="30" rx="6"/>
+<text class="tb" x="240.0" y="1006.5" text-anchor="middle">Yes</text>
+<line x1="12" y1="1037.0" x2="52" y2="1037.0" stroke="#ffffff" stroke-width="7" stroke-linecap="butt"/><line x1="12" y1="1037.0" x2="52" y2="1037.0" stroke="#1565c0" stroke-width="3.5" stroke-dasharray="9 4.5"/><rect x="12" y="1033.5" width="40" height="7" fill="none" stroke="#1c1917" stroke-width="0.6"/>
+<text class="t" x="62" y="1042.0" text-anchor="start">2 Blue</text>
+<rect class="bx" x="170" y="1022" width="140" height="30" rx="6"/>
+<text class="tb" x="240.0" y="1042.5" text-anchor="middle">No</text>
+<line x1="12" y1="1073.0" x2="52" y2="1073.0" stroke="#ffffff" stroke-width="7" stroke-linecap="butt"/><line x1="12" y1="1073.0" x2="52" y2="1073.0" stroke="#1c1917" stroke-width="3.5" stroke-dasharray="12 4.5 3 4.5"/><rect x="12" y="1069.5" width="40" height="7" fill="none" stroke="#1c1917" stroke-width="0.6"/>
+<text class="t" x="62" y="1078.0" text-anchor="start">3 Black</text>
+<rect class="bx" x="170" y="1058" width="140" height="30" rx="6"/>
+<text class="tb" x="240.0" y="1078.5" text-anchor="middle">No</text>
+<line x1="12" y1="1109.0" x2="52" y2="1109.0" stroke="#ffffff" stroke-width="7" stroke-linecap="butt"/><line x1="12" y1="1109.0" x2="52" y2="1109.0" stroke="#c62828" stroke-width="3.5" stroke-dasharray="12 4.5 3 4.5 3 4.5"/><rect x="12" y="1105.5" width="40" height="7" fill="none" stroke="#1c1917" stroke-width="0.6"/>
+<text class="t" x="62" y="1114.0" text-anchor="start">4 Red</text>
+<rect class="bx" x="170" y="1094" width="140" height="30" rx="6"/>
+<text class="tb" x="240.0" y="1114.5" text-anchor="middle">No</text>
+<text class="t" x="12" y="1148.0" text-anchor="start">Closed to bikes</text>
+<text class="ts" x="12" y="1166.0" text-anchor="start">or unclear access</text>
+<rect class="bx" x="170" y="1130" width="140" height="42" rx="6"/>
+<text class="tb" x="240.0" y="1156.5" text-anchor="middle">No</text>
+<text class="tb" x="10" y="1212" text-anchor="start">Every other ride type</text>
+<rect class="bxa" x="10" y="1222" width="300" height="54" rx="6"/>
+<text class="tb" x="160.0" y="1244.5" text-anchor="middle">Unrated: to a point on it</text>
+<text class="ts" x="160.0" y="1264.5" text-anchor="middle">Rated: no, at every level</text>
+<text class="ts" x="10" y="1302" text-anchor="start">Unrated and Green trails: open to the</text>
+<text class="ts" x="10" y="1321" text-anchor="start">off-road ride types and Easy MTB trails.</text>
+<text class="ts" x="10" y="1340" text-anchor="start">Blue, Black, Red: Mountain Bike only.</text>
 </svg>
 </div>
 <figcaption>Each level has its own color and its own dash pattern, so color is never the only cue. A rating comes from OpenStreetMap's mtb:scale<sup class="cite"><a href="#ref-1" aria-label="source 1">[1]</a></sup> or IMBA rating<sup class="cite"><a href="#ref-2" aria-label="source 2">[2]</a></sup>, whichever is harder.<sup class="cite"><a href="#ref-12" aria-label="source 12">[12]</a></sup></figcaption>
@@ -694,6 +734,13 @@ use any dirt trail.
 Pressing Go round on a dirt trail during a ride keeps that ride's re-routes off dirt trails, even
 to a stop on one, until you plan again; a road that only crosses a dirt trail does not count. Rated singletrack (Green and up) stays closed to
 them. This is not on E-bike, Road Bike or Mass Ride, with electric assist or "Keep to roads, not trails" on.</p>
+
+<h3 id="easy-mtb">Easy MTB trails</h3>
+<p>On Default and Trailmaxxing, the <strong>Easy MTB trails</strong> switch in Plan (off at first) opens
+mountain-bike trails rated Green (0 or 1) and unrated ones. The route is planned on Gravel's map with the ride
+type's own costs, and timed at no more than 6.2 mph [10 km/h] on those trails, as Mountain Bike times them. A
+harder trail is kept out; where a route cannot avoid one, Plan says so. Links, saved routes and AI assistants
+keep the switch, and "Keep to roads, not trails" overrides it.</p>
 
 </div></details>
 <h2 id="tap">Tapping a trail</h2>
@@ -1320,7 +1367,7 @@ color and climbs have no names.</p>
 <p class="next">Next: <a href="/about/mass-ride.html">Mass Ride</a></p>
 </main>
 <footer>
-  <p>Part of RouteMaker's documentation. It describes version 0.22.3. The code is
+  <p>Part of RouteMaker's documentation. It describes version 0.23.0. The code is
   open source under the MIT licence:
   <a href="https://github.com/Macrophage87/RouteMaker">github.com/Macrophage87/RouteMaker</a>.</p>
   <p><a href="/">Back to the map</a></p>

@@ -66,6 +66,25 @@ class TestLevels:
         assert walk_pricing.roadside_level({"road_class": "residential", "speed_limit": 56}) == BUSY
         assert walk_pricing.roadside_level({"road_class": "trunk"}) == SEVERE
 
+    def test_the_bike_graphs_stress_marks_are_not_read_as_lanes(self) -> None:
+        """Hunt finding C6 (2026-11-08): the remap writes 10 "lanes" on a 2.5 street, 11 on a
+        3.5 one and 15 on LTS 4 to steer the bicycle costing, and a walk's trace of the same
+        graph read them as lanes: every 2.5 residential street was busy, three times its
+        walking time with no sidewalk mapped."""
+        level = walk_pricing.roadside_level
+        # Before: BUSY. A 2.5 street reads as its class and speed say.
+        assert level({"road_class": "residential", "lane_count": 10}) == QUIET
+        assert level({"road_class": "tertiary", "lane_count": 10}) == MEDIUM
+        assert level({"road_class": "residential", "lane_count": 10, "speed_limit": 56}) == BUSY
+        # 3.5 is at least a collector; a busy class or speed still makes it busy.
+        assert level({"road_class": "residential", "lane_count": 11}) == MEDIUM
+        assert level({"road_class": "tertiary", "lane_count": 11, "speed_limit": 40}) == MEDIUM
+        assert level({"road_class": "secondary", "lane_count": 11}) == BUSY
+        # LTS 4 and Avoid are busy, as they were; and real lanes still count.
+        assert level({"road_class": "residential", "lane_count": 15}) == BUSY
+        assert level({"road_class": "residential", "lane_count": 2}) == BUSY
+        assert walk_pricing.HALF_LOW_LANES == 10 and walk_pricing.HALF_GRADED_LANES == 11
+
     def test_a_crossing_is_as_busy_as_its_busiest_road(self) -> None:
         assert walk_pricing.crossing_level(["residential", "service_other"]) == QUIET
         assert walk_pricing.crossing_level(["tertiary"]) == MEDIUM
