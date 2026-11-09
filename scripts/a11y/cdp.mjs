@@ -561,10 +561,10 @@ export async function axNode(page, selector) {
   // node with given id": look it up again, up to three times, rather than stop the whole suite.
   let nodes;
   for (let attempt = 1; ; attempt++) {
-    const { root } = await page.s("DOM.getDocument", { depth: 0 });
-    const { nodeId } = await page.s("DOM.querySelector", { nodeId: root.nodeId, selector });
-    if (!nodeId) return null;
     try {
+      const { root } = await page.s("DOM.getDocument", { depth: 0 });
+      const { nodeId } = await page.s("DOM.querySelector", { nodeId: root.nodeId, selector });
+      if (!nodeId) return null;
       ({ nodes } = await page.s("Accessibility.getPartialAXTree", { nodeId, fetchRelatives: false }));
       break;
     } catch (e) {
