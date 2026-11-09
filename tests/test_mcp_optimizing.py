@@ -227,14 +227,101 @@ def test_a_road_the_draft_rides_is_avoided_by_name_and_stays_avoided(tools, api)
     assert lines[0][0][0] == pytest.approx(east(2.52)[0], abs=1e-4)
     assert lines[0][-1][0] == pytest.approx(east(3.08)[0], abs=1e-4)
     assert len(lines[0]) <= mcp.AVOID_LINE_POINTS
+    # The asked name, and the stretches it matched (hunt 4 L4-3).
     assert any(
-        "Connecticut" not in n and "connecticut avenue miles 2.5 to 3.1" in n for n in out["notes"]
+        "connecticut avenue miles 2.5 to 3.1 (matched: Connecticut Avenue)" in n
+        for n in out["notes"]
     )
     # Revised again, the road is still left out; forgotten only when asked.
     again = tools.call("revise_route", {"draft_id": out["draft_id"], "stress": 90})
     assert api.routes[-1]["blocked_lines"] == lines
     tools.call("revise_route", {"draft_id": again["draft_id"], "clear_settings": ["avoid"]})
     assert "blocked_lines" not in api.routes[-1]
+
+
+def _glenmont_plan() -> mcp.Plan:
+    """Hunt 4 L4-3, Glenmont to Wheaton: the draft rides the path beside Georgia Avenue and a
+    cycletrack named for it, and a little of the road itself with its painted lane."""
+    entries = [
+        stretch("Georgia Avenue", 0.0, 0.06, 4),
+        stretch("path beside Georgia Avenue", 0.06, 0.21, 1, "path"),
+        stretch("Georgia Avenue bike lane", 0.21, 0.26, 1, "path"),
+        stretch("path beside Georgia Avenue", 0.26, 0.55, 1, "path"),
+        stretch("service road beside Georgia Avenue", 0.55, 0.6, 2),
+        stretch("Georgia Avenue", 0.6, 0.7, 3, "lane"),
+        stretch("Reedie Drive", 0.7, 1.9, 2),
+    ]
+    return mcp.Plan(
+        [tuple(east(0)), tuple(east(1.9))],
+        [],
+        "default",
+        answer_for({"points": [east(0), east(1.9)]}, entries),
+        None,
+        {},
+    )
+
+
+def test_avoiding_a_road_by_name_keeps_the_separate_ways_beside_it() -> None:
+    """Hunt 4 L4-3: avoid {road: 'Georgia Avenue'} blocked 'path beside Georgia Avenue'. The
+    owner, 2026-11-09, of matching only the road and its own painted lane: "We can keep that
+    approach." The road and its lane go; the side path, the service road beside it and the
+    cycletrack named for it stay, and the note names what was matched."""
+    p = _glenmont_plan()
+    lines, said = mcp.avoid_lines(p, [{"road": "Georgia Avenue"}])
+    assert len(lines) == 2
+    assert said == [
+        "Georgia Avenue miles 0.02 to 0.04 (matched: Georgia Avenue)",
+        "Georgia Avenue miles 0.6 to 0.7 (matched: Georgia Avenue)",
+    ]
+    # Every blocked line lies on the road's own stretches, none on the side path.
+    for line in lines:
+        for lon, _ in line:
+            mi = (lon - START[0]) / LON_MI
+            assert mi <= 0.06 + 1e-3 or 0.6 - 1e-3 <= mi <= 0.7 + 1e-3, mi
+    # Named in full, the side path goes.
+    lines, said = mcp.avoid_lines(p, [{"road": "path beside Georgia Avenue"}])
+    assert said == [
+        "path beside Georgia Avenue miles 0.1 to 0.2 (matched: path beside Georgia Avenue)",
+        "path beside Georgia Avenue miles 0.3 to 0.5 (matched: path beside Georgia Avenue)",
+    ]
+
+
+def test_a_stretch_too_short_for_a_tenth_reads_in_hundredths_or_feet() -> None:
+    """L4-3's note read "miles 0.0 to 0.0" for a short stretch: a hundredth then, and its
+    length where even that rounds to one number."""
+    assert mcp._mile_range(0.6, 0.7) == "miles 0.6 to 0.7"
+    assert mcp._mile_range(0.02, 0.04) == "miles 0.02 to 0.04"
+    assert mcp._mile_range(1.001, 1.004) == "at mile 1.00 (16 ft)"
+
+
+@pytest.mark.parametrize("tail", ["bike lanes", "bike path"])
+def test_bike_lanes_and_bike_path_ways_are_separate(tail: str) -> None:
+    """A way labelled "<road> bike lanes" or "<road> bike path" is a way of its own beside
+    the road, as "<road> bike lane" is, and stays when the road is avoided by name."""
+    entries = [
+        stretch("Georgia Avenue", 0.0, 0.3, 4),
+        stretch(f"Georgia Avenue {tail}", 0.3, 0.8, 1, "path"),
+        stretch("Reedie Drive", 0.8, 1.5, 2),
+    ]
+    p = mcp.Plan(
+        [tuple(east(0)), tuple(east(1.5))], [], "default",
+        answer_for({"points": [east(0), east(1.5)]}, entries), None, {},
+    )  # fmt: skip
+    _, said = mcp.avoid_lines(p, [{"road": "Georgia Avenue"}])
+    assert said == ["Georgia Avenue miles 0.0 to 0.3 (matched: Georgia Avenue)"]
+
+
+def test_a_road_ridden_only_beside_says_so() -> None:
+    entries = [
+        stretch("path beside Georgia Avenue", 0.0, 0.5, 1, "path"),
+        stretch("Reedie Drive", 0.5, 1.0, 2),
+    ]
+    p = mcp.Plan(
+        [tuple(east(0)), tuple(east(1))], [], "default",
+        answer_for({"points": [east(0), east(1)]}, entries), None, {},
+    )  # fmt: skip
+    with pytest.raises(mcp.ToolError, match="only 'path beside Georgia Avenue'"):
+        mcp.avoid_lines(p, [{"road": "Georgia Avenue"}])
 
 
 def test_a_mile_range_or_a_line_is_avoided_and_a_road_not_ridden_is_refused(tools, api) -> None:

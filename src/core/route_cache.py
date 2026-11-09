@@ -562,5 +562,7 @@ def keepable(body: dict, own_variant: str, failures: int) -> bool:
         (body.get("avoid_search") or {}).get("alternate"),
         # Easy MTB trails' rounds off the harder trails (`core.easy_mtb`).
         (body.get("easy_mtb") or {}).get("limited"),
+        # Group Ride's and Fast's winding-trail round (`core.winding_round`, hunt 4 P4-1).
+        (body.get("winding") or {}).get("limited"),
     )
     return "time" not in stopped

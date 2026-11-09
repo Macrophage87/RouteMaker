@@ -2821,6 +2821,28 @@ class TestTheOffroadGraph:
         base = settings.VALHALLA_UPSTREAMS["offroad"]
         assert all(url.startswith(base + "/") for url, _ in fake.calls)
 
+    @pytest.mark.parametrize("name", ["gravel", "mountain-goat"])
+    def test_mountain_bike_trails_are_timed_at_mountain_bike_pace(
+        self, name, client, facility_segments, router, monkeypatch
+    ):
+        """Hunt 4 M4-5 (Schaeffer Farms: Gravel timed the same 1.78 mi of singletrack at
+        about 7.8 mph, Easy MTB at 6 mph). The owner, 2026-11-09: "That really differs a lot
+        by terrain, but use a reasonable default for all." Mountain Bike's pace on
+        `mtb_only` metres is Claude's default, not measured."""
+        monkeypatch.setattr(routing, "weekend_closure_near", lambda points: False)
+        router(standard_router())
+        plain = post(client, {**good_body(name), "when": "weekday_offpeak"}).json()
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"UPDATE {facility_segments}.segment SET mtb_only = true, "
+                "is_trail_class = true, is_unpaved = true WHERE osm_way_id = 101"
+            )
+        router(standard_router())
+        dirt = post(client, {**good_body(name), "when": "weekday_offpeak"}).json()
+        assert plain["variant"] == dirt["variant"] == "offroad"
+        assert dirt["distance_m"] == plain["distance_m"]
+        assert dirt["duration_s"] > plain["duration_s"]
+
     def test_other_rides_never_do(self, client, facility_segments, router):
         fake = router(standard_router())
         body = post(client, {**good_body("default"), "when": "weekday_offpeak"}).json()
@@ -2978,6 +3000,65 @@ class TestEasyMtbTrails:
         ).json()
         assert body["variant"] == "standard"
         assert body["easy_mtb"]["limited"] == "no_offroad_graph"
+
+
+@db
+class TestWindingTrails:
+    """Hunt 4 P4-1. Asked "Should Group Ride and Fast pay for winding trails the way Road Bike
+    does?", the owner, 2026-11-09: "yes". Their plans read the route's winding trails at LTS 3
+    and ask the router once more without them (`core.winding_round`); the answer says what it
+    did (`winding`)."""
+
+    @pytest.mark.parametrize("name", ["group-ride", "fast"])
+    def test_group_ride_and_fast_run_the_round(
+        self, name, client, facility_segments, router, monkeypatch
+    ):
+        from core import winding_round
+
+        router(standard_router())
+        seen = []
+        real_settle = winding_round.settle
+
+        def settle(trip, ctx, keeps=None):
+            seen.append(ctx.variant)
+            return real_settle(trip, ctx, keeps=keeps)
+
+        monkeypatch.setattr(winding_round, "settle", settle)
+        body = post(client, {**good_body(name), "when": "weekend"}).json()
+        assert seen and seen[-1] == body["variant"]
+        # The fake route rides no winding trail: nothing asked, and the answer says so.
+        assert body["winding"] == {
+            "winding_m": 0.0,
+            "asked": False,
+            "taken": False,
+            "limited": None,
+        }
+
+    @pytest.mark.parametrize("name", ["default", "road-bike", "cargo"])
+    def test_other_ride_types_do_not(self, name, client, facility_segments, router, monkeypatch):
+        from core import winding_round
+
+        router(standard_router())
+        seen = []
+        monkeypatch.setattr(winding_round, "settle", lambda *a, **k: seen.append(a))
+        body = post(client, {**good_body(name), "when": "weekend"}).json()
+        assert seen == [] and body["winding"] is None
+
+    def test_a_first_route_skips_it(self, client, facility_segments, router, monkeypatch):
+        """A quick plan answers the router's first good route alone; the full plan after it
+        runs the round."""
+        from core import winding_round
+
+        router(standard_router())
+        seen = []
+        monkeypatch.setattr(winding_round, "settle", lambda *a, **k: seen.append(a))
+        body = post(client, {**good_body("group-ride"), "quick": True}).json()
+        assert seen == [] and body["winding"] is None
+
+    def test_trails_off_skips_it(self, client, facility_segments, router):
+        router(standard_router())
+        body = post(client, {**good_body("group-ride"), "trails_off": True}).json()
+        assert body["variant"] == "no-trail" and body["winding"] is None
 
 
 @db

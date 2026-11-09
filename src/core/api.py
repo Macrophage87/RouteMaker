@@ -2722,6 +2722,15 @@ class RouteBody(Schema):
             " from."
         ),
     )
+    winding: WindingOut | None = Field(
+        default=None,
+        description=(
+            "What the winding-trail round did on Group Ride and Fast (`core.winding_round`,"
+            " hunt 4 P4-1): the route's winding trails read at LTS 3 and the router asked once"
+            " more without them. Null where it did not run (other ride types, a first route,"
+            " a followed or drawn line, trails off)."
+        ),
+    )
     # The route in words, stretch by stretch (OWNER-DECISIONS 220). Additive:
     # absent or null where it could not be built.
     description: list[DescriptionEntryOut] | None = None
@@ -2841,6 +2850,22 @@ class RedCrossingsOut(Schema):
     )
     reds_after: int | None = Field(
         description="The red junctions on the way round; null where none was read."
+    )
+
+
+class WindingOut(Schema):
+    """Group Ride's and Fast's winding-trail round (`core.winding_round.settle`; asked "Should
+    Group Ride and Fast pay for winding trails the way Road Bike does?", the owner, 2026-11-09:
+    "yes")."""
+
+    winding_m: float = Field(description="Metres of winding trail on the route the round kept.")
+    asked: bool = Field(description="Whether the router was asked again without them.")
+    taken: bool = Field(description="Whether the route asked for replaced the plan's.")
+    limited: str | None = Field(
+        description=(
+            "Why it stopped short: `time`, `untraced`, `no_way_round` or `table`; null where"
+            " it ran."
+        )
     )
 
 

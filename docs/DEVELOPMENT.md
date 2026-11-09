@@ -5397,6 +5397,95 @@ known and needs the map's segment table and the router to find; L4-3 waits on th
   streets, and moves a point on one to the nearest cross street with a note ("Mass Ride keeps
   off street-running rails", above). Other ride types keep 288's price. No map rebuild.
 
+### Round 4 owner decisions (2026-11-09)
+
+The fourth routing hunt's owner calls (reports/routing-hunt-4/findings.md), as Stephen decided
+them on 2026-11-09:
+
+- **Rush hour's doubling** (J4-2), asked "Should only crossings and lefts get rush hour's
+  doubling?": "yes". `UNSIGNALISED_RUSH_FACTOR` (x2) now applies only to the kinds that wait for
+  a gap (`intersections.GAP_WAIT_KINDS`: crossing, left onto, straight onto, left across, left
+  from). A right turn onto an unsignalised LTS 4 road, riding along it, a slip lane and a right
+  turn off it keep rush hour's x1.25 (`intersections.time_factor`'s `kind`). Code change, no
+  rebuild. Tests: tests/test_intersections.py.
+- **MTB-trail pace on Gravel and Mountain Goat** (M4-5), asked "Should Gravel and Mountain Goat
+  use 6 mph on MTB trails?": "That really differs a lot by terrain, but use a reasonable default
+  for all." Their answers on the off-road graph now time the mountain-bike class
+  (`segment.mtb_only`) at Mountain Bike's singletrack pace, as Easy MTB's do
+  (`routing._with_mtb`, `offroad_dirt_timed`). The one pace for every terrain
+  (`mtbmode.SINGLETRACK_SPEED_KMH`, about 6 mph) is Claude's default, not measured: the owner
+  says it varies a lot by terrain. The time shown changes; the ranking does not. Code change, no
+  rebuild. Tests: tests/test_route_dials.py.
+- **Avoid a road by name** (L4-3). The owner asked "What do you mean avoid georgia avenue?
+  Usually a good idea, but be more specific." Claude explained it as matching only the road and
+  its own painted lane, with side paths and cycletracks mapped as their own ways kept unless the
+  rider names them; the owner: "We can keep that approach." The connector's `avoid` by `road`
+  (`mcp/routemaker_mcp.py` `_road_runs`) now skips stretches labelled "path beside X", "service
+  road beside X", "sidewalk beside X" and cycletracks named for the road ("X bike lane",
+  "X protected bike lane", "X Cycletrack", `SEPARATE_WAY_HEADS`, `SEPARATE_WAY_TAILS`) unless the
+  rider names that label in full, and does not bridge a run across one. The note names the
+  stretches each run matched ("Georgia Avenue miles 0.6 to 0.7 (matched: Georgia Avenue)"), and
+  a draft that rides only a way beside the road is refused with that way's name. Which labels
+  count as separate ways is Claude's default. Code change, no rebuild. Tests:
+  tests/test_mcp_optimizing.py.
+- **Winding trails for Group Ride and Fast** (P4-1), asked "Should Group Ride and Fast pay for
+  winding trails the way Road Bike does?": "yes"; and later, of the round 4 fixes, "Ok. Make
+  sure they are included." Road Bike pays through its own graphs (`rm:winding`, written only on
+  `variants.PAVED_GRAPHS`, priced as the LTS 3 stress penalty there). Group Ride and Fast plan on
+  the standard and weekend graphs, which Default, Trailmaxxing, Cargo and the others share, so a
+  price written into those graphs would charge every ride type on them; and their calm rate is 0
+  (stress 40 and 10, `presets.calm_rate_for`), so neither the calm search nor the trail seek's
+  `avoid_winding` runs for them. So it is built at plan time, with no rebuild
+  (`core.winding_round`, called from `routing._plan` after the calm search and the trail-level
+  rounds, before the red pass): the route's trail-class ways that wind
+  (`routemaker.winding.is_winding` on each way's whole line from the segment table, as
+  `pipeline.run` decides `rm:winding`) are summed; where they come to `WINDING_MIN_M` (400 m) or
+  more, the plan's own request is asked once more with points along them excluded, and each
+  route is scored as the search scores it (`refine.Analysis.score`) plus, per metre of winding
+  trail, what a metre of LTS 3 adds in the router's own cost at the request's `use_roads`
+  (`refine.lts3_added_m`). The new route is taken where it scores better and the level rounds'
+  guard keeps it (`refine.level_round_kept`: no busier, not past the ceiling, a loop's way back
+  kept apart); its exclusions then go with the later ways round. The answer says what it did
+  (`winding`: `winding_m`, `asked`, `taken`, `limited`), and a round cut short by time is not
+  kept in the answer cache. `WINDING_MIN_M`, the one round and the points excluded (40 m apart,
+  none within 300 m of the plan's points, at most 60) are Claude's defaults, not measured. It
+  does not run on a quick first route, a followed or drawn line, or trails off. Tests:
+  tests/test_winding_round.py, tests/test_route_dials.py `TestWindingTrails`.
+- **Rock Creek's night deer notice** (C4-4), asked "NPS posted that Rock Creek's night deer
+  closures started Nov 2. Should I add this season's night notice?": "No, it's switched to
+  temporary closures and not a general prohibition as in years past, fortunately." No change:
+  `deer_closures.ROCK_CREEK_SEASONS` keeps 2025-26 only, and NPS's own alerts feed item is still
+  shown as it is.
+- **Lit ways on a run that ends after dusk** (X4-3), asked "A run that starts before dusk and
+  finishes after it gets no preference for lit ways. Should it prefer them when the finish will
+  be dark?": "Most people polled say darkness has no effect on their riding. They have lights."
+  Asked then whether Run's lit preference should go too: "Keep for run. It's much easier to have
+  a powerful light on a bike."; and to judging a run by its estimated finish: "Sure." Built on
+  the hunt4/run-dark branch, not this one.
+- **Cargo's and Tandem's barrier charge** (R4-2), asked "Cargo and Tandem pay the 15-minute
+  narrow-barrier charge at ordinary trail gates, so they leave the Anacostia Riverwalk. Should
+  that charge apply only to gaps under 1.5 m, stiles and cycle barriers?": "Yes. Tandems
+  regularly use that trail." Stock Valhalla charges one `gate_cost` plus `gate_penalty` per
+  request at every gate node with no access tag (sif/dynamiccost.h, `base_transition_cost`), and
+  every ride type's request carries one pair; the transform makes the cycle barriers, narrow
+  bollards, kissing gates, stiles and turnstiles that Cargo and Tandem are meant to pay for that
+  same gate node. No other node type has a per-request charge a bicycle request reads
+  (`toll_booth_cost` is not read for bicycles, `disable_toll_booth_`; `country_crossing_cost` is
+  the state line's; a bollard costs nothing). So a plain gate can be told apart from a narrow
+  gap only by taking it out of the graph as a gate, and then every ride type loses the 30 s it
+  pays there (PLAN item 336(2), "Flag them and maybe 30 seconds. 10 minutes would keep people
+  off traffic free roads."), and nothing is left in the graph for 336(2)'s "Gate ahead" to
+  read. So the owner was asked again, on a decision card, "Can plain wide trail gates cost
+  nothing for every ride type?", and on 2026-11-09 chose "Free for everyone" ("Cargo and Tandem
+  stay on trails like the Riverwalk. Other ride types lose about 30 s per plain gate. Narrow
+  gaps keep the charge. Needs a map rebuild."). **Built:** a plain `barrier=gate` with no
+  restricting `access`, `vehicle`, `bicycle` or `foot`, no motor-vehicle key, no
+  `opening_hours`, no `locked` other than `no`, and no `maxwidth` under 1.5 m (an unreadable one
+  keeps the gate) loses its barrier tag in the transform (lua/routemaker_remap.lua
+  `wide_open_gate`), so Valhalla reads a plain node and no ride type pays a gate charge there;
+  every other gate, `lift_gate` and `swing_gate` are left as they were. Needs the map rebuild.
+  Tests: tests/lua/test_remap.lua, tests/lua/test_graph_entry.lua.
+
 ### Trails off (OWNER-DECISIONS 463, 463a, 463b)
 
 The owner, 2026-10-09: "add it". A trails-off switch is offered on every ride

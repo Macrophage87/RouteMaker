@@ -6032,7 +6032,7 @@ def _plan(
     # The calm detour and crossing avoidance (core.refine): the router's own
     # routes, searched for a better score. Only where it can run inside the
     # budget; `refined` says what it did, or why it did not.
-    from . import dedodge, refine, trailseek
+    from . import dedodge, refine, trailseek, winding_round
 
     timing.mark("choose")
     refine_limited = _refine_limit(preset_name, points, long_ride, climb_seek, deadline, long_calm)
@@ -6254,6 +6254,33 @@ def _plan(
     elif easy_asked and not fixed:
         easy_info = easy_mtb.no_graph()
     easy_trip = trip
+    # Winding trails for Group Ride and Fast (hunt 4 P4-1). Asked "Should Group Ride and Fast
+    # pay for winding trails the way Road Bike does?", the owner, 2026-11-09: "yes". Road Bike
+    # pays in its own graphs; these two share the standard and weekend graphs with every other
+    # ride type and have no calm search, so the price is put on here: the route's winding
+    # trails read at LTS 3, and the router asked once more without them (`core.winding_round`).
+    # After the calm search and before the red pass, which then reads the route answered.
+    winding_info = None
+    if winding_round.applies(preset_name) and not quick and not fixed and not trails_off:
+        winding_trip_before = trip
+        trip, winding_info = winding_round.settle(
+            trip,
+            refine_context,
+            keeps=None if trip is asked_trip else refine.level_round_keeps(trip, refine_context),
+        )
+        logger.info("winding trails: %s", winding_info)
+        if trip is not winding_trip_before:
+            mtb_replaced = True
+            refine_context.candidates = refine_context.candidates[:1]
+    # Gravel and Mountain Goat ride the same mountain-bike class (`segment.mtb_only`) on the
+    # off-road graph, and their answers time it at Mountain Bike's singletrack pace too, as
+    # Easy MTB's do. Hunt 4 M4-5 asked "Should Gravel and Mountain Goat use 6 mph on MTB
+    # trails?"; the owner, 2026-11-09: "That really differs a lot by terrain, but use a
+    # reasonable default for all." The one pace for all terrain (mtbmode.SINGLETRACK_SPEED_KMH)
+    # is Claude's default, not measured. The time shown changes; the ranking does not.
+    offroad_dirt_timed = (
+        preset_name in presets.OFFROAD_PRESETS and variant == Variant.OFFROAD.value and not fixed
+    )
     # A red (very high stress) crossing still on the answer where the crossing search did not
     # run over the whole route (a plan past REFINE_MAX_SPAN_M, a long Trailmaxxing plan
     # searched leg by leg, a search cut short, a climb seek, a route Mountain Bike's choice
@@ -6930,6 +6957,9 @@ def _plan(
     # only in the log (hunt S5): the answer cache reads its `limited` (`route_cache.keepable`)
     # and a reader of the answer sees a pass cut short. Null where it did not run.
     body["red_crossings"] = red_info
+    # What the winding-trail round did on Group Ride and Fast (`core.winding_round`); null
+    # where it did not run. The answer cache reads its `limited`.
+    body["winding"] = winding_info
     timing.mark("answer")
 
     def _with_mtb(
@@ -6939,11 +6969,14 @@ def _plan(
         (10 km/h) on singletrack (`mtbmode.duration_s`), the router's own time kept; and an
         Easy MTB trails route's reading (`easy_mtb`), its time on the mountain-bike class at
         the same pace where `timed`, its trip, is given (`easy_mtb.dirt_m`; the owner, round
-        3, 2026-11-08: "Yes", as Mountain Bike on the same trails: costing finding C3-7)."""
+        3, 2026-11-08: "Yes", as Mountain Bike on the same trails: costing finding C3-7), and
+        a Gravel or Mountain Goat route's the same way (`offroad_dirt_timed`; the owner,
+        2026-11-09, hunt 4 M4-5)."""
         answered["mtb"] = info
         answered["easy_mtb"] = easy
         singletrack_m = info.get("singletrack_m") if info else None
-        if not singletrack_m and easy_held and easy is not None and timed is not None:
+        dirt_timed = (easy_held and easy is not None) or offroad_dirt_timed
+        if not singletrack_m and dirt_timed and timed is not None:
             try:
                 singletrack_m = easy_mtb.dirt_m(timed, variant, trace_costing, deadline, traces)
             except (DeadlineExceeded, RouterUnavailable, RouterRefused):
