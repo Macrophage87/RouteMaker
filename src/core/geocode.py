@@ -428,7 +428,62 @@ def search(
         params["zoom"] = BIAS_ZOOM
         params["location_bias_scale"] = BIAS_SCALE
         near = (lon, lat)
-    return results(_get("/api", params), reverse=False, near=near)[:limit]
+    found = results(_get("/api", params), reverse=False, near=near)
+    split = address_part(q)
+    if not found and split is not None:
+        # One more question, the address alone; the place at it is found by its number.
+        typed, address = split
+        found = results(
+            _get("/api", {**params, "q": expand_abbreviations(address)}),
+            reverse=False,
+            near=near,
+        )
+        found.sort(key=lambda row: not _named_in(row["name"], typed))
+    return found[:limit]
+
+
+# A house number: digits, perhaps a letter ("4654", "1100A"), perhaps a comma after.
+_HOUSE_NUMBER = re.compile(r"^\d+[A-Za-z]?,?$")
+# Words that end a street's name, abbreviated or not: an address has one within a few words
+# of its number ("4654 Wisconsin Ave"), where "Route 1 Diner" or "CVS 24 Hour Pharmacy" does not.
+STREET_WORDS = (
+    frozenset(STREET_TYPES)
+    | {t.casefold() for t in STREET_TYPES.values()}
+    | {"circle", "cir", "way", "pike", "alley", "trail", "row", "walk", "plaza", "crescent"}
+)
+# How many words after the number a street word may come ("4654 Old Georgetown Rd" is 3).
+STREET_WORD_REACH = 4
+
+
+def address_part(q: str) -> tuple[str, str] | None:
+    """A query that names a place and then its street address, as (name, address), or None.
+
+    Riders paste a business as a listing writes it: "Satay Club Asian Restaurant & Sushi
+    Bar, 4654 Wisconsin Ave NW, Washington, DC". OSM calls it "Satay Club", and Photon,
+    which wants nearly every word typed to be in a place's name or address, found nothing
+    (Stephen 2026-11-09). The address alone finds the building, and the place at it. The
+    address begins at the first house number after the first word that a street word
+    (STREET_WORDS) follows within STREET_WORD_REACH words, before any comma. A query that
+    begins with its number is an address already, and gets None. The frontend's
+    `hasStreetAddress` (frontend/src/lib/geocode.ts) is the same rule.
+    """
+    words = q.split()
+    for i in range(1, len(words) - 1):
+        if not _HOUSE_NUMBER.match(words[i]) or words[i].endswith(","):
+            continue
+        for word in words[i + 1 : i + 1 + STREET_WORD_REACH]:
+            if word.rstrip(".,").casefold() in STREET_WORDS:
+                return " ".join(words[:i]).rstrip(","), " ".join(words[i:])
+            if word.endswith(","):
+                break
+    return None
+
+
+def _named_in(name: str, typed: str) -> bool:
+    """Whether every word of three or more letters in `name` is among the words `typed`."""
+    typed_words = set(re.findall(r"\w+", typed.casefold()))
+    own = [w for w in re.findall(r"\w+", name.casefold()) if len(w) >= 3 and not w.isdigit()]
+    return bool(own) and all(w in typed_words for w in own)
 
 
 # --- names for points ---------------------------------------------------------------

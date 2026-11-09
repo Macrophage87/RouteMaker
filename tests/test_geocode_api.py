@@ -358,6 +358,95 @@ class TestSearch:
         get(client, SEARCH, q=typed)
         assert fake.calls[0][1]["q"] == sent
 
+    def test_a_listing_name_with_its_address_finds_the_place_at_the_address(
+        self, client, monkeypatch, router
+    ) -> None:
+        """Stephen 2026-11-09: a restaurant pasted as its listing names it found nothing,
+        since OSM's name is shorter than the listing's. The address alone is asked next,
+        and the place named in the query comes first among what is at it."""
+        satay = feature(
+            -77.0810725,
+            38.9508325,
+            name="Satay Club",
+            type="house",
+            osm_key="amenity",
+            osm_value="restaurant",
+            housenumber="4654",
+            street="Wisconsin Avenue Northwest",
+            city="Washington",
+        )
+        address = feature(
+            -77.0810,
+            38.9508,
+            type="house",
+            osm_key="place",
+            osm_value="house",
+            housenumber="4654",
+            street="Wisconsin Avenue Northwest",
+            city="Washington",
+        )
+        calls: list[str] = []
+
+        def fake(path: str, params: dict) -> dict:
+            calls.append(params["q"])
+            # Photon found nothing for the whole listing.
+            return answer() if len(calls) == 1 else answer(address, satay)
+
+        monkeypatch.setattr(geocode, "_get", fake)
+        q = "Satay Club Asian Restaurant & Sushi Bar, 4654 Wisconsin Ave NW, Washington, DC"
+        found = get(client, SEARCH, q=q).json()["results"]
+        assert calls == [
+            "Satay Club Asian Restaurant & Sushi Bar, 4654 Wisconsin Avenue Northwest,"
+            " Washington, DC",
+            "4654 Wisconsin Avenue Northwest, Washington, DC",
+        ]
+        assert [row["name"] for row in found] == ["Satay Club", "4654 Wisconsin Avenue Northwest"]
+
+    def test_a_search_that_finds_something_is_asked_once(self, client, photon) -> None:
+        fake = photon(answer(LINCOLN))
+        get(client, SEARCH, q="Lincoln Memorial, 2 Lincoln Memorial Circle NW")
+        assert len(fake.calls) == 1
+
+    @pytest.mark.parametrize(
+        "q",
+        [
+            "4654 Wisconsin Ave NW, Washington, DC",
+            "Route 1 Diner Bethesda",
+            "CVS 24 Hour Pharmacy",
+            "Union Station, Washington, DC",
+        ],
+    )
+    def test_with_no_name_before_an_address_nothing_found_is_asked_once(
+        self, client, photon, q
+    ) -> None:
+        fake = photon(answer())
+        assert get(client, SEARCH, q=q).json()["results"] == []
+        assert len(fake.calls) == 1
+
+    @pytest.mark.parametrize(
+        ("typed", "split"),
+        [
+            (
+                "Satay Club, 4654 Wisconsin Ave NW, Washington, DC",
+                ("Satay Club", "4654 Wisconsin Ave NW, Washington, DC"),
+            ),
+            ("Satay Club 4654 Wisconsin Ave NW", ("Satay Club", "4654 Wisconsin Ave NW")),
+            ("Pier 1 Imports, 1100A Wilson Blvd", ("Pier 1 Imports", "1100A Wilson Blvd")),
+            ("Bagels, 5 Old Georgetown Rd", ("Bagels", "5 Old Georgetown Rd")),
+            ("Route 1 Diner", None),
+            ("Route 1 Diner Bethesda", None),
+            ("Pier 1 Imports Arlington VA", None),
+            ("CVS 24 Hour Pharmacy", None),
+            ("Chipotle, 7th Street NW", None),
+            ("Bethesda, 20814", None),
+            ("Tysons Corner, 2nd floor", None),
+            ("4654 Wisconsin Ave NW", None),
+            ("Union Station, Washington, DC", None),
+        ],
+    )
+    def test_the_address_part_of_a_query(self, typed, split) -> None:
+        assert geocode.address_part(typed) == split
+
     def test_each_result_says_what_it_is_in_osm(self, client, photon) -> None:
         photon(
             answer(

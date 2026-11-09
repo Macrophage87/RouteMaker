@@ -157,14 +157,40 @@ export function isKindSearch(query: string): boolean {
   return KIND_SEARCHES.has(kindPhrase(query));
 }
 
+/** Words that end a street's name (src/core/geocode.py STREET_WORDS). */
+const STREET_WORDS: ReadonlySet<string> = new Set([
+  ...["blvd", "st", "ave", "rd", "dr", "pkwy", "hwy", "ct", "ln", "pl", "sq", "ter"],
+  ...["boulevard", "street", "avenue", "road", "drive", "parkway", "highway", "court", "lane", "place", "square", "terrace"],
+  ...["circle", "cir", "way", "pike", "alley", "trail", "row", "walk", "plaza", "crescent"],
+]);
+
+/**
+ * Whether the query holds a street address: it begins with a number ("1600 Pennsylvania"), or a house number after
+ * the first word is followed by a street word within four words, before any comma ("Satay Club Asian Restaurant, 4654
+ * Wisconsin Ave NW"; not "CVS 24 Hour Pharmacy"). The server then answers what is at the address: the same rule as
+ * src/core/geocode.py address_part.
+ */
+export function hasStreetAddress(query: string): boolean {
+  if (/^\s*\d/.test(query)) return true;
+  const words = query.split(/\s+/).filter((w) => w !== "");
+  for (let i = 1; i < words.length - 1; i++) {
+    if (!/^\d+[a-z]?$/i.test(words[i])) continue;
+    for (const word of words.slice(i + 1, i + 5)) {
+      if (STREET_WORDS.has(word.replace(/[.,]+$/, "").toLowerCase())) return true;
+      if (word.endsWith(",")) break;
+    }
+  }
+  return false;
+}
+
 /**
  * The places found, nearest the route's start first (P2: a rider who searched "grocery" was offered a store 66 minutes
  * away first): those that answer the words by name (`namesQuery`) ahead of the rest, each group by straight-line
- * distance, ties in the server's order. An address ("1600 Pennsylvania") keeps the server's order, which weighs the
+ * distance, ties in the server's order. An address ("1600 Pennsylvania", `hasStreetAddress`) keeps the server's order, which weighs the
  * number and the street; so does a search with no start known.
  */
 export function nearestFirst(places: readonly Place[], start: LonLat | null | undefined, query: string): Place[] {
-  if (!start || /^\s*\d/.test(query)) return [...places];
+  if (!start || hasStreetAddress(query)) return [...places];
   // A kind of place ("grocery") is nearest first only: a store named "… Grocery" is not put ahead of a nearer one.
   const kind = isKindSearch(query);
   return places
