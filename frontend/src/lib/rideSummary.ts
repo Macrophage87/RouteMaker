@@ -10,7 +10,7 @@
  * The same parts are shown joined with a middle dot and read joined with
  * commas (`rideSummarySpoken`), so a screen reader does not say "middle dot".
  */
-import { CARRYINGS, WHENS, fitTarget, hillsGradePosition, seeksClimbs, stressMax, trailsOffLocked, whenInSentence, type Dials } from "./dials.ts";
+import { CARRYINGS, WHENS, easyMtbOn, fitTarget, hillsGradePosition, seeksClimbs, stressMax, trailsOffLocked, whenInSentence, type Dials } from "./dials.ts";
 import { formatDistance } from "./format.ts";
 import { onFoot, presetLabel, presetSaid, runs, type PresetId } from "./presets.ts";
 import { isCustom } from "./rideTypeDialog.ts";
@@ -83,6 +83,7 @@ export function rideSummaryParts(preset: PresetId, dials: Dials, name: (id: Pres
     ...(target ? [target] : []),
     ...(dials.loop === true && preset !== "mass-ride" ? [t("loop")] : []),
     ...(dials.trailsOff === true && !trailsOffLocked(preset) ? [t("roads only")] : []),
+    ...(easyMtbOn(preset, dials) ? [t("easy MTB trails")] : []),
   ];
 }
 

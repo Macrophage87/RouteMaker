@@ -641,7 +641,7 @@ The routers read their config (`./valhalla:/conf:ro`) once, when they start, and
 `docker compose up -d` leaves a running router alone when only that bind's
 contents changed. So after a release whose diff touches `valhalla/*.json`,
 restart every router that runs, the `offroad` profile's (`valhalla-offroad`,
-`valhalla-mtb`, `valhalla-paved`) included, before or together with the api:
+`valhalla-mtb`, `valhalla-paved`, `valhalla-paved-weekend`) included, before or together with the api:
 
     routers=$(docker compose --profile offroad ps --services --status running </dev/null | grep '^valhalla-')
     [ -n "$routers" ] && docker compose --profile offroad restart $routers </dev/null

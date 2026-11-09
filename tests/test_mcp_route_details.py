@@ -291,9 +291,10 @@ def test_plan_route_searches_a_name_near_the_points_given_as_coordinates() -> No
     server = mcp.Server(lambda: places, mcp.load_stations(), out_dir=Path("."))
     out = server.call(
         "plan_route",
-        {"points": [list(LEWIS_ORCHARDS), "Moore Road", "Shady Grove"], "via_points": [1]},
+        {"points": [list(LEWIS_ORCHARDS), "Moore Road", "Shady Grove Metro"], "via_points": [1]},
     )
-    # Searched around the point before it; Shady Grove is a station, never searched.
+    # Searched around the point before it; Shady Grove Metro is a station, never searched. (Said
+    # as a station: since the 2026-11-08 hunt, G2, a bare "Shady Grove" is searched first.)
     assert places.near == [LEWIS_ORCHARDS]
     taken = out["points_taken_as"]
     moore = next(t for t in taken if t["asked"] == "Moore Road")

@@ -92,7 +92,7 @@ export function weighFix(before: GpsWeakness, accuracyM: number, now: number): G
  * review RIDE-3), since the turn-by-turn card cannot know where the rider is.
  */
 export const CUE_SHEET_MIN_MS = 60_000;
-export const CUE_SHEET_SAID = t("GPS is still weak: the turns ahead are shown as a list, next turn first.");
+export const CUE_SHEET_SAID = t("GPS is still weak. The next turns are shown in a list.");
 /** The list's length: the turns of a dead spot, not the whole ride. */
 export const CUE_SHEET_ROWS = 10;
 
@@ -173,6 +173,15 @@ export const NOW_S = 2;
 /** The stoker's one warning ahead: about 15-20 s, never closer than 300 ft. */
 export const STOKER_S = 17;
 export const STOKER_MIN_M = 90;
+/**
+ * On foot (Stephen, 2026-11-08: walking's "turn left now seems timed for bike speeds, not walking speeds"): the same
+ * three cues, closer in. At about 3 mph (1.4 m/s) the first is about 45 s out (200 ft), the second about 15 s (65 ft) and
+ * "now" a few steps before the corner (20 ft), where the bike's floors (500, 150 and 50 ft) are made for 10-15 mph.
+ * Our defaults, not measured on walks.
+ */
+export const WALK_ADVANCE_MIN_M = 60;
+export const WALK_PREPARE_MIN_M = 20;
+export const WALK_NOW_M = 6;
 /** A cue passed by more than this before it was said is dropped, not said late. */
 export const PASSED_M = 10;
 /** Arrival at a stop or the end: within this of it along the line (and the fix close to it). */
@@ -366,6 +375,16 @@ export interface Cue {
   walkM?: number;
   /** A closure's source and until when (v0.8.2): shown in small print on the card, never said. */
   citation?: string;
+  /**
+   * The signal here may need a button press for a light change (the API's light_buttons; the owner, 2026-11-08): the
+   * card shows "Light may need a button press" and the first warning ends "Button for the light." (withButtons).
+   */
+  button?: boolean;
+  /**
+   * A button signal's own cue, where no turn or crossing is near it (withButtons): the note alone, said short; not a
+   * warning on the card, and never a row of a course or a cue sheet (course.ts routeCues).
+   */
+  buttonOnly?: boolean;
   /** The description entry's kind it came from (a course export keeps Avoid and work-zone hazards); absent on the end. */
   source?: DescriptionEntry["kind"];
   /**
@@ -409,6 +428,8 @@ export interface RideModel {
    * points. Never a cue: a via point is not announced; the re-plan drops the ones passed.
    */
   passes?: { point: number; atM: number }[];
+  /** A walk's line (lib/walkCues.ts walkModel): its turns are said at walking distances (WALK_ADVANCE_MIN_M...). */
+  onFoot?: boolean;
 }
 
 /**
@@ -1066,14 +1087,23 @@ export function rideModel(route: RouteResponse, vias: readonly number[] = [], na
   cues.length = 0;
   cues.push(...kept);
   cues.forEach((cue, i) => (cue.index = i));
+  // The signals that may need a button press (the API's light_buttons, in the description's metres).
+  withButtons(cues, (route.light_buttons ?? []).map((button) => toLine(button.at_m)));
   joinJogs(cues);
+  buttonsOnJogs(cues);
   const farSide = farSideAtEnd(route.arrival_side, entries);
   cues.push({ index: cues.length, kind: "end", atM: lengthM, text: endWords(route.arrival_side), movement: null, street: null, severity: null, tier: null, stop: null, ...(farSide ? { farSide } : {}) });
   const paceMs = route.distance_m > 0 && route.duration_s > 0 ? route.distance_m / route.duration_s : null;
   const timeline = timelineOf(route.time_marks, lengthM, route.duration_s);
-  const halves = (route.stress_spans ?? [])
-    .filter((s) => s.half === true && s.tier !== null && s.tier < 5)
-    .map((s) => ({ fromM: toLine(s.from_m), toM: toLine(s.to_m), tier: s.tier as number }));
+  // The half steps on the line, the spans' traced metres scaled by their own end to the line, as the map and every other
+  // span reader scales them (routeColours.ts, rejoin.ts): not by the description's map, whose metres are the router's
+  // total, so a half step was said early or late by however much the two lengths differ (the hunt, 2026-11-08, X4).
+  const spans = route.stress_spans ?? [];
+  const spansEnd = spans.length ? spans[spans.length - 1].to_m : 0;
+  const spanScale = spansEnd > 0 ? lengthM / spansEnd : 0;
+  const halves = spans
+    .filter((s) => spanScale > 0 && s.half === true && s.tier !== null && s.tier < 5)
+    .map((s) => ({ fromM: s.from_m * spanScale, toM: s.to_m * spanScale, tier: s.tier as number }));
   return { coordinates, along, lengthM, cues, stretches, paceMs, ...(timeline ? { timeline } : {}), ...(vias.length ? { passes } : {}), ...(halves.length ? { halves } : {}) };
 }
 
@@ -1201,10 +1231,13 @@ function joinJogs(cues: Cue[]): void {
     const jog = [first];
     for (let k = i + 1; k < cues.length && jog.length < JOG_TURNS; k++) {
       const next = cues[k];
+      // A button signal's own note (withButtons, which runs first) between two turns is said on its own and does not
+      // part them: it broke the jog, so the later turn lost its "then right" and its "now" (the hunt, round 2, R2-3).
+      if (buttonOnly(next)) continue;
       // A crossing is never said as a turn after another: it leads its own cue, with the turn after it. A turn across a
       // road already says two things: the turn after it keeps its own cue.
       if (next.kind !== "turn" || !next.movement || next.cross || next.across) break;
-      if (next.atM - cues[k - 1].atM > JOG_M) break;
+      if (next.atM - jog[jog.length - 1].atM > JOG_M) break;
       jog.push(next);
     }
     if (jog.length < 2) continue;
@@ -1549,24 +1582,27 @@ export function cueSpoken(cue: Cue, phase: Phase, distanceM: number, first = pha
   // A jog's reminder about 10 s out is its turns without the streets, said at the advance cue and on the card, so the
   // urgent "now" does not cut off its last turns; in full when it is the first thing said for the cue.
   const text = phase === "prepare" && !first && cue.then?.length && cue.movement ? jogShortWords(cue) : cueWords(cue, true);
+  // A signal that may need its button: its own cue says the short words; another cue ends its first warning with them.
+  if (buttonOnly(cue)) return t("In {distance}, {cue}", { distance: spokenDistance(distanceM), cue: inSentence(cue, t(BUTTON_SAID)) });
   const said = t("In {distance}, {cue}", { distance: spokenDistance(distanceM), cue: inSentence(cue, text) });
-  return busy ? `${said} ${t("Busy junction.")}` : said;
+  const warned = busy ? `${said} ${t("Busy junction.")}` : said;
+  return cue.button && first ? `${warned} ${t(BUTTON_SAID)}` : warned;
 }
 
 /**
  * The phases a cue is said at, at a level, farthest first, with their thresholds at a speed. A jog's later turn
  * has "now" only, which `step` says once the rider is past the turn before.
  */
-export function phasesFor(level: Verbosity, cue: Cue, speedMs: number): { phase: Phase; withinM: number }[] {
+export function phasesFor(level: Verbosity, cue: Cue, speedMs: number, onFoot = false): { phase: Phase; withinM: number }[] {
   if (!says(level, cue)) return [];
   const v = Math.max(speedMs, MIN_SPEED_MS);
-  const advance = Math.max(ADVANCE_MIN_M, ADVANCE_S * v);
+  const advance = Math.max(onFoot ? WALK_ADVANCE_MIN_M : ADVANCE_MIN_M, ADVANCE_S * v);
   // A destination across a busy road (D26): said early too, at every level that says more than arrival.
   if (cue.kind === "end" && cue.farSide && level !== "quiet") return [{ phase: "advance", withinM: advance }, { phase: "arrive", withinM: ARRIVE_M }];
   if (cue.kind === "stop" || cue.kind === "end") return [{ phase: "arrive", withinM: ARRIVE_M }];
-  const prepare = Math.max(PREPARE_MIN_M, PREPARE_S * v);
+  const prepare = Math.max(onFoot ? WALK_PREPARE_MIN_M : PREPARE_MIN_M, PREPARE_S * v);
   const ahead = Math.max(STOKER_MIN_M, STOKER_S * v);
-  const now = Math.max(NOW_M, NOW_S * v);
+  const now = Math.max(onFoot ? WALK_NOW_M : NOW_M, NOW_S * v);
   if (cue.joined) return [{ phase: "now", withinM: now }];
   if (level === "stoker") {
     // One warning ahead, and "now" at a turn (plan Q6: the stoker braces for the lean).
@@ -1586,7 +1622,7 @@ export function phasesFor(level: Verbosity, cue: Cue, speedMs: number): { phase:
 }
 
 /** The sentences for leaving and rejoining the route (plan section 3: said once, gently). */
-export const OFF_ROUTE_SAID = t("Off the planned route; finding a new way.");
+export const OFF_ROUTE_SAID = t("Off the planned route. Finding a new way.");
 export const OFF_ROUTE_KEPT_SAID = t("Off the planned route.");
 export const BACK_ON_ROUTE_SAID = t("Back on the planned route.");
 
@@ -1692,7 +1728,7 @@ export function startsAway(model: Pick<RideModel, "coordinates" | "along">, fix:
 /** Said when a ride starts away from its start: the way there comes first. */
 export const START_FIRST_SAID = t("Not near the start: going there first.");
 /** Back within START_NEAR_M of the start on the way there (any entrance of a big place): the planned route from here. */
-export const START_REACHED_SAID = t("At the start of the ride. Ride on.");
+export const START_REACHED_SAID = t("You are at the start of the ride.");
 /**
  * The question asked then (Stephen, 2026-11-06: "they should be given the option of going to the start or to reroute
  * from there, such as if they are already on the route"): StartFirstDialog's words, said as it opens.
@@ -1840,7 +1876,7 @@ export function step(
   const progress = next.progressM;
   const said: Record<number, Phase[]> = { ...state.said };
   for (const cue of model.cues) {
-    const phases = phasesFor(level, cue, next.speedMs);
+    const phases = phasesFor(level, cue, next.speedMs, model.onFoot);
     const done = said[cue.index] ?? [];
     if (phases.every((p) => done.includes(p.phase))) continue;
     const distance = cue.atM - progress;
@@ -1971,12 +2007,77 @@ function ahead(model: RideModel, cue: Cue, progressM: number): boolean {
 /** A road a path crosses is not said on its own this near another cue that names it. */
 export const CROSSING_NEAR_CUE_M = 30;
 
+/**
+ * A signal that may need a button press for a light change (the owner, 2026-11-08: "Put something like a note: 'this
+ * intersection might require a button press for a light change.'", then "Try to make it concise, especially when
+ * spoken"): the card's words, and the words said at the end of the cue's first warning.
+ */
+export const BUTTON_SHOWN = "Light may need a button press";
+export const BUTTON_SAID = "Button for the light.";
+/** A button is noted on the turn, crossing or junction cue this near it; with none, it has a cue of its own. */
+export const BUTTON_NEAR_CUE_M = 40;
+
+/**
+ * Marks the cue at each button signal (`atM`, metres along the line): the nearest turn, crossing or junction cue
+ * within BUTTON_NEAR_CUE_M takes `button`; where there is none (a signal the route goes straight through with nothing
+ * else to say), a cue of its own says the note. The cues are put back in order along the line.
+ */
+export function withButtons(cues: Cue[], atM: readonly number[]): void {
+  if (!atM.length) return;
+  for (const at of atM) {
+    let best: Cue | null = null;
+    for (const cue of cues) {
+      if (cue.kind !== "turn" && cue.kind !== "crossing" && cue.kind !== "hazard") continue;
+      if (Math.abs(cue.atM - at) <= BUTTON_NEAR_CUE_M && (!best || Math.abs(cue.atM - at) < Math.abs(best.atM - at))) best = cue;
+    }
+    if (best) best.button = true;
+    else cues.push({ index: cues.length, kind: "hazard", atM: at, text: t(BUTTON_SHOWN), button: true, buttonOnly: true, movement: null, street: null, severity: null, tier: null, stop: null });
+  }
+  cues.sort((a, b) => a.atM - b.atM);
+  cues.forEach((cue, i) => (cue.index = i));
+}
+
+/** Whether a cue is a button signal's own (withButtons), its words the note alone: by its flag, never by its words, which
+ * are in the language the route was read in. */
+export function buttonOnly(cue: Pick<Partial<Cue>, "buttonOnly">): boolean {
+  return cue.buttonOnly === true;
+}
+
+/**
+ * A jog's later turn is said early only within its first turn's warning, and alone at "now": a button at one of them
+ * is noted on the jog's first turn, whose first warning says it (joinJogs has run).
+ */
+function buttonsOnJogs(cues: Cue[]): void {
+  cues.forEach((cue, i) => {
+    if (!cue.joined || !cue.button) return;
+    let head = i - 1;
+    while (head > 0 && cues[head].joined) head--;
+    if (head >= 0) cues[head].button = true;
+  });
+}
+
 /** A road a path crosses leads the card only this near (about when it is said); before that the next turn does. */
 export const CROSSING_SHOWN_M = 100;
 
-/** The next turn, new named way, flagged junction or walk: what the cue card leads with. */
+/**
+ * The next turn, new named way, flagged junction or walk: what the cue card leads with. A button signal's own note
+ * (withButtons) leads it on a stretch with nothing else near, but not where a turn or other lead cue comes within
+ * ADVANCE_MIN_M after it: there the card led with "Light may need a button press" and a straight arrow over the whole
+ * approach to the turn, which went unshown (the hunt, round 2, R2-2). The note is then the card's small line under
+ * that cue (`buttonBefore`), and still said on its own (`step`). ADVANCE_MIN_M, the shortest first warning, as the
+ * reach here is Claude's pick for this fix (not measured; the owner has not ruled on it).
+ */
 export function nextAction(model: RideModel, progressM: number): Cue | null {
-  return model.cues.find((c) => ahead(model, c, progressM) && (c.kind === "turn" || c.kind === "onto" || c.kind === "hazard" || (c.kind === "crossing" && c.atM - progressM <= CROSSING_SHOWN_M) || c.kind === "walk" || c.kind === "stop" || c.kind === "end")) ?? null;
+  const leads = (c: Cue) => ahead(model, c, progressM) && (c.kind === "turn" || c.kind === "onto" || c.kind === "hazard" || (c.kind === "crossing" && c.atM - progressM <= CROSSING_SHOWN_M) || c.kind === "walk" || c.kind === "stop" || c.kind === "end");
+  const first = model.cues.find(leads) ?? null;
+  if (!first || !buttonOnly(first)) return first;
+  const after = model.cues.find((c) => c.atM >= first.atM && !buttonOnly(c) && leads(c));
+  return after && after.atM - first.atM <= ADVANCE_MIN_M ? after : first;
+}
+
+/** A button signal's own note ahead of `cue`, which the card leads with in its place (nextAction): shown under it. */
+export function buttonBefore(model: RideModel, progressM: number, cue: Cue | null): boolean {
+  return !!cue && !buttonOnly(cue) && model.cues.some((c) => buttonOnly(c) && c.atM < cue.atM && ahead(model, c, progressM));
 }
 
 /** The stretch the rider is on: its street as the API names it, or null. */
@@ -2090,7 +2191,7 @@ export function routeJunctions(model: RideModel): RouteJunction[] {
     if (i > 0) add(s.fromM, model.stretches[i - 1].street, s.street);
   });
   for (const cue of model.cues) {
-    if (cue.kind === "hazard" && cue.movement === null) add(cue.atM, stretchAt(model, cue.atM)?.street ?? null, cue.street);
+    if (cue.kind === "hazard" && cue.movement === null && !cue.buttonOnly) add(cue.atM, stretchAt(model, cue.atM)?.street ?? null, cue.street);
   }
   return out.sort((a, b) => a.atM - b.atM);
 }
@@ -2199,7 +2300,9 @@ export function whereAmI(
         : t("On {way}.", { way }),
   ];
   const progress = state.progressM;
-  const cue = model.cues.find((c) => ahead(model, c, progress) && (c.kind === "turn" || c.kind === "onto" || c.kind === "hazard" || c.kind === "walk"));
+  // Never a button signal's own note (withButtons): "Next" names the turn, and the note's words, a label with no full
+  // stop, ran the sentence on into the distance to the end (the hunt, round 2, R2-2).
+  const cue = model.cues.find((c) => ahead(model, c, progress) && !buttonOnly(c) && (c.kind === "turn" || c.kind === "onto" || c.kind === "hazard" || c.kind === "walk"));
   if (isStartUTurn(cue)) sentences.push(t("Next: {cue}", { cue: lowerFirst((cue as Cue).text) }));
   else if (cue) {
     sentences.push(t("Next, in {distance}: {cue}", { distance: dist(cue.atM - state.progressM), cue: inSentence(cue, cueWords(cue, !metric)) }));
@@ -2237,7 +2340,9 @@ export function whereAmIShown(
   const mile = named ? trailMileAt(miles, stretch!.street as string, pointAt(model, progress)) : null;
   const street = named ?? capital(wayRidden(stretch) ?? t("the route"));
   const lines = [mile ? `${street} · ${mileWords(mile)}` : street];
-  const cue = model.cues.find((c) => ahead(model, c, progress) && (c.kind === "turn" || c.kind === "onto" || c.kind === "hazard" || c.kind === "walk"));
+  // Never a button signal's own note (withButtons): "Next" names the turn, and the note's words, a label with no full
+  // stop, ran the sentence on into the distance to the end (the hunt, round 2, R2-2).
+  const cue = model.cues.find((c) => ahead(model, c, progress) && !buttonOnly(c) && (c.kind === "turn" || c.kind === "onto" || c.kind === "hazard" || c.kind === "walk"));
   const next: string[] = [];
   if (cue) {
     // A turn's street, else the named path it leads to, else a jog's next named street; any other cue its short words.
@@ -2311,6 +2416,42 @@ export function replanKept(model: RideModel, progressM: number, points: readonly
   }
   left.push(loop ? 0 : points.length - 1);
   return left;
+}
+
+/**
+ * Whether a ride's points end where they start, a place between (lib/loop.ts isRoundTrip, within its LOOP_SAME_M of
+ * 50 m): the same test, here so that Ride mode need not load loop.ts and its Plan words.
+ */
+export function endsOnStart(points: readonly LonLat[]): boolean {
+  return points.length >= 3 && haversineM(points[0], points[points.length - 1]) <= 50;
+}
+
+/**
+ * Whether a loop's re-route is sent through a shape point (`loopShapePoint`): only the end left ahead, not for a detour or
+ * a restart, and not where the end ends a leg drawn by hand (lib/pointKinds.ts: a leg is drawn by its end's mark). Put
+ * before such an end, the shape point made the drawn leg run from it, so half the rest of the loop was sent as one
+ * straight line across whatever lay between (the hunt, round 2, R2-8); the drawn leg is then ridden as drawn.
+ */
+export function shapesHome(ride: { loopRide: boolean; detour: boolean; restart: boolean; keptPoints: number; endDrawn: boolean }): boolean {
+  return ride.loopRide && !ride.detour && !ride.restart && ride.keptPoints === 1 && !ride.endDrawn;
+}
+
+/** A loop's way home this long or longer keeps its shape through a re-route (`loopShapePoint`); about a mile. */
+export const LOOP_SHAPE_MIN_M = 1600;
+
+/**
+ * Where a loop's re-route is sent through to keep it a loop (the hunt, 2026-11-08, V1): the point halfway along the
+ * planned line between `fromM` (the rider's place on it) and its end, the start. A loop's re-plan is planned from the
+ * rider to the start, which the API does not see as a loop (its first point is not its last), so neither the loop's
+ * search nor its check on the way out runs, and the router's best way home is usually the way out: the rest of the
+ * loop became an out-and-back. Sent as a via point (it shapes the route, no stop), and only where nothing else is left
+ * ahead but the end and the way home is LOOP_SHAPE_MIN_M or more. Null otherwise.
+ */
+export function loopShapePoint(model: Pick<RideModel, "coordinates" | "along" | "lengthM">, fromM: number): { atM: number; point: LonLat } | null {
+  const rest = model.lengthM - fromM;
+  if (!(rest >= LOOP_SHAPE_MIN_M)) return null;
+  const atM = fromM + rest / 2;
+  return { atM, point: pointAt(model, atM) };
 }
 
 /**
@@ -2578,9 +2719,9 @@ export function withUTurn(model: RideModel): RideModel {
   return { ...model, cues: [uturn, ...model.cues.map((cue) => ({ ...cue, index: cue.index + 1 }))] };
 }
 export const REPLAN_NO_SIGNAL = t("No signal: the planned route is still shown.");
-export const REPLAN_FAILED = t("No new route was found; the planned route is still shown.");
+export const REPLAN_FAILED = t("No new route found. The planned route is still shown.");
 /** No new route to the end, but one back to the planned route (lib/rejoin.ts), which goes on from there. */
-export const REPLAN_REJOIN = t("No new route was found; follow the way back to the planned route.");
+export const REPLAN_REJOIN = t("No new route found. Go back to the planned route.");
 /**
  * A re-route on a route the rider chose over the first that rejoins it ahead, tried before a new plan (routing audit D15,
  * lib/rejoin.ts rejoinsFirst). Not REPLAN_REJOIN: here no new route was looked for, and none failed.

@@ -7,7 +7,7 @@
  * sliders."
  */
 import { PRESETS, type PresetId } from "./presets.ts";
-import { startDials, type Carrying, type Dials } from "./dials.ts";
+import { offersEasyMtb, startDials, type Carrying, type Dials } from "./dials.ts";
 
 /** A focusable element as the Tab trap sees it: a radio has a type, a group name and a state. */
 export type TabCandidate = { type?: string; name?: string; checked?: boolean };
@@ -60,6 +60,8 @@ export function choose(preset: PresetId, carrying: Carrying | null, current: Dia
   return {
     ...start,
     ...(current.trailsOff ? { trailsOff: true } : {}),
+    // Easy MTB trails stays between the ride types that offer it (Default, Trailmaxxing).
+    ...(current.easyMtb === true && offersEasyMtb(preset) ? { easyMtb: true } : {}),
     ...(current.loop === true ? { loop: true } : {}),
   };
 }

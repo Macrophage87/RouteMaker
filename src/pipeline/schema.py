@@ -801,6 +801,12 @@ CREATE TABLE {schema}.segment (
     bike_popular    smallint    NOT NULL DEFAULT 0 CHECK (bike_popular BETWEEN 0 AND 3),
     -- A slip road (ROAD_LINK_COLUMN; `pipeline.writers.mark_links`). Display only.
     road_link       boolean     NOT NULL DEFAULT false,
+    -- A crossing, path or sidewalk whose signal is called with a push button: tagged
+    -- `button_operated=yes` itself or through a node of it (`pipeline.signals.button_ways`;
+    -- the owner, 2026-11-08). The junction-delay model reads a signal reached on it as
+    -- needing its button (`core.routing.button_ways`). No migration: the table is created
+    -- whole on every rebuild, and the route reads it only where the live table has it.
+    button_operated boolean     NOT NULL DEFAULT false,
     -- The zoomed-out map's network marks (OVERVIEW_COLUMN, STRAY_ZOOM_COLUMN;
     -- `pipeline.bike_network`). Display only.
     overview        smallint    NOT NULL DEFAULT 0 CHECK (overview BETWEEN 0 AND 4),

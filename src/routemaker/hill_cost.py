@@ -51,6 +51,16 @@ how long the climb takes at that power:
   A critical-power W' balance (Skiba et al. 2012) was tried for past FTP and dropped: the
   exponential curve reaches the same "sharp increase" with one model.
 
+**Electric assist** (the owner's Bikeshare e-bike start, `core.presets`: "the motor takes the
+climb"). An assisted ride's flat speed is the motor's pace, not the rider's, so timing its
+climbs at the rider's own power and taking the time at that faster flat speed off priced an
+e-bike's climb dearer than a plain bike's (hunt finding E2, 2026-11-08). With `assist_w` the
+climb is ridden at the rider's power plus ASSIST_W from the motor, never slower than without
+it and never faster than the flat speed, so the motor takes most of the extra time. The
+steepness penalty is still the slider's alone, worked out for the standard rider as before:
+an e-bike's slider start (E-bike 50, Bikeshare e-bike -20) says how much a long steep grade
+still counts (the battery and the rider's nerve).
+
 Descents add nothing here (`routemaker.climbs.descent_cost_s` still prices riding the brakes).
 Pure: no database, no router.
 
@@ -104,6 +114,10 @@ W_PRIME_S = 70.0
 WALK_PENALTY = 4.0
 # Power reaching the wheel.
 DRIVETRAIN = 0.95
+# An electric assist's steady help up a climb, watts at the wheel's side of the pedals: the
+# 250 W continuous rating of an EU pedelec, about what a US class 1 or 2 mid-drive or a share
+# e-bike's hub motor holds up a long grade (their 500 to 750 W peaks do not last a climb).
+ASSIST_W = 250.0
 
 
 def push_ms(grade: float) -> float:
@@ -211,6 +225,7 @@ def window_cost_s(
     flat_ms: float,
     lt1_grade: float,
     climb_s: float | None = None,
+    assist_w: float = 0.0,
 ) -> tuple[float, float]:
     """(extra seconds over the flat, steepness penalty seconds) for `run_m` metres at `grade`,
     on a climb that takes `climb_s` seconds in all (None: this window's own time). The
@@ -225,7 +240,11 @@ def window_cost_s(
     bikes tend to have good climbing gears. Penalty is by slider."). Where riding costs more
     than pushing, it is pushed: its time, plus WALK_PENALTY a second, a last resort. The flat
     and downhill cost nothing. The penalty is for choosing routes only, never a shown time
-    ("mostly a hidden calculation, less so for the actual time")."""
+    ("mostly a hidden calculation, less so for the actual time").
+
+    With `assist_w` (an electric assist, ASSIST_W) the motor's watts join the rider's, so the
+    climb takes less time, never more than without them and never less than at the flat
+    speed; the penalty is unchanged (the module's "Electric assist")."""
     if run_m <= 0 or flat_ms <= 0 or grade <= 0:
         return 0.0, 0.0
     push = push_ms(grade)
@@ -244,6 +263,11 @@ def window_cost_s(
     ride_ms = climb_ms
     if mass != std:
         ride_ms = _ride_ms(math.floor(round(grade / GRADE_STEP, 6)), mass, flat_ms, lt1_grade)
+    if assist_w > 0:
+        # The motor's watts beside the rider's: the rider's power up this grade is the
+        # standard rider's (`need`), the bike's speed what both hold at the rider's weight.
+        assisted_ms = _speed_ms(round(grade, 4), mass, round(need + assist_w, 1))
+        ride_ms = min(flat_ms, max(ride_ms, assisted_ms))
     extra_s = run_m / ride_ms - run_m / flat_ms
     push_s = run_m / push
     if push_s - run_m / flat_ms + push_s * WALK_PENALTY < extra_s + penalty_s:
@@ -256,10 +280,12 @@ def profile_cost_s(
     mass_kg: float,
     flat_ms: float,
     hills: int,
+    assist_w: float = 0.0,
 ) -> tuple[float, float]:
     """A profile's (`core.routing.grade_profile`) climbing time and steepness penalty,
     seconds, over its rising windows (`window_cost_s`), at the LT1 grade the hills slider
-    sets. Each window is weighed over the time its whole climb takes."""
+    sets. Each window is weighed over the time its whole climb takes. `assist_w`: an
+    electric assist's watts (ASSIST_W), which shorten the climbing time only."""
     lt1 = lt1_grade_for(hills)
     windows = [(s, e, r) for s, e, r in effort.windows_along(profile) if e > s]
     # Each window's climb: the riding time of the rising windows around it, until the road
@@ -285,7 +311,7 @@ def profile_cost_s(
     time_s = penalty_s = 0.0
     for (start, end, rise), climb_s in zip(windows, climb_of, strict=True):
         run = end - start
-        t, p = window_cost_s(run, rise / run, mass_kg, flat_ms, lt1, climb_s or None)
+        t, p = window_cost_s(run, rise / run, mass_kg, flat_ms, lt1, climb_s or None, assist_w)
         time_s += t
         penalty_s += p
     return time_s, penalty_s
@@ -296,8 +322,9 @@ def hill_cost_m(
     mass_kg: float,
     flat_ms: float,
     hills: int,
+    assist_w: float = 0.0,
 ) -> float:
     """What a profile's climbs cost, in metres of flat riding at `flat_ms`: their extra time
-    plus their steepness penalty."""
-    time_s, penalty_s = profile_cost_s(profile, mass_kg, flat_ms, hills)
+    plus their steepness penalty (`assist_w`: an electric assist's watts, `profile_cost_s`)."""
+    time_s, penalty_s = profile_cost_s(profile, mass_kg, flat_ms, hills, assist_w)
     return (time_s + penalty_s) * flat_ms

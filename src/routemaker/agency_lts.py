@@ -29,7 +29,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass, replace
 
 from . import ddot_rules
-from .stress import Stress, StressResult
+from .stress import MOTORWAY_AVOID_RULE, USE_SIDEPATH_RULE, Stress, StressResult
 
 # How local an agency is. Lower wins: a county's rating over a state's.
 COUNTY = 1
@@ -287,6 +287,27 @@ def read_ddot(
     return replace(rating, read_as=level, note=ddot_rules.words(rule, level, block))
 
 
+# The formula's reasons for Avoid that are about the road's place, not its traffic, and so
+# stand whatever an agency's level or the owner's reading of one (`read_as`) says: a side
+# path riders are asked to use, and a motorway open to bicycles (`stress.classify`).
+STRUCTURAL_AVOID_RULES = (USE_SIDEPATH_RULE, MOTORWAY_AVOID_RULE)
+# Every formula Avoid's rule begins so (`stress.legal_but_avoid`, `stress.classify`).
+LEGAL_BUT_AVOID_PREFIX = "legal but avoid"
+
+
+def keeps_formula_avoid(result: StressResult, pick: AgencyRating) -> bool:
+    """Whether the formula's Avoid on `result` stands against the agency rating `pick`.
+    A side path's road and a bike-legal motorway always keep it (`STRUCTURAL_AVOID_RULES`).
+    An urban expressway keeps it against an agency's plain level, and against a level read
+    as a lower one (Montgomery's 5 as 4.5), but an owner's reading (`read_as`, such as MDOT
+    SHA's `rural-expressway` 4.5; the owner, 2026-10-31: the same rule everywhere) is a
+    level of its own and stands."""
+    rule = result.rule or ""
+    if any(rule.startswith(reason) for reason in STRUCTURAL_AVOID_RULES):
+        return True
+    return rule.startswith(LEGAL_BUT_AVOID_PREFIX) and pick.read_as is None
+
+
 def apply(
     result: StressResult,
     ratings: Iterable[AgencyRating],
@@ -361,11 +382,13 @@ def apply(
             agency_ratings=tuple(sorted(ratings, key=lambda r: r.rank)),
         )
     level = used_level(pick)
-    if pick.read_as is None and level < pick.level and result.tier is Stress.AVOID:
-        # A level read as a lower one (Montgomery's 5 as 4.5) does not lower the
-        # formula's own Avoid (a bike-legal motorway, a side path's road): the
-        # agency's highest level agrees with it. The rating is still recorded. An owner's
-        # reading (`read_as`) is a level of its own, as an agency's 4 is, and stands.
+    if result.tier is Stress.AVOID and keeps_formula_avoid(result, pick):
+        # The formula's own "legal but avoid" stays (the module's rule above: "Our own 5,
+        # Avoid, stays for roads that are legal but not a real option"). Until hunt D2
+        # (2026-11-08) only a level read as a lower one (Montgomery's 5 as 4.5) kept it, so
+        # a plain MoCo 3, an MDOT SHA 4 or a DDOT 2 on a `use_sidepath` road with its side
+        # path mapped priced the roadway as an ordinary street and routed riders onto it
+        # instead of the path OSM tells them to use. The rating is still recorded.
         return replace(result, agency_ratings=tuple(sorted(ratings, key=lambda r: r.rank)))
     tier, half = tier_of(level)
     # The other agencies' levels are in `agency_ratings`, not the rule: the

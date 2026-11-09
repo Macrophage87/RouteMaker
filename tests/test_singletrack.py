@@ -3,8 +3,12 @@
 
 from __future__ import annotations
 
+import re
+from pathlib import Path
+
 import pytest
 
+from routemaker import singletrack
 from routemaker.singletrack import grade, is_singletrack, mtb_scale_words
 
 # The C&O Canal towpath, as OSM maps it either side of lock 21 (item 93).
@@ -100,3 +104,53 @@ def test_mtb_scale_words_say_which_scale_set_the_level(tags, words) -> None:
     """The owner, 2026-10-28: "say which rating type triggered the rating and if they are
     rated on both scales say that"."""
     assert mtb_scale_words(tags) == words
+
+
+@pytest.mark.parametrize(
+    "tags",
+    [
+        {
+            "highway": "cycleway",
+            "bicycle": "designated",
+            "surface": "fine_gravel",
+            "mtb:scale": "1",
+        },
+        {"highway": "path", "bicycle": "designated", "surface": "compacted", "mtb:scale": "1"},
+        {"highway": "cycleway", "surface": "gravel", "mtb:scale:imba": "1"},
+    ],
+)
+def test_an_easy_rating_on_a_built_gravel_trail_is_not_singletrack(tags) -> None:
+    """The hunt of 2026-11-08 (A4): a crushed-stone rail-trail rated 1 was closed as
+    singletrack on every standard graph. Before: is_singletrack True."""
+    assert not is_singletrack(tags)
+
+
+@pytest.mark.parametrize(
+    "tags",
+    [
+        # Harder than easy is still singletrack, gravel or not.
+        {"highway": "cycleway", "bicycle": "designated", "surface": "gravel", "mtb:scale": "2"},
+        # Not built for bicycles: a rated gravel footpath is still read by its rating.
+        {"highway": "path", "surface": "gravel", "mtb:scale": "1"},
+        # Dirt is not gravel.
+        {"highway": "path", "bicycle": "designated", "surface": "dirt", "mtb:scale": "1"},
+    ],
+)
+def test_the_gravel_exception_is_narrow(tags) -> None:
+    assert is_singletrack(tags)
+
+
+def test_the_gravel_exception_reads_the_uphill_rating_as_the_lua_rule_does() -> None:
+    """Terrain hunt 2, T2: `mtb:scale=1` with `mtb:scale:uphill=2` on a gravel cycleway.
+    Before: not singletrack (open on every graph), while the Lua rule
+    (`strip_easy_gravel_ratings`, which reads `mtb:scale:uphill`) kept the rating for the
+    parser, which priced the trail as the gravel class. After: singletrack, as the Lua rule
+    reads it (a 2 on any rating it reads is technical ground)."""
+    trail = {"highway": "cycleway", "surface": "gravel", "mtb:scale": "1"}
+    assert not is_singletrack(trail)
+    assert not is_singletrack({**trail, "mtb:scale:uphill": "1"})
+    assert is_singletrack({**trail, "mtb:scale:uphill": "2"})
+    # The Lua rule's keys are among the ones read here (lua/routemaker_remap.lua).
+    lua = Path(__file__).resolve().parents[1] / "lua" / "routemaker_remap.lua"
+    keys = re.search(r"M\.SURFACE_RATING_KEYS = \{([^}]*)\}", lua.read_text()).group(1)
+    assert set(re.findall(r'"([^"]+)"', keys)) <= set(singletrack.EASY_GRAVEL_KEYS)
