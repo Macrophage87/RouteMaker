@@ -5279,7 +5279,9 @@ No map rebuild is needed for any of them.
   no way round, the mountain-bike map being down (`no_mtb_graph`), or a route with no trail at
   all reached a connector user unsaid. `mtb_said` says what the page's `mtbNotes`
   (`lib/mtbMode.ts`) says, warnings first, from 66 ft (20 m), as the summary's `mtb` lines and
-  on each alternative. MCP only. Tests: tests/test_mcp_trails.py, tests/test_mcp_optimizing.py.
+  on each alternative. Its figures go through `distance_text`, which mirrors the page's
+  `formatDistance`: below a tenth of a mile they are said in feet ("100 ft (32 m)" of LTS 4 at
+  Lake Frank), not as "0.0 mi". MCP only. Tests: tests/test_mcp_trails.py, tests/test_mcp_optimizing.py.
 - **A loop's way back shared is measured by stretch, not by way** (M4-2). `refine.return_overlap`,
   `routing.loop_stats`, `refine.repeated_by_leg` and `_repeat_points` counted a piece as ridden
   before wherever its OSM way was, so a trail mapped as one way for miles (Rosaryville's
@@ -6656,8 +6658,8 @@ is asked for through the start again; then the way back (the last leg) is asked 
 or a stop; up to 150), thinned to every second, fourth and eighth point if the router has no route or
 it is past the ceiling (the whole loop, not each half): every one is asked (four routes at
 most), and the least stressful of the ways back that share at most 30% of their road with the way out
-(matched by stretch, `routing.Ridden`: a piece on the same way with its middle within 16 ft (5 m)
-of one ridden out; routing hunt 4, M4-2) is kept (at the top of the slider by `better`, with the diminishing returns on the
+(matched by stretch, `routing.Ridden`: a piece on the same way with its middle within 16 ft (5 m,
+Claude's default, not measured) of one ridden out; routing hunt 4, M4-2) is kept (at the top of the slider by `better`, with the diminishing returns on the
 whole loop's distance); if none does the one that shares least is kept, so the overlap is preferred away, not forced, and a loop may still use one bridge. If
 the way back is the way out whatever is excluded (90% or more), the router's own route is kept and
 `loop.fallback` says `out_and_back`. Where the time ran out before every way back was asked and

@@ -193,6 +193,25 @@ def feet_text(metres: float) -> str:
     return f"{metres * FEET_PER_METRE:,.0f} ft ({metres:,.0f} m)"
 
 
+# Below this a distance is said in feet (and metres), as the page's `formatDistance` does
+# (frontend/src/lib/format.ts FEET_BELOW_M): a tenth of a mile, where "0.1 mi" or "0.0 mi"
+# would stop saying anything.
+FEET_BELOW_M = METRES_PER_MILE / 10
+
+
+def distance_text(metres: float) -> str:
+    """A distance as the page's `formatDistance` gives it: "4.7 mi (7.6 km)", and below a
+    tenth of a mile "105 ft (32 m)", rounded as its `roundShort` does (to ten from 100 up)."""
+    if metres >= FEET_BELOW_M:
+        return miles_text(metres)
+
+    def short(value: float) -> int:
+        # Halves round up, as JavaScript's Math.round does (Python's round goes to even).
+        return math.floor(value / 10 + 0.5) * 10 if value >= 100 else math.floor(value + 0.5)
+
+    return f"{short(metres * FEET_PER_METRE):,} ft ({short(metres):,} m)"
+
+
 # --- Metro stations -------------------------------------------------------------------------
 
 
@@ -1399,18 +1418,20 @@ def mtb_said(info: object) -> list[str] | None:
     over = metres("over_level_m")
     if over >= MTB_SAY_FROM_M:
         out.append(
-            f"This route uses {miles_text(over)} of trail harder than {level}: no way round it"
+            f"This route uses {distance_text(over)} of trail harder than {level}: no way round it"
             " was found. Check the trail before you ride, or raise the hardest level."
         )
     busy = metres("lts4_m")
     if busy >= MTB_SAY_FROM_M:
         out.append(
-            f"It uses {miles_text(busy)} of busy road (LTS 4 or Avoid): no calmer connection"
+            f"It uses {distance_text(busy)} of busy road (LTS 4 or Avoid): no calmer connection"
             " was found."
         )
     long3 = metres("long_lts3_m")
     if long3 >= MTB_SAY_FROM_M:
-        out.append(f"It has {miles_text(long3)} of LTS 3 road in stretches of a half mile or more.")
+        out.append(
+            f"It has {distance_text(long3)} of LTS 3 road in stretches of a half mile or more."
+        )
     if info.get("limited") in ("time", "untraced"):
         out.append(
             "The trail search ran short of time, so this may not be the most trail-rich route."
@@ -1418,10 +1439,10 @@ def mtb_said(info: object) -> list[str] | None:
     trail, single = metres("trail_m"), metres("singletrack_m")
     if trail >= MTB_SAY_FROM_M:
         out.append(
-            f"{miles_text(trail)} on trail, {miles_text(single)} of it mountain-bike"
+            f"{distance_text(trail)} on trail, {distance_text(single)} of it mountain-bike"
             f" singletrack, up to {level}."
             if single >= MTB_SAY_FROM_M
-            else f"{miles_text(trail)} on trail, up to {level}."
+            else f"{distance_text(trail)} on trail, up to {level}."
         )
     else:
         out.append("No trail was found on this route; it keeps to calm roads and paths.")
@@ -1431,10 +1452,12 @@ def mtb_said(info: object) -> list[str] | None:
         )
         easier, harder = metres("easier_m"), metres("harder_m")
         if easier >= MTB_SAY_FROM_M:
-            out.append(f"{miles_text(easier)} of trail is easier than the preferred {preferred}.")
+            out.append(
+                f"{distance_text(easier)} of trail is easier than the preferred {preferred}."
+            )
         if harder >= MTB_SAY_FROM_M:
             out.append(
-                f"{miles_text(harder)} of trail is harder than the preferred {preferred},"
+                f"{distance_text(harder)} of trail is harder than the preferred {preferred},"
                 f" up to {level}."
             )
         if (

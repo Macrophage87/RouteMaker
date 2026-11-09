@@ -48,12 +48,22 @@ def test_a_route_with_no_trail_says_so_with_its_road_warnings() -> None:
     # Lake Frank, level 4: a road route, 0.55 mi of LTS 3 in a long run and a little LTS 4.
     said = mcp.mtb_said(reading(max_level=4, long_lts3_m=0.55 * MI, lts4_m=32.0))
     assert said == [
-        "It uses 0.0 mi (0.0 km) of busy road (LTS 4 or Avoid): no calmer connection was found.",
+        "It uses 100 ft (32 m) of busy road (LTS 4 or Avoid): no calmer connection was found.",
         "It has 0.6 mi (0.9 km) of LTS 3 road in stretches of a half mile or more.",
         "No trail was found on this route; it keeps to calm roads and paths.",
     ]
     out = mcp.summary({"distance_m": 4.0 * MI, "mtb": reading(max_level=4)})
     assert out["mtb"] == ["No trail was found on this route; it keeps to calm roads and paths."]
+
+
+def test_a_short_warning_is_said_in_feet_not_as_zero_miles() -> None:
+    # Under a tenth of a mile a figure is said in feet, as the page's formatDistance says it:
+    # "0.0 mi" would read as nothing to warn of.
+    said = mcp.mtb_said(reading(max_level=1, over_level_m=50.0, lts4_m=150.0))
+    assert said[0].startswith("This route uses 160 ft (50 m) of trail harder than level 1 (green):")
+    assert said[1].startswith("It uses 490 ft (150 m) of busy road (LTS 4 or Avoid)")
+    assert not any("0.0 mi" in line for line in said)
+    assert mcp.distance_text(0.1 * MI) == "0.1 mi (0.2 km)"
 
 
 def test_trail_over_the_hardest_level_is_warned_first() -> None:
