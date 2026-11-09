@@ -428,7 +428,57 @@ def search(
         params["zoom"] = BIAS_ZOOM
         params["location_bias_scale"] = BIAS_SCALE
         near = (lon, lat)
-    return results(_get("/api", params), reverse=False, near=near)[:limit]
+    found = results(_get("/api", params), reverse=False, near=near)
+    if not found:
+        address = address_part(q)
+        if address is not None:
+            # One more question, the address alone; the place at it is found by its number.
+            typed = q[: len(q) - len(address)]
+            found = results(
+                _get("/api", {**params, "q": expand_abbreviations(address)}),
+                reverse=False,
+                near=near,
+            )
+            found.sort(key=lambda row: not _named_in(row["name"], typed))
+    return found[:limit]
+
+
+# A house number: digits, perhaps a letter ("4654", "1100A"), perhaps a comma after.
+_HOUSE_NUMBER = re.compile(r"^\d+[A-Za-z]?,?$")
+
+
+def address_part(q: str) -> str | None:
+    """The street address in a query that names a place and then where it is, or None.
+
+        Riders paste a business as a listing writes it: "Satay Club Asian Restaurant & Sushi
+        Bar, 4654 Wisconsin Ave NW, Washington, DC". OSM calls it "Satay Club", and Photon,
+        which wants nearly every word typed to be in a place's name or address, found nothing
+        (Stephen 2026-11-09). The address alone finds the building, and the place at it. It is
+        the first comma-separated part that begins with a house number, when a name comes
+        before it; with no commas, the words from the first house number that a street name
+        follows, two words or more ("Satay Club 4654 Wisconsin Ave", where "Route 1 Diner" is a
+    name). A query that begins with its number is an
+        address already, and gets None.
+    """
+    parts = [part.strip() for part in q.split(",")]
+    if len(parts) > 1:
+        for i, part in enumerate(parts[1:], start=1):
+            words = part.split()
+            if len(words) > 1 and _HOUSE_NUMBER.match(words[0]) and words[1][:1].isalpha():
+                return ", ".join(parts[i:])
+        return None
+    words = q.split()
+    for i in range(1, len(words) - 2):
+        if _HOUSE_NUMBER.match(words[i]) and words[i + 1][:1].isalpha():
+            return " ".join(words[i:])
+    return None
+
+
+def _named_in(name: str, typed: str) -> bool:
+    """Whether every word of three or more letters in `name` is among the words `typed`."""
+    typed_words = set(re.findall(r"\w+", typed.casefold()))
+    own = [w for w in re.findall(r"\w+", name.casefold()) if len(w) >= 3 and not w.isdigit()]
+    return bool(own) and all(w in typed_words for w in own)
 
 
 # --- names for points ---------------------------------------------------------------

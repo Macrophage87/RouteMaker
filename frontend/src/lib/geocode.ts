@@ -158,13 +158,22 @@ export function isKindSearch(query: string): boolean {
 }
 
 /**
+ * Whether the query holds a street address: it begins with a house number ("1600 Pennsylvania"), or a part after a
+ * comma does ("Satay Club Asian Restaurant, 4654 Wisconsin Ave NW"), or a number is followed by two words or more
+ * ("Satay Club 4654 Wisconsin Ave"). The server then answers what is at the address (src/core/geocode.py address_part).
+ */
+export function hasStreetAddress(query: string): boolean {
+  return /(^|,)\s*\d/.test(query) || /\s\d+[a-z]?\s+\p{L}+\s+\p{L}/iu.test(query);
+}
+
+/**
  * The places found, nearest the route's start first (P2: a rider who searched "grocery" was offered a store 66 minutes
  * away first): those that answer the words by name (`namesQuery`) ahead of the rest, each group by straight-line
- * distance, ties in the server's order. An address ("1600 Pennsylvania") keeps the server's order, which weighs the
+ * distance, ties in the server's order. An address ("1600 Pennsylvania", `hasStreetAddress`) keeps the server's order, which weighs the
  * number and the street; so does a search with no start known.
  */
 export function nearestFirst(places: readonly Place[], start: LonLat | null | undefined, query: string): Place[] {
-  if (!start || /^\s*\d/.test(query)) return [...places];
+  if (!start || hasStreetAddress(query)) return [...places];
   // A kind of place ("grocery") is nearest first only: a store named "… Grocery" is not put ahead of a nearer one.
   const kind = isKindSearch(query);
   return places
