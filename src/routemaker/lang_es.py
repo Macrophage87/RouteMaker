@@ -338,6 +338,11 @@ ES: dict[str, str] = {
         "Perdería el de las {time} {source} ({vehicle}) y no sale otro en la próxima hora: ese"
         " viaje queda fuera."
     ),
+    "As walked, you may miss the {time} {source} ({vehicle}), and no later one leaves within"
+    " the hour: leave earlier, or plan another way.": (
+        "Caminando, puede perder el de las {time} {source} ({vehicle}) y no sale otro en la"
+        " próxima hora: salga antes o planifique otra forma de ir."
+    ),
     "You would miss the {time} {source} ({vehicle}): planned on the {next} {source} instead.": (
         "Perdería el de las {time} {source} ({vehicle}): se planifica con el de las {next}"
         " {source}."

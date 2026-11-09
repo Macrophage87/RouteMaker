@@ -979,3 +979,69 @@ def test_closures_near_asks_for_a_view_the_site_takes() -> None:
         server.call("closures_near", {"near": [-77.0, lat], "within_miles": 50})
     for west, south, east, north in boxes:
         assert east - west <= 0.4 and north - south <= 0.3
+
+
+# --- A transit trip's later rides (routing hunt 4, X4-2) -----------------------------------------
+
+
+def _transit_answer(later_spans):
+    """A Bike + transit answer: a 0.1 mi ride to the station (the route line), Metro, and a
+    1.2 mi ride from the exit station with `later_spans` (None: not routed)."""
+    ride_m = 0.1 * MI
+    later = {"mode": "ride", "to": None, "seconds": 480, "route_line": False}
+    if later_spans is not None:
+        later["stress_spans"] = later_spans
+        later["distance_m"] = 1.2 * MI
+    return {
+        "distance_m": ride_m,
+        "duration_s": 40,
+        "stress_m": {"1": ride_m},
+        "facility_m": {"path": ride_m},
+        "transit": {
+            "summary": "About 61 min door to door.",
+            "steps": [
+                {"mode": "ride", "to": "Silver Spring", "seconds": 40, "route_line": True},
+                {"mode": "enter", "to": None, "seconds": 120, "route_line": False},
+                {"mode": "metro", "to": "Naylor Road", "seconds": 2400, "route_line": False},
+                {"mode": "exit", "to": None, "seconds": 120, "route_line": False},
+                later,
+            ],
+        },
+    }
+
+
+def test_a_transit_trips_ride_from_the_exit_station_is_described() -> None:
+    # Hunt 4, X4-2: the summary said 0.1 mi and no busy stretches, the ride of over a mile
+    # from Naylor Road, LTS 4 on a third of it, nowhere.
+    spans = [
+        {"from_m": 0, "to_m": 1000, "tier": 2},
+        {"from_m": 1000, "to_m": 1700, "tier": 4},
+        {"from_m": 1700, "to_m": 2000, "tier": 1},
+    ]
+    out = mcp.summary(_transit_answer(spans))["transit"]
+    (ride,) = out["later_rides"]
+    assert ride["from"] == "Naylor Road" and ride["to"] == "the destination"
+    assert ride["routed"] is True and ride["miles"] == pytest.approx(1.2)
+    assert ride["traffic_stress"]["LTS 4"].startswith("35%")
+    (busy,) = ride["busy_stretches"]
+    assert busy["lts"] == 4 and busy["from_mi"] == pytest.approx(0.6)
+    assert busy["miles"] == pytest.approx(0.42)
+    assert out["ridden_mi"] == pytest.approx(1.3)
+    assert out["figures_cover"] == mcp.LATER_RIDES_NOTE
+
+
+def test_an_unrouted_later_ride_is_still_named_and_one_ride_says_nothing_more() -> None:
+    out = mcp.summary(_transit_answer(None))["transit"]
+    (ride,) = out["later_rides"]
+    assert ride == {
+        "mode": "ride",
+        "from": "Naylor Road",
+        "to": "the destination",
+        "minutes": 8,
+        "routed": False,
+    }
+    assert "ridden_mi" not in out
+    answer = _transit_answer(None)
+    answer["transit"]["steps"][-1]["mode"] = "walk"
+    out = mcp.summary(answer)["transit"]
+    assert "later_rides" not in out and "figures_cover" not in out
