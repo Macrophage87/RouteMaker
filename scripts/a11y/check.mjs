@@ -4468,8 +4468,8 @@ if (mine()) {
 // ---- 26. Riding with kids (FOLLOWUP-KIDS-PRESET, OWNER-DECISIONS 240 (B)): a ride type like any other, by keyboard and screen reader ----
 // Novice and Nervous takes its place since 9e50f609 (hills -60, the API's "novice"; an old "kids" link opens it): the
 // checks below are the same, for it.
-// Every ride type: 19 since Road Bike (#884), Walk and Walk + transit (#888) and Run (#901), in the dialog's
-// three groups (lib/rideTypeGroups.ts: Transportation 10, Adventure 7, Group 2).
+// Every ride type: 20 since Road Bike (#884), Walk and Walk + transit (#888), Run (#901) and Tandem (#1070), in the dialog's
+// three groups (lib/rideTypeGroups.ts: Transportation 10, Adventure 8, Group 2).
 if (mine()) {
   const p = await open({ route: S_KIDS, hash: hashFor("default", 70) });
   const kidsCard = "[...document.querySelectorAll('.ride-type-card > button:not(.ride-fav)')].find((b) => b.querySelector('strong')?.textContent === 'Novice and Nervous')";
@@ -4481,7 +4481,7 @@ if (mine()) {
       kids: !!k, pressed: k?.getAttribute('aria-pressed'), hint: k?.querySelector('.hint')?.textContent, said: k?.querySelector('.visually-hidden')?.textContent }; })()`);
   // Plan streamline (2026-10-17): each card shows its gist; the full sentence is said with it, and shown by What each does.
   check("kids: the ride-type dialog is modal and offers Novice and Nervous among every ride type, with its gist shown and its sentence said",
-    offered.open && offered.modal && offered.cards === 19 && offered.kids && offered.hint === "Busy streets avoided hard, for new riders." && /^For riders new to traffic: /.test(offered.said ?? ""), JSON.stringify(offered));
+    offered.open && offered.modal && offered.cards === 20 && offered.kids && offered.hint === "Busy streets avoided hard, for new riders." && /^For riders new to traffic: /.test(offered.said ?? ""), JSON.stringify(offered));
   check("kids: its card is a toggle button, not pressed while another ride type is in use", offered.pressed === "false", JSON.stringify(offered.pressed));
   await p.eval(`${kidsCard}.setAttribute('data-kids', ''); true`);
   const card = await axNode(p, "button[data-kids]");
