@@ -292,6 +292,9 @@ VALHALLA_UPSTREAMS = {
     "offroad": os.environ.get("VALHALLA_OFFROAD_URL", "http://valhalla-offroad:8002"),
     "mtb": os.environ.get("VALHALLA_MTB_URL", "http://valhalla-mtb:8002"),
     "paved": os.environ.get("VALHALLA_PAVED_URL", "http://valhalla-paved:8002"),
+    "paved-weekend": os.environ.get(
+        "VALHALLA_PAVED_WEEKEND_URL", "http://valhalla-paved-weekend:8002"
+    ),
 }
 
 

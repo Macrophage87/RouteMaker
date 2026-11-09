@@ -21,7 +21,6 @@ import math
 
 from django.conf import settings
 
-from pipeline.variants import Variant
 from routemaker.geo import Point, haversine
 
 from . import presets, routing
@@ -112,16 +111,27 @@ def match(
     started: float | None = None,
     trails_off: bool = False,
     assist: bool = False,
+    easy_mtb: bool = False,
+    when: str | None = None,
 ):
     """The snapped line and the share of `points` that matched a way.
 
     On the graph the ride itself routes on (`presets.variant_for_ride`, as `routing.plan`
     chooses it): "Keep to roads, not trails" snaps to the no-trail graph, electric assist to the
-    e-bike one. Raises routing.RouterRefused when the matcher finds no way along the track,
+    e-bike one, "Easy MTB trails" to the off-road one, and the ride time (`when`, or the time of
+    the moment) chooses a weekend graph as the plan's does. A twin graph not served is passed
+    over for the graph it falls back to (`routing._served_variant`). Raises
+    routing.RouterRefused when the matcher finds no way along the track,
     routing.RouterUnavailable or routing.DeadlineExceeded, and KeyError for an unknown preset.
     """
     assist = assist and presets.PRESETS[preset_name].assist_speed_kmh is not None
-    variant = presets.variant_for_ride(preset_name, routing.default_when(), assist, trails_off)
+    easy = easy_mtb and preset_name in presets.EASY_MTB_PRESETS and not trails_off
+    variant = presets.variant_for_ride(
+        preset_name, when or routing.default_when(), assist, trails_off, easy
+    )
+    # As the plan does (hunt 3, P3-3): Road Bike's weekend graph is not asked before a build of
+    # it is promoted, and the paved graph is asked in its place.
+    variant = routing._served_variant(variant)
     payload = {
         "shape": [{"lon": lon, "lat": lat} for lon, lat in points],
         "costing": "bicycle",
@@ -145,12 +155,16 @@ def match(
     deadline = routing.Deadline(begun + BUDGET_S, PER_CALL_S)
     try:
         answer = routing._call(variant, "trace_attributes", payload, deadline)
-    except routing.RouterUnavailable:
-        # A twin graph (weekend, off-road, mountain bike) not answering: the standard graph it
-        # was built from has the same ways to snap to, near enough.
-        if variant not in routing.TWIN_VARIANTS:
+    except (routing.RouterUnavailable, routing.RouterRefused) as failure:
+        # A twin graph (weekend, off-road, mountain bike, paved) not answering, or one with no
+        # tiles answering "no suitable edges" (170/171, as `routing._plan` reads it): the graph
+        # it falls back to (`routing.twin_fallback`, the standard graph it was built from, or
+        # the paved one for Road Bike's weekend twin) has the same ways to snap to, near enough.
+        if variant not in routing.TWIN_VARIANTS or (
+            isinstance(failure, routing.RouterRefused) and failure.code not in routing.NO_EDGE_CODES
+        ):
             raise
-        variant = Variant.STANDARD.value
+        variant = routing._served_variant(routing.twin_fallback(variant))
         answer = routing._call(variant, "trace_attributes", payload, deadline)
     line = routing.decode_polyline6(answer.get("shape") or "")
     if len(line) < 2:

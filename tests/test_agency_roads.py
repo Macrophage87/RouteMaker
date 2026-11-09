@@ -9,6 +9,7 @@ Baltimore's `speed` field standing in for a limit.
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 
 import pytest
 
@@ -893,6 +894,29 @@ def test_a_district_record_of_no_facility_removes_osm_s_painted_lane() -> None:
     assert result.sources["bike"] == A.DC_AGENCY
     assert result.precedence == (A.ROW_NO_FACILITY,)
     assert result.disagreements == ()
+
+
+def test_the_record_date_is_the_roadway_block_retrieval_date_in_sources() -> None:
+    """`DC_RECORD_AS_OF` is the installed record's retrieval date, the date a newer
+    OSM edit is flagged against for the owner (hunt D6, 2026-11-08); a reinstall
+    updates both."""
+    from pathlib import Path
+
+    sources = (Path(__file__).resolve().parents[1] / "docs" / "SOURCES.md").read_text()
+    entry = sources[sources.index("**Roadway Block**") :][:400]
+    assert f"retrieved {A.DC_RECORD_AS_OF.isoformat()}" in entry
+
+
+def test_the_district_record_wins_however_new_the_osm_edit() -> None:
+    """The owner, 2026-11-08: a newer OSM edit is flagged for his call, not taken: the
+    overlay reads no edit date, and the record's lanes, speed and row A stand."""
+    result = A.overlay(
+        {"highway": "secondary", "maxspeed": "25 mph", "lanes": "2", "cycleway:both": "lane"},
+        way_facts(lanes_per_direction=2, one_way=False, speed_mph=30),
+    )
+    assert result.tags["lanes:forward"] == result.tags["lanes:backward"] == "2"
+    assert result.tags["maxspeed"] == "30 mph" and "cycleway:both" not in result.tags
+    assert result.precedence == (A.ROW_NO_FACILITY,)
 
 
 def test_a_district_record_of_no_facility_keeps_a_track_and_says_so() -> None:
@@ -2250,3 +2274,91 @@ def test_the_dc_parser_keeps_the_block_s_key() -> None:
     assert A.RoadFacts.from_json(facts.to_json()).block_key == "4f98"
     assert A.parse_dc_roadway_block({"ROUTENAME": "CANAL RD NW"}).block_key is None
     assert A.parse_dc_roadway_block({"BLOCKKEY": ""}).block_key is None
+
+
+def test_osm_s_contraflow_lane_is_kept_over_an_unflagged_with_flow_reading() -> None:
+    """Hunt 2, S4 (2026-11-08): on an unflagged one-way block the record's lone lane
+    is read as with-flow (review r2), and every OSM `cycleway*` key was deleted first,
+    so OSM's `cycleway:left=lane` + `cycleway:left:oneway=-1` became
+    `cycleway:right=lane` alone, a lane the with-flow rider does not have. OSM is now
+    kept and the report says so; a block with the flag still writes its lane."""
+
+    block = facts(bike={"ib": A.BIKE_LANE}, way="one", oneway_with=True, bike_width_ft=6.0)
+    way = A.aggregate([("a", block, True)])
+    osm = {
+        "highway": "residential",
+        "oneway": "yes",
+        "maxspeed": "30 mph",
+        "cycleway:left": "lane",
+        "cycleway:left:oneway": "-1",
+        "cycleway:right": "shared_lane",
+    }
+    result = A.overlay(osm, way)
+    # Before: {"cycleway:right": "lane", "cycleway:right:width": "1.829"}, LTS 2.
+    assert result.tags["cycleway:left"] == "lane"
+    assert result.tags["cycleway:left:oneway"] == "-1"
+    assert result.tags["cycleway:right"] == "shared_lane"
+    assert result.sources["bike"] == A.SOURCE_OSM
+    assert any("contraflow" in d for d in result.disagreements)
+    assert classify(result.tags).tier is Stress.LTS3
+    # OSM's with-flow lane (review r2's case) is still the record's to write.
+    with_flow = {"highway": "residential", "oneway": "yes", "cycleway:right": "lane"}
+    assert A.overlay(with_flow, way).sources["bike"] == A.DC_AGENCY
+    # And a flagged block writes its contraflow lane as before.
+    flagged = A.aggregate([("a", replace(block, contraflow=True), True)])
+    assert A.overlay(osm, flagged).tags["cycleway:left"] == "opposite_lane"
+
+
+def _one_parking_lane_way(beside: tuple[str, ...], contraflow: bool = False) -> A.WayFacts:
+    block = facts(
+        bike={"ib": A.BIKE_LANE},
+        way="one",
+        oneway_with=True,
+        bike_width_ft=6.0,
+        speed_mph={"ib": 30},
+        lanes={"ib": 1},
+        parking_lanes=1,
+        parking_width_ft=8.0,
+        bike_beside_parking=beside,
+    )
+    return A.aggregate([("a", replace(block, contraflow=contraflow), True)])
+
+
+def test_one_parking_lane_goes_beside_the_lane_only_where_the_record_says_so() -> None:
+    """Hunt 3, stress 2: DC's `BIKELANE_PARKINGLANE_ADJACENT` empty puts the one
+    parking lane on the side without the lane, so the lane is no door-zone lane."""
+    osm = {
+        "highway": "residential",
+        "oneway": "yes",
+        "cycleway:left": "lane",
+        "parking:left": "no",
+        "parking:right": "lane",
+    }
+    apart = _one_parking_lane_way(())
+    tags = A.overlay(osm, apart).tags
+    assert tags["cycleway:right"] == "lane"
+    assert (tags["parking:left"], tags["parking:right"]) == ("parallel", "no")
+    assert classify(tags, parking_width_m=apart.parking_reach_m).tier is Stress.LTS2
+    beside = _one_parking_lane_way(("ib",))
+    tags = A.overlay(osm, beside).tags
+    assert (tags["parking:right"], tags["parking:left"]) == ("parallel", "no")
+    # A contraflow-only way: the record's one painted lane is on the left, and
+    # beside the parking, so the parking goes on the left with it.
+    contraflow = _one_parking_lane_way(("ib",), contraflow=True)
+    tags = A.overlay(osm, contraflow).tags
+    assert tags["cycleway:left"] == "opposite_lane"
+    assert "cycleway:right" not in tags
+    assert (tags["parking:left"], tags["parking:right"]) == ("parallel", "no")
+
+
+def test_osm_side_ranks_read_each_side_by_its_precedence() -> None:
+    """Hunt 3, stress 4: the side key says the right side has none."""
+    assert A.osm_side_ranks({"cycleway": "lane", "cycleway:right": "no"}) == {"left": A.BIKE_LANE}
+    assert A.osm_side_ranks({"cycleway:both": "lane", "cycleway:right:buffer": "yes"}) == {
+        "left": A.BIKE_LANE,
+        "right": A.BIKE_BUFFERED,
+    }
+    assert A.osm_side_ranks({"cycleway:left": "track", "cycleway:right": "buffered_lane"}) == {
+        "left": A.BIKE_PROTECTED,
+        "right": A.BIKE_BUFFERED,
+    }

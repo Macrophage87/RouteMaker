@@ -21,10 +21,14 @@ from pipeline.conflation import (
     MAX_SPAN_REUSE,
     MIN_OVERLAP_FRACTION,
     AgencyFeature,
+    _bounds,
     _claim,
     _mean_bearing,
     _overlap,
     _overlap_fraction,
+    _PreparedFeature,
+    _probes,
+    _ranked_share,
     conflate,
 )
 from routemaker.geo import bearing_delta
@@ -460,6 +464,86 @@ class TestRankingTerms:
         assert list(result.matched) == [2], result
         assert [way_id for way_id, _ in result.rejected] == [1]
 
+    def test_the_way_along_more_of_the_count_line_wins_over_a_short_way_beside_it(self) -> None:
+        """Hunt D3 (2026-11-08): the metres of the count line a way runs along come first.
+
+        An arterial 0-1000 m whose OSM way runs past the count line's start (60-1000 m), and a
+        300 m residential frontage street 14 m off it. The side street lies wholly within
+        reach (overlap 1.0) and the arterial does not (0.94), so the side street won the line,
+        exclusivity refused the arterial the same stretch, and the side street took the
+        arterial's 42,000 a day (before: matched {2}). Inside the line's ends both score 1.0,
+        and the arterial runs on the line, the side street 14 m off it.
+        """
+        lat0, lon0 = 39.0, -77.0
+
+        def north(east, start, end):
+            return [
+                (lon0 + east / 86_400.0, lat0 + n / 111_195.0) for n in range(start, end + 1, 10)
+            ]
+
+        arterial = (1, north(0, 0, 1000))
+        side = (2, north(14, 300, 600))
+        count = feature("c1", north(0, 60, 1000), aadt=42_000)
+        result = conflate([arterial, side], [count])
+        assert list(result.matched) == [1], result
+        assert result.matched[1].aadt == 42_000
+        assert [way_id for way_id, _ in result.rejected] == [2]
+
+    def test_an_arterial_split_into_pieces_keeps_its_count_from_a_longer_side_street(
+        self,
+    ) -> None:
+        """Review of hunt D3: the first fix ranked by the length of the count line a way runs
+        along, so an arterial split into three 330 m pieces lost the whole line to a 600 m side
+        street 14 m off it (before: matched {9}, the pieces rejected). Each piece lies on the
+        line, inside its ends, as the side street does beside it; the nearer wins each
+        stretch, and the side street, wanting stretches the pieces hold, is refused."""
+        lat0, lon0 = 39.0, -77.0
+
+        def north(east, start, end):
+            return [
+                (lon0 + east / 86_400.0, lat0 + n / 111_195.0) for n in range(start, end + 1, 10)
+            ]
+
+        ways = [
+            (1, north(0, 0, 330)),
+            (2, north(0, 330, 660)),
+            (3, north(0, 660, 1000)),
+            (9, north(14, 200, 800)),
+        ]
+        result = conflate(ways, [feature("c1", north(0, 0, 1000), aadt=42_000)])
+        assert {k: v.aadt for k, v in result.matched.items()} == {1: 42_000, 2: 42_000, 3: 42_000}
+        assert [way_id for way_id, _ in result.rejected] == [9]
+
+    def test_a_way_past_the_end_of_a_line_is_ranked_on_its_part_inside(self) -> None:
+        """The ranking measure leaves out the probes past the line's ends, and only those: the
+        share a candidate must reach is still the whole way's (`MIN_OVERLAP_FRACTION`)."""
+        lat0, lon0 = 39.0, -77.0
+
+        def north(east, start, end):
+            return [
+                (lon0 + east / 86_400.0, lat0 + n / 111_195.0) for n in range(start, end + 1, 10)
+            ]
+
+        line, way = north(0, 100, 500), north(0, 0, 500)
+        fraction, _span, _mean, ranked = _PreparedFeature(line, MAX_SEPARATION_M).overlap(
+            _probes(way, MAX_SEPARATION_M), _bounds(way), MAX_SEPARATION_M
+        )
+        assert fraction < 0.9 and ranked == 1.0
+        # A way mostly past the end is still no candidate.
+        assert conflate([(1, north(0, 400, 1000))], [feature("c1", line)]).matched == {}
+
+    def test_a_service_road_takes_no_count_line(self) -> None:
+        """Hunt D3 (2026-11-08): the block matcher's class guard on the count matcher. A service
+        road or a track (`name_required`) takes an agency line only where the names agree, and
+        a count line has none, so a service road lying along an arterial's count takes neither
+        it nor a stretch of it in the counts-along pass."""
+        service = shifted(SURVEY_LINE, 6.0)
+        count = feature("c1", SURVEY_LINE, aadt=30_000, agency="vdot")
+        before = conflate([(5, service)], [count])
+        assert list(before.matched) == [5]
+        after = conflate([(5, service)], [count], name_required={5}, along_agencies=None)
+        assert after.matched == {} and after.rejected == []
+
     def test_the_closer_of_two_equal_overlaps_wins(self) -> None:
         """Distance decides once overlap cannot, and it is asked before the ids.
 
@@ -704,22 +788,24 @@ class TestTheSpatialIndexChangesTheCostAndNothingElse:
 # the prepared measure is held to, value for value.
 def reference_overlap(way, feature_coordinates, tolerance_m):
     from pipeline.conflation import _densify
-    from routemaker.geo import Point, distance_to_line
+    from routemaker.geo import Point, cumulative_distances, distance_to_line
 
     if len(way) < 2 or len(feature_coordinates) < 2:
-        return 0.0, None, float("inf")
+        return 0.0, None, float("inf"), 0.0
     feature_points = [Point(*point) for point in feature_coordinates]
     probes = _densify(way, tolerance_m)
-    positions, distances = [], []
+    positions, distances, measured = [], [], []
     for point in probes:
         distance, along = distance_to_line(Point(*point), feature_points)
+        measured.append((distance, along))
         if distance <= tolerance_m:
             positions.append(along)
             distances.append(distance)
     fraction = len(positions) / len(probes)
     span = (min(positions), max(positions)) if positions else None
     mean_distance = sum(distances) / len(distances) if distances else float("inf")
-    return fraction, span, mean_distance
+    total = cumulative_distances(feature_points)[-1]
+    return fraction, span, mean_distance, _ranked_share(measured, tolerance_m, total)
 
 
 def reference_conflate(ways, features):
@@ -743,24 +829,26 @@ def reference_conflate(ways, features):
             delta = bearing_delta(way_bearing, feature_bearing)
             if min(delta, 180.0 - delta) > BEARING_TOLERANCE_DEG:
                 continue
-            overlap, span, mean_distance = reference_overlap(
+            overlap, span, mean_distance, ranked = reference_overlap(
                 coordinates, item.coordinates, MAX_SEPARATION_M
             )
             if overlap < MIN_OVERLAP_FRACTION:
                 continue
-            candidates.append((overlap, way_id, item, span, mean_distance))
+            candidates.append((overlap, way_id, item, span, mean_distance, ranked))
 
     def rank(candidate):
-        overlap, way_id, item, _span, mean_distance = candidate
+        _overlap, way_id, item, _span, mean_distance, ranked = candidate
         precedence = (
             SOURCE_PRECEDENCE.index(item.source)
             if item.source in SOURCE_PRECEDENCE
             else len(SOURCE_PRECEDENCE)
         )
-        return (precedence, -overlap, mean_distance, way_id, item.feature_id)
+        # Since hunt D3 (2026-11-08) the share of the way ranked leaves out the part past
+        # the line's ends, so the oracle ranks the same way.
+        return (precedence, -ranked, mean_distance, way_id, item.feature_id)
 
     matched, rejected, used, claimed = {}, [], set(), {}
-    for overlap, way_id, item, span, _mean in sorted(candidates, key=rank):
+    for overlap, way_id, item, span, _mean, _ranked in sorted(candidates, key=rank):
         match = Match(
             way_id, item.feature_id, item.aadt, item.source, item.year, overlap, item.agency
         )
@@ -971,7 +1059,12 @@ class TestThePreparedMeasureChangesTheCostAndNothingElse:
                 if not within(way, item.coordinates, 200.0):
                     continue
                 expected = reference_overlap(way, item.coordinates, MAX_SEPARATION_M)
-                assert _overlap(way, item.coordinates, MAX_SEPARATION_M) == expected
+                # The oracle also gives the ranking share inside the line's ends (hunt D3),
+                # which `_overlap` leaves to the prepared measure.
+                assert _overlap(way, item.coordinates, MAX_SEPARATION_M) == expected[:3]
+                prepared = _PreparedFeature(item.coordinates, MAX_SEPARATION_M)
+                probes = _probes(way, MAX_SEPARATION_M)
+                assert prepared.overlap(probes, _bounds(way), MAX_SEPARATION_M) == expected
                 compared += 1
                 partial += 0.0 < expected[0] < 1.0
         assert compared > 800 and partial > 50, "the region exercises partial overlaps"

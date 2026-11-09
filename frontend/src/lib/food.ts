@@ -223,7 +223,7 @@ export function normaliseQuery(query: string): string {
 }
 
 /** "crabs" is "crab", "sandwiches" "sandwich", "taco" "taco"; "fries" and the like stay as typed too. */
-function singulars(word: string): string[] {
+export function singulars(word: string): string[] {
   const out = [word];
   if (word.endsWith("es") && word.length > 4) out.push(word.slice(0, -2));
   if (word.endsWith("s") && !word.endsWith("ss") && word.length > 3) out.push(word.slice(0, -1));

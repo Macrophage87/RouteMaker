@@ -6,8 +6,14 @@
     "residential", "living_street"
   ],
   "open_trail": {
-    "highway": "cycleway",
-    "bicycle": ["designated", "yes"]
+    "_comment": "Hunt A5, 2026-11-08: a cycleway or path signed for bicycles, or a trail-class way named for a through trail that no access or bicycle key bars, stays open, so an OSM retag of a Rock Creek Trail piece does not cut the trail at the Zoo. src/pipeline/run.py assert_zoo_rule fails the rebuild if no Rock Creek Trail piece inside the Zoo is open, fewer than open_trail_floor trail ways inside it are open, or a spur way is gone.",
+    "highways": ["cycleway", "path"],
+    "bicycle": ["designated", "yes"],
+    "named_highways": ["cycleway", "path", "footway"],
+    "through_trails": ["Rock Creek Trail", "Zoo Loop Trail"],
+    "barring": ["no", "private", "dismount"],
+    "open_trail_floor": 4,
+    "_open_trail_floor": "The fewest open cycleways, paths and footways inside the outline the rebuild accepts: 5 in OSM on 2026-11-08 (Rock Creek Trail 62225990, the Klingle Ford footbridge 62225994, Zoo Loop Trail 22942285, 1363129316, 1363129317)."
   },
   "spur": {
     "entrance": "Harvard Street NW at Adams Mill Road NW: the Zoo's Harvard Street entrance, the gate (OSM node 642824625) and ticket checkpoint (node 11565077439) at the end of Harvard Street",

@@ -115,6 +115,14 @@ class StandIn(BaseHTTPRequestHandler):
             return self._answer(200, kept) if kept else self._answer(404, {"error": "gone"})
         if url.path == "/api/geocode":
             q = parse_qs(url.query)["q"][0]
+            station = mcp.station_said(q, STATIONS)
+            if station is not None:
+                # A bare station name ("Takoma", "Navy Yard") is searched since the 2026-11-08
+                # hunt (G2), and the place search finds the station, as Photon does for these.
+                row = {"name": station.name, "label": f"{station.name}, Washington"}
+                row.update(lon=station.lon, lat=station.lat, kind="house")
+                row.update(osm_type="N", osm_key="railway", osm_value="station")
+                return self._answer(200, {"results": [row], "attribution": []})
             return self._answer(
                 200,
                 {
@@ -334,6 +342,12 @@ def test_the_link_is_the_page_s_own_fragment() -> None:
             {"bike": "ebike", "ending": "outside_dock"},
         ),
         ("bike-transit", {"stress": 70, "hills": 0}, {"novice_legs": True}, {"noviceLegs": True}),
+        (
+            "trailmaxxing",
+            {"stress": 100, "hills": 0, "easy_mtb": True},
+            {"easy_mtb": True},
+            {"easyMtb": True},
+        ),
     ],
 )
 def test_the_page_reads_the_link_as_the_plan_it_was(tmp_path, preset, dials, sent, expected):
@@ -365,6 +379,23 @@ def test_the_page_reads_the_link_as_the_plan_it_was(tmp_path, preset, dials, sen
 
 
 # --- Planning against the stand-in ----------------------------------------------------------
+
+
+def test_easy_mtb_trails_is_passed_read_from_a_link_and_said(tools, stand_in) -> None:
+    """The owner, 2026-11-08: "Make sure the MCP can use that too"."""
+    tools.call("plan_route", {"points": ["Union Market", "Takoma"], "easy_mtb": True})
+    assert StandIn.routes[-1]["easy_mtb"] is True
+    tools.call("plan_route", {"points": ["Union Market", "Takoma"]})
+    assert "easy_mtb" not in StandIn.routes[-1]
+    link = "#p=-77.03651,38.89768;-77.00911,38.88990&preset=trailmaxxing&v=2&easymtb=1"
+    assert mcp.parse_fragment(link)[3]["easy_mtb"] is True
+    # On a ride type that does not offer it, the page drops it, and so does the connector.
+    assert mcp.parse_fragment(link.replace("trailmaxxing", "fast"))[3]["easy_mtb"] is False
+    assert mcp.easy_mtb_said({"harder_m": 0.0, "limited": None}) is None
+    assert "rated 2 or harder" in mcp.easy_mtb_said({"harder_m": 800.0, "limited": "no_way_round"})
+    assert "off-road router" in mcp.easy_mtb_said({"harder_m": None, "limited": "no_offroad_graph"})
+    said = mcp.summary({"distance_m": 1000, "easy_mtb": {"harder_m": 800.0}})
+    assert said["easy_mtb"].startswith("0.5 mi")
 
 
 def test_plan_route_answers_a_draft_and_keeps_nothing(tools, stand_in, tmp_path) -> None:
@@ -401,7 +432,9 @@ def test_plan_route_fixes_a_stray_by_way_of_the_nearest_station(tools) -> None:
         },
     )
     again = StandIn.routes[1]
-    added = next(name for name, point in named.items() if point == again["points"][1])
+    # The via is one of the station's bike ways in, not its platform point (issue #39): the
+    # one nearest where its leg comes from (the second 2026-11-08 hunt, P1).
+    added = next(s.name for s in STATIONS if s.is_way_in(tuple(again["points"][1])))
     assert added in ("Spring Hill", "North Bethesda") and again["via_points"] == [1]
     assert out["notes"][0].startswith(f"added {added} as a via point: 6.3 -> ")
     # The repaired route is the one answered: less of it is over the limit.
@@ -905,22 +938,271 @@ def test_a_call_with_a_deadline_stops_planning_while_another_plan_would_not_fit(
 # --- The independent tester's findings (2026-10-19) -----------------------------------------
 
 
+# Since the 2026-11-08 hunt (G2) a bare first part or start of a name is not taken as the
+# station without a place search: `find_station` takes only a name said as a station (or a
+# whole name that can be nothing else), and `station_said` gives the station a bare name may
+# mean, for the search to confirm. "Navy Yard", "Gallery Place" and "Mount Vernon Square" moved
+# from this list to the next; "Ronald Reagan" (the start of a name) is a station only said as
+# one, since "Mount Vernon" is the start of Mt Vernon Sq's name too.
 @pytest.mark.parametrize(
     "said, station",
     [
-        ("Navy Yard", "Navy Yard-Ballpark"),
         ("navy yard metro", "Navy Yard-Ballpark"),
+        ("Navy Yard-Ballpark", "Navy Yard-Ballpark"),
         ("Union Station", "Union Station"),
-        ("Gallery Place", "Gallery Pl-Chinatown"),
-        ("Mount Vernon Square", "Mt Vernon Sq 7th St-Convention Center"),
-        ("Ronald Reagan", "Ronald Reagan Washington National Airport"),
-        ("Farragut", None),  # North or West: place search decides
+        ("Ronald Reagan station", "Ronald Reagan Washington National Airport"),
+        ("Ronald Reagan", None),
+        ("Navy Yard", None),
+        ("Farragut Metro", None),  # North or West: place search decides
         ("Adams Morgan", None),  # a neighbourhood, not Woodley Park's station
+        ("Mount Vernon", None),
+        ("Braddock Road", None),
+        ("Vienna", None),
     ],
 )
 def test_a_station_is_found_by_the_name_riders_use(said, station) -> None:
     found = mcp.find_station(said, STATIONS)
     assert (found.name if found else None) == station
+
+
+@pytest.mark.parametrize(
+    "said, station",
+    [
+        ("Navy Yard", "Navy Yard-Ballpark"),
+        ("Gallery Place", "Gallery Pl-Chinatown"),
+        ("Mount Vernon Square", "Mt Vernon Sq 7th St-Convention Center"),
+        ("Vienna", "Vienna/Fairfax-GMU"),
+        ("Rockville", "Rockville"),
+        # Never a station: the start of a name, a later part, or a road's name.
+        ("Mount Vernon", None),
+        ("Mt Vernon", None),
+        ("Arlington", None),
+        ("Reston", None),
+        ("Morgan", None),
+        ("Adams Morgan", None),
+        ("Braddock Road", None),
+        ("Benning Road", None),
+        ("King St", None),
+        ("Minnesota Ave", None),
+        ("Southern Avenue", None),
+    ],
+)
+def test_a_bare_name_may_mean_a_station_only_by_its_whole_name_or_first_part(said, station) -> None:
+    found = mcp.station_said(said, STATIONS)
+    assert (found.name if found else None) == station
+
+
+class _Search:
+    """A place search answering `rows` for every query."""
+
+    def __init__(self, rows):
+        self.rows = rows
+        self.asked = []
+
+    def geocode(self, query, near=None):
+        self.asked.append(query)
+        return self.rows
+
+
+def _row(name, lon, lat, **tags):
+    return {"name": name, "label": f"{name}, VA", "lon": lon, "lat": lat, "kind": "other", **tags}
+
+
+MOUNT_VERNON_ESTATE = _row("Mount Vernon", -77.0861, 38.7293, osm_type="W", osm_key="historic")
+VIENNA_TOWN = _row("Vienna", -77.2653, 38.9012, osm_type="R", osm_key="place", osm_value="town")
+BRADDOCK_ROAD = _row("Braddock Road", -77.2650, 38.8270, osm_type="W", osm_key="highway")
+
+
+@pytest.mark.parametrize(
+    "said, row",
+    [
+        ("Mount Vernon", MOUNT_VERNON_ESTATE),
+        ("Vienna", VIENNA_TOWN),
+        ("Braddock Road", BRADDOCK_ROAD),
+    ],
+)
+def test_a_place_or_road_named_like_a_station_is_the_place(said, row) -> None:
+    """The 2026-11-08 hunt (G2): "Mount Vernon" went to Mt Vernon Sq Metro, 12.7 mi from the
+    estate, "Vienna" to the station in the I-66 median and "Braddock Road" to the station of
+    that name. Each is now the place the search finds."""
+    search = _Search([row])
+    point, label = mcp.as_point(said, search, STATIONS)
+    assert search.asked == [said]
+    assert point == (row["lon"], row["lat"]) and "Metro" not in label
+
+
+def test_a_bare_name_is_the_station_only_where_the_search_finds_it() -> None:
+    navy = next(s for s in STATIONS if s.name == "Navy Yard-Ballpark")
+    neighbourhood = _row("Navy Yard", navy.lon + 0.001, navy.lat + 0.001, osm_type="N")
+    point, label = mcp.as_point("Navy Yard", _Search([neighbourhood]), STATIONS)
+    assert label == "Navy Yard-Ballpark Metro" and point == navy.way_in
+
+
+def test_a_searched_station_goes_to_its_bike_entrance() -> None:
+    """Issue #39: the MCP went to DC GIS's platform point (Vienna's is in the I-66 median, 118 m
+    from its entrance on Vaden Drive); the map and the transit planner go to the entrance."""
+    vienna = next(s for s in STATIONS if s.name == "Vienna/Fairfax-GMU")
+    assert vienna.entrance is not None
+    assert mcp.haversine_mi(vienna.point, vienna.way_in) * mcp.METRES_PER_MILE > 100
+    said = mcp.as_point("Vienna Metro", None, STATIONS)
+    assert said == (vienna.way_in, "Vienna/Fairfax-GMU Metro")
+    found = _row("Vienna/Fairfax-GMU", vienna.lon, vienna.lat, osm_key="railway")
+    found["osm_value"] = "station"
+    assert mcp.as_point("Vienna Fairfax", _Search([found]), STATIONS)[0] == vienna.way_in
+
+
+def test_every_station_has_the_bike_entrance_the_transit_planner_uses() -> None:
+    """One rule for the map, the transit planner and the MCP (issue #39): the MCP's way in is
+    scripts/build_transit_schedule.py's bike_entrance for every station."""
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+    import build_transit_schedule
+
+    planner = {s["name"]: s["bike_entrance"] for s in build_transit_schedule.metro_stations()}
+    for s in STATIONS:
+        assert list(s.way_in) == pytest.approx(planner[s.name], abs=2e-6), s.name
+
+
+def test_a_station_file_with_no_entrances_beside_it_routes_to_the_station(tmp_path) -> None:
+    source = Path(__file__).resolve().parents[1] / "frontend/src/rail-data/metro-stations.geojson"
+    alone = tmp_path / "metro-stations.geojson"
+    alone.write_text(source.read_text())
+    stations = mcp.load_stations(alone)
+    assert all(s.entrance is None and s.way_in == s.point for s in stations)
+
+
+HERNDON_NORTH = (-77.384878, 38.953544)  # the pavilion nearest the platform's point
+WORLDGATE = (-77.3870, 38.9450)  # south of the toll road
+
+
+def test_a_station_is_gone_to_at_the_way_in_on_the_rider_s_side() -> None:
+    """The second 2026-11-08 hunt (P1): every route to Herndon went to the north pavilion,
+    across the Dulles Toll Road from a ride coming up from the south, where the map takes the
+    way in nearest where the leg comes from (railStations.ts bikeEntrance(station, from)).
+    Before: as_point gave HERNDON_NORTH whatever the neighbour."""
+    herndon = next(s for s in STATIONS if s.name == "Herndon")
+    assert herndon.way_in == HERNDON_NORTH and len(herndon.ways_in) == 3
+    point, label = mcp.as_point("Herndon Metro", None, STATIONS, [WORLDGATE])
+    assert label == "Herndon Metro" and point != HERNDON_NORTH and point[1] < 38.952
+    assert mcp.as_point("Herndon Metro", None, STATIONS, [(-77.385, 38.96)])[0] == HERNDON_NORTH
+    assert mcp.as_point("Herndon Metro", None, STATIONS)[0] == HERNDON_NORTH
+
+
+def test_a_station_said_first_is_gone_to_from_the_next_point(tmp_path) -> None:
+    """P1: a station said as one is taken before the other points are known; it then moves to
+    the way in nearest its leg's other end, and the answer says where."""
+    server = mcp.Server(lambda: _Search([]), STATIONS, out_dir=tmp_path)
+    taken: list[dict] = []
+    points = server._points(["Herndon Metro", list(WORLDGATE)], taken)
+    assert points[0][1] < 38.952 and taken[0]["at"] == list(points[0])
+
+
+def test_a_metro_fix_via_is_the_way_in_nearest_its_leg(monkeypatch) -> None:
+    """P1: the via fix_metro_rounds adds at a station is the way in nearest the leg's start."""
+    herndon = next(s for s in STATIONS if s.name == "Herndon")
+    stretch = {"max_mi": 3, "at": list(herndon.point), "from_mi": 0, "to_mi": 1}
+    check = {"ok": False, "stretches_over_limit": [stretch]}
+    plan = mcp.Plan([WORLDGATE, (-77.30, 38.94)], [], "default", {}, check, {})
+    monkeypatch.setattr(mcp, "leg_of", lambda plan, miles: 0)
+    points, vias, name = mcp.with_metro_fix(plan, STATIONS)
+    assert name == "Herndon" and vias == [1]
+    assert points[1] in herndon.ways_in and points[1][1] < 38.952
+
+
+def test_a_loop_waypoint_at_a_station_is_its_bike_entrance() -> None:
+    vienna = next(s for s in STATIONS if s.name == "Vienna/Fairfax-GMU")
+    centre = mcp.destination(vienna.point, 90, 10)  # 10 mi east: Vienna lies due west
+    points = mcp.ring_waypoints(centre, 10, 5, [vienna])
+    assert points == [tuple(round(c, 5) for c in vienna.way_in)]
+
+
+AREA = _row("Occoquan Regional Park", -77.24159, 38.684466, osm_type="R", osm_key="leisure")
+BOAT_LAUNCH = _row(
+    "Occoquan Regional Park Boat Launch",
+    -77.252775,
+    38.680617,
+    osm_type="N",
+    osm_key="leisure",
+    osm_value="slipway",
+)
+
+
+def test_an_area_is_gone_into_by_the_way_in_its_search_found() -> None:
+    """The 2026-11-08 hunt (G1, G5): "Occoquan Regional Park" was taken at its middle, which
+    the router snaps to whatever road is nearest, and the boat launch the same search found
+    was never said. Now the boat launch is where the route goes, and the label says so."""
+    chosen, elsewhere = mcp.pick_place("Occoquan Regional Park", [AREA, BOAT_LAUNCH], [])
+    assert (chosen["lon"], chosen["lat"]) == (BOAT_LAUNCH["lon"], BOAT_LAUNCH["lat"])
+    assert chosen["way_in"] == BOAT_LAUNCH["name"] and elsewhere == []
+    point, label = mcp.as_point("Occoquan Regional Park", _Search([AREA, BOAT_LAUNCH]), STATIONS)
+    assert point == (round(BOAT_LAUNCH["lon"], 5), round(BOAT_LAUNCH["lat"], 5))
+    assert label.endswith("at Occoquan Regional Park Boat Launch")
+
+
+def test_a_board_or_a_parkway_s_lot_is_not_an_area_s_way_in() -> None:
+    """The second 2026-11-08 hunt (P2, P3), as the site's search: a tourism=information board
+    and a lot named for the parkway were taken as the park's way in."""
+    park = _row("Great Falls Park", -77.2518, 38.9905, osm_type="R", osm_key="leisure")
+    board = _row(
+        "Great Falls Park Trail Map", -77.255, 38.985, osm_type="N",
+        osm_key="tourism", osm_value="information",
+    )  # fmt: skip
+    centre = _row("Great Falls Park Visitor Center", -77.2461, 38.9985, osm_type="N")
+    assert mcp.way_in_of(park, [park, board, centre])["way_in"] == centre["name"]
+    rock = _row("Rock Creek Park", -77.05, 38.96, osm_type="R", osm_key="leisure")
+    lot = _row("Rock Creek Parkway Parking", -77.055, 38.93, osm_key="amenity", osm_value="parking")
+    assert mcp.way_in_of(rock, [rock, lot]) == rock
+
+
+def test_an_area_is_gone_into_by_its_way_in_nearest_the_route() -> None:
+    """P4: of an area's ways in, the one nearest the route's neighbouring point, not the
+    search's first (before: the north lot whatever the neighbour)."""
+    rock = _row("Rock Creek Park", -77.05, 38.96, osm_type="R", osm_key="leisure")
+    parking = dict(osm_key="amenity", osm_value="parking")
+    north = _row("Rock Creek Park North Parking", -77.05, 38.985, **parking)
+    south = _row("Rock Creek Park South Parking", -77.05, 38.935, **parking)
+    chosen, _ = mcp.pick_place("Rock Creek Park", [rock, north, south], [(-77.05, 38.90)])
+    assert chosen["way_in"] == south["name"]
+    assert mcp.pick_place("Rock Creek Park", [rock, north, south], [])[0]["way_in"] == north["name"]
+
+
+def test_find_place_shows_an_area_where_plan_route_would_go(tmp_path) -> None:
+    """P5: find_place gave an area's middle where plan_route went to its way in, and listed
+    matches outside the map's area."""
+    outside = _row("Occoquan Park", -80.0, 40.44)
+    server = mcp.Server(lambda: _Search([AREA, BOAT_LAUNCH, outside]), STATIONS, out_dir=tmp_path)
+    rows = server.find_place({"query": "Occoquan Regional Park"}, None)["results"]
+    assert len(rows) == 2 and rows[0]["way_in"] == BOAT_LAUNCH["name"]
+    assert rows[0]["lon_lat"] == [BOAT_LAUNCH["lon"], BOAT_LAUNCH["lat"]]
+
+
+def test_find_place_shows_a_station_at_the_way_in_plan_route_would_go(tmp_path) -> None:
+    """PL3-7: find_place gave a station's platform point (Herndon's is in the toll road median),
+    where plan_route goes to its bike way in nearest the route's other point."""
+    herndon = next(s for s in STATIONS if s.name == "Herndon")
+    found = _row("Herndon", herndon.lon, herndon.lat, osm_key="railway", osm_value="station")
+    server = mcp.Server(lambda: _Search([found]), STATIONS, out_dir=tmp_path)
+    row = server.find_place({"query": "Herndon station", "near": list(WORLDGATE)}, None)
+    row = row["results"][0]
+    want = mcp.as_point("Herndon station", _Search([found]), STATIONS, [WORLDGATE])[0]
+    assert row["lon_lat"] == row["bike_entrance"] == list(want) != [herndon.lon, herndon.lat]
+
+
+def test_an_area_the_site_already_moved_is_taken_as_it_is() -> None:
+    moved = {**AREA, "lon": -77.25, "lat": 38.68, "way_in": "Occoquan Regional Park Gate"}
+    assert mcp.pick_place("Occoquan Regional Park", [moved, BOAT_LAUNCH], [])[0] == moved
+
+
+def test_the_other_points_of_one_place_are_said(tmp_path) -> None:
+    """The 2026-11-08 hunt (G5): matches within SAME_PLACE_MI were one place, and the others
+    (an overlook, a visitor centre) were never said, so the assistant could not offer them."""
+    centre = _row("Great Falls Park", -77.251843, 38.990455, osm_type="R", osm_key="leisure")
+    overlook = _row("Great Falls Overlook", -77.2525, 38.9965, osm_type="N", osm_key="tourism")
+    server = mcp.Server(lambda: _Search([centre, overlook]), STATIONS, out_dir=tmp_path)
+    taken: list[dict] = []
+    server._point("Great Falls Park", taken)
+    assert taken[0]["nearby_matches"] == [
+        {"label": "Great Falls Overlook, VA", "lon_lat": [-77.2525, 38.9965]}
+    ]
 
 
 def test_the_answer_says_what_each_named_point_was_taken_as(tools) -> None:
@@ -1153,6 +1435,16 @@ def test_a_line_to_follow_decodes_as_it_was_encoded() -> None:
         mcp.decode_polyline(encode_polyline(line)[:-1])
 
 
+def test_the_answer_warns_that_the_app_replans_without_what_the_link_lacks(tools) -> None:
+    """The second 2026-11-08 hunt (P10): a followed line (or roads avoided) is not in the link,
+    and the app's Update route plans without it, with no word to the rider (before: no note)."""
+    line = [[-77.03, 38.90], [-77.025, 38.905], [-77.02, 38.91]]
+    out = tools.call("plan_route", {"follow": {"polyline": encode_polyline(line)}})
+    assert any("the line followed are not in it" in n for n in out.get("notes", []))
+    plain = tools.call("plan_route", {"points": [line[0], line[-1]]})
+    assert not any("not in it" in n for n in plain.get("notes", []))
+
+
 def test_the_post_tool_is_offered_only_where_posts_may_be_written(tools) -> None:
     # On a rider's own computer (and on the site for anyone but an instance admin) it is no tool.
     names = [t["name"] for t in tools.tools()]
@@ -1187,6 +1479,20 @@ def test_a_ride_turned_into_a_run_or_back_keeps_no_pace_of_the_other_kind(tools)
     assert StandIn.routes[-1]["run_pace_kmh"] == 9.7
     tools.call("revise_route", {"draft_id": paced["draft_id"], "preset": "default"})
     assert "run_pace_kmh" not in StandIn.routes[-1]
+
+
+def test_a_new_ride_type_keeps_keep_to_roads_and_easy_mtb_trails(tools) -> None:
+    """As the app's rideTypeDialog.choose: Keep to roads stays on any ride type, and Easy MTB
+    trails stays between the ride types that offer it (Default, Trailmaxxing)."""
+    points = [[-77.03, 38.90], [-77.02, 38.91]]
+    off = tools.call("plan_route", {"points": points, "trails_off": True})
+    tools.call("revise_route", {"draft_id": off["draft_id"], "preset": "gravel"})
+    assert StandIn.routes[-1].get("trails_off") is True
+    easy = tools.call("plan_route", {"points": points, "easy_mtb": True})
+    moved = tools.call("revise_route", {"draft_id": easy["draft_id"], "preset": "trailmaxxing"})
+    assert StandIn.routes[-1].get("easy_mtb") is True
+    tools.call("revise_route", {"draft_id": moved["draft_id"], "preset": "gravel"})
+    assert not StandIn.routes[-1].get("easy_mtb")
 
 
 # --- The app's drawn legs and stop names (`line=`, `sn=`) and its ride links (2026-11-05) ------
@@ -1310,3 +1616,16 @@ def test_plan_route_takes_a_rebalance_rides_start_alone(tools, stand_in) -> None
     sent = StandIn.routes[-1]
     assert sent["preset"] == "rebalance" and len(sent["points"]) == 1
     assert out["link"].startswith(stand_in + "/s/")
+
+
+def test_the_summary_says_where_road_bike_fell_back_to_another_map() -> None:
+    """Hunt 3, PL3-10: as the page says it (frontend/src/lib/roadBike.ts)."""
+    weekend = {"distance_m": 1000, "preset": "road-bike", "dials": {"when": "weekend"}}
+    assert "Beach Drive" in mcp.summary({**weekend, "variant": "paved"})["road_bike_map"]
+    assert "packed gravel" in mcp.summary({**weekend, "variant": "standard"})["road_bike_map"]
+    for fine in (
+        {**weekend, "variant": "paved-weekend"},
+        {**weekend, "variant": "paved", "dials": {"when": "weekday_offpeak"}},
+        {**weekend, "variant": "standard", "preset": "default"},
+    ):
+        assert "road_bike_map" not in mcp.summary(fine)
