@@ -88,6 +88,7 @@ Contents:
 - [Deploying v0.22.1](#deploying-v0221)
 - [Deploying v0.22.2](#deploying-v0222)
 - [Deploying v0.22.3](#deploying-v0223)
+- [Deploying v0.23.0](#deploying-v0230)
 - [Deploying a planner and front-end release: rollback points and verification](#deploying-a-planner-and-front-end-release-rollback-points-and-verification)
 - [Paths bicycles may not ride (NO-BIKE-PATHS)](#paths-bicycles-may-not-ride-no-bike-paths)
 - [Mountain-bike difficulty levels (456; claude/v0-4-0-mtb-levels)](#mountain-bike-difficulty-levels-456-claudev0-4-0-mtb-levels)
@@ -597,7 +598,8 @@ band, grep `route timing` from the api's log.
   from before a deploy are never given after it. Without it, each api worker
   keeps up to 128 answers in its own memory, so a hit happens only when the
   same worker serves the repeat. The key holds
-  the whole request, rounded to about 10 m, with every dial. It also holds the
+  the whole request, its points rounded to about 1 m (a stop or a trail opt-in
+  reads the exact point), with every dial. It also holds the
   stress edits' generation, a digest of the closures snapshot, the approved
   junction ratings and hazards, and the ride time's rush and weekend state.
   The keep also ends at the next closure start or end and at local midnight.
@@ -718,9 +720,15 @@ each time). After the swap:
 3. A night ride in town halves its junction costs. Plan the same urban route with
    `when` `weekday_offpeak` and `night`: the night answer's red and orange
    junctions are the same or fewer, and none is added. The same route in a rural
-   area changes by x0.85 only. Night also opens the ways whose timed closure
-   covers it (`car_free_when`), so if the night route takes a different line,
-   compare the junctions on the stretch the two routes share.
+   area changes by x0.85 only. No graph opens a night closure (`car_free_when`
+   `night`): only the weekend graph prices a closure, a weekend one, as a path, and
+   since hunt X1 (2026-11-08) the route's colours, breakdown and ranking, its
+   junction events and costs, and the trail seek's corridors read a closure as a
+   path only on that graph at the weekend (`routing.car_free_reading`),
+   so the night route is priced and shown on the road with cars. The map's tiles
+   still draw it as a path in its ride time (OWNER-DECISIONS 67). If the night
+   route takes a different line, compare the junctions on the stretch the two
+   routes share.
 4. `car_free_when` gains `night` (469c): compare the counts with the previous
    build, as the paragraph above says:
 
@@ -756,7 +764,24 @@ Measured on the live router, a batch of 50 at 100 ft (30 m) took 0.1-0.3 s and
 2.6 MB, against 0.04-0.15 s and 0.5 MB at 3 ft (1 m). A plan with a red junction
 1,640 ft (500 m) or more from both ends asks the router for one more route (crossing
 avoidance, `core.refine`: only red junctions, from 0.59 calm mi [0.94 km; 3,100 ft],
-are worth a second route), one `/trace_attributes` for it and its `/locate`s, and one
+are worth a second route), one `/trace_attributes` for it and its `/locate`s. A plan
+the crossing search did not cover (legs adding up past 19 mi [30 km], a long Trailmaxxing
+plan searched leg by leg, a search cut short, a climb seek, a loop, a route Mountain Bike's
+choice swapped in) asks round each red after it (`core.red_crossings`; an owner report of
+the GW Parkway at Tulane Dr on a long Mount Vernon ride): a plain one-leg plan first asks
+once for the whole route with every red excluded, then each red still on it, the worst
+first, has the stretch of its leg from 1.2 mi (2 km) before it to as far after asked again
+with it excluded (3.1 mi [5 km] each way where that finds none), spliced in where it has
+fewer reds, is no busier, is better by the search's own rule, keeps a loop's way back off
+its way out and a climb seek's climb. A red with no way round is dropped and the next one
+tried (the 2026-11-08 hunt, S1, P1, R1). At most 6 `/route` calls, each with its reading;
+a long Trailmaxxing plan's leg searches leave it 8 s (`refine.LONG_RED_RESERVE_S`, S2).
+Every ask keeps the request's own exclusions, Mountain Bike's level exclusions and the reds
+already ridden round. A red is what the map draws red and a trail crossing drawn orange only
+because no signal is mapped whose cost is red-level (`refine.avoidance_severity`, J1). Each
+red's node is excluded with a 10 ft (3 m) radius (`refine.CROSSING_EXCLUDE_RADIUS_M`, the
+crossing search's too): every edge at the node, not the sidepath or bridge 25-45 ft (8-14 m)
+off it (J6). And one
 more route for the detour warning when the route is at least twice the straight line, or above
 Default when it is longer than the allowance. Above 80 on the stress slider a
 plan can make about 20 router calls (5 rounds of a route, a trace and `/locate`s,
@@ -1556,7 +1581,13 @@ the same whatever the style decides):
     (`amenity=parking`, `parking=surface` or `multi-storey`; "Also, no need to
     stripe through all the parking lots.", 99). All of these by place are
     `pipeline.restricted_areas`: a way counts as inside when half its vertices
-    are, so a trail or street that only borders the area stays. On the dials
+    are (a cemetery: half its length, and a numbered road, a public street that
+    runs on out of the outline or a tertiary-or-above street, named or not, is
+    never inside, while a residential-class drive wholly inside stays the
+    cemetery's own, named or not (98); hunt A3, 2026-11-08; by the area, not the
+    name: the owner, 2026-11-08, "Some are named, focus more on the area than
+    street names. When in doubt leave it open."), so a trail or street
+    that only borders the area stays. On the dials
     box extract: 86 cemeteries (1,466 ways, 93 mi), 12,067 lots (17,749 ways,
     762 mi before named ways inside lots were kept).
 
@@ -1932,7 +1963,13 @@ asks for every tile again under `?rev=<generation>` (the server ignores the para
 own ranking (all read the live table at route time). **What waits for the next rebuild:**
 Valhalla's edge costs (the Lua transform runs at graph build), the z12-13 ride layer
 (`calm_run_m`) and the zoomed-out trail runs, and the Mass Ride capacity layers. The panel says
-so after a save.
+so after a save, and, since 2026-11-08 (hunt finding X3), the road panel's Traffic stress section
+says it to anyone who opens the road while the edit waits: a "Routing" row, "Routes fully use this
+level after the next weekly data update" (`stress_edits.routing_pending`: an edit made after the
+live table's rebuild read the overrides, not undone back to the built level). Until then the router
+can still offer a route over a road just raised, or round one just lowered; the map, the route's
+colours and the ranking keep the edited level, so a road just rated Avoid is never drawn calm on a
+route that rides it, and the ranking prefers any route the router offers round it.
 
 **Undo.** `POST /api/stress-edits/{id}/undo` puts the edit's `before` state back and reinstates
 the superseded row, for any instance admin, for 30 minutes (`stress_edits.UNDO_WINDOW`), and only
@@ -2449,9 +2486,12 @@ on ..."; exit 1) and the admin operations page shows the same line under "Transi
 unreadable file alerts too; no file installed does not. Three weeks leaves room for a refresh by
 hand when the end falls on a holiday week.
 
-**A feed that ends inside the window.** The file records each system's own last day of service
-(`last_day`), and the build warns "<system>: its timetable ends ..., before the window's last
-day". After that day the system is left out of plans and of the map's closed stations (it is not
+**A feed that ends inside the window.** The file records each system's own last day of regular
+service (`last_day`): the last day that runs at least a quarter of a usual day's trips inside a
+week of regular service, so a lone holiday or special date added after the timetable's end, or
+one special service with a far end date, is not taken for the end (it was, hunt M1). The build
+warns "<system>: its timetable ends ..., before the window's last day", and names any service
+on later days, which is left out with it. After that day the system is left out of plans and of the map's closed stations (it is not
 covered, not closed), with the note "MARC is not planned for this date: its installed timetable
 ends ..."; Metro's WMATA GTFS gives way to its typical timetable. The 21-day alert counts down to
 the earliest such end ("transit: MARC's timetable runs out on ..."): fetch a newer feed and build
@@ -2485,7 +2525,11 @@ or `wmata budget: ...` (never the key, never a stop or route) when a call fails.
 query holds a place; the beta's nginx logs every `/api/` path's errors at `crit` only. To check
 it is working: plan Own Bike + 🚆🚌 to a trip with a Metrobus step; the step says "Live: bus ...". With no key, or WMATA not answering for
 about three minutes, everything is the timetable's and says "scheduled". An elevator out where a
-rider takes their bike is a warning on the plan and the station card, never an avoidance. To check
+rider takes their bike is a warning on the plan and the station card, never an avoidance. A
+closure or an elevator out read now counts for a trip leaving within two hours
+(`transit_live.LIVE_HOLDS_S`; Claude's default, kept by the owner (not measured): the owner,
+2026-11-08, "We can do 2 hrs for WMATA" and "It's not my call. I'm staying with your default"), and an outage with an estimated return also until that return: a
+trip planned for another day is not reshaped by today's incidents (hunt M4). To check
 it is working: open a Metro station's card on the map; its Metro lines say "live" and the card ends
 "Data: WMATA". The log says `wmata live: ...` (never the key) when a reading fails.
 
@@ -2510,10 +2554,11 @@ the approved rows at request time (`core.avoid_junctions.approved`).
      turns through it, and one placed on the next junction's corner can catch the wrong one.
      **Never place it above or below another way**: within 49 ft (15 m) of a bridge, an
      overpass, an underpass or a tunnel, the router's exclusion takes out the other level's
-     edges too and the match counts a route on the other level as passing. Move the point
-     along the junction's own roads until no other level is within 49 ft (15 m), or leave that
-     junction unrated. The form cannot warn of this: the segment table has no bridge or tunnel
-     flag for roads.
+     edges too. (The match no longer counts a route on the other level as passing: a stretch
+     on a bridge or tunnel edge with no node of the route's own at the junction is no pass.)
+     Move the point along the junction's own roads until no other level is within 49 ft
+     (15 m), or leave that junction unrated. The form cannot warn of this: the segment table
+     has no bridge or tunnel flag for roads.
    - **Reason**: a few plain words, e.g. "no gap in fast traffic". Riders see it, in the
      notice, the list, the description and the marker's spoken name.
    - **Evidence**: what the rating rests on (rider reports, a visit, crash records). Not shown
@@ -2538,8 +2583,10 @@ minutes (1,800 cost seconds) for each pass, the same as entering an Avoid road (
 search scores it and excludes the junction in its first rounds, and every plan then asks the
 router once more for the way round (`exclude_locations` at the junction, a 49 ft (15 m) radius).
 
-- Where the search did not run a round, and the way round is cheaper than the route plus 30
-  minutes, it becomes the route.
+- Where the search did not run a round, the way round becomes the route where it has no more
+  red crossings, is no busier, and scores better by the search's own reading (the junctions'
+  stress, each red and the 30 minutes a pass); its ask keeps out the reds the red pass went
+  round.
 - On Mass Ride and Group Ride it becomes the route where it adds no LTS 4 and is at most 1 mi
   (1.6 km) or 25% of the route longer, whichever is more (307; this limit is a default the owner
   has yet to confirm).
@@ -4759,7 +4806,7 @@ the first host to run it is the first test of it.
 
    ```sh
    docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend
-   docker compose --profile offroad restart valhalla-offroad valhalla-mtb valhalla-paved   # only where the off-road routers run
+   docker compose --profile offroad restart valhalla-offroad valhalla-mtb valhalla-paved valhalla-paved-weekend   # only where the off-road routers run
    ```
 
 After that the weekly schedule carries it: Tuesdays 08:00 UTC, with the alert
@@ -4840,6 +4887,7 @@ posted `maxspeed` on the way always wins.
 | `divided roads: N carriageways in N s` | about 46,000 on the region, under 30 s |
 | `curated speed limits not applied (posted, or no such way): [...]` | should not appear; a way listed was posted since or left the extract, and its row can go |
 | `owner's block correction not applied (fixtures/overrides agency_blocks): block <BLOCKKEY> (...) is not among the installed agency street blocks; ...` | should not appear; the owner's correction (OWNER-DECISIONS 197) is not applied and DC's value is read. A `roadway.json` installed before the street blocks kept DC's BLOCKKEY says this for every block: reinstall them (`--roadway-block`, above) and rebuild. A block DC has dropped or rekeyed, or one on another street, wants its entry in fixtures/overrides corrected |
+| `DC ways OSM edited after the record (2026-10-01) that disagree with it, for the owner's call: N open, M decided, in dc-osm-newer-osm-edits.md` | written in APPLY_OVERRIDES; the open ones are for the owner to review: DC's value is still applied on every one, and each row names the override that takes OSM's value and the entry that keeps DC's ("The DC-against-OSM discrepancy report", below) |
 | `facility classes: ...; N CBD sidewalks barred to bicycles, N singletrack ways avoided` | about 2,000 CBD sidewalks; singletrack in the hundreds |
 
 `manage.py check_weekday_trails` (acceptance A7) is **report-only**: it prints
@@ -4992,7 +5040,8 @@ for a minute (`WEEKEND_FAILURE_TTL_S`), so between the deploy and
 cost 2.5 s - one weekend ride a minute pays for the failure and the others go
 straight to the standard graph, with one WARNING a minute in the api's log.
 `docker compose restart ... valhalla-weekend` exits 0 and does nothing for a
-service with no container yet: `up -d valhalla-weekend` is what starts it.
+service with no container yet: `up -d valhalla-weekend` is what starts it. Road Bike has a weekend twin of its own
+(`valhalla-paved-weekend`, "Road Bike's weekend graph" below), which falls back to the paved graph.
 
 The first rebuild that builds four graphs is the first that has a weekend
 build at all, so `rollback_rebuild` after it goes back on the other three and
@@ -5279,7 +5328,7 @@ are restarted:
 
 ```sh
 docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend
-docker compose --profile offroad restart valhalla-offroad valhalla-mtb valhalla-paved   # only where the off-road routers run
+docker compose --profile offroad restart valhalla-offroad valhalla-mtb valhalla-paved valhalla-paved-weekend   # only where the off-road routers run
 ```
 
 Nothing in the rebuild does this. On the beta a host-side hook does it
@@ -5321,6 +5370,53 @@ replaces last week's. A failure to write it is a warning in the log and never
 fails the rebuild. Nothing in it is for importing into OSM (CC BY 4.0 against
 ODbL). docs/DEVELOPMENT.md, "Agency street layers", has what it lists.
 
+**To review each rebuild: OSM edited after the record.**
+`${DATA_ROOT}/rebuild/reports/dc-osm-newer-osm-edits.md` and `.csv`, beside the
+discrepancy report, list every District way OSM last edited after 2026-10-01 (the
+Roadway Block's retrieval date, `agency_roads.DC_RECORD_AS_OF`) where OSM's posted
+speed, lanes per direction or bike lanes disagree with what DC's record applied (the
+owner, 2026-11-08: "If there's a newer OSM rating, then on a rebuild it should flag it
+and I can make the call."; `pipeline.dc_osm_newer`). DC's value is still the one the
+map uses: OSM's date is the whole way's last edit, not the tag's. One row per way: the
+way id, street, what DC applies, what OSM says, the OSM edit date (date only), both
+tiers, the entry that takes OSM's value and the entry that keeps DC's. It is written in
+APPLY_OVERRIDES, after the approved override rows are read, so the list has two parts:
+**Open**, the ways still to decide, and **Decided**, the ways the owner has answered
+(below), which are not asked about again. The log line is "DC ways OSM edited after
+the record (2026-10-01) that disagree with it, for the owner's call: N open, M
+decided". The file also says how many matched ways carry an edit date; none means the
+extract had no timestamps and nothing could be compared.
+
+To answer a row, the owner's words go in as `reason` and what was seen on the spot as
+`evidence`, never Street View or another map; no GPS tracks, rider names or ride
+dates. Every loader refuses the suggested placeholders (`<the owner's words>`, `<what
+was seen on the spot>`) as written. Each answer takes effect at the next rebuild.
+
+- **Take OSM's posted speed** (the row's only disagreement): the row's
+  `agency_blocks` entry (DC's BLOCKKEY and ROUTENAME, `"withhold": ["speed"]`) into a
+  dated `fixtures/overrides/` file (fixtures/overrides/README.md; OWNER-DECISIONS
+  197's Canal Rd file is the model). The rebuild reads it from the image; nothing to
+  load. OSM's speed is then what the classifier reads, the way no longer disagrees, and
+  it leaves the list.
+- **Take OSM's lanes or bike lane** (they cannot be withheld, and a lane override only
+  adds lanes): the row's hidden stress row into a `fixtures/overrides/` file's `rows`,
+  then `load_access_overrides` (dry, then `--confirm`), as in "Access
+  overrides decided outside the admin" (fixtures/overrides/README.md). **It holds the
+  way's tier, not its tags:** the way is rated at the tier OSM's tags give (a half step
+  kept; a floor, `at_least`, where OSM's tier is the higher), while its lanes and
+  bike-lane tags stay DC's in the road panel and everywhere else they are read. The row
+  carries the way's fingerprint, so it follows the way if OSM splits it (decision 282).
+  Once approved the way is listed under Decided ("tier set by an owner row"); so is any
+  way that carries an approved stress row of any kind.
+- **Keep DC's value**: the row's `keep_dc_entry` (way id and the OSM edit date it
+  showed) into `fixtures/dc_osm_kept.json`'s `kept`, with the owner's reason. The
+  rebuild reads it from the image; nothing to load. The way is listed under Decided
+  ("kept DC's value") until OSM edits it again after that date, when it is open again
+  with a note that it was kept before. A malformed kept list is a warning in the log,
+  and every way is then listed as open.
+
+A row the owner leaves is open again next week.
+
 ### AADT smoothing, named corridors and the override re-match
 
 Three more reports land beside the discrepancy report, in
@@ -5335,7 +5431,20 @@ failure to write one is a warning in the log and never fails the rebuild.
   count it unmatched), plus `drifted` rows whose way is present but no longer
   looks like the one the row was written for. The log line is "override
   re-match: N rows, ...". A row typed into the admin has no fingerprint and can
-  only fail.
+  only fail. Since hunt D1 (2026-11-08) a present way is also judged by length
+  (`rematch.drift`): OSM keeps one id when it splits or merges a way, so a way
+  much shorter than the stored line (a split) takes the row onto the new pieces
+  along the rest of its line too (`rematched`, or `drifted` on its own piece where
+  they cannot be found), and a way much longer (a merge) does not take the row at
+  all (`failed`: re-point it), except an access row that closes the way to
+  bicycles (330) and a stress row at LTS 4 or Avoid, which warn of the road
+  rather than vouch for it. The curated speed limits (`fixtures/speed/`) and bike lanes
+  (`fixtures/bike_lanes/`) follow the same rules for each row that stores a
+  fingerprint; fill them with `scripts/analysis/backfill_override_fingerprints.py
+  --pbf <extract> --overrides fixtures/speed --write` (and `fixtures/bike_lanes`)
+  against the current extract, then rebuild. Until then those rows apply by id.
+  The lane overrides (`fixtures/lane_overrides/`) are keyed by the agency block's
+  street name, not an OSM id, and need nothing.
 - `aadt-smoothing.csv` (285, 296, 303): one line per traffic count the street's
   median replaced: the agency's count, the median the link was classified on,
   the window (ways and length), whether a volume gate lay between them, and the
@@ -5566,13 +5675,13 @@ row keyed `closures` (`src/core/closure_sources.py`):
 | Source | URL | Every | Stale after | Dropped after | Becomes |
 |---|---|---|---|---|---|
 | DDOT TOPS permits (`dc`, CC BY 4.0) | `maps2.dcgis.dc.gov/.../DDOT/TOPS/MapServer/1/query` | 1 h | 3 h | 26 h | Flagged only (a road *may* be closed): never routed around (Go, Plan, MCP), no warning or cue; shown only by Plan's Potential closures layer (off by default) |
-| MPD traffic advisories (`mpd`) | `mpdc.dc.gov/newsroom` | 15 min | 45 min | 6 h | Closures on the ways between the cross streets; the rest "Check before you go" text |
+| MPD traffic advisories (`mpd`) | `mpdc.dc.gov/newsroom` | 15 min | 45 min | 6 h | Closures on the ways between the cross streets; the rest "Check before you go" text. A window said to hold "nightly" or "daily", or two days with one pair of times ("Nov 14 through Nov 22, 9 pm to 5 am"), is routed round only in those hours of each day (`Zone.daily`) |
 | AlertDC (`alertdc`) | `trainingtrack.hsema.dc.gov/NRss/RssFeed/AlertDCList` (HTML list) | 15 min | 45 min | 3 h | As MPD; only traffic and road items are kept, every other item is dropped unread |
 | NPS alerts (`nps`) | `developer.nps.gov/api/v1/alerts` | 30 min | 90 min | 6 h | Park-level "Check before you go" notices (rocr, nama, gwmp, choh, anac), never closures |
 | DDOT ProTrack+ projects (`protrack`, CC BY 4.0) | `maps2.dcgis.dc.gov/.../DDOT/ProTrackPlusViews/MapServer/1/query` | 6 h | 24 h | 3 days | Potential closures, as DDOT's permits: "Under Construction" and not past the estimated completion; sidewalk, alley, streetlight, green infrastructure, tree, landscaping and signage work left out |
 | DC Water work zones (`dcwater`) | `geo.dcwater.com/.../Viewer/ActiveWorkZonesPublic/MapServer/0/query` | 6 h | 24 h | 3 days | Potential closures; each zone's middle placed on its block as a permit's is |
 | WSSC Water mains (`wssc`) | `gisportal.wsscwater.com/.../IYN/Water_Construction1/MapServer/0/query` | 6 h | 24 h | 3 days | Potential closures along the pipe, "Construction Started" only; the layer's contact names, phones and emails are never asked for |
-| Maryland Road Closure Reporter (`sha`, v0.17.0) | `mdgeodata.md.gov/.../SHA_RoadClosure/RoadClosureActive/MapServer/1/query` and `.../RoadClosurePlanned/MapServer/1/query` | 15 min | 45 min | 6 h | Maryland's counties' and towns' closures, routed round in their hours (`routemaker.md_closures`): "Closed" and "Emergency Vehicle Only Access" are closed; "Limited Public Access" with every lane closed is every lane closed, bicycles not mentioned (the WZDx penalty); a lane closed is a lane penalty. The reporting account (`Creator`) is never asked for |
+| Maryland Road Closure Reporter (`sha`, v0.17.0) | `mdgeodata.md.gov/.../SHA_RoadClosure/RoadClosureActive/MapServer/1/query` and `.../RoadClosurePlanned/MapServer/1/query` | 15 min | 45 min | 6 h | Maryland's counties' and towns' closures, routed round in their hours (`routemaker.md_closures`): "Closed" and "Emergency Vehicle Only Access" are closed; "Limited Public Access" with every lane closed is every lane closed, bicycles not mentioned (the WZDx penalty); a lane closed is a lane penalty. One on an Interstate ("I 695", "WB I 695") or a road the map bars is not kept, as the WZDx feeds' are not. The reporting account (`Creator`) is never asked for |
 
 NPS needs `NPS_API_KEY` in the worker's environment (sent as the `X-Api-Key` header);
 without it NPS is simply not read. The host needs egress to the four hosts, and (v0.17.0) to
@@ -6000,6 +6109,21 @@ the three approved layers (`agency_lts.AGENCIES`): Montgomery County Planning's 
 LTS (`moco-bicycle-lts`), DDOT's 2020 LTS (`ddot-lts-2020`) and MDOT SHA's statewide LTS
 (`mdot-lts`). Fairfax's layer is not approved and Arlington's is Review-only
 (`internal-only/review/`), so neither goes in.
+
+Where one agency has several records along one OSM way (they break at junctions and lane
+changes), the way takes the worst level among the records covering at least 100 m
+(`agency_ratings.WORST_STRETCH_MIN_M`) or half of it, the merge's worst-stretch reading;
+an MDOT SHA ban closes the way only when it is the record the way lies along most. Until
+hunt D5 (2026-11-08) the way took the record it lay along most, so 600 m at LTS 2 and 400 m
+at LTS 4 read LTS 2.
+
+An agency's level never replaces the formula's own "legal but avoid" (`agency_lts.
+keeps_formula_avoid`; hunt D2, 2026-11-08): a `bicycle=use_sidepath` road with its side path
+mapped and a motorway open to bicycles stay Avoid whatever the level, and an urban expressway
+stays Avoid against an agency's plain level; only an owner's reading of a level (`read_as`,
+MDOT SHA's `rural-expressway` 4.5) sets an expressway's. The rating is still recorded for the
+road panel. Before, any level below 5 replaced it, and the router took the roadway instead
+of the side path.
 
 On 2026-10-17 the file was found never to have been installed on the build host: the
 v0.8.0 build and the live map carried no agency rating anywhere, and the rebuild had only
@@ -6537,7 +6661,7 @@ changes nothing — and `--confirm` is what performs it.
 docker compose exec -T rebuild ./manage.py rollback_rebuild            # what would happen
 docker compose exec -T rebuild ./manage.py rollback_rebuild --confirm  # do it
 docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend
-docker compose --profile offroad restart valhalla-offroad valhalla-mtb valhalla-paved   # only where the off-road routers run
+docker compose --profile offroad restart valhalla-offroad valhalla-mtb valhalla-paved valhalla-paved-weekend   # only where the off-road routers run
 docker compose up -d --no-deps --no-build --force-recreate api worker
 docker compose exec -T api python manage.py predraw_stress_tiles
 ```
@@ -6733,7 +6857,7 @@ tiles):
    disagree means that variant is not back yet.
 5. **Restart the routers** if any of them restarted while the links were
    wrong — it will have loaded the build that failed to swap:
-   `docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend`, and, where the off-road router runs, `docker compose --profile offroad restart valhalla-offroad valhalla-mtb valhalla-paved`
+   `docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend`, and, where the off-road router runs, `docker compose --profile offroad restart valhalla-offroad valhalla-mtb valhalla-paved valhalla-paved-weekend`
    (see "After a rebuild: restart the routers"). Harmless if none did.
 6. **Leave `staging` alone.** It is the failed build's output and the next
    rebuild's first stage drops it.
@@ -6820,7 +6944,10 @@ the credit's extra reads (a join over the traced pieces) no longer apply.
   search then runs as for any plan up to 19 mi (30 km) of straight line in all, and not at all past it.
   A loop is never a long calm plan, and its straight line counts the way back too, so a Trailmaxxing
   loop with a 9.5 mi out-leg answers `limited: "span"` with no calm search. That is as built, not a
-  fault. A Mass Ride has no loop (the owner's choice, 298(4)).
+  fault. Such a loop still has its red crossings asked round, each by its own stretch so the way
+  back stays as made (`core.red_crossings`), and at the top of the slider its target distance and
+  ceiling still hold (`_fit_target`; the 2026-11-08 hunt, R1: before, a loop past the span lost
+  both). A Mass Ride has no loop (the owner's choice, 298(4)).
 - **Reading an answer.** `calm_search.long`: `legs`, `searched`, `skipped`, `stops` (legs per plan leg),
   `answered` (`legs` or `router`) and `per_leg` (each leg's length, LTS 4 and LTS 3 metres before and
   after, the cap it was searched under, the options it offered and why it stopped).
@@ -7598,6 +7725,104 @@ new environment variable, scheduled job or outbound host, and no map rebuild.**
   Nothing in the database or the map changes. On the beta: the agent rolls back by itself on a failed
   pass; later, rollback C, then `auto-release.sh hold v0.22.3`.
 
+## Deploying v0.23.0
+
+- [ ] **The tag** **(owner)**. Once `test` and `a11y` are green on `main`, the owner tags v0.23.0
+  (annotated) on that commit, from the PC.
+- [ ] **The build's commit.** The v0.23.0 map is built on the cloud box at `afb3f6a6` (release/v0.23.0's
+  head when the run was sent, 2026-11-09), not at the tag. Nothing after it touches `lua/`,
+  `valhalla/`, `src/pipeline/` or `scripts/cloud/box-rebuild.sh` (check:
+  `git diff --stat afb3f6a6 v0.23.0 -- lua valhalla src/pipeline scripts/cloud/box-rebuild.sh` is
+  empty), so the install takes `--allow-sha-mismatch`, at home and with `--beta` (it is passed on to
+  `receive-data.sh`).
+- [ ] **Rollback points and images, before the map** **(owner)**, as "Deploying a planner and
+  front-end release", out of 07:00-07:30 UTC and with no rebuild job todo or doing: tag the running
+  api **and pipeline** images `pre-rel-<short>`, fast-forward the checkout, `docker compose build api
+  rebuild`, then `docker compose up -d --no-deps --no-build --force-recreate api worker rebuild`. The
+  import runs `import_cloud_build` in the `rebuild` container: an older image knows seven graphs, so
+  `paved-weekend` would be unpacked but never promoted, with no error. The front end goes last, after
+  the swap: before it, every weekend Road Bike ride says there is no weekend road bike map.
+- [ ] **The weekly rebuild.** Import and swap the cloud build before the next Tuesday 08:00 UTC
+  (3:00 AM ET) rebuild, or pause it (`WEEKLY_REBUILD_PAUSED`) for the run: a rebuild here resets the
+  staging schema an install restored, and `lua/` is mounted from the checkout.
+- [ ] **Caddy.** The Caddyfile adds `/tandem` (the Tandem ride type): validate it in a throwaway
+  container and recreate caddy alone ("Applying a Caddyfile change"). On beta the nginx template
+  adds it too: re-render it with the release. Check: `curl -sI https://<site>/tandem` is a 302 to
+  `/#preset=tandem`. Tandem is costing only: no graph, no map rebuild.
+- [ ] **Android.** The app's link list adds `/tandem`; it opens in the app only from the next
+  Android build.
+
+### Road Bike's weekend graph (ships with the next map rebuild)
+
+The owner, 2026-11-08: "Road bikes absolutely use those parkways on the weekends. It's probably
+their most common destination."; "New weekend graph" (the graph and its costs: "Road Bike's
+weekend graph", in "Paths bicycles may not ride (NO-BIKE-PATHS)" below). An eighth graph and router, so it ships with
+the next map rebuild, built at a commit that has it: until then a weekend Road Bike ride plans on
+the paved graph as before. `src/pipeline/`, `valhalla/` and both compose files changed, so the
+beta agent stops on the tag and the beta deploy is by hand, with the data bundle. No migration,
+no new environment variable to set (`VALHALLA_PAVED_WEEKEND_URL` has its default), no new
+outbound host or scheduled job. With `</dev/null` on every docker command:
+
+- [ ] **The data directory** **(owner)**, at home and on the PC: `sudo sh scripts/prepare_data_root.sh
+  --env-file ./.env` (it adds `tiles/paved-weekend` and `tiles/paved-weekend/current`, owned
+  10001). Never name `valhalla-paved-weekend` in an `up` before its first build: Docker would make
+  the directory as root, which the rebuild cannot write.
+- [ ] **The default routers' new limit**, **(owner)** on the PC. compose.yaml lowers `valhalla-standard`,
+  `valhalla-no-trail`, `valhalla-ebike` and `valhalla-weekend` from 2G to 1856M: after the
+  checkout moves, `python3 scripts/check_compose_limits.py compose.yaml` (swap-time peak 32.0G),
+  then `docker compose up -d --no-deps --no-build valhalla-standard valhalla-no-trail
+  valhalla-ebike valhalla-weekend` recreates them on the new limit.
+- [ ] **The map**, at the tagged commit: the cloud box (`--beta-bundle` for the beta) or
+  `run_rebuild_now`. Eight graphs: about 20-25 minutes longer than seven, one extract more, about
+  1.1 GB more per kept build; the cloud result's `tiles-paved-weekend.tar` (a result without it is
+  refused). Then swap. **(owner)**: the rebuild and the swap.
+- [ ] **The routers**, at home and on the PC, **(owner)** on the PC. Restart the four. Where the `offroad` profile runs,
+  start the new one once: `docker compose --profile offroad up -d --no-deps --no-build
+  valhalla-paved-weekend` (it needs about 0.75 GB spare: check memory inside WSL on the PC first);
+  until it has a container, a `restart` that names it restarts none of the others on the line.
+  Then `docker compose --profile offroad restart valhalla-offroad valhalla-mtb valhalla-paved
+  valhalla-paved-weekend` and `docker compose exec -T api ./manage.py sync_upstreams`. Where it is
+  not started, a weekend Road Bike ride plans on the paved graph and says the parkways were lost.
+- [ ] **The Climbs layer**, after the swap: `flock <heavy.lock> docker compose exec -T rebuild
+  ./manage.py build_climbs </dev/null` (hills fixes, #1060: bridges and tunnels found in the extract
+  are levelled), then commit the new climbs file as "The Climbs layer" says.
+- [ ] **The transit schedule** (#1058's timetable end), at the next timetable refresh or now:
+  `scripts/build_transit_schedule.py` as in "Transit schedule (TRANSIT-ASSIST, v0.6.0)", and on the
+  beta with its data. No map rebuild.
+- [ ] **The boot unit** **(owner)**, where it is installed: `scripts/boot/start-stack.sh` now starts a fourth
+  trail router, so its unit's `TimeoutStartSec` went from 6000 to 6300 s (the worst case is 6005 s):
+  `scripts/boot/install-boot-unit.sh install` again from the new checkout.
+- [ ] **Beta** **(owner)**, by hand, "A new release sha" with the data bundle (docs/BETA-RUNBOOK.md):
+  - The memory check first: `free -m` "available" plus the resident memory of this project's
+    running containers at least 8806 MiB (the 8406 MiB startup peak with both Road Bike routers
+    plus 0.39 GiB). Under it, ship as below but leave `valhalla-paved-weekend` stopped; the agent
+    does the same check and leaves it stopped with a warning.
+  - Check out the tag, set `TAG=`, `"${RM_PY:-python3}" scripts/check_beta_compose.py --env-file
+    .env` ("beta compose: ok", 7.96 GiB resident).
+  - Data: `receive-data.sh verify`, `db --update-data --stage-only`, `sudo ... files` (installs
+    `tiles/paved-weekend`), `sudo ... db --update-data` (not during the 07:00 UTC backup).
+  - Restart the four routers one at a time; then
+    `scripts/beta/beta-compose.sh up -d --force-recreate valhalla-offroad valhalla-mtb valhalla-paved valhalla-paved-weekend`
+    (leave out `valhalla-paved-weekend` if memory was short); `sync_upstreams`.
+  - Or, from the cloud run's bundle: `scripts/cloud/import-result.sh --beta --allow-sha-mismatch
+    [--swap] <RUN_URL>`. It applies the same memory check before starting `valhalla-paved` or
+    `valhalla-paved-weekend` and leaves a stopped one stopped, with a warning, when it is short.
+  - `smoke-test.sh --local --trails` (now checks a weekend `road-bike` ride on the
+    `paved-weekend` graph, and a weekday one on `paved`), then `--public`. The weekend check is
+    skipped, with a `SKIP` line, while `valhalla-paved-weekend` is stopped (memory short).
+  - The agent and router hook changed: `scripts/beta/auto-release.sh install` and, where
+    installed, `scripts/beta/restart-routers.sh install`, from the new checkout, after
+    `mark-deployed`; then `resume`.
+- [ ] **Spot checks.** A Road Bike route at the weekend ride time answers `"variant":
+  "paved-weekend"` and rides Beach Drive or Sligo Creek Parkway where they are the calm way; the
+  same trip on a weekday answers `"paved"` and keeps off them where the traffic says so.
+- [ ] **Rollback.** After the first rebuild with it, `rollback_rebuild` withdraws `paved-weekend`
+  (its first build) and stops `valhalla-paved-weekend`; weekend Road Bike rides then plan on the
+  paved graph. Rolling the code back to a release without it: first
+  `docker compose --profile offroad stop valhalla-paved-weekend` (on the beta
+  `scripts/beta/beta-compose.sh stop valhalla-paved-weekend`): the older compose files have no
+  such service and their budgets do not count it.
+
 ## Deploying a planner and front-end release: rollback points and verification
 
 A release that changes the planner and the front end, with no migration and no graph, is deployed
@@ -7787,7 +8012,7 @@ command above after the swap, and `restart` it after later rebuilds as the other
 A `restart` that names `valhalla-offroad` where it has no container fails ("no such
 service", with or without `--profile offroad`) and restarts none of the other
 routers on the same line, so the four-router restart never names it. Restart it on
-its own line, `docker compose --profile offroad restart valhalla-offroad valhalla-mtb valhalla-paved`, and only
+its own line, `docker compose --profile offroad restart valhalla-offroad valhalla-mtb valhalla-paved valhalla-paved-weekend`, and only
 where it runs.
 
 **The Mountain Bike graph** (docs/MTB-TOPO-PLAN.md, slice 6). A sixth graph, `tiles/mtb`
@@ -7798,8 +8023,8 @@ the off-road graph with rated singletrack opened where nothing but its rating cl
 promotes it with the other five; nothing else is to run. Its router, `valhalla-mtb`, is behind
 the same compose profile as `valhalla-offroad` and is started and restarted with it:
 
-    docker compose --profile offroad up -d --no-deps --no-build valhalla-offroad valhalla-mtb valhalla-paved
-    docker compose --profile offroad restart valhalla-offroad valhalla-mtb valhalla-paved   # after a later swap
+    docker compose --profile offroad up -d --no-deps --no-build valhalla-offroad valhalla-mtb valhalla-paved valhalla-paved-weekend
+    docker compose --profile offroad restart valhalla-offroad valhalla-mtb valhalla-paved valhalla-paved-weekend   # after a later swap
 
 Start both or neither: the printed restart names both, and a `restart` naming a service with no
 container restarts none of the others on the line. One worker in 768M each (the 1536M
@@ -7850,11 +8075,49 @@ the size of the source, and about 1.1 GB per kept build directory. The cloud box
 carries `tiles-paved.tar`, and a result from before this graph is refused by `import-result.sh`
 (it asks for every graph's tar).
 
+**Road Bike's weekend graph** (the owner, 2026-11-08: "Road bikes absolutely use those parkways
+on the weekends. It's probably their most common destination."; on the card "How should Road
+Bike get the weekend parkways?", "New weekend graph"). An eighth graph, `tiles/paved-weekend`
+(`Variant.PAVED_WEEKEND`, `valhalla/valhalla-paved-weekend.json`): the paved graph with the
+weekend graph's car-free reading, so Beach Drive, Sligo Creek Parkway, Little Falls Parkway and
+the other roads closed to cars for the weekend are tier-1 paths for a weekend Road Bike ride.
+Every rebuild builds and promotes it with the other seven. Its router, `valhalla-paved-weekend`,
+is behind the `offroad` profile with the three above, started and restarted with them (the lines
+above name all four), one worker in 768M at home and 320M on the beta. While it is not running,
+or before the first rebuild that builds `tiles/paved-weekend`, a weekend Road Bike ride is
+planned on the paved graph (`variant` `paved`; `core.routing.twin_fallback`), and the page says
+the parkways count as roads with cars; with `valhalla-paved` down too, on the standard graph, with
+the usual Road Bike warning. What it costs, as the owner accepted it:
+
+- one more tile build, about 20-25 minutes longer per rebuild (the weekend graph's figure,
+  above), one more extract the size of the source, and about 1.1 GB per kept build directory
+  (2.2 GB with `previous`); the rebuild's memory peak is unchanged (one graph at a time);
+- on the 32 GB check (`scripts/check_compose_limits.py`) its 768M resident and 768M more at the
+  swap (1.5G at the swap-time peak), about 1.5G more in production;
+- on the beta (`scripts/check_beta_compose.py`) the resident ceiling from 7.66 to 7.96 GiB
+  (8150 MiB = 7.96 GiB) and the startup margin from 0.7 to 0.39 GiB (the 8406 MiB peak leaves
+  0.391 GiB of the 8.6), and the agent's memory threshold for starting Road Bike's routers,
+  `RM_CD_PAVED_MIN_MIB`, from 8803 to 8806 MiB (the 8406 MiB peak plus 0.39 GiB).
+
+To fit that 1.5G under the 32 GB check (peak 32.0G, resident 29.8G), `valhalla-standard`,
+`valhalla-no-trail`, `valhalla-ebike` and `valhalla-weekend` go from 2G to 1856M each: Claude's
+default, not measured under load (idle resident memory only), kept by the owner on 2026-11-08
+('Accept 1856M, unmeasured').
+
+The cloud box's result carries `tiles-paved-weekend.tar`, a result without it is refused by
+`import-result.sh`, and the box's beta bundle needs all eight graphs at one build.
+
 **The Zoo.** `fixtures/zoo/` holds the polygon and the spur: the Harvard Street
 NW entrance to the bike racks (OSM node 9827008403), seven whole ways, written
 destination-only (`rm:destination_only`; `bicycle=destination` and
 `access=destination`). A trip point inside the Zoo is moved to the racks and the
-answer's `moved_points` says so.
+answer's `moved_points` says so. Inside the outline a cycleway or path signed for
+bicycles stays open, and so does a trail-class way named Rock Creek Trail or Zoo Loop
+Trail that its own tags do not bar bicycles from (hunt A5, 2026-11-08). VALIDATE_SEGMENTS
+fails the rebuild (`assert_zoo_rule`, `zoo.check`) when a spur way is missing from the
+extract, no Rock Creek Trail piece inside the Zoo is open, or fewer than
+`open_trail_floor` (4) trail ways there are open: refresh `fixtures/zoo/zoo-access.json`
+from the current OSM ways rather than letting the trail close at the Zoo.
 
 **A stop or the end on a road not open to the public.** Such roads stay routable as a
 destination (the owner, 2026-10-29). Where a leg finishes on a way whose
@@ -7976,6 +8239,81 @@ at most 500 ft (150 m) long; they get `rm:aisle_link` and the remap routes them 
 service roads, as it does aisles tagged `bicycle=yes` (PR #197). Driveways are left out:
 most private ones carry no access tag. The rebuild log's facility line counts them
 ("parking aisles routed as links where a trail ends").
+
+**Ways private to cars alone (with the next map update).** Valhalla reads `private` from
+`motor_vehicle` and `motorcar` as well as `access` and `vehicle`, and makes the way
+destination-only for every mode, bicycles included: a 600 s penalty to enter. The Mount
+Vernon Trail runs 260 ft (80 m) at Belle Haven Marina on a service road tagged
+`motor_vehicle=private` + `bicycle=yes` (way 984055921), so routes left the trail there to
+cross the George Washington Parkway at grade at Tulane Drive, with no signal, and came back
+by side streets (the owner, 2026-11-08). Where a way's own `bicycle` tag grants it (yes,
+designated, permissive) and its `access` and `vehicle` leave it open, the remap writes the
+private motor key `no` (`M.private_to_motors_only`): still closed to cars in the graph, no
+longer destination-only for the bicycle. A cemetery's ways and the Zoo's spur keep the flag.
+
+**Destination-only is for a stop (with the next map update).** The owner, 2026-11-08:
+"Destination only should also include a stop, basically somewhere that there's a specific
+decision to enter." Valhalla's 600 s charge now stays only where a bicycle enters a way to
+stop there - a business's lot, a private drive, a gated complex's streets - and comes off
+the ways a bicycle passes along (`M.passes_through`: paths, cycleways, footways and
+sidewalks, bridleways, pedestrian streets, tracks and service roads, and any way signed
+`bicycle=designated`; never a parking aisle, a driveway or a drive-through):
+
+- a private motor key comes off wherever the way's own `bicycle` tag grants a bicycle, beside
+  `access=no` too (the usual gated trail: `access=no`, `bicycle=yes`,
+  `motor_vehicle=private`);
+- on a pass-through way a private `access` or `vehicle` beside a bicycle grant is written
+  `no` (the sidewalk at the Pentagon reservation, way 345398651; the service road between
+  17th Street and Colorado Avenue NW, way 83423506; the WB&A Trail's stretch of Bragers Road,
+  way 11507607), and `foot` keeps what `access` gave a pedestrian;
+- a path, cycleway or service road with no bicycle tag that is private to motor traffic
+  alone (the gated Rock Creek park road, way 274709114) loses the flag too.
+
+A residential street tagged `motor_vehicle=destination` ("local traffic only"), a private
+street with `bicycle=yes`, a lot's aisle and a driveway keep it. The barrier nodes on those
+ways follow the same rule: a gate or bollard a bicycle passes that is private to cars, such
+as the two gates across car-free Beach Drive NW at about 38.9443 N (nodes 971094676 and
+13314069319), no longer charges Valhalla's private-barrier penalty (450 s plus the gate
+cost). Every preset now states that penalty (`private_access_penalty`, 450 s), which only a
+barrier private to bicycles too still pays.
+
+**Gates, barriers and the tag shapes the graph misread (hunt of 2026-11-08; presets at once,
+the rest with the next map update).**
+
+- Gates: the owner, 2026-11-08, the large gate penalty "was intended just for Tandem, and
+  possibly cargo too. Basically, bollards aren't huge deterrents in most cases." Every ride
+  type but Cargo now pays Valhalla's 30 s at a gate, a cycle barrier or a narrow bollard and
+  no penalty (`presets.GATE_COST_S`; it was 330 s, 420 s on Group Ride and Road Bike, and
+  900 s on the share bikes, Walk and Run). Cargo keeps its 15 minutes of cost, now as 30 s of
+  time and 870 s of penalty, so a barrier no longer adds five minutes to its arrival times.
+  Kissing gates, stiles and turnstiles are gates in the graph too
+  (`routemaker_remap.HARD_BARRIERS`), so Cargo avoids them and everyone else slows for them.
+  Preset change only for the costs; the barrier types need the map update.
+- Contraflow: a one-way's lane whose own `cycleway:<side>:oneway` runs against the traffic
+  (the District's `cycleway:left=lane` + `cycleway:left:oneway=-1`) opens the reverse even
+  after the sharrow beside it comes off, and `oneway=1`, `true`, `-1` or a roundabout with
+  `oneway:bicycle=no` gets its contraflow. Lanes on both sides that run with the traffic no
+  longer open a wrong-way direction on any graph (`routemaker_remap.contraflow_reverse`).
+- An LTS 4 or 3.5 road whose speed limit is tagged by direction (`maxspeed:forward` or
+  `:backward`) keeps its graded speed in both directions (`directional_speeds`).
+- A signed sidepath or a trail's stretch mapped as a sidewalk (`footway=sidewalk` with
+  `bicycle=designated`, or a named or `segregated` sidewalk open to bicycles) is priced as a
+  path, not as the road-priced sidewalk (`priced_as_sidepath`).
+- An easy mountain-bike rating (0 or 1) on gravel, fine gravel or compacted no longer sets the
+  edge's surface, so the way is priced as packed gravel (`strip_easy_gravel_ratings`), and a
+  cycleway or bicycle-designated trail on such a surface rated 1 is not closed as singletrack
+  (`singletrack.is_built_gravel_trail`).
+- A driveway tagged `bicycle=no` stays closed (upstream reopened every mode on an untagged
+  driveway). An untagged `highway=pedestrian` or `highway=bridleway` is written `bicycle=no`,
+  so Valhalla's US country access defaults cannot open it whatever the admin database holds.
+- The circle-park and Capitol-grounds rules no longer open a plaza mapped only as an area
+  (`highway=pedestrian` + `area=yes`), which Valhalla never builds.
+
+Not changed: steps with `ramp:bicycle=yes` still cost what steps do (Valhalla prices the steps
+use at 1 km/h, and the use comes from `highway`, which the remap may not rewrite); and the
+no-trail graph still has no LTS 4 or half-step grading, so a trails-off ride on any ride type
+prices LTS 4 as LTS 3 (the graph is Mass Ride's too, whose big roads the grading would price
+at use_roads 1.0; giving trails-off rides their graded graph needs a router of its own).
 
 **Short links the trail rules close (v0.14.0, with the next map update).** Every link rule
 above reads footways or parking aisles, so a short `highway=path` the trail rules close
@@ -8184,6 +8522,14 @@ own extract, `/data/extracts/source.osm.pbf`, which the `rebuild` container moun
 
 and deploy the front end as usual. `tests/test_climb_layer.py::test_bundled_file_is_well_formed`
 and `climbs.test.ts` check the committed file.
+
+**Bridges and tunnels** (since 2026-11-08, hunt finding E3). The tiles are bare earth, so the
+ground under a high bridge is the valley floor, and the file of 2026-10-12 may have climbs whose
+foot is on a bridge deck (two Cat 5s start 130-220 m from the Duke Ellington and Taft bridges).
+`build_climbs` now reads every way the extract tags `bridge=*` or `tunnel=*` (not `no`) and reads
+the ground straight across it (`climb_layer.level_structures`); its names line adds "B bridges and
+tunnels". The committed file changes only when it is written again: run it after the next
+promotion and commit the new file.
 
 **Names (the owner, 2026-10-19: "have them named, by a combination of road names and mountain
 names (if named)").** Each climb is named at build time from the extract (`pipeline.climb_names`):
@@ -8869,10 +9215,26 @@ that table. The planner reads it at most once a minute a process. Nothing needs 
   left out of every router request (`exclude_polygons`, a strip 6 m [20 ft] either side of the
   zone's line, trimmed 20 m [66 ft] at each end so cross streets stay open). The line is kept to
   within 3 m [10 ft] of the road in at most 12 points, so a curved road stays inside its strip; a
-  longer winding one gets a wider strip instead. Where more closures are in force than the
-  router takes (100 vertices in all), those nearest the line through the rider's points in
-  order are kept and the rest are warned of. The answer is checked against the closures it
-  went round: one it still runs along is warned of in red, not counted as routed round. Every other zone in
+  longer winding one gets a wider strip instead. The router leaves out every edge a strip meets,
+  whole and both ways, with no bridge or layer test, so the strip is cut 12 m [40 ft] either side
+  of each way of the live map that crosses it mid-zone (a cross street, a road or trail on a
+  bridge over it or in a tunnel under it; `core.workzones.crossings`, cached an hour a line). The
+  part of a closure within 50 m [165 ft] of the start is left in, so the router can start
+  there; the rest is left out. A closure wholly that near, or that near a destination or via, is
+  warned of instead. The roads a rider marks closed (`blocked_lines`, on a ride, a run, a walk or
+  a transit trip's walks) are trimmed and cut the same way.
+  Where more closures are in force than the router takes (50,000 m [31 mi] of perimeter and
+  1,000 vertices in all; the perimeter measured as Valhalla measures it and packed to 99% of
+  that), those nearest the line through the rider's points in order are kept and the rest are
+  warned of. The answer is checked against the closures it
+  went round: one it still runs along is warned of in red, not counted as routed round. Where the
+  router refuses the closures' polygons anyway (167, 176) the plan is asked again with the
+  farther half of them, and so on. Where it finds no path (442), the closures and the rider's
+  marked roads that meet its edges at the destination or a via (a verbose `/locate` of those
+  points) are let in first, and every closure only if that is not enough. A ride's re-plan that
+  still runs along a road the rider marked closed near its start (the router lets a left-out edge
+  be the first) is planned again setting off the other way, and says so in red where that fails.
+  Every other zone in
   force at the ride time that the route runs along costs its penalty: 60 s shoulder only, 120 s a
   lane closed, 180 s a flagger or alternating one-way, 600 s every lane closed with bicycles not
   mentioned (shown in red). The plan asks once for the route round those zones and keeps it where
@@ -8895,7 +9257,8 @@ that table. The planner reads it at most once a minute a process. Nothing needs 
   closures on roads bikes can't use"): one every road name of which is an Interstate ("I-97",
   never "I-70 Business"), dropped before it is placed; or one at least 60% of whose samples have,
   as their nearest road within 15 m [50 ft], one the live map bars (`map_class` barred), checked
-  in one query a refresh once it is on the road.
+  in one query a refresh once it is on the road. MDOT SHA's Road Closure Reporter (`sha`) is held
+  to the same two rules ("WB I 695" is an Interstate too).
 
 **After the release is deployed** (no rebuild needed):
 

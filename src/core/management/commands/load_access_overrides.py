@@ -145,6 +145,7 @@ def parse_file(text: str, label: str) -> list[dict]:
     """The file's rows, validated, or CommandError naming what is wrong."""
     from pipeline.overrides import ACCESS_KEYS, stress_value_problem
     from pipeline.rematch import fingerprint_problem
+    from routemaker.agency_roads import placeholder_problem
 
     try:
         document = json.loads(text)
@@ -206,6 +207,11 @@ def parse_file(text: str, label: str) -> list[dict]:
         for field in ("reason", "evidence"):
             if not isinstance(row.get(field), str) or not row[field].strip():
                 raise CommandError(f"{where}: {field} is required")
+            # A row suggested by the rebuild's newer-OSM list (`pipeline.dc_osm_newer`)
+            # and copied in without the owner's words is refused, not loaded.
+            problem = placeholder_problem(field, row[field])
+            if problem:
+                raise CommandError(f"{where}: {problem}")
         if "fingerprint" in row:
             # Not loaded into the row: the rebuild reads it from the image's copy of
             # this file (pipeline.rematch), but a malformed one is refused here too.

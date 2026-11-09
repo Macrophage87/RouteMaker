@@ -333,7 +333,7 @@ export const NEAREST_STALE = t("The ride or where to search from changed during 
 
 // What a ride's Detour menu offers (water, restrooms, food, repair and a search box) is lib/detourSearch.ts.
 export const DETOUR_HELP =
-  t("Detour here re-plans the ride from where you are through that place and on along the rest of the ride.");
+  t("Detour here plans a new route from where you are. It goes to that place, then back to the rest of your ride.");
 export const NO_FIX_YET = t("Your position is not known yet; wait for GPS and try again.");
 
 /**

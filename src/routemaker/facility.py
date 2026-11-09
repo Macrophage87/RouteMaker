@@ -55,6 +55,7 @@ from .tags import (
     PERMISSIVE_ACCESS,
     best_direction_provision,
     cycleway_provision,
+    cycleway_sides,
     is_oneway,
     narrow_access_lists,
     open_to_buses,
@@ -610,7 +611,7 @@ def bike_access_reason(
     if tags.get("motorroad") == "yes":
         return "motorroad"
     # Last: `use_sidepath` never opens a way something above closes (review RL-1).
-    if bicycle == USE_SIDEPATH and side_path:
+    if bicycle == USE_SIDEPATH and side_path and not painted_lane_on_road(tags):
         return "bicycle_use_sidepath"
     return None
 
@@ -1014,6 +1015,22 @@ USE_SIDEPATH_M = 30.0
 USE_SIDEPATH_CLOSING_ACCESS = NO_PUBLIC_ACCESS | ACCESS_CLOSES
 
 
+# The painted lanes that make a `bicycle=use_sidepath` road a mapping error (the owner,
+# round 3, 2026-11-08: "If it has a painted lane and requires a sidepath then it's an OSM
+# error" and "Bikes would be explicitly allowed"). Claude's default reading, not the owner's:
+# a lane or buffered lane on either side. A contraflow-only lane (`opposite_lane`) is left
+# out, since on a one-way road riders going with traffic have no lane there.
+USE_SIDEPATH_ERROR_LANES = frozenset({"lane", "buffered_lane"})
+
+
+def painted_lane_on_road(tags: dict[str, str]) -> bool:
+    """Whether either side of the road carries a painted bike lane that makes its
+    `bicycle=use_sidepath` a mapping error (`USE_SIDEPATH_ERROR_LANES`). Such a road is
+    rated as its lane (`stress`), not listed as asking riders onto a side path
+    (`use_sidepath_paths`) and not said to in the road panel (`bike_access_reason`)."""
+    return any(side.value in USE_SIDEPATH_ERROR_LANES for side in cycleway_sides(tags).values())
+
+
 def is_use_sidepath_road(tags: dict[str, str]) -> bool:
     """A road (not a trail-class way) tagged `bicycle=use_sidepath` that nothing else
     closes: not a motorway or `motorroad=yes`, and no `access` or `vehicle` keeping the
@@ -1076,7 +1093,7 @@ def use_sidepath_paths(
     found: dict[int, str | None] = {}
     roads: list[tuple[int, str, list[tuple[float, float]]]] = []
     for osm_id, tags, coords in ways:
-        if not is_use_sidepath_road(tags) or len(coords) < 2:
+        if not is_use_sidepath_road(tags) or painted_lane_on_road(tags) or len(coords) < 2:
             continue
         points = [_xy(lon, lat, lat0) for lon, lat in coords]
         if sum(math.dist(a, b) for a, b in zip(points, points[1:], strict=False)) <= 0:
