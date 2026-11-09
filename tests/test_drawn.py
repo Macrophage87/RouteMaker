@@ -152,6 +152,7 @@ class TestDrawnRoute:
             exclude = [[[-77.1, 38.8], [-77.1, 39.0], [-77.0, 39.0], [-77.1, 38.8]]]
             blocked: list = []
             through = None
+            excluded: list = [object()]  # a closure in the plan (`_round_the_closures`)
 
         monkeypatch.setattr(routing.work_zones, "plan_zones", lambda *a, **k: Zones())
         monkeypatch.setattr(routing.work_zones, "drop_exclusions", lambda request, plan: None)
