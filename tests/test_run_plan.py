@@ -11,7 +11,9 @@ import pytest
 
 from core import presets, refine, routing, run_plan, walk_pricing
 from core.dedodge import encode_polyline6
+from routemaker import deer_closures
 from routemaker import workzones as wz
+from routemaker.geo import Point, haversine
 
 EASTERN = ZoneInfo("America/New_York")
 START = (-77.05, 38.92)
@@ -130,6 +132,26 @@ class TestDials:
 
     def test_the_night_ride_time_is_dark_whatever_the_clock(self) -> None:
         assert run_plan.is_dark(datetime(2026, 11, 2, 12, 0, tzinfo=EASTERN), "night")
+
+    def test_a_run_ending_after_dusk_is_after_dark(self) -> None:
+        # Hunt 4, X4-3 (Stephen, 2026-11-09): the start or the finish. 2 November 2026: civil
+        # dusk about 5:33 pm.
+        before_dusk = datetime(2026, 11, 2, 17, 0, tzinfo=EASTERN)
+        assert not run_plan.is_dark_over(before_dusk, 20 * 60)
+        assert run_plan.is_dark_over(before_dusk, 60 * 60)
+        # Starting before civil dawn is dark however long the run.
+        assert run_plan.is_dark_over(datetime(2026, 11, 2, 5, 30, tzinfo=EASTERN), 3 * 3600)
+
+    def test_the_finish_is_estimated_from_the_target_or_the_straight_lines(self) -> None:
+        pace = 10.8  # 3 m/s
+        # A loop from a start alone: the target at the pace.
+        assert run_plan.estimated_s([START], pace, True, 5400.0) == pytest.approx(1800.0)
+        # Between points: the straight line times ROUTED_PER_STRAIGHT at the pace, a loop's
+        # way back included.
+        span = haversine(Point(*START), Point(*END))
+        one_way = run_plan.estimated_s([START, END], pace)
+        assert one_way == pytest.approx(span * run_plan.ROUTED_PER_STRAIGHT / 3.0)
+        assert run_plan.estimated_s([START, END], pace, loop=True) == pytest.approx(2 * one_way)
 
 
 class TestWeigh:
@@ -711,6 +733,69 @@ class TestTheApi:
             "pedestrian"
         ]
         assert pedestrian["use_lit"] == run_plan.USE_LIT_AFTER_DARK
+
+    @staticmethod
+    def _dusk_next_21_december():
+        """Civil dusk on the next 21 December, within the year of now the API takes."""
+        now = datetime.now(EASTERN)
+        day = datetime(now.year, 12, 21, tzinfo=EASTERN)
+        if day <= now:
+            day = day.replace(year=now.year + 1)
+        return deer_closures.sun_times(day.date(), altitude_deg=run_plan.CIVIL_TWILIGHT_DEG)[1]
+
+    def test_a_run_starting_before_dusk_and_ending_after_it_favours_lit_ways(
+        self, client, fake_router
+    ) -> None:
+        # Hunt 4, X4-3 (Stephen, 2026-11-09): a run counts as after dark when its estimated
+        # finish is, not only its start. This one leaves 5 min before civil dusk and is
+        # estimated at about 14 min, so its very first router call asks for lit ways. Before
+        # the fix only the start was read, and no call did.
+        at = self._dusk_next_21_december() - timedelta(minutes=5)
+        assert not run_plan.is_dark(at)
+        response = post(
+            client,
+            {"points": [list(START), list(END)], "preset": "run", "depart_at": at.isoformat()},
+        )
+        assert response.status_code == 200, response.content
+        assert response.json()["run"]["dark"] is True
+        first = next(p for a, p in fake_router if a == "route")["costing_options"]["pedestrian"]
+        assert first["use_lit"] == run_plan.USE_LIT_AFTER_DARK
+
+    def test_a_run_planned_longer_than_its_estimate_into_the_dark_is_planned_again_lit(
+        self, client, fake_router
+    ) -> None:
+        # At the fastest pace the estimate is under the router's 600 s: leaving between the
+        # two before dusk, the estimate ends in daylight and the planned run after dusk, so it
+        # is planned once more with lit ways.
+        pace = run_plan.RUN_PACE_MAX_KMH
+        estimate = run_plan.estimated_s([START, END], pace)
+        assert estimate < 600.0 - 60.0
+        at = self._dusk_next_21_december() - timedelta(seconds=(estimate + 600.0) / 2)
+        response = post(
+            client,
+            {
+                "points": [list(START), list(END)],
+                "preset": "run",
+                "run_pace_kmh": pace,
+                "depart_at": at.isoformat(),
+            },
+        )
+        assert response.status_code == 200, response.content
+        assert response.json()["run"]["dark"] is True
+        routes = [p["costing_options"]["pedestrian"] for a, p in fake_router if a == "route"]
+        assert "use_lit" not in routes[0]
+        assert routes[-1]["use_lit"] == run_plan.USE_LIT_AFTER_DARK
+
+    def test_a_run_ending_well_before_dusk_is_not_after_dark(self, client, fake_router) -> None:
+        at = self._dusk_next_21_december() - timedelta(hours=2)
+        response = post(
+            client,
+            {"points": [list(START), list(END)], "preset": "run", "depart_at": at.isoformat()},
+        )
+        assert response.status_code == 200, response.content
+        assert response.json()["run"]["dark"] is False
+        routes = [p["costing_options"]["pedestrian"] for a, p in fake_router if a == "route"]
+        assert routes and all("use_lit" not in r for r in routes)
 
     def test_a_daytime_dial_set_after_dark_is_a_daylight_run(
         self, client, fake_router, monkeypatch

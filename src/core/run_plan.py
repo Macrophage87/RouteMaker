@@ -17,7 +17,11 @@ implementation's defaults, stated here so they can be argued with:
   The time shown is the running time, as a walk's is.
 - After dark (civil dusk to civil dawn, or the "Night" ride time): Valhalla's `use_lit`
   (`USE_LIT_AFTER_DARK`), an unlit way costs about twice its time. A way with no `lit` tag counts
-  as unlit there, so this leans to lit ways rather than forbidding the rest.
+  as unlit there, so this leans to lit ways rather than forbidding the rest. A run is after dark
+  when its start or its estimated finish is (Stephen, 2026-11-09, hunt 4 X4-3: "Sure."): the
+  finish is estimated before planning (`estimated_s`) and, where the planned run's own finish
+  turns out dark when the estimate said light, the run is planned once more with `use_lit`
+  (`api._run_body`).
 - Loops: "Make it a loop" (or a run that ends where it starts) runs the way back with the way
   out's line avoided, as a ride's loop does (`core.refine.make_loop`'s rule: points along the way
   out excluded, thinned until the router has a way, the best way back that shares no more than
@@ -35,7 +39,7 @@ import logging
 import math
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from routemaker import deer_closures
 from routemaker import workzones as zone_rules
@@ -186,6 +190,36 @@ def is_dark(at: datetime, when: str | None = None) -> bool:
     local = moment.astimezone(deer_closures.ZONE)
     dawn, dusk = deer_closures.sun_times(local.date(), altitude_deg=CIVIL_TWILIGHT_DEG)
     return not (dawn <= moment <= dusk)
+
+
+def estimated_s(
+    points: Sequence[Sequence[float]],
+    pace_kmh: float,
+    loop: bool = False,
+    target_m: float | None = None,
+) -> float:
+    """How long a run through `points` is guessed to take before it is planned, to judge whether
+    it ends after dark (`is_dark_over`): a loop from a start alone with a target, the target at
+    the pace; otherwise the straight lines between the points (and back to the start for a
+    loop) times `ROUTED_PER_STRAIGHT`, at the pace.
+
+    Using `ROUTED_PER_STRAIGHT` (the target loop's first guess) for this, and the flat pace with
+    no allowance for climbs or waits at lights, is Claude's default, not measured. A run planned
+    longer than the guess is caught after planning (`api._run_body`)."""
+    speed_ms = max(float(pace_kmh), 0.1) / 3.6
+    if len(points) == 1:
+        return float(target_m or 0.0) / speed_ms
+    route = [Point(float(p[0]), float(p[1])) for p in points]
+    if loop:
+        route.append(route[0])
+    straight = sum(haversine(a, b) for a, b in zip(route, route[1:], strict=False))
+    return straight * ROUTED_PER_STRAIGHT / speed_ms
+
+
+def is_dark_over(at: datetime, seconds: float, when: str | None = None) -> bool:
+    """Whether a run leaving at `at` and taking `seconds` counts as after dark (Stephen,
+    2026-11-09): its start or its finish is between civil dusk and civil dawn (`is_dark`)."""
+    return is_dark(at, when) or is_dark(at + timedelta(seconds=max(seconds, 0.0)), when)
 
 
 def zones_reach_m(points: Sequence[Sequence[float]], target_m: float | None) -> float:
