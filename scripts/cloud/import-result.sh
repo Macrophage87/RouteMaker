@@ -67,6 +67,7 @@
 #   -h, --help
 # Environment (for tests): CLOUD_AWS [aws], CLOUD_DOCKER [docker], CLOUD_SUDO [sudo],
 # CLOUD_GIT [git], CLOUD_RECEIVE, CLOUD_BETA_COMPOSE, CLOUD_SMOKE [the scripts/beta/ ones],
+# CLOUD_MEMINFO [/proc/meminfo, the --beta router gate's], RM_CD_PAVED_MIN_MIB [8806],
 # CLOUD_SMOKE_TRIES [20], CLOUD_SMOKE_WAIT_S [15], CLOUD_ROUTER_WAIT_S [180, the longest wait for a restarted router to answer].
 set -Eeuo pipefail
 
@@ -198,9 +199,35 @@ if [ "$beta" = 1 ]; then
 	# The trail routers (Mountain Bike's, Gravel and Mountain Goat's): started, or recreated onto the
 	# new build, whenever their tiles are here. A restart alone never starts one that is not running,
 	# and without them the api plans those rides on the standard graph (`mtb.limited` no_mtb_graph).
+	# Road Bike's two routers start only with room for their startup peak, the agent's own gate
+	# (scripts/beta/auto-release.sh, RM_CD_PAVED_MIN_MIB): available memory plus what this
+	# project's running containers hold. A running one is recreated whatever the reading.
+	paved_min_mib=${RM_CD_PAVED_MIN_MIB:-8806}
+	paved_room_mib() {
+		local avail ids held=0
+		avail=$(awk '/^MemAvailable:/ {print int($2 / 1024)}' "${CLOUD_MEMINFO:-/proc/meminfo}")
+		[ -n "$avail" ] || return 1
+		ids=$("$bcompose" ps -q </dev/null) || return 1
+		if [ -n "$ids" ]; then
+			# shellcheck disable=SC2086 # one argument per container id
+			held=$(timeout 30 "$DOCKER" stats --no-stream --format '{{.MemUsage}}' $ids </dev/null |
+				awk '{ v = $1; u = v; sub(/^[0-9.]+/, "", u); sub(/[A-Za-z]+$/, "", v)
+					f = (u == "GiB") ? 1024 : (u == "MiB") ? 1 : (u == "KiB") ? 1 / 1024 : (u == "B") ? 1 / 1048576 : 0
+					s += v * f } END { print int(s) }') || return 1
+		fi
+		printf '%s\n' "$((avail + ${held:-0}))"
+	}
 	trail=()
 	for variant in offroad mtb paved paved-weekend; do
-		[ -L "$data_root/tiles/$variant/current" ] && trail+=("valhalla-$variant")
+		[ -L "$data_root/tiles/$variant/current" ] || continue
+		if { [ "$variant" = paved ] || [ "$variant" = paved-weekend ]; } &&
+			[ -z "$("$bcompose" ps -q --status running "valhalla-$variant" </dev/null 2>/dev/null)" ]; then
+			if ! { room=$(paved_room_mib) && [ "$room" -ge "$paved_min_mib" ]; }; then
+				note "WARNING: valhalla-$variant left stopped: ${room:-unknown} MiB of the $paved_min_mib it needs (available plus what this project's containers hold); start it once there is room: $bcompose up -d valhalla-$variant"
+				continue
+			fi
+		fi
+		trail+=("valhalla-$variant")
 	done
 	if [ "${#trail[@]}" -gt 0 ]; then
 		note "starting the trail routers on the new graphs: ${trail[*]}"
