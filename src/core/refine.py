@@ -175,6 +175,15 @@ REFINE_MIN_EVENT_FT = model.RED_MIN_FT
 CALM_POINTS_PER_ROUND = 60
 CROSSING_POINTS_PER_ROUND = 3
 MAX_EXCLUDES = 150
+# The radius (metres) round a red crossing's node within which the router excludes every
+# edge (`crossing_targets`, `core.red_crossings`). A crossing's point is the route's own
+# traced node, so every edge that meets there is within a metre of it (`junctions.
+# LOCATE_RADIUS_M`); the 15 m of an Avoid-rated junction (`avoid_junctions.MATCH_RADIUS_M`,
+# which an admin places by hand, near the node but not on it) also took out the sidepath
+# along the arterial, 8 to 14 m from its centreline, and a trail bridge or underpass beside
+# the junction: often the very way round the crossing (the 2026-11-08 hunt, J6). 3 m keeps
+# a metre or two of slack for a node a divided road's merge moved and spares both.
+CROSSING_EXCLUDE_RADIUS_M = 3
 # Samples along a busy stretch this far apart (metres): every edge of a street is
 # longer than half of it, so each gets one. Each is the middle of a traced edge,
 # interpolated half way along it (`trace_junctions.edge_midpoints`), never a
@@ -328,6 +337,9 @@ class Context:
     # The rider's total system weight in kilograms (item 264), which the effort
     # reads (`routemaker.effort`).
     mass_kg: float = effort.MASS_KG
+    # An electric assist's watts up a climb (`routing.HillPrice.assist_w`), which shorten the
+    # climbing time the hills price charges (`hill_cost.hill_cost_m`); 0 without one.
+    assist_w: float = 0.0
     analyses: dict = field(default_factory=dict)
     # The router's `/locate` answers already had in this plan, by (graph, lon, lat,
     # radius) (`locator`): the candidates are mostly detours of one route and share
@@ -343,6 +355,12 @@ class Context:
     # What a second of junction waiting costs against a second of riding when routes are
     # ranked (`presets.wait_weight_for`): 1, and 3 on Road Bike. The time shown is unchanged.
     wait_weight: float = 1.0
+    # Whether a beg button ranks at Road Bike's ten minutes (`presets.road_bike_buttons_for`:
+    # Road Bike, Run and Tandem, named, not read from `wait_weight`).
+    road_bike_buttons: bool = False
+    # The map's beg-button answers already had in this plan, by OSM way (tagged or not;
+    # `routing.button_ways`): the candidates share most of their crossings.
+    button_ways: dict = field(default_factory=dict)
     # The ways the exclusion search kept excluding for its best route, which the
     # seek keeps excluding (set by the search).
     kept_excludes: list = field(default_factory=list)
@@ -420,6 +438,16 @@ class Context:
     # A Mass Ride or a Novice and Nervous ride: steep grades either way are priced
     # (`routemaker.steep_grades`, the owner, 2026-10-26), in `Analysis.hill_m`.
     steep_grades: bool = False
+    # What the passes after the search must keep out of any way round they ask for, as
+    # `exclude_locations` entries: Mountain Bike's trails above the rider's hardest level
+    # (`core.mtb.settle`'s rounds, set by the plan), and the red crossings the red pass
+    # went round (`core.red_crossings`), so the Avoid-junction pass never brings one back
+    # (the 2026-11-08 hunt, P1 and P2).
+    level_excludes: list = field(default_factory=list)
+    red_excludes: list = field(default_factory=list)
+    # The Hills slider seeks climbs (Mountain Goat's climb seek, `routing.choose_climb`): a
+    # pass after it must not trade the climb it chose away (P1).
+    seek_climb: bool = False
 
 
 def shift_classes(classes: list, shift: int) -> list:
@@ -536,8 +564,19 @@ class Analysis:
     shift: int = 0
     # The seconds its junctions cost the rider, which the router's own time leaves out
     # (`routemaker.junction_delay`, the owner, 2026-10-20: "Both", the time shown and the
-    # route chosen): priced in `score` as that much quiet riding.
+    # route chosen): priced in `score` as that much quiet riding, at `junction_ranked_s`.
     junction_delay_s: float = 0.0
+    # The same waits as the ranking counts them (`junction_delay.Wait.ranked_s`): a suburban
+    # signal's twice, a crossing read as needing its beg button at two minutes below a stop
+    # sign's price (the owner, 2026-11-08: "a 2x penalty but keep those numbers"). None: the
+    # waits shown (an analysis made without the reading).
+    junction_ranked_s: float | None = None
+
+    @property
+    def ranked_delay_s(self) -> float:
+        """The junction waits the ranking counts (`junction_ranked_s`)."""
+        return self.junction_delay_s if self.junction_ranked_s is None else self.junction_ranked_s
+
     # Each piece's known hazard kinds, in the order of `pieces` (`route_hazards.kinds_of`), as
     # the reading priced them; the answer says them from here (audit S16). None: not read.
     hazard_kinds: list | None = None
@@ -589,7 +628,7 @@ class Analysis:
             self.cost_s
             + ctx.quiet_cost * extra
             + avoid_model.penalty_s(self.avoid_passages)
-            + QUIET_COST_FACTOR * ctx.wait_weight * self.junction_delay_s
+            + QUIET_COST_FACTOR * ctx.wait_weight * self.ranked_delay_s
             + QUIET_COST_FACTOR * RED_DETOUR_S * ctx.weight * red_count(self)
         )
 
@@ -663,7 +702,19 @@ def delay_m(read: Analysis, ctx: Context) -> float:
     (`Context.wait_weight`)."""
     if ctx.quiet_cost <= 0:
         return 0.0
-    return QUIET_COST_FACTOR * ctx.wait_weight * read.junction_delay_s / ctx.quiet_cost
+    return QUIET_COST_FACTOR * ctx.wait_weight * read.ranked_delay_s / ctx.quiet_cost
+
+
+def stop_wait_s_per_ft(ctx: Context) -> float | None:
+    """What a foot of the junction model's cost is worth in the ranking, as seconds of
+    junction waiting (`score`: the model's feet at `ctx.weight` and `quiet_cost` a metre, a
+    wait at QUIET_COST_FACTOR and `wait_weight` a second): a crossing read as needing its beg
+    button is held below a stop sign across the same road in these units
+    (`junction_delay.signal_wait`; the owner, 2026-11-08). None where neither prices."""
+    per_wait_s = QUIET_COST_FACTOR * ctx.wait_weight
+    if per_wait_s <= 0 or ctx.quiet_cost <= 0:
+        return None
+    return ctx.quiet_cost * ctx.weight / model.FEET_PER_METRE / per_wait_s
 
 
 def charged_m(read: Analysis, ctx: Context) -> float:
@@ -679,12 +730,38 @@ def charged_m(read: Analysis, ctx: Context) -> float:
     return read.length_m + read.hill_m
 
 
+def avoidance_severity(event) -> str | None:
+    """The severity the planner's avoidance passes read an event at: the map's colour, but a
+    trail crossing capped at orange because no signal is mapped (`max_severity`, item 185)
+    whose own cost is red-level (`intersections.RED_MIN_FT`) read as the red it costs. The
+    owner asked for the cap on the map only ("Trail crossings whose signal is not mapped cap
+    at orange and are labelled 'signal not mapped'"), and the model promises "The cost still
+    counts in full where a route is chosen" (`intersections.MARKED_CROSSING_MAX_SEVERITY`);
+    keyed on the colour, every red-only pass (the score's `RED_DETOUR_S`, the top figure,
+    `top_by_leg`, `core.red_crossings`) skipped an unsignalised trail crossing of a 45 mph
+    arterial that costs 1 to 2 calm miles (the 2026-11-08 hunt, J1). The colour the rider is
+    shown is unchanged."""
+    severity = event.severity
+    if (
+        severity == model.ORANGE
+        and getattr(event, "max_severity", None) == model.ORANGE
+        and model.severity_of(event.cost_ft) == model.RED
+    ):
+        return model.RED
+    return severity
+
+
 def junction_cost_m(events: list | None, severity: str, shift: int = 0) -> float:
-    """The summed cost of the events of one severity (read `shift` levels up), in metres."""
+    """The summed cost of the events of one severity (read `shift` levels up), in metres;
+    each at its `avoidance_severity`, so a capped trail crossing counts with the reds."""
     if not events:
         return 0.0
     return (
-        sum(e.cost_ft for e in events if presets.shifted_severity(e.severity, shift) == severity)
+        sum(
+            e.cost_ft
+            for e in events
+            if presets.shifted_severity(avoidance_severity(e), shift) == severity
+        )
         / model.FEET_PER_METRE
     )
 
@@ -862,8 +939,10 @@ RED_DETOUR_S = 600.0
 
 def red_count(read: Analysis) -> int:
     """The route's red junctions as the map draws them, never shifted: a ride that reads
-    every road a level up does not make its oranges impassable."""
-    return sum(1 for e in read.events or () if e.severity == model.RED)
+    every road a level up does not make its oranges impassable. A trail crossing drawn
+    orange only for want of a mapped signal, whose cost is red-level, counts
+    (`avoidance_severity`)."""
+    return sum(1 for e in read.events or () if avoidance_severity(e) == model.RED)
 
 
 def better(read: Analysis, best: Analysis, ctx: Context, rest_m: float = 0.0) -> bool:
@@ -961,6 +1040,10 @@ def events_of_raws(raws, ctx: Context, deadline: routing.Deadline) -> list | Non
             cut_short=(routing.DeadlineExceeded,),
             ratings=ctx.junction_ratings,
             beacons=ctx.beacons,
+            # A road closed to cars at the ride's time is car-free here only on the graph
+            # that routes it as a path, as `routing.classify` reads it (hunt X1). The ride
+            # time itself still prices the junctions (rush hour, night).
+            closure_when=routing.car_free_reading(ctx.when, ctx.variant),
         )
     except junctions.ReadingCutShort as error:
         raise routing.DeadlineExceeded(str(error)) from error
@@ -990,7 +1073,7 @@ def analyse(
     mark_legs: list = []
     offset = 0.0
     via_m: list[float] = []
-    line: list = []
+    graded: list = []
     for number, leg in enumerate(legs):
         trace = routing._trace(ctx.variant, ctx.costing, leg.get("shape", ""), deadline, ctx.traces)
         if trace is None:
@@ -1003,7 +1086,7 @@ def analyse(
         leg_marks = trace_junctions.marks_along(read, offset)
         marks.extend(leg_marks)
         mark_legs.extend([number] * len(leg_marks))
-        line.extend(shape[1:] if line else shape)
+        graded.append((trace, shape))
         offset += sum(piece.metres for piece in made)
         if number < len(legs) - 1:
             via_m.append(offset)
@@ -1019,13 +1102,27 @@ def analyse(
     priced = hazard_priced(classes, kinds)
     hazard_read = priced is not classes
     classes = priced
-    avoid_passages = avoid_model.passages(line, ctx.avoid) if ctx.avoid else []
+    # Read from the traces, so a bridge over or a tunnel under a junction is no pass (J6).
+    avoid_passages = []
+    if ctx.avoid:
+        from .avoid_junctions import graded_line
+
+        graded_points, separated, nodes = graded_line(graded, raws)
+        avoid_passages = avoid_model.passages(
+            graded_points, ctx.avoid, separated=separated, nodes=nodes
+        )
     # The stress figures in hill-weighted metres (409): each piece's metres times its factor.
     hill = hill_of(trip, pieces, ctx)
     hilled = [_Metres(piece.metres * f) for piece, f in zip(pieces, hill, strict=True)]
     stress, _facility = routing.totals(zip(hilled, classes, strict=True))
     halves = half_metres(hilled, classes)
     weights = ctx.exposure.weights
+    events = events_of_raws(raws, ctx, deadline) if with_events else None
+    # The junctions' waits, the junction model's signals, big roads and stop-sign prices
+    # included (hunt J5; the owner, 2026-11-08), each read once for the time and the rank.
+    found_waits = routing.junction_waits(
+        raws, ctx.beacons, events, stop_wait_s_per_ft(ctx), ctx.button_ways, ctx.when
+    )
     result = Analysis(
         length_m=float((trip.get("summary") or {}).get("length", 0.0)) * 1000.0,
         cost_s=routing._router_cost(trip),
@@ -1034,7 +1131,7 @@ def analyse(
         climb_m=routing._climb_of(trip),
         pieces=pieces,
         classes=classes,
-        events=events_of_raws(raws, ctx, deadline) if with_events else None,
+        events=events,
         via_m=via_m,
         marks=marks,
         mark_legs=mark_legs,
@@ -1056,6 +1153,7 @@ def analyse(
             ctx.mass_kg,
             flat_speed_ms(ctx.costing),
             ctx.hills,
+            ctx.assist_w,
         )
         + (
             steep_grades.penalty_s(routing.grade_profile(trip)) * flat_speed_ms(ctx.costing)
@@ -1070,10 +1168,11 @@ def analyse(
         hazard_kinds=kinds,
         scenic=getattr(real_classes, "scenic", None),
         adjustments=getattr(real_classes, "adjustments", None),
-        junction_delay_s=junction_delay.delay_s(
-            raws,
-            routing.stop_as_yield,
-            lambda lon, lat: model.beacon_at(lon, lat, ctx.beacons) is not None,
+        junction_delay_s=sum(w.seconds for w in found_waits),
+        # At the ride type's wait weight, stacked at most 5x the wait shown (Road Bike;
+        # `junction_delay.MAX_STACKED_WEIGHT`), given back per unit of that weight.
+        junction_ranked_s=junction_delay.ranked_s(
+            found_waits, ctx.wait_weight, road_bike_buttons=ctx.road_bike_buttons
         ),
     )
     if with_events:
@@ -1249,8 +1348,9 @@ def _exclusion(lon: float, lat: float, ctx: Context, radius: int | None = None) 
 def crossing_targets(analysis: Analysis, ctx: Context) -> list[Target]:
     """The Avoid-rated junctions the route passes, then the worst junctions: for each,
     the approach (a point on the edge the route arrives by) and the junction itself, every
-    edge within `avoid_junctions.MATCH_RADIUS_M` of it, so that the next round cannot
-    come at the same crossing by another street (review of PR #421)."""
+    edge within `CROSSING_EXCLUDE_RADIUS_M` of it, so that the next round cannot come at
+    the same crossing by another street (review of PR #421), while a sidepath or a bridge
+    a few metres off the node stays open (J6)."""
     avoid = avoid_targets(analysis, ctx)
     if ctx.group or not analysis.events:
         return avoid
@@ -1266,7 +1366,7 @@ def crossing_targets(analysis: Analysis, ctx: Context) -> list[Target]:
         for e in chosen
         for target in (
             Target(e.approach, 4),
-            Target((e.lon, e.lat), 4, int(avoid_model.MATCH_RADIUS_M)),
+            Target((e.lon, e.lat), 4, CROSSING_EXCLUDE_RADIUS_M),
         )
     ]
 
@@ -1614,7 +1714,7 @@ def top_by_leg(analysis: Analysis) -> list[float]:
     bounds = leg_bounds(analysis)
     out = lts4_by_leg(analysis)
     for event in analysis.events or ():
-        if presets.shifted_severity(event.severity, analysis.shift) != "red":
+        if presets.shifted_severity(avoidance_severity(event), analysis.shift) != "red":
             continue
         for k, (lo, hi) in enumerate(bounds):
             if lo <= event.m < hi or (k == len(bounds) - 1 and event.m >= hi):
@@ -1725,7 +1825,44 @@ def retrace_m(analysis: Analysis) -> float:
     the rider placed down a dead end is theirs to ride out to and back from."""
     marks = _marks(analysis)
     legs = analysis.mark_legs if len(analysis.mark_legs) == len(marks) else None
-    bounds = leg_bounds(analysis)
+    return _retrace_of(marks, legs, leg_bounds(analysis))
+
+
+# How far either side of a long plan's cut the joined legs are looked at for riding back
+# over their own way (`joined_retrace_m`).
+CUT_REACH_M = 2_000.0
+
+
+def joined_retrace_m(reads: list[Analysis], users: list[int]) -> float:
+    """The metres a long plan's legs put together (`refine_long`) ride back over their own
+    way across a cut, each of `reads` the reading of one cut leg and `users[j]` the plan's own
+    leg it is part of. The cuts (`long_legs`) are not the rider's points, so the stretch
+    either side of one is one leg; but each cut leg is searched on its own and a cut is a
+    plain `break`, so leg j's route may reach the cut along its edge from the far end and leg
+    j + 1's leave it back that way: an out-and-back at a place that is no stop, which each
+    leg's own `retrace_m` cannot see (hunt V4). Counted as `retrace_m` counts, on the last
+    CUT_REACH_M of the one and the first of the other, less what each of those rides twice
+    on its own (its own leg's guard's)."""
+    total = 0.0
+    for j in range(len(reads) - 1):
+        if users[j] != users[j + 1]:
+            # A point of the rider's own: theirs to turn at.
+            continue
+        before, after = _marks(reads[j]), _marks(reads[j + 1])
+        end = max((m[0] for m in before), default=0.0)
+        tail = [m for m in before if m[0] >= end - CUT_REACH_M]
+        head = [m for m in after if m[0] <= CUT_REACH_M]
+        both = _retrace_of(tail + head, [0] * (len(tail) + len(head)), [])
+        total += max(
+            0.0,
+            both - _retrace_of(tail, [0] * len(tail), []) - _retrace_of(head, [0] * len(head), []),
+        )
+    return total
+
+
+def _retrace_of(marks: list, legs: list | None, bounds: list) -> float:
+    """`retrace_m` on edge middles (`_marks`), each on the leg `legs` gives it, or by its
+    metres along against `bounds` (`leg_bounds`) where there is no such list."""
     cell = RETRACE_MATCH_M
     seen: dict[tuple[int, int, int], list[tuple[float, float, float]]] = {}
     total = 0.0
@@ -1856,6 +1993,7 @@ def _seek(best, best_trip, first_exposure, ctx: Context, info: dict, original=No
         if count == 1:
             leg_trip, incumbent, reference = trip, best, first_exposure
             reference_lts4 = list(ctx.first_lts4)
+            reference_junctions = ctx.first_avoid_m + ctx.first_red_m
         else:
             # The leg's own route, read with its junctions, on an allowance of
             # its own (combined correctness review, SF1): the reading is what
@@ -1882,6 +2020,9 @@ def _seek(best, best_trip, first_exposure, ctx: Context, info: dict, original=No
             if incumbent is None:
                 continue
             reference = first_legs[k] if first_legs else incumbent.rated_exposure_m
+            # The leg's red and Avoid junctions as it stands (P2-5): the router's first
+            # route is not read leg by leg for its junctions.
+            reference_junctions = incumbent.avoid_junction_m + incumbent.red_m
             reference_lts4 = (
                 [ctx.first_lts4[k]]
                 if len(ctx.first_lts4) == count
@@ -1908,6 +2049,7 @@ def _seek(best, best_trip, first_exposure, ctx: Context, info: dict, original=No
             room,
             rest_m,
             pooled=count == 1,
+            reference_junctions_m=reference_junctions,
         )
         if got is not None:
             seek["taken"] = taken = True
@@ -1936,7 +2078,9 @@ def _seek(best, best_trip, first_exposure, ctx: Context, info: dict, original=No
         # Traffic wins for the whole trip too (OWNER-DECISIONS 61, 188: "2% +
         # 164 ft" for the plan): each leg's allowance is its own, so n legs
         # could otherwise add n x 50 m between them (review r1).
-        if read.rated_exposure_m > _allowance(first_exposure):
+        # With the red and Avoid junctions on both sides, as `_busier` (hunt 2, P2-5): a
+        # leg taken round a red crossing is not "busier" for the LTS 3 it takes on.
+        if _busier(read, first_exposure, ctx):
             seek["taken"] = False
             # Its own key as well, so that a "time" from a later leg does not
             # hide it (review r2).
@@ -1992,6 +2136,7 @@ def _seek_leg(
     room_m: float | None = None,
     rest_m: float = 0.0,
     pooled: bool = True,
+    reference_junctions_m: float = 0.0,
 ):
     """The seek on one leg: (reading, trip) of the leg if a candidate was kept,
     else None. `reference` is the leg's exposure as the router first gave it
@@ -2003,7 +2148,9 @@ def _seek_leg(
     `pooled`: whether the candidates read are kept in `Context.options` for the
     routes to choose from. Only where the leg is the whole trip: on a plan with
     more than one leg (a loop, stops) a leg's candidate is one leg of the trip, and
-    is never offered as a whole route (combined correctness review, B1)."""
+    is never offered as a whole route (combined correctness review, B1).
+    `reference_junctions_m`: the reference's Avoid-junction and red-junction metres,
+    added to its side of the guard as `_busier` adds them (hunt 2, P2-5)."""
     start, end = ctx.points[k][:2], ctx.points[k + 1][:2]
     span = haversine(Point(*start), Point(*end))
     shape = [
@@ -2026,7 +2173,10 @@ def _seek_leg(
             guide,
             band,
             ctx.with_facility,
-            ctx.when,
+            # A road closed to cars is a corridor only on the graph that routes it as a
+            # path (`routing.car_free_reading`, hunt X1): elsewhere the router prices it as
+            # the road with cars, and a seek offering it would chase a calm it cannot ride.
+            routing.car_free_reading(ctx.when, ctx.variant),
             ctx.avoid_gravel,
             timeout_s=min(trailseek.TABLE_TIMEOUT_S, left),
             # Only Road Bike asks to avoid gravel now (api.RouteIn), and its graph prices
@@ -2134,7 +2284,15 @@ def _seek_leg(
             if read.events is None:
                 tried["outcome"] = "unread"
                 continue
-            busier = read.rated_exposure_m > _allowance(reference)
+            # The Traffic-wins guard in `_busier`'s form (hunt 2, P2-5): each pass through
+            # an Avoid-rated junction and each red junction counted at its cost on both
+            # sides. On the exposure alone, a trail corridor round an unsignalised red
+            # crossing to a signal, with 150 m more LTS 3 on the way in, was "busier" here
+            # and dropped, though the search takes the same route (the Kensington fix).
+            busier = (
+                read.rated_exposure_m + read.avoid_junction_m + read.red_m
+                > _allowance(reference) + reference_junctions_m
+            )
             tried["lts4_m"] = round(read.lts4_m)
             tried["lts3_m"] = round(read.lts3_m)
             if not ctx.maxcalm:
@@ -2322,8 +2480,11 @@ def _search(trip, best, first_exposure, stop_at, ctx: Context, info: dict):
         # A crossing-only search past its first round is an answer as good as it was
         # with that round alone (before CROSSING_ONLY_ROUNDS was more than one): a later
         # round that cannot run or fails leaves `limited` unset, so the answer is cached
-        # and says nothing.
-        said = ctx.rate > 0 or number == 0
+        # and says nothing. Not with a red still on the best route: there the round that
+        # failed is said whatever stopped it (hunt S, low note: only the time branch did),
+        # so the plan does not count as searched whole and the red pass still runs
+        # (`core.red_crossings`).
+        said = ctx.rate > 0 or number == 0 or red_count(best) > 0
         new = crossing_targets(current, ctx)
         if ctx.rate > 0:
             # LTS 4 and Avoid first, if the route has any; then everything busy.
@@ -2346,7 +2507,7 @@ def _search(trip, best, first_exposure, stop_at, ctx: Context, info: dict):
             # route, is said too, so the answer is not kept as if it were the search's
             # whole (the PC's check, 2026-10-23: a cold first plan stopped after two rounds
             # with both Kensington reds).
-            if said or red_count(best):
+            if said:
                 info["limited"] = "time"
             break
         round_deadline = routing.Deadline(
@@ -2442,6 +2603,12 @@ def _search(trip, best, first_exposure, stop_at, ctx: Context, info: dict):
 # for the whole route's junctions, read once at the end.
 LONG_MIN_START_S = 12.0
 LONG_FINAL_RESERVE_S = REFINE_TRACE_RESERVE_S
+# And what the legs' searches leave, before that reserve, for the red-crossing pass that
+# follows (`core.red_crossings.settle`, which needs `red_crossings.MIN_START_S` and a
+# window's router call and reading or two): the legs shared out every second up to the
+# reserve, so the last leg searched could end exactly where the pass needed to start and
+# a leg whose only fault was a red crossing kept it (the 2026-11-08 hunt, S2). Seconds.
+LONG_RED_RESERVE_S = 8.0
 # A leg's share of its time that goes to the exclusion rounds; the rest is the
 # seek's.
 LONG_SEARCH_SHARE = 0.7
@@ -2575,6 +2742,46 @@ def loop_refused(read: Analysis, ctx: Context) -> bool:
     return overlap_share(read) > max(ctx.loop_overlap, LOOP_OVERLAP_OK) + 0.005
 
 
+def level_round_kept(read: Analysis, searched: Analysis, ctx: Context) -> bool:
+    """Whether a route a trail-level round asked for (`mtb.settle`, `easy_mtb.settle`:
+    the plan's own request again, with points on the harder trails excluded) may replace a
+    route the plan's own request did not answer: the calm search's via detour, a loop's way
+    back (`make_loop`), the target fit, the stops' fewer repeats (the third routing hunt,
+    C3-1). The round's answer is the router's own route on the plan's request, so taken on
+    harder metres alone it threw that work away: the busier direct route came back, a loop
+    went back to the router's out-and-back. It is taken where it is no busier by the
+    Traffic-wins guard (each Avoid-rated and red junction counted at its cost, as
+    `red_crossings.takes`), not past the ceiling where the searched route was not, and on a
+    loop no more of the way back on the way out than the loop has (`loop_refused`).
+    Otherwise the searched route stays with its harder trail, which the answer says
+    (`no_way_round`)."""
+    if (
+        read.rated_exposure_m + read.avoid_junction_m + read.red_m
+        > _allowance(searched.rated_exposure_m) + searched.avoid_junction_m + searched.red_m
+    ):
+        return False
+    if too_long(read.length_m, ctx) and not too_long(searched.length_m, ctx):
+        return False
+    return not loop_refused(read, ctx)
+
+
+def level_round_keeps(searched: dict, ctx: Context):
+    """`level_round_kept` as the level rounds call it: a function of the round's trip,
+    which reads both routes (remembered per plan) within the late deadline. A route that
+    cannot be read in time is not taken."""
+    deadline = late_deadline(ctx)
+
+    def keeps(again: dict) -> bool:
+        try:
+            whole = analyse(searched, ctx, deadline)
+            read = analyse(again, ctx, deadline) if whole is not None else None
+        except (routing.DeadlineExceeded, routing.RouterUnavailable):
+            return False
+        return read is not None and level_round_kept(read, whole, ctx)
+
+    return keeps
+
+
 def make_loop(trip: dict, ctx: Context) -> tuple[dict, dict]:
     """The plan's way back by a different way (OWNER-DECISIONS 266): the last leg of
     `trip` asked for again with points along the way out excluded, from all of them
@@ -2585,7 +2792,9 @@ def make_loop(trip: dict, ctx: Context) -> tuple[dict, dict]:
 
     Returns (trip, info) with `info`: `overlap_pct` and `shared_m` of the trip
     returned, `return_m`, `excluded` (how many points), `tried` (routes asked for) and
-    `fallback` (None, or "out_and_back", or why nothing was tried)."""
+    `fallback` (None, or "out_and_back", or why nothing was tried, or "time" where the
+    ways back were not all asked for want of time and none was found or the router's own
+    was kept)."""
     info: dict = {
         "overlap_pct": None,
         "shared_m": None,
@@ -2631,6 +2840,29 @@ def make_loop(trip: dict, ctx: Context) -> tuple[dict, dict]:
         points.append((lon, lat))
     stop_at = min(routing.clock() + LOOP_BUDGET_S, ctx.deadline.at - REFINE_TRACE_RESERVE_S)
     best: tuple[tuple, dict, Analysis, int, float] | None = None
+    # The router's own way back competes with the asked ones under `_loop_before` (hunt 2,
+    # P2-4): it was kept before only where every asked way back shared at least as much of
+    # the way out, never ranked, so one that already came back by a different calm street
+    # (20%, under LOOP_OVERLAP_OK) lost to an asked one sharing 8% over a kilometre of LTS 4,
+    # both in the "shares little enough" class where the least stress is to decide. It is
+    # read with its junctions, as the asked loops are; where they could not be read it is
+    # not ranked and the old rule (kept unless one shares less) stands.
+    seeded = first.events is not None
+    if seeded:
+        share_first = overlap_share(first)
+        best = (
+            (
+                share_first > LOOP_OVERLAP_OK,
+                first.key(ctx) if share_first <= LOOP_OVERLAP_OK else share_first,
+            ),
+            trip,
+            first,
+            0,
+            share_first,
+        )
+    # Whether the asks stopped for the time (hunt 2, P2-3): a loop none of whose ways back
+    # was read is not an out-and-back, and is not kept in the answer cache.
+    cut_short = False
     asks: list[list[tuple[float, float]]] = []
     seen: set[frozenset] = set()
     for step in LOOP_THINNING:
@@ -2653,6 +2885,7 @@ def make_loop(trip: dict, ctx: Context) -> tuple[dict, dict]:
             ready = future is not None and future.done()
             left = stop_at - routing.clock()
             if left <= 0 or (not ready and left < REFINE_ROUND_MIN_S):
+                cut_short = True
                 break
             info["tried"] += 1
             # The way back alone is read for its route only, without its junctions (audit
@@ -2665,6 +2898,7 @@ def make_loop(trip: dict, ctx: Context) -> tuple[dict, dict]:
                 with_events=False,
             )  # fmt: skip
             if read == "time":
+                cut_short = True
                 break
             if read is None:
                 continue
@@ -2694,11 +2928,30 @@ def make_loop(trip: dict, ctx: Context) -> tuple[dict, dict]:
         for future in asking or ():
             future.cancel()
     if best is None or best[4] >= LOOP_OUT_AND_BACK:
-        info["fallback"] = "out_and_back"
+        # Hunt 2, P2-3: where the asks stopped for the time, the way back was not found
+        # rather than not there. "out_and_back" says the way back is the way out whatever is
+        # excluded; this says `time`, counted as a check skipped for the budget so the answer
+        # is not kept for the rest of the day (`route_cache.keepable` also reads it).
+        info["fallback"] = "time" if cut_short else "out_and_back"
+        if cut_short:
+            routing._skipped_for_time()
         return trip, info
     _ranked, joined, whole, excluded, share = best
-    if share >= overlap_share(first) and overlap_share(first) < LOOP_OUT_AND_BACK:
-        # Nothing the router gave shares less than its own route's way back did.
+    # The router's own way back kept: it ranked first (P2-4), or, where its junctions could not
+    # be read, nothing the router gave shares less than it did. `info` already reads it.
+    own = joined is trip or (
+        not seeded and share >= overlap_share(first) and overlap_share(first) < LOOP_OUT_AND_BACK
+    )
+    if own:
+        if cut_short:
+            # Review of hunt 2 (P2-3 with P2-4): best starts as the router's own way back, so
+            # where the asks stopped for the time and it shares under LOOP_OUT_AND_BACK it was
+            # answered with `fallback` None, no skip counted, and kept for the day, though the
+            # ways back that might have beaten it were never read. It says `time` as the
+            # out-and-back does; its `overlap_pct` stays, and `routing.plan` still holds the
+            # search to it.
+            info["fallback"] = "time"
+            routing._skipped_for_time()
         return trip, info
     shared, back = return_overlap(whole)
     info.update(
@@ -3157,6 +3410,7 @@ def combine(reads: list[Analysis]) -> Analysis:
         ),
         shift=max((r.shift for r in reads), default=0),
         junction_delay_s=sum(r.junction_delay_s for r in reads),
+        junction_ranked_s=sum(r.ranked_delay_s for r in reads),
     )
 
 
@@ -3392,10 +3646,12 @@ def refine_long(trip: dict, ctx: Context) -> tuple[dict, dict]:
         key=lambda j: (-(reads[j].lts4_m + reads[j].avoid_junction_m), -reads[j].lts3_m, j),
     )
     limited: str | None = None
+    # The legs' searches end before the red pass's own time (LONG_RED_RESERVE_S).
+    search_stop = hard_stop - LONG_RED_RESERVE_S
     for turn, j in enumerate(order):
         now = routing.clock()
         rest = sum(weights[i] for i in order[turn:])
-        share = (hard_stop - now) * weights[j] / rest
+        share = (search_stop - now) * weights[j] / rest
         if share < LONG_LEG_MIN_S:
             long["skipped"] += 1
             limited = "time"
@@ -3484,7 +3740,21 @@ def refine_long(trip: dict, ctx: Context) -> tuple[dict, dict]:
         top > whole_top - MAXCALM_STEPS[0] and lts3 > whole.lts3_m + MAXCALM_STEPS[1]
     )
     lts4 += traded
-    if not changed or worse or too_long(length, ctx):
+    # Nor where the legs put together ride back over their own way, across a cut, more
+    # than the legs' own first routes put together do (`joined_retrace_m`; hunt V4): a
+    # U-turn at a place the rider never chose. The same slack as every candidate's
+    # (`doubles_back`). Against the legs' firsts, like for like (hunt 2, P2-6): against the
+    # router's whole route, which has no cut and so can have no such U-turn, a cut where
+    # two legs nobody changed each reach the cut from the far end of its edge (a cut on a
+    # one-way or dual carriageway, or a snap) sent every leg's gain back to the router's
+    # route.
+    users = [leg["user"] for leg in legs]
+    retraced = changed and joined_retrace_m(finals, users) > (
+        joined_retrace_m(reads, users) + RETRACE_SLACK_M
+    )
+    if retraced:
+        long["retraced"] = True
+    if not changed or worse or retraced or too_long(length, ctx):
         long["answered"] = "router"
         info["lts4_m_after"] = info["lts4_m_before"]
         info["lts3_m_after"] = info["lts3_m_before"]

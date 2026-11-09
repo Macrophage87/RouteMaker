@@ -488,10 +488,10 @@ export function browserWake(): WakeEnv {
 }
 
 /** What the rider is told when the screen may turn off; the phone's own steps follow it (wakeSaid). */
-export const WAKE_UNAVAILABLE = t("This browser cannot keep the screen on. Keep your screen on yourself for this ride.");
+export const WAKE_UNAVAILABLE = t("This browser cannot keep the screen on. Set your phone to keep it on for this ride.");
 
 /** Said instead when the screen was kept on earlier in the ride and the browser stopped (review RIDE-8). */
-export const WAKE_LOST = t("The screen may now turn off: the browser stopped keeping it on. Keep your screen on yourself for this ride.");
+export const WAKE_LOST = t("The screen may turn off now. Set your phone to keep it on for this ride.");
 
 /**
  * The same note as shown, one line (the UI review, 2026-10-28: the three-line note stayed for the whole ride); the

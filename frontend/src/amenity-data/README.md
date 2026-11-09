@@ -251,7 +251,7 @@ One place per line, short keys:
 | Key | Meaning |
 | --- | --- |
 | `id` | OSM element, `n` node, `w` way or `r` relation, then its id |
-| `x`, `y` | longitude, latitude (5 decimals; a way or relation at its outer ring's mean) |
+| `x`, `y` | longitude, latitude (5 decimals; an area, a closed way or a relation, at the point deepest inside it over all its outer rings, and an open way halfway along it: `build_places.representative_point`) |
 | `k` | category: `museum`, `historic`, `lighthouse`, `garden`, `viewpoint`, `market`, `zoo`, `nature`, `bridge`, `drink` |
 | `n` | `name`; a covered bridge's `bridge:name` where it has one |
 | `h` | `opening_hours`, as mapped |

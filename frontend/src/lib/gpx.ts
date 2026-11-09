@@ -386,6 +386,8 @@ export interface ExportDials {
   loop?: boolean;
   /** "Keep to roads, not trails" (OWNER-DECISIONS 463), so the file reopens on roads only; not on Mass Ride, which always is. */
   trailsOff?: boolean;
+  /** "Easy MTB trails" on Default and Trailmaxxing, so the file reopens on the MTB trails it rode. */
+  easyMtb?: boolean;
 }
 
 export function dialsComment(dials: ExportDials): string {
@@ -395,6 +397,7 @@ export function dialsComment(dials: ExportDials): string {
   if (dials.assist) parts.push("assist=1");
   if (dials.loop) parts.push("loop=1");
   if (dials.trailsOff) parts.push("trailsoff=1");
+  if (dials.easyMtb) parts.push("easymtb=1");
   return PLAN_DIALS_PREFIX + parts.join(";");
 }
 

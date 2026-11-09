@@ -55,7 +55,7 @@ from dataclasses import dataclass
 from pipeline.schema import SEEK_INDEX_PREDICATE, trails_predicate
 from routemaker import winding
 
-from . import routing
+from . import routing, segment_info
 
 # The calm rate (metres of detour accepted per metre of LTS 3 avoided) from
 # which a plan also seeks trails: the rate at the slider's old top, 100.
@@ -636,6 +636,25 @@ def band_cells(
     return boxes
 
 
+# A closed way keeps its facility on the table: the rebuild clears it only for the
+# mountain-bike class and platform walks (`pipeline.run`), so a park footpath, an unrated
+# dirt path, a golf cart path or a cycleway inside a secured or military site is still
+# `path` at LTS 1, and the seek would score it as the best corridor near the line. The
+# router never rides it: its points snap to some other open way or find no route, and it
+# takes one of the SEEK_MAX_CANDIDATES slots a real trail could have had (hunt A1). The
+# corridors are the ways the segment panel calls open (`core.segment_info.ACCESS_WORDS`):
+# no reason, or an open one; an unknown reason is closed (unclear access is closed,
+# OWNER-DECISIONS 330), as the climbs layer reads it (`pipeline.climb_layer`).
+ACCESS_COLUMN = "bike_access_reason"
+
+
+def open_reasons() -> list[str]:
+    """The `bike_access_reason` values a way open to bicycles may carry."""
+    return sorted(
+        reason for reason, (is_open, _words) in segment_info.ACCESS_WORDS.items() if is_open
+    )
+
+
 def corridor_segments(
     schema: str,
     guide: Sequence[Sequence[Sequence[float]]],
@@ -663,25 +682,37 @@ def corridor_segments(
     of the plan where that is less (`routing.plan_cursor`); one that runs past it raises
     SeekOutOfTime.
 
-    With `avoid_winding` (Road Bike) a segment that bends as a winding trail does
-    (`routemaker.winding`) is left out: the road-bike graph prices those ways as an LTS 3
+    With `avoid_winding` (Road Bike) a trail-class segment that bends as a winding trail
+    does (`routemaker.winding`) is left out: the road-bike graph prices those ways as an LTS 3
     street, and a seek that offered one would steer the plan back onto it."""
-    query = corridor_query(schema, guide, width_m, has_facility, when, avoid_unpaved)
-    if query is None:
+    if corridor_query(schema, guide, width_m, has_facility, when, avoid_unpaved) is None:
         return []
-    sql, params = query
     try:
         with routing.plan_cursor(cap_s=timeout_s) as cursor:
+            # The column is looked for inside the plan's time (and its cancel), as the read.
+            sql, params = corridor_query(
+                schema,
+                guide,
+                width_m,
+                has_facility,
+                when,
+                avoid_unpaved,
+                with_access=segment_info.has_columns(schema, ACCESS_COLUMN),
+            )
             cursor.execute(sql, params)
             rows = cursor.fetchall()
     except routing.PlanCancelled:
         raise
     except routing.DeadlineExceeded as error:
         raise SeekOutOfTime("the trail table read ran out of time") from error
-    segments = [_parse_line(row[0]) for row in rows]
-    if avoid_winding:
-        segments = [s for s in segments if not winding.is_winding(s)]
-    return segments
+    # Only a trail-class way's bends are dropped, as only those the paved graphs price
+    # (`pipeline.run`, `variants.is_trail_class`): a car-free parkway or a cycle track that
+    # follows a creek is a corridor still (terrain hunt 3, T3-5).
+    return [
+        segment
+        for segment, trail in ((_parse_line(row[0]), row[1]) for row in rows)
+        if not (avoid_winding and trail and winding.is_winding(segment))
+    ]
 
 
 def corridor_query(
@@ -691,9 +722,11 @@ def corridor_query(
     has_facility: bool,
     when: str,
     avoid_unpaved: bool = False,
+    with_access: bool = False,
 ) -> tuple[str, list] | None:
     """`corridor_segments`' query and its parameters (None where there is no
-    guide to read around)."""
+    guide to read around). With `with_access` (the table has `bike_access_reason`) a way
+    the rules close to bicycles is left out (`open_reasons`)."""
     if not guide:
         return None
     boxes = band_cells(guide, width_m)
@@ -711,13 +744,16 @@ def corridor_query(
         where = f"{rule} AND s.stress_tier <= 2"
     if avoid_unpaved:
         where += " AND s.is_unpaved IS NOT TRUE"
+    if with_access:
+        where += f" AND (s.{ACCESS_COLUMN} IS NULL OR s.{ACCESS_COLUMN} = ANY(%s))"
+        params.append(open_reasons())
     # One index scan a strip (the lateral join), each segment once.
     sql = (
-        "SELECT ST_AsText(seg.geometry) FROM ("
-        "SELECT DISTINCT ON (seg.id) seg.geometry "
+        "SELECT ST_AsText(seg.geometry), seg.is_trail_class FROM ("
+        "SELECT DISTINCT ON (seg.id) seg.geometry, seg.is_trail_class "
         "FROM unnest(%s::float8[], %s::float8[], %s::float8[], %s::float8[]) "
         "AS box(west, south, east, north) "
-        f"CROSS JOIN LATERAL (SELECT s.id, s.geometry FROM {schema}.segment AS s "
+        f"CROSS JOIN LATERAL (SELECT s.id, s.geometry, s.is_trail_class FROM {schema}.segment AS s "
         "WHERE s.geometry && ST_MakeEnvelope(box.west, box.south, box.east, box.north, 4326) "
         f"AND {where}) AS seg"
         ") AS seg LIMIT %s"
