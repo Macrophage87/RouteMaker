@@ -3638,7 +3638,8 @@ class TestWeekendWins:
         self._fake_plans(monkeypatch, own_variant="standard", own_extra=own_extra)
         body, _ = self._planned()
         assert body["variant"] == "weekend"
-        assert body["mtb"] == {"limited": "no_mtb_graph"}
+        # No reading of its own on the weekend answer: the own plan's whole, max_level and all.
+        assert body["mtb"] == {"max_level": 3, "limited": "no_mtb_graph"}
         assert body["easy_mtb"] == {"limited": "no_offroad_graph"}
 
     def test_a_weekend_route_over_the_standard_graph_by_design_adds_no_notice(

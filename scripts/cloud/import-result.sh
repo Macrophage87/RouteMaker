@@ -203,6 +203,7 @@ if [ "$beta" = 1 ]; then
 	# (scripts/beta/auto-release.sh, RM_CD_PAVED_MIN_MIB): available memory plus what this
 	# project's running containers hold. A running one is recreated whatever the reading.
 	paved_min_mib=${RM_CD_PAVED_MIN_MIB:-8806}
+	case "$paved_min_mib" in '' | *[!0-9]*) die "RM_CD_PAVED_MIN_MIB must be a whole number of MiB" ;; esac
 	paved_room_mib() {
 		local avail ids held=0
 		avail=$(awk '/^MemAvailable:/ {print int($2 / 1024)}' "${CLOUD_MEMINFO:-/proc/meminfo}")
