@@ -39,7 +39,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
-from datetime import UTC, date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from xml.sax.saxutils import escape
 
@@ -56,6 +56,17 @@ DC_CENTRE = (-77.0365, 38.8949)
 # The site's own limits (core/api.py MAX_POINTS, COVERAGE_BBOX).
 MAX_POINTS = 25
 MAX_DRAFTS = 200  # drafts kept in memory
+# A draft's name: what the rider finds it by in the app's Load route and in my_drafts.
+DRAFT_NAME_SCHEMA = {
+    "type": "string",
+    "minLength": 1,
+    "maxLength": 120,
+    "description": (
+        "A short name the rider will find this draft by in the app's Load route and in"
+        ' my_drafts, such as "Round trip to the sandwich shop". Default: the named start and'
+        " end, else a revision keeps its draft's name."
+    ),
+}
 PLAN_BUDGET_S = 48  # the longest one plan can take: the site's long-plan budget, and a little
 OUT_OF_TIME = (
     "stopped there to answer inside the site's time limit; revise_route on this draft can still"
@@ -3235,6 +3246,21 @@ def _tags_in_use(rows) -> list[str]:
     return [t for t, _ in sorted(count.values(), key=lambda e: (-e[1], e[0].casefold()))]
 
 
+def _draft_name(asked, points: list, default: str = "RouteMaker route") -> str:
+    """A draft's name: the one asked, else "Start to End" (or "Loop from Start") where the
+    points were given by name, else `default`."""
+    name = " ".join(str(asked or "").split())[:120]
+    if name:
+        return name
+    named = [p.strip() for p in points if isinstance(p, str) and p.strip()]
+    if len(points) >= 2 and len(named) == len(points):
+        first, last = named[0], named[-1]
+        if first.casefold() == last.casefold():
+            return f"Loop from {first}"[:120]
+        return f"{first} to {last}"[:120]
+    return default
+
+
 @dataclass
 class Draft:
     """A planned route the rider has not kept yet, with what it was planned with."""
@@ -3247,6 +3273,9 @@ class Draft:
     intervals: dict | None = None
     # A Group or Mass Ride's key (`ride_key_for`), kept as the draft is revised.
     ride_key: str | None = None
+    # The draft this one revises (revise_route): my_drafts and the app's Load route list only
+    # each route's newest revision.
+    revises: str | None = None
 
     def fragment(self, dials: dict) -> str:
         """The draft's plan link fragment, with its ride key."""
@@ -3952,6 +3981,7 @@ TOOLS = [
         "inputSchema": {
             "type": "object",
             "properties": {
+                "name": DRAFT_NAME_SCHEMA,
                 "points": {
                     "type": "array",
                     "items": POINT_SCHEMA,
@@ -4105,6 +4135,7 @@ TOOLS = [
         "inputSchema": {
             "type": "object",
             "properties": {
+                "name": DRAFT_NAME_SCHEMA,
                 "target_miles": {
                     "type": "number",
                     "minimum": 5,
@@ -4168,6 +4199,7 @@ TOOLS = [
         "inputSchema": {
             "type": "object",
             "properties": {
+                "name": DRAFT_NAME_SCHEMA,
                 "draft_id": {"type": "string"},
                 "points": {
                     "type": "array",
@@ -4350,6 +4382,28 @@ TOOLS = [
             "required": ["draft_id", "name"],
         },
         "annotations": {"readOnlyHint": False, "destructiveHint": False, "openWorldHint": False},
+    },
+    {
+        "name": "my_drafts",
+        "description": (
+            "The routes planned through this app and not saved (drafts), newest revision of"
+            " each, newest first: name, miles, ride type, when made, days left and link. Drafts"
+            " go on their own a week after they were made (our default), so the rider can find"
+            ' a recent one-off ("the sandwich shop loop from Tuesday") without it cluttering My'
+            " routes. Revise one with revise_route; save_route keeps it, on the rider's word."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "search": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 120,
+                    "description": "Words each draft's name must hold.",
+                },
+            },
+        },
+        "annotations": {"readOnlyHint": True, "openWorldHint": False},
     },
     {
         "name": "organize_route",
@@ -4586,6 +4640,9 @@ class MemoryDrafts:
 
     def __init__(self):
         self._drafts: dict[str, Draft] = {}
+        # Each draft's first draft (the route it revises, or itself), when it was made, and
+        # whether it was saved (my_drafts).
+        self._made: dict[str, tuple[str, datetime, bool]] = {}
         self._lock = threading.Lock()
 
     def get(self, draft_id: str) -> Draft | None:
@@ -4596,9 +4653,43 @@ class MemoryDrafts:
             # Random, so an id from before a restart finds nothing rather than another route.
             draft_id = f"d{secrets.token_hex(4)}"
             self._drafts[draft_id] = draft
+            before = self._made.get(draft.revises or "")
+            root = before[0] if before else draft_id
+            self._made[draft_id] = (root, datetime.now(UTC), False)
             while len(self._drafts) > MAX_DRAFTS:  # the oldest go first
-                del self._drafts[next(iter(self._drafts))]
+                oldest = next(iter(self._drafts))
+                del self._drafts[oldest]
+                self._made.pop(oldest, None)
         return draft_id
+
+    def listing(self) -> list[dict]:
+        """Each route's newest draft not saved, newest first (my_drafts): `draft_id`, `draft`,
+        `made` (UTC) and `route_id` (its link's, or None)."""
+        with self._lock:
+            newest: dict[str, dict] = {}
+            for draft_id, draft in self._drafts.items():
+                root, made, saved = self._made.get(draft_id, (draft_id, None, False))
+                newest[root] = {
+                    "draft_id": draft_id,
+                    "draft": draft,
+                    "made": made,
+                    "route_id": None,
+                    "saved": saved,
+                }
+            # Newest first by each route's newest draft (ids are put in order).
+            order = list(self._drafts)
+            rows = [r for r in newest.values() if not r.pop("saved")]
+        return sorted(rows, key=lambda r: order.index(r["draft_id"]), reverse=True)
+
+    def saved(self, draft_id: str) -> None:
+        """The route was saved: it and its earlier drafts are no longer listed."""
+        with self._lock:
+            found = self._made.get(draft_id)
+            if found is None:
+                return
+            for key, (root, made, _saved) in list(self._made.items()):
+                if root == found[0] and made <= found[1]:
+                    self._made[key] = (root, made, True)
 
     def shared(self, draft_id: str, route_id: str) -> None:
         """The draft's link was kept under `route_id`. Nothing to tie here: on the site's own
@@ -4608,11 +4699,14 @@ class MemoryDrafts:
         return draft_id in self._drafts
 
 
-# The site deletes a draft's exact-route link after the next day at the latest (shared_routes
-# keep "until"): a draft often starts at home, and every revision makes one. On the site's own
-# connector it goes sooner, with its draft (a day, core.models.ConnectorDraft.KEPT). A route the
-# rider saves is kept in My routes on its own.
-DRAFT_LINK_DAYS = 1
+# The site deletes a draft's exact-route link after a week at the latest (shared_routes keep
+# "until"): a draft often starts at home, and every revision makes one. On the site's own
+# connector it goes with its draft (seven days, our default: core.models.ConnectorDraft.KEPT). A
+# route the rider saves is kept in My routes on its own.
+DRAFT_LINK_DAYS = 7
+# How long a draft lasts on the site's own connector (core.models.ConnectorDraft.KEPT, our
+# default): my_drafts counts each one's days left from it.
+DRAFT_KEPT = timedelta(days=DRAFT_LINK_DAYS)
 
 
 def draft_link_keep(today: date | None = None) -> dict:
@@ -5073,6 +5167,7 @@ class Server:
             trim_spurs,
             intervals,
             ride_key_for(plan.preset, ride_key),
+            revises=revised_from,
         )
         draft_id = self.drafts.put(draft)
         dials = self._dials(plan)
@@ -5216,7 +5311,7 @@ class Server:
         out: dict = {"draft_id": draft_id, "name": name, "distance_mi": miles}
         if self.gpx_link is not None:
             out["gpx_link"] = self.gpx_link(draft_id, name)
-            out["note"] = "the link downloads the file; it works while the draft is kept (a day)"
+            out["note"] = "the link downloads the file; it works while the draft is kept (a week)"
         elif self.files:
             try:
                 out["gpx_file"] = str(write_gpx(name, draft.plan.line, self.out_dir))
@@ -5291,7 +5386,46 @@ class Server:
                 )
         if notes:
             out["notes"] = notes
+        self.drafts.saved(str(args["draft_id"]))
         return out
+
+    # my_drafts
+    def my_drafts(self, args: dict, call: Call) -> dict:
+        now = datetime.now(UTC)
+        rows = []
+        for found in self.drafts.listing():
+            draft: Draft = found["draft"]
+            plan = draft.plan
+            row = {
+                "draft_id": found["draft_id"],
+                "name": draft.name,
+                "miles": round((plan.answer.get("distance_m") or 0.0) / METRES_PER_MILE, 1),
+                "ride_type": plan.preset,
+            }
+            made = found.get("made")
+            if made is not None:
+                row["made"] = eastern(made)
+                left = DRAFT_KEPT - (now - made)
+                row["days_left"] = max(0, int(left.total_seconds() // 86400))
+            if found.get("route_id"):
+                row["link"] = self._draft_link(draft, found["route_id"])
+            rows.append(row)
+        words = str(args.get("search") or "").casefold().split()
+        if words:
+            rows = [r for r in rows if all(w in str(r["name"]).casefold() for w in words)]
+        return {
+            "drafts": rows,
+            "note": (
+                "the routes planned here and not saved, newest revision of each, newest first;"
+                " each goes on its own a week after it was made (our default). Revise one with"
+                " revise_route, or keep it with save_route on the rider's word"
+            ),
+        }
+
+    def _draft_link(self, draft: Draft, route_id: str) -> str:
+        """The draft's link, as `_draft` gave it: its exact line and its plan's inputs."""
+        fragment = draft.fragment(self._dials(draft.plan))
+        return f"{self.api.base}/s/{route_id}{fragment}&route={route_id}"
 
     # draft_route_post
     def draft_route_post(self, args: dict, call: Call) -> dict:
@@ -5751,7 +5885,7 @@ class Server:
             options,
             limit,
             notes,
-            draft.name,
+            _draft_name(args.get("name"), [], draft.name),
             revised_from=draft_id,
             taken=taken,
             trim_spurs=trim,
@@ -5827,7 +5961,7 @@ class Server:
             options,
             limit,
             notes,
-            "RouteMaker route",
+            _draft_name(args.get("name"), args.get("points") or []),
             taken=taken,
             trim_spurs=trim,
             intervals=intervals,
@@ -6012,7 +6146,8 @@ class Server:
                 f" Metro ({haversine_mi(begin, near.point):.1f} mi from it); pass start to begin"
                 " somewhere else",
             )
-        return self._draft(best, options, limit, notes, f"{target:.0f} mi Metro loop", taken=taken)
+        name = _draft_name(args.get("name"), [], f"{target:.0f} mi Metro loop")
+        return self._draft(best, options, limit, notes, name, taken=taken)
 
     def _reach_dials(self, args: dict, preset: str) -> dict:
         """The ride options a reach or compare_places call sends, as the site's fields."""
@@ -6253,6 +6388,7 @@ class Server:
             "route_segments": self.route_segments,
             "ride_conditions": self.ride_conditions,
             "my_routes": self.my_routes,
+            "my_drafts": self.my_drafts,
             "organize_route": self.organize_route,
             "reach": self.reach,
             "compare_places": self.compare_places,
@@ -6330,7 +6466,7 @@ def handle(server: Server, message, send=_send, calls: dict | None = None) -> di
                 "RouteMaker plans bike routes from DC to Baltimore, rated by traffic stress (LTS 1"
                 " calmest to 4, plus Avoid). Pick the ride type and settings that fit the ask."
                 " Give distances in miles first, km in brackets. Share the link so the rider can"
-                " open the route in the app, whole with its # part: after a day only that part"
+                " open the route in the app, whole with its # part: after a week only that part"
                 " can plan the route again. Save to My routes only when asked."
             ),
         }

@@ -10,8 +10,9 @@ same module runs inside the site, and three things change:
   the app's and each rider is counted against their own rate limits, not those of the
   assistant's servers, whose one address every rider would share.
 - Drafts are kept in the database (`core.models.ConnectorDraft`), since gunicorn's processes
-  share nothing: each app's own, for a day (`ConnectorDraft.KEPT`), with the link each plan
-  makes and its GPX link going with it, and all of them when the app is disconnected.
+  share nothing: each app's own, for a week (`ConnectorDraft.KEPT`, our default), with the
+  link each plan makes and its GPX link going with it, and all of them when the app is
+  disconnected. The rider finds them in Load route beside My routes (`core.api` /me/drafts).
 - A call answers inside one web request, which gunicorn ends at 60 s: the module plans again
   only while another long plan still fits, and says so when it stops.
 
@@ -49,6 +50,7 @@ from functools import cache
 from django.conf import settings
 from django.contrib.sessions.backends.base import SessionBase
 from django.db import transaction
+from django.db.models import Q
 from django.http import HttpResponse, HttpResponseRedirect, JsonResponse
 from django.test import RequestFactory
 from django.urls import resolve, reverse
@@ -439,9 +441,13 @@ class DatabaseDrafts:
         }
         # 128 random bits: an id seen in a transcript cannot be walked to its neighbours.
         draft_id = f"d{secrets.token_hex(16)}"
+        # The route's first draft: only each route's newest revision is listed (my_drafts, and
+        # Load route in the app).
+        before = self._row(draft.revises) if getattr(draft, "revises", None) else None
+        root = (before.root or before.draft_id) if before is not None else None
         with transaction.atomic():
             ConnectorDraft.objects.create(
-                user=self.user, grant_id=self.grant_id, draft_id=draft_id, data=data
+                user=self.user, grant_id=self.grant_id, draft_id=draft_id, data=data, root=root
             )
             drop_stale_drafts()
             mine = ConnectorDraft.objects.filter(user=self.user)
@@ -455,6 +461,26 @@ class DatabaseDrafts:
         if row is not None:
             SharedRoute.objects.filter(pk=route_id, owner=self.user).update(connector_draft=row)
 
+    def listing(self) -> list[dict]:
+        """Each route's newest draft not saved, newest first (my_drafts): `draft_id`, `draft`,
+        `made` and `route_id` (its link's, or None)."""
+        rows = []
+        for row in newest_drafts(self._rows()):
+            draft = self.get(row.draft_id)
+            if draft is None:
+                continue
+            link = row.shared_links.order_by("-created_at").values_list("pk", flat=True).first()
+            rows.append(
+                {"draft_id": row.draft_id, "draft": draft, "made": row.created_at, "route_id": link}
+            )
+        return rows
+
+    def saved(self, draft_id: str) -> None:
+        """The route was saved to My routes: it and its earlier drafts are no longer listed."""
+        row = self._row(draft_id)
+        if row is not None:
+            mark_saved(row)
+
     def name_gpx(self, draft_id: str, name: str) -> bool:
         """Keep the name the GPX link's file is given; whether the draft is still kept."""
         row = self._row(draft_id)
@@ -463,6 +489,33 @@ class DatabaseDrafts:
         row.data = {**row.data, "gpx_name": name}
         row.save(update_fields=["data"])
         return True
+
+
+def newest_drafts(rows) -> list:
+    """Of these drafts, each route's newest still kept and not saved (its later revisions
+    included), newest first."""
+    kept = rows.filter(created_at__gte=timezone.now() - ConnectorDraft.KEPT).order_by(
+        "-created_at", "-pk"
+    )
+    seen: set[str] = set()
+    out = []
+    for row in kept.only("pk", "draft_id", "root", "created_at", "saved_at", "grant_id"):
+        root = row.root or row.draft_id
+        if root in seen:
+            continue
+        seen.add(root)
+        if row.saved_at is None:
+            out.append(row)
+    return out
+
+
+def mark_saved(row) -> None:
+    """The route this draft is was saved: it and the earlier drafts of its route are no longer
+    listed. A later revision is a new draft, listed again."""
+    root = row.root or row.draft_id
+    ConnectorDraft.objects.filter(
+        Q(root=root) | Q(draft_id=root), user_id=row.user_id, created_at__lte=row.created_at
+    ).update(saved_at=timezone.now())
 
 
 def _drafts_deleted(by_model: dict) -> int:
@@ -595,7 +648,7 @@ def _gpx_mac(user_id, grant_id, draft_id: str) -> str:
 
 
 def gpx_link(request, user, grant, draft_id: str, name: str) -> str:
-    """A link that downloads the rider's draft as GPX, good while the draft is kept (a day) and
+    """A link that downloads the rider's draft as GPX, good while the draft is kept (a week) and
     the app that drafted it is connected. Garmin and Wahoo never fetch it (the server sends them
     the route itself: core.garmin_courses, core.wahoo_routes). A person opens it from the
     assistant app, on any device and often in that app's own browser, signed in to nothing
@@ -933,7 +986,7 @@ def authorize(request):
         """<p><strong>{app}</strong> is asking to use RouteMaker for you.
 If you allow it, it can:</p>
 <ul>
-<li>plan routes with RouteMaker's routing, each with a link to it that lasts a day</li>
+<li>plan routes with RouteMaker's routing, each with a link to it that lasts a week</li>
 <li>add routes to your My routes, when you ask it to</li>
 <li>read your saved routes, when you ask it to plan from one</li>
 <li>tag, archive or restore your saved routes, when you ask it to (a full account makes room
@@ -1093,7 +1146,7 @@ def token(request):
 
 def sweep_connector() -> int:
     """Delete what will never be used again (the membership sweep's backstop): drafts past their
-    day, with their links, grants whose code expired untraded or whose refresh token expired, and
+    week, with their links, grants whose code expired untraded or whose refresh token expired, and
     apps a day old with no grant left. Drafts hold route points, often a rider's home, so the
     five-minute sweep drops stale ones as well (`drop_stale_drafts`)."""
     now = timezone.now()

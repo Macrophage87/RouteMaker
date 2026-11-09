@@ -206,6 +206,7 @@ def test_it_introduces_itself_and_lists_its_tools(tools) -> None:
         "ride_conditions",
         "my_routes",
         "save_route",
+        "my_drafts",
         "organize_route",
         "gpx_route",
     ]
@@ -1297,13 +1298,31 @@ def test_the_link_opens_the_exact_route_and_reads_back_unplanned(tools) -> None:
     assert opened["summary"]["distance_mi"] == out["summary"]["distance_mi"]
 
 
-def test_a_draft_link_is_deleted_after_the_next_day_at_the_latest() -> None:
+def test_a_draft_link_is_deleted_after_a_week_at_the_latest() -> None:
     import datetime
 
     assert mcp.draft_link_keep(datetime.date(2026, 10, 20)) == {
         "keep": "until",
-        "delete_after": "2026-10-21",
+        "delete_after": "2026-10-27",
     }
+
+
+def test_the_site_keeps_drafts_as_long_as_the_module_says() -> None:
+    from core.models import ConnectorDraft
+
+    assert ConnectorDraft.KEPT == mcp.DRAFT_KEPT
+
+
+def test_drafts_are_named_for_finding_and_listed_newest_revision_first(tools) -> None:
+    loop = tools.call("plan_route", {"points": ["Union Market", "Takoma", "Union Market"]})
+    trip = tools.call("plan_route", {"points": ["Union Market", "Takoma"], "name": "Tacos"})
+    revised = tools.call("revise_route", {"draft_id": loop["draft_id"]})
+    listed = tools.call("my_drafts", {})["drafts"]
+    assert [d["draft_id"] for d in listed] == [revised["draft_id"], trip["draft_id"]]
+    assert [d["name"] for d in listed] == ["Loop from Union Market", "Tacos"]
+    assert listed[0]["days_left"] == 6
+    tools.call("save_route", {"draft_id": revised["draft_id"], "name": "Kept loop"})
+    assert [d["draft_id"] for d in tools.call("my_drafts", {})["drafts"]] == [trip["draft_id"]]
 
 
 def test_a_link_still_comes_back_when_the_exact_route_is_not_kept(tools, monkeypatch) -> None:
