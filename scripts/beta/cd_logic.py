@@ -331,7 +331,8 @@ def gate(
                     "rebuild the graphs at home"
                 )
             elif kind == "runtime":
-                # Every router restarts, valhalla-offroad and valhalla-mtb among them once their
+                # Every router restarts, the trail routers (valhalla-offroad, valhalla-mtb,
+                # valhalla-paved, valhalla-paved-weekend) among them once their
                 # tiles are on the host (auto-release.sh `routers`; the owner, 2026-10-20).
                 result["routers_restart"] = True
                 result["notes"].append(

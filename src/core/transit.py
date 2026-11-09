@@ -355,6 +355,9 @@ class Stop:
     # Every elevator a bike could use here is out (core.transit_live.blocked_stations): a trip
     # taking its own bike in or out here is ranked this many seconds down (`ELEVATOR_OUT_S`).
     elevator_out_s: float = 0.0
+    # Every entrance a bike may use, `bike_entrance` (the map's) first; a bike leg takes the
+    # one on its rider's side (`_bike_entrance`). Empty: `bike_entrance` alone.
+    bike_entrances: tuple[tuple[float, float], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -431,6 +434,12 @@ class Schedule:
     # that does not reach the date (`load`), or the systems left out (`_without`). Each phrase
     # with its places, worded when read (`note`): the schedule is cached across requests.
     said: tuple[Callable[[], str], ...] = ()
+    # Metro's typical timetable's services, one per `TYPICAL_DAY_TYPES` (`with_typical_metro`);
+    # () where Metro runs on WMATA's own GTFS or is not in the schedule.
+    typical_services: tuple[int, ...] = ()
+    # A federal holiday whose typical-Metro day type WMATA's live trains said (the service
+    # day and the day type, `with_metro_day`); None: each holiday runs the file's `holiday`.
+    metro_day: tuple[date, str] | None = None
 
     def __post_init__(self) -> None:
         self.at_stop: dict[int, list[tuple[int, int]]] = {}
@@ -591,6 +600,7 @@ def parse(doc: dict) -> Schedule:
             int(s["system"]),
             systems[int(s["system"])].mode != BUS,
             bool(s["bike"]),
+            bike_entrances=tuple(tuple(e) for e in s.get("bike_entrances") or ()),
         )
         for i, s in enumerate(doc["stops"])
     ]
@@ -679,6 +689,8 @@ def _without(schedule: Schedule, ended: frozenset[str]) -> Schedule:
         schedule.start,
         schedule.days,
         {k: v for k, v in schedule.source.items() if k not in ended},
+        # The services are kept as they are, so typical Metro's stay at their indices.
+        typical_services=schedule.typical_services,
     )
     if METRO_SYSTEM in ended:
         trimmed = with_typical_metro(trimmed)
@@ -825,6 +837,7 @@ def with_typical_metro(schedule: Schedule, path: Path = TYPICAL_PATH) -> Schedul
                 system.index,
                 True,
                 bool(row["bike"]),
+                bike_entrances=tuple(tuple(e) for e in row.get("bike_entrances") or ()),
             )
         )
     # One service per day type, running on its days of the window.
@@ -877,7 +890,27 @@ def with_typical_metro(schedule: Schedule, path: Path = TYPICAL_PATH) -> Schedul
         schedule.start,
         schedule.days,
         {**schedule.source, METRO_SYSTEM: {"file": path.name, "typical": True}},
+        typical_services=tuple(service_of[t] for t in TYPICAL_DAY_TYPES),
     )
+
+
+def with_metro_day(schedule: Schedule, day: date, day_type: str) -> Schedule:
+    """The schedule with Metro's typical timetable running `day_type` on the service day `day`
+    in place of the day type it was given (a federal holiday's `holiday`), said in its holiday
+    note (`holiday_words`). Unchanged where Metro is not on its typical timetable (WMATA's own
+    GTFS has its holidays day by day) or the day is outside the window."""
+    if (
+        not schedule.typical_services
+        or not schedule.covers(day)
+        or schedule.metro_day == (day, day_type)
+    ):
+        return schedule
+    offset = (day - schedule.start).days
+    services = list(schedule.services)
+    for kind, index in zip(TYPICAL_DAY_TYPES, schedule.typical_services, strict=True):
+        bit = "1" if kind == day_type else "0"
+        services[index] = services[index][:offset] + bit + services[index][offset + 1 :]
+    return replace(schedule, services=services, metro_day=(day, day_type))
 
 
 # Fewer days of timetable than this left: a warning in the log, an alert from
@@ -1267,6 +1300,19 @@ def _nearest_entrance(stop: Stop, point) -> tuple[float, float]:
     return min(candidates, key=lambda e: _distance(point, e))
 
 
+def _bike_entrance(stop: Stop, point) -> tuple[float, float]:
+    """The entrance a bike uses at `stop` coming from or going to `point`: of its bike
+    entrances (its elevators, where it has them), the nearest `point`.
+
+    It was always the one nearest the station's centre: on the stations whose elevators stand
+    either side of a highway (Herndon and Reston on the Dulles Toll Road, Tysons and its
+    neighbours in Route 7's median, Friendship Heights either side of Wisconsin Avenue) a rider
+    from the far side was routed round to it, and a transfer left by whichever entrance was
+    nearest, stairs included (hunt M5)."""
+    candidates = stop.bike_entrances or (stop.bike_entrance,)
+    return min(candidates, key=lambda e: (_distance(point, e), candidates.index(e)))
+
+
 # --- Departures and reach ----------------------------------------------------------------
 
 
@@ -1421,9 +1467,61 @@ def typical_first(minute: float, times) -> float | None:
     return seen[0] if seen[0] - minute > every else None
 
 
+# Patterns to one stop whose rides differ by at most this are one service for the wait (the
+# lines sharing Metro's tracks, a bus route's branches); past it a quicker one is a strategy of its
+# own (`_hop`).
+SAME_RIDE_S = 120.0
+
+
+def _ride_groups(entries) -> list[list]:
+    """The entries by ride time, quickest first, as the prefixes a rider might board: the
+    quickest group alone, then it and the next, and so on (rides within `SAME_RIDE_S` of the one
+    before stay together)."""
+    ordered = sorted(entries, key=lambda e: (e[1], e[2].index))
+    groups: list[list] = []
+    for entry in ordered:
+        if groups and entry[1] - groups[-1][-1][1] <= SAME_RIDE_S:
+            groups[-1].append(entry)
+        else:
+            groups.append([entry])
+    return [[e for group in groups[: n + 1] for e in group] for n in range(len(groups))]
+
+
+def _expected_ride(entries, times) -> float:
+    """The ride a rider boarding the first of `entries` to come can expect: each one's ride
+    weighted by its share of the next departures seen (`times`, distinct)."""
+    seen = _distinct(times)[:DEPARTURES_SEEN]
+    until = seen[-1] + 0.25 if seen else math.inf
+    weights = [sum(1 for t in deps if t <= until) for deps, *_rest in entries]
+    total = sum(weights)
+    if not total:
+        return min(e[1] for e in entries)
+    return sum(w * e[1] for w, e in zip(weights, entries, strict=True)) / total
+
+
 def _hop(minute: float, entries, typical: bool = False) -> Hop:
-    """The ride to one stop from the patterns that go there: the earliest arrival taken. On
-    Metro's typical timetable the wait is always `typical_wait_min`, never a departure."""
+    """The ride to one stop from the patterns that go there, the quickest door to door taken.
+    On Metro's typical timetable the wait is always `typical_wait_min`, never a departure.
+
+    A frequent service's wait is half the headway of every pattern it merges, so its ride is
+    what boarding the first to come gives: their rides weighted by their departures. It was the
+    quickest pattern's ride, so a local and a limited route on the same stops (S2 every 12 min
+    with a 30 min ride, S9 every 12 with 12) came out at a 3 min wait and a 12 min ride, quicker
+    than either bus (hunt M3). Each quicker set of patterns alone (`_ride_groups`) is a
+    strategy too, frequent or waited for at its next departure, and the quickest is taken:
+    waiting for the S9 (6 + 12 min) beats boarding the first bus (3 + about 21)."""
+    best = None
+    for group in _ride_groups(entries):
+        times = sorted(t for deps, *_rest in group for t in deps)
+        every = headway(times)
+        if typical or every <= FREQUENT_MIN:
+            wait = typical_wait_min(minute, times)[0] if typical else every / 2.0
+            cost = wait + _expected_ride(group, times) / 60.0
+        else:
+            cost = min(e[0][0] + e[1] / 60.0 for e in group) - minute
+        if best is None or cost < best[0] - 1e-9:
+            best = (cost, group)
+    entries = best[1]
     times = sorted(t for deps, *_rest in entries for t in deps)
     first = min(entries, key=lambda e: (e[0][0] + e[1] / 60.0, e[2].index))
     deps, ride, pattern, pos, later = first
@@ -1431,7 +1529,7 @@ def _hop(minute: float, entries, typical: bool = False) -> Hop:
     every = headway(times)
     if typical or every <= FREQUENT_MIN:
         routes = tuple(sorted({e[2].route for e in entries}))
-        ride = min(e[1] for e in entries)
+        ride = _expected_ride(entries, times)
         wait, gap = typical_wait_min(minute, times) if typical else (every / 2.0, every)
         first = typical_first(minute, times) if typical else None
         return Hop(
@@ -1602,8 +1700,8 @@ CANDIDATE_CALL_S = 5.0
 
 
 class RoutingServices:
-    """Valhalla's bicycle costing on the standard graph, with the ride type's own options:
-    one cheap call per leg, no trace (the answer's own line is `routing.plan`'s).
+    """Valhalla's bicycle costing on the ride's own graph (`ride_variant`), with the ride type's
+    own options: one cheap call per leg, no trace (the answer's own line is `routing.plan`'s).
 
     Never fatal: a refusal, a router that does not answer, a call past its cap or past the
     search's budget, or a call beyond `max_calls`, is None, and the leg is estimated from the
@@ -1620,6 +1718,9 @@ class RoutingServices:
         when: str | None = None,
         walk_exclude: list | None = None,
         walk_keep: list | None = None,
+        ride_variant: str = "standard",
+        ride_exclude: list | None = None,
+        ride_keep: list | None = None,
     ) -> None:
         self._until = until
         # A walk's way round closures (Walk, Walk + transit; `core.workzones.foot_zones`): the
@@ -1628,6 +1729,17 @@ class RoutingServices:
         # out, and the answer warns of the closures it walks through.
         self._walk_exclude = list(walk_exclude or [])
         self._walk_keep = list(walk_keep or [])
+        # A ride's graph and its way round the closures to bicycles, as the answer's own line
+        # has them (`routing.plan`): the ride time's graph (the weekend twin, the no-trail graph
+        # with "Keep to roads" on; `presets.variant_for_ride`), and the closures and the roads
+        # the rider marked closed left out, then only the marked roads where no ride goes round
+        # (hunt 2, C3). Ridden on the standard graph through every closure, a trip was timed on
+        # trails it would not ride and through a closed bridge, and ranked best, then lost once
+        # its line was routed round them. Walks stay on the standard graph, which alone has the
+        # pedestrian ways (`include_pedestrian`).
+        self._ride_variant = ride_variant
+        self._ride_exclude = list(ride_exclude or [])
+        self._ride_keep = list(ride_keep or [])
         # The ride time setting the busy roads are read at; None: rides are not traced.
         self._when = when
         self._preset = preset_name
@@ -1663,7 +1775,12 @@ class RoutingServices:
         cap = min(left, self._per_call_s)
         deadline = routing.Deadline(now + cap, cap)
         payload = {
-            "locations": [{"lon": p[0], "lat": p[1], "type": "break"} for p in (a, b)],
+            # Neither end in the tunnel under a DC circle park, as a ride's stops
+            # (`routing.circle_park_filter`; the second 2026-11-08 hunt, P7).
+            "locations": [
+                {"lon": p[0], "lat": p[1], "type": "break", **routing.circle_park_filter(*p[:2])}
+                for p in (a, b)
+            ],
             "costing": costing,
             "costing_options": options,
             "directions_type": "none",
@@ -1672,25 +1789,26 @@ class RoutingServices:
         if costing == "pedestrian":
             # A walk's turns come with it, for turn-by-turn on foot (2026-11-02).
             payload = walk_turns.directions(payload)
-            if self._walk_exclude:
-                payload["exclude_polygons"] = self._walk_exclude
+            variant, exclude, keep = "standard", self._walk_exclude, self._walk_keep
+        else:
+            variant, exclude, keep = self._ride_variant, self._ride_exclude, self._ride_keep
+        if exclude:
+            payload["exclude_polygons"] = exclude
         try:
             try:
-                answer = routing._call("standard", "route", payload, deadline)
+                answer = routing._call(variant, "route", payload, deadline)
             except routing.RouterRefused:
                 # Any refusal (no path, or a spot inside a closure strip, 170/171): try again
                 # without the closures, as a run does.
-                if "exclude_polygons" not in payload or len(self._walk_exclude) <= len(
-                    self._walk_keep
-                ):
+                if "exclude_polygons" not in payload or len(exclude) <= len(keep):
                     raise
-                # No walk round the closures: through them (warned of), as a ride goes.
+                # No way round the closures: through them (warned of), as a ride goes.
                 payload = {
                     key: value for key, value in payload.items() if key != "exclude_polygons"
                 }
-                if self._walk_keep:
-                    payload["exclude_polygons"] = self._walk_keep
-                answer = routing._call("standard", "route", payload, deadline)
+                if keep:
+                    payload["exclude_polygons"] = keep
+                answer = routing._call(variant, "route", payload, deadline)
         except (routing.RouterRefused, routing.RouterUnavailable, routing.DeadlineExceeded):
             return None
         finally:
@@ -1726,7 +1844,7 @@ class RoutingServices:
         traced_at = routing.clock()
         try:
             measured = routing.busy_and_waits(
-                "standard", options, legs[0].get("shape", ""), self._when, deadline
+                variant, options, legs[0].get("shape", ""), self._when, deadline
             )
         except (routing.RouterUnavailable, routing.DeadlineExceeded):
             measured = None
@@ -1857,7 +1975,7 @@ def _ride_to(
     pricing: Pricing = UNPRICED,
 ) -> _End:
     """Ride your own bike to a stop (and, a station, in by the elevator)."""
-    to = stop.bike_entrance
+    to = _bike_entrance(stop, start)
     routed = ride
     if ride is None:
         ride = Ride(ride_s(start, to, speed), (tuple(start), to))
@@ -1889,7 +2007,7 @@ def _ride_from(
     speed: float,
     pricing: Pricing = UNPRICED,
 ) -> _End:
-    start = stop.bike_entrance
+    start = _bike_entrance(stop, end)
     routed = ride
     if ride is None:
         ride = Ride(ride_s(start, end, speed), (start, tuple(end)))
@@ -2091,8 +2209,10 @@ def _transfer(day: _Day, a: Stop, b: Stop, speed: float) -> tuple[list[Leg], flo
     legs = []
     if a.rail:
         legs.append(_station_leg(EXIT, a) if bike else Leg(EXIT, ACCESS_WALK_S))
-    start = _nearest_entrance(a, b.point)
-    end = b.bike_entrance if bike else _nearest_entrance(b, start)
+    # With a bike, out by the elevator on the next station's side and in by its elevator on
+    # this one's (`_bike_entrance`); on foot, the nearest entrances.
+    start = _bike_entrance(a, b.point) if bike else _nearest_entrance(a, b.point)
+    end = _bike_entrance(b, start) if bike else _nearest_entrance(b, start)
     place = day.schedule.place(b)
     if bike:
         seconds = ride_s(start, end, speed)
@@ -2661,7 +2781,7 @@ def plan_bike(
                 schedule,
                 start,
                 s,
-                services.ride(start, list(s.bike_entrance)),
+                services.ride(start, list(_bike_entrance(s, start))),
                 speed_kmh,
                 day.pricing,
             )
@@ -2672,7 +2792,7 @@ def plan_bike(
                 schedule,
                 end,
                 s,
-                services.ride(list(s.bike_entrance), end),
+                services.ride(list(_bike_entrance(s, end)), end),
                 speed_kmh,
                 day.pricing,
             )
@@ -3201,9 +3321,13 @@ def option_legs(option: Option) -> list[dict]:
     return out
 
 
-def holiday_words(option: Option, schedule: Schedule | None) -> str:
+def holiday_words(
+    option: Option, schedule: Schedule | None, service_day: date | None = None
+) -> str:
     """The holiday note, true to the systems the option uses: Metro on its typical timetable
-    runs its Sunday one (the typical file's `holiday` day type), the others their own."""
+    runs its Sunday one (the typical file's `holiday` day type), or the weekday one WMATA's
+    live trains showed running on `service_day` (`Schedule.metro_day`), the others
+    their own."""
     typical = {s.name for s in schedule.systems if s.typical} if schedule is not None else set()
     used = {leg.system for leg in option.legs if leg.transit}
     if not used & typical:
@@ -3212,6 +3336,12 @@ def holiday_words(option: Option, schedule: Schedule | None) -> str:
             " it."
         )
     kind = _typical_doc()["holiday"]
+    said = schedule.metro_day if schedule is not None else None
+    if said is not None and said[0] == service_day and said[1] != kind:
+        return t(
+            "Today is a federal holiday, but WMATA's live trains show Metro's weekday timetable"
+            " running."
+        )
     day = {"sunday": t("Sunday"), "saturday": t("Saturday")}.get(kind, kind.capitalize())
     if used <= typical:
         return t("Today is a federal holiday: Metro is planned on its {day} timetable.", day=day)
@@ -3361,7 +3491,7 @@ def block(plan: Plan, schedule: Schedule | None = None) -> dict:
     if band is not None:
         out["band"] = BANDS[band][2]
     if plan.when.holiday and option.scheduled:
-        out["notes"].append(holiday_words(option, schedule))
+        out["notes"].append(holiday_words(option, schedule, plan.when.service_day))
     transit = [o for o in plan.options if o.scheduled]
     if option.direct and transit:
         best = min(o.total_s for o in transit)

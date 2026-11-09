@@ -32,11 +32,11 @@ test("RIDE-3: weak GPS is shown in the ride's GPS note and said once; a good fix
   const onFix = ride.slice(ride.indexOf("const onFix = useCallback("), ride.indexOf("const onFixRef = useRef(onFix);"));
   assert.match(onFix, /const weighed = weighFix\(gpsWeak\.current, fix\.accuracyM, lastFixAt\.current\);/);
   // Never on a train or bus past the line (Stephen, 2026-11-04: "stop the GPS is weak notifications on metrorail").
-  assert.match(onFix, /if \(weighed\.sayNow && !onTransitRef\.current\) notify\(GPS_WEAK_SAID\);/);
-  assert.match(onFix, /setGps\(weighed\.weak && !onTransitRef\.current \? GPS_WEAK_SAID : ""\);/);
+  assert.match(onFix, /if \(weighed\.sayNow && !gpsQuietRef\.current\) notify\(GPS_WEAK_SAID\);/);
+  assert.match(onFix, /setGps\(weighed\.weak && !gpsQuietRef\.current \? GPS_WEAK_SAID : ""\);/);
   // Nor a lost signal underground (the timetable places the train), unless the watch has stopped for good.
-  assert.match(ride, /if \(onTransitRef\.current && reason !== "denied" && reason !== "insecure" && reason !== "unsupported"\) return;/);
-  assert.match(ride, /onTransitRef\.current = onTransit;/);
+  assert.match(ride, /if \(gpsQuietRef\.current && reason !== "denied" && reason !== "insecure" && reason !== "unsupported"\) return;/);
+  assert.match(ride, /gpsQuietRef\.current = gpsQuiet;/);
   // The existing note line, the one the GPS-lost notes use.
   assert.equal(ride.match(/\{gps && ride\.fix && <p className="hint">\{gps\}<\/p>\}/g)?.length, 1);
   // A new watch (Start, Resume, the swap on and off a train or bus) gives the first fixes their 12 s again.
@@ -110,9 +110,9 @@ test("RIDE-5: the outcome of a re-plan the rider asked for is answered at every 
   // The page: Re-plan from here asks; the automatic re-plans do not.
   assert.match(ride, /async \(here: LonLat, via\?: LonLat, asked = false, turnRound = false, check = false, skip\?: number, done\?: ReadonlySet<number>\): Promise<boolean> => \{/);
   assert.match(ride, /const told = replanTold\(asked, prefsRef\.current\.verbosity, note\);/);
-  // Re-plan from here, Road closed (v0.8.2) and a restart's picks (2026-10-24); not the held U-turn's silent check
-  // (asked false, check true).
-  assert.equal(ride.match(/void replan\([^)]*\)\)?;/g)?.filter((call) => call.includes("true") && !call.includes("false, false, true")).length, 3);
+  // Re-plan from here, Road closed (v0.8.2), a restart's picks (2026-10-24) and End mountain biking (2026-11-08); not the
+  // held U-turn's silent check (asked false, check true).
+  assert.equal(ride.match(/void replan\([^)]*\)\)?;/g)?.filter((call) => call.includes("true") && !call.includes("false, false, true")).length, 4);
 });
 
 test("a re-plan after Road closed turns round freely: both of its calls leave the heading out", () => {

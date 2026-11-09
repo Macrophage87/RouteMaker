@@ -183,6 +183,64 @@ def test_reads_an_extract_and_writes_the_file(tmp_path, capsys):
     assert "left out inside airports, military sites and prisons: 1 (military 1)" in said
 
 
+# A U-shaped garden (a horseshoe round a pond): box -77.020..-77.000 x 38.900..38.910 with the
+# notch -77.016..-77.004 x 38.902..38.910 cut out of its top.
+U_RING = [(-77.020, 38.900), (-77.000, 38.900), (-77.000, 38.910), (-77.004, 38.910),
+          (-77.004, 38.902), (-77.016, 38.902), (-77.016, 38.910), (-77.020, 38.910)]  # fmt: skip
+
+
+def _in_notch(lon, lat):
+    return -77.016 < lon < -77.004 and 38.902 < lat < 38.910
+
+
+def _inside(lon, lat, ring):
+    return mod._ring_distance(lon, lat, [ring]) > 0
+
+
+def test_a_u_shaped_area_sits_inside_itself():
+    """The 2026-11-08 hunt (G4): the vertex mean of this garden, (-77.01, 38.9055), is in the
+    notch, outside the garden; "Places to see" sent the router to the pond."""
+    mean = (sum(x for x, _ in U_RING) / len(U_RING), sum(y for _, y in U_RING) / len(U_RING))
+    assert _in_notch(*mean)  # what the build did before
+    lon, lat = mod.representative_point([[U_RING]])
+    assert not _in_notch(lon, lat) and _inside(lon, lat, U_RING)
+
+
+def test_a_relation_sits_in_its_largest_part_and_never_in_a_hole():
+    small = [(-77.10, 38.80), (-77.099, 38.80), (-77.099, 38.801), (-77.10, 38.801)]
+    big = [(-77.00, 38.90), (-76.98, 38.90), (-76.98, 38.92), (-77.00, 38.92)]
+    hole = [(-76.995, 38.905), (-76.985, 38.905), (-76.985, 38.915), (-76.995, 38.915)]
+    lon, lat = mod.representative_point([[small], [big, hole]])
+    assert _inside(lon, lat, big) and not _inside(lon, lat, hole)
+
+
+def test_a_square_area_still_sits_at_its_middle():
+    square = [(-77.02, 38.92), (-77.00, 38.92), (-77.00, 38.94), (-77.02, 38.94)]
+    lon, lat = mod.representative_point([[square]])
+    assert (lon, lat) == pytest.approx((-77.01, 38.93), abs=2e-5)
+
+
+def test_an_open_way_sits_halfway_along_it():
+    assert mod.middle_of_line([(0.0, 0.0), (1.0, 0.0), (1.0, 3.0)]) == pytest.approx((1.0, 1.0))
+
+
+def test_an_extracted_u_shaped_garden_is_inside_it(tmp_path):
+    pytest.importorskip("osmium")
+    nodes = "".join(
+        f'<node id="{i + 1}" version="1" lat="{y}" lon="{x}"/>' for i, (x, y) in enumerate(U_RING)
+    )
+    refs = "".join(f'<nd ref="{i + 1}"/>' for i in range(len(U_RING))) + '<nd ref="1"/>'
+    src = tmp_path / "u.osm"
+    src.write_text(
+        f'<?xml version="1.0"?><osm version="0.6">{nodes}<way id="10" version="1">{refs}'
+        '<tag k="leisure" v="garden"/><tag k="name" v="U Garden"/></way></osm>'
+    )
+    out = tmp_path / "places.json"
+    mod.main(["--pbf", str(src), "--out", str(out)])
+    (p,) = json.loads(out.read_text())["points"]
+    assert not _in_notch(p["x"], p["y"]) and _inside(p["x"], p["y"], U_RING)
+
+
 def test_bundled_file_is_well_formed():
     doc = json.loads(mod.OUT.read_text())
     assert doc["source"] == mod.SOURCE

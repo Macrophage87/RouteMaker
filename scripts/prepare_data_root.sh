@@ -136,6 +136,8 @@ tiles/mtb
 tiles/mtb/current
 tiles/paved
 tiles/paved/current
+tiles/paved-weekend
+tiles/paved-weekend/current
 extracts
 reference
 rebuild

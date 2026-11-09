@@ -1387,3 +1387,37 @@ def test_every_override_file_passes_the_loaders_checks(path) -> None:
     text = path.read_text()
     parse_file(text, path.name)
     parse_retired(text, path.name)
+
+
+def test_a_suggested_row_with_its_placeholders_is_refused_and_loads_once_filled() -> None:
+    """The rebuild's list of District ways OSM edited after DC's record suggests a stress
+    row with the reason and evidence left for the owner (`pipeline.dc_osm_newer`). Copied
+    in unfilled it is refused, with a message saying what to write; filled, it loads."""
+    from core.management.commands.load_access_overrides import parse_file
+    from pipeline import dc_osm_newer
+    from routemaker.agency_roads import EVIDENCE_PLACEHOLDER, REASON_PLACEHOLDER
+
+    r = {"way": 7, "tier0": 2, "tier0_half": False, "tier1": 3, "tier1_half": False}
+    fingerprint = {
+        "name": "X St NW",
+        "highway": "secondary",
+        "length_m": 300.0,
+        "line": "-77.0,38.9 -77.0,38.903",
+    }
+    _, suggested = dc_osm_newer.take_osm_override(r, ["lanes"], fingerprint)
+    row = json.loads(suggested)
+    assert (row["reason"], row["evidence"]) == (REASON_PLACEHOLDER, EVIDENCE_PLACEHOLDER)
+
+    def document(row: dict) -> str:
+        return json.dumps(
+            {"version": 1, "decided": "2026-11-08", "decided_by": "owner", "rows": [row]}
+        )
+
+    with pytest.raises(CommandError, match="reason is still the suggested placeholder"):
+        parse_file(document(row), "suggested.json")
+    reasoned = {**row, "reason": "The owner: OSM is right."}
+    with pytest.raises(CommandError, match="evidence is still the suggested placeholder"):
+        parse_file(document(reasoned), "suggested.json")
+    filled = {**reasoned, "evidence": "Two lanes and a painted lane, seen on the spot."}
+    [loaded] = parse_file(document(filled), "suggested.json")
+    assert loaded["value"]["tier"] == 2 and loaded["fingerprint"] == fingerprint
