@@ -194,7 +194,37 @@ def _overlap(
 
     return _PreparedFeature(feature, tolerance_m).overlap(
         _probes(way, tolerance_m), _bounds(way), tolerance_m
+    )[:3]
+
+
+def _ranked_share(
+    measured: Sequence[tuple[float, float]], tolerance_m: float, total_m: float
+) -> float:
+    """The share of a way `conflate` ranks a candidate by (hunt D3): the near probes over
+    the probes, leaving out the way's run on past an end of the line. `measured` is each
+    probe's (distance to the line, position along it as a fraction), in the way's order.
+
+    The probes before the way's first near probe are left out where that probe lies at an
+    end of the line (within `tolerance_m` of it), and likewise the probes after the last:
+    there the way runs on past the line rather than away from it, which says nothing
+    against its describing the stretch it does run along. An arterial whose OSM way runs
+    past a count line's ends then scores 1.0, as a side street lying wholly beside the line
+    does, and the nearer of the two wins. Only near probes are read, whose distances and
+    positions the prepared measure gives exactly as the exhaustive one does."""
+    near = [slot for slot, (distance, _along) in enumerate(measured) if distance <= tolerance_m]
+    if not near:
+        return 0.0
+    end = tolerance_m / total_m if total_m else 1.0
+
+    def at_an_end(slot: int) -> bool:
+        along = measured[slot][1]
+        return along <= end or along >= 1.0 - end
+
+    first, last = near[0], near[-1]
+    left_out = (first if at_an_end(first) else 0) + (
+        len(measured) - 1 - last if at_an_end(last) else 0
     )
+    return len(near) / (len(measured) - left_out)
 
 
 def _overlap_fraction(
@@ -417,11 +447,12 @@ class _PreparedFeature:
         probes: Sequence[Point],
         box: tuple[float, float, float, float],
         tolerance_m: float,
-    ) -> tuple[float, tuple[float, float] | None, float]:
-        """`_overlap` of the way whose probes these are and whose box `box` is."""
+    ) -> tuple[float, tuple[float, float] | None, float, float]:
+        """`_overlap` of the way whose probes these are and whose box `box` is, and the
+        share of the way that `conflate` ranks by (`_ranked_share`)."""
         measured = self.measure(probes, box)
         if measured is None:
-            return 0.0, None, float("inf")
+            return 0.0, None, float("inf"), 0.0
 
         positions = []
         distances = []
@@ -435,7 +466,10 @@ class _PreparedFeature:
         fraction = near / len(probes)
         span = (min(positions), max(positions)) if positions else None
         mean_distance = sum(distances) / len(distances) if distances else float("inf")
-        return fraction, span, mean_distance
+        ranked = _ranked_share(
+            [(best, best_along) for best, best_along, _heading in measured], tolerance_m, self.total
+        )
+        return fraction, span, mean_distance, ranked
 
 
 class _FeatureIndex:
@@ -493,8 +527,23 @@ def conflate(
     max_separation_m: float = MAX_SEPARATION_M,
     along_counts: bool = True,
     along_agencies: Collection[str] | None = ("vdot",),
+    name_required: Collection[int] = (),
 ) -> ConflationResult:
     """Attach agency features to OSM ways.
+
+    `name_required` are the ways that may take a count line only where its street name
+    agrees with theirs, as `conflate_blocks` reads them: a service road or a track
+    (`agency_roads.NAME_REQUIRED_HIGHWAYS`), which runs beside a street all the time and
+    is not that street. A count line carries no name (`volume.json` has none), so such a
+    way takes no count at all, in either pass. And candidates rank by the share of the way
+    within reach of the line leaving out the part of the way that runs on past the line's
+    ends (`_ranked_share`), and then by how close they run: a short way lying wholly beside
+    an arterial's count line scored 1.0 against the arterial's 0.9-0.98 (its OSM way runs
+    past the line's ends), won the line first, and exclusivity then refused the arterial
+    the same stretch, so the side street took 42,000 a day and the arterial went uncounted
+    (hunt D3, 2026-11-08). Measured inside the line's ends both score 1.0 and the arterial,
+    on the line, is the nearer. The share that must reach `min_overlap` is still the whole
+    way's, so a way that only touches the end of a line is no candidate.
 
     `along_counts` adds the second pass (`_along_counts`) for the ways no single count line
     was a candidate for; it never changes or rejects a first-pass match, and lists a way it
@@ -528,7 +577,9 @@ def conflate(
     are decided by id, which is arbitrary but is the same arbitrary answer on
     every rebuild of the same extract.
     """
-    candidates: list[tuple[float, int, AgencyFeature, tuple[float, float] | None, float]] = []
+    candidates: list[
+        tuple[float, int, AgencyFeature, tuple[float, float] | None, float, float]
+    ] = []
 
     # Every way was measured against every feature, which on the real region is
     # a million ways by forty-five thousand count lines: the first rebuild on a
@@ -546,10 +597,11 @@ def conflate(
     # against. What `_PreparedFeature` saves is described there.
     prepared: list[_PreparedFeature | None] = [None] * len(features)
 
+    nameless = frozenset(name_required)
     for entry in ways:
         way_id, coordinates, *rest = entry
         is_trail = rest[0] if rest else False
-        if is_trail:
+        if is_trail or way_id in nameless:
             continue
         way_bearing = _mean_bearing(coordinates)
         if way_bearing is None:
@@ -570,13 +622,16 @@ def conflate(
             if probes is None:
                 probes = _probes(coordinates, max_separation_m)
                 box = _bounds(coordinates)
-            overlap, span, mean_distance = prepared[position].overlap(probes, box, max_separation_m)
+            overlap, span, mean_distance, ranked = prepared[position].overlap(
+                probes, box, max_separation_m
+            )
             if overlap < min_overlap:
                 continue
-            candidates.append((overlap, way_id, feature, span, mean_distance))
+            candidates.append((overlap, way_id, feature, span, mean_distance, ranked))
 
-    # Best first: precedence, then overlap, then how close the way actually
-    # runs to the feature - geometry breaking the tie rather than input order.
+    # Best first: precedence, then overlap inside the line's ends (hunt D3), then how
+    # close the way actually runs to the feature - geometry breaking the tie rather
+    # than input order.
     #
     # And the ids last, so the key is never exhausted. Three candidates alike on
     # all three measures is not a contrived case: a divided carriageway plus a
@@ -587,21 +642,21 @@ def conflate(
     # clipped twice could attach the count to a different way. The ids decide it
     # instead: arbitrary, but the same arbitrary answer every rebuild.
     def rank(
-        candidate: tuple[float, int, AgencyFeature, tuple[float, float] | None, float],
+        candidate: tuple[float, int, AgencyFeature, tuple[float, float] | None, float, float],
     ):
-        overlap, way_id, feature, _span, mean_distance = candidate
+        _overlap, way_id, feature, _span, mean_distance, ranked = candidate
         try:
             precedence = SOURCE_PRECEDENCE.index(feature.source)
         except ValueError:
             precedence = len(SOURCE_PRECEDENCE)
-        return (precedence, -overlap, mean_distance, way_id, feature.feature_id)
+        return (precedence, -ranked, mean_distance, way_id, feature.feature_id)
 
     matched: dict[int, Match] = {}
     rejected: list[tuple[int, Match]] = []
     used_features: set[str] = set()
     claimed: dict[str, list[tuple[float, float]]] = {}
 
-    for overlap, way_id, feature, span, _mean_distance in sorted(candidates, key=rank):
+    for overlap, way_id, feature, span, _mean_distance, _ranked in sorted(candidates, key=rank):
         match = Match(
             osm_way_id=way_id,
             feature_id=feature.feature_id,
@@ -622,7 +677,7 @@ def conflate(
     found = []
     for entry in ways if along_counts else ():
         way_id, coordinates, *rest = entry
-        if way_id in contested or (rest and rest[0]) or len(coordinates) < 2:
+        if way_id in contested or way_id in nameless or (rest and rest[0]) or len(coordinates) < 2:
             continue
         along = _along_counts(
             coordinates,

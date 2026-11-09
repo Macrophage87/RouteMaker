@@ -32,6 +32,7 @@ import {
   namesCityOutside,
   namesQuery,
   nearestFirst,
+  hasStreetAddress,
   KIND_SEARCHES,
   isKindSearch,
   kindPhrase,
@@ -1004,4 +1005,20 @@ test('a kind of place (a grocery, a bike shop), "near me" or in Spanish, is near
   const block = server.slice(server.indexOf("TAG_SEARCHES = {"), server.indexOf("TAG_SEARCH_RADIUS_KM ="));
   const phrases = [...block.matchAll(/^\s+"([^"]+)",$/gm)].map((m) => m[1]);
   assert.deepEqual([...KIND_SEARCHES].sort(), phrases.sort());
+});
+
+test("a name with its address keeps the server's order, which puts the place at the address first", () => {
+  // Stephen 2026-11-09: the restaurant pasted with its listing name and address.
+  const satay = at("Satay Club", "Friendship Heights, Washington", -77.08107, 38.95083, { osm_key: "amenity", osm_value: "restaurant" });
+  const nearer = at("Wisconsin Avenue Northwest", "Tenleytown, Washington", -77.0797, 38.9479, { osm_key: "highway", osm_value: "primary" });
+  const q = "Satay Club Asian Restaurant & Sushi Bar, 4654 Wisconsin Ave NW, Washington, DC";
+  assert.deepEqual(nearestFirst([satay, nearer], [-77.0797, 38.947], q), [satay, nearer]);
+  assert.ok(hasStreetAddress(q));
+  assert.ok(hasStreetAddress("Satay Club 4654 Wisconsin Ave"));
+  assert.ok(hasStreetAddress("1600 pennsylvania"));
+  assert.ok(!hasStreetAddress("Route 1 Diner"));
+  for (const name of ["Route 1 Diner Bethesda", "Pier 1 Imports Arlington VA", "CVS 24 Hour Pharmacy", "Chipotle, 7th Street NW", "Tysons Corner, 2nd floor", "Bethesda, 20814"]) {
+    assert.ok(!hasStreetAddress(name), name);
+  }
+  assert.ok(!hasStreetAddress("Union Station, Washington, DC"));
 });

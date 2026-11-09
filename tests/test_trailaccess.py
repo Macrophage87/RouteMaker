@@ -169,3 +169,64 @@ def test_more_exemptions_and_rules_pinned():
     assert v({"sac_scale": "hiking", "surface": "concrete:plates"}) is None
     assert v({"bicycle": "yes", "surface": "asphalt", "smoothness": "bad"}) is None
     assert v({"bicycle": "yes", "surface": "gravel", "smoothness": "very_bad"}) is None
+
+
+def _relation_routes(**tags) -> WayRoutes:
+    from pipeline.route_relations import is_mtb_route, route_kinds
+
+    relation = {"type": "route", **tags}
+    hiking, network = route_kinds(relation)
+    return WayRoutes(
+        hiking=hiking,
+        bicycle_networks=frozenset(() if network is None else (network,)),
+        mtb=is_mtb_route(relation),
+    )
+
+
+def test_a_mountain_bike_relation_makes_the_mountain_bike_class_not_a_bicycle_route():
+    # Hunt A2 (2026-11-08): a `route=mtb` relation counted as a bicycle route, so an
+    # unrated plain path on an MTB loop inside a park escaped the park-path and
+    # hiking-route closures (before: both None, open on every standard graph). The first
+    # fix made the relation give nothing, which closed those loops on every graph and took
+    # rated singletrack on them off the mountain-bike layer (review of the B branch). Now
+    # the relation puts the way in the mountain-bike class where those rules would close
+    # it: closed on the standard graphs, ridden by the off-road and Mountain Bike graphs.
+    mtb = _relation_routes(route="mtb", network="lcn")
+    assert not mtb.bicycle_route and mtb.mtb
+    assert v({}, mtb, in_park=True) == "mtb"
+    assert v({}, _relation_routes(route="hiking;mtb")) == "mtb"
+    # The hiking half still counts without the MTB half; and outside a park, off any
+    # hiking route, a plain path on a loop is left as it was. (A dirt surface on the loop
+    # is the mountain-bike class too since T1 of terrain hunt 2: the test below.)
+    assert v({}, _relation_routes(route="hiking")) == "hiking_route"
+    assert v({"surface": "dirt"}, _relation_routes(route="hiking;mtb")) == "mtb"
+    assert v({}, mtb) is None
+    # A bicycle route still lifts them, and a `bicycle;mtb` route counts by its bicycle
+    # half (a national route that is also an MTB route stays national).
+    assert v({}, _relation_routes(route="bicycle", network="lcn"), in_park=True) is None
+    both = _relation_routes(route="bicycle;mtb", network="ncn")
+    assert v({}, both, in_park=True) is None
+    assert both.keeping_route
+
+
+@pytest.mark.parametrize("surface", ["dirt", "ground", "earth", "mud"])
+@pytest.mark.parametrize("in_park", [False, True])
+@pytest.mark.parametrize("hiking", [False, True])
+def test_an_unrated_dirt_trail_on_a_mountain_bike_loop_is_the_mountain_bike_class(
+    surface, in_park, hiking
+):
+    # Terrain hunt 2, T1. The owner, 2026-11-08, asked whether an unrated dirt trail on a
+    # mapped MTB route counts as open to bikes: "Yes, it's most likely that these are very
+    # easy trails that nobody bothers to rate." Before: `natural_surface`, closed on every
+    # graph, Mountain Bike's included, while the same way with no surface tag in a park
+    # was `mtb` (so the better-mapped trail was the one Mountain Bike could not ride).
+    # After: `mtb`, closed on the standard graphs, open on the off-road and Mountain Bike
+    # graphs.
+    loop = WayRoutes(hiking=hiking, mtb=True)
+    assert v({"surface": surface}, loop, in_park=in_park) == "mtb"
+    # Off a loop the rules close it as before.
+    assert v({"surface": surface}, WayRoutes(hiking=hiking), in_park=in_park) == (
+        "hiking_route" if hiking else "natural_surface"
+    )
+    # A gravel-trail rating of 0 still opens it on every graph, loop or not.
+    assert v({"surface": surface, "mtb:scale": "0"}, WayRoutes(mtb=True)) is None

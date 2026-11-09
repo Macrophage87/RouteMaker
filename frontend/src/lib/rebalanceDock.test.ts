@@ -55,11 +55,11 @@ test("the ride holds at the crowded dock, asks the drop-off list there live, and
   // A re-plan asked while choosing is dropped; the focus goes back to the ride's heading.
   assert.match(ride, /replanTicket\.current \+= 1;\s*const dock = t\("Dock at \{place\}\.", \{ place: choice\.name \}\);/);
   assert.match(ride, /notify\(dockChosenSaid\(choice\.name\)\);\s*\/\/[^\n]*\n\s*headingRef\.current\?\.focus\(\);/);
-  assert.match(ride, /statsRef\.current, dockChosen\.current \? \{ name: dockChosen\.current, route: routeRef\.current, points: plan\.current\.points \} : null\);/);
+  assert.match(ride, /statsRef\.current, dockChosen\.current \? \{ name: dockChosen\.current, route: routeRef\.current, points: plan\.current\.points \} : null, riding\);/);
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
   assert.match(app, /dock: docked\?\.name \?\? share\.end\.name/);
   // Keep riding carries on to the chosen dock, its plan kept for the day's figures.
-  assert.match(app, /const kept = start && docked \? \{ \.\.\.start, planned: start\.planned \?\? start\.route, route: docked\.route, points: docked\.points, trip: start\.trip \? \{ \.\.\.start\.trip, approach: null, docked: docked\.name \} : null \} : start;/);
+  assert.match(app, /const kept = start && docked \? \{ \.\.\.start, planned: start\.planned \?\? start\.route, route: docked\.route, points: docked\.points, trip: start\.trip \? \{ \.\.\.start\.trip, approach: null, docked: docked\.name \} : null \} : asRidden;/);
   assert.match(app, /const planRoute = start\?\.planned \?\? start\?\.route;/);
   assert.match(ride, /const rebalance = plannedRoute\.preset === "rebalance" \|\| !!plannedTrip\?\.docked;/);
   // The card: the nearest first and primary; with none, Try again and the plan's own dock.

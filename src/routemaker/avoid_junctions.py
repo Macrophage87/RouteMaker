@@ -103,11 +103,25 @@ def passages(
     coordinates: Sequence[Sequence[float]],
     junctions: Sequence[AvoidJunction],
     radius_m: float = MATCH_RADIUS_M,
+    separated: Sequence[bool] | None = None,
+    nodes: Sequence[Sequence[float]] = (),
 ) -> list[Passage]:
     """Each pass of the route's line (lon, lat pairs, in order) through an Avoid
-    junction, in route order, with the metres along the line where it comes nearest."""
+    junction, in route order, with the metres along the line where it comes nearest.
+
+    Grade separation (the 2026-11-08 hunt, J6 and C7): a planar 15 m took a trail bridge
+    over, or an underpass beneath, an Avoid-rated junction for a pass, at 30 minutes and
+    the "really bad idea" notice. `separated` says, for each segment of the line (one
+    fewer than its points), whether it lies on a bridge or tunnel edge
+    (`trace_junctions.separated_line`); a pass whose every segment within `radius_m` of
+    the junction is separated is no pass, unless one of `nodes` (the route's own junction
+    nodes, where its edges meet a road: `trace_junctions.RawJunction`) is within
+    `radius_m` of the junction too, which is a route through a junction on a bridge deck.
+    Without `separated` every segment is at grade, as before."""
     if len(coordinates) < 2 or not junctions:
         return []
+    if separated is not None and len(separated) != len(coordinates) - 1:
+        separated = None
     found: list[Passage] = []
     degree_m = math.pi / 180 * _EARTH_M
     for junction in junctions:
@@ -119,10 +133,17 @@ def passages(
         lon_margin = lat_margin / max(math.cos(math.radians(lat0)), 0.01)
         along = 0.0
         inside = False
+        # Whether a segment within the radius of this pass is at grade.
+        at_grade = False
+        through_node = separated is not None and any(
+            math.hypot(*(a - b for a, b in zip(_xy(*node[:2], lat0), here, strict=True)))
+            <= radius_m
+            for node in nodes
+        )
         best: tuple[float, float] = (math.inf, 0.0)  # (distance, metres along)
         prev_lon_lat = coordinates[0]
         previous = _xy(*prev_lon_lat[:2], lat0)
-        for lon_lat in coordinates[1:]:
+        for index, lon_lat in enumerate(coordinates[1:]):
             point = _xy(*lon_lat[:2], lat0)
             seg = math.hypot(point[0] - previous[0], point[1] - previous[1])
             lons = (prev_lon_lat[0], lon_lat[0])
@@ -136,15 +157,18 @@ def passages(
                 distance, t = math.inf, 0.0
             if distance <= radius_m:
                 if not inside:
-                    inside, best = True, (math.inf, 0.0)
+                    inside, best, at_grade = True, (math.inf, 0.0), False
+                if separated is None or not separated[index] or through_node:
+                    at_grade = True
                 if distance < best[0]:
                     best = (distance, along + t * seg)
             elif inside and distance > LEAVE_RADIUS_M:
-                found.append(Passage(junction, best[1]))
+                if at_grade:
+                    found.append(Passage(junction, best[1]))
                 inside = False
             along += seg
             previous, prev_lon_lat = point, lon_lat
-        if inside:
+        if inside and at_grade:
             found.append(Passage(junction, best[1]))
     return sorted(found, key=lambda p: (p.m, p.junction.id))
 

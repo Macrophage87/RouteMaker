@@ -13,6 +13,11 @@ unless `--write`; a rewritten file keeps its own indent and changes nothing but
 the added keys. Nothing is downloaded and nothing is written to a database.
 
 `--ways-jsonl` reads the current ways from such a file instead of the PBF.
+
+`--overrides fixtures/speed` and `--overrides fixtures/bike_lanes` fill the curated
+speed limits' and bike lanes' rows the same way: with a fingerprint stored, the
+rebuild follows an OSM split of such a way onto its new piece and does not spread
+it over a merge (`rematch.resolve_keyed`; hunt D1, 2026-11-08).
 """
 
 from __future__ import annotations

@@ -44,6 +44,7 @@ export type PresetId =
   | "fast"
   | "road-bike"
   | "cargo"
+  | "tandem"
   | "ebike"
   | "bikeshare"
   | "novice"
@@ -141,6 +142,14 @@ export const PRESETS: readonly PresetOption[] = [
     description:
       "A long, heavy bike, carrying cargo or with passengers (people or pets): gentle grades, no narrow barriers, times at a cargo bike's pace. With electric assist, e-bike rules and a little more speed, but hills still count.",
     summary: "Gentle hills and no narrow barriers.",
+  },
+  {
+    // Tandem (Stephen, 2026-11-08: "Build a tandem ride type"): a long bike for two (core.presets TANDEM).
+    id: "tandem",
+    label: "Tandem",
+    keywords: "tandem two riders bicycle built for two",
+    description: "A long bike for a pair of riders: no narrow barriers, fewer turns and gentler hills. Times at a tandem's pace.",
+    summary: "Two riders: no narrow barriers, fewer turns.",
   },
   {
     id: "ebike",

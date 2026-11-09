@@ -61,7 +61,8 @@ import check_compose_limits as production  # noqa: E402
 
 REPO = Path(__file__).resolve().parent.parent
 
-# The services the beta runs. `valhalla-offroad`, `valhalla-mtb` and `valhalla-paved` sit behind
+# The services the beta runs. `valhalla-offroad`, `valhalla-mtb`, `valhalla-paved` and
+# `valhalla-paved-weekend` sit behind
 # the `offroad` profile and start once their tiles are on the host (scripts/beta/auto-release.sh),
 # so they are allowed, not required; the budget always counts them (main renders with the
 # profile on).
@@ -78,7 +79,12 @@ EXPECTED_SERVICES = {
     # The api workers' shared answer cache (audit S14; the owner, 2026-10-27).
     "memcached",
 }
-OPTIONAL_SERVICES = {"valhalla-offroad", "valhalla-mtb", "valhalla-paved"}
+OPTIONAL_SERVICES = {
+    "valhalla-offroad",
+    "valhalla-mtb",
+    "valhalla-paved",
+    "valhalla-paved-weekend",
+}
 FORBIDDEN_SERVICES = {"caddy", "rebuild", "renderer", "bot"}
 
 # Exits before the api starts (api depends on it completing), so it is not
@@ -99,11 +105,16 @@ ONE_SHOT = {"migrate"}
 # for its own growth. The memcached the api's workers share (24M; the owner, 2026-10-27, at
 # "about 16 MB") fits under that ceiling, in the 40 MiB it left. The Road Bike router's 320M
 # (2026-11-02, "Raise ceiling to 7.66 GB") takes the ceiling to 7.66 GiB and the startup
-# peak's margin from 1.0 to 0.7 GiB.
+# peak's margin from 1.0 to 0.7 GiB. Road Bike's weekend router's 320M takes them to 7.96 GiB
+# and 0.39 GiB: the owner, 2026-11-08, "Road bikes absolutely use those parkways on the
+# weekends. It's probably their most common destination.", and on the card "How should Road
+# Bike get the weekend parkways?", "New weekend graph", knowing the beta's resident budget rises
+# to about 7.96 GiB and its start-up margin falls to about 0.4 GiB. The exact figures: 8150 MiB
+# resident = 7.959 GiB; the startup peak 8406 MiB = 8.209 GiB leaves 0.391 GiB of the 8.6.
 HOST_AVAILABLE_GB = 8.6
-MAX_RESIDENT_GB = 7.66
+MAX_RESIDENT_GB = 7.96
 # The startup peak (resident plus the largest one-shot) must leave the host at least this much.
-PEAK_MARGIN_GB = 0.7
+PEAK_MARGIN_GB = 0.39
 
 # OWNER-DECISIONS 367.2: two route plans at once. src/config/settings.py derives the
 # pools from WEB_CONCURRENCY; these mirror its arithmetic (tests/test_beta_overlay.py
@@ -622,24 +633,26 @@ def check(
 
 def table(compose: dict) -> str:
     services = compose.get("services", {})
-    rows = [f"{'service':<20}{'memory MiB':>12}{'cpus':>7}"]
+    # The first column fits the longest name (valhalla-paved-weekend is 22), so every row lines up.
+    w = max([len("resident total"), *map(len, services)]) + 2
+    rows = [f"{'service':<{w}}{'memory MiB':>12}{'cpus':>7}"]
     for name in sorted(services):
         lim = limits(services[name])
         if "memory" not in lim:
             continue
         note = "  (one-shot, not resident)" if name in ONE_SHOT else ""
         rows.append(
-            f"{name:<20}{mib(parse_bytes(lim['memory'])):>12.0f}"
+            f"{name:<{w}}{mib(parse_bytes(lim['memory'])):>12.0f}"
             f"{str(lim.get('cpus', '?')):>7}{note}"
         )
     total = resident_bytes(services)
     rows.append(
-        f"{'resident total':<20}{mib(total):>12.0f}   = {total / 1024**3:.2f} GiB "
+        f"{'resident total':<{w}}{mib(total):>12.0f}   = {total / 1024**3:.2f} GiB "
         f"of about {HOST_AVAILABLE_GB} GiB available"
     )
     peak = peak_bytes(services)
     rows.append(
-        f"{'startup peak':<20}{mib(peak):>12.0f}   = {peak / 1024**3:.2f} GiB "
+        f"{'startup peak':<{w}}{mib(peak):>12.0f}   = {peak / 1024**3:.2f} GiB "
         "(resident plus the largest one-shot)"
     )
     return "\n".join(rows)
