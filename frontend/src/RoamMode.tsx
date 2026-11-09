@@ -96,7 +96,7 @@ import {
  * Roam's pauses (the owner, 2026-11-01: battery audit): not moving for 10 minutes (lib/ridePause.ts
  * roamStayPausedSaid), or hidden that long in a browser.
  */
-export const ROAM_HIDDEN_PAUSED = t("Roam paused while the page was in the background. Press Resume to carry on.");
+export const ROAM_HIDDEN_PAUSED = t("Roam paused while the page was in the background. Press Resume to continue.");
 
 /** No repair stands or place search given (a test's roam): those detours say they are unavailable. */
 const noPlaces = async () => null;

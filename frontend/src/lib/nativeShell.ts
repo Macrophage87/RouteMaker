@@ -15,7 +15,7 @@
  * - the voice (`SpeechEnv`, lib/rideOutput.ts): @capacitor-community/text-to-speech, which speaks with
  *   the screen locked where Web Speech stops.
  * - the screen wake lock (`WakeEnv`): the browser's lock still asked, but a ride no longer needs the
- *   screen on, so a WebView without the lock is not told "Keep your screen on yourself".
+ *   screen on, so a WebView without the lock is not told "Set your phone to keep it on".
  *
  * On Android a second, silent notification shows the latest cue while a ride's watch runs (`showCue`).
  *
@@ -43,6 +43,11 @@ export interface CapacitorBridge {
 export const GEO_PLUGIN = "BackgroundGeolocation";
 export const SPEECH_PLUGIN = "TextToSpeech";
 export const NOTICE_PLUGIN = "LocalNotifications";
+/**
+ * The app's turn at the phone's audio (mobile/android/.../VoiceFocusPlugin.java): music dips under a cue, as under a
+ * navigation app's, instead of playing over it at full volume (Stephen 2026-11-08). Apps built before it have none.
+ */
+export const VOICE_FOCUS_PLUGIN = "RouteMakerVoiceFocus";
 /** The app's share sheet (mobile/android/.../SharePlugin.java): Android's WebView has no navigator.share. */
 export const SHARE_PLUGIN = "RouteMakerShare";
 
@@ -343,6 +348,12 @@ export function nativeWatchApi(bridge: CapacitorBridge, notice: CueNotice | null
 export function nativeSpeech(bridge: CapacitorBridge): SpeechEnv {
   let speaking = false;
   let turn = 0;
+  // Music dips for each cue and comes back after it (VOICE_FOCUS_PLUGIN); an app without it speaks as before.
+  // Not assumed on a bridge that cannot say (as the share sheet): only newer builds ship it.
+  const ducks = typeof bridge.isPluginAvailable === "function" && has(bridge, VOICE_FOCUS_PLUGIN);
+  const focus = (method: "duck" | "unduck") => {
+    if (ducks) void bridge.nativePromise(VOICE_FOCUS_PLUGIN, method, {}).catch(() => undefined);
+  };
   const synth: SpeechApi = {
     get speaking() {
       return speaking;
@@ -354,8 +365,10 @@ export function nativeSpeech(bridge: CapacitorBridge): SpeechEnv {
       const done = () => {
         if (mine !== turn) return;
         speaking = false;
+        focus("unduck");
         utterance.onend?.();
       };
+      focus("duck");
       bridge
         .nativePromise(SPEECH_PLUGIN, "speak", { text: utterance.text, lang: utterance.lang || "en-US", rate: 1, pitch: 1, volume: 1, queueStrategy: 0 })
         .then(done, done);
@@ -363,6 +376,7 @@ export function nativeSpeech(bridge: CapacitorBridge): SpeechEnv {
     cancel() {
       turn += 1;
       speaking = false;
+      focus("unduck");
       void bridge.nativePromise(SPEECH_PLUGIN, "stop", {}).catch(() => undefined);
     },
   };
@@ -384,7 +398,7 @@ function heldWithoutLock(): WakeLockSentinelLike {
   };
 }
 
-/** The browser's lock, asked first (it keeps the map lit while the rider looks); never "keep it on yourself". */
+/** The browser's lock, asked first (it keeps the map lit while the rider looks); never "Set your phone to keep it on". */
 export function nativeWake(browser: WakeEnv): WakeEnv {
   const request = browser.request;
   return {
@@ -451,7 +465,7 @@ export function rideSpeech(found: Shell | null = shell): SpeechEnv {
   return found?.speaks ? nativeSpeech(found.bridge) : browserSpeech();
 }
 
-/** Ride mode's screen wake lock: the browser's, and in the shell never a "keep it on yourself". */
+/** Ride mode's screen wake lock: the browser's, and in the shell never a "Set your phone to keep it on". */
 export function rideWake(found: Shell | null = shell): WakeEnv {
   return found?.locates ? nativeWake(browserWake()) : browserWake();
 }

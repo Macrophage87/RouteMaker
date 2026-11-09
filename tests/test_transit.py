@@ -36,7 +36,7 @@ from pathlib import Path
 import pytest
 from test_route_api import CONTRACT_KEYS, router, segments, standard_router
 
-from core import api, gbfs, presets, transit
+from core import api, gbfs, presets, routing, transit
 from routemaker.ridetime import ZONE
 
 # The API tests take these two of test_route_api's fixtures by name.
@@ -1124,6 +1124,51 @@ def _branch_schedule(first: int = 13 * 60) -> transit.Schedule:
     return transit.Schedule([system], stops, patterns, ["1" * days], date(2026, 9, 28), days)
 
 
+def _two_bus_routes(*routes: tuple[str, float, int]) -> transit.Schedule:
+    """Bus routes from stop A to stop B, each (route, ride minutes, first departure minute),
+    every 12 minutes all day."""
+    bus = transit.System(
+        0, "wmata-bus", "Metrobus", transit.BUS, "bus {route}", "", False, "all", "", ""
+    )
+    a = transit.Stop(0, "A", (-77.03, 38.90), (-77.03, 38.90), True, ((-77.03, 38.90),), 0, False)
+    b = transit.Stop(1, "B", (-77.03, 38.95), (-77.03, 38.95), True, ((-77.03, 38.95),), 0, False)
+    patterns = [
+        transit.Pattern(
+            index,
+            0,
+            route,
+            (0, 1),
+            tuple((0, ride * 60) for _band in transit.BANDS),
+            {0: tuple(m * 2 + 1 for m in range(first, 24 * 60, 12))},
+        )
+        for index, (route, ride, first) in enumerate(routes)
+    ]
+    return transit.Schedule([bus], [a, b], patterns, ["1" * 10], date(2026, 11, 1), 10)
+
+
+def _hop_a_to_b(schedule: transit.Schedule) -> transit.Hop:
+    moment = transit.moment_of(datetime(2026, 11, 4, 12, 0, tzinfo=ZONE))
+    return transit._Day(schedule, moment, bike=False).reach(0, moment.minute)[1]
+
+
+def test_a_frequent_stop_times_the_bus_a_rider_would_take_not_the_quickest_routes_ride():
+    """Hunt M3: a local (S2, 30 min) and a limited (S9, 12 min) every 12 min each, 6 min apart,
+    were merged into "every 6 min" with the S9's ride: 3 + 12 = 15 min, quicker than either bus.
+    Waiting for the S9 is the quickest strategy (6 + 12 = 18 min); boarding whichever comes
+    first is about 3 + 21."""
+    both = _hop_a_to_b(_two_bus_routes(("S2", 30, 6 * 60), ("S9", 12, 6 * 60 + 6)))
+    assert both.routes == ("S9",) and both.every == 12.0
+    assert (both.wait_s / 60, both.ride_s / 60) == (6.0, 12.0)
+    # Where the local is no slower, a rider boards the first to come: one service, every 6 min.
+    alike = _hop_a_to_b(_two_bus_routes(("S2", 13, 6 * 60), ("S9", 12, 6 * 60 + 6)))
+    assert alike.routes == ("S2", "S9") and alike.every == 6.0
+    assert alike.wait_s / 60 == 3.0 and alike.ride_s / 60 == pytest.approx(12.5)
+    # A route only a little quicker: boarding the first to come (3 + 14, the rides' mean) beats
+    # waiting for the S9 (6 + 12).
+    close = _hop_a_to_b(_two_bus_routes(("S2", 16, 6 * 60), ("S9", 12, 6 * 60 + 6)))
+    assert close.routes == ("S2", "S9") and close.total_s / 60 == pytest.approx(3 + 14)
+
+
 def test_a_short_turn_heads_the_way_its_route_does_and_each_departure_takes_its_own_run_times():
     branch = _branch_schedule()
     bravo = list(branch.stops[1].point)
@@ -1453,10 +1498,54 @@ def test_a_walk_goes_round_closures_and_through_them_only_where_there_is_no_way_
     assert walked is not None and walked.seconds == 420.0
     assert asked[0] == [closure, marked]
     assert asked[1] == [marked]
-    # A ride is never asked round them here (a ride's line has its own closures).
+    # A ride is never asked round the walk's closures (it has its own, below).
     asked.clear()
     services.ride(CAPITOL_HILL, NEAR_CAPITOL_HILL)
     assert asked == [None]
+
+
+def test_a_candidate_ride_takes_the_rides_graph_and_goes_round_its_closures(monkeypatch) -> None:
+    """Hunt 2, C3: a trip's rides are asked on the ride's own graph (the weekend twin, the
+    no-trail graph) and round the closures to bicycles, then with only the rider's marked roads
+    left out where there is no way round; before, every ride went to the standard graph through
+    every closure. Walks stay on the standard graph."""
+    from core import routing
+
+    closure = [[-77.0, 38.9], [-77.0, 38.901], [-77.001, 38.901], [-77.0, 38.9]]
+    marked = [[-77.01, 38.9], [-77.01, 38.901], [-77.011, 38.901], [-77.01, 38.9]]
+    asked = []
+
+    def answer(graph, endpoint, payload, deadline):
+        asked.append((graph, payload["costing"], payload.get("exclude_polygons")))
+        if len(payload.get("exclude_polygons") or []) == 2:
+            raise routing.RouterRefused(400, 442, "No path could be found for input")
+        return {"trip": {"legs": [{"shape": "", "summary": {"time": 420.0, "length": 0.55}}]}}
+
+    monkeypatch.setattr(routing, "_call", answer)
+    monkeypatch.setattr(routing, "decode_polyline6", lambda _shape: [(-77.0, 38.9), (-77.01, 38.9)])
+    services = transit.RoutingServices(
+        routing.clock() + 30,
+        presets.BIKE_TRANSIT,
+        ride_variant="no-trail",
+        ride_exclude=[closure, marked],
+        ride_keep=[marked],
+    )
+    ridden = services.ride(CAPITOL_HILL, NEAR_CAPITOL_HILL)
+    assert ridden is not None and ridden.seconds == 420.0
+    assert asked == [
+        ("no-trail", "bicycle", [closure, marked]),
+        ("no-trail", "bicycle", [marked]),
+    ]
+    # A walk keeps to the standard graph and its own (here no) closures.
+    asked.clear()
+    services.walk(CAPITOL_HILL, NEAR_CAPITOL_HILL)
+    assert asked[0] == ("standard", "pedestrian", None)
+    # Left out, the ride is the standard graph's with nothing left out, as before.
+    asked.clear()
+    transit.RoutingServices(routing.clock() + 30, presets.BIKE_TRANSIT).ride(
+        CAPITOL_HILL, NEAR_CAPITOL_HILL
+    )
+    assert asked == [("standard", "bicycle", None)]
 
 
 class Bendy(Straight):
@@ -1569,6 +1658,29 @@ def without_metro_gtfs(start: date = date(2026, 9, 28)) -> transit.Schedule:
     """The fixture's schedule as a host builds it with no WMATA key: no Metro, no Metrobus."""
     feeds = {k: v for k, v in FEEDS.items() if not k.startswith("wmata-")}
     return transit.with_typical_metro(transit.parse(build.build(feeds, start)[0]))
+
+
+def test_an_own_bike_leg_takes_the_elevator_on_its_riders_side() -> None:
+    """Hunt M5: Herndon's street elevators stand either side of the Dulles Toll Road. Every bike
+    leg used the one nearest the station's centre (the north one), so a rider from the south was
+    routed round to the far side; a bike transfer left by any entrance, stairs included."""
+    schedule = without_metro_gtfs()
+    herndon = next(s for s in schedule.stops if s.name == "Herndon" and s.rail and s.elevator)
+    north_side = herndon.bike_entrance
+    south_side = min(herndon.bike_entrances, key=lambda e: e[1])
+    assert north_side[1] > 38.953 > 38.952 > south_side[1]
+    from_north, from_south = [-77.3850, 38.9600], [-77.3850, 38.9450]
+    to_station = transit._ride_to(schedule, from_south, herndon, None, 15.0)
+    assert to_station.legs[0].coordinates[-1] == south_side  # it was the north one
+    assert (
+        transit._ride_to(schedule, from_north, herndon, None, 15.0).legs[0].coordinates[-1]
+        == north_side
+    )
+    home = transit._ride_from(schedule, from_south, herndon, None, 15.0)
+    assert home.legs[-1].coordinates[0] == south_side
+    # A station with one elevator known keeps the map's.
+    one = next(s for s in schedule.stops if s.name == "Addison Road-Seat Pleasant" and s.rail)
+    assert transit._bike_entrance(one, from_south) == one.bike_entrance
 
 
 def test_the_typical_timetable_has_the_maps_stations_and_the_documented_run_times() -> None:
@@ -1736,13 +1848,71 @@ def test_an_expired_schedule_keeps_metro_on_its_typical_timetable(tmp_path) -> N
 
 
 def _feeds_with_marc_ending(tmp_path, end: str) -> dict:
-    """The fixture's feeds with MARC's timetable ending on `end` (YYYYMMDD)."""
+    """The fixture's feeds with MARC's timetable ending on `end` (YYYYMMDD).
+
+    Its calendar_dates.txt is kept, Thanksgiving's `WE,20261126,1` (weekend service added on a
+    date after the end) and all. This used to empty it, which hid that one late added date made
+    the feed's last day 2026-11-26, so MARC was struck through as "no service today" from
+    2026-10-21 with the operator's alert quiet (hunt M1)."""
     marc = tmp_path / "marc"
     shutil.copytree(DATA / "marc", marc)
     calendar = marc / "calendar.txt"
     calendar.write_text(calendar.read_text().replace("20271231", end))
-    (marc / "calendar_dates.txt").write_text("service_id,date,exception_type\n")
+    assert "WE,20261126,1" in (marc / "calendar_dates.txt").read_text()
     return {**FEEDS, "marc": marc}
+
+
+def _feed_folder(tmp_path, name: str, calendar: list[str], dates: list[str], trips: list[str]):
+    folder = tmp_path / name
+    folder.mkdir()
+    head = "service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date"
+    (folder / "calendar.txt").write_text("\n".join([head, *calendar]) + "\n")
+    (folder / "calendar_dates.txt").write_text(
+        "\n".join(["service_id,date,exception_type", *dates]) + "\n"
+    )
+    (folder / "trips.txt").write_text("\n".join(["route_id,service_id,trip_id", *trips]) + "\n")
+    return folder
+
+
+def test_a_late_added_date_or_special_service_does_not_hide_the_end_of_regular_service(
+    tmp_path,
+) -> None:
+    """Hunt M1: the last day was the max() of every end date and added date, so one late date
+    hid an ended timetable. Now it is the end of regular service."""
+    trips = [f"R,WK,wk{i}" for i in range(40)] + [f"R,WE,we{i}" for i in range(12)]
+    # The regular services end 2026-10-20; Thanksgiving adds weekend service on 2026-11-26.
+    holiday = _feed_folder(
+        tmp_path,
+        "holiday",
+        ["WK,1,1,1,1,1,0,0,20260101,20261020", "WE,0,0,0,0,0,1,1,20260101,20261020"],
+        ["WE,20261126,1"],
+        trips,
+    )
+    with build.open_feed(holiday) as feed:
+        assert build.last_service_day(feed) == date(2026, 10, 20)  # it was 2026-11-26
+        assert build.stray_service_days(build.daily_trips(feed), date(2026, 10, 20)) == [
+            date(2026, 11, 26)
+        ]
+    # One special service id with two trips and a far end date is not the timetable's end.
+    special = _feed_folder(
+        tmp_path,
+        "special",
+        ["WK,1,1,1,1,1,0,0,20260101,20261020", "EV,1,1,1,1,1,1,1,20260101,20270630"],
+        [],
+        [*trips[:40], "R,EV,ev0", "R,EV,ev1"],
+    )
+    with build.open_feed(special) as feed:
+        assert build.last_service_day(feed) == date(2026, 10, 20)  # it was 2027-06-30
+    # Back-to-back timetables, the next one published in the same feed: the end is the next's.
+    next_one = _feed_folder(
+        tmp_path,
+        "next",
+        ["WK,1,1,1,1,1,0,0,20260101,20261020", "WK2,1,1,1,1,1,0,0,20261021,20270331"],
+        ["WK2,20261126,2"],
+        [*trips[:40], *(f"R,WK2,n{i}" for i in range(30))],
+    )
+    with build.open_feed(next_one) as feed:
+        assert build.last_service_day(feed) == date(2027, 3, 31)
 
 
 def test_a_system_whose_feed_ends_inside_the_window_is_left_out_after_it_not_closed(
@@ -1754,7 +1924,9 @@ def test_a_system_whose_feed_ends_inside_the_window_is_left_out_after_it_not_clo
     doc, report = build.build(_feeds_with_marc_ending(tmp_path, "20261020"), date(2026, 9, 28))
     marc = next(s for s in doc["systems"] if s["id"] == "marc")
     assert marc["last_day"] == "2026-10-20"
-    assert any(line.startswith("marc: its timetable ends 2026-10-20") for line in report)
+    ends = [line for line in report if line.startswith("marc: its timetable ends 2026-10-20")]
+    # And the build still says what runs after the end, left out with it.
+    assert len(ends) == 1 and "the last 2026-11-26" in ends[0]
     assert all(s["last_day"] == "2027-12-31" for s in doc["systems"] if s["id"] != "marc")
     path = tmp_path / "transit-schedule.json"
     path.write_text(json.dumps(doc))
@@ -1801,6 +1973,66 @@ def test_a_metro_gtfs_that_ends_early_gives_way_to_the_typical_timetable(tmp_pat
     metro = [s for s in after.systems if s.id == "wmata-rail"]
     assert len(metro) == 1 and metro[0].typical
     assert after.note.startswith("Metro is not planned for this date")
+
+
+@pytest.mark.parametrize(
+    ("depart_at", "when"),
+    [
+        ("2026-10-03T10:00:00-04:00", "weekend"),  # Saturday 10 am, asked on a Wednesday
+        ("2026-10-06T08:00:00-04:00", "weekday_rush"),  # Tuesday 8 am
+    ],
+)
+def test_depart_at_sets_the_bike_legs_ride_time_too(
+    monkeypatch, settings, tmp_path, depart_at, when
+) -> None:
+    """Hunt M2: `depart_at` picked the timetable's day, but the candidates' junction waits and
+    busy roads, the walks' closures and the answer's line were planned for now (a Wednesday
+    noon here: weekday off-peak on the standard graph). They follow the departure now; a ride
+    time the rider set still wins."""
+    path = tmp_path / "transit-schedule.json"
+    path.write_text(built(date(2026, 9, 28))[0])
+    settings.TRANSIT_SCHEDULE_PATH = path
+    pinned = datetime(2026, 9, 30, 12, 0, tzinfo=ZONE)  # Wednesday midday
+    monkeypatch.setattr(routing.timezone, "now", lambda: pinned)
+    seen: dict = {}
+
+    def services(*_args, **kwargs):
+        seen.setdefault("services", kwargs.get("when"))
+        return Straight()
+
+    monkeypatch.setattr(transit, "RoutingServices", services)
+
+    def foot_zones(points, setting, **kwargs):
+        seen["foot"] = (setting, kwargs.get("at"))
+        return None, []
+
+    monkeypatch.setattr(api.work_zones, "foot_zones", foot_zones)
+
+    class Planned(Exception):
+        pass
+
+    def plan(points, preset, dials, *args, **kwargs):
+        seen["dials"] = (dials.when, dials.zones_at)
+        raise Planned
+
+    monkeypatch.setattr(routing, "plan", plan)
+    departs = datetime.fromisoformat(depart_at)
+    for asked, expected in ((None, when), ("weekday_offpeak", "weekday_offpeak")):
+        seen.clear()
+        body = api.RouteIn(
+            points=[CAPITOL_HILL, DOWNTOWN],
+            preset=presets.BIKE_TRANSIT,
+            depart_at=depart_at,
+            **({"when": asked} if asked else {}),
+        )
+        try:
+            api._transit_body(body, None)
+        except Planned:
+            pass
+        # Before: weekday_offpeak (now's) for all three, and the line's closures at the dial's.
+        assert seen["services"] == expected
+        assert seen["foot"] == (expected, departs)
+        assert seen["dials"] == (expected, departs)
 
 
 # --- POST /api/route and GET /api/transit/closures ----------------------------------------------
@@ -1963,10 +2195,16 @@ class TestApi:
         router(standard_router())
         response = post_transit(client, [CAPITOL_HILL, DOWNTOWN], preset, blocked_lines=[marked])
         assert response.status_code == 200, response.content
-        ring, blocked = wz.polygon(shut_on_foot("md-shut", shut)), wz.line_ring(marked)
+        # The rider's road trimmed 20 m at each end as a closure is (hunt K4/Q2, 2026-11-08).
+        ring = wz.polygon(shut_on_foot("md-shut", shut))
+        blocked = wz.line_ring(marked, wz.TRIM_M)
         for options in seen:
             assert options["walk_exclude"] == [ring, blocked]
             assert options["walk_keep"] == [blocked]
+            # Hunt 2, C3: the trip's rides go round the closure (shut to bicycles too) and the
+            # marked road, as its line does; before, through both.
+            assert options["ride_exclude"] == [ring, blocked]
+            assert options["ride_keep"] == [blocked]
 
     def test_a_trip_asked_for_that_is_no_longer_running_is_said_gone(
         self, client, segments, router, installed
@@ -2067,6 +2305,112 @@ class TestApi:
             assert costing == presets.costing(presets.NOVICE, stress, None)
             novice = presets.costing(presets.NOVICE)["bicycle"].get("cycling_speed")
             assert line_speeds == {novice}
+
+    @pytest.mark.parametrize(
+        ("preset", "sent"), [(presets.BIKE_TRANSIT, 70), (presets.BIKESHARE_TRANSIT, 80)]
+    )
+    def test_novice_legs_are_priced_at_novices_own_sliders_not_the_ones_sent(
+        self, client, segments, router, installed, monkeypatch, preset, sent
+    ) -> None:
+        """Hunt 2, C1: the page (and the MCP tool) offers Novice's transit options with the
+        transit ride type's starting dials (70 or 80, hills 0). The legs were priced at them:
+        Bike + transit's candidates at use_roads 0.10 with no calm search and flat-indifferent
+        hills, and Bikeshare + transit's line at 80 beside candidates at Novice's own. Now both
+        are Novice's own (top of the slider, hills NOVICE_HILLS)."""
+        from core import gbfs
+
+        seen = []
+
+        def services(until, leg_preset, costing=None, **_options):
+            seen.append(costing)
+            return Straight()
+
+        monkeypatch.setattr(transit, "RoutingServices", services)
+        monkeypatch.setattr(gbfs.client, "snapshot", lambda: SHARE)
+        fake = router(standard_router())
+        response = post_transit(
+            client, [CAPITOL_HILL, DOWNTOWN], preset, novice_legs=True, stress=sent, hills=0
+        )
+        assert response.status_code == 200, response.content
+        novice_hills = presets.use_hills_for(presets.NOVICE_HILLS)
+        # Before: 0.10 and use_hills_for(0) on Bike + transit's candidates.
+        assert seen[0]["bicycle"]["use_roads"] == 0.0
+        assert seen[0]["bicycle"]["use_hills"] == novice_hills
+        # Before: the line asked at hills 0 (and stress 80 on Bikeshare + transit). The line's
+        # own first route request; the hill search's later asks are priced on their own.
+        line = [
+            p["costing_options"]["bicycle"]
+            for _u, p in fake.calls
+            if p["costing"] == "bicycle" and "elevation_interval" in p
+        ]
+        assert line and line[0]["use_hills"] == novice_hills
+
+    def test_the_trips_other_rides_are_drawn_at_the_riders_sliders(
+        self, client, segments, router, installed, monkeypatch
+    ) -> None:
+        """Hunt 2, C4: the rides drawn for the map (`transit.drawn`) are priced as the
+        candidates were, at the rider's sliders, not at the ride type's own 70 and 0."""
+        made = []
+
+        def services(until, leg_preset, costing=None, max_calls=None, **options):
+            made.append((max_calls, costing, options))
+            return Straight()
+
+        monkeypatch.setattr(transit, "RoutingServices", services)
+        router(standard_router())
+        response = post_transit(client, [CAPITOL_HILL, DOWNTOWN], stress=100, hills=-50)
+        assert response.status_code == 200, response.content
+        drawn = [c for m, c, _o in made if m == transit.MAX_DRAW_CALLS]
+        # Before: None, the ride type's own costing (`presets.costing(BIKE_TRANSIT)`).
+        assert drawn and drawn[0] is not None
+        assert drawn[0]["bicycle"]["use_roads"] == presets.use_roads_for(100)
+        assert drawn[0]["bicycle"]["use_hills"] == presets.use_hills_for(-50)
+
+    @pytest.mark.parametrize(
+        ("extra", "graph"),
+        [
+            ({"when": "weekend"}, "weekend"),
+            ({"when": "weekend", "trails_off": True}, "no-trail"),
+            ({"when": "weekday_offpeak"}, "standard"),
+        ],
+    )
+    def test_the_candidate_rides_take_the_rides_own_graph(
+        self, client, segments, router, installed, monkeypatch, extra, graph
+    ) -> None:
+        """Hunt 2, C3: the candidates (and the drawn rides) ride the graph the answer's line
+        does (`presets.variant_for_ride`); before, always the standard graph."""
+        made = []
+
+        def services(until, leg_preset, **options):
+            made.append(options)
+            return Straight()
+
+        monkeypatch.setattr(transit, "RoutingServices", services)
+        router(standard_router())
+        response = post_transit(client, [CAPITOL_HILL, DOWNTOWN], **extra)
+        assert response.status_code == 200, response.content
+        assert made and {o.get("ride_variant") for o in made} == {graph}
+
+    def test_the_candidate_rides_fall_back_where_the_weekend_router_is_not_served(
+        self, client, segments, router, installed, monkeypatch
+    ) -> None:
+        """Hunt 3, T3-3: with the weekend graph not promoted (or down), the candidates ride
+        the graph the answer's line falls back to (`routing._served_variant`); before, each
+        asked the weekend router, was refused and was timed from the straight line."""
+        from core import routing
+
+        made = []
+
+        def services(until, leg_preset, **options):
+            made.append(options)
+            return Straight()
+
+        monkeypatch.setattr(transit, "RoutingServices", services)
+        monkeypatch.setattr(routing, "_is_promoted", lambda variant: variant != "weekend")
+        router(standard_router())
+        response = post_transit(client, [CAPITOL_HILL, DOWNTOWN], when="weekend")
+        assert response.status_code == 200, response.content
+        assert made and {o.get("ride_variant") for o in made} == {"standard"}
 
     def test_own_bike_and_transit_rides_at_the_riders_speed(
         self, client, segments, router, installed, monkeypatch
@@ -2556,6 +2900,11 @@ def test_a_steps_trains_and_headway_survive_the_answers_schema() -> None:
     train = {"line": "Orange Line", "toward": "Vienna/Fairfax-GMU", "end": [-77.27, 38.88]}
     out = LiveTrainOut.model_validate({**train, "minutes": [3], "when": "3 min"}).model_dump()
     assert out["end"] == [-77.27, 38.88]
+    # The platform track survives too (the owner: the card's way of telling a train's way).
+    out = LiveTrainOut.model_validate(
+        {**train, "track": "K04:2", "minutes": [3], "when": "3 min"}
+    ).model_dump()
+    assert out["track"] == "K04:2"
 
 
 def test_vehicle_words_never_say_the_system_twice():
@@ -2696,3 +3045,30 @@ def test_regenerating_the_fixture_as_its_docstring_says_gives_the_committed_file
     assert Path("marc/shapes.txt") in made
     assert sorted(made) == sorted(committed)
     assert [k for k in committed if made[k] != committed[k]] == []
+
+
+def test_a_candidate_rides_busy_metres_read_closures_on_its_own_graph(monkeypatch) -> None:
+    """Hunt 3, T3-4: a candidate ride's busy metres (`routing.busy_and_waits`) read the timed
+    closures on the graph it was routed on (`routing.car_free_reading`), as a plan's do; before,
+    outside a plan no graph was set, so a weekend ride on the no-trail graph counted Beach Drive
+    and Sligo Creek as tier-1 paths."""
+    from core import flashing_signals, routing
+
+    graphs = []
+
+    def breakdown(pieces, when, roadway_only=False):
+        graphs.append(routing.car_free_reading(when, routing._routed_graph.get()))
+        return dict.fromkeys(routing.STRESS_KEYS, 0.0), {}
+
+    monkeypatch.setattr(routing, "trace_leg", lambda *a: {"edges": []})
+    monkeypatch.setattr(routing, "pieces_of_trace", lambda trace: [])
+    monkeypatch.setattr(routing, "breakdown", breakdown)
+    monkeypatch.setattr(routing, "decode_polyline6", lambda shape: [])
+    monkeypatch.setattr(routing.trace_junctions, "junctions_of_trace", lambda *a: [])
+    monkeypatch.setattr(flashing_signals, "active", lambda: [])
+    monkeypatch.setattr(routing, "junction_waits", lambda *a, **k: [])
+    for graph in ("no-trail", "weekend"):
+        assert routing.busy_and_waits(graph, {}, "", "weekend", routing.clock() + 5) == (0.0, 0.0)
+    # Before: ["weekend", "weekend"].
+    assert graphs == [routing.NO_CAR_FREE_TIME, "weekend"]
+    assert routing._routed_graph.get() is None

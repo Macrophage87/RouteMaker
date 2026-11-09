@@ -105,6 +105,19 @@ def test_a_station_cards_trains_say_where_they_end() -> None:
     assert ends["Vienna/Fairfax-GMU"] == [vienna.lon, vienna.lat]
 
 
+def test_a_station_cards_trains_say_which_track_they_leave_from() -> None:
+    # Stephen, 2026-11-08: the Red Line is a U, so where a train ends cannot tell its way;
+    # WMATA's Group (the platform track) can. Trains on one track keep one entry per track.
+    live = snapshot()
+    card = transit_live.station([-76.995334, 38.884124], live)
+    assert card is not None
+    tracks = {t["toward"]: t["track"] for t in card["trains"]}
+    station_trains = live.trains_at(live.station_near([-76.995334, 38.884124]))
+    for train in station_trains:
+        if train.minutes is not None and train.destination and train.group:
+            assert tracks[train.destination] == f"{train.station}:{train.group}"
+
+
 def test_a_line_is_the_same_line_by_its_colour() -> None:
     assert wmata_live.same_line("Red Line", "RED")
     assert wmata_live.same_line("Metrorail Orange Line", "Orange Line")
@@ -427,6 +440,50 @@ def test_own_bike_trips_through_a_closed_station_are_left_out(schedule) -> None:
     assert left.notes[-1] == (
         "Smithsonian is closed (WMATA): every trip here takes a bike through it."
     )
+
+
+def test_a_closure_or_elevator_out_now_holds_only_for_a_trip_leaving_while_it_does(
+    schedule, monkeypatch
+) -> None:
+    """Hunt M4: a reading's closures and elevator outages were applied to a trip for any day.
+    Now a closure holds for a trip leaving within `LIVE_HOLDS_S` of now, and an outage until
+    its estimated return (Federal Triangle's, in the fixture, 2026-10-17 23:59)."""
+    plan = plan_bike(schedule, CAPITOL_HILL, DOWNTOWN, at(2026, 9, 30, 8, 0))
+    metro = metro_option(plan)
+    closed = _with_incidents("Smithsonian station is closed.")
+    leaves = at(2026, 9, 30, 8, 0).timestamp()
+    # Asked an hour before: the closure and the elevator out both hold.
+    monkeypatch.setattr(transit_live, "_wall", lambda: leaves - 3600)
+    assert metro.key not in [o.key for o in transit_live.skip_closed(plan, closed).options]
+    assert [s.name for s in transit_live.blocked_stations(snapshot(), plan.moment)] == [
+        "Federal Triangle"
+    ]
+    # Asked three days before: the closure is not known to last; the elevator's return is after.
+    monkeypatch.setattr(transit_live, "_wall", lambda: leaves - 3 * 86400)
+    assert transit_live.skip_closed(plan, closed) is plan  # it was left out
+    assert [s.name for s in transit_live.blocked_stations(snapshot(), plan.moment)] == [
+        "Federal Triangle"
+    ]
+    through = transit.choose(plan, metro.key)
+    block = transit_live.annotate(transit.block(through, schedule), through, closed)
+    assert block["live"]["alerts"] == []  # it said the closure
+    assert block["live"]["warnings"] == [
+        "Elevator out at Federal Triangle: carry your bike on the stairs."
+    ]
+    # A trip after the elevator's estimated return: it is not ranked down nor warned of.
+    later = plan_bike(schedule, CAPITOL_HILL, DOWNTOWN, at(2026, 10, 21, 8, 0))
+    assert transit_live.blocked_stations(snapshot(), later.moment) == []  # it was blocked
+    chosen = transit.choose(later, metro_option(later).key)
+    annotated = transit_live.annotate(transit.block(chosen, schedule), chosen, snapshot())
+    assert not (annotated["live"] or {}).get("warnings")
+    # An elevator out now whose estimated return is already past still holds for a trip soon:
+    # an overdue estimate is no sign it is back (it was dropped, losing the rank and warning).
+    monkeypatch.setattr(transit_live, "_wall", lambda: at(2026, 10, 21, 7, 0).timestamp())
+    assert [s.name for s in transit_live.blocked_stations(snapshot(), later.moment)] == [
+        "Federal Triangle"
+    ]
+    # No moment: the reading as it is.
+    assert [s.name for s in transit_live.blocked_stations(snapshot())] == ["Federal Triangle"]
 
 
 def test_bikeshare_and_transit_keeps_its_trips_through_a_closed_station(schedule) -> None:
@@ -799,3 +856,102 @@ def test_a_garage_elevator_to_the_mezzanine_and_a_street_to_platform_one_are_on_
     assert transit_live.blocked_stations(glenmont("Elevator between street and platform")) == []
     both = glenmont("Elevator between street and platform", to_mezzanine)
     assert [s.name for s in transit_live.blocked_stations(both)] == ["Glenmont"]
+
+
+# --- A holiday's Metro timetable from the live trains (hunt 2, T9) ---------------------------
+
+# Columbus Day 2026, a Monday federal holiday, at 5:30 am: open on the weekday timetable (5 am),
+# not yet on the Sunday one the typical file gives a holiday (6 am).
+HOLIDAY_EARLY = at(2026, 10, 12, 5, 30)
+
+
+@pytest.fixture(autouse=True)
+def _no_holiday_seen():
+    """No holiday's day type is kept from one test to the next (`transit_live._holiday_seen`)."""
+    transit_live.forget_holiday_service()
+    yield
+    transit_live.forget_holiday_service()
+
+
+def test_trains_before_the_sunday_opening_on_a_holiday_say_weekday_service() -> None:
+    """The owner, 2026-11-08: "We have a live API." Before, a holiday was always Sunday's."""
+    wall = HOLIDAY_EARLY.timestamp()
+    assert transit_live.holiday_day_type(live_at(wall), now=wall) == "monday-thursday"
+    # Once the Sunday timetable is open too, the trains cannot say which: the Sunday rule,
+    # where none was seen earlier that service day (below).
+    transit_live.forget_holiday_service()
+    noon = at(2026, 10, 12, 12, 0).timestamp()
+    assert transit_live.holiday_day_type(live_at(noon), now=noon) is None
+    # Not a holiday, an old or stale reading, no trains in service, or none: nothing said.
+    tuesday = at(2026, 10, 13, 5, 30).timestamp()
+    assert transit_live.holiday_day_type(live_at(tuesday), now=tuesday) is None
+    assert transit_live.holiday_day_type(live_at(wall), now=wall + 600) is None
+    assert transit_live.holiday_day_type(live_at(wall, stale=True), now=wall) is None
+    assert transit_live.holiday_day_type(live_at(wall, trains=()), now=wall) is None
+    assert transit_live.holiday_day_type(None, now=wall) is None
+    # A train predicted only once the Sunday timetable opens says nothing either.
+    late = at(2026, 10, 12, 5, 50).timestamp()
+    from dataclasses import replace
+
+    reading = live_at(late)
+    transit_live.forget_holiday_service()
+    later = tuple(replace(t, minutes=15, arriving=False, boarding=False) for t in reading.trains)
+    assert transit_live.holiday_day_type(replace(reading, trains=later), now=late) is None
+    # Nor does one predicted further out than `HOLIDAY_TRAIN_MIN` while only the weekday
+    # timetable is open: only a train arriving, boarding or about to is trusted.
+    ahead = tuple(replace(t, minutes=5, arriving=False, boarding=False) for t in reading.trains)
+    assert transit_live.holiday_day_type(replace(reading, trains=ahead), now=late) is None
+    near = tuple(replace(t, minutes=2, arriving=False, boarding=False) for t in reading.trains)
+    assert transit_live.holiday_day_type(replace(reading, trains=near), now=late) == (
+        "monday-thursday"
+    )
+
+
+def test_the_weekday_timetable_seen_on_a_holiday_holds_the_rest_of_its_service_day() -> None:
+    """Hunt 3, T3-6: seen running at 5:30, the weekday timetable is the holiday's at 6:30 and
+    noon too; before, each reading from 6 am went back to Sunday's. The next holiday is read
+    afresh."""
+    wall = HOLIDAY_EARLY.timestamp()
+    assert transit_live.holiday_day_type(live_at(wall), now=wall) == "monday-thursday"
+    for hour in (6, 12):
+        later = at(2026, 10, 12, hour, 30).timestamp()
+        assert transit_live.holiday_day_type(live_at(later), now=later) == "monday-thursday"
+    veterans = at(2026, 11, 11, 12, 0).timestamp()
+    assert transit_live.holiday_day_type(live_at(veterans), now=veterans) is None
+
+
+def test_a_holiday_morning_with_trains_running_plans_metro_on_its_weekday_timetable() -> None:
+    typical = transit.typical_only(HOLIDAY_EARLY.date())
+    wall = HOLIDAY_EARLY.timestamp()
+    sunday = plan_bike(typical, CAPITOL_HILL, DOWNTOWN, HOLIDAY_EARLY)
+    weekday_schedule = transit_live.with_holiday_service(typical, live_at(wall), now=wall)
+    weekday = plan_bike(weekday_schedule, CAPITOL_HILL, DOWNTOWN, HOLIDAY_EARLY)
+    # Before: the first train is the Sunday timetable's, at 6 am or after; now the weekday's,
+    # running since 5 am, leaves well before.
+    first = transit_legs(metro_option(sunday))[0]
+    early = transit_legs(metro_option(weekday))[0]
+    assert "(first train 6:" in first.words()
+    assert "first train" not in early.words() and metro_option(weekday).total_s < (
+        metro_option(sunday).total_s
+    )
+    assert transit.typical_day_type(HOLIDAY_EARLY.date()) == "sunday"
+    notes = transit.block(transit.choose(weekday, metro_option(weekday).key), weekday_schedule)[
+        "notes"
+    ]
+    assert (
+        "Today is a federal holiday, but WMATA's live trains show Metro's weekday timetable"
+        " running." in notes
+    )
+    # The other days of the window keep their own day types; with no reading, all as before.
+    assert transit_live.with_holiday_service(typical, None, now=wall) is typical
+    offset = (HOLIDAY_EARLY.date() - typical.start).days
+    changed = [
+        i
+        for i, (a, b) in enumerate(zip(typical.services, weekday_schedule.services, strict=True))
+        if a != b
+    ]
+    assert len(changed) == 2 and all(
+        typical.services[i][:offset] == weekday_schedule.services[i][:offset]
+        and typical.services[i][offset + 1 :] == weekday_schedule.services[i][offset + 1 :]
+        for i in changed
+    )

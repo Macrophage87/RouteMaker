@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
   STILL_PLANNING_AFTER_MS,
   announceRoute,
@@ -164,10 +165,34 @@ test("a calmer-route search that stopped short says so in plain words", () => {
   for (const limited of [null, "no_route", "excludes", "rounds", "points", "mass_ride", "seeking"]) {
     assert.equal(calmSearchNote(route(limited)), null, String(limited));
   }
-  // Not asked for: at the old top or below, or a Mass Ride; or an older API.
-  assert.equal(calmSearchNote(route("time", 80)), null);
+  // At the old top or below, the crossing search's own short line (the hunt, 2026-11-08, S6: this was null, so a
+  // search skipped or cut short there was never said); never on a Mass Ride; nothing from an older API.
+  assert.equal(calmSearchNote(route("time", 80)), "The search for a way round busy crossings ran out of time.");
   assert.equal(calmSearchNote(route("time", 100, "mass-ride")), null);
   assert.equal(calmSearchNote({ preset: "default", dials: direct(1, 10, null).dials }), null);
+});
+
+test("below the top, a crossing search skipped or cut short is said in one short line, and a full one says nothing", () => {
+  const route = (limited: string | null, stress: number) => ({
+    ...direct(1, 10, null, undefined, stress),
+    preset: "default" as const,
+    calm_search: { rate: 0, rounds: 1, excluded: 0, limited },
+  });
+  // Before (S6): null at every stress up to 80, whatever the search did.
+  for (const stress of [10, 40, 70, 80]) {
+    assert.equal(calmSearchNote(route("time", stress)), "The search for a way round busy crossings ran out of time.", String(stress));
+    assert.equal(calmSearchNote(route("span", stress)), "The search for a way round busy crossings does not run on trips this long.", String(stress));
+  }
+  assert.equal(calmSearchNote(route("long_ride", 40)), "The search for a way round busy crossings does not run on trips this long.");
+  assert.equal(calmSearchNote(route("no_route", 40)), "No way round the busy crossings was found.");
+  assert.match(calmSearchNote(route("untraceable", 40)) ?? "", /could not read this route\.$/);
+  // One sentence, no wall of text; and none at all on Go's sheet, which Plan's English line would crowd.
+  assert.equal((calmSearchNote(route("time", 40)) ?? "").split(". ").length, 1);
+  assert.equal(calmSearchNote(route("time", 40), true), null);
+  assert.match(calmSearchNote(route("time", 100), true) ?? "", /^The calmer-route search ran out of time/, "above the top, as before");
+  assert.match(readFileSync(new URL("../app/RoutePanel.tsx", import.meta.url), "utf8"), /const calm = calmSearchNote\(route, goMode\);/);
+  // Ran to its end, or the hills seek: nothing (OWNER-DECISIONS 298(3)).
+  for (const limited of [null, "seeking", "excludes", "points", "mass_ride"]) assert.equal(calmSearchNote(route(limited, 40)), null, String(limited));
 });
 
 test("at Default or below the route is not called calm", () => {
