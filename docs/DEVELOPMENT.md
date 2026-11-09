@@ -5447,8 +5447,9 @@ them on 2026-11-09:
   guard keeps it (`refine.level_round_kept`: no busier, not past the ceiling, a loop's way back
   kept apart); its exclusions then go with the later ways round. The answer says what it did
   (`winding`: `winding_m`, `asked`, `taken`, `limited`), and a round cut short by time is not
-  kept in the answer cache. `WINDING_MIN_M`, the one round and the point spacing (40 m apart,
-  none within 300 m of the plan's points) are Claude's defaults, not measured. Tests:
+  kept in the answer cache. `WINDING_MIN_M`, the one round and the points excluded (40 m apart,
+  none within 300 m of the plan's points, at most 60) are Claude's defaults, not measured. It
+  does not run on a quick first route, a followed or drawn line, or trails off. Tests:
   tests/test_winding_round.py, tests/test_route_dials.py `TestWindingTrails`.
 - **Rock Creek's night deer notice** (C4-4), asked "NPS posted that Rock Creek's night deer
   closures started Nov 2. Should I add this season's night notice?": "No, it's switched to

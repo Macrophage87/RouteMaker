@@ -3044,6 +3044,17 @@ class TestWindingTrails:
         body = post(client, {**good_body(name), "when": "weekend"}).json()
         assert seen == [] and body["winding"] is None
 
+    def test_a_first_route_skips_it(self, client, facility_segments, router, monkeypatch):
+        """A quick plan answers the router's first good route alone; the full plan after it
+        runs the round."""
+        from core import winding_round
+
+        router(standard_router())
+        seen = []
+        monkeypatch.setattr(winding_round, "settle", lambda *a, **k: seen.append(a))
+        body = post(client, {**good_body("group-ride"), "quick": True}).json()
+        assert seen == [] and body["winding"] is None
+
     def test_trails_off_skips_it(self, client, facility_segments, router):
         router(standard_router())
         body = post(client, {**good_body("group-ride"), "trails_off": True}).json()
