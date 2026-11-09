@@ -5723,8 +5723,14 @@ if (mine()) {
     const [lon0, lat0] = coords[0];
     await p.s("Emulation.setGeolocationOverride", { latitude: lat0, longitude: lon0, accuracy: 5 });
     // A screen that stays on (no "Screen may sleep" note in the panel) and the theme by the emulated scheme.
+    // The page's clock at 16:00 UTC today (late morning in DC), still running: within about an hour of dawn or dusk the
+    // cue card gains a Dawn/Sunrise line (lib/lightTimes.ts LIGHT_WINDOW_MS), which took the graphs' room at 360x640
+    // on a run at 5 AM ET. The checks here are about room, not the hour.
     await p.s("Page.addScriptToEvaluateOnNewDocument", {
-      source: `Object.defineProperty(navigator, 'wakeLock', { configurable: true, value: { request: async () => ({ released: false, release: async () => {}, addEventListener() {} }) } });
+      source: `(() => { const Real = Date; const at = new Real(); at.setUTCHours(16, 0, 0, 0); const off = at.getTime() - Real.now();
+          class Clock extends Real { constructor(...a) { if (a.length) super(...a); else super(Real.now() + off); } static now() { return Real.now() + off; } }
+          globalThis.Date = Clock; })();
+        Object.defineProperty(navigator, 'wakeLock', { configurable: true, value: { request: async () => ({ released: false, release: async () => {}, addEventListener() {} }) } });
         try { sessionStorage.setItem('routemaker.tab-mode', 'plan'); localStorage.setItem('routemaker.theme', 'phone'); localStorage.setItem('routemaker.ride', '{"output":"text","verbosity":"full","chosen":true}'); } catch {}`,
     });
     await p.s("Page.navigate", { url: `${ORIGIN}/${mass ? hashFor("mass-ride", 0) : hashFor("default", 70)}` });
