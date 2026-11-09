@@ -8,6 +8,10 @@
  * as ways to find and organize them. Put an 'archive' button on the view"): the search finds tags as well as names; a
  * row of the tags in use filters the list in one tap; each saved route has an Archive button, with Undo for a few
  * seconds; and "Archived (n)" under the list opens the archived ones, each openable and with Restore.
+ *
+ * An assistant's drafts (lib/drafts.ts; the owner, 2026-11-09: "They should be listed just like saved routes, just ones
+ * that disappear") are rows of the same list, marked with the days they have left, each with Save in Archive's place.
+ * The one last opened or made is on top ("most recent on top").
  */
 import { useEffect, useId, useRef, useState, type MouseEvent } from "react";
 import { DiscordLogo } from "./DiscordLogo.tsx";
@@ -50,7 +54,9 @@ import { listKept } from "./lib/offlineRouteStore.ts";
 import { sortKept, type KeptRoute } from "./lib/offlineRoutes.ts";
 import { matchSaid, matching } from "./lib/routeSearch.ts";
 import type { PresetId } from "./lib/presets.ts";
-import { changeRoute, listRoutes, readRoute, tagsInUse, type SavedRoute, type SavedSummary } from "./lib/savedRoutes.ts";
+import { SAVED_SAID, SAVE_SHORT, changeRoute, listRoutes, readRoute, tagsInUse, type SavedRoute, type SavedSummary } from "./lib/savedRoutes.ts";
+import { DRAFT_DELETE, deleteDraft, draftDeleteLabel, draftDeletedSaid, draftSaveLabel, listDrafts, saveDraft, type DraftSummary } from "./lib/drafts.ts";
+import { readShared, type SharedRoute } from "./lib/sharedRoutes.ts";
 import { t } from "./lib/i18n.ts";
 
 /** How long Undo stays after Archive. */
@@ -67,14 +73,51 @@ export interface LoadRouteDialogProps {
   /** Opens the file picker of Save & load's GPX panel, which opens the file as Open GPX… there does, as chosen here. */
   onGpx: (choice: GpxChoice) => void;
   onOpenSaved: (route: SavedRoute) => void;
+  /** An assistant's draft, opened as its link opens it. */
+  onOpenDraft: (route: SharedRoute) => void;
+  /** A draft saved here (by its link's id). */
+  onDraftSaved?: (id: string) => void;
+  /** A draft deleted here (by its link's id). */
+  onDraftDeleted?: (id: string) => void;
   onOpenKept: (route: KeptRoute) => void;
 }
 
-export function LoadRouteDialog({ open, onClose, signedIn, signIn, preset, onGpx, onOpenSaved, onOpenKept }: LoadRouteDialogProps) {
+export function LoadRouteDialog({ open, onClose, signedIn, signIn, preset, onGpx, onOpenSaved, onOpenDraft, onDraftSaved = () => {}, onDraftDeleted = () => {}, onOpenKept }: LoadRouteDialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const opener = useRef<Element | null>(null);
   const headingId = useId();
   const [saved, setSaved] = useState<SavedSummary[] | null>(null);
+  const [drafts, setDrafts] = useState<DraftSummary[]>([]);
+  // The draft whose Save is under way: pressed once.
+  const [saving, setSaving] = useState<string | null>(null);
+  // A draft just deleted: hidden at once, deleted on the server once Undo's time is up or the popup closes.
+  const [gone, setGone] = useState<DraftSummary | null>(null);
+  const goneRef = useRef<DraftSummary | null>(null);
+  const goneTimer = useRef<number | undefined>(undefined);
+  const goneUndo = useRef<HTMLButtonElement>(null);
+  const takeGone = () => {
+    window.clearTimeout(goneTimer.current);
+    const draft = goneRef.current;
+    goneRef.current = null;
+    setGone(null);
+    return draft;
+  };
+  const flushGone = () => {
+    const draft = takeGone();
+    if (!draft) return;
+    onDraftDeleted(draft.id);
+    void deleteDraft(window.location.origin, draft.id).then((ok) => {
+      if (ok) return;
+      // Not deleted (offline, say): listed again, and said.
+      setDrafts((all) => [...all, draft]);
+      setSaid(t("That could not be changed; try again shortly."));
+    });
+  };
+  // Closed (or gone from the page) with Undo still offered: the delete goes through.
+  useEffect(() => {
+    if (!open) flushGone();
+  }, [open]);
+  useEffect(() => () => flushGone(), []);
   const [failed, setFailed] = useState(false);
   const [kept, setKept] = useState<KeptRoute[]>([]);
   const [filter, setFilter] = useState("");
@@ -93,10 +136,12 @@ export function LoadRouteDialog({ open, onClose, signedIn, signIn, preset, onGpx
   // Where the focus goes once the pressed control has left: Undo after Archive, Back after Restore in Archived, and
   // the route's own Archive again after Undo.
   // Undo's own time running out while it has the focus sends it to the Archived link, never the page (review).
-  const [refocus, setRefocus] = useState<"undo" | "back" | "archived" | number | null>(null);
+  const [refocus, setRefocus] = useState<"undo" | "back" | "archived" | "goneUndo" | `d${string}` | number | null>(null);
   useEffect(() => {
     if (refocus === null) return;
     if (refocus === "undo") undoRef.current?.focus();
+    else if (refocus === "goneUndo") goneUndo.current?.focus();
+    else if (typeof refocus === "string" && refocus.startsWith("d")) dialogRef.current?.querySelector<HTMLElement>(`[data-route="${refocus.slice(1)}"] .load-route-row`)?.focus();
     else if (refocus === "back") listEnd.current?.focus();
     else if (refocus === "archived") archivedLinkRef.current?.focus();
     else dialogRef.current?.querySelector<HTMLElement>(`[data-route="${refocus}"] .load-route-archive`)?.focus();
@@ -134,12 +179,17 @@ export function LoadRouteDialog({ open, onClose, signedIn, signIn, preset, onGpx
     setUndo(null);
     setFailed(false);
     setSaved(signedIn ? null : []);
-    if (signedIn)
+    setDrafts([]);
+    setSaving(null);
+    if (signedIn) {
       void listRoutes(window.location.origin).then((found) => {
         if (!live) return;
         setFailed(found === null);
         setSaved(found ?? []);
       });
+      // A list that could not be read leaves only the saved routes: the drafts are also in the assistant's chat.
+      void listDrafts(window.location.origin).then((found) => live && setDrafts(found ?? []));
+    }
     void listKept().then((all) => live && setKept(sortKept(all)));
     return () => {
       live = false;
@@ -163,7 +213,7 @@ export function LoadRouteDialog({ open, onClose, signedIn, signIn, preset, onGpx
   const tags = tagsInUse(live);
   // A tag no route carries any more (its last one archived) lets go, back to All.
   const picked = tag !== null && tags.some((x) => x.toLocaleLowerCase() === tag.toLocaleLowerCase()) ? tag : null;
-  const rows = loadRows(saved ?? [], kept, archivedView);
+  const rows = loadRows(saved ?? [], kept, archivedView, drafts);
   const shown = matching(withTag(rows, archivedView ? null : picked), filter, searchText);
   /** The route as the server now has it, in the list; null puts back what it was (a failed change). */
   const replaceSaved = (next: SavedSummary) => setSaved((all) => (all ?? []).map((r) => (r.id === next.id ? next : r)));
@@ -198,9 +248,61 @@ export function LoadRouteDialog({ open, onClose, signedIn, signIn, preset, onGpx
     if (row?.kind === "saved") setArchived(row, false);
     setUndo(null);
   };
+  const deleteOne = (row: Extract<LoadRow, { kind: "draft" }>) => {
+    const draft = drafts.find((d) => d.id === row.id);
+    if (!draft) return;
+    flushGone();
+    setDrafts((all) => all.filter((d) => d.id !== row.id));
+    goneRef.current = draft;
+    setGone(draft);
+    setSaid("");
+    goneTimer.current = window.setTimeout(() => {
+      // Undo leaving with the focus on it: to Close, never the page.
+      if (goneUndo.current && document.activeElement === goneUndo.current) dialogRef.current?.querySelector<HTMLElement>(".closure-choices button")?.focus();
+      flushGone();
+    }, UNDO_MS);
+    setRefocus("goneUndo");
+  };
+  const undoDelete = () => {
+    const draft = takeGone();
+    if (draft) {
+      setDrafts((all) => [...all, draft]);
+      setRefocus(`d${draft.id}`);
+    }
+  };
+  const saveOne = (row: Extract<LoadRow, { kind: "draft" }>) => {
+    if (saving) return;
+    setSaving(row.id);
+    setSaid(t("Saving {name}…", { name: row.name }));
+    void saveDraft(window.location.origin, row.id).then((outcome) => {
+      setSaving(null);
+      if (outcome === null) {
+        setDrafts((all) => all.filter((d) => d.id !== row.id));
+        setSaid(t("That draft is gone."));
+      } else if (outcome.ok) {
+        setDrafts((all) => all.filter((d) => d.id !== row.id));
+        setSaved((all) => [outcome.route, ...(all ?? [])]);
+        onDraftSaved(row.id);
+        setSaid(SAVED_SAID(outcome.route.name));
+        setRefocus(outcome.route.id);
+      } else setSaid(outcome.message);
+    });
+  };
   const pick = (row: LoadRow) => {
     if (row.kind === "kept") {
       onOpenKept(row.kept);
+      return;
+    }
+    if (row.kind === "draft") {
+      setSaid(`Opening ${row.name}…`);
+      void readShared(window.location.origin, row.id).then((route) => {
+        if (route && route !== "gone" && route !== "revoked") onOpenDraft(route);
+        else if (route === null) setSaid("That route could not be read; try again shortly.");
+        else {
+          setDrafts((all) => all.filter((d) => d.id !== row.id));
+          setSaid(t("That draft is gone."));
+        }
+      });
       return;
     }
     setSaid(`Opening ${row.name}…`);
@@ -324,6 +426,14 @@ export function LoadRouteDialog({ open, onClose, signedIn, signIn, preset, onGpx
             {signedIn && saved !== null && !failed && !archivedView && rows.length === 0 && archivedCount === 0 && <p className="hint">{LOAD_NONE}</p>}
             {filter && <p className="hint">{matchSaid(shown.length, rows.length, filter)}</p>}
             {said && <p className="hint">{said}</p>}
+            {gone && !archivedView && (
+              <p className="notice load-route-undo">
+                <span>{draftDeletedSaid(gone.name)}</span>
+                <button type="button" className="link" ref={goneUndo} onClick={undoDelete}>
+                  {LOAD_UNDO}
+                </button>
+              </p>
+            )}
             {undo && !archivedView && (
               <p className="notice load-route-undo">
                 <span>{archivedSaid(undo.name)}</span>
@@ -336,7 +446,7 @@ export function LoadRouteDialog({ open, onClose, signedIn, signIn, preset, onGpx
           {shown.length > 0 && (
             <ul role="list" className="load-route-list" aria-labelledby={headingId}>
               {shown.map((row) => (
-                <li key={row.key} className="load-route-item" data-route={row.kind === "saved" ? row.id : undefined}>
+                <li key={row.key} className="load-route-item" data-route={row.kind === "saved" || row.kind === "draft" ? row.id : undefined}>
                   <button type="button" className="load-route-row" onClick={() => pick(row)}>
                     <span className="load-route-name">{row.name}</span>
                     <span className="load-route-detail">
@@ -350,6 +460,16 @@ export function LoadRouteDialog({ open, onClose, signedIn, signIn, preset, onGpx
                         ))}
                     </span>
                   </button>
+                  {row.kind === "draft" && (
+                    <>
+                      <button type="button" className="secondary load-route-save" aria-label={draftSaveLabel(row.name)} title={SAVE_SHORT} disabled={saving === row.id} onClick={() => saveOne(row)}>
+                        <Icon name="save" size={22} />
+                      </button>
+                      <button type="button" className="secondary load-route-delete" aria-label={draftDeleteLabel(row.name)} title={DRAFT_DELETE} onClick={() => deleteOne(row)}>
+                        <Icon name="trash" size={22} />
+                      </button>
+                    </>
+                  )}
                   {row.kind === "saved" &&
                     (row.archived ? (
                       <button type="button" className="secondary load-route-restore" aria-label={t("Restore {name}", { name: row.name })} onClick={() => setArchived(row, false)}>

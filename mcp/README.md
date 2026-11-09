@@ -51,7 +51,7 @@ rides a harder one (no way round was found), or that the off-road router was not
 the route kept to the usual trails. It travels in the link (`easymtb=1`) and a saved route;
 `open_link` reads it back, and drops it on a ride type that does not offer it, as the app does.
 
-Every planned route is a draft: it comes back with a link, kept for a day, that opens that
+Every planned route is a draft: it comes back with a link, kept for a week, that opens that
 exact route in the app, like a link from the app's Share, so the map, Start ride and the app's own GPX are the
 route the assistant described. Nothing is saved to My routes. Drafts last while the assistant's session does. On the site's connector
 (below), `save_route` puts one in My routes, where it opens like any route you saved yourself; on
@@ -93,9 +93,9 @@ in the Claude phone apps can use it with nothing installed.
 
 On the site, each call answers within one web request (up to a minute), so a long loop is
 planned once per request: the answer says when it stopped early, and asking Claude to revise
-the draft can still fix where it strays from Metro or move its points. Drafts are kept on the site for a day
-(24 hours), long enough to plan in the evening and save or download the next morning, and only
-the app that planned one can use it. There is no GPX file on the server: `gpx_route` gives a
+the draft can still fix where it strays from Metro or move its points. Drafts are kept on the site for a week
+(7 days, our default), listed in the app's Load route with Save until then (`my_drafts` lists
+them to the assistant), and only the app that planned one can use it. There is no GPX file on the server: `gpx_route` gives a
 download link instead, which works while the draft is kept (on the beta, behind its password).
 The draft's link goes with the draft and then says the exact line is no longer kept. Disconnecting
 the app in Settings, or signing out everywhere, drops its drafts at once, and their links and GPX

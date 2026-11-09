@@ -2560,12 +2560,14 @@ class ConnectorDraft(models.Model):
     deletes its grant, and with it its drafts and their links (SharedRoute.connector_draft)."""
 
     MAX_PER_USER = 200
-    # A day: the shortest that still lets a rider plan in the evening and save the route, revise
-    # it or download its GPX the next morning, before the ride. Within one sitting the assistant
-    # needs a draft only for minutes, but its chat is often picked up again hours later, and a
-    # draft gone by then leaves only "plan it again". The draft holds the route's points, often
-    # the rider's door, so nothing longer.
-    KEPT = timedelta(hours=24)
+    # Seven days: our default for the owner's "something that might last a week" (2026-11-09:
+    # "a draft for a ride or a one-off request, such as make me a round trip to this sandwich
+    # shop"; "findable, but would expire fast so as not to clutter things"). Unmeasured. Long
+    # enough to plan on a weekday for the weekend's ride; the draft holds the route's points,
+    # often the rider's door (typed, never a live location: an assistant app never has one), so
+    # no longer. Listed beside My routes in Load route until then (`core.api` /me/drafts), with
+    # Save to keep one.
+    KEPT = timedelta(days=7)
 
     user = models.ForeignKey("User", on_delete=models.CASCADE, related_name="connector_drafts")
     # Null only for drafts from before v0.15.0, which nothing reads (migration 0051 drops them).
@@ -2583,6 +2585,12 @@ class ConnectorDraft(models.Model):
     draft_id = models.CharField(max_length=40)
     data = models.JSONField()
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    # The first draft of the route this one revises (revise_route), or null for a first draft
+    # (and every draft from before v0.24.0): Load route lists only each route's newest revision.
+    root = models.CharField(max_length=40, null=True, blank=True)
+    # When the rider saved this route to My routes (save_route, or Save in the app): no longer
+    # listed as a draft; still deleted at `KEPT`, as the saved route is its own row.
+    saved_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         db_table = "connector_draft"
