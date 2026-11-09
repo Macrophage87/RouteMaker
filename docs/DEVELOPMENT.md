@@ -55,6 +55,7 @@ Contents:
 - [Share live: the leader's live ride (v0.12.0-v0.15.0)](#share-live-the-leaders-live-ride-v0120-v0150)
 - [Steep grades (v0.12.5)](#steep-grades-v0125)
 - [Phone app (v0.8.0)](#phone-app-v080)
+- [Routing hunt 4](#routing-hunt-4)
 
 <!-- /CONTENTS -->
 
