@@ -7619,7 +7619,7 @@ def _saved_route(request, route_id: int):
     return SavedRoute.objects.filter(user=request.user, pk=route_id).first()
 
 
-@api.get("/me/routes", summary="The signed-in rider's saved routes, newest first")
+@api.get("/me/routes", summary="The signed-in rider's saved routes, last opened or made first")
 @decorate_view(
     signed_in_only,
     same_site_editor,
@@ -7627,12 +7627,17 @@ def _saved_route(request, route_id: int):
     errors_as_json,
 )
 def saved_routes_list(request):
+    from django.db.models.functions import Coalesce
     from django.middleware.csrf import get_token
 
     from .models import SavedRoute
 
     get_token(request)
-    rows = SavedRoute.objects.filter(user=request.user).order_by("-created_at", "-pk")
+    # The one last opened or made first (the owner, 2026-11-09: "make routes go in descending
+    # order from when they were last created or opened"); an open is never before its making.
+    rows = SavedRoute.objects.filter(user=request.user).order_by(
+        Coalesce("opened_at", "created_at").desc(), "-pk"
+    )
     return _private(
         JsonResponse(
             {
@@ -8653,7 +8658,9 @@ def my_drafts(request):
             connector_draft_id__in=[d.pk for d in drafts],
         )
         .order_by("created_at")
-        .only("pk", "name", "source", "distance_m", "inputs", "connector_draft_id")
+        .only(
+            "pk", "name", "source", "distance_m", "inputs", "last_opened_at", "connector_draft_id"
+        )
     }
     out = []
     for draft in drafts:
@@ -8668,6 +8675,8 @@ def my_drafts(request):
                 "distance_m": link.distance_m,
                 "preset": (link.inputs or {}).get("preset", ""),
                 "created_at": draft.created_at.isoformat(),
+                # Its link's last open (written at most once a day), for the list's order.
+                "opened_at": max(link.last_opened_at, draft.created_at).isoformat(),
                 "expires_at": (draft.created_at + ConnectorDraft.KEPT).isoformat(),
             }
         )

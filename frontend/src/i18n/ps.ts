@@ -2139,4 +2139,9 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "No road bike map: may use gravel.": "د سړک بایسکل نقشه نشته: ښايي جغل وي.",
   "There is no weekend road bike map right now, so this route counts parkways like Beach Drive as roads with cars.": "اوس د اونۍ پای لپاره د سړک بایسکل نقشه نشته، نو دا لاره د پارک سړکونه لکه Beach Drive د موټرو سړکونه ګڼي.",
   "No weekend map: parkways may have cars.": "د اونۍ پای نقشه نشته: ښايي د پارک په سړکونو موټر وي.",
+  "Draft, last day": "مسوده، وروستۍ ورځ",
+  "Draft, {n} days left": "مسوده، {n} ورځې پاتې",
+  "Save {name} to My routes": "{name} زما لارو کې خوندي کړئ",
+  "Saving {name}…": "{name} خوندي کېږي…",
+  "That draft is gone.": "هغه مسوده نور نشته.",
 };

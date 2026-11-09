@@ -1320,7 +1320,7 @@ def test_drafts_are_named_for_finding_and_listed_newest_revision_first(tools) ->
     listed = tools.call("my_drafts", {})["drafts"]
     assert [d["draft_id"] for d in listed] == [revised["draft_id"], trip["draft_id"]]
     assert [d["name"] for d in listed] == ["Loop from Union Market", "Tacos"]
-    assert listed[0]["days_left"] == 6
+    assert listed[0]["days_left"] == 7
     tools.call("save_route", {"draft_id": revised["draft_id"], "name": "Kept loop"})
     assert [d["draft_id"] for d in tools.call("my_drafts", {})["drafts"]] == [trip["draft_id"]]
 

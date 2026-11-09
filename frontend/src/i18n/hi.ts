@@ -2139,4 +2139,9 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "No road bike map: may use gravel.": "रोड बाइक का नक्शा नहीं: बजरी हो सकती है।",
   "There is no weekend road bike map right now, so this route counts parkways like Beach Drive as roads with cars.": "अभी सप्ताहांत का रोड बाइक नक्शा नहीं है, इसलिए यह रूट Beach Drive जैसी पार्कवे को गाड़ियों वाली सड़क मानता है।",
   "No weekend map: parkways may have cars.": "सप्ताहांत का नक्शा नहीं: पार्कवे पर गाड़ियाँ हो सकती हैं।",
+  "Draft, last day": "ड्राफ़्ट, आखिरी दिन",
+  "Draft, {n} days left": "ड्राफ़्ट, {n} दिन बाकी",
+  "Save {name} to My routes": "{name} को मेरे रास्तों में सहेजें",
+  "Saving {name}…": "{name} सहेजा जा रहा है…",
+  "That draft is gone.": "वह ड्राफ़्ट अब नहीं है।",
 };

@@ -5406,7 +5406,8 @@ class Server:
             if made is not None:
                 row["made"] = eastern(made)
                 left = DRAFT_KEPT - (now - made)
-                row["days_left"] = max(0, int(left.total_seconds() // 86400))
+                # A part day counted whole, as the app's Load route says it: 1 on the last day.
+                row["days_left"] = max(0, -int(-left.total_seconds() // 86400))
             if found.get("route_id"):
                 row["link"] = self._draft_link(draft, found["route_id"])
             rows.append(row)

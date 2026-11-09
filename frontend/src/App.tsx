@@ -309,7 +309,8 @@ import { fetchMe, NO_ME, type Me } from "./lib/stressEditor.ts";
 import { reloadFavorites, useFavoriteRides } from "./lib/favoriteRides.ts";
 import { ACCOUNT_SETTINGS_USED, applyToDevice, deviceSettings, fetchSettings, planFromSetting, retryUntil, sameSettings, saveSettings, saveUnitsUnsynced, SAVE_SETTLE_MS, setUnitsPending, signInLate, unitsPending, type SettingsDoc } from "./lib/accountSettings.ts";
 import { HOME_KEPT, HOME_MOVED, answerHomeOffer, deviceHome, homeOffer, type HomeOffer } from "./lib/homeMove.ts";
-import { FULL_HEADING, OPENED_SAID, SAVE_FAILED, UNCHANGED_SAID, UPDATE_ROUTE, VERSION_SAID, defaultRouteName, differenceLine, differsTooMuch, gpxSave, afterDelete, afterRename, planSave, saveAsVersion, saveRoute, savedAnswer, savedLine, versionOf, type OpenSaved, type RoomProposal, type SaveBody, type SavedRoute } from "./lib/savedRoutes.ts";
+import { FULL_HEADING, OPENED_SAID, SAVED_SAID, SAVE_FAILED, UNCHANGED_SAID, UPDATE_ROUTE, VERSION_SAID, defaultRouteName, differenceLine, differsTooMuch, gpxSave, afterDelete, afterRename, planSave, saveAsVersion, saveRoute, savedAnswer, savedLine, versionOf, type OpenSaved, type RoomProposal, type SaveBody, type SavedRoute } from "./lib/savedRoutes.ts";
+import { draftLeft, saveDraft, type OpenDraft } from "./lib/drafts.ts";
 import { checkClosures, closedStretches, reroutedSaid, spliceDetours, type Closure, type CheckFor } from "./lib/closureCheck.ts";
 import { ROUTE_WEATHER_MS, weatherPoints } from "./lib/weather.ts";
 import { useWeather } from "./useWeather.ts";
@@ -4094,6 +4095,8 @@ export function App() {
   // The saved route on screen (opened from My routes, or saved last): in Plan, saved again under its own name it
   // is a new version of that route (lib/savedRoutes.ts versionOf). A new file, a shared route or Clear forget it.
   const openSavedRoute = useRef<OpenSaved | null>(null);
+  // The assistant's draft on screen, if one was opened (lib/drafts.ts).
+  const draftOpen = useRef<OpenDraft | null>(null);
   // A full account's question (FullAccountDialog): the save waiting on it, sent again with make_room on Delete.
   const [roomAsk, setRoomAsk] = useState<{ propose: RoomProposal; body: SaveBody; name: string } | null>(null);
   const saveCurrent = async (name: string, tags?: string[]): Promise<string> => {
@@ -4588,9 +4591,11 @@ export function App() {
     if (!imported) void checkThen("open", route.geometry.coordinates, false, () => {}, undefined, undefined, walksLine(route));
   }, [route]);
   // My routes: open as saved (the line unchanged), or export.
-  const openSaved = (saved: Pick<SavedRoute, "name" | "source" | "distance_m" | "line" | "inputs" | "answer" | "gpx" | "tags"> & { id?: number | string }, said = OPENED_SAID(saved.name), check = true) => {
+  const openSaved = (saved: Pick<SavedRoute, "name" | "source" | "distance_m" | "line" | "inputs" | "answer" | "gpx" | "tags"> & { id?: number | string; draft_until?: string | null }, said = OPENED_SAID(saved.name), check = true) => {
     // A choice from Load route's popup is for a file picked there, not a saved route.
     gpxChoice.current = null;
+    // An assistant's draft (from Load route, or its link): a ride on it ends with Save route.
+    draftOpen.current = typeof saved.id === "string" && saved.draft_until ? { id: saved.id, name: saved.name, distanceM: saved.distance_m, expiresAt: saved.draft_until } : null;
     showPlanner(true);
     setSharedNote(null);
     setSavedNote(null);
@@ -4745,7 +4750,25 @@ export function App() {
     destination: LonLat | null;
     /** A Rebalance Ride (lib/rebalanceDay.ts): the day with this trip and before it, where the next one starts, the dock. */
     rebalance?: { day: RebalanceDay; before: RebalanceDay; from: LonLat; dock: string } | null;
+    /** A ride on an assistant's draft, unchanged since it was opened (lib/drafts.ts): offered Save route. */
+    draft?: OpenDraft | null;
   } | null>(null);
+  // The ended ride's draft's Save: under way, done, or what the server said.
+  const [draftSave, setDraftSave] = useState<{ saving: boolean; saved: boolean; said: string | null }>({ saving: false, saved: false, said: null });
+  const saveEndedDraft = (draft: OpenDraft) => {
+    setDraftSave({ saving: true, saved: false, said: null });
+    void saveDraft(origin, draft.id).then((outcome) => {
+      if (outcome?.ok) {
+        setDraftSave({ saving: false, saved: true, said: SAVED_SAID(outcome.route.name) });
+        announce(SAVED_SAID(outcome.route.name));
+        if (draftOpen.current?.id === draft.id) draftOpen.current = null;
+        return;
+      }
+      const said = outcome ? outcome.message : t("That draft is gone.");
+      setDraftSave({ saving: false, saved: outcome === null, said });
+      announce(said);
+    });
+  };
   const rideNow = useRef({ start: rideStart, mode });
   rideNow.current = { start: rideStart, mode };
   const endRide = useCallback((after: EndedPlan, stats: RideStats, docked?: RebalanceDocked | null, riding?: EndedRiding | null) => {
@@ -4802,7 +4825,11 @@ export function App() {
       share && before
         ? { day: recordTrip(tripOf(share, stats)), before, from: stats.last?.point ?? ([share.end.lon, share.end.lat] as LonLat), dock: docked?.name ?? share.end.name }
         : null;
-    setRideEnded((was) => ({ n: (was?.n ?? 0) + 1, stats, at: Date.now(), note, destination, rebalance }));
+    // Ridden as the assistant drafted it: the line at Start is the draft's own (a change to it plans another length).
+    const openDraft = draftOpen.current;
+    const draft = openDraft && planRoute && Math.abs(planRoute.distance_m - openDraft.distanceM) < 1 ? openDraft : null;
+    setDraftSave({ saving: false, saved: false, said: null });
+    setRideEnded((was) => ({ n: (was?.n ?? 0) + 1, stats, at: Date.now(), note, destination, rebalance, draft }));
     // Said by the page's region, always mounted; the focus goes to Done (RideSummaryCard), not back to Start (review F6).
     // Problems still to report to 311 are said too: the focus goes to Done, past the summary's line about them.
     const owed = openCount(report311Log().list());
@@ -6832,6 +6859,10 @@ export function App() {
           setLoadOpen(null);
           openSaved(route);
         }}
+        onOpenDraft={(route) => {
+          setLoadOpen(null);
+          openSaved(route, SHARED_OPENED(route.name));
+        }}
         onOpenKept={(route) => {
           setLoadOpen(null);
           openKept(route);
@@ -7082,6 +7113,11 @@ export function App() {
           endedAt={rideEnded.at}
           note={rideEnded.note}
           favorite={endedFavorite(rideEnded.destination)}
+          draft={
+            rideEnded.draft && me.signed_in
+              ? { name: rideEnded.draft.name, left: draftLeft(rideEnded.draft.expiresAt), ...draftSave, onSave: () => rideEnded.draft && saveEndedDraft(rideEnded.draft) }
+              : null
+          }
           destination={rideEnded.rebalance ? rideEnded.rebalance.dock : rideEnded.destination ? (namer.name(rideEnded.destination)?.name ?? null) : null}
           rebalance={rideEnded.rebalance ? { day: rideEnded.rebalance.day, onAnother: anotherRebalance } : null}
           onUndo={undoEndRide}

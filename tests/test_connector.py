@@ -1278,7 +1278,7 @@ class TestDraftsListed:
         # The assistant finds the same two.
         mine = call(token, "my_drafts", {})["structuredContent"]["drafts"]
         assert [d["draft_id"] for d in mine] == [other["draft_id"], revised["draft_id"]]
-        assert mine[1]["days_left"] == 6 and mine[1]["link"] == revised["link"]
+        assert mine[1]["days_left"] == 7 and mine[1]["link"] == revised["link"]
         found = call(token, "my_drafts", {"search": "sandwich"})["structuredContent"]["drafts"]
         assert [d["draft_id"] for d in found] == [revised["draft_id"]]
 

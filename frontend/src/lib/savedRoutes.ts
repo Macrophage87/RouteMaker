@@ -52,6 +52,8 @@ export interface SavedSummary {
   tags?: string[];
   /** When it was archived, or null; absent from an older server. */
   archived_at?: string | null;
+  /** When it was last opened, or null if never; Load route lists the one last opened or made first. */
+  opened_at?: string | null;
   /** The saved route that replaced it when it was archived for it (an assistant's save), or null. */
   replaced_by?: number | null;
   /** On a save at a full account: the archived route deleted to make room for it. */
@@ -79,6 +81,8 @@ export interface SaveBody {
   tags?: string[];
   /** A full account: the saved route the rider agreed to delete to make room (FULL_ASK). */
   make_room?: number;
+  /** The assistant's draft this saves, by its link's id (lib/drafts.ts): no longer listed as a draft. */
+  from_draft?: string;
 }
 
 /** A full account's proposal (core.api _full_account): the route unopened longest, from its creation where never

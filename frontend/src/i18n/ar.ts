@@ -2139,4 +2139,9 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "No road bike map: may use gravel.": "لا خريطة لدراجة الطريق: قد يستخدم الحصى.",
   "There is no weekend road bike map right now, so this route counts parkways like Beach Drive as roads with cars.": "لا توجد خريطة عطلة نهاية الأسبوع لدراجة الطريق الآن، لذا يعدّ هذا المسار طرق المتنزهات مثل Beach Drive طرقًا فيها سيارات.",
   "No weekend map: parkways may have cars.": "لا خريطة لعطلة نهاية الأسبوع: قد توجد سيارات على طرق المتنزهات.",
+  "Draft, last day": "مسودة، آخر يوم",
+  "Draft, {n} days left": "مسودة، بقي {n} أيام",
+  "Save {name} to My routes": "احفظ {name} في مساراتي",
+  "Saving {name}…": "جارٍ حفظ {name}…",
+  "That draft is gone.": "لم تعد تلك المسودة موجودة.",
 };

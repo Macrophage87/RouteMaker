@@ -10634,6 +10634,7 @@ summary.closure-notices-heading {
   min-width: 0;
 }
 .load-route-archive,
+.load-route-save,
 .load-route-restore {
   flex: none;
   min-width: 44px;

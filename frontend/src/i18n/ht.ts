@@ -2139,4 +2139,9 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "No road bike map: may use gravel.": "Pa gen kat bisiklèt wout: ka gen gravye.",
   "There is no weekend road bike map right now, so this route counts parkways like Beach Drive as roads with cars.": "Pa gen kat bisiklèt wout pou wikenn kounye a, kidonk wout sa a konte pakwe tankou Beach Drive kòm wout ki gen machin.",
   "No weekend map: parkways may have cars.": "Pa gen kat wikenn: ka gen machin sou pakwe yo.",
+  "Draft, last day": "Bouyon, dènye jou",
+  "Draft, {n} days left": "Bouyon, {n} jou ki rete",
+  "Save {name} to My routes": "Anrejistre {name} nan Wout mwen yo",
+  "Saving {name}…": "N ap anrejistre {name}…",
+  "That draft is gone.": "Bouyon sa a pa la ankò.",
 };

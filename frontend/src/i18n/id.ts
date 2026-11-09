@@ -2139,4 +2139,9 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "No road bike map: may use gravel.": "Tidak ada peta sepeda jalan raya: mungkin ada kerikil.",
   "There is no weekend road bike map right now, so this route counts parkways like Beach Drive as roads with cars.": "Saat ini tidak ada peta akhir pekan untuk sepeda jalan raya, jadi rute ini menganggap jalan taman seperti Beach Drive sebagai jalan dengan mobil.",
   "No weekend map: parkways may have cars.": "Tidak ada peta akhir pekan: mungkin ada mobil di jalan taman.",
+  "Draft, last day": "Draf, hari terakhir",
+  "Draft, {n} days left": "Draf, sisa {n} hari",
+  "Save {name} to My routes": "Simpan {name} ke Rute saya",
+  "Saving {name}…": "Menyimpan {name}…",
+  "That draft is gone.": "Draf itu sudah tidak ada.",
 };
