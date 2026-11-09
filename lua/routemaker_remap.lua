@@ -1987,41 +1987,6 @@ function M.clear_private_at_node(tags, out)
   return wrote
 end
 
--- A plain `barrier=gate` a bicycle passes freely and wide (hunt 4 R4-2): no restriction on
--- `access`, `vehicle`, `bicycle` or `foot` (absent or permissive), no motor-vehicle key, no
--- `opening_hours` (a gate locked at night keeps its gate type, as before), and no `maxwidth`
--- or one of at least NARROW_GAP_M. Its barrier tag comes off, so Valhalla reads a plain node
--- and Cargo's and Tandem's narrow-gap charge (core.presets CARGO_GATE_PENALTY_S) stays on
--- the cycle barriers, narrow bollards, kissing gates, stiles and turnstiles this remap makes
--- gates. Two such gates on the Anacostia Riverwalk (nodes 5243351984 and 812598638) sent
--- Cargo and Tandem onto cobbles, a sidewalk and side streets, 38-78% further. Asked "Should
--- the Cargo and Tandem barrier charge apply only to gaps under 1.5 m, stiles and cycle
--- barriers?", the owner, 2026-11-09: "Yes. Tandems regularly use that trail."
--- Valhalla charges `gate_cost` and `gate_penalty` together, only at a gate with no access
--- tag, so the 30 s every other ride type paid at such a gate (PLAN item 336(2), "maybe 30
--- seconds") goes too. Any tag Valhalla's tagged_access reads with a restricting value
--- already kept the charge off, and such a gate is left exactly as it was. An unreadable
--- `maxwidth` keeps the gate, as a bollard's keeps upstream's reading.
-M.GATE_FREE_KEYS = { "access", "vehicle", "bicycle", "foot" }
-M.GATE_MOTOR_KEYS = {
-  "motor_vehicle", "motorcar", "hgv", "motorcycle", "moped", "mofa",
-  "bus", "taxi", "psv", "hov", "wheelchair",
-}
-function M.wide_open_gate(tags)
-  if tags.barrier ~= "gate" or tags.opening_hours ~= nil then return false end
-  for _, key in ipairs(M.GATE_FREE_KEYS) do
-    if tags[key] ~= nil and not M.PERMISSIVE_ACCESS[tags[key]] then return false end
-  end
-  for _, key in ipairs(M.GATE_MOTOR_KEYS) do
-    if tags[key] ~= nil then return false end
-  end
-  if tags.maxwidth ~= nil then
-    local width = M.parse_width_m(tags.maxwidth)
-    if not width or width < M.NARROW_GAP_M then return false end
-  end
-  return true
-end
-
 --- Remap one node's tags.
 function M.remap_node(tags)
   local out = {}
@@ -2107,8 +2072,6 @@ function M.remap_node(tags)
       out.barrier = "gate"
       clear_access_that_holds_off_gate_cost(out)
     end
-  elseif M.wide_open_gate(tags) then
-    out.barrier = M.REMOVE
   end
 
   -- A gate or bollard a bicycle passes that is private to motor traffic alone, or private

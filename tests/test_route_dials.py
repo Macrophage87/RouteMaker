@@ -3003,6 +3003,54 @@ class TestEasyMtbTrails:
 
 
 @db
+class TestWindingTrails:
+    """Hunt 4 P4-1. Asked "Should Group Ride and Fast pay for winding trails the way Road Bike
+    does?", the owner, 2026-11-09: "yes". Their plans read the route's winding trails at LTS 3
+    and ask the router once more without them (`core.winding_round`); the answer says what it
+    did (`winding`)."""
+
+    @pytest.mark.parametrize("name", ["group-ride", "fast"])
+    def test_group_ride_and_fast_run_the_round(
+        self, name, client, facility_segments, router, monkeypatch
+    ):
+        from core import winding_round
+
+        router(standard_router())
+        seen = []
+        real_settle = winding_round.settle
+
+        def settle(trip, ctx, keeps=None):
+            seen.append(ctx.variant)
+            return real_settle(trip, ctx, keeps=keeps)
+
+        monkeypatch.setattr(winding_round, "settle", settle)
+        body = post(client, {**good_body(name), "when": "weekend"}).json()
+        assert seen and seen[-1] == body["variant"]
+        # The fake route rides no winding trail: nothing asked, and the answer says so.
+        assert body["winding"] == {
+            "winding_m": 0.0,
+            "asked": False,
+            "taken": False,
+            "limited": None,
+        }
+
+    @pytest.mark.parametrize("name", ["default", "road-bike", "cargo"])
+    def test_other_ride_types_do_not(self, name, client, facility_segments, router, monkeypatch):
+        from core import winding_round
+
+        router(standard_router())
+        seen = []
+        monkeypatch.setattr(winding_round, "settle", lambda *a, **k: seen.append(a))
+        body = post(client, {**good_body(name), "when": "weekend"}).json()
+        assert seen == [] and body["winding"] is None
+
+    def test_trails_off_skips_it(self, client, facility_segments, router):
+        router(standard_router())
+        body = post(client, {**good_body("group-ride"), "trails_off": True}).json()
+        assert body["variant"] == "no-trail" and body["winding"] is None
+
+
+@db
 class TestMountainBike:
     """docs/MTB-TOPO-PLAN.md, slice 6: the Mountain Bike ride type rides its own graph, holds
     the rider's hardest trail level on the router's routes, and says what it could not hold."""

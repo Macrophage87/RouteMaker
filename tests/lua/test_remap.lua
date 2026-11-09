@@ -115,38 +115,6 @@ check("a narrow node that is not a bollard is not converted",
 check("and a lift gate keeps the barrier type it was tagged with",
   next(M.remap_node({ barrier = "lift_gate", maxwidth = "1.2" })) == nil)
 
--- Hunt 4 R4-2, the owner 2026-11-09 ("Yes. Tandems regularly use that trail."): a plain
--- gate a bicycle passes freely and wide is no longer a gate, so Cargo's and Tandem's
--- narrow-gap charge stays on narrow gaps. The Anacostia Riverwalk's two gates (nodes
--- 5243351984 and 812598638) are bare barrier=gate.
-check("a bare trail gate is no longer a gate",
-  M.remap_node({ barrier = "gate" }).barrier == M.REMOVE)
-check("nor one a bicycle is granted, or one wide enough",
-  M.remap_node({ barrier = "gate", bicycle = "yes" }).barrier == M.REMOVE
-    and M.remap_node({ barrier = "gate", maxwidth = "1.5" }).barrier == M.REMOVE
-    and M.remap_node({ barrier = "gate", maxwidth = "3 m" }).barrier == M.REMOVE)
-check("a gate narrower than the gap stays a gate",
-  M.remap_node({ barrier = "gate", maxwidth = "1.2" }).barrier == nil)
-check("and one whose width cannot be read",
-  M.remap_node({ barrier = "gate", maxwidth = "narrow" }).barrier == nil)
-for _, tags in ipairs({
-  { barrier = "gate", bicycle = "no" },
-  { barrier = "gate", access = "private" },
-  { barrier = "gate", access = "no", bicycle = "yes" },
-  { barrier = "gate", vehicle = "no" },
-  { barrier = "gate", motor_vehicle = "private" },
-  { barrier = "gate", motor_vehicle = "no" },
-  { barrier = "gate", opening_hours = "06:00-22:00" },
-}) do
-  local k, v = next(tags, nil)
-  if k == "barrier" then k, v = next(tags, k) end
-  check("a gate with " .. k .. "=" .. v .. " is left a gate",
-    M.remap_node(tags).barrier ~= M.REMOVE)
-end
-check("the other gate kinds are left as tagged",
-  M.remap_node({ barrier = "lift_gate" }).barrier == nil
-    and M.remap_node({ barrier = "swing_gate" }).barrier == nil)
-
 -- maxwidth is not always metres written with a full stop, and the forms it is
 -- not written in used to be read as a *different number* rather than refused:
 -- `tonumber((value:gsub("[^%d%.]", "")))` turned `3'` into three metres and

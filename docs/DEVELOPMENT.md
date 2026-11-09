@@ -5428,31 +5428,59 @@ them on 2026-11-09:
   a draft that rides only a way beside the road is refused with that way's name. Which labels
   count as separate ways is Claude's default. Code change, no rebuild. Tests:
   tests/test_mcp_optimizing.py.
-- **Cargo's and Tandem's barrier charge** (R4-2), asked "Should the Cargo and Tandem barrier
-  charge apply only to gaps under 1.5 m, stiles and cycle barriers?": "Yes. Tandems regularly use
-  that trail." A plain `barrier=gate` with no restricting `access`, `vehicle`, `bicycle` or
-  `foot` value, no motor-vehicle key, no `opening_hours` and no `maxwidth` (or one of at least
-  1.5 m) loses its barrier tag in the transform (lua/routemaker_remap.lua `wide_open_gate`), so
-  Valhalla reads a plain node and Cargo's and Tandem's 870 s penalty stays on the narrow gaps
-  and hard barriers the transform makes gates. Valhalla charges `gate_cost` and `gate_penalty`
-  together, so the 30 s every other ride type paid at such a gate (PLAN item 336(2): "Flag them
-  and maybe 30 seconds") goes too; a gate with any restricting tag, a narrow or unreadable
-  width, or opening hours (a gate locked at night) is left as it was, and `lift_gate` and
-  `swing_gate` are not changed. The "Gate ahead" heads-up of 336(2) is not built, so nothing
-  reads the gate type for it. Needs the map rebuild. Tests: tests/lua/test_remap.lua,
-  tests/lua/test_graph_entry.lua.
 - **Winding trails for Group Ride and Fast** (P4-1), asked "Should Group Ride and Fast pay for
-  winding trails the way Road Bike does?": "yes". Not built in this change. Road Bike pays
-  through its own graphs (`rm:winding` written only on `variants.PAVED_GRAPHS`, priced as the
-  LTS 3 stress penalty in the graph), and Group Ride and Fast plan on the standard and weekend
-  graphs, which Default, Trailmaxxing, Cargo and the others share: a price written into those
-  graphs would charge every ride type on them, and stock Valhalla's bicycle costing has no
-  request option that prices such an edge for some ride types only. Their calm rate is 0 (stress
-  40 and 10, `presets.calm_rate_for`), so the calm search and the trail seek, which could price
-  it at plan time, do not run for them. The ways it could be built, each a follow-up: plan them
-  on the paved graphs (which also prices gravel as gravel for them, and whose routers are off
-  on the beta), or a plan-time round that asks again with the winding trails excluded and keeps
-  the better route with them read at LTS 3, as Mountain Bike's level rounds do.
+  winding trails the way Road Bike does?": "yes"; and later, of the round 4 fixes, "Ok. Make
+  sure they are included." Road Bike pays through its own graphs (`rm:winding`, written only on
+  `variants.PAVED_GRAPHS`, priced as the LTS 3 stress penalty there). Group Ride and Fast plan on
+  the standard and weekend graphs, which Default, Trailmaxxing, Cargo and the others share, so a
+  price written into those graphs would charge every ride type on them; and their calm rate is 0
+  (stress 40 and 10, `presets.calm_rate_for`), so neither the calm search nor the trail seek's
+  `avoid_winding` runs for them. So it is built at plan time, with no rebuild
+  (`core.winding_round`, called from `routing._plan` after the calm search and the trail-level
+  rounds, before the red pass): the route's trail-class ways that wind
+  (`routemaker.winding.is_winding` on each way's whole line from the segment table, as
+  `pipeline.run` decides `rm:winding`) are summed; where they come to `WINDING_MIN_M` (400 m) or
+  more, the plan's own request is asked once more with points along them excluded, and each
+  route is scored as the search scores it (`refine.Analysis.score`) plus, per metre of winding
+  trail, what a metre of LTS 3 adds in the router's own cost at the request's `use_roads`
+  (`refine.lts3_added_m`). The new route is taken where it scores better and the level rounds'
+  guard keeps it (`refine.level_round_kept`: no busier, not past the ceiling, a loop's way back
+  kept apart); its exclusions then go with the later ways round. The answer says what it did
+  (`winding`: `winding_m`, `asked`, `taken`, `limited`), and a round cut short by time is not
+  kept in the answer cache. `WINDING_MIN_M`, the one round and the point spacing (40 m apart,
+  none within 300 m of the plan's points) are Claude's defaults, not measured. Tests:
+  tests/test_winding_round.py, tests/test_route_dials.py `TestWindingTrails`.
+- **Rock Creek's night deer notice** (C4-4), asked "NPS posted that Rock Creek's night deer
+  closures started Nov 2. Should I add this season's night notice?": "No, it's switched to
+  temporary closures and not a general prohibition as in years past, fortunately." No change:
+  `deer_closures.ROCK_CREEK_SEASONS` keeps 2025-26 only, and NPS's own alerts feed item is still
+  shown as it is.
+- **Lit ways on a run that ends after dusk** (X4-3), asked "A run that starts before dusk and
+  finishes after it gets no preference for lit ways. Should it prefer them when the finish will
+  be dark?": "Most people polled say darkness has no effect on their riding. They have lights."
+  Asked then whether Run's lit preference should go too: "Keep for run. It's much easier to have
+  a powerful light on a bike."; and to judging a run by its estimated finish: "Sure." Built on
+  the hunt4/run-dark branch, not this one.
+- **Cargo's and Tandem's barrier charge** (R4-2), asked "Cargo and Tandem pay the 15-minute
+  narrow-barrier charge at ordinary trail gates, so they leave the Anacostia Riverwalk. Should
+  that charge apply only to gaps under 1.5 m, stiles and cycle barriers?": "Yes. Tandems
+  regularly use that trail." **Not built yet: it waits on a second question to the owner.**
+  Stock Valhalla charges one `gate_cost` plus `gate_penalty` per request at every gate node with
+  no access tag (sif/dynamiccost.h, `base_transition_cost`), and every ride type's request
+  carries one pair; the transform makes the cycle barriers, narrow bollards, kissing gates,
+  stiles and turnstiles that Cargo and Tandem are meant to pay for that same gate node. No
+  other node type has a per-request charge a bicycle request reads (`toll_booth_cost` is not
+  read for bicycles, `disable_toll_booth_`; `country_crossing_cost` is the state line's; a
+  bollard costs nothing). So a plain gate can be told apart from a narrow gap only by taking it
+  out of the graph as a gate, and then every ride type loses the 30 s it pays there (PLAN item
+  336(2), "Flag them and maybe 30 seconds. 10 minutes would keep people off traffic free
+  roads."), and nothing is left in the graph for 336(2)'s "Gate ahead" to read. The owner's
+  answer was about Cargo's and Tandem's charge only, so the question for him is whether plain,
+  wide, unrestricted gates may cost 0 s for every ride type. The transform for it (a plain
+  `barrier=gate` with no restricting `access`, `vehicle`, `bicycle` or `foot`, no motor-vehicle
+  key, no `opening_hours` and no `maxwidth` under 1.5 m loses its barrier tag) is in commit
+  0d6bea5f on hunt4/owner, taken back out in the commit after it; a build of it should also
+  leave a gate tagged `locked=yes` as it is. It needs the map rebuild.
 
 ### Trails off (OWNER-DECISIONS 463, 463a, 463b)
 
