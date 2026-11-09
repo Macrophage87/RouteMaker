@@ -42,8 +42,8 @@ Geofabrik extract) and the rebuild's elevation tiles: 477,324 segments read, **3
 1,456,535 bytes (446,394 with `gzip -9`), sha256
 `c0789962e1d54f1e6f5fefc452685f3098d5c04f8f981987f28841319df9d190`. The build had no ground for four
 elevation cells (N38W076, N39W076: east of 76 W; N38W079, N39W079: west of 78 W) and left out any
-climb there; the first two are outside the coverage box, the last two cover the West Virginia counties
-west of 78 W, so climbs there are missing until those tiles are fetched. Against the file of
+climb there. The first two are outside the coverage box (east edge 76.02 W); the last two reach into
+it only in the strip between 78.05 W (its west edge) and 78 W, where a climb could be missing. Against the file of
 2026-10-12: 856 climbs added, 786 removed, 2,096 changed, 868 the same. Writing it again is in
 docs/OPERATIONS.md, "The Climbs layer".
 
