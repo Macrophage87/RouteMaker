@@ -83,14 +83,17 @@ BIAS_ZOOM = 14
 BIAS_SCALE = 0.2
 
 # A town crowded out by its own name (the routing hunt 4, G4-1): with the bias above,
-# "Leesburg, VA" searched from Ashburn Metro found a clinic and three Leesburg Pikes 1 to
-# 7 km away, and the town 15 km away was not among the 15 candidates Photon re-ranks;
-# "Urbana, MD" from Frederick found only Urbana Pike. Where a biased answer has rows named
-# with the typed name (the text before the first comma) but none named just that, the
-# query is asked once more without the bias, and its towns, villages and neighbourhoods
-# so named go first. Which rows trigger the second ask is Claude's default, not measured
-# against the live index (BIAS_ZOOM and BIAS_SCALE are unchanged). Photon's `type` for a
-# place is one of these (a town or village is "city"); a place=* node may carry another.
+# "Leesburg, VA" searched from Ashburn Metro found a clinic and three Leesburg Pikes 0.6
+# to 4.3 mi (1 to 7 km) away, and the town 9 mi (15 km) away was not among the 15
+# candidates Photon re-ranks; "Urbana, MD" from Frederick found only Urbana Pike. Where a
+# biased answer has rows named with the typed name (the text before the first comma) but
+# none named just that, the query is asked once more without the bias, and its towns,
+# villages and neighbourhoods so named go first. A typed name ending with a street word
+# ("Wisconsin Ave") is a street search and is not asked again; if the second ask fails,
+# the biased answer stands. Which rows trigger the second ask is Claude's default, not
+# measured against the live index (BIAS_ZOOM and BIAS_SCALE are unchanged). Photon's
+# `type` for a place is one of these (a town or village is "city"); a place=* node may
+# carry another.
 PLACE_KINDS = frozenset({"city", "district", "locality"})
 
 # Two results with the same name and the same kind of OSM tag (its key) this
@@ -442,9 +445,15 @@ def search(
     found = results(_get("/api", params), reverse=False, near=near)
     if near is not None and crowded_out(q, found):
         unbiased = {k: v for k, v in params.items() if k not in BIAS_PARAMS}
+        try:
+            again = results(_get("/api", unbiased), reverse=False)
+        except Unavailable:
+            # The biased answer is still an answer: a failed second ask must not turn a
+            # search that found rows into a 502.
+            again = []
         towns = [
             row
-            for row in results(_get("/api", unbiased), reverse=False)
+            for row in again
             if is_town(row) and row["name"].casefold() == lead_name(q).casefold()
         ]
         found = towns + [
@@ -487,6 +496,11 @@ def crowded_out(q: str, found: list[dict]) -> bool:
     "Leesburg Sterling Family Medicine"), and no row is named just that (G4-1)."""
     lead = lead_name(q).casefold()
     if not re.search(r"[^\W\d_]", lead):
+        return False
+    # A typed name that ends with a street word ("Wisconsin Ave", "Leesburg Pike") is a
+    # street search, not a town's name: its longer namesakes ("Wisconsin Avenue Northwest")
+    # are what was asked for, and asking again would only cost a Photon call.
+    if lead.split()[-1] in STREET_WORDS:
         return False
     whole = re.compile(rf"(?<!\w){re.escape(lead)}(?!\w)")
     names = [row["name"].casefold() for row in found]

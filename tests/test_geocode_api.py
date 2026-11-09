@@ -456,6 +456,8 @@ class TestSearch:
             ("Laurel, MD", ["Laurel", "Laurel Mall"]),
             # Nothing is named with what was typed: no sign of a town crowded out.
             ("coffee", ["Compass", "Laurel Mall"]),
+            # A street typed in part: its longer name is what was asked for.
+            ("Wisconsin Ave", ["Wisconsin Avenue Northwest"]),
         ],
     )
     def test_a_biased_search_is_asked_again_only_when_a_town_may_be_crowded_out(
@@ -465,10 +467,33 @@ class TestSearch:
             "Laurel": feature(-76.8483, 39.0993, name="Laurel", type="city", osm_key="place"),
             "Laurel Mall": feature(-76.85, 39.09, name="Laurel Mall", type="house"),
             "Compass": feature(-76.86, 39.2, name="Compass", type="house"),
+            "Wisconsin Avenue Northwest": feature(
+                -77.07, 38.94, name="Wisconsin Avenue Northwest", type="street", osm_key="highway"
+            ),
         }
         fake = photon(answer(*(rows[n] for n in names)))
         get(client, SEARCH, q=q, lat="39.2", lon="-76.86")
         assert len(fake.calls) == 1
+
+    def test_a_failed_second_ask_keeps_the_biased_answer(self, client, monkeypatch, router) -> None:
+        """When the unbiased second ask (G4-1) fails, the biased answer is still returned,
+        not a 502: the search had found rows before the second ask was made."""
+        pike = feature(
+            -77.43, 38.99, name="Leesburg Pike", type="street", osm_key="highway", city="Sterling"
+        )
+        calls: list[dict] = []
+
+        def fake(path: str, params: dict) -> dict:
+            calls.append(dict(params))
+            if "zoom" in params:
+                return answer(pike)
+            raise geocode.Unavailable("photon down")
+
+        monkeypatch.setattr(geocode, "_get", fake)
+        response = get(client, SEARCH, q="Leesburg, VA", lat="39.004422", lon="-77.491763")
+        assert response.status_code == 200
+        assert [row["name"] for row in response.json()["results"]] == ["Leesburg Pike"]
+        assert len(calls) == 2
 
     def test_a_search_that_finds_something_is_asked_once(self, client, photon) -> None:
         fake = photon(answer(LINCOLN))
