@@ -867,12 +867,46 @@ def nearby_points(chosen: dict, found: list[dict], most: int = 4) -> list[dict]:
     return out[:most]
 
 
+# Photon's `type` for a town, village or neighbourhood (core/geocode.py PLACE_KINDS).
+PLACE_KINDS = frozenset({"city", "district", "locality"})
+# State words a place name may end with after its town ("Fairfax VA", "Urbana, Maryland").
+STATE_WORDS = ("va", "md", "dc", "virginia", "maryland", "district of columbia", "d.c.")
+
+
+def _state_dropped(part: str) -> str:
+    part = " ".join(part.casefold().split())
+    for state in STATE_WORDS:
+        if part == state:
+            return ""
+        if part.endswith(" " + state):
+            return part[: -len(state) - 1].strip()
+    return part
+
+
+def place_rank(text: str, r: dict) -> tuple[bool, bool, bool]:
+    """How well a match answers `text`, best first (the routing hunt 4, G4-1): a town,
+    village or neighbourhood named just what was typed before the comma ("Leesburg, VA" is
+    the town, not the Leesburg Pike or the clinic nearer the route), then any match named
+    just that, then one whose label names the town typed after the comma ("Old Town
+    Fairfax, Fairfax VA" is Old Town Hall, Fairfax, not Wiehle Town Hall, Reston). The order
+    is Claude's default, not measured against the live index."""
+    lead, _, rest = text.partition(",")
+    lead = " ".join(lead.casefold().split())
+    towns = {t for t in (_state_dropped(p) for p in rest.split(",")) if t}
+    name = " ".join(str(r.get("name") or "").casefold().split())
+    town = r.get("kind") in PLACE_KINDS or r.get("osm_key") == "place"
+    where = {" ".join(p.casefold().split()) for p in str(r.get("label") or "").split(",")[1:]}
+    return (not (name == lead and town), name != lead, not (towns & where))
+
+
 def pick_place(text: str, found: list[dict], neighbours: list[tuple[float, float]]) -> tuple:
     """The match of a place search to take for `text`, and the other places it could have
     been ([] where it could be nothing else). One place, wherever it is, is taken. Where the
     matches are different places (Moore Road in Boyds, MD and in Centreville, VA), the first
     within NEAR_PLACE_MI of one of the route's other points (`neighbours`) is taken, and where
-    none is the answer is a question back; with no other points to go by, the first match."""
+    none is the answer is a question back; with no other points to go by, the first match.
+    Among the near ones, a town named what was typed, then a match named it, then one in the
+    town typed after the comma comes before the search's nearer streets (`place_rank`)."""
     if not found:
         raise ToolError(f"no place found for {text!r}")
     # An area is gone into by its way in nearest the route's nearest point (`way_in_of`).
@@ -892,7 +926,7 @@ def pick_place(text: str, found: list[dict], neighbours: list[tuple[float, float
         here = (r["lon"], r["lat"])
         return min(haversine_mi(here, n) for n in neighbours) if neighbours else math.inf
 
-    near = [r for r in found if away(r) <= NEAR_PLACE_MI]
+    near = sorted((r for r in found if away(r) <= NEAR_PLACE_MI), key=lambda r: place_rank(text, r))
     if near:
         chosen = near[0]
         here = (chosen["lon"], chosen["lat"])

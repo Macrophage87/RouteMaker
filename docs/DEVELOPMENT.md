@@ -2440,7 +2440,7 @@ curl -s 'http://localhost:8000/api/reverse?lat=38.90133&lon=-77.260598'
 | | `GET /api/geocode` | `GET /api/reverse` |
 | --- | --- | --- |
 | Parameters | `q` (2-200 characters after white space is collapsed), optional `lat` and `lon` together (a bias, inside `COVERAGE_BBOX`), `limit` 1-10 (default 6), `lang` (`en` only, the imported language) | `lat`, `lon` (inside `COVERAGE_BBOX`), `lang` (`en`), optional `address=true` (Go's tapped-spot card) |
-| What reaches Photon | the query with US street abbreviations spelled out (`Blvd`, `St`, `Ave`, `Rd`, `Dr`, `Pkwy`, `Hwy`, `Ct`, `Ln`, `Pl`, `Sq`, `Ter`, `N`/`S`/`E`/`W`, `NE`/`NW`/`SE`/`SW`, and `Mt`/`Ft` as Mount and Fort; `geocode.expand_abbreviations` has the rules), the bias with its strength (`zoom` 14 and `location_bias_scale` 0.2, `geocode.BIAS_ZOOM` and `BIAS_SCALE`, so nearby places rank first; the page sends the rider's location when it already has one, else the map's centre), a count a few above `limit`, `lang`, and `bbox` = `COVERAGE_BBOX`; nothing else the request carries. When that finds nothing and the query names a place before its street address ("Satay Club Asian Restaurant, 4654 Wisconsin Ave NW", `geocode.address_part`), the address alone is asked once more, the same way | `lat`, `lon`, `lang`, `limit=1`, `radius=0.25` km; with `address=true`, first `layer=house`, `limit=1`, `radius=0.04` km |
+| What reaches Photon | the query with US street abbreviations spelled out (`Blvd`, `St`, `Ave`, `Rd`, `Dr`, `Pkwy`, `Hwy`, `Ct`, `Ln`, `Pl`, `Sq`, `Ter`, `N`/`S`/`E`/`W`, `NE`/`NW`/`SE`/`SW`, and `Mt`/`Ft` as Mount and Fort; `geocode.expand_abbreviations` has the rules), the bias with its strength (`zoom` 14 and `location_bias_scale` 0.2, `geocode.BIAS_ZOOM` and `BIAS_SCALE`, so nearby places rank first; the page sends the rider's location when it already has one, else the map's centre), a count a few above `limit`, `lang`, and `bbox` = `COVERAGE_BBOX`; nothing else the request carries. When that finds nothing and the query names a place before its street address ("Satay Club Asian Restaurant, 4654 Wisconsin Ave NW", `geocode.address_part`), the address alone is asked once more, the same way. When a biased search finds rows named with the typed name (the text before the first comma, not ending with a street word) as whole words but none named just that ("Leesburg Pike" and a clinic for "Leesburg, VA" from Ashburn), the query is asked once more without the bias, and that answer's towns, villages and neighbourhoods named just that go first (`geocode.crowded_out`, `PLACE_KINDS`; routing hunt 4, G4-1); if that second ask fails, the biased answer stands | `lat`, `lon`, `lang`, `limit=1`, `radius=0.25` km; with `address=true`, first `layer=house`, `limit=1`, `radius=0.04` km |
 | 200 | `{"results": [...], "attribution": [...]}`, at most `limit` results, each inside the box, rows with the same name and OSM key within 300 m folded into one, and rows with the same name at the same point (within 2 m, any OSM key: one park mapped as a park and as a protected area) too | the same shape, zero or one result |
 
 Each result is `{name, label, lon, lat, kind, osm_type, osm_id, osm_key,
@@ -2495,6 +2495,30 @@ deployment's geocoding slots are still busy after it, or at once when another
 request is already waiting; 502 when Photon (search) or both Photon and the router (names) do not
 answer in time; 500 for anything else. `tests/test_geocode_api.py` replaces
 Photon at `core.geocode._get` and the router at `core.geocode._locate`.
+
+**Routing hunt 4, G4-1: a town crowded out by its own name.** With the bias's
+strength above, "Leesburg, VA" searched from Ashburn Metro found a clinic 0.7 mi
+(1.1 km) away and three Leesburg Pikes, and the town 9 mi (14 km) away was not
+among the candidates Photon re-ranks; "Urbana, MD" from Baker Park found only
+Urbana Pike, and plan_route quietly rode 1 to 2.5 mi instead of about 9. Search
+now asks once more without the bias when a biased answer looks crowded out (a
+row named with the typed name, none named just it) and puts that answer's
+towns, villages and neighbourhoods named just it first, so the app's dropdown
+and the MCP's search both have the town. The MCP's `pick_place` ranks the
+matches within `NEAR_PLACE_MI` of the route's other points: a town named just
+the typed name, then any row named just it, then a row whose label names the
+town typed after the comma ("Old Town Fairfax, Fairfax VA" from Reston is Old
+Town Hall, Fairfax, not the former Wiehle Town Hall in Reston), then the
+search's order (`place_rank`). Which rows trigger the second ask, and the
+ranking's order, are Claude's defaults, not measured against the live index;
+`BIAS_ZOOM` and `BIAS_SCALE` are unchanged and still to be checked there. The
+second ask is one more Photon call, made one after the other, so such a search
+can take up to twice `PHOTON_TIMEOUT_S` while the client's slot is held. That
+set is wider than a crowded-out town: a bare name that is also a street's
+("Columbia" near Columbia Road NW, "Connecticut") is asked again too. A typed
+name that ends with a street word ("Wisconsin Ave", `STREET_WORDS`) is a street
+search and is not asked again. If the second ask fails, the biased answer is
+returned as it was, not a 502.
 
 **What a client should do.** Keep one geocoding request in flight for the
 page, search and names together - the per-client slot is shared, so a second

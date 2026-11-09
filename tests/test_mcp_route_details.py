@@ -264,6 +264,82 @@ def test_one_place_is_taken_however_far_from_the_route() -> None:
         mcp.pick_place("Nowhere", [], [])
 
 
+ASHBURN_METRO = (-77.491763, 39.004422)
+LEESBURG_CLINIC = {
+    "name": "Leesburg Sterling Family Medicine",
+    "label": "Leesburg Sterling Family Medicine, Broadlands Marketplace, Ashburn",
+    "lon": -77.50435,
+    "lat": 39.00852,
+    "kind": "house",
+    "osm_key": "amenity",
+}
+LEESBURG_PIKE = {
+    "name": "Leesburg Pike",
+    "label": "Leesburg Pike, Sterling",
+    "lon": -77.43,
+    "lat": 38.99,
+    "kind": "street",
+    "osm_key": "highway",
+}
+LEESBURG = {
+    "name": "Leesburg",
+    "label": "Leesburg, Loudoun County, Virginia",
+    "lon": -77.56456,
+    "lat": 39.11545,
+    "kind": "city",
+    "osm_key": "place",
+}
+
+
+def test_a_town_named_as_typed_comes_before_nearer_streets_and_shops() -> None:
+    """Routing hunt 4, G4-1: "Leesburg, VA" from Ashburn Metro was taken as a clinic 0.7 mi
+    from the station, and "Urbana, MD" from Baker Park as Urbana Pike."""
+    found = [LEESBURG_CLINIC, LEESBURG_PIKE, LEESBURG]
+    chosen, _ = mcp.pick_place("Leesburg, VA", found, [ASHBURN_METRO])
+    assert chosen is LEESBURG
+    pike = {**LEESBURG_PIKE, "name": "Urbana Pike", "label": "Urbana Pike, Ballenger Creek"}
+    pike.update(lon=-77.408, lat=39.39769)
+    urbana = {**LEESBURG, "name": "Urbana", "label": "Urbana, Frederick County, Maryland"}
+    urbana.update(lon=-77.3505, lat=39.3262)
+    chosen, _ = mcp.pick_place("Urbana, MD", [pike, urbana], [(-77.42646, 39.41954)])
+    assert chosen is urbana
+
+
+def test_a_match_in_the_town_typed_after_the_comma_comes_first() -> None:
+    """Routing hunt 4, G4-1: "Old Town Fairfax, Fairfax VA" from Reston Town Center was taken
+    as the former Wiehle Town Hall in Reston; Old Town Hall, Fairfax was only listed."""
+    wiehle = {
+        "name": "Former Wiehle Town Hall",
+        "label": "Former Wiehle Town Hall, Sunset Hills, Reston",
+        "lon": -77.35138,
+        "lat": 38.95674,
+        "kind": "house",
+    }
+    old_town = {
+        "name": "Old Town Hall",
+        "label": "Old Town Hall, Fairfax, Virginia",
+        "lon": -77.304977,
+        "lat": 38.846085,
+        "kind": "house",
+    }
+    chosen, others = mcp.pick_place(
+        "Old Town Fairfax, Fairfax VA", [wiehle, old_town], [(-77.36088, 38.95226)]
+    )
+    assert chosen is old_town and others == [wiehle]
+
+
+def test_a_town_that_is_found_nearest_is_still_taken() -> None:
+    """The control: "Laurel, MD" from Columbia Mall, the town first in the search."""
+    laurel = {**LEESBURG, "name": "Laurel", "label": "Laurel, Prince George's County, Maryland"}
+    laurel.update(lon=-76.8483, lat=39.0993)
+    mall = {**LEESBURG_CLINIC, "name": "Laurel Mall", "label": "Laurel Mall, Laurel"}
+    mall.update(lon=-76.83, lat=39.09)
+    road = {**LEESBURG_PIKE, "name": "Laurel Fort Meade Road", "label": "Laurel Fort Meade Road"}
+    road.update(lon=-76.78, lat=39.11)
+    chosen, _ = mcp.pick_place("Laurel, MD", [laurel, mall, road], [(-76.8614, 39.2156)])
+    assert chosen is laurel
+
+
 class _Places:
     """A site whose place search knows two Moore Roads and records where it searched."""
 
