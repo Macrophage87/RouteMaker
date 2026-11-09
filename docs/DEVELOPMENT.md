@@ -4098,8 +4098,7 @@ map rebuild is needed.
 in many of the suburbs, the light cycles are a lot longer than what you'd find in DC." In the
 owner's rides, 2026-11, the stopped time at a red was a median of 19 s at 4 signals on the
 District's and Baltimore's grids, 52 s at 21 suburban signals and 66 s (mean 68 s) at the 16
-crossings of big suburban roads (Telegraph Rd, Beulah St, Franconia-Springfield Pkwy, MD 216,
-Ammendale Rd); arrivals on green do not show, so the wait per arrival there is inferred at
+crossings of big suburban roads; arrivals on green do not show, so the wait per arrival there is inferred at
 about 45 to 55 s. Outside the District, Baltimore City, Alexandria and Arlington
 (`core.city_limits`: the District's OpenStreetMap boundary, the other three the Census
 Bureau's county boundaries, docs/SOURCES.md) a signal's wait is
@@ -4119,7 +4118,7 @@ ranked once ("Not really needed for DC"
 "or the major cities"; "Use the values from real data").
 
 **Time shown: the average pass (the owner, 2026-11-08).** Those are waits at a red, and "sometimes
-the light is green". In a year of the owner's rides (653 rides; every pass within 20 m of a
+the light is green". In a year of the owner's rides (every pass within 20 m of a
 signal or a cluster of signals within 30 m, the stopped time within 40 m of it, the 50
 stops over 4 minutes left out as breaks), the rider stopped at 29% of 4,797 passes through
 the cities' big-road signals, 16% of 2,798 at secondary ones and 16% of 724 at others, and at
