@@ -9,7 +9,7 @@
  *
  * Plain data in, plain data out, so node --test runs all of it; the box is PlaceSearch.tsx.
  */
-import { ALL_FOOD_WORDS, CUISINE_WORDS, FOOD_SYNONYMS, foodKindText, foodTerms, matchesFood, normaliseQuery, type FoodKind, type FoodPlace } from "./food.ts";
+import { ALL_FOOD_WORDS, CUISINE_WORDS, FOOD_SYNONYMS, foodKindText, singulars, foodTerms, matchesFood, normaliseQuery, type FoodKind, type FoodPlace } from "./food.ts";
 import { haversineM, type LonLat } from "./geo.ts";
 import { kindPhrase, type Place } from "./geocode.ts";
 
@@ -21,29 +21,25 @@ const NOT_ONLY_FOOD = new Set(["all", "any", "anything", "everything"]);
 /** Words after a cuisine that only say "a place for it": "chinese food", "pizza places", "taco spot". */
 const PLACE_TAILS = ["food", "restaurant", "restaurants", "place", "places", "spot", "spots", "shop", "shops", "joint", "joints"];
 
-const singulars = (word: string): string[] => {
-  const out = [word];
-  if (word.endsWith("es") && word.length > 4) out.push(word.slice(0, -2));
-  if (word.endsWith("s") && !word.endsWith("ss") && word.length > 3) out.push(word.slice(0, -1));
-  return out;
-};
+/** Cuisine words that name other things as often in a place search: "Apple" is a store, "regional" a hospital or a park. */
+const NOT_FOOD_HERE = new Set(["apple", "apples", "international", "regional", "american", "market", "farm"]);
 
 const isCuisine = (words: string): boolean =>
-  singulars(words).some((w) => w in FOOD_SYNONYMS || CUISINE_WORDS.has(w)) || CUISINE_WORDS.has(words);
+  !NOT_FOOD_HERE.has(words) && (CUISINE_WORDS.has(words) || singulars(words).some((w) => w in FOOD_SYNONYMS || CUISINE_WORDS.has(w)));
 
 /** The food words a query is, as Find food reads them ("chinese food" is "chinese"), or null for a name or an address. */
 export function foodWords(query: string): string | null {
   const q = kindPhrase(normaliseQuery(query));
   if (!q) return null;
   if (ALL_FOOD_WORDS.has(q)) return NOT_ONLY_FOOD.has(q) ? null : q;
-  if (isCuisine(q)) return q;
+  // "coffee shops" is "coffee", which finds every cafe, as "pizza places" is "pizza".
   for (const tail of PLACE_TAILS) {
     if (q.endsWith(` ${tail}`)) {
       const head = q.slice(0, -tail.length - 1);
       if (isCuisine(head)) return head;
     }
   }
-  return null;
+  return isCuisine(q) ? q : null;
 }
 
 /** The OSM tag each kind of place to eat is mapped with (scripts/build_food.py), so the row's type is "Food and drink". */

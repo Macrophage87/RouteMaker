@@ -173,6 +173,6 @@ test("Where to?'s found count and its Nothing found line count Home, Work and fa
   const search = src("../PlaceSearch.tsx");
   assert.match(search, /const count = result\.places\.length \+ saved;/);
   assert.match(search, /const extraRows = saved\.length \+ food\.length - \(found\.length - places\.length\);/);
-  assert.match(search, /searchStatus\(result, answered, extraRows\)/);
-  assert.match(search, /result\.places\.length \+ extraRows === 0/);
+  assert.match(search, /searchStatus\(statusResult, answered, extraRows\)/);
+  assert.match(search, /statusResult\.places\.length \+ extraRows === 0/);
 });

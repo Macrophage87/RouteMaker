@@ -226,18 +226,32 @@ export function PlaceSearch({
   const [recent, setRecent] = useState<Place[]>(() => readRecentPlaces());
   // Find food's places, fetched the first time a food word is searched (app/foodData.ts, shared with the Eat sheet).
   const [foodData, setFoodData] = useState<FoodPlace[] | null>(null);
+  const foodDataNow = useRef<FoodPlace[] | null>(null);
+  // Each answer's turn: one held for the food file is dropped if a later answer came first.
+  const answerTurn = useRef(0);
   const runner = useRef<PlaceSearchRunner | null>(null);
   const biasRef = useRef(bias);
   biasRef.current = bias;
   if (runner.current === null) {
+    const show = (q: string, r: GeoResult) => {
+      setResult(r);
+      setAnswered(q);
+      setActive(-1);
+      setOpen(true);
+    };
     runner.current = new PlaceSearchRunner({
       send: searchSender(gate, () => biasRef.current()),
       onResult: (q, r) => {
-        if (foodWords(q) !== null) void sharedFood().then((data) => data && setFoodData(data));
-        setResult(r);
-        setAnswered(q);
-        setActive(-1);
-        setOpen(true);
+        const turn = ++answerTurn.current;
+        // A food word's answer waits for Find food's file (fetched once), so its rows and the top place show at once.
+        if (foodWords(q) !== null && foodDataNow.current === null) {
+          void sharedFood().then((data) => {
+            if (data) setFoodData((foodDataNow.current = data));
+            if (turn === answerTurn.current) show(q, r);
+          });
+          return;
+        }
+        show(q, r);
       },
     });
   }
@@ -341,6 +355,8 @@ export function PlaceSearch({
   const saved: Place[] = savedFor && !empty ? savedFor(query).places : [];
   // Rows listed beside the search's own, for the count said: saved places and places to eat, less the found ones folded into them.
   const extraRows = saved.length + food.length - (found.length - places.length);
+  // With places to eat listed, a place search that failed is not news: the count is of the rows shown.
+  const statusResult: GeoResult | null = food.length > 0 && result?.ok === false ? { ok: true, places: [], attribution: [] } : result;
   const offered: Place[] = [...sharedItems, ...(empty ? recent : [...saved, ...food, ...places])];
   // What Enter with nothing highlighted takes: the first place offered for the words typed; an empty box
   // takes nothing (a recent place is picked only by choosing it).
@@ -701,12 +717,12 @@ export function PlaceSearch({
         {(!single || planBox === "add") && full && ` ${t("The route has as many points as it can take, so no stop can be added.")}`}
       </p>
       <p className="visually-hidden" role="status" aria-live="polite">
-        {answeredNow ? searchStatusWithHere(searchStatus(result, answered, extraRows), expanded && showHere) : ""}
+        {answeredNow ? searchStatusWithHere(searchStatus(statusResult, answered, extraRows), expanded && showHere) : ""}
       </p>
       {searching && <p className="hint">{t("Searching…")}</p>}
       {answeredNow && expanded && places.length > 0 && namesCityOutside(answered) && <p className="hint">{COVERS_LINE}</p>}
-      {answeredNow && result && (!result.ok || result.places.length + extraRows === 0) && (
-        <p className="hint">{searchStatus(result, answered, extraRows)}</p>
+      {answeredNow && statusResult && (!statusResult.ok || statusResult.places.length + extraRows === 0) && (
+        <p className="hint">{searchStatus(statusResult, answered, extraRows)}</p>
       )}
     </div>
   );

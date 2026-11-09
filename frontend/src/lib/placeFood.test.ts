@@ -30,6 +30,9 @@ test("words for food are food searches; names and addresses are not", () => {
     assert.equal(foodWords(q), null, q);
   }
   assert.equal(foodWords("Chinese food"), "chinese");
+  assert.equal(foodWords("coffee shops"), "coffee");
+  // Words that name other things as often: Apple's stores, regional parks and hospitals.
+  for (const q of ["Apple", "apples", "international", "regional", "American", "market", "farm"]) assert.equal(foodWords(q), null, q);
 });
 
 test("a food word lists the matching places to eat nearest first, by cuisine as well as name", () => {
