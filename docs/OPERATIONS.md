@@ -86,6 +86,8 @@ Contents:
 - [Deploying v0.21.2](#deploying-v0212)
 - [Deploying v0.22.0](#deploying-v0220)
 - [Deploying v0.22.1](#deploying-v0221)
+- [Deploying v0.22.2](#deploying-v0222)
+- [Deploying v0.22.3](#deploying-v0223)
 - [Deploying v0.23.0](#deploying-v0230)
 - [Deploying a planner and front-end release: rollback points and verification](#deploying-a-planner-and-front-end-release-rollback-points-and-verification)
 - [Paths bicycles may not ride (NO-BIKE-PATHS)](#paths-bicycles-may-not-ride-no-bike-paths)
@@ -4285,7 +4287,7 @@ at `/routes/` and from Go's More > Featured routes. Instance admins write them:
    carries it as Exif GPS. A spot inside the author's Home circle is dropped (the photo stays).
    Each photo with a spot is also a round thumbnail on the post's route map that opens a pop-out
    of the photo, and a small thumbnail pointing to the spot on any highlight map it falls in
-   (v0.23.0). A phone with location tagging off writes an empty GPS block, so its photos have no
+   (v0.22.2). A phone with location tagging off writes an empty GPS block, so its photos have no
    spot. An
    assistant on the site's connector (draft_route_post) gets an upload link per described photo
    and can send the file itself while the post is a draft (image/jpeg, at most 2048 px a side and
@@ -7664,10 +7666,85 @@ assistant still sending `?lat=&lon=` gets its photo kept with no spot (`located:
   Nothing in the database or the map changes. On the beta: the agent rolls back by itself on a failed
   pass; later, rollback C, then `auto-release.sh hold v0.22.1`.
 
+## Deploying v0.22.2
+
+A patch for Featured routes: each card on the list (`/routes/`) shows the map on top, full width,
+with the words below, and the route's preview picture shows only its map part (its word band repeated
+the card's words) (#1052); a post's photos with a spot are round thumbnails on its route map that open
+a pop-out, and small thumbnails on the highlight maps they fall in (#1067). **`src/core/route_posts.py`
+and the post page's script (`frontend/src/post/`)**, with the version in `pyproject.toml`,
+`src/routemaker/__init__.py`, `frontend/package.json`, `README.md`, and the docs pages rebuilt with
+`DOCS_RELEASE=0.22.2` (version stamps and one sentence in Using RouteMaker). **No migration, no `src/pipeline/`, `lua/`,
+`valhalla/*.json`, compose, Caddyfile, nginx, Dockerfile, requirements, `mcp/` or `mobile/` change, no
+new environment variable, scheduled job or outbound host, and no map rebuild.**
+
+- [ ] **The tag.** Once `test` and `a11y` are green on `main`, the owner tags v0.22.2 (annotated) on
+  that commit, from the PC.
+- [ ] **At home**, as "Deploying a planner and front-end release": rollback point (tag the running api
+  image `pre-rel-<short>`, keep `index.html`), fast-forward the checkout, `docker compose build api`,
+  then `docker compose up -d --no-deps --no-build --force-recreate api worker` with no job todo or
+  doing, then the front end (the post page's script). No migration, no router restart.
+- [ ] **Beta, by its agent**, once its deployed tag (`$RM_STATE/cd/deployed-tag`) is v0.22.1: the gate
+  sees `src/core/`, `frontend/` and the version files, none of them a stop, and deploys in one pass.
+  Stuck: `git fetch --force --tags origin`, then `scripts/beta/auto-release.sh retry v0.22.2`.
+- [ ] **Spot checks.** Open `/routes/` on a phone and a desktop: each card has the map on top, full
+  width, no white text strip at its foot, the base map credit visible, and the name and figures below.
+  On a post with located photos, each photo is a round thumbnail on the route map; Enter or a tap opens
+  the photo and caption, Escape closes it and the focus returns to the thumbnail.
+- [ ] **Rollback.** The `pre-rel` api image (`--force-recreate api worker`) and the v0.22.1 front end.
+  Nothing in the database or the map changes. On the beta: the agent rolls back by itself on a failed
+  pass; later, rollback C, then `auto-release.sh hold v0.22.2`.
+
+## Deploying v0.22.3
+
+A patch for the post page's photos (v0.22.2, #1067): on the beta the photo on a post's route map was
+a dark circle and its pop-out a blank box, because the map's rules for its own preview picture also
+hid and resized the photo pictures inside the live map. Those rules now reach only the map's own
+picture. Each photo is now a small dot on the route with a short line to its thumbnail, set beside the
+route so the trail stays visible, on the route map and on the highlight maps. **`src/core/route_posts.py`
+and the post page's script (`frontend/src/post/`)**, with the version in `pyproject.toml`,
+`src/routemaker/__init__.py`, `frontend/package.json`, `README.md`, and the docs pages rebuilt with
+`DOCS_RELEASE=0.22.3` (version stamps only). **No migration, no `src/pipeline/`, `lua/`,
+`valhalla/*.json`, compose, Caddyfile, nginx, Dockerfile, requirements, `mcp/` or `mobile/` change, no
+new environment variable, scheduled job or outbound host, and no map rebuild.**
+
+- [ ] **The tag.** Once `test` and `a11y` are green on `main`, the owner tags v0.22.3 (annotated) on
+  that commit, from the PC.
+- [ ] **At home**, as "Deploying a planner and front-end release": rollback point (tag the running api
+  image `pre-rel-<short>`, keep `index.html`), fast-forward the checkout, `docker compose build api`,
+  then `docker compose up -d --no-deps --no-build --force-recreate api worker` with no job todo or
+  doing, then the front end (the post page's script). No migration, no router restart.
+- [ ] **Beta, by its agent**, once its deployed tag (`$RM_STATE/cd/deployed-tag`) is v0.22.2: the gate
+  sees `src/core/`, `frontend/` and the version files, none of them a stop, and deploys in one pass.
+  Stuck: `git fetch --force --tags origin`, then `scripts/beta/auto-release.sh retry v0.22.3`.
+- [ ] **Spot checks.** On a post with located photos, each photo shows its picture (not a dark circle):
+  a dot on the route and the thumbnail beside it, clear of the line, on the route map and on any
+  highlight map it falls in. Tap the thumbnail: the pop-out shows the photo and caption beside the
+  route. Escape closes it and the focus returns to the thumbnail.
+- [ ] **Rollback.** The `pre-rel` api image (`--force-recreate api worker`) and the v0.22.2 front end.
+  Nothing in the database or the map changes. On the beta: the agent rolls back by itself on a failed
+  pass; later, rollback C, then `auto-release.sh hold v0.22.3`.
+
 ## Deploying v0.23.0
 
 - [ ] **The tag** **(owner)**. Once `test` and `a11y` are green on `main`, the owner tags v0.23.0
   (annotated) on that commit, from the PC.
+- [ ] **The build's commit.** The v0.23.0 map is built on the cloud box at `afb3f6a6` (release/v0.23.0's
+  head when the run was sent, 2026-11-09), not at the tag. Nothing after it touches `lua/`,
+  `valhalla/`, `src/pipeline/` or `scripts/cloud/box-rebuild.sh` (check:
+  `git diff --stat afb3f6a6 v0.23.0 -- lua valhalla src/pipeline scripts/cloud/box-rebuild.sh` is
+  empty), so the install takes `--allow-sha-mismatch`, at home and with `--beta` (it is passed on to
+  `receive-data.sh`).
+- [ ] **Rollback points and images, before the map** **(owner)**, as "Deploying a planner and
+  front-end release", out of 07:00-07:30 UTC and with no rebuild job todo or doing: tag the running
+  api **and pipeline** images `pre-rel-<short>`, fast-forward the checkout, `docker compose build api
+  rebuild`, then `docker compose up -d --no-deps --no-build --force-recreate api worker rebuild`. The
+  import runs `import_cloud_build` in the `rebuild` container: an older image knows seven graphs, so
+  `paved-weekend` would be unpacked but never promoted, with no error. The front end goes last, after
+  the swap: before it, every weekend Road Bike ride says there is no weekend road bike map.
+- [ ] **The weekly rebuild.** Import and swap the cloud build before the next Tuesday 08:00 UTC
+  (3:00 AM ET) rebuild, or pause it (`WEEKLY_REBUILD_PAUSED`) for the run: a rebuild here resets the
+  staging schema an install restored, and `lua/` is mounted from the checkout.
 - [ ] **Caddy.** The Caddyfile adds `/tandem` (the Tandem ride type): validate it in a throwaway
   container and recreate caddy alone ("Applying a Caddyfile change"). On beta the nginx template
   adds it too: re-render it with the release. Check: `curl -sI https://<site>/tandem` is a 302 to
@@ -7706,6 +7783,12 @@ outbound host or scheduled job. With `</dev/null` on every docker command:
   Then `docker compose --profile offroad restart valhalla-offroad valhalla-mtb valhalla-paved
   valhalla-paved-weekend` and `docker compose exec -T api ./manage.py sync_upstreams`. Where it is
   not started, a weekend Road Bike ride plans on the paved graph and says the parkways were lost.
+- [ ] **The Climbs layer**, after the swap: `flock <heavy.lock> docker compose exec -T rebuild
+  ./manage.py build_climbs </dev/null` (hills fixes, #1060: bridges and tunnels found in the extract
+  are levelled), then commit the new climbs file as "The Climbs layer" says.
+- [ ] **The transit schedule** (#1058's timetable end), at the next timetable refresh or now:
+  `scripts/build_transit_schedule.py` as in "Transit schedule (TRANSIT-ASSIST, v0.6.0)", and on the
+  beta with its data. No map rebuild.
 - [ ] **The boot unit** **(owner)**, where it is installed: `scripts/boot/start-stack.sh` now starts a fourth
   trail router, so its unit's `TimeoutStartSec` went from 6000 to 6300 s (the worst case is 6005 s):
   `scripts/boot/install-boot-unit.sh install` again from the new checkout.
@@ -7721,6 +7804,9 @@ outbound host or scheduled job. With `</dev/null` on every docker command:
   - Restart the four routers one at a time; then
     `scripts/beta/beta-compose.sh up -d --force-recreate valhalla-offroad valhalla-mtb valhalla-paved valhalla-paved-weekend`
     (leave out `valhalla-paved-weekend` if memory was short); `sync_upstreams`.
+  - Or, from the cloud run's bundle: `scripts/cloud/import-result.sh --beta --allow-sha-mismatch
+    [--swap] <RUN_URL>`. It applies the same memory check before starting `valhalla-paved` or
+    `valhalla-paved-weekend` and leaves a stopped one stopped, with a warning, when it is short.
   - `smoke-test.sh --local --trails` (now checks a weekend `road-bike` ride on the
     `paved-weekend` graph, and a weekday one on `paved`), then `--public`. The weekend check is
     skipped, with a `SKIP` line, while `valhalla-paved-weekend` is stopped (memory short).

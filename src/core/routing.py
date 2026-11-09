@@ -4922,6 +4922,21 @@ def _weekend_plan(
             connections.close_all()
 
 
+_GRAPH_DOWN = frozenset({"no_mtb_graph", "no_offroad_graph"})
+
+
+def _keep_graph_down_notice(own: dict, answer: dict) -> None:
+    """The weekend route answers a ride whose own router is down: the rider is still told that
+    its trails were not there (`mtb.limited` no_mtb_graph, `easy_mtb.limited` no_offroad_graph,
+    on the own plan's answer). The weekend plan's own reading ran on its graph and says nothing
+    of the router that is down (release review, 2026-11-09)."""
+    for key in ("mtb", "easy_mtb"):
+        info = own.get(key)
+        if isinstance(info, dict) and info.get("limited") in _GRAPH_DOWN:
+            mine = answer.get(key)
+            answer[key] = {**mine, "limited": info["limited"]} if isinstance(mine, dict) else dict(info)
+
+
 def _plan_twice(
     points: list[list[float]],
     preset_name: str,
@@ -5014,6 +5029,7 @@ def _plan_twice(
         if weekend.failures or _own_fell_back(own, preset_name, dials):
             # Cut short, or answered while the ride's own router is down: not kept.
             _skipped_for_time()
+        _keep_graph_down_notice(own, weekend.body)
         return weekend.body
     if weekend.body is not None and _weekend_wins(weekend.ranking, slot.get("ranking")):
         logger.info("the weekend plan's route ranks above the ride's own; answered")
@@ -5469,7 +5485,12 @@ def _plan(
                 (exit_trails,) = trail_touch.touched(
                     points[:1], reasons=trail_touch.OFF_ROAD_REASONS
                 )
-            if exit_trails and not weekend_beside:
+            if exit_trails and weekend_beside:
+                # The weekend graph closes that trail and would snap the rider's fix to the
+                # nearest open way, a route Ride then reads as off route (release review,
+                # 2026-11-09): the ride's own plan, which opens it, answers.
+                raise _GraphLeft("End mountain biking from a trail the weekend graph closes")
+            if exit_trails:
                 touched_trails = exit_trails
                 exit_at = trail_touch.exit_level(exit_trails)
                 per_point = (exit_trails, *(frozenset() for _ in points[1:]))

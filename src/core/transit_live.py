@@ -629,7 +629,7 @@ def station(point, live: wmata_live.Snapshot | None) -> dict | None:
     if found is None:
         return None
     # By line, end and track: WMATA's `Group` is the platform track, one per way at a platform
-    # (Stephen, 2026-11-08: at Gallery Place the "After that" train was a Red Line one to
+    # (the owner: at Gallery Place the "After that" train was a Red Line one to
     # Glenmont, which the ride's card took for a Shady Grove one by where Glenmont lies).
     groups: dict[tuple[str, str, str | None], list[wmata_live.Train]] = {}
     for train in live.trains_at(found):

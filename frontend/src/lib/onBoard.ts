@@ -501,8 +501,8 @@ export function liveForBoarding(
     const end = nameKey(train.toward);
     return terms.some((e) => end.startsWith(e) && !mine.some((m) => m.startsWith(e) || e.startsWith(m)));
   };
-  // The tracks each way leaves from (Stephen, 2026-11-08: at Gallery Place a Red Line train to Glenmont showed as
-  // "After that" for a ride to Tenleytown; on a U-shaped line where a train ends cannot tell its way, its track can).
+  // The tracks each way leaves from (the owner: at Gallery Place a Red Line train to Glenmont showed as
+  // "After that" for a trip toward Tenleytown; on a U-shaped line where a train ends cannot tell its way, its track can).
   const ours = new Set(live.filter((train) => train.track && named(train)).map((train) => train.track as string));
   const theirs = new Set(live.filter((train) => train.track && other(train)).map((train) => train.track as string));
   const takes = (train: LiveTrain): boolean => {
