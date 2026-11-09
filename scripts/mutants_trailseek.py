@@ -299,7 +299,13 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "seek: busier is fine",
         RF,
-        "            busier = read.rated_exposure_m > _allowance(reference)",
+        "            busier = ("
+        + NL
+        + "                read.rated_exposure_m + read.avoid_junction_m + read.red_m"
+        + NL
+        + "                > _allowance(reference) + reference_junctions_m"
+        + NL
+        + "            )",
         "            busier = False",
         REFINE,
     ),
@@ -621,7 +627,7 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "seek: the whole trip is not guarded",
         RF,
-        '        if read.rated_exposure_m > _allowance(first_exposure):\n            seek["taken"] = False',
+        '        if _busier(read, first_exposure, ctx):\n            seek["taken"] = False',
         '        if False:\n            seek["taken"] = False',
         REFINE,
     ),
@@ -717,8 +723,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "V18 seek: whole-trip guard on best not first",
         RF,
-        '        if read.rated_exposure_m > _allowance(first_exposure):\n            seek["taken"] = False',
-        '        if read.rated_exposure_m > _allowance(best.rated_exposure_m):\n            seek["taken"] = False',
+        '        if _busier(read, first_exposure, ctx):\n            seek["taken"] = False',
+        '        if _busier(read, best.rated_exposure_m, ctx):\n            seek["taken"] = False',
         REFINE,
     ),
     (

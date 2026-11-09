@@ -493,7 +493,14 @@ def _request(
     if headings and in_edge.heading_in is not None:
         there["heading"] = int(round(in_edge.heading_in)) % 360
     request["locations"] = [here, there]
-    request["exclude_locations"] = [{"lon": lon, "lat": lat} for lon, lat in excludes]
+    # And what the passes before kept out: Mountain Bike's trails above the rider's level
+    # and the red crossings the red pass went round (`refine.Context.level_excludes`,
+    # `red_excludes`; the 2026-11-08 hunt, P1), so the main road's stretch never brings
+    # either back.
+    kept = [*(ctx.level_excludes or []), *(ctx.red_excludes or [])]
+    request["exclude_locations"] = kept[: max(0, 200 - len(excludes))] + [
+        {"lon": lon, "lat": lat} for lon, lat in excludes
+    ]
     return request
 
 

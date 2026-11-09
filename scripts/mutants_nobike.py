@@ -185,8 +185,8 @@ MUTANTS: list[tuple[str, str, str, str]] = [
     (
         "zoo_cycleway_closed",
         ZOO,
-        'return tags.get("highway") == trail["highway"] and tags.get("bicycle") in trail["bicycle"]',
-        "return False",
+        'if tags.get("highway") in trail["highways"] and tags.get("bicycle") in trail["bicycle"]:',
+        "if False:",
     ),
     (
         "offroad_keeps_singletrack",

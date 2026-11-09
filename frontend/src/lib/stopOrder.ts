@@ -16,7 +16,7 @@ import type { LonLat } from "./geo.ts";
 import { reverseKeepsStart } from "./loop.ts";
 import type { PresetId } from "./presets.ts";
 import { pointName } from "./summary.ts";
-import { withVias } from "./pointKinds.ts";
+import { withViasOnLegs } from "./pointKinds.ts";
 import { t } from "./i18n.ts";
 
 export const BEST_ORDER_LABEL = t("Best order");
@@ -181,7 +181,7 @@ export interface OrderAsked {
   loop: boolean;
   /**
    * The ride without its via points (lib/pointKinds.ts stopsOnly; v0.7.0 "Best order moves stops only"), when
-   * it has any: the order asked for is of these, and each via point moves with the stop it leads to.
+   * it has any: the order asked for is of these, and each via point stays on the leg it shapes (withViasOnLegs).
    */
   stops?: { points: readonly LonLat[]; leading: readonly LonLat[][] };
 }
@@ -207,8 +207,15 @@ export function applyAnswer(
   }
   const say = bestOrderSaid(ordered, result.answer, names, asked.loop);
   if (!result.answer.changed) return { say };
-  return { commit: asked.stops ? withVias(result.answer.order, asked.stops) : reorderedPoints(asked.points, result.answer.order), say };
+  if (!asked.stops) return { commit: reorderedPoints(asked.points, result.answer.order), say };
+  // Each via point stays on the leg it shapes (pointKinds.ts withViasOnLegs; the hunt, 2026-11-08, V3); an order that
+  // would split such a leg is not taken, since it was found without the via points.
+  const placed = withViasOnLegs(result.answer.order, asked.stops);
+  return placed ? { commit: placed, say } : { say: VIA_LEGS_KEPT_SAID };
 }
+
+/** Said where the best order would split a leg that has via points: the order stays as it is. Shown in Go too, so in every catalog. */
+export const VIA_LEGS_KEPT_SAID = t("The stops stay in this order, to keep your via points on their way.");
 
 export const FINDING_ORDER_SAID = t("Finding the best order for the stops.");
 export const STILL_FINDING_ORDER_SAID = t("Still finding the best order.");

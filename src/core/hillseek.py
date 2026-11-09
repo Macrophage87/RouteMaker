@@ -32,7 +32,10 @@ calls in all. Each climb is asked for as `through` locations along its line from
 its foot to its summit (`via_points`), in that order, so the router rides it uphill.
 This module only proposes; `core.routing` asks the router and adds what it answers
 to the router's own routes, and `choose_climb` picks among them all, with the same
-budget and the same measure of climbing as before.
+budget and the same measure of climbing as before, less a route that doubles back on
+itself for its climbing (`retrace_m`), and passing over a busy climb for a calm route that
+climbs about as well unless the rider chose the climb (`rides_busy`, `chosen`; the owner,
+2026-11-08).
 
 Naming. `ridden` finds the climbs a route rides uphill - the front end's rule for its
 "climbs on your route" list (`climbsAlongRoute`, frontend/src/lib/climbs.ts), kept
@@ -567,6 +570,109 @@ def with_entries(description: list[dict] | None, added: list[dict]) -> list[dict
     return out
 
 
+# --- The choice --------------------------------------------------------------------
+#
+# The owner, 2026-11-08 (hunt P3, V7): "Skip busy climbs if there's a better calm one, yes,
+# unless intentionally chosen". Before, `routing.choose_climb` kept the route that climbs most
+# whatever roads its climbs were on, and whatever it rode to get the climbing.
+
+# A route that rides a busy climb (the file's `busy`: most of its roads LTS 3 or higher) is
+# passed over for a calm one that climbs at least this share as much ("about as well").
+CALM_CLIMB_SHARE = 0.8
+# A point of the plan within this of a climb's line chose it (the climb card's "Ride this
+# climb" puts its foot and top in the plan; a climb searched for by name is a point on it):
+# a chosen climb is never passed over for being busy. The ridden rule's reach (ON_CLIMB_M).
+CHOSEN_M = ON_CLIMB_M
+# Doubling back: the route resampled every RETRACE_STEP_M; a sample within RETRACE_MATCH_M of
+# one at least RETRACE_GAP_M earlier along the same leg, running the same way or the other
+# (not across it: a road crossed twice is no retrace), counts its step as ridden again.
+RETRACE_STEP_M = 10.0
+RETRACE_MATCH_M = 12.0
+RETRACE_GAP_M = 60.0
+# How parallel the two stretches must be (|cos| of the angle between them): about 45 degrees.
+RETRACE_PARALLEL = 0.7
+# A route that rides back over its own way this much more than the router's own is not a
+# choice at all (`refine.RETRACE_SLACK_M`, the calm search's own slack for the same test).
+RETRACE_SLACK_M = 50.0
+
+
+def _resampled(line: Sequence[LonLat], plane: Plane) -> list[tuple[float, float, float, float]]:
+    """(x, y, dx, dy) every RETRACE_STEP_M along `line` on the plane, with the unit
+    direction of the stretch the sample is on."""
+    out: list[tuple[float, float, float, float]] = []
+    carry = 0.0
+    for a, b in zip(line, line[1:], strict=False):
+        ax, ay = plane.xy(*a)
+        bx, by = plane.xy(*b)
+        length = math.hypot(bx - ax, by - ay)
+        if length <= 0:
+            continue
+        ux, uy = (bx - ax) / length, (by - ay) / length
+        at = carry
+        while at < length:
+            out.append((ax + ux * at, ay + uy * at, ux, uy))
+            at += RETRACE_STEP_M
+        carry = at - length
+    return out
+
+
+def retrace_m(legs: Sequence[Sequence[LonLat]]) -> float:
+    """The metres of a route (its legs' lines, [lon, lat]) that ride back over a way the same
+    leg has already ridden, in either direction: an out-and-back to pad a climb (up, down and
+    up again), or a climb ridden against the way the route is going. A leg is the stretch
+    between the plan's own points, as `refine.retrace_m` counts it: a stop down a dead end is
+    the rider's to ride out to and back from."""
+    lines = [line for line in legs if len(line) >= 2]
+    if not lines:
+        return 0.0
+    plane = Plane(lines[0][0], lines[-1][-1])
+    cell = RETRACE_MATCH_M
+    gap = round(RETRACE_GAP_M / RETRACE_STEP_M)
+    total = 0.0
+    for line in lines:
+        seen: dict[tuple[int, int], list[tuple[int, float, float, float, float]]] = {}
+        for i, (x, y, ux, uy) in enumerate(_resampled(line, plane)):
+            cx, cy = math.floor(x / cell), math.floor(y / cell)
+            again = any(
+                i - j >= gap
+                and math.hypot(x - ox, y - oy) <= RETRACE_MATCH_M
+                and abs(ux * ox_u + uy * oy_u) >= RETRACE_PARALLEL
+                for dx in (-1, 0, 1)
+                for dy in (-1, 0, 1)
+                for j, ox, oy, ox_u, oy_u in seen.get((cx + dx, cy + dy), ())
+            )
+            if again:
+                total += RETRACE_STEP_M
+            seen.setdefault((cx, cy), []).append((i, x, y, ux, uy))
+    return total
+
+
+def chosen(climb: Climb, points: Sequence[Sequence[float]]) -> bool:
+    """Whether one of the plan's points lies on the climb's line (within CHOSEN_M): the
+    rider chose it (the owner: "unless intentionally chosen")."""
+    if not points:
+        return False
+    plane = Plane(climb.foot, climb.summit)
+    line = RouteLine([plane.xy(lon, lat) for lon, lat in climb.line], radius=CHOSEN_M)
+    for point in points:
+        x, y = plane.xy(float(point[0]), float(point[1]))
+        if line.nearest(x, y) is not None:
+            return True
+        # The ends themselves, which the grid's step may fall short of.
+        if min(_metres(point, climb.foot), _metres(point, climb.summit)) <= CHOSEN_M:
+            return True
+    return False
+
+
+def rides_busy(
+    coordinates: Sequence[LonLat], climbs: Iterable[Climb], points: Sequence[Sequence[float]]
+) -> bool:
+    """Whether the route rides uphill a busy climb (the file's `busy`) the rider did not
+    choose (`chosen`)."""
+    busy = [c for c in climbs if c.busy and not chosen(c, points)]
+    return bool(busy) and bool(ridden(coordinates, busy))
+
+
 # --- The seek ----------------------------------------------------------------------
 
 
@@ -639,10 +745,13 @@ __all__ = [
     "OutOfTime",
     "Ridden",
     "Seek",
+    "chosen",
     "entry",
     "in_corridor",
     "load",
     "propose",
+    "retrace_m",
+    "rides_busy",
     "ridden",
     "seek",
     "via_points",

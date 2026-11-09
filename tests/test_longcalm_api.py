@@ -206,6 +206,27 @@ class TestNoRouteWithinTheTarget:
             presets.use_roads_for(s) for s in routing.FIT_STRESS_LADDER
         ]
 
+    def test_a_ladder_cut_short_for_time_is_not_called_no_fit(
+        self, client, segments, router, monkeypatch
+    ) -> None:
+        """Hunt 2, P2-2: too little time left for the first rung. Before, the router's own
+        route was answered flagged "no route within your target" (`no_fit`, `limited:
+        target_distance`) with no search, and kept in the cache for the day; now that none
+        fits is not claimed and the search runs as on any plan (`_fit_target` counts the
+        skip, so the answer is not kept)."""
+        monkeypatch.setattr(routing, "FIT_MIN_S", 10_000)
+        fake = FakeRouter(
+            {
+                "route": lambda payload: route_answer([(VERTICES, 2.2, [10.0, 20.0, 15.0, 30.0])]),
+                "trace_attributes": trace_answer(VERTICES, STANDARD_EDGES),
+            }
+        )
+        router(fake)
+        response = post(client, top_body(target_distance_m=1_200))
+        search = response.json()["calm_search"]
+        assert search["no_fit"] is False and search["limited"] != "target_distance"
+        assert search["fits"] is False
+
     def test_a_calmer_rung_that_fits_is_the_first_route(self, client, segments, router) -> None:
         fake = FakeRouter(
             {
@@ -222,6 +243,39 @@ class TestNoRouteWithinTheTarget:
         assert search["fits"] is True and search["fitted_at"] == 78
         assert search["over_target_m"] == 0.0 and search["no_fit"] is False
         assert body["distance_m"] == pytest.approx(1900.0)
+
+    def test_a_ride_re_plan_plans_the_rest_without_the_whole_rides_target(
+        self, client, segments, router
+    ) -> None:
+        """Hunt V2: Ride sends the dials it planned with, the target among them, and the
+        re-plan from where the rider is took the whole ride's target as the limit for the
+        rest of it. On a re-plan there is no target: no fitting to it, and the default
+        ceiling on what is left."""
+        fake = FakeRouter(
+            {
+                "route": route_answer([(VERTICES, 2.2, [10.0, 20.0, 15.0, 30.0])]),
+                "trace_attributes": trace_answer(VERTICES, STANDARD_EDGES),
+            }
+        )
+        router(fake)
+        # The plan itself: the 2.2 km route is past the 1.2 km target, so it fits.
+        planned = post(client, top_body(target_distance_m=1_200)).json()["calm_search"]
+        assert planned["target_distance_set"] is True
+        fake.calls.clear()
+        body = post(client, top_body(target_distance_m=1_200, ride_replan=True)).json()
+        search = body["calm_search"]
+        assert search["target_distance_set"] is False and search["target_distance_m"] is None
+        assert search.get("fitted_at") is None and search["no_fit"] is None
+        assert search["ceiling_m"] == pytest.approx(
+            presets.default_ceiling_m(2200.0, "trailmaxxing"), abs=0.1
+        )
+        # No rung of the target fitting's ladder was asked for.
+        sent = [
+            p["costing_options"]["bicycle"]["use_roads"]
+            for _u, p in fake.calls
+            if "costing_options" in p
+        ]
+        assert set(sent) == {0.0}
 
     def test_a_route_within_the_limit_asks_no_second_route(self, client, segments, router) -> None:
         fake = router(standard_router())
@@ -643,13 +697,13 @@ class TestFittingATarget:
         return option[0]["summary"]["length"]
 
     def test_a_route_within_the_target_is_kept_and_nothing_is_asked(self, monkeypatch) -> None:
-        (fit, past), calls = self.run(monkeypatch, lambda u: 60 - 20 * u, 61_000.0)
+        (fit, past, unfinished), calls = self.run(monkeypatch, lambda u: 60 - 20 * u, 61_000.0)
         assert fit[4] is None and calls == [] and fit[0]["legs"][0]["shape"] == "own"
-        assert past == []
+        assert past == [] and unfinished is False
 
     def test_the_ladder_then_the_bisection_find_the_calmest_that_fits(self, monkeypatch) -> None:
         # 60 km at use_roads 0, 40 km at 1: it fits 50 km from use_roads 0.5.
-        (fit, past), calls = self.run(monkeypatch, lambda u: 60 - 20 * u, 50_000.0)
+        (fit, past, _unfinished), calls = self.run(monkeypatch, lambda u: 60 - 20 * u, 50_000.0)
         assert calls[:3] == [presets.use_roads_for(p) for p in routing.FIT_STRESS_LADDER]
         assert len(calls) == 3 + routing.FIT_BISECT_STEPS
         # Positions 70 and 40 are over, 0 fits; 20 fits, 30 fits, 35 fits (use_roads 0.55 -> 49 km).
@@ -664,26 +718,76 @@ class TestFittingATarget:
         self, monkeypatch
     ) -> None:
         # Fits only from use_roads 0.62.
-        (fit, past), _calls = self.run(monkeypatch, lambda u: 60 - 20 * u, 47_600.0)
+        (fit, past, _unfinished), _calls = self.run(monkeypatch, lambda u: 60 - 20 * u, 47_600.0)
         # 20 fits, 30 does not (47.7 km), so 25 is tried and fits.
         assert fit[4] == 25
         assert self.km(fit) * 1000.0 <= 47_600.0
         assert [o[4] for o in past] == [None, 70, 40, 30]
 
     def test_when_nothing_fits_every_route_found_is_past_it(self, monkeypatch) -> None:
-        (fit, past), calls = self.run(monkeypatch, lambda u: 60 - 20 * u, 30_000.0)
-        assert fit is None
+        (fit, past, unfinished), calls = self.run(monkeypatch, lambda u: 60 - 20 * u, 30_000.0)
+        assert fit is None and unfinished is False, "the ladder ran to its end: none fits"
         assert [o[4] for o in past] == [None, 70, 40, 0]
         assert self.km(past[-1]) == pytest.approx(40.0)
         assert len(calls) == len(routing.FIT_STRESS_LADDER), "no bisection where nothing fits"
 
     def test_with_no_time_it_stops_asking(self, monkeypatch) -> None:
-        (fit, past), calls = self.run(
+        skipped: list = []
+        monkeypatch.setattr(routing, "_skipped_for_time", lambda: skipped.append(1))
+        (fit, past, unfinished), calls = self.run(
             monkeypatch, lambda u: 60 - 20 * u, 50_000.0, time_left=routing.FIT_MIN_S - 1
         )
         assert calls == [] and fit is None and [o[4] for o in past] == [None]
+        # Hunt 2, P2-2: unfinished, not "none fits", and counted as a check skipped for the
+        # budget (no router call failed, so the answer was kept in the cache before).
+        assert unfinished is True and skipped == [1]
 
-    def test_a_refusal_stops_it(self, monkeypatch) -> None:
+    def test_a_slow_rung_leaves_it_unfinished(self, monkeypatch) -> None:
+        """Hunt 2, P2-2: one DeadlineExceeded at the first rung read as "no route fits",
+        and the plan answered the router's own route flagged so, with no search."""
+
+        def slow(variant, endpoint, payload, deadline):
+            raise routing.DeadlineExceeded("slow router")
+
+        monkeypatch.setattr(routing, "_call", slow)
+        first = {"legs": [{"shape": "own"}], "summary": {"length": 60.0}}
+        fit, past, unfinished = routing._fit_target(
+            first, {"locations": []}, {"bicycle": {}}, {"bicycle": {}}, 50_000.0,
+            "trailmaxxing", 0, False, False, "standard",
+            routing.Deadline(routing.clock() + 100, 35),
+        )  # fmt: skip
+        assert fit is None and len(past) == 1 and unfinished is True
+
+    def test_a_refusal_at_one_rung_asks_the_next(self, monkeypatch) -> None:
+        """Hunt 2, P2-2: a refusal (a 442 at Default's costing with closures, say) is that
+        rung's answer, not the time running out: before, it stopped the whole ladder and
+        the plan was "no route within your target"."""
+        calls = []
+
+        def refuse_first(variant, endpoint, payload, deadline):
+            calls.append(payload["costing_options"]["bicycle"]["use_roads"])
+            if len(calls) == 1:
+                raise routing.RouterRefused(400, 442, "no path")
+            km = 45.0
+            return {
+                "trip": {
+                    "legs": [{"shape": "x", "summary": {"length": km}}],
+                    "summary": {"length": km},
+                }
+            }
+
+        monkeypatch.setattr(routing, "_call", refuse_first)
+        first = {"legs": [{"shape": "own"}], "summary": {"length": 60.0}}
+        fit, past, unfinished = routing._fit_target(
+            first, {"locations": []}, {"bicycle": {}}, {"bicycle": {}}, 50_000.0,
+            "trailmaxxing", 0, False, False, "standard",
+            routing.Deadline(routing.clock() + 100, 35),
+        )  # fmt: skip
+        assert calls[1] == presets.use_roads_for(routing.FIT_STRESS_LADDER[1])
+        assert fit is not None and unfinished is False
+        assert fit[0]["summary"]["length"] == 45.0
+
+    def test_a_router_that_refuses_every_rung_has_none_that_fits(self, monkeypatch) -> None:
         def refuse(variant, endpoint, payload, deadline):
             raise routing.RouterRefused(400, 442, "no path")
 
@@ -702,8 +806,8 @@ class TestFittingATarget:
             "standard",
             routing.Deadline(routing.clock() + 100, 35),
         )
-        fit, past = got
-        assert fit is None and len(past) == 1 and past[0][0] is first
+        fit, past, unfinished = got
+        assert fit is None and len(past) == 1 and past[0][0] is first and unfinished is False
 
 
 def option(name: str, km: float, position: int | None) -> tuple:

@@ -107,7 +107,14 @@ export function liveRows(live: StationLive | null | undefined): TimesRow[] {
   if (!live) return [];
   const rows: TimesRow[] = [];
   const byLine = new Map<string, StationLive["trains"]>();
-  for (const train of live.trains) byLine.set(train.line, [...(byLine.get(train.line) ?? []), train]);
+  for (const train of live.trains) {
+    const kept = byLine.get(train.line) ?? [];
+    // One row per end: the same end from both tracks (a terminal, single-tracking) reads as one.
+    const same = kept.find((k) => k.toward === train.toward);
+    if (same) kept[kept.indexOf(same)] = { ...same, when: `${same.when}, ${train.when}` };
+    else kept.push(train);
+    byLine.set(train.line, kept);
+  }
   for (const [line, trains] of byLine) {
     const mark = lineMark("Metro", line);
     const shown = trains.map((t) => `to ${t.toward} ${t.when}`).join("; ");
