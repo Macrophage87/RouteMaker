@@ -25,7 +25,8 @@ import { CandidatePicker } from "../lib/candidatePicker.ts";
 import { candidateRows } from "../lib/candidates.ts";
 import { loopNote, loopNoteShort } from "../lib/loop.ts";
 import { mtbNotes } from "../lib/mtbMode.ts";
-import { ROAD_BIKE_NO_PAVED_MAP_SHORT, roadBikeNote } from "../lib/roadBike.ts";
+import { roadBikeNotice } from "../lib/roadBike.ts";
+import { easyMtbNote } from "../lib/easyMtb.ts";
 import { FacilityBreakdown } from "../FacilityBreakdown.tsx";
 import { IntersectionList } from "../IntersectionList.tsx";
 import { AvoidNotice } from "../AvoidNotice.tsx";
@@ -620,7 +621,7 @@ function noteLines(route: RouteResponse, points: LonLat[], light: readonly Light
   // Go has no Traffic slider to point to: its line is the short one ("2.3× as far, to skip 0.8 mi of busy roads.").
   const detour = goMode ? detourShort(route, points) : detourView(route, points);
   if (detour) lines.push({ key: "detour", className: `notice detour detour-${detour.level}`, icon: "warn", text: detour.text });
-  const calm = calmSearchNote(route);
+  const calm = calmSearchNote(route, goMode);
   if (calm) lines.push({ key: "calm", className: "hint calm-search", icon: "info", text: calm });
   const loop = loopNote(route);
   if (loop) lines.push({ key: "loop", className: "hint loop-note", icon: "loop", text: loop, short: loopNoteShort(route) });
@@ -628,9 +629,13 @@ function noteLines(route: RouteResponse, points: LonLat[], light: readonly Light
   const mtb = mtbNotes(route.mtb);
   for (const text of mtb.warnings) lines.push({ key: `mtb-${text}`, className: "notice mtb-warning", icon: "warn", text });
   if (mtb.notes.length > 0) lines.push({ key: "mtb-note", className: "hint mtb-note", icon: "mtb", text: mtb.notes.join(" ") });
-  // Road Bike planned on the standard map while its paved-only map is down (lib/roadBike.ts).
-  const roadBike = roadBikeNote(route);
-  if (roadBike) lines.push({ key: "road-bike", className: "notice road-bike-warning", icon: "warn", text: roadBike, short: ROAD_BIKE_NO_PAVED_MAP_SHORT });
+  // Easy MTB trails: a harder trail it could not leave, or the off-road map down (lib/easyMtb.ts).
+  const easy = easyMtbNote(route);
+  if (easy) lines.push({ key: "easy-mtb", className: "notice easy-mtb-warning", icon: "warn", text: easy.text, short: easy.short });
+  // Road Bike planned on a fallback map while its own is down: the standard map for the paved-only one,
+  // the paved-only map for the weekend one (lib/roadBike.ts).
+  const roadBike = roadBikeNotice(route);
+  if (roadBike) lines.push({ key: "road-bike", className: "notice road-bike-warning", icon: "warn", text: roadBike.text, short: roadBike.short });
   // Near dawn or dusk: where the rider will be at each light time (lib/lightTimes.ts), one line, in Go too.
   const lightText = lightLine(light);
   if (lightText) lines.push({ key: "light", className: "hint light-times", icon: "sun", text: lightText });

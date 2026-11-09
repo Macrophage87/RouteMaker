@@ -12,7 +12,7 @@
 #   tiles/<variant>/<build>/{tiles.tar,admin.sqlite,tz_world.sqlite,build-config.json}
 #                       the promoted build (`current`) of each router graph, found by
 #                       reading the `current` symlink; standard, no-trail, ebike, weekend
-#                       (and offroad once it exists). The unpacked tiles/ directory is left
+#                       (and offroad, mtb, paved and paved-weekend once they exist). The unpacked tiles/ directory is left
 #                       out: Valhalla serves from tiles.tar (tile_extract), verified.
 #   elevation/          the .hgt files the routers read at runtime for elevation profiles
 #   basemap/            region.pmtiles, fonts, sprites, and contours.pmtiles once

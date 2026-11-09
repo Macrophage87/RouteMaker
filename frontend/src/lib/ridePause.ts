@@ -116,10 +116,10 @@ export function beatKeepsGps(last: RideFix | null, lastRealAt: number, now: numb
  * locked; in a browser the pause lets the screen lock go, the page goes hidden, and the 30 s readings wait for it to be
  * in front again, so riding off with the phone in a pocket would not carry on: there Resume is the way.
  */
-const RIDE_STAY_PAUSED_APP = t("Ride paused at your destination to save battery. It carries on when you ride off, or press Resume.");
-const RIDE_STAY_PAUSED_BROWSER = t("Ride paused at your destination to save battery. Press Resume to carry on.");
-const ROAM_STAY_PAUSED_APP = t("Roam paused to save battery. It carries on when you ride off, or press Resume.");
-const ROAM_STAY_PAUSED_BROWSER = t("Roam paused to save battery. Press Resume to carry on.");
+const RIDE_STAY_PAUSED_APP = t("Ride paused at your destination to save battery. It starts again when you move, or press Resume.");
+const RIDE_STAY_PAUSED_BROWSER = t("Ride paused at your destination to save battery. Press Resume to continue.");
+const ROAM_STAY_PAUSED_APP = t("Roam paused to save battery. It starts again when you move, or press Resume.");
+const ROAM_STAY_PAUSED_BROWSER = t("Roam paused to save battery. Press Resume to continue.");
 /** Said as Roam carries on by itself: the pause was said, so is its end. */
 export const ROAM_RESUMED_SAID = t("Roam resumed.");
 

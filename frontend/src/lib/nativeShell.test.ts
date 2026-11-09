@@ -11,6 +11,7 @@ import {
   CUE_NOTICE_ID,
   NATIVE_WATCH_OPTIONS,
   SHARE_PLUGIN,
+  VOICE_FOCUS_PLUGIN,
   findShell,
   markShell,
   nativeBridge,
@@ -106,7 +107,7 @@ test("in a browser every environment is the browser's own, and nothing native is
   for (const output of Object.keys(OUTPUT_LABELS) as CueOutput[]) {
     for (const hidden of [false, true]) assert.equal(speaksAloud(output, hidden), toVoice(output), `${output}, hidden ${hidden}`);
   }
-  // A browser's wake lock still says "keep it on yourself" when it cannot hold.
+  // A browser's wake lock still says "Set your phone to keep it on" when it cannot hold.
   assert.equal(new ScreenWake(rideWake(null)).noteFor(false), WAKE_UNAVAILABLE);
 });
 
@@ -400,6 +401,49 @@ test("a sentence the native voice fails on still ends, so the next is not held f
   assert.equal(fake.calls.at(-1)?.options?.text, "Good");
 });
 
+test("music dips under each cue and comes back after it, as under a navigation app (Stephen 2026-11-08)", async () => {
+  const fake = fakeBridge("android", ["BackgroundGeolocation", "TextToSpeech", "LocalNotifications", VOICE_FOCUS_PLUGIN]);
+  fake.manual();
+  const voice = new Voice(rideSpeech(findShell({ Capacitor: fake.bridge })));
+  voice.speak("In 500 feet, left onto 14th St NW", false);
+  assert.deepEqual(fake.names(), [`${VOICE_FOCUS_PLUGIN}.duck`, "TextToSpeech.speak"], "the turn is asked before the cue is said");
+  fake.pending.find((p) => p.call.method === "speak")!.resolve();
+  await flush();
+  assert.equal(fake.names().at(-1), `${VOICE_FOCUS_PLUGIN}.unduck`, "given back when it ends");
+  voice.speak("In 500 feet, right", false);
+  voice.speak("Right now", true);
+  assert.deepEqual(fake.names().slice(-4), [`${VOICE_FOCUS_PLUGIN}.unduck`, "TextToSpeech.stop", `${VOICE_FOCUS_PLUGIN}.duck`, "TextToSpeech.speak"], "an urgent cue cuts in still holding the turn");
+  voice.stop();
+  assert.deepEqual(fake.names().slice(-2), [`${VOICE_FOCUS_PLUGIN}.unduck`, "TextToSpeech.stop"], "End ride gives it back");
+});
+
+test("an app built before the audio turn speaks exactly as before, and a refused turn never holds a cue", async () => {
+  const old = fakeBridge();
+  const voice = new Voice(rideSpeech(findShell({ Capacitor: old.bridge })));
+  voice.speak("Left now", true);
+  await flush();
+  assert.equal(old.calls.some((c) => c.plugin === VOICE_FOCUS_PLUGIN), false);
+  const noProbe = fakeBridge();
+  const unsure = new Voice(rideSpeech(findShell({ Capacitor: { ...noProbe.bridge, isPluginAvailable: undefined } })));
+  unsure.speak("Right now", true);
+  await flush();
+  assert.equal(noProbe.calls.some((c) => c.plugin === VOICE_FOCUS_PLUGIN), false, "a bridge that cannot say is not assumed to have it");
+  const refused = fakeBridge("android", ["BackgroundGeolocation", "TextToSpeech", "LocalNotifications", VOICE_FOCUS_PLUGIN]);
+  refused.refuse((call) => call.plugin === VOICE_FOCUS_PLUGIN);
+  const said = new Voice(rideSpeech(findShell({ Capacitor: refused.bridge })));
+  said.speak("First", false);
+  said.speak("Second", false);
+  await flush();
+  assert.deepEqual(refused.calls.filter((c) => c.method === "speak").map((c) => c.options?.text), ["First", "Second"]);
+  const java = readFileSync(new URL("../../../mobile/android/app/src/main/java/org/routemaker/phone/VoiceFocusPlugin.java", import.meta.url), "utf8");
+  assert.match(java, /@CapacitorPlugin\(name = "RouteMakerVoiceFocus"\)/);
+  assert.match(java, /AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK/, "music dips, it is not stopped");
+  assert.match(java, /USAGE_ASSISTANCE_NAVIGATION_GUIDANCE/);
+  assert.match(java, /MAX_HOLD_MS/, "never left ducked by a page that stopped answering");
+  const main = readFileSync(new URL("../../../mobile/android/app/src/main/java/org/routemaker/phone/MainActivity.java", import.meta.url), "utf8");
+  assert.match(main, /registerPlugin\(VoiceFocusPlugin\.class\);/);
+});
+
 test("screen readers: 'my screen reader' is spoken by the native voice only while the page is hidden", () => {
   const found = findShell({ Capacitor: fakeBridge().bridge });
   assert.equal(speaksAloud("screen-reader", false, found), false, "in front: TalkBack or VoiceOver reads the live region alone");
@@ -411,7 +455,7 @@ test("screen readers: 'my screen reader' is spoken by the native voice only whil
 
 // ---- In the shell: the wake lock ---------------------------------------------------------------------------
 
-test("the shell's wake lock: the browser's when it has one; never 'keep it on yourself' without", async () => {
+test("the shell's wake lock: the browser's when it has one; never 'Set your phone to keep it on' without", async () => {
   const none = new ScreenWake(nativeWake({ request: undefined }));
   assert.equal(await none.hold(), true);
   assert.equal(none.noteFor(true), "");

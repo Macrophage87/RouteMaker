@@ -543,8 +543,18 @@ def read_sha(fetch: Fetch, placer, places: Places, now: datetime, sleep) -> tupl
             # A partial copy would leave closures unrouted: keep the last good copy instead.
             raise FeedError(f"the Road Closure Reporter has more than {SHA_MAX} records")
         documents.append(document)
-    return md.parse_sha(documents, now), []
+    # Roads bicycles may not use, as the WZDx feeds' are (`workzones.refresh`; the owner,
+    # 2026-10-25: "It's not worth mentioning closures on roads bikes can't use"): an Interstate
+    # by its name here, a road the map bars in `refresh` (`workzones.without_barred`). The
+    # router ignores motorway edges for bicycles anyway, so such a closure's ring only used up
+    # the plan's polygon budget (hunt K5, 2026-11-08: the Key Bridge's I-695 pieces alone were
+    # past it, and a real closure nearby was left out).
+    return [zone for zone in md.parse_sha(documents, now) if not rules.on_interstate(zone)], []
 
+
+# The sources whose closures on a road the map bars to bicycles (a motorway or its ramp) are
+# not kept, as the WZDx feeds' are not (`workzones.without_barred`; hunt K5, 2026-11-08).
+BARRED_CHECKED = frozenset({SHA})
 
 READERS = {
     DC: read_dc,
@@ -615,6 +625,8 @@ def refresh(
         places = Places(kept.get("placed"), moment, MAX_NEW_PLACES.get(source, 0), out_of_time)
         try:
             zones, notices = READERS[source](bounded_fetch, placer, places, moment, bounded_sleep)
+            if source in BARRED_CHECKED:
+                zones = workzones.without_barred(zones)
         except (FeedError, ValueError) as error:
             if out_of_time():
                 # Cut short by the refresh's budget, not a failure of the source: its copy is

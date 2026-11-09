@@ -83,6 +83,7 @@ from . import (
     borders,
     checkpoint,
     conflation,
+    dc_osm_newer,
     discrepancies,
     elevation,
     extract,
@@ -248,7 +249,9 @@ DERIVED_SENTINEL_WAY_ID: int | None = 8795651
 
 # The weekend graph's own sentinel (`settings.REBUILD_SENTINEL_WEEKEND_EDGE`):
 # a road closed to cars at the weekend reads as a separated lane there and only
-# there, so a weekend graph derived like the standard one is refused.
+# there, so a weekend graph derived like the standard one is refused. Road Bike's
+# weekend graph (`Variant.PAVED_WEEKEND`) is read at the same edge, so one derived
+# like the paved graph is refused too.
 WEEKEND_SENTINEL_WAY_ID: int = 696971684
 WEEKEND_SENTINEL_EXPECTED = "separated"
 
@@ -833,6 +836,9 @@ class RebuildContext:
     # areas that stop at the coverage boundary.
     merged_pbf: Path | None = None
     ways: list[extract.Way] = field(default_factory=list)
+    # The ways' nodes tagged `button_operated=yes` (`extract.read_ways`), for
+    # `segment.button_operated`; empty where none were read.
+    button_nodes: set[int] = field(default_factory=set)
     ways_by_id: dict[int, extract.Way] = field(default_factory=dict)
     # The whole `Match`, not `(aadt, tier)`. The stage that reads this is the
     # last one that could record where a count came from, and the pair dropped
@@ -872,6 +878,10 @@ class RebuildContext:
     aadt_raw_by_way: dict[int, conflation.Match] = field(default_factory=dict)
     smoothing_report: aadt_smoothing.SmoothingReport | None = None
     corridor_report: corridors.CorridorReport | None = None
+    # The DC-against-OSM discrepancy report's rows (`discrepancies.row`), from the
+    # classification, for the list of ways OSM edited after the record that
+    # APPLY_OVERRIDES writes once the approved rows are known (`dc_osm_newer`).
+    dc_report_rows: list[dict] = field(default_factory=list)
     # The owner's facility class per way (`routemaker.facility`), and the ride
     # times in which a timed closure makes a road car-free. Computed once, after
     # the access overrides, by the first stage that needs them.
@@ -1063,6 +1073,7 @@ class RebuildContext:
 
         for name in (
             "ways",
+            "button_nodes",
             "ways_by_id",
             "aadt_by_way",
             "aadt_raw_by_way",
@@ -1801,6 +1812,23 @@ def assert_works_closures(
     return checked
 
 
+def assert_zoo_rule(context: RebuildContext) -> None:
+    """The Zoo rule (OWNER-DECISIONS 291(4); `routemaker.zoo`) still fits the extract:
+    each of its seven hand-listed spur ways is there, a piece of the Rock Creek Trail
+    inside the Zoo's outline is open, and so are at least the fixture's floor of trail
+    ways there (`zoo.check`). Like the
+    military and secured rules' checks, an upstream renumber or retag fails the rebuild
+    rather than silently ending a route to the Zoo short of the racks or cutting the
+    trail on every graph (hunt A5, 2026-11-08). Nothing is checked on an extract with
+    no way inside the Zoo (a test's)."""
+    problems = zoo.check(
+        ((way.osm_id, way.tags, way.coordinates) for way in context.ways),
+        getattr(context, "no_bicycle", None) or {},
+    )
+    if problems:
+        raise ValidationFailed("the Zoo rule no longer fits the extract: " + "; ".join(problems))
+
+
 def assert_owner_stretches(context: RebuildContext, rows: Sequence) -> list:
     """Each owner-rated stretch (`REBUILD_SENTINEL_STRETCHES`; OWNER-DECISIONS 432) came
     out at the owner's tier. Off with no rows; skipped, with a warning, with no agency
@@ -1838,6 +1866,44 @@ def assert_owner_stretches(context: RebuildContext, rows: Sequence) -> list:
     if found:
         raise ValidationFailed("; ".join(found))
     return read
+
+
+def agency_rated(result, ratings, tags: Mapping[str, str], *, urban: bool):
+    """`result` with the agencies' own `ratings` over it, then the owner's rural floor and
+    service-road step again, which rank above them (`apply_agency_ratings`)."""
+    mapped = facility.facility(dict(tags))
+    return service_road_step(
+        rural_floor(
+            agency_lts.apply(
+                result,
+                ratings,
+                facility_mapped=mapped is not facility.Facility.NONE,
+                painted_lane=mapped is facility.Facility.LANE,
+            ),
+            tags,
+            urban=urban,
+        ),
+        tags,
+    )
+
+
+def osm_tags_tier(result, tags: Mapping[str, str], ratings, *, urban: bool, owner_lane=False):
+    """The tier the rebuild would give a way on `tags`, from the classifier's `result` on
+    them: the curated lane's owner tier where `owner_lane` (no agency rating then, as
+    `apply_agency_ratings` skips such a way), the rural floor and service-road step, then
+    the way's agency `ratings`, the chain the way's real tier goes through.
+
+    For the DC-against-OSM reports' "tier OSM only" (hunt 3, stress 3): the bare formula
+    there was set beside a "tier with DC" that has DDOT's rating and the owner's steps in
+    it, so a way DDOT rates LTS 3 whose formula says LTS 2 was listed 3 against 2 and the
+    suggested stress row would have dropped DDOT's rating, though the OSM edit changed no
+    tier."""
+    if owner_lane:
+        result = bike_lanes.owner_tier(result, tags)
+    result = service_road_step(rural_floor(result, tags, urban=urban), tags)
+    if ratings and not owner_lane:
+        result = agency_rated(result, ratings, tags, urban=urban)
+    return result
 
 
 def _own_avoid_kept(stress) -> bool:
@@ -2012,15 +2078,16 @@ def facility_derived(
       facility makes a street cheaper for it (the owner, 2026-09-27: "Mass
       rides don't need to consider these. Even protected bike lanes aren't
       used.").
-    - Weekend: a road closed to motor traffic for the whole weekend
-      (`ridetime.closed_settings`) is on this graph what a road closed for good
-      is on every graph - an off-road path, at the lowest tier, so the stress
+    - Weekend, and Road Bike's weekend twin (`variants.WEEKEND_GRAPHS`; the owner,
+      2026-11-08, "New weekend graph"): a road closed to motor traffic for the whole
+      weekend (`ridetime.closed_settings`) is on these graphs what a road closed for
+      good is on every graph - an off-road path, at the lowest tier, so the stress
       penalty does not land on it either. Every other way as on the standard.
-    - Standard and e-bike: the way's class.
+    - Standard, e-bike, off-road, mountain-bike and paved: the way's class.
     """
     if variant is variants.Variant.NO_TRAIL:
         return {"facility_neutral": True}
-    if variant is variants.Variant.WEEKEND and ridetime.WEEKEND in car_free_by_way.get(way_id, ()):
+    if variant in variants.WEEKEND_GRAPHS and ridetime.WEEKEND in car_free_by_way.get(way_id, ()):
         return {"facility": facility.Facility.PATH.value, "stress_tier": 1}
     if way_id in facility_by_way:
         return {"facility": facility_by_way[way_id]}
@@ -2034,6 +2101,7 @@ def build_handlers(
     sample_derived_tag: Callable[[], str | None] | None = None,
     state_at: Callable[[float, float], str | None] | None = None,
     sample_weekend_tag: Callable[[], str | None] | None = None,
+    sample_paved_weekend_tag: Callable[[], str | None] | None = None,
     load_overrides: Callable[[], list[overrides.Override]] | None = None,
     disk_usage: Callable | None = None,
     fetch_elevation: Callable[[elevation.TileName, Path], Path] | None = None,
@@ -2066,6 +2134,9 @@ def build_handlers(
     sample_grade = sample_grade or (lambda: _least_grade_across_variants(context, run))
     sample_derived_tag = sample_derived_tag or (lambda: _standard_cycle_lane(context, run))
     sample_weekend_tag = sample_weekend_tag or (lambda: _weekend_cycle_lane(context, run))
+    sample_paved_weekend_tag = sample_paved_weekend_tag or (
+        lambda: _weekend_cycle_lane(context, run, variants.Variant.PAVED_WEEKEND)
+    )
     sample_closures = sample_closures or (lambda: _closures_across_variants(context, closure_run))
 
     def classification_value(name: str):
@@ -2324,7 +2395,10 @@ def build_handlers(
         writers.refuse_live_schema(context.staging_schema)
         reset_segment_schema(context.staging_schema)
 
-        context.ways = extract.read_ways(context.source_pbf)
+        # The ways' nodes tagged `button_operated=yes` are read in the same pass (the beg
+        # buttons, `pipeline.signals.button_ways`; the owner, 2026-11-08).
+        context.button_nodes = set()
+        context.ways = extract.read_ways(context.source_pbf, button_nodes=context.button_nodes)
         # The OSM route relations the ways are in, for the zoomed-out long trails
         # (OWNER-DECISIONS 375).
         routes = trail_routes.read_routes(context.source_pbf)
@@ -2491,7 +2565,15 @@ def build_handlers(
         entries = [
             (way.osm_id, way.coordinates, variants.is_trail_class(way.tags)) for way in context.ways
         ]
-        result = conflation.conflate(entries, reference.volume_features)
+        # A service road or a track takes no count line: the lines carry no street name
+        # for it to agree with, and the block matcher's rule is that such a way takes an
+        # agency's line only where the names agree (hunt D3, 2026-11-08).
+        nameless = {
+            way.osm_id
+            for way in context.ways
+            if way.tags.get("highway") in agency_roads.NAME_REQUIRED_HIGHWAYS
+        }
+        result = conflation.conflate(entries, reference.volume_features, name_required=nameless)
         context.aadt_by_way = dict(result.matched)
         # A count reaches both carriageways of a divided road (FOLLOWUP-MDOT-AADT,
         # OWNER-DECISIONS 429; `share_with_carriageways`): MD 185 north of Chevy
@@ -2530,14 +2612,15 @@ def build_handlers(
             len(result.unmatched_features),
         )
 
-    def apply_agency_ratings(laned: set[int]) -> None:
+    def apply_agency_ratings(laned: set[int]) -> dict:
         """Agencies' own ratings over the classifier's tier, county over state
         (`routemaker.agency_lts`; the owner, 2026-10-13), then the owner's rural
-        floor again, which ranks above them. A curated lane's owner tier stands."""
+        floor again, which ranks above them. A curated lane's owner tier stands.
+        Returns each rated way's ratings, for the discrepancy report."""
         reference = context.require_reference()
         # A test's stand-in reference may predate the field.
         if not getattr(reference, "agency_lts_features", ()):
-            return
+            return {}
         entries = [
             (way.osm_id, way.coordinates, variants.is_trail_class(way.tags)) for way in context.ways
         ]
@@ -2556,23 +2639,11 @@ def build_handlers(
             # The tags the formula read (the District's street layer's lane included), so
             # the set-aside and the formula agree about what the road has.
             tags = context.class_tags_by_way.get(way_id, tags_of[way_id])
-            mapped = facility.facility(tags)
-            result = service_road_step(
-                rural_floor(
-                    agency_lts.apply(
-                        current,
-                        ratings,
-                        facility_mapped=mapped is not facility.Facility.NONE,
-                        painted_lane=mapped is facility.Facility.LANE,
-                    ),
-                    tags,
-                    urban=way_id in reference.urban_way_ids,
-                ),
-                tags,
-            )
+            result = agency_rated(current, ratings, tags, urban=way_id in reference.urban_way_ids)
             changed += result.tier != current.tier or result.half != current.half
             context.stress_by_way[way_id] = result
         logger.info("agency stress ratings: %d ways rated, %d changed tier", len(rated), changed)
+        return rated
 
     def classify_stress() -> None:
         reference = context.require_reference()
@@ -2654,6 +2725,33 @@ def build_handlers(
         # lane the map is missing, for the classifier and the facility class only.
         lanes = bike_lanes.load()
         laned: set[int] = set()
+
+        def follow_splits(kind: str, values: dict, folder) -> dict:
+            # A row with a stored fingerprint follows an OSM split onto the new piece and
+            # is not spread by a merge (`rematch.resolve_keyed`; hunt D1, 2026-11-08); one
+            # without applies by id, as before.
+            prints = {
+                way_id: fp
+                for (_kind, way_id), fp in rematch.load_fingerprints(folder, kind).items()
+            }
+            if not prints:
+                return values
+            ways_by_id = {way.osm_id: way for way in context.ways}
+            followed, report = rematch.resolve_keyed(kind, values, prints, ways_by_id)
+            for entry in report.entries:
+                if entry.old_way_id in prints and entry.outcome != rematch.OUTCOME_COVERED:
+                    logger.warning(
+                        "curated %s on way %s: %s %s %s",
+                        kind,
+                        entry.old_way_id,
+                        entry.outcome,
+                        list(entry.new_way_ids) or "",
+                        entry.reason,
+                    )
+            return followed
+
+        speeds = follow_splits("speed", speeds, speed_corrections.SPEED_DIR)
+        lanes = follow_splits("bike_lane", lanes, bike_lanes.BIKE_LANES_DIR)
         # The agency's street layer, over the way's own tags: a posted speed,
         # lanes, one-way, bike lane and parking it records take precedence (in
         # the District over OSM's own tagging too, OWNER-DECISIONS 190), and the
@@ -2756,7 +2854,7 @@ def build_handlers(
                 )
                 if facts.agency == agency_roads.DC_AGENCY and state_of.get(way.osm_id) == "DC":
                     reported.append((way, tags, match, overlaid))
-        apply_agency_ratings(laned)
+        ratings_of = apply_agency_ratings(laned)
         # The RL-3 roads with the agency's level beside the formula's, for the owner
         # (`agency_lts.PAINTED_LANE_REPORT_NAME`), read before the corridors and rows.
         painted_lane_rows = []
@@ -2791,7 +2889,9 @@ def build_handlers(
                 len(context.routing_tags_by_way),
             )
         if reported:
-            write_discrepancy_report(reported, speeds, divided_ways, separate_roads, state_of)
+            write_discrepancy_report(
+                reported, speeds, lanes, ratings_of, divided_ways, separate_roads, state_of
+            )
         # The owner's named corridors (OWNER-DECISIONS 286, 294-296), over the
         # classified tiers and under the override rows. A way's recorded bike
         # lane (the agency overlay) exempts it, as an OSM one does.
@@ -2850,31 +2950,53 @@ def build_handlers(
                 unused_lanes,
             )
 
-    def write_discrepancy_report(reported, speeds, divided_ways, separate_roads, state_of) -> None:
+    def write_discrepancy_report(
+        reported, speeds, lanes, ratings_of, divided_ways, separate_roads, state_of
+    ) -> None:
         """The DC-against-OSM discrepancy report for the owner, each rebuild
         (OWNER-DECISIONS 191), from the overlay this rebuild classified with:
         `<DATA_ROOT>/rebuild/reports/dc-osm-discrepancies.md` and `.csv`. A
         report, not a stage's output: it never fails the rebuild. The tier with
-        OSM's tags alone is the classifier's on the way's own tags with the count
-        a count layer gave it (not a block's), as `data_before_after.py` has it."""
+        OSM's tags alone is `osm_tags_tier` on the way's own tags (a curated lane
+        applied), with the count a count layer gave it (not a block's): the
+        classifier, then the rural floor and service-road step, then the way's
+        agency ratings, as its real tier goes (hunt 3, stress 3)."""
         reference = context.require_reference()
         try:
+            # Each block's own key and street (DC's BLOCKKEY, ROUTENAME), for the
+            # owner's block correction a flagged way would take (`dc_osm_newer`).
+            keys_of = {
+                block.feature_id: (block.facts.block_key, block.facts.name or "")
+                for block in reference.road_blocks
+                if block.facts.block_key
+            }
             rows = []
             for way, tags, match, overlaid in reported:
                 counted = match if match is not None and match.source != "inventory" else None
                 osm_tags, _ = speed_corrections.corrected(way.tags, speeds.get(way.osm_id))
                 if way.tags.get("highway") in discrepancies.NOT_ROADS:
                     continue
-                before = classify(
+                # Through the chain the way's real tier went through (`osm_tags_tier`), on
+                # OSM's tags: the curated lane, the owner's steps and the agency ratings.
+                osm_tags, lane_applied = bike_lanes.corrected(osm_tags, lanes.get(way.osm_id))
+                urban = way.osm_id in reference.urban_way_ids
+                before = osm_tags_tier(
+                    classify(
+                        osm_tags,
+                        aadt=counted.aadt if counted else None,
+                        aadt_source=counted.agency if counted else None,
+                        aadt_year=counted.year if counted else None,
+                        urban=urban,
+                        jurisdiction=state_of.get(way.osm_id),
+                        divided=way.osm_id in divided_ways,
+                        separate_facility=way.osm_id in separate_roads,
+                        winding=not urban and bends_slow_traffic(way.coordinates, osm_tags),
+                        side_path=way.osm_id in context.use_sidepath_paths,
+                    ),
                     osm_tags,
-                    aadt=counted.aadt if counted else None,
-                    aadt_source=counted.agency if counted else None,
-                    aadt_year=counted.year if counted else None,
-                    urban=way.osm_id in reference.urban_way_ids,
-                    jurisdiction=state_of.get(way.osm_id),
-                    divided=way.osm_id in divided_ways,
-                    separate_facility=way.osm_id in separate_roads,
-                    side_path=way.osm_id in context.use_sidepath_paths,
+                    ratings_of.get(way.osm_id, ()),
+                    urban=urban,
+                    owner_lane=lane_applied,
                 )
                 facts = context.road_facts_by_way[way.osm_id]
                 rows.append(
@@ -2886,14 +3008,21 @@ def build_handlers(
                         blocks=facts.blocks,
                         tier0=int(before.tier),
                         tier1=int(context.stress_by_way[way.osm_id].tier),
+                        tier0_half=before.half,
+                        tier1_half=context.stress_by_way[way.osm_id].half,
                         disagreements=overlaid.disagreements,
                         agreements=overlaid.agreements,
                         osm=way.tags,
                         after=tags,
                         facts=discrepancies.facts_summary(facts),
                         sources={**overlaid.sources, "aadt": agency_roads.aadt_source(match)},
+                        osm_edited=way.edited.date() if way.edited else None,
+                        block_keys=[keys_of[b] for b in facts.blocks if b in keys_of],
                     )
                 )
+            # Kept for the ways OSM edited after the record, written once the approved
+            # override rows are read (`write_newer_osm_report`, APPLY_OVERRIDES).
+            context.dc_report_rows = rows
             out_dir = context.work_dir / DISCREPANCY_REPORT_DIR
             found = discrepancies.write_report(rows, out_dir, discrepancies.REBUILD_SOURCE)
             logger.info(
@@ -2967,6 +3096,65 @@ def build_handlers(
             },
             "override re-match",
         )
+
+    def write_newer_osm_report(rows) -> None:
+        """The District ways OSM edited after DC's record that disagree with what it
+        applied, for the owner's call (`pipeline.dc_osm_newer`; the owner, 2026-11-08:
+        "If there's a newer OSM rating, then on a rebuild it should flag it and I can
+        make the call."). DC's value still stands. Here, after the approved rows are
+        read and re-matched, so a way the owner has set with a stress row, or kept DC's
+        value on (`fixtures/dc_osm_kept.json`), is listed as decided and not asked about
+        again. A report, not the stage's output: it never fails the rebuild."""
+        # Last rebuild's list is removed first, so a rebuild that writes none leaves no stale
+        # list to be read as current (review, 2026-11-08).
+        for name in (dc_osm_newer.MD_NAME, dc_osm_newer.CSV_NAME):
+            (context.work_dir / DISCREPANCY_REPORT_DIR / name).unlink(missing_ok=True)
+        reported = context.dc_report_rows
+        if not reported:
+            return
+        try:
+            as_of = agency_roads.DC_RECORD_AS_OF
+            try:
+                kept = dc_osm_newer.load_kept()
+            except dc_osm_newer.KeptRefused:
+                logger.warning(
+                    "the kept list (fixtures/dc_osm_kept.json) was refused; every way is "
+                    "listed as open until it is corrected",
+                    exc_info=True,
+                )
+                kept = {}
+
+            def fingerprint_of(way_id: int) -> dict | None:
+                way = context.ways_by_id.get(way_id)
+                if way is None or len(way.coordinates) < 2:
+                    return None
+                return rematch.fingerprint_of(way.tags, way.coordinates)
+
+            flagged = dc_osm_newer.newer_osm(
+                reported,
+                as_of,
+                decided=dc_osm_newer.decided_ways(rows),
+                kept=kept,
+                fingerprint_of=fingerprint_of,
+            )
+            dc_osm_newer.write_report(
+                flagged,
+                context.work_dir / DISCREPANCY_REPORT_DIR,
+                matched=len(reported),
+                dated=sum(1 for r in reported if r.get("edited")),
+                as_of=as_of,
+            )
+            opened = sum(1 for f in flagged if f["status"] == dc_osm_newer.OPEN)
+            logger.info(
+                "DC ways OSM edited after the record (%s) that disagree with it, for the "
+                "owner's call: %d open, %d decided, in %s",
+                as_of.isoformat(),
+                opened,
+                len(flagged) - opened,
+                dc_osm_newer.MD_NAME,
+            )
+        except Exception:
+            logger.warning("DC ways OSM edited after the record: report not written", exc_info=True)
 
     def apply_overrides() -> None:
         """The audited corrections, applied where each kind belongs.
@@ -3050,6 +3238,7 @@ def build_handlers(
             # alert said anything an operator could act on.
             raise ValidationFailed(f"an approved override row was refused: {refused}") from refused
 
+        write_newer_osm_report(rows)
         context.reviewer_surface_by_way = surfaces
         missing = tuple(
             sorted({*access_missing, *stress_missing, *jurisdiction_missing, *surface_missing})
@@ -3566,6 +3755,21 @@ def build_handlers(
             "upper-case MPH, read as km/h by the router before): %d ways",
             sum(1 for way in context.ways if variants.with_speed_units(way.tags) is not way.tags),
         )
+        # The e-bike graph's one rule, which the weekend graph lacks: a weekend e-bike ride is
+        # planned on the weekend graph too (`presets.weekend_too`, the owner's round 3 "Yes",
+        # 2026-11-08), and its route is answered as it is only while no way in the coverage
+        # bars e-bikes (none on 2026-10-09). Logged so a rebuild says when that changes
+        # (docs/DEVELOPMENT.md, "Weekend e-bike rides").
+        ebike_barred = sum(
+            1
+            for way in context.ways
+            if variants.bars_electric_bicycle(routing_tags(way, variants.Variant.EBIKE))
+        )
+        (logger.warning if ebike_barred else logger.info)(
+            "ways barred to e-bikes (electric_bicycle=no), open to a weekend e-bike ride's "
+            "weekend plan: %d",
+            ebike_barred,
+        )
         rail_roads, listed_hazards = hazard_inputs()
         for variant in variants.Variant:
             hazard_ways = 0
@@ -3763,9 +3967,10 @@ def build_handlers(
                     derived["hazard"] = True
                     hazard_ways += 1
                 # The road-bike graph prices gravel, fine gravel and compacted as gravel
-                # (`variants.Variant.PAVED`, `routemaker_remap.ROUGH_UNPAVED`); every other
-                # graph prices gravel as packed gravel.
-                if variant is variants.Variant.PAVED and way.tags.get("surface") in (
+                # (`variants.PAVED_GRAPHS`, its weekend twin too;
+                # `routemaker_remap.ROUGH_UNPAVED`); every other graph prices gravel as
+                # packed gravel.
+                if variant in variants.PAVED_GRAPHS and way.tags.get("surface") in (
                     "gravel",
                     "fine_gravel",
                     "compacted",
@@ -3775,7 +3980,7 @@ def build_handlers(
                 # 2026-11-02: road bikes "stay away from trails with lots of direction
                 # changes ... For instance Sligo Creek Trail").
                 if (
-                    variant is variants.Variant.PAVED
+                    variant in variants.PAVED_GRAPHS
                     and variants.is_trail_class(way.tags)
                     and winding.is_winding(way.coordinates)
                 ):
@@ -4064,6 +4269,11 @@ def build_handlers(
             [(way.osm_id, way.tags, way.coordinates) for way in context.ways]
         )
         logger.info("unnamed bike ways named for the street beside them: %d", len(sidepath_names))
+        # The crossings, paths and sidewalks whose signal is called with a push button
+        # (`button_operated=yes` on the way or a node of it; the owner, 2026-11-08), for the
+        # junction-delay model's beg buttons (`core.routing.button_ways`).
+        button_ways = signals.button_ways(context.ways, context.button_nodes)
+        logger.info("ways at a button-operated signal: %d", len(button_ways))
         # The scenic designations (v0.8.0), in words: written beside the tier, never read by
         # the classifier or the graph, so a scenic road keeps its stress and gets no bonus.
         scenic_text = scenic_layer.scenic_by_way(
@@ -4164,6 +4374,7 @@ def build_handlers(
                         if way.osm_id in context.mtb_only
                         else None,
                         walk_bike=way.osm_id in context.walk_bike,
+                        button_operated=way.osm_id in button_ways,
                         road_speed_mph=_smallint(getattr(stress, "speed_mph", None)),
                         road_default_speed_mph=_smallint(
                             getattr(stress, "default_speed_mph", None)
@@ -4358,6 +4569,7 @@ def build_handlers(
                 _setting("REBUILD_SENTINEL_WORKS_CLOSED_RANGE"),
                 _setting("REBUILD_SENTINEL_WORKS_MIN_IN_RANGE"),
             )
+            failures.check(assert_zoo_rule, context)
             staging_checks(failures)
         except Exception as error:
             if not isinstance(error, ValidationFailed):
@@ -4482,6 +4694,14 @@ def build_handlers(
                 f"{WEEKEND_SENTINEL_WAY_ID}), not {WEEKEND_SENTINEL_EXPECTED!r}: it was not "
                 "derived as the weekend twin, so a weekend ride on it would not prefer the "
                 "roads closed to cars"
+            )
+        paved_weekend = sample_paved_weekend_tag()
+        if paved_weekend != WEEKEND_SENTINEL_EXPECTED:
+            raise ValidationFailed(
+                f"the paved-weekend graph reports {paved_weekend!r} on Sligo Creek Parkway (way "
+                f"{WEEKEND_SENTINEL_WAY_ID}), not {WEEKEND_SENTINEL_EXPECTED!r}: it was not "
+                "derived as the paved graph's weekend twin, so a weekend Road Bike ride on it "
+                "would take the parkways closed to cars as roads"
             )
         assert_bicycle_closures_reached_the_tiles(sample_closures())
 
@@ -4633,10 +4853,12 @@ def _standard_cycle_lane(context: RebuildContext, run) -> str | None:
     )
 
 
-def _weekend_cycle_lane(context: RebuildContext, run) -> str | None:
-    config_path = context.build_configs.get(variants.Variant.WEEKEND)
+def _weekend_cycle_lane(
+    context: RebuildContext, run, variant: variants.Variant = variants.Variant.WEEKEND
+) -> str | None:
+    config_path = context.build_configs.get(variant)
     if config_path is None:
-        raise ValidationFailed("the weekend variant has no build config to read back")
+        raise ValidationFailed(f"the {variant.value} variant has no build config to read back")
     return _read_back(
         functools.partial(
             tiles.sample_cycle_lane,

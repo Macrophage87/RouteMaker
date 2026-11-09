@@ -68,8 +68,8 @@ class Variant(Enum):
     # Weekend and E-bike included (291(3)); rated singletrack stays closed here
     # too (OWNER-DECISIONS 90, 91, 111). Only Gravel and Mountain Goat ride it, by
     # `core.presets.variant_for_ride`. It has no weekend twin: a weekend Gravel
-    # or Goat ride stays on it and reports its car-free closures in its
-    # breakdown only, as an e-bike ride does.
+    # or Goat ride is planned on it and, near a weekend closure, on the weekend
+    # graph as well, the better route kept (`core.routing._plan_twice`).
     OFFROAD = "offroad"
     # The Mountain Bike ride type's graph (docs/MTB-TOPO-PLAN.md, slice 6; OWNER-DECISIONS 90,
     # 111, 148, 454: "Mountain Goat and Mountain Bike are separate modes"). The off-road graph
@@ -91,15 +91,36 @@ class Variant(Enum):
     # (`run.inject_tags` writes `rm:rough_unpaved`; lua/routemaker_remap.lua). The owner,
     # 2026-11-02: Avoid gravel "is intended for road bikes that can't handle gravel or dirt";
     # "Add a road-bike map graph"; "Make it a separate mode that assumes a faster speed and
-    # also is less tolerant of turns". Only Road Bike rides it; no weekend twin.
+    # also is less tolerant of turns". Only Road Bike rides it, on a weekday or at night; at the
+    # weekend it rides its weekend twin, below.
     PAVED = "paved"
+    # The road-bike graph as it stands at the weekend: the paved graph's surfaces and winding
+    # trails, with the weekend graph's car-free reading (`run.facility_derived`): Beach Drive,
+    # Sligo Creek Parkway, Little Falls Parkway and the other roads closed to motor traffic for
+    # the weekend are off-road paths in it. The owner, 2026-11-08: "Road bikes absolutely use
+    # those parkways on the weekends. It's probably their most common destination." - and, on
+    # the card "How should Road Bike get the weekend parkways?", "New weekend graph", knowing
+    # its cost (the beta's resident budget to about 7.96 GiB, a start-up margin of about
+    # 0.4 GiB, about 1.5G more at swap time on the 32 GB host, a longer rebuild). Only Road
+    # Bike rides it, at the weekend ride time (`core.presets.variant_for_ride`); while its
+    # router is down or its build unpromoted the ride falls back to the paved graph
+    # (`core.routing.twin_fallback`).
+    PAVED_WEEKEND = "paved-weekend"
+
+
+# The graphs that price gravel, fine gravel and compacted as gravel and winding trails as a
+# busy street (`run.inject_tags`): Road Bike's two.
+PAVED_GRAPHS = frozenset({Variant.PAVED, Variant.PAVED_WEEKEND})
+# The graphs that read a road closed to motor traffic for the whole weekend as an off-road
+# path (`run.facility_derived`): the standard graph's weekend twin and the paved graph's.
+WEEKEND_GRAPHS = frozenset({Variant.WEEKEND, Variant.PAVED_WEEKEND})
 
 
 # The off-road family: the graphs behind the compose profile `offroad`, off on the small host
 # and the beta, so never in a plain restart. The road-bike graph (`Variant.PAVED`) is one of
 # them for the same reason: one ride type rides it, and its router starts once its tiles are
-# on the host.
-OFFROAD_FAMILY = frozenset({Variant.OFFROAD, Variant.MTB, Variant.PAVED})
+# on the host; so is its weekend twin (`Variant.PAVED_WEEKEND`).
+OFFROAD_FAMILY = frozenset({Variant.OFFROAD, Variant.MTB, Variant.PAVED, Variant.PAVED_WEEKEND})
 # The routers a plain `docker compose up -d` runs, and the restart that makes
 # them load a promoted (or rolled-back) build: `valhalla_service` reads its tiles
 # once at start. The off-road router is behind the compose profile `offroad` and
@@ -110,7 +131,8 @@ OFFROAD_FAMILY = frozenset({Variant.OFFROAD, Variant.MTB, Variant.PAVED})
 OFFROAD_ROUTER = f"valhalla-{Variant.OFFROAD.value}"
 MTB_ROUTER = f"valhalla-{Variant.MTB.value}"
 PAVED_ROUTER = f"valhalla-{Variant.PAVED.value}"
-OFFROAD_ROUTERS = (OFFROAD_ROUTER, MTB_ROUTER, PAVED_ROUTER)
+PAVED_WEEKEND_ROUTER = f"valhalla-{Variant.PAVED_WEEKEND.value}"
+OFFROAD_ROUTERS = (OFFROAD_ROUTER, MTB_ROUTER, PAVED_ROUTER, PAVED_WEEKEND_ROUTER)
 DEFAULT_ROUTERS = tuple(f"valhalla-{v.value}" for v in Variant if v not in OFFROAD_FAMILY)
 RESTART_ROUTERS = "docker compose restart " + " ".join(DEFAULT_ROUTERS)
 RESTART_OFFROAD_ROUTER = "docker compose --profile offroad restart " + " ".join(OFFROAD_ROUTERS)
@@ -991,13 +1013,20 @@ def inject(
     # Every variant reads a posted speed as the classifier does (review RL-5).
     tags = with_speed_units(tags)
 
-    if variant in (Variant.STANDARD, Variant.WEEKEND, Variant.OFFROAD, Variant.MTB, Variant.PAVED):
+    if variant in (
+        Variant.STANDARD,
+        Variant.WEEKEND,
+        Variant.OFFROAD,
+        Variant.MTB,
+        Variant.PAVED,
+        Variant.PAVED_WEEKEND,
+    ):
         # The weekend graph's tags are the standard graph's: what differs is
         # the facility class and tier handed to the transform
         # (`run.inject_tags`), not the OSM tags. The off-road graph's one
         # difference is the same kind: `run.inject_tags` leaves off the
         # mountain-bike class's closure. The road-bike graph's is a derived fact too
-        # (`rm:rough_unpaved`).
+        # (`rm:rough_unpaved`), and its weekend twin's both of those.
         out = dict(tags)
         if is_mass_ride_only:
             bar_mass_ride_only_roadway(out)

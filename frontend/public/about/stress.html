@@ -1135,8 +1135,13 @@ change it.</li>
       <li><strong>Motorways</strong> are closed to bikes unless signed open. One signed open to bikes is
       Avoid.</li>
       <li><strong>"Use the side path" roads</strong> (OpenStreetMap's <code>bicycle=use_sidepath</code>)
-      are Avoid only where the side path is actually mapped beside them; otherwise they are rated like
-      any other road.</li>
+      are Avoid where the side path is mapped beside them as its own way. From the next map update, where the
+      road's own tags carry a track serving both directions, the road keeps the level its track earns; where they
+      carry only a sidewalk open to bikes, or a track on one side of a two-way road, the road is LTS 4.5, as it may
+      be the only way there; and a painted bike lane on the road is rated as the lane, as if the tag were not there,
+      because bikes are plainly allowed on it (the owner's ruling: the tag is a mapping error). A lane only for
+      riding against a one-way's traffic does not count (our default). With no side path mapped, the road is rated
+      like any other road.</li>
       <li><strong>Parking aisles and driveways open to bikes</strong> are treated as ordinary service
       roads and usable for routing, and drawn on the map. From the next map update, a public parking aisle with no bicycle tag, at most 500 ft
       [150 m] long, that joins the dead end of a trail to a road or path within 260 ft [80 m] is routed the
@@ -1288,7 +1293,7 @@ hiking trails are left out. A crosswalk over a slip lane adds a wait to the rout
 <details class="more"><summary>More: How ride types and the slider use the ratings</summary>
 <div class="more-body">
     
-    <p>Their level adds nothing at LTS 1 or 2, except on Trailmaxxing, Cargo with passengers and Novice and
+    <p>Their level adds nothing at LTS 1 or 2, except on Trailmaxxing, Cargo with passengers, Tandem and Novice and
     Nervous, where low-stress streets (LTS 2) count a little extra.
     A quiet street counts as 1.
     Traffic-free paths and protected bike lanes count for less, and painted bike
@@ -1306,7 +1311,7 @@ hiking trails are left out. A crosswalk over a slip lane adds a wait to the rout
           <tr><th scope="row">Fast</th><td>1.2 to 1.4</td><td>2.1 to 2.3</td><td>LTS 4, plus entry charge</td></tr>
           <tr><th scope="row">Group Ride, Mountain Goat, Gravel</th><td>1.9 to 2.9</td><td>5.4 to 6.3</td><td>LTS 4, plus entry charge</td></tr>
           <tr><th scope="row">Default, E-bike, Cargo Bike carrying cargo</th><td>2.9 to 5.8</td><td>13 to 16</td><td>LTS 4, plus entry charge</td></tr>
-          <tr><th scope="row">Cargo Bike with passengers</th><td>3.2 to 6.8</td><td>16 to 19</td><td>LTS 4, plus entry charge</td></tr>
+          <tr><th scope="row">Cargo Bike with passengers, Tandem</th><td>3.2 to 6.8</td><td>16 to 19</td><td>LTS 4, plus entry charge</td></tr>
           <tr><th scope="row">Trailmaxxing, Novice and Nervous</th><td>6</td><td>11, avoided before anything else</td><td>16, avoided before anything else</td></tr>
           <tr><th scope="row">Mass Ride</th><td>1</td><td>1</td><td>1, plus entry charge</td></tr>
         </tbody>
@@ -1324,10 +1329,10 @@ hiking trails are left out. A crosswalk over a slip lane adds a wait to the rout
       [8 km] added. LTS 4 and Avoid count for more.</li>
     </ul>
     <ul>
-      <li>Trailmaxxing, Cargo Bike with passengers and Novice and Nervous never pick a
+      <li>Trailmaxxing, Cargo Bike with passengers, Tandem and Novice and Nervous never pick a
       route with more LTS 4, Avoid and very high stress crossings, counted together,
       than the router's own first route.</li>
-      <li>On Trailmaxxing and Cargo Bike with passengers, a mile of LTS 2 also costs a
+      <li>On Trailmaxxing, Cargo Bike with passengers and Tandem, a mile of LTS 2 also costs a
       quarter of what a mile of LTS 3 adds, so those routes lean toward LTS 1 streets.
       Like LTS 3's extra cost, it fades to nothing at the slider's busiest end.</li>
       <li>Novice and Nervous reads every road and junction one level busier than it
@@ -1591,7 +1596,7 @@ hiking trails are left out. A crosswalk over a slip lane adds a wait to the rout
 <p class="next">Next: <a href="/about/routing.html">Routing</a></p>
 </main>
 <footer>
-  <p>Part of RouteMaker's documentation. It describes version 0.22.3.</p>
+  <p>Part of RouteMaker's documentation. It describes version 0.23.0.</p>
   <p><a href="/">Back to the map</a></p>
 </footer>
 </body>

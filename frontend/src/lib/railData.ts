@@ -16,6 +16,7 @@ import type { LonLat } from "./geo.ts";
 import { loadRailStations } from "./railFixtures.ts";
 import { stationEntrance, stationForPlace, stationIndex, type Station } from "./railStations.ts";
 import { parseStationSlugs, type StationSlugs } from "./stationLinks.ts";
+import { parseExits, type StationExit } from "./stationExit.ts";
 
 export { PENN_COLOUR } from "./railStations.ts";
 
@@ -29,6 +30,9 @@ export const RAIL_STATIONS: readonly Station[] = loadRailStations({
 });
 
 const index = stationIndex(RAIL_STATIONS);
+
+/** DC's Metro entrances with where each comes up (lib/stationExit.ts): which exit a walk after a train leaves by. */
+export const METRO_EXITS: readonly StationExit[] = parseExits(metroEntrances);
 
 export const stationById: (id: string) => Station | undefined = index.station;
 
