@@ -7729,6 +7729,22 @@ new environment variable, scheduled job or outbound host, and no map rebuild.**
 
 - [ ] **The tag** **(owner)**. Once `test` and `a11y` are green on `main`, the owner tags v0.23.0
   (annotated) on that commit, from the PC.
+- [ ] **The build's commit.** The v0.23.0 map is built on the cloud box at `afb3f6a6` (release/v0.23.0's
+  head when the run was sent, 2026-11-09), not at the tag. Nothing after it touches `lua/`,
+  `valhalla/`, `src/pipeline/` or `scripts/cloud/box-rebuild.sh` (check:
+  `git diff --stat afb3f6a6 v0.23.0 -- lua valhalla src/pipeline scripts/cloud/box-rebuild.sh` is
+  empty), so the install takes `--allow-sha-mismatch`, at home and with `--beta` (it is passed on to
+  `receive-data.sh`).
+- [ ] **Rollback points and images, before the map** **(owner)**, as "Deploying a planner and
+  front-end release", out of 07:00-07:30 UTC and with no rebuild job todo or doing: tag the running
+  api **and pipeline** images `pre-rel-<short>`, fast-forward the checkout, `docker compose build api
+  rebuild`, then `docker compose up -d --no-deps --no-build --force-recreate api worker rebuild`. The
+  import runs `import_cloud_build` in the `rebuild` container: an older image knows seven graphs, so
+  `paved-weekend` would be unpacked but never promoted, with no error. The front end goes last, after
+  the swap: before it, every weekend Road Bike ride says there is no weekend road bike map.
+- [ ] **The weekly rebuild.** Import and swap the cloud build before the next Tuesday 08:00 UTC
+  (3:00 AM ET) rebuild, or pause it (`WEEKLY_REBUILD_PAUSED`) for the run: a rebuild here resets the
+  staging schema an install restored, and `lua/` is mounted from the checkout.
 - [ ] **Caddy.** The Caddyfile adds `/tandem` (the Tandem ride type): validate it in a throwaway
   container and recreate caddy alone ("Applying a Caddyfile change"). On beta the nginx template
   adds it too: re-render it with the release. Check: `curl -sI https://<site>/tandem` is a 302 to
@@ -7767,6 +7783,12 @@ outbound host or scheduled job. With `</dev/null` on every docker command:
   Then `docker compose --profile offroad restart valhalla-offroad valhalla-mtb valhalla-paved
   valhalla-paved-weekend` and `docker compose exec -T api ./manage.py sync_upstreams`. Where it is
   not started, a weekend Road Bike ride plans on the paved graph and says the parkways were lost.
+- [ ] **The Climbs layer**, after the swap: `flock <heavy.lock> docker compose exec -T rebuild
+  ./manage.py build_climbs </dev/null` (hills fixes, #1060: bridges and tunnels found in the extract
+  are levelled), then commit the new climbs file as "The Climbs layer" says.
+- [ ] **The transit schedule** (#1058's timetable end), at the next timetable refresh or now:
+  `scripts/build_transit_schedule.py` as in "Transit schedule (TRANSIT-ASSIST, v0.6.0)", and on the
+  beta with its data. No map rebuild.
 - [ ] **The boot unit** **(owner)**, where it is installed: `scripts/boot/start-stack.sh` now starts a fourth
   trail router, so its unit's `TimeoutStartSec` went from 6000 to 6300 s (the worst case is 6005 s):
   `scripts/boot/install-boot-unit.sh install` again from the new checkout.
@@ -7782,6 +7804,9 @@ outbound host or scheduled job. With `</dev/null` on every docker command:
   - Restart the four routers one at a time; then
     `scripts/beta/beta-compose.sh up -d --force-recreate valhalla-offroad valhalla-mtb valhalla-paved valhalla-paved-weekend`
     (leave out `valhalla-paved-weekend` if memory was short); `sync_upstreams`.
+  - Or, from the cloud run's bundle: `scripts/cloud/import-result.sh --beta --allow-sha-mismatch
+    [--swap] <RUN_URL>`. It applies the same memory check before starting `valhalla-paved` or
+    `valhalla-paved-weekend` and leaves a stopped one stopped, with a warning, when it is short.
   - `smoke-test.sh --local --trails` (now checks a weekend `road-bike` ride on the
     `paved-weekend` graph, and a weekday one on `paved`), then `--public`. The weekend check is
     skipped, with a `SKIP` line, while `valhalla-paved-weekend` is stopped (memory short).
