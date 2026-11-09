@@ -65,11 +65,12 @@ export async function listDrafts(origin: string, get: Fetch = fetch): Promise<Dr
   }
 }
 
-/** Delete the draft whose link is `id`, every revision of its route with it; whether it is gone. */
+/** Delete the draft whose link is `id`, every revision of its route with it; whether it is gone. Kept alive, so a
+ * delete sent as the page closes still arrives. */
 export async function deleteDraft(origin: string, id: string, send: Fetch = fetch, cookie = typeof document === "undefined" ? "" : document.cookie): Promise<boolean> {
   try {
     const token = csrfFromCookie(cookie);
-    const response = await send(`${origin}/api/me/drafts/${id}`, { method: "DELETE", credentials: "same-origin", headers: { Accept: "application/json", ...(token ? { "X-CSRFToken": token } : {}) } });
+    const response = await send(`${origin}/api/me/drafts/${id}`, { method: "DELETE", credentials: "same-origin", keepalive: true, headers: { Accept: "application/json", ...(token ? { "X-CSRFToken": token } : {}) } });
     return response.ok || response.status === 404;
   } catch {
     return false;

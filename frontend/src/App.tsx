@@ -6870,6 +6870,9 @@ export function App() {
           // Saved from the list while on screen: a ride on it no longer offers Save route.
           if (draftOpen.current?.id === id) draftOpen.current = null;
         }}
+        onDraftDeleted={(id) => {
+          if (draftOpen.current?.id === id) draftOpen.current = null;
+        }}
         onOpenKept={(route) => {
           setLoadOpen(null);
           openKept(route);

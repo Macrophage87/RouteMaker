@@ -77,10 +77,12 @@ export interface LoadRouteDialogProps {
   onOpenDraft: (route: SharedRoute) => void;
   /** A draft saved here (by its link's id). */
   onDraftSaved?: (id: string) => void;
+  /** A draft deleted here (by its link's id). */
+  onDraftDeleted?: (id: string) => void;
   onOpenKept: (route: KeptRoute) => void;
 }
 
-export function LoadRouteDialog({ open, onClose, signedIn, signIn, preset, onGpx, onOpenSaved, onOpenDraft, onDraftSaved = () => {}, onOpenKept }: LoadRouteDialogProps) {
+export function LoadRouteDialog({ open, onClose, signedIn, signIn, preset, onGpx, onOpenSaved, onOpenDraft, onDraftSaved = () => {}, onDraftDeleted = () => {}, onOpenKept }: LoadRouteDialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const opener = useRef<Element | null>(null);
   const headingId = useId();
@@ -93,12 +95,23 @@ export function LoadRouteDialog({ open, onClose, signedIn, signIn, preset, onGpx
   const goneRef = useRef<DraftSummary | null>(null);
   const goneTimer = useRef<number | undefined>(undefined);
   const goneUndo = useRef<HTMLButtonElement>(null);
-  const flushGone = () => {
+  const takeGone = () => {
     window.clearTimeout(goneTimer.current);
     const draft = goneRef.current;
     goneRef.current = null;
     setGone(null);
-    if (draft) void deleteDraft(window.location.origin, draft.id);
+    return draft;
+  };
+  const flushGone = () => {
+    const draft = takeGone();
+    if (!draft) return;
+    onDraftDeleted(draft.id);
+    void deleteDraft(window.location.origin, draft.id).then((ok) => {
+      if (ok) return;
+      // Not deleted (offline, say): listed again, and said.
+      setDrafts((all) => [...all, draft]);
+      setSaid(t("That could not be changed; try again shortly."));
+    });
   };
   // Closed (or gone from the page) with Undo still offered: the delete goes through.
   useEffect(() => {
@@ -251,10 +264,7 @@ export function LoadRouteDialog({ open, onClose, signedIn, signIn, preset, onGpx
     setRefocus("goneUndo");
   };
   const undoDelete = () => {
-    window.clearTimeout(goneTimer.current);
-    const draft = goneRef.current;
-    goneRef.current = null;
-    setGone(null);
+    const draft = takeGone();
     if (draft) {
       setDrafts((all) => [...all, draft]);
       setRefocus(`d${draft.id}`);
