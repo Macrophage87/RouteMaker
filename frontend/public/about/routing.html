@@ -287,7 +287,8 @@ ride type, every way mapped plainly as gravel or fine gravel, road, track or pat
 on Road Bike's own map, gravel, fine gravel and compacted all count as gravel. Loose gravel is pebbles, sand, plain unpaved, or a mixed value with gravel in it such as
 gravel;dirt.</li>
 <li><strong>Junctions.</strong> Each junction adds its wait: 4 seconds at a District stop sign
-ridden as a yield, 8 at other stops, 15 at a signal and 12 to 30 waiting for a gap in a busier road
+ridden as a yield, 8 at other stops, 2 to 24 at a signal by place, road and ride time, and 12 to 30 waiting for a
+gap in a busier road
 (<a href="#junctions">Junctions</a>). When Road Bike chooses between routes, these waits count three times
 over, because a road rider loses their pace at every stop, and on Tandem twice, because both riders stop and
 start together; the time shown is still the real wait.</li>
@@ -708,7 +709,10 @@ route:</p>
 <caption>Time lost at a junction</caption>
 <thead><tr><th scope="col">At the junction</th><th scope="col">Time added</th></tr></thead>
 <tbody>
-<tr><th scope="row">A traffic signal</th><td>15 seconds, an average wait plus half a stop; inferred</td></tr>
+<tr><th scope="row">A traffic signal</th><td>The average wait per pass, green lights included, measured on the
+project owner's rides. In the District, Baltimore City, Alexandria and Arlington: 12, 5 or 4 seconds where the
+busiest road there is big, secondary or other; at night 9, 4 or 2, at weekday rush 15, 6 or 6, weekday off-hours
+14, 6 or 4, and weekends 11, 4 or 4. Elsewhere: 24, 15 or 10, at any time</td></tr>
 <tr><th scope="row">Giving way to a neighborhood street: crossing one as busy as yours, turning onto one, or coming off a path</th><td>8 seconds, one stop and back up to speed<sup class="cite"><a href="#ref-13" aria-label="source 13">[13]</a></sup></td></tr>
 <tr><th scope="row">The same in the District</th><td>4 seconds: DC lets a rider take a stop sign as a yield<sup class="cite"><a href="#ref-14" aria-label="source 14">[14]</a></sup>, so it is a slow-and-roll; inferred</td></tr>
 <tr><th scope="row">Giving way to a busier road that does not stop</th><td>12, 20 or 30 seconds, waiting for a gap, by how busy the road is<sup class="cite"><a href="#ref-15" aria-label="source 15">[15]</a></sup>; inferred</td></tr>
@@ -716,13 +720,24 @@ route:</p>
 </tbody>
 </table>
 </div>
+<p>A big road is a trunk or primary road, or one with 4 or more lanes or a speed limit of 40 mph [64 km/h] or
+more. The city limits come from the Census Bureau's county boundaries. When routes are compared, a signal counts
+the wait at a red instead, also measured on the owner's rides: in the cities 30, 15 or 20 seconds at a big,
+secondary or other road; outside them 45 seconds crossing or turning onto a big road and 30 at any other, counted
+twice, because a long light is a pain (the owner's choice). A crossing where you may need to press a button for
+the light (outside the cities, coming from a path or a quiet street onto a big or secondary road, or wherever
+OpenStreetMap tags the crossing's button) counts as 2 minutes of waiting, kept below a stop sign across the same
+road, and as 10 minutes on Road Bike and Tandem (the owner's choice), kept below two-thirds of that stop sign. On
+Road Bike, which counts its waits three times, and Tandem, twice, a wait counts at most five times the wait at a
+red (the owner's choice), and a signal never more than the stop sign across the same road (our default). At such
+a crossing the turn card says "Light may need a button press".</p>
 <p>A route no longer U-turns round the end of a median. Where a road with
 a median is mapped as two one-way carriageways of the same name meeting at the median's nose, the router once took
 the U-turn from one onto the other as an ordinary turn, across the oncoming lanes; each such U-turn is now closed
 to it, except where it is the only way on, or where a carriageway is open to bikes both ways.</p>
 <p>Junctions a few yards apart, such as the two halves of a divided road, count once, at the dearest.
 A flashing light is priced by who gives way, not as a signal, so crossing a busier road at one costs the
-wait for a gap, 12, 20 or 30 seconds by how busy that road is, rather than the 15 seconds of a signal. This is time, not
+wait for a gap, 12, 20 or 30 seconds by how busy that road is, rather than a signal's wait. This is time, not
 stress: a junction's cost for traffic is still the one above. The same time is shown in the route's time and
 counted in the route search as that much quiet riding, so of two equally calm routes about the same
 length, the one with fewer stops is preferred.</p>
