@@ -16,6 +16,7 @@ as the weekly task runs them.
 from __future__ import annotations
 
 import csv
+import datetime
 import json
 import logging
 import os
@@ -596,13 +597,14 @@ def stored_map_class(context) -> dict[int, str]:
         return dict(cursor.fetchall())
 
 
-def test_a_road_closed_every_weekend_is_a_path_on_the_weekend_graph_only(
+def test_a_road_closed_every_weekend_is_a_path_on_the_weekend_graphs_only(
     tmp_path, segment_schemas, states
 ) -> None:
     """Through the rebuild, from the map's own conditional tag: the segment
-    table records the closure, and the weekend extract - only it - carries
-    the road as a tier-1 path (mutation review r1, P1, P4 and W4: each cut the
-    closure off with the suite green)."""
+    table records the closure, and the weekend extracts - the standard graph's
+    weekend twin and Road Bike's (the owner, 2026-11-08, "New weekend graph") -
+    alone carry the road as a tier-1 path (mutation review r1, P1, P4 and W4:
+    each cut the closure off with the suite green)."""
     from pipeline.extract import read_ways
 
     context, stored = run_dials_extract(tmp_path)
@@ -614,7 +616,7 @@ def test_a_road_closed_every_weekend_is_a_path_on_the_weekend_graph_only(
         tags = {w.osm_id: w.tags for w in read_ways(context.variant_pbf(variant))}[
             WEEKEND_CLOSED_ID
         ]
-        if variant is Variant.WEEKEND:
+        if variant in (Variant.WEEKEND, Variant.PAVED_WEEKEND):
             assert (tags.get("rm:facility"), tags.get("rm:stress_tier")) == ("path", "1")
         else:
             assert tags.get("rm:stress_tier") == str(tier), variant.value
@@ -3836,6 +3838,18 @@ def test_a_weekend_graph_derived_like_the_standard_one_is_refused(workspace, sta
     assert "Sligo Creek" in str(caught.value.cause)
 
 
+def test_a_paved_weekend_graph_derived_like_the_paved_one_is_refused(workspace, states) -> None:
+    """Review of "Road Bike's weekend graph": Road Bike's weekend graph reads the weekend
+    sentinel too, so one that came out a copy of the paved graph (the parkways roads with cars)
+    does not promote."""
+    source, root = workspace
+    with pytest.raises(RebuildFailed) as caught:
+        run_pipeline(source, root, binaries=FakeBinaries(paved_weekend_cycle_lane="none"))
+    assert caught.value.stage is Stage.VALIDATE_TILES
+    assert "paved-weekend graph" in str(caught.value.cause)
+    assert "Sligo Creek" in str(caught.value.cause)
+
+
 # --- Agency street blocks (DC Roadway Block, Baltimore centerline) ---------------
 
 
@@ -4181,6 +4195,63 @@ def _one_road(highway: str = "residential", name: str = "Test Road", **tags) -> 
     )
 
 
+def test_a_rebuild_flags_a_dc_way_osm_edited_after_the_record_and_keeps_the_record(
+    states, caplog, monkeypatch
+) -> None:
+    """Hunt D6; the owner, 2026-11-08: "If there's a newer OSM rating, then on a rebuild
+    it should flag it and I can make the call." Way 100, posted 35 mph in OSM and last
+    edited after the record's date, keeps the block's 20 mph and is listed for the owner,
+    with its edit date only and a fingerprinted stress row; the same way edited before it
+    is not. Once the owner's stress row for it is approved, the list (written after the
+    approved rows are read) has it as decided, not open."""
+    from core.models import Override as Row
+    from pipeline import dc_osm_newer
+    from routemaker import agency_roads
+
+    _all_in_the_district(monkeypatch)
+    block = street_block("dc-1", {"speed_mph": {"ob": 20}, "way": "both"})
+    after = datetime.datetime(2026, 11, 1, 15, 30, tzinfo=datetime.UTC)
+    before = datetime.datetime(2026, 9, 1, 15, 30, tzinfo=datetime.UTC)
+    assert before.date() < agency_roads.DC_RECORD_AS_OF < after.date()
+    listed = {}
+    for case, edited in (("after", after), ("before", before), ("decided", after)):
+        if case == "decided":
+            Row.objects.create(
+                kind="stress", osm_way_id=100, reason="r", evidence="e", approved=True,
+                value=json.loads(listed["after"][0]["take_osm_override"])["value"],
+            )  # fmt: skip
+        extract = install_source_extract(
+            _scratch_dir(),
+            build=build_one_road_extract,
+            highway="residential",
+            name="Test Road",
+            extra={"maxspeed": "35 mph"},
+            edited=edited,
+        )
+        with caplog.at_level(logging.INFO, logger="pipeline.run"):
+            context, _ = run_pipeline(extract, extract.parent, roadway=[block], skip=NOT_SWAPPED)
+        assert context.class_tags_by_way[100]["maxspeed"] == "20 mph"
+        reports = context.work_dir / "reports"
+        with (reports / dc_osm_newer.CSV_NAME).open() as handle:
+            listed[case] = list(csv.DictReader(handle))
+    [flag] = listed["after"]
+    assert (flag["status"], flag["osm_way_id"], flag["street"], flag["osm_edited"]) == (
+        dc_osm_newer.OPEN,
+        "100",
+        "Test Road",
+        "2026-11-01",
+    )
+    assert (flag["dc_applies"], flag["osm_says"]) == ("20 mph", "35 mph")
+    suggested = json.loads(flag["take_osm_override"])
+    assert suggested["osm_way_id"] == 100 and suggested["fingerprint"]["name"] == "Test Road"
+    assert listed["before"] == []
+    [decided] = listed["decided"]
+    assert decided["status"] == dc_osm_newer.TOOK_OSM
+    assert "way-100-osm-newer" in decided["decided"]
+    assert "for the owner's call: 1 open, 0 decided" in caplog.text
+    assert "for the owner's call: 0 open, 1 decided" in caplog.text
+
+
 def _report_rows(context) -> list[dict]:
     with (context.work_dir / "reports" / "dc-osm-discrepancies.csv").open() as handle:
         return list(csv.DictReader(handle))
@@ -4307,10 +4378,16 @@ def test_a_discrepancy_report_that_fails_never_fails_the_rebuild(
 
 
 def build_one_road_extract(
-    path: Path, *, highway: str, name: str = "Frontage Road", extra: dict | None = None
+    path: Path,
+    *,
+    highway: str,
+    name: str = "Frontage Road",
+    extra: dict | None = None,
+    edited: datetime.datetime | None = None,
 ) -> None:
-    """The toy extract with way 100 of the class and name given. Everything else
-    is the toy's, because the rebuild refuses a region with no way in a state."""
+    """The toy extract with way 100 of the class and name given, last edited at
+    `edited` (no timestamp where None). Everything else is the toy's, because the
+    rebuild refuses a region with no way in a state."""
     Path(path).unlink(missing_ok=True)
     writer = osmium.SimpleWriter(str(path))
     try:
@@ -4327,7 +4404,8 @@ def build_one_road_extract(
                 osmium.osm.mutable.Node(id=node_id, location=(lon, lat), tags={}, version=1)
             )
         tags = {"highway": highway, **({"name": name} if name else {}), **(extra or {})}
-        writer.add_way(osmium.osm.mutable.Way(id=100, nodes=[1, 2], version=1, tags=tags))
+        stamp = {"timestamp": edited} if edited else {}
+        writer.add_way(osmium.osm.mutable.Way(id=100, nodes=[1, 2], version=1, tags=tags, **stamp))
         for way_id, way_nodes, way_tags in (
             (200, [3, 4], {"highway": "cycleway", "name": "Test Trail"}),
             (300, [5, 6], {"highway": "track", "surface": "gravel"}),
@@ -5234,14 +5312,15 @@ def test_only_the_road_bike_graph_prices_gravel_as_gravel_and_marks_winding_trai
     """The owner, 2026-11-02 (Road Bike): its graph alone carries `rm:rough_unpaved` on a
     gravel, fine gravel or compacted way (the owner: road bikes "can't handle gravel or
     dirt") and `rm:winding` on a trail that bends like Sligo Creek Trail; a paved trail
-    that runs straight carries neither, and no other graph carries either tag."""
+    that runs straight carries neither, and no other graph carries either tag. Its weekend
+    twin carries both (the owner, 2026-11-08, "New weekend graph")."""
     from pipeline.extract import read_ways
 
     clipped = install_source_extract(_scratch_dir(), build=build_road_bike_extract)
     context, _ = run_pipeline(clipped, clipped.parent, skip=NOT_SWAPPED)
     for variant in Variant:
         tags = {w.osm_id: w.tags for w in read_ways(context.variant_pbf(variant))}
-        road_bike = variant is Variant.PAVED
+        road_bike = variant in (Variant.PAVED, Variant.PAVED_WEEKEND)
         for gravel in (300, 700, 800):
             way = tags.get(gravel, {})
             assert (way.get("rm:rough_unpaved") == "yes") is road_bike, (variant, gravel)

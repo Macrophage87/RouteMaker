@@ -898,6 +898,7 @@ export function RideSheet({ nav, children }: { nav: SheetNav; children: ReactNod
 
 const RIDE_ICON: Partial<Record<PresetId, IconName>> = {
   cargo: "cargo",
+  tandem: "tandem",
   bikeshare: "bikeshare",
   novice: "kid",
   "mountain-bike": "mtb",

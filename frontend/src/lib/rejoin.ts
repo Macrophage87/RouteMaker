@@ -8,6 +8,7 @@ import { haversineM, type LonLat } from "./geo.ts";
 import { ARRIVE_M, lineAlong, measureMap, pointAt, snap, wayWords, type RideModel } from "./navigate.ts";
 import { t } from "./i18n.ts";
 import { METRES_PER_MILE } from "./format.ts";
+import { VIA_MARKS } from "./pointKinds.ts";
 
 /**
  * The way back aims this far along the line past its nearest point ahead (about 300 ft), so it ends on the
@@ -52,12 +53,17 @@ export function ridesChosenRoute(route: Pick<RouteResponse, "rank" | "neighbour"
  * U-turn's check, a restart or a skipped stop), on a route they chose over the first, so a new plan does not pull them
  * back toward the route they turned down. On any other route a new plan comes first, as the owner set on 2026-10-17
  * ("when off route if no route can be found try to find the nearest route back to the route").
+ *
+ * On a loop (`loop`: Make it a loop, or points that end on the start) as well (the hunt, 2026-11-08, V1): a new plan
+ * runs from the rider to the start, which the API does not plan as a loop, so the rest of the loop could come back as
+ * the way out; the way back keeps the loop as planned.
  */
 export function rejoinsFirst(
   route: Pick<RouteResponse, "rank" | "neighbour">,
   how: { asked: boolean; detour: boolean; check: boolean; restart: boolean; skip: boolean },
+  loop = false,
 ): boolean {
-  return !how.asked && !how.detour && !how.check && !how.restart && !how.skip && ridesChosenRoute(route);
+  return !how.asked && !how.detour && !how.check && !how.restart && !how.skip && (ridesChosenRoute(route) || loop);
 }
 
 /**
@@ -83,8 +89,12 @@ export async function wayBackRoute(
   let failed: ErrorKind | null = null;
   for (const target of rejoinTargets(model, progressM, here, notBeforeM)) {
     if (cancelled()) break;
-    const result = await request([here, target.point]);
-    if (result.ok) return { route: joinRoutes(result.route, planned, target.atM, renumber) };
+    // Through the target and on to a point a little further along the line (`onward`), so the way back arrives going
+    // the line's way: a plain end could be reached from ahead, and the rider sent back along the line to it and then
+    // round again (the hunt, 2026-11-08, V6; the API takes a heading at the start only). Joined at the onward point.
+    const onward = target.onward;
+    const result = await request(onward ? [here, VIA_MARKS.via([target.point[0], target.point[1]]), onward.point] : [here, target.point]);
+    if (result.ok) return { route: joinRoutes(result.route, planned, onward?.atM ?? target.atM, renumber) };
     failed = result.error.kind;
     if (!triesWayBack(failed)) break;
   }
@@ -95,7 +105,15 @@ export interface RejoinTarget {
   /** Metres along the planned line. */
   atM: number;
   point: LonLat;
+  /**
+   * REJOIN_ONWARD_M further along the line, where that is before the next stop or the end: the way back goes through
+   * the target to here, so it joins the line going the line's way. Absent at a stop or the end.
+   */
+  onward?: { atM: number; point: LonLat };
 }
+
+/** How far past a target along the line the way back carries on to, through the target (`RejoinTarget.onward`). */
+export const REJOIN_ONWARD_M = 50;
 
 /**
  * Where the way back may join the planned route, nearest first: the line's nearest point to `here` ahead
@@ -113,7 +131,8 @@ export function rejoinTargets(model: RideModel, progressM: number, here: LonLat,
   const out: RejoinTarget[] = [];
   for (const m of [first, ...REJOIN_FURTHER_M.map((d) => Math.min(first + d, cap))]) {
     if (out.length && m - out[out.length - 1].atM < REJOIN_SAME_M) continue;
-    out.push({ atM: m, point: pointAt(model, m) });
+    const on = m + REJOIN_ONWARD_M;
+    out.push({ atM: m, point: pointAt(model, m), ...(on <= cap ? { onward: { atM: on, point: pointAt(model, on) } } : {}) });
   }
   return out;
 }
@@ -183,6 +202,18 @@ export function joinRoutes(leg: RouteResponse, planned: RouteResponse, atM: numb
     }
   }
 
+  // The signals that may need a button press (navigate.ts withButtons), moved as the description is: the leg's in its
+  // line metres, then the planned route's past the cut, shifted to follow the leg. Spread from `planned` unmoved, a
+  // planned button stayed at its old metres on the joined line, so the note was said a way back's length past its
+  // signal (on a stretch with none) and the leg's own were lost (the hunt, round 2, R2-1).
+  const buttons: NonNullable<RouteResponse["light_buttons"]> = (leg.light_buttons ?? []).map((b) => ({ ...b, at_m: legToLine(b.at_m) }));
+  if (tail.length) {
+    for (const b of planned.light_buttons ?? []) {
+      const p = plannedToLine(b.at_m);
+      if (p >= cut) buttons.push({ ...b, at_m: p - cut + shift });
+    }
+  }
+
   const spans = joinSpans(leg, legM, planned, plannedM, cut, shift, totalM, tail.length > 0);
   const fraction = plannedM > 0 ? rest / plannedM : 0;
   const ended = tail.length === 0;
@@ -196,6 +227,13 @@ export function joinRoutes(leg: RouteResponse, planned: RouteResponse, atM: numb
     // Both or neither: one route's line metres stretched over the other's would put its cues in the wrong places.
     description: leg.description && (planned.description || !tail.length) ? description : null,
     description_overview: null,
+    light_buttons: buttons,
+    // Either part's dirt (rideTrip.ts rodeDirt reads `dirt_trails`; RideMode its `dirt_closed`): from `planned` alone,
+    // a way back planned along a dirt trail (on_dirt) lost it, so riding that trail never set dirt_ridden and later
+    // re-plans dropped dirt, against the owner's "If someone goes onto a dirt trail, any reroutes should include dirt"
+    // (the hunt, round 2, R2-7).
+    dirt_trails: Boolean(leg.dirt_trails || (tail.length && planned.dirt_trails)),
+    dirt_closed: Boolean(leg.dirt_closed || (tail.length && planned.dirt_closed)),
     stress_spans: spans,
     // The trails as the sections are: the leg's, then the planned route's past the cut, in line metres.
     trail_levels: joinTrails(leg, legM, planned, plannedM, cut, shift, tail.length > 0),

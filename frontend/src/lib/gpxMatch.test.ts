@@ -39,6 +39,12 @@ test("only the line and the ride (type, trails off, assist) are sent, thinned to
   await matchTrack("https://x.test", LINE, { preset: "gravel", trailsOff: true, assist: true }, answering(200, { line: LINE, matched_share: 1 }, seen));
   const ride = JSON.parse(seen.body ?? "{}");
   assert.deepEqual([ride.preset, ride.trails_off, ride.assist], ["gravel", true, true]);
+  // "Easy MTB trails" and the ride time choose the graph as the route's do (hunt 3, P3-3).
+  await matchTrack("https://x.test", LINE, { preset: "default", easyMtb: true, when: "weekend" }, answering(200, { line: LINE, matched_share: 1 }, seen));
+  const easy = JSON.parse(seen.body ?? "{}");
+  assert.deepEqual([easy.easy_mtb, easy.when], [true, "weekend"]);
+  await matchTrack("https://x.test", LINE, { preset: "default", easyMtb: false, when: null }, answering(200, { line: LINE, matched_share: 1 }, seen));
+  assert.deepEqual(Object.keys(JSON.parse(seen.body ?? "{}")).sort(), ["assist", "points", "preset", "trails_off"]);
   const long = Array.from({ length: MATCH_MAX_POINTS * 2 + 1 }, (_, i): LonLat => [-77 + i * 1e-6, 38.9]);
   const thin = thinForMatch(long);
   assert.equal(thin.length, MATCH_MAX_POINTS);

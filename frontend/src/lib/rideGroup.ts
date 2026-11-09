@@ -778,7 +778,7 @@ export function extendTrail(trail: readonly LonLat[], p: LonLat): readonly LonLa
 export const FOLLOW_LEADER = t("Follow the leader");
 export const FOLLOWING_SAID = t("Following the ride leader on the map.");
 export const NOT_FOLLOWING_SAID = t("Stopped following the ride leader. Turn on Follow the leader to follow again.");
-export const LEADING_SAID = t("You lead this ride: those who open your link follow your dot while the app is open.");
+export const LEADING_SAID = t("You lead this ride. People who open your link can follow your dot while the app is open.");
 
 // ---- sharing your own dot --------------------------------------------------------------------------
 

@@ -177,11 +177,12 @@ MAX_CROSSING_FT = 10560.0
 # Then reduced to about half to 7" (469c), "at least in the city" (469d), and
 # x0.85 outside it (469e). A busy-road junction's cost is times this by the
 # ride's setting (`routemaker.ridetime`): weekday rush (07-10, 16-19) x1.25,
-# weekday off-peak (to 9 PM) x1.0, weekend daytime (federal holidays included)
-# x0.85, and night (9 PM-7 AM, any day) x0.5 where the crossed road lies in a
-# Census urban area and x0.85 where it does not. A road whose urban flag is not
-# known (a table built before `road_urban`) takes the rural x0.85, the smaller
-# reduction. Typical values, not a promise. Quiet-street stops are not scaled.
+# weekday off-peak (to 9 PM, and weekday federal holidays and Sunday 6-9 PM, the
+# owner 2026-11-08) x1.0, weekend daytime x0.85, and night (9 PM-7 AM, any day)
+# x0.5 where the crossed road lies in a Census urban area and x0.85 where it does
+# not. A road whose urban flag is not known (a table built before `road_urban`)
+# takes the rural x0.85, the smaller reduction. Typical values, not a promise.
+# Quiet-street stops are not scaled.
 TIME_FACTORS = {
     ridetime.WEEKDAY_RUSH: 1.25,
     ridetime.WEEKDAY_OFFPEAK: 1.0,
@@ -332,6 +333,25 @@ def time_factor(
 # roads, a right turn might be close to 0." Applied to a turn ONTO a busy road
 # from a quieter one: the crossing cost above is for going straight across.
 MOVEMENT_FACTOR_ONTO = {"left": 1.5, "straight": 1.0, "right": 0.1}
+
+# A roundabout (hunt J4, 2026-11-08). Entering the ring is a right onto a one-way road
+# and riding round it meets each arm from one side only, so with the table above a 3/4
+# turn round a multi-lane LTS 4 ring cost a right turn's 0.1 (555 ft), where the same left
+# at a stop sign onto the road was 10,560 ft and red. Round the ring the rider gives way
+# to the ring's traffic at the entry and then holds a lane in it past every arm before
+# the exit, whose traffic enters and leaves across the rider's path. So the whole ride
+# round is priced once, at the entry, by the ring's road from the stopped side
+# (`crossing_ft`, whatever the rider's own road: traffic in the ring has the right of
+# way) times the factor for the movement it makes (`RawJunction.ring_movement`), by the
+# arms passed between entry and exit: the first exit (none passed) a right onto the road,
+# 0.1 as above; a left, or more (two or more passed), the whole crossing of the ring's
+# traffic, 1.0, not a left's 1.5, since its traffic comes from one side only; straight on
+# (one passed) half way between. Words and ride-time rules are those of the movement
+# onto the road ("Left turn onto", the gap wait of a left or straight on). A PROPOSAL,
+# inferred, not measured; nothing in the literature review prices a roundabout
+# (docs/stress/literature.md: "We have no roundabout rule yet"). A quiet ring (LTS 2 or
+# less by its traffic) still costs nothing.
+ROUNDABOUT_FACTOR_ONTO = {"right": 0.1, "straight": 0.55, "left": 1.0}
 
 # A left turn FROM a busy road (the rider on the free-flowing road turns across
 # its oncoming traffic): the Oregon vehicular-left table, LTS 3 at one lane to
@@ -613,6 +633,10 @@ class Junction:
     # The map has a signal here, but it is a flashing beacon (`with_beacons`): priced
     # with no signal, and said so.
     beacon: bool = False
+    # The route enters a roundabout here, and the movement its ride round the ring makes
+    # (`trace_junctions.RawJunction.ring_movement`, `ROUNDABOUT_FACTOR_ONTO`); None
+    # elsewhere.
+    ring_movement: Movement | None = None
 
 
 @dataclass(frozen=True)
@@ -680,6 +704,29 @@ class Event:
     beacon: bool = field(default=False, compare=False)
     # The crossed road is a half step above `crossed_tier` on the map (2.5, 3.5, 4.5).
     crossed_half: bool = field(default=False, compare=False)
+    # The points of the junction's nodes the model reads as signalised (its control
+    # SIGNAL, shared across the junction's nodes: `share_controls`), and of every node
+    # merged into it (`merge_nearby`): the junction-delay model times a wait there as a
+    # signal's, where the trace shows none on the rider's own approach (hunt J5,
+    # `routemaker.junction_delay`, `signal_points`).
+    signals: tuple[tuple[float, float], ...] = field(default=(), compare=False)
+    # Of `signals`, the points where a road crossed or joined there has SIGNAL_BIG_LANES
+    # lanes or more in all or a speed of SIGNAL_BIG_MPH or more (`big_road`): outside the
+    # major cities the junction-delay model times such a signal as a big road's
+    # (`routemaker.junction_delay.SUBURBAN_BIG_SIGNAL_S`; the owner, 2026-11-08).
+    big_signals: tuple[tuple[float, float], ...] = field(default=(), compare=False)
+    # Of `signals`, the points where the rider's own road (the one they arrive on, and the
+    # one they leave on where it goes on) is a big one by the same reading: the
+    # junction-delay model times the signal by the busiest road there, the rider's own
+    # included, but the suburban 45 s red stays for crossing or joining a big road
+    # (`routemaker.junction_delay._busiest`; the signal review of 2026-11-08: a 4-lane or
+    # 40 mph secondary ridden along had counted as a secondary road).
+    own_big_signals: tuple[tuple[float, float], ...] = field(default=(), compare=False)
+    # By point of `signals`, how many feet more the junction would cost with a stop sign on
+    # the rider's approach in place of its signal (`stop_extra_ft`): a crossing read as
+    # needing a beg button is held below a stop sign across the same road (the owner,
+    # 2026-11-08: "still not as bad as a stop sign across the same road").
+    stop_extra: tuple[tuple[tuple[float, float], float], ...] = field(default=(), compare=False)
 
 
 def _untimed(event: Event) -> float:
@@ -854,6 +901,11 @@ def cost_of(junction: Junction) -> tuple[float, str, Road | None]:
         factor = MOVEMENT_FACTOR_ONTO[j.movement.value]
         base = crossing_ft(j.outgoing, j.control, _rider(j.incoming), _read(j.incoming))
         take(min(base * factor, MAX_CROSSING_FT), f"{j.movement.value}_onto", j.outgoing)
+    if j.ring_movement is not None and j.outgoing.busy:
+        # Round a busy roundabout from its entry (`ROUNDABOUT_FACTOR_ONTO`).
+        value = crossing_ft(j.outgoing, j.control, None)
+        value *= ROUNDABOUT_FACTOR_ONTO[j.ring_movement.value]
+        take(min(value, MAX_CROSSING_FT), f"{j.ring_movement.value}_onto", j.outgoing)
     for road in (r for r in j.crossed if r.busy):
         if j.movement is Movement.STRAIGHT:
             value = crossing_ft(road, j.control, _rider(j.incoming), _read(j.incoming))
@@ -1456,6 +1508,10 @@ def merge_nearby(events: list[Event]) -> list[Event]:
                 flagged=any(e.flagged for e in ones),
                 time_band=band if abs(cost - untimed) >= 1.0 else None,
                 untimed_ft=untimed,
+                signals=tuple(dict.fromkeys(p for e in group for p in e.signals)),
+                big_signals=tuple(dict.fromkeys(p for e in group for p in e.big_signals)),
+                own_big_signals=tuple(dict.fromkeys(p for e in group for p in e.own_big_signals)),
+                stop_extra=tuple(dict(pair for e in group for pair in e.stop_extra).items()),
             )
         )
         group.clear()
@@ -1694,9 +1750,90 @@ def assess_route(
     the signalized crossings that run together are numbered (`number_groups`),
     never across a stop (`stops`, where each leg ends). `when` is the ride time
     (`time_factor`, 468a)."""
-    events = (assess(junction, group, when) for junction in share_controls(junctions))
+    events = (
+        _with_signal(assess(junction, group, when), junction, group, when)
+        for junction in share_controls(junctions)
+    )
     merged = merge_nearby(sorted((e for e in events if e is not None), key=lambda e: e.m))
     return number_groups(merged, stops) if group else merged
+
+
+def _with_signal(
+    event: Event | None, junction: Junction, group: bool = False, when: str | None = None
+) -> Event | None:
+    """The event with its junction's point in `signals` where its control is a signal, in
+    `big_signals` where a road crossed or joined there is a big one (`big_road`), in
+    `own_big_signals` where the rider's own road is, and its stop sign's extra cost in
+    `stop_extra` (`group`, `when`: as the event was assessed)."""
+    if event is None or junction.control is not Control.SIGNAL:
+        return event
+    here = (junction.lon, junction.lat)
+    joined = () if junction.continues else (junction.outgoing,)
+    big = any(big_road(road) for road in (*junction.crossed, *joined))
+    own = (junction.incoming, junction.outgoing) if junction.continues else (junction.incoming,)
+    own_big = any(big_road(road) for road in own)
+    # Priced from the model's own figures: a riders' rating (`Junction.rating`) costs the
+    # same whatever the control, so read with it a rated signal's stop sign cost nothing
+    # over the signal, and rating a junction hard made its lights rank cheaper (the
+    # 2026-11-08 hunt, J3-4).
+    unrated = replace(junction, rating=None)
+    signalled = event if junction.rating is None else assess(unrated, group, when)
+    stopped = assess(replace(unrated, control=Control.STOP), group, when)
+    extra = max(
+        (stopped.cost_ft if stopped is not None else 0.0)
+        - (signalled.cost_ft if signalled is not None else 0.0),
+        0.0,
+    )
+    return replace(
+        event,
+        signals=(here,),
+        big_signals=(here,) if big else (),
+        own_big_signals=(here,) if own_big else (),
+        stop_extra=((here, extra),),
+    )
+
+
+# A road the junction-delay model times a suburban signal on as a big road's, whatever its
+# class (`routemaker.junction_delay.SUBURBAN_BIG_SIGNAL_S`; the owner, 2026-11-08: "a road
+# with 4+ lanes, or one at 40 mph+"): lanes in all, both directions, and mph.
+SIGNAL_BIG_LANES = 4
+SIGNAL_BIG_MPH = 40.0
+
+
+def big_road(road: Road) -> bool:
+    """Whether a road has SIGNAL_BIG_LANES lanes or more in all, or a speed of
+    SIGNAL_BIG_MPH or more: the map's, else its jurisdiction's statutory default (never the
+    45 mph stopgap, which is a guess)."""
+    lanes = _lanes_total(road)
+    if lanes is not None and lanes >= SIGNAL_BIG_LANES:
+        return True
+    speed = road.speed_mph if road.speed_mph is not None else road.default_speed_mph
+    return speed is not None and speed >= SIGNAL_BIG_MPH
+
+
+def signal_points(events: Sequence[Event] | None) -> frozenset[tuple[float, float]]:
+    """The points of every node the events' junctions are signalised at (`Event.signals`),
+    for `routemaker.junction_delay`: the junction model reads a signal up each road's arms
+    (`core.junctions`), which the route's trace does not carry (hunt J5)."""
+    return frozenset(point for event in events or () for point in event.signals)
+
+
+def big_signal_points(events: Sequence[Event] | None) -> frozenset[tuple[float, float]]:
+    """The signalised points where a road crossed or joined is a big one (`Event.big_signals`),
+    for `routemaker.junction_delay`'s suburban wait."""
+    return frozenset(point for event in events or () for point in event.big_signals)
+
+
+def own_big_signal_points(events: Sequence[Event] | None) -> frozenset[tuple[float, float]]:
+    """The signalised points where the rider's own road is a big one
+    (`Event.own_big_signals`), for `routemaker.junction_delay`'s busiest road at a signal."""
+    return frozenset(point for event in events or () for point in event.own_big_signals)
+
+
+def stop_extra_ft(events: Sequence[Event] | None) -> dict[tuple[float, float], float]:
+    """By signalised point, the feet more a stop sign there would cost (`Event.stop_extra`),
+    for holding a beg-button crossing below it (`routemaker.junction_delay.signal_wait`)."""
+    return {point: ft for event in events or () for point, ft in event.stop_extra}
 
 
 def penalty_m(events: list[Event]) -> float:

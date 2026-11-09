@@ -172,6 +172,7 @@ test("Where to?'s found count and its Nothing found line count Home, Work and fa
   // The release review: with only Home matching, the box said "Nothing found" under the Home row.
   const search = src("../PlaceSearch.tsx");
   assert.match(search, /const count = result\.places\.length \+ saved;/);
-  assert.match(search, /searchStatus\(result, answered, saved\.length\)/);
-  assert.match(search, /result\.places\.length \+ saved\.length === 0/);
+  assert.match(search, /const extraRows = saved\.length \+ food\.length - \(found\.length - places\.length\);/);
+  assert.match(search, /searchStatus\(statusResult, answered, extraRows\)/);
+  assert.match(search, /statusResult\.places\.length \+ extraRows === 0/);
 });
