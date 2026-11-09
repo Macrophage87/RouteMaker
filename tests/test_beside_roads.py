@@ -107,7 +107,8 @@ class TestNamesOf:
             raise AssertionError("not asked")
 
         monkeypatch.setattr(beside_roads, "_locate", locate)
-        assert beside_roads.names_of(service_pieces(use="cycleway", names=("Spencer Road",))) == {}
+        # (A named path is asked about since 2026-11-08, hunt finding X2:
+        # `TestNamedPaths`.)
         assert beside_roads.names_of(service_pieces(n=1, metres=20.0)) == {}
         assert beside_roads.names_of(service_pieces(use="road")) == {}
         assert beside_roads.names_of(service_pieces(use="alley")) == {}
@@ -172,14 +173,19 @@ class TestNamedServiceRoads:
         )
         assert beside_roads.names_of(service_pieces(names=("Spencer Road",))) == {}
 
-    def test_a_named_path_is_never_asked(self, monkeypatch):
-        def locate(*args):
-            raise AssertionError("not asked")
-
-        monkeypatch.setattr(beside_roads, "_locate", locate)
+    def test_a_named_path_keeps_a_name_of_its_own(self, monkeypatch):
+        # Until 2026-11-08 a named path was never asked about (this test was "a named path is
+        # never asked"); it is now, so a sidepath mapped with its road's name is said as the
+        # path beside it (`TestNamedPaths`), and one with a name of its own keeps it.
+        monkeypatch.setattr(
+            beside_roads,
+            "_locate",
+            lambda spots, t: [[edge(5, ["East-West Highway"])] for _ in spots],
+        )
         assert (
             beside_roads.names_of(service_pieces(use="cycleway", names=("Rock Creek Trail",))) == {}
         )
+        assert beside_roads.names_of(service_pieces(use="cycleway", names=("Spencer Road",))) == {}
 
     def test_the_description_says_the_beside_name_in_place_of_its_own(self):
         from core import routing
@@ -209,3 +215,32 @@ class TestNamedServiceRoads:
         ]
         same = frozenset({"east-west highway"})
         assert beside_roads.road_beside(edges, 77, 45.0, same) == "East-West Highway"
+
+
+class TestNamedPaths:
+    """Hunt finding X2 (2026-11-08): a sidepath or sidewalk OSM names after its road ("Georgia
+    Avenue") was announced as the road, "Continue on Georgia Avenue", with no cue to leave the
+    carriageway."""
+
+    def locate(self, spots, timeout_s):
+        return [[edge(5, ["MD 97", "Georgia Avenue"])] for _ in spots]
+
+    def test_a_sidepath_with_its_roads_name_is_the_path_beside_it(self, monkeypatch):
+        monkeypatch.setattr(beside_roads, "_locate", self.locate)
+        found = beside_roads.names_of(service_pieces(use="cycleway", names=("Georgia Avenue",)))
+        # Before: {} (never asked), so the cue said "Georgia Avenue".
+        assert found == {77: "path beside Georgia Avenue"}
+        assert isinstance(found[77], describe.BesideName)
+
+    def test_a_sidewalk_with_its_roads_name_is_the_sidewalk_beside_it(self, monkeypatch):
+        monkeypatch.setattr(beside_roads, "_locate", self.locate)
+        found = beside_roads.names_of(service_pieces(use="sidewalk", names=("Georgia Avenue",)))
+        assert found == {77: "sidewalk beside Georgia Avenue"}
+
+    def test_the_cue_names_the_path_not_the_road(self, monkeypatch):
+        from core import routing
+
+        monkeypatch.setattr(beside_roads, "_locate", self.locate)
+        pieces = service_pieces(use="cycleway", names=("Georgia Avenue",))
+        names = beside_roads.names_of(pieces)
+        assert routing._piece_names(pieces[0], names) == ("path beside Georgia Avenue",)

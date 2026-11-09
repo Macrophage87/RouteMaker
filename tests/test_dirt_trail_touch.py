@@ -293,7 +293,8 @@ class TestThroughTheApi:
         self, client, segments, router
     ) -> None:
         """'If someone goes onto a dirt trail, any reroutes should include dirt': 505 is not
-        joined to the 404 the rider is on, and is ridden all the same."""
+        joined to the 404 the rider is on, and is ridden all the same. On it means riding
+        along it (hunt V5): the rider's heading, north, is the way 404 runs."""
         add_trail(segments, TOUCHED, START_TRAIL)
         add_trail(segments, STRAY, VERTICES[2:4])
         edges = [(TOUCHED, 0, 1, 0.9), (202, 1, 2, 0.4), (STRAY, 2, 3, 0.4), (303, 3, 4, 0.5)]
@@ -304,11 +305,80 @@ class TestThroughTheApi:
             return route_answer([(VERTICES, 2.2, [10.0, 20.0, 15.0, 30.0])])
 
         router(FakeRouter({"route": route, "trace_attributes": trace_answer(VERTICES, edges)}))
-        response = post(client, {**good_body(), "ride_replan": True})
+        response = post(client, {**good_body(), "ride_replan": True, "heading": 0})
         assert response.status_code == 200, response.content
         body = response.json()
         assert body["variant"] == "offroad" and body["dirt_trails"] is True
         assert len(asked) == 1 and not asked[0].get("exclude_polygons")
+
+    def test_a_ride_re_plan_heading_across_a_dirt_trail_does_not_open_it(
+        self, client, segments, router
+    ) -> None:
+        """Hunt V5: a re-route within 15 m of a dirt trail that crosses the rider's way (the
+        rider going east, 404 running north) is not a rider on dirt. Before, it opened every
+        dirt trail for this plan and, once its route rode one, the rest of the ride."""
+        add_trail(segments, TOUCHED, START_TRAIL)
+        fake = router(plain_router())
+        response = post(client, {**good_body(), "ride_replan": True, "heading": 90})
+        assert response.status_code == 200, response.content
+        assert response.json()["variant"] == "standard"
+        assert {graph_of(url) for url, _ in routes(fake)} == {"standard"}
+
+    def test_a_ride_re_plan_with_no_heading_opens_only_the_trail_under_it(
+        self, client, segments, router
+    ) -> None:
+        """Hunt V5: with no heading to say the rider is going along it, the dirt trail under
+        the fix is opened as a stop on it is, with the trails joined to it: 505, a road away,
+        is a stray and is left out."""
+        add_trail(segments, TOUCHED, START_TRAIL)
+        add_trail(segments, STRAY, VERTICES[2:4])
+        edges = [(TOUCHED, 0, 1, 0.9), (202, 1, 2, 0.4), (STRAY, 2, 3, 0.4), (303, 3, 4, 0.5)]
+        asked: list[dict] = []
+
+        def route(payload):
+            asked.append(payload)
+            return stray_route(payload)
+
+        def trace(_payload):
+            left_out = bool(asked[-1].get("exclude_polygons"))
+            return trace_answer(VERTICES, STANDARD_EDGES if left_out else edges)
+
+        fake = router(FakeRouter({"route": route, "trace_attributes": trace}))
+        response = post(client, {**good_body(), "ride_replan": True})
+        assert response.status_code == 200, response.content
+        assert response.json()["variant"] == "offroad"
+        assert {graph_of(url) for url, _ in routes(fake)} == {"offroad"}
+        assert asked[-1].get("exclude_polygons")
+
+    @pytest.mark.parametrize(
+        "body",
+        [
+            {"preset": "ebike"},
+            {"preset": "cargo", "assist": True},
+        ],
+    )
+    def test_an_e_bike_ride_with_an_end_on_a_dirt_trail_is_planned_on_the_off_road_graph(
+        self, client, segments, router, body
+    ) -> None:
+        """Hunt R4: the e-bike graph closes dirt trails as the standard one does, and the rule
+        ran only on the standard graph and its weekend twin, so an E-bike or Cargo-assist
+        rider's end on a dirt trail snapped to the nearest open way."""
+        add_trail(segments, TOUCHED, END_TRAIL)
+        fake = router(plain_router())
+        response = post(client, {**good_body(), **body})
+        assert response.status_code == 200, response.content
+        assert response.json()["variant"] == "offroad"
+        assert {graph_of(url) for url, _ in routes(fake)} == {"offroad"}
+
+    def test_a_road_bike_with_an_end_on_a_dirt_trail_stays_on_its_own_graph(
+        self, client, segments, router
+    ) -> None:
+        add_trail(segments, TOUCHED, END_TRAIL)
+        fake = router(plain_router())
+        response = post(client, good_body("road-bike"))
+        assert response.status_code == 200, response.content
+        assert response.json()["variant"] == "paved"
+        assert {graph_of(url) for url, _ in routes(fake)} == {"paved"}
 
     def test_after_a_dirt_trail_a_ride_re_plan_from_a_road_may_ride_any(
         self, client, segments, router
@@ -587,8 +657,168 @@ class TestStrayRings:
         assert len(rings) == 1
         assert min(p[0] for p in rings[0]) > -77.0 + 0.0005
 
+    @pytest.mark.parametrize(
+        ("bearing", "heading", "along"),
+        [
+            (0.0, 0.0, True),
+            (0.0, 180.0, True),
+            (10.0, 350.0, True),
+            (0.0, 44.0, True),
+            (0.0, 46.0, False),
+            (0.0, 90.0, False),
+            (90.0, 270.0, True),
+            (45.0, 135.0, False),
+        ],
+    )
+    def test_a_trail_runs_along_the_heading_either_way(self, bearing, heading, along) -> None:
+        assert trail_touch.along_heading(bearing, heading) is along
+
+    def test_the_e_bike_graph_takes_a_touched_trail_and_the_paved_one_does_not(self) -> None:
+        # Hunt R4.
+        assert "ebike" in routing.TRAIL_TOUCH_VARIANTS
+        assert "paved" not in routing.TRAIL_TOUCH_VARIANTS
+        assert "no-trail" not in routing.TRAIL_TOUCH_VARIANTS
+
+    def test_end_mountain_biking_keeps_the_singletrack_under_the_rider_alone(self) -> None:
+        """From on singletrack (`kept`), that trail is ridden off; singletrack joined to it, a
+        harder trail perhaps, is still left out."""
+        ways = {1: "singletrack", 2: "singletrack"}
+        assert trail_touch.stray_rings(self.pieces([1]), ways, frozenset({1})) == []
+        rings = trail_touch.stray_rings(self.pieces([1, 2]), ways, frozenset({1}))
+        assert len(rings) == 1
+        assert min(p[0] for p in rings[0]) > -77.0 + 0.0005
+
+    def test_end_mountain_biking_takes_an_easier_trail_off_and_leaves_a_harder_one(
+        self, monkeypatch
+    ) -> None:
+        """The owner, 2026-11-08: "It should find calmer or shorter trails if available." From
+        a blue trail (1): a green one joined to it (2) may be ridden, a black one (3) may not,
+        nor a trail the way off reaches by road (4)."""
+        levels = {1: 2, 2: 1, 3: 3, 4: 1}
+        monkeypatch.setattr(trail_touch, "trail_levels", lambda ids: {w: levels[w] for w in ids})
+        ways = {1: "singletrack", 2: "singletrack", 3: "singletrack", 4: "mtb"}
+        kept = frozenset({1})
+        assert trail_touch.stray_rings(self.pieces([1, 2]), ways, kept, exit_level=2) == []
+        assert len(trail_touch.stray_rings(self.pieces([1, 3]), ways, kept, exit_level=2)) == 1
+        assert len(trail_touch.stray_rings(self.pieces([1, 9, 4]), ways, kept, exit_level=2)) == 1
+        # A stray run before the kept one, and a harder trail after it: both left out, by place.
+        rings = trail_touch.stray_rings(self.pieces([4, 9, 1, 2, 3]), ways, kept, exit_level=2)
+        assert [round(min(p[0] for p in r), 4) for r in rings] == [-77.0, -76.9960]
+        monkeypatch.setattr(trail_touch, "trail_levels", lambda ids: {w: levels[w] for w in ids})
+        assert trail_touch.exit_level(frozenset({1, 2})) == 1
+
     def test_any_dirt_leaves_out_only_singletrack(self) -> None:
         ways = {1: "mtb", 3: "mtb", 2: "singletrack"}
         pieces = self.pieces([1, 9, 3, 9, 2])
         assert len(trail_touch.stray_rings(pieces, ways, frozenset(), any_dirt=True)) == 1
         assert len(trail_touch.stray_rings(pieces, ways, frozenset())) == 3
+
+
+@db
+class TestDoneWithMtb:
+    """Ride's "End mountain biking" (tests/test_mtb_done.py): the re-plans after it."""
+
+    def test_a_gravel_re_plan_after_the_press_is_planned_on_the_standard_graph(
+        self, client, segments, router
+    ) -> None:
+        fake = router(plain_router())
+        body = {
+            **good_body("gravel"),
+            "when": "weekday_offpeak",
+            "ride_replan": True,
+            "mtb_done": True,
+        }
+        response = post(client, body)
+        assert response.status_code == 200, response.content
+        assert response.json()["variant"] == "standard"
+        assert {graph_of(url) for url, _ in routes(fake)} == {"standard"}
+
+    def test_a_stop_on_a_dirt_trail_no_longer_opens_them(self, client, segments, router) -> None:
+        add_trail(segments, TOUCHED, END_TRAIL)
+        fake = router(plain_router())
+        body = {
+            **good_body(),
+            "when": "weekday_offpeak",
+            "easy_mtb": True,
+            "ride_replan": True,
+            "mtb_done": True,
+        }
+        answer = post(client, body).json()
+        assert answer["variant"] == "standard" and answer["dirt_closed"] is True
+        assert answer["dials"]["easy_mtb"] is False
+        assert {graph_of(url) for url, _ in routes(fake)} == {"standard"}
+
+    def test_mtb_done_alone_is_not_a_ride(self, client, segments, router) -> None:
+        router(plain_router())
+        body = {**good_body("gravel"), "when": "weekday_offpeak", "mtb_done": True}
+        assert post(client, body).json()["variant"] == "offroad"
+
+    @pytest.mark.parametrize("when", ["weekday_offpeak", "weekend"])
+    def test_a_mountain_bike_re_plan_after_the_press_keeps_off_the_mtb_graph(
+        self, client, segments, router, when
+    ) -> None:
+        fake = router(plain_router())
+        body = {**good_body("mountain-bike"), "when": when, "ride_replan": True, "mtb_done": True}
+        response = post(client, body)
+        assert response.status_code == 200, response.content
+        answer = response.json()
+        graph = "weekend" if when == "weekend" else "standard"
+        assert answer["variant"] == graph
+        assert answer.get("mtb") is None
+        assert {graph_of(url) for url, _ in routes(fake)} == {graph}
+
+    @pytest.mark.parametrize(
+        ("preset", "reason", "graph"),
+        [
+            ("gravel", "mtb", "offroad"),
+            ("default", "mtb", "offroad"),
+            ("mountain-bike", "mtb", "mtb"),
+            ("mountain-bike", "singletrack", "mtb"),
+        ],
+    )
+    def test_from_on_a_trail_the_way_off_rides_that_trail(
+        self, client, segments, router, preset, reason, graph
+    ) -> None:
+        """The owner, 2026-11-08: "It still routes on trails if you're on one correct? It
+        should get people back to a road or path (gravel or paved) through the easiest route
+        possible"."""
+        add_trail(segments, TOUCHED, START_TRAIL, reason=reason)
+        fake = router(plain_router())
+        body = {
+            **good_body(preset),
+            "when": "weekday_offpeak",
+            "easy_mtb": preset == "default",
+            "ride_replan": True,
+            "mtb_done": True,
+        }
+        response = post(client, body)
+        assert response.status_code == 200, response.content
+        assert response.json()["variant"] == graph
+        assert response.json().get("mtb") is None
+        assert {graph_of(url) for url, _ in routes(fake)} == {graph}
+
+    def test_a_weekend_e_bike_from_on_a_trail_is_not_snapped_off_it(
+        self, client, segments, router
+    ) -> None:
+        """A guard (release review, 2026-11-09): after the press on a trail, no weekend-graph
+        plan, which would snap the rider's fix to the nearest open way, answers an e-bike ride;
+        the ride's own plan rides the trail off (`routing._GraphLeft` on `weekend_beside`)."""
+        add_trail(segments, TOUCHED, START_TRAIL, reason="mtb")
+        fake = router(plain_router())
+        body = {**good_body("ebike"), "when": "weekend", "ride_replan": True, "mtb_done": True}
+        response = post(client, body)
+        assert response.status_code == 200, response.content
+        assert response.json()["variant"] == "offroad"
+        assert "weekend" not in {graph_of(url) for url, _ in routes(fake)}
+
+    def test_a_trail_at_a_stop_is_not_opened(self, client, segments, router) -> None:
+        add_trail(segments, TOUCHED, END_TRAIL)
+        fake = router(plain_router())
+        body = {
+            **good_body("gravel"),
+            "when": "weekday_offpeak",
+            "ride_replan": True,
+            "mtb_done": True,
+        }
+        assert post(client, body).json()["variant"] == "standard"
+        assert {graph_of(url) for url, _ in routes(fake)} == {"standard"}

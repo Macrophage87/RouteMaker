@@ -6,13 +6,14 @@ proxy this was built behind."""
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 import pytest
 
 from routemaker import dc_closures as dc
 from routemaker import workzones as wz
+from routemaker.ridetime import ZONE
 
 DATA = Path(__file__).resolve().parent / "data" / "closures"
 NOW = datetime(2026, 10, 15, 19, 0, tzinfo=UTC)
@@ -633,3 +634,86 @@ class TestRideTime:
             end=datetime(2027, 3, 1, 15, 0, tzinfo=UTC),
         )
         assert dc.notice_when_text(long, NOW, False) == "Sep 1 to Mar 1, 2027"
+
+
+class TestDailyWindows:
+    """Hunt K6 (2026-11-08): a week of nightly closures was read as one closure from the first
+    night to the last morning, and daytime rides were routed round an open street all week."""
+
+    POSTED = datetime(2026, 11, 10, 15, 0, tzinfo=UTC)
+
+    def zone(self, lines):
+        (segment,), *_ = dc.read_lines(lines, self.POSTED)
+        advisory = dc.Advisory("mpd-x", "mpd", "Traffic advisory", None, self.POSTED, [segment], [])
+        return segment, dc.segment_zone(advisory, 0, segment, [(-77.02, 38.90), (-77.02, 38.901)])
+
+    def at(self, day: int, hour: int) -> datetime:
+        from routemaker.ridetime import ZONE
+
+        return datetime(2026, 11, day, hour, 0, tzinfo=ZONE)
+
+    def test_a_nightly_window_holds_only_at_night(self) -> None:
+        segment, zone = self.zone(
+            [
+                "From Saturday, November 14 through Sunday, November 22, 9:00 pm to 5:00 am"
+                " nightly:",
+                "K Street NW from 7th Street NW to 9th Street NW",
+            ]
+        )
+        assert segment.daily == (21, 0, 5, 0)
+        assert not wz.active(zone, self.at(18, 12))  # Wednesday noon: open
+        assert wz.active(zone, self.at(18, 23)) and wz.active(zone, self.at(19, 4))
+        assert not wz.active(zone, self.at(14, 20))  # before the first night
+        assert wz.active(zone, self.at(23, 4))  # the last night, the morning after
+        assert not wz.active(zone, self.at(23, 6))
+        assert wz.when_text(zone, None, False) == "Closed 9 pm to 5 am each day, Nov 14 to Nov 22"
+        assert wz.Zone.from_json(zone.to_json()) == zone
+
+    def test_two_days_with_one_time_window_hold_each_day(self) -> None:
+        _segment, zone = self.zone(
+            [
+                "Saturday, November 14 and Sunday, November 15, 6 am to 8 pm",
+                "K Street NW from 7th Street NW to 9th Street NW",
+            ]
+        )
+        assert wz.active(zone, self.at(14, 12)) and wz.active(zone, self.at(15, 12))
+        assert not wz.active(zone, self.at(14, 23))  # overnight: open
+
+    def test_a_window_with_each_day_its_own_time_is_one_closure_through(self) -> None:
+        segment, zone = self.zone(
+            [
+                "From 9 pm Friday, November 13 to 5 am Monday, November 16:",
+                "K Street NW from 7th Street NW to 9th Street NW",
+            ]
+        )
+        assert segment.daily is None
+        assert wz.active(zone, self.at(14, 12))
+        assert segment.end == self.at(16, 5)
+
+
+class TestClockChangeNights:
+    """Hunt 2, T7: a window past midnight, and an AlertDC "until" before the time it was
+    posted, had a day added to the UTC moment, so on the nights the clocks change they ended
+    an hour off: March's "11 pm to 5 am" at 6 am, November's at 4 am, an hour before the
+    street reopened. Before the fix the first two asserts gave 06:00 and 04:00."""
+
+    def end(self, text: str, posted: date) -> datetime:
+        context = dc._Context()
+        dc._window(text, context, posted)
+        return context.end.astimezone(ZONE)
+
+    def test_a_window_past_midnight_ends_at_its_local_time_on_a_change_night(self) -> None:
+        spring = self.end("Saturday, March 7, 2026, 11 pm to 5 am", date(2026, 3, 1))
+        autumn = self.end("Saturday, October 31, 2026, 11 pm to 5 am", date(2026, 10, 25))
+        assert (spring.day, spring.hour) == (8, 5)
+        assert (autumn.day, autumn.hour) == (1, 5)
+
+    def test_a_nightly_window_ends_at_five_on_its_last_change_morning(self) -> None:
+        end = self.end("Fri Oct 30 through Sat Oct 31, 9 pm to 5 am nightly", date(2026, 10, 25))
+        assert (end.month, end.day, end.hour) == (11, 1, 5)
+
+    def test_an_alertdc_until_on_the_next_morning_across_the_change(self) -> None:
+        # Posted 11 pm EDT on Saturday, October 31; "until 5 am" is 5 am EST on Sunday.
+        posted = datetime(2026, 10, 31, 23, 0, tzinfo=ZONE)
+        end = dc._alert_end("K Street NW is closed until 5 am.", posted)
+        assert end.astimezone(ZONE).hour == 5 and end.astimezone(ZONE).day == 1

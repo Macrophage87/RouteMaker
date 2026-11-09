@@ -64,6 +64,39 @@ def grade(value: str | None) -> int | None:
 OFFROAD_MAX_LEVEL = 1
 
 
+# A gravel trail built for bicycles, rated easy, is the gravel trail it is and not
+# singletrack (the hunt of 2026-11-08, A4): mappers put `mtb:scale=1` on crushed-stone
+# rail-trails, and the rule closed a bicycle-designated one (or a cycleway, which is one by
+# its class) on every graph but the off-road and Mountain Bike ones, though the MTB-class
+# rule spares the same trail (`routemaker.trailaccess`). The owner, OWNER-DECISIONS 91:
+# "Gravel is different. Most bikes can handle gravel, few would want to route through
+# singletrack", and 2026-11-01, "All gravel everywhere" is priced as packed gravel
+# (lua/routemaker_remap.lua `strip_easy_gravel_ratings` takes the same easy rating off
+# before the parser reads it as a surface). A harder rating (2 and up) is still singletrack.
+PACKED_GRAVEL_SURFACES = frozenset({"gravel", "fine_gravel", "compacted"})
+EASY_GRAVEL_MAX = 1
+# The ratings read here: the two difficulty scales, and `mtb:scale:uphill`, which the Lua
+# rule reads too (lua/routemaker_remap.lua `M.SURFACE_RATING_KEYS`: the parser sets a
+# surface from it). Terrain hunt 2, T2: with the uphill rating left out here, a gravel
+# cycleway rated `mtb:scale=1` and `mtb:scale:uphill=2` was a gravel trail open on every
+# graph, while the Lua rule, seeing the uphill 2, kept `mtb:scale=1` for the parser, which
+# priced the trail as the gravel class "All gravel everywhere" (2026-11-01) had priced out.
+# Both rules now read the same keys: a harder rating (2 and up) on any of them is
+# technical ground, as the Lua comment has it, and the trail stays singletrack.
+EASY_GRAVEL_KEYS = (*SCALE_KEYS, "mtb:scale:uphill")
+
+
+def is_built_gravel_trail(tags: dict[str, str]) -> bool:
+    """A cycleway, or a trail designated for bicycles, on gravel, fine gravel or compacted,
+    rated no harder than `EASY_GRAVEL_MAX` on either scale and uphill (`EASY_GRAVEL_KEYS`)."""
+    if tags.get("surface") not in PACKED_GRAVEL_SURFACES:
+        return False
+    if tags.get("highway") != "cycleway" and tags.get("bicycle") != "designated":
+        return False
+    grades = [grade(tags.get(key)) for key in EASY_GRAVEL_KEYS if tags.get(key) is not None]
+    return all(g is not None and g <= EASY_GRAVEL_MAX for g in grades)
+
+
 def is_singletrack(tags: dict[str, str]) -> bool:
     if tags.get("highway") not in TRAIL_CLASS_HIGHWAY:
         return False
@@ -71,6 +104,8 @@ def is_singletrack(tags: dict[str, str]) -> bool:
     # Northwest Branch, Muddy Branch, Gunpowder Falls and the Cross County
     # Trail carry an mtb:scale on asphalt (review r1).
     if is_paved(tags):
+        return False
+    if is_built_gravel_trail(tags):
         return False
     return any((g := grade(tags.get(key))) is not None and g >= 1 for key in SCALE_KEYS)
 

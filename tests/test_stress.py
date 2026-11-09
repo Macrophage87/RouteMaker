@@ -10,6 +10,7 @@ from dataclasses import replace
 
 import pytest
 
+from routemaker import facility
 from routemaker.stress import (
     DEFAULT_LANES_PER_DIRECTION,
     DEFAULT_MAXSPEED_MPH_RURAL,
@@ -1669,6 +1670,71 @@ class TestParkingAbsence:
         assert "parking" not in result.assumed, f"{value} was read but not recorded as measured"
 
 
+class TestParkingIsReadByPresenceAndSide:
+    """Hunt 2, S2 and S3 (2026-11-08): `has_parking_lane` took every value under the
+    `parking:*` prefixes and asked no side, so an attribute beside a `no` read as
+    parking present, and parking across a one-way from its lane made the lane a
+    door-zone lane: LTS 3 at 30 mph where the lane is LTS 2."""
+
+    LANE = {
+        "highway": "residential",
+        "maxspeed": "30 mph",
+        "cycleway:both": "lane",
+        "cycleway:both:width": "1.8",
+        "parking:both": "no",
+    }
+
+    @pytest.mark.parametrize(
+        "extra",
+        [
+            {"parking:both:reason": "bike_lane"},
+            {"parking:both:markings": "yes"},
+            {"parking:both:fee": "no"},
+            {"parking:left:zone": "A"},
+        ],
+    )
+    def test_an_attribute_beside_a_no_is_not_parking(self, extra) -> None:
+        assert has_parking_lane({"parking:both": "no", **extra}) is False
+        # Before: LTS 3, "narrow or multilane at 30 mph".
+        assert classify({**self.LANE, **extra}).tier is classify(self.LANE).tier is Stress.LTS2
+
+    def test_an_orientation_alone_says_parking(self) -> None:
+        assert has_parking_lane({"parking:right:orientation": "parallel"}) is True
+        assert has_parking_lane({"parking:both:reason": "bike_lane"}) is None
+
+    def test_the_current_scheme_speaks_before_the_older_one(self) -> None:
+        assert has_parking_lane({"parking:both": "no", "parking:lane:both": "parallel"}) is False
+
+    ONE_WAY = {
+        "highway": "residential",
+        "oneway": "yes",
+        "maxspeed": "30 mph",
+        "cycleway:left": "lane",
+        "cycleway:left:width": "1.8",
+        "parking:left": "no",
+        "parking:right": "lane",
+    }
+
+    def test_parking_across_a_one_way_from_its_lane_is_no_door_zone(self) -> None:
+        assert has_parking_lane(self.ONE_WAY) is True  # on the road
+        assert has_parking_lane(self.ONE_WAY, ("left",)) is False  # not beside the lane
+        # Before: LTS 3, the lane judged against the 15 ft beside-parking reach.
+        assert classify(self.ONE_WAY).tier is Stress.LTS2
+        beside = {**self.ONE_WAY, "parking:left": "lane"}
+        assert classify(beside).tier is Stress.LTS3
+
+    def test_a_lane_side_nothing_speaks_for_is_assumed_beside_parking(self) -> None:
+        unsaid = {k: v for k, v in self.ONE_WAY.items() if k != "parking:left"}
+        result = classify(unsaid)
+        assert result.tier is Stress.LTS3
+        assert "parking" in result.assumed
+
+    def test_on_a_two_way_street_parking_beside_either_lane_counts(self) -> None:
+        road = {**self.LANE, "parking:both": None, "parking:left": "no", "parking:right": "lane"}
+        road = {k: v for k, v in road.items() if v is not None}
+        assert classify(road).tier is Stress.LTS3
+
+
 class TestNoShoulderTagsMeanNoShoulder:
     """`has_shoulder` answers three ways and all three matter.
 
@@ -2319,12 +2385,33 @@ class TestADecentLane:
             {"cycleway:right:buffer": "yes"},
             {"cycleway:both:buffer": "0.5"},
             {"cycleway:buffer": "yes"},
-            {"cycleway:left:buffer": "yes"},
         ],
     )
     def test_a_buffered_lane_is_decent_at_any_width(self, extra) -> None:
         narrow = {**self.md450, "cycleway:right:width": "1.2", **extra}
         assert classify(narrow).tier is Stress.LTS3
+
+    def test_a_buffer_on_the_side_without_the_lane_is_not_the_lanes(self) -> None:
+        """Hunt 3, stress 6: the buffer is read on the sides the lane is on."""
+        narrow = {**self.md450, "cycleway:right:width": "1.2", "cycleway:left:buffer": "yes"}
+        assert classify(narrow).tier is Stress.LTS4
+
+    @pytest.mark.parametrize(
+        "extra", [{"cycleway:right:buffer": "yes"}, {"cycleway:right": "buffered_lane"}]
+    )
+    def test_on_a_two_way_road_both_lanes_need_the_buffer(self, extra) -> None:
+        """Hunt 3, stress 6: the rider going the other way has the unbuffered lane."""
+        road = {
+            "highway": "secondary",
+            "maxspeed": "40 mph",
+            "lanes": "4",
+            "cycleway:both": "lane",
+            "cycleway:left:width": "1.2",
+            "cycleway:right:width": "1.2",
+        }
+        assert classify(road).tier is Stress.LTS4
+        assert classify({**road, **extra}).tier is Stress.LTS4
+        assert classify({**road, "cycleway:both:buffer": "yes"}).tier is Stress.LTS3
 
     @pytest.mark.parametrize("value", ["no", "none", "0"])
     def test_a_buffer_tag_saying_none_is_not_a_buffer(self, value) -> None:
@@ -2808,3 +2895,28 @@ def test_a_private_rural_road_still_open_to_cars_keeps_the_floor():
 
     tags = {key: value for key, value in WATERSHED_FIRE_ROAD.items() if key != "motor_vehicle"}
     assert rural_floor_applies(tags, urban=False)
+
+
+class TestATwoWayFacilityOnOneSide:
+    """Hunt 3, stress 1: `cycleway:<side>:oneway=no` on a two-way road serves both
+    directions, so it is the way's facility, not mixed traffic."""
+
+    road = {"highway": "secondary", "maxspeed": "30 mph", "lanes": "2"}
+
+    @pytest.mark.parametrize("side", ["left", "right"])
+    def test_a_two_way_track_on_one_side_is_a_track(self, side) -> None:
+        tags = {**self.road, f"cycleway:{side}": "track", f"cycleway:{side}:oneway": "no"}
+        result = classify(tags)
+        assert result.tier is Stress.LTS1
+        assert result.rule == "separated track alongside"
+        assert facility.facility(tags) is facility.Facility.PROTECTED
+
+    def test_a_one_way_track_on_one_side_is_still_one_directions(self) -> None:
+        tags = {**self.road, "cycleway:right": "track"}
+        assert classify(tags).tier is Stress.LTS3
+        assert classify({**tags, "cycleway:right:oneway": "yes"}).tier is Stress.LTS3
+
+    def test_the_oneway_is_read_at_the_key_the_value_came_from(self) -> None:
+        """A bare `cycleway:oneway=no` qualifies only the bare key."""
+        tags = {**self.road, "cycleway:right": "track", "cycleway:oneway": "no"}
+        assert classify(tags).tier is Stress.LTS3

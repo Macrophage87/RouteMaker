@@ -212,26 +212,29 @@ def test_car_free_when_needs_a_bicycle_and_a_road():
         (datetime(2026, 9, 26, 7, 0, tzinfo=ridetime.ZONE), "weekend"),
         (datetime(2026, 9, 28, 16, 0, tzinfo=ridetime.ZONE), "weekday_rush"),
         (datetime(2026, 9, 28, 19, 0, tzinfo=ridetime.ZONE), "weekday_offpeak"),
-        # Labor Day 2026 is Monday 7 September; Thanksgiving is 26 November.
-        (datetime(2026, 9, 7, 8, 0, tzinfo=ridetime.ZONE), "weekend"),
-        (datetime(2026, 11, 26, 8, 0, tzinfo=ridetime.ZONE), "weekend"),
+        # A weekday federal holiday is weekday off-peak all day, rush hours included
+        # (the owner, 2026-11-08: "Holidays should use the weekday off-peak graph."); it
+        # was the weekend (hunt M6). Labor Day 2026 is Monday 7 September; Thanksgiving
+        # is 26 November.
+        (datetime(2026, 9, 7, 8, 0, tzinfo=ridetime.ZONE), "weekday_offpeak"),
+        (datetime(2026, 11, 26, 8, 0, tzinfo=ridetime.ZONE), "weekday_offpeak"),
         # Independence Day 2026 falls on a Saturday and is observed Friday 3 July.
-        (datetime(2026, 7, 3, 8, 0, tzinfo=ridetime.ZONE), "weekend"),
+        (datetime(2026, 7, 3, 8, 0, tzinfo=ridetime.ZONE), "weekday_offpeak"),
         # Evening rush starts at 16:00, not before (mutation review r1, R2).
         (datetime(2026, 9, 28, 15, 30, tzinfo=ridetime.ZONE), "weekday_offpeak"),
         (datetime(2026, 9, 28, 15, 59, tzinfo=ridetime.ZONE), "weekday_offpeak"),
         # Juneteenth 2026 is Friday 19 June (R3).
-        (datetime(2026, 6, 19, 8, 0, tzinfo=ridetime.ZONE), "weekend"),
+        (datetime(2026, 6, 19, 8, 0, tzinfo=ridetime.ZONE), "weekday_offpeak"),
         # A holiday on a Sunday is observed on the Monday: 4 July 2027 (R5).
-        (datetime(2027, 7, 5, 8, 0, tzinfo=ridetime.ZONE), "weekend"),
+        (datetime(2027, 7, 5, 8, 0, tzinfo=ridetime.ZONE), "weekday_offpeak"),
         (datetime(2027, 7, 2, 8, 0, tzinfo=ridetime.ZONE), "weekday_rush"),
         # Memorial Day is the last Monday of May: 25 May 2026, 31 May 2027 (R7).
-        (datetime(2026, 5, 25, 8, 0, tzinfo=ridetime.ZONE), "weekend"),
+        (datetime(2026, 5, 25, 8, 0, tzinfo=ridetime.ZONE), "weekday_offpeak"),
         (datetime(2026, 5, 18, 8, 0, tzinfo=ridetime.ZONE), "weekday_rush"),
-        (datetime(2027, 5, 31, 8, 0, tzinfo=ridetime.ZONE), "weekend"),
+        (datetime(2027, 5, 31, 8, 0, tzinfo=ridetime.ZONE), "weekday_offpeak"),
         (datetime(2027, 5, 24, 8, 0, tzinfo=ridetime.ZONE), "weekday_rush"),
         # New Year's Day 2028 is a Saturday, observed Friday 31 December 2027 (TB-11).
-        (datetime(2027, 12, 31, 8, 0, tzinfo=ridetime.ZONE), "weekend"),
+        (datetime(2027, 12, 31, 8, 0, tzinfo=ridetime.ZONE), "weekday_offpeak"),
         (datetime(2027, 12, 30, 8, 0, tzinfo=ridetime.ZONE), "weekday_rush"),
     ],
 )
@@ -246,8 +249,13 @@ def test_when_at(moment, when):
         (datetime(2026, 9, 29, 12, 30, tzinfo=UTC), "weekday_rush"),
         # 02:00 UTC on Saturday 3 October is 22:00 on Friday there: night.
         (datetime(2026, 10, 3, 2, 0, tzinfo=UTC), "night"),
-        # 00:30 UTC on Monday 28 September is still Sunday evening, 20:30.
-        (datetime(2026, 9, 28, 0, 30, tzinfo=UTC), "weekend"),
+        # 00:30 UTC on Monday 28 September is still Sunday evening, 20:30: off-peak,
+        # after the weekend car-free windows end (the owner, 2026-11-08; hunt M6).
+        (datetime(2026, 9, 28, 0, 30, tzinfo=UTC), "weekday_offpeak"),
+        # 21:30 UTC on Sunday 27 September is 17:30 there, still the weekend; 22:30, 18:30,
+        # is off-peak (the owner, round 3, 2026-11-08: "Let's just go at 6 on Sunday.").
+        (datetime(2026, 9, 27, 21, 30, tzinfo=UTC), "weekend"),
+        (datetime(2026, 9, 27, 22, 30, tzinfo=UTC), "weekday_offpeak"),
         # And in winter, five hours behind: 13:30 UTC on 12 January is 08:30.
         (datetime(2027, 1, 12, 13, 30, tzinfo=UTC), "weekday_rush"),
         (datetime(2027, 1, 12, 11, 30, tzinfo=UTC), "night"),  # 06:30
@@ -256,6 +264,45 @@ def test_when_at(moment, when):
 )
 def test_when_at_reads_a_utc_moment_in_the_regions_time(moment, when):
     assert ridetime.when_at(moment) == when
+
+
+def test_a_holiday_is_weekday_offpeak_unless_it_falls_on_a_weekend():
+    """Hunt M6. The owner, 2026-11-08: "Holidays should use the weekday off-peak graph."
+    "Unless it's a weekend." Before, Veterans Day and Columbus Day were the weekend all day,
+    so Sligo Creek Parkway's closure, which names no `PH`, planned as car-free on them."""
+    veterans_day = datetime(2026, 11, 11, 8, 0, tzinfo=ridetime.ZONE)  # Wednesday
+    assert ridetime.when_at(veterans_day) == ridetime.WEEKDAY_OFFPEAK
+    assert ridetime.when_at(veterans_day.replace(hour=17)) == ridetime.WEEKDAY_OFFPEAK
+    assert ridetime.when_at(datetime(2026, 10, 12, 8, 0, tzinfo=ridetime.ZONE)) == "weekday_offpeak"
+    sligo = "no @ (Fr 09:00-24:00; Sa; Su 00:00-18:00)"
+    assert ridetime.when_at(veterans_day) not in ridetime.closed_settings(sligo)
+    # Christmas 2027 falls on a Saturday: the day itself is still the weekend.
+    assert ridetime.when_at(datetime(2027, 12, 25, 10, 0, tzinfo=ridetime.ZONE)) == "weekend"
+    # And so the holiday takes the off-peak junction factor, not the weekend's.
+    from routemaker import intersections
+
+    assert intersections.TIME_FACTORS[ridetime.when_at(veterans_day)] == 1.0
+
+
+def test_sunday_evening_after_the_car_free_windows_is_offpeak():
+    """Hunt M6. The weekend graph holds Beach Drive (`Su 00:00-19:00`) car-free, but cars
+    are back by Sunday evening. The owner, 2026-11-08: Sunday 7-9 PM plans as off-peak.
+    Hunt 3, T3-5: Sligo Creek (`Su 00:00-18:00`) has cars back from 18:00; the owner, round
+    3, 2026-11-08: "Let's just go at 6 on Sunday." So Sunday evening starts at 18:00."""
+    assert ridetime.SUNDAY_EVENING_START == 18 * 60
+    sunday = datetime(2026, 11, 8, 17, 59, tzinfo=ridetime.ZONE)
+    assert ridetime.when_at(sunday) == ridetime.WEEKEND
+    sligo = "no @ (Fr 09:00-24:00; Sa; Su 00:00-18:00)"
+    beach = "no @ (PH 07:00-19:00; Sa 07:00-24:00; Su 00:00-19:00)"
+    for hour, minute in ((18, 0), (18, 30), (19, 0), (19, 30), (20, 45)):
+        moment = sunday.replace(hour=hour, minute=minute)
+        assert ridetime.when_at(moment) == ridetime.WEEKDAY_OFFPEAK
+        assert ridetime.when_at(moment) not in ridetime.closed_settings(sligo)
+        # Beach Drive's last closed hour, 18:00-19:00, is planned as open to cars too.
+        assert ridetime.when_at(moment) not in ridetime.closed_settings(beach)
+    assert ridetime.when_at(sunday.replace(hour=21)) == ridetime.NIGHT
+    # Saturday evening is still the weekend: the closures run to midnight.
+    assert ridetime.when_at(datetime(2026, 11, 7, 20, 0, tzinfo=ridetime.ZONE)) == "weekend"
 
 
 def test_representative_time_is_the_next_such_instant():
@@ -972,6 +1019,59 @@ def test_every_way_inside_a_cemetery_is_found_but_a_signed_trail_and_a_trail_bes
     ]
     assert areas.cemetery_ways(ways, [arlington]) == {1, 2}
     assert areas.cemetery_ways(ways, []) == set()
+
+
+def test_a_cemetery_holds_a_way_by_its_length_inside_and_never_a_public_road():
+    # Hunt A3 (2026-11-08): the cemetery rule counted vertices, so a street sharing the
+    # outline's nodes on the south or west edge was "inside", and so was a long two-node
+    # way with one end just inside; each became destination-only and left the map. It
+    # now measures length inside, as the military rule does (OWNER-DECISIONS 437), and a
+    # public road the outline takes in stays out of it.
+    from pipeline import restricted_areas as areas
+
+    cemetery = _box(-77.0, 38.9, -76.99, 38.91)
+    drive = {"highway": "service"}
+    ways = [
+        # Along the south and west edges, on the outline's own nodes: before, inside.
+        (1, drive, [(-77.0, 38.9), (-76.995, 38.9), (-76.99, 38.9)]),
+        (2, drive, [(-77.0, 38.9), (-77.0, 38.905), (-77.0, 38.91)]),
+        # 6 km long, one end 400 m inside: before, inside (one of two vertices).
+        (3, drive, [(-76.995, 38.905), (-76.95, 38.95)]),
+        # Well inside: still inside.
+        (4, drive, [(-76.998, 38.902), (-76.992, 38.908)]),
+        # Public roads across the middle: a numbered road and a residential street.
+        (5, {"highway": "secondary", "ref": "MD 410"}, [(-77.001, 38.905), (-76.989, 38.905)]),
+        (6, {"highway": "residential", "name": "Elm St"}, [(-76.995, 38.899), (-76.995, 38.911)]),
+        # A residential-class drive the cemetery keeps private is its own.
+        (
+            7,
+            {"highway": "residential", "access": "private"},
+            [(-76.998, 38.908), (-76.992, 38.908)],
+        ),
+        # Review of hunt A3: a drive tagged residential, named or not, wholly inside the
+        # outline is the cemetery's own (OWNER-DECISIONS 98; before this review: let out
+        # by class alone). A named street of tertiary class or above stays a public street.
+        (
+            8,
+            {"highway": "residential", "name": "Memorial Dr"},
+            [(-76.998, 38.903), (-76.992, 38.903)],
+        ),
+        (9, {"highway": "unclassified"}, [(-76.998, 38.904), (-76.992, 38.904)]),
+        (10, {"highway": "tertiary", "name": "Oak Ave"}, [(-76.998, 38.906), (-76.992, 38.906)]),
+        # A residential street just poking past the outline (under CEMETERY_LEAVES_M) is held.
+        (11, {"highway": "residential"}, [(-76.9955, 38.89995), (-76.9955, 38.909)]),
+        # The owner, 2026-11-08: "Some are named, focus more on the area than street
+        # names. When in doubt leave it open." The same tertiary street with no name is
+        # the doubt case and stays open (before: held, as the name was the test).
+        (12, {"highway": "tertiary"}, [(-76.998, 38.907), (-76.992, 38.907)]),
+        # And a name does not let a drive out: a named unclassified drive is held.
+        (
+            13,
+            {"highway": "unclassified", "name": "Grant Dr"},
+            [(-76.998, 38.9015), (-76.992, 38.9015)],
+        ),
+    ]
+    assert areas.cemetery_ways(ways, [cemetery]) == {4, 7, 8, 9, 11, 13}
 
 
 def test_a_parking_lots_own_ways_are_found_and_the_street_past_it_is_not():

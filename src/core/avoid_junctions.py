@@ -21,8 +21,15 @@ router's own unit (cost seconds), in two places that need no rebuild:
   excluded (`exclude_locations`, the junction's point with a radius of
   `MATCH_RADIUS_M`, which takes out every edge there): one /route call. Where the
   search did not run (or stopped before a round: `searched` is what it did, not
-  what was asked), the way round replaces the answer when its cost is less than
-  the answer's plus 30 minutes for each pass. On Mass Ride and Group Ride (307:
+  what was asked), the way round replaces the answer where the search's own reading
+  prefers it (`judged_takes`: no more red crossings, no busier by the Traffic-wins
+  guard, and a lower score, which prices the junctions' stress, each red and the 30
+  minutes a pass; the router's cost alone priced none of the junction stress and so
+  brought back the red crossing the red pass had gone round, the 2026-11-08 hunt, S3
+  and P2), and its request keeps out what the passes before it did
+  (`Context.red_excludes`, `Context.level_excludes`). A pass is read from the traces,
+  so a bridge over or a tunnel under a junction is none (J6). On Mass Ride and Group
+  Ride (307:
   "exclude Avoid junctions where an alternative exists") it replaces it when it
   takes on no LTS 4 (or Avoid road) the answer did not have and is at most
   `GROUP_EXTRA_MAX_M` (1 mi (1.6 km)) or `GROUP_EXTRA_SHARE` (25%) of the answer
@@ -69,6 +76,8 @@ ALTERNATE_MIN_S = 4.0
 GROUP_EXTRA_MAX_M = 1609.344
 GROUP_EXTRA_SHARE = 0.25
 GROUP_LTS4_SLACK_M = 1.0
+# The router's own limit on `exclude_locations` (`valhalla/*.json`).
+MAX_EXCLUDES = 200
 
 
 def approved() -> tuple[AvoidJunction, ...]:
@@ -98,11 +107,71 @@ def trip_coordinates(trip: dict) -> list[tuple[float, float]]:
     return coordinates
 
 
-def passages_of(trip: dict, junctions: Sequence[AvoidJunction]) -> list[Passage]:
-    """Each pass of a trip through an Avoid junction, in route order."""
+def graded_line(
+    legs: Sequence[tuple[dict | None, list]], raws: Sequence = ()
+) -> tuple[list, list[bool] | None, list]:
+    """A route's line from its legs' traces, with each segment's grade separation and the
+    route's own junction nodes, for `model.passages` (J6): (line, separated, nodes). `legs`
+    are (trace or None, the leg's decoded shape) in order; a leg with no trace is its shape,
+    at grade. `raws`: the route's junctions as read from the same traces
+    (`trace_junctions.RawJunction`); those with a road crossing them are its nodes."""
+    from routemaker import trace_junctions
+
+    line: list = []
+    flags: list[bool] = []
+    known = False
+    for trace, shape in legs:
+        if trace is not None:
+            here, separated = trace_junctions.separated_line(trace, shape)
+        else:
+            here, separated = list(shape), None
+        if separated is None:
+            separated = [False] * max(len(here) - 1, 0)
+        else:
+            known = True
+        if line and here:
+            here = here[1:]
+        elif line:
+            continue
+        line.extend(here)
+        flags.extend(separated)
+    nodes = [(r.lon, r.lat) for r in raws if getattr(r, "has_cross_roads", False)]
+    if not known or len(flags) != max(len(line) - 1, 0):
+        return line, None, nodes
+    return line, flags, nodes
+
+
+def passages_of(
+    trip: dict, junctions: Sequence[AvoidJunction], ctx=None, deadline=None
+) -> list[Passage]:
+    """Each pass of a trip through an Avoid junction, in route order. With the plan's
+    `refine.Context` its legs are read from their traces (remembered in `ctx.traces`), so
+    a route over or under a junction on a bridge or in a tunnel is not a pass (J6); where
+    a leg cannot be traced its line is read as at grade."""
     if not junctions:
         return []
-    return model.passages(trip_coordinates(trip), junctions)
+    if getattr(ctx, "traces", None) is None:
+        return model.passages(trip_coordinates(trip), junctions)
+    from routemaker import trace_junctions
+
+    from . import routing
+
+    legs: list[tuple[dict | None, list]] = []
+    raws: list = []
+    for leg in trip.get("legs") or []:
+        shape = routing.decode_polyline6(leg.get("shape", ""))
+        try:
+            trace = routing._trace(
+                ctx.variant, ctx.costing, leg.get("shape", ""), deadline or ctx.deadline,
+                ctx.traces,
+            )  # fmt: skip
+        except (routing.DeadlineExceeded, routing.RouterUnavailable, routing.RouterRefused):
+            trace = None
+        legs.append((trace, shape))
+        if trace is not None:
+            raws.extend(trace_junctions.junctions_of_trace(trace, shape))
+    line, separated, nodes = graded_line(legs, raws)
+    return model.passages(line, junctions, separated=separated, nodes=nodes)
 
 
 def exclusions(junctions: Sequence[AvoidJunction]) -> list[dict]:
@@ -111,12 +180,52 @@ def exclusions(junctions: Sequence[AvoidJunction]) -> list[dict]:
     return [{"lon": j.lon, "lat": j.lat, "radius": int(model.MATCH_RADIUS_M)} for j in junctions]
 
 
-def around_request(request: dict, junctions: Sequence[AvoidJunction]) -> dict:
+def around_request(request: dict, junctions: Sequence[AvoidJunction], ctx=None) -> dict:
     """The plan's request with the junctions excluded as well as whatever it excluded
-    already, and without alternatives."""
+    already, and without alternatives. With the plan's `refine.Context`, also what the
+    passes before this one kept out (`Context.level_excludes`: Mountain Bike's trails
+    above the rider's level; `Context.red_excludes`: the red crossings the red pass went
+    round), so the way round never brings back a red crossing the red pass took out (the
+    2026-11-08 hunt, P2)."""
     out = {k: v for k, v in request.items() if k != "alternates"}
-    out["exclude_locations"] = list(request.get("exclude_locations") or []) + exclusions(junctions)
+    kept = list(request.get("exclude_locations") or [])
+    if ctx is not None:
+        kept += list(getattr(ctx, "level_excludes", None) or [])
+        kept += list(getattr(ctx, "red_excludes", None) or [])
+    # The router's limit on exclusions is 200: the junctions themselves always go in.
+    mine = exclusions(junctions)
+    out["exclude_locations"] = kept[: max(0, MAX_EXCLUDES - len(mine))] + mine
     return out
+
+
+def judged_takes(trip: dict, around: dict, ctx, deadline) -> bool | None:
+    """Whether the way round replaces the answer where the search did not weigh it, read
+    as the search reads a route (`refine.analyse`): never with more red crossings than the
+    answer (`refine.red_count`, which counts a capped trail crossing at its cost), never
+    busier by the Traffic-wins guard (its LTS 3, 4 and Avoid exposure and its red and Avoid
+    junction cost), and only where its score (`Analysis.score`: the router's cost plus the
+    junctions' stress, `RED_DETOUR_S` a red and the 30 minutes a pass) is the lower. The
+    router's cost alone, as before, prices no junction stress, and the red pass's route is
+    dearer by it by construction, so a way round back through the red it avoided won almost
+    every time (the 2026-11-08 hunt, S3 and P2). None where either cannot be read."""
+    from . import refine, routing
+
+    try:
+        before = refine.analyse(trip, ctx, deadline)
+        after = refine.analyse(around, ctx, deadline)
+    except (routing.DeadlineExceeded, routing.RouterUnavailable, routing.RouterRefused):
+        return None
+    if before is None or after is None or before.events is None or after.events is None:
+        return None
+    if refine.red_count(after) > refine.red_count(before):
+        return False
+    busier = (
+        after.rated_exposure_m + after.avoid_junction_m + after.red_m
+        > refine._allowance(before.rated_exposure_m) + before.avoid_junction_m + before.red_m
+    )
+    if busier:
+        return False
+    return after.score(ctx) < before.score(ctx)
 
 
 def record(found: Sequence[Passage]) -> None:
@@ -186,7 +295,7 @@ def settle(
     round."""
     from . import routing
 
-    found = passages_of(trip, junctions)
+    found = passages_of(trip, junctions, ctx, deadline)
     if not found:
         return trip, None, None
     passed = _junctions_of(found)
@@ -201,7 +310,7 @@ def settle(
         info["alternate"] = "time"
         return trip, info, None
     try:
-        answer = routing._call(variant, "route", around_request(request, passed), deadline)
+        answer = routing._call(variant, "route", around_request(request, passed, ctx), deadline)
         around = answer.get("trip") or {}
     except routing.RouterRefused:
         around = {}
@@ -211,7 +320,7 @@ def settle(
     if not around.get("legs"):
         info["alternate"] = "no_route"
         return trip, info, None
-    left = passages_of(around, junctions)
+    left = passages_of(around, junctions, ctx, deadline)
     if len(left) >= len(found):
         # The exclusion did not take it round (the junction's point is off the
         # graph's node, or there is no other way): nothing better to offer.
@@ -224,9 +333,15 @@ def settle(
     elif preset_name in GROUP_PRESETS:
         swap = group_takes(trip, around, ctx, deadline)
     elif not searched:
-        swap = routing._router_cost(around) + model.penalty_s(left) < routing._router_cost(
-            trip
-        ) + model.penalty_s(found)
+        # Judged as the search judges a route, junction stress and reds and all, where the
+        # plan's context can read both (S3, P2); the router's cost only without one.
+        judged = judged_takes(trip, around, ctx, deadline) if ctx is not None else None
+        if judged is not None:
+            swap = judged
+        elif ctx is None:
+            swap = routing._router_cost(around) + model.penalty_s(left) < routing._router_cost(
+                trip
+            ) + model.penalty_s(found)
     if swap:
         info["decision"] = "avoided"
         info["avoided"] = len(found) - len(left)

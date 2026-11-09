@@ -29,6 +29,7 @@ is the fallback, and it says "scheduled" as before.
 
 from __future__ import annotations
 
+import logging
 import math
 import time
 from dataclasses import replace
@@ -37,6 +38,8 @@ from datetime import UTC, datetime
 from routemaker.lang import t
 
 from . import presets, transit, wmata_bus, wmata_live, wmata_trains
+
+logger = logging.getLogger(__name__)
 
 # The ranking cost of an elevator out on the way (15 min; core.transit.ELEVATOR_OUT_S).
 ELEVATOR_OUT_S = transit.ELEVATOR_OUT_S
@@ -82,9 +85,187 @@ def _blocked(station: wmata_live.Station, live: wmata_live.Snapshot) -> bool | N
     return len(out) >= max(1, street_elevators(station))
 
 
-def blocked_stations(live: wmata_live.Snapshot | None) -> list[wmata_live.Station]:
+# A station closure or elevator outage WMATA reports now holds for a trip leaving within this of
+# now; past it only an elevator outage with an estimated return still to come holds, until that
+# return. Before, a reading taken on a Tuesday dropped Saturday's trips through a station closed
+# by Tuesday's incident and ranked stations down for Tuesday's elevators out (hunt M4). Two hours
+# is Claude's default, kept by the owner (not measured): a guess at how long an incident's
+# closure lasts. The owner, 2026-11-08: "We can do 2 hrs for WMATA" and "It's not my call. I'm
+# staying with your default".
+LIVE_HOLDS_S = 2 * 3600.0
+
+
+def _back_at(outage: wmata_live.Outage) -> datetime | None:
+    """An outage's estimated return (WMATA's local time, "2026-10-17T23:59:59"), or None."""
+    try:
+        back = datetime.fromisoformat(outage.back or "")
+    except ValueError:
+        return None
+    return back.replace(tzinfo=transit.ZONE) if back.tzinfo is None else back
+
+
+def holding(
+    live: wmata_live.Snapshot | None, moment: transit.Moment | None, now: float | None = None
+) -> wmata_live.Snapshot | None:
+    """The reading with only the incidents and elevator outages that hold for a trip leaving at
+    `moment` (`LIVE_HOLDS_S`); all of it where `moment` is None."""
+    if live is None or moment is None:
+        return live
+    now = _wall() if now is None else now
+    ahead_s = (moment.minute - _minute(moment, now)) * 60.0
+    soon = ahead_s <= LIVE_HOLDS_S
+    leaves = datetime.fromtimestamp(now + ahead_s, UTC)
+
+    def holds(outage: wmata_live.Outage) -> bool:
+        back = _back_at(outage)
+        # Out now and the trip soon: it holds, even with WMATA's estimate already past (an
+        # overdue return is no sign the elevator is back). Later, only until a return to come.
+        return soon or (back is not None and leaves < back)
+
+    outages = tuple(o for o in live.outages if holds(o))
+    incidents = live.incidents if soon else ()
+    if outages == live.outages and incidents == live.incidents:
+        return live
+    return replace(live, outages=outages, incidents=incidents)
+
+
+# A train predicted this many minutes out or fewer counts as in service for a holiday's day type
+# (`holiday_day_type`); Claude's pick, not measured.
+HOLIDAY_TRAIN_MIN = 2
+
+# The weekday day type the live trains showed on a holiday, by service day (`holiday_day_type`):
+# kept so that the rest of that service day is planned on it once both timetables are open,
+# as the docstring says (hunt 3, T3-6: from 6 am it was read again from each fresh reading,
+# so the same holiday went back to Sunday's timetable and its note changed between two
+# requests a few minutes apart). Each process keeps its own, and the shared route cache's
+# memcached (`route_cache.SHARED`) one for every worker where there is one. Kept for
+# `HOLIDAY_SEEN_S`, a service day and some (Claude's default, not measured).
+_holiday_seen: dict = {}
+HOLIDAY_SEEN_S = 30 * 3600
+
+
+def _seen_name(day) -> str:
+    return f"holiday-day-type:{day.isoformat()}"
+
+
+def _seen_day_type(day, weekday: str) -> bool:
+    """Whether the live trains were seen running `weekday`'s timetable on service day `day`."""
+    if _holiday_seen.get(day) == weekday:
+        return True
+    from .route_cache import _shared
+
+    shared = _shared()
+    if shared is None:
+        return False
+    try:
+        # Any container on the network can write to memcached: only this exact value counts.
+        found = shared.get(_seen_name(day)) == weekday.encode()
+    except Exception:  # noqa: BLE001 - a cache that fails knows nothing: the trains are read
+        logger.info("the holiday day type could not be read from the shared cache", exc_info=True)
+        return False
+    if found:
+        _holiday_seen[day] = weekday
+    return found
+
+
+def _remember_day_type(day, weekday: str) -> None:
+    _holiday_seen.clear()  # one service day at a time
+    _holiday_seen[day] = weekday
+    from .route_cache import _shared
+
+    shared = _shared()
+    if shared is None:
+        return
+    try:
+        shared.set(_seen_name(day), weekday.encode(), HOLIDAY_SEEN_S)
+    except Exception:  # noqa: BLE001 - this process still keeps it
+        logger.info("the holiday day type could not be kept in the shared cache", exc_info=True)
+
+
+def forget_holiday_service() -> None:
+    """Forget the day types seen (the tests)."""
+    _holiday_seen.clear()
+
+
+def holiday_day_type(live: wmata_live.Snapshot | None, now: float | None = None) -> str | None:
+    """The typical timetable's day type WMATA's live trains show Metro running on a federal
+    holiday, where they can say: the service day's own weekday type, when the reading (fresh,
+    and taken on the holiday) has a train in service predicted at a station at a time the
+    weekday timetable is open and the holiday's day type (Sunday) is not. None otherwise, and
+    the holiday keeps the file's `holiday` day type.
+
+    Hunt 2, T9: every federal holiday ran Metro's Sunday timetable, opening at 6 am. The review
+    believed (not verified against WMATA) that some holidays, Columbus Day and Veterans Day,
+    run weekday service, so an early trip on one was refused. The owner, 2026-11-08: "We have
+    a live API." The rule here is Claude's design, not WMATA's or the owner's: WMATA's live
+    data says only what runs now, so a train arriving or boarding (or due within
+    `HOLIDAY_TRAIN_MIN`) between the weekday and the Sunday opening (5 to 6 am), or after
+    Sunday's closing on a Friday (midnight to 2 am), is taken to show the weekday timetable
+    running, and the rest of that service day is planned on it (`_holiday_seen`). A train
+    predicted further out is not trusted: a prediction is not a train in service. Once both
+    timetables are open, both run trains and the predictions do not say which, so a holiday
+    on which no train was seen in those hours stays on Sunday's; a trip leaving now is timed
+    on the predicted trains anyway (`with_live_trains`). A holiday planned ahead of the day,
+    or with no fresh reading, keeps the Sunday rule."""
+    if live is None or live.stale or not live.trains:
+        return None
+    now = _wall() if now is None else now
+    if now - live.as_of > LIVE_FRESH_S:
+        return None
+    moment = transit.moment_of(datetime.fromtimestamp(live.as_of, UTC))
+    if not moment.holiday:
+        return None
+    doc = transit._typical_doc()
+    holiday = doc["holiday"]
+    weekday = transit._WEEKDAY_TYPES[moment.service_day.weekday()]
+    if weekday == holiday:
+        return None
+    if _seen_day_type(moment.service_day, weekday):
+        return weekday
+
+    def hours(kind: str) -> tuple[int, int]:
+        opens, closes = (transit._clock_min(v, (0, 0)) for v in doc["hours"][kind])
+        return opens, closes
+
+    def only_weekday(minute: float) -> bool:
+        (w_open, w_close), (h_open, h_close) = hours(weekday), hours(holiday)
+        return w_open <= minute < w_close and not h_open <= minute < h_close
+
+    # A train in passenger service ("" is WMATA's line for one that is not), arriving or
+    # boarding at a station ("ARR", "BRD") or due within `HOLIDAY_TRAIN_MIN`, while only the
+    # weekday timetable is open.
+    for train in live.trains:
+        if not train.line:
+            continue
+        here = train.arriving or train.boarding
+        if not here and (train.minutes is None or train.minutes > HOLIDAY_TRAIN_MIN):
+            continue
+        minute = moment.minute + (train.minutes or 0)
+        if only_weekday(minute):
+            _remember_day_type(moment.service_day, weekday)
+            return weekday
+    return None
+
+
+def with_holiday_service(
+    schedule: transit.Schedule, live: wmata_live.Snapshot | None, now: float | None = None
+) -> transit.Schedule:
+    """`schedule` with typical Metro on the day type WMATA's live trains show on the holiday
+    the reading was taken on (`holiday_day_type`); as it is where they cannot say."""
+    kind = holiday_day_type(live, now)
+    if kind is None:
+        return schedule
+    day = transit.moment_of(datetime.fromtimestamp(live.as_of, UTC)).service_day
+    return transit.with_metro_day(schedule, day, kind)
+
+
+def blocked_stations(
+    live: wmata_live.Snapshot | None, moment: transit.Moment | None = None
+) -> list[wmata_live.Station]:
     """The WMATA stations whose elevators out leave a bike no way through (`_blocked`), one
-    per station (its other platforms' codes left out)."""
+    per station (its other platforms' codes left out), for a trip leaving at `moment`
+    (`holding`; None: now)."""
+    live = holding(live, moment)
     if live is None:
         return []
     out: list[wmata_live.Station] = []
@@ -163,6 +344,8 @@ def skip_closed(plan: transit.Plan, live: wmata_live.Snapshot | None) -> transit
     affected" and "There is the option to ride through the closure as well": the direct ride is
     always an option, so a plan is never left empty. Bikeshare + 🚶🚆🚌 keeps its trips (a rider
     without a bike can take the shuttle); the step's WMATA alert says so."""
+    # A closure reported now, for a trip that leaves while it holds (`holding`).
+    live = holding(live, plan.moment)
     if live is None or plan.mode != presets.BIKE_TRANSIT or not plan.options:
         return plan
     kept = [o for o in plan.options if not closed_on(o, live)]
@@ -407,6 +590,8 @@ def annotate(
     alerts: list[str] = []
     if live is not None:
         option = plan.option
+        # The outages and incidents that hold when the trip leaves (`holding`).
+        live = holding(live, plan.moment)
         warnings = [wmata_live.elevator_words(name) for name in _outage_stations(option, live)]
         warnings += [
             wmata_live.spare_elevator_words(name)
@@ -443,13 +628,17 @@ def station(point, live: wmata_live.Snapshot | None) -> dict | None:
     found = live.station_near(point)
     if found is None:
         return None
-    groups: dict[tuple[str, str], list[wmata_live.Train]] = {}
+    # By line, end and track: WMATA's `Group` is the platform track, one per way at a platform
+    # (the owner: at Gallery Place the "After that" train was a Red Line one to
+    # Glenmont, which the ride's card took for a Shady Grove one by where Glenmont lies).
+    groups: dict[tuple[str, str, str | None], list[wmata_live.Train]] = {}
     for train in live.trains_at(found):
         if train.minutes is None or not train.destination:
             continue
-        groups.setdefault((train.line, train.destination), []).append(train)
+        track = f"{train.station}:{train.group}" if train.group else None
+        groups.setdefault((train.line, train.destination, track), []).append(train)
     trains = []
-    for (line, toward), group in groups.items():
+    for (line, toward, track), group in groups.items():
         group.sort(key=lambda train: train.minutes)
         # Where the train ends, so a ride's boarding card can tell a train going its way, and far
         # enough, from WMATA's place rather than its name ("Vienna/Fairfax-GMU").
@@ -459,6 +648,7 @@ def station(point, live: wmata_live.Snapshot | None) -> dict | None:
                 "line": line,
                 "toward": toward,
                 "end": [end.lon, end.lat] if end else None,
+                "track": track,
                 "minutes": [train.minutes for train in group[:TRAINS_SHOWN]],
                 "when": _when(group),
             }
