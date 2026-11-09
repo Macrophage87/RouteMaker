@@ -323,7 +323,16 @@ def _payload(
     exclude: list,
 ) -> dict:
     payload: dict = {
-        "locations": [{"lon": point[0], "lat": point[1], "radius": routing.STOP_RADIUS_M}],
+        # Matched as a plan's start is, never to the tunnel under a DC circle park, which
+        # grew the rings from the underpass (the second 2026-11-08 hunt, P6).
+        "locations": [
+            {
+                "lon": point[0],
+                "lat": point[1],
+                "radius": routing.STOP_RADIUS_M,
+                **routing.circle_park_filter(point[0], point[1]),
+            }
+        ],
         "costing": costing,
         "costing_options": options,
         "contours": [{"time": m} for m in contours],

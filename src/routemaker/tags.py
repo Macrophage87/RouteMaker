@@ -9,7 +9,7 @@ hide which values were measured and which were assumed.
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
 from .geo import METRES_PER_FOOT
@@ -333,24 +333,69 @@ def lanes_per_direction(tags: dict[str, str]) -> int | None:
     return max(1, total // 2)
 
 
-def has_parking_lane(tags: dict[str, str]) -> bool | None:
+# `no_parking`, `no_stopping` and `no_standing` all say parking is absent.
+# Reading them as present flipped the bike-lane width threshold from 1.7 m to
+# 4.1 m and, worse, removed "parking" from the assumed list - so the result
+# claimed the input was measured while reading it backwards.
+PARKING_ABSENT_VALUES = frozenset(
+    {"no", "none", "separate", "no_parking", "no_stopping", "no_standing"}
+)
+
+
+def _parking_side_keys(side: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """(the presence keys that speak for one side, most specific first; the
+    orientation keys read as presence where none of those is tagged).
+
+    The current scheme (`parking:<side>`, `parking:both`) before the older one
+    (`parking:lane:<side>`, `parking:lane:both`, `parking:lane`), the cycleway
+    side model's precedence (`CYCLEWAY_SIDE_KEYS`)."""
+    return (
+        (
+            f"parking:{side}",
+            "parking:both",
+            f"parking:lane:{side}",
+            "parking:lane:both",
+            "parking:lane",
+        ),
+        (f"parking:{side}:orientation", "parking:both:orientation"),
+    )
+
+
+def parking_on_side(tags: dict[str, str], side: str) -> bool | None:
+    """Whether parking runs along one side ("left" or "right"); None where no
+    presence key speaks for it."""
+    presence, orientation = _parking_side_keys(side)
+    value = _first(tags, presence) or _first(tags, orientation)
+    if value is None:
+        return None
+    return value not in PARKING_ABSENT_VALUES
+
+
+def has_parking_lane(tags: dict[str, str], sides: Sequence[str] = ("left", "right")) -> bool | None:
     """Whether on-street parking runs alongside, which changes the bike-lane table.
 
     Returns None when nothing in the tags speaks to it, since absence of a
     `parking:*` tag is not evidence that parking is absent.
+
+    Only the presence keys, side by side (`parking_on_side`), and only on `sides`:
+    the classifier passes the sides its painted lane is on (`provision_sides`).
+    Hunt 2, S2 and S3 (2026-11-08): every value under the `parking:*` prefixes
+    counted, so the current scheme's `parking:both=no` + `parking:both:reason=
+    bike_lane` read as parking present (`bike_lane` is no absent value), and so did
+    any `:markings`, `:fee` or `:zone` beside a `no`. And the side was not asked,
+    so a one-way's left-side lane with `parking:left=no` and `parking:right=lane`
+    was a door-zone lane: each rated LTS 3 where the lane is LTS 2 at 30 mph.
+    `parking:condition:*` is not evidence that parking exists, and is not read.
+
+    Parking on any of `sides` is parking alongside; else a side that says none is
+    none; else unknown.
     """
-    # Only the schemes that actually describe a parking lane. `parking:condition:*`
-    # is not evidence that parking exists.
-    prefixes = ("parking:lane", "parking:left", "parking:right", "parking:both")
-    values = [v for k, v in tags.items() if k.startswith(prefixes)]
-    if not values:
-        return None
-    # `no_parking`, `no_stopping` and `no_standing` all say parking is absent.
-    # Reading them as present flipped the bike-lane width threshold from 1.7 m to
-    # 4.1 m and, worse, removed "parking" from the assumed list - so the result
-    # claimed the input was measured while reading it backwards.
-    absent = {"no", "none", "separate", "no_parking", "no_stopping", "no_standing"}
-    return any(v not in absent for v in values)
+    found = [parking_on_side(tags, side) for side in sides]
+    if True in found:
+        return True
+    if False in found:
+        return False
+    return None
 
 
 # The `cycleway` values that describe a facility *on this way*, split by how much
@@ -446,6 +491,9 @@ class CyclewaySide:
     # The side's own `cycleway:<side>:oneway` says it runs against the way's
     # traffic: the modern tagging of a contraflow lane (`cycleway_sides`).
     against_traffic: bool = False
+    # The side's own `cycleway:<side>:oneway=no`: a two-way lane or track on one
+    # side of the road, which a rider going either way may use (`_directions`).
+    two_way: bool = False
 
     @property
     def rank(self) -> int:
@@ -499,8 +547,11 @@ def cycleway_sides(tags: dict[str, str]) -> dict[str, CyclewaySide]:
         width = _first_width(tags, CYCLEWAY_SIDE_WIDTH_KEYS[side])
         if value is not None and _facility_rank(value) == 0:
             width = None
-        against = _against_traffic(tags, _first_key(tags, CYCLEWAY_SIDE_KEYS[side]))
-        sides[side] = CyclewaySide(value, width, against)
+        key = _first_key(tags, CYCLEWAY_SIDE_KEYS[side])
+        against = _against_traffic(tags, key)
+        # Read at the key the value came from, as `_against_traffic` reads it.
+        two_way = key is not None and tags.get(f"{key}:oneway") == "no"
+        sides[side] = CyclewaySide(value, width, against, two_way)
     return sides
 
 
@@ -535,10 +586,19 @@ def _directions(tags: dict[str, str], sides: dict[str, CyclewaySide]) -> list[li
     `oneway:bicycle=no`, which the older scheme left implied, and the modern
     `cycleway:left=lane` + `cycleway:left:oneway=-1`, each still took the union
     and came out a tier calmer than the first form.
+
+    A two-way facility on one side (`cycleway:right=track` +
+    `cycleway:right:oneway=no`, the usual tagging of a two-way protected track
+    along a two-way road) serves both directions (hunt 3, stress 1). Read as one
+    direction's, the other direction had nothing and the way was mixed traffic:
+    LTS 3 at 30 mph on a road the map draws a track along.
     """
     left, right = sides["left"], sides["right"]
     if not is_oneway(tags):
-        return [[left], [right]]
+        return [
+            [left] + ([right] if right.two_way else []),
+            [right] + ([left] if left.two_way else []),
+        ]
     return [[s for s in (left, right) if not s.contraflow]]
 
 
@@ -594,6 +654,35 @@ def _provision(directions: list[list[CyclewaySide]], pick) -> Provision:
         frozenset(s.value for sides, _ in used for s in sides if s.value is not None),
         pick(widths) if widths else None,
     )
+
+
+# A side's buffer, by the same precedence as its value: the side's own key, then
+# `:both`, then the bare key.
+CYCLEWAY_SIDE_BUFFER_KEYS = {
+    side: (f"cycleway:{side}:buffer", "cycleway:both:buffer", "cycleway:buffer") for side in SIDES
+}
+_NO_BUFFER = frozenset({"no", "none", "0"})
+
+
+def side_buffered(tags: dict[str, str], side: str) -> bool:
+    """Whether one side's lane has a buffer: its value is `buffered_lane`, or the
+    buffer key that speaks for the side says something other than no."""
+    if _first(tags, CYCLEWAY_SIDE_KEYS[side]) == "buffered_lane":
+        return True
+    buffer = _first(tags, CYCLEWAY_SIDE_BUFFER_KEYS[side])
+    return buffer is not None and buffer not in _NO_BUFFER
+
+
+def provision_sides(tags: dict[str, str]) -> tuple[str, ...]:
+    """The sides ("left", "right") whose facility sets `cycleway_provision`: on a
+    two-way street the sides at the weakest direction's rank, on a one-way the
+    sides at the best rank among those the with-flow rider may use (a contraflow
+    side is not one, `_directions`). For the parking beside the lane scored
+    (`has_parking_lane`; hunt 2, S3)."""
+    sides = cycleway_sides(tags)
+    rank = cycleway_provision(tags).rank
+    serving = [n for n in SIDES if not (is_oneway(tags) and sides[n].contraflow)]
+    return tuple(n for n in serving if sides[n].rank == rank)
 
 
 def cycleway_values(tags: dict[str, str]) -> set[str]:

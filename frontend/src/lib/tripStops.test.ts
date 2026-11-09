@@ -109,7 +109,7 @@ test("at the stop, one press plans the rest from where the rider is and rides it
   assert.match(app, /onNextLeg=\{tripStopsLeft\.current \? nextLeg : undefined\}/);
   assert.match(app, /const points = nextLegPoints\(left, riderAt\);/);
   // Bikeshare: the start's chosen pick-up is not the stop's; the end's chosen drop-off stays (v0.22.0).
-  assert.match(app, /const legDials = withStations\(planDials, \{ dropoff: stationChoice\.dropoff \}\);\s*const result = await requestRoute\(points, left\.preset, \{ dials: \{ \.\.\.legDials, loop: false, closuresNow: true \} \}\);/);
+  assert.match(app, /const legDials = withStations\(planDials, \{ dropoff: stationChoice\.dropoff \}\);\s*const result = await requestRoute\(points, left\.preset, \{ dials: rideNowDials\(legDials\) \}\);/);
   assert.match(app, /tripStopsLeft\.current = null;\s*beginRide\(ridePrefs, false, \{ route: result\.route, points \}\);/);
   // Shown once the trip to the stop is done: arrived, and every walk and train after the line followed.
   // Not beside the ride after a train (Ride the rest's, started by itself), still to go to the stop.

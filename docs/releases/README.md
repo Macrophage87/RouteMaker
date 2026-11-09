@@ -3,7 +3,8 @@
 One file per release tag (`v0.9.1.md`), written for riders: what's new and what's fixed, in plain
 words, a few short lines, US units first with metric in brackets. When the beta deploys a tag, the
 release agent has the owner's bot post that tag's file, pictures included, to the read-only
-changelog channel (docs/BETA-RUNBOOK.md, "Alerts").
+changelog channel (docs/BETA-RUNBOOK.md, "Alerts"), with a link to the full notes in the
+release's pull request.
 No server addresses, keys or riders' data.
 
 **Pictures over words** (the owner, 2026-11-07: "People hate walls of text, so releases are
@@ -20,6 +21,19 @@ only: PNG, JPEG, GIF or WebP, under 10 MB each
 (smaller is kinder to phones; a few hundred KB is plenty). The bot posts each one as its own
 message with the caption as its words and its alt text, and GitHub shows them in place. The same
 rules as the words: no real ride, rider location, account or server address in a picture.
+
+## The full notes live in the release pull request
+
+The owner, 2026-11-08: "make sure that the release PRs have the full release notes and have the
+discord post link to them". The pull request from `release/vX.Y.Z` into `main` carries the full
+release notes in its description: every change in the release, grouped (riders' features, fixes,
+routing and map data, operations), each with the pull request that made it. Write it before the
+merge and keep it current as fixes land. The rider file here stays short.
+
+The bot's post ends with `Full release notes: <link>`, the merged release pull request, found
+through GitHub's public API. Until that pull request is merged, or if GitHub cannot be reached, the
+link is this file at the tag. `discord_reports.py changelog ... --full-notes URL` names another
+link, and `--full-notes ''` leaves it off.
 
 ## The documentation check, every release
 

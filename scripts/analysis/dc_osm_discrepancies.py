@@ -49,6 +49,12 @@ def from_dcbal(r: dict) -> dict:
         "after": _json(r["tags1"]),
         "facts": _json(r["facts"]),
         "sources": _json(r["sources"]),
+        # `dcbal.tsv` keeps no OSM edit date or block key: the ways OSM edited after
+        # the record are listed by the rebuild's report only (`pipeline.dc_osm_newer`).
+        "edited": None,
+        "block_keys": [],
+        "tier0_half": False,
+        "tier1_half": False,
     }
 
 

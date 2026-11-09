@@ -25,7 +25,7 @@ BOX = REPO / "scripts" / "cloud" / "box-rebuild.sh"
 IMPORT = REPO / "scripts" / "cloud" / "import-result.sh"
 BUILD = "20261011T093012Z"
 COMMIT = "a" * 40
-VARIANTS = ("standard", "no-trail", "ebike", "weekend", "offroad", "mtb", "paved")
+VARIANTS = ("standard", "no-trail", "ebike", "weekend", "offroad", "mtb", "paved", "paved-weekend")
 
 pytestmark = pytest.mark.skipif(shutil.which("bash") is None, reason="needs bash")
 
@@ -1157,7 +1157,7 @@ ln -s "$FAKE_DIR/graph.tar" "$stage/tiles/standard/BUILD/tiles.tar"
 echo dump >"$stage/db/routemaker.dump"
 (cd "$stage" && sha256sum tiles/standard/BUILD/tiles.tar db/routemaker.dump >SHA256SUMS)
 graphs=""
-for v in standard no-trail ebike weekend offroad mtb paved; do
+for v in standard no-trail ebike weekend offroad mtb paved paved-weekend; do
   graphs="$graphs $v=${FAKE_SHIPPED:-BUILD}"
 done
 printf 'bundle_format=1\ntiles=%s\n' "${graphs# }" >"$stage/MANIFEST.txt"
@@ -1325,7 +1325,7 @@ def beta(fake):
         incoming = fake.root / "incoming"
         state = fake.root / "beta-state"
 
-        def run(self, *args: str):
+        def run(self, *args: str, **env: str):
             return fake.run(
                 IMPORT,
                 "--beta",
@@ -1343,6 +1343,7 @@ def beta(fake):
                 CLOUD_SMOKE_TRIES="3",
                 CLOUD_SMOKE_WAIT_S="0",
                 CLOUD_ROUTER_WAIT_S="0",
+                **env,
             )
 
     Beta.live, Beta.data = live, data
@@ -1421,6 +1422,33 @@ def test_on_the_beta_the_swap_starts_the_trail_routers_whose_tiles_are_there(fak
     positions = [calls.index(step) for step in (restart, start, sync, "smoke --local")]
     assert positions == sorted(positions), calls
     assert "valhalla-offroad" not in calls
+
+
+@pytest.mark.parametrize(("available_mib", "started"), [(9000, True), (6000, False)])
+def test_on_the_beta_the_swap_starts_road_bikes_routers_only_with_room(
+    fake, beta, available_mib, started
+) -> None:
+    # The agent's gate (RM_CD_PAVED_MIN_MIB, 8806 MiB of available memory plus what the
+    # project's containers hold): the beta has a thin margin and no swap.
+    for variant in ("paved", "paved-weekend"):
+        (beta.data / "tiles" / variant / BUILD).mkdir(parents=True, exist_ok=True)
+        (beta.data / "tiles" / variant / "current").symlink_to(BUILD)
+    meminfo = fake.root / "meminfo"
+    meminfo.write_text(f"MemTotal: 16000000 kB\nMemAvailable: {available_mib * 1024} kB\n")
+    assert beta.run(CLOUD_MEMINFO=str(meminfo)).returncode == 0
+    (fake.dir / "calls.log").unlink()
+
+    done = beta.run("--swap", CLOUD_MEMINFO=str(meminfo))
+
+    assert done.returncode == 0, done.stdout + done.stderr
+    calls = fake.calls()
+    start = "beta-compose up -d --force-recreate valhalla-paved valhalla-paved-weekend"
+    if started:
+        assert start in calls, calls
+    else:
+        assert "--force-recreate valhalla-paved" not in calls, calls
+        assert "valhalla-paved-weekend left stopped: 6000 MiB of the 8806" in done.stdout
+    assert "beta-compose exec -T api ./manage.py sync_upstreams" in calls
 
 
 def test_on_the_beta_the_swap_waits_for_deployment_to_be_paused(fake, beta) -> None:

@@ -171,7 +171,8 @@ def test_a_road_the_rider_marked_closed_stays_out_of_every_request(client, monke
     # The closure and the rider's road, then the rider's road alone.
     assert len(routes[0]["exclude_polygons"]) == 2
     assert len(routes[1]["exclude_polygons"]) == 1
-    assert routes[1]["exclude_polygons"][0] == wz.line_ring(blocked)
+    # The rider's road trimmed 20 m at each end as a closure is (hunt K4/Q2, 2026-11-08).
+    assert routes[1]["exclude_polygons"][0] == wz.line_ring(blocked, wz.TRIM_M)
 
 
 @db
