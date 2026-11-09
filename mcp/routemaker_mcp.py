@@ -1634,6 +1634,94 @@ def summary(answer: dict) -> dict:
             {k: o.get(k) for k in ("key", "label", "minutes", "chosen")}
             for o in transit.get("options") or []
         ]
+        later = later_rides(answer)
+        if later:
+            # The figures above are the route line's, the trip's first ride; the rides after
+            # it were left out of every figure (routing hunt 4, X4-2).
+            out["transit"]["later_rides"] = later
+            # Every ride's miles together, where every later ride was routed (an unrouted one
+            # has its minutes only).
+            if all(r["routed"] for r in later):
+                ridden = distance / METRES_PER_MILE + sum(r["miles"] for r in later)
+                out["transit"]["ridden_mi"] = round(ridden, 1)
+            out["transit"]["figures_cover"] = LATER_RIDES_NOTE
+    return out
+
+
+# What a Bike + transit or Bikeshare + transit answer's own figures cover when the trip rides
+# again after its route line (routing hunt 4, X4-2).
+LATER_RIDES_NOTE = (
+    "distance, traffic_stress, roads, busy_stretches, junctions and route_segments cover the"
+    " trip's first ride only; transit.later_rides describes each ride after it"
+)
+_RIDE_STEPS = {"ride": "ride", "bikeshare": "bikeshare"}
+
+
+def later_rides(answer: dict) -> list[dict]:
+    """Each own-bike or bikeshare ride of a transit trip after its route line (the answer's own
+    line, which every other figure describes), in trip order: where it starts and ends, its
+    miles, its LTS shares and its busy stretches (LTS 3 and up, miles into that ride), from the
+    step's routed line (`stress_spans`, api.py `_with_leg_lines`). A ride the router did not
+    draw says `routed: false` and its minutes only. Empty off a transit trip or with one ride.
+    The later rides' road names are not in the answer, so none are listed."""
+    transit = answer.get("transit")
+    steps = transit.get("steps") if isinstance(transit, dict) else None
+    if not steps:
+        return []
+    line_at = next((i for i, step in enumerate(steps) if step.get("route_line")), None)
+    if line_at is None or steps[line_at].get("mode") not in _RIDE_STEPS:
+        return []
+    out = []
+    for index in range(line_at + 1, len(steps)):
+        step = steps[index]
+        kind = _RIDE_STEPS.get(step.get("mode"))
+        if kind is None:
+            continue
+        before = next(
+            (steps[i].get("to") for i in range(index - 1, -1, -1) if steps[i].get("to")), None
+        )
+        row: dict = {
+            "mode": kind,
+            "from": before,
+            "to": step.get("to") or "the destination",
+            "minutes": round((step.get("seconds") or 0) / 60),
+        }
+        spans = step.get("stress_spans") or []
+        metres = step.get("distance_m")
+        if not spans or not metres:
+            row["routed"] = False
+            out.append(row)
+            continue
+        traced = spans[-1]["to_m"] or metres
+        scale = metres / traced / METRES_PER_MILE
+        tiers: dict[str, float] = {}
+        entries = []
+        for span in spans:
+            length = (span["to_m"] - span["from_m"]) * scale
+            key = str(span["tier"]) if span.get("tier") is not None else "unknown"
+            tiers[key] = tiers.get(key, 0.0) + length
+            entries.append(
+                {
+                    "tier": span.get("tier"),
+                    "from_mi": span["from_m"] * scale,
+                    "to_mi": span["to_m"] * scale,
+                }
+            )
+        miles = metres / METRES_PER_MILE
+        labels = {"1": "LTS 1", "2": "LTS 2", "3": "LTS 3", "4": "LTS 4", "5": "Avoid"}
+        row["routed"] = True
+        row["miles"] = round(miles, 2)
+        row["traffic_stress"] = {
+            labels.get(key, key): (
+                f"{part / miles * 100:.0f}% ({miles_text(part * METRES_PER_MILE)})"
+            )
+            for key, part in tiers.items()
+            if part >= 0.05
+        }
+        row["busy_stretches"] = [
+            {k: v for k, v in busy.items() if k != "roads"} for busy in _busy_rows(entries)
+        ]
+        out.append(row)
     return out
 
 
@@ -1832,8 +1920,13 @@ def _grouped(rows: list[dict], minimum: float) -> list[list[dict]]:
 def busy_stretches(answer: dict) -> list[dict]:
     """Where the route rides LTS 3 and up, in route order: from and to (miles), the roads and
     the worst LTS (5 is Avoid). The longest MAX_BUSY_ROWS where there are more."""
+    return _busy_rows(_stretches(answer))
+
+
+def _busy_rows(entries: list[dict]) -> list[dict]:
+    """`busy_stretches` from stretches in route order ({tier, from_mi, to_mi, street})."""
     spans: list[dict] = []
-    for entry in _stretches(answer):
+    for entry in entries:
         tier = entry.get("tier")
         if tier is None or tier < 3:
             continue
@@ -4187,7 +4280,9 @@ TOOLS = [
             " `junctions` (very-high-stress crossings and turns), `scenic_roads`, and"
             " `small_detours` / `via_spurs` (where it leaves a road and comes back to it, or"
             " goes out and back to a via point; riders rarely want these: move or drop the"
-            " point with revise_route). To shape a route onto roads the router does not pick"
+            " point with revise_route). On a transit trip these describe its first ride only;"
+            " `summary.transit.later_rides` gives each ride after it (miles, LTS, busy"
+            " stretches). To shape a route onto roads the router does not pick"
             " on its own (a rustic road, a trail; scenic_roads_near lists them), add via points"
             " ON those roads, by [lon, lat]"
             " or by name: a name is searched near the route's other points, and an ambiguous"
@@ -5991,7 +6086,11 @@ class Server:
             raise ToolError("to_mi is past from_mi")
         rows = int(args.get("max_rows") or SEGMENT_ROWS)
         rows = max(5, min(MAX_SEGMENT_ROWS, rows))
-        return {"draft_id": str(args["draft_id"]), **route_segments(draft.plan, start, end, rows)}
+        out = {"draft_id": str(args["draft_id"]), **route_segments(draft.plan, start, end, rows)}
+        if later_rides(draft.plan.answer):
+            # The rows are the first ride's alone (routing hunt 4, X4-2).
+            out["covers"] = LATER_RIDES_NOTE
+        return out
 
     # ride_conditions
     def ride_conditions(self, args: dict, call: Call) -> dict:

@@ -109,6 +109,14 @@ class Straight:
         return transit.Ride(metres / speed, (tuple(a), tuple(b)), metres)
 
 
+class NoWalks(Straight):
+    """A router that rides but walks nowhere: every walk is the straight line's estimate."""
+
+    def walk(self, a, b):
+        self.calls += 1
+        return None
+
+
 # Near Eastern Market (east, a short ride), and near Federal Triangle (west).
 CAPITOL_HILL = [-76.9930, 38.8830]
 DOWNTOWN = [-77.0300, 38.8960]
@@ -391,9 +399,11 @@ def test_around_3_am_both_service_days_are_searched_owl_trips_past_27_00_include
     assert [m.service_day for m in moments] == [date(2026, 10, 1), date(2026, 9, 30)]
     assert [m.minute for m in moments] == [200, 27 * 60 + 20]
     assert len(transit.moments_of(at(2026, 10, 1, 9, 0))) == 1
-    # Wednesday's owl Light RailLink leaves Camden Yards at 27:30, 3:30 am Thursday.
+    # Wednesday's owl Light RailLink leaves Camden Yards at 27:30, 3:30 am Thursday. The walks
+    # estimated from the straight line (a router that walks nowhere), so the stop boarded at is
+    # the one this test is about.
     plan = transit.plan_bikeshare(
-        schedule, [-76.6206, 39.2849], [-76.6159, 39.3071], when, Straight(), NO_DOCKS
+        schedule, [-76.6206, 39.2849], [-76.6159, 39.3071], when, NoWalks(), NO_DOCKS
     )
     owl = next(o for o in plan.options for leg in o.legs if leg.system == "Light RailLink")
     leg = next(leg for leg in owl.legs if leg.transit)
@@ -1349,6 +1359,32 @@ def test_a_bike_taken_after_the_train_is_said_to_be_counted_now(schedule) -> Non
         assert transit.far_dock_words("8th & D St SE") not in notes
 
 
+def test_a_trip_that_ends_on_a_bikeshare_bike_is_labelled_so() -> None:
+    """Hunt 4, X4-5: a share ride after the train ends with the walk on from the dock, and the
+    label named the ending from that walk ("..., walk")."""
+    metro = transit.Leg(
+        transit.METRO, 900.0, to="Silver Spring", lines=("Red Line",), system="Metro"
+    )
+    start = [transit.Leg(transit.WALK, 300.0), transit.Leg(transit.ENTER, 60.0), metro]
+    out = transit.Leg(transit.EXIT, 60.0)
+    ending = [
+        transit.Leg(transit.TAKE, 60.0, to="Silver Spring Transit Center"),
+        transit.Leg(transit.SHARE, 300.0, to="Fenton St"),
+        transit.Leg(transit.WALK, 60.0),
+    ]
+    shared = transit.Option("s", tuple([*start, out, *ending]))
+    assert transit.label(shared, presets.BIKESHARE_TRANSIT) == (
+        "Walk, Metro to Silver Spring (Red Line), bikeshare"
+    )
+    # A share ride before the train alone does not make the ending a bikeshare one.
+    walked = transit.Option(
+        "w", tuple([*ending[:2], *start[1:], out, transit.Leg(transit.WALK, 60)])
+    )
+    assert transit.label(walked, presets.BIKESHARE_TRANSIT) == (
+        "Bikeshare, Metro to Silver Spring (Red Line), walk"
+    )
+
+
 def test_bikeshare_needs_no_dock_to_walk_metro_and_walk(schedule) -> None:
     plan = transit.plan_bikeshare(
         schedule, CAPITOL_HILL, DOWNTOWN, at(2026, 9, 30, 8, 0), Straight(), NO_DOCKS
@@ -1399,6 +1435,57 @@ def test_walk_transit_walks_both_ends_of_every_trip_and_never_takes_a_bike(sched
     for option in plan.options:
         assert not {leg.mode for leg in option.legs} & {"ride", "take", "bikeshare"}
     assert transit.label(plan.options[0], presets.WALK_TRANSIT).startswith("Walk, Metro to")
+
+
+class Barrier(Straight):
+    """A router whose walks to or from `cut` (a station's way in) go the long way round, a
+    channel between: `factor` times the straight line, at 3 mph."""
+
+    def __init__(self, cut, factor: float = 4.0) -> None:
+        super().__init__()
+        self.cut = tuple(cut)
+        self.factor = factor
+
+    def walk(self, a, b):
+        found = super().walk(a, b)
+        if transit._distance(self.cut, a) < 1 or transit._distance(self.cut, b) < 1:
+            return replace(found, seconds=found.seconds * self.factor)
+        return found
+
+
+def test_walk_transit_ranks_stations_on_their_walks_as_walked(schedule) -> None:
+    """Hunt 4, X4-1: the walks were timed by the straight line times DETOUR and never walked
+    in the search, so a station across a channel (0.6 mi straight, 2.0 mi on foot) was chosen
+    over a nearer one on foot, and the trip promised less time than its first walk."""
+    when = at(2026, 9, 30, 8, 0)
+    first = transit.plan_walk_transit(schedule, CAPITOL_HILL, DOWNTOWN, when, NoWalks())
+    chosen = first.options[0]
+    station = chosen.legs[0].coordinates[-1]
+    board = next(leg for leg in chosen.legs if leg.transit).board_at
+    across = Barrier(station)
+    plan = transit.plan_walk_transit(schedule, CAPITOL_HILL, DOWNTOWN, when, across)
+    for option in plan.options:
+        walk = option.legs[0]
+        # Each first walk to a nearest station is walked, and its time is the walked one.
+        assert len(walk.coordinates) >= 2 and not walk.estimated
+        assert option.total_s >= walk.seconds
+    boards = [next(leg for leg in o.legs if leg.transit).board_at for o in plan.options]
+    assert boards[0] != board, boards
+
+
+def test_a_walk_drawn_for_the_map_is_timed_as_walked(schedule) -> None:
+    """Hunt 4, X4-1: `drawn` walked a leg for the map and kept its estimated time."""
+    plan = transit.plan_bikeshare(
+        schedule, CAPITOL_HILL, DOWNTOWN, at(2026, 9, 30, 8, 0), NoWalks(), NO_DOCKS
+    )
+    metro = transit.choose(plan, next(o.key for o in plan.options if o.scheduled))
+    last = metro.legs[-1]
+    slow = Barrier(last.coordinates[-1], factor=3.0)
+    drawn = transit.drawn(metro, slow)
+    walked = transit._distance(last.coordinates[0], last.coordinates[-1])
+    expected = 3.0 * walked / (transit.WALK_SPEED_KMH / 3.6)
+    assert drawn.legs[-1].seconds == pytest.approx(expected)
+    assert drawn.option.total_s == pytest.approx(metro.option.total_s - last.seconds + expected)
 
 
 def test_walk_transit_walks_a_short_trip_and_with_no_transit_walks_or_says_why(schedule) -> None:
@@ -1572,7 +1659,8 @@ class Bendy(Straight):
 
 def test_the_chosen_trips_other_walks_and_rides_are_routed_for_the_map(schedule) -> None:
     # The owner, 2026-10-15: "The bikeshare mode doesn't seem to properly route walking." Every
-    # walk is walked (pedestrian costing) and every ride ridden for the map; no time changes.
+    # walk is walked (pedestrian costing) and every ride ridden for the map. A walk is timed as
+    # walked (hunt 4, X4-1); a ride keeps its time.
     plan = transit.plan_bikeshare(
         schedule, CAPITOL_HILL, DOWNTOWN, at(2026, 9, 30, 8, 0), Straight(), SHARE
     )
@@ -1583,8 +1671,16 @@ def test_the_chosen_trips_other_walks_and_rides_are_routed_for_the_map(schedule)
     # The route line (the bikeshare ride) is the answer's own; the two walks are walked.
     assert services.asked == ["walk", "walk"]
     assert [len(leg.coordinates) for leg in drawn.legs] == [3, 2, 3]
-    assert [leg.seconds for leg in drawn.legs] == [leg.seconds for leg in direct.legs]
-    assert drawn.option.total_s == direct.option.total_s
+    on_foot = transit.WALK_SPEED_KMH / 3.6
+    walked = [
+        transit._distance(leg.coordinates[0], leg.coordinates[-1]) / on_foot
+        for leg in direct.legs[::2]
+    ]
+    assert [leg.seconds for leg in drawn.legs] == pytest.approx(
+        [walked[0], direct.legs[1].seconds, walked[1]]
+    )
+    # Walked, each is quicker than its straight line times DETOUR.
+    assert drawn.option.total_s < direct.option.total_s
     for before, after in zip(direct.legs, drawn.legs, strict=True):
         assert after.coordinates[0] == before.coordinates[0]
         assert after.coordinates[-1] == before.coordinates[-1]
@@ -2524,7 +2620,7 @@ class TestApi:
         self, client, segments, router, installed, monkeypatch
     ) -> None:
         # The route line of walk, Metro, walk is a walk: the pedestrian router's, never the
-        # bike's, and the other walk is walked for the map too. The times are the plan's.
+        # bike's, and the other walk is walked too, each timed as walked (hunt 4, X4-1).
         fake = router(standard_router())
         monkeypatch.setattr(gbfs.client, "snapshot", lambda: NO_DOCKS)
         services = Bendy()
@@ -2539,7 +2635,11 @@ class TestApi:
         assert first["route_line"] and len(body["geometry"]["coordinates"]) == 3
         assert body["duration_s"] == pytest.approx(first["seconds"], abs=1)
         assert not last["route_line"] and len(last["coordinates"]) == 3
-        # The same trip drawn straight (the router not answering) has the same times.
+        # Each walk at the walked time (Straight's: the straight line at 3 mph).
+        walked = transit._distance(CAPITOL_HILL, body["geometry"]["coordinates"][-1])
+        assert first["seconds"] == pytest.approx(walked / (transit.WALK_SPEED_KMH / 3.6), abs=1)
+        # The same trip drawn straight (the router not answering): its walks estimated from
+        # the straight line times DETOUR, so slower than walked.
         monkeypatch.setattr(
             transit, "RoutingServices", lambda *_args, **_kwargs: Bendy(answers=False)
         )
@@ -2547,9 +2647,37 @@ class TestApi:
         again = straight.json()
         assert len(again["transit"]["steps"][-1]["coordinates"]) == 2
         assert len(again["geometry"]["coordinates"]) == 2
-        assert again["transit"]["total_s"] == trip["total_s"]
-        timed = [(s["seconds"], s["wait_s"]) for s in again["transit"]["steps"]]
-        assert timed == [(s["seconds"], s["wait_s"]) for s in trip["steps"]]
+        assert again["transit"]["steps"][0]["seconds"] == pytest.approx(
+            first["seconds"] * transit.DETOUR, abs=1
+        )
+        assert again["transit"]["total_s"] > trip["total_s"]
+
+    def test_a_walk_transit_line_walked_after_the_search_is_timed_as_walked(
+        self, client, segments, router, installed, monkeypatch
+    ) -> None:
+        # Hunt 4, X4-1: a walk the search could not walk (its router budget spent) was walked
+        # for the line, 2.0 mi, and kept its 0.6 mi straight line's estimate: the trip was
+        # promised in less time than its first walk alone.
+        router(standard_router())
+
+        class Slow(Straight):
+            def walk(self, a, b):
+                found = super().walk(a, b)
+                return replace(found, seconds=found.seconds * 3.0)
+
+        made = iter([NoWalks(), Slow(), Slow()])
+        monkeypatch.setattr(transit, "RoutingServices", lambda *_args, **_kwargs: next(made))
+        response = post_transit(client, [CAPITOL_HILL, DOWNTOWN], presets.WALK_TRANSIT)
+        assert response.status_code == 200, response.content
+        body = response.json()
+        trip = body["transit"]
+        first = trip["steps"][0]
+        assert first["route_line"] and first["mode"] == "walk"
+        line = body["geometry"]["coordinates"]
+        walked = 3.0 * transit._distance(line[0], line[-1]) / (transit.WALK_SPEED_KMH / 3.6)
+        assert first["seconds"] == pytest.approx(walked, abs=1)
+        assert body["duration_s"] == pytest.approx(walked, abs=1)
+        assert trip["total_s"] > first["seconds"]
 
     def test_bikeshare_feeds_down_walk_both_ends_with_a_note_not_a_503(
         self, client, segments, router, installed, monkeypatch

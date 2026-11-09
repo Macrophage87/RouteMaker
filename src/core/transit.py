@@ -74,8 +74,12 @@ Straight lines first, the router only where it pays: the nearest `STATION_CANDID
 at each end are routed for Own Bike + 🚆🚌 (at most `MAX_ROUTER_CALLS` calls, the direct ride
 first, each capped at `CANDIDATE_CALL_S` and all inside the search's budget; a leg the router does
 not answer in time is estimated, never fatal); the nearest stations of every other rail system
-and the nearest bus stops are estimated from the straight line times `DETOUR`. The chosen
-option's first ride is then routed as the answer's line, and its time replaces the estimate.
+and the nearest bus stops are estimated from the straight line times `DETOUR`. Walk + 🚆🚌 and
+Bikeshare + 🚶🚆🚌 walk to and from the nearest `STATION_CANDIDATES` stations at each end by
+the pedestrian router the same way (routing hunt 4, X4-1: a station across a channel, 0.6 mi
+in a straight line and 2.0 mi on foot, was chosen on the straight line's estimate). The chosen
+option's first ride is then routed as the answer's line, and its time replaces the estimate;
+each walk the map draws (`drawn`) is timed as walked too.
 
 Bikes on transit
 ----------------
@@ -166,8 +170,10 @@ HOP_NEAR_M = 1609.0  # 1 mi
 # other transit trip (riding directly there rides the stretch, so is not compared); past it,
 # it is listed and the quickest is planned.
 HOP_SLACK_S = 900.0  # 15 min
-# Router calls for Own Bike + 🚆🚌: three stations each end and the direct ride.
-MAX_ROUTER_CALLS = 2 * STATION_CANDIDATES + 1
+# Router calls for one search: three stations each end, the direct ride and, on Bikeshare +
+# 🚶🚆🚌, walking the whole way after the walks to and from the stations (routing hunt 4, X4-1;
+# the one call more is Claude's default, not measured).
+MAX_ROUTER_CALLS = 2 * STATION_CANDIDATES + 2
 # The options each answer lists (the owner, 2026-10-12 15:00): riding directly there always,
 # and the quickest transit trips, one of each kind, up to this many.
 TRANSIT_OPTIONS = 3
@@ -2029,24 +2035,50 @@ def _ride_from(
     return _End(stop.index, legs, f"e{stop.index}")
 
 
-def _walk_to(schedule: Schedule, stop: Stop, point) -> _End | None:
-    """Walk from the start to the stop (and into the station)."""
+def _walk_leg(a, b, services: Services | None, to: str | None = None) -> Leg:
+    """A walk from `a` to `b`: walked by the pedestrian router where `services` is given and it
+    answers (its time, line and turns), else the straight line's estimate (`walk_s`)."""
+    walked = services.walk(list(a), list(b)) if services is not None else None
+    if walked is None or len(walked.coordinates) < 2:
+        return Leg(WALK, walk_s(a, b), (tuple(a), tuple(b)), to)
+    return Leg(WALK, walked.seconds, _joined(walked.coordinates, a, b), to, turns=walked.turns)
+
+
+def _joined(points, a, b) -> tuple[tuple[float, float], ...]:
+    """A routed line joined to the leg's own ends (a stop's entrance, a dock), where the router
+    snapped off them."""
+    out = [tuple(p) for p in points]
+    if out[0] != tuple(a):
+        out.insert(0, tuple(a))
+    if out[-1] != tuple(b):
+        out.append(tuple(b))
+    return tuple(out)
+
+
+def _walk_to(
+    schedule: Schedule, stop: Stop, point, services: Services | None = None
+) -> _End | None:
+    """Walk from the start to the stop (and into the station): walked by the router where
+    `services` is given (a nearest station), else estimated."""
     entrance = _nearest_entrance(stop, point)
     if _distance(point, entrance) > (WALK_TO_STATION_M if stop.rail else WALK_TO_STOP_M):
         return None
-    legs = [Leg(WALK, walk_s(point, entrance), (tuple(point), entrance), schedule.place(stop))]
+    legs = [_walk_leg(point, entrance, services, schedule.place(stop))]
     if stop.rail:
         legs.append(Leg(ENTER, ACCESS_WALK_S))
     return _End(stop.index, legs, f"a{stop.index}")
 
 
-def _walk_from(schedule: Schedule, stop: Stop, point) -> _End | None:
-    """Out of the station (or off the bus) and walk to the destination."""
+def _walk_from(
+    schedule: Schedule, stop: Stop, point, services: Services | None = None
+) -> _End | None:
+    """Out of the station (or off the bus) and walk to the destination, walked by the router
+    where `services` is given (a nearest station), else estimated."""
     entrance = _nearest_entrance(stop, point)
     if _distance(point, entrance) > (WALK_TO_STATION_M if stop.rail else WALK_TO_STOP_M):
         return None
     legs = [Leg(EXIT, ACCESS_WALK_S)] if stop.rail else []
-    legs.append(Leg(WALK, walk_s(entrance, point), (entrance, tuple(point))))
+    legs.append(_walk_leg(entrance, point, services))
     return _End(stop.index, legs, f"e{stop.index}")
 
 
@@ -2903,16 +2935,23 @@ def plan_bikeshare(
     near_end, more_end = _candidates(schedule, end, False, BIKE_TO_STATION_M, WALK_TO_STOP_M)
     hops: list[Option] = []
     if not _window_note(schedule, moment):
+        # The walks to and from the nearest stations walked by the router (hunt 4, X4-1).
         starts = _best_few(
             [
-                _quicker(_walk_to(schedule, s, start), _share_to(schedule, s, start, snapshot))
+                _quicker(
+                    _walk_to(schedule, s, start, services if s in near_start else None),
+                    _share_to(schedule, s, start, snapshot),
+                )
                 for s in near_start + more_start
             ],
             STATION_CANDIDATES + BUS_STOPS_NEAR,
         )
         ends = {}
         for s in near_end + more_end:
-            quick = _quicker(_walk_from(schedule, s, end), _share_from(schedule, s, end, snapshot))
+            quick = _quicker(
+                _walk_from(schedule, s, end, services if s in near_end else None),
+                _share_from(schedule, s, end, snapshot),
+            )
             if quick is not None:
                 ends[s.index] = quick
         found = _search_days(day, moments, starts, ends, BIKESHARE_SPEED_KMH)
@@ -2972,13 +3011,17 @@ def plan_walk_transit(schedule, start, end, when: datetime, services: Services) 
     near_start, more_start = _candidates(schedule, start, False, WALK_TO_STATION_M, WALK_TO_STOP_M)
     near_end, more_end = _candidates(schedule, end, False, WALK_TO_STATION_M, WALK_TO_STOP_M)
     if not _window_note(schedule, moment):
+        # The walks to and from the nearest stations walked by the router, as Own Bike + 🚆🚌
+        # rides to its own (hunt 4, X4-1: a station across a channel ranked first on the
+        # straight line's estimate); the rest estimated.
         starts = _best_few(
-            [_walk_to(schedule, s, start) for s in near_start + more_start],
+            [_walk_to(schedule, s, start, services) for s in near_start]
+            + [_walk_to(schedule, s, start) for s in more_start],
             STATION_CANDIDATES + BUS_STOPS_NEAR,
         )
         ends = {}
         for s in near_end + more_end:
-            walked = _walk_from(schedule, s, end)
+            walked = _walk_from(schedule, s, end, services if s in near_end else None)
             if walked is not None:
                 ends[s.index] = walked
         # A transfer between stops is walked, at a walker's pace.
@@ -3056,9 +3099,9 @@ def with_rides(
     busy: dict[int, float] | None = None,
     keep: bool = True,
 ) -> Plan:
-    """The plan with its chosen option's ride legs timed as routed: `seconds` by leg index
-    (the route line's own, and each later ride routed for its stress colours). A walk keeps
-    its walking time; the waits for infrequent departures are worked out again from the new
+    """The plan with its chosen option's ride and walk legs timed as routed: `seconds` by leg
+    index (the route line's own, each later ride routed for its stress colours, and a walk as
+    walked: hunt 4, X4-1); the waits for infrequent departures are worked out again from the new
     times, and an option whose departure can no longer be caught goes, as `with_ride`. The
     options are ranked again (`resorted`); without `keep` (the rider chose none), the best of
     them is chosen, which may now be another (the caller plans it)."""
@@ -3067,7 +3110,7 @@ def with_rides(
     changed = False
     for index, routed in seconds.items():
         leg = legs[index]
-        if leg.mode not in (RIDE, SHARE):
+        if leg.mode not in (RIDE, SHARE, *_ON_FOOT):
             continue
         # Its busy metres as routed (`busy`, the answer's own stress breakdown) where given;
         # the penalty keeps its share of the ride's time.
@@ -3116,13 +3159,16 @@ _ON_FOOT = (WALK, TAKE)
 def drawn(plan: Plan, services: Services, skip: Iterable[int] = ()) -> Plan:
     """The plan with its chosen trip's walks and rides, all but the route line's (the answer's
     own), routed for the map: a walk by Valhalla's pedestrian costing, a ride by the bike's, so
-    each is drawn along the streets and paths. Only the lines change, never a time; a leg the
-    router does not route (or one of a few yards) keeps its straight line. `skip` names legs
-    (by index) already routed elsewhere: the later rides routed for their stress colours."""
+    each is drawn along the streets and paths. A walk is timed as walked too (hunt 4, X4-1: a
+    walk across a channel was promised at its straight line's estimate), and the infrequent
+    departures' waits worked out again from it (`_retimed`); a ride keeps its time. A leg the
+    router does not route (or one of a few yards) keeps its straight line and time. `skip`
+    names legs (by index) already routed elsewhere: the later rides routed for their stress
+    colours."""
     option = plan.option
     legs = list(option.legs)
     skipped = set(skip)
-    changed = False
+    changed = timed = False
     for index, leg in enumerate(legs):
         if index == option.ride or index in skipped:
             continue
@@ -3136,19 +3182,31 @@ def drawn(plan: Plan, services: Services, skip: Iterable[int] = ()) -> Plan:
         if routed is None or len(routed.coordinates) < 2:
             continue
         # Joined to the leg's own ends (a stop's entrance, a dock), where the router snapped off.
-        points = list(routed.coordinates)
-        if points[0] != tuple(a):
-            points.insert(0, tuple(a))
-        if points[-1] != tuple(b):
-            points.append(tuple(b))
-        turns = routed.turns if leg.mode in _ON_FOOT else ()
-        legs[index] = replace(leg, coordinates=tuple(points), turns=turns)
+        points = _joined(routed.coordinates, a, b)
+        if leg.mode in _ON_FOOT:
+            legs[index] = replace(leg, coordinates=points, turns=routed.turns)
+            if routed.seconds != leg.seconds:
+                legs[index] = replace(legs[index], seconds=routed.seconds)
+                timed = True
+        else:
+            legs[index] = replace(leg, coordinates=points, turns=())
         changed = True
     if not changed:
         return plan
+    notes: list[str] = []
+    if timed:
+        # The waits again from the walks as walked. Where no departure seen can be caught
+        # now, the walks keep their walked times and the waits stay as planned: the trip is
+        # already the answer's, its line drawn (the walks to and from the nearest stations
+        # were walked in the search, so this is a later walk: a transfer, a dock's).
+        again, notes = _retimed(plan.when.minute, legs)
+        if again is not None:
+            legs = again
+        else:
+            notes = []
     options = list(plan.options)
     options[plan.chosen] = replace(option, legs=tuple(legs))
-    return replace(plan, options=options)
+    return resorted(replace(plan, options=options, notes=plan.notes + notes))
 
 
 def _retimed(minute: float, legs: list[Leg]) -> tuple[list[Leg] | None, list[str]]:
@@ -3275,9 +3333,22 @@ def label(option: Option, mode: str) -> str:
             parts.append(
                 t("{system} to {place} ({routes})", system=leg.system, place=leg.to, routes=routes)
             )
-    parts.append(ends.get(option.legs[-1].mode, walk))
+    parts.append(_ending(option, ends, walk))
     words = ", ".join(parts)
     return words[0].upper() + words[1:]
+
+
+def _ending(option: Option, ends: dict, walk: str) -> str:
+    """How the option ends, for its label: a ride (own bike or share bike) after its last
+    transit leg names the ending, else the last leg's own mode. A share ride always ends with
+    the walk on from the dock (`_share_legs`), so its last leg alone read "walk" for a trip
+    that ends on a bikeshare bike (routing hunt 4, X4-5)."""
+    last_transit = max((i for i, leg in enumerate(option.legs) if leg.transit), default=-1)
+    after = [leg.mode for leg in option.legs[last_transit + 1 :]]
+    for mode in (SHARE, RIDE):
+        if mode in after:
+            return ends[mode]
+    return ends.get(option.legs[-1].mode, walk)
 
 
 # The compact legs' kinds (`option_legs`): a walk, your own bike, a bikeshare bike, or transit.

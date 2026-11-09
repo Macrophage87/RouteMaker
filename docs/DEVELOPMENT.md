@@ -8480,8 +8480,18 @@ docs/OPERATIONS.md, "Transit schedule". The design note is plans/v0.6.0-transit-
   daylight-saving days are right. From 1 to 5 am both service days are searched (owl trips past
   27:00 included). Stops without times (not timepoints) are interpolated by the build.
 - **Router budget.** The direct ride is routed first. Candidate legs are capped at 5 s a call and
-  `MAX_ROUTER_CALLS`, and stop 12 s into the request (`api.TRANSIT_CANDIDATES_S`); a refusal, a
+  `MAX_ROUTER_CALLS` (eight: three stations each end, the direct ride and walking the whole way),
+  and stop 12 s into the request (`api.TRANSIT_CANDIDATES_S`); a refusal, a
   timeout or a router that is down estimates the leg from the straight line, never fails the plan.
+- **Walks timed as walked** (routing hunt 4, X4-1). Walk + 🚆🚌 and Bikeshare + 🚶🚆🚌 walk to and
+  from the nearest three stations at each end with the pedestrian router in the search, as Own
+  Bike + 🚆🚌 rides to its own, so the stations are ranked on their walks as walked; the farther
+  stations and the bus stops stay estimated (straight line times `DETOUR`, 1.3, at 3 mph). A
+  walk that is the answer's line, or one walked for the map (`transit.drawn`), takes its walked
+  time too, and the infrequent departures' waits are worked out again from it. A line walk that
+  can no longer catch its departure drops the trip and the best left is walked instead
+  (`api._walked_line`, `transit.with_rides`); a later walk drawn for the map that would miss one
+  keeps its walked time with the waits as planned.
   The answer's own line has the rest of the budget. If the router does not draw it in time (a
   timeout or the router down), the leg is drawn straight with the plan's estimated time and a note
   says so, as a short leg is. The api logs each plan's seconds in the search, the candidates' router
@@ -9759,3 +9769,36 @@ side:
   order and silence, the voice's turn-taking, the wake lock, no Capacitor import) and
   `rideWatch.test.ts` (nativeShell.ts is the one other `watchPosition`, held to the same no-leak rule);
   `cd mobile && npm test` for the config, the manifest's permissions and the compatibility layer.
+
+## Routing hunt 4
+
+### Transit, bikeshare, walk and run (X4)
+
+- **X4-1: walks timed as walked.** Walk + 🚆🚌 and Bikeshare + 🚶🚆🚌 timed every walk by the
+  straight line times 1.3 and never corrected it once walked: a station across the Washington
+  Channel (0.6 mi straight, 2.0 mi on foot) was chosen over a nearer one on foot, and the trip
+  promised in less time than its first walk alone. The walks to and from the nearest
+  `STATION_CANDIDATES` stations are walked in the search; the line's walk and the walks drawn for
+  the map take their walked times, and the waits are worked out again ("Walks timed as walked",
+  Transit assist). `MAX_ROUTER_CALLS` is one more, for walking the whole way after those walks (Claude's
+  default, not measured).
+  Tests: tests/test_transit.py (`Barrier`, `test_walk_transit_ranks_stations_on_their_walks_as_walked`,
+  `test_a_walk_drawn_for_the_map_is_timed_as_walked`,
+  `test_a_walk_transit_line_walked_after_the_search_is_timed_as_walked`). No map rebuild.
+- **X4-2: every ride of a transit trip in the connector's answer.** The answer's figures (miles,
+  LTS, roads, busy stretches, junctions, route_segments) are the route line's, the trip's first
+  ride, so the ride from the exit station was left out. The MCP's summary now carries
+  `transit.later_rides` (each later own-bike or bikeshare ride: from and to, minutes, miles, LTS
+  shares and busy stretches from its routed `stress_spans`; `routed: false` where the router did
+  not draw it), `transit.ridden_mi` and `transit.figures_cover`; route_segments says `covers`.
+  The later rides' road names are not in the answer, so none are listed. Tests:
+  tests/test_mcp_route_details.py. No map rebuild.
+- **X4-4: a Run loop's link keeps its loop.** `_run_body` puts `loop` and `target_distance_m` in
+  the answer's `dials`, as a ride's are, so the connector's link carries `loop=1` and `targetmi`
+  and a kept route's dials say `loop: true`; a Run loop's link opened, or re-planned, one way.
+  Tests: tests/test_run_plan.py. No map rebuild.
+- **X4-5: a trip ending on a bikeshare bike is labelled so.** The option label named the ending
+  from the last leg, always the walk on from the dock, so "..., walk" for a trip ending with a
+  share ride. A ride (own bike or share bike) after the last transit leg names the ending
+  (`transit._ending`). Tests: tests/test_transit.py. No map rebuild.
+- X4-3 (darkness over a run's span) is the owner's call and is not changed here.

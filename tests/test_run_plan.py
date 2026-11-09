@@ -562,6 +562,23 @@ def fake_router(monkeypatch):
     return asked
 
 
+def _connector():
+    """mcp/routemaker_mcp.py, loaded as the connector tests load it."""
+    import importlib.util
+    import sys
+    from pathlib import Path
+
+    if "routemaker_mcp" in sys.modules:
+        return sys.modules["routemaker_mcp"]
+    spec = importlib.util.spec_from_file_location(
+        "routemaker_mcp", Path(__file__).resolve().parents[1] / "mcp" / "routemaker_mcp.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["routemaker_mcp"] = module
+    spec.loader.exec_module(module)
+    return module
+
+
 def post(client, body):
     return client.post("/api/route", data=json.dumps(body), content_type="application/json")
 
@@ -600,6 +617,35 @@ class TestTheApi:
         body = response.json()
         assert body["distance_m"] == pytest.approx(3900.0)
         assert body["loop"]["excluded"] > 0
+        # Among the dials too, which the connector's link and a kept route read (hunt 4, X4-4).
+        assert body["dials"]["loop"] is True
+        assert body["dials"]["target_distance_m"] is None
+
+    def test_a_target_loops_dials_say_loop_and_target(self, client, fake_router) -> None:
+        # Hunt 4, X4-4: a Run loop's dials said neither, so the connector's link had no loop=1
+        # or targetmi and opened as a one-way run.
+        mcp = _connector()
+        response = post(
+            client,
+            {
+                "points": [list(START), list(END)],
+                "preset": "run",
+                "loop": True,
+                "target_distance_m": 8000,
+            },
+        )
+        assert response.status_code == 200, response.content
+        dials = response.json()["dials"]
+        assert dials["loop"] is True
+        assert dials["target_distance_m"] == 8000
+        fragment = mcp.plan_fragment([list(START), list(END)], [], "run", dials, {})
+        assert "loop=1" in fragment and "targetmi=5.0" in fragment
+        assert mcp.page_dials(dials, {})["loop"] is True
+
+    def test_a_one_way_runs_dials_say_no_loop(self, client, fake_router) -> None:
+        response = post(client, {"points": [list(START), list(END)], "preset": "run"})
+        assert response.status_code == 200, response.content
+        assert response.json()["dials"]["loop"] is False
 
     def test_a_start_alone_needs_a_loop_and_a_target(self, client, fake_router) -> None:
         assert post(client, {"points": [list(START)], "preset": "run"}).status_code == 400

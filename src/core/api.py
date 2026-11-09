@@ -4419,30 +4419,56 @@ def _walked_line(
 ) -> tuple[dict, transit.Plan]:
     """The answer's line is a walk (walking the whole way, or a trip whose line is a walk): the
     walk itself, as the pedestrian router walked it (or straight where it did not), timed at
-    walking pace; no bike route is asked. `services` walks a leg not yet walked by the router.
-    Returns the line and the plan with that walk's turns on its step, for turn by turn on foot."""
+    walking pace; no bike route is asked. `services` walks a leg not yet walked by the router
+    (one the search walked already keeps its line and time). Returns the line and the plan with
+    that walk's turns on its step, for turn by turn on foot, and the walk timed as walked: the
+    infrequent departures' waits are worked out again from it, and a trip that can no longer
+    catch one goes, the best left walked instead (`transit.with_rides`; hunt 4, X4-1: a 2.0 mi
+    walk kept its 0.6 mi straight line's 16 min, and the trip was promised in less time than
+    its first walk alone)."""
     leg = plan.legs[plan.ride]
     points = [list(p) for p in leg.coordinates]
     metres = None
     turns = leg.turns
-    walked = services.walk(points[0], points[-1]) if services is not None else None
+    seconds = leg.seconds
+    unwalked = services is not None and len(points) == 2
+    walked = services.walk(points[0], points[-1]) if unwalked else None
     if walked is not None and len(walked.coordinates) >= 2:
         points = [list(p) for p in walked.coordinates]
         metres = walked.metres
         turns = walked.turns
+        seconds = walked.seconds
     elif not leg.estimated:
         metres = sum(
             haversine(Point(*a), Point(*b)) for a, b in zip(points, points[1:], strict=False)
         )
-    line = _unrouted_line(points, preset_name, dials, leg.seconds, metres)
     if turns != leg.turns:
-        option = plan.option
-        legs = list(option.legs)
-        legs[plan.ride] = dataclasses.replace(leg, turns=turns)
-        options = list(plan.options)
-        options[plan.chosen] = dataclasses.replace(option, legs=tuple(legs))
-        plan = dataclasses.replace(plan, options=options)
+        plan = _with_leg(plan, plan.ride, dataclasses.replace(leg, turns=turns))
+    if seconds != leg.seconds:
+        timed = transit.with_rides(plan, {plan.ride: seconds})
+        if timed.option.key == plan.option.key:
+            plan = timed
+        elif timed.option.walk or timed.legs[timed.ride].mode in (transit.WALK, transit.TAKE):
+            # Its departure can no longer be caught: the best trip left, its own line walked.
+            return _walked_line(timed, preset_name, dials, services)
+        else:
+            # The best left is a ride's line, which this walk cannot be: the trip stays, its
+            # walk at its walked time.
+            plan = _with_leg(
+                plan, plan.ride, dataclasses.replace(leg, turns=turns, seconds=seconds)
+            )
+    line = _unrouted_line(points, preset_name, dials, seconds, metres)
     return line, plan
+
+
+def _with_leg(plan: transit.Plan, index: int, leg: transit.Leg) -> transit.Plan:
+    """The plan with its chosen option's leg `index` replaced."""
+    option = plan.option
+    legs = list(option.legs)
+    legs[index] = leg
+    options = list(plan.options)
+    options[plan.chosen] = dataclasses.replace(option, legs=tuple(legs))
+    return dataclasses.replace(plan, options=options)
 
 
 # A run longer than this in straight lines is refused: a marathon's span with room to spare.
@@ -4540,6 +4566,11 @@ def _run_body(body: RouteIn, started: float | None) -> dict:
     answer["descent_m"] = run.descent_m or 0.0
     answer["leg_ends"] = run.leg_ends or answer["leg_ends"]
     answer["loop"] = run.loop
+    # The loop and its target among the dials too, as a ride's (routing.py), so the connector's
+    # link carries loop=1 and targetmi and a kept route re-plans as the loop it is: without
+    # them a Run loop's link opened, or re-planned, as a one-way run (routing hunt 4, X4-4).
+    answer["dials"]["loop"] = bool(run.loop)
+    answer["dials"]["target_distance_m"] = int(target_m) if target_m else None
     answer["transit"] = run_plan.worded(transit.block(run_plan.as_plan(run, at)), run.seconds)
     answer["run"] = {
         "pace_kmh": ask.pace_kmh,
