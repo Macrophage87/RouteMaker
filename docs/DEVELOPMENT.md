@@ -5272,6 +5272,39 @@ The third routing hunt's owner calls, as Stephen decided them on 2026-11-08:
 
 No map rebuild is needed for any of them.
 
+### Routing hunt 4: trails (M4-1 to M4-4)
+
+- **The connector says a Mountain Bike route's trail reading** (M4-1). The MCP's summary read
+  the answer's `easy_mtb` but never its `mtb`, so a trail above the rider's hardest level with
+  no way round, the mountain-bike map being down (`no_mtb_graph`), or a route with no trail at
+  all reached a connector user unsaid. `mtb_said` says what the page's `mtbNotes`
+  (`lib/mtbMode.ts`) says, warnings first, from 66 ft (20 m), as the summary's `mtb` lines and
+  on each alternative. Its figures go through `distance_text`, which mirrors the page's
+  `formatDistance`: below a tenth of a mile they are said in feet ("100 ft (32 m)" of LTS 4 at
+  Lake Frank), not as "0.0 mi". MCP only. Tests: tests/test_mcp_trails.py, tests/test_mcp_optimizing.py.
+- **A loop's way back shared is measured by stretch, not by way** (M4-2). `refine.return_overlap`,
+  `routing.loop_stats`, `refine.repeated_by_leg` and `_repeat_points` counted a piece as ridden
+  before wherever its OSM way was, so a trail mapped as one way for miles (Rosaryville's
+  Perimeter Trail, Schaeffer Farms' White Loop) counted in full once any part of it was ridden
+  out: 48% and 67% shared where at most 14% and 38% could repeat. A piece now counts only where
+  a piece ridden before is on the same way with its middle within 16 ft (5 m,
+  `routing.RIDDEN_MATCH_M`: Claude's default, not measured; pieces run between the trace's shape
+  vertices, so one stretch ridden either way has the same middle). `overlap_pct`, the loop's
+  ranking, the search's loop bar and the fewer-repeats pass all read it. Planner only, no
+  rebuild. Tests: tests/test_loop.py.
+- **Past the target distance is said** (M4-3). Trailmaxxing's target is a limit (OWNER-DECISIONS
+  257, 267, 271); the MCP's summary now says `over_target` ("2.8 mi (4.5 km) over the rider's
+  target of 3.0 mi (4.8 km)") from `calm_search.over_target_m`, or a candidate's own
+  `over_target_m`, as the page's `overTarget` does, and `target_miles` is described as the
+  longest the ride may be, not "a soft target distance". MCP only.
+- **Mountain-bike trails are trail, not ordinary street** (M4-4). The map gives a mountain-bike
+  trail no facility (`pipeline/run.py`: no path rail on a trail only a mountain bike rides), so
+  the MCP said such a ride was "ordinary street: 100%". It now reads the answer's
+  `trail_levels` (every mountain-bike trail, rated or not): their miles on a stretch with no
+  facility are "mountain-bike trail" in the summary's `facilities`, and `trail` in `roads` and
+  in `route_segments` (a segment at least half on one). The map's rule and the answer's
+  `facility_m` are unchanged; MCP only, no rebuild.
+
 ### Trails off (OWNER-DECISIONS 463, 463a, 463b)
 
 The owner, 2026-10-09: "add it". A trails-off switch is offered on every ride
@@ -6412,7 +6445,8 @@ it gave 58.0 mi, 0.24 mi and 7.2 mi, which is the router again, leg by leg, with
   and never past **1.25 times it** (`presets.TARGET_CEILING_RATIO`, the hard ceiling,
   `presets.target_ceiling_m`). The answer always says how far over it is
   (`calm_search.over_target_m`, and each candidate's `over_target_m`); the page says "X mi over your
-  target", miles first with km in brackets, in the summary and in the announcement.
+  target", miles first with km in brackets, in the summary and in the announcement, and the
+  MCP's summary says it as `over_target` (routing hunt 4, M4-3).
 - **With no target: the ceiling is 1.6 times the router's own route** (the use_roads 0 route
   Trailmaxxing plans without a search), and at least a mile more (`presets.default_ceiling_m`,
   `DEFAULT_CEILING_RATIO`, `DEFAULT_CEILING_EXTRA_M`), and inside it every extra mile must buy
@@ -6624,7 +6658,8 @@ is asked for through the start again; then the way back (the last leg) is asked 
 or a stop; up to 150), thinned to every second, fourth and eighth point if the router has no route or
 it is past the ceiling (the whole loop, not each half): every one is asked (four routes at
 most), and the least stressful of the ways back that share at most 30% of their road with the way out
-(matched by way) is kept (at the top of the slider by `better`, with the diminishing returns on the
+(matched by stretch, `routing.Ridden`: a piece on the same way with its middle within 16 ft (5 m,
+Claude's default, not measured) of one ridden out; routing hunt 4, M4-2) is kept (at the top of the slider by `better`, with the diminishing returns on the
 whole loop's distance); if none does the one that shares least is kept, so the overlap is preferred away, not forced, and a loop may still use one bridge. If
 the way back is the way out whatever is excluded (90% or more), the router's own route is kept and
 `loop.fallback` says `out_and_back`. Where the time ran out before every way back was asked and

@@ -1974,16 +1974,62 @@ def loop_points(points: list, loop: bool) -> list:
     return [*points, points[0]]
 
 
+# A piece is on a stretch ridden before where a piece ridden before on the same way has its
+# middle within this many metres (routing hunt 4, M4-2). Pieces run between the trace's shape
+# vertices, so the same stretch ridden either way has the same middle; the slack is for a
+# piece cut short at a stop. Claude's default, not measured.
+RIDDEN_MATCH_M = 5.0
+
+
+class Ridden:
+    """The stretches a route has ridden so far, by way and place: a piece is on one where
+    a piece ridden before is on the same way with its middle within RIDDEN_MATCH_M. A long
+    trail mapped as one way is not ridden in full once any part of it is (M4-2: a loop's
+    way back on another part of a perimeter trail is no repeat)."""
+
+    def __init__(self, pieces=()) -> None:
+        self._cells: dict[tuple[int, int, int], list[tuple[float, float]]] = {}
+        for piece in pieces:
+            self.add(piece)
+
+    @staticmethod
+    def _xy(piece) -> tuple[float, float]:
+        return (
+            piece.lon * 111_320.0 * math.cos(math.radians(piece.lat)),
+            piece.lat * 110_540.0,
+        )
+
+    def add(self, piece) -> None:
+        if not piece.way_id:
+            return
+        x, y = self._xy(piece)
+        cell = (piece.way_id, math.floor(x / RIDDEN_MATCH_M), math.floor(y / RIDDEN_MATCH_M))
+        self._cells.setdefault(cell, []).append((x, y))
+
+    def has(self, piece) -> bool:
+        if not piece.way_id:
+            return False
+        x, y = self._xy(piece)
+        cx, cy = math.floor(x / RIDDEN_MATCH_M), math.floor(y / RIDDEN_MATCH_M)
+        return any(
+            math.hypot(x - ox, y - oy) <= RIDDEN_MATCH_M
+            for dx in (-1, 0, 1)
+            for dy in (-1, 0, 1)
+            for ox, oy in self._cells.get((piece.way_id, cx + dx, cy + dy), ())
+        )
+
+
 def loop_stats(pieces: list, leg_runs: list) -> dict | None:
     """What a loop's way back shares with its way out, from its traced pieces and the
     run of pieces of each leg: `shared_m` of `return_m` metres, as `overlap_pct`; None
-    where the last leg was not traced."""
+    where the last leg was not traced. Shared is the stretches the way out rode
+    (`Ridden`), not every metre of a way it touched (M4-2)."""
     if len(leg_runs) < 2 or not isinstance(leg_runs[-1], tuple):
         return None
     start, end = leg_runs[-1]
-    out_ways = {piece.way_id for piece in pieces[:start] if piece.way_id}
+    out = Ridden(pieces[:start])
     back = pieces[start:end]
-    shared = sum(piece.metres for piece in back if piece.way_id in out_ways)
+    shared = sum(piece.metres for piece in back if out.has(piece))
     total = sum(piece.metres for piece in back)
     return {
         "shared_m": round(shared, 1),
