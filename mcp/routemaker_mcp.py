@@ -3104,13 +3104,32 @@ def line_between(plan: Plan, a_mi: float, b_mi: float) -> list[list[float]]:
 # `routing.sidepath_names_of`: "9th Street Northwest protected bike lane"); the road's own
 # painted lane is a stretch of the road, under the road's name.
 SEPARATE_WAY_HEADS = ("path beside ", "service road beside ", "sidewalk beside ")
-SEPARATE_WAY_TAILS = (" bike lane", " cycletrack", " cycle track", " sidepath", " side path")
+SEPARATE_WAY_TAILS = (
+    " bike lane",
+    " bike lanes",
+    " bike path",
+    " cycletrack",
+    " cycle track",
+    " sidepath",
+    " side path",
+)
 
 
 def _separate_way(label: str) -> bool:
     """Whether a stretch's label (case-folded) names a way of its own beside a road: a side
     path, a service road or sidewalk beside it, or a cycletrack named for it."""
     return label.startswith(SEPARATE_WAY_HEADS) or label.endswith(SEPARATE_WAY_TAILS)
+
+
+def _mile_range(a: float, b: float) -> str:
+    """'miles A to B' for a note, to a tenth; to a hundredth where a short stretch would read
+    "0.0 to 0.0" at a tenth, and with its length where even that rounds to one number."""
+    if f"{a:.1f}" != f"{b:.1f}":
+        return f"miles {a:.1f} to {b:.1f}"
+    if f"{a:.2f}" != f"{b:.2f}":
+        return f"miles {a:.2f} to {b:.2f}"
+    feet = max(0.0, b - a) * METRES_PER_MILE * FEET_PER_METRE
+    return f"at mile {a:.2f} ({feet:,.0f} ft)"
 
 
 def _road_runs(plan: Plan, road: str) -> list[tuple[float, float, list[str]]]:
@@ -3208,7 +3227,7 @@ def avoid_lines(plan: Plan | None, asked) -> tuple[list[list[list[float]]], list
                 a, b = a + AVOID_TRIM_MI, b - AVOID_TRIM_MI
             lines.append(line_between(plan, a, b))
             what = f"{item['road']} " if item.get("road") else ""
-            words = f"{what}miles {a:.1f} to {b:.1f}".strip()
+            words = f"{what}{_mile_range(a, b)}".strip()
             if item.get("road"):
                 # Which stretches the name matched (L4-3): the road and its painted lane.
                 words += f" (matched: {matched[k]})"

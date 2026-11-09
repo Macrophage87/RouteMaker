@@ -5464,23 +5464,26 @@ them on 2026-11-09:
 - **Cargo's and Tandem's barrier charge** (R4-2), asked "Cargo and Tandem pay the 15-minute
   narrow-barrier charge at ordinary trail gates, so they leave the Anacostia Riverwalk. Should
   that charge apply only to gaps under 1.5 m, stiles and cycle barriers?": "Yes. Tandems
-  regularly use that trail." **Not built yet: it waits on a second question to the owner.**
-  Stock Valhalla charges one `gate_cost` plus `gate_penalty` per request at every gate node with
-  no access tag (sif/dynamiccost.h, `base_transition_cost`), and every ride type's request
-  carries one pair; the transform makes the cycle barriers, narrow bollards, kissing gates,
-  stiles and turnstiles that Cargo and Tandem are meant to pay for that same gate node. No
-  other node type has a per-request charge a bicycle request reads (`toll_booth_cost` is not
-  read for bicycles, `disable_toll_booth_`; `country_crossing_cost` is the state line's; a
-  bollard costs nothing). So a plain gate can be told apart from a narrow gap only by taking it
-  out of the graph as a gate, and then every ride type loses the 30 s it pays there (PLAN item
-  336(2), "Flag them and maybe 30 seconds. 10 minutes would keep people off traffic free
-  roads."), and nothing is left in the graph for 336(2)'s "Gate ahead" to read. The owner's
-  answer was about Cargo's and Tandem's charge only, so the question for him is whether plain,
-  wide, unrestricted gates may cost 0 s for every ride type. The transform for it (a plain
-  `barrier=gate` with no restricting `access`, `vehicle`, `bicycle` or `foot`, no motor-vehicle
-  key, no `opening_hours` and no `maxwidth` under 1.5 m loses its barrier tag) is in commit
-  0d6bea5f on hunt4/owner, taken back out in the commit after it; a build of it should also
-  leave a gate tagged `locked=yes` as it is. It needs the map rebuild.
+  regularly use that trail." Stock Valhalla charges one `gate_cost` plus `gate_penalty` per
+  request at every gate node with no access tag (sif/dynamiccost.h, `base_transition_cost`), and
+  every ride type's request carries one pair; the transform makes the cycle barriers, narrow
+  bollards, kissing gates, stiles and turnstiles that Cargo and Tandem are meant to pay for that
+  same gate node. No other node type has a per-request charge a bicycle request reads
+  (`toll_booth_cost` is not read for bicycles, `disable_toll_booth_`; `country_crossing_cost` is
+  the state line's; a bollard costs nothing). So a plain gate can be told apart from a narrow
+  gap only by taking it out of the graph as a gate, and then every ride type loses the 30 s it
+  pays there (PLAN item 336(2), "Flag them and maybe 30 seconds. 10 minutes would keep people
+  off traffic free roads."), and nothing is left in the graph for 336(2)'s "Gate ahead" to
+  read. So the owner was asked again, on a decision card, "Can plain wide trail gates cost
+  nothing for every ride type?", and on 2026-11-09 chose "Free for everyone" ("Cargo and Tandem
+  stay on trails like the Riverwalk. Other ride types lose about 30 s per plain gate. Narrow
+  gaps keep the charge. Needs a map rebuild."). **Built:** a plain `barrier=gate` with no
+  restricting `access`, `vehicle`, `bicycle` or `foot`, no motor-vehicle key, no
+  `opening_hours`, no `locked` other than `no`, and no `maxwidth` under 1.5 m (an unreadable one
+  keeps the gate) loses its barrier tag in the transform (lua/routemaker_remap.lua
+  `wide_open_gate`), so Valhalla reads a plain node and no ride type pays a gate charge there;
+  every other gate, `lift_gate` and `swing_gate` are left as they were. Needs the map rebuild.
+  Tests: tests/lua/test_remap.lua, tests/lua/test_graph_entry.lua.
 
 ### Trails off (OWNER-DECISIONS 463, 463a, 463b)
 

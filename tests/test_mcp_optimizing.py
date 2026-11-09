@@ -270,7 +270,7 @@ def test_avoiding_a_road_by_name_keeps_the_separate_ways_beside_it() -> None:
     lines, said = mcp.avoid_lines(p, [{"road": "Georgia Avenue"}])
     assert len(lines) == 2
     assert said == [
-        "Georgia Avenue miles 0.0 to 0.0 (matched: Georgia Avenue)",
+        "Georgia Avenue miles 0.02 to 0.04 (matched: Georgia Avenue)",
         "Georgia Avenue miles 0.6 to 0.7 (matched: Georgia Avenue)",
     ]
     # Every blocked line lies on the road's own stretches, none on the side path.
@@ -284,6 +284,31 @@ def test_avoiding_a_road_by_name_keeps_the_separate_ways_beside_it() -> None:
         "path beside Georgia Avenue miles 0.1 to 0.2 (matched: path beside Georgia Avenue)",
         "path beside Georgia Avenue miles 0.3 to 0.5 (matched: path beside Georgia Avenue)",
     ]
+
+
+def test_a_stretch_too_short_for_a_tenth_reads_in_hundredths_or_feet() -> None:
+    """L4-3's note read "miles 0.0 to 0.0" for a short stretch: a hundredth then, and its
+    length where even that rounds to one number."""
+    assert mcp._mile_range(0.6, 0.7) == "miles 0.6 to 0.7"
+    assert mcp._mile_range(0.02, 0.04) == "miles 0.02 to 0.04"
+    assert mcp._mile_range(1.001, 1.004) == "at mile 1.00 (16 ft)"
+
+
+@pytest.mark.parametrize("tail", ["bike lanes", "bike path"])
+def test_bike_lanes_and_bike_path_ways_are_separate(tail: str) -> None:
+    """A way labelled "<road> bike lanes" or "<road> bike path" is a way of its own beside
+    the road, as "<road> bike lane" is, and stays when the road is avoided by name."""
+    entries = [
+        stretch("Georgia Avenue", 0.0, 0.3, 4),
+        stretch(f"Georgia Avenue {tail}", 0.3, 0.8, 1, "path"),
+        stretch("Reedie Drive", 0.8, 1.5, 2),
+    ]
+    p = mcp.Plan(
+        [tuple(east(0)), tuple(east(1.5))], [], "default",
+        answer_for({"points": [east(0), east(1.5)]}, entries), None, {},
+    )  # fmt: skip
+    _, said = mcp.avoid_lines(p, [{"road": "Georgia Avenue"}])
+    assert said == ["Georgia Avenue miles 0.0 to 0.3 (matched: Georgia Avenue)"]
 
 
 def test_a_road_ridden_only_beside_says_so() -> None:
