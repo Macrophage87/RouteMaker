@@ -3634,6 +3634,14 @@ export function RideMode({
     document.addEventListener("focusin", onFocusIn);
     return () => document.removeEventListener("focusin", onFocusIn);
   }, []);
+  // End mountain biking goes as it is pressed, and once the last trail is behind: a focus it held goes to Where am I?
+  // (release review, 2026-11-09: it fell to the page), as the dock button's does at the end.
+  const mtbDoneShown = !walking && !ride.arrived && !mtbDonePressed && !trip && !fixedRef.current && mtbTrailAhead(route, ride.off ? null : ride.progressM);
+  useEffect(() => {
+    if (mtbDoneShown) return;
+    const active = document.activeElement;
+    if (!active || active === document.body || !active.isConnected) whereRef.current?.focus({ preventScroll: true });
+  }, [mtbDoneShown]);
   const shownBefore = useRef({ off: ride.off, show311 });
   useEffect(() => {
     const before = shownBefore.current;
@@ -3741,7 +3749,7 @@ export function RideMode({
         </div>
         {/* End mountain biking (lib/mtbDone.ts; the owner, 2026-11-08: "a button under the trail closure"), while a
             mountain-bike trail is ahead and until pressed. */}
-        {!walking && !ride.arrived && !mtbDonePressed && !trip && !fixedRef.current && mtbTrailAhead(route, ride.off ? null : ride.progressM) && (
+        {mtbDoneShown && (
           <div className="ride-mtb-done-row">
             <button type="button" className="secondary ride-mtb-done" onClick={mtbDonePress} aria-label={MTB_DONE_NAME} title={MTB_DONE_NAME}>
               <Icon name="routes" size={22} />
