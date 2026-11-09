@@ -1220,6 +1220,7 @@ def events_of(
     cut_short: tuple[type[BaseException], ...] = (),
     ratings: Sequence[Rating] = (),
     beacons: Sequence[Beacon] = (),
+    car_free_when: str | None = None,
 ) -> list[Event]:
     """The route's junction events, in route order: the router says what meets
     at each junction and who has the right of way, the segment table how busy
@@ -1230,7 +1231,11 @@ def events_of(
     set a junction's cost and colour; a rated junction is read even where no road
     there can be busy ("the road is fine, but the intersection can be especially
     dangerous"). `beacons`: the known flashing beacons at junctions the map has a
-    signal at (`core.flashing_signals.active`), priced with no signal."""
+    signal at (`core.flashing_signals.active`), priced with no signal.
+    `car_free_when`: the ride time timed closures are read in (`routing.car_free_reading`),
+    `when` where not given. `when` itself always times the junction costs (rush hour, night,
+    weekend): until 2026-11-08 one value did both, so on every graph but a weekend one a plan's
+    junctions were priced with no ride time at all."""
     by_tier = busy_by_tier(
         [
             (position, raw.lon, raw.lat)
@@ -1254,7 +1259,8 @@ def events_of(
         for way in ways:
             if way:
                 asked[(position, way)] = (position, way, raw.lon, raw.lat)
-    roads = roads_by_way(list(asked.values()), when, with_facility)
+    closures = when if car_free_when is None else car_free_when
+    roads = roads_by_way(list(asked.values()), closures, with_facility)
     built = build_junctions(raws, nodes, roads)
     if beacons:
         signs = [control_of(nodes.get(position), signals=False) for position in range(len(raws))]

@@ -1033,15 +1033,17 @@ def events_of_raws(raws, ctx: Context, deadline: routing.Deadline) -> list | Non
     try:
         return junctions.events_of(
             raws,
-            # A road closed to cars at the ride's time is car-free here only on the graph
-            # that routes it as a path, as `routing.classify` reads it (hunt X1).
-            routing.car_free_reading(ctx.when, ctx.variant),
+            ctx.when,
             ctx.with_facility,
             locator(ctx.variant, deadline, ctx.located),
             ctx.group,
             cut_short=(routing.DeadlineExceeded,),
             ratings=ctx.junction_ratings,
             beacons=ctx.beacons,
+            # A road closed to cars at the ride's time is car-free here only on the graph
+            # that routes it as a path, as `routing.classify` reads it (hunt X1). The ride
+            # time itself still prices the junctions (rush hour, night).
+            car_free_when=routing.car_free_reading(ctx.when, ctx.variant),
         )
     except junctions.ReadingCutShort as error:
         raise routing.DeadlineExceeded(str(error)) from error
