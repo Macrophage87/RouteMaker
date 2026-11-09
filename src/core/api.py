@@ -7729,6 +7729,10 @@ def _add_saved_route(request, versions: bool = True, prune: bool = True):
         not versions or not isinstance(from_draft, str) or not _shared_id_ok(from_draft)
     ):
         return _stress_error(400, "Not one of your drafts.", field="from_draft")
+    if from_draft is not None and isinstance(inputs.get("hash"), str):
+        # A Group or Mass Ride draft's link carries its ride's key: My routes keeps the plan, never
+        # the key, so each ride opened from it is new (as the connector's own save_route does).
+        inputs = {**inputs, "hash": _without_ride_marks(inputs["hash"])}
     version_of = body.get("version_of")
     if version_of is not None and not versions:
         return _stress_error(400, "An assistant only adds routes.", field="version_of")
@@ -7807,6 +7811,16 @@ def _add_saved_route(request, versions: bool = True, prune: bool = True):
     if made_room:
         out["made_room"] = made_room  # the route deleted for it, for the app to say
     return _private(JsonResponse(out, status=201))
+
+
+def _without_ride_marks(fragment: str) -> str:
+    """The plan's link fragment without a ride's key, mark or leader (`k=`, `ride=`, `lead=`;
+    mcp/routemaker_mcp.py without_ride_marks)."""
+    lead = "#" if fragment.startswith("#") else ""
+    marks = ("k=", "ride=", "lead=")
+    return lead + "&".join(
+        p for p in fragment.lstrip("#").split("&") if p and not p.startswith(marks)
+    )
 
 
 def _shared_id_ok(route_id: str) -> bool:
@@ -8443,13 +8457,12 @@ def _shared_out(row) -> dict:
         "created_at": row.created_at.isoformat(),
         "keep": row.keep,
         "delete_after": row.delete_after.isoformat() if row.delete_after else None,
-        # An assistant's draft: when it goes (core.models.ConnectorDraft.KEPT), so the app can
-        # offer to save it, as Load route does, at the end of a ride on it.
-        "draft_until": _draft_until(row),
     }
 
 
 def _draft_until(row) -> str | None:
+    """An assistant's draft: when it goes (core.models.ConnectorDraft.KEPT), so the app can offer
+    its owner Save, as Load route does, at the end of a ride on it."""
     from .models import ConnectorDraft
 
     if row.connector_draft_id is None:
@@ -8564,10 +8577,20 @@ def shared_route_read(request, route_id: str):
         response = _stress_error(410, shared_routes.REVOKED, code="revoked")
         response["Cache-Control"] = "no-store"
         return response
+    # The owner's own draft (an assistant's): Save is offered them, and each open puts it on top
+    # of Load route (the owner, 2026-11-09: "most recent on top").
+    own_draft = (
+        row.connector_draft_id is not None
+        and request.user.is_authenticated
+        and row.owner_id == request.user.pk
+    )
     # A year's keeping counts from the last open; written at most once a day.
-    if row.last_opened_at < now - shared_routes.TOUCH_EVERY:
+    if own_draft or row.last_opened_at < now - shared_routes.TOUCH_EVERY:
         SharedRoute.objects.filter(pk=row.pk).update(last_opened_at=now)
-    response = JsonResponse(_shared_out(row))
+    out = _shared_out(row)
+    if own_draft:
+        out["draft_until"] = _draft_until(row)
+    response = JsonResponse(out)
     response["Cache-Control"] = "no-store"
     return response
 

@@ -4109,13 +4109,16 @@ export function App() {
           : null;
     if (!body) return SAVE_FAILED;
     const of = versionOf(openSavedRoute.current, name, mode === "plan");
-    const sent = tags ? { ...body, tags } : body;
+    // The assistant's draft on screen, as drafted (lib/drafts.ts): saved, it is no longer listed as a draft.
+    const draft = draftOpen.current && Math.abs(body.distance_m - draftOpen.current.distanceM) < 1 ? draftOpen.current : null;
+    const sent = { ...body, ...(tags ? { tags } : {}), ...(draft ? { from_draft: draft.id } : {}) };
     const outcome = await saveAsVersion(origin, sent, of);
     if (!outcome.ok && outcome.propose) {
       setRoomAsk({ propose: outcome.propose, body: sent, name });
       return FULL_HEADING;
     }
     if (!outcome.ok) return outcome.message || SAVE_FAILED;
+    if (draft && draftOpen.current === draft) draftOpen.current = null;
     setMyRoutesVersion((v) => v + 1);
     if (mode === "plan") openSavedRoute.current = { id: outcome.route.id, name: outcome.route.name, tags: outcome.route.tags ?? tags };
     // No `versioned`: a plain save (or the route was gone, and this one is new).
@@ -6862,6 +6865,10 @@ export function App() {
         onOpenDraft={(route) => {
           setLoadOpen(null);
           openSaved(route, SHARED_OPENED(route.name));
+        }}
+        onDraftSaved={(id) => {
+          // Saved from the list while on screen: a ride on it no longer offers Save route.
+          if (draftOpen.current?.id === id) draftOpen.current = null;
         }}
         onOpenKept={(route) => {
           setLoadOpen(null);

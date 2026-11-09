@@ -75,10 +75,12 @@ export interface LoadRouteDialogProps {
   onOpenSaved: (route: SavedRoute) => void;
   /** An assistant's draft, opened as its link opens it. */
   onOpenDraft: (route: SharedRoute) => void;
+  /** A draft saved here (by its link's id). */
+  onDraftSaved?: (id: string) => void;
   onOpenKept: (route: KeptRoute) => void;
 }
 
-export function LoadRouteDialog({ open, onClose, signedIn, signIn, preset, onGpx, onOpenSaved, onOpenDraft, onOpenKept }: LoadRouteDialogProps) {
+export function LoadRouteDialog({ open, onClose, signedIn, signIn, preset, onGpx, onOpenSaved, onOpenDraft, onDraftSaved = () => {}, onOpenKept }: LoadRouteDialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const opener = useRef<Element | null>(null);
   const headingId = useId();
@@ -226,6 +228,7 @@ export function LoadRouteDialog({ open, onClose, signedIn, signIn, preset, onGpx
       } else if (outcome.ok) {
         setDrafts((all) => all.filter((d) => d.id !== row.id));
         setSaved((all) => [outcome.route, ...(all ?? [])]);
+        onDraftSaved(row.id);
         setSaid(SAVED_SAID(outcome.route.name));
         setRefocus(outcome.route.id);
       } else setSaid(outcome.message);

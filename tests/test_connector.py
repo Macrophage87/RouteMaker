@@ -1296,8 +1296,10 @@ class TestDraftsListed:
         draft = self.plan(tokens["access_token"])
         route_id = self.route_id(draft)
         browser, _user, csrf = signed_in(user)
-        shared = Client().get(f"/api/shared-routes/{route_id}", **addr()).json()
+        shared = browser.get(f"/api/shared-routes/{route_id}", **addr()).json()
         assert shared["draft_until"]
+        # Only its owner is offered Save: anyone else with the link sees a shared route.
+        assert "draft_until" not in Client().get(f"/api/shared-routes/{route_id}", **addr()).json()
         body = {k: shared[k] for k in ("name", "source", "line", "distance_m", "inputs")}
         r = send(browser, "post", "/api/me/routes", {**body, "from_draft": route_id}, csrf)
         assert r.status_code == 201, r.content
@@ -1322,6 +1324,37 @@ class TestDraftsListed:
         assert len(browser.get("/api/me/drafts", **addr()).json()["drafts"]) == 1
         bad = send(stranger, "post", "/api/me/routes", {**body, "from_draft": "nope"}, csrf)
         assert bad.status_code == 400
+
+    def test_a_saved_draft_keeps_no_ride_key(self, planner) -> None:
+        user, tokens, _ = tokens_for()
+        draft = self.plan(tokens["access_token"])
+        route_id = self.route_id(draft)
+        browser, _user, csrf = signed_in(user)
+        shared = browser.get(f"/api/shared-routes/{route_id}", **addr()).json()
+        inputs = {**shared["inputs"], "hash": shared["inputs"]["hash"] + "&k=abc&ride=1&lead=x"}
+        body = {k: shared[k] for k in ("name", "source", "line", "distance_m")}
+        r = send(
+            browser,
+            "post",
+            "/api/me/routes",
+            {**body, "inputs": inputs, "from_draft": route_id},
+            csrf,
+        )
+        assert r.status_code == 201, r.content
+        kept = SavedRoute.objects.get(user=user).inputs["hash"]
+        assert kept == shared["inputs"]["hash"] and "k=" not in kept
+
+    def test_opening_a_draft_puts_it_on_top(self, planner) -> None:
+        user, tokens, _ = tokens_for()
+        first = self.plan(tokens["access_token"], "First")
+        self.plan(tokens["access_token"], "Second")
+        browser, _user, _csrf = signed_in(user)
+        assert (
+            browser.get(f"/api/shared-routes/{self.route_id(first)}", **addr()).status_code == 200
+        )
+        listed = browser.get("/api/me/drafts", **addr()).json()["drafts"]
+        on_top = max(listed, key=lambda d: d["opened_at"])
+        assert on_top["name"] == "First"
 
     def test_save_route_stops_listing_the_draft(self, planner) -> None:
         _user, tokens, _ = tokens_for()
