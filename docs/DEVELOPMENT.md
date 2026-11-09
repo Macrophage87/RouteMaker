@@ -1437,6 +1437,30 @@ Not priced yet: the signal waits, pavement and tight turns (PLAN's other reducti
 busy-road crossings (133-136). Not built: Avoid marks for Mass Ride alone (stretches marked Avoid
 for every ride type are priced, at the cap); flagging narrow roads on the map.
 
+### Mass Ride keeps off street-running rails (OWNER-DECISIONS 289; routing hunt 4, R4-1)
+
+The owner, 2026-10-03, amending 288: "Keep mass rides off H street". Item 288 prices a road with
+rails in it as LTS 4 for every ride type (`rm:hazard`, `routemaker.hazards`), which a Mass Ride,
+planning at stress 0, hardly feels. So on a Mass Ride `core.mass_rails` leaves the rail streets
+out of every request the plan makes (`routing._plan`): the map's segments with rails within
+3,000 m (1.9 mi) of the box of the ride's points (`RAILS_REACH_M`), merged into lines and sent
+as `exclude_polygons` strips, as a road the rider marked closed is (trimmed 20 m at each end and
+cut where a way crosses, `routemaker.workzones.line_rings`). Crossing the rails at a cross street
+stays allowed. A ride's re-plan keeps the stretch by the rider open so the rider can set off.
+Other ride types, Group Ride with trails off included, share the no-trail graph and keep 288's
+LTS 4 price, so nothing is closed in the graph and no map rebuild is needed.
+
+A Mass Ride's start, stop or end whose nearest road (within 200 m, `NEAREST_ROAD_M`) has rails is
+moved to the nearest cross street that meets the rails within 400 m (`CROSS_STREET_SEARCH_M`),
+30 m (100 ft) along it from the rails (`CROSS_STREET_OFFSET_M`), and the answer says so in
+`moved_points` (reason `rail_street`: "This point is on a street with streetcar rails in it,
+which a Mass Ride does not ride along. The route goes to the nearest cross street."). Plan shows
+and says it as it shows the Zoo's moved points. Where no route is found with the rails left out
+(the router finds no path), the ride is planned again with them open, and `road_hazards` names
+the rails it rides, as before. The reach, the search distances and the offset are Claude's
+defaults, not measured. Tests: tests/test_mass_rails.py, on H Street NE and Benning Road NE drawn
+after the hunt's trips.
+
 ### Mass Ride hazards (FOLLOWUP-MASSRIDE-MAP part 3, items 325-327)
 
 "Some stretches can be marked as a caution or warning where we've had problems. They go along side like
@@ -5342,6 +5366,12 @@ tests/test_mcp_server.py, tests/test_mcp_optimizing.py, tests/test_mcp_route_det
 
 Not fixed here: L4-8 (short LTS 4 pieces named "path" at Metro ends), whose cause is not yet
 known and needs the map's segment table and the router to find; L4-3 waits on the owner.
+
+- **R4-1, Mass Ride rode the H Street / Benning Road NE streetcar rails** (OWNER-DECISIONS 289):
+  the rails were only priced at LTS 4 (288), which a Mass Ride at stress 0 hardly feels. A Mass
+  Ride now leaves the rail streets near it out of its requests, still crossing them at cross
+  streets, and moves a point on one to the nearest cross street with a note ("Mass Ride keeps
+  off street-running rails", above). Other ride types keep 288's price. No map rebuild.
 
 ### Trails off (OWNER-DECISIONS 463, 463a, 463b)
 
