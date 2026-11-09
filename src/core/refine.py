@@ -2739,23 +2739,23 @@ LOOP_BUDGET_S = 14.0
 
 
 def return_overlap(read: Analysis) -> tuple[float, float]:
-    """(metres of the last leg on a way the legs before it ride, metres of the last
-    leg): what a loop's way back shares with its way out."""
+    """(metres of the last leg on a stretch the legs before it ride, metres of the last
+    leg): what a loop's way back shares with its way out. A stretch, not a way: another
+    part of a long trail mapped as one way is not shared (`routing.Ridden`, M4-2)."""
     bounds = leg_bounds(read)
     if len(bounds) < 2:
         return 0.0, 0.0
     cut = bounds[-1][0]
     along = 0.0
-    out_ways: set[int] = set()
+    out = routing.Ridden()
     back = []
     for piece in read.pieces:
         if along < cut - 1e-6:
-            if piece.way_id:
-                out_ways.add(piece.way_id)
+            out.add(piece)
         else:
             back.append(piece)
         along += piece.metres
-    shared = sum(p.metres for p in back if p.way_id in out_ways)
+    shared = sum(p.metres for p in back if out.has(p))
     return shared, sum(p.metres for p in back)
 
 
@@ -3102,28 +3102,25 @@ REPEAT_BUDGET_S = 8.0
 
 
 def repeated_by_leg(read: Analysis) -> list[float]:
-    """Each leg's metres on a way an earlier leg rides, but for the first and last
-    REPEAT_STOP_M of the leg."""
+    """Each leg's metres on a stretch an earlier leg rides (`routing.Ridden`: the
+    stretch, not the whole way, M4-2), but for the first and last REPEAT_STOP_M of the
+    leg."""
     bounds = leg_bounds(read)
     out = [0.0] * len(bounds)
-    ridden: set[int] = set()
+    ridden = routing.Ridden()
     along, leg = 0.0, 0
-    mine: set[int] = set()
+    mine: list = []
     for piece in read.pieces:
         middle = along + piece.metres / 2
         while leg < len(bounds) - 1 and middle >= bounds[leg][1]:
-            ridden |= mine
-            mine = set()
+            for earlier in mine:
+                ridden.add(earlier)
+            mine = []
             leg += 1
         start, end = bounds[leg]
-        if (
-            piece.way_id
-            and piece.way_id in ridden
-            and start + REPEAT_STOP_M <= middle <= end - REPEAT_STOP_M
-        ):
+        if ridden.has(piece) and start + REPEAT_STOP_M <= middle <= end - REPEAT_STOP_M:
             out[leg] += piece.metres
-        if piece.way_id:
-            mine.add(piece.way_id)
+        mine.append(piece)
         along += piece.metres
     return out
 
@@ -3150,13 +3147,12 @@ def _repeat_points(read: Analysis, leg: int) -> list[tuple[float, float]]:
     ENDPOINT_CLEARANCE_M of the leg's ends."""
     bounds = leg_bounds(read)
     start, end = bounds[leg]
-    ridden: set[int] = set()
+    ridden = routing.Ridden()
     along = 0.0
     for piece in read.pieces:
         if along + piece.metres / 2 >= start:
             break
-        if piece.way_id:
-            ridden.add(piece.way_id)
+        ridden.add(piece)
         along += piece.metres
     points: list[tuple[float, float]] = []
     along = 0.0
@@ -3165,7 +3161,7 @@ def _repeat_points(read: Analysis, leg: int) -> list[tuple[float, float]]:
         along += piece.metres
         if not start + ENDPOINT_CLEARANCE_M <= middle <= end - ENDPOINT_CLEARANCE_M:
             continue
-        if piece.way_id not in ridden or piece.metres < CALM_MIN_EDGE_M:
+        if not ridden.has(piece) or piece.metres < CALM_MIN_EDGE_M:
             continue
         if points and haversine(Point(*points[-1]), Point(piece.lon, piece.lat)) < LOOP_SAMPLE_M:
             continue

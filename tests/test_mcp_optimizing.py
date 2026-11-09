@@ -342,6 +342,15 @@ def test_alternatives_come_back_as_drafts_of_their_own(tools, api) -> None:
     assert "follow" not in api.routes[-1]
 
 
+def test_an_alternative_says_its_own_mountain_bike_trail_reading(tools, api) -> None:
+    # Routing hunt 4, M4-1: each route offered says the trail above the rider's level.
+    other = answer_for({"points": [east(0), east(4)]}, distance_m=4.4 * MI, duration_s=27 * 60)
+    other["mtb"] = {"max_level": 1, "over_level_m": 0.3 * MI, "trail_m": 2.0 * MI}
+    api.candidates = [{**other, "rank": 2}]
+    alt = plan(tools, alternatives=True)["alternatives"]["routes"][0]
+    assert alt["mtb"][0].startswith("This route uses 0.3 mi (0.5 km) of trail harder than")
+
+
 def test_the_summary_and_road_list_say_unpaved_miles_and_junction_waits(tools) -> None:
     out = plan(tools)
     assert out["summary"]["unpaved"].startswith("0.5 mi")

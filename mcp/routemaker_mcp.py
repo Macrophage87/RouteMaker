@@ -1367,6 +1367,103 @@ def easy_mtb_said(info: object) -> str | None:
     return None
 
 
+# A Mountain Bike reading's figure below this many metres is not said: the page's
+# `mtbMode.SAY_FROM_M` (a crossing, a driveway).
+MTB_SAY_FROM_M = 20.0
+MTB_LEVEL_WORDS = {
+    1: "level 1 (green)",
+    2: "level 2 (blue)",
+    3: "level 3 (black)",
+    4: "level 4 (red)",
+}
+
+
+def mtb_said(info: object) -> list[str] | None:
+    """What a Mountain Bike answer's trail reading (`mtb`, core/mtb.py) says of its route, as
+    the page says it (frontend/src/lib/mtbMode.ts `mtbNotes`), warnings first; None where
+    there is no reading (routing hunt 4, M4-1: the connector never said it)."""
+    if not isinstance(info, dict):
+        return None
+
+    def metres(key: str) -> float:
+        value = info.get(key)
+        return float(value) if isinstance(value, (int, float)) else 0.0
+
+    level = MTB_LEVEL_WORDS.get(info.get("max_level"), f"level {info.get('max_level')}")
+    if info.get("limited") == "no_mtb_graph":
+        return [
+            "The mountain-bike trails are not available right now, so this route keeps to"
+            " roads and ordinary paths. Try again later for a trail route."
+        ]
+    out = []
+    over = metres("over_level_m")
+    if over >= MTB_SAY_FROM_M:
+        out.append(
+            f"This route uses {miles_text(over)} of trail harder than {level}: no way round it"
+            " was found. Check the trail before you ride, or raise the hardest level."
+        )
+    busy = metres("lts4_m")
+    if busy >= MTB_SAY_FROM_M:
+        out.append(
+            f"It uses {miles_text(busy)} of busy road (LTS 4 or Avoid): no calmer connection"
+            " was found."
+        )
+    long3 = metres("long_lts3_m")
+    if long3 >= MTB_SAY_FROM_M:
+        out.append(f"It has {miles_text(long3)} of LTS 3 road in stretches of a half mile or more.")
+    if info.get("limited") in ("time", "untraced"):
+        out.append(
+            "The trail search ran short of time, so this may not be the most trail-rich route."
+        )
+    trail, single = metres("trail_m"), metres("singletrack_m")
+    if trail >= MTB_SAY_FROM_M:
+        out.append(
+            f"{miles_text(trail)} on trail, {miles_text(single)} of it mountain-bike"
+            f" singletrack, up to {level}."
+            if single >= MTB_SAY_FROM_M
+            else f"{miles_text(trail)} on trail, up to {level}."
+        )
+    else:
+        out.append("No trail was found on this route; it keeps to calm roads and paths.")
+    if info.get("preferred_level") is not None:
+        preferred = MTB_LEVEL_WORDS.get(
+            info.get("preferred_level"), f"level {info.get('preferred_level')}"
+        )
+        easier, harder = metres("easier_m"), metres("harder_m")
+        if easier >= MTB_SAY_FROM_M:
+            out.append(f"{miles_text(easier)} of trail is easier than the preferred {preferred}.")
+        if harder >= MTB_SAY_FROM_M:
+            out.append(
+                f"{miles_text(harder)} of trail is harder than the preferred {preferred},"
+                f" up to {level}."
+            )
+        if (
+            easier < MTB_SAY_FROM_M
+            and harder < MTB_SAY_FROM_M
+            and single >= MTB_SAY_FROM_M
+            and over < MTB_SAY_FROM_M
+        ):
+            out.append(f"Its mountain-bike trails are at the preferred {preferred}.")
+    return out
+
+
+def over_target_said(answer: dict) -> str | None:
+    """How far past the rider's target distance the route is, as the page flags it
+    (frontend/src/lib/summary.ts `overTarget`: the answer's `calm_search.over_target_m`, a
+    candidate's own `over_target_m`), or None where it is within it or there is none
+    (routing hunt 4, M4-3: the target is a limit, OWNER-DECISIONS 257, 267, 271)."""
+    search = answer.get("calm_search") if isinstance(answer.get("calm_search"), dict) else {}
+    over = search.get("over_target_m")
+    if over is None:
+        over = answer.get("over_target_m")
+    if not isinstance(over, (int, float)) or over <= 0:
+        return None
+    target = search.get("target_distance_m") or (answer.get("dials") or {}).get("target_distance_m")
+    if target:
+        return f"{miles_text(over)} over the rider's target of {miles_text(target)}"
+    return f"{miles_text(over)} over the rider's target distance"
+
+
 def road_bike_said(answer: dict) -> str | None:
     """What a Road Bike answer from a fallback map says of its route, as the page says it
     (frontend/src/lib/roadBike.ts `roadBikeNotice`, from the answer's `variant` and ride time),
@@ -1386,6 +1483,46 @@ def road_bike_said(answer: dict) -> str | None:
             " such as Beach Drive as roads with cars"
         )
     return None
+
+
+def _trail_spans(answer: dict) -> list[tuple[float, float]]:
+    """The route's mountain-bike trails (`trail_levels`, traced metres) in miles along it."""
+    scale = _traced_scale(answer) / METRES_PER_MILE
+    return [
+        (s["from_m"] * scale, s["to_m"] * scale)
+        for s in answer.get("trail_levels") or []
+        if isinstance(s, dict) and s.get("to_m") is not None and s.get("from_m") is not None
+    ]
+
+
+def _trail_mi(spans: list[tuple[float, float]], a: float, b: float) -> float:
+    """The miles of `a`-`b` along the route on a mountain-bike trail."""
+    return sum(max(0.0, min(b, hi) - max(a, lo)) for lo, hi in spans)
+
+
+def _with_trail(facility: dict, answer: dict) -> dict:
+    """The facility table with the mountain-bike trails taken out of "none" as "trail".
+    The map gives such a trail no facility (pipeline/run.py: no path rail on a trail only a
+    mountain bike rides), so it was said as an ordinary street (routing hunt 4, M4-4)."""
+    trails = answer.get("trail_levels") or []
+    none = facility.get("none") or 0.0
+    if not trails or not none:
+        return facility
+    plain = [
+        (s["from_m"], s["to_m"])
+        for s in answer.get("stress_spans") or []
+        if s.get("facility") == "none"
+    ]
+    on_trail = sum(
+        max(0.0, min(b, t["to_m"]) - max(a, t["from_m"]))
+        for a, b in plain
+        for t in trails
+        if isinstance(t, dict) and t.get("to_m") is not None and t.get("from_m") is not None
+    )
+    on_trail = min(on_trail, none)
+    if on_trail <= 0:
+        return facility
+    return {**facility, "none": none - on_trail, "trail": on_trail}
 
 
 def summary(answer: dict) -> dict:
@@ -1419,9 +1556,10 @@ def summary(answer: dict) -> dict:
             },
         ),
         "facilities": shares(
-            facility,
+            _with_trail(facility, answer),
             {
                 "path": "traffic-free path",
+                "trail": "mountain-bike trail",
                 "protected": "protected lane",
                 "lane": "painted lane",
                 "none": "ordinary street",
@@ -1448,6 +1586,12 @@ def summary(answer: dict) -> dict:
     road_bike = road_bike_said(answer)
     if road_bike:
         out["road_bike_map"] = road_bike
+    mtb = mtb_said(answer.get("mtb"))
+    if mtb:
+        out["mtb"] = mtb
+    over_target = over_target_said(answer)
+    if over_target:
+        out["over_target"] = over_target
     if answer.get("moved_points"):
         out["moved_points"] = len(answer["moved_points"])
     share = answer.get("bikeshare")
@@ -1559,6 +1703,7 @@ def road_list(answer: dict) -> dict | None:
     if not stretches:
         return None
     rows: list[dict] = []
+    trails = _trail_spans(answer)
     for entry in stretches:
         street = _street(entry)
         miles = max(0.0, entry["to_mi"] - entry["from_mi"])
@@ -1575,6 +1720,11 @@ def road_list(answer: dict) -> dict | None:
         # "none" (known no facility, round-2 D28) and None (not known) are both plain street.
         kind = entry.get("facility")
         kind = kind if kind in ("path", "protected", "lane") else "street"
+        if kind == "street" and trails:
+            # A mountain-bike trail is no street (M4-4).
+            trail = min(miles, _trail_mi(trails, entry["from_mi"], entry["to_mi"]))
+            last["facility"]["trail"] = last["facility"].get("trail", 0.0) + trail
+            miles -= trail
         last["facility"][kind] = last["facility"].get(kind, 0.0) + miles
     rows = _bridged(rows)
     scenic = _scenic_rows(answer)
@@ -3036,18 +3186,16 @@ def route_segments(
     clock = _clock(answer)
     out_rows: list[dict] = []
     next_from = None
+    trails = _trail_spans(answer)
     for entry in _stretches(answer):
         if entry["to_mi"] <= from_mi or entry["from_mi"] >= end:
             continue
         a, b = max(from_mi, entry["from_mi"]), min(end, entry["to_mi"])
-        key = (
-            _street(entry),
-            entry.get("tier"),
-            entry.get("facility")
-            if entry.get("facility") in ("path", "protected", "lane")
-            else None,
-            entry.get("surface"),
-        )
+        facility = entry.get("facility")
+        if facility not in ("path", "protected", "lane"):
+            # A stretch mostly on a mountain-bike trail is a trail, not a street (M4-4).
+            facility = "trail" if b > a and _trail_mi(trails, a, b) * 2 >= b - a else None
+        key = (_street(entry), entry.get("tier"), facility, entry.get("surface"))
         last = out_rows[-1] if out_rows else None
         if last is not None and last["_key"] == key and a - last["_b"] <= 0.01:
             last["_b"] = b
@@ -3589,7 +3737,11 @@ RIDE_OPTIONS = {
     },
     "target_miles": {
         "type": "number",
-        "description": "At stress 100 (Trailmaxxing) only: a soft target distance, miles.",
+        "description": (
+            "At stress 100 (Trailmaxxing) only: the longest the ride may be, miles. A limit,"
+            " not a length to fill; soft: where only a calmer route over it is found, the"
+            " answer's summary says `over_target`."
+        ),
     },
     "pace_mph": {
         "type": "number",
@@ -4302,7 +4454,8 @@ TOOLS = [
         "name": "route_segments",
         "description": (
             "Read a draft stretch by stretch, for optimizing it: each stretch's miles, road,"
-            " LTS (1 calmest to 4, 5 Avoid), facility (path, protected, lane, street), surface"
+            " LTS (1 calmest to 4, 5 Avoid), facility (path, trail: a mountain-bike trail,"
+            " protected, lane, street), surface"
             " where unpaved, average and steepest uphill grade, climb, one-way, and minutes at"
             " the draft's pace (hills and junction waits in place); every higher and very-high"
             " stress junction with its reason; steep grades and road hazards. Give from_mi and"
@@ -5079,6 +5232,10 @@ class Server:
             }
             if check is not None:
                 row["metro_check_ok"] = check["ok"]
+            mtb = mtb_said(found.get("mtb"))
+            if mtb:
+                # Each route offered says its own trail reading (M4-1).
+                row["mtb"] = mtb
             out.append(row)
         first.answer["candidates"] = None
         return out

@@ -51,6 +51,14 @@ rides a harder one (no way round was found), or that the off-road router was not
 the route kept to the usual trails. It travels in the link (`easymtb=1`) and a saved route;
 `open_link` reads it back, and drops it on a ride type that does not offer it, as the app does.
 
+On Mountain Bike the summary's `mtb` lines (and each alternative's) say what the app's trail
+notes say: trail harder than the rider's hardest level with no way round, busy road, the
+mountain-bike map being down, the trail and singletrack miles (or that no trail was found), and
+miles easier or harder than the preferred level. Mountain-bike trails are "mountain-bike trail"
+in the summary's facilities and `trail` in `roads` and `route_segments`, not ordinary street.
+`target_miles` is the longest the ride may be; where only a calmer route past it was found, the
+summary's `over_target` says by how much.
+
 Every planned route is a draft: it comes back with a link, kept for a week, that opens that
 exact route in the app, like a link from the app's Share, so the map, Start ride and the app's own GPX are the
 route the assistant described. Nothing is saved to My routes. Drafts last while the assistant's session does. On the site's connector
