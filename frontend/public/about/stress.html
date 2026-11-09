@@ -1135,8 +1135,13 @@ change it.</li>
       <li><strong>Motorways</strong> are closed to bikes unless signed open. One signed open to bikes is
       Avoid.</li>
       <li><strong>"Use the side path" roads</strong> (OpenStreetMap's <code>bicycle=use_sidepath</code>)
-      are Avoid only where the side path is actually mapped beside them; otherwise they are rated like
-      any other road.</li>
+      are Avoid where the side path is mapped beside them as its own way. From the next map update, where the
+      road's own tags carry a track serving both directions, the road keeps the level its track earns; where they
+      carry only a sidewalk open to bikes, or a track on one side of a two-way road, the road is LTS 4.5, as it may
+      be the only way there; and a painted bike lane on the road is rated as the lane, as if the tag were not there,
+      because bikes are plainly allowed on it (the owner's ruling: the tag is a mapping error). A lane only for
+      riding against a one-way's traffic does not count (our default). With no side path mapped, the road is rated
+      like any other road.</li>
       <li><strong>Parking aisles and driveways open to bikes</strong> are treated as ordinary service
       roads and usable for routing, and drawn on the map. From the next map update, a public parking aisle with no bicycle tag, at most 500 ft
       [150 m] long, that joins the dead end of a trail to a road or path within 260 ft [80 m] is routed the
