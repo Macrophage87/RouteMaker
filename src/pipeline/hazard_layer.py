@@ -11,9 +11,11 @@ Three inputs, one column (`segment.hazard`, the kinds):
   two cross streets, applied to each segment piece whose middle lies between them.
 
 Never read by the classifier: a marked road keeps its stress rating. The graph prices a
-way with a hazard anywhere on it as LTS 4 (`way_has_hazard`, `rm:hazard`; the owner,
-2026-10-19: "Roads with hazards like this should get a major penalty. You only need to show
-it if it's routed on"), and the route marks the stretches it rides (`core.route_hazards`).
+way with a hazard as LTS 4 (`way_has_hazard`, `rm:hazard`; the owner, 2026-10-19: "Roads
+with hazards like this should get a major penalty. You only need to show it if it's routed
+on"): a hazard in its tags or a rail along it, or a listed stretch covering at least half
+of it (hunt X5, 2026-11-08: one listed block no longer prices a whole long way). The route
+marks the stretches it rides (`core.route_hazards`).
 """
 
 from __future__ import annotations
@@ -29,7 +31,7 @@ import osmium
 
 from routemaker import agency_roads, hazards
 
-from . import conflation, extract
+from . import conflation
 
 logger = logging.getLogger(__name__)
 
@@ -211,13 +213,36 @@ def piece_hazard(
     return hazards.encode(osm, hand)
 
 
+# The share of a way's length a listed stretch must cover for the graph to price the
+# whole way (`way_has_hazard`): half, as a street-running rail line must lie along half
+# a way to be matched onto it (`conflation.MIN_BLOCK_COVERAGE`).
+PRICED_SHARE = 0.5
+
+
 def way_has_hazard(
     way, on_rails: bool, listed: Sequence[tuple[Stretch | None, tuple[str, ...]]]
 ) -> bool:
-    """Whether any piece of the way has a hazard: what the graph prices (`rm:hazard`)."""
+    """Whether the graph prices the way for a hazard (`rm:hazard`, as LTS 4 over the whole
+    way): its own tags, a street rail along it, a listing of the whole way, or listed
+    stretches covering at least PRICED_SHARE of its length.
+
+    A way's graph tags are the whole way's, so a stretch cannot be priced alone. Until hunt
+    X5 (2026-11-08) one listed block anywhere on a long multi-block way priced all of it
+    LTS 4, and the route went round a street the map draws calm with nothing on the map to
+    say why (hazards are shown only on a route that rides one: the owner, 2026-10-19, "You
+    only need to show it if it's routed on"). A shorter stretch is now left unpriced and
+    marked where a route rides it (`piece_hazard`, `core.route_hazards`)."""
     if on_rails or hazards.way_kinds(way.tags):
         return True
-    # The same pieces the segment table marks: a way is priced where a route on it is marked.
-    return bool(listed) and any(
-        piece_hazard({}, False, listed, piece) for _, piece in extract.iter_segments(way)
-    )
+    if not listed:
+        return False
+    if any(stretch is None for stretch, _kinds in listed):
+        return True
+    coords = list(way.coordinates)
+    if len(coords) < 2:
+        return False
+    total = sum(_metres(a, b) for a, b in zip(coords, coords[1:], strict=False))
+    if total <= 0:
+        return False
+    inside = sum(_inside_m(stretch, coords)[0] for stretch, _kinds in listed)
+    return min(inside, total) >= PRICED_SHARE * total

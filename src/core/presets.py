@@ -19,7 +19,8 @@ they start, and the other dials stay the preset's own:
 - **Group Ride**: "L1: standard variant, trails allowed" (its trails toggle ships on; the
   "Keep to roads, not trails" switch, offered on every ride type, turns it off:
   `variant_for_ride`); "L2: Cross,
-  mid use_roads, high maneuver_penalty, high gate_cost". Cross rather than
+  mid use_roads, high maneuver_penalty, high gate_cost" (the high gate cost is gone: the
+  owner, 2026-11-08, a gate's large charge is for Tandem and Cargo only). Cross rather than
   Hybrid so that the rural references' gravel is cheap rather than merely
   permitted (PLAN, Presets).
 - **Mass Ride**: "L1: no-trail variant"; "L2: use_roads at max, use_hills near
@@ -34,9 +35,9 @@ they start, and the other dials stay the preset's own:
 The plan names no numbers for "high". The figures here are the first
 calibration, stated so that they can be argued with: Valhalla's own bicycle
 defaults are 5 s per maneuver and 30 s per gate, and "high" is taken as a
-maneuver priced at half a minute and a gate at two, which is enough to buy a
-few hundred metres of extra distance to avoid a turn or a gate on a city route
-without letting either dominate a rural one. The reference-route invariants in
+maneuver priced at half a minute, which is enough to buy a few hundred metres
+of extra distance to avoid a turn on a city route without letting it dominate a
+rural one. Gates are priced below (`GATE_COST_S`). The reference-route invariants in
 the Quality bar are what retune them.
 
 Every dial is stated on every preset ("Every dial exists on every preset"), so
@@ -65,6 +66,21 @@ from routemaker.ridetime import WEEKEND
 VALHALLA_MANEUVER_PENALTY_S = 5
 VALHALLA_GATE_COST_S = 30
 VALHALLA_GATE_PENALTY_S = 300
+VALHALLA_PRIVATE_ACCESS_PENALTY_S = 450
+
+# What a gate costs every ride type but Cargo and Tandem: Valhalla's 30 s, as time and as cost,
+# and no penalty on top. The owner, 2026-11-08, of the large gate penalty: it "was intended just for
+# Tandem, and possibly cargo too. Basically, bollards aren't huge deterrents in most cases."
+# (and 2026-10-04, PLAN item 336: "Flag them and maybe 30 seconds. 10 minutes would keep people
+# off traffic free roads"). Until then every preset sent Valhalla's default penalty of 300 s,
+# so each cycle barrier and narrow bollard the transform makes a gate (lua/routemaker_remap.lua,
+# `remap_node`) and each untagged park or trail gate cost 330 s, about half a mile of side
+# streets at Default, and routes left traffic-free trails to avoid furniture that takes seconds
+# to pass (hunt T1, H3). Group Ride and Road Bike had 120 s, for the same reason no longer.
+# Valhalla charges it only at a gate that carries no access tags (sif/dynamiccost.h), and the
+# transform also makes kissing gates, stiles and turnstiles gates, so they cost this too.
+GATE_COST_S = VALHALLA_GATE_COST_S
+GATE_PENALTY_S = 0
 
 MID = 0.5
 
@@ -94,13 +110,18 @@ DEFAULT_STRESS = 70
 # - Speed: 14 km/h (8.7 mph), a loaded cargo bike's cruising pace unassisted,
 #   against Hybrid's 18; it only changes the times shown and the time-based
 #   cost, not which ways are allowed.
-# - Narrow gaps: the transform already turns cycle barriers, and bollards
-#   whose tagged gap is under 1.5 m, into gates (`NARROW_GAP_M`,
-#   lua/routemaker_remap.lua), so a gate cost of five minutes and a penalty of
-#   ten keep a cargo route out of them unless there is no other way. Steps are
-#   already priced out for every bicycle by Valhalla (1 km/h and its steps
-#   factor), and stiles and kissing gates are barriers upstream closes to
-#   bicycles.
+# - Narrow gaps: the transform already turns cycle barriers, bollards
+#   whose tagged gap is under 1.5 m, kissing gates, stiles and turnstiles into
+#   gates (`NARROW_GAP_M`, `HARD_BARRIERS`, lua/routemaker_remap.lua), so a gate
+#   charge of fifteen minutes keeps a cargo route out of them unless there is no
+#   other way (the owner, 2026-11-08: the large gate penalty is for Tandem "and
+#   possibly cargo too"; every other ride type pays `GATE_COST_S`). Valhalla
+#   adds `gate_cost` to the route's time as well as its cost and `gate_penalty`
+#   to the cost alone, so the charge is a 30 s slow-down plus a penalty: the
+#   five minutes of `gate_cost` it was until 2026-11-08 put five minutes per
+#   barrier on Cargo's arrival times (hunt C4). Steps are already priced out for
+#   every bicycle by Valhalla (1 km/h and its steps factor). Upstream does not
+#   close stiles and kissing gates to bicycles, as this comment said until then.
 # - Surface: rough and unpaved weigh more (0.6, still below the 1.0 at which the
 #   hard exclusion arms, so a gravel link is dear rather than impossible).
 # - Stress: carrying cargo starts where Default does (the owner, 2026-09-28:
@@ -125,8 +146,8 @@ CARRYING_PEOPLE = "people"
 CARGO_CARRYING_STRESS = {CARRYING_CARGO: DEFAULT_STRESS, CARRYING_PEOPLE: 80}
 CARGO_HILLS = -60
 CARGO_PLANNING_SPEED_KMH = 14.0
-CARGO_GATE_COST_S = 300
-CARGO_GATE_PENALTY_S = 600
+CARGO_GATE_COST_S = VALHALLA_GATE_COST_S
+CARGO_GATE_PENALTY_S = 870
 CARGO_SURFACE_AVOIDANCE = 0.6
 CARGO_ASSIST_PLANNING_SPEED_KMH = 18.0
 
@@ -150,7 +171,6 @@ EBIKE_HILLS = 50
 # 2026-10-23: "More for fast, less for cargo").
 FAST_HILLS = 40
 HIGH_MANEUVER_PENALTY_S = 30
-HIGH_GATE_COST_S = 120
 
 # The mass ride speed band's default planning speed, 6 mph, in Valhalla's km/h.
 MASS_RIDE_PLANNING_SPEED_KMH = round(6 * 1.609344, 1)
@@ -186,7 +206,18 @@ AVOID_JUNCTION_PENALTY_S = AVOID_ENTRY_PENALTY_S
 # Valhalla's own default, and well below the 1.0 at which the surface exclusion
 # arms, so surface is a cost multiplier rather than a gate on all three.
 _SURFACE_AVOIDANCE = 0.25
+# `use_living_streets`, as Valhalla's bicycle costing reads it (hunt C5, 2026-11-08): only as
+# an entry charge, 500 s x (1 - 2 x the value) each time a route turns onto a living street,
+# and nothing at 0.5 or above (sif/dynamiccost.cc at 3.9.1). Bicycle costing prices a living
+# street's length from `use_roads` alone (0.2 + 0.8 x use_roads as its roadway stress,
+# sif/bicyclecost.cc), so a stress-averse ride type already prefers one, and a value above 0.5
+# adds nothing to that: Trailmaxxing's and Novice's 1.0 ride as Default's 0.5 do.
 _LIVING_STREETS = MID
+# Fast's and Road Bike's mild dislike of a shared street ("a shared street is slow for a road
+# bike"): 50 s of cost each time a route enters one, about 1,150 ft (350 m) of riding at Road
+# Bike's 15.5 mph. Their 0.2 was 300 s, about 1.3 mi (2 km) of detour for each entry, which is
+# not the mild dislike it was meant as.
+FAST_LIVING_STREETS = 0.45
 
 
 # --- The two sliders ------------------------------------------------------
@@ -329,13 +360,15 @@ def system_weight_for(
 ) -> float:
     """The total system weight (kg) the effort model reads (OWNER-DECISIONS 264):
     the rider's, held to the model's range (338: the nearer limit, never refused),
-    else Cargo with passengers' own default, else the model's 90."""
+    else Cargo with passengers' or Tandem's own default, else the model's 90."""
     from routemaker import effort
 
     if chosen is not None:
         return effort.clamp_mass_kg(chosen)
     if carrying_of(preset_name, carrying) == CARRYING_PEOPLE:
         return effort.PASSENGERS_MASS_KG
+    if preset_name == TANDEM:
+        return effort.TANDEM_MASS_KG
     return effort.MASS_KG
 
 
@@ -568,6 +601,8 @@ BRAKE_GRADES = MappingProxyType(
         "fast": None,
         # A road bike descends fast and brakes late, as Fast's rider does.
         "road-bike": None,
+        # Tandem (2026-11-08): two riders on one set of brakes, as a group's 5%.
+        "tandem": 0.05,
     }
 )
 
@@ -705,20 +740,65 @@ MTB_HILLS = 50
 #
 # - Its own graph (`Variant.PAVED`): gravel, fine gravel and compacted priced as gravel, which a
 #   road bicycle at `ROAD_BIKE_SURFACES` prices at about seventeen times a paved path, and a
-#   winding trail priced as an LTS 3 street (`routemaker.winding`).
+#   winding trail priced as an LTS 3 street (`routemaker.winding`). At the weekend ride time,
+#   that graph's weekend twin (`Variant.PAVED_WEEKEND`), where Beach Drive, Sligo Creek
+#   Parkway, Little Falls Parkway and the other roads closed to cars for the weekend are
+#   off-road paths. The owner, 2026-11-08: "Road bikes absolutely use those parkways on the
+#   weekends. It's probably their most common destination."; "New weekend graph".
 # - `avoid_bad_surfaces` 0.9, as the Avoid gravel box had it (OWNER-DECISIONS 91, 92, 111): steep
 #   without making a surface impassable, so a ride that starts or ends on gravel is still planned.
 #   With "Keep to roads" on, Road Bike rides the no-trail graph, where gravel is packed gravel
 #   (about three times a paved road): there is no road-bike twin of that graph.
 # - Valhalla's Road bicycle at its own pace, 15.5 mph (25 km/h), where Default's hybrid rides
 #   11.2 mph; the rider's own speed (`rider_speed`) still wins.
-# - Fewer turns: Group Ride's and Fast's maneuver penalty (`HIGH_MANEUVER_PENALTY_S`), and
-#   Group Ride's gate cost (a road bike slows hard for a gate or bollard).
+# - Fewer turns: Group Ride's and Fast's maneuver penalty (`HIGH_MANEUVER_PENALTY_S`). It had
+#   Group Ride's higher gate cost too ("a road bike slows hard for a gate or bollard") until the
+#   owner's 2026-11-08 ruling that only Tandem and Cargo pay a large one (`GATE_COST_S`).
 # - Traffic and hills: stress 40, "Balanced" (Group Ride's and Gravel's start), and Default's
-#   hills; living streets as Fast (0.2): a shared street is slow for a road bike.
+#   hills; living streets as Fast (`FAST_LIVING_STREETS`): a shared street is slow for a road
+#   bike.
 ROAD_BIKE = "road-bike"
 ROAD_BIKE_STRESS = 40
 ROAD_BIKE_SURFACES = 0.9
+
+# Tandem (the owner, 2026-11-08: "Build a tandem ride type"; of the large gate penalty, it "was
+# intended just for Tandem, and possibly cargo too"). A bicycle built for two: a long wheelbase
+# that turns wide and cannot thread a narrow gap, two riders' power on the flat but twice the
+# weight up a climb, and a stop that both riders must restart from together. Costing only, on
+# the standard graph (and its weekend twin): no new graph, no map rebuild and no new control.
+# The implementation's defaults, stated here so they can be argued with:
+#
+# - Gates, cycle barriers and narrow bollards: Cargo's charge (`CARGO_GATE_COST_S` plus
+#   `CARGO_GATE_PENALTY_S`, fifteen minutes of cost, 30 s of it time), so a tandem route keeps
+#   out of them unless there is no other way. Steps are priced out for every bicycle already.
+# - Turns: Group Ride's and Road Bike's maneuver penalty (`HIGH_MANEUVER_PENALTY_S`): a long
+#   bike swings wide at every corner, so fewer of them.
+# - Hills toward avoid (`TANDEM_HILLS`, -40): a tandem is quick on the flat and slow up a climb.
+#   Its system weight (`routemaker.effort.TANDEM_MASS_KG`, two riders and the bike) makes every
+#   climb dearer in the effort model too; a weight the rider set still wins.
+# - Descents: braking starts to cost past 5% (`BRAKE_GRADES`), as a group's: twice the weight
+#   on one set of brakes heats them on a long steep descent.
+# - Surfaces: Cargo's 0.6, a long heavy bike on loose gravel is hard to steer.
+# - Pace: 13 mph (21 km/h) on the flat, faster than Default's 11.2 mph (two riders, one bike's
+#   drag); the rider's own speed (`rider_speed`) still wins.
+# - Waits: a junction stop weighs twice its time in the ranking (`WAIT_WEIGHTS`), less than
+#   Road Bike's 3x: both riders unclip, wait and restart in step. The time shown is the real wait.
+# - Traffic: Cargo with passengers' start (80) and the not-in-control exposure weights: the
+#   stoker does not steer, and a rider who is not in control of the ride is stress-averse
+#   (OWNER-DECISIONS 221 and 241: "even adults wouldn't enjoy more stressful roads if they
+#   aren't in control of the ride"; PLAN, FOLLOWUP-TANDEM).
+#
+# Not built here: the stoker's reading layout and share option (OWNER-DECISIONS 319-321), and
+# 345's finer split, where a tandem slows for a cycle barrier or bollard and is kept only from
+# stiles, turnstiles, kissing gates and gaps under 1.0 m. The graph makes all of those one kind
+# of gate (`remap_node`), so costing cannot tell them apart; the owner's 2026-11-08 ruling puts
+# the large charge on all of them for Tandem until a rebuild can split them.
+TANDEM = "tandem"
+TANDEM_STRESS = CARGO_CARRYING_STRESS[CARRYING_PEOPLE]
+TANDEM_HILLS = -40
+TANDEM_PLANNING_SPEED_KMH = 21.0
+TANDEM_WAIT_WEIGHT = 2.0
+
 # The ride types a ticked "Avoid gravel" box (retired with Road Bike's arrival) plans as Road
 # Bike: a rider's own bike, carrying nothing (`core.api.RouteIn`). Cargo, E-bike, a group, a
 # share bike, a transit trip and Mountain Bike keep their own ride and lose the box. So do
@@ -733,12 +813,28 @@ AVOID_GRAVEL_BECOMES = frozenset({"default", "fast", "gravel", "mountain-goat"})
 # their pace at every stop. The time shown stays the real wait; every other ride type, 1.
 # Run's is 3 too (2026-11-02): a runner stopped at a light loses their pace as a road rider does
 # (`core.run_plan.weigh`, its signalled crossings).
-WAIT_WEIGHTS = MappingProxyType({ROAD_BIKE: 3.0, RUN: 3.0})
+# Tandem's is 2 (2026-11-08, "Tandem" above): both riders restart in step.
+WAIT_WEIGHTS = MappingProxyType({ROAD_BIKE: 3.0, RUN: 3.0, TANDEM: TANDEM_WAIT_WEIGHT})
 
 
 def wait_weight_for(name: str) -> float:
     """How much a ride type's junction waits weigh in the ranking (`WAIT_WEIGHTS`)."""
     return WAIT_WEIGHTS.get(name, 1.0)
+
+
+# The ride types whose beg-button crossings rank at Road Bike's ten minutes
+# (`junction_delay.ROAD_BIKE_BUTTON_S`, held below two-thirds of the stop sign across the same
+# road), named here rather than read from a wait weight above 1. Road Bike (the owner,
+# 2026-11-08: "Call that 10 minutes on a road bike in pain level") and Run, which shares its
+# weight; Tandem by the owner's decision (round 3, 2026-11-08: "That should be at the 10x. It's
+# really obnoxious to try to navigate to a button on a tandem."). Any other ride type, Cargo
+# included, ranks a button by the usual stacked rule at its own weight.
+ROAD_BIKE_BUTTON_RIDES = frozenset({ROAD_BIKE, RUN, TANDEM})
+
+
+def road_bike_buttons_for(name: str) -> bool:
+    """Whether a ride type ranks beg buttons at Road Bike's price (`ROAD_BIKE_BUTTON_RIDES`)."""
+    return name in ROAD_BIKE_BUTTON_RIDES
 
 
 BIKESHARE_BIKES = MappingProxyType(
@@ -778,6 +874,11 @@ def _preset(
                 "use_roads": use_roads_for(stress),
                 "use_hills": use_hills_for(hills),
                 "alley_penalty": AVOID_ENTRY_PENALTY_S,
+                # Valhalla's own 450 s at a gate or bollard flagged private, stated so no
+                # preset leaves it to the release's default. The transform clears the flag
+                # where a bicycle passes the barrier (`remap_node`), so what pays it is a
+                # barrier private to a bicycle too.
+                "private_access_penalty": VALHALLA_PRIVATE_ACCESS_PENALTY_S,
                 **_NO_STATE_CROSSING_PENALTY,
             }
         ),
@@ -809,8 +910,8 @@ PRESETS: MappingProxyType = MappingProxyType(
                 avoid_bad_surfaces=_SURFACE_AVOIDANCE,
                 use_living_streets=_LIVING_STREETS,
                 maneuver_penalty=VALHALLA_MANEUVER_PENALTY_S,
-                gate_cost=VALHALLA_GATE_COST_S,
-                gate_penalty=VALHALLA_GATE_PENALTY_S,
+                gate_cost=GATE_COST_S,
+                gate_penalty=GATE_PENALTY_S,
             ),
             _preset(
                 "trailmaxxing",
@@ -833,10 +934,12 @@ PRESETS: MappingProxyType = MappingProxyType(
                 exposure=EXPOSURE_NOT_IN_CONTROL,
                 bicycle_type="Cross",
                 avoid_bad_surfaces=LOW_SURFACE_AVOIDANCE,
+                # "Living streets on": its use_roads of 0 already prices one lowest; above
+                # 0.5 this dial adds nothing in bicycle costing (`_LIVING_STREETS`).
                 use_living_streets=1.0,
                 maneuver_penalty=VALHALLA_MANEUVER_PENALTY_S,
-                gate_cost=VALHALLA_GATE_COST_S,
-                gate_penalty=VALHALLA_GATE_PENALTY_S,
+                gate_cost=GATE_COST_S,
+                gate_penalty=GATE_PENALTY_S,
             ),
             _preset(
                 "group-ride",
@@ -849,8 +952,8 @@ PRESETS: MappingProxyType = MappingProxyType(
                 avoid_bad_surfaces=_SURFACE_AVOIDANCE,
                 use_living_streets=_LIVING_STREETS,
                 maneuver_penalty=HIGH_MANEUVER_PENALTY_S,
-                gate_cost=HIGH_GATE_COST_S,
-                gate_penalty=VALHALLA_GATE_PENALTY_S,
+                gate_cost=GATE_COST_S,
+                gate_penalty=GATE_PENALTY_S,
             ),
             _preset(
                 "mass-ride",
@@ -866,8 +969,8 @@ PRESETS: MappingProxyType = MappingProxyType(
                 avoid_bad_surfaces=_SURFACE_AVOIDANCE,
                 use_living_streets=_LIVING_STREETS,
                 maneuver_penalty=HIGH_MANEUVER_PENALTY_S,
-                gate_cost=VALHALLA_GATE_COST_S,
-                gate_penalty=VALHALLA_GATE_PENALTY_S,
+                gate_cost=GATE_COST_S,
+                gate_penalty=GATE_PENALTY_S,
                 cycling_speed=MASS_RIDE_PLANNING_SPEED_KMH,
             ),
             _preset(
@@ -885,8 +988,8 @@ PRESETS: MappingProxyType = MappingProxyType(
                 avoid_bad_surfaces=LOW_SURFACE_AVOIDANCE,
                 use_living_streets=_LIVING_STREETS,
                 maneuver_penalty=VALHALLA_MANEUVER_PENALTY_S,
-                gate_cost=VALHALLA_GATE_COST_S,
-                gate_penalty=VALHALLA_GATE_PENALTY_S,
+                gate_cost=GATE_COST_S,
+                gate_penalty=GATE_PENALTY_S,
             ),
             _preset(
                 "gravel",
@@ -899,8 +1002,8 @@ PRESETS: MappingProxyType = MappingProxyType(
                 avoid_bad_surfaces=0.0,
                 use_living_streets=_LIVING_STREETS,
                 maneuver_penalty=VALHALLA_MANEUVER_PENALTY_S,
-                gate_cost=VALHALLA_GATE_COST_S,
-                gate_penalty=VALHALLA_GATE_PENALTY_S,
+                gate_cost=GATE_COST_S,
+                gate_penalty=GATE_PENALTY_S,
             ),
             _preset(
                 "fast",
@@ -918,10 +1021,10 @@ PRESETS: MappingProxyType = MappingProxyType(
                 hills=FAST_HILLS,
                 bicycle_type="Hybrid",
                 avoid_bad_surfaces=HIGH_SURFACE_AVOIDANCE,
-                use_living_streets=0.2,
+                use_living_streets=FAST_LIVING_STREETS,
                 maneuver_penalty=HIGH_MANEUVER_PENALTY_S,
-                gate_cost=VALHALLA_GATE_COST_S,
-                gate_penalty=VALHALLA_GATE_PENALTY_S,
+                gate_cost=GATE_COST_S,
+                gate_penalty=GATE_PENALTY_S,
             ),
             _preset(
                 "cargo",
@@ -955,8 +1058,8 @@ PRESETS: MappingProxyType = MappingProxyType(
                 avoid_bad_surfaces=_SURFACE_AVOIDANCE,
                 use_living_streets=_LIVING_STREETS,
                 maneuver_penalty=VALHALLA_MANEUVER_PENALTY_S,
-                gate_cost=VALHALLA_GATE_COST_S,
-                gate_penalty=VALHALLA_GATE_PENALTY_S,
+                gate_cost=GATE_COST_S,
+                gate_penalty=GATE_PENALTY_S,
                 cycling_speed=EBIKE_PLANNING_SPEED_KMH,
             ),
             _preset(
@@ -971,8 +1074,8 @@ PRESETS: MappingProxyType = MappingProxyType(
                 avoid_bad_surfaces=CARGO_SURFACE_AVOIDANCE,
                 use_living_streets=_LIVING_STREETS,
                 maneuver_penalty=VALHALLA_MANEUVER_PENALTY_S,
-                gate_cost=CARGO_GATE_COST_S,
-                gate_penalty=CARGO_GATE_PENALTY_S,
+                gate_cost=GATE_COST_S,
+                gate_penalty=GATE_PENALTY_S,
                 cycling_speed=BIKESHARE_CLASSIC_SPEED_KMH,
             ),
             _preset(
@@ -987,8 +1090,8 @@ PRESETS: MappingProxyType = MappingProxyType(
                 avoid_bad_surfaces=CARGO_SURFACE_AVOIDANCE,
                 use_living_streets=_LIVING_STREETS,
                 maneuver_penalty=VALHALLA_MANEUVER_PENALTY_S,
-                gate_cost=CARGO_GATE_COST_S,
-                gate_penalty=CARGO_GATE_PENALTY_S,
+                gate_cost=GATE_COST_S,
+                gate_penalty=GATE_PENALTY_S,
                 cycling_speed=BIKESHARE_CLASSIC_SPEED_KMH,
             ),
             _preset(
@@ -1001,8 +1104,8 @@ PRESETS: MappingProxyType = MappingProxyType(
                 avoid_bad_surfaces=_SURFACE_AVOIDANCE,
                 use_living_streets=_LIVING_STREETS,
                 maneuver_penalty=VALHALLA_MANEUVER_PENALTY_S,
-                gate_cost=VALHALLA_GATE_COST_S,
-                gate_penalty=VALHALLA_GATE_PENALTY_S,
+                gate_cost=GATE_COST_S,
+                gate_penalty=GATE_PENALTY_S,
             ),
             _preset(
                 BIKESHARE_TRANSIT,
@@ -1015,8 +1118,8 @@ PRESETS: MappingProxyType = MappingProxyType(
                 avoid_bad_surfaces=CARGO_SURFACE_AVOIDANCE,
                 use_living_streets=_LIVING_STREETS,
                 maneuver_penalty=VALHALLA_MANEUVER_PENALTY_S,
-                gate_cost=CARGO_GATE_COST_S,
-                gate_penalty=CARGO_GATE_PENALTY_S,
+                gate_cost=GATE_COST_S,
+                gate_penalty=GATE_PENALTY_S,
                 cycling_speed=BIKESHARE_CLASSIC_SPEED_KMH,
             ),
             _preset(
@@ -1030,8 +1133,8 @@ PRESETS: MappingProxyType = MappingProxyType(
                 avoid_bad_surfaces=CARGO_SURFACE_AVOIDANCE,
                 use_living_streets=_LIVING_STREETS,
                 maneuver_penalty=VALHALLA_MANEUVER_PENALTY_S,
-                gate_cost=CARGO_GATE_COST_S,
-                gate_penalty=CARGO_GATE_PENALTY_S,
+                gate_cost=GATE_COST_S,
+                gate_penalty=GATE_PENALTY_S,
                 cycling_speed=BIKESHARE_CLASSIC_SPEED_KMH,
             ),
             _preset(
@@ -1045,8 +1148,8 @@ PRESETS: MappingProxyType = MappingProxyType(
                 avoid_bad_surfaces=CARGO_SURFACE_AVOIDANCE,
                 use_living_streets=_LIVING_STREETS,
                 maneuver_penalty=VALHALLA_MANEUVER_PENALTY_S,
-                gate_cost=CARGO_GATE_COST_S,
-                gate_penalty=CARGO_GATE_PENALTY_S,
+                gate_cost=GATE_COST_S,
+                gate_penalty=GATE_PENALTY_S,
                 cycling_speed=BIKESHARE_CLASSIC_SPEED_KMH,
             ),
             _preset(
@@ -1061,8 +1164,8 @@ PRESETS: MappingProxyType = MappingProxyType(
                 avoid_bad_surfaces=CARGO_SURFACE_AVOIDANCE,
                 use_living_streets=_LIVING_STREETS,
                 maneuver_penalty=VALHALLA_MANEUVER_PENALTY_S,
-                gate_cost=CARGO_GATE_COST_S,
-                gate_penalty=CARGO_GATE_PENALTY_S,
+                gate_cost=GATE_COST_S,
+                gate_penalty=GATE_PENALTY_S,
                 cycling_speed=BIKESHARE_CLASSIC_SPEED_KMH,
             ),
             _preset(
@@ -1075,8 +1178,8 @@ PRESETS: MappingProxyType = MappingProxyType(
                 avoid_bad_surfaces=0.0,
                 use_living_streets=_LIVING_STREETS,
                 maneuver_penalty=VALHALLA_MANEUVER_PENALTY_S,
-                gate_cost=VALHALLA_GATE_COST_S,
-                gate_penalty=VALHALLA_GATE_PENALTY_S,
+                gate_cost=GATE_COST_S,
+                gate_penalty=GATE_PENALTY_S,
             ),
             _preset(
                 ROAD_BIKE,
@@ -1086,10 +1189,10 @@ PRESETS: MappingProxyType = MappingProxyType(
                 hills=0,
                 bicycle_type="Road",
                 avoid_bad_surfaces=ROAD_BIKE_SURFACES,
-                use_living_streets=0.2,
+                use_living_streets=FAST_LIVING_STREETS,
                 maneuver_penalty=HIGH_MANEUVER_PENALTY_S,
-                gate_cost=HIGH_GATE_COST_S,
-                gate_penalty=VALHALLA_GATE_PENALTY_S,
+                gate_cost=GATE_COST_S,
+                gate_penalty=GATE_PENALTY_S,
             ),
             _preset(
                 NOVICE,
@@ -1103,9 +1206,24 @@ PRESETS: MappingProxyType = MappingProxyType(
                 avoid_bad_surfaces=_SURFACE_AVOIDANCE,
                 use_living_streets=1.0,
                 maneuver_penalty=VALHALLA_MANEUVER_PENALTY_S,
-                gate_cost=VALHALLA_GATE_COST_S,
-                gate_penalty=VALHALLA_GATE_PENALTY_S,
+                gate_cost=GATE_COST_S,
+                gate_penalty=GATE_PENALTY_S,
                 cycling_speed=NOVICE_PLANNING_SPEED_KMH,
+            ),
+            _preset(
+                TANDEM,
+                Variant.STANDARD,
+                # See "Tandem" above.
+                stress=TANDEM_STRESS,
+                exposure=EXPOSURE_NOT_IN_CONTROL,  # the stoker (items 221, 241)
+                hills=TANDEM_HILLS,
+                bicycle_type="Hybrid",
+                avoid_bad_surfaces=CARGO_SURFACE_AVOIDANCE,
+                use_living_streets=_LIVING_STREETS,
+                maneuver_penalty=HIGH_MANEUVER_PENALTY_S,
+                gate_cost=CARGO_GATE_COST_S,
+                gate_penalty=CARGO_GATE_PENALTY_S,
+                cycling_speed=TANDEM_PLANNING_SPEED_KMH,
             ),
         )
     }
@@ -1131,11 +1249,24 @@ def carrying_of(name: str, carrying: str | None = None) -> str | None:
 # The presets that ride the off-road graph, where the mountain-bike class is
 # open (OWNER-DECISIONS 291(2): "Closed for Default, open for Gravel/Goat").
 # The off-road graph has no weekend twin, so these rides stay on it at the
-# weekend.
+# weekend, and are planned on the weekend graph too near a weekend closure
+# (`weekend_too`).
 OFFROAD_PRESETS = frozenset({"gravel", "mountain-goat"})
+# The ride types that offer "Easy MTB trails" (the owner, 2026-11-08: "allow trailmaxxing to use
+# MTB trails too, some are definitely fine for that", "But it's opt in there too", "And
+# default"; "Steer on Gravel's graph"): with it on they ride the off-road graph as Gravel does,
+# and `core.easy_mtb` steers them off the trails rated 2 or harder. Off by default.
+EASY_MTB_PRESETS = frozenset({"default", "trailmaxxing"})
 
 
-def variant_for_ride(name: str, when: str, assist: bool = False, trails_off: bool = False) -> str:
+def variant_for_ride(
+    name: str,
+    when: str,
+    assist: bool = False,
+    trails_off: bool = False,
+    easy_mtb: bool = False,
+    mtb_done: bool = False,
+) -> str:
     """The graph a ride routes on.
 
     A ride with trails off (the rider's "Keep to roads, not trails" switch,
@@ -1157,19 +1288,76 @@ def variant_for_ride(name: str, when: str, assist: bool = False, trails_off: boo
     Goat take the off-road graph (`OFFROAD_PRESETS`). A weekend ride on the
     standard graph takes its weekend twin, where roads closed to cars at the
     weekend are off-road paths (`Variant.WEEKEND`); the e-bike and no-trail
-    graphs have no weekend twin, so their weekend rides stay on them. Mountain
-    Bike takes its own graph (`Variant.MTB`), at the weekend too.
+    graphs have no weekend twin, so their weekend rides stay on them (an e-bike
+    ride is planned on the weekend graph too: `weekend_too`). Mountain
+    Bike takes its own graph (`Variant.MTB`), at the weekend too. Default and
+    Trailmaxxing with "Easy MTB trails" on (`EASY_MTB_PRESETS`) take the off-road
+    graph as Gravel does, at the weekend too; trails off wins over it. Road Bike's
+    paved graph has a weekend twin (`Variant.PAVED_WEEKEND`; the owner,
+    2026-11-08, "New weekend graph"), which a weekend Road Bike ride takes.
+
+    `mtb_done`: a ride's re-plan after Ride's "End mountain biking" (the owner, 2026-11-08: "a
+    button under the trail closure for 'i don't want to mountain bike anymore' ... that
+    will route you off mtb trails and onto something easier"). A ride that would take the
+    Mountain Bike or off-road graph, where the mountain-bike trails are open, takes the
+    standard graph (its weekend twin at the weekend) instead, where they are closed.
+
+    Those weekend rides on the off-road, Mountain Bike or e-bike graph are also planned on the
+    weekend graph (`weekend_too`; the owner, 2026-11-08: "We can do the plan twice."), and
+    `routing.plan` keeps the better of the two by the ride type's own ranking, so a road
+    closed to cars at the weekend (Beach Drive) is not ridden as a road with cars. Only
+    where such a road is near the ride (the owner: "In most cases, weekend closures aren't
+    going to matter for MTB, is there a way to check?"; `routing.weekend_closure_near`).
+    This function still names the ride's own graph: the one it is planned on first, and
+    the one a weekend plan that cannot be made leaves it on.
     """
     preset = PRESETS[name]
     if trails_off:
         return Variant.NO_TRAIL.value
     if assist and preset.assist_speed_kmh is not None:
         return Variant.EBIKE.value
-    if name in OFFROAD_PRESETS and preset.variant == Variant.STANDARD.value:
+    easy = easy_mtb and name in EASY_MTB_PRESETS and not mtb_done
+    mtb_graph = preset.variant == Variant.MTB.value or name in OFFROAD_PRESETS
+    if mtb_done and mtb_graph:
+        return Variant.WEEKEND.value if when == WEEKEND else Variant.STANDARD.value
+    if (name in OFFROAD_PRESETS or easy) and preset.variant == Variant.STANDARD.value:
         return Variant.OFFROAD.value
     if preset.variant == Variant.STANDARD.value and when == WEEKEND:
         return Variant.WEEKEND.value
+    if preset.variant == Variant.PAVED.value and when == WEEKEND:
+        return Variant.PAVED_WEEKEND.value
     return preset.variant
+
+
+# The graphs whose weekend rides are planned on the weekend graph too (`weekend_too`). The
+# off-road and Mountain Bike graphs keep the mountain-bike class open, which the weekend graph
+# closes, so neither can simply be replaced by it. The e-bike graph (the E-bike ride type, Cargo
+# with assist, a share e-bike) has no weekend twin; asked whether weekend e-bike rides should
+# get the car-free parkways by planning twice, the owner said "Yes" (round 3, 2026-11-08).
+# The weekend graph lacks the e-bike graph's one rule, the bar on `electric_bicycle=no` ways
+# (`pipeline.variants.bars_electric_bicycle`); the coverage has no such way (counted
+# 2026-10-09, and each rebuild logs the count), so a weekend winner cannot ride one: see
+# docs/DEVELOPMENT.md, "Trails off" (463a) and "Weekend e-bike rides".
+WEEKEND_TOO_VARIANTS = frozenset({Variant.OFFROAD.value, Variant.MTB.value, Variant.EBIKE.value})
+
+
+def weekend_too(
+    name: str,
+    when: str,
+    assist: bool = False,
+    trails_off: bool = False,
+    easy_mtb: bool = False,
+    mtb_done: bool = False,
+) -> bool:
+    """Whether a ride is planned on the weekend graph as well as on its own (`routing.plan`):
+    a weekend Gravel, Mountain Goat, Mountain Bike, or Default or Trailmaxxing with "Easy MTB
+    trails" on (the owner, 2026-11-08: "We can do the plan twice."), and a weekend ride on the
+    e-bike graph (E-bike, Cargo with assist, a share e-bike; round 3, 2026-11-08: "Yes").
+    Never with trails off, which takes the no-trail graph alone, nor on any other graph."""
+    if when != WEEKEND:
+        return False
+    graph = variant_for_ride(name, when, assist, trails_off, easy_mtb, mtb_done)
+    return graph in WEEKEND_TOO_VARIANTS
 
 
 # Valhalla's default cycling speed by bicycle type (km/h; Road 15.5 mph,

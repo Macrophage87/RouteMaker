@@ -84,7 +84,8 @@ def test_delay_runs_sum_to_delay_s_and_sit_where_the_runs_begin():
     stop_again = junction(*cross, m=405.0)
     runs = junction_delay.delay_runs([stop_again, signal, stop])
     assert [m for m, _s in runs] == [100.0, 400.0]
-    assert runs[0][1] == junction_delay.SIGNAL_DELAY_S
+    # A city side street's signal, shown as its average pass (the ride-time setting not known).
+    assert runs[0][1] == junction_delay.CITY_PASS_S[None][2]
     assert junction_delay.delay_s([stop_again, signal, stop]) == sum(s for _m, s in runs)
     assert junction_delay.delay_runs([]) == []
 

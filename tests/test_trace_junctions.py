@@ -318,3 +318,40 @@ class TestAttributes:
             )
         assert "edge.id" in t.TRACE_ATTRIBUTES
         assert "node.intersecting_edge.use" in t.TRACE_ATTRIBUTES
+
+
+class TestRoundabouts:
+    """Hunt J4: where the route enters a roundabout, the movement its ride round the ring
+    makes, from the heading it arrives on to the first edge off the ring."""
+
+    @staticmethod
+    def ride(leave_heading: float, ring_edges: int = 3):
+        """North (0 degrees) into a ring, round it on `ring_edges` edges, out on an edge
+        heading `leave_heading`."""
+        edges = [with_others(edge(1, 0, 1, 0.05, 0, 0), ("road", "primary", "forward"))]
+        for k in range(ring_edges):
+            ring = edge(9, 1 + k, 2 + k, 0.02, 90 - 90 * k, 0 - 90 * k, roundabout=True)
+            edges.append(with_others(ring, ("road", "primary", "both")))
+        edges.append(edge(2, 1 + ring_edges, 2 + ring_edges, 0.05, leave_heading, leave_heading))
+        return t.junctions_of_trace({"edges": edges}, SHAPE)
+
+    @pytest.mark.parametrize(
+        ("leave", "movement"),
+        [(90, Movement.RIGHT), (0, Movement.STRAIGHT), (270, Movement.LEFT), (180, Movement.LEFT)],
+    )
+    def test_the_entry_carries_the_movement_round_the_ring(self, leave, movement) -> None:
+        entry, *rest = self.ride(leave)
+        assert entry.ring_movement is movement
+        # Read at the entry only: the nodes round the ring and the exit carry none.
+        assert all(j.ring_movement is None for j in rest)
+
+    def test_a_route_that_ends_on_the_ring_has_none(self) -> None:
+        edges = [with_others(edge(1, 0, 1, 0.05, 0, 0), ("road", "primary", "forward"))]
+        edges.append(edge(9, 1, 2, 0.02, 90, 0, roundabout=True))
+        (entry,) = t.junctions_of_trace({"edges": edges}, SHAPE)
+        assert entry.ring_movement is None
+
+    def test_no_ring_no_movement(self) -> None:
+        trace = {"edges": [edge(1, 0, 2, 0.1, 90, 90), edge(2, 2, 4, 0.1, 0, 0)]}
+        (junction,) = t.junctions_of_trace(trace, SHAPE)
+        assert junction.ring_movement is None
