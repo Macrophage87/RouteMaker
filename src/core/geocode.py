@@ -82,6 +82,17 @@ BIAS_ZOOM = 14
 # so nearby places are among the 15 Photon re-ranks.
 BIAS_SCALE = 0.2
 
+# A town crowded out by its own name (the routing hunt 4, G4-1): with the bias above,
+# "Leesburg, VA" searched from Ashburn Metro found a clinic and three Leesburg Pikes 1 to
+# 7 km away, and the town 15 km away was not among the 15 candidates Photon re-ranks;
+# "Urbana, MD" from Frederick found only Urbana Pike. Where a biased answer has rows named
+# with the typed name (the text before the first comma) but none named just that, the
+# query is asked once more without the bias, and its towns, villages and neighbourhoods
+# so named go first. Which rows trigger the second ask is Claude's default, not measured
+# against the live index (BIAS_ZOOM and BIAS_SCALE are unchanged). Photon's `type` for a
+# place is one of these (a town or village is "city"); a place=* node may carry another.
+PLACE_KINDS = frozenset({"city", "district", "locality"})
+
 # Two results with the same name and the same kind of OSM tag (its key) this
 # close together are one place to a rider: a street split into ways tagged
 # tertiary and unclassified ("Union Station Drive Northeast" twice), a
@@ -429,6 +440,20 @@ def search(
         params["location_bias_scale"] = BIAS_SCALE
         near = (lon, lat)
     found = results(_get("/api", params), reverse=False, near=near)
+    if near is not None and crowded_out(q, found):
+        unbiased = {k: v for k, v in params.items() if k not in BIAS_PARAMS}
+        towns = [
+            row
+            for row in results(_get("/api", unbiased), reverse=False)
+            if is_town(row) and row["name"].casefold() == lead_name(q).casefold()
+        ]
+        found = towns + [
+            row
+            for row in found
+            if not any(
+                _same_place(town, row["name"], row, (row["lon"], row["lat"])) for town in towns
+            )
+        ]
     split = address_part(q)
     if not found and split is not None:
         # One more question, the address alone; the place at it is found by its number.
@@ -440,6 +465,32 @@ def search(
         )
         found.sort(key=lambda row: not _named_in(row["name"], typed))
     return found[:limit]
+
+
+BIAS_PARAMS = frozenset({"lat", "lon", "zoom", "location_bias_scale"})
+
+
+def lead_name(q: str) -> str:
+    """The name a query leads with: its text before the first comma, abbreviations spelled
+    out ("Leesburg, VA" is Leesburg, "Mt Airy, MD" is Mount Airy)."""
+    return " ".join(expand_abbreviations(q.split(",", 1)[0]).split())
+
+
+def is_town(row: dict) -> bool:
+    """Whether a result is a town, village or neighbourhood, not a street or a place in one."""
+    return row.get("kind") in PLACE_KINDS or row.get("osm_key") == "place"
+
+
+def crowded_out(q: str, found: list[dict]) -> bool:
+    """Whether a biased answer looks like a town's name crowded out by nearby places named
+    with it: some row's name has the typed name in it as whole words ("Leesburg Pike",
+    "Leesburg Sterling Family Medicine"), and no row is named just that (G4-1)."""
+    lead = lead_name(q).casefold()
+    if not re.search(r"[^\W\d_]", lead):
+        return False
+    whole = re.compile(rf"(?<!\w){re.escape(lead)}(?!\w)")
+    names = [row["name"].casefold() for row in found]
+    return lead not in names and any(whole.search(name) for name in names)
 
 
 # A house number: digits, perhaps a letter ("4654", "1100A"), perhaps a comma after.

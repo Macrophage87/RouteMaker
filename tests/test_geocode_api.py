@@ -402,6 +402,74 @@ class TestSearch:
         ]
         assert [row["name"] for row in found] == ["Satay Club", "4654 Wisconsin Avenue Northwest"]
 
+    def test_a_town_crowded_out_by_its_own_name_nearby_is_found(
+        self, client, monkeypatch, router
+    ) -> None:
+        """Routing hunt 4, G4-1: "Leesburg, VA" searched from Ashburn Metro found a clinic and
+        Leesburg Pike, and not the town 9 mi away. Asked again without the bias, the town
+        named just that comes first; the nearby rows stay after it."""
+        clinic = feature(
+            -77.50435,
+            39.00852,
+            name="Leesburg Sterling Family Medicine",
+            type="house",
+            osm_key="amenity",
+            osm_value="doctors",
+            city="Ashburn",
+        )
+        pike = feature(
+            -77.43, 38.99, name="Leesburg Pike", type="street", osm_key="highway", city="Sterling"
+        )
+        town = feature(
+            -77.56456,
+            39.11545,
+            name="Leesburg",
+            type="city",
+            osm_key="place",
+            osm_value="town",
+            county="Loudoun County",
+            state="Virginia",
+        )
+        calls: list[dict] = []
+
+        def fake(path: str, params: dict) -> dict:
+            calls.append(dict(params))
+            return answer(clinic, pike) if "zoom" in params else answer(town, pike, clinic)
+
+        monkeypatch.setattr(geocode, "_get", fake)
+        found = get(client, SEARCH, q="Leesburg, VA", lat="39.004422", lon="-77.491763").json()[
+            "results"
+        ]
+        assert [row["name"] for row in found] == [
+            "Leesburg",
+            "Leesburg Sterling Family Medicine",
+            "Leesburg Pike",
+        ]
+        assert len(calls) == 2
+        assert not {"lat", "lon", "zoom", "location_bias_scale"} & set(calls[1])
+        assert calls[1]["q"] == calls[0]["q"] and calls[1]["bbox"] == calls[0]["bbox"]
+
+    @pytest.mark.parametrize(
+        ("q", "names"),
+        [
+            # The town is in the biased answer already.
+            ("Laurel, MD", ["Laurel", "Laurel Mall"]),
+            # Nothing is named with what was typed: no sign of a town crowded out.
+            ("coffee", ["Compass", "Laurel Mall"]),
+        ],
+    )
+    def test_a_biased_search_is_asked_again_only_when_a_town_may_be_crowded_out(
+        self, client, photon, q, names
+    ) -> None:
+        rows = {
+            "Laurel": feature(-76.8483, 39.0993, name="Laurel", type="city", osm_key="place"),
+            "Laurel Mall": feature(-76.85, 39.09, name="Laurel Mall", type="house"),
+            "Compass": feature(-76.86, 39.2, name="Compass", type="house"),
+        }
+        fake = photon(answer(*(rows[n] for n in names)))
+        get(client, SEARCH, q=q, lat="39.2", lon="-76.86")
+        assert len(fake.calls) == 1
+
     def test_a_search_that_finds_something_is_asked_once(self, client, photon) -> None:
         fake = photon(answer(LINCOLN))
         get(client, SEARCH, q="Lincoln Memorial, 2 Lincoln Memorial Circle NW")
