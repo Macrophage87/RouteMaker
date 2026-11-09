@@ -816,6 +816,23 @@ def test_a_route_through_a_closure_with_no_point_on_it_still_warns() -> None:
     assert "no way round" in out["closure_warning"] and "point 1" not in out["closure_warning"]
 
 
+def test_a_run_through_a_closure_silent_on_foot_is_not_said_to_have_no_way_round() -> None:
+    # Routing hunt 4, C4-1: a run or walk is not routed round a closure whose source does not
+    # say people on foot are kept out, so the router never looked for a way round.
+    row = closure(0, "on_route", 2.0, 2.5)
+    row["effect_text"] = (
+        "On your route: closed to traffic; the source does not say whether people on foot can pass."
+    )
+    words = mcp.route_closures(_closure_plan([row], via_mi=1.0))["closure_warning"]
+    assert "no way round" not in words
+    assert "people on foot may pass Lakeside Trail: closed" in words
+    assert "not routed round it" in words
+    # Beside a closure the router did try to avoid, both are said.
+    rows = [row, closure(1, "on_route", 2.6, 2.8, title="Connector: closed", pk=3)]
+    words = mcp.route_closures(_closure_plan(rows, via_mi=1.0))["closure_warning"]
+    assert "no way round" in words and "not routed round it" in words
+
+
 def test_no_closures_said_when_none_touch_the_route() -> None:
     assert mcp.route_closures(_closure_plan([closure(0, "none")], via_mi=1.0)) == {}
     plan = _closure_plan([], via_mi=1.0)

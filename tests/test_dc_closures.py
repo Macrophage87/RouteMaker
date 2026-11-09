@@ -521,6 +521,22 @@ class TestNps:
         assert dc.notices_along(notices, downtown_east, NOW) == []
         assert all(isinstance(n, dc.Notice) for n in notices)
 
+    def test_a_district_notice_is_only_on_a_route_that_enters_the_district(self) -> None:
+        """Routing hunt 4, C4-3: the District's bounding box takes in Takoma Park, Silver
+        Spring and Bethesda, so MPD's and AlertDC's downtown advisories were on rides wholly in
+        Maryland."""
+        notice = dc.Notice("mpd-1", "mpd", "Holiday Tree Lighting", "Streets closed", None, "dc")
+        sligo_creek = [(-77.005082, 38.992726), (-77.028623, 39.028415)]
+        little_falls = [(-77.101219, 38.962804), (-77.102814, 38.974786)]
+        downtown = [(-77.0365, 38.8977), (-77.009, 38.8899)]
+        # Each is inside the box at its south end.
+        assert all(dc._in_boxes(*line[0], (dc.DC_BOX,)) for line in (sligo_creek, little_falls))
+        assert dc.notices_along([notice], sligo_creek, NOW) == []
+        assert dc.notices_along([notice], little_falls, NOW) == []
+        assert dc.notices_along([notice], downtown, NOW) == [notice]
+        # Arlington, across the river from the Mall, is in the box and outside the District.
+        assert dc.notices_along([notice], [(-77.0700, 38.8800), (-77.0750, 38.8850)], NOW) == []
+
 
 def test_notices_and_zones_survive_the_stored_copy() -> None:
     advisory = dc.parse_mpd_release(text("mpd-traffic-advisory.html"), "https://mpdc.dc.gov/node/1")

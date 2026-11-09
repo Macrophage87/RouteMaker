@@ -10373,6 +10373,12 @@ class ReviewedClosureIn(Schema):
         default=None, description="The last day, YYYY-MM-DD; none: until a reviewer ends it."
     )
     url: str = Field(default="", max_length=500, description="The source's link, optional.")
+    # default=True (closed on foot unless the reviewer says not): Claude's default, not measured.
+    on_foot: bool = Field(
+        default=True,
+        description="Closed to people on foot too (Run and Walk route round it); false for a"
+        " road closed to traffic whose sidewalk stays open.",
+    )
 
 
 class ClosureConfirmIn(Schema):
@@ -10384,6 +10390,12 @@ class ClosureConfirmIn(Schema):
     start: str | None = None
     end: str | None = None
     url: str = Field(default="", max_length=500)
+    # default=True (closed on foot unless the reviewer says not): Claude's default, not measured.
+    on_foot: bool = Field(
+        default=True,
+        description="Closed to people on foot too (Run and Walk route round it); false for a"
+        " road closed to traffic whose sidewalk stays open.",
+    )
 
 
 class ReviewedClosureOut(Schema):
@@ -10505,6 +10517,7 @@ def reviewed_closure_create(request, body: ReviewedClosureIn, response: HttpResp
             end=body.end,
             url=body.url,
             line=body.line,
+            on_foot=body.on_foot,
         )
     except stress_edits.EditRefused as refused:
         return _edit_refusal(request, refused)
@@ -10541,7 +10554,7 @@ def closure_report_confirm(request, report_id: int, body: ClosureConfirmIn, resp
 
     try:
         closure = reviewed_closures.confirm_report(
-            request.user, report_id, body.reason, body.start, body.end, body.url
+            request.user, report_id, body.reason, body.start, body.end, body.url, body.on_foot
         )
     except stress_edits.EditRefused as refused:
         return _edit_refusal(request, refused)
