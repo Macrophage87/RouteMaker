@@ -18,10 +18,13 @@ here (singletrack, cbd_sidewalk and zoo live in their own modules):
 - `trail_visibility`: intermediate or worse, no bicycle tag. Paved exempt.
 - `hiking_route`: a `path` in hiking/foot route relations and no bicycle route
   relation, no bicycle tag. Paved exempt.
-- `natural_surface`: a `path` on a natural surface, no bicycle tag, no exemption.
+- `natural_surface`: a `path` on a natural surface, no bicycle tag, no exemption,
+  on no `route=mtb` loop.
 - `park_path`: a plain `highway=path` (no bicycle, surface, smoothness signal)
   inside a park or protected-area polygon (291(1)); kept elsewhere.
-- `mtb`: the mountain-bike class below.
+- `mtb`: the mountain-bike class below, and a path on a `route=mtb` loop that the
+  hiking-route, park-path or natural-surface rule would otherwise close (hunt A2;
+  the natural surface since terrain hunt 2, T1, the owner's "Yes" of 2026-11-08).
 - `dismount`: a `bicycle=dismount` connector that is not short (291(5)).
 
 Never touched: cycleways, sidewalks, crossings, steps, and ways upstream's
@@ -175,6 +178,10 @@ class WayRoutes:
 
     hiking: bool = False
     bicycle_networks: frozenset[str] = field(default_factory=frozenset)
+    # in a `route=mtb` relation (`pipeline.route_relations`): no bicycle route, but the
+    # mountain-bike class where the hiking-route, park-path or natural-surface rule would
+    # close the way
+    mtb: bool = False
 
     @property
     def bicycle_route(self) -> bool:
@@ -315,6 +322,12 @@ def verdict(
     if not upstream_open(tags) or _kept_by_class(tags):
         return None
     bicycle = tags.get("bicycle")
+    if bicycle == "dismount":
+        # The dismount rule decides it (`dismount_reasons`: walk a short one, close a long
+        # one), never the mountain-bike class: a dirt trail signed "dismount" was opened, and
+        # ridden, on the off-road and Mountain Bike graphs (terrain hunt 3, T3-1). Unclear
+        # bicycle access is closed (the owner's rule).
+        return None
     if bicycle is not None and bicycle not in PRIVATE_BICYCLE:
         return MTB if is_mtb_class(tags, routes) else None
     if tags.get("access") in PRIVATE_ACCESS or bicycle in PRIVATE_BICYCLE:
@@ -333,11 +346,23 @@ def verdict(
     if tags.get("trail_visibility") in POOR_VISIBILITY and not hard:
         return TRAIL_VISIBILITY
     if routes.hiking and not routes.bicycle_route and not hard:
-        return HIKING_ROUTE
+        if not routes.mtb:
+            return HIKING_ROUTE
+        # On a mountain-bike loop too, the hiking route is the mountain-bike class instead
+        # (hunt A2, 2026-11-08), a natural surface included (terrain hunt 2, T1: below).
+        return MTB
     if has_exemption(tags, routes):
         return None
     if is_natural_surface(tags):
-        return NATURAL_SURFACE
+        # An unrated dirt path on a `route=mtb` loop is the mountain-bike class, not closed
+        # everywhere (terrain hunt 2, T1). The owner, 2026-11-08, asked whether such a trail
+        # counts as open to bikes: "Yes, it's most likely that these are very easy trails
+        # that nobody bothers to rate." Membership is the same evidence of bicycle use a
+        # rating is (`pipeline.trail_closures.RATING_OPENS`), and before this the better-
+        # mapped trail (its dirt surface tagged) was closed to Mountain Bike while the same
+        # way with no surface tag, in a park, was open to it. Closed on the standard graphs
+        # still; open on the off-road and Mountain Bike graphs and drawn on the layer.
+        return MTB if routes.mtb else NATURAL_SURFACE
     if (
         in_park
         and not routes.bicycle_route
@@ -346,7 +371,8 @@ def verdict(
         and tags.get("tracktype") is None
         and width_m(tags) is None
     ):
-        return PARK_PATH
+        # A plain path on a mountain-bike loop in a park: the mountain-bike class (A2).
+        return MTB if routes.mtb else PARK_PATH
     return None
 
 

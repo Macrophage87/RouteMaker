@@ -666,6 +666,25 @@ class TestTheApi:
         ]
         assert pedestrian["use_lit"] == run_plan.USE_LIT_AFTER_DARK
 
+    def test_a_daytime_dial_set_after_dark_is_a_daylight_run(
+        self, client, fake_router, monkeypatch
+    ) -> None:
+        # Hunt 2, T5: at 10 pm on a Wednesday, with the dial on the weekend and no departure,
+        # the run is Saturday morning's (the moment its closures are matched at), so it is not
+        # dark. Before the fix it was read at now, 10 pm, and leaned to lit ways.
+        from django.utils import timezone
+
+        from core import workzones
+
+        now = datetime(2026, 11, 11, 22, 0, tzinfo=EASTERN).astimezone(UTC)
+        monkeypatch.setattr(timezone, "now", lambda: now)
+        monkeypatch.setattr(workzones, "_now", lambda: now)
+        response = post(
+            client, {"points": [list(START), list(END)], "preset": "run", "when": "weekend"}
+        )
+        assert response.status_code == 200, response.content
+        assert response.json()["run"]["dark"] is False
+
 
 # --- Closures on a run ---------------------------------------------------------------------------
 
@@ -738,7 +757,9 @@ class TestClosuresOnARun:
         )
         assert response.status_code == 200, response.content
         rings = next(p for a, p in asked if a == "route")["exclude_polygons"]
-        assert rings == [wz.polygon(closed("md-shut", north, True)), wz.line_ring(MARKED)]
+        # The runner's road trimmed 20 m at each end as a closure is (hunt K4/Q2, 2026-11-08).
+        marked = wz.line_ring(MARKED, wz.TRIM_M)
+        assert rings == [wz.polygon(closed("md-shut", north, True)), marked]
         # The closure whose source does not say it shuts the way on foot is run along, warned.
         zones = response.json()["work_zones"]
         [on_route] = zones["on_route"]
@@ -786,7 +807,8 @@ class TestClosuresOnARun:
         routes = [p for a, p in asked if a == "route"]
         assert len(routes[0]["exclude_polygons"]) == 2
         # Asked again with only the runner's own marked road left out.
-        assert routes[-1]["exclude_polygons"] == [wz.line_ring(MARKED)]
+        # Trimmed 20 m at each end as a closure is (hunt K4/Q2, 2026-11-08).
+        assert routes[-1]["exclude_polygons"] == [wz.line_ring(MARKED, wz.TRIM_M)]
         [on_route] = response.json()["work_zones"]["on_route"]
         assert on_route["id"] == "md-shut" and on_route["warning"] is True
 

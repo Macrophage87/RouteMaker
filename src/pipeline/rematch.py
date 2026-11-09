@@ -193,10 +193,14 @@ def fingerprint_problem(value: object) -> str | None:
     return None
 
 
-def load_fingerprints(directory: Path | str | None = None) -> dict[tuple[str, int], dict]:
+def load_fingerprints(
+    directory: Path | str | None = None, kind: str | None = None
+) -> dict[tuple[str, int], dict]:
     """{(kind, way id): fingerprint} from every override file in `directory`:
     a row's own `fingerprint`, and the `superseded` list's entries for ways a
-    file re-pointed (a row already loaded in the database still names them)."""
+    file re-pointed (a row already loaded in the database still names them).
+    `kind` is the kind of a folder whose rows name none (the curated speed limits
+    and bike lanes, `resolve_keyed`)."""
     found: dict[tuple[str, int], dict] = {}
     for path in sorted(Path(directory or OVERRIDES_DIR).glob("*.json")):
         document = json.loads(path.read_text())
@@ -211,10 +215,14 @@ def load_fingerprints(directory: Path | str | None = None) -> dict[tuple[str, in
             problem = fingerprint_problem(fingerprint)
             if problem:
                 raise FingerprintRefused(f"{where}: {problem}")
-            kind, way_id = entry.get("kind"), entry.get("osm_way_id")
-            if not isinstance(way_id, int) or isinstance(way_id, bool) or not isinstance(kind, str):
+            row_kind, way_id = entry.get("kind", kind), entry.get("osm_way_id")
+            if (
+                not isinstance(way_id, int)
+                or isinstance(way_id, bool)
+                or not isinstance(row_kind, str)
+            ):
                 raise FingerprintRefused(f"{where}: a fingerprint needs the row's kind and way id")
-            found[(kind, way_id)] = fingerprint
+            found[(row_kind, way_id)] = fingerprint
     return found
 
 
@@ -531,6 +539,102 @@ class RematchReport:
         return "\n".join(lines) + "\n"
 
 
+# What a present way's drift from its row's fingerprint is (`drift`).
+DRIFT_TAGS = "tags"  # the same line, but its name or class changed
+DRIFT_SPLIT = "split"  # a piece of the line: OSM split the way and gave the rest new ids
+DRIFT_MERGED = "merged"  # it runs on past the line: OSM merged another way into it
+DRIFT_REDRAWN = "redrawn"  # about as long, but its line moved (a realignment)
+
+
+def drift(fingerprint: Mapping, way, tolerance_m: float = TOLERANCE_M) -> str | None:
+    """How a way still under its row's id differs from the fingerprint the row was
+    written for, or None where it is still that way (`still_matches`).
+
+    By line first, then by length: a way whose line lies along the stored line and
+    covers it has drifted in its tags only (`DRIFT_TAGS`); one shorter than the
+    stored length by more than MAX_LENGTH_RATIO is a split (`DRIFT_SPLIT`), one
+    longer by as much a merge (`DRIFT_MERGED`); anything else was redrawn
+    (`DRIFT_REDRAWN`), which a re-surveyed alignment a few metres over also is.
+    OSM keeps one of the ids in a split and in a merge, so until hunt D1
+    (2026-11-08) such a row was only reported, and applied by id to whatever the id
+    had become: half the road in a split, the absorbed road too in a merge."""
+    if still_matches(fingerprint, way, tolerance_m):
+        return None
+    if len(way.coordinates) < 2:
+        return DRIFT_REDRAWN
+    points = parse_line(fingerprint["line"])
+    target = _Line(points, points[0][1])
+    line = _Line(way.coordinates, points[0][1])
+    if (
+        _share_within(line.samples(), target, tolerance_m) >= MIN_CONTAINED
+        and _share_within(target.samples(), line, tolerance_m) >= MIN_COVERAGE
+    ):
+        return DRIFT_TAGS
+    stored = float(fingerprint["length_m"])
+    if line.length * MAX_LENGTH_RATIO < stored:
+        return DRIFT_SPLIT
+    if line.length > stored * MAX_LENGTH_RATIO:
+        return DRIFT_MERGED
+    return DRIFT_REDRAWN
+
+
+# The keys and values of an access row that close the way to bicycles. Such a row
+# stays on a merged way (it closes more of the road than it was written for): unclear
+# bike access is closed (OWNER-DECISIONS 330), so a merge does not reopen it.
+_CLOSING_KEYS = ("access", "vehicle", "bicycle")
+_CLOSING_VALUES = frozenset({"no", "private", "dismount"})
+
+
+def _closes(row) -> bool:
+    value = getattr(row, "value", None)
+    return (
+        getattr(row, "kind", None) == "access"
+        and isinstance(value, Mapping)
+        and any(value.get(key) in _CLOSING_VALUES for key in _CLOSING_KEYS)
+    )
+
+
+# The lowest tier of an owner's stress row that stays on a merged way: LTS 4 and Avoid,
+# like a closing access row, warn of more road than the row was written for rather than
+# vouching for it. Only a calmer row stops spreading (review of hunt D1).
+_KEPT_STRESS_TIER = 4
+
+
+def _warns(row) -> bool:
+    """Whether a row stays on a way OSM merged another way into: an access row that closes
+    the way to bicycles (`_closes`), or a stress row at LTS 4 or Avoid."""
+    if _closes(row):
+        return True
+    value = getattr(row, "value", None)
+    if getattr(row, "kind", None) != "stress" or not isinstance(value, Mapping):
+        return False
+    tier = value.get("tier")
+    return isinstance(tier, int) and not isinstance(tier, bool) and tier >= _KEPT_STRESS_TIER
+
+
+def _nearby(
+    lines: Mapping[int, Sequence[tuple[float, float]]],
+    ways_by_id: Mapping[int, object],
+    tolerance_m: float,
+) -> dict[int, list]:
+    """For each key's stored line, the extract's ways near it: one pass over the extract."""
+    wanted: dict[tuple[int, int], list[int]] = defaultdict(list)
+    for key, points in lines.items():
+        for cell in _cells(_bbox(points), _pad_deg(tolerance_m, points[0][1])):
+            wanted[cell].append(key)
+    nearby: dict[int, list] = defaultdict(list)
+    if wanted:
+        for way in ways_by_id.values():
+            if len(way.coordinates) < 2:
+                continue
+            hit: set[int] = set()
+            for cell in _cells(_bbox(way.coordinates), 0.0):
+                hit.update(wanted.get(cell, ()))
+            for key in hit:
+                nearby[key].append(way)
+    return nearby
+
+
 def resolve(
     rows: Sequence,
     ways_by_id: Mapping[int, object],
@@ -540,7 +644,23 @@ def resolve(
     """`rows` with every row whose way is missing from the extract re-pointed at
     the ways that now stand for it, where that is unambiguous; and the report.
     Rows are `pipeline.overrides.Override` values (a `fingerprint` of their own
-    wins over the fixtures'). A failed row is returned unchanged."""
+    wins over the fixtures'). A failed row is returned unchanged.
+
+    A row whose way is present but has drifted from its fingerprint (`drift`; hunt
+    D1, 2026-11-08):
+
+    - its tags only, or its line redrawn at about its length: it still applies to
+      the way, and is reported `drifted`;
+    - split: it applies to the piece under its id and to the pieces that now lie
+      along the rest of its line, found as for a missing row (`find`, which the
+      piece itself passes), reported `rematched`; where they cannot be found
+      unambiguously it applies to its own piece only, which lies on its line, and
+      is reported `drifted` with the reason;
+    - merged into a longer way: it is not applied, since it would cover road it was
+      not written for, and is reported `failed` for the owner to re-point; an access
+      row that closes the way to bicycles (OWNER-DECISIONS 330) and a stress row at LTS 4
+      or Avoid still apply (`_warns`).
+    """
     fingerprints = fingerprints if fingerprints is not None else {}
 
     def fingerprint_for(row):
@@ -552,51 +672,71 @@ def resolve(
     entries: list[Entry] = []
     with_fingerprint = sum(1 for row in rows if fingerprint_for(row) is not None)
     missing = [row for row in rows if row.osm_way_id not in ways_by_id]
+    # The present rows a split left on a piece, re-matched with the missing ones, and the
+    # merged rows that are not applied, by the row's identity.
+    split: list = []
+    dropped: set[int] = set()
 
     for row in rows:
         fp = fingerprint_for(row)
         way = ways_by_id.get(row.osm_way_id)
-        if way is not None and fp is not None and not still_matches(fp, way, tolerance_m):
+        if way is None or fp is None:
+            continue
+        kind = drift(fp, way, tolerance_m)
+        if kind is None:
+            continue
+        if kind == DRIFT_SPLIT:
+            split.append(row)
+            continue
+        if kind == DRIFT_MERGED and not _warns(row):
+            dropped.add(id(row))
             entries.append(
                 Entry(
                     row.kind,
                     row.osm_way_id,
-                    OUTCOME_DRIFTED,
-                    (row.osm_way_id,),
-                    "the way is in the extract but its name, class or line no longer match the "
-                    "fingerprint the row was written for; the row still applies to it",
+                    OUTCOME_FAILED,
+                    (),
+                    "the way now runs on past the line the row was written for (OSM merged "
+                    "another way into it), so the row is not applied: it would cover road it "
+                    "was not written for; re-point it at the way it meant",
                     fp["name"],
                 )
             )
+            continue
+        why = {
+            DRIFT_TAGS: "its name or class no longer match the fingerprint",
+            DRIFT_REDRAWN: "its line was redrawn at about the length the row was written for",
+            DRIFT_MERGED: "it runs on past the stored line (a merge), and the row closes it "
+            "to bicycles (OWNER-DECISIONS 330) or rates it LTS 4 or Avoid, so it stays",
+        }[kind]
+        entries.append(
+            Entry(
+                row.kind,
+                row.osm_way_id,
+                OUTCOME_DRIFTED,
+                (row.osm_way_id,),
+                f"the way is in the extract but {why}; the row still applies to it",
+                fp["name"],
+            )
+        )
 
-    # One pass over the extract for every missing row's neighbourhood.
-    wanted: dict[tuple[int, int], list[int]] = defaultdict(list)
+    pending = [*missing, *split]
     prints: dict[int, dict] = {}
-    for index, row in enumerate(missing):
+    for index, row in enumerate(pending):
         fp = fingerprint_for(row)
-        if fp is None:
-            continue
-        prints[index] = fp
-        points = parse_line(fp["line"])
-        for cell in _cells(_bbox(points), _pad_deg(tolerance_m, points[0][1])):
-            wanted[cell].append(index)
-    nearby: dict[int, list] = defaultdict(list)
-    if wanted:
-        for way in ways_by_id.values():
-            if len(way.coordinates) < 2:
-                continue
-            hit: set[int] = set()
-            for cell in _cells(_bbox(way.coordinates), 0.0):
-                hit.update(wanted.get(cell, ()))
-            for index in hit:
-                nearby[index].append(way)
-
-    found: dict[int, Match] = {}
-    for index in range(len(missing)):
-        fp = prints.get(index)
-        if fp is None:
-            continue
-        found[index] = find(fp, nearby.get(index, ()), tolerance_m)
+        if fp is not None:
+            prints[index] = fp
+    nearby = _nearby(
+        {index: parse_line(fp["line"]) for index, fp in prints.items()}, ways_by_id, tolerance_m
+    )
+    found: dict[int, Match] = {
+        index: find(fp, nearby.get(index, ()), tolerance_m) for index, fp in prints.items()
+    }
+    for index in range(len(missing), len(pending)):
+        # A split row's re-match must keep its own piece; one that does not is no answer.
+        row = pending[index]
+        if found[index].ok and row.osm_way_id not in found[index].way_ids:
+            found[index] = Match((), f"the ways along the line leave out way {row.osm_way_id}")
 
     # Targets, to refuse a re-match that would collide with another row.
     present: dict[tuple[str, int], object] = {
@@ -605,44 +745,57 @@ def resolve(
     claims: dict[tuple[str, int], list[int]] = defaultdict(list)
     for index, match in found.items():
         for way_id in match.way_ids:
-            claims[(missing[index].kind, way_id)].append(index)
+            claims[(pending[index].kind, way_id)].append(index)
 
-    out: list = []
-    resolved: dict[int, list] = {}
-    for index, row in enumerate(missing):
-        fp = prints.get(index)
-        name = fp["name"] if fp else None
-        if fp is None:
+    def fail(row, is_split: bool, name: str | None, reason: str) -> None:
+        if is_split:
             entries.append(
                 Entry(
                     row.kind,
                     row.osm_way_id,
-                    OUTCOME_FAILED,
-                    (),
-                    "no fingerprint is stored for this row; it cannot be re-matched",
-                    None,
+                    OUTCOME_DRIFTED,
+                    (row.osm_way_id,),
+                    "the way is in the extract but is a piece of the line the row was "
+                    "written for (OSM split it); the row applies to this piece only, as "
+                    f"the rest was not re-matched: {reason}",
+                    name,
                 )
+            )
+        else:
+            entries.append(Entry(row.kind, row.osm_way_id, OUTCOME_FAILED, (), reason, name))
+
+    resolved: dict[int, list] = {}
+    for index, row in enumerate(pending):
+        is_split = index >= len(missing)
+        fp = prints.get(index)
+        name = fp["name"] if fp else None
+
+        if fp is None:
+            fail(
+                row,
+                is_split,
+                name,
+                "no fingerprint is stored for this row; it cannot be re-matched",
             )
             continue
         match = found[index]
         if not match.ok:
-            entries.append(Entry(row.kind, row.osm_way_id, OUTCOME_FAILED, (), match.reason, name))
+            fail(row, is_split, name, match.reason)
             continue
         problem = ""
         for way_id in match.way_ids:
             other = present.get((row.kind, way_id))
-            if other is not None and other.value != row.value:
+            if other is not None and other is not row and other.value != row.value:
                 problem = f"way {way_id} already carries a {row.kind} row with a different value"
                 break
             rivals = [i for i in claims[(row.kind, way_id)] if i != index]
-            if any(missing[i].value != row.value for i in rivals):
+            if any(pending[i].value != row.value for i in rivals):
                 problem = (
-                    f"way {way_id} is also claimed by another missing {row.kind} row "
-                    "with a different value"
+                    f"way {way_id} is also claimed by another {row.kind} row with a different value"
                 )
                 break
         if problem:
-            entries.append(Entry(row.kind, row.osm_way_id, OUTCOME_FAILED, (), problem, name))
+            fail(row, is_split, name, problem)
             continue
         new_ids = tuple(way_id for way_id in match.way_ids if (row.kind, way_id) not in present)
         if not new_ids:
@@ -656,21 +809,38 @@ def resolve(
                     name,
                 )
             )
-            resolved[index] = []
+            resolved[index] = [row] if is_split else []
             continue
-        entries.append(Entry(row.kind, row.osm_way_id, OUTCOME_REMATCHED, match.way_ids, "", name))
-        resolved[index] = [replace(row, osm_way_id=way_id) for way_id in new_ids]
+        entries.append(
+            Entry(
+                row.kind,
+                row.osm_way_id,
+                OUTCOME_REMATCHED,
+                match.way_ids,
+                "OSM split the way; the row applies to every piece along its line"
+                if is_split
+                else "",
+                name,
+            )
+        )
+        resolved[index] = [
+            *([row] if is_split else []),
+            *(replace(row, osm_way_id=way_id) for way_id in new_ids),
+        ]
 
-    by_row = {id(row): index for index, row in enumerate(missing)}
+    by_row = {id(row): index for index, row in enumerate(pending)}
     emitted: set[tuple[str, int]] = set()
+    out: list = []
     for row in rows:
+        if id(row) in dropped:
+            continue
         index = by_row.get(id(row))
         if index is None or index not in resolved:
             out.append(row)
             continue
         for new in resolved[index]:
             key = (new.kind, new.osm_way_id)
-            if key not in emitted:
+            if new is row or key not in emitted:
                 emitted.add(key)
                 out.append(new)
     report = RematchReport(
@@ -679,3 +849,34 @@ def resolve(
         with_fingerprint=with_fingerprint,
     )
     return out, report
+
+
+def resolve_keyed(
+    kind: str,
+    values: Mapping[int, object],
+    fingerprints: Mapping[int, dict],
+    ways_by_id: Mapping[int, object],
+    tolerance_m: float = TOLERANCE_M,
+) -> tuple[dict[int, object], RematchReport]:
+    """`resolve` for a curated table keyed by way id with no row of its own: the
+    curated speed limits (`routemaker.speed_corrections`) and bike lanes
+    (`routemaker.bike_lanes`), each row's value by way id, with the fingerprints
+    their files store (`load_fingerprints(directory, kind)`). The same rules: a
+    missing or split way's value reaches the ways that now lie along its line where
+    that is unambiguous, a merged way's is not applied, and a row with no
+    fingerprint is applied by id as before. Hunt D1 (2026-11-08): these were joined
+    on the id alone, so a split Sligo Creek Parkway way's new piece went back to the
+    default speed and its LTS."""
+
+    @dataclass(frozen=True)
+    class _Row:
+        kind: str
+        osm_way_id: int
+        value: object
+        fingerprint: dict | None
+
+    rows = [_Row(kind, way_id, value, fingerprints.get(way_id)) for way_id, value in values.items()]
+    out, report = resolve(rows, ways_by_id, tolerance_m=tolerance_m)
+    # A missing row nothing re-matched is kept under its id, as before, so the
+    # caller's "not applied" warning still names it.
+    return {row.osm_way_id: row.value for row in out}, report

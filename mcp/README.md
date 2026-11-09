@@ -41,7 +41,15 @@ century".
 The assistant picks the ride type and settings that fit what you ask: every ride type the app
 has (bikeshare and bike plus transit included) and every setting (traffic stress, hills, ride
 time, trails, target distance, rider weight, riding speed, cargo load and assist, trail
-levels, the bikeshare bike and ending, departure time).
+levels, Easy MTB trails, the bikeshare bike and ending, departure time).
+
+`easy_mtb` (Default and Trailmaxxing only, off unless asked) is the app's "Easy MTB trails"
+switch: the route may also ride mountain-bike trails rated 0 or 1 on `mtb:scale` or
+`mtb:scale:imba`, or unrated (mostly grass and dirt), on the off-road graph as Gravel does, and
+is steered off trails rated 2 or harder. The summary's `easy_mtb` says where the route still
+rides a harder one (no way round was found), or that the off-road router was not running and
+the route kept to the usual trails. It travels in the link (`easymtb=1`) and a saved route;
+`open_link` reads it back, and drops it on a ride type that does not offer it, as the app does.
 
 Every planned route is a draft: it comes back with a link, kept for a day, that opens that
 exact route in the app, like a link from the app's Share, so the map, Start ride and the app's own GPX are the
@@ -52,7 +60,23 @@ the app.
 
 It plans through the site's own API (`POST /api/route`), so a route is exactly what the app would
 plan. It changes nothing on the site except adding the routes you ask it to save. Metro distances
-are straight-line, from DC Open Data's station file (CC BY 4.0) that the map also uses.
+are straight-line, from DC Open Data's station file (CC BY 4.0) that the map also uses. A route to
+or through a station goes to its bike entrance (its elevator where one is listed), from the
+entrance files beside the station file: of a station's elevators, the one nearest the route's
+point before it (for a start, the point after), as the map takes it, so a Silver Line station in
+the toll road's median is gone to on the rider's side.
+
+A name said with "Metro" or "station" ("Vienna Metro"), or a station's whole name that can be
+nothing else ("Union Station", "Navy Yard-Ballpark"), is that station. A bare name that is also a
+station's ("Navy Yard", "Vienna", "Rockville") is searched, and is the station only where the
+search finds it there; "Mount Vernon", "Arlington" and road names such as "Braddock Road" are the
+places the search finds. A park, refuge or campus found by the search goes to a way in the same
+search found (its visitor centre, entrance, parking, trailhead or boat launch, named for it by
+whole words; the one nearest the route's other points), in `find_place` as in `plan_route`. A
+station `find_place` finds is shown at its bike way in (`lon_lat` and `bike_entrance`, nearest
+`near`), where `plan_route` goes, not its platform point. In `compare_places` each place is taken
+by the destinations (a station's way in nearest the first, a name searched near them), not by the
+other places. And the answer's `points_taken_as` lists the other points of the same place the search found as `nearby_matches`.
 
 ## Use it in Claude on the web and on your phone
 

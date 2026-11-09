@@ -1,0 +1,5 @@
+{
+  "version": 1,
+  "about": "The owner's 'keep DC's value' answers to the rebuild's list of District ways OSM edited after the Roadway Block record (dc-osm-newer-osm-edits.md; pipeline.dc_osm_newer, hunt D6, the owner 2026-11-08: \"If there's a newer OSM rating, then on a rebuild it should flag it and I can make the call.\"). Each entry is {\"osm_way_id\": <id>, \"osm_edited\": \"YYYY-MM-DD\" (the OSM edit date the list showed), \"reason\": <the owner's words>}; copy the row's keep_dc_entry and write the reason. The way is not listed as open again until OSM edits it after that date. Read by the rebuild from its image; nothing to load. No GPS tracks, rider names or ride dates.",
+  "kept": []
+}

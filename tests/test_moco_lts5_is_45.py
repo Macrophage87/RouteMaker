@@ -158,24 +158,72 @@ def test_a_county_row_never_lowers_the_formulas_own_avoid(with_rating):
     assert result.adjustment.adjustment_id == "moco-lts5-ridge-road"
 
 
-def test_a_county_row_on_a_formula_avoid_set_lower_by_an_agency_keeps_avoid():
-    # The county's own 4 replaced the formula's Avoid; its LTS 5 row still agrees with our rule.
+def test_a_county_row_on_a_formula_avoid_with_an_agency_level_keeps_avoid():
+    # The county's own 4 no longer replaces the formula's Avoid (hunt D2, 2026-11-08); its LTS
+    # 5 row still agrees with our rule.
     formula = classify(
         {"highway": "primary", "expressway": "yes", "maxspeed": "55 mph"}, urban=True
     )
     by_way = {9: agency_lts.apply(formula, [AgencyRating("moco", 4)])}
-    assert by_way[9].tier is Stress.LTS4
+    assert by_way[9].tier is Stress.AVOID
     overrides.apply_stress(by_way, [_row(9, 5, "moco-lts5-ridge-road")])
     assert _step(by_way[9]) == 5
 
 
-def test_a_county_4_still_sets_the_level_on_an_avoid_road():
-    # Only a level read as a lower one keeps the formula's Avoid; the county's own 4 decides.
+def test_a_county_4_no_longer_lowers_the_formulas_own_avoid():
+    # This pinned "the county's own 4 decides" (LTS 4). Hunt D2 (2026-11-08): the module's own
+    # rule is that our Avoid stays for roads that are legal but not a real option (motorway-like
+    # roads, a side path riders are asked to use), so an agency's plain level keeps it.
     formula = classify({"highway": "primary", "expressway": "yes", "maxspeed": "55 mph"})
-    assert agency_lts.apply(formula, [AgencyRating("moco", 4)]).tier is Stress.LTS4
+    result = agency_lts.apply(formula, [AgencyRating("moco", 4)])
+    assert result.tier is Stress.AVOID and result.rule == formula.rule
+    assert result.agency_ratings == (AgencyRating("moco", 4),)
 
 
 def test_the_painted_lane_report_uses_45():
     result = agency_lts.apply(FORMULA, [AgencyRating("moco", 5)])
     row = agency_lts.painted_lane_row(1, "Darnestown Rd", "MD", result)
     assert row["agency_level"] == "4.5" and row["differs"] == "yes"
+
+
+@pytest.mark.parametrize(
+    "tags,side_path",
+    [
+        ({"highway": "primary", "bicycle": "use_sidepath", "maxspeed": "40 mph"}, True),
+        ({"highway": "motorway", "bicycle": "yes", "maxspeed": "55 mph"}, False),
+        ({"highway": "primary", "expressway": "yes", "maxspeed": "55 mph"}, False),
+    ],
+)
+@pytest.mark.parametrize(
+    "rating",
+    [
+        AgencyRating("moco", 3),
+        AgencyRating("mdot-sha", 4),
+        AgencyRating("ddot", 2),
+        AgencyRating("mdot-sha", 4.5),
+    ],
+)
+def test_an_agency_level_never_lowers_a_legal_but_avoid_road(tags, side_path, rating):
+    # Hunt D2 (2026-11-08): before, each of these replaced the formula's Avoid with the agency's
+    # level (3, 4, 2, 4.5), so a side path's road was priced as an ordinary street and the
+    # router took the roadway instead of the path. Only a Montgomery 5 kept the Avoid.
+    formula = classify(tags, urban=True, side_path=side_path)
+    assert formula.tier is Stress.AVOID
+    result = agency_lts.apply(formula, [rating])
+    assert result.tier is Stress.AVOID and not result.half
+    assert result.rule == formula.rule
+    assert result.agency_ratings == (rating,)
+
+
+def test_an_owners_reading_still_sets_an_urban_expressways_level_but_not_a_side_paths():
+    # An owner's reading of an agency level (`read_as`; MDOT SHA's `rural-expressway` 4.5, the
+    # owner, 2026-10-31: the same rule everywhere) is a level of its own on an expressway; on a
+    # side path's road or a bike-legal motorway the Avoid is about the road's place and stays.
+    read = AgencyRating("mdot-sha", 4, read_as=4.5, note="a 4+ lane highway posted 55 mph")
+    expressway = classify({"highway": "primary", "expressway": "yes", "maxspeed": "55 mph"})
+    result = agency_lts.apply(expressway, [read])
+    assert (result.tier, result.half) == (Stress.LTS4, True)
+    side = classify(
+        {"highway": "primary", "bicycle": "use_sidepath", "maxspeed": "40 mph"}, side_path=True
+    )
+    assert agency_lts.apply(side, [read]).tier is Stress.AVOID
