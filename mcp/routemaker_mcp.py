@@ -1777,6 +1777,12 @@ BRIDGE_NAMELESS_MI = 0.3
 # or Avoid; pieces of one this close together are one stretch.
 BUSY_MIN_MI = 0.1
 BUSY_JOIN_MI = 0.05
+# A busy stretch at a route's Metro station end left out of busy_stretches: at most this long
+# (about 160 m, near station_links' 150 m walk-link reach), and starting or ending within
+# STATION_END_TOUCH_MI of that end, judged before the rows' miles are rounded. Claude's
+# defaults, not measured (the round 4 hunt, L4-8).
+STATION_END_MI = 0.1
+STATION_END_TOUCH_MI = 0.05
 MAX_BUSY_ROWS = 20
 # Small detours (the owner, 2026-10-25: "these small excursions aren't worth including"): a
 # span of the route at least twice as long as the straight line between its ends, with its
@@ -1951,14 +1957,27 @@ def _grouped(rows: list[dict], minimum: float) -> list[list[dict]]:
     return groups
 
 
-def busy_stretches(answer: dict) -> list[dict]:
+def busy_stretches(answer: dict, station_ends: tuple[bool, bool] = (False, False)) -> list[dict]:
     """Where the route rides LTS 3 and up, in route order: from and to (miles), the roads and
-    the worst LTS (5 is Avoid). The longest MAX_BUSY_ROWS where there are more."""
-    return _busy_rows(_stretches(answer))
+    the worst LTS (5 is Avoid). The longest MAX_BUSY_ROWS where there are more.
+
+    `station_ends` says whether the route line starts and ends at a Metro station's way in. A
+    busy stretch no longer than STATION_END_MI that touches such an end is left out: it is the
+    bit of sidewalk beside the road that the elevator stands on, which the map rates as its road
+    (the round 4 hunt, L4-8). Its price is unchanged; only the list leaves it out (the owner's
+    card, 2026-11-10: "Hide from busy list now")."""
+    end_mi = (answer.get("distance_m") or 0.0) / METRES_PER_MILE
+    return _busy_rows(_stretches(answer), station_ends, end_mi)
 
 
-def _busy_rows(entries: list[dict]) -> list[dict]:
-    """`busy_stretches` from stretches in route order ({tier, from_mi, to_mi, street})."""
+def _busy_rows(
+    entries: list[dict],
+    station_ends: tuple[bool, bool] = (False, False),
+    end_mi: float | None = None,
+) -> list[dict]:
+    """`busy_stretches` from stretches in route order ({tier, from_mi, to_mi, street}), leaving
+    out a short one at a station end (`busy_stretches`), judged before the miles are rounded.
+    `end_mi` is where the route ends (the last stretch's end where not given)."""
     spans: list[dict] = []
     for entry in entries:
         tier = entry.get("tier")
@@ -1979,6 +1998,17 @@ def _busy_rows(entries: list[dict]) -> list[dict]:
                 "lts": tier,
             }
         )
+    if end_mi is None:
+        end_mi = entries[-1]["to_mi"] if entries else 0.0
+
+    def at_station_end(span: dict) -> bool:
+        if span["to_mi"] - span["from_mi"] > STATION_END_MI:
+            return False
+        at_start = station_ends[0] and span["from_mi"] <= STATION_END_TOUCH_MI
+        at_end = station_ends[1] and end_mi - span["to_mi"] <= STATION_END_TOUCH_MI
+        return at_start or at_end
+
+    spans = [s for s in spans if not at_station_end(s)]
     kept = [s for s in spans if s["to_mi"] - s["from_mi"] >= BUSY_MIN_MI or s["lts"] >= 4]
     if len(kept) > MAX_BUSY_ROWS:
         longest = sorted(kept, key=lambda s: s["to_mi"] - s["from_mi"], reverse=True)
@@ -2661,17 +2691,28 @@ def _roads_between(answer: dict):
     return roads_at
 
 
-def route_details(plan: Plan) -> dict:
+def route_details(plan: Plan, stations: list[Station] | None = None) -> dict:
     """What the route rides, for the answer: its roads, busy stretches, very-high-stress
-    junctions, scenic roads and small detours."""
+    junctions, scenic roads and small detours. With `stations`, a short busy bit at a start or
+    end that is a station's way in is left out of the busy stretches (`busy_stretches`)."""
     answer = plan.answer
     out: dict = {}
     roads = road_list(answer)
     if roads:
         out.update(roads)
     if answer.get("description") or answer.get("description_overview"):
-        out["busy_stretches"] = busy_stretches(answer)
-        # What the list leaves out (short LTS 3 bits, past MAX_BUSY_ROWS), so it adds up.
+        ends = (False, False)
+        # The route line's own ends: a loop's line comes back to its start (the site adds the
+        # closing leg), and a transit trip's line is its first ride, which ends at the station.
+        line = (answer.get("geometry") or {}).get("coordinates") or plan.points
+        if stations and line:
+            ends = tuple(
+                any(_at_station(tuple(point[:2]), station) for station in stations)
+                for point in (line[0], line[-1])
+            )
+        out["busy_stretches"] = busy_stretches(answer, ends)
+        # What the list leaves out (short LTS 3 bits, short bits at a station end, past
+        # MAX_BUSY_ROWS), so it adds up.
         stress = answer.get("stress_m") or {}
         total = sum(stress.get(k, 0.0) or 0.0 for k in ("3", "4", "5")) / METRES_PER_MILE
         unlisted = total - sum(b["miles"] for b in out["busy_stretches"])
@@ -4385,7 +4426,8 @@ TOOLS = [
             " Revise it with revise_route; keep it with save_route once the rider is happy."
             " The answer also says what the route rides: `roads` in order (miles, main and"
             " worst LTS, facility, and `scenic` for a rustic road, scenic byway, the East Coast"
-            " Greenway or a US Bicycle Route), `busy_stretches` (where it rides LTS 3 and up),"
+            " Greenway or a US Bicycle Route), `busy_stretches` (where it rides LTS 3 and up;"
+            " a short bit at a Metro station end is left out),"
             " `junctions` (very-high-stress crossings and turns), `scenic_roads`, and"
             " `small_detours` / `via_spurs` (where it leaves a road and comes back to it, or"
             " goes out and back to a via point; riders rarely want these: move or drop the"
@@ -5683,7 +5725,7 @@ class Server:
         out = {
             "draft_id": draft_id,
             "summary": summary(plan.answer),
-            **route_details(plan),
+            **route_details(plan, self.stations),
             "points": [list(p) for p in plan.points],
             "via_points": plan.vias,
             "preset": plan.preset,

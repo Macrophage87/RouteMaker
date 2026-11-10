@@ -5389,8 +5389,9 @@ tests/test_mcp_server.py, tests/test_mcp_optimizing.py, tests/test_mcp_route_det
   finish, both rows took the last point's number. Each row now takes the first point at its
   place not yet used, so the start is stop 0.
 
-Not fixed here: L4-8 (short LTS 4 pieces named "path" at Metro ends), whose cause is not yet
-known and needs the map's segment table and the router to find; L4-3 waits on the owner.
+Not fixed here: L4-8 (short LTS 4 pieces named "path" at Metro ends), later left out of the
+connector's busy list on the owner's card (see "Round 4 owner decisions"); L4-3 waits on the
+owner.
 
 - **R4-1, Mass Ride rode the H Street / Benning Road NE streetcar rails** (OWNER-DECISIONS 289):
   the rails were only priced at LTS 4 (288), which a Mass Ride at stress 0 hardly feels. A Mass
@@ -5513,6 +5514,21 @@ them on 2026-11-09:
   - Not changed: Reach's rings for Run (`core.reach._ride`) still judge darkness at the ring's
     moment alone.
   Tests: tests/test_run_plan.py.
+- **A Metro station's end in the assistant's busy list** (L4-8). Rides that start or end at a
+  station's elevator begin or end on a few metres rated as the road beside it (the sidewalk the
+  elevator stands on), so the connector listed every Metro ride as starting on a busy road.
+  Claude first built a walk-your-bike link over the whole sidewalk way (Stephen's card: "Walk-
+  your-bike link"), but review found that made through riders walk long sidewalks. On the
+  second card Stephen chose "Hide from busy list now": the LTS 4 price stays, and
+  `busy_stretches` (mcp/routemaker_mcp.py) leaves out a busy stretch of at most
+  `STATION_END_MI` (0.1 mi) that touches an end of the route that is a station (`_at_station`,
+  within `STATION_END_TOUCH_MI` of the end, judged before the miles are rounded). The ends are
+  the route line's own, so a loop from a station counts at both ends and a Bike + transit
+  trip's first ride counts at the station it ends at. Only those ends count, not a station
+  stop in the middle, nor the rides after the first in `transit.later_rides`;
+  `busy_unlisted_mi` still counts what was left out. Both lengths are Claude's defaults, not
+  measured. Code change, no rebuild. Tests:
+  tests/test_mcp_route_details.py.
 
 ### Trails off (OWNER-DECISIONS 463, 463a, 463b)
 
