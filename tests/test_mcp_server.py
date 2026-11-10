@@ -206,6 +206,7 @@ def test_it_introduces_itself_and_lists_its_tools(tools) -> None:
         "ride_conditions",
         "my_routes",
         "save_route",
+        "my_drafts",
         "organize_route",
         "gpx_route",
     ]
@@ -441,10 +442,33 @@ def test_plan_route_fixes_a_stray_by_way_of_the_nearest_station(tools) -> None:
     assert out["metro_check"]["miles_over_limit"] < 6.3 and len(out["points"]) > 2
 
 
-def test_a_stray_with_its_nearest_station_already_a_point_is_left_as_it_is(tools) -> None:
+def test_a_stray_whose_nearest_station_ends_its_leg_tries_the_next_station(tools) -> None:
+    """The round 4 hunt, L4-5: the station nearest the stray is already an end of the leg that
+    strays, so the next nearest is tried (before, the fix gave up without a word)."""
     shady = next(s for s in STATIONS if s.name == "Shady Grove").point
     far = mcp.destination(shady, 300, 10)
-    out = tools.call(
+    tools.call(
+        "plan_route",
+        {
+            "points": [list(shady), list(far), list(shady)],
+            "max_miles_from_metro": 3,
+            "fix_metro_rounds": 1,
+        },
+    )
+    assert len(StandIn.routes) == 2
+    again = StandIn.routes[1]
+    added = {s.name for s in STATIONS for p in again["points"][1:3] if s.is_way_in(tuple(p))}
+    assert len(again["points"]) == 4 and added and "Shady Grove" not in added
+
+
+def test_a_stray_with_no_station_left_to_add_is_said(stand_in, tmp_path) -> None:
+    """The round 4 hunt, L4-5: where every station near the stray already ends its leg, the
+    answer says nothing was added (before: nothing said)."""
+    shady_grove = next(s for s in STATIONS if s.name == "Shady Grove")
+    server = mcp.Server(lambda: mcp.Api(stand_in), [shady_grove], out_dir=tmp_path)
+    shady = shady_grove.point
+    far = mcp.destination(shady, 300, 10)
+    out = server.call(
         "plan_route",
         {
             "points": [list(shady), list(far), list(shady)],
@@ -453,6 +477,57 @@ def test_a_stray_with_its_nearest_station_already_a_point_is_left_as_it_is(tools
         },
     )
     assert len(StandIn.routes) == 1 and not out["metro_check"]["ok"]
+    assert any("found no station left to add" in n for n in out.get("notes", []))
+
+
+def test_a_loop_straying_on_its_way_back_gets_the_station_before_the_start_again(
+    tools, monkeypatch
+) -> None:
+    """The round 4 hunt, L4-2: on a loop whose closing leg strays, the station went in as the
+    last point and the site refused it as a via (400), failing the whole call. Now the ride is
+    made a round trip: the station, then the start again, the station a via."""
+    shady = next(s for s in STATIONS if s.name == "Shady Grove").point
+    far = mcp.destination(shady, 300, 10)
+    monkeypatch.setattr(mcp, "leg_of", lambda plan, miles: len(plan.points) - 1)
+    out = tools.call(
+        "plan_route",
+        {
+            "points": [list(shady), list(far)],
+            "loop": True,
+            "max_miles_from_metro": 3,
+            "fix_metro_rounds": 1,
+        },
+    )
+    again = StandIn.routes[1]
+    assert len(again["points"]) == 4 and again["points"][-1] == again["points"][0]
+    assert again["via_points"] == [2] and again["loop"] is True
+    assert any(s.is_way_in(tuple(again["points"][2])) for s in STATIONS)
+    assert out["notes"][0].startswith("added ")
+
+
+def test_a_metro_fix_round_the_site_refuses_keeps_the_plan_already_made(tools, monkeypatch) -> None:
+    """The round 4 hunt, L4-2: a fix round's error no longer fails the call."""
+    named = {s.name: list(s.point) for s in STATIONS}
+    real = mcp.plan_once
+    calls = []
+
+    def refusing(*args, **kwargs):
+        calls.append(1)
+        if len(calls) > 1:
+            raise mcp.ToolError("the site refused the route (400): via_points are distinct")
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(mcp, "plan_once", refusing)
+    out = tools.call(
+        "plan_route",
+        {
+            "points": [named["Vienna/Fairfax-GMU"], named["Shady Grove"]],
+            "max_miles_from_metro": 3,
+            "fix_metro_rounds": 2,
+        },
+    )
+    assert len(calls) == 2 and out["draft_id"] and len(out["points"]) == 2
+    assert any("failed" in n and "kept the plan" in n for n in out["notes"])
 
 
 def test_the_metro_loop_goes_round_dc_inside_the_limit(tools) -> None:
@@ -921,18 +996,67 @@ def test_a_link_with_the_retired_avoid_gravel_box_opens_as_the_page_opens_it(lin
     assert set(mcp.AVOID_GRAVEL_BECOMES) == set(presets.AVOID_GRAVEL_BECOMES)
 
 
+def _plans_taking(monkeypatch, seconds: float) -> None:
+    """Each plan takes `seconds` on a clock that moves only while planning."""
+    clock = {"now": 0.0}
+    monkeypatch.setattr(mcp.time, "monotonic", lambda: clock["now"])
+    real = mcp.plan_once
+
+    def timed(*args, **kwargs):
+        clock["now"] += seconds
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(mcp, "plan_once", timed)
+
+
 def test_a_call_with_a_deadline_stops_planning_while_another_plan_would_not_fit(
     tools, monkeypatch
 ) -> None:
     """The site's own connector answers inside one web request (core.connector): the loop plans
-    once more only while a long plan still fits, and says it stopped."""
-    clock = iter(range(0, 10_000, 10))
-    monkeypatch.setattr(mcp.time, "monotonic", lambda: next(clock))
-    call = mcp.Call(deadline=45)  # less than one long plan (48 s) is left after the first
+    once more only while one more plan as long as the first still fits, and says it stopped."""
+    _plans_taking(monkeypatch, 20)
+    call = mcp.Call(deadline=55)  # 20 s gone; another 20 s plan, with room over, does not fit
     out = tools.call("plan_metro_loop", {"target_miles": 200, "max_plans": 3}, call)
     assert len(StandIn.routes) == 1
     assert mcp.OUT_OF_TIME in out["notes"]
     assert mcp.Call().time_for_another_plan()  # no deadline: a computer of the rider's own
+
+
+def test_a_quick_plan_leaves_time_for_the_metro_fix_on_the_site(tools, monkeypatch) -> None:
+    """The round 4 hunt, L4-4: on the site's connector (a 55 s deadline) the fix ran only if
+    the first plan took under about 7 s (a long ride's whole 48 s was asked for). An 8 s plan
+    leaves time for another."""
+    _plans_taking(monkeypatch, 8)
+    named = {s.name: list(s.point) for s in STATIONS}
+    out = tools.call(
+        "plan_route",
+        {
+            "points": [named["Vienna/Fairfax-GMU"], named["Shady Grove"]],
+            "max_miles_from_metro": 3,
+            "fix_metro_rounds": 1,
+        },
+        mcp.Call(deadline=55),
+    )
+    assert len(StandIn.routes) == 2 and mcp.OUT_OF_TIME not in out.get("notes", [])
+
+
+def test_a_spur_trim_skipped_for_time_is_said(tools, monkeypatch) -> None:
+    """The round 4 hunt, L4-4: a spur trim with no time left was skipped in silence."""
+    _plans_taking(monkeypatch, 30)
+    monkeypatch.setattr(
+        mcp,
+        "without_spurs",
+        lambda plan: ([plan.points[0], (-77.0, 38.95), plan.points[2]], plan.vias, 1),
+    )
+    out = tools.call(
+        "plan_route",
+        {"points": [[-77.03, 38.9], [-77.01, 38.95], [-77.02, 38.91]], "via_points": [1]},
+        mcp.Call(deadline=55),
+    )
+    assert len(StandIn.routes) == 1
+    assert any(
+        "no time left to take out the out-and-back to via point 1" in n for n in out["notes"]
+    )
 
 
 # --- The independent tester's findings (2026-10-19) -----------------------------------------
@@ -1297,13 +1421,31 @@ def test_the_link_opens_the_exact_route_and_reads_back_unplanned(tools) -> None:
     assert opened["summary"]["distance_mi"] == out["summary"]["distance_mi"]
 
 
-def test_a_draft_link_is_deleted_after_the_next_day_at_the_latest() -> None:
+def test_a_draft_link_is_deleted_after_a_week_at_the_latest() -> None:
     import datetime
 
     assert mcp.draft_link_keep(datetime.date(2026, 10, 20)) == {
         "keep": "until",
-        "delete_after": "2026-10-21",
+        "delete_after": "2026-10-27",
     }
+
+
+def test_the_site_keeps_drafts_as_long_as_the_module_says() -> None:
+    from core.models import ConnectorDraft
+
+    assert ConnectorDraft.KEPT == mcp.DRAFT_KEPT
+
+
+def test_drafts_are_named_for_finding_and_listed_newest_revision_first(tools) -> None:
+    loop = tools.call("plan_route", {"points": ["Union Market", "Takoma", "Union Market"]})
+    trip = tools.call("plan_route", {"points": ["Union Market", "Takoma"], "name": "Tacos"})
+    revised = tools.call("revise_route", {"draft_id": loop["draft_id"]})
+    listed = tools.call("my_drafts", {})["drafts"]
+    assert [d["draft_id"] for d in listed] == [revised["draft_id"], trip["draft_id"]]
+    assert [d["name"] for d in listed] == ["Loop from Union Market", "Tacos"]
+    assert listed[0]["days_left"] == 7
+    tools.call("save_route", {"draft_id": revised["draft_id"], "name": "Kept loop"})
+    assert [d["draft_id"] for d in tools.call("my_drafts", {})["drafts"]] == [trip["draft_id"]]
 
 
 def test_a_link_still_comes_back_when_the_exact_route_is_not_kept(tools, monkeypatch) -> None:
