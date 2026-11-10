@@ -8,7 +8,7 @@ import type { LonLat } from "./geo.ts";
 import { ViaMarks, decodeStopIcons, encodeStopIcons, stopIcons } from "./pointKinds.ts";
 import { decodePlan, encodePlan } from "./planHash.ts";
 import { NOTE_ICONS } from "./routeNotes.ts";
-import { readIconStyle, writeIconStyle } from "./iconStyle.ts";
+import { ICON_STYLE_KEY, readIconStyle, writeIconStyle } from "./iconStyle.ts";
 
 const NOTO_SHA256: Record<string, string> = {
   "noto-emoji-u1f374.svg": "20aad3b1d514df37e7e9a94a16d681db11f1e3aa79024e031e1b8b69c666f115",
@@ -73,7 +73,11 @@ test("the icons are Noto pictures unless the phone's emoji is chosen, kept on th
   const store = { getItem: (k: string) => kept.get(k) ?? null, setItem: (k: string, v: string) => void kept.set(k, v), removeItem: (k: string) => void kept.delete(k) };
   assert.equal(readIconStyle(store), "noto");
   writeIconStyle("emoji", store);
+  assert.equal(kept.get(ICON_STYLE_KEY), "emoji");
   assert.equal(readIconStyle(store), "emoji");
+  // What the device keeps is read back alone, as on the next visit.
+  assert.equal(readIconStyle({ ...store, getItem: () => "emoji" }), "emoji");
   writeIconStyle("noto", store);
+  assert.equal(kept.get(ICON_STYLE_KEY), "noto");
   assert.equal(readIconStyle(store), "noto");
 });

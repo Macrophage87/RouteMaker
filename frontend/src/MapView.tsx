@@ -202,7 +202,7 @@ import { t } from "./lib/i18n.ts";
 import { onSharedTick } from "./lib/sharedTick.ts";
 import { noteIcon, noteRideText, type RouteNote } from "./lib/routeNotes.ts";
 import { iconArt, useIconStyle } from "./app/iconArt.tsx";
-import { NOTE_KIND_WORDS, notePinLabel } from "./lib/routeNotesPlan.ts";
+import { NOTE_ICON_WORDS, NOTE_KIND_WORDS, notePinLabel } from "./lib/routeNotesPlan.ts";
 
 
 export type StressAvailability = "checking" | "available" | "unavailable";
@@ -1889,8 +1889,9 @@ export function MapView(props: Props) {
         element.append(badge);
       }
       element.setAttribute("role", "img");
-      // The warning ends with its own full stop.
-      const named = warning ? `${name}. ${warning}` : name;
+      // The warning ends with its own full stop. A stop's icon (2026-11-10) is said after its name.
+      const shown = stopIcon ? `${name}, ${NOTE_ICON_WORDS[stopIcon]}` : name;
+      const named = warning ? `${shown}. ${warning}` : shown;
       const said = warning ? named : `${name}.`;
       // The name and warning only, and the keyboard's way to remove a via: a pin takes no focus, so
       // dragging and clicking are the title's, for a pointer (review a11y-8).

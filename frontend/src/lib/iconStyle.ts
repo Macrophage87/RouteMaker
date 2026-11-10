@@ -1,7 +1,7 @@
 /**
  * How the map draws a note's or a stop's icon (Stephen 2026-11-10: "Allow both", "We can use noto"): Google's Noto
  * Emoji pictures, bundled with the app so a sign looks the same on every phone (our default), or the phone's own emoji.
- * Kept on this device, as Settings > Display's other choices are. The pictures themselves are app/iconArt.ts's.
+ * Kept on this device, as Settings > Display's other choices are. The pictures themselves are app/iconArt.tsx's.
  */
 import { browserStore, type KeyValueStore } from "./accessMode.ts";
 import { t } from "./i18n.ts";

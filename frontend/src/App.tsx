@@ -3314,7 +3314,7 @@ export function App() {
     if (renamed) VIA_MARKS.rename(point, name);
     if (iconChanged) VIA_MARKS.setIcon(point, icon);
     setNamesVersion((v) => v + 1);
-    announce(renamed ? stopNamedSaid(cleanStopName(name)) : stopIconSaid(icon));
+    announce([renamed ? stopNamedSaid(cleanStopName(name)) : "", iconChanged ? stopIconSaid(icon) : ""].filter(Boolean).join(" "));
   };
   // Reverse: in a loop the start stays and the stops go the other way around
   // (OWNER-DECISIONS 374); with a start and one stop that is no change, so a

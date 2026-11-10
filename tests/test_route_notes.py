@@ -227,3 +227,14 @@ def test_a_stop_s_icon_travels_in_the_link_and_a_revision(stand_in, tmp_path) ->
     assert server.drafts.get(out["draft_id"]).options["stop_icons"] == {1: "coffee"}
     assert revise(stop_icons={"0": "coffee"})["isError"]
     assert revise(stop_icons={"1": "nosuch"})["isError"]
+
+    # Kept through a later revision; a loop's last point is a stop; a moved stop drops it.
+    def again(**args):
+        call = {"name": "revise_route", "arguments": {"draft_id": out["draft_id"], **args}}
+        return rpc(server, "tools/call", call)["result"]
+
+    kept = again(preset="road-bike")["structuredContent"]
+    assert "si=1%3Acoffee" in kept["link"]
+    assert not again(loop=True, stop_icons={"2": "water"})["isError"]
+    moved = again(move_points=[{"index": 1, "to": [-77.001, 38.921]}])["structuredContent"]
+    assert "si=" not in moved["link"]

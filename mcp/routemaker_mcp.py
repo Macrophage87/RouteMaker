@@ -7489,7 +7489,8 @@ class Server:
         icons = None if args.get("points") else labels_revised(plan, built, kept_icons)
         for at, icon in (args.get("stop_icons") or {}).items():
             index = int(at) if str(at).isdigit() else -1
-            if not 0 < index < len(points) - (0 if options.get("loop") else 1) or index in vias:
+            loop = args.get("loop", options.get("loop"))
+            if not 0 < index < len(points) - (0 if loop else 1) or index in vias:
                 raise ToolError(f"point {at} is not a stop of the revised route, so it has no icon")
             if icon is not None and icon not in NOTE_ICONS:
                 raise ToolError(f"no icon {icon!r}: one of {', '.join(NOTE_ICONS)}")
