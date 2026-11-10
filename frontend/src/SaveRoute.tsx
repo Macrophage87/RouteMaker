@@ -3,7 +3,7 @@
  * in only. It asks for a name (offered as "Start to End") and says what happened politely. In Plan it asks for tags
  * too, optional (the owner, 2026-11-07): the account's tags are offered as they are typed. One box, Fixed route
  * (the owner, 2026-11-10), keeps the line as it is, never planned again; unticked (our default), by its via points.
- * Plan's box has an (i) with both kinds; Go's is the box and its one line.
+ * Plan's alone, with an (i) with both kinds: Go's Save is a name alone (the owner: "Go shouldn't include it").
  */
 import { useEffect, useId, useRef, useState, type MouseEvent } from "react";
 import { DiscordLogo } from "./DiscordLogo.tsx";

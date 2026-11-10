@@ -235,7 +235,7 @@ export function differenceLine(savedM: number, todayM: number): string {
 }
 
 export const UPDATE_ROUTE = t("Update route");
-/** The Save form's box (the owner, 2026-11-10): unticked, by its via points (our default). Short, for Go's languages. */
+/** Plan's Save form's box (the owner, 2026-11-10): unticked, by its via points (our default). Not in Go's Save. */
 export const FIXED_ROUTE = t("Fixed route");
 export const FIXED_HINT = t("Keep this exact line. Never re-routed.");
 /** Plan's (i) behind the box: the two kinds side by side. */
