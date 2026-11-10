@@ -696,6 +696,8 @@ def test_the_fixture_fingerprints_load_by_kind_and_way() -> None:
         # that already had a row, which the file retires
         + 531  # Baltimore City rating review's 671 rows (the owner, 2026-11-04), 140 on ways
         # that already had a 2026-11-01 Maryland review row, which the file retires
+        + 222842  # own picks (the owner, 2026-11-09): MD 135417, VA 81047 (2 ways not in the
+        # 2026-11-02 extract stay by id), WV 6378
     )
     assert ("access", 50426889) in found and ("stress", 1562097556) in found
 
