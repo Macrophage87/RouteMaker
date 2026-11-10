@@ -94,10 +94,11 @@ export function wrapPx(text: string, px: number, weight: Weight, width: number, 
 /** A row's lines relative to its top, and its height. */
 function rowLines(row: CueRow, measure: Measure): { lines: LockLine[]; height: number } {
   const lines: LockLine[] = [];
-  const column = (x: number, width: number, parts: { text: string; px: number; weight: Weight }[]) => {
+  const column = (x: number, width: number, parts: { text: string; px: number; weight: Weight; whole?: boolean }[]) => {
     let y = PAD;
     for (const part of parts) {
-      for (const text of wrapPx(part.text, part.px, part.weight, width - PAD, measure)) {
+      // The miles are never broken: "123." over "4" would misread at a glance.
+      for (const text of part.whole ? [part.text] : wrapPx(part.text, part.px, part.weight, width - PAD, measure)) {
         y += Math.round(part.px * 1.15);
         lines.push({ text, x, y: y - Math.round(part.px * 0.2), px: part.px, weight: part.weight });
       }
@@ -107,7 +108,7 @@ function rowLines(row: CueRow, measure: Measure): { lines: LockLine[]; height: n
   const textX = SIDE + COLUMNS.miles + COLUMNS.arrow;
   const bottoms = [
     column(SIDE, COLUMNS.miles, [
-      { text: markerFigure(row.atM), px: PX.miles, weight: 700 },
+      { text: markerFigure(row.atM), px: PX.miles, weight: 700, whole: true },
       { text: formatMileMarkerUnits(row.atM), px: PX.unit, weight: 400 },
     ]),
     column(textX, LOCK_WIDTH - SIDE - textX, [

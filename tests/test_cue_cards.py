@@ -123,23 +123,36 @@ def test_a_long_route_runs_to_numbered_phone_sized_images() -> None:
     assert len(one) == 1
 
 
-def _site(stand_in, tmp_path, drawn):  # noqa: F811
-    def draw(*args):
-        drawn.append(args)
-        return [b"\x89PNG-1", b"\x89PNG-2"]
+class _Cards:
+    """A stand-in for core.cue_cards: five images, drawn only as asked."""
 
+    def __init__(self) -> None:
+        self.drawn: list = []
+
+    def count(self, *args) -> int:
+        return 5
+
+    def draw(self, *args, only=None) -> list[bytes]:
+        self.drawn.append((args, list(only)))
+        return [f"\x89PNG-{n}".encode("latin-1") for n in only if n <= 5]
+
+    def cue_rows(self, answer, vias, names):
+        return cue_cards.cue_rows(answer, vias, names)
+
+
+def _site(stand_in, tmp_path, cards):  # noqa: F811
     return mcp.Server(
         lambda: mcp.Api(stand_in),
         STATIONS,
         out_dir=tmp_path,
-        cue_cards=draw,
+        cue_cards=cards,
         cue_cards_link=lambda draft_id, page: f"https://example.invalid/{draft_id}-cues-{page}.png",
     )
 
 
-def test_the_tool_returns_the_images_and_a_link_each(stand_in, tmp_path) -> None:  # noqa: F811
-    drawn: list = []
-    server = _site(stand_in, tmp_path, drawn)
+def test_the_tool_sends_the_first_images_and_links_every_one(stand_in, tmp_path) -> None:  # noqa: F811
+    cards = _Cards()
+    server = _site(stand_in, tmp_path, cards)
     plain = mcp.Server(lambda: mcp.Api(stand_in), STATIONS, out_dir=tmp_path)
     assert "cue_cards" not in {t["name"] for t in plain.tools()}
     tool = next(t for t in server.tools() if t["name"] == "cue_cards")
@@ -155,23 +168,28 @@ def test_the_tool_returns_the_images_and_a_link_each(stand_in, tmp_path) -> None
     ]
     assert not result["isError"]
     images = [c for c in result["content"] if c["type"] == "image"]
-    assert [base64.b64decode(c["data"]) for c in images] == [b"\x89PNG-1", b"\x89PNG-2"]
-    out = result["structuredContent"]
-    assert out["draft_id"] == draft_id and out["images"] == 2 and "revised" not in out
-    assert out["links"] == [
-        f"https://example.invalid/{draft_id}-cues-1.png",
-        f"https://example.invalid/{draft_id}-cues-2.png",
+    # The first INLINE_CUE_IMAGES (our default) in the answer; all five linked.
+    assert [base64.b64decode(c["data"]) for c in images] == [
+        b"\x89PNG-1",
+        b"\x89PNG-2",
+        b"\x89PNG-3",
     ]
-    answer, _title, vias, names, credit = drawn[0]
+    out = result["structuredContent"]
+    assert out["draft_id"] == draft_id and out["images"] == 5 and "revised" not in out
+    assert out["links"] == [f"https://example.invalid/{draft_id}-cues-{n}.png" for n in range(1, 6)]
+    assert "first 3 of 5" in out["shown"]
+    # The cues as text too, Start to Finish.
+    assert out["cues"][0]["cue"] == "Start" and out["cues"][-1]["cue"] == "Finish"
+    (answer, _title, _vias, names, credit), only = cards.drawn[0]
     assert answer is server.drafts.get(draft_id).plan.answer
-    assert names == {} and credit.startswith("Route data: ")
+    assert names == {} and credit.startswith("Route data: ") and only == [1, 2, 3]
     gone = rpc(server, "tools/call", {"name": "cue_cards", "arguments": {"draft_id": "dnone"}})
     assert gone["result"]["isError"]
 
 
 def test_stop_names_are_kept_on_a_new_draft(stand_in, tmp_path) -> None:  # noqa: F811
-    drawn: list = []
-    server = _site(stand_in, tmp_path, drawn)
+    cards = _Cards()
+    server = _site(stand_in, tmp_path, cards)
     planned = rpc(
         server,
         "tools/call",
@@ -181,14 +199,61 @@ def test_stop_names_are_kept_on_a_new_draft(stand_in, tmp_path) -> None:  # noqa
         },
     )["result"]
     draft_id = planned["structuredContent"]["draft_id"]
-    args = {"draft_id": draft_id, "stop_names": {"1": "Coffee", "7": "No such stop"}}
+    args = {"draft_id": draft_id, "stop_names": {"1": "  Coffee   stop ", "7": "No such stop"}}
     result = rpc(server, "tools/call", {"name": "cue_cards", "arguments": args})["result"]
     out = result["structuredContent"]
     assert out["draft_id"] != draft_id and "revised" in out
     kept = server.drafts.get(out["draft_id"])
-    assert kept.plan.names == {1: "Coffee"} and kept.revises == draft_id
-    assert drawn[0][3] == {1: "Coffee"}
+    assert kept.plan.names == {1: "Coffee stop"} and kept.revises == draft_id
+    assert cards.drawn[0][0][3] == {1: "Coffee stop"}
     assert server.drafts.get(draft_id).plan.names == {}
+    # The same names again: no new draft.
+    again = {"draft_id": out["draft_id"], "stop_names": {"1": "Coffee stop"}}
+    second = rpc(server, "tools/call", {"name": "cue_cards", "arguments": again})["result"]
+    assert second["structuredContent"]["draft_id"] == out["draft_id"]
+
+
+def test_a_loop_s_last_point_is_a_stop_to_name() -> None:
+    plan = mcp.Plan(
+        points=[(0, 0), (1, 1), (2, 2), (0, 0)],
+        vias=[1],
+        preset="default",
+        answer={"loop": {"miles": 3}},
+        check=None,
+        sent={},
+    )
+    assert mcp.cue_card_names(plan, {"1": "Park", "2": "Home again"}) == {
+        2: "Park",
+        3: "Home again",
+    }
+
+
+def test_long_routes_keep_every_cue_and_draw_only_the_page_asked() -> None:
+    turns = [_stretch(0, "Start Street")] + [
+        _stretch(150 * k, f"Street {k}", "left" if k % 2 else "right") for k in range(1, 130)
+    ]
+    answer = _answer(turns, 20_000)
+    total = cue_cards.count(answer, "Default route")
+    assert total > 12
+    laid = cue_cards.pages(answer, "Default route")
+    assert laid["rows"][laid["groups"][-1][-1]]["turn"] == "Finish"
+    one = cue_cards.draw(answer, "Default route", only=[total])
+    assert len(one) == 1 and one[0].startswith(b"\x89PNG")
+
+
+def test_a_long_mile_figure_is_one_line_and_names_are_folded_to_the_glyphs() -> None:
+    lines, _height = cue_cards._row_layout(
+        {
+            "at_m": 123.4 * MI,
+            "turn": "Café",
+            "reason": "",
+            "road": "Ben’s Road",
+            "then": "",
+            "arrow": {},
+        }
+    )
+    texts = [t for _g, _x, _y, t in lines]
+    assert "123.4" in texts and "Cafe" in texts and "Ben's Road" in texts
 
 
 def test_splits_at_stops_only_where_the_cues_need_more_than_one_image() -> None:

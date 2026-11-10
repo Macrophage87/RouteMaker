@@ -153,3 +153,14 @@ test("splits at stops only where the cues do not fit on one image: each leg its 
   // The stop is counted once.
   assert.equal(pages.reduce((n, p) => n + p.cues, 0), cueRows(route, "strip").length);
 });
+
+test("a mile figure of 100 or more stays on one line", () => {
+  const base = longRoute(4);
+  // The same line stretched eightfold: about 150 mi.
+  const line = base.geometry.coordinates.map(([lon, lat], i) => [lon + i * 0.0001156 * 7, lat] as [number, number]);
+  const description = base.description.map((e) => ({ ...e, from_m: e.from_m * 8, to_m: e.to_m * 8 }));
+  const pages = lockScreenLayout({ ...base, geometry: { type: "LineString", coordinates: line }, distance_m: 240_000, description }, measure);
+  const texts = pages.flatMap((p) => p.lines.map((l) => l.text));
+  assert.ok(texts.some((t) => /^1\d\d\.\d$/.test(t)), texts.join("|"));
+  assert.ok(!texts.some((t) => /^1\d\d\.$/.test(t)));
+});

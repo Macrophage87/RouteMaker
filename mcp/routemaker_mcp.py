@@ -3785,16 +3785,21 @@ def _mass_view(answer: dict, corking: dict | None = None) -> dict | None:
 
 def cue_card_names(plan: Plan, asked) -> dict[int, str]:
     """The stops' names by point index for the cue images: the plan's own (its link's `sn=`),
-    then `asked`, by stop number from 1 (cue_cards' `stop_names`)."""
+    then `asked`, by stop number from 1 (cue_cards' `stop_names`); a loop's last point is a stop
+    too, as the link counts it (`link_stop_names`)."""
     names = {int(k): str(v) for k, v in (plan.names or {}).items()}
-    stops = [i for i in range(1, len(plan.points) - 1) if i not in set(plan.vias)]
+    loop = plan.answer.get("loop") is not None or bool((plan.answer.get("dials") or {}).get("loop"))
+    count = len(plan.points)
+    vias = set(plan.vias)
+    stops = [i for i in range(1, count if loop else count - 1) if i not in vias]
     for key, name in (asked or {}).items():
         try:
             number = int(key)
         except (TypeError, ValueError):
             continue
-        if 1 <= number <= len(stops) and str(name).strip():
-            names[stops[number - 1]] = str(name).strip()[:60]
+        clean = clean_stop_name(name)
+        if 1 <= number <= len(stops) and clean:
+            names[stops[number - 1]] = clean
     return names
 
 
@@ -4710,6 +4715,8 @@ PICTURE_TOOL = {
 # The route's turn cues as phone-sized images, an arrow beside each (the owner, 2026-11-10: "some
 # people perfer to just navigate by a static image ... Basically show the arrows"; "make sure stops
 # are listed"). On the site only (core.cue_cards), as Plan's "Cue sheet image" export.
+# The images sent in the answer itself (our default): the rest are linked.
+INLINE_CUE_IMAGES = 3
 CUE_CARDS_TOOL = {
     "name": "cue_cards",
     "title": "Turn cue images",
@@ -4718,8 +4725,10 @@ CUE_CARDS_TOOL = {
         " a picture on their phone: the draft's cues as phone-sized PNGs (a lock screen's size,"
         " its clock and controls left clear), each row the miles from the start, an arrow, the"
         " turn and the road; stops are listed by number, and by name where `stop_names` (or the"
-        " plan's link) names them. A long route runs to several images, Part 1 of N. Each image"
-        " has a link that opens it while the draft is kept: give the rider the links."
+        " plan's link) names them. Where the cues need more than one image, each leg (start or"
+        " stop to the next stop or finish) has its own, Part 1 of N. The first few images come"
+        " in the answer; each has a link that opens it while the draft is kept: give the rider"
+        " the links. `cues` has the same cues as text."
     ),
     "inputSchema": {
         "type": "object",
@@ -4738,7 +4747,7 @@ CUE_CARDS_TOOL = {
         },
         "required": ["draft_id"],
     },
-    "annotations": {"readOnlyHint": True, "openWorldHint": False},
+    "annotations": {"readOnlyHint": False, "destructiveHint": False, "openWorldHint": False},
 }
 
 TOOLS = [
@@ -5758,8 +5767,8 @@ class Server:
         # (core.route_picture), and function(draft_id) -> a link that opens it.
         self.picture = picture
         self.picture_link = picture_link
-        # On the site: function(answer, title, vias, names, credit) -> the phone cue images
-        # (core.cue_cards), and function(draft_id, page from 1) -> a link that opens one.
+        # On the site: core.cue_cards (count, draw and cue_rows of the phone cue images), and
+        # function(draft_id, page from 1) -> a link that opens one.
         self.cue_cards = cue_cards
         self.cue_cards_link = cue_cards_link
 
@@ -5857,12 +5866,28 @@ class Server:
             draft_id = self.drafts.put(named)
             draft = named
             out["revised"] = "the stop names are kept on a new draft: use this draft_id from now on"
-        images = self.cue_cards(*cue_card_args(draft, names))
-        if not images:
-            raise ToolError("this draft has no cues to draw")
-        out |= {"draft_id": draft_id, "name": draft.name, "images": len(images)}
+        drawn = cue_card_args(draft, names)
+        total = self.cue_cards.count(*drawn)
+        # Only the first few images travel in the answer (each is a phone screen's PNG); every
+        # one has its link.
+        images = self.cue_cards.draw(*drawn, only=range(1, INLINE_CUE_IMAGES + 1))
+        out |= {"draft_id": draft_id, "name": draft.name, "images": total}
+        # The cues as text too: for the assistant to read out, and for a reader who cannot see
+        # the images.
+        out["cues"] = [
+            {
+                "mi": round(r["at_m"] / METRES_PER_MILE, 1),
+                "cue": r["turn"],
+                **({"road": r["road"]} if r["road"] else {}),
+                **({"note": r["reason"]} if r["reason"] else {}),
+                **({"then": r["then"]} if r["then"] else {}),
+            }
+            for r in self.cue_cards.cue_rows(drawn[0], drawn[2], drawn[3])
+        ]
+        if total > len(images):
+            out["shown"] = f"the first {len(images)} of {total} images are shown; all are linked"
         if self.cue_cards_link is not None:
-            out["links"] = [self.cue_cards_link(draft_id, n + 1) for n in range(len(images))]
+            out["links"] = [self.cue_cards_link(draft_id, n + 1) for n in range(total)]
             out["note"] = (
                 "each link opens one image (PNG) to save to the phone; they work while the"
                 " draft is kept"

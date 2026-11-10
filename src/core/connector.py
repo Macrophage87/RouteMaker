@@ -408,6 +408,8 @@ class DatabaseDrafts:
             answer=data["plan"]["answer"],
             check=data["plan"]["check"],
             sent=data["plan"]["sent"],
+            # The stops' names (a link's `sn=`, cue_cards' stop_names); none before v0.25.0.
+            names={int(k): str(v) for k, v in (data["plan"].get("names") or {}).items()},
         )
         return module.Draft(
             plan,
@@ -431,6 +433,7 @@ class DatabaseDrafts:
                 "answer": {k: v for k, v in plan.answer.items() if k != "candidates"},
                 "check": plan.check,
                 "sent": plan.sent,
+                "names": {str(k): v for k, v in (plan.names or {}).items()},
             },
             "options": draft.options,
             "limit": draft.limit,
@@ -614,7 +617,7 @@ def mcp_endpoint(request):
         view_key=lambda draft_id: _view_key(user.pk, grant.pk, draft_id),
         picture=route_picture.draw,
         picture_link=lambda draft_id: picture_link(request, user, grant, draft_id),
-        cue_cards=cue_cards.draw,
+        cue_cards=cue_cards,
         cue_cards_link=lambda draft_id, page: cue_cards_link(request, user, grant, draft_id, page),
     )
     msg_id = message.get("id") if isinstance(message, dict) else None
@@ -764,14 +767,22 @@ def cue_cards_link(request, user, grant, draft_id: str, page: int) -> str:
     return f"{_origin(request)}/mcp/gpx/{draft_id}.{mac}-cues-{int(page)}.png"
 
 
-@ratelimit.rate_limited(ratelimit.ROUTE_PICTURES)
 def draft_picture(request, token: str):
-    """GET /mcp/gpx/<token>.png (by way of draft_gpx, which checks the method and the rate): the
-    draft's map and graphs, or with -cues-N one of its phone cue images, while the draft is
-    kept."""
+    """GET /mcp/gpx/<token>.png (by way of draft_gpx, which checks the method): the draft's map
+    and graphs, or with -cues-N one of its phone cue images, while the draft is kept."""
     cues = CUES_TOKEN_RE.fullmatch(token)
     if cues is not None:
-        return _draft_cue_card(*cues.groups())
+        return draft_cue_card(request, *cues.groups())
+    return _draft_map_picture(request, token)
+
+
+@ratelimit.rate_limited(ratelimit.CUE_CARDS)
+def draft_cue_card(request, draft_id: str, mac: str, page: str):
+    return _draft_cue_card(draft_id, mac, page)
+
+
+@ratelimit.rate_limited(ratelimit.ROUTE_PICTURES)
+def _draft_map_picture(request, token: str):
     found = GPX_TOKEN_RE.fullmatch(token.removesuffix(".png"))
     if found is None or not token.endswith(".png"):
         return _gpx_gone()
@@ -828,11 +839,12 @@ def _draft_cue_card(draft_id: str, mac: str, page: str):
         return _gpx_gone()
     module = mcp_module()
     # The stops' names are the plan's own (cue_cards keeps the names it is given on the draft).
-    images = cue_cards.draw(*module.cue_card_args(draft, module.cue_card_names(draft.plan, None)))
+    args = module.cue_card_args(draft, module.cue_card_names(draft.plan, None))
     n = int(page)
-    if not 1 <= n <= len(images):
+    if not 1 <= n <= cue_cards.count(*args):
         return _gpx_gone()
-    response = HttpResponse(images[n - 1], content_type="image/png")
+    # Only the one image is drawn.
+    response = HttpResponse(cue_cards.draw(*args, only=[n])[0], content_type="image/png")
     name = str(row.data.get("gpx_name") or draft.name)[:120]
     response["Content-Disposition"] = f'inline; filename="{module.gpx_slug(name)}-cues-{n}.png"'
     response["X-Content-Type-Options"] = "nosniff"

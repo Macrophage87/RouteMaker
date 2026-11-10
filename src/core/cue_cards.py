@@ -23,6 +23,7 @@ flagged crossing).
 from __future__ import annotations
 
 import math
+import unicodedata
 
 from . import (
     cue_glyphs_head,
@@ -43,8 +44,6 @@ SIDE, PAD = 56, 14
 COL_MILES, COL_ARROW = 230, 160
 ARROW_PX = 128
 TEXT_X = SIDE + COL_MILES + COL_ARROW
-# At most this many images: a longer route's cues past them are left to the app's own export.
-MAX_PAGES = 12
 METRES_PER_MILE = 1609.344
 JOG_M = 100.0
 JOG_TURNS = 3
@@ -53,6 +52,13 @@ TURN_WORDS = {
     "right": "Right",
     "bear_left": "Bear left",
     "bear_right": "Bear right",
+    "uturn": "U-turn",
+}
+THEN_WORDS = {
+    "left": "left",
+    "right": "right",
+    "bear_left": "bear left",
+    "bear_right": "bear right",
     "uturn": "U-turn",
 }
 STREET_WORDS = {
@@ -186,7 +192,7 @@ def _jogs(rows: list[dict]) -> list[dict]:
         if len(jog) > 1:
             later = jog[1:]
             first["then"] = ", ".join(
-                f"then {TURN_WORDS[t['_move']].lower()}"
+                f"then {THEN_WORDS[t['_move']]}"
                 + (f" onto {abbreviate(t['_road'])}" if t["_road"] else "")
                 for t in later
             )
@@ -409,11 +415,21 @@ def draw_arrow(canvas: Canvas, arrow: dict, left: float, top: float, size: float
 # --- the text ----------------------------------------------------------------------------------
 
 
+# The glyph tables are ASCII (and · ©): a rider's "Ben’s" or "Café" is folded to "Ben's", "Cafe".
+FOLD = str.maketrans({"’": "'", "‘": "'", "“": '"', "”": '"', "–": "-", "—": "-", "…": "..."})
+
+
+def fold(words: str) -> str:
+    text = unicodedata.normalize("NFKD", str(words).translate(FOLD))
+    return "".join(ch for ch in text if not unicodedata.combining(ch))
+
+
 def _width(words: str, g) -> int:
     return sum((g.GLYPHS.get(ch) or g.GLYPHS["?"])[0] for ch in words)
 
 
 def _text(canvas: Canvas, g, x: float, baseline: float, words: str, colour=INK) -> None:
+    words = fold(words)
     data = _glyph_data(g.__name__)
     x, top = round(x), round(baseline) - g.ASCENT
     for ch in words:
@@ -428,6 +444,7 @@ def _text(canvas: Canvas, g, x: float, baseline: float, words: str, colour=INK) 
 
 
 def _wrap(words: str, g, width: float) -> list[str]:
+    words = fold(words)
     lines: list[str] = []
     line = ""
     for word in words.split():
@@ -460,7 +477,8 @@ def _row_layout(row: dict) -> tuple[list[tuple], int]:
     def column(x: float, width: float, parts) -> int:
         y = PAD
         for g, words in parts:
-            for text in _wrap(words, g, width - PAD):
+            # The miles are never broken: "123." over "4" would misread at a glance.
+            for text in [words] if g is cue_glyphs_miles else _wrap(words, g, width - PAD):
                 y += round(g.SIZE * 1.15)
                 lines.append((g, x, y - round(g.SIZE * 0.2), text))
         return y
@@ -546,21 +564,36 @@ def pages(answer: dict, title: str, vias=(), names=None, credit: str = "") -> di
     return {
         "rows": rows,
         "laid": laid,
-        "groups": groups[:MAX_PAGES],
+        "groups": groups,
         "header": header,
         "credit_lines": credit_lines,
         "credit_top": credit_top,
     }
 
 
-def draw(answer: dict, title: str, vias=(), names=None, credit: str = "") -> list[bytes]:
-    """The route's phone cue images as PNGs, in order (MAX_PAGES at most)."""
+def count(answer: dict, title: str, vias=(), names=None, credit: str = "") -> int:
+    """How many images the route's cues run to (laid out, none drawn)."""
+    return len(pages(answer, title, vias, names, credit)["groups"])
+
+
+def draw(
+    answer: dict,
+    title: str,
+    vias=(),
+    names=None,
+    credit: str = "",
+    only: list[int] | range | None = None,
+) -> list[bytes]:
+    """The route's phone cue images as PNGs, in order; with `only`, just those (from 1), each
+    still labelled against the whole count. Laying out is cheap; drawing is the cost."""
     laid_out = pages(answer, title, vias, names, credit)
     rows, laid, groups = laid_out["rows"], laid_out["laid"], laid_out["groups"]
     header = laid_out["header"]
     credit_lines, credit_top = laid_out["credit_lines"], laid_out["credit_top"]
     images: list[bytes] = []
     for p, group in enumerate(groups):
+        if only is not None and p + 1 not in only:
+            continue
         part = f"Part {p + 1} of {len(groups)}" if len(groups) > 1 else None
         canvas = Canvas(WIDTH, HEIGHT, PAPER)
         head_lines, bottom = header(part)

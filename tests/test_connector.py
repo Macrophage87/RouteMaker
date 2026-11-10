@@ -1186,6 +1186,39 @@ class TestGpx:
         ConnectorGrant.objects.filter(user=user).delete()
         assert Client().get(path, **addr()).status_code == 404
 
+    def test_stop_names_given_to_cue_cards_are_kept_and_drawn_by_the_links(self, planner) -> None:
+        """The owner, 2026-11-10: "make sure stops are listed"."""
+        from core import cue_cards
+
+        _user, tokens, _client_id = tokens_for()
+        token = tokens["access_token"]
+        points = [[-77.03, 38.9], [-77.025, 38.905], [-77.02, 38.91]]
+        planned = call(token, "plan_route", {"points": points})
+        draft_id = planned["structuredContent"]["draft_id"]
+        cards = call(token, "cue_cards", {"draft_id": draft_id, "stop_names": {"1": "Coffee"}})
+        assert not cards["isError"], cards
+        named_id = cards["structuredContent"]["draft_id"]
+        assert named_id != draft_id
+        stored = ConnectorDraft.objects.get(draft_id=named_id).data["plan"]
+        assert stored["names"] == {"1": "Coffee"}
+        # Asked again with the same name: the stored draft already has it, no new one.
+        again = call(token, "cue_cards", {"draft_id": named_id, "stop_names": {"1": "Coffee"}})
+        assert again["structuredContent"]["draft_id"] == named_id
+        seen = []
+        real = cue_cards.draw
+
+        def spy(*args, **kwargs):
+            seen.append(args[3])
+            return real(*args, **kwargs)
+
+        cue_cards.draw = spy
+        try:
+            path = urllib.parse.urlsplit(again["structuredContent"]["links"][0]).path
+            assert Client().get(path, **addr()).status_code == 200
+        finally:
+            cue_cards.draw = real
+        assert seen == [{1: "Coffee"}]
+
     def test_a_picture_link_stops_with_its_draft_and_its_app(self, planner) -> None:
         from datetime import timedelta
 
