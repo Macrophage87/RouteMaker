@@ -73,7 +73,6 @@ import json
 import logging
 import math
 import re
-import struct
 import zlib
 from functools import lru_cache
 from html import escape
@@ -463,23 +462,9 @@ class _Canvas:
                 self.blend(x + col, y + row, rgba[i : i + 3], rgba[i + 3] / 255)
 
     def png(self) -> bytes:
-        raw = bytearray()
-        stride = WIDTH * 3
-        for y in range(HEIGHT):
-            raw.append(0)
-            raw += self.px[y * stride : (y + 1) * stride]
+        from .route_view_map import png
 
-        def chunk(kind: bytes, body: bytes) -> bytes:
-            crc = zlib.crc32(kind + body) & 0xFFFFFFFF
-            return struct.pack(">I", len(body)) + kind + body + struct.pack(">I", crc)
-
-        header = struct.pack(">IIBBBBB", WIDTH, HEIGHT, 8, 2, 0, 0, 0)
-        return (
-            b"\x89PNG\r\n\x1a\n"
-            + chunk(b"IHDR", header)
-            + chunk(b"IDAT", zlib.compress(bytes(raw), 6))
-            + chunk(b"IEND", b"")
-        )
+        return png(self.px, WIDTH, HEIGHT)
 
 
 def text_width(words: str, g=None) -> int:
