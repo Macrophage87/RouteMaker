@@ -72,10 +72,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Busy crossing, no signal.": "Giao lộ đông xe, không có đèn tín hiệu.",
   "Busy crossing.": "Giao lộ đông xe.",
   "Busy junction.": "Ngã tư đông xe.",
-  // A signal that may need a button press (the owner, 2026-11-08): the card's note and the words said.
-  // Drafted by Claude: FLAGGED for review by a native speaker.
-  "Light may need a button press": "Đèn tín hiệu có thể cần bấm nút",
-  "Button for the light.": "Nút bấm đèn.",
   "Busy junction at a signal.": "Ngã tư đông xe, có đèn tín hiệu.",
   "Busy junction at a stop sign.": "Ngã tư đông xe, có biển dừng.",
   "Busy junction, no signal.": "Ngã tư đông xe, không có đèn tín hiệu.",
@@ -2139,4 +2135,12 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "No road bike map: may use gravel.": "Không có bản đồ xe đạp đường trường: có thể có sỏi.",
   "There is no weekend road bike map right now, so this route counts parkways like Beach Drive as roads with cars.": "Hiện không có bản đồ cuối tuần cho xe đạp đường trường, nên tuyến này coi các đường công viên như Beach Drive là đường có xe hơi.",
   "No weekend map: parkways may have cars.": "Không có bản đồ cuối tuần: đường công viên có thể có xe hơi.",
+  "Draft, last day": "Bản nháp, ngày cuối",
+  "Draft, {n} days left": "Bản nháp, còn {n} ngày",
+  "Save {name} to My routes": "Lưu {name} vào Tuyến của tôi",
+  "Saving {name}…": "Đang lưu {name}…",
+  "That draft is gone.": "Bản nháp đó không còn nữa.",
+  "Delete": "Xóa",
+  "Delete {name}": "Xóa {name}",
+  "Deleted {name}.": "Đã xóa {name}.",
 };

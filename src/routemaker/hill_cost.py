@@ -48,6 +48,9 @@ how long the climb takes at that power:
   (Tobler's hiking function, slowed for the bike), which costs its time plus WALK_PENALTY
   seconds a second pushed, so a route that needs pushing loses to almost any ridable one,
   and the curve never runs away on a grade far past the rider.
+- **Steeper never costs less** (routing hunt 4, T4-1): for the same rise, a steeper window
+  costs at least what that rise costs at any gentler grade on the same climb; the shortfall
+  is added to the penalty (`window_cost_s`, `_rise_floor`).
   A critical-power W' balance (Skiba et al. 2012) was tried for past FTP and dropped: the
   exponential curve reaches the same "sharp increase" with one model.
 
@@ -218,6 +221,107 @@ def _ride_ms(steps: int, mass: float, flat_ms: float, lt1_grade: float) -> float
         return floor[steps]
 
 
+def _ridden_s(
+    run_m: float,
+    grade: float,
+    mass: float,
+    flat_ms: float,
+    lt1_grade: float,
+    lasting_s: float,
+    assist_w: float,
+) -> tuple[float, float]:
+    """(extra seconds, penalty seconds) for riding `run_m` metres at `grade`, weighed over a
+    climb of `lasting_s` seconds, for a rider of `mass` (clamped). Linear in `run_m`."""
+    std = effort.MASS_KG
+    pace = endurance_power_w(lt1_grade, std, flat_ms)
+    ftp = lt1_power_w(lt1_grade, std) / ZONE2_TOP
+    climb_ms = _climb_ms(grade, flat_ms, lt1_grade)
+    need = power_needed_w(grade, std, climb_ms)
+    past = (need / (1.0 + W_PRIME_S / lasting_s) - pace) / ftp
+    # (A hair over 0 is the speed's bisection, not an overload.)
+    penalty_s = run_m / climb_ms * steepness_rate(past) if past > 1e-6 else 0.0
+    # The rider's own speed at that power, at their weight, never faster up this grade than
+    # up a gentler one (`_ride_ms`).
+    ride_ms = climb_ms
+    if mass != std:
+        ride_ms = _ride_ms(math.floor(round(grade / GRADE_STEP, 6)), mass, flat_ms, lt1_grade)
+    if assist_w > 0:
+        # The motor's watts beside the rider's: the rider's power up this grade is the
+        # standard rider's (`need`), the bike's speed what both hold at the rider's weight.
+        assisted_ms = _speed_ms(round(grade, 4), mass, round(need + assist_w, 1))
+        ride_ms = min(flat_ms, max(ride_ms, assisted_ms))
+    return run_m / ride_ms - run_m / flat_ms, penalty_s
+
+
+def _pushed_s(run_m: float, grade: float, flat_ms: float) -> tuple[float, float]:
+    """(extra seconds, penalty seconds) for pushing `run_m` metres up `grade`: its time, plus
+    WALK_PENALTY a second."""
+    push_s = run_m / push_ms(grade)
+    return push_s - run_m / flat_ms, push_s * WALK_PENALTY
+
+
+def _ridden_or_pushed_s(
+    run_m: float,
+    grade: float,
+    mass: float,
+    flat_ms: float,
+    lt1_grade: float,
+    lasting_s: float,
+    assist_w: float,
+) -> tuple[float, float]:
+    """`window_cost_s` before its floor (`_rise_floor`): ridden, or pushed where riding
+    would cost more."""
+    ridden = _ridden_s(run_m, grade, mass, flat_ms, lt1_grade, lasting_s, assist_w)
+    pushed = _pushed_s(run_m, grade, flat_ms)
+    return pushed if sum(pushed) < sum(ridden) else ridden
+
+
+def _top_up(floor_s: float, cost_s: float) -> float:
+    """What brings `cost_s` up to `floor_s` (a rounding hair over it is not a top-up)."""
+    return floor_s - cost_s if floor_s > cost_s * (1.0 + 1e-9) + 1e-9 else 0.0
+
+
+# The floor's climbs (`_rise_floor`) are sized by their rise, rounded up to a step of
+# RISE_BUCKET (1%) in a geometric series, so that the floor's tables are shared between
+# climbs of nearly the same height. Claude's default, not measured: rounding up only makes a
+# gentler grade's climb last a little longer, so the floor is never under the true cost.
+RISE_BUCKET = 0.01
+_rise_lock = threading.Lock()
+
+
+@lru_cache(maxsize=1024)
+def _rise_table(flat_ms: float, lt1_grade: float, bucket: float) -> list[float]:
+    """`_rise_floor`'s costs per metre of rise for the standard rider at one flat speed,
+    LT1 grade and climb, by GRADE_STEP, filled as far as asked."""
+    return []
+
+
+def _rise_floor(steps: int, flat_ms: float, lt1_grade: float, bucket: float) -> float:
+    """The most a metre of rise costs the standard rider without assist (time plus penalty,
+    ridden or pushed) at any grade from one GRADE_STEP up to `steps` of them, on a climb of
+    `RISE_BUCKET`-step `bucket` (its rise is (1 + RISE_BUCKET) ** bucket metres; math.inf: a
+    climb long enough that W' adds nothing) climbed at that grade."""
+    table = _rise_table(flat_ms, lt1_grade, bucket)
+    with _rise_lock:
+        while len(table) <= steps:
+            k = len(table)
+            if k == 0:
+                table.append(0.0)
+                continue
+            gentler = k * GRADE_STEP
+            run = 1.0 / gentler
+            if math.isinf(bucket):
+                lasting = math.inf
+            else:
+                rise = (1.0 + RISE_BUCKET) ** bucket
+                lasting = rise / gentler / _climb_ms(gentler, flat_ms, lt1_grade)
+            cost = sum(
+                _ridden_or_pushed_s(run, gentler, effort.MASS_KG, flat_ms, lt1_grade, lasting, 0.0)
+            )
+            table.append(max(cost, table[-1]))
+        return table[steps]
+
+
 def window_cost_s(
     run_m: float,
     grade: float,
@@ -242,37 +346,47 @@ def window_cost_s(
     and downhill cost nothing. The penalty is for choosing routes only, never a shown time
     ("mostly a hidden calculation, less so for the actual time").
 
+    **Steeper never costs less** (routing hunt 4, T4-1). A metre of rise costs at least what
+    it costs at any gentler grade (by GRADE_STEP) on the same climb, that is the same rise
+    climbed at that grade, so it lasts longer (`_rise_floor`); anything short of that is added
+    to the penalty. The floor is the standard rider's without assist, as the penalty is, so
+    the top-up is the same at every weight (a heavier rider's own time per metre of rise can
+    still fall with the grade: time, not price). Without it a pushed window cost its time,
+    which hardly grows with the grade, so the same rise packed into a steeper, shorter pitch
+    cost less, and at the avoid end 'avoid hills' chose a 15% wall over a 5% climb; and where
+    the rider is held at V_MIN_MS, or a shorter climb gets more of W', a steeper ridden window
+    cost a little less.
+
     With `assist_w` (an electric assist, ASSIST_W) the motor's watts join the rider's, so the
     climb takes less time, never more than without them and never less than at the flat
     speed; the penalty is unchanged (the module's "Electric assist")."""
     if run_m <= 0 or flat_ms <= 0 or grade <= 0:
         return 0.0, 0.0
-    push = push_ms(grade)
-    std = effort.MASS_KG
-    pace = endurance_power_w(lt1_grade, std, flat_ms)
-    ftp = lt1_power_w(lt1_grade, std) / ZONE2_TOP
-    climb_ms = _climb_ms(grade, flat_ms, lt1_grade)
-    need = power_needed_w(grade, std, climb_ms)
-    lasting_s = climb_s if climb_s else run_m / climb_ms
-    past = (need / (1.0 + W_PRIME_S / lasting_s) - pace) / ftp
-    # (A hair over 0 is the speed's bisection, not an overload.)
-    penalty_s = run_m / climb_ms * steepness_rate(past) if past > 1e-6 else 0.0
-    # The rider's own speed at that power, at their weight, never faster up this grade than
-    # up a gentler one (`_ride_ms`).
     mass = effort.clamp_mass_kg(mass_kg)
-    ride_ms = climb_ms
-    if mass != std:
-        ride_ms = _ride_ms(math.floor(round(grade / GRADE_STEP, 6)), mass, flat_ms, lt1_grade)
-    if assist_w > 0:
-        # The motor's watts beside the rider's: the rider's power up this grade is the
-        # standard rider's (`need`), the bike's speed what both hold at the rider's weight.
-        assisted_ms = _speed_ms(round(grade, 4), mass, round(need + assist_w, 1))
-        ride_ms = min(flat_ms, max(ride_ms, assisted_ms))
-    extra_s = run_m / ride_ms - run_m / flat_ms
-    push_s = run_m / push
-    if push_s - run_m / flat_ms + push_s * WALK_PENALTY < extra_s + penalty_s:
-        return push_s - run_m / flat_ms, push_s * WALK_PENALTY
-    return extra_s, penalty_s
+    climb_ms = _climb_ms(grade, flat_ms, lt1_grade)
+    lasting_s = climb_s if climb_s else run_m / climb_ms
+    # The climb's rise, were it all at this grade, which the gentler grades climb instead.
+    climb_rise = lasting_s * climb_ms * grade
+    bucket = (
+        math.inf
+        if math.isinf(climb_rise)
+        else float(math.ceil(round(math.log(climb_rise) / math.log1p(RISE_BUCKET), 6)))
+    )
+    steps = math.floor(round(grade / GRADE_STEP, 6))
+    floor_s = run_m * grade * _rise_floor(steps, flat_ms, lt1_grade, bucket)
+    # The slider's top-up, worked out for the standard rider as the penalty is, so it is
+    # the same at every weight: on riding, what brings the standard rider's cost up to the
+    # floor; on pushing (the same at every weight), what brings the push itself up to it.
+    std_s = sum(
+        _ridden_or_pushed_s(run_m, grade, effort.MASS_KG, flat_ms, lt1_grade, lasting_s, 0.0)
+    )
+    ride_t, ride_p = _ridden_s(run_m, grade, mass, flat_ms, lt1_grade, lasting_s, assist_w)
+    ride_p += _top_up(floor_s, std_s)
+    push_t, push_p = _pushed_s(run_m, grade, flat_ms)
+    push_p += _top_up(floor_s, push_t + push_p)
+    if push_t + push_p < ride_t + ride_p:
+        return push_t, push_p
+    return ride_t, ride_p
 
 
 def profile_cost_s(

@@ -429,12 +429,47 @@ class TestCrossingAvoidance:
         refine.refine(trip_of("o", 4.0), context(group=True))
         assert world.requests == []
 
-    def test_a_crossing_near_either_end_is_left_alone(self, monkeypatch) -> None:
+    def test_a_crossing_near_either_end_is_asked_round(self, monkeypatch) -> None:
+        """Routing hunt 4, J4-1: a red within ENDPOINT_CLEARANCE_M of the start or the end
+        (often the arterial crossing nearest the rider's home) was never excluded, even
+        where the way round cost nothing. Each is now a target as any other."""
         near = analysis("o", events=[event(100.0, 3300.0), event(3900.0, 3300.0)])
-        world = World(monkeypatch, {"o": near}, [])
-        refine.refine(trip_of("o", 4.0), context())
-        assert world.requests == []
+        shapes = {"o": near, "a": analysis("a", cost_s=4050.0)}
+        world = World(monkeypatch, shapes, [trip_of("a", 4.1)])
+        kept, info = refine.refine(trip_of("o", 4.0), context())
+        nodes = {(BASE[0] + m * 1e-5, BASE[1]) for m in (100.0, 3900.0)}
+        assert nodes <= set(world.excluded(0))
+        assert kept["legs"][0]["shape"] == "a" and info["limited"] is None
+        # The busy stretches keep their clearance.
         assert refine.ENDPOINT_CLEARANCE_M >= 500
+
+    def test_a_red_at_a_cul_de_sacs_only_exit_is_left(self, monkeypatch) -> None:
+        """J4-1: a red near the start with no way round (the router finds no route with it
+        excluded) is left, as before, and the search is not said cut short."""
+        shapes = {"o": analysis("o", events=[event(100.0, 3300.0)])}
+        world = World(monkeypatch, shapes, [routing.RouterRefused(400, 442, "no path")])
+        kept, info = refine.refine(trip_of("o", 4.0), context())
+        assert kept["legs"][0]["shape"] == "o"
+        assert len(world.requests) == 1 and info["limited"] is None
+
+    def test_a_round_is_asked_again_without_a_red_near_an_end(self, monkeypatch) -> None:
+        """J4-1: where the round's set with a red near the start finds no route (the
+        cul-de-sac's only exit), it is asked again without that red, so the red further on
+        is still ridden round; and the red near the start is not asked again."""
+        start, middle = event(100.0, 3300.0), event(2000.0, 3300.0)
+        shapes = {
+            "o": analysis("o", events=[start, middle]),
+            "a": analysis("a", cost_s=4050.0, events=[start]),
+        }
+        world = World(
+            monkeypatch, shapes, [routing.RouterRefused(400, 442, "no path"), trip_of("a", 4.1)]
+        )
+        kept, info = refine.refine(trip_of("o", 4.0), context())
+        assert kept["legs"][0]["shape"] == "a"
+        assert (start.lon, start.lat) in world.excluded(0)
+        assert (start.lon, start.lat) not in world.excluded(1)
+        assert (middle.lon, middle.lat) in world.excluded(1)
+        assert len(world.requests) == 2 and info["limited"] is None
 
 
 class TestCalmDetour:

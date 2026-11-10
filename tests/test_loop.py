@@ -24,13 +24,20 @@ def piece_at(i: int, way: int) -> routing.Piece:
     return routing.Piece(way, BASE[0] + i * 1e-3, BASE[1], 100.0)
 
 
+def pieces_of(ways: list[int]) -> list[routing.Piece]:
+    """100 m a way, each way one stretch: a way ridden again is ridden on the same place
+    (its first), as a trace rides one edge's shape (M4-2 matches stretches, not way ids)."""
+    first: dict[int, int] = {}
+    return [piece_at(first.setdefault(w, i), w) for i, w in enumerate(ways)]
+
+
 def loop_read(
     out: list[int], back: list[int], tiers: str | None = None, events=()
 ) -> refine.Analysis:
     """A loop's reading: the way out over these ways and the way back over those, 100 m
     a piece, the leg boundary between them."""
     ways = [*out, *back]
-    pieces = [piece_at(i, w) for i, w in enumerate(ways)]
+    pieces = pieces_of(ways)
     tiers = tiers or "1" * len(ways)
     return refine.Analysis(
         length_m=100.0 * len(ways),
@@ -60,6 +67,24 @@ class TestTheOverlap:
 
     def test_the_same_way_back_shares_all_of_it(self) -> None:
         assert refine.overlap_share(loop_read(OUT, list(reversed(OUT)))) == 1.0
+
+    def test_another_part_of_one_long_way_is_not_shared(self) -> None:
+        # Routing hunt 4, M4-2: a perimeter trail mapped as one way (100), reached by a
+        # spur (7). Out: the spur and 3 pieces of the trail; back: 10 other pieces of the
+        # same trail, then the spur again. Only the spur is ridden twice.
+        out = [piece_at(0, 7), *(piece_at(i, 100) for i in range(1, 4))]
+        back = [*(piece_at(i, 100) for i in range(4, 14)), piece_at(0, 7)]
+        read = loop_read([], [])
+        read.pieces = [*out, *back]
+        read.length_m = 100.0 * len(read.pieces)
+        read.classes = [("1", "none")] * len(read.pieces)
+        read.via_m = [100.0 * len(out)]
+        assert refine.return_overlap(read) == (100.0, 1100.0)
+        ctx = context(rate=10.0)
+        ctx.loop_overlap = 0.0
+        assert not refine.loop_refused(read, ctx), "a loop, not one that shares too much"
+        stats = routing.loop_stats(read.pieces, [(0, len(out)), (len(out), len(read.pieces))])
+        assert stats == {"shared_m": 100.0, "return_m": 1100.0, "overlap_pct": 9.1}
 
     def test_a_plan_with_one_leg_has_no_overlap(self) -> None:
         read = loop_read(OUT, [])
@@ -637,7 +662,7 @@ class TestThePlansRules:
         assert routing.loop_points([A, B], False) == [A, B]
 
     def test_the_stats_come_from_the_traced_pieces(self) -> None:
-        pieces = [piece_at(i, w) for i, w in enumerate([1, 2, 3, 4, 3, 9, 8, 1])]
+        pieces = pieces_of([1, 2, 3, 4, 3, 9, 8, 1])
         stats = routing.loop_stats(pieces, [(0, 4), (4, 8)])
         assert stats == {"shared_m": 200.0, "return_m": 400.0, "overlap_pct": 50.0}
 
@@ -690,6 +715,16 @@ class TestRepeats:
     def test_a_leg_on_an_earlier_leg_s_ways_repeats_them(self) -> None:
         read = legs_read(A_LEG, B_LEG, [50, *A_LEG[5:15], 51])
         assert refine.repeated_by_leg(read) == [0.0, 0.0, 1000.0]
+
+    def test_another_part_of_an_earlier_leg_s_way_is_no_repeat(self) -> None:
+        # M4-2: legs on different parts of one long trail way (100) repeat nothing.
+        read = legs_read(A_LEG, B_LEG, list(range(60, 70)))
+        read.pieces = [
+            *(piece_at(i, 100) for i in range(20)),
+            *(piece_at(i, 21 + i) for i in range(20, 40)),
+            *(piece_at(i, 100) for i in range(40, 50)),
+        ]
+        assert refine.repeated_by_leg(read) == [0.0, 0.0, 0.0]
 
     def test_the_ends_of_a_leg_are_how_a_stop_is_reached(self) -> None:
         # Out along 20 and back along it: the stop's spur is not a repeat.
