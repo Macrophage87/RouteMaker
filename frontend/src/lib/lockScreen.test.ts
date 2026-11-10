@@ -50,10 +50,13 @@ test("the image is an iPhone Pro's portrait screen, the top 28% and bottom 12% k
 });
 
 test("one image for a short route: every line clear of both bands and inside the width", () => {
-  const pages = lockScreenLayout(sampleRoute(), measure);
+  // The sample's one stop would start a second image: without it, one.
+  const route = sampleRoute();
+  route.description = route.description.filter((e) => e.kind !== "via");
+  const pages = lockScreenLayout(route, measure);
   assert.equal(pages.length, 1);
   assert.equal(pages[0].part, null);
-  assert.equal(pages[0].cues, cueRows(sampleRoute(), "strip").length);
+  assert.equal(pages[0].cues, cueRows(route, "strip").length);
   for (const l of pages[0].lines) {
     assert.ok(l.y - l.px >= CLEAR_TOP, `${l.text} in the clock's band`);
     assert.ok(l.y <= LOCK_HEIGHT - CLEAR_BOTTOM, `${l.text} in the controls' band`);
@@ -132,4 +135,13 @@ test("every cue has its picture beside it, and a stop is listed by its name and 
   // Without its name, the stop is "Stop 1".
   const plain = lockScreenLayout(sampleRoute(), measure).flatMap((p) => p.lines.map((l) => l.text));
   assert.ok(plain.includes("Stop 1") && !plain.includes("Coffee stop"));
+});
+
+test("each stop starts an image of its own, the stop at its head", () => {
+  // The owner, 2026-11-10: "Have splits at stops".
+  const pages = lockScreenLayout(sampleRoute(), measure);
+  assert.equal(pages.length, 2);
+  assert.equal(pages[1].arrows[0].arrow.kind, "stop");
+  assert.ok(pages[0].arrows.every((a) => a.arrow.kind !== "stop"));
+  assert.equal(pages[1].part, "Part 2 of 2");
 });

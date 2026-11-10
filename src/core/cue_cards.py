@@ -9,8 +9,9 @@ description: 1179 by 2556 pixels, the top 28% and bottom 12% kept clear for a lo
 and controls, the route's name and figures small, then a row per cue (the miles from the start,
 the picture, the turn, the road, a jog's later turns), the credits at the foot, "Part 2 of 3" where
 the cues need more than one. Stops are rows of their own with their number, and their name where
-the plan has one. Through (via) points are not cues, as in Ride. Dark on white. Drawn with the
-standard library only, in memory for each ask: nothing is written or kept.
+the plan has one, and each starts a new image. Through (via) points are not cues, as in Ride.
+Dark on white. Drawn with the standard library only, in memory for each ask: nothing is written
+or kept.
 
 The rows follow Ride's cues (frontend/src/lib/navigate.ts) closely, not exactly: a turn, a jog of
 turns each within JOG_M of the one before (JOG_TURNS at most), a crossing between turns, a stop, a
@@ -514,7 +515,10 @@ def draw(answer: dict, title: str, vias=(), names=None, credit: str = "") -> lis
         pages: list[list[int]] = [[]]
         y = cue_top
         for i, (_lines, height) in enumerate(laid):
-            if y + height > credit_top - 16 and pages[-1]:
+            # Each stop starts an image of its own, the stop at its head (the owner, 2026-11-10:
+            # "Have splits at stops").
+            stop = rows[i]["arrow"]["kind"] == "stop"
+            if (stop or y + height > credit_top - 16) and pages[-1]:
                 pages.append([])
                 y = cue_top
             pages[-1].append(i)

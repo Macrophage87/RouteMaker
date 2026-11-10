@@ -189,3 +189,16 @@ def test_stop_names_are_kept_on_a_new_draft(stand_in, tmp_path) -> None:  # noqa
     assert kept.plan.names == {1: "Coffee"} and kept.revises == draft_id
     assert drawn[0][3] == {1: "Coffee"}
     assert server.drafts.get(draft_id).plan.names == {}
+
+
+def test_each_stop_starts_an_image_of_its_own() -> None:
+    """The owner, 2026-11-10: "Have splits at stops"."""
+    entries = [
+        _stretch(0, "Start Street"),
+        _stretch(300, "First Street", "left"),
+        {"kind": "via", "from_m": 600, "to_m": 600, "via": 1},
+        _stretch(700, "Second Street", "right"),
+    ]
+    assert len(cue_cards.draw(_answer(entries, 1000), "Default route")) == 2
+    # A through point is no stop: one image.
+    assert len(cue_cards.draw(_answer(entries, 1000), "Default route", vias=[1])) == 1

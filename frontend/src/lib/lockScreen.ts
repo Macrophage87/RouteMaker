@@ -9,8 +9,8 @@
  * small just above the bottom one. The rows are the strip's (cueSheetPdf.ts cueRows "strip"): the miles from the
  * start large with km small, the cue's picture (an arrow for a turn, lib/cueArrow.ts: the owner, 2026-11-10, "Basically
  * show the arrows"), then the turn with a caution's reason small, the road abbreviated, and a jog's later turns. Stops
- * are rows of their own, by name where the plan names them. Rows that do not fit on one image go on the next, "Part 2
- * of 3". Dark text on white. No place is named (exportName) but a stop the rider named, so never a Home.
+ * are rows of their own, by name where the plan names them, and each starts a new image. Rows that do not fit on one
+ * image go on the next, "Part 2 of 3". Dark text on white. No place is named (exportName) but a stop the rider named, so never a Home.
  */
 import type { RouteResponse } from "./api.ts";
 import { abbreviateStreet } from "./course.ts";
@@ -154,7 +154,9 @@ export function lockScreenLayout(route: LockRoute, measure: Measure, vias: reado
     const pages: number[][] = [[]];
     let y = cueTop;
     rows.forEach((r, i) => {
-      if (y + r.height > creditTop - 16 && pages[pages.length - 1].length) {
+      // Each stop starts an image of its own, the stop at its head (the owner, 2026-11-10: "Have splits at stops").
+      const stop = cues[i].arrow.kind === "stop";
+      if ((stop || y + r.height > creditTop - 16) && pages[pages.length - 1].length) {
         pages.push([]);
         y = cueTop;
       }
