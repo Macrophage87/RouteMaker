@@ -1588,6 +1588,10 @@ def test_a_fixed_route_is_saved_only_when_asked_and_opens_as_its_line(stand_in, 
     assert len(StandIn.routes) == asked
     assert opened["opened_from"]["fixed"] is True
     assert any("a fixed route" in n for n in opened["notes"])
+    assert not any("closures were on" in n for n in opened["notes"])
+    kept[2]["closure_alerts"] = [{"zone": 1}]
+    closed = tools.call("my_routes", {"route_id": 2})
+    assert any("closures were on this fixed route" in n for n in closed["notes"])
     with pytest.raises(mcp.ToolError, match="true or false"):
         tools.call("save_route", {"draft_id": draft["draft_id"], "name": "x", "fixed": "yes"})
 

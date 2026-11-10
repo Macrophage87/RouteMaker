@@ -111,6 +111,10 @@ test("a fixed route: the Save form's box, never compared with today's map, and r
   // Opened: its own line kept for the ride, and no Update route.
   assert.match(app, /fixedLine\.current = saved\.fixed && saved\.answer \? saved\.answer\.geometry\.coordinates : null;/);
   assert.match(app, /if \(!saved\.fixed\) void requestRoute\(/);
+  // But a closure on its line now offers Update route (the owner, 2026-11-10), under the closure check's question.
+  assert.match(app, /if \(savedShown\.current\?\.key === key\) setSavedNote\(\{ key, closed: true \}\);/);
+  assert.match(app, /if \(check\) void checkThen\("open", saved\.line, false, \(\) => \{\}, undefined, closedNote,/);
+  assert.match(app, /\{"closed" in savedNote \? closureLead\("open"\) : differenceLine\(savedNote\.savedM, savedNote\.todayM\)\}/);
   // Ridden on that very line: fixed, never re-routed.
   assert.match(app, /const onFixed = !rest && fixedLine\.current !== null && route\.geometry\.coordinates === fixedLine\.current;/);
   assert.match(app, /const fixed = fixedRide\(leg, opened \?\? \(onFixed \? \{ ride: true \} : null\), !!rest\);/);

@@ -6725,6 +6725,13 @@ class Server:
                 "a fixed route: this is its exact line as saved, never planned again; a revision"
                 " is a new plan, so save it with fixed true only if the rider wants it fixed too"
             )
+            if kept.get("closure_alerts"):
+                # The owner, 2026-11-10: "Update route can be offered when a closure occurs".
+                out["notes"].append(
+                    "closures were on this fixed route's line when last checked: offer to plan it"
+                    " again around them (revise_route), and to save that over it only on the"
+                    " rider's word"
+                )
         if parse_fragment(fragment)[2] in RIDE_LINK_TYPES:
             out.setdefault("notes", []).append(
                 "a new ride, with its own ride key: links sent for an earlier ride on this route"
