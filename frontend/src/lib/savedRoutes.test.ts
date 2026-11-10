@@ -105,6 +105,8 @@ test("a fixed route: the Save form's box, never compared with today's map, and r
   // Plan alone offers it, unticked but on a fixed route (our default: by its via points); Go's Save is a name alone
   // (the owner, 2026-11-10: "Go shouldn't include it").
   assert.match(app, /\.\.\.\(mode === "plan" \? \{ defaultTags: \(\) => openSavedRoute\.current\?\.tags \?\? \[\], defaultFixed: \(\) => openSavedRoute\.current\?\.fixed \?\? false \} : \{\}\),/);
+  // Plan's map bar Save too, its main one.
+  assert.match(app, /defaultTags=\{saveProps\?\.defaultTags\}\s*defaultFixed=\{saveProps\?\.defaultFixed\}/);
   assert.match(app, /\.\.\.\(fixed !== undefined \? \{ fixed \} : \{\}\)/);
   // Opened: its own line kept for the ride, and no Update route.
   assert.match(app, /fixedLine\.current = saved\.fixed && saved\.answer \? saved\.answer\.geometry\.coordinates : null;/);

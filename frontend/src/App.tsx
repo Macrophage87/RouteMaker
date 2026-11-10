@@ -7045,6 +7045,7 @@ export function App() {
               defaultName={saveProps?.defaultName ?? (() => "")}
               onSave={saveProps?.onSave ?? null}
               defaultTags={saveProps?.defaultTags}
+              defaultFixed={saveProps?.defaultFixed}
               label={SAVE_ROUTE}
               bar
               onGpx={downloadRoute}
