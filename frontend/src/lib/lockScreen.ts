@@ -4,30 +4,39 @@
  * pixels (an iPhone Pro's screen; an Android phone fits it to its own), in large type like the handlebar strip.
  *
  * This module is the layout alone, pure, so it is tested without a canvas: every line of text with its place, size
- * and weight, given a `measure` for text widths. The top 28% is left clear for the lock screen's clock and the
- * bottom 12% for its controls; the route's name and distance sit small just under the top band and the credits
+ * and weight, given a `measure` for text widths. The top 20% is left clear for the lock screen's clock and the
+ * bottom 7% for its controls (our default, tightened 2026-11-10 at the owner's "There's plenty of white space"); the route's name and distance sit small just under the top band and the credits
  * small just above the bottom one. The rows are the strip's (cueSheetPdf.ts cueRows "strip"): the miles from the
- * start large with km small, the turn with a caution's reason small, and the road abbreviated. Rows that do not fit
- * on one image go on the next, "Part 2 of 3". Dark text on white. No place is named (exportName), so never a Home.
+ * cue before large in the rider's units alone, the miles since the start on the right, the cue's picture (an arrow for a turn,
+ * lib/cueArrow.ts: the owner, 2026-11-10, "Basically show the arrows"), then the turn with a caution's reason small, the road abbreviated, and a jog's later turns. Stops
+ * are rows of their own, by name where the plan names them. Where the cues do not fit on one image, each leg gets its
+ * own: the start or a stop at its top, the next stop or the finish at its bottom (so a stop ends one image and heads
+ * the next), and a leg too long for one image runs on to the next, "Part 2 of 3". Dark text on white. No place is named (exportName) but a stop the rider named, so never a Home.
  */
 import type { RouteResponse } from "./api.ts";
 import { abbreviateStreet } from "./course.ts";
-import { cueRows, sheetCredit, summaryLine, type CueRow } from "./cueSheetPdf.ts";
-import { formatMileMarkerUnits, markerFigure } from "./format.ts";
+import type { CueArrow } from "./cueArrow.ts";
+import { creditLine } from "./course.ts";
+import { cueRows, summaryLine, type CueRow } from "./cueSheetPdf.ts";
+import { CREATOR } from "./gpx.ts";
+import { markerFigure } from "./format.ts";
+import { metricFirst } from "./units.ts";
 import { exportFileName, exportName } from "./gpxText.ts";
 
 export const LOCK_WIDTH = 1179;
 export const LOCK_HEIGHT = 2556;
 /** The lock screen's own clock and widgets above, its controls below: no cue is drawn in either band. */
-export const CLEAR_TOP = Math.round(LOCK_HEIGHT * 0.28);
-export const CLEAR_BOTTOM = Math.round(LOCK_HEIGHT * 0.12);
+export const CLEAR_TOP = Math.round(LOCK_HEIGHT * 0.2);
+export const CLEAR_BOTTOM = Math.round(LOCK_HEIGHT * 0.07);
 export const INK = "#111111";
 export const PAPER = "#ffffff";
 
-const SIDE = 64;
-const PAD = 14;
-const COLUMNS = { miles: 280, turn: 330 } as const;
-const PX = { title: 40, summary: 30, part: 30, miles: 96, unit: 32, turn: 64, reason: 32, road: 60, credit: 26 } as const;
+const SIDE = 56;
+const PAD = 10;
+const COLUMNS = { miles: 230, arrow: 140, total: 170 } as const;
+/** The cue's picture: a square this wide, its top at the row's top and PAD. */
+export const ARROW_PX = 108;
+const PX = { title: 36, summary: 26, part: 28, miles: 80, unit: 26, turn: 56, reason: 28, road: 50, then: 32, total: 36, credit: 22 } as const;
 
 export type Weight = 400 | 700;
 /** The width in pixels of `text` at `px` in the image's face (the canvas's measureText in the browser). */
@@ -50,6 +59,8 @@ export interface LockPage {
   rules: number[];
   /** How many cues are on this image. */
   cues: number;
+  /** Each cue's picture: its box's top left corner and its width (ARROW_PX), in pixels. */
+  arrows: { x: number; y: number; size: number; arrow: CueArrow }[];
   /** Where the cues may be drawn, top and bottom, for the tests and the renderer's own check. */
   cueTop: number;
   cueBottom: number;
@@ -84,33 +95,52 @@ export function wrapPx(text: string, px: number, weight: Weight, width: number, 
 }
 
 /** A row's lines relative to its top, and its height. */
-function rowLines(row: CueRow, measure: Measure): { lines: LockLine[]; height: number } {
+function rowLines(row: CueRow, sinceM: number, measure: Measure): { lines: LockLine[]; height: number } {
   const lines: LockLine[] = [];
-  const column = (x: number, width: number, parts: { text: string; px: number; weight: Weight }[]) => {
+  const column = (x: number, width: number, parts: { text: string; px: number; weight: Weight; whole?: boolean }[]) => {
     let y = PAD;
     for (const part of parts) {
-      for (const text of wrapPx(part.text, part.px, part.weight, width - PAD, measure)) {
+      // The miles are never broken: "123." over "4" would misread at a glance.
+      for (const text of part.whole ? [part.text] : wrapPx(part.text, part.px, part.weight, width - PAD, measure)) {
         y += Math.round(part.px * 1.15);
         lines.push({ text, x, y: y - Math.round(part.px * 0.2), px: part.px, weight: part.weight });
       }
     }
     return y;
   };
-  const turnX = SIDE + COLUMNS.miles;
-  const roadX = turnX + COLUMNS.turn;
+  const textX = SIDE + COLUMNS.miles + COLUMNS.arrow;
+  // The distance since the start on the right (the owner, 2026-11-10: "put the total distance on the other side"),
+  // right-aligned at the row's top; the big figure on the left is the distance from the cue before.
+  const total = [
+    { text: `${markerFigure(row.atM)} ${metricFirst() ? "km" : "mi"}`, px: PX.total, weight: 700 as const },
+    { text: "total", px: PX.unit, weight: 400 as const },
+  ];
+  let ty = PAD;
+  for (const t of total) {
+    ty += Math.round(t.px * 1.15);
+    lines.push({ ...t, x: LOCK_WIDTH - SIDE - Math.ceil(measure(t.text, t.px, t.weight)), y: ty - Math.round(t.px * 0.2) });
+  }
   const bottoms = [
     column(SIDE, COLUMNS.miles, [
-      { text: markerFigure(row.atM), px: PX.miles, weight: 700 },
-      { text: formatMileMarkerUnits(row.atM), px: PX.unit, weight: 400 },
+      { text: markerFigure(row.atM - sinceM), px: PX.miles, weight: 700, whole: true },
+      // The rider's units alone (the owner, 2026-11-10: "no need for km here, make it either or").
+      { text: metricFirst() ? "km" : "mi", px: PX.unit, weight: 400 },
     ]),
-    column(turnX, COLUMNS.turn, [
+    column(textX, LOCK_WIDTH - SIDE - COLUMNS.total - textX, [
       { text: row.turn, px: PX.turn, weight: 700 },
       ...(row.reason ? [{ text: row.reason, px: PX.reason, weight: 400 as const }] : []),
+      // A named stop says its number too ("make sure stops are listed", the owner, 2026-11-10).
+      ...(row.arrow.kind === "stop" && row.arrow.number != null && row.turn !== `Stop ${row.arrow.number}` ? [{ text: `Stop ${row.arrow.number}`, px: PX.reason, weight: 400 as const }] : []),
+      ...(row.road ? [{ text: abbreviateStreet(row.road), px: PX.road, weight: 400 as const }] : []),
+      ...(row.then ? [{ text: row.then, px: PX.then, weight: 700 as const }] : []),
     ]),
-    column(roadX, LOCK_WIDTH - SIDE - roadX, row.road ? [{ text: abbreviateStreet(row.road), px: PX.road, weight: 400 }] : []),
+    PAD + ARROW_PX,
   ];
   return { lines, height: Math.max(...bottoms) + PAD };
 }
+
+/** Where a row's picture goes, from the row's top. */
+const arrowAt = (top: number) => ({ x: SIDE + COLUMNS.miles + Math.round((COLUMNS.arrow - ARROW_PX) / 2) - 10, y: top + PAD, size: ARROW_PX });
 
 function block(texts: string[], px: number, weight: Weight, top: number, measure: Measure): { lines: LockLine[]; bottom: number } {
   const lines: LockLine[] = [];
@@ -125,10 +155,18 @@ function block(texts: string[], px: number, weight: Weight, top: number, measure
 }
 
 /** The images for the route: one, or as many as its cues need, each with its lines placed. */
-export function lockScreenLayout(route: LockRoute, measure: Measure, vias: readonly number[] = []): LockPage[] {
-  const rows = cueRows(route, "strip", vias).map((r) => rowLines(r, measure));
-  const credit = wrapPx(sheetCredit(route), PX.credit, 400, LOCK_WIDTH - 2 * SIDE, measure);
-  const creditTop = LOCK_HEIGHT - CLEAR_BOTTOM - 16 - credit.length * Math.round(PX.credit * 1.25);
+export function lockScreenLayout(route: LockRoute, measure: Measure, vias: readonly number[] = [], names: ReadonlyMap<number, string> = new Map()): LockPage[] {
+  const cues = cueRows(route, "strip", vias, names);
+  const rows = cues.map((r, i) => rowLines(r, i ? cues[i - 1].atM : 0, measure));
+  // The credits on the last image only, a source to a line (the owner, 2026-11-10: "Have credits on the final image in
+  // the set, own set of lines"); the others carry none.
+  const credits = (full: boolean) => {
+    const sources = route.attribution?.length ? ["Route data:", ...route.attribution] : [creditLine([])];
+    const lines = full ? [...sources, `Planned with ${CREATOR}.`].flatMap((t) => wrapPx(t, PX.credit, 400, LOCK_WIDTH - 2 * SIDE, measure)) : [];
+    return { lines, top: LOCK_HEIGHT - CLEAR_BOTTOM - 16 - lines.length * Math.round(PX.credit * 1.25) };
+  };
+  const short = credits(false);
+  const full = credits(true);
   // The header's height is the same on every image (the part line is there on each when there is more than one).
   const head = (part: string | null) => {
     const title = block([exportName(route)], PX.title, 700, CLEAR_TOP + 8, measure);
@@ -136,35 +174,59 @@ export function lockScreenLayout(route: LockRoute, measure: Measure, vias: reado
     const marked = part ? block([part], PX.part, 700, summary.bottom, measure) : { lines: [], bottom: summary.bottom };
     return { lines: [...title.lines, ...summary.lines, ...marked.lines], bottom: marked.bottom };
   };
-  const fill = (cueTop: number) => {
+  // Rows by height onto images, a new image where the next row would run into the credits.
+  const paginate = (indices: readonly number[], cueTop: number, creditTop: number) => {
     const pages: number[][] = [[]];
     let y = cueTop;
-    rows.forEach((r, i) => {
-      if (y + r.height > creditTop - 16 && pages[pages.length - 1].length) {
+    for (const i of indices) {
+      if (y + rows[i].height > creditTop - 16 && pages[pages.length - 1].length) {
         pages.push([]);
         y = cueTop;
       }
       pages[pages.length - 1].push(i);
-      y += r.height;
-    });
+      y += rows[i].height;
+    }
     return pages;
   };
-  let groups = fill(head(null).bottom + 24);
-  if (groups.length > 1) groups = fill(head("Part 88 of 88").bottom + 24);
+  // The owner, 2026-11-10: "Have splits at stops ... Unless it would fit in one. Otherwise have the top be the start
+  // or a stop, and bottom be the next stop or end. The stop on the first page will be repeated on the next".
+  const legs = (cueTop: number) => {
+    const out: number[][] = [];
+    let leg: number[] = [];
+    rows.forEach((_, i) => {
+      leg.push(i);
+      if (cues[i].arrow.kind === "stop" && i > 0 && i < rows.length - 1) {
+        out.push(...paginate(leg, cueTop, short.top));
+        leg = [i];
+      }
+    });
+    if (leg.length > 1 || !out.length) out.push(...paginate(leg, cueTop, short.top));
+    // The last image has the credits: its rows laid again above them, onto another image where they no longer fit.
+    out.push(...paginate(out.pop() ?? [], cueTop, full.top));
+    return out;
+  };
+  const all = rows.map((_, i) => i);
+  let groups = paginate(all, head(null).bottom + 24, full.top);
+  if (groups.length > 1) groups = legs(head("Part 88 of 88").bottom + 24);
   return groups.map((group, p) => {
     const part = groups.length > 1 ? `Part ${p + 1} of ${groups.length}` : null;
     const header = head(part);
     const lines: LockLine[] = [...header.lines];
     const cueTop = header.bottom + 24;
     const rules: number[] = [cueTop];
+    const arrows: LockPage["arrows"] = [];
     let y = cueTop;
     for (const i of group) {
       for (const l of rows[i].lines) lines.push({ ...l, y: l.y + y });
+      arrows.push({ ...arrowAt(y), arrow: cues[i].arrow });
       y += rows[i].height;
       rules.push(y);
     }
-    credit.forEach((text, i) => lines.push({ text, x: SIDE, y: creditTop + (i + 1) * Math.round(PX.credit * 1.25), px: PX.credit, weight: 400 }));
-    return { part, lines, rules, cues: group.length, cueTop, cueBottom: creditTop - 16 };
+    const credit = p === groups.length - 1 ? full : short;
+    credit.lines.forEach((text, i) => lines.push({ text, x: SIDE, y: credit.top + (i + 1) * Math.round(PX.credit * 1.25), px: PX.credit, weight: 400 }));
+    // A stop that ended the image before and heads this one is counted once.
+    const repeated = p > 0 && groups[p - 1][groups[p - 1].length - 1] === group[0] ? 1 : 0;
+    return { part, lines, rules, arrows, cues: group.length - repeated, cueTop, cueBottom: credit.top - 16 };
   });
 }
 

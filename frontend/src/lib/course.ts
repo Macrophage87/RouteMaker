@@ -29,7 +29,7 @@ import { COPYRIGHT_AUTHOR, CREATOR } from "./gpx.ts";
 import { elevationsAlong, exportFileName, exportName } from "./gpxText.ts";
 import { writeFit } from "./fit.ts";
 import { writeTcx } from "./tcx.ts";
-import { CROSS_UNNAMED, rideModel, turnWords, type Cue } from "./navigate.ts";
+import { CROSS_UNNAMED, rideModel, turnWords, type Cue, type TurnMovement } from "./navigate.ts";
 import { presetSaid } from "./presets.ts";
 
 export type CourseFormat = "fit" | "tcx";
@@ -290,6 +290,15 @@ export interface RouteCue {
   joined?: boolean;
   /** A jog's first turn: its own turn alone ("Right onto 6th Street Northwest."), for a course point's notes, `text` saying both. */
   turnText?: string;
+  /** Ride's turn, for a picture of it (lib/cueArrow.ts): the movement, a jog's later turns, and a crossing first. */
+  movement?: TurnMovement;
+  then?: readonly { movement: TurnMovement; street: string | null }[];
+  /** A turn onto a path just across a road (Ride's `across`): drawn across the road's two edges. */
+  across?: boolean;
+  /** A short path straight across a road between two turns (Ride's `cross` turn): drawn straight over it. */
+  cross?: boolean;
+  /** A stop's number (from 1), its name or not. */
+  stop?: number;
 }
 
 /**
@@ -317,6 +326,11 @@ export function routeCues(route: CompiledRoute, vias: readonly number[] = [], na
       ...(cue.source ? { source: cue.source } : {}),
       ...(cue.joined ? { joined: true } : {}),
       ...(cue.then && cue.movement ? { turnText: turnWords(cue.movement, cue.street, false, cue.exit ?? null) } : {}),
+      ...(cue.kind === "turn" && cue.movement ? { movement: cue.movement } : {}),
+      ...(cue.kind === "turn" && cue.then?.length ? { then: cue.then.map((t) => ({ movement: t.movement, street: named(t.street) })) } : {}),
+      ...(cue.kind === "turn" && cue.across ? { across: true } : {}),
+      ...((cue.kind === "turn" && cue.cross) || cue.kind === "crossing" ? { cross: true } : {}),
+      ...(cue.kind === "stop" && cue.stop != null ? { stop: cue.stop } : {}),
     });
   }
   return all;

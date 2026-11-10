@@ -3783,6 +3783,42 @@ def _mass_view(answer: dict, corking: dict | None = None) -> dict | None:
     return out
 
 
+def cue_card_names(plan: Plan, asked) -> dict[int, str]:
+    """The stops' names by point index for the cue images: the plan's own (its link's `sn=`),
+    then `asked`, by stop number from 1 (cue_cards' `stop_names`); a loop's last point is a stop
+    too, as the link counts it (`link_stop_names`)."""
+    names = {int(k): str(v) for k, v in (plan.names or {}).items()}
+    loop = plan.answer.get("loop") is not None or bool((plan.answer.get("dials") or {}).get("loop"))
+    count = len(plan.points)
+    vias = set(plan.vias)
+    stops = [i for i in range(1, count if loop else count - 1) if i not in vias]
+    for key, name in (asked or {}).items():
+        try:
+            number = int(key)
+        except (TypeError, ValueError):
+            continue
+        clean = clean_stop_name(name)
+        if 1 <= number <= len(stops) and clean:
+            names[stops[number - 1]] = clean
+    return names
+
+
+def cue_card_args(draft, names: dict[int, str]) -> tuple:
+    """core.cue_cards.draw's arguments for a draft: its answer, its name, its through points,
+    the stops' names, and the route's credits, a source to a line."""
+    answer = draft.plan.answer
+    sources = [str(a) for a in answer.get("attribution") or []] or [
+        "© OpenStreetMap contributors, ODbL"
+    ]
+    return (
+        answer,
+        draft.name,
+        list(draft.plan.vias),
+        names,
+        "\n".join(["Route data:", *sources, "Planned with RouteMaker."]),
+    )
+
+
 def draft_view(draft, draft_id: str) -> dict:
     """A kept draft's route view, as its answer gave it (for the picture, core.route_picture)."""
     plan = draft.plan
@@ -4393,9 +4429,10 @@ RIDE_OPTIONS = {
         "minimum": 100,
         "maximum": 2000,
         "description": (
-            "Mass Ride only: the expected number of riders. Ask the organiser for it before"
-            " planning a Mass Ride: the road room and the corkers depend on it (without it the"
-            " ride is planned at 500, our default, and the answer says so). Roads carrying"
+            "Mass Ride only: the expected number of riders. Send it when the organiser gave"
+            " it; asking is fine but not needed, since without it the ride is planned at 500"
+            " (our default) and the answer says so. The road room and the corkers depend on"
+            " it. Roads carrying"
             " fewer riders a minute than it needs (riders / 5) are priced in the route choice;"
             " the answer's `mass_capacity` says where the route falls short and the corkers it"
             " needs."
@@ -4673,6 +4710,44 @@ PICTURE_TOOL = {
         "required": ["draft_id"],
     },
     "annotations": {"readOnlyHint": True, "openWorldHint": False},
+}
+
+# The route's turn cues as phone-sized images, an arrow beside each (the owner, 2026-11-10: "some
+# people perfer to just navigate by a static image ... Basically show the arrows"; "make sure stops
+# are listed"). On the site only (core.cue_cards), as Plan's "Cue sheet image" export.
+# The images sent in the answer itself (our default): the rest are linked.
+INLINE_CUE_IMAGES = 3
+CUE_CARDS_TOOL = {
+    "name": "cue_cards",
+    "title": "Turn cue images",
+    "description": (
+        "Only when the rider asks for turn cues, a cue sheet or arrows as images, to navigate by"
+        " a picture on their phone: the draft's cues as phone-sized PNGs (a lock screen's size,"
+        " its clock and controls left clear), each row the miles from the start, an arrow, the"
+        " turn and the road; stops are listed by number, and by name where `stop_names` (or the"
+        " plan's link) names them. Where the cues need more than one image, each leg (start or"
+        " stop to the next stop or finish) has its own, Part 1 of N. The first few images come"
+        " in the answer; each has a link that opens it while the draft is kept: give the rider"
+        " the links. `cues` has the same cues as text."
+    ),
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "draft_id": {"type": "string"},
+            "stop_names": {
+                "type": "object",
+                "description": (
+                    'Names for the stops, by stop number from 1 ({"1": "Union Market"}),'
+                    ' where the rider named them; a stop without one is "Stop N". Names given'
+                    " are kept on a new draft (the answer's draft_id), as revise_route keeps a"
+                    " change."
+                ),
+                "additionalProperties": {"type": "string", "maxLength": 60},
+            },
+        },
+        "required": ["draft_id"],
+    },
+    "annotations": {"readOnlyHint": False, "destructiveHint": False, "openWorldHint": False},
 }
 
 TOOLS = [
@@ -5656,6 +5731,8 @@ class Server:
         view_key=None,
         picture=None,
         picture_link=None,
+        cue_cards=None,
+        cue_cards_link=None,
     ):
         self._api_factory = api_factory
         self._api: Api | None = None
@@ -5690,6 +5767,10 @@ class Server:
         # (core.route_picture), and function(draft_id) -> a link that opens it.
         self.picture = picture
         self.picture_link = picture_link
+        # On the site: core.cue_cards (count, draw and cue_rows of the phone cue images), and
+        # function(draft_id, page from 1) -> a link that opens one.
+        self.cue_cards = cue_cards
+        self.cue_cards_link = cue_cards_link
 
     def tools(self) -> list[dict]:
         """The tools, as tools/list gives them: without the post tool unless posts may be
@@ -5708,6 +5789,8 @@ class Server:
             out.append(VIEW_MAP_TOOL)
         if self.picture is not None:
             out.append(PICTURE_TOOL)
+        if self.cue_cards is not None:
+            out.append(CUE_CARDS_TOOL)
         return out
 
     def resources(self) -> list[dict]:
@@ -5763,6 +5846,59 @@ class Server:
                 "data": base64.b64encode(png).decode("ascii"),
                 "mimeType": "image/png",
             }
+        ]
+        return out
+
+    # cue_cards
+    def cue_cards_tool(self, args: dict, call: Call) -> dict:
+        draft_id = str(args["draft_id"])
+        draft = self.drafts.get(draft_id)
+        if draft is None:
+            raise ToolError(f"no draft {draft_id} (drafts last only a while; plan it again)")
+        names = cue_card_names(draft.plan, args.get("stop_names"))
+        out: dict = {}
+        if names != (draft.plan.names or {}):
+            # Names given here are kept as a revision of the draft, so its links (and the app's
+            # link) name the stops as these images do.
+            named = dataclasses.replace(
+                draft, plan=dataclasses.replace(draft.plan, names=names), revises=draft_id
+            )
+            draft_id = self.drafts.put(named)
+            draft = named
+            out["revised"] = "the stop names are kept on a new draft: use this draft_id from now on"
+        drawn = cue_card_args(draft, names)
+        total = self.cue_cards.count(*drawn)
+        # Only the first few images travel in the answer (each is a phone screen's PNG); every
+        # one has its link.
+        images = self.cue_cards.draw(*drawn, only=range(1, INLINE_CUE_IMAGES + 1))
+        out |= {"draft_id": draft_id, "name": draft.name, "images": total}
+        # The cues as text too: for the assistant to read out, and for a reader who cannot see
+        # the images.
+        out["cues"] = [
+            {
+                "mi": round(r["at_m"] / METRES_PER_MILE, 1),
+                "cue": r["turn"],
+                **({"road": r["road"]} if r["road"] else {}),
+                **({"note": r["reason"]} if r["reason"] else {}),
+                **({"then": r["then"]} if r["then"] else {}),
+            }
+            for r in self.cue_cards.cue_rows(drawn[0], drawn[2], drawn[3])
+        ]
+        if total > len(images):
+            out["shown"] = f"the first {len(images)} of {total} images are shown; all are linked"
+        if self.cue_cards_link is not None:
+            out["links"] = [self.cue_cards_link(draft_id, n + 1) for n in range(total)]
+            out["note"] = (
+                "each link opens one image (PNG) to save to the phone; they work while the"
+                " draft is kept"
+            )
+        out[IMAGES_PRIVATE] = [
+            {
+                "type": "image",
+                "data": base64.b64encode(png).decode("ascii"),
+                "mimeType": "image/png",
+            }
+            for png in images
         ]
         return out
 
@@ -6263,13 +6399,14 @@ class Server:
             and out.get("mass_capacity")
         ):
             # The ride size is an expected input (the owner, 2026-11-10: "should be an expected
-            # input"): a Mass Ride planned without it says what it assumed.
+            # input"; "That's askable, but typically not required"): a Mass Ride planned
+            # without it says what it assumed, so the organiser can give theirs if it differs.
             assumed = out["mass_capacity"].get("riders") or 500
             out["mass_capacity"]["ride_size_note"] = (
                 f"no ride size was given, so this assumed {assumed}"
-                " riders (our default, not the organiser's number): ask how many riders they"
-                " expect and plan again with ride_size, since the road room and the corkers"
-                " depend on it"
+                " riders (our default, not the organiser's number); if they expect a"
+                " different number, plan again with ride_size, since the road room and the"
+                " corkers depend on it"
             )
         if taken:
             # Named points, so a wrong match ("Navy Yard" the base, not the station) shows.
@@ -7545,8 +7682,11 @@ class Server:
             return None
         if name == "route_picture" and self.picture is None:
             return None
+        if name == "cue_cards" and self.cue_cards is None:
+            return None
         return {
             "route_picture": self.route_picture,
+            "cue_cards": self.cue_cards_tool,
             "route_view_map": self.route_view_map,
             "find_place": self.find_place,
             "metro_stations": self.metro_stations,
