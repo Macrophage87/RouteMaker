@@ -88,6 +88,40 @@ test("Update route is offered only past 5% in distance", () => {
   assert.match(rowDetails({ distance_m: 7600, created_at: "2026-10-15T12:00:00Z", source: "gpx" }), /^4\.7 mi \(7\.6 km\) · GPX file · Saved Oct 15, 2026$/);
 });
 
+test("a fixed route says so in its row (the owner, 2026-11-10)", () => {
+  assert.match(rowDetails({ distance_m: 7600, created_at: "2026-10-15T12:00:00Z", source: "plan", fixed: true }), /^4\.7 mi \(7\.6 km\) · Fixed · Saved Oct 15, 2026$/);
+  assert.match(rowDetails({ distance_m: 7600, created_at: "2026-10-15T12:00:00Z", source: "gpx", fixed: true }), / · GPX file · Fixed · /);
+  assert.doesNotMatch(rowDetails({ distance_m: 7600, created_at: "2026-10-15T12:00:00Z", source: "plan", fixed: false }), /Fixed/);
+});
+
+test("a fixed route: the Save form's box, never compared with today's map, and ridden without re-routing (the owner, 2026-11-10)", () => {
+  const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
+  const save = read("../SaveRoute.tsx");
+  // One box, ticked as the route on screen is; Plan's alone has the (i).
+  assert.match(save, /setFixed\(defaultFixed\?\.\(\) \?\? false\)/);
+  assert.match(save, /\{defaultTags && <InfoButton open=\{fixedInfo\}/);
+  assert.match(save, /onSave\(chosen, defaultTags \? parseTags\(tagText\) : undefined, defaultFixed \? fixed : undefined\)/);
+  const app = read("../App.tsx");
+  // Plan alone offers it, unticked but on a fixed route (our default: by its via points); Go's Save is a name alone
+  // (the owner, 2026-11-10: "Go shouldn't include it").
+  assert.match(app, /\.\.\.\(mode === "plan" \? \{ defaultTags: \(\) => openSavedRoute\.current\?\.tags \?\? \[\], defaultFixed: \(\) => openSavedRoute\.current\?\.fixed \?\? false \} : \{\}\),/);
+  // Plan's map bar Save too, its main one.
+  assert.match(app, /defaultTags=\{saveProps\?\.defaultTags\}\s*defaultFixed=\{saveProps\?\.defaultFixed\}/);
+  assert.match(app, /\.\.\.\(fixed !== undefined \? \{ fixed \} : \{\}\)/);
+  // Opened: its own line kept for the ride, and no Update route.
+  assert.match(app, /fixedLine\.current = saved\.fixed && saved\.answer \? saved\.answer\.geometry\.coordinates : null;/);
+  assert.match(app, /if \(!saved\.fixed\) void requestRoute\(/);
+  // But a closure on its line now offers Update route (the owner, 2026-11-10), under the closure check's question.
+  assert.match(app, /if \(savedShown\.current\?\.key === key\) setSavedNote\(\{ key, closed: true \}\);/);
+  assert.match(app, /if \(check\) void checkThen\("open", saved\.line, false, \(\) => \{\}, undefined, closedNote,/);
+  assert.match(app, /\{"closed" in savedNote \? closureLead\("open"\) : differenceLine\(savedNote\.savedM, savedNote\.todayM\)\}/);
+  // Ridden on that very line: fixed, never re-routed.
+  assert.match(app, /const onFixed = !rest && fixedLine\.current !== null && route\.geometry\.coordinates === fixedLine\.current;/);
+  assert.match(app, /const fixed = fixedRide\(leg, opened \?\? \(onFixed \? \{ ride: true \} : null\), !!rest\);/);
+  // Saved here or after a full account's Delete alike: the box's choice kept for the route on screen.
+  assert.equal((app.match(/savedNow\(outcome\.route, /g) ?? []).length, 2);
+});
+
 test("a save that is refused for the cap says so", async () => {
   const full = (async () => new Response(JSON.stringify({ error: "You have 200 saved routes.", code: "full" }), { status: 409 })) as unknown as typeof fetch;
   const outcome = await saveRoute("https://x.test", gpxSave("x", FILE, [[-77, 38.9], [-77.1, 38.8]], [], "default", startDials("default")), full, "");

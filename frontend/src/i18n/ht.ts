@@ -2147,4 +2147,9 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Delete": "Efase",
   "Delete {name}": "Efase {name}",
   "Deleted {name}.": "{name} efase.",
+  // Fixed saved routes (the owner, 2026-11-10).
+  "Fixed route": "Wout fiks",
+  "Keep this exact line. Never re-routed.": "Kenbe liy egzak sa a. Pa janm chanje wout la.",
+  "Fixed": "Fiks",
+  "Opened \"{name}\", a fixed route: it stays as saved.": "Louvri \"{name}\", yon wout fiks: li rete jan li te anrejistre a.",
 };

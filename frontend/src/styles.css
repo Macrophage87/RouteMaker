@@ -8851,6 +8851,40 @@ details.fold > summary .icon {
 .save-route-said:empty {
   display: none;
 }
+/* Save's Fixed route box (the owner, 2026-11-10): the box, its name and one line, with Plan's (i) after them; a line
+   of its own in every Save form, the box a 44 px target. */
+.save-route-form .save-route-fixed {
+  flex: 1 0 100%;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+.save-route-form .save-route-fixed .check-row,
+.plan-map-bar .save-route-bar .save-route-form .save-route-fixed .check-row {
+  flex: 1;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-height: 44px;
+  font-weight: 400;
+  cursor: pointer;
+}
+.save-route-form .save-route-fixed input[type="checkbox"],
+.plan-map-bar .save-route-bar .save-route-form .save-route-fixed input[type="checkbox"] {
+  width: 22px;
+  min-height: 22px;
+  height: 22px;
+  margin: 2px 0 0;
+  flex: none;
+}
+.save-route-form .save-route-fixed .hint {
+  display: block;
+  margin: 2px 0 0;
+}
+.save-route-form > .setting-info {
+  flex: 1 0 100%;
+  margin: 0;
+}
 
 /* Go's route chips (review F15): one row at 390 px, the routes and Save; Save's name form and its line go under the
    row, each on a line of its own. */
