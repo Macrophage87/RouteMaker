@@ -309,7 +309,7 @@ import { fetchMe, NO_ME, type Me } from "./lib/stressEditor.ts";
 import { reloadFavorites, useFavoriteRides } from "./lib/favoriteRides.ts";
 import { ACCOUNT_SETTINGS_USED, applyToDevice, deviceSettings, fetchSettings, planFromSetting, retryUntil, sameSettings, saveSettings, saveUnitsUnsynced, SAVE_SETTLE_MS, setUnitsPending, signInLate, unitsPending, type SettingsDoc } from "./lib/accountSettings.ts";
 import { HOME_KEPT, HOME_MOVED, answerHomeOffer, deviceHome, homeOffer, type HomeOffer } from "./lib/homeMove.ts";
-import { FULL_HEADING, OPENED_FIXED_SAID, OPENED_SAID, SAVED_SAID, SAVE_FAILED, UNCHANGED_SAID, UPDATE_ROUTE, VERSION_SAID, defaultRouteName, differenceLine, differsTooMuch, gpxSave, afterDelete, afterRename, planSave, saveAsVersion, saveRoute, savedAnswer, savedLine, versionOf, type OpenSaved, type RoomProposal, type SaveBody, type SavedRoute } from "./lib/savedRoutes.ts";
+import { FULL_HEADING, OPENED_FIXED_SAID, OPENED_SAID, SAVED_SAID, SAVE_FAILED, UNCHANGED_SAID, UPDATE_ROUTE, VERSION_SAID, defaultRouteName, differenceLine, differsTooMuch, gpxSave, afterDelete, afterRename, planSave, saveAsVersion, saveRoute, savedAnswer, savedLine, versionOf, type OpenSaved, type RoomProposal, type SaveBody, type SavedRoute, type SavedSummary } from "./lib/savedRoutes.ts";
 import { DRAFT_UNREACHABLE, draftLeft, saveDraft, type OpenDraft } from "./lib/drafts.ts";
 import { checkClosures, closedStretches, reroutedSaid, spliceDetours, type Closure, type CheckFor } from "./lib/closureCheck.ts";
 import { ROUTE_WEATHER_MS, weatherPoints } from "./lib/weather.ts";
@@ -3964,8 +3964,9 @@ export function App() {
     // separately"): a link shared as a ride, opened unchanged; a Mass Ride or Group Ride, unless shared as a route.
     // Its sharer is not held to it ("Maybe make the sharer able to reroute").
     const opened = sharedOpenNow.current?.answer === asked ? sharedOpenNow.current : null;
-    // A fixed saved route (the owner, 2026-11-10) is ridden as one: never re-routed, off it the way back.
-    const fixed = fixedRide(leg, opened, !!rest) || (!rest && fixedLine.current !== null && route.geometry.coordinates === fixedLine.current);
+    // A fixed saved route (the owner, 2026-11-10) is ridden as a shared ride is (fixedRide's own trip rules kept).
+    const onFixed = !rest && fixedLine.current !== null && route.geometry.coordinates === fixedLine.current;
+    const fixed = fixedRide(leg, opened ?? (onFixed ? { ride: true } : null), !!rest);
     setResumeStats(null);
     const rideDialsNow = rideDials({ ...planDials, closuresNow: true }, rest ? null : route);
     // Kept on this device so a page closed mid-ride can resume it (lib/rideResume.ts): a Bikeshare or transit trip
@@ -4103,6 +4104,13 @@ export function App() {
   const draftOpen = useRef<OpenDraft | null>(null);
   // A full account's question (FullAccountDialog): the save waiting on it, sent again with make_room on Delete.
   const [roomAsk, setRoomAsk] = useState<{ propose: RoomProposal; body: SaveBody; name: string } | null>(null);
+  // After a save (here, or after a full account's Delete): the route on screen is that saved route in Plan, and saved
+  // fixed, a ride on the line shown stays on it; saved by its via points, it is re-routed as before.
+  const savedNow = (route: SavedSummary, tags?: string[], fixed?: boolean) => {
+    const isFixed = route.fixed ?? fixed;
+    if (mode === "plan") openSavedRoute.current = { id: route.id, name: route.name, tags: route.tags ?? tags, fixed: isFixed };
+    if (isFixed !== undefined) fixedLine.current = isFixed ? (shown?.geometry.coordinates ?? null) : null;
+  };
   const saveCurrent = async (name: string, tags?: string[], fixed?: boolean): Promise<string> => {
     const verbatim = imported?.verbatim;
     const body =
@@ -4124,9 +4132,7 @@ export function App() {
     if (!outcome.ok) return outcome.message || SAVE_FAILED;
     if (draft && draftOpen.current === draft) draftOpen.current = null;
     setMyRoutesVersion((v) => v + 1);
-    if (mode === "plan") openSavedRoute.current = { id: outcome.route.id, name: outcome.route.name, tags: outcome.route.tags ?? tags, fixed: outcome.route.fixed ?? fixed };
-    // Saved fixed: a ride on the route shown now stays on it; saved by its via points, it is re-routed as before.
-    fixedLine.current = fixed ? (shown?.geometry.coordinates ?? null) : fixed === false ? null : fixedLine.current;
+    savedNow(outcome.route, tags, fixed);
     // No `versioned`: a plain save (or the route was gone, and this one is new).
     if (outcome.versioned === undefined) return savedLine(name, outcome.route);
     return outcome.versioned === false ? UNCHANGED_SAID(outcome.route.name, body.source) : VERSION_SAID(outcome.route.name);
@@ -6919,7 +6925,7 @@ export function App() {
             }
             setMyRoutesVersion((v) => v + 1);
             if (openSavedRoute.current?.id === asked.propose.id) openSavedRoute.current = null;
-            if (mode === "plan") openSavedRoute.current = { id: outcome.route.id, name: outcome.route.name, tags: outcome.route.tags };
+            savedNow(outcome.route, asked.body.tags, asked.body.fixed);
             announce(savedLine(asked.name, outcome.route));
           });
         }}

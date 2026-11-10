@@ -172,9 +172,10 @@ export function defaultRouteName(start: string | null | undefined, end: string |
   return `${start?.trim() || "Start"} to ${end?.trim() || "End"}`.slice(0, NAME_MAX);
 }
 
-/** A route's answer as a save keeps it: without the other candidates. */
+/** A route's answer as a save keeps it: without the other candidates, and settled (a first route saved before Go's
+ * full plan came reopens as saved, never swapped for a better one: a fixed route's line never changes). */
 export function keptAnswer(route: RouteResponse): RouteResponse {
-  return { ...route, candidates: null, avoid_alternate: null, closure_through: null };
+  return { ...route, candidates: null, avoid_alternate: null, closure_through: null, provisional: false };
 }
 
 /**
@@ -238,9 +239,10 @@ export const UPDATE_ROUTE = t("Update route");
 export const FIXED_ROUTE = t("Fixed route");
 export const FIXED_HINT = t("Keep this exact line. Never re-routed.");
 /** Plan's (i) behind the box: the two kinds side by side. */
-export const FIXED_ABOUT = t(
-  "Unticked (our default), the route keeps its via points: it opens as saved, Update route is offered when today's map plans it more than 5% differently, and off route a ride plans again through the via points. Ticked, the line never changes, like a GPX file: no Update route, and off route a ride shows the way back to the line.",
-);
+export const FIXED_ABOUT = [
+  t("Unticked (our default): the route keeps its via points, Update route is offered when the map changes, and off route a ride plans again through them."),
+  t("Ticked: the line never changes, like a GPX file, and off route a ride shows the way back to it."),
+];
 export const OPENED_FIXED_SAID = (name: string) => t('Opened "{name}", a fixed route: it stays as saved.', { name });
 export const SAVE_ROUTE = t("Save route");
 /** Go's chip shows this; it is named SAVE_ROUTE (the words shown are in the name). */

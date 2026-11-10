@@ -109,7 +109,10 @@ test("a fixed route: the Save form's box, never compared with today's map, and r
   assert.match(app, /fixedLine\.current = saved\.fixed && saved\.answer \? saved\.answer\.geometry\.coordinates : null;/);
   assert.match(app, /if \(!saved\.fixed\) void requestRoute\(/);
   // Ridden on that very line: fixed, never re-routed.
-  assert.match(app, /const fixed = fixedRide\(leg, opened, !!rest\) \|\| \(!rest && fixedLine\.current !== null && route\.geometry\.coordinates === fixedLine\.current\);/);
+  assert.match(app, /const onFixed = !rest && fixedLine\.current !== null && route\.geometry\.coordinates === fixedLine\.current;/);
+  assert.match(app, /const fixed = fixedRide\(leg, opened \?\? \(onFixed \? \{ ride: true \} : null\), !!rest\);/);
+  // Saved here or after a full account's Delete alike: the box's choice kept for the route on screen.
+  assert.equal((app.match(/savedNow\(outcome\.route, /g) ?? []).length, 2);
 });
 
 test("a save that is refused for the cap says so", async () => {

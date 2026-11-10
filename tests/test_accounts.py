@@ -535,6 +535,14 @@ class TestRouteVersions:
         listed = client.get(f"/api/me/routes/{rid}/versions", **addr()).json()["versions"]
         assert listed[0]["change"] == "Made a fixed route"
 
+    def test_saved_again_without_fixed_a_fixed_route_stays_fixed(self) -> None:
+        """An older page's save, which knows nothing of fixed, keeps the route as it was."""
+        client, _user, csrf = signed_in()
+        rid = send(client, "post", "/api/me/routes", route_body(fixed=True), csrf).json()["id"]
+        r = saved_again(client, csrf, rid, line=LINE[:2], distance_m=900.0)
+        assert r.status_code == 200 and r.json()["versioned"] is True and r.json()["fixed"] is True
+        assert SavedRoute.objects.get(pk=rid).fixed is True
+
     def test_a_route_is_by_its_via_points_unless_fixed_is_said(self) -> None:
         client, _user, csrf = signed_in()
         r = send(client, "post", "/api/me/routes", route_body(), csrf)

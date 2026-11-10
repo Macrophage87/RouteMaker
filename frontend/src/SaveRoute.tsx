@@ -165,10 +165,10 @@ export function SaveRoute({ label, defaultName, onSave, chip = false, shown, bar
                 <>
                   <div className="setting-line save-route-fixed">
                     <label className="check-row">
-                      <input type="checkbox" checked={fixed} onChange={(e) => setFixed(e.target.checked)} aria-describedby={`${fixedId}-hint`} />
+                      <input type="checkbox" checked={fixed} onChange={(e) => setFixed(e.target.checked)} />
                       <span>
                         <strong>{FIXED_ROUTE}</strong>
-                        <span className="hint" id={`${fixedId}-hint`}>
+                        <span className="hint">
                           {FIXED_HINT}
                         </span>
                       </span>
@@ -177,9 +177,11 @@ export function SaveRoute({ label, defaultName, onSave, chip = false, shown, bar
                     {defaultTags && <InfoButton open={fixedInfo} onToggle={() => setFixedInfo((was) => !was)} controls={`${fixedId}-about`} about={FIXED_ROUTE} />}
                   </div>
                   {defaultTags && (
-                    <p className="hint setting-info" id={`${fixedId}-about`} hidden={!fixedInfo}>
-                      {FIXED_ABOUT}
-                    </p>
+                    <ul className="hint setting-info info-bullets" id={`${fixedId}-about`} hidden={!fixedInfo}>
+                      {FIXED_ABOUT.map((line) => (
+                        <li key={line}>{line}</li>
+                      ))}
+                    </ul>
                   )}
                 </>
               )}

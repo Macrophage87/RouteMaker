@@ -7879,7 +7879,8 @@ def _add_saved_route(request, versions: bool = True, prune: bool = True):
             "inputs": inputs,
             "answer": answer,
             "gpx": gpx,
-            "fixed": fixed,
+            # Left out (an older page): the route stays as it was, fixed or by its via points.
+            "fixed": fixed if "fixed" in body else None,
         }
         return _save_version(
             request, version_of, name.strip(), content, tags if "tags" in body else None
@@ -8329,6 +8330,8 @@ def _save_version(request, route_id: int, name: str, content: dict, tags=None):
         row = _locked_route(request, route_id)
         if row is None:
             return _stress_error(404, "That saved route is not in your account.", code="not_found")
+        if content.get("fixed") is None:
+            content = {**content, "fixed": row.fixed}
         changed = not _same_content(row, content)
         if changed:
             _replace_content(row, content)
