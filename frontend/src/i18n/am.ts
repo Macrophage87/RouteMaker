@@ -72,10 +72,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Busy crossing, no signal.": "የተጨናነቀ መገናኛ፣ የትራፊክ መብራት የለም።",
   "Busy crossing.": "የተጨናነቀ መገናኛ።",
   "Busy junction.": "የተጨናነቀ መጋጠሚያ።",
-  // A signal that may need a button press (the owner, 2026-11-08): the card's note and the words said.
-  // Drafted by Claude: FLAGGED for review by a native speaker.
-  "Light may need a button press": "የትራፊክ መብራቱ አዝራር መጫን ሊያስፈልገው ይችላል",
-  "Button for the light.": "ለመብራቱ አዝራሩን ይጫኑ።",
   "Busy junction at a signal.": "የተጨናነቀ መጋጠሚያ፣ የትራፊክ መብራት አለ።",
   "Busy junction at a stop sign.": "የተጨናነቀ መጋጠሚያ፣ የማቆሚያ ምልክት አለ።",
   "Busy junction, no signal.": "የተጨናነቀ መጋጠሚያ፣ የትራፊክ መብራት የለም።",
@@ -2139,4 +2135,12 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "No road bike map: may use gravel.": "የመንገድ ብስክሌት ካርታ የለም፦ ጠጠር ሊጠቀም ይችላል።",
   "There is no weekend road bike map right now, so this route counts parkways like Beach Drive as roads with cars.": "አሁን የሳምንት መጨረሻ የመንገድ ብስክሌት ካርታ የለም፤ ስለዚህ ይህ መስመር እንደ Beach Drive ያሉ የፓርክ መንገዶችን መኪና ያለባቸው መንገዶች አድርጎ ይቆጥራል።",
   "No weekend map: parkways may have cars.": "የሳምንት መጨረሻ ካርታ የለም፦ የፓርክ መንገዶች መኪና ሊኖራቸው ይችላል።",
+  "Draft, last day": "ረቂቅ፣ የመጨረሻ ቀን",
+  "Draft, {n} days left": "ረቂቅ፣ {n} ቀናት ቀርተዋል",
+  "Save {name} to My routes": "{name}ን አስቀምጥ",
+  "Saving {name}…": "{name}ን በማስቀመጥ ላይ…",
+  "That draft is gone.": "ያ ረቂቅ የለም።",
+  "Delete": "ሰርዝ",
+  "Delete {name}": "{name}ን ሰርዝ",
+  "Deleted {name}.": "{name} ተሰርዟል።",
 };

@@ -196,7 +196,12 @@ CALM_MIN_EDGE_M = 6.0
 # a via point: the router must be able to leave and arrive, and the way out of a
 # trailhead or a cul-de-sac is often the one busy road. (Measured on the live
 # router: a Bethesda start whose only exit was an LTS 4 road 150 m long made
-# every calm round "no route" at the 120 m this was first.)
+# every calm round "no route" at the 120 m this was first.) Busy stretches and
+# Avoid-rated junctions only: a red crossing is asked round wherever it is
+# (`crossing_targets`, `core.red_crossings`; routing hunt 4, J4-1). Its exclusion takes
+# out only the edges within CROSSING_EXCLUDE_RADIUS_M of one node, and one near an end
+# with no way round (the only exit from a cul-de-sac) is dropped when its ask finds no
+# route.
 ENDPOINT_CLEARANCE_M = 500.0
 # "Traffic wins" (OWNER-DECISIONS 61, on hill avoidance): the search never makes
 # a route busier. A candidate whose LTS 3, 4 and Avoid exposure (the weighted
@@ -356,7 +361,8 @@ class Context:
     # ranked (`presets.wait_weight_for`): 1, and 3 on Road Bike. The time shown is unchanged.
     wait_weight: float = 1.0
     # Whether a beg button ranks at Road Bike's ten minutes (`presets.road_bike_buttons_for`:
-    # Road Bike, Run and Tandem, named, not read from `wait_weight`).
+    # Road Bike, Run and Tandem, named, not read from `wait_weight`). No effect while
+    # `junction_delay.BUTTONS_PRICED` is off (the owner, 2026-11-10).
     road_bike_buttons: bool = False
     # The map's beg-button answers already had in this plan, by OSM way (tagged or not;
     # `routing.button_ways`): the candidates share most of their crossings.
@@ -568,7 +574,8 @@ class Analysis:
     junction_delay_s: float = 0.0
     # The same waits as the ranking counts them (`junction_delay.Wait.ranked_s`): a suburban
     # signal's twice, a crossing read as needing its beg button at two minutes below a stop
-    # sign's price (the owner, 2026-11-08: "a 2x penalty but keep those numbers"). None: the
+    # sign's price (the owner, 2026-11-08: "a 2x penalty but keep those numbers"; the button
+    # price is switched off since 2026-11-10, `junction_delay.BUTTONS_PRICED`). None: the
     # waits shown (an analysis made without the reading).
     junction_ranked_s: float | None = None
 
@@ -1281,6 +1288,10 @@ class Target:
     # `radius`); None for the router's default (the nearest edge). An Avoid-rated
     # junction's is `MATCH_RADIUS_M`, as `core.avoid_junctions.exclusions` asks.
     radius: int | None = None
+    # A red crossing's within ENDPOINT_CLEARANCE_M of the route's start, end or a stop
+    # (`crossing_targets`): a round whose set with it finds no route is asked again
+    # without it (`_search`), the cul-de-sac whose only exit it is.
+    at_end: bool = False
 
 
 def _marks(analysis: Analysis) -> list:
@@ -1345,30 +1356,37 @@ def _exclusion(lon: float, lat: float, ctx: Context, radius: int | None = None) 
     return out
 
 
-def crossing_targets(analysis: Analysis, ctx: Context) -> list[Target]:
+def crossing_targets(
+    analysis: Analysis, ctx: Context, skip: frozenset | set = frozenset()
+) -> list[Target]:
     """The Avoid-rated junctions the route passes, then the worst junctions: for each,
     the approach (a point on the edge the route arrives by) and the junction itself, every
     edge within `CROSSING_EXCLUDE_RADIUS_M` of it, so that the next round cannot come at
     the same crossing by another street (review of PR #421), while a sidepath or a bridge
-    a few metres off the node stays open (J6)."""
+    a few metres off the node stays open (J6).
+
+    A red near the start, the end or a stop is a target as any other (routing hunt 4,
+    J4-1: it was left, often the arterial crossing nearest the rider's home, even where
+    the way round cost nothing); it is marked `at_end`, so a round it leaves no route
+    (the only way out of a cul-de-sac) is asked again without it. `skip`: the reds' points
+    a round found no way round (`_search`), left for the next worst."""
     avoid = avoid_targets(analysis, ctx)
     if ctx.group or not analysis.events:
         return avoid
     worst = sorted(
-        (e for e in analysis.events if e.approach and e.cost_ft >= REFINE_MIN_EVENT_FT),
+        (
+            e
+            for e in analysis.events
+            if e.approach and e.cost_ft >= REFINE_MIN_EVENT_FT and (e.lon, e.lat) not in skip
+        ),
         key=lambda e: -e.cost_ft,
     )
-    chosen = [e for e in worst if _clear_of_ends(e.m, analysis.length_m, analysis.via_m)][
-        :CROSSING_POINTS_PER_ROUND
-    ]
-    return avoid + [
-        target
-        for e in chosen
-        for target in (
-            Target(e.approach, 4),
-            Target((e.lon, e.lat), 4, CROSSING_EXCLUDE_RADIUS_M),
-        )
-    ]
+    out = list(avoid)
+    for e in worst[:CROSSING_POINTS_PER_ROUND]:
+        at_end = not _clear_of_ends(e.m, analysis.length_m, analysis.via_m)
+        out.append(Target(e.approach, 4, at_end=at_end))
+        out.append(Target((e.lon, e.lat), 4, CROSSING_EXCLUDE_RADIUS_M, at_end=at_end))
+    return out
 
 
 def refine(trip: dict, ctx: Context) -> tuple[dict, dict]:
@@ -2472,6 +2490,9 @@ def _search(trip, best, first_exposure, stop_at, ctx: Context, info: dict):
     excluded: list[Target] = []
     # Every exclusion set sent, so that none is sent twice (in any order).
     sent: set[frozenset] = set()
+    # The nodes of the reds near an end a round had to leave out to find a route
+    # (`Target.at_end`): not asked again (`crossing_targets`' `skip`).
+    no_way: set = set()
     stale = 0
     for number in range(rounds):
         # A plan the rider has replaced (`core.plan_cancel`) ends here, between rounds,
@@ -2485,7 +2506,7 @@ def _search(trip, best, first_exposure, stop_at, ctx: Context, info: dict):
         # so the plan does not count as searched whole and the red pass still runs
         # (`core.red_crossings`).
         said = ctx.rate > 0 or number == 0 or red_count(best) > 0
-        new = crossing_targets(current, ctx)
+        new = crossing_targets(current, ctx, no_way)
         if ctx.rate > 0:
             # LTS 4 and Avoid first, if the route has any; then everything busy.
             worst_first = number == 0 and any(c[0] in ("4", "5") for c in current.classes)
@@ -2515,6 +2536,10 @@ def _search(trip, best, first_exposure, stop_at, ctx: Context, info: dict):
         )
         candidate, asked = None, excluded
         attempts = [excluded + new]
+        # A red near an end may be the only way out (a cul-de-sac): without it.
+        clear = [t for t in new if not t.at_end]
+        if clear and len(clear) < len(new):
+            attempts.append(excluded + clear)
         worst = [t for t in new if t.tier >= 4]
         if worst and len(worst) < len(new):
             attempts.append(excluded + worst)
@@ -2547,6 +2572,11 @@ def _search(trip, best, first_exposure, stop_at, ctx: Context, info: dict):
                         continue
                     break
                 candidate = None
+            if candidate is None and not over and all(t.at_end for t in new):
+                # Only reds near an end, with no way round (a cul-de-sac's only exit):
+                # left, as the round never asked them, and the search goes on.
+                no_way.update(t.point for t in new if t.radius)
+                continue
             if candidate is None:
                 # `ceiling`: the routes found were past the ceiling, which says
                 # nothing of whether one is within the target (combined correctness
@@ -2559,6 +2589,8 @@ def _search(trip, best, first_exposure, stop_at, ctx: Context, info: dict):
             if said:
                 info["limited"] = "time"
             break
+        kept = {t.point for t in asked}
+        no_way.update(t.point for t in new if t.at_end and t.radius and t.point not in kept)
         excluded = asked
         info["excluded"] = len(excluded)
         if current is None:
@@ -2709,23 +2741,23 @@ LOOP_BUDGET_S = 14.0
 
 
 def return_overlap(read: Analysis) -> tuple[float, float]:
-    """(metres of the last leg on a way the legs before it ride, metres of the last
-    leg): what a loop's way back shares with its way out."""
+    """(metres of the last leg on a stretch the legs before it ride, metres of the last
+    leg): what a loop's way back shares with its way out. A stretch, not a way: another
+    part of a long trail mapped as one way is not shared (`routing.Ridden`, M4-2)."""
     bounds = leg_bounds(read)
     if len(bounds) < 2:
         return 0.0, 0.0
     cut = bounds[-1][0]
     along = 0.0
-    out_ways: set[int] = set()
+    out = routing.Ridden()
     back = []
     for piece in read.pieces:
         if along < cut - 1e-6:
-            if piece.way_id:
-                out_ways.add(piece.way_id)
+            out.add(piece)
         else:
             back.append(piece)
         along += piece.metres
-    shared = sum(p.metres for p in back if p.way_id in out_ways)
+    shared = sum(p.metres for p in back if out.has(p))
     return shared, sum(p.metres for p in back)
 
 
@@ -3072,28 +3104,25 @@ REPEAT_BUDGET_S = 8.0
 
 
 def repeated_by_leg(read: Analysis) -> list[float]:
-    """Each leg's metres on a way an earlier leg rides, but for the first and last
-    REPEAT_STOP_M of the leg."""
+    """Each leg's metres on a stretch an earlier leg rides (`routing.Ridden`: the
+    stretch, not the whole way, M4-2), but for the first and last REPEAT_STOP_M of the
+    leg."""
     bounds = leg_bounds(read)
     out = [0.0] * len(bounds)
-    ridden: set[int] = set()
+    ridden = routing.Ridden()
     along, leg = 0.0, 0
-    mine: set[int] = set()
+    mine: list = []
     for piece in read.pieces:
         middle = along + piece.metres / 2
         while leg < len(bounds) - 1 and middle >= bounds[leg][1]:
-            ridden |= mine
-            mine = set()
+            for earlier in mine:
+                ridden.add(earlier)
+            mine = []
             leg += 1
         start, end = bounds[leg]
-        if (
-            piece.way_id
-            and piece.way_id in ridden
-            and start + REPEAT_STOP_M <= middle <= end - REPEAT_STOP_M
-        ):
+        if ridden.has(piece) and start + REPEAT_STOP_M <= middle <= end - REPEAT_STOP_M:
             out[leg] += piece.metres
-        if piece.way_id:
-            mine.add(piece.way_id)
+        mine.append(piece)
         along += piece.metres
     return out
 
@@ -3120,13 +3149,12 @@ def _repeat_points(read: Analysis, leg: int) -> list[tuple[float, float]]:
     ENDPOINT_CLEARANCE_M of the leg's ends."""
     bounds = leg_bounds(read)
     start, end = bounds[leg]
-    ridden: set[int] = set()
+    ridden = routing.Ridden()
     along = 0.0
     for piece in read.pieces:
         if along + piece.metres / 2 >= start:
             break
-        if piece.way_id:
-            ridden.add(piece.way_id)
+        ridden.add(piece)
         along += piece.metres
     points: list[tuple[float, float]] = []
     along = 0.0
@@ -3135,7 +3163,7 @@ def _repeat_points(read: Analysis, leg: int) -> list[tuple[float, float]]:
         along += piece.metres
         if not start + ENDPOINT_CLEARANCE_M <= middle <= end - ENDPOINT_CLEARANCE_M:
             continue
-        if piece.way_id not in ridden or piece.metres < CALM_MIN_EDGE_M:
+        if not ridden.has(piece) or piece.metres < CALM_MIN_EDGE_M:
             continue
         if points and haversine(Point(*points[-1]), Point(piece.lon, piece.lat)) < LOOP_SAMPLE_M:
             continue
