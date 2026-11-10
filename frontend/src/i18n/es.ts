@@ -1284,7 +1284,7 @@ export const ES: Readonly<Record<string, string>> = {
   "Suggest a change…": "Sugerir un cambio…",
   "Summary": "Resumen",
   "TCX course, with turn cues": "Recorrido TCX, con indicaciones de giro",
-  "The cue sheet as a picture for your phone's lock screen, with the clock's space at the top left clear. A long route makes more than one, Part 1, Part 2 and on, downloaded one after another. Its credits are along the bottom.": "La hoja de indicaciones como imagen para la pantalla de bloqueo de su teléfono, con el espacio del reloj libre arriba a la izquierda. Una ruta larga da más de una, Parte 1, Parte 2 y así, descargadas una tras otra. Sus créditos van abajo.",
+  "The cue sheet as a picture for your phone's lock screen, with the clock's space at the top left clear. It comes as Part 1, Part 2 and on, downloaded one after another: a new part at each stop when the cues don't fit on one, and the credits last, on a part of their own.": "La hoja de indicaciones como imagen para la pantalla de bloqueo de su teléfono, con el espacio del reloj libre arriba a la izquierda. Viene como Parte 1, Parte 2 y así, descargadas una tras otra: una parte nueva en cada parada cuando las indicaciones no caben en una, y los créditos al final, en una parte propia.",
   "The way in the map data": "La vía en los datos del mapa",
   "To install RouteMaker: ": "Para instalar RouteMaker: ",
   "Traffic stress": "Estrés de tráfico",

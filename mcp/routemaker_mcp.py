@@ -4728,7 +4728,8 @@ CUE_CARDS_TOOL = {
         " plan's link) names them. Where the cues need more than one image, each leg (start or"
         " stop to the next stop or finish) has its own, Part 1 of N. The first few images come"
         " in the answer; each has a link that opens it while the draft is kept: give the rider"
-        " the links. `cues` has the same cues as text."
+        " the links. The last image (Part N of N) is the data credits alone. `cues` has the"
+        " same cues as text."
     ),
     "inputSchema": {
         "type": "object",

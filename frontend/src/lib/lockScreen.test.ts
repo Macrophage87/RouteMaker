@@ -49,26 +49,24 @@ test("the image is an iPhone Pro's portrait screen, the top 20% and bottom 7% ke
   assert.equal(CLEAR_BOTTOM, 179);
 });
 
-test("one image for a short route: every line clear of both bands and inside the width", () => {
+test("a short route's cues on one image, the credits on a second: every line clear of both bands and inside the width", () => {
   const route = sampleRoute();
   const pages = lockScreenLayout(route, measure);
-  assert.equal(pages.length, 1);
-  assert.equal(pages[0].part, null);
+  assert.equal(pages.length, 2);
+  assert.equal(pages[0].part, "Part 1 of 2");
   assert.equal(pages[0].cues, cueRows(route, "strip").length);
-  for (const l of pages[0].lines) {
+  for (const l of pages.flatMap((p) => p.lines)) {
     assert.ok(l.y - l.px >= CLEAR_TOP, `${l.text} in the clock's band`);
     assert.ok(l.y <= LOCK_HEIGHT - CLEAR_BOTTOM, `${l.text} in the controls' band`);
     assert.ok(l.x >= 0 && l.x + measure(l.text, l.px, l.weight) <= LOCK_WIDTH, `${l.text} off the side`);
   }
   const texts = pages[0].lines.map((l) => l.text);
-  // Title and distance small at the top, the credits at the bottom, the cues large between.
+  // Title and distance small at the top, the cues large under them.
   assert.equal(texts[0], "Default route, 1.9 mi (3.0 km)");
   assert.ok(texts.includes("17th St NW") && texts.includes("mi") && !texts.slice(2).some((t) => /km/.test(t)) && texts.includes("Avoid-rated"));
-  const credit = pages[0].lines.filter((l) => /Route data/.test(l.text));
-  assert.equal(credit.length, 1);
-  const cueLines = pages[0].lines.filter((l) => l.px >= 60);
+  assert.ok(!pages[0].lines.some((l) => /Route data/.test(l.text)));
+  const cueLines = pages[0].lines.filter((l) => l.px >= 56);
   assert.ok(cueLines.every((l) => l.y > pages[0].cueTop && l.y <= pages[0].cueBottom));
-  assert.ok(credit[0].y > Math.max(...cueLines.map((l) => l.y)));
   assert.ok(!JSON.stringify(pages).includes("Home"));
 });
 
@@ -83,7 +81,7 @@ test("a long route is split into numbered images, every cue on one of them once,
   pages.forEach((p, i) => {
     assert.equal(p.part, `Part ${i + 1} of ${pages.length}`);
     assert.ok(p.lines.some((l) => l.text === p.part));
-    assert.ok(p.cues >= 1);
+    assert.ok(p.cues >= 1 || i === pages.length - 1);
     for (const l of p.lines) assert.ok(l.y - l.px >= CLEAR_TOP && l.y <= LOCK_HEIGHT - CLEAR_BOTTOM, l.text);
     assert.ok(Math.max(...p.rules) <= p.cueBottom);
   });
@@ -138,8 +136,9 @@ test("every cue has its picture beside it, and a stop is listed by its name and 
 test("splits at stops only where the cues do not fit on one image: each leg its own, the stop on both", () => {
   // The owner, 2026-11-10: "Have splits at stops ... Unless it would fit in one ... The stop on the first page will be
   // repeated on the next".
+  // The sample's cues fit on one image (the credits on their own after it): no split at its stop.
   const fits = lockScreenLayout(sampleRoute(), measure);
-  assert.equal(fits.length, 1);
+  assert.equal(fits.length, 2);
   const base = longRoute(16);
   const at = 8 * (29_000 / 16);
   const route = { ...base, description: [...base.description.slice(0, 8), { kind: "via", from_m: at, to_m: at, from_mi: 0, to_mi: 0, via: 1, text: "Stop 1." } as DescriptionEntry, ...base.description.slice(8)] };
@@ -166,15 +165,20 @@ test("a mile figure of 100 or more stays on one line", () => {
   assert.ok(!texts.some((t) => /^1\d\d\.$/.test(t)));
 });
 
-test("the credits are on the last image only, a source to a line", () => {
-  // The owner, 2026-11-10: "Have credits on the final image in the set, own set of lines".
-  const pages = lockScreenLayout(longRoute(60), measure);
-  assert.ok(pages.length >= 3);
-  for (const p of pages.slice(0, -1)) assert.ok(!p.lines.some((l) => /Route data|OpenStreetMap|Planned with/.test(l.text)));
-  const last = pages[pages.length - 1].lines.map((l) => l.text);
-  assert.deepEqual(last.slice(-4), ["Route data:", "© OpenStreetMap contributors (ODbL)", "USGS 3DEP", "Planned with RouteMaker."]);
-  const end = pages[pages.length - 1];
-  assert.ok(Math.max(...end.rules) <= end.cueBottom);
+test("the credits have an image of their own, last, a source to a line", () => {
+  // The owner, 2026-11-10: "Have credits on the final image in the set, own set of lines" ... "let it go on an
+  // additional one ... or just make that the default, so they are readable".
+  for (const route of [sampleRoute(), longRoute(60)]) {
+    const pages = lockScreenLayout(route, measure);
+    assert.ok(pages.length >= 2);
+    for (const p of pages.slice(0, -1)) assert.ok(!p.lines.some((l) => /Route data|OpenStreetMap|Planned with/.test(l.text)));
+    const last = pages[pages.length - 1];
+    assert.equal(last.cues, 0);
+    assert.equal(last.part, `Part ${pages.length} of ${pages.length}`);
+    const texts = last.lines.map((l) => l.text);
+    assert.deepEqual(texts.slice(-4), ["Route data:", "© OpenStreetMap contributors (ODbL)", "USGS 3DEP", "Planned with RouteMaker."]);
+    assert.ok(last.lines.filter((l) => l.text === "USGS 3DEP").every((l) => l.px >= 36 && l.y <= LOCK_HEIGHT - CLEAR_BOTTOM));
+  }
 });
 
 test("the big figure is the distance from the cue before; the distance since the start is on the right", () => {
@@ -190,4 +194,13 @@ test("the big figure is the distance from the cue before; the distance since the
   const total = lines.find((l) => l.text === `${totalMi} mi`);
   assert.ok(total && total.x + measure(total.text, total.px, total.weight) <= LOCK_WIDTH - 56 + 1);
   assert.equal(lines.filter((l) => l.text === "total").length, rows.length);
+});
+
+
+test("a long list of credits still fits its image, in smaller type", () => {
+  const route = { ...sampleRoute(), attribution: Array.from({ length: 30 }, (_, i) => `Source ${i + 1}`) };
+  const pages = lockScreenLayout(route, measure);
+  const last = pages[pages.length - 1];
+  assert.ok(last.lines.some((l) => l.text === "Source 30"));
+  for (const l of last.lines) assert.ok(l.y <= LOCK_HEIGHT - CLEAR_BOTTOM, l.text);
 });

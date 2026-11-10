@@ -745,7 +745,7 @@ export function GpxPanel(props: Props) {
       )}
       {choice.format === "png-lock" && (
         <p className="hint">
-          {t("The cue sheet as a picture for your phone's lock screen, with the clock's space at the top left clear. A long route makes more than one, Part 1, Part 2 and on, downloaded one after another. Its credits are along the bottom.")}
+          {t("The cue sheet as a picture for your phone's lock screen, with the clock's space at the top left clear. It comes as Part 1, Part 2 and on, downloaded one after another: a new part at each stop when the cues don't fit on one, and the credits last, on a part of their own.")}
         </p>
       )}
       {isCourse(choice.format) && (
