@@ -89,6 +89,7 @@ Contents:
 - [Deploying v0.22.2](#deploying-v0222)
 - [Deploying v0.22.3](#deploying-v0223)
 - [Deploying v0.23.0](#deploying-v0230)
+- [Deploying v0.24.0](#deploying-v0240)
 - [Deploying a planner and front-end release: rollback points and verification](#deploying-a-planner-and-front-end-release-rollback-points-and-verification)
 - [Paths bicycles may not ride (NO-BIKE-PATHS)](#paths-bicycles-may-not-ride-no-bike-paths)
 - [Mountain-bike difficulty levels (456; claude/v0-4-0-mtb-levels)](#mountain-bike-difficulty-levels-456-claudev0-4-0-mtb-levels)
@@ -297,9 +298,9 @@ declining every week with "grow the volume" as the only remedy.
 | Finished `procrastinate_jobs` and their events | 30 days | `core.runs.prune_job_rows`, run nightly |
 | `rate_limit_window` rows (keyed client addresses, and a keyed account id for Featured routes posts the connector refused for the admin's Home, `CONNECTOR_POST_HOME`) | 1 day idle, so at most about 30 hours | `core.ratelimit.purge_expired`, run by the six-hourly membership sweep |
 | `shared_route` rows (the exact lines Share links open) | 1 year after the link was last opened | `core.shared_routes.prune`, at every share and every open, and nightly by the backup task |
-| `shared_route` rows an assistant app's plan made (`connector_draft` set) | As long as their draft: 24 hours, or until the app is disconnected | Deleted with the draft (the foreign key cascades); `core.shared_routes.expired` refuses them past 24 hours even before that. Links made before v0.15.0 name no draft (migration 0051 cannot tell them from other links), so they keep their old date and expire within 8 days of being made |
+| `shared_route` rows an assistant app's plan made (`connector_draft` set) | As long as their draft: 7 days (our default), or until the app is disconnected | Deleted with the draft (the foreign key cascades); `core.shared_routes.expired` refuses them past 7 days even before that. Links made before v0.15.0 name no draft (migration 0051 cannot tell them from other links), so they keep their old date and expire within 8 days of being made |
 | `shared_route_gone` rows (the id and time of a shared link whose route was deleted, nothing else) | 2 years, so an old link's id is never reused for another route | Written whenever a `shared_route` row is deleted (pruned, cascaded or by hand); `core.shared_routes.prune` drops them after 2 years. A rollback past migration 0056 drops the table, and links pruned before v0.21.0 have no row |
-| `connector_draft` rows (an assistant app's unsaved routes, with their points) | 24 hours (`ConnectorDraft.KEPT`), and none once the app is disconnected, the rider signs out everywhere, or the account is banned or deleted | `core.connector.drop_stale_drafts`, at every new draft and by the five-minute degraded-guild sweep; deleting a `connector_grant` deletes its drafts. The GPX link (`/mcp/gpx/<draft id>.<keyed digest>`) works only while its draft is kept and its app connected |
+| `connector_draft` rows (an assistant app's unsaved routes, with their points) | 7 days (`ConnectorDraft.KEPT`, our default; 24 hours before v0.24.0, so rolling back to an older release deletes the drafts and their links 1 to 7 days old at its next sweep), and none once the app is disconnected, the rider signs out everywhere, or the account is banned or deleted | `core.connector.drop_stale_drafts`, at every new draft and by the five-minute degraded-guild sweep; deleting a `connector_grant` deletes its drafts. The GPX link (`/mcp/gpx/<draft id>.<keyed digest>`) works only while its draft is kept and its app connected |
 | `signed_out_send` rows (a device's salted daily hash and the road, for the signed-out suggestion limits) | 24 hours | `core.signed_out_suggestions.prune`, at every signed-out send, and nightly by the backup task |
 
 Three rules are load-bearing rather than incidental:
@@ -762,7 +763,7 @@ is read alone, as before. The plan's `/locate` cache keys each answer by its cos
 answers, and a car answer near a motorway interchange is larger.
 Measured on the live router, a batch of 50 at 100 ft (30 m) took 0.1-0.3 s and
 2.6 MB, against 0.04-0.15 s and 0.5 MB at 3 ft (1 m). A plan with a red junction
-1,640 ft (500 m) or more from both ends asks the router for one more route (crossing
+anywhere on it (near its ends too since routing hunt 4, J4-1) asks the router for one more route (crossing
 avoidance, `core.refine`: only red junctions, from 0.59 calm mi [0.94 km; 3,100 ft],
 are worth a second route), one `/trace_attributes` for it and its `/locate`s. A plan
 the crossing search did not cover (legs adding up past 19 mi [30 km], a long Trailmaxxing
@@ -6174,7 +6175,7 @@ files, reports/md-sha-ratings/). Each is a switch, `mdot_sha_rules.ENABLED`:
 |---|---|---|
 | `collector-assumed-35`, `city-collector` | 4 on an urban two-lane collector where SHA assumed 35 mph | 3; 3.5 at 10,000-15,000 cars a day |
 | `slow-street` | 4 on an urban two-lane street at 30 mph or less, under 15,000 a day | 2.5; 3 from 7,500 a day |
-| `multilane-or-40` | 3 or less on 4+ lanes at 30-45 mph, or two lanes posted 40-45 | 4; 3.5 with a painted lane |
+| `multilane-or-40` | 3 or less on 4+ lanes at 30-45 mph, or two lanes posted 40-45 (not where the way itself is posted 35 mph or less, `posted_speed_overrules`) | 4; 3.5 with a painted lane |
 | `shoulder-credit` | 2 on an urban two-lane 35 mph road with a 4 ft shoulder | 3; 3.5 at 10,000-15,000; 4 above |
 | `busy-residential` | 1 or 2 on a 25 mph two-lane street at 5,000-15,000 a day, no bike lane | 2.5 (the owner's 1st Street rule) |
 | `rural-collector` | 2 or less on a rural minor collector at 1,500+ a day, speed assumed | 3.5 |
@@ -7822,6 +7823,43 @@ outbound host or scheduled job. With `</dev/null` on every docker command:
   `docker compose --profile offroad stop valhalla-paved-weekend` (on the beta
   `scripts/beta/beta-compose.sh stop valhalla-paved-weekend`): the older compose files have no
   such service and their budgets do not count it.
+
+## Deploying v0.24.0
+
+v0.24.0 ships with the map rebuilt from the own-picks files (the owner, 2026-11-10: "Ship with the
+new map", and "Also push the new data out with it."), as one hand ship: `lua/` changed (#1126's free
+wide gates), so the beta agent stops on the tag.
+
+- [ ] **The tag** **(owner)**. Once `test` and `a11y` are green on `main`, the owner tags v0.24.0
+  (annotated) on that commit, from the PC.
+- [ ] **The own picks, before the map** **(owner)**. `fixtures/overrides/2026-11-09-owner-{md,va,wv}-own-picks.json`
+  (222,844 stress rows) must be loaded on the PC (`load_access_overrides`, dry run first, then
+  `--confirm` with the owner's go per file, detached, outside 07:00 UTC) before the cloud run is sent:
+  the build reads only approved `Override` rows from the dump. A build sent before the load has the
+  code but none of the picks, and says nothing.
+- [ ] **The build's commit.** The map is built on the on-demand box at `996b8614`, not at the tag.
+  Nothing after it touches `lua/`, `valhalla/`, `src/pipeline/`, `fixtures/` or
+  `scripts/cloud/box-rebuild.sh` (check: `git diff --stat 996b8614 v0.24.0 -- lua valhalla
+  src/pipeline fixtures scripts/cloud/box-rebuild.sh` is empty), so the install takes
+  `--allow-sha-mismatch`, at home and with `--beta`.
+- [ ] **Migrations.** 0059 (`connector_draft.root`, `saved_at`) and 0060 (`reviewed_closure.on_foot`)
+  add nullable columns only; safe on the running map and reversible. Rolling the code back past
+  v0.24.0 brings back the 24 h draft keep, so drafts 1-7 days old go at the next sweep.
+- [ ] **Rollback points and images** **(owner)**, as "Deploying a planner and front-end release",
+  then the import and swap of the cloud result (dry run first: read its "approved after the dump"
+  list). No new environment variable, worker, scheduled job or outbound host.
+- [ ] **Beta** **(owner)**, by hand: check out the tag, then `scripts/cloud/import-result.sh --beta
+  --allow-sha-mismatch [--swap] <RUN_URL>`, `migrate`, the front end built on the PC
+  (`ship-data.sh`), `smoke-test.sh --local --trails`, then `--public`.
+- [ ] **The Climbs layer** (optional). `climbs.json` (#1116) was built from 20261109T111715Z; a
+  `build_climbs` on the new map after the swap is optional.
+- [ ] **The open data download**, after the swap, as "The open data download (after a map swap)":
+  the export is shown to the owner before the data release is uploaded.
+- [ ] **Spot checks.** A Tandem or Cargo route through a plain wide gate (no access, width or
+  motor-vehicle tags) takes it with no gap charge; a Mass Ride near H Street NE keeps off the
+  streetcar rails; Load route (signed in) lists an assistant draft with Save and Delete.
+- [ ] **Rollback.** The `pre-rel` api image and the v0.23.0 front end; the map's own rollback
+  (`rollback_rebuild`) puts back 20261109T111715Z. The own-pick rows stay in the database.
 
 ## Deploying a planner and front-end release: rollback points and verification
 
