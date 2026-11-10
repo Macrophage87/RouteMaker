@@ -16,8 +16,8 @@ It's taking people onto dangerous intersections." The crossing was priced and dr
 
 So after the search, on every plan where it did not run over the whole route with at
 least one round (`searched` false), the answer is read (`refine.analyse`, which the answer
-then reuses), and each red crossing clear of its ends and stops
-(`refine.ENDPOINT_CLEARANCE_M`) is asked round, the worst first (`reds_of`). A red is
+then reuses), and each red crossing is asked round, the worst first (`reds_of`), those
+near its ends and stops too (routing hunt 4, J4-1). A red is
 what the map draws red, and a trail crossing drawn orange only because no signal is mapped
 whose cost is red-level (`refine.avoidance_severity`, the 2026-11-08 hunt, J1).
 
@@ -33,7 +33,10 @@ all. Now:
 1. Where the plan is plain (one leg, not a loop, no climb sought, no level exclusions), the
    whole plan is asked once with every red excluded, as before (`around_request`), with the
    request's own exclusions kept.
-2. Then each red still on the route, worst first, is asked round alone: the stretch of the
+   A red near an end (`near_end`) is left out of this ask (routing hunt 4, J4-1 review):
+   where it is a cul-de-sac's only exit the router would find no route for any of them.
+2. Then each red still on the route, worst first, is asked round alone (those near an
+   end after the clear ones, and by the narrow window only, `queue`): the stretch of the
    route from `WINDOWS_M` before it to as far after it (within its leg) is asked again with
    that red excluded (`window_request`, each end a break facing the way the route goes),
    and the answer spliced in its place (`splice_leg`). The rest of the route is untouched,
@@ -92,38 +95,31 @@ SNAP_M = 15.0
 CLIMB_KEPT = 0.9
 
 
-def stops_m(read: refine.Analysis, refined: dict | None) -> list[float]:
-    """The metres along `read` of the rider's own stops: its leg boundaries, less the cuts a
-    long calm plan's search made (hunt 2, P2-1). `refine_long` answers its cut legs joined,
-    so every cut is a leg boundary of the answer, and a red within ENDPOINT_CLEARANCE_M of
-    one was never asked round: the leg searches cannot exclude it (it is at a leg's end),
-    and this pass dropped it as "near a stop". The cut is the search's own break, put where
-    a leg has most room from busy road (`legsplit.split_points`), often on the calm trail a
-    few hundred metres past the arterial it crosses. `refined["long"]["stops"]` says how
-    many legs each of the rider's legs was cut into; where the answer does not have that
-    many legs (the router's own route answered) its boundaries are the rider's."""
-    counts = ((refined or {}).get("long") or {}).get("stops") or []
-    if not counts or sum(counts) - 1 != len(read.via_m) or len(counts) - 1 == len(read.via_m):
-        return list(read.via_m)
-    out, at = [], 0
-    for count in counts[:-1]:
-        at += count
-        out.append(read.via_m[at - 1])
-    return out
-
-
-def reds_of(read: refine.Analysis, stops: list[float] | None = None) -> list:
-    """The route's red crossings clear of its ends and stops, the worst first: as the map
-    draws them, and the capped trail crossings that cost as much (`refine.avoidance_severity`).
-    `stops`: the metres of the rider's own stops (`stops_m`; the leg boundaries if None)."""
-    via = read.via_m if stops is None else stops
-    found = [
-        e
-        for e in read.events or ()
-        if refine.avoidance_severity(e) == model.RED
-        and refine._clear_of_ends(e.m, read.length_m, via)
-    ]
+def reds_of(read: refine.Analysis) -> list:
+    """The route's red crossings, the worst first: as the map draws them, and the capped
+    trail crossings that cost as much (`refine.avoidance_severity`). One near the start, the
+    end or a stop is asked round as any other (routing hunt 4, J4-1: within
+    `refine.ENDPOINT_CLEARANCE_M` of them it was left, often the arterial crossing nearest
+    the rider's home, even where the way round cost nothing); its exclusion takes out only
+    the edges at its node, and one with no way round (the only exit from a cul-de-sac) is
+    dropped when its ask finds no route."""
+    found = [e for e in read.events or () if refine.avoidance_severity(e) == model.RED]
     return sorted(found, key=lambda e: -e.cost_ft)
+
+
+def near_end(read: refine.Analysis, red) -> bool:
+    """Whether `red` is within `refine.ENDPOINT_CLEARANCE_M` of the route's start, end or a
+    leg boundary: possibly the only way out of a cul-de-sac, with no way round."""
+    return not refine._clear_of_ends(red.m, read.length_m, read.via_m)
+
+
+def queue(read: refine.Analysis) -> list:
+    """`reds_of`, the reds clear of the ends first (worst first), then those near an end
+    (worst first). A red near an end may have no way round (the cul-de-sac), and its asks
+    are not to spend the pass's `MAX_ASKS` before the clear ones are asked (routing hunt 4,
+    J4-1 review)."""
+    reds = reds_of(read)
+    return [e for e in reds if not near_end(read, e)] + [e for e in reds if near_end(read, e)]
 
 
 def exclusion(red) -> dict:
@@ -337,9 +333,19 @@ def _read(trip: dict, ctx: refine.Context, deadline, info: dict) -> refine.Analy
     return read
 
 
-def _round(trip, red, ctx: refine.Context, whole, deadline, info: dict, loop: bool = False):
+def _round(
+    trip,
+    red,
+    ctx: refine.Context,
+    whole,
+    deadline,
+    info: dict,
+    loop: bool = False,
+    narrow_only: bool = False,
+):
     """The trip with `red` ridden round by a window of its leg, and its reading, or
-    (None, None) where no window finds a way round."""
+    (None, None) where no window finds a way round. `narrow_only`: the narrow window only
+    (a red near an end, which may have no way round at all)."""
     number = _leg_at(whole, red.m)
     legs = trip.get("legs") or []
     if number >= len(legs):
@@ -348,7 +354,7 @@ def _round(trip, red, ctx: refine.Context, whole, deadline, info: dict, loop: bo
     shape = routing.decode_polyline6(leg.get("shape", ""))
     excludes = _excludes(kept_out(ctx.request, ctx), [exclusion(red)])
     tried: set = set()
-    for window_m in WINDOWS_M:
+    for window_m in WINDOWS_M[:1] if narrow_only else WINDOWS_M:
         bounds = stretch(shape, red, window_m)
         if bounds is None or bounds in tried:
             continue
@@ -413,28 +419,35 @@ def settle(
         if whole is None or whole.events is None:
             info["limited"] = "unread"
             return trip, info
-        reds = reds_of(whole, stops_m(whole, refined))
+        reds = reds_of(whole)
         info["reds"] = len(reds)
         if not reds:
             return trip, info
-        # 1. The whole plan, every red excluded, where its request is the route answered.
-        if plain(trip, ctx, loop):
-            around = _ask(ctx, around_request(ctx.request, reds, ctx), deadline, info)
+        # 1. The whole plan, every red clear of the ends excluded, where its request is the
+        # route answered. A red near an end is left out of it: where it is a cul-de-sac's
+        # only exit the router finds no route, and the one ask that clears the others
+        # together is lost (routing hunt 4, J4-1 review).
+        clear = [e for e in reds if not near_end(whole, e)]
+        if clear and plain(trip, ctx, loop):
+            around = _ask(ctx, around_request(ctx.request, clear, ctx), deadline, info)
             read = _read(around, ctx, deadline, info) if around is not None else None
             if read is not None and takes(read, whole, ctx):
-                ctx.red_excludes.extend(exclusion(e) for e in reds[:MAX_REDS])
+                ctx.red_excludes.extend(exclusion(e) for e in clear[:MAX_REDS])
                 trip, whole = around, read
                 info["avoided"] = max(1, refine.red_count(first) - refine.red_count(read))
-        # 2. Each red still on it, the worst first, by its own stretch; one with no way
+        # 2. Each red still on it by its own stretch, the worst first, those near an end
+        # after the clear ones and by the narrow window only (`queue`); one with no way
         # round is dropped and the next tried.
         tried: set = set()
         while True:
-            left = [e for e in reds_of(whole, stops_m(whole, refined)) if _key(e) not in tried]
+            left = [e for e in queue(whole) if _key(e) not in tried]
             if not left:
                 break
             red = left[0]
             tried.add(_key(red))
-            new_trip, read = _round(trip, red, ctx, whole, deadline, info, loop)
+            new_trip, read = _round(
+                trip, red, ctx, whole, deadline, info, loop, narrow_only=near_end(whole, red)
+            )
             if new_trip is None:
                 info["no_way_round"] += 1
                 continue

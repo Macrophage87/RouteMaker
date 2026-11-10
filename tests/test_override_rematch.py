@@ -529,7 +529,7 @@ def test_every_row_of_every_override_file_carries_a_valid_fingerprint() -> None:
     # rows (the owner, 2026-11-01), and the region review's Maryland 34,781, Virginia 8,998
     # and West Virginia 434 (2026-11-01).
     assert (
-        sum(len(d["rows"]) for d in documents.values())
+        sum(len(d.get("rows", [])) for d in documents.values())
         == 1785
         + 20
         - 5
@@ -561,7 +561,7 @@ def test_every_row_of_every_override_file_carries_a_valid_fingerprint() -> None:
     for name, document in documents.items():
         if name == "2026-10-06-owner-crosswalk-links.json":
             continue  # 442: way ids only, no fingerprint (owner decision 442)
-        for row in document["rows"]:
+        for row in document.get("rows", []):
             assert rematch.fingerprint_problem(row.get("fingerprint")) is None, (
                 name,
                 row["osm_way_id"],
@@ -569,7 +569,7 @@ def test_every_row_of_every_override_file_carries_a_valid_fingerprint() -> None:
 
 
 def test_the_override_counts_the_owner_asked_about() -> None:
-    kinds = [row["kind"] for d in fixture_documents().values() for row in d["rows"]]
+    kinds = [row["kind"] for d in fixture_documents().values() for row in d.get("rows", [])]
     # 232 access rows, the Dupont underpass's 10 (decision 416), and the 55 military
     # reopenings (437.6, 437a-c) and Pentagon Connector Road's 25 (438.2), and the
     # crosswalk links' 4 (442), and the Redland Road sidewalk link's 1 (the owner, 2026-10-21),
@@ -696,6 +696,8 @@ def test_the_fixture_fingerprints_load_by_kind_and_way() -> None:
         # that already had a row, which the file retires
         + 531  # Baltimore City rating review's 671 rows (the owner, 2026-11-04), 140 on ways
         # that already had a 2026-11-01 Maryland review row, which the file retires
+        + 222842  # own picks (the owner, 2026-11-09): MD 135417, VA 81047 (2 ways not in the
+        # 2026-11-02 extract stay by id), WV 6378
     )
     assert ("access", 50426889) in found and ("stress", 1562097556) in found
 
@@ -933,3 +935,19 @@ def test_the_virginia_rows_take_only_the_owners_levels() -> None:
     # Each row says why its level, not only that the owner chose it.
     assert all("This way (" in row["reason"] for row in document["rows"])
     assert all(len(levels) == 1 for levels in ids.values()), ids
+
+
+def test_a_groups_fingerprints_are_read_by_way(tmp_path) -> None:
+    """The compact `groups` form (the 2026-11-09 own-picks files) keeps fingerprints by way
+    id, and the rebuild reads them as it reads a row's own."""
+    print_ = fingerprint()
+    group = {
+        "kind": "stress",
+        "value": {},
+        "reason": "r",
+        "evidence": "e",
+        "ways": [7, 8],
+        "fingerprints": {"7": print_},
+    }
+    (tmp_path / "a.json").write_text(json.dumps({"version": 1, "groups": [group]}))
+    assert rematch.load_fingerprints(tmp_path) == {("stress", 7): print_}
