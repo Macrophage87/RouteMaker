@@ -991,3 +991,19 @@ class TestButtonsOff:
             # The stacked rule (90 s at 1x, held at 5x the 45 s red), not ten minutes.
             assert ranked == min(weight * 90.0, d.MAX_STACKED_WEIGHT * 45.0)
             assert ranked < d.ROAD_BIKE_BUTTON_S
+
+    def test_road_bike_does_not_hold_a_light_below_a_button_it_no_longer_prices(self) -> None:
+        """Where the stop sign across the same road is priced, Road Bike once held a light a
+        button was read at 2 s below two-thirds of that stop sign (`_signal`). Off, the light
+        ranks by the stacked rule and the J2-4 stop-sign cap alone."""
+        crossing = suburban_signal(*PRIMARY)
+        on = d.signal_wait(crossing, suburban=True, stop_extra_s=40.0)
+        assert not on.button_light and on.stop_s is not None
+        (run,) = d.waits([crossing], suburban=everywhere, stop_extra_s={(-77.0, 38.9): 40.0})
+        weight = presets.wait_weight_for(presets.ROAD_BIKE)
+        expected = min(
+            weight * run.ranked_s,
+            max(d.MAX_STACKED_WEIGHT * run.red_s, run.ranked_s),
+            max(weight * run.stop_s - d.BUTTON_BELOW_STOP_S, 0.0),
+        )
+        assert ride_ranked_s([run], presets.ROAD_BIKE) == pytest.approx(expected)

@@ -5219,7 +5219,8 @@ The third routing hunt's owner calls, as Stephen decided them on 2026-11-08:
 - **Tandem beg buttons** (C3-4, J3-2): "That should be at the 10x. It's really obnoxious to try
   to navigate to a button on a tandem." Tandem keeps Road Bike's 600 s button price, now by name
   (`presets.ROAD_BIKE_BUTTON_RIDES`), not by its wait weight above 1 ("Suburban signals and beg
-  buttons", above). Code change.
+  buttons", above). Code change. Switched off with every button price on 2026-11-10
+  (`junction_delay.BUTTONS_PRICED`).
 - **Weekend e-bike rides** (C3-5): "Yes", planned twice ("Weekend e-bike rides", above). Code
   change.
 - **Easy MTB dirt timing** (C3-7): "Yes", at Mountain Bike's 6 mph ("Easy MTB trails", above).
