@@ -266,7 +266,10 @@ def corker_load(profile: dict | None, total_m: float, riders: int) -> dict | Non
                 # Where the head is when the tail has passed (the hold ends), and the level of
                 # the road held: an assistant can leave a junction out and add the rest up again
                 # (the owner, 2026-11-10: "allow a triage of roads for corking").
-                "exit_m": round(min(exit_at, length)),
+                # To a tenth of a metre, and not cut at the route's end, so a recount meets the
+                # same overlaps as this one.
+                "at_m": round(at, 1),
+                "exit_m": round(exit_at, 1),
                 "lts": None
                 if not isinstance(tier, (int, float))
                 else tier + (0.5 if crossing.get("crossed_half") and tier < 5 else 0),

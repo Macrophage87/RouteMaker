@@ -399,3 +399,31 @@ def test_corking_is_the_tools_own_and_never_sent_to_the_site() -> None:
     assert "corking" in mcp.PASSED_OPTIONS and "corking" in mcp.LINK_ONLY_OPTIONS
     body = mcp.request_body([(0, 0), (1, 1)], [], "mass-ride", {"corking": {"from_lts": 4}})
     assert "corking" not in body
+
+
+def test_corking_is_kept_as_the_draft_is_revised_and_can_be_cleared(stand_in, tmp_path) -> None:  # noqa: F811
+    server = _server(stand_in, tmp_path)
+    planned = rpc(
+        server,
+        "tools/call",
+        {
+            "name": "plan_route",
+            "arguments": {"points": ["Union Market", "Takoma"], "corking": {"from_lts": 4}},
+        },
+    )["result"]
+    first = planned["structuredContent"]["draft_id"]
+    assert server.drafts.get(first).options["corking"] == {"from_lts": 4}
+    revised = rpc(
+        server,
+        "tools/call",
+        {"name": "revise_route", "arguments": {"draft_id": first, "hills": 10}},
+    )["result"]
+    second = revised["structuredContent"]["draft_id"]
+    assert server.drafts.get(second).options["corking"] == {"from_lts": 4}
+    cleared = rpc(
+        server,
+        "tools/call",
+        {"name": "revise_route", "arguments": {"draft_id": second, "clear_settings": ["corking"]}},
+    )["result"]
+    third = cleared["structuredContent"]["draft_id"]
+    assert not server.drafts.get(third).options.get("corking")

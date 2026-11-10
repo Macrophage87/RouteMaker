@@ -2778,13 +2778,19 @@ def corker_plan(corkers: dict, corking: dict | None, total_m: float) -> dict:
     matched: set[int] = set()
     for j in corkers.get("junctions") or []:
         mi = (j.get("m") or 0) / METRES_PER_MILE
-        street = str(j.get("street") or "").casefold()
+        street = str(j.get("street") or "")
         why = None
         lts = j.get("lts")
         if isinstance(floor, (int, float)) and isinstance(lts, (int, float)) and lts < floor:
             why = f"below LTS {floor:g}"
         for k, skip in enumerate(skips):
-            hit = (isinstance(skip, str) and street and skip.strip().casefold() in street) or (
+            # A name in whole words, any case, so "K St" is not "Park St".
+            hit = (
+                isinstance(skip, str)
+                and bool(street)
+                and re.search(rf"(?<!\w){re.escape(skip.strip())}(?!\w)", street, re.IGNORECASE)
+                is not None
+            ) or (
                 isinstance(skip, (int, float))
                 and not isinstance(skip, bool)
                 and abs(mi - skip) <= CORK_SKIP_NEAR_MI
@@ -2810,30 +2816,43 @@ def corker_plan(corkers: dict, corking: dict | None, total_m: float) -> dict:
             held=None,
         )
         return out
-    cuts = sorted({0.0, float(total_m), *(j["m"] for j in kept), *(j["exit_m"] for j in kept)})
+
+    def start(j: dict) -> float:
+        return j["at_m"] if isinstance(j.get("at_m"), (int, float)) else j["m"]
+
+    def held_at(x: float) -> int:
+        return sum(j["corkers"] or 0 for j in kept if start(j) <= x < j["exit_m"])
+
+    cuts = sorted({0.0, float(total_m), *(start(j) for j in kept), *(j["exit_m"] for j in kept)})
     cuts = [c for c in cuts if 0 <= c <= total_m]
     held: list[list[float]] = []
     most, most_m = 0, None
     for a, b in zip(cuts, cuts[1:], strict=False):
         if b <= a:
             continue
-        n = sum(j["corkers"] or 0 for j in kept if j["m"] <= a < j["exit_m"])
+        n = held_at(a)
         if held and held[-1][2] == n:
             held[-1][1] = b
         else:
             held.append([a, b, n])
         if n > most:
             most, most_m = n, a
+    # At the end itself the junctions near it are still held (a group longer than what is left).
+    n = held_at(float(total_m))
+    if n > most:
+        most, most_m = n, float(total_m)
+        if held:
+            held[-1][2] = max(held[-1][2], n)
     out.update(about=math.ceil(most * factor), most=most, most_m=most_m, held=held)
     return out
 
 
 def _corker_length(answer: dict, corkers: dict) -> float:
-    """The length the site counted the corkers along: the route's, or its junctions' last hold."""
+    """The length the site counted the corkers along: the route's, or to its last junction."""
     ends = [
         v
         for j in corkers.get("junctions") or []
-        for v in (j.get("m"), j.get("exit_m"))
+        for v in (j.get("m"), j.get("at_m"))
         if isinstance(v, (int, float))
     ]
     return max([answer.get("distance_m") or 0.0, *ends])
@@ -4383,8 +4402,9 @@ RIDE_OPTIONS = {
             "Mass Ride only, when the organiser asks: which junctions to cork, for the corker"
             " count and chart (the route is not changed, and the app's link still counts every"
             " junction). from_lts corks only junctions whose road is at least that level (3, the"
-            " default, is every junction the app flags; 4 leaves out LTS 3 roads). skip leaves"
-            " out junctions by street name (any part of it) or by mile. Kept as the draft is"
+            " default, is every junction the app flags; 4 leaves out LTS 3 roads; a junction whose"
+            " road level is not known stays corked). skip leaves out junctions by street name"
+            " (whole words, any case: 'Kennedy St') or by mile. Kept as the draft is"
             " revised; clear_settings corking undoes it."
         ),
         "properties": {

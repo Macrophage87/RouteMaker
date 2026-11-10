@@ -458,7 +458,9 @@
     // ---- Graphs: the stress ribbon over the elevation profile, on one mile axis ----
     const graphs = html("div", {
       class: "graphs", tabindex: "0", role: "slider",
-      "aria-label": mass ? "Place along the route: elevation, rider flow and corkers" : "Place along the route: traffic stress and elevation",
+      "aria-label": mass
+        ? "Place along the route: elevation, rider flow and corkers" + (mass.about != null ? `; about ${mass.about}${mass.at_least ? " or more" : ""} corkers for the ride` : "")
+        : "Place along the route: traffic stress and elevation",
       "aria-valuemin": "0", "aria-valuemax": String(Math.round(total * 10) / 10), "aria-valuenow": "0",
       "aria-valuetext": "Use the left and right arrow keys to move along the route",
     });
@@ -624,7 +626,7 @@
       item.appendChild(html("span", { style: "color:#1e3a8a" }, "● "));
       item.appendChild(document.createTextNode("corkers needed"));
       keyRow.appendChild(item);
-    } else if (corkers) keyRow.appendChild(html("span", {}, "No junctions need corkers"));
+    } else if (corkers) keyRow.appendChild(html("span", {}, skippedJ.length ? "Every junction left out of corking" : "No junctions need corkers"));
     if (skippedJ.length) keyRow.appendChild(html("span", {}, "○ not corked (your call)"));
     if (mass && !corkers) keyRow.appendChild(html("span", {}, "Corkers not checked"));
     if (keyRow.childNodes.length) root.appendChild(keyRow);
