@@ -11238,3 +11238,55 @@ button.route-note:focus-visible {
   outline: 3px solid #1d4ed8;
   outline-offset: 1px;
 }
+
+/* A note's or stop's icon (app/iconArt.tsx, 2026-11-10): a Noto picture (our default) or the phone's emoji. */
+.icon-art {
+  display: block;
+  width: 20px;
+  height: 20px;
+  pointer-events: none;
+}
+.icon-art-emoji {
+  width: auto;
+  height: auto;
+  font: 18px/1 "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
+}
+.note-icon-choice .icon-art {
+  width: 26px;
+  height: 26px;
+}
+.note-icon-choice .icon-art-emoji {
+  width: auto;
+  height: auto;
+  font-size: 22px;
+}
+.icon-art-none {
+  font: 700 20px/1 system-ui, sans-serif;
+  color: #4b5563;
+}
+
+/* A stop's icon beside its number: a small white disc at the pin's right, the number left as it was. */
+.pin-icon {
+  position: absolute;
+  left: calc(100% + 2px);
+  top: 50%;
+  transform: translateY(-50%);
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 2px solid #1d4ed8;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+}
+.pin-icon .icon-art {
+  width: 16px;
+  height: 16px;
+}
+.pin-icon .icon-art-emoji {
+  width: auto;
+  height: auto;
+  font-size: 14px;
+}

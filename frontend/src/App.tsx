@@ -330,7 +330,7 @@ import { canSendToGarmin, handGpx } from "./lib/sendToGarmin.ts";
 import { ResumeRideDialog } from "./ResumeRideDialog.tsx";
 import type { OnwardState } from "./lib/onward.ts";
 import { forgetLeftRide, keepLeftRide, keepLeftRideLeads, leftRide, leftRidePast, resumedBroadcast, resumesQuietly, type RideReplans } from "./lib/rideResume.ts";
-import { NoteDialog, noteSaid, noteTooLongSaid, notesFullSaid, type NoteAsk } from "./NoteDialog.tsx";
+import { NoteDialog, noteSaid, noteTooLongSaid, notesFullSaid, stopIconSaid, type NoteAsk } from "./NoteDialog.tsx";
 import { KIND_ICON, MAX_NOTES, PAGE_NOTES, noteIcon, notesFit, type NoteIcon, type NoteKind, type RouteNote } from "./lib/routeNotes.ts";
 import { StopNameDialog, type StopNameAsk } from "./StopNameDialog.tsx";
 import { LoadRouteDialog } from "./LoadRouteDialog.tsx";
@@ -393,6 +393,8 @@ VIA_MARKS.markAt(initialPlan.points, initialPlan.vias);
 VIA_MARKS.markDrawn(initialPlan.points, initialPlan.drawn);
 // And its stops' own names (2026-10-24); an older link has none.
 VIA_MARKS.nameAt(initialPlan.points, initialPlan.names);
+// And their icons (2026-11-10).
+VIA_MARKS.iconAt(initialPlan.points, initialPlan.icons);
 
 // Go or Plan (lib/appMode.ts; the owner's choices 1 and 2 of 2026-10-11): the tab's own view, else Plan for a
 // link with a plan in it on a wide screen, else by screen size: Plan on a computer, Go on a phone.
@@ -1598,7 +1600,7 @@ export function App() {
       // A plan opened from a link opens drawn, in Plan as in Go (v0.7.0), and is not compared with the last one.
       forgetDrawn();
       setRouteAsk((n) => n + 1);
-      setPoints(VIA_MARKS.nameAt(VIA_MARKS.markDrawn(VIA_MARKS.markAt(plan.points, plan.vias), plan.drawn), plan.names));
+      setPoints(VIA_MARKS.iconAt(VIA_MARKS.nameAt(VIA_MARKS.markDrawn(VIA_MARKS.markAt(plan.points, plan.vias), plan.drawn), plan.names), plan.icons));
       // And its notes (2026-11-10); an older link has none.
       setNotes(plan.notes);
       // The link's ride type comes with its own secret, or none: not a change of type that makes one.
@@ -2445,10 +2447,12 @@ export function App() {
   // The road panel's Set as start / Set as end / Add as stop (OWNER-DECISIONS 441n): the spot
   // right-clicked or held (or the map's center by keyboard), as the search's choice places a
   // place: the coverage check, the cap, the loop; an edit like any other, undone and redone.
-  const placeSpot = useCallback((choice: PlaceChoice, spot: LonLat, asVia = false, name?: string) => {
+  const placeSpot = useCallback((choice: PlaceChoice, spot: LonLat, asVia = false, name?: string, icon?: NoteIcon) => {
     // A tapped trail's Route through this trail: a via point, which shapes the route and is never a stop. A stop
     // with a name (the rider's, or the place's it was picked from) keeps it on its own pair (2026-10-24).
-    const point: LonLat = asVia ? VIA_MARKS.via([spot[0], spot[1]]) : cleanStopName(name) ? VIA_MARKS.named([spot[0], spot[1]], name) : spot;
+    const point: LonLat = asVia ? VIA_MARKS.via([spot[0], spot[1]]) : cleanStopName(name) || icon ? VIA_MARKS.named([spot[0], spot[1]], name) : spot;
+    // And its icon (2026-11-10), likewise on its own pair.
+    if (!asVia && icon) VIA_MARKS.setIcon(point, icon);
     cancelLocateNotice();
     if (!insideCoverage(point)) {
       setNotice(OUTSIDE_NOTICE);
@@ -3246,7 +3250,7 @@ export function App() {
   const renameStop = useCallback((index: number) => {
     const point = pointsRef.current[index];
     if (!point || namePoints(pointsRef.current, VIA_MARKS.isVia, loopVias)[index]?.role !== "stop") return;
-    setStopAsk({ mode: "rename", name: VIA_MARKS.nameOf(point) ?? "", index });
+    setStopAsk({ mode: "rename", name: VIA_MARKS.nameOf(point) ?? "", icon: VIA_MARKS.iconOf(point), index });
   }, [loopVias]);
   // Plan's route notes (lib/routeNotes.ts; 2026-11-10): Add note in the map's long-press menu asks for its kind and
   // words; a note's sign on the map opens it to change or remove. A change is no new route: the link is written again.
@@ -3292,21 +3296,25 @@ export function App() {
     setNotes(PAGE_NOTES.list.filter((_, i) => i !== ask.index));
     announce(noteSaid("removed"));
   };
-  const stopNamed = (name: string) => {
+  const stopNamed = (name: string, icon: NoteIcon | undefined) => {
     const ask = stopAsk;
     setStopAsk(null);
     if (!ask) return;
     if (ask.mode === "add" && ask.point) {
-      placeSpot("via", ask.point, false, name);
+      placeSpot("via", ask.point, false, name, icon);
       return;
     }
     const current = pointsRef.current;
     const point = ask.index === undefined ? undefined : current[ask.index];
-    if (!point || cleanStopName(name) === VIA_MARKS.nameOf(point)) return;
+    if (!point) return;
+    const renamed = cleanStopName(name) !== VIA_MARKS.nameOf(point);
+    const iconChanged = icon !== VIA_MARKS.iconOf(point);
+    if (!renamed && !iconChanged) return;
     // In place: only a label changes, so no new route is asked for; the link is written again (namesVersion).
-    VIA_MARKS.rename(point, name);
+    if (renamed) VIA_MARKS.rename(point, name);
+    if (iconChanged) VIA_MARKS.setIcon(point, icon);
     setNamesVersion((v) => v + 1);
-    announce(stopNamedSaid(cleanStopName(name)));
+    announce(renamed ? stopNamedSaid(cleanStopName(name)) : stopIconSaid(icon));
   };
   // Reverse: in a loop the start stays and the stops go the other way around
   // (OWNER-DECISIONS 374); with a start and one stop that is no change, so a

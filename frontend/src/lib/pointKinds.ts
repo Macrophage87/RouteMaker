@@ -23,6 +23,7 @@
 import { addPoint, type LonLat } from "./geo.ts";
 import { LOOP_START_NAME } from "./summary.ts";
 import { t } from "./i18n.ts";
+import { isNoteIcon, type NoteIcon } from "./routeNotes.ts";
 
 export type PointKind = "stop" | "via";
 
@@ -33,6 +34,8 @@ export class ViaMarks {
   private readonly drawnTo = new WeakSet<LonLat>();
   // A stop's own name (the rider's, or a file's), on its pair; a via point has none.
   private readonly names = new WeakMap<LonLat, string>();
+  // A stop's icon on the map (Stephen 2026-11-10: "Stops can have icons too"), the notes' set; none shows its number only.
+  private readonly icons = new WeakMap<LonLat, NoteIcon>();
 
   /** Whether this pair was made as a via point. */
   isVia = (point: LonLat): boolean => this.vias.has(point);
@@ -42,6 +45,27 @@ export class ViaMarks {
 
   /** A stop's own name, or undefined: none given (the map's place name is shown then). */
   nameOf = (point: LonLat): string | undefined => this.names.get(point);
+
+  /** A stop's icon, or undefined: none chosen. */
+  iconOf = (point: LonLat): NoteIcon | undefined => this.icons.get(point);
+
+  /** Gives the stop its icon in place (undefined takes it away): a label only, as `rename`. */
+  setIcon(point: LonLat, icon: NoteIcon | undefined): void {
+    if (icon) this.icons.set(point, icon);
+    else this.icons.delete(point);
+  }
+
+  /** Gives the pairs a link or a saved route gives icons to (`icons`: index to icon) theirs, and the list back. */
+  iconAt<T extends LonLat[]>(points: T, icons: ReadonlyMap<number, NoteIcon>): T {
+    for (const [i, icon] of icons) if (points[i]) this.icons.set(points[i], icon);
+    return points;
+  }
+
+  // A new pair in an old one's place keeps its name and icon.
+  private keepLabels(from: LonLat, to: LonLat): void {
+    this.named(to, this.nameOf(from));
+    this.setIcon(to, this.iconOf(from));
+  }
 
   /** Names a pair just made (trimmed, at most STOP_NAME_MAX; blank is no name), and gives it back. */
   named(point: LonLat, name: string | undefined): LonLat {
@@ -80,7 +104,7 @@ export class ViaMarks {
     const copy: LonLat = [point[0], point[1]];
     if (this.isDrawn(point)) this.drawn(copy);
     // A stop made a via point and back keeps its name for the round trip; a via point never shows one.
-    this.named(copy, this.nameOf(point));
+    this.keepLabels(point, copy);
     return kind === "via" ? this.via(copy) : copy;
   }
 
@@ -122,7 +146,7 @@ export class ViaMarks {
       if (i === 0 || wanted.has(i - 1) === this.isDrawn(point)) return point;
       const copy: LonLat = [point[0], point[1]];
       if (this.isVia(point)) this.via(copy);
-      this.named(copy, this.nameOf(point));
+      this.keepLabels(point, copy);
       return wanted.has(i - 1) ? this.drawn(copy) : copy;
     });
   }
@@ -146,7 +170,7 @@ export class ViaMarks {
   /** A pair moved to `to` (a dragged marker): the same kind as the one it replaces, its leg drawn as it was. */
   moved(from: LonLat, to: LonLat): LonLat {
     if (this.isDrawn(from)) this.drawn(to);
-    this.named(to, this.nameOf(from));
+    this.keepLabels(from, to);
     return this.isVia(from) ? this.via(to) : to;
   }
 }
@@ -446,6 +470,34 @@ export function plannedStopNumbers(points: readonly LonLat[], planned: readonly 
 /** The link's `sn` values: "2:Union Market", one per named stop. */
 export function encodeStopNames(names: ReadonlyMap<number, string>): string[] {
   return [...names].sort(([a], [b]) => a - b).map(([i, name]) => `${i}:${name}`);
+}
+
+/** Each stop's icon by its index, as `stopNames` gives their names: a via point shows none. */
+export function stopIcons(points: readonly LonLat[], iconOf: (p: LonLat) => NoteIcon | undefined, isVia: (p: LonLat) => boolean, loop = false): Map<number, NoteIcon> {
+  const out = new Map<number, NoteIcon>();
+  points.forEach((point, i) => {
+    const icon = iconOf(point);
+    const last = i === points.length - 1;
+    if (icon && isMiddle(i, points.length, loop) && (last || !isVia(point))) out.set(i, icon);
+  });
+  return out;
+}
+
+/** The link's `si` values: "2:coffee", one per stop with an icon (2026-11-10). */
+export function encodeStopIcons(icons: ReadonlyMap<number, NoteIcon>): string[] {
+  return [...icons].sort(([a], [b]) => a - b).map(([i, icon]) => `${i}:${icon}`);
+}
+
+/** The `si` values read back: an icon this app does not know (a newer one) is left out. */
+export function decodeStopIcons(values: readonly string[], count: number): Map<number, NoteIcon> {
+  const out = new Map<number, NoteIcon>();
+  for (const value of values) {
+    const at = value.indexOf(":");
+    const i = Number(value.slice(0, at));
+    const icon = value.slice(at + 1);
+    if (at > 0 && Number.isInteger(i) && i > 0 && i < count && isNoteIcon(icon)) out.set(i, icon);
+  }
+  return out;
 }
 
 /** The `sn` values read back: the names of points that fit a plan of `count` points (after its start; a loop's last is a stop). */
