@@ -278,7 +278,6 @@ export function LoadRouteDialog({ open, onClose, signedIn, signIn, preset, onGpx
       setSaving(null);
       if (outcome === "unreachable") {
         setSaid(DRAFT_UNREACHABLE());
-        setRefocus(`d${row.id}`);
       } else if (outcome === null) {
         setDrafts((all) => all.filter((d) => d.id !== row.id));
         setSaid(t("That draft is gone."));
@@ -290,7 +289,6 @@ export function LoadRouteDialog({ open, onClose, signedIn, signIn, preset, onGpx
         setRefocus(outcome.route.id);
       } else {
         setSaid(outcome.message);
-        setRefocus(`d${row.id}`);
       }
     });
   };
