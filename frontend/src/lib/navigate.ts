@@ -35,6 +35,7 @@ import { cueParts, shortStreets } from "./cueShown.ts";
 import { mileWords, trailMileAt, type TrailMiles } from "./trailMiles.ts";
 import type { DescriptionEntry, RouteResponse } from "./api.ts";
 import type { JunctionShape } from "./junctionShape.ts";
+import { NOTE_NEAR_M, noteRideText, type NoteKind, type RouteNote } from "./routeNotes.ts";
 
 // ---- Settings ---------------------------------------------------------------------------------
 
@@ -269,7 +270,7 @@ const MAX_SPEED_MS = 20;
 
 // ---- The ride's model ---------------------------------------------------------------------------
 
-export type CueKind = "turn" | "onto" | "hazard" | "crossing" | "walk" | "busy" | "calmer" | "unpaved" | "laneEnds" | "stop" | "end";
+export type CueKind = "turn" | "onto" | "hazard" | "crossing" | "walk" | "busy" | "calmer" | "unpaved" | "laneEnds" | "stop" | "end" | "note";
 
 /** A turn's movement: a bear is a change of street a little off straight (the API's describe.SLIGHT_MIN_DEG). */
 export type TurnMovement = "left" | "right" | "bear_left" | "bear_right" | "uturn";
@@ -340,6 +341,8 @@ export interface Cue {
   stop: number | null;
   /** A stop's own name (2026-10-24: the rider's, or a file's), said and shown with its number; absent with none. */
   stopName?: string;
+  /** A route note's kind and the rider's own words (lib/routeNotes.ts; 2026-11-10), on a "note" cue only. */
+  note?: { kind: NoteKind; text: string };
   /**
    * A jog's turns after this one (each within JOG_M of the one before, at most JOG_TURNS in all), in order: said
    * with it early, drawn with it as one arrow; at "now" each turn is said on its own.
@@ -977,7 +980,13 @@ function stopCueText(number: number, name: string | undefined, side: "left" | "r
  * [here, ...the points left], so the plan's stop 3 is its point 1 then): the plan's numbers are kept (pointKinds.ts
  * plannedStopNumbers), so "stop 3" stays stop 3 on the card, the map and the cue sheet.
  */
-export function rideModel(route: RouteResponse, vias: readonly number[] = [], names: ReadonlyMap<number, string> = new Map(), numbers: ReadonlyMap<number, number> = new Map()): RideModel {
+export function rideModel(
+  route: RouteResponse,
+  vias: readonly number[] = [],
+  names: ReadonlyMap<number, string> = new Map(),
+  numbers: ReadonlyMap<number, number> = new Map(),
+  notes: readonly RouteNote[] = [],
+): RideModel {
   const coordinates = route.geometry.coordinates;
   const along = lineAlong(coordinates);
   const lengthM = along.length ? along[along.length - 1] : 0;
@@ -1091,6 +1100,14 @@ export function rideModel(route: RouteResponse, vias: readonly number[] = [], na
   withButtons(cues, (route.light_buttons ?? []).map((button) => toLine(button.at_m)));
   joinJogs(cues);
   buttonsOnJogs(cues);
+  // The route's notes (lib/routeNotes.ts; Stephen 2026-11-10, "Yes, in Ride too"): each within NOTE_NEAR_M of the line
+  // is a cue where the line passes nearest it, said once early as a hazard is; one further off is on the map only.
+  const noted = noteCues(notes, { coordinates, along }, lengthM);
+  if (noted.length) {
+    cues.push(...noted);
+    cues.sort((a, b) => a.atM - b.atM);
+    cues.forEach((cue, i) => (cue.index = i));
+  }
   const farSide = farSideAtEnd(route.arrival_side, entries);
   cues.push({ index: cues.length, kind: "end", atM: lengthM, text: endWords(route.arrival_side), movement: null, street: null, severity: null, tier: null, stop: null, ...(farSide ? { farSide } : {}) });
   const paceMs = route.distance_m > 0 && route.duration_s > 0 ? route.distance_m / route.duration_s : null;
@@ -1105,6 +1122,20 @@ export function rideModel(route: RouteResponse, vias: readonly number[] = [], na
     .filter((s) => spanScale > 0 && s.half === true && s.tier !== null && s.tier < 5)
     .map((s) => ({ fromM: s.from_m * spanScale, toM: s.to_m * spanScale, tier: s.tier as number }));
   return { coordinates, along, lengthM, cues, stretches, paceMs, ...(timeline ? { timeline } : {}), ...(vias.length ? { passes } : {}), ...(halves.length ? { halves } : {}) };
+}
+
+/** The cues of the notes near the line, at the line's nearest point to each (the first pass of a loop's). */
+export function noteCues(notes: readonly RouteNote[], line: Pick<RideModel, "coordinates" | "along">, lengthM: number): Cue[] {
+  const out: Cue[] = [];
+  for (const note of notes) {
+    // The nearest point itself (a tie of 1 m: a loop's two passes alike, the first).
+    const at = snap(line, note.at, -Infinity, Infinity, 1);
+    if (!at || at.offM > NOTE_NEAR_M) continue;
+    // Never at the very start or past the end, where no cue ahead is said.
+    const atM = Math.min(Math.max(at.alongM, Math.min(2, lengthM)), Math.max(0, lengthM - 1));
+    out.push({ index: 0, kind: "note", atM, text: noteRideText(note), movement: null, street: null, severity: null, tier: null, stop: null, note: { kind: note.kind, text: note.text } });
+  }
+  return out;
 }
 
 /** Whether `progressM` is on a half step above `tier` (the model's `halves`). */
@@ -1266,10 +1297,12 @@ export function roadHazardWords(text: string): string {
   return `${m[1]} ${m[2]} ${m[3]}. ${m[4].charAt(0).toUpperCase()}${m[4].slice(1)}`;
 }
 
-export function says(level: Verbosity, cue: Pick<Cue, "kind" | "tier" | "severity"> & Pick<Partial<Cue>, "source">): boolean {
+export function says(level: Verbosity, cue: Pick<Cue, "kind" | "tier" | "severity"> & Pick<Partial<Cue>, "source" | "note">): boolean {
   if (cue.kind === "stop" || cue.kind === "end") return true;
   if (level === "quiet") return false;
   if (level === "full") return true;
+  // A route note: the stoker hears its cautions, as the flagged junctions.
+  if (cue.kind === "note") return cue.note?.kind === "caution";
   // Stoker: turns, red and orange junctions, walking, and the start of LTS 4 and Avoid stretches; not a bike lane's end
   // (D28), which is the captain's to act on.
   if (cue.kind === "turn" || cue.kind === "walk") return true;
@@ -1495,7 +1528,7 @@ function lowerFirst(text: string): string {
  */
 function leadsWithTemplate(cue: Pick<Cue, "kind"> & Pick<Partial<Cue>, "source">): boolean {
   if (cue.kind === "hazard") return cue.source !== "workzone";
-  return cue.kind === "turn" || cue.kind === "onto" || cue.kind === "crossing" || cue.kind === "busy" || cue.kind === "calmer" || cue.kind === "unpaved" || cue.kind === "laneEnds" || cue.kind === "walk";
+  return cue.kind === "turn" || cue.kind === "onto" || cue.kind === "crossing" || cue.kind === "busy" || cue.kind === "calmer" || cue.kind === "unpaved" || cue.kind === "laneEnds" || cue.kind === "walk" || cue.kind === "note";
 }
 
 /** A cue's words placed after "In 500 feet, ": the first letter lowered only where it is the app's template. */
@@ -2068,7 +2101,7 @@ export const CROSSING_SHOWN_M = 100;
  * reach here is Claude's pick for this fix (not measured; the owner has not ruled on it).
  */
 export function nextAction(model: RideModel, progressM: number): Cue | null {
-  const leads = (c: Cue) => ahead(model, c, progressM) && (c.kind === "turn" || c.kind === "onto" || c.kind === "hazard" || (c.kind === "crossing" && c.atM - progressM <= CROSSING_SHOWN_M) || c.kind === "walk" || c.kind === "stop" || c.kind === "end");
+  const leads = (c: Cue) => ahead(model, c, progressM) && (c.kind === "turn" || c.kind === "onto" || c.kind === "hazard" || c.kind === "note" || (c.kind === "crossing" && c.atM - progressM <= CROSSING_SHOWN_M) || c.kind === "walk" || c.kind === "stop" || c.kind === "end");
   const first = model.cues.find(leads) ?? null;
   if (!first || !buttonOnly(first)) return first;
   const after = model.cues.find((c) => c.atM >= first.atM && !buttonOnly(c) && leads(c));

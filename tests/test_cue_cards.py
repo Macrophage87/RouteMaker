@@ -137,8 +137,8 @@ class _Cards:
         self.drawn.append((args, list(only)))
         return [f"\x89PNG-{n}".encode("latin-1") for n in only if n <= 5]
 
-    def cue_rows(self, answer, vias, names):
-        return cue_cards.cue_rows(answer, vias, names)
+    def cue_rows(self, answer, vias, names, notes=None):
+        return cue_cards.cue_rows(answer, vias, names, notes)
 
 
 def _site(stand_in, tmp_path, cards):  # noqa: F811
@@ -181,9 +181,10 @@ def test_the_tool_sends_the_first_images_and_links_every_one(stand_in, tmp_path)
     assert "first 3 of 5" in out["shown"]
     # The cues as text too, Start to Finish.
     assert out["cues"][0]["cue"] == "Start" and out["cues"][-1]["cue"] == "Finish"
-    (answer, _title, _vias, names, credit), only = cards.drawn[0]
+    (answer, _title, _vias, names, credit, notes), only = cards.drawn[0]
     assert answer is server.drafts.get(draft_id).plan.answer
     assert names == {} and credit.split("\n")[0] == "Route data:" and only == [1, 2, 3]
+    assert notes == []
     gone = rpc(server, "tools/call", {"name": "cue_cards", "arguments": {"draft_id": "dnone"}})
     assert gone["result"]["isError"]
 

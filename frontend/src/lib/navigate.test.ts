@@ -1400,7 +1400,7 @@ test("after a re-route the stops left keep the plan's numbers: the plan's stop 3
   assert.deepEqual([...plannedStopNumbers(plan, plan, marks.isVia)].slice(0, 4), [[1, 1], [2, 2], [3, 3], [4, 4]]);
   // Ride builds every model, the re-routes' included, with the numbers of the plan it began with.
   const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
-  assert.match(ride, /rideModel\(r, viaIndices\(points, VIA_MARKS\.isVia\), stopNames\([^)]*\), stopNumbers\(points\)\)/);
+  assert.match(ride, /rideModel\(r, viaIndices\(points, VIA_MARKS\.isVia\), stopNames\([^)]*\), stopNumbers\(points\), PAGE_NOTES\.list\)/);
   // ...one on where the ride began away from its start, whose start is stop 1 (Stephen, 2026-11-06).
   assert.match(ride, /if \(at < 0\) return plannedStopNumbers\(points, firstPlan\.current, VIA_MARKS\.isVia\);/);
 });

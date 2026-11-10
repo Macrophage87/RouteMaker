@@ -210,6 +210,7 @@ def test_it_introduces_itself_and_lists_its_tools(tools) -> None:
         "route_segments",
         "ride_conditions",
         "my_routes",
+        "route_notes",
         "save_route",
         "my_drafts",
         "organize_route",

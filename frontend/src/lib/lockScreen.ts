@@ -131,7 +131,7 @@ function rowLines(row: CueRow, sinceM: number, measure: Measure): { lines: LockL
       ...(row.reason ? [{ text: row.reason, px: PX.reason, weight: 400 as const }] : []),
       // A named stop says its number too ("make sure stops are listed", the owner, 2026-11-10).
       ...(row.arrow.kind === "stop" && row.arrow.number != null && row.turn !== `Stop ${row.arrow.number}` ? [{ text: `Stop ${row.arrow.number}`, px: PX.reason, weight: 400 as const }] : []),
-      ...(row.road ? [{ text: abbreviateStreet(row.road), px: PX.road, weight: 400 as const }] : []),
+      ...(row.road ? [{ text: row.own ? row.road : abbreviateStreet(row.road), px: PX.road, weight: 400 as const }] : []),
       ...(row.then ? [{ text: row.then, px: PX.then, weight: 700 as const }] : []),
     ]),
     PAD + ARROW_PX,

@@ -106,9 +106,13 @@ def _named(street) -> str:
 # --- the rows ----------------------------------------------------------------------------------
 
 
-def cue_rows(answer: dict, vias: list[int] | tuple = (), names: dict | None = None) -> list[dict]:
+def cue_rows(
+    answer: dict, vias: list[int] | tuple = (), names: dict | None = None, notes=None
+) -> list[dict]:
     """The route's cue rows, in order, Start first and Finish last: each {at_m, turn, reason,
-    road, then, arrow}, `arrow` the picture's kind and its own fields (lib/cueArrow.ts CueArrow)."""
+    road, then, arrow}, `arrow` the picture's kind and its own fields (lib/cueArrow.ts CueArrow).
+    `notes`: the route's notes near its line, each {kind, text, at_m} (the connector's
+    `notes_along`): a Caution or Note row in the rider's own words (lib/cueSheetPdf.ts rowOf)."""
     names = {int(k): str(v) for k, v in (names or {}).items()}
     through = {int(v) for v in vias or ()}
     entries = sorted(answer.get("description") or [], key=lambda e: e.get("from_m") or 0)
@@ -162,7 +166,22 @@ def cue_rows(answer: dict, vias: list[int] | tuple = (), names: dict | None = No
                 | {"_move": turn["movement"], "_road": road}
             )
     rows.append(_row(length, "Finish", "", {"kind": "finish"}))
-    return _jogs(rows)
+    rows = _jogs(rows)
+    for note in notes or []:
+        caution = note["kind"] == "caution"
+        row = _row(
+            min(float(note["at_m"]), length),
+            "Caution" if caution else "Note",
+            str(note["text"]),
+            {"kind": "caution" if caution else "note"},
+        )
+        # After the cues at its place (a turn there first), before the finish.
+        at = next(
+            (i for i, r in enumerate(rows) if r["at_m"] > row["at_m"] or i == len(rows) - 1),
+            len(rows) - 1,
+        )
+        rows.insert(at, row)
+    return rows
 
 
 def _row(at: float, turn: str, road: str, arrow: dict) -> dict:
@@ -520,11 +539,11 @@ def _row_layout(row: dict, since_m: float = 0.0) -> tuple[list[tuple], int]:
     return lines, max(bottoms) + PAD
 
 
-def pages(answer: dict, title: str, vias=(), names=None, credit: str = "") -> dict:
+def pages(answer: dict, title: str, vias=(), names=None, credit: str = "", notes=None) -> dict:
     """The images' layout: the rows, each laid out, the rows on each image by index (a stop that
     ends one image heads the next, the credits' own image last as an empty group), the header for a
     part, and the credits' lines and glyphs."""
-    rows = cue_rows(answer, vias, names)
+    rows = cue_rows(answer, vias, names, notes)
     laid = [_row_layout(r, rows[i - 1]["at_m"] if i else 0.0) for i, r in enumerate(rows)]
     distance = float(answer.get("distance_m") or 0.0)
     summary = f"Distance {distance / METRES_PER_MILE:.1f} mi ({distance / 1000:.1f} km)." + (
@@ -603,9 +622,9 @@ def pages(answer: dict, title: str, vias=(), names=None, credit: str = "") -> di
     }
 
 
-def count(answer: dict, title: str, vias=(), names=None, credit: str = "") -> int:
+def count(answer: dict, title: str, vias=(), names=None, credit: str = "", notes=None) -> int:
     """How many images the route's cues run to (laid out, none drawn)."""
-    return len(pages(answer, title, vias, names, credit)["groups"])
+    return len(pages(answer, title, vias, names, credit, notes)["groups"])
 
 
 def draw(
@@ -614,11 +633,12 @@ def draw(
     vias=(),
     names=None,
     credit: str = "",
+    notes=None,
     only: list[int] | range | None = None,
 ) -> list[bytes]:
     """The route's phone cue images as PNGs, in order; with `only`, just those (from 1), each
     still labelled against the whole count. Laying out is cheap; drawing is the cost."""
-    laid_out = pages(answer, title, vias, names, credit)
+    laid_out = pages(answer, title, vias, names, credit, notes)
     rows, laid, groups = laid_out["rows"], laid_out["laid"], laid_out["groups"]
     header = laid_out["header"]
     credit_lines, credit_glyphs = laid_out["credit_lines"], laid_out["credit_glyphs"]

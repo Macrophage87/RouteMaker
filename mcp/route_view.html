@@ -401,6 +401,19 @@
         el("text", { "text-anchor": "middle", y: 5, "font-size": 13, "font-weight": 700, fill: "#1c1917" }, g).textContent = "!";
       }
     }
+    // The route's notes (frontend lib/routeNotes.ts): a caution a yellow triangle with "!", a
+    // point of interest a blue disc with "i", where the rider (or the assistant) put them.
+    for (const n of v.notes || []) {
+      const [x, y] = px(n.lon_lat);
+      const g = mark(x, y, `${n.kind === "caution" ? "Caution" : "Point of interest"}${n.mi != null ? ` at mile ${n.mi.toFixed(1)}` : ""}: ${n.text}`);
+      if (n.kind === "caution") {
+        el("path", { d: "M0 -11 11 8 -11 8Z", fill: "#facc15", stroke: "#1c1917", "stroke-width": 1.5 }, g);
+        el("text", { "text-anchor": "middle", y: 6, "font-size": 12, "font-weight": 800, fill: "#1c1917" }, g).textContent = "!";
+      } else {
+        el("circle", { r: 9, fill: "#1d4ed8", stroke: "#fff", "stroke-width": 2 }, g);
+        el("text", { "text-anchor": "middle", y: 4.5, "font-size": 12, "font-weight": 700, "font-family": "Georgia, serif", fill: "#fff" }, g).textContent = "i";
+      }
+    }
     const placed = ((mass && mass.corkers) || []).map((c) => { const p = at(c.mi); return p ? { ...c, xy: px(p) } : null; }).filter(Boolean);
     for (const grp of gather(placed, (c) => c.xy, 18)) {
       const [x, y] = grp[0].xy, n = grp.reduce((t, c) => t + (c.corkers || 0), 0);
@@ -611,6 +624,7 @@
     }
     if (!mass && (v.junctions || []).length) keyRow.appendChild(html("span", {}, "▲ stressful junction"));
     if ((v.closures || []).some((c) => c.kind !== "closure")) keyRow.appendChild(html("span", {}, "! possible closure"));
+    if ((v.notes || []).length) keyRow.appendChild(html("span", {}, "Notes: ! caution, i point of interest"));
     if (flow) {
       const seen = new Set(flow.map((f) => flowBand(f[2]).word));
       for (const b of FLOW_BANDS) {

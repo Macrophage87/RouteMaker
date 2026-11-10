@@ -1085,7 +1085,130 @@ def link_stop_names(names, count: int, vias, loop: bool) -> dict[int, str]:
     return out
 
 
-def plan_fragment(points, vias, preset: str, dials: dict, sent: dict, names=None) -> str:
+# Route notes (frontend/src/lib/routeNotes.ts; Stephen 2026-11-10): a Caution or a Point of
+# interest at a spot, in the rider's own words, kept in the link as `nt=c,lon,lat,words`.
+NOTE_TEXT_MAX = 80  # routeNotes.ts NOTE_TEXT_MAX, our default
+MAX_NOTES = 20  # routeNotes.ts MAX_NOTES, our default
+NOTE_NEAR_M = 60  # routeNotes.ts NOTE_NEAR_M: a note this close to the line is a cue
+# A note asked for further off than NOTE_NEAR_M, but within this, is put on the route where it
+# passes nearest (our default, unmeasured: a place looked up by name is often its middle).
+NOTE_SNAP_M = 400
+NOTE_KINDS = {"caution": "c", "interest": "i"}
+NOTE_RE = re.compile(r"^([ci]),(-?\d{1,3}(?:\.\d+)?),(-?\d{1,2}(?:\.\d+)?),(.*)$", re.S)
+
+
+def clean_note_text(text) -> str:
+    """A note's words as the page keeps them (routeNotes.ts `cleanNoteText`): no control
+    characters, spaces squeezed, at most NOTE_TEXT_MAX characters; "" for none."""
+    clean = re.sub(r"[\x00-\x1f\x7f]", " ", str(text or ""))
+    return re.sub(r"\s+", " ", clean).strip()[:NOTE_TEXT_MAX].strip()
+
+
+def encode_notes(notes) -> list[str]:
+    """The link's `nt` values (routeNotes.ts `encodeNotes`): kind letter, place, then words."""
+    out = []
+    for note in (notes or [])[:MAX_NOTES]:
+        text = clean_note_text(note.get("text"))
+        if text and note.get("kind") in NOTE_KINDS:
+            letter = NOTE_KINDS[note["kind"]]
+            out.append(f"{letter},{float(note['lon']):.5f},{float(note['lat']):.5f},{text}")
+    return out
+
+
+def decode_notes(values) -> list[dict]:
+    """The `nt` values read back (routeNotes.ts `decodeNotes`); one that does not read is left
+    out. Each {kind, lon, lat, text}."""
+    out: list[dict] = []
+    for value in values or []:
+        m = NOTE_RE.match(str(value))
+        if not m:
+            continue
+        lon, lat, text = float(m[2]), float(m[3]), clean_note_text(m[4])
+        if not text or abs(lon) > 180 or abs(lat) > 90:
+            continue
+        kind = "caution" if m[1] == "c" else "interest"
+        out.append({"kind": kind, "lon": lon, "lat": lat, "text": text})
+        if len(out) >= MAX_NOTES:
+            break
+    return out
+
+
+def line_nearest(line, lon: float, lat: float) -> tuple[float, float, tuple[float, float]]:
+    """The nearest point of `line` to (lon, lat): metres along the line to it, metres off the
+    line, and the point; the first along where two passes are as near (a loop's)."""
+    kx = 111_320 * math.cos(math.radians(lat))
+    ky = 110_574
+    best = (math.inf, 0.0, (lon, lat))
+    along = 0.0
+    for a, b in itertools.pairwise(line):
+        ax, ay = (a[0] - lon) * kx, (a[1] - lat) * ky
+        bx, by = (b[0] - lon) * kx, (b[1] - lat) * ky
+        dx, dy = bx - ax, by - ay
+        length2 = dx * dx + dy * dy
+        t = 0.0 if length2 == 0 else max(0.0, min(1.0, -(ax * dx + ay * dy) / length2))
+        off = math.hypot(ax + t * dx, ay + t * dy)
+        seg = math.sqrt(length2)
+        if off < best[0] - 1:
+            point = (a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1]))
+            best = (off, along + t * seg, point)
+        along += seg
+    return best[1], best[0], best[2]
+
+
+def point_at_mile(line, mile: float) -> tuple[float, float]:
+    """The point `mile` miles along `line` (its end past the end)."""
+    want = mile * METRES_PER_MILE
+    along = 0.0
+    for a, b in itertools.pairwise(line):
+        seg = haversine_mi((a[0], a[1]), (b[0], b[1])) * METRES_PER_MILE
+        if seg > 0 and along + seg >= want:
+            t = (want - along) / seg
+            return a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1])
+        along += seg
+    if not line:
+        raise ToolError("the draft has no line")
+    return line[-1][0], line[-1][1]
+
+
+def notes_along(answer: dict, notes) -> list[dict]:
+    """The notes near the route's line as cue rows' places (core/cue_cards.py `cue_rows`): each
+    {kind, text, at_m}, `at_m` in the description's metres, in order along; one further off than
+    NOTE_NEAR_M is on the map only."""
+    line = (answer.get("geometry") or {}).get("coordinates") or []
+    if len(line) < 2:
+        return []
+    total = sum(
+        math.hypot((b[0] - a[0]) * 111_320 * math.cos(math.radians(a[1])), (b[1] - a[1]) * 110_574)
+        for a, b in itertools.pairwise(line)
+    )
+    scale = float(answer.get("distance_m") or total) / total if total else 1.0
+    out = []
+    for note in notes or []:
+        along, off, _ = line_nearest(line, float(note["lon"]), float(note["lat"]))
+        if off <= NOTE_NEAR_M:
+            at = min(max(along, 2.0), max(0.0, total - 1)) * scale
+            out.append({"kind": note["kind"], "text": note["text"], "at_m": at})
+    return sorted(out, key=lambda n: n["at_m"])
+
+
+def route_notes_out(answer: dict, notes) -> list[dict]:
+    """The route's notes as an answer gives them: each {kind, text, lon, lat, mi}, `mi` the
+    mile where the route passes it, or None for one too far off the line to be a cue."""
+    line = (answer.get("geometry") or {}).get("coordinates") or []
+    out = []
+    for note in notes or []:
+        mi = None
+        if len(line) >= 2:
+            along, off, _ = line_nearest(line, float(note["lon"]), float(note["lat"]))
+            if off <= NOTE_NEAR_M:
+                mi = round(along / METRES_PER_MILE, 1)
+        out.append({**note, "mi": mi})
+    return out
+
+
+def plan_fragment(
+    points, vias, preset: str, dials: dict, sent: dict, names=None, notes=None
+) -> str:
     """The page's own plan link fragment (frontend/src/lib/planHash.ts `encodePlan`): the
     answer's `dials`, what only the request carried (`sent`, the POST /api/route body: the
     legs drawn in the app's manual mode among it) and the stops' own `names` by index."""
@@ -1098,6 +1221,9 @@ def plan_fragment(points, vias, preset: str, dials: dict, sent: dict, names=None
     for i, name in link_stop_names(names, len(points), set(vias), bool(dials.get("loop"))).items():
         # As URLSearchParams writes it, with the page's commas left bare.
         parts.append(urllib.parse.urlencode({"sn": f"{i}:{name}"}).replace("%2C", ","))
+    for value in encode_notes(notes):
+        # The route's notes (routeNotes.ts encodeNotes), written as the page writes them.
+        parts.append(urllib.parse.urlencode({"nt": value}).replace("%2C", ","))
     parts.append("preset=" + preset)
     parts.append("v=2")
     parts.append(f"stress={dials['stress']}")
@@ -1318,13 +1444,15 @@ def parse_fragment(fragment: str) -> tuple[list, list[int], str, dict]:
         if at.isdigit() and 0 < int(at) < len(points) and clean:
             names[int(at)] = clean
     options["stop_names"] = names or None
+    # The route's notes (`nt=c,lon,lat,words`, routeNotes.ts `decodeNotes`), carried likewise.
+    options["route_notes"] = decode_notes(params.get("nt")) or None
     return points, vias, preset, options
 
 
 # What a plan's options carry for its link or for the MCP server only, never sent to POST
 # /api/route: the stops' names, and that a followed line is an alternative's, not the rider's
 # (the round 4 hunt, L4-1: an avoid plans such a draft through its points instead).
-LINK_ONLY_OPTIONS = ("stop_names", "follow_alternative", "corking")
+LINK_ONLY_OPTIONS = ("stop_names", "route_notes", "follow_alternative", "corking")
 
 
 def marks_with_point_at(options: dict, at: int) -> dict:
@@ -3684,7 +3812,7 @@ IMAGES_PRIVATE = "_images"
 VIEW_MIME = "text/html;profile=mcp-app"
 VIEW_META_KEY = "routemaker/route-view"
 UI_EXTENSION = "io.modelcontextprotocol/ui"
-VIEW_TOOLS = ("plan_route", "revise_route", "open_link", "plan_metro_loop")
+VIEW_TOOLS = ("plan_route", "revise_route", "open_link", "plan_metro_loop", "route_notes")
 VIEW_FILE = Path(__file__).resolve().parent / "route_view.html"
 # The elevation profile's samples sent to the view: enough for a chat-width graph. Our default.
 VIEW_PROFILE_POINTS = 400
@@ -3805,7 +3933,7 @@ def cue_card_names(plan: Plan, asked) -> dict[int, str]:
 
 def cue_card_args(draft, names: dict[int, str]) -> tuple:
     """core.cue_cards.draw's arguments for a draft: its answer, its name, its through points,
-    the stops' names, and the route's credits, a source to a line."""
+    the stops' names, the route's credits, a source to a line, and its notes near the line."""
     answer = draft.plan.answer
     sources = [str(a) for a in answer.get("attribution") or []] or [
         "© OpenStreetMap contributors, ODbL"
@@ -3816,6 +3944,8 @@ def cue_card_args(draft, names: dict[int, str]) -> tuple:
         list(draft.plan.vias),
         names,
         "\n".join(["Route data:", *sources, "Planned with RouteMaker."]),
+        # The route's notes near its line, as rows (route_notes).
+        notes_along(answer, draft.options.get("route_notes")),
     )
 
 
@@ -3823,6 +3953,8 @@ def draft_view(draft, draft_id: str) -> dict:
     """A kept draft's route view, as its answer gave it (for the picture, core.route_picture)."""
     plan = draft.plan
     said = {"draft_id": draft_id, "summary": summary(plan.answer), **route_closures(plan)}
+    if draft.options.get("route_notes"):
+        said["route_notes"] = route_notes_out(plan.answer, draft.options["route_notes"])
     return route_view(plan, said, draft.name, draft.options.get("corking"))
 
 
@@ -3884,6 +4016,16 @@ def route_view(plan: Plan, out: dict, name: str, corking: dict | None = None) ->
         "junctions": junctions,
         "closures": closures,
         "mass": _mass_view(answer, corking),
+        # The route's notes (route_notes), each where it was put and its mile where near the line.
+        "notes": [
+            {
+                "lon_lat": [n["lon"], n["lat"]],
+                "kind": n["kind"],
+                "text": n["text"],
+                "mi": n.get("mi"),
+            }
+            for n in out.get("route_notes") or []
+        ],
     }
 
 
@@ -4072,7 +4214,15 @@ class Draft:
     def fragment(self, dials: dict) -> str:
         """The draft's plan link fragment, with its ride key."""
         plan = self.plan
-        fragment = plan_fragment(plan.points, plan.vias, plan.preset, dials, plan.sent, plan.names)
+        fragment = plan_fragment(
+            plan.points,
+            plan.vias,
+            plan.preset,
+            dials,
+            plan.sent,
+            plan.names,
+            self.options.get("route_notes"),
+        )
         return with_ride_key(fragment, self.ride_key)
 
 
@@ -5301,6 +5451,56 @@ TOOLS = [
         "annotations": {"readOnlyHint": True, "openWorldHint": False},
     },
     {
+        "name": "route_notes",
+        "title": "Route notes",
+        "description": (
+            "Put notes on a draft's route: a caution (a dangerous intersection, a bad surface)"
+            " or a point of interest (a view, a mural, a water fountain), each at a spot, in a"
+            " few words of the rider's own. Give the route's whole list of notes each time:"
+            " the answer's route_notes lists those it has (an empty list takes them all"
+            " away). A note near the route is a cue: on the app's cue sheets, phone images and"
+            " bike computer courses, and said in Ride as the rider reaches it; one put further"
+            f" off than {NOTE_NEAR_M} m (our default) but within {NOTE_SNAP_M} m is moved onto"
+            " the route where it passes nearest. The notes travel in the link and are kept on"
+            " a new draft (the answer's draft_id), as revise_route keeps a change."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "draft_id": {"type": "string"},
+                "notes": {
+                    "type": "array",
+                    "maxItems": MAX_NOTES,
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "kind": {"type": "string", "enum": ["caution", "interest"]},
+                            "text": {"type": "string", "minLength": 1, "maxLength": NOTE_TEXT_MAX},
+                            "at": {
+                                **POINT_SCHEMA,
+                                "description": (
+                                    "Where: [lon, lat], {lon, lat}, or a place or junction to"
+                                    " look up near the route. Or give at_mile instead."
+                                ),
+                            },
+                            "at_mile": {
+                                "type": "number",
+                                "minimum": 0,
+                                "description": (
+                                    "Miles from the start along the route, in place of at."
+                                ),
+                            },
+                        },
+                        "required": ["kind", "text"],
+                    },
+                },
+            },
+            "required": ["draft_id", "notes"],
+        },
+        # Only a new draft, as revise_route's: nothing kept or written.
+        "annotations": {"readOnlyHint": True, "openWorldHint": False},
+    },
+    {
         "name": "save_route",
         "description": (
             "Keep a draft once the rider has said to, under a name: on the site's own connector,"
@@ -5850,6 +6050,62 @@ class Server:
         ]
         return out
 
+    # route_notes
+    def route_notes(self, args: dict, call: Call) -> dict:
+        draft_id = str(args["draft_id"])
+        draft = self.drafts.get(draft_id)
+        if draft is None:
+            raise ToolError(f"no draft {draft_id} (drafts last only a while; plan it again)")
+        asked = args.get("notes")
+        if not isinstance(asked, list):
+            raise ToolError("notes is the route's whole list of notes ([] for none)")
+        if len(asked) > MAX_NOTES:
+            raise ToolError(f"a route has at most {MAX_NOTES} notes (our default)")
+        plan = draft.plan
+        line = plan.line
+        taken: list[dict] = []
+        notes: list[dict] = []
+        moved: list[str] = []
+        for n, note in enumerate(asked, start=1):
+            kind = note.get("kind")
+            if kind not in NOTE_KINDS:
+                raise ToolError(f"note {n}: kind is caution or interest")
+            text = clean_note_text(note.get("text"))
+            if not text:
+                raise ToolError(f"note {n}: give a few words")
+            if note.get("at_mile") is not None:
+                lon, lat = point_at_mile(line, float(note["at_mile"]))
+            elif note.get("at") is not None:
+                lon, lat = self._point(note["at"], taken, [plan.points[0], plan.points[-1]])
+                _, off, nearest = line_nearest(line, lon, lat)
+                if off > NOTE_SNAP_M:
+                    raise ToolError(
+                        f"note {n} ({text}) is {off / METRES_PER_MILE:.1f} mi from the route:"
+                        " put it on the route (at_mile, or a junction the route passes)"
+                    )
+                if off > NOTE_NEAR_M:
+                    lon, lat = nearest
+                    moved.append(f"note {n} ({text}) was {round(off)} m off the route: put on it")
+            else:
+                raise ToolError(f"note {n}: give at or at_mile")
+            notes.append({"kind": kind, "lon": round(lon, 5), "lat": round(lat, 5), "text": text})
+        options = {**draft.options, "route_notes": notes or None}
+        out = self._draft(
+            plan,
+            options,
+            draft.limit,
+            moved,
+            draft.name,
+            revised_from=draft_id,
+            taken=taken,
+            trim_spurs=draft.trim_spurs,
+            intervals=draft.intervals,
+            ride_key=draft.ride_key,
+        )
+        if not notes:
+            out["route_notes"] = []
+        return out
+
     # cue_cards
     def cue_cards_tool(self, args: dict, call: Call) -> dict:
         draft_id = str(args["draft_id"])
@@ -5883,7 +6139,7 @@ class Server:
                 **({"note": r["reason"]} if r["reason"] else {}),
                 **({"then": r["then"]} if r["then"] else {}),
             }
-            for r in self.cue_cards.cue_rows(drawn[0], drawn[2], drawn[3])
+            for r in self.cue_cards.cue_rows(drawn[0], drawn[2], drawn[3], drawn[5])
         ]
         if total > len(images):
             out["shown"] = f"the first {len(images)} of {total} images are shown; all are linked"
@@ -6420,6 +6676,8 @@ class Server:
             out["metro_check"] = plan.check
         if notes:
             out["notes"] = notes
+        if options.get("route_notes"):
+            out["route_notes"] = route_notes_out(plan.answer, options["route_notes"])
         out["credit"] = plan.answer.get("attribution", [])
         # For the route view only: Server.call moves it out of the answer (VIEW_META_KEY).
         view = route_view(plan, out, name, options.get("corking"))
@@ -7071,6 +7329,8 @@ class Server:
             kept = (
                 "loop",
                 "when",
+                # The route's notes are the rider's, whatever the ride type.
+                "route_notes",
                 "follow",
                 "follow_exact",
                 "follow_alternative",
@@ -7698,6 +7958,7 @@ class Server:
             "plan_metro_loop": self.plan_metro_loop,
             "open_link": self.open_link,
             "revise_route": self.revise_route,
+            "route_notes": self.route_notes,
             "save_route": self.save_route,
             "gpx_route": self.gpx_route,
             "draft_route_post": self.draft_route_post,

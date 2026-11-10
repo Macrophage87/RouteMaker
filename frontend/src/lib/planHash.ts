@@ -12,6 +12,7 @@ import { VIA_MARKS, decodeDrawn, decodeStopNames, decodeVias, drawnLegs, encodeS
 import { STRESS_DEFAULT_AT, fitDials, isBike, isCarrying, isWhen, type Dials } from "./dials.ts";
 import { METRES_PER_MILE } from "./format.ts";
 import { decodePoints, encodePoints } from "./linkCode.ts";
+import { PAGE_NOTES, decodeNotes, encodeNotes, type RouteNote } from "./routeNotes.ts";
 
 /**
  * The stops' field (2026-10-29, shorter ride links): `q=`, the points in lib/linkCode.ts's short form, about 8
@@ -68,6 +69,8 @@ export interface Plan {
   drawn: number[];
   /** The stops' own names by index (`sn=2:Union Market`, Stephen 2026-10-24); empty for an older link. */
   names: Map<number, string>;
+  /** The route's notes (`nt=c,lon,lat,words`, lib/routeNotes.ts; 2026-11-10); empty for an older link. */
+  notes: RouteNote[];
   preset: PresetId;
   /** The sliders, the ride time and Cargo Bike's load (dials.ts). */
   dials: Dials;
@@ -84,6 +87,8 @@ export function encodePlan(
   names: ReadonlyMap<number, string> = stopNames(points, VIA_MARKS.nameOf, VIA_MARKS.isVia, dials?.loop === true),
   // The short `q=` unless asked for the older `p=` (a kept route's key, so the routes kept before still match).
   pointsForm: PointsForm = "q",
+  // The route's notes, the page's unless given (lib/routeNotes.ts PAGE_NOTES).
+  notes: readonly RouteNote[] = PAGE_NOTES.list,
 ): string {
   const params = new URLSearchParams();
   if (points.length) {
@@ -96,6 +101,8 @@ export function encodePlan(
   if (drawn.length) params.set("line", drawn.join(","));
   // The stops' own names (2026-10-24): a new field an older link does not have, and means none.
   for (const value of encodeStopNames(names)) params.append("sn", value);
+  // The route's notes (2026-11-10): a new field an older link does not have, and means none.
+  for (const value of encodeNotes(notes)) params.append("nt", value);
   params.set("preset", preset);
   if (dials) {
     params.set("v", PLAN_VERSION);
@@ -193,5 +200,5 @@ export function decodePlan(hash: string): Plan {
     mtbLevel: numberOrUndefined(params.get("level")),
     mtbPreferred: numberOrUndefined(params.get("prefer")),
   });
-  return { points, vias: decodeVias(params.get("via"), points.length), drawn: decodeDrawn(params.get("line"), points.length), names: decodeStopNames(params.getAll("sn"), points.length), preset, dials };
+  return { points, vias: decodeVias(params.get("via"), points.length), drawn: decodeDrawn(params.get("line"), points.length), names: decodeStopNames(params.getAll("sn"), points.length), notes: decodeNotes(params.getAll("nt")).filter((note) => insideCoverage(note.at)), preset, dials };
 }
