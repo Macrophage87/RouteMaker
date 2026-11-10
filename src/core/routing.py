@@ -137,6 +137,7 @@ from . import (
     beside_roads,
     easy_mtb,
     mass_hazards,
+    mass_rails,
     mtb,
     novice_walks,
     parallel,
@@ -1799,6 +1800,9 @@ class Dials:
     # The dirt trails such a plan found for itself, each a short strip across it (a ring),
     # left out as `blocked` is. Set by `plan`.
     trail_strays: tuple[tuple[tuple[float, float], ...], ...] = ()
+    # A Mass Ride leaves the rail streets near it out of every request (`core.mass_rails`,
+    # OWNER-DECISIONS 289); False once no route was found without them. Set by `plan`.
+    mass_rails: bool = True
     # v0.9.1, Go and a ride: DDOT's permits, which say a road may be closed
     # (`routemaker.workzones.possible`), left off the answer. A plan flags them only.
     closures_now: bool = False
@@ -1974,16 +1978,62 @@ def loop_points(points: list, loop: bool) -> list:
     return [*points, points[0]]
 
 
+# A piece is on a stretch ridden before where a piece ridden before on the same way has its
+# middle within this many metres (routing hunt 4, M4-2). Pieces run between the trace's shape
+# vertices, so the same stretch ridden either way has the same middle; the slack is for a
+# piece cut short at a stop. Claude's default, not measured.
+RIDDEN_MATCH_M = 5.0
+
+
+class Ridden:
+    """The stretches a route has ridden so far, by way and place: a piece is on one where
+    a piece ridden before is on the same way with its middle within RIDDEN_MATCH_M. A long
+    trail mapped as one way is not ridden in full once any part of it is (M4-2: a loop's
+    way back on another part of a perimeter trail is no repeat)."""
+
+    def __init__(self, pieces=()) -> None:
+        self._cells: dict[tuple[int, int, int], list[tuple[float, float]]] = {}
+        for piece in pieces:
+            self.add(piece)
+
+    @staticmethod
+    def _xy(piece) -> tuple[float, float]:
+        return (
+            piece.lon * 111_320.0 * math.cos(math.radians(piece.lat)),
+            piece.lat * 110_540.0,
+        )
+
+    def add(self, piece) -> None:
+        if not piece.way_id:
+            return
+        x, y = self._xy(piece)
+        cell = (piece.way_id, math.floor(x / RIDDEN_MATCH_M), math.floor(y / RIDDEN_MATCH_M))
+        self._cells.setdefault(cell, []).append((x, y))
+
+    def has(self, piece) -> bool:
+        if not piece.way_id:
+            return False
+        x, y = self._xy(piece)
+        cx, cy = math.floor(x / RIDDEN_MATCH_M), math.floor(y / RIDDEN_MATCH_M)
+        return any(
+            math.hypot(x - ox, y - oy) <= RIDDEN_MATCH_M
+            for dx in (-1, 0, 1)
+            for dy in (-1, 0, 1)
+            for ox, oy in self._cells.get((piece.way_id, cx + dx, cy + dy), ())
+        )
+
+
 def loop_stats(pieces: list, leg_runs: list) -> dict | None:
     """What a loop's way back shares with its way out, from its traced pieces and the
     run of pieces of each leg: `shared_m` of `return_m` metres, as `overlap_pct`; None
-    where the last leg was not traced."""
+    where the last leg was not traced. Shared is the stretches the way out rode
+    (`Ridden`), not every metre of a way it touched (M4-2)."""
     if len(leg_runs) < 2 or not isinstance(leg_runs[-1], tuple):
         return None
     start, end = leg_runs[-1]
-    out_ways = {piece.way_id for piece in pieces[:start] if piece.way_id}
+    out = Ridden(pieces[:start])
     back = pieces[start:end]
-    shared = sum(piece.metres for piece in back if piece.way_id in out_ways)
+    shared = sum(piece.metres for piece in back if out.has(piece))
     total = sum(piece.metres for piece in back)
     return {
         "shared_m": round(shared, 1),
@@ -3402,22 +3452,6 @@ def junction_waits(
         stop_extra_s=stop_extra,
         when=when,
     )
-
-
-def light_buttons(found_waits, route_m: float, traced_m: float) -> list[dict]:
-    """The signals read as needing their beg button (`junction_delay.signal_wait`), for
-    Ride, in the description's metres (the traced metres at the router's length): at the
-    button signal's own node (`Wait.button_at`), not the run's first junction, which can be
-    a stop line or the other carriageway up to 45 m short of it (the signal review of
-    2026-11-08)."""
-    scale = route_m / traced_m if traced_m > 0 else 1.0
-    out = []
-    for w in found_waits:
-        if not w.button:
-            continue
-        m, lon, lat = w.button_at if w.button_at is not None else (w.m, w.lon, w.lat)
-        out.append({"at_m": round(m * scale, 1), "lon": round(lon, 6), "lat": round(lat, 6)})
-    return out
 
 
 def _outside_dc(piece) -> bool:
@@ -5103,6 +5137,10 @@ def plan(
     A weekend ride on the off-road, Mountain Bike or e-bike graph near a road closed to cars at
     the weekend (round its points, or else round its own route) is planned on the weekend graph
     too, and the better route kept (`_plan_twice`).
+
+    A Mass Ride leaves the rail streets near it out (`core.mass_rails`, OWNER-DECISIONS 289);
+    where that leaves no path, it is planned again with them open, and the route names the
+    rails it rides (`road_hazards`).
     """
     dials = dials or Dials()
     if started is None:
@@ -5113,6 +5151,14 @@ def plan(
             return _plan_twice(
                 points, preset_name, long_ride, started, dials, quick, candidates, near=near
             )
+    if preset_name == mass_rails.PRESET and dials.mass_rails:
+        try:
+            return _plan_alone(points, preset_name, long_ride, started, dials, quick, candidates)
+        except NoRoute as refused:
+            if not refused.no_path or not mass_rails.lines_near(points):
+                raise
+            logger.info("no Mass Ride route without the rail streets; planning with them open")
+            dials = dataclasses.replace(dials, mass_rails=False)
     return _plan_alone(points, preset_name, long_ride, started, dials, quick, candidates)
 
 
@@ -5377,6 +5423,18 @@ def _plan(
     # for beside it. Not on a loop, nor with a line to follow, which is the whole ride.
     drawing = bool(dials.straight) and not following and not dials.loop
     fixed = following or drawing
+    # A Mass Ride's start, stop or end on a street with rails in it goes to the nearest cross
+    # street, and says so (OWNER-DECISIONS 289, `core.mass_rails`). Not a ride's re-plan's
+    # start, which is the rider, nor a point already moved.
+    rail_lines: list = []
+    if preset_name == mass_rails.PRESET and not fixed:
+        skip = set(moved_indices) | ({0} if dials.ride_replan else set())
+        points, rail_moved = mass_rails.move_off_rails(points, skip=sorted(skip))
+        if rail_moved:
+            moved_points = sorted(moved_points + rail_moved, key=lambda m: m["index"])
+            moved_indices |= {m["index"] for m in rail_moved}
+        if dials.mass_rails:
+            rail_lines = mass_rails.lines_near(points)
     # A loop is planned through its start again (OWNER-DECISIONS 266); a followed line is
     # already the whole ride.
     loop = not fixed and loop_wanted(points, dials.loop, preset_name)
@@ -5590,6 +5648,11 @@ def _plan(
     # The strips across dirt trails a plan found for itself (`plan`) are always kept, a few
     # metres each: the rider's own fit beside them, the earliest let go first.
     strips = [[list(p) for p in ring] for ring in dials.trail_strays]
+    # A Mass Ride's rail streets (OWNER-DECISIONS 289, `core.mass_rails`): left out as the
+    # strips are, cut where a way crosses them so the rails are still crossed. A ride's
+    # re-plan keeps the stretch by the rider open, so the rider can set off.
+    if rail_lines:
+        strips += mass_rails.rings(rail_lines, keep_near=points[:1] if dials.ride_replan else ())
     blocked = work_zones.blocked_rings(dials.blocked)
     while blocked and _over_budget(strips + blocked):
         blocked = blocked[1:]
@@ -5953,7 +6016,7 @@ def _plan(
     # The calm detour and crossing avoidance (core.refine): the router's own
     # routes, searched for a better score. Only where it can run inside the
     # budget; `refined` says what it did, or why it did not.
-    from . import dedodge, refine, trailseek
+    from . import dedodge, refine, trailseek, winding_round
 
     timing.mark("choose")
     refine_limited = _refine_limit(preset_name, points, long_ride, climb_seek, deadline, long_calm)
@@ -6175,6 +6238,33 @@ def _plan(
     elif easy_asked and not fixed:
         easy_info = easy_mtb.no_graph()
     easy_trip = trip
+    # Winding trails for Group Ride and Fast (hunt 4 P4-1). Asked "Should Group Ride and Fast
+    # pay for winding trails the way Road Bike does?", the owner, 2026-11-09: "yes". Road Bike
+    # pays in its own graphs; these two share the standard and weekend graphs with every other
+    # ride type and have no calm search, so the price is put on here: the route's winding
+    # trails read at LTS 3, and the router asked once more without them (`core.winding_round`).
+    # After the calm search and before the red pass, which then reads the route answered.
+    winding_info = None
+    if winding_round.applies(preset_name) and not quick and not fixed and not trails_off:
+        winding_trip_before = trip
+        trip, winding_info = winding_round.settle(
+            trip,
+            refine_context,
+            keeps=None if trip is asked_trip else refine.level_round_keeps(trip, refine_context),
+        )
+        logger.info("winding trails: %s", winding_info)
+        if trip is not winding_trip_before:
+            mtb_replaced = True
+            refine_context.candidates = refine_context.candidates[:1]
+    # Gravel and Mountain Goat ride the same mountain-bike class (`segment.mtb_only`) on the
+    # off-road graph, and their answers time it at Mountain Bike's singletrack pace too, as
+    # Easy MTB's do. Hunt 4 M4-5 asked "Should Gravel and Mountain Goat use 6 mph on MTB
+    # trails?"; the owner, 2026-11-09: "That really differs a lot by terrain, but use a
+    # reasonable default for all." The one pace for all terrain (mtbmode.SINGLETRACK_SPEED_KMH)
+    # is Claude's default, not measured. The time shown changes; the ranking does not.
+    offroad_dirt_timed = (
+        preset_name in presets.OFFROAD_PRESETS and variant == Variant.OFFROAD.value and not fixed
+    )
     # A red (very high stress) crossing still on the answer where the crossing search did not
     # run over the whole route (a plan past REFINE_MAX_SPAN_M, a long Trailmaxxing plan
     # searched leg by leg, a search cut short, a climb seek, a route Mountain Bike's choice
@@ -6658,8 +6748,8 @@ def _plan(
         )
         # The time its junctions cost the rider, which the router's own time leaves out
         # (`routemaker.junction_delay`): part of the time shown.
-        # Outside the major cities a signal across a big road waits longer, and one read as
-        # needing its beg button is marked for Ride (the owner, 2026-11-08).
+        # Outside the major cities a signal across a big road waits longer (the owner,
+        # 2026-11-08).
         found_waits = junction_waits(raw_junctions, beacons, events, when=when)
         waits = [(w.m, w.seconds) for w in found_waits]
         delay = float(sum(wait for _m, wait in waits))
@@ -6717,9 +6807,6 @@ def _plan(
             "distance_m": round(float(summary.get("length", 0.0)) * 1000.0, 1),
             "duration_s": round(route_s + delay + walk_change_s, 1),
             "junction_delay_s": round(delay, 1),
-            # The signals read as needing their beg button (`junction_delay.signal_wait`), in
-            # the description's metres (the traced metres at the router's length), for Ride.
-            "light_buttons": light_buttons(found_waits, route_m, traced_m),
             # Where along the line that time falls, hills and junction waits in place, for a
             # ride's arrival times (`routemaker.time_marks`).
             "time_marks": time_marks.time_marks(router_at, waits, traced_m),
@@ -6851,6 +6938,9 @@ def _plan(
     # only in the log (hunt S5): the answer cache reads its `limited` (`route_cache.keepable`)
     # and a reader of the answer sees a pass cut short. Null where it did not run.
     body["red_crossings"] = red_info
+    # What the winding-trail round did on Group Ride and Fast (`core.winding_round`); null
+    # where it did not run. The answer cache reads its `limited`.
+    body["winding"] = winding_info
     timing.mark("answer")
 
     def _with_mtb(
@@ -6860,11 +6950,14 @@ def _plan(
         (10 km/h) on singletrack (`mtbmode.duration_s`), the router's own time kept; and an
         Easy MTB trails route's reading (`easy_mtb`), its time on the mountain-bike class at
         the same pace where `timed`, its trip, is given (`easy_mtb.dirt_m`; the owner, round
-        3, 2026-11-08: "Yes", as Mountain Bike on the same trails: costing finding C3-7)."""
+        3, 2026-11-08: "Yes", as Mountain Bike on the same trails: costing finding C3-7), and
+        a Gravel or Mountain Goat route's the same way (`offroad_dirt_timed`; the owner,
+        2026-11-09, hunt 4 M4-5)."""
         answered["mtb"] = info
         answered["easy_mtb"] = easy
         singletrack_m = info.get("singletrack_m") if info else None
-        if not singletrack_m and easy_held and easy is not None and timed is not None:
+        dirt_timed = (easy_held and easy is not None) or offroad_dirt_timed
+        if not singletrack_m and dirt_timed and timed is not None:
             try:
                 singletrack_m = easy_mtb.dirt_m(timed, variant, trace_costing, deadline, traces)
             except (DeadlineExceeded, RouterUnavailable, RouterRefused):

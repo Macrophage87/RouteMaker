@@ -72,10 +72,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Busy crossing, no signal.": "Persimpangan ramai, tanpa lampu lalu lintas.",
   "Busy crossing.": "Persimpangan ramai.",
   "Busy junction.": "Simpang ramai.",
-  // A signal that may need a button press (the owner, 2026-11-08): the card's note and the words said.
-  // Drafted by Claude: FLAGGED for review by a native speaker.
-  "Light may need a button press": "Lampu lalu lintas mungkin perlu tombol ditekan",
-  "Button for the light.": "Tombol lampu.",
   "Busy junction at a signal.": "Simpang ramai, ada lampu lalu lintas.",
   "Busy junction at a stop sign.": "Simpang ramai, ada rambu berhenti.",
   "Busy junction, no signal.": "Simpang ramai, tanpa lampu lalu lintas.",
@@ -2139,4 +2135,12 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "No road bike map: may use gravel.": "Tidak ada peta sepeda jalan raya: mungkin ada kerikil.",
   "There is no weekend road bike map right now, so this route counts parkways like Beach Drive as roads with cars.": "Saat ini tidak ada peta akhir pekan untuk sepeda jalan raya, jadi rute ini menganggap jalan taman seperti Beach Drive sebagai jalan dengan mobil.",
   "No weekend map: parkways may have cars.": "Tidak ada peta akhir pekan: mungkin ada mobil di jalan taman.",
+  "Draft, last day": "Draf, hari terakhir",
+  "Draft, {n} days left": "Draf, sisa {n} hari",
+  "Save {name} to My routes": "Simpan {name} ke Rute saya",
+  "Saving {name}…": "Menyimpan {name}…",
+  "That draft is gone.": "Draf itu sudah tidak ada.",
+  "Delete": "Hapus",
+  "Delete {name}": "Hapus {name}",
+  "Deleted {name}.": "{name} dihapus.",
 };
