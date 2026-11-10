@@ -6,6 +6,7 @@
  */
 import { formatDistance } from "./format.ts";
 import { rowDetails, type SavedSummary } from "./savedRoutes.ts";
+import { draftDetails, type DraftSummary } from "./drafts.ts";
 import type { KeptRoute } from "./offlineRoutes.ts";
 import { PRESETS, isTransit, presetSaid, type PresetId } from "./presets.ts";
 import { t } from "./i18n.ts";
@@ -41,6 +42,7 @@ export const SEARCH_FROM = 6;
 
 export type LoadRow =
   | { kind: "saved"; key: string; name: string; detail: string; id: number; tags: string[]; archived: boolean; replacedBy: string | null }
+  | { kind: "draft"; key: string; name: string; detail: string; id: string }
   | { kind: "kept"; key: string; name: string; detail: string; kept: KeptRoute };
 
 /** "4.7 mi (7.6 km) · On this device": a kept route's line, shorter than the Save & load sheet's. */
@@ -48,14 +50,23 @@ export function keptLine(route: Pick<KeptRoute, "distanceM" | "lastRide">): stri
   return `${formatDistance(route.distanceM)} · ${route.lastRide ? "Last ride, on this device" : "On this device"}`;
 }
 
-/** The popup's rows: the saved routes as the server lists them (newest first), then the kept ones. Archived routes
- * are listed only with `archived` (and then only they, with no kept ones). */
-export function loadRows(saved: readonly SavedSummary[], kept: readonly KeptRoute[], archived = false): LoadRow[] {
+/** When a saved route or draft was last opened or made: the list's order. */
+function lastUsed(r: { created_at: string; opened_at?: string | null }): number {
+  const made = Date.parse(r.created_at);
+  const opened = r.opened_at ? Date.parse(r.opened_at) : NaN;
+  return Math.max(Number.isNaN(made) ? 0 : made, Number.isNaN(opened) ? 0 : opened);
+}
+
+/** The popup's rows: the saved routes and an assistant's drafts together, the one last opened or made on top (the
+ * owner, 2026-11-09: "most recent on top"), then the kept ones. Archived routes are listed only with `archived` (and
+ * then only they, with no drafts or kept ones). */
+export function loadRows(saved: readonly SavedSummary[], kept: readonly KeptRoute[], archived = false, drafts: readonly DraftSummary[] = [], now: number = Date.now()): LoadRow[] {
   const names = new Map(saved.map((r) => [r.id, r.name]));
-  const rows = saved
+  const dated: { at: number; row: LoadRow }[] = saved
     .filter((r) => Boolean(r.archived_at) === archived)
-    .map(
-      (r): LoadRow => ({
+    .map((r) => ({
+      at: lastUsed(r),
+      row: {
         kind: "saved",
         key: `s${r.id}`,
         name: r.name,
@@ -64,9 +75,12 @@ export function loadRows(saved: readonly SavedSummary[], kept: readonly KeptRout
         tags: r.tags ?? [],
         archived: Boolean(r.archived_at),
         replacedBy: (r.replaced_by != null && names.get(r.replaced_by)) || null,
-      }),
-    );
-  if (archived) return rows;
+      },
+    }));
+  if (archived) return dated.map((d) => d.row);
+  for (const d of drafts) dated.push({ at: lastUsed(d), row: { kind: "draft", key: `d${d.id}`, name: d.name, detail: draftDetails(d, now), id: d.id } });
+  // Stable: two made at once keep the server's order.
+  const rows = dated.map((d, i) => ({ ...d, i })).sort((a, b) => b.at - a.at || a.i - b.i).map((d) => d.row);
   return [...rows, ...kept.map((k): LoadRow => ({ kind: "kept", key: `k${k.id}`, name: k.title, detail: keptLine(k), kept: k }))];
 }
 

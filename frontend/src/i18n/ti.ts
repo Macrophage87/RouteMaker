@@ -72,10 +72,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Busy crossing, no signal.": "ብዙሕ ትራፊክ ዘለዎ መስቀላ፣ መብራህቲ ትራፊክ የለን።",
   "Busy crossing.": "ብዙሕ ትራፊክ ዘለዎ መስቀላ።",
   "Busy junction.": "ብዙሕ ትራፊክ ዘለዎ መራኸቢ።",
-  // A signal that may need a button press (the owner, 2026-11-08): the card's note and the words said.
-  // Drafted by Claude: FLAGGED for review by a native speaker.
-  "Light may need a button press": "መብራህቲ ትራፊክ መጠወቒ ምጥዋቕ ከድልዮ ይኽእል",
-  "Button for the light.": "መጠወቒ መብራህቲ።",
   "Busy junction at a signal.": "ብዙሕ ትራፊክ ዘለዎ መራኸቢ፣ መብራህቲ ትራፊክ ኣሎ።",
   "Busy junction at a stop sign.": "ብዙሕ ትራፊክ ዘለዎ መራኸቢ፣ ምልክት ደው ምባል ኣሎ።",
   "Busy junction, no signal.": "ብዙሕ ትራፊክ ዘለዎ መራኸቢ፣ መብራህቲ ትራፊክ የለን።",
@@ -2139,4 +2135,12 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "No road bike map: may use gravel.": "ናይ ጽርግያ ብሽክለታ ካርታ የለን፦ ጠጠር ክህሉ ይኽእል።",
   "There is no weekend road bike map right now, so this route counts parkways like Beach Drive as roads with cars.": "ሕጂ ናይ ቀዳመ-ሰንበት ጽርግያ ብሽክለታ ካርታ የለን፤ ስለዚ እዚ መስመር ከም Beach Drive ዝኣመሰሉ ናይ ፓርክ ጽርግያታት ከም መኪና ዘለዎም ጽርግያታት ይቖጽሮም።",
   "No weekend map: parkways may have cars.": "ናይ ቀዳመ-ሰንበት ካርታ የለን፦ ኣብ ናይ ፓርክ ጽርግያታት መኪና ክህሉ ይኽእል።",
+  "Draft, last day": "ንድፊ፣ ናይ መወዳእታ መዓልቲ",
+  "Draft, {n} days left": "ንድፊ፣ {n} መዓልታት ተሪፎም",
+  "Save {name} to My routes": "{name} ዓቅብ",
+  "Saving {name}…": "{name} ይዕቀብ ኣሎ…",
+  "That draft is gone.": "እቲ ንድፊ የለን።",
+  "Delete": "ሰርዝ",
+  "Delete {name}": "{name} ሰርዝ",
+  "Deleted {name}.": "{name} ተሰሪዙ።",
 };

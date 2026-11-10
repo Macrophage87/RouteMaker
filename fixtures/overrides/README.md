@@ -493,6 +493,13 @@ conflict; a row already gone is `absent`. Dry by default like the rest. Used by 
 2026-09-30 east-of-the-Anacostia file (decision 432), the Veirs Mill sidepath file and
 the Montgomery Planning LTS 5 file (433).
 
+A file may write its rows in a compact `groups` list instead of, or after, `rows`
+(`pipeline.overrides.file_rows`): one entry per adjustment, `{"kind", "value", "reason",
+"evidence", "ways": [...], "fingerprints": {"<way id>": ...}}`, read as one row per way
+with the shared fields. Used by the 2026-11-09 own-picks files, about 180,000 ways that
+would not fit the repository one row each. The loader, the re-match and
+`backfill_override_fingerprints.py` (which fills a group's `fingerprints`) read both forms.
+
 A file that re-points a row at new ways keeps the old way in a top-level `superseded`
 list, with `replaced_by` and the old way's fingerprint, because the row already loaded
 in the database still names it: delete that row in the admin when loading the file

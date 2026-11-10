@@ -75,6 +75,41 @@ level even at low volume, because rural drivers do not expect bicycles.
   already holds a lane and crosses one oncoming lane, but the code marks this value as a
   question for the owner (`intersections.py:139-141`), not a settled choice.
 
+
+#### Oregon's rural segment table, and why we read it a half step calmer (2026-11-09)
+Oregon's Exhibit 14-17 rates rural roads at 45 mph [72 km/h] or more by daily traffic and
+paved shoulder, not by the speed limit:
+
+| Cars a day | Shoulder under 4 ft [1.2 m] | 4-6 ft [1.2-1.8 m] | 6 ft [1.8 m] or more |
+|---|---|---|---|
+| Under 400 | R2 | R2 | R2 |
+| 400-1,500 | R3 | R2 | R2 |
+| 1,500-7,000 | R4 | R3 | R2 |
+| Over 7,000 | R4 | R4 | R3 |
+
+Under 45 mph Oregon uses its ordinary mixed-traffic tables on the speed actually driven.
+Furth's 2017 criteria have no rural table (at 45 mph or more with no centerline they give 3
+under 750 a day and 4 above). FHWA's rural bikeway framework (FHWA-FLH-19-004, 2019) finds
+lanes shared under about 1,200 a day "may be suitable" even at 45+ mph.
+
+- **Taken, with half steps (the owner, 2026-11-09, "ODOT with half steps"):** a rural
+  two-lane road open to cars with a shoulder under 4 ft is **2 under 400 cars a day, 2.5 at
+  400-1,500, 3 at 1,500-3,000 and 4 above 3,000** (busy rural highways at 18,000+ stay 4.5).
+  A paved shoulder of 4 ft or more takes off one level, never below the rural floor of 2.
+  Where there is no count the reviewer judges the likely band from the road's class and
+  setting; a statutory or default speed limit alone never makes a quiet country road high
+  stress.
+- **Why calmer than Oregon:** the purposes differ. The owner, 2026-11-09: agencies rate roads
+  "to see which roads need additional bike infrastructure, ours is to choose roads more
+  suitable for biking without undue traffic stress. People would only go on these roads if
+  they want to be out in the country, therefore we should focus on the less stressful ones."
+  An agency's rating flags a road for a shoulder; ours ranks the country roads a rider can
+  choose between, so it must set the quietest apart from the busier ones. The half steps do
+  that inside Oregon's bins.
+- **Where it is used:** the 2026-11-09 review of every road without an owner row
+  ([overrides.md](overrides.md), "Our own rating on every road"); each row's Why line gives
+  this reasoning.
+
 ### Montgomery County Planning, Bicycle Master Plan, Appendix D (LTS 0 to 5)
 [Montgomery County Bicycle Master Plan, Appendix D](https://montgomeryplanning.org/wp-content/uploads/2017/11/Appendix-D.pdf).
 A county version of the scale that runs from 0 to 5: LTS 0 for traffic-free paths, an
