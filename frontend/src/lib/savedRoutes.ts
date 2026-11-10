@@ -10,7 +10,8 @@
  * compare: if the distance differs by more than 5%, one line says so with an "Update route" link, and
  * nothing changes without that tap. A fixed route (the owner, 2026-11-10: "save routes as an unchanging, GPX identical
  * mode. The via points are usually better, but sometimes fixed routes are more useful") is never compared, and a
- * ride on it is never re-routed: off it, the way back to the line. At most 200 per account. Share keeps the same body, signed out too, for the
+ * ride on it is never re-routed: off it, the way back to the line. Only a closure on its line now offers Update route
+ * ("Update route can be offered when a closure occurs on a road"). At most 200 per account. Share keeps the same body, signed out too, for the
  * link it shares (lib/sharedRoutes.ts).
  */
 import type { RouteResponse } from "./api.ts";

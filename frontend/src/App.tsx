@@ -311,7 +311,7 @@ import { ACCOUNT_SETTINGS_USED, applyToDevice, deviceSettings, fetchSettings, pl
 import { HOME_KEPT, HOME_MOVED, answerHomeOffer, deviceHome, homeOffer, type HomeOffer } from "./lib/homeMove.ts";
 import { FULL_HEADING, OPENED_FIXED_SAID, OPENED_SAID, SAVED_SAID, SAVE_FAILED, UNCHANGED_SAID, UPDATE_ROUTE, VERSION_SAID, defaultRouteName, differenceLine, differsTooMuch, gpxSave, afterDelete, afterRename, planSave, saveAsVersion, saveRoute, savedAnswer, savedLine, versionOf, type OpenSaved, type RoomProposal, type SaveBody, type SavedRoute, type SavedSummary } from "./lib/savedRoutes.ts";
 import { DRAFT_UNREACHABLE, draftLeft, saveDraft, type OpenDraft } from "./lib/drafts.ts";
-import { checkClosures, closedStretches, reroutedSaid, spliceDetours, type Closure, type CheckFor } from "./lib/closureCheck.ts";
+import { checkClosures, closedStretches, closureLead, reroutedSaid, spliceDetours, type Closure, type CheckFor } from "./lib/closureCheck.ts";
 import { ROUTE_WEATHER_MS, weatherPoints } from "./lib/weather.ts";
 import { useWeather } from "./useWeather.ts";
 import { downloadText, trackGpx, verbatimDownload, verbatimFileName } from "./lib/gpxVerbatim.ts";
@@ -4092,7 +4092,9 @@ export function App() {
       ? shown
       : null;
   // A saved route's line about today's map (more than 5% apart in distance), with Update route.
-  const [savedNote, setSavedNote] = useState<{ key: string; savedM: number; todayM: number } | null>(null);
+  // A fixed route's (the owner, 2026-11-10: "Update route can be offered when a closure occurs on a road"): closures on
+  // its line now, with Update route; never the distance line, its line being the route.
+  const [savedNote, setSavedNote] = useState<{ key: string; savedM: number; todayM: number } | { key: string; closed: true } | null>(null);
   const [myRoutesVersion, setMyRoutesVersion] = useState(0);
   // The saved route on screen (opened from My routes, or saved last): in Plan, saved again under its own name it
   // is a new version of that route (lib/savedRoutes.ts versionOf). A new file, a shared route or Clear forget it.
@@ -4656,7 +4658,13 @@ export function App() {
     }
     else retry();
     announce(said);
-    if (check) void checkThen("open", saved.line, false, () => {}, undefined, undefined, answer ? walksLine(answer) : plan.preset === "walk" || runs(plan.preset));
+    // A fixed route with closures on its line now: Update route offered after all, under the closure's own question.
+    const closedNote = saved.fixed
+      ? () => {
+          if (savedShown.current?.key === key) setSavedNote({ key, closed: true });
+        }
+      : undefined;
+    if (check) void checkThen("open", saved.line, false, () => {}, undefined, closedNote, answer ? walksLine(answer) : plan.preset === "walk" || runs(plan.preset));
     // Today's map, asked quietly: more than 5% apart in distance offers Update route; nothing changes without it. A
     // fixed route is never compared: its line is the route.
     if (!saved.fixed) void requestRoute(plan.points, plan.preset, { dials: plan.dials, straight: plan.drawn }).then((today) => {
@@ -4733,7 +4741,7 @@ export function App() {
     <p className="notice saved-note">{sharedNote}</p>
   ) : savedNote && savedNote.key === routedKey.current ? (
       <p className="notice saved-note">
-        {differenceLine(savedNote.savedM, savedNote.todayM)}{" "}
+        {"closed" in savedNote ? closureLead("open") : differenceLine(savedNote.savedM, savedNote.todayM)}{" "}
         <button type="button" className="link" onClick={updateSaved}>
           {UPDATE_ROUTE}
         </button>
