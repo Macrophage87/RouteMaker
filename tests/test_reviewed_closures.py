@@ -260,6 +260,27 @@ class TestEntering:
         assert closure.osm_way_ids == [] and closure.lines == [ALONG[4:9]]
         assert [c["title"] for c in workzones.closures_on(ALONG)["closures"]] == ["Closed"]
 
+    def test_a_closed_trail_is_closed_to_runs_and_walks_too(self, live) -> None:
+        # Routing hunt 4, C4-1: Run and Walk rode through Lake Frank's closed Lakeside Trail.
+        from routemaker import ridetime
+
+        when = ridetime.when_at(timezone.now())
+        trail = reviewed_closures.create(make_user(), [WAY], "Bridge out", end=days(10))
+        (zone,) = reviewed_closures.zones_of(trail)
+        assert trail.on_foot is True and zone.on_foot is True
+        plan = workzones.plan_zones([ALONG[0], ALONG[-1]], when, on_foot=True)
+        assert [z.zone_id for z in plan.excluded] == [zone.zone_id] and plan.passable == []
+        # A row from before the field (null) reads as closed on foot too.
+        ReviewedClosure.objects.filter(pk=trail.pk).update(on_foot=None)
+        assert reviewed_closures.zones_of(ReviewedClosure.objects.get(pk=trail.pk))[0].on_foot
+        # A road closed to traffic whose sidewalk stays open lets people on foot through.
+        client, csrf = reviewer_client()
+        body = {"osm_way_ids": [WAY], "reason": "Repaving", "on_foot": False}
+        assert post(client, csrf, ENTER, body).status_code == 201
+        road = ReviewedClosure.objects.get(reason="Repaving")
+        assert road.on_foot is False
+        assert reviewed_closures.zones_of(road)[0].on_foot is False
+
     def test_one_with_no_end_holds_on_a_later_ride_until_a_reviewer_ends_it(self, live) -> None:
         reviewed_closures.create(make_user(), [WAY], "Bridge out")
         later = timezone.now() + timedelta(days=5)
