@@ -53,8 +53,6 @@ CONTRACT_KEYS = {
     "junction_delay_s",
     # Additive, the ride's arrival times (2026-10-26): where along the line the time falls.
     "time_marks",
-    # Additive, 2026-11-08: the signals that may need a button press, for Ride's note.
-    "light_buttons",
     "stress_m",
     "attribution",
     # Additive, PUBLIC-DIALS (tests/test_route_dials.py).
@@ -118,6 +116,8 @@ CONTRACT_KEYS = {
     "dodges",
     # Additive, the red-crossing pass (hunt S5, 2026-11-08): null where it did not run.
     "red_crossings",
+    # Additive, hunt 4 P4-1 (2026-11-09): Group Ride's and Fast's winding-trail round.
+    "winding",
     # Additive, FOLLOWUP-BIKESHARE (OWNER-DECISIONS 243-245): null except on a Bikeshare plan.
     "bikeshare",
     # Additive, FOLLOWUP-ISECT-AVOID (OWNER-DECISIONS 307-310, 335): the Avoid-rated
