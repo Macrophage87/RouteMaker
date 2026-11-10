@@ -3601,6 +3601,52 @@ def _profile_rows(answer: dict, most: int = VIEW_PROFILE_POINTS) -> list[list[fl
     return [[round(mi, 3), round(ft)] for mi, ft in rows]
 
 
+def _mass_view(answer: dict) -> dict | None:
+    """A Mass Ride's flow and corkers for the view, as Ride's graphs show them (the owner,
+    2026-11-03: "Mass ride can also add traffic flow and corker requirements"; 2026-11-10 asked
+    for them in the chat): riders a minute along the route as [from_mi, to_mi, riders] steps
+    (equal neighbours joined), the ride's need, and each junction needing corkers. None off a
+    Mass Ride, or where the profile carries no flow."""
+    profile = answer.get("profile") or {}
+    metres = profile.get("m") or []
+    riders = profile.get("riders_per_min") or []
+    steps: list[list] = []
+    for i in range(1, len(metres)):
+        r = riders[i - 1] if i - 1 < len(riders) else None
+        if not isinstance(r, (int, float)):
+            continue
+        a, b = metres[i - 1] / METRES_PER_MILE, metres[i] / METRES_PER_MILE
+        if steps and steps[-1][2] == round(r) and abs(steps[-1][1] - a) < 1e-6:
+            steps[-1][1] = b
+        else:
+            steps.append([a, b, round(r)])
+    if not steps:
+        return None
+    found = answer.get("mass_capacity") or {}
+    corkers = found.get("corkers")
+    return {
+        "need": found.get("need_riders_per_min"),
+        "steps": [[round(a, 3), round(b, 3), r] for a, b, r in steps],
+        "corkers": None
+        if not corkers
+        else [
+            {
+                "mi": round((j.get("m") or 0) / METRES_PER_MILE, 2),
+                "street": j.get("street"),
+                "corkers": j.get("corkers"),
+            }
+            for j in corkers.get("junctions") or []
+        ],
+    }
+
+
+def draft_view(draft, draft_id: str) -> dict:
+    """A kept draft's route view, as its answer gave it (for the picture, core.route_picture)."""
+    plan = draft.plan
+    said = {"draft_id": draft_id, "summary": summary(plan.answer), **route_closures(plan)}
+    return route_view(plan, said, draft.name)
+
+
 def route_view(plan: Plan, out: dict, name: str) -> dict:
     """What the view draws for a draft: its line, its stress and facility by mile, its
     profile, its points, its flagged junctions and closures, and its figures and link."""
@@ -3658,6 +3704,7 @@ def route_view(plan: Plan, out: dict, name: str) -> dict:
         "loop": bool(plan.sent.get("loop")),
         "junctions": junctions,
         "closures": closures,
+        "mass": _mass_view(answer),
     }
 
 
@@ -4437,6 +4484,25 @@ VIEW_MAP_TOOL = {
     },
     "annotations": {"readOnlyHint": True, "openWorldHint": False},
     "_meta": {"ui": {"visibility": ["app"]}},
+}
+
+# A draft's map and graphs as one picture, to share (the owner, 2026-11-10: "Also allow for an
+# image if requested so it can be shared"). On the site only (core.route_picture).
+PICTURE_TOOL = {
+    "name": "route_picture",
+    "title": "Route picture",
+    "description": (
+        "Only when the rider asks for a picture or image of a route, to share: the draft's map"
+        " coloured by traffic stress with its stress ribbon and elevation profile (and on a Mass"
+        " Ride its rider flow and corkers), as one PNG, with a link that opens it while the"
+        " draft is kept. Give the rider the link."
+    ),
+    "inputSchema": {
+        "type": "object",
+        "properties": {"draft_id": {"type": "string"}},
+        "required": ["draft_id"],
+    },
+    "annotations": {"readOnlyHint": True, "openWorldHint": False},
 }
 
 TOOLS = [
@@ -5407,6 +5473,8 @@ class Server:
         routes_organize: bool = True,
         basemap=None,
         view_key=None,
+        picture=None,
+        picture_link=None,
     ):
         self._api_factory = api_factory
         self._api: Api | None = None
@@ -5437,6 +5505,10 @@ class Server:
         self.basemap = basemap
         # On the site: function(draft_id) -> the key route_view_map asks for (core.connector).
         self.view_key = view_key
+        # On the site: function(view, line) -> PNG of the draft's map and graphs
+        # (core.route_picture), and function(draft_id) -> a link that opens it.
+        self.picture = picture
+        self.picture_link = picture_link
 
     def tools(self) -> list[dict]:
         """The tools, as tools/list gives them: without the post tool unless posts may be
@@ -5453,6 +5525,8 @@ class Server:
             out.append(t)
         if self.basemap is not None and self.view_key is not None:
             out.append(VIEW_MAP_TOOL)
+        if self.picture is not None:
+            out.append(PICTURE_TOOL)
         return out
 
     def resources(self) -> list[dict]:
@@ -5486,6 +5560,30 @@ class Server:
                 }
             ]
         }
+
+    # route_picture
+    def route_picture(self, args: dict, call: Call) -> dict:
+        draft_id = str(args["draft_id"])
+        draft = self.drafts.get(draft_id)
+        if draft is None:
+            raise ToolError(f"no draft {draft_id} (drafts last only a while; plan it again)")
+        png = self.picture(draft_view(draft, draft_id), draft.plan.line)
+        if png is None:
+            raise ToolError("this draft has no line to draw")
+        out: dict = {"draft_id": draft_id, "name": draft.name}
+        if self.picture_link is not None:
+            out["picture_link"] = self.picture_link(draft_id)
+            out["note"] = (
+                "the link opens the picture (PNG) to share; it works while the draft is kept"
+            )
+        out[IMAGES_PRIVATE] = [
+            {
+                "type": "image",
+                "data": base64.b64encode(png).decode("ascii"),
+                "mimeType": "image/png",
+            }
+        ]
+        return out
 
     # route_view_map (the route view's own: hidden from the model)
     def route_view_map(self, args: dict, call: Call) -> dict:
@@ -5997,6 +6095,8 @@ class Server:
             # result's _meta: an assistant without MCP Apps lists the tool, but its model never
             # sees the key, so cannot have pictures drawn into its context.
             view["map_key"] = self.view_key(draft_id)
+        if self.picture_link is not None:
+            view["picture_link"] = self.picture_link(draft_id)
         out[VIEW_PRIVATE] = view
         return out
 
@@ -7224,7 +7324,10 @@ class Server:
             return None
         if name == "route_view_map" and (self.basemap is None or self.view_key is None):
             return None
+        if name == "route_picture" and self.picture is None:
+            return None
         return {
+            "route_picture": self.route_picture,
             "route_view_map": self.route_view_map,
             "find_place": self.find_place,
             "metro_stations": self.metro_stations,

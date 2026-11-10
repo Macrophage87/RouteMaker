@@ -246,3 +246,110 @@ def test_junctions_and_closures_are_placed_on_the_routes_own_miles() -> None:
     assert view["spans"] == [[0, 2.0, 2, None]]
     assert view["junctions"] == [{"mi": 1.0, "level": "very high", "reason": "x"}]
     assert view["closures"] == [{"mi": 1.2, "kind": "closure", "what": "Trail closed"}]
+
+
+def _mass_plan() -> mcp.Plan:
+    m = mcp.METRES_PER_MILE
+    answer = {
+        "distance_m": 2 * m,
+        "geometry": {"coordinates": [[-77.0, 38.9], [-77.0, 38.93]]},
+        "stress_spans": [{"from_m": 0, "to_m": 2 * m, "tier": 2, "facility": None}],
+        "profile": {
+            "m": [0, 0.5 * m, m, 1.5 * m, 2 * m],
+            "elevation_m": [10.0, 11.0, 12.0, 13.0, 14.0],
+            "riders_per_min": [130, 130, 72, None, 130],
+        },
+        "mass_capacity": {
+            "need_riders_per_min": 100,
+            "corkers": {"junctions": [{"m": round(0.25 * m), "street": "K Street", "corkers": 2}]},
+        },
+    }
+    return mcp.Plan([(-77.0, 38.9), (-77.0, 38.93)], [], "mass-ride", answer, None, {})
+
+
+def test_a_mass_ride_carries_its_flow_and_corkers() -> None:
+    # The owner, 2026-11-10, asked whether the view works on Mass Ride: "Very much so" to its flow
+    # graph and corkers.
+    view = mcp.route_view(_mass_plan(), {}, "A")
+    mass = view["mass"]
+    assert mass["need"] == 100
+    # Equal neighbours join; a stretch with no figure is left out, not drawn as nothing.
+    assert mass["steps"] == [[0, 1.0, 130], [1.0, 1.5, 72]]
+    assert mass["corkers"] == [{"mi": 0.25, "street": "K Street", "corkers": 2}]
+    # Corkers not checked (no crossings) says so, as None; another ride type has no mass at all.
+    plan = _mass_plan()
+    plan.answer["mass_capacity"]["corkers"] = None
+    assert mcp.route_view(plan, {}, "A")["mass"]["corkers"] is None
+    plan.answer["profile"]["riders_per_min"] = None
+    assert mcp.route_view(plan, {}, "A")["mass"] is None
+
+
+def test_a_picture_is_drawn_only_when_asked_and_sent_as_an_image(stand_in, tmp_path) -> None:  # noqa: F811
+    drawn = []
+
+    def picture(view, line):
+        drawn.append((view, line))
+        return b"\x89PNG-picture"
+
+    server = mcp.Server(
+        lambda: mcp.Api(stand_in),
+        STATIONS,
+        out_dir=tmp_path,
+        picture=picture,
+        picture_link=lambda draft_id: f"https://example.invalid/mcp/gpx/{draft_id}.mac.png",
+    )
+    # Not on a rider's own computer (no picture), and on the site only when asked for.
+    assert "route_picture" not in {t["name"] for t in _server(stand_in, tmp_path).tools()}
+    tool = next(t for t in server.tools() if t["name"] == "route_picture")
+    assert tool["description"].startswith("Only when the rider asks")
+    planned = rpc(
+        server,
+        "tools/call",
+        {"name": "plan_route", "arguments": {"points": ["Union Market", "Takoma"]}},
+    )["result"]
+    assert not drawn
+    draft_id = planned["structuredContent"]["draft_id"]
+    assert planned["_meta"][mcp.VIEW_META_KEY]["picture_link"].endswith(f"{draft_id}.mac.png")
+    answer = rpc(
+        server, "tools/call", {"name": "route_picture", "arguments": {"draft_id": draft_id}}
+    )
+    result = answer["result"]
+    assert not result["isError"]
+    image, text = result["content"]
+    assert image == {
+        "type": "image",
+        "data": base64.b64encode(b"\x89PNG-picture").decode(),
+        "mimeType": "image/png",
+    }
+    # The picture is not in the text nor the structured copy; the link is.
+    assert (
+        image["data"] not in text["text"] and mcp.IMAGES_PRIVATE not in result["structuredContent"]
+    )
+    assert result["structuredContent"]["picture_link"].endswith(".png")
+    view, line = drawn[0]
+    assert view["draft_id"] == draft_id and line == server.drafts.get(draft_id).plan.line
+    gone = rpc(server, "tools/call", {"name": "route_picture", "arguments": {"draft_id": "dnone"}})
+    assert gone["result"]["isError"]
+
+
+def test_the_picture_draws_the_map_graphs_and_mass_ride(basemap) -> None:
+    from core import route_picture
+
+    plan = _mass_plan()
+    view = mcp.route_view(plan, {"closures": [{"from_mi": 1.2, "what": "Trail closed"}]}, "A")
+    png = route_picture.draw(view, plan.line)
+    assert png.startswith(b"\x89PNG")
+    width, height = (int.from_bytes(png[16 + 4 * i : 20 + 4 * i], "big") for i in range(2))
+    assert width == route_picture.WIDTH
+    # The flow graph and corkers make the Mass Ride picture taller than the same route's without.
+    plain = dict(view, mass=None)
+    plain_png = route_picture.draw(plain, plan.line)
+    assert int.from_bytes(plain_png[20:24], "big") < height
+    assert route_picture.draw(view, plan.line[:1]) is None
+
+
+def test_corker_marks_a_few_pixels_apart_are_one_place() -> None:
+    from core import route_picture
+
+    marks = [(10, 10, 1), (20, 10, 2), (100, 10, 1)]
+    assert route_picture._gathered(marks) == [(10, 10, 3), (100, 10, 1)]

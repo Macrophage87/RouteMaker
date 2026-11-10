@@ -35,6 +35,7 @@ century".
 | `save_route` | Keeps a draft, only when you say so: in your My routes on the site's own connector, with `tags` if given, or as a GPX file on your own computer. On the site, `replaces` (a saved route's id) archives that route once this one is saved, for a new route that supersedes it. A full account (200 routes, nothing archived) is refused with the route unopened longest, for the assistant to offer archiving it. |
 | `organize_route` | Site connector only, when you say so: tags a saved route (`tags`, `add_tags`, `remove_tags`) or archives or restores it (`archived`). Archived routes leave Load route's list (Archived lists them) and are the first to go, longest archived first, when the account is full. It never renames or deletes. A connection allowed before it existed cannot use it until you connect again. |
 | `gpx_route` | A draft as a GPX track: a `.gpx` file on your own computer, or a download link on the site. |
+| `route_picture` | Site connector only, when you ask for a picture: the draft's map and graphs (on a Mass Ride its flow and corkers too) as one PNG, and a link that opens it, to share, while the draft is kept. |
 | `draft_route_post` | Site connector, instance admins only: writes a Featured routes post as a draft (title, about, who it's for, season, highlighted sections with their miles) around a draft route or a line to follow, for an admin to publish in the admin. Sending the same slug again with `replace` rewrites the draft. |
 | `plan_metro_loop` | Builds a loop of about the target length around DC (or another centre) through waypoints at or just beyond Metro stations, rescales it once towards the target, and repairs stretches past the Metro limit. |
 
@@ -55,8 +56,20 @@ the line comes from `route_view_map`, a tool only the view calls (visibility `ap
 the app's own base map for the box the view asks for, drawn in memory and never kept
 (`src/core/route_view_map.py`). It answers only with a key that travels in the view's `_meta`, so
 an assistant without MCP Apps lists it but its model cannot use it. Each view's base map is one
-connector call, counted in the same hourly limit as planning. On your own computer there is no base map, so the line is drawn on
-a plain background.
+connector call, counted in the same hourly limit as planning. On your own computer there is no
+base map, so the line is drawn on a plain background.
+
+On a Mass Ride the view also draws the riders a minute the road carries (the app's flow bands,
+with the ride size's need as a dashed line) and the junctions that need corkers, on the map and
+in a row under the graphs. Corker marks a few pixels apart are drawn as one with their corkers
+added up (our default), and each flow step wide enough carries its band's word, so the bands
+are not told by colour alone.
+
+To share it, ask for a picture: `route_picture` (on the site only, and only when asked) sends the
+map and graphs as one PNG image, and a link that opens it while the draft is kept; the view
+has a Picture button for the same link. The picture is drawn when it is asked for or the link is
+opened (a few a minute from one address, our default), in memory, and never kept (`src/core/route_picture.py`). The link sits under `/mcp/gpx/`
+(with `.png` on the end and its own digest), so the access logs already take its token out.
 
 The assistant picks the ride type and settings that fit what you ask: every ride type the app
 has (bikeshare and bike plus transit included) and every setting (traffic stress, hills, ride
