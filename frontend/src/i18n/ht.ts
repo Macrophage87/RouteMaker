@@ -72,10 +72,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Busy crossing, no signal.": "Kafou ki gen anpil machin, pa gen limyè.",
   "Busy crossing.": "Kafou ki gen anpil machin.",
   "Busy junction.": "Entèseksyon ki gen anpil machin.",
-  // A signal that may need a button press (the owner, 2026-11-08): the card's note and the words said.
-  // Drafted by Claude: FLAGGED for review by a native speaker.
-  "Light may need a button press": "Limyè a ka bezwen ou peze bouton an",
-  "Button for the light.": "Bouton pou limyè a.",
   "Busy junction at a signal.": "Entèseksyon ki gen anpil machin, gen limyè.",
   "Busy junction at a stop sign.": "Entèseksyon ki gen anpil machin, gen siy stòp.",
   "Busy junction, no signal.": "Entèseksyon ki gen anpil machin, pa gen limyè.",
@@ -2139,4 +2135,12 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "No road bike map: may use gravel.": "Pa gen kat bisiklèt wout: ka gen gravye.",
   "There is no weekend road bike map right now, so this route counts parkways like Beach Drive as roads with cars.": "Pa gen kat bisiklèt wout pou wikenn kounye a, kidonk wout sa a konte pakwe tankou Beach Drive kòm wout ki gen machin.",
   "No weekend map: parkways may have cars.": "Pa gen kat wikenn: ka gen machin sou pakwe yo.",
+  "Draft, last day": "Bouyon, dènye jou",
+  "Draft, {n} days left": "Bouyon, {n} jou ki rete",
+  "Save {name} to My routes": "Anrejistre {name} nan Wout mwen yo",
+  "Saving {name}…": "N ap anrejistre {name}…",
+  "That draft is gone.": "Bouyon sa a pa la ankò.",
+  "Delete": "Efase",
+  "Delete {name}": "Efase {name}",
+  "Deleted {name}.": "{name} efase.",
 };

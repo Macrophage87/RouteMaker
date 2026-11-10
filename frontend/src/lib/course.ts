@@ -301,8 +301,6 @@ export function routeCues(route: CompiledRoute, vias: readonly number[] = [], na
   const model = rideModel(route as RouteResponse, vias, names);
   const all: RouteCue[] = [{ type: "start", name: "Start", text: "Start.", atM: 0, street: named(model.stretches[0]?.street ?? null), priority: PROTECTED, kind: "start" }];
   for (const cue of model.cues) {
-    // A button signal's own note (navigate.ts withButtons) is Ride's alone: no course point, no cue sheet row.
-    if (cue.buttonOnly) continue;
     const made = fromRide(cue);
     if (!made) continue;
     const atM = cue.kind === "end" ? model.lengthM : cue.atM;

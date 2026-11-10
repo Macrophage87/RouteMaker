@@ -28,7 +28,7 @@ import io
 from collections.abc import Iterable
 from dataclasses import dataclass, replace
 
-from . import ddot_rules
+from . import ddot_rules, mdot_sha_rules
 from .stress import MOTORWAY_AVOID_RULE, USE_SIDEPATH_RULE, Stress, StressResult
 
 # How local an agency is. Lower wins: a county's rating over a state's.
@@ -287,6 +287,18 @@ def read_ddot(
     return replace(rating, read_as=level, note=ddot_rules.words(rule, level, block))
 
 
+def read_posted(rating: AgencyRating, result: StressResult) -> AgencyRating:
+    """An MDOT SHA reading that the way's own posted speed contradicts, as SHA's own level
+    with the reason (`mdot_sha_rules.posted_speed_overrules`); any other rating as it is."""
+    if rating.agency != "mdot-sha" or rating.read_as is None:
+        return rating
+    posted = None if "maxspeed" in (result.assumed or ()) else result.speed_mph
+    why = mdot_sha_rules.posted_speed_overrules(rating.note, posted)
+    if why is None:
+        return rating
+    return replace(rating, read_as=None, note=why)
+
+
 # The formula's reasons for Avoid that are about the road's place, not its traffic, and so
 # stand whatever an agency's level or the owner's reading of one (`read_as`) says: a side
 # path riders are asked to use, and a motorway open to bicycles (`stress.classify`).
@@ -328,7 +340,8 @@ def apply(
     `pipeline.agency_ratings` closes the way instead."""
     formula_level = int(result.tier) + (0.5 if getattr(result, "half", False) else 0)
     ratings = tuple(
-        read_ddot(r, result, formula_level, facility_mapped, painted_lane) for r in ratings
+        read_posted(read_ddot(r, result, formula_level, facility_mapped, painted_lane), result)
+        for r in ratings
     )
     # Set aside only where the old layer rates the way above the formula: a lane built since
     # makes a road calmer, never busier, and where the agency is the calmer of the two its
