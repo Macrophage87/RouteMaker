@@ -378,14 +378,14 @@ transit.</li>
 <tr><th scope="row">Novice and Nervous</th><td>100, every road read one level busier</td><td>4%</td><td>Prefers pavement a little</td><td>11.2 mph [18 km/h]</td><td>Standard</td></tr>
 <tr><th scope="row">E-bike</th><td>70</td><td>12%</td><td>Prefers pavement a little</td><td>15 mph [24 km/h]</td><td>E-bike (leaves out ways closed to e-bikes)</td></tr>
 <tr><th scope="row">Cargo Bike</th><td>70 carrying cargo, 80 with passengers</td><td>4%</td><td>Avoids rough surfaces</td><td>8.7 mph [14 km/h]; assist 11.2 mph [18 km/h]</td><td>Standard (e-bike with assist)</td></tr>
-<tr><th scope="row">Fast</th><td>10</td><td>11%</td><td>Strongly prefers pavement</td><td>11.2 mph [18 km/h]</td><td>Standard</td></tr>
+<tr><th scope="row">Fast</th><td>10</td><td>11%</td><td>Strongly prefers pavement; winding trails count as LTS 3</td><td>11.2 mph [18 km/h]</td><td>Standard</td></tr>
 <tr><th scope="row">Road Bike</th><td>40</td><td>8%</td><td>Keeps off gravel, dirt and winding trails</td><td>15.5 mph [25 km/h], Valhalla's road bike</td><td>Paved (gravel and winding trails cost more)</td></tr>
 <tr><th scope="row">Tandem</th><td>80</td><td>5%</td><td>Avoids rough surfaces</td><td>13 mph [21 km/h]</td><td>Standard</td></tr>
-<tr><th scope="row">Group Ride</th><td>40</td><td>5%</td><td>Prefers pavement a little</td><td>12.4 mph [20 km/h]</td><td>Standard</td></tr>
+<tr><th scope="row">Group Ride</th><td>40</td><td>5%</td><td>Prefers pavement a little; winding trails count as LTS 3</td><td>12.4 mph [20 km/h]</td><td>Standard</td></tr>
 <tr><th scope="row">Mass Ride</th><td>0, locked</td><td>1%</td><td>Prefers pavement a little</td><td>6 mph [9.7 km/h]</td><td>Roads only, no trails</td></tr>
 <tr><th scope="row">Trailmaxxing</th><td>100</td><td>8%</td><td>Gravel is fine</td><td>12.4 mph [20 km/h]</td><td>Standard</td></tr>
-<tr><th scope="row">Gravel</th><td>40</td><td>8%</td><td>Unpaved costs nothing extra</td><td>12.4 mph [20 km/h]</td><td>Off-road</td></tr>
-<tr><th scope="row">Mountain Goat</th><td>40</td><td>Seeks climbs</td><td>Gravel is fine</td><td>12.4 mph [20 km/h]</td><td>Off-road</td></tr>
+<tr><th scope="row">Gravel</th><td>40</td><td>8%</td><td>Unpaved costs nothing extra</td><td>12.4 mph [20 km/h]; 6.2 mph [10 km/h] on mountain-bike trails</td><td>Off-road</td></tr>
+<tr><th scope="row">Mountain Goat</th><td>40</td><td>Seeks climbs</td><td>Gravel is fine</td><td>12.4 mph [20 km/h]; 6.2 mph [10 km/h] on mountain-bike trails</td><td>Off-road</td></tr>
 <tr><th scope="row">Mountain Bike</th><td>80</td><td>12%</td><td>Unpaved costs nothing extra</td><td>9.9 mph [16 km/h]; 6.2 mph [10 km/h] on singletrack</td><td>Mountain-bike trails</td></tr>
 <tr><th scope="row">Bikeshare</th><td>80</td><td>4% classic bike, 7% e-bike</td><td>Avoids rough surfaces</td><td>8.1 mph [13 km/h] classic; 12.4 mph [20 km/h] e-bike</td><td>Standard</td></tr>
 <tr><th scope="row">Rebalance Ride</th><td>80</td><td>4%</td><td>Avoids rough surfaces</td><td>As Bikeshare</td><td>Standard</td></tr>
@@ -554,7 +554,8 @@ as 0.7 of a second on a busier street, and a second on a quiet street as 0.85. T
 quiet street at least 0.5 mi [800 m] long counts 10% less again; a stretch ends where it crosses or runs along a
 busier road, or crosses at a traffic light. Each traffic light counts 15 seconds of waiting three times, as Road Bike's waits do, so a run through
 fewer lights wins.</li>
-<li>After dark, from civil dusk to civil dawn or with the Night ride time, an unlit way counts about twice its time,
+<li>After dark, from civil dusk to civil dawn or with the Night ride time, and on a run expected to finish
+after dusk, an unlit way counts about twice its time,
 and a way not mapped as lit counts as unlit, so the run leans to lit ways without refusing the rest.</li>
 <li>A loop runs the way back off the way out where another way exists, as a ride's loop does.</li>
 <li><strong>Target distance:</strong> with only the start placed and Make it a loop on, the run tries a loop in each
@@ -719,7 +720,7 @@ as on Mass Ride (<a href="/about/routing.html#steep">Steep grades</a>).</p>
 times trips at an assisted 15 mph [24 km/h].</p>
 <h3>Cargo Bike</h3>
 <p>A long, heavy bike. Gentle grades, few gates or barriers (each counts about 15 minutes when choosing a route, though only
-30 seconds of it shows in the time), and stronger avoidance of rough surfaces. Choose carrying cargo or with passengers; passengers
+30 seconds of it shows in the time; from the next map update a plain, open gate not mapped narrower than 4.9 ft [1.5 m] costs nothing), and stronger avoidance of rough surfaces. Choose carrying cargo or with passengers; passengers
 start the slider at 80 and count LTS 2 streets a little, so routes lean toward LTS 1. Electric assist
 switches to the e-bike map and a faster pace, but hills still count: a loaded cargo bike's motor rarely makes a climb
 easy. With a strong motor, move the hills slider toward Fastest yourself.</p>
@@ -806,7 +807,10 @@ since midnight, kept on this device only. <strong>Do another trip</strong> plans
 
 <h3>Fast</h3>
 <p>Direct roads, few turns and smooth pavement, whatever the traffic. The slider starts at 10, so a mile
-of LTS 4 costs only about 2 calm miles.</p>
+of LTS 4 costs only about 2 calm miles. Where the route rides 0.25 mi [400 m] or more of winding trail
+(our default), that trail counts as an LTS 3 street, as on Road Bike. A winding trail bends through a total of
+40 degrees or more per 330 ft [100 m]. The route is then planned once more without it, and the better of the
+two is kept.</p>
 <h3>Road Bike</h3>
 <p>For a road bike: keeps off gravel, dirt and winding trails where there is a paved way round, makes fewer
 turns, and times the ride at a road bike's pace, 15.5 mph [25 km/h]. It plans on its own map, where gravel,
@@ -827,7 +831,8 @@ opens as Road Bike. On Novice and Nervous or Trailmaxxing it keeps its own ride 
 <h3>Tandem</h3>
 <p>For a bicycle built for two. A tandem is long and cannot thread a narrow gap, so a gate, cycle barrier or
 narrow bollard counts about 15 minutes when RouteMaker chooses a route, though only 30 seconds of it shows in the
-time, and its routes keep out of them where there is another way. Each change of street costs 30 seconds, as on
+time, and its routes keep out of them where there is another way. From the next map update a plain, open gate
+not mapped narrower than 4.9 ft [1.5 m] costs nothing, so a tandem route can use a trail with one. Each change of street costs 30 seconds, as on
 Road Bike, because a long bike swings wide at every corner. Two riders are quick on the flat and slow up a climb,
 so the hills slider starts at 5%, as on Group Ride, and descents steeper than 5% cost too, with two riders' weight
 on one set of brakes. Rough surfaces cost as much as on Cargo Bike. The rider behind does not steer, so the
@@ -865,7 +870,8 @@ conditions<sup class="cite"><a href="#ref-7" aria-label="source 7">[7]</a></sup>
 
 <h3>Group Ride</h3>
 <p>A group riding with traffic at riding pace: quiet roads, fewer turns (each change of street costs 30
-seconds, against 5 on Default).</p>
+seconds, against 5 on Default). Winding trails count as an LTS 3 street, as on Fast (see Fast for the 0.25 mi [400 m]
+minimum and the one re-plan).</p>
 <h3>Mass Ride</h3>
 <p>A large group taking the roadway, such as a bike party: roads only, no trails, no bike-lane
 preference, never against a one-way street's traffic, few turns, at a parade pace of 6 mph
