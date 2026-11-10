@@ -5513,6 +5513,18 @@ them on 2026-11-09:
   - Not changed: Reach's rings for Run (`core.reach._ride`) still judge darkness at the ring's
     moment alone.
   Tests: tests/test_run_plan.py.
+- **A Metro station's end in the assistant's busy list** (L4-8). Rides that start or end at a
+  station's elevator begin or end on a few metres rated as the road beside it (the sidewalk the
+  elevator stands on), so the connector listed every Metro ride as starting on a busy road.
+  Claude first built a walk-your-bike link over the whole sidewalk way (Stephen's card: "Walk-
+  your-bike link"), but review found that made through riders walk long sidewalks. On the
+  second card Stephen chose "Hide from busy list now": the LTS 4 price stays, and
+  `busy_stretches` (mcp/routemaker_mcp.py) leaves out a busy stretch of at most
+  `STATION_END_MI` (0.1 mi) that touches an end of the route that is a station (`_at_station`,
+  within `STATION_END_TOUCH_MI` of the end). Only the start and the end count, not a station
+  stop in the middle; `busy_unlisted_mi` still counts what was left out. Both lengths are
+  Claude's defaults, not measured. Code change, no rebuild. Tests:
+  tests/test_mcp_route_details.py.
 
 ### Trails off (OWNER-DECISIONS 463, 463a, 463b)
 

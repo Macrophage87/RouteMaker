@@ -155,6 +155,48 @@ def test_busy_stretches_join_neighbours_and_keep_short_lts_4() -> None:
     ]
 
 
+def _metro_ride():
+    """Glenmont to Wheaton (the round 4 hunt, L4-8): a short LTS 4 bit at each station end, and
+    a short LTS 4 crossing in the middle."""
+    return answer_of(
+        [
+            stretch("path", 0.0, 0.07, 4),
+            stretch("Georgia Avenue sidepath", 0.07, 1.5, 1, "path"),
+            stretch("Randolph Road", 1.5, 1.53, 4),
+            stretch("Quiet Lane", 1.53, 2.95, 1),
+            stretch("unnamed road", 2.95, 2.99, 4),
+            stretch("path", 2.99, 3.0, 4),
+        ]
+    )
+
+
+def test_a_short_busy_bit_at_a_station_end_is_not_listed() -> None:
+    answer = _metro_ride()
+    assert [b["from_mi"] for b in mcp.busy_stretches(answer)] == [0.0, 1.5, 3.0]
+    # Both ends at a station: only the crossing in the middle is said.
+    busy = mcp.busy_stretches(answer, (True, True))
+    assert [(b["from_mi"], b["roads"]) for b in busy] == [(1.5, ["Randolph Road"])]
+    # One end at a station: the other end's bit is still said.
+    assert [b["from_mi"] for b in mcp.busy_stretches(answer, (True, False))] == [1.5, 3.0]
+    assert [b["from_mi"] for b in mcp.busy_stretches(answer, (False, True))] == [0.0, 1.5]
+
+
+def test_a_long_busy_stretch_from_a_station_is_still_listed() -> None:
+    answer = answer_of([stretch("Georgia Avenue", 0.0, 0.4, 4), stretch("Quiet Lane", 0.4, 2.0, 1)])
+    assert [b["from_mi"] for b in mcp.busy_stretches(answer, (True, True))] == [0.0]
+
+
+def test_route_details_finds_the_station_ends_from_the_stations() -> None:
+    answer = _metro_ride()
+    start, end = tuple(at(0.0)), tuple(at(3.0))
+    answer["geometry"] = {"coordinates": [list(start), list(end)]}
+    plan = mcp.Plan([start, end], [], "default", answer, None, {})
+    glenmont = mcp.Station("Glenmont", "Red", -77.5, 39.5, entrance=start, ways_in=(start,))
+    assert len(mcp.route_details(plan)["busy_stretches"]) == 3
+    busy = mcp.route_details(plan, [glenmont])["busy_stretches"]
+    assert [b["from_mi"] for b in busy] == [1.5, 3.0]
+
+
 def test_very_high_junctions_are_listed_and_higher_ones_counted() -> None:
     answer = answer_of(
         [stretch("Quiet Lane", 0.0, 1.0, 1), stretch("Darnestown Road", 1.0, 2.0, 3)],
