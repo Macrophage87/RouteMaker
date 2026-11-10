@@ -361,7 +361,8 @@ class Context:
     # ranked (`presets.wait_weight_for`): 1, and 3 on Road Bike. The time shown is unchanged.
     wait_weight: float = 1.0
     # Whether a beg button ranks at Road Bike's ten minutes (`presets.road_bike_buttons_for`:
-    # Road Bike, Run and Tandem, named, not read from `wait_weight`).
+    # Road Bike, Run and Tandem, named, not read from `wait_weight`). No effect while
+    # `junction_delay.BUTTONS_PRICED` is off (the owner, 2026-11-10).
     road_bike_buttons: bool = False
     # The map's beg-button answers already had in this plan, by OSM way (tagged or not;
     # `routing.button_ways`): the candidates share most of their crossings.
@@ -573,7 +574,8 @@ class Analysis:
     junction_delay_s: float = 0.0
     # The same waits as the ranking counts them (`junction_delay.Wait.ranked_s`): a suburban
     # signal's twice, a crossing read as needing its beg button at two minutes below a stop
-    # sign's price (the owner, 2026-11-08: "a 2x penalty but keep those numbers"). None: the
+    # sign's price (the owner, 2026-11-08: "a 2x penalty but keep those numbers"; the button
+    # price is switched off since 2026-11-10, `junction_delay.BUTTONS_PRICED`). None: the
     # waits shown (an analysis made without the reading).
     junction_ranked_s: float | None = None
 

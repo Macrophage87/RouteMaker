@@ -72,10 +72,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Busy crossing, no signal.": "ګڼه ګوڼه لرونکې څلورلارې، ټرافيکي څراغ نه لري.",
   "Busy crossing.": "ګڼه ګوڼه لرونکې څلورلارې.",
   "Busy junction.": "ګڼه ګوڼه لرونکی تقاطع.",
-  // A signal that may need a button press (the owner, 2026-11-08): the card's note and the words said.
-  // Drafted by Claude: FLAGGED for review by a native speaker.
-  "Light may need a button press": "ښايي ترافيکي څراغ ته تڼۍ کېکاږل پکار وي",
-  "Button for the light.": "د څراغ تڼۍ.",
   "Busy junction at a signal.": "ګڼه ګوڼه لرونکی تقاطع، ټرافيکي څراغ لري.",
   "Busy junction at a stop sign.": "ګڼه ګوڼه لرونکی تقاطع، د درېدو نښه لري.",
   "Busy junction, no signal.": "ګڼه ګوڼه لرونکی تقاطع، ټرافيکي څراغ نه لري.",

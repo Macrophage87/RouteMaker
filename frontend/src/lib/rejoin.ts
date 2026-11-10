@@ -202,18 +202,6 @@ export function joinRoutes(leg: RouteResponse, planned: RouteResponse, atM: numb
     }
   }
 
-  // The signals that may need a button press (navigate.ts withButtons), moved as the description is: the leg's in its
-  // line metres, then the planned route's past the cut, shifted to follow the leg. Spread from `planned` unmoved, a
-  // planned button stayed at its old metres on the joined line, so the note was said a way back's length past its
-  // signal (on a stretch with none) and the leg's own were lost (the hunt, round 2, R2-1).
-  const buttons: NonNullable<RouteResponse["light_buttons"]> = (leg.light_buttons ?? []).map((b) => ({ ...b, at_m: legToLine(b.at_m) }));
-  if (tail.length) {
-    for (const b of planned.light_buttons ?? []) {
-      const p = plannedToLine(b.at_m);
-      if (p >= cut) buttons.push({ ...b, at_m: p - cut + shift });
-    }
-  }
-
   const spans = joinSpans(leg, legM, planned, plannedM, cut, shift, totalM, tail.length > 0);
   const fraction = plannedM > 0 ? rest / plannedM : 0;
   const ended = tail.length === 0;
@@ -227,7 +215,6 @@ export function joinRoutes(leg: RouteResponse, planned: RouteResponse, atM: numb
     // Both or neither: one route's line metres stretched over the other's would put its cues in the wrong places.
     description: leg.description && (planned.description || !tail.length) ? description : null,
     description_overview: null,
-    light_buttons: buttons,
     // Either part's dirt (rideTrip.ts rodeDirt reads `dirt_trails`; RideMode its `dirt_closed`): from `planned` alone,
     // a way back planned along a dirt trail (on_dirt) lost it, so riding that trail never set dirt_ridden and later
     // re-plans dropped dirt, against the owner's "If someone goes onto a dirt trail, any reroutes should include dirt"

@@ -72,10 +72,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Busy crossing, no signal.": "車流量大的路口，沒有交通燈。",
   "Busy crossing.": "車流量大的路口。",
   "Busy junction.": "車流量大的交匯處。",
-  // A signal that may need a button press (the owner, 2026-11-08): the card's note and the words said.
-  // Drafted by Claude: FLAGGED for review by a native speaker.
-  "Light may need a button press": "交通燈可能要撳掣",
-  "Button for the light.": "交通燈撳掣。",
   "Busy junction at a signal.": "車流量大的交匯處，有交通燈。",
   "Busy junction at a stop sign.": "車流量大的交匯處，有停車標誌。",
   "Busy junction, no signal.": "車流量大的交匯處，沒有交通燈。",
