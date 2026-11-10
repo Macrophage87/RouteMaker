@@ -744,8 +744,6 @@ curling up onto a bridge, is said on the side you actually turn.</li>
 three of them: "Right onto 6th Street, then immediately bear left onto Rhode Island Avenue". The turn card
 draws them as one arrow, except through a U-turn or a traffic circle (which keeps its ring) or where the turns
 wind back on themselves. Each turn still gets its own "now", said once you are past the turn before.</li>
-<li>At a light where you may need to press the crossing button, the turn card says "Light may need a button
-press", and the first warning ends "Button for the light."</li>
 <li><strong>To go</strong>: under the turn, a line gives the distance and time to the next stop, if
 there is one, and to the end, and the clock time you should get there, in the app's language, with your phone's own 12- or 24-hour
 clock when the phone is set to that language (6:42 AM or 18:42): "To stop 2: 1.2 mi (1.9 km), 8 min · 6:42 AM". A screen reader
@@ -922,7 +920,9 @@ planned route would have from where you are (past a closed road, say), it is lef
 by your voice setting, says) "Skipping via point. New route found." Only that one via point is ever left out this
 way, never a later one or a stop, and not on a Detour, Less traffic, Fewer hills or when you start again part
 way. <strong>Keep going</strong>
-stops that until you are back on it, and shows the way back instead.</li>
+stops that until you are back on it, and shows the way back instead. On a fixed saved route the ride never plans
+again on its own: off the line it shows the way back to it, and <strong>Reroute</strong> still plans again when you
+tap it.</li>
 <li><strong>No signal:</strong> at Start ride, the map within about 1,000 ft [300 m] either side of the
 route is kept on your device, so dead spots still show the stress lines. It is cleared when the ride
 ends. Only map tiles are kept, never where you were. If none of it could be kept, a line in the panel at
@@ -1225,7 +1225,14 @@ beside it (on a phone they read Save and Start). That Save also has <strong>Down
 signed in it offers <strong>Sign in with Discord</strong> (where available; your plan is kept) or
 Download GPX. A route someone sent you by link can be saved the same way. Plan's Save form has an optional
 <strong>Tags</strong> field (commas between tags; up to 8 a route, of up to 30 characters each), which offers the tags you
-already use. Each saved route records when it was last opened. At 200 routes a save first deletes the route archived
+already use. Plan's Save form (the map bar's and More's) also has a <strong>Fixed route</strong> box ("Keep this exact
+line. Never re-routed."), unticked at first (our default); Go's Save asks only for a name and keeps the via points. Unticked, the route is saved by its via points: when you open it, it
+is checked against today's map and Update route is offered if the distance differs by more than 5%, and off the
+route a ride plans again through them. Ticked, the line is kept exactly, like a GPX file: it opens as saved, is never
+checked against today's map, and a ride on it is never re-routed on its own. Only if the closure check finds a
+closure on its line does the note under it say "Closures on this route now." with Update route. Saving it again in Plan with the box
+changed makes a new version ("Made a fixed route" or "Back to via points"). A fixed route opened in Go stays fixed too. A route saved in Go before its full plan
+arrived also reopens exactly as saved. Each saved route records when it was last opened. At 200 routes a save first deletes the route archived
 longest and says which; with none archived, it asks whether to delete the route you have gone longest without opening
 (counted from when it was saved, if never opened), with Cancel first. Any change to the plan brings
 Update route back. With nothing planned yet, that button is <strong>Load route</strong>, which
@@ -1233,7 +1240,7 @@ opens a short list. Not signed in, <strong>Sign in with Discord</strong> comes f
 available). Then <strong>Open GPX file</strong> asks the ride type and whether to <strong>Snap to roads</strong>
 (streets and paths bikes may ride; the default) or keep it <strong>Exactly as drawn</strong> (even where bikes may not ride), then
 <strong>Choose file</strong>. Below are your saved routes and the drafts an AI assistant planned for you that you
-have not saved, the one opened or made most recently on top, then the routes kept on this device; one tap opens one.
+have not saved (a fixed route's row says Fixed), the one opened or made most recently on top, then the routes kept on this device; one tap opens one.
 A draft is marked "Draft, 5 days left" (each is kept a week, our default) and has a save icon and a delete icon;
 Delete hides it at once, with <strong>Undo</strong> for 8 seconds. A ride on a draft you have not changed ends with
 <strong>Save route</strong> on the summary card.
@@ -1509,7 +1516,7 @@ from the app's next update.</li>
 <p class="next">Next: <a href="/about/accessibility.html">Accessibility</a></p>
 </main>
 <footer>
-  <p>Part of RouteMaker's documentation. It describes version 0.24.0. The code is
+  <p>Part of RouteMaker's documentation. It describes version 0.25.0. The code is
   open source under the MIT licence:
   <a href="https://github.com/Macrophage87/RouteMaker">github.com/Macrophage87/RouteMaker</a>.</p>
   <p><a href="/">Back to the map</a></p>

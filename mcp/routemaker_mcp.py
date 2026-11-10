@@ -3966,6 +3966,9 @@ def _saved_label(row: dict) -> dict:
         out["closures_on_it"] = len(row["closure_alerts"])
     if row.get("tags"):
         out["tags"] = list(row["tags"])
+    if row.get("fixed"):
+        # A fixed route (the owner, 2026-11-10): its exact line, never planned again.
+        out["fixed"] = True
     if row.get("archived_at"):
         out["archived"] = str(row["archived_at"])[:10]
     return out
@@ -5228,6 +5231,10 @@ TOOLS = [
             " in their My routes, with tags if given; on the rider's own computer, as a GPX"
             " file. replaces (a route_id from my_routes) archives that saved route once this"
             " one is saved, for a new route that supersedes it: only when the rider agrees."
+            " fixed true keeps it as a fixed route: its exact line, like a GPX file, never"
+            " offered Update route and never re-routed in a ride (off it, the way back to the"
+            " line). Left out, it is saved by its via points (our default), which is usually"
+            " better: give fixed only when the rider asks for a fixed or unchanging route."
             " Only on the rider's word."
         ),
         "inputSchema": {
@@ -5237,6 +5244,13 @@ TOOLS = [
                 "name": {"type": "string", "minLength": 1, "maxLength": 120},
                 "tags": TAGS_SCHEMA,
                 "replaces": {"type": "integer"},
+                "fixed": {
+                    "type": "boolean",
+                    "description": (
+                        "true: a fixed route, its exact line never planned again. Default"
+                        " false: by its via points (our default)."
+                    ),
+                },
             },
             "required": ["draft_id", "name"],
         },
@@ -6404,6 +6418,9 @@ class Server:
         if not name:
             raise ToolError("give the route a name")
         tags = _tags_arg(args.get("tags"))
+        fixed = args.get("fixed", False)
+        if not isinstance(fixed, bool):
+            raise ToolError("fixed: true or false")
         replaces = args.get("replaces")
         if replaces is not None:
             if self.files:
@@ -6427,6 +6444,11 @@ class Server:
             )
             if tags:
                 notes.append("tags are kept in My routes only: add them there")
+            if fixed:
+                notes.append(
+                    "a GPX file is always its exact line; to keep it as a fixed route in My"
+                    " routes, open the link and save it there with Fixed route ticked"
+                )
         else:
             dials = self._dials(plan)
             fragment = draft.fragment(dials)
@@ -6434,6 +6456,8 @@ class Server:
             body = kept_route(plan, name, without_ride_marks(fragment), dials)
             if tags:
                 body["tags"] = tags
+            if fixed:
+                body["fixed"] = True
             if replaces is not None:
                 body["replaces"] = replaces
             saved = self.api.save(body)
@@ -6444,6 +6468,8 @@ class Server:
             }
             if saved.get("tags"):
                 out["saved"]["tags"] = saved["tags"]
+            if saved.get("fixed"):
+                out["saved"]["fixed"] = True
             if replaces is not None:
                 out["saved"]["archived"] = replaces
             if isinstance(saved.get("made_room"), dict):
@@ -6694,6 +6720,18 @@ class Server:
             keep_key=False,
         )
         out["opened_from"] = _saved_label(kept)
+        if kept.get("fixed"):
+            out.setdefault("notes", []).append(
+                "a fixed route: this is its exact line as saved, never planned again; a revision"
+                " is a new plan, so save it with fixed true only if the rider wants it fixed too"
+            )
+            if kept.get("closure_alerts"):
+                # The owner, 2026-11-10: "Update route can be offered when a closure occurs".
+                out["notes"].append(
+                    "closures were on this fixed route's line when last checked: offer to plan it"
+                    " again around them (revise_route), and to save that over it only on the"
+                    " rider's word"
+                )
         if parse_fragment(fragment)[2] in RIDE_LINK_TYPES:
             out.setdefault("notes", []).append(
                 "a new ride, with its own ride key: links sent for an earlier ride on this route"

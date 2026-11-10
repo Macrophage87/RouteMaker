@@ -2652,4 +2652,11 @@ export const ES: Readonly<Record<string, string>> = {
   "Saving {name}…": "Guardando {name}…",
   "That draft is gone.": "Ese borrador ya no está.",
   "Deleted {name}.": "Se eliminó {name}.",
+  // Fixed saved routes (the owner, 2026-11-10).
+  "Fixed route": "Ruta fija",
+  "Keep this exact line. Never re-routed.": "Guarda esta línea exacta. Nunca se cambia la ruta.",
+  "Fixed": "Fija",
+  "Opened \"{name}\", a fixed route: it stays as saved.": "Se abrió \"{name}\", una ruta fija: se queda tal como se guardó.",
+  "Unticked (our default): the route keeps its via points, Update route is offered when the map changes, and off route a ride plans again through them.": "Sin marcar (nuestra opción predeterminada): la ruta guarda sus puntos de paso, se ofrece Actualizar ruta cuando cambia el mapa y, fuera de la ruta, el viaje se vuelve a planificar por ellos.",
+  "Ticked: the line never changes, like a GPX file, and off route a ride shows the way back to it.": "Marcada: la línea nunca cambia, como un archivo GPX, y fuera de la ruta el viaje muestra el camino de vuelta a ella.",
 };

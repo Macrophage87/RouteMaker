@@ -2147,4 +2147,9 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Delete": "ลบ",
   "Delete {name}": "ลบ {name}",
   "Deleted {name}.": "ลบ {name} แล้ว",
+  // Fixed saved routes (the owner, 2026-11-10).
+  "Fixed route": "เส้นทางคงที่",
+  "Keep this exact line. Never re-routed.": "เก็บเส้นนี้ไว้ตามเดิม ไม่วางเส้นทางใหม่",
+  "Fixed": "คงที่",
+  "Opened \"{name}\", a fixed route: it stays as saved.": "เปิด \"{name}\" แล้ว เป็นเส้นทางคงที่: คงไว้ตามที่บันทึก",
 };

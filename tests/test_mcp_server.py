@@ -589,7 +589,13 @@ def test_saving_on_the_rider_s_computer_writes_a_file_and_says_where_my_routes_i
     assert Path(out["gpx_file"]).parent == tmp_path and "saved" not in out
     assert "connector" in out["notes"][0]
     save = next(t for t in tools.tools() if t["name"] == "save_route")
-    assert set(save["inputSchema"]["properties"]) == {"draft_id", "name", "tags", "replaces"}
+    assert set(save["inputSchema"]["properties"]) == {
+        "draft_id",
+        "name",
+        "tags",
+        "replaces",
+        "fixed",
+    }
     # Tags and archiving are My routes' alone, on the site's connector.
     tagged = tools.call(
         "save_route", {"draft_id": draft["draft_id"], "name": "Lunch", "tags": ["x"]}
@@ -1550,6 +1556,44 @@ def test_a_ride_saved_to_my_routes_keeps_no_ride_key_and_each_reopening_is_a_new
     # A route saved before with a ride key in it: each reopening is a new ride too.
     kept[1]["inputs"]["hash"] = mcp.with_ride_key(kept[1]["inputs"]["hash"], key)
     assert _key_of(tools.call("my_routes", {"route_id": 1})["link"]) not in (None, key)
+
+
+def test_a_fixed_route_is_saved_only_when_asked_and_opens_as_its_line(stand_in, tmp_path) -> None:
+    """Fixed routes (the owner, 2026-11-10: "save routes as an unchanging, GPX identical mode ...
+    MCP and plan too"): save_route's fixed keeps it so; left out, by its via points."""
+    tools = mcp.Server(lambda: mcp.Api(stand_in), STATIONS, out_dir=tmp_path, files=False)
+    kept: dict[int, dict] = {}
+
+    def save(body: dict) -> dict:
+        rid = len(kept) + 1
+        kept[rid] = {"id": rid, **body}
+        return {"id": rid, "name": body["name"], "fixed": bool(body.get("fixed"))}
+
+    tools.api.save = save
+    tools.api.saved_routes = lambda: [
+        {"id": r["id"], "name": r["name"], "fixed": bool(r.get("fixed"))} for r in kept.values()
+    ]
+    tools.api.saved_route = lambda route_id: kept[route_id]
+    draft = tools.call("plan_route", {"points": [[-77.03, 38.9], [-77.02, 38.91]]})
+    plain = tools.call("save_route", {"draft_id": draft["draft_id"], "name": "By vias"})
+    assert "fixed" not in kept[1] and "fixed" not in plain["saved"]
+    draft = tools.call("plan_route", {"points": [[-77.03, 38.9], [-77.02, 38.91]]})
+    out = tools.call("save_route", {"draft_id": draft["draft_id"], "name": "Fixed", "fixed": True})
+    assert kept[2]["fixed"] is True and out["saved"]["fixed"] is True
+    listed = tools.call("my_routes", {})["routes"]
+    assert [r.get("fixed") for r in listed] == [None, True]
+    asked = len(StandIn.routes)
+    opened = tools.call("my_routes", {"route_id": 2})
+    # The very line saved, not planned again.
+    assert len(StandIn.routes) == asked
+    assert opened["opened_from"]["fixed"] is True
+    assert any("a fixed route" in n for n in opened["notes"])
+    assert not any("closures were on" in n for n in opened["notes"])
+    kept[2]["closure_alerts"] = [{"zone": 1}]
+    closed = tools.call("my_routes", {"route_id": 2})
+    assert any("closures were on this fixed route" in n for n in closed["notes"])
+    with pytest.raises(mcp.ToolError, match="true or false"):
+        tools.call("save_route", {"draft_id": draft["draft_id"], "name": "x", "fixed": "yes"})
 
 
 def test_a_fragment_kept_as_a_plan_has_no_ride_marks() -> None:
