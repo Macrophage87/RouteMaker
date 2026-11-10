@@ -196,3 +196,11 @@ test("the big figure is the distance from the cue before; the distance since the
   assert.equal(lines.filter((l) => l.text === "total").length, rows.length);
 });
 
+
+test("a long list of credits still fits its image, in smaller type", () => {
+  const route = { ...sampleRoute(), attribution: Array.from({ length: 30 }, (_, i) => `Source ${i + 1}`) };
+  const pages = lockScreenLayout(route, measure);
+  const last = pages[pages.length - 1];
+  assert.ok(last.lines.some((l) => l.text === "Source 30"));
+  for (const l of last.lines) assert.ok(l.y <= LOCK_HEIGHT - CLEAR_BOTTOM, l.text);
+});

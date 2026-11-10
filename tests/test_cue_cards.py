@@ -120,8 +120,8 @@ def test_a_long_route_runs_to_numbered_phone_sized_images() -> None:
     assert len(images) >= 3
     assert all(png.startswith(b"\x89PNG") and _size(png) == (1179, 2556) for png in images)
     # A short route: its cues on one image, the credits on their own after it.
-    one = cue_cards.draw(_answer(turns[:4], 1000), "Default route")
-    assert len(one) == 2
+    assert len(cue_cards.draw(_answer(turns[:4], 1000), "Default route", credit="Data: x")) == 2
+    assert len(cue_cards.draw(_answer(turns[:4], 1000), "Default route")) == 1
 
 
 class _Cards:
@@ -234,11 +234,11 @@ def test_long_routes_keep_every_cue_and_draw_only_the_page_asked() -> None:
         _stretch(150 * k, f"Street {k}", "left" if k % 2 else "right") for k in range(1, 200)
     ]
     answer = _answer(turns, 31_000)
-    total = cue_cards.count(answer, "Default route")
+    total = cue_cards.count(answer, "Default route", credit="Data: x")
     assert total > 12
-    laid = cue_cards.pages(answer, "Default route")
+    laid = cue_cards.pages(answer, "Default route", credit="Data: x")
     assert laid["rows"][laid["groups"][-2][-1]]["turn"] == "Finish" and laid["groups"][-1] == []
-    one = cue_cards.draw(answer, "Default route", only=[total])
+    one = cue_cards.draw(answer, "Default route", credit="Data: x", only=[total])
     assert len(one) == 1 and one[0].startswith(b"\x89PNG")
 
 
@@ -267,12 +267,12 @@ def test_splits_at_stops_only_where_the_cues_need_more_than_one_image() -> None:
         _stretch(700, "Second Street", "right"),
     ]
     # Cues on one image (no split at the stop), the credits on their own.
-    assert len(cue_cards.draw(_answer(short, 1000), "Default route")) == 2
+    assert len(cue_cards.draw(_answer(short, 1000), "Default route", credit="Data: x")) == 2
     long = [_stretch(0, "Start Street")] + [
         _stretch(300 * k, f"Street {k}", "left" if k % 2 else "right") for k in range(1, 20)
     ]
     long.insert(9, {"kind": "via", "from_m": 2500, "to_m": 2500, "via": 1})
-    laid = cue_cards.pages(_answer(long, 6500), "Default route")
+    laid = cue_cards.pages(_answer(long, 6500), "Default route", credit="Data: x")
     kinds = [[laid["rows"][i]["arrow"]["kind"] for i in g] for g in laid["groups"][:-1]]
     # The start to the stop on the first image, the stop heading the next; the finish last.
     assert kinds[0][0] == "start" and kinds[0][-1] == "stop"
@@ -304,3 +304,12 @@ def test_the_big_figure_is_from_the_cue_before_and_the_total_is_on_the_right() -
     assert "0.5" in by_text and "3.0 mi" in by_text and "total" in by_text
     g, x = by_text["3.0 mi"]
     assert x + cue_cards._width("3.0 mi", g) == cue_cards.WIDTH - cue_cards.SIDE
+
+
+def test_a_long_list_of_credits_still_fits_in_smaller_type() -> None:
+    credit = "\n".join(f"Source {n}" for n in range(1, 31))
+    laid = cue_cards.pages(_answer([_stretch(0, "A Street")], 500), "Default route", credit=credit)
+    assert laid["credit_glyphs"] is cue_cards.cue_glyphs_small
+    step = round(laid["credit_glyphs"].SIZE * 1.25)
+    top = laid["header"]("Part 2 of 2")[1] + 24 + 8
+    assert top + len(laid["credit_lines"]) * step <= cue_cards.HEIGHT - cue_cards.CLEAR_BOTTOM
