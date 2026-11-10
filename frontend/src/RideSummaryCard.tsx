@@ -15,6 +15,7 @@ import { elevationSpan, summaryRows, type RideStats } from "./lib/rideStats.ts";
 import { METRES_PER_MILE, formatClimb, formatDistance, formatDuration } from "./lib/format.ts";
 import { t } from "./lib/i18n.ts";
 import { SAVE_SPOT_TEXT, SAVED_TO_FAVORITES } from "./lib/favoritePlaces.ts";
+import { SAVE_ROUTE } from "./lib/savedRoutes.ts";
 import { OPEN_REPORTS, REPORTS_WHERE, openCount, outstandingSaid, useReport311Log } from "./lib/report311Log.ts";
 import { DO_ANOTHER_TRIP, FINISH_SESSION, REBALANCE_TODAY, dayRows, type RebalanceDay } from "./lib/rebalanceDay.ts";
 
@@ -71,6 +72,7 @@ export function RideSummaryCard({
   endedAt,
   note,
   favorite = null,
+  draft = null,
   destination = null,
   onDone,
   onUndo,
@@ -86,6 +88,12 @@ export function RideSummaryCard({
    * loop, Home, or signed out. Once saved, the button gives way to a line that says so.
    */
   favorite?: { name: string; saved: boolean; onSave: () => void } | null;
+  /**
+   * Signed in, a ride on an assistant's draft (lib/drafts.ts; the owner, 2026-11-09: "a button ... at the end of the
+   * ride to save the ride, otherwise it's temporary"): its name, `left` ("Draft, 5 days left"), and Save route until
+   * `said` says it was saved (or why not, with the button kept).
+   */
+  draft?: { name: string; left: string; saving: boolean; saved: boolean; said: string | null; onSave: () => void } | null;
   /** The ride's destination's name, where the map has one, for the first line; none for a loop. */
   destination?: string | null;
   onDone: () => void;
@@ -103,6 +111,11 @@ export function RideSummaryCard({
   useEffect(() => {
     done.current?.focus();
   }, []);
+  // Saved: the Save route button the focus was on gives way to a line, so the focus goes to Done, not the page.
+  const draftSaved = draft?.saved ?? false;
+  useEffect(() => {
+    if (draftSaved && (document.activeElement === null || document.activeElement === document.body)) done.current?.focus();
+  }, [draftSaved]);
   // A tab stop only while it scrolls (the v0.10.1 end review): otherwise one more stop that does nothing. Measured
   // again as the screen or the text size changes.
   const body = useRef<HTMLDivElement>(null);
@@ -148,6 +161,18 @@ export function RideSummaryCard({
           ))}
         </p>
         {note && <p className="hint">{note}</p>}
+        {draft && (
+          <div className="ride-summary-favorite ride-summary-draft">
+            <p>
+              {draft.said ?? draft.name} {!draft.saved && <span className="hint">{draft.left}</span>}
+            </p>
+            {!draft.saved && (
+              <button type="button" className="secondary" aria-disabled={draft.saving || undefined} onClick={draft.saving ? undefined : draft.onSave}>
+                {SAVE_ROUTE}
+              </button>
+            )}
+          </div>
+        )}
         {favorite && (
           <div className="ride-summary-favorite">
             <p>{favorite.saved ? SAVED_TO_FAVORITES(favorite.name) : favorite.name}</p>

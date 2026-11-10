@@ -1100,7 +1100,7 @@ class TestGpx:
             r = Client().get(bad, **addr())
             assert r.status_code == 404 and b"no longer kept" in r.content, bad
 
-    def test_the_gpx_link_stops_with_its_draft_after_a_day(self, planner) -> None:
+    def test_the_gpx_link_stops_with_its_draft_after_a_week(self, planner) -> None:
         from datetime import timedelta
 
         from django.utils import timezone
@@ -1111,18 +1111,22 @@ class TestGpx:
         draft_id = planned["structuredContent"]["draft_id"]
         link = call(token, "gpx_route", {"draft_id": draft_id})["structuredContent"]["gpx_link"]
         path = urllib.parse.urlsplit(link).path
-        ConnectorDraft.objects.update(created_at=timezone.now() - timedelta(hours=23))
+        ConnectorDraft.objects.update(
+            created_at=timezone.now() - timedelta(days=7) + timedelta(hours=1)
+        )
         assert Client().get(path, **addr()).status_code == 200
-        ConnectorDraft.objects.update(created_at=timezone.now() - timedelta(hours=25))
+        ConnectorDraft.objects.update(
+            created_at=timezone.now() - timedelta(days=7) - timedelta(hours=1)
+        )
         r = Client().get(path, **addr())
         assert r.status_code == 404 and b"no longer kept" in r.content
 
 
 @db
 class TestDraftKeeping:
-    """A draft holds the route's points, often the rider's door: kept a day, long enough to plan
-    in the evening and save or download the next morning, and dropped with its links when the
-    app is disconnected."""
+    """A draft holds the route's points, often the rider's door: kept a week (our default for the
+    owner's "something that might last a week"), and dropped with its links when the app is
+    disconnected."""
 
     POINTS = [[-77.03, 38.9], [-77.02, 38.91]]
 
@@ -1141,13 +1145,13 @@ class TestDraftKeeping:
         ConnectorDraft.objects.update(created_at=then)
         SharedRoute.objects.update(created_at=then, last_opened_at=then)
 
-    def test_a_draft_is_kept_a_day_and_then_dropped(self, planner) -> None:
+    def test_a_draft_is_kept_a_week_and_then_dropped(self, planner) -> None:
         _user, tokens, _ = tokens_for()
         token = tokens["access_token"]
         draft = self.plan(token)
-        self.age(23)
+        self.age(7 * 24 - 1)
         assert not call(token, "revise_route", {"draft_id": draft["draft_id"]})["isError"]
-        self.age(25)
+        self.age(7 * 24 + 1)
         later = call(token, "save_route", {"draft_id": draft["draft_id"], "name": "x"})
         assert later["isError"] and "no draft" in later["content"][0]["text"]
         connector.sweep_connector()
@@ -1158,7 +1162,7 @@ class TestDraftKeeping:
         _user, tokens, _ = tokens_for()
         route_id = self.plan(tokens["access_token"])["link"].rsplit("route=", 1)[1]
         assert Client().get(f"/api/shared-routes/{route_id}", **addr()).status_code == 200
-        self.age(25)
+        self.age(7 * 24 + 1)
         gone = Client().get(f"/api/shared-routes/{route_id}", **addr())
         assert gone.status_code == 404 and gone.json()["code"] == "not_found"
         assert "no longer kept" in gone.json()["error"]
@@ -1233,10 +1237,159 @@ class TestDraftKeeping:
         route_id = self.plan(tokens["access_token"])["link"].rsplit("route=", 1)[1]
         fresh = shared_routes.regenerate(SharedRoute.objects.get(pk=route_id), timezone.now())
         assert fresh.connector_draft_id is not None
-        self.age(25)
+        self.age(7 * 24 + 1)
         assert Client().get(f"/api/shared-routes/{fresh.pk}", **addr()).status_code == 404
         connector.sweep_connector()
         assert not SharedRoute.objects.filter(pk=fresh.pk).exists()
+
+
+@db
+class TestDraftsListed:
+    """Drafts are listed beside the saved routes, each route's newest revision, until they go
+    (the owner, 2026-11-09: "They should be listed just like saved routes, just ones that
+    disappear"), with Save in Load route and at the end of a ride on one."""
+
+    POINTS = [[-77.03, 38.9], [-77.02, 38.91]]
+
+    def plan(self, token, name="Sandwich loop") -> dict:
+        planned = call(token, "plan_route", {"points": self.POINTS, "name": name})
+        assert not planned["isError"], planned
+        return planned["structuredContent"]
+
+    @staticmethod
+    def route_id(draft: dict) -> str:
+        return draft["link"].rsplit("route=", 1)[1]
+
+    def test_only_each_route_s_newest_revision_is_listed(self, planner) -> None:
+        user, tokens, _ = tokens_for()
+        token = tokens["access_token"]
+        first = self.plan(token)
+        revised = call(token, "revise_route", {"draft_id": first["draft_id"]})
+        revised = revised["structuredContent"]
+        other = self.plan(token, "Bakery")
+        browser, _user, _csrf = signed_in(user)
+        listed = browser.get("/api/me/drafts", **addr()).json()["drafts"]
+        assert [d["id"] for d in listed] == [self.route_id(other), self.route_id(revised)]
+        row = listed[1]
+        assert row["name"] == "Sandwich loop" and row["distance_m"] > 0
+        made = timezone.datetime.fromisoformat(row["created_at"])
+        until = timezone.datetime.fromisoformat(row["expires_at"])
+        assert until - made == ConnectorDraft.KEPT == timezone.timedelta(days=7)
+        # The assistant finds the same two.
+        mine = call(token, "my_drafts", {})["structuredContent"]["drafts"]
+        assert [d["draft_id"] for d in mine] == [other["draft_id"], revised["draft_id"]]
+        assert mine[1]["days_left"] == 7 and mine[1]["link"] == revised["link"]
+        found = call(token, "my_drafts", {"search": "sandwich"})["structuredContent"]["drafts"]
+        assert [d["draft_id"] for d in found] == [revised["draft_id"]]
+
+    def test_drafts_are_not_shared_links_and_are_only_the_rider_s(self, planner) -> None:
+        user, tokens, _ = tokens_for()
+        self.plan(tokens["access_token"])
+        browser, _user, _csrf = signed_in(user)
+        assert browser.get("/api/me/shared-routes", **addr()).json()["links"] == []
+        stranger, _other, _ = signed_in()
+        assert stranger.get("/api/me/drafts", **addr()).json()["drafts"] == []
+        assert Client().get("/api/me/drafts", **addr()).status_code in (401, 403)
+
+    def test_saving_from_the_app_stops_listing_the_draft(self, planner) -> None:
+        user, tokens, _ = tokens_for()
+        draft = self.plan(tokens["access_token"])
+        route_id = self.route_id(draft)
+        browser, _user, csrf = signed_in(user)
+        shared = browser.get(f"/api/shared-routes/{route_id}", **addr()).json()
+        assert shared["draft_until"]
+        # Only its owner is offered Save: anyone else with the link sees a shared route.
+        assert "draft_until" not in Client().get(f"/api/shared-routes/{route_id}", **addr()).json()
+        body = {k: shared[k] for k in ("name", "source", "line", "distance_m", "inputs")}
+        r = send(browser, "post", "/api/me/routes", {**body, "from_draft": route_id}, csrf)
+        assert r.status_code == 201, r.content
+        assert browser.get("/api/me/drafts", **addr()).json()["drafts"] == []
+        assert SavedRoute.objects.filter(user=user, name="Sandwich loop").count() == 1
+        # A later revision is a new draft, listed again.
+        token = tokens["access_token"]
+        again = call(token, "revise_route", {"draft_id": draft["draft_id"]})
+        listed = browser.get("/api/me/drafts", **addr()).json()["drafts"]
+        assert [d["id"] for d in listed] == [self.route_id(again["structuredContent"])]
+
+    def test_another_rider_s_draft_is_not_marked_saved(self, planner) -> None:
+        user, tokens, _ = tokens_for()
+        draft = self.plan(tokens["access_token"])
+        route_id = self.route_id(draft)
+        stranger, _other, csrf = signed_in()
+        shared = Client().get(f"/api/shared-routes/{route_id}", **addr()).json()
+        body = {k: shared[k] for k in ("name", "source", "line", "distance_m", "inputs")}
+        r = send(stranger, "post", "/api/me/routes", {**body, "from_draft": route_id}, csrf)
+        assert r.status_code == 201
+        browser, _user, _csrf = signed_in(user)
+        assert len(browser.get("/api/me/drafts", **addr()).json()["drafts"]) == 1
+        bad = send(stranger, "post", "/api/me/routes", {**body, "from_draft": "nope"}, csrf)
+        assert bad.status_code == 400
+
+    def test_a_saved_draft_keeps_no_ride_key(self, planner) -> None:
+        user, tokens, _ = tokens_for()
+        draft = self.plan(tokens["access_token"])
+        route_id = self.route_id(draft)
+        browser, _user, csrf = signed_in(user)
+        shared = browser.get(f"/api/shared-routes/{route_id}", **addr()).json()
+        inputs = {**shared["inputs"], "hash": shared["inputs"]["hash"] + "&k=abc&ride=1&lead=x"}
+        body = {k: shared[k] for k in ("name", "source", "line", "distance_m")}
+        r = send(
+            browser,
+            "post",
+            "/api/me/routes",
+            {**body, "inputs": inputs, "from_draft": route_id},
+            csrf,
+        )
+        assert r.status_code == 201, r.content
+        kept = SavedRoute.objects.get(user=user).inputs["hash"]
+        assert kept == shared["inputs"]["hash"] and "k=" not in kept
+
+    def test_opening_a_draft_puts_it_on_top(self, planner) -> None:
+        user, tokens, _ = tokens_for()
+        first = self.plan(tokens["access_token"], "First")
+        self.plan(tokens["access_token"], "Second")
+        browser, _user, _csrf = signed_in(user)
+        assert (
+            browser.get(f"/api/shared-routes/{self.route_id(first)}", **addr()).status_code == 200
+        )
+        listed = browser.get("/api/me/drafts", **addr()).json()["drafts"]
+        on_top = max(listed, key=lambda d: d["opened_at"])
+        assert on_top["name"] == "First"
+
+    def test_deleting_a_draft_drops_every_revision_and_link(self, planner) -> None:
+        user, tokens, _ = tokens_for()
+        token = tokens["access_token"]
+        first = self.plan(token)
+        revised = call(token, "revise_route", {"draft_id": first["draft_id"]})["structuredContent"]
+        other = self.plan(token, "Bakery")
+        browser, _user, csrf = signed_in(user)
+        stranger, _other, stranger_csrf = signed_in()
+        path = f"/api/me/drafts/{self.route_id(revised)}"
+        assert send(stranger, "delete", path, {}, stranger_csrf).status_code == 404
+        assert send(browser, "delete", path, {}, csrf).status_code == 200
+        listed = browser.get("/api/me/drafts", **addr()).json()["drafts"]
+        assert [d["id"] for d in listed] == [self.route_id(other)]
+        for gone in (first, revised):
+            link = f"/api/shared-routes/{self.route_id(gone)}"
+            assert Client().get(link, **addr()).status_code == 404
+        late = call(token, "save_route", {"draft_id": revised["draft_id"], "name": "x"})
+        assert late["isError"]
+
+    def test_save_route_stops_listing_the_draft(self, planner) -> None:
+        _user, tokens, _ = tokens_for()
+        token = tokens["access_token"]
+        draft = self.plan(token)
+        saved = call(token, "save_route", {"draft_id": draft["draft_id"], "name": "Kept"})
+        assert not saved["isError"], saved
+        assert call(token, "my_drafts", {})["structuredContent"]["drafts"] == []
+
+    def test_an_expired_draft_is_not_listed(self, planner) -> None:
+        user, tokens, _ = tokens_for()
+        self.plan(tokens["access_token"])
+        ConnectorDraft.objects.update(created_at=timezone.now() - ConnectorDraft.KEPT)
+        browser, _user, _csrf = signed_in(user)
+        assert browser.get("/api/me/drafts", **addr()).json()["drafts"] == []
+        assert call(tokens["access_token"], "my_drafts", {})["structuredContent"]["drafts"] == []
 
 
 @db

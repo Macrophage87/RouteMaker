@@ -17,34 +17,36 @@ copies it into the api image. Without it the api plans as before.
 
 Each climb's name (`n`: its roads and the named hill it runs up, "Foxville Road up Catoctin
 Mountain"; the owner, 2026-10-19) is read from the rebuild's extract by `pipeline.climb_names`. The
-file committed on 2026-10-12 predates that: its `n` is only a long trail's name where one carries
-most of a climb, and the next `build_climbs` names them all.
+file of 2026-11-09 below is the first with these names: 3,812 of its 3,820 climbs carry one.
 
 What counts as a climb and its category is in `routemaker.climb_categories`; how the network is
 read, the keys of each entry and the one-way rule are in `pipeline.climb_layer`'s docstring.
 
 ## Status
 
-Written on the build host on 2026-10-12 by `manage.py build_climbs --schema staging`, from build
-20261011T215845Z (the v0.5.0 cloud rebuild, imported and not yet swapped in; 2026-10-09 extract)
-and the rebuild's elevation tiles: 484,351 segments read, **3,750 climbs**, 85 s.
+Written on the PC on 2026-11-09 by `manage.py build_climbs` (step 2 of the v0.23.0 deploy), from the
+live table right after map build 20261109T111715Z was swapped in (the cloud run of 2026-11-09, a fresh
+Geofabrik extract) and the rebuild's elevation tiles: 477,324 segments read, **3,820 climbs**
+(3,812 named), 398 s.
 
 | Category | Climbs |
 | --- | --- |
 | HC | 0 |
 | 1 | 0 |
 | 2 | 2 |
-| 3 | 54 |
-| 4 | 367 |
-| 5 | 3,327 |
+| 3 | 55 |
+| 4 | 385 |
+| 5 | 3,378 |
 
-1,325,586 bytes (402,989 with `gzip -9`), sha256
-`2921963b0f42d61fef6907228ca7e516a92f782c4c950e9503d411134bf7331a`. The build named 19 elevation
-cells it had no ground for (N36-N37 and the cells east of 76 W or west of 78 W); all are outside
-the coverage box, so no climb inside it is left out. Writing it again is in docs/OPERATIONS.md,
-"The Climbs layer".
+1,456,535 bytes (446,394 with `gzip -9`), sha256
+`c0789962e1d54f1e6f5fefc452685f3098d5c04f8f981987f28841319df9d190`. The build had no ground for four
+elevation cells (N38W076, N39W076: east of 76 W; N38W079, N39W079: west of 78 W) and left out any
+climb there. The first two are outside the coverage box (east edge 76.02 W); the last two reach into
+it only in the strip between 78.05 W (its west edge) and 78 W, where a climb could be missing. Against the file of
+2026-10-12: 856 climbs added, 786 removed, 2,096 changed, 868 the same. Writing it again is in
+docs/OPERATIONS.md, "The Climbs layer".
 
-One climb in the file is taken off by hand and is neither drawn nor sought: `bd93dd04dc`, a Cat 4
-down into the Travilah quarry (owner report 2026-10-12; `src/routemaker/climb_exclusions.py`, with
-the same ids in `src/lib/climbExclusions.ts`). So the map shows 3,749 climbs (Cat 4: 366). The
-next `build_climbs` leaves it out of the file itself, with any way whose bike access is closed.
+One climb was taken off by hand on 2026-10-12: `bd93dd04dc`, a Cat 4 down into the Travilah quarry
+(owner report; `src/routemaker/climb_exclusions.py`, with the same ids in
+`src/lib/climbExclusions.ts`). `build_climbs` now leaves out any way whose bike access is closed, and
+this file does not hold that id, so the map shows all 3,820 climbs.

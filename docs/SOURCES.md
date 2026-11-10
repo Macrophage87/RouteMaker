@@ -720,7 +720,10 @@ sample pages (`tests/data/closures`), and docs/OPERATIONS.md, "DC closures", has
   release is passed over on its title and never read or kept. Each "X from A to B" under a time
   window becomes a closure on the ways of X between the cross streets; Emergency No Parking lists
   are skipped; a line that will not parse, or a street that cannot be found, is kept as text with
-  the link under "Check before you go", never guessed.
+  the link under "Check before you go", never guessed. Such a District-wide notice (MPD's or
+  AlertDC's) is shown only on a route with a point inside the District's boundary
+  (`core/geodata/dc-boundary.geojson`), not on one wholly in Maryland or Virginia (routing hunt 4,
+  C4-3).
 - Publisher: Metropolitan Police Department, District of Columbia.
 - Terms: public government releases (inferred public; not a licensed dataset). Not legal advice.
 

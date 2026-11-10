@@ -240,29 +240,15 @@ def test_a_red_near_a_long_plans_cut_is_asked_round(monkeypatch):
     assert info["decision"] == "avoided" and detoured(out)
 
 
-def test_a_red_near_a_stop_the_rider_placed_is_still_left(monkeypatch):
-    # The same boundary as a stop of the rider's own (two legs of one each): left, as before.
+def test_a_red_near_a_stop_the_rider_placed_is_asked_round(monkeypatch):
+    """Routing hunt 4, J4-1: the same boundary as a stop of the rider's own (two legs of one
+    each). Before, a red within ENDPOINT_CLEARANCE_M of it was left ("reds": 0)."""
     trip, cut_read = long_calm_cut_plan()
     router = Router(monkeypatch, readings(through_read=cut_read), window_answer())
     refined = {"long": {"legs": 2, "stops": [1, 1]}}
-    _out, info = red_crossings.settle(trip, context(), searched=False, refined=refined)
-    assert info["reds"] == 0 and router.asked == []
-    _out, info = red_crossings.settle(trip, context(), searched=False)
-    assert info["reds"] == 0 and router.asked == []
-
-
-def test_the_stops_are_the_answers_own_legs_where_its_leg_count_changed():
-    """Hunt 2, P2-1: `stops_m` maps the long plan's cuts onto the answer only where it has
-    the cut legs; where the answer's leg count is not theirs (the router's own route
-    answered, or another pass rejoined or split its legs) its boundaries are the rider's."""
-    refined = {"long": {"legs": 3, "stops": [2, 1]}}
-    cut = dataclasses.replace(THROUGH_READ, via_m=[8_000.0, 20_000.0])
-    assert red_crossings.stops_m(cut, refined) == [20_000.0]
-    for via in ([20_000.0], [5_000.0, 10_000.0, 20_000.0], []):
-        read = dataclasses.replace(THROUGH_READ, via_m=via)
-        assert red_crossings.stops_m(read, refined) == via, via
-    assert red_crossings.stops_m(cut, None) == [8_000.0, 20_000.0]
-    assert red_crossings.stops_m(cut, {"long": {"stops": []}}) == [8_000.0, 20_000.0]
+    out, info = red_crossings.settle(trip, context(), searched=False, refined=refined)
+    assert info["reds"] == 1 and len(router.asked) >= 1
+    assert info["decision"] == "avoided" and detoured(out)
 
 
 def test_a_loops_way_round_onto_its_way_out_is_refused(monkeypatch):
@@ -363,12 +349,81 @@ def test_no_red_crossing_asks_nothing(monkeypatch):
     assert out is trip and info["reds"] == 0 and router.asked == []
 
 
-def test_a_red_crossing_at_the_start_is_not_asked_round(monkeypatch):
-    # Within ENDPOINT_CLEARANCE_M of the start: the rider's own start, not a way to avoid.
-    near = event(200.0)
-    router = Router(monkeypatch, lambda trip: analysis("through", events=[near]), window_answer())
-    trip, info = red_crossings.settle(plain_through(), context(), searched=False)
-    assert info["reds"] == 0 and router.asked == []
+@pytest.mark.parametrize("at_m", [300.0, 39_700.0])
+def test_a_red_crossing_near_the_start_or_the_end_is_asked_round(monkeypatch, at_m):
+    """Routing hunt 4, J4-1: a red 300 m from the start (or the end), the arterial crossing
+    nearest the rider's home, was never asked round, even where the way round cost nothing.
+    Now it is, by a stretch clipped at the leg's end."""
+    near = dataclasses.replace(THROUGH_READ, events=[event(at_m)])
+    router = Router(monkeypatch, readings(through_read=near), window_answer())
+    trip = plain_through()
+    out, info = red_crossings.settle(trip, context(), searched=False)
+    assert info["reds"] == 1 and info["decision"] == "avoided" and detoured(out)
+    window = router.asked[-1]["locations"]
+    ends = THROUGH[0] if at_m < 20_000.0 else THROUGH[-1]
+    assert any((p["lon"], p["lat"]) == pytest.approx(ends) for p in window)
+
+
+def test_a_red_at_a_cul_de_sacs_only_exit_is_dropped_and_the_next_tried(monkeypatch):
+    """J4-1: a red near the start with no way round (the router finds no route without it)
+    is left, and the next red is still ridden round."""
+    near = event(300.0, cost_ft=4000.0)
+    through = dataclasses.replace(THROUGH_READ, events=[near, RED])
+    round_read = analysis("round", tiers="1" * 401, cost_s=4100.0, events=[near])
+    window = window_answer()
+
+    def answer(payload):
+        if any(p["lon"] == near.lon for p in payload["exclude_locations"]):
+            raise routing.RouterRefused(400, 442, "no path")
+        return window(payload)
+
+    Router(monkeypatch, readings(round_read, through), answer)
+    out, info = red_crossings.settle(plain_through(), context(), searched=False)
+    assert info["reds"] == 2 and info["no_way_round"] == 1
+    assert info["decision"] == "avoided" and info["reds_after"] == 1 and detoured(out)
+
+
+def test_a_cul_de_sac_red_does_not_spend_the_asks_the_mid_route_reds_need(monkeypatch):
+    """J4-1 review: an unavoidable red 300 m from the start, the worst on the route, and five
+    mid-route reds. The whole-plan ask leaves the red near the start out, so it still clears
+    the five together, and the red near the start is asked after them by the narrow window
+    only. Before, the whole-plan ask excluded it too and found no route, and four of the six
+    asks went on it: every red was kept and the plan said cut short ("asks")."""
+    near = event(300.0, cost_ft=4500.0)
+    mids = [event(m) for m in (8_000.0, 14_000.0, 20_000.0, 26_000.0, 32_000.0)]
+
+    def read(trip):
+        points = [p for leg in trip["legs"] for p in routing.decode_polyline6(leg["shape"])]
+        north = [
+            (a[0], b[0])
+            for a, b in zip(points, points[1:], strict=False)
+            if min(a[1], b[1]) > BASE[1] + 1e-4
+        ]
+        left = [e for e in mids if not any(lo <= e.lon <= hi for lo, hi in north)]
+        tiers = "1" * (401 if north else 400)
+        return analysis("x", tiers=tiers, cost_s=4100.0 if north else 4000.0, events=[near, *left])
+
+    window = window_answer()
+
+    def answer(payload):
+        if any(p["lon"] == near.lon for p in payload["exclude_locations"]):
+            raise routing.RouterRefused(400, 442, "no path")
+        if payload["locations"][0].get("type") != "break":
+            # The whole plan: along the line past `near`, then round every mid-route red.
+            way = round_leg(THROUGH[2], THROUGH[-1], 40.1)["legs"][0]
+            points = [*THROUGH[:2], *routing.decode_polyline6(way["shape"])]
+            leg = {"shape": dedodge.encode_polyline6(points), "summary": {"length": 40.1}}
+            return {"legs": [leg], "summary": {"length": 40.1}}
+        return window(payload)
+
+    router = Router(monkeypatch, read, answer)
+    out, info = red_crossings.settle(plain_through(), context(), searched=False)
+    assert info["reds"] == 6 and info["decision"] == "avoided" and info["avoided"] == 5
+    assert info["reds_after"] == 1 and info["no_way_round"] == 1
+    assert info["limited"] is None and info["asks"] == 3 <= red_crossings.MAX_ASKS
+    whole = router.asked[0]["exclude_locations"]
+    assert len(whole) == 5 and all(p["lon"] != near.lon for p in whole)
+    assert detoured(out)
 
 
 def test_a_way_round_onto_a_busy_road_is_refused(monkeypatch):

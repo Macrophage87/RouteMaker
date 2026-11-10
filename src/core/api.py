@@ -558,7 +558,8 @@ class RouteIn(Schema):
             "Transit ride types and Run only: when the trip starts, ISO 8601 (with an offset, or"
             " local time in Washington), within a year of now. Absent: now. Each system's own"
             " calendar for that day is used, holidays and published closures included; a run"
-            " after civil dusk or before civil dawn favours lit ways. Where `when` is absent,"
+            " that starts or is estimated to finish after civil dusk or before civil dawn"
+            " favours lit ways. Where `when` is absent,"
             " the bike legs, junction waits and closures are planned at this moment's ride"
             " time too (`routemaker.ridetime.when_at`)."
         ),
@@ -1754,12 +1755,14 @@ class DescriptionEntryOut(Schema):
 
 class MovedPointOut(Schema):
     """A trip point the planner moved (OWNER-DECISIONS 291(4)): one inside the
-    National Zoo goes to its bike racks, so a route to the Zoo ends there."""
+    National Zoo goes to its bike racks, so a route to the Zoo ends there. A Mass Ride's
+    point on a street with rails in it goes to the nearest cross street (289,
+    `core.mass_rails`)."""
 
     index: int = Field(description="The point's place in `points`, from 0.")
     asked: list[float] = Field(description="[lon, lat] as asked.")
     routed: list[float] = Field(description="[lon, lat] as routed.")
-    reason: Literal["zoo_racks"]
+    reason: Literal["zoo_racks", "rail_street"]
     note: str = Field(description="One plain sentence to show the rider.")
 
 
@@ -2626,16 +2629,6 @@ class WorkZonesOut(Schema):
     )
 
 
-class LightButtonOut(Schema):
-    """A signal the route crosses that is read as needing its beg button
-    (`routemaker.junction_delay.signal_wait`; the owner, 2026-11-08): where along the
-    route, in the description's metres (`DescriptionEntryOut.from_m`), and its node."""
-
-    at_m: float
-    lon: float
-    lat: float
-
-
 class RouteBody(Schema):
     preset: PresetName
     variant: Literal[
@@ -2658,11 +2651,6 @@ class RouteBody(Schema):
     # and junction waits in place (`routemaker.time_marks`), for a ride's arrival times.
     # Null where the router gave no time; the front end then spreads the time evenly.
     time_marks: list[list[float]] | None = None
-    # The signals the route crosses that may need a button press for a light change (a
-    # suburban big or secondary road crossed from a path or a minor road, or a crossing the
-    # map tags `button_operated=yes`; the owner, 2026-11-08): Ride says "Light may need a
-    # button press" on the turn or crossing there. Empty where there are none. Additive.
-    light_buttons: list[LightButtonOut] = Field(default_factory=list)
     climb_m: float
     descent_m: float
     stress_m: StressOut
@@ -2718,6 +2706,15 @@ class RouteBody(Schema):
             " for once. Null where the pass did not run (the search covered the route, a loop,"
             " a first route, a followed or drawn line, a Mass Ride) and on the routes to choose"
             " from."
+        ),
+    )
+    winding: WindingOut | None = Field(
+        default=None,
+        description=(
+            "What the winding-trail round did on Group Ride and Fast (`core.winding_round`,"
+            " hunt 4 P4-1): the route's winding trails read at LTS 3 and the router asked once"
+            " more without them. Null where it did not run (other ride types, a first route,"
+            " a followed or drawn line, trails off)."
         ),
     )
     # The route in words, stretch by stretch (OWNER-DECISIONS 220). Additive:
@@ -2842,6 +2839,22 @@ class RedCrossingsOut(Schema):
     )
 
 
+class WindingOut(Schema):
+    """Group Ride's and Fast's winding-trail round (`core.winding_round.settle`; asked "Should
+    Group Ride and Fast pay for winding trails the way Road Bike does?", the owner, 2026-11-09:
+    "yes")."""
+
+    winding_m: float = Field(description="Metres of winding trail on the route the round kept.")
+    asked: bool = Field(description="Whether the router was asked again without them.")
+    taken: bool = Field(description="Whether the route asked for replaced the plan's.")
+    limited: str | None = Field(
+        description=(
+            "Why it stopped short: `time`, `untraced`, `no_way_round` or `table`; null where"
+            " it ran."
+        )
+    )
+
+
 class DodgesOut(Schema):
     """What the pass that takes out pointless side-street dodges did (`core.dedodge`,
     OWNER-DECISIONS 272). `limited` says why it stopped short: `time` or `checks`."""
@@ -2862,7 +2875,12 @@ class RunOut(Schema):
     """A Run's planning (`core.run_plan`)."""
 
     pace_kmh: float = Field(description="The pace on the flat it is timed at, km/h.")
-    dark: bool = Field(description="Planned after dark: lit ways favoured.")
+    dark: bool = Field(
+        description=(
+            "Planned after dark (its start or its estimated or planned finish between civil"
+            " dusk and civil dawn, or the Night ride time): lit ways favoured."
+        )
+    )
     trail_m: float = Field(description="Metres on trails, park paths and tracks.")
     signals: int = Field(description="Signalled crossings on the way, each a wait for the light.")
     target_distance_m: float | None = Field(
@@ -4416,33 +4434,58 @@ def _walk_closures(plan: transit.Plan, zones, skip: int | None) -> list:
 
 def _walked_line(
     plan: transit.Plan, preset_name: str, dials, services=None
-) -> tuple[dict, transit.Plan]:
+) -> tuple[dict | None, transit.Plan]:
     """The answer's line is a walk (walking the whole way, or a trip whose line is a walk): the
     walk itself, as the pedestrian router walked it (or straight where it did not), timed at
-    walking pace; no bike route is asked. `services` walks a leg not yet walked by the router.
-    Returns the line and the plan with that walk's turns on its step, for turn by turn on foot."""
-    leg = plan.legs[plan.ride]
-    points = [list(p) for p in leg.coordinates]
-    metres = None
-    turns = leg.turns
-    walked = services.walk(points[0], points[-1]) if services is not None else None
-    if walked is not None and len(walked.coordinates) >= 2:
-        points = [list(p) for p in walked.coordinates]
-        metres = walked.metres
-        turns = walked.turns
-    elif not leg.estimated:
-        metres = sum(
-            haversine(Point(*a), Point(*b)) for a, b in zip(points, points[1:], strict=False)
-        )
-    line = _unrouted_line(points, preset_name, dials, leg.seconds, metres)
-    if turns != leg.turns:
-        option = plan.option
-        legs = list(option.legs)
-        legs[plan.ride] = dataclasses.replace(leg, turns=turns)
-        options = list(plan.options)
-        options[plan.chosen] = dataclasses.replace(option, legs=tuple(legs))
-        plan = dataclasses.replace(plan, options=options)
-    return line, plan
+    walking pace; no bike route is asked. `services` walks a leg not yet walked by the router
+    (one the search walked already keeps its line and time). Returns the line and the plan with
+    that walk's turns on its step, for turn by turn on foot, and the walk timed as walked: the
+    infrequent departures' waits are worked out again from it, and a trip that can no longer
+    catch one goes (`transit.with_rides`; hunt 4, X4-1: a 2.0 mi walk kept its 0.6 mi straight
+    line's 16 min, and the trip was promised in less time than its first walk alone). The best
+    left is planned instead: its own line walked here where it is a walk; where it is a ride,
+    the line is None and the plan returned is that trip, for the caller to route its line (a
+    walk is never drawn as a ride's line, nor a dropped trip kept)."""
+    while True:
+        leg = plan.legs[plan.ride]
+        points = [list(p) for p in leg.coordinates]
+        metres = None
+        turns = leg.turns
+        seconds = leg.seconds
+        unwalked = services is not None and len(points) == 2
+        walked = services.walk(points[0], points[-1]) if unwalked else None
+        if walked is not None and len(walked.coordinates) >= 2:
+            points = [list(p) for p in walked.coordinates]
+            metres = walked.metres
+            turns = walked.turns
+            seconds = walked.seconds
+        elif not leg.estimated:
+            metres = sum(
+                haversine(Point(*a), Point(*b)) for a, b in zip(points, points[1:], strict=False)
+            )
+        if turns != leg.turns:
+            plan = _with_leg(plan, plan.ride, dataclasses.replace(leg, turns=turns))
+        if seconds != leg.seconds:
+            timed = transit.with_rides(plan, {plan.ride: seconds})
+            if timed.option.key != plan.option.key:
+                # Its departure can no longer be caught, and the trip went: the best left.
+                plan = timed
+                if timed.option.walk or timed.legs[timed.ride].mode in (transit.WALK, transit.TAKE):
+                    continue  # its own line walked, the same way
+                return None, timed  # a ride's line: the caller routes it
+            plan = timed
+        line = _unrouted_line(points, preset_name, dials, seconds, metres)
+        return line, plan
+
+
+def _with_leg(plan: transit.Plan, index: int, leg: transit.Leg) -> transit.Plan:
+    """The plan with its chosen option's leg `index` replaced."""
+    option = plan.option
+    legs = list(option.legs)
+    legs[index] = leg
+    options = list(plan.options)
+    options[plan.chosen] = dataclasses.replace(option, legs=tuple(legs))
+    return dataclasses.replace(plan, options=options)
 
 
 # A run longer than this in straight lines is refused: a marathon's span with room to spare.
@@ -4507,18 +4550,25 @@ def _run_body(body: RouteIn, started: float | None) -> dict:
         now_only=body.closures_now,
         reach_m=run_plan.zones_reach_m(body.points, target_m),
     )
+    pace_kmh = run_plan.pace_of(body.run_pace_kmh)
     ask = run_plan.RunAsk(
-        pace_kmh=run_plan.pace_of(body.run_pace_kmh),
+        pace_kmh=pace_kmh,
         hills=0 if body.hills is None else body.hills,
-        # Dark at the run's moment, the one its closures are matched at: a run asked for at
+        # Dark from the run's moment, the one its closures are matched at: a run asked for at
         # 10 pm with the dial on the weekend is Saturday morning's, not tonight's, as Reach
-        # already has it (`core.reach`, hunt 2, T5).
-        dark=run_plan.is_dark(zones_at, body.when),
+        # already has it (`core.reach`, hunt 2, T5). Dark at the start or at the estimated
+        # finish (Stephen, 2026-11-09, hunt 4 X4-3).
+        dark=run_plan.is_dark_over(
+            zones_at,
+            run_plan.estimated_s(body.points, pace_kmh, body.loop, target_m),
+            body.when,
+        ),
         loop=body.loop,
         target_m=target_m,
         exclude_polygons=tuple(exclude),
     )
     until = run_plan.deadline_from(started)
+    first_started = routing.clock()
     try:
         run = run_plan.plan(body.points, ask, run_plan.Router(until))
     except (run_plan.RunTimedOut, run_plan.RouterDown):
@@ -4531,6 +4581,32 @@ def _run_body(body: RouteIn, started: float | None) -> dict:
         work_zones.drop_exclusions({}, zones)
         ask = dataclasses.replace(ask, exclude_polygons=tuple(zones.exclude))
         run = run_plan.plan(body.points, ask, run_plan.Router(until))
+    calls = run.calls
+    first_s = routing.clock() - first_started
+    if not ask.dark and run_plan.is_dark(zones_at + timedelta(seconds=run.seconds), body.when):
+        # The estimate said the run ends in daylight, the planned run ends after dusk: plan it
+        # once more with lit ways, inside the same deadline, only where as much time is left as
+        # the first plan took, and keep it only where it ran whole (no call cut, no loop's
+        # tries stopped for time); else the first plan stands.
+        lit = dataclasses.replace(ask, dark=True)
+        lit_router = run_plan.Router(until)
+        if lit_router.left() < first_s:
+            logger.info("a run ends after dusk: no time left to plan it again with lit ways")
+        else:
+            try:
+                relit = run_plan.plan(body.points, lit, lit_router)
+            except run_plan.NoRun as error:
+                relit = None
+                logger.info("a run's re-plan with lit ways found nothing: %s", error)
+            calls += lit_router.calls
+            kept = relit is not None and not lit_router.short
+            logger.info(
+                "a run ends after dusk: planned again with lit ways, %d router calls, %s",
+                lit_router.calls,
+                "kept" if kept else "the first plan kept",
+            )
+            if kept:
+                run, ask = relit, lit
     dials = routing.Dials(stress=body.stress, hills=body.hills, when=when)
     answer = _unrouted_line(
         [list(p) for p in run.shape], presets.RUN, dials, run.seconds, run.metres
@@ -4540,6 +4616,11 @@ def _run_body(body: RouteIn, started: float | None) -> dict:
     answer["descent_m"] = run.descent_m or 0.0
     answer["leg_ends"] = run.leg_ends or answer["leg_ends"]
     answer["loop"] = run.loop
+    # The loop and its target among the dials too, as a ride's (routing.py), so the connector's
+    # link carries loop=1 and targetmi and a kept route re-plans as the loop it is: without
+    # them a Run loop's link opened, or re-planned, as a one-way run (routing hunt 4, X4-4).
+    answer["dials"]["loop"] = bool(run.loop)
+    answer["dials"]["target_distance_m"] = int(target_m) if target_m else None
     answer["transit"] = run_plan.worded(transit.block(run_plan.as_plan(run, at)), run.seconds)
     answer["run"] = {
         "pace_kmh": ask.pace_kmh,
@@ -4552,7 +4633,7 @@ def _run_body(body: RouteIn, started: float | None) -> dict:
             None if ask.target_m is None or len(body.points) == 1 else run.metres <= ask.target_m
         ),
     }
-    logger.info("run plan: %d router calls, %.1f s", run.calls, routing.clock() - started)
+    logger.info("run plan: %d router calls, %.1f s", calls, routing.clock() - started)
     return answer
 
 
@@ -4799,7 +4880,13 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
         plan = with_later_legs(plan)
         buses = _buses_for(plan, bus_ask)
         plan = transit_live.with_live_buses(plan, buses)
-        plan = transit.drawn(plan, draw, skip=lines)
+        again = transit.drawn(plan, draw, skip=lines)
+        if again.option.key != plan.option.key:
+            # A walk drawn for the map, timed as walked, can no longer catch its departure, and
+            # the trip went (transit.drawn; hunt 4, X4-1): the best left is planned, its own line
+            # routed or walked, and drawn in turn. Each pass drops one trip, so this ends.
+            return answered(*best_left(again))
+        plan = again
         block = _transit_block(plan, schedule, live, buses)
         answer["transit"] = _with_leg_lines(block, lines)
         # The trip's other walks: each closure along one said, and one a walk goes through (no
@@ -4813,32 +4900,6 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
             if text not in notes:
                 notes.append(text)
         return answer
-
-    if found.option.walk:
-        return answered(*_walked_line(found, body.preset, dials))
-    leg = found.legs[found.ride]
-    if body.preset in presets.ON_FOOT_PRESETS:
-        # Walk + 🚆🚌 never rides: its line is its first walk, walked (straight where a few yards).
-        far = transit.line_m(leg) >= transit.MIN_LINE_M
-        return answered(*_walked_line(found, body.preset, dials, draw if far else None))
-    # The line is the chosen option's first ride (or walk). Riding directly there, or a line that
-    # is a ride of a few yards (nothing the router could route), is drawn start to end instead, and
-    # the plan keeps its own times. A line that is a walk of a few yards is drawn straight.
-    short = transit.line_m(leg) < transit.MIN_LINE_M
-    whole = (found.option.direct and body.preset == presets.BIKE_TRANSIT) or (
-        short and leg.mode in (transit.RIDE, transit.SHARE)
-    )
-    retime = not whole or found.option.direct
-    if not whole and leg.mode in (transit.WALK, transit.TAKE):
-        # The line is a walk (Bikeshare + 🚶🚆🚌 with no ride worth a line): walked by the
-        # pedestrian router, never the bike's, and the plan keeps its walking times. A trip walked
-        # with no ride at all has its first walk as its line however short (drawn straight).
-        return answered(*_walked_line(found, body.preset, dials, None if short else draw))
-    if whole:
-        ride_from, ride_to = list(start), list(end)
-    else:
-        ride_from = list(leg.coordinates[0])
-        ride_to = list(leg.coordinates[-1])
 
     def line(points: list[list[float]]) -> dict | None:
         """The answer's line routed, or None when the router did not answer in time."""
@@ -4858,6 +4919,79 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
         # As a short leg is: drawn straight, the plan keeping its own (estimated) times.
         drawn = _unrouted_line(points, body.preset, dials, plan.legs[plan.ride].seconds)
         return drawn, dataclasses.replace(plan, notes=[*plan.notes, UNROUTED_NOTE])
+
+    def walked(plan: transit.Plan, services=None) -> tuple[dict, transit.Plan, dict[int, dict]]:
+        """The answer's line walked (`_walked_line`). Where the walk, timed as walked, can no
+        longer catch its departure and the best trip left has a ride for its line, that trip is
+        planned instead (`best_left`), never the dropped one kept (hunt 4, X4-1)."""
+        answer, plan = _walked_line(plan, body.preset, dials, services)
+        if answer is None:
+            return best_left(plan)
+        return answer, plan, {}
+
+    def best_left(timed: transit.Plan) -> tuple[dict, transit.Plan, dict[int, dict]]:
+        """The trip planned in place of the chosen one: its departure cannot be caught after
+        all and it was left out, or as routed it is no longer the best. Its own line is routed
+        (or drawn start to end, or walked), and its later rides routed for their colours. Their
+        times stay the plan's own: timing them again could drop this option too (a walked line
+        that does is replaced in turn, `walked`)."""
+        leg = timed.legs[timed.ride]
+        if timed.option.walk:
+            return walked(timed)
+        if body.preset in presets.ON_FOOT_PRESETS or (
+            leg.mode in (transit.WALK, transit.TAKE) and not timed.option.direct
+        ):
+            # As the first pass: a walk of a few yards (a trip with no ride, started at the
+            # stop) is drawn straight, never as a bike route over the transit.
+            far = transit.line_m(leg) >= transit.MIN_LINE_M
+            return walked(timed, draw if far else None)
+        again_whole = timed.option.direct and body.preset == presets.BIKE_TRANSIT
+        if again_whole:
+            points = [list(start), list(end)]
+        elif transit.line_m(leg) >= transit.MIN_LINE_M:
+            points = [list(leg.coordinates[0]), list(leg.coordinates[-1])]
+        else:
+            again_whole = True
+            points = [list(start), list(end)]
+        later = {} if again_whole else _later_rides(timed, leg_preset, started, dials)
+        try:
+            answer = line(points)
+            lines = _collected(later, started)
+        finally:
+            # A later ride not started yet is not asked; one still running past its wait is
+            # left to its own deadline, not waited for.
+            for pending in later.values():
+                if isinstance(pending, Future):
+                    pending.cancel()
+        if answer is None:
+            answer, timed = unrouted(points, timed)
+        return answer, timed, lines
+
+    if found.option.walk:
+        return answered(*walked(found))
+    leg = found.legs[found.ride]
+    if body.preset in presets.ON_FOOT_PRESETS:
+        # Walk + 🚆🚌 never rides: its line is its first walk, walked (straight where a few yards).
+        far = transit.line_m(leg) >= transit.MIN_LINE_M
+        return answered(*walked(found, draw if far else None))
+    # The line is the chosen option's first ride (or walk). Riding directly there, or a line that
+    # is a ride of a few yards (nothing the router could route), is drawn start to end instead, and
+    # the plan keeps its own times. A line that is a walk of a few yards is drawn straight.
+    short = transit.line_m(leg) < transit.MIN_LINE_M
+    whole = (found.option.direct and body.preset == presets.BIKE_TRANSIT) or (
+        short and leg.mode in (transit.RIDE, transit.SHARE)
+    )
+    retime = not whole or found.option.direct
+    if not whole and leg.mode in (transit.WALK, transit.TAKE):
+        # The line is a walk (Bikeshare + 🚶🚆🚌 with no ride worth a line): walked by the
+        # pedestrian router, never the bike's, and timed as walked (`_walked_line`). A trip walked
+        # with no ride at all has its first walk as its line however short (drawn straight).
+        return answered(*walked(found, None if short else draw))
+    if whole:
+        ride_from, ride_to = list(start), list(end)
+    else:
+        ride_from = list(leg.coordinates[0])
+        ride_to = list(leg.coordinates[-1])
 
     # Every later ride of the chosen option (the ride from the exit station to the destination,
     # the far end's bikeshare ride) is routed as the first is, with the same ride type and dials,
@@ -4892,35 +5026,8 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
         timed = transit.with_rides(found, routed, busy, keep=keep) if routed else found
         if timed.option.key != found.option.key:
             # The chosen trip's departure cannot be caught after all and it was left out, or
-            # as routed it is no longer the best: the best left is planned, its own line routed
-            # (or drawn start to end), and its later rides routed for their colours. Their
-            # times stay the plan's own: timing them again could drop this option too.
-            leg = timed.legs[timed.ride]
-            if timed.option.walk:
-                return answered(*_walked_line(timed, body.preset, dials))
-            if body.preset in presets.ON_FOOT_PRESETS:
-                far = transit.line_m(leg) >= transit.MIN_LINE_M
-                return answered(*_walked_line(timed, body.preset, dials, draw if far else None))
-            walked = leg.mode in (transit.WALK, transit.TAKE) and not timed.option.direct
-            if walked:
-                # As the first pass: a walk of a few yards (a trip with no ride, started at the
-                # stop) is drawn straight, never as a bike route over the transit.
-                far = transit.line_m(leg) >= transit.MIN_LINE_M
-                return answered(*_walked_line(timed, body.preset, dials, draw if far else None))
-            again_whole = timed.option.direct and body.preset == presets.BIKE_TRANSIT
-            if again_whole:
-                points = [list(start), list(end)]
-            elif transit.line_m(leg) >= transit.MIN_LINE_M:
-                points = [list(leg.coordinates[0]), list(leg.coordinates[-1])]
-            else:
-                again_whole = True
-                points = [list(start), list(end)]
-            later = {} if again_whole else _later_rides(timed, leg_preset, started, dials)
-            asked.append(later)
-            answer = line(points)
-            lines = _collected(later, started)
-            if answer is None:
-                answer, timed = unrouted(points, timed)
+            # as routed it is no longer the best: the best left is planned (`best_left`).
+            answer, timed, lines = best_left(timed)
         found = timed
     finally:
         # A later ride not started yet is not asked; one still running past its wait is left
@@ -4929,7 +5036,7 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
             for pending in later.values():
                 if isinstance(pending, Future):
                     pending.cancel()
-    answered(answer, found, lines)
+    answer = answered(answer, found, lines)
     logger.info(
         "transit plan %s: search %.1f s (candidates %.1f s, %d calls), line %.1f s",
         body.preset,
@@ -7619,7 +7726,7 @@ def _saved_route(request, route_id: int):
     return SavedRoute.objects.filter(user=request.user, pk=route_id).first()
 
 
-@api.get("/me/routes", summary="The signed-in rider's saved routes, newest first")
+@api.get("/me/routes", summary="The signed-in rider's saved routes, last opened or made first")
 @decorate_view(
     signed_in_only,
     same_site_editor,
@@ -7627,12 +7734,17 @@ def _saved_route(request, route_id: int):
     errors_as_json,
 )
 def saved_routes_list(request):
+    from django.db.models.functions import Coalesce
     from django.middleware.csrf import get_token
 
     from .models import SavedRoute
 
     get_token(request)
-    rows = SavedRoute.objects.filter(user=request.user).order_by("-created_at", "-pk")
+    # The one last opened or made first (the owner, 2026-11-09: "make routes go in descending
+    # order from when they were last created or opened"); an open is never before its making.
+    rows = SavedRoute.objects.filter(user=request.user).order_by(
+        Coalesce("opened_at", "created_at").desc(), "-pk"
+    )
     return _private(
         JsonResponse(
             {
@@ -7717,6 +7829,17 @@ def _add_saved_route(request, versions: bool = True, prune: bool = True):
         not versions or not isinstance(make_room, int) or isinstance(make_room, bool)
     ):
         return _stress_error(400, "Not a saved route.", field="make_room")
+    # The assistant's draft this saves (Save in Load route, or at the end of a ride on it): no
+    # longer listed as a draft once saved. Only the site's own pages send it.
+    from_draft = body.get("from_draft")
+    if from_draft is not None and (
+        not versions or not isinstance(from_draft, str) or not _shared_id_ok(from_draft)
+    ):
+        return _stress_error(400, "Not one of your drafts.", field="from_draft")
+    if from_draft is not None and isinstance(inputs.get("hash"), str):
+        # A Group or Mass Ride draft's link carries its ride's key: My routes keeps the plan, never
+        # the key, so each ride opened from it is new (as the connector's own save_route does).
+        inputs = {**inputs, "hash": _without_ride_marks(inputs["hash"])}
     version_of = body.get("version_of")
     if version_of is not None and not versions:
         return _stress_error(400, "An assistant only adds routes.", field="version_of")
@@ -7786,6 +7909,8 @@ def _add_saved_route(request, versions: bool = True, prune: bool = True):
             old.archived_at = old.archived_at or timezone.now()
             old.replaced_by = row
             old.save(update_fields=["archived_at", "replaced_by", "updated_at"])
+        if from_draft is not None:
+            _draft_saved(request.user, from_draft)
     from . import saved_route_alerts
 
     saved_route_alerts.check(row)
@@ -7793,6 +7918,36 @@ def _add_saved_route(request, versions: bool = True, prune: bool = True):
     if made_room:
         out["made_room"] = made_room  # the route deleted for it, for the app to say
     return _private(JsonResponse(out, status=201))
+
+
+def _without_ride_marks(fragment: str) -> str:
+    """The plan's link fragment without a ride's key, mark or leader (`k=`, `ride=`, `lead=`;
+    mcp/routemaker_mcp.py without_ride_marks)."""
+    lead = "#" if fragment.startswith("#") else ""
+    marks = ("k=", "ride=", "lead=")
+    return lead + "&".join(
+        p for p in fragment.lstrip("#").split("&") if p and not p.startswith(marks)
+    )
+
+
+def _shared_id_ok(route_id: str) -> bool:
+    from . import shared_routes
+
+    return shared_routes.id_ok(route_id)
+
+
+def _draft_saved(user, route_id: str) -> None:
+    """The draft whose link is `route_id`, the rider's own, was saved: no longer listed."""
+    from .connector import mark_saved
+    from .models import SharedRoute
+
+    link = (
+        SharedRoute.objects.filter(pk=route_id, owner=user, connector_draft__isnull=False)
+        .select_related("connector_draft")
+        .first()
+    )
+    if link is not None:
+        mark_saved(link.connector_draft)
 
 
 def _full_account(rows):
@@ -8412,6 +8567,16 @@ def _shared_out(row) -> dict:
     }
 
 
+def _draft_until(row) -> str | None:
+    """An assistant's draft: when it goes (core.models.ConnectorDraft.KEPT), so the app can offer
+    its owner Save, as Load route does, at the end of a ride on it."""
+    from .models import ConnectorDraft
+
+    if row.connector_draft_id is None:
+        return None
+    return (row.created_at + ConnectorDraft.KEPT).isoformat()
+
+
 def _purge_shared(now) -> None:
     from . import shared_routes
 
@@ -8519,10 +8684,20 @@ def shared_route_read(request, route_id: str):
         response = _stress_error(410, shared_routes.REVOKED, code="revoked")
         response["Cache-Control"] = "no-store"
         return response
+    # The owner's own draft (an assistant's): Save is offered them, and each open puts it on top
+    # of Load route (the owner, 2026-11-09: "most recent on top").
+    own_draft = (
+        row.connector_draft_id is not None
+        and request.user.is_authenticated
+        and row.owner_id == request.user.pk
+    )
     # A year's keeping counts from the last open; written at most once a day.
-    if row.last_opened_at < now - shared_routes.TOUCH_EVERY:
+    if own_draft or row.last_opened_at < now - shared_routes.TOUCH_EVERY:
         SharedRoute.objects.filter(pk=row.pk).update(last_opened_at=now)
-    response = JsonResponse(_shared_out(row))
+    out = _shared_out(row)
+    if own_draft:
+        out["draft_until"] = _draft_until(row)
+    response = JsonResponse(out)
     response["Cache-Control"] = "no-store"
     return response
 
@@ -8576,15 +8751,95 @@ def my_shared_routes(request):
 
     get_token(request)
     now = timezone.now()
-    rows = SharedRoute.objects.filter(owner=request.user, revoked_at__isnull=True).order_by(
-        "-created_at", "pk"
-    )
+    # An assistant's drafts are listed in Load route instead (/me/drafts): one link a revision
+    # here was the clutter the owner did not want (2026-11-09).
+    rows = SharedRoute.objects.filter(
+        owner=request.user, revoked_at__isnull=True, connector_draft__isnull=True
+    ).order_by("-created_at", "pk")
     links = [
         _shared_summary(request, r)
         for r in rows.defer("line", "answer", "gpx", "preview_png")
         if not shared_routes.expired(r, now)
     ]
     return _private(JsonResponse({"links": links}))
+
+
+@api.get("/me/drafts", summary="The routes an assistant app drafted for you and you have not saved")
+@decorate_view(
+    signed_in_only,
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.ME),
+    errors_as_json,
+)
+def my_drafts(request):
+    """Listed in Load route beside the saved routes, each route's newest revision (the owner,
+    2026-11-09: "They should be listed just like saved routes, just ones that disappear"), with
+    when it goes. Opened by its link's id (GET /api/shared-routes/{id}); saved with POST
+    /api/me/routes and `from_draft`."""
+    from .connector import newest_drafts
+    from .models import ConnectorDraft, SharedRoute
+
+    drafts = newest_drafts(ConnectorDraft.objects.filter(user=request.user))
+    links = {
+        link.connector_draft_id: link
+        for link in SharedRoute.objects.filter(
+            owner=request.user,
+            revoked_at__isnull=True,
+            connector_draft_id__in=[d.pk for d in drafts],
+        )
+        .order_by("created_at")
+        .only(
+            "pk", "name", "source", "distance_m", "inputs", "last_opened_at", "connector_draft_id"
+        )
+    }
+    out = []
+    for draft in drafts:
+        link = links.get(draft.pk)
+        if link is None:  # its link was never kept: nothing to open
+            continue
+        out.append(
+            {
+                "id": link.pk,
+                "name": link.name,
+                "source": link.source,
+                "distance_m": link.distance_m,
+                "preset": (link.inputs or {}).get("preset", ""),
+                "created_at": draft.created_at.isoformat(),
+                # Its link's last open (written at most once a day), for the list's order.
+                "opened_at": max(link.last_opened_at, draft.created_at).isoformat(),
+                "expires_at": (draft.created_at + ConnectorDraft.KEPT).isoformat(),
+            }
+        )
+    return _private(JsonResponse({"drafts": out}))
+
+
+@api.delete("/me/drafts/{route_id}", summary="Delete one of your assistant drafts")
+@decorate_view(
+    ratelimit.user_rate_limited(ratelimit.ACCOUNT_WRITES),
+    csrf_protected,
+    signed_in_only,
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.STRESS_EDIT_CLIENT),
+    errors_as_json,
+)
+def my_draft_delete(request, route_id: str):
+    """Delete from Load route (the owner, 2026-11-09: "also add delete"): the draft whose link
+    this is, with every revision of its route and their links, at once. The assistant's chat
+    then finds no draft, as after a week."""
+    from .connector import delete_route_drafts
+    from .models import SharedRoute
+
+    link = (
+        SharedRoute.objects.filter(pk=route_id, owner=request.user, connector_draft__isnull=False)
+        .select_related("connector_draft")
+        .first()
+        if _shared_id_ok(route_id)
+        else None
+    )
+    if link is None:
+        return _stress_error(404, "That draft is not one of yours.", code="not_found")
+    delete_route_drafts(link.connector_draft)
+    return _private(JsonResponse({"deleted": True}))
 
 
 @api.post("/me/shared-routes/{route_id}/revoke", summary="Turn off one of your shared links")
@@ -10225,6 +10480,12 @@ class ReviewedClosureIn(Schema):
         default=None, description="The last day, YYYY-MM-DD; none: until a reviewer ends it."
     )
     url: str = Field(default="", max_length=500, description="The source's link, optional.")
+    # default=True (closed on foot unless the reviewer says not): Claude's default, not measured.
+    on_foot: bool = Field(
+        default=True,
+        description="Closed to people on foot too (Run and Walk route round it); false for a"
+        " road closed to traffic whose sidewalk stays open.",
+    )
 
 
 class ClosureConfirmIn(Schema):
@@ -10236,6 +10497,12 @@ class ClosureConfirmIn(Schema):
     start: str | None = None
     end: str | None = None
     url: str = Field(default="", max_length=500)
+    # default=True (closed on foot unless the reviewer says not): Claude's default, not measured.
+    on_foot: bool = Field(
+        default=True,
+        description="Closed to people on foot too (Run and Walk route round it); false for a"
+        " road closed to traffic whose sidewalk stays open.",
+    )
 
 
 class ReviewedClosureOut(Schema):
@@ -10357,6 +10624,7 @@ def reviewed_closure_create(request, body: ReviewedClosureIn, response: HttpResp
             end=body.end,
             url=body.url,
             line=body.line,
+            on_foot=body.on_foot,
         )
     except stress_edits.EditRefused as refused:
         return _edit_refusal(request, refused)
@@ -10393,7 +10661,7 @@ def closure_report_confirm(request, report_id: int, body: ClosureConfirmIn, resp
 
     try:
         closure = reviewed_closures.confirm_report(
-            request.user, report_id, body.reason, body.start, body.end, body.url
+            request.user, report_id, body.reason, body.start, body.end, body.url, body.on_foot
         )
     except stress_edits.EditRefused as refused:
         return _edit_refusal(request, refused)

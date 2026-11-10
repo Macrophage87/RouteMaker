@@ -1421,3 +1421,56 @@ def test_a_suggested_row_with_its_placeholders_is_refused_and_loads_once_filled(
     filled = {**reasoned, "evidence": "Two lanes and a painted lane, seen on the spot."}
     [loaded] = parse_file(document(filled), "suggested.json")
     assert loaded["value"]["tier"] == 2 and loaded["fingerprint"] == fingerprint
+
+
+def test_a_group_loads_as_one_row_per_way(tmp_path) -> None:
+    """The compact `groups` form (`pipeline.overrides.file_rows`): the 2026-11-09 own-picks
+    files name ~180,000 ways, too many to write one row each. Each group is the rows of one
+    adjustment, written once with its ways; the loader checks them as rows."""
+    from core.management.commands.load_access_overrides import parse_file
+
+    value = {**ADJUSTMENT, "annotation_status": "approved"}
+    group = {"kind": "stress", "value": value, "reason": "r", "evidence": "e", "ways": [41, 42]}
+    rows = parse_file(json.dumps({"version": 1, "groups": [group]}), "f")
+    assert [(r["osm_way_id"], r["value"], r["reason"]) for r in rows] == [
+        (41, value, "r"),
+        (42, value, "r"),
+    ]
+    plain = {
+        "kind": "access",
+        "osm_way_id": 9,
+        "value": {"bicycle": "yes"},
+        "reason": "r",
+        "evidence": "e",
+    }
+    rows = parse_file(json.dumps({"version": 1, "rows": [plain], "groups": [group]}), "f")
+    assert [r["osm_way_id"] for r in rows] == [9, 41, 42], "rows first, then the groups'"
+
+
+@pytest.mark.parametrize(
+    ("groups", "message"),
+    [
+        ({}, "groups must be a list"),
+        ([{"kind": "stress", "ways": []}], "ways must be a non-empty list"),
+        ([{"kind": "stress", "ways": [1], "note": "x"}], "has no"),
+        (
+            [{"kind": "stress", "ways": [1], "fingerprints": {"2": {}}}],
+            "fingerprints map its own ways",
+        ),
+    ],
+)
+def test_a_malformed_group_is_refused(groups, message) -> None:
+    from core.management.commands.load_access_overrides import parse_file
+
+    with pytest.raises(CommandError, match=message):
+        parse_file(json.dumps({"version": 1, "groups": groups}), "f")
+
+
+def test_a_way_in_two_groups_is_refused() -> None:
+    from core.management.commands.load_access_overrides import parse_file
+
+    value = {**ADJUSTMENT, "annotation_status": "approved"}
+    one = {"kind": "stress", "value": value, "reason": "r", "evidence": "e", "ways": [41]}
+    two = {**one, "value": {**value, "adjustment_id": "b-stretch"}}
+    with pytest.raises(CommandError, match="appears twice"):
+        parse_file(json.dumps({"version": 1, "groups": [one, two]}), "f")
