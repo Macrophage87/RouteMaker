@@ -857,28 +857,36 @@ def _one_turn_per_junction(pieces: list[Piece], along: list[float]) -> list[Piec
             if i != keep:
                 out[i] = dataclasses.replace(pieces[i], turn=0.0, fork=None)
         out[keep] = _junction_reading(pieces, cluster, keep)
+        if out[keep].fork is not None and pieces[keep].fork is None:
+            for i in cluster:
+                if i != keep and pieces[i].fork is not None:
+                    out[i] = dataclasses.replace(out[i], others=None)
+                    break
     return out
 
 
 def _junction_reading(pieces: list[Piece], cluster: list[int], keep: int) -> Piece:
-    """The piece that keeps a junction's turn (`_one_turn_per_junction`), with what its
-    other nodes read: a fork read at one of them (`_fork_of`, the line read through them
-    all, so the same turn) where the kept node read none, with that node's other ways, and
-    a choice where any of them has one. Dropped with their turns, the junction's fork went
+    """The piece that keeps a junction's turn (`_one_turn_per_junction`), with a fork read
+    at one of its other nodes (`_fork_of`, the line read through them all, so the same
+    turn) where the kept node read none, and that node's other ways (moved off it there,
+    so no way is counted twice). Dropped with that node's turn, the junction's fork went
     unsaid (the owner, 2026-11-10, on the Bethesda Trolley Trail at Charles Street: the
     trail bears right off the crosswalk where a sidepath carries straight on along Old
     Georgetown Road, 1 m past the node where the crosswalk ends; "a very common turn to
-    miss")."""
+    miss"). Never on a roundabout, whose exits are counted from each node's own ways."""
     kept = pieces[keep]
-    changes: dict = {}
-    if kept.fork is None:
-        mate = next((i for i in cluster if i != keep and pieces[i].fork is not None), None)
-        if mate is not None:
-            changes["fork"] = pieces[mate].fork
-            changes["others"] = (kept.others or ()) + (pieces[mate].others or ())
-    if not kept.choice and any(pieces[i].choice for i in cluster):
-        changes["choice"] = True
-    return dataclasses.replace(kept, **changes) if changes else kept
+    if kept.fork is not None or any(_on_roundabout(pieces[i]) for i in cluster):
+        return kept
+    mate = next((i for i in cluster if i != keep and pieces[i].fork is not None), None)
+    if mate is None:
+        return kept
+    return dataclasses.replace(
+        kept, fork=pieces[mate].fork, others=(kept.others or ()) + (pieces[mate].others or ())
+    )
+
+
+def _on_roundabout(piece: Piece) -> bool:
+    return bool(piece.road and piece.road.roundabout)
 
 
 def _line_point(shape: list, at: int, step: int, nodes: frozenset[int]) -> tuple:
