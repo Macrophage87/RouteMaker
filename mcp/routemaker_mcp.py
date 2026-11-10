@@ -4390,7 +4390,9 @@ RIDE_OPTIONS = {
         "minimum": 100,
         "maximum": 2000,
         "description": (
-            "Mass Ride only: the anticipated ride size, riders (default 500). Roads carrying"
+            "Mass Ride only: the expected number of riders. Ask the organiser for it before"
+            " planning a Mass Ride: the road room and the corkers depend on it (without it the"
+            " ride is planned at 500, our default, and the answer says so). Roads carrying"
             " fewer riders a minute than it needs (riders / 5) are priced in the route choice;"
             " the answer's `mass_capacity` says where the route falls short and the corkers it"
             " needs."
@@ -6241,6 +6243,20 @@ class Server:
             "link": link,
             "saved": False,
         }
+        if (
+            plan.preset == "mass-ride"
+            and not plan.sent.get("ride_size")
+            and out.get("mass_capacity")
+        ):
+            # The ride size is an expected input (the owner, 2026-11-10: "should be an expected
+            # input"): a Mass Ride planned without it says what it assumed.
+            assumed = out["mass_capacity"].get("riders") or 500
+            out["mass_capacity"]["ride_size_note"] = (
+                f"no ride size was given, so this assumed {assumed}"
+                " riders (our default, not the organiser's number): ask how many riders they"
+                " expect and plan again with ride_size, since the road room and the corkers"
+                " depend on it"
+            )
         if taken:
             # Named points, so a wrong match ("Navy Yard" the base, not the station) shows.
             out["points_taken_as"] = taken

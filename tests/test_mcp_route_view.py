@@ -427,3 +427,25 @@ def test_corking_is_kept_as_the_draft_is_revised_and_can_be_cleared(stand_in, tm
     )["result"]
     third = cleared["structuredContent"]["draft_id"]
     assert not server.drafts.get(third).options.get("corking")
+
+
+def test_a_mass_ride_without_a_ride_size_says_what_it_assumed(stand_in, tmp_path) -> None:  # noqa: F811
+    """The owner, 2026-11-10, on the ride size: "should be an expected input"."""
+
+    class MassApi(mcp.Api):
+        def route(self, body: dict) -> dict:
+            answer = super().route(body)
+            riders = body.get("ride_size") or 500
+            answer["mass_capacity"] = {"riders": riders, "need_riders_per_min": riders // 5}
+            return answer
+
+    server = mcp.Server(lambda: MassApi(stand_in), STATIONS, out_dir=tmp_path)
+    args = {"points": ["Union Market", "Takoma"], "preset": "mass-ride"}
+    bare = rpc(server, "tools/call", {"name": "plan_route", "arguments": args})["result"]
+    note = bare["structuredContent"]["mass_capacity"]["ride_size_note"]
+    assert "500 riders (our default" in note and "ask how many riders" in note
+    sized = rpc(
+        server, "tools/call", {"name": "plan_route", "arguments": {**args, "ride_size": 800}}
+    )["result"]
+    assert "ride_size_note" not in sized["structuredContent"]["mass_capacity"]
+    assert "Ask the organiser" in mcp.RIDE_OPTIONS["ride_size"]["description"]
