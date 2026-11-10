@@ -46,6 +46,7 @@ import shapely.wkb  # noqa: E402
 from shapely.prepared import prep  # noqa: E402
 
 from pipeline import conflation, extract, variants  # noqa: E402
+from pipeline.overrides import file_rows  # noqa: E402
 from routemaker import agency_roads, divided, facility, speed_corrections  # noqa: E402
 from routemaker.classes import TRAIL_CLASS_HIGHWAY  # noqa: E402
 from routemaker.geo import Point, haversine  # noqa: E402
@@ -107,7 +108,7 @@ def existing_override_ways(directory: Path, skip: set[str]) -> dict[str, set[int
     for path in sorted(Path(directory).glob("*.json")):
         if path.name in skip:
             continue
-        for row in json.loads(path.read_text()).get("rows", []):
+        for row in file_rows(json.loads(path.read_text())):
             found[row["kind"]].add(int(row["osm_way_id"]))
     return found
 

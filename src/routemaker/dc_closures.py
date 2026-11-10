@@ -67,7 +67,9 @@ class Area:
 
 
 DC_AREA = "dc"
-# The District, its bounding box.
+# The District, its bounding box: a quick first test only. Its corners take in Takoma Park,
+# Silver Spring, Bethesda, Arlington and Alexandria, so a route counts as in the District only
+# with a point inside its boundary (`in_district`; routing hunt 4, C4-3).
 DC_BOX = (-77.1198, 38.7916, -76.9094, 38.9955)
 
 # The parks along the region's routes (the plan: Rock Creek, the National Mall, the GW
@@ -175,6 +177,14 @@ def _in_boxes(lon: float, lat: float, boxes) -> bool:
     return any(w <= lon <= e and s <= lat <= n for w, s, e, n in boxes)
 
 
+def in_district(lon: float, lat: float) -> bool:
+    """Whether a point is inside the District's boundary (core/geodata/dc-boundary.geojson,
+    the one Mass Ride's border check and the DC no-bike ways read), after the box test."""
+    from . import bike_bans, cbd
+
+    return _in_boxes(lon, lat, (DC_BOX,)) and cbd.in_polygons((lon, lat), bike_bans.dc_polygons())
+
+
 def area_of(key: str) -> Area | None:
     """A notice's area: a park, the District, or a deer-management closure's
     (`routemaker.deer_closures`)."""
@@ -202,7 +212,11 @@ def notices_along(
             continue
         if not notice_active(notice, at):
             continue
-        if any(_in_boxes(c[0], c[1], area.boxes) for c in coordinates):
+        if notice.area == DC_AREA:
+            # A District-wide notice (MPD, AlertDC) only for a route that enters the District.
+            if any(in_district(c[0], c[1]) for c in coordinates):
+                found.append(notice)
+        elif any(_in_boxes(c[0], c[1], area.boxes) for c in coordinates):
             found.append(notice)
     found += [
         n for n in deer_closures.first_each(deer) if deer_closures.runs_along(n.area, coordinates)
