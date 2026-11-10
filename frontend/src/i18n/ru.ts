@@ -72,10 +72,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Busy crossing, no signal.": "Оживлённый перекрёсток, без светофора.",
   "Busy crossing.": "Оживлённый перекрёсток.",
   "Busy junction.": "Оживлённое пересечение.",
-  // A signal that may need a button press (the owner, 2026-11-08): the card's note and the words said.
-  // Drafted by Claude: FLAGGED for review by a native speaker.
-  "Light may need a button press": "Возможно, на светофоре нужно нажать кнопку",
-  "Button for the light.": "Кнопка светофора.",
   "Busy junction at a signal.": "Оживлённое пересечение, светофор.",
   "Busy junction at a stop sign.": "Оживлённое пересечение, знак «Стоп».",
   "Busy junction, no signal.": "Оживлённое пересечение, без светофора.",

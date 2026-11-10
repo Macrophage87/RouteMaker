@@ -72,10 +72,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Busy crossing, no signal.": "Persimpangan ramai, tanpa lampu lalu lintas.",
   "Busy crossing.": "Persimpangan ramai.",
   "Busy junction.": "Simpang ramai.",
-  // A signal that may need a button press (the owner, 2026-11-08): the card's note and the words said.
-  // Drafted by Claude: FLAGGED for review by a native speaker.
-  "Light may need a button press": "Lampu lalu lintas mungkin perlu tombol ditekan",
-  "Button for the light.": "Tombol lampu.",
   "Busy junction at a signal.": "Simpang ramai, ada lampu lalu lintas.",
   "Busy junction at a stop sign.": "Simpang ramai, ada rambu berhenti.",
   "Busy junction, no signal.": "Simpang ramai, tanpa lampu lalu lintas.",

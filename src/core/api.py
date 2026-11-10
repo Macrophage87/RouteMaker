@@ -2629,16 +2629,6 @@ class WorkZonesOut(Schema):
     )
 
 
-class LightButtonOut(Schema):
-    """A signal the route crosses that is read as needing its beg button
-    (`routemaker.junction_delay.signal_wait`; the owner, 2026-11-08): where along the
-    route, in the description's metres (`DescriptionEntryOut.from_m`), and its node."""
-
-    at_m: float
-    lon: float
-    lat: float
-
-
 class RouteBody(Schema):
     preset: PresetName
     variant: Literal[
@@ -2661,11 +2651,6 @@ class RouteBody(Schema):
     # and junction waits in place (`routemaker.time_marks`), for a ride's arrival times.
     # Null where the router gave no time; the front end then spreads the time evenly.
     time_marks: list[list[float]] | None = None
-    # The signals the route crosses that may need a button press for a light change (a
-    # suburban big or secondary road crossed from a path or a minor road, or a crossing the
-    # map tags `button_operated=yes`; the owner, 2026-11-08): Ride says "Light may need a
-    # button press" on the turn or crossing there. Empty where there are none. Additive.
-    light_buttons: list[LightButtonOut] = Field(default_factory=list)
     climb_m: float
     descent_m: float
     stress_m: StressOut

@@ -72,10 +72,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Busy crossing, no signal.": "Giao lộ đông xe, không có đèn tín hiệu.",
   "Busy crossing.": "Giao lộ đông xe.",
   "Busy junction.": "Ngã tư đông xe.",
-  // A signal that may need a button press (the owner, 2026-11-08): the card's note and the words said.
-  // Drafted by Claude: FLAGGED for review by a native speaker.
-  "Light may need a button press": "Đèn tín hiệu có thể cần bấm nút",
-  "Button for the light.": "Nút bấm đèn.",
   "Busy junction at a signal.": "Ngã tư đông xe, có đèn tín hiệu.",
   "Busy junction at a stop sign.": "Ngã tư đông xe, có biển dừng.",
   "Busy junction, no signal.": "Ngã tư đông xe, không có đèn tín hiệu.",

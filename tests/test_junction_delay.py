@@ -926,18 +926,13 @@ class TestSignalRuns:
         (plain,) = d.waits([along], suburban=everywhere)
         assert plain.seconds == 15.0
 
-    def test_the_button_cue_is_at_the_button_signal_not_the_runs_first_junction(self) -> None:
+    def test_the_button_is_at_the_button_signal_not_the_runs_first_junction(self) -> None:
         """The signal review, 2026-11-08: a run that begins at a stop sign or a stop line
-        short of the button signal put Ride's "Light may need a button press" there."""
-        from core import routing
-
+        short of the button signal keeps the button signal's own node."""
         stop_first = at(junction(*SECONDARY), 90.0, -77.0002)
         button = at(suburban_signal(*SECONDARY), 110.0, -77.0)
         (run,) = d.waits([stop_first, button], suburban=everywhere)
         assert run.button and (run.m, run.lon) == (90.0, -77.0002)
         assert run.button_at == (110.0, -77.0, 38.9)
-        cue = routing.light_buttons([run], 1000.0, 1000.0)
-        # Before: at 90 m and the stop sign's node; after: the signal's.
-        assert cue == [{"at_m": 110.0, "lon": -77.0, "lat": 38.9}]
         (plain,) = d.waits([stop_first, at(suburban_signal(*SECONDARY), 110.0, -77.0)])
-        assert routing.light_buttons([plain], 1000.0, 1000.0) == []
+        assert not plain.button and plain.button_at is None

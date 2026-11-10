@@ -1100,12 +1100,6 @@ export interface RouteResponse {
    * (routemaker.time_marks), for a ride's arrival times (lib/navigate.ts secondsAt). Null or absent: spread evenly.
    */
   time_marks?: number[][] | null;
-  /**
-   * The signals the route crosses that may need a button press for a light change (core.api.LightButtonOut; the
-   * owner, 2026-11-08): where along the route, in the description's metres (`DescriptionEntry.from_m`), and the node.
-   * Ride notes it on the turn or crossing there (lib/navigate.ts withButtons). Absent from an older API.
-   */
-  light_buttons?: { at_m: number; lon: number; lat: number }[] | null;
   climb_m: number;
   descent_m: number;
   stress_m: StressMetres;

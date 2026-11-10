@@ -90,8 +90,9 @@ rider is on the crossing or the path (`buttons`, the ways' OSM ids). Such a cros
 BUTTON_RANKED_S of waiting ("something like a 2 minute wait, still not as bad as a stop sign
 across the same road"; "If there are cars waiting, then it wouldn't, but we should penalize
 those"), held below what giving way at a stop sign across the same road costs the ranking
-(`stop_extra_s`, from the junction model); its time shown stays the signal's measured wait,
-and the answer marks it ("Light may need a button press"), at the button signal's own node.
+(`stop_extra_s`, from the junction model); its time shown stays the signal's measured wait.
+Ride no longer says anything at one (the owner, 2026-11-10: the button data mostly caught
+signals on timers, so the "Light may need a button press" cue was removed).
 On Road Bike's weight it counts ROAD_BIKE_BUTTON_S, held below two-thirds of that stop sign
 (the owner: "Call that 10 minutes on a road bike in pain level. ... Just make sure it's less
 than half a stop sign against an uncontrolled busy road", then, told half a stop sign could
