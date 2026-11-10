@@ -1360,9 +1360,10 @@ ft, 0.5 mi), against the busy roads it replaced, for the record:
 no named candidate may be left at 0 (the derive ran to the end); the path
 sentinels, the W&OD (OSM way 8810729) and the C&O towpath by Fletcher's Cove (74843009),
 `settings.REBUILD_SENTINEL_CALM_PATH_WAYS`, must each be in a network of 8 mi
-(12.9 km) or more; the road sentinel, Gambrill Park Road in Frederick County (OSM
-way 11560982, LTS 2 from MDOT SHA's rating, in a 14.8 mi calm run; it was Elmer School
-Road until Montgomery Planning's LTS 4 for that road was accepted, 2026-10-18),
+(12.9 km) or more; the road sentinel, Wildlife Loop in the Patuxent Research Refuge
+(OSM way 86073896, LTS 2 in our own picks, in an 8.6 mi calm run; it was Gambrill Park
+Road until our own picks rated that piece 2.5, 2026-11-10, and Elmer School Road
+before that, until Montgomery Planning's LTS 4 for that road was accepted, 2026-10-18),
 `settings.REBUILD_SENTINEL_CALM_STREET_WAYS` (the setting keeps its first name), must
 be in a calm run of 2 mi or more; and at least `settings.REBUILD_CALM_RUN_FLOORS`
 rows, 15,000 path rows in a run of 0.25 mi and 1,200 road rows in a calm run of 2 mi

@@ -59,9 +59,17 @@ an assistant without MCP Apps lists it but its model cannot use it. Each view's 
 connector call, counted in the same hourly limit as planning. On your own computer there is no
 base map, so the line is drawn on a plain background.
 
-On a Mass Ride the view also draws the riders a minute the road carries (the app's flow bands,
-with the ride size's need as a dashed line) and the junctions that need corkers, on the map and
-in a row under the graphs. Corker marks a few pixels apart are drawn as one with their corkers
+On a Mass Ride the view is read by flow and corkers, not traffic stress: the line takes the
+app's flow bands, there is no stress ribbon, and the graphs are the elevation, the riders a
+minute the road carries (with the ride size's need as a dashed line), the corkers held at once
+along the route (the app's corker load, with "about N for the ride": the most held at once times
+2, as corkers leapfrog ahead riding about twice the group's pace) and the junctions that need
+corkers, on the map and in a row under the graphs. Ask to leave junctions out ("don't cork the
+LTS 3 roads", "skip Kennedy Street") and the assistant sets `corking` on `plan_route` or
+`revise_route` (`from_lts`, `skip` by street or mile): the count, the chart and the
+`mass_capacity.corkers` answer add up only the junctions kept, list the others as not corked,
+and keep the count for every junction beside it. The route itself and the app's link are
+unchanged (the app still counts every junction). Corker marks a few pixels apart are drawn as one with their corkers
 added up (our default), and each flow step wide enough carries its band's word, so the bands
 are not told by colour alone.
 
