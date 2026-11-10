@@ -50,6 +50,8 @@ FLOW_BANDS = (
 ELEV_FILL = (199, 210, 254)
 ELEV_LINE = (55, 48, 163)
 CORKER = (30, 58, 138)
+# The corkers held at once (the navy of the corker marks, light).
+HELD_FILL = (176, 190, 226)
 START, FINISH, STOP = (21, 128, 61), (185, 28, 28), (37, 99, 235)
 JUNCTION = {"very high": (220, 38, 38), "higher": (249, 115, 22)}
 CLOSURE = {"closure": (220, 38, 38), "possible": (250, 204, 21)}
@@ -223,6 +225,8 @@ def draw(view: dict, line: list) -> bytes | None:
     mass = view.get("mass") or None
     flow = (mass or {}).get("steps") or []
     corkers = (mass or {}).get("corkers")
+    skipped = (mass or {}).get("skipped") or []
+    held = (mass or {}).get("held") or []
 
     # The map's size: as tall as the route needs at the picture's width, within bounds.
     world = [preview_basemap.world_xy(p[0], p[1]) for p in line]
@@ -235,12 +239,15 @@ def draw(view: dict, line: list) -> bytes | None:
     centre = ((max(xs) + min(xs)) / 2, (max(ys) + min(ys)) / 2)
 
     head_h = 96
-    ribbon_h = 34
+    # A Mass Ride is read by its flow and corkers, not traffic stress (the owner, 2026-11-10:
+    # "Traffic stress isn't an issue for mass rides"): no stress ribbon, the line in flow colours.
+    ribbon_h = 0 if mass else 34
     elev_h = 150 if len(profile) > 1 else 0
     flow_h = 100 if flow else 0
+    held_h = 90 if held else 0
     cork_h = 40 if corkers is not None else 0
-    graph_h = ribbon_h + 30 + (elev_h + 30 if elev_h else 0) + (flow_h + 50 if flow_h else 0)
-    graph_h += cork_h + 40
+    graph_h = (ribbon_h + 30 if ribbon_h else 20) + (elev_h + 30 if elev_h else 0)
+    graph_h += (flow_h + 50 if flow_h else 0) + (held_h + 50 if held_h else 0) + cork_h + 40
     key_h, foot_h = 76, 50
     height = head_h + map_h + 24 + graph_h + key_h + foot_h
     c = Canvas(WIDTH, height)
@@ -282,12 +289,19 @@ def draw(view: dict, line: list) -> bytes | None:
             for dx, dy in ((-2, 0), (2, 0), (0, -2), (0, 2)):
                 c.text(x0 + dx, top + place_y + dy, name, WHITE)
             c.text(x0, top + place_y, name, MUTED)
-    paths = [(s, [px(p) for p in piece(s[0], max(s[1], s[0] + total / 600))]) for s in spans]
-    for s, path in paths:
-        c.stroke(path, 7, LEVEL.get(s[2], UNKNOWN)[1])
-    for s, path in paths:
-        c.stroke(path, 4.5, LEVEL.get(s[2], UNKNOWN)[0])
-    for j in view.get("junctions") or []:
+    if flow:
+        whole = [px(p) for p in line]
+        c.stroke(whole, 7, INK)
+        c.stroke(whole, 4.5, UNKNOWN[0])
+        for a, b, r in flow:
+            c.stroke([px(p) for p in piece(a, max(b, a + total / 600))], 4.5, flow_band(r)[1])
+    else:
+        paths = [(s, [px(p) for p in piece(s[0], max(s[1], s[0] + total / 600))]) for s in spans]
+        for s, path in paths:
+            c.stroke(path, 7, LEVEL.get(s[2], UNKNOWN)[1])
+        for s, path in paths:
+            c.stroke(path, 4.5, LEVEL.get(s[2], UNKNOWN)[0])
+    for j in [] if mass else view.get("junctions") or []:
         x, y = px(at(j["mi"]))
         c.disc(x, y, 9, INK)
         c.disc(x, y, 7, JUNCTION.get(j.get("level"), JUNCTION["higher"]))
@@ -302,6 +316,10 @@ def draw(view: dict, line: list) -> bytes | None:
         c.disc(x, y, 11, WHITE)
         c.disc(x, y, 9, CORKER)
         c.centred(x, y + 6, str(count), WHITE)
+    for row in skipped:
+        x, y = px(at(row["mi"]))
+        c.disc(x, y, 8, CORKER)
+        c.disc(x, y, 5.5, WHITE)
     points = view.get("points") or []
     stops = [p for i, p in enumerate(points) if 0 < i < len(points) - 1 and not p.get("via")]
     for k, stop in enumerate(stops, 1):
@@ -332,8 +350,11 @@ def draw(view: dict, line: list) -> bytes | None:
         return left + (right - left) * mi / total
 
     y = top + map_h + 24 + 6
-    c.text(PAD, y + 24, "LTS", MUTED)
-    for s in spans:
+    if not ribbon_h:
+        y += 14  # room for the first graph's name
+    else:
+        c.text(PAD, y + 24, "LTS", MUTED)
+    for s in spans if ribbon_h else []:
         a, b = gx(s[0]), max(gx(s[1]), gx(s[0]) + 2)
         c.rect(a, y, b, y + ribbon_h, LEVEL.get(s[2], UNKNOWN)[0])
         rail = RAIL.get(s[3])
@@ -342,9 +363,10 @@ def draw(view: dict, line: list) -> bytes | None:
             c.rect(a, y + ribbon_h, b, y + ribbon_h + 5, rail)
         if s[2] is not None and b - a > 30:
             c.centred((a + b) / 2, y + 24, str(s[2]), WHITE if s[2] >= 3.5 else INK)
-    for j in view.get("junctions") or []:
+    for j in view.get("junctions") or [] if ribbon_h else []:
         c.disc(gx(j["mi"]), y - 12, 6, JUNCTION.get(j.get("level"), JUNCTION["higher"]))
-    y += ribbon_h + 30
+    if ribbon_h:
+        y += ribbon_h + 30
 
     if elev_h:
         heights = [ft for _mi, ft in profile]
@@ -407,9 +429,43 @@ def draw(view: dict, line: list) -> bytes | None:
         c.text(PAD, y - 8, "riders a minute", MUTED)
         y += flow_h + 30
 
+    if held_h:
+        y += 20
+        most = max(1, *(h[2] for h in held))
+        step = 1 if most <= 4 else 2 if most <= 10 else 5 if most <= 25 else 10
+        top_k = math.ceil(most / step) * step
+
+        def ky(n: float) -> float:
+            return y + held_h - n / top_k * held_h
+
+        n = 0
+        while n <= top_k:
+            c.rect(left, ky(n), right, ky(n) + 1, RULE)
+            label = str(n)
+            c.text(left - 8 - text_width(label, preview_glyphs_small), ky(n) + 6, label, MUTED)
+            n += step
+        for a, b, k in held:
+            if k:
+                c.rect(gx(a), ky(k), max(gx(b), gx(a) + 1), y + held_h, HELD_FILL)
+                c.rect(gx(a), ky(k) - 1, max(gx(b), gx(a) + 1), ky(k) + 1.5, CORKER)
+        c.text(PAD, y - 8, "corkers held at once", MUTED)
+        if mass.get("about") is not None:
+            plus = "+" if mass.get("at_least") else ""
+            label = (
+                f"about {mass['about']}{plus} for the ride"
+                f" (most at once {mass.get('most')} x {mass.get('rotation_factor', 2)})"
+            )
+            w = text_width(label, preview_glyphs_small)
+            c.rect(right - w - 8, y - 26, right, y - 2, WHITE)
+            c.text(right - w - 4, y - 8, label, INK)
+        y += held_h + 30
+
     if cork_h:
         c.text(PAD, y + 12, "Corkers", MUTED)
         c.rect(left, y + 5, right, y + 6, RULE)
+        for row in skipped:
+            c.disc(gx(row["mi"]), y + 5, 6, CORKER)
+            c.disc(gx(row["mi"]), y + 5, 4, WHITE)
         for x, _y, count in _gathered(
             [(gx(r["mi"]), 0, r.get("corkers") or 0) for r in corkers or []]
         ):
@@ -441,7 +497,7 @@ def draw(view: dict, line: list) -> bytes | None:
             return PAD
         return x
 
-    levels = sorted({s[2] for s in spans if s[2] is not None})
+    levels = [] if mass else sorted({s[2] for s in spans if s[2] is not None})
     for t in levels:
         words = "Avoid" if t == 5 else f"LTS {t}"
         x = room(x, words)
@@ -449,7 +505,7 @@ def draw(view: dict, line: list) -> bytes | None:
         c.centred(x + 13, row_y + 21, str(t), WHITE if t >= 3.5 else INK)
         x = c.text(x + 32, row_y + 21, words, MUTED) + 18
     for facility in ("path", "protected", "lane"):
-        if any(s[3] == facility for s in spans):
+        if not mass and any(s[3] == facility for s in spans):
             x = room(x, RAIL_WORDS[facility])
             c.rect(x, row_y + 12, x + 24, row_y + 18, RAIL[facility])
             x = c.text(x + 30, row_y + 21, RAIL_WORDS[facility], MUTED) + 18
@@ -464,6 +520,12 @@ def draw(view: dict, line: list) -> bytes | None:
         label = "corkers needed"
         x = room(x, label)
         c.disc(x + 10, row_y + 15, 9, CORKER)
+        x = c.text(x + 26, row_y + 21, label, MUTED) + 16
+    if skipped:
+        label = "not corked (your call)"
+        x = room(x, label)
+        c.disc(x + 10, row_y + 15, 8, CORKER)
+        c.disc(x + 10, row_y + 15, 5.5, WHITE)
         x = c.text(x + 26, row_y + 21, label, MUTED) + 16
     y += key_h
 
