@@ -313,6 +313,9 @@
     root.appendChild(head);
 
     // ---- Map ----
+    // A Mass Ride is read by its flow and corkers, not traffic stress (the owner, 2026-11-10:
+    // "Traffic stress isn't an issue for mass rides"): no stress ribbon or stress colours.
+    const mass = v.mass || null;
     const mapBox = html("div", { class: "map" });
     root.appendChild(mapBox);
     const W = Math.max(280, Math.min(1200, Math.round(root.clientWidth - 28) || 640));
@@ -329,9 +332,10 @@
     const px = (p) => { const [x, y] = world(p); return [W / 2 + (x - centre[0]) * scale, H / 2 + (y - centre[1]) * scale]; };
     const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, role: "group" }, mapBox);
     const busy = (v.spans || []).filter((s) => s[2] != null && s[2] >= 3).reduce((n, s) => n + (s[1] - s[0]), 0);
-    svg.setAttribute("aria-label",
-      `Map of the route, ${fmt(total)} miles, coloured by traffic stress` +
-      (busy > 0.05 ? `; ${fmt(busy)} miles at LTS 3 or higher.` : "; all of it below LTS 3."));
+    svg.setAttribute("aria-label", mass
+      ? `Map of the route, ${fmt(total)} miles, coloured by the riders a minute each road carries, with the corkers each junction needs.`
+      : `Map of the route, ${fmt(total)} miles, coloured by traffic stress` +
+        (busy > 0.05 ? `; ${fmt(busy)} miles at LTS 3 or higher.` : "; all of it below LTS 3."));
     const base = el("g", { "aria-hidden": "true" }, svg);
     const routeG = el("g", { "aria-hidden": "true" }, svg);
     const marks = el("g", {}, svg);
@@ -343,8 +347,19 @@
     };
     const d = (pts) => pts.map((p, i) => { const [x, y] = px(p); return `${i ? "L" : "M"}${x.toFixed(1)} ${y.toFixed(1)}`; }).join("");
     const spans = (v.spans && v.spans.length) ? v.spans : [[0, total, null, null]];
+    // On a Mass Ride the line takes the flow bands' colours (grey where there is no figure).
+    const massSteps = mass && mass.steps && mass.steps.length ? mass.steps : null;
+    if (massSteps) {
+      for (const pass of [1, 0]) {
+        el("path", { d: d(line), fill: "none", "stroke-linecap": "round", "stroke-linejoin": "round", stroke: pass ? "#1c1917" : "#9ca3af", "stroke-width": pass ? 8 : 5 }, routeG);
+        if (pass) continue;
+        for (const f of massSteps) {
+          el("path", { d: d(piece(f[0], Math.max(f[1], f[0] + total / 400))), fill: "none", "stroke-linecap": "round", "stroke-linejoin": "round", stroke: flowBand(f[2]).colour, "stroke-width": 5 }, routeG);
+        }
+      }
+    }
     // Casings first, then the colours, so a level's edge never covers its neighbour.
-    for (const pass of [1, 0]) {
+    for (const pass of massSteps ? [] : [1, 0]) {
       for (const s of spans) {
         const c = colours(s[2]);
         const tier = s[2] == null ? 0 : Math.floor(s[2]);
@@ -364,7 +379,7 @@
       const t = el("text", { "text-anchor": "middle", y: 4.5, "font-size": 12, "font-weight": 700, fill: "#fff" }, g);
       t.textContent = label;
     };
-    for (const j of v.junctions || []) {
+    for (const j of mass ? [] : v.junctions || []) {
       const p = at(j.mi); if (!p) continue;
       const [x, y] = px(p);
       const g = mark(x, y, `${j.level === "very high" ? "Very high" : "Higher"} stress junction at mile ${j.mi.toFixed(1)}${j.reason ? `: ${j.reason}` : ""}`);
@@ -386,7 +401,6 @@
         el("text", { "text-anchor": "middle", y: 5, "font-size": 13, "font-weight": 700, fill: "#1c1917" }, g).textContent = "!";
       }
     }
-    const mass = v.mass || null;
     const placed = ((mass && mass.corkers) || []).map((c) => { const p = at(c.mi); return p ? { ...c, xy: px(p) } : null; }).filter(Boolean);
     for (const grp of gather(placed, (c) => c.xy, 18)) {
       const [x, y] = grp[0].xy, n = grp.reduce((t, c) => t + (c.corkers || 0), 0);
@@ -394,6 +408,12 @@
       const g = mark(x, y, `Corkers: ${said}`);
       el("circle", { r: 8, fill: "#1e3a8a", stroke: "#fff", "stroke-width": 1.5 }, g);
       el("text", { "text-anchor": "middle", y: 4, "font-size": 11, "font-weight": 700, fill: "#fff" }, g).textContent = String(n);
+    }
+    for (const c of (mass && mass.skipped) || []) {
+      const p = at(c.mi); if (!p) continue;
+      const [x, y] = px(p);
+      const g = mark(x, y, `Not corked (your call): ${c.street || "a junction"}, mile ${c.mi.toFixed(1)}`);
+      el("circle", { r: 6, fill: "#fff", stroke: "#1e3a8a", "stroke-width": 2 }, g);
     }
     const pts = v.points || [];
     const stops = pts.filter((p, i) => i > 0 && i < pts.length - 1 && !p.via);
@@ -438,7 +458,7 @@
     // ---- Graphs: the stress ribbon over the elevation profile, on one mile axis ----
     const graphs = html("div", {
       class: "graphs", tabindex: "0", role: "slider",
-      "aria-label": `Place along the route: traffic stress and elevation${mass ? ", rider flow and corkers" : ""}`,
+      "aria-label": mass ? "Place along the route: elevation, rider flow and corkers" : "Place along the route: traffic stress and elevation",
       "aria-valuemin": "0", "aria-valuemax": String(Math.round(total * 10) / 10), "aria-valuenow": "0",
       "aria-valuetext": "Use the left and right arrow keys to move along the route",
     });
@@ -446,14 +466,21 @@
     const GW = W, left = 40, right = GW - 10, X = (mi) => left + ((right - left) * mi) / total;
     const prof = v.profile || [];
     const hasProfile = prof.length > 1;
-    const ribbonY = 8, ribbonH = 24;
-    const eTop = ribbonY + ribbonH + 16, eH = hasProfile ? 80 : 0;
-    // Mass Ride: the riders a minute the road carries, and the junctions that need corkers.
+    const ribbonY = 8, ribbonH = mass ? 0 : 24;
+    const eTop = mass ? 20 : ribbonY + ribbonH + 16, eH = hasProfile ? 80 : 0;
+    // Mass Ride: the riders a minute the road carries, the corkers held at once along the route
+    // (the ride's count is that at its most times the rotation factor), and the junctions.
     const flow = mass && mass.steps && mass.steps.length ? mass.steps : null;
-    const fTop = (hasProfile ? eTop + eH : ribbonY + ribbonH) + 30, fH = flow ? 60 : 0;
+    let bottom = hasProfile ? eTop + eH : ribbonY + ribbonH;
+    const fTop = bottom + 30, fH = flow ? 60 : 0;
+    if (flow) bottom = fTop + fH;
+    const held = mass && mass.held && mass.held.length ? mass.held : null;
+    const kTop = bottom + 30, kH = held ? 54 : 0;
+    if (held) bottom = kTop + kH;
     const corkers = (mass && mass.corkers) || null;
-    const cY = (flow ? fTop + fH : hasProfile ? eTop + eH : ribbonY + ribbonH) + (corkers ? 14 : 0);
-    const axisY = corkers ? cY + 14 : flow ? fTop + fH : hasProfile ? eTop + eH : ribbonY + ribbonH + 6;
+    const skippedJ = (mass && mass.skipped) || [];
+    const cY = bottom + (corkers ? (held ? 24 : 14) : 0);
+    const axisY = corkers ? cY + 14 : bottom + (mass || hasProfile ? 0 : 6);
     const GH = axisY + 22;
     const g = el("svg", { viewBox: `0 0 ${GW} ${GH}`, "aria-hidden": "true" }, graphs);
     const lab = (x, y, words, anchor = "start") => {
@@ -461,8 +488,8 @@
       t.textContent = words;
       return t;
     };
-    lab(4, ribbonY + 16, "LTS");
-    for (const s of spans) {
+    if (!mass) lab(4, ribbonY + 16, "LTS");
+    for (const s of mass ? [] : spans) {
       const a = X(s[0]), b = Math.max(X(s[1]), a + 1.5);
       const c = colours(s[2]);
       el("rect", { x: a, y: ribbonY, width: b - a, height: ribbonH, fill: c[0] }, g);
@@ -476,8 +503,8 @@
         el("text", { x: (a + b) / 2, y: ribbonY + 16.5, "text-anchor": "middle", "font-size": 12, "font-weight": 700, fill: dark ? "#fff" : "#16181d" }, g).textContent = String(s[2]);
       }
     }
-    el("rect", { x: left, y: ribbonY, width: right - left, height: ribbonH, fill: "none", stroke: "var(--ink)", "stroke-width": 0.8 }, g);
-    for (const j of v.junctions || []) {
+    if (!mass) el("rect", { x: left, y: ribbonY, width: right - left, height: ribbonH, fill: "none", stroke: "var(--ink)", "stroke-width": 0.8 }, g);
+    for (const j of mass ? [] : v.junctions || []) {
       const x = X(j.mi);
       el("path", { d: `M${x - 5} ${ribbonY - 4} l5 -8 l5 8Z`, fill: j.level === "very high" ? "#dc2626" : "#f97316", stroke: "#1c1917", "stroke-width": 1 }, g);
     }
@@ -519,9 +546,32 @@
       el("line", { x1: left, x2: right, y1: fTop + fH, y2: fTop + fH, stroke: "var(--rule)" }, g);
       lab(4, fTop - 5, "riders a minute");
     }
+    if (held) {
+      const most = Math.max(1, ...held.map((h) => h[2]));
+      const stepK = most <= 4 ? 1 : most <= 10 ? 2 : most <= 25 ? 5 : 10;
+      const topK = Math.ceil(most / stepK) * stepK;
+      const Y = (n) => kTop + kH - (n / topK) * kH;
+      let path = `M${X(held[0][0]).toFixed(1)} ${Y(0).toFixed(1)}`;
+      for (const h of held) path += `L${X(h[0]).toFixed(1)} ${Y(h[2]).toFixed(1)}L${X(h[1]).toFixed(1)} ${Y(h[2]).toFixed(1)}`;
+      path += `L${X(held[held.length - 1][1]).toFixed(1)} ${Y(0).toFixed(1)}Z`;
+      for (let n = 0; n <= topK; n += stepK) {
+        el("line", { x1: left, x2: right, y1: Y(n), y2: Y(n), stroke: "var(--rule)", "stroke-dasharray": n ? "2 3" : null }, g);
+        lab(left - 4, Y(n) + 4, String(n), "end");
+      }
+      el("path", { d: path, fill: "#1e3a8a", "fill-opacity": 0.35, stroke: "#1e3a8a", "stroke-width": 1.5 }, g);
+      lab(4, kTop - 5, "corkers held at once");
+      if (mass.about != null) {
+        const words = `about ${mass.about}${mass.at_least ? "+" : ""} for the ride (most at once ${mass.most} × ${mass.rotation_factor})`;
+        const w = words.length * 6.2 + 8;
+        el("rect", { x: right - w, y: kTop - 17, width: w, height: 15, fill: "var(--bg)" }, g);
+        const t = lab(right - 2, kTop - 5, words, "end");
+        t.setAttribute("fill", "var(--ink)");
+      }
+    }
     if (corkers) {
       lab(4, cY + 4, "Corkers");
       el("line", { x1: left, x2: right, y1: cY, y2: cY, stroke: "var(--rule)" }, g);
+      for (const c of skippedJ) el("circle", { cx: X(c.mi), cy: cY, r: 4.5, fill: "var(--bg)", stroke: "#1e3a8a", "stroke-width": 1.5 }, g);
       for (const grp of gather(corkers, (c) => [X(c.mi), 0], 16)) {
         const x = X(grp[0].mi), n = grp.reduce((t, c) => t + (c.corkers || 0), 0);
         el("circle", { cx: x, cy: cY, r: 7, fill: "#1e3a8a", stroke: "var(--bg)", "stroke-width": 1 }, g);
@@ -535,13 +585,13 @@
       el("line", { x1: X(m), x2: X(m), y1: axisY, y2: axisY + 4, stroke: "var(--muted)" }, g);
       lab(X(m), axisY + 16, (tick < 1 ? m.toFixed(1) : String(Math.round(m))) + (m + tick > total + 1e-9 ? " mi" : ""), "middle");
     }
-    const line_ = el("line", { y1: ribbonY - 4, y2: axisY, stroke: "var(--ink)", "stroke-dasharray": "3 2", visibility: "hidden" }, g);
+    const line_ = el("line", { y1: mass ? 4 : ribbonY - 4, y2: axisY, stroke: "var(--ink)", "stroke-dasharray": "3 2", visibility: "hidden" }, g);
 
     const readout = html("div", { class: "readout", "aria-hidden": "true" });
     root.appendChild(readout);
     const keyRow = html("div", { class: "key" });
     // The levels on this route, each with its number as the ribbon shows it.
-    const levels = [...new Set(spans.map((s) => s[2]).filter((t) => t != null))].sort((a, b) => a - b);
+    const levels = mass ? [] : [...new Set(spans.map((s) => s[2]).filter((t) => t != null))].sort((a, b) => a - b);
     for (const t of levels) {
       const item = html("span");
       const chip = html("b", { style: `background:${colours(t)[0]};color:${t >= 3.5 ? "#fff" : "#16181d"}` }, String(t));
@@ -549,7 +599,7 @@
       item.appendChild(document.createTextNode(t === 5 ? "Avoid" : `LTS ${t}`));
       keyRow.appendChild(item);
     }
-    const used = new Set(spans.map((s) => s[3]).filter((f) => RAIL[f]));
+    const used = new Set(mass ? [] : spans.map((s) => s[3]).filter((f) => RAIL[f]));
     for (const f of ["path", "protected", "lane"]) {
       if (!used.has(f)) continue;
       const item = html("span");
@@ -557,7 +607,7 @@
       item.appendChild(document.createTextNode(RAIL_WORDS[f]));
       keyRow.appendChild(item);
     }
-    if ((v.junctions || []).length) keyRow.appendChild(html("span", {}, "▲ stressful junction"));
+    if (!mass && (v.junctions || []).length) keyRow.appendChild(html("span", {}, "▲ stressful junction"));
     if ((v.closures || []).some((c) => c.kind !== "closure")) keyRow.appendChild(html("span", {}, "! possible closure"));
     if (flow) {
       const seen = new Set(flow.map((f) => flowBand(f[2]).word));
@@ -575,6 +625,7 @@
       item.appendChild(document.createTextNode("corkers needed"));
       keyRow.appendChild(item);
     } else if (corkers) keyRow.appendChild(html("span", {}, "No junctions need corkers"));
+    if (skippedJ.length) keyRow.appendChild(html("span", {}, "○ not corked (your call)"));
     if (mass && !corkers) keyRow.appendChild(html("span", {}, "Corkers not checked"));
     if (keyRow.childNodes.length) root.appendChild(keyRow);
 
@@ -600,12 +651,14 @@
       const ft = heightAt(here);
       const fl = flow && flow.find((f) => f[0] <= here && here <= f[1]);
       const next = corkers && corkers.find((c) => c.mi >= here - 0.005);
+      const hk = held && held.find((h) => h[0] <= here && here < h[1]);
       const words = [
         `Mile ${here.toFixed(1)}`,
-        s ? levelWord(s[2]) : null,
-        s && RAIL_WORDS[s[3]] ? RAIL_WORDS[s[3]].toLowerCase() : null,
+        s && !mass ? levelWord(s[2]) : null,
+        s && !mass && RAIL_WORDS[s[3]] ? RAIL_WORDS[s[3]].toLowerCase() : null,
         ft != null ? `${Math.round(ft)} ft` : null,
         fl ? `${fl[2]} riders a minute (${flowBand(fl[2]).word})` : null,
+        held ? `${hk ? hk[2] : 0} corkers held` : null,
         next ? `next corkers: ${next.corkers} at ${next.street || "a junction"}, mile ${next.mi.toFixed(1)}` : null,
       ].filter(Boolean).join(" · ");
       readout.textContent = words;

@@ -353,3 +353,49 @@ def test_corker_marks_a_few_pixels_apart_are_one_place() -> None:
 
     marks = [(10, 10, 1), (20, 10, 2), (100, 10, 1)]
     assert route_picture._gathered(marks) == [(10, 10, 3), (100, 10, 1)]
+
+
+def test_a_mass_ride_view_has_the_corkers_held_at_once_and_its_triage() -> None:
+    plan = _mass_plan()
+    m = mcp.METRES_PER_MILE
+    plan.answer["mass_capacity"]["corkers"] = {
+        "headline": 4,
+        "most_at_once": 2,
+        "rotation_factor": 2,
+        "at_least": False,
+        "junctions": [
+            {
+                "m": round(0.25 * m),
+                "street": "K Street",
+                "corkers": 2,
+                "exit_m": round(0.5 * m),
+                "lts": 4,
+            },
+            {
+                "m": round(1.0 * m),
+                "street": "Elm Street",
+                "corkers": 2,
+                "exit_m": round(1.2 * m),
+                "lts": 3,
+            },
+        ],
+    }
+    view = mcp.route_view(plan, {}, "A")["mass"]
+    assert view["about"] == 4 and view["most"] == 2
+    assert view["held"] == [
+        [0, 0.25, 0],
+        [0.25, 0.5, 2],
+        [0.5, 1.0, 0],
+        [1.0, 1.2, 2],
+        [1.2, 2.0, 0],
+    ]
+    triaged = mcp.route_view(plan, {}, "A", {"skip": ["elm"]})["mass"]
+    assert [c["street"] for c in triaged["corkers"]] == ["K Street"]
+    assert [c["street"] for c in triaged["skipped"]] == ["Elm Street"]
+    assert triaged["held"][-1] == [0.5, 2.0, 0]
+
+
+def test_corking_is_the_tools_own_and_never_sent_to_the_site() -> None:
+    assert "corking" in mcp.PASSED_OPTIONS and "corking" in mcp.LINK_ONLY_OPTIONS
+    body = mcp.request_body([(0, 0), (1, 1)], [], "mass-ride", {"corking": {"from_lts": 4}})
+    assert "corking" not in body

@@ -1324,7 +1324,7 @@ def parse_fragment(fragment: str) -> tuple[list, list[int], str, dict]:
 # What a plan's options carry for its link or for the MCP server only, never sent to POST
 # /api/route: the stops' names, and that a followed line is an alternative's, not the rider's
 # (the round 4 hunt, L4-1: an avoid plans such a draft through its points instead).
-LINK_ONLY_OPTIONS = ("stop_names", "follow_alternative")
+LINK_ONLY_OPTIONS = ("stop_names", "follow_alternative", "corking")
 
 
 def marks_with_point_at(options: dict, at: int) -> dict:
@@ -2691,7 +2691,9 @@ def _roads_between(answer: dict):
     return roads_at
 
 
-def route_details(plan: Plan, stations: list[Station] | None = None) -> dict:
+def route_details(
+    plan: Plan, stations: list[Station] | None = None, corking: dict | None = None
+) -> dict:
     """What the route rides, for the answer: its roads, busy stretches, very-high-stress
     junctions, scenic roads and small detours. With `stations`, a short busy bit at a start or
     end that is a station's way in is left out of the busy stretches (`busy_stretches`)."""
@@ -2748,13 +2750,96 @@ def route_details(plan: Plan, stations: list[Station] | None = None) -> dict:
         out["legs"] = legs
     out.update(grades_and_hazards(answer))
     out.update(route_closures(plan))
-    capacity = mass_capacity(answer)
+    capacity = mass_capacity(answer, corking)
     if capacity:
         out["mass_capacity"] = capacity
     return out
 
 
-def mass_capacity(answer: dict) -> dict | None:
+# A skip by mile takes the corked junction this near it (our default: a block or so).
+CORK_SKIP_NEAR_MI = 0.05
+
+
+def corker_plan(corkers: dict, corking: dict | None, total_m: float) -> dict:
+    """The corkers a Mass Ride needs with the organiser's triage (the owner, 2026-11-10: "allow a
+    triage of roads for corking, Basically ask to not cork some lower stress roads"): the
+    junctions corked and those left out, the corkers held at once along the route as
+    [from_m, to_m, corkers] steps (a junction is held from when the group's head reaches it until
+    its tail has passed, the site's `exit_m`), the most held at once, and the ride's count, that
+    times the rotation factor: corkers leapfrog to the junctions ahead, and a factor of 2 is
+    corkers riding twice the group's pace (a corker freed when the tail passes catches the head a
+    group's length on in the same time the hold took). Without `exit_m` (an older site) only the
+    site's own figures."""
+    corking = corking or {}
+    floor = corking.get("from_lts")
+    skips = list(corking.get("skip") or [])
+    kept: list[dict] = []
+    skipped: list[dict] = []
+    matched: set[int] = set()
+    for j in corkers.get("junctions") or []:
+        mi = (j.get("m") or 0) / METRES_PER_MILE
+        street = str(j.get("street") or "").casefold()
+        why = None
+        lts = j.get("lts")
+        if isinstance(floor, (int, float)) and isinstance(lts, (int, float)) and lts < floor:
+            why = f"below LTS {floor:g}"
+        for k, skip in enumerate(skips):
+            hit = (isinstance(skip, str) and street and skip.strip().casefold() in street) or (
+                isinstance(skip, (int, float))
+                and not isinstance(skip, bool)
+                and abs(mi - skip) <= CORK_SKIP_NEAR_MI
+            )
+            if hit:
+                matched.add(k)
+                why = why or "asked to skip"
+        (skipped if why else kept).append({**j, **({"why": why} if why else {})})
+    factor = corkers.get("rotation_factor") or 2
+    out: dict = {
+        "kept": kept,
+        "skipped": skipped,
+        "unmatched": [s for k, s in enumerate(skips) if k not in matched],
+        "rotation_factor": factor,
+        "at_least": corkers.get("at_least"),
+    }
+    timed = all(isinstance(j.get("exit_m"), (int, float)) for j in kept)
+    if not timed:
+        out.update(
+            about=corkers.get("headline"),
+            most=corkers.get("most_at_once"),
+            most_m=corkers.get("most_at_once_m"),
+            held=None,
+        )
+        return out
+    cuts = sorted({0.0, float(total_m), *(j["m"] for j in kept), *(j["exit_m"] for j in kept)})
+    cuts = [c for c in cuts if 0 <= c <= total_m]
+    held: list[list[float]] = []
+    most, most_m = 0, None
+    for a, b in zip(cuts, cuts[1:], strict=False):
+        if b <= a:
+            continue
+        n = sum(j["corkers"] or 0 for j in kept if j["m"] <= a < j["exit_m"])
+        if held and held[-1][2] == n:
+            held[-1][1] = b
+        else:
+            held.append([a, b, n])
+        if n > most:
+            most, most_m = n, a
+    out.update(about=math.ceil(most * factor), most=most, most_m=most_m, held=held)
+    return out
+
+
+def _corker_length(answer: dict, corkers: dict) -> float:
+    """The length the site counted the corkers along: the route's, or its junctions' last hold."""
+    ends = [
+        v
+        for j in corkers.get("junctions") or []
+        for v in (j.get("m"), j.get("exit_m"))
+        if isinstance(v, (int, float))
+    ]
+    return max([answer.get("distance_m") or 0.0, *ends])
+
+
+def mass_capacity(answer: dict, corking: dict | None = None) -> dict | None:
     """A Mass Ride's road capacity and corker needs, in miles, for an assistant to improve the
     route on (the owner, 2026-10-29: "allow for things like road capacity and corker
     requirements for mass rides to be returned so the agents can improve opon them"): what the
@@ -2794,16 +2879,36 @@ def mass_capacity(answer: dict) -> dict | None:
     }
     corkers = found.get("corkers")
     if corkers:
+        plan = corker_plan(corkers, corking, _corker_length(answer, corkers))
+
+        def row(j: dict) -> dict:
+            return {
+                "at_mi": mi(j.get("m")),
+                "street": j.get("street"),
+                "corkers": j.get("corkers"),
+                **({"lts": j["lts"]} if j.get("lts") is not None else {}),
+                **({"why": j["why"]} if j.get("why") else {}),
+            }
+
         out["corkers"] = {
-            "about": corkers.get("headline"),
-            "at_least": corkers.get("at_least"),
-            "most_held_at_once": corkers.get("most_at_once"),
-            "most_held_at_mi": mi(corkers.get("most_at_once_m")),
-            "junctions": [
-                {"at_mi": mi(j.get("m")), "street": j.get("street"), "corkers": j.get("corkers")}
-                for j in corkers.get("junctions") or []
-            ],
+            "about": plan["about"],
+            "at_least": plan["at_least"],
+            "most_held_at_once": plan["most"],
+            "most_held_at_mi": mi(plan["most_m"]),
+            "how": (
+                f"about = the most held at once x {plan['rotation_factor']:g}: corkers leapfrog"
+                " to the junctions ahead, riding about twice the group's pace (a corker freed as"
+                " the tail passes catches the head a group's length on in the time the hold"
+                " took)"
+            ),
+            "junctions": [row(j) for j in plan["kept"]],
         }
+        if corking:
+            out["corkers"]["corking"] = corking
+            out["corkers"]["about_corking_every_junction"] = corkers.get("headline")
+            out["corkers"]["not_corked"] = [row(j) for j in plan["skipped"]]
+            if plan["unmatched"]:
+                out["corkers"]["skip_matched_nothing"] = plan["unmatched"]
     else:
         out["corkers"] = None
         out["corkers_note"] = "the intersections were not checked, so the corkers are not known"
@@ -3601,12 +3706,14 @@ def _profile_rows(answer: dict, most: int = VIEW_PROFILE_POINTS) -> list[list[fl
     return [[round(mi, 3), round(ft)] for mi, ft in rows]
 
 
-def _mass_view(answer: dict) -> dict | None:
+def _mass_view(answer: dict, corking: dict | None = None) -> dict | None:
     """A Mass Ride's flow and corkers for the view, as Ride's graphs show them (the owner,
     2026-11-03: "Mass ride can also add traffic flow and corker requirements"; 2026-11-10 asked
     for them in the chat): riders a minute along the route as [from_mi, to_mi, riders] steps
-    (equal neighbours joined), the ride's need, and each junction needing corkers. None off a
-    Mass Ride, or where the profile carries no flow."""
+    (equal neighbours joined), the ride's need, and each junction needing corkers; the corkers
+    held at once along the route and the ride's count (the owner, 2026-11-10: "We'd also want a
+    chart of corkers required"), with the organiser's triage (`corker_plan`). None off a Mass
+    Ride, or where the profile carries no flow."""
     profile = answer.get("profile") or {}
     metres = profile.get("m") or []
     riders = profile.get("riders_per_min") or []
@@ -3624,30 +3731,47 @@ def _mass_view(answer: dict) -> dict | None:
         return None
     found = answer.get("mass_capacity") or {}
     corkers = found.get("corkers")
-    return {
+    out: dict = {
         "need": found.get("need_riders_per_min"),
         "steps": [[round(a, 3), round(b, 3), r] for a, b, r in steps],
-        "corkers": None
-        if not corkers
-        else [
-            {
-                "mi": round((j.get("m") or 0) / METRES_PER_MILE, 2),
-                "street": j.get("street"),
-                "corkers": j.get("corkers"),
-            }
-            for j in corkers.get("junctions") or []
-        ],
+        "corkers": None,
     }
+    if not corkers:
+        return out
+    plan = corker_plan(corkers, corking, _corker_length(answer, corkers))
+
+    def row(j: dict) -> dict:
+        return {
+            "mi": round((j.get("m") or 0) / METRES_PER_MILE, 2),
+            "street": j.get("street"),
+            "corkers": j.get("corkers"),
+        }
+
+    out["corkers"] = [row(j) for j in plan["kept"]]
+    out["skipped"] = [row(j) for j in plan["skipped"]]
+    out["about"] = plan["about"]
+    out["most"] = plan["most"]
+    out["at_least"] = bool(plan["at_least"])
+    out["rotation_factor"] = plan["rotation_factor"]
+    out["held"] = (
+        None
+        if plan["held"] is None
+        else [
+            [round(a / METRES_PER_MILE, 3), round(b / METRES_PER_MILE, 3), n]
+            for a, b, n in plan["held"]
+        ]
+    )
+    return out
 
 
 def draft_view(draft, draft_id: str) -> dict:
     """A kept draft's route view, as its answer gave it (for the picture, core.route_picture)."""
     plan = draft.plan
     said = {"draft_id": draft_id, "summary": summary(plan.answer), **route_closures(plan)}
-    return route_view(plan, said, draft.name)
+    return route_view(plan, said, draft.name, draft.options.get("corking"))
 
 
-def route_view(plan: Plan, out: dict, name: str) -> dict:
+def route_view(plan: Plan, out: dict, name: str, corking: dict | None = None) -> dict:
     """What the view draws for a draft: its line, its stress and facility by mile, its
     profile, its points, its flagged junctions and closures, and its figures and link."""
     answer = plan.answer
@@ -3704,7 +3828,7 @@ def route_view(plan: Plan, out: dict, name: str) -> dict:
         "loop": bool(plan.sent.get("loop")),
         "junctions": junctions,
         "closures": closures,
-        "mass": _mass_view(answer),
+        "mass": _mass_view(answer, corking),
     }
 
 
@@ -4253,6 +4377,26 @@ RIDE_OPTIONS = {
             " needs."
         ),
     },
+    "corking": {
+        "type": "object",
+        "description": (
+            "Mass Ride only, when the organiser asks: which junctions to cork, for the corker"
+            " count and chart (the route is not changed, and the app's link still counts every"
+            " junction). from_lts corks only junctions whose road is at least that level (3, the"
+            " default, is every junction the app flags; 4 leaves out LTS 3 roads). skip leaves"
+            " out junctions by street name (any part of it) or by mile. Kept as the draft is"
+            " revised; clear_settings corking undoes it."
+        ),
+        "properties": {
+            "from_lts": {"type": "number", "enum": [3, 3.5, 4, 4.5, 5]},
+            "skip": {
+                "type": "array",
+                "items": {"anyOf": [{"type": "string", "minLength": 2}, {"type": "number"}]},
+                "maxItems": 40,
+            },
+        },
+        "additionalProperties": False,
+    },
     "ending": {
         "type": "string",
         "enum": ["dock", "outside_dock"],
@@ -4446,6 +4590,7 @@ PASSED_OPTIONS = (
     "mtb_level",
     "mtb_preferred",
     "ride_size",
+    "corking",
     "bike",
     "ending",
     "depart_at",
@@ -6060,7 +6205,7 @@ class Server:
         out = {
             "draft_id": draft_id,
             "summary": summary(plan.answer),
-            **route_details(plan, self.stations),
+            **route_details(plan, self.stations, options.get("corking")),
             "points": [list(p) for p in plan.points],
             "via_points": plan.vias,
             "preset": plan.preset,
@@ -6089,7 +6234,7 @@ class Server:
             out["notes"] = notes
         out["credit"] = plan.answer.get("attribution", [])
         # For the route view only: Server.call moves it out of the answer (VIEW_META_KEY).
-        view = route_view(plan, out, name)
+        view = route_view(plan, out, name, options.get("corking"))
         if self.basemap is not None and self.view_key is not None:
             # The base map tool answers only the view that holds this, which travels in the
             # result's _meta: an assistant without MCP Apps lists the tool, but its model never
