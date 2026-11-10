@@ -1132,6 +1132,33 @@ class TestGpx:
         r = Client().get(path, **addr())
         assert r.status_code == 404 and b"no longer kept" in r.content
 
+    def test_a_draft_s_picture_draws_from_its_link_and_needs_its_own_digest(self, planner) -> None:
+        """The owner, 2026-11-10: "Also allow for an image if requested so it can be shared"."""
+        user, tokens, _client_id = tokens_for()
+        token = tokens["access_token"]
+        planned = call(token, "plan_route", {"points": [[-77.03, 38.9], [-77.02, 38.91]]})
+        draft_id = planned["structuredContent"]["draft_id"]
+        view = planned["_meta"]["routemaker/route-view"]
+        picture = call(token, "route_picture", {"draft_id": draft_id})
+        assert not picture["isError"], picture
+        link = picture["structuredContent"]["picture_link"]
+        assert view["picture_link"] == link
+        # Under /mcp/gpx/, whose token the access logs already take out.
+        assert link.startswith("http://testserver/mcp/gpx/") and link.endswith(".png")
+        assert [c["type"] for c in picture["content"]] == ["image", "text"]
+        assert base64.b64decode(picture["content"][0]["data"]).startswith(b"\x89PNG")
+        path = urllib.parse.urlsplit(link).path
+        r = Client().get(path, **addr())
+        assert r.status_code == 200 and r["Content-Type"] == "image/png"
+        assert r.content.startswith(b"\x89PNG") and "no-store" in r["Cache-Control"]
+        # The GPX digest does not open the picture, nor the picture's the GPX file.
+        grant = ConnectorGrant.objects.get(user=user)
+        gpx_mac = connector._gpx_mac(user.pk, grant.pk, draft_id)
+        assert Client().get(f"/mcp/gpx/{draft_id}.{gpx_mac}.png", **addr()).status_code == 404
+        picture_mac = path.rsplit("/", 1)[1].removesuffix(".png").split(".")[1]
+        assert Client().get(f"/mcp/gpx/{draft_id}.{picture_mac}", **addr()).status_code == 404
+        assert Client().post(path, **addr()).status_code == 405
+
 
 @db
 class TestDraftKeeping:

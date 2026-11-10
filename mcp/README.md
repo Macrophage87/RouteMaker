@@ -55,8 +55,19 @@ the line comes from `route_view_map`, a tool only the view calls (visibility `ap
 the app's own base map for the box the view asks for, drawn in memory and never kept
 (`src/core/route_view_map.py`). It answers only with a key that travels in the view's `_meta`, so
 an assistant without MCP Apps lists it but its model cannot use it. Each view's base map is one
-connector call, counted in the same hourly limit as planning. On your own computer there is no base map, so the line is drawn on
-a plain background.
+connector call, counted in the same hourly limit as planning. On your own computer there is no
+base map, so the line is drawn on a plain background.
+
+On a Mass Ride the view also draws the riders a minute the road carries (the app's flow bands,
+with the ride size's need as a dashed line) and the junctions that need corkers, on the map and
+in a row under the graphs. Corker marks a few pixels apart are drawn as one with their corkers
+added up (our default).
+
+To share it, ask for a picture: `route_picture` (on the site only, and only when asked) sends the
+map and graphs as one PNG image, and a link that downloads it while the draft is kept; the view
+has a Picture button for the same link. The picture is drawn when it is asked for or the link is
+opened, in memory, and never kept (`src/core/route_picture.py`). The link sits under `/mcp/gpx/`
+(with `.png` on the end and its own digest), so the access logs already take its token out.
 
 The assistant picks the ride type and settings that fit what you ask: every ride type the app
 has (bikeshare and bike plus transit included) and every setting (traffic stress, hills, ride

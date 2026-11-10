@@ -60,7 +60,7 @@ from django.utils.html import format_html, format_html_join
 from django.utils.safestring import mark_safe
 from django.views.decorators.csrf import csrf_exempt
 
-from . import ratelimit, route_view_map
+from . import ratelimit, route_picture, route_view_map
 from .models import ConnectorClient, ConnectorDraft, ConnectorGrant, SharedRoute
 
 logger = logging.getLogger(__name__)
@@ -612,6 +612,8 @@ def mcp_endpoint(request):
         routes_organize=grant.organizes_routes,
         basemap=route_view_map.draw,
         view_key=lambda draft_id: _view_key(user.pk, grant.pk, draft_id),
+        picture=route_picture.draw,
+        picture_link=lambda draft_id: picture_link(request, user, grant, draft_id),
     )
     msg_id = message.get("id") if isinstance(message, dict) else None
     if msg_id is not None and (isinstance(msg_id, bool) or not isinstance(msg_id, (str, int))):
@@ -685,9 +687,12 @@ def _gpx_gone():
 
 @ratelimit.rate_limited(ratelimit.SHARED_ROUTE_READS)
 def draft_gpx(request, token: str):
-    """GET /mcp/gpx/<token>: the draft as a .gpx download, while the draft is kept."""
+    """GET /mcp/gpx/<token>: the draft as a .gpx download, while the draft is kept; with .png on
+    the end, its picture (draft_picture)."""
     if request.method != "GET":
         return HttpResponse(status=405, headers={"Allow": "GET"})
+    if token.endswith(".png"):
+        return draft_picture(request, token)
     found = GPX_TOKEN_RE.fullmatch(token)
     if found is None:
         return _gpx_gone()
@@ -718,6 +723,62 @@ def draft_gpx(request, token: str):
         module.gpx_text(name, draft.plan.line), content_type="application/gpx+xml"
     )
     response["Content-Disposition"] = f'attachment; filename="{module.gpx_slug(name)}.gpx"'
+    response["X-Content-Type-Options"] = "nosniff"
+    return _no_store(response)
+
+
+# --- A draft's picture ----------------------------------------------------------------------------
+
+PICTURE_SALT = "core.connector.picture"
+
+
+def _picture_mac(user_id, grant_id, draft_id: str) -> str:
+    message = f"{user_id}:{grant_id}:{draft_id}"
+    return salted_hmac(PICTURE_SALT, message, algorithm="sha256").hexdigest()
+
+
+def picture_link(request, user, grant, draft_id: str) -> str:
+    """A link that downloads the draft's map and graphs as a PNG (core.route_picture), to share
+    (the owner, 2026-11-10), made as the GPX link is: the draft's id and a keyed digest, good
+    while the draft is kept and the app is connected. The picture is drawn when the link is
+    opened, in memory: nothing is kept for it. It sits under /mcp/gpx/, so the api's and the beta's
+    access logs already take its token out (config.access_log, the nginx template)."""
+    return f"{_origin(request)}/mcp/gpx/{draft_id}.{_picture_mac(user.pk, grant.pk, draft_id)}.png"
+
+
+def draft_picture(request, token: str):
+    """GET /mcp/gpx/<token>.png (by way of draft_gpx, which checks the method and the rate): the
+    draft's map and graphs, while the draft is kept."""
+    found = GPX_TOKEN_RE.fullmatch(token.removesuffix(".png"))
+    if found is None or not token.endswith(".png"):
+        return _gpx_gone()
+    draft_id, mac = found.groups()
+    row = (
+        ConnectorDraft.objects.select_related("user")
+        .filter(
+            draft_id=draft_id,
+            grant__isnull=False,
+            created_at__gte=timezone.now() - ConnectorDraft.KEPT,
+        )
+        .first()
+    )
+    if (
+        row is None
+        or not row.user.is_active
+        or not constant_time_compare(mac, _picture_mac(row.user_id, row.grant_id, draft_id))
+        or not ConnectorGrant.objects.filter(pk=row.grant_id, user_id=row.user_id).exists()
+    ):
+        return _gpx_gone()
+    draft = DatabaseDrafts(row.user, row.grant_id).get(draft_id)
+    if draft is None:
+        return _gpx_gone()
+    module = mcp_module()
+    png = route_picture.draw(module.draft_view(draft, draft_id), draft.plan.line)
+    if png is None:
+        return _gpx_gone()
+    response = HttpResponse(png, content_type="image/png")
+    name = str(row.data.get("gpx_name") or draft.name)[:120]
+    response["Content-Disposition"] = f'inline; filename="{module.gpx_slug(name)}.png"'
     response["X-Content-Type-Options"] = "nosniff"
     return _no_store(response)
 
