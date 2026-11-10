@@ -24,19 +24,26 @@ FONT = REPO / "frontend" / "src" / "fonts" / "atkinson-hyperlegible-bold.woff2"
 CHARS = "".join(chr(c) for c in range(32, 127)) + "·"
 # Each table: its module, its size, its letters. The small one draws the base map's place names and
 # credits (core.preview_basemap), so it has the copyright sign too.
+REGULAR = REPO / "frontend" / "src" / "fonts" / "atkinson-hyperlegible-regular.woff2"
 TABLES = (
-    (REPO / "src" / "core" / "preview_glyphs.py", 34, CHARS),
-    (REPO / "src" / "core" / "preview_glyphs_small.py", 18, CHARS + "©"),
+    (REPO / "src" / "core" / "preview_glyphs.py", 34, CHARS, FONT),
+    (REPO / "src" / "core" / "preview_glyphs_small.py", 18, CHARS + "©", FONT),
+    # The phone cue images (core.cue_cards): the miles large, the turn, the road, the small words.
+    (REPO / "src" / "core" / "cue_glyphs_miles.py", 88, "0123456789.,", FONT),
+    (REPO / "src" / "core" / "cue_glyphs_turn.py", 60, CHARS, FONT),
+    (REPO / "src" / "core" / "cue_glyphs_road.py", 52, CHARS, REGULAR),
+    (REPO / "src" / "core" / "cue_glyphs_small.py", 30, CHARS + "©", REGULAR),
+    (REPO / "src" / "core" / "cue_glyphs_head.py", 36, CHARS, FONT),
 )
 
 
 def main() -> None:
-    for out, size, chars in TABLES:
-        write(out, size, chars)
+    for out, size, chars, face in TABLES:
+        write(out, size, chars, face)
 
 
-def write(out: Path, size: int, chars: str) -> None:
-    font = ImageFont.truetype(str(FONT), size)
+def write(out: Path, size: int, chars: str, face: Path = FONT) -> None:
+    font = ImageFont.truetype(str(face), size)
     ascent, descent = font.getmetrics()
     height = ascent + descent
     table = {}
@@ -55,7 +62,7 @@ def write(out: Path, size: int, chars: str) -> None:
     body = "\n".join(f'    "{line}"' for line in textwrap.wrap(packed, 92))
     out.write_text(
         '"""Glyph coverage for the link preview image (core.share_preview), written by\n'
-        "scripts/make_preview_glyphs.py from frontend/src/fonts/atkinson-hyperlegible-bold.woff2\n"
+        f"scripts/make_preview_glyphs.py from frontend/src/fonts/{face.name}\n"
         '(SIL Open Font License: frontend/src/fonts/OFL.txt). Do not edit by hand."""\n\n'
         f"SIZE = {size}\nHEIGHT = {height}\nASCENT = {ascent}\n"
         "# char: (advance, left offset, width, offset into the coverage bytes); each glyph is\n"

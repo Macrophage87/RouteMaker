@@ -60,7 +60,7 @@ from django.utils.html import format_html, format_html_join
 from django.utils.safestring import mark_safe
 from django.views.decorators.csrf import csrf_exempt
 
-from . import ratelimit, route_picture, route_view_map
+from . import cue_cards, ratelimit, route_picture, route_view_map
 from .models import ConnectorClient, ConnectorDraft, ConnectorGrant, SharedRoute
 
 logger = logging.getLogger(__name__)
@@ -614,6 +614,8 @@ def mcp_endpoint(request):
         view_key=lambda draft_id: _view_key(user.pk, grant.pk, draft_id),
         picture=route_picture.draw,
         picture_link=lambda draft_id: picture_link(request, user, grant, draft_id),
+        cue_cards=cue_cards.draw,
+        cue_cards_link=lambda draft_id, page: cue_cards_link(request, user, grant, draft_id, page),
     )
     msg_id = message.get("id") if isinstance(message, dict) else None
     if msg_id is not None and (isinstance(msg_id, bool) or not isinstance(msg_id, (str, int))):
@@ -746,10 +748,30 @@ def picture_link(request, user, grant, draft_id: str) -> str:
     return f"{_origin(request)}/mcp/gpx/{draft_id}.{_picture_mac(user.pk, grant.pk, draft_id)}.png"
 
 
+CUES_SALT = "core.connector.cue-cards"
+CUES_TOKEN_RE = re.compile(r"(d[0-9a-f]{32})\.([0-9a-f]{64})-cues-([1-9][0-9]?)\.png")
+
+
+def _cues_mac(user_id, grant_id, draft_id: str) -> str:
+    message = f"{user_id}:{grant_id}:{draft_id}"
+    return salted_hmac(CUES_SALT, message, algorithm="sha256").hexdigest()
+
+
+def cue_cards_link(request, user, grant, draft_id: str, page: int) -> str:
+    """A link that opens one of the draft's phone cue images (core.cue_cards), page from 1, made
+    as the picture's: drawn when opened, in memory, nothing kept."""
+    mac = _cues_mac(user.pk, grant.pk, draft_id)
+    return f"{_origin(request)}/mcp/gpx/{draft_id}.{mac}-cues-{int(page)}.png"
+
+
 @ratelimit.rate_limited(ratelimit.ROUTE_PICTURES)
 def draft_picture(request, token: str):
     """GET /mcp/gpx/<token>.png (by way of draft_gpx, which checks the method and the rate): the
-    draft's map and graphs, while the draft is kept."""
+    draft's map and graphs, or with -cues-N one of its phone cue images, while the draft is
+    kept."""
+    cues = CUES_TOKEN_RE.fullmatch(token)
+    if cues is not None:
+        return _draft_cue_card(*cues.groups())
     found = GPX_TOKEN_RE.fullmatch(token.removesuffix(".png"))
     if found is None or not token.endswith(".png"):
         return _gpx_gone()
@@ -780,6 +802,39 @@ def draft_picture(request, token: str):
     response = HttpResponse(png, content_type="image/png")
     name = str(row.data.get("gpx_name") or draft.name)[:120]
     response["Content-Disposition"] = f'inline; filename="{module.gpx_slug(name)}.png"'
+    response["X-Content-Type-Options"] = "nosniff"
+    return _no_store(response)
+
+
+def _draft_cue_card(draft_id: str, mac: str, page: str):
+    row = (
+        ConnectorDraft.objects.select_related("user")
+        .filter(
+            draft_id=draft_id,
+            grant__isnull=False,
+            created_at__gte=timezone.now() - ConnectorDraft.KEPT,
+        )
+        .first()
+    )
+    if (
+        row is None
+        or not row.user.is_active
+        or not constant_time_compare(mac, _cues_mac(row.user_id, row.grant_id, draft_id))
+        or not ConnectorGrant.objects.filter(pk=row.grant_id, user_id=row.user_id).exists()
+    ):
+        return _gpx_gone()
+    draft = DatabaseDrafts(row.user, row.grant_id).get(draft_id)
+    if draft is None:
+        return _gpx_gone()
+    module = mcp_module()
+    # The stops' names are the plan's own (cue_cards keeps the names it is given on the draft).
+    images = cue_cards.draw(*module.cue_card_args(draft, module.cue_card_names(draft.plan, None)))
+    n = int(page)
+    if not 1 <= n <= len(images):
+        return _gpx_gone()
+    response = HttpResponse(images[n - 1], content_type="image/png")
+    name = str(row.data.get("gpx_name") or draft.name)[:120]
+    response["Content-Disposition"] = f'inline; filename="{module.gpx_slug(name)}-cues-{n}.png"'
     response["X-Content-Type-Options"] = "nosniff"
     return _no_store(response)
 

@@ -195,9 +195,9 @@ export type Said = (made: Made) => void;
  * (a phone's, which is where they are wanted), and otherwise part 1 is saved and the button saves each next part.
  * The line says only what was actually saved or sent.
  */
-async function downloadLockScreens(route: RouteResponse, vias: readonly number[]): Promise<Made> {
+async function downloadLockScreens(route: RouteResponse, vias: readonly number[], stops: ReadonlyMap<number, string>): Promise<Made> {
   try {
-    const { pages, blobs } = await renderLockScreens(route, vias);
+    const { pages, blobs } = await renderLockScreens(route, vias, stops);
     const names = lockScreenFileNames(route, blobs.length);
     if (blobs.length === 1) return (await keepFile(blobs[0], "image/png", names[0], lockScreenLine(pages))).line;
     const cues = pages.reduce((n, p) => n + p.cues, 0);
@@ -231,13 +231,15 @@ async function downloadLockScreens(route: RouteResponse, vias: readonly number[]
  */
 export async function downloadCourse(route: RouteResponse, routedPoints: LonLat[], format: FileFormat, profile: DeviceProfileId): Promise<Made> {
   const vias = viaIndices(routedPoints, VIA_MARKS.isVia);
-  if (format === "png-lock") return downloadLockScreens(route, vias);
+  // The stops' own names, on every export (the owner, 2026-11-10: "make sure stops are listed").
+  const stops = stopNames(routedPoints, VIA_MARKS.nameOf, VIA_MARKS.isVia, route.loop != null);
+  if (format === "png-lock") return downloadLockScreens(route, vias, stops);
   if (format === "pdf-sheet" || format === "pdf-strip") {
     const kind = PRINTS[format];
-    const made = cueSheetDocument(route, kind, vias);
-    return (await keepFile(made.bytes, "application/pdf", cueSheetFileName(route, kind), cueSheetLine(route, kind, vias, made.pages))).line;
+    const made = cueSheetDocument(route, kind, vias, stops);
+    return (await keepFile(made.bytes, "application/pdf", cueSheetFileName(route, kind), cueSheetLine(route, kind, vias, made.pages, stops))).line;
   }
-  const course = compileCourse(route, deviceProfile(profile), format, vias, stopNames(routedPoints, VIA_MARKS.nameOf, VIA_MARKS.isVia, route.loop != null));
+  const course = compileCourse(route, deviceProfile(profile), format, vias, stops);
   const fileName = courseFileName(route, format);
   const kept = format === "fit"
     ? await keepFile(writeFit(course), "application/vnd.ant.fit", fileName, courseLine(course))

@@ -7,11 +7,14 @@
  * and weight, given a `measure` for text widths. The top 28% is left clear for the lock screen's clock and the
  * bottom 12% for its controls; the route's name and distance sit small just under the top band and the credits
  * small just above the bottom one. The rows are the strip's (cueSheetPdf.ts cueRows "strip"): the miles from the
- * start large with km small, the turn with a caution's reason small, and the road abbreviated. Rows that do not fit
- * on one image go on the next, "Part 2 of 3". Dark text on white. No place is named (exportName), so never a Home.
+ * start large with km small, the cue's picture (an arrow for a turn, lib/cueArrow.ts: the owner, 2026-11-10, "Basically
+ * show the arrows"), then the turn with a caution's reason small, the road abbreviated, and a jog's later turns. Stops
+ * are rows of their own, by name where the plan names them. Rows that do not fit on one image go on the next, "Part 2
+ * of 3". Dark text on white. No place is named (exportName) but a stop the rider named, so never a Home.
  */
 import type { RouteResponse } from "./api.ts";
 import { abbreviateStreet } from "./course.ts";
+import type { CueArrow } from "./cueArrow.ts";
 import { cueRows, sheetCredit, summaryLine, type CueRow } from "./cueSheetPdf.ts";
 import { formatMileMarkerUnits, markerFigure } from "./format.ts";
 import { exportFileName, exportName } from "./gpxText.ts";
@@ -24,10 +27,12 @@ export const CLEAR_BOTTOM = Math.round(LOCK_HEIGHT * 0.12);
 export const INK = "#111111";
 export const PAPER = "#ffffff";
 
-const SIDE = 64;
+const SIDE = 56;
 const PAD = 14;
-const COLUMNS = { miles: 280, turn: 330 } as const;
-const PX = { title: 40, summary: 30, part: 30, miles: 96, unit: 32, turn: 64, reason: 32, road: 60, credit: 26 } as const;
+const COLUMNS = { miles: 230, arrow: 160 } as const;
+/** The cue's picture: a square this wide, its top at the row's top and PAD. */
+export const ARROW_PX = 128;
+const PX = { title: 40, summary: 30, part: 30, miles: 88, unit: 30, turn: 64, reason: 32, road: 56, then: 36, credit: 26 } as const;
 
 export type Weight = 400 | 700;
 /** The width in pixels of `text` at `px` in the image's face (the canvas's measureText in the browser). */
@@ -50,6 +55,8 @@ export interface LockPage {
   rules: number[];
   /** How many cues are on this image. */
   cues: number;
+  /** Each cue's picture: its box's top left corner and its width (ARROW_PX), in pixels. */
+  arrows: { x: number; y: number; size: number; arrow: CueArrow }[];
   /** Where the cues may be drawn, top and bottom, for the tests and the renderer's own check. */
   cueTop: number;
   cueBottom: number;
@@ -96,21 +103,27 @@ function rowLines(row: CueRow, measure: Measure): { lines: LockLine[]; height: n
     }
     return y;
   };
-  const turnX = SIDE + COLUMNS.miles;
-  const roadX = turnX + COLUMNS.turn;
+  const textX = SIDE + COLUMNS.miles + COLUMNS.arrow;
   const bottoms = [
     column(SIDE, COLUMNS.miles, [
       { text: markerFigure(row.atM), px: PX.miles, weight: 700 },
       { text: formatMileMarkerUnits(row.atM), px: PX.unit, weight: 400 },
     ]),
-    column(turnX, COLUMNS.turn, [
+    column(textX, LOCK_WIDTH - SIDE - textX, [
       { text: row.turn, px: PX.turn, weight: 700 },
       ...(row.reason ? [{ text: row.reason, px: PX.reason, weight: 400 as const }] : []),
+      // A named stop says its number too ("make sure stops are listed", the owner, 2026-11-10).
+      ...(row.arrow.kind === "stop" && row.arrow.number != null && row.turn !== `Stop ${row.arrow.number}` ? [{ text: `Stop ${row.arrow.number}`, px: PX.reason, weight: 400 as const }] : []),
+      ...(row.road ? [{ text: abbreviateStreet(row.road), px: PX.road, weight: 400 as const }] : []),
+      ...(row.then ? [{ text: row.then, px: PX.then, weight: 700 as const }] : []),
     ]),
-    column(roadX, LOCK_WIDTH - SIDE - roadX, row.road ? [{ text: abbreviateStreet(row.road), px: PX.road, weight: 400 }] : []),
+    PAD + ARROW_PX,
   ];
   return { lines, height: Math.max(...bottoms) + PAD };
 }
+
+/** Where a row's picture goes, from the row's top. */
+const arrowAt = (top: number) => ({ x: SIDE + COLUMNS.miles + Math.round((COLUMNS.arrow - ARROW_PX) / 2) - 10, y: top + PAD, size: ARROW_PX });
 
 function block(texts: string[], px: number, weight: Weight, top: number, measure: Measure): { lines: LockLine[]; bottom: number } {
   const lines: LockLine[] = [];
@@ -125,8 +138,9 @@ function block(texts: string[], px: number, weight: Weight, top: number, measure
 }
 
 /** The images for the route: one, or as many as its cues need, each with its lines placed. */
-export function lockScreenLayout(route: LockRoute, measure: Measure, vias: readonly number[] = []): LockPage[] {
-  const rows = cueRows(route, "strip", vias).map((r) => rowLines(r, measure));
+export function lockScreenLayout(route: LockRoute, measure: Measure, vias: readonly number[] = [], names: ReadonlyMap<number, string> = new Map()): LockPage[] {
+  const cues = cueRows(route, "strip", vias, names);
+  const rows = cues.map((r) => rowLines(r, measure));
   const credit = wrapPx(sheetCredit(route), PX.credit, 400, LOCK_WIDTH - 2 * SIDE, measure);
   const creditTop = LOCK_HEIGHT - CLEAR_BOTTOM - 16 - credit.length * Math.round(PX.credit * 1.25);
   // The header's height is the same on every image (the part line is there on each when there is more than one).
@@ -157,14 +171,16 @@ export function lockScreenLayout(route: LockRoute, measure: Measure, vias: reado
     const lines: LockLine[] = [...header.lines];
     const cueTop = header.bottom + 24;
     const rules: number[] = [cueTop];
+    const arrows: LockPage["arrows"] = [];
     let y = cueTop;
     for (const i of group) {
       for (const l of rows[i].lines) lines.push({ ...l, y: l.y + y });
+      arrows.push({ ...arrowAt(y), arrow: cues[i].arrow });
       y += rows[i].height;
       rules.push(y);
     }
     credit.forEach((text, i) => lines.push({ text, x: SIDE, y: creditTop + (i + 1) * Math.round(PX.credit * 1.25), px: PX.credit, weight: 400 }));
-    return { part, lines, rules, cues: group.length, cueTop, cueBottom: creditTop - 16 };
+    return { part, lines, rules, arrows, cues: group.length, cueTop, cueBottom: creditTop - 16 };
   });
 }
 

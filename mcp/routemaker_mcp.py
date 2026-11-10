@@ -3783,6 +3783,37 @@ def _mass_view(answer: dict, corking: dict | None = None) -> dict | None:
     return out
 
 
+def cue_card_names(plan: Plan, asked) -> dict[int, str]:
+    """The stops' names by point index for the cue images: the plan's own (its link's `sn=`),
+    then `asked`, by stop number from 1 (cue_cards' `stop_names`)."""
+    names = {int(k): str(v) for k, v in (plan.names or {}).items()}
+    stops = [i for i in range(1, len(plan.points) - 1) if i not in set(plan.vias)]
+    for key, name in (asked or {}).items():
+        try:
+            number = int(key)
+        except (TypeError, ValueError):
+            continue
+        if 1 <= number <= len(stops) and str(name).strip():
+            names[stops[number - 1]] = str(name).strip()[:60]
+    return names
+
+
+def cue_card_args(draft, names: dict[int, str]) -> tuple:
+    """core.cue_cards.draw's arguments for a draft: its answer, its name, its through points,
+    the stops' names, and the route's credits as the GPX export words them."""
+    answer = draft.plan.answer
+    credit = "; ".join(str(a) for a in answer.get("attribution") or []) or (
+        "© OpenStreetMap contributors, ODbL"
+    )
+    return (
+        answer,
+        draft.name,
+        list(draft.plan.vias),
+        names,
+        f"Route data: {credit}. Planned with RouteMaker.",
+    )
+
+
 def draft_view(draft, draft_id: str) -> dict:
     """A kept draft's route view, as its answer gave it (for the picture, core.route_picture)."""
     plan = draft.plan
@@ -4671,6 +4702,40 @@ PICTURE_TOOL = {
     "inputSchema": {
         "type": "object",
         "properties": {"draft_id": {"type": "string"}},
+        "required": ["draft_id"],
+    },
+    "annotations": {"readOnlyHint": True, "openWorldHint": False},
+}
+
+# The route's turn cues as phone-sized images, an arrow beside each (the owner, 2026-11-10: "some
+# people perfer to just navigate by a static image ... Basically show the arrows"; "make sure stops
+# are listed"). On the site only (core.cue_cards), as Plan's "Cue sheet image" export.
+CUE_CARDS_TOOL = {
+    "name": "cue_cards",
+    "title": "Turn cue images",
+    "description": (
+        "Only when the rider asks for turn cues, a cue sheet or arrows as images, to navigate by"
+        " a picture on their phone: the draft's cues as phone-sized PNGs (a lock screen's size,"
+        " its clock and controls left clear), each row the miles from the start, an arrow, the"
+        " turn and the road; stops are listed by number, and by name where `stop_names` (or the"
+        " plan's link) names them. A long route runs to several images, Part 1 of N. Each image"
+        " has a link that opens it while the draft is kept: give the rider the links."
+    ),
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "draft_id": {"type": "string"},
+            "stop_names": {
+                "type": "object",
+                "description": (
+                    'Names for the stops, by stop number from 1 ({"1": "Union Market"}),'
+                    ' where the rider named them; a stop without one is "Stop N". Names given'
+                    " are kept on a new draft (the answer's draft_id), as revise_route keeps a"
+                    " change."
+                ),
+                "additionalProperties": {"type": "string", "maxLength": 60},
+            },
+        },
         "required": ["draft_id"],
     },
     "annotations": {"readOnlyHint": True, "openWorldHint": False},
@@ -5657,6 +5722,8 @@ class Server:
         view_key=None,
         picture=None,
         picture_link=None,
+        cue_cards=None,
+        cue_cards_link=None,
     ):
         self._api_factory = api_factory
         self._api: Api | None = None
@@ -5691,6 +5758,10 @@ class Server:
         # (core.route_picture), and function(draft_id) -> a link that opens it.
         self.picture = picture
         self.picture_link = picture_link
+        # On the site: function(answer, title, vias, names, credit) -> the phone cue images
+        # (core.cue_cards), and function(draft_id, page from 1) -> a link that opens one.
+        self.cue_cards = cue_cards
+        self.cue_cards_link = cue_cards_link
 
     def tools(self) -> list[dict]:
         """The tools, as tools/list gives them: without the post tool unless posts may be
@@ -5709,6 +5780,8 @@ class Server:
             out.append(VIEW_MAP_TOOL)
         if self.picture is not None:
             out.append(PICTURE_TOOL)
+        if self.cue_cards is not None:
+            out.append(CUE_CARDS_TOOL)
         return out
 
     def resources(self) -> list[dict]:
@@ -5764,6 +5837,43 @@ class Server:
                 "data": base64.b64encode(png).decode("ascii"),
                 "mimeType": "image/png",
             }
+        ]
+        return out
+
+    # cue_cards
+    def cue_cards_tool(self, args: dict, call: Call) -> dict:
+        draft_id = str(args["draft_id"])
+        draft = self.drafts.get(draft_id)
+        if draft is None:
+            raise ToolError(f"no draft {draft_id} (drafts last only a while; plan it again)")
+        names = cue_card_names(draft.plan, args.get("stop_names"))
+        out: dict = {}
+        if names != (draft.plan.names or {}):
+            # Names given here are kept as a revision of the draft, so its links (and the app's
+            # link) name the stops as these images do.
+            named = dataclasses.replace(
+                draft, plan=dataclasses.replace(draft.plan, names=names), revises=draft_id
+            )
+            draft_id = self.drafts.put(named)
+            draft = named
+            out["revised"] = "the stop names are kept on a new draft: use this draft_id from now on"
+        images = self.cue_cards(*cue_card_args(draft, names))
+        if not images:
+            raise ToolError("this draft has no cues to draw")
+        out |= {"draft_id": draft_id, "name": draft.name, "images": len(images)}
+        if self.cue_cards_link is not None:
+            out["links"] = [self.cue_cards_link(draft_id, n + 1) for n in range(len(images))]
+            out["note"] = (
+                "each link opens one image (PNG) to save to the phone; they work while the"
+                " draft is kept"
+            )
+        out[IMAGES_PRIVATE] = [
+            {
+                "type": "image",
+                "data": base64.b64encode(png).decode("ascii"),
+                "mimeType": "image/png",
+            }
+            for png in images
         ]
         return out
 
@@ -7547,8 +7657,11 @@ class Server:
             return None
         if name == "route_picture" and self.picture is None:
             return None
+        if name == "cue_cards" and self.cue_cards is None:
+            return None
         return {
             "route_picture": self.route_picture,
+            "cue_cards": self.cue_cards_tool,
             "route_view_map": self.route_view_map,
             "find_place": self.find_place,
             "metro_stations": self.metro_stations,

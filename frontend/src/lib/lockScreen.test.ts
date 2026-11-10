@@ -109,3 +109,27 @@ test("several images: the line says only what was saved or sent, and the button 
   assert.equal(lockSharedLine(3, 20), "Cue sheet image: 20 cues on 3 images, Part 1 of 3 to Part 3 of 3, sent to the share sheet together.");
   assert.equal(lockCancelledLine(3), "Cue sheet image: sharing cancelled, nothing saved. Press Download part 1 of 3 to save them one at a time.");
 });
+
+test("every cue has its picture beside it, and a stop is listed by its name and number", () => {
+  const named = new Map([[1, "Coffee stop"]]);
+  const pages = lockScreenLayout(sampleRoute(), measure, [], named);
+  const rows = cueRows(sampleRoute(), "strip", [], named);
+  const arrows = pages.flatMap((p) => p.arrows);
+  assert.deepEqual(arrows.map((a) => a.arrow), rows.map((r) => r.arrow));
+  assert.equal(arrows[0].arrow.kind, "start");
+  assert.equal(arrows[arrows.length - 1].arrow.kind, "finish");
+  assert.ok(arrows.some((a) => a.arrow.kind === "turn" && a.arrow.moves[0] === "left"));
+  // Each picture sits inside its own row, clear of the miles and the words.
+  for (const p of pages) {
+    p.arrows.forEach((a, i) => {
+      assert.ok(a.y >= p.rules[i] && a.y + a.size <= p.rules[i + 1], `picture ${i} outside its row`);
+      assert.ok(a.x >= 56 + 230 - 20 && a.x + a.size <= LOCK_WIDTH);
+    });
+  }
+  const texts = pages.flatMap((p) => p.lines.map((l) => l.text));
+  assert.ok(texts.includes("Coffee stop") && texts.includes("Stop 1"));
+  assert.ok(arrows.some((a) => a.arrow.kind === "stop" && a.arrow.number === 1));
+  // Without its name, the stop is "Stop 1".
+  const plain = lockScreenLayout(sampleRoute(), measure).flatMap((p) => p.lines.map((l) => l.text));
+  assert.ok(plain.includes("Stop 1") && !plain.includes("Coffee stop"));
+});
