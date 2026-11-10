@@ -5558,7 +5558,8 @@ if (mine()) {
   // info at map center on a climb offers "Climb here" and "Climb details"; Enter there opens the climb's card
   // with the focus in it, its name said; Escape closes it and gives the focus back to the map.
   const p = await open({ init: "try { localStorage.setItem('routemaker.climbs', '1'); } catch {}" });
-  // A point on the first climb in climb-data/climbs.json (Cat 2, 12,090 m, on its line).
+  // A point on the first climb in climb-data/climbs.json (Cat 2, 12,090 m, on its line). Since the 2026-11-09 build
+  // (#1116) it carries its road's name, Foxville Road, which leads the line and titles the card.
   const jumped = await jumpMap(p, -77.42194, 39.62173, 15);
   // The layer's file loaded and drawn (the road panel offers a climb only once App has the climbs).
   const drawn = await p.waitFor(`(() => { const el = document.querySelector('.map'); const key = Object.keys(el).find((k) => k.startsWith('__reactFiber$'));
@@ -5584,11 +5585,11 @@ if (mine()) {
   const card = await axNode(p, ".climb-popup");
   const ride = await p.eval("[...document.querySelectorAll('.climb-popup button')].map((x) => x.textContent)");
   check("climb card: Road info at map center on a climb offers Climb here and Climb details",
-    jumped && drawn && offered && /^Climb here: Category 2 climb, 7\.5 miles \(12\.1 km\) at 3\.0%/.test(here), JSON.stringify({ jumped, drawn, offered, here }));
+    jumped && drawn && offered && /^Climb here: (?:[^,]+, )?Category 2 climb, 7\.5 miles \(12\.1 km\) at 3\.0%/.test(here), JSON.stringify({ jumped, drawn, offered, here }));
   check("climb card: Enter on Climb details puts the focus in the card, and it stays",
     inCard && still, JSON.stringify({ inCard, still, active: await p.eval("document.activeElement?.className ?? ''") }));
   check("climb card: the focused card is a group named by its title, with one button, Ride this climb",
-    card?.role === "group" && /climb/i.test(card?.name ?? "") && JSON.stringify(ride) === JSON.stringify(["Ride this climb"]), JSON.stringify({ card, ride }));
+    card?.role === "group" && /climb|Foxville Road/i.test(card?.name ?? "") && JSON.stringify(ride) === JSON.stringify(["Ride this climb"]), JSON.stringify({ card, ride }));
   const chart = await p.waitFor("!!document.querySelector('.climb-popup svg[role=img]')", 8000);
   const img = chart ? await axNode(p, ".climb-popup svg[role=img]") : null;
   const caption = chart ? await axNode(p, ".climb-popup figcaption") : null;
