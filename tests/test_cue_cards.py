@@ -119,8 +119,9 @@ def test_a_long_route_runs_to_numbered_phone_sized_images() -> None:
     images = cue_cards.draw(_answer(turns, 9500), "Default route", credit="Route data: test.")
     assert len(images) >= 3
     assert all(png.startswith(b"\x89PNG") and _size(png) == (1179, 2556) for png in images)
+    # A short route: its cues on one image, the credits on their own after it.
     one = cue_cards.draw(_answer(turns[:4], 1000), "Default route")
-    assert len(one) == 1
+    assert len(one) == 2
 
 
 class _Cards:
@@ -236,7 +237,7 @@ def test_long_routes_keep_every_cue_and_draw_only_the_page_asked() -> None:
     total = cue_cards.count(answer, "Default route")
     assert total > 12
     laid = cue_cards.pages(answer, "Default route")
-    assert laid["rows"][laid["groups"][-1][-1]]["turn"] == "Finish"
+    assert laid["rows"][laid["groups"][-2][-1]]["turn"] == "Finish" and laid["groups"][-1] == []
     one = cue_cards.draw(answer, "Default route", only=[total])
     assert len(one) == 1 and one[0].startswith(b"\x89PNG")
 
@@ -265,32 +266,31 @@ def test_splits_at_stops_only_where_the_cues_need_more_than_one_image() -> None:
         {"kind": "via", "from_m": 600, "to_m": 600, "via": 1},
         _stretch(700, "Second Street", "right"),
     ]
-    assert len(cue_cards.draw(_answer(short, 1000), "Default route")) == 1
+    # Cues on one image (no split at the stop), the credits on their own.
+    assert len(cue_cards.draw(_answer(short, 1000), "Default route")) == 2
     long = [_stretch(0, "Start Street")] + [
-        _stretch(300 * k, f"Street {k}", "left" if k % 2 else "right") for k in range(1, 12)
+        _stretch(300 * k, f"Street {k}", "left" if k % 2 else "right") for k in range(1, 20)
     ]
-    long.insert(5, {"kind": "via", "from_m": 1300, "to_m": 1300, "via": 1})
-    laid = cue_cards.pages(_answer(long, 4000), "Default route")
-    kinds = [[laid["rows"][i]["arrow"]["kind"] for i in g] for g in laid["groups"]]
+    long.insert(9, {"kind": "via", "from_m": 2500, "to_m": 2500, "via": 1})
+    laid = cue_cards.pages(_answer(long, 6500), "Default route")
+    kinds = [[laid["rows"][i]["arrow"]["kind"] for i in g] for g in laid["groups"][:-1]]
     # The start to the stop on the first image, the stop heading the next; the finish last.
     assert kinds[0][0] == "start" and kinds[0][-1] == "stop"
     assert kinds[1][0] == "stop" and kinds[-1][-1] == "finish"
     assert sum(k.count("stop") for k in kinds) == 2
 
 
-def test_the_credits_are_on_the_last_image_only_a_source_to_a_line() -> None:
-    """The owner, 2026-11-10: "Have credits on the final image in the set, own set of lines"."""
+def test_the_credits_have_an_image_of_their_own_a_source_to_a_line() -> None:
+    """The owner, 2026-11-10: "Have credits on the final image in the set, own set of lines";
+    "let it go on an additional one ... or just make that the default, so they are readable"."""
     turns = [_stretch(0, "Start Street")] + [
         _stretch(150 * k, f"Street {k}", "left" if k % 2 else "right") for k in range(1, 40)
     ]
     credit = "Route data:\n© OpenStreetMap contributors (ODbL)\nUSGS 3DEP\nPlanned with RouteMaker."
     laid = cue_cards.pages(_answer(turns, 6500), "Default route", credit=credit)
-    assert len(laid["groups"]) >= 2
+    assert len(laid["groups"]) >= 3 and laid["groups"][-1] == []
+    assert all(laid["groups"][:-1])
     assert laid["credit_lines"] == credit.split("\n")
-    # The last image's rows stop above the credits.
-    last = laid["groups"][-1]
-    used = sum(laid["laid"][i][1] for i in last)
-    assert laid["header"]("Part 1 of 2")[1] + 24 + used <= laid["credit_top"] - 16
 
 
 def test_the_big_figure_is_from_the_cue_before_and_the_total_is_on_the_right() -> None:

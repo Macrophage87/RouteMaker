@@ -54,6 +54,8 @@ TURN_WORDS = {
     "bear_right": "Bear right",
     "uturn": "U-turn",
 }
+# The credits' own image: the road's regular face.
+CREDIT_GLYPHS = cue_glyphs_road
 THEN_WORDS = {
     "left": "left",
     "right": "right",
@@ -529,15 +531,14 @@ def pages(answer: dict, title: str, vias=(), names=None, credit: str = "") -> di
         if answer.get("climb_m") is not None
         else ""
     )
-    # The credits on the last image only, a source to a line (`credit`'s lines; the owner,
-    # 2026-11-10: "Have credits on the final image in the set, own set of lines").
+    # The credits on an image of their own, last, a source to a line, in type large enough to read
+    # (the owner, 2026-11-10: "Have credits on the final image in the set, own set of lines";
+    # "let it go on an additional one ... or just make that the default, so they are readable").
     credit_lines = [
         text
         for source in (credit or "").split("\n")
-        for text in _wrap(source, cue_glyphs_small, WIDTH - 2 * SIDE)
+        for text in _wrap(source, CREDIT_GLYPHS, WIDTH - 2 * SIDE)
     ]
-    step = round(cue_glyphs_small.SIZE * 1.25)
-    credit_top = HEIGHT - CLEAR_BOTTOM - 16 - len(credit_lines) * step
     bare_top = HEIGHT - CLEAR_BOTTOM - 16
 
     def header(part: str | None) -> tuple[list[tuple], int]:
@@ -576,21 +577,20 @@ def pages(answer: dict, title: str, vias=(), names=None, credit: str = "") -> di
                 leg = [i]
         if len(leg) > 1 or not out:
             out += paginate(leg, cue_top, bare_top)
-        # The last image has the credits: its rows laid again above them, onto another image
-        # where they no longer fit.
-        out += paginate(out.pop(), cue_top, credit_top)
         return out
 
-    groups = paginate(list(range(len(rows))), header(None)[1] + 24, credit_top)
-    if len(groups) > 1:
-        groups = legs(header("Part 88 of 88")[1] + 24)
+    all_rows = list(range(len(rows)))
+    part_top = header("Part 88 of 88")[1] + 24
+    cue_groups = (
+        [all_rows] if len(paginate(all_rows, part_top, bare_top)) == 1 else legs(part_top)
+    )
+    groups = [*cue_groups, []]
     return {
         "rows": rows,
         "laid": laid,
         "groups": groups,
         "header": header,
         "credit_lines": credit_lines,
-        "credit_top": credit_top,
     }
 
 
@@ -612,7 +612,7 @@ def draw(
     laid_out = pages(answer, title, vias, names, credit)
     rows, laid, groups = laid_out["rows"], laid_out["laid"], laid_out["groups"]
     header = laid_out["header"]
-    credit_lines, credit_top = laid_out["credit_lines"], laid_out["credit_top"]
+    credit_lines = laid_out["credit_lines"]
     images: list[bytes] = []
     for p, group in enumerate(groups):
         if only is not None and p + 1 not in only:
@@ -638,8 +638,8 @@ def draw(
             y += height
             canvas.rect(SIDE, y - 1, WIDTH - SIDE, y + 1, INK)
         if p == len(groups) - 1:
-            step = round(cue_glyphs_small.SIZE * 1.25)
+            step = round(CREDIT_GLYPHS.SIZE * 1.25)
             for n, text in enumerate(credit_lines):
-                _text(canvas, cue_glyphs_small, SIDE, credit_top + (n + 1) * step, text)
+                _text(canvas, CREDIT_GLYPHS, SIDE, y + 8 + (n + 1) * step, text)
         images.append(canvas.png())
     return images
