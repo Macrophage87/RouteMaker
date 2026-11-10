@@ -502,7 +502,7 @@ change it.</li>
 <tr><th scope="row">MDOT SHA<sup class="cite"><a href="#ref-4" aria-label="source 4">[4]</a></sup></th><td>Maryland state roads outside Montgomery County (inside it, the county's rating wins)</td><td>1 to 4</td><td>The same level, except where a rule below reads it again from SHA's own road type, speed, lanes, shoulders, bike lane and traffic count, and whether the road is urban, from the next map update. Urban means inside a Census urban area. Why: matched against Montgomery County's own ratings of the same roads, SHA's levels run high on some kinds of road and low on others; most rules below read those kinds of road the way the county rates them; the other-direction rule fixes a gap in SHA's records.</td></tr>
 <tr><th scope="row">MDOT SHA</th><td></td><td>4 on an urban two-lane collector where SHA assumed 35 mph [56 km/h], up to 15,000 cars a day</td><td>LTS 3; 3.5 at 10,000 to 15,000 cars a day</td></tr>
 <tr><th scope="row">MDOT SHA</th><td></td><td>4 on an urban two-lane street at 30 mph [48 km/h] or less, under 15,000 cars a day</td><td>LTS 2.5; 3 from 7,500 cars a day</td></tr>
-<tr><th scope="row">MDOT SHA</th><td></td><td>3 or less on four or more lanes at 30 to 45 mph [48 to 72 km/h], or two lanes posted 40 to 45 mph [64 to 72 km/h], without a protected bike lane (a two-lane road with a painted bike lane at 40 mph [64 km/h] that SHA rates 3 keeps its 3)</td><td>LTS 4; 3.5 with a painted bike lane</td></tr>
+<tr><th scope="row">MDOT SHA</th><td></td><td>3 or less on four or more lanes at 30 to 45 mph [48 to 72 km/h], or two lanes posted 40 to 45 mph [64 to 72 km/h], without a protected bike lane (a two-lane road with a painted bike lane at 40 mph [64 km/h] that SHA rates 3 keeps its 3; from the next map update, a two-lane road whose own posted speed is 35 mph [56 km/h] or less keeps SHA's level, because SHA's record can cover more road than the sign does)</td><td>LTS 4; 3.5 with a painted bike lane</td></tr>
 <tr><th scope="row">MDOT SHA</th><td></td><td>2 on an urban two-lane 35 mph [56 km/h] road with shoulders 4 ft [1.2 m] or wider on both sides and no painted bike lane</td><td>LTS 3; 3.5 at 10,000 to 15,000 cars a day; 4 above 15,000</td></tr>
 <tr><th scope="row">MDOT SHA</th><td></td><td>1 or 2 on an urban two-lane street at 25 mph [40 km/h] or less, carrying 5,000 to 15,000 cars a day, with no bike lane or other bike marking</td><td>LTS 2.5</td></tr>
 <tr><th scope="row">MDOT SHA</th><td></td><td>2 or less on a rural minor collector carrying 1,500 or more cars a day, where SHA assumed the speed</td><td>LTS 3.5</td></tr>
@@ -585,9 +585,10 @@ change it.</li>
     agreement on those three charts is the map using the agency's level. Where they differ, the map's level
     came from a correction, a DDOT rule or the formula. Arlington's index is not in that order at all,
     though some of the owner's corrections there cite it, so its chart is the most independent of the four.
-    The <a href="#review">2026 review</a> weighed agency ratings as evidence. RouteMaker's aim from
-    here on is to set a road's level from the best evidence without looking at the agency's rating, then
-    compare the two: a difference means a harder look, and a match supports the level.</p>
+    The first <a href="#review">2026 review</a> weighed agency ratings as evidence. From the second, on
+    9 November 2026, each road is rated from its own evidence without looking at any agency's rating, the
+    formula's or the map's, and only then compared: where they differ, our level needs a concrete fact to
+    stand, and where they agree, the match supports it.</p>
 <figure id="fig-agency-moco" class="has-narrow">
 <div class="fig-scroll fig-wide" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 880 192" role="img" aria-labelledby="fig-agency-moco-t fig-agency-moco-d" focusable="false" style="min-width:600px">
@@ -860,11 +861,25 @@ change it.</li>
 <tr><th scope="row">Old Joppa Road, Harford County</th><td>MDOT SHA 4</td><td>LTS 2.5</td><td>A two-lane road posted 30 mph [48 km/h], with about 4,300 cars a day: rated like other slow two-lane roads under 7,500 cars a day.</td></tr>
 <tr><th scope="row">Baltimore Avenue (US 1) between Beltsville and Laurel, Prince George's County</th><td>MDOT SHA 2</td><td>LTS 4.5</td><td>Two or more lanes each way posted 50 mph [80 km/h], with about 31,600 cars a day and no bike lane.</td></tr>
 <tr><th scope="row">Old Georgetown Road, North Bethesda</th><td>Montgomery County 4</td><td>LTS 2.5</td><td>A separated bike lane keeps riders out of the 40 mph [64 km/h] traffic, about 35,600 cars a day. Not 2, because of that traffic at the crossings.</td></tr>
-<tr><th scope="row">River Road, western Montgomery County</th><td>Montgomery County 1</td><td>LTS 3.5</td><td>A rural road with about 3,275 cars a day and no shoulder or bike lane.</td></tr>
+<tr><th scope="row">River Road, western Montgomery County</th><td>Montgomery County 1</td><td>LTS 3.5</td><td>A rural road posted 40 mph [64 km/h] with no bike lane and a shoulder on only part of it. Roads like it
+carry about 3,275 cars a day; that figure is for the group, not River Road's own count.</td></tr>
 </tbody>
 </table>
 </div>
     <p>Each row is a stretch, not the whole road; elsewhere the same road may keep the agency's level.</p>
+    <p>A second review, on 9 November 2026, rates every road again without looking at any agency's rating,
+    the formula's or the map's: from its class, its speed and whether that speed is posted, its lanes, its
+    traffic count, its shoulder and any bike facility. Only then is our level compared with the others. Where
+    one differs, a skeptical reviewer tries to refute ours, and a change needs a concrete fact. This review
+    writes a Why line on every road it rates, not only where it differs: our reasoning first, then that the
+    agency agrees (for example "MDOT SHA agrees"), or, where it does not, the agency's level and the facts
+    behind ours. A residential or minor street with no traffic count is judged by what is around it: homes
+    and jobs per square mile within half a mile, from the 2020 Census and the Census jobs data for 2023,
+    and its Why line quotes both. Where there are many jobs, which stand in for destinations, the street
+    is raised half a level, and sparse homes never take a street below LTS 2. The thresholds are our
+    default and have not been measured. The review's results take effect as corrections from the next
+    map update after the owner approves them. Country roads follow the rural table in
+    <a href="#special">Special cases</a>.</p>
   </div></details>
 </section>
 
@@ -1119,6 +1134,18 @@ change it.</li>
       <li><strong>Quiet rural roads are not overrated.</strong> RouteMaker does not push a lightly used
       rural or gravel road to high stress on a default speed limit alone; it lowers a rating only for a
       clear reason, such as agency data or what riders report.</li>
+      <li><strong>Country roads, by traffic and shoulder.</strong> In the November 2026 review, a rural
+      two-lane road open to cars at 45 mph [72 km/h] or more, with a paved shoulder narrower than 4 ft
+      [1.2 m], is LTS 2 under 400 cars a day, 2.5 at 400 to 1,500, 3 at 1,500 to 3,000, and 4 above 3,000.
+      A paved shoulder of 4 ft [1.2 m] or more takes off one level, never below LTS 2, and busy two-lane
+      rural highways stay LTS 4.5 (below). Where a road has no traffic count, the reviewer judges its likely
+      band from its class and setting; a speed limit set by law or by default never makes a quiet country
+      road high stress on its own. Slower country roads use the ordinary rules for the speed driven.
+      The table is the Oregon Department of Transportation's rural one (Analysis Procedures Manual, chapter
+      14, Exhibit 14-17) read a half step calmer, because the purposes differ. An agency rates country roads
+      to find the ones that need a shoulder or a bike lane. RouteMaker chooses among the country roads a rider
+      takes because they want to be out in the country, so it has to set the quietest apart from the busier
+      ones. That choice is the owner's.</li>
       <li><strong>Rural expressways are LTS 4.5.</strong> A posted 50 mph [80 km/h] or faster expressway
       outside a town is very high stress, but often there is no way around it. The same road in a town
       is Avoid.</li>
@@ -1596,7 +1623,7 @@ hiking trails are left out. A crosswalk over a slip lane adds a wait to the rout
 <p class="next">Next: <a href="/about/routing.html">Routing</a></p>
 </main>
 <footer>
-  <p>Part of RouteMaker's documentation. It describes version 0.23.0.</p>
+  <p>Part of RouteMaker's documentation. It describes version 0.24.0.</p>
   <p><a href="/">Back to the map</a></p>
 </footer>
 </body>

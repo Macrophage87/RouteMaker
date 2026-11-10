@@ -29,6 +29,7 @@ Pure: nothing here reads a file or the network (`scripts/install_agency_lts.py` 
 from __future__ import annotations
 
 import math
+import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from itertools import pairwise
@@ -237,6 +238,38 @@ def words(rule: str, level: float, s: Stretch | None = None) -> str:
     the logic in the decision rather than just owner override")."""
     note = f"read as LTS {level:g}: {RULE_WORDS[rule]}"
     return f"{note}; {facts(s)}" if s is not None else note
+
+
+# The words a reading by the two-lane speed branch of `multilane-or-40` carries, and the
+# record's lanes and posted speed in its facts (`words`, `facts`).
+_FAST_TWO_LANE_NOTE = RULE_WORDS["multilane-or-40"]
+_NOTE_LANES = re.compile(r"; (\d+) lanes?;")
+_NOTE_POSTED = re.compile(r"posted (\d+) mph")
+# A way posted at this or less is not "posted over 35 mph", whatever SHA's record says.
+TWO_LANE_SPEED_GATE_MPH = 35
+
+
+def posted_speed_overrules(note: str | None, posted_mph: float | None) -> str | None:
+    """Where the way's own posted speed shows a reading's premise is wrong, the road panel's
+    words for keeping SHA's own level instead; else None.
+
+    `multilane-or-40` raises a two-lane road SHA records as posted 40-45 mph. SHA's record can
+    be wrong or cover more road than the sign does: Bel Alton Newtown Rd (Charles County) is
+    signed 30 mph in OSM along its 4.3 mi, but SHA's record for its first half mile says posted
+    40, so the rule read SHA's 3 as 4 (2-to-4 list, v0.23.0 map, 2026-11-09). A way whose own
+    posted speed (not an assumed one) is 35 mph or less keeps SHA's level. Four-lane readings
+    rest on the lane count, not the speed, and stand."""
+    if not note or _FAST_TWO_LANE_NOTE not in note or posted_mph is None:
+        return None
+    lanes, sha_posted = _NOTE_LANES.search(note), _NOTE_POSTED.search(note)
+    if not lanes or int(lanes.group(1)) >= 4 or not sha_posted:
+        return None
+    if posted_mph > TWO_LANE_SPEED_GATE_MPH:
+        return None
+    return (
+        f"not read higher: the road is posted {posted_mph:g} mph "
+        f"where SHA's record says {sha_posted.group(1)} mph"
+    )
 
 
 # Metres per degree near 39 N, for the short distances pairing needs.
