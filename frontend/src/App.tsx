@@ -310,7 +310,7 @@ import { reloadFavorites, useFavoriteRides } from "./lib/favoriteRides.ts";
 import { ACCOUNT_SETTINGS_USED, applyToDevice, deviceSettings, fetchSettings, planFromSetting, retryUntil, sameSettings, saveSettings, saveUnitsUnsynced, SAVE_SETTLE_MS, setUnitsPending, signInLate, unitsPending, type SettingsDoc } from "./lib/accountSettings.ts";
 import { HOME_KEPT, HOME_MOVED, answerHomeOffer, deviceHome, homeOffer, type HomeOffer } from "./lib/homeMove.ts";
 import { FULL_HEADING, OPENED_SAID, SAVED_SAID, SAVE_FAILED, UNCHANGED_SAID, UPDATE_ROUTE, VERSION_SAID, defaultRouteName, differenceLine, differsTooMuch, gpxSave, afterDelete, afterRename, planSave, saveAsVersion, saveRoute, savedAnswer, savedLine, versionOf, type OpenSaved, type RoomProposal, type SaveBody, type SavedRoute } from "./lib/savedRoutes.ts";
-import { draftLeft, saveDraft, type OpenDraft } from "./lib/drafts.ts";
+import { DRAFT_UNREACHABLE, draftLeft, saveDraft, type OpenDraft } from "./lib/drafts.ts";
 import { checkClosures, closedStretches, reroutedSaid, spliceDetours, type Closure, type CheckFor } from "./lib/closureCheck.ts";
 import { ROUTE_WEATHER_MS, weatherPoints } from "./lib/weather.ts";
 import { useWeather } from "./useWeather.ts";
@@ -4759,8 +4759,15 @@ export function App() {
   // The ended ride's draft's Save: under way, done, or what the server said.
   const [draftSave, setDraftSave] = useState<{ saving: boolean; saved: boolean; said: string | null }>({ saving: false, saved: false, said: null });
   const saveEndedDraft = (draft: OpenDraft) => {
+    if (draftSave.saving) return;
     setDraftSave({ saving: true, saved: false, said: null });
     void saveDraft(origin, draft.id).then((outcome) => {
+      if (outcome === "unreachable") {
+        // Offline or a timeout at the ride's end: the draft may still be there, so the button stays to try again.
+        setDraftSave({ saving: false, saved: false, said: DRAFT_UNREACHABLE() });
+        announce(DRAFT_UNREACHABLE());
+        return;
+      }
       if (outcome?.ok) {
         setDraftSave({ saving: false, saved: true, said: SAVED_SAID(outcome.route.name) });
         announce(SAVED_SAID(outcome.route.name));

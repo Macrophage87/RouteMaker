@@ -50,6 +50,8 @@ export const draftSaveLabel = (name: string) => t("Save {name} to My routes", { 
 /** Delete's (the owner, 2026-11-09: "Use the save icon, and also add delete"), with Undo for a few seconds. */
 export const DRAFT_DELETE = t("Delete");
 export const draftDeleteLabel = (name: string) => t("Delete {name}", { name });
+/** Said when a draft could not be read for a moment (offline, a timeout). */
+export const DRAFT_UNREACHABLE = () => t("That route could not be read; try again shortly.");
 export const draftDeletedSaid = (name: string) => t("Deleted {name}.", { name });
 
 type Fetch = typeof fetch;
@@ -77,10 +79,12 @@ export async function deleteDraft(origin: string, id: string, send: Fetch = fetc
   }
 }
 
-/** Save the draft whose link is `id` to My routes, exactly as it was drafted; null when it could not be read (gone). */
-export async function saveDraft(origin: string, id: string, get: Fetch = fetch, post: Fetch = fetch): Promise<SaveOutcome | null> {
+/** Save the draft whose link is `id` to My routes, exactly as it was drafted; null when it is gone, "unreachable" when it
+ * could not be read (offline or a timeout: the draft may still be there, so the caller keeps its row or button). */
+export async function saveDraft(origin: string, id: string, get: Fetch = fetch, post: Fetch = fetch): Promise<SaveOutcome | "unreachable" | null> {
   const shared = await readShared(origin, id, get);
-  if (!shared || shared === "gone" || shared === "revoked") return null;
+  if (shared === null) return "unreachable";
+  if (shared === "gone" || shared === "revoked") return null;
   return saveRoute(
     origin,
     {
