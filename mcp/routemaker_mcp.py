@@ -6250,8 +6250,9 @@ class Server:
         ):
             # The ride size is an expected input (the owner, 2026-11-10: "should be an expected
             # input"): a Mass Ride planned without it says what it assumed.
+            assumed = out["mass_capacity"].get("riders") or 500
             out["mass_capacity"]["ride_size_note"] = (
-                f"no ride size was given, so this assumed {out['mass_capacity'].get('riders')}"
+                f"no ride size was given, so this assumed {assumed}"
                 " riders (our default, not the organiser's number): ask how many riders they"
                 " expect and plan again with ride_size, since the road room and the corkers"
                 " depend on it"
