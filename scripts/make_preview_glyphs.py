@@ -29,11 +29,11 @@ TABLES = (
     (REPO / "src" / "core" / "preview_glyphs.py", 34, CHARS, FONT),
     (REPO / "src" / "core" / "preview_glyphs_small.py", 18, CHARS + "©", FONT),
     # The phone cue images (core.cue_cards): the miles large, the turn, the road, the small words.
-    (REPO / "src" / "core" / "cue_glyphs_miles.py", 88, "0123456789.,", FONT),
-    (REPO / "src" / "core" / "cue_glyphs_turn.py", 60, CHARS, FONT),
-    (REPO / "src" / "core" / "cue_glyphs_road.py", 52, CHARS, REGULAR),
-    (REPO / "src" / "core" / "cue_glyphs_small.py", 30, CHARS + "©", REGULAR),
-    (REPO / "src" / "core" / "cue_glyphs_head.py", 36, CHARS, FONT),
+    (REPO / "src" / "core" / "cue_glyphs_miles.py", 80, "0123456789.,", FONT),
+    (REPO / "src" / "core" / "cue_glyphs_turn.py", 56, CHARS, FONT),
+    (REPO / "src" / "core" / "cue_glyphs_road.py", 50, CHARS, REGULAR),
+    (REPO / "src" / "core" / "cue_glyphs_small.py", 26, CHARS + "©", REGULAR),
+    (REPO / "src" / "core" / "cue_glyphs_head.py", 32, CHARS, FONT),
 )
 
 

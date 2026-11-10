@@ -182,7 +182,7 @@ def test_the_tool_sends_the_first_images_and_links_every_one(stand_in, tmp_path)
     assert out["cues"][0]["cue"] == "Start" and out["cues"][-1]["cue"] == "Finish"
     (answer, _title, _vias, names, credit), only = cards.drawn[0]
     assert answer is server.drafts.get(draft_id).plan.answer
-    assert names == {} and credit.startswith("Route data: ") and only == [1, 2, 3]
+    assert names == {} and credit.split("\n")[0] == "Route data:" and only == [1, 2, 3]
     gone = rpc(server, "tools/call", {"name": "cue_cards", "arguments": {"draft_id": "dnone"}})
     assert gone["result"]["isError"]
 
@@ -230,9 +230,9 @@ def test_a_loop_s_last_point_is_a_stop_to_name() -> None:
 
 def test_long_routes_keep_every_cue_and_draw_only_the_page_asked() -> None:
     turns = [_stretch(0, "Start Street")] + [
-        _stretch(150 * k, f"Street {k}", "left" if k % 2 else "right") for k in range(1, 130)
+        _stretch(150 * k, f"Street {k}", "left" if k % 2 else "right") for k in range(1, 200)
     ]
-    answer = _answer(turns, 20_000)
+    answer = _answer(turns, 31_000)
     total = cue_cards.count(answer, "Default route")
     assert total > 12
     laid = cue_cards.pages(answer, "Default route")
@@ -276,3 +276,18 @@ def test_splits_at_stops_only_where_the_cues_need_more_than_one_image() -> None:
     assert kinds[0][0] == "start" and kinds[0][-1] == "stop"
     assert kinds[1][0] == "stop" and kinds[-1][-1] == "finish"
     assert sum(k.count("stop") for k in kinds) == 2
+
+
+def test_the_credits_are_on_the_last_image_only_a_source_to_a_line() -> None:
+    """The owner, 2026-11-10: "Have credits on the final image in the set, own set of lines"."""
+    turns = [_stretch(0, "Start Street")] + [
+        _stretch(150 * k, f"Street {k}", "left" if k % 2 else "right") for k in range(1, 40)
+    ]
+    credit = "Route data:\n© OpenStreetMap contributors (ODbL)\nUSGS 3DEP\nPlanned with RouteMaker."
+    laid = cue_cards.pages(_answer(turns, 6500), "Default route", credit=credit)
+    assert len(laid["groups"]) >= 2
+    assert laid["credit_lines"] == credit.split("\n")
+    # The last image's rows stop above the credits.
+    last = laid["groups"][-1]
+    used = sum(laid["laid"][i][1] for i in last)
+    assert laid["header"]("Part 1 of 2")[1] + 24 + used <= laid["credit_top"] - 16

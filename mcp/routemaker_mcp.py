@@ -3805,17 +3805,17 @@ def cue_card_names(plan: Plan, asked) -> dict[int, str]:
 
 def cue_card_args(draft, names: dict[int, str]) -> tuple:
     """core.cue_cards.draw's arguments for a draft: its answer, its name, its through points,
-    the stops' names, and the route's credits as the GPX export words them."""
+    the stops' names, and the route's credits, a source to a line."""
     answer = draft.plan.answer
-    credit = "; ".join(str(a) for a in answer.get("attribution") or []) or (
+    sources = [str(a) for a in answer.get("attribution") or []] or [
         "© OpenStreetMap contributors, ODbL"
-    )
+    ]
     return (
         answer,
         draft.name,
         list(draft.plan.vias),
         names,
-        f"Route data: {credit}. Planned with RouteMaker.",
+        "\n".join(["Route data:", *sources, "Planned with RouteMaker."]),
     )
 
 

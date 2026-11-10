@@ -42,11 +42,11 @@ function longRoute(turns: number) {
   return sampleRoute({ geometry: { type: "LineString", coordinates: line }, distance_m: 30000, description });
 }
 
-test("the image is an iPhone Pro's portrait screen, the top 28% and bottom 12% kept for the lock screen", () => {
+test("the image is an iPhone Pro's portrait screen, the top 20% and bottom 7% kept for the lock screen", () => {
   assert.equal(LOCK_WIDTH, 1179);
   assert.equal(LOCK_HEIGHT, 2556);
-  assert.equal(CLEAR_TOP, 716);
-  assert.equal(CLEAR_BOTTOM, 307);
+  assert.equal(CLEAR_TOP, 511);
+  assert.equal(CLEAR_BOTTOM, 179);
 });
 
 test("one image for a short route: every line clear of both bands and inside the width", () => {
@@ -163,4 +163,15 @@ test("a mile figure of 100 or more stays on one line", () => {
   const texts = pages.flatMap((p) => p.lines.map((l) => l.text));
   assert.ok(texts.some((t) => /^1\d\d\.\d$/.test(t)), texts.join("|"));
   assert.ok(!texts.some((t) => /^1\d\d\.$/.test(t)));
+});
+
+test("the credits are on the last image only, a source to a line", () => {
+  // The owner, 2026-11-10: "Have credits on the final image in the set, own set of lines".
+  const pages = lockScreenLayout(longRoute(60), measure);
+  assert.ok(pages.length >= 3);
+  for (const p of pages.slice(0, -1)) assert.ok(!p.lines.some((l) => /Route data|OpenStreetMap|Planned with/.test(l.text)));
+  const last = pages[pages.length - 1].lines.map((l) => l.text);
+  assert.deepEqual(last.slice(-4), ["Route data:", "© OpenStreetMap contributors (ODbL)", "USGS 3DEP", "Planned with RouteMaker."]);
+  const end = pages[pages.length - 1];
+  assert.ok(Math.max(...end.rules) <= end.cueBottom);
 });

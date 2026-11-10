@@ -5,7 +5,7 @@ stops are listed").
 
 The pictures are the Plan export's ("Cue sheet image, for a phone lock screen",
 frontend/src/lib/lockScreen.ts and lib/cueArrow.ts), drawn here for the connector from the route's
-description: 1179 by 2556 pixels, the top 28% and bottom 12% kept clear for a lock screen's clock
+description: 1179 by 2556 pixels, the top 20% and bottom 7% kept clear for a lock screen's clock
 and controls, the route's name and figures small, then a row per cue (the miles from the start,
 the picture, the turn, the road, a jog's later turns), the credits at the foot, "Part 2 of 3" where
 the cues need more than one. Stops are rows of their own with their number, and their name where
@@ -36,13 +36,13 @@ from .route_picture import Canvas
 from .share_preview import _glyph_data
 
 WIDTH, HEIGHT = 1179, 2556
-CLEAR_TOP = round(HEIGHT * 0.28)
-CLEAR_BOTTOM = round(HEIGHT * 0.12)
+CLEAR_TOP = round(HEIGHT * 0.2)
+CLEAR_BOTTOM = round(HEIGHT * 0.07)
 INK = (17, 17, 17)
 PAPER = (255, 255, 255)
-SIDE, PAD = 56, 14
-COL_MILES, COL_ARROW = 230, 160
-ARROW_PX = 128
+SIDE, PAD = 56, 10
+COL_MILES, COL_ARROW = 230, 140
+ARROW_PX = 108
 TEXT_X = SIDE + COL_MILES + COL_ARROW
 METRES_PER_MILE = 1609.344
 JOG_M = 100.0
@@ -409,7 +409,7 @@ def draw_arrow(canvas: Canvas, arrow: dict, left: float, top: float, size: float
         cx, cy = at((50, 50))
         g = cue_glyphs_head
         width = _width(shape["label"], g)
-        _text(canvas, g, cx - width / 2, cy + (g.ASCENT - g.HEIGHT / 2) - 6, shape["label"], PAPER)
+        _text(canvas, g, cx - width / 2, cy + (g.ASCENT - g.HEIGHT / 2) - 4, shape["label"], PAPER)
 
 
 # --- the text ----------------------------------------------------------------------------------
@@ -517,8 +517,16 @@ def pages(answer: dict, title: str, vias=(), names=None, credit: str = "") -> di
         if answer.get("climb_m") is not None
         else ""
     )
-    credit_lines = _wrap(credit, cue_glyphs_small, WIDTH - 2 * SIDE) if credit else []
-    credit_top = HEIGHT - CLEAR_BOTTOM - 16 - len(credit_lines) * round(30 * 1.25)
+    # The credits on the last image only, a source to a line (`credit`'s lines; the owner,
+    # 2026-11-10: "Have credits on the final image in the set, own set of lines").
+    credit_lines = [
+        text
+        for source in (credit or "").split("\n")
+        for text in _wrap(source, cue_glyphs_small, WIDTH - 2 * SIDE)
+    ]
+    step = round(cue_glyphs_small.SIZE * 1.25)
+    credit_top = HEIGHT - CLEAR_BOTTOM - 16 - len(credit_lines) * step
+    bare_top = HEIGHT - CLEAR_BOTTOM - 16
 
     def header(part: str | None) -> tuple[list[tuple], int]:
         out: list[tuple] = []
@@ -531,12 +539,12 @@ def pages(answer: dict, title: str, vias=(), names=None, credit: str = "") -> di
                 out.append((g, SIDE, y, text))
         return out, y
 
-    def paginate(indices: list[int], cue_top: int) -> list[list[int]]:
+    def paginate(indices: list[int], cue_top: int, bottom: int) -> list[list[int]]:
         pages: list[list[int]] = [[]]
         y = cue_top
         for i in indices:
             height = laid[i][1]
-            if y + height > credit_top - 16 and pages[-1]:
+            if y + height > bottom - 16 and pages[-1]:
                 pages.append([])
                 y = cue_top
             pages[-1].append(i)
@@ -552,13 +560,16 @@ def pages(answer: dict, title: str, vias=(), names=None, credit: str = "") -> di
         for i, row in enumerate(rows):
             leg.append(i)
             if row["arrow"]["kind"] == "stop" and 0 < i < len(rows) - 1:
-                out += paginate(leg, cue_top)
+                out += paginate(leg, cue_top, bare_top)
                 leg = [i]
         if len(leg) > 1 or not out:
-            out += paginate(leg, cue_top)
+            out += paginate(leg, cue_top, bare_top)
+        # The last image has the credits: its rows laid again above them, onto another image
+        # where they no longer fit.
+        out += paginate(out.pop(), cue_top, credit_top)
         return out
 
-    groups = paginate(list(range(len(rows))), header(None)[1] + 24)
+    groups = paginate(list(range(len(rows))), header(None)[1] + 24, credit_top)
     if len(groups) > 1:
         groups = legs(header("Part 88 of 88")[1] + 24)
     return {
@@ -614,7 +625,9 @@ def draw(
             )
             y += height
             canvas.rect(SIDE, y - 1, WIDTH - SIDE, y + 1, INK)
-        for n, text in enumerate(credit_lines):
-            _text(canvas, cue_glyphs_small, SIDE, credit_top + (n + 1) * round(30 * 1.25), text)
+        if p == len(groups) - 1:
+            step = round(cue_glyphs_small.SIZE * 1.25)
+            for n, text in enumerate(credit_lines):
+                _text(canvas, cue_glyphs_small, SIDE, credit_top + (n + 1) * step, text)
         images.append(canvas.png())
     return images
