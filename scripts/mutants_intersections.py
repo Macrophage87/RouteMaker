@@ -473,8 +473,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "crossings in the first round only",
         R,
-        "        new = crossing_targets(current, ctx)\n",
-        "        new = crossing_targets(current, ctx) if number == 0 else []\n",
+        "        new = crossing_targets(current, ctx, no_way)\n",
+        "        new = crossing_targets(current, ctx, no_way) if number == 0 else []\n",
         REFINE,
     ),
     (

@@ -153,7 +153,16 @@ def parse_file(text: str, label: str) -> list[dict]:
         raise CommandError(f"{label} is not JSON: {error}") from error
     if not isinstance(document, dict) or document.get("version") != 1:
         raise CommandError(f"{label} is not a version 1 override file")
+    from pipeline.overrides import file_rows
+
+    groups = document.get("groups")
+    if groups is not None:
+        problem = groups_problem(groups)
+        if problem:
+            raise CommandError(f"{label}: {problem}")
     rows = document.get("rows")
+    if groups:
+        rows = file_rows(document)
     if rows == [] and document.get("agency_blocks"):
         # A file of block corrections only (OWNER-DECISIONS 197): the rebuild
         # reads its `agency_blocks` from the image, and there is nothing to load
@@ -219,6 +228,25 @@ def parse_file(text: str, label: str) -> list[dict]:
             if problem:
                 raise CommandError(f"{where}: {problem}")
     return rows
+
+
+def groups_problem(groups: object) -> str | None:
+    """Why a file's `groups` (the compact form, `pipeline.overrides.file_rows`) is malformed."""
+    if not isinstance(groups, list):
+        return "groups must be a list"
+    for index, group in enumerate(groups):
+        if not isinstance(group, dict):
+            return f"group {index} is not an object"
+        extra = set(group) - {"kind", "value", "reason", "evidence", "ways", "fingerprints"}
+        if extra:
+            return f"group {index} has no {sorted(extra)}"
+        ways = group.get("ways")
+        if not isinstance(ways, list) or not ways:
+            return f"group {index}: ways must be a non-empty list of way ids"
+        prints = group.get("fingerprints", {})
+        if not isinstance(prints, dict) or not set(prints) <= {str(w) for w in ways}:
+            return f"group {index}: fingerprints map its own ways' ids (as text) to fingerprints"
+    return None
 
 
 def parse_retired(text: str, label: str) -> list[dict]:

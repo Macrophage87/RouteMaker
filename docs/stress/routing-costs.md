@@ -156,7 +156,9 @@ all, and never within 0.31 mi [500 m] of an end or a via point (`refine.py:112-1
 round, at every calm rate, it excludes the approaches to junctions of 3,100 ft [945 m] or
 more (red),
 and those junctions themselves (every edge within 49 ft [15 m]), at most 3 junctions a round
-(`crossing_targets`). Mass Ride is skipped (`ctx.group`).
+(`crossing_targets`). A red junction near an end or a via point is a target too (routing hunt 4,
+J4-1); where a round with it finds no route (the only way out of a cul-de-sac), the round is asked
+again without it, and it is not asked again. Mass Ride is skipped (`ctx.group`).
 
 ### The guards
 
