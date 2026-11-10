@@ -1498,7 +1498,9 @@ def test_a_short_kick_costs_far_less_than_a_long_climb_at_the_same_grade():
     assert 30.0 < kick < 120.0
     lt1 = hill_cost.lt1_grade_for(hills)
     unscaled = hill_cost.window_cost_s(300.0, 0.06, 90.0, 5.0, lt1, math.inf)[1]
-    assert kick < unscaled / 10, "a quarter of an hour before W'"
+    # (Since routing hunt 4, T4-1, the kick costs at least what its 18 m (60 ft) of rise
+    # costs at a gentler grade, which lasts longer and gets less of W'.)
+    assert kick < unscaled / 8, "a quarter of an hour before W'"
     long_s = hill_cost.profile_cost_s(ramp(3000.0, 0.06), 90.0, 5.0, hills)[1]
     sustained = hill_cost.window_cost_s(3000.0, 0.06, 90.0, 5.0, lt1, math.inf)[1]
     assert long_s > 0.6 * sustained
@@ -1536,8 +1538,12 @@ def test_pushing_the_bike_up_is_a_last_resort():
         push_s = 1000.0 / hill_cost.push_ms(grade)
         return (push_s - 1000.0 / 5.0, push_s * hill_cost.WALK_PENALTY)
 
-    assert hill_cost.window_cost_s(1000.0, 0.10, 90.0, 5.0, lt1) == pytest.approx(pushed(0.10))
-    assert hill_cost.window_cost_s(1000.0, 0.15, 90.0, 5.0, lt1) == pytest.approx(pushed(0.15))
+    # Pushed: the pushing time, and at least WALK_PENALTY a second pushed (more where the
+    # same rise pushed up a gentler grade would cost more, routing hunt 4, T4-1).
+    for grade in (0.10, 0.15):
+        time_s, penalty_s = hill_cost.window_cost_s(1000.0, grade, 90.0, 5.0, lt1)
+        assert time_s == pytest.approx(pushed(grade)[0])
+        assert penalty_s >= pushed(grade)[1] - 1e-6
     assert sum(pushed(0.10)) > 60 * 60, "an hour and more for 0.6 mi (1 km) pushed"
     # "pushing a bike up a steep hill is still pretty challenging. 2.5 mph is probably fast":
     # slower the steeper it is.
@@ -1574,6 +1580,52 @@ def test_a_steeper_window_never_costs_less_at_any_weight():
             ]
             drops = [i for i in range(1, len(costs)) if costs[i] < costs[i - 1] - 1e-9]
             assert not drops, (hills, mass, [(i + 1) / 1000 for i in drops[:3]])
+
+
+def test_the_same_rise_never_costs_less_up_a_steeper_grade():
+    """Routing hunt 4, T4-1: at full avoid a pushed climb cost its time, which hardly grows
+    with the grade, so 91 m (300 ft) of rise cost 10,000 s at 5% and 4,800 s at 15%, and
+    'avoid hills' took a 15% wall over a 3-6% climb. For a fixed rise, a steeper climb now
+    never costs less (time plus penalty), at every slider position, flat speed and
+    assist, for the standard rider and lighter ones. (A heavier rider's own climbing time per
+    metre of rise can still fall with the grade; the penalty's floor is the standard
+    rider's, as the penalty is.)"""
+
+    def ramp(rise_m, grade):
+        run = rise_m / grade
+        n = max(1, int(run // 30))
+        return [(i * run / n, i * run / n * grade) for i in range(n + 1)]
+
+    grades = [step / 1000 for step in range(10, 251, 10)]
+    for rise_m in (15.0, 91.4):
+        for flat_ms in (13.0 / 3.6, 5.0, 24.0 / 3.6):
+            for mass, assist_w in ((60.0, 0.0), (85.0, 0.0), (90.0, 0.0), (108.0, 250.0)):
+                for hills in range(hill_cost.HILLS_MIN, hill_cost.HILLS_MAX + 1, 20):
+                    costs = [
+                        sum(
+                            hill_cost.profile_cost_s(
+                                ramp(rise_m, grade), mass, flat_ms, hills, assist_w
+                            )
+                        )
+                        for grade in grades
+                    ]
+                    drops = [
+                        (grades[i - 1], grades[i])
+                        for i in range(1, len(costs))
+                        if costs[i] < costs[i - 1] * (1 - 1e-9)
+                    ]
+                    assert not drops, (rise_m, flat_ms, mass, hills, drops[:3])
+    # One window, its own climb or one long enough that W' adds nothing.
+    for hills in (-100, -60, -30, 0):
+        lt1 = hill_cost.lt1_grade_for(hills)
+        for climb_s in (None, math.inf):
+            costs = [
+                sum(hill_cost.window_cost_s(30.0 / g, g, 85.0, 5.0, lt1, climb_s)) for g in grades
+            ]
+            assert all(b >= a * (1 - 1e-9) for a, b in zip(costs, costs[1:], strict=False))
+    # The finding's own numbers: 85 kg at 5 m/s, 91 m up at full avoid.
+    at = {g: sum(hill_cost.profile_cost_s(ramp(91.4, g), 85.0, 5.0, -100)) for g in (0.05, 0.15)}
+    assert at[0.15] >= at[0.05]
 
 
 def test_fine_with_hills_takes_the_shorter_route_only_where_it_is_quick_enough():
@@ -2769,6 +2821,28 @@ class TestTheOffroadGraph:
         base = settings.VALHALLA_UPSTREAMS["offroad"]
         assert all(url.startswith(base + "/") for url, _ in fake.calls)
 
+    @pytest.mark.parametrize("name", ["gravel", "mountain-goat"])
+    def test_mountain_bike_trails_are_timed_at_mountain_bike_pace(
+        self, name, client, facility_segments, router, monkeypatch
+    ):
+        """Hunt 4 M4-5 (Schaeffer Farms: Gravel timed the same 1.78 mi of singletrack at
+        about 7.8 mph, Easy MTB at 6 mph). The owner, 2026-11-09: "That really differs a lot
+        by terrain, but use a reasonable default for all." Mountain Bike's pace on
+        `mtb_only` metres is Claude's default, not measured."""
+        monkeypatch.setattr(routing, "weekend_closure_near", lambda points: False)
+        router(standard_router())
+        plain = post(client, {**good_body(name), "when": "weekday_offpeak"}).json()
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"UPDATE {facility_segments}.segment SET mtb_only = true, "
+                "is_trail_class = true, is_unpaved = true WHERE osm_way_id = 101"
+            )
+        router(standard_router())
+        dirt = post(client, {**good_body(name), "when": "weekday_offpeak"}).json()
+        assert plain["variant"] == dirt["variant"] == "offroad"
+        assert dirt["distance_m"] == plain["distance_m"]
+        assert dirt["duration_s"] > plain["duration_s"]
+
     def test_other_rides_never_do(self, client, facility_segments, router):
         fake = router(standard_router())
         body = post(client, {**good_body("default"), "when": "weekday_offpeak"}).json()
@@ -2926,6 +3000,65 @@ class TestEasyMtbTrails:
         ).json()
         assert body["variant"] == "standard"
         assert body["easy_mtb"]["limited"] == "no_offroad_graph"
+
+
+@db
+class TestWindingTrails:
+    """Hunt 4 P4-1. Asked "Should Group Ride and Fast pay for winding trails the way Road Bike
+    does?", the owner, 2026-11-09: "yes". Their plans read the route's winding trails at LTS 3
+    and ask the router once more without them (`core.winding_round`); the answer says what it
+    did (`winding`)."""
+
+    @pytest.mark.parametrize("name", ["group-ride", "fast"])
+    def test_group_ride_and_fast_run_the_round(
+        self, name, client, facility_segments, router, monkeypatch
+    ):
+        from core import winding_round
+
+        router(standard_router())
+        seen = []
+        real_settle = winding_round.settle
+
+        def settle(trip, ctx, keeps=None):
+            seen.append(ctx.variant)
+            return real_settle(trip, ctx, keeps=keeps)
+
+        monkeypatch.setattr(winding_round, "settle", settle)
+        body = post(client, {**good_body(name), "when": "weekend"}).json()
+        assert seen and seen[-1] == body["variant"]
+        # The fake route rides no winding trail: nothing asked, and the answer says so.
+        assert body["winding"] == {
+            "winding_m": 0.0,
+            "asked": False,
+            "taken": False,
+            "limited": None,
+        }
+
+    @pytest.mark.parametrize("name", ["default", "road-bike", "cargo"])
+    def test_other_ride_types_do_not(self, name, client, facility_segments, router, monkeypatch):
+        from core import winding_round
+
+        router(standard_router())
+        seen = []
+        monkeypatch.setattr(winding_round, "settle", lambda *a, **k: seen.append(a))
+        body = post(client, {**good_body(name), "when": "weekend"}).json()
+        assert seen == [] and body["winding"] is None
+
+    def test_a_first_route_skips_it(self, client, facility_segments, router, monkeypatch):
+        """A quick plan answers the router's first good route alone; the full plan after it
+        runs the round."""
+        from core import winding_round
+
+        router(standard_router())
+        seen = []
+        monkeypatch.setattr(winding_round, "settle", lambda *a, **k: seen.append(a))
+        body = post(client, {**good_body("group-ride"), "quick": True}).json()
+        assert seen == [] and body["winding"] is None
+
+    def test_trails_off_skips_it(self, client, facility_segments, router):
+        router(standard_router())
+        body = post(client, {**good_body("group-ride"), "trails_off": True}).json()
+        assert body["variant"] == "no-trail" and body["winding"] is None
 
 
 @db

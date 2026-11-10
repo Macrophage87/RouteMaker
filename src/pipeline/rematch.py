@@ -206,7 +206,9 @@ def load_fingerprints(
         document = json.loads(path.read_text())
         if not isinstance(document, dict):
             continue
-        entries = [*document.get("rows", []), *document.get("superseded", [])]
+        from pipeline.overrides import file_rows
+
+        entries = [*file_rows(document), *document.get("superseded", [])]
         for index, entry in enumerate(entries):
             fingerprint = entry.get("fingerprint") if isinstance(entry, dict) else None
             if fingerprint is None:
