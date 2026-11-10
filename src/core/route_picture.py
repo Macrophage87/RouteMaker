@@ -125,6 +125,13 @@ class Canvas:
     def stroke(self, path: list[tuple[float, float]], radius: float, colour) -> None:
         """A round-capped line `radius` either side of `path`, antialiased."""
         colour = rgb(colour)
+        # Points closer than a couple of pixels add nothing to see and cost a pass each: a long
+        # ride's thousands of points thin to a few hundred.
+        kept = path[:1]
+        for p in path[1:-1]:
+            if math.hypot(p[0] - kept[-1][0], p[1] - kept[-1][1]) >= 2:
+                kept.append(p)
+        path = kept + path[-1:] if len(path) > 1 else kept
         cover: dict[int, float] = {}
         reach = radius + 1
         for (ax, ay), (bx, by) in zip(path, path[1:], strict=False):
@@ -377,6 +384,13 @@ def draw(view: dict, line: list) -> bytes | None:
 
         for a, b, r in flow:
             c.rect(gx(a), fy(r), max(gx(b), gx(a) + 1), y + flow_h, flow_band(r)[1])
+            # The band's word on a step wide enough, so it is not told by colour alone.
+            floor, _colour, word = flow_band(r)
+            if (
+                gx(b) - gx(a) > text_width(word, preview_glyphs_small) + 12
+                and y + flow_h - fy(r) > 24
+            ):
+                c.centred((gx(a) + gx(b)) / 2, y + flow_h - 8, word, INK if floor == 60 else WHITE)
         for r in (60, 120, 200):
             if r <= top_r:
                 c.rect(left, fy(r), right, fy(r) + 1, RULE)

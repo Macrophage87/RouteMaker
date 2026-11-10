@@ -322,7 +322,9 @@ def test_a_picture_is_drawn_only_when_asked_and_sent_as_an_image(stand_in, tmp_p
         "mimeType": "image/png",
     }
     # The picture is not in the text nor the structured copy; the link is.
-    assert image["data"] not in text["text"] and mcp.IMAGES_PRIVATE not in result["structuredContent"]
+    assert (
+        image["data"] not in text["text"] and mcp.IMAGES_PRIVATE not in result["structuredContent"]
+    )
     assert result["structuredContent"]["picture_link"].endswith(".png")
     view, line = drawn[0]
     assert view["draft_id"] == draft_id and line == server.drafts.get(draft_id).plan.line

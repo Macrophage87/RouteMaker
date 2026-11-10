@@ -4494,7 +4494,7 @@ PICTURE_TOOL = {
     "description": (
         "Only when the rider asks for a picture or image of a route, to share: the draft's map"
         " coloured by traffic stress with its stress ribbon and elevation profile (and on a Mass"
-        " Ride its rider flow and corkers), as one PNG, with a link that downloads it while the"
+        " Ride its rider flow and corkers), as one PNG, with a link that opens it while the"
         " draft is kept. Give the rider the link."
     ),
     "inputSchema": {
@@ -5506,7 +5506,7 @@ class Server:
         # On the site: function(draft_id) -> the key route_view_map asks for (core.connector).
         self.view_key = view_key
         # On the site: function(view, line) -> PNG of the draft's map and graphs
-        # (core.route_picture), and function(draft_id) -> a link that downloads it.
+        # (core.route_picture), and function(draft_id) -> a link that opens it.
         self.picture = picture
         self.picture_link = picture_link
 
@@ -5574,7 +5574,7 @@ class Server:
         if self.picture_link is not None:
             out["picture_link"] = self.picture_link(draft_id)
             out["note"] = (
-                "the link downloads the picture (PNG) to share; it works while the draft is kept"
+                "the link opens the picture (PNG) to share; it works while the draft is kept"
             )
         out[IMAGES_PRIVATE] = [
             {

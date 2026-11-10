@@ -738,7 +738,7 @@ def _picture_mac(user_id, grant_id, draft_id: str) -> str:
 
 
 def picture_link(request, user, grant, draft_id: str) -> str:
-    """A link that downloads the draft's map and graphs as a PNG (core.route_picture), to share
+    """A link that opens the draft's map and graphs as a PNG (core.route_picture), to share
     (the owner, 2026-11-10), made as the GPX link is: the draft's id and a keyed digest, good
     while the draft is kept and the app is connected. The picture is drawn when the link is
     opened, in memory: nothing is kept for it. It sits under /mcp/gpx/, so the api's and the beta's
@@ -746,6 +746,7 @@ def picture_link(request, user, grant, draft_id: str) -> str:
     return f"{_origin(request)}/mcp/gpx/{draft_id}.{_picture_mac(user.pk, grant.pk, draft_id)}.png"
 
 
+@ratelimit.rate_limited(ratelimit.ROUTE_PICTURES)
 def draft_picture(request, token: str):
     """GET /mcp/gpx/<token>.png (by way of draft_gpx, which checks the method and the rate): the
     draft's map and graphs, while the draft is kept."""

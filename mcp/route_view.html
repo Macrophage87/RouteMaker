@@ -389,7 +389,7 @@
     const mass = v.mass || null;
     const placed = ((mass && mass.corkers) || []).map((c) => { const p = at(c.mi); return p ? { ...c, xy: px(p) } : null; }).filter(Boolean);
     for (const grp of gather(placed, (c) => c.xy, 18)) {
-      const [x, y] = grp[0].xy, n = grp.reduce((t, c) => t + c.corkers, 0);
+      const [x, y] = grp[0].xy, n = grp.reduce((t, c) => t + (c.corkers || 0), 0);
       const said = grp.map((c) => `${c.corkers} at ${c.street || "a junction"}, mile ${c.mi.toFixed(1)}`).join("; ");
       const g = mark(x, y, `Corkers: ${said}`);
       el("circle", { r: 8, fill: "#1e3a8a", stroke: "#fff", "stroke-width": 1.5 }, g);
@@ -438,7 +438,7 @@
     // ---- Graphs: the stress ribbon over the elevation profile, on one mile axis ----
     const graphs = html("div", {
       class: "graphs", tabindex: "0", role: "slider",
-      "aria-label": "Place along the route: traffic stress and elevation",
+      "aria-label": `Place along the route: traffic stress and elevation${mass ? ", rider flow and corkers" : ""}`,
       "aria-valuemin": "0", "aria-valuemax": String(Math.round(total * 10) / 10), "aria-valuenow": "0",
       "aria-valuetext": "Use the left and right arrow keys to move along the route",
     });
@@ -501,6 +501,11 @@
       for (const f of flow) {
         const a = X(f[0]), b = Math.max(X(f[1]), a + 1);
         el("rect", { x: a, y: Y(f[2]), width: b - a, height: fTop + fH - Y(f[2]), fill: flowBand(f[2]).colour }, g);
+        // The band's word on a step wide enough, so it is not told by colour alone.
+        const band = flowBand(f[2]);
+        if (b - a > 8 + band.word.length * 7 && fTop + fH - Y(f[2]) > 16) {
+          el("text", { x: (a + b) / 2, y: fTop + fH - 5, "text-anchor": "middle", "font-size": 11, "font-weight": 700, fill: band.from === 60 ? "#1c1917" : "#fff" }, g).textContent = band.word;
+        }
       }
       for (const r of [60, 120, 200].filter((r) => r <= top)) {
         el("line", { x1: left, x2: right, y1: Y(r), y2: Y(r), stroke: "var(--rule)", "stroke-dasharray": "2 3" }, g);
@@ -518,7 +523,7 @@
       lab(4, cY + 4, "Corkers");
       el("line", { x1: left, x2: right, y1: cY, y2: cY, stroke: "var(--rule)" }, g);
       for (const grp of gather(corkers, (c) => [X(c.mi), 0], 16)) {
-        const x = X(grp[0].mi), n = grp.reduce((t, c) => t + c.corkers, 0);
+        const x = X(grp[0].mi), n = grp.reduce((t, c) => t + (c.corkers || 0), 0);
         el("circle", { cx: x, cy: cY, r: 7, fill: "#1e3a8a", stroke: "var(--bg)", "stroke-width": 1 }, g);
         el("text", { x, y: cY + 3.5, "text-anchor": "middle", "font-size": 9, "font-weight": 700, fill: "#fff" }, g).textContent = String(n);
       }

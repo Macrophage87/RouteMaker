@@ -1159,6 +1159,28 @@ class TestGpx:
         assert Client().get(f"/mcp/gpx/{draft_id}.{picture_mac}", **addr()).status_code == 404
         assert Client().post(path, **addr()).status_code == 405
 
+    def test_a_picture_link_stops_with_its_draft_and_its_app(self, planner) -> None:
+        from datetime import timedelta
+
+        user, tokens, _client_id = tokens_for()
+        token = tokens["access_token"]
+        planned = call(token, "plan_route", {"points": [[-77.03, 38.9], [-77.02, 38.91]]})
+        draft_id = planned["structuredContent"]["draft_id"]
+        link = call(token, "route_picture", {"draft_id": draft_id})["structuredContent"]
+        path = urllib.parse.urlsplit(link["picture_link"]).path
+        ConnectorDraft.objects.update(created_at=timezone.now() - timedelta(days=7, hours=1))
+        r = Client().get(path, **addr())
+        assert r.status_code == 404 and b"no longer kept" in r.content
+        ConnectorDraft.objects.update(created_at=timezone.now())
+        assert Client().get(path, **addr()).status_code == 200
+        # Another rider's digest for the same draft id opens nothing.
+        other = make_user()
+        grant = ConnectorGrant.objects.get(user=user)
+        foreign = connector._picture_mac(other.pk, grant.pk, draft_id)
+        assert Client().get(f"/mcp/gpx/{draft_id}.{foreign}.png", **addr()).status_code == 404
+        ConnectorGrant.objects.filter(user=user).delete()
+        assert Client().get(path, **addr()).status_code == 404
+
 
 @db
 class TestDraftKeeping:
