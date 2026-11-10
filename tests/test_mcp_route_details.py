@@ -186,6 +186,33 @@ def test_a_long_busy_stretch_from_a_station_is_still_listed() -> None:
     assert [b["from_mi"] for b in mcp.busy_stretches(answer, (True, True))] == [0.0]
 
 
+def test_a_busy_road_just_outside_a_station_end_is_still_listed() -> None:
+    # Ends 0.08 mi before the station: its rounded end (3.0) is within 0.05 of 3.04, but the
+    # stretch itself is not at the end.
+    answer = answer_of(
+        [
+            stretch("Quiet Lane", 0.0, 2.9, 1),
+            stretch("Randolph Road", 2.9, 2.96, 4),
+            stretch("Quiet Lane", 2.96, 3.04, 1),
+        ]
+    )
+    busy = mcp.busy_stretches(answer, (False, True))
+    assert [b["roads"] for b in busy] == [["Randolph Road"]]
+
+
+def test_a_loop_from_a_station_hides_both_ends() -> None:
+    # The site adds the loop's closing leg, so the plan's points stop at the last stop; the
+    # line comes back to the station.
+    answer = _metro_ride()
+    station = tuple(at(0.0))
+    answer["geometry"] = {"coordinates": [list(station), at(1.5, 0.5), list(station)]}
+    answer["loop"] = {"overlap_pct": 0}
+    plan = mcp.Plan([station, tuple(at(1.5, 0.5))], [], "default", answer, None, {})
+    glenmont = mcp.Station("Glenmont", "Red", -77.5, 39.5, entrance=station, ways_in=(station,))
+    busy = mcp.route_details(plan, [glenmont])["busy_stretches"]
+    assert [b["roads"] for b in busy] == [["Randolph Road"]]
+
+
 def test_route_details_finds_the_station_ends_from_the_stations() -> None:
     answer = _metro_ride()
     start, end = tuple(at(0.0)), tuple(at(3.0))
