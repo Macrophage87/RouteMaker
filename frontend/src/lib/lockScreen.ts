@@ -9,8 +9,9 @@
  * small just above the bottom one. The rows are the strip's (cueSheetPdf.ts cueRows "strip"): the miles from the
  * start large with km small, the cue's picture (an arrow for a turn, lib/cueArrow.ts: the owner, 2026-11-10, "Basically
  * show the arrows"), then the turn with a caution's reason small, the road abbreviated, and a jog's later turns. Stops
- * are rows of their own, by name where the plan names them, and each starts a new image. Rows that do not fit on one
- * image go on the next, "Part 2 of 3". Dark text on white. No place is named (exportName) but a stop the rider named, so never a Home.
+ * are rows of their own, by name where the plan names them. Where the cues do not fit on one image, each leg gets its
+ * own: the start or a stop at its top, the next stop or the finish at its bottom (so a stop ends one image and heads
+ * the next), and a leg too long for one image runs on to the next, "Part 2 of 3". Dark text on white. No place is named (exportName) but a stop the rider named, so never a Home.
  */
 import type { RouteResponse } from "./api.ts";
 import { abbreviateStreet } from "./course.ts";
@@ -150,23 +151,38 @@ export function lockScreenLayout(route: LockRoute, measure: Measure, vias: reado
     const marked = part ? block([part], PX.part, 700, summary.bottom, measure) : { lines: [], bottom: summary.bottom };
     return { lines: [...title.lines, ...summary.lines, ...marked.lines], bottom: marked.bottom };
   };
-  const fill = (cueTop: number) => {
+  // Rows by height onto images, a new image where the next row would run into the credits.
+  const paginate = (indices: readonly number[], cueTop: number) => {
     const pages: number[][] = [[]];
     let y = cueTop;
-    rows.forEach((r, i) => {
-      // Each stop starts an image of its own, the stop at its head (the owner, 2026-11-10: "Have splits at stops").
-      const stop = cues[i].arrow.kind === "stop";
-      if ((stop || y + r.height > creditTop - 16) && pages[pages.length - 1].length) {
+    for (const i of indices) {
+      if (y + rows[i].height > creditTop - 16 && pages[pages.length - 1].length) {
         pages.push([]);
         y = cueTop;
       }
       pages[pages.length - 1].push(i);
-      y += r.height;
-    });
+      y += rows[i].height;
+    }
     return pages;
   };
-  let groups = fill(head(null).bottom + 24);
-  if (groups.length > 1) groups = fill(head("Part 88 of 88").bottom + 24);
+  // The owner, 2026-11-10: "Have splits at stops ... Unless it would fit in one. Otherwise have the top be the start
+  // or a stop, and bottom be the next stop or end. The stop on the first page will be repeated on the next".
+  const legs = (cueTop: number) => {
+    const out: number[][] = [];
+    let leg: number[] = [];
+    rows.forEach((_, i) => {
+      leg.push(i);
+      if (cues[i].arrow.kind === "stop" && i > 0 && i < rows.length - 1) {
+        out.push(...paginate(leg, cueTop));
+        leg = [i];
+      }
+    });
+    if (leg.length > 1 || !out.length) out.push(...paginate(leg, cueTop));
+    return out;
+  };
+  const all = rows.map((_, i) => i);
+  let groups = paginate(all, head(null).bottom + 24);
+  if (groups.length > 1) groups = legs(head("Part 88 of 88").bottom + 24);
   return groups.map((group, p) => {
     const part = groups.length > 1 ? `Part ${p + 1} of ${groups.length}` : null;
     const header = head(part);
@@ -182,7 +198,9 @@ export function lockScreenLayout(route: LockRoute, measure: Measure, vias: reado
       rules.push(y);
     }
     credit.forEach((text, i) => lines.push({ text, x: SIDE, y: creditTop + (i + 1) * Math.round(PX.credit * 1.25), px: PX.credit, weight: 400 }));
-    return { part, lines, rules, arrows, cues: group.length, cueTop, cueBottom: creditTop - 16 };
+    // A stop that ended the image before and heads this one is counted once.
+    const repeated = p > 0 && groups[p - 1][groups[p - 1].length - 1] === group[0] ? 1 : 0;
+    return { part, lines, rules, arrows, cues: group.length - repeated, cueTop, cueBottom: creditTop - 16 };
   });
 }
 

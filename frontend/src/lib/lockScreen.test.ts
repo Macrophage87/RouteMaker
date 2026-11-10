@@ -50,9 +50,7 @@ test("the image is an iPhone Pro's portrait screen, the top 28% and bottom 12% k
 });
 
 test("one image for a short route: every line clear of both bands and inside the width", () => {
-  // The sample's one stop would start a second image: without it, one.
   const route = sampleRoute();
-  route.description = route.description.filter((e) => e.kind !== "via");
   const pages = lockScreenLayout(route, measure);
   assert.equal(pages.length, 1);
   assert.equal(pages[0].part, null);
@@ -137,11 +135,21 @@ test("every cue has its picture beside it, and a stop is listed by its name and 
   assert.ok(plain.includes("Stop 1") && !plain.includes("Coffee stop"));
 });
 
-test("each stop starts an image of its own, the stop at its head", () => {
-  // The owner, 2026-11-10: "Have splits at stops".
-  const pages = lockScreenLayout(sampleRoute(), measure);
-  assert.equal(pages.length, 2);
-  assert.equal(pages[1].arrows[0].arrow.kind, "stop");
-  assert.ok(pages[0].arrows.every((a) => a.arrow.kind !== "stop"));
-  assert.equal(pages[1].part, "Part 2 of 2");
+test("splits at stops only where the cues do not fit on one image: each leg its own, the stop on both", () => {
+  // The owner, 2026-11-10: "Have splits at stops ... Unless it would fit in one ... The stop on the first page will be
+  // repeated on the next".
+  const fits = lockScreenLayout(sampleRoute(), measure);
+  assert.equal(fits.length, 1);
+  const base = longRoute(16);
+  const at = 8 * (29_000 / 16);
+  const route = { ...base, description: [...base.description.slice(0, 8), { kind: "via", from_m: at, to_m: at, from_mi: 0, to_mi: 0, via: 1, text: "Stop 1." } as DescriptionEntry, ...base.description.slice(8)] };
+  const pages = lockScreenLayout(route, measure);
+  assert.ok(pages.length >= 2);
+  const kinds = pages.map((p) => p.arrows.map((a) => a.arrow.kind));
+  const ends = kinds.findIndex((k) => k[k.length - 1] === "stop");
+  assert.ok(ends >= 0, "a page ends at the stop");
+  assert.equal(kinds[ends + 1][0], "stop");
+  assert.ok(kinds.slice(0, ends + 1).flat().filter((k) => k === "stop").length === 1);
+  // The stop is counted once.
+  assert.equal(pages.reduce((n, p) => n + p.cues, 0), cueRows(route, "strip").length);
 });

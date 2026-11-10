@@ -9,7 +9,8 @@ description: 1179 by 2556 pixels, the top 28% and bottom 12% kept clear for a lo
 and controls, the route's name and figures small, then a row per cue (the miles from the start,
 the picture, the turn, the road, a jog's later turns), the credits at the foot, "Part 2 of 3" where
 the cues need more than one. Stops are rows of their own with their number, and their name where
-the plan has one, and each starts a new image. Through (via) points are not cues, as in Ride.
+the plan has one; where the cues need more than one image, each leg gets its own (a stop ends
+one and heads the next). Through (via) points are not cues, as in Ride.
 Dark on white. Drawn with the standard library only, in memory for each ask: nothing is written
 or kept.
 
@@ -486,8 +487,9 @@ def _row_layout(row: dict) -> tuple[list[tuple], int]:
     return lines, max(bottoms) + PAD
 
 
-def draw(answer: dict, title: str, vias=(), names=None, credit: str = "") -> list[bytes]:
-    """The route's phone cue images as PNGs, in order (MAX_PAGES at most)."""
+def pages(answer: dict, title: str, vias=(), names=None, credit: str = "") -> dict:
+    """The images' layout: the rows, each laid out, the rows on each image by index (a stop that
+    ends one image heads the next), the header for a part, and the credits' lines and top."""
     rows = cue_rows(answer, vias, names)
     laid = [_row_layout(r) for r in rows]
     distance = float(answer.get("distance_m") or 0.0)
@@ -511,24 +513,52 @@ def draw(answer: dict, title: str, vias=(), names=None, credit: str = "") -> lis
                 out.append((g, SIDE, y, text))
         return out, y
 
-    def fill(cue_top: int) -> list[list[int]]:
+    def paginate(indices: list[int], cue_top: int) -> list[list[int]]:
         pages: list[list[int]] = [[]]
         y = cue_top
-        for i, (_lines, height) in enumerate(laid):
-            # Each stop starts an image of its own, the stop at its head (the owner, 2026-11-10:
-            # "Have splits at stops").
-            stop = rows[i]["arrow"]["kind"] == "stop"
-            if (stop or y + height > credit_top - 16) and pages[-1]:
+        for i in indices:
+            height = laid[i][1]
+            if y + height > credit_top - 16 and pages[-1]:
                 pages.append([])
                 y = cue_top
             pages[-1].append(i)
             y += height
         return pages
 
-    groups = fill(header(None)[1] + 24)
+    def legs(cue_top: int) -> list[list[int]]:
+        # The owner, 2026-11-10: "Have splits at stops ... Unless it would fit in one. Otherwise
+        # have the top be the start or a stop, and bottom be the next stop or end. The stop on
+        # the first page will be repeated on the next".
+        out: list[list[int]] = []
+        leg: list[int] = []
+        for i, row in enumerate(rows):
+            leg.append(i)
+            if row["arrow"]["kind"] == "stop" and 0 < i < len(rows) - 1:
+                out += paginate(leg, cue_top)
+                leg = [i]
+        if len(leg) > 1 or not out:
+            out += paginate(leg, cue_top)
+        return out
+
+    groups = paginate(list(range(len(rows))), header(None)[1] + 24)
     if len(groups) > 1:
-        groups = fill(header("Part 88 of 88")[1] + 24)
-    groups = groups[:MAX_PAGES]
+        groups = legs(header("Part 88 of 88")[1] + 24)
+    return {
+        "rows": rows,
+        "laid": laid,
+        "groups": groups[:MAX_PAGES],
+        "header": header,
+        "credit_lines": credit_lines,
+        "credit_top": credit_top,
+    }
+
+
+def draw(answer: dict, title: str, vias=(), names=None, credit: str = "") -> list[bytes]:
+    """The route's phone cue images as PNGs, in order (MAX_PAGES at most)."""
+    laid_out = pages(answer, title, vias, names, credit)
+    rows, laid, groups = laid_out["rows"], laid_out["laid"], laid_out["groups"]
+    header = laid_out["header"]
+    credit_lines, credit_top = laid_out["credit_lines"], laid_out["credit_top"]
     images: list[bytes] = []
     for p, group in enumerate(groups):
         part = f"Part {p + 1} of {len(groups)}" if len(groups) > 1 else None

@@ -191,14 +191,23 @@ def test_stop_names_are_kept_on_a_new_draft(stand_in, tmp_path) -> None:  # noqa
     assert server.drafts.get(draft_id).plan.names == {}
 
 
-def test_each_stop_starts_an_image_of_its_own() -> None:
-    """The owner, 2026-11-10: "Have splits at stops"."""
-    entries = [
+def test_splits_at_stops_only_where_the_cues_need_more_than_one_image() -> None:
+    """The owner, 2026-11-10: "Have splits at stops ... Unless it would fit in one ... The stop on
+    the first page will be repeated on the next"."""
+    short = [
         _stretch(0, "Start Street"),
         _stretch(300, "First Street", "left"),
         {"kind": "via", "from_m": 600, "to_m": 600, "via": 1},
         _stretch(700, "Second Street", "right"),
     ]
-    assert len(cue_cards.draw(_answer(entries, 1000), "Default route")) == 2
-    # A through point is no stop: one image.
-    assert len(cue_cards.draw(_answer(entries, 1000), "Default route", vias=[1])) == 1
+    assert len(cue_cards.draw(_answer(short, 1000), "Default route")) == 1
+    long = [_stretch(0, "Start Street")] + [
+        _stretch(300 * k, f"Street {k}", "left" if k % 2 else "right") for k in range(1, 12)
+    ]
+    long.insert(5, {"kind": "via", "from_m": 1300, "to_m": 1300, "via": 1})
+    laid = cue_cards.pages(_answer(long, 4000), "Default route")
+    kinds = [[laid["rows"][i]["arrow"]["kind"] for i in g] for g in laid["groups"]]
+    # The start to the stop on the first image, the stop heading the next; the finish last.
+    assert kinds[0][0] == "start" and kinds[0][-1] == "stop"
+    assert kinds[1][0] == "stop" and kinds[-1][-1] == "finish"
+    assert sum(k.count("stop") for k in kinds) == 2
