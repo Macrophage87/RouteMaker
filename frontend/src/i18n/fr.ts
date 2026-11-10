@@ -72,10 +72,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Busy crossing, no signal.": "Carrefour très fréquenté, sans feu.",
   "Busy crossing.": "Carrefour très fréquenté.",
   "Busy junction.": "Intersection très fréquentée.",
-  // A signal that may need a button press (the owner, 2026-11-08): the card's note and the words said.
-  // Drafted by Claude: FLAGGED for review by a native speaker.
-  "Light may need a button press": "Le feu peut demander d'appuyer sur le bouton",
-  "Button for the light.": "Bouton pour le feu.",
   "Busy junction at a signal.": "Intersection très fréquentée, avec feu.",
   "Busy junction at a stop sign.": "Intersection très fréquentée, avec stop.",
   "Busy junction, no signal.": "Intersection très fréquentée, sans feu.",
@@ -2139,4 +2135,12 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "No road bike map: may use gravel.": "Pas de carte vélo de route : gravier possible.",
   "There is no weekend road bike map right now, so this route counts parkways like Beach Drive as roads with cars.": "Il n'y a pas de carte vélo de route du week-end pour l'instant, cet itinéraire compte donc les routes de parc comme Beach Drive comme des routes avec voitures.",
   "No weekend map: parkways may have cars.": "Pas de carte du week-end : voitures possibles sur les routes de parc.",
+  "Draft, last day": "Brouillon, dernier jour",
+  "Draft, {n} days left": "Brouillon, {n} jours restants",
+  "Save {name} to My routes": "Enregistrer {name} dans Mes itinéraires",
+  "Saving {name}…": "Enregistrement de {name}…",
+  "That draft is gone.": "Ce brouillon n'existe plus.",
+  "Delete": "Supprimer",
+  "Delete {name}": "Supprimer {name}",
+  "Deleted {name}.": "{name} supprimé.",
 };

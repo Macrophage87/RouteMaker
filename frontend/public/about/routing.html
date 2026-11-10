@@ -295,11 +295,15 @@ start together; the time shown is still the real wait.</li>
 <li><strong>Gates.</strong> The engine adds a wait at a gate whose access isn't marked<sup class="cite"><a href="#ref-1" aria-label="source 1">[1]</a></sup>:
 30 seconds on every ride type. On Cargo Bike and Tandem a gate, cycle barrier or narrow bollard counts about
 15 minutes when choosing a route, though only the 30 seconds shows in the time, so their routes keep out of them
-where there is another way.</li>
+where there is another way. From the next map update, a plain gate costs nothing on any ride type (the owner's
+choice) if it is open to bikes, has no tag for motor vehicles, is not locked, has no opening hours and is not mapped
+narrower than 4.9 ft [1.5 m]. Cargo Bike and Tandem can then use trails such as the Riverwalk, and narrow gaps keep
+their charge.</li>
 <li><strong>Walking.</strong> Where a way is marked walk your bike, the engine times it at walking
 pace, 3.1 mph [5 km/h]<sup class="cite"><a href="#ref-2" aria-label="source 2">[2]</a></sup>. Where Novice and Nervous suggests walking on the sidewalk past a
 busy road, that stretch is timed at walking pace.</li>
-<li><strong>Singletrack.</strong> Mountain Bike times singletrack at no more than 6.2 mph [10 km/h].</li>
+<li><strong>Singletrack.</strong> Mountain Bike times singletrack at no more than 6.2 mph [10 km/h], and Gravel and
+Mountain Goat time mountain-bike trails the same way (our default, the same for every terrain).</li>
 </ul>
 <p>You can't set your own speed. Cargo Bike's Electric assist switch times the trip at 11.2 mph
 [18 km/h]; on Bikeshare, choosing an e-bike times it at 12.4 mph [20 km/h]. Your weight in Settings and
@@ -724,13 +728,10 @@ busiest road there is big, secondary or other; at night 9, 4 or 2, at weekday ru
 more. The city limits come from the Census Bureau's county boundaries. When routes are compared, a signal counts
 the wait at a red instead, also measured on the owner's rides: in the cities 30, 15 or 20 seconds at a big,
 secondary or other road; outside them 45 seconds crossing or turning onto a big road and 30 at any other, counted
-twice, because a long light is a pain (the owner's choice). A crossing where you may need to press a button for
-the light (outside the cities, coming from a path or a quiet street onto a big or secondary road, or wherever
-OpenStreetMap tags the crossing's button) counts as 2 minutes of waiting, kept below a stop sign across the same
-road, and as 10 minutes on Road Bike and Tandem (the owner's choice), kept below two-thirds of that stop sign. On
+twice, because a long light is a pain (the owner's choice). A light where you may need to press a button is ranked
+as an ordinary signal on every ride type (the owner's choice, as most of them run on a timer). On
 Road Bike, which counts its waits three times, and Tandem, twice, a wait counts at most five times the wait at a
-red (the owner's choice), and a signal never more than the stop sign across the same road (our default). At such
-a crossing the turn card says "Light may need a button press".</p>
+red (the owner's choice), and a signal never more than the stop sign across the same road (our default).</p>
 <p>A route no longer U-turns round the end of a median. Where a road with
 a median is mapped as two one-way carriageways of the same name meeting at the median's nose, the router once took
 the U-turn from one onto the other as an ordinary turn, across the oncoming lanes; each such U-turn is now closed
@@ -1210,7 +1211,8 @@ take. On ride types that skip dirt trails, Go round on a dirt trail is taken as 
 the trails are in bad shape: the rest of that ride's re-routes stay off dirt trails, even to a stop on one,
 and a new plan opts back in. A road that only crosses a dirt trail does not count.</li>
 <li><strong>On foot</strong> (Run, Walk and Walk + transit), a route goes round the roads you marked closed and only
-those closures whose source says the way is closed to people on foot too, such as a work zone whose sidewalk is
+those closures whose source says the way is closed to people on foot too (a reviewer's closure counts as closed
+on foot unless the reviewer says otherwise, our default), such as a work zone whose sidewalk is
 closed. A closure to traffic whose source says nothing of people on foot is a warning on the route instead ("closed
 to traffic; the source does not say whether people on foot can pass"), and one that keeps a walkway open is left
 out. Where there is no way round, the route goes through, with each closure warned of. DDOT permits and deer notices
@@ -1530,7 +1532,7 @@ climbing.</li>
 <p class="next">Next: <a href="/about/trails.html">Mountain Bike, Mountain Goat and Gravel</a></p>
 </main>
 <footer>
-  <p>Part of RouteMaker's documentation. It describes version 0.23.0. The code is
+  <p>Part of RouteMaker's documentation. It describes version 0.24.0. The code is
   open source under the MIT licence:
   <a href="https://github.com/Macrophage87/RouteMaker">github.com/Macrophage87/RouteMaker</a>.</p>
   <p><a href="/">Back to the map</a></p>

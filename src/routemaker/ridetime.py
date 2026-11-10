@@ -48,8 +48,9 @@ instant or graph).
 
 from __future__ import annotations
 
+import math
 import re
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 ZONE = ZoneInfo("America/New_York")
@@ -184,6 +185,32 @@ def soonest_instant(when: str, now: datetime) -> datetime:
             candidate += timedelta(days=7)
         found.append(candidate)
     return min(found)
+
+
+# How finely `soonest_start` steps forward, and how far: every setting's boundary is on a
+# quarter hour (on the hour, in fact), and a week and a day holds one of each setting. Claude's
+# default, not measured (routing hunt 4, C4-2).
+START_STEP = timedelta(minutes=15)
+START_LOOK = timedelta(days=8)
+
+
+def soonest_start(when: str, now: datetime) -> datetime:
+    """The next moment at or after `now` that falls in the setting `when` (`when_at`): the
+    start of its next window. Monday 15:05's rush is today 16:00 and its night tonight 21:00,
+    and a weekday holiday is off-peak, not rush (routing hunt 4, C4-2: the ride was taken to
+    start at one of `INSTANTS`, all next Tuesday's for rush and off-peak). Where no such
+    moment is found within `START_LOOK`, the soonest of `INSTANTS` (`soonest_instant`)."""
+    moment = now.astimezone(UTC)
+    step = START_STEP.total_seconds()
+    # Up to the next quarter hour (a whole number of them since the epoch, in UTC: the
+    # region's offset is whole hours, so its quarter hours are the same).
+    moment = datetime.fromtimestamp(math.ceil(moment.timestamp() / step) * step, UTC)
+    end = now + START_LOOK
+    while moment <= end:
+        if when_at(moment) == when:
+            return moment.astimezone(ZONE)
+        moment += START_STEP
+    return soonest_instant(when, now)
 
 
 # --- OSM conditions ------------------------------------------------------------
