@@ -15,7 +15,7 @@ from test_preview_basemap import _tile, write_archive
 
 from core import preview_basemap, route_view_map
 
-VIEW_TOOLS = {"plan_route", "revise_route", "open_link", "plan_metro_loop"}
+VIEW_TOOLS = {"plan_route", "revise_route", "open_link", "plan_metro_loop", "route_notes"}
 
 
 def _key(draft_id: str) -> str:

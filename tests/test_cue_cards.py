@@ -119,8 +119,9 @@ def test_a_long_route_runs_to_numbered_phone_sized_images() -> None:
     images = cue_cards.draw(_answer(turns, 9500), "Default route", credit="Route data: test.")
     assert len(images) >= 3
     assert all(png.startswith(b"\x89PNG") and _size(png) == (1179, 2556) for png in images)
-    one = cue_cards.draw(_answer(turns[:4], 1000), "Default route")
-    assert len(one) == 1
+    # A short route: its cues on one image, the credits on their own after it.
+    assert len(cue_cards.draw(_answer(turns[:4], 1000), "Default route", credit="Data: x")) == 2
+    assert len(cue_cards.draw(_answer(turns[:4], 1000), "Default route")) == 1
 
 
 class _Cards:
@@ -132,12 +133,13 @@ class _Cards:
     def count(self, *args) -> int:
         return 5
 
-    def draw(self, *args, only=None) -> list[bytes]:
+    def draw(self, *args, only=None, dark=False) -> list[bytes]:
         self.drawn.append((args, list(only)))
+        self.dark = dark
         return [f"\x89PNG-{n}".encode("latin-1") for n in only if n <= 5]
 
-    def cue_rows(self, answer, vias, names):
-        return cue_cards.cue_rows(answer, vias, names)
+    def cue_rows(self, answer, vias, names, notes=None):
+        return cue_cards.cue_rows(answer, vias, names, notes)
 
 
 def _site(stand_in, tmp_path, cards):  # noqa: F811
@@ -146,7 +148,9 @@ def _site(stand_in, tmp_path, cards):  # noqa: F811
         STATIONS,
         out_dir=tmp_path,
         cue_cards=cards,
-        cue_cards_link=lambda draft_id, page: f"https://example.invalid/{draft_id}-cues-{page}.png",
+        cue_cards_link=lambda draft_id, page, dark=False: (
+            f"https://example.invalid/{draft_id}-cues-{'dark-' if dark else ''}{page}.png"
+        ),
     )
 
 
@@ -180,9 +184,10 @@ def test_the_tool_sends_the_first_images_and_links_every_one(stand_in, tmp_path)
     assert "first 3 of 5" in out["shown"]
     # The cues as text too, Start to Finish.
     assert out["cues"][0]["cue"] == "Start" and out["cues"][-1]["cue"] == "Finish"
-    (answer, _title, _vias, names, credit), only = cards.drawn[0]
+    (answer, _title, _vias, names, credit, notes), only = cards.drawn[0]
     assert answer is server.drafts.get(draft_id).plan.answer
     assert names == {} and credit.split("\n")[0] == "Route data:" and only == [1, 2, 3]
+    assert notes == []
     gone = rpc(server, "tools/call", {"name": "cue_cards", "arguments": {"draft_id": "dnone"}})
     assert gone["result"]["isError"]
 
@@ -233,11 +238,11 @@ def test_long_routes_keep_every_cue_and_draw_only_the_page_asked() -> None:
         _stretch(150 * k, f"Street {k}", "left" if k % 2 else "right") for k in range(1, 200)
     ]
     answer = _answer(turns, 31_000)
-    total = cue_cards.count(answer, "Default route")
+    total = cue_cards.count(answer, "Default route", credit="Data: x")
     assert total > 12
-    laid = cue_cards.pages(answer, "Default route")
-    assert laid["rows"][laid["groups"][-1][-1]]["turn"] == "Finish"
-    one = cue_cards.draw(answer, "Default route", only=[total])
+    laid = cue_cards.pages(answer, "Default route", credit="Data: x")
+    assert laid["rows"][laid["groups"][-2][-1]]["turn"] == "Finish" and laid["groups"][-1] == []
+    one = cue_cards.draw(answer, "Default route", credit="Data: x", only=[total])
     assert len(one) == 1 and one[0].startswith(b"\x89PNG")
 
 
@@ -265,32 +270,31 @@ def test_splits_at_stops_only_where_the_cues_need_more_than_one_image() -> None:
         {"kind": "via", "from_m": 600, "to_m": 600, "via": 1},
         _stretch(700, "Second Street", "right"),
     ]
-    assert len(cue_cards.draw(_answer(short, 1000), "Default route")) == 1
+    # Cues on one image (no split at the stop), the credits on their own.
+    assert len(cue_cards.draw(_answer(short, 1000), "Default route", credit="Data: x")) == 2
     long = [_stretch(0, "Start Street")] + [
-        _stretch(300 * k, f"Street {k}", "left" if k % 2 else "right") for k in range(1, 12)
+        _stretch(300 * k, f"Street {k}", "left" if k % 2 else "right") for k in range(1, 20)
     ]
-    long.insert(5, {"kind": "via", "from_m": 1300, "to_m": 1300, "via": 1})
-    laid = cue_cards.pages(_answer(long, 4000), "Default route")
-    kinds = [[laid["rows"][i]["arrow"]["kind"] for i in g] for g in laid["groups"]]
+    long.insert(9, {"kind": "via", "from_m": 2500, "to_m": 2500, "via": 1})
+    laid = cue_cards.pages(_answer(long, 6500), "Default route", credit="Data: x")
+    kinds = [[laid["rows"][i]["arrow"]["kind"] for i in g] for g in laid["groups"][:-1]]
     # The start to the stop on the first image, the stop heading the next; the finish last.
     assert kinds[0][0] == "start" and kinds[0][-1] == "stop"
     assert kinds[1][0] == "stop" and kinds[-1][-1] == "finish"
     assert sum(k.count("stop") for k in kinds) == 2
 
 
-def test_the_credits_are_on_the_last_image_only_a_source_to_a_line() -> None:
-    """The owner, 2026-11-10: "Have credits on the final image in the set, own set of lines"."""
+def test_the_credits_have_an_image_of_their_own_a_source_to_a_line() -> None:
+    """The owner, 2026-11-10: "Have credits on the final image in the set, own set of lines";
+    "let it go on an additional one ... or just make that the default, so they are readable"."""
     turns = [_stretch(0, "Start Street")] + [
         _stretch(150 * k, f"Street {k}", "left" if k % 2 else "right") for k in range(1, 40)
     ]
     credit = "Route data:\n© OpenStreetMap contributors (ODbL)\nUSGS 3DEP\nPlanned with RouteMaker."
     laid = cue_cards.pages(_answer(turns, 6500), "Default route", credit=credit)
-    assert len(laid["groups"]) >= 2
+    assert len(laid["groups"]) >= 3 and laid["groups"][-1] == []
+    assert all(laid["groups"][:-1])
     assert laid["credit_lines"] == credit.split("\n")
-    # The last image's rows stop above the credits.
-    last = laid["groups"][-1]
-    used = sum(laid["laid"][i][1] for i in last)
-    assert laid["header"]("Part 1 of 2")[1] + 24 + used <= laid["credit_top"] - 16
 
 
 def test_the_big_figure_is_from_the_cue_before_and_the_total_is_on_the_right() -> None:
@@ -304,3 +308,34 @@ def test_the_big_figure_is_from_the_cue_before_and_the_total_is_on_the_right() -
     assert "0.5" in by_text and "3.0 mi" in by_text and "total" in by_text
     g, x = by_text["3.0 mi"]
     assert x + cue_cards._width("3.0 mi", g) == cue_cards.WIDTH - cue_cards.SIDE
+
+
+def test_a_long_list_of_credits_still_fits_in_smaller_type() -> None:
+    credit = "\n".join(f"Source {n}" for n in range(1, 31))
+    laid = cue_cards.pages(_answer([_stretch(0, "A Street")], 500), "Default route", credit=credit)
+    assert laid["credit_glyphs"] is cue_cards.cue_glyphs_small
+    step = round(laid["credit_glyphs"].SIZE * 1.25)
+    top = laid["header"]("Part 2 of 2")[1] + 24 + 8
+    assert top + len(laid["credit_lines"]) * step <= cue_cards.HEIGHT - cue_cards.CLEAR_BOTTOM
+
+
+def test_dark_images_are_light_type_on_black_with_their_own_links(stand_in, tmp_path) -> None:  # noqa: F811
+    # The owner, 2026-11-10: "Let people export in either. They could be planning in the daytime
+    # for a night ride."
+    cards = _Cards()
+    server = _site(stand_in, tmp_path, cards)
+    planned = rpc(
+        server,
+        "tools/call",
+        {"name": "plan_route", "arguments": {"points": ["Union Market", "Takoma"]}},
+    )["result"]
+    draft_id = planned["structuredContent"]["draft_id"]
+    args = {"draft_id": draft_id, "dark": True}
+    out = rpc(server, "tools/call", {"name": "cue_cards", "arguments": args})["result"]
+    assert cards.dark is True
+    links = out["structuredContent"]["links"]
+    assert links[0] == f"https://example.invalid/{draft_id}-cues-dark-1.png"
+    answer = _answer([_stretch(0, "A Street"), _stretch(400, "B Street", "left")])
+    light = cue_cards.draw(answer, "Test", only=[1])[0]
+    dark = cue_cards.draw(answer, "Test", only=[1], dark=True)[0]
+    assert light != dark

@@ -11164,3 +11164,77 @@ summary.closure-notices-heading {
 .reach-rings h3 { font-size: 1rem; margin: 0.5rem 0 0; display: flex; align-items: center; gap: 0.4rem; }
 /* A Side by side group's colour on the map, beside its marker's name (the name, not the colour, tells them apart). */
 .reach-key { display: inline-block; width: 1rem; height: 1rem; border-radius: 3px; border: 1px solid var(--text, #111827); flex: none; }
+
+/* A route note's sign on the map (lib/routeNotes.ts, MapView): its icon (an emoji the rider chose) on a yellow disc
+   ringed dark for a caution, a white one ringed blue for a point of interest; its name says which. In Plan a button,
+   44 px for a finger. */
+.route-note {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  display: grid;
+  place-items: center;
+}
+div.route-note {
+  pointer-events: none;
+}
+button.route-note {
+  cursor: pointer;
+}
+.route-note-sign {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  font: 18px/1 "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+}
+.route-note-caution .route-note-sign {
+  background: #facc15;
+  border: 3px solid #111827;
+}
+.route-note-interest .route-note-sign {
+  background: #ffffff;
+  border: 3px solid #1d4ed8;
+}
+button.route-note:focus-visible {
+  outline: 3px solid #1d4ed8;
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+
+/* The note dialog's icon choice: a wrapping row of 44 px choices, the chosen one ringed. */
+.note-icons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.note-icon-choice {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  font-size: 22px;
+  border-radius: 8px;
+  border: 2px solid transparent;
+  cursor: pointer;
+}
+.note-icon-choice input {
+  position: absolute;
+  opacity: 0;
+  inset: 0;
+  margin: 0;
+  cursor: pointer;
+}
+.note-icon-choice:has(input:checked) {
+  border-color: #1d4ed8;
+  background: rgba(29, 78, 216, 0.12);
+}
+.note-icon-choice:has(input:focus-visible) {
+  outline: 3px solid #1d4ed8;
+  outline-offset: 1px;
+}

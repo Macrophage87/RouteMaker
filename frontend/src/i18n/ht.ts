@@ -2152,4 +2152,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Keep this exact line. Never re-routed.": "Kenbe liy egzak sa a. Pa janm chanje wout la.",
   "Fixed": "Fiks",
   "Opened \"{name}\", a fixed route: it stays as saved.": "Louvri \"{name}\", yon wout fiks: li rete jan li te anrejistre a.",
+  // Route notes (lib/routeNotes.ts, 2026-11-10): the rider's own words go in {note}, untranslated.
+  "Caution: {note}.": "Atansyon: {note}.",
+  "Note: {note}.": "Nòt: {note}.",
 };

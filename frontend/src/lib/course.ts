@@ -31,6 +31,7 @@ import { writeFit } from "./fit.ts";
 import { writeTcx } from "./tcx.ts";
 import { CROSS_UNNAMED, rideModel, turnWords, type Cue, type TurnMovement } from "./navigate.ts";
 import { presetSaid } from "./presets.ts";
+import { PAGE_NOTES, type NoteKind, type RouteNote } from "./routeNotes.ts";
 
 export type CourseFormat = "fit" | "tcx";
 
@@ -197,6 +198,12 @@ function fromRide(cue: Cue): { type: CourseCueType; name: string; priority: numb
       return { type: "stop", name: cue.stopName ?? `Stop ${cue.stop ?? ""}`.trim(), priority: PROTECTED };
     case "end":
       return { type: "finish", name: "Finish", priority: PROTECTED };
+    case "note":
+      // A route note (lib/routeNotes.ts), by the rider's own words: a caution is a danger cue, never dropped; a point
+      // of interest a note, dropped with the crossings and the turns onto unnamed ways (priority 3).
+      return cue.note?.kind === "caution"
+        ? { type: "danger", name: cue.note.text, priority: PROTECTED }
+        : { type: "note", name: cue.note?.text ?? "Note", priority: 3 };
   }
 }
 
@@ -299,15 +306,18 @@ export interface RouteCue {
   cross?: boolean;
   /** A stop's number (from 1), its name or not. */
   stop?: number;
+  /** A route note's kind and words (lib/routeNotes.ts), on a "note" cue. */
+  note?: { kind: NoteKind; text: string };
 }
 
 /**
  * Ride's cues for the route, in order, with the start first: the one list the FIT and TCX courses and the PDF cue
  * sheets (cueSheetPdf.ts) are made from. `vias` are the plan's via points by index, which are not cues, as in Ride;
- * `names`, the stops' own names by index (lib/pointKinds.ts stopNames).
+ * `names`, the stops' own names by index (lib/pointKinds.ts stopNames); `notes`, the route's notes, the page's unless
+ * given (lib/routeNotes.ts).
  */
-export function routeCues(route: CompiledRoute, vias: readonly number[] = [], names: ReadonlyMap<number, string> = new Map()): RouteCue[] {
-  const model = rideModel(route as RouteResponse, vias, names);
+export function routeCues(route: CompiledRoute, vias: readonly number[] = [], names: ReadonlyMap<number, string> = new Map(), notes: readonly RouteNote[] = PAGE_NOTES.list): RouteCue[] {
+  const model = rideModel(route as RouteResponse, vias, names, new Map(), notes);
   const all: RouteCue[] = [{ type: "start", name: "Start", text: "Start.", atM: 0, street: named(model.stretches[0]?.street ?? null), priority: PROTECTED, kind: "start" }];
   for (const cue of model.cues) {
     // A button signal's own note (navigate.ts withButtons) is Ride's alone: no course point, no cue sheet row.
@@ -331,6 +341,7 @@ export function routeCues(route: CompiledRoute, vias: readonly number[] = [], na
       ...(cue.kind === "turn" && cue.across ? { across: true } : {}),
       ...((cue.kind === "turn" && cue.cross) || cue.kind === "crossing" ? { cross: true } : {}),
       ...(cue.kind === "stop" && cue.stop != null ? { stop: cue.stop } : {}),
+      ...(cue.note ? { note: cue.note } : {}),
     });
   }
   return all;

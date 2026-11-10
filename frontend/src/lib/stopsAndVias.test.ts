@@ -72,7 +72,7 @@ test("a stop's name is kept on its pair: through a move, a switch of kind and ba
   marks.rename(stop, "   ");
   assert.equal(marks.nameOf(stop), undefined, "a blank name takes it away");
   assert.match(src("../App.tsx"), /VIA_MARKS\.rename\(point, name\);\s*setNamesVersion\(\(v\) => v \+ 1\);/);
-  assert.match(src("../App.tsx"), /\}, \[points, preset, dials, namesVersion, groupSecret\]\);/);
+  assert.match(src("../App.tsx"), /\}, \[points, preset, dials, namesVersion, notes, groupSecret\]\);/);
   // A via point never shows a stop name it had before it was switched.
   assert.match(src("../usePlaceNames.ts"), /own: \(point\) => \(VIA_MARKS\.isVia\(point\) \? undefined : VIA_MARKS\.nameOf\(point\)\)/);
   assert.equal(cleanStopName("x".repeat(STOP_NAME_MAX + 9))?.length, STOP_NAME_MAX);
@@ -102,9 +102,9 @@ test("a link and a saved route carry each stop's name, and only stops between th
 
 test("the page's link, its saved routes and its kept routes: names in the first two, never in a kept route's key", () => {
   const saved = src("./savedRoutes.ts");
-  assert.equal(saved.match(/hash: encodePlan\(points, preset, dials, viaIndices\(points, VIA_MARKS\.isVia\)\)/g)?.length, 2);
+  assert.equal(saved.match(/hash: encodePlan\(points, preset, dials, viaIndices\(points, VIA_MARKS\.isVia\), undefined, undefined, "q", PAGE_NOTES\.list\)/g)?.length, 2);
   assert.match(src("./planHash.ts"), /names: ReadonlyMap<number, string> = stopNames\(points, VIA_MARKS\.nameOf, VIA_MARKS\.isVia, dials\?\.loop === true\)/);
-  assert.match(src("./offlineRoutes.ts"), /encodePlan\(points, preset, dials, vias, undefined, new Map\(\), "p"\)/);
+  assert.match(src("./offlineRoutes.ts"), /encodePlan\(points, preset, dials, vias, undefined, new Map\(\), "p", \[\]\)/);
   const app = src("../App.tsx");
   assert.match(app, /VIA_MARKS\.nameAt\(initialPlan\.points, initialPlan\.names\)/);
 });

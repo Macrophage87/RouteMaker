@@ -55,6 +55,9 @@ HELD_FILL = (176, 190, 226)
 START, FINISH, STOP = (21, 128, 61), (185, 28, 28), (37, 99, 235)
 JUNCTION = {"very high": (220, 38, 38), "higher": (249, 115, 22)}
 CLOSURE = {"closure": (220, 38, 38), "possible": (250, 204, 21)}
+# A route note's sign (frontend styles.css .route-note): caution yellow, point of interest blue.
+NOTE_CAUTION = (250, 204, 21)
+NOTE_INTEREST = (29, 78, 216)
 CREDIT = preview_basemap.CREDIT
 EARTH_RADIUS_MI = 3958.8
 
@@ -320,6 +323,14 @@ def draw(view: dict, line: list) -> bytes | None:
         x, y = px(at(row["mi"]))
         c.disc(x, y, 8, CORKER)
         c.disc(x, y, 5.5, WHITE)
+    # The route's notes (the connector's route_notes): a caution a yellow disc with "!", a point
+    # of interest a blue one with "i", sign and colour both.
+    for note in view.get("notes") or []:
+        x, y = px(note["lon_lat"])
+        caution = note.get("kind") == "caution"
+        c.disc(x, y, 12, INK if caution else WHITE)
+        c.disc(x, y, 10, NOTE_CAUTION if caution else NOTE_INTEREST)
+        c.centred(x, y + 6, "!" if caution else "i", INK if caution else WHITE)
     points = view.get("points") or []
     stops = [p for i, p in enumerate(points) if 0 < i < len(points) - 1 and not p.get("via")]
     for k, stop in enumerate(stops, 1):

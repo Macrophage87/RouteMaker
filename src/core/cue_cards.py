@@ -7,7 +7,8 @@ The pictures are the Plan export's ("Cue sheet image, for a phone lock screen",
 frontend/src/lib/lockScreen.ts and lib/cueArrow.ts), drawn here for the connector from the route's
 description: 1179 by 2556 pixels, the top 20% and bottom 7% kept clear for a lock screen's clock
 and controls, the route's name and figures small, then a row per cue (the miles from the start,
-the picture, the turn, the road, a jog's later turns), the credits at the foot, "Part 2 of 3" where
+the picture, the turn, the road, a jog's later turns), the credits on an image of their own, last,
+"Part 2 of 3" where
 the cues need more than one. Stops are rows of their own with their number, and their name where
 the plan has one; where the cues need more than one image, each leg gets its own (a stop ends
 one and heads the next). Through (via) points are not cues, as in Ride.
@@ -40,6 +41,10 @@ CLEAR_TOP = round(HEIGHT * 0.2)
 CLEAR_BOTTOM = round(HEIGHT * 0.07)
 INK = (17, 17, 17)
 PAPER = (255, 255, 255)
+# The dark images (lib/lockScreen.ts DARK_INK, DARK_PAPER; the owner, 2026-11-10: "Let people export
+# in either. They could be planning in the daytime for a night ride"): light type on black.
+DARK_INK = (242, 242, 242)
+DARK_PAPER = (0, 0, 0)
 SIDE, PAD = 56, 10
 COL_MILES, COL_ARROW, COL_TOTAL = 230, 140, 170
 ARROW_PX = 108
@@ -54,6 +59,8 @@ TURN_WORDS = {
     "bear_right": "Bear right",
     "uturn": "U-turn",
 }
+# The credits' own image: the road's regular face.
+CREDIT_GLYPHS = cue_glyphs_road
 THEN_WORDS = {
     "left": "left",
     "right": "right",
@@ -103,9 +110,13 @@ def _named(street) -> str:
 # --- the rows ----------------------------------------------------------------------------------
 
 
-def cue_rows(answer: dict, vias: list[int] | tuple = (), names: dict | None = None) -> list[dict]:
+def cue_rows(
+    answer: dict, vias: list[int] | tuple = (), names: dict | None = None, notes=None
+) -> list[dict]:
     """The route's cue rows, in order, Start first and Finish last: each {at_m, turn, reason,
-    road, then, arrow}, `arrow` the picture's kind and its own fields (lib/cueArrow.ts CueArrow)."""
+    road, then, arrow}, `arrow` the picture's kind and its own fields (lib/cueArrow.ts CueArrow).
+    `notes`: the route's notes near its line, each {kind, text, at_m} (the connector's
+    `notes_along`): a Caution or Note row in the rider's own words (lib/cueSheetPdf.ts rowOf)."""
     names = {int(k): str(v) for k, v in (names or {}).items()}
     through = {int(v) for v in vias or ()}
     entries = sorted(answer.get("description") or [], key=lambda e: e.get("from_m") or 0)
@@ -159,7 +170,22 @@ def cue_rows(answer: dict, vias: list[int] | tuple = (), names: dict | None = No
                 | {"_move": turn["movement"], "_road": road}
             )
     rows.append(_row(length, "Finish", "", {"kind": "finish"}))
-    return _jogs(rows)
+    rows = _jogs(rows)
+    for note in notes or []:
+        caution = note["kind"] == "caution"
+        row = _row(
+            min(float(note["at_m"]), length),
+            "Caution" if caution else "Note",
+            str(note["text"]),
+            {"kind": "caution" if caution else "note"},
+        )
+        # After the cues at its place (a turn there first), before the finish.
+        at = next(
+            (i for i, r in enumerate(rows) if r["at_m"] > row["at_m"] or i == len(rows) - 1),
+            len(rows) - 1,
+        )
+        rows.insert(at, row)
+    return rows
 
 
 def _row(at: float, turn: str, road: str, arrow: dict) -> dict:
@@ -386,7 +412,9 @@ def _ring(canvas: Canvas, cx: float, cy: float, r: float, width: float, colour) 
             canvas.blend(x, y, colour, cover)
 
 
-def draw_arrow(canvas: Canvas, arrow: dict, left: float, top: float, size: float) -> None:
+def draw_arrow(
+    canvas: Canvas, arrow: dict, left: float, top: float, size: float, ink=INK, paper=PAPER
+) -> None:
     shape = arrow_shape(arrow)
     k = size / 100
 
@@ -394,22 +422,22 @@ def draw_arrow(canvas: Canvas, arrow: dict, left: float, top: float, size: float
         return (left + p[0] * k, top + p[1] * k)
 
     for line in shape["thin"]:
-        canvas.stroke([at(p) for p in line], EDGE_STROKE * k / 2, INK)
+        canvas.stroke([at(p) for p in line], EDGE_STROKE * k / 2, ink)
     for line in shape["strokes"]:
-        canvas.stroke([at(p) for p in line], ARROW_STROKE * k / 2, INK)
+        canvas.stroke([at(p) for p in line], ARROW_STROKE * k / 2, ink)
     for poly in shape["fills"]:
-        _fill_polygon(canvas, [at(p) for p in poly], INK)
+        _fill_polygon(canvas, [at(p) for p in poly], ink)
     for x, y, r, ring in shape["discs"]:
         cx, cy = at((x, y))
         if ring:
-            _ring(canvas, cx, cy, r * k, ring * k, INK)
+            _ring(canvas, cx, cy, r * k, ring * k, ink)
         else:
-            canvas.disc(cx, cy, r * k, INK)
+            canvas.disc(cx, cy, r * k, ink)
     if shape.get("label"):
         cx, cy = at((50, 50))
         g = cue_glyphs_head
         width = _width(shape["label"], g)
-        _text(canvas, g, cx - width / 2, cy + (g.ASCENT - g.HEIGHT / 2) - 4, shape["label"], PAPER)
+        _text(canvas, g, cx - width / 2, cy + (g.ASCENT - g.HEIGHT / 2) - 4, shape["label"], paper)
 
 
 # --- the text ----------------------------------------------------------------------------------
@@ -517,10 +545,11 @@ def _row_layout(row: dict, since_m: float = 0.0) -> tuple[list[tuple], int]:
     return lines, max(bottoms) + PAD
 
 
-def pages(answer: dict, title: str, vias=(), names=None, credit: str = "") -> dict:
+def pages(answer: dict, title: str, vias=(), names=None, credit: str = "", notes=None) -> dict:
     """The images' layout: the rows, each laid out, the rows on each image by index (a stop that
-    ends one image heads the next), the header for a part, and the credits' lines and top."""
-    rows = cue_rows(answer, vias, names)
+    ends one image heads the next, the credits' own image last as an empty group), the header for a
+    part, and the credits' lines and glyphs."""
+    rows = cue_rows(answer, vias, names, notes)
     laid = [_row_layout(r, rows[i - 1]["at_m"] if i else 0.0) for i, r in enumerate(rows)]
     distance = float(answer.get("distance_m") or 0.0)
     summary = f"Distance {distance / METRES_PER_MILE:.1f} mi ({distance / 1000:.1f} km)." + (
@@ -529,17 +558,10 @@ def pages(answer: dict, title: str, vias=(), names=None, credit: str = "") -> di
         if answer.get("climb_m") is not None
         else ""
     )
-    # The credits on the last image only, a source to a line (`credit`'s lines; the owner,
-    # 2026-11-10: "Have credits on the final image in the set, own set of lines").
-    credit_lines = [
-        text
-        for source in (credit or "").split("\n")
-        for text in _wrap(source, cue_glyphs_small, WIDTH - 2 * SIDE)
-    ]
-    step = round(cue_glyphs_small.SIZE * 1.25)
-    credit_top = HEIGHT - CLEAR_BOTTOM - 16 - len(credit_lines) * step
-    bare_top = HEIGHT - CLEAR_BOTTOM - 16
 
+    # The credits on an image of their own, last, a source to a line, in type large enough to read
+    # (the owner, 2026-11-10: "Have credits on the final image in the set, own set of lines";
+    # "let it go on an additional one ... or just make that the default, so they are readable").
     def header(part: str | None) -> tuple[list[tuple], int]:
         out: list[tuple] = []
         y = CLEAR_TOP + 8
@@ -550,6 +572,20 @@ def pages(answer: dict, title: str, vias=(), names=None, credit: str = "") -> di
                 y += round(g.SIZE * 1.25)
                 out.append((g, SIDE, y, text))
         return out, y
+
+    bare_top = HEIGHT - CLEAR_BOTTOM - 16
+    room = bare_top - header("Part 88 of 88")[1] - 24
+    credit_glyphs = CREDIT_GLYPHS
+    credit_lines: list[str] = []
+    # Smaller type where a long list would not fit (never seen: a route has a few sources).
+    for credit_glyphs in (CREDIT_GLYPHS, cue_glyphs_small):
+        credit_lines = [
+            text
+            for source in (credit or "").split("\n")
+            for text in _wrap(source, credit_glyphs, WIDTH - 2 * SIDE)
+        ]
+        if len(credit_lines) * round(credit_glyphs.SIZE * 1.25) <= room:
+            break
 
     def paginate(indices: list[int], cue_top: int, bottom: int) -> list[list[int]]:
         pages: list[list[int]] = [[]]
@@ -576,27 +612,25 @@ def pages(answer: dict, title: str, vias=(), names=None, credit: str = "") -> di
                 leg = [i]
         if len(leg) > 1 or not out:
             out += paginate(leg, cue_top, bare_top)
-        # The last image has the credits: its rows laid again above them, onto another image
-        # where they no longer fit.
-        out += paginate(out.pop(), cue_top, credit_top)
         return out
 
-    groups = paginate(list(range(len(rows))), header(None)[1] + 24, credit_top)
-    if len(groups) > 1:
-        groups = legs(header("Part 88 of 88")[1] + 24)
+    all_rows = list(range(len(rows)))
+    part_top = header("Part 88 of 88")[1] + 24
+    cue_groups = [all_rows] if len(paginate(all_rows, part_top, bare_top)) == 1 else legs(part_top)
+    groups = [*cue_groups, *([[]] if credit_lines else [])]
     return {
         "rows": rows,
         "laid": laid,
         "groups": groups,
         "header": header,
         "credit_lines": credit_lines,
-        "credit_top": credit_top,
+        "credit_glyphs": credit_glyphs,
     }
 
 
-def count(answer: dict, title: str, vias=(), names=None, credit: str = "") -> int:
+def count(answer: dict, title: str, vias=(), names=None, credit: str = "", notes=None) -> int:
     """How many images the route's cues run to (laid out, none drawn)."""
-    return len(pages(answer, title, vias, names, credit)["groups"])
+    return len(pages(answer, title, vias, names, credit, notes)["groups"])
 
 
 def draw(
@@ -605,41 +639,47 @@ def draw(
     vias=(),
     names=None,
     credit: str = "",
+    notes=None,
     only: list[int] | range | None = None,
+    dark: bool = False,
 ) -> list[bytes]:
     """The route's phone cue images as PNGs, in order; with `only`, just those (from 1), each
-    still labelled against the whole count. Laying out is cheap; drawing is the cost."""
-    laid_out = pages(answer, title, vias, names, credit)
+    still labelled against the whole count; `dark`, light type on black. Laying out is cheap;
+    drawing is the cost."""
+    ink, paper = (DARK_INK, DARK_PAPER) if dark else (INK, PAPER)
+    laid_out = pages(answer, title, vias, names, credit, notes)
     rows, laid, groups = laid_out["rows"], laid_out["laid"], laid_out["groups"]
     header = laid_out["header"]
-    credit_lines, credit_top = laid_out["credit_lines"], laid_out["credit_top"]
+    credit_lines, credit_glyphs = laid_out["credit_lines"], laid_out["credit_glyphs"]
     images: list[bytes] = []
     for p, group in enumerate(groups):
         if only is not None and p + 1 not in only:
             continue
         part = f"Part {p + 1} of {len(groups)}" if len(groups) > 1 else None
-        canvas = Canvas(WIDTH, HEIGHT, PAPER)
+        canvas = Canvas(WIDTH, HEIGHT, paper)
         head_lines, bottom = header(part)
         for g, x, y, text in head_lines:
-            _text(canvas, g, x, y, text)
+            _text(canvas, g, x, y, text, ink)
         y = bottom + 24
-        canvas.rect(SIDE, y - 1, WIDTH - SIDE, y + 1, INK)
+        canvas.rect(SIDE, y - 1, WIDTH - SIDE, y + 1, ink)
         for i in group:
             lines, height = laid[i]
             for g, x, base, text in lines:
-                _text(canvas, g, x, y + base, text)
+                _text(canvas, g, x, y + base, text, ink)
             draw_arrow(
                 canvas,
                 rows[i]["arrow"],
                 SIDE + COL_MILES + (COL_ARROW - ARROW_PX) // 2 - 10,
                 y + PAD,
                 ARROW_PX,
+                ink,
+                paper,
             )
             y += height
-            canvas.rect(SIDE, y - 1, WIDTH - SIDE, y + 1, INK)
-        if p == len(groups) - 1:
-            step = round(cue_glyphs_small.SIZE * 1.25)
+            canvas.rect(SIDE, y - 1, WIDTH - SIDE, y + 1, ink)
+        if p == len(groups) - 1 and credit_lines and not group:
+            step = round(credit_glyphs.SIZE * 1.25)
             for n, text in enumerate(credit_lines):
-                _text(canvas, cue_glyphs_small, SIDE, credit_top + (n + 1) * step, text)
+                _text(canvas, credit_glyphs, SIDE, y + 8 + (n + 1) * step, text, ink)
         images.append(canvas.png())
     return images

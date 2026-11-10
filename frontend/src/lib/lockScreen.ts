@@ -5,8 +5,8 @@
  *
  * This module is the layout alone, pure, so it is tested without a canvas: every line of text with its place, size
  * and weight, given a `measure` for text widths. The top 20% is left clear for the lock screen's clock and the
- * bottom 7% for its controls (our default, tightened 2026-11-10 at the owner's "There's plenty of white space"); the route's name and distance sit small just under the top band and the credits
- * small just above the bottom one. The rows are the strip's (cueSheetPdf.ts cueRows "strip"): the miles from the
+ * bottom 7% for its controls (our default, tightened 2026-11-10 at the owner's "There's plenty of white space"); the
+ * route's name and distance sit small just under the top band, and the credits have the last image to themselves. The rows are the strip's (cueSheetPdf.ts cueRows "strip"): the miles from the
  * cue before large in the rider's units alone, the miles since the start on the right, the cue's picture (an arrow for a turn,
  * lib/cueArrow.ts: the owner, 2026-11-10, "Basically show the arrows"), then the turn with a caution's reason small, the road abbreviated, and a jog's later turns. Stops
  * are rows of their own, by name where the plan names them. Where the cues do not fit on one image, each leg gets its
@@ -30,13 +30,24 @@ export const CLEAR_TOP = Math.round(LOCK_HEIGHT * 0.2);
 export const CLEAR_BOTTOM = Math.round(LOCK_HEIGHT * 0.07);
 export const INK = "#111111";
 export const PAPER = "#ffffff";
+/**
+ * The dark images (the owner, 2026-11-10: "let the cue sheet be exported in dark mode too", "Let people export in
+ * either. They could be planning in the daytime for a night ride"): light type on black, which a phone's dark screen
+ * shows without glare at night.
+ */
+export const DARK_INK = "#f2f2f2";
+export const DARK_PAPER = "#000000";
+/** The images' two colours, light or dark. */
+export function lockColours(dark: boolean): { ink: string; paper: string } {
+  return dark ? { ink: DARK_INK, paper: DARK_PAPER } : { ink: INK, paper: PAPER };
+}
 
 const SIDE = 56;
 const PAD = 10;
 const COLUMNS = { miles: 230, arrow: 140, total: 170 } as const;
 /** The cue's picture: a square this wide, its top at the row's top and PAD. */
 export const ARROW_PX = 108;
-const PX = { title: 36, summary: 26, part: 28, miles: 80, unit: 26, turn: 56, reason: 28, road: 50, then: 32, total: 36, credit: 22 } as const;
+const PX = { title: 36, summary: 26, part: 28, miles: 80, unit: 26, turn: 56, reason: 28, road: 50, then: 32, total: 36, credit: 36 } as const;
 
 export type Weight = 400 | 700;
 /** The width in pixels of `text` at `px` in the image's face (the canvas's measureText in the browser). */
@@ -131,7 +142,7 @@ function rowLines(row: CueRow, sinceM: number, measure: Measure): { lines: LockL
       ...(row.reason ? [{ text: row.reason, px: PX.reason, weight: 400 as const }] : []),
       // A named stop says its number too ("make sure stops are listed", the owner, 2026-11-10).
       ...(row.arrow.kind === "stop" && row.arrow.number != null && row.turn !== `Stop ${row.arrow.number}` ? [{ text: `Stop ${row.arrow.number}`, px: PX.reason, weight: 400 as const }] : []),
-      ...(row.road ? [{ text: abbreviateStreet(row.road), px: PX.road, weight: 400 as const }] : []),
+      ...(row.road ? [{ text: row.own ? row.road : abbreviateStreet(row.road), px: PX.road, weight: 400 as const }] : []),
       ...(row.then ? [{ text: row.then, px: PX.then, weight: 700 as const }] : []),
     ]),
     PAD + ARROW_PX,
@@ -154,19 +165,18 @@ function block(texts: string[], px: number, weight: Weight, top: number, measure
   return { lines, bottom: y };
 }
 
-/** The images for the route: one, or as many as its cues need, each with its lines placed. */
+/** The images for the route: as many as its cues need, then the credits' own, each with its lines placed. */
 export function lockScreenLayout(route: LockRoute, measure: Measure, vias: readonly number[] = [], names: ReadonlyMap<number, string> = new Map()): LockPage[] {
   const cues = cueRows(route, "strip", vias, names);
   const rows = cues.map((r, i) => rowLines(r, i ? cues[i - 1].atM : 0, measure));
   // The credits on the last image only, a source to a line (the owner, 2026-11-10: "Have credits on the final image in
-  // the set, own set of lines"); the others carry none.
-  const credits = (full: boolean) => {
+  // the set, own set of lines"); the cues' images carry none.
+  const credits = (full: boolean, px: number = PX.credit) => {
     const sources = route.attribution?.length ? ["Route data:", ...route.attribution] : [creditLine([])];
-    const lines = full ? [...sources, `Planned with ${CREATOR}.`].flatMap((t) => wrapPx(t, PX.credit, 400, LOCK_WIDTH - 2 * SIDE, measure)) : [];
-    return { lines, top: LOCK_HEIGHT - CLEAR_BOTTOM - 16 - lines.length * Math.round(PX.credit * 1.25) };
+    const lines = full ? [...sources, `Planned with ${CREATOR}.`].flatMap((t) => wrapPx(t, px, 400, LOCK_WIDTH - 2 * SIDE, measure)) : [];
+    return { lines, px, top: LOCK_HEIGHT - CLEAR_BOTTOM - 16 - lines.length * Math.round(px * 1.25) };
   };
-  const short = credits(false);
-  const full = credits(true);
+  const bare = credits(false);
   // The header's height is the same on every image (the part line is there on each when there is more than one).
   const head = (part: string | null) => {
     const title = block([exportName(route)], PX.title, 700, CLEAR_TOP + 8, measure);
@@ -174,7 +184,10 @@ export function lockScreenLayout(route: LockRoute, measure: Measure, vias: reado
     const marked = part ? block([part], PX.part, 700, summary.bottom, measure) : { lines: [], bottom: summary.bottom };
     return { lines: [...title.lines, ...summary.lines, ...marked.lines], bottom: marked.bottom };
   };
-  // Rows by height onto images, a new image where the next row would run into the credits.
+  // Smaller type where a long list would not fit under the header (never seen: a route has a few sources).
+  const roomy = credits(true);
+  const full = roomy.top >= head("Part 88 of 88").bottom + 24 ? roomy : credits(true, PX.unit);
+  // Rows by height onto images, a new image where the next row would run into the bottom band.
   const paginate = (indices: readonly number[], cueTop: number, creditTop: number) => {
     const pages: number[][] = [[]];
     let y = cueTop;
@@ -196,18 +209,20 @@ export function lockScreenLayout(route: LockRoute, measure: Measure, vias: reado
     rows.forEach((_, i) => {
       leg.push(i);
       if (cues[i].arrow.kind === "stop" && i > 0 && i < rows.length - 1) {
-        out.push(...paginate(leg, cueTop, short.top));
+        out.push(...paginate(leg, cueTop, bare.top));
         leg = [i];
       }
     });
-    if (leg.length > 1 || !out.length) out.push(...paginate(leg, cueTop, short.top));
-    // The last image has the credits: its rows laid again above them, onto another image where they no longer fit.
-    out.push(...paginate(out.pop() ?? [], cueTop, full.top));
+    if (leg.length > 1 || !out.length) out.push(...paginate(leg, cueTop, bare.top));
     return out;
   };
+  // The credits on an image of their own, last, in type large enough to read (the owner, 2026-11-10: "If the credits
+  // wouldn't fit on the final page with the routes, let it go on an additional one ... or just make that the
+  // default, so they are readable").
   const all = rows.map((_, i) => i);
-  let groups = paginate(all, head(null).bottom + 24, full.top);
-  if (groups.length > 1) groups = legs(head("Part 88 of 88").bottom + 24);
+  const partTop = head("Part 88 of 88").bottom + 24;
+  const cueGroups = paginate(all, partTop, bare.top).length === 1 ? [all] : legs(partTop);
+  const groups = [...cueGroups, []];
   return groups.map((group, p) => {
     const part = groups.length > 1 ? `Part ${p + 1} of ${groups.length}` : null;
     const header = head(part);
@@ -222,11 +237,12 @@ export function lockScreenLayout(route: LockRoute, measure: Measure, vias: reado
       y += rows[i].height;
       rules.push(y);
     }
-    const credit = p === groups.length - 1 ? full : short;
-    credit.lines.forEach((text, i) => lines.push({ text, x: SIDE, y: credit.top + (i + 1) * Math.round(PX.credit * 1.25), px: PX.credit, weight: 400 }));
+    // The credits' own image has them under its header.
+    const credit = p === groups.length - 1 ? { ...full, top: cueTop } : bare;
+    credit.lines.forEach((text, i) => lines.push({ text, x: SIDE, y: credit.top + (i + 1) * Math.round(credit.px * 1.25), px: credit.px, weight: 400 }));
     // A stop that ended the image before and heads this one is counted once.
     const repeated = p > 0 && groups[p - 1][groups[p - 1].length - 1] === group[0] ? 1 : 0;
-    return { part, lines, rules, arrows, cues: group.length - repeated, cueTop, cueBottom: credit.top - 16 };
+    return { part, lines, rules, arrows, cues: group.length - repeated, cueTop, cueBottom: bare.top - 16 };
   });
 }
 
