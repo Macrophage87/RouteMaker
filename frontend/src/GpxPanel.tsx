@@ -171,7 +171,10 @@ async function keepFile(body: Uint8Array<ArrayBuffer> | Blob | string, type: str
 const PRINTS = { "pdf-sheet": "sheet", "pdf-strip": "strip" } as const satisfies Record<string, CueSheetKind>;
 
 /** Every file type but GPX: the courses and the PDF cue sheets. */
-export type FileFormat = CourseFormat | keyof typeof PRINTS | "png-lock";
+export type FileFormat = CourseFormat | keyof typeof PRINTS | "png-lock" | "png-lock-dark";
+
+/** The phone images, light or dark (the owner, 2026-11-10: "Let people export in either"). */
+const isLock = (format: ExportFormat): format is "png-lock" | "png-lock-dark" => format === "png-lock" || format === "png-lock-dark";
 
 /** Said where the lock-screen image could not be drawn (the canvas refused it). */
 export const LOCK_IMAGE_FAILED = t("Could not make the cue sheet image. Try again, or use the PDF handlebar strip.");
@@ -195,9 +198,9 @@ export type Said = (made: Made) => void;
  * (a phone's, which is where they are wanted), and otherwise part 1 is saved and the button saves each next part.
  * The line says only what was actually saved or sent.
  */
-async function downloadLockScreens(route: RouteResponse, vias: readonly number[], stops: ReadonlyMap<number, string>): Promise<Made> {
+async function downloadLockScreens(route: RouteResponse, vias: readonly number[], stops: ReadonlyMap<number, string>, dark = false): Promise<Made> {
   try {
-    const { pages, blobs } = await renderLockScreens(route, vias, stops);
+    const { pages, blobs } = await renderLockScreens(route, vias, stops, dark);
     const names = lockScreenFileNames(route, blobs.length);
     if (blobs.length === 1) return (await keepFile(blobs[0], "image/png", names[0], lockScreenLine(pages))).line;
     const cues = pages.reduce((n, p) => n + p.cues, 0);
@@ -233,7 +236,7 @@ export async function downloadCourse(route: RouteResponse, routedPoints: LonLat[
   const vias = viaIndices(routedPoints, VIA_MARKS.isVia);
   // The stops' own names, on every export (the owner, 2026-11-10: "make sure stops are listed").
   const stops = stopNames(routedPoints, VIA_MARKS.nameOf, VIA_MARKS.isVia, route.loop != null);
-  if (format === "png-lock") return downloadLockScreens(route, vias, stops);
+  if (isLock(format)) return downloadLockScreens(route, vias, stops, format === "png-lock-dark");
   if (format === "pdf-sheet" || format === "pdf-strip") {
     const kind = PRINTS[format];
     const made = cueSheetDocument(route, kind, vias, stops);
@@ -358,10 +361,11 @@ const FORMAT_LABELS: Record<ExportFormat, string> = {
   "pdf-sheet": t("PDF cue sheet, to print"),
   "pdf-strip": t("PDF handlebar strip, to print"),
   "png-lock": t("Cue sheet image, for a phone lock screen"),
+  "png-lock-dark": t("Cue sheet image, dark, for a ride at night"),
 };
 
 /** What the button says it downloads. */
-const FORMAT_WORDS: Record<ExportFormat, string> = { gpx: "GPX", fit: "FIT", tcx: "TCX", "pdf-sheet": "PDF", "pdf-strip": "PDF", "png-lock": t("image") };
+const FORMAT_WORDS: Record<ExportFormat, string> = { gpx: "GPX", fit: "FIT", tcx: "TCX", "pdf-sheet": "PDF", "pdf-strip": "PDF", "png-lock": t("image"), "png-lock-dark": t("image") };
 
 const isCourse = (format: ExportFormat): format is CourseFormat => format === "fit" || format === "tcx";
 
@@ -570,7 +574,7 @@ export function GpxPanel(props: Props) {
 
   const download = () => {
     // The route was checked when part 1 was made; each further part is saved as it is.
-    if (parts && choice.format === "png-lock") {
+    if (parts && isLock(choice.format)) {
       void saveNextPart(parts);
       return;
     }
@@ -743,7 +747,7 @@ export function GpxPanel(props: Props) {
           {t("A cue sheet is the route shown with Ride's cues, to print: the sheet on letter paper, the strip at actual size to cut out for the handlebar. Its credits are at the foot of every page.")}
         </p>
       )}
-      {choice.format === "png-lock" && (
+      {isLock(choice.format) && (
         <p className="hint">
           {t("The cue sheet as a picture for your phone's lock screen, with the clock's space at the top left clear. It comes as Part 1, Part 2 and on, downloaded one after another: a new part at each stop when the cues don't fit on one, and the credits last, on a part of their own.")}
         </p>

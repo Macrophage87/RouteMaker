@@ -52,6 +52,8 @@ export interface CueRow {
   arrow: CueArrow;
   /** A jog's later turns, short ("then left onto Q St NW"), which have no row of their own; "" otherwise. */
   then: string;
+  /** A route note's row: `road` holds the rider's own words, never abbreviated as a street's name is. */
+  own?: boolean;
 }
 
 const TURN_WORDS: Record<CourseCueType, string> = {
@@ -72,6 +74,11 @@ const REASONS: Record<string, string> = { avoid: "Avoid-rated", workzone: "Work 
 
 function rowOf(cue: RouteCue): CueRow {
   // A jog's first turn is not plain: its notes say the second turn, which has no row (`routeCues`).
+  // A route note (lib/routeNotes.ts): "Caution" or "Note", the rider's own words on the road's line.
+  if (cue.kind === "note" && cue.note) {
+    const caution = cue.note.kind === "caution";
+    return { type: cue.type, hazard: caution, atM: cue.atM, turn: caution ? "Caution" : "Note", reason: "", road: cue.note.text, notes: "", arrow: { kind: caution ? "caution" : "note" }, then: "", own: true };
+  }
   const plainTurn = (cue.type === "left" || cue.type === "right" || cue.type === "slight_left" || cue.type === "slight_right") && !cue.turnText;
   const hazard = cue.kind === "hazard";
   return {
@@ -105,10 +112,10 @@ function arrowOf(cue: RouteCue, hazard: boolean): CueArrow {
 
 /** The rows of a sheet: every cue on the rider sheet; on the strip, all but the notes on the road's stress and surface. */
 export function cueRows(route: SheetRoute, kind: CueSheetKind, vias: readonly number[] = [], names: ReadonlyMap<number, string> = new Map()): CueRow[] {
-  const rows = routeCues(route, vias, names)
-    .filter((cue) => !cue.joined)
-    .map(rowOf);
-  return kind === "strip" ? rows.filter((r) => r.type !== "note" || r.hazard) : rows;
+  const cues = routeCues(route, vias, names).filter((cue) => !cue.joined);
+  const rows = cues.map(rowOf);
+  // The strip leaves out the notes on the road's stress and surface, never a route note of the rider's own.
+  return kind === "strip" ? rows.filter((r, i) => r.type !== "note" || r.hazard || cues[i].kind === "note") : rows;
 }
 
 /** "12.4 mi (20.0 km)": the distance column's words. */
@@ -393,7 +400,7 @@ export function cueSheetDocument(route: SheetRoute, kind: CueSheetKind, vias: re
         font: "bold",
       },
       { head: "Turn", width: 50, cell: stripTurn, font: "bold" },
-      { head: "Road", width: STRIP.width - 24 - 54 - 50, cell: (r) => abbreviateStreet(r.road), font: "regular" },
+      { head: "Road", width: STRIP.width - 24 - 54 - 50, cell: (r) => (r.own ? r.road : abbreviateStreet(r.road)), font: "regular" },
     ],
     13,
     8,

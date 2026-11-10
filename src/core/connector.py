@@ -618,7 +618,9 @@ def mcp_endpoint(request):
         picture=route_picture.draw,
         picture_link=lambda draft_id: picture_link(request, user, grant, draft_id),
         cue_cards=cue_cards,
-        cue_cards_link=lambda draft_id, page: cue_cards_link(request, user, grant, draft_id, page),
+        cue_cards_link=lambda draft_id, page, dark=False: cue_cards_link(
+            request, user, grant, draft_id, page, dark
+        ),
     )
     msg_id = message.get("id") if isinstance(message, dict) else None
     if msg_id is not None and (isinstance(msg_id, bool) or not isinstance(msg_id, (str, int))):
@@ -752,7 +754,8 @@ def picture_link(request, user, grant, draft_id: str) -> str:
 
 
 CUES_SALT = "core.connector.cue-cards"
-CUES_TOKEN_RE = re.compile(r"(d[0-9a-f]{32})\.([0-9a-f]{64})-cues-([1-9][0-9]?)\.png")
+# A dark image's link says so (`-cues-dark-N`; the owner, 2026-11-10: "export in either").
+CUES_TOKEN_RE = re.compile(r"(d[0-9a-f]{32})\.([0-9a-f]{64})-cues-(dark-)?([1-9][0-9]?)\.png")
 
 
 def _cues_mac(user_id, grant_id, draft_id: str) -> str:
@@ -760,11 +763,12 @@ def _cues_mac(user_id, grant_id, draft_id: str) -> str:
     return salted_hmac(CUES_SALT, message, algorithm="sha256").hexdigest()
 
 
-def cue_cards_link(request, user, grant, draft_id: str, page: int) -> str:
-    """A link that opens one of the draft's phone cue images (core.cue_cards), page from 1, made
-    as the picture's: drawn when opened, in memory, nothing kept."""
+def cue_cards_link(request, user, grant, draft_id: str, page: int, dark: bool = False) -> str:
+    """A link that opens one of the draft's phone cue images (core.cue_cards), page from 1, light
+    or dark, made as the picture's: drawn when opened, in memory, nothing kept."""
     mac = _cues_mac(user.pk, grant.pk, draft_id)
-    return f"{_origin(request)}/mcp/gpx/{draft_id}.{mac}-cues-{int(page)}.png"
+    shade = "dark-" if dark else ""
+    return f"{_origin(request)}/mcp/gpx/{draft_id}.{mac}-cues-{shade}{int(page)}.png"
 
 
 def draft_picture(request, token: str):
@@ -777,8 +781,8 @@ def draft_picture(request, token: str):
 
 
 @ratelimit.rate_limited(ratelimit.CUE_CARDS)
-def draft_cue_card(request, draft_id: str, mac: str, page: str):
-    return _draft_cue_card(draft_id, mac, page)
+def draft_cue_card(request, draft_id: str, mac: str, dark: str | None, page: str):
+    return _draft_cue_card(draft_id, mac, page, dark=bool(dark))
 
 
 @ratelimit.rate_limited(ratelimit.ROUTE_PICTURES)
@@ -817,7 +821,7 @@ def _draft_map_picture(request, token: str):
     return _no_store(response)
 
 
-def _draft_cue_card(draft_id: str, mac: str, page: str):
+def _draft_cue_card(draft_id: str, mac: str, page: str, dark: bool = False):
     row = (
         ConnectorDraft.objects.select_related("user")
         .filter(
@@ -844,9 +848,13 @@ def _draft_cue_card(draft_id: str, mac: str, page: str):
     if not 1 <= n <= cue_cards.count(*args):
         return _gpx_gone()
     # Only the one image is drawn.
-    response = HttpResponse(cue_cards.draw(*args, only=[n])[0], content_type="image/png")
+    png = cue_cards.draw(*args, only=[n], dark=dark)[0]
+    response = HttpResponse(png, content_type="image/png")
     name = str(row.data.get("gpx_name") or draft.name)[:120]
-    response["Content-Disposition"] = f'inline; filename="{module.gpx_slug(name)}-cues-{n}.png"'
+    shade = "-dark" if dark else ""
+    response["Content-Disposition"] = (
+        f'inline; filename="{module.gpx_slug(name)}-cues{shade}-{n}.png"'
+    )
     response["X-Content-Type-Options"] = "nosniff"
     return _no_store(response)
 

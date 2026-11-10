@@ -30,6 +30,17 @@ export const CLEAR_TOP = Math.round(LOCK_HEIGHT * 0.2);
 export const CLEAR_BOTTOM = Math.round(LOCK_HEIGHT * 0.07);
 export const INK = "#111111";
 export const PAPER = "#ffffff";
+/**
+ * The dark images (the owner, 2026-11-10: "let the cue sheet be exported in dark mode too", "Let people export in
+ * either. They could be planning in the daytime for a night ride"): light type on black, which a phone's dark screen
+ * shows without glare at night.
+ */
+export const DARK_INK = "#f2f2f2";
+export const DARK_PAPER = "#000000";
+/** The images' two colours, light or dark. */
+export function lockColours(dark: boolean): { ink: string; paper: string } {
+  return dark ? { ink: DARK_INK, paper: DARK_PAPER } : { ink: INK, paper: PAPER };
+}
 
 const SIDE = 56;
 const PAD = 10;
@@ -131,7 +142,7 @@ function rowLines(row: CueRow, sinceM: number, measure: Measure): { lines: LockL
       ...(row.reason ? [{ text: row.reason, px: PX.reason, weight: 400 as const }] : []),
       // A named stop says its number too ("make sure stops are listed", the owner, 2026-11-10).
       ...(row.arrow.kind === "stop" && row.arrow.number != null && row.turn !== `Stop ${row.arrow.number}` ? [{ text: `Stop ${row.arrow.number}`, px: PX.reason, weight: 400 as const }] : []),
-      ...(row.road ? [{ text: abbreviateStreet(row.road), px: PX.road, weight: 400 as const }] : []),
+      ...(row.road ? [{ text: row.own ? row.road : abbreviateStreet(row.road), px: PX.road, weight: 400 as const }] : []),
       ...(row.then ? [{ text: row.then, px: PX.then, weight: 700 as const }] : []),
     ]),
     PAD + ARROW_PX,

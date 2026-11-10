@@ -57,6 +57,7 @@ import {
 import { MTB_DONE_FINDING, MTB_DONE_NAME, MTB_DONE_NO_PLACE, MTB_DONE_TEXT, mtbTrailAhead } from "./lib/mtbDone.ts";
 import { requestRoute, requestStations, type ErrorKind, type RouteResponse } from "./lib/api.ts";
 import { VIA_MARKS, drawnLegs, plannedStopNumbers, stopNames, viaIndices, type RideStopMark } from "./lib/pointKinds.ts";
+import { PAGE_NOTES } from "./lib/routeNotes.ts";
 import {
   SKIP_STOP,
   RESTART_AUTO_M,
@@ -524,6 +525,8 @@ function arrowFor(
   if (cue.movement) return cue.movement;
   // A button signal's own note (lib/navigate.ts withButtons) is no warning: drawn straight on.
   if ((cue.kind === "hazard" && !cue.buttonOnly) || cue.kind === "walk") return "warn";
+  // A route note (lib/routeNotes.ts): a caution is a warning sign; a point of interest is on the way, straight on.
+  if (cue.kind === "note") return cue.note?.kind === "caution" ? "warn" : "straight";
   return "straight";
 }
 
@@ -1125,7 +1128,8 @@ export function RideMode({
     const onFoot = trip?.onFoot ? walkModel({ coordinates: r.geometry.coordinates as LonLat[], turns: walkLineTurns(r) ?? trip.onFoot.turns, to: null }, endWords(null)) : null;
     if (onFoot) return onFoot;
     // A stop's own name (2026-10-24) is said and shown with its number, the plan's number after a re-route too.
-    const built = rideModel(r, viaIndices(points, VIA_MARKS.isVia), stopNames(points, VIA_MARKS.nameOf, VIA_MARKS.isVia, plan.current.loop), stopNumbers(points));
+    // The route's notes (lib/routeNotes.ts), said and shown as the rider reaches them (Stephen 2026-11-10).
+    const built = rideModel(r, viaIndices(points, VIA_MARKS.isVia), stopNames(points, VIA_MARKS.nameOf, VIA_MARKS.isVia, plan.current.loop), stopNumbers(points), PAGE_NOTES.list);
     return r === uturnRoute.current ? withUTurn(built) : built;
   };
   const model = useMemo(() => modelOf(route, plan.current.points), [route]);
@@ -1144,6 +1148,7 @@ export function RideMode({
             viaIndices(plan.current.points, VIA_MARKS.isVia),
             stopNames(plan.current.points, VIA_MARKS.nameOf, VIA_MARKS.isVia, plan.current.loop),
             stopNumbers(plan.current.points),
+            PAGE_NOTES.list,
           )
         : null,
     [other],

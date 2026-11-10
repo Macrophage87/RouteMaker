@@ -2,6 +2,7 @@
 // the controls' band at the bottom clear, splits a long route into numbered images, and names no place.
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import type { DescriptionEntry } from "./api.ts";
 import { cueRows } from "./cueSheetPdf.ts";
 import {
@@ -9,6 +10,7 @@ import {
   CLEAR_TOP,
   LOCK_HEIGHT,
   LOCK_WIDTH,
+  lockColours,
   lockScreenFileNames,
   lockScreenLayout,
   lockCancelledLine,
@@ -203,4 +205,11 @@ test("a long list of credits still fits its image, in smaller type", () => {
   const last = pages[pages.length - 1];
   assert.ok(last.lines.some((l) => l.text === "Source 30"));
   for (const l of last.lines) assert.ok(l.y <= LOCK_HEIGHT - CLEAR_BOTTOM, l.text);
+});
+
+test("the images come light or dark: light type on black for a ride at night (the owner, 2026-11-10)", () => {
+  assert.deepEqual(lockColours(false), { ink: "#111111", paper: "#ffffff" });
+  assert.deepEqual(lockColours(true), { ink: "#f2f2f2", paper: "#000000" });
+  const render = readFileSync(new URL("../app/lockScreenRender.ts", import.meta.url), "utf8");
+  assert.match(render, /const \{ ink: INK, paper: PAPER \} = lockColours\(dark\);/);
 });

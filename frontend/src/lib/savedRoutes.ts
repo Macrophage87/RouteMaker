@@ -14,6 +14,7 @@
  * ("Update route can be offered when a closure occurs on a road"). At most 200 per account. Share keeps the same body, signed out too, for the
  * link it shares (lib/sharedRoutes.ts).
  */
+import { PAGE_NOTES } from "./routeNotes.ts";
 import type { RouteResponse } from "./api.ts";
 import { locale, t } from "./i18n.ts";
 import type { Dials } from "./dials.ts";
@@ -190,7 +191,7 @@ export function planSave(name: string, route: RouteResponse, points: readonly Lo
     source: "plan",
     line: route.geometry.coordinates.map(([lon, lat]) => [lon, lat] as SavedVertex),
     distance_m: route.distance_m,
-    inputs: { hash: encodePlan(points, preset, dials, viaIndices(points, VIA_MARKS.isVia)), points: points.map(([lon, lat]) => [lon, lat] as LonLat), preset, dials },
+    inputs: { hash: encodePlan(points, preset, dials, viaIndices(points, VIA_MARKS.isVia), undefined, undefined, "q", PAGE_NOTES.list), points: points.map(([lon, lat]) => [lon, lat] as LonLat), preset, dials },
     answer,
   };
 }
@@ -208,7 +209,7 @@ export function gpxSave(name: string, text: string, track: readonly SavedVertex[
     source: "gpx",
     line: track.map((v) => [...v] as SavedVertex),
     distance_m: m,
-    inputs: { hash: encodePlan(points, preset, dials, viaIndices(points, VIA_MARKS.isVia)), points: points.map(([lon, lat]) => [lon, lat] as LonLat), preset, dials },
+    inputs: { hash: encodePlan(points, preset, dials, viaIndices(points, VIA_MARKS.isVia), undefined, undefined, "q", PAGE_NOTES.list), points: points.map(([lon, lat]) => [lon, lat] as LonLat), preset, dials },
     gpx: text,
     ...(shown ? { answer: keptAnswer(shown) } : {}),
   };
