@@ -346,6 +346,10 @@ def test_show_prints_the_diff_and_flags_a_stale_draft(osm, tmp_path, capsys):
             {"element": "way", "set": {"oneway": "reversible"}, "expect": {"oneway": "yes"}},
             "oneway may only be set to",
         ),
+        (
+            {"set": {"cycleway:lane": "advisory"}, "expect": {"cycleway:lane": None}},
+            "not one this tool may change",
+        ),
         ({"element": "relation"}, "node or way"),
         ({"id": True}, "positive OSM id"),
         ({"set": {"highway": " traffic_signals"}}, "no spaces at the ends"),

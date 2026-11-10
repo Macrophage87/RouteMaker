@@ -2,7 +2,7 @@
  "version": 1,
  "decided": "2026-11-10",
  "decided_by": "the deployment owner",
- "status": "Proposed 2026-11-10; not yet loaded. Load with manage.py load_access_overrides (dry run, then --confirm after the owner confirms this file), then rebuild. Load after the 2026-11-01 Maryland review and the 2026-11-09 Maryland own-picks files: it retires one row of each.",
+ "status": "Proposed 2026-11-10; not yet loaded. Load with manage.py load_access_overrides (dry run, then --confirm after the owner confirms this file), then rebuild.",
  "annotations": "North Bethesda bike lanes, the owner's report from the street: \"The first image has a protected bike lane that isn't listed and the second has a listed bike lane that doesn't exist\". Woodglen Drive (Edson Lane to Nicholson Lane) has a two-way protected bike lane on its west side that OSM tags as a painted lane; Executive Boulevard (Nicholson Lane to Marinelli Road) and Grand Park Avenue (Marinelli Road to Old Georgetown Road) have none, though OSM tags a protected track. The county's 2026 project (MR2026029) plans one there; when it is built, retire these corridor rows. The OSM tags are corrected upstream separately (the owner's edit, scripts/osm_edit.py); these rows set the level and the Why line now, whatever the extract holds.",
  "rows": [
   {
@@ -14,11 +14,11 @@
     "adjustment_id": "north-bethesda-woodglen-track-5971047",
     "category": "other",
     "annotation_status": "approved",
-    "public_note": "A two-way protected bike lane behind posts on the west side of a 2-lane street; driveways and two-way crossings keep it off 1, so 1.5. Montgomery County says 3; MDOT SHA says 1.",
+    "public_note": "A two-way protected bike lane behind posts on the west side of a 2-lane street; driveways and two-way crossings keep it off 1: our level, 1.5. Montgomery County says 3; MDOT SHA says 1.",
     "visibility": "public",
     "display": "map"
    },
-   "reason": "The owner, on Woodglen Drive between Edson Lane and Nicholson Lane: \"a protected bike lane that isn't listed\". OSM tags only a painted lane on the west side (cycleway:left=lane), and the earlier rows rated the street as having no bike lane (2.5 and 2). Rated 1.5 as our other protected tracks beside calm streets (Grand Park Avenue's rows were 1.5 for the same reason).",
+   "reason": "The owner, on Woodglen Drive between Edson Lane and Nicholson Lane: \"a protected bike lane that isn't listed\". OSM tags only a painted lane on the west side (cycleway:left=lane), and the earlier rows rated the street as having no bike lane (2.5 and 2). Our judgment, not measured: 1.5, half a step above 1 for the driveway and street crossings the county marked in green and a two-way track's contraflow at them.",
    "evidence": "The owner's report from the street. Montgomery County DOT's own description of it, as built in 2014: a two-way, 8 ft track on the west side from Edson Lane to Nicholson Lane, behind a 3 ft buffer with flex posts (WTOP, 2014-10, https://wtop.com/news/2014/10/montgomery-co-installing-cycle-track-in-north-bethesda). OSM, read 2026-11-10: way 5971047, highway=tertiary, lanes=2, cycleway:left=lane.",
    "fingerprint": {
     "name": "Woodglen Drive",
@@ -36,11 +36,11 @@
     "adjustment_id": "north-bethesda-woodglen-track-553709201",
     "category": "other",
     "annotation_status": "approved",
-    "public_note": "A two-way protected bike lane behind posts on the west side of a 2-lane street; driveways and two-way crossings keep it off 1, so 1.5. Montgomery County says 3.",
+    "public_note": "A two-way protected bike lane behind posts on the west side of a 2-lane street; driveways and two-way crossings keep it off 1: our level, 1.5. Montgomery County says 3.",
     "visibility": "public",
     "display": "map"
    },
-   "reason": "The owner, on Woodglen Drive between Edson Lane and Nicholson Lane: \"a protected bike lane that isn't listed\". OSM tags only a painted lane on the west side (cycleway:left=lane), and the earlier rows rated the street as having no bike lane (2.5 and 2). Rated 1.5 as our other protected tracks beside calm streets (Grand Park Avenue's rows were 1.5 for the same reason).",
+   "reason": "The owner, on Woodglen Drive between Edson Lane and Nicholson Lane: \"a protected bike lane that isn't listed\". OSM tags only a painted lane on the west side (cycleway:left=lane), and the earlier rows rated the street as having no bike lane (2.5 and 2). Our judgment, not measured: 1.5, half a step above 1 for the driveway and street crossings the county marked in green and a two-way track's contraflow at them.",
    "evidence": "The owner's report from the street. Montgomery County DOT's own description of it, as built in 2014: a two-way, 8 ft track on the west side from Edson Lane to Nicholson Lane, behind a 3 ft buffer with flex posts (WTOP, 2014-10, https://wtop.com/news/2014/10/montgomery-co-installing-cycle-track-in-north-bethesda). OSM, read 2026-11-10: way 553709201, highway=tertiary, lanes=2, cycleway:left=lane.",
    "fingerprint": {
     "name": "Woodglen Drive",
@@ -58,11 +58,11 @@
     "adjustment_id": "north-bethesda-woodglen-track-1205072876",
     "category": "other",
     "annotation_status": "approved",
-    "public_note": "A two-way protected bike lane behind posts on the west side of a 2-lane street; driveways and two-way crossings keep it off 1, so 1.5. MDOT SHA says 1.",
+    "public_note": "A two-way protected bike lane behind posts on the west side of a 2-lane street; driveways and two-way crossings keep it off 1: our level, 1.5. MDOT SHA says 1.",
     "visibility": "public",
     "display": "map"
    },
-   "reason": "The owner, on Woodglen Drive between Edson Lane and Nicholson Lane: \"a protected bike lane that isn't listed\". OSM tags only a painted lane on the west side (cycleway:left=lane), and the earlier rows rated the street as having no bike lane (2.5 and 2). Rated 1.5 as our other protected tracks beside calm streets (Grand Park Avenue's rows were 1.5 for the same reason).",
+   "reason": "The owner, on Woodglen Drive between Edson Lane and Nicholson Lane: \"a protected bike lane that isn't listed\". OSM tags only a painted lane on the west side (cycleway:left=lane), and the earlier rows rated the street as having no bike lane (2.5 and 2). Our judgment, not measured: 1.5, half a step above 1 for the driveway and street crossings the county marked in green and a two-way track's contraflow at them.",
    "evidence": "The owner's report from the street. Montgomery County DOT's own description of it, as built in 2014: a two-way, 8 ft track on the west side from Edson Lane to Nicholson Lane, behind a 3 ft buffer with flex posts (WTOP, 2014-10, https://wtop.com/news/2014/10/montgomery-co-installing-cycle-track-in-north-bethesda). OSM, read 2026-11-10: way 1205072876, highway=tertiary, lanes=2, cycleway:left=lane.",
    "fingerprint": {
     "name": "Woodglen Drive",
@@ -79,7 +79,7 @@
     "adjustment_id": "north-bethesda-no-bike-lane-697039256",
     "category": "other",
     "annotation_status": "approved",
-    "public_note": "No bike lane yet (one is planned): 4 lanes, 30 mph, no traffic count, so 3. Montgomery County and MDOT SHA say 4; the county's 2026 project review calls it high stress.",
+    "public_note": "No bike lane yet (one is planned): 4 lanes, 30 mph, no traffic count: our formula gives 3. Montgomery County and MDOT SHA say 4; the county's 2026 project review calls it high stress.",
     "visibility": "public",
     "display": "map"
    },
@@ -100,12 +100,12 @@
     "adjustment_id": "north-bethesda-no-bike-lane-731110966",
     "category": "other",
     "annotation_status": "approved",
-    "public_note": "No bike lane yet (one is planned): lanes not in data, 30 mph, no traffic count, so 3. Montgomery County says 4.",
+    "public_note": "No bike lane yet (one is planned): lanes not in data, 30 mph, no traffic count: our formula gives 3. Montgomery County says 4.",
     "visibility": "public",
     "display": "map"
    },
-   "reason": "The owner, on Grand Park Avenue north of Nicholson Lane: \"a listed bike lane that doesn't exist\". OSM tags a protected track (cycleway=track, added 2023 to 2026, ahead of the county's project), and the earlier row rated it for that track. With no bike lane our formula reads a 30 mph urban street at 3 whatever its lane count (stress.URBAN_SCORED_LANES).",
-   "evidence": "The owner's report from the street. Montgomery Planning, Mandatory Referral MR2026029, Executive Boulevard Bike Lanes (hearing 2026-07-09), on Executive Boulevard/Grand Park Avenue from Nicholson Lane to Old Georgetown Road: \"The entire project corridor scores as High & Moderate Stress today because there are no bikeways, four traffic lanes, and a 30mph posted speed limit\" (https://montgomeryplanningboard.org/wp-content/uploads/2026/06/Executive-Boulevard-Bike-Lanes-MR2026029.pdf). OSM, read 2026-11-10: way 731110966, no lanes tag, cycleway=track.",
+   "reason": "Not in the owner's report: Grand Park Avenue continues the same corridor north of Marinelli Road, which Montgomery County's 2026 project review (below) says has no bikeways today; held until the owner checks it. OSM tags a protected track (cycleway=track, added 2023 to 2026, ahead of the county's project), and the earlier row rated it for that track. With no bike lane our formula reads a 30 mph urban street at 3 whatever its lane count (stress.URBAN_SCORED_LANES).",
+   "evidence": "Montgomery Planning, Mandatory Referral MR2026029, Executive Boulevard Bike Lanes (hearing 2026-07-09), on Executive Boulevard/Grand Park Avenue from Nicholson Lane to Old Georgetown Road: \"The entire project corridor scores as High & Moderate Stress today because there are no bikeways, four traffic lanes, and a 30mph posted speed limit\" (https://montgomeryplanningboard.org/wp-content/uploads/2026/06/Executive-Boulevard-Bike-Lanes-MR2026029.pdf). OSM, read 2026-11-10: way 731110966, no lanes tag, cycleway=track.",
    "fingerprint": {
     "name": "Grand Park Avenue",
     "highway": "tertiary",
@@ -121,12 +121,12 @@
     "adjustment_id": "north-bethesda-no-bike-lane-1465245590",
     "category": "other",
     "annotation_status": "approved",
-    "public_note": "No bike lane yet (one is planned): 5 lanes, 30 mph, no traffic count, so 3. Montgomery County says 4.",
+    "public_note": "No bike lane yet (one is planned): 5 lanes, 30 mph, no traffic count: our formula gives 3. Montgomery County says 4.",
     "visibility": "public",
     "display": "map"
    },
-   "reason": "The owner, on Grand Park Avenue north of Nicholson Lane: \"a listed bike lane that doesn't exist\". OSM tags a protected track (cycleway=track, added 2023 to 2026, ahead of the county's project), and the earlier row rated it for that track. With no bike lane our formula reads a 30 mph urban street at 3 whatever its lane count (stress.URBAN_SCORED_LANES).",
-   "evidence": "The owner's report from the street. Montgomery Planning, Mandatory Referral MR2026029, Executive Boulevard Bike Lanes (hearing 2026-07-09), on Executive Boulevard/Grand Park Avenue from Nicholson Lane to Old Georgetown Road: \"The entire project corridor scores as High & Moderate Stress today because there are no bikeways, four traffic lanes, and a 30mph posted speed limit\" (https://montgomeryplanningboard.org/wp-content/uploads/2026/06/Executive-Boulevard-Bike-Lanes-MR2026029.pdf). OSM, read 2026-11-10: way 1465245590, lanes=5, cycleway=track.",
+   "reason": "Not in the owner's report: Grand Park Avenue continues the same corridor north of Marinelli Road, which Montgomery County's 2026 project review (below) says has no bikeways today; held until the owner checks it. OSM tags a protected track (cycleway=track, added 2023 to 2026, ahead of the county's project), and the earlier row rated it for that track. With no bike lane our formula reads a 30 mph urban street at 3 whatever its lane count (stress.URBAN_SCORED_LANES).",
+   "evidence": "Montgomery Planning, Mandatory Referral MR2026029, Executive Boulevard Bike Lanes (hearing 2026-07-09), on Executive Boulevard/Grand Park Avenue from Nicholson Lane to Old Georgetown Road: \"The entire project corridor scores as High & Moderate Stress today because there are no bikeways, four traffic lanes, and a 30mph posted speed limit\" (https://montgomeryplanningboard.org/wp-content/uploads/2026/06/Executive-Boulevard-Bike-Lanes-MR2026029.pdf). OSM, read 2026-11-10: way 1465245590, lanes=5, cycleway=track.",
    "fingerprint": {
     "name": "Grand Park Avenue",
     "highway": "tertiary",
@@ -142,12 +142,12 @@
     "adjustment_id": "north-bethesda-no-bike-lane-1496832972",
     "category": "other",
     "annotation_status": "approved",
-    "public_note": "No bike lane yet (one is planned): 5 lanes, 30 mph, no traffic count, so 3. Montgomery County says 4.",
+    "public_note": "No bike lane yet (one is planned): 5 lanes, 30 mph, no traffic count: our formula gives 3. Montgomery County says 4.",
     "visibility": "public",
     "display": "map"
    },
-   "reason": "The owner, on Grand Park Avenue north of Nicholson Lane: \"a listed bike lane that doesn't exist\". OSM tags a protected track (cycleway=track, added 2023 to 2026, ahead of the county's project), and the earlier row rated it for that track. With no bike lane our formula reads a 30 mph urban street at 3 whatever its lane count (stress.URBAN_SCORED_LANES).",
-   "evidence": "The owner's report from the street. Montgomery Planning, Mandatory Referral MR2026029, Executive Boulevard Bike Lanes (hearing 2026-07-09), on Executive Boulevard/Grand Park Avenue from Nicholson Lane to Old Georgetown Road: \"The entire project corridor scores as High & Moderate Stress today because there are no bikeways, four traffic lanes, and a 30mph posted speed limit\" (https://montgomeryplanningboard.org/wp-content/uploads/2026/06/Executive-Boulevard-Bike-Lanes-MR2026029.pdf). OSM, read 2026-11-10: way 1496832972, lanes=5, cycleway=track.",
+   "reason": "Not in the owner's report: Grand Park Avenue continues the same corridor north of Marinelli Road, which Montgomery County's 2026 project review (below) says has no bikeways today; held until the owner checks it. OSM tags a protected track (cycleway=track, added 2023 to 2026, ahead of the county's project), and the earlier row rated it for that track. With no bike lane our formula reads a 30 mph urban street at 3 whatever its lane count (stress.URBAN_SCORED_LANES).",
+   "evidence": "Montgomery Planning, Mandatory Referral MR2026029, Executive Boulevard Bike Lanes (hearing 2026-07-09), on Executive Boulevard/Grand Park Avenue from Nicholson Lane to Old Georgetown Road: \"The entire project corridor scores as High & Moderate Stress today because there are no bikeways, four traffic lanes, and a 30mph posted speed limit\" (https://montgomeryplanningboard.org/wp-content/uploads/2026/06/Executive-Boulevard-Bike-Lanes-MR2026029.pdf). OSM, read 2026-11-10: way 1496832972, lanes=5, cycleway=track.",
    "fingerprint": {
     "name": "Grand Park Avenue",
     "highway": "tertiary",
@@ -163,12 +163,12 @@
     "adjustment_id": "north-bethesda-no-bike-lane-1496832973",
     "category": "other",
     "annotation_status": "approved",
-    "public_note": "No bike lane yet (one is planned): 4 lanes, 30 mph, no traffic count, so 3. The county's 2026 project review calls it high stress.",
+    "public_note": "No bike lane yet (one is planned): 4 lanes, 30 mph, no traffic count: our formula gives 3. The county's 2026 project review calls it high stress.",
     "visibility": "public",
     "display": "map"
    },
-   "reason": "The owner, on Grand Park Avenue north of Nicholson Lane: \"a listed bike lane that doesn't exist\". OSM tags a protected track (cycleway=track, added 2023 to 2026, ahead of the county's project), and the earlier row rated it for that track. With no bike lane our formula reads a 30 mph urban street at 3 whatever its lane count (stress.URBAN_SCORED_LANES).",
-   "evidence": "The owner's report from the street. Montgomery Planning, Mandatory Referral MR2026029, Executive Boulevard Bike Lanes (hearing 2026-07-09), on Executive Boulevard/Grand Park Avenue from Nicholson Lane to Old Georgetown Road: \"The entire project corridor scores as High & Moderate Stress today because there are no bikeways, four traffic lanes, and a 30mph posted speed limit\" (https://montgomeryplanningboard.org/wp-content/uploads/2026/06/Executive-Boulevard-Bike-Lanes-MR2026029.pdf). OSM, read 2026-11-10: way 1496832973, lanes=4, cycleway=track.",
+   "reason": "Not in the owner's report: Grand Park Avenue continues the same corridor north of Marinelli Road, which Montgomery County's 2026 project review (below) says has no bikeways today; held until the owner checks it. OSM tags a protected track (cycleway=track, added 2023 to 2026, ahead of the county's project), and the earlier row rated it for that track. With no bike lane our formula reads a 30 mph urban street at 3 whatever its lane count (stress.URBAN_SCORED_LANES).",
+   "evidence": "Montgomery Planning, Mandatory Referral MR2026029, Executive Boulevard Bike Lanes (hearing 2026-07-09), on Executive Boulevard/Grand Park Avenue from Nicholson Lane to Old Georgetown Road: \"The entire project corridor scores as High & Moderate Stress today because there are no bikeways, four traffic lanes, and a 30mph posted speed limit\" (https://montgomeryplanningboard.org/wp-content/uploads/2026/06/Executive-Boulevard-Bike-Lanes-MR2026029.pdf). OSM, read 2026-11-10: way 1496832973, lanes=4, cycleway=track.",
    "fingerprint": {
     "name": "Grand Park Avenue",
     "highway": "tertiary",
@@ -184,12 +184,12 @@
     "adjustment_id": "north-bethesda-no-bike-lane-1053326670",
     "category": "other",
     "annotation_status": "approved",
-    "public_note": "No bike lane yet (one is planned): 5 lanes, 30 mph, no traffic count, so 3. Montgomery County says 4.",
+    "public_note": "No bike lane yet (one is planned): 5 lanes, 30 mph, no traffic count: our formula gives 3. Montgomery County says 4.",
     "visibility": "public",
     "display": "map"
    },
-   "reason": "The owner, on Grand Park Avenue north of Nicholson Lane: \"a listed bike lane that doesn't exist\". OSM tags a protected track (cycleway=track, added 2023 to 2026, ahead of the county's project), and the earlier row rated it for that track. With no bike lane our formula reads a 30 mph urban street at 3 whatever its lane count (stress.URBAN_SCORED_LANES).",
-   "evidence": "The owner's report from the street. Montgomery Planning, Mandatory Referral MR2026029, Executive Boulevard Bike Lanes (hearing 2026-07-09), on Executive Boulevard/Grand Park Avenue from Nicholson Lane to Old Georgetown Road: \"The entire project corridor scores as High & Moderate Stress today because there are no bikeways, four traffic lanes, and a 30mph posted speed limit\" (https://montgomeryplanningboard.org/wp-content/uploads/2026/06/Executive-Boulevard-Bike-Lanes-MR2026029.pdf). OSM, read 2026-11-10: way 1053326670, lanes=5, cycleway=track.",
+   "reason": "Not in the owner's report: Grand Park Avenue continues the same corridor north of Marinelli Road, which Montgomery County's 2026 project review (below) says has no bikeways today; held until the owner checks it. OSM tags a protected track (cycleway=track, added 2023 to 2026, ahead of the county's project), and the earlier row rated it for that track. With no bike lane our formula reads a 30 mph urban street at 3 whatever its lane count (stress.URBAN_SCORED_LANES).",
+   "evidence": "Montgomery Planning, Mandatory Referral MR2026029, Executive Boulevard Bike Lanes (hearing 2026-07-09), on Executive Boulevard/Grand Park Avenue from Nicholson Lane to Old Georgetown Road: \"The entire project corridor scores as High & Moderate Stress today because there are no bikeways, four traffic lanes, and a 30mph posted speed limit\" (https://montgomeryplanningboard.org/wp-content/uploads/2026/06/Executive-Boulevard-Bike-Lanes-MR2026029.pdf). OSM, read 2026-11-10: way 1053326670, lanes=5, cycleway=track.",
    "fingerprint": {
     "name": "Grand Park Avenue",
     "highway": "tertiary",
