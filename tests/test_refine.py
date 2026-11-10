@@ -254,6 +254,46 @@ class TestJunctionDelay:
         )
 
 
+class TestTurns:
+    """The owner, 2026-11-10: "Trailmaxxing seems to cause a lot of fiddly turns when there's
+    an easy road nearby". The top of the slider ranks a turn at `TURN_RANK_S` of quiet riding."""
+
+    def test_the_turns_in_a_trips_directions_are_counted_every_leg(self) -> None:
+        trip = {
+            "legs": [
+                {"maneuvers": [{"type": 1}, {"type": 10}, {"type": 8}, {"type": 16}]},
+                {"maneuvers": [{"type": 15}, {"type": 9}, {"type": 4}]},
+            ]
+        }
+        assert refine.turns_of(trip) == 4
+        assert refine.turns_of({"legs": [{}]}) == 0
+
+    def test_between_equally_calm_routes_the_one_with_fewer_turns_ranks_first(self) -> None:
+        # Before: two routes the same length and calm tie on every figure of the key. After:
+        # the one with 12 more turns ranks 12 x TURN_RANK_S of quiet riding behind.
+        top = context(maxcalm=True)
+        plain, fiddly = analysis("a"), analysis("b")
+        assert plain.key(top) == fiddly.key(top)
+        fiddly.turns = 12
+        extra_m = fiddly.key(top)[2] - plain.key(top)[2]
+        assert extra_m == pytest.approx(
+            refine.QUIET_COST_FACTOR * refine.TURN_RANK_S * 12 / QUIET_COST
+        )
+        assert plain.key(top) < fiddly.key(top)
+
+    def test_turns_never_outrank_the_stress_figures(self) -> None:
+        # A calmer route with many turns still ranks before a busier one with none.
+        top = context(maxcalm=True)
+        calm, busy = analysis("a"), analysis("b", tiers="1" * 39 + "3")
+        calm.turns = 40
+        assert calm.key(top) < busy.key(top)
+
+    def test_legs_add_their_turns(self) -> None:
+        one, two = analysis("a"), analysis("b")
+        one.turns, two.turns = 3, 5
+        assert refine.combine([one, two]).turns == 8
+
+
 class TestCappedTrailCrossings:
     """The 2026-11-08 hunt, J1: an unsignalised trail crossing of an arterial is drawn orange
     (item 185, "cap at orange ... 'signal not mapped'"), but "The cost still counts in full

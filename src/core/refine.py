@@ -576,6 +576,9 @@ class Analysis:
     # sign's price (the owner, 2026-11-08: "a 2x penalty but keep those numbers"). None: the
     # waits shown (an analysis made without the reading).
     junction_ranked_s: float | None = None
+    # The turns the router's directions give (`turns_of`), which the top of the slider ranks
+    # at `TURN_RANK_S` each (`turn_m`), as the router's own cost already does below it.
+    turns: int = 0
 
     @property
     def ranked_delay_s(self) -> float:
@@ -697,7 +700,43 @@ def level3(read: Analysis, ctx: Context) -> float:
     above it and the target are unchanged (OWNER-DECISIONS 298(3), "Keep stress order +
     target (Recommended)"). The target distance is in actual metres, not these."""
     effort = read.effort_m or read.length_m
-    return charged_m(read, ctx) - ctx.hills_seek_weight * effort + delay_m(read, ctx)
+    return (
+        charged_m(read, ctx)
+        - ctx.hills_seek_weight * effort
+        + delay_m(read, ctx)
+        + turn_m(read, ctx)
+    )
+
+
+# Valhalla's maneuver types that are turns: slight, plain and sharp right (9 to 11), the two
+# U-turns (12, 13) and sharp, plain and slight left (14 to 16). A turn "to stay on" a trail is
+# one of these too, which the router's `maneuver_penalty` (charged only where the name
+# changes) does not price.
+TURN_MANEUVERS = frozenset(range(9, 17))
+# What one turn costs in the top of the slider's ranking, seconds of quiet riding:
+# `presets.CALM_MANEUVER_PENALTY_S`, the charge the router makes there (our default, not
+# measured). The owner, 2026-11-10: "Trailmaxxing seems to cause a lot of fiddly turns when
+# there's an easy road nearby".
+TURN_RANK_S = presets.CALM_MANEUVER_PENALTY_S
+
+
+def turns_of(trip: dict) -> int:
+    """The turns in a trip's directions (`TURN_MANEUVERS`), every leg."""
+    return sum(
+        1
+        for leg in trip.get("legs") or []
+        for maneuver in leg.get("maneuvers") or []
+        if maneuver.get("type") in TURN_MANEUVERS
+    )
+
+
+def turn_m(read: Analysis, ctx: Context) -> float:
+    """The route's turns as metres of quiet riding, at `TURN_RANK_S` a turn and the rate
+    `delay_m` prices a second at, so between routes equally calm the one with fewer turns
+    ranks first (the router's cost already holds them below the top of the slider)."""
+    if ctx.quiet_cost <= 0:
+        return 0.0
+    return QUIET_COST_FACTOR * TURN_RANK_S * read.turns / ctx.quiet_cost
 
 
 def delay_m(read: Analysis, ctx: Context) -> float:
@@ -1173,6 +1212,7 @@ def analyse(
         hazard_kinds=kinds,
         scenic=getattr(real_classes, "scenic", None),
         adjustments=getattr(real_classes, "adjustments", None),
+        turns=turns_of(trip),
         junction_delay_s=sum(w.seconds for w in found_waits),
         # At the ride type's wait weight, stacked at most 5x the wait shown (Road Bike;
         # `junction_delay.MAX_STACKED_WEIGHT`), given back per unit of that weight.
@@ -3437,6 +3477,7 @@ def combine(reads: list[Analysis]) -> Analysis:
         shift=max((r.shift for r in reads), default=0),
         junction_delay_s=sum(r.junction_delay_s for r in reads),
         junction_ranked_s=sum(r.ranked_delay_s for r in reads),
+        turns=sum(r.turns for r in reads),
     )
 
 
