@@ -9928,7 +9928,9 @@ Python 3.11 or later, standard library only.
 - **Draft:** a JSON file outside the repo (the scratchpad, or the PC's private ride
   folder; the script refuses a draft inside the repo) naming one node or way, `expect` (the tags as the owner was shown them, null =
   absent), `set` (null = remove), `comment` and `source` (`survey`). Only the keys in
-  `ALLOWED_KEYS` may change, at most four; `highway` only on a node, to a junction control;
+  `ALLOWED_KEYS` may change, at most four (a street's `cycleway`, `cycleway:<side>` and
+  `cycleway:<side>:oneway` among them, for a bike lane seen on the street or seen missing);
+  `highway` only on a node, to a junction control;
   `oneway` only on a way, to `yes`, `-1` or `no` (a street whose direction changed on the
   ground; in the District also add the owner's block direction, fixtures/overrides/README.md,
   "Block corrections"; a street made two-way needs an owner `BD` row, since DC's two-way
