@@ -1519,9 +1519,9 @@ class TestTheDegradedGuildSweep:
         assert "applied 1 due instance-admin removals" in run.detail
         assert ScheduledRun.objects.get(task="degraded_guild_sweep").succeeded
 
-    def test_it_drops_assistant_drafts_past_their_day_within_minutes(self) -> None:
-        """A connector draft holds route points, often a rider's door: kept a day
-        (ConnectorDraft.KEPT), then gone at the next five-minute tick rather than
+    def test_it_drops_assistant_drafts_past_their_week_within_minutes(self) -> None:
+        """A connector draft holds route points, often a rider's door: kept a week
+        (ConnectorDraft.KEPT, our default), then gone at the next five-minute tick rather than
         at the six-hourly membership sweep. Outside the gateway gate, as above."""
         from core.models import ConnectorDraft, User
 
@@ -1529,7 +1529,7 @@ class TestTheDegradedGuildSweep:
         ConnectorDraft.objects.create(user=rider, draft_id="dstale", data={})
         ConnectorDraft.objects.create(user=rider, draft_id="dfresh", data={})
         ConnectorDraft.objects.filter(draft_id="dstale").update(
-            created_at=timezone.now() - timedelta(hours=24, minutes=6)
+            created_at=timezone.now() - ConnectorDraft.KEPT - timedelta(minutes=6)
         )
 
         run = self.run_task()

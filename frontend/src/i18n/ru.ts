@@ -72,10 +72,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Busy crossing, no signal.": "Оживлённый перекрёсток, без светофора.",
   "Busy crossing.": "Оживлённый перекрёсток.",
   "Busy junction.": "Оживлённое пересечение.",
-  // A signal that may need a button press (the owner, 2026-11-08): the card's note and the words said.
-  // Drafted by Claude: FLAGGED for review by a native speaker.
-  "Light may need a button press": "Возможно, на светофоре нужно нажать кнопку",
-  "Button for the light.": "Кнопка светофора.",
   "Busy junction at a signal.": "Оживлённое пересечение, светофор.",
   "Busy junction at a stop sign.": "Оживлённое пересечение, знак «Стоп».",
   "Busy junction, no signal.": "Оживлённое пересечение, без светофора.",
@@ -2139,4 +2135,12 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "No road bike map: may use gravel.": "Нет карты для шоссейника: возможен гравий.",
   "There is no weekend road bike map right now, so this route counts parkways like Beach Drive as roads with cars.": "Сейчас нет карты выходных для шоссейного велосипеда, поэтому маршрут считает парковые дороги, такие как Beach Drive, дорогами с машинами.",
   "No weekend map: parkways may have cars.": "Нет карты выходных: на парковых дорогах могут быть машины.",
+  "Draft, last day": "Черновик, последний день",
+  "Draft, {n} days left": "Черновик, осталось дней: {n}",
+  "Save {name} to My routes": "Сохранить {name} в Мои маршруты",
+  "Saving {name}…": "Сохраняем {name}…",
+  "That draft is gone.": "Этого черновика больше нет.",
+  "Delete": "Удалить",
+  "Delete {name}": "Удалить {name}",
+  "Deleted {name}.": "{name} удалён.",
 };
