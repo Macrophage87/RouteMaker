@@ -17,7 +17,7 @@ rider's live position, which is kept no longer than that (the owner, 2026-10-22 
 - the ride time: the setting asked for, or the one of the moment where none was (so a
   plan made just before the evening rush is not given once the rush starts), and the
   instant the router is asked about (`routing.planning_time`), and whether the closures
-  are matched at now or at that instant (`workzones.ride_moment`);
+  are matched at now or at the start of the setting's next window (`workzones.ride_moment`);
 - the live segment table and its edit generation (`stress_tiles.live_state`): a
   promotion, or any road-panel edit or undo (`stress_edits.bump_generation`), is a new
   key, so no answer from before it is given again;
@@ -496,8 +496,9 @@ def key_for(
             "when": when,
             "planning_at": planning_at,
             # The moment closures are matched at (`workzones.ride_moment`): now while the dial
-            # is on the setting of the moment, else `planning_at`. A dial set to "weekday peak"
-            # is now at 8:55 and next Tuesday's 8:00 at 9:05, with the same `when`.
+            # is on the setting of the moment, else the start of its next window (Weekend: the
+            # soonest of its instants). A dial set to "weekday peak" is now at 8:55 and today's
+            # 16:00 at 10:05, with the same `when`; that start moves only as now enters it.
             "ride_now": ridetime.when_at(now) == when,
             "long": long_plan,
             "edits": _edits_part(),
@@ -561,5 +562,7 @@ def keepable(body: dict, own_variant: str, failures: int) -> bool:
         (body.get("avoid_search") or {}).get("alternate"),
         # Easy MTB trails' rounds off the harder trails (`core.easy_mtb`).
         (body.get("easy_mtb") or {}).get("limited"),
+        # Group Ride's and Fast's winding-trail round (`core.winding_round`, hunt 4 P4-1).
+        (body.get("winding") or {}).get("limited"),
     )
     return "time" not in stopped
