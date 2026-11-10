@@ -55,7 +55,7 @@ import { sortKept, type KeptRoute } from "./lib/offlineRoutes.ts";
 import { matchSaid, matching } from "./lib/routeSearch.ts";
 import type { PresetId } from "./lib/presets.ts";
 import { SAVED_SAID, SAVE_SHORT, changeRoute, listRoutes, readRoute, tagsInUse, type SavedRoute, type SavedSummary } from "./lib/savedRoutes.ts";
-import { DRAFT_DELETE, deleteDraft, draftDeleteLabel, draftDeletedSaid, draftSaveLabel, listDrafts, saveDraft, type DraftSummary } from "./lib/drafts.ts";
+import { DRAFT_DELETE, DRAFT_UNREACHABLE, deleteDraft, draftDeleteLabel, draftDeletedSaid, draftSaveLabel, listDrafts, saveDraft, type DraftSummary } from "./lib/drafts.ts";
 import { readShared, type SharedRoute } from "./lib/sharedRoutes.ts";
 import { t } from "./lib/i18n.ts";
 
@@ -276,7 +276,9 @@ export function LoadRouteDialog({ open, onClose, signedIn, signIn, preset, onGpx
     setSaid(t("Saving {name}…", { name: row.name }));
     void saveDraft(window.location.origin, row.id).then((outcome) => {
       setSaving(null);
-      if (outcome === null) {
+      if (outcome === "unreachable") {
+        setSaid(DRAFT_UNREACHABLE());
+      } else if (outcome === null) {
         setDrafts((all) => all.filter((d) => d.id !== row.id));
         setSaid(t("That draft is gone."));
       } else if (outcome.ok) {
@@ -285,7 +287,9 @@ export function LoadRouteDialog({ open, onClose, signedIn, signIn, preset, onGpx
         onDraftSaved(row.id);
         setSaid(SAVED_SAID(outcome.route.name));
         setRefocus(outcome.route.id);
-      } else setSaid(outcome.message);
+      } else {
+        setSaid(outcome.message);
+      }
     });
   };
   const pick = (row: LoadRow) => {
@@ -297,7 +301,7 @@ export function LoadRouteDialog({ open, onClose, signedIn, signIn, preset, onGpx
       setSaid(`Opening ${row.name}…`);
       void readShared(window.location.origin, row.id).then((route) => {
         if (route && route !== "gone" && route !== "revoked") onOpenDraft(route);
-        else if (route === null) setSaid("That route could not be read; try again shortly.");
+        else if (route === null) setSaid(DRAFT_UNREACHABLE());
         else {
           setDrafts((all) => all.filter((d) => d.id !== row.id));
           setSaid(t("That draft is gone."));
@@ -308,7 +312,7 @@ export function LoadRouteDialog({ open, onClose, signedIn, signIn, preset, onGpx
     setSaid(`Opening ${row.name}…`);
     void readRoute(window.location.origin, row.id).then((route) => {
       if (route) onOpenSaved(route);
-      else setSaid("That route could not be read; try again shortly.");
+      else setSaid(DRAFT_UNREACHABLE());
     });
   };
   return (
@@ -462,7 +466,7 @@ export function LoadRouteDialog({ open, onClose, signedIn, signIn, preset, onGpx
                   </button>
                   {row.kind === "draft" && (
                     <>
-                      <button type="button" className="secondary load-route-save" aria-label={draftSaveLabel(row.name)} title={SAVE_SHORT} disabled={saving === row.id} onClick={() => saveOne(row)}>
+                      <button type="button" className="secondary load-route-save" aria-label={draftSaveLabel(row.name)} title={SAVE_SHORT} aria-disabled={saving === row.id || undefined} onClick={() => saveOne(row)}>
                         <Icon name="save" size={22} />
                       </button>
                       <button type="button" className="secondary load-route-delete" aria-label={draftDeleteLabel(row.name)} title={DRAFT_DELETE} onClick={() => deleteOne(row)}>

@@ -111,6 +111,11 @@ export function RideSummaryCard({
   useEffect(() => {
     done.current?.focus();
   }, []);
+  // Saved: the Save route button the focus was on gives way to a line, so the focus goes to Done, not the page.
+  const draftSaved = draft?.saved ?? false;
+  useEffect(() => {
+    if (draftSaved && (document.activeElement === null || document.activeElement === document.body)) done.current?.focus();
+  }, [draftSaved]);
   // A tab stop only while it scrolls (the v0.10.1 end review): otherwise one more stop that does nothing. Measured
   // again as the screen or the text size changes.
   const body = useRef<HTMLDivElement>(null);
@@ -162,7 +167,7 @@ export function RideSummaryCard({
               {draft.said ?? draft.name} {!draft.saved && <span className="hint">{draft.left}</span>}
             </p>
             {!draft.saved && (
-              <button type="button" className="secondary" disabled={draft.saving} onClick={draft.onSave}>
+              <button type="button" className="secondary" aria-disabled={draft.saving || undefined} onClick={draft.saving ? undefined : draft.onSave}>
                 {SAVE_ROUTE}
               </button>
             )}

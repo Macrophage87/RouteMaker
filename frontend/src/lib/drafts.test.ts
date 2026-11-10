@@ -23,10 +23,15 @@ test("Save keeps the draft exactly as drafted and names it, so it is no longer l
     return new Response(JSON.stringify({ id: 3, name: "Sandwich loop" }), { status: 201 });
   }) as typeof fetch;
   const outcome = await saveDraft("https://x", id, get, post);
-  assert.ok(outcome?.ok);
+  assert.ok(outcome !== null && outcome !== "unreachable" && outcome.ok);
   assert.deepEqual(sent, { name: "Sandwich loop", source: "plan", line: shared.line, distance_m: 8047, inputs: shared.inputs, answer: null, from_draft: id });
   const gone = (async () => new Response("{}", { status: 404 })) as typeof fetch;
   assert.equal(await saveDraft("https://x", id, gone, post), null);
+  // Offline or a timeout is not "gone": the row and the ride's Save route stay to try again (v0.24.0 review).
+  const offline = (async () => {
+    throw new TypeError("Failed to fetch");
+  }) as typeof fetch;
+  assert.equal(await saveDraft("https://x", id, offline, post), "unreachable");
 });
 
 test("Delete removes the draft on the server; one already gone counts as deleted", async () => {
