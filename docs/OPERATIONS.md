@@ -7838,11 +7838,13 @@ wide gates), so the beta agent stops on the tag.
   `--confirm` with the owner's go per file, detached, outside 07:00 UTC) before the cloud run is sent:
   the build reads only approved `Override` rows from the dump. A build sent before the load has the
   code but none of the picks, and says nothing.
-- [ ] **The build's commit.** The map is built on the on-demand box at `996b8614`, not at the tag.
-  Nothing after it touches `lua/`, `valhalla/`, `src/pipeline/`, `fixtures/` or
-  `scripts/cloud/box-rebuild.sh` (check: `git diff --stat 996b8614 v0.24.0 -- lua valhalla
-  src/pipeline fixtures scripts/cloud/box-rebuild.sh` is empty), so the install takes
-  `--allow-sha-mismatch`, at home and with `--beta`.
+- [ ] **The build's commit.** The map is built on the on-demand box (run cloud-20261110b) at
+  `282481cb`, not at the tag: the v0.24.0 tree plus the calm-road sentinel change (Wildlife Loop
+  for Gambrill Park Road, #1144; validation only). The first run, at `996b8614`, stopped at that
+  check. `git diff --stat v0.24.0 282481cb` shows only `src/config/settings.py` and this file,
+  and nothing touches `lua/`, `valhalla/`, `src/pipeline/`, `fixtures/` or
+  `scripts/cloud/box-rebuild.sh`, so the install takes `--allow-sha-mismatch`, at home and with
+  `--beta`.
 - [ ] **Migrations.** 0059 (`connector_draft.root`, `saved_at`) and 0060 (`reviewed_closure.on_foot`)
   add nullable columns only; safe on the running map and reversible. Rolling the code back past
   v0.24.0 brings back the 24 h draft keep, so drafts 1-7 days old go at the next sweep.
