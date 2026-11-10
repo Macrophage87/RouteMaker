@@ -4143,10 +4143,10 @@ export function App() {
           (mode === "plan" ? openSavedRoute.current?.name : undefined) ??
           defaultRouteName(fileNamed(routedPoints[0]), routedPoints.length > 1 ? fileNamed(routedPoints[routedPoints.length - 1]) : null),
         onSave: saveCurrent,
-        // Plan's Save asks for tags too (the owner, 2026-11-07); Go's Save stays a name alone.
-        ...(mode === "plan" ? { defaultTags: () => openSavedRoute.current?.tags ?? [] } : {}),
-        // The Fixed route box (the owner, 2026-11-10), in Plan and Go: unticked (our default) but on a fixed route.
-        defaultFixed: () => openSavedRoute.current?.fixed ?? false,
+        // Plan's Save asks for tags and Fixed route too (the owner, 2026-11-07 and 2026-11-10: unticked, our default,
+        // but on a fixed route); Go's Save stays a name alone (the owner, 2026-11-10: "Go shouldn't include it. Those
+        // are intended for transportation and the like").
+        ...(mode === "plan" ? { defaultTags: () => openSavedRoute.current?.tags ?? [], defaultFixed: () => openSavedRoute.current?.fixed ?? false } : {}),
       }
     : null;
 
@@ -7045,6 +7045,7 @@ export function App() {
               defaultName={saveProps?.defaultName ?? (() => "")}
               onSave={saveProps?.onSave ?? null}
               defaultTags={saveProps?.defaultTags}
+              defaultFixed={saveProps?.defaultFixed}
               label={SAVE_ROUTE}
               bar
               onGpx={downloadRoute}
