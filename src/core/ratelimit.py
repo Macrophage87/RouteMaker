@@ -259,6 +259,9 @@ SHARE_PREVIEWS = Limit(scope="share-preview", requests=120, window_s=60)
 # drawn on each open, about a second of a worker or a few on a long ride, so a few a minute from
 # one address (our default; a rider shares it, the people they share it with open it once).
 ROUTE_PICTURES = Limit(scope="route-picture", requests=6, window_s=60)
+# One phone cue image a link (core.cue_cards, about a quarter second each): a route's set opened
+# one after another (our default, unmeasured).
+CUE_CARDS = Limit(scope="cue-cards", requests=30, window_s=60)
 # A kept line checked against the closures in force (POST /api/closures/check): asked when a
 # saved or shared route opens, on Start ride and before a download, so a few a minute at most.
 CLOSURE_CHECK = Limit(scope="closure-check", requests=30, window_s=60)

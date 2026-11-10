@@ -443,9 +443,10 @@ def test_a_mass_ride_without_a_ride_size_says_what_it_assumed(stand_in, tmp_path
     args = {"points": ["Union Market", "Takoma"], "preset": "mass-ride"}
     bare = rpc(server, "tools/call", {"name": "plan_route", "arguments": args})["result"]
     note = bare["structuredContent"]["mass_capacity"]["ride_size_note"]
-    assert "500 riders (our default" in note and "ask how many riders" in note
+    assert "500 riders (our default" in note and "ask how many" not in note
     sized = rpc(
         server, "tools/call", {"name": "plan_route", "arguments": {**args, "ride_size": 800}}
     )["result"]
     assert "ride_size_note" not in sized["structuredContent"]["mass_capacity"]
-    assert "Ask the organiser" in mcp.RIDE_OPTIONS["ride_size"]["description"]
+    # "That's askable, but typically not required" (the owner, 2026-11-10).
+    assert "asking is fine but not needed" in mcp.RIDE_OPTIONS["ride_size"]["description"]

@@ -397,7 +397,8 @@ def image_key(row, zone) -> str:
 # ---- Drawing ----
 
 
-@lru_cache(maxsize=2)
+# The link preview's two tables and the cue images' five (core.cue_cards).
+@lru_cache(maxsize=8)
 def _glyph_data(module: str) -> bytes:
     import base64
     import importlib
