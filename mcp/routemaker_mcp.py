@@ -6728,8 +6728,9 @@ class Server:
             if kept.get("closure_alerts"):
                 # The owner, 2026-11-10: "Update route can be offered when a closure occurs".
                 out["notes"].append(
-                    "closures are on this fixed route's line now: offer to plan it again around"
-                    " them (revise_route), and to save that over it only on the rider's word"
+                    "closures were on this fixed route's line when last checked: offer to plan it"
+                    " again around them (revise_route), and to save that over it only on the"
+                    " rider's word"
                 )
         if parse_fragment(fragment)[2] in RIDE_LINK_TYPES:
             out.setdefault("notes", []).append(
