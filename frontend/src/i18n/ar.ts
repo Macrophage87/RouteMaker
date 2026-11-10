@@ -72,10 +72,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Busy crossing, no signal.": "تقاطع مزدحم، لا توجد إشارة مرور.",
   "Busy crossing.": "تقاطع مزدحم.",
   "Busy junction.": "ملتقى طرق مزدحم.",
-  // A signal that may need a button press (the owner, 2026-11-08): the card's note and the words said.
-  // Drafted by Claude: FLAGGED for review by a native speaker.
-  "Light may need a button press": "قد تحتاج الإشارة إلى الضغط على الزر",
-  "Button for the light.": "زر الإشارة.",
   "Busy junction at a signal.": "ملتقى طرق مزدحم، توجد إشارة مرور.",
   "Busy junction at a stop sign.": "ملتقى طرق مزدحم، توجد علامة توقف.",
   "Busy junction, no signal.": "ملتقى طرق مزدحم، لا توجد إشارة مرور.",
@@ -2139,4 +2135,12 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "No road bike map: may use gravel.": "لا خريطة لدراجة الطريق: قد يستخدم الحصى.",
   "There is no weekend road bike map right now, so this route counts parkways like Beach Drive as roads with cars.": "لا توجد خريطة عطلة نهاية الأسبوع لدراجة الطريق الآن، لذا يعدّ هذا المسار طرق المتنزهات مثل Beach Drive طرقًا فيها سيارات.",
   "No weekend map: parkways may have cars.": "لا خريطة لعطلة نهاية الأسبوع: قد توجد سيارات على طرق المتنزهات.",
+  "Draft, last day": "مسودة، آخر يوم",
+  "Draft, {n} days left": "مسودة، بقي {n} أيام",
+  "Save {name} to My routes": "احفظ {name} في مساراتي",
+  "Saving {name}…": "جارٍ حفظ {name}…",
+  "That draft is gone.": "لم تعد تلك المسودة موجودة.",
+  "Delete": "حذف",
+  "Delete {name}": "احذف {name}",
+  "Deleted {name}.": "تم حذف {name}.",
 };
