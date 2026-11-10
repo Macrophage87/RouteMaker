@@ -2677,4 +2677,10 @@ export const ES: Readonly<Record<string, string>> = {
   "Note changed.": "Nota cambiada.",
   "Note removed.": "Nota quitada.",
   "The route has the most notes it can ({max}).": "La ruta ya tiene el máximo de notas ({max}).",
+  "Cue sheet image, dark, for a ride at night": "Imagen de la hoja de indicaciones, oscura, para rodar de noche",
+  "Construction": "Obras",
+  "Photo spot": "Lugar para fotos",
+  "Pin": "Marcador",
+  "Icon on the map": "Icono en el mapa",
+  "The route's notes are too long for its link: shorten this note or another.": "Las notas de la ruta son demasiado largas para su enlace: acorte esta nota u otra.",
 };

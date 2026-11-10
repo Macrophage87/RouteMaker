@@ -330,8 +330,8 @@ import { canSendToGarmin, handGpx } from "./lib/sendToGarmin.ts";
 import { ResumeRideDialog } from "./ResumeRideDialog.tsx";
 import type { OnwardState } from "./lib/onward.ts";
 import { forgetLeftRide, keepLeftRide, keepLeftRideLeads, leftRide, leftRidePast, resumedBroadcast, resumesQuietly, type RideReplans } from "./lib/rideResume.ts";
-import { NoteDialog, noteSaid, notesFullSaid, type NoteAsk } from "./NoteDialog.tsx";
-import { MAX_NOTES, PAGE_NOTES, type NoteKind, type RouteNote } from "./lib/routeNotes.ts";
+import { NoteDialog, noteSaid, noteTooLongSaid, notesFullSaid, type NoteAsk } from "./NoteDialog.tsx";
+import { KIND_ICON, MAX_NOTES, PAGE_NOTES, noteIcon, notesFit, type NoteIcon, type NoteKind, type RouteNote } from "./lib/routeNotes.ts";
 import { StopNameDialog, type StopNameAsk } from "./StopNameDialog.tsx";
 import { LoadRouteDialog } from "./LoadRouteDialog.tsx";
 import { LOAD_ROUTE, withGpxChoice, type GpxChoice } from "./lib/loadRoute.ts";
@@ -1273,6 +1273,8 @@ export function App() {
     setNotesShown(next);
   }, []);
   const [noteAsk, setNoteAsk] = useState<(NoteAsk & { at?: LonLat }) | null>(null);
+  // The notes a Clear or an opened file put away, with the points they went with, for Undo.
+  const notesCleared = useRef<{ points: readonly LonLat[]; notes: readonly RouteNote[] } | null>(null);
   const rideStopName = useCallback((point: LonLat) => namer.name(point)?.name, [namer]);
   // A route's own name (a save, a shared line, a GPX file) never carries the Home's label (review privacy-2).
   const fileNamed = nameWithoutHome((point) => namer.name(point)?.name, myGo.home?.point ?? null);
@@ -1555,7 +1557,7 @@ export function App() {
   // Keep the link in step with the plan, without adding history entries. Exactly encodePlan's
   // fragment, which never holds the weight (313); Copy link builds the same one (linkToCopy).
   useEffect(() => {
-    const hash = withSecret(encodePlan(points, preset, dials, viaIndices(points, VIA_MARKS.isVia)), isRideLinkType(preset) ? groupSecret : null);
+    const hash = withSecret(encodePlan(points, preset, dials, viaIndices(points, VIA_MARKS.isVia), undefined, undefined, "q", notes), isRideLinkType(preset) ? groupSecret : null);
     writtenHash.current = hash;
     window.history.replaceState(null, "", hash);
     // "Link copied." was about the link before this change (the correctness review's N4).
@@ -2155,6 +2157,10 @@ export function App() {
       const before = rideRef.current;
       const next = edits.travel(direction);
       if (next === undefined) return;
+      // Back to the points a Clear or an opened file put away: their notes with them; forward again, without.
+      const cleared = notesCleared.current;
+      if (cleared && next === cleared.points) setNotes(cleared.notes);
+      else if (cleared && direction === "redo" && PAGE_NOTES.list === cleared.notes) setNotes([]);
       setNotice(null);
       // A step that brings another loop state back renames the points too (OWNER-DECISIONS 374).
       const renamed = loopChangeSaid(before, rideRef.current, next.length);
@@ -3253,24 +3259,31 @@ export function App() {
       announce(notesFullSaid());
       return;
     }
-    setNoteAsk({ mode: "add", at: [point[0], point[1]], kind: "caution", text: "" });
+    setNoteAsk({ mode: "add", at: [point[0], point[1]], kind: "caution", text: "", icon: KIND_ICON.caution });
   };
   const openNote = (index: number) => {
     const note = PAGE_NOTES.list[index];
-    if (note) setNoteAsk({ mode: "edit", index, kind: note.kind, text: note.text });
+    if (note) setNoteAsk({ mode: "edit", index, kind: note.kind, text: note.text, icon: noteIcon(note) });
   };
-  const noteDone = (kind: NoteKind, text: string) => {
+  const noteDone = (kind: NoteKind, text: string, chosen: NoteIcon) => {
+    // The kind's own icon is not kept on the note: the link then leaves it out.
+    const icon = chosen === KIND_ICON[kind] ? undefined : chosen;
     const ask = noteAsk;
-    setNoteAsk(null);
     if (!ask) return;
     const current = PAGE_NOTES.list;
-    if (ask.mode === "add" && ask.at) {
-      setNotes([...current, { at: ask.at, kind, text }]);
-      announce(noteSaid("added"));
-    } else if (ask.index !== undefined && current[ask.index]) {
-      setNotes(current.map((note, i) => (i === ask.index ? { ...note, kind, text } : note)));
-      announce(noteSaid("changed"));
+    const adding = ask.mode === "add" && ask.at;
+    const next = adding
+      ? [...current, { at: ask.at as LonLat, kind, text, ...(icon ? { icon } : {}) }]
+      : current.map((note, i) => (i === ask.index ? { at: note.at, kind, text, ...(icon ? { icon } : {}) } : note));
+    // The words must fit the route's link (routeNotes.ts NOTES_LINK_MAX): the dialog stays open to shorten them.
+    if (!notesFit(next)) {
+      announce(noteTooLongSaid());
+      return;
     }
+    setNoteAsk(null);
+    if (!adding && (ask.index === undefined || !current[ask.index])) return;
+    setNotes(next);
+    announce(noteSaid(adding ? "added" : "changed"));
   };
   const noteRemoved = () => {
     const ask = noteAsk;
@@ -3394,7 +3407,8 @@ export function App() {
     // In Plan the cleared plan starts as a loop again (planStartDials), in the same edit, so Undo puts back the loop
     // state the points had.
     const startDials = modeRef.current === "plan" ? planStartDials(ride.preset, ride.dials) : ride.dials;
-    // The route's notes go with its points.
+    // The route's notes go with its points; Undo brings them back with the points (notesCleared).
+    notesCleared.current = { points: pointsRef.current, notes: PAGE_NOTES.list };
     setNotes([]);
     commit([], ride.imported || startDials !== ride.dials ? { ...ride, imported: null, dials: startDials } : undefined);
     // Said, and the focus to the place search, as every other removal hands it on (review a11y-1).
@@ -3419,7 +3433,8 @@ export function App() {
     const opened = plan.points.slice(0, MAX_POINTS);
     const kinds = importedKinds(plan.pointNames, opened.length);
     VIA_MARKS.nameAt(VIA_MARKS.markAt(opened, kinds.vias), kinds.names);
-    // A file is a new plan: the notes of the one before do not come with it.
+    // A file is a new plan: the notes of the one before do not come with it (Undo brings them back, notesCleared).
+    notesCleared.current = { points: pointsRef.current, notes: PAGE_NOTES.list };
     setNotes([]);
     commit(opened, { ...rideAfterImport(plan, rideRef.current), imported: plan });
     // An opened file is a saved route: it opens drawn (v0.7.0), and is not compared with the plan before it.
@@ -4695,6 +4710,8 @@ export function App() {
         }
         keepShown();
         openImportedChecked(asKept({ ...outcome.plan, name: saved.name }, at, answer), check);
+        // The saved route's own notes (its link's), which opening the file as a new plan put away.
+        if (at) setNotes(at.notes);
         openSavedRoute.current = own;
         announce(said);
       });
@@ -6968,7 +6985,7 @@ export function App() {
         }}
       />
       <StopNameDialog ask={stopAsk} onDone={stopNamed} onCancel={() => setStopAsk(null)} />
-      <NoteDialog ask={noteAsk} onDone={noteDone} onRemove={noteRemoved} onCancel={() => setNoteAsk(null)} />
+      <NoteDialog ask={noteAsk} onDone={noteDone} onRemove={noteRemoved} onCancel={() => setNoteAsk(null)} fallbackFocus={mapFocus} />
       <ResumeRideDialog
         open={leftAsk !== null && !riding && !roaming}
         destination={leftAsk && !leftAsk.loop ? (leftAsk.destination ?? namer.name(leftAsk.points[leftAsk.points.length - 1])?.name ?? null) : null}

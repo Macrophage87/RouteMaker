@@ -200,7 +200,7 @@ function fromRide(cue: Cue): { type: CourseCueType; name: string; priority: numb
       return { type: "finish", name: "Finish", priority: PROTECTED };
     case "note":
       // A route note (lib/routeNotes.ts), by the rider's own words: a caution is a danger cue, never dropped; a point
-      // of interest a note, kept before the turns onto unnamed ways.
+      // of interest a note, dropped with the crossings and the turns onto unnamed ways (priority 3).
       return cue.note?.kind === "caution"
         ? { type: "danger", name: cue.note.text, priority: PROTECTED }
         : { type: "note", name: cue.note?.text ?? "Note", priority: 3 };

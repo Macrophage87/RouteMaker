@@ -133,8 +133,9 @@ class _Cards:
     def count(self, *args) -> int:
         return 5
 
-    def draw(self, *args, only=None) -> list[bytes]:
+    def draw(self, *args, only=None, dark=False) -> list[bytes]:
         self.drawn.append((args, list(only)))
+        self.dark = dark
         return [f"\x89PNG-{n}".encode("latin-1") for n in only if n <= 5]
 
     def cue_rows(self, answer, vias, names, notes=None):
@@ -147,7 +148,9 @@ def _site(stand_in, tmp_path, cards):  # noqa: F811
         STATIONS,
         out_dir=tmp_path,
         cue_cards=cards,
-        cue_cards_link=lambda draft_id, page: f"https://example.invalid/{draft_id}-cues-{page}.png",
+        cue_cards_link=lambda draft_id, page, dark=False: (
+            f"https://example.invalid/{draft_id}-cues-{'dark-' if dark else ''}{page}.png"
+        ),
     )
 
 
@@ -314,3 +317,25 @@ def test_a_long_list_of_credits_still_fits_in_smaller_type() -> None:
     step = round(laid["credit_glyphs"].SIZE * 1.25)
     top = laid["header"]("Part 2 of 2")[1] + 24 + 8
     assert top + len(laid["credit_lines"]) * step <= cue_cards.HEIGHT - cue_cards.CLEAR_BOTTOM
+
+
+def test_dark_images_are_light_type_on_black_with_their_own_links(stand_in, tmp_path) -> None:  # noqa: F811
+    # The owner, 2026-11-10: "Let people export in either. They could be planning in the daytime
+    # for a night ride."
+    cards = _Cards()
+    server = _site(stand_in, tmp_path, cards)
+    planned = rpc(
+        server,
+        "tools/call",
+        {"name": "plan_route", "arguments": {"points": ["Union Market", "Takoma"]}},
+    )["result"]
+    draft_id = planned["structuredContent"]["draft_id"]
+    args = {"draft_id": draft_id, "dark": True}
+    out = rpc(server, "tools/call", {"name": "cue_cards", "arguments": args})["result"]
+    assert cards.dark is True
+    links = out["structuredContent"]["links"]
+    assert links[0] == f"https://example.invalid/{draft_id}-cues-dark-1.png"
+    answer = _answer([_stretch(0, "A Street"), _stretch(400, "B Street", "left")])
+    light = cue_cards.draw(answer, "Test", only=[1])[0]
+    dark = cue_cards.draw(answer, "Test", only=[1], dark=True)[0]
+    assert light != dark

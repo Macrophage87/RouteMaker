@@ -1179,6 +1179,13 @@ class TestGpx:
         assert (
             Client().get(path.replace("-cues-1.png", "-cues-99.png"), **addr()).status_code == 404
         )
+        # The dark images (the owner, 2026-11-10: "Let people export in either"): their own links.
+        dark = call(token, "cue_cards", {"draft_id": draft_id, "dark": True})
+        dark_path = urllib.parse.urlsplit(dark["structuredContent"]["links"][0]).path
+        assert dark_path.endswith("-cues-dark-1.png")
+        shaded = Client().get(dark_path, **addr())
+        assert shaded.status_code == 200 and shaded.content != r.content
+        assert "-cues-dark-1.png" in shaded["Content-Disposition"]
         grant = ConnectorGrant.objects.get(user=user)
         picture_mac = connector._picture_mac(user.pk, grant.pk, draft_id)
         wrong = f"/mcp/gpx/{draft_id}.{picture_mac}-cues-1.png"

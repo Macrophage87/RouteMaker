@@ -41,6 +41,10 @@ CLEAR_TOP = round(HEIGHT * 0.2)
 CLEAR_BOTTOM = round(HEIGHT * 0.07)
 INK = (17, 17, 17)
 PAPER = (255, 255, 255)
+# The dark images (lib/lockScreen.ts DARK_INK, DARK_PAPER; the owner, 2026-11-10: "Let people export
+# in either. They could be planning in the daytime for a night ride"): light type on black.
+DARK_INK = (242, 242, 242)
+DARK_PAPER = (0, 0, 0)
 SIDE, PAD = 56, 10
 COL_MILES, COL_ARROW, COL_TOTAL = 230, 140, 170
 ARROW_PX = 108
@@ -408,7 +412,9 @@ def _ring(canvas: Canvas, cx: float, cy: float, r: float, width: float, colour) 
             canvas.blend(x, y, colour, cover)
 
 
-def draw_arrow(canvas: Canvas, arrow: dict, left: float, top: float, size: float) -> None:
+def draw_arrow(
+    canvas: Canvas, arrow: dict, left: float, top: float, size: float, ink=INK, paper=PAPER
+) -> None:
     shape = arrow_shape(arrow)
     k = size / 100
 
@@ -416,22 +422,22 @@ def draw_arrow(canvas: Canvas, arrow: dict, left: float, top: float, size: float
         return (left + p[0] * k, top + p[1] * k)
 
     for line in shape["thin"]:
-        canvas.stroke([at(p) for p in line], EDGE_STROKE * k / 2, INK)
+        canvas.stroke([at(p) for p in line], EDGE_STROKE * k / 2, ink)
     for line in shape["strokes"]:
-        canvas.stroke([at(p) for p in line], ARROW_STROKE * k / 2, INK)
+        canvas.stroke([at(p) for p in line], ARROW_STROKE * k / 2, ink)
     for poly in shape["fills"]:
-        _fill_polygon(canvas, [at(p) for p in poly], INK)
+        _fill_polygon(canvas, [at(p) for p in poly], ink)
     for x, y, r, ring in shape["discs"]:
         cx, cy = at((x, y))
         if ring:
-            _ring(canvas, cx, cy, r * k, ring * k, INK)
+            _ring(canvas, cx, cy, r * k, ring * k, ink)
         else:
-            canvas.disc(cx, cy, r * k, INK)
+            canvas.disc(cx, cy, r * k, ink)
     if shape.get("label"):
         cx, cy = at((50, 50))
         g = cue_glyphs_head
         width = _width(shape["label"], g)
-        _text(canvas, g, cx - width / 2, cy + (g.ASCENT - g.HEIGHT / 2) - 4, shape["label"], PAPER)
+        _text(canvas, g, cx - width / 2, cy + (g.ASCENT - g.HEIGHT / 2) - 4, shape["label"], paper)
 
 
 # --- the text ----------------------------------------------------------------------------------
@@ -635,9 +641,12 @@ def draw(
     credit: str = "",
     notes=None,
     only: list[int] | range | None = None,
+    dark: bool = False,
 ) -> list[bytes]:
     """The route's phone cue images as PNGs, in order; with `only`, just those (from 1), each
-    still labelled against the whole count. Laying out is cheap; drawing is the cost."""
+    still labelled against the whole count; `dark`, light type on black. Laying out is cheap;
+    drawing is the cost."""
+    ink, paper = (DARK_INK, DARK_PAPER) if dark else (INK, PAPER)
     laid_out = pages(answer, title, vias, names, credit, notes)
     rows, laid, groups = laid_out["rows"], laid_out["laid"], laid_out["groups"]
     header = laid_out["header"]
@@ -647,28 +656,30 @@ def draw(
         if only is not None and p + 1 not in only:
             continue
         part = f"Part {p + 1} of {len(groups)}" if len(groups) > 1 else None
-        canvas = Canvas(WIDTH, HEIGHT, PAPER)
+        canvas = Canvas(WIDTH, HEIGHT, paper)
         head_lines, bottom = header(part)
         for g, x, y, text in head_lines:
-            _text(canvas, g, x, y, text)
+            _text(canvas, g, x, y, text, ink)
         y = bottom + 24
-        canvas.rect(SIDE, y - 1, WIDTH - SIDE, y + 1, INK)
+        canvas.rect(SIDE, y - 1, WIDTH - SIDE, y + 1, ink)
         for i in group:
             lines, height = laid[i]
             for g, x, base, text in lines:
-                _text(canvas, g, x, y + base, text)
+                _text(canvas, g, x, y + base, text, ink)
             draw_arrow(
                 canvas,
                 rows[i]["arrow"],
                 SIDE + COL_MILES + (COL_ARROW - ARROW_PX) // 2 - 10,
                 y + PAD,
                 ARROW_PX,
+                ink,
+                paper,
             )
             y += height
-            canvas.rect(SIDE, y - 1, WIDTH - SIDE, y + 1, INK)
+            canvas.rect(SIDE, y - 1, WIDTH - SIDE, y + 1, ink)
         if p == len(groups) - 1 and credit_lines and not group:
             step = round(credit_glyphs.SIZE * 1.25)
             for n, text in enumerate(credit_lines):
-                _text(canvas, credit_glyphs, SIDE, y + 8 + (n + 1) * step, text)
+                _text(canvas, credit_glyphs, SIDE, y + 8 + (n + 1) * step, text, ink)
         images.append(canvas.png())
     return images

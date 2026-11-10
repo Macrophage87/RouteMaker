@@ -1103,6 +1103,12 @@ export function rideModel(
   // The route's notes (lib/routeNotes.ts; Stephen 2026-11-10, "Yes, in Ride too"): each within NOTE_NEAR_M of the line
   // is a cue where the line passes nearest it, said once early as a hazard is; one further off is on the map only.
   const noted = noteCues(notes, { coordinates, along }, lengthM);
+  // A note at a turn or a stop (a dangerous junction) is put just before it, so it is said first and never left
+  // behind once the rider has turned (the review, 2026-11-10).
+  for (const note of noted) {
+    const at = cues.find((c) => (c.kind === "turn" || c.kind === "stop") && Math.abs(c.atM - note.atM) <= NOTE_AT_TURN_M);
+    if (at) note.atM = Math.max(Math.min(2, lengthM), at.atM - 1);
+  }
   if (noted.length) {
     cues.push(...noted);
     cues.sort((a, b) => a.atM - b.atM);
@@ -1123,6 +1129,12 @@ export function rideModel(
     .map((s) => ({ fromM: s.from_m * spanScale, toM: s.to_m * spanScale, tier: s.tier as number }));
   return { coordinates, along, lengthM, cues, stretches, paceMs, ...(timeline ? { timeline } : {}), ...(vias.length ? { passes } : {}), ...(halves.length ? { halves } : {}) };
 }
+
+/**
+ * A note this close to a turn or a stop (metres, either side) is the turn's: put just before it (rideModel), and the
+ * card leads with the turn (nextAction). Our default, unmeasured: a junction's width and a little.
+ */
+export const NOTE_AT_TURN_M = 40;
 
 /** The cues of the notes near the line, at the line's nearest point to each (the first pass of a loop's). */
 export function noteCues(notes: readonly RouteNote[], line: Pick<RideModel, "coordinates" | "along">, lengthM: number): Cue[] {
@@ -2101,7 +2113,10 @@ export const CROSSING_SHOWN_M = 100;
  * reach here is Claude's pick for this fix (not measured; the owner has not ruled on it).
  */
 export function nextAction(model: RideModel, progressM: number): Cue | null {
-  const leads = (c: Cue) => ahead(model, c, progressM) && (c.kind === "turn" || c.kind === "onto" || c.kind === "hazard" || c.kind === "note" || (c.kind === "crossing" && c.atM - progressM <= CROSSING_SHOWN_M) || c.kind === "walk" || c.kind === "stop" || c.kind === "end");
+  // A route caution leads unless a turn or a stop is right after it (NOTE_AT_TURN_M): then the turn does, the note said
+  // with it. A point of interest is said, never shown in a turn's place.
+  const turnAfter = (c: Cue) => model.cues.some((o) => (o.kind === "turn" || o.kind === "stop" || o.kind === "end") && o.atM >= c.atM && o.atM - c.atM <= NOTE_AT_TURN_M);
+  const leads = (c: Cue) => ahead(model, c, progressM) && (c.kind === "turn" || c.kind === "onto" || c.kind === "hazard" || (c.kind === "note" && c.note?.kind === "caution" && !turnAfter(c)) || (c.kind === "crossing" && c.atM - progressM <= CROSSING_SHOWN_M) || c.kind === "walk" || c.kind === "stop" || c.kind === "end");
   const first = model.cues.find(leads) ?? null;
   if (!first || !buttonOnly(first)) return first;
   const after = model.cues.find((c) => c.atM >= first.atM && !buttonOnly(c) && leads(c));

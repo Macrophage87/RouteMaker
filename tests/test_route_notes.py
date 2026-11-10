@@ -149,3 +149,46 @@ def test_the_picture_draws_the_notes() -> None:
     with_note = route_picture.draw(view, line)
     without = route_picture.draw({**view, "notes": []}, line)
     assert with_note and without and with_note != without
+
+
+def test_a_note_s_icon_travels_in_the_link_and_the_view(stand_in, tmp_path) -> None:  # noqa: F811
+    # The owner, 2026-11-10: "have that note appear on the map with a choice of icon".
+    assert mcp.encode_notes(
+        [{"kind": "caution", "lon": -77.0, "lat": 38.9, "text": "Hole", "icon": "pothole"}]
+    ) == ["c.pothole,-77.00000,38.90000,Hole"]
+    assert mcp.decode_notes(["i.coffee,-77,38.9,Cafe", "i.nope,-77,38.9,X"]) == [
+        {"kind": "interest", "lon": -77.0, "lat": 38.9, "text": "Cafe", "icon": "coffee"},
+        {"kind": "interest", "lon": -77.0, "lat": 38.9, "text": "X"},
+    ]
+    server = _server(stand_in, tmp_path)
+    draft_id = _plan(server)["draft_id"]
+    result = _notes(
+        server,
+        draft_id,
+        [{"kind": "interest", "text": "Coffee", "at_mile": 1, "icon": "coffee"}],
+    )
+    assert "nt=i.coffee," in result["structuredContent"]["link"]
+    assert result["_meta"]["routemaker/route-view"]["notes"][0]["icon"] == "☕"
+    bad = _notes(server, draft_id, [{"kind": "caution", "text": "x", "at_mile": 1, "icon": "x"}])
+    assert bad["isError"]
+
+
+def test_bad_notes_are_refused_and_a_note_only_link_keeps_its_line(stand_in, tmp_path) -> None:  # noqa: F811
+    server = _server(stand_in, tmp_path)
+    draft_id = _plan(server)["draft_id"]
+    for wrong in (
+        ["not a note"],
+        [{"kind": "caution", "text": "x", "at_mile": -1}],
+        [{"kind": "caution", "text": "x", "at_mile": 99}],
+        [{"kind": "caution", "text": "z" * 80, "at_mile": 0.1 * n} for n in range(20)],
+    ):
+        assert _notes(server, draft_id, wrong)["isError"], wrong
+    # The link's notes are not its plan: a note added in the app keeps a kept route's line.
+    plain = "#p=-77.00000,38.90000;-77.00000,38.95000&preset=default"
+    noted = plain + "&nt=c,-77.00000,38.92000,Busy"
+    assert mcp.plan_params(plain) == mcp.plan_params(noted)
+    # A link's notes stay under the server's limit, however long their words.
+    values = mcp.encode_notes(
+        [{"kind": "caution", "lon": -77, "lat": 38.9, "text": "注意" * 40}] * mcp.MAX_NOTES
+    )
+    assert sum(len(mcp.urllib.parse.urlencode({"nt": v})) + 1 for v in values) <= mcp.NOTES_LINK_MAX

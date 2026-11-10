@@ -1094,7 +1094,26 @@ NOTE_NEAR_M = 60  # routeNotes.ts NOTE_NEAR_M: a note this close to the line is 
 # passes nearest (our default, unmeasured: a place looked up by name is often its middle).
 NOTE_SNAP_M = 400
 NOTE_KINDS = {"caution": "c", "interest": "i"}
-NOTE_RE = re.compile(r"^([ci]),(-?\d{1,3}(?:\.\d+)?),(-?\d{1,2}(?:\.\d+)?),(.*)$", re.S)
+# The icons a note can show on the map (routeNotes.ts NOTE_ICONS, our default set; the owner,
+# 2026-11-10: "have that note appear on the map with a choice of icon"), each kind's own first.
+NOTE_ICONS = {
+    "warning": "⚠️",
+    "pothole": "🕳️",
+    "traffic": "🚗",
+    "construction": "🚧",
+    "view": "🏞️",
+    "photo": "📷",
+    "water": "💧",
+    "food": "🍴",
+    "coffee": "☕",
+    "restroom": "🚻",
+    "bikeshop": "🔧",
+    "pin": "📍",
+}
+KIND_ICON = {"caution": "warning", "interest": "pin"}
+NOTE_RE = re.compile(
+    r"^([ci])(?:\.([a-z]+))?,(-?\d{1,3}(?:\.\d+)?),(-?\d{1,2}(?:\.\d+)?),(.*)$", re.S
+)
 
 
 def clean_note_text(text) -> str:
@@ -1104,14 +1123,28 @@ def clean_note_text(text) -> str:
     return re.sub(r"\s+", " ", clean).strip()[:NOTE_TEXT_MAX].strip()
 
 
+# The notes' share of the link as the address writes it (routeNotes.ts NOTES_LINK_MAX, our
+# default): the whole link stays under the server's 2048 (core/accounts.py HASH_MAX).
+NOTES_LINK_MAX = 1200
+
+
 def encode_notes(notes) -> list[str]:
-    """The link's `nt` values (routeNotes.ts `encodeNotes`): kind letter, place, then words."""
+    """The link's `nt` values (routeNotes.ts `encodeNotes`): kind letter, place, then words; those
+    past the link's share (NOTES_LINK_MAX) left out."""
     out = []
+    used = 0
     for note in (notes or [])[:MAX_NOTES]:
         text = clean_note_text(note.get("text"))
         if text and note.get("kind") in NOTE_KINDS:
             letter = NOTE_KINDS[note["kind"]]
-            out.append(f"{letter},{float(note['lon']):.5f},{float(note['lat']):.5f},{text}")
+            icon = note.get("icon")
+            if icon in NOTE_ICONS and icon != KIND_ICON[note["kind"]]:
+                letter += f".{icon}"
+            value = f"{letter},{float(note['lon']):.5f},{float(note['lat']):.5f},{text}"
+            used += len("&" + urllib.parse.urlencode({"nt": value}).replace("%2C", ","))
+            if used > NOTES_LINK_MAX:
+                break
+            out.append(value)
     return out
 
 
@@ -1123,11 +1156,14 @@ def decode_notes(values) -> list[dict]:
         m = NOTE_RE.match(str(value))
         if not m:
             continue
-        lon, lat, text = float(m[2]), float(m[3]), clean_note_text(m[4])
+        lon, lat, text = float(m[3]), float(m[4]), clean_note_text(m[5])
         if not text or abs(lon) > 180 or abs(lat) > 90:
             continue
         kind = "caution" if m[1] == "c" else "interest"
-        out.append({"kind": kind, "lon": lon, "lat": lat, "text": text})
+        note = {"kind": kind, "lon": lon, "lat": lat, "text": text}
+        if m[2] in NOTE_ICONS and m[2] != KIND_ICON[kind]:
+            note["icon"] = m[2]
+        out.append(note)
         if len(out) >= MAX_NOTES:
             break
     return out
@@ -1153,6 +1189,17 @@ def line_nearest(line, lon: float, lat: float) -> tuple[float, float, tuple[floa
             best = (off, along + t * seg, point)
         along += seg
     return best[1], best[0], best[2]
+
+
+def _line_scale(answer: dict) -> float:
+    """The line's metres to one of the description's (the router's), for a mile the figures give."""
+    line = (answer.get("geometry") or {}).get("coordinates") or []
+    total = sum(
+        haversine_mi((a[0], a[1]), (b[0], b[1])) * METRES_PER_MILE
+        for a, b in itertools.pairwise(line)
+    )
+    distance = float(answer.get("distance_m") or 0.0)
+    return total / distance if total and distance else 1.0
 
 
 def point_at_mile(line, mile: float) -> tuple[float, float]:
@@ -1195,13 +1242,14 @@ def route_notes_out(answer: dict, notes) -> list[dict]:
     """The route's notes as an answer gives them: each {kind, text, lon, lat, mi}, `mi` the
     mile where the route passes it, or None for one too far off the line to be a cue."""
     line = (answer.get("geometry") or {}).get("coordinates") or []
+    scale = 1 / _line_scale(answer)
     out = []
     for note in notes or []:
         mi = None
         if len(line) >= 2:
             along, off, _ = line_nearest(line, float(note["lon"]), float(note["lat"]))
             if off <= NOTE_NEAR_M:
-                mi = round(along / METRES_PER_MILE, 1)
+                mi = round(along * scale / METRES_PER_MILE, 1)
         out.append({**note, "mi": mi})
     return out
 
@@ -1355,8 +1403,9 @@ PLAN_POINTS_RE = re.compile(r"(?:^|[#&?])[pq]=[^&]")
 
 
 # A link's fields that are not its plan: the ride's key, its ride mark and leader, the kept
-# route's id and the Reach view (rideSeal.ts, sharedRoutes.ts, App.tsx).
-NOT_THE_PLAN = ("k", "ride", "lead", "route", "reach")
+# route's id and the Reach view (rideSeal.ts, sharedRoutes.ts, App.tsx), and the route's notes,
+# which change no line (a note added in the app keeps the kept route's exact line).
+NOT_THE_PLAN = ("k", "ride", "lead", "route", "reach", "nt")
 
 
 def plan_params(fragment: str) -> list[tuple[str, str]]:
@@ -4023,6 +4072,7 @@ def route_view(plan: Plan, out: dict, name: str, corking: dict | None = None) ->
                 "kind": n["kind"],
                 "text": n["text"],
                 "mi": n.get("mi"),
+                "icon": NOTE_ICONS.get(n.get("icon") or KIND_ICON[n["kind"]]),
             }
             for n in out.get("route_notes") or []
         ],
@@ -4895,6 +4945,13 @@ CUE_CARDS_TOOL = {
                 ),
                 "additionalProperties": {"type": "string", "maxLength": 60},
             },
+            "dark": {
+                "type": "boolean",
+                "description": (
+                    "Light type on black, for a ride at night (ask the rider which they want"
+                    " when the ride is after dark); light images when left out."
+                ),
+            },
         },
         "required": ["draft_id"],
     },
@@ -5476,6 +5533,14 @@ TOOLS = [
                         "properties": {
                             "kind": {"type": "string", "enum": ["caution", "interest"]},
                             "text": {"type": "string", "minLength": 1, "maxLength": NOTE_TEXT_MAX},
+                            "icon": {
+                                "type": "string",
+                                "enum": list(NOTE_ICONS),
+                                "description": (
+                                    "Its sign on the map; a caution's is warning and a point of"
+                                    " interest's pin when left out."
+                                ),
+                            },
                             "at": {
                                 **POINT_SCHEMA,
                                 "description": (
@@ -6067,6 +6132,8 @@ class Server:
         notes: list[dict] = []
         moved: list[str] = []
         for n, note in enumerate(asked, start=1):
+            if not isinstance(note, dict):
+                raise ToolError(f"note {n}: give kind, text and at or at_mile")
             kind = note.get("kind")
             if kind not in NOTE_KINDS:
                 raise ToolError(f"note {n}: kind is caution or interest")
@@ -6074,8 +6141,16 @@ class Server:
             if not text:
                 raise ToolError(f"note {n}: give a few words")
             if note.get("at_mile") is not None:
-                lon, lat = point_at_mile(line, float(note["at_mile"]))
+                mile = float(note["at_mile"])
+                total = (plan.answer.get("distance_m") or 0.0) / METRES_PER_MILE
+                if not 0 <= mile <= total + 0.05:
+                    raise ToolError(
+                        f"note {n}: at_mile is from 0 to {total:.1f}, the route's miles"
+                    )
+                # The description's miles, as the route's figures give them, on the line.
+                lon, lat = point_at_mile(line, mile * _line_scale(plan.answer))
             elif note.get("at") is not None:
+                # A place looked up for a note is said apart from the route's points.
                 lon, lat = self._point(note["at"], taken, [plan.points[0], plan.points[-1]])
                 _, off, nearest = line_nearest(line, lon, lat)
                 if off > NOTE_SNAP_M:
@@ -6088,7 +6163,17 @@ class Server:
                     moved.append(f"note {n} ({text}) was {round(off)} m off the route: put on it")
             else:
                 raise ToolError(f"note {n}: give at or at_mile")
-            notes.append({"kind": kind, "lon": round(lon, 5), "lat": round(lat, 5), "text": text})
+            icon = note.get("icon")
+            if icon is not None and icon not in NOTE_ICONS:
+                raise ToolError(f"note {n}: icon is one of {', '.join(NOTE_ICONS)}")
+            kept = {"kind": kind, "lon": round(lon, 5), "lat": round(lat, 5), "text": text}
+            if icon and icon != KIND_ICON[kind]:
+                kept["icon"] = icon
+            notes.append(kept)
+        if len(encode_notes(notes)) < len(notes):
+            raise ToolError(
+                "the notes are too long for the route's link: shorten some, or use fewer"
+            )
         options = {**draft.options, "route_notes": notes or None}
         out = self._draft(
             plan,
@@ -6097,13 +6182,14 @@ class Server:
             moved,
             draft.name,
             revised_from=draft_id,
-            taken=taken,
             trim_spurs=draft.trim_spurs,
             intervals=draft.intervals,
             ride_key=draft.ride_key,
         )
         if not notes:
             out["route_notes"] = []
+        if taken:
+            out["note_places_taken_as"] = taken
         return out
 
     # cue_cards
@@ -6127,7 +6213,8 @@ class Server:
         total = self.cue_cards.count(*drawn)
         # Only the first few images travel in the answer (each is a phone screen's PNG); every
         # one has its link.
-        images = self.cue_cards.draw(*drawn, only=range(1, INLINE_CUE_IMAGES + 1))
+        dark = args.get("dark") is True
+        images = self.cue_cards.draw(*drawn, only=range(1, INLINE_CUE_IMAGES + 1), dark=dark)
         out |= {"draft_id": draft_id, "name": draft.name, "images": total}
         # The cues as text too: for the assistant to read out, and for a reader who cannot see
         # the images.
@@ -6144,7 +6231,12 @@ class Server:
         if total > len(images):
             out["shown"] = f"the first {len(images)} of {total} images are shown; all are linked"
         if self.cue_cards_link is not None:
-            out["links"] = [self.cue_cards_link(draft_id, n + 1) for n in range(total)]
+            out["links"] = [
+                self.cue_cards_link(draft_id, n + 1, dark)
+                if dark
+                else self.cue_cards_link(draft_id, n + 1)
+                for n in range(total)
+            ]
             out["note"] = (
                 "each link opens one image (PNG) to save to the phone; they work while the"
                 " draft is kept"

@@ -12,7 +12,7 @@ import { VIA_MARKS, decodeDrawn, decodeStopNames, decodeVias, drawnLegs, encodeS
 import { STRESS_DEFAULT_AT, fitDials, isBike, isCarrying, isWhen, type Dials } from "./dials.ts";
 import { METRES_PER_MILE } from "./format.ts";
 import { decodePoints, encodePoints } from "./linkCode.ts";
-import { PAGE_NOTES, decodeNotes, encodeNotes, type RouteNote } from "./routeNotes.ts";
+import { decodeNotes, encodeNotes, type RouteNote } from "./routeNotes.ts";
 
 /**
  * The stops' field (2026-10-29, shorter ride links): `q=`, the points in lib/linkCode.ts's short form, about 8
@@ -87,8 +87,9 @@ export function encodePlan(
   names: ReadonlyMap<number, string> = stopNames(points, VIA_MARKS.nameOf, VIA_MARKS.isVia, dials?.loop === true),
   // The short `q=` unless asked for the older `p=` (a kept route's key, so the routes kept before still match).
   pointsForm: PointsForm = "q",
-  // The route's notes, the page's unless given (lib/routeNotes.ts PAGE_NOTES).
-  notes: readonly RouteNote[] = PAGE_NOTES.list,
+  // The route's notes (lib/routeNotes.ts), given only where the link is the page's plan (its address, Copy link, a
+  // saved route): never in the account's settings or a kept route's key.
+  notes: readonly RouteNote[] = [],
 ): string {
   const params = new URLSearchParams();
   if (points.length) {

@@ -1,12 +1,18 @@
-// The cue sheet lock-screen images drawn on a canvas from their layout (lib/lockScreen.ts): white, dark text, thin
+// The cue sheet lock-screen images drawn on a canvas from their layout (lib/lockScreen.ts): white, dark text (or, dark, the other way round), thin
 // rules between rows, in the panel's face (Atkinson Hyperlegible, as the share image). Browser only.
 import { ARROW_STROKE, EDGE_STROKE, arrowShape } from "../lib/cueArrow.ts";
-import { INK, LOCK_HEIGHT, LOCK_WIDTH, PAPER, lockScreenLayout, type LockPage, type Weight } from "../lib/lockScreen.ts";
+import { LOCK_HEIGHT, LOCK_WIDTH, lockColours, lockScreenLayout, type LockPage, type Weight } from "../lib/lockScreen.ts";
 
 const FONT = '"Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif';
 
 /** The route's lock-screen images as PNG blobs, in order, with their pages (for the status line). */
-export async function renderLockScreens(route: Parameters<typeof lockScreenLayout>[0], vias: readonly number[] = [], names: ReadonlyMap<number, string> = new Map()): Promise<{ pages: LockPage[]; blobs: Blob[] }> {
+export async function renderLockScreens(
+  route: Parameters<typeof lockScreenLayout>[0],
+  vias: readonly number[] = [],
+  names: ReadonlyMap<number, string> = new Map(),
+  dark = false,
+): Promise<{ pages: LockPage[]; blobs: Blob[] }> {
+  const { ink: INK, paper: PAPER } = lockColours(dark);
   await Promise.all([document.fonts?.load(`700 64px "Atkinson Hyperlegible"`), document.fonts?.load(`400 32px "Atkinson Hyperlegible"`)]).catch(() => undefined);
   const canvas = document.createElement("canvas");
   canvas.width = LOCK_WIDTH;
@@ -31,7 +37,7 @@ export async function renderLockScreens(route: Parameters<typeof lockScreenLayou
       ctx.lineTo(LOCK_WIDTH - 64, y);
       ctx.stroke();
     }
-    for (const placed of page.arrows) drawArrow(ctx, placed);
+    for (const placed of page.arrows) drawArrow(ctx, placed, INK, PAPER);
     for (const line of page.lines) {
       ctx.font = `${line.weight} ${line.px}px ${FONT}`;
       ctx.fillText(line.text, line.x, line.y);
@@ -44,7 +50,7 @@ export async function renderLockScreens(route: Parameters<typeof lockScreenLayou
 }
 
 /** A cue's picture (lib/cueArrow.ts), its 100-unit box scaled to its place. */
-function drawArrow(ctx: CanvasRenderingContext2D, placed: LockPage["arrows"][number]): void {
+function drawArrow(ctx: CanvasRenderingContext2D, placed: LockPage["arrows"][number], INK: string, PAPER: string): void {
   const shape = arrowShape(placed.arrow);
   const k = placed.size / 100;
   const at = (p: readonly [number, number]): [number, number] => [placed.x + p[0] * k, placed.y + p[1] * k];

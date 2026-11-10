@@ -200,7 +200,7 @@ import { planLegLines, routeDrawnLines } from "./lib/planLegs.ts";
 import { browserCompassEnv, browserCompassLifetime, watchCompassAwhile } from "./lib/compassHeading.ts";
 import { t } from "./lib/i18n.ts";
 import { onSharedTick } from "./lib/sharedTick.ts";
-import { noteRideText, type RouteNote } from "./lib/routeNotes.ts";
+import { NOTE_ICONS, noteIcon, noteRideText, type RouteNote } from "./lib/routeNotes.ts";
 import { NOTE_KIND_WORDS, notePinLabel } from "./lib/routeNotesPlan.ts";
 
 
@@ -2054,13 +2054,14 @@ export function MapView(props: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rideStopsKey]);
 
-  // The route's notes (lib/routeNotes.ts; 2026-11-10): a warning sign for a caution, an "i" for a point of interest. In
+  // The route's notes (lib/routeNotes.ts; 2026-11-10): each its chosen icon, on a yellow disc for a caution and a white
+  // one ringed blue for a point of interest (the words say which to a screen reader). In
   // Plan each is a button that opens the note to change or remove it; elsewhere an image named by its words.
   const noteMarkers = useRef<Marker[]>([]);
   const onNotePress = useRef(props.onNotePress);
   onNotePress.current = props.onNotePress;
   const pressable = !!props.onNotePress;
-  const notesKey = (props.routeNotes ?? []).map((n) => `${n.at.join(",")}|${n.kind}|${n.text}`).join(";");
+  const notesKey = (props.routeNotes ?? []).map((n) => `${n.at.join(",")}|${n.kind}|${n.icon ?? ""}|${n.text}`).join(";");
   useEffect(() => {
     const map = mapRef.current;
     noteMarkers.current.forEach((m) => m.remove());
@@ -2083,7 +2084,7 @@ export function MapView(props: Props) {
       }
       const sign = document.createElement("span");
       sign.className = "route-note-sign";
-      sign.textContent = note.kind === "caution" ? "!" : "i";
+      sign.textContent = NOTE_ICONS[noteIcon(note)];
       sign.setAttribute("aria-hidden", "true");
       element.append(sign);
       return new maplibregl.Marker({ element, anchor: "center" }).setLngLat(note.at).addTo(map);

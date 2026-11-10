@@ -16,10 +16,12 @@ import {
   NOTE_SAVE,
   NOTE_TEXT_LABEL,
   NOTE_ADD,
+  NOTE_ICON_LABEL,
+  NOTE_ICON_WORDS,
 } from "./lib/routeNotesPlan.ts";
-import { NOTE_TEXT_MAX, cleanNoteText, type NoteKind } from "./lib/routeNotes.ts";
+import { KIND_ICON, NOTE_ICONS, NOTE_TEXT_MAX, cleanNoteText, type NoteIcon, type NoteKind } from "./lib/routeNotes.ts";
 // What is said as a note changes, from here so the page's Plan-only words stay out of Go and Ride's modules.
-export { noteSaid, notesFullSaid } from "./lib/routeNotesPlan.ts";
+export { noteSaid, noteTooLongSaid, notesFullSaid } from "./lib/routeNotesPlan.ts";
 
 export interface NoteAsk {
   /** "add": a new note at the spot; "edit": the note at `index`. */
@@ -27,6 +29,7 @@ export interface NoteAsk {
   index?: number;
   kind: NoteKind;
   text: string;
+  icon: NoteIcon;
 }
 
 export function NoteDialog({
@@ -34,9 +37,12 @@ export function NoteDialog({
   onDone,
   onRemove,
   onCancel,
+  fallbackFocus,
 }: {
   ask: NoteAsk | null;
-  onDone: (kind: NoteKind, text: string) => void;
+  /** Where the focus goes when what opened the dialog is gone (a note's sign, drawn again as the note changed). */
+  fallbackFocus?: () => HTMLElement | null;
+  onDone: (kind: NoteKind, text: string, icon: NoteIcon) => void;
   onRemove: () => void;
   onCancel: () => void;
 }) {
@@ -48,6 +54,7 @@ export function NoteDialog({
   const hintId = useId();
   const [kind, setKind] = useState<NoteKind>("caution");
   const [text, setText] = useState("");
+  const [icon, setIcon] = useState<NoteIcon>("warning");
   const open = ask !== null;
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -56,11 +63,14 @@ export function NoteDialog({
       opener.current = document.activeElement;
       setKind(ask?.kind ?? "caution");
       setText(ask?.text ?? "");
+      setIcon(ask?.icon ?? KIND_ICON[ask?.kind ?? "caution"]);
       dialog.showModal?.();
       inputRef.current?.focus();
     } else if (!open && dialog.open) {
       dialog.close();
-      if (opener.current instanceof HTMLElement && opener.current.isConnected) opener.current.focus();
+      // A note's sign is drawn again once the note changes, after this runs: the map then.
+      if (opener.current instanceof HTMLElement && opener.current.isConnected && !opener.current.classList.contains("route-note")) opener.current.focus();
+      else fallbackFocus?.()?.focus();
     }
   }, [open, ask]);
   const empty = cleanNoteText(text) === "";
@@ -79,7 +89,7 @@ export function NoteDialog({
           method="dialog"
           onSubmit={(event) => {
             event.preventDefault();
-            if (!empty) onDone(kind, cleanNoteText(text));
+            if (!empty) onDone(kind, cleanNoteText(text), icon);
           }}
         >
           <h2 id={headingId}>{ask.mode === "add" ? NOTE_HEADING_ADD : NOTE_HEADING_EDIT}</h2>
@@ -87,8 +97,27 @@ export function NoteDialog({
             <legend>{NOTE_KIND_LABEL}</legend>
             {(["caution", "interest"] as const).map((k) => (
               <label key={k}>
-                <input type="radio" name="note-kind" value={k} checked={kind === k} onChange={() => setKind(k)} />
+                <input
+                  type="radio"
+                  name="note-kind"
+                  value={k}
+                  checked={kind === k}
+                  onChange={() => {
+                    // The kind's own icon follows the kind; one the rider chose stays.
+                    if (icon === KIND_ICON[kind]) setIcon(KIND_ICON[k]);
+                    setKind(k);
+                  }}
+                />
                 {NOTE_KIND_WORDS[k]}
+              </label>
+            ))}
+          </fieldset>
+          <fieldset className="note-icons">
+            <legend>{NOTE_ICON_LABEL}</legend>
+            {(Object.keys(NOTE_ICONS) as NoteIcon[]).map((k) => (
+              <label key={k} className="note-icon-choice" title={NOTE_ICON_WORDS[k]}>
+                <input type="radio" name="note-icon" value={k} checked={icon === k} onChange={() => setIcon(k)} aria-label={NOTE_ICON_WORDS[k]} />
+                <span aria-hidden="true">{NOTE_ICONS[k]}</span>
               </label>
             ))}
           </fieldset>
