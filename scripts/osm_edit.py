@@ -90,6 +90,15 @@ ALLOWED_KEYS = frozenset(
         "smoothness",
         "mtb:scale",
         "mtb:scale:imba",
+        # A bike lane or protected track seen on the street, or seen missing (owner
+        # 2026-11-10, North Bethesda: a two-way protected lane OSM had as a painted
+        # one, and a protected track OSM had where the street has none).
+        "cycleway",
+        "cycleway:both",
+        "cycleway:left",
+        "cycleway:right",
+        "cycleway:left:oneway",
+        "cycleway:right:oneway",
     }
 )
 NODE_HIGHWAY_VALUES = frozenset({"traffic_signals", "stop", "give_way", "crossing"})

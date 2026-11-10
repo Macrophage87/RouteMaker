@@ -313,6 +313,19 @@ def test_a_way_s_oneway_may_be_reversed(osm, tmp_path, capsys):
     assert osm_edit.edit_problem(json.loads(path.read_text())) is None
 
 
+def test_a_way_s_bike_lane_may_be_corrected(osm, tmp_path):
+    # A painted lane that is really a two-way protected track, and a track that is not there.
+    track = _edit(
+        tmp_path,
+        element="way",
+        expect={"cycleway:left": "lane", "cycleway:left:oneway": None},
+        set={"cycleway:left": "track", "cycleway:left:oneway": "no"},
+    )
+    assert osm_edit.edit_problem(json.loads(track.read_text())) is None
+    gone = _edit(tmp_path, element="way", expect={"cycleway": "track"}, set={"cycleway": "no"})
+    assert osm_edit.edit_problem(json.loads(gone.read_text())) is None
+
+
 def test_show_prints_the_diff_and_flags_a_stale_draft(osm, tmp_path, capsys):
     assert osm_edit.main(["show", str(_edit(tmp_path))]) == 0
     assert "highway: None -> 'traffic_signals'" in capsys.readouterr().out
