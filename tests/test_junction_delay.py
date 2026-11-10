@@ -50,6 +50,14 @@ def junction(
 CROSS_STREET = (("road", "residential"), ("road", "residential"))
 
 
+@pytest.fixture(autouse=True)
+def buttons_priced(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Most of these tests pin the beg-button rule, which is kept but switched off since
+    the owner's word of 2026-11-10 (`junction_delay.BUTTONS_PRICED`): it is switched on
+    here so the kept rule stays right. `TestButtonsOff` checks what the planner does now."""
+    monkeypatch.setattr(d, "BUTTONS_PRICED", True)
+
+
 class TestOneJunction:
     def test_a_crosswalk_over_a_slip_lane_waits_for_a_gap(self) -> None:
         """The owner, 2026-10-21: riders take an LTS 4 road over a sidewalk, "especially
@@ -926,18 +934,76 @@ class TestSignalRuns:
         (plain,) = d.waits([along], suburban=everywhere)
         assert plain.seconds == 15.0
 
-    def test_the_button_cue_is_at_the_button_signal_not_the_runs_first_junction(self) -> None:
+    def test_the_button_is_at_the_button_signal_not_the_runs_first_junction(self) -> None:
         """The signal review, 2026-11-08: a run that begins at a stop sign or a stop line
-        short of the button signal put Ride's "Light may need a button press" there."""
-        from core import routing
-
+        short of the button signal keeps the button signal's own node."""
         stop_first = at(junction(*SECONDARY), 90.0, -77.0002)
         button = at(suburban_signal(*SECONDARY), 110.0, -77.0)
         (run,) = d.waits([stop_first, button], suburban=everywhere)
         assert run.button and (run.m, run.lon) == (90.0, -77.0002)
         assert run.button_at == (110.0, -77.0, 38.9)
-        cue = routing.light_buttons([run], 1000.0, 1000.0)
-        # Before: at 90 m and the stop sign's node; after: the signal's.
-        assert cue == [{"at_m": 110.0, "lon": -77.0, "lat": 38.9}]
         (plain,) = d.waits([stop_first, at(suburban_signal(*SECONDARY), 110.0, -77.0)])
-        assert routing.light_buttons([plain], 1000.0, 1000.0) == []
+        assert not plain.button and plain.button_at is None
+
+
+class TestButtonsOff:
+    """The owner, 2026-11-10: "Remove the 'push button' to cross. It generally only gets
+    the ones that are on timers", then "Remove the cue and the penalty". Before, the
+    crossings below ranked at 2 minutes (10 on Road Bike and Tandem); now each ranks as the
+    plain signal it is, on every ride type."""
+
+    @pytest.fixture(autouse=True)
+    def off(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(d, "BUTTONS_PRICED", False)
+
+    def test_the_planner_prices_no_buttons(self) -> None:
+        # The module's own setting, not this class's fixture.
+        import inspect
+
+        assert "\nBUTTONS_PRICED = False\n" in inspect.getsource(d)
+
+    def test_a_path_crossing_a_big_suburban_road_is_a_plain_signal(self) -> None:
+        crossing = suburban_signal(
+            *PRIMARY, in_use="cycleway", out_use="cycleway", in_class=None, out_class=None
+        )
+        wait = d.signal_wait(crossing, suburban=True)
+        assert not wait.button and not wait.button_light
+        # The suburban 45 s red, doubled: no longer BUTTON_RANKED_S.
+        assert (wait.red_s, wait.ranked_s) == (45.0, 90.0)
+
+    def test_a_crossing_tagged_button_operated_is_a_plain_signal(self) -> None:
+        crossing = suburban_signal(
+            *PRIMARY,
+            in_use="pedestrian_crossing",
+            out_use="pedestrian_crossing",
+            in_class="service_other",
+            out_class="service_other",
+        )
+        wait = d.signal_wait(crossing, tagged_button=True)
+        assert not wait.button and wait.ranked_s == wait.red_s
+
+    def test_road_bike_and_tandem_rank_it_as_any_signal(self) -> None:
+        (run,) = d.waits([suburban_signal(*PRIMARY)], suburban=everywhere)
+        assert not run.button and run.button_at is None
+        for ride in (presets.ROAD_BIKE, presets.TANDEM):
+            weight = presets.wait_weight_for(ride)
+            ranked = ride_ranked_s([run], ride)
+            # The stacked rule (90 s at 1x, held at 5x the 45 s red), not ten minutes.
+            assert ranked == min(weight * 90.0, d.MAX_STACKED_WEIGHT * 45.0)
+            assert ranked < d.ROAD_BIKE_BUTTON_S
+
+    def test_road_bike_does_not_hold_a_light_below_a_button_it_no_longer_prices(self) -> None:
+        """Where the stop sign across the same road is priced, Road Bike once held a light a
+        button was read at 2 s below two-thirds of that stop sign (`_signal`). Off, the light
+        ranks by the stacked rule and the J2-4 stop-sign cap alone."""
+        crossing = suburban_signal(*PRIMARY)
+        on = d.signal_wait(crossing, suburban=True, stop_extra_s=40.0)
+        assert not on.button_light and on.stop_s is not None
+        (run,) = d.waits([crossing], suburban=everywhere, stop_extra_s={(-77.0, 38.9): 40.0})
+        weight = presets.wait_weight_for(presets.ROAD_BIKE)
+        expected = min(
+            weight * run.ranked_s,
+            max(d.MAX_STACKED_WEIGHT * run.red_s, run.ranked_s),
+            max(weight * run.stop_s - d.BUTTON_BELOW_STOP_S, 0.0),
+        )
+        assert ride_ranked_s([run], presets.ROAD_BIKE) == pytest.approx(expected)
