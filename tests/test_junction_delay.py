@@ -50,6 +50,14 @@ def junction(
 CROSS_STREET = (("road", "residential"), ("road", "residential"))
 
 
+@pytest.fixture(autouse=True)
+def buttons_priced(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Most of these tests pin the beg-button rule, which is kept but switched off since
+    the owner's word of 2026-11-10 (`junction_delay.BUTTONS_PRICED`): it is switched on
+    here so the kept rule stays right. `TestButtonsOff` checks what the planner does now."""
+    monkeypatch.setattr(d, "BUTTONS_PRICED", True)
+
+
 class TestOneJunction:
     def test_a_crosswalk_over_a_slip_lane_waits_for_a_gap(self) -> None:
         """The owner, 2026-10-21: riders take an LTS 4 road over a sidewalk, "especially
@@ -936,3 +944,50 @@ class TestSignalRuns:
         assert run.button_at == (110.0, -77.0, 38.9)
         (plain,) = d.waits([stop_first, at(suburban_signal(*SECONDARY), 110.0, -77.0)])
         assert not plain.button and plain.button_at is None
+
+
+class TestButtonsOff:
+    """The owner, 2026-11-10: "Remove the 'push button' to cross. It generally only gets
+    the ones that are on timers", then "Remove the cue and the penalty". Before, the
+    crossings below ranked at 2 minutes (10 on Road Bike and Tandem); now each ranks as the
+    plain signal it is, on every ride type."""
+
+    @pytest.fixture(autouse=True)
+    def off(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(d, "BUTTONS_PRICED", False)
+
+    def test_the_planner_prices_no_buttons(self) -> None:
+        # The module's own setting, not this class's fixture.
+        import inspect
+
+        assert "\nBUTTONS_PRICED = False\n" in inspect.getsource(d)
+
+    def test_a_path_crossing_a_big_suburban_road_is_a_plain_signal(self) -> None:
+        crossing = suburban_signal(
+            *PRIMARY, in_use="cycleway", out_use="cycleway", in_class=None, out_class=None
+        )
+        wait = d.signal_wait(crossing, suburban=True)
+        assert not wait.button and not wait.button_light
+        # The suburban 45 s red, doubled: no longer BUTTON_RANKED_S.
+        assert (wait.red_s, wait.ranked_s) == (45.0, 90.0)
+
+    def test_a_crossing_tagged_button_operated_is_a_plain_signal(self) -> None:
+        crossing = suburban_signal(
+            *PRIMARY,
+            in_use="pedestrian_crossing",
+            out_use="pedestrian_crossing",
+            in_class="service_other",
+            out_class="service_other",
+        )
+        wait = d.signal_wait(crossing, tagged_button=True)
+        assert not wait.button and wait.ranked_s == wait.red_s
+
+    def test_road_bike_and_tandem_rank_it_as_any_signal(self) -> None:
+        (run,) = d.waits([suburban_signal(*PRIMARY)], suburban=everywhere)
+        assert not run.button and run.button_at is None
+        for ride in (presets.ROAD_BIKE, presets.TANDEM):
+            weight = presets.wait_weight_for(ride)
+            ranked = ride_ranked_s([run], ride)
+            # The stacked rule (90 s at 1x, held at 5x the 45 s red), not ten minutes.
+            assert ranked == min(weight * 90.0, d.MAX_STACKED_WEIGHT * 45.0)
+            assert ranked < d.ROAD_BIKE_BUTTON_S

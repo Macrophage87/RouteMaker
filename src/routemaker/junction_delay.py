@@ -91,8 +91,10 @@ BUTTON_RANKED_S of waiting ("something like a 2 minute wait, still not as bad as
 across the same road"; "If there are cars waiting, then it wouldn't, but we should penalize
 those"), held below what giving way at a stop sign across the same road costs the ranking
 (`stop_extra_s`, from the junction model); its time shown stays the signal's measured wait.
-Ride no longer says anything at one (the owner, 2026-11-10: the button data mostly caught
-signals on timers, so the "Light may need a button press" cue was removed).
+Ride no longer says anything at one, and since 2026-11-10 none of this is priced
+(`BUTTONS_PRICED` is off): the owner, "Remove the 'push button' to cross. It generally only
+gets the ones that are on timers", then chose to drop the ranking's penalty too. A button
+crossing ranks as the plain signal it is read as.
 On Road Bike's weight it counts ROAD_BIKE_BUTTON_S, held below two-thirds of that stop sign
 (the owner: "Call that 10 minutes on a road bike in pain level. ... Just make sure it's less
 than half a stop sign against an uncontrolled busy road", then, told half a stop sign could
@@ -160,6 +162,13 @@ SUBURBAN_SIGNAL_WEIGHT = 2.0
 # owner, 2026-11-08: "Maybe go to 5. People prefer free flow on road bikes."). A city signal
 # stays at Road Bike's 3x.
 MAX_STACKED_WEIGHT = 5.0
+# Whether a beg-button crossing is priced at all (see the docstring). Off since the owner's
+# word of 2026-11-10: the buttons read (inferred, and the map's `button_operated` tags) were
+# mostly signals on timers ("It generally only gets the ones that are on timers"), so the
+# ranking's penalty went with Ride's cue, and every such crossing ranks as a plain signal.
+# The rule below is kept, switched off, in case better button data turns up.
+BUTTONS_PRICED = False
+
 # A crossing read as needing a beg button (see the docstring), as the ranking counts it: two
 # minutes of waiting, held below a stop sign across the same road (`signal_wait`).
 BUTTON_RANKED_S = 120.0
@@ -418,6 +427,9 @@ def signal_wait(
         # plain stop plus the model's extra there had ranked a Road Bike light at a right
         # turn off a suburban primary at about half of Default's (the 2026-11-08 hunt, J3-1).
         stop = _stop(crossed, False) + stop_extra_s
+    if not BUTTONS_PRICED:
+        # A plain signal: no button, and no Road Bike hold below one (`_signal`).
+        return SignalWait(seconds, ranked, False, red, stop, ranked, False)
     inferred = suburban and onto_busy and _own_rank(junction) >= BUTTON_MIN_OWN_RANK
     on_crossing = junction.in_use in _CROSSING_USES or junction.out_use in _CROSSING_USES
     button_light = (suburban and onto_busy) or on_crossing

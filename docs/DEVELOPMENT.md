@@ -4156,7 +4156,8 @@ two do not replace each other. Stop and yield signs reach the router only throug
 `/locate`, so the model reads who gives way from the roads' classes, not from the signs; no
 map rebuild is needed.
 
-**Suburban signals and beg buttons (the owner, 2026-11-08).** "Along stroads that you'd find
+**Suburban signals and beg buttons (the owner, 2026-11-08; beg-button pricing switched off
+2026-11-10, see below).** "Along stroads that you'd find
 in many of the suburbs, the light cycles are a lot longer than what you'd find in DC." In the
 owner's rides, the stopped time at a red was a median of 19 s at 4 signals on the
 District's and Baltimore's grids, 52 s at 21 suburban signals and 66 s (mean 68 s) at the 16
@@ -4248,7 +4249,12 @@ the model's feet at `quiet_cost` x `weight` a metre, a wait at `QUIET_COST_FACTO
 such a signal: v0.23.0's "Light may need a button press" note (the answer's `light_buttons`)
 was removed on 2026-11-10 at the owner's word ("Remove the 'push button' to cross. It generally
 only gets the ones that are on timers."), as the inferred buttons are mostly fixed-time
-signals. The ranking above is unchanged.
+signals. The owner then chose to drop the ranking's penalty too ("Remove the cue and the
+penalty", 2026-11-10): `junction_delay.BUTTONS_PRICED` is off, so every crossing read above
+(inferred or tagged `button_operated`) ranks as the plain signal it is, on every ride type,
+and Road Bike's hold of a plain light below the button (`_signal`) no longer applies. The
+button rule in this section is kept in the code, switched off, in case better button data
+turns up; the `button_operated` column is still built.
 The `button_operated` tag reaches the planner through `segment.button_operated`
 (`pipeline.signals.button_ways`: trail-class ways tagged so, crossing ways through a node
 tagged so, and paths ending at one; hunt J2-3: a long trail passing through one such node had
