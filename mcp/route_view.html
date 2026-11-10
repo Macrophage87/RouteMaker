@@ -61,7 +61,8 @@
   .map image { filter: var(--map-filter); }
   .credit { position: absolute; right: 4px; bottom: 3px; font-size: 10px; color: var(--muted); background: color-mix(in srgb, var(--bg) 75%, transparent); padding: 0 4px; border-radius: 4px; }
   .graphs { margin-top: 6px; position: relative; outline: none; }
-  .graphs:focus-visible { box-shadow: 0 0 0 2px var(--button); border-radius: 6px; }
+  .graphs:focus-visible { outline: 2px solid var(--button); outline-offset: 2px; border-radius: 6px; }
+  .key b { display: inline-block; min-width: 16px; padding: 0 3px; margin-right: 4px; border-radius: 3px; text-align: center; color: #16181d; font-size: 11px; }
   .graphs svg { display: block; width: 100%; height: auto; touch-action: pan-y; }
   .readout { min-height: 20px; font-size: 13px; color: var(--muted); margin-top: 2px; }
   .key { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--muted); margin-top: 4px; }
@@ -112,6 +113,8 @@
   let view = null;
   let theme = null;
   window.addEventListener("message", (event) => {
+    // Only the host speaks to the view.
+    if (event.source !== window.parent) return;
     const msg = event.data;
     if (!msg || msg.jsonrpc !== "2.0") return;
     if (msg.id != null && waiting.has(msg.id) && !msg.method) {
@@ -138,12 +141,24 @@
     }
   });
 
+  // The host's standard theme variables (MCP Apps "Theming"), read as the view's own colours.
+  const HOST_VARS = {
+    "--color-background-primary": "--bg",
+    "--color-text-primary": "--ink",
+    "--color-text-secondary": "--muted",
+    "--color-border-primary": "--rule",
+    "--font-sans": "--font-sans",
+  };
+  const darkQuery = matchMedia("(prefers-color-scheme: dark)");
   function applyContext(ctx) {
     if (ctx.theme) theme = ctx.theme;
-    document.documentElement.dataset.theme =
-      theme || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+    document.documentElement.dataset.theme = theme || (darkQuery.matches ? "dark" : "light");
     const vars = ctx.styles && ctx.styles.variables;
-    if (vars) for (const [k, v] of Object.entries(vars)) if (v) document.documentElement.style.setProperty(k, v);
+    if (vars) {
+      for (const [k, v] of Object.entries(vars)) {
+        if (v && HOST_VARS[k]) document.documentElement.style.setProperty(HOST_VARS[k], v);
+      }
+    }
     const fonts = ctx.styles && ctx.styles.css && ctx.styles.css.fonts;
     if (fonts && !document.getElementById("host-fonts")) {
       const style = document.createElement("style");
@@ -153,6 +168,7 @@
     }
   }
   applyContext({});
+  darkQuery.addEventListener("change", () => { if (!theme) applyContext({}); });
 
   // Our size, so a host that lets the view choose its height fits it.
   let lastH = 0;
@@ -245,6 +261,10 @@
     root.removeAttribute("role");
     root.textContent = "";
     const line = v.line ? decode(v.line, v.line_precision || 5) : [];
+    if (line.length < 2) {
+      show("No line to draw for this route: the answer above has its details.");
+      return;
+    }
     // Miles along the line at each point, scaled to the route's own miles.
     const cum = [0];
     for (let i = 1; i < line.length; i++) cum.push(cum[i - 1] + miles(line[i - 1], line[i]));
@@ -288,14 +308,20 @@
     scale = Math.min(scale, 256 * 2 ** 17);
     const centre = [(minX + maxX) / 2, (minY + maxY) / 2];
     const px = (p) => { const [x, y] = world(p); return [W / 2 + (x - centre[0]) * scale, H / 2 + (y - centre[1]) * scale]; };
-    const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, role: "img" }, mapBox);
+    const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, role: "group" }, mapBox);
     const busy = (v.spans || []).filter((s) => s[2] != null && s[2] >= 3).reduce((n, s) => n + (s[1] - s[0]), 0);
-    el("title", {}, svg).textContent =
+    svg.setAttribute("aria-label",
       `Map of the route, ${fmt(total)} miles, coloured by traffic stress` +
-      (busy > 0.05 ? `; ${fmt(busy)} miles at LTS 3 or higher.` : "; all of it below LTS 3.");
-    const base = el("g", {}, svg);
-    const routeG = el("g", {}, svg);
+      (busy > 0.05 ? `; ${fmt(busy)} miles at LTS 3 or higher.` : "; all of it below LTS 3."));
+    const base = el("g", { "aria-hidden": "true" }, svg);
+    const routeG = el("g", { "aria-hidden": "true" }, svg);
     const marks = el("g", {}, svg);
+    // A mark on the map: its words for a screen reader as well as a tooltip.
+    const mark = (x, y, words) => {
+      const g = el("g", { transform: `translate(${x.toFixed(1)} ${y.toFixed(1)})`, role: "img", "aria-label": words }, marks);
+      el("title", {}, g).textContent = words;
+      return g;
+    };
     const d = (pts) => pts.map((p, i) => { const [x, y] = px(p); return `${i ? "L" : "M"}${x.toFixed(1)} ${y.toFixed(1)}`; }).join("");
     const spans = (v.spans && v.spans.length) ? v.spans : [[0, total, null, null]];
     // Casings first, then the colours, so a level's edge never covers its neighbour.
@@ -307,14 +333,14 @@
           d: d(piece(s[0], Math.max(s[1], s[0] + total / 400))),
           fill: "none", "stroke-linecap": "round", "stroke-linejoin": "round",
           stroke: c[pass], "stroke-width": pass ? 8 : 5,
-          "stroke-dasharray": pass ? null : tier === 2 ? "10 2.5" : tier === 3 ? "8 2" : null,
+          // The map's own shapes (stressStyle.js TIER_SHAPES), so a level is not colour alone.
+          "stroke-dasharray": pass ? null : ({ 2: "10 2.5", 3: "8 2", 4: "16 3", 5: "8 3 2 3" })[tier] || null,
         }, routeG);
       }
     }
     const pin = (p, label, fill, title) => {
       const [x, y] = px(p);
-      const g = el("g", { transform: `translate(${x.toFixed(1)} ${y.toFixed(1)})` }, marks);
-      el("title", {}, g).textContent = title;
+      const g = mark(x, y, title);
       el("circle", { r: 11, fill, stroke: "#fff", "stroke-width": 2.5 }, g);
       const t = el("text", { "text-anchor": "middle", y: 4.5, "font-size": 12, "font-weight": 700, fill: "#fff" }, g);
       t.textContent = label;
@@ -322,18 +348,24 @@
     for (const j of v.junctions || []) {
       const p = at(j.mi); if (!p) continue;
       const [x, y] = px(p);
-      const g = el("g", { transform: `translate(${x.toFixed(1)} ${y.toFixed(1)})` }, marks);
-      el("title", {}, g).textContent = `${j.level === "very high" ? "Very high" : "Higher"} stress junction at mile ${j.mi.toFixed(1)}${j.reason ? `: ${j.reason}` : ""}`;
+      const g = mark(x, y, `${j.level === "very high" ? "Very high" : "Higher"} stress junction at mile ${j.mi.toFixed(1)}${j.reason ? `: ${j.reason}` : ""}`);
       if (j.level === "very high") el("path", { d: "M0 -9 9 0 0 9 -9 0Z", fill: "#dc2626", stroke: "#1c1917", "stroke-width": 1.5 }, g);
       else el("path", { d: "M0 -9 9 7 -9 7Z", fill: "#f97316", stroke: "#1c1917", "stroke-width": 1.5 }, g);
     }
     for (const c of v.closures || []) {
       const p = at(c.mi); if (!p) continue;
       const [x, y] = px(p);
-      const g = el("g", { transform: `translate(${x.toFixed(1)} ${y.toFixed(1)})` }, marks);
-      el("title", {}, g).textContent = `${c.kind === "closure" ? "Closure" : "Possible closure"} at mile ${c.mi.toFixed(1)}${c.what ? `: ${c.what}` : ""}`;
-      el("rect", { x: -8, y: -8, width: 16, height: 16, rx: 3, fill: c.kind === "closure" ? "#dc2626" : "#facc15", stroke: "#1c1917", "stroke-width": 1.5 }, g);
-      el("text", { "text-anchor": "middle", y: 5, "font-size": 13, "font-weight": 700, fill: c.kind === "closure" ? "#fff" : "#1c1917" }, g).textContent = "!";
+      const closed = c.kind === "closure";
+      const g = mark(x, y, `${closed ? "Closure" : "Possible closure"} at mile ${c.mi.toFixed(1)}${c.what ? `: ${c.what}` : ""}`);
+      // A closure is a red octagon with a bar, a possible one a yellow square with "!": shape
+      // and sign, not colour alone.
+      if (closed) {
+        el("path", { d: "M-4 -9h8l5 5v8l-5 5h-8l-5 -5v-8z", fill: "#dc2626", stroke: "#1c1917", "stroke-width": 1.5 }, g);
+        el("rect", { x: -5, y: -1.5, width: 10, height: 3, fill: "#fff" }, g);
+      } else {
+        el("rect", { x: -8, y: -8, width: 16, height: 16, rx: 3, fill: "#facc15", stroke: "#1c1917", "stroke-width": 1.5 }, g);
+        el("text", { "text-anchor": "middle", y: 5, "font-size": 13, "font-weight": 700, fill: "#1c1917" }, g).textContent = "!";
+      }
     }
     const pts = v.points || [];
     const stops = pts.filter((p, i) => i > 0 && i < pts.length - 1 && !p.via);
@@ -342,14 +374,18 @@
       const first = pts[0].lon_lat, last = pts[pts.length - 1].lon_lat;
       const loop = v.loop || (pts.length > 1 && miles(first, last) < 0.03);
       if (!loop && pts.length > 1) pin(last, "B", "#b91c1c", "Finish");
-      pin(first, loop ? "A" : "A", "#15803d", loop ? "Start and finish" : "Start");
+      pin(first, "A", "#15803d", loop ? "Start and finish" : "Start");
     }
-    const cursor = el("circle", { r: 7, fill: "none", stroke: "#16181d", "stroke-width": 3, visibility: "hidden" }, marks);
-    const cursorRing = el("circle", { r: 9.5, fill: "none", stroke: "#fff", "stroke-width": 1.5, visibility: "hidden" }, marks);
+    const cursorG = el("g", { "aria-hidden": "true" }, svg);
+    const cursor = el("circle", { r: 7, fill: "none", stroke: "#16181d", "stroke-width": 3, visibility: "hidden" }, cursorG);
+    const cursorRing = el("circle", { r: 9.5, fill: "none", stroke: "#fff", "stroke-width": 1.5, visibility: "hidden" }, cursorG);
 
     // The base map, drawn by the server from this box alone (route_view_map). Without it the
     // line stays on the plain background.
-    request("tools/call", { name: "route_view_map", arguments: { centre: unworld(centre), scale, width: W, height: H } })
+    if (v.map_key) request("tools/call", {
+      name: "route_view_map",
+      arguments: { draft_id: v.draft_id, key: v.map_key, centre: unworld(centre), scale, width: W, height: H },
+    })
       .then((res) => {
         const img = res && (res.content || []).find((c) => c.type === "image");
         if (!img) return;
@@ -372,7 +408,12 @@
       .catch(() => {});
 
     // ---- Graphs: the stress ribbon over the elevation profile, on one mile axis ----
-    const graphs = html("div", { class: "graphs", tabindex: "0", "aria-label": "Stress and elevation along the route. Use the left and right arrow keys to move along it." });
+    const graphs = html("div", {
+      class: "graphs", tabindex: "0", role: "slider",
+      "aria-label": "Place along the route: traffic stress and elevation",
+      "aria-valuemin": "0", "aria-valuemax": String(Math.round(total * 10) / 10), "aria-valuenow": "0",
+      "aria-valuetext": "Use the left and right arrow keys to move along the route",
+    });
     root.appendChild(graphs);
     const GW = W, left = 40, right = GW - 10, X = (mi) => left + ((right - left) * mi) / total;
     const prof = v.profile || [];
@@ -381,8 +422,7 @@
     const eTop = ribbonY + ribbonH + 16, eH = hasProfile ? 80 : 0;
     const axisY = hasProfile ? eTop + eH : ribbonY + ribbonH + 6;
     const GH = axisY + 22;
-    const g = el("svg", { viewBox: `0 0 ${GW} ${GH}`, role: "img" }, graphs);
-    el("title", {}, g).textContent = "Traffic stress and elevation by mile";
+    const g = el("svg", { viewBox: `0 0 ${GW} ${GH}`, "aria-hidden": "true" }, graphs);
     const lab = (x, y, words, anchor = "start") => {
       const t = el("text", { x, y, "font-size": 11, fill: "var(--muted)", "text-anchor": anchor }, g);
       t.textContent = words;
@@ -400,7 +440,7 @@
       }
       if (s[2] != null && b - a > (s[2] % 1 ? 26 : 16)) {
         const dark = s[2] >= 3.5;
-        el("text", { x: (a + b) / 2, y: ribbonY + 16.5, "text-anchor": "middle", "font-size": 12, "font-weight": 700, fill: dark ? "#fff" : "#16181d" }, g).textContent = s[2] === 5 ? "A" : String(s[2]);
+        el("text", { x: (a + b) / 2, y: ribbonY + 16.5, "text-anchor": "middle", "font-size": 12, "font-weight": 700, fill: dark ? "#fff" : "#16181d" }, g).textContent = String(s[2]);
       }
     }
     el("rect", { x: left, y: ribbonY, width: right - left, height: ribbonH, fill: "none", stroke: "var(--ink)", "stroke-width": 0.8 }, g);
@@ -431,9 +471,18 @@
     }
     const line_ = el("line", { y1: ribbonY - 4, y2: axisY, stroke: "var(--ink)", "stroke-dasharray": "3 2", visibility: "hidden" }, g);
 
-    const readout = html("div", { class: "readout", "aria-live": "polite" });
+    const readout = html("div", { class: "readout", "aria-hidden": "true" });
     root.appendChild(readout);
     const keyRow = html("div", { class: "key" });
+    // The levels on this route, each with its number as the ribbon shows it.
+    const levels = [...new Set(spans.map((s) => s[2]).filter((t) => t != null))].sort((a, b) => a - b);
+    for (const t of levels) {
+      const item = html("span");
+      const chip = html("b", { style: `background:${colours(t)[0]};color:${t >= 3.5 ? "#fff" : "#16181d"}` }, String(t));
+      item.appendChild(chip);
+      item.appendChild(document.createTextNode(t === 5 ? "Avoid" : `LTS ${t}`));
+      keyRow.appendChild(item);
+    }
     const used = new Set(spans.map((s) => s[3]).filter((f) => RAIL[f]));
     for (const f of ["path", "protected", "lane"]) {
       if (!used.has(f)) continue;
@@ -443,12 +492,14 @@
       keyRow.appendChild(item);
     }
     if ((v.junctions || []).length) keyRow.appendChild(html("span", {}, "▲ stressful junction"));
+    if ((v.closures || []).some((c) => c.kind !== "closure")) keyRow.appendChild(html("span", {}, "! possible closure"));
     if (keyRow.childNodes.length) root.appendChild(keyRow);
 
     const heightAt = (mi) => {
       if (!hasProfile) return null;
-      let i = prof.findIndex((p) => p[0] >= mi);
-      if (i <= 0) return prof[Math.max(0, i)][1];
+      const i = prof.findIndex((p) => p[0] >= mi);
+      if (i < 0) return prof[prof.length - 1][1];
+      if (i === 0) return prof[0][1];
       const [a, b] = [prof[i - 1], prof[i]];
       return a[1] + ((mi - a[0]) / (b[0] - a[0] || 1)) * (b[1] - a[1]);
     };
@@ -464,12 +515,16 @@
       }
       const s = spanAt(here);
       const ft = heightAt(here);
-      readout.textContent = [
+      const words = [
         `Mile ${here.toFixed(1)}`,
         s ? levelWord(s[2]) : null,
         s && RAIL_WORDS[s[3]] ? RAIL_WORDS[s[3]].toLowerCase() : null,
         ft != null ? `${Math.round(ft)} ft` : null,
       ].filter(Boolean).join(" · ");
+      readout.textContent = words;
+      // Said by a screen reader as the slider's value, when moved by key; a pointer only shows it.
+      graphs.setAttribute("aria-valuenow", String(Math.round(here * 10) / 10));
+      graphs.setAttribute("aria-valuetext", words);
     };
     const fromEvent = (e) => {
       const r = g.getBoundingClientRect();

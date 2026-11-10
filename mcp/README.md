@@ -53,7 +53,9 @@ travels in the tool result's `_meta` (`routemaker/route-view`), which the extens
 the model's context, so the answer the model reads is unchanged. On the site the base map behind
 the line comes from `route_view_map`, a tool only the view calls (visibility `app`): a picture of
 the app's own base map for the box the view asks for, drawn in memory and never kept
-(`src/core/route_view_map.py`). On your own computer there is no base map, so the line is drawn on
+(`src/core/route_view_map.py`). It answers only with a key that travels in the view's `_meta`, so
+an assistant without MCP Apps lists it but its model cannot use it. Each view's base map is one
+connector call, counted in the same hourly limit as planning. On your own computer there is no base map, so the line is drawn on
 a plain background.
 
 The assistant picks the ride type and settings that fit what you ask: every ride type the app

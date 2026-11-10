@@ -18,8 +18,28 @@ from core import preview_basemap, route_view_map
 VIEW_TOOLS = {"plan_route", "revise_route", "open_link", "plan_metro_loop"}
 
 
+def _key(draft_id: str) -> str:
+    return f"key-for-{draft_id}"
+
+
 def _server(stand_in, tmp_path, basemap=None):  # noqa: F811 - the fixture's value
-    return mcp.Server(lambda: mcp.Api(stand_in), STATIONS, out_dir=tmp_path, basemap=basemap)
+    return mcp.Server(
+        lambda: mcp.Api(stand_in),
+        STATIONS,
+        out_dir=tmp_path,
+        basemap=basemap,
+        view_key=_key if basemap else None,
+    )
+
+
+MAP_ARGS = {
+    "draft_id": "d1",
+    "key": _key("d1"),
+    "centre": [-77.03, 38.904],
+    "scale": 256 * 2**12,
+    "width": 300,
+    "height": 200,
+}
 
 
 def test_the_drafting_tools_name_the_view_and_nothing_else_does(stand_in, tmp_path) -> None:  # noqa: F811
@@ -40,6 +60,9 @@ def test_the_drafting_tools_name_the_view_and_nothing_else_does(stand_in, tmp_pa
 
 def test_the_base_map_tool_is_the_views_alone(stand_in, tmp_path) -> None:  # noqa: F811
     server = _server(stand_in, tmp_path, basemap=lambda *a: None)
+    # Without a key to give the view, no tool (and no key in the view).
+    keyless = mcp.Server(lambda: mcp.Api(stand_in), STATIONS, basemap=lambda *a: None)
+    assert "route_view_map" not in {t["name"] for t in keyless.tools()}
     tool = next(t for t in server.tools() if t["name"] == "route_view_map")
     # Hidden from the model by an assistant app that shows MCP Apps (visibility "app").
     assert tool["_meta"]["ui"]["visibility"] == ["app"]
@@ -137,8 +160,7 @@ def basemap(tmp_path, settings):
 
 def test_the_base_map_is_drawn_from_the_box_alone(stand_in, tmp_path, basemap) -> None:  # noqa: F811
     server = _server(stand_in, tmp_path, basemap=route_view_map.draw)
-    args = {"centre": [-77.03, 38.904], "scale": 256 * 2**12, "width": 300, "height": 200}
-    answer = rpc(server, "tools/call", {"name": "route_view_map", "arguments": args})["result"]
+    answer = rpc(server, "tools/call", {"name": "route_view_map", "arguments": MAP_ARGS})["result"]
     assert not answer["isError"]
     image = answer["content"][0]
     assert image["type"] == "image" and image["mimeType"] == "image/png"
@@ -161,9 +183,13 @@ def test_the_base_map_is_drawn_from_the_box_alone(stand_in, tmp_path, basemap) -
 @pytest.mark.parametrize(
     "args",
     [
-        {"centre": [-77.03, 38.904], "scale": 1e9, "width": 300, "height": 200},
-        {"centre": [-77.03, 38.904], "scale": 256 * 2**12, "width": 5000, "height": 200},
-        {"centre": [-777, 38.904], "scale": 256 * 2**12, "width": 300, "height": 200},
+        {**MAP_ARGS, "scale": 1e9},
+        {**MAP_ARGS, "width": 5000},
+        {**MAP_ARGS, "height": 481},
+        {**MAP_ARGS, "centre": [-777, 38.904]},
+        # Without the view's key (the model never sees it): nothing drawn.
+        {**MAP_ARGS, "key": ""},
+        {**MAP_ARGS, "draft_id": "d2"},
     ],
 )
 def test_the_base_map_tool_refuses_a_view_out_of_bounds(stand_in, tmp_path, args) -> None:  # noqa: F811
@@ -177,8 +203,46 @@ def test_no_base_map_for_the_box_is_said_not_failed(stand_in, tmp_path, settings
     settings.BASEMAP_PMTILES = tmp_path / "none.pmtiles"
     preview_basemap._archive.cache_clear()
     server = _server(stand_in, tmp_path, basemap=route_view_map.draw)
-    args = {"centre": [-77.03, 38.904], "scale": 256 * 2**12, "width": 300, "height": 200}
-    answer = rpc(server, "tools/call", {"name": "route_view_map", "arguments": args})["result"]
+    answer = rpc(server, "tools/call", {"name": "route_view_map", "arguments": MAP_ARGS})["result"]
     assert not answer["isError"] and answer["structuredContent"] == {"drawn": False}
     assert [c["type"] for c in answer["content"]] == ["text"]
     assert StandIn.routes == []
+
+
+def test_every_drafting_tool_sends_the_view_and_a_refusal_sends_none(stand_in, tmp_path) -> None:  # noqa: F811
+    server = _server(stand_in, tmp_path, basemap=lambda *a: None)
+
+    def call(name, arguments):
+        return rpc(server, "tools/call", {"name": name, "arguments": arguments})["result"]
+
+    planned = call("plan_route", {"points": ["Union Market", "Takoma"]})
+    view = planned["_meta"][mcp.VIEW_META_KEY]
+    draft_id = planned["structuredContent"]["draft_id"]
+    # The base map key is the view's: in _meta, never in the model's answer.
+    assert view["map_key"] == _key(draft_id)
+    assert "map_key" not in planned["content"][-1]["text"]
+    revised = call("revise_route", {"draft_id": draft_id, "stress": 90})
+    assert (
+        revised["_meta"][mcp.VIEW_META_KEY]["draft_id"] == revised["structuredContent"]["draft_id"]
+    )
+    opened = call("open_link", {"link": planned["structuredContent"]["link"]})
+    assert mcp.VIEW_META_KEY in opened["_meta"]
+    # A refusal is text alone.
+    refused = call("revise_route", {"draft_id": "d0", "stress": 90})
+    assert refused["isError"] and "_meta" not in refused
+
+
+def test_junctions_and_closures_are_placed_on_the_routes_own_miles() -> None:
+    # The traced metres (stress spans, junctions) run short of distance_m: the view's miles are
+    # the route's, as the answer says them.
+    answer = {
+        "distance_m": 3218.688,
+        "geometry": {"coordinates": [[-77.0, 38.9], [-76.97, 38.9]]},
+        "stress_spans": [{"from_m": 0, "to_m": 1000, "tier": 2, "facility": None}],
+        "intersections": [{"m": 500, "severity": "red", "reason": "x"}],
+    }
+    plan = mcp.Plan([(-77.0, 38.9), (-76.97, 38.9)], [], "default", answer, None, {})
+    view = mcp.route_view(plan, {"closures": [{"from_mi": 1.2, "what": "Trail closed"}]}, "A")
+    assert view["spans"] == [[0, 2.0, 2, None]]
+    assert view["junctions"] == [{"mi": 1.0, "level": "very high", "reason": "x"}]
+    assert view["closures"] == [{"mi": 1.2, "kind": "closure", "what": "Trail closed"}]

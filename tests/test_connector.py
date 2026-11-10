@@ -304,6 +304,17 @@ class TestConnector:
         revised = call(token, "revise_route", {"draft_id": draft["draft_id"], "stress": 90})
         assert planner[-1]["stress"] == 90 and not revised["isError"]
         new_id = revised["structuredContent"]["draft_id"]
+        # The route view (mcp/route_view.html) comes with each draft, its base map keyed to the
+        # rider's grant and the draft: another draft's key, or none, draws nothing.
+        view = revised["_meta"]["routemaker/route-view"]
+        key = view["map_key"]
+        box = {"centre": [-77.03, 38.9], "scale": 256 * 2**12, "width": 300, "height": 200}
+        drawn = call(token, "route_view_map", {"draft_id": new_id, "key": key, **box})
+        assert not drawn["isError"], drawn
+        other = call(token, "route_view_map", {"draft_id": draft["draft_id"], "key": key, **box})
+        assert other["isError"]
+        page = mcp(token, "resources/read", {"uri": "ui://routemaker/route-view.html"}).json()
+        assert page["result"]["contents"][0]["mimeType"] == "text/html;profile=mcp-app"
         saved = call(token, "save_route", {"draft_id": new_id, "name": "Rock Creek"})
         assert not saved["isError"], saved
         row = SavedRoute.objects.get(user=user)

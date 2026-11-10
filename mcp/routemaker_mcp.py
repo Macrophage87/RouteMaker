@@ -3566,8 +3566,10 @@ VIEW_FILE = Path(__file__).resolve().parent / "route_view.html"
 VIEW_PROFILE_POINTS = 400
 # The line's precision: 5 decimals (about a metre), half the size of the router's 6.
 VIEW_LINE_PRECISION = 5
-# The base map picture route_view_map draws: no bigger than this on either side, in pixels.
-VIEW_MAP_MAX_PX = 1200
+# The base map picture route_view_map draws: no bigger than this, in pixels (the view's map is at
+# most 1200 wide and 460 tall). Our defaults: a 1200 x 480 draw takes about 0.4 to 1.8 s.
+VIEW_MAP_MAX_W = 1200
+VIEW_MAP_MAX_H = 480
 
 
 def view_html() -> str:
@@ -3584,6 +3586,8 @@ def _profile_rows(answer: dict, most: int = VIEW_PROFILE_POINTS) -> list[list[fl
         for m, h in zip(profile.get("m") or [], profile.get("elevation_m") or [], strict=False)
         if isinstance(m, (int, float)) and isinstance(h, (int, float))
     ]
+    # A gap in the heights (no elevation data there) is drawn straight across: the profile is a
+    # sketch of the climbing, and route_segments gives the grades where they are known.
     if len(rows) > most:
         step = len(rows) / (most / 2)
         kept = [rows[0]]
@@ -4416,19 +4420,20 @@ VIEW_MAP_TOOL = {
     "name": "route_view_map",
     "title": "Route view base map",
     "description": (
-        "For the route view only: the base map behind a draft's map, as a picture of the view"
-        " the view asks for (Web Mercator, centred on centre, scale pixels across the world)."
-        " Not for answering the rider: plan_route's answer has everything to say."
+        "Called by the route view itself, with a key only it holds: never call it. The base"
+        " map behind a draft's map in the view. plan_route's answer has everything to say."
     ),
     "inputSchema": {
         "type": "object",
         "properties": {
+            "draft_id": {"type": "string"},
+            "key": {"type": "string", "description": "The route view's own key."},
             "centre": {"type": "array", "items": {"type": "number"}, "minItems": 2, "maxItems": 2},
             "scale": {"type": "number"},
             "width": {"type": "integer", "minimum": 16, "maximum": 1200},
-            "height": {"type": "integer", "minimum": 16, "maximum": 1200},
+            "height": {"type": "integer", "minimum": 16, "maximum": 480},
         },
-        "required": ["centre", "scale", "width", "height"],
+        "required": ["draft_id", "key", "centre", "scale", "width", "height"],
     },
     "annotations": {"readOnlyHint": True, "openWorldHint": False},
     "_meta": {"ui": {"visibility": ["app"]}},
@@ -5401,6 +5406,7 @@ class Server:
         routes_read: bool = True,
         routes_organize: bool = True,
         basemap=None,
+        view_key=None,
     ):
         self._api_factory = api_factory
         self._api: Api | None = None
@@ -5429,6 +5435,8 @@ class Server:
         # names as (x, y, name)) or None, the base map behind the route view
         # (core.route_view_map). Without it the view draws the line on a plain background.
         self.basemap = basemap
+        # On the site: function(draft_id) -> the key route_view_map asks for (core.connector).
+        self.view_key = view_key
 
     def tools(self) -> list[dict]:
         """The tools, as tools/list gives them: without the post tool unless posts may be
@@ -5443,7 +5451,7 @@ class Server:
                 # some assistant apps.
                 t = {**t, "_meta": {"ui": {"resourceUri": VIEW_URI}, "ui/resourceUri": VIEW_URI}}
             out.append(t)
-        if self.basemap is not None:
+        if self.basemap is not None and self.view_key is not None:
             out.append(VIEW_MAP_TOOL)
         return out
 
@@ -5481,15 +5489,19 @@ class Server:
 
     # route_view_map (the route view's own: hidden from the model)
     def route_view_map(self, args: dict, call: Call) -> dict:
-        if self.basemap is None:
+        if self.basemap is None or self.view_key is None:
             raise ToolError("no base map here")
+        if not secrets.compare_digest(
+            str(args.get("key") or ""), self.view_key(str(args.get("draft_id") or ""))
+        ):
+            raise ToolError("route_view_map is the route view's own: it has nothing to answer here")
         centre = args["centre"]
         lon, lat = float(centre[0]), float(centre[1])
         if not (-180 <= lon <= 180 and -85 <= lat <= 85):
             raise ToolError("centre: [lon, lat]")
         width, height = int(args["width"]), int(args["height"])
-        if not (16 <= width <= VIEW_MAP_MAX_PX and 16 <= height <= VIEW_MAP_MAX_PX):
-            raise ToolError(f"width and height: 16 to {VIEW_MAP_MAX_PX} pixels")
+        if not (16 <= width <= VIEW_MAP_MAX_W and 16 <= height <= VIEW_MAP_MAX_H):
+            raise ToolError(f"width 16 to {VIEW_MAP_MAX_W} and height 16 to {VIEW_MAP_MAX_H} px")
         scale = float(args["scale"])
         if not math.isfinite(scale) or not 256 <= scale <= 256 * 2**18:
             raise ToolError("scale: pixels across the world, 256 to 2^26")
@@ -5979,7 +5991,13 @@ class Server:
             out["notes"] = notes
         out["credit"] = plan.answer.get("attribution", [])
         # For the route view only: Server.call moves it out of the answer (VIEW_META_KEY).
-        out[VIEW_PRIVATE] = route_view(plan, out, name)
+        view = route_view(plan, out, name)
+        if self.basemap is not None and self.view_key is not None:
+            # The base map tool answers only the view that holds this, which travels in the
+            # result's _meta: an assistant without MCP Apps lists the tool, but its model never
+            # sees the key, so cannot have pictures drawn into its context.
+            view["map_key"] = self.view_key(draft_id)
+        out[VIEW_PRIVATE] = view
         return out
 
     def _plan_and_fix(
@@ -7204,7 +7222,7 @@ class Server:
     def handler(self, name: str):
         if name in POST_TOOLS and not self.posts:
             return None
-        if name == "route_view_map" and self.basemap is None:
+        if name == "route_view_map" and (self.basemap is None or self.view_key is None):
             return None
         return {
             "route_view_map": self.route_view_map,
