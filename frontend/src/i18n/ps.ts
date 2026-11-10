@@ -72,10 +72,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Busy crossing, no signal.": "ګڼه ګوڼه لرونکې څلورلارې، ټرافيکي څراغ نه لري.",
   "Busy crossing.": "ګڼه ګوڼه لرونکې څلورلارې.",
   "Busy junction.": "ګڼه ګوڼه لرونکی تقاطع.",
-  // A signal that may need a button press (the owner, 2026-11-08): the card's note and the words said.
-  // Drafted by Claude: FLAGGED for review by a native speaker.
-  "Light may need a button press": "ښايي ترافيکي څراغ ته تڼۍ کېکاږل پکار وي",
-  "Button for the light.": "د څراغ تڼۍ.",
   "Busy junction at a signal.": "ګڼه ګوڼه لرونکی تقاطع، ټرافيکي څراغ لري.",
   "Busy junction at a stop sign.": "ګڼه ګوڼه لرونکی تقاطع، د درېدو نښه لري.",
   "Busy junction, no signal.": "ګڼه ګوڼه لرونکی تقاطع، ټرافيکي څراغ نه لري.",
@@ -2139,4 +2135,12 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "No road bike map: may use gravel.": "د سړک بایسکل نقشه نشته: ښايي جغل وي.",
   "There is no weekend road bike map right now, so this route counts parkways like Beach Drive as roads with cars.": "اوس د اونۍ پای لپاره د سړک بایسکل نقشه نشته، نو دا لاره د پارک سړکونه لکه Beach Drive د موټرو سړکونه ګڼي.",
   "No weekend map: parkways may have cars.": "د اونۍ پای نقشه نشته: ښايي د پارک په سړکونو موټر وي.",
+  "Draft, last day": "مسوده، وروستۍ ورځ",
+  "Draft, {n} days left": "مسوده، {n} ورځې پاتې",
+  "Save {name} to My routes": "{name} زما لارو کې خوندي کړئ",
+  "Saving {name}…": "{name} خوندي کېږي…",
+  "That draft is gone.": "هغه مسوده نور نشته.",
+  "Delete": "ړنګول",
+  "Delete {name}": "{name} ړنګ کړئ",
+  "Deleted {name}.": "{name} ړنګ شو.",
 };

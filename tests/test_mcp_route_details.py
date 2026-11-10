@@ -155,6 +155,75 @@ def test_busy_stretches_join_neighbours_and_keep_short_lts_4() -> None:
     ]
 
 
+def _metro_ride():
+    """Glenmont to Wheaton (the round 4 hunt, L4-8): a short LTS 4 bit at each station end, and
+    a short LTS 4 crossing in the middle."""
+    return answer_of(
+        [
+            stretch("path", 0.0, 0.07, 4),
+            stretch("Georgia Avenue sidepath", 0.07, 1.5, 1, "path"),
+            stretch("Randolph Road", 1.5, 1.53, 4),
+            stretch("Quiet Lane", 1.53, 2.95, 1),
+            stretch("unnamed road", 2.95, 2.99, 4),
+            stretch("path", 2.99, 3.0, 4),
+        ]
+    )
+
+
+def test_a_short_busy_bit_at_a_station_end_is_not_listed() -> None:
+    answer = _metro_ride()
+    assert [b["from_mi"] for b in mcp.busy_stretches(answer)] == [0.0, 1.5, 3.0]
+    # Both ends at a station: only the crossing in the middle is said.
+    busy = mcp.busy_stretches(answer, (True, True))
+    assert [(b["from_mi"], b["roads"]) for b in busy] == [(1.5, ["Randolph Road"])]
+    # One end at a station: the other end's bit is still said.
+    assert [b["from_mi"] for b in mcp.busy_stretches(answer, (True, False))] == [1.5, 3.0]
+    assert [b["from_mi"] for b in mcp.busy_stretches(answer, (False, True))] == [0.0, 1.5]
+
+
+def test_a_long_busy_stretch_from_a_station_is_still_listed() -> None:
+    answer = answer_of([stretch("Georgia Avenue", 0.0, 0.4, 4), stretch("Quiet Lane", 0.4, 2.0, 1)])
+    assert [b["from_mi"] for b in mcp.busy_stretches(answer, (True, True))] == [0.0]
+
+
+def test_a_busy_road_just_outside_a_station_end_is_still_listed() -> None:
+    # Ends 0.08 mi before the station: its rounded end (3.0) is within 0.05 of 3.04, but the
+    # stretch itself is not at the end.
+    answer = answer_of(
+        [
+            stretch("Quiet Lane", 0.0, 2.9, 1),
+            stretch("Randolph Road", 2.9, 2.96, 4),
+            stretch("Quiet Lane", 2.96, 3.04, 1),
+        ]
+    )
+    busy = mcp.busy_stretches(answer, (False, True))
+    assert [b["roads"] for b in busy] == [["Randolph Road"]]
+
+
+def test_a_loop_from_a_station_hides_both_ends() -> None:
+    # The site adds the loop's closing leg, so the plan's points stop at the last stop; the
+    # line comes back to the station.
+    answer = _metro_ride()
+    station = tuple(at(0.0))
+    answer["geometry"] = {"coordinates": [list(station), at(1.5, 0.5), list(station)]}
+    answer["loop"] = {"overlap_pct": 0}
+    plan = mcp.Plan([station, tuple(at(1.5, 0.5))], [], "default", answer, None, {})
+    glenmont = mcp.Station("Glenmont", "Red", -77.5, 39.5, entrance=station, ways_in=(station,))
+    busy = mcp.route_details(plan, [glenmont])["busy_stretches"]
+    assert [b["roads"] for b in busy] == [["Randolph Road"]]
+
+
+def test_route_details_finds_the_station_ends_from_the_stations() -> None:
+    answer = _metro_ride()
+    start, end = tuple(at(0.0)), tuple(at(3.0))
+    answer["geometry"] = {"coordinates": [list(start), list(end)]}
+    plan = mcp.Plan([start, end], [], "default", answer, None, {})
+    glenmont = mcp.Station("Glenmont", "Red", -77.5, 39.5, entrance=start, ways_in=(start,))
+    assert len(mcp.route_details(plan)["busy_stretches"]) == 3
+    busy = mcp.route_details(plan, [glenmont])["busy_stretches"]
+    assert [b["from_mi"] for b in busy] == [1.5, 3.0]
+
+
 def test_very_high_junctions_are_listed_and_higher_ones_counted() -> None:
     answer = answer_of(
         [stretch("Quiet Lane", 0.0, 1.0, 1), stretch("Darnestown Road", 1.0, 2.0, 3)],
@@ -262,6 +331,82 @@ def test_one_place_is_taken_however_far_from_the_route() -> None:
     assert mcp.pick_place("Penn Station", [penn], [(-77.0074, 38.8978)]) == (penn, [])
     with pytest.raises(mcp.ToolError, match="no place found"):
         mcp.pick_place("Nowhere", [], [])
+
+
+ASHBURN_METRO = (-77.491763, 39.004422)
+LEESBURG_CLINIC = {
+    "name": "Leesburg Sterling Family Medicine",
+    "label": "Leesburg Sterling Family Medicine, Broadlands Marketplace, Ashburn",
+    "lon": -77.50435,
+    "lat": 39.00852,
+    "kind": "house",
+    "osm_key": "amenity",
+}
+LEESBURG_PIKE = {
+    "name": "Leesburg Pike",
+    "label": "Leesburg Pike, Sterling",
+    "lon": -77.43,
+    "lat": 38.99,
+    "kind": "street",
+    "osm_key": "highway",
+}
+LEESBURG = {
+    "name": "Leesburg",
+    "label": "Leesburg, Loudoun County, Virginia",
+    "lon": -77.56456,
+    "lat": 39.11545,
+    "kind": "city",
+    "osm_key": "place",
+}
+
+
+def test_a_town_named_as_typed_comes_before_nearer_streets_and_shops() -> None:
+    """Routing hunt 4, G4-1: "Leesburg, VA" from Ashburn Metro was taken as a clinic 0.7 mi
+    from the station, and "Urbana, MD" from Baker Park as Urbana Pike."""
+    found = [LEESBURG_CLINIC, LEESBURG_PIKE, LEESBURG]
+    chosen, _ = mcp.pick_place("Leesburg, VA", found, [ASHBURN_METRO])
+    assert chosen is LEESBURG
+    pike = {**LEESBURG_PIKE, "name": "Urbana Pike", "label": "Urbana Pike, Ballenger Creek"}
+    pike.update(lon=-77.408, lat=39.39769)
+    urbana = {**LEESBURG, "name": "Urbana", "label": "Urbana, Frederick County, Maryland"}
+    urbana.update(lon=-77.3505, lat=39.3262)
+    chosen, _ = mcp.pick_place("Urbana, MD", [pike, urbana], [(-77.42646, 39.41954)])
+    assert chosen is urbana
+
+
+def test_a_match_in_the_town_typed_after_the_comma_comes_first() -> None:
+    """Routing hunt 4, G4-1: "Old Town Fairfax, Fairfax VA" from Reston Town Center was taken
+    as the former Wiehle Town Hall in Reston; Old Town Hall, Fairfax was only listed."""
+    wiehle = {
+        "name": "Former Wiehle Town Hall",
+        "label": "Former Wiehle Town Hall, Sunset Hills, Reston",
+        "lon": -77.35138,
+        "lat": 38.95674,
+        "kind": "house",
+    }
+    old_town = {
+        "name": "Old Town Hall",
+        "label": "Old Town Hall, Fairfax, Virginia",
+        "lon": -77.304977,
+        "lat": 38.846085,
+        "kind": "house",
+    }
+    chosen, others = mcp.pick_place(
+        "Old Town Fairfax, Fairfax VA", [wiehle, old_town], [(-77.36088, 38.95226)]
+    )
+    assert chosen is old_town and others == [wiehle]
+
+
+def test_a_town_that_is_found_nearest_is_still_taken() -> None:
+    """The control: "Laurel, MD" from Columbia Mall, the town first in the search."""
+    laurel = {**LEESBURG, "name": "Laurel", "label": "Laurel, Prince George's County, Maryland"}
+    laurel.update(lon=-76.8483, lat=39.0993)
+    mall = {**LEESBURG_CLINIC, "name": "Laurel Mall", "label": "Laurel Mall, Laurel"}
+    mall.update(lon=-76.83, lat=39.09)
+    road = {**LEESBURG_PIKE, "name": "Laurel Fort Meade Road", "label": "Laurel Fort Meade Road"}
+    road.update(lon=-76.78, lat=39.11)
+    chosen, _ = mcp.pick_place("Laurel, MD", [laurel, mall, road], [(-76.8614, 39.2156)])
+    assert chosen is laurel
 
 
 class _Places:
@@ -712,6 +857,25 @@ def test_plan_route_rides_the_checkpoints_in_the_quickest_order() -> None:
         server.call("plan_route", {"points": points, "best_order": True, "loop": True})
 
 
+def test_a_round_trip_s_start_is_stop_0_in_the_checkpoint_order() -> None:
+    """The round 4 hunt, L4-7: with the start given again as the finish, both rows were numbered
+    by the last point at that place, so the start read as the last stop."""
+    places = _Places()
+    points = [at(0.0), at(3.0), at(1.0), at(2.0), at(0.0)]
+
+    def route(body):
+        places.routes.append(body)
+        line = [list(p) for p in body["points"]]
+        return {"geometry": {"coordinates": line}, "distance_m": 6000.0, "duration_s": 1500.0}
+
+    places.route = route
+    server = mcp.Server(lambda: places, [], out_dir=Path("."))
+    out = server.call("plan_route", {"points": points, "best_order": True, "trim_spurs": False})
+    order = out["checkpoint_order"]
+    assert order[0]["stop"] == 0 and order[-1]["stop"] == 4
+    assert [row["stop"] for row in order] == [0, 1, 2, 3, 4]
+
+
 def test_a_failed_later_try_keeps_the_orders_already_planned() -> None:
     places = _Places()
     points = [at(0.0), at(3.0), at(1.0), at(2.0), at(4.0)]
@@ -814,6 +978,23 @@ def test_closures_on_the_route_are_said_one_row_each() -> None:
 def test_a_route_through_a_closure_with_no_point_on_it_still_warns() -> None:
     out = mcp.route_closures(_closure_plan([closure(0, "on_route", 2.0, 2.5)], via_mi=1.0))
     assert "no way round" in out["closure_warning"] and "point 1" not in out["closure_warning"]
+
+
+def test_a_run_through_a_closure_silent_on_foot_is_not_said_to_have_no_way_round() -> None:
+    # Routing hunt 4, C4-1: a run or walk is not routed round a closure whose source does not
+    # say people on foot are kept out, so the router never looked for a way round.
+    row = closure(0, "on_route", 2.0, 2.5)
+    row["effect_text"] = (
+        "On your route: closed to traffic; the source does not say whether people on foot can pass."
+    )
+    words = mcp.route_closures(_closure_plan([row], via_mi=1.0))["closure_warning"]
+    assert "no way round" not in words
+    assert "people on foot may pass Lakeside Trail: closed" in words
+    assert "not routed round it" in words
+    # Beside a closure the router did try to avoid, both are said.
+    rows = [row, closure(1, "on_route", 2.6, 2.8, title="Connector: closed", pk=3)]
+    words = mcp.route_closures(_closure_plan(rows, via_mi=1.0))["closure_warning"]
+    assert "no way round" in words and "not routed round it" in words
 
 
 def test_no_closures_said_when_none_touch_the_route() -> None:
@@ -943,3 +1124,69 @@ def test_closures_near_asks_for_a_view_the_site_takes() -> None:
         server.call("closures_near", {"near": [-77.0, lat], "within_miles": 50})
     for west, south, east, north in boxes:
         assert east - west <= 0.4 and north - south <= 0.3
+
+
+# --- A transit trip's later rides (routing hunt 4, X4-2) -----------------------------------------
+
+
+def _transit_answer(later_spans):
+    """A Bike + transit answer: a 0.1 mi ride to the station (the route line), Metro, and a
+    1.2 mi ride from the exit station with `later_spans` (None: not routed)."""
+    ride_m = 0.1 * MI
+    later = {"mode": "ride", "to": None, "seconds": 480, "route_line": False}
+    if later_spans is not None:
+        later["stress_spans"] = later_spans
+        later["distance_m"] = 1.2 * MI
+    return {
+        "distance_m": ride_m,
+        "duration_s": 40,
+        "stress_m": {"1": ride_m},
+        "facility_m": {"path": ride_m},
+        "transit": {
+            "summary": "About 61 min door to door.",
+            "steps": [
+                {"mode": "ride", "to": "Silver Spring", "seconds": 40, "route_line": True},
+                {"mode": "enter", "to": None, "seconds": 120, "route_line": False},
+                {"mode": "metro", "to": "Naylor Road", "seconds": 2400, "route_line": False},
+                {"mode": "exit", "to": None, "seconds": 120, "route_line": False},
+                later,
+            ],
+        },
+    }
+
+
+def test_a_transit_trips_ride_from_the_exit_station_is_described() -> None:
+    # Hunt 4, X4-2: the summary said 0.1 mi and no busy stretches, the ride of over a mile
+    # from Naylor Road, LTS 4 on a third of it, nowhere.
+    spans = [
+        {"from_m": 0, "to_m": 1000, "tier": 2},
+        {"from_m": 1000, "to_m": 1700, "tier": 4},
+        {"from_m": 1700, "to_m": 2000, "tier": 1},
+    ]
+    out = mcp.summary(_transit_answer(spans))["transit"]
+    (ride,) = out["later_rides"]
+    assert ride["from"] == "Naylor Road" and ride["to"] == "the destination"
+    assert ride["routed"] is True and ride["miles"] == pytest.approx(1.2)
+    assert ride["traffic_stress"]["LTS 4"].startswith("35%")
+    (busy,) = ride["busy_stretches"]
+    assert busy["lts"] == 4 and busy["from_mi"] == pytest.approx(0.6)
+    assert busy["miles"] == pytest.approx(0.42)
+    assert out["ridden_mi"] == pytest.approx(1.3)
+    assert out["figures_cover"] == mcp.LATER_RIDES_NOTE
+
+
+def test_an_unrouted_later_ride_is_still_named_and_one_ride_says_nothing_more() -> None:
+    out = mcp.summary(_transit_answer(None))["transit"]
+    (ride,) = out["later_rides"]
+    assert ride == {
+        "mode": "ride",
+        "from": "Naylor Road",
+        "to": "the destination",
+        "minutes": 8,
+        "routed": False,
+    }
+    assert "ridden_mi" not in out
+    answer = _transit_answer(None)
+    answer["transit"]["steps"][-1]["mode"] = "walk"
+    out = mcp.summary(answer)["transit"]
+    assert "later_rides" not in out and "figures_cover" not in out

@@ -72,10 +72,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Busy crossing, no signal.": "车流量大的路口，没有信号灯。",
   "Busy crossing.": "车流量大的路口。",
   "Busy junction.": "车流量大的交叉口。",
-  // A signal that may need a button press (the owner, 2026-11-08): the card's note and the words said.
-  // Drafted by Claude: FLAGGED for review by a native speaker.
-  "Light may need a button press": "信号灯可能需要按按钮",
-  "Button for the light.": "信号灯按钮。",
   "Busy junction at a signal.": "车流量大的交叉口，有信号灯。",
   "Busy junction at a stop sign.": "车流量大的交叉口，有停车标志。",
   "Busy junction, no signal.": "车流量大的交叉口，没有信号灯。",
@@ -2139,4 +2135,12 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "No road bike map: may use gravel.": "无公路车地图：可能有碎石路。",
   "There is no weekend road bike map right now, so this route counts parkways like Beach Drive as roads with cars.": "目前没有周末公路车地图，因此这条路线把Beach Drive等公园路当作有车的道路。",
   "No weekend map: parkways may have cars.": "无周末地图：公园路可能有车。",
+  "Draft, last day": "草稿，最后一天",
+  "Draft, {n} days left": "草稿，剩{n}天",
+  "Save {name} to My routes": "将{name}保存到我的路线",
+  "Saving {name}…": "正在保存{name}…",
+  "That draft is gone.": "该草稿已不存在。",
+  "Delete": "删除",
+  "Delete {name}": "删除{name}",
+  "Deleted {name}.": "已删除{name}。",
 };
