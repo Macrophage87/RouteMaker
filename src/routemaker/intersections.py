@@ -199,6 +199,10 @@ NIGHT_RURAL_FACTOR = 0.85
 # problem." Signals, all-way stops, junctions where the cross traffic stops and LTS 3
 # roads keep x1.25 (so a plain unsignalised left onto an LTS 3 road stays orange at
 # rush hour, 2026-10-10). A typical value, not measured; MAX_CROSSING_FT still caps it.
+# Only for the kinds that wait for a gap (GAP_WAIT_KINDS): a right turn onto the road,
+# riding along it, a slip lane and a turn off it keep rush hour's x1.25. Hunt 4 J4-2
+# asked "Should only crossings and lefts get rush hour's doubling?"; the owner,
+# 2026-11-09: "yes".
 UNSIGNALISED_RUSH_FACTOR = 2.0
 # And at least this much, whatever the road's speed and lanes, for crossing such a road,
 # joining it, or turning left across it: the owner, 2026-10-23, "It's not just time but
@@ -314,15 +318,23 @@ def time_factor(
     urban: bool | None = None,
     control: Control | None = None,
     severe_road: bool = False,
+    kind: str | None = None,
 ) -> float:
     """The multiplier on a busy-road junction's cost at a ride time; 1.0 where
     the setting is unknown. At night it depends on `urban`, the crossed road's; at
-    rush hour on `control`, the junction's, and `severe_road`, whether the road is
-    LTS 4 or Avoid (UNSIGNALISED_RUSH_FACTOR where the rider gives way to such a
-    road's traffic and no signal stops it)."""
+    rush hour on `control`, the junction's, `severe_road`, whether the road is
+    LTS 4 or Avoid, and `kind`, the junction's (UNSIGNALISED_RUSH_FACTOR where the
+    rider waits for a gap in such a road's traffic, a GAP_WAIT_KINDS kind, and no
+    signal stops it; the owner, 2026-11-09, J4-2: "yes"). With no `kind` the junction
+    is read as a crossing."""
     if when == ridetime.NIGHT:
         return NIGHT_URBAN_FACTOR if urban else NIGHT_RURAL_FACTOR
-    if when == ridetime.WEEKDAY_RUSH and severe_road and control in GIVE_WAY_CONTROLS:
+    if (
+        when == ridetime.WEEKDAY_RUSH
+        and severe_road
+        and control in GIVE_WAY_CONTROLS
+        and (kind is None or kind in GAP_WAIT_KINDS)
+    ):
         return UNSIGNALISED_RUSH_FACTOR
     return TIME_FACTORS.get(when or "", 1.0)
 
@@ -1133,7 +1145,8 @@ def _timed(junction: Junction, when: str | None, floors: bool) -> tuple[float, f
         return 0.0, 0.0, 1.0
     # 468a, 469c-469e: a busy-road junction costs more at rush hour, less at the
     # weekend and at night.
-    factor = time_factor(when, about.urban, junction.control, severe(about))
+    # Rush hour's x2 only where the rider waits for a gap (J4-2, the owner 2026-11-09).
+    factor = time_factor(when, about.urban, junction.control, severe(about), kind)
     untimed = min(cost, MAX_CROSSING_FT)
     cost = min(cost * factor, MAX_CROSSING_FT)
     if not floors:
