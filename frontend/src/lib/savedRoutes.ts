@@ -8,7 +8,9 @@
  *
  * Reopening shows the saved line unchanged. The page re-plans the same inputs with today's map only to
  * compare: if the distance differs by more than 5%, one line says so with an "Update route" link, and
- * nothing changes without that tap. At most 200 per account. Share keeps the same body, signed out too, for the
+ * nothing changes without that tap. A fixed route (the owner, 2026-11-10: "save routes as an unchanging, GPX identical
+ * mode. The via points are usually better, but sometimes fixed routes are more useful") is never compared, and a
+ * ride on it is never re-routed: off it, the way back to the line. At most 200 per account. Share keeps the same body, signed out too, for the
  * link it shares (lib/sharedRoutes.ts).
  */
 import type { RouteResponse } from "./api.ts";
@@ -42,6 +44,8 @@ export interface SavedSummary {
   id: number;
   name: string;
   source: SavedSource;
+  /** A fixed route: its line, never planned again (the owner, 2026-11-10); absent from an older server. */
+  fixed?: boolean;
   distance_m: number;
   preset: string;
   created_at: string;
@@ -75,6 +79,8 @@ export interface SaveBody {
   inputs: SavedInputs;
   answer?: RouteResponse | null;
   gpx?: string;
+  /** A fixed route (FIXED_ROUTE); left out, by its via points (our default). */
+  fixed?: boolean;
   /** Saved again: a new latest version of this saved route, the one before it kept in its versions. */
   version_of?: number;
   /** The rider's tags (core.accounts.clean_tags); left out, a new version keeps the route's. */
@@ -166,9 +172,10 @@ export function defaultRouteName(start: string | null | undefined, end: string |
   return `${start?.trim() || "Start"} to ${end?.trim() || "End"}`.slice(0, NAME_MAX);
 }
 
-/** A route's answer as a save keeps it: without the other candidates. */
+/** A route's answer as a save keeps it: without the other candidates, and settled (a first route saved before Go's
+ * full plan came reopens as saved, never swapped for a better one: a fixed route's line never changes). */
 export function keptAnswer(route: RouteResponse): RouteResponse {
-  return { ...route, candidates: null, avoid_alternate: null, closure_through: null };
+  return { ...route, candidates: null, avoid_alternate: null, closure_through: null, provisional: false };
 }
 
 /**
@@ -228,6 +235,15 @@ export function differenceLine(savedM: number, todayM: number): string {
 }
 
 export const UPDATE_ROUTE = t("Update route");
+/** The Save form's box (the owner, 2026-11-10): unticked, by its via points (our default). Short, for Go's languages. */
+export const FIXED_ROUTE = t("Fixed route");
+export const FIXED_HINT = t("Keep this exact line. Never re-routed.");
+/** Plan's (i) behind the box: the two kinds side by side. */
+export const FIXED_ABOUT = [
+  t("Unticked (our default): the route keeps its via points, Update route is offered when the map changes, and off route a ride plans again through them."),
+  t("Ticked: the line never changes, like a GPX file, and off route a ride shows the way back to it."),
+];
+export const OPENED_FIXED_SAID = (name: string) => t('Opened "{name}", a fixed route: it stays as saved.', { name });
 export const SAVE_ROUTE = t("Save route");
 /** Go's chip shows this; it is named SAVE_ROUTE (the words shown are in the name). */
 export const SAVE_SHORT = t("Save");
@@ -255,10 +271,11 @@ export function countLine(n: number, max = MAX_SAVED): string {
 }
 
 /** A row's details: "4.7 mi (7.6 km) · Saved Oct 15, 2026" (US units first). */
-export function rowDetails(route: Pick<SavedSummary, "distance_m" | "created_at" | "source">): string {
+export function rowDetails(route: Pick<SavedSummary, "distance_m" | "created_at" | "source" | "fixed">): string {
   const date = new Date(route.created_at);
   const when = Number.isNaN(date.getTime()) ? "" : ` · ${t("Saved {date}", { date: date.toLocaleDateString(locale(), { month: "short", day: "numeric", year: "numeric" }) })}`;
-  return `${formatDistance(route.distance_m)}${route.source === "gpx" ? " · GPX file" : ""}${when}`;
+  const kind = `${route.source === "gpx" ? " · GPX file" : ""}${route.fixed ? ` · ${t("Fixed")}` : ""}`;
+  return `${formatDistance(route.distance_m)}${kind}${when}`;
 }
 
 // ---- versions: a route saved again with changes keeps what it was, up to 20 (Plan's My routes) -------
@@ -271,6 +288,8 @@ export interface OpenSaved {
   name: string;
   /** Its tags, offered again when it is saved again in Plan. */
   tags?: string[];
+  /** A fixed route: the Save form's box starts ticked when it is saved again. */
+  fixed?: boolean;
 }
 
 /**
@@ -287,6 +306,8 @@ export interface SavedVersion {
   saved_at: string;
   distance_m: number;
   source: SavedSource;
+  /** A fixed route at that version; absent from an older server. */
+  fixed?: boolean;
   /** What changed from the version before it, in a phrase ("Stop added"); empty when not known. */
   change: string;
 }
