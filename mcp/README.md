@@ -38,6 +38,26 @@ century".
 | `draft_route_post` | Site connector, instance admins only: writes a Featured routes post as a draft (title, about, who it's for, season, highlighted sections with their miles) around a draft route or a line to follow, for an admin to publish in the admin. Sending the same slug again with `replace` rewrites the draft. |
 | `plan_metro_loop` | Builds a loop of about the target length around DC (or another centre) through waypoints at or just beyond Metro stations, rescales it once towards the target, and repairs stretches past the Metro limit. |
 
+### The route view: a map and graphs in the chat
+
+In an assistant app that shows MCP Apps (the `io.modelcontextprotocol/ui` extension; Claude does),
+`plan_route`, `revise_route`, `open_link` and `plan_metro_loop` show the draft under the answer:
+the route on a map coloured by traffic stress, with its start, stops, finish, stressful junctions
+and closures; a stress ribbon (trail and bike lane rails on its edges) over the elevation profile,
+on one mile axis, with a readout where you point or tap (or move with the arrow keys); and
+buttons to open the route in the app, download its GPX, or ask the assistant to save it (saving
+stays on your word, as before). Other assistants get the same text answer as before.
+
+The page is `mcp/route_view.html`, served as `ui://routemaker/route-view.html`. What it draws
+travels in the tool result's `_meta` (`routemaker/route-view`), which the extension keeps out of
+the model's context, so the answer the model reads is unchanged. On the site the base map behind
+the line comes from `route_view_map`, a tool only the view calls (visibility `app`): a picture of
+the app's own base map for the box the view asks for, drawn in memory and never kept
+(`src/core/route_view_map.py`). It answers only with a key that travels in the view's `_meta`, so
+an assistant without MCP Apps lists it but its model cannot use it. Each view's base map is one
+connector call, counted in the same hourly limit as planning. On your own computer there is no base map, so the line is drawn on
+a plain background.
+
 The assistant picks the ride type and settings that fit what you ask: every ride type the app
 has (bikeshare and bike plus transit included) and every setting (traffic stress, hills, ride
 time, trails, target distance, rider weight, riding speed, cargo load and assist, trail
@@ -197,4 +217,5 @@ argument is the path to `routemaker_mcp.py`, and the settings above are environm
 - A route planned for the first time in the app may differ a little from the one saved here if
   live closures or the map change in between: the saved route keeps the line exactly as planned.
 - Tests: `tests/test_mcp_server.py` (the protocol, the Metro check, the loop builder against a
-  stand-in planner) and `tests/test_connector.py` (the site's connector, saving and posts).
+  stand-in planner), `tests/test_mcp_route_view.py` (the route view) and
+  `tests/test_connector.py` (the site's connector, saving and posts).

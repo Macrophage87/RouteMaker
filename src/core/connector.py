@@ -60,7 +60,7 @@ from django.utils.html import format_html, format_html_join
 from django.utils.safestring import mark_safe
 from django.views.decorators.csrf import csrf_exempt
 
-from . import ratelimit
+from . import ratelimit, route_view_map
 from .models import ConnectorClient, ConnectorDraft, ConnectorGrant, SharedRoute
 
 logger = logging.getLogger(__name__)
@@ -610,6 +610,8 @@ def mcp_endpoint(request):
         icons=server_icons(request),
         routes_read=grant.reads_routes,
         routes_organize=grant.organizes_routes,
+        basemap=route_view_map.draw,
+        view_key=lambda draft_id: _view_key(user.pk, grant.pk, draft_id),
     )
     msg_id = message.get("id") if isinstance(message, dict) else None
     if msg_id is not None and (isinstance(msg_id, bool) or not isinstance(msg_id, (str, int))):
@@ -645,8 +647,16 @@ def server_icons(request) -> list[dict]:
 # --- A draft's GPX ------------------------------------------------------------------------------
 
 GPX_SALT = "core.connector.gpx"
+VIEW_SALT = "core.connector.route-view"
 # The draft's id, then the keyed digest (`_gpx_mac`).
 GPX_TOKEN_RE = re.compile(r"(d[0-9a-f]{32})\.([0-9a-f]{64})")
+
+
+def _view_key(user_id, grant_id, draft_id: str) -> str:
+    """The key the route view sends back to route_view_map (mcp/routemaker_mcp.py): only the
+    view has it (it travels in the result's _meta), so the model cannot have pictures drawn."""
+    message = f"{user_id}:{grant_id}:{draft_id}"
+    return salted_hmac(VIEW_SALT, message, algorithm="sha256").hexdigest()
 
 
 def _gpx_mac(user_id, grant_id, draft_id: str) -> str:

@@ -3539,6 +3539,128 @@ def route_segments(
     return out
 
 
+# --- The route view: a map and graphs in the assistant's chat ------------------------------------
+#
+# The owner, 2026-11-10: "Is it possible for the MCP server to return a map and the various relevant
+# graphs?", then picked an interactive view with a text fallback. An assistant that speaks the MCP
+# Apps extension (io.modelcontextprotocol/ui) shows mcp/route_view.html under its reply to
+# plan_route, revise_route, open_link and plan_metro_loop: the route on a map coloured by traffic
+# stress, a stress ribbon and the elevation profile on one mile axis, and buttons to open the
+# route, get its GPX or save it. Every other assistant reads the same text answer as before.
+#
+# What the view draws travels in the tool result's `_meta` (VIEW_META_KEY), which the extension
+# keeps out of the model's context: the answer the model reads is unchanged. Nothing is kept for
+# it on the server; the base map behind the line is drawn on request by the app-only tool
+# route_view_map, from the box alone, in memory.
+
+VIEW_URI = "ui://routemaker/route-view.html"
+# The answer's keys for what Server.call takes out of it (never seen by the model).
+VIEW_PRIVATE = "_route_view"
+IMAGES_PRIVATE = "_images"
+VIEW_MIME = "text/html;profile=mcp-app"
+VIEW_META_KEY = "routemaker/route-view"
+UI_EXTENSION = "io.modelcontextprotocol/ui"
+VIEW_TOOLS = ("plan_route", "revise_route", "open_link", "plan_metro_loop")
+VIEW_FILE = Path(__file__).resolve().parent / "route_view.html"
+# The elevation profile's samples sent to the view: enough for a chat-width graph. Our default.
+VIEW_PROFILE_POINTS = 400
+# The line's precision: 5 decimals (about a metre), half the size of the router's 6.
+VIEW_LINE_PRECISION = 5
+# The base map picture route_view_map draws: no bigger than this, in pixels (the view's map is at
+# most 1200 wide and 460 tall). Our defaults: a 1200 x 480 draw takes about 0.4 to 1.8 s.
+VIEW_MAP_MAX_W = 1200
+VIEW_MAP_MAX_H = 480
+
+
+def view_html() -> str:
+    """The view's page (mcp/route_view.html), read from beside this file."""
+    return VIEW_FILE.read_text(encoding="utf-8")
+
+
+def _profile_rows(answer: dict, most: int = VIEW_PROFILE_POINTS) -> list[list[float]]:
+    """The elevation profile as [mile, feet] rows, at most `most` of them (a thinned profile
+    keeps the highest and lowest of each window, so a summit is not cut off)."""
+    profile = answer.get("profile") or {}
+    rows = [
+        (m / METRES_PER_MILE, h * FEET_PER_METRE)
+        for m, h in zip(profile.get("m") or [], profile.get("elevation_m") or [], strict=False)
+        if isinstance(m, (int, float)) and isinstance(h, (int, float))
+    ]
+    # A gap in the heights (no elevation data there) is drawn straight across: the profile is a
+    # sketch of the climbing, and route_segments gives the grades where they are known.
+    if len(rows) > most:
+        step = len(rows) / (most / 2)
+        kept = [rows[0]]
+        for k in range(int(most / 2)):
+            window = rows[int(k * step) : int((k + 1) * step)] or [rows[-1]]
+            low = min(window, key=lambda r: r[1])
+            high = max(window, key=lambda r: r[1])
+            kept.extend(sorted({low, high}))
+        kept.append(rows[-1])
+        rows = kept
+    return [[round(mi, 3), round(ft)] for mi, ft in rows]
+
+
+def route_view(plan: Plan, out: dict, name: str) -> dict:
+    """What the view draws for a draft: its line, its stress and facility by mile, its
+    profile, its points, its flagged junctions and closures, and its figures and link."""
+    answer = plan.answer
+    total = (answer.get("distance_m") or 0.0) / METRES_PER_MILE
+    scale = _traced_scale(answer) / METRES_PER_MILE
+    spans = []
+    for s in answer.get("stress_spans") or []:
+        tier = s.get("tier")
+        if isinstance(tier, int) and s.get("half") and tier < 5:
+            tier += 0.5
+        spans.append(
+            [
+                round(s["from_m"] * scale, 3),
+                round(s["to_m"] * scale, 3),
+                tier,
+                s.get("facility"),
+            ]
+        )
+    junctions = [
+        {
+            "mi": round((j.get("m") or 0) * scale, 2),
+            "level": "very high" if j.get("severity") == "red" else "higher",
+            "reason": j.get("reason"),
+        }
+        for j in answer.get("intersections") or []
+        if j.get("severity") in ("red", "orange")
+    ]
+    closures = [
+        {"mi": row["from_mi"], "kind": kind, "what": row.get("what")}
+        for kind, rows in (
+            ("closure", out.get("closures") or []),
+            ("possible", out.get("potential_closures") or []),
+        )
+        for row in rows
+        if isinstance(row, dict) and row.get("from_mi") is not None
+    ]
+    said = out.get("summary") or {}
+    return {
+        "version": 1,
+        "draft_id": out.get("draft_id"),
+        "name": name,
+        "link": out.get("link"),
+        "miles": round(total, 3),
+        "figures": {
+            "distance": said.get("distance"),
+            "time": said.get("moving_time"),
+            "climb": said.get("climb"),
+        },
+        "line": encode_polyline(plan.line, VIEW_LINE_PRECISION) if plan.line else "",
+        "line_precision": VIEW_LINE_PRECISION,
+        "spans": spans,
+        "profile": _profile_rows(answer),
+        "points": [{"lon_lat": list(p), "via": i in plan.vias} for i, p in enumerate(plan.points)],
+        "loop": bool(plan.sent.get("loop")),
+        "junctions": junctions,
+        "closures": closures,
+    }
+
+
 # --- Light and weather at the ride's time -----------------------------------------------------
 
 # Civil twilight (the sun 6 degrees below the horizon): "Dawn" and "Dusk" in the app (#822).
@@ -4290,6 +4412,31 @@ TAGS_SCHEMA = {
     "type": "array",
     "items": {"type": "string", "minLength": 1, "maxLength": 30},
     "maxItems": 8,
+}
+
+# The route view's base map (VIEW_URI): called by the view itself, never by the model (the MCP Apps
+# extension's visibility "app" keeps it out of the model's tool list).
+VIEW_MAP_TOOL = {
+    "name": "route_view_map",
+    "title": "Route view base map",
+    "description": (
+        "Called by the route view itself, with a key only it holds: never call it. The base"
+        " map behind a draft's map in the view. plan_route's answer has everything to say."
+    ),
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "draft_id": {"type": "string"},
+            "key": {"type": "string", "description": "The route view's own key."},
+            "centre": {"type": "array", "items": {"type": "number"}, "minItems": 2, "maxItems": 2},
+            "scale": {"type": "number"},
+            "width": {"type": "integer", "minimum": 16, "maximum": 1200},
+            "height": {"type": "integer", "minimum": 16, "maximum": 480},
+        },
+        "required": ["draft_id", "key", "centre", "scale", "width", "height"],
+    },
+    "annotations": {"readOnlyHint": True, "openWorldHint": False},
+    "_meta": {"ui": {"visibility": ["app"]}},
 }
 
 TOOLS = [
@@ -5093,6 +5240,10 @@ class Call:
         self.deadline = deadline
         # The longest plan timed in this call (seconds), or None before the first.
         self.longest_plan_s: float | None = None
+        # What the answer carries beside its text, set by Server.call: the route view's data
+        # (the result's _meta, never the model's) and pictures (image content).
+        self.meta: dict = {}
+        self.images: list[dict] = []
 
     def timed_plan(self, seconds: float) -> None:
         """Note how long one plan took, for `time_for_another_plan`."""
@@ -5254,6 +5405,8 @@ class Server:
         icons: list[dict] | None = None,
         routes_read: bool = True,
         routes_organize: bool = True,
+        basemap=None,
+        view_key=None,
     ):
         self._api_factory = api_factory
         self._api: Api | None = None
@@ -5278,11 +5431,95 @@ class Server:
         # Whether organize_route (and save_route's `replaces`) may tag and archive them: on the
         # site, a grant whose consent page said so (from v0.22.0).
         self.routes_organize = routes_organize
+        # On the site: function(centre (lon, lat), scale, width, height) -> (png bytes, town
+        # names as (x, y, name)) or None, the base map behind the route view
+        # (core.route_view_map). Without it the view draws the line on a plain background.
+        self.basemap = basemap
+        # On the site: function(draft_id) -> the key route_view_map asks for (core.connector).
+        self.view_key = view_key
 
     def tools(self) -> list[dict]:
         """The tools, as tools/list gives them: without the post tool unless posts may be
-        written."""
-        return [t for t in TOOLS if self.posts or t["name"] not in POST_TOOLS]
+        written, the route view named on the tools that draft a route, and the view's own
+        base map tool where there is a base map."""
+        out = []
+        for t in TOOLS:
+            if t["name"] in POST_TOOLS and not self.posts:
+                continue
+            if t["name"] in VIEW_TOOLS:
+                # The flat "ui/resourceUri" is the extension's older spelling, still read by
+                # some assistant apps.
+                t = {**t, "_meta": {"ui": {"resourceUri": VIEW_URI}, "ui/resourceUri": VIEW_URI}}
+            out.append(t)
+        if self.basemap is not None and self.view_key is not None:
+            out.append(VIEW_MAP_TOOL)
+        return out
+
+    def resources(self) -> list[dict]:
+        """The resources, as resources/list gives them: the route view's page."""
+        return [
+            {
+                "uri": VIEW_URI,
+                "name": "route_view",
+                "title": "Route map and graphs",
+                "description": (
+                    "The route on a map coloured by traffic stress, with its stress ribbon and"
+                    " elevation profile, for plan_route, revise_route, open_link and"
+                    " plan_metro_loop."
+                ),
+                "mimeType": VIEW_MIME,
+            }
+        ]
+
+    def read_resource(self, uri: str) -> dict:
+        """resources/read: the route view's page, which needs nothing from any other site (its
+        script and styles are inline, the base map comes as a picture from route_view_map)."""
+        if uri != VIEW_URI:
+            raise ToolError(f"no resource {uri}")
+        return {
+            "contents": [
+                {
+                    "uri": VIEW_URI,
+                    "mimeType": VIEW_MIME,
+                    "text": view_html(),
+                    "_meta": {"ui": {"csp": {}, "prefersBorder": True}},
+                }
+            ]
+        }
+
+    # route_view_map (the route view's own: hidden from the model)
+    def route_view_map(self, args: dict, call: Call) -> dict:
+        if self.basemap is None or self.view_key is None:
+            raise ToolError("no base map here")
+        if not secrets.compare_digest(
+            str(args.get("key") or ""), self.view_key(str(args.get("draft_id") or ""))
+        ):
+            raise ToolError("route_view_map is the route view's own: it has nothing to answer here")
+        centre = args["centre"]
+        lon, lat = float(centre[0]), float(centre[1])
+        if not (-180 <= lon <= 180 and -85 <= lat <= 85):
+            raise ToolError("centre: [lon, lat]")
+        width, height = int(args["width"]), int(args["height"])
+        if not (16 <= width <= VIEW_MAP_MAX_W and 16 <= height <= VIEW_MAP_MAX_H):
+            raise ToolError(f"width 16 to {VIEW_MAP_MAX_W} and height 16 to {VIEW_MAP_MAX_H} px")
+        scale = float(args["scale"])
+        if not math.isfinite(scale) or not 256 <= scale <= 256 * 2**18:
+            raise ToolError("scale: pixels across the world, 256 to 2^26")
+        drawn = self.basemap((lon, lat), scale, width, height)
+        if drawn is None:
+            return {"drawn": False}
+        png, places = drawn
+        return {
+            "drawn": True,
+            "places": [[round(x), round(y), name] for x, y, name in places or []],
+            IMAGES_PRIVATE: [
+                {
+                    "type": "image",
+                    "data": base64.b64encode(png).decode("ascii"),
+                    "mimeType": "image/png",
+                }
+            ],
+        }
 
     @property
     def api(self) -> Api:
@@ -5753,6 +5990,14 @@ class Server:
         if notes:
             out["notes"] = notes
         out["credit"] = plan.answer.get("attribution", [])
+        # For the route view only: Server.call moves it out of the answer (VIEW_META_KEY).
+        view = route_view(plan, out, name)
+        if self.basemap is not None and self.view_key is not None:
+            # The base map tool answers only the view that holds this, which travels in the
+            # result's _meta: an assistant without MCP Apps lists the tool, but its model never
+            # sees the key, so cannot have pictures drawn into its context.
+            view["map_key"] = self.view_key(draft_id)
+        out[VIEW_PRIVATE] = view
         return out
 
     def _plan_and_fix(
@@ -6977,7 +7222,10 @@ class Server:
     def handler(self, name: str):
         if name in POST_TOOLS and not self.posts:
             return None
+        if name == "route_view_map" and (self.basemap is None or self.view_key is None):
+            return None
         return {
+            "route_view_map": self.route_view_map,
             "find_place": self.find_place,
             "metro_stations": self.metro_stations,
             "scenic_roads_near": self.scenic_roads_near,
@@ -7003,12 +7251,20 @@ class Server:
         handler = self.handler(name)
         if handler is None:
             raise ToolError(f"no tool named {name}")
+        call = call or Call()
         try:
-            return handler(args or {}, call or Call())
+            out = handler(args or {}, call)
         except KeyError as missing:
             raise ToolError(f"missing argument {missing}") from None
         except (TypeError, ValueError, OverflowError) as wrong:
             raise ToolError(f"an argument is not in the expected form: {wrong}") from None
+        if isinstance(out, dict):
+            view = out.pop(VIEW_PRIVATE, None)
+            if view is not None and name in VIEW_TOOLS:
+                call.meta[VIEW_META_KEY] = view
+            for image in out.pop(IMAGES_PRIVATE, None) or []:
+                call.images.append(image)
+        return out
 
 
 def _better(plan: Plan, best: Plan, target: float) -> bool:
@@ -7060,7 +7316,12 @@ def handle(server: Server, message, send=_send, calls: dict | None = None) -> di
         version = asked if asked in PROTOCOL_VERSIONS else PROTOCOL_VERSIONS[0]
         result = {
             "protocolVersion": version,
-            "capabilities": {"tools": {"listChanged": False}},
+            "capabilities": {
+                "tools": {"listChanged": False},
+                "resources": {"listChanged": False},
+                # The route view (VIEW_URI), for an assistant app that shows MCP Apps.
+                "extensions": {UI_EXTENSION: {"mimeTypes": [VIEW_MIME]}},
+            },
             "serverInfo": {
                 "name": SERVER_NAME,
                 "title": "RouteMaker",
@@ -7079,6 +7340,15 @@ def handle(server: Server, message, send=_send, calls: dict | None = None) -> di
         result = {}
     elif method == "tools/list":
         result = {"tools": server.tools()}
+    elif method == "resources/list":
+        result = {"resources": server.resources()}
+    elif method == "resources/templates/list":
+        result = {"resourceTemplates": []}
+    elif method == "resources/read":
+        try:
+            result = server.read_resource(str(params.get("uri")))
+        except ToolError as error:
+            return _error(msg_id, -32002, str(error))
     elif method == "tools/call":
         name = params.get("name")
         if server.handler(name) is None:
@@ -7107,10 +7377,16 @@ def handle(server: Server, message, send=_send, calls: dict | None = None) -> di
         try:
             payload = server.call(name, params.get("arguments") or {}, call)
             result = {
-                "content": [{"type": "text", "text": json.dumps(payload, indent=1)}],
+                "content": [
+                    *call.images,
+                    {"type": "text", "text": json.dumps(payload, indent=1)},
+                ],
                 "structuredContent": payload,
                 "isError": False,
             }
+            if call.meta:
+                # The route view's data: for the view, kept out of the model's context.
+                result["_meta"] = dict(call.meta)
         except Cancelled:
             return None  # the protocol: a cancelled request gets no answer
         except ToolError as error:

@@ -1,0 +1,579 @@
+<!doctype html>
+<!--
+  RouteMaker's route view: the map and graphs an assistant app shows under its answer to plan_route,
+  revise_route, open_link and plan_metro_loop (the MCP Apps extension, io.modelcontextprotocol/ui; the
+  owner, 2026-11-10). mcp/routemaker_mcp.py serves it as VIEW_URI and sends what it draws in the tool
+  result's _meta (VIEW_META_KEY), so the model's answer is unchanged.
+
+  Self-contained: the host's default policy lets a view load nothing from anywhere, so the script and
+  styles are inline and the base map comes as a picture from the app-only tool route_view_map. The
+  colours are the app's (frontend/src/stressStyle.js: the default palette, its half steps and the
+  facility rails), and every level also has its number on the ribbon, so nothing is colour alone.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Route map and graphs</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #ffffff;
+    --ink: #1f1e1c;
+    --muted: #5b5852;
+    --rule: #d9d5ca;
+    --map-bg: #eef2ec;
+    --button: #1d4ed8;
+    --button-ink: #ffffff;
+    --chip: #f1efe8;
+    --tip: #16181d;
+    --tip-ink: #ffffff;
+    --elev-fill: #c7d2fe;
+    --elev-line: #3730a3;
+    --halo: #ffffff;
+    --map-filter: none;
+  }
+  :root[data-theme="dark"] {
+    --bg: #1c1c1f;
+    --ink: #f1f0ec;
+    --muted: #b3afa6;
+    --rule: #3a3a40;
+    --map-bg: #2a2d2b;
+    --button: #3b6cf0;
+    --chip: #2b2b31;
+    --tip: #f1f0ec;
+    --tip-ink: #16181d;
+    --elev-fill: #3a3f78;
+    --elev-line: #a5b4fc;
+    --halo: #1c1c1f;
+    --map-filter: brightness(0.62) contrast(1.1) saturate(0.7);
+  }
+  html, body { margin: 0; background: var(--bg); color: var(--ink); }
+  body {
+    font: 15px/1.4 "Atkinson Hyperlegible", var(--font-sans, system-ui), -apple-system, "Segoe UI", sans-serif;
+  }
+  .card { padding: 12px 14px 14px; }
+  .head { display: flex; flex-wrap: wrap; gap: 2px 12px; align-items: baseline; justify-content: space-between; margin-bottom: 8px; }
+  .head h1 { font-size: 16px; margin: 0; }
+  .figures { color: var(--muted); font-size: 14px; }
+  .map { position: relative; border-radius: 10px; overflow: hidden; background: var(--map-bg); }
+  .map svg { display: block; width: 100%; height: auto; }
+  .map image { filter: var(--map-filter); }
+  .credit { position: absolute; right: 4px; bottom: 3px; font-size: 10px; color: var(--muted); background: color-mix(in srgb, var(--bg) 75%, transparent); padding: 0 4px; border-radius: 4px; }
+  .graphs { margin-top: 6px; position: relative; outline: none; }
+  .graphs:focus-visible { outline: 2px solid var(--button); outline-offset: 2px; border-radius: 6px; }
+  .key b { display: inline-block; min-width: 16px; padding: 0 3px; margin-right: 4px; border-radius: 3px; text-align: center; color: #16181d; font-size: 11px; }
+  .graphs svg { display: block; width: 100%; height: auto; touch-action: pan-y; }
+  .readout { min-height: 20px; font-size: 13px; color: var(--muted); margin-top: 2px; }
+  .key { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .key i { display: inline-block; width: 14px; height: 4px; vertical-align: middle; margin-right: 5px; border-radius: 1px; }
+  .buttons { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  button { font: inherit; font-size: 14px; border-radius: 8px; padding: 7px 12px; cursor: pointer; border: 1px solid var(--rule); background: var(--chip); color: var(--ink); min-height: 36px; }
+  button.primary { background: var(--button); color: var(--button-ink); border-color: var(--button); font-weight: 700; }
+  button:focus-visible { outline: 2px solid var(--button); outline-offset: 2px; }
+  .status { font-size: 13px; color: var(--muted); align-self: center; }
+  .waiting { color: var(--muted); padding: 24px 14px; }
+  @media (forced-colors: active) {
+    .graphs svg rect, .map svg path { forced-color-adjust: none; }
+  }
+</style>
+</head>
+<body>
+<div id="root" class="waiting" role="status">Drawing the route…</div>
+<script>
+"use strict";
+(() => {
+  const META_KEY = "routemaker/route-view";
+  // The app's default palette (stressStyle.js) and its half steps ("blended"); 5 is Avoid.
+  const LEVEL = {
+    1: ["#9ed3ac", "#2f5d47"], 1.5: ["#7bb98c", "#2f5d47"],
+    2: ["#57a06c", "#1a2638"], 2.5: ["#968c49", "#1a2638"],
+    3: ["#bf730b", "#45290a"], 3.5: ["#c54d14", "#ffffff"],
+    4: ["#c80018", "#ffffff"], 4.5: ["#670d16", "#ffffff"],
+    5: ["#14040a", "#ee3b2c"],
+  };
+  const UNKNOWN = ["#9ca3af", "#374151"];
+  const RAIL = { path: "#4c1d95", protected: "#a21caf", lane: "#9370f0" };
+  const RAIL_WORDS = { path: "Trail or path", protected: "Protected bike lane", lane: "Painted bike lane" };
+  const levelWord = (t) => (t == null ? "unknown stress" : t === 5 ? "Avoid" : `LTS ${t}`);
+  const colours = (t) => LEVEL[t] || UNKNOWN;
+
+  // ---- Talking to the host (JSON-RPC 2.0 over postMessage) ----
+  let nextId = 1;
+  const waiting = new Map();
+  const post = (msg) => window.parent.postMessage({ jsonrpc: "2.0", ...msg }, "*");
+  const request = (method, params) =>
+    new Promise((resolve, reject) => {
+      const id = nextId++;
+      waiting.set(id, { resolve, reject });
+      post({ id, method, params });
+    });
+  const notify = (method, params) => post({ method, params });
+
+  let view = null;
+  let theme = null;
+  window.addEventListener("message", (event) => {
+    // Only the host speaks to the view.
+    if (event.source !== window.parent) return;
+    const msg = event.data;
+    if (!msg || msg.jsonrpc !== "2.0") return;
+    if (msg.id != null && waiting.has(msg.id) && !msg.method) {
+      const w = waiting.get(msg.id);
+      waiting.delete(msg.id);
+      if (msg.error) w.reject(new Error(msg.error.message || "refused"));
+      else w.resolve(msg.result);
+      return;
+    }
+    if (msg.method === "ui/notifications/tool-result") {
+      const data = msg.params && msg.params._meta && msg.params._meta[META_KEY];
+      if (data) {
+        view = data;
+        render();
+      } else {
+        show("No route to draw: the answer is above.");
+      }
+    } else if (msg.method === "ui/notifications/host-context-changed") {
+      applyContext(msg.params || {});
+    } else if (msg.method === "ui/notifications/tool-cancelled") {
+      show("Planning was stopped.");
+    } else if (msg.method === "ui/resource-teardown" && msg.id != null) {
+      post({ id: msg.id, result: {} });
+    }
+  });
+
+  // The host's standard theme variables (MCP Apps "Theming"), read as the view's own colours.
+  const HOST_VARS = {
+    "--color-background-primary": "--bg",
+    "--color-text-primary": "--ink",
+    "--color-text-secondary": "--muted",
+    "--color-border-primary": "--rule",
+    "--font-sans": "--font-sans",
+  };
+  const darkQuery = matchMedia("(prefers-color-scheme: dark)");
+  function applyContext(ctx) {
+    if (ctx.theme) theme = ctx.theme;
+    document.documentElement.dataset.theme = theme || (darkQuery.matches ? "dark" : "light");
+    const vars = ctx.styles && ctx.styles.variables;
+    if (vars) {
+      for (const [k, v] of Object.entries(vars)) {
+        if (v && HOST_VARS[k]) document.documentElement.style.setProperty(HOST_VARS[k], v);
+      }
+    }
+    const fonts = ctx.styles && ctx.styles.css && ctx.styles.css.fonts;
+    if (fonts && !document.getElementById("host-fonts")) {
+      const style = document.createElement("style");
+      style.id = "host-fonts";
+      style.textContent = fonts;
+      document.head.appendChild(style);
+    }
+  }
+  applyContext({});
+  darkQuery.addEventListener("change", () => { if (!theme) applyContext({}); });
+
+  // Our size, so a host that lets the view choose its height fits it.
+  let lastH = 0;
+  new ResizeObserver(() => {
+    const h = Math.ceil(document.documentElement.scrollHeight);
+    if (h !== lastH) {
+      lastH = h;
+      notify("ui/notifications/size-changed", { width: document.documentElement.scrollWidth, height: h });
+    }
+  }).observe(document.body);
+
+  request("ui/initialize", {
+    protocolVersion: "2026-01-26",
+    appInfo: { name: "routemaker-route-view", version: "1" },
+    clientInfo: { name: "routemaker-route-view", version: "1" },
+    appCapabilities: { availableDisplayModes: ["inline"] },
+    capabilities: {},
+  })
+    .then((result) => {
+      applyContext((result && result.hostContext) || {});
+      notify("ui/notifications/initialized", {});
+    })
+    .catch(() => notify("ui/notifications/initialized", {}));
+
+  // ---- Drawing ----
+  const NS = "http://www.w3.org/2000/svg";
+  const el = (name, attrs = {}, parent) => {
+    const node = document.createElementNS(NS, name);
+    for (const [k, v] of Object.entries(attrs)) {
+      if (v == null) continue;
+      // A theme colour (var(--…)) works only as a style: SVG's own attributes do not read it.
+      if (typeof v === "string" && v.startsWith("var(")) node.style.setProperty(k, v);
+      else node.setAttribute(k, String(v));
+    }
+    if (parent) parent.appendChild(node);
+    return node;
+  };
+  const html = (name, attrs = {}, text) => {
+    const node = document.createElement(name);
+    for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
+    if (text != null) node.textContent = text;
+    return node;
+  };
+  function show(words) {
+    const root = document.getElementById("root");
+    root.className = "waiting";
+    root.textContent = words;
+  }
+
+  function decode(str, precision) {
+    const factor = 10 ** precision;
+    const out = [];
+    let i = 0, lat = 0, lon = 0;
+    while (i < str.length) {
+      for (const which of [0, 1]) {
+        let shift = 0, result = 0, b;
+        do {
+          b = str.charCodeAt(i++) - 63;
+          result |= (b & 0x1f) << shift;
+          shift += 5;
+        } while (b >= 0x20 && i < str.length);
+        const d = result & 1 ? ~(result >> 1) : result >> 1;
+        if (which === 0) lat += d; else lon += d;
+      }
+      out.push([lon / factor, lat / factor]);
+    }
+    return out;
+  }
+  // Web Mercator, 0..1 across the world, as the base map's tiles are (core.preview_basemap.world_xy).
+  const world = ([lon, lat]) => {
+    const s = Math.sin((Math.max(-85, Math.min(85, lat)) * Math.PI) / 180);
+    return [lon / 360 + 0.5, 0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI)];
+  };
+  const unworld = ([x, y]) => [
+    (x - 0.5) * 360,
+    (Math.atan(Math.sinh((0.5 - y) * 2 * Math.PI)) * 180) / Math.PI,
+  ];
+  const miles = (a, b) => {
+    const r = 3958.8, rad = Math.PI / 180;
+    const dLat = (b[1] - a[1]) * rad, dLon = (b[0] - a[0]) * rad;
+    const h = Math.sin(dLat / 2) ** 2 + Math.cos(a[1] * rad) * Math.cos(b[1] * rad) * Math.sin(dLon / 2) ** 2;
+    return 2 * r * Math.asin(Math.min(1, Math.sqrt(h)));
+  };
+  const fmt = (mi) => (mi < 10 ? mi.toFixed(1) : Math.round(mi).toString());
+
+  function render() {
+    const v = view;
+    const root = document.getElementById("root");
+    root.className = "card";
+    root.removeAttribute("role");
+    root.textContent = "";
+    const line = v.line ? decode(v.line, v.line_precision || 5) : [];
+    if (line.length < 2) {
+      show("No line to draw for this route: the answer above has its details.");
+      return;
+    }
+    // Miles along the line at each point, scaled to the route's own miles.
+    const cum = [0];
+    for (let i = 1; i < line.length; i++) cum.push(cum[i - 1] + miles(line[i - 1], line[i]));
+    const total = v.miles || cum[cum.length - 1] || 1;
+    const k = cum[cum.length - 1] ? total / cum[cum.length - 1] : 1;
+    for (let i = 0; i < cum.length; i++) cum[i] *= k;
+    const at = (mi) => {
+      if (!line.length) return null;
+      let lo = 0, hi = cum.length - 1;
+      while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (cum[mid] <= mi) lo = mid; else hi = mid; }
+      const t = cum[hi] > cum[lo] ? Math.min(1, Math.max(0, (mi - cum[lo]) / (cum[hi] - cum[lo]))) : 0;
+      return [line[lo][0] + t * (line[hi][0] - line[lo][0]), line[lo][1] + t * (line[hi][1] - line[lo][1])];
+    };
+    const piece = (a, b) => {
+      const pts = [at(a)];
+      for (let i = 0; i < cum.length; i++) if (cum[i] > a && cum[i] < b) pts.push(line[i]);
+      pts.push(at(b));
+      return pts;
+    };
+    const spanAt = (mi) => (v.spans || []).find((s) => s[0] <= mi && mi <= s[1]) || null;
+
+    // Head
+    const head = html("div", { class: "head" });
+    head.appendChild(html("h1", {}, v.name || "Draft route"));
+    const fig = v.figures || {};
+    head.appendChild(html("span", { class: "figures" }, [fig.distance, fig.time, fig.climb && `${fig.climb} climb`].filter(Boolean).join(" · ")));
+    root.appendChild(head);
+
+    // ---- Map ----
+    const mapBox = html("div", { class: "map" });
+    root.appendChild(mapBox);
+    const W = Math.max(280, Math.min(1200, Math.round(root.clientWidth - 28) || 640));
+    const pad = 22;
+    const xy = line.map(world);
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const [x, y] of xy) { minX = Math.min(minX, x); maxX = Math.max(maxX, x); minY = Math.min(minY, y); maxY = Math.max(maxY, y); }
+    // As tall as the route needs at the map's width, within a chat-sized band (our default).
+    const aspect = (maxY - minY) / (maxX - minX || 1e-9);
+    const H = Math.round(Math.min(460, Math.max(240, (W - 2 * pad) * aspect + 2 * pad)));
+    let scale = Math.min((W - 2 * pad) / (maxX - minX || 1e-9), (H - 2 * pad) / (maxY - minY || 1e-9));
+    scale = Math.min(scale, 256 * 2 ** 17);
+    const centre = [(minX + maxX) / 2, (minY + maxY) / 2];
+    const px = (p) => { const [x, y] = world(p); return [W / 2 + (x - centre[0]) * scale, H / 2 + (y - centre[1]) * scale]; };
+    const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, role: "group" }, mapBox);
+    const busy = (v.spans || []).filter((s) => s[2] != null && s[2] >= 3).reduce((n, s) => n + (s[1] - s[0]), 0);
+    svg.setAttribute("aria-label",
+      `Map of the route, ${fmt(total)} miles, coloured by traffic stress` +
+      (busy > 0.05 ? `; ${fmt(busy)} miles at LTS 3 or higher.` : "; all of it below LTS 3."));
+    const base = el("g", { "aria-hidden": "true" }, svg);
+    const routeG = el("g", { "aria-hidden": "true" }, svg);
+    const marks = el("g", {}, svg);
+    // A mark on the map: its words for a screen reader as well as a tooltip.
+    const mark = (x, y, words) => {
+      const g = el("g", { transform: `translate(${x.toFixed(1)} ${y.toFixed(1)})`, role: "img", "aria-label": words }, marks);
+      el("title", {}, g).textContent = words;
+      return g;
+    };
+    const d = (pts) => pts.map((p, i) => { const [x, y] = px(p); return `${i ? "L" : "M"}${x.toFixed(1)} ${y.toFixed(1)}`; }).join("");
+    const spans = (v.spans && v.spans.length) ? v.spans : [[0, total, null, null]];
+    // Casings first, then the colours, so a level's edge never covers its neighbour.
+    for (const pass of [1, 0]) {
+      for (const s of spans) {
+        const c = colours(s[2]);
+        const tier = s[2] == null ? 0 : Math.floor(s[2]);
+        el("path", {
+          d: d(piece(s[0], Math.max(s[1], s[0] + total / 400))),
+          fill: "none", "stroke-linecap": "round", "stroke-linejoin": "round",
+          stroke: c[pass], "stroke-width": pass ? 8 : 5,
+          // The map's own shapes (stressStyle.js TIER_SHAPES), so a level is not colour alone.
+          "stroke-dasharray": pass ? null : ({ 2: "10 2.5", 3: "8 2", 4: "16 3", 5: "8 3 2 3" })[tier] || null,
+        }, routeG);
+      }
+    }
+    const pin = (p, label, fill, title) => {
+      const [x, y] = px(p);
+      const g = mark(x, y, title);
+      el("circle", { r: 11, fill, stroke: "#fff", "stroke-width": 2.5 }, g);
+      const t = el("text", { "text-anchor": "middle", y: 4.5, "font-size": 12, "font-weight": 700, fill: "#fff" }, g);
+      t.textContent = label;
+    };
+    for (const j of v.junctions || []) {
+      const p = at(j.mi); if (!p) continue;
+      const [x, y] = px(p);
+      const g = mark(x, y, `${j.level === "very high" ? "Very high" : "Higher"} stress junction at mile ${j.mi.toFixed(1)}${j.reason ? `: ${j.reason}` : ""}`);
+      if (j.level === "very high") el("path", { d: "M0 -9 9 0 0 9 -9 0Z", fill: "#dc2626", stroke: "#1c1917", "stroke-width": 1.5 }, g);
+      else el("path", { d: "M0 -9 9 7 -9 7Z", fill: "#f97316", stroke: "#1c1917", "stroke-width": 1.5 }, g);
+    }
+    for (const c of v.closures || []) {
+      const p = at(c.mi); if (!p) continue;
+      const [x, y] = px(p);
+      const closed = c.kind === "closure";
+      const g = mark(x, y, `${closed ? "Closure" : "Possible closure"} at mile ${c.mi.toFixed(1)}${c.what ? `: ${c.what}` : ""}`);
+      // A closure is a red octagon with a bar, a possible one a yellow square with "!": shape
+      // and sign, not colour alone.
+      if (closed) {
+        el("path", { d: "M-4 -9h8l5 5v8l-5 5h-8l-5 -5v-8z", fill: "#dc2626", stroke: "#1c1917", "stroke-width": 1.5 }, g);
+        el("rect", { x: -5, y: -1.5, width: 10, height: 3, fill: "#fff" }, g);
+      } else {
+        el("rect", { x: -8, y: -8, width: 16, height: 16, rx: 3, fill: "#facc15", stroke: "#1c1917", "stroke-width": 1.5 }, g);
+        el("text", { "text-anchor": "middle", y: 5, "font-size": 13, "font-weight": 700, fill: "#1c1917" }, g).textContent = "!";
+      }
+    }
+    const pts = v.points || [];
+    const stops = pts.filter((p, i) => i > 0 && i < pts.length - 1 && !p.via);
+    stops.forEach((s, i) => pin(s.lon_lat, String(i + 1), "#2563eb", `Stop ${i + 1}`));
+    if (pts.length) {
+      const first = pts[0].lon_lat, last = pts[pts.length - 1].lon_lat;
+      const loop = v.loop || (pts.length > 1 && miles(first, last) < 0.03);
+      if (!loop && pts.length > 1) pin(last, "B", "#b91c1c", "Finish");
+      pin(first, "A", "#15803d", loop ? "Start and finish" : "Start");
+    }
+    const cursorG = el("g", { "aria-hidden": "true" }, svg);
+    const cursor = el("circle", { r: 7, fill: "none", stroke: "#16181d", "stroke-width": 3, visibility: "hidden" }, cursorG);
+    const cursorRing = el("circle", { r: 9.5, fill: "none", stroke: "#fff", "stroke-width": 1.5, visibility: "hidden" }, cursorG);
+
+    // The base map, drawn by the server from this box alone (route_view_map). Without it the
+    // line stays on the plain background.
+    if (v.map_key) request("tools/call", {
+      name: "route_view_map",
+      arguments: { draft_id: v.draft_id, key: v.map_key, centre: unworld(centre), scale, width: W, height: H },
+    })
+      .then((res) => {
+        const img = res && (res.content || []).find((c) => c.type === "image");
+        if (!img) return;
+        el("image", { href: `data:${img.mimeType};base64,${img.data}`, x: 0, y: 0, width: W, height: H }, base);
+        const places = (res.structuredContent && res.structuredContent.places) || [];
+        for (const [x, y, name] of places) {
+          if (y < 16 || y > H - 8) continue; // a name cut by the map's edge
+          for (const stroke of [true, false]) {
+            const t = el("text", {
+              x, y, "text-anchor": "middle", "font-size": 12,
+              fill: stroke ? "none" : "var(--muted)", stroke: stroke ? "var(--halo)" : null,
+              "stroke-width": stroke ? 3 : null, "stroke-linejoin": "round",
+            }, base);
+            t.textContent = name;
+          }
+        }
+        const credit = html("span", { class: "credit" }, "© OpenStreetMap contributors · © Protomaps");
+        mapBox.appendChild(credit);
+      })
+      .catch(() => {});
+
+    // ---- Graphs: the stress ribbon over the elevation profile, on one mile axis ----
+    const graphs = html("div", {
+      class: "graphs", tabindex: "0", role: "slider",
+      "aria-label": "Place along the route: traffic stress and elevation",
+      "aria-valuemin": "0", "aria-valuemax": String(Math.round(total * 10) / 10), "aria-valuenow": "0",
+      "aria-valuetext": "Use the left and right arrow keys to move along the route",
+    });
+    root.appendChild(graphs);
+    const GW = W, left = 40, right = GW - 10, X = (mi) => left + ((right - left) * mi) / total;
+    const prof = v.profile || [];
+    const hasProfile = prof.length > 1;
+    const ribbonY = 8, ribbonH = 24;
+    const eTop = ribbonY + ribbonH + 16, eH = hasProfile ? 80 : 0;
+    const axisY = hasProfile ? eTop + eH : ribbonY + ribbonH + 6;
+    const GH = axisY + 22;
+    const g = el("svg", { viewBox: `0 0 ${GW} ${GH}`, "aria-hidden": "true" }, graphs);
+    const lab = (x, y, words, anchor = "start") => {
+      const t = el("text", { x, y, "font-size": 11, fill: "var(--muted)", "text-anchor": anchor }, g);
+      t.textContent = words;
+      return t;
+    };
+    lab(4, ribbonY + 16, "LTS");
+    for (const s of spans) {
+      const a = X(s[0]), b = Math.max(X(s[1]), a + 1.5);
+      const c = colours(s[2]);
+      el("rect", { x: a, y: ribbonY, width: b - a, height: ribbonH, fill: c[0] }, g);
+      const rail = RAIL[s[3]];
+      if (rail) {
+        el("rect", { x: a, y: ribbonY - 3, width: b - a, height: 3, fill: rail }, g);
+        el("rect", { x: a, y: ribbonY + ribbonH, width: b - a, height: 3, fill: rail }, g);
+      }
+      if (s[2] != null && b - a > (s[2] % 1 ? 26 : 16)) {
+        const dark = s[2] >= 3.5;
+        el("text", { x: (a + b) / 2, y: ribbonY + 16.5, "text-anchor": "middle", "font-size": 12, "font-weight": 700, fill: dark ? "#fff" : "#16181d" }, g).textContent = String(s[2]);
+      }
+    }
+    el("rect", { x: left, y: ribbonY, width: right - left, height: ribbonH, fill: "none", stroke: "var(--ink)", "stroke-width": 0.8 }, g);
+    for (const j of v.junctions || []) {
+      const x = X(j.mi);
+      el("path", { d: `M${x - 5} ${ribbonY - 4} l5 -8 l5 8Z`, fill: j.level === "very high" ? "#dc2626" : "#f97316", stroke: "#1c1917", "stroke-width": 1 }, g);
+    }
+    if (hasProfile) {
+      let lo = Math.min(...prof.map((p) => p[1])), hi = Math.max(...prof.map((p) => p[1]));
+      const step = [10, 20, 50, 100, 200, 250, 500, 1000].find((s) => (hi - lo) / s <= 3) || 1000;
+      lo = Math.floor(lo / step) * step; hi = Math.max(lo + step, Math.ceil(hi / step) * step);
+      const Y = (ft) => eTop + eH - ((ft - lo) / (hi - lo)) * eH;
+      for (let ft = lo; ft <= hi + 0.5; ft += step) {
+        el("line", { x1: left, x2: right, y1: Y(ft), y2: Y(ft), stroke: "var(--rule)" }, g);
+        lab(left - 4, Y(ft) + 4, String(ft), "end");
+      }
+      lab(4, eTop - 4, "ft");
+      const ptsStr = prof.map((p) => `${X(p[0]).toFixed(1)},${Y(p[1]).toFixed(1)}`).join(" ");
+      el("polygon", { points: `${X(prof[0][0])},${eTop + eH} ${ptsStr} ${X(prof[prof.length - 1][0])},${eTop + eH}`, fill: "var(--elev-fill)", opacity: 0.75 }, g);
+      el("polyline", { points: ptsStr, fill: "none", stroke: "var(--elev-line)", "stroke-width": 1.8 }, g);
+    }
+    // The mile axis: whole miles, or tenths on a short ride; every second or fifth one on a long one.
+    const tick = [0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 25, 50].find((s) => total / s <= 8) || 50;
+    el("line", { x1: left, x2: right, y1: axisY, y2: axisY, stroke: "var(--muted)" }, g);
+    for (let m = 0; m <= total + 1e-9; m += tick) {
+      el("line", { x1: X(m), x2: X(m), y1: axisY, y2: axisY + 4, stroke: "var(--muted)" }, g);
+      lab(X(m), axisY + 16, (tick < 1 ? m.toFixed(1) : String(Math.round(m))) + (m + tick > total + 1e-9 ? " mi" : ""), "middle");
+    }
+    const line_ = el("line", { y1: ribbonY - 4, y2: axisY, stroke: "var(--ink)", "stroke-dasharray": "3 2", visibility: "hidden" }, g);
+
+    const readout = html("div", { class: "readout", "aria-hidden": "true" });
+    root.appendChild(readout);
+    const keyRow = html("div", { class: "key" });
+    // The levels on this route, each with its number as the ribbon shows it.
+    const levels = [...new Set(spans.map((s) => s[2]).filter((t) => t != null))].sort((a, b) => a - b);
+    for (const t of levels) {
+      const item = html("span");
+      const chip = html("b", { style: `background:${colours(t)[0]};color:${t >= 3.5 ? "#fff" : "#16181d"}` }, String(t));
+      item.appendChild(chip);
+      item.appendChild(document.createTextNode(t === 5 ? "Avoid" : `LTS ${t}`));
+      keyRow.appendChild(item);
+    }
+    const used = new Set(spans.map((s) => s[3]).filter((f) => RAIL[f]));
+    for (const f of ["path", "protected", "lane"]) {
+      if (!used.has(f)) continue;
+      const item = html("span");
+      item.appendChild(html("i", { style: `background:${RAIL[f]}` }));
+      item.appendChild(document.createTextNode(RAIL_WORDS[f]));
+      keyRow.appendChild(item);
+    }
+    if ((v.junctions || []).length) keyRow.appendChild(html("span", {}, "▲ stressful junction"));
+    if ((v.closures || []).some((c) => c.kind !== "closure")) keyRow.appendChild(html("span", {}, "! possible closure"));
+    if (keyRow.childNodes.length) root.appendChild(keyRow);
+
+    const heightAt = (mi) => {
+      if (!hasProfile) return null;
+      const i = prof.findIndex((p) => p[0] >= mi);
+      if (i < 0) return prof[prof.length - 1][1];
+      if (i === 0) return prof[0][1];
+      const [a, b] = [prof[i - 1], prof[i]];
+      return a[1] + ((mi - a[0]) / (b[0] - a[0] || 1)) * (b[1] - a[1]);
+    };
+    let here = null;
+    const point = (mi) => {
+      here = Math.max(0, Math.min(total, mi));
+      const x = X(here);
+      line_.setAttribute("x1", x); line_.setAttribute("x2", x); line_.setAttribute("visibility", "visible");
+      const p = at(here);
+      if (p) {
+        const [cx, cy] = px(p);
+        for (const c of [cursor, cursorRing]) { c.setAttribute("cx", cx); c.setAttribute("cy", cy); c.setAttribute("visibility", "visible"); }
+      }
+      const s = spanAt(here);
+      const ft = heightAt(here);
+      const words = [
+        `Mile ${here.toFixed(1)}`,
+        s ? levelWord(s[2]) : null,
+        s && RAIL_WORDS[s[3]] ? RAIL_WORDS[s[3]].toLowerCase() : null,
+        ft != null ? `${Math.round(ft)} ft` : null,
+      ].filter(Boolean).join(" · ");
+      readout.textContent = words;
+      // Said by a screen reader as the slider's value, when moved by key; a pointer only shows it.
+      graphs.setAttribute("aria-valuenow", String(Math.round(here * 10) / 10));
+      graphs.setAttribute("aria-valuetext", words);
+    };
+    const fromEvent = (e) => {
+      const r = g.getBoundingClientRect();
+      const x = ((e.clientX - r.left) / r.width) * GW;
+      return ((x - left) / (right - left)) * total;
+    };
+    graphs.addEventListener("pointermove", (e) => point(fromEvent(e)));
+    graphs.addEventListener("pointerdown", (e) => point(fromEvent(e)));
+    graphs.addEventListener("keydown", (e) => {
+      const stepMi = total / 50;
+      if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+        e.preventDefault();
+        point((here == null ? 0 : here) + (e.key === "ArrowRight" ? stepMi : -stepMi));
+      } else if (e.key === "Home") { e.preventDefault(); point(0); }
+      else if (e.key === "End") { e.preventDefault(); point(total); }
+    });
+
+    // ---- Buttons ----
+    const row = html("div", { class: "buttons" });
+    root.appendChild(row);
+    const status = html("span", { class: "status", "aria-live": "polite" });
+    const button = (words, primary, act) => {
+      const b = html("button", { type: "button", class: primary ? "primary" : "" }, words);
+      b.addEventListener("click", () => act(b));
+      row.appendChild(b);
+      return b;
+    };
+    if (v.link) button("Open in RouteMaker", true, () => request("ui/open-link", { url: v.link }).catch(() => { status.textContent = "Use the link in the answer above."; }));
+    if (v.draft_id) {
+      button("GPX file", false, (b) => {
+        b.disabled = true;
+        status.textContent = "Getting the file…";
+        request("tools/call", { name: "gpx_route", arguments: { draft_id: v.draft_id } })
+          .then((res) => {
+            const out = (res && res.structuredContent) || {};
+            if (out.gpx_link) { status.textContent = ""; return request("ui/open-link", { url: out.gpx_link }); }
+            status.textContent = out.gpx_file ? `Saved as ${out.gpx_file}` : "Ask for the GPX file in the chat.";
+          })
+          .catch(() => { status.textContent = "Ask for the GPX file in the chat."; })
+          .finally(() => { b.disabled = false; });
+      });
+      // Saving stays the assistant's, on the rider's word: the button asks in the chat.
+      button("Save to My routes", false, () =>
+        request("ui/message", { role: "user", content: { type: "text", text: "Save this route to My routes." } })
+          .catch(() => { status.textContent = "Ask in the chat to save it."; }));
+    }
+    row.appendChild(status);
+  }
+})();
+</script>
+</body>
+</html>
