@@ -76,3 +76,25 @@ test("Load route lists the routes not archived, and Archived lists the archived 
   assert.deepEqual(matching(live, "commute", searchText).map((r) => r.name), ["Commute 2"]);
   assert.equal(archivedLink(6), "Archived (6)");
 });
+
+test("drafts are rows among the saved routes, the one last opened or made on top (the owner, 2026-11-09)", () => {
+  const older: SavedSummary = { ...saved, id: 8, name: "Opened today", created_at: "2026-10-01T12:00:00Z", opened_at: "2026-11-09T09:00:00Z" };
+  const draft = { id: "a".repeat(32), name: "Sandwich loop", source: "plan" as const, distance_m: 8047, preset: "default", created_at: "2026-11-08T12:00:00Z", expires_at: "2026-11-15T12:00:00Z" };
+  const now = Date.parse("2026-11-09T12:00:00Z");
+  const rows = loadRows([saved, older], [kept], false, [draft], now);
+  assert.deepEqual(
+    rows.map((r) => [r.kind, r.name]),
+    [
+      ["saved", "Opened today"],
+      ["draft", "Sandwich loop"],
+      ["saved", "Dupont to Glen Echo"],
+      ["kept", "Union Station loop"],
+    ],
+  );
+  assert.match(rows[1].detail, / · Draft, 6 days left$/);
+  // The archived list holds no drafts.
+  assert.deepEqual(loadRows([saved], [], true, [draft], now), []);
+  // A tag leaves drafts out, as it does kept routes; the search finds them by name.
+  assert.deepEqual(withTag(rows, "x"), []);
+  assert.equal(searchText(rows[1]), "Sandwich loop");
+});

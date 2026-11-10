@@ -72,10 +72,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Busy crossing, no signal.": "Cruzamento movimentado, sem semáforo.",
   "Busy crossing.": "Cruzamento movimentado.",
   "Busy junction.": "Interseção movimentada.",
-  // A signal that may need a button press (the owner, 2026-11-08): the card's note and the words said.
-  // Drafted by Claude: FLAGGED for review by a native speaker.
-  "Light may need a button press": "O semáforo pode precisar que aperte o botão",
-  "Button for the light.": "Botão do semáforo.",
   "Busy junction at a signal.": "Interseção movimentada, com semáforo.",
   "Busy junction at a stop sign.": "Interseção movimentada, com placa de pare.",
   "Busy junction, no signal.": "Interseção movimentada, sem semáforo.",
@@ -2139,4 +2135,12 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "No road bike map: may use gravel.": "Sem mapa de bicicleta de estrada: pode ter cascalho.",
   "There is no weekend road bike map right now, so this route counts parkways like Beach Drive as roads with cars.": "Agora não há mapa de fim de semana para bicicleta de estrada, então esta rota trata vias de parque como a Beach Drive como ruas com carros.",
   "No weekend map: parkways may have cars.": "Sem mapa de fim de semana: pode haver carros nas vias de parque.",
+  "Draft, last day": "Rascunho, último dia",
+  "Draft, {n} days left": "Rascunho, faltam {n} dias",
+  "Save {name} to My routes": "Salvar {name} em Minhas rotas",
+  "Saving {name}…": "Salvando {name}…",
+  "That draft is gone.": "Esse rascunho não existe mais.",
+  "Delete": "Excluir",
+  "Delete {name}": "Excluir {name}",
+  "Deleted {name}.": "{name} excluído.",
 };
