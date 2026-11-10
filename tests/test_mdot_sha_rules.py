@@ -434,3 +434,43 @@ def test_the_panel_note_states_the_facts_the_rule_read():
 )
 def test_the_rules_thresholds_themselves(overrides, expected):
     assert read_as(_stretch(**overrides)) == expected
+
+
+def _fast_two_lane_note(lanes: int = 2) -> str:
+    record = _stretch(level=3.0, speed_mph=40, speed_assumed=False, lanes=lanes, urban=False)
+    return mdot_sha_rules.words("multilane-or-40", 4.0, record)
+
+
+def test_a_road_posted_30_is_not_read_up_by_shas_posted_40():
+    # Bel Alton Newtown Rd: OSM posted 30 mph along its 4.3 mi; SHA's record for its first
+    # half mile says posted 40 and LTS 3, which `multilane-or-40` read as 4 (2026-11-09).
+    formula = StressResult(Stress.LTS2, "mixed traffic, 30 mph", (), speed_mph=30)
+    rating = AgencyRating("mdot-sha", 3.0, read_as=4.0, note=_fast_two_lane_note())
+    result = agency_lts.apply(formula, [rating])
+    assert (result.tier, result.half) == (Stress.LTS3, False)
+    assert result.rule == (
+        "agency rating: MDOT SHA LTS 3, not read higher: the road is posted 30 mph "
+        "where SHA's record says 40 mph"
+    )
+
+
+@pytest.mark.parametrize(
+    "speed_mph, assumed, lanes, tier",
+    [
+        (40, (), 2, Stress.LTS4),  # the way agrees with SHA: the reading stands
+        (None, ("maxspeed",), 2, Stress.LTS4),  # nothing posted on the way: SHA's record stands
+        (35, (), 2, Stress.LTS3),  # 35 is not "over 35"
+        (30, (), 4, Stress.LTS4),  # four lanes: the reading rests on lanes, not speed
+    ],
+)
+def test_only_the_ways_own_posted_speed_overrules_the_reading(speed_mph, assumed, lanes, tier):
+    formula = StressResult(Stress.LTS2, "mixed traffic", assumed, speed_mph=speed_mph)
+    rating = AgencyRating("mdot-sha", 3.0, read_as=4.0, note=_fast_two_lane_note(lanes))
+    assert agency_lts.apply(formula, [rating]).tier is tier
+
+
+def test_other_readings_ignore_the_posted_speed():
+    formula = StressResult(Stress.LTS2, "mixed traffic", (), speed_mph=25)
+    note = mdot_sha_rules.words("collector-assumed-35", 3.0, _stretch())
+    rating = AgencyRating("mdot-sha", 4.0, read_as=3.0, note=note)
+    assert agency_lts.apply(formula, [rating]).tier is Stress.LTS3

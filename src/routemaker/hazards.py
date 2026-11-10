@@ -21,7 +21,9 @@ routed on". So the graph prices a road with one as LTS 4 (`rm:hazard`,
 lua/routemaker_remap.lua `hazard_priced`; never a path), the calm search reads it so
 (`core.refine.hazard_priced`), a route that still rides one marks and names it
 (`core.route_hazards`, frontend/src/lib/routeHazards.ts), and the road panel says it in
-words (`core.segment_info`). The rest of the map never draws it.
+words (`core.segment_info`). The rest of the map never draws it. A Mass Ride does not ride
+along rails at all (OWNER-DECISIONS 289, "Keep mass rides off H street"): it leaves the rail
+streets out and crosses them only at a cross street (`core.mass_rails`).
 """
 
 from __future__ import annotations

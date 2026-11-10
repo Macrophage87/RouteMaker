@@ -1814,6 +1814,27 @@ class TestTimeOfDay:
         avoid = junction(crossed=(Road(5, speed_mph=30, lanes=1),), control=Control.STOP)
         assert m.assess(avoid, when="weekday_rush").time_factor == 2.0
 
+    def test_only_gap_waits_double_at_rush_hour(self) -> None:
+        """Hunt 4 J4-2, the owner 2026-11-09 ("Should only crossings and lefts get rush
+        hour's doubling?" "yes"). Default from [-76.99, 38.975]: the plain right from
+        10th Ave onto East-West Highway (LTS 4, 4 lanes, 30 mph, no signal) was orange
+        at rush hour only through the x2. A right onto the road keeps x1.25; a left
+        onto it and a crossing of it still double."""
+        ew_hwy = Road(4, speed_mph=30, lanes=2)
+        right = junction(movement=Movement.RIGHT, outgoing=ew_hwy)
+        rush = m.assess(right, when="weekday_rush")
+        assert rush.time_factor == 1.25
+        assert rush.cost_ft == pytest.approx(m.assess(right).cost_ft * 1.25)
+        assert rush.cost_ft < m.ORANGE_MIN_FT
+        left = junction(movement=Movement.LEFT, outgoing=ew_hwy)
+        assert m.assess(left, when="weekday_rush").time_factor == 2.0
+        across = junction(crossed=(ew_hwy,), control=Control.NONE)
+        assert m.assess(across, when="weekday_rush").time_factor == 2.0
+        assert m.time_factor("weekday_rush", None, Control.NONE, True, "right_onto") == 1.25
+        for kind in ("right_from", "along", "slip_lane"):
+            assert m.time_factor("weekday_rush", None, Control.NONE, True, kind) == 1.25
+        assert m.time_factor("weekday_rush", None, Control.NONE, True, "left_onto") == 2.0
+
     def test_signals_all_way_stops_and_lts3_keep_the_plain_rush_factor(self) -> None:
         for crossed, control in (
             (Road(4), Control.SIGNAL),
