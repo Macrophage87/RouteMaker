@@ -6174,7 +6174,7 @@ files, reports/md-sha-ratings/). Each is a switch, `mdot_sha_rules.ENABLED`:
 |---|---|---|
 | `collector-assumed-35`, `city-collector` | 4 on an urban two-lane collector where SHA assumed 35 mph | 3; 3.5 at 10,000-15,000 cars a day |
 | `slow-street` | 4 on an urban two-lane street at 30 mph or less, under 15,000 a day | 2.5; 3 from 7,500 a day |
-| `multilane-or-40` | 3 or less on 4+ lanes at 30-45 mph, or two lanes posted 40-45 | 4; 3.5 with a painted lane |
+| `multilane-or-40` | 3 or less on 4+ lanes at 30-45 mph, or two lanes posted 40-45 (not where the way itself is posted 35 mph or less, `posted_speed_overrules`) | 4; 3.5 with a painted lane |
 | `shoulder-credit` | 2 on an urban two-lane 35 mph road with a 4 ft shoulder | 3; 3.5 at 10,000-15,000; 4 above |
 | `busy-residential` | 1 or 2 on a 25 mph two-lane street at 5,000-15,000 a day, no bike lane | 2.5 (the owner's 1st Street rule) |
 | `rural-collector` | 2 or less on a rural minor collector at 1,500+ a day, speed assumed | 3.5 |
