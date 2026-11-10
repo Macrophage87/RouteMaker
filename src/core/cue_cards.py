@@ -41,7 +41,7 @@ CLEAR_BOTTOM = round(HEIGHT * 0.07)
 INK = (17, 17, 17)
 PAPER = (255, 255, 255)
 SIDE, PAD = 56, 10
-COL_MILES, COL_ARROW = 230, 140
+COL_MILES, COL_ARROW, COL_TOTAL = 230, 140, 170
 ARROW_PX = 108
 TEXT_X = SIDE + COL_MILES + COL_ARROW
 METRES_PER_MILE = 1609.344
@@ -470,9 +470,20 @@ def _figure(metres: float) -> str:
     return f"{metres / METRES_PER_MILE:.1f}"
 
 
-def _row_layout(row: dict) -> tuple[list[tuple], int]:
-    """A row's lines (glyphs, x, baseline from the row's top, words) and its height."""
+def _row_layout(row: dict, since_m: float = 0.0) -> tuple[list[tuple], int]:
+    """A row's lines (glyphs, x, baseline from the row's top, words) and its height: the big
+    figure the miles from the cue before (`since_m`), the miles since the start on the right
+    (the owner, 2026-11-10: "put the total distance on the other side ... Distance since
+    start")."""
     lines: list[tuple] = []
+    y = PAD
+    for g, words in (
+        (cue_glyphs_head, f"{_figure(row['at_m'])} mi"),
+        (cue_glyphs_small, "total"),
+    ):
+        y += round(g.SIZE * 1.15)
+        lines.append((g, WIDTH - SIDE - _width(words, g), y - round(g.SIZE * 0.2), words))
+    leg = row["at_m"] - since_m
 
     def column(x: float, width: float, parts) -> int:
         y = PAD
@@ -495,11 +506,12 @@ def _row_layout(row: dict) -> tuple[list[tuple], int]:
             SIDE,
             COL_MILES,
             [
-                (cue_glyphs_miles, _figure(row["at_m"])),
-                (cue_glyphs_small, f"mi ({row['at_m'] / 1000:.1f} km)"),
+                (cue_glyphs_miles, _figure(leg)),
+                # Miles alone (the owner, 2026-11-10: "no need for km here, make it either or").
+                (cue_glyphs_small, "mi"),
             ],
         ),
-        column(TEXT_X, WIDTH - SIDE - TEXT_X, text_parts),
+        column(TEXT_X, WIDTH - SIDE - COL_TOTAL - TEXT_X, text_parts),
         PAD + ARROW_PX,
     ]
     return lines, max(bottoms) + PAD
@@ -509,7 +521,7 @@ def pages(answer: dict, title: str, vias=(), names=None, credit: str = "") -> di
     """The images' layout: the rows, each laid out, the rows on each image by index (a stop that
     ends one image heads the next), the header for a part, and the credits' lines and top."""
     rows = cue_rows(answer, vias, names)
-    laid = [_row_layout(r) for r in rows]
+    laid = [_row_layout(r, rows[i - 1]["at_m"] if i else 0.0) for i, r in enumerate(rows)]
     distance = float(answer.get("distance_m") or 0.0)
     summary = f"Distance {distance / METRES_PER_MILE:.1f} mi ({distance / 1000:.1f} km)." + (
         f" Climb {round(float(answer['climb_m']) * 3.28084):,} ft"

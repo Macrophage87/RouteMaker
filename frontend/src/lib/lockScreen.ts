@@ -7,8 +7,8 @@
  * and weight, given a `measure` for text widths. The top 20% is left clear for the lock screen's clock and the
  * bottom 7% for its controls (our default, tightened 2026-11-10 at the owner's "There's plenty of white space"); the route's name and distance sit small just under the top band and the credits
  * small just above the bottom one. The rows are the strip's (cueSheetPdf.ts cueRows "strip"): the miles from the
- * start large with km small, the cue's picture (an arrow for a turn, lib/cueArrow.ts: the owner, 2026-11-10, "Basically
- * show the arrows"), then the turn with a caution's reason small, the road abbreviated, and a jog's later turns. Stops
+ * cue before large in the rider's units alone, the miles since the start on the right, the cue's picture (an arrow for a turn,
+ * lib/cueArrow.ts: the owner, 2026-11-10, "Basically show the arrows"), then the turn with a caution's reason small, the road abbreviated, and a jog's later turns. Stops
  * are rows of their own, by name where the plan names them. Where the cues do not fit on one image, each leg gets its
  * own: the start or a stop at its top, the next stop or the finish at its bottom (so a stop ends one image and heads
  * the next), and a leg too long for one image runs on to the next, "Part 2 of 3". Dark text on white. No place is named (exportName) but a stop the rider named, so never a Home.
@@ -19,7 +19,8 @@ import type { CueArrow } from "./cueArrow.ts";
 import { creditLine } from "./course.ts";
 import { cueRows, summaryLine, type CueRow } from "./cueSheetPdf.ts";
 import { CREATOR } from "./gpx.ts";
-import { formatMileMarkerUnits, markerFigure } from "./format.ts";
+import { markerFigure } from "./format.ts";
+import { metricFirst } from "./units.ts";
 import { exportFileName, exportName } from "./gpxText.ts";
 
 export const LOCK_WIDTH = 1179;
@@ -32,10 +33,10 @@ export const PAPER = "#ffffff";
 
 const SIDE = 56;
 const PAD = 10;
-const COLUMNS = { miles: 230, arrow: 140 } as const;
+const COLUMNS = { miles: 230, arrow: 140, total: 170 } as const;
 /** The cue's picture: a square this wide, its top at the row's top and PAD. */
 export const ARROW_PX = 108;
-const PX = { title: 36, summary: 26, part: 28, miles: 80, unit: 26, turn: 56, reason: 28, road: 50, then: 32, credit: 22 } as const;
+const PX = { title: 36, summary: 26, part: 28, miles: 80, unit: 26, turn: 56, reason: 28, road: 50, then: 32, total: 36, credit: 22 } as const;
 
 export type Weight = 400 | 700;
 /** The width in pixels of `text` at `px` in the image's face (the canvas's measureText in the browser). */
@@ -94,7 +95,7 @@ export function wrapPx(text: string, px: number, weight: Weight, width: number, 
 }
 
 /** A row's lines relative to its top, and its height. */
-function rowLines(row: CueRow, measure: Measure): { lines: LockLine[]; height: number } {
+function rowLines(row: CueRow, sinceM: number, measure: Measure): { lines: LockLine[]; height: number } {
   const lines: LockLine[] = [];
   const column = (x: number, width: number, parts: { text: string; px: number; weight: Weight; whole?: boolean }[]) => {
     let y = PAD;
@@ -108,12 +109,24 @@ function rowLines(row: CueRow, measure: Measure): { lines: LockLine[]; height: n
     return y;
   };
   const textX = SIDE + COLUMNS.miles + COLUMNS.arrow;
+  // The distance since the start on the right (the owner, 2026-11-10: "put the total distance on the other side"),
+  // right-aligned at the row's top; the big figure on the left is the distance from the cue before.
+  const total = [
+    { text: `${markerFigure(row.atM)} ${metricFirst() ? "km" : "mi"}`, px: PX.total, weight: 700 as const },
+    { text: "total", px: PX.unit, weight: 400 as const },
+  ];
+  let ty = PAD;
+  for (const t of total) {
+    ty += Math.round(t.px * 1.15);
+    lines.push({ ...t, x: LOCK_WIDTH - SIDE - Math.ceil(measure(t.text, t.px, t.weight)), y: ty - Math.round(t.px * 0.2) });
+  }
   const bottoms = [
     column(SIDE, COLUMNS.miles, [
-      { text: markerFigure(row.atM), px: PX.miles, weight: 700, whole: true },
-      { text: formatMileMarkerUnits(row.atM), px: PX.unit, weight: 400 },
+      { text: markerFigure(row.atM - sinceM), px: PX.miles, weight: 700, whole: true },
+      // The rider's units alone (the owner, 2026-11-10: "no need for km here, make it either or").
+      { text: metricFirst() ? "km" : "mi", px: PX.unit, weight: 400 },
     ]),
-    column(textX, LOCK_WIDTH - SIDE - textX, [
+    column(textX, LOCK_WIDTH - SIDE - COLUMNS.total - textX, [
       { text: row.turn, px: PX.turn, weight: 700 },
       ...(row.reason ? [{ text: row.reason, px: PX.reason, weight: 400 as const }] : []),
       // A named stop says its number too ("make sure stops are listed", the owner, 2026-11-10).
@@ -144,7 +157,7 @@ function block(texts: string[], px: number, weight: Weight, top: number, measure
 /** The images for the route: one, or as many as its cues need, each with its lines placed. */
 export function lockScreenLayout(route: LockRoute, measure: Measure, vias: readonly number[] = [], names: ReadonlyMap<number, string> = new Map()): LockPage[] {
   const cues = cueRows(route, "strip", vias, names);
-  const rows = cues.map((r) => rowLines(r, measure));
+  const rows = cues.map((r, i) => rowLines(r, i ? cues[i - 1].atM : 0, measure));
   // The credits on the last image only, a source to a line (the owner, 2026-11-10: "Have credits on the final image in
   // the set, own set of lines"); the others carry none.
   const credits = (full: boolean) => {

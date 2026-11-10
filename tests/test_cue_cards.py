@@ -291,3 +291,16 @@ def test_the_credits_are_on_the_last_image_only_a_source_to_a_line() -> None:
     last = laid["groups"][-1]
     used = sum(laid["laid"][i][1] for i in last)
     assert laid["header"]("Part 1 of 2")[1] + 24 + used <= laid["credit_top"] - 16
+
+
+def test_the_big_figure_is_from_the_cue_before_and_the_total_is_on_the_right() -> None:
+    """The owner, 2026-11-10: "put the total distance on the other side ... Distance since
+    start"."""
+    lines, _height = cue_cards._row_layout(
+        {"at_m": 3.0 * MI, "turn": "Left", "reason": "", "road": "A St", "then": "", "arrow": {}},
+        since_m=2.5 * MI,
+    )
+    by_text = {t: (g, x) for g, x, _y, t in lines}
+    assert "0.5" in by_text and "3.0 mi" in by_text and "total" in by_text
+    g, x = by_text["3.0 mi"]
+    assert x + cue_cards._width("3.0 mi", g) == cue_cards.WIDTH - cue_cards.SIDE

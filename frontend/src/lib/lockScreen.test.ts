@@ -63,7 +63,7 @@ test("one image for a short route: every line clear of both bands and inside the
   const texts = pages[0].lines.map((l) => l.text);
   // Title and distance small at the top, the credits at the bottom, the cues large between.
   assert.equal(texts[0], "Default route, 1.9 mi (3.0 km)");
-  assert.ok(texts.includes("17th St NW") && texts.includes("mi (0.5 km)") && texts.includes("Avoid-rated"));
+  assert.ok(texts.includes("17th St NW") && texts.includes("mi") && !texts.slice(2).some((t) => /km/.test(t)) && texts.includes("Avoid-rated"));
   const credit = pages[0].lines.filter((l) => /Route data/.test(l.text));
   assert.equal(credit.length, 1);
   const cueLines = pages[0].lines.filter((l) => l.px >= 60);
@@ -155,7 +155,8 @@ test("splits at stops only where the cues do not fit on one image: each leg its 
 });
 
 test("a mile figure of 100 or more stays on one line", () => {
-  const base = longRoute(4);
+  // One turn at the start: the finish is about 150 mi on.
+  const base = longRoute(1);
   // The same line stretched eightfold: about 150 mi.
   const line = base.geometry.coordinates.map(([lon, lat], i) => [lon + i * 0.0001156 * 7, lat] as [number, number]);
   const description = base.description.map((e) => ({ ...e, from_m: e.from_m * 8, to_m: e.to_m * 8 }));
@@ -174,4 +175,19 @@ test("the credits are on the last image only, a source to a line", () => {
   assert.deepEqual(last.slice(-4), ["Route data:", "© OpenStreetMap contributors (ODbL)", "USGS 3DEP", "Planned with RouteMaker."]);
   const end = pages[pages.length - 1];
   assert.ok(Math.max(...end.rules) <= end.cueBottom);
+});
+
+test("the big figure is the distance from the cue before; the distance since the start is on the right", () => {
+  // The owner, 2026-11-10: "put the total distance on the other side ... Distance since start".
+  const pages = lockScreenLayout(sampleRoute(), measure);
+  const lines = pages[0].lines;
+  const rows = cueRows(sampleRoute(), "strip");
+  const finish = rows[rows.length - 1];
+  const before = rows[rows.length - 2];
+  const legMi = ((finish.atM - before.atM) / 1609.344).toFixed(1);
+  const totalMi = (finish.atM / 1609.344).toFixed(1);
+  assert.ok(lines.some((l) => l.text === legMi && l.px === 80));
+  const total = lines.find((l) => l.text === `${totalMi} mi`);
+  assert.ok(total && total.x + measure(total.text, total.px, total.weight) <= LOCK_WIDTH - 56 + 1);
+  assert.equal(lines.filter((l) => l.text === "total").length, rows.length);
 });
