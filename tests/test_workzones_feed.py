@@ -148,10 +148,41 @@ def test_the_weekend_dial_on_saturday_night_matches_tomorrows_closures() -> None
     early_sunday = datetime(2026, 11, 8, 5, 0, tzinfo=zone)
     assert workzones.ride_moment(ridetime.WEEKEND, early_sunday) == sunday_eleven
     assert ridetime.representative_time(ridetime.WEEKEND, saturday_night) == "2026-11-14T09:00"
-    # A Friday noon's Night dial is that Saturday's 22:00, not next Tuesday's.
+    # A Friday noon's Night dial is that night's 21:00, not next Tuesday's (nor, since
+    # routing hunt 4, C4-2, Saturday's 22:00).
     friday = datetime(2026, 11, 6, 12, 0, tzinfo=zone)
-    night = datetime(2026, 11, 7, 22, 0, tzinfo=zone)
+    night = datetime(2026, 11, 6, 21, 0, tzinfo=zone)
     assert workzones.ride_moment(ridetime.NIGHT, friday) == night
+
+
+def test_a_rush_or_night_dial_not_on_now_is_its_next_window_not_next_tuesday() -> None:
+    """Routing hunt 4, C4-2: the rush, off-peak and night dials were matched at next
+    Tuesday's instants, so on a Monday afternoon this evening's rush and tonight were never
+    checked, and from Wednesday on rush was six days out."""
+    from routemaker import ridetime
+
+    zone = ridetime.ZONE
+
+    def at(day: int, hour: int, minute: int = 0) -> datetime:
+        return datetime(2026, 11, day, hour, minute, tzinfo=zone)
+
+    monday = at(9, 15, 5)
+    assert workzones.ride_moment(ridetime.WEEKDAY_RUSH, monday) == at(9, 16)
+    assert workzones.ride_moment(ridetime.NIGHT, monday) == at(9, 21)
+    # Wednesday Nov 11 is Veterans Day: off-peak all day, so rush is Thursday's 7:00.
+    wednesday = at(11, 15)
+    assert workzones.ride_moment(ridetime.WEEKDAY_RUSH, wednesday) == at(12, 7)
+    thursday_rush = at(12, 8)
+    assert workzones.ride_moment(ridetime.WEEKDAY_OFFPEAK, thursday_rush) == at(12, 10)
+    friday = at(13, 15)
+    assert workzones.ride_moment(ridetime.NIGHT, friday) == at(13, 21)
+    assert workzones.ride_moment(ridetime.WEEKDAY_RUSH, friday) == at(13, 16)
+    # Friday evening's rush is next Monday's, not Tuesday's.
+    assert workzones.ride_moment(ridetime.WEEKDAY_RUSH, at(13, 19, 30)) == at(16, 7)
+    # Sunday evening is off-peak (hunt M6), so off-peak asked on a Sunday morning is 18:00.
+    assert workzones.ride_moment(ridetime.WEEKDAY_OFFPEAK, at(15, 9)) == at(15, 18)
+    # The router's instant is unchanged.
+    assert ridetime.representative_time(ridetime.WEEKDAY_RUSH, monday) == "2026-11-10T08:00"
 
 
 def trip(points, seconds) -> dict:

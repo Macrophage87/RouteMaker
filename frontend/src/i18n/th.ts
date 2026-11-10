@@ -72,10 +72,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Busy crossing, no signal.": "ทางแยกรถมาก ไม่มีไฟสัญญาณ",
   "Busy crossing.": "ทางแยกรถมาก",
   "Busy junction.": "จุดตัดรถมาก",
-  // A signal that may need a button press (the owner, 2026-11-08): the card's note and the words said.
-  // Drafted by Claude: FLAGGED for review by a native speaker.
-  "Light may need a button press": "สัญญาณไฟอาจต้องกดปุ่ม",
-  "Button for the light.": "กดปุ่มสัญญาณไฟ",
   "Busy junction at a signal.": "จุดตัดรถมาก มีไฟสัญญาณ",
   "Busy junction at a stop sign.": "จุดตัดรถมาก มีป้ายหยุด",
   "Busy junction, no signal.": "จุดตัดรถมาก ไม่มีไฟสัญญาณ",
@@ -2139,4 +2135,12 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "No road bike map: may use gravel.": "ไม่มีแผนที่จักรยานถนน: อาจมีทางกรวด",
   "There is no weekend road bike map right now, so this route counts parkways like Beach Drive as roads with cars.": "ตอนนี้ไม่มีแผนที่วันหยุดสุดสัปดาห์สำหรับจักรยานถนน เส้นทางนี้จึงถือว่าถนนในสวนอย่าง Beach Drive เป็นถนนที่มีรถ",
   "No weekend map: parkways may have cars.": "ไม่มีแผนที่วันหยุด: ถนนในสวนอาจมีรถ",
+  "Draft, last day": "ฉบับร่าง วันสุดท้าย",
+  "Draft, {n} days left": "ฉบับร่าง เหลือ {n} วัน",
+  "Save {name} to My routes": "บันทึก {name} ไปยังเส้นทางของฉัน",
+  "Saving {name}…": "กำลังบันทึก {name}…",
+  "That draft is gone.": "ฉบับร่างนั้นไม่มีแล้ว",
+  "Delete": "ลบ",
+  "Delete {name}": "ลบ {name}",
+  "Deleted {name}.": "ลบ {name} แล้ว",
 };

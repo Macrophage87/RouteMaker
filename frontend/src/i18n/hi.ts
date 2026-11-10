@@ -72,10 +72,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Busy crossing, no signal.": "भीड़भाड़ वाला चौराहा, सिग्नल नहीं है।",
   "Busy crossing.": "भीड़भाड़ वाला चौराहा।",
   "Busy junction.": "भीड़भाड़ वाला जंक्शन।",
-  // A signal that may need a button press (the owner, 2026-11-08): the card's note and the words said.
-  // Drafted by Claude: FLAGGED for review by a native speaker.
-  "Light may need a button press": "सिग्नल के लिए बटन दबाना पड़ सकता है",
-  "Button for the light.": "सिग्नल का बटन।",
   "Busy junction at a signal.": "भीड़भाड़ वाला जंक्शन, सिग्नल है।",
   "Busy junction at a stop sign.": "भीड़भाड़ वाला जंक्शन, स्टॉप साइन है।",
   "Busy junction, no signal.": "भीड़भाड़ वाला जंक्शन, सिग्नल नहीं है।",
@@ -2139,4 +2135,12 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "No road bike map: may use gravel.": "रोड बाइक का नक्शा नहीं: बजरी हो सकती है।",
   "There is no weekend road bike map right now, so this route counts parkways like Beach Drive as roads with cars.": "अभी सप्ताहांत का रोड बाइक नक्शा नहीं है, इसलिए यह रूट Beach Drive जैसी पार्कवे को गाड़ियों वाली सड़क मानता है।",
   "No weekend map: parkways may have cars.": "सप्ताहांत का नक्शा नहीं: पार्कवे पर गाड़ियाँ हो सकती हैं।",
+  "Draft, last day": "ड्राफ़्ट, आखिरी दिन",
+  "Draft, {n} days left": "ड्राफ़्ट, {n} दिन बाकी",
+  "Save {name} to My routes": "{name} को मेरे रास्तों में सहेजें",
+  "Saving {name}…": "{name} सहेजा जा रहा है…",
+  "That draft is gone.": "वह ड्राफ़्ट अब नहीं है।",
+  "Delete": "हटाएँ",
+  "Delete {name}": "{name} हटाएँ",
+  "Deleted {name}.": "{name} हटाया गया।",
 };
