@@ -179,7 +179,12 @@ def test_it_introduces_itself_and_lists_its_tools(tools) -> None:
         },
     )
     assert hello["result"]["protocolVersion"] == "2025-03-26"
-    assert hello["result"]["capabilities"] == {"tools": {"listChanged": False}}
+    assert hello["result"]["capabilities"] == {
+        "tools": {"listChanged": False},
+        "resources": {"listChanged": False},
+        # The route view (the owner, 2026-11-10), for an assistant app that shows MCP Apps.
+        "extensions": {"io.modelcontextprotocol/ui": {"mimeTypes": ["text/html;profile=mcp-app"]}},
+    }
     # On a rider's own computer it has no site address to name icons from.
     assert hello["result"]["serverInfo"]["title"] == "RouteMaker"
     assert "icons" not in hello["result"]["serverInfo"]

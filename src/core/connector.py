@@ -60,7 +60,7 @@ from django.utils.html import format_html, format_html_join
 from django.utils.safestring import mark_safe
 from django.views.decorators.csrf import csrf_exempt
 
-from . import ratelimit
+from . import ratelimit, route_view_map
 from .models import ConnectorClient, ConnectorDraft, ConnectorGrant, SharedRoute
 
 logger = logging.getLogger(__name__)
@@ -610,6 +610,7 @@ def mcp_endpoint(request):
         icons=server_icons(request),
         routes_read=grant.reads_routes,
         routes_organize=grant.organizes_routes,
+        basemap=route_view_map.draw,
     )
     msg_id = message.get("id") if isinstance(message, dict) else None
     if msg_id is not None and (isinstance(msg_id, bool) or not isinstance(msg_id, (str, int))):
