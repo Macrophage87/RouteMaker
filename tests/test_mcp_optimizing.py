@@ -227,14 +227,101 @@ def test_a_road_the_draft_rides_is_avoided_by_name_and_stays_avoided(tools, api)
     assert lines[0][0][0] == pytest.approx(east(2.52)[0], abs=1e-4)
     assert lines[0][-1][0] == pytest.approx(east(3.08)[0], abs=1e-4)
     assert len(lines[0]) <= mcp.AVOID_LINE_POINTS
+    # The asked name, and the stretches it matched (hunt 4 L4-3).
     assert any(
-        "Connecticut" not in n and "connecticut avenue miles 2.5 to 3.1" in n for n in out["notes"]
+        "connecticut avenue miles 2.5 to 3.1 (matched: Connecticut Avenue)" in n
+        for n in out["notes"]
     )
     # Revised again, the road is still left out; forgotten only when asked.
     again = tools.call("revise_route", {"draft_id": out["draft_id"], "stress": 90})
     assert api.routes[-1]["blocked_lines"] == lines
     tools.call("revise_route", {"draft_id": again["draft_id"], "clear_settings": ["avoid"]})
     assert "blocked_lines" not in api.routes[-1]
+
+
+def _glenmont_plan() -> mcp.Plan:
+    """Hunt 4 L4-3, Glenmont to Wheaton: the draft rides the path beside Georgia Avenue and a
+    cycletrack named for it, and a little of the road itself with its painted lane."""
+    entries = [
+        stretch("Georgia Avenue", 0.0, 0.06, 4),
+        stretch("path beside Georgia Avenue", 0.06, 0.21, 1, "path"),
+        stretch("Georgia Avenue bike lane", 0.21, 0.26, 1, "path"),
+        stretch("path beside Georgia Avenue", 0.26, 0.55, 1, "path"),
+        stretch("service road beside Georgia Avenue", 0.55, 0.6, 2),
+        stretch("Georgia Avenue", 0.6, 0.7, 3, "lane"),
+        stretch("Reedie Drive", 0.7, 1.9, 2),
+    ]
+    return mcp.Plan(
+        [tuple(east(0)), tuple(east(1.9))],
+        [],
+        "default",
+        answer_for({"points": [east(0), east(1.9)]}, entries),
+        None,
+        {},
+    )
+
+
+def test_avoiding_a_road_by_name_keeps_the_separate_ways_beside_it() -> None:
+    """Hunt 4 L4-3: avoid {road: 'Georgia Avenue'} blocked 'path beside Georgia Avenue'. The
+    owner, 2026-11-09, of matching only the road and its own painted lane: "We can keep that
+    approach." The road and its lane go; the side path, the service road beside it and the
+    cycletrack named for it stay, and the note names what was matched."""
+    p = _glenmont_plan()
+    lines, said = mcp.avoid_lines(p, [{"road": "Georgia Avenue"}])
+    assert len(lines) == 2
+    assert said == [
+        "Georgia Avenue miles 0.02 to 0.04 (matched: Georgia Avenue)",
+        "Georgia Avenue miles 0.6 to 0.7 (matched: Georgia Avenue)",
+    ]
+    # Every blocked line lies on the road's own stretches, none on the side path.
+    for line in lines:
+        for lon, _ in line:
+            mi = (lon - START[0]) / LON_MI
+            assert mi <= 0.06 + 1e-3 or 0.6 - 1e-3 <= mi <= 0.7 + 1e-3, mi
+    # Named in full, the side path goes.
+    lines, said = mcp.avoid_lines(p, [{"road": "path beside Georgia Avenue"}])
+    assert said == [
+        "path beside Georgia Avenue miles 0.1 to 0.2 (matched: path beside Georgia Avenue)",
+        "path beside Georgia Avenue miles 0.3 to 0.5 (matched: path beside Georgia Avenue)",
+    ]
+
+
+def test_a_stretch_too_short_for_a_tenth_reads_in_hundredths_or_feet() -> None:
+    """L4-3's note read "miles 0.0 to 0.0" for a short stretch: a hundredth then, and its
+    length where even that rounds to one number."""
+    assert mcp._mile_range(0.6, 0.7) == "miles 0.6 to 0.7"
+    assert mcp._mile_range(0.02, 0.04) == "miles 0.02 to 0.04"
+    assert mcp._mile_range(1.001, 1.004) == "at mile 1.00 (16 ft)"
+
+
+@pytest.mark.parametrize("tail", ["bike lanes", "bike path"])
+def test_bike_lanes_and_bike_path_ways_are_separate(tail: str) -> None:
+    """A way labelled "<road> bike lanes" or "<road> bike path" is a way of its own beside
+    the road, as "<road> bike lane" is, and stays when the road is avoided by name."""
+    entries = [
+        stretch("Georgia Avenue", 0.0, 0.3, 4),
+        stretch(f"Georgia Avenue {tail}", 0.3, 0.8, 1, "path"),
+        stretch("Reedie Drive", 0.8, 1.5, 2),
+    ]
+    p = mcp.Plan(
+        [tuple(east(0)), tuple(east(1.5))], [], "default",
+        answer_for({"points": [east(0), east(1.5)]}, entries), None, {},
+    )  # fmt: skip
+    _, said = mcp.avoid_lines(p, [{"road": "Georgia Avenue"}])
+    assert said == ["Georgia Avenue miles 0.0 to 0.3 (matched: Georgia Avenue)"]
+
+
+def test_a_road_ridden_only_beside_says_so() -> None:
+    entries = [
+        stretch("path beside Georgia Avenue", 0.0, 0.5, 1, "path"),
+        stretch("Reedie Drive", 0.5, 1.0, 2),
+    ]
+    p = mcp.Plan(
+        [tuple(east(0)), tuple(east(1))], [], "default",
+        answer_for({"points": [east(0), east(1)]}, entries), None, {},
+    )  # fmt: skip
+    with pytest.raises(mcp.ToolError, match="only 'path beside Georgia Avenue'"):
+        mcp.avoid_lines(p, [{"road": "Georgia Avenue"}])
 
 
 def test_a_mile_range_or_a_line_is_avoided_and_a_road_not_ridden_is_refused(tools, api) -> None:
@@ -340,6 +427,66 @@ def test_alternatives_come_back_as_drafts_of_their_own(tools, api) -> None:
         {"draft_id": alt["draft_id"], "move_points": [{"index": 1, "to": east(3.9)}]},
     )
     assert "follow" not in api.routes[-1]
+
+
+def test_an_alternative_says_its_own_mountain_bike_trail_reading(tools, api) -> None:
+    # Routing hunt 4, M4-1: each route offered says the trail above the rider's level.
+    other = answer_for({"points": [east(0), east(4)]}, distance_m=4.4 * MI, duration_s=27 * 60)
+    other["mtb"] = {"max_level": 1, "over_level_m": 0.3 * MI, "trail_m": 2.0 * MI}
+    api.candidates = [{**other, "rank": 2}]
+    alt = plan(tools, alternatives=True)["alternatives"]["routes"][0]
+    assert alt["mtb"][0].startswith("This route uses 0.3 mi (0.5 km) of trail harder than")
+
+
+def test_an_avoid_on_an_alternative_plans_through_its_points_round_it(tools, api) -> None:
+    """The round 4 hunt, L4-1: an avoid on an alternative's draft kept following its line, which
+    the site's map matching rides whatever is avoided, while the answer said the road was left
+    out. Now it plans through its points with the road left out, and says so."""
+    other = answer_for({"points": [east(0), east(4)]}, distance_m=4.4 * MI, duration_s=27 * 60)
+    api.candidates = [{**other, "rank": 2}]
+    alt = plan(tools, alternatives=True)["alternatives"]["routes"][0]
+    tools.call("revise_route", {"draft_id": alt["draft_id"], "pace_mph": 14})
+    assert api.routes[-1]["follow"] and "follow_alternative" not in api.routes[-1]
+    out = tools.call(
+        "revise_route", {"draft_id": alt["draft_id"], "avoid": [{"from_mi": 1.0, "to_mi": 1.5}]}
+    )
+    sent = api.routes[-1]
+    assert "follow" not in sent and sent["blocked_lines"]
+    assert any("no longer along the alternative's line" in n for n in out["notes"])
+
+
+def test_an_avoid_on_the_rider_s_own_line_is_refused(tools, api) -> None:
+    """The round 4 hunt, L4-1: a followed line is ridden as it is, so an avoid on it is refused
+    rather than answered as left out while the route still rides it."""
+    polyline = mcp.encode_polyline([east(0), east(2), east(4)])
+    line = [east(1), east(1.5)]
+    with pytest.raises(mcp.ToolError, match="cannot avoid a road"):
+        tools.call("plan_route", {"follow": {"polyline": polyline}, "avoid": [{"line": line}]})
+    out = tools.call("plan_route", {"follow": {"polyline": polyline}})
+    count = len(api.routes)
+    with pytest.raises(mcp.ToolError, match="cannot be avoided"):
+        tools.call(
+            "revise_route", {"draft_id": out["draft_id"], "avoid": [{"from_mi": 1, "to_mi": 2}]}
+        )
+    assert len(api.routes) == count
+
+
+def test_a_link_that_plans_again_without_the_followed_line_says_so(tools, api) -> None:
+    """The round 4 hunt, L4-6: when the share failed, the plain link plans a new route without
+    the followed line, yet the answer said the link opens this exact route."""
+
+    def refused(body):
+        raise mcp.ToolError("the exact route was not kept (429): Too many requests")
+
+    api.share = refused
+    polyline = mcp.encode_polyline([east(0), east(2), east(4)])
+    out = tools.call("plan_route", {"follow": {"polyline": polyline}})
+    assert not any("opens this exact route" in n for n in out["notes"])
+    assert any(
+        "plans a new route when opened, without the line followed" in n for n in out["notes"]
+    )
+    plain = plan(tools)
+    assert any("can differ a little" in n for n in plain["notes"])
 
 
 def test_the_summary_and_road_list_say_unpaved_miles_and_junction_waits(tools) -> None:

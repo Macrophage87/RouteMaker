@@ -17,6 +17,8 @@ import re
 import pytest
 from rebuild_fixtures import REPO
 
+from pipeline.overrides import file_rows
+
 OVERRIDES = REPO / "fixtures" / "overrides"
 MOCO = OVERRIDES / "2026-10-01-owner-moco-lts5-avoid.json"
 BALTIMORE = OVERRIDES / "2026-10-01-owner-baltimore-facilities.json"
@@ -58,7 +60,7 @@ def test_no_way_is_named_twice_across_the_approved_files() -> None:
         (row["kind"], int(row["osm_way_id"]))
         for path in OVERRIDES.glob("*.json")
         if path not in FILES
-        for row in json.loads(path.read_text())["rows"]
+        for row in file_rows(json.loads(path.read_text()))
     }
     new = [
         (row["kind"], int(row["osm_way_id"]))

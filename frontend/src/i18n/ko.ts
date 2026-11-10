@@ -72,10 +72,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Busy crossing, no signal.": "교통량 많은 교차로, 신호등 없음.",
   "Busy crossing.": "교통량 많은 교차로.",
   "Busy junction.": "교통량 많은 교차점.",
-  // A signal that may need a button press (the owner, 2026-11-08): the card's note and the words said.
-  // Drafted by Claude: FLAGGED for review by a native speaker.
-  "Light may need a button press": "신호등 버튼을 눌러야 할 수 있습니다",
-  "Button for the light.": "신호등 버튼.",
   "Busy junction at a signal.": "교통량 많은 교차점, 신호등 있음.",
   "Busy junction at a stop sign.": "교통량 많은 교차점, 정지 표지판 있음.",
   "Busy junction, no signal.": "교통량 많은 교차점, 신호등 없음.",
@@ -2139,4 +2135,12 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "No road bike map: may use gravel.": "로드바이크 지도 없음: 자갈길 가능.",
   "There is no weekend road bike map right now, so this route counts parkways like Beach Drive as roads with cars.": "지금은 주말 로드바이크 지도가 없어 이 경로는 Beach Drive 같은 공원도로를 차가 다니는 도로로 봅니다.",
   "No weekend map: parkways may have cars.": "주말 지도 없음: 공원도로에 차가 있을 수 있음.",
+  "Draft, last day": "임시 경로, 마지막 날",
+  "Draft, {n} days left": "임시 경로, {n}일 남음",
+  "Save {name} to My routes": "{name}을(를) 내 경로에 저장",
+  "Saving {name}…": "{name} 저장 중…",
+  "That draft is gone.": "그 임시 경로는 없어졌습니다.",
+  "Delete": "삭제",
+  "Delete {name}": "{name} 삭제",
+  "Deleted {name}.": "{name}을(를) 삭제했습니다.",
 };

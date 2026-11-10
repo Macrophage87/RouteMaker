@@ -276,7 +276,7 @@ def test_a_transit_plan_keeps_to_the_router_pools_bound(
         assert sorted(order) == ["later", "line"]
 
 
-def test_with_rides_times_each_routed_ride_and_keeps_walks() -> None:
+def test_with_rides_times_each_routed_ride_and_walk() -> None:
     from datetime import date
 
     moment = transit._moment(
@@ -291,8 +291,9 @@ def test_with_rides_times_each_routed_ride_and_keeps_walks() -> None:
     plan = transit.Plan(presets.BIKE_TRANSIT, [transit.Option("x", legs)], moment, [])
     timed = transit.with_rides(plan, {0: 360.0, 2: 999.0, 3: 500.0})
     out = timed.option.legs
-    assert [leg.seconds for leg in out] == [360.0, 600.0, 60.0, 500.0]
+    # A walk is timed as walked too (hunt 4, X4-1); before, it kept its estimate.
+    assert [leg.seconds for leg in out] == [360.0, 600.0, 999.0, 500.0]
     assert not out[0].estimated and not out[3].estimated
-    assert timed.option.total_s == pytest.approx(360 + 600 + 120 + 60 + 500)
+    assert timed.option.total_s == pytest.approx(360 + 600 + 120 + 999 + 500)
     # The one-ride form is the same thing for the route line alone.
     assert transit.with_ride(plan, 360.0).option.legs[3].seconds == 400.0
