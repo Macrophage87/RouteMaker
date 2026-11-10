@@ -1,13 +1,16 @@
 /**
  * Save route (v0.7.0 plan, "Discord sign-in on, with saved settings and routes", item 3): beside Share, signed
  * in only. It asks for a name (offered as "Start to End") and says what happened politely. In Plan it asks for tags
- * too, optional (the owner, 2026-11-07): the account's tags are offered as they are typed.
+ * too, optional (the owner, 2026-11-07): the account's tags are offered as they are typed. One box, Fixed route
+ * (the owner, 2026-11-10), keeps the line as it is, never planned again; unticked (our default), by its via points.
+ * Plan's box has an (i) with both kinds; Go's is the box and its one line.
  */
 import { useEffect, useId, useRef, useState, type MouseEvent } from "react";
 import { DiscordLogo } from "./DiscordLogo.tsx";
 import { Icon } from "./Icon.tsx";
+import { InfoButton } from "./SettingRow.tsx";
 import { firstWordAndRest, t } from "./lib/i18n.ts";
-import { NAME_MAX, SAVE_ROUTE, TAGS_MAX, listRoutes, parseTags, tagHints, tagsInUse, takeHint } from "./lib/savedRoutes.ts";
+import { FIXED_ABOUT, FIXED_HINT, FIXED_ROUTE, NAME_MAX, SAVE_ROUTE, TAGS_MAX, listRoutes, parseTags, tagHints, tagsInUse, takeHint } from "./lib/savedRoutes.ts";
 
 /** How long the bar's "Saved" line stays on the map. */
 export const SAID_ON_MAP_MS = 6000;
@@ -18,7 +21,9 @@ export interface SaveRouteProps {
   defaultName: () => string;
   /** Saves under the name (and the tags, where asked); resolves to the line to say. Null signed out (the map bar's
    * form only). */
-  onSave: ((name: string, tags?: string[]) => Promise<string>) | null;
+  onSave: ((name: string, tags?: string[], fixed?: boolean) => Promise<string>) | null;
+  /** The Fixed route box, ticked as this says (the route's own, saved again); absent, no box and by its via points. */
+  defaultFixed?: () => boolean;
   /** Plan's: asks for tags too, offering these first (the route's own, saved again). Absent (Go), no tags field. */
   defaultTags?: () => string[];
   /** Go's chip, or Plan's plain button in More. */
@@ -36,9 +41,12 @@ export interface SaveRouteProps {
   signIn?: ((event: MouseEvent<HTMLAnchorElement>) => void) | null;
 }
 
-export function SaveRoute({ label, defaultName, onSave, chip = false, shown, bar = false, onGpx, signIn, defaultTags }: SaveRouteProps) {
+export function SaveRoute({ label, defaultName, onSave, chip = false, shown, bar = false, onGpx, signIn, defaultTags, defaultFixed }: SaveRouteProps) {
   const [asking, setAsking] = useState(false);
   const [name, setName] = useState("");
+  const [fixed, setFixed] = useState(false);
+  const [fixedInfo, setFixedInfo] = useState(false);
+  const fixedId = useId();
   const [tagText, setTagText] = useState("");
   const [offered, setOffered] = useState<string[]>([]);
   const tagsId = useId();
@@ -83,6 +91,8 @@ export function SaveRoute({ label, defaultName, onSave, chip = false, shown, bar
         onClick={() => {
           if (!asking) {
             setName(defaultName());
+            setFixed(defaultFixed?.() ?? false);
+            setFixedInfo(false);
             const first = defaultTags?.() ?? [];
             setTagText(first.length ? `${first.join(", ")}, ` : "");
           }
@@ -111,7 +121,7 @@ export function SaveRoute({ label, defaultName, onSave, chip = false, shown, bar
             const chosen = name.trim() || defaultName();
             if (busy || !onSave) return;
             setBusy(true);
-            void onSave(chosen, defaultTags ? parseTags(tagText) : undefined).then((text) => {
+            void onSave(chosen, defaultTags ? parseTags(tagText) : undefined, defaultFixed ? fixed : undefined).then((text) => {
               setBusy(false);
               setSaid((s) => ({ text, count: s.count + 1 }));
               close();
@@ -149,6 +159,28 @@ export function SaveRoute({ label, defaultName, onSave, chip = false, shown, bar
                     {t("Commas between tags. Change them later in Save & load.")}
                     {tagText.split(",").filter((x) => x.trim()).length > TAGS_MAX && ` ${t("A route keeps the first {n} tags.", { n: String(TAGS_MAX) })}`}
                   </p>
+                </>
+              )}
+              {defaultFixed && (
+                <>
+                  <div className="setting-line save-route-fixed">
+                    <label className="check-row">
+                      <input type="checkbox" checked={fixed} onChange={(e) => setFixed(e.target.checked)} aria-describedby={`${fixedId}-hint`} />
+                      <span>
+                        <strong>{FIXED_ROUTE}</strong>
+                        <span className="hint" id={`${fixedId}-hint`}>
+                          {FIXED_HINT}
+                        </span>
+                      </span>
+                    </label>
+                    {/* Plan's alone (the owner, 2026-10-14: Plan holds the detail, in (i) popups). */}
+                    {defaultTags && <InfoButton open={fixedInfo} onToggle={() => setFixedInfo((was) => !was)} controls={`${fixedId}-about`} about={FIXED_ROUTE} />}
+                  </div>
+                  {defaultTags && (
+                    <p className="hint setting-info" id={`${fixedId}-about`} hidden={!fixedInfo}>
+                      {FIXED_ABOUT}
+                    </p>
+                  )}
                 </>
               )}
               <button type="submit" aria-disabled={busy}>

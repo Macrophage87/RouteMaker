@@ -2147,4 +2147,9 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Delete": "Sil",
   "Delete {name}": "{name} rotasını sil",
   "Deleted {name}.": "{name} silindi.",
+  // Fixed saved routes (the owner, 2026-11-10).
+  "Fixed route": "Sabit rota",
+  "Keep this exact line. Never re-routed.": "Bu çizgiyi aynen saklar. Rota asla yeniden hesaplanmaz.",
+  "Fixed": "Sabit",
+  "Opened \"{name}\", a fixed route: it stays as saved.": "\"{name}\" açıldı, sabit bir rota: kaydedildiği gibi kalır.",
 };

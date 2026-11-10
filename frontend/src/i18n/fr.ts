@@ -2147,4 +2147,9 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Delete": "Supprimer",
   "Delete {name}": "Supprimer {name}",
   "Deleted {name}.": "{name} supprimé.",
+  // Fixed saved routes (the owner, 2026-11-10).
+  "Fixed route": "Itinéraire fixe",
+  "Keep this exact line. Never re-routed.": "Garde ce tracé exact. Jamais recalculé.",
+  "Fixed": "Fixe",
+  "Opened \"{name}\", a fixed route: it stays as saved.": "« {name} » ouvert, un itinéraire fixe : il reste tel qu'enregistré.",
 };

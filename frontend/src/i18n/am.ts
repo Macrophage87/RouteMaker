@@ -2147,4 +2147,9 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Delete": "ሰርዝ",
   "Delete {name}": "{name}ን ሰርዝ",
   "Deleted {name}.": "{name} ተሰርዟል።",
+  // Fixed saved routes (the owner, 2026-11-10).
+  "Fixed route": "ቋሚ መንገድ",
+  "Keep this exact line. Never re-routed.": "ይህን መስመር እንዳለ ያስቀምጣል። መንገዱ ፈጽሞ አይቀየርም።",
+  "Fixed": "ቋሚ",
+  "Opened \"{name}\", a fixed route: it stays as saved.": "\"{name}\" ተከፍቷል፣ ቋሚ መንገድ ነው፦ እንደተቀመጠ ይቆያል።",
 };

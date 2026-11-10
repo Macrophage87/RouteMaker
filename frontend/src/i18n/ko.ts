@@ -2147,4 +2147,9 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Delete": "삭제",
   "Delete {name}": "{name} 삭제",
   "Deleted {name}.": "{name}을(를) 삭제했습니다.",
+  // Fixed saved routes (the owner, 2026-11-10).
+  "Fixed route": "고정 경로",
+  "Keep this exact line. Never re-routed.": "이 선을 그대로 저장합니다. 경로를 다시 찾지 않습니다.",
+  "Fixed": "고정",
+  "Opened \"{name}\", a fixed route: it stays as saved.": "고정 경로 \"{name}\"을(를) 열었습니다. 저장한 그대로입니다.",
 };

@@ -135,7 +135,8 @@ test("a route everyone shares stays fixed on the ride: off route, the way back, 
   // Others are placed along the shared line, not the sharer's re-route off it.
   assert.match(app, /const rideGroupRoute = onShared \? onShared\.answer : riding && rideView \? rideView\.route : shown;/);
   // Its sharer is not held to it (the owner, 2026-10-18: "Maybe make the sharer able to reroute").
-  assert.match(app, /const fixed = fixedRide\(leg, opened, !!rest\);/);
+  // (A fixed saved route is ridden fixed too: lib/savedRoutes.test.ts.)
+  assert.match(app, /const fixed = fixedRide\(leg, opened, !!rest\)( \|\| .*)?;/);
   assert.match(app, /fixed=\{rideStart\.fixed\}/);
   // No automatic re-plan, from a fix or when the signal comes back.
   assert.match(ride, /const auto = !keepRef\.current && !fixedRef\.current && !restartOpen\.current;/);
