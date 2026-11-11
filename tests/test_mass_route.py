@@ -454,3 +454,66 @@ class TestTheAnswer:
         assert planned("mass-ride", ride_size=1200)["mass_capacity"]["need_riders_per_min"] == 240
         assert planned("default")["mass_capacity"] is None
         assert planned("default", ride_size=1200)["mass_capacity"] is None
+
+
+def test_each_junction_says_when_its_hold_ends_so_an_assistant_can_count_again():
+    """The owner, 2026-11-10: "allow a triage of roads for corking, Basically ask to not cork
+    some lower stress roads"; the assistants' tool adds the holds up again without the junctions
+    left out (mcp `corker_plan`)."""
+    mcp = _mcp()
+    crossings = [
+        junction(1000, crossed_tier=4),
+        junction(1400, crossed_tier=3, crossed_half=True),
+        junction(3000, crossed_tier=3, street="Quiet St"),
+    ]
+    load = mass_route.corker_load(profile_with(crossings), 3 * MILE, 500)
+    first = load["junctions"][0]
+    assert first["exit_m"] == pytest.approx(1000 + G, abs=1) and first["lts"] == 4
+    assert load["junctions"][1]["lts"] == 3.5
+    # Every junction corked: the same figures as the site's.
+    every = mcp.corker_plan(load, None, 3 * MILE)
+    assert (every["about"], every["most"]) == (load["headline"], load["most_at_once"])
+    assert every["held"][0][0] == 0 and every["held"][-1][1] == 3 * MILE
+    # LTS 4 and up only: the two LTS 3 roads are left out, with the reason.
+    calmer = mcp.corker_plan(load, {"from_lts": 4}, 3 * MILE)
+    assert [j["m"] for j in calmer["kept"]] == [1000]
+    assert {j["why"] for j in calmer["skipped"]} == {"below LTS 4"}
+    assert calmer["about"] == 4 and calmer["most"] == 2
+    # By name (any part, any case) and by mile; a skip that matches nothing is said.
+    named = mcp.corker_plan(load, {"skip": ["quiet", 1000 / MILE, "Nowhere Rd"]}, 3 * MILE)
+    assert [j["m"] for j in named["kept"]] == [1400]
+    assert named["unmatched"] == ["Nowhere Rd"]
+    # The tool's answer keeps the site's count beside the triaged one.
+    body = {"corkers": load}
+    said = mcp.mass_capacity({"mass_capacity": body, "distance_m": 3 * MILE}, {"from_lts": 4})
+    corkers = said["corkers"]
+    assert corkers["about"] == 4 and corkers["about_corking_every_junction"] == load["headline"]
+    assert [j["why"] for j in corkers["not_corked"]] == ["below LTS 4", "below LTS 4"]
+    assert "twice the group's pace" in corkers["how"]
+
+
+def test_a_junction_near_the_end_is_counted_again_as_the_site_counts_it():
+    mcp = _mcp()
+    total = 3 * MILE
+    load = mass_route.corker_load(profile_with([junction(total - 0.2)], total), total, 500)
+    assert load["junctions"][0]["exit_m"] > total
+    again = mcp.corker_plan(load, None, total)
+    assert (again["about"], again["most"]) == (load["headline"], load["most_at_once"]) == (4, 2)
+    # Holds that overlap by less than a metre still overlap.
+    close = mass_route.corker_load(
+        profile_with([junction(1000), junction(1000 + G - 0.3)]), total, 500
+    )
+    assert mcp.corker_plan(close, None, total)["most"] == close["most_at_once"] == 4
+
+
+def test_a_skip_by_name_takes_whole_words_only():
+    mcp = _mcp()
+    load = {
+        "junctions": [
+            {"m": 100, "at_m": 100, "exit_m": 400, "street": "Park Street", "corkers": 2},
+            {"m": 900, "at_m": 900, "exit_m": 1200, "street": "K Street", "corkers": 2},
+        ],
+        "rotation_factor": 2,
+    }
+    plan = mcp.corker_plan(load, {"skip": ["k street"]}, 2000)
+    assert [j["street"] for j in plan["kept"]] == ["Park Street"]

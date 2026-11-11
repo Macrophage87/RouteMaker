@@ -16,7 +16,9 @@
 import type { RouteResponse } from "./api.ts";
 import { parkNoticesOf, noticeMarkerName } from "./closureMap.ts";
 import { abbreviateStreet, creditLine, routeCues, type CourseCueType, type RouteCue } from "./course.ts";
+import type { CueArrow } from "./cueArrow.ts";
 import { routeWarning } from "./dialsPanel.ts";
+import type { TurnMovement } from "./navigate.ts";
 import { formatClimb, formatDistance, formatDuration, formatMileMarker, formatMileMarkerUnits, markerFigure } from "./format.ts";
 import { metricFirst } from "./units.ts";
 
@@ -46,6 +48,12 @@ export interface CueRow {
   road: string;
   /** Ride's words where the turn and road do not say it all; "" for a plain turn. */
   notes: string;
+  /** The picture of the cue for the phone images (lib/cueArrow.ts). */
+  arrow: CueArrow;
+  /** A jog's later turns, short ("then left onto Q St NW"), which have no row of their own; "" otherwise. */
+  then: string;
+  /** A route note's row: `road` holds the rider's own words, never abbreviated as a street's name is. */
+  own?: boolean;
 }
 
 const TURN_WORDS: Record<CourseCueType, string> = {
@@ -66,6 +74,11 @@ const REASONS: Record<string, string> = { avoid: "Avoid-rated", workzone: "Work 
 
 function rowOf(cue: RouteCue): CueRow {
   // A jog's first turn is not plain: its notes say the second turn, which has no row (`routeCues`).
+  // A route note (lib/routeNotes.ts): "Caution" or "Note", the rider's own words on the road's line.
+  if (cue.kind === "note" && cue.note) {
+    const caution = cue.note.kind === "caution";
+    return { type: cue.type, hazard: caution, atM: cue.atM, turn: caution ? "Caution" : "Note", reason: "", road: cue.note.text, notes: "", arrow: { kind: caution ? "caution" : "note" }, then: "", own: true };
+  }
   const plainTurn = (cue.type === "left" || cue.type === "right" || cue.type === "slight_left" || cue.type === "slight_right") && !cue.turnText;
   const hazard = cue.kind === "hazard";
   return {
@@ -78,15 +91,31 @@ function rowOf(cue: RouteCue): CueRow {
     road: cue.street ?? "",
     // A turn's words are the turn and the street, already in the row; "Start." and "Stop 1." say no more either.
     notes: plainTurn || cue.type === "start" || cue.type === "stop" ? "" : cue.text,
+    arrow: arrowOf(cue, hazard),
+    then: (cue.then ?? []).map((t) => `then ${THEN_WORDS[t.movement]}${t.street ? ` onto ${abbreviateStreet(t.street)}` : ""}`).join(", "),
   };
 }
 
+const THEN_WORDS: Record<TurnMovement, string> = { left: "left", right: "right", bear_left: "bear left", bear_right: "bear right", uturn: "U-turn" };
+
+function arrowOf(cue: RouteCue, hazard: boolean): CueArrow {
+  if (hazard || cue.type === "danger") return { kind: "caution" };
+  if (cue.type === "start" || cue.type === "finish" || cue.type === "walk") return { kind: cue.type };
+  if (cue.type === "stop") return { kind: "stop", number: cue.stop ?? null };
+  // A crossing then a jog's turn: the turn drawn across the road's edges, as a turn onto a path across one.
+  if (cue.cross) return cue.then?.length ? { kind: "turn", moves: cue.then.map((t) => t.movement), across: true } : { kind: "cross" };
+  if (cue.movement) return { kind: "turn", moves: [cue.movement, ...(cue.then ?? []).map((t) => t.movement)], across: cue.across === true };
+  const turn = { left: "left", right: "right", slight_left: "bear_left", slight_right: "bear_right" } as const;
+  if (cue.type in turn) return { kind: "turn", moves: [turn[cue.type as keyof typeof turn]], across: false };
+  return { kind: "note" };
+}
+
 /** The rows of a sheet: every cue on the rider sheet; on the strip, all but the notes on the road's stress and surface. */
-export function cueRows(route: SheetRoute, kind: CueSheetKind, vias: readonly number[] = []): CueRow[] {
-  const rows = routeCues(route, vias)
-    .filter((cue) => !cue.joined)
-    .map(rowOf);
-  return kind === "strip" ? rows.filter((r) => r.type !== "note" || r.hazard) : rows;
+export function cueRows(route: SheetRoute, kind: CueSheetKind, vias: readonly number[] = [], names: ReadonlyMap<number, string> = new Map()): CueRow[] {
+  const cues = routeCues(route, vias, names).filter((cue) => !cue.joined);
+  const rows = cues.map(rowOf);
+  // The strip leaves out the notes on the road's stress and surface, never a route note of the rider's own.
+  return kind === "strip" ? rows.filter((r, i) => r.type !== "note" || r.hazard || cues[i].kind === "note") : rows;
 }
 
 /** "12.4 mi (20.0 km)": the distance column's words. */
@@ -125,8 +154,8 @@ export function cueSheetFileName(route: Pick<RouteResponse, "preset" | "distance
  * pages of letter paper"), "PDF handlebar strip: 7 cues, 3 by 11 inches (7.6 by 27.9 cm); print at actual size and
  * cut out." (or "on 3 strips, each 3 by 11 inches ...; print at actual size and cut them out.").
  */
-export function cueSheetLine(route: SheetRoute, kind: CueSheetKind, vias: readonly number[] = [], pages = 1): string {
-  const rows = cueRows(route, kind, vias).length;
+export function cueSheetLine(route: SheetRoute, kind: CueSheetKind, vias: readonly number[] = [], pages = 1, names: ReadonlyMap<number, string> = new Map()): string {
+  const rows = cueRows(route, kind, vias, names).length;
   const cues = `${rows.toLocaleString("en-US")} ${rows === 1 ? "cue" : "cues"}`;
   if (kind === "sheet") return pages > 1 ? `PDF cue sheet: ${cues}, on ${pages} pages of letter paper.` : `PDF cue sheet: ${cues}, on letter paper.`;
   return pages > 1
@@ -312,13 +341,13 @@ function stripTurn(row: CueRow): Part[] {
 }
 
 /** The PDF file of a cue sheet for the route shown. `vias` are the plan's via points by index, not cues, as in Ride. */
-export function cueSheetPdf(route: SheetRoute, kind: CueSheetKind, vias: readonly number[] = []): Uint8Array<ArrayBuffer> {
-  return cueSheetDocument(route, kind, vias).bytes;
+export function cueSheetPdf(route: SheetRoute, kind: CueSheetKind, vias: readonly number[] = [], names: ReadonlyMap<number, string> = new Map()): Uint8Array<ArrayBuffer> {
+  return cueSheetDocument(route, kind, vias, names).bytes;
 }
 
 /** The PDF file of a cue sheet and how many pages (or strips) it runs to. */
-export function cueSheetDocument(route: SheetRoute, kind: CueSheetKind, vias: readonly number[] = []): { bytes: Uint8Array<ArrayBuffer>; pages: number } {
-  const rows = cueRows(route, kind, vias);
+export function cueSheetDocument(route: SheetRoute, kind: CueSheetKind, vias: readonly number[] = [], names: ReadonlyMap<number, string> = new Map()): { bytes: Uint8Array<ArrayBuffer>; pages: number } {
+  const rows = cueRows(route, kind, vias, names);
   const title = cueSheetTitle(route, kind);
   const credit = sheetCredit(route);
   if (kind === "sheet") {
@@ -371,7 +400,7 @@ export function cueSheetDocument(route: SheetRoute, kind: CueSheetKind, vias: re
         font: "bold",
       },
       { head: "Turn", width: 50, cell: stripTurn, font: "bold" },
-      { head: "Road", width: STRIP.width - 24 - 54 - 50, cell: (r) => abbreviateStreet(r.road), font: "regular" },
+      { head: "Road", width: STRIP.width - 24 - 54 - 50, cell: (r) => (r.own ? r.road : abbreviateStreet(r.road)), font: "regular" },
     ],
     13,
     8,
