@@ -1248,6 +1248,32 @@ class TestGpx:
         ConnectorGrant.objects.filter(user=user).delete()
         assert Client().get(path, **addr()).status_code == 404
 
+    def test_picture_and_cue_links_are_rate_limited_per_address_even_when_refused(
+        self, planner
+    ) -> None:
+        """ratelimit.ROUTE_PICTURES and CUE_CARDS (our defaults): a wrong digest counts too, so
+        guessing links costs the same as opening them (the v0.25.0 review)."""
+        from core import ratelimit
+
+        user, tokens, _client_id = tokens_for()
+        token = tokens["access_token"]
+        planned = call(token, "plan_route", {"points": [[-77.03, 38.9], [-77.02, 38.91]]})
+        draft_id = planned["structuredContent"]["draft_id"]
+        grant = ConnectorGrant.objects.get(user=user)
+        wrong = connector._picture_mac(make_user().pk, grant.pk, draft_id)
+        here = {"HTTP_X_FORWARDED_FOR": "203.0.113.41"}
+        picture = f"/mcp/gpx/{draft_id}.{wrong}.png"
+        for _ in range(ratelimit.ROUTE_PICTURES.requests):
+            assert Client().get(picture, **here).status_code == 404
+        refused = Client().get(picture, **here)
+        assert refused.status_code == 429 and refused.has_header("Retry-After")
+        there = {"HTTP_X_FORWARDED_FOR": "203.0.113.42"}
+        cue = f"/mcp/gpx/{draft_id}.{wrong}-cues-1.png"
+        for _ in range(ratelimit.CUE_CARDS.requests):
+            assert Client().get(cue, **there).status_code == 404
+        refused = Client().get(cue, **there)
+        assert refused.status_code == 429 and refused.has_header("Retry-After")
+
 
 @db
 class TestDraftKeeping:

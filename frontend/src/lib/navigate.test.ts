@@ -2056,6 +2056,22 @@ test('jog: the second turn says its own "now" where the first\'s was never said 
   );
 });
 
+test('jog: a route note at the second turn does not hold its "now" back to the junction (the v0.25.0 review)', () => {
+  const route = straightRoute([
+    stretch(0, 900, "Q Street Northwest.", { street: "Q Street Northwest" }),
+    stretch(900, 980, "Right onto 6th Street Northwest.", { street: "6th Street Northwest", turn: turning("right", "6th Street Northwest") }),
+    stretch(980, 2200, "Bear left onto Rhode Island Avenue Northwest.", { street: "Rhode Island Avenue Northwest", turn: turning("bear_left", "Rhode Island Avenue Northwest") }),
+  ]);
+  const model = rideModel(route, [], new Map(), new Map(), [{ at: at(975, 5), kind: "caution", text: "Potholes" }]);
+  const second = model.cues.find((c) => c.joined)!;
+  assert.equal(model.cues[second.index - 1].kind, "note");
+  const before = ride(model, "full", 0, 895, 5);
+  const past = ride(model, "full", 900, 976, 2, before.state);
+  // Said on its own approach, as without the note: before the rider reaches the note (1 m short of the turn).
+  const now = past.events.find((e) => e.cue?.index === second.index && e.phase === "now");
+  assert.ok(now, JSON.stringify(past.events.map((e) => [e.cue?.kind, e.phase])));
+});
+
 test("jog: three turns in a row are one cue, said early together, then each on its own; a fourth is its own cue", () => {
   const model = rideModel(
     straightRoute([

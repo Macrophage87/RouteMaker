@@ -72,10 +72,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Busy crossing, no signal.": "ব্যস্ত মোড়, সিগন্যাল নেই।",
   "Busy crossing.": "ব্যস্ত মোড়।",
   "Busy junction.": "ব্যস্ত সংযোগস্থল।",
-  // A signal that may need a button press (the owner, 2026-11-08): the card's note and the words said.
-  // Drafted by Claude: FLAGGED for review by a native speaker.
-  "Light may need a button press": "সিগন্যালের জন্য বোতাম চাপতে হতে পারে",
-  "Button for the light.": "সিগন্যালের বোতাম।",
   "Busy junction at a signal.": "ব্যস্ত সংযোগস্থল, সিগন্যাল আছে।",
   "Busy junction at a stop sign.": "ব্যস্ত সংযোগস্থল, স্টপ সাইন আছে।",
   "Busy junction, no signal.": "ব্যস্ত সংযোগস্থল, সিগন্যাল নেই।",

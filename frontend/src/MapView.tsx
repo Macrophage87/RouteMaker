@@ -1892,7 +1892,7 @@ export function MapView(props: Props) {
       // The warning ends with its own full stop. A stop's icon (2026-11-10) is said after its name.
       const shown = stopIcon ? `${name}, ${NOTE_ICON_WORDS[stopIcon]}` : name;
       const named = warning ? `${shown}. ${warning}` : shown;
-      const said = warning ? named : `${name}.`;
+      const said = warning ? named : `${shown}.`;
       // The name and warning only, and the keyboard's way to remove a via: a pin takes no focus, so
       // dragging and clicking are the title's, for a pointer (review a11y-8).
       element.setAttribute("aria-label", via ? `${said} Remove it from the Points list.` : said);

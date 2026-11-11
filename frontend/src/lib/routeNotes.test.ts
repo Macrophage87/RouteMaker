@@ -143,3 +143,24 @@ test("a note at a turn is put just before it, and the card leads with the turn",
   const alone = rideModel(sampleRoute(), [], new Map(), new Map(), [caution]);
   assert.equal(nextAction(alone, 600)?.note?.text, caution.text);
 });
+
+test("which notes lead the card (v0.25.0 review)", () => {
+  // A point of interest is said, never shown in place of what is next.
+  const poi = rideModel(sampleRoute(), [], new Map(), new Map(), [mural]);
+  assert.notEqual(nextAction(poi, 2100)?.kind, "note");
+  // A caution further than NOTE_AT_TURN_M before a turn leads; one closer is put at the turn, and the turn leads.
+  const before = rideModel(sampleRoute(), [], new Map(), new Map(), [{ ...caution, at: at(500 - NOTE_AT_TURN_M - 10, 5) }]);
+  assert.equal(nextAction(before, 300)?.kind, "note");
+  const close = rideModel(sampleRoute(), [], new Map(), new Map(), [{ ...caution, at: at(500 - NOTE_AT_TURN_M + 10, 5) }]);
+  assert.equal(nextAction(close, 300)?.kind, "turn");
+  // A caution just before the finish: the finish leads.
+  const nearEnd = rideModel(sampleRoute(), [], new Map(), new Map(), [{ ...caution, at: at(2985, 5) }]);
+  assert.equal(nextAction(nearEnd, 2700)?.kind, "end");
+});
+
+test("an older API's light_buttons add no cue beside a route's notes (the v0.24.0 removal, merged into 0.25.0)", () => {
+  const route = sampleRoute({ light_buttons: [{ at_m: 700 }, { at_m: 1800 }] } as never);
+  const model = rideModel(route, [], new Map(), new Map(), [caution]);
+  assert.ok(model.cues.some((c) => c.kind === "note"));
+  for (const cue of model.cues) assert.ok(!/button/i.test(`${cue.text} ${cueSpoken(cue)}`), cue.text);
+});

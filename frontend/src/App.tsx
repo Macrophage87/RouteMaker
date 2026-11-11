@@ -3273,21 +3273,19 @@ export function App() {
     // The kind's own icon is not kept on the note: the link then leaves it out.
     const icon = chosen === KIND_ICON[kind] ? undefined : chosen;
     const ask = noteAsk;
-    if (!ask) return;
+    if (!ask) return null;
     const current = PAGE_NOTES.list;
     const adding = ask.mode === "add" && ask.at;
     const next = adding
       ? [...current, { at: ask.at as LonLat, kind, text, ...(icon ? { icon } : {}) }]
       : current.map((note, i) => (i === ask.index ? { at: note.at, kind, text, ...(icon ? { icon } : {}) } : note));
     // The words must fit the route's link (routeNotes.ts NOTES_LINK_MAX): the dialog stays open to shorten them.
-    if (!notesFit(next)) {
-      announce(noteTooLongSaid());
-      return;
-    }
+    if (!notesFit(next)) return noteTooLongSaid();
     setNoteAsk(null);
-    if (!adding && (ask.index === undefined || !current[ask.index])) return;
+    if (!adding && (ask.index === undefined || !current[ask.index])) return null;
     setNotes(next);
     announce(noteSaid(adding ? "added" : "changed"));
+    return null;
   };
   const noteRemoved = () => {
     const ask = noteAsk;

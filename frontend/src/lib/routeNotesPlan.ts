@@ -54,6 +54,11 @@ export function noteTooLongSaid(): string {
   return t("The route's notes are too long for its link: shorten this note or another.");
 }
 
+/** Shown in the dialog when its main button is pressed with no words. */
+export function noteEmptySaid(): string {
+  return t("Write a note first.");
+}
+
 /** Said when the route already has MAX_NOTES notes. */
 export function notesFullSaid(): string {
   return t("The route has the most notes it can ({max}).", { max: MAX_NOTES });

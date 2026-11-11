@@ -75,10 +75,6 @@ export const ES: Readonly<Record<string, string>> = {
   "Busy crossing, no signal.": "Intersección con mucho tráfico, sin semáforo.",
   "Busy crossing.": "Intersección con mucho tráfico.",
   "Busy junction.": "Intersección con mucho tráfico.",
-  // A signal that may need a button press (the owner, 2026-11-08): the card's note and the words said.
-  // Drafted by Claude: FLAGGED for review by a native speaker.
-  "Light may need a button press": "Puede que el semáforo necesite que pulse el botón",
-  "Button for the light.": "Botón del semáforo.",
   // A flagged junction a stretch is entered at straight on (round-2 audit D25), its control as the crossings say it.
   "Busy junction at a signal.": "Intersección con mucho tráfico, con semáforo.",
   "Busy junction at a stop sign.": "Intersección con mucho tráfico, con señal de alto.",
@@ -2683,6 +2679,7 @@ export const ES: Readonly<Record<string, string>> = {
   "Pin": "Marcador",
   "Icon on the map": "Icono en el mapa",
   "The route's notes are too long for its link: shorten this note or another.": "Las notas de la ruta son demasiado largas para su enlace: acorte esta nota u otra.",
+  "Write a note first.": "Escriba una nota primero.",
   "Phone emoji on map signs": "Emojis del teléfono en las señales del mapa",
   "Notes and stops on the map show your phone's own emoji, not the app's pictures. Kept on this device.": "Las notas y paradas del mapa muestran los emojis de su teléfono, no las imágenes de la aplicación. Se guarda en este dispositivo.",
   "emoji signs": "señales con emoji",
