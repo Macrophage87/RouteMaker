@@ -1667,8 +1667,11 @@ export function phasesFor(level: Verbosity, cue: Cue, speedMs: number, onFoot = 
   return [{ phase: "advance", withinM: advance }];
 }
 
-/** Off route, a parallel way is taken up only this far along the line past where the rider left it (our default). */
-export const ALONGSIDE_AHEAD_M = 1000;
+/**
+ * Off route, a parallel way is taken up only this far along the line past where the rider left it: the window an on-route
+ * fix is looked for in, so no stop is jumped (farther on takes REJOIN_FIXES fixes, as rejoining does).
+ */
+export const ALONGSIDE_AHEAD_M = WINDOW_AHEAD_M;
 
 /**
  * Whether this fix is riding a parallel way (ALONGSIDE_M): within that of the line, going its way (the browser's heading,
@@ -1889,7 +1892,8 @@ export function step(
     } else {
       next.offCount = 0;
       next.offSince = null;
-      delete next.alongside;
+      // Back on the line only within half the threshold, as off route clears: GPS jitter at its edge never says it again.
+      if (found.offM <= threshold / 2) delete next.alongside;
     }
     // Progress moves only while on the line: an excursion does not drag it along a parallel street.
     if (state.progressM === null) {
@@ -1930,7 +1934,7 @@ export function step(
         if (level !== "quiet") events.push({ kind: "off-route", spoken: replan ? OFF_ROUTE_SAID : OFF_ROUTE_KEPT_SAID, urgent: true });
       } else next.progressM = progress;
     }
-  } else if (found.offM > threshold / 2 && state.backAtM === undefined && alongsideOf(model, state, fix, found, accuracy)) {
+  } else if (found.offM > threshold && state.backAtM === undefined && alongsideOf(model, state, fix, found, accuracy)) {
     // Off on the way over to a parallel way, now riding it the line's way: followed alongside, no longer off, so a
     // re-route under way is dropped (voidsAutoReplan) and none pulls the rider back.
     next.rejoin = null;
@@ -1960,7 +1964,7 @@ export function step(
     // Full only: the stoker hears leaving the route once (plan section 3), quiet nothing.
     if (level === "full") events.push({ kind: "back-on-route", spoken: BACK_ON_ROUTE_SAID, urgent: false });
   }
-  if (next.off || next.alongside || next.progressM === null) return { state: next, events };
+  if (next.off || next.progressM === null) return { state: next, events };
 
   // The cues: the first not yet done, at most one sentence per fix.
   const progress = next.progressM;
@@ -1970,6 +1974,11 @@ export function step(
     const done = said[cue.index] ?? [];
     if (phases.every((p) => done.includes(p.phase))) continue;
     const distance = cue.atM - progress;
+    // Alongside (a parallel way): only stops and the end are said; a turn on the line is held, then dropped once passed.
+    if (next.alongside && cue.kind !== "stop" && cue.kind !== "end") {
+      if (distance < -PASSED_M) said[cue.index] = phases.map((p) => p.phase);
+      continue;
+    }
     if (cue.kind === "end") {
       // The end: along the line within ARRIVE_M of it, and the fix itself near it (a loop's
       // start is its end too, so the line's measure decides, not the distance to the point).
@@ -2039,7 +2048,7 @@ export function step(
     break;
   }
   next.said = said;
-  const reassure = level === "full" && !events.length && !next.arrived ? reassurance(model, progress, state.reassured) : null;
+  const reassure = level === "full" && !events.length && !next.arrived && !next.alongside ? reassurance(model, progress, state.reassured) : null;
   if (reassure) {
     next.reassured = reassure.cue.index;
     events.push({ kind: "cue", spoken: reassure.spoken, urgent: false, cue: reassure.cue });
