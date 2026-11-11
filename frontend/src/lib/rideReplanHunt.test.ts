@@ -177,7 +177,7 @@ test("Ride mode sets dirt ridden from the rider's own ride, never from a route's
   // Not set at start but from a Resume's or Keep riding's kept state (the hunt, round 2, R2-5).
   assert.match(ride, /const dirtRidden = useRef\(replans\?\.dirtRidden === true\);/);
   assert.doesNotMatch(ride, /dirt_trails\) dirtRidden\.current = true/);
-  assert.match(ride, /if \(!dirtRidden\.current && !out\.state\.off && rodeDirt\(routeRef\.current, modelRef\.current\.lengthM, wasAtM, out\.state\.progressM\)\) \{\s*dirtRidden\.current = true;/);
+  assert.match(ride, /if \(!dirtRidden\.current && !out\.state\.off && !out\.state\.alongside && rodeDirt\(routeRef\.current, modelRef\.current\.lengthM, wasAtM, out\.state\.progressM\)\) \{\s*dirtRidden\.current = true;/);
 });
 
 // ---- X4: half steps on the line's scale ------------------------------------------------------------------------------
