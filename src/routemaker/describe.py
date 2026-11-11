@@ -1472,6 +1472,9 @@ class _Turn:
     # the road, never said (the turn is, "Right onto Warder Street"); Ride draws the road
     # alongside and the turn over it.
     over: str | None = None
+    # The junction event where that road is crossed: its control is the turn's where the
+    # turn has no event of its own (after a third road's event is given back too).
+    over_event: object | None = None
     # A turn onto an unnamed path that leads to a named one (`_toward`): that one's name,
     # said with the path ("Right onto the path to Rock Creek Trail"), the path itself
     # still unnamed ("path" on the map, in a report, in "Where am I?").
@@ -2634,14 +2637,13 @@ def describe_both(
         found = max(near, key=lambda index: events[index].m)
         turn.shape = None
         used.add(found)
-        if _beside(runs[i - 1], events[found]):
+        if events[found].m >= starts[i] - JUNCTION_M and _beside(runs[i - 1], events[found]):
             # The road the path ran beside: the turn itself takes the route over it (the
             # owner, 2026-11-11, west on Kenyon Street's track on its left side, right onto
             # Warder Street: "This isn't the correct symbol for this manuver"). One turn,
             # said plainly at the crossing's control, drawn with the road alongside.
             turn.over = _event_name(events[found]) or CROSS_UNNAMED
-            if turn.event is None:
-                turn.event = events[found]
+            turn.over_event = events[found]
             continue
         turn.across = _event_name(events[found]) or CROSS_UNNAMED
         turn.across_event = events[found]
@@ -2659,13 +2661,15 @@ def describe_both(
             and event.kind in RELEASED_KINDS
             and turn.cross is None
             and turn.across_event is not event
-            and not (turn.over is not None and _beside(runs[i - 1], event))
+            and turn.over_event is not event
             and _event_name(event)
             and not event.road_names & (runs[i - 1].names | runs[i].names)
         ):
             used.discard(index)
             turn.event = None
     for i, turn in turns.items():
+        if turn.over_event is not None and turn.event is None:
+            turn.event = turn.over_event
         turn.toward = _toward(runs, turns, i)
 
     entries: list[tuple[tuple[float, float, int], dict]] = []

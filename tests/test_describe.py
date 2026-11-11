@@ -3746,6 +3746,12 @@ class TestRideTurnsMissed:
         assert "Cross" not in said
         assert [e["kind"] for e in entries] == ["stretch", "stretch"]
 
+    def test_its_own_road_crossed_well_before_the_turn_is_still_cross_then_turn(self):
+        # A lane named for the road that goes straight over it 30 m short of the turn.
+        entries = self.kenyon_turn(m=370)
+        assert entries[1]["turn"]["across"] == "Kenyon Street Northwest"
+        assert "over" not in entries[1]["turn"]
+
     def test_a_path_beside_the_road_is_read_by_its_street(self):
         entries = self.kenyon_turn(lane="path beside Kenyon Street Northwest", turn=-90)
         assert entries[1]["turn"]["movement"] == "left"
