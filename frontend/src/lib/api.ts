@@ -315,6 +315,12 @@ export interface DescriptionEntry {
      */
     across_from?: "left" | "right" | null;
     /**
+     * A turn off a path beside a road that takes the route over that road (the owner, 2026-11-11, off Kenyon Street's
+     * left-side track right onto Warder Street: one turn, not "Cross Kenyon Street, then right"): the road, never said;
+     * Ride draws it alongside with the turn over it. Absent elsewhere and from older APIs.
+     */
+    over?: string | null;
+    /**
      * A turn onto an unnamed path that leads to a named one (describe._toward, round-2 D21): that one's name, said with
      * the path ("Right onto the path to Rock Creek Trail"). `onto` stays "path". Null elsewhere; absent from older APIs.
      */
