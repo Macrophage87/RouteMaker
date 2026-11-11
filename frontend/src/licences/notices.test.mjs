@@ -181,7 +181,7 @@ test("the Avoid junction icon's Apache 2.0 notice and full licence are added und
   assert.equal(icons.length, 1);
   const text = withIconNotices(withFontNotices(VITE, []), icons);
   assert.ok(text.startsWith(VITE.replace(/\s+$/, "")));
-  assert.match(text, /^## Noto Emoji skull and crossbones \(U\+2620\) - e20cbc2bbec1926686be9f9bee7d1d2cfa1fea0e \(Apache-2\.0\)$/m);
+  assert.match(text, /^## Noto Emoji icons \(the skull and crossbones U\+2620, and the route notes' and stops' icons\) - e20cbc2bbec1926686be9f9bee7d1d2cfa1fea0e \(Apache-2\.0\)$/m);
   assert.match(text, /Copyright 2013 Google, Inc\. All Rights Reserved\./);
   assert.match(text, /2D\/svg\/emoji_u2620\.svg/);
   assert.match(text, /TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION/);

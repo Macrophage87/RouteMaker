@@ -304,6 +304,17 @@ class TestConnector:
         revised = call(token, "revise_route", {"draft_id": draft["draft_id"], "stress": 90})
         assert planner[-1]["stress"] == 90 and not revised["isError"]
         new_id = revised["structuredContent"]["draft_id"]
+        # The route view (mcp/route_view.html) comes with each draft, its base map keyed to the
+        # rider's grant and the draft: another draft's key, or none, draws nothing.
+        view = revised["_meta"]["routemaker/route-view"]
+        key = view["map_key"]
+        box = {"centre": [-77.03, 38.9], "scale": 256 * 2**12, "width": 300, "height": 200}
+        drawn = call(token, "route_view_map", {"draft_id": new_id, "key": key, **box})
+        assert not drawn["isError"], drawn
+        other = call(token, "route_view_map", {"draft_id": draft["draft_id"], "key": key, **box})
+        assert other["isError"]
+        page = mcp(token, "resources/read", {"uri": "ui://routemaker/route-view.html"}).json()
+        assert page["result"]["contents"][0]["mimeType"] == "text/html;profile=mcp-app"
         saved = call(token, "save_route", {"draft_id": new_id, "name": "Rock Creek"})
         assert not saved["isError"], saved
         row = SavedRoute.objects.get(user=user)
@@ -1120,6 +1131,148 @@ class TestGpx:
         )
         r = Client().get(path, **addr())
         assert r.status_code == 404 and b"no longer kept" in r.content
+
+    def test_a_draft_s_picture_draws_from_its_link_and_needs_its_own_digest(self, planner) -> None:
+        """The owner, 2026-11-10: "Also allow for an image if requested so it can be shared"."""
+        user, tokens, _client_id = tokens_for()
+        token = tokens["access_token"]
+        planned = call(token, "plan_route", {"points": [[-77.03, 38.9], [-77.02, 38.91]]})
+        draft_id = planned["structuredContent"]["draft_id"]
+        view = planned["_meta"]["routemaker/route-view"]
+        picture = call(token, "route_picture", {"draft_id": draft_id})
+        assert not picture["isError"], picture
+        link = picture["structuredContent"]["picture_link"]
+        assert view["picture_link"] == link
+        # Under /mcp/gpx/, whose token the access logs already take out.
+        assert link.startswith("http://testserver/mcp/gpx/") and link.endswith(".png")
+        assert [c["type"] for c in picture["content"]] == ["image", "text"]
+        assert base64.b64decode(picture["content"][0]["data"]).startswith(b"\x89PNG")
+        path = urllib.parse.urlsplit(link).path
+        r = Client().get(path, **addr())
+        assert r.status_code == 200 and r["Content-Type"] == "image/png"
+        assert r.content.startswith(b"\x89PNG") and "no-store" in r["Cache-Control"]
+        # The GPX digest does not open the picture, nor the picture's the GPX file.
+        grant = ConnectorGrant.objects.get(user=user)
+        gpx_mac = connector._gpx_mac(user.pk, grant.pk, draft_id)
+        assert Client().get(f"/mcp/gpx/{draft_id}.{gpx_mac}.png", **addr()).status_code == 404
+        picture_mac = path.rsplit("/", 1)[1].removesuffix(".png").split(".")[1]
+        assert Client().get(f"/mcp/gpx/{draft_id}.{picture_mac}", **addr()).status_code == 404
+        assert Client().post(path, **addr()).status_code == 405
+
+    def test_cue_images_open_from_their_links_each_page_with_its_own_digest(self, planner) -> None:
+        """The owner, 2026-11-10: turn cues "sized for a phone from the mcp"."""
+        user, tokens, _client_id = tokens_for()
+        token = tokens["access_token"]
+        planned = call(token, "plan_route", {"points": [[-77.03, 38.9], [-77.02, 38.91]]})
+        draft_id = planned["structuredContent"]["draft_id"]
+        cards = call(token, "cue_cards", {"draft_id": draft_id})
+        assert not cards["isError"], cards
+        links = cards["structuredContent"]["links"]
+        assert len(links) == cards["structuredContent"]["images"] >= 1
+        assert all(c["type"] == "image" for c in cards["content"][:-1])
+        path = urllib.parse.urlsplit(links[0]).path
+        assert path.startswith("/mcp/gpx/") and path.endswith("-cues-1.png")
+        r = Client().get(path, **addr())
+        assert r.status_code == 200 and r["Content-Type"] == "image/png"
+        assert r.content.startswith(b"\x89PNG") and "no-store" in r["Cache-Control"]
+        # A page past the last, and the picture's digest, open nothing.
+        assert (
+            Client().get(path.replace("-cues-1.png", "-cues-99.png"), **addr()).status_code == 404
+        )
+        # The dark images (the owner, 2026-11-10: "Let people export in either"): their own links.
+        dark = call(token, "cue_cards", {"draft_id": draft_id, "dark": True})
+        dark_path = urllib.parse.urlsplit(dark["structuredContent"]["links"][0]).path
+        assert dark_path.endswith("-cues-dark-1.png")
+        shaded = Client().get(dark_path, **addr())
+        assert shaded.status_code == 200 and shaded.content != r.content
+        assert "-cues-dark-1.png" in shaded["Content-Disposition"]
+        grant = ConnectorGrant.objects.get(user=user)
+        picture_mac = connector._picture_mac(user.pk, grant.pk, draft_id)
+        wrong = f"/mcp/gpx/{draft_id}.{picture_mac}-cues-1.png"
+        assert Client().get(wrong, **addr()).status_code == 404
+        ConnectorGrant.objects.filter(user=user).delete()
+        assert Client().get(path, **addr()).status_code == 404
+
+    def test_stop_names_given_to_cue_cards_are_kept_and_drawn_by_the_links(self, planner) -> None:
+        """The owner, 2026-11-10: "make sure stops are listed"."""
+        from core import cue_cards
+
+        _user, tokens, _client_id = tokens_for()
+        token = tokens["access_token"]
+        points = [[-77.03, 38.9], [-77.025, 38.905], [-77.02, 38.91]]
+        planned = call(token, "plan_route", {"points": points})
+        draft_id = planned["structuredContent"]["draft_id"]
+        cards = call(token, "cue_cards", {"draft_id": draft_id, "stop_names": {"1": "Coffee"}})
+        assert not cards["isError"], cards
+        named_id = cards["structuredContent"]["draft_id"]
+        assert named_id != draft_id
+        stored = ConnectorDraft.objects.get(draft_id=named_id).data["plan"]
+        assert stored["names"] == {"1": "Coffee"}
+        # Asked again with the same name: the stored draft already has it, no new one.
+        again = call(token, "cue_cards", {"draft_id": named_id, "stop_names": {"1": "Coffee"}})
+        assert again["structuredContent"]["draft_id"] == named_id
+        seen = []
+        real = cue_cards.draw
+
+        def spy(*args, **kwargs):
+            seen.append(args[3])
+            return real(*args, **kwargs)
+
+        cue_cards.draw = spy
+        try:
+            path = urllib.parse.urlsplit(again["structuredContent"]["links"][0]).path
+            assert Client().get(path, **addr()).status_code == 200
+        finally:
+            cue_cards.draw = real
+        assert seen == [{1: "Coffee"}]
+
+    def test_a_picture_link_stops_with_its_draft_and_its_app(self, planner) -> None:
+        from datetime import timedelta
+
+        user, tokens, _client_id = tokens_for()
+        token = tokens["access_token"]
+        planned = call(token, "plan_route", {"points": [[-77.03, 38.9], [-77.02, 38.91]]})
+        draft_id = planned["structuredContent"]["draft_id"]
+        link = call(token, "route_picture", {"draft_id": draft_id})["structuredContent"]
+        path = urllib.parse.urlsplit(link["picture_link"]).path
+        ConnectorDraft.objects.update(created_at=timezone.now() - timedelta(days=7, hours=1))
+        r = Client().get(path, **addr())
+        assert r.status_code == 404 and b"no longer kept" in r.content
+        ConnectorDraft.objects.update(created_at=timezone.now())
+        assert Client().get(path, **addr()).status_code == 200
+        # Another rider's digest for the same draft id opens nothing.
+        other = make_user()
+        grant = ConnectorGrant.objects.get(user=user)
+        foreign = connector._picture_mac(other.pk, grant.pk, draft_id)
+        assert Client().get(f"/mcp/gpx/{draft_id}.{foreign}.png", **addr()).status_code == 404
+        ConnectorGrant.objects.filter(user=user).delete()
+        assert Client().get(path, **addr()).status_code == 404
+
+    def test_picture_and_cue_links_are_rate_limited_per_address_even_when_refused(
+        self, planner
+    ) -> None:
+        """ratelimit.ROUTE_PICTURES and CUE_CARDS (our defaults): a wrong digest counts too, so
+        guessing links costs the same as opening them (the v0.25.0 review)."""
+        from core import ratelimit
+
+        user, tokens, _client_id = tokens_for()
+        token = tokens["access_token"]
+        planned = call(token, "plan_route", {"points": [[-77.03, 38.9], [-77.02, 38.91]]})
+        draft_id = planned["structuredContent"]["draft_id"]
+        grant = ConnectorGrant.objects.get(user=user)
+        wrong = connector._picture_mac(make_user().pk, grant.pk, draft_id)
+        here = {"HTTP_X_FORWARDED_FOR": "203.0.113.41"}
+        picture = f"/mcp/gpx/{draft_id}.{wrong}.png"
+        for _ in range(ratelimit.ROUTE_PICTURES.requests):
+            assert Client().get(picture, **here).status_code == 404
+        refused = Client().get(picture, **here)
+        assert refused.status_code == 429 and refused.has_header("Retry-After")
+        there = {"HTTP_X_FORWARDED_FOR": "203.0.113.42"}
+        cue = f"/mcp/gpx/{draft_id}.{wrong}-cues-1.png"
+        for _ in range(ratelimit.CUE_CARDS.requests):
+            assert Client().get(cue, **there).status_code == 404
+        refused = Client().get(cue, **there)
+        assert refused.status_code == 429 and refused.has_header("Retry-After")
 
 
 @db
