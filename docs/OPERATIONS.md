@@ -7864,6 +7864,41 @@ wide gates), so the beta agent stops on the tag.
 - [ ] **Rollback.** The `pre-rel` api image and the v0.23.0 front end; the map's own rollback
   (`rollback_rebuild`) puts back 20261109T111715Z. The own-pick rows stay in the database.
 
+## Deploying v0.25.0
+
+Fixed saved routes (#1146, #1148, #1150), route notes and stop icons (#1154, #1155), phone cue
+images with arrows (#1152, #1153), the connector's route view, Mass Ride view and route picture
+(#1141-#1143, #1145), the Bethesda Trolley Trail turn at Charles St (#1140), and the North Bethesda
+bike lane overrides file (#1136). **No `lua/`, `valhalla/`, `src/pipeline/`, compose, Caddyfile,
+nginx (`deploy/`) or requirements change, no new environment variable, worker, scheduled job or
+outbound host, and no map rebuild.** One line in `docker/api.Dockerfile` copies
+`mcp/route_view.html` into the api image, so the beta agent's gate stops on the tag
+(`verdict=stop`) and the beta is a hand ship.
+
+- [ ] **The tag** **(owner)**. Once `test` and `a11y` are green on `main`, the owner tags v0.25.0
+  (annotated) on that commit, from the PC.
+- [ ] **Migration.** 0061 (`saved_route.fixed`, `saved_route_version.fixed`) adds two booleans with
+  a database default of false: the v0.24.0 api keeps saving routes in the minutes between `migrate`
+  and its recreation, and after a rollback of the images. Reversible.
+- [ ] **At home**, as "Deploying a planner and front-end release": rollback point (tag the running
+  api image `pre-rel-<short>`, keep `index.html`), fast-forward the checkout, `docker compose build
+  api`, `migrate`, then `docker compose up -d --no-deps --no-build --force-recreate api worker` with
+  no job todo or doing, then the front end. No router restart.
+- [ ] **Beta** **(owner)**, by hand: `auto-release.sh pause`, then docs/BETA-RUNBOOK.md "Shipping an
+  update later" at the tag (the api image built there, `migrate`, the front end built on the PC),
+  `smoke-test.sh --local`, then `--public`, then `auto-release.sh mark-deployed v0.25.0` and
+  `auto-release.sh resume`.
+- [ ] **The North Bethesda override file** (optional, separate). `fixtures/overrides/2026-11-10-owner-north-bethesda-bike-lanes.json`
+  is loaded on the PC with `load_access_overrides` (dry run, then `--confirm` with the owner's
+  go); its rows take effect at the next map rebuild, not with this release.
+- [ ] **Spot checks.** Plan: Save with Fixed route ticked, reopen it from Load route ("Fixed"), and
+  Start ride: off the line, Ride shows the way back, never a new route. Add a caution note on the
+  map: it shows on the map and in the cue sheet, and Ride says it as you reach it. Plan's GPX panel:
+  the lock-screen cue image has arrows and a dark choice. On a ride along the Bethesda Trolley Trail
+  southbound, Ride calls the turn at Charles St.
+- [ ] **Rollback.** The `pre-rel` api image (`--force-recreate api worker`) and the v0.24.0 front end.
+  The `fixed` columns stay (with their default); a fixed route opened on v0.24.0 is a via route.
+
 ## Deploying a planner and front-end release: rollback points and verification
 
 A release that changes the planner and the front end, with no migration and no graph, is deployed
