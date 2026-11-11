@@ -288,6 +288,15 @@ class TestTurns:
         calm.turns = 40
         assert calm.key(top) < busy.key(top)
 
+    def test_at_or_below_the_old_top_turns_change_nothing(self) -> None:
+        # Review of #1139: level3 also prices repeats, dodges and loop way-backs below the
+        # top, so turns count only where the calm search runs (rate > 0 or the top).
+        below, calm = context(), context(rate=presets.calm_rate_for(90))
+        plain, fiddly = analysis("a"), analysis("b")
+        fiddly.turns = 12
+        assert refine.level3(fiddly, below) == refine.level3(plain, below)
+        assert refine.level3(fiddly, calm) > refine.level3(plain, calm)
+
     def test_legs_add_their_turns(self) -> None:
         one, two = analysis("a"), analysis("b")
         one.turns, two.turns = 3, 5

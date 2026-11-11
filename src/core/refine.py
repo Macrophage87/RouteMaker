@@ -715,10 +715,12 @@ def level3(read: Analysis, ctx: Context) -> float:
 # one of these too, which the router's `maneuver_penalty` (charged only where the name
 # changes) does not price.
 TURN_MANEUVERS = frozenset(range(9, 17))
-# What one turn costs in the top of the slider's ranking, seconds of quiet riding:
+# What one turn costs in the calm search's ranking (above `presets.STRESS_TODAYS_TOP`, where
+# the router's own turn charge rises too), seconds of quiet riding:
 # `presets.CALM_MANEUVER_PENALTY_S`, the charge the router makes there (our default, not
-# measured). The owner, 2026-11-10: "Trailmaxxing seems to cause a lot of fiddly turns when
-# there's an easy road nearby".
+# measured). At or below the old top the ranking adds nothing for turns. The owner,
+# 2026-11-10: "Trailmaxxing seems to cause a lot of fiddly turns when there's an easy road
+# nearby".
 TURN_RANK_S = presets.CALM_MANEUVER_PENALTY_S
 
 
@@ -735,8 +737,10 @@ def turns_of(trip: dict) -> int:
 def turn_m(read: Analysis, ctx: Context) -> float:
     """The route's turns as metres of quiet riding, at `TURN_RANK_S` a turn and the rate
     `delay_m` prices a second at, so between routes equally calm the one with fewer turns
-    ranks first (the router's cost already holds them below the top of the slider)."""
-    if ctx.quiet_cost <= 0:
+    ranks first. Only where the calm search runs (above `presets.STRESS_TODAYS_TOP`, the
+    same positions the router's turn charge rises at); at or below it, 0, so nothing there
+    changes (the router's cost already holds turns)."""
+    if ctx.quiet_cost <= 0 or (not ctx.maxcalm and ctx.rate <= 0):
         return 0.0
     return QUIET_COST_FACTOR * TURN_RANK_S * read.turns / ctx.quiet_cost
 

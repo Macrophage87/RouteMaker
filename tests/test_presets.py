@@ -817,5 +817,11 @@ def test_above_the_old_top_the_turn_charge_rises_to_the_calm_charge() -> None:
     assert at("default", 90) == presets.CALM_MANEUVER_PENALTY_S
     assert at("trailmaxxing", presets.STRESS_MAX) == presets.CALM_MANEUVER_PENALTY_S
     assert at("tandem", presets.STRESS_MAX) == presets.HIGH_MANEUVER_PENALTY_S
-    assert presets.costing("trailmaxxing")["bicycle"]["maneuver_penalty"] == 15
-    assert presets.costing("default")["bicycle"]["maneuver_penalty"] == 5
+    assert (
+        presets.costing("trailmaxxing")["bicycle"]["maneuver_penalty"]
+        == presets.CALM_MANEUVER_PENALTY_S
+    )
+    assert (
+        presets.costing("default")["bicycle"]["maneuver_penalty"]
+        == presets.VALHALLA_MANEUVER_PENALTY_S
+    )
