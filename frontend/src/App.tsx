@@ -309,9 +309,9 @@ import { fetchMe, NO_ME, type Me } from "./lib/stressEditor.ts";
 import { reloadFavorites, useFavoriteRides } from "./lib/favoriteRides.ts";
 import { ACCOUNT_SETTINGS_USED, applyToDevice, deviceSettings, fetchSettings, planFromSetting, retryUntil, sameSettings, saveSettings, saveUnitsUnsynced, SAVE_SETTLE_MS, setUnitsPending, signInLate, unitsPending, type SettingsDoc } from "./lib/accountSettings.ts";
 import { HOME_KEPT, HOME_MOVED, answerHomeOffer, deviceHome, homeOffer, type HomeOffer } from "./lib/homeMove.ts";
-import { FULL_HEADING, OPENED_SAID, SAVED_SAID, SAVE_FAILED, UNCHANGED_SAID, UPDATE_ROUTE, VERSION_SAID, defaultRouteName, differenceLine, differsTooMuch, gpxSave, afterDelete, afterRename, planSave, saveAsVersion, saveRoute, savedAnswer, savedLine, versionOf, type OpenSaved, type RoomProposal, type SaveBody, type SavedRoute } from "./lib/savedRoutes.ts";
+import { FULL_HEADING, OPENED_FIXED_SAID, OPENED_SAID, SAVED_SAID, SAVE_FAILED, UNCHANGED_SAID, UPDATE_ROUTE, VERSION_SAID, defaultRouteName, differenceLine, differsTooMuch, gpxSave, afterDelete, afterRename, planSave, saveAsVersion, saveRoute, savedAnswer, savedLine, versionOf, type OpenSaved, type RoomProposal, type SaveBody, type SavedRoute, type SavedSummary } from "./lib/savedRoutes.ts";
 import { DRAFT_UNREACHABLE, draftLeft, saveDraft, type OpenDraft } from "./lib/drafts.ts";
-import { checkClosures, closedStretches, reroutedSaid, spliceDetours, type Closure, type CheckFor } from "./lib/closureCheck.ts";
+import { checkClosures, closedStretches, closureLead, reroutedSaid, spliceDetours, type Closure, type CheckFor } from "./lib/closureCheck.ts";
 import { ROUTE_WEATHER_MS, weatherPoints } from "./lib/weather.ts";
 import { useWeather } from "./useWeather.ts";
 import { downloadText, trackGpx, verbatimDownload, verbatimFileName } from "./lib/gpxVerbatim.ts";
@@ -330,6 +330,8 @@ import { canSendToGarmin, handGpx } from "./lib/sendToGarmin.ts";
 import { ResumeRideDialog } from "./ResumeRideDialog.tsx";
 import type { OnwardState } from "./lib/onward.ts";
 import { forgetLeftRide, keepLeftRide, keepLeftRideLeads, leftRide, leftRidePast, resumedBroadcast, resumesQuietly, type RideReplans } from "./lib/rideResume.ts";
+import { NoteDialog, noteSaid, noteTooLongSaid, notesFullSaid, stopIconSaid, type NoteAsk } from "./NoteDialog.tsx";
+import { KIND_ICON, MAX_NOTES, PAGE_NOTES, noteIcon, notesFit, type NoteIcon, type NoteKind, type RouteNote } from "./lib/routeNotes.ts";
 import { StopNameDialog, type StopNameAsk } from "./StopNameDialog.tsx";
 import { LoadRouteDialog } from "./LoadRouteDialog.tsx";
 import { LOAD_ROUTE, withGpxChoice, type GpxChoice } from "./lib/loadRoute.ts";
@@ -391,6 +393,8 @@ VIA_MARKS.markAt(initialPlan.points, initialPlan.vias);
 VIA_MARKS.markDrawn(initialPlan.points, initialPlan.drawn);
 // And its stops' own names (2026-10-24); an older link has none.
 VIA_MARKS.nameAt(initialPlan.points, initialPlan.names);
+// And their icons (2026-11-10).
+VIA_MARKS.iconAt(initialPlan.points, initialPlan.icons);
 
 // Go or Plan (lib/appMode.ts; the owner's choices 1 and 2 of 2026-10-11): the tab's own view, else Plan for a
 // link with a plan in it on a wide screen, else by screen size: Plan on a computer, Go on a phone.
@@ -1262,6 +1266,17 @@ export function App() {
   // A ride's stop names (2026-10-24): one function for the ride, so its stops on the map are worked out only as it moves.
   // A stop renamed in place (its pair unchanged): the link is written again for it.
   const [namesVersion, setNamesVersion] = useState(0);
+  // The route's notes (lib/routeNotes.ts; Stephen 2026-11-10): the link's at first. Kept where the link, a save, the
+  // exports and Ride read them (PAGE_NOTES), as the stops' names are read from VIA_MARKS.
+  const [notes, setNotesShown] = useState<readonly RouteNote[]>(initialPlan.notes);
+  PAGE_NOTES.list = notes;
+  const setNotes = useCallback((next: readonly RouteNote[]) => {
+    PAGE_NOTES.list = next;
+    setNotesShown(next);
+  }, []);
+  const [noteAsk, setNoteAsk] = useState<(NoteAsk & { at?: LonLat }) | null>(null);
+  // The notes a Clear or an opened file put away, with the points they went with, for Undo.
+  const notesCleared = useRef<{ points: readonly LonLat[]; notes: readonly RouteNote[] } | null>(null);
   const rideStopName = useCallback((point: LonLat) => namer.name(point)?.name, [namer]);
   // A route's own name (a save, a shared line, a GPX file) never carries the Home's label (review privacy-2).
   const fileNamed = nameWithoutHome((point) => namer.name(point)?.name, myGo.home?.point ?? null);
@@ -1544,14 +1559,14 @@ export function App() {
   // Keep the link in step with the plan, without adding history entries. Exactly encodePlan's
   // fragment, which never holds the weight (313); Copy link builds the same one (linkToCopy).
   useEffect(() => {
-    const hash = withSecret(encodePlan(points, preset, dials, viaIndices(points, VIA_MARKS.isVia)), isRideLinkType(preset) ? groupSecret : null);
+    const hash = withSecret(encodePlan(points, preset, dials, viaIndices(points, VIA_MARKS.isVia), undefined, undefined, "q", notes), isRideLinkType(preset) ? groupSecret : null);
     writtenHash.current = hash;
     window.history.replaceState(null, "", hash);
     // "Link copied." was about the link before this change (the correctness review's N4).
     linkPresses.current += 1;
     setLinkSaid("");
     setLinkSpoken("");
-  }, [points, preset, dials, namesVersion, groupSecret]);
+  }, [points, preset, dials, namesVersion, notes, groupSecret]);
 
   // A link pasted into this tab, or the back button, changes the fragment
   // without a reload: open the plan it names.
@@ -1585,7 +1600,9 @@ export function App() {
       // A plan opened from a link opens drawn, in Plan as in Go (v0.7.0), and is not compared with the last one.
       forgetDrawn();
       setRouteAsk((n) => n + 1);
-      setPoints(VIA_MARKS.nameAt(VIA_MARKS.markDrawn(VIA_MARKS.markAt(plan.points, plan.vias), plan.drawn), plan.names));
+      setPoints(VIA_MARKS.iconAt(VIA_MARKS.nameAt(VIA_MARKS.markDrawn(VIA_MARKS.markAt(plan.points, plan.vias), plan.drawn), plan.names), plan.icons));
+      // And its notes (2026-11-10); an older link has none.
+      setNotes(plan.notes);
       // The link's ride type comes with its own secret, or none: not a change of type that makes one.
       presetBefore.current = plan.preset;
       setPreset(plan.preset);
@@ -2142,6 +2159,10 @@ export function App() {
       const before = rideRef.current;
       const next = edits.travel(direction);
       if (next === undefined) return;
+      // Back to the points a Clear or an opened file put away: their notes with them; forward again, without.
+      const cleared = notesCleared.current;
+      if (cleared && next === cleared.points) setNotes(cleared.notes);
+      else if (cleared && direction === "redo" && PAGE_NOTES.list === cleared.notes) setNotes([]);
       setNotice(null);
       // A step that brings another loop state back renames the points too (OWNER-DECISIONS 374).
       const renamed = loopChangeSaid(before, rideRef.current, next.length);
@@ -2426,10 +2447,12 @@ export function App() {
   // The road panel's Set as start / Set as end / Add as stop (OWNER-DECISIONS 441n): the spot
   // right-clicked or held (or the map's center by keyboard), as the search's choice places a
   // place: the coverage check, the cap, the loop; an edit like any other, undone and redone.
-  const placeSpot = useCallback((choice: PlaceChoice, spot: LonLat, asVia = false, name?: string) => {
+  const placeSpot = useCallback((choice: PlaceChoice, spot: LonLat, asVia = false, name?: string, icon?: NoteIcon) => {
     // A tapped trail's Route through this trail: a via point, which shapes the route and is never a stop. A stop
     // with a name (the rider's, or the place's it was picked from) keeps it on its own pair (2026-10-24).
-    const point: LonLat = asVia ? VIA_MARKS.via([spot[0], spot[1]]) : cleanStopName(name) ? VIA_MARKS.named([spot[0], spot[1]], name) : spot;
+    const point: LonLat = asVia ? VIA_MARKS.via([spot[0], spot[1]]) : cleanStopName(name) || icon ? VIA_MARKS.named([spot[0], spot[1]], name) : spot;
+    // And its icon (2026-11-10), likewise on its own pair.
+    if (!asVia && icon) VIA_MARKS.setIcon(point, icon);
     cancelLocateNotice();
     if (!insideCoverage(point)) {
       setNotice(OUTSIDE_NOTICE);
@@ -3227,23 +3250,69 @@ export function App() {
   const renameStop = useCallback((index: number) => {
     const point = pointsRef.current[index];
     if (!point || namePoints(pointsRef.current, VIA_MARKS.isVia, loopVias)[index]?.role !== "stop") return;
-    setStopAsk({ mode: "rename", name: VIA_MARKS.nameOf(point) ?? "", index });
+    setStopAsk({ mode: "rename", name: VIA_MARKS.nameOf(point) ?? "", icon: VIA_MARKS.iconOf(point), index });
   }, [loopVias]);
-  const stopNamed = (name: string) => {
+  // Plan's route notes (lib/routeNotes.ts; 2026-11-10): Add note in the map's long-press menu asks for its kind and
+  // words; a note's sign on the map opens it to change or remove. A change is no new route: the link is written again.
+  const addNoteAt = (point: LonLat) => {
+    if (!insideCoverage(point)) {
+      setNotice(OUTSIDE_NOTICE);
+      return;
+    }
+    if (PAGE_NOTES.list.length >= MAX_NOTES) {
+      announce(notesFullSaid());
+      return;
+    }
+    setNoteAsk({ mode: "add", at: [point[0], point[1]], kind: "caution", text: "", icon: KIND_ICON.caution });
+  };
+  const openNote = (index: number) => {
+    const note = PAGE_NOTES.list[index];
+    if (note) setNoteAsk({ mode: "edit", index, kind: note.kind, text: note.text, icon: noteIcon(note) });
+  };
+  const noteDone = (kind: NoteKind, text: string, chosen: NoteIcon) => {
+    // The kind's own icon is not kept on the note: the link then leaves it out.
+    const icon = chosen === KIND_ICON[kind] ? undefined : chosen;
+    const ask = noteAsk;
+    if (!ask) return null;
+    const current = PAGE_NOTES.list;
+    const adding = ask.mode === "add" && ask.at;
+    const next = adding
+      ? [...current, { at: ask.at as LonLat, kind, text, ...(icon ? { icon } : {}) }]
+      : current.map((note, i) => (i === ask.index ? { at: note.at, kind, text, ...(icon ? { icon } : {}) } : note));
+    // The words must fit the route's link (routeNotes.ts NOTES_LINK_MAX): the dialog stays open to shorten them.
+    if (!notesFit(next)) return noteTooLongSaid();
+    setNoteAsk(null);
+    if (!adding && (ask.index === undefined || !current[ask.index])) return null;
+    setNotes(next);
+    announce(noteSaid(adding ? "added" : "changed"));
+    return null;
+  };
+  const noteRemoved = () => {
+    const ask = noteAsk;
+    setNoteAsk(null);
+    if (ask?.index === undefined) return;
+    setNotes(PAGE_NOTES.list.filter((_, i) => i !== ask.index));
+    announce(noteSaid("removed"));
+  };
+  const stopNamed = (name: string, icon: NoteIcon | undefined) => {
     const ask = stopAsk;
     setStopAsk(null);
     if (!ask) return;
     if (ask.mode === "add" && ask.point) {
-      placeSpot("via", ask.point, false, name);
+      placeSpot("via", ask.point, false, name, icon);
       return;
     }
     const current = pointsRef.current;
     const point = ask.index === undefined ? undefined : current[ask.index];
-    if (!point || cleanStopName(name) === VIA_MARKS.nameOf(point)) return;
+    if (!point) return;
+    const renamed = cleanStopName(name) !== VIA_MARKS.nameOf(point);
+    const iconChanged = icon !== VIA_MARKS.iconOf(point);
+    if (!renamed && !iconChanged) return;
     // In place: only a label changes, so no new route is asked for; the link is written again (namesVersion).
-    VIA_MARKS.rename(point, name);
+    if (renamed) VIA_MARKS.rename(point, name);
+    if (iconChanged) VIA_MARKS.setIcon(point, icon);
     setNamesVersion((v) => v + 1);
-    announce(stopNamedSaid(cleanStopName(name)));
+    announce([renamed ? stopNamedSaid(cleanStopName(name)) : "", iconChanged ? stopIconSaid(icon) : ""].filter(Boolean).join(" "));
   };
   // Reverse: in a loop the start stays and the stops go the other way around
   // (OWNER-DECISIONS 374); with a start and one stop that is no change, so a
@@ -3344,6 +3413,9 @@ export function App() {
     // In Plan the cleared plan starts as a loop again (planStartDials), in the same edit, so Undo puts back the loop
     // state the points had.
     const startDials = modeRef.current === "plan" ? planStartDials(ride.preset, ride.dials) : ride.dials;
+    // The route's notes go with its points; Undo brings them back with the points (notesCleared).
+    notesCleared.current = { points: pointsRef.current, notes: PAGE_NOTES.list };
+    setNotes([]);
     commit([], ride.imported || startDials !== ride.dials ? { ...ride, imported: null, dials: startDials } : undefined);
     // Said, and the focus to the place search, as every other removal hands it on (review a11y-1).
     announce(modeRef.current === "go" ? GO_CLEARED_SAID : CLEARED_SAID);
@@ -3367,6 +3439,9 @@ export function App() {
     const opened = plan.points.slice(0, MAX_POINTS);
     const kinds = importedKinds(plan.pointNames, opened.length);
     VIA_MARKS.nameAt(VIA_MARKS.markAt(opened, kinds.vias), kinds.names);
+    // A file is a new plan: the notes of the one before do not come with it (Undo brings them back, notesCleared).
+    notesCleared.current = { points: pointsRef.current, notes: PAGE_NOTES.list };
+    setNotes([]);
     commit(opened, { ...rideAfterImport(plan, rideRef.current), imported: plan });
     // An opened file is a saved route: it opens drawn (v0.7.0), and is not compared with the plan before it.
     forgetDrawn();
@@ -3964,7 +4039,9 @@ export function App() {
     // separately"): a link shared as a ride, opened unchanged; a Mass Ride or Group Ride, unless shared as a route.
     // Its sharer is not held to it ("Maybe make the sharer able to reroute").
     const opened = sharedOpenNow.current?.answer === asked ? sharedOpenNow.current : null;
-    const fixed = fixedRide(leg, opened, !!rest);
+    // A fixed saved route (the owner, 2026-11-10) is ridden as a shared ride is (fixedRide's own trip rules kept).
+    const onFixed = !rest && fixedLine.current !== null && route.geometry.coordinates === fixedLine.current;
+    const fixed = fixedRide(leg, opened ?? (onFixed ? { ride: true } : null), !!rest);
     setResumeStats(null);
     const rideDialsNow = rideDials({ ...planDials, closuresNow: true }, rest ? null : route);
     // Kept on this device so a page closed mid-ride can resume it (lib/rideResume.ts): a Bikeshare or transit trip
@@ -4090,16 +4167,28 @@ export function App() {
       ? shown
       : null;
   // A saved route's line about today's map (more than 5% apart in distance), with Update route.
-  const [savedNote, setSavedNote] = useState<{ key: string; savedM: number; todayM: number } | null>(null);
+  // A fixed route's (the owner, 2026-11-10: "Update route can be offered when a closure occurs on a road"): closures on
+  // its line now, with Update route; never the distance line, its line being the route.
+  const [savedNote, setSavedNote] = useState<{ key: string; savedM: number; todayM: number } | { key: string; closed: true } | null>(null);
   const [myRoutesVersion, setMyRoutesVersion] = useState(0);
   // The saved route on screen (opened from My routes, or saved last): in Plan, saved again under its own name it
   // is a new version of that route (lib/savedRoutes.ts versionOf). A new file, a shared route or Clear forget it.
   const openSavedRoute = useRef<OpenSaved | null>(null);
+  // A fixed saved route's line (the owner, 2026-11-10), while it is the route shown: a ride on it is never re-routed
+  // (lib/rideTrip.ts fixedRide), off it the way back. Matched by the line's own array, which no re-plan reuses.
+  const fixedLine = useRef<RouteResponse["geometry"]["coordinates"] | null>(null);
   // The assistant's draft on screen, if one was opened (lib/drafts.ts).
   const draftOpen = useRef<OpenDraft | null>(null);
   // A full account's question (FullAccountDialog): the save waiting on it, sent again with make_room on Delete.
   const [roomAsk, setRoomAsk] = useState<{ propose: RoomProposal; body: SaveBody; name: string } | null>(null);
-  const saveCurrent = async (name: string, tags?: string[]): Promise<string> => {
+  // After a save (here, or after a full account's Delete): the route on screen is that saved route in Plan, and saved
+  // fixed, a ride on the line shown stays on it; saved by its via points, it is re-routed as before.
+  const savedNow = (route: SavedSummary, tags?: string[], fixed?: boolean) => {
+    const isFixed = route.fixed ?? fixed;
+    if (mode === "plan") openSavedRoute.current = { id: route.id, name: route.name, tags: route.tags ?? tags, fixed: isFixed };
+    if (isFixed !== undefined) fixedLine.current = isFixed ? (shown?.geometry.coordinates ?? null) : null;
+  };
+  const saveCurrent = async (name: string, tags?: string[], fixed?: boolean): Promise<string> => {
     const verbatim = imported?.verbatim;
     const body =
       verbatim && !importEdited
@@ -4111,7 +4200,7 @@ export function App() {
     const of = versionOf(openSavedRoute.current, name, mode === "plan");
     // The assistant's draft on screen, as drafted (lib/drafts.ts): saved, it is no longer listed as a draft.
     const draft = draftOpen.current && Math.abs(body.distance_m - draftOpen.current.distanceM) < 1 ? draftOpen.current : null;
-    const sent = { ...body, ...(tags ? { tags } : {}), ...(draft ? { from_draft: draft.id } : {}) };
+    const sent = { ...body, ...(tags ? { tags } : {}), ...(fixed !== undefined ? { fixed } : {}), ...(draft ? { from_draft: draft.id } : {}) };
     const outcome = await saveAsVersion(origin, sent, of);
     if (!outcome.ok && outcome.propose) {
       setRoomAsk({ propose: outcome.propose, body: sent, name });
@@ -4120,7 +4209,7 @@ export function App() {
     if (!outcome.ok) return outcome.message || SAVE_FAILED;
     if (draft && draftOpen.current === draft) draftOpen.current = null;
     setMyRoutesVersion((v) => v + 1);
-    if (mode === "plan") openSavedRoute.current = { id: outcome.route.id, name: outcome.route.name, tags: outcome.route.tags ?? tags };
+    savedNow(outcome.route, tags, fixed);
     // No `versioned`: a plain save (or the route was gone, and this one is new).
     if (outcome.versioned === undefined) return savedLine(name, outcome.route);
     return outcome.versioned === false ? UNCHANGED_SAID(outcome.route.name, body.source) : VERSION_SAID(outcome.route.name);
@@ -4131,8 +4220,10 @@ export function App() {
           (mode === "plan" ? openSavedRoute.current?.name : undefined) ??
           defaultRouteName(fileNamed(routedPoints[0]), routedPoints.length > 1 ? fileNamed(routedPoints[routedPoints.length - 1]) : null),
         onSave: saveCurrent,
-        // Plan's Save asks for tags too (the owner, 2026-11-07); Go's Save stays a name alone.
-        ...(mode === "plan" ? { defaultTags: () => openSavedRoute.current?.tags ?? [] } : {}),
+        // Plan's Save asks for tags and Fixed route too (the owner, 2026-11-07 and 2026-11-10: unticked, our default,
+        // but on a fixed route); Go's Save stays a name alone (the owner, 2026-11-10: "Go shouldn't include it. Those
+        // are intended for transportation and the like").
+        ...(mode === "plan" ? { defaultTags: () => openSavedRoute.current?.tags ?? [], defaultFixed: () => openSavedRoute.current?.fixed ?? false } : {}),
       }
     : null;
 
@@ -4594,7 +4685,7 @@ export function App() {
     if (!imported) void checkThen("open", route.geometry.coordinates, false, () => {}, undefined, undefined, walksLine(route));
   }, [route]);
   // My routes: open as saved (the line unchanged), or export.
-  const openSaved = (saved: Pick<SavedRoute, "name" | "source" | "distance_m" | "line" | "inputs" | "answer" | "gpx" | "tags"> & { id?: number | string; draft_until?: string | null }, said = OPENED_SAID(saved.name), check = true) => {
+  const openSaved = (saved: Pick<SavedRoute, "name" | "source" | "distance_m" | "line" | "inputs" | "answer" | "gpx" | "tags" | "fixed"> & { id?: number | string; draft_until?: string | null }, said = saved.fixed ? OPENED_FIXED_SAID(saved.name) : OPENED_SAID(saved.name), check = true) => {
     // A choice from Load route's popup is for a file picked there, not a saved route.
     gpxChoice.current = null;
     // An assistant's draft (from Load route, or its link): a ride on it ends with Save route.
@@ -4603,8 +4694,10 @@ export function App() {
     setSharedNote(null);
     setSavedNote(null);
     // A saved route's own id (a shared route's is a string, and is not one of the rider's).
-    const own: OpenSaved | null = typeof saved.id === "number" ? { id: saved.id, name: saved.name, tags: saved.tags ?? [] } : null;
+    const own: OpenSaved | null = typeof saved.id === "number" ? { id: saved.id, name: saved.name, tags: saved.tags ?? [], fixed: saved.fixed === true } : null;
     openSavedRoute.current = own;
+    // A fixed route's own line, as the page will show it; any other route opened is ridden as before.
+    fixedLine.current = saved.fixed && saved.answer ? saved.answer.geometry.coordinates : null;
     if (saved.source === "gpx" && saved.gpx) {
       // Kept with the route shown for it (v0.9.0, "share the exact route"): the file opens on the plan it was kept
       // with (its points, ride type and sliders) and that very line answers it, in the mode it was followed in.
@@ -4623,6 +4716,8 @@ export function App() {
         }
         keepShown();
         openImportedChecked(asKept({ ...outcome.plan, name: saved.name }, at, answer), check);
+        // The saved route's own notes (its link's), which opening the file as a new plan put away.
+        if (at) setNotes(at.notes);
         openSavedRoute.current = own;
         announce(said);
       });
@@ -4640,9 +4735,16 @@ export function App() {
     }
     else retry();
     announce(said);
-    if (check) void checkThen("open", saved.line, false, () => {}, undefined, undefined, answer ? walksLine(answer) : plan.preset === "walk" || runs(plan.preset));
-    // Today's map, asked quietly: more than 5% apart in distance offers Update route; nothing changes without it.
-    void requestRoute(plan.points, plan.preset, { dials: plan.dials, straight: plan.drawn }).then((today) => {
+    // A fixed route with closures on its line now: Update route offered after all, under the closure's own question.
+    const closedNote = saved.fixed
+      ? () => {
+          if (savedShown.current?.key === key) setSavedNote({ key, closed: true });
+        }
+      : undefined;
+    if (check) void checkThen("open", saved.line, false, () => {}, undefined, closedNote, answer ? walksLine(answer) : plan.preset === "walk" || runs(plan.preset));
+    // Today's map, asked quietly: more than 5% apart in distance offers Update route; nothing changes without it. A
+    // fixed route is never compared: its line is the route.
+    if (!saved.fixed) void requestRoute(plan.points, plan.preset, { dials: plan.dials, straight: plan.drawn }).then((today) => {
       if (today.ok && savedShown.current?.key === key && differsTooMuch(saved.distance_m, today.route.distance_m))
         setSavedNote({ key, savedM: saved.distance_m, todayM: today.route.distance_m });
     });
@@ -4716,7 +4818,7 @@ export function App() {
     <p className="notice saved-note">{sharedNote}</p>
   ) : savedNote && savedNote.key === routedKey.current ? (
       <p className="notice saved-note">
-        {differenceLine(savedNote.savedM, savedNote.todayM)}{" "}
+        {"closed" in savedNote ? closureLead("open") : differenceLine(savedNote.savedM, savedNote.todayM)}{" "}
         <button type="button" className="link" onClick={updateSaved}>
           {UPDATE_ROUTE}
         </button>
@@ -6694,6 +6796,9 @@ export function App() {
         onStopAt={onBike || reviewing || (goTapSetsEnd(mode) && points.length < 2) ? undefined : askStopAt}
         onRenameStop={onBike || reviewing ? undefined : renameStop}
         rideStops={riding ? (rideView?.stops ?? null) : null}
+        // The route's notes: on the map in Plan, Go and a ride; in Plan each opens to change or remove it.
+        routeNotes={reviewing || roaming ? null : notes}
+        onNotePress={mode === "plan" && !onBike && !reviewing ? openNote : undefined}
         markerReset={markerReset}
         // The rider and the accuracy circle from the ride's or Roam's store; off the bike, the located point's circle.
         riderFrom={riding ? rideRider : roaming ? roamRider : null}
@@ -6886,6 +6991,7 @@ export function App() {
         }}
       />
       <StopNameDialog ask={stopAsk} onDone={stopNamed} onCancel={() => setStopAsk(null)} />
+      <NoteDialog ask={noteAsk} onDone={noteDone} onRemove={noteRemoved} onCancel={() => setNoteAsk(null)} fallbackFocus={mapFocus} />
       <ResumeRideDialog
         open={leftAsk !== null && !riding && !roaming}
         destination={leftAsk && !leftAsk.loop ? (leftAsk.destination ?? namer.name(leftAsk.points[leftAsk.points.length - 1])?.name ?? null) : null}
@@ -6908,7 +7014,7 @@ export function App() {
             }
             setMyRoutesVersion((v) => v + 1);
             if (openSavedRoute.current?.id === asked.propose.id) openSavedRoute.current = null;
-            if (mode === "plan") openSavedRoute.current = { id: outcome.route.id, name: outcome.route.name, tags: outcome.route.tags };
+            savedNow(outcome.route, asked.body.tags, asked.body.fixed);
             announce(savedLine(asked.name, outcome.route));
           });
         }}
@@ -6982,6 +7088,7 @@ export function App() {
         onRouteHere={mode === "go" ? goRouteHere : undefined}
         trailRider={trailRider}
         onSetHome={(point) => void setHomeAt(point)}
+        onAddNote={mode === "plan" ? addNoteAt : undefined}
         onSaveFavorite={me.signed_in ? (point) => void addFavoriteAt(point) : undefined}
       />
       {crosshairShown && (
@@ -7028,6 +7135,7 @@ export function App() {
               defaultName={saveProps?.defaultName ?? (() => "")}
               onSave={saveProps?.onSave ?? null}
               defaultTags={saveProps?.defaultTags}
+              defaultFixed={saveProps?.defaultFixed}
               label={SAVE_ROUTE}
               bar
               onGpx={downloadRoute}

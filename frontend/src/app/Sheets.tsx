@@ -31,6 +31,7 @@ import { AvoidStairsSwitch } from "../AvoidStairsSwitch.tsx";
 import { ACCESS_FINE_TUNE, ACCESS_HELP, ACCESS_LABEL } from "../lib/accessMode.ts";
 import { RideSettingsFields } from "../RideMode.tsx";
 import { ThemeSetting, UnitsSetting } from "../DisplaySettings.tsx";
+import { ICON_STYLE_HELP, ICON_STYLE_LABEL, readIconStyle, writeIconStyle } from "../lib/iconStyle.ts";
 import { RIDE_ICONS_HELP, RIDE_ICONS_LABEL, RIDE_TEXT_HELP, RIDE_TEXT_LABEL, readRideIconsOnly, writeRideIconsOnly, type RideTextSize } from "../lib/rideOutput.ts";
 import type { RidePrefs } from "../lib/rideOutput.ts";
 import type { RailVisibility } from "../lib/railStations.ts";
@@ -547,6 +548,37 @@ function IconsOnlyRow() {
   );
 }
 
+/**
+ * Note and stop icons as the phone's own emoji instead of the app's Noto pictures (Stephen 2026-11-10: "Allow both",
+ * "We can use noto"), kept on this device (lib/iconStyle.ts); off, the pictures, is our default. The map follows at once.
+ */
+function IconStyleRow() {
+  const [on, setOn] = useState(() => readIconStyle() === "emoji");
+  return (
+    <SettingRow infoId="settings-icon-style-info" about="emoji signs" info={ICON_STYLE_HELP} className="icon-style-row">
+      <button
+        type="button"
+        role="switch"
+        className="switch"
+        aria-checked={on}
+        aria-labelledby="settings-icon-style-label"
+        aria-describedby="settings-icon-style-info"
+        onClick={() => {
+          writeIconStyle(on ? "noto" : "emoji");
+          setOn(!on);
+        }}
+      >
+        <span id="settings-icon-style-label" className="switch-label">
+          {ICON_STYLE_LABEL}
+        </span>
+        <span className="switch-state" aria-hidden="true">
+          {on ? t("On") : t("Off")}
+        </span>
+      </button>
+    </SettingRow>
+  );
+}
+
 /** Settings' tabs (the owner, 2026-10-28: "Settings = display, riding, account"; routes stay in Save & load). */
 export const SETTINGS_TABS = ["riding", "display", "account"] as const;
 export type SettingsTab = (typeof SETTINGS_TABS)[number];
@@ -700,6 +732,8 @@ export function SettingsSheet(props: SettingsSheetProps) {
         </div>
         {/* Icons only on the ride's side buttons (Stephen 2026-10-29: "allow icon only bubbles in settings"); off by default. */}
         <IconsOnlyRow />
+        {/* Note and stop icons: the app's Noto pictures (our default) or the phone's emoji (2026-11-10). */}
+        <IconStyleRow />
         {/* How much screen readers are told (the owner, 2026-10-11 20:23 UTC): Brief or Full; unset, Go is brief. Named
             Screen-reader detail (it was Announcements), so it is not taken for the ride's How much to say. */}
         <SettingRow
