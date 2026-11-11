@@ -200,6 +200,9 @@ import { planLegLines, routeDrawnLines } from "./lib/planLegs.ts";
 import { browserCompassEnv, browserCompassLifetime, watchCompassAwhile } from "./lib/compassHeading.ts";
 import { t } from "./lib/i18n.ts";
 import { onSharedTick } from "./lib/sharedTick.ts";
+import { noteIcon, noteRideText, type RouteNote } from "./lib/routeNotes.ts";
+import { iconArt, useIconStyle } from "./app/iconArt.tsx";
+import { NOTE_ICON_WORDS, NOTE_KIND_WORDS, notePinLabel } from "./lib/routeNotesPlan.ts";
 
 
 export type StressAvailability = "checking" | "available" | "unavailable";
@@ -228,6 +231,10 @@ export interface Frame {
 
 interface Props {
   points: LonLat[];
+  /** The route's notes (lib/routeNotes.ts), drawn as signs; none drawn where null or absent. */
+  routeNotes?: readonly RouteNote[] | null;
+  /** A note's sign pressed (Plan): its index in `routeNotes`. Absent, the signs are images, not buttons. */
+  onNotePress?: (index: number) => void;
   /** A spot to open at, at street level (`#at=lon,lat`, lib/planHash.ts atFromHash); else the usual view. */
   openAt?: LonLat | null;
   /** "Make it a loop" is on: the first point is the start and finish, the rest are stops (OWNER-DECISIONS 374). */
@@ -1847,6 +1854,9 @@ export function MapView(props: Props) {
     };
   }, []);
 
+  // The stops' icons (2026-11-10), so a changed one draws the pins again; and how icons are drawn (Settings).
+  const iconStyle = useIconStyle();
+  const stopIconsKey = props.points.map((p) => VIA_MARKS.iconOf(p) ?? "").join(",");
   // Markers follow the point list (and go back to it on markerReset).
   useEffect(() => {
     const map = mapRef.current;
@@ -1870,10 +1880,19 @@ export function MapView(props: Props) {
       if (kind === "start") element.innerHTML = START_GLYPH;
       else if (kind === "end") element.innerHTML = END_GLYPH;
       else element.textContent = text;
+      // A stop's icon (2026-11-10) beside its number; its name says the stop as before.
+      const stopIcon = kind === "via" ? VIA_MARKS.iconOf(point) : undefined;
+      if (stopIcon) {
+        const badge = document.createElement("span");
+        badge.className = "pin-icon";
+        badge.append(iconArt(stopIcon, iconStyle));
+        element.append(badge);
+      }
       element.setAttribute("role", "img");
-      // The warning ends with its own full stop.
-      const named = warning ? `${name}. ${warning}` : name;
-      const said = warning ? named : `${name}.`;
+      // The warning ends with its own full stop. A stop's icon (2026-11-10) is said after its name.
+      const shown = stopIcon ? `${name}, ${NOTE_ICON_WORDS[stopIcon]}` : name;
+      const named = warning ? `${shown}. ${warning}` : shown;
+      const said = warning ? named : `${shown}.`;
       // The name and warning only, and the keyboard's way to remove a via: a pin takes no focus, so
       // dragging and clicking are the title's, for a pointer (review a11y-8).
       element.setAttribute("aria-label", via ? `${said} Remove it from the Points list.` : said);
@@ -2013,7 +2032,7 @@ export function MapView(props: Props) {
       }
       return marker;
     });
-  }, markerDeps(props.points, props.markerReset, props.loopVias, props.pointWarnings));
+  }, [...markerDeps(props.points, props.markerReset, props.loopVias, props.pointWarnings), stopIconsKey, iconStyle]);
 
   // The ride's stops still ahead (2026-10-24): each stop's numbered pin and its name, anchored at the pin; via points
   // only shape the route, so they are not drawn. Said by name to a screen reader as an image.
@@ -2047,6 +2066,44 @@ export function MapView(props: Props) {
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rideStopsKey]);
+
+  // The route's notes (lib/routeNotes.ts; 2026-11-10): each its chosen icon, on a yellow disc for a caution and a white
+  // one ringed blue for a point of interest (the words say which to a screen reader). In
+  // Plan each is a button that opens the note to change or remove it; elsewhere an image named by its words.
+  const noteMarkers = useRef<Marker[]>([]);
+  const onNotePress = useRef(props.onNotePress);
+  onNotePress.current = props.onNotePress;
+  const pressable = !!props.onNotePress;
+  const notesKey = (props.routeNotes ?? []).map((n) => `${n.at.join(",")}|${n.kind}|${n.icon ?? ""}|${n.text}`).join(";");
+  useEffect(() => {
+    const map = mapRef.current;
+    noteMarkers.current.forEach((m) => m.remove());
+    noteMarkers.current = [];
+    if (!map || !props.routeNotes) return;
+    noteMarkers.current = props.routeNotes.map((note, index) => {
+      const element = document.createElement(pressable ? "button" : "div");
+      element.className = `route-note route-note-${note.kind}`;
+      if (pressable) {
+        (element as HTMLButtonElement).type = "button";
+        element.setAttribute("aria-label", notePinLabel(note));
+        element.title = `${NOTE_KIND_WORDS[note.kind]}: ${note.text}`;
+        element.addEventListener("click", (event) => {
+          event.stopPropagation();
+          onNotePress.current?.(index);
+        });
+      } else {
+        element.setAttribute("role", "img");
+        element.setAttribute("aria-label", noteRideText(note));
+      }
+      const sign = document.createElement("span");
+      sign.className = "route-note-sign";
+      sign.append(iconArt(noteIcon(note), iconStyle));
+      sign.setAttribute("aria-hidden", "true");
+      element.append(sign);
+      return new maplibregl.Marker({ element, anchor: "center" }).setLngLat(note.at).addTo(map);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [notesKey, pressable, iconStyle]);
 
   // The route line.
   useEffect(() => {
