@@ -2629,16 +2629,6 @@ class WorkZonesOut(Schema):
     )
 
 
-class LightButtonOut(Schema):
-    """A signal the route crosses that is read as needing its beg button
-    (`routemaker.junction_delay.signal_wait`; the owner, 2026-11-08): where along the
-    route, in the description's metres (`DescriptionEntryOut.from_m`), and its node."""
-
-    at_m: float
-    lon: float
-    lat: float
-
-
 class RouteBody(Schema):
     preset: PresetName
     variant: Literal[
@@ -2661,11 +2651,6 @@ class RouteBody(Schema):
     # and junction waits in place (`routemaker.time_marks`), for a ride's arrival times.
     # Null where the router gave no time; the front end then spreads the time evenly.
     time_marks: list[list[float]] | None = None
-    # The signals the route crosses that may need a button press for a light change (a
-    # suburban big or secondary road crossed from a path or a minor road, or a crossing the
-    # map tags `button_operated=yes`; the owner, 2026-11-08): Ride says "Light may need a
-    # button press" on the turn or crossing there. Empty where there are none. Additive.
-    light_buttons: list[LightButtonOut] = Field(default_factory=list)
     climb_m: float
     descent_m: float
     stress_m: StressOut
@@ -7710,6 +7695,8 @@ def _route_summary(row) -> dict:
         "id": row.pk,
         "name": row.name,
         "source": row.source,
+        # A fixed route (the owner, 2026-11-10): its line, never planned again.
+        "fixed": row.fixed,
         "distance_m": row.distance_m,
         "preset": (row.inputs or {}).get("preset", ""),
         "created_at": row.created_at.isoformat(),
@@ -7832,6 +7819,11 @@ def _add_saved_route(request, versions: bool = True, prune: bool = True):
     tags, problem = accounts.clean_tags(body.get("tags", []))
     if problem:
         return _stress_error(400, problem, field="tags")
+    # A fixed route (the owner, 2026-11-10): kept as its line, never planned again. Left out:
+    # by its via points (our default).
+    fixed = body.get("fixed", False)
+    if not isinstance(fixed, bool):
+        return _stress_error(400, "Say fixed as true or false.", field="fixed")
     # The route this one replaces (the MCP connector's save_route, on the rider's word): archived
     # once this one is saved, and pointing at it.
     replaces = body.get("replaces")
@@ -7872,6 +7864,8 @@ def _add_saved_route(request, versions: bool = True, prune: bool = True):
             "inputs": inputs,
             "answer": answer,
             "gpx": gpx,
+            # Left out (an older page): the route stays as it was, fixed or by its via points.
+            "fixed": fixed if "fixed" in body else None,
         }
         return _save_version(
             request, version_of, name.strip(), content, tags if "tags" in body else None
@@ -7916,6 +7910,7 @@ def _add_saved_route(request, versions: bool = True, prune: bool = True):
             inputs=inputs,
             answer=answer,
             gpx=gpx,
+            fixed=fixed,
             tags=tags,
         )
         if old is not None:
@@ -8221,7 +8216,7 @@ def connected_app_delete(request, grant_id: int):
 # Saved-route versions (core.models.SavedRouteVersion): a save naming `version_of` replaces that
 # route's line and inputs, keeping what it was as a version; restoring a version does the same
 # with the version's. The owner's own: another account's route is "not found", as above.
-VERSION_FIELDS = ("source", "line", "distance_m", "inputs", "answer", "gpx")
+VERSION_FIELDS = ("source", "line", "distance_m", "inputs", "answer", "gpx", "fixed")
 
 
 def _content_saved_at(row):
@@ -8320,6 +8315,8 @@ def _save_version(request, route_id: int, name: str, content: dict, tags=None):
         row = _locked_route(request, route_id)
         if row is None:
             return _stress_error(404, "That saved route is not in your account.", code="not_found")
+        if content.get("fixed") is None:
+            content = {**content, "fixed": row.fixed}
         changed = not _same_content(row, content)
         if changed:
             _replace_content(row, content)
@@ -8355,7 +8352,7 @@ def saved_route_versions(request, route_id: int):
         return _stress_error(404, "That saved route is not in your account.", code="not_found")
     kept = list(
         row.versions.order_by("-replaced_at", "-pk").values(
-            "id", "saved_at", "distance_m", "source", "inputs"
+            "id", "saved_at", "distance_m", "source", "inputs", "fixed"
         )
     )
     latest = {
@@ -8364,6 +8361,7 @@ def saved_route_versions(request, route_id: int):
         "distance_m": row.distance_m,
         "source": row.source,
         "inputs": row.inputs,
+        "fixed": row.fixed,
     }
     entries = [latest, *kept]
     out = []
@@ -8379,6 +8377,7 @@ def saved_route_versions(request, route_id: int):
                 "saved_at": entry["saved_at"].isoformat(),
                 "distance_m": entry["distance_m"],
                 "source": entry["source"],
+                "fixed": entry["fixed"],
                 "change": change,
             }
         )

@@ -72,10 +72,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Busy crossing, no signal.": "भीड़भाड़ वाला चौराहा, सिग्नल नहीं है।",
   "Busy crossing.": "भीड़भाड़ वाला चौराहा।",
   "Busy junction.": "भीड़भाड़ वाला जंक्शन।",
-  // A signal that may need a button press (the owner, 2026-11-08): the card's note and the words said.
-  // Drafted by Claude: FLAGGED for review by a native speaker.
-  "Light may need a button press": "सिग्नल के लिए बटन दबाना पड़ सकता है",
-  "Button for the light.": "सिग्नल का बटन।",
   "Busy junction at a signal.": "भीड़भाड़ वाला जंक्शन, सिग्नल है।",
   "Busy junction at a stop sign.": "भीड़भाड़ वाला जंक्शन, स्टॉप साइन है।",
   "Busy junction, no signal.": "भीड़भाड़ वाला जंक्शन, सिग्नल नहीं है।",
@@ -2147,4 +2143,15 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Delete": "हटाएँ",
   "Delete {name}": "{name} हटाएँ",
   "Deleted {name}.": "{name} हटाया गया।",
+  // Fixed saved routes (the owner, 2026-11-10).
+  "Fixed route": "स्थिर मार्ग",
+  "Keep this exact line. Never re-routed.": "यही सटीक रेखा रखें। रास्ता कभी दोबारा नहीं बदला जाएगा।",
+  "Fixed": "स्थिर",
+  "Opened \"{name}\", a fixed route: it stays as saved.": "\"{name}\" खोला गया, एक स्थिर मार्ग: यह वैसा ही रहता है जैसा सहेजा गया था।",
+  // Route notes (lib/routeNotes.ts, 2026-11-10): the rider's own words go in {note}, untranslated.
+  "Caution: {note}.": "सावधान: {note}।",
+  "Note: {note}.": "नोट: {note}।",
+  "Phone emoji on map signs": "मानचित्र चिह्नों पर फ़ोन के इमोजी",
+  "Notes and stops on the map show your phone's own emoji, not the app's pictures. Kept on this device.": "मानचित्र पर नोट और पड़ाव ऐप की तस्वीरों के बजाय आपके फ़ोन के इमोजी दिखाते हैं। इसी डिवाइस पर रखा जाता है।",
+  "emoji signs": "इमोजी चिह्न",
 };

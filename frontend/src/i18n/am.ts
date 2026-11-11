@@ -72,10 +72,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Busy crossing, no signal.": "የተጨናነቀ መገናኛ፣ የትራፊክ መብራት የለም።",
   "Busy crossing.": "የተጨናነቀ መገናኛ።",
   "Busy junction.": "የተጨናነቀ መጋጠሚያ።",
-  // A signal that may need a button press (the owner, 2026-11-08): the card's note and the words said.
-  // Drafted by Claude: FLAGGED for review by a native speaker.
-  "Light may need a button press": "የትራፊክ መብራቱ አዝራር መጫን ሊያስፈልገው ይችላል",
-  "Button for the light.": "ለመብራቱ አዝራሩን ይጫኑ።",
   "Busy junction at a signal.": "የተጨናነቀ መጋጠሚያ፣ የትራፊክ መብራት አለ።",
   "Busy junction at a stop sign.": "የተጨናነቀ መጋጠሚያ፣ የማቆሚያ ምልክት አለ።",
   "Busy junction, no signal.": "የተጨናነቀ መጋጠሚያ፣ የትራፊክ መብራት የለም።",
@@ -2147,4 +2143,15 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Delete": "ሰርዝ",
   "Delete {name}": "{name}ን ሰርዝ",
   "Deleted {name}.": "{name} ተሰርዟል።",
+  // Fixed saved routes (the owner, 2026-11-10).
+  "Fixed route": "ቋሚ መንገድ",
+  "Keep this exact line. Never re-routed.": "ይህን መስመር እንዳለ ያስቀምጣል። መንገዱ ፈጽሞ አይቀየርም።",
+  "Fixed": "ቋሚ",
+  "Opened \"{name}\", a fixed route: it stays as saved.": "\"{name}\" ተከፍቷል፣ ቋሚ መንገድ ነው፦ እንደተቀመጠ ይቆያል።",
+  // Route notes (lib/routeNotes.ts, 2026-11-10): the rider's own words go in {note}, untranslated.
+  "Caution: {note}.": "ጥንቃቄ፦ {note}።",
+  "Note: {note}.": "ማስታወሻ፦ {note}።",
+  "Phone emoji on map signs": "በካርታ ምልክቶች ላይ የስልክ ኢሞጂ",
+  "Notes and stops on the map show your phone's own emoji, not the app's pictures. Kept on this device.": "በካርታው ላይ ያሉ ማስታወሻዎችና ማቆሚያዎች የመተግበሪያውን ምስሎች ሳይሆን የስልክዎን ኢሞጂ ያሳያሉ። በዚህ መሣሪያ ላይ ይቀመጣል።",
+  "emoji signs": "የኢሞጂ ምልክቶች",
 };

@@ -856,7 +856,37 @@ def _one_turn_per_junction(pieces: list[Piece], along: list[float]) -> list[Piec
         for i in cluster:
             if i != keep:
                 out[i] = dataclasses.replace(pieces[i], turn=0.0, fork=None)
+        out[keep] = _junction_reading(pieces, cluster, keep)
+        if out[keep].fork is not None and pieces[keep].fork is None:
+            for i in cluster:
+                if i != keep and pieces[i].fork is not None:
+                    out[i] = dataclasses.replace(out[i], others=None)
+                    break
     return out
+
+
+def _junction_reading(pieces: list[Piece], cluster: list[int], keep: int) -> Piece:
+    """The piece that keeps a junction's turn (`_one_turn_per_junction`), with a fork read
+    at one of its other nodes (`_fork_of`, the line read through them all, so the same
+    turn) where the kept node read none, and that node's other ways (moved off it there,
+    so no way is counted twice). Dropped with that node's turn, the junction's fork went
+    unsaid (the owner, 2026-11-10, on the Bethesda Trolley Trail at Charles Street: the
+    trail bears right off the crosswalk where a sidepath carries straight on along Old
+    Georgetown Road, 1 m past the node where the crosswalk ends; "a very common turn to
+    miss"). Never on a roundabout, whose exits are counted from each node's own ways."""
+    kept = pieces[keep]
+    if kept.fork is not None or any(_on_roundabout(pieces[i]) for i in cluster):
+        return kept
+    mate = next((i for i in cluster if i != keep and pieces[i].fork is not None), None)
+    if mate is None:
+        return kept
+    return dataclasses.replace(
+        kept, fork=pieces[mate].fork, others=(kept.others or ()) + (pieces[mate].others or ())
+    )
+
+
+def _on_roundabout(piece: Piece) -> bool:
+    return bool(piece.road and piece.road.roundabout)
 
 
 def _line_point(shape: list, at: int, step: int, nodes: frozenset[int]) -> tuple:
@@ -3452,22 +3482,6 @@ def junction_waits(
         stop_extra_s=stop_extra,
         when=when,
     )
-
-
-def light_buttons(found_waits, route_m: float, traced_m: float) -> list[dict]:
-    """The signals read as needing their beg button (`junction_delay.signal_wait`), for
-    Ride, in the description's metres (the traced metres at the router's length): at the
-    button signal's own node (`Wait.button_at`), not the run's first junction, which can be
-    a stop line or the other carriageway up to 45 m short of it (the signal review of
-    2026-11-08)."""
-    scale = route_m / traced_m if traced_m > 0 else 1.0
-    out = []
-    for w in found_waits:
-        if not w.button:
-            continue
-        m, lon, lat = w.button_at if w.button_at is not None else (w.m, w.lon, w.lat)
-        out.append({"at_m": round(m * scale, 1), "lon": round(lon, 6), "lat": round(lat, 6)})
-    return out
 
 
 def _outside_dc(piece) -> bool:
@@ -6764,8 +6778,8 @@ def _plan(
         )
         # The time its junctions cost the rider, which the router's own time leaves out
         # (`routemaker.junction_delay`): part of the time shown.
-        # Outside the major cities a signal across a big road waits longer, and one read as
-        # needing its beg button is marked for Ride (the owner, 2026-11-08).
+        # Outside the major cities a signal across a big road waits longer (the owner,
+        # 2026-11-08).
         found_waits = junction_waits(raw_junctions, beacons, events, when=when)
         waits = [(w.m, w.seconds) for w in found_waits]
         delay = float(sum(wait for _m, wait in waits))
@@ -6823,9 +6837,6 @@ def _plan(
             "distance_m": round(float(summary.get("length", 0.0)) * 1000.0, 1),
             "duration_s": round(route_s + delay + walk_change_s, 1),
             "junction_delay_s": round(delay, 1),
-            # The signals read as needing their beg button (`junction_delay.signal_wait`), in
-            # the description's metres (the traced metres at the router's length), for Ride.
-            "light_buttons": light_buttons(found_waits, route_m, traced_m),
             # Where along the line that time falls, hills and junction waits in place, for a
             # ride's arrival times (`routemaker.time_marks`).
             "time_marks": time_marks.time_marks(router_at, waits, traced_m),

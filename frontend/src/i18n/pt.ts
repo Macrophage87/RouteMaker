@@ -72,10 +72,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Busy crossing, no signal.": "Cruzamento movimentado, sem semáforo.",
   "Busy crossing.": "Cruzamento movimentado.",
   "Busy junction.": "Interseção movimentada.",
-  // A signal that may need a button press (the owner, 2026-11-08): the card's note and the words said.
-  // Drafted by Claude: FLAGGED for review by a native speaker.
-  "Light may need a button press": "O semáforo pode precisar que aperte o botão",
-  "Button for the light.": "Botão do semáforo.",
   "Busy junction at a signal.": "Interseção movimentada, com semáforo.",
   "Busy junction at a stop sign.": "Interseção movimentada, com placa de pare.",
   "Busy junction, no signal.": "Interseção movimentada, sem semáforo.",
@@ -2147,4 +2143,15 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Delete": "Excluir",
   "Delete {name}": "Excluir {name}",
   "Deleted {name}.": "{name} excluído.",
+  // Fixed saved routes (the owner, 2026-11-10).
+  "Fixed route": "Rota fixa",
+  "Keep this exact line. Never re-routed.": "Mantém esta linha exata. Nunca recalculada.",
+  "Fixed": "Fixa",
+  "Opened \"{name}\", a fixed route: it stays as saved.": "\"{name}\" aberta, uma rota fixa: fica como foi salva.",
+  // Route notes (lib/routeNotes.ts, 2026-11-10): the rider's own words go in {note}, untranslated.
+  "Caution: {note}.": "Atenção: {note}.",
+  "Note: {note}.": "Nota: {note}.",
+  "Phone emoji on map signs": "Emojis do telefone nos sinais do mapa",
+  "Notes and stops on the map show your phone's own emoji, not the app's pictures. Kept on this device.": "As notas e paradas no mapa mostram os emojis do seu telefone, não as imagens do aplicativo. Fica guardado neste aparelho.",
+  "emoji signs": "sinais com emoji",
 };

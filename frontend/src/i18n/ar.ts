@@ -72,10 +72,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Busy crossing, no signal.": "تقاطع مزدحم، لا توجد إشارة مرور.",
   "Busy crossing.": "تقاطع مزدحم.",
   "Busy junction.": "ملتقى طرق مزدحم.",
-  // A signal that may need a button press (the owner, 2026-11-08): the card's note and the words said.
-  // Drafted by Claude: FLAGGED for review by a native speaker.
-  "Light may need a button press": "قد تحتاج الإشارة إلى الضغط على الزر",
-  "Button for the light.": "زر الإشارة.",
   "Busy junction at a signal.": "ملتقى طرق مزدحم، توجد إشارة مرور.",
   "Busy junction at a stop sign.": "ملتقى طرق مزدحم، توجد علامة توقف.",
   "Busy junction, no signal.": "ملتقى طرق مزدحم، لا توجد إشارة مرور.",
@@ -2147,4 +2143,15 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Delete": "حذف",
   "Delete {name}": "احذف {name}",
   "Deleted {name}.": "تم حذف {name}.",
+  // Fixed saved routes (the owner, 2026-11-10).
+  "Fixed route": "مسار ثابت",
+  "Keep this exact line. Never re-routed.": "يحتفظ بهذا الخط كما هو. لا يُعاد تخطيط المسار أبدًا.",
+  "Fixed": "ثابت",
+  "Opened \"{name}\", a fixed route: it stays as saved.": "فُتح \"{name}\"، وهو مسار ثابت: يبقى كما حُفظ.",
+  // Route notes (lib/routeNotes.ts, 2026-11-10): the rider's own words go in {note}, untranslated.
+  "Caution: {note}.": "تنبيه: {note}.",
+  "Note: {note}.": "ملاحظة: {note}.",
+  "Phone emoji on map signs": "رموز الهاتف التعبيرية على علامات الخريطة",
+  "Notes and stops on the map show your phone's own emoji, not the app's pictures. Kept on this device.": "تظهر الملاحظات والتوقفات على الخريطة برموز هاتفك التعبيرية، لا بصور التطبيق. يُحفظ على هذا الجهاز.",
+  "emoji signs": "علامات الرموز التعبيرية",
 };

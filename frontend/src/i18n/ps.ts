@@ -72,10 +72,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Busy crossing, no signal.": "ګڼه ګوڼه لرونکې څلورلارې، ټرافيکي څراغ نه لري.",
   "Busy crossing.": "ګڼه ګوڼه لرونکې څلورلارې.",
   "Busy junction.": "ګڼه ګوڼه لرونکی تقاطع.",
-  // A signal that may need a button press (the owner, 2026-11-08): the card's note and the words said.
-  // Drafted by Claude: FLAGGED for review by a native speaker.
-  "Light may need a button press": "ښايي ترافيکي څراغ ته تڼۍ کېکاږل پکار وي",
-  "Button for the light.": "د څراغ تڼۍ.",
   "Busy junction at a signal.": "ګڼه ګوڼه لرونکی تقاطع، ټرافيکي څراغ لري.",
   "Busy junction at a stop sign.": "ګڼه ګوڼه لرونکی تقاطع، د درېدو نښه لري.",
   "Busy junction, no signal.": "ګڼه ګوڼه لرونکی تقاطع، ټرافيکي څراغ نه لري.",
@@ -2147,4 +2143,15 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Delete": "ړنګول",
   "Delete {name}": "{name} ړنګ کړئ",
   "Deleted {name}.": "{name} ړنګ شو.",
+  // Fixed saved routes (the owner, 2026-11-10).
+  "Fixed route": "ثابته لاره",
+  "Keep this exact line. Never re-routed.": "همدا کرښه په سمه توګه ساتي. لاره هېڅکله بیا نه جوړېږي.",
+  "Fixed": "ثابته",
+  "Opened \"{name}\", a fixed route: it stays as saved.": "\"{name}\" پرانیستل شوه، یوه ثابته لاره: لکه څنګه چې خوندي شوې وه پاتې کېږي.",
+  // Route notes (lib/routeNotes.ts, 2026-11-10): the rider's own words go in {note}, untranslated.
+  "Caution: {note}.": "پام: {note}.",
+  "Note: {note}.": "یادښت: {note}.",
+  "Phone emoji on map signs": "د نقشې په نښو د تلیفون ایموجي",
+  "Notes and stops on the map show your phone's own emoji, not the app's pictures. Kept on this device.": "په نقشه کې یادښتونه او تمځایونه د اپ د انځورونو پر ځای ستاسو د تلیفون ایموجي ښيي. په دې وسیله ساتل کېږي.",
+  "emoji signs": "د ایموجي نښې",
 };

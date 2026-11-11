@@ -72,10 +72,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Busy crossing, no signal.": "تقاطع شلوغ، چراغ راهنمایی ندارد.",
   "Busy crossing.": "تقاطع شلوغ.",
   "Busy junction.": "محل اتصال شلوغ.",
-  // A signal that may need a button press (the owner, 2026-11-08): the card's note and the words said.
-  // Drafted by Claude: FLAGGED for review by a native speaker.
-  "Light may need a button press": "شاید چراغ راهنمایی با فشار دکمه سبز شود",
-  "Button for the light.": "دکمهٔ چراغ.",
   "Busy junction at a signal.": "محل اتصال شلوغ، چراغ راهنمایی دارد.",
   "Busy junction at a stop sign.": "محل اتصال شلوغ، تابلوی ایست دارد.",
   "Busy junction, no signal.": "محل اتصال شلوغ، چراغ راهنمایی ندارد.",
@@ -2147,4 +2143,15 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Delete": "حذف",
   "Delete {name}": "حذف {name}",
   "Deleted {name}.": "{name} حذف شد.",
+  // Fixed saved routes (the owner, 2026-11-10).
+  "Fixed route": "مسیر ثابت",
+  "Keep this exact line. Never re-routed.": "همین خط را دقیقاً نگه می‌دارد. مسیر هرگز دوباره برنامه‌ریزی نمی‌شود.",
+  "Fixed": "ثابت",
+  "Opened \"{name}\", a fixed route: it stays as saved.": "«{name}» باز شد، یک مسیر ثابت: همان‌طور که ذخیره شده می‌ماند.",
+  // Route notes (lib/routeNotes.ts, 2026-11-10): the rider's own words go in {note}, untranslated.
+  "Caution: {note}.": "احتیاط: {note}.",
+  "Note: {note}.": "یادداشت: {note}.",
+  "Phone emoji on map signs": "ایموجی گوشی روی نشانه‌های نقشه",
+  "Notes and stops on the map show your phone's own emoji, not the app's pictures. Kept on this device.": "یادداشت‌ها و توقف‌ها روی نقشه ایموجی گوشی شما را نشان می‌دهند، نه تصویرهای برنامه. روی همین دستگاه نگه داشته می‌شود.",
+  "emoji signs": "نشانه‌های ایموجی",
 };

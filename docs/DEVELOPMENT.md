@@ -4156,7 +4156,8 @@ two do not replace each other. Stop and yield signs reach the router only throug
 `/locate`, so the model reads who gives way from the roads' classes, not from the signs; no
 map rebuild is needed.
 
-**Suburban signals and beg buttons (the owner, 2026-11-08).** "Along stroads that you'd find
+**Suburban signals and beg buttons (the owner, 2026-11-08; beg-button pricing switched off
+2026-11-10, see below).** "Along stroads that you'd find
 in many of the suburbs, the light cycles are a lot longer than what you'd find in DC." In the
 owner's rides, the stopped time at a red was a median of 19 s at 4 signals on the
 District's and Baltimore's grids, 52 s at 21 suburban signals and 66 s (mean 68 s) at the 16
@@ -4244,16 +4245,16 @@ what the junction model charges for a stop sign there over the signal
 (`intersections.stop_extra_ft`, from the model's own figures at a junction riders have rated,
 whose rating costs the same whatever the control, hunt J3-4; priced in the ranking's units by `refine.stop_wait_s_per_ft`:
 the model's feet at `quiet_cost` x `weight` a metre, a wait at `QUIET_COST_FACTOR` x
-`wait_weight` a second), and never below the signal's own ranked wait. The answer lists such
-signals in `light_buttons` (in the description's metres, at the button signal's own node, not
-the first junction of its run: `Wait.button_at`), and Ride shows "Light may need a
-button press" on the turn or crossing there and ends its first warning with "Button for the
-light." (`navigate.ts` `withButtons`; a signal with no cue near gets a short cue of its own).
-That short cue leads the card only on a stretch with nothing else near: where a turn or other lead
-cue comes within `ADVANCE_MIN_M` (150 m) after it, the card leads with that cue and shows the note
-under it (`nextAction`, `buttonBefore`), and Where am I always names the next turn, never the note;
-a jog's two turns are joined across it (`joinJogs`; the 2026-11-08 hunt, round 2, R2-2 and R2-3).
-The 150 m reach is Claude's pick for that fix (not measured; the owner has not ruled on it).
+`wait_weight` a second), and never below the signal's own ranked wait. Ride says nothing at
+such a signal: v0.23.0's "Light may need a button press" note (the answer's `light_buttons`)
+was removed on 2026-11-10 at the owner's word ("Remove the 'push button' to cross. It generally
+only gets the ones that are on timers."), as the inferred buttons are mostly fixed-time
+signals. The owner then chose to drop the ranking's penalty too ("Remove the cue and the
+penalty", 2026-11-10): `junction_delay.BUTTONS_PRICED` is off, so every crossing read above
+(inferred or tagged `button_operated`) ranks as the plain signal it is, on every ride type,
+and Road Bike's hold of a plain light below the button (`_signal`) no longer applies. The
+button rule in this section is kept in the code, switched off, in case better button data
+turns up; the `button_operated` column is still built.
 The `button_operated` tag reaches the planner through `segment.button_operated`
 (`pipeline.signals.button_ways`: trail-class ways tagged so, crossing ways through a node
 tagged so, and paths ending at one; hunt J2-3: a long trail passing through one such node had
@@ -5218,7 +5219,8 @@ The third routing hunt's owner calls, as Stephen decided them on 2026-11-08:
 - **Tandem beg buttons** (C3-4, J3-2): "That should be at the 10x. It's really obnoxious to try
   to navigate to a button on a tandem." Tandem keeps Road Bike's 600 s button price, now by name
   (`presets.ROAD_BIKE_BUTTON_RIDES`), not by its wait weight above 1 ("Suburban signals and beg
-  buttons", above). Code change.
+  buttons", above). Code change. Switched off with every button price on 2026-11-10
+  (`junction_delay.BUTTONS_PRICED`).
 - **Weekend e-bike rides** (C3-5): "Yes", planned twice ("Weekend e-bike rides", above). Code
   change.
 - **Easy MTB dirt timing** (C3-7): "Yes", at Mountain Bike's 6 mph ("Easy MTB trails", above).
@@ -6931,9 +6933,8 @@ loop's way home into the way out (a re-plan's points begin at the rider, so `end
 sees the loop). End ride hands App the ride as it stands (`onEnd`'s `riding`: its route, points, dials
 and that state), and Keep riding carries on with it rather than the route as it was at Start; not on a
 Bikeshare or transit trip, a Rebalance Ride's chosen dock or a shared ride, which keep their own.
-A way back joined to the planned route (`lib/rejoin.ts` `joinRoutes`) carries the button signals
-(`light_buttons`) in line metres as the description is, and either part's `dirt_trails` and
-`dirt_closed` (R2-1, R2-7).
+A way back joined to the planned route (`lib/rejoin.ts` `joinRoutes`) carries either part's
+`dirt_trails` and `dirt_closed` (R2-7).
 
 **A ride's re-plans are planned for now** (2026-11-08 hunt, round 3, R3-1): every request a ride makes on
 its leg (`lib/rideTrip.ts` `legDials`: off-route, Re-plan from here, Calmer and Flatter, detours, the

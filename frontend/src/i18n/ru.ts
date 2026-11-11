@@ -72,10 +72,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Busy crossing, no signal.": "Оживлённый перекрёсток, без светофора.",
   "Busy crossing.": "Оживлённый перекрёсток.",
   "Busy junction.": "Оживлённое пересечение.",
-  // A signal that may need a button press (the owner, 2026-11-08): the card's note and the words said.
-  // Drafted by Claude: FLAGGED for review by a native speaker.
-  "Light may need a button press": "Возможно, на светофоре нужно нажать кнопку",
-  "Button for the light.": "Кнопка светофора.",
   "Busy junction at a signal.": "Оживлённое пересечение, светофор.",
   "Busy junction at a stop sign.": "Оживлённое пересечение, знак «Стоп».",
   "Busy junction, no signal.": "Оживлённое пересечение, без светофора.",
@@ -2147,4 +2143,15 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Delete": "Удалить",
   "Delete {name}": "Удалить {name}",
   "Deleted {name}.": "{name} удалён.",
+  // Fixed saved routes (the owner, 2026-11-10).
+  "Fixed route": "Неизменный маршрут",
+  "Keep this exact line. Never re-routed.": "Сохраняет точно эту линию. Маршрут не перестраивается.",
+  "Fixed": "Неизменный",
+  "Opened \"{name}\", a fixed route: it stays as saved.": "Открыт «{name}», неизменный маршрут: он остаётся таким, как сохранён.",
+  // Route notes (lib/routeNotes.ts, 2026-11-10): the rider's own words go in {note}, untranslated.
+  "Caution: {note}.": "Осторожно: {note}.",
+  "Note: {note}.": "Заметка: {note}.",
+  "Phone emoji on map signs": "Эмодзи телефона на значках карты",
+  "Notes and stops on the map show your phone's own emoji, not the app's pictures. Kept on this device.": "Заметки и остановки на карте показываются эмодзи вашего телефона, а не картинками приложения. Хранится на этом устройстве.",
+  "emoji signs": "значки эмодзи",
 };

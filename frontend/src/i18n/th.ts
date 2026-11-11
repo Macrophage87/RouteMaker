@@ -72,10 +72,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Busy crossing, no signal.": "ทางแยกรถมาก ไม่มีไฟสัญญาณ",
   "Busy crossing.": "ทางแยกรถมาก",
   "Busy junction.": "จุดตัดรถมาก",
-  // A signal that may need a button press (the owner, 2026-11-08): the card's note and the words said.
-  // Drafted by Claude: FLAGGED for review by a native speaker.
-  "Light may need a button press": "สัญญาณไฟอาจต้องกดปุ่ม",
-  "Button for the light.": "กดปุ่มสัญญาณไฟ",
   "Busy junction at a signal.": "จุดตัดรถมาก มีไฟสัญญาณ",
   "Busy junction at a stop sign.": "จุดตัดรถมาก มีป้ายหยุด",
   "Busy junction, no signal.": "จุดตัดรถมาก ไม่มีไฟสัญญาณ",
@@ -2147,4 +2143,15 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Delete": "ลบ",
   "Delete {name}": "ลบ {name}",
   "Deleted {name}.": "ลบ {name} แล้ว",
+  // Fixed saved routes (the owner, 2026-11-10).
+  "Fixed route": "เส้นทางคงที่",
+  "Keep this exact line. Never re-routed.": "เก็บเส้นนี้ไว้ตามเดิม ไม่วางเส้นทางใหม่",
+  "Fixed": "คงที่",
+  "Opened \"{name}\", a fixed route: it stays as saved.": "เปิด \"{name}\" แล้ว เป็นเส้นทางคงที่: คงไว้ตามที่บันทึก",
+  // Route notes (lib/routeNotes.ts, 2026-11-10): the rider's own words go in {note}, untranslated.
+  "Caution: {note}.": "ระวัง: {note}",
+  "Note: {note}.": "หมายเหตุ: {note}",
+  "Phone emoji on map signs": "อีโมจิของโทรศัพท์บนป้ายแผนที่",
+  "Notes and stops on the map show your phone's own emoji, not the app's pictures. Kept on this device.": "โน้ตและจุดแวะบนแผนที่จะแสดงอีโมจิของโทรศัพท์คุณ แทนภาพของแอป เก็บไว้ในอุปกรณ์นี้",
+  "emoji signs": "ป้ายอีโมจิ",
 };

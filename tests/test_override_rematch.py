@@ -557,6 +557,7 @@ def test_every_row_of_every_override_file_carries_a_valid_fingerprint() -> None:
         - 1  # River Road 987375476, retired: OSM merged it (rebuild 2026-11-03)
         + 175  # Arlington Bike Comfort Index review (the owner, 2026-11-03)
         + 671  # Baltimore City rating review (the owner, 2026-11-04)
+        + 9  # North Bethesda bike lanes, replacing the 9 rows it retires (the owner, 2026-11-10)
     )
     for name, document in documents.items():
         if name == "2026-10-06-owner-crosswalk-links.json":
@@ -613,6 +614,7 @@ def test_the_override_counts_the_owner_asked_about() -> None:
         - 1  # River Road 987375476, retired: OSM merged it (rebuild 2026-11-03)
         + 175  # Arlington Bike Comfort Index review (the owner, 2026-11-03)
         + 671  # Baltimore City rating review (the owner, 2026-11-04)
+        + 9  # North Bethesda bike lanes, replacing the 9 rows it retires (the owner, 2026-11-10)
     )
 
 

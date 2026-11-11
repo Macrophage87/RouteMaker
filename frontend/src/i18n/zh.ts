@@ -72,10 +72,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Busy crossing, no signal.": "车流量大的路口，没有信号灯。",
   "Busy crossing.": "车流量大的路口。",
   "Busy junction.": "车流量大的交叉口。",
-  // A signal that may need a button press (the owner, 2026-11-08): the card's note and the words said.
-  // Drafted by Claude: FLAGGED for review by a native speaker.
-  "Light may need a button press": "信号灯可能需要按按钮",
-  "Button for the light.": "信号灯按钮。",
   "Busy junction at a signal.": "车流量大的交叉口，有信号灯。",
   "Busy junction at a stop sign.": "车流量大的交叉口，有停车标志。",
   "Busy junction, no signal.": "车流量大的交叉口，没有信号灯。",
@@ -2147,4 +2143,15 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Delete": "删除",
   "Delete {name}": "删除{name}",
   "Deleted {name}.": "已删除{name}。",
+  // Fixed saved routes (the owner, 2026-11-10).
+  "Fixed route": "固定路线",
+  "Keep this exact line. Never re-routed.": "保留这条确切路线，绝不重新规划。",
+  "Fixed": "固定",
+  "Opened \"{name}\", a fixed route: it stays as saved.": "已打开固定路线“{name}”：保持保存时的样子。",
+  // Route notes (lib/routeNotes.ts, 2026-11-10): the rider's own words go in {note}, untranslated.
+  "Caution: {note}.": "注意：{note}。",
+  "Note: {note}.": "备注：{note}。",
+  "Phone emoji on map signs": "地图标记使用手机表情符号",
+  "Notes and stops on the map show your phone's own emoji, not the app's pictures. Kept on this device.": "地图上的备注和停靠点显示手机自带的表情符号，而不是应用的图片。保存在此设备上。",
+  "emoji signs": "表情符号标记",
 };

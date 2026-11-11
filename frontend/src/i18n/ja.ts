@@ -72,10 +72,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Busy crossing, no signal.": "交通量の多い交差点、信号なし。",
   "Busy crossing.": "交通量の多い交差点。",
   "Busy junction.": "交通量の多い分岐点。",
-  // A signal that may need a button press (the owner, 2026-11-08): the card's note and the words said.
-  // Drafted by Claude: FLAGGED for review by a native speaker.
-  "Light may need a button press": "押しボタン式の信号かもしれません",
-  "Button for the light.": "信号の押しボタン。",
   "Busy junction at a signal.": "交通量の多い分岐点、信号あり。",
   "Busy junction at a stop sign.": "交通量の多い分岐点、一時停止標識あり。",
   "Busy junction, no signal.": "交通量の多い分岐点、信号なし。",
@@ -2147,4 +2143,15 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Delete": "削除",
   "Delete {name}": "{name}を削除",
   "Deleted {name}.": "{name}を削除しました。",
+  // Fixed saved routes (the owner, 2026-11-10).
+  "Fixed route": "固定ルート",
+  "Keep this exact line. Never re-routed.": "この線をそのまま保存します。ルートを引き直しません。",
+  "Fixed": "固定",
+  "Opened \"{name}\", a fixed route: it stays as saved.": "固定ルート「{name}」を開きました。保存したままです。",
+  // Route notes (lib/routeNotes.ts, 2026-11-10): the rider's own words go in {note}, untranslated.
+  "Caution: {note}.": "注意：{note}。",
+  "Note: {note}.": "メモ：{note}。",
+  "Phone emoji on map signs": "地図の目印にスマホの絵文字",
+  "Notes and stops on the map show your phone's own emoji, not the app's pictures. Kept on this device.": "地図上のメモと立ち寄り先に、アプリの絵ではなくスマホの絵文字を表示します。この端末に保存されます。",
+  "emoji signs": "絵文字の目印",
 };
