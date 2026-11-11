@@ -11,6 +11,7 @@ import { haversineM, type LonLat } from "./geo.ts";
 import { spokenDistance } from "./format.ts";
 import { cueParts } from "./cueShown.ts";
 import {
+  ALONGSIDE_M,
   heldProgressM,
   voidsAutoReplan,
   OFF_SURE_M,
@@ -1112,9 +1113,10 @@ test("a late automatic re-plan is dropped once the rider is back on the planned 
   let auto: number | null = null;
   let mine: number | null = null;
   const events: string[] = [];
-  // 35 m beside the line for 8 s (a sidewalk round a work-zone fence), then back on it.
+  // Beyond ALONGSIDE_M of the line for 8 s (a block over round a work zone), then back on it. (35 m beside it, a
+  // sidewalk round a work-zone fence, is a parallel way now: followed, never off route.)
   const path: LonLat[] = [];
-  for (let m = 405; m <= 470; m += 5) path.push(at(m, 35));
+  for (let m = 405; m <= 470; m += 5) path.push(at(m, ALONGSIDE_M + 20));
   for (let m = 475; m <= 520; m += 5) path.push(at(m, 0));
   for (const p of path) {
     const out = step(model, s, fix(p), "full");
@@ -3149,4 +3151,83 @@ test("crossing: one within 30 m of a cue that names the road is left to it; besi
   const kept = model("New Hampshire Avenue");
   assert.equal(kept.cues.filter((c) => c.kind === "crossing").length, 1);
   assert.deepEqual(kept.cues.map((c) => c.index), kept.cues.map((_c, i) => i));
+});
+
+test("a parallel way beside the line is followed, not re-routed (the owner, 2026-11-11: Mall gravel against Madison Drive)", () => {
+  const model = rideModel(lRoute());
+  // On A Street, then bearing off to a way 60 m north of it and east along that: said once, never off route, no cue
+  // meanwhile.
+  const r = rideThrough(model, [at(50, 0), at(100, 0), at(230, 60), at(900, 60)]);
+  assert.equal(r.events.some((e) => e.kind === "off-route"), false, r.events.map((e) => e.spoken).join(" | "));
+  assert.deepEqual(
+    r.events.filter((e) => e.kind === "alongside").map((e) => e.spoken),
+    [OFF_ROUTE_KEPT_SAID],
+  );
+  assert.equal(r.state.off, false);
+  assert.equal(r.state.alongside, true);
+  assert.ok(Math.abs((r.state.progressM ?? 0) - 900) < 6, `${r.state.progressM}`);
+  assert.equal(r.events.some((e) => e.kind === "cue"), false, "cues held while alongside");
+  // Stopped at a light alongside for 20 s (no direction): still alongside, not off.
+  let s = r.state;
+  for (let i = 0; i < 20; i += 1) s = step(model, s, fix(at(900, 60), { speedMs: 0 }), "full").state;
+  assert.equal(s.off, false);
+  assert.equal(s.alongside, true);
+  // Where the ways meet, back on the line: the turn is said.
+  const back = rideThrough(model, [at(900, 60), at(990, 10), at(1000, 0), at(1000, 100)], s);
+  assert.equal(back.state.alongside, undefined);
+  assert.ok(back.events.some((e) => e.cue?.street === "B Street"), back.events.map((e) => e.spoken).join(" | "));
+});
+
+test("a way that leaves the line's direction, or runs farther off than ALONGSIDE_M, is off route as before", () => {
+  const model = rideModel(lRoute());
+  const north = rideThrough(model, [at(50, 0), at(300, 0), at(300, 400)]);
+  assert.ok(north.events.some((e) => e.kind === "off-route"));
+  const far = rideThrough(model, [at(50, 0), at(100, 0), at(110, ALONGSIDE_M + 40), at(900, ALONGSIDE_M + 40)]);
+  assert.ok(far.events.some((e) => e.kind === "off-route"));
+  assert.equal(far.state.alongside, undefined);
+});
+
+test("off route on the way over, then riding the parallel way the line's way: no longer off, so no re-route pulls back", () => {
+  const model = rideModel(lRoute());
+  // A slow, long way over (off route on the way), then east 60 m north of the line.
+  const over = rideThrough(model, [at(50, 0), at(100, 0), at(105, 60)], startState(), { speedMs: 1 }, 2);
+  assert.equal(over.state.off, true, "off on the way over");
+  const along = rideThrough(model, [at(105, 60), at(400, 60)], over.state);
+  assert.equal(along.state.off, false);
+  assert.equal(along.state.alongside, true);
+  assert.ok(Math.abs((along.state.progressM ?? 0) - 400) < 6, `${along.state.progressM}`);
+});
+
+test("alongside: GPS jitter at the threshold's edge says it once; the end is still reached beside it (#1165 review)", () => {
+  const model = rideModel(lRoute());
+  const start = rideThrough(model, [at(50, 0), at(100, 0), at(230, 60)]).state;
+  const events: RideEvent[] = [];
+  let s = start;
+  for (let m = 240, i = 0; m <= 840; m += 5, i += 1) {
+    const out = step(model, s, fix(at(m, i % 2 ? 26 : 34), { headingDeg: 90 }), "full");
+    s = out.state;
+    events.push(...out.events);
+  }
+  assert.equal(events.filter((e) => e.kind === "alongside").length, 0, events.map((e) => e.spoken).join(" | "));
+  assert.equal(events.some((e) => e.kind === "off-route"), false);
+  // Up B Street on a way 50 m east of it, to beside the end: arrived.
+  const up = rideThrough(model, [at(990, 10), at(1000, 100), at(1050, 150), at(1050, 1000)], s);
+  assert.equal(up.events.some((e) => e.kind === "off-route"), false, up.events.map((e) => e.spoken).join(" | "));
+  assert.equal(up.state.arrived, true);
+});
+
+test("alongside: a stop on the line is still said beside it (#1165 review)", () => {
+  const route = lRoute();
+  const model = rideModel({
+    ...route,
+    leg_ends: [1, 4],
+    description: [
+      stretch(0, 500, "0.0 to 0.3 mi: A Street, low stress (LTS 1).", { street: "A Street" }),
+      { ...stretch(500, 500, "Stop 1 at 0.3 mi (0.5 km)."), kind: "via", via: 1 },
+      stretch(500, 1000, "0.3 to 0.6 mi: A Street, low stress (LTS 1).", { street: "A Street" }),
+    ],
+  });
+  const r = rideThrough(model, [at(50, 0), at(100, 0), at(230, 60), at(900, 60)]);
+  assert.equal(r.state.alongside, true);
+  assert.ok(r.events.some((e) => e.spoken.startsWith("You have reached stop 1")), r.events.map((e) => e.spoken).join(" | "));
 });
