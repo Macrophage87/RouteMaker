@@ -60,7 +60,7 @@ from django.utils.html import format_html, format_html_join
 from django.utils.safestring import mark_safe
 from django.views.decorators.csrf import csrf_exempt
 
-from . import ratelimit
+from . import cue_cards, ratelimit, route_picture, route_view_map
 from .models import ConnectorClient, ConnectorDraft, ConnectorGrant, SharedRoute
 
 logger = logging.getLogger(__name__)
@@ -408,6 +408,8 @@ class DatabaseDrafts:
             answer=data["plan"]["answer"],
             check=data["plan"]["check"],
             sent=data["plan"]["sent"],
+            # The stops' names (a link's `sn=`, cue_cards' stop_names); none before v0.25.0.
+            names={int(k): str(v) for k, v in (data["plan"].get("names") or {}).items()},
         )
         return module.Draft(
             plan,
@@ -431,6 +433,7 @@ class DatabaseDrafts:
                 "answer": {k: v for k, v in plan.answer.items() if k != "candidates"},
                 "check": plan.check,
                 "sent": plan.sent,
+                "names": {str(k): v for k, v in (plan.names or {}).items()},
             },
             "options": draft.options,
             "limit": draft.limit,
@@ -610,6 +613,14 @@ def mcp_endpoint(request):
         icons=server_icons(request),
         routes_read=grant.reads_routes,
         routes_organize=grant.organizes_routes,
+        basemap=route_view_map.draw,
+        view_key=lambda draft_id: _view_key(user.pk, grant.pk, draft_id),
+        picture=route_picture.draw,
+        picture_link=lambda draft_id: picture_link(request, user, grant, draft_id),
+        cue_cards=cue_cards,
+        cue_cards_link=lambda draft_id, page, dark=False: cue_cards_link(
+            request, user, grant, draft_id, page, dark
+        ),
     )
     msg_id = message.get("id") if isinstance(message, dict) else None
     if msg_id is not None and (isinstance(msg_id, bool) or not isinstance(msg_id, (str, int))):
@@ -645,8 +656,16 @@ def server_icons(request) -> list[dict]:
 # --- A draft's GPX ------------------------------------------------------------------------------
 
 GPX_SALT = "core.connector.gpx"
+VIEW_SALT = "core.connector.route-view"
 # The draft's id, then the keyed digest (`_gpx_mac`).
 GPX_TOKEN_RE = re.compile(r"(d[0-9a-f]{32})\.([0-9a-f]{64})")
+
+
+def _view_key(user_id, grant_id, draft_id: str) -> str:
+    """The key the route view sends back to route_view_map (mcp/routemaker_mcp.py): only the
+    view has it (it travels in the result's _meta), so the model cannot have pictures drawn."""
+    message = f"{user_id}:{grant_id}:{draft_id}"
+    return salted_hmac(VIEW_SALT, message, algorithm="sha256").hexdigest()
 
 
 def _gpx_mac(user_id, grant_id, draft_id: str) -> str:
@@ -675,9 +694,12 @@ def _gpx_gone():
 
 @ratelimit.rate_limited(ratelimit.SHARED_ROUTE_READS)
 def draft_gpx(request, token: str):
-    """GET /mcp/gpx/<token>: the draft as a .gpx download, while the draft is kept."""
+    """GET /mcp/gpx/<token>: the draft as a .gpx download, while the draft is kept; with .png on
+    the end, its picture (draft_picture)."""
     if request.method != "GET":
         return HttpResponse(status=405, headers={"Allow": "GET"})
+    if token.endswith(".png"):
+        return draft_picture(request, token)
     found = GPX_TOKEN_RE.fullmatch(token)
     if found is None:
         return _gpx_gone()
@@ -708,6 +730,131 @@ def draft_gpx(request, token: str):
         module.gpx_text(name, draft.plan.line), content_type="application/gpx+xml"
     )
     response["Content-Disposition"] = f'attachment; filename="{module.gpx_slug(name)}.gpx"'
+    response["X-Content-Type-Options"] = "nosniff"
+    return _no_store(response)
+
+
+# --- A draft's picture ----------------------------------------------------------------------------
+
+PICTURE_SALT = "core.connector.picture"
+
+
+def _picture_mac(user_id, grant_id, draft_id: str) -> str:
+    message = f"{user_id}:{grant_id}:{draft_id}"
+    return salted_hmac(PICTURE_SALT, message, algorithm="sha256").hexdigest()
+
+
+def picture_link(request, user, grant, draft_id: str) -> str:
+    """A link that opens the draft's map and graphs as a PNG (core.route_picture), to share
+    (the owner, 2026-11-10), made as the GPX link is: the draft's id and a keyed digest, good
+    while the draft is kept and the app is connected. The picture is drawn when the link is
+    opened, in memory: nothing is kept for it. It sits under /mcp/gpx/, so the api's and the beta's
+    access logs already take its token out (config.access_log, the nginx template)."""
+    return f"{_origin(request)}/mcp/gpx/{draft_id}.{_picture_mac(user.pk, grant.pk, draft_id)}.png"
+
+
+CUES_SALT = "core.connector.cue-cards"
+# A dark image's link says so (`-cues-dark-N`; the owner, 2026-11-10: "export in either").
+CUES_TOKEN_RE = re.compile(r"(d[0-9a-f]{32})\.([0-9a-f]{64})-cues-(dark-)?([1-9][0-9]?)\.png")
+
+
+def _cues_mac(user_id, grant_id, draft_id: str) -> str:
+    message = f"{user_id}:{grant_id}:{draft_id}"
+    return salted_hmac(CUES_SALT, message, algorithm="sha256").hexdigest()
+
+
+def cue_cards_link(request, user, grant, draft_id: str, page: int, dark: bool = False) -> str:
+    """A link that opens one of the draft's phone cue images (core.cue_cards), page from 1, light
+    or dark, made as the picture's: drawn when opened, in memory, nothing kept."""
+    mac = _cues_mac(user.pk, grant.pk, draft_id)
+    shade = "dark-" if dark else ""
+    return f"{_origin(request)}/mcp/gpx/{draft_id}.{mac}-cues-{shade}{int(page)}.png"
+
+
+def draft_picture(request, token: str):
+    """GET /mcp/gpx/<token>.png (by way of draft_gpx, which checks the method): the draft's map
+    and graphs, or with -cues-N one of its phone cue images, while the draft is kept."""
+    cues = CUES_TOKEN_RE.fullmatch(token)
+    if cues is not None:
+        return draft_cue_card(request, *cues.groups())
+    return _draft_map_picture(request, token)
+
+
+@ratelimit.rate_limited(ratelimit.CUE_CARDS)
+def draft_cue_card(request, draft_id: str, mac: str, dark: str | None, page: str):
+    return _draft_cue_card(draft_id, mac, page, dark=bool(dark))
+
+
+@ratelimit.rate_limited(ratelimit.ROUTE_PICTURES)
+def _draft_map_picture(request, token: str):
+    found = GPX_TOKEN_RE.fullmatch(token.removesuffix(".png"))
+    if found is None or not token.endswith(".png"):
+        return _gpx_gone()
+    draft_id, mac = found.groups()
+    row = (
+        ConnectorDraft.objects.select_related("user")
+        .filter(
+            draft_id=draft_id,
+            grant__isnull=False,
+            created_at__gte=timezone.now() - ConnectorDraft.KEPT,
+        )
+        .first()
+    )
+    if (
+        row is None
+        or not row.user.is_active
+        or not constant_time_compare(mac, _picture_mac(row.user_id, row.grant_id, draft_id))
+        or not ConnectorGrant.objects.filter(pk=row.grant_id, user_id=row.user_id).exists()
+    ):
+        return _gpx_gone()
+    draft = DatabaseDrafts(row.user, row.grant_id).get(draft_id)
+    if draft is None:
+        return _gpx_gone()
+    module = mcp_module()
+    png = route_picture.draw(module.draft_view(draft, draft_id), draft.plan.line)
+    if png is None:
+        return _gpx_gone()
+    response = HttpResponse(png, content_type="image/png")
+    name = str(row.data.get("gpx_name") or draft.name)[:120]
+    response["Content-Disposition"] = f'inline; filename="{module.gpx_slug(name)}.png"'
+    response["X-Content-Type-Options"] = "nosniff"
+    return _no_store(response)
+
+
+def _draft_cue_card(draft_id: str, mac: str, page: str, dark: bool = False):
+    row = (
+        ConnectorDraft.objects.select_related("user")
+        .filter(
+            draft_id=draft_id,
+            grant__isnull=False,
+            created_at__gte=timezone.now() - ConnectorDraft.KEPT,
+        )
+        .first()
+    )
+    if (
+        row is None
+        or not row.user.is_active
+        or not constant_time_compare(mac, _cues_mac(row.user_id, row.grant_id, draft_id))
+        or not ConnectorGrant.objects.filter(pk=row.grant_id, user_id=row.user_id).exists()
+    ):
+        return _gpx_gone()
+    draft = DatabaseDrafts(row.user, row.grant_id).get(draft_id)
+    if draft is None:
+        return _gpx_gone()
+    module = mcp_module()
+    # The stops' names are the plan's own (cue_cards keeps the names it is given on the draft).
+    args = module.cue_card_args(draft, module.cue_card_names(draft.plan, None))
+    n = int(page)
+    if not 1 <= n <= cue_cards.count(*args):
+        return _gpx_gone()
+    # Only the one image is drawn.
+    png = cue_cards.draw(*args, only=[n], dark=dark)[0]
+    response = HttpResponse(png, content_type="image/png")
+    name = str(row.data.get("gpx_name") or draft.name)[:120]
+    shade = "-dark" if dark else ""
+    response["Content-Disposition"] = (
+        f'inline; filename="{module.gpx_slug(name)}-cues{shade}-{n}.png"'
+    )
     response["X-Content-Type-Options"] = "nosniff"
     return _no_store(response)
 
