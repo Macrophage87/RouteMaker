@@ -2143,4 +2143,15 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Delete": "Xóa",
   "Delete {name}": "Xóa {name}",
   "Deleted {name}.": "Đã xóa {name}.",
+  // Fixed saved routes (the owner, 2026-11-10).
+  "Fixed route": "Tuyến cố định",
+  "Keep this exact line. Never re-routed.": "Giữ đúng đường này. Không bao giờ tìm lại đường.",
+  "Fixed": "Cố định",
+  "Opened \"{name}\", a fixed route: it stays as saved.": "Đã mở \"{name}\", một tuyến cố định: giữ nguyên như khi lưu.",
+  // Route notes (lib/routeNotes.ts, 2026-11-10): the rider's own words go in {note}, untranslated.
+  "Caution: {note}.": "Cẩn thận: {note}.",
+  "Note: {note}.": "Ghi chú: {note}.",
+  "Phone emoji on map signs": "Biểu tượng cảm xúc của điện thoại trên bản đồ",
+  "Notes and stops on the map show your phone's own emoji, not the app's pictures. Kept on this device.": "Ghi chú và điểm dừng trên bản đồ dùng biểu tượng cảm xúc của điện thoại, không dùng hình của ứng dụng. Lưu trên thiết bị này.",
+  "emoji signs": "biểu tượng cảm xúc",
 };

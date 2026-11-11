@@ -186,6 +186,16 @@ EBIKE_HILLS = 50
 FAST_HILLS = 40
 HIGH_MANEUVER_PENALTY_S = 30
 
+# The turn charge above the old top of the slider (STRESS_TODAYS_TOP), where the calm detour
+# search runs. Valhalla's own 5 s (VALHALLA_MANEUVER_PENALTY_S) is next to nothing against the
+# price of a road at `use_roads` 0, so a calm route could take a dozen turns along trail links
+# and side paths where a calm road ran beside them. The owner, 2026-11-10, after a commute on
+# the Bethesda Trolley Trail: "Trailmaxxing seems to cause a lot of fiddly turns when there's
+# an easy road nearby"; he picked "raise the turn charge above stress 80 ... and count turns in
+# the calm search". 15 s is our default, not measured; a ride type that already charges more
+# (HIGH_MANEUVER_PENALTY_S) keeps its own.
+CALM_MANEUVER_PENALTY_S = 15
+
 # The mass ride speed band's default planning speed, 6 mph, in Valhalla's km/h.
 MASS_RIDE_PLANNING_SPEED_KMH = round(6 * 1.609344, 1)
 
@@ -305,7 +315,8 @@ HILLS_MIN, HILLS_MAX = -100, 100
 #   the detour: a warning (`routemaker.detour`) says how much longer it is.
 #
 # Turn costs and hill costs are not part of this: they are costing options sent
-# at every position, so a relaxed ride is not a zig-zag over a hill.
+# at every position, so a relaxed ride is not a zig-zag over a hill. Above the old top the
+# turn charge rises to CALM_MANEUVER_PENALTY_S (2026-11-10), never falls.
 STRESS_DEFAULT_AT = 70
 STRESS_TODAYS_TOP = 80
 # The old scale's positions at those two points, which `use_roads` is read at.
@@ -1429,6 +1440,11 @@ def costing(
     options = copy.deepcopy(dict(PRESETS[name].costing_options))
     if stress is not None:
         options["use_roads"] = use_roads_for(stress)
+    # Above the old top, asked for or the ride type's own start (Trailmaxxing's 100).
+    if (PRESETS[name].stress if stress is None else stress) > STRESS_TODAYS_TOP:
+        options["maneuver_penalty"] = max(
+            options.get("maneuver_penalty", VALHALLA_MANEUVER_PENALTY_S), CALM_MANEUVER_PENALTY_S
+        )
     if hills is not None:
         options["use_hills"] = use_hills_for(hills)
     speed = PRESETS[name].assist_speed_kmh
