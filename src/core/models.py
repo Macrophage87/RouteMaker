@@ -2046,6 +2046,11 @@ class SavedRoute(models.Model):
     # An opened GPX file's own text, byte for byte, so its export is the file as it came (its
     # track points, elevations and waypoint names unchanged); empty for a planned route.
     gpx = models.TextField(blank=True, default="")
+    # A fixed route (the owner, 2026-11-10: "save routes as an unchanging, GPX identical mode. The
+    # via points are usually better, but sometimes fixed routes are more useful"): its line is the
+    # route, never planned again. Never offered Update route, and a ride on it is never re-routed
+    # (off it, the way back to the line). False (our default): a route by its via points, as before.
+    fixed = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     # v0.7.0 closures (core.saved_route_alerts): the closures in force that the line runs along,
@@ -2180,6 +2185,7 @@ class SavedRouteVersion(models.Model):
     inputs = models.JSONField(default=dict)
     answer = models.JSONField(null=True, blank=True)
     gpx = models.TextField(blank=True, default="")
+    fixed = models.BooleanField(default=False)
     gpx_same_as_next = models.BooleanField(default=False)
     # What this version holds, in bytes (its line, inputs, answer and own file text as JSON).
     size_bytes = models.IntegerField(default=0)

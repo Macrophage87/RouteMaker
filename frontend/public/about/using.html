@@ -559,6 +559,12 @@ back.</li>
 <li>A stop's name, the one you gave it or the place's when you added it from a search, a card or a list, goes with it: in links and saved
 routes, in GPX route points, in FIT and TCX course points, to Garmin and Wahoo, and in the ride's cues
 ("You have reached stop 2, Union Market.").</li>
+<li>The stop naming dialog also offers an <strong>icon</strong> for the stop's pin, such as coffee, water or a
+restroom; no icon unless you pick one.</li>
+<li><strong>Route notes.</strong> In Plan, right-click or press and hold the map and choose <strong>Add note</strong>.
+Pick <strong>Caution</strong> or <strong>Point of interest</strong>, an icon, and type a few words of your own. The note
+shows on the map, the cue sheets and the phone images, and Ride says it as you reach it. Tap its sign to change or
+remove it. Notes travel in the route's link.</li>
 <li>Drag a stop's grip to move it, or use <strong>Best order</strong> to put the stops in the order that
 rides best, weighing riding time, traffic stress and hills as the route does; the start and the finish stay where they are.</li>
 <li>On most ride types, Plan starts as a <strong>loop</strong>: the first point, in the box that reads <strong>Start and finish
@@ -920,7 +926,9 @@ planned route would have from where you are (past a closed road, say), it is lef
 by your voice setting, says) "Skipping via point. New route found." Only that one via point is ever left out this
 way, never a later one or a stop, and not on a Detour, Less traffic, Fewer hills or when you start again part
 way. <strong>Keep going</strong>
-stops that until you are back on it, and shows the way back instead.</li>
+stops that until you are back on it, and shows the way back instead. On a fixed saved route the ride never plans
+again on its own: off the line it shows the way back to it, and <strong>Reroute</strong> still plans again when you
+tap it.</li>
 <li><strong>No signal:</strong> at Start ride, the map within about 1,000 ft [300 m] either side of the
 route is kept on your device, so dead spots still show the stress lines. It is cleared when the ride
 ends. Only map tiles are kept, never where you were. If none of it could be kept, a line in the panel at
@@ -1223,7 +1231,9 @@ beside it (on a phone they read Save and Start). That Save also has <strong>Down
 signed in it offers <strong>Sign in with Discord</strong> (where available; your plan is kept) or
 Download GPX. A route someone sent you by link can be saved the same way. Plan's Save form has an optional
 <strong>Tags</strong> field (commas between tags; up to 8 a route, of up to 30 characters each), which offers the tags you
-already use. Each saved route records when it was last opened. At 200 routes a save first deletes the route archived
+already use. Only Plan's Save has a <strong>Fixed route</strong> box, unticked unless you tick it (our default).
+A fixed route keeps its exact line and is never re-routed: off it, Ride shows the way back, and only a closure on
+its line offers Update route. Each saved route records when it was last opened. At 200 routes a save first deletes the route archived
 longest and says which; with none archived, it asks whether to delete the route you have gone longest without opening
 (counted from when it was saved, if never opened), with Cancel first. Any change to the plan brings
 Update route back. With nothing planned yet, that button is <strong>Load route</strong>, which
@@ -1231,7 +1241,7 @@ opens a short list. Not signed in, <strong>Sign in with Discord</strong> comes f
 available). Then <strong>Open GPX file</strong> asks the ride type and whether to <strong>Snap to roads</strong>
 (streets and paths bikes may ride; the default) or keep it <strong>Exactly as drawn</strong> (even where bikes may not ride), then
 <strong>Choose file</strong>. Below are your saved routes and the drafts an AI assistant planned for you that you
-have not saved, the one opened or made most recently on top, then the routes kept on this device; one tap opens one.
+have not saved (a fixed route's row says Fixed), the one opened or made most recently on top, then the routes kept on this device; one tap opens one.
 A draft is marked "Draft, 5 days left" (each is kept a week, our default) and has a save icon and a delete icon;
 Delete hides it at once, with <strong>Undo</strong> for 8 seconds. A ride on a draft you have not changed ends with
 <strong>Save route</strong> on the summary card.
@@ -1265,7 +1275,9 @@ there are left out, and the map stays.</li>
 <ul>
 <li><strong>GPX track</strong><sup class="cite"><a href="#ref-3" aria-label="source 3">[3]</a></sup>; <strong>FIT course</strong> and <strong>TCX course</strong>,
 with turn cues<sup class="cite"><a href="#ref-4" aria-label="source 4">[4]</a></sup>; <strong>PDF cue sheet</strong> and <strong>PDF handlebar strip</strong> to
-print; and a <strong>cue sheet image</strong> for a phone's lock screen.</li>
+print; and a <strong>cue sheet image</strong> for a phone's lock screen, with an arrow beside each turn. A dark
+version suits a ride at night. When the cues don't fit on one image, a new one starts at each stop, and the
+credits get a final image of their own.</li>
 <li>Choose your bike computer (Any, Garmin Edge, Wahoo ELEMNT or Hammerhead Karoo) so the cues and the
 course fit what it can hold.</li>
 <li><strong>Send to Garmin</strong> sends the course to Garmin Connect. With
@@ -1317,6 +1329,8 @@ With Phone default, a phone set to any of them opens Go and Ride in that languag
 choose here wins. Dates and times, such as when a route was saved, follow the app's language.
 Every language but English is a first draft, waiting for a native speaker's check. Arabic, Farsi and Pashto are
 written right to left, and the page turns round for them.</li>
+<li><strong>Phone emoji on map signs</strong> (Display): off, note and stop signs show the app's Noto pictures
+(our default); on, your phone's own emoji. Kept on this device.</li>
 <li><strong>Units</strong> (Display): <strong>Miles and feet</strong>, the default, or <strong>Kilometers and
 meters</strong>. With kilometers, every distance, height and speed shows metric first with US units in brackets, such
 as "7.6 km (4.7 mi)", and the voice and screen readers say meters and kilometers. The target distance is then typed in kilometers, and the
@@ -1507,7 +1521,7 @@ from the app's next update.</li>
 <p class="next">Next: <a href="/about/accessibility.html">Accessibility</a></p>
 </main>
 <footer>
-  <p>Part of RouteMaker's documentation. It describes version 0.24.0. The code is
+  <p>Part of RouteMaker's documentation. It describes version 0.25.0. The code is
   open source under the MIT licence:
   <a href="https://github.com/Macrophage87/RouteMaker">github.com/Macrophage87/RouteMaker</a>.</p>
   <p><a href="/">Back to the map</a></p>
