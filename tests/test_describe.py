@@ -3715,6 +3715,47 @@ class TestRideTurnsMissed:
         assert entries[1]["turn"]["across"] == "University Boulevard West"
         assert all("crossings" not in e for e in entries)
 
+    def kenyon_turn(self, m=403, lane="Kenyon Street Northwest bike lane", turn=90):
+        # The owner, 2026-11-11: west on Kenyon Street's two-way track on its left (south)
+        # side, then right onto Warder Street, over Kenyon's own lanes at its signal.
+        legs = [
+            flat(
+                path(lane, 400, 270),
+                turned(road("Warder Street Northwest", 1, 600, 270 + turn, 270 + turn), turn),
+            )
+        ]
+        signal = event(
+            m,
+            "straight",
+            kind="crossing",
+            flagged=False,
+            severity=None,
+            names=("kenyon street northwest",),
+        )
+        return d.describe(legs, [signal])
+
+    @pytest.mark.parametrize("m", [398, 403])
+    def test_a_turn_over_the_road_a_lane_runs_beside_is_one_turn(self, m):
+        entries = self.kenyon_turn(m)
+        turn = entries[1]["turn"]
+        assert turn["movement"] == "right"
+        assert turn["over"] == "Kenyon Street Northwest"
+        assert "across" not in turn and "cross" not in turn
+        said = entries[1]["text"].split(": ", 1)[1]
+        assert said.startswith("Right onto Warder Street Northwest at a signal")
+        assert "Cross" not in said
+        assert [e["kind"] for e in entries] == ["stretch", "stretch"]
+
+    def test_a_path_beside_the_road_is_read_by_its_street(self):
+        entries = self.kenyon_turn(lane="path beside Kenyon Street Northwest", turn=-90)
+        assert entries[1]["turn"]["movement"] == "left"
+        assert entries[1]["turn"]["over"] == "Kenyon Street Northwest"
+
+    def test_another_road_crossed_at_the_turn_is_still_cross_then_turn(self):
+        entries = self.kenyon_turn(lane="Park Place Northwest bike lane")
+        assert entries[1]["turn"]["across"] == "Kenyon Street Northwest"
+        assert "over" not in entries[1]["turn"]
+
     def test_a_flagged_crossing_before_a_turn_keeps_its_own_entry(self):
         entries = self.sligo_turn([crossing(385, "university boulevard west", True)])
         assert "across" not in entries[1]["turn"]
