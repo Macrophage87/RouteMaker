@@ -2143,4 +2143,15 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Delete": "ሰርዝ",
   "Delete {name}": "{name}ን ሰርዝ",
   "Deleted {name}.": "{name} ተሰርዟል።",
+  // Fixed saved routes (the owner, 2026-11-10).
+  "Fixed route": "ቋሚ መንገድ",
+  "Keep this exact line. Never re-routed.": "ይህን መስመር እንዳለ ያስቀምጣል። መንገዱ ፈጽሞ አይቀየርም።",
+  "Fixed": "ቋሚ",
+  "Opened \"{name}\", a fixed route: it stays as saved.": "\"{name}\" ተከፍቷል፣ ቋሚ መንገድ ነው፦ እንደተቀመጠ ይቆያል።",
+  // Route notes (lib/routeNotes.ts, 2026-11-10): the rider's own words go in {note}, untranslated.
+  "Caution: {note}.": "ጥንቃቄ፦ {note}።",
+  "Note: {note}.": "ማስታወሻ፦ {note}።",
+  "Phone emoji on map signs": "በካርታ ምልክቶች ላይ የስልክ ኢሞጂ",
+  "Notes and stops on the map show your phone's own emoji, not the app's pictures. Kept on this device.": "በካርታው ላይ ያሉ ማስታወሻዎችና ማቆሚያዎች የመተግበሪያውን ምስሎች ሳይሆን የስልክዎን ኢሞጂ ያሳያሉ። በዚህ መሣሪያ ላይ ይቀመጣል።",
+  "emoji signs": "የኢሞጂ ምልክቶች",
 };
