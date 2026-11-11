@@ -1,7 +1,10 @@
 noto-emoji-u2620.svg: the skull and crossbones (U+2620) from Noto Emoji,
 https://github.com/googlefonts/noto-emoji, file 2D/svg/emoji_u2620.svg at commit
-e20cbc2bbec1926686be9f9bee7d1d2cfa1fea0e, unmodified. The notice of that
-directory's licence file (2D/svg/LICENSE), verbatim:
+e20cbc2bbec1926686be9f9bee7d1d2cfa1fea0e, unmodified. The twelve icons of route
+notes and stops (noto-emoji-u26a0.svg, -u1f573, -u1f697, -u1f6a7, -u1f3de,
+-u1f4f7, -u1f4a7, -u1f374, -u2615, -u1f6bb, -u1f527 and -u1f4cd) are the
+files 2D/svg/emoji_u<code>.svg of the same commit, likewise unmodified. The notice of that directory's licence file
+(2D/svg/LICENSE), verbatim:
 
 Copyright 2013 Google, Inc. All Rights Reserved.
 
