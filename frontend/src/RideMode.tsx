@@ -2119,7 +2119,7 @@ export function RideMode({
       const out = { state: stepped.state.ride, events: stepped.events };
       // On a dirt trail the route rides, ridden along it: every later re-plan may ride dirt (rodeDirt).
       const wasAtM = rideRef.current.off ? null : rideRef.current.progressM;
-      if (!dirtRidden.current && !out.state.off && rodeDirt(routeRef.current, modelRef.current.lengthM, wasAtM, out.state.progressM)) {
+      if (!dirtRidden.current && !out.state.off && !out.state.alongside && rodeDirt(routeRef.current, modelRef.current.lengthM, wasAtM, out.state.progressM)) {
         dirtRidden.current = true;
         // Kept with the ride at once: a page reloaded before the next re-plan still re-plans on dirt (R2-5).
         if (!trip && keepLeft) keepLeftRideReplans(rideReplans(loopRide, blockedRef.current, true, dirtClosed.current, mtbDone.current));
@@ -2158,10 +2158,11 @@ export function RideMode({
           notify(restartSaid(named));
         }
       }
-      // Off this line but on the other one (the standard way, or the detour): followed there, not re-planned. Not when
+      // Off this line (or alongside it, a block over) but on the other one (the standard way, or the detour): followed
+      // there, not re-planned. Not when
       // off for riding this line the wrong way (backAtM): the rider is still on it, and on the other line where they share
       // a street, so the two would swap every block (2026-11-05 review).
-      if (out.state.off && out.state.backAtM === undefined && fix.accuracyM <= POOR_FIX_M) {
+      if ((out.state.off || out.state.alongside) && out.state.backAtM === undefined && fix.accuracyM <= POOR_FIX_M) {
         const at = onOtherLine(otherModelRef.current, fix.point, fix.accuracyM, out.state.progressM ?? -Infinity);
         if (at !== null) {
           takeOther(at, fix);
