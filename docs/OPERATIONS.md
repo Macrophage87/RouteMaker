@@ -7881,7 +7881,7 @@ Ride follows a parallel way beside the route instead of re-routing back (#1165):
   by hand with "Deploying v0.25.0"'s beta steps at the v0.25.1 tag, then `mark-deployed v0.25.1`.
 - [ ] **At home.** The front end at the tag ("Deploying a planner and front-end release").
 - [ ] **Spot check.** On a ride, take a path beside the route for a block: Ride says "Off the planned
-  route." once, holds the cues and does not re-route; the cues pick up where the ways meet.
+  route." once, calls no turns and does not re-route; turn cues pick up where the ways meet.
 - [ ] **Rollback.** The v0.25.0 front end.
 
 ## Deploying v0.25.0
