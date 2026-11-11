@@ -2679,6 +2679,7 @@ export const ES: Readonly<Record<string, string>> = {
   "Pin": "Marcador",
   "Icon on the map": "Icono en el mapa",
   "The route's notes are too long for its link: shorten this note or another.": "Las notas de la ruta son demasiado largas para su enlace: acorte esta nota u otra.",
+  "Write a note first.": "Escriba una nota primero.",
   "Phone emoji on map signs": "Emojis del teléfono en las señales del mapa",
   "Notes and stops on the map show your phone's own emoji, not the app's pictures. Kept on this device.": "Las notas y paradas del mapa muestran los emojis de su teléfono, no las imágenes de la aplicación. Se guarda en este dispositivo.",
   "emoji signs": "señales con emoji",

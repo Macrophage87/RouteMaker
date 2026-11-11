@@ -1945,7 +1945,13 @@ export function step(
     // hazard's earlier warning).
     if (cue.kind === "crossing" && distance > phases[0].withinM) continue;
     // A jog's later turn waits until the rider is past the turn before: step by step at the junction.
-    if (cue.joined && progress < model.cues[cue.index - 1].atM) break;
+    // The turn before is the nearest earlier cue that is not a route note: a note put between the jog's turns (or just
+    // before the second) must not hold its "now" back to the junction itself (the v0.25.0 review).
+    if (cue.joined) {
+      let before = cue.index - 1;
+      while (before > 0 && model.cues[before].kind === "note") before -= 1;
+      if (progress < model.cues[before].atM) break;
+    }
     // The nearest phase whose threshold is reached; any farther one is then skipped, not said late.
     const reached = phases.filter((p) => distance <= p.withinM);
     if (!reached.length) break;

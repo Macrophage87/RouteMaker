@@ -90,6 +90,7 @@ Contents:
 - [Deploying v0.22.3](#deploying-v0223)
 - [Deploying v0.23.0](#deploying-v0230)
 - [Deploying v0.24.0](#deploying-v0240)
+- [Deploying v0.25.0](#deploying-v0250)
 - [Deploying a planner and front-end release: rollback points and verification](#deploying-a-planner-and-front-end-release-rollback-points-and-verification)
 - [Paths bicycles may not ride (NO-BIKE-PATHS)](#paths-bicycles-may-not-ride-no-bike-paths)
 - [Mountain-bike difficulty levels (456; claude/v0-4-0-mtb-levels)](#mountain-bike-difficulty-levels-456-claudev0-4-0-mtb-levels)
@@ -7882,22 +7883,33 @@ outbound host, and no map rebuild.** One line in `docker/api.Dockerfile` copies
   and its recreation, and after a rollback of the images. Reversible.
 - [ ] **At home**, as "Deploying a planner and front-end release": rollback point (tag the running
   api image `pre-rel-<short>`, keep `index.html`), fast-forward the checkout, `docker compose build
-  api`, `migrate`, then `docker compose up -d --no-deps --no-build --force-recreate api worker` with
-  no job todo or doing, then the front end. No router restart.
-- [ ] **Beta** **(owner)**, by hand: `auto-release.sh pause`, then docs/BETA-RUNBOOK.md "Shipping an
-  update later" at the tag (the api image built there, `migrate`, the front end built on the PC),
-  `smoke-test.sh --local`, then `--public`, then `auto-release.sh mark-deployed v0.25.0` and
-  `auto-release.sh resume`.
+  api rebuild` (tag the pipeline image `pre-rel-<short>` too: the rebuild's calm-road sentinel moved
+  to Wildlife Loop, #1144, and a v0.24.0 `rebuild` image still checks Gambrill Park Road, which the
+  own picks rate 2.5, so its next run stops at that check), `migrate`, then `docker compose up -d
+  --no-deps --no-build --force-recreate api worker rebuild` with no job todo or doing, then the front
+  end. No router restart, no map rebuild.
+- [ ] **Beta** **(owner)**, by hand: `auto-release.sh pause --wait "shipping by hand"` and `status`
+  (no `IN PROGRESS`), then docs/BETA-RUNBOOK.md "Shipping an update later" at the tag (the api image
+  built there, `migrate`, the front end built on the PC), `smoke-test.sh --local`, then
+  `smoke-test.sh --public <url> --passwords-file <file>`, then `auto-release.sh mark-deployed
+  v0.25.0` and `auto-release.sh resume`. The new `/mcp/gpx/<token>.png` and `-cues-N.png` links need
+  no nginx or Caddy change: they go to the api through `location /`, and the access-log rule for
+  `/mcp/gpx/` already takes their tokens out.
 - [ ] **The North Bethesda override file** (optional, separate). `fixtures/overrides/2026-11-10-owner-north-bethesda-bike-lanes.json`
   is loaded on the PC with `load_access_overrides` (dry run, then `--confirm` with the owner's
-  go); its rows take effect at the next map rebuild, not with this release.
+  go); its rows take effect at the next map rebuild, not with this release. Its five Grand Park
+  Avenue rows say "held until the owner checks it": ask the owner about them before the load.
 - [ ] **Spot checks.** Plan: Save with Fixed route ticked, reopen it from Load route ("Fixed"), and
   Start ride: off the line, Ride shows the way back, never a new route. Add a caution note on the
   map: it shows on the map and in the cue sheet, and Ride says it as you reach it. Plan's GPX panel:
   the lock-screen cue image has arrows and a dark choice. On a ride along the Bethesda Trolley Trail
-  southbound, Ride calls the turn at Charles St.
+  southbound, Ride calls the turn at Charles St. Through the connector: plan a route, then open its
+  picture link and one cue image link (each 200, `image/png`); the access logs show the path with
+  its token taken out.
 - [ ] **Rollback.** The `pre-rel` api image (`--force-recreate api worker`) and the v0.24.0 front end.
-  The `fixed` columns stay (with their default); a fixed route opened on v0.24.0 is a via route.
+  The `fixed` columns stay (with their default); a fixed route opened on v0.24.0 is a via route. On
+  the beta, the images and `index.html` alone: no `restore-dump` (it would lose routes saved since
+  the ship), as 0061 only adds columns.
 
 ## Deploying a planner and front-end release: rollback points and verification
 

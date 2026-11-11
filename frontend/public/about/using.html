@@ -559,6 +559,12 @@ back.</li>
 <li>A stop's name, the one you gave it or the place's when you added it from a search, a card or a list, goes with it: in links and saved
 routes, in GPX route points, in FIT and TCX course points, to Garmin and Wahoo, and in the ride's cues
 ("You have reached stop 2, Union Market.").</li>
+<li>The stop naming dialog also offers an <strong>icon</strong> for the stop's pin, such as coffee, water or a
+restroom; no icon unless you pick one.</li>
+<li><strong>Route notes.</strong> In Plan, right-click or press and hold the map and choose <strong>Add note</strong>.
+Pick <strong>Caution</strong> or <strong>Point of interest</strong>, an icon, and type a few words of your own. The note
+shows on the map, the cue sheets and the phone images, and Ride says it as you reach it. Tap its sign to change or
+remove it. Notes travel in the route's link.</li>
 <li>Drag a stop's grip to move it, or use <strong>Best order</strong> to put the stops in the order that
 rides best, weighing riding time, traffic stress and hills as the route does; the start and the finish stay where they are.</li>
 <li>On most ride types, Plan starts as a <strong>loop</strong>: the first point, in the box that reads <strong>Start and finish
@@ -1225,14 +1231,9 @@ beside it (on a phone they read Save and Start). That Save also has <strong>Down
 signed in it offers <strong>Sign in with Discord</strong> (where available; your plan is kept) or
 Download GPX. A route someone sent you by link can be saved the same way. Plan's Save form has an optional
 <strong>Tags</strong> field (commas between tags; up to 8 a route, of up to 30 characters each), which offers the tags you
-already use. Plan's Save form (the map bar's and More's) also has a <strong>Fixed route</strong> box ("Keep this exact
-line. Never re-routed."), unticked at first (our default); Go's Save asks only for a name and keeps the via points. Unticked, the route is saved by its via points: when you open it, it
-is checked against today's map and Update route is offered if the distance differs by more than 5%, and off the
-route a ride plans again through them. Ticked, the line is kept exactly, like a GPX file: it opens as saved, is never
-checked against today's map, and a ride on it is never re-routed on its own. Only if the closure check finds a
-closure on its line does the note under it say "Closures on this route now." with Update route. Saving it again in Plan with the box
-changed makes a new version ("Made a fixed route" or "Back to via points"). A fixed route opened in Go stays fixed too. A route saved in Go before its full plan
-arrived also reopens exactly as saved. Each saved route records when it was last opened. At 200 routes a save first deletes the route archived
+already use. Only Plan's Save has a <strong>Fixed route</strong> box, unticked unless you tick it (our default).
+A fixed route keeps its exact line and is never re-routed: off it, Ride shows the way back, and only a closure on
+its line offers Update route. Each saved route records when it was last opened. At 200 routes a save first deletes the route archived
 longest and says which; with none archived, it asks whether to delete the route you have gone longest without opening
 (counted from when it was saved, if never opened), with Cancel first. Any change to the plan brings
 Update route back. With nothing planned yet, that button is <strong>Load route</strong>, which
@@ -1274,7 +1275,9 @@ there are left out, and the map stays.</li>
 <ul>
 <li><strong>GPX track</strong><sup class="cite"><a href="#ref-3" aria-label="source 3">[3]</a></sup>; <strong>FIT course</strong> and <strong>TCX course</strong>,
 with turn cues<sup class="cite"><a href="#ref-4" aria-label="source 4">[4]</a></sup>; <strong>PDF cue sheet</strong> and <strong>PDF handlebar strip</strong> to
-print; and a <strong>cue sheet image</strong> for a phone's lock screen.</li>
+print; and a <strong>cue sheet image</strong> for a phone's lock screen, with an arrow beside each turn. A dark
+version suits a ride at night. When the cues don't fit on one image, a new one starts at each stop, and the
+credits get a final image of their own.</li>
 <li>Choose your bike computer (Any, Garmin Edge, Wahoo ELEMNT or Hammerhead Karoo) so the cues and the
 course fit what it can hold.</li>
 <li><strong>Send to Garmin</strong> sends the course to Garmin Connect. With
@@ -1326,6 +1329,8 @@ With Phone default, a phone set to any of them opens Go and Ride in that languag
 choose here wins. Dates and times, such as when a route was saved, follow the app's language.
 Every language but English is a first draft, waiting for a native speaker's check. Arabic, Farsi and Pashto are
 written right to left, and the page turns round for them.</li>
+<li><strong>Phone emoji on map signs</strong> (Display): off, note and stop signs show the app's Noto pictures
+(our default); on, your phone's own emoji. Kept on this device.</li>
 <li><strong>Units</strong> (Display): <strong>Miles and feet</strong>, the default, or <strong>Kilometers and
 meters</strong>. With kilometers, every distance, height and speed shows metric first with US units in brackets, such
 as "7.6 km (4.7 mi)", and the voice and screen readers say meters and kilometers. The target distance is then typed in kilometers, and the
