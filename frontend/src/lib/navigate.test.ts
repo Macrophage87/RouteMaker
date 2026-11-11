@@ -1400,7 +1400,7 @@ test("after a re-route the stops left keep the plan's numbers: the plan's stop 3
   assert.deepEqual([...plannedStopNumbers(plan, plan, marks.isVia)].slice(0, 4), [[1, 1], [2, 2], [3, 3], [4, 4]]);
   // Ride builds every model, the re-routes' included, with the numbers of the plan it began with.
   const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
-  assert.match(ride, /rideModel\(r, viaIndices\(points, VIA_MARKS\.isVia\), stopNames\([^)]*\), stopNumbers\(points\)\)/);
+  assert.match(ride, /rideModel\(r, viaIndices\(points, VIA_MARKS\.isVia\), stopNames\([^)]*\), stopNumbers\(points\), PAGE_NOTES\.list\)/);
   // ...one on where the ride began away from its start, whose start is stop 1 (Stephen, 2026-11-06).
   assert.match(ride, /if \(at < 0\) return plannedStopNumbers\(points, firstPlan\.current, VIA_MARKS\.isVia\);/);
 });
@@ -2056,6 +2056,22 @@ test('jog: the second turn says its own "now" where the first\'s was never said 
   );
 });
 
+test('jog: a route note at the second turn does not hold its "now" back to the junction (the v0.25.0 review)', () => {
+  const route = straightRoute([
+    stretch(0, 900, "Q Street Northwest.", { street: "Q Street Northwest" }),
+    stretch(900, 980, "Right onto 6th Street Northwest.", { street: "6th Street Northwest", turn: turning("right", "6th Street Northwest") }),
+    stretch(980, 2200, "Bear left onto Rhode Island Avenue Northwest.", { street: "Rhode Island Avenue Northwest", turn: turning("bear_left", "Rhode Island Avenue Northwest") }),
+  ]);
+  const model = rideModel(route, [], new Map(), new Map(), [{ at: at(975, 5), kind: "caution", text: "Potholes" }]);
+  const second = model.cues.find((c) => c.joined)!;
+  assert.equal(model.cues[second.index - 1].kind, "note");
+  const before = ride(model, "full", 0, 895, 5);
+  const past = ride(model, "full", 900, 976, 2, before.state);
+  // Said on its own approach, as without the note: before the rider reaches the note (1 m short of the turn).
+  const now = past.events.find((e) => e.cue?.index === second.index && e.phase === "now");
+  assert.ok(now, JSON.stringify(past.events.map((e) => [e.cue?.kind, e.phase])));
+});
+
 test("jog: three turns in a row are one cue, said early together, then each on its own; a fourth is its own cue", () => {
   const model = rideModel(
     straightRoute([
@@ -2596,6 +2612,26 @@ test("along: off a way beside the road, left over it then right is drawn with th
   assert.equal(crossArrow(turn), "along_left_right");
   // Without the turn in, straight over the road as before.
   assert.equal(crossArrow({ ...turn, acrossFrom: undefined }), "cross_right");
+});
+
+test("over: a turn off a lane beside the road, over it, is the plain turn drawn with the road alongside (the owner, 2026-11-11)", () => {
+  const model = rideModel(
+    straightRoute([
+      stretch(0, 900, "Kenyon Street Northwest bike lane.", { street: "Kenyon Street Northwest bike lane" }),
+      stretch(900, 2200, "Right onto Warder Street Northwest at a signal.", {
+        street: "Warder Street Northwest",
+        turn: { ...turning("right", "Warder Street Northwest"), over: "Kenyon Street Northwest" },
+      }),
+    ]),
+  );
+  const [turn] = model.cues;
+  assert.equal(turn.over, "Kenyon Street Northwest");
+  assert.ok(!turn.text.includes("Cross"));
+  assert.ok(turn.text.startsWith("Right onto Warder Street Northwest"));
+  assert.equal(crossArrow(turn), "along_right");
+  assert.equal(crossArrow({ ...turn, movement: "left" }), "along_left");
+  // A bear over it has no alongside picture: the plain bear.
+  assert.equal(crossArrow({ ...turn, movement: "bear_right" }), null);
 });
 
 test("crossArrow: a full turn onto a crossing draws the road alongside; a bear, square across it", () => {

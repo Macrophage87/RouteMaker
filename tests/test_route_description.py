@@ -1129,6 +1129,40 @@ class TestClearTurnsFromTheTrace:
         trace["edges"][1]["length"] = 0.0048
         assert said(trace) == [("Trail", None), ("Trail", "left"), ("Trail", "right")]
 
+    def test_a_fork_read_at_a_node_beside_the_kept_one_is_said(self):
+        # As mapped on the Bethesda Trolley Trail at Charles Street (the owner, 2026-11-10:
+        # "This turn wasn't listed and it's a very common turn to miss"): over the crosswalk,
+        # the trail jogs right off it, a sidepath carrying on along Old Georgetown Road from
+        # a node 0.7 m past the crosswalk's end. The turn is kept at the crosswalk's end (the
+        # way changes there); the fork is read at the sidepath's node.
+        btt = ("Bethesda Trolley Trail",)
+        trace = traced(
+            (btt, "cycleway", [(330, 300)], []),
+            (btt, "pedestrian_crossing", [(330, 6)], [(60, "road", "both"), (240, "road", "both")]),
+            (btt, "pedestrian_crossing", [(330, 5.6)], []),
+            (btt, "cycleway", [(3, 0.7)], [(310, "footway", "both")]),
+            (btt, "cycleway", [(62, 2.8)], []),
+            (btt, "cycleway", [(0, 300)], []),
+        )
+        assert said(trace) == [(btt[0], None), (btt[0], "bear_right")]
+        firsts = {p.way_id: p for p in reversed(routing.pieces_of_trace(trace))}
+        # The sidepath is counted once, on the node that keeps the turn.
+        assert firsts[5].others is None
+        assert [o[:2] for o in firsts[4].others].count((310.0, "footway")) == 1
+
+    def test_a_bend_by_the_crosswalk_with_nothing_ahead_stays_unsaid(self):
+        # The same spot with the sidepath leaving square to the left: no way on to mistake.
+        btt = ("Bethesda Trolley Trail",)
+        trace = traced(
+            (btt, "cycleway", [(330, 300)], []),
+            (btt, "pedestrian_crossing", [(330, 6)], [(60, "road", "both"), (240, "road", "both")]),
+            (btt, "pedestrian_crossing", [(330, 5.6)], []),
+            (btt, "cycleway", [(3, 0.7)], [(240, "footway", "both")]),
+            (btt, "cycleway", [(62, 2.8)], []),
+            (btt, "cycleway", [(0, 300)], []),
+        )
+        assert said(trace) == [(btt[0], None)]
+
     def test_two_turns_6_m_apart_are_each_said(self):
         trace = traced(
             (("Road A",), "road", [(0, 300)], [(0, "road", "both")]),
