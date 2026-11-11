@@ -2143,4 +2143,15 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Delete": "刪除",
   "Delete {name}": "刪除{name}",
   "Deleted {name}.": "已刪除{name}。",
+  // Fixed saved routes (the owner, 2026-11-10).
+  "Fixed route": "固定路線",
+  "Keep this exact line. Never re-routed.": "保留呢條準確路線，永遠唔會重新規劃。",
+  "Fixed": "固定",
+  "Opened \"{name}\", a fixed route: it stays as saved.": "已打開固定路線「{name}」：保持儲存時嘅樣。",
+  // Route notes (lib/routeNotes.ts, 2026-11-10): the rider's own words go in {note}, untranslated.
+  "Caution: {note}.": "小心：{note}。",
+  "Note: {note}.": "備註：{note}。",
+  "Phone emoji on map signs": "地圖標記用手機emoji",
+  "Notes and stops on the map show your phone's own emoji, not the app's pictures. Kept on this device.": "地圖上嘅筆記同停站會用你手機嘅emoji，唔用應用程式嘅圖。保存喺呢部裝置。",
+  "emoji signs": "emoji標記",
 };
