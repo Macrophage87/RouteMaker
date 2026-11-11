@@ -365,6 +365,8 @@ export interface Cue {
   across?: string;
   /** With `across`: the turn off a way alongside that road to cross it (the API's turn.across_from), drawn so. */
   acrossFrom?: "left" | "right";
+  /** A turn off a path beside a road over that road (the API's turn.over): said as the plain turn, drawn over the road alongside. */
+  over?: string;
   /**
    * A turn onto an unnamed path that leads to a named one (describe._toward, round-2 D21): that one's name, said with
    * the path ("Right onto the path to Rock Creek Trail."). `street` stays "path", so the map, a report and "Where am
@@ -1048,6 +1050,7 @@ export function rideModel(
         ...(kind === "turn" && entry.turn?.across && !entry.turn.cross && entry.turn.across_from
           ? { acrossFrom: entry.turn.across_from }
           : {}),
+        ...(kind === "turn" && entry.turn?.over && !entry.turn.cross && !entry.turn.across ? { over: entry.turn.over } : {}),
         ...(kind === "turn" && entry.turn?.exit ? { exit: entry.turn.exit } : {}),
         ...(kind === "turn" && toward(entry) ? { toward: toward(entry) as string } : {}),
         ...(kind === "turn" && entry.turn?.stay === true && !entry.turn.cross && !entry.turn.across ? { stay: true } : {}),
@@ -1217,7 +1220,10 @@ export type CrossShape =
   | "along_right_left"
   | "along_right_right";
 
-export function crossArrow(cue: Pick<Cue, "cross" | "across" | "acrossFrom" | "then" | "movement">): CrossShape | null {
+export function crossArrow(cue: Pick<Cue, "cross" | "across" | "acrossFrom" | "over" | "then" | "movement">): CrossShape | null {
+  // One turn off a path beside the road, over it (the owner, 2026-11-11, off Kenyon Street's left-side track right onto
+  // Warder Street): the road drawn alongside, the turn over it, nothing after.
+  if (cue.over && !cue.cross && !cue.across && (cue.movement === "left" || cue.movement === "right")) return `along_${cue.movement}`;
   const after = cue.cross ? cue.then?.[0]?.movement : cue.across ? cue.movement : undefined;
   const side = after === "left" || after === "bear_left" ? "left" : after === "right" || after === "bear_right" ? "right" : null;
   // A full turn off a way alongside the road to cross it (the owner, at West Basin Drive: "Left across

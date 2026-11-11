@@ -2614,6 +2614,26 @@ test("along: off a way beside the road, left over it then right is drawn with th
   assert.equal(crossArrow({ ...turn, acrossFrom: undefined }), "cross_right");
 });
 
+test("over: a turn off a lane beside the road, over it, is the plain turn drawn with the road alongside (the owner, 2026-11-11)", () => {
+  const model = rideModel(
+    straightRoute([
+      stretch(0, 900, "Kenyon Street Northwest bike lane.", { street: "Kenyon Street Northwest bike lane" }),
+      stretch(900, 2200, "Right onto Warder Street Northwest at a signal.", {
+        street: "Warder Street Northwest",
+        turn: { ...turning("right", "Warder Street Northwest"), over: "Kenyon Street Northwest" },
+      }),
+    ]),
+  );
+  const [turn] = model.cues;
+  assert.equal(turn.over, "Kenyon Street Northwest");
+  assert.ok(!turn.text.includes("Cross"));
+  assert.ok(turn.text.startsWith("Right onto Warder Street Northwest"));
+  assert.equal(crossArrow(turn), "along_right");
+  assert.equal(crossArrow({ ...turn, movement: "left" }), "along_left");
+  // A bear over it has no alongside picture: the plain bear.
+  assert.equal(crossArrow({ ...turn, movement: "bear_right" }), null);
+});
+
 test("crossArrow: a full turn onto a crossing draws the road alongside; a bear, square across it", () => {
   assert.equal(crossArrow({ across: "West Basin Drive", acrossFrom: "left", movement: "left" }), "along_left_left");
   assert.equal(crossArrow({ across: "X Road", acrossFrom: "right", movement: "bear_left" }), "along_right_left");

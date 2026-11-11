@@ -1605,6 +1605,15 @@ class DescriptionTurnOut(Schema):
             " road alongside; absent where it goes straight over."
         ),
     )
+    over: str | None = Field(
+        default=None,
+        description=(
+            "A turn off a path beside a road that takes the route over that road (off a"
+            " two-way track on the left side, right across the street it runs beside): the"
+            " road, not said (the turn is said plainly); Ride draws the road alongside and the"
+            " turn over it. Absent elsewhere."
+        ),
+    )
 
 
 class DescriptionCrossingOut(Schema):
