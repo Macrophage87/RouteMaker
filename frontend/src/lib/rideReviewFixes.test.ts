@@ -135,8 +135,9 @@ test("back on the planned route, an automatic re-plan still under way is dropped
 });
 
 test("riding the line the wrong way past a marked closure never swaps to the other line (2026-11-05 review)", () => {
-  // The other line (the standard way, or the detour) is taken only when off this one, not when off for riding it backwards.
-  assert.match(ride, /if \(out\.state\.off && out\.state\.backAtM === undefined && fix\.accuracyM <= POOR_FIX_M\) \{\s*const at = onOtherLine\(/);
+  // The other line (the standard way, or the detour) is taken only when off this one (or alongside it, #1165), not when
+  // off for riding it backwards.
+  assert.match(ride, /if \(\(out\.state\.off \|\| out\.state\.alongside\) && out\.state\.backAtM === undefined && fix\.accuracyM <= POOR_FIX_M\) \{\s*const at = onOtherLine\(/);
 });
 
 test("a re-plan before the ride is placed counts from the rider's place on the line, never from its start (2026-11-05 review)", () => {
