@@ -19,6 +19,7 @@ import {
   NOTE_ICON_LABEL,
   NOTE_ICON_WORDS,
   NO_ICON_WORDS,
+  noteEmptySaid,
 } from "./lib/routeNotesPlan.ts";
 import { IconArt, useIconStyle } from "./app/iconArt.tsx";
 import { KIND_ICON, NOTE_ICONS, NOTE_TEXT_MAX, cleanNoteText, type NoteIcon, type NoteKind } from "./lib/routeNotes.ts";
@@ -44,7 +45,8 @@ export function NoteDialog({
   ask: NoteAsk | null;
   /** Where the focus goes when what opened the dialog is gone (a note's sign, drawn again as the note changed). */
   fallbackFocus?: () => HTMLElement | null;
-  onDone: (kind: NoteKind, text: string, icon: NoteIcon) => void;
+  /** Returns why the note was not taken (shown in the dialog, which stays open), or null once it is. */
+  onDone: (kind: NoteKind, text: string, icon: NoteIcon) => string | null;
   onRemove: () => void;
   onCancel: () => void;
 }) {
@@ -54,6 +56,9 @@ export function NoteDialog({
   const headingId = useId();
   const inputId = useId();
   const hintId = useId();
+  const errorId = useId();
+  // Why the last press was refused, said inside the dialog: the page's live regions are inert behind a modal (v0.25.0 review).
+  const [error, setError] = useState<string | null>(null);
   const [kind, setKind] = useState<NoteKind>("caution");
   const [text, setText] = useState("");
   const [icon, setIcon] = useState<NoteIcon>("warning");
@@ -66,6 +71,7 @@ export function NoteDialog({
       setKind(ask?.kind ?? "caution");
       setText(ask?.text ?? "");
       setIcon(ask?.icon ?? KIND_ICON[ask?.kind ?? "caution"]);
+      setError(null);
       dialog.showModal?.();
       inputRef.current?.focus();
     } else if (!open && dialog.open) {
@@ -91,7 +97,7 @@ export function NoteDialog({
           method="dialog"
           onSubmit={(event) => {
             event.preventDefault();
-            if (!empty) onDone(kind, cleanNoteText(text), icon);
+            setError(empty ? noteEmptySaid() : onDone(kind, cleanNoteText(text), icon));
           }}
         >
           <h2 id={headingId}>{ask.mode === "add" ? NOTE_HEADING_ADD : NOTE_HEADING_EDIT}</h2>
@@ -124,9 +130,16 @@ export function NoteDialog({
             maxLength={NOTE_TEXT_MAX}
             autoComplete="off"
             enterKeyHint="done"
-            aria-describedby={hintId}
-            onChange={(event) => setText(event.target.value)}
+            aria-describedby={error ? `${errorId} ${hintId}` : hintId}
+            aria-invalid={error ? true : undefined}
+            onChange={(event) => {
+              setText(event.target.value);
+              setError(null);
+            }}
           />
+          <p id={errorId} className="note-error" role="alert">
+            {error ?? ""}
+          </p>
           <p id={hintId} className="hint">
             {NOTE_HINT}
           </p>

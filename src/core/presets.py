@@ -860,7 +860,8 @@ def wait_weight_for(name: str) -> float:
 # 2026-11-08: "Call that 10 minutes on a road bike in pain level") and Run, which shares its
 # weight; Tandem by the owner's decision (round 3, 2026-11-08: "That should be at the 10x. It's
 # really obnoxious to try to navigate to a button on a tandem."). Any other ride type, Cargo
-# included, ranks a button by the usual stacked rule at its own weight.
+# included, ranks a button by the usual stacked rule at its own weight. Switched off with every
+# other button price since 2026-11-10 (`junction_delay.BUTTONS_PRICED`): kept for that rule.
 ROAD_BIKE_BUTTON_RIDES = frozenset({ROAD_BIKE, RUN, TANDEM})
 
 

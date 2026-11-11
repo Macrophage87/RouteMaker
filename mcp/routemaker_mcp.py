@@ -5618,10 +5618,10 @@ TOOLS = [
             " file. replaces (a route_id from my_routes) archives that saved route once this"
             " one is saved, for a new route that supersedes it: only when the rider agrees."
             " fixed true keeps it as a fixed route: its exact line, like a GPX file, never"
-            " offered Update route and never re-routed in a ride (off it, the way back to the"
-            " line). Left out, it is saved by its via points (our default), which is usually"
-            " better: give fixed only when the rider asks for a fixed or unchanging route."
-            " Only on the rider's word."
+            " re-routed in a ride (off it, the way back to the line); only a closure on its"
+            " line offers Update route. Left out, it is saved by its via points (our"
+            " default), which is usually better: give fixed only when the rider asks for a"
+            " fixed or unchanging route. Only on the rider's word."
         ),
         "inputSchema": {
             "type": "object",
@@ -6173,6 +6173,8 @@ class Server:
             raise ToolError(f"a route has at most {MAX_NOTES} notes (our default)")
         plan = draft.plan
         line = plan.line
+        if asked and len(line) < 2:
+            raise ToolError("the draft has no line to put notes on: plan it again")
         taken: list[dict] = []
         notes: list[dict] = []
         moved: list[str] = []
@@ -6186,7 +6188,12 @@ class Server:
             if not text:
                 raise ToolError(f"note {n}: give a few words")
             if note.get("at_mile") is not None:
-                mile = float(note["at_mile"])
+                try:
+                    mile = float(note["at_mile"])
+                except (TypeError, ValueError):
+                    raise ToolError(f"note {n}: at_mile is a number of miles") from None
+                if not math.isfinite(mile):
+                    raise ToolError(f"note {n}: at_mile is a number of miles")
                 total = (plan.answer.get("distance_m") or 0.0) / METRES_PER_MILE
                 if not 0 <= mile <= total + 0.05:
                     raise ToolError(
@@ -6304,14 +6311,17 @@ class Server:
             str(args.get("key") or ""), self.view_key(str(args.get("draft_id") or ""))
         ):
             raise ToolError("route_view_map is the route view's own: it has nothing to answer here")
-        centre = args["centre"]
-        lon, lat = float(centre[0]), float(centre[1])
+        try:
+            centre = args["centre"]
+            lon, lat = float(centre[0]), float(centre[1])
+            width, height = int(args["width"]), int(args["height"])
+            scale = float(args["scale"])
+        except (KeyError, IndexError, TypeError, ValueError):
+            raise ToolError("give centre [lon, lat], width, height and scale as numbers") from None
         if not (-180 <= lon <= 180 and -85 <= lat <= 85):
             raise ToolError("centre: [lon, lat]")
-        width, height = int(args["width"]), int(args["height"])
         if not (16 <= width <= VIEW_MAP_MAX_W and 16 <= height <= VIEW_MAP_MAX_H):
             raise ToolError(f"width 16 to {VIEW_MAP_MAX_W} and height 16 to {VIEW_MAP_MAX_H} px")
-        scale = float(args["scale"])
         if not math.isfinite(scale) or not 256 <= scale <= 256 * 2**18:
             raise ToolError("scale: pixels across the world, 256 to 2^26")
         drawn = self.basemap((lon, lat), scale, width, height)

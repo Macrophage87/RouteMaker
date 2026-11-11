@@ -72,10 +72,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Busy crossing, no signal.": "የተጨናነቀ መገናኛ፣ የትራፊክ መብራት የለም።",
   "Busy crossing.": "የተጨናነቀ መገናኛ።",
   "Busy junction.": "የተጨናነቀ መጋጠሚያ።",
-  // A signal that may need a button press (the owner, 2026-11-08): the card's note and the words said.
-  // Drafted by Claude: FLAGGED for review by a native speaker.
-  "Light may need a button press": "የትራፊክ መብራቱ አዝራር መጫን ሊያስፈልገው ይችላል",
-  "Button for the light.": "ለመብራቱ አዝራሩን ይጫኑ።",
   "Busy junction at a signal.": "የተጨናነቀ መጋጠሚያ፣ የትራፊክ መብራት አለ።",
   "Busy junction at a stop sign.": "የተጨናነቀ መጋጠሚያ፣ የማቆሚያ ምልክት አለ።",
   "Busy junction, no signal.": "የተጨናነቀ መጋጠሚያ፣ የትራፊክ መብራት የለም።",

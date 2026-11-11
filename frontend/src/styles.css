@@ -11201,9 +11201,10 @@ button.route-note {
   border: 3px solid #1d4ed8;
 }
 button.route-note:focus-visible {
-  outline: 3px solid #1d4ed8;
+  outline: 3px solid var(--map-focus);
   outline-offset: 2px;
   border-radius: 8px;
+  box-shadow: 0 0 0 2px var(--map-focus-inner);
 }
 
 /* The note dialog's icon choice: a wrapping row of 44 px choices, the chosen one ringed. */
@@ -11231,12 +11232,20 @@ button.route-note:focus-visible {
   cursor: pointer;
 }
 .note-icon-choice:has(input:checked) {
-  border-color: #1d4ed8;
+  border-color: var(--accent);
   background: rgba(29, 78, 216, 0.12);
 }
 .note-icon-choice:has(input:focus-visible) {
-  outline: 3px solid #1d4ed8;
+  outline: 3px solid var(--focus);
   outline-offset: 1px;
+}
+/* Why the dialog's main button was refused (NoteDialog.tsx), said by its role="alert". */
+.note-error:empty {
+  display: none;
+}
+.note-error {
+  margin: 4px 0;
+  font-weight: 700;
 }
 
 /* A note's or stop's icon (app/iconArt.tsx, 2026-11-10): a Noto picture (our default) or the phone's emoji. */
@@ -11262,7 +11271,7 @@ button.route-note:focus-visible {
 }
 .icon-art-none {
   font: 700 20px/1 system-ui, sans-serif;
-  color: #4b5563;
+  color: var(--text-muted);
 }
 
 /* A stop's icon beside its number: a small white disc at the pin's right, the number left as it was. */
