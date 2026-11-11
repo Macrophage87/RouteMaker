@@ -802,3 +802,26 @@ class TestMountainBike:
         assert mtb.hills_seek
         # A rider who chose it wants the descent, as Mountain Goat's.
         assert mtb.brake_grade is None
+
+
+def test_above_the_old_top_the_turn_charge_rises_to_the_calm_charge() -> None:
+    # The owner, 2026-11-10, Trolley Trail commute: fewer fiddly turns at the calm end. Before:
+    # Valhalla's 5 s at every position; after: 15 s (our default) above 80, a ride type's own
+    # higher charge kept; with no position asked for, the ride type's own start decides.
+
+    def at(name: str, stress: int) -> int:
+        return presets.costing(name, stress)["bicycle"]["maneuver_penalty"]
+
+    assert at("default", 70) == presets.VALHALLA_MANEUVER_PENALTY_S
+    assert at("default", presets.STRESS_TODAYS_TOP) == presets.VALHALLA_MANEUVER_PENALTY_S
+    assert at("default", 90) == presets.CALM_MANEUVER_PENALTY_S
+    assert at("trailmaxxing", presets.STRESS_MAX) == presets.CALM_MANEUVER_PENALTY_S
+    assert at("tandem", presets.STRESS_MAX) == presets.HIGH_MANEUVER_PENALTY_S
+    assert (
+        presets.costing("trailmaxxing")["bicycle"]["maneuver_penalty"]
+        == presets.CALM_MANEUVER_PENALTY_S
+    )
+    assert (
+        presets.costing("default")["bicycle"]["maneuver_penalty"]
+        == presets.VALHALLA_MANEUVER_PENALTY_S
+    )

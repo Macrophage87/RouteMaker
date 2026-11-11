@@ -139,6 +139,8 @@ COPY --chown=root:root frontend/src/climb-data/climbs.json ./frontend/src/climb-
 # The site's own MCP connector (src/core/connector.py, v0.10.0) runs the assistant's module from
 # mcp/, as a rider's own computer does, with the Metro stations it measures routes against.
 COPY --chown=root:root mcp/routemaker_mcp.py ./mcp/routemaker_mcp.py
+# The route view the connector shows in an assistant app that can (mcp/routemaker_mcp.py VIEW_URI).
+COPY --chown=root:root mcp/route_view.html ./mcp/route_view.html
 COPY --chown=root:root frontend/src/rail-data/metro-stations.geojson ./frontend/src/rail-data/metro-stations.geojson
 # And the stations' entrances and elevators beside it, so a route to or through a station goes to
 # its bike entrance as the map's does, not to the platform point (issue #39; mcp/routemaker_mcp.py

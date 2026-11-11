@@ -234,6 +234,9 @@ def change_phrase(older: dict, newer: dict) -> str:
     phrase: "Stop added", "Ride type changed, start moved", "Line changed"."""
     if older.get("source") != newer.get("source"):
         return "From a GPX file" if newer.get("source") == "gpx" else "Planned in RouteMaker"
+    if bool(older.get("fixed")) != bool(newer.get("fixed")):
+        # A fixed route (the owner, 2026-11-10) or one by its via points again: said first.
+        return "Made a fixed route" if newer.get("fixed") else "Back to via points"
     a = older.get("inputs") or {}
     b = newer.get("inputs") or {}
     parts: list[str] = []

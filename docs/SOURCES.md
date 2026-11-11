@@ -913,6 +913,13 @@ map's credits (301 is about data sources). It is credited where the font is, in 
   `cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30`, taken from the build host's
   `/usr/share/common-licenses/Apache-2.0`, not downloaded). Both are added to `licenses.txt` by
   the `licenceNotices` plugin (`frontend/src/licences/notices.mjs`, `BUNDLED_ICONS`).
+- Twelve more of the same set, 2026-11-10 (Stephen: "Allow both", "We can use noto"): the icons
+  of route notes and stops (warning sign, hole, automobile, construction sign, national park,
+  camera, droplet, fork and knife, hot beverage, restroom, wrench, round pushpin), from the same
+  commit's `2D/svg/`, committed unmodified as `frontend/src/icons/noto-emoji-u<code>.svg` and shown
+  as pictures unless Settings > Display chooses the phone's own emoji. Inspected as the first was;
+  sizes and sha256 in `fixtures/icons/README.md`, checked by `frontend/src/lib/stopIcons.test.ts`.
+  Same licence and notice.
 - Records: `fixtures/icons/README.md`; docs/DEVELOPMENT.md, "Avoid-rated junctions".
 
 ## The Mass Ride flow model (literature checked; video check pending: FOLLOWUP-FLOW-CALIBRATION)
