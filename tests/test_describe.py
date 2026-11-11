@@ -2311,6 +2311,54 @@ class TestCrossings:
         assert "cross" not in entries[1]["turn"]
         assert "Bear right to stay on Needwood Road bike lane," in entries[1]["text"]
 
+    @staticmethod
+    def east_west_highway(kink_out=324.0):
+        """Rock Creek Trail north across East-West Highway: the map draws the trail 8 m
+        east from the crossing's kerb to a sidewalk's corner, then back north-west."""
+
+        def at_node(part, turn):
+            part[0] = replace(part[0], turn=turn, choice=True)
+            return part
+
+        legs = [
+            flat(
+                road("Rock Creek Trail", 1, 300, 0, 0, "path", "cycleway"),
+                at_node(road("Rock Creek Trail", 1, 20, 10, 10, "path", "cycleway"), 10.0),
+                at_node(road("Rock Creek Trail", 1, 8, 70, 70, "path", "cycleway"), 58.0),
+                at_node(
+                    road("Rock Creek Trail", 1, 400, kink_out, kink_out, "path", "cycleway"),
+                    kink_out - 70.0 - (360.0 if kink_out > 180 else 0.0),
+                ),
+            )
+        ]
+        crossing = event(
+            310, "straight", kind="crossing", names=("east-west highway",), flagged=False
+        )
+        return d.describe(legs, [crossing])
+
+    def test_a_kink_in_one_path_past_a_crossing_is_one_move(self):
+        # The owner, 2026-11-11: "some weird turns". It was "Cross East-West Highway, then
+        # bear right onto Rock Creek Trail" and "Left to stay on Rock Creek Trail" 8 m on.
+        entries = self.east_west_highway()
+        assert len(entries) == 2
+        assert entries[1]["turn"]["across"] == "East-west Highway"
+        assert entries[1]["turn"]["movement"] == "bear_left"
+        assert "Cross East-west Highway at a signal, then bear left" in entries[1]["text"]
+        assert not any("Left to stay on" in text for text in texts(entries))
+
+    def test_a_kink_that_turns_past_a_bear_is_still_said(self):
+        # Across the two turns a full left (70 -> 260 heading out): a turn the rider makes.
+        entries = self.east_west_highway(kink_out=260.0)
+        assert len(entries) == 3
+
+    def test_a_dog_leg_whose_turns_cancel_is_still_said(self):
+        # Review r1: 10 -> 70 -> 0 across the kink is straight on, as at a fork whose other
+        # branch runs on: the crossing and the left are kept, not folded away.
+        entries = self.east_west_highway(kink_out=0.0)
+        assert len(entries) == 3
+        assert "Cross East-west Highway at a signal" in entries[1]["text"]
+        assert "Left to stay on Rock Creek Trail" in entries[2]["text"]
+
     def test_a_long_middle_is_no_crossing(self):
         crossing = event(420, "straight", kind="crossing", names=("redland road",), flagged=False)
         entries = self.needwood([crossing], middle_m=200)
