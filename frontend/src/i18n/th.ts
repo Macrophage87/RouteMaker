@@ -72,10 +72,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Busy crossing, no signal.": "ทางแยกรถมาก ไม่มีไฟสัญญาณ",
   "Busy crossing.": "ทางแยกรถมาก",
   "Busy junction.": "จุดตัดรถมาก",
-  // A signal that may need a button press (the owner, 2026-11-08): the card's note and the words said.
-  // Drafted by Claude: FLAGGED for review by a native speaker.
-  "Light may need a button press": "สัญญาณไฟอาจต้องกดปุ่ม",
-  "Button for the light.": "กดปุ่มสัญญาณไฟ",
   "Busy junction at a signal.": "จุดตัดรถมาก มีไฟสัญญาณ",
   "Busy junction at a stop sign.": "จุดตัดรถมาก มีป้ายหยุด",
   "Busy junction, no signal.": "จุดตัดรถมาก ไม่มีไฟสัญญาณ",

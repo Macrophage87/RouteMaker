@@ -3484,22 +3484,6 @@ def junction_waits(
     )
 
 
-def light_buttons(found_waits, route_m: float, traced_m: float) -> list[dict]:
-    """The signals read as needing their beg button (`junction_delay.signal_wait`), for
-    Ride, in the description's metres (the traced metres at the router's length): at the
-    button signal's own node (`Wait.button_at`), not the run's first junction, which can be
-    a stop line or the other carriageway up to 45 m short of it (the signal review of
-    2026-11-08)."""
-    scale = route_m / traced_m if traced_m > 0 else 1.0
-    out = []
-    for w in found_waits:
-        if not w.button:
-            continue
-        m, lon, lat = w.button_at if w.button_at is not None else (w.m, w.lon, w.lat)
-        out.append({"at_m": round(m * scale, 1), "lon": round(lon, 6), "lat": round(lat, 6)})
-    return out
-
-
 def _outside_dc(piece) -> bool:
     """Whether a traced piece lies outside the District (its midpoint; a piece with no
     position is taken as inside)."""
@@ -6794,8 +6778,8 @@ def _plan(
         )
         # The time its junctions cost the rider, which the router's own time leaves out
         # (`routemaker.junction_delay`): part of the time shown.
-        # Outside the major cities a signal across a big road waits longer, and one read as
-        # needing its beg button is marked for Ride (the owner, 2026-11-08).
+        # Outside the major cities a signal across a big road waits longer (the owner,
+        # 2026-11-08).
         found_waits = junction_waits(raw_junctions, beacons, events, when=when)
         waits = [(w.m, w.seconds) for w in found_waits]
         delay = float(sum(wait for _m, wait in waits))
@@ -6853,9 +6837,6 @@ def _plan(
             "distance_m": round(float(summary.get("length", 0.0)) * 1000.0, 1),
             "duration_s": round(route_s + delay + walk_change_s, 1),
             "junction_delay_s": round(delay, 1),
-            # The signals read as needing their beg button (`junction_delay.signal_wait`), in
-            # the description's metres (the traced metres at the router's length), for Ride.
-            "light_buttons": light_buttons(found_waits, route_m, traced_m),
             # Where along the line that time falls, hills and junction waits in place, for a
             # ride's arrival times (`routemaker.time_marks`).
             "time_marks": time_marks.time_marks(router_at, waits, traced_m),

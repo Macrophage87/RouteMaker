@@ -161,9 +161,6 @@ import {
   type Verbosity,
   endWords,
   ARRIVED_SAID,
-  BUTTON_SHOWN,
-  buttonOnly,
-  buttonBefore,
 } from "./lib/navigate.ts";
 import { statsPause, statsStart, statsStep, type RideStats } from "./lib/rideStats.ts";
 import {
@@ -523,8 +520,7 @@ function arrowFor(
   const across = crossArrow(cue);
   if (across) return across;
   if (cue.movement) return cue.movement;
-  // A button signal's own note (lib/navigate.ts withButtons) is no warning: drawn straight on.
-  if ((cue.kind === "hazard" && !cue.buttonOnly) || cue.kind === "walk") return "warn";
+  if (cue.kind === "hazard" || cue.kind === "walk") return "warn";
   // A route note (lib/routeNotes.ts): a caution is a warning sign; a point of interest is on the way, straight on.
   if (cue.kind === "note") return cue.note?.kind === "caution" ? "warn" : "straight";
   return "straight";
@@ -3906,9 +3902,6 @@ export function RideMode({
                 {cueShown.rest}
               </p>
               {cue.citation && <p className="cue-citation">{cue.citation}</p>}
-              {/* A signal that may need its button (the owner, 2026-11-08), under the turn or crossing it is at. */}
-              {/* Or a button signal's own note just before it, which the card gives way to (lib/navigate.ts nextAction). */}
-              {((cue.button && !buttonOnly(cue)) || (progress !== null && buttonBefore(model, progress, cue))) && <p className="cue-citation">{t(BUTTON_SHOWN)}</p>}
             </div>
           </div>
         ) : (

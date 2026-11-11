@@ -72,10 +72,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Busy crossing, no signal.": "Yoğun geçit, ışıksız.",
   "Busy crossing.": "Yoğun geçit.",
   "Busy junction.": "Yoğun kavşak.",
-  // A signal that may need a button press (the owner, 2026-11-08): the card's note and the words said.
-  // Drafted by Claude: FLAGGED for review by a native speaker.
-  "Light may need a button press": "Işık için düğmeye basmak gerekebilir",
-  "Button for the light.": "Işık düğmesi.",
   "Busy junction at a signal.": "Yoğun kavşak, ışıklı.",
   "Busy junction at a stop sign.": "Yoğun kavşak, dur işaretli.",
   "Busy junction, no signal.": "Yoğun kavşak, ışıksız.",
