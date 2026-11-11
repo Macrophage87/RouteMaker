@@ -90,6 +90,7 @@ Contents:
 - [Deploying v0.22.3](#deploying-v0223)
 - [Deploying v0.23.0](#deploying-v0230)
 - [Deploying v0.24.0](#deploying-v0240)
+- [Deploying v0.25.0](#deploying-v0250)
 - [Deploying a planner and front-end release: rollback points and verification](#deploying-a-planner-and-front-end-release-rollback-points-and-verification)
 - [Paths bicycles may not ride (NO-BIKE-PATHS)](#paths-bicycles-may-not-ride-no-bike-paths)
 - [Mountain-bike difficulty levels (456; claude/v0-4-0-mtb-levels)](#mountain-bike-difficulty-levels-456-claudev0-4-0-mtb-levels)
@@ -1360,9 +1361,10 @@ ft, 0.5 mi), against the busy roads it replaced, for the record:
 no named candidate may be left at 0 (the derive ran to the end); the path
 sentinels, the W&OD (OSM way 8810729) and the C&O towpath by Fletcher's Cove (74843009),
 `settings.REBUILD_SENTINEL_CALM_PATH_WAYS`, must each be in a network of 8 mi
-(12.9 km) or more; the road sentinel, Gambrill Park Road in Frederick County (OSM
-way 11560982, LTS 2 from MDOT SHA's rating, in a 14.8 mi calm run; it was Elmer School
-Road until Montgomery Planning's LTS 4 for that road was accepted, 2026-10-18),
+(12.9 km) or more; the road sentinel, Wildlife Loop in the Patuxent Research Refuge
+(OSM way 86073896, LTS 2 in our own picks, in an 8.6 mi calm run; it was Gambrill Park
+Road until our own picks rated that piece 2.5, 2026-11-10, and Elmer School Road
+before that, until Montgomery Planning's LTS 4 for that road was accepted, 2026-10-18),
 `settings.REBUILD_SENTINEL_CALM_STREET_WAYS` (the setting keeps its first name), must
 be in a calm run of 2 mi or more; and at least `settings.REBUILD_CALM_RUN_FLOORS`
 rows, 15,000 path rows in a run of 0.25 mi and 1,200 road rows in a calm run of 2 mi
@@ -7837,11 +7839,13 @@ wide gates), so the beta agent stops on the tag.
   `--confirm` with the owner's go per file, detached, outside 07:00 UTC) before the cloud run is sent:
   the build reads only approved `Override` rows from the dump. A build sent before the load has the
   code but none of the picks, and says nothing.
-- [ ] **The build's commit.** The map is built on the on-demand box at `996b8614`, not at the tag.
-  Nothing after it touches `lua/`, `valhalla/`, `src/pipeline/`, `fixtures/` or
-  `scripts/cloud/box-rebuild.sh` (check: `git diff --stat 996b8614 v0.24.0 -- lua valhalla
-  src/pipeline fixtures scripts/cloud/box-rebuild.sh` is empty), so the install takes
-  `--allow-sha-mismatch`, at home and with `--beta`.
+- [ ] **The build's commit.** The map is built on the on-demand box (run cloud-20261110b) at
+  `282481cb`, not at the tag: the v0.24.0 tree plus the calm-road sentinel change (Wildlife Loop
+  for Gambrill Park Road, #1144; validation only). The first run, at `996b8614`, stopped at that
+  check. `git diff --stat v0.24.0 282481cb` shows only `src/config/settings.py` and this file,
+  and nothing touches `lua/`, `valhalla/`, `src/pipeline/`, `fixtures/` or
+  `scripts/cloud/box-rebuild.sh`, so the install takes `--allow-sha-mismatch`, at home and with
+  `--beta`.
 - [ ] **Migrations.** 0059 (`connector_draft.root`, `saved_at`) and 0060 (`reviewed_closure.on_foot`)
   add nullable columns only; safe on the running map and reversible. Rolling the code back past
   v0.24.0 brings back the 24 h draft keep, so drafts 1-7 days old go at the next sweep.
@@ -7860,6 +7864,52 @@ wide gates), so the beta agent stops on the tag.
   streetcar rails; Load route (signed in) lists an assistant draft with Save and Delete.
 - [ ] **Rollback.** The `pre-rel` api image and the v0.23.0 front end; the map's own rollback
   (`rollback_rebuild`) puts back 20261109T111715Z. The own-pick rows stay in the database.
+
+## Deploying v0.25.0
+
+Fixed saved routes (#1146, #1148, #1150), route notes and stop icons (#1154, #1155), phone cue
+images with arrows (#1152, #1153), the connector's route view, Mass Ride view and route picture
+(#1141-#1143, #1145), the Bethesda Trolley Trail turn at Charles St (#1140), and the North Bethesda
+bike lane overrides file (#1136). **No `lua/`, `valhalla/`, `src/pipeline/`, compose, Caddyfile,
+nginx (`deploy/`) or requirements change, no new environment variable, worker, scheduled job or
+outbound host, and no map rebuild.** One line in `docker/api.Dockerfile` copies
+`mcp/route_view.html` into the api image, so the beta agent's gate stops on the tag
+(`verdict=stop`) and the beta is a hand ship.
+
+- [ ] **The tag** **(owner)**. Once `test` and `a11y` are green on `main`, the owner tags v0.25.0
+  (annotated) on that commit, from the PC.
+- [ ] **Migration.** 0061 (`saved_route.fixed`, `saved_route_version.fixed`) adds two booleans with
+  a database default of false: the v0.24.0 api keeps saving routes in the minutes between `migrate`
+  and its recreation, and after a rollback of the images. Reversible.
+- [ ] **At home**, as "Deploying a planner and front-end release": rollback point (tag the running
+  api image `pre-rel-<short>`, keep `index.html`), fast-forward the checkout, `docker compose build
+  api rebuild` (tag the pipeline image `pre-rel-<short>` too: the rebuild's calm-road sentinel moved
+  to Wildlife Loop, #1144, and a v0.24.0 `rebuild` image still checks Gambrill Park Road, which the
+  own picks rate 2.5, so its next run stops at that check), `migrate`, then `docker compose up -d
+  --no-deps --no-build --force-recreate api worker rebuild` with no job todo or doing, then the front
+  end. No router restart, no map rebuild.
+- [ ] **Beta** **(owner)**, by hand: `auto-release.sh pause --wait "shipping by hand"` and `status`
+  (no `IN PROGRESS`), then docs/BETA-RUNBOOK.md "Shipping an update later" at the tag (the api image
+  built there, `migrate`, the front end built on the PC), `smoke-test.sh --local`, then
+  `smoke-test.sh --public <url> --passwords-file <file>`, then `auto-release.sh mark-deployed
+  v0.25.0` and `auto-release.sh resume`. The new `/mcp/gpx/<token>.png` and `-cues-N.png` links need
+  no nginx or Caddy change: they go to the api through `location /`, and the access-log rule for
+  `/mcp/gpx/` already takes their tokens out.
+- [ ] **The North Bethesda override file** (optional, separate). `fixtures/overrides/2026-11-10-owner-north-bethesda-bike-lanes.json`
+  is loaded on the PC with `load_access_overrides` (dry run, then `--confirm` with the owner's
+  go); its rows take effect at the next map rebuild, not with this release. Its five Grand Park
+  Avenue rows say "held until the owner checks it": ask the owner about them before the load.
+- [ ] **Spot checks.** Plan: Save with Fixed route ticked, reopen it from Load route ("Fixed"), and
+  Start ride: off the line, Ride shows the way back, never a new route. Add a caution note on the
+  map: it shows on the map and in the cue sheet, and Ride says it as you reach it. Plan's GPX panel:
+  the lock-screen cue image has arrows and a dark choice. On a ride along the Bethesda Trolley Trail
+  southbound, Ride calls the turn at Charles St. Through the connector: plan a route, then open its
+  picture link and one cue image link (each 200, `image/png`); the access logs show the path with
+  its token taken out.
+- [ ] **Rollback.** The `pre-rel` api image (`--force-recreate api worker`) and the v0.24.0 front end.
+  The `fixed` columns stay (with their default); a fixed route opened on v0.24.0 is a via route. On
+  the beta, the images and `index.html` alone: no `restore-dump` (it would lose routes saved since
+  the ship), as 0061 only adds columns.
 
 ## Deploying a planner and front-end release: rollback points and verification
 
@@ -9928,7 +9978,9 @@ Python 3.11 or later, standard library only.
 - **Draft:** a JSON file outside the repo (the scratchpad, or the PC's private ride
   folder; the script refuses a draft inside the repo) naming one node or way, `expect` (the tags as the owner was shown them, null =
   absent), `set` (null = remove), `comment` and `source` (`survey`). Only the keys in
-  `ALLOWED_KEYS` may change, at most four; `highway` only on a node, to a junction control;
+  `ALLOWED_KEYS` may change, at most four (a street's `cycleway`, `cycleway:<side>` and
+  `cycleway:<side>:oneway` among them, for a bike lane seen on the street or seen missing);
+  `highway` only on a node, to a junction control;
   `oneway` only on a way, to `yes`, `-1` or `no` (a street whose direction changed on the
   ground; in the District also add the owner's block direction, fixtures/overrides/README.md,
   "Block corrections"; a street made two-way needs an owner `BD` row, since DC's two-way
