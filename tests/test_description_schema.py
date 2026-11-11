@@ -50,6 +50,15 @@ def test_the_turn_off_a_way_beside_the_road_reaches_the_response():
     assert out["turn"]["across_from"] == "left"
 
 
+def test_the_road_a_turn_takes_the_route_over_reaches_the_response():
+    """The owner, 2026-11-11 (Kenyon Street): `over` is the response's, not dropped."""
+    from test_describe import TestRideTurnsMissed
+
+    entries = TestRideTurnsMissed().kenyon_turn()
+    out = DescriptionEntryOut.model_validate(entries[1]).model_dump()
+    assert out["turn"]["over"] == "Kenyon Street Northwest"
+
+
 def test_the_way_an_unnamed_path_leads_to_reaches_the_response():
     """D21: the `toward` field is the response's, not dropped by the schema."""
     legs = [

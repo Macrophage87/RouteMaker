@@ -315,7 +315,7 @@ if (mine()) for (const [label, size] of [["phone", { width: 390, height: 844, mo
   check(`plan bar (${label}): pressing Update route hands the focus to Save route in its place`, handed, await p.eval("document.activeElement?.textContent?.trim() || document.activeElement?.tagName"));
   check(`plan bar (${label}): signed in, the route up to date shows Save route big in Update route's place; it opens the name form (focused, named, with Download GPX, whole on the screen), Escape and Cancel return to it, and a change brings Update route back in its place`,
     JSON.stringify(upToDate) === JSON.stringify(["Save route", "Start ride", "Manual mode", "Clear the plan"]) && big?.h >= 52 && big.top <= 16 && big.expanded === "false" &&
-      form.open && form.focused && !!form.name && form.expanded === "true" && JSON.stringify(form.buttons) === JSON.stringify(["Save", "Download GPX", "Cancel"]) && back &&
+      form.open && form.focused && !!form.name && form.expanded === "true" && JSON.stringify(form.buttons) === JSON.stringify(["About Fixed route", "Save", "Download GPX", "Cancel"]) && back &&
       JSON.stringify(changed) === JSON.stringify(["Update route", "Manual mode", "Clear the plan"]),
     JSON.stringify({ upToDate, big, form, back, changed }));
   await p.close();
@@ -2450,9 +2450,9 @@ if (mine()) {
     const after = (a, b) => !!(a && b && (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING));
     return { tags: [...(ul?.querySelectorAll('li > *') ?? [])].map((b) => b.tagName + ':' + b.textContent + ':' + (b.getAttribute('aria-disabled') ?? '')),
       underHeading: after(d.querySelector('h2'), ul) && after(ul, d.querySelector('ul.road-info-summary')), pins: document.querySelectorAll('.pin').length }; })()`);
-  // Set as Home joined the row in 27ad1dae ("Set Home by address search or a map tap").
-  check("road panel: under the heading, Set as start, Set as end, Add as stop and Set as Home are real buttons, available on a two-point plan",
-    topAsk.opened && JSON.stringify(top.tags) === JSON.stringify(["BUTTON:Set as start:", "BUTTON:Set as end:", "BUTTON:Add as stop:", "BUTTON:Set as Home:"]) && top.underHeading,
+  // Set as Home joined the row in 27ad1dae ("Set Home by address search or a map tap"); Add note in Plan with route notes (#1154).
+  check("road panel: under the heading, Set as start, Set as end, Add as stop, Add note and Set as Home are real buttons, available on a two-point plan",
+    topAsk.opened && JSON.stringify(top.tags) === JSON.stringify(["BUTTON:Set as start:", "BUTTON:Set as end:", "BUTTON:Add as stop:", "BUTTON:Add note:", "BUTTON:Set as Home:"]) && top.underHeading,
     JSON.stringify({ ...top, ...topAsk, now: topAsk.opened ? undefined : await infoNow(p) }));
   await p.eval("[...document.querySelectorAll('dialog.road-info .road-info-place button')].find((b) => b.textContent === 'Add as stop')?.focus(); true");
   await armInfoClose(p);

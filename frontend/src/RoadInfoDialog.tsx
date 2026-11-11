@@ -27,6 +27,7 @@
  * and it opens the dialog's description (`aria-describedby`), so it is said as the panel opens.
  * Not also an alert: the two together were said twice (the review of 351e65b).
  */
+import { NOTE_ADD } from "./lib/routeNotesPlan.ts";
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import {
   DETAILS_TEXT,
@@ -162,6 +163,8 @@ interface Props {
   trailRider?: TrailRider;
   /** "Set as Home" (lib/homeSet.ts): the spot is the rider's Home; the panel then closes. Absent: no button. */
   onSetHome?: (point: [number, number]) => void;
+  /** Plan's Add note (lib/routeNotes.ts; 2026-11-10): a note at the spot, its words asked first. Absent elsewhere. */
+  onAddNote?: (point: [number, number]) => void;
   /** Signed in only (lib/favoritePlaces.ts): the spot saved to Favorites, beside Set as Home. */
   onSaveFavorite?: (point: [number, number]) => void;
 }
@@ -222,7 +225,7 @@ function StationTimesList({ station, rail, closed }: { station: Station; rail: R
   );
 }
 
-export function RoadInfoDialog({ request, hazards = null, massRide, station, rail = ALL_RAIL, stationClosed, avoid = null, junctionShown = null, federal = null, climb = null, onShowClimb, trailMiles = null, onClose, fallbackFocus, onStressChanged, plan, onPlace, onRouteHere, onSetHome, onSaveFavorite, trailRider = NO_TRAIL_RIDER }: Props) {
+export function RoadInfoDialog({ request, hazards = null, massRide, station, rail = ALL_RAIL, stationClosed, avoid = null, junctionShown = null, federal = null, climb = null, onShowClimb, trailMiles = null, onClose, fallbackFocus, onStressChanged, plan, onPlace, onRouteHere, onSetHome, onAddNote, onSaveFavorite, trailRider = NO_TRAIL_RIDER }: Props) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const returnTo = useRef<Element | null>(null);
@@ -662,6 +665,20 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, rai
                 </button>
               </li>
             ))}
+            {onAddNote && (
+              <li>
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={() => {
+                    onAddNote(request.point);
+                    close();
+                  }}
+                >
+                  {NOTE_ADD}
+                </button>
+              </li>
+            )}
             {onSetHome && (
               <li>
                 <button

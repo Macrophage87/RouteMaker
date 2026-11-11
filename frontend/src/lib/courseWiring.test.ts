@@ -24,10 +24,13 @@ test("the GPX section offers the course formats and devices, labelled, and says 
   assert.match(panel, /<h3 id="gpx-heading" className="visually-hidden">\s*\{t\("Route file"\)\}\s*<\/h3>/);
   // The button names the file it saves.
   assert.match(panel, /\{parts \? lockPartButton\(parts\.next, parts\.blobs\.length\) : t\("Download \{format\}", \{ format: FORMAT_WORDS\[choice\.format\] \}\)\}/);
-  assert.match(panel, /const FORMAT_WORDS: Record<ExportFormat, string> = \{ gpx: "GPX", fit: "FIT", tcx: "TCX", "pdf-sheet": "PDF", "pdf-strip": "PDF", "png-lock": t\("image"\) \};/);
+  assert.match(panel, /const FORMAT_WORDS: Record<ExportFormat, string> = \{ gpx: "GPX", fit: "FIT", tcx: "TCX", "pdf-sheet": "PDF", "pdf-strip": "PDF", "png-lock": t\("image"\), "png-lock-dark": t\("image"\) \};/);
   // The lock-screen image: one more file type, its line said in the same region (or why it could not be made).
   assert.match(panel, /"png-lock": t\("Cue sheet image, for a phone lock screen"\),/);
-  assert.match(panel, /if \(format === "png-lock"\) return downloadLockScreens\(route, vias\);/);
+  assert.match(panel, /if \(isLock\(format\)\) return downloadLockScreens\(route, vias, stops, format === "png-lock-dark"\);/);
+  // Light or dark (the owner, 2026-11-10: "Let people export in either. They could be planning in the daytime for a
+  // night ride"): one more file type in the same choice, no new control.
+  assert.match(panel, /"png-lock-dark": t\("Cue sheet image, dark, for a ride at night"\),/);
 });
 
 test("the PDF cue sheets are two more file types in the same choice, with no device choice and no new button", () => {
@@ -39,7 +42,7 @@ test("the PDF cue sheets are two more file types in the same choice, with no dev
   // One download button, as before.
   assert.equal(panel.match(/t\("Download \{format\}"/g)?.length, 1);
   // Made through the same checked download, its line said in the same region.
-  assert.match(panel, /const made = cueSheetDocument\(route, kind, vias\);\s*return \(await keepFile\(made\.bytes, "application\/pdf", cueSheetFileName\(route, kind\), cueSheetLine\(route, kind, vias, made\.pages\)\)\)\.line;/);
+  assert.match(panel, /const made = cueSheetDocument\(route, kind, vias, stops\);\s*return \(await keepFile\(made\.bytes, "application\/pdf", cueSheetFileName\(route, kind\), cueSheetLine\(route, kind, vias, made\.pages, stops\)\)\)\.line;/);
 });
 
 test("in the phone app every file of the sheet takes the native path (a WebView downloads nothing): none is a bare download", () => {
