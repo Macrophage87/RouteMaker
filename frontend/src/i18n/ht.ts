@@ -2155,4 +2155,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   // Route notes (lib/routeNotes.ts, 2026-11-10): the rider's own words go in {note}, untranslated.
   "Caution: {note}.": "Atansyon: {note}.",
   "Note: {note}.": "Nòt: {note}.",
+  "Phone emoji on map signs": "Emoji telefòn sou siy kat la",
+  "Notes and stops on the map show your phone's own emoji, not the app's pictures. Kept on this device.": "Nòt ak arè sou kat la montre emoji telefòn ou, pa imaj aplikasyon an. Li rete sou aparèy sa a.",
+  "emoji signs": "siy emoji",
 };

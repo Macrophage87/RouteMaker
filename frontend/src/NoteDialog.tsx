@@ -18,10 +18,12 @@ import {
   NOTE_ADD,
   NOTE_ICON_LABEL,
   NOTE_ICON_WORDS,
+  NO_ICON_WORDS,
 } from "./lib/routeNotesPlan.ts";
+import { IconArt, useIconStyle } from "./app/iconArt.tsx";
 import { KIND_ICON, NOTE_ICONS, NOTE_TEXT_MAX, cleanNoteText, type NoteIcon, type NoteKind } from "./lib/routeNotes.ts";
 // What is said as a note changes, from here so the page's Plan-only words stay out of Go and Ride's modules.
-export { noteSaid, noteTooLongSaid, notesFullSaid } from "./lib/routeNotesPlan.ts";
+export { noteSaid, noteTooLongSaid, notesFullSaid, stopIconSaid } from "./lib/routeNotesPlan.ts";
 
 export interface NoteAsk {
   /** "add": a new note at the spot; "edit": the note at `index`. */
@@ -112,15 +114,7 @@ export function NoteDialog({
               </label>
             ))}
           </fieldset>
-          <fieldset className="note-icons">
-            <legend>{NOTE_ICON_LABEL}</legend>
-            {(Object.keys(NOTE_ICONS) as NoteIcon[]).map((k) => (
-              <label key={k} className="note-icon-choice" title={NOTE_ICON_WORDS[k]}>
-                <input type="radio" name="note-icon" value={k} checked={icon === k} onChange={() => setIcon(k)} aria-label={NOTE_ICON_WORDS[k]} />
-                <span aria-hidden="true">{NOTE_ICONS[k]}</span>
-              </label>
-            ))}
-          </fieldset>
+          <IconChoices name="note-icon" icon={icon} onIcon={(k) => k && setIcon(k)} />
           <label htmlFor={inputId}>{NOTE_TEXT_LABEL}</label>
           <input
             id={inputId}
@@ -152,5 +146,32 @@ export function NoteDialog({
         </form>
       )}
     </dialog>
+  );
+}
+
+/**
+ * The icon row of the note and stop dialogs (2026-11-10): radios, each named by its icon's words, drawn as Settings
+ * chooses (app/iconArt.tsx). `none` adds a first choice of no icon (a stop's number only).
+ */
+export function IconChoices({ name, icon, onIcon, none = false }: { name: string; icon: NoteIcon | undefined; onIcon: (icon: NoteIcon | undefined) => void; none?: boolean }) {
+  const style = useIconStyle();
+  return (
+    <fieldset className="note-icons">
+      <legend>{NOTE_ICON_LABEL}</legend>
+      {none && (
+        <label className="note-icon-choice" title={NO_ICON_WORDS}>
+          <input type="radio" name={name} value="" checked={icon === undefined} onChange={() => onIcon(undefined)} aria-label={NO_ICON_WORDS} />
+          <span className="icon-art icon-art-none" aria-hidden="true">
+            –
+          </span>
+        </label>
+      )}
+      {(Object.keys(NOTE_ICONS) as NoteIcon[]).map((k) => (
+        <label key={k} className="note-icon-choice" title={NOTE_ICON_WORDS[k]}>
+          <input type="radio" name={name} value={k} checked={icon === k} onChange={() => onIcon(k)} aria-label={NOTE_ICON_WORDS[k]} />
+          <IconArt icon={k} style={style} />
+        </label>
+      ))}
+    </fieldset>
   );
 }

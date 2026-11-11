@@ -192,3 +192,49 @@ def test_bad_notes_are_refused_and_a_note_only_link_keeps_its_line(stand_in, tmp
         [{"kind": "caution", "lon": -77, "lat": 38.9, "text": "注意" * 40}] * mcp.MAX_NOTES
     )
     assert sum(len(mcp.urllib.parse.urlencode({"nt": v})) + 1 for v in values) <= mcp.NOTES_LINK_MAX
+
+
+def test_a_stop_s_icon_travels_in_the_link_and_a_revision(stand_in, tmp_path) -> None:  # noqa: F811
+    # The owner, 2026-11-10: "Stops can have icons too" (pointKinds.ts encodeStopIcons).
+    fragment = mcp.plan_fragment(
+        [(-77.05, 38.9), (-77.03, 38.9), (-77.02, 38.9), (-77.0, 38.9)],
+        [2],
+        "default",
+        {"stress": 50, "hills": 0},
+        {},
+        icons={1: "coffee", 2: "water", 3: "pin", 0: "food"},
+    )
+    # A stop's only: never a via point's, the start's or (not a loop) the end's.
+    assert "&si=1%3Acoffee&" in fragment and "si=2" not in fragment and "si=3" not in fragment
+    _, _, _, options = mcp.parse_fragment(fragment + "&si=1%3Anosuch")
+    assert options["stop_icons"] == {1: "coffee"}
+    server = _server(stand_in, tmp_path)
+    planned = rpc(
+        server,
+        "tools/call",
+        {
+            "name": "plan_route",
+            "arguments": {"points": [[-77.00, 38.90], [-77.00, 38.92], [-77.00, 38.95]]},
+        },
+    )["result"]["structuredContent"]
+
+    def revise(**args):
+        call = {"name": "revise_route", "arguments": {"draft_id": planned["draft_id"], **args}}
+        return rpc(server, "tools/call", call)["result"]
+
+    out = revise(stop_icons={"1": "coffee"})["structuredContent"]
+    assert "si=1%3Acoffee" in out["link"]
+    assert server.drafts.get(out["draft_id"]).options["stop_icons"] == {1: "coffee"}
+    assert revise(stop_icons={"0": "coffee"})["isError"]
+    assert revise(stop_icons={"1": "nosuch"})["isError"]
+
+    # Kept through a later revision; a loop's last point is a stop; a moved stop drops it.
+    def again(**args):
+        call = {"name": "revise_route", "arguments": {"draft_id": out["draft_id"], **args}}
+        return rpc(server, "tools/call", call)["result"]
+
+    kept = again(preset="road-bike")["structuredContent"]
+    assert "si=1%3Acoffee" in kept["link"]
+    assert not again(loop=True, stop_icons={"2": "water"})["isError"]
+    moved = again(move_points=[{"index": 1, "to": [-77.001, 38.921]}])["structuredContent"]
+    assert "si=" not in moved["link"]

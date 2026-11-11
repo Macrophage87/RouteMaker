@@ -25,6 +25,8 @@ export const NOTE_ICON_WORDS: Record<NoteIcon, string> = {
   pin: t("Pin"),
 };
 export const NOTE_ICON_LABEL = t("Icon on the map");
+/** A stop's first icon choice: none, its number only. */
+export const NO_ICON_WORDS = t("No icon");
 
 /** A map pin's name for screen readers: "Caution: busy crossing, no light. Press to change or remove." */
 export function notePinLabel(note: Pick<RouteNote, "kind" | "text">): string {
@@ -55,4 +57,9 @@ export function noteTooLongSaid(): string {
 /** Said when the route already has MAX_NOTES notes. */
 export function notesFullSaid(): string {
   return t("The route has the most notes it can ({max}).", { max: MAX_NOTES });
+}
+
+/** Said when a stop's icon is chosen or taken away (2026-11-10). */
+export function stopIconSaid(icon: NoteIcon | undefined): string {
+  return icon ? t("Stop icon: {icon}.", { icon: NOTE_ICON_WORDS[icon] }) : t("Stop icon removed.");
 }

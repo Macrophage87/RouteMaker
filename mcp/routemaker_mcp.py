@@ -1085,6 +1085,19 @@ def link_stop_names(names, count: int, vias, loop: bool) -> dict[int, str]:
     return out
 
 
+def link_stop_icons(icons, count: int, vias, loop: bool) -> dict[int, str]:
+    """The stops' icons a link carries (pointKinds.ts `stopIcons`; Stephen 2026-11-10: "Stops can
+    have icons too"): as `link_stop_names`, the stops between the ends only, each a NOTE_ICONS
+    name."""
+    out: dict[int, str] = {}
+    for i, icon in sorted((icons or {}).items()):
+        last = i == count - 1
+        middle = 0 < i < (count if loop else count - 1)
+        if icon in NOTE_ICONS and middle and (last or i not in vias):
+            out[i] = icon
+    return out
+
+
 # Route notes (frontend/src/lib/routeNotes.ts; Stephen 2026-11-10): a Caution or a Point of
 # interest at a spot, in the rider's own words, kept in the link as `nt=c,lon,lat,words`.
 NOTE_TEXT_MAX = 80  # routeNotes.ts NOTE_TEXT_MAX, our default
@@ -1255,7 +1268,7 @@ def route_notes_out(answer: dict, notes) -> list[dict]:
 
 
 def plan_fragment(
-    points, vias, preset: str, dials: dict, sent: dict, names=None, notes=None
+    points, vias, preset: str, dials: dict, sent: dict, names=None, notes=None, icons=None
 ) -> str:
     """The page's own plan link fragment (frontend/src/lib/planHash.ts `encodePlan`): the
     answer's `dials`, what only the request carried (`sent`, the POST /api/route body: the
@@ -1272,6 +1285,9 @@ def plan_fragment(
     for value in encode_notes(notes):
         # The route's notes (routeNotes.ts encodeNotes), written as the page writes them.
         parts.append(urllib.parse.urlencode({"nt": value}).replace("%2C", ","))
+    for i, icon in link_stop_icons(icons, len(points), set(vias), bool(dials.get("loop"))).items():
+        # The stops' icons (pointKinds.ts encodeStopIcons; 2026-11-10), as the page writes them.
+        parts.append(urllib.parse.urlencode({"si": f"{i}:{icon}"}))
     parts.append("preset=" + preset)
     parts.append("v=2")
     parts.append(f"stress={dials['stress']}")
@@ -1493,6 +1509,13 @@ def parse_fragment(fragment: str) -> tuple[list, list[int], str, dict]:
         if at.isdigit() and 0 < int(at) < len(points) and clean:
             names[int(at)] = clean
     options["stop_names"] = names or None
+    # The stops' icons (`si=2:coffee`, pointKinds.ts `decodeStopIcons`), carried likewise.
+    icons: dict[int, str] = {}
+    for value in params.get("si") or []:
+        at, _, icon = value.partition(":")
+        if at.isdigit() and 0 < int(at) < len(points) and icon in NOTE_ICONS:
+            icons[int(at)] = icon
+    options["stop_icons"] = icons or None
     # The route's notes (`nt=c,lon,lat,words`, routeNotes.ts `decodeNotes`), carried likewise.
     options["route_notes"] = decode_notes(params.get("nt")) or None
     return points, vias, preset, options
@@ -1501,7 +1524,7 @@ def parse_fragment(fragment: str) -> tuple[list, list[int], str, dict]:
 # What a plan's options carry for its link or for the MCP server only, never sent to POST
 # /api/route: the stops' names, and that a followed line is an alternative's, not the rider's
 # (the round 4 hunt, L4-1: an avoid plans such a draft through its points instead).
-LINK_ONLY_OPTIONS = ("stop_names", "route_notes", "follow_alternative", "corking")
+LINK_ONLY_OPTIONS = ("stop_names", "stop_icons", "route_notes", "follow_alternative", "corking")
 
 
 def marks_with_point_at(options: dict, at: int) -> dict:
@@ -1511,8 +1534,9 @@ def marks_with_point_at(options: dict, at: int) -> dict:
     if options.get("straight_legs"):
         legs = [i if i < at - 1 else i + 1 for i in options["straight_legs"] if i != at - 1]
         out["straight_legs"] = legs or None
-    if options.get("stop_names"):
-        out["stop_names"] = {i if i < at else i + 1: n for i, n in options["stop_names"].items()}
+    for key in ("stop_names", "stop_icons"):
+        if options.get(key):
+            out[key] = {i if i < at else i + 1: n for i, n in options[key].items()}
     return out
 
 
@@ -1529,12 +1553,20 @@ def marks_revised(plan, built: list, whole: bool) -> tuple[list[int] | None, dic
         for i in plan.sent.get("straight_legs") or []
         if i in at and i + 1 in at and at[i + 1] == at[i] + 1
     )
-    names = {
-        at[i]: name
-        for i, name in (plan.names or {}).items()
+    names = labels_revised(plan, built, plan.names)
+    return legs or None, names or None
+
+
+def labels_revised(plan, built: list, labels) -> dict | None:
+    """A stop's label (its name or icon, by index) on the revised points (`built`, as
+    `marks_revised` takes it): it stays with its point unless the point moved."""
+    at = {row[0]: k for k, row in enumerate(built) if row[0] is not None}
+    out = {
+        at[i]: label
+        for i, label in (labels or {}).items()
         if i in at and tuple(built[at[i]][1]) == tuple(plan.points[i])
     }
-    return legs or None, names or None
+    return out or None
 
 
 def routes_dir() -> Path:
@@ -4272,6 +4304,7 @@ class Draft:
             plan.sent,
             plan.names,
             self.options.get("route_notes"),
+            self.options.get("stop_icons"),
         )
         return with_ride_key(fragment, self.ride_key)
 
@@ -5395,6 +5428,18 @@ TOOLS = [
                     "items": {"type": "integer"},
                     "description": "Which points of the revised route are via points, numbered"
                     " after the additions and removals.",
+                },
+                "stop_icons": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": ["string", "null"],
+                        "enum": [*NOTE_ICONS, None],
+                    },
+                    "description": (
+                        "Icons for stops on the map, by the stop's point index in the revised"
+                        ' route (as via_points numbers them): {"2": "coffee"}; null takes'
+                        " one away. The route notes' icons. A stop keeps its icon unless it moves."
+                    ),
                 },
                 "loop": {"type": "boolean"},
                 "fix_metro_rounds": {"type": "integer", "minimum": 0, "maximum": 4},
@@ -7439,6 +7484,20 @@ class Server:
         # revised points, whatever the ride type.
         options["straight_legs"] = drawn
         options["stop_names"] = names
+        # And their icons (2026-11-10): kept likewise, then as this call sets them.
+        kept_icons = draft.options.get("stop_icons")
+        icons = None if args.get("points") else labels_revised(plan, built, kept_icons)
+        for at, icon in (args.get("stop_icons") or {}).items():
+            index = int(at) if str(at).isdigit() else -1
+            loop = args.get("loop", options.get("loop"))
+            if not 0 < index < len(points) - (0 if loop else 1) or index in vias:
+                raise ToolError(f"point {at} is not a stop of the revised route, so it has no icon")
+            if icon is not None and icon not in NOTE_ICONS:
+                raise ToolError(f"no icon {icon!r}: one of {', '.join(NOTE_ICONS)}")
+            icons = {k: v for k, v in (icons or {}).items() if k != index}
+            if icon:
+                icons[index] = icon
+        options["stop_icons"] = icons or None
         asked = self._options(args, preset)
         options.update({k: v for k, v in asked.items() if k in args})
         if "target_miles" in args:
