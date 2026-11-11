@@ -90,6 +90,7 @@ Contents:
 - [Deploying v0.22.3](#deploying-v0223)
 - [Deploying v0.23.0](#deploying-v0230)
 - [Deploying v0.24.0](#deploying-v0240)
+- [Deploying v0.25.1](#deploying-v0251)
 - [Deploying v0.25.0](#deploying-v0250)
 - [Deploying a planner and front-end release: rollback points and verification](#deploying-a-planner-and-front-end-release-rollback-points-and-verification)
 - [Paths bicycles may not ride (NO-BIKE-PATHS)](#paths-bicycles-may-not-ride-no-bike-paths)
@@ -7864,6 +7865,24 @@ wide gates), so the beta agent stops on the tag.
   streetcar rails; Load route (signed in) lists an assistant draft with Save and Delete.
 - [ ] **Rollback.** The `pre-rel` api image and the v0.23.0 front end; the map's own rollback
   (`rollback_rebuild`) puts back 20261109T111715Z. The own-pick rows stay in the database.
+
+## Deploying v0.25.1
+
+Ride follows a parallel way beside the route instead of re-routing back (#1165): within about 500 ft
+[150 m] of the line and going its way (our defaults, not measured). **Front end only** (`navigate.ts`,
+`RideMode.tsx`), plus the version and the docs pages: no migration, no `docker/`, compose, `deploy/`,
+`lua/`, `valhalla/` or `scripts/beta/` change, no map rebuild.
+
+- [ ] **The tag** **(owner)**. Once `test` and `a11y` are green on `main`, the owner tags v0.25.1
+  (annotated) on that commit, from the PC.
+- [ ] **Beta.** With v0.25.0 deployed there, the release agent's gate passes v0.25.1 and it deploys
+  it by itself (the front end it builds, the api image rebuilt from an unchanged Dockerfile). If the
+  beta is still on v0.24.0, the gate stops on `docker/api.Dockerfile` as for v0.25.0: ship v0.25.1
+  by hand with "Deploying v0.25.0"'s beta steps at the v0.25.1 tag, then `mark-deployed v0.25.1`.
+- [ ] **At home.** The front end at the tag ("Deploying a planner and front-end release").
+- [ ] **Spot check.** On a ride, take a path beside the route for a block: Ride says "Off the planned
+  route." once, holds the cues and does not re-route; the cues pick up where the ways meet.
+- [ ] **Rollback.** The v0.25.0 front end.
 
 ## Deploying v0.25.0
 
