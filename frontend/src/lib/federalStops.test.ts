@@ -336,7 +336,7 @@ test("the map's markers say the warning in their name and title and wear the bad
   const map = source("../MapView.tsx");
   assert.match(map, /const warning = props\.pointWarnings\?\.\[index\] \?\? null;/);
   assert.match(map, /element\.className = `pin pin-\$\{via \? "via" : kind\}\$\{kind === "through" \? " pin-through" : ""\}\$\{warning \? " pin-federal" : ""\}`;/);
-  assert.match(map, /const named = warning \? `\$\{name\}\. \$\{warning\}` : name;/);
+  assert.match(map, /const named = warning \? `\$\{shown\}\. \$\{warning\}` : shown;/);
   // The name and warning only (review a11y-8): a pin takes no focus, so no drag or click words.
   assert.match(map, /element\.setAttribute\("aria-label", via \? `\$\{said\} Remove it from the Points list\.` : said\);/);
   assert.doesNotMatch(map, /"aria-label"[^\n]*Drag to move/);
