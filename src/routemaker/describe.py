@@ -1491,10 +1491,26 @@ class _Turn:
     # The turn the route makes off a way alongside that road to cross it ("left" or
     # "right", `_far_side_turns`), drawn on the ride card; None where it goes straight on.
     across_from: str | None = None
+    # A turn off a path beside a road that takes the route over that road (`_beside`):
+    # the road, never said (the turn is, "Right onto Warder Street"); Ride draws the road
+    # alongside and the turn over it.
+    over: str | None = None
+    # The junction event where that road is crossed: its control is the turn's where the
+    # turn has no event of its own (after a third road's event is given back too).
+    over_event: object | None = None
     # A turn onto an unnamed path that leads to a named one (`_toward`): that one's name,
     # said with the path ("Right onto the path to Rock Creek Trail"), the path itself
     # still unnamed ("path" on the map, in a report, in "Where am I?").
     toward: str | None = None
+
+
+def _beside(run: _Run, event) -> bool:
+    """Whether the road `event` is about is the one the path stretch `run` is named for
+    ("Kenyon Street Northwest bike lane", "path beside Kemp Mill Road";
+    `facility.sidepath_street`): a path beside a road never goes straight over it, so a
+    turn off it over that road is one turn across it, not a crossing and then a turn."""
+    street = street_key(sidepath_street(run.label))
+    return street is not None and any(street_key(name) == street for name in event.road_names)
 
 
 def _turn_deg(heading_in: float, heading_out: float) -> float:
@@ -2642,15 +2658,23 @@ def describe_both(
         if not near:
             continue
         found = max(near, key=lambda index: events[index].m)
-        turn.across = _event_name(events[found]) or CROSS_UNNAMED
-        turn.across_event = events[found]
         turn.shape = None
         used.add(found)
+        if events[found].m >= starts[i] - JUNCTION_M and _beside(runs[i - 1], events[found]):
+            # The road the path ran beside: the turn itself takes the route over it (the
+            # owner, 2026-11-11, west on Kenyon Street's track on its left side, right onto
+            # Warder Street: "This isn't the correct symbol for this manuver"). One turn,
+            # said plainly at the crossing's control, drawn with the road alongside.
+            turn.over = _event_name(events[found]) or CROSS_UNNAMED
+            turn.over_event = events[found]
+            continue
+        turn.across = _event_name(events[found]) or CROSS_UNNAMED
+        turn.across_event = events[found]
         if turn.event is None:
             turn.event = events[found]
     # A busy road crossed straight over a few metres from a turn (or a name change) is
     # not that turn's junction: a crossing, slip lane or along event about neither street,
-    # and not the road the turn crosses (`cross`, `across_event`), is given back, so it is
+    # and not the road the turn crosses (`cross`, `across_event`, `over`), is given back, so it is
     # its own "Cross Georgia Avenue (LTS 4)" entry and the turn is not worded with its
     # signal and severity. Its movement, if the turn took it, stays.
     for i, index in matched.items():
@@ -2660,12 +2684,15 @@ def describe_both(
             and event.kind in RELEASED_KINDS
             and turn.cross is None
             and turn.across_event is not event
+            and turn.over_event is not event
             and _event_name(event)
             and not event.road_names & (runs[i - 1].names | runs[i].names)
         ):
             used.discard(index)
             turn.event = None
     for i, turn in turns.items():
+        if turn.over_event is not None and turn.event is None:
+            turn.event = turn.over_event
         turn.toward = _toward(runs, turns, i)
 
     entries: list[tuple[tuple[float, float, int], dict]] = []
@@ -2716,6 +2743,7 @@ def describe_both(
                         **({"cross": turn.cross} if turn.cross else {}),
                         **({"across": turn.across} if turn.across else {}),
                         **({"across_from": turn.across_from} if turn.across_from else {}),
+                        **({"over": turn.over} if turn.over else {}),
                         **({"toward": turn.toward} if turn.toward else {}),
                     },
                     severity=severity,
@@ -2850,6 +2878,7 @@ def describe_both(
                         **({"cross": turn.cross} if turn.cross else {}),
                         **({"across": turn.across} if turn.across else {}),
                         **({"across_from": turn.across_from} if turn.across_from else {}),
+                        **({"over": turn.over} if turn.over else {}),
                         **({"toward": turn.toward} if toward else {}),
                     },
                     severity=severity,
