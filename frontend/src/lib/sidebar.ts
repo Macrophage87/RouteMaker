@@ -5,6 +5,7 @@
  * toggle words, "Copy link", and where the focus goes when the panel changes
  * view or the points compact.
  */
+import { PAGE_NOTES } from "./routeNotes.ts";
 import { ACCESS_SENTENCE_WHERE } from "./accessMode.ts";
 import { encodePlan } from "./planHash.ts";
 import type { Dials } from "./dials.ts";
@@ -231,7 +232,7 @@ export function linkToCopy(
   dials: Dials,
   vias: readonly number[] = [],
 ): string {
-  return `${location.origin}${location.pathname}${location.search}${encodePlan(points, preset, dials, vias)}`;
+  return `${location.origin}${location.pathname}${location.search}${encodePlan(points, preset, dials, vias, undefined, undefined, "q", PAGE_NOTES.list)}`;
 }
 
 /** The surface "Copy link" uses: the async clipboard where there is one, else the selection method. */

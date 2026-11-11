@@ -2311,6 +2311,54 @@ class TestCrossings:
         assert "cross" not in entries[1]["turn"]
         assert "Bear right to stay on Needwood Road bike lane," in entries[1]["text"]
 
+    @staticmethod
+    def east_west_highway(kink_out=324.0):
+        """Rock Creek Trail north across East-West Highway: the map draws the trail 8 m
+        east from the crossing's kerb to a sidewalk's corner, then back north-west."""
+
+        def at_node(part, turn):
+            part[0] = replace(part[0], turn=turn, choice=True)
+            return part
+
+        legs = [
+            flat(
+                road("Rock Creek Trail", 1, 300, 0, 0, "path", "cycleway"),
+                at_node(road("Rock Creek Trail", 1, 20, 10, 10, "path", "cycleway"), 10.0),
+                at_node(road("Rock Creek Trail", 1, 8, 70, 70, "path", "cycleway"), 58.0),
+                at_node(
+                    road("Rock Creek Trail", 1, 400, kink_out, kink_out, "path", "cycleway"),
+                    kink_out - 70.0 - (360.0 if kink_out > 180 else 0.0),
+                ),
+            )
+        ]
+        crossing = event(
+            310, "straight", kind="crossing", names=("east-west highway",), flagged=False
+        )
+        return d.describe(legs, [crossing])
+
+    def test_a_kink_in_one_path_past_a_crossing_is_one_move(self):
+        # The owner, 2026-11-11: "some weird turns". It was "Cross East-West Highway, then
+        # bear right onto Rock Creek Trail" and "Left to stay on Rock Creek Trail" 8 m on.
+        entries = self.east_west_highway()
+        assert len(entries) == 2
+        assert entries[1]["turn"]["across"] == "East-west Highway"
+        assert entries[1]["turn"]["movement"] == "bear_left"
+        assert "Cross East-west Highway at a signal, then bear left" in entries[1]["text"]
+        assert not any("Left to stay on" in text for text in texts(entries))
+
+    def test_a_kink_that_turns_past_a_bear_is_still_said(self):
+        # Across the two turns a full left (70 -> 260 heading out): a turn the rider makes.
+        entries = self.east_west_highway(kink_out=260.0)
+        assert len(entries) == 3
+
+    def test_a_dog_leg_whose_turns_cancel_is_still_said(self):
+        # Review r1: 10 -> 70 -> 0 across the kink is straight on, as at a fork whose other
+        # branch runs on: the crossing and the left are kept, not folded away.
+        entries = self.east_west_highway(kink_out=0.0)
+        assert len(entries) == 3
+        assert "Cross East-west Highway at a signal" in entries[1]["text"]
+        assert "Left to stay on Rock Creek Trail" in entries[2]["text"]
+
     def test_a_long_middle_is_no_crossing(self):
         crossing = event(420, "straight", kind="crossing", names=("redland road",), flagged=False)
         entries = self.needwood([crossing], middle_m=200)
@@ -3714,6 +3762,53 @@ class TestRideTurnsMissed:
         entries = self.sligo_turn([crossing(m, "university boulevard west")])
         assert entries[1]["turn"]["across"] == "University Boulevard West"
         assert all("crossings" not in e for e in entries)
+
+    def kenyon_turn(self, m=403, lane="Kenyon Street Northwest bike lane", turn=90):
+        # The owner, 2026-11-11: west on Kenyon Street's two-way track on its left (south)
+        # side, then right onto Warder Street, over Kenyon's own lanes at its signal.
+        legs = [
+            flat(
+                path(lane, 400, 270),
+                turned(road("Warder Street Northwest", 1, 600, 270 + turn, 270 + turn), turn),
+            )
+        ]
+        signal = event(
+            m,
+            "straight",
+            kind="crossing",
+            flagged=False,
+            severity=None,
+            names=("kenyon street northwest",),
+        )
+        return d.describe(legs, [signal])
+
+    @pytest.mark.parametrize("m", [398, 403])
+    def test_a_turn_over_the_road_a_lane_runs_beside_is_one_turn(self, m):
+        entries = self.kenyon_turn(m)
+        turn = entries[1]["turn"]
+        assert turn["movement"] == "right"
+        assert turn["over"] == "Kenyon Street Northwest"
+        assert "across" not in turn and "cross" not in turn
+        said = entries[1]["text"].split(": ", 1)[1]
+        assert said.startswith("Right onto Warder Street Northwest at a signal")
+        assert "Cross" not in said
+        assert [e["kind"] for e in entries] == ["stretch", "stretch"]
+
+    def test_its_own_road_crossed_well_before_the_turn_is_still_cross_then_turn(self):
+        # A lane named for the road that goes straight over it 30 m short of the turn.
+        entries = self.kenyon_turn(m=370)
+        assert entries[1]["turn"]["across"] == "Kenyon Street Northwest"
+        assert "over" not in entries[1]["turn"]
+
+    def test_a_path_beside_the_road_is_read_by_its_street(self):
+        entries = self.kenyon_turn(lane="path beside Kenyon Street Northwest", turn=-90)
+        assert entries[1]["turn"]["movement"] == "left"
+        assert entries[1]["turn"]["over"] == "Kenyon Street Northwest"
+
+    def test_another_road_crossed_at_the_turn_is_still_cross_then_turn(self):
+        entries = self.kenyon_turn(lane="Park Place Northwest bike lane")
+        assert entries[1]["turn"]["across"] == "Kenyon Street Northwest"
+        assert "over" not in entries[1]["turn"]
 
     def test_a_flagged_crossing_before_a_turn_keeps_its_own_entry(self):
         entries = self.sligo_turn([crossing(385, "university boulevard west", True)])

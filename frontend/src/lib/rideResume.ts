@@ -17,6 +17,7 @@ import type { OnwardState } from "./onward.ts";
 import type { StopsLeft } from "./tripStops.ts";
 import type { RideStats } from "./rideStats.ts";
 import type { RebalanceDocked } from "./rebalanceDock.ts";
+import { isNoteIcon } from "./routeNotes.ts";
 
 export const RIDE_RESUME_KEY = "routemaker.ride-left";
 /** A ride left longer than this is not offered: a day's ride, not yesterday's. */
@@ -128,6 +129,8 @@ interface KeptPoints {
   vias: number[];
   drawn: number[];
   names: [number, string][];
+  /** The stops' icons (2026-11-10); absent where there are none. */
+  icons?: [number, string][];
 }
 
 interface Kept {
@@ -171,12 +174,17 @@ function local(): Store | null {
 }
 
 /** Kept at Start ride: the plan's points with their kinds and names, which live on the pairs (lib/pointKinds.ts). */
-function keptPoints(points: readonly LonLat[], marks: Pick<ViaMarks, "isVia" | "isDrawn" | "nameOf"> & Partial<Pick<ViaMarks, "isShape">>): KeptPoints {
+function keptPoints(points: readonly LonLat[], marks: Pick<ViaMarks, "isVia" | "isDrawn" | "nameOf"> & Partial<Pick<ViaMarks, "isShape" | "iconOf">>): KeptPoints {
   // A ride's own via points (a loop's way home, ViaMarks.shape) stay the ride's own when it is resumed.
   const shapes = marks.isShape ? points.flatMap((p, i) => (marks.isShape?.(p) ? [i] : [])) : [];
+  const icons = marks.iconOf ? points.flatMap((p, i): [number, string][] => {
+    const icon = marks.iconOf?.(p);
+    return icon ? [[i, icon]] : [];
+  }) : [];
   return {
     points: points.map((p) => [p[0], p[1]]),
     ...(shapes.length ? { shapes } : {}),
+    ...(icons.length ? { icons } : {}),
     vias: points.flatMap((p, i) => (marks.isVia(p) ? [i] : [])),
     drawn: points.flatMap((p, i) => (marks.isDrawn(p) ? [i] : [])),
     names: points.flatMap((p, i): [number, string][] => {
@@ -187,14 +195,17 @@ function keptPoints(points: readonly LonLat[], marks: Pick<ViaMarks, "isVia" | "
 }
 
 /** Kept points marked again as they were. */
-function markedPoints(kept: Partial<KeptPoints>, marks: Pick<ViaMarks, "via" | "drawn" | "named"> & Partial<Pick<ViaMarks, "shape">>): LonLat[] {
+function markedPoints(kept: Partial<KeptPoints>, marks: Pick<ViaMarks, "via" | "drawn" | "named"> & Partial<Pick<ViaMarks, "shape" | "setIcon">>): LonLat[] {
   const names = new Map(Array.isArray(kept.names) ? kept.names : []);
+  const icons = new Map(Array.isArray(kept.icons) ? kept.icons : []);
   return (kept.points ?? []).map(([lon, lat], i): LonLat => {
     let p: LonLat = [lon, lat];
     p = marks.named(p, names.get(i));
     if (Array.isArray(kept.shapes) && kept.shapes.includes(i) && marks.shape) p = marks.shape(p);
     else if (kept.vias?.includes(i)) p = marks.via(p);
     if (kept.drawn?.includes(i)) p = marks.drawn(p);
+    const icon = icons.get(i);
+    if (isNoteIcon(icon)) marks.setIcon?.(p, icon);
     return p;
   });
 }

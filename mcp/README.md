@@ -27,16 +27,59 @@ century".
 | `plan_route` | Plans through 2 to 25 points (places, station names or `[lon, lat]`), on any ride type with any of its settings, as a loop if asked; reports distance, time, climbing and the share on each traffic-stress level (and the bikeshare or transit plan on those ride types); checks the distance from Metro; can add stations as via points where it strays. Also lists what the route rides: its roads in order with miles, LTS and any scenic designation (Montgomery County Rustic Roads, scenic byways, the East Coast Greenway, US Bicycle Routes), where it rides LTS 3 and up (leaving out a bit of 0.1 mi or less at a start or end at a Metro station, the sidewalk the elevator stands on, rated as its road), its very-high-stress junctions, and small detours (where it leaves a road and comes back to it). On a Bike + transit or Bikeshare + transit trip those figures are the first ride's; `summary.transit.later_rides` gives each ride after it (miles, LTS shares and busy stretches) and `ridden_mi` all of them together. A via point reached by an out-and-back is moved to where the spur leaves the road (`trim_spurs`, on by default). With `intervals` (on and off minutes, sets, pace) it checks the route for interval training: where efforts can run with no stop, signal, busy crossing, sharp turn, descent or LTS 4 road, how many sets fit in one session (each rest about the asked minutes, laps on a loop), and clear climbs for up-and-back repeats. With `best_order` (alleycat or errand checkpoints) it keeps the start and finish and rides the points between in the quickest order: the shortest few orders by straight line are planned and the quickest kept. `closures` lists the closures it goes through or round (what, until when, where on the route, source and link), and `closure_warning` says when it rides through one, naming any stop or via point reached on a closed stretch; `check_before_you_go` lists the park notices for the ride's time (an NPS alert, or a deer-management closure in Rock Creek Park or a Montgomery park), which are warnings and never routed round. `potential_closures` lists the permits and planned work along the route (DDOT permits, DDOT ProTrack+, DC Water, WSSC Water) that may close the road or bike lane in their window, with their miles, source and link; they are not routed round either. A place name is searched near the route's other points; one that matches places far apart and none near the route is asked back. Among the matches near the route, a town or neighbourhood named just what was typed before the comma comes first ("Leesburg, VA" is the town, not Leesburg Pike or a clinic nearer the route), then a match named just that, then one in the town typed after the comma (routing hunt 4, G4-1). For optimizing: the summary gives unpaved miles and the minutes spent waiting at signals and stop signs; `legs` gives miles, minutes, climb and busy miles between stops (food, water and overnight stops on a long ride); `steep_grades` and `road_hazards` (cobbles, rails) say where. `pace_mph` times the route at the rider's own speed (on Run, the running pace, 4 to 10 mph); `alternatives` also answers the other routes the site's search found at the same settings, each its own draft that keeps its line when revised; `avoid` leaves out a line of road; `follow` plans along a line the rider has (an encoded polyline) instead of through points. |
 | `open_link` | Picks up a route from a RouteMaker link you paste: the page's address after you changed the route in the app, one of your saved routes opened in the app, or a shared route's link. |
 | `revise_route` | Changes a draft (add, move or remove points; any ride type or setting; roads to `avoid`, by name, by mile range or as a line; not on a line you asked it to follow, which is ridden as it is, while an alternative's draft is then planned through its points) and plans it again as a new draft; the old one stays to go back to. `changed_from_previous` gives each figure before and after (miles, minutes, climb, LTS 3+ and 4+ miles, unpaved miles, junctions, junction waits), so the assistant can tell whether a change helped and stop when the gains are small. |
+| `route_notes` | Puts notes on a draft's route: a caution (a dangerous intersection) or a point of interest, each at a spot (a point, a place to look up, or a mile along) in a few words. Give the whole list each time; `[]` clears it. A note within 60 m (our default) is a cue on the app's cue sheets, phone images and courses, and said in Ride; one up to 400 m off is put on the route. Kept in the link and on a new draft. |
 | `route_segments` | Reads a draft stretch by stretch: miles, road, LTS, facility, surface, average and steepest grade, climb, one-way and minutes; every higher and very-high stress junction with its reason; steep grades and hazards. Paged for long rides (`from_mi`, `to_mi`, `next_from_mi`). |
 | `ride_conditions` | Light and weather for riding a draft at a time: dark or light at the start and the finish (civil dawn and dusk), the arrival time, and within 48 hours the National Weather Service alerts along the route and where rain is first forecast, through the site's own weather check (points rounded, nothing kept). |
-| `my_routes` | Site connector only: lists your saved routes with their tags (archived ones with `archived`, narrowed by `tag` or `search`), or opens one by name or id as a draft to revise or read ("my commute"). It never changes My routes, though opening one counts as opening it (a full account offers the route unopened longest). A connection allowed before it existed cannot read them until you connect again. |
+| `my_routes` | Site connector only: lists your saved routes with their tags and whether each is fixed (archived ones with `archived`, narrowed by `tag` or `search`), or opens one by name or id as a draft to revise or read ("my commute"); a fixed route with closures on its line comes with the suggestion to plan it again around them. It never changes My routes, though opening one counts as opening it (a full account offers the route unopened longest). A connection allowed before it existed cannot read them until you connect again. |
 | `reach` | Where a rider can be in 15, 30, 45 and 60 minutes (isochrones) from one to five points, by any bike ride type, Walk or Run, from the points or to them, with each ring's area and the Metro stations, bike racks, places to eat and places to see inside; unless `calm` is false, the same rings at Low-stress beside them. Several points combine as any, all (a meeting spot) or each. Its link opens the rings in the app. |
 | `compare_places` | Ranks 2 to 6 places to start from (a home, a hotel, an office) by the riding minutes to 1 to 3 places the rider goes, at the rider's traffic setting and at Low-stress (left out where the setting is already Low-stress or calmer), against any minute limits; places left when the call's time runs out are listed, not ranked. Bike ride types only. |
-| `save_route` | Keeps a draft, only when you say so: in your My routes on the site's own connector, with `tags` if given, or as a GPX file on your own computer. On the site, `replaces` (a saved route's id) archives that route once this one is saved, for a new route that supersedes it. A full account (200 routes, nothing archived) is refused with the route unopened longest, for the assistant to offer archiving it. |
+| `save_route` | Keeps a draft, only when you say so: in your My routes on the site's own connector, with `tags` if given, or as a GPX file on your own computer. On the site, `replaces` (a saved route's id) archives that route once this one is saved, for a new route that supersedes it. `fixed` true keeps it as a fixed route: its exact line, never re-routed in a ride, with Update route offered only when a closure is on its line; left out, it is saved by its via points (our default). A full account (200 routes, nothing archived) is refused with the route unopened longest, for the assistant to offer archiving it. |
 | `organize_route` | Site connector only, when you say so: tags a saved route (`tags`, `add_tags`, `remove_tags`) or archives or restores it (`archived`). Archived routes leave Load route's list (Archived lists them) and are the first to go, longest archived first, when the account is full. It never renames or deletes. A connection allowed before it existed cannot use it until you connect again. |
 | `gpx_route` | A draft as a GPX track: a `.gpx` file on your own computer, or a download link on the site. |
+| `route_picture` | Site connector only, when you ask for a picture: the draft's map and graphs (on a Mass Ride its flow and corkers too) as one PNG, and a link that opens it, to share, while the draft is kept. |
+| `cue_cards` | Site connector only, when you ask for turn cues as images: the draft's cues as phone-sized PNGs (Plan's "Cue sheet image" export), each row the miles, an arrow, the turn and the road, stops by number and name, Part 1 of N on a long route, and a link that opens each while the draft is kept. Stop names you give are kept on a new draft. |
 | `draft_route_post` | Site connector, instance admins only: writes a Featured routes post as a draft (title, about, who it's for, season, highlighted sections with their miles) around a draft route or a line to follow, for an admin to publish in the admin. Sending the same slug again with `replace` rewrites the draft. |
 | `plan_metro_loop` | Builds a loop of about the target length around DC (or another centre) through waypoints at or just beyond Metro stations, rescales it once towards the target, and repairs stretches past the Metro limit. |
+
+### The route view: a map and graphs in the chat
+
+In an assistant app that shows MCP Apps (the `io.modelcontextprotocol/ui` extension; Claude does),
+`plan_route`, `revise_route`, `open_link`, `plan_metro_loop` and `route_notes` show the draft under the answer:
+the route on a map coloured by traffic stress, with its start, stops, finish, stressful junctions
+and closures; a stress ribbon (trail and bike lane rails on its edges) over the elevation profile,
+on one mile axis, with a readout where you point or tap (or move with the arrow keys); and
+buttons to open the route in the app, download its GPX, or ask the assistant to save it (saving
+stays on your word, as before). Other assistants get the same text answer as before.
+
+The page is `mcp/route_view.html`, served as `ui://routemaker/route-view.html`. What it draws
+travels in the tool result's `_meta` (`routemaker/route-view`), which the extension keeps out of
+the model's context, so the answer the model reads is unchanged. On the site the base map behind
+the line comes from `route_view_map`, a tool only the view calls (visibility `app`): a picture of
+the app's own base map for the box the view asks for, drawn in memory and never kept
+(`src/core/route_view_map.py`). It answers only with a key that travels in the view's `_meta`, so
+an assistant without MCP Apps lists it but its model cannot use it. Each view's base map is one
+connector call, counted in the same hourly limit as planning. On your own computer there is no
+base map, so the line is drawn on a plain background.
+
+On a Mass Ride the view is read by flow and corkers, not traffic stress: the line takes the
+app's flow bands, there is no stress ribbon, and the graphs are the elevation, the riders a
+minute the road carries (with the ride size's need as a dashed line), the corkers held at once
+along the route (the app's corker load, with "about N for the ride": the most held at once times
+2, as corkers leapfrog ahead riding about twice the group's pace) and the junctions that need
+corkers, on the map and in a row under the graphs. Ask to leave junctions out ("don't cork the
+LTS 3 roads", "skip Kennedy Street") and the assistant sets `corking` on `plan_route` or
+`revise_route` (`from_lts`, `skip` by street or mile): the count, the chart and the
+`mass_capacity.corkers` answer add up only the junctions kept, list the others as not corked,
+and keep the count for every junction beside it. The route itself and the app's link are
+unchanged (the app still counts every junction). Corker marks a few pixels apart are drawn as one with their corkers
+added up (our default), and each flow step wide enough carries its band's word, so the bands
+are not told by colour alone.
+
+To share it, ask for a picture: `route_picture` (on the site only, and only when asked) sends the
+map and graphs as one PNG image, and a link that opens it while the draft is kept; the view
+has a Picture button for the same link. The picture is drawn when it is asked for or the link is
+opened (a few a minute from one address, our default), in memory, and never kept (`src/core/route_picture.py`). The link sits under `/mcp/gpx/`
+(with `.png` on the end and its own digest), so the access logs already take its token out.
 
 The assistant picks the ride type and settings that fit what you ask: every ride type the app
 has (bikeshare and bike plus transit included) and every setting (traffic stress, hills, ride
@@ -197,4 +240,5 @@ argument is the path to `routemaker_mcp.py`, and the settings above are environm
 - A route planned for the first time in the app may differ a little from the one saved here if
   live closures or the map change in between: the saved route keeps the line exactly as planned.
 - Tests: `tests/test_mcp_server.py` (the protocol, the Metro check, the loop builder against a
-  stand-in planner) and `tests/test_connector.py` (the site's connector, saving and posts).
+  stand-in planner), `tests/test_mcp_route_view.py` (the route view) and
+  `tests/test_connector.py` (the site's connector, saving and posts).
