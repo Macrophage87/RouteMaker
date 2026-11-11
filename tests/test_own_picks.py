@@ -32,7 +32,17 @@ def test_no_way_is_also_named_by_another_file() -> None:
     )
     ours = [row["osm_way_id"] for path in FILES for row in file_rows(json.loads(path.read_text()))]
     assert len(ours) == len(set(ours))
-    assert not set(ours) & set(others)
+    # Unless a later file retires our row for its own (the North Bethesda bike lanes, the owner's
+    # report from the street, 2026-11-10: Woodglen Drive 553709201).
+    retired = {
+        int(row["osm_way_id"])
+        for path in OVERRIDES.glob("*.json")
+        if path not in FILES
+        for row in json.loads(path.read_text()).get("retire", [])
+        if row["kind"] == "stress"
+    }
+    assert not (set(ours) - retired) & set(others)
+    assert set(ours) & retired == {553709201}
 
 
 @pytest.mark.parametrize("path", FILES, ids=lambda p: p.name)

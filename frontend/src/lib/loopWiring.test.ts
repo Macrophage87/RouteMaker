@@ -157,7 +157,7 @@ test("PlaceSearch, MapView, the rail cards and the GPX panel pass the toggle on"
   const map = source("../MapView.tsx");
   assert.match(map, /markerLabels\(props\.points, VIA_MARKS\.isVia, props\.loopVias === true\)/);
   // The federal-land warnings (item 239) rename a marker too.
-  assert.match(map, /\}, markerDeps\(props\.points, props\.markerReset, props\.loopVias, props\.pointWarnings\)\);/);
+  assert.match(map, /\}, \[\.\.\.markerDeps\(props\.points, props\.markerReset, props\.loopVias, props\.pointWarnings\), stopIconsKey, iconStyle\]\);/);
   assert.match(map, /loop: \(\) => callbacks\.current\.loopVias === true,/);
   assert.equal(count(map, /dragPreview\(grabbed\.legPoints, grabbed\.leg, /g), 2);
   assert.match(map, /points: edit\.points, legPoints: edit\.legPoints/);
