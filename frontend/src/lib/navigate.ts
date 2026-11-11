@@ -259,6 +259,16 @@ export const OFF_SURE_M = 20;
  * row, each farther along: a detour that only crosses the route does not skip the stops between.
  */
 export const REJOIN_FIXES = 3;
+/**
+ * Riding a parallel way (the owner, 2026-11-11, of the Mall's gravel path and Madison Drive: "I would take either
+ * depending on my mood and the conditions. I just don't want it keep forcing me onto the road when I take gravel and vice
+ * versa"): within this far of the line (about 500 ft; our default, not measured), going its way (ALONGSIDE_DEG) and
+ * on along it, the rider is followed alongside, not taken off route, so no re-route pulls them back. Said once
+ * ("Off the planned route."), cues held until back on the line, where the ways meet.
+ */
+export const ALONGSIDE_M = 150;
+/** ...going within this many degrees of the line's own bearing there (our default, not measured). */
+export const ALONGSIDE_DEG = 30;
 /** ...for at least 3 good fixes in a row over at least 8 s. */
 export const OFF_FIXES = 3;
 export const OFF_MS = 8_000;
@@ -1453,7 +1463,7 @@ export interface RideFix {
 export type Phase = "advance" | "prepare" | "ahead" | "now" | "arrive";
 
 export interface RideEvent {
-  kind: "cue" | "off-route" | "back-on-route" | "replan";
+  kind: "cue" | "off-route" | "back-on-route" | "replan" | "alongside";
   /** What is said: US units only (plan Q4), no metric. */
   spoken: string;
   /** "now" cues and leaving the route interrupt (an assertive region; the voice drops what was queued). */
@@ -1502,6 +1512,10 @@ export interface RideState {
   furthestM?: number;
   /** Off route because the rider rode the line backwards: where along it they are now. */
   backAtM?: number;
+  /** Riding a parallel way beside the line (ALONGSIDE_M): followed along it, not off route, no cues until back on. */
+  alongside?: boolean;
+  /** The last good fix's place along the line, wherever it was (the way moved, for `alongside` without a heading). */
+  alongAtM?: number;
 }
 
 export function startState(): RideState {
@@ -1651,6 +1665,32 @@ export function phasesFor(level: Verbosity, cue: Cue, speedMs: number, onFoot = 
   if (cue.kind === "crossing") return [{ phase: "prepare", withinM: prepare }];
   // A hazard, a walk, a stretch's change: said once, early.
   return [{ phase: "advance", withinM: advance }];
+}
+
+/**
+ * Off route, a parallel way is taken up only this far along the line past where the rider left it: the window an on-route
+ * fix is looked for in, so no stop is jumped (farther on takes REJOIN_FIXES fixes, as rejoining does).
+ */
+export const ALONGSIDE_AHEAD_M = WINDOW_AHEAD_M;
+
+/**
+ * Whether this fix is riding a parallel way (ALONGSIDE_M): within that of the line, going its way (the browser's heading,
+ * else the way moved since the last good fix) and not behind where the rider was on it (off route, nor more than
+ * ALONGSIDE_AHEAD_M past it). Stopped alongside (a red light), no direction: still alongside. Never from a rough fix.
+ */
+function alongsideOf(model: RideModel, state: RideState, fix: RideFix, found: Snap, accuracy: number): boolean {
+  if (found.offM > ALONGSIDE_M || accuracy > OFF_SURE_M || state.progressM === null) return false;
+  if (found.alongM < state.progressM - BACK_TOLERANCE_M) return false;
+  if (state.off && found.alongM > state.progressM + ALONGSIDE_AHEAD_M) return false;
+  const { headingDeg, speedMs } = fix;
+  if (!standingStill(fix) && headingDeg !== null && Number.isFinite(headingDeg) && speedMs !== null && speedMs >= PLACE_HEADING_MIN_MS) {
+    return bearingGap(headingDeg, lineBearing(model, found.alongM)) <= ALONGSIDE_DEG;
+  }
+  // No heading from the browser: the way moved since the last good fix, along the line and away from it.
+  const was = state.alongAtM;
+  const alongM = was === undefined ? 0 : found.alongM - was;
+  if (standingStill(fix) || was === undefined || Math.hypot(alongM, found.offM - state.offM) < 1) return !!state.alongside;
+  return alongM > 0 && Math.abs(found.offM - state.offM) <= alongM * Math.tan((ALONGSIDE_DEG * Math.PI) / 180);
 }
 
 /** The sentences for leaving and rejoining the route (plan section 3: said once, gently). */
@@ -1826,13 +1866,23 @@ export function step(
   if (measured !== null) next.speedMs = Math.min(MAX_SPEED_MS, state.speedMs + SPEED_SMOOTHING * (Math.min(measured, MAX_SPEED_MS) - state.speedMs));
   next.goodAt = fix.at;
   next.offM = found.offM;
+  next.alongAtM = found.alongM;
 
   // Off route: far from the line for OFF_FIXES good fixes over OFF_MS; back within half the threshold clears it.
   const threshold = offThreshold(accuracy);
   if (!state.off) {
     if (found.offM > threshold && accuracy > OFF_SURE_M) {
       // Too rough to tell: the count stands as it was.
+    } else if (found.offM > threshold && state.progressM !== null && alongsideOf(model, state, fix, found, accuracy)) {
+      // A parallel way, going the line's way: followed, never off route (ALONGSIDE_M), said once.
+      next.offCount = 0;
+      next.offSince = null;
+      if (!state.alongside && level !== "quiet") events.push({ kind: "alongside", spoken: OFF_ROUTE_KEPT_SAID, urgent: false });
+      next.alongside = true;
+      next.progressM = Math.max(state.progressM, found.alongM);
+      next.furthestM = Math.max(state.furthestM ?? state.progressM, next.progressM);
     } else if (found.offM > threshold) {
+      delete next.alongside;
       next.offCount = state.offCount + 1;
       next.offSince = state.offSince ?? fix.at;
       if (next.offCount >= OFF_FIXES && fix.at - next.offSince >= OFF_MS) {
@@ -1842,6 +1892,8 @@ export function step(
     } else {
       next.offCount = 0;
       next.offSince = null;
+      // Back on the line only within half the threshold, as off route clears: GPS jitter at its edge never says it again.
+      if (found.offM <= threshold / 2) delete next.alongside;
     }
     // Progress moves only while on the line: an excursion does not drag it along a parallel street.
     if (state.progressM === null) {
@@ -1882,6 +1934,16 @@ export function step(
         if (level !== "quiet") events.push({ kind: "off-route", spoken: replan ? OFF_ROUTE_SAID : OFF_ROUTE_KEPT_SAID, urgent: true });
       } else next.progressM = progress;
     }
+  } else if (found.offM > threshold && state.backAtM === undefined && alongsideOf(model, state, fix, found, accuracy)) {
+    // Off on the way over to a parallel way, now riding it the line's way: followed alongside, no longer off, so a
+    // re-route under way is dropped (voidsAutoReplan) and none pulls the rider back.
+    next.rejoin = null;
+    next.off = false;
+    next.offCount = 0;
+    next.offSince = null;
+    next.alongside = true;
+    next.progressM = Math.max(state.progressM ?? found.alongM, found.alongM);
+    next.furthestM = Math.max(state.furthestM ?? next.progressM, next.progressM);
   } else if (found.offM > threshold / 2) {
     next.rejoin = null;
   } else if (state.backAtM !== undefined && rejoinCount(state, found) < REJOIN_FIXES) {
@@ -1912,6 +1974,11 @@ export function step(
     const done = said[cue.index] ?? [];
     if (phases.every((p) => done.includes(p.phase))) continue;
     const distance = cue.atM - progress;
+    // Alongside (a parallel way): only stops and the end are said; a turn on the line is held, then dropped once passed.
+    if (next.alongside && cue.kind !== "stop" && cue.kind !== "end") {
+      if (distance < -PASSED_M) said[cue.index] = phases.map((p) => p.phase);
+      continue;
+    }
     if (cue.kind === "end") {
       // The end: along the line within ARRIVE_M of it, and the fix itself near it (a loop's
       // start is its end too, so the line's measure decides, not the distance to the point).
@@ -1981,7 +2048,7 @@ export function step(
     break;
   }
   next.said = said;
-  const reassure = level === "full" && !events.length && !next.arrived ? reassurance(model, progress, state.reassured) : null;
+  const reassure = level === "full" && !events.length && !next.arrived && !next.alongside ? reassurance(model, progress, state.reassured) : null;
   if (reassure) {
     next.reassured = reassure.cue.index;
     events.push({ kind: "cue", spoken: reassure.spoken, urgent: false, cue: reassure.cue });
