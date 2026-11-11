@@ -703,3 +703,19 @@ in the database still names it: delete that row in the admin when loading the fi
   rush-hour route the city's record for their block does not match (6), or whose road panel
   could not be read again (1). Block names are as the city spells them (N F0REST PARK AVE). Fingerprints are from OSM as served by the OSM API on
   2026-11-04. Not loaded: the owner confirms the file, then a rebuild.
+- `2026-11-10-owner-north-bethesda-bike-lanes.json` (9 ways, 9 retired): the owner's report from
+  the street in North Bethesda: "The first image has a protected bike lane that isn't listed and
+  the second has a listed bike lane that doesn't exist". Woodglen Drive, Edson Lane to Nicholson
+  Lane, has a two-way protected bike lane on its west side that OSM tags as a painted lane
+  (`cycleway:left=lane`), so its rows rated it as a street with no bike lane (2.5 and 2); now
+  1.5, our judgment (half a step above 1 for the driveway and street crossings). Executive
+  Boulevard, Nicholson Lane to Marinelli Road, has no bike lane, though OSM tags a protected
+  track (`cycleway=track`) and its row rated it for it (2); now 3, our formula's level for a 30
+  mph urban street with no bike lane (Montgomery County and MDOT SHA say 4). Grand Park Avenue,
+  Marinelli Road to Old Georgetown Road, is not in the owner's report: the same tag and rows,
+  and Montgomery County's 2026 project for the whole corridor (Mandatory Referral MR2026029)
+  says it has no bikeways today and plans them; its rows wait for the owner's own check.
+  Retire the corridor rows once the county builds the lanes. The OSM tags are fixed upstream by
+  the owner's own edit (`scripts/osm_edit.py`); the rows hold the level and the Why line
+  meanwhile. It retires a row of the 2026-11-01 Maryland review on eight ways and one of the
+  2026-11-09 Maryland own-picks (553709201).
