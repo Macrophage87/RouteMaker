@@ -906,8 +906,8 @@ def _connector(before: _Run | None, run: _Run, after: _Run | None) -> bool:
 
 def _kink(before: _Run, run: _Run, after: _Run) -> bool:
     """Whether `run` is a kink in one named path: the same path before, through and after
-    it, its few metres turned into and out of, and across the two no more than a bear
-    (BEAR_MAX_DEG). The map draws the path's end a few metres off the line it rides, as
+    it, its few metres turned into and out of, and across the two a bear (SLIGHT_MIN_DEG to
+    BEAR_MAX_DEG). The map draws the path's end a few metres off the line it rides, as
     Rock Creek Trail's at East-West Highway runs 8 m east to a sidewalk's corner before it
     turns back north-west (the owner, 2026-11-11: "some weird turns"): said "Cross
     East-West Highway, then bear right onto Rock Creek Trail" and "Left to stay on Rock
@@ -916,8 +916,10 @@ def _kink(before: _Run, run: _Run, after: _Run) -> bool:
         return False
     if not (_same_street(before, run) and _same_street(run, after)):
         return False
+    # Under SLIGHT_MIN_DEG across the two, the turns cancel: a dog-leg, maybe at a fork where
+    # the way straight on is another branch, its turns and any crossing still said.
     turn = turn_between(before.last, after.first)
-    return turn is not None and abs(turn) <= BEAR_MAX_DEG
+    return turn is not None and SLIGHT_MIN_DEG <= abs(turn) <= BEAR_MAX_DEG
 
 
 def _lead_in(before: _Run | None, run: _Run, after: _Run | None) -> bool:

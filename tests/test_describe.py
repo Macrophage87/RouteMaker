@@ -2351,6 +2351,14 @@ class TestCrossings:
         entries = self.east_west_highway(kink_out=260.0)
         assert len(entries) == 3
 
+    def test_a_dog_leg_whose_turns_cancel_is_still_said(self):
+        # Review r1: 10 -> 70 -> 0 across the kink is straight on, as at a fork whose other
+        # branch runs on: the crossing and the left are kept, not folded away.
+        entries = self.east_west_highway(kink_out=0.0)
+        assert len(entries) == 3
+        assert "Cross East-west Highway at a signal" in entries[1]["text"]
+        assert "Left to stay on Rock Creek Trail" in entries[2]["text"]
+
     def test_a_long_middle_is_no_crossing(self):
         crossing = event(420, "straight", kind="crossing", names=("redland road",), flagged=False)
         entries = self.needwood([crossing], middle_m=200)
