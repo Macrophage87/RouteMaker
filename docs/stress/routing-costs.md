@@ -14,7 +14,10 @@ Stress reaches a route in three layers:
    on a traced route a cost in feet of quiet riding, which the ranking adds in.
 
 Turn, gate, surface and hill costs are sent at every slider position and do not
-depend on the tier (each preset's `_preset(...)` row and `presets.costing`, `src/core/presets.py`).
+depend on the tier (each preset's `_preset(...)` row and `presets.costing`, `src/core/presets.py`),
+with one exception: above 80 (`STRESS_TODAYS_TOP`) the turn charge (`maneuver_penalty`) rises
+to 15 s (`CALM_MANEUVER_PENALTY_S`, our default, not measured), and the calm search's ranking
+adds each turn at that price (`refine.turn_m`). A ride type that already charges more keeps its own.
 
 ## 1. Valhalla: graph tags (`lua/routemaker_remap.lua`)
 
@@ -184,8 +187,8 @@ again without it, and it is not asked again. Mass Ride is skipped (`ctx.group`).
 
 - `Analysis.key` = (top, second, distance) (`refine.py:356-374`). Top = LTS 4 +
   Avoid meters + red junction cost in meters. Second = LTS 3 meters + orange junction
-  cost. Distance = actual and effort-equivalent distance blended by the Hills slider
-  (`level3` `:377-390`). Tie steps are 49 ft, 164 ft and 164 ft [15 m, 50 m and 50 m] (`MAXCALM_STEPS`, `:420`).
+  cost. Distance = actual and effort-equivalent distance blended by the Hills slider,
+  plus junction delay and the route's turns as quiet riding (`level3`, `turn_m`). Tie steps are 49 ft, 164 ft and 164 ft [15 m, 50 m and 50 m] (`MAXCALM_STEPS`, `:420`).
 - **Worth rule** (OWNER-DECISIONS 268, 271): a longer candidate replaces a shorter one
   only when the stress it saves pays for the distance it adds (`worth_it`,
   `refine.py:531-546`). Stress saved is counted in LTS 3-equivalent meters with the

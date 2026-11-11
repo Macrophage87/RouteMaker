@@ -125,7 +125,7 @@ export function withFontNotices(text, fonts) {
 /** The icons bundled into the app, each with its notice and its licence's full text. */
 export const BUNDLED_ICONS = [
   {
-    name: "Noto Emoji skull and crossbones (U+2620)",
+    name: "Noto Emoji icons (the skull and crossbones U+2620, and the route notes' and stops' icons)",
     version: "e20cbc2bbec1926686be9f9bee7d1d2cfa1fea0e",
     license: "Apache-2.0",
     files: ["src/icons/NOTICE-noto-emoji.txt", "src/icons/LICENSE-Apache-2.0.txt"],
