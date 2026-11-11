@@ -514,6 +514,42 @@ class TestRouteVersions:
         assert [v["distance_m"] for v in listed] == [1520.4, 900.0, 1520.4]
         assert listed[0]["change"] == "Stop removed"
 
+    def test_a_fixed_route_is_kept_and_switching_it_is_a_version(self) -> None:
+        """A fixed route (the owner, 2026-11-10): saved as one, listed as one; saved again by its
+        via points is a new version that says so, and restoring brings fixed back."""
+        client, _user, csrf = signed_in()
+        made = send(client, "post", "/api/me/routes", route_body(fixed=True), csrf)
+        assert made.status_code == 201 and made.json()["fixed"] is True
+        rid = made.json()["id"]
+        assert client.get("/api/me/routes", **addr()).json()["routes"][0]["fixed"] is True
+        assert client.get(f"/api/me/routes/{rid}", **addr()).json()["fixed"] is True
+        r = saved_again(client, csrf, rid, fixed=False)
+        assert r.status_code == 200 and r.json()["versioned"] is True and r.json()["fixed"] is False
+        listed = client.get(f"/api/me/routes/{rid}/versions", **addr()).json()["versions"]
+        assert [v["fixed"] for v in listed] == [False, True]
+        assert listed[0]["change"] == "Back to via points"
+        r = send(
+            client, "post", f"/api/me/routes/{rid}/versions/{listed[1]['id']}/restore", {}, csrf
+        )
+        assert r.json()["fixed"] is True
+        listed = client.get(f"/api/me/routes/{rid}/versions", **addr()).json()["versions"]
+        assert listed[0]["change"] == "Made a fixed route"
+
+    def test_saved_again_without_fixed_a_fixed_route_stays_fixed(self) -> None:
+        """An older page's save, which knows nothing of fixed, keeps the route as it was."""
+        client, _user, csrf = signed_in()
+        rid = send(client, "post", "/api/me/routes", route_body(fixed=True), csrf).json()["id"]
+        r = saved_again(client, csrf, rid, line=LINE[:2], distance_m=900.0)
+        assert r.status_code == 200 and r.json()["versioned"] is True and r.json()["fixed"] is True
+        assert SavedRoute.objects.get(pk=rid).fixed is True
+
+    def test_a_route_is_by_its_via_points_unless_fixed_is_said(self) -> None:
+        client, _user, csrf = signed_in()
+        r = send(client, "post", "/api/me/routes", route_body(), csrf)
+        assert r.json()["fixed"] is False
+        r = send(client, "post", "/api/me/routes", route_body(fixed="yes"), csrf)
+        assert r.status_code == 400 and r.json()["field"] == "fixed"
+
     def test_at_most_20_versions_per_route_the_oldest_going_first(self) -> None:
         client, _user, csrf = signed_in()
         rid = send(client, "post", "/api/me/routes", route_body(), csrf).json()["id"]
