@@ -8,10 +8,11 @@
  */
 import { MAX_POINTS, insideCoverage, type LonLat } from "./geo.ts";
 import { AVOID_GRAVEL_BECOMES, PRESET_ALIASES, parsePreset, type PresetId } from "./presets.ts";
-import { VIA_MARKS, decodeDrawn, decodeStopNames, decodeVias, drawnLegs, encodeStopNames, stopNames } from "./pointKinds.ts";
+import { VIA_MARKS, decodeDrawn, decodeStopIcons, decodeStopNames, decodeVias, drawnLegs, encodeStopIcons, encodeStopNames, stopIcons, stopNames } from "./pointKinds.ts";
 import { STRESS_DEFAULT_AT, fitDials, isBike, isCarrying, isWhen, type Dials } from "./dials.ts";
 import { METRES_PER_MILE } from "./format.ts";
 import { decodePoints, encodePoints } from "./linkCode.ts";
+import { decodeNotes, encodeNotes, type NoteIcon, type RouteNote } from "./routeNotes.ts";
 
 /**
  * The stops' field (2026-10-29, shorter ride links): `q=`, the points in lib/linkCode.ts's short form, about 8
@@ -68,6 +69,10 @@ export interface Plan {
   drawn: number[];
   /** The stops' own names by index (`sn=2:Union Market`, Stephen 2026-10-24); empty for an older link. */
   names: Map<number, string>;
+  /** The route's notes (`nt=c,lon,lat,words`, lib/routeNotes.ts; 2026-11-10); empty for an older link. */
+  notes: RouteNote[];
+  /** The stops' icons by index (`si=2:coffee`, Stephen 2026-11-10); empty for an older link. */
+  icons: Map<number, NoteIcon>;
   preset: PresetId;
   /** The sliders, the ride time and Cargo Bike's load (dials.ts). */
   dials: Dials;
@@ -84,6 +89,11 @@ export function encodePlan(
   names: ReadonlyMap<number, string> = stopNames(points, VIA_MARKS.nameOf, VIA_MARKS.isVia, dials?.loop === true),
   // The short `q=` unless asked for the older `p=` (a kept route's key, so the routes kept before still match).
   pointsForm: PointsForm = "q",
+  // The route's notes (lib/routeNotes.ts), given only where the link is the page's plan (its address, Copy link, a
+  // saved route): never in the account's settings or a kept route's key.
+  notes: readonly RouteNote[] = [],
+  // The stops' icons, from the page's marks unless given, as their names are.
+  icons: ReadonlyMap<number, NoteIcon> = stopIcons(points, VIA_MARKS.iconOf, VIA_MARKS.isVia, dials?.loop === true),
 ): string {
   const params = new URLSearchParams();
   if (points.length) {
@@ -96,6 +106,10 @@ export function encodePlan(
   if (drawn.length) params.set("line", drawn.join(","));
   // The stops' own names (2026-10-24): a new field an older link does not have, and means none.
   for (const value of encodeStopNames(names)) params.append("sn", value);
+  // The route's notes (2026-11-10): a new field an older link does not have, and means none.
+  for (const value of encodeNotes(notes)) params.append("nt", value);
+  // The stops' icons (2026-11-10): likewise new, and none when absent.
+  for (const value of encodeStopIcons(icons)) params.append("si", value);
   params.set("preset", preset);
   if (dials) {
     params.set("v", PLAN_VERSION);
@@ -193,5 +207,5 @@ export function decodePlan(hash: string): Plan {
     mtbLevel: numberOrUndefined(params.get("level")),
     mtbPreferred: numberOrUndefined(params.get("prefer")),
   });
-  return { points, vias: decodeVias(params.get("via"), points.length), drawn: decodeDrawn(params.get("line"), points.length), names: decodeStopNames(params.getAll("sn"), points.length), preset, dials };
+  return { points, vias: decodeVias(params.get("via"), points.length), drawn: decodeDrawn(params.get("line"), points.length), names: decodeStopNames(params.getAll("sn"), points.length), icons: decodeStopIcons(params.getAll("si"), points.length), notes: decodeNotes(params.getAll("nt")).filter((note) => insideCoverage(note.at)), preset, dials };
 }
