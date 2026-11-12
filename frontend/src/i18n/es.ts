@@ -2702,4 +2702,23 @@ export const ES: Readonly<Record<string, string>> = {
   "Not sent. Try again shortly.": "No enviado. Inténtelo de nuevo en un momento.",
   "That road can't be looked up right now. Try again shortly.": "No se puede consultar esa calle ahora. Inténtelo de nuevo en un momento.",
   "Looking up the road…": "Consultando la calle…",
+  // ---- Loop by distance (lib/bikeLoop.ts, BikeLoopPicker.tsx; backlog 2026-11-12 item 5) ----
+  "Loop by distance": "Vuelta por distancia",
+  "Distance (miles)": "Distancia (millas)",
+  "Distance (km)": "Distancia (km)",
+  "Find loops": "Buscar vueltas",
+  "Finding…": "Buscando…",
+  "Finding loops.": "Buscando vueltas.",
+  "One loop found; it is planned now.": "Se encontró una vuelta; ya está planificada.",
+  "{n} loops found; the first is planned now.": "Se encontraron {n} vueltas; la primera ya está planificada.",
+  "Pick a shape": "Elija una forma",
+  "Finish": "Llegada",
+  "Enter {range}.": "Escriba {range}.",
+  "Heads {way}": "Va hacia el {way}",
+  "About {distance}": "Unos {distance}",
+  "{climb} climb": "{climb} de subida",
+  "{pct}% quiet": "{pct}% tranquilo",
+  "the nearest to your distance found": "la más cercana a su distancia que se encontró",
+  "Quiet is traffic stress level 1 or 2. Figures are before the full plan; picking a shape plans it.":
+    "Tranquilo es nivel de estrés de tráfico 1 o 2. Las cifras son previas al plan completo; al elegir una forma, se planifica.",
 };

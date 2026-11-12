@@ -90,6 +90,7 @@ from routemaker.geo import Point, haversine
 
 from . import (
     audit,
+    bike_loop,
     bikeshare,
     climbprofile,
     climbs_near,
@@ -3823,6 +3824,10 @@ def route_cancel(request, body: CancelIn):
 NEIGHBOURS_BUDGET_S = 25
 # What the request counts against the routing limit: one for each plan.
 NEIGHBOURS_COST = 2
+# What a loop's shapes (POST /api/route/loop-shapes) count against the routing limit, as three
+# plans (our default): six to eighteen /route calls and up to nine traces, all held to one plan's
+# budget.
+LOOP_SHAPES_COST = 3
 
 
 class NeighbourOut(Schema):
@@ -3909,6 +3914,167 @@ def route_neighbours(request, body: RouteIn):
         if answered.get(kind) is not None
     ]
     return Status(200, {"stress": stress, "options": options})
+
+
+class LoopShapesIn(Schema):
+    """A loop from a start and a distance (`core.bike_loop`): where it starts, its length, and
+    the ride type and dials a plan of it would take."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    start: LonLat = Field(description="[lon, lat]: where the loop starts and ends.")
+    target_distance_m: float = Field(
+        ge=bike_loop.TARGET_MIN_M,
+        le=bike_loop.TARGET_MAX_M,
+        description="The loop's length, metres: 3 mi to 100 mi (our default).",
+    )
+    preset: PresetName = Field(
+        description=(
+            "A bike ride type that plans loops: not Mass Ride, Bikeshare, Rebalance Ride, the"
+            " transit ride types or Run (whose start-alone loop is POST /api/route's)."
+        )
+    )
+    stress: StrictInt | None = Field(
+        default=None, ge=presets.STRESS_MIN, le=presets.STRESS_MAX, description="As a plan's."
+    )
+    hills: StrictInt | None = Field(
+        default=None, ge=presets.HILLS_MIN, le=presets.HILLS_MAX, description="As a plan's."
+    )
+    when: WhenName | None = Field(default=None, description="As a plan's.")
+    carrying: CarryingName | None = Field(default=None, description="As a plan's.")
+    assist: StrictBool = Field(default=False, description="As a plan's.")
+    trails_off: StrictBool = Field(default=False, description="As a plan's.")
+    easy_mtb: StrictBool = Field(default=False, description="As a plan's.")
+    cycling_speed_kmh: float | None = Field(
+        default=None,
+        ge=presets.RIDER_SPEED_MIN_KMH,
+        le=presets.RIDER_SPEED_MAX_KMH,
+        description="As a plan's.",
+    )
+    closure_bypass: list[Annotated[str, Field(min_length=1, max_length=200)]] = Field(
+        default_factory=list, max_length=50, description="As a plan's."
+    )
+    closures_now: StrictBool = Field(default=False, description="As a plan's.")
+    blocked_lines: list[Annotated[list[LonLat], Field(min_length=2, max_length=50)]] = Field(
+        default_factory=list,
+        max_length=10,
+        description="Roads the rider marked closed, as a plan's: left out of every shape.",
+    )
+
+    @field_validator("start")
+    @classmethod
+    def start_inside(cls, start: list[float]) -> list[float]:
+        if not geocode.inside(start[0], start[1]):
+            raise ValueError("the start is outside the area this map covers")
+        return start
+
+    @model_validator(mode="after")
+    def a_loop_ride_type(self):
+        if not bike_loop.offered(self.preset):
+            raise ValueError(f"{self.preset} does not plan a loop from a start and a distance")
+        return self
+
+
+class LoopShapeOut(Schema):
+    points: list[list[float]] = Field(
+        description=(
+            "Plan it through these (POST /api/route with `via_points` and `loop`): the start, two"
+            " corners on the roads ridden, and the start again."
+        )
+    )
+    via_points: list[int] = Field(description="The corners' indices: [1, 2].")
+    heading_deg: int = Field(description="The way the loop goes out, degrees from north.")
+    distance_m: float = Field(description="About how long, metres: the router's own way round.")
+    climb_m: float = Field(description="About how much climbing, metres.")
+    quiet_pct: int | None = Field(
+        description="About what share is LTS 1 and 2, percent; null where it could not be read."
+    )
+    busy_m: float | None = Field(description="About how much is LTS 3 or more, metres.")
+    near_target: bool = Field(description="Within 12% of the target (our default).")
+    spur_pct: int = Field(description="The share ridden twice, as an out-and-back spur, percent.")
+    geometry: dict = Field(description="The router's own way round, a GeoJSON LineString.")
+
+
+class LoopShapesOut(Schema):
+    target_distance_m: float
+    preset: str
+    shapes: list[LoopShapeOut] = Field(
+        description=(
+            "One to three shapes, best first: near the target, fewest spurs, most quiet riding."
+            " Their figures are the router's own way round, not yet the full plan's search."
+        )
+    )
+    tried: int = Field(description="Triangles ridden.")
+    ran_short: bool = Field(description="The search stopped early for want of time.")
+
+
+@api.post(
+    "/route/loop-shapes",
+    response={
+        200: LoopShapesOut,
+        400: ErrorOut,
+        422: ErrorOut,
+        429: ErrorOut,
+        500: ErrorOut,
+        502: ErrorOut,
+        503: BusyOut,
+    },
+    summary="Shapes for a loop of about a distance from a start (a bike ride type)",
+    description=(
+        "Triangles from the start in six directions, sized to the distance on the ride type's"
+        " own graph and dials, and the best one to three of them with their miles, climb and"
+        " share of quiet riding. Pick one and plan it with POST /api/route. Optional headers as"
+        " POST /api/route's (`X-Plan-Id`, `X-Plan-Replaces`). Nothing is stored."
+    ),
+    by_alias=True,
+)
+# As /api/route's (innermost first): the error guard, the content-type check, the count, a
+# replaced request's cancel, the slots. It counts as three plans on the routing limit: it
+# makes about a dozen router calls.
+@decorate_view(
+    ratelimit.in_flight_limited(ratelimit.ROUTING_IN_FLIGHT, wait_for=_replacing_wait_s),
+    _records_replaced_plan,
+    ratelimit.rate_limited(ratelimit.ROUTING, cost=LOOP_SHAPES_COST),
+    json_body_only,
+    errors_as_json,
+)
+def route_loop_shapes(request, body: LoopShapesIn):
+    watch = plan_cancel.watch_for(request)
+    watching = routing.watch_cancel(watch)
+    dials = routing.Dials(
+        stress=body.stress,
+        hills=body.hills,
+        when=body.when,
+        carrying=body.carrying,
+        assist=body.assist,
+        trails_off=body.trails_off,
+        easy_mtb=body.easy_mtb,
+        avoid_gravel=body.preset == presets.ROAD_BIKE,
+        closure_bypass=tuple(body.closure_bypass),
+        closures_now=body.closures_now,
+        blocked=tuple(tuple((p[0], p[1]) for p in line) for line in body.blocked_lines),
+        cycling_speed_kmh=presets.rider_speed(body.preset, body.cycling_speed_kmh),
+        loop=True,
+    )
+    started = getattr(request, "routing_started", None)
+    try:
+        answered = Status(
+            200,
+            bike_loop.loop_shapes(body.start, body.target_distance_m, body.preset, dials, started),
+        )
+    except bike_loop.NoLoop as refusal:
+        answered = JsonResponse({"error": str(refusal), "code": "no_loop"}, status=422)
+    except routing.PlanCancelled:
+        answered = None
+    except routing.RouterUnavailable:
+        answered = _error(503, "The router is not answering; try again shortly.")
+        answered["Retry-After"] = str(DEADLINE_RETRY_S)
+    finally:
+        routing.unwatch_cancel(watching)
+    # Whatever the search made of its last moments, a cancelled request is answered as one.
+    if answered is None or (watch is not None and watch.cancelled):
+        return plan_cancel.cancelled_answer()
+    return answered
 
 
 def _same_docks(body: RouteIn) -> bool:
