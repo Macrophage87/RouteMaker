@@ -116,6 +116,8 @@ test("a rider on a junction hears no made-up first turn, and bad input finds not
   const way = offlineWayBack(g, CALM, at(200, 400), PLANNED, 0);
   assert.ok(way);
   assert.ok(way.turns.every((turn) => turn.atM >= 10));
+  // The way it sets off is named instead: off a junction onto Row 2 east, or down a column south.
+  assert.ok(way.startStreet === "Row 2" ? Math.abs(way.startBearingDeg - 90) < 5 : Math.abs(way.startBearingDeg - 180) < 5, `${way.startStreet} ${way.startBearingDeg}`);
   assert.equal(offlineWayBack(g, CALM, at(200, 400), PLANNED, Number.NaN), null);
   assert.equal(offlineWayBack(g, CALM, [Number.NaN, LAT], PLANNED, 0), null);
 });
