@@ -1178,7 +1178,7 @@ def alertdc_kind(title: str, categories: Sequence[str]) -> str | None:
     if is_traffic(title, categories):
         return "traffic"
     crime = NOT_TRAFFIC.search(title) or any(NOT_TRAFFIC.search(c) for c in categories)
-    if crime and ROAD_CLOSURE_TITLE.search(title):
+    if crime and (ROAD_CLOSURE_TITLE.search(title) or _REOPENED.search(title)):
         return "police"
     return None
 
@@ -1369,7 +1369,9 @@ def parse_alertdc(feed: str, now: datetime) -> list[Advisory]:
         if kind is None:
             continue
         police = kind == "police" or bool(NOT_TRAFFIC.search(item["description"]))
-        if police and not ROAD_CLOSURE_TITLE.search(item["title"]):
+        # A police item whose title says only that roads reopened is read for that alone.
+        reopen_only = police and not ROAD_CLOSURE_TITLE.search(item["title"])
+        if reopen_only and not _REOPENED.search(item["title"]):
             continue  # a crime word in the text of an item that closes no road: dropped
         item["police"] = police
         lines = _strip_tags(item["description"]) or [item["title"]]
@@ -1377,11 +1379,14 @@ def parse_alertdc(feed: str, now: datetime) -> list[Advisory]:
         # A "Final Update" never closes anything; nor do the bulleted lines under a
         # "the following road closures have reopened:" lead-in. Those stretches reopen.
         final = bool(re.search(r"\bfinal\s+update\b", item["title"], re.I))
-        closes, reopened, under_open = [], set(), False
+        closes, reopened, under_open, under_closed = [], set(), False, False
         for sentence in sentences:
             text = _tidy(sentence)
             if text.endswith(":"):
                 under_open = bool(_REOPENED.search(text))
+                # "the following road closures:", never "signals are out at the following
+                # intersections:" (review of #1175: an open junction read as closed).
+                under_closed = not under_open and bool(_CLOSURE_LEAD.search(text))
             m = _REOPENED_BLOCK.search(text)
             if m:
                 stretch = _between(m.group("street"), m.group("a"), m.group("b"))
@@ -1395,7 +1400,7 @@ def parse_alertdc(feed: str, now: datetime) -> list[Advisory]:
                     continue
                 if (final and not _still_closed(text)) or under_open:
                     reopened.add(corner)
-                else:
+                elif under_closed or re.search(r"\bclosed\b", text, re.I):
                     closes.append((sentence, corner))
                 continue
             block = _ALERT_BLOCK.match(text)
@@ -1405,13 +1410,15 @@ def parse_alertdc(feed: str, now: datetime) -> list[Advisory]:
                 reopened.add(stretch)
             else:
                 closes.append((sentence, stretch))
-        says_open = final or any(_REOPENED.search(s) for s in sentences)
+        if reopen_only:
+            closes = []
+        says_open = final or reopen_only or any(_REOPENED.search(s) for s in sentences)
         read.append((item, sentences, closes, says_open and not closes, reopened))
     # An item that names stretches reopened ends them in the earlier items of its incident
     # (a partial update keeps its own closures); one that only says the road is open, naming
     # none, ends the whole incident.
     reopenings = [
-        (_incident(item["title"]), item["published"], stretches)
+        (_incident_of(item), item["published"], stretches)
         for item, _s, _c, reopening, stretches in read
         if reopening or stretches
     ]
@@ -1419,7 +1426,7 @@ def parse_alertdc(feed: str, now: datetime) -> list[Advisory]:
     for item, sentences, closes, reopening, _stretches in read:
         if reopening:
             continue
-        published, key = item["published"], _incident(item["title"])
+        published, key = item["published"], _incident_of(item)
         ended: set | None = set()
         for other, when, stretches in reopenings:
             if other != key or (published and when and when < published):
@@ -1455,7 +1462,9 @@ def parse_alertdc(feed: str, now: datetime) -> list[Advisory]:
                 advisory_id="alertdc-" + re.sub(r"[^A-Za-z0-9]+", "-", guid)[-60:].strip("-"),
                 source="alertdc",
                 title=POLICE_TITLE if police else _title(item["title"]),
-                url=item["link"] or None,
+                # Not the police alert's own page, which carries what happened: the card links
+                # AlertDC itself (`workzones.SOURCE_LINKS`).
+                url=None if police else (item["link"] or None),
                 published=published,
                 segments=segments,
                 unparsed=unparsed,
@@ -1466,6 +1475,22 @@ def parse_alertdc(feed: str, now: datetime) -> list[Advisory]:
             )
         )
     return advisories
+
+
+# A lead-in naming closures: "MPD reports the following road closures:".
+_CLOSURE_LEAD = re.compile(r"\b(?:closures?|closed|closing|blocked)\b", re.I)
+
+
+def _incident_of(item: Mapping) -> str:
+    """The key an item shares with its updates (`_incident`). A police item's updates are
+    titled each their own way ("Road Closures / Police Activity (15th and P Streets, NW)",
+    "Update: Police Activity (15th and P Streets, NW) - Roads Reopened"), so theirs is the
+    place in the title's brackets."""
+    if item.get("police"):
+        places = re.findall(r"\(([^()]*)\)", item["title"])
+        if places:
+            return "police|" + _tidy(places[-1]).lower()
+    return _incident(item["title"])
 
 
 def _still_closed(text: str) -> bool:
@@ -1530,47 +1555,10 @@ def _closed_corner(sentence: str) -> tuple[str, str] | None:
 
 
 def area_ring(
-    points: Sequence[Sequence[float]], margin_m: float, sides: int = 16
+    points: Sequence[Sequence[float]], margin_m: float
 ) -> tuple[tuple[float, float], ...] | None:
-    """The outline round `points` ([lon, lat]) at `margin_m`: the convex hull of a circle
-    of `sides` sides round each, a closed ring; None with no points."""
-    if not points or margin_m <= 0:
-        return None
-    lat0 = float(points[0][1])
-    around = []
-    for lon, lat in points:
-        x, y = _xy(float(lon), float(lat), lat0)
-        for k in range(sides):
-            turn = 2 * math.pi * k / sides
-            # Out to the corners' circle, so the polygon's sides keep `margin_m` clear too.
-            reach = margin_m / math.cos(math.pi / sides)
-            around.append((x + reach * math.cos(turn), y + reach * math.sin(turn)))
-    hull = _hull(around)
-    ring = [tuple(round(c, 7) for c in wz._lonlat(x, y, lat0)) for x, y in hull]
-    ring.append(ring[0])
-    return tuple((float(p[0]), float(p[1])) for p in ring)
-
-
-def _hull(points: list[tuple[float, float]]) -> list[tuple[float, float]]:
-    """The convex hull, anticlockwise (Andrew's monotone chain)."""
-    pts = sorted(set(points))
-    if len(pts) < 3:
-        return pts
-
-    def turn(o, a, b) -> float:
-        return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
-
-    lower: list[tuple[float, float]] = []
-    for p in pts:
-        while len(lower) >= 2 and turn(lower[-2], lower[-1], p) <= 0:
-            lower.pop()
-        lower.append(p)
-    upper: list[tuple[float, float]] = []
-    for p in reversed(pts):
-        while len(upper) >= 2 and turn(upper[-2], upper[-1], p) <= 0:
-            upper.pop()
-        upper.append(p)
-    return lower[:-1] + upper[:-1]
+    """The outline round `points` at `margin_m` (`workzones.area_ring`)."""
+    return wz.area_ring(points, margin_m)
 
 
 def _short(name: str) -> str:
@@ -1623,6 +1611,7 @@ def area_zone(
         published=advisory.published,
         on_foot=True if advisory.police else None,
         margin_m=margin_m,
+        core=tuple((float(p[0]), float(p[1])) for p in points) if margin_m > wz.CORE_M else (),
     )
 
 

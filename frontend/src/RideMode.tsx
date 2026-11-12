@@ -2666,6 +2666,7 @@ export function RideMode({
     // every later re-plan).
     closedPending.current = false;
     mtbDonePending.current = false;
+    suddenPending.current = false;
     setReplanning(false);
     setKeepPlanned(true);
     setReplanNote("");
@@ -3485,6 +3486,7 @@ export function RideMode({
       sayDetour(NO_FIX_YET);
       return;
     }
+    setKeepPlanned(false);
     sayDetour(ROAD_CLOSED_FINDING);
     if (gate.busy) {
       // The re-plan under way was asked before the closure was known: voided, and the ride planned again once it settles.

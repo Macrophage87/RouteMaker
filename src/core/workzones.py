@@ -379,14 +379,15 @@ def closures_stamp(now: datetime | None = None) -> str:
     with _lock:
         if _stamp is not None and _stamp[0] == id(found) and _stamp[1] == minute:
             return _stamp[2]
-    ids = sorted(
-        z.zone_id
+    # Each closure's id, end and line: an area that grows keeps its id (review of #1175).
+    rows = sorted(
+        json.dumps([z.zone_id, z.end.isoformat() if z.end else None, z.line, z.daily])
         for z in found.zones
         if z.kind in (rules.CLOSED, rules.UNKNOWN)
         and not rules.possible(z)
         and rules.active(z, moment)
     )
-    stamp = hashlib.sha256("\n".join(ids).encode()).hexdigest()[:16]
+    stamp = hashlib.sha256("\n".join(rows).encode()).hexdigest()[:16]
     with _lock:
         _stamp = (id(found), minute, stamp)
     return stamp

@@ -666,6 +666,12 @@ READERS = {
 }
 
 
+def _fresh_at(feed: dict) -> datetime | None:
+    """When a source's copy was last known good: read, or checked unchanged (`FAST`)."""
+    times = [rules._when(feed.get("read_at")), rules._when(feed.get("checked_at"))]
+    return max((t for t in times if t is not None), default=None)
+
+
 def _due(feed: dict, source: str, now: datetime) -> bool:
     last = rules._when(feed.get("failed_at")) or rules._when(feed.get("read_at"))
     # A minute's grace, so a fifteen-minute source is read at every fifteen-minute tick.
@@ -758,7 +764,9 @@ def refresh(
                     and parsed is not None
                     and (moment - parsed).total_seconds() < FAST_REREAD_S
                 ):
-                    feeds[source] = {**kept, "read_at": moment.isoformat(), "failed_at": None}
+                    # `read_at` stays the last read, so the route cache (whose key holds it) is
+                    # not emptied each minute; `checked_at` says the copy is still current.
+                    feeds[source] = {**kept, "checked_at": moment.isoformat(), "failed_at": None}
                     touched.add(source)
                     said.append(f"{source} unchanged")
                     continue
@@ -803,7 +811,7 @@ def refresh(
             # Planned work only feeds an off-by-default layer and is never routed round: an
             # outage there is logged, never an alarm on the whole closures job.
             continue
-        when = rules._when((feeds.get(source) or {}).get("read_at"))
+        when = _fresh_at(feeds.get(source) or {})
         if when is None or (now() - when).total_seconds() > STALE_AFTER_S[source]:
             stale.append(source)
     if stale:
@@ -856,7 +864,7 @@ def load(payload: dict, now: datetime) -> tuple[list, list, dict, dict]:
     for source in sorted(set(feeds) | PUBLIC):
         feed = feeds.get(source) or {}
         read_at[source] = feed.get("read_at")
-        status[source] = status_of(source, rules._when(feed.get("read_at")), now)
+        status[source] = status_of(source, _fresh_at(feed), now)
         if status[source] == "unavailable":
             continue
         for row in feed.get("zones") or []:

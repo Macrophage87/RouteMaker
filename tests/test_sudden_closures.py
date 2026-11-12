@@ -236,7 +236,7 @@ def test_alertdc_is_read_again_only_where_its_page_changed() -> None:
         "closures: alertdc unchanged"
     )
     again = stored()
-    assert again["read_at"] == later.isoformat() and again["parsed_at"] == NOW.isoformat()
+    assert again["checked_at"] == later.isoformat() and again["read_at"] == NOW.isoformat()
     assert again["zones"] == first["zones"] and placer.calls == calls
     # A changed page is read at once; an unchanged one again after FAST_REREAD_S.
     changed = PAGE.replace("Please use alternate routes.", "Use other routes.")
@@ -266,3 +266,88 @@ def test_the_two_tasks_keep_each_others_sources() -> None:
     assert sources.ALERTDC not in [s for s in sources.wanted() if s not in sources.FAST], (
         "the fifteen-minute refresh never reads AlertDC"
     )
+
+
+# --- The review of #1175 --------------------------------------------------------------
+
+
+def test_junctions_listed_for_anything_but_a_closure_are_not_closed() -> None:
+    page = PAGE.replace(
+        "[AlertDC] MPD reports the following road closure due to a vehicle crash:",
+        "[AlertDC] Traffic signals are out at the following intersections:",
+    ).replace("Road Closure / Vehicle Crash", "Traffic Signal Outage")
+    outage = {a.advisory_id: a for a in dc.parse_alertdc(page, NOW)}.get("alertdc-91002")
+    assert outage is None or outage.corners == []
+    said = PAGE.replace(
+        "[AlertDC] MPD reports the following road closure due to a vehicle crash:"
+        "&#xA;&#x2022;&#x9;",
+        "[AlertDC] ",
+    ).replace(
+        "Georgia Avenue and Missouri Avenue, NW",
+        "Georgia Avenue and Missouri Avenue, NW is closed.",
+    )
+    crash = {a.advisory_id: a for a in dc.parse_alertdc(said, NOW)}["alertdc-91002"]
+    assert [(c.a, c.b) for c in crash.corners] == [("Georgia Avenue NW", "Missouri Avenue NW")]
+
+
+def test_a_police_reopening_titled_its_own_way_ends_the_area() -> None:
+    reopened = PAGE.replace(
+        "<tbody>",
+        """<tbody><tr><td class="head">11/12/2026 9:00 AM</td><td class="head"><b>
+        <a href="/NRss/RssFeed/AlertDetails/91005">[AlertDC] Update: Police Activity
+        (15th and P Streets, NW) - Roads Reopened</a></b><br />
+        [AlertDC] All roads have reopened following the police investigation.</td></tr>""",
+        1,
+    )
+    found = {a.advisory_id for a in dc.parse_alertdc(reopened, NOW)}
+    assert "alertdc-91001" not in found and "alertdc-91005" not in found
+
+
+def test_a_police_area_does_not_link_the_alert_itself() -> None:
+    assert advisories()["alertdc-91001"].url is None
+    assert advisories()["alertdc-91002"].url.endswith("/AlertDetails/91002")
+
+
+def test_a_rider_by_the_area_is_still_sent_round_its_closed_junctions() -> None:
+    zone = police_zone()
+    # Starting a block from 15th & P, inside the wide area: its closed junctions are left out.
+    start = [P15[0], P15[1] - 0.0015]
+    plan = wz.for_plan([zone], NOW, [start, THROUGH[-1]], {"alertdc": "current"}, now=NOW)
+    assert plan.excluded == [zone]
+    (ring,) = plan.rings[zone.zone_id]
+    lat0 = P15[1]
+    xy = [wz._xy(lon, lat, lat0) for lon, lat in ring]
+    assert wz._in_ring(wz._xy(P15[0], P15[1], lat0), xy)
+    assert not wz._in_ring(wz._xy(start[0], start[1], lat0), xy)
+    # Starting at the closed junction itself: warned of, not left out.
+    plan = wz.for_plan([zone], NOW, [P15, THROUGH[-1]], {"alertdc": "current"}, now=NOW)
+    assert plan.excluded == [] and plan.unexcluded == [zone]
+
+
+@pytest.mark.django_db
+def test_an_unchanged_page_does_not_change_what_the_route_cache_keys_on() -> None:
+    sources.refresh_fast(Net(), no_sleep, lambda: NOW, Placer())
+    later = NOW + timedelta(minutes=1)
+    sources.refresh_fast(Net(), no_sleep, lambda: later, Placer())
+    kept = stored()
+    assert kept["read_at"] == NOW.isoformat() and kept["checked_at"] == later.isoformat()
+    # Still current long after the last read, as it was checked a minute ago.
+    status = sources.load(
+        BikeshareFeedCache.objects.get(key=sources.KEY).payload, NOW + timedelta(minutes=50)
+    )[2]
+    assert status["alertdc"] == "stale"
+    status = sources.load(
+        BikeshareFeedCache.objects.get(key=sources.KEY).payload, later + timedelta(minutes=10)
+    )[2]
+    assert status["alertdc"] == "current"
+
+
+@pytest.mark.django_db
+def test_the_stamp_changes_when_an_area_grows(monkeypatch) -> None:
+    zone = police_zone()
+    bigger = wz.Zone.from_json(
+        {**zone.to_json(), "line": [list(p) for p in dc.area_ring([P15, P14, Q15, GEORGIA], 305)]}
+    )
+    snaps = iter([workzones.Snapshot(zones=[zone]), workzones.Snapshot(zones=[bigger])])
+    monkeypatch.setattr(workzones, "snapshot", lambda: next(snaps))
+    assert workzones.closures_stamp(NOW) != workzones.closures_stamp(NOW)

@@ -38,7 +38,7 @@ from __future__ import annotations
 import math
 import re
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, time, timedelta
 
 from routemaker.lang import spanish, t
@@ -251,6 +251,9 @@ class Zone:
     # ring, already `margin_m` out from the closed corners or blocks (`dc_closures.area_ring`),
     # and the router leaves out the whole ring (`polygon`), not a strip along a line.
     margin_m: float = 0.0
+    # An area's closed corners and blocks themselves ([lon, lat]): where a rider is already in
+    # or by the wide area, a re-plan still leaves out `CORE_M` round these (review of #1175).
+    core: tuple[tuple[float, float], ...] = ()
 
     @property
     def area(self) -> bool:
@@ -285,6 +288,7 @@ class Zone:
             "on_foot": self.on_foot,
             "daily": None if self.daily is None else list(self.daily),
             "margin_m": self.margin_m,
+            "core": [list(p) for p in self.core],
         }
 
     @classmethod
@@ -310,6 +314,7 @@ class Zone:
             on_foot=_on_foot(row.get("on_foot")),
             daily=_daily(row.get("daily")),
             margin_m=_margin(row.get("margin_m")),
+            core=_core(row.get("core")),
         )
 
 
@@ -335,6 +340,14 @@ def _margin(value) -> float:
     except (TypeError, ValueError):
         return 0.0
     return margin if 0.0 < margin <= 2000.0 else 0.0
+
+
+def _core(value) -> tuple[tuple[float, float], ...]:
+    """A stored `core`: [lon, lat] pairs, at most 200; anything else is none."""
+    try:
+        return tuple((float(p[0]), float(p[1])) for p in (value or ())[:200])
+    except (TypeError, ValueError, IndexError):
+        return ()
 
 
 def _on_foot(value) -> bool | None:
@@ -745,19 +758,75 @@ def line_rings(
     return rings
 
 
+# Round an area's closed corners and blocks themselves (`Zone.core`), what is still left out
+# where the rider is in or by the wide area: the junction, as a crash's is.
+CORE_M = 30.0
+
+
 def zone_rings(
     zone: Zone, points: Sequence[Sequence[float]] = (), crossings: Sequence[float] = ()
 ) -> list[list[list[float]]]:
     """A closure's strips (`line_rings`): its line trimmed `TRIM_M` at both ends, less the
-    stretches near the rider's `points`, cut at its `crossings`. An area is its one ring, or
-    none where one of `points` lies in it or within `NEAR_POINT_M` of it (the rider starts
-    there: warned of, not left out)."""
+    stretches near the rider's `points`, cut at its `crossings`. An area is its one ring; where
+    one of `points` lies in it or within `NEAR_POINT_M` of it, the ring `CORE_M` round its
+    closed corners and blocks instead (a rider a block from a police cordon is still sent round
+    the closed junctions), or none where a point is by those too (warned of, not left out)."""
     if zone.area:
-        if any(near_area(zone, p) for p in points):
+        if not any(near_area(zone, p) for p in points):
+            ring = polygon(zone)
+            return [] if ring is None else [ring]
+        core = area_ring(zone.core, CORE_M) if zone.core else None
+        if core is None:
             return []
-        ring = polygon(zone)
-        return [] if ring is None else [ring]
+        inner = replace(zone, line=core, margin_m=CORE_M, core=())
+        if any(near_area(inner, p) for p in points):
+            return []
+        return [[[p[0], p[1]] for p in core]]
     return line_rings(zone.line, TRIM_M, points, crossings)
+
+
+def area_ring(
+    points: Sequence[Sequence[float]], margin_m: float, sides: int = 16
+) -> tuple[tuple[float, float], ...] | None:
+    """The outline round `points` ([lon, lat]) at `margin_m`: the convex hull of a circle
+    of `sides` sides round each, a closed ring; None with no points."""
+    if not points or margin_m <= 0:
+        return None
+    lat0 = float(points[0][1])
+    # Out to the corners' circle, so the polygon's sides keep `margin_m` clear too.
+    reach = margin_m / math.cos(math.pi / sides)
+    around = []
+    for lon, lat in points:
+        x, y = _xy(float(lon), float(lat), lat0)
+        for k in range(sides):
+            turn = 2 * math.pi * k / sides
+            around.append((x + reach * math.cos(turn), y + reach * math.sin(turn)))
+    hull = _hull(around)
+    ring = [tuple(round(c, 7) for c in _lonlat(x, y, lat0)) for x, y in hull]
+    ring.append(ring[0])
+    return tuple((float(p[0]), float(p[1])) for p in ring)
+
+
+def _hull(points: list[tuple[float, float]]) -> list[tuple[float, float]]:
+    """The convex hull, anticlockwise (Andrew's monotone chain)."""
+    pts = sorted(set(points))
+    if len(pts) < 3:
+        return pts
+
+    def turn(o, a, b) -> float:
+        return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+
+    lower: list[tuple[float, float]] = []
+    for p in pts:
+        while len(lower) >= 2 and turn(lower[-2], lower[-1], p) <= 0:
+            lower.pop()
+        lower.append(p)
+    upper: list[tuple[float, float]] = []
+    for p in reversed(pts):
+        while len(upper) >= 2 and turn(upper[-2], upper[-1], p) <= 0:
+            upper.pop()
+        upper.append(p)
+    return lower[:-1] + upper[:-1]
 
 
 def _in_ring(point: tuple[float, float], ring: Sequence[tuple[float, float]]) -> bool:
@@ -1528,10 +1597,18 @@ def for_plan(
         # At a destination or via the rest of the strip would still meet the stop's edge, which
         # the router can never arrive on (Valhalla 3.9.1 `AvoidAsDestinationEdge`), so a closure
         # by one is warned of whole, as before (review of hunt K3, 2026-11-08).
+        # An area is looked at with every point: by any of them, only its core is left out
+        # (`zone_rings`), and only where no point is by that too.
+        if zone.area:
+            rings = zone_rings(zone, points)
+            if rings:
+                pieces[zone.zone_id] = rings
+                fitting.append(zone)
+            else:
+                plan.unexcluded.append(zone)
+            continue
         if stops and any(
-            near_area(zone, p)
-            if zone.area
-            else _distance_to_line(_xy(p[0], p[1], zone.line[0][1]), _zone_xy(zone)) <= NEAR_POINT_M
+            _distance_to_line(_xy(p[0], p[1], zone.line[0][1]), _zone_xy(zone)) <= NEAR_POINT_M
             for p in stops
         ):
             plan.unexcluded.append(zone)
