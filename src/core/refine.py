@@ -357,6 +357,9 @@ class Context:
     seek: bool = False
     schema: str = ""
     avoid_gravel: bool = False
+    # The rider's "Fewer turns" (`routing.Dials.fewer_turns`): turns ranked at every position,
+    # at `presets.FEWER_TURNS_PENALTY_S` each (`turn_m`).
+    fewer_turns: bool = False
     # What a second of junction waiting costs against a second of riding when routes are
     # ranked (`presets.wait_weight_for`): 1, and 3 on Road Bike. The time shown is unchanged.
     wait_weight: float = 1.0
@@ -718,7 +721,8 @@ TURN_MANEUVERS = frozenset(range(9, 17))
 # What one turn costs in the calm search's ranking (above `presets.STRESS_TODAYS_TOP`, where
 # the router's own turn charge rises too), seconds of quiet riding:
 # `presets.CALM_MANEUVER_PENALTY_S`, the charge the router makes there (our default, not
-# measured). At or below the old top the ranking adds nothing for turns. The owner,
+# measured). At or below the old top the ranking adds nothing for turns unless
+# `presets.TURN_CHARGE_EVERY_SETTING` is on (owner decision 254, "every preset"). The owner,
 # 2026-11-10: "Trailmaxxing seems to cause a lot of fiddly turns when there's an easy road
 # nearby".
 TURN_RANK_S = presets.CALM_MANEUVER_PENALTY_S
@@ -737,10 +741,16 @@ def turns_of(trip: dict) -> int:
 def turn_m(read: Analysis, ctx: Context) -> float:
     """The route's turns as metres of quiet riding, at `TURN_RANK_S` a turn and the rate
     `delay_m` prices a second at, so between routes equally calm the one with fewer turns
-    ranks first. Only where the calm search runs (above `presets.STRESS_TODAYS_TOP`, the
-    same positions the router's turn charge rises at); at or below it, 0, so nothing there
-    changes (the router's cost already holds turns)."""
-    if ctx.quiet_cost <= 0 or (not ctx.maxcalm and ctx.rate <= 0):
+    ranks first. At every position with `presets.TURN_CHARGE_EVERY_SETTING` (owner decision
+    254's "every preset"), so repeats, dodges and loop way-backs weigh turns too; with it off,
+    only where the calm search runs (above `presets.STRESS_TODAYS_TOP`, the same positions the
+    router's turn charge rises at), and 0 at or below it. The rider's "Fewer turns"
+    (`Context.fewer_turns`) ranks them everywhere at `presets.FEWER_TURNS_PENALTY_S`."""
+    if ctx.quiet_cost <= 0:
+        return 0.0
+    if ctx.fewer_turns:
+        return QUIET_COST_FACTOR * presets.FEWER_TURNS_PENALTY_S * read.turns / ctx.quiet_cost
+    if not presets.TURN_CHARGE_EVERY_SETTING and not ctx.maxcalm and ctx.rate <= 0:
         return 0.0
     return QUIET_COST_FACTOR * TURN_RANK_S * read.turns / ctx.quiet_cost
 

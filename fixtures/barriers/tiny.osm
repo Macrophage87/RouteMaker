@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Made-up nodes and ways for tests/test_barrier_census.py; not OSM data. -->
+<osm version="0.6" generator="hand">
+  <node id="1" lat="38.9000" lon="-77.0000"/>
+  <node id="2" lat="38.9001" lon="-77.0000"><tag k="barrier" v="stile"/></node>
+  <node id="3" lat="38.9002" lon="-77.0000"><tag k="barrier" v="bollard"/><tag k="maxwidth" v="1.2"/></node>
+  <node id="4" lat="38.9003" lon="-77.0000"><tag k="barrier" v="bollard"/></node>
+  <node id="5" lat="38.9004" lon="-77.0000"><tag k="barrier" v="bollard"/><tag k="width" v="0.9"/></node>
+  <node id="6" lat="38.9005" lon="-77.0000"/>
+  <node id="7" lat="38.9005" lon="-77.0010"/>
+  <node id="8" lat="38.9005" lon="-77.0020"><tag k="barrier" v="kerb"/><tag k="kerb" v="lowered"/></node>
+  <node id="9" lat="38.9100" lon="-77.0000"/>
+  <node id="10" lat="38.9110" lon="-77.0000"/>
+  <node id="11" lat="38.9200" lon="-77.0000"/>
+  <node id="12" lat="38.9210" lon="-77.0000"/>
+  <node id="13" lat="38.9300" lon="-77.0000"><tag k="barrier" v="kissing_gate"/></node>
+  <node id="14" lat="38.9310" lon="-77.0000"/>
+  <way id="100"><nd ref="1"/><nd ref="2"/><nd ref="3"/><nd ref="4"/><nd ref="5"/><nd ref="6"/><tag k="highway" v="path"/></way>
+  <way id="101"><nd ref="6"/><nd ref="7"/><nd ref="8"/><tag k="highway" v="residential"/></way>
+  <way id="102"><nd ref="9"/><nd ref="10"/><tag k="highway" v="steps"/><tag k="ramp:bicycle" v="yes"/></way>
+  <way id="103"><nd ref="11"/><nd ref="12"/><tag k="highway" v="footway"/><tag k="bicycle" v="dismount"/></way>
+  <way id="104"><nd ref="13"/><nd ref="14"/><tag k="highway" v="footway"/><tag k="access" v="private"/></way>
+</osm>
