@@ -13,7 +13,10 @@ from collections.abc import Sequence
 from django.conf import settings
 from django.db import connection
 
-from pipeline.offline_network import OfflineWay, split_edges
+from pipeline.offline_network import AVOID_LEVEL2, OfflineWay, split_edges
+from routemaker import calm
+
+from . import presets
 from pipeline.schema import validate_schema_name
 
 VERSION = 1
@@ -116,3 +119,30 @@ def graph_of(ways: Sequence[OfflineWay]) -> dict:
 def corridor_graph(line: Sequence[tuple[float, float]], width_m: float = CORRIDOR_M) -> dict:
     """The network within `width_m` of the line. Raises NotBuilt before the first rebuild that writes it."""
     return graph_of(corridor_ways(line[:MAX_LINE_POINTS], width_m))
+
+
+def level_factors(preset_name: str, stress: int | None = None, carrying: str | None = None) -> list[float]:
+    """By stress level times 2 (index 2 to 10; 0 and 1 unused), the multiple of a stretch's riding time the phone's
+    search charges for it: the ride's own calm metres per metre (`routemaker.calm.multiplier`), the figure the route
+    ranking and the rolling chart price each level at for this ride type and stress slider, so the offline way back
+    prefers the levels the server's plan would. Facility classes are left out (the network does not carry them)."""
+    if preset_name not in presets.PRESETS:
+        preset_name = "default"
+    dial = presets.stress_start(preset_name, carrying) if stress is None else int(stress)
+    exposure = presets.exposure_for(preset_name, carrying)
+    pricing = calm.Pricing(
+        use_roads=presets.use_roads_for(dial),
+        rate=presets.calm_rate_for(dial),
+        weights=(exposure.lts3, exposure.lts4, exposure.avoid),
+        maxcalm=presets.maxcalm_for(dial),
+    )
+    factors = [1.0, 1.0]
+    for level2 in range(2, AVOID_LEVEL2 + 1):
+        tier = 5 if level2 == AVOID_LEVEL2 else level2 // 2
+        half = level2 != AVOID_LEVEL2 and level2 % 2 == 1
+        value = calm.multiplier(tier, None, pricing, half)
+        factors.append(round(max(value or 1.0, 1.0), 3))
+    # Avoid costs at least twice LTS 4 offline: the server charges its entry on top of the level (the alley mark and
+    # `quiet_cost_s`), which the network does not carry. Our default, unmeasured.
+    factors[AVOID_LEVEL2] = max(factors[AVOID_LEVEL2], round(2 * factors[8], 3))
+    return factors

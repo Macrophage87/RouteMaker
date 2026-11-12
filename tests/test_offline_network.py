@@ -112,3 +112,18 @@ def test_a_loop_way_keeps_its_ring():
     edges = split_edges([_ow(1, [1, 2, 3, 1])])
     assert len(edges) == 1
     assert edges[0].a_node == edges[0].b_node == 1
+
+
+def test_level_factors_rise_with_stress_and_follow_the_ride_type(settings):
+    from core.offline_network import level_factors
+
+    calm = level_factors("novice")
+    fast = level_factors("fast")
+    assert len(calm) == 11
+    assert calm[2] == 1.0
+    assert calm[2] <= calm[6] < calm[8] < calm[10]
+    assert calm[10] >= 2 * calm[8]
+    # A calmer ride type prices LTS 3 higher than a fast one.
+    assert calm[6] > fast[6]
+    # An unknown ride type is priced as Default.
+    assert level_factors("no-such-type") == level_factors("default")

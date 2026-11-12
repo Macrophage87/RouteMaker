@@ -3806,6 +3806,9 @@ class OfflineNetworkIn(Schema):
         max_length=offline_network.MAX_LINE_POINTS,
         description="The route's line, [lon, lat] pairs, as the route answer gave it.",
     )
+    preset: str = Field(default="default", max_length=40, description="The ride type, for the levels' prices.")
+    stress: int | None = Field(default=None, ge=0, le=100, description="The stress slider; none: the ride type's own.")
+    carrying: str | None = Field(default=None, max_length=20, description="Cargo Bike's load, as the route was asked.")
 
 
 @api.post(
@@ -3823,7 +3826,8 @@ def offline_network_view(request, body: OfflineNetworkIn):
     if not all(inside_coverage(lon, lat) for lon, lat in body.line[:: max(1, len(body.line) // 50)]):
         return Status(400, {"error": "The line must be inside the map's area."})
     try:
-        return offline_network.corridor_graph(body.line)
+        graph = offline_network.corridor_graph(body.line)
+        return {**graph, "level_factor": offline_network.level_factors(body.preset, body.stress, body.carrying)}
     except offline_network.NotBuilt:
         return Status(503, {"error": "not_built"})
 
