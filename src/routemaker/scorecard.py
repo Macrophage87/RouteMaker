@@ -84,16 +84,19 @@ def plans(
     trips: dict,
     *,
     extra: dict | None = None,
+    stress: int | None = None,
     contrast: bool = True,
     stability: bool = True,
     only: Iterable[str] | None = None,
 ) -> list[dict]:
     """Every plan of a run, as {"key", "trip", "preset", "variant", "body"}.
 
-    `extra` is added to every body (for example {"stress": 70} for a before/after at one
-    setting). A trip's own `presets` always run; `contrast` adds the trip list's
-    `contrast_presets` on trips marked `contrast`; `stability` adds the trip with the
-    start moved north `STABILITY_SHIFT_M` on trips marked `stability`, on the first preset.
+    `extra` is added to every body. `stress` sets the slider on Default only (a before/after
+    at one Default position); the other ride types keep their own start, so the contrast
+    check still compares ride types as a rider would meet them. A trip's own `presets`
+    always run; `contrast` adds the trip list's `contrast_presets` on trips marked
+    `contrast`; `stability` adds the trip with the start moved north `STABILITY_SHIFT_M`
+    on trips marked `stability`, on the first preset.
     """
     wanted = set(only) if only else None
     when = trips.get("when")
@@ -110,8 +113,17 @@ def plans(
         if when:
             body["when"] = when
         body.update(extra or {})
+        if stress is not None and preset == "default":
+            body["stress"] = stress
         out.append(
-            {"key": key, "trip": trip["id"], "preset": preset, "variant": variant, "body": body}
+            {
+                "key": key,
+                "trip": trip["id"],
+                "preset": preset,
+                "variant": variant,
+                "setting": trip.get("setting"),
+                "body": body,
+            }
         )
 
     for trip in trips["trips"]:
@@ -164,8 +176,9 @@ def straight_line_m(points: Sequence[Sequence[float]]) -> float:
 
 def score(answer: dict, body: dict | None = None) -> dict:
     """One answer's figures. Missing parts of an answer give None, never a guess."""
+    has_distance = answer.get("distance_m") is not None
     distance = float(answer.get("distance_m") or 0.0)
-    miles = distance / METRES_PER_MILE
+    miles = distance / METRES_PER_MILE if has_distance else None
     stress = answer.get("stress_m") or {}
     facility = answer.get("facility_m") or {}
     spans = answer.get("stress_spans") or []
@@ -183,7 +196,7 @@ def score(answer: dict, body: dict | None = None) -> dict:
     calm = answer.get("calm_search") or {}
     row = {
         "miles": miles,
-        "minutes": float(answer.get("duration_s") or 0.0) / 60.0,
+        "minutes": None if answer.get("duration_s") is None else float(answer["duration_s"]) / 60.0,
         "turns": turns,
         "turns_per_mi": (turns / miles) if (turns is not None and miles) else None,
         "red": None
@@ -202,6 +215,7 @@ def score(answer: dict, body: dict | None = None) -> dict:
         "path_share": (float(facility.get("path") or 0.0) / distance) if distance else None,
         "unpaved_mi": unpaved / METRES_PER_MILE,
         "detour_ratio": ratio,
+        "detour_basis": detour.get("basis") or ("straight_line" if ratio is not None else None),
         "limited": calm.get("limited"),
         "graph": answer.get("variant"),
     }
@@ -379,7 +393,7 @@ def findings_for(old: dict, new: dict) -> list[str]:
     if old.get("status") == 200 and new.get("status") != 200:
         out.append(f"no longer plans ({new.get('status')}: {new.get('error', '')})".strip())
         return out
-    if old.get("status") != 200 and new.get("status") == 200:
+    if old.get("status") not in (200, None) and new.get("status") == 200:
         out.append("plans again")
     if new.get("status") != 200 or old.get("status") != 200:
         return out

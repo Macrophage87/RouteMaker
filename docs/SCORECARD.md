@@ -29,8 +29,8 @@ and not on a ride (improvement backlog 2026-11-12, item 1).
 Two checks inside one run:
 
 - **Stability**: the trip with its start moved 150 ft north should share at least 70% of the
-  route. Less means a small move of the pin changes the corridor.
-- **Contrast**: two ride types sharing 90% or more of a trip planned the same thing; the report
+  route (our default, unmeasured). Less means a small move of the pin changes the corridor.
+- **Contrast**: two ride types sharing 90% or more of a trip (our default, unmeasured) planned the same thing; the report
   lists them, since ride types that never differ are not giving the rider a choice.
 
 Comparing two runs lists a trip when it moves past these lines (all our defaults, unmeasured):
@@ -52,19 +52,19 @@ python3 scripts/route_scorecard.py queue --ref origin/release/v0.26.0 --label v0
     --out <route-check>/queue/req
 # when <route-check>/queue/res has the answers:
 python3 scripts/route_scorecard.py collect --manifest <route-check>/queue/v0.26.0.plans.json \
-    --answers <route-check>/queue/res --out runs/v0.26.0.json
-python3 scripts/route_scorecard.py report runs/v0.26.0.json --against runs/v0.25.1.json
+    --answers <route-check>/queue/res --out <project-files>/reports/scorecard/v0.26.0.json
+python3 scripts/route_scorecard.py report <project-files>/reports/scorecard/v0.26.0.json --against <project-files>/reports/scorecard/v0.25.1.json
 ```
 
 **Against a running stack over HTTP** (a local stack, or beta from inside):
 
 ```sh
-python3 scripts/route_scorecard.py http --base-url http://localhost:8000 --label local --out runs/local.json
+python3 scripts/route_scorecard.py http --base-url http://localhost:8000 --label local --out <project-files>/reports/scorecard/local.json
 ```
 
-`--stress 70` plans every trip at one slider position (a before/after at Default); Go's More
+`--stress 70` plans Default at one slider position (a before/after at Default); every other ride type keeps its own start, so the contrast check still means something. Go's More
 direct from Default is `--stress 25` (`core.presets.stress_notches("default", 70)`).
-`--only id,id`, `--no-contrast` and `--no-stability` cut the set down.
+`--only id,id`, `--no-contrast` and `--no-stability` cut the set down. Long trips go to the service one per request, so one slow calm search cannot lose other answers; `collect` lists any request that came back `busy` or `timeout` under `request_errors`: queue that file again.
 
 ## Not yet decided
 

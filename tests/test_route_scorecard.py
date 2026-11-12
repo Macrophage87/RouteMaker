@@ -129,7 +129,7 @@ def test_plans_expand_presets_contrast_and_stability():
             {"id": "u", "points": [[-77.0, 38.9], [-77.01, 38.91]], "presets": ["default"]},
         ],
     }
-    out = scorecard.plans(trips, extra={"stress": 70})
+    out = scorecard.plans(trips, extra={"debug_junctions": True}, stress=70)
     keys = [p["key"] for p in out]
     assert keys == [
         "t|default|base",
@@ -141,7 +141,10 @@ def test_plans_expand_presets_contrast_and_stability():
     moved = out[3]["body"]["points"][0]
     shift = scorecard._haversine(moved, [-77.0, 38.9])
     assert shift == pytest.approx(scorecard.STABILITY_SHIFT_M, rel=0.01)
-    assert all(p["body"]["when"] == "weekday_rush" and p["body"]["stress"] == 70 for p in out)
+    assert all(p["body"]["when"] == "weekday_rush" and p["body"]["debug_junctions"] for p in out)
+    # --stress moves Default only; the other ride types keep their own start.
+    assert {p["preset"] for p in out if "stress" in p["body"]} == {"default"}
+    assert all(p["body"]["stress"] == 70 for p in out if p["preset"] == "default")
     assert [
         p["key"] for p in scorecard.plans(trips, contrast=False, stability=False, only=["u"])
     ] == ["u|default|base"]
@@ -306,3 +309,86 @@ def test_queue_and_collect_round_trip(tmp_path):
     run = json.loads(out.read_text())
     assert run["meta"]["sha"] == "abc"
     assert all(r["status"] == 200 for r in run["rows"].values())
+
+
+def test_collect_reads_only_its_own_run(tmp_path):
+    """Two runs' answers in one folder (the service keeps them 48 h) never mix."""
+    cmd = [sys.executable, str(ROOT / "scripts" / "route_scorecard.py")]
+    req = tmp_path / "queue" / "req"
+    res = tmp_path / "queue" / "res"
+    res.mkdir(parents=True)
+    for label, miles in (("old", 2.0), ("new", 3.0)):
+        subprocess.run(
+            [
+                *cmd,
+                "queue",
+                "--ref",
+                "origin/main",
+                "--label",
+                label,
+                "--only",
+                "mall",
+                "--no-contrast",
+                "--no-stability",
+                "--out",
+                str(req),
+            ],
+            check=True,
+            capture_output=True,
+        )
+        for f in sorted(req.glob(f"scorecard-{label}-*.json")):
+            plans = json.loads(f.read_text())["plans"]
+            (res / f.name).write_text(
+                json.dumps(
+                    {
+                        "status": "ok",
+                        "sha": label,
+                        "plans": [
+                            {
+                                "label": p["label"],
+                                "status": 200,
+                                "answer": answer(distance_m=miles * MI),
+                            }
+                            for p in plans
+                        ],
+                    }
+                )
+            )
+    out = tmp_path / "run.json"
+    subprocess.run(
+        [
+            *cmd,
+            "collect",
+            "--manifest",
+            str(tmp_path / "queue" / "old.plans.json"),
+            "--answers",
+            str(res),
+            "--out",
+            str(out),
+        ],
+        check=True,
+        capture_output=True,
+    )
+    run = json.loads(out.read_text())
+    assert run["meta"]["sha"] == "old"
+    assert {round(r["miles"], 2) for r in run["rows"].values()} == {2.0}
+
+
+def test_long_trips_go_alone_to_the_service():
+    sys.path.insert(0, str(ROOT / "scripts"))
+    import route_scorecard
+
+    entries = [{"setting": "urban"}] * 9 + [{"setting": "long"}] + [{"setting": "urban"}] * 2
+    sizes = [len(c) for c in route_scorecard._chunks(entries)]
+    assert sizes == [8, 1, 3]
+
+
+def test_crashed_plan_and_missing_distance():
+    row = scorecard.score({"geometry": None})
+    assert row["miles"] is None and row["minutes"] is None
+    entries = _entries()[:1]
+    never = scorecard.run_of(entries, {})
+    now = scorecard.run_of(entries, {"t|default|base": {"status": 200, "body": answer()}})
+    assert "plans again" not in "; ".join(
+        sum(scorecard.compare(never, now)["findings"].values(), [])
+    )

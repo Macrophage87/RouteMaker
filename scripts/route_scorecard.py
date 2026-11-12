@@ -19,9 +19,9 @@ compare with the last run. Standard library only.
 
 Planning only reads: /api/route saves nothing to any account (drafts come only from the
 connector), and every end is a public landmark. Each plan asks `debug_junctions` for the
-signal count. Options: `--stress N` plans every trip at one slider position (a before/after
-at Default is `--stress 70`); `--only id,id` limits the trips; `--no-contrast` and
-`--no-stability` drop those checks.
+signal count. Options: `--stress N` plans Default at one slider position (a before/after at
+Default is `--stress 70`); every other ride type keeps its own start. `--only id,id` limits
+the trips; `--no-contrast` and `--no-stability` drop those checks.
 """
 
 from __future__ import annotations
@@ -48,12 +48,11 @@ PER_REQUEST = 8
 def _entries(args) -> list[dict]:
     trips = json.loads(Path(args.trips).read_text())
     extra: dict = {"debug_junctions": True}
-    if args.stress is not None:
-        extra["stress"] = args.stress
     only = [s for s in (args.only or "").split(",") if s] or None
     return scorecard.plans(
         trips,
         extra=extra,
+        stress=args.stress,
         contrast=not args.no_contrast,
         stability=not args.no_stability,
         only=only,
@@ -75,18 +74,18 @@ def cmd_queue(args) -> int:
     entries = _entries(args)
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
+    # Labels are unique to the run, so answers of two runs in one folder never mix.
     for i, entry in enumerate(entries):
-        entry["label"] = f"sc {i:03d}"
+        entry["label"] = f"{_slug(args.label)[:40]} {i:03d}"
     names = []
-    for n in range(0, len(entries), PER_REQUEST):
-        chunk = entries[n : n + PER_REQUEST]
+    for n, chunk in enumerate(_chunks(entries)):
         req = {
             "check": "plan",
             "ref": args.ref,
             "trace": False,
             "plans": [{"label": e["label"], "body": e["body"], "full": True} for e in chunk],
         }
-        name = f"scorecard-{_slug(args.label)}-{n // PER_REQUEST:02d}.json"
+        name = f"scorecard-{_slug(args.label)}-{n:02d}.json"
         tmp = out / (name + ".part")
         tmp.write_text(json.dumps(req, indent=1))
         tmp.replace(out / name)
@@ -106,12 +105,40 @@ def cmd_queue(args) -> int:
     return 0
 
 
-def _answers_from_files(paths: list[Path], entries: list[dict]) -> tuple[dict, dict]:
+def _chunks(entries: list[dict]) -> list[list[dict]]:
+    """Requests of up to PER_REQUEST plans; a long trip goes alone, so one slow calm search
+    cannot take seven other answers down with it when the service's 15 minutes run out."""
+    out: list[list[dict]] = []
+    short: list[dict] = []
+    for entry in entries:
+        if entry.get("setting") == "long":
+            out.append([entry])
+            continue
+        short.append(entry)
+        if len(short) == PER_REQUEST:
+            out.append(short)
+            short = []
+    if short:
+        out.append(short)
+    return out
+
+
+def _answers_from_files(
+    paths: list[Path], entries: list[dict], requests: list[str] | None = None
+) -> tuple[dict, dict]:
     by_label = {e["label"]: e["key"] for e in entries}
     answers: dict[str, dict] = {}
     info: dict = {}
     for path in paths:
-        files = sorted(path.glob("scorecard-*.json")) if path.is_dir() else [path]
+        if path.is_dir():
+            # Only this run's own answer files: a folder may hold another run's too.
+            files = [path / n for n in requests] if requests else []
+            missing = [f.name for f in files if not f.exists()]
+            if missing:
+                info.setdefault("unanswered_requests", []).extend(missing)
+            files = [f for f in files if f.exists()]
+        else:
+            files = [path]
         for f in files:
             data = json.loads(f.read_text())
             if data.get("sha"):
@@ -126,7 +153,11 @@ def _answers_from_files(paths: list[Path], entries: list[dict]) -> tuple[dict, d
                     "status": plan.get("status"),
                     "body": plan.get("answer")
                     if plan.get("status") == 200
-                    else {"error": plan.get("error") or _error_of(plan.get("answer"))},
+                    else {
+                        "error": plan.get("error")
+                        or (plan.get("traceback") or "")[-300:]
+                        or _error_of(plan.get("answer"))
+                    },
                     "seconds": plan.get("seconds"),
                 }
     return answers, info
@@ -141,7 +172,9 @@ def _error_of(answer) -> str:
 def cmd_collect(args) -> int:
     manifest = json.loads(Path(args.manifest).read_text())
     entries = manifest["entries"]
-    answers, info = _answers_from_files([Path(p) for p in args.answers], entries)
+    answers, info = _answers_from_files(
+        [Path(p) for p in args.answers], entries, manifest.get("requests")
+    )
     meta = dict(manifest.get("meta", {}))
     meta.update(info)
     meta["answered"] = f"{len(answers)} of {len(entries)}"
@@ -155,6 +188,9 @@ def cmd_collect(args) -> int:
 def cmd_http(args) -> int:
     entries = _entries(args)
     answers: dict[str, dict] = {}
+    meta = _meta(args, base_url=args.base_url)
+    out = Path(args.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
     url = args.base_url.rstrip("/") + "/api/route"
     for entry in entries:
         started = time.monotonic()
@@ -173,19 +209,20 @@ def cmd_http(args) -> int:
                 body = json.loads(error.read() or b"null")
             except ValueError:
                 body = {"error": f"HTTP {error.code}"}
-        except (urllib.error.URLError, TimeoutError) as error:
-            status, body = None, {"error": str(error)[:300]}
+        except (OSError, ValueError) as error:
+            # URLError, a dropped connection, a timeout, or a 200 that was not JSON: this
+            # plan is unanswered, and the run goes on.
+            status, body = None, {"error": f"{type(error).__name__}: {error}"[:300]}
         answers[entry["key"]] = {
             "status": status,
             "body": body,
             "seconds": round(time.monotonic() - started, 1),
         }
         print(f"{entry['key']}: {status} in {answers[entry['key']]['seconds']} s", flush=True)
+        # Written after every plan, so a run cut short keeps what it planned.
+        out.write_text(json.dumps(scorecard.run_of(entries, answers, meta)))
         if args.pause:
             time.sleep(args.pause)
-    run = scorecard.run_of(entries, answers, _meta(args, base_url=args.base_url))
-    Path(args.out).parent.mkdir(parents=True, exist_ok=True)
-    Path(args.out).write_text(json.dumps(run))
     return 0
 
 
