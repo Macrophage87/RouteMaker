@@ -879,7 +879,8 @@ export function RouteSummary({
     <>
       {/* <bdi>: "31 min" keeps its order on a right-to-left page (DC's languages, 2026-10-28). */}
       <bdi>{timeText}</bdi>
-      {arriveMs != null && <ArriveAt arriveMs={arriveMs} />}
+      {/* A transit trip's arrival in Go only (the 2026-11-12 backlog's scope: Plan's transit panel unchanged). */}
+      {arriveMs != null && !(transit && mode !== "go") && <ArriveAt arriveMs={arriveMs} />}
     </>
   );
   const calm = calmPercent(route.stress_m);

@@ -7470,6 +7470,7 @@ export function App() {
                   startLine={goStartLine(goStart, points.length > 0 ? (namer.name(points[0])?.name ?? t("the point on the map")) : null, goStart.kind === "here" && here?.point === goStart.point ? here.accuracyM : 0)}
                   startMissing={goStart.kind === "none" && points.length === 0}
                   onStartPick={goStartPick}
+                  destinationWaiting={goPending.current !== null}
                 />
               ) : reviewing ? (
                 <ReviewMode

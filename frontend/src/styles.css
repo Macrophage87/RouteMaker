@@ -10457,10 +10457,6 @@ summary.closure-notices-heading {
   display: contents;
 }
 
-.go-stop-row .go-add-stop-field {
-  order: 3;
-}
-
 .go-stop-row > .go-end-rack {
   flex: 1 1 10rem;
   width: auto;

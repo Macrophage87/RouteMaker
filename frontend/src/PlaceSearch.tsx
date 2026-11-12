@@ -7,7 +7,8 @@
  * The ARIA 1.2 combobox pattern: the input owns a listbox, the arrow keys
  * move through the options without leaving the input (aria-activedescendant),
  * Enter picks, Escape closes and then clears. The empty box lists "Your
- * location" and then the last places picked (lib/recentPlaces.ts). The result count is announced
+ * location", Go's Home, Work and first favorites (lib/savedPlaceSearch.ts), and then the last places picked
+ * (lib/recentPlaces.ts). The result count is announced
  * in a polite live region, and the options are tall enough to tap.
  *
  * A pasted map link (Google, Apple, Waze, geo:), typed coordinates (decimal, or degrees, minutes and seconds) or a

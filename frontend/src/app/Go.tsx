@@ -636,6 +636,7 @@ export function GoSheet({
   startLine,
   startMissing,
   onStartPick,
+  destinationWaiting = false,
 }: {
   size: GoSheetSize;
   onSize: (next: GoSheetSize) => void;
@@ -661,6 +662,8 @@ export function GoSheet({
   startMissing: boolean;
   /** A start typed in: it replaces the location. */
   onStartPick: (place: Place) => void;
+  /** A destination picked waits for a start (no location): its notice names it, and the start box takes the focus. */
+  destinationWaiting?: boolean;
 }) {
   const homeHint = useId();
   const homeSheetId = useId();
@@ -694,9 +697,11 @@ export function GoSheet({
   // backlog: it was the sheet's last line, under the ride chips, and the focus stayed in Where to?).
   const startInput = useRef<HTMLInputElement>(null);
   const startNotice = startMissing && notice !== null;
+  // Only for a destination waiting: a notice on opening (location outside the area) leaves the focus, and the
+  // phone's keyboard, alone.
   useEffect(() => {
-    if (startNotice) startInput.current?.focus();
-  }, [startNotice, notice]);
+    if (startNotice && destinationWaiting) startInput.current?.focus();
+  }, [startNotice, destinationWaiting, notice]);
   const routeShown = route !== null;
   // Under a route, Where to? and the place chips fold into one "New destination" row (the owner's P1, 2026-10-28:
   // they repeated under the route and made the sheet about two screens); a place picked folds them again.

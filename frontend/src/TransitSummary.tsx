@@ -227,10 +227,29 @@ export function TransitSummary({
         {plan.departure && <DepartureTimer departure={plan.departure} announce={announce} onMissed={onMissed} />}
         {elevatorWarnings}
         {comparison}
+        {/* WMATA's live alerts stay on the first screen with the other warnings (Stephen 2026-11-12: warnings before
+            Start); the plan's own notes go behind the steps' fold. */}
+        {(plan.live?.alerts.length ?? 0) > 0 && (
+          <ul className="transit-notes" aria-label={t("Warnings")}>
+            {(plan.live?.alerts ?? []).map((alert) => (
+              <li key={alert} className="hint transit-alert">
+                {alert} {t("({credit}, live)", { credit: plan.live?.credit ?? "" })}
+              </li>
+            ))}
+          </ul>
+        )}
         <details className="transit-steps-fold">
           <summary>{STEPS_LABEL}</summary>
           {steps}
-          {noteList}
+          {notes.length > 0 && (
+            <ul className="transit-notes" aria-label={t("Notes on this plan")}>
+              {notes.map((note) => (
+                <li key={note} className="hint">
+                  {note}
+                </li>
+              ))}
+            </ul>
+          )}
           {legend}
         </details>
         {options && (
