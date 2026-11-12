@@ -605,6 +605,10 @@ case "$*" in
   "ps --status running --services") [ -n "${STUB_RUNNING:-}" ] && printf '%s\\n' $STUB_RUNNING ;;
   # STUB_PAVED_UP=1: valhalla-paved is running; STUB_IDS: this project's container ids
   "ps -q --status running valhalla-paved") [ -n "${STUB_PAVED_UP:-}" ] && echo paved1 ;;
+  # STUB_ROUTERS_UP=1: every other router is running
+  "ps -q --status running valhalla-"*) [ -n "${STUB_ROUTERS_UP:-}" ] && echo router1 ;;
+  # STUB_LIVE_OLD=1: the last map update left live_old
+  *"from pg_namespace where nspname = 'live_old'"*) echo "${STUB_LIVE_OLD:-0}" ;;
   "ps -q") [ -n "${STUB_IDS:-}" ] && printf '%s\\n' $STUB_IDS ;;
   *"--format {{.Health}}"*) echo healthy ;;
   # STUB_DBS: the database names postgis lists
@@ -662,7 +666,7 @@ case "$*" in
     printf '%s\n' "${STUB_STATS:-}" | tr '|' '\n'; exit 0 ;;
   inspect*) echo "stub/postgis:16"; exit 0 ;;
   run*)
-    out=""; src=""; dest=""; saved=""; prev=""
+    out=""; src=""; dest=""; saved=""; tiles=""; prev=""
     for a in "$@"; do
       if [ "$prev" = "-v" ]; then
         case "$a" in
@@ -670,10 +674,21 @@ case "$*" in
           *:/src:ro) src=${a%:/src:ro} ;;
           *:/dest) dest=${a%:/dest} ;;
           *:/saved:ro) saved=${a%:/saved:ro} ;;
+          *:/tiles) tiles=${a%:/tiles} ;;
         esac
       fi
       prev=$a
     done
+    if [ -n "$tiles" ]; then
+      # the link move: its script, run against the host directory mounted as /tiles
+      seen=0
+      while [ $# -gt 0 ]; do
+        if [ "$seen" = 1 ]; then script=$1; shift; break; fi
+        [ "$1" = -c ] && seen=1; shift
+      done
+      script=$(printf '%s' "$script" | sed "s|/tiles|$tiles|g")
+      exec sh -c "$script" "$@"
+    fi
     if [ -n "$out" ]; then
       [ -n "${STUB_FRONTEND_RC:-}" ] && exit "$STUB_FRONTEND_RC"
       mkdir -p "$out/assets"; echo x > "$out/assets/app-1.js"
@@ -2710,3 +2725,72 @@ def test_rollback_without_a_previous_release_or_with_both_db_flags_is_refused(be
     assert done.returncode == 1 and "no previous release recorded" in beta.status()
     done = beta.agent("rollback", "--keep-db", "--restore-db")
     assert done.returncode == 2 and "not both" in done.stderr
+
+
+# --- rollback-map: the owner's one command for the map (area 09 item 10) ---
+
+
+def _two_builds(beta: Beta, variant: str = "standard") -> Path:
+    d = beta.data / "tiles" / variant
+    for build in ("b1", "b2"):
+        (d / build).mkdir(parents=True)
+    (d / "current").symlink_to("b2")
+    (d / "previous").symlink_to("b1")
+    return d
+
+
+def test_rollback_map_trades_the_graphs_and_tables_and_a_second_run_undoes_it(beta: Beta) -> None:
+    std = _two_builds(beta)
+    mtb = _two_builds(beta, "mtb")
+    env = {**UP, "STUB_ROUTERS_UP": "1", "STUB_LIVE_OLD": "1"}
+    dry = beta.agent("rollback-map", "--dry-run", **env)
+    assert dry.returncode == 0, dry.stdout + dry.stderr
+    assert (
+        "graph standard: b2 now, back to b1" in dry.stdout and "live_old trade names" in dry.stdout
+    )
+    assert (std / "current").readlink() == Path("b2") and "RENAME" not in beta.calls()
+    done = beta.agent("rollback-map", **env)
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "map-rolled-back" in beta.status()
+    for d in (std, mtb):
+        assert (d / "current").readlink() == Path("b1") and (d / "previous").readlink() == Path(
+            "b2"
+        )
+    calls = beta.calls()
+    assert (
+        "ALTER SCHEMA live_old RENAME TO live" in calls
+        and "TRUNCATE public.stress_tile_cache" in calls
+    )
+    # links, then tables, then the rows, routers one at a time (the trail one too), pre-draw, smoke
+    _order(
+        calls,
+        "-v " + str(beta.data / "tiles") + ":/tiles",
+        "RENAME TO live_swap",
+        "sync_upstreams",
+        "restart valhalla-standard",
+        "restart valhalla-mtb",
+        "predraw_stress_tiles",
+        "smoke --local",
+    )
+    assert "restart valhalla-standard valhalla" not in calls
+    again = beta.agent("rollback-map", **env)
+    assert again.returncode == 0, again.stdout
+    assert (std / "current").readlink() == Path("b2")
+
+
+def test_rollback_map_without_live_old_or_with_graphs_only_leaves_the_tables(beta: Beta) -> None:
+    std = _two_builds(beta)
+    done = beta.agent("rollback-map", **UP)
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "there is no live_old" in done.stdout and "RENAME" not in beta.calls()
+    assert (std / "current").readlink() == Path("b1")
+    assert "predraw_stress_tiles" not in beta.calls()
+    done = beta.agent("rollback-map", "--graphs-only", **UP, STUB_LIVE_OLD="1")
+    assert done.returncode == 0 and "RENAME" not in beta.calls()
+    assert (std / "current").readlink() == Path("b2")
+
+
+def test_rollback_map_with_nothing_to_go_back_to_changes_nothing(beta: Beta) -> None:
+    done = beta.agent("rollback-map", **UP)
+    assert done.returncode == 1 and "nothing to go back to" in beta.status()
+    assert "docker run" not in beta.calls()

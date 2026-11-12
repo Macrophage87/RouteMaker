@@ -23,6 +23,10 @@
 #   auto-release.sh rollback [--dry-run] [--keep-db | --restore-db] [--force]
 #                                     the owner's one command to put the previous release back (the
 #                                     deployed one is then held); "rollback" below explains the flags
+#   auto-release.sh rollback-map [--dry-run] [--graphs-only]
+#                                     the owner's one command to put the previous map back (graphs and
+#                                     map tables trade places with the ones the last update replaced;
+#                                     run it again to undo it); "rollback-map" below says what it does
 #   auto-release.sh set-report-url URL|none
 #
 # One pass (`run`), in order; anything but a deploy only reports and changes nothing:
@@ -1213,7 +1217,7 @@ rollback_pass() { # dry-run keep-db restore-db force
 		printf '%s\n' "$other" | while IFS= read -r why; do say "outside the code: $why"; done
 		if [ "$force" = 0 ]; then
 			rm -f "$fwd"
-			finish error "$cur changed things a code rollback does not undo (listed above); if the map changed, put the old map back first (receive-data.sh rollback-map), then rollback --force"
+			finish error "$cur changed things a code rollback does not undo (listed above); if the map changed, put the old map back first (auto-release.sh rollback-map), then rollback --force"
 			return 1
 		fi
 		say "WARNING: --force: only the code goes back; the things above stay as $cur left them"
@@ -1311,6 +1315,121 @@ cmd_rollback() {
 	say "run log: $run_log"
 	rollback_pass "$dry" "$keep_db" "$restore_db" "$force"; local rc=$?
 	trap - TERM INT HUP
+	rm -f "$report"
+	return "$rc"
+}
+
+# --- rollback-map: the previous map back, by the owner's command ---------------------------------
+# `auto-release.sh rollback-map [--dry-run] [--graphs-only]`: rollback A and "B by rename" of
+# docs/BETA-RUNBOOK.md in one line, with no sudo. Each graph's `current` and `previous` links trade
+# places, and (unless --graphs-only, or there is no `live_old`) the served map tables `live` and the
+# ones the last update replaced, `live_old`, trade names in one short transaction, so running it a
+# second time puts the newer map back. Then the routers' settings rows follow the links, the routers
+# restart one at a time, the stress tiles are pre-drawn, and the smoke tests run. Home's overrides
+# and junction ratings stay the newer ones (as in "B by rename"). Run by the owner only; it holds
+# the agent's lock, so no deploy runs meanwhile. A failure part-way says what was done: running it
+# again trades the links and tables that moved back (each link pair and the tables are checked).
+map_variants() { # each graph with both a current and a previous link
+	local d
+	for d in "$RM_DATA"/tiles/*/; do
+		d=${d%/}
+		[ -L "$d/current" ] && [ -L "$d/previous" ] && basename "$d"
+	done
+}
+swap_links() { # variant: current and previous trade places, each by rename, as the owner of the dir
+	local v=$1 dir="$RM_DATA/tiles/$1" cur prev img owner
+	cur=$(basename "$(readlink "$dir/current")"); prev=$(basename "$(readlink "$dir/previous")")
+	case "$cur$prev" in *[!A-Za-z0-9._-]* | *..*) say "FAILED: odd build names under $dir"; return 1 ;; esac
+	img=$(util_image) && [ -n "$img" ] || { say "cannot find the postgis image to move the links with"; return 1; }
+	owner=$(stat -c '%u:%g' "$dir")
+	quiet dk run --rm --pull never --network none --user "$owner" -v "$RM_DATA/tiles:/tiles" --entrypoint sh "$img" -c \
+		'cd "/tiles/$1" && ln -sfn "$2" current.new && mv -T current.new current && ln -sfn "$3" previous.new && mv -T previous.new previous' \
+		sh "$v" "$prev" "$cur" </dev/null || { say "FAILED: moving the links of $v"; return 1; }
+	[ "$(basename "$(readlink "$dir/current")")" = "$prev" ] || { say "FAILED: $v current is not $prev after the move"; return 1; }
+	say "tiles: $v current -> $prev (previous -> $cur)"
+}
+has_live_old() { # postgis answers whether a live_old schema is there
+	local pguser pgdb n
+	pguser=$(env_value PGUSER); pguser=${pguser:-routemaker}
+	pgdb=$(env_value PGDATABASE); pgdb=${pgdb:-routemaker}
+	n=$(bc exec -T postgis psql -U "$pguser" -d "$pgdb" -At -c "select count(*) from pg_namespace where nspname = 'live_old'" </dev/null 2>>"$run_log") || return 2
+	[ "$n" = 1 ]
+}
+swap_tables() { # live and live_old trade names in one transaction, every live table locked first
+	local pguser pgdb
+	pguser=$(env_value PGUSER); pguser=${pguser:-routemaker}
+	pgdb=$(env_value PGDATABASE); pgdb=${pgdb:-routemaker}
+	case "$pguser$pgdb" in *[!A-Za-z0-9_]*) say "FAILED: PGUSER or PGDATABASE in .env is not a plain name"; return 1 ;; esac
+	step "trade the map tables live and live_old (one transaction)" bc exec -T postgis psql -U "$pguser" -d "$pgdb" -1 -v ON_ERROR_STOP=1 \
+		-c "SET LOCAL lock_timeout = '10s'" \
+		-c "DO \$\$ DECLARE t text; BEGIN FOR t IN SELECT format('%I.%I', schemaname, tablename) FROM pg_tables WHERE schemaname = 'live' ORDER BY tablename <> 'segment', tablename LOOP EXECUTE 'LOCK TABLE ' || t || ' IN ACCESS EXCLUSIVE MODE'; END LOOP; END \$\$" \
+		-c "DROP SCHEMA IF EXISTS live_swap CASCADE" -c "ALTER SCHEMA live RENAME TO live_swap" \
+		-c "ALTER SCHEMA live_old RENAME TO live" -c "ALTER SCHEMA live_swap RENAME TO live_old" \
+		-c "TRUNCATE public.stress_tile_cache" </dev/null
+}
+rollback_map_pass() { # dry-run graphs-only
+	local dry=$1 graphs_only=$2 variants v tables=0 r ok=1 done_what=""
+	[ ! -f "$cd_dir/BROKEN" ] || { finish broken "a rollback failed earlier and needs the owner (see $cd_dir/BROKEN)"; return 1; }
+	[ "$(leftover)" = none ] || { finish error "a stopped pass left $progress; let a pass deal with it first (auto-release.sh status)"; return 1; }
+	variants=$(map_variants | tr '\n' ' '); variants=${variants% }
+	[ -n "$variants" ] || { finish error "no graph under $RM_DATA/tiles has a previous build recorded: nothing to go back to"; return 1; }
+	for v in $variants; do say "graph $v: $(basename "$(readlink "$RM_DATA/tiles/$v/current")") now, back to $(basename "$(readlink "$RM_DATA/tiles/$v/previous")")"; done
+	if [ "$graphs_only" = 0 ]; then
+		has_live_old; case $? in
+			0) tables=1; say "map tables: live and live_old trade names (home's overrides and junction ratings stay as they are)" ;;
+			1) say "map tables: there is no live_old (the last update carried no tables), so only the graphs go back" ;;
+			*) finish error "postgis did not answer whether live_old is there; nothing changed"; return 1 ;;
+		esac
+	else
+		say "map tables: left as they are (--graphs-only); the graphs and the tables are one build, so mixing them is for when only the graphs were shipped"
+	fi
+	if [ "$dry" = 1 ]; then finish dry-run "the map would go back: graphs $variants$([ "$tables" = 1 ] && echo ', and the tables')"; return 0; fi
+	for v in $variants; do
+		swap_links "$v" || { ok=0; break; }
+		done_what="$done_what $v"
+	done
+	if [ "$ok" = 1 ] && [ "$tables" = 1 ]; then swap_tables && done_what="$done_what tables" || ok=0; fi
+	if [ "$ok" = 0 ]; then
+		{ echo "$(utc) rollback-map stopped part-way: moved${done_what:- nothing}"; cat "$report"; } >"$cd_dir/BROKEN"
+		finish broken "the map rollback stopped part-way (moved:${done_what:- nothing}); the routers were not restarted. See the run log; once it is put right, auto-release.sh mark-deployed $(deployed_tag)"
+		return 1
+	fi
+	sync_rows
+	# One router at a time, as the routers' own restart hook does: a few seconds of errors for one ride type at a time.
+	for r in $(routers); do
+		[ -n "$(bc ps -q --status running "$r" </dev/null 2>/dev/null)" ] || continue
+		step "restart $r onto the previous graph" bc restart "$r" </dev/null || ok=0
+	done
+	if [ "$tables" = 1 ]; then predraw || say "WARNING: the pre-draw did not finish cleanly; tiles not yet drawn are drawn on request"; fi
+	{ wait_healthy && smoke; } || ok=0
+	if [ "$ok" = 1 ]; then
+		finish map-rolled-back "the map is back to the previous build (graphs $variants$([ "$tables" = 1 ] && echo ', tables')); run auto-release.sh rollback-map again to put the newer one back"
+		return 0
+	fi
+	finish error "the map is back to the previous build, but a router restart or the smoke tests failed (see the run log and auto-release.sh status)"
+	return 1
+}
+cmd_rollback_map() {
+	local dry=0 graphs_only=0 stamp
+	while [ $# -gt 0 ]; do
+		case "$1" in
+			--dry-run) dry=1 ;;
+			--graphs-only) graphs_only=1 ;;
+			*) die "rollback-map: unknown argument $1 (--dry-run, --graphs-only)" ;;
+		esac
+		shift
+	done
+	dry_run=$dry
+	mkdir -p "$cd_dir/runs" && chmod 700 "$cd_dir"
+	exec 9>"$cd_dir/lock"
+	flock -n 9 || die "a pass is running; wait for it (auto-release.sh pause --wait) and try again"
+	umask 022
+	stamp=$(utc)
+	run_log="$cd_dir/runs/$stamp-rollback-map.log"; : >"$run_log"
+	report=$(mktemp)
+	if [ "$dry" = 1 ]; then say "auto-release rollback-map at $stamp (dry run: changes nothing)"; else say "auto-release rollback-map at $stamp"; fi
+	say "run log: $run_log"
+	rollback_map_pass "$dry" "$graphs_only"; local rc=$?
 	rm -f "$report"
 	return "$rc"
 }
@@ -1583,6 +1702,7 @@ main() {
 		hold) cmd_hold "$@" ;;
 		set-report-url) cmd_set_report_url "$@" ;;
 		rollback) cmd_rollback "$@" ;;
+		rollback-map) cmd_rollback_map "$@" ;;
 		*) die "unknown command '$command' (--help)" ;;
 	esac
 }
