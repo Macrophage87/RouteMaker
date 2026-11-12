@@ -4062,7 +4062,7 @@ The owner, 2026-10-03: "Actually, I like merging the runs, that sounds good." (2
 - The list (`IntersectionList`, `junctionRows`): a group is a disclosure button over its crossings, the ordinary rows. Closed first; nothing announced; the focus stays on the button.
 - A group never spans a stop (OWNER-DECISIONS 247): `number_groups(events, stops)` closes the run at each leg end, and `core.routing.plan` numbers the events again with the plan's `stops_m` (each leg's end along the traced length, the events' own measure), since the search's readings were numbered without them. A crossing at the stop begins the next leg's run. A crossing that is also the turn into a stretch is counted in the group and said in the turn.
 - Density on live DC (Mass Ride, weekend, read-only): Lincoln Memorial to the Capitol along Constitution Ave, 9 flags in 2.52 mi (3.6 a mile), list entries 9 to 3; with vias on Constitution Ave, 13 flags in 3.20 mi (4.1), 13 to 7; Pennsylvania Ave NW from Washington Circle with vias, 23 flags in 3.52 mi (6.5), 23 to 5; direct, 23 in 2.78 mi (8.3), 23 to 3.
-- Tests: `tests/test_crossing_groups.py` (joining, the window and its edge, breaks, wording, description, API rows, and item 235's flagging rules), `frontend/src/lib/intersectionMarkers.test.ts`, `frontend/src/a11yFixes.test.ts`, and the browser check (`scripts/a11y/check.mjs`, section 6). Mutants: `scripts/mutants_groups.py`.
+- Tests: `tests/test_crossing_groups.py` (joining, the window and its edge, breaks, wording, description, API rows, and item 235's flagging rules), `frontend/src/lib/intersectionMarkers.test.ts`, `frontend/src/a11yStyleRules.test.ts`, and the browser check (`scripts/a11y/check.mjs`, section 6). Mutants: `scripts/mutants_groups.py`.
 
 ### Known gaps, and what would close them
 
@@ -8445,7 +8445,7 @@ keys (I, the arrows, + and -) work in both modes.
   note tells riders to turn it on once.
 - **Tests.** `lib/accessMode.test.ts` (storage, blocked and missing storage, the press, the
   wording), `pointText.test.ts`, `roadInfo.test.ts`, `sidebar.test.ts`,
-  `a11yFixes.test.ts`; the browser suite (`scripts/a11y/check.mjs`, EXPECTED 319): section
+  `a11yStyleRules.test.ts`; the browser suite (`scripts/a11y/check.mjs`, EXPECTED 319): section
   1 checks that the switch is the first stop, not pressed, shown and 44 px tall when
   focused and off screen otherwise; 7 checks before the Map tools ones cover off by
   default, the help when off, Enter turning it on (Map tools closed and focused, kept),

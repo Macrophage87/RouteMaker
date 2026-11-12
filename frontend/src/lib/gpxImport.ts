@@ -22,10 +22,17 @@ export function gpxAccept(userAgent: string = globalThis.navigator?.userAgent ??
   return /Android/i.test(userAgent) ? undefined : GPX_ACCEPT;
 }
 
+/**
+ * What a wrong file is told it may be instead: on Android the picker has no filter (gpxAccept), so the sentence says
+ * what is read (backlog 2026-11-12, Plan). TCX and FIT are not read yet.
+ */
+export const OPENS_WHAT = "RouteMaker opens GPX files (.gpx), such as a route or ride exported from another app.";
+
 /** Anything unexpected is still a sentence, not a stack trace. */
 function failure(error: unknown): ImportOutcome {
+  if (error instanceof GpxError && error.code === "not-gpx") return { ok: false, message: `${error.message} ${OPENS_WHAT}` };
   if (error instanceof GpxError || error instanceof ImportError) return { ok: false, message: error.message };
-  return { ok: false, message: "The file could not be read as GPX." };
+  return { ok: false, message: `The file could not be read as GPX. ${OPENS_WHAT}` };
 }
 
 /** The whole import, from the file's bytes to a plan; what the worker runs. */
