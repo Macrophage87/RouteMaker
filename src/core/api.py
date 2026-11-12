@@ -2484,6 +2484,73 @@ class MtbOut(Schema):
     )
 
 
+class BarrierItemOut(Schema):
+    """One barrier or flight of steps on a route (`core.barriers.reading`)."""
+
+    kind: str = Field(description="The OSM barrier value (`stile`, `bollard`, ...), or `steps`.")
+    word: str = Field(
+        description=(
+            "Its group for the route's line: `stile`, `kissing_gate`, `turnstile`, `steps`,"
+            " `narrow_gap` (a gap mapped under 1.0 m), `bollard`, `cycle_barrier`, `gate` or"
+            " `other`."
+        )
+    )
+    lon: float
+    lat: float
+    width_m: float | None = Field(default=None, description="The mapped gap, where mapped.")
+    width_mapped: bool = Field(
+        description="False for a bollard or cycle barrier whose gap no one has mapped."
+    )
+    impassable: bool = Field(
+        description=(
+            "A cargo bike or tandem cannot pass (OWNER-DECISIONS 345): lifted over or squeezed"
+            " through, steps, or a gap mapped under 1.0 m."
+        )
+    )
+    at_m: float = Field(description="Metres along the route.")
+
+
+class BarriersOut(Schema):
+    """The barriers on a route (`core.barriers.reading`; backlog 2026-11-12 item 12)."""
+
+    data: bool = Field(
+        description=(
+            "Whether a barrier list is loaded; false means nothing is known, never that there"
+            " are none."
+        )
+    )
+    built: str | None = Field(default=None, description="The extract date of the list.")
+    counts: dict[str, int] = Field(default_factory=dict, description="Barriers by `word`.")
+    impassable: int = 0
+    unmapped_width: int = Field(
+        default=0, description="Bollards and cycle barriers whose gap is not mapped."
+    )
+    items: list[BarrierItemOut] = Field(default_factory=list)
+
+
+class BarrierInTheWayOut(Schema):
+    kind: str
+    word: str
+    lon: float
+    lat: float
+
+
+class BarrierRoundOut(Schema):
+    """Cargo's and Tandem's round off impassable barriers (`core.barriers.settle`)."""
+
+    rounds: int = Field(default=0, description="Rounds of asking again round them.")
+    impassable: int = Field(default=0, description="Impassable barriers still on the route.")
+    limited: Literal["time", "no_way_round", "at_stop", "no_data"] | None = Field(
+        default=None,
+        description=(
+            "Why some are still on the route: `time`, `no_way_round` (no route without them"
+            " was found), `at_stop` (beside one of the plan's own points, so not excluded) or"
+            " `no_data` (no barrier list loaded)."
+        ),
+    )
+    in_the_way: list[BarrierInTheWayOut] = Field(default_factory=list)
+
+
 class EasyMtbOut(Schema):
     """An Easy MTB trails plan's reading of its route (`core.easy_mtb`)."""
 
@@ -2805,6 +2872,12 @@ class RouteBody(Schema):
     mtb: MtbOut | None = None
     # The Easy MTB trails switch's reading (2026-11-08). Additive: null with it off.
     easy_mtb: EasyMtbOut | None = None
+    # The barriers and steps on the line (backlog 2026-11-12 item 12). Additive: null from
+    # an older answer; `data` false where no barrier list is loaded.
+    barriers: BarriersOut | None = None
+    # Cargo's and Tandem's round off impassable barriers (`core.barriers.settle`). Additive:
+    # null on every other ride type.
+    barrier_round: BarrierRoundOut | None = None
     # Live work zones (FOLLOWUP-WORKZONES, 341-349). Additive: null where work zones are
     # not running (no refresh stored yet).
     work_zones: WorkZonesOut | None = None

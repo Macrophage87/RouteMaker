@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { BARRIER_LEVELS, BARRIER_SOURCE, barrierFeatures, barrierIcon, barrierIconName, barrierLayer } from "./lib/barriers.ts";
 import { vehicleBadge, type VehicleMark } from "./lib/nextVehicle.ts";
 import { onBoardFeatures, type OnBoardPath } from "./lib/onBoard.ts";
 import { followZoom } from "./lib/idleRecentre.ts";
@@ -1579,6 +1580,16 @@ export function MapView(props: Props) {
       map.addSource(STEEP_GRADE_SOURCE, { type: "geojson", data: steepGradeFeatures(callbacks.current.stale ? null : (callbacks.current.route ?? null)) as never });
       map.addLayer(steepGradeLayer() as never);
       map.addLayer(steepGradeRepeatLayer() as never);
+      // The barriers on a Cargo or Tandem route (lib/barriers.ts; the owner, 2026-11-12: "Make those noticeable on the
+      // map"): red octagons where a cargo bike or tandem cannot pass, amber for the rest, over the route only.
+      for (const level of BARRIER_LEVELS) {
+        const name = barrierIconName(level);
+        if (map.hasImage(name)) continue;
+        const { pixelRatio: ratio, ...icon } = barrierIcon(level, iconPixelRatio());
+        map.addImage(name, icon, { pixelRatio: ratio });
+      }
+      map.addSource(BARRIER_SOURCE, { type: "geojson", data: barrierFeatures(callbacks.current.stale ? null : (callbacks.current.route ?? null)) as never });
+      map.addLayer(barrierLayer() as never);
       // The other routes' names, over the route so a name where they part is not hidden under it.
       map.addLayer({
         id: "route-choice-name",
@@ -3492,6 +3503,7 @@ function syncRoute(map: MapLibreMap, props: Props, fitted: { current: boolean })
   (map.getSource(ROUTE_HAZARD_SOURCE) as GeoJSONSource | undefined)?.setData(routeHazardFeatures(stale ? null : route) as never);
   (map.getSource(ROUTE_TRAIL_SOURCE) as GeoJSONSource | undefined)?.setData(routeTrailFeatures(stale ? null : route) as never);
   (map.getSource(STEEP_GRADE_SOURCE) as GeoJSONSource | undefined)?.setData(steepGradeFeatures(stale ? null : route) as never);
+  (map.getSource(BARRIER_SOURCE) as GeoJSONSource | undefined)?.setData(barrierFeatures(stale ? null : route) as never);
   (map.getSource(ROUTE_NAME_SOURCE_ID) as GeoJSONSource | undefined)?.setData(routeNameFeatures(stale ? null : route) as never);
   (map.getSource(ROUTE_MILES_SOURCE_ID) as GeoJSONSource | undefined)?.setData(routeMileFeatures(stale ? null : route) as never);
   // A ride's camera follows the rider; a re-planned route is not framed over it.
