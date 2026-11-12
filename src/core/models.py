@@ -698,28 +698,6 @@ class AuditLogEntry(models.Model):
         return "no actor (worker or host operator)"
 
 
-class ScorecardRun(models.Model):
-    """One night's route scorecard (core.scorecard_nightly, docs/SCORECARD.md): the fixed
-    trips between public landmarks, planned on the live routers and scored. `data` is the
-    run as `routemaker.scorecard.run_of` makes it (each route's line included, for the next
-    night's corridor check); `findings` is what moved since the run before, in words. No
-    rider's data: every trip comes from fixtures/scorecard/trips.json."""
-
-    made_at = models.DateTimeField()
-    label = models.CharField(max_length=80, blank=True)
-    data = models.JSONField()
-    findings = models.TextField(blank=True)
-    findings_count = models.IntegerField(default=0)
-    failed_count = models.IntegerField(default=0)
-
-    class Meta:
-        db_table = "scorecard_run"
-        indexes = [models.Index(fields=["-made_at"], name="scorecard_run_made_at")]
-
-    def __str__(self) -> str:
-        return f"scorecard {self.made_at:%Y-%m-%d %H:%M} ({self.findings_count} findings)"
-
-
 class ScheduledRun(models.Model):
     """One run of one periodic task, successful or not.
 

@@ -43,6 +43,14 @@ from routemaker import scorecard  # noqa: E402
 TRIPS = ROOT / "fixtures" / "scorecard" / "trips.json"
 # The route-check service takes up to 8 plans in one request.
 PER_REQUEST = 8
+# A plan refused as busy (a routing slot held by a rider) waits this long and tries once more.
+BUSY_STATUSES = (429, 503)
+BUSY_RETRY_S = 60.0
+# The findings line for the alert script: only a run this recent, at most this many lines and
+# characters (Discord takes 2000 in one post; the script adds its own words). Our defaults.
+FRESH_H = 20
+MAX_LINES = 12
+MAX_CHARS = 1500
 
 
 def _entries(args) -> list[dict]:
@@ -185,50 +193,150 @@ def cmd_collect(args) -> int:
     return 0
 
 
-def cmd_http(args) -> int:
-    entries = _entries(args)
-    answers: dict[str, dict] = {}
-    meta = _meta(args, base_url=args.base_url)
-    out = Path(args.out)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    url = args.base_url.rstrip("/") + "/api/route"
-    for entry in entries:
-        started = time.monotonic()
-        request = urllib.request.Request(
-            url,
-            data=json.dumps(entry["body"]).encode(),
-            headers={"Content-Type": "application/json", "User-Agent": "routemaker-scorecard"},
-            method="POST",
-        )
+def _post(url: str, body: dict, host: str | None, timeout: float) -> tuple[int | None, object]:
+    headers = {"Content-Type": "application/json", "User-Agent": "routemaker-scorecard"}
+    if host:
+        headers["Host"] = host
+    request = urllib.request.Request(
+        url, data=json.dumps(body).encode(), headers=headers, method="POST"
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            return response.status, json.loads(response.read() or b"null")
+    except urllib.error.HTTPError as error:
         try:
-            with urllib.request.urlopen(request, timeout=args.timeout) as response:
-                status, body = response.status, json.loads(response.read() or b"null")
-        except urllib.error.HTTPError as error:
-            status = error.code
-            try:
-                body = json.loads(error.read() or b"null")
-            except ValueError:
-                body = {"error": f"HTTP {error.code}"}
-        except (OSError, ValueError) as error:
-            # URLError, a dropped connection, a timeout, or a 200 that was not JSON: this
-            # plan is unanswered, and the run goes on.
-            status, body = None, {"error": f"{type(error).__name__}: {error}"[:300]}
+            return error.code, json.loads(error.read() or b"null")
+        except ValueError:
+            return error.code, {"error": f"HTTP {error.code}"}
+    except (OSError, ValueError) as error:
+        # URLError, a dropped connection, a timeout, or a 200 that was not JSON: this plan is
+        # unanswered, and the run goes on.
+        return None, {"error": f"{type(error).__name__}: {error}"[:300]}
+
+
+def plan_http(
+    entries: list[dict],
+    args,
+    out: Path,
+    meta: dict,
+    *,
+    post=_post,
+    sleep=time.sleep,
+    clock=time.monotonic,
+) -> dict:
+    """Plan every entry against `args.base_url`, one at a time, through the real view (its
+    rate limits and routing slots included). A plan refused as busy (429, 503) waits
+    `BUSY_RETRY_S` and tries once more. Past `args.budget_min` no new plan starts. The run is
+    written to `out` after every plan, so a run cut short keeps what it planned."""
+    answers: dict[str, dict] = {}
+    url = args.base_url.rstrip("/") + "/api/route"
+    started = clock()
+    for entry in entries:
+        if args.budget_min and clock() - started > args.budget_min * 60:
+            print(f"budget of {args.budget_min} min reached; the rest are not planned")
+            break
+        begun = clock()
+        status, body = post(url, entry["body"], args.host, args.timeout)
+        if status in BUSY_STATUSES:
+            sleep(BUSY_RETRY_S)
+            status, body = post(url, entry["body"], args.host, args.timeout)
         answers[entry["key"]] = {
             "status": status,
             "body": body,
-            "seconds": round(time.monotonic() - started, 1),
+            "seconds": round(clock() - begun, 1),
         }
         print(f"{entry['key']}: {status} in {answers[entry['key']]['seconds']} s", flush=True)
-        # Written after every plan, so a run cut short keeps what it planned.
-        out.write_text(json.dumps(scorecard.run_of(entries, answers, meta)))
+        _write(out, scorecard.run_of(entries, answers, meta))
         if args.pause:
-            time.sleep(args.pause)
+            sleep(args.pause)
+    run = scorecard.run_of(entries, answers, meta)
+    _write(out, run)
+    return run
+
+
+def _write(path: Path, data) -> None:
+    tmp = path.with_name(path.name + ".part")
+    tmp.write_text(json.dumps(data))
+    tmp.replace(path)
+
+
+def cmd_http(args) -> int:
+    out = Path(args.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    plan_http(_entries(args), args, out, _meta(args, base_url=args.base_url))
+    return 0
+
+
+# --- nightly, on the beta host (scripts/beta/alert.sh scorecard) ----------------------------
+
+
+def _runs(folder: Path) -> list[Path]:
+    """The kept runs, newest first: run-<UTC stamp>.json. A run marked mixed (the map or the
+    api changed while it ran) ends .mixed.json and is never compared with."""
+    return sorted(folder.glob("run-*Z.json"), reverse=True)
+
+
+def cmd_nightly(args) -> int:
+    folder = Path(args.dir)
+    folder.mkdir(parents=True, exist_ok=True)
+    stamp = dt.datetime.now(dt.UTC).strftime("%Y%m%dT%H%MZ")
+    args.label = f"nightly {stamp}"
+    out = folder / f"run-{stamp}.json"
+    run = plan_http(_entries(args), args, out, _meta(args, base_url=args.base_url))
+    for old in sorted(folder.glob("run-*.json"), reverse=True)[args.keep :]:
+        old.unlink()
+    failed = sum(1 for r in run["rows"].values() if r.get("status") != 200)
+    print(f"{out.name}: {len(run['rows'])} plans, {failed} not planned")
+    return 0
+
+
+def cmd_findings(args) -> int:
+    """For the alert script: the newest run's stamp on one line and what moved after it, only
+    when that run is under `FRESH_H` hours old and something moved; nothing otherwise."""
+    runs = _runs(Path(args.dir))
+    if not runs:
+        return 0
+    newest = runs[0]
+    age_h = (time.time() - newest.stat().st_mtime) / 3600
+    if age_h > FRESH_H:
+        return 0
+    new = json.loads(newest.read_text())
+    older = [json.loads(p.read_text()) for p in runs[1 : 1 + args.lookback]]
+    if not older:
+        return 0
+    diff = scorecard.compare(scorecard.baseline(older), new)
+    lines = scorecard.night_text(new, diff).splitlines()
+    if not lines:
+        return 0
+    shown: list[str] = []
+    for line in lines[:MAX_LINES]:
+        if sum(len(x) + 1 for x in shown) + len(line) > MAX_CHARS:
+            break
+        shown.append(line)
+    more = len(lines) - len(shown)
+    print(newest.stem.removeprefix("run-"))
+    print(f"route scorecard {newest.stem.removeprefix('run-')}: {len(lines)} changes")
+    print("\n".join(shown))
+    if more:
+        print(f"...and {more} more")
+    print("Full table: alert.sh scorecard-report on the beta")
     return 0
 
 
 def cmd_report(args) -> int:
-    new = json.loads(Path(args.run).read_text())
-    old = json.loads(Path(args.against).read_text()) if args.against else None
+    if args.dir:
+        runs = _runs(Path(args.dir))
+        if not runs:
+            print("No kept run yet.")
+            return 0
+        new = json.loads(runs[0].read_text())
+        older = [json.loads(p.read_text()) for p in runs[1:8]]
+        old = scorecard.baseline(older) if older else None
+    elif args.run:
+        new = json.loads(Path(args.run).read_text())
+        old = json.loads(Path(args.against).read_text()) if args.against else None
+    else:
+        sys.exit("report: give a run file or --dir")
     text = scorecard.report(new, old)
     if args.out:
         Path(args.out).write_text(text)
@@ -245,9 +353,10 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     sub = parser.add_subparsers(dest="cmd", required=True)
 
-    def planning(p):
+    def planning(p, label=True):
         p.add_argument("--trips", default=str(TRIPS))
-        p.add_argument("--label", required=True, help="Names the run: a version or branch.")
+        if label:
+            p.add_argument("--label", required=True, help="Names the run: a version or branch.")
         p.add_argument("--stress", type=int, default=None)
         p.add_argument("--only", default=None, help="Comma-separated trip ids.")
         p.add_argument("--no-contrast", action="store_true")
@@ -266,16 +375,36 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("--out", required=True)
     c.set_defaults(fn=cmd_collect)
 
+    def over_http(p):
+        p.add_argument("--base-url", required=True)
+        p.add_argument("--host", default=None, help="The Host header (the beta's own name).")
+        p.add_argument("--timeout", type=float, default=120.0)
+        p.add_argument("--pause", type=float, default=2.0, help="Seconds between plans.")
+        p.add_argument(
+            "--budget-min", type=float, default=90.0, help="Start no plan after this long."
+        )
+
     h = sub.add_parser("http", help="Plan over HTTP against a running stack.")
     planning(h)
-    h.add_argument("--base-url", required=True)
+    over_http(h)
     h.add_argument("--out", required=True)
-    h.add_argument("--timeout", type=float, default=120.0)
-    h.add_argument("--pause", type=float, default=2.0, help="Seconds between plans.")
     h.set_defaults(fn=cmd_http)
 
+    n = sub.add_parser("nightly", help="One nightly run into a folder of kept runs.")
+    planning(n, label=False)
+    over_http(n)
+    n.add_argument("--dir", required=True)
+    n.add_argument("--keep", type=int, default=60, help="Runs kept (our default).")
+    n.set_defaults(fn=cmd_nightly, label="nightly")
+
+    f = sub.add_parser("findings", help="What the newest kept run moved, for the alert script.")
+    f.add_argument("--dir", required=True)
+    f.add_argument("--lookback", type=int, default=7, help="Older runs a baseline draws on.")
+    f.set_defaults(fn=cmd_findings)
+
     r = sub.add_parser("report", help="Write the Markdown report.")
-    r.add_argument("run")
+    r.add_argument("run", nargs="?", help="A run file; or --dir for the newest kept run.")
+    r.add_argument("--dir", default=None, help="A nightly folder: newest run against its baseline.")
     r.add_argument("--against", default=None)
     r.add_argument("--out", default=None)
     r.set_defaults(fn=cmd_report)

@@ -4,8 +4,10 @@ the trip list's rules: public landmarks, well-formed, inside the map."""
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -392,3 +394,150 @@ def test_crashed_plan_and_missing_distance():
     assert "plans again" not in "; ".join(
         sum(scorecard.compare(never, now)["findings"].values(), [])
     )
+
+
+# --- the nightly run on the beta (alert.sh scorecard) ----------------------------------------
+
+
+def _cli():
+    sys.path.insert(0, str(ROOT / "scripts"))
+    import route_scorecard
+
+    return route_scorecard
+
+
+class _Args:
+    base_url = "http://127.0.0.1:8087"
+    host = "beta.test"
+    timeout = 5.0
+    pause = 2.0
+    budget_min = 90.0
+
+
+def test_http_retries_a_busy_slot_once_and_stops_at_its_budget(tmp_path):
+    cli = _cli()
+    entries = [
+        {
+            "key": f"t{i}|default|base",
+            "trip": f"t{i}",
+            "preset": "default",
+            "variant": "base",
+            "body": {"points": [[-77.0, 38.9], [-76.97, 38.9]], "preset": "default"},
+        }
+        for i in range(3)
+    ]
+    calls, slept = [], []
+
+    def post(url, body, host, timeout):
+        calls.append((url, host))
+        return (429, {"error": "busy"}) if len(calls) == 1 else (200, answer())
+
+    ticks = iter([0, 0, 1, 1, 2, 2, 90 * 60 + 1, 90 * 60 + 1])
+    run = cli.plan_http(
+        entries,
+        _Args(),
+        tmp_path / "run.json",
+        {},
+        post=post,
+        sleep=slept.append,
+        clock=lambda: next(ticks),
+    )
+    assert calls[0] == ("http://127.0.0.1:8087/api/route", "beta.test")
+    assert cli.BUSY_RETRY_S in slept
+    assert [r["status"] for r in run["rows"].values()] == [200, 200, None]
+    assert (
+        json.loads((tmp_path / "run.json").read_text())["rows"]["t1|default|base"]["status"] == 200
+    )
+
+
+def _night(folder, stamp, miles, status=200):
+    entries = [
+        {
+            "key": "t|default|base",
+            "trip": "t",
+            "preset": "default",
+            "variant": "base",
+            "body": {"points": [[-77.0, 38.9], [-76.97, 38.9]]},
+        }
+    ]
+    body = answer(distance_m=miles * MI) if status == 200 else {"error": "down"}
+    run = scorecard.run_of(entries, {"t|default|base": {"status": status, "body": body}})
+    (folder / f"run-{stamp}.json").write_text(json.dumps(run))
+
+
+def _findings(folder):
+    out = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "route_scorecard.py"),
+            "findings",
+            "--dir",
+            str(folder),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return out.stdout
+
+
+def test_findings_compare_with_the_last_good_night_and_skip_mixed_runs(tmp_path):
+    _night(tmp_path, "20261110T0800Z", 2.0)
+    assert _findings(tmp_path) == "", "one night: nothing to compare with"
+    _night(tmp_path, "20261111T0800Z", 2.0, status=503)  # routers down
+    first, *rest = _findings(tmp_path).splitlines()
+    assert first == "20261111T0800Z" and "no longer plans (503" in "\n".join(rest)
+    # The night after a bad one still compares with the last good night.
+    _night(tmp_path, "20261112T0800Z", 3.0)
+    text = _findings(tmp_path)
+    assert text.startswith("20261112T0800Z\n") and "miles 2.00 -> 3.00" in text
+    # A mixed run is never the newest run compared, nor a baseline.
+    (tmp_path / "run-20261113T0800Z.mixed.json").write_text("{}")
+    assert _findings(tmp_path).startswith("20261112T0800Z\n")
+    # Older than a day: not posted again.
+    old = time.time() - 21 * 3600
+    for p in tmp_path.iterdir():
+        os.utime(p, (old, old))
+    assert _findings(tmp_path) == ""
+
+
+def test_findings_fit_one_post(tmp_path):
+    cli = _cli()
+    entries = [
+        {
+            "key": f"trip-{i:02d}-with-a-long-name|default|base",
+            "trip": f"trip-{i:02d}",
+            "preset": "default",
+            "variant": "base",
+            "body": {"points": [[-77.0, 38.9], [-76.97, 38.9]]},
+        }
+        for i in range(30)
+    ]
+    for stamp, miles in (("20261110T0800Z", 2.0), ("20261111T0800Z", 3.0)):
+        ans = {e["key"]: {"status": 200, "body": answer(distance_m=miles * MI)} for e in entries}
+        (tmp_path / f"run-{stamp}.json").write_text(json.dumps(scorecard.run_of(entries, ans)))
+    text = _findings(tmp_path)
+    assert len(text) < 1800
+    assert f"...and {30 - cli.MAX_LINES} more" in text
+
+
+def test_nightly_keeps_a_bounded_history(tmp_path, monkeypatch):
+    cli = _cli()
+    for i in range(4):
+        (tmp_path / f"run-2026110{i}T0800Z.json").write_text("{}")
+    monkeypatch.setattr(cli, "plan_http", lambda *a, **k: {"rows": {}})
+    cli.main(
+        [
+            "nightly",
+            "--base-url",
+            "http://x",
+            "--dir",
+            str(tmp_path),
+            "--keep",
+            "3",
+            "--only",
+            "mall",
+        ]
+    )
+    kept = sorted(p.name for p in tmp_path.iterdir())
+    assert len(kept) == 3 and "run-20261100T0800Z.json" not in kept

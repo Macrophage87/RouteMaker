@@ -390,6 +390,9 @@ def _changed(old, new, pct: float, absolute: float) -> bool:
 def findings_for(old: dict, new: dict) -> list[str]:
     """What moved enough to read, in words, for one trip's two rows."""
     out: list[str] = []
+    if old.get("status") == 200 and new.get("status") is None:
+        out.append("not planned this run (not reached, or no answer)")
+        return out
     if old.get("status") == 200 and new.get("status") != 200:
         out.append(f"no longer plans ({new.get('status')}: {new.get('error', '')})".strip())
         return out
@@ -447,6 +450,33 @@ def compare(old: dict, new: dict) -> dict:
         "added": sorted(set(new["rows"]) - set(old["rows"])),
         "dropped": sorted(set(old["rows"]) - set(new["rows"])),
     }
+
+
+def baseline(older: Sequence[dict]) -> dict:
+    """The run to compare a new one with, built from `older` runs (newest first): for each
+    trip, its row from the newest run where it planned. A night where the routers were down
+    or a trip was not reached does not hide the next night's real changes."""
+    rows: dict[str, dict] = {}
+    for run in older:
+        for key, row in run.get("rows", {}).items():
+            if key not in rows and row.get("status") == 200:
+                rows[key] = row
+    meta = dict(older[0].get("meta", {})) if older else {}
+    return {"meta": meta, "rows": rows}
+
+
+def night_text(new: dict, diff: dict) -> str:
+    """One run's findings in words, one line each: what moved, then unstable starts."""
+    lines = [
+        f"{key.replace('|', ' · ')}: " + "; ".join(found)
+        for key, found in diff.get("findings", {}).items()
+    ]
+    lines += [
+        f"{s['trip']} · {s['preset']}: moving the start 150 ft changed the route"
+        for s in new.get("checks", {}).get("stability", [])
+        if not s["stable"]
+    ]
+    return "\n".join(lines)
 
 
 # --- words -------------------------------------------------------------------------------

@@ -69,19 +69,28 @@ direct from Default is `--stress 25` (`core.presets.stress_notches("default", 70
 ## Nightly on beta
 
 The owner, 2026-11-12, chose both: nightly on beta's own routers, and on the PC when he starts it.
-The worker's `route_scorecard` task (config.procrastinate, 08:00 UTC: 3 AM Eastern in winter, 4 AM
-in summer; our default) plans the whole set through the app's own /api/route code, one plan at a
-time with a 2 s pause, and stops starting plans after 90 minutes (both our defaults, unmeasured).
-A plan refused because the long-ride slot is held by a rider waits a minute and tries once more.
-A night with a map rebuild running is skipped. Each run is kept (`ScorecardRun`, the last 60) and
-compared with the night before; the run row's detail on the operations page says how many trips
-moved, and `scripts/beta/alert.sh watch` posts the findings to the owner's Discord channel once
-per run, only when something moved. A missed night (over 30 hours) shows on `check_operations`.
+On beta, `scripts/beta/alert.sh scorecard` runs from a systemd user timer at 3 AM Eastern (our
+default), on the host, beside the alert timers. It plans the whole set through the api's own
+POST /api/route on 127.0.0.1, so riders' routing slots and rate limits apply to it as to anyone:
+one plan at a time, a 2 s pause, a plan refused as busy (429 or 503) tries once more a minute
+later, and no new plan starts after 90 minutes (all our defaults, unmeasured). Runs are kept in
+`$RM_STATE/scorecard/` (the last 60, our default), never in the database or the repository.
+
+- A run during which the api container or any graph's `current` build changed (a deploy, a map
+  swap) is kept as `.mixed.json` and never compared or posted. A deploy pass running at the start
+  skips the night.
+- Each trip is compared with the newest earlier night where it planned (up to a week back), so a
+  night with the routers down is reported once and does not hide the next night's changes.
+- What moved is posted once to the owner's Discord channel (the alert webhook), only when
+  something moved, at most 12 lines.
 
 ```sh
-./manage.py route_scorecard --report            # the newest run against the one before
-./manage.py route_scorecard --now               # run it now
+~/routemaker-beta-state/cd/bin/alert.sh scorecard-report   # the newest run's whole table
+~/routemaker-beta-state/cd/bin/alert.sh scorecard          # run it now
 ```
+
+Turning it on is one owner step on beta after the release that carries it:
+`~/routemaker-beta-state/cd/bin/alert.sh install` (the deploy refreshes the script, not its timers).
 
 ## Not yet decided
 

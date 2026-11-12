@@ -132,9 +132,6 @@ COPY --chown=root:root fixtures/zoo ./fixtures/zoo
 # DC's circle parks (src/routemaker/circleparks.py), read by every plan() to keep a
 # trip point inside a circle off the road tunnel beneath it.
 COPY --chown=root:root fixtures/circle_parks ./fixtures/circle_parks
-# The route scorecard's trips (core.scorecard_nightly, docs/SCORECARD.md), read by the
-# worker's nightly run on this same image.
-COPY --chown=root:root fixtures/scorecard ./fixtures/scorecard
 # The Climbs layer's file, which the hill seek reads at request time
 # (src/core/hillseek.py, FOLLOWUP-HILL-SEEK). Without it Mountain Goat's climb
 # search compares the router's own alternatives only, as before, and says so.

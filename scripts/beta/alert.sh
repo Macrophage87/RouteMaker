@@ -11,8 +11,7 @@
 #                                  failure seen twice in a row is posted, and posted again only
 #                                  when it changes or once a day while it lasts; "working again"
 #                                  is posted when it clears. Also posts when the PC's copy of the
-#                                  backups ($RM_STATE/pc-backup-pull) is over 36 h old, and once
-#                                  per nightly route scorecard run that found trips moved. Skipped
+#                                  backups ($RM_STATE/pc-backup-pull) is over 36 h old. Skipped
 #                                  while a deploy pass runs.
 #   alert.sh send KEY ID MESSAGE   post MESSAGE unless KEY last posted the same ID (within a day)
 #   alert.sh note MESSAGE          post MESSAGE (no repeat check)
@@ -20,9 +19,16 @@
 #   alert.sh heartbeat             ping HEALTHCHECK_PING_URL from the beta's .env (an off-host
 #                                  uptime check, such as Healthchecks.io), only while the api's
 #                                  local /healthz answers ok; unset, nothing is pinged
-#   alert.sh install [--no-enable] copy this script into $RM_STATE/cd/bin and write two systemd
+#   alert.sh scorecard             the nightly route scorecard (docs/SCORECARD.md): plan the fixed
+#                                  trips on the local api, keep the run in $RM_STATE/scorecard, and
+#                                  post once what moved since the nights before; nothing when
+#                                  nothing moved. A run during which the api or a map changed is
+#                                  kept as mixed, never compared and never posted. Skipped while a
+#                                  deploy pass runs.
+#   alert.sh scorecard-report      the newest kept run's whole table, against the nights before
+#   alert.sh install [--no-enable] copy this script into $RM_STATE/cd/bin and write three systemd
 #                                  --user timers: `watch` about every 10 minutes, `heartbeat`
-#                                  every 5
+#                                  every 5, `scorecard` at 3 AM Eastern
 #   alert.sh uninstall             stop and remove those timers (keeps the webhook and state)
 #
 # Release notes go to a second channel, one riders can read and not post in:
@@ -48,6 +54,7 @@ export LC_ALL=C
 
 UNIT=routemaker-beta-alert
 HEARTBEAT_UNIT=routemaker-beta-heartbeat
+SCORECARD_UNIT=routemaker-beta-scorecard
 # Discord refuses a message over 2000 characters.
 MAX_CHARS=1900
 # A failure that lasts is posted again once a day, so a muted channel is not the only record.
@@ -179,17 +186,52 @@ cmd_watch() {
 		failing operations "$(same_id "$out")" "check_operations reports:"$'\n'"$out"
 	fi
 	watch_pc_pull
-	watch_scorecard
 	return 0
 }
 
-# The nightly route scorecard (docs/SCORECARD.md): one post per run when trips moved, read from
-# the worker. Its id line keeps it to one post; a run with nothing moved says nothing.
-watch_scorecard() {
-	local out id
-	out=$("${RM_ALERT_COMPOSE:-$RM_SRC/scripts/beta/beta-compose.sh}" exec -T worker ./manage.py route_scorecard --latest-findings 2>/dev/null </dev/null) || return 0
-	id=$(printf '%s\n' "$out" | head -n 1 | tr -cd '0-9')
-	[ -n "$id" ] || return 0
+# The nightly route scorecard (docs/SCORECARD.md; the owner, 2026-11-12, "Both": nightly on the
+# beta and on the PC when he starts it). It plans through the api's own /api/route on this host,
+# so riders' routing slots and rate limits apply to it as to anyone, one plan at a time. What
+# serves the plans is fingerprinted before and after (the api container and each graph's
+# `current` build): a run that saw a deploy or a map swap is kept as mixed and says nothing.
+scorecard_dir() { printf '%s/scorecard' "$RM_STATE"; }
+scorecard_print() { # what serves routes: the api container and every graph's current build
+	local data link
+	"${RM_ALERT_COMPOSE:-$RM_SRC/scripts/beta/beta-compose.sh}" ps -q api 2>/dev/null </dev/null
+	data=${RM_SCORECARD_DATA_ROOT:-$(env_value DATA_ROOT)}
+	[ -n "$data" ] || return 0
+	for link in "$data"/tiles/*/current; do
+		[ -e "$link" ] || [ -L "$link" ] || continue
+		printf '%s %s\n' "$link" "$(readlink "$link")"
+	done
+}
+cmd_scorecard() {
+	local port host dir before after newest out id
+	if [ -f "$cd_dir/lock" ]; then
+		exec 9<"$cd_dir/lock"
+		flock -n 9 || { echo "alert: a deploy pass is running; scorecard skipped tonight"; return 0; }
+		flock -u 9
+	fi
+	port=$(env_value BETA_API_PORT)
+	host=${RM_BETA_HOST:-$(env_value RM_BETA_HOST)}
+	host=${host:-${RM_CD_HOST:-}}
+	[ -n "$host" ] || { echo "alert: no RM_BETA_HOST in .env; scorecard not run" >&2; return 0; }
+	dir=$(scorecard_dir)
+	mkdir -p "$dir" && chmod 700 "$dir"
+	before=$(scorecard_print | sha256sum | cut -c1-16)
+	"$py" "$RM_SRC/scripts/route_scorecard.py" nightly --base-url "http://127.0.0.1:${port:-8087}" \
+		--host "$host" --dir "$dir" </dev/null || { echo "alert: the scorecard run failed" >&2; return 0; }
+	after=$(scorecard_print | sha256sum | cut -c1-16)
+	newest=$(find "$dir" -maxdepth 1 -name 'run-*Z.json' | sort | tail -n 1)
+	[ -n "$newest" ] || return 0
+	if [ "$before" != "$after" ]; then
+		mv "$newest" "${newest%.json}.mixed.json"
+		echo "alert: the api or a map changed during the scorecard run; kept as mixed, not compared"
+		return 0
+	fi
+	out=$("$py" "$RM_SRC/scripts/route_scorecard.py" findings --dir "$dir" </dev/null) || return 0
+	id=$(printf '%s\n' "$out" | head -n 1 | tr -cd '0-9TZ')
+	[ -n "$id" ] || { echo "alert: scorecard: nothing moved"; return 0; }
 	cmd_send scorecard "$id" "$(printf '%s\n' "$out" | tail -n +2)"
 }
 
@@ -374,20 +416,45 @@ AccuracySec=20s
 [Install]
 WantedBy=timers.target
 UNITEOF
-	echo "installed $bin/alert.sh; units: $unit_dir/$UNIT.{service,timer}, $unit_dir/$HEARTBEAT_UNIT.{service,timer}"
+	cat >"$unit_dir/$SCORECARD_UNIT.service" <<UNITEOF
+# Written by scripts/beta/alert.sh install (docs/SCORECARD.md).
+[Unit]
+Description=RouteMaker beta: the nightly route scorecard
+
+[Service]
+Type=oneshot
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+Environment=RM_VARS=$vars
+ExecStart="$bin/alert.sh" scorecard
+TimeoutStartSec=120min
+Nice=10
+UNITEOF
+	cat >"$unit_dir/$SCORECARD_UNIT.timer" <<UNITEOF
+# Written by scripts/beta/alert.sh install (docs/SCORECARD.md).
+[Unit]
+Description=RouteMaker beta: the route scorecard at 3 AM Eastern
+
+[Timer]
+OnCalendar=*-*-* 03:00:00 America/New_York
+RandomizedDelaySec=5min
+
+[Install]
+WantedBy=timers.target
+UNITEOF
+	echo "installed $bin/alert.sh; units: $unit_dir/$UNIT.{service,timer}, $unit_dir/$HEARTBEAT_UNIT.{service,timer}, $unit_dir/$SCORECARD_UNIT.{service,timer}"
 	[ -n "$(webhook)" ] || echo "no webhook yet: alert.sh set-webhook, then alert.sh test"
 	[ -n "$(env_value HEALTHCHECK_PING_URL)" ] || echo "no HEALTHCHECK_PING_URL in .env yet: the heartbeat pings nothing until it is there"
 	if [ "$enable" = 1 ]; then
-		systemctl --user daemon-reload && systemctl --user enable --now "$UNIT.timer" "$HEARTBEAT_UNIT.timer" ||
+		systemctl --user daemon-reload && systemctl --user enable --now "$UNIT.timer" "$HEARTBEAT_UNIT.timer" "$SCORECARD_UNIT.timer" ||
 			die "systemctl --user could not enable the timers"
-		echo "timers enabled: $(systemctl --user is-active "$UNIT.timer" "$HEARTBEAT_UNIT.timer" | tr '\n' ' ')"
+		echo "timers enabled: $(systemctl --user is-active "$UNIT.timer" "$HEARTBEAT_UNIT.timer" "$SCORECARD_UNIT.timer" | tr '\n' ' ')"
 	else
-		echo "not enabled (--no-enable): systemctl --user daemon-reload && systemctl --user enable --now $UNIT.timer $HEARTBEAT_UNIT.timer"
+		echo "not enabled (--no-enable): systemctl --user daemon-reload && systemctl --user enable --now $UNIT.timer $HEARTBEAT_UNIT.timer $SCORECARD_UNIT.timer"
 	fi
 }
 cmd_uninstall() {
 	local unit_dir=${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user unit
-	for unit in "$UNIT" "$HEARTBEAT_UNIT"; do
+	for unit in "$UNIT" "$HEARTBEAT_UNIT" "$SCORECARD_UNIT"; do
 		systemctl --user disable --now "$unit.timer" 2>/dev/null || true
 		rm -f "$unit_dir/$unit.service" "$unit_dir/$unit.timer"
 	done
@@ -406,6 +473,8 @@ main() {
 		clear) cmd_clear "$@" ;;
 		watch) cmd_watch ;;
 		heartbeat) cmd_heartbeat ;;
+		scorecard) cmd_scorecard ;;
+		scorecard-report) "$py" "$RM_SRC/scripts/route_scorecard.py" report --dir "$(scorecard_dir)" ;;
 		test) post "test message from alert.sh test; alerts reach this channel" ;;
 		set-webhook) cmd_set_webhook "$hook_file" test ;;
 		release-test) post_to "$release_hook_file" set-release-webhook "RouteMaker: test message; release notes reach this channel"; [ $? != 1 ] ;;

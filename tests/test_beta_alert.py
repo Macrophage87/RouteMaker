@@ -13,6 +13,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -44,9 +45,6 @@ echo "PASS  healthz (200)"
 """
 STUB_COMPOSE = """#!/bin/sh
 echo "$*" >> "$STUB_DIR/compose.log"
-case "$*" in
-  *route_scorecard*) [ -f "$STUB_DIR/scorecard" ] && cat "$STUB_DIR/scorecard"; exit 0 ;;
-esac
 if [ -f "$STUB_DIR/ops-fails" ]; then cat "$STUB_DIR/ops-fails"; exit 1; fi
 echo "ok"
 """
@@ -492,21 +490,79 @@ def test_install_writes_the_heartbeat_timer_beside_the_checks(box: Box) -> None:
     assert "no HEALTHCHECK_PING_URL" in done.stdout
 
 
-def test_a_scorecard_run_that_found_moves_is_posted_once(box: Box) -> None:
-    """The nightly route scorecard (docs/SCORECARD.md): one post per run that found trips
-    moved, none for a run with nothing moved, and a new run posts again."""
+# scripts/route_scorecard.py as alert.sh calls it: `nightly` writes a run (and swaps a map in
+# the middle when asked), `findings` prints what the test put there.
+STUB_SCORECARD = """import os, sys, pathlib, time
+stub = pathlib.Path(os.environ["STUB_DIR"])
+args = sys.argv[1:]
+(stub / "scorecard.log").open("a").write(" ".join(args) + "\\n")
+if args[0] == "nightly":
+    folder = pathlib.Path(args[args.index("--dir") + 1])
+    n = len(list(folder.glob("run-*"))) + 1
+    (folder / f"run-2026111{n}T0800Z.json").write_text("{}")
+    if (stub / "swap").exists():
+        link = stub / "data" / "tiles" / "standard" / "current"
+        link.unlink()
+        link.symlink_to("build-2")
+elif args[0] == "findings":
+    f = stub / "findings"
+    if f.exists():
+        sys.stdout.write(f.read_text())
+"""
+
+
+def scorecard_box(box: Box) -> dict:
+    (box.tmp / "scripts").mkdir(exist_ok=True)
+    (box.tmp / "scripts" / "route_scorecard.py").write_text(STUB_SCORECARD)
+    tiles = box.tmp / "data" / "tiles" / "standard"
+    tiles.mkdir(parents=True)
+    (tiles / "current").symlink_to("build-1")
+    return {"RM_BETA_HOST": "beta.test", "RM_SCORECARD_DATA_ROOT": str(box.tmp / "data")}
+
+
+def test_the_scorecard_posts_what_moved_once_and_nothing_when_nothing_moved(box: Box) -> None:
     box.hook()
-    box.run("watch")
+    env = scorecard_box(box)
+    done = box.run("scorecard", **env)
+    assert done.returncode == 0, done.stderr
+    assert "nothing moved" in done.stdout
     assert box.posts() == []
-    found = "route scorecard 2026-11-13: 1 trips moved\nmall · default · base: miles 2.00 -> 3.00"
-    (box.tmp / "scorecard").write_text("42\n" + found + "\n")
-    box.run("watch")
-    box.run("watch")
+    log = (box.tmp / "scorecard.log").read_text()
+    assert "nightly --base-url http://127.0.0.1:8087 --host beta.test --dir" in log
+
+    found = "route scorecard 20261112T0800Z: 1 changes\nmall · default · base: miles 2.00 -> 3.00"
+    (box.tmp / "findings").write_text("20261112T0800Z\n" + found + "\n")
+    box.run("scorecard", **env)
+    box.run("scorecard", **env)
     assert box.posts() == ["RouteMaker beta: " + found]
-    assert (
-        "exec -T worker ./manage.py route_scorecard --latest-findings"
-        in (box.tmp / "compose.log").read_text()
-    )
-    (box.tmp / "scorecard").write_text("43\n" + found + "\n")
-    box.run("watch")
+    (box.tmp / "findings").write_text("20261113T0800Z\n" + found + "\n")
+    box.run("scorecard", **env)
     assert len(box.posts()) == 2
+
+
+def test_a_scorecard_run_that_saw_a_map_swap_is_kept_as_mixed_and_says_nothing(box: Box) -> None:
+    box.hook()
+    env = scorecard_box(box)
+    (box.tmp / "findings").write_text("20261111T0800Z\nsomething moved\n")
+    (box.tmp / "swap").write_text("")
+    done = box.run("scorecard", **env)
+    assert "kept as mixed" in done.stdout
+    assert box.posts() == []
+    kept = sorted(p.name for p in (box.state / "scorecard").iterdir())
+    assert kept == ["run-20261111T0800Z.mixed.json"]
+    assert "findings" not in (box.tmp / "scorecard.log").read_text()
+
+
+def test_the_scorecard_waits_out_a_deploy(box: Box) -> None:
+    env = scorecard_box(box)
+    cd = box.state / "cd"
+    cd.mkdir()
+    (cd / "lock").write_text("")
+    holder = subprocess.Popen(["flock", str(cd / "lock"), "sleep", "5"])
+    try:
+        time.sleep(0.3)
+        done = box.run("scorecard", **env)
+    finally:
+        holder.kill()
+    assert "deploy pass is running" in done.stdout
+    assert not (box.tmp / "scorecard.log").exists()
