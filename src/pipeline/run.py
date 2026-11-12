@@ -92,6 +92,7 @@ from . import (
     lts_sentinels,
     major_corridors,
     mass_capacity,
+    offline_network,
     overrides,
     promotion,
     reconcile,
@@ -4327,6 +4328,8 @@ def build_handlers(
             ended_reversible_streets=frozenset(_setting("MASS_RIDE_DC_ENDED_REVERSIBLE_STREETS")),
         )
         rows: list[dict] = []
+        # The road network a phone searches with no signal (`pipeline.offline_network`), streamed in batches.
+        offline_ways = writers.OfflineWayWriter(context.staging_schema)
         # An unnamed cycleway or path beside a named street is that street's bike lane
         # (v0.7.0 "Go riding fixes" item 4), or the path or sidewalk beside it where
         # people on foot share it (`facility.sidepath_name`), for the route description
@@ -4403,6 +4406,21 @@ def build_handlers(
                 overridden=way.osm_id in context.bicycle_override_ways,
                 side_path=way.osm_id in context.use_sidepath_paths,
             )
+            offline = offline_network.offline_way(
+                way.osm_id,
+                way.tags,
+                way.node_ids,
+                way.located,
+                way.coordinates,
+                tier=int(stress.tier),
+                half=writers._half(stress),
+                access_reason=access_reason,
+                walk_bike=way.osm_id in context.walk_bike,
+                unpaved=inferred_unpaved(way.tags),
+                mtb_only=way.osm_id in context.mtb_only,
+            )
+            if offline is not None:
+                offline_ways.add(offline)
             # On a `bicycle=use_sidepath` road, the side path it asks riders to use, for
             # the road panel (review RL-1); on a trail, the street it runs beside.
             side_name = (
@@ -4482,6 +4500,7 @@ def build_handlers(
                 hazard_ways += rows[-1]["hazard"] is not None
         logger.info("segments marked with a hazard (cobbles, rails): %d", hazard_ways)
         writers.write_segments(context.staging_schema, rows)
+        logger.info("ways in the offline road network: %d", offline_ways.close())
         # The indexes the staging table was created without (`reset_segment_schema`),
         # now that its rows are in, and before anything below updates or joins them.
         create_segment_indexes(context.staging_schema)
