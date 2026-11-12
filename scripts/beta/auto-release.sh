@@ -563,6 +563,7 @@ predraw() { # the step 8 pre-draw, waited for here (a systemd pass ends by killi
 # rolls that deploy back (recover) instead of reporting the moved checkout as drift.
 done_steps=""; deploy_tag=""; deploy_new=""; deploy_old=""; deploy_old_tag=""; predraw_warning=""; predraw_started=0
 restore_from="" # rollback --restore-db: the snapshot deploy() restores in place of the migrations
+map_importing="" # ship-held: what the map import is doing, for a stop part-way
 write_progress() {
 	printf 'tag=%s\nnew=%s\nold=%s\nold_tag=%s\nsteps=%s\npid=%s\n' "$deploy_tag" "$deploy_new" "$deploy_old" "$deploy_old_tag" "$done_steps" "$$" >"$progress.new" &&
 		mv -f "$progress.new" "$progress"
@@ -621,6 +622,8 @@ on_signal() { # signal-name exit-code
 	if [ -f "$progress" ]; then
 		printf 'interrupted=%s SIG%s\n' "$(utc)" "$1" >>"$progress"
 		finish interrupted "${deploy_tag:-a deploy}: the pass was stopped (SIG$1) mid-deploy after steps ${done_steps:-none}; $(rolled_back_when) ($progress)"
+	elif [ -n "$map_importing" ]; then
+		finish interrupted "$deploy_tag's code is live, but the pass was stopped (SIG$1) while the map was $map_importing; the agent stays paused. Look at what import-result.sh left (its swap undoes itself on failure; auto-release.sh rollback-map puts the previous map back), then auto-release.sh resume"
 	elif [ -n "$deploy_tag" ] && [ "$(deployed_tag)" = "$deploy_tag" ]; then
 		if [ "$predraw_started" = 1 ]; then
 			finish deployed "$deploy_tag ($deploy_new), was $deploy_old_tag; WARNING: the pass was stopped (SIG$1) during the pre-draw: the tiles not yet drawn are drawn on request"
@@ -690,6 +693,33 @@ build_api() { # src-dir short-sha
 		sleep "${RM_CD_BUILD_RETRY_S:-60}"
 		n=$((n + 1))
 	done
+}
+
+# The image a release-workflow tag names: its build provenance first (GitHub's attestations for the
+# digest must say this repository's release workflow on main built it, the run the owner approved),
+# then the pull, tagged with the release's TAG; the digest reference is dropped again so pruning the
+# tag frees the image. Returns 0 when the image is here, 1 when its provenance does not check out
+# (hold the tag), 2 when GitHub or the registry did not answer (try again next pass).
+pull_ci_image() { # image@sha256:... short-sha
+	local image=$1 short=$2 body code verdict
+	body=$(mktemp)
+	code=$("${CURL:-curl}" -sS --max-time 30 -o "$body" -w '%{http_code}' \
+		-H 'Accept: application/vnd.github+json' -H 'X-GitHub-Api-Version: 2022-11-28' -H 'User-Agent: routemaker-beta-cd' \
+		"https://api.github.com/repos/$gh_repo/attestations/sha256:${image##*@sha256:}" 2>>"$run_log") || code=000
+	case "$code" in
+		200) verdict=$("$py" "$logic" provenance --digest "$image" --repo "$gh_repo" <"$body") ;;
+		404) verdict=no ;;
+		*) verdict=unknown ;;
+	esac
+	rm -f "$body"
+	case "$verdict" in
+		ok) say "the image's provenance checks out: built by $gh_repo's release workflow on main" ;;
+		no) say "the image's provenance does not check out: GitHub has no attestation that $gh_repo's release workflow on main built $image"; return 1 ;;
+		*) say "GitHub answered HTTP $code for the image's attestations"; return 2 ;;
+	esac
+	say "step: pull the api image the release workflow built ($image)"
+	quiet dk pull "$image" </dev/null && quiet dk tag "$image" "$API_IMAGE:$short" </dev/null || return 2
+	quiet dk image rm "$image" </dev/null || true
 }
 
 # A release with nothing for the server (documentation, CI, a new tag on the deployed commit):
@@ -1126,12 +1156,14 @@ pass() {
 	fi
 	if [ "$noop" = 0 ] && [ -n "$ci_image" ] && ! dk image inspect "$API_IMAGE:${new:0:12}" >/dev/null 2>&1; then
 		if [ "$dry_run" = 1 ]; then
-			say "dry run: would pull $ci_image as $API_IMAGE:${new:0:12}"
+			say "dry run: would check the provenance of $ci_image and pull it as $API_IMAGE:${new:0:12}"
 		else
-			say "step: pull the api image the release workflow built ($ci_image)"
-			if ! { quiet dk pull "$ci_image" </dev/null && quiet dk tag "$ci_image" "$API_IMAGE:${new:0:12}" </dev/null; }; then
-				rm -f "$gate_file"; finish waiting "$tag: could not pull $ci_image (the network, or the package is not public); trying again next pass"; return 0
-			fi
+			pull_ci_image "$ci_image" "${new:0:12}"
+			case $? in
+				0) ;;
+				1) rm -f "$gate_file"; hold "$tag" "the image its tag names was not built by the release workflow on main (no matching attestation)"; return 0 ;;
+				*) rm -f "$gate_file"; finish waiting "$tag: could not check or pull $ci_image (GitHub, the network, or the package is not public); trying again next pass"; return 0 ;;
+			esac
 		fi
 	fi
 	if [ "$dry_run" = 1 ]; then
@@ -1249,6 +1281,10 @@ ship_held_pass() { # tag map-url no-map allow dry
 		printf '%s\n' "$other" | while IFS= read -r why; do say "needs the owner by hand: $why"; done
 		rm -f "$gate_file"; finish error "$tag needs steps this command does not take (listed above): ship it by hand (docs/BETA-RUNBOOK.md, \"Shipping an update later\")"; return 1
 	fi
+	if grep -q 'a migration names the live schema' <<<"$map_reasons"; then
+		printf '%s\n' "$map_reasons" | grep 'a migration names the live schema' | while IFS= read -r why; do say "needs the owner by hand: $why"; done
+		rm -f "$gate_file"; finish error "$tag carries a migration that reads the map tables, which must run after the new map is in: ship it by hand (check out the tag, import-result.sh --beta, then migrate)"; return 1
+	fi
 	if [ -n "$map_reasons" ]; then
 		printf '%s\n' "$map_reasons" | while IFS= read -r why; do say "needs a map: $why"; done
 		[ -n "$map" ] || [ "$no_map" = 1 ] || { rm -f "$gate_file"; finish error "$tag needs a map built from it: give --map RUN_URL (the cloud run), or --no-map to ship the code now and the map by hand"; return 1; }
@@ -1262,13 +1298,14 @@ ship_held_pass() { # tag map-url no-map allow dry
 		say "dry run: would deploy $tag's code (frontend=$(kv frontend "$gate_file") migrations=$(kv migrations "$gate_file") compose_changed=$(kv compose_changed "$gate_file") routers_restart=$(kv routers_restart "$gate_file")${ci_image:+ image=$ci_image})$([ -n "$map" ] && echo ", then install and swap the map from $map")"
 		rm -f "$gate_file"; finish dry-run "$tag would be shipped"; return 0
 	fi
+	! predraw_running || { rm -f "$gate_file"; finish error "a stress-tile pre-draw is running; try again after it"; return 1; }
+	! in_backup_slot "$(backup_minute)" || { rm -f "$gate_file"; finish error "the nightly backup runs now; try again in half an hour"; return 1; }
 	if [ ! -f "$cd_dir/PAUSED" ]; then
 		printf '%s ship-held %s\n' "$(utc)" "$tag" >"$cd_dir/PAUSED"; we_paused=1
 	fi
 	if [ -n "$ci_image" ] && ! dk image inspect "$API_IMAGE:${new:0:12}" >/dev/null 2>&1; then
-		say "step: pull the api image the release workflow built ($ci_image)"
-		{ quiet dk pull "$ci_image" </dev/null && quiet dk tag "$ci_image" "$API_IMAGE:${new:0:12}" </dev/null; } ||
-			{ rm -f "$gate_file"; [ "$we_paused" = 0 ] || rm -f "$cd_dir/PAUSED"; finish error "could not pull $ci_image; nothing was changed"; return 1; }
+		pull_ci_image "$ci_image" "${new:0:12}" ||
+			{ rm -f "$gate_file"; [ "$we_paused" = 0 ] || rm -f "$cd_dir/PAUSED"; finish error "the image $ci_image did not check out or could not be pulled (above); nothing was changed"; return 1; }
 	fi
 	say "deploying $tag's code ($new) over $cur at $(utc)"
 	deploy "$tag" "$new" "$gate_file"
@@ -1295,16 +1332,19 @@ ship_held_pass() { # tag map-url no-map allow dry
 		# so no pass deploys meanwhile).
 		flock -u 9
 		import="$RM_SRC/scripts/cloud/import-result.sh"
+		map_importing="downloading and verifying"
 		say "step: download and verify the map ($map)"
 		if ! "$import" --beta --state "$RM_STATE" ${allow:+--allow-sha-mismatch} "$map" 2>&1 | tee -a "$run_log"; then
 			finish error "$tag's code is live, but the map did not download or verify (above); the old map is still served. Fix it, then: $import --beta [--allow-sha-mismatch] --swap $map, and auto-release.sh resume"
 			return 1
 		fi
+		map_importing="being swapped in"
 		say "step: swap the map in (sudo is asked for the files and the table rename)"
 		if ! "$import" --beta --state "$RM_STATE" ${allow:+--allow-sha-mismatch} --swap "$map" 2>&1 | tee -a "$run_log"; then
 			finish error "$tag's code is live, but the map swap failed (above; import-result.sh says what it left). The way back to the old map: auto-release.sh rollback-map. Then auto-release.sh resume"
 			return 1
 		fi
+		map_importing=""
 		say "step: the map is swapped in"
 	fi
 	[ "$we_paused" = 0 ] || rm -f "$cd_dir/PAUSED"
@@ -1504,8 +1544,9 @@ cmd_rollback() {
 # second time puts the newer map back. Then the routers' settings rows follow the links, the routers
 # restart one at a time, the stress tiles are pre-drawn, and the smoke tests run. Home's overrides
 # and junction ratings stay the newer ones (as in "B by rename"). Run by the owner only; it holds
-# the agent's lock, so no deploy runs meanwhile. A failure part-way says what was done: running it
-# again trades the links and tables that moved back (each link pair and the tables are checked).
+# the agent's lock, so no deploy runs meanwhile. A failure or a stop part-way marks the agent BROKEN
+# with what had moved (a re-run would trade every pair again, so the owner puts the rest right by
+# hand, as rollback A and "B by rename", then runs mark-deployed).
 map_variants() { # each graph with both a current and a previous link
 	local d
 	for d in "$RM_DATA"/tiles/*/; do
@@ -1562,15 +1603,21 @@ rollback_map_pass() { # dry-run graphs-only
 	fi
 	if [ "$dry" = 1 ]; then finish dry-run "the map would go back: graphs $variants$([ "$tables" = 1 ] && echo ', and the tables')"; return 0; fi
 	for v in $variants; do
+		map_moved="$map_moved $v(started)"
 		swap_links "$v" || { ok=0; break; }
+		map_moved="${map_moved% "$v(started)"} $v"
 		done_what="$done_what $v"
 	done
-	if [ "$ok" = 1 ] && [ "$tables" = 1 ]; then swap_tables && done_what="$done_what tables" || ok=0; fi
+	if [ "$ok" = 1 ] && [ "$tables" = 1 ]; then
+		map_moved="$map_moved tables(started)"
+		if swap_tables; then map_moved="${map_moved% tables(started)} tables"; done_what="$done_what tables"; else ok=0; fi
+	fi
 	if [ "$ok" = 0 ]; then
 		{ echo "$(utc) rollback-map stopped part-way: moved${done_what:- nothing}"; cat "$report"; } >"$cd_dir/BROKEN"
 		finish broken "the map rollback stopped part-way (moved:${done_what:- nothing}); the routers were not restarted. See the run log; once it is put right, auto-release.sh mark-deployed $(deployed_tag)"
 		return 1
 	fi
+	map_moved=""
 	sync_rows
 	# One router at a time, as the routers' own restart hook does: a few seconds of errors for one ride type at a time.
 	for r in $(routers); do
@@ -1585,6 +1632,18 @@ rollback_map_pass() { # dry-run graphs-only
 	fi
 	finish error "the map is back to the previous build, but a router restart or the smoke tests failed (see the run log and auto-release.sh status)"
 	return 1
+}
+map_moved="" # what rollback-map has moved so far, for a stop part-way
+map_signal() { # signal-name exit-code
+	trap - TERM INT HUP
+	if [ -n "$map_moved" ]; then
+		{ echo "$(utc) rollback-map was stopped (SIG$1) part-way: moved$map_moved"; cat "$report"; } >"$cd_dir/BROKEN"
+		finish broken "rollback-map was stopped (SIG$1) part-way (moved:$map_moved); see $cd_dir/BROKEN, put the rest right by hand, then auto-release.sh mark-deployed $(deployed_tag)"
+	else
+		finish interrupted "rollback-map was stopped (SIG$1) before it moved anything"
+	fi
+	rm -f "$report"
+	exit "$2"
 }
 cmd_rollback_map() {
 	local dry=0 graphs_only=0 stamp
@@ -1604,9 +1663,17 @@ cmd_rollback_map() {
 	stamp=$(utc)
 	run_log="$cd_dir/runs/$stamp-rollback-map.log"; : >"$run_log"
 	report=$(mktemp)
-	if [ "$dry" = 1 ]; then say "auto-release rollback-map at $stamp (dry run: changes nothing)"; else say "auto-release rollback-map at $stamp"; fi
+	if [ "$dry" = 1 ]; then
+		say "auto-release rollback-map at $stamp (dry run: changes nothing)"
+	else
+		trap 'map_signal TERM 143' TERM
+		trap 'map_signal INT 130' INT
+		trap 'map_signal HUP 129' HUP
+		say "auto-release rollback-map at $stamp"
+	fi
 	say "run log: $run_log"
 	rollback_map_pass "$dry" "$graphs_only"; local rc=$?
+	trap - TERM INT HUP
 	rm -f "$report"
 	return "$rc"
 }

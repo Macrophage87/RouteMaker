@@ -9,6 +9,7 @@ here touches a stack, a server, GitHub or the network.
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import os
@@ -717,6 +718,10 @@ while [ $# -gt 0 ]; do
 done
 echo "curl $url" >> "$STUB_LOG"
 case "$url" in
+  # the image's attestations: $STUB_ATTEST (a JSON file) with code $STUB_ATTEST_CODE [200]
+  https://api.github.com/*/attestations/*)
+    [ -n "$out" ] && cat "${STUB_ATTEST:-/dev/null}" > "$out"
+    printf '%s' "${STUB_ATTEST_CODE:-200}" ;;
   https://api.github.com/*)
     [ -n "$out" ] && cat "$STUB_CI" > "$out"
     printf '%s' "${STUB_CI_CODE:-200}" ;;
@@ -2834,6 +2839,40 @@ def test_an_image_file_change_deploys_only_with_the_workflow_s_image(path: str) 
     assert lua["verdict"] == "stop"
 
 
+def _attestations(
+    digest: str = DIGEST,
+    ref: str = "refs/heads/main",
+    path: str = ".github/workflows/release.yml",
+    repo: str = "https://github.com/Macrophage87/RouteMaker",
+) -> dict:
+    statement = {
+        "_type": "https://in-toto.io/Statement/v1",
+        "subject": [{"name": digest.split("@")[0], "digest": {"sha256": digest.split(":")[-1]}}],
+        "predicateType": "https://slsa.dev/provenance/v1",
+        "predicate": {
+            "buildDefinition": {
+                "externalParameters": {"workflow": {"ref": ref, "repository": repo, "path": path}}
+            }
+        },
+    }
+    payload = base64.b64encode(json.dumps(statement).encode()).decode()
+    return {"attestations": [{"bundle": {"dsseEnvelope": {"payload": payload}}}]}
+
+
+def test_the_image_s_provenance_must_name_the_release_workflow_on_main() -> None:
+    repo = "Macrophage87/RouteMaker"
+    assert cd_logic.provenance_ok(_attestations(), DIGEST, repo)
+    assert not cd_logic.provenance_ok(_attestations(ref="refs/heads/other"), DIGEST, repo)
+    assert not cd_logic.provenance_ok(_attestations(path=".github/workflows/x.yml"), DIGEST, repo)
+    assert not cd_logic.provenance_ok(
+        _attestations(repo="https://github.com/someone/fork"), DIGEST, repo
+    )
+    other = DIGEST[:-2] + "cd"
+    assert not cd_logic.provenance_ok(_attestations(digest=other), DIGEST, repo)
+    assert not cd_logic.provenance_ok({"attestations": [{"bundle": {}}]}, DIGEST, repo)
+    assert not cd_logic.provenance_ok({}, DIGEST, repo)
+
+
 def _workflow_release(beta: Beta, files: dict[str, str]) -> str:
     sha = commit(beta.origin, files)
     git(beta.origin, "tag", "-a", "v0.2.0", "-m", f"Release v0.2.0\n\napi-image: {DIGEST}")
@@ -2845,21 +2884,40 @@ def _workflow_release(beta: Beta, files: dict[str, str]) -> str:
 def test_a_workflow_tag_pulls_its_image_and_deploys_a_dockerfile_change(beta: Beta) -> None:
     sha = _workflow_release(beta, {"docker/requirements.txt": "django==9\n"})
     pulled = beta.tmp / "pulled"
-    done = beta.agent("run", STUB_RUNNING="postgis", STUB_PULLED=str(pulled))
+    attest = beta.tmp / "attest.json"
+    attest.write_text(json.dumps(_attestations()))
+    done = beta.agent(
+        "run", STUB_RUNNING="postgis", STUB_PULLED=str(pulled), STUB_ATTEST=str(attest)
+    )
     assert done.returncode == 0, done.stdout + done.stderr
     assert "deployed: v0.2.0" in beta.status()
     calls = beta.calls()
     assert f"docker pull {DIGEST}" in calls
     assert f"docker tag {DIGEST} {API}:{sha[:12]}" in calls
     assert "docker build -f" not in calls
-    _order(calls, "docker pull", "up -d api worker", "smoke --local")
+    assert f"docker image rm {DIGEST}" in calls  # the tag alone holds it, so pruning frees it
+    _order(calls, "/attestations/sha256:", "docker pull", "up -d api worker", "smoke --local")
+
+
+def test_an_image_without_the_workflow_s_provenance_is_held_and_never_pulled(beta: Beta) -> None:
+    _workflow_release(beta, {"docker/requirements.txt": "django==9\n"})
+    attest = beta.tmp / "attest.json"
+    attest.write_text(json.dumps(_attestations(ref="refs/heads/someone")))
+    done = beta.agent("run", STUB_RUNNING="postgis", STUB_ATTEST=str(attest))
+    assert "held: v0.2.0" in beta.status(), done.stdout
+    assert "docker pull" not in beta.calls() and "up -d" not in beta.calls()
+    beta.agent("retry", "v0.2.0")
+    done = beta.agent("run", STUB_RUNNING="postgis", STUB_ATTEST_CODE="404")
+    assert "held: v0.2.0" in beta.status() and "docker pull" not in beta.calls()
 
 
 def test_a_pull_that_fails_waits_and_touches_nothing(beta: Beta) -> None:
     _workflow_release(beta, {"src/core/a.py": "x = 2\n"})
-    done = beta.agent("run", STUB_RUNNING="postgis", STUB_PULL_RC="1")
+    attest = beta.tmp / "attest.json"
+    attest.write_text(json.dumps(_attestations()))
+    done = beta.agent("run", STUB_RUNNING="postgis", STUB_PULL_RC="1", STUB_ATTEST=str(attest))
     assert done.returncode == 0, done.stdout
-    assert "waiting" in beta.status() and "could not pull" in beta.status()
+    assert "waiting" in beta.status() and "could not check or pull" in beta.status()
     calls = beta.calls()
     assert "up -d" not in calls and "docker build -f" not in calls and beta.head() == beta.v1
 
@@ -2880,11 +2938,18 @@ def test_the_release_workflow_publishes_and_tags_only_after_the_owner_s_approval
     # the one job that publishes waits for the `release` environment's reviewer, and the tag
     # can only follow it
     assert jobs["image"]["environment"] == "release"
-    assert jobs["image"]["permissions"] == {"contents": "read", "packages": "write"}
+    assert jobs["image"]["permissions"] == {
+        "contents": "read",
+        "packages": "write",
+        "id-token": "write",
+        "attestations": "write",
+    }
+    assert any("attest-build-provenance" in st.get("uses", "") for st in jobs["image"]["steps"])
     assert "image" in jobs["tag"]["needs"] and jobs["tag"]["permissions"] == {"contents": "write"}
     for name, job in jobs.items():
         if name != "image":
-            assert "packages" not in job.get("permissions", {}), name
+            for scope in ("packages", "id-token", "attestations"):
+                assert scope not in job.get("permissions", {}), (name, scope)
         if name != "tag":
             assert job["permissions"].get("contents") == "read", name
         for step in job["steps"]:
@@ -2982,3 +3047,30 @@ def test_ship_held_refuses_a_release_that_needs_nginx_and_changes_nothing(beta: 
     assert done.returncode == 1 and "needs the owner by hand: deploy/beta/401.html" in done.stdout
     assert "up -d" not in beta.calls() and beta.head() == beta.v1
     assert not (beta.cd / "PAUSED").exists()
+
+
+def test_rollback_map_that_fails_part_way_marks_broken_with_what_moved(beta: Beta) -> None:
+    std = _two_builds(beta)  # "standard" sorts after "mtb", so mtb moves first
+    odd = beta.data / "tiles" / "mtb"
+    (odd / "b1").mkdir(parents=True)
+    (odd / "current").symlink_to("b1")
+    (odd / "previous").symlink_to("b@0")  # a name the move refuses
+    done = beta.agent("rollback-map", **UP)
+    assert done.returncode == 1
+    assert "stopped part-way" in beta.status() and (beta.cd / "BROKEN").exists()
+    assert (std / "current").readlink() == Path("b2")  # nothing after the failure moved
+    assert "restart valhalla" not in beta.calls()
+
+
+def test_ship_held_refuses_a_migration_that_reads_the_map_tables(beta: Beta) -> None:
+    beta.release(
+        "v0.2.0",
+        {
+            "lua/tags.lua": "-- new\n",
+            "src/core/migrations/0002_live.py": "# reads LIVE_SCHEMA\n",
+        },
+    )
+    beta.agent("run", **UP)
+    done = beta.agent("ship-held", "v0.2.0", "--map", RUN, **UP)
+    assert done.returncode == 1 and "must run after the new map" in beta.status()
+    assert "up -d" not in beta.calls() and not (beta.cd / "PAUSED").exists()

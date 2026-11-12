@@ -1175,8 +1175,11 @@ A tag is never moved or reused: a fix is the next patch number. The agent's scri
    none today; setting `RM_CD_REQUIRE_SIGNED_TAGS=1` makes `git verify-tag` a requirement too (the
    server then needs the signer's public key in its keyring). A tag made by the release workflow
    ("The release workflow", below) names the api image it built, by digest, in its message
-   (`api-image: ghcr.io/macrophage87/routemaker-api@sha256:...`): the agent pulls that image and tags
-   it with the release's `TAG` instead of building one (a pull that fails waits for the next pass).
+   (`api-image: ghcr.io/macrophage87/routemaker-api@sha256:...`): the agent first reads GitHub's
+   build provenance for that digest, which must name this repository's release workflow on `main`
+   (if not, the tag is held), then pulls the image and tags it with the release's `TAG` instead of
+   building one (GitHub or the registry not answering waits for the next pass). Workflow tags are not
+   signed, so `RM_CD_REQUIRE_SIGNED_TAGS=1` holds every one of them.
 5. The gate, over `git diff <deployed>..<new>` (only a code release deploys by itself):
 
 | A change to | Means | What the agent does |
@@ -1445,7 +1448,8 @@ RUN_URL` and `--swap RUN_URL` (which asks for sudo for the files and the table r
 routers one at a time, pre-draws and smoke-tests), and resumes the agent if it paused it.
 `--allow-sha-mismatch` passes through when the run was built from another commit than the tag;
 `--no-map` ships the code alone. A held release that needs nginx, sudo or a new data path is still
-refused: ship it by hand. If the map fails after the code is live, the code stays, the agent stays
+refused, and so is one whose migration reads the map tables (it must run after the new map is in):
+ship those by hand. It also waits out a running pre-draw and the nightly backup's slot. If the map fails after the code is live, the code stays, the agent stays
 paused, and the report says what to run next.
 
 ### The release workflow
@@ -1456,8 +1460,8 @@ Actions, **Release**, Run workflow, on `main`, with the version (`vX.Y.Z`; `docs
 must be in the commit) and, optionally, the commit (main's newest by default). It checks the
 version (strict, newer than every tag, not taken), the commit (on main), the notes, and that `test`
 and `a11y` are green on that commit, then **waits for the owner's approval** (the `release`
-environment). Approved, it builds the api image from that commit, checks that it starts, publishes
-it as `ghcr.io/macrophage87/routemaker-api:<the commit's first 12>`, and makes the annotated tag,
+environment). Approved, it builds the api image from that commit, checks that it starts, records
+GitHub build provenance for it, publishes it as `ghcr.io/macrophage87/routemaker-api:<the commit's first 12>`, and makes the annotated tag,
 whose message names the image by digest. The agent deploys the tag on its next pass as above,
 pulling that exact image. Tagging from the PC still works as before.
 

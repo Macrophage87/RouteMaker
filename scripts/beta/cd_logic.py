@@ -12,6 +12,7 @@ functions the tests call directly (tests/test_beta_cd.py):
               by itself, or needs the owner (data from home, sudo, nginx); and which optional
               steps the deploy needs (front end, router restart, services to recreate)
   tag-image   the api image a release tag's message names by digest (the release workflow's)
+  provenance  whether GitHub's attestations say the release workflow on main built that image
   rollback    which undo steps a failed deploy needs, from the steps it got through
 
 Standard library only, Python 3.8 or newer: it runs on the server with whatever python3 is
@@ -31,6 +32,7 @@ check-run JSON.
 from __future__ import annotations
 
 import argparse
+import base64
 import hashlib
 import json
 import re
@@ -295,6 +297,43 @@ def tag_image(message: str) -> Optional[str]:
     return found[0] if len(found) == 1 else None
 
 
+RELEASE_WORKFLOW = ".github/workflows/release.yml"
+
+
+def provenance_ok(payload: dict, digest: str, repo: str) -> bool:
+    """Whether GitHub's attestations for an image (GET /repos/{repo}/attestations/sha256:{hex})
+    include build provenance that names this digest and this repository's release workflow on
+    main (.github/workflows/release.yml at refs/heads/main): the image was built by the run the
+    owner approved, not by a copy of the workflow on another branch. GitHub keeps only the
+    attestations this repository's own workflows made; this reads their statements (the
+    signatures are GitHub's to check when it stores them)."""
+    want = digest.split("sha256:", 1)[-1].lower()
+    if not re.fullmatch(r"[0-9a-f]{64}", want):
+        return False
+    for item in payload.get("attestations") or []:
+        try:
+            envelope = item["bundle"]["dsseEnvelope"]
+            statement = json.loads(base64.b64decode(envelope["payload"]))
+        except (KeyError, TypeError, ValueError):
+            continue
+        if not isinstance(statement, dict):
+            continue
+        subjects = statement.get("subject") or []
+        if not any(
+            isinstance(s, dict) and (s.get("digest") or {}).get("sha256") == want for s in subjects
+        ):
+            continue
+        build = (statement.get("predicate") or {}).get("buildDefinition") or {}
+        workflow = (build.get("externalParameters") or {}).get("workflow") or {}
+        if (
+            str(workflow.get("repository", "")).lower() == f"https://github.com/{repo}".lower()
+            and workflow.get("path") == RELEASE_WORKFLOW
+            and workflow.get("ref") == "refs/heads/main"
+        ):
+            return True
+    return False
+
+
 def gate(
     changes: Sequence[tuple],
     show: Callable[[str, str], Optional[str]],
@@ -539,6 +578,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     g.add_argument("--new", required=True)
     g.add_argument("--ci-image", action="store_true")
     sub.add_parser("tag-image")
+    pv = sub.add_parser("provenance")
+    pv.add_argument("--digest", required=True)
+    pv.add_argument("--repo", required=True)
     sub.add_parser("rollback").add_argument("--done", default="")
     args = parser.parse_args(argv)
 
@@ -585,6 +627,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         image = tag_image(sys.stdin.read())
         if image:
             print(image)
+        return 0
+    if args.command == "provenance":
+        try:
+            payload = json.loads(sys.stdin.read() or "{}")
+        except ValueError:
+            payload = {}
+        ok = isinstance(payload, dict) and provenance_ok(payload, args.digest, args.repo)
+        print("ok" if ok else "no")
         return 0
     if args.command == "rollback":
         for action in rollback_plan(step for step in args.done.split(",") if step):

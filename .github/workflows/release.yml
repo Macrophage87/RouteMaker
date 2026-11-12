@@ -90,6 +90,9 @@ jobs:
     permissions:
       contents: read
       packages: write
+      # the build provenance the beta's agent checks before it pulls the image
+      id-token: write
+      attestations: write
     outputs:
       digest: ${{ steps.push.outputs.digest }}
     steps:
@@ -121,7 +124,16 @@ jobs:
           digest=$(docker image inspect -f '{{range .RepoDigests}}{{println .}}{{end}}' "$image" | grep '^ghcr.io/macrophage87/routemaker-api@sha256:' | head -n 1)
           [[ $digest =~ ^ghcr\.io/macrophage87/routemaker-api@sha256:[0-9a-f]{64}$ ]] || { echo "::error::no digest for $image"; exit 1; }
           echo "digest=$digest" >>"$GITHUB_OUTPUT"
+          echo "sha256=${digest#*@}" >>"$GITHUB_OUTPUT"
           echo "Image: \`$digest\`" >>"$GITHUB_STEP_SUMMARY"
+      # Build provenance for the digest: names this workflow, its ref (main) and the run. The beta's
+      # agent pulls the image only if GitHub holds this attestation (scripts/beta/cd_logic.py,
+      # provenance), so an image published any other way is never deployed.
+      - uses: actions/attest-build-provenance@96278af6caaf10aea03fd8d33a09a777ca52d62f # v3.2.0
+        with:
+          subject-name: ghcr.io/macrophage87/routemaker-api
+          subject-digest: ${{ steps.push.outputs.sha256 }}
+          push-to-registry: true
 
   # Runs only after the approved image job: the annotated tag on the checked commit, naming the
   # image by digest. The beta's agent reads that line (scripts/beta/cd_logic.py, tag-image).
