@@ -695,6 +695,27 @@ sample pages (`tests/data/closures`), and docs/OPERATIONS.md, "DC closures", has
 - The facts of an alert (which trail or bridge, which days) are used with a link to the page; no
   alert text is republished.
 
+### Park agency trail alerts (v0.27.0)
+
+- Credit: `Park agency trail alerts`
+- Pages, each in words with no feed (read 2026-11-12):
+  - NOVA Parks (the W&OD Trail): the alerts linked from <https://www.novaparks.com/>, one page an
+    alert (`https://www.novaparks.com/alert/...`).
+  - NPS, C&O Canal National Historical Park: "Towpath and Park Conditions",
+    <https://www.nps.gov/choh/planyourvisit/conditions.htm>, each place by its milepost. A
+    work of the US government, public domain.
+  - Anne Arundel County Recreation and Parks: "Closings, Cancellations, & Delays",
+    <https://www.aacounty.org/recreation-parks/about-us/closings-cancellations> (the B&A Trail).
+- New items are listed by `scripts/park_alerts.py watch`; a trail closure is read by a person and,
+  as the owner's rule for these says, kept as dates, a reason and links in
+  `src/core/geodata/park-closures.json`, its lines OpenStreetMap's (ODbL): the OSM ways, or for
+  the C&O the towpath between the named mileposts cut from the trail mile lines
+  (`trail-miles.json`, also OSM).
+- Use: closures routed round, whole days, gone after the last day (`routemaker.park_alerts`).
+  Each closure names its agency and links its alert.
+- The facts of an alert (which trail, which miles, which days) are used with a link to the page;
+  no alert text is republished. Not legal advice.
+
 ### DDOT occupancy permits (TOPS)
 
 - Credit: `Road closures: DDOT (TOPS permits), CC BY 4.0`

@@ -5869,6 +5869,56 @@ The first watch listed 12 trail items, among them the Lake Accotink marina bridg
 Road ("until Fall 2026"), the Pimmit Run sewer work and several bridges closed until further
 notice; none was entered before the owner's review.
 
+## Park agency trail closures (v0.27.0)
+
+Backlog 2026-11-12, item 8: the Fairfax watch above, extended to the agencies whose trails riders
+use most. Each posts trail closures only in words, so, as for Fairfax, a person reads each new
+item and a closure goes in `src/core/geodata/park-closures.json` (`routemaker.park_alerts`,
+source `park_alert`, "Park agency trail alert"; the DDOT advisories file's shape, `project` the
+agency's name as in `park_alerts.AGENCIES`): routed round, red on the map, whole days, gone after
+the last day. What is read:
+
+| Agency (`--agency`) | Page | What an item is |
+|---|---|---|
+| NOVA Parks (`nova`) | the alerts linked from `www.novaparks.com` | one alert page: its title (trail and days) and body |
+| NPS, C&O Canal (`choh`) | `nps.gov/choh/planyourvisit/conditions.htm` | one state that is not plain "Open" at one place, with its milepost, or the stretch its words name ("Miles 106 - 106.8") |
+| Anne Arundel County (`aacounty`) | `aacounty.org/recreation-parks/about-us/closings-cancellations` | one entry: badge, title, words |
+
+Not read yet (checked 2026-11-12): **Montgomery Parks** posts trail closures as news items and
+has no closures list page (its rainout-line status covers natural-surface trails only);
+**Arlington County**'s pages answer 403 to a script; **Prince George's** parks' alerts page is
+filled in the browser from Nixle. Each needs its own look before it can be watched.
+
+1. `python scripts/park_alerts.py watch` (or `--agency choh`, repeatable) prints, for each agency,
+   the items not yet in the file's `seen`, the ones naming a trail, towpath, bridge, path or detour
+   in full, then the rest one line each (read those too); `CHECK:` lines first for a guessed last
+   day within 30 days or the file not updated in 45 days (`scripts/ddot_advisories.py watch` prints
+   these as well). It exits 1 where a page could not be read or answered with no items at all
+   (its layout has likely changed: look at the page by hand).
+2. For each item that closes a way a bicycle uses, draft an entry as for Fairfax (`id`, `project`,
+   `page` the agency's page, `advisory` the alert's own page, `posted`, `road`, `on_foot`,
+   `reason`, `first_day`, `last_day`, `lines`). For the C&O, `python scripts/park_alerts.py
+   towpath FIRST [LAST]` prints the towpath's lines between the mileposts (one milepost: about 160 ft
+   either side, our default) and how much of the stretch the mile lines cover; where under 95% (the
+   mile lines have gaps, e.g. about mile 9 to 19.6), draw the rest from the OSM ways
+   (`python scripts/ddot_advisories.py lines WAY ...`). "Detour" in an NPS line usually means
+   the towpath itself is closed there; "High Water Detour" is only when the river is up: leave it
+   out (it has no dates). Work that leaves the trail open ("expect intermittent delays", "one
+   lane") stays out.
+3. Enter it as the owner's rule for these closures says (the decision is in the backlog thread
+   "Add trail and county closures"; until it is made, only what the owner confirms). Evidence is
+   the agency's words and what a rider saw, never another map. A closure that starts before the
+   next release reaches riders only through a reviewer closure (the road panel's "Mark closed",
+   an admin's), so for a short one that is the way.
+4. `python scripts/park_alerts.py watch --mark` adds every item now on the pages read to `seen`
+   and sets `updated` to today. An item whose words change is listed again.
+5. Ship the file in the next release, as for the other hand-read files.
+
+The first watch (2026-11-12) listed 2 NOVA Parks trail items (Falls Church crosswalk detours,
+Nov 17-24; the Sterling Blvd overpass, delays only), 6 C&O trail items (among them the Dam No. 5
+towpath detour, miles 106 to 106.8, and the Polly Pond bridge, mile 134.3, past the map's edge) and
+3 Anne Arundel ones (none a closure of the B&A); nothing was entered or marked read.
+
 ## Deer-management closures (v0.12.3)
 
 Rock Creek Park (NPS) and Montgomery Parks close parts of their parks at night, or for whole

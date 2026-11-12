@@ -177,7 +177,7 @@ export function mergeClosures(route: readonly ClosureItem[], area: readonly Clos
  * project's or a WSSC water main's lines: "protrack-<id>-<line>", "wssc-<id>-<line>"), as is a closure from Maryland's
  * Road Closure Reporter (v0.17.0, "sha-<closure>-<n>") or Montgomery County's copy of it (v0.27.0, "moco-<closure>-<n>").
  */
-const PIECE = /^((?:reviewer-\d+)|(?:(?:ddot_advisory|purple_line|fcpa|protrack|wssc|sha|moco)-[a-z0-9-]+))-(\d+)$/;
+const PIECE = /^((?:reviewer-\d+)|(?:(?:ddot_advisory|purple_line|fcpa|park_alert|protrack|wssc|sha|moco)-[a-z0-9-]+))-(\d+)$/;
 
 export function markerItems(items: readonly ClosureItem[]): ClosureItem[] {
   const groups = new Map<string, ClosureItem[]>();

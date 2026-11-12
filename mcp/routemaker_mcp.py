@@ -3253,6 +3253,7 @@ PIECED_SOURCES = (
     "ddot_advisory",
     "purple_line",
     "fcpa",
+    "park_alert",
     "protrack",
     "wssc",
     "sha",

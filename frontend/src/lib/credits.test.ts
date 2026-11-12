@@ -46,6 +46,8 @@ test("the credits are short source names, exactly these, OpenStreetMap first (OW
       "Maryland Road Closure Reporter (MDOT SHA)",
       // v0.27.0: Montgomery County DOT's own road closures (routemaker.md_closures, source moco).
       "Montgomery County DOT road closures",
+      // v0.27.0: NOVA Parks, NPS C&O Canal and Anne Arundel's trail alerts, read by hand (routemaker.park_alerts).
+      "Park agency trail alerts",
     ],
   );
   for (const credit of DATA) {
