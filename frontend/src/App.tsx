@@ -3,6 +3,8 @@ import type { Map as MapLibreMap } from "maplibre-gl";
 import { type Frame, type LineEdit, type StressAvailability } from "./MapView.tsx";
 import { LiveMap, LiveRiderPoint, type LiveRider } from "./app/LiveMap.tsx";
 import { liveValue } from "./lib/liveValue.ts";
+import { BikeLoopPicker } from "./BikeLoopPicker.tsx";
+import { FINISH_NAME, shapePoints } from "./lib/bikeLoop.ts";
 import { rideViewKept } from "./lib/rideViewKept.ts";
 import { RoadInfoDialog } from "./RoadInfoDialog.tsx";
 import { GoSpotDialog, type SpotRequest } from "./GoSpotDialog.tsx";
@@ -6488,9 +6490,26 @@ export function App() {
       onSay={announce}
     />
   );
+  // A bike loop from a start and a distance (lib/bikeLoop.ts; Plan only, Stephen 2026-11-12): the picked shape is one
+  // edit, so Undo takes it back to the start alone.
+  const bikeLoop =
+    mode === "plan" ? (
+      <BikeLoopPicker
+        preset={preset}
+        dials={dials}
+        points={points}
+        announce={announce}
+        onPick={(start, shape) => {
+          commit(shapePoints(start, shape, (p) => VIA_MARKS.via(p), (p) => VIA_MARKS.named(p, FINISH_NAME)));
+          // Planned at once, as an opened file is: the rider asked for a loop and picked it.
+          setRouteAsk((n) => n + 1);
+        }}
+      />
+    ) : null;
   const pointsSection = (
     <PointsSection key="points"
       {...{
+        bikeLoop,
         pointsHeadingRef, zoom, stressVisible, stress, pointsSearchRef, compactPoints, points, loopVias, geoGate,
         searchBias, pickPlace, locateReady, locating, hereInPlan, here, locateMe, loop, loopHintId, commitDials,
         dials, accessMode, namer, located: fromHere, removeAt, reorderPoint, pointWarnings, removeRefs, preset, stationChoice, chooseStation,
