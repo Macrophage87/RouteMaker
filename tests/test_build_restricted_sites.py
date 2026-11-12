@@ -126,3 +126,42 @@ def test_a_drawn_area_without_an_id_fails_the_build(tmp_path):
     )
     with pytest.raises(ValueError):
         mod.drawn_features(tmp_path)
+
+
+def test_a_cemetery_drive_or_an_untagged_footway_is_no_way_in():
+    # The campus road meets only a cemetery's drive and an untagged footway: no gate.
+    cemetery = area(
+        [(-76.86, 38.99), (-76.83, 38.99), (-76.83, 38.9995), (-76.86, 38.9995), (-76.86, 38.99)],
+        "w9",
+        "A Cemetery",
+    )
+    ways = [
+        (20, {"highway": "service"}, [(-76.86, 38.995), GATE, (-76.83, 38.995)]),
+        (21, {"highway": "footway"}, [GATE, (-76.845, 38.99)]),
+        WAYS[1],
+    ]
+    found = mod.collection(areas(cemetery=[cemetery]), ways)
+    assert by(found, "gate") == []
+    # The same drive outside any cemetery is a way in.
+    assert len(by(mod.collection(areas(), ways), "gate")) == 1
+
+
+def test_a_small_unshaded_sites_gate_is_not_its_neighbours():
+    # An armory yard under the shading floor, beside the campus, with its own gate.
+    yard = [
+        (E + 0.0002, S),
+        (E + 0.0006, S),
+        (E + 0.0006, S + 0.0004),
+        (E + 0.0002, S + 0.0004),
+        (E + 0.0002, S),
+    ]
+    ways = [
+        (30, {"highway": "secondary"}, [(E + 0.0004, S - 0.001), (E + 0.0004, S - 0.0001)]),
+        (
+            31,
+            {"highway": "service"},
+            [(E + 0.0004, S - 0.0001), (E + 0.0004, S + 0.0002), (E + 0.0004, S + 0.0003)],
+        ),
+    ]
+    found = mod.collection(areas(military=[area(yard, "w8", "Armory")]), ways)
+    assert by(found, "gate") == []

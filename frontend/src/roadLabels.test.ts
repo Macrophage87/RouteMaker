@@ -333,14 +333,15 @@ test("opening view: a busier bikeshare street with no path or protected lane wai
   assert.equal(path.filter({ zoom: 11 }, line(carFree)), true);
 });
 
-test("park names: the big parks and reserves are named, last of the base map's labels, once", async () => {
+test("park names: the big parks and reserves are named, over the neighbourhoods and under the towns, once", async () => {
   const { featureFilter } = await import("@maplibre/maplibre-gl-style-spec");
   // The owner, 2026-11-12: "Rock Creek Park isn't labeled, but the neighborhoods are."
   const layers = shipped(false);
-  const parks = layers[layers.length - 1] as Layer & { filter?: unknown; "source-layer"?: string };
-  assert.equal(parks.id, PARK_NAME_LAYER_ID);
+  const at = layers.findIndex((l) => l.id === PARK_NAME_LAYER_ID);
+  const parks = layers[at] as Layer & { filter?: unknown; "source-layer"?: string };
+  assert.equal(layers[at - 1].id, "places_subplace");
+  assert.ok(layers.findIndex((l) => l.id === "places_locality") > at, "a town's name still wins");
   assert.equal(parks["source-layer"], "pois");
-  assert.ok(layers.findIndex((l) => l.id === "places_subplace") < layers.length - 1, "over the neighbourhood names");
   const drawn = (layer: { filter?: unknown; id: string }, kind: string, minZoom: number, zoom: number) =>
     featureFilter(layer.filter as never, `layers.${layer.id}.filter`).filter({ zoom } as never, { type: 1, properties: { kind, min_zoom: minZoom } } as never);
   // Rock Creek Park (national_park, min_zoom 10) from zoom 10; a small park is left to the places layer.
@@ -353,5 +354,5 @@ test("park names: the big parks and reserves are named, last of the base map's l
   assert.ok(drawn(pois, "park", 14, 15));
   assert.equal(parks.paint?.["text-color"], PARK_NAME.color);
   const dark = withClearRoadLabels(protomapsLayers("protomaps", namedFlavor("dark"), { lang: "en" }), false, true) as Layer[];
-  assert.equal(dark.at(-1)!.paint?.["text-color"], PARK_NAME.darkColor);
+  assert.equal(dark.find((l) => l.id === PARK_NAME_LAYER_ID)!.paint?.["text-color"], PARK_NAME.darkColor);
 });

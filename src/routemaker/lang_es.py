@@ -411,8 +411,6 @@ ES: dict[str, str] = {
     "A street elevator is out at {station}: use another one.": (
         "Un ascensor de la calle está fuera de servicio en {station}: use otro."
     ),
-    # A stop or the end on a road not open to the public (core.routing.NOT_PUBLIC_NOTE; the
-    # owner's words, 2026-10-29). Drafted for a native speaker's review.
     # A trip point inside a closed site, moved to its gate (core.routing.RESTRICTED_NOTES; the
     # owner, 2026-11-12). Drafted for a native speaker's review.
     "Restricted site. Route starts at the gate.": (
@@ -420,6 +418,8 @@ ES: dict[str, str] = {
     ),
     "Restricted site. Route ends at the gate.": "Sitio restringido. La ruta termina en la entrada.",
     "Restricted site. Route goes to the gate.": "Sitio restringido. La ruta va a la entrada.",
+    # A stop or the end on a road not open to the public (core.routing.NOT_PUBLIC_NOTE; the
+    # owner's words, 2026-10-29). Drafted for a native speaker's review.
     "This end point is not typically open to the public, make sure you're authorized to go here.": (
         "Este punto final normalmente no está abierto al público; asegúrese de tener"
         " autorización para ir aquí."

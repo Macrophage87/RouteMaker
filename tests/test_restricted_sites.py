@@ -89,12 +89,19 @@ def test_the_router_moves_the_point_and_says_so():
             [[-76.9, 38.98], [-76.846, 39.002], [-76.846, 39.003]], skip=set()
         )
         assert points[0] == [-76.9, 38.98]
-        assert points[1] == GATE and points[2] == GATE
-        assert [m["index"] for m in moved] == [1, 2]
+        # Two points with one nearest gate: the second is routed as asked, not a trip of nothing.
+        assert points[1] == GATE and points[2] == [-76.846, 39.003]
+        assert [m["index"] for m in moved] == [1]
         assert moved[0]["reason"] == "restricted_gate"
         assert moved[0]["note"] == "Restricted site. Route goes to the gate."
-        assert moved[1]["note"] == "Restricted site. Route ends at the gate."
-        assert moved[1]["asked"] == [-76.846, 39.003]
+        # The end, on its own: "ends at"; on a loop the last point asked is a turnaround.
+        _points, end = routing.move_restricted_points([[-76.9, 38.98], [-76.846, 39.003]])
+        assert end[0]["note"] == "Restricted site. Route ends at the gate."
+        assert end[0]["asked"] == [-76.846, 39.003]
+        _points, turn = routing.move_restricted_points(
+            [[-76.9, 38.98], [-76.846, 39.003]], loop=True
+        )
+        assert turn[0]["note"] == "Restricted site. Route goes to the gate."
         # A ride's re-plan's start is the rider: never moved.
         _points, kept = routing.move_restricted_points(
             [[-76.846, 39.002], [-76.9, 38.98]], skip={0}

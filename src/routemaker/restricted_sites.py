@@ -3,9 +3,10 @@
 The owner, 2026-11-12, of a destination inside a secure site such as NASA Goddard, where staff
 may go but the public may not: "Is it better to just route them to the gate and they can figure
 it out themselves?", then "That works for me." The rebuild closes every road and path inside a
-military area or a secured federal compound to bicycles (`pipeline.restricted_areas`), so a
-route to a point deep inside one used to stop at whatever public road was nearest, which may be
-a fence line with no way in, and said nothing.
+military area or a secured federal compound to bicycles (`pipeline.restricted_areas`), so the
+router could not end a route on one: a route to a point deep inside stopped at whatever open
+road was nearest, which may be a fence line with no way in, and the not-public end note
+(`core.routing.NOT_PUBLIC_NOTE`), which speaks of the road a route ends on, never fired there.
 
 Now a trip point inside a site (`scripts/build_restricted_sites.py`'s file, which the map shades
 too) is moved to the site's nearest gate - where a road the rule closes meets a way open to

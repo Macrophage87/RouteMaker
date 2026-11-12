@@ -67,7 +67,7 @@ DRAWN = REPO / "fixtures" / "restricted-sites"
 # Training Center about 2).
 MIN_SHADE_M2 = 5_000.0
 LABEL_MIN_M2 = 250_000.0
-# About 5 m: the shading is a wash over the site, not its fence line.
+# About 5 m (our default): the shading is a wash over the site, not its fence line.
 SIMPLIFY_DEG = 0.00005
 # Coordinates to 6 places (about 0.1 m), as the other map files.
 PLACES = 6
@@ -120,17 +120,31 @@ def _key(point: tuple[float, float]) -> tuple[int, int]:
 
 
 def _site_of(point: tuple[float, float], sites: Sequence[tuple[str, object]]) -> str | None:
-    """The site a point is inside, or failing that the one whose box (padded about 200 m) holds
-    it: a gate often stands where the road leaves the mapped outline."""
-    for _kind, area in sites:
-        if ra._in_area(point, area):
-            return site_id(area)
-    pad = 0.002
-    for _kind, area in sites:
-        west, south, east, north = area[0]
-        if west - pad <= point[0] <= east + pad and south - pad <= point[1] <= north + pad:
-            return site_id(area)
-    return None
+    """The shaded site a point is inside, or None: the smallest that holds it, so a parcel
+    mapped inside a bigger site is its own."""
+    holding = [area for _kind, area in sites if ra._in_area(point, area)]
+    return site_id(min(holding, key=area_m2)) if holding else None
+
+
+def _middle(coords: Sequence[tuple[float, float]]) -> tuple[float, float]:
+    return coords[len(coords) // 2]
+
+
+# The other rules' areas, whose ways are no way in for the public even where their own tags say
+# nothing: a cemetery's drives (destination-only, and no cut-through: OWNER-DECISIONS 98), a
+# parking lot's aisles, a golf course's cart paths, a works site's roads.
+NOT_A_WAY_IN = (ra.CEMETERY, ra.PARKING, ra.GOLF, ra.WORKS)
+# Only these open a way to a bicycle where the way is a path (`highway` of the trail classes):
+# an untagged footway is unclear, and unclear is closed.
+PATH_OPEN = frozenset({"yes", "designated", "permissive"})
+
+
+def way_in(tags) -> bool:
+    """Whether an open way is one a rider can reach a gate by: a road its tags leave open, or a
+    path signed open to bicycles."""
+    if "highway" not in tags or not ra.open_to_bicycles(tags):
+        return False
+    return ra._road(tags) or tags.get("bicycle") in PATH_OPEN or tags.get("highway") == "cycleway"
 
 
 def gates_and_open_ways(
@@ -145,23 +159,28 @@ def gates_and_open_ways(
     )
     closed = {m.way_id for m in (*military, *secured) if m.closed}
     open_inside = {m.way_id for m in (*military, *secured) if not m.closed}
+    elsewhere: set[int] = set()
+    for kind in NOT_A_WAY_IN:
+        elsewhere |= ra.ways_inside(ways, areas.get(kind, []), lambda _tags: True)
     by_id = {osm_id: (tags, coords) for osm_id, tags, coords in ways}
     open_vertices: set[tuple[int, int]] = set()
     for osm_id, tags, coords in ways:
-        if osm_id in closed or "highway" not in tags or not ra.open_to_bicycles(tags):
+        if osm_id in closed or osm_id in elsewhere or not way_in(tags):
             continue
         open_vertices.update(_key(p) for p in coords)
     road_gates: dict[str, dict[tuple[int, int], tuple[float, float]]] = {}
     path_gates: dict[str, dict[tuple[int, int], tuple[float, float]]] = {}
     for osm_id in sorted(closed):
         tags, coords = by_id[osm_id]
+        # The site the closed way belongs to, by its middle: a way of a site left unshaded (too
+        # small, the Pentagon reservation) gives no gate to a neighbour.
+        site = _site_of(_middle(coords), sites)
+        if site is None:
+            continue
         target = road_gates if ra._road(tags) else path_gates
         for p in coords:
             k = _key(p)
-            if k not in open_vertices:
-                continue
-            site = _site_of(p, sites)
-            if site is not None:
+            if k in open_vertices:
                 target.setdefault(site, {})[k] = (p[0], p[1])
     gates: dict[str, list[tuple[float, float]]] = {}
     for _kind, area in sites:
@@ -174,8 +193,7 @@ def gates_and_open_ways(
         tags, coords = by_id[osm_id]
         if len(coords) < 2:
             continue
-        mid = coords[len(coords) // 2]
-        site = _site_of(mid, sites)
+        site = _site_of(_middle(coords), sites)
         if site is not None:
             lines.setdefault(site, []).append(list(coords))
     return gates, lines
@@ -291,12 +309,13 @@ def _round_nested(value):
     return [_round_nested(v) for v in value]
 
 
+# The read's grid (about 1 km) and its pad round each site's box (about 200 m): ours, sized so a
+# gate where a road leaves the outline is read.
 CELL = 0.01
 
 
 def site_cells(boxes: Sequence[tuple]) -> set[tuple[int, int]]:
-    """The grid cells (CELL degrees, about 1 km) the sites' boxes cover, padded as `_site_of`
-    pads them."""
+    """The grid cells (CELL degrees) the sites' boxes cover, padded about 200 m."""
     pad = 0.002
     cells: set[tuple[int, int]] = set()
     for w, s, e, n in boxes:

@@ -4513,36 +4513,42 @@ RESTRICTED_NOTES = {
 }
 
 
-def restricted_note(index: int, last: int) -> str:
-    """What the answer says of a point moved to a gate, by where the point is in the trip."""
-    which = "start" if index == 0 else "end" if index == last else "stop"
+def restricted_note(index: int, last: int, loop: bool = False) -> str:
+    """What the answer says of a point moved to a gate, by where the point is in the trip: on a
+    loop the last point asked is a turnaround, not the end."""
+    which = "start" if index == 0 else "end" if index == last and not loop else "stop"
     return t(RESTRICTED_NOTES[which])
 
 
 def move_restricted_points(
-    points: list[list[float]], skip: set[int] | frozenset[int] = frozenset()
+    points: list[list[float]],
+    skip: set[int] | frozenset[int] = frozenset(),
+    loop: bool = False,
 ) -> tuple[list[list[float]], list[dict]]:
     """A trip point inside a closed site is moved to its nearest gate (`restricted_sites.redirect`).
     `skip` are points not to move: one already moved, or a ride's re-plan's start (the rider).
-    Returns the points and, for each one moved, what the answer reports (`moved_points`)."""
+    Not moved either: a point that would land where the point before it is routed (two
+    buildings on one campus with one nearest gate), which would plan a trip of nothing; it is
+    routed as asked, as before. Returns the points and, for each one moved, what the answer
+    reports (`moved_points`)."""
     out: list[list[float]] = []
     moved: list[dict] = []
     last = len(points) - 1
     for index, point in enumerate(points):
         lon, lat = point[0], point[1]
         found = None if index in skip else restricted_sites.redirect(lon, lat)
-        if found is None:
+        gate = None if found is None else [found[1][0], found[1][1]]
+        if gate is None or (out and out[-1][:2] == gate):
             out.append(list(point))
             continue
-        _site, gate = found
-        out.append([gate[0], gate[1]])
+        out.append(gate)
         moved.append(
             {
                 "index": index,
                 "asked": [round(lon, 6), round(lat, 6)],
                 "routed": [round(gate[0], 6), round(gate[1], 6)],
                 "reason": "restricted_gate",
-                "note": restricted_note(index, last),
+                "note": restricted_note(index, last, loop),
             }
         )
     return out, moved
@@ -5517,7 +5523,7 @@ def _plan(
     # or opened, which is ridden as it is.
     if not fixed:
         skip = set(moved_indices) | ({0} if dials.ride_replan else set())
-        points, gate_moved = move_restricted_points(points, skip=skip)
+        points, gate_moved = move_restricted_points(points, skip=skip, loop=bool(dials.loop))
         if gate_moved:
             moved_points = sorted(moved_points + gate_moved, key=lambda m: m["index"])
             moved_indices |= {m["index"] for m in gate_moved}

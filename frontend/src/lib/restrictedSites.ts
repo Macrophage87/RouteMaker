@@ -30,6 +30,7 @@ export const RESTRICTED_LABEL_MIN_ZOOM = 11;
 /** The label's second line. Short, as Go and Ride text is translated. */
 export const NO_PUBLIC_ACCESS = "No public access";
 
+/** Our defaults, unmeasured: the wash, hatch and edge colours, chosen to read on both maps without hiding the base map. */
 export const RESTRICTED_STYLE = {
   light: { tint: "#6b6b78", tintOpacity: 0.12, ink: [70, 70, 85, 97] as const, edge: "#5f5f6c", text: "#33333d", halo: "#ffffff" },
   dark: { tint: "#000000", tintOpacity: 0.35, ink: [210, 210, 225, 102] as const, edge: "#a8a8bc", text: "#ececf4", halo: "#1f1f1f" },
@@ -88,6 +89,7 @@ export function restrictedLayers(dark = false, noAccess = t(NO_PUBLIC_ACCESS)): 
       layout: {
         "text-field": ["format", ["get", "name"], {}, "\n", {}, noAccess, { "font-scale": 0.82 }],
         "text-font": [MAP_LABEL_FONT],
+        // Our default: the street names' size (ROAD_LABEL.size), the second line a little smaller.
         "text-size": 15,
         "text-max-width": 12,
       },

@@ -1136,7 +1136,11 @@ export function withClearRoadLabels(layers, strong = accessibilityOn(), dark = f
     if (OTHER_LABEL_LAYER_IDS.includes(layer.id)) return clearOtherLabel(layer, dark);
     return layer;
   });
-  return pois ? [...drawn, parkNameLayer(pois.source, dark)] : drawn;
+  if (!pois) return drawn;
+  // Just over the neighbourhood names, which then give way to a park; still under the towns.
+  const at = drawn.findIndex((layer) => layer.id === "places_subplace");
+  const parks = parkNameLayer(pois.source, dark);
+  return at < 0 ? [...drawn, parks] : [...drawn.slice(0, at + 1), parks, ...drawn.slice(at + 1)];
 }
 
 /**
@@ -1145,14 +1149,15 @@ export function withClearRoadLabels(layers, strong = accessibilityOn(), dark = f
  * map's place layer (`pois`) drew only `park`, never `national_park` or `nature_reserve`, which is what Rock Creek
  * Park and Greenbelt Park are (Protomaps' kinds, min_zoom 10 and 11 on the live tiles), and it sat under the
  * neighbourhood names, which took the space first. So the parks and reserves the tiles show by zoom 12 (the big ones:
- * Protomaps sets min_zoom by size) get a layer of their own, last of the base map's labels so a neighbourhood gives
- * way to them, from the tiles' own min_zoom, a little larger, the bigger park first, and moved aside rather than
+ * Protomaps sets min_zoom by size) get a layer of their own, just over the neighbourhood names so a neighbourhood
+ * gives way to them (a town's name still wins), from the tiles' own min_zoom, a little larger, the bigger park first, and moved aside rather than
  * dropped where a trail's name or a station sits on its spot (Rock Creek Park at zoom 12.5). The `pois` layer leaves
  * them out, so a name is drawn once.
  */
 export const PARK_NAME_LAYER_ID = "park_names";
 export const PARK_NAME_KINDS = ["national_park", "nature_reserve", "park", "protected_area"];
-/** Our default: parks the tiles show by zoom 12 count as big (Protomaps' min_zoom grows as the park shrinks). */
+/** Our defaults, unmeasured: parks the tiles show by zoom 12 count as big (Protomaps' min_zoom grows as the park
+ *  shrinks); the kinds, size and greens (the base map's park green, OTHER_LABEL.poiColors) are ours too. */
 export const PARK_NAME_MAX_MIN_ZOOM = 12;
 export const PARK_NAME_FILTER = ["all", ["in", ["get", "kind"], ["literal", PARK_NAME_KINDS]], ["<=", ["get", "min_zoom"], PARK_NAME_MAX_MIN_ZOOM]];
 export const PARK_NAME = { size: ["interpolate", ["linear"], ["zoom"], 9, 14, 13, 16, 16, 17], color: "#166534", darkColor: "#86efac" };
