@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { layers as protomapsLayers, namedFlavor } from "@protomaps/basemaps";
-import { BOUNDARY_LAYER_ID, BOUNDARY_LINE, HIGHWAY_LABEL_MIN_ZOOM, OPENING_MESH_MAX_ZOOM, OTHER_LABEL, SHIELD_MIN_ZOOM, openingViewKeeps, OTHER_LABEL_LAYER_IDS, PLACE_LABEL, PLACE_LABEL_LAYER_IDS, ROAD_LABEL, ROAD_LABEL_LAYER_IDS, placeLabelPaint, TRAIL_LABEL, TRAIL_LABEL_LAYER_ID, TRAIL_LABEL_MIN_ZOOM, TRAIL_NAME_TILE_LAYER, contrastRatio, rideRoadLabelField, rideTrailLabelField, roadLabelPaint, stressFilters, trailLabelLayers, trailLabelPaint, withClearRoadLabels } from "./stressStyle.js";
+import { BOUNDARY_LAYER_ID, BOUNDARY_LINE, HIGHWAY_LABEL_MIN_ZOOM, OPENING_MESH_MAX_ZOOM, OTHER_LABEL, SHIELD_MIN_ZOOM, openingViewKeeps, OTHER_LABEL_LAYER_IDS, PLACE_LABEL, PLACE_LABEL_LAYER_IDS, ROAD_LABEL, ROAD_LABEL_LAYER_IDS, placeLabelPaint, TRAIL_LABEL, TRAIL_LABEL_LAYER_ID, TRAIL_LABEL_MIN_ZOOM, TRAIL_NAME_TILE_LAYER, contrastRatio, rideRoadLabelField, rideTrailLabelField, roadLabelPaint, stressFilters, trailLabelLayers, trailLabelPaint, withClearRoadLabels, PARK_NAME_FILTER, PARK_NAME_LAYER_ID, PARK_NAME } from "./stressStyle.js";
 import { setStressPalette } from "./lib/mapGlue.ts";
 
 type Layer = { id: string; type: string; layout?: Record<string, unknown>; paint?: Record<string, unknown> };
@@ -13,7 +13,8 @@ test("road names: both base map name layers are restyled, and only they, the pla
   // The state and county lines split the base map's boundaries layer in three (boundaryLines.test.ts).
   const split = new Set([BOUNDARY_LAYER_ID, BOUNDARY_LINE.state.id, BOUNDARY_LINE.county.id]);
   const before = (protomapsLayers("protomaps", namedFlavor("light"), { lang: "en" }) as Layer[]).filter((l) => !split.has(l.id));
-  const after = shipped(false).filter((l) => !split.has(l.id));
+  // The big parks' names are a layer of the app's own, last (stressStyle.js parkNameLayer).
+  const after = shipped(false).filter((l) => !split.has(l.id) && l.id !== PARK_NAME_LAYER_ID);
   assert.equal(after.length, before.length);
   for (const id of ROAD_LABEL_LAYER_IDS) assert.ok(before.some((l) => l.id === id), `${id} is in the base map`);
   after.forEach((layer, i) => {
@@ -26,7 +27,9 @@ test("road names: both base map name layers are restyled, and only they, the pla
       if (layer.id !== "roads_labels_major") assert.deepEqual((layer as { filter?: unknown }).filter, (before[i] as { filter?: unknown }).filter);
     } else if (OTHER_LABEL_LAYER_IDS.includes(layer.id)) {
       assert.deepEqual(layer.layout?.["text-field"], before[i].layout?.["text-field"]);
-      if (layer.id !== "roads_shields") assert.deepEqual((layer as { filter?: unknown }).filter, (before[i] as { filter?: unknown }).filter);
+      // The places leave out the big parks, which their own layer names (PARK_NAME_FILTER).
+      const filter = layer.id === "pois" ? ["all", (before[i] as { filter?: unknown }).filter ?? true, ["!", PARK_NAME_FILTER]] : (before[i] as { filter?: unknown }).filter;
+      if (layer.id !== "roads_shields") assert.deepEqual((layer as { filter?: unknown }).filter, filter);
     } else if (PLACE_LABEL_LAYER_IDS.includes(layer.id)) {
       // Only the face, size, case and spacing change: the name, placement, icon and filter are the base map's.
       const restyled = ["text-font", "text-size", "text-transform", "text-letter-spacing"];
@@ -328,4 +331,27 @@ test("opening view: a busier bikeshare street with no path or protected lane wai
   const path = featureFilter(filters["stress-1"] as never, "stress-1");
   assert.equal(path.filter({ zoom: 12 }, line(carFree)), true);
   assert.equal(path.filter({ zoom: 11 }, line(carFree)), true);
+});
+
+test("park names: the big parks and reserves are named, last of the base map's labels, once", async () => {
+  const { featureFilter } = await import("@maplibre/maplibre-gl-style-spec");
+  // The owner, 2026-11-12: "Rock Creek Park isn't labeled, but the neighborhoods are."
+  const layers = shipped(false);
+  const parks = layers[layers.length - 1] as Layer & { filter?: unknown; "source-layer"?: string };
+  assert.equal(parks.id, PARK_NAME_LAYER_ID);
+  assert.equal(parks["source-layer"], "pois");
+  assert.ok(layers.findIndex((l) => l.id === "places_subplace") < layers.length - 1, "over the neighbourhood names");
+  const drawn = (layer: { filter?: unknown; id: string }, kind: string, minZoom: number, zoom: number) =>
+    featureFilter(layer.filter as never, `layers.${layer.id}.filter`).filter({ zoom } as never, { type: 1, properties: { kind, min_zoom: minZoom } } as never);
+  // Rock Creek Park (national_park, min_zoom 10) from zoom 10; a small park is left to the places layer.
+  assert.ok(drawn(parks, "national_park", 10, 10));
+  assert.ok(!drawn(parks, "national_park", 10, 9));
+  assert.ok(drawn(parks, "nature_reserve", 11, 12));
+  assert.ok(!drawn(parks, "park", 14, 15));
+  const pois = layers.find((l) => l.id === "pois") as { filter?: unknown; id: string };
+  assert.ok(!drawn(pois, "park", 11, 13), "not named twice");
+  assert.ok(drawn(pois, "park", 14, 15));
+  assert.equal(parks.paint?.["text-color"], PARK_NAME.color);
+  const dark = withClearRoadLabels(protomapsLayers("protomaps", namedFlavor("dark"), { lang: "en" }), false, true) as Layer[];
+  assert.equal(dark.at(-1)!.paint?.["text-color"], PARK_NAME.darkColor);
 });

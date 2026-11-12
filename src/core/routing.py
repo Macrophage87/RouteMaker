@@ -111,6 +111,7 @@ from routemaker import (
     mass_route,
     mdot_aadt,
     mtbmode,
+    restricted_sites,
     ridetime,
     steep_grades,
     time_marks,
@@ -4501,6 +4502,52 @@ def move_zoo_points(points: list[list[float]]) -> tuple[list[list[float]], list[
     return out, moved
 
 
+# A trip point inside a closed site (a military area or a secured federal compound, whose roads
+# the rebuild closes to bicycles) goes to the site's nearest gate, and the answer says so (the
+# owner, 2026-11-12: "route them to the gate and they can figure it out themselves", then "That
+# works for me"; `routemaker.restricted_sites`). Short, as Ride and Go text is translated.
+RESTRICTED_NOTES = {
+    "start": "Restricted site. Route starts at the gate.",
+    "end": "Restricted site. Route ends at the gate.",
+    "stop": "Restricted site. Route goes to the gate.",
+}
+
+
+def restricted_note(index: int, last: int) -> str:
+    """What the answer says of a point moved to a gate, by where the point is in the trip."""
+    which = "start" if index == 0 else "end" if index == last else "stop"
+    return t(RESTRICTED_NOTES[which])
+
+
+def move_restricted_points(
+    points: list[list[float]], skip: set[int] | frozenset[int] = frozenset()
+) -> tuple[list[list[float]], list[dict]]:
+    """A trip point inside a closed site is moved to its nearest gate (`restricted_sites.redirect`).
+    `skip` are points not to move: one already moved, or a ride's re-plan's start (the rider).
+    Returns the points and, for each one moved, what the answer reports (`moved_points`)."""
+    out: list[list[float]] = []
+    moved: list[dict] = []
+    last = len(points) - 1
+    for index, point in enumerate(points):
+        lon, lat = point[0], point[1]
+        found = None if index in skip else restricted_sites.redirect(lon, lat)
+        if found is None:
+            out.append(list(point))
+            continue
+        _site, gate = found
+        out.append([gate[0], gate[1]])
+        moved.append(
+            {
+                "index": index,
+                "asked": [round(lon, 6), round(lat, 6)],
+                "routed": [round(gate[0], 6), round(gate[1], 6)],
+                "reason": "restricted_gate",
+                "note": restricted_note(index, last),
+            }
+        )
+    return out, moved
+
+
 # A stop or the end on a road not open to the public (the owner, 2026-10-29: "It would only be
 # routed to if there's a destination that would use those roads. Basically when you set a
 # destination: This end point is not typically open to the public, make sure you're authorized
@@ -5465,6 +5512,15 @@ def _plan(
             moved_indices |= {m["index"] for m in rail_moved}
         if dials.mass_rails:
             rail_lines = mass_rails.lines_near(points)
+    # A point inside a closed site goes to its gate (`move_restricted_points`). Not a ride's
+    # re-plan's start, which is the rider, nor a point already moved, nor a line the rider drew
+    # or opened, which is ridden as it is.
+    if not fixed:
+        skip = set(moved_indices) | ({0} if dials.ride_replan else set())
+        points, gate_moved = move_restricted_points(points, skip=skip)
+        if gate_moved:
+            moved_points = sorted(moved_points + gate_moved, key=lambda m: m["index"])
+            moved_indices |= {m["index"] for m in gate_moved}
     # A loop is planned through its start again (OWNER-DECISIONS 266); a followed line is
     # already the whole ride.
     loop = not fixed and loop_wanted(points, dials.loop, preset_name)
