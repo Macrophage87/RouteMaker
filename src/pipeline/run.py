@@ -4328,7 +4328,8 @@ def build_handlers(
             ended_reversible_streets=frozenset(_setting("MASS_RIDE_DC_ENDED_REVERSIBLE_STREETS")),
         )
         rows: list[dict] = []
-        # The road network a phone searches with no signal (`pipeline.offline_network`), streamed in batches.
+        # The road network a phone searches with no signal (`pipeline.offline_network`), streamed in
+        # batches.
         offline_ways = writers.OfflineWayWriter(context.staging_schema)
         # An unnamed cycleway or path beside a named street is that street's bike lane
         # (v0.7.0 "Go riding fixes" item 4), or the path or sidewalk beside it where

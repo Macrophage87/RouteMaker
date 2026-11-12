@@ -364,8 +364,10 @@ def _json_list(values: Iterable[str]) -> str:
 
 
 class OfflineWayWriter:
-    """Streams `pipeline.offline_network.OfflineWay`s into `{schema}.offline_way` in batches, so the rebuild never
-    holds the region's ways twice (off-grid riding, 2026-11-12). `add` each, then `close`; returns the rows written."""
+    """Streams `pipeline.offline_network.OfflineWay`s into `{schema}.offline_way` in batches, so the
+    rebuild never
+    holds the region's ways twice (off-grid riding, 2026-11-12). `add` each, then `close`;
+    returns the rows written."""
 
     BATCH = 5000
 
@@ -391,7 +393,9 @@ class OfflineWayWriter:
                     (
                         way.osm_id,
                         list(way.node_ids),
-                        "LINESTRING(" + ",".join(f"{lon} {lat}" for lon, lat in way.coordinates) + ")",
+                        "LINESTRING("
+                        + ",".join(f"{lon} {lat}" for lon, lat in way.coordinates)
+                        + ")",
                         way.level2,
                         way.flags,
                         way.direction,

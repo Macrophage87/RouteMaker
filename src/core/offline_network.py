@@ -1,8 +1,11 @@
-"""The road network around a route, for the phone to search with no signal (off-grid riding; Stephen, 2026-11-12:
+"""The road network around a route, for the phone to search with no signal (off-grid riding;
+Stephen, 2026-11-12:
 "the one mile would be a default, with a whole region pack an optional download").
 
-Reads the live `offline_way` table (`pipeline.offline_network`), takes the ways within `CORRIDOR_M` of the route's
-line, cuts them at the junctions among them, and answers in the format frontend lib/offlineRouter.ts reads (v1).
+Reads the live `offline_way` table (`pipeline.offline_network`), takes the ways within
+`CORRIDOR_M` of the route's
+line, cuts them at the junctions among them, and answers in the format frontend
+lib/offlineRouter.ts reads (v1).
 Map data for an area: nothing about the rider is kept or logged.
 """
 
@@ -14,20 +17,22 @@ from django.conf import settings
 from django.db import connection
 
 from pipeline.offline_network import AVOID_LEVEL2, OfflineWay, split_edges
+from pipeline.schema import validate_schema_name
 from routemaker import calm
 
 from . import presets
-from pipeline.schema import validate_schema_name
 
 VERSION = 1
 # Coordinates as whole millionths of a degree (lib/offlineRouter.ts GRAPH_DEG).
 SCALE = 1_000_000
 # About a mile either side of the line (Stephen, 2026-11-12: "the one mile would be a default").
 CORRIDOR_M = 1609
-# At most this many ways in one answer, nearest the line first, so a long ride through the city stays a download of a
+# At most this many ways in one answer, nearest the line first, so a long ride through the city
+# stays a download of a
 # few MB at most. Our default, unmeasured.
 MAX_WAYS = 40_000
-# The line is simplified to about this (degrees, ~30 ft) before the search, so a long route's thousands of points do
+# The line is simplified to about this (degrees, ~30 ft) before the search, so a long route's
+# thousands of points do
 # not slow the corridor query; a mile's width hides the difference.
 SIMPLIFY_DEG = 0.0003
 # At most this many points of the route's line are read from a request.
@@ -44,17 +49,21 @@ def _table(schema: str) -> bool:
         return bool(cursor.fetchone()[0])
 
 
-def corridor_ways(line: Sequence[tuple[float, float]], width_m: float = CORRIDOR_M) -> list[OfflineWay]:
+def corridor_ways(
+    line: Sequence[tuple[float, float]], width_m: float = CORRIDOR_M
+) -> list[OfflineWay]:
     """The ways within `width_m` of the line, nearest first, at most MAX_WAYS."""
     schema = validate_schema_name(settings.SEGMENT_SCHEMA_LIVE)
     if not _table(schema):
         raise NotBuilt
     wkt = "LINESTRING(" + ",".join(f"{lon} {lat}" for lon, lat in line) + ")"
-    # A box first (degrees: a mile is under 0.03 degrees of longitude here), then the true distance in metres.
+    # A box first (degrees: a mile is under 0.03 degrees of longitude here), then the true distance
+    # in metres.
     pad = width_m / 111_195 / 0.75
     query = f"""
         WITH route AS (SELECT ST_Simplify(ST_GeomFromText(%s, 4326), %s) AS g)
-        SELECT w.osm_way_id, w.node_ids, ST_AsText(w.geometry), w.level2, w.flags, w.direction, w.name
+        SELECT w.osm_way_id, w.node_ids, ST_AsText(w.geometry), w.level2, w.flags, w.direction,
+        w.name
         FROM {schema}.offline_way AS w, route
         WHERE w.geometry && ST_Expand(route.g, %s)
           AND ST_DWithin(w.geometry::geography, route.g::geography, %s)
@@ -84,7 +93,7 @@ def _points(wkt: str) -> tuple[tuple[float, float], ...]:
 
 
 def graph_of(ways: Sequence[OfflineWay]) -> dict:
-    """The network as lib/offlineRouter.ts reads it (v1): nodes, edges in groups of six, shapes and names."""
+    """The network as lib/offlineRouter.ts reads it (v1): nodes, edges of six, shapes, names."""
     edges = split_edges(ways)
     index: dict[int, int] = {}
     nodes: list[int] = []
@@ -112,20 +121,30 @@ def graph_of(ways: Sequence[OfflineWay]) -> dict:
             name = -1
         flat.extend((a, b, round(edge.length_m, 1), edge.level2, edge.flags, name))
         inner = edge.coordinates[1:-1]
-        shapes.append([v for lon, lat in inner for v in (round(lon * SCALE), round(lat * SCALE))] if inner else 0)
+        shapes.append(
+            [v for lon, lat in inner for v in (round(lon * SCALE), round(lat * SCALE))]
+            if inner
+            else 0
+        )
     return {"v": VERSION, "nodes": nodes, "edges": flat, "shapes": shapes, "names": names}
 
 
 def corridor_graph(line: Sequence[tuple[float, float]], width_m: float = CORRIDOR_M) -> dict:
-    """The network within `width_m` of the line. Raises NotBuilt before the first rebuild that writes it."""
+    """The network within `width_m` of the line. NotBuilt before a rebuild has written it."""
     return graph_of(corridor_ways(line[:MAX_LINE_POINTS], width_m))
 
 
-def level_factors(preset_name: str, stress: int | None = None, carrying: str | None = None) -> list[float]:
-    """By stress level times 2 (index 2 to 10; 0 and 1 unused), the multiple of a stretch's riding time the phone's
-    search charges for it: the ride's own calm metres per metre (`routemaker.calm.multiplier`), the figure the route
-    ranking and the rolling chart price each level at for this ride type and stress slider, so the offline way back
-    prefers the levels the server's plan would. Facility classes are left out (the network does not carry them)."""
+def level_factors(
+    preset_name: str, stress: int | None = None, carrying: str | None = None
+) -> list[float]:
+    """By stress level times 2 (index 2 to 10; 0 and 1 unused), the multiple of a stretch's riding
+    time the phone's
+    search charges for it: the ride's own calm metres per metre (`routemaker.calm.multiplier`),
+    the figure the route
+    ranking and the rolling chart price each level at for this ride type and stress slider, so
+    the offline way back
+    prefers the levels the server's plan would. Facility classes are left out (the network does
+    not carry them)."""
     if preset_name not in presets.PRESETS:
         preset_name = "default"
     dial = presets.stress_start(preset_name, carrying) if stress is None else int(stress)
@@ -142,7 +161,8 @@ def level_factors(preset_name: str, stress: int | None = None, carrying: str | N
         half = level2 != AVOID_LEVEL2 and level2 % 2 == 1
         value = calm.multiplier(tier, None, pricing, half)
         factors.append(round(max(value or 1.0, 1.0), 3))
-    # Avoid costs at least twice LTS 4 offline: the server charges its entry on top of the level (the alley mark and
+    # Avoid costs at least twice LTS 4 offline: the server charges its entry on top of the level
+    # (the alley mark and
     # `quiet_cost_s`), which the network does not carry. Our default, unmeasured.
     factors[AVOID_LEVEL2] = max(factors[AVOID_LEVEL2], round(2 * factors[8], 3))
     return factors

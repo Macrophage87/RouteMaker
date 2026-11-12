@@ -1,4 +1,4 @@
-"""The road network a phone searches with no signal (pipeline.offline_network; off-grid riding, 2026-11-12)."""
+"""The road network a phone searches with no signal (pipeline.offline_network, 2026-11-12)."""
 
 from __future__ import annotations
 

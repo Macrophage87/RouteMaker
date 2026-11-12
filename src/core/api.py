@@ -3806,30 +3806,46 @@ class OfflineNetworkIn(Schema):
         max_length=offline_network.MAX_LINE_POINTS,
         description="The route's line, [lon, lat] pairs, as the route answer gave it.",
     )
-    preset: str = Field(default="default", max_length=40, description="The ride type, for the levels' prices.")
-    stress: int | None = Field(default=None, ge=0, le=100, description="The stress slider; none: the ride type's own.")
-    carrying: str | None = Field(default=None, max_length=20, description="Cargo Bike's load, as the route was asked.")
+    preset: str = Field(
+        default="default", max_length=40, description="The ride type, for the levels' prices."
+    )
+    stress: int | None = Field(
+        default=None, ge=0, le=100, description="The stress slider; none: the ride type's own."
+    )
+    carrying: str | None = Field(
+        default=None, max_length=20, description="Cargo Bike's load, as the route was asked."
+    )
+
+    @field_validator("line")
+    @classmethod
+    def line_inside_coverage(cls, line: list[tuple[float, float]]) -> list[tuple[float, float]]:
+        west, south, east, north = settings.COVERAGE_BBOX
+        for lon, lat in line:
+            if not (west <= lon <= east and south <= lat <= north):
+                raise ValueError("the line must be inside the area this map covers")
+        return line
 
 
 @api.post(
     "/offline/network",
     response={200: dict, 400: ErrorOut, 429: ErrorOut, 500: ErrorOut, 503: ErrorOut},
-    summary="The road network within a mile of a route, for re-routing on the phone with no signal",
+    summary="The road network within a mile of a route, for re-routing on the phone offline",
     description=(
-        "Every way a bicycle may ride within about a mile of the line, cut at its junctions, with its stress level,"
-        " one-way, walk and unpaved flags and name (format v1, frontend lib/offlineRouter.ts). Map data for an area:"
-        " the line is not kept. 503 `not_built` until the first map rebuild that writes it."
+        "Every way a bicycle may ride within about a mile of the line, cut at its junctions,"
+        " with its stress level, one-way, walk and unpaved flags and name (format v1,"
+        " frontend lib/offlineRouter.ts), and `level_factor`, the ride type's price of each"
+        " level. Map data for an area: the line is not kept. 503 `not_built` until the first"
+        " map rebuild that writes it."
     ),
 )
-@decorate_view(ratelimit.rate_limited(ratelimit.OFFLINE_NETWORK), same_site_only, json_body_only, errors_as_json)
+@decorate_view(ratelimit.rate_limited(ratelimit.OFFLINE_NETWORK), json_body_only, errors_as_json)
 def offline_network_view(request, body: OfflineNetworkIn):
-    if not all(inside_coverage(lon, lat) for lon, lat in body.line[:: max(1, len(body.line) // 50)]):
-        return Status(400, {"error": "The line must be inside the map's area."})
     try:
         graph = offline_network.corridor_graph(body.line)
-        return {**graph, "level_factor": offline_network.level_factors(body.preset, body.stress, body.carrying)}
     except offline_network.NotBuilt:
         return Status(503, {"error": "not_built"})
+    factors = offline_network.level_factors(body.preset, body.stress, body.carrying)
+    return {**graph, "level_factor": factors}
 
 
 # --- Go's "More direct" and "Calmer" (the owner, 2026-10-16) --------------------------------
