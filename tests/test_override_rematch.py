@@ -558,6 +558,7 @@ def test_every_row_of_every_override_file_carries_a_valid_fingerprint() -> None:
         + 175  # Arlington Bike Comfort Index review (the owner, 2026-11-03)
         + 671  # Baltimore City rating review (the owner, 2026-11-04)
         + 9  # North Bethesda bike lanes, replacing the 9 rows it retires (the owner, 2026-11-10)
+        + 1  # Whip-poor-will Way, Patuxent Research Refuge (the owner, 2026-11-12)
     )
     for name, document in documents.items():
         if name == "2026-10-06-owner-crosswalk-links.json":
@@ -575,8 +576,8 @@ def test_the_override_counts_the_owner_asked_about() -> None:
     # reopenings (437.6, 437a-c) and Pentagon Connector Road's 25 (438.2), and the
     # crosswalk links' 4 (442), and the Redland Road sidewalk link's 1 (the owner, 2026-10-21),
     # and the 3rd Avenue dirt path's 1 (the owner, 2026-10-27), and the Glenmont path's 1
-    # (the owner, 2026-10-28).
-    assert kinds.count("access") == 232 + 10 + 55 + 25 + 4 + 1 + 1 + 1
+    # (the owner, 2026-10-28), and Whip-poor-will Way's 1 (the owner, 2026-11-12).
+    assert kinds.count("access") == 232 + 10 + 55 + 25 + 4 + 1 + 1 + 1 + 1
     # 1,551 stress rows, decision 282a turned one into three, and Dupont's 10 (416).
     # Less the 5 South Capitol (432) and 23 Veirs Mill (433) rows retired; 433's two
     # access rows were replaced, not removed. Saint Elizabeths Rd SE's 2 Avoid rows
@@ -700,6 +701,7 @@ def test_the_fixture_fingerprints_load_by_kind_and_way() -> None:
         # that already had a 2026-11-01 Maryland review row, which the file retires
         + 222842  # own picks (the owner, 2026-11-09): MD 135417, VA 81047 (2 ways not in the
         # 2026-11-02 extract stay by id), WV 6378
+        + 1  # Whip-poor-will Way, Patuxent Research Refuge (the owner, 2026-11-12)
     )
     assert ("access", 50426889) in found and ("stress", 1562097556) in found
 
