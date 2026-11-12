@@ -169,6 +169,7 @@ export function PlaceSearch({
   onFocusBox,
   savedFor,
   typed,
+  onTyped,
 }: {
   /**
    * "plan": the Points search, with Start / Destination / Stop. "go" (UI-CLEANUP): Go's one Where to? box,
@@ -209,6 +210,8 @@ export function PlaceSearch({
   savedFor?: (query: string) => SavedHits;
   /** Words put in the box from outside (a shared address with no map point: app/sharedLaunch.ts), searched at once; `n` tells one put apart from the last. */
   typed?: { text: string; n: number } | null;
+  /** `typed` was put in: the owner drops it, so a box made again later does not put it in again. */
+  onTyped?: () => void;
 }) {
   const id = useId();
   const single = variant !== "plan";
@@ -266,6 +269,7 @@ export function PlaceSearch({
     setQuery(typed.text);
     setOpen(true);
     runner.current?.request(typed.text);
+    onTyped?.();
     // Only a new `n` puts the words in again.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [typedN]);

@@ -4,7 +4,7 @@ import type { RouteResponse } from "./lib/api.ts";
 import type { LonLat } from "./lib/geo.ts";
 import { writeGpx } from "./lib/gpx.ts";
 import { REFINE_ROUNDS, nextFitStep, prunedCount, startFit, type Fit, type ImportedPlan } from "./lib/gpxPlan.ts";
-import { gpxAccept, gpxWorker, importGpx } from "./lib/gpxImport.ts";
+import { OPENS_WHAT, gpxAccept, gpxWorker, importGpx } from "./lib/gpxImport.ts";
 import {
   againstTrafficNotice,
   elevationsAlong,
@@ -697,7 +697,7 @@ export function GpxPanel(props: Props) {
         {reading.kind === "reading" && <p className="loading">{t("Reading {name}…", { name: reading.name })}</p>}
         {reading.kind === "error" && (
           <p className="notice gpx-error">
-            <strong>{t("Can't open that file.")}</strong> {reading.message}
+            <strong>{t("Can't open that file.")}</strong> {reading.message.replace(OPENS_WHAT, t(OPENS_WHAT))}
           </p>
         )}
         {reading.kind === "idle" && imported && (

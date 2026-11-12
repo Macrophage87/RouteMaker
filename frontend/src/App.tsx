@@ -7442,6 +7442,7 @@ export function App() {
                   onTopPlace={goEarlyToPlace}
                   onWhereToFocus={goWarmFix}
                   whereToTyped={whereToTyped}
+                  onWhereToTyped={() => setWhereToTyped(null)}
                   places={{
                     homeReady: myGo.home !== null,
                     home: myGo.home,

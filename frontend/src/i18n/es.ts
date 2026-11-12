@@ -1241,6 +1241,7 @@ export const ES: Readonly<Record<string, string>> = {
   "Federal land:": "Terreno federal:",
   "File type": "Tipo de archivo",
   "Other file types": "Otros tipos de archivo",
+  "RouteMaker opens GPX files (.gpx), such as a route or ride exported from another app.": "RouteMaker abre archivos GPX (.gpx), como una ruta o un recorrido exportado desde otra aplicación.",
   // ---- A bikeshare dock's counts (lib/bikeshareDocks.ts dockCounts) ----
   "Closed": "Cerrada",
   "Counts unknown": "Cantidades desconocidas",

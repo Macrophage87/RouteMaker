@@ -22,6 +22,11 @@ test("a GPX file is read into a plan; anything else is a sentence, not an except
 test("a file that is not GPX at all is told what RouteMaker opens (backlog 2026-11-12)", async () => {
   const kml = await readGpx(new Blob(["<kml/>"]));
   assert.ok(!kml.ok && kml.message.endsWith(OPENS_WHAT), !kml.ok ? kml.message : "");
+  // Not XML at all: a PDF, a FIT file, a picture.
+  for (const bytes of ["%PDF-1.7\n1 0 obj", "\u000e\u0010.FIT binary", "{\"type\": \"FeatureCollection\"}"]) {
+    const other = await readGpx(new Blob([bytes]));
+    assert.ok(!other.ok && other.message.endsWith(OPENS_WHAT), !other.ok ? other.message : "");
+  }
 });
 
 test("a file over 20 MB is refused before it is read", async () => {

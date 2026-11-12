@@ -22,7 +22,7 @@ import { formatDistance } from "./format.ts";
 import type { LonLat } from "./geo.ts";
 import { encodePlan } from "./planHash.ts";
 import { VIA_MARKS, viaIndices } from "./pointKinds.ts";
-import { presetSaid, type PresetId } from "./presets.ts";
+import { PRESET_ALIASES, presetSaid, type PresetId } from "./presets.ts";
 import type { ClosureAlert } from "./closureReview.ts";
 import { csrfFromCookie } from "./stressEditor.ts";
 
@@ -279,7 +279,9 @@ export function countLine(n: number, max = MAX_SAVED): string {
 export function rowDetails(route: Pick<SavedSummary, "distance_m" | "created_at" | "source" | "fixed"> & { preset?: string }): string {
   const date = new Date(route.created_at);
   const when = Number.isNaN(date.getTime()) ? "" : ` · ${t("Saved {date}", { date: date.toLocaleDateString(locale(), { month: "short", day: "numeric", year: "numeric" }) })}`;
-  const ride = route.source !== "gpx" && route.preset ? ` · ${presetSaid(route.preset as PresetId)}` : "";
+  // A ride type saved under an older name (Riding with kids) is named as it is called now.
+  const preset = route.preset ? (PRESET_ALIASES[route.preset] ?? route.preset) : "";
+  const ride = route.source !== "gpx" && preset ? ` · ${presetSaid(preset as PresetId)}` : "";
   const kind = `${ride}${route.source === "gpx" ? " · GPX file" : ""}${route.fixed ? ` · ${t("Fixed")}` : ""}`;
   return `${formatDistance(route.distance_m)}${kind}${when}`;
 }

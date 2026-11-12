@@ -145,7 +145,9 @@ test("the search box reads a pasted link before it is cut, and the app opens a s
   // An address with no map point goes into Where to? and is searched (backlog 2026-11-12), not "type it".
   assert.match(app, /setWhereToTyped\(\(last\) => \(\{ text: query, n: \(last\?\.n \?\? 0\) \+ 1 \}\)\)/);
   assert.match(app, /whereToTyped=\{whereToTyped\}/);
-  assert.match(readFileSync(new URL("../app/Go.tsx", import.meta.url), "utf8"), /typed=\{whereToTyped\}/);
+  assert.match(readFileSync(new URL("../app/Go.tsx", import.meta.url), "utf8"), /typed=\{whereToTyped\} onTyped=\{onWhereToTyped\}/);
+  // Put in once: dropped after, so Go opened again later does not search the old words again (review, 2026-11-12).
+  assert.match(app, /onWhereToTyped=\{\(\) => setWhereToTyped\(null\)\}/);
 });
 
 test("latitude and longitude in degrees, minutes and seconds, as GPS units and map apps write them (2026-10-31)", () => {

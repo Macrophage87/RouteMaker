@@ -127,7 +127,8 @@ test("what is not well-formed GPX 1.0 or 1.1 is refused", () => {
     [doc("<trk><name>a &nbsp; b</name></trk>"), "malformed"],
     [doc('<trk><trkseg><trkpt lat="38.9" lon="-77"'), "malformed"],
     ["", "not-gpx"],
-    ["just text", "malformed"],
+    // Text before any element is not XML at all, so not GPX (a PDF, a FIT file; backlog 2026-11-12).
+    ["just text", "not-gpx"],
   ];
   for (const [text, code] of refused) {
     assert.throws(() => parseGpx(text), (e: unknown) => e instanceof GpxError && e.code === code, text);
