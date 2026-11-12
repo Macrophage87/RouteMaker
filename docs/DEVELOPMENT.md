@@ -6565,7 +6565,7 @@ stress page's cost table.
 | Descent that costs | over 3% | a child brakes with small hands; Cargo Bike's figure |
 | Living streets | 1.0 (fully preferred) | as Trailmaxxing |
 | Bicycle type, gates, surface | Hybrid; Valhalla's 30 s a gate; surface 0.25 | as Default |
-| Turn penalty | Default's 5 s (Valhalla's own) | item 254 suggests a higher one for groups and young riders; that is FOLLOWUP-TURN-LOAD's to decide |
+| Turn penalty | Default's 15 s (`presets.CALM_MANEUVER_PENALTY_S`, every setting since 2026-11-12) | as Default; item 254's higher charge for groups stays Group Ride's 30 s |
 | Long trips | no calm search past 19 mi (30 km) of straight line (`refine.REFINE_MAX_SPAN_M`) | as every ride but Trailmaxxing, which plans those leg by leg (`long_calm`); a ride with children that long is rare |
 
 At the top of the slider the ceiling is Default's: 1.6 times the router's own route, and at
