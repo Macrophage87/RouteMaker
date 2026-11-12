@@ -735,7 +735,7 @@ in the database still names it: delete that row in the admin when loading the fi
   row. (1) The own-picks raised uncounted residential streets half a step (2 to 2.5), or from
   below 2 to 2, wherever jobs within half a mile reached 5,000 a square mile (our default, never
   measured), so whole side-street grids near Ballston, Bethesda or Silver Spring read busier than
-  they are. The owner, 2026-11-12: "Drop the bump, through streets checked": 9,299 of those
+  they are. The owner, 2026-11-12: "Drop the bump, through streets checked": 9,308 of those
   streets go back to the level without the bump; 32 through streets linking two main roads were
   checked on the web and in dated Mapillary photos, and 12 that carry more (buses, shops, a
   campus) keep the raised level, with that evidence in the Why line. (2) Arlington: every
