@@ -2156,4 +2156,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "emoji signs": "이모지 표시",
   "Road closed ahead": "앞쪽 도로 통제",
   "Road closed ahead, {distance}: {name}": "앞쪽 도로 통제, {distance}: {name}",
+  // ---- The closed sites' map label (lib/restrictedSites.ts) ----
+  "No public access": "일반인 출입 금지",
 };

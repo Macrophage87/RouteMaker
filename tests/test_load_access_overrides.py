@@ -536,6 +536,8 @@ class TestTheCommand:
             def __init__(self, osm_id: int) -> None:
                 self.osm_id = osm_id
                 self.tags = {"highway": "trunk", "bicycle": "no", "foot": "no"}
+                self.coordinates = ()
+                self.node_ids = ()
 
         load(str(OWNER_FILE), "--actor", str(admin.discord_user_id), "--confirm")
         context = RebuildContext(

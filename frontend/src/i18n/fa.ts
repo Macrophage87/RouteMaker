@@ -2156,4 +2156,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "emoji signs": "نشانه‌های ایموجی",
   "Road closed ahead": "جاده جلوتر بسته است",
   "Road closed ahead, {distance}: {name}": "جاده جلوتر بسته است، {distance}: {name}",
+  // ---- The closed sites' map label (lib/restrictedSites.ts) ----
+  "No public access": "ورود عموم ممنوع",
 };

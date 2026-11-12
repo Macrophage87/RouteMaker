@@ -2156,4 +2156,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "emoji signs": "siy emoji",
   "Road closed ahead": "Wout fèmen pi devan",
   "Road closed ahead, {distance}: {name}": "Wout fèmen pi devan, {distance}: {name}",
+  // ---- The closed sites' map label (lib/restrictedSites.ts) ----
+  "No public access": "Piblik pa ka antre",
 };
