@@ -3006,6 +3006,44 @@ if (mine()) {
   const speech = await p.eval("window.__speech.slice()");
   check("ride: the voice says the same cues", speech.some((t) => /^In .*left onto R Street Northwest/.test(t)) && speech.includes("Left now onto R Street Northwest."), JSON.stringify(speech));
   await p.shot(`${SHOTS}/ride_cue.png`);
+
+  // A closure that comes up ahead during the ride (SuddenClosureDialog; the v0.26.0 accessibility review): a modal
+  // named by the closure, the focus on Reroute around it, 44 px buttons, the ride's cues still heard while it is open
+  // (the modal makes the ride's own regions inert), Escape as Keep going, and the focus back where it was. The watch
+  // runs each minute; coming back to the page runs it at once, so a visibilitychange stands in for the minute. Its
+  // first answer only marks what is on the route already; the next, with a new stamp, brings the closure.
+  p.closureStamp = "s0";
+  p.closureCheck = { closures: [] };
+  await p.eval("document.dispatchEvent(new Event('visibilitychange')); true");
+  for (let i = 0; i < 40 && p.closureChecks < 1; i += 1) await sleep(100);
+  await sleep(300);
+  p.closureStamp = "s1";
+  p.closureCheck = { closures: [{ id: "alertdc:police:1", kind: "closed", road: "P St NW", from_m: 1200, to_m: 1500, end: null, source: "AlertDC", text: "", title: "Police activity: streets closed near 15th St & P St NW" }] };
+  const spokenBefore = (await p.eval("window.__speech.length")) | 0;
+  await p.eval("document.dispatchEvent(new Event('visibilitychange')); true");
+  const opened = await p.waitFor("!!document.querySelector('dialog.sudden-closure-dialog[open]')", 8000);
+  const sudden = await axNode(p, "dialog.sudden-closure-dialog");
+  const inDialog = await p.eval(`(() => { const d = document.querySelector('dialog.sudden-closure-dialog'); const b = [...d.querySelectorAll('.closure-choices button')].map((e) => ({ text: e.textContent.trim(), h: Math.round(e.getBoundingClientRect().height) })); return { focus: document.activeElement?.textContent?.trim(), inside: d.contains(document.activeElement), buttons: b, regions: d.querySelectorAll('[role=status], [role=alert]').length, alerts: window.__heard.filter((t) => t.startsWith('!Road closed ahead')).length, spoken: window.__speech.slice(${spokenBefore}) }; })()`);
+  check("ride: a closure come up ahead opens a modal dialog named by it, the focus on Reroute around it",
+    opened && sudden?.role === "dialog" && /^Road closed ahead · /.test(sudden?.name ?? "") && inDialog.inside && inDialog.focus === "Reroute around it", JSON.stringify({ sudden, inDialog }));
+  check("ride: the closure dialog's two buttons are at least 44 px tall", inDialog.buttons.length === 2 && inDialog.buttons.every((b) => b.h >= 44), JSON.stringify(inDialog.buttons));
+  check("ride: the closure is said once: aloud by the voice, and by the dialog's name, with no alert as well",
+    inDialog.alerts === 0 && inDialog.spoken.some((t) => /^Road closed ahead, .*: Police activity: streets closed near 15th St & P St NW$/.test(t)), JSON.stringify(inDialog));
+  // A cue while it is open: Where am I? is out of reach behind the modal, so a fix along the line moves the ride on.
+  const heardBefore = await p.eval("window.__heard.length");
+  await p.eval("(() => { window.__dialogHeard = []; const d = document.querySelector('dialog.sudden-closure-dialog'); new MutationObserver(() => { for (const e of d.querySelectorAll('[role=status], [role=alert]')) { const t = e.textContent.trim(); if (t && !window.__dialogHeard.includes(t)) window.__dialogHeard.push(t); } }).observe(d, { subtree: true, childList: true, characterData: true }); return true; })()");
+  for (let i = 0; i <= 6; i += 1) await goTo(lerp(RIDE_COORDS[10], RIDE_COORDS[11], i / 6));
+  const whileOpen = await p.eval(`({ open: !!document.querySelector('dialog.sudden-closure-dialog[open]'), dialogHeard: window.__dialogHeard.slice(), heard: window.__heard.slice(${heardBefore}) })`);
+  check("ride: with the closure dialog open, the ride's cues are still heard, from live regions inside the dialog",
+    inDialog.regions >= 1 && whileOpen.dialogHeard.length >= 1, JSON.stringify({ regions: inDialog.regions, whileOpen }));
+  await p.s("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 });
+  await p.s("Input.dispatchKeyEvent", { type: "keyUp", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 });
+  await sleep(400);
+  const kept = await p.eval("({ open: !!document.querySelector('dialog.sudden-closure-dialog[open]'), focus: document.activeElement?.id })");
+  check("ride: Escape is Keep going: the dialog closes, the route is kept, and the focus is back where it was",
+    !kept.open && kept.focus === "ride-heading", JSON.stringify(kept));
+  p.closureStamp = null;
+  p.closureCheck = null;
   // Track-up (the default), the rider sits about two thirds of the way down the map, more of the road ahead
   // showing, and the marker is a little larger (v0.9.0, the owner, 2026-10-17).
   await sleep(600);

@@ -10492,6 +10492,26 @@ summary.closure-notices-heading {
   flex: 1 1 100%;
 }
 
+/* Add a stop and the bike rack offer side by side under the route card (Stephen 2026-11-12); a field opened under
+   Add a stop takes the whole row, and a long rack line wraps beside it. */
+.go-stop-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin-bottom: 8px;
+}
+
+.go-stop-row > .go-add-stop {
+  display: contents;
+}
+
+.go-stop-row > .go-end-rack {
+  flex: 1 1 10rem;
+  width: auto;
+  margin: 0;
+}
+
 .go-add-stop-field[hidden] {
   display: none;
 }
@@ -10822,6 +10842,8 @@ summary.closure-notices-heading {
 }
 .load-route-dialog .closure-choices button,
 .ride-settings-dialog .closure-choices button,
+.start-first-dialog .closure-choices button,
+.sudden-closure-dialog .closure-choices button,
 .resume-ride-dialog .closure-choices button,
 .same-ride-dialog .closure-choices button {
   min-height: 44px;
@@ -11347,4 +11369,20 @@ button.route-note:focus-visible {
   width: auto;
   height: auto;
   font-size: 14px;
+}
+
+/* Go's transit trip on one screen (Stephen 2026-11-12): the chosen trip's legs as one strip, then the next departure;
+   the steps and the other trips each behind a fold, tall enough to tap. */
+.transit-go .transit-legs {
+  margin: 4px 0;
+  font-weight: 600;
+}
+
+.transit-go > details > summary {
+  /* 44 px, padded rather than flex, so it keeps its triangle (as .route-credit-fold's). */
+  box-sizing: border-box;
+  min-height: 44px;
+  padding-block: 10px;
+  font-weight: 600;
+  cursor: pointer;
 }

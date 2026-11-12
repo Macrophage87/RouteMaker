@@ -2169,4 +2169,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "That road can't be looked up right now. Try again shortly.": "Nou pa ka chèche wout sa a kounye a. Eseye ankò talè.",
   "Looking up the road…": "N ap chèche wout la…",
   "Sending…": "N ap voye…",
+  // ---- The closed sites' map label (lib/restrictedSites.ts) ----
+  "No public access": "Piblik pa ka antre",
 };

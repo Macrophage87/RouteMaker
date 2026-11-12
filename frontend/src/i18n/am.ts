@@ -2169,4 +2169,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "That road can't be looked up right now. Try again shortly.": "ያንን መንገድ አሁን መፈለግ አይቻልም። ትንሽ ቆይተው እንደገና ይሞክሩ።",
   "Looking up the road…": "መንገዱን በመፈለግ ላይ…",
   "Sending…": "በመላክ ላይ…",
+  // ---- The closed sites' map label (lib/restrictedSites.ts) ----
+  "No public access": "ለሕዝብ ክፍት አይደለም",
 };

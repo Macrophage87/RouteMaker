@@ -2169,4 +2169,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "That road can't be looked up right now. Try again shortly.": "Não é possível consultar essa rua agora. Tente novamente em instantes.",
   "Looking up the road…": "Consultando a rua…",
   "Sending…": "Enviando…",
+  // ---- The closed sites' map label (lib/restrictedSites.ts) ----
+  "No public access": "Sem acesso público",
 };

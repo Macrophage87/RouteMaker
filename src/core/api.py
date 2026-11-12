@@ -2504,10 +2504,12 @@ class WorkZoneOut(Schema):
         "ddot_advisory",
         "purple_line",
         "fcpa",
+        "park_alert",
         "protrack",
         "dcwater",
         "wssc",
         "sha",
+        "moco",
     ]
     warning: bool = Field(description="True for a closure the rider may meet: shown in red.")
     text: str = Field(description="The heads-up as the description words it.")
@@ -2537,10 +2539,12 @@ class ClosureOut(Schema):
         "ddot_advisory",
         "purple_line",
         "fcpa",
+        "park_alert",
         "protrack",
         "dcwater",
         "wssc",
         "sha",
+        "moco",
     ]
     source_name: str = Field(
         description='The source as the card names it: "MPD traffic advisory, Oct 15".'

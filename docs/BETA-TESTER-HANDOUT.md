@@ -239,7 +239,8 @@ method" have the same groups. Typing "transit",
   plus transit lists the best first: time to get there, with time on busy roads and waiting at
   junctions counting against a trip, so each trip says how far it rides on busy roads ("0.4 mi
   (0.6 km) busy"), which explains a list out of time order. "Ride the whole way" is always one of
-  them. Press a trip to put it on the map and in the steps.
+  them. Press a trip to put it on the map and in the steps. In Go the trips are folded shut under
+  the trip; open them to pick another.
 - A transit trip lists its legs with their minutes: "🚶 4 min · 🚲 12 min · 🔴 18 min". 🚶 is a
   walk and 🚲 a bike. Metro shows its line's colour (🔴 Red, 🟠 Orange, 🔵 Blue, 🟢 Green, 🟡
   Yellow, ⚪ Silver), a bus its route ("🚌C53"), MARC and VRE their line ("🚆Penn",
@@ -276,7 +277,8 @@ method" have the same groups. Typing "transit",
   says so; a trip you picked is changed too. The ride screen starts again with the new trip, so its
   time and distance count from the change. A delay on your trip is said with the new arrival time.
 - The steps show each ride, walk and train or bus in order, with the total door to door. They say
-  how riding the whole way compares.
+  how riding the whole way compares. In Go the trip shows its time, arrival clock and legs first,
+  with the steps folded shut under "Steps, in order"; Plan shows them open.
 - On the map, a dashed line is the ride on transit, marked with its system's name. A dotted line
   is a walk.
 - In the steps, a train or bus step has its stops ("5 transit stops") and a walk its turns ("3 turns"),
@@ -340,7 +342,8 @@ the route goes to its top by way of its bottom.
   their own pace.
 - Favorites (signed in): Go's Home button becomes Favorites, with Home and Work first and then
   your other places, in the order you set with Edit's Move up and Move down. One tap rides there.
-  They are kept with your account only.
+  Tapping the empty Where to? box lists Home, Work and your first 3 favorites above your recent
+  places. They are kept with your account only.
 - Share live (it was called Broadcast): beside Start ride. Send the link and start riding.
   Whoever opens it sees your dot and the path you take, and can download your route as a GPX
   file or, if they connected one, send it to Garmin or Wahoo. Following needs no account. The
