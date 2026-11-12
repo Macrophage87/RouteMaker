@@ -138,6 +138,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Back on the planned route.": "已回到计划路线。",
   "No route found ahead. Make a U-turn.": "前方找不到路线。请掉头。",
   "No signal: the planned route is still shown.": "没有信号：仍显示计划路线。",
+  "No signal: a rough way back to your route, found offline.": "没有信号：已离线找到一条返回您路线的大致路线。",
   "No new route found. The planned route is still shown.": "没有找到新路线。仍显示计划路线。",
   "No new route found. Go back to the planned route.": "没有找到新路线。请回到计划路线。",
   "New route found. It rejoins your route ahead.": "已找到新路线。它会在前方重新接入您的路线。",

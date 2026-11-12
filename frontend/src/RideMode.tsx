@@ -43,6 +43,7 @@ import { useHold } from "./lib/useHold.ts";
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type FocusEvent, type PointerEvent } from "react";
 import { HoldTimer } from "./lib/holdTimer.ts";
 import { rejoinsFirst, startsWayBack, steadyPoint, toStartRoute, wayBackRoute, wayBackShown } from "./lib/rejoin.ts";
+import { fetchOfflineNetwork, offlineWayBackRoute, type OfflineNetwork } from "./lib/offlineWayBack.ts";
 import {
   ON_DETOUR_SAID,
   ON_STANDARD_SAID,
@@ -116,6 +117,7 @@ import {
   setsOffBack,
   withUTurn,
   REPLAN_NO_SIGNAL,
+  REPLAN_OFFLINE,
   REPLAN_REJOIN,
   REPLAN_REJOIN_AHEAD,
   REPLAN_FINDING,
@@ -1710,6 +1712,20 @@ export function RideMode({
           note = REPLAN_REJOIN;
         }
       }
+      // No signal for a re-plan or the way back: the way back found on the phone, over the network kept with the route
+      // (lib/offlineWayBack.ts), said as rough. Not for a detour, a held U-turn's check or a restart, whose places the
+      // planned line does not lead to. The server's answer, if a late one comes, still replaces it.
+      if (!found && failed === "network" && !via && !check && !done && !voided()) {
+        const net = offlineNet.current;
+        // The last network fetched, even for an earlier route of this ride (a new one is fetched only with a signal): it
+        // covers the planned line this ride set out on, which a way back or a re-plan mostly keeps to.
+        const offline = net ? offlineWayBackRoute(net.network, routeRef.current, here, progressM, keptPoints) : null;
+        if (offline) {
+          found = offline;
+          points = keptLeft;
+          note = REPLAN_OFFLINE;
+        }
+      }
       window.clearTimeout(timer);
       // Answered: no longer under way (a new route taken now is the one the rider then rides).
       if (autoReplan.current === ticket) autoReplan.current = null;
@@ -2460,6 +2476,21 @@ export function RideMode({
   // The map along the route, kept for dead spots (lib/corridor.ts, plan section 6): fetched at Start ride
   // and again for a re-plan's new route (only the tiles the first did not cover), kept a day for the same route
   // (the owner, 2026-11-01: battery audit). Shown under the controls, not said: it changes nothing the rider must do.
+  // The road network within a mile of the route (off-grid riding, the owner, 2026-11-12; lib/offlineWayBack.ts), fetched
+  // with the kept map for each route ridden, kept in memory for the ride: with no signal, a failed re-plan finds the way
+  // back to the line on the phone. None where it could not be fetched (no signal at the start, a map built before it).
+  const offlineNet = useRef<{ route: RouteResponse; network: OfflineNetwork } | null>(null);
+  useEffect(() => {
+    let current = true;
+    if (offlineNet.current?.route !== route) {
+      void fetchOfflineNetwork(route.geometry.coordinates as LonLat[], { preset, stress: dialsRef.current.stress, carrying: dialsRef.current.carrying }).then((network) => {
+        if (current && network && !ended.current) offlineNet.current = { route, network };
+      });
+    }
+    return () => {
+      current = false;
+    };
+  }, [route, preset]);
   const [corridor, setCorridor] = useState<PrefetchResult | "saving" | null>(null);
   const firstCorridor = useRef(true);
   useEffect(() => {

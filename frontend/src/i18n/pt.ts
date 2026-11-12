@@ -138,6 +138,7 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Back on the planned route.": "De volta à rota planejada.",
   "No route found ahead. Make a U-turn.": "Nenhuma rota encontrada à frente. Faça o retorno.",
   "No signal: the planned route is still shown.": "Sem sinal: a rota planejada continua na tela.",
+  "No signal: a rough way back to your route, found offline.": "Sem sinal: um caminho aproximado de volta à sua rota foi encontrado offline.",
   "No new route found. The planned route is still shown.": "Nenhuma rota nova encontrada. A rota planejada continua na tela.",
   "No new route found. Go back to the planned route.": "Nenhuma rota nova encontrada. Volte para a rota planejada.",
   "New route found. It rejoins your route ahead.": "Nova rota encontrada. Ela volta à sua rota mais à frente.",
