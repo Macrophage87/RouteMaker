@@ -5127,6 +5127,48 @@ round 3, 2026-11-08, asked whether Easy MTB trails should be timed at Mountain B
 unchanged: only the time shown. Tests: tests/test_easy_mtb.py, `TestEasyMtbTrails` in
 tests/test_route_dials.py, tests/test_mcp_server.py, frontend/src/lib/easyMtb.test.ts.
 
+### Barriers on Cargo and Tandem routes (the owner, 2026-11-12)
+
+Backlog 2026-11-12 item 12 (area 07 items 1, 2, 11) and OWNER-DECISIONS 345. Asked "Exclude
+stiles and other impassable barriers for Cargo/Tandem, and who sees the barrier line?", the
+owner, 2026-11-12, chose "Exclude; line on Cargo+Tandem"; then: "Make those noticeable on the
+map". No map rebuild and no new control.
+
+- **The list.** `src/core/geodata/barriers.json` is a committed snapshot of the barrier nodes
+  and steps on the bikeable network, written from the region extract by
+  `scripts/barrier_census.py --json` (refreshed by hand, as the water and food snapshots are:
+  docs/OPERATIONS.md, "Barrier list"). The graph cannot tell them apart (`remap_node` makes a
+  stile, kissing gate, turnstile, cycle barrier and narrow bollard one kind of gate), so the
+  kind and mapped width come from the snapshot. Each row carries a point or two on the
+  barrier's own way beside it (4 m off, our default), on a trail's way where the barrier is on
+  one. An empty snapshot is `data: false`, which says nothing rather than "none".
+- **Matching** (`core.barriers.crossings`): a barrier is on a route where the line passes its
+  node (within 1.5 m) and its way beside it (within 3 m), so a road past a trail's end is not
+  said to cross the trail's bollard; steps where the line rides two consecutive steps vertices.
+  Every route body carries `barriers` (`BarriersOut`): each item's kind, group (`word`), mapped
+  width, `width_mapped`, `impassable` and metres along.
+- **Impassable** (`core.barriers.impassable`): stile, kissing gate, turnstile (also
+  full-height), steps, and a gap mapped under 1.0 m (345's list, plus steps as the owner's card
+  said). An unmapped width is said as unmapped, never as impassable or clear.
+- **The round** (`core.barriers.settle`, Cargo and Tandem only, after the level and winding
+  rounds and before the red pass): where the route crosses an impassable barrier, its beside
+  points are excluded and the plan's request asked again, up to 4 rounds (our default,
+  unmeasured), the route with the fewest kept. The exclusions join `level_excludes`, so the
+  later passes keep them out; a barrier within 25 m of one of the plan's points is not excluded
+  (`at_stop`; our default). `barrier_round` (`BarrierRoundOut`) says what is still in the way
+  and why (`no_way_round`, `at_stop`, `time`, `no_data`); the answer cache does not keep a
+  round cut short for time. The 900 s gate charge stays on every gate for Cargo and Tandem.
+- **What the rider sees** (`frontend/src/lib/barriers.ts`, Cargo and Tandem only): a warning
+  where an impassable one is still on the route ("No way round found: stile on this route. A
+  cargo bike or tandem may not get through."), else a hint listing them ("On this route: gate,
+  bollard ×2 (width not mapped)."), counts as "×2" so no language needs a plural; the map marks
+  each with an octagon and a bar (red where it cannot pass, amber otherwise, 22 px, named from
+  zoom 13 red and 15 amber). The connector's summary has the same line as `barriers`. The 14
+  phrases are drafted in every Go and Ride language and need a native check.
+- **Coverage.** `scripts/barrier_census.py` (without `--json`) prints how much of this OSM
+  records: barriers by kind with readable `maxwidth`, a width under another key only, what the
+  remap does with each, kerbs, steps and their ramps, walk stretches and trail access points.
+
 ### Weekend rides planned twice (the owner, 2026-11-08)
 
 A weekend ride on the standard graph takes its weekend twin, where roads closed to cars at the

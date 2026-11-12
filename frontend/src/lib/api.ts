@@ -991,6 +991,38 @@ export interface RunInfo {
 }
 
 /** An Easy MTB trails plan's reading of its route (core.api.EasyMtbOut). */
+/** One barrier or flight of steps on a route (core/barriers.py `reading`). */
+export interface BarrierItem {
+  kind: string;
+  word: "stile" | "kissing_gate" | "turnstile" | "steps" | "narrow_gap" | "bollard" | "cycle_barrier" | "gate" | "other";
+  lon: number;
+  lat: number;
+  width_m: number | null;
+  /** False for a bollard or cycle barrier whose gap no one has mapped: said as unmapped, never as clear. */
+  width_mapped: boolean;
+  /** A cargo bike or tandem cannot pass: lifted over or squeezed through, steps, or a gap mapped under 1.0 m. */
+  impassable: boolean;
+  at_m: number;
+}
+
+/** The barriers on a route (core/barriers.py `reading`). `data` false: no barrier list is loaded, so nothing is said. */
+export interface BarrierReading {
+  data: boolean;
+  built?: string | null;
+  counts: Record<string, number>;
+  impassable: number;
+  unmapped_width: number;
+  items: BarrierItem[];
+}
+
+/** Cargo's and Tandem's round off impassable barriers (core/barriers.py `settle`); null on other ride types. */
+export interface BarrierRound {
+  rounds: number;
+  impassable: number;
+  limited: "time" | "no_way_round" | "at_stop" | "no_data" | null;
+  in_the_way: { kind: string; word: BarrierItem["word"]; lon: number; lat: number }[];
+}
+
 export interface EasyMtbReading {
   /** The hardest level counted easy (1). */
   max_level: number;
@@ -1106,6 +1138,10 @@ export interface RouteResponse {
    * (routemaker.time_marks), for a ride's arrival times (lib/navigate.ts secondsAt). Null or absent: spread evenly.
    */
   time_marks?: number[][] | null;
+  /** Every barrier and flight of steps on the line (core/barriers.py); absent from an older answer. */
+  barriers?: BarrierReading | null;
+  /** Cargo's and Tandem's round off impassable barriers; null on other ride types. */
+  barrier_round?: BarrierRound | null;
   climb_m: number;
   descent_m: number;
   stress_m: StressMetres;

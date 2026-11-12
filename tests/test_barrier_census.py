@@ -99,3 +99,23 @@ def test_census_over_a_made_up_extract() -> None:
     assert "Trail ends that meet a road: 1." in text
     assert "1 ways" in text  # one flight of steps, one walk stretch
     assert "with `ramp:bicycle`: 1 (100.0%)" in text
+
+
+def test_the_snapshot_reads_back_and_matches_a_route() -> None:
+    pytest.importorskip("osmium")
+    from core import barriers
+
+    census = mod.run(str(FIXTURE), for_snapshot=True)
+    data = census.snapshot("2026-11-12")
+    # The three bollards and the stile on the path; the kerb is not a barrier kind kept.
+    assert [row[2] for row in data["barriers"]] == ["stile", "bollard", "bollard", "bollard"]
+    # Each barrier's beside point is 4 m along its own way.
+    stile = data["barriers"][0]
+    assert stile[4][0][1] == pytest.approx(38.9001 + 4 / 111_195, abs=2e-7)
+    # The 0.9 m bollard's width is read from `width` when no `maxwidth` is mapped.
+    assert data["barriers"][3][3] == 0.9
+    index = barriers.index_of(data)
+    line = [(-77.0, 38.9000 + i * 0.0001) for i in range(6)]
+    reading = barriers.reading(line, index)
+    assert [i["word"] for i in reading["items"]] == ["stile", "bollard", "bollard", "narrow_gap"]
+    assert len(data["steps"]) == 1

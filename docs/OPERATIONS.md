@@ -3833,6 +3833,19 @@ edge, compose or deploy change. A release that first carries it adds to its
 checks: the hashed `water-restrooms-*.json` asset gives 200, `immutable`,
 compressed, and is named by the published front end's script.
 
+The barrier list Cargo and Tandem plan round (`src/core/geodata/barriers.json`,
+`core.barriers`; docs/DEVELOPMENT.md, "Barriers on Cargo and Tandem routes") is OpenStreetMap
+data too, a committed snapshot the weekly rebuild does not refresh. Until the first build-host
+run it is empty, and routes say nothing of barriers. A refresh, read only, after a map rebuild,
+on the build host with pyosmium:
+
+    python scripts/barrier_census.py --pbf <DATA_ROOT>/extracts/source.osm.pbf \
+        --json src/core/geodata/barriers.json --built <extract date> --out barrier-census.md
+
+then commit the file. It ships with the api (a hand ship). The printed report is the coverage
+count (how many barriers carry a width the remap reads, and the rest); keep it with the
+release's notes, not in the repository's data.
+
 The planner's Find food search (`frontend/src/lib/food.ts`; FOOD-SEARCH,
 v0.5.0) is OpenStreetMap data too and needs nothing beyond the ODbL credit.
 Its file, `frontend/src/amenity-data/food.json`, is a committed snapshot built

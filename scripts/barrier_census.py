@@ -25,11 +25,17 @@ is built) and prints a Markdown report:
   have any barrier tag on the end node or the node next to it.
 
     python scripts/barrier_census.py --pbf /path/to/source.osm.pbf [--csv barriers.csv]
+        [--json src/core/geodata/barriers.json --built YYYY-MM-DD]
 
 `--csv` also writes every barrier node on the network (OSM id, kind, latitude,
 longitude, the width the remap reads, the other width) so a later step can match
 barriers to a route. It is public OSM data, but keep it out of the repository
 like every extract-derived listing; it holds no ride data.
+
+`--json` writes the snapshot `core.barriers` reads to name the barriers on a route and to
+plan Cargo and Tandem round the impassable ones (a fourth pass locates each barrier's
+neighbours). It is committed like the water and food snapshots, refreshed by hand after a
+map rebuild.
 
 Memory: the script keeps only tagged barrier and kerb nodes, the nodes of steps
 and walk stretches, and trail end nodes; it never holds the whole network's node
@@ -43,6 +49,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import json
 import math
 import re
 import sys
@@ -182,6 +189,9 @@ class Census:
     # ends meet a road.
     on_network: dict[int, set[str]] = field(default_factory=dict)
     access_points: set[int] = field(default_factory=set)
+    # For the snapshot (`--json`): each barrier's neighbour on each way through it, by the
+    # way's class (barrier id -> [(class, neighbour id)]), and their locations (pass 4).
+    neighbours: dict[int, list[tuple[str, int]]] = field(default_factory=dict)
 
     # -- pass 1 ------------------------------------------------------------------------
     def way_pass_one(self, tags: dict[str, str], refs: list[int]) -> None:
@@ -212,13 +222,65 @@ class Census:
         kind = way_class(tags)
         if kind is None:
             return
-        for ref in refs:
+        for i, ref in enumerate(refs):
             if ref in self.barriers:
                 self.on_network.setdefault(ref, set()).add(kind)
+                if i + 1 < len(refs):
+                    nxt = refs[i + 1]
+                elif i:
+                    nxt = refs[i - 1]
+                else:
+                    continue
+                self.neighbours.setdefault(ref, []).append((kind, nxt))
         if kind == "road":
             for ref in refs:
                 if ref in self.trail_ends:
                     self.access_points.add(ref)
+
+    def wanted_neighbours(self) -> set[int]:
+        return {n for pairs in self.neighbours.values() for _, n in pairs}
+
+    def neighbour_node(self, node_id: int, lat: float, lon: float) -> None:
+        self.locations[node_id] = (lat, lon)
+
+    # -- the snapshot (src/core/geodata/barriers.json, read by core.barriers) ----------
+    def snapshot(self, built: str) -> dict:
+        """The barriers and steps on the network, as `core.barriers.index_of` reads them:
+        `barriers` rows [lon, lat, kind, width_m or null, [[lon, lat], ...]] where the points
+        are on the barrier's own way(s) beside it (a trail's way where it is on one), and
+        `steps` as each flight's vertices [[lon, lat], ...]."""
+        rows = []
+        for node_id in sorted(self.on_network):
+            tags, lat, lon = self.barriers[node_id]
+            kind = tags.get("barrier")
+            if kind not in SNAPSHOT_KINDS:
+                continue
+            pairs = self.neighbours.get(node_id, [])
+            trail = [p for p in pairs if p[0] != "road"]
+            beside = []
+            for _, other in trail or pairs:
+                if other in self.locations:
+                    beside.append(beside_point((lat, lon), self.locations[other]))
+            if not beside:
+                continue
+            width = parse_width_m(tags.get("maxwidth"))
+            if width is None:
+                width = _other_width(tags)
+            rows.append(
+                [round(lon, 7), round(lat, 7), kind, _round(width),
+                 [[round(x, 7), round(y, 7)] for x, y in beside]]
+            )  # fmt: skip
+        steps = []
+        for _, refs in self.steps:
+            line = [self.locations[r] for r in refs if r in self.locations]
+            if len(line) >= 2:
+                steps.append([[round(lo, 7), round(la, 7)] for la, lo in line])
+        return {
+            "source": "OpenStreetMap contributors, ODbL (scripts/barrier_census.py --json)",
+            "built": built,
+            "barriers": rows,
+            "steps": steps,
+        }
 
     # -- the report --------------------------------------------------------------------
     def length_m(self, refs: list[int]) -> float:
@@ -348,6 +410,29 @@ class Census:
         return "\n".join(out) + "\n"
 
 
+# The barrier kinds the snapshot keeps (`core.barriers`: LIFTED, GAPS and GATES).
+SNAPSHOT_KINDS = frozenset(
+    {
+        "stile", "kissing_gate", "turnstile", "full-height_turnstile",
+        "bollard", "cycle_barrier", "block", "motorcycle_barrier",
+        "gate", "swing_gate", "lift_gate", "sliding_gate", "wicket_gate", "chain",
+    }
+)  # fmt: skip
+# Metres from a barrier at which its exclusion point sits on its own way: near enough that the
+# router's exclusion falls on the edge through the barrier. Our default.
+BESIDE_M = 4.0
+
+
+def beside_point(at: tuple[float, float], toward: tuple[float, float]) -> tuple[float, float]:
+    """(lon, lat) BESIDE_M from `at` toward `toward` (both (lat, lon)), or half way where the
+    segment is shorter than twice that."""
+    span = haversine_m(at, toward)
+    t = 0.5 if span <= 2 * BESIDE_M else BESIDE_M / span
+    lat = at[0] + (toward[0] - at[0]) * t
+    lon = at[1] + (toward[1] - at[1]) * t
+    return (lon, lat)
+
+
 def _other_width(tags: dict[str, str]) -> float | None:
     for key in OTHER_WIDTH_KEYS:
         width = parse_width_m(tags.get(key))
@@ -364,7 +449,7 @@ def _pct(part: int, whole: int) -> str:
     return f"{100 * part / whole:.1f}%" if whole else "n/a"
 
 
-def run(pbf: str) -> Census:
+def run(pbf: str, for_snapshot: bool = False) -> Census:
     import osmium  # pyosmium; imported here so the pure functions test without it
 
     census = Census()
@@ -389,6 +474,16 @@ def run(pbf: str) -> Census:
     Nodes().apply_file(pbf)
     print("pass 3 of 3: ways", file=sys.stderr)
     WaysTwo().apply_file(pbf)
+    if for_snapshot:
+        wanted = census.wanted_neighbours() - set(census.locations)
+
+        class Neighbours(osmium.SimpleHandler):
+            def node(self, n):  # noqa: ANN001
+                if n.id in wanted and n.location.valid():
+                    census.neighbour_node(n.id, n.location.lat, n.location.lon)
+
+        print("pass 4 of 4: barrier neighbours", file=sys.stderr)
+        Neighbours().apply_file(pbf)
     return census
 
 
@@ -397,9 +492,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--pbf", required=True, help="the region extract (read only)")
     parser.add_argument("--csv", help="also write every barrier node on the network here")
     parser.add_argument("--out", help="write the Markdown report here (default: stdout)")
+    parser.add_argument(
+        "--json",
+        help="also write the barrier snapshot core.barriers reads (src/core/geodata/barriers.json)",
+    )
+    parser.add_argument(
+        "--built", default="", help="the extract's date, recorded in the snapshot (YYYY-MM-DD)"
+    )
     args = parser.parse_args(argv)
 
-    census = run(args.pbf)
+    census = run(args.pbf, for_snapshot=bool(args.json))
     text = census.report()
     if args.out:
         with open(args.out, "w", encoding="utf-8") as fh:
@@ -413,6 +515,10 @@ def main(argv: list[str] | None = None) -> int:
             writer = csv.DictWriter(fh, fieldnames=fields)
             writer.writeheader()
             writer.writerows(rows)
+    if args.json:
+        with open(args.json, "w", encoding="utf-8") as fh:
+            json.dump(census.snapshot(args.built), fh, separators=(",", ":"))
+            fh.write("\n")
     return 0
 
 

@@ -2690,4 +2690,19 @@ export const ES: Readonly<Record<string, string>> = {
   "Road closed ahead, {distance}: {name}": "Calle cerrada más adelante, {distance}: {name}",
   // ---- The closed sites' map label (lib/restrictedSites.ts) ----
   "No public access": "Sin acceso público",
+  // ---- Barriers on a Cargo or Tandem route (lib/barriers.ts; backlog 2026-11-12 item 12), drafted by Claude ----
+  "stile": "escalón de paso",
+  "kissing gate": "portillo en V",
+  "turnstile": "torniquete",
+  "steps": "escalones",
+  "narrow gap": "paso estrecho",
+  "bollard": "bolardo",
+  "cycle barrier": "barrera para bicis",
+  "gate": "portón",
+  "other barrier": "otra barrera",
+  "(width not mapped)": "(ancho sin mapear)",
+  "No way round found: {list} on this route. A cargo bike or tandem may not get through.": "No se encontró otra ruta: {list} en esta ruta. Una bici de carga o un tándem puede no pasar.",
+  "Barrier in the way.": "Barrera en el camino.",
+  "On this route: {list}.": "En esta ruta: {list}.",
+  "Barriers on this route.": "Barreras en esta ruta.",
 };

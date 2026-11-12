@@ -1653,6 +1653,53 @@ def easy_mtb_said(info: object) -> str | None:
     return None
 
 
+# The ride types whose summary names the barriers on the route (core/barriers.py PRESETS;
+# the owner, 2026-11-12: "Exclude; line on Cargo+Tandem").
+BARRIER_PRESETS = frozenset({"cargo", "tandem"})
+BARRIER_WORDS = {
+    "stile": "stile",
+    "kissing_gate": "kissing gate",
+    "turnstile": "turnstile",
+    "steps": "steps",
+    "narrow_gap": "narrow gap",
+    "bollard": "bollard",
+    "cycle_barrier": "cycle barrier",
+    "gate": "gate",
+}
+
+
+def barriers_said(answer: dict) -> str | None:
+    """What a Cargo or Tandem answer says of the barriers on its route, as the page's line
+    (frontend/src/lib/barriers.ts): the impassable ones no way round was found for, else every
+    barrier, a gap with no width mapped said as unmapped. None where there are none, or where
+    no barrier list is loaded (never "none")."""
+    if answer.get("preset") not in BARRIER_PRESETS:
+        return None
+    reading = answer.get("barriers")
+    if not isinstance(reading, dict) or not reading.get("data"):
+        return None
+    items = [i for i in reading.get("items") or [] if isinstance(i, dict)]
+    blocking = [i for i in items if i.get("impassable")]
+    if not items:
+        return None
+    groups: dict[tuple[str, bool], int] = {}
+    for item in blocking or items:
+        key = (str(item.get("word")), item.get("width_mapped") is False)
+        groups[key] = groups.get(key, 0) + 1
+    parts = [
+        BARRIER_WORDS.get(word, "other barrier")
+        + (f" x{n}" if n > 1 else "")
+        + (" (width not mapped)" if unmapped else "")
+        for (word, unmapped), n in groups.items()
+    ]
+    if blocking:
+        return (
+            f"no way round found: {', '.join(parts)} on this route; a cargo bike or tandem may"
+            " not get through"
+        )
+    return ", ".join(parts)
+
+
 # A Mountain Bike reading's figure below this many metres is not said: the page's
 # `mtbMode.SAY_FROM_M` (a crossing, a driveway).
 MTB_SAY_FROM_M = 20.0
@@ -1873,6 +1920,9 @@ def summary(answer: dict) -> dict:
     easy = easy_mtb_said(answer.get("easy_mtb"))
     if easy:
         out["easy_mtb"] = easy
+    barriers = barriers_said(answer)
+    if barriers:
+        out["barriers"] = barriers
     road_bike = road_bike_said(answer)
     if road_bike:
         out["road_bike_map"] = road_bike
