@@ -2156,4 +2156,16 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "emoji signs": "ป้ายอีโมจิ",
   "Road closed ahead": "ถนนข้างหน้าปิด",
   "Road closed ahead, {distance}: {name}": "ถนนข้างหน้าปิด {distance}: {name}",
+  // ---- Learning from each ride: the ride summary's two lines (lib/rideFeedback.ts) ----
+  "Anything feel different from its rating?": "มีช่วงไหนที่รู้สึกต่างจากระดับที่ให้ไว้ไหม",
+  "Which stretch?": "ช่วงไหน",
+  "You marked a road closed.": "คุณทำเครื่องหมายว่าถนน 1 สายปิดอยู่",
+  "You marked {n} roads closed.": "คุณทำเครื่องหมายว่าถนน {n} สายปิดอยู่",
+  "Send for review": "ส่งเพื่อตรวจสอบ",
+  "Only the road and the day are sent.": "ส่งเฉพาะถนนและวันเท่านั้น",
+  "Sent 1 closed road for review. Thank you.": "ส่งถนนที่ปิด 1 สายเพื่อตรวจสอบแล้ว ขอบคุณ",
+  "Sent {n} closed roads for review. Thank you.": "ส่งถนนที่ปิด {n} สายเพื่อตรวจสอบแล้ว ขอบคุณ",
+  "Not sent. Try again shortly.": "ยังไม่ได้ส่ง ลองอีกครั้งในอีกสักครู่",
+  "That road can't be looked up right now. Try again shortly.": "ค้นหาถนนนั้นไม่ได้ในขณะนี้ ลองอีกครั้งในอีกสักครู่",
+  "Looking up the road…": "กำลังค้นหาถนน…",
 };

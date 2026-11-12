@@ -151,13 +151,16 @@ You stay responsible for riding safely; the route can be wrong.
   the same 30 seconds, unless you are typing in one or accessibility mode is on.
 - End ride is a slide: slide it to the right to end the ride, so a bump doesn't end it. Once you
   have arrived it is a filled Done button under "Arrived: ..." with the destination's name. End ride and Go round
-  share the top row; Go round (for a road that is closed ahead: it finds a way round and reports nothing)
+  share the top row; Go round (for a road that is closed ahead: it finds a way round; nothing is sent unless you choose to at the ride's end)
   always shows its words. Near sunrise or sunset, a small line under them gives the sunrise or
   sunset and dawn or dusk (civil twilight: the sun 6 degrees below the horizon) times and the minutes till each.
 - After End ride you get the ride's summary: where you went, how far and how long first, then distance, moving time,
   average speed, total time and climbing; the elevation chart and the traffic stress you rode are under Details. Done
   leaves Go empty for your next trip (in Plan the plan stays to adjust); Keep riding carries on with the same ride.
-  Nothing about the ride is saved.
+  Nothing about the ride is saved. Two optional lines under the figures: "Anything feel different from its rating?"
+  lists the streets you rode, longest first, and opens the short suggestion form for the one you pick; and if you
+  pressed Go round, "Send for review" sends those closed roads to the review list. Either sends only the road and the
+  day, never the time or your path, and only when you press Send.
 - Off the route for a few seconds, it says so and finds a new way from where you are. "Keep
   the planned route" says which way the route is instead.
 - At Start ride the map along the route, about 1,000 ft (300 m) either side, is saved on the

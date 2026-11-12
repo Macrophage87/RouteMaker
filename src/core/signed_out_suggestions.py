@@ -29,6 +29,13 @@ is built but off until volume grows).
 
 Privacy: no account, address, location trail or device id is stored with a suggestion; the spot
 kept is the nearest point on the road (`core.suggestions.snap`), never the one clicked.
+
+From the ride summary (`from_ride`; frontend lib/rideFeedback.ts, the 2026-11-12 backlog item 7): a
+send there says where the rider just was, so it keeps less (the owner's rule: nothing identifying
+stays on the server longer than two minutes). The suggestion keeps the day, never the time
+(`created_at` is midnight, Washington's day, as the 311 log keeps it); the per-device count row
+keeps no road (`osm_way_id` 0), so nothing ties a device to a road ridden, and the one-per-road
+rule is the client's (a ride sends each road once); and the audit row names no suggestion.
 """
 
 from __future__ import annotations
@@ -36,7 +43,8 @@ from __future__ import annotations
 import hashlib
 import hmac
 import re
-from datetime import timedelta
+from datetime import datetime, time, timedelta
+from zoneinfo import ZoneInfo
 
 from django.conf import settings
 from django.core import signing
@@ -66,6 +74,8 @@ TICKET_SALT = "routemaker/signed-out-suggestion/v1"
 TICKET_MAX_AGE_S = 2 * 3600
 DEVICE_SALT = b"routemaker/signed-out-device/v1"
 REMOVED = "[removed]"
+# A ride's send keeps the day in Washington's time (core.report_log.DAY_ZONE, the 311 log's).
+DAY_ZONE = ZoneInfo("America/New_York")
 
 EMAIL = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
 # A phone number: 7 or more digits, with the usual separators between them ("2019-2021" is two
@@ -146,8 +156,12 @@ def create(
     other: str,
     ticket_value: str | None,
     honeypot: str,
+    from_ride: bool = False,
 ) -> StressSuggestion:
-    """Record a signed-out suggestion, or refuse it (EditRefused) or drop it (Dropped)."""
+    """Record a signed-out suggestion, or refuse it (EditRefused) or drop it (Dropped).
+
+    `from_ride`: sent from the ride summary; kept with the day only, and no road beside the device.
+    """
     if honeypot.strip():
         raise Dropped
     if not ticket_ok(ticket_value, way_id):
@@ -185,12 +199,15 @@ def create(
                 device=device, created_at__gte=now - KEEP
             )
         )
-        if any(s.osm_way_id == way_id for s in sends):
+        if not from_ride and any(s.osm_way_id == way_id for s in sends):
             raise Again("You've sent a suggestion for this road today. Thank you.")
         if len(sends) >= DAILY_MAX:
             raise Limited(f"That's {DAILY_MAX} suggestions today. Thank you; try again tomorrow.")
-        SignedOutSend.objects.create(device=device, osm_way_id=way_id, created_at=now)
+        SignedOutSend.objects.create(
+            device=device, osm_way_id=0 if from_ride else way_id, created_at=now
+        )
         suggestion = StressSuggestion.objects.create(
+            created_at=ride_day(now) if from_ride else now,
             suggester=None,
             suggester_user_id=None,
             signed_out=True,
@@ -206,8 +223,14 @@ def create(
             reasons=chosen,
             reason=reason_words(chosen, other),
         )
+    # A ride's send: the audit row's time would be the send's, so it names no suggestion.
     audit.record(
-        None, "stress_suggest_signed_out", "stress_suggestion", suggestion.pk,
+        None, "stress_suggest_signed_out", "stress_suggestion", "" if from_ride else suggestion.pk,
         AuditLogEntry.Outcome.ALLOWED,
     )  # fmt: skip
     return suggestion
+
+
+def ride_day(now: datetime) -> datetime:
+    """Midnight of `now`'s day in Washington: what a ride's send keeps instead of its time."""
+    return datetime.combine(now.astimezone(DAY_ZONE).date(), time.min, tzinfo=DAY_ZONE)

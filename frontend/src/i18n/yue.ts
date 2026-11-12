@@ -2156,4 +2156,16 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "emoji signs": "emoji標記",
   "Road closed ahead": "前面道路封閉",
   "Road closed ahead, {distance}: {name}": "前面道路封閉，{distance}：{name}",
+  // ---- Learning from each ride: the ride summary's two lines (lib/rideFeedback.ts) ----
+  "Anything feel different from its rating?": "有冇邊段感覺同評級唔一樣？",
+  "Which stretch?": "邊一段？",
+  "You marked a road closed.": "你標記咗一條路封咗。",
+  "You marked {n} roads closed.": "你標記咗 {n} 條路封咗。",
+  "Send for review": "送出審核",
+  "Only the road and the day are sent.": "只會送出條路同日期。",
+  "Sent 1 closed road for review. Thank you.": "已送出 1 條封咗嘅路俾人審核。多謝。",
+  "Sent {n} closed roads for review. Thank you.": "已送出 {n} 條封咗嘅路俾人審核。多謝。",
+  "Not sent. Try again shortly.": "未送出。請遲啲再試。",
+  "That road can't be looked up right now. Try again shortly.": "而家查唔到嗰條路。請遲啲再試。",
+  "Looking up the road…": "查緊條路…",
 };
