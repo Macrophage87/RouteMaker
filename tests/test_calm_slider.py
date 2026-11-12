@@ -128,7 +128,7 @@ class TestTurnAndHillCostsStayActive:
             assert moved[key] == base[key], key
         expected = (
             presets.CALM_MANEUVER_PENALTY_S
-            if stress > presets.STRESS_TODAYS_TOP
+            if stress > presets.STRESS_TODAYS_TOP or presets.TURN_CHARGE_EVERY_SETTING
             else base["maneuver_penalty"]
         )
         assert moved["maneuver_penalty"] == expected

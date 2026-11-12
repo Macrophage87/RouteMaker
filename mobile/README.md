@@ -189,7 +189,11 @@ in the build environment):
   (the owner, 2026-11-01: battery audit). An older site, through `routemaker-compat.js`, still asks
   for every fix (no distance filter), since it has no such backup. Some makers' battery savers
   (Samsung, Xiaomi) still stop foreground services: if cues stop, set RouteMaker's battery use to
-  "Unrestricted".
+  "Unrestricted". Since v0.26.0 the app says so itself, once: at the first Start ride, on a phone
+  whose maker is on `BatteryPlugin.STRICT_MAKERS` (dontkillmyapp.com's list, our default) while
+  RouteMaker is battery-optimised, Ride shows one line with a button to RouteMaker's App info page
+  (`BatteryPlugin.java`, `frontend/src/lib/batteryNote.ts`). Needs an app build; an older app shows
+  nothing. To check: on such a phone, a fresh install, Start ride, and the line is there once.
 
 ## Screen readers (TalkBack)
 

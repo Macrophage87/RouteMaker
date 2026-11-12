@@ -279,6 +279,12 @@ WEATHER_CHECK = Limit(scope="weather-check", requests=20, window_s=60)
 # A report sent to DC 311 from Ride mode (POST /api/report311, core.dc311; v0.7.0 "Go riding
 # fixes" item 3): a rider reports a pothole or two on a ride, so 10 an hour is a cap on a script.
 REPORT_311 = Limit(scope="report-311", requests=10, window_s=3600)
+
+# Riders' feedback (POST /api/feedback, core.feedback): a few a client an hour, and a ceiling for
+# the whole site so a flood cannot fill the owner's forum (our defaults, unmeasured).
+FEEDBACK = Limit(scope="feedback", requests=5, window_s=3600)
+FEEDBACK_ALL = Limit(scope="feedback-all", requests=60, window_s=3600)
+FEEDBACK_STATUS = Limit(scope="feedback-status", requests=60, window_s=60)
 # The same sends per signed-in account (core.dc311: sending is signed in only), so an account
 # moving between addresses still has the one budget.
 REPORT_311_ACCOUNT = Limit(scope="report-311-user", requests=10, window_s=3600)

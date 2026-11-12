@@ -5,8 +5,9 @@
  * the figures that are not a matter of taste.
  */
 import type { RouteResponse } from "./api.ts";
-import { formatClimb, formatDistance } from "./format.ts";
+import { formatClimb, formatDistance, formatDuration } from "./format.ts";
 import { NEIGHBOUR_NAME } from "./neighbours.ts";
+import { turnTotal, unpavedMetres } from "./quickFigures.ts";
 import { overTarget, type AnnounceHow } from "./summary.ts";
 
 /** The answer and its candidates, in rank order (the answer first). */
@@ -35,6 +36,12 @@ export interface CandidateStats {
   effortM: number | null;
   /** How far past the rider's target distance it is, or null (within it, or none set). */
   overTargetM: number | null;
+  /** Its turns as the directions give them (quickFigures turnTotal), or null with no directions. */
+  turns: number | null;
+  /** The seconds it waits at signals and stop signs, or null where not sent. */
+  waitS: number | null;
+  /** Its unpaved metres, or null with no sections. */
+  unpavedM: number | null;
 }
 
 export function statsOf(route: RouteResponse, rank: number): CandidateStats {
@@ -52,6 +59,9 @@ export function statsOf(route: RouteResponse, rank: number): CandidateStats {
     climbM: route.climb_m,
     effortM: route.effort_m ?? null,
     overTargetM: overTarget(route),
+    turns: route.description == null ? null : turnTotal(route),
+    waitS: typeof route.junction_delay_s === "number" ? route.junction_delay_s : null,
+    unpavedM: unpavedMetres(route.stress_spans),
   };
 }
 
@@ -75,7 +85,12 @@ export function statsLine(stats: CandidateStats): string {
   if (stats.lts3M >= SAID_AS_ZERO_M) parts.push(`${formatDistance(stats.lts3M)} of busy roads`);
   if (stats.red > 0) parts.push(count(stats.red, "very high stress junction", "very high stress junctions"));
   if (stats.orange > 0) parts.push(count(stats.orange, "higher stress junction", "higher stress junctions"));
+  // The turn burden (the backlog's "fewer turns" item, 2026-11-12): two routes that differ mainly in fiddliness
+  // used to read the same here.
+  if (stats.turns) parts.push(count(stats.turns, "turn", "turns"));
+  if (stats.waitS !== null && stats.waitS >= 30) parts.push(`${formatDuration(stats.waitS)} waiting at lights and stops`);
   if (stats.trailM >= SAID_AS_ZERO_M) parts.push(`${formatDistance(stats.trailM)} on paths and protected lanes`);
+  if (stats.unpavedM !== null && stats.unpavedM >= SAID_AS_ZERO_M) parts.push(`${formatDistance(stats.unpavedM)} unpaved`);
   if (stats.climbM > 0) parts.push(`climb ${formatClimb(stats.climbM)}`);
   if (stats.effortM !== null) parts.push(`effort equal to ${formatDistance(stats.effortM)} on the flat`);
   return parts.join(", ");

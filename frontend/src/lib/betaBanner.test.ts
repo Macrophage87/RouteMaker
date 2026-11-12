@@ -127,13 +127,13 @@ test("with no report link there is no Report a problem link; with one, it opens 
   assert.equal(html.match(/<a /g)?.length, 4);
 });
 
-test("App wires it to the build flags and nothing else, so the local site is unchanged; not in a ride nor in Roam (the audit's P13)", () => {
+test("App wires it to the build flags and Send feedback (shown only where the server takes it), so the local site is unchanged; not in a ride nor in Roam (the audit's P13)", () => {
   const app = appSource();
   assert.equal(app.match(/<BetaChip\b/g)?.length, 1);
   assert.doesNotMatch(app, /BetaBanner/);
   assert.match(
     app,
-    /\{!onBike && \(\s*<BetaChip\s+enabled=\{isBetaBuild\(import\.meta\.env\.VITE_BETA\)\}\s+reportUrl=\{betaReportUrl\(import\.meta\.env\.VITE_BETA_REPORT_URL\)\}\s+\/>\s*\)\}/,
+    /\{!onBike && \(\s*<BetaChip\s+enabled=\{isBetaBuild\(import\.meta\.env\.VITE_BETA\)\}\s+reportUrl=\{betaReportUrl\(import\.meta\.env\.VITE_BETA_REPORT_URL\)\}\s+feedback=\{<FeedbackBox details=\{detailsForFeedback\} onSay=\{announce\} \/>\}\s+\/>\s*\)\}/,
   );
 });
 

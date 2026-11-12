@@ -1546,13 +1546,52 @@ about to run out is found only by riding.
 
 What is posted, each as one short message starting "RouteMaker beta:":
 
-- **The site:** every 10 minutes a user timer runs the local smoke tests (`smoke-test.sh --local`:
-  health, a route, place search, a tile) and `manage.py check_operations` in the worker (backups,
+- **The site:** every 10 minutes a user timer runs the local smoke tests (`smoke-test.sh --local --trails`:
+  health, a route, a route on each trail graph (Mountain Bike, Gravel, Road Bike), place search, a
+  tile; `export RM_ALERT_TRAILS=0` in `vars.sh` drops `--trails` on a host without trail routers) and `manage.py check_operations` in the worker (backups,
   failed or wedged jobs, disk, the transit timetable's end). A failure seen twice in a row is
   posted with its FAIL lines or the check's report; the same failure is posted again only once a
   day while it lasts, and "working again" when it clears. No check runs while a deploy pass holds
   the agent's lock (a deploy stops the api on purpose). The weekly rebuild's waiting job is
   reported as paused, not stale (above), so it never posts.
+- **What a tester sees** (backlog 2026-11-12, "Ready for a dozen testers"). The same check also
+  posts:
+  - the **public address** not answering: `https://$RM_BETA_HOST/healthz` asked from this host,
+    through DNS, nginx and TLS (200 `ok`, or 401 behind a site password, is fine), seen twice in a
+    row; and the **certificate** ending in under 14 days (certbot renews at 30, so that means
+    renewal has failed). No `RM_BETA_HOST` in `.env`, no check; no `openssl`, no certificate check.
+    The address itself is never in a message.
+  - **server errors**: 3 or more 5xx answers in the api's access log over the last 10 minutes
+    (not the planner's own 503 "busy", which the slow-plans count covers);
+    and **slow plans**: 3 or more `/api/route` answers that took over 30 s (riders waiting for one
+    of the two routing slots).
+  - **restarts**: any container whose restart count went up since the last check, with "killed for
+    memory" when Docker says so. A deploy recreates containers and starts their counts again,
+    which is not posted.
+  - **the host short of memory or disk**: under 300 MiB available, or under 2048 MiB free on `/` or
+    on Docker's disk, seen twice in a row.
+
+  Every number here is our default, unmeasured until beta carries a dozen riders; each can be set
+  in `vars.sh`: `RM_ALERT_CERT_DAYS`, `RM_ALERT_5XX`, `RM_ALERT_SLOW_S`, `RM_ALERT_SLOW_N`,
+  `RM_ALERT_MEM_MIB`, `RM_ALERT_DISK_MIB`. These checks need nothing new installed beyond running
+  `alert.sh install` again, so the timer's copy is the new script.
+- **The riders' status line** (the owner, 2026-11-12: one line in Go and Plan, only while
+  degraded). The release agent writes `$RM_DATA/status/status.json` as `{"state": "updating"}`
+  from the moment it stops the api until its pass ends; the same check writes
+  `{"state": "degraded", "parts": [...]}` (`routing`, `trails`, `search`) once a smoke-test failure
+  is seen twice, and removes the file when all is well. nginx serves it at `/status.json`
+  (never cached), even while the api is stopped; the app reads it at open and when a request
+  fails, and shows one short line. Install once, as the beta's login user (the directory is
+  new, so it is created behind `rm_absent`, readable by nginx):
+
+  ```sh
+  . "$HOME/routemaker-beta-state/vars.sh"
+  rm_absent "$RM_DATA/status" && mkdir -m 755 "$RM_DATA/status"
+  ```
+
+  then the nginx template's new `/status.json` location goes in as in "A new release sha", step 9
+  (re-render, `--diff "$NGINX_SITE"`, install, `sudo nginx -t && sudo nginx -s reload`). Without the
+directory nothing is written and riders see no line.
 - **The PC's copy of the backups:** once the owner's PC pulls the nightly dumps
   (docs/OPERATIONS.md, "Off-box copies of beta backups"), each run that ends ok writes
   `~/routemaker-beta-state/pc-backup-pull`. The same check posts once that file is over 36 h old

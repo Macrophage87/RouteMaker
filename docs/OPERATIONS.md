@@ -2629,6 +2629,29 @@ not already remembered. With under 4 s left the way round is not asked, and the 
 
 **Migration.** The table is `avoid_junction`, created by `core/migrations/0015_avoid_junction.py`.
 
+## A dozen riders at once: the load test
+
+`scripts/load_test.py` (backlog 2026-11-12, "Ready for a dozen testers") replays simulated riders
+against a stack and writes a short report: each kind of request's count, refusals (429/503), p50,
+p95 and slowest time, and with `--docker-stats` each container's memory peak against its cap, and
+any restart or out-of-memory kill during the run. Each rider opens the app, searches, plans a ride,
+pans the map, rides with Ride's 2-minute checks and re-routes once half way. Riders start within
+60 s, ride 10 minutes and pan 12 tiles: all our defaults, chosen to look like a group's Saturday
+start, not measured.
+
+It never runs on beta: it refuses a public address (unless `--allow-host` names your own test box), refuses to run on the beta host (its `vars.sh` there), and cannot tell beta apart when aimed at it from elsewhere, so never point it there. Run it on the PC stack, or better on a cloud box given
+beta's `compose.beta.yaml` caps, since those caps are what it is meant to test. Point it at the api
+itself (beta's overlay publishes it on `127.0.0.1:$BETA_API_PORT`), not through Caddy or nginx:
+only then does each rider count as its own client, as on beta.
+
+```sh
+python3 scripts/load_test.py --base http://127.0.0.1:8087 --host-header localhost \
+    --riders 12 --docker-stats --out load-12.md
+```
+
+`--time-scale 0.1` runs the ride's clock ten times faster for a quick pass. Read the plan and
+re-route rows first: their p95 is how long a rider waits for one of the two routing slots.
+
 ## Backups
 
 `pg_dump -Fc`, piped straight through `age` to

@@ -75,6 +75,8 @@ interface Props {
   enabled: boolean;
   /** The report link, already checked by betaReportUrl; null or absent for none. */
   reportUrl?: string | null;
+  /** Send feedback (FeedbackBox.tsx), under the buttons; absent, nothing. */
+  feedback?: ReactElement | null;
   /** Test seam: start with the note shown. */
   initiallyOpen?: boolean;
 }
@@ -130,6 +132,8 @@ export function BetaChip(props: Props): ReactElement | null {
         link(BETA_SIGNUP_URL, BETA_SIGNUP_TEXT),
         link(GUIDES_PAGE, BETA_GUIDES_TEXT),
       ),
+      // Send feedback without a Discord account (the owner, 2026-11-12), where the server takes it.
+      props.feedback ?? null,
     ),
   );
 }

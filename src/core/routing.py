@@ -1785,6 +1785,11 @@ class Dials:
     carrying: str | None = None
     assist: bool = False
     avoid_gravel: bool = False
+    # The rider's "Fewer turns" and "All paved" (`presets.with_rider_choices`; the backlog's
+    # "fewer turns" item, 2026-11-12): a higher turn charge, and gravel avoided, on the ride
+    # type's own costing.
+    fewer_turns: bool = False
+    paved: bool = False
     # "Keep to roads, not trails" (trails off): plan on the no-trail graph, whatever the ride type
     # (`presets.variant_for_ride`). Mass Ride is always on it.
     trails_off: bool = False
@@ -4326,6 +4331,7 @@ def _fit_target(
     avoid_gravel: bool,
     variant: str,
     deadline: Deadline,
+    rider: tuple[bool, bool] = (False, False),
 ) -> tuple[tuple | None, list[tuple], bool]:
     """The first route for a rider's target distance (OWNER-DECISIONS 256, 271): the
     router's own route if it is within it, else the calmest route the router gives
@@ -4351,7 +4357,9 @@ def _fit_target(
         closures in the request, say), not the time running out: the next rung is still
         asked (hunt 2, P2-2; it stopped the whole ladder before)."""
         options = _same_pace(
-            presets.costing(preset_name, position, hills_dial, assist=assist),
+            presets.with_rider_choices(
+                presets.costing(preset_name, position, hills_dial, assist=assist), *rider
+            ),
             request,
         )
         asked = {k: v for k, v in request.items() if k != "alternates"} | {
@@ -5693,7 +5701,11 @@ def _plan(
     # Ride, whose own graph is no-trail), not on every trails-off ride.
     lanes_as_roadway = preset.variant == Variant.NO_TRAIL.value
     avoid_gravel = bool(dials.avoid_gravel)
-    costing = presets.costing(preset_name, stress_dial, hills_dial, assist=assist)
+    costing = presets.with_rider_choices(
+        presets.costing(preset_name, stress_dial, hills_dial, assist=assist),
+        dials.fewer_turns,
+        dials.paved,
+    )
     if dials.mtb_done and preset_name == mtb.PRESET:
         # After "End mountain biking", Mountain Bike's costing no longer seeks paths over roads
         # (its `use_roads` 0): Default's, so a calm road is as welcome as a path.
@@ -6086,7 +6098,11 @@ def _plan(
     # a wider road chosen for the group (OWNER-DECISIONS 125, 325).
     if avoiding and not quick and not fixed and capacity_choice is None:
         middle_costing = _same_pace(
-            presets.costing(preset_name, stress_dial, 0, assist=assist),
+            presets.with_rider_choices(
+                presets.costing(preset_name, stress_dial, 0, assist=assist),
+                dials.fewer_turns,
+                dials.paved,
+            ),
             request,
         )
         trip, kept_middle = no_busier_than_middle(
@@ -6129,7 +6145,7 @@ def _plan(
     if maxcalm and fitting:
         fit, past, fit_unfinished = _fit_target(
             trip, request, costing, trace_costing, target_m, preset_name, hills_dial, assist,
-            avoid_gravel, variant, deadline,
+            avoid_gravel, variant, deadline, (dials.fewer_turns, dials.paved),
         )  # fmt: skip
         if fit is not None:
             trip, request, costing, trace_costing, fitted_at = fit
@@ -6169,6 +6185,7 @@ def _plan(
         seek=trailseek.seek_for(presets.calm_rate_for(stress_dial)),
         schema=validate_schema_name(settings.SEGMENT_SCHEMA_LIVE),
         avoid_gravel=avoid_gravel,
+        fewer_turns=dials.fewer_turns,
         wait_weight=presets.wait_weight_for(preset_name),
         road_bike_buttons=presets.road_bike_buttons_for(preset_name),
         exposure=exposure,
@@ -6943,6 +6960,8 @@ def _plan(
                 "carrying": presets.carrying_of(preset_name, dials.carrying),
                 "assist": assist,
                 "avoid_gravel": avoid_gravel,
+                "fewer_turns": dials.fewer_turns,
+                "paved": dials.paved,
                 # What was planned, not what was asked: Mass Ride is always trails-off.
                 "trails_off": trails_off or preset.variant == Variant.NO_TRAIL.value,
                 "easy_mtb": easy_asked,

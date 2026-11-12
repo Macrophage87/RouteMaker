@@ -21,7 +21,7 @@ import { canDragLine, dropStillValid, insertIntoRide, legEnds, legPoints } from 
 import { EditHistory, isRedoKey, isUndoKey, typesText } from "./lib/editHistory.ts";
 import { cancelRoute, requestNeighbours, requestRoute, routeErrorShown, routeRequestBody, type NeighbourOption, type NeighboursResult, type RouteResponse, type RouteResult } from "./lib/api.ts";
 import { choiceColour, choiceFeatures } from "./lib/routeChoice.ts";
-import { displacedBy, keptNeighbours, neighbourDials, neighboursSaid, offersNeighbours, rideDials, withNeighbours } from "./lib/neighbours.ts";
+import { displacedBy, keptNeighbours, neighbourDials, neighbourKinds, neighboursSaid, offersNeighbours, rideDials, withNeighbours } from "./lib/neighbours.ts";
 import { betterRouteSaid, EarlyStart, replannedSaid, takesRefined } from "./lib/progressive.ts";
 import {
   RAIL_STATUS_MS,
@@ -268,7 +268,7 @@ import {
   type NearestFrom,
   type NearestKind,
 } from "./lib/nearest.ts";
-import { AppStatusBar, useAppStatus } from "./InstallableApp.tsx";
+import { AppStatusBar, useAppStatus, useServerStatusLine } from "./InstallableApp.tsx";
 import { OFFLINE_LAST_ROUTE, OFFLINE_SAID, offlineLine } from "./lib/appWorker.ts";
 import { installedApp } from "./lib/installedApp.ts";
 import { keepLastRide, keepRoute, keptAnswerFor, sweepKept } from "./lib/offlineKeep.ts";
@@ -350,7 +350,10 @@ import { BACK_TO_ROAM, ROAM_BROADCAST_NOT_READY, ROAM_BROADCAST_ON, ROAM_BROADCA
 import { BikeshareDocksOverlay, type DocksReport } from "./BikeshareDocks.tsx";
 import { KNOWN_OPERATORS, docksStatus, mergeOperators, operatorsToAsk, readOperatorChoices, saveOperatorChoices, type OperatorInfo } from "./lib/bikeshareDocks.ts";
 import { SaveRoute } from "./SaveRoute.tsx";
-import { firstWordAndRest, planLanguageAttributes } from "./lib/i18n.ts";
+import { firstWordAndRest, language, planLanguageAttributes } from "./lib/i18n.ts";
+import { feedbackDetails } from "./lib/feedback.ts";
+import { FeedbackBox } from "./FeedbackBox.tsx";
+import { findShell } from "./lib/nativeShell.ts";
 import { SAVE_ROUTE } from "./lib/savedRoutes.ts";
 import { SAME_RIDE_EDITED_LEAD, editedFromNext, wasRideSent, BROADCAST_FOLLOWING, BROADCAST_NO_KEY, consentFor, followsWithoutKey, asksSameRide, forgetAnsweredHere, isOwnSecret, isRideLink, isRideLinkType, markOwnSecret, markRideSent, newRide, planSecrets, presetSecret, rideLeadFor, ridePlanKey, rideSecretOf, leadConsent, leaderKey, newToken, opensIntoRide, rideOf, sharedAfterRide, type PlanSecrets, type RideLinkType } from "./lib/rideGroup.ts";
 import { newRideSecret, secretFrom, withSecret, withoutSecret } from "./lib/rideSeal.ts";
@@ -1471,15 +1474,20 @@ export function App() {
       // Go's More direct and Calmer (lib/neighbours.ts), once the route shown is final: one request for both, at the
       // lowest priority, so nothing waits for it (a re-plan, Start or a ride's re-route goes at once). Not once Start is
       // pressed or a ride is on, not for a long ride, and not on a ride type that offers neither.
+      // Plan asks for the named options alone, Fewer turns and All paved (the backlog's "fewer turns" item, 2026-11-12),
+      // where the route has the turns or the unpaved riding for one to be worth asking (lib/neighbours.ts neighbourKinds):
+      // Plan's traffic slider is its More direct and Trailmaxxed.
       after: (plan: Plan, final: RouteResult) => {
         const now = shownNow.current;
-        if (!final.ok || final.route.provisional || modeRef.current !== "go" || now.riding) return null;
+        if (!final.ok || final.route.provisional || now.riding) return null;
         // Nor for a plan with legs drawn in Plan's manual mode: the rider drew that way on purpose.
         if (!offersNeighbours(plan.preset) || plan.confirmLong || drawnLegs(plan.points).length) return null;
+        const kinds = neighbourKinds(final.route, modeRef.current === "go");
+        if (!kinds) return null;
         // Bikeshare keeps the plan's own docks: only the ride between them changes.
         const dials = neighbourDials(plan.preset, plan.dials, final.route);
         if (!dials) return null;
-        return () => requestNeighbours(plan.points, plan.preset, { dials, vias: viaIndices(plan.points, VIA_MARKS.isVia) });
+        return () => requestNeighbours(plan.points, plan.preset, { dials, kinds, vias: viaIndices(plan.points, VIA_MARKS.isVia) });
       },
       onAfter: (plan: Plan, result: NeighboursResult) => {
         const now = shownNow.current;
@@ -5343,6 +5351,11 @@ export function App() {
   routeOnScreen.current = shown !== null;
   // Offline, a planner out of reach is said once, in the error box with its Try again (lib/api.ts routeErrorShown).
   const offlineError = appStatus.offline && status.kind === "error" && status.error.kind === "network";
+  // Send feedback's place-free details (lib/feedback.ts), worked out at Send.
+  const detailsForFeedback = () =>
+    feedbackDetails({ userAgent: navigator.userAgent, rideType: preset, language: language(), mode, nativeApp: findShell() !== null });
+  // The server's own line while something is down (lib/serverStatus.ts): asked again when a plan fails.
+  const serverLine = useServerStatusLine(status.kind === "error");
   // A broadcast link opened on a phone goes straight into Ride mode, the leader's dot on its map (lib/rideGroup.ts
   // opensIntoRide): a route's broadcast starts its ride as Start's press does (no closure check: the leader's, Stephen
   // 2026-10-26); a Roam broadcast starts Roam. Judged
@@ -7258,6 +7271,7 @@ export function App() {
         <BetaChip
           enabled={isBetaBuild(import.meta.env.VITE_BETA)}
           reportUrl={betaReportUrl(import.meta.env.VITE_BETA_REPORT_URL)}
+          feedback={<FeedbackBox details={detailsForFeedback} onSay={announce} />}
         />
       )}
       <p className="visually-hidden" role="status" aria-live="polite">
@@ -7433,7 +7447,7 @@ export function App() {
         </header>
         )}
         <div id="panel-body" className="panel-body" hidden={!panelOpen}>
-          <AppStatusBar status={appStatus} offline={offlineLine({ offline: appStatus.offline, routeShown: shown !== null, errorSaysIt: offlineError })} />
+          <AppStatusBar status={appStatus} offline={offlineLine({ offline: appStatus.offline, routeShown: shown !== null, errorSaysIt: offlineError })} server={serverLine} />
           {homeAsk && (
             <section className="home-offer" aria-labelledby="home-offer-heading">
               <h2 id="home-offer-heading" className="visually-hidden">
@@ -7592,6 +7606,7 @@ export function App() {
               {...{
                 garminReturned: GARMIN_RETURNED,
                 wahooReturned: WAHOO_RETURNED,
+                feedbackDetails: detailsForFeedback,
                 saveSettingsNow,
                 rideText: { size: rideText, onChange: setRideText },
                 // The rider and bike weight (OWNER-DECISIONS 313-318), in Settings (the owner, 2026-10-18).

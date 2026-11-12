@@ -2446,13 +2446,18 @@ def test_a_deploy_refreshes_the_installed_alert_script_first(beta: Beta) -> None
     _alert_stub(beta)
     _release_hook(beta)
     newer = STUB_ALERT.replace("printf '%s|'", "printf 'new|' >> \"$STUB_ALERTS\"; printf '%s|'")
-    beta.release("v0.2.0", {"scripts/beta/alert.sh": newer})
+    # A migration, so the api is stopped and riders are told (a release without one swaps in place).
+    beta.release("v0.2.0", {"scripts/beta/alert.sh": newer, **MIG})
     done = beta.agent("run", **DEPLOY, STUB_ALERTS=str(beta.tmp / "alerts.log"))
     assert done.returncode == 0, done.stdout + done.stderr
     assert (beta.cd / "bin" / "alert.sh").read_text() == newer
     sent = _alerts(beta)
+    # The riders' "updating" goes out before the new copy is in, from the copy then installed.
+    assert sent[0] == "status|updating|"
+    sent = sent[1:]
     assert sent and all(line.startswith("new|") for line in sent)
     assert any(line.startswith("new|release-notes|v0.2.0|") for line in sent), sent
+    assert "new|status|done|" in sent
 
 
 def test_release_notes_are_retried_on_an_up_to_date_pass(beta: Beta) -> None:
@@ -3074,3 +3079,26 @@ def test_ship_held_refuses_a_migration_that_reads_the_map_tables(beta: Beta) -> 
     done = beta.agent("ship-held", "v0.2.0", "--map", RUN, **UP)
     assert done.returncode == 1 and "must run after the new map" in beta.status()
     assert "up -d" not in beta.calls() and not (beta.cd / "PAUSED").exists()
+
+
+def test_riders_see_updating_from_the_stop_until_the_pass_ends(beta: Beta) -> None:
+    """A release with a migration stops the api; riders see "Updating" until the pass ends."""
+    _alert_stub(beta)
+    beta.release("v0.2.0", {"src/core/a.py": "x = 2\n", **MIG})
+    done = beta.agent("run", **DEPLOY, STUB_ALERTS=str(beta.tmp / "alerts.log"))
+    assert done.returncode == 0, done.stdout + done.stderr
+    sent = _alerts(beta)
+    assert sent.index("status|updating|") < sent.index("status|done|")
+    assert not (beta.cd / "rider-updating").exists()
+    # an idle pass after it says nothing to riders
+    (beta.tmp / "alerts.log").unlink()
+    beta.agent("run", STUB_ALERTS=str(beta.tmp / "alerts.log"))
+    assert not any(line.startswith("status|") for line in _alerts(beta))
+
+
+def test_a_release_swapped_in_place_tells_riders_nothing(beta: Beta) -> None:
+    _alert_stub(beta)
+    beta.release("v0.2.0", {"src/core/a.py": "x = 2\n"})
+    done = beta.agent("run", **DEPLOY, STUB_ALERTS=str(beta.tmp / "alerts.log"))
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert not any(line.startswith("status|") for line in _alerts(beta))
