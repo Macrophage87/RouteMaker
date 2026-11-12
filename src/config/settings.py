@@ -603,20 +603,26 @@ REBUILD_LONG_TRAIL_FLOORS = (6000, 2200)
 # The ride layer's runs (OWNER-DECISIONS 391, 402a; `pipeline.run.assert_calm_runs`): the two
 # long trails above are paths in a connected network of 8 mi or more, so they are the path
 # sentinels; and a calm road (the road sentinel: Wildlife Loop in the Patuxent Research
-# Refuge's North Tract, Anne Arundel County, OSM way 86073896, LTS 2 in our own-picks file
-# 2026-11-09-owner-md-own-picks.json, in a 13.9 km calm run of 8 ways that file rates whole,
-# measured on the 2026-11-09 build's table, 2026-11-10) must come out at the ride layer's road
-# bar. It was Gambrill Park Road (way 11560982) until our own picks rated that piece 2.5
-# (2026-11-09), which broke its run and stopped the 2026-11-10 cloud run; before that, Elmer
-# School Road (way 5968951) until Montgomery Planning's LTS 4 for it won over the formula's
-# LTS 2 (the owner accepted the county's rating, 2026-10-18). The sentinel leans on the
-# own-picks rows: without them the formula's 50 mph rural default could rate the road higher.
+# Refuge's North Tract, Anne Arundel County, OSM way 11507801, the 3.3 mi southern stretch of
+# the open road from the Visitor Contact Station to Bailey Bridge, LTS 2 in our own-picks file
+# 2026-11-09-owner-md-own-picks.json, group G00209) must come out at the ride layer's road
+# bar. It was way 86073896 on the same loop until that stretch, east of the contact station,
+# fell inside the area the refuge closed on 2026-06-07 and our 2026-11-12 override closed it
+# (2026-11-12-owner-patuxent-closed-area.json); the run that keeps 11507801 is Wildlife Loop
+# from the contact station over Bailey Bridge (707456987, 707456990, 11507801, 92457576,
+# 11513643), about 6.4 mi by the OSM lengths, estimated, not yet measured on a build. Before that
+# it was Gambrill Park Road (way 11560982) until our own picks rated that piece 2.5
+# (2026-11-09), which broke its run and stopped the 2026-11-10 cloud run; and before that,
+# Elmer School Road (way 5968951) until Montgomery Planning's LTS 4 for it won over the
+# formula's LTS 2 (the owner accepted the county's rating, 2026-10-18). The sentinel leans on
+# the own-picks rows: without them the formula's 50 mph rural default could rate the road
+# higher.
 # The floors are the path rows in a run of RIDE_PATH_RUN_MI and the road rows in a calm run of
 # RIDE_ROAD_RUN_MI, about half of what the 2026-10-03 extract gives (30,972 and 2,398 rows,
 # measured on a copy of the live table's rows; docs/OPERATIONS.md, "The ride layer
 # (z12-13)"). The setting keeps its STREET name.
 REBUILD_SENTINEL_CALM_PATH_WAYS = (8810729, 74843009)
-REBUILD_SENTINEL_CALM_STREET_WAYS = (86073896,)
+REBUILD_SENTINEL_CALM_STREET_WAYS = (11507801,)
 REBUILD_CALM_RUN_FLOORS = (15000, 1200)
 # The Mass Ride capacity column (OWNER-DECISIONS 325-327, 387;
 # `pipeline.run.assert_mass_capacity`): VALIDATE_SEGMENTS reads it back, and the median road
