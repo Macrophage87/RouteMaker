@@ -78,6 +78,9 @@ import {
 } from "./lib/rideStops.ts";
 import { RestartStopsDialog } from "./RestartStopsDialog.tsx";
 import { StartFirstDialog } from "./StartFirstDialog.tsx";
+import { SuddenClosureDialog, type SuddenAsk } from "./SuddenClosureDialog.tsx";
+import { WATCH_MS, closedAheadSaid, closuresStamp, lineFromIndex, newWatchState, watchStep, watchedOf, type Watched } from "./lib/closureWatch.ts";
+import { checkClosures } from "./lib/closureCheck.ts";
 import { keepLeftRide, keepLeftRideDocked, keepLeftRidePast, keepLeftRideReplans, rideReplans, seeLeftRide, unseeLeftRide, type RideReplans } from "./lib/rideResume.ts";
 import type { Dials } from "./lib/dials.ts";
 import { haversineM, type LonLat } from "./lib/geo.ts";
@@ -1081,6 +1084,8 @@ export function RideMode({
   // End mountain biking pressed while a re-plan was under way: that one is voided and this one made once it settles, with
   // the rider's heading (unlike Road closed's, turning round is not the point).
   const mtbDonePending = useRef(false);
+  // Reroute around it pressed on a closure ahead (SuddenClosureDialog) while a re-plan was under way.
+  const suddenPending = useRef(false);
   routeRef.current = route;
   // The dials every re-plan and detour of this ride asks with: the plan's at first, then a step calmer or flatter
   // for each Calmer or Flatter press that found a route (lib/rideEase.ts); Plan's own sliders are left as they were.
@@ -1712,9 +1717,11 @@ export function RideMode({
         void replanRef.current(rideRef.current.goodFix?.point ?? here, undefined, true, true);
         return false;
       }
-      // End mountain biking pressed meanwhile (mtbDonePress): this answer may ride the trails, so it is dropped too.
-      if (!check && mtbDonePending.current && !ended.current) {
+      // End mountain biking pressed meanwhile (mtbDonePress): this answer may ride the trails, so it is dropped too. So is
+      // one asked before a closure ahead was said (Reroute around it, SuddenClosureDialog).
+      if (!check && (mtbDonePending.current || suddenPending.current) && !ended.current) {
         mtbDonePending.current = false;
+        suddenPending.current = false;
         closedPending.current = false;
         gate.online();
         void replanRef.current(rideRef.current.goodFix?.point ?? here, undefined, true);
@@ -2659,6 +2666,7 @@ export function RideMode({
     // every later re-plan).
     closedPending.current = false;
     mtbDonePending.current = false;
+    suddenPending.current = false;
     setReplanning(false);
     setKeepPlanned(true);
     setReplanNote("");
@@ -3416,6 +3424,79 @@ export function RideMode({
   }, [weather, deliver]);
   // Shown until dismissed; again only for an alert not dismissed or rain at a new stage.
   const weatherShown = weatherToShow(weather, weatherDismissed);
+  // Sudden closures ahead (lib/closureWatch.ts; Stephen 2026-11-12, "treated like tornadoes"): each minute the ride asks
+  // whether the closures in force changed, and checks the line still to ride only when they did. One within 10 miles
+  // along the route is said urgently and asked about (SuddenClosureDialog); one further is said quietly, and asked about
+  // once it is within 10 miles. A bicycle's ride only: on foot, the planner does not route round most closures.
+  const watchState = useRef(newWatchState());
+  const [watched, setWatched] = useState<Watched[] | null>(null);
+  const [suddenAsk, setSuddenAsk] = useState<SuddenAsk | null>(null);
+  const watchOn = !ride.arrived && !trip?.onFoot;
+  useEffect(() => {
+    if (!watchOn) return;
+    let live = true;
+    let stamp: string | null = null;
+    let busy = false;
+    setWatched(null);
+    const run = async () => {
+      // The app speaks with the screen locked, so it checks hidden too; a browser's hidden tab waits, as the weather does.
+      if (busy || (document.visibilityState === "hidden" && !ridesHidden())) return;
+      busy = true;
+      try {
+        const now = await closuresStamp(window.location.origin);
+        if (!live || now === null || now === stamp) return;
+        const current = modelRef.current;
+        const at = rideRef.current.progressM ?? weatherProgress.current ?? 0;
+        const from = lineFromIndex(current.along, at);
+        const found = await checkClosures(window.location.origin, current.coordinates.slice(from), fetch, { nowOnly: true });
+        if (!live || !found || modelRef.current !== current) return;
+        stamp = now;
+        setWatched(watchedOf(found.closures, current.along[from] ?? 0));
+      } finally {
+        busy = false;
+      }
+    };
+    void run();
+    const timer = window.setInterval(() => void run(), WATCH_MS);
+    return () => {
+      live = false;
+      window.clearInterval(timer);
+    };
+  }, [watchOn, model]); // eslint-disable-line react-hooks/exhaustive-deps
+  const watchAt = progress === null ? null : Math.floor(progress / 100);
+  useEffect(() => {
+    if (watched === null || watchAt === null || suddenAsk) return;
+    const at = rideRef.current.progressM ?? watchAt * 100;
+    for (const step of watchStep(watchState.current, watched, at)) {
+      const said = closedAheadSaid(spokenDistance(step.aheadM), step.closure.name);
+      if (step.kind === "note") {
+        announcer.current?.note(said);
+        showToast(closedAheadSaid(formatDistance(step.aheadM), step.closure.name));
+      } else {
+        deliver({ text: said, urgent: true });
+        setSuddenAsk({ name: step.closure.name, distance: formatDistance(step.aheadM) });
+      }
+      if (prefsRef.current.output === "neither") setPolite((p) => ({ text: said, count: p.count + 1 }));
+    }
+  }, [watched, watchAt, suddenAsk, deliver, showToast]);
+  const suddenReroute = () => {
+    setSuddenAsk(null);
+    const fix = rideRef.current.goodFix ?? rideRef.current.fix;
+    if (!fix) {
+      sayDetour(NO_FIX_YET);
+      return;
+    }
+    setKeepPlanned(false);
+    sayDetour(ROAD_CLOSED_FINDING);
+    if (gate.busy) {
+      // The re-plan under way was asked before the closure was known: voided, and the ride planned again once it settles.
+      suddenPending.current = true;
+      replanTicket.current += 1;
+      return;
+    }
+    gate.online();
+    void replan(fix.point, undefined, true);
+  };
   // "Ride mode" is for screen readers only and the two buttons fill the row (the owner, 2026-10-20: "People know it's
   // ride mode anyway"). Near dawn or dusk the light times take the corner while they fit beside the buttons on one
   // line, measured, as a phone's own text size can be larger than the page knows; else they go just under the row.
@@ -4458,6 +4539,7 @@ export function RideMode({
       </dialog>
       <RestartStopsDialog stops={restart} onContinue={continueRestart} />
       <StartFirstDialog open={startAsk} onChoose={(start) => chooseStart(start)} />
+      <SuddenClosureDialog ask={suddenAsk} onReroute={suddenReroute} onKeep={() => setSuddenAsk(null)} />
     </section>
   );
 }

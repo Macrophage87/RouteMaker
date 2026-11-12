@@ -40,7 +40,7 @@ import html
 import math
 import re
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, time, timedelta
 from email.utils import parsedate_to_datetime
 from html.parser import HTMLParser
@@ -584,6 +584,15 @@ class Segment:
     daily: tuple[int, int, int, int] | None = None
 
 
+@dataclass(frozen=True)
+class Corner:
+    """One junction closed: AlertDC's "15th and P Street NW (Eastbound)"."""
+
+    a: str
+    b: str
+    text: str  # the line as published
+
+
 @dataclass
 class Advisory:
     """One MPD release or AlertDC item, read: its segments, and what would not parse."""
@@ -597,6 +606,11 @@ class Advisory:
     unparsed: list[str]
     start: datetime | None = None
     end: datetime | None = None
+    # AlertDC's closures at a single junction (`parse_corner`), placed as small areas.
+    corners: list[Corner] = field(default_factory=list)
+    # A road closure for police activity (`alertdc_kind`): its closures are avoided as one
+    # area `POLICE_MARGIN_M` round them all, and none of its text is kept or shown.
+    police: bool = False
 
     def notice(self, lines: Sequence[str] | None = None) -> Notice:
         """The advisory as text under "Check before you go": `lines` (its unparsed ones,
@@ -1138,6 +1152,37 @@ NOT_TRAFFIC = re.compile(
 TRAFFIC_CATEGORIES = re.compile(r"traffic|transport|road", re.I)
 
 
+# A road closure for police activity (Stephen 2026-11-12, of a shooting's road closures at
+# Logan Circle: "Police activity closures should generally be treated like tornadoes"; "Avoid
+# those closures by a wide margin"). An item with a crime word is read only where its title
+# says it closes a road; then only its closures are kept, under the plain words `POLICE_TITLE`,
+# and nothing else it says is stored, logged or shown. A crime alert with no road closure in
+# its title ("Crime Alert 1st District") is dropped unread, as before.
+ROAD_CLOSURE_TITLE = re.compile(
+    r"\b(?:road|street)\s+closures?\b|\bclosed to traffic\b|\b(?:road|street)s?\s+closed\b", re.I
+)
+POLICE_TITLE = "Police activity"
+# How far round a police closure routes keep (our default, 2026-11-12, unmeasured: about
+# 1,000 ft, two or three DC blocks, as police cordons often run past the streets listed).
+POLICE_MARGIN_M = 305.0
+# A closure at one junction for anything else (a crash, a fire): the junction itself.
+CORNER_MARGIN_M = 30.0
+# A police closure with no end of its own drops off this long after AlertDC posted it, unless
+# a reopening update ends it sooner (our default, 2026-11-12, unmeasured).
+POLICE_MAX_AGE = timedelta(hours=3)
+
+
+def alertdc_kind(title: str, categories: Sequence[str]) -> str | None:
+    """ "traffic" for a traffic or road item (`is_traffic`), "police" for a road closure whose
+    title also has a crime word (read for its closures only), None for anything else."""
+    if is_traffic(title, categories):
+        return "traffic"
+    crime = NOT_TRAFFIC.search(title) or any(NOT_TRAFFIC.search(c) for c in categories)
+    if crime and (ROAD_CLOSURE_TITLE.search(title) or _REOPENED.search(title)):
+        return "police"
+    return None
+
+
 def is_traffic(title: str, categories: Sequence[str]) -> bool:
     """Whether an AlertDC item is a traffic or road item: a traffic category, or a
     traffic word in its title; never one with a crime word."""
@@ -1320,20 +1365,28 @@ def parse_alertdc(feed: str, now: datetime) -> list[Advisory]:
     the whole incident."""
     read = []
     for item in _alertdc_items(feed):
-        if not is_traffic(item["title"], item["categories"]):
+        kind = alertdc_kind(item["title"], item["categories"])
+        if kind is None:
             continue
-        if NOT_TRAFFIC.search(item["description"]):
-            continue
+        police = kind == "police" or bool(NOT_TRAFFIC.search(item["description"]))
+        # A police item whose title says only that roads reopened is read for that alone.
+        reopen_only = police and not ROAD_CLOSURE_TITLE.search(item["title"])
+        if reopen_only and not _REOPENED.search(item["title"]):
+            continue  # a crime word in the text of an item that closes no road: dropped
+        item["police"] = police
         lines = _strip_tags(item["description"]) or [item["title"]]
         sentences = [s for line in lines for s in re.split(r"(?<=[.!?])\s+", line) if s]
         # A "Final Update" never closes anything; nor do the bulleted lines under a
         # "the following road closures have reopened:" lead-in. Those stretches reopen.
         final = bool(re.search(r"\bfinal\s+update\b", item["title"], re.I))
-        closes, reopened, under_open = [], set(), False
+        closes, reopened, under_open, under_closed = [], set(), False, False
         for sentence in sentences:
             text = _tidy(sentence)
             if text.endswith(":"):
                 under_open = bool(_REOPENED.search(text))
+                # "the following road closures:", never "signals are out at the following
+                # intersections:" (review of #1175: an open junction read as closed).
+                under_closed = not under_open and bool(_CLOSURE_LEAD.search(text))
             m = _REOPENED_BLOCK.search(text)
             if m:
                 stretch = _between(m.group("street"), m.group("a"), m.group("b"))
@@ -1342,6 +1395,13 @@ def parse_alertdc(feed: str, now: datetime) -> list[Advisory]:
                 continue
             stretch = _closed_segment(sentence)
             if stretch is None:
+                corner = _closed_corner(sentence)
+                if corner is None:
+                    continue
+                if (final and not _still_closed(text)) or under_open:
+                    reopened.add(corner)
+                elif under_closed or re.search(r"\bclosed\b", text, re.I):
+                    closes.append((sentence, corner))
                 continue
             block = _ALERT_BLOCK.match(text)
             bullet = block is not None and not block.group("closed").strip()
@@ -1350,13 +1410,15 @@ def parse_alertdc(feed: str, now: datetime) -> list[Advisory]:
                 reopened.add(stretch)
             else:
                 closes.append((sentence, stretch))
-        says_open = final or any(_REOPENED.search(s) for s in sentences)
+        if reopen_only:
+            closes = []
+        says_open = final or reopen_only or any(_REOPENED.search(s) for s in sentences)
         read.append((item, sentences, closes, says_open and not closes, reopened))
     # An item that names stretches reopened ends them in the earlier items of its incident
     # (a partial update keeps its own closures); one that only says the road is open, naming
     # none, ends the whole incident.
     reopenings = [
-        (_incident(item["title"]), item["published"], stretches)
+        (_incident_of(item), item["published"], stretches)
         for item, _s, _c, reopening, stretches in read
         if reopening or stretches
     ]
@@ -1364,7 +1426,7 @@ def parse_alertdc(feed: str, now: datetime) -> list[Advisory]:
     for item, sentences, closes, reopening, _stretches in read:
         if reopening:
             continue
-        published, key = item["published"], _incident(item["title"])
+        published, key = item["published"], _incident_of(item)
         ended: set | None = set()
         for other, when, stretches in reopenings:
             if other != key or (published and when and when < published):
@@ -1378,10 +1440,18 @@ def parse_alertdc(feed: str, now: datetime) -> list[Advisory]:
         kept = [(s, f) for s, f in closes if f not in ended]
         if closes and not kept:
             continue
-        segments = [Segment(*f, published, _alert_end(s, published), s) for s, f in kept]
-        unparsed = [] if segments else (sentences[:4] or [item["title"]])
+        police = item["police"]
+        segments = [
+            Segment(*f, published, _alert_end(s, published), s) for s, f in kept if len(f) == 3
+        ]
+        corners = [Corner(f[0], f[1], s) for s, f in kept if len(f) == 2]
+        if police and not (segments or corners):
+            continue  # a police item with no closure that reads: nothing of it is kept
+        unparsed = [] if (segments or corners or police) else (sentences[:4] or [item["title"]])
         ends = [s.end for s in segments]
-        end = max(ends) if ends and all(e is not None for e in ends) else None
+        end = max(ends) if ends and all(e is not None for e in ends) and not corners else None
+        if police and end is None and published is not None:
+            end = published + POLICE_MAX_AGE
         if published is not None and end is None and now - published > ALERTDC_MAX_AGE:
             continue
         if end is not None and end <= now:
@@ -1391,16 +1461,158 @@ def parse_alertdc(feed: str, now: datetime) -> list[Advisory]:
             Advisory(
                 advisory_id="alertdc-" + re.sub(r"[^A-Za-z0-9]+", "-", guid)[-60:].strip("-"),
                 source="alertdc",
-                title=_title(item["title"]),
-                url=item["link"] or None,
+                title=POLICE_TITLE if police else _title(item["title"]),
+                # Not the police alert's own page, which carries what happened: the card links
+                # AlertDC itself (`workzones.SOURCE_LINKS`).
+                url=None if police else (item["link"] or None),
                 published=published,
                 segments=segments,
                 unparsed=unparsed,
                 start=published,
                 end=end,
+                corners=corners,
+                police=police,
             )
         )
     return advisories
+
+
+# A lead-in naming closures: "MPD reports the following road closures:".
+_CLOSURE_LEAD = re.compile(r"\b(?:closures?|closed|closing|blocked)\b", re.I)
+
+
+def _incident_of(item: Mapping) -> str:
+    """The key an item shares with its updates (`_incident`). A police item's updates are
+    titled each their own way ("Road Closures / Police Activity (15th and P Streets, NW)",
+    "Update: Police Activity (15th and P Streets, NW) - Roads Reopened"), so theirs is the
+    place in the title's brackets."""
+    if item.get("police"):
+        places = re.findall(r"\(([^()]*)\)", item["title"])
+        if places:
+            return "police|" + _tidy(places[-1]).lower()
+    return _incident(item["title"])
+
+
+def _still_closed(text: str) -> bool:
+    return bool(re.search(r"\b(?:is|are|remains?)\s+(?:now\s+|still\s+)?closed\b", text, re.I))
+
+
+# AlertDC's closures at one junction, a bulleted line each: "15th and P Street NW
+# (Eastbound)", "14th Street and P Street, NW", "the intersection of 15th and Q Streets NW",
+# "14th St & P St NW".
+_CORNER = re.compile(
+    r"^(?:the\s+)?(?:intersection\s+of\s+)?(?P<a>[A-Za-z0-9][A-Za-z0-9 .'-]*?)\s+(?:and|&)\s+"
+    r"(?P<b>[A-Za-z0-9][A-Za-z0-9 .'-]*?)(?:\s*,?\s*(?P<quad>N\.?W|N\.?E|S\.?W|S\.?E)\.?)?"
+    r"(?:\s*\((?:north|south|east|west)bound\))?(?:\s+(?:is|are)\s+(?:now\s+)?closed\b.*)?\.?$",
+    re.I,
+)
+_STREET_TYPE = re.compile(
+    r"\b(Street|St|Avenue|Ave|Road|Rd|Place|Pl|Drive|Dr|Court|Ct|Terrace|Ter|Boulevard|Blvd"
+    r"|Parkway|Pkwy|Circle|Way|Lane|Ln)s?\.?$",
+    re.I,
+)
+
+
+def parse_corner(line: str) -> tuple[str, str] | None:
+    """(street, cross street) of a junction closure ("15th and P Street NW (Eastbound)" is
+    ("15th Street NW", "P Street NW")); None for anything else. A bare first name takes the
+    second's street type ("15th and P Streets"); the quadrant is shared."""
+    text = _tidy(line).strip(" •*-–")
+    text = re.split(r":\s+", text)[-1]
+    if _times(text) or _dates(text, 2000) or re.search(r"\b(?:between|from)\b", text, re.I):
+        return None
+    match = _CORNER.match(text)
+    if match is None:
+        return None
+    a, b = match.group("a").strip(" ,."), match.group("b").strip(" ,.")
+    quad = (match.group("quad") or "").replace(".", "").upper()
+    if not quad:
+        quad = _quadrant(b) or ""
+        b = _QUADRANT.sub("", b).strip(" ,") if quad else b
+    if max(len(a), len(b)) > 40 or not a or not b:
+        return None
+    # Each a name: every word capitalised or a number ("Martin Luther King Jr Avenue",
+    # "15th"), never a sentence ("There is a crash at Georgia Avenue").
+    if not all(re.match(r"[A-Z0-9]", w) for w in f"{a} {b}".split()):
+        return None
+    kind = _STREET_TYPE.search(b)
+    if kind is None:
+        return None  # "Smith and Jones": not a junction we can tell
+    if _STREET_TYPE.search(a) is None:
+        a = f"{a} {kind.group(1)}"
+    b = re.sub(r"\b(Street|Avenue|Road|Place|Drive|Court|Terrace)s\b", r"\1", b, flags=re.I)
+    if quad:
+        a, b = f"{a} {quad}", f"{b} {quad}"
+    return a, b
+
+
+def _closed_corner(sentence: str) -> tuple[str, str] | None:
+    """(street, cross street) a sentence closes at one junction; None for an open road."""
+    text = _tidy(sentence)
+    if _REOPENED.search(text) or re.search(r"\blanes?\b", text, re.I):
+        return None
+    return parse_corner(text)
+
+
+def area_ring(
+    points: Sequence[Sequence[float]], margin_m: float
+) -> tuple[tuple[float, float], ...] | None:
+    """The outline round `points` at `margin_m` (`workzones.area_ring`)."""
+    return wz.area_ring(points, margin_m)
+
+
+def _short(name: str) -> str:
+    """ "15th Street NW" as "15th St NW" for a closure's title."""
+    for long, short in (("Street", "St"), ("Avenue", "Ave"), ("Road", "Rd"), ("Place", "Pl")):
+        name = re.sub(rf"\b{long}\b", short, name)
+    return name
+
+
+def corner_title(corner: Corner) -> str:
+    """ "15th St & P St NW": the quadrant said once, at the end."""
+    a, b = _short(corner.a), _short(corner.b)
+    quad = _quadrant(a)
+    if quad and _quadrant(b) == quad:
+        a = _QUADRANT.sub("", a).strip()
+    return f"{a} & {b}"
+
+
+def area_zone(
+    advisory: Advisory,
+    index: int,
+    points: Sequence[Sequence[float]],
+    margin_m: float,
+    near: str,
+) -> wz.Zone | None:
+    """An advisory's closed corners or blocks (`points`) as one area closure `margin_m` round
+    them. `near` names where, in plain words: "15th St & P St NW". A police closure says only
+    "Police activity: streets closed near ..." (never what happened) and closes the way on
+    foot too, as a cordon does."""
+    ring = area_ring(points, margin_m)
+    if ring is None:
+        return None
+    if advisory.police:
+        title = f"{POLICE_TITLE}: streets closed near {near}"
+    else:
+        title = f"{near} closed"
+    return wz.Zone(
+        zone_id=f"{advisory.advisory_id}-area{index}",
+        source=advisory.source,
+        kind=wz.CLOSED,
+        penalty_s=0.0,
+        line=ring,
+        road=near,
+        description=POLICE_TITLE if advisory.police else advisory.title,
+        start=advisory.start,
+        end=advisory.end,
+        reason=f"closed ({wz.SOURCES[advisory.source]})",
+        title=title,
+        url=advisory.url,
+        published=advisory.published,
+        on_foot=True if advisory.police else None,
+        margin_m=margin_m,
+        core=tuple((float(p[0]), float(p[1])) for p in points) if margin_m > wz.CORE_M else (),
+    )
 
 
 def _alert_end(sentence: str, published: datetime | None) -> datetime | None:

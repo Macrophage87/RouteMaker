@@ -2154,4 +2154,6 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Phone emoji on map signs": "地図の目印にスマホの絵文字",
   "Notes and stops on the map show your phone's own emoji, not the app's pictures. Kept on this device.": "地図上のメモと立ち寄り先に、アプリの絵ではなくスマホの絵文字を表示します。この端末に保存されます。",
   "emoji signs": "絵文字の目印",
+  "Road closed ahead": "この先 通行止め",
+  "Road closed ahead, {distance}: {name}": "この先 通行止め、{distance}：{name}",
 };

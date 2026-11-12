@@ -5682,7 +5682,7 @@ row keyed `closures` (`src/core/closure_sources.py`):
 |---|---|---|---|---|---|
 | DDOT TOPS permits (`dc`, CC BY 4.0) | `maps2.dcgis.dc.gov/.../DDOT/TOPS/MapServer/1/query` | 1 h | 3 h | 26 h | Flagged only (a road *may* be closed): never routed around (Go, Plan, MCP), no warning or cue; shown only by Plan's Potential closures layer (off by default) |
 | MPD traffic advisories (`mpd`) | `mpdc.dc.gov/newsroom` | 15 min | 45 min | 6 h | Closures on the ways between the cross streets; the rest "Check before you go" text. A window said to hold "nightly" or "daily", or two days with one pair of times ("Nov 14 through Nov 22, 9 pm to 5 am"), is routed round only in those hours of each day (`Zone.daily`) |
-| AlertDC (`alertdc`) | `trainingtrack.hsema.dc.gov/NRss/RssFeed/AlertDCList` (HTML list) | 15 min | 45 min | 3 h | As MPD; only traffic and road items are kept, every other item is dropped unread |
+| AlertDC (`alertdc`) | `trainingtrack.hsema.dc.gov/NRss/RssFeed/AlertDCList` (HTML list) | 1 min, own task `refresh_alertdc`; read only when the page changed, else every 15 min | 45 min | 3 h | As MPD, plus a closure at one junction ("15th and P Street NW") as a small area round it. Only traffic and road items are kept, every other item is dropped unread, except a road closure whose title also names police activity or a crime: only its closures are kept, as one area about 1,000 ft round them all (`POLICE_MARGIN_M`, our default), titled "Police activity: streets closed near ...", dropped 3 h after posting (`POLICE_MAX_AGE`, our default) or at its reopening; none of its words are kept |
 | NPS alerts (`nps`) | `developer.nps.gov/api/v1/alerts` | 30 min | 90 min | 6 h | Park-level "Check before you go" notices (rocr, nama, gwmp, choh, anac), never closures |
 | DDOT ProTrack+ projects (`protrack`, CC BY 4.0) | `maps2.dcgis.dc.gov/.../DDOT/ProTrackPlusViews/MapServer/1/query` | 6 h | 24 h | 3 days | Potential closures, as DDOT's permits: "Under Construction" and not past the estimated completion; sidewalk, alley, streetlight, green infrastructure, tree, landscaping and signage work left out |
 | DC Water work zones (`dcwater`) | `geo.dcwater.com/.../Viewer/ActiveWorkZonesPublic/MapServer/0/query` | 6 h | 24 h | 3 days | Potential closures; each zone's middle placed on its block as a permit's is |
@@ -5708,7 +5708,8 @@ Maryland's Road Closure Reporter (PLAYBOOK §0).
    Status values; a permit count of zero with a successful run means one of them differs.
 3. MPD: confirm the newsroom lists "TRAFFIC ADVISORY" releases as links on `mpdc.dc.gov`
    and that a release's body still reads "X from A to B" lines with dates and times.
-4. AlertDC: the list is an HTML table (no RSS since at least 2026-11-01): one row an alert,
+4. AlertDC: `runs` shows `refresh_alertdc` succeeding each minute (its detail says
+   `alertdc unchanged` when the page was the same). The list is an HTML table (no RSS since at least 2026-11-01): one row an alert,
    its local date and time, a title linking to `/NRss/RssFeed/AlertDetails/<id>`, then the text.
    A page with no table, or with alert links but no row that reads, fails with `not an
    AlertDC list`; compare it with `tests/data/closures/alertdc-list.html`. A "has reopened"
