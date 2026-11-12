@@ -44,8 +44,22 @@ echo "PASS  healthz (200)"
 """
 STUB_COMPOSE = """#!/bin/sh
 echo "$*" >> "$STUB_DIR/compose.log"
+case "$*" in
+  logs*) cat "$STUB_DIR/api-log" 2>/dev/null; exit 0 ;;
+  *" ps "*) cat "$STUB_DIR/ps" 2>/dev/null; exit 0 ;;
+esac
 if [ -f "$STUB_DIR/ops-fails" ]; then cat "$STUB_DIR/ops-fails"; exit 1; fi
 echo "ok"
+"""
+STUB_DOCKER = """#!/bin/sh
+case "$1" in
+  inspect) cat "$STUB_DIR/inspect" 2>/dev/null ;;
+  info) echo /var/lib/docker ;;
+esac
+"""
+STUB_DF = """#!/bin/sh
+echo "Filesystem 1048576-blocks Used Available Capacity Mounted on"
+echo "/dev/root 100000 50000 $(cat "$STUB_DIR/df-free" 2>/dev/null || echo 50000) 50% $2"
 """
 
 
@@ -59,7 +73,14 @@ class Box:
             f"export RM_STATE={self.state}\nexport RM_SRC={tmp}\nexport RM_PY={sys.executable}\n"
         )
         self.vars.chmod(0o600)
-        for name, text in (("curl", STUB_CURL), ("smoke", STUB_SMOKE), ("compose", STUB_COMPOSE)):
+        (tmp / "meminfo").write_text("MemTotal: 9000000 kB\nMemAvailable: 2000000 kB\n")
+        for name, text in (
+            ("curl", STUB_CURL),
+            ("smoke", STUB_SMOKE),
+            ("compose", STUB_COMPOSE),
+            ("docker", STUB_DOCKER),
+            ("df", STUB_DF),
+        ):
             (tmp / name).write_text(text)
             (tmp / name).chmod(0o755)
 
@@ -71,6 +92,10 @@ class Box:
             "CURL": str(self.tmp / "curl"),
             "RM_ALERT_SMOKE": str(self.tmp / "smoke"),
             "RM_ALERT_COMPOSE": str(self.tmp / "compose"),
+            "RM_ALERT_DOCKER": str(self.tmp / "docker"),
+            "RM_ALERT_DF": str(self.tmp / "df"),
+            "RM_ALERT_MEMINFO": str(self.tmp / "meminfo"),
+            "RM_ALERT_OPENSSL": str(self.tmp / "no-openssl"),
             "STUB_DIR": str(self.tmp),
             "TMPDIR": str(self.tmp),
             "RM_ALERT_CHUNK_SLEEP": "0",
@@ -487,3 +512,99 @@ def test_install_writes_the_heartbeat_timer_beside_the_checks(box: Box) -> None:
     assert 'alert.sh" heartbeat' in (units / "routemaker-beta-heartbeat.service").read_text()
     assert (units / "routemaker-beta-alert.timer").exists()
     assert "no HEALTHCHECK_PING_URL" in done.stdout
+
+
+# --- what a tester sees (backlog 2026-11-12, "Ready for a dozen testers") ---------------------
+
+
+def test_watch_plans_on_the_trail_graphs_unless_switched_off(box: Box) -> None:
+    (box.tmp / "smoke").write_text('#!/bin/sh\necho "$*" >> "$STUB_DIR/smoke.log"\n')
+    box.run("watch")
+    box.run("watch", RM_ALERT_TRAILS="0")
+    assert (box.tmp / "smoke.log").read_text().splitlines() == ["--local --trails", "--local"]
+
+
+def log_line(path: str, status: int, micros: int) -> str:
+    return f'[12/Nov/2026:20:00:00 +0000] "POST {path}" {status} 120 {micros} "Mozilla/5.0"\n'
+
+
+def test_server_errors_in_the_api_log_are_posted_then_cleared(box: Box) -> None:
+    box.hook()
+    (box.tmp / "api-log").write_text(log_line("/api/route", 500, 1000) * 2)
+    box.run("watch")
+    assert box.posts() == []  # two is under our default of three
+    (box.tmp / "api-log").write_text(log_line("/api/route", 500, 1000) * 2 + log_line("/api/geocode", 502, 9))
+    box.run("watch")
+    posts = box.posts()
+    assert len(posts) == 1
+    assert "3 requests with a server error" in posts[0]
+    assert "POST /api/route 500" in posts[0]
+    assert "--since 10m api" in (box.tmp / "compose.log").read_text()
+    (box.tmp / "api-log").write_text(log_line("/api/route", 200, 1000))
+    box.run("watch")
+    assert "server errors are back under" in box.posts()[-1]
+
+
+def test_slow_route_plans_are_posted(box: Box) -> None:
+    box.hook()
+    lines = log_line("/api/route", 200, 31_000_000) * 3 + log_line("/tiles/stress/:zxy", 200, 60_000_000) * 5
+    (box.tmp / "api-log").write_text(lines)
+    box.run("watch")
+    posts = box.posts()
+    assert len(posts) == 1
+    assert "3 route plans took over 30 s" in posts[0]
+
+
+def test_a_restart_or_memory_kill_is_posted_once(box: Box) -> None:
+    box.hook()
+    (box.tmp / "ps").write_text("abc123\ndef456\n")
+    (box.tmp / "inspect").write_text("/beta-api-1 0 false\n/beta-photon-1 2 false\n")
+    box.run("watch")
+    assert box.posts() == []  # the first check only records the counts
+    (box.tmp / "inspect").write_text("/beta-api-1 1 true\n/beta-photon-1 2 false\n")
+    box.run("watch")
+    posts = box.posts()
+    assert len(posts) == 1
+    assert "beta-api-1 restarted 1 time(s), killed for memory" in posts[0]
+    assert "photon" not in posts[0]
+    box.run("watch")
+    assert len(box.posts()) == 1
+    # a deploy recreates containers and their counts start again: no alert
+    (box.tmp / "inspect").write_text("/beta-api-1 0 false\n/beta-photon-1 0 false\n")
+    box.run("watch")
+    assert len(box.posts()) == 1
+
+
+def test_low_memory_and_disk_are_posted_when_seen_twice(box: Box) -> None:
+    box.hook()
+    (box.tmp / "meminfo").write_text("MemAvailable: 200000 kB\n")
+    (box.tmp / "df-free").write_text("1500")
+    box.run("watch")
+    assert box.posts() == []
+    box.run("watch")
+    posts = box.posts()
+    assert any("only 195 MiB of memory available" in p for p in posts)
+    assert any("short of disk: / (1500 MiB free) /var/lib/docker (1500 MiB free)" in p for p in posts)
+    (box.tmp / "meminfo").write_text("MemAvailable: 2000000 kB\n")
+    (box.tmp / "df-free").write_text("50000")
+    box.run("watch")
+    assert any("memory is back" in p for p in box.posts())
+    assert any("enough disk again" in p for p in box.posts())
+
+
+def test_the_public_address_and_its_certificate(box: Box) -> None:
+    box.hook()
+    (box.tmp / ".env").write_text("RM_BETA_HOST=beta.example.org\n")
+    # the stub curl answers 204 with no body: not the api's "ok"
+    box.run("watch")
+    box.run("watch")
+    assert any("the public address does not answer" in p and "HTTP 204" in p for p in box.posts())
+    openssl = box.tmp / "openssl"
+    openssl.write_text(
+        '#!/bin/sh\ncase "$1" in x509) echo "notAfter=$(date -u -d \'+5 days\' \'+%b %d %H:%M:%S %Y GMT\')";; esac\n'
+    )
+    openssl.chmod(0o755)
+    box.run("watch", RM_ALERT_OPENSSL=str(openssl))
+    assert any("certificate ends in" in p for p in box.posts())
+    for post in box.posts():
+        assert "beta.example.org" not in post  # the address stays out of Discord

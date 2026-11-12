@@ -11,8 +11,12 @@
 #                                  failure seen twice in a row is posted, and posted again only
 #                                  when it changes or once a day while it lasts; "working again"
 #                                  is posted when it clears. Also posts when the PC's copy of the
-#                                  backups ($RM_STATE/pc-backup-pull) is over 36 h old. Skipped
-#                                  while a deploy pass runs.
+#                                  backups ($RM_STATE/pc-backup-pull) is over 36 h old; when the
+#                                  public address (nginx, TLS, DNS) stops answering or its
+#                                  certificate is near its end; when the api's log shows server
+#                                  errors or slow route plans; and when a container restarts or
+#                                  is killed for memory, or the host runs low on memory or disk
+#                                  (docs/BETA-RUNBOOK.md, "Alerts"). Skipped while a deploy pass runs.
 #   alert.sh send KEY ID MESSAGE   post MESSAGE unless KEY last posted the same ID (within a day)
 #   alert.sh note MESSAGE          post MESSAGE (no repeat check)
 #   alert.sh clear KEY MESSAGE     KEY is fine: post MESSAGE if KEY had posted, and forget it
@@ -41,7 +45,13 @@
 # The heartbeat reads three lines of the checkout's .env (BETA_ENV_FILE names another file):
 # HEALTHCHECK_PING_URL, BETA_API_PORT and RM_BETA_HOST; it never sources the file.
 # CURL names the curl binary [curl]; RM_ALERT_COMPOSE and RM_ALERT_SMOKE stand in for
-# beta-compose.sh and smoke-test.sh (the tests use stubs).
+# beta-compose.sh and smoke-test.sh, and RM_ALERT_DOCKER, RM_ALERT_OPENSSL, RM_ALERT_DF and
+# RM_ALERT_MEMINFO for docker, openssl, df and /proc/meminfo (the tests use stubs).
+# Thresholds, all our defaults and unmeasured until beta has a dozen riders; any can be set in
+# vars.sh: RM_ALERT_TRAILS (1: the smoke tests plan on the trail graphs too; 0 for a host
+# without trail routers), RM_ALERT_CERT_DAYS (14), RM_ALERT_5XX (3 in the last 10 minutes),
+# RM_ALERT_SLOW_S (30 s for a route plan) and RM_ALERT_SLOW_N (3 of them), RM_ALERT_MEM_MIB
+# (300 MiB available), RM_ALERT_DISK_MIB (2048 MiB free on / and on Docker's disk).
 set -uo pipefail
 export LC_ALL=C
 
@@ -162,7 +172,10 @@ cmd_watch() {
 		exec 9<"$cd_dir/lock"
 		flock -n 9 || { echo "alert: a deploy pass is running; skipped"; return 0; }
 	fi
-	out=$("${RM_ALERT_SMOKE:-$RM_SRC/scripts/beta/smoke-test.sh}" --local 2>&1 </dev/null); rc=$?
+	local trails=--trails
+	[ "${RM_ALERT_TRAILS:-1}" = 1 ] || trails=""
+	# shellcheck disable=SC2086
+	out=$("${RM_ALERT_SMOKE:-$RM_SRC/scripts/beta/smoke-test.sh}" --local $trails 2>&1 </dev/null); rc=$?
 	if [ "$rc" = 0 ]; then
 		cmd_clear site "working again: the local smoke tests pass"
 	else
@@ -178,7 +191,105 @@ cmd_watch() {
 		failing operations "$(same_id "$out")" "check_operations reports:"$'\n'"$out"
 	fi
 	watch_pc_pull
+	watch_public
+	watch_api_log
+	watch_containers
+	watch_host
 	return 0
+}
+
+# The public address, as a tester's phone reaches it: DNS, nginx and TLS, which the local smoke
+# tests and the heartbeat (both on 127.0.0.1) never pass through. Asked from this host, so a dead
+# host is still the heartbeat's to report. 200 "ok" or 401 (a site password) both mean nginx and
+# the api answered. No RM_BETA_HOST, no check.
+watch_public() {
+	local host code body days end
+	host=${RM_BETA_HOST:-$(env_value RM_BETA_HOST)}
+	host=${host:-${RM_CD_HOST:-}}
+	[ -n "$host" ] || return 0
+	body=$(mktemp)
+	code=$("${CURL:-curl}" -sS --max-time 20 -o "$body" -w '%{http_code}' "https://$host/healthz" 2>/dev/null </dev/null) || code=000
+	if { [ "$code" = 200 ] && grep -q '^ok' "$body"; } || [ "$code" = 401 ]; then
+		cmd_clear public "the public address answers again"
+	else
+		failing public "$code" "the public address does not answer (/healthz through nginx and TLS: HTTP $code). Check nginx (sudo nginx -t), DNS and the certificate."
+	fi
+	rm -f "$body"
+	command -v "${RM_ALERT_OPENSSL:-openssl}" >/dev/null 2>&1 || return 0
+	end=$("${RM_ALERT_OPENSSL:-openssl}" s_client -servername "$host" -connect "$host:443" </dev/null 2>/dev/null |
+		"${RM_ALERT_OPENSSL:-openssl}" x509 -noout -enddate 2>/dev/null | sed -n 's/^notAfter=//p')
+	[ -n "$end" ] || return 0
+	end=$(date -u -d "$end" +%s 2>/dev/null) || return 0
+	days=$(((end - $(date -u +%s)) / 86400))
+	if [ "$days" -lt "${RM_ALERT_CERT_DAYS:-14}" ]; then
+		cmd_send certificate "$(date -u -d "@$end" +%F)" "the public address's certificate ends in $days days ($(date -u -d "@$end" +%F)); its renewal has failed. See sudo certbot renew --dry-run."
+	else
+		cmd_clear certificate "the certificate was renewed ($days days left)"
+	fi
+}
+
+# The api's access log for the last ten minutes (docker/api-entrypoint.sh's format: time, "METHOD
+# path", status, bytes, microseconds, agent; paths already carry no ids): server errors and slow
+# route plans, which a tester sees as a failed or endless plan and may never report.
+watch_api_log() {
+	local lines n5 slow
+	lines=$("${RM_ALERT_COMPOSE:-$RM_SRC/scripts/beta/beta-compose.sh}" logs --no-color --no-log-prefix --since 10m api 2>/dev/null </dev/null |
+		grep -oE '"[A-Z]+ [^" ]+" [0-9]{3} [0-9-]+ [0-9]+') || lines=""
+	n5=$(printf '%s
+' "$lines" | awk '$3 ~ /^5/' | grep -c .)
+	slow=$(printf '%s
+' "$lines" | awk -v s="${RM_ALERT_SLOW_S:-30}" '$2 ~ /^\/api\/route/ && $5 >= s * 1000000' | grep -c .)
+	if [ "$n5" -ge "${RM_ALERT_5XX:-3}" ]; then
+		cmd_send server-errors "5xx" "the api answered $n5 requests with a server error in the last 10 minutes:"$'\n'"$(printf '%s\n' "$lines" | awk '$3 ~ /^5/ { print $1, $2, $3 }' | tr -d '"' | sort | uniq -c | sort -rn | head -n 5)"
+	else
+		cmd_clear server-errors "server errors are back under ${RM_ALERT_5XX:-3} in 10 minutes"
+	fi
+	if [ "$slow" -ge "${RM_ALERT_SLOW_N:-3}" ]; then
+		cmd_send slow-plans "slow" "$slow route plans took over ${RM_ALERT_SLOW_S:-30} s in the last 10 minutes (riders wait for one of beta's two routing slots; docs/BETA-RUNBOOK.md, \"Alerts\")"
+	else
+		cmd_clear slow-plans "route plans are quick again"
+	fi
+}
+
+# Each container's restarts and out-of-memory kills, against the last check's counts
+# ($state/restarts): compose restarts a killed container on its own, so without this a memory
+# spike in the middle of a ride leaves no trace but a failed plan.
+watch_containers() {
+	local ids now prev="$state/restarts" news=""
+	command -v "${RM_ALERT_DOCKER:-docker}" >/dev/null 2>&1 || return 0
+	ids=$("${RM_ALERT_COMPOSE:-$RM_SRC/scripts/beta/beta-compose.sh}" --profile offroad ps -a -q 2>/dev/null </dev/null | grep -E '^[0-9a-f]+$') || return 0
+	# shellcheck disable=SC2086
+	now=$("${RM_ALERT_DOCKER:-docker}" inspect -f '{{.Name}} {{.RestartCount}} {{.State.OOMKilled}}' $ids 2>/dev/null | sed 's|^/||') || return 0
+	[ -n "$now" ] || return 0
+	mkdir -p "$state" && chmod 700 "$state"
+	if [ -f "$prev" ]; then
+		news=$(awk 'NR == FNR { seen[$1] = $2; next } ($1 in seen) && $2 > seen[$1] { printf "%s restarted %d time(s)%s\n", $1, $2 - seen[$1], ($3 == "true" ? ", killed for memory" : "") }' "$prev" - <<<"$now")
+	fi
+	printf '%s\n' "$now" >"$prev"
+	[ -z "$news" ] || cmd_send restarts "$(date -u +%s)" "containers restarted since the last check:"$'\n'"$news"
+}
+
+# The host itself: memory available to new processes (beta has no swap, so a spike kills a
+# container) and free space on / and on Docker's disk.
+watch_host() {
+	local avail root dir free low=""
+	avail=$(awk '/^MemAvailable:/ { print int($2 / 1024) }' "${RM_ALERT_MEMINFO:-/proc/meminfo}" 2>/dev/null)
+	if [ -n "$avail" ] && [ "$avail" -lt "${RM_ALERT_MEM_MIB:-300}" ]; then
+		failing memory "low" "the host has only $avail MiB of memory available (under ${RM_ALERT_MEM_MIB:-300}); the next spike kills a container"
+	else
+		cmd_clear memory "the host's memory is back over ${RM_ALERT_MEM_MIB:-300} MiB available"
+	fi
+	root=""
+	command -v "${RM_ALERT_DOCKER:-docker}" >/dev/null 2>&1 && root=$("${RM_ALERT_DOCKER:-docker}" info -f '{{.DockerRootDir}}' 2>/dev/null </dev/null)
+	for dir in / ${root:+"$root"}; do
+		free=$("${RM_ALERT_DF:-df}" -Pm "$dir" 2>/dev/null | awk 'NR == 2 { print $4 }')
+		[ -n "$free" ] && [ "$free" -lt "${RM_ALERT_DISK_MIB:-2048}" ] && low="$low $dir ($free MiB free)"
+	done
+	if [ -n "$low" ]; then
+		failing disk "$(printf '%s' "$low" | sed 's/[0-9]* MiB//')" "the host is short of disk:$low (under ${RM_ALERT_DISK_MIB:-2048} MiB). See docs/BETA-RUNBOOK.md, \"Disk\" under continuous deployment."
+	else
+		cmd_clear disk "the host has enough disk again"
+	fi
 }
 
 # The owner's PC copies the nightly dumps off this host (scripts/pc/pull-beta-backups.sh) and,
