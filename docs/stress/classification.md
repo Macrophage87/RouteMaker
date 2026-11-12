@@ -85,10 +85,12 @@ recorded in `assumed` (`stress.py:135-137`).
    stretches do not come out as the files say (`src/pipeline/lts_sentinels.py`).
 4. **Stress override rows** (`run.py:2309`, `overrides.apply_stress`): they outrank
    everything above. See [overrides.md](overrides.md).
-5. **Side paths beside busy roads** (`run.py`, `apply_beside_busy_road`;
+5. **Side paths beside busy roads** (`run.py`, `rate_side_paths`, `apply_beside_busy_road`;
    `stress.beside_busy_road_step`; the owner, 2026-11-12: protected lanes along roads like
-   Old Georgetown Road "are fine for experienced cyclists, they might not be LTS 1"), right
-   after the rows. An unnamed trail-class way the rebuild finds along a named street
+   Old Georgetown Road "are fine for experienced cyclists, they might not be LTS 1"), once
+   every street's level is final: after the rows, and after the car-free and ridden-sidewalk
+   corrections in `classify_facilities` (so a road closed to cars for good, lowered to LTS 1
+   there, never lifts the path beside it). An unnamed trail-class way the rebuild finds along a named street
    (`facility.side_streets`, the same match that names it "path beside ...") and rated a
    flat LTS 1 takes a level from that street: 1.5 beside LTS 3 or 3.5, 2 beside LTS 4 or
    above (the street's busiest way that runs along at least 30% of the path,
