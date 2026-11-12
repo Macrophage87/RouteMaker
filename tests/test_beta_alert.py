@@ -533,7 +533,8 @@ def test_server_errors_in_the_api_log_are_posted_then_cleared(box: Box) -> None:
     (box.tmp / "api-log").write_text(log_line("/api/route", 500, 1000) * 2)
     box.run("watch")
     assert box.posts() == []  # two is under our default of three
-    (box.tmp / "api-log").write_text(log_line("/api/route", 500, 1000) * 2 + log_line("/api/geocode", 502, 9))
+    three = log_line("/api/route", 500, 1000) * 2 + log_line("/api/geocode", 502, 9)
+    (box.tmp / "api-log").write_text(three)
     box.run("watch")
     posts = box.posts()
     assert len(posts) == 1
@@ -547,7 +548,8 @@ def test_server_errors_in_the_api_log_are_posted_then_cleared(box: Box) -> None:
 
 def test_slow_route_plans_are_posted(box: Box) -> None:
     box.hook()
-    lines = log_line("/api/route", 200, 31_000_000) * 3 + log_line("/tiles/stress/:zxy", 200, 60_000_000) * 5
+    lines = log_line("/api/route", 200, 31_000_000) * 3
+    lines += log_line("/tiles/stress/:zxy", 200, 60_000_000) * 5
     (box.tmp / "api-log").write_text(lines)
     box.run("watch")
     posts = box.posts()
@@ -584,7 +586,8 @@ def test_low_memory_and_disk_are_posted_when_seen_twice(box: Box) -> None:
     box.run("watch")
     posts = box.posts()
     assert any("only 195 MiB of memory available" in p for p in posts)
-    assert any("short of disk: / (1500 MiB free) /var/lib/docker (1500 MiB free)" in p for p in posts)
+    short = "short of disk: / (1500 MiB free) /var/lib/docker (1500 MiB free)"
+    assert any(short in p for p in posts)
     (box.tmp / "meminfo").write_text("MemAvailable: 2000000 kB\n")
     (box.tmp / "df-free").write_text("50000")
     box.run("watch")
@@ -601,7 +604,9 @@ def test_the_public_address_and_its_certificate(box: Box) -> None:
     assert any("the public address does not answer" in p and "HTTP 204" in p for p in box.posts())
     openssl = box.tmp / "openssl"
     openssl.write_text(
-        '#!/bin/sh\ncase "$1" in x509) echo "notAfter=$(date -u -d \'+5 days\' \'+%b %d %H:%M:%S %Y GMT\')";; esac\n'
+        "#!/bin/sh\n"
+        'case "$1" in x509) '
+        "echo \"notAfter=$(date -u -d '+5 days' '+%b %d %H:%M:%S %Y GMT')\";; esac\n"
     )
     openssl.chmod(0o755)
     box.run("watch", RM_ALERT_OPENSSL=str(openssl))
