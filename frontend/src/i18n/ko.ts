@@ -2154,4 +2154,8 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Phone emoji on map signs": "지도 표시에 휴대폰 이모지",
   "Notes and stops on the map show your phone's own emoji, not the app's pictures. Kept on this device.": "지도의 메모와 정류 지점에 앱 그림 대신 휴대폰 이모지를 표시합니다. 이 기기에 저장됩니다.",
   "emoji signs": "이모지 표시",
+  "Road closed ahead": "앞쪽 도로 통제",
+  "Road closed ahead, {distance}: {name}": "앞쪽 도로 통제, {distance}: {name}",
+  // ---- The closed sites' map label (lib/restrictedSites.ts) ----
+  "No public access": "일반인 출입 금지",
 };

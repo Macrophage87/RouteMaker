@@ -2154,4 +2154,8 @@ export const CATALOG: Readonly<Record<string, string>> = {
   "Phone emoji on map signs": "ኢሞጂ ተሌፎን ኣብ ምልክታት ካርታ",
   "Notes and stops on the map show your phone's own emoji, not the app's pictures. Kept on this device.": "መዘኻኸሪታትን መዕረፊታትን ኣብ ካርታ ኢሞጂ ተሌፎንኩም የርእዩ፡ ኣይኮነን ስእልታት ኣፕ። ኣብዚ መሳርሒ ይዕቀብ።",
   "emoji signs": "ምልክታት ኢሞጂ",
+  "Road closed ahead": "ኣብ ቅድሚት መገዲ ተዓጽዩ",
+  "Road closed ahead, {distance}: {name}": "ኣብ ቅድሚት መገዲ ተዓጽዩ፣ {distance}፦ {name}",
+  // ---- The closed sites' map label (lib/restrictedSites.ts) ----
+  "No public access": "ንህዝቢ ክፉት ኣይኮነን",
 };

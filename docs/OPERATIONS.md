@@ -5682,7 +5682,7 @@ row keyed `closures` (`src/core/closure_sources.py`):
 |---|---|---|---|---|---|
 | DDOT TOPS permits (`dc`, CC BY 4.0) | `maps2.dcgis.dc.gov/.../DDOT/TOPS/MapServer/1/query` | 1 h | 3 h | 26 h | Flagged only (a road *may* be closed): never routed around (Go, Plan, MCP), no warning or cue; shown only by Plan's Potential closures layer (off by default) |
 | MPD traffic advisories (`mpd`) | `mpdc.dc.gov/newsroom` | 15 min | 45 min | 6 h | Closures on the ways between the cross streets; the rest "Check before you go" text. A window said to hold "nightly" or "daily", or two days with one pair of times ("Nov 14 through Nov 22, 9 pm to 5 am"), is routed round only in those hours of each day (`Zone.daily`) |
-| AlertDC (`alertdc`) | `trainingtrack.hsema.dc.gov/NRss/RssFeed/AlertDCList` (HTML list) | 15 min | 45 min | 3 h | As MPD; only traffic and road items are kept, every other item is dropped unread |
+| AlertDC (`alertdc`) | `trainingtrack.hsema.dc.gov/NRss/RssFeed/AlertDCList` (HTML list) | 1 min, own task `refresh_alertdc`; read only when the page changed, else every 15 min | 45 min | 3 h | As MPD, plus a closure at one junction ("15th and P Street NW") as a small area round it. Only traffic and road items are kept, every other item is dropped unread, except a road closure whose title also names police activity or a crime: only its closures are kept, as one area about 1,000 ft round them all (`POLICE_MARGIN_M`, our default), titled "Police activity: streets closed near ...", dropped 3 h after posting (`POLICE_MAX_AGE`, our default) or at its reopening; none of its words are kept |
 | NPS alerts (`nps`) | `developer.nps.gov/api/v1/alerts` | 30 min | 90 min | 6 h | Park-level "Check before you go" notices (rocr, nama, gwmp, choh, anac), never closures |
 | DDOT ProTrack+ projects (`protrack`, CC BY 4.0) | `maps2.dcgis.dc.gov/.../DDOT/ProTrackPlusViews/MapServer/1/query` | 6 h | 24 h | 3 days | Potential closures, as DDOT's permits: "Under Construction" and not past the estimated completion; sidewalk, alley, streetlight, green infrastructure, tree, landscaping and signage work left out |
 | DC Water work zones (`dcwater`) | `geo.dcwater.com/.../Viewer/ActiveWorkZonesPublic/MapServer/0/query` | 6 h | 24 h | 3 days | Potential closures; each zone's middle placed on its block as a permit's is |
@@ -5708,7 +5708,8 @@ Maryland's Road Closure Reporter (PLAYBOOK §0).
    Status values; a permit count of zero with a successful run means one of them differs.
 3. MPD: confirm the newsroom lists "TRAFFIC ADVISORY" releases as links on `mpdc.dc.gov`
    and that a release's body still reads "X from A to B" lines with dates and times.
-4. AlertDC: the list is an HTML table (no RSS since at least 2026-11-01): one row an alert,
+4. AlertDC: `runs` shows `refresh_alertdc` succeeding each minute (its detail says
+   `alertdc unchanged` when the page was the same). The list is an HTML table (no RSS since at least 2026-11-01): one row an alert,
    its local date and time, a title linking to `/NRss/RssFeed/AlertDetails/<id>`, then the text.
    A page with no table, or with alert links but no row that reads, fails with `not an
    AlertDC list`; compare it with `tests/data/closures/alertdc-list.html`. A "has reopened"
@@ -7867,6 +7868,71 @@ wide gates), so the beta agent stops on the tag.
   streetcar rails; Load route (signed in) lists an assistant draft with Save and Delete.
 - [ ] **Rollback.** The `pre-rel` api image and the v0.23.0 front end; the map's own rollback
   (`rollback_rebuild`) puts back 20261109T111715Z. The own-pick rows stay in the database.
+
+## Deploying v0.26.0
+
+My routes in its own window (#1168), archived assistant test drafts (#1169), sudden closures from
+AlertDC with Ride's closure window (#1175), closed sites shaded and routed to their gate with the big
+parks named (#1173), and three override files: Whip-poor-will Way (#1170), the Patuxent Research
+Refuge's closed area (#1172), and quieter side streets with the Arlington comfort index (#1174).
+**No `lua/`, `valhalla/`, compose, Caddyfile, nginx (`deploy/`) or requirements change.** What
+changes: migration 0062; a new worker task, `refresh_alertdc`, every minute (its alert window 10
+minutes, `runs.STALE_AFTER`), reading the same AlertDC host as before (no new outbound host); a new
+endpoint, `GET /api/closures/stamp`, asked once a minute by a ride, through `location /` like the
+rest of `/api/`; one line in `docker/api.Dockerfile` copying
+`frontend/src/restricted-data/restricted-sites.json`, so the beta agent's gate stops on the tag and
+the beta is a hand ship; and `src/pipeline/run.py` (the side-path step, #1174), which takes effect
+only at the next map rebuild.
+
+- [ ] **Closed sites file** **(owner, PC, before the tag)**. `restricted-sites.json` ships as an
+  empty FeatureCollection: no shading, no gate routing. Run `python3 scripts/build_restricted_sites.py
+  --pbf <DATA_ROOT>/extracts/source.osm.pbf` on the PC and commit the result to the release branch
+  before the tag; the front end and the api image both read it. The rider notes and the Routing page
+  promise Goddard's shading and the gate: if the file is not built, take line 3 of
+  `docs/releases/v0.26.0.md` and the Routing page's closed-site lines out before the tag (routing is
+  then as v0.25.1). Built before the closed-area override is loaded and the map rebuilt, the Patuxent
+  closed area is shaded and a point in it goes to the gate while its roads stay routable until then.
+- [ ] **The tag** **(owner)**. Once `test` and `a11y` are green on `main`, the owner tags v0.26.0
+  (annotated) on that commit, from the PC.
+- [ ] **Migration.** 0062 (`ConnectorDraft.archived_at`) adds a nullable column with no default: the
+  v0.25.1 api inserts drafts without it (null, listed) in the minutes between `migrate` and its
+  recreation, and after a rollback of the images, and never reads it. Reversible.
+- [ ] **At home**, as "Deploying a planner and front-end release": rollback point (tag the running
+  api image `pre-rel-<short>`, keep `index.html`), fast-forward the checkout, `docker compose build
+  api rebuild` (tag the pipeline image `pre-rel-<short>` too: the rebuild's calm-road sentinel moved
+  to way 11507801, #1172, and a v0.25.1 `rebuild` image still checks way 86073896, which the closed
+  area file closes), `migrate`, then `docker compose up -d --no-deps --no-build --force-recreate api
+  worker rebuild` with no job todo or doing, then the front end. No router restart, no map rebuild.
+- [ ] **Beta** **(owner)**, by hand: `auto-release.sh pause --wait "shipping by hand"` and `status`
+  (no `IN PROGRESS`), then docs/BETA-RUNBOOK.md "Shipping an update later" at the tag (the api image
+  built there, `migrate`, the worker recreated so it picks up `refresh_alertdc`, the front end built
+  on the PC), `smoke-test.sh --local`, then `smoke-test.sh --public <url> --passwords-file <file>`,
+  then `auto-release.sh mark-deployed v0.26.0` and `auto-release.sh resume`.
+- [ ] **Beta check.** Within five minutes, `runs` shows `refresh_alertdc` succeeding each minute
+  with detail `alertdc N closures, M notices` or `alertdc unchanged`; a detail of `alertdc failed`
+  means the host is not answering (the run itself only fails after 45 minutes); `GET /api/closures/stamp` answers 200 (20 a minute per address, our default: a group of more than 20
+  riders on one Wi-Fi gets some 429s, which the app skips until the next minute). The
+  AlertDC parser was written from a made-up sample: when the live list next carries a police or crash
+  road item, check that it shows as a closure (the map, the road panel) with the title "Police
+  activity: streets closed near ..." for police items.
+- [ ] **The three override files** (optional, separate, each on the owner's go). On the PC with
+  `load_access_overrides`, a dry run each, then `--confirm` with the owner's go per file:
+  `2026-11-12-owner-patuxent-whip-poor-will-way.json`, `2026-11-12-owner-patuxent-closed-area.json`,
+  `2026-11-12-owner-side-streets-and-arlington-index.json` (12,396 rows, each retiring its own-picks
+  row; if its dry run reports ways without fingerprints, run the fingerprint backfill first, as for the own-picks files). All take effect at the
+  next map rebuild, in its own thread, not with this release.
+- [ ] **Spot checks.** Save & load: Save and Share at the top, My routes opens its own window with
+  "Back to Save & load". Through the connector: a `plan_route` with `test: true` stays out of Load
+  route, and `archive_draft` drops another. With the closed sites file built: the map shades NASA
+  Goddard with "No public access", and a route to a point inside it ends at a gate with "Restricted
+  site. Route ends at the gate." Rock Creek Park, Greenbelt Park and the Patuxent Research Refuge have their names on the map, and
+  the refuge's closed area is shaded.
+- [ ] **Rollback.** The `pre-rel` api image (`--force-recreate api worker`) and the v0.25.1 front end.
+  Leave `rebuild` on the v0.26.0 image: the `pre-rel` pipeline image still checks way 86073896, which
+  the closed-area file closes once it is loaded. A police area already in the closures row is read by
+  the v0.25.1 api as a line along its outline (routed round the edge) until it drops, at most 3 h.
+  The `archived_at` column stays; on v0.25.1 archived drafts list again until they expire. On the
+  beta, the images and `index.html` alone: no `restore-dump`, as 0062 only adds a column.
 
 ## Deploying v0.25.1
 
