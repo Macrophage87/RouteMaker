@@ -11430,6 +11430,7 @@ button.route-note:focus-visible {
 }
 .bike-loop-line {
   grid-column: 2;
+}
 
 /* Send feedback (FeedbackBox.tsx; the owner, 2026-11-12): one button, then a short box. Buttons 44 px high. */
 .feedback-box {
