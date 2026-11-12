@@ -5907,11 +5907,14 @@ filled in the browser from Nixle. Each needs its own look before it can be watch
    the towpath itself is closed there; "High Water Detour" is only when the river is up: leave it
    out (it has no dates). Work that leaves the trail open ("expect intermittent delays", "one
    lane") stays out.
-3. Enter it as the owner's rule for these closures says (the decision is in the backlog thread
-   "Add trail and county closures"; until it is made, only what the owner confirms). Evidence is
-   the agency's words and what a rider saw, never another map. A closure that starts before the
-   next release reaches riders only through a reviewer closure (the road panel's "Mark closed",
-   an admin's), so for a short one that is the way.
+3. Enter it by the owner's rule (2026-11-12, "Clearly dated ones go in"): a closure the agency
+   posts with its dates (a first and a last day) and a clear place (named cross streets, mileposts,
+   a named bridge) goes in without asking, and the owner is told after, with the alert's link. One
+   with no dates, an open end ("until further notice", "through spring") or a place that cannot be
+   pinned down waits for the owner's word. Evidence is the agency's words and what a rider saw,
+   never another map. A closure that starts before the next release reaches riders only through a
+   reviewer closure (the road panel's "Mark closed", an admin's), so for a short one that is the
+   way.
 4. `python scripts/park_alerts.py watch --mark` adds every item now on the pages read to `seen`
    and sets `updated` to today. An item whose words change is listed again.
 5. Ship the file in the next release, as for the other hand-read files.
