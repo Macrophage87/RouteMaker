@@ -185,6 +185,7 @@ import { WAITING_FOR_GPS, handOver, readOnce, rideWatchOptions, watchRide, type 
 import { PAUSE_CHECK_MS, PausedFixes, beatKeepsGps, heartbeatFix, movedFromPause, rideStayPausedSaid, stayStep, stayedLong, type Stay } from "./lib/ridePause.ts";
 import { askCompass } from "./lib/compassHeading.ts";
 import { rideGeoEnv, rideSpeech, rideWake, ridesHidden, showCue, speaksAloud } from "./lib/nativeShell.ts";
+import { rideCueLog } from "./lib/cueRecorder.ts";
 import {
   DETOUR_BUSY,
   DETOUR_FULL,
@@ -312,7 +313,8 @@ const AHEAD_MAX_W = 520;
  * One voice for the page: the Start ride press unlocks it (iOS speaks only after a gesture has). Web
  * Speech in a browser; in the phone app (v0.8.0), the native voice, which goes on with the screen locked.
  */
-export const rideVoice = new Voice(rideSpeech());
+// What became of each sentence goes to the ride's cue log (lib/cueRecorder.ts): no words or places are kept there.
+export const rideVoice = new Voice({ ...rideSpeech(), trace: (what, text) => rideCueLog.voice(what, text, Date.now()) });
 
 /** Said as the ride starts, inside the Start press, so the voice is unlocked by it. */
 export const RIDE_STARTED = t("Ride started.");
@@ -1131,6 +1133,11 @@ export function RideMode({
   const model = useMemo(() => modelOf(route, plan.current.points), [route]);
   const modelRef = useRef(model);
   modelRef.current = model;
+  // A new route (a re-plan, Keep, the other line): its cue numbers start again, so the cue log says where.
+  const firstModel = useRef(model);
+  useEffect(() => {
+    if (model !== firstModel.current) rideCueLog.note("new-route (cue numbers start again)", Date.now());
+  }, [model]);
   // v0.8.2 (lib/roadClosed.ts): the other line beside the ride's route, the standard way through a marked closure
   // (or the detour, on the standard way), which the rider is followed onto if they take it.
   const [other, setOther] = useState<RouteResponse | null>(plannedRoute.closure_through ?? null);
@@ -1489,15 +1496,30 @@ export function RideMode({
     showCue(said.text);
   }, []);
   const announcer = useRef<Announcer | null>(null);
-  if (announcer.current === null) announcer.current = new Announcer(deliver);
+  if (announcer.current === null) {
+    announcer.current = new Announcer(deliver);
+    // A cue the throttle dropped unsaid, in the ride's cue log (lib/cueRecorder.ts).
+    announcer.current.onDrop = (text) => rideCueLog.voice("dropped", text, Date.now());
+  }
+  // The ride's cue log starts with the ride (a Resume starts a new one); a new route's cues are numbered afresh.
+  useEffect(() => {
+    rideCueLog.start(Date.now());
+  }, []);
 
   // After the page comes back from the background: say where the rider is once, on the next fix.
   const sayWhereNext = useRef(false);
   const say = useCallback((events: RideEvent[]) => {
     // A cue held back by the throttle is said with the distance as it is then (review RIDE-4), from the rider's place.
     for (const event of events) {
+      rideCueLog.made(event, rideRef.current.progressM, rideRef.current.fix?.accuracyM ?? 0, Date.now());
       const respoken = event.respoken;
-      const again = respoken && (() => (rideRef.current.progressM === null ? event.spoken : respoken(rideRef.current.progressM)));
+      const again =
+        respoken &&
+        (() => {
+          const text = rideRef.current.progressM === null ? event.spoken : respoken(rideRef.current.progressM);
+          if (text) rideCueLog.alias(text, event.spoken);
+          return text;
+        });
       announcer.current?.say(event.spoken, event.urgent, event.after, again);
     }
   }, []);
@@ -2049,6 +2071,7 @@ export function RideMode({
       // Only poor fixes for a while: the cues are paused, so the GPS note says so, once (review RIDE-3).
       const weighed = weighFix(gpsWeak.current, fix.accuracyM, lastFixAt.current);
       gpsWeak.current = { goodAt: weighed.goodAt, weak: weighed.weak };
+      if (weighed.sayNow) rideCueLog.note("gps-weak", Date.now());
       if (weighed.sayNow && !gpsQuietRef.current) notify(GPS_WEAK_SAID);
       setGps(weighed.weak && !gpsQuietRef.current ? GPS_WEAK_SAID : "");
       checkCueSheet(lastFixAt.current);

@@ -1,5 +1,6 @@
 import { Component, useEffect, useRef, useState, type ErrorInfo, type ReactNode } from "react";
 import { crashReport, loggedErrors } from "./lib/crashReport.ts";
+import { rideCueLog } from "./lib/cueRecorder.ts";
 import { copyText, selectionCopy } from "./lib/sidebar.ts";
 import { BETA_DISCORD_TEXT, BETA_DISCORD_URL } from "./lib/betaBanner.ts";
 import { t } from "./lib/i18n.ts";
@@ -51,6 +52,7 @@ export class CrashBoundary extends Component<{ children: ReactNode }, { error: u
       path: window.location.pathname,
       userAgent: navigator.userAgent,
       logged: loggedErrors(),
+      cueLog: rideCueLog.text(),
     });
     return <CrashScreen report={report} />;
   }

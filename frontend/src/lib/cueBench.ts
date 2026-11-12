@@ -26,6 +26,7 @@ import {
   type RideState,
   type Verbosity,
 } from "./navigate.ts";
+import { CueRecorder } from "./cueRecorder.ts";
 import { Announcer, Voice, type SpeechApi, type UtteranceLike } from "./rideOutput.ts";
 
 export interface CueFixture {
@@ -283,7 +284,7 @@ export function missedTurnAt(model: RideModel): number | null {
 }
 
 /** Ride one fixture once: the transcript's sentences and the rules' findings. */
-export function benchRun(fixture: CueFixture, mph: number, variant: Variant = "steady", level: Verbosity = "full"): BenchRun {
+export function benchRun(fixture: CueFixture, mph: number, variant: Variant = "steady", level: Verbosity = "full", log: CueRecorder = new CueRecorder()): BenchRun {
   const model = rideModel(fixture.route);
   const speedMs = mph * MPH;
   const missAt = variant === "missed-turn" ? missedTurnAt(model) : null;
@@ -316,11 +317,14 @@ export function benchRun(fixture: CueFixture, mph: number, variant: Variant = "s
       }
     },
   );
+  // The ride's cue log (lib/cueRecorder.ts) is kept as Ride keeps it, so a rider's log can be read beside this ride.
+  log.start(0);
   const voice = new Voice({
     synth: speech,
     utterance: (text) => ({ text, lang: "", onend: null }),
     now: () => clock.now,
     later: (fn, ms) => void clock.later(fn, ms),
+    trace: (what, text) => log.voice(what, text, clock.now),
   });
   const announcer = new Announcer(
     (said) => voice.speak(said.text, said.urgent, said.after),
@@ -328,6 +332,7 @@ export function benchRun(fixture: CueFixture, mph: number, variant: Variant = "s
     (fn, ms) => clock.later(fn, ms) as unknown as ReturnType<typeof setTimeout>,
     (timer) => clock.cancel(timer as unknown as number),
   );
+  announcer.onDrop = (text) => log.voice("dropped", text, clock.now);
   let state: RideState = startState();
   let weakness: GpsWeakness = { goodAt: 0, weak: false };
   for (let i = 0; i < track.fixes.length; i++) {
@@ -336,12 +341,14 @@ export function benchRun(fixture: CueFixture, mph: number, variant: Variant = "s
     const weighed = weighFix(weakness, fix.accuracyM, fix.at);
     weakness = { goodAt: weighed.goodAt, weak: weighed.weak };
     if (weighed.sayNow) {
+      log.note("gps-weak", fix.at);
       notes.push({ madeS: fix.at / 1000, text: GPS_WEAK_SAID });
       announcer.note(GPS_WEAK_SAID);
     }
     const out = step(model, state, fix, level);
     state = out.state;
     for (const event of out.events) {
+      log.made(event, state.progressM, fix.accuracyM, fix.at);
       const h: Heard = { madeS: fix.at / 1000, atM: track.alongM[i], event };
       heard.push(h);
       byText.set(event.spoken, h);
@@ -350,7 +357,10 @@ export function benchRun(fixture: CueFixture, mph: number, variant: Variant = "s
         respoken &&
         (() => {
           const text = state.progressM === null ? event.spoken : respoken(state.progressM);
-          if (text) byText.set(text, h);
+          if (text) {
+            byText.set(text, h);
+            log.alias(text, event.spoken);
+          }
           return text;
         });
       announcer.say(event.spoken, event.urgent, event.after, again);
