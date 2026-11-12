@@ -142,9 +142,7 @@ export function TransitSummary({
           ))}
         </ol>
       )}
-      <p className="transit-total">
-        <strong>{plan.summary}</strong>
-      </p>
+      {/* The total is the heading's own words (above), so it is not said again here (backlog 2026-11-12, Go). */}
       {plan.departure && <DepartureTimer departure={plan.departure} announce={announce} onMissed={onMissed} />}
       {/* Riding the whole way quicker is a plain line, not a warning box (P11): nothing is wrong. */}
       {plan.comparison && <p className={plan.riding_quicker ? "transit-compare" : "transit-compare hint"}>{plan.comparison}</p>}

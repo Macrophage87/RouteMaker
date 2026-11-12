@@ -183,13 +183,18 @@ server {
 
     client_max_body_size 1m;
 
-    # JSON and vector tiles compress well; the base map archive and images do not.
+    # JSON and vector tiles compress well; the base map archive and images do not. Level 6 (nginx's
+    # default is 1): App's chunk is about 380 KB at 6 against 445 KB at 1 (measured 2026-11-12).
+    # The map's glyphs (/assets/*.pbf) are served as application/x-protobuf so they are compressed
+    # too (about 1.07 MB raw, 0.64 MB gzipped); the base map archive is not a .pbf and keeps its
+    # octet-stream type, which is not compressed (byte ranges must stay byte ranges).
     gzip on;
     gzip_vary on;
     gzip_proxied any;
+    gzip_comp_level 6;
     gzip_min_length 256;
     gzip_types application/json application/vnd.mapbox-vector-tile text/plain text/css
-               application/javascript text/javascript image/svg+xml;
+               application/javascript text/javascript image/svg+xml application/x-protobuf;
 
     # --- public: robots.txt ------------------------------------------------------
     # A crawler may read the home page and the icons, and nothing else: Google's favicon service,
@@ -450,6 +455,12 @@ server {
         add_header Referrer-Policy "same-origin" always;
         add_header X-Content-Type-Options "nosniff" always;
         add_header Cache-Control "public, max-age=31536000, immutable" always;
+        # The map's glyph ranges: nginx's mime.types has no .pbf line, so they would go out as
+        # octet-stream and uncompressed. No add_header here, so the ones above still apply.
+        location ~ \.pbf$ {
+            types { }
+            default_type application/x-protobuf;
+        }
     }
 
     # --- preset links (Caddyfile @preset-*) ----------------------------------------

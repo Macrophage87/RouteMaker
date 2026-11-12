@@ -21,7 +21,7 @@ import { ICON_PATHS } from "./iconPaths.ts";
 import { t } from "./i18n.ts";
 
 export const FOOD_SUMMARY = t("Search places to eat");
-/** On screen, short (the audit's P7); FOOD_HELP_MORE goes on for screen readers. */
+/** For screen readers only, with FOOD_HELP_MORE: on screen the box's placeholder says it (the audit's P7; backlog 2026-11-12, Go). */
 export const FOOD_HELP = t("Search a food or a name; blank shows all.");
 export const FOOD_HELP_MORE = t("With a route shown, results are sorted by detour; Add as stop puts a place into your plan.");
 export const FOOD_PLACEHOLDER = t("Search food or a name");
@@ -233,7 +233,7 @@ export function FoodFinder(props: FoodFinderProps): ReactElement {
             ? h("p", { className: "hint" }, h("span", { "aria-hidden": "true" }, FOOD_DETOUR_NOTE), h("span", { className: "visually-hidden" }, FOOD_DETOUR_METHOD))
             : h("p", { className: "hint" }, t("From OpenStreetMap: check the hours before you count on them. No ratings.")),
         ),
-      h("p", { className: "hint", id: "food-help" }, FOOD_HELP, h("span", { className: "visually-hidden" }, ` ${FOOD_HELP_MORE}`)),
+      h("p", { className: "visually-hidden", id: "food-help" }, FOOD_HELP, h("span", null, ` ${FOOD_HELP_MORE}`)),
     ),
   );
 }

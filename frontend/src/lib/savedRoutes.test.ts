@@ -94,6 +94,11 @@ test("a fixed route says so in its row (the owner, 2026-11-10)", () => {
   assert.doesNotMatch(rowDetails({ distance_m: 7600, created_at: "2026-10-15T12:00:00Z", source: "plan", fixed: false }), /Fixed/);
 });
 
+test("a saved plan's row names its ride type; a file's does not (backlog 2026-11-12)", () => {
+  assert.match(rowDetails({ distance_m: 7600, created_at: "2026-10-15T12:00:00Z", source: "plan", preset: "gravel" }), /^4\.7 mi \(7\.6 km\) · Gravel · Saved Oct 15, 2026$/);
+  assert.doesNotMatch(rowDetails({ distance_m: 7600, created_at: "2026-10-15T12:00:00Z", source: "gpx", preset: "default" }), /Default/);
+});
+
 test("a fixed route: the Save form's box, never compared with today's map, and ridden without re-routing (the owner, 2026-11-10)", () => {
   const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
   const save = read("../SaveRoute.tsx");

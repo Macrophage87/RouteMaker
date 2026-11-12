@@ -239,7 +239,8 @@ Positions stay on the phone, as on the website: the plugin hands each fix to the
 it for the cues and forgets it, and nothing sends the rider's position to the server (a re-plan sends
 the route request, as today). No analytics, no crash reporting, no tracking SDK. The manifest asks for
 the network, location (fine and coarse, "while using the app"; never `ACCESS_BACKGROUND_LOCATION`),
-the location foreground service, and notifications; the local-notifications plugin's boot, exact-alarm
+the location foreground service, notifications, and vibration (a group ride's alert buzz, through
+the WebView's `navigator.vibrate`; a normal permission, never asked); the local-notifications plugin's boot, exact-alarm
 and wake-lock permissions are removed, and `allowBackup` is off and `dataExtractionRules`
 (`res/xml/data_extraction_rules.xml`) exclude everything, so the site's data in the app never goes to
 a cloud backup or, on Android 12+, to a new phone by device transfer. The plugin's location service is

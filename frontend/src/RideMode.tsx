@@ -3462,7 +3462,7 @@ export function RideMode({
       live = false;
       window.clearInterval(timer);
     };
-  }, [watchOn, model]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [watchOn, model]);
   const watchAt = progress === null ? null : Math.floor(progress / 100);
   useEffect(() => {
     if (watched === null || watchAt === null || suddenAsk) return;

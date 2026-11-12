@@ -636,6 +636,7 @@ export function GoSheet({
   startLine,
   startMissing,
   onStartPick,
+  whereToTyped,
 }: {
   size: GoSheetSize;
   onSize: (next: GoSheetSize) => void;
@@ -661,6 +662,8 @@ export function GoSheet({
   startMissing: boolean;
   /** A start typed in: it replaces the location. */
   onStartPick: (place: Place) => void;
+  /** Words put in Where to? from outside and searched (a shared address with no map point; app/sharedLaunch.ts). */
+  whereToTyped?: { text: string; n: number } | null;
 }) {
   const homeHint = useId();
   const homeSheetId = useId();
@@ -723,6 +726,9 @@ export function GoSheet({
             )}
           </div>
         )}
+        {/* Before a route, a notice sits by the start it is usually about ("Type a start"), not under the ride chips
+            (backlog 2026-11-12, Go). Said by the app's own region (Go has no Points section's status line). */}
+        {!routeShown && notice && <p className="go-notice notice">{notice}</p>}
         {!routeShown && (
           <div id={startBoxId} className="go-start-search" hidden={!startShown}>
             <PlaceSearch
@@ -746,7 +752,7 @@ export function GoSheet({
           </button>
         )}
         <div id={newId} className="go-new-body" hidden={!whereShown}>
-        <PlaceSearch variant="go" pointCount={pointCount} full={false} gate={geoGate} bias={searchBias} origin={searchOrigin} onPick={(place: Place, _choice: PlaceChoice) => pickWhereTo(place)} savedFor={(query: string) => savedPlacesFor(query, places.home, places.favorites)} onTopPlace={onTopPlace} onFocusBox={onWhereToFocus} />
+        <PlaceSearch variant="go" pointCount={pointCount} full={false} gate={geoGate} bias={searchBias} origin={searchOrigin} onPick={(place: Place, _choice: PlaceChoice) => pickWhereTo(place)} savedFor={(query: string) => savedPlacesFor(query, places.home, places.favorites)} onTopPlace={onTopPlace} onFocusBox={onWhereToFocus} typed={whereToTyped} />
         <div className="chip-row go-places" role="group" aria-label={t("Places")}>
           {places.signedIn ? (
             // Signed in, Home is the first of the rider's favorites (Stephen 2026-10-26: "just have a favorites replace home").
@@ -869,7 +875,7 @@ export function GoSheet({
       </div>
       {/* With a route, the ride types are in it, under the route card (edit-route redesign, Stephen 2026-10-18). */}
       {/* Said by the app's own region (Go has no Points section's status line; App noticeSaidElsewhere). */}
-      {notice && <p className="go-notice notice">{notice}</p>}
+      {routeShown && notice && <p className="go-notice notice">{notice}</p>}
       <IosLocationHelp notice={notice} />
     </div>
   );

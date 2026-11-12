@@ -48,12 +48,13 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
   (<https://wiki.openstreetmap.org/wiki/Key:place>) within 3 mi (5 km). Credit: the
   OpenStreetMap credit above.
 - Dataset: OpenStreetMap, the regional extract from Geofabrik
-  (<https://download.geofabrik.de/>), rebuilt weekly (docs/OPERATIONS.md, "The weekly
-  rebuild").
+  (<https://download.geofabrik.de/>), fetched again at each map rebuild (docs/OPERATIONS.md,
+  "The weekly rebuild"; the weekly timer is paused during active development, so rebuilds are
+  run by hand).
 - Publisher: OpenStreetMap contributors (OpenStreetMap Foundation).
 - Licence: Open Database License 1.0 (<https://opendatacommons.org/licenses/odbl/1-0/>);
   credit form per <https://www.openstreetmap.org/copyright>.
-- Retrieved: weekly; the extract's date is the rebuild's (`check_operations`).
+- Retrieved: at each map rebuild; the extract's date is the rebuild's (`check_operations`).
 - Records: `frontend/src/rail-data/README.md` (the MARC and elevator fixtures);
   `frontend/src/amenity-data/README.md` (public drinking water and restrooms, the Water and
   restrooms layer, by `scripts/build_water_restrooms.py`); the same README's "Places to

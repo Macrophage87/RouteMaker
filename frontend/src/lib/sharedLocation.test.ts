@@ -141,7 +141,11 @@ test("the search box reads a pasted link before it is cut, and the app opens a s
   assert.match(search, /<p className=\{sharedSaid \? "hint" : "visually-hidden"\} role="status" aria-live="polite">\s*\{sharedSaid\}\s*<\/p>/);
   assert.doesNotMatch(search, /\{shared && "said" in shared && \(/);
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
-  assert.match(app, /useSharedLaunch\(\(place\) => \{\s*if \(modeRef\.current !== "go"\) changeMode\("go"\);\s*goToPlace\(place\);\s*\}, setNotice\);/);
+  assert.match(app, /useSharedLaunch\(\(place\) => \{\s*if \(modeRef\.current !== "go"\) changeMode\("go"\);\s*goToPlace\(place\);\s*\}, setNotice, \(query\) => \{/);
+  // An address with no map point goes into Where to? and is searched (backlog 2026-11-12), not "type it".
+  assert.match(app, /setWhereToTyped\(\(last\) => \(\{ text: query, n: \(last\?\.n \?\? 0\) \+ 1 \}\)\)/);
+  assert.match(app, /whereToTyped=\{whereToTyped\}/);
+  assert.match(readFileSync(new URL("../app/Go.tsx", import.meta.url), "utf8"), /typed=\{whereToTyped\}/);
 });
 
 test("latitude and longitude in degrees, minutes and seconds, as GPS units and map apps write them (2026-10-31)", () => {

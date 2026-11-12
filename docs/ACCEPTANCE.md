@@ -46,7 +46,7 @@ because every later item depends on the earlier ones. It writes a JSON and a Mar
 ## Recording a run
 
 Commit the Markdown report under `docs/review/acceptance/` (the first recorded run creates the
-folder: docs/PLAYBOOK.md, "Recording the run"; none is recorded yet as of 2026-10-29) with the
+folder: docs/PLAYBOOK.md, "Recording the run"; none is recorded yet, checked again 2026-11-12) with the
 commit it ran against, and put
 one line in `handoff.md`'s header: the date, the commit, the outcome, and which items were skipped.
 A FAIL is the next wave's only list. Under the retrospective's rule, phase 1 is accepted when a run

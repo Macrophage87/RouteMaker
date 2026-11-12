@@ -168,6 +168,7 @@ export function PlaceSearch({
   onDismiss,
   onFocusBox,
   savedFor,
+  typed,
 }: {
   /**
    * "plan": the Points search, with Start / Destination / Stop. "go" (UI-CLEANUP): Go's one Where to? box,
@@ -206,6 +207,8 @@ export function PlaceSearch({
   onFocusBox?: () => void;
   /** Go's Where to?: the rider's Home, Work and favorites the words name (lib/savedPlaceSearch.ts), listed first. */
   savedFor?: (query: string) => SavedHits;
+  /** Words put in the box from outside (a shared address with no map point: app/sharedLaunch.ts), searched at once; `n` tells one put apart from the last. */
+  typed?: { text: string; n: number } | null;
 }) {
   const id = useId();
   const single = variant !== "plan";
@@ -213,6 +216,7 @@ export function PlaceSearch({
   const boxChoice: PlaceChoice | undefined = planBox ? PLAN_BOX_CHOICE[planBox] : undefined;
   const [query, setQuery] = useState("");
   const [result, setResult] = useState<GeoResult | null>(null);
+  const typedN = typed?.n;
   const [answered, setAnswered] = useState("");
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(-1);
@@ -256,6 +260,15 @@ export function PlaceSearch({
     });
   }
   useEffect(() => () => runner.current?.clear(), []);
+  // Words put in from outside (`typed`): in the box and searched, as if typed.
+  useEffect(() => {
+    if (typedN === undefined || !typed?.text) return;
+    setQuery(typed.text);
+    setOpen(true);
+    runner.current?.request(typed.text);
+    // Only a new `n` puts the words in again.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [typedN]);
   // On a phone, while the box has the focus: the app is shortened by what the keyboard covers (iOS;
   // lib/keyboardLift.ts, review UI-7), so the results in the sheet are not under it.
   const keyboardWatch = useRef<(() => void) | null>(null);

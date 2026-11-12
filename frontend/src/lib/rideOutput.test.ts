@@ -532,3 +532,13 @@ test("voiceFor: the asked tag whole, then by its language alone; Cantonese under
   assert.equal(voiceFor([{ lang: "en-US" }], ["ti-ER", "ti"]), null);
   assert.equal(voiceFor([], ["ti-ER"]), undefined);
 });
+
+test("Mandarin takes a Taiwan Mandarin voice before a Hong Kong (Cantonese) one (backlog 2026-11-12)", async () => {
+  const { setLanguageForTest, voiceTags } = await import("./i18n.ts");
+  try {
+    setLanguageForTest("zh");
+    assert.deepEqual(voiceFor([{ lang: "zh-HK" }, { lang: "zh-TW" }], voiceTags()), { lang: "zh-TW" });
+  } finally {
+    setLanguageForTest("en");
+  }
+});

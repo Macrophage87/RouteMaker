@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { GPX_NS_11, MAX_GPX_BYTES } from "./gpx.ts";
-import { GPX_ACCEPT, gpxAccept, importGpx, readGpx, type ImportOutcome } from "./gpxImport.ts";
+import { GPX_ACCEPT, OPENS_WHAT, gpxAccept, importGpx, readGpx, type ImportOutcome } from "./gpxImport.ts";
 
 const GOOD = new Blob([
   `<gpx xmlns="${GPX_NS_11}" version="1.1" creator="t"><trk><trkseg>` +
@@ -17,6 +17,11 @@ test("a GPX file is read into a plan; anything else is a sentence, not an except
     assert.equal(bad.ok, false, text);
     assert.ok(!bad.ok && bad.message.length > 0 && !/Error:|\bat /.test(bad.message), text);
   }
+});
+
+test("a file that is not GPX at all is told what RouteMaker opens (backlog 2026-11-12)", async () => {
+  const kml = await readGpx(new Blob(["<kml/>"]));
+  assert.ok(!kml.ok && kml.message.endsWith(OPENS_WHAT), !kml.ok ? kml.message : "");
 });
 
 test("a file over 20 MB is refused before it is read", async () => {

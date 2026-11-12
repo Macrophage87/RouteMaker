@@ -22,7 +22,7 @@ import { formatDistance } from "./format.ts";
 import type { LonLat } from "./geo.ts";
 import { encodePlan } from "./planHash.ts";
 import { VIA_MARKS, viaIndices } from "./pointKinds.ts";
-import type { PresetId } from "./presets.ts";
+import { presetSaid, type PresetId } from "./presets.ts";
 import type { ClosureAlert } from "./closureReview.ts";
 import { csrfFromCookie } from "./stressEditor.ts";
 
@@ -272,11 +272,15 @@ export function countLine(n: number, max = MAX_SAVED): string {
   return `${n} of ${max} saved.`;
 }
 
-/** A row's details: "4.7 mi (7.6 km) · Saved Oct 15, 2026" (US units first). */
-export function rowDetails(route: Pick<SavedSummary, "distance_m" | "created_at" | "source" | "fixed">): string {
+/**
+ * A row's details: "4.7 mi (7.6 km) · Gravel · Saved Oct 15, 2026" (US units first). The ride type a plan was saved with
+ * is named (backlog 2026-11-12, Plan); a file's is not, since a file is the line it holds whatever the type.
+ */
+export function rowDetails(route: Pick<SavedSummary, "distance_m" | "created_at" | "source" | "fixed"> & { preset?: string }): string {
   const date = new Date(route.created_at);
   const when = Number.isNaN(date.getTime()) ? "" : ` · ${t("Saved {date}", { date: date.toLocaleDateString(locale(), { month: "short", day: "numeric", year: "numeric" }) })}`;
-  const kind = `${route.source === "gpx" ? " · GPX file" : ""}${route.fixed ? ` · ${t("Fixed")}` : ""}`;
+  const ride = route.source !== "gpx" && route.preset ? ` · ${presetSaid(route.preset as PresetId)}` : "";
+  const kind = `${ride}${route.source === "gpx" ? " · GPX file" : ""}${route.fixed ? ` · ${t("Fixed")}` : ""}`;
   return `${formatDistance(route.distance_m)}${kind}${when}`;
 }
 

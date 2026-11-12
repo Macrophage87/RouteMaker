@@ -6051,9 +6051,6 @@ dialog.popup-sheet:modal > .sheet-header .popup-close {
   margin: 0 0 6px;
   font-size: 1rem;
 }
-.transit-total {
-  margin: 0 0 4px;
-}
 .transit-steps {
   margin: 8px 0;
   padding-inline-start: 1.6em;

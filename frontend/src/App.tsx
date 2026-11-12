@@ -3688,10 +3688,14 @@ export function App() {
     writeLastReview(next === "review");
   };
   // A place shared to RouteMaker (the Share sheet, or a geo: link on desktop): Go's destination (app/sharedLaunch.ts).
+  const [whereToTyped, setWhereToTyped] = useState<{ text: string; n: number } | null>(null);
   useSharedLaunch((place) => {
     if (modeRef.current !== "go") changeMode("go");
     goToPlace(place);
-  }, setNotice);
+  }, setNotice, (query) => {
+    if (modeRef.current !== "go") changeMode("go");
+    setWhereToTyped((last) => ({ text: query, n: (last?.n ?? 0) + 1 }));
+  });
   // "Same ride or a new one?" (SameRideDialog; 2026-11-05): a Group or Mass Ride plan of the page's own whose link went
   // out more than 12 hours ago (lib/rideGroup.ts asksSameRide) is asked about before its link goes out again or its ride
   // starts. Same ride keeps the key; New ride makes a new one, for every plan that had the old; going back does nothing.
@@ -7437,6 +7441,7 @@ export function App() {
                   onPick={goToPlace}
                   onTopPlace={goEarlyToPlace}
                   onWhereToFocus={goWarmFix}
+                  whereToTyped={whereToTyped}
                   places={{
                     homeReady: myGo.home !== null,
                     home: myGo.home,

@@ -67,6 +67,12 @@ behaviour is version 1's.
 
 In order; each its own branch and review. Slices 1 and 2 wait on questions 1 to 4.
 
+Status as of 2026-11-12: slices 1 to 5 are not built (`pipeline/checkpoint_store.py` exists,
+but nothing in the rebuild calls it). Slice 6 is built in part, and has grown past the
+note below: `scripts/cloud/launch.sh` now carries a spot run on with `--keep-resuming N`
+(the same box, a fresh run, not a resume from checkpoints) and runs on a standing on-demand
+box with `--box on-demand` (OPERATIONS.md, "The launcher" and "Two boxes: spot and on-demand").
+
 1. **Wire the store into the rebuild.** A setting naming the store (unset means version 1
    exactly), a run key given to the rebuild, and in `pipeline.run`: publish the source,
    merged and variant extracts and the classification manifest after VALIDATE_SEGMENTS, and
