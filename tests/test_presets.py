@@ -818,7 +818,10 @@ def test_with_the_every_setting_charge_turns_cost_the_same_at_every_position(mon
         own = preset.costing_options.get("maneuver_penalty", presets.VALHALLA_MANEUVER_PENALTY_S)
         got = presets.costing(name)["bicycle"]["maneuver_penalty"]
         assert got == max(own, presets.CALM_MANEUVER_PENALTY_S), name
-    assert presets.costing("tandem", 70)["bicycle"]["maneuver_penalty"] == presets.HIGH_MANEUVER_PENALTY_S
+    assert (
+        presets.costing("tandem", 70)["bicycle"]["maneuver_penalty"]
+        == presets.HIGH_MANEUVER_PENALTY_S
+    )
 
 
 def test_above_the_old_top_the_turn_charge_rises_to_the_calm_charge(monkeypatch) -> None:

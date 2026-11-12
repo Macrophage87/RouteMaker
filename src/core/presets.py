@@ -205,6 +205,34 @@ CALM_MANEUVER_PENALTY_S = 15
 # rule. 15 s stays our default, not measured.
 TURN_CHARGE_EVERY_SETTING = False
 
+# A rider's "Fewer turns" (the backlog's "fewer turns" item, 2026-11-12; `Dials.fewer_turns`,
+# the API's `fewer_turns`, Go's and Plan's "Fewer turns" option): the router's turn charge of a
+# ride type that already plans for fewer turns (Group Ride, Road Bike), and the calm search's
+# ranking counts turns at that price at every position (`refine.turn_m`). Our default, not
+# measured.
+FEWER_TURNS_PENALTY_S = HIGH_MANEUVER_PENALTY_S
+# A rider's "All paved" (`Dials.paved`, the API's `paved`): Valhalla's `avoid_bad_surfaces`
+# raised to this on the rider's own ride type, so gravel and dirt are left wherever pavement
+# runs near (1 would close them outright, and a trip with no paved way would fail). Our
+# default, not measured.
+PAVED_SURFACE_AVOIDANCE = 0.9
+
+
+def with_rider_choices(costing_block: dict, fewer_turns: bool = False, paved: bool = False) -> dict:
+    """`costing_block` (a `costing` answer, `{"bicycle": {...}}`) with the rider's "Fewer
+    turns" and "All paved" applied, in place; each only ever raises its charge."""
+    options = costing_block["bicycle"]
+    if fewer_turns:
+        options["maneuver_penalty"] = max(
+            options.get("maneuver_penalty", VALHALLA_MANEUVER_PENALTY_S), FEWER_TURNS_PENALTY_S
+        )
+    if paved:
+        options["avoid_bad_surfaces"] = max(
+            options.get("avoid_bad_surfaces", 0.0), PAVED_SURFACE_AVOIDANCE
+        )
+    return costing_block
+
+
 # The mass ride speed band's default planning speed, 6 mph, in Valhalla's km/h.
 MASS_RIDE_PLANNING_SPEED_KMH = round(6 * 1.609344, 1)
 

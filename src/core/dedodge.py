@@ -68,8 +68,9 @@ MIN_AVOIDED_M = 0.25 * 1609.344
 TURN_CHARGE_M = 80.0
 BASE_TURNS = 2
 # Every preset, Default included, keeps a dodge that avoids more than TIE_STEP_M, the
-# second level's tie step, and (with presets.TURN_CHARGE_EVERY_SETTING off) charges no turns (OWNER-DECISIONS 298(1), "Same as
-# Trailmaxxing (Recommended)": every preset removes only dodges that avoid within the
+# second level's tie step, and (with presets.TURN_CHARGE_EVERY_SETTING off and no "Fewer
+# turns") charges no turns (OWNER-DECISIONS 298(1), "Same as Trailmaxxing (Recommended)":
+# every preset removes only dodges that avoid within the
 # 50 m second-level tie step, amending 272's 0.25 mi rule; dodges that avoid nothing,
 # like Konterra's, are still removed everywhere). The stress order ranks distance below
 # LTS 3 (258-262), so a quarter of a mile of LTS 3 is not given back to save a few
@@ -360,24 +361,34 @@ def tie_rule() -> bool:
 
 def turn_lts3_m(ctx: refine.Context) -> float:
     """One turn as metres of LTS 3 avoided, at the plan's own prices: the turn charge as
-    quiet riding (`refine.TURN_RANK_S` at the request's speed, the router's 15 s) over what a
+    quiet riding (`refine.TURN_RANK_S` at the request's speed, the router's 15 s; the rider's
+    "Fewer turns", `presets.FEWER_TURNS_PENALTY_S`) over what a
     metre of LTS 3 adds at its `use_roads` (`refine.lts3_added_m`). About 20 m at Default,
     so a dodge is charged its turns at the rate the router charges them, not more.
     TURN_CHARGE_M where the request has no price for either."""
     added = refine.lts3_added_m(ctx)
     if ctx.quiet_cost <= 0 or added <= 0:
         return TURN_CHARGE_M
-    return refine.QUIET_COST_FACTOR * refine.TURN_RANK_S / ctx.quiet_cost / added
+    rank_s = presets.FEWER_TURNS_PENALTY_S if ctx.fewer_turns else refine.TURN_RANK_S
+    return refine.QUIET_COST_FACTOR * rank_s / ctx.quiet_cost / added
 
 
-def needed_m(turns_saved: int, tie: bool = False, per_turn_m: float = TURN_CHARGE_M) -> float:
+def needed_m(
+    turns_saved: int,
+    tie: bool = False,
+    per_turn_m: float = TURN_CHARGE_M,
+    charge_turns: bool | None = None,
+) -> float:
     """What a dodge must avoid to be kept, given the turns the main road saves: by the
     tie step (`tie`), more than TIE_STEP_M, plus `per_turn_m` (`turn_lts3_m`) for each turn
     the main road saves where `presets.TURN_CHARGE_EVERY_SETTING` is on (owner decision 254:
     turns carry a cost on every preset; the backlog's "fewer turns" item, 2026-11-12), so a
-    weave through side streets buys calm for its turns too."""
+    weave through side streets buys calm for its turns too. `charge_turns` None: that
+    switch; the plan passes True where the rider asked for "Fewer turns"."""
+    if charge_turns is None:
+        charge_turns = presets.TURN_CHARGE_EVERY_SETTING
     if tie:
-        if presets.TURN_CHARGE_EVERY_SETTING:
+        if charge_turns:
             return TIE_STEP_M + per_turn_m * max(0, turns_saved)
         return TIE_STEP_M
     return MIN_AVOIDED_M + TURN_CHARGE_M * max(0, turns_saved - BASE_TURNS)
@@ -397,7 +408,9 @@ def judge(
     extra = traced_m(dodge) - traced_m(direct)
     avoided = avoided_m(dodge, direct)
     tie = tie_rule()
-    needed = needed_m(saved, tie, turn_lts3_m(ctx))
+    needed = needed_m(
+        saved, tie, turn_lts3_m(ctx), presets.TURN_CHARGE_EVERY_SETTING or ctx.fewer_turns
+    )
 
     def keep(reason: str) -> Verdict:
         return Verdict(False, reason, avoided, needed, saved, extra)

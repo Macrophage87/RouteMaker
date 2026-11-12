@@ -312,6 +312,32 @@ class RouteIn(Schema):
             " ride type it plans as `road-bike`; elsewhere it is ignored."
         ),
     )
+    fewer_turns: StrictBool = Field(
+        default=False,
+        description=(
+            '"Fewer turns": the ride type as it is, with turns charged at Group Ride\'s and Road'
+            " Bike's higher price, so a route with fewer turns wins where one is near. Bike"
+            " ride types only; ignored on Run and the transit and Bikeshare ride types."
+        ),
+    )
+    paved: StrictBool = Field(
+        default=False,
+        description=(
+            '"All paved": the ride type as it is, with gravel and dirt avoided wherever'
+            " pavement runs near (not closed: a trip with no paved way still plans). Bike ride"
+            " types only; ignored on Run and the transit and Bikeshare ride types."
+        ),
+    )
+    options: list[Literal["direct", "calmer", "fewer_turns", "paved"]] | None = Field(
+        default=None,
+        max_length=4,
+        description=(
+            "POST /api/route/neighbours only: which options to plan beside the rider's route."
+            " null: direct and calmer (Go's More direct and Trailmaxxed). fewer_turns and"
+            " paved are the same setting with `fewer_turns` or `paved` on. Ignored by"
+            " POST /api/route."
+        ),
+    )
     trails_off: StrictBool = Field(
         default=False,
         description=(
@@ -1032,6 +1058,8 @@ class DialsOut(Schema):
     carrying: CarryingName | None
     assist: bool
     avoid_gravel: bool = False
+    fewer_turns: bool = Field(default=False, description='Whether "Fewer turns" was on.')
+    paved: bool = Field(default=False, description='Whether "All paved" was on.')
     trails_off: bool = False
     easy_mtb: bool = Field(
         default=False, description="Whether the ride was planned with Easy MTB trails on."
@@ -3876,7 +3904,8 @@ def offline_network_view(request, body: OfflineNetworkIn):
 # 25 since the calmer option became the trailmaxxed route (2026-10-19): the top of the slider
 # runs the calm search at its full rate, which took longer than the old notch's one call.
 NEIGHBOURS_BUDGET_S = 25
-# What the request counts against the routing limit: one for each plan.
+# What the request counts against the routing limit: one for each plan (Go's two; a request for
+# more options than two still counts two, as the budget above holds them all).
 NEIGHBOURS_COST = 2
 # What a loop's shapes (POST /api/route/loop-shapes) count against the routing limit, as three
 # plans (our default): six to eighteen /route calls and up to nine traces, all held to one plan's
@@ -3885,10 +3914,11 @@ LOOP_SHAPES_COST = 3
 
 
 class NeighbourOut(Schema):
-    kind: Literal["direct", "calmer"] = Field(
+    kind: Literal["direct", "calmer", "fewer_turns", "paved"] = Field(
         description=(
             "`direct`: two notches more traffic tolerant. `calmer`: the top of the slider"
-            " (Go's Trailmaxxed)."
+            " (Go's Trailmaxxed). `fewer_turns`, `paved`: the rider's own setting with"
+            " `fewer_turns` or `paved` on (asked for with `options`)."
         )
     )
     stress: int = Field(description="The traffic slider's position it was planned at.")
@@ -3899,8 +3929,9 @@ class NeighboursOut(Schema):
     stress: int = Field(description="The rider's own position, as the notches were read from.")
     options: list[NeighbourOut] = Field(
         description=(
-            "Up to two, the more direct first; empty on a ride type that offers neither (Rebalance"
-            " Ride, the transit ride types, Mass Ride), at both ends of a ride type's limits, on"
+            "Those asked for in `options` (by default direct and calmer), in that order; empty"
+            " on a ride type that offers none (Rebalance Ride, the transit ride types, Mass"
+            " Ride), at both ends of a ride type's limits, on"
             " a long ride, and on a Bikeshare request that does not name its docks"
             " (`pickup_station`, and `dropoff_station` unless it ends outside a dock): a"
             " Bikeshare option keeps those docks and changes only the ride between them."
@@ -3942,22 +3973,41 @@ def route_neighbours(request, body: RouteIn):
     if body.preset == presets.BIKESHARE and not _same_docks(body):
         return Status(200, {"stress": stress, "options": []})
     direct, calmer = presets.stress_notches(body.preset, stress)
+    # "Fewer turns" and "All paved" (the backlog's "fewer turns" item, 2026-11-12): the rider's
+    # own setting with the one choice on; not where the body already has it, nor on Bikeshare
+    # (its ride between the docks is the option there). Planned in the order asked, so the
+    # page puts the one it wants most first, and one the budget leaves no time for is the last.
+    same = None if body.preset in (presets.BIKESHARE, "mass-ride", presets.RUN) else stress
+    at = {
+        "direct": direct,
+        "calmer": calmer,
+        "fewer_turns": None if body.fewer_turns else same,
+        "paved": None if body.paved or body.preset == presets.ROAD_BIKE else same,
+    }
     wanted = [
-        (kind, notch)
-        for kind, notch in (("direct", direct), ("calmer", calmer))
-        if notch is not None
+        (kind, at[kind])
+        for kind in dict.fromkeys(body.options or ("direct", "calmer"))
+        if at[kind] is not None
         # A long calm plan takes the long ride's slot and budget: not offered as an option.
         and (
             loop
             or not routing.long_calm_for(
-                body.preset, body.points, notch, long_ride=False, trails_off=body.trails_off
+                body.preset, body.points, at[kind], long_ride=False, trails_off=body.trails_off
             )
         )
     ]
     # The plans' budget runs out NEIGHBOURS_BUDGET_S from now, read as a plan's own budget.
     started = routing.clock() - (routing.PLAN_BUDGET_S - NEIGHBOURS_BUDGET_S)
     bodies = {
-        kind: body.model_copy(update={"stress": notch, "quick": False, "candidates": False})
+        kind: body.model_copy(
+            update={
+                "stress": notch,
+                "quick": False,
+                "candidates": False,
+                "options": None,
+                **({kind: True} if kind in ("fewer_turns", "paved") else {}),
+            }
+        )
         for kind, notch in wanted
     }
     with lang.speaking(body.lang), walk_turns.stairs_avoided(body.avoid_stairs):
@@ -5831,6 +5881,8 @@ def _bike_dials(body: RouteIn) -> routing.Dials:
         carrying=body.carrying,
         assist=body.assist,
         avoid_gravel=body.avoid_gravel,
+        fewer_turns=body.fewer_turns,
+        paved=body.paved,
         trails_off=body.trails_off,
         easy_mtb=body.easy_mtb,
         target_distance_m=body.target_distance_m,

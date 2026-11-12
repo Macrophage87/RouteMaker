@@ -954,7 +954,9 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "r1 top: the turns charged",
         DD,
-        "            return TIE_STEP_M + per_turn_m * max(0, turns_saved)" + NL + "        return TIE_STEP_M",
+        "            return TIE_STEP_M + per_turn_m * max(0, turns_saved)"
+        + NL
+        + "        return TIE_STEP_M",
         "            return TIE_STEP_M + per_turn_m * max(0, turns_saved)"
         + NL
         + "        return TIE_STEP_M + TURN_CHARGE_M * max(0, turns_saved - BASE_TURNS)",
@@ -970,15 +972,15 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "r1 top: the verdict ignores the rule",
         DD,
-        "    needed = needed_m(saved, tie, turn_lts3_m(ctx))",
-        "    needed = needed_m(saved)",
+        "        saved, tie, turn_lts3_m(ctx), presets.TURN_CHARGE_EVERY_SETTING or ctx.fewer_turns",
+        "        saved",
         TD,
     ),
     # --- the every-setting turn charge (owner decision 254, 2026-11-12) ------------------------
     (
         "turns: the charge ignores the switch",
         DD,
-        "        if presets.TURN_CHARGE_EVERY_SETTING:",
+        "        if charge_turns:",
         "        if True:",
         TD,
     ),
@@ -992,8 +994,22 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "turns: item 254's 80 m in place of the router's price",
         DD,
-        "    needed = needed_m(saved, tie, turn_lts3_m(ctx))",
-        "    needed = needed_m(saved, tie)",
+        "        saved, tie, turn_lts3_m(ctx), presets.TURN_CHARGE_EVERY_SETTING or ctx.fewer_turns",
+        "        saved, tie, TURN_CHARGE_M, presets.TURN_CHARGE_EVERY_SETTING or ctx.fewer_turns",
+        TD,
+    ),
+    (
+        "turns: the rider's Fewer turns not charged",
+        DD,
+        "presets.TURN_CHARGE_EVERY_SETTING or ctx.fewer_turns",
+        "presets.TURN_CHARGE_EVERY_SETTING",
+        TD,
+    ),
+    (
+        "turns: the rider's Fewer turns at the plain price",
+        DD,
+        "    rank_s = presets.FEWER_TURNS_PENALTY_S if ctx.fewer_turns else refine.TURN_RANK_S",
+        "    rank_s = refine.TURN_RANK_S",
         TD,
     ),
     (
