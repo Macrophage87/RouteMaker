@@ -3,15 +3,15 @@
  "decided": "2026-11-12",
  "decided_by": "the deployment owner",
  "status": "Proposed 2026-11-12; not yet loaded. Load with manage.py load_access_overrides (dry run, then --confirm after the owner confirms this file), then rebuild.",
- "annotations": "Patuxent Research Refuge, North Tract: the area the refuge closed to the public on 2026-06-07, the old firing-range impact area inside Wildlife Way, drawn on the U.S. Fish & Wildlife Service's June 2026 North Tract map as \"Closed Area: public entry not permitted\". Its outline is fixtures/restricted-sites/patuxent-north-tract-closed-area.geojson: the refuge's own boundary (OSM relation 2858712) cut along Bald Eagle Drive and Wildlife Way from the Visitor Contact Station to Bailey Bridge, which stay open (the bridge too, way 92457576: the map draws the road to it), less the open pockets the map draws by the contact station (parking, Little Patuxent River Trail) and at Merganser Pond (parking, restrooms, Merganser Pond and Vernal Pools trails). Every road and track at least half inside it is closed with a bicycle=no access row, 75 ways (27 mi): among them Telegraph Road and Duvall Bridge Road, which OSM tags bicycle=yes, Wildlife Loop from the contact station east to Fort Meade and north of Bailey Bridge, and the private tracks and service roads. Footways and paths are left out: they are already closed to bicycles by their class or the park rule, and ways already tagged bicycle=no need no row.",
+ "annotations": "Patuxent Research Refuge, North Tract: the area the refuge closed to the public on 2026-06-07, the old firing-range impact area inside Wildlife Way, drawn on the U.S. Fish & Wildlife Service's June 2026 North Tract map as \"Closed Area: public entry not permitted\". Its outline is fixtures/restricted-sites/patuxent-north-tract-closed-area.geojson: the refuge's own boundary (OSM relation 2858712) cut along the roads the map draws open, Bald Eagle Drive and Wildlife Way (OSM Wildlife Loop) from the Visitor Contact Station south and east over Bailey Bridge to where the drawn road ends (ways 11515032, 707456987, 707456990, 11507801, 92457576, 11513643), less the open pockets the map draws by the contact station (parking, Little Patuxent River Trail) and at Merganser Pond (parking, restrooms, Merganser Pond and Vernal Pools trails). Every other road and track at least half inside it is closed with a bicycle=no access row, 72 ways (26.2 mi): among them Telegraph Road and Duvall Bridge Road, which OSM tags bicycle=yes, Wildlife Loop from the contact station east toward Fort Meade, and the private tracks and service roads. Footways and paths are left out: they are already closed to bicycles by their class or the park rule, and ways already tagged bicycle=no need no row. Known gap: way 707456987 also runs about 400 m east of the contact station into the hatch before it meets the closed way 86073852; a row covers a whole way, and the rest of 707456987 is the open road, so that stretch stays open.",
  "groups": [
   {
    "kind": "access",
    "value": {
     "bicycle": "no"
    },
-   "reason": "The owner, 2026-11-12, of Telegraph Road and Duvall Bridge Road inside the refuge's closed area: \"Keep them closed, but also make sure the closed part is represented by the shaded area\". Under the rule that unclear bicycle access is closed, a way inside an area the land manager marks \"public entry not permitted\" is clearly closed.",
-   "evidence": "U.S. Fish & Wildlife Service, North Tract trail map (June 2026): hatched \"Closed Area: Public entry not permitted\" between Wildlife Way and MD 32, with only Wildlife Way (to Bailey Bridge) and Bald Eagle Drive drawn as roads beside it (https://www.fws.gov/sites/default/files/documents/2026-06/north-tract-trail-map_2026_time-change.pdf). FWS refuge page, read 2026-11-12: \"Effective Sunday, June 7, Patuxent Research Refuge's North Tract will enact some changes to open areas ... we will be adding updated maps, barricades, and clear signage\" (https://www.fws.gov/refuge/patuxent-research). OSM ways read 2026-11-12; each way at least half its length inside the outline.",
+   "reason": "The owner, 2026-11-12, of Telegraph Road and Duvall Bridge Road inside the refuge's closed area: \"Keep them closed, but also make sure the closed part is represented by the shaded area\". The land manager marks the area \"public entry not permitted\", so a bicycle may not enter: these ways are closed on that statement, not by inference.",
+   "evidence": "U.S. Fish & Wildlife Service, North Tract trail map (June 2026): hatched \"Closed Area: Public entry not permitted\" between Wildlife Way and MD 32, with only Wildlife Way (to Bailey Bridge) and Bald Eagle Drive drawn as roads beside it (https://www.fws.gov/sites/default/files/documents/2026-06/north-tract-trail-map_2026_time-change.pdf). FWS refuge page, read 2026-11-12: \"Effective Sunday, June 7, Patuxent Research Refuge's North Tract will enact some changes to open areas ... we will be adding updated maps, barricades, and clear signage\" (https://www.fws.gov/refuge/patuxent-research). OSM ways read 2026-11-12; each listed way lies at least half its length inside the outline and is not one of the open roads the outline is cut along.",
    "ways": [
     11501617,
     11502092,
@@ -19,7 +19,6 @@
     11505791,
     11507981,
     11510817,
-    11513643,
     11514612,
     11515770,
     11516873,
@@ -67,8 +66,6 @@
     707631688,
     707645386,
     707652662,
-    711425062,
-    716827073,
     716827082,
     716827083,
     716827084,
@@ -125,12 +122,6 @@
      "highway": "unclassified",
      "length_m": 331.4,
      "line": "-76.746410,39.086889 -76.746788,39.087055 -76.747012,39.087119 -76.747673,39.087238 -76.750072,39.087748"
-    },
-    "11513643": {
-     "name": "Wildlife Loop",
-     "highway": "unclassified",
-     "length_m": 956.0,
-     "line": "-76.737214,39.061021 -76.737237,39.061172 -76.737218,39.061321 -76.737161,39.061487 -76.737089,39.061566 -76.736999,39.061621 -76.736880,39.061656 -76.736746,39.061674 -76.736578,39.061685 -76.735284,39.061635 -76.734343,39.061663 -76.734146,39.061634 -76.733920,39.061570 -76.733323,39.061323 -76.733209,39.061294 -76.733094,39.061285 -76.732960,39.061296 -76.732827,39.061337 -76.732693,39.061416 -76.732587,39.061517 -76.732517,39.061621 -76.732349,39.061948 -76.732080,39.062399 -76.731945,39.062719 -76.731847,39.063031 -76.731656,39.063425 -76.731302,39.064030 -76.731218,39.064224 -76.731149,39.064449 -76.731124,39.064679 -76.731069,39.064921 -76.731002,39.065075 -76.730891,39.065254 -76.730774,39.065376 -76.730676,39.065434 -76.730548,39.065472"
     },
     "11514612": {
      "name": "Patuxent Road",
@@ -413,18 +404,6 @@
      "highway": "track",
      "length_m": 124.8,
      "line": "-76.779106,39.054150 -76.778805,39.054296 -76.778564,39.054343 -76.778476,39.054373 -76.778442,39.054459 -76.778472,39.054500 -76.778553,39.054530 -76.778651,39.054514 -76.778696,39.054482 -76.778858,39.054274"
-    },
-    "711425062": {
-     "name": null,
-     "highway": "track",
-     "length_m": 387.5,
-     "line": "-76.740001,39.056682 -76.739782,39.056629 -76.739520,39.056586 -76.737786,39.056356 -76.736884,39.056206 -76.736698,39.056201 -76.736568,39.056218 -76.736450,39.056278 -76.736439,39.056345 -76.736484,39.056936"
-    },
-    "716827073": {
-     "name": null,
-     "highway": "track",
-     "length_m": 371.1,
-     "line": "-76.740330,39.054726 -76.739794,39.054953 -76.737657,39.055613 -76.737045,39.055859 -76.736640,39.056059 -76.736568,39.056218"
     },
     "716827082": {
      "name": null,

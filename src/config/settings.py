@@ -603,13 +603,14 @@ REBUILD_LONG_TRAIL_FLOORS = (6000, 2200)
 # The ride layer's runs (OWNER-DECISIONS 391, 402a; `pipeline.run.assert_calm_runs`): the two
 # long trails above are paths in a connected network of 8 mi or more, so they are the path
 # sentinels; and a calm road (the road sentinel: Wildlife Loop in the Patuxent Research
-# Refuge's North Tract, Anne Arundel County, OSM way 11507801, the 3.1 mi southern stretch of
+# Refuge's North Tract, Anne Arundel County, OSM way 11507801, the 3.3 mi southern stretch of
 # the open road from the Visitor Contact Station to Bailey Bridge, LTS 2 in our own-picks file
 # 2026-11-09-owner-md-own-picks.json, group G00209) must come out at the ride layer's road
 # bar. It was way 86073896 on the same loop until that stretch, east of the contact station,
 # fell inside the area the refuge closed on 2026-06-07 and our 2026-11-12 override closed it
-# (2026-11-12-owner-patuxent-closed-area.json); the open run that keeps 11507801 is Bald Eagle
-# Drive and Wildlife Loop from the contact station to Bailey Bridge, about 6 mi. Before that
+# (2026-11-12-owner-patuxent-closed-area.json); the run that keeps 11507801 is Wildlife Loop
+# from the contact station over Bailey Bridge (707456987, 707456990, 11507801, 92457576,
+# 11513643), about 6.4 mi by the OSM lengths, estimated, not yet measured on a build. Before that
 # it was Gambrill Park Road (way 11560982) until our own picks rated that piece 2.5
 # (2026-11-09), which broke its run and stopped the 2026-11-10 cloud run; and before that,
 # Elmer School Road (way 5968951) until Montgomery Planning's LTS 4 for it won over the

@@ -1364,7 +1364,7 @@ sentinels, the W&OD (OSM way 8810729) and the C&O towpath by Fletcher's Cove (74
 `settings.REBUILD_SENTINEL_CALM_PATH_WAYS`, must each be in a network of 8 mi
 (12.9 km) or more; the road sentinel, Wildlife Loop in the Patuxent Research Refuge
 (OSM way 11507801, the loop's southern stretch, LTS 2 in our own picks, in a calm run of
-about 6 mi to Bailey Bridge; it was way 86073896 on the same loop until the refuge's
+about 6 mi over Bailey Bridge, estimated; it was way 86073896 on the same loop until the refuge's
 2026-06-07 closed area took that stretch, 2026-11-12, Gambrill Park Road until our own
 picks rated that piece 2.5, 2026-11-10, and Elmer School Road
 before that, until Montgomery Planning's LTS 4 for that road was accepted, 2026-10-18),
