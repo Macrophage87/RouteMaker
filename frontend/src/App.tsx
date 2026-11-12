@@ -21,7 +21,7 @@ import { canDragLine, dropStillValid, insertIntoRide, legEnds, legPoints } from 
 import { EditHistory, isRedoKey, isUndoKey, typesText } from "./lib/editHistory.ts";
 import { cancelRoute, requestNeighbours, requestRoute, routeErrorShown, routeRequestBody, type NeighbourOption, type NeighboursResult, type RouteResponse, type RouteResult } from "./lib/api.ts";
 import { choiceColour, choiceFeatures } from "./lib/routeChoice.ts";
-import { displacedBy, keptNeighbours, neighbourDials, neighboursSaid, offersNeighbours, rideDials, withNeighbours } from "./lib/neighbours.ts";
+import { displacedBy, keptNeighbours, neighbourDials, neighbourKinds, neighboursSaid, offersNeighbours, rideDials, withNeighbours } from "./lib/neighbours.ts";
 import { betterRouteSaid, EarlyStart, replannedSaid, takesRefined } from "./lib/progressive.ts";
 import {
   RAIL_STATUS_MS,
@@ -1474,15 +1474,20 @@ export function App() {
       // Go's More direct and Calmer (lib/neighbours.ts), once the route shown is final: one request for both, at the
       // lowest priority, so nothing waits for it (a re-plan, Start or a ride's re-route goes at once). Not once Start is
       // pressed or a ride is on, not for a long ride, and not on a ride type that offers neither.
+      // Plan asks for the named options alone, Fewer turns and All paved (the backlog's "fewer turns" item, 2026-11-12),
+      // where the route has the turns or the unpaved riding for one to be worth asking (lib/neighbours.ts neighbourKinds):
+      // Plan's traffic slider is its More direct and Trailmaxxed.
       after: (plan: Plan, final: RouteResult) => {
         const now = shownNow.current;
-        if (!final.ok || final.route.provisional || modeRef.current !== "go" || now.riding) return null;
+        if (!final.ok || final.route.provisional || now.riding) return null;
         // Nor for a plan with legs drawn in Plan's manual mode: the rider drew that way on purpose.
         if (!offersNeighbours(plan.preset) || plan.confirmLong || drawnLegs(plan.points).length) return null;
+        const kinds = neighbourKinds(final.route, modeRef.current === "go");
+        if (!kinds) return null;
         // Bikeshare keeps the plan's own docks: only the ride between them changes.
         const dials = neighbourDials(plan.preset, plan.dials, final.route);
         if (!dials) return null;
-        return () => requestNeighbours(plan.points, plan.preset, { dials, vias: viaIndices(plan.points, VIA_MARKS.isVia) });
+        return () => requestNeighbours(plan.points, plan.preset, { dials, kinds, vias: viaIndices(plan.points, VIA_MARKS.isVia) });
       },
       onAfter: (plan: Plan, result: NeighboursResult) => {
         const now = shownNow.current;

@@ -312,6 +312,32 @@ class RouteIn(Schema):
             " ride type it plans as `road-bike`; elsewhere it is ignored."
         ),
     )
+    fewer_turns: StrictBool = Field(
+        default=False,
+        description=(
+            '"Fewer turns": the ride type as it is, with turns charged at Group Ride\'s and Road'
+            " Bike's higher price, so a route with fewer turns wins where one is near. Bike"
+            " ride types only; ignored on Run and the transit and Bikeshare ride types."
+        ),
+    )
+    paved: StrictBool = Field(
+        default=False,
+        description=(
+            '"All paved": the ride type as it is, with gravel and dirt avoided wherever'
+            " pavement runs near (not closed: a trip with no paved way still plans). Bike ride"
+            " types only; ignored on Run and the transit and Bikeshare ride types."
+        ),
+    )
+    options: list[Literal["direct", "calmer", "fewer_turns", "paved"]] | None = Field(
+        default=None,
+        max_length=4,
+        description=(
+            "POST /api/route/neighbours only: which options to plan beside the rider's route."
+            " null: direct and calmer (Go's More direct and Trailmaxxed). fewer_turns and"
+            " paved are the same setting with `fewer_turns` or `paved` on. Ignored by"
+            " POST /api/route."
+        ),
+    )
     trails_off: StrictBool = Field(
         default=False,
         description=(
@@ -1032,6 +1058,8 @@ class DialsOut(Schema):
     carrying: CarryingName | None
     assist: bool
     avoid_gravel: bool = False
+    fewer_turns: bool = Field(default=False, description='Whether "Fewer turns" was on.')
+    paved: bool = Field(default=False, description='Whether "All paved" was on.')
     trails_off: bool = False
     easy_mtb: bool = Field(
         default=False, description="Whether the ride was planned with Easy MTB trails on."
@@ -2456,6 +2484,73 @@ class MtbOut(Schema):
     )
 
 
+class BarrierItemOut(Schema):
+    """One barrier or flight of steps on a route (`core.barriers.reading`)."""
+
+    kind: str = Field(description="The OSM barrier value (`stile`, `bollard`, ...), or `steps`.")
+    word: str = Field(
+        description=(
+            "Its group for the route's line: `stile`, `kissing_gate`, `turnstile`, `steps`,"
+            " `narrow_gap` (a gap mapped under 1.0 m), `bollard`, `cycle_barrier`, `gate` or"
+            " `other`."
+        )
+    )
+    lon: float
+    lat: float
+    width_m: float | None = Field(default=None, description="The mapped gap, where mapped.")
+    width_mapped: bool = Field(
+        description="False for a bollard or cycle barrier whose gap no one has mapped."
+    )
+    impassable: bool = Field(
+        description=(
+            "A cargo bike or tandem cannot pass (OWNER-DECISIONS 345): lifted over or squeezed"
+            " through, steps, or a gap mapped under 1.0 m."
+        )
+    )
+    at_m: float = Field(description="Metres along the route.")
+
+
+class BarriersOut(Schema):
+    """The barriers on a route (`core.barriers.reading`; backlog 2026-11-12 item 12)."""
+
+    data: bool = Field(
+        description=(
+            "Whether a barrier list is loaded; false means nothing is known, never that there"
+            " are none."
+        )
+    )
+    built: str | None = Field(default=None, description="The extract date of the list.")
+    counts: dict[str, int] = Field(default_factory=dict, description="Barriers by `word`.")
+    impassable: int = 0
+    unmapped_width: int = Field(
+        default=0, description="Bollards and cycle barriers whose gap is not mapped."
+    )
+    items: list[BarrierItemOut] = Field(default_factory=list)
+
+
+class BarrierInTheWayOut(Schema):
+    kind: str
+    word: str
+    lon: float
+    lat: float
+
+
+class BarrierRoundOut(Schema):
+    """Cargo's and Tandem's round off impassable barriers (`core.barriers.settle`)."""
+
+    rounds: int = Field(default=0, description="Rounds of asking again round them.")
+    impassable: int = Field(default=0, description="Impassable barriers still on the route.")
+    limited: Literal["time", "no_way_round", "at_stop", "no_data"] | None = Field(
+        default=None,
+        description=(
+            "Why some are still on the route: `time`, `no_way_round` (no route without them"
+            " was found), `at_stop` (beside one of the plan's own points, so not excluded) or"
+            " `no_data` (no barrier list loaded)."
+        ),
+    )
+    in_the_way: list[BarrierInTheWayOut] = Field(default_factory=list)
+
+
 class EasyMtbOut(Schema):
     """An Easy MTB trails plan's reading of its route (`core.easy_mtb`)."""
 
@@ -2777,6 +2872,12 @@ class RouteBody(Schema):
     mtb: MtbOut | None = None
     # The Easy MTB trails switch's reading (2026-11-08). Additive: null with it off.
     easy_mtb: EasyMtbOut | None = None
+    # The barriers and steps on the line (backlog 2026-11-12 item 12). Additive: null from
+    # an older answer; `data` false where no barrier list is loaded.
+    barriers: BarriersOut | None = None
+    # Cargo's and Tandem's round off impassable barriers (`core.barriers.settle`). Additive:
+    # null on every other ride type.
+    barrier_round: BarrierRoundOut | None = None
     # Live work zones (FOLLOWUP-WORKZONES, 341-349). Additive: null where work zones are
     # not running (no refresh stored yet).
     work_zones: WorkZonesOut | None = None
@@ -3876,7 +3977,8 @@ def offline_network_view(request, body: OfflineNetworkIn):
 # 25 since the calmer option became the trailmaxxed route (2026-10-19): the top of the slider
 # runs the calm search at its full rate, which took longer than the old notch's one call.
 NEIGHBOURS_BUDGET_S = 25
-# What the request counts against the routing limit: one for each plan.
+# What the request counts against the routing limit up front: one for each of Go's two plans;
+# each plan asked past two is counted in the view (`route_neighbours`).
 NEIGHBOURS_COST = 2
 # What a loop's shapes (POST /api/route/loop-shapes) count against the routing limit, as three
 # plans (our default): six to eighteen /route calls and up to nine traces, all held to one plan's
@@ -3885,10 +3987,11 @@ LOOP_SHAPES_COST = 3
 
 
 class NeighbourOut(Schema):
-    kind: Literal["direct", "calmer"] = Field(
+    kind: Literal["direct", "calmer", "fewer_turns", "paved"] = Field(
         description=(
             "`direct`: two notches more traffic tolerant. `calmer`: the top of the slider"
-            " (Go's Trailmaxxed)."
+            " (Go's Trailmaxxed). `fewer_turns`, `paved`: the rider's own setting with"
+            " `fewer_turns` or `paved` on (asked for with `options`)."
         )
     )
     stress: int = Field(description="The traffic slider's position it was planned at.")
@@ -3899,8 +4002,9 @@ class NeighboursOut(Schema):
     stress: int = Field(description="The rider's own position, as the notches were read from.")
     options: list[NeighbourOut] = Field(
         description=(
-            "Up to two, the more direct first; empty on a ride type that offers neither (Rebalance"
-            " Ride, the transit ride types, Mass Ride), at both ends of a ride type's limits, on"
+            "Those asked for in `options` (by default direct and calmer), in that order; empty"
+            " on a ride type that offers none (Rebalance Ride, the transit ride types, Mass"
+            " Ride), at both ends of a ride type's limits, on"
             " a long ride, and on a Bikeshare request that does not name its docks"
             " (`pickup_station`, and `dropoff_station` unless it ends outside a dock): a"
             " Bikeshare option keeps those docks and changes only the ride between them."
@@ -3942,22 +4046,54 @@ def route_neighbours(request, body: RouteIn):
     if body.preset == presets.BIKESHARE and not _same_docks(body):
         return Status(200, {"stress": stress, "options": []})
     direct, calmer = presets.stress_notches(body.preset, stress)
+    # "Fewer turns" and "All paved" (the backlog's "fewer turns" item, 2026-11-12): the rider's
+    # own setting with the one choice on; not where the body already has it, nor on Bikeshare
+    # (its ride between the docks is the option there). Planned in the order asked, so the
+    # page puts the one it wants most first, and one the budget leaves no time for is the last.
+    same = None if body.preset in (presets.BIKESHARE, "mass-ride", presets.RUN) else stress
+    at = {
+        "direct": direct,
+        "calmer": calmer,
+        # Nor where the ride type already charges a turn that much (Group Ride, Road Bike).
+        "fewer_turns": None
+        if body.fewer_turns
+        or presets.costing(body.preset)["bicycle"].get("maneuver_penalty", 0)
+        >= presets.FEWER_TURNS_PENALTY_S
+        else same,
+        "paved": None if body.paved or body.preset == presets.ROAD_BIKE else same,
+    }
     wanted = [
-        (kind, notch)
-        for kind, notch in (("direct", direct), ("calmer", calmer))
-        if notch is not None
+        (kind, at[kind])
+        for kind in dict.fromkeys(body.options or ("direct", "calmer"))
+        if at[kind] is not None
         # A long calm plan takes the long ride's slot and budget: not offered as an option.
         and (
             loop
             or not routing.long_calm_for(
-                body.preset, body.points, notch, long_ride=False, trails_off=body.trails_off
+                body.preset, body.points, at[kind], long_ride=False, trails_off=body.trails_off
             )
         )
     ]
+    # Each plan past the two the decorator counted is counted too (Go's More direct and
+    # Trailmaxxed, then Fewer turns and All paved): where the client has not the room, the
+    # last ones are left out, never the request refused.
+    extra = len(wanted) - NEIGHBOURS_COST
+    if extra > 0:
+        client = ratelimit.client_key(ratelimit.client_address(request))
+        if not ratelimit.hit(ratelimit.ROUTING, client, extra).allowed:
+            wanted = wanted[:NEIGHBOURS_COST]
     # The plans' budget runs out NEIGHBOURS_BUDGET_S from now, read as a plan's own budget.
     started = routing.clock() - (routing.PLAN_BUDGET_S - NEIGHBOURS_BUDGET_S)
     bodies = {
-        kind: body.model_copy(update={"stress": notch, "quick": False, "candidates": False})
+        kind: body.model_copy(
+            update={
+                "stress": notch,
+                "quick": False,
+                "candidates": False,
+                "options": None,
+                **({kind: True} if kind in ("fewer_turns", "paved") else {}),
+            }
+        )
         for kind, notch in wanted
     }
     with lang.speaking(body.lang), walk_turns.stairs_avoided(body.avoid_stairs):
@@ -5831,6 +5967,8 @@ def _bike_dials(body: RouteIn) -> routing.Dials:
         carrying=body.carrying,
         assist=body.assist,
         avoid_gravel=body.avoid_gravel,
+        fewer_turns=body.fewer_turns,
+        paved=body.paved,
         trails_off=body.trails_off,
         easy_mtb=body.easy_mtb,
         target_distance_m=body.target_distance_m,

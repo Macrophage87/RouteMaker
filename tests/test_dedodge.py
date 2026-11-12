@@ -19,7 +19,7 @@ from approx_points import approx_points
 from test_refine import analysis, context, event
 from test_route_api import encode_polyline6 as reference_encode
 
-from core import dedodge, refine, routing
+from core import dedodge, presets, refine, routing
 from routemaker.geo import Point, bearing, haversine
 
 DATA = Path(__file__).parent / "data" / "dedodge_konterra.json"
@@ -1405,7 +1405,13 @@ class TestTheTieStepOnEveryPreset:
     """OWNER-DECISIONS 298(1), "Same as Trailmaxxing (Recommended)": on every ride type,
     Default included, a dodge is taken out only where what it avoids is within the
     second level's tie step (50 m), and no turns are charged (it amends 272's quarter
-    mile, the rule first built for every plan below the top of the slider)."""
+    mile, the rule first built for every plan below the top of the slider). Read here with
+    the every-setting turn charge off (`presets.TURN_CHARGE_EVERY_SETTING`), the rule as it
+    stands without it; `TestTurnsChargedEverySetting` reads it on."""
+
+    @pytest.fixture(autouse=True)
+    def _turns_off(self, monkeypatch) -> None:
+        monkeypatch.setattr(presets, "TURN_CHARGE_EVERY_SETTING", False)
 
     def test_the_rule_and_its_step(self) -> None:
         assert dedodge.TIE_RULE_ALL_PRESETS is True
@@ -1954,3 +1960,68 @@ class TestAReadingCutShort:
         new, info = dedodge.apply(trip_of(leg_of([*u1.dodge_route, *u2.dodge_route[1:]])), ctx)
         assert len(world.calls) == 1 and info["limited"] == "time"
         assert [i["action"] for i in info["items"]] == ["unchecked", "removed"]
+
+
+class TestTurnsChargedEverySetting:
+    """Owner decision 254's every-preset half (the backlog's "fewer turns" item, 2026-11-12):
+    with `presets.TURN_CHARGE_EVERY_SETTING` on, a dodge must avoid the tie step plus each
+    turn the main road saves, a turn priced as the router prices it (`turn_lts3_m`). Off
+    until the owner's yes, so switched on here."""
+
+    @pytest.fixture(autouse=True)
+    def _turns_on(self, monkeypatch) -> None:
+        monkeypatch.setattr(presets, "TURN_CHARGE_EVERY_SETTING", True)
+
+    def test_a_turn_is_the_routers_charge_in_metres_of_lts_3(self) -> None:
+        for ctx in (TOP, CTX):
+            per = dedodge.turn_lts3_m(ctx)
+            assert per == pytest.approx(
+                refine.QUIET_COST_FACTOR
+                * refine.TURN_RANK_S
+                / ctx.quiet_cost
+                / refine.lts3_added_m(ctx)
+            )
+            assert dedodge.needed_m(0, True, per) == 50.0
+            assert dedodge.needed_m(2, True, per) == pytest.approx(50.0 + 2 * per)
+            # A dodge the main road makes no shorter in turns is charged nothing.
+            assert dedodge.needed_m(-1, True, per) == 50.0
+
+    @pytest.mark.parametrize("ctx", [TOP, CTX], ids=["top", "default"])
+    def test_a_weave_must_buy_calm_for_its_turns(self, ctx) -> None:
+        # Before: 60 m of LTS 3 avoided kept a six-turn weave (more than the 50 m step).
+        # After: it must avoid 50 m + six turns' worth, so the main road is taken.
+        per = dedodge.turn_lts3_m(ctx)
+        got = verdict(read(turns=6), read(lts3=60.0), ctx)
+        assert got.remove and got.reason == "no_stress_gain"
+        assert got.needed_m == pytest.approx(50.0 + 6 * per)
+        # Enough calm bought, it is kept.
+        got = verdict(read(turns=6), read(lts3=60.0 + 6 * per), ctx)
+        assert not got.remove and got.reason == "stress"
+
+    def test_without_a_price_the_turn_is_item_254s_figure(self) -> None:
+        ctx = dataclasses.replace(CTX, quiet_cost=0.0)
+        assert dedodge.turn_lts3_m(ctx) == dedodge.TURN_CHARGE_M
+
+
+class TestTheRidersFewerTurns:
+    """The rider's "Fewer turns" (`refine.Context.fewer_turns`, 2026-11-12): turns charged in
+    the dodge pass whatever the every-setting switch, at `presets.FEWER_TURNS_PENALTY_S`."""
+
+    def test_turns_are_charged_at_the_riders_price_with_the_switch_off(self, monkeypatch) -> None:
+        monkeypatch.setattr(presets, "TURN_CHARGE_EVERY_SETTING", False)
+        ctx = dataclasses.replace(CTX, fewer_turns=True)
+        per = dedodge.turn_lts3_m(ctx)
+        assert per == pytest.approx(
+            dedodge.turn_lts3_m(CTX) * presets.FEWER_TURNS_PENALTY_S / refine.TURN_RANK_S
+        )
+        got = verdict(read(turns=4), read(lts3=60.0), ctx)
+        assert got.remove and got.needed_m == pytest.approx(50.0 + 4 * per)
+        # Without it, the same weave is kept by the tie step alone.
+        got = verdict(read(turns=4), read(lts3=60.0), CTX)
+        assert not got.remove and got.needed_m == 50.0
+
+    def test_a_ride_type_that_charges_more_is_priced_at_its_own_charge(self) -> None:
+        own = dataclasses.replace(CTX, costing={"bicycle": {"maneuver_penalty": 30}})
+        assert dedodge.turn_lts3_m(own) == pytest.approx(
+            dedodge.turn_lts3_m(CTX) * 30 / refine.TURN_RANK_S
+        )

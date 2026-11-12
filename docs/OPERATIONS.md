@@ -24,6 +24,7 @@ Contents:
 - [The 311 log's days (migration 0052, v0.15.0)](#the-311-logs-days-migration-0052-v0150)
 - [Transit schedule (TRANSIT-ASSIST, v0.6.0)](#transit-schedule-transit-assist-v060)
 - [Avoid-rated junctions: adding one (FOLLOWUP-ISECT-AVOID, OWNER-DECISIONS 307-310, 335)](#avoid-rated-junctions-adding-one-followup-isect-avoid-owner-decisions-307-310-335)
+- [A dozen riders at once: the load test](#a-dozen-riders-at-once-the-load-test)
 - [Backups](#backups)
 - [Restoring one](#restoring-one)
 - [Off-box copies of beta backups](#off-box-copies-of-beta-backups)
@@ -58,6 +59,7 @@ Contents:
 - [DDOT project advisories (v0.12.4)](#ddot-project-advisories-v0124)
 - [Purple Line construction closures (v0.13.0)](#purple-line-construction-closures-v0130)
 - [Fairfax park trail closures (v0.22.0)](#fairfax-park-trail-closures-v0220)
+- [Park agency trail closures (v0.26.0)](#park-agency-trail-closures-v0260)
 - [Deer-management closures (v0.12.3)](#deer-management-closures-v0123)
 - [DC pavement condition (DC-PCI)](#dc-pavement-condition-dc-pci)
 - [Agency traffic signals (signals.json)](#agency-traffic-signals-signalsjson)
@@ -90,6 +92,7 @@ Contents:
 - [Deploying v0.22.3](#deploying-v0223)
 - [Deploying v0.23.0](#deploying-v0230)
 - [Deploying v0.24.0](#deploying-v0240)
+- [Deploying v0.26.0](#deploying-v0260)
 - [Deploying v0.25.1](#deploying-v0251)
 - [Deploying v0.25.0](#deploying-v0250)
 - [Deploying a planner and front-end release: rollback points and verification](#deploying-a-planner-and-front-end-release-rollback-points-and-verification)
@@ -102,6 +105,7 @@ Contents:
 - [Rebuilding on the cloud box](#rebuilding-on-the-cloud-box)
 - [Phone app (v0.8.0)](#phone-app-v080)
 - [Fixing OSM from a ride (scripts/osm_edit.py)](#fixing-osm-from-a-ride-scriptsosm_editpy)
+- [Off-grid way back: the offline road network](#off-grid-way-back-the-offline-road-network)
 
 <!-- /CONTENTS -->
 
@@ -3856,6 +3860,19 @@ federal-land file and fetched when the layer is on, which it is by default; no
 edge, compose or deploy change. A release that first carries it adds to its
 checks: the hashed `water-restrooms-*.json` asset gives 200, `immutable`,
 compressed, and is named by the published front end's script.
+
+The barrier list Cargo and Tandem plan round (`src/core/geodata/barriers.json`,
+`core.barriers`; docs/DEVELOPMENT.md, "Barriers on Cargo and Tandem routes") is OpenStreetMap
+data too, a committed snapshot the weekly rebuild does not refresh. Until the first build-host
+run it is empty, and routes say nothing of barriers. A refresh, read only, after a map rebuild,
+on the build host with pyosmium:
+
+    python scripts/barrier_census.py --pbf <DATA_ROOT>/extracts/source.osm.pbf \
+        --json src/core/geodata/barriers.json --built <extract date> --out barrier-census.md
+
+then commit the file. It ships with the api (a hand ship). The printed report is the coverage
+count (how many barriers carry a width the remap reads, and the rest); keep it with the
+release's notes, not in the repository's data.
 
 The planner's Find food search (`frontend/src/lib/food.ts`; FOOD-SEARCH,
 v0.5.0) is OpenStreetMap data too and needs nothing beyond the ODbL credit.

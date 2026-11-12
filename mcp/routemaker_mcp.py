@@ -1653,6 +1653,59 @@ def easy_mtb_said(info: object) -> str | None:
     return None
 
 
+# The ride types whose summary names the barriers on the route (core/barriers.py PRESETS;
+# the owner, 2026-11-12: "Exclude; line on Cargo+Tandem").
+BARRIER_PRESETS = frozenset({"cargo", "tandem"})
+BARRIER_WORDS = {
+    "stile": "stile",
+    "kissing_gate": "kissing gate",
+    "turnstile": "turnstile",
+    "steps": "steps",
+    "narrow_gap": "narrow gap",
+    "bollard": "bollard",
+    "cycle_barrier": "cycle barrier",
+    "gate": "gate",
+}
+
+
+def barriers_said(answer: dict) -> str | None:
+    """What a Cargo or Tandem answer says of the barriers on its route, as the page's line
+    (frontend/src/lib/barriers.ts): the impassable ones no way round was found for, else every
+    barrier, a gap with no width mapped said as unmapped. None where there are none, or where
+    no barrier list is loaded (never "none")."""
+    if answer.get("preset") not in BARRIER_PRESETS:
+        return None
+    reading = answer.get("barriers")
+    if not isinstance(reading, dict) or not reading.get("data"):
+        return None
+    items = [i for i in reading.get("items") or [] if isinstance(i, dict)]
+    blocking = [i for i in items if i.get("impassable")]
+    if not items:
+        return None
+    groups: dict[tuple[str, bool], int] = {}
+    for item in blocking or items:
+        key = (str(item.get("word")), item.get("width_mapped") is False)
+        groups[key] = groups.get(key, 0) + 1
+    parts = [
+        BARRIER_WORDS.get(word, "other barrier")
+        + (f" x{n}" if n > 1 else "")
+        + (" (width not mapped)" if unmapped else "")
+        for (word, unmapped), n in groups.items()
+    ]
+    if blocking:
+        # "No way round found" only where the barrier round looked and found none.
+        limited = (answer.get("barrier_round") or {}).get("limited")
+        listed = ", ".join(parts)
+        if limited == "no_way_round":
+            where = f"no way round found: {listed} on this route"
+        elif limited == "at_stop":
+            where = f"{listed} by the start, a stop or the end"
+        else:
+            where = f"{listed} on this route"
+        return f"{where}; a cargo bike or tandem may not get through"
+    return ", ".join(parts)
+
+
 # A Mountain Bike reading's figure below this many metres is not said: the page's
 # `mtbMode.SAY_FROM_M` (a crossing, a driveway).
 MTB_SAY_FROM_M = 20.0
@@ -1860,6 +1913,9 @@ def summary(answer: dict) -> dict:
     unpaved = _unpaved_mi(answer)
     if unpaved >= 0.05:
         out["unpaved"] = miles_text(unpaved * METRES_PER_MILE)
+    turns = turn_count(answer)
+    if turns is not None:
+        out["turns"] = turns
     waits = (answer.get("junction_delay_s") or 0.0) / 60
     if waits >= 0.5:
         # The time the route spends at signals and stop signs, inside moving_time.
@@ -1873,6 +1929,9 @@ def summary(answer: dict) -> dict:
     easy = easy_mtb_said(answer.get("easy_mtb"))
     if easy:
         out["easy_mtb"] = easy
+    barriers = barriers_said(answer)
+    if barriers:
+        out["barriers"] = barriers
     road_bike = road_bike_said(answer)
     if road_bike:
         out["road_bike_map"] = road_bike
@@ -3648,10 +3707,32 @@ def _unpaved_mi(answer: dict) -> float:
     return total
 
 
+# The movements that are turns, as the app counts them (frontend lib/quickFigures.ts
+# turnTotal): left, right, bear and U-turns; not "continue" or straight on at a junction.
+TURN_MOVEMENTS = frozenset({"left", "right", "bear_left", "bear_right", "uturn"})
+
+
+def turn_count(answer: dict) -> int | None:
+    """The turns in the route's directions, as the app's summary counts them; None where the
+    answer has no directions (an older API), so 0 is never guessed."""
+    entries = answer.get("description")
+    if entries is None:
+        return None
+    return sum(
+        1
+        for entry in entries
+        if entry.get("kind") == "stretch"
+        and (entry.get("turn") or {}).get("movement") in TURN_MOVEMENTS
+    )
+
+
 def figures(answer: dict) -> dict:
-    """The route in the numbers a rider weighs one plan against another by."""
+    """The route in the numbers a rider weighs one plan against another by: its turns among
+    them (the backlog's "fewer turns" item, 2026-11-12), so "the same but fewer turns" can be
+    compared like "calmer"."""
     stress = answer.get("stress_m") or {}
     found = answer.get("intersections") or []
+    turns = turn_count(answer)
     return {
         "miles": round((answer.get("distance_m") or 0.0) / METRES_PER_MILE, 2),
         "minutes": round((answer.get("duration_s") or 0.0) / 60, 1),
@@ -3666,6 +3747,7 @@ def figures(answer: dict) -> dict:
         "very_high_junctions": sum(1 for j in found if j.get("severity") == "red"),
         "higher_junctions": sum(1 for j in found if j.get("severity") == "orange"),
         "junction_wait_minutes": round((answer.get("junction_delay_s") or 0.0) / 60, 1),
+        **({} if turns is None else {"turns": turns}),
     }
 
 
@@ -4744,6 +4826,23 @@ RIDE_OPTIONS = {
         "default": False,
         "description": "Keep to roads: no paths or trails.",
     },
+    "fewer_turns": {
+        "type": "boolean",
+        "default": False,
+        "description": (
+            "Bike ride types: the same ride type and settings with turns charged more (Group"
+            " Ride's and Road Bike's price), for \"the same but fewer turns\". Compare"
+            " summary.turns before and after."
+        ),
+    },
+    "paved": {
+        "type": "boolean",
+        "default": False,
+        "description": (
+            "Bike ride types: the same ride type and settings with gravel and dirt avoided"
+            " wherever pavement runs near (never closed). Compare summary.unpaved."
+        ),
+    },
     "easy_mtb": {
         "type": "boolean",
         "default": False,
@@ -4908,6 +5007,8 @@ PASSED_OPTIONS = (
     "carrying",
     "assist",
     "trails_off",
+    "fewer_turns",
+    "paved",
     "easy_mtb",
     "mtb_level",
     "mtb_preferred",
@@ -6772,6 +6873,8 @@ class Server:
                 k: answered.get(k)
                 for k in (
                     "trails_off",
+                    "fewer_turns",
+                    "paved",
                     "easy_mtb",
                     "target_distance_m",
                     "loop",
@@ -6881,6 +6984,9 @@ class Server:
             for key, what in (
                 ("blocked_lines", "the roads avoided"),
                 ("follow", "the line followed"),
+                # The app has no control for these (its named options set them for a ride).
+                ("fewer_turns", "Fewer turns"),
+                ("paved", "All paved"),
             )
             if plan.sent.get(key)
         ]
@@ -7630,6 +7736,9 @@ class Server:
                 "follow_alternative",
                 "blocked_lines",
                 "trails_off",
+                # The rider's choices, as Keep to roads.
+                "fewer_turns",
+                "paved",
             )
             if preset != "run":
                 # A riding speed is no running pace: the run starts at Run's own.
