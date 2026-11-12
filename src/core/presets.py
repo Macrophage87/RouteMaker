@@ -203,7 +203,7 @@ CALM_MANEUVER_PENALTY_S = 15
 # dodge pass charges the turns a dodge adds (`dedodge.needed_m`). OFF until the owner says yes
 # after a before/after table (the route scorecard); False keeps every plan on the above-80-only
 # rule. 15 s stays our default, not measured.
-TURN_CHARGE_EVERY_SETTING = False
+TURN_CHARGE_EVERY_SETTING = True
 
 # A rider's "Fewer turns" (the backlog's "fewer turns" item, 2026-11-12; `Dials.fewer_turns`,
 # the API's `fewer_turns`, Go's and Plan's "Fewer turns" option): the router's turn charge of a
