@@ -81,14 +81,18 @@ function rowOf(cue: RouteCue): CueRow {
   }
   const plainTurn = (cue.type === "left" || cue.type === "right" || cue.type === "slight_left" || cue.type === "slight_right") && !cue.turnText;
   const hazard = cue.kind === "hazard";
+  // A crossing between two turns (Ride's `cross` turn): "Cross" and the road, as the connector's cue cards say it
+  // (fixtures/cues/expected, the cue bench), not a note.
+  const crossTurn = cue.kind === "turn" && cue.crossRoad !== undefined;
   return {
     type: cue.type,
     hazard,
     atM: cue.atM,
     // A flagged crossing is a note to a course (it can be dropped there) but a caution on paper, as Ride says it.
-    turn: hazard ? "Caution" : cue.type === "stop" ? cue.name : TURN_WORDS[cue.type],
+    // A U-turn is a left to a course (course.ts fromRide) but "U-turn" on paper, as its arrow draws it.
+    turn: hazard ? "Caution" : crossTurn ? "Cross" : cue.kind === "turn" && cue.movement === "uturn" ? "U-turn" : cue.type === "stop" ? cue.name : TURN_WORDS[cue.type],
     reason: hazard ? (REASONS[cue.source ?? ""] ?? "") : "",
-    road: cue.street ?? "",
+    road: crossTurn ? (cue.crossRoad ?? "") : (cue.street ?? ""),
     // A turn's words are the turn and the street, already in the row; "Start." and "Stop 1." say no more either.
     notes: plainTurn || cue.type === "start" || cue.type === "stop" ? "" : cue.text,
     arrow: arrowOf(cue, hazard),
@@ -114,8 +118,10 @@ function arrowOf(cue: RouteCue, hazard: boolean): CueArrow {
 export function cueRows(route: SheetRoute, kind: CueSheetKind, vias: readonly number[] = [], names: ReadonlyMap<number, string> = new Map()): CueRow[] {
   const cues = routeCues(route, vias, names).filter((cue) => !cue.joined);
   const rows = cues.map(rowOf);
-  // The strip leaves out the notes on the road's stress and surface, never a route note of the rider's own.
-  return kind === "strip" ? rows.filter((r, i) => r.type !== "note" || r.hazard || cues[i].kind === "note") : rows;
+  // The strip leaves out the notes on the road's stress and surface, never a route note of the rider's own, nor a
+  // crossing between two turns (Ride's `cross` turn, a note to a course): the turn after it is in its row (the cue
+  // bench found the lock-screen images missing "Cross the road, then right onto Bethesda Trolley Trail").
+  return kind === "strip" ? rows.filter((r, i) => r.type !== "note" || r.hazard || cues[i].kind === "note" || cues[i].kind === "turn") : rows;
 }
 
 /** "12.4 mi (20.0 km)": the distance column's words. */

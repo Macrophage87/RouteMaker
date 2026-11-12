@@ -304,6 +304,8 @@ export interface RouteCue {
   across?: boolean;
   /** A short path straight across a road between two turns (Ride's `cross` turn): drawn straight over it. */
   cross?: boolean;
+  /** That road, for a `cross` turn's row ("Cross" and the road, as the connector's cue cards say it); "" with no name. */
+  crossRoad?: string;
   /** A stop's number (from 1), its name or not. */
   stop?: number;
   /** A route note's kind and words (lib/routeNotes.ts), on a "note" cue. */
@@ -338,6 +340,7 @@ export function routeCues(route: CompiledRoute, vias: readonly number[] = [], na
       ...(cue.kind === "turn" && cue.then?.length ? { then: cue.then.map((t) => ({ movement: t.movement, street: named(t.street) })) } : {}),
       ...(cue.kind === "turn" && cue.across ? { across: true } : {}),
       ...((cue.kind === "turn" && cue.cross) || cue.kind === "crossing" ? { cross: true } : {}),
+      ...(cue.kind === "turn" && cue.cross ? { crossRoad: named(cue.cross) && cue.cross !== CROSS_UNNAMED ? cue.cross.trim() : "" } : {}),
       ...(cue.kind === "stop" && cue.stop != null ? { stop: cue.stop } : {}),
       ...(cue.note ? { note: cue.note } : {}),
     });

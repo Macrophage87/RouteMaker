@@ -1,0 +1,56 @@
+[
+ {
+  "turn": "Start",
+  "road": "O St NW",
+  "then": "",
+  "arrow": "start"
+ },
+ {
+  "turn": "Right",
+  "road": "20th St NW Cycletrack",
+  "then": "",
+  "arrow": "turn right"
+ },
+ {
+  "turn": "Left",
+  "road": "L St NW",
+  "then": "",
+  "arrow": "turn across left"
+ },
+ {
+  "turn": "Caution",
+  "road": "",
+  "then": "",
+  "arrow": "caution"
+ },
+ {
+  "turn": "Left",
+  "road": "17th St NW bike Ln",
+  "then": "",
+  "arrow": "turn across left"
+ },
+ {
+  "turn": "Left",
+  "road": "S St NW",
+  "then": "",
+  "arrow": "turn left"
+ },
+ {
+  "turn": "Right",
+  "road": "19th St NW",
+  "then": "",
+  "arrow": "turn right"
+ },
+ {
+  "turn": "Right",
+  "road": "Svc Rd",
+  "then": "",
+  "arrow": "turn right"
+ },
+ {
+  "turn": "Finish",
+  "road": "",
+  "then": "",
+  "arrow": "finish"
+ }
+]
