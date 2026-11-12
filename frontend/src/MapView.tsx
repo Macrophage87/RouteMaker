@@ -3466,5 +3466,8 @@ function syncRoute(map: MapLibreMap, props: Props, fitted: { current: boolean })
   fitted.current = true;
   const bounds = new maplibregl.LngLatBounds();
   route.geometry.coordinates.forEach((c) => bounds.extend(c));
+  // A transit trip's line is its first ride: the whole trip is framed, its transit and later rides too (the 2026-11-12
+  // backlog: only the first leg was in view).
+  for (const step of transitOf(route)?.steps ?? []) step.coordinates.forEach((c) => bounds.extend(c as [number, number]));
   map.fitBounds(bounds, { padding, maxZoom: 15, duration: 600 });
 }

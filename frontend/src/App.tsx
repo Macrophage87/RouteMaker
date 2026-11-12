@@ -5308,8 +5308,12 @@ export function App() {
     // Go's tapped-spot card (GoSpotDialog.tsx), while open: its pins and a stop's card are kept clear of it too.
     const spotCard = document.querySelector<HTMLElement>("dialog.go-spot[open]")?.getBoundingClientRect();
     if (window.matchMedia(NARROW).matches) {
-      // The attribution sits above the sheet on a phone; leave room for it too.
-      return { top: 40, left: 30, right: 30, bottom: Math.max(panel?.height ?? 0, (spotCard?.height ?? 0) - 50) + 90 };
+      // The attribution sits above the sheet on a phone; leave room for it too. Go's top bar (with its Undo and Clear
+      // row) covers the map's top: the route is framed below it, so neither end hides under it (the 2026-11-12 backlog).
+      const mapTop = mapRef.current?.getContainer().getBoundingClientRect().top ?? 0;
+      const bar = document.querySelector(".go-top")?.getBoundingClientRect();
+      const top = bar && bar.height > 0 ? Math.max(40, bar.bottom - mapTop + 24) : 40;
+      return { top, left: 30, right: 30, bottom: Math.max(panel?.height ?? 0, (spotCard?.height ?? 0) - 50) + 90 };
     }
     // On a wide screen the route is a card on the map's right (styles.css, Plan on a wide screen): clear of it too.
     const out = panelRef.current?.querySelector<HTMLElement>(".planner-view:not([hidden]) > .route-section");
