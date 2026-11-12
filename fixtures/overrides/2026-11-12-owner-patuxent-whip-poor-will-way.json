@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "decided": "2026-11-12",
+  "decided_by": "the deployment owner",
+  "status": "Proposed 2026-11-12; not yet loaded. Load with manage.py load_access_overrides (dry run, then --confirm after the owner confirms this file), then rebuild.",
+  "annotations": "Patuxent Research Refuge, North Tract (Anne Arundel County): the southern stretch of Whip-poor-will Way, way 85508536 (0.71 mi, 1,150 m), from the Sweetgum Lane junction east to the rest of Whip-poor-will Way. OSM tags it access=permit and bicycle=permit, from when the refuge sold parking passes, so the map hid it (facility.map_class: a road the public may not enter) and routes could not use it, though the rest of Whip-poor-will Way is drawn and open. The refuge's own map shows the whole of Whip-poor-will Way as a walk, bike and horse road, and the refuge says passes are no longer needed. Opened with a bicycle=yes access row. Two pieces of South Road with the same tags (ways 707456988 and 707645386) are left closed: they run on past Wildlife Way into the area the refuge closed on 2026-06-07.",
+  "rows": [
+    {
+      "kind": "access",
+      "osm_way_id": 85508536,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "The owner, 2026-11-12, of the refuge's roads on our map: \"Most of the pautuxet research refuge is now closed to bikes on the map, but it's a very common route for biking\", and of the undrawn stretches: \"It's the white parts that concerns me.\" The refuge marks Whip-poor-will Way for walking, biking and horseback riding, and the permit its OSM tags describe is no longer required.",
+      "evidence": "The owner's report, 2026-11-12. U.S. Fish & Wildlife Service, North Tract trail map (June 2026): Whip-poor-will Way drawn in the legend's \"Walk, Bike, Horse\" style (https://www.fws.gov/sites/default/files/documents/2026-06/north-tract-trail-map_2026_time-change.pdf). FWS refuge activities page, read 2026-11-12: \"Patuxent Parking Passes are no longer needed\" (https://www.fws.gov/refuge/patuxent-research/visit-us/activities). OSM, read 2026-11-12: way 85508536 (version 9), highway=track, name=Whip-poor-will Way, access=permit, bicycle=permit, foot=permit, motor_vehicle=private; it joins Whip-poor-will Way 1281260248 (bicycle=yes) at its east end and Sweetgum Lane 11507213 and 707450195 (bicycle=yes) at its west end. The North Tract is open to the public on Sundays only, 8 AM to 4 PM (https://www.fws.gov/refuge/patuxent-research); this row does not model those hours.",
+      "fingerprint": {
+        "name": "Whip-poor-will Way",
+        "highway": "track",
+        "length_m": 1150.5,
+        "line": "-76.782190,39.079178 -76.783058,39.079237 -76.783551,39.079395 -76.783760,39.079410 -76.784144,39.079329 -76.784875,39.079244 -76.785079,39.079182 -76.785477,39.078895 -76.785752,39.078733 -76.786469,39.078460 -76.787455,39.077989 -76.787640,39.077963 -76.787958,39.077889 -76.788281,39.077797 -76.788599,39.077779 -76.788988,39.077720 -76.789576,39.077573 -76.790178,39.077473 -76.791293,39.077230 -76.791825,39.077138 -76.792698,39.077127 -76.793215,39.077156 -76.794225,39.077153 -76.794567,39.077134 -76.794812,39.077179"
+      }
+    }
+  ]
+}
