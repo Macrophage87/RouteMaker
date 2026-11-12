@@ -1711,8 +1711,10 @@ export function RideMode({
       // dropped (the press voided it) and the ride is planned again from where the rider is now.
       if (!check && closedPending.current && !ended.current) {
         closedPending.current = false;
-        // A End mountain biking press waiting too is in this one (askRoute sends mtbDone).
+        // A End mountain biking press waiting too is in this one (askRoute sends mtbDone), and so is a closure ahead
+        // (Reroute around it): the closures are read again for it.
         mtbDonePending.current = false;
+        suddenPending.current = false;
         gate.online();
         void replanRef.current(rideRef.current.goodFix?.point ?? here, undefined, true, true);
         return false;
