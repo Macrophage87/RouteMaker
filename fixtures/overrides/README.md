@@ -729,3 +729,17 @@ in the database still names it: delete that row in the admin when loading the fi
   Opened with a `bicycle=yes` access row, with a fingerprint. South Road's two permit pieces
   (707456988, 707645386) stay closed: they lie in the area the refuge closed on 2026-06-07.
   Load like the others; takes effect on the next rebuild.
+
+- `2026-11-12-owner-patuxent-closed-area.json` (one group, 75 ways, 27 mi): the area of the
+  Patuxent Research Refuge's North Tract that the refuge closed to the public on 2026-06-07,
+  the old firing-range impact area inside Wildlife Way ("Closed Area: public entry not
+  permitted" on the FWS June 2026 North Tract map). The owner, 2026-11-12, of Telegraph
+  Road and Duvall Bridge Road there: "Keep them closed, but also make sure the closed part is
+  represented by the shaded area". Every road and track at least half inside the outline,
+  `fixtures/restricted-sites/patuxent-north-tract-closed-area.geojson`, gets a `bicycle=no`
+  access row; footways and paths (already closed by class) and ways already tagged
+  `bicycle=no` are left out. Bald Eagle Drive and Wildlife Way from the contact station to
+  Bailey Bridge stay open, as do the pockets by the contact station and Merganser Pond. It
+  closes the old rebuild road sentinel, way 86073896, so `REBUILD_SENTINEL_CALM_STREET_WAYS`
+  moves to way 11507801 on the open stretch. Load like the others; takes effect on the next
+  rebuild.
