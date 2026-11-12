@@ -7958,7 +7958,7 @@ only at the next map rebuild.
   closed area is shaded and a point in it goes to the gate while its roads stay routable until then.
 - [ ] **The tag** **(owner)**. Once `test` and `a11y` are green on `main`, the owner tags v0.26.0
   (annotated) on that commit, from the PC.
-- [ ] **Outbound host** (trail and county closures, #PR). Add `www7.montgomerycountymd.gov` (443)
+- [ ] **Outbound host** (trail and county closures, #1189). Add `www7.montgomerycountymd.gov` (443)
   to beta's egress list, and home's if it is filtered: the worker's `refresh_dc_closures` now reads
   Montgomery County DOT's road closures (source `moco`, routed round as `sha` is); with no good read
   in 45 minutes the run fails. The same run now also fails at once with "read as nothing: <source>"
